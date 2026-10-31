@@ -15,9 +15,16 @@ for f in "$SO" "$EXE"; do
 done
 ADB="${ADB:-adb}"
 command -v "$ADB" >/dev/null || { echo 'ERROR: install adb/platform-tools first.' >&2; exit 2; }
+# ARM64 is the real-device default. An explicit x86_64 override is supported
+# only for the Phase 71 CI emulator runtime test, not for Quest hardware.
+EXPECTED_ABI="${SIN_SMOKE_EXPECTED_ABI:-arm64-v8a}"
+case "$EXPECTED_ABI" in
+  arm64-v8a|x86_64) ;;
+  *) echo "ERROR: unsupported expected Android ABI '$EXPECTED_ABI'" >&2; exit 2;;
+esac
 ABI="$("$ADB" shell getprop ro.product.cpu.abi | tr -d '\r')"
-if [[ "$ABI" != 'arm64-v8a' ]]; then
-  echo "ERROR: target ABI is '$ABI', expected arm64-v8a" >&2
+if [[ "$ABI" != "$EXPECTED_ABI" ]]; then
+  echo "ERROR: target ABI is '$ABI', expected $EXPECTED_ABI" >&2
   exit 2
 fi
 API="$("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"

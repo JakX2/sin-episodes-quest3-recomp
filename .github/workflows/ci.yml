@@ -50,3 +50,45 @@ jobs:
             build-android-arm64/android-smoke-manifest.txt
           if-no-files-found: error
           retention-days: 7
+
+  android-emulator-runtime:
+    name: Android Bionic x86_64 emulator dlopen runtime smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned official Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -n "$SDKMANAGER" && test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
+          test -f "$SDK_ROOT/ndk/27.2.12479018/build/cmake/android.toolchain.cmake"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Compile emulator-native Android Bionic library and executable
+        shell: bash
+        run: bash scripts/build_android_emulator_x86_64.sh
+      - name: Allow KVM acceleration when available (optional on hosted runners)
+        shell: bash
+        run: |
+          if [[ -c /dev/kvm ]]; then
+            sudo chmod a+rw /dev/kvm
+            test -r /dev/kvm && test -w /dev/kvm
+            echo 'KVM available; using accelerated Android emulator.'
+          else
+            # Some GitHub hosted runners lack /dev/kvm. The emulator action
+            # auto-detects this and can run with software acceleration instead.
+            echo 'No /dev/kvm exposed; emulator runner will select non-KVM mode.'
+          fi
+      - name: Boot real Android emulator and execute Bionic dlopen smoke
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          emulator-boot-timeout: 480
+          emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: SIN_SMOKE_EXPECTED_ABI=x86_64 bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
