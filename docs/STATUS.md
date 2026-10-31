@@ -51,3 +51,7 @@ This is the first **buildable project foundation**. All future scheduled researc
 ## Public research archive checkpoint
 
 Phase 44–55 original reports and selected verifiers, plus carefully labeled early enemy/vehicle/difficulty historical summaries, are indexed at [`../research/README.md`](../research/README.md). This does not add runnable AI, car or campaign gameplay. The original DLL binaries, assets and excerpt dumps are excluded.
+
+## Phase 56: Named reload-field metadata (verified static evidence)
+
+The original SiN `server.dll` and `client.dll` were available during this investigation and both SHA-256 hashes matched `research/binary-provenance.json`. Typed metadata identifies `m_bReloadsSingly` (`server+0x508` / `client+0x7FC`), `m_bInReload` (`+0x4AC` / `+0x7A0`), and clip1/clip2 fields. See [`../research/phases/phase56-weapon-field-metadata.md`](../research/phases/phase56-weapon-field-metadata.md). Both a binary verifier and independently generated synthetic PE-parser unit tests were run; **no Quest, engine runtime or original game execution was performed**. The meaning of two parallel server descriptor groups and runtime enabling of one-round reload are unresolved.
