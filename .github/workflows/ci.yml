@@ -15,11 +15,13 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Test research PE metadata verifier (synthetic fixtures)
         run: python3 -m unittest discover -s research/tests -p 'test_*.py' -v
+      - name: Test Android deployment script with mock adb (no device)
+        run: bash tests/test_android_deploy.sh
       - name: Check freestanding Android ARM64 C ABI layout (not an NDK build)
         run: bash scripts/check_android_abi_layout.sh
 
   android-arm64:
-    name: Android NDK ARM64 shared-library cross-build
+    name: Android NDK ARM64 library and dlopen executable build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,13 +37,16 @@ jobs:
           "$SDKMANAGER" --install "ndk;27.2.12479018"
           test -f "$SDK_ROOT/ndk/27.2.12479018/build/cmake/android.toolchain.cmake"
           echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
-      - name: Build real Android ARM64 C++ shared library and audit ELF exports
+      - name: Build Android ARM64 library and Bionic dlopen smoke executable
         shell: bash
         run: bash scripts/build_android_arm64.sh
-      - name: Upload ARM64 shared library for engineering review
+      - name: Upload ARM64 library and smoke executable for device verification
         uses: actions/upload-artifact@v4
         with:
-          name: sin-compat-host-abi-android-arm64-api26
-          path: build-android-arm64/libsin_compat_host_abi.so
+          name: sin-compat-android-arm64-api26-with-smoke
+          path: |
+            build-android-arm64/libsin_compat_host_abi.so
+            build-android-arm64/sin_android_host_abi_smoke
+            build-android-arm64/android-smoke-manifest.txt
           if-no-files-found: error
           retention-days: 7
