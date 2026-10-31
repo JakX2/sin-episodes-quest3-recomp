@@ -43,4 +43,26 @@ fi
 if bash "$ROOT/scripts/run_android_host_abi_smoke.sh" "$TMP/missing" >"$TMP/out" 2>&1; then
   echo 'ERROR: missing binaries accepted' >&2; exit 1
 fi
+# Explicit x86_64 override is reserved for the real Android emulator job.
+: > "$TMP/adb.log"
+MOCK_DEVICE_ABI=x86_64 SIN_SMOKE_EXPECTED_ABI=x86_64 \
+  bash "$ROOT/scripts/run_android_host_abi_smoke.sh" "$TMP/build" > "$TMP/out"
+grep -q 'PASS: on-device' "$TMP/out"
+grep -q '^push ' "$TMP/adb.log"
+: > "$TMP/adb.log"
+if MOCK_DEVICE_ABI=arm64-v8a SIN_SMOKE_EXPECTED_ABI=x86_64 \
+  bash "$ROOT/scripts/run_android_host_abi_smoke.sh" "$TMP/build" > "$TMP/out" 2>&1; then
+  echo 'ERROR: x86_64 emulator setting accepted an arm64 device' >&2; exit 1
+fi
+if grep -q '^push ' "$TMP/adb.log"; then
+  echo 'ERROR: cross-architecture emulator setting pushed files' >&2; exit 1
+fi
+: > "$TMP/adb.log"
+if SIN_SMOKE_EXPECTED_ABI=armeabi-v7a \
+  bash "$ROOT/scripts/run_android_host_abi_smoke.sh" "$TMP/build" > "$TMP/out" 2>&1; then
+  echo 'ERROR: unsupported ABI override accepted' >&2; exit 1
+fi
+if grep -q '^push ' "$TMP/adb.log"; then
+  echo 'ERROR: unsupported ABI override pushed files' >&2; exit 1
+fi
 printf '%s\n' 'Offline adb deployment guard tests pass (no Android device used).'
