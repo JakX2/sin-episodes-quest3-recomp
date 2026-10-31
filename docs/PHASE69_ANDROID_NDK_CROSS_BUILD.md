@@ -4,7 +4,7 @@
 
 ## Concrete deliverable
 
-Phase 68 verified only a freestanding AArch64 *C header layout* object, not the actual C++ runtime. Phase 69 adds a distinct GitHub Actions `android-arm64` job using the official Google Android SDK and the **pinned NDK 27.2.12479018**, building **all** portable C++ sources and their exported C boundary as `libsin_compat_host_abi.so` with CMake:
+Phase 68 verified only a freestanding AArch64 *C header layout* object, not the actual C++ runtime. Phase 69 adds a distinct GitHub Actions `android-arm64` job using the GitHub Ubuntu runner's official Android SDK command-line manager and the **pinned NDK 27.2.12479018**, building **all** portable C++ sources and their exported C boundary as `libsin_compat_host_abi.so` with CMake:
 
 - Target: `arm64-v8a` / `aarch64-linux-android`, minimum Android API 26.
 - Android C++ STL: `c++_static`, so the module does not depend on an separately installed `libc++_shared.so` (it does still depend on normal Android system libraries).
@@ -12,6 +12,8 @@ Phase 68 verified only a freestanding AArch64 *C header layout* object, not the 
 - The built `.so` and an independently compiled AArch64 C ABI layout object are inspected by `scripts/build_android_arm64.sh`. The script rejects a missing NDK, non-ELF64, non-AArch64, non-shared output, wrong SONAME, unexpected shared-libc++ dependency or a missing/extra C ABI export.
 - Exactly thirteen v1 `sin_*` exports are expected; C++ internals remain hidden. This does not validate any SourceVR/Valve engine loader ABI.
 - GitHub Actions uploads the resultant `.so` as a **short-retention engineering artifact** from the official cross-build job. It contains only this project's independently authored compatibility code and linker-produced runtime components, **no original SiN or HL2 game assets**.
+
+The job intentionally invokes the runner's SDK manager directly: in a preliminary CI attempt, `android-actions/setup-android@v3` failed while trying to install the obsolete package `tools`, **before** any C++ compilation. This is a CI setup issue, not a failing ABI or cross-compiler result.
 
 The existing Linux host test job still runs the seven native CTest tests, 112 synthetic Python research tests and the Phase 68 freestanding C ABI check.
 

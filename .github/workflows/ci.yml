@@ -23,13 +23,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Android SDK command-line tools
-        uses: android-actions/setup-android@v3
-      - name: Install pinned official Android NDK
+      - name: Install pinned official Android NDK using runner SDK manager
         shell: bash
         run: |
-          sdkmanager --install "ndk;27.2.12479018"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -n "$SDKMANAGER" && test -x "$SDKMANAGER"
+          # Avoid the setup-android action's unsupported legacy `tools` package.
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
+          test -f "$SDK_ROOT/ndk/27.2.12479018/build/cmake/android.toolchain.cmake"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - name: Build real Android ARM64 C++ shared library and audit ELF exports
         shell: bash
         run: bash scripts/build_android_arm64.sh
