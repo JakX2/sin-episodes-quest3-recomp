@@ -53,6 +53,10 @@ public:
     sin_phase55::ShellEvent process_one_round_at_validated_event(
         bool owner_valid, bool deadline_reached, std::uint32_t held_buttons);
     void finish_reload();
+    // Port safety policy when a weapon is deselected/removed: cancel local
+    // ADS/reload without playing an animation on a potentially stale model.
+    // Returns whether ADS was active (for session event reporting).
+    bool cancel_on_detach();
     bool holster();
     bool primary_attack(int rifle_recoil_counter = 0);
     bool secondary_attack();

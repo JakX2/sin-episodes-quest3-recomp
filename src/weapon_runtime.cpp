@@ -96,6 +96,20 @@ void WeaponRuntime::finish_reload() {
     ammo_.stage = 0;
 }
 
+bool WeaponRuntime::cancel_on_detach() {
+    const bool was_zoomed = zoom_.zoom_active_0x578;
+    zoom_.zoom_active_0x578 = false;
+    zoom_.restore_pending_0x579 = false;
+    finish_reload();
+    active_activity_ = -1;
+    if (was_zoomed && !vr_mode_) {
+        // Do not touch headset projection. The engine adapter must still
+        // handle camera lifetime, death and player transition on its side.
+        host_.set_flatscreen_fov(0, sin_phase45::kZoomOutFovSeconds);
+    }
+    return was_zoomed;
+}
+
 bool WeaponRuntime::holster() {
     // Phase 52/54 ordering: zoom-out wrapper precedes reload cleanup and holster.
     exit_zoom();
