@@ -48,3 +48,12 @@ if(BUILD_TESTING AND UNIX)
   target_link_libraries(sin_host_abi_dlopen_tests PRIVATE ${CMAKE_DL_LIBS})
   add_test(NAME sin_host_abi_dlopen_tests COMMAND sin_host_abi_dlopen_tests $<TARGET_FILE:sin_compat_host_abi>)
 endif()
+
+# Independently compiled C ABI layout checks, executable on host. The same C
+# source is also compiled freestanding for AArch64 Android in Phase 68 CI.
+if(BUILD_TESTING)
+  add_executable(sin_host_abi_layout_tests tests/abi_layout_contract.c)
+  target_include_directories(sin_host_abi_layout_tests PRIVATE include)
+  set_target_properties(sin_host_abi_layout_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  add_test(NAME sin_host_abi_layout_tests COMMAND sin_host_abi_layout_tests)
+endif()

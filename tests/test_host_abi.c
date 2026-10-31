@@ -14,10 +14,24 @@
 typedef struct {
   sin_entity_ref_v1 owner,weapon,selected,model,slots[2];
   int owner_live,weapon_live,model_live,player,creates,removes,hides,model_hides,fovs,binds,plays;
+  sin_session_v1 *nested_session; int trigger_nested, nested_hide_result, nested_calls, nested_destroys;
+  int trigger_bind_nested, nested_ammo_result;
 } host;
 static sin_entity_ref_v1 invalid_ref(void){return (sin_entity_ref_v1){UINT32_MAX,UINT32_MAX};}
 static int same(sin_entity_ref_v1 a,sin_entity_ref_v1 b){return a.index==b.index&&a.generation==b.generation;}
-static int live(void*u,sin_entity_ref_v1 r){host*h=u;return (h->owner_live&&same(r,h->owner))||(h->weapon_live&&same(r,h->weapon))||(h->model_live&&same(r,h->model));}
+static int32_t (*nested_hide_fn)(sin_session_v1*) = NULL;
+static void (*nested_destroy_fn)(sin_session_v1*) = NULL;
+static int32_t (*nested_ammo_fn)(sin_session_v1*,sin_ammo_v1*) = NULL;
+static int live(void*u,sin_entity_ref_v1 r){
+  host*h=u;
+  if (h->trigger_nested) {
+    h->trigger_nested=0;
+    h->nested_hide_result=nested_hide_fn(h->nested_session);
+    h->nested_calls++;
+    nested_destroy_fn(h->nested_session); /* ignored: outer call owns lifetime */
+    h->nested_destroys++;
+  }
+  return (h->owner_live&&same(r,h->owner))||(h->weapon_live&&same(r,h->weapon))||(h->model_live&&same(r,h->model));}
 static sin_entity_ref_v1 owner_of(void*u,sin_entity_ref_v1 w){host*h=u;return same(w,h->weapon)?h->owner:invalid_ref();}
 static sin_entity_ref_v1 selected(void*u,sin_entity_ref_v1 p){host*h=u;return same(p,h->owner)?h->selected:invalid_ref();}
 static void set_weapon(void*u,sin_entity_ref_v1 w,int hide){host*h=u;assert(same(w,h->weapon)&&hide);h->hides++;}
@@ -34,7 +48,15 @@ static int store(void*u,sin_entity_ref_v1 p,int32_t slot,sin_entity_ref_v1 m){ho
 static void remove_model(void*u,sin_entity_ref_v1 m){host*h=u;assert(same(m,h->model));h->model_live=0;h->removes++;}
 static void clear_slot(void*u,sin_entity_ref_v1 p,int32_t slot){host*h=u;assert(same(p,h->owner));h->slots[slot]=invalid_ref();}
 static int32_t resolve(void*u,int32_t activity){(void)u;return activity>=0?activity+100:-1;}
-static void bind(void*u,const char*model,const float origin[3]){host*h=u;assert(strcmp(model,"fake_model.mdl")==0&&origin[0]==1.f);h->binds++;}
+static void bind(void*u,const char*model,const float origin[3]){
+  host*h=u;assert(strcmp(model,"fake_model.mdl")==0&&origin[0]==1.f);
+  if(h->trigger_bind_nested){
+    h->trigger_bind_nested=0;
+    sin_ammo_v1 output={0};
+    h->nested_ammo_result=nested_ammo_fn(h->nested_session,&output);
+  }
+  h->binds++;
+}
 static void play(void*u,int32_t sequence){host*h=u;assert(sequence>=100);h->plays++;}
 static void fov(void*u,int32_t f,float duration){host*h=u;(void)f;(void)duration;h->fovs++;}
 
@@ -76,11 +98,19 @@ int main(int argc,char**argv){
   c.struct_size=sizeof(c);c.is_live=NULL;REQ(p_session_create(&c,&h,h.owner,h.weapon,0,&w,1)==NULL);
   c.is_live=live;REQ(p_session_create(&c,&h,h.owner,h.weapon,3,&w,1)==NULL);
   sin_session_v1*s=p_session_create(&c,&h,h.owner,h.weapon,0,&w,1);REQ(s!=NULL);
+  nested_hide_fn=p_session_hide_weapon; nested_destroy_fn=p_session_destroy;
+  nested_ammo_fn=p_session_get_ammo;
+  h.nested_session=s;h.trigger_nested=1;h.nested_hide_result=123;
+  REQ(p_session_hide_weapon(s)==3);
+  REQ(h.nested_calls==1 && h.nested_hide_result==-1 && h.nested_destroys==1);
+  REQ(h.hides==1); /* no effect from the nested call itself */
   REQ(p_session_ensure_viewmodel(s)==6); /* Created enum ordinal */
   REQ(p_session_ensure_viewmodel(s)==2); /* AlreadyPresent enum ordinal */
   REQ(h.creates==1);
-  REQ(p_session_hide_weapon(s)==3 && h.hides==1 && h.model_hides==1);
-  REQ(p_session_usercmd(s,0x80000u,0)&1);REQ(h.fovs==0); /* HMD FOV untouched */
+  REQ(p_session_hide_weapon(s)==3 && h.hides==2 && h.model_hides==1);
+  h.trigger_bind_nested=1;h.nested_ammo_result=123;
+  REQ(p_session_usercmd(s,0x80000u,0)&1);REQ(h.fovs==0);
+  REQ(h.nested_ammo_result==-1); /* HMD FOV untouched */
   REQ(p_session_set_ammo(s,(sin_ammo_v1){2,0,5,0})==0);
   REQ(p_session_reload_begin(s,-1,-1)==1);
   REQ(p_session_set_ammo(s,(sin_ammo_v1){0,0,100,0})==-1); /* active reload */

@@ -53,12 +53,34 @@ bool complete(const sin_host_callbacks_v1 &c) {
 }
 }
 struct sin_session_v1 {
+    bool in_callback_api = false;
     Callbacks callbacks;
     WeaponSession session;
     sin_session_v1(const sin_host_callbacks_v1& cb,void* ctx,EntityRef player,
                    EntityRef weapon,WeaponKind kind,WeaponConfig cfg,bool vr)
         : callbacks(cb,ctx),session(callbacks,player,weapon,kind,std::move(cfg),vr) {}
 };
+// The host runs these callbacks on one thread. A callback may accidentally
+// re-enter a session method (for example, from an entity removal hook). Reject
+// the nested call rather than recurse through partially updated weapon state.
+// No cross-thread lifetime safety is promised by v1.
+class SessionCall final {
+public:
+    explicit SessionCall(sin_session_v1* s) noexcept : session_(s) {
+        if (s && !s->in_callback_api) {
+            s->in_callback_api = true;
+            valid_ = true;
+        }
+    }
+    ~SessionCall() noexcept { if (valid_) session_->in_callback_api = false; }
+    explicit operator bool() const noexcept { return valid_; }
+    SessionCall(const SessionCall&) = delete;
+    SessionCall& operator=(const SessionCall&) = delete;
+private:
+    sin_session_v1* session_ = nullptr;
+    bool valid_ = false;
+};
+
 extern "C" {
 uint32_t sin_abi_version_v1(void) {return SIN_COMPAT_ABI_VERSION_1;}
 sin_session_v1 *sin_session_create_v1(const sin_host_callbacks_v1 *cb,void *ctx,
@@ -75,15 +97,19 @@ sin_session_v1 *sin_session_create_v1(const sin_host_callbacks_v1 *cb,void *ctx,
                  static_cast<WeaponKind>(kind),std::move(w),vr!=0);
     } catch (...) {return nullptr;}
 }
-void sin_session_destroy_v1(sin_session_v1 *s){delete s;}
-int32_t sin_session_ensure_viewmodel_v1(sin_session_v1 *s){if(!s)return -1;try{return static_cast<int32_t>(s->session.ensure_viewmodel());}catch(...){return -1;}}
-int32_t sin_session_hide_weapon_v1(sin_session_v1 *s){if(!s)return -1;try{return static_cast<int32_t>(s->session.on_hide_weapon_input());}catch(...){return -1;}}
-int32_t sin_session_usercmd_v1(sin_session_v1 *s,uint32_t b,int block){if(!s)return -1;try{auto r=s->session.on_usercmd(b,block!=0);return (int)r.entered_zoom | ((int)r.exited_zoom<<1) | ((int)r.automatically_restored<<2) | ((int)r.was_interrupted<<3);}catch(...){return -1;}}
-int32_t sin_session_reload_begin_v1(sin_session_v1 *s,int32_t a,int32_t b){if(!s)return -1;try{return s->session.on_reload_begin(a,b);}catch(...){return -1;}}
-int32_t sin_session_reload_event_v1(sin_session_v1 *s,int32_t *p,int32_t *q){if(!s||!p||!q)return -1;try{const auto t=s->session.on_reload_transfer_event();*p=t.primary;*q=t.secondary;return 0;}catch(...){return -1;}}
-int32_t sin_session_reload_end_v1(sin_session_v1 *s){if(!s)return -1;try{s->session.on_reload_end();return 0;}catch(...){return -1;}}
-int32_t sin_session_set_ammo_v1(sin_session_v1 *s,sin_ammo_v1 a){if(!s||a.clip<0||a.clip2<0||a.reserve<0||a.reserve2<0)return -1;try{auto &w=s->session.runtime().ammo();if(w.reload_active)return -1;w.clip=a.clip;w.clip2=a.clip2;w.reserve=a.reserve;w.reserve2=a.reserve2;return 0;}catch(...){return -1;}}
-int32_t sin_session_get_ammo_v1(sin_session_v1 *s,sin_ammo_v1 *a){if(!s||!a)return -1;try{auto &w=s->session.runtime().ammo();*a={w.clip,w.clip2,w.reserve,w.reserve2};return 0;}catch(...){return -1;}}
-int32_t sin_session_holster_v1(sin_session_v1 *s){if(!s)return -1;try{return s->session.on_holster();}catch(...){return -1;}}
-int32_t sin_session_cleanup_v1(sin_session_v1 *s){if(!s)return -1;try{s->session.on_player_cleanup();return 0;}catch(...){return -1;}}
+void sin_session_destroy_v1(sin_session_v1 *s){
+    // A host callback cannot free the object out from under its current call.
+    // The owner must retry destroy after the outer call has completed.
+    if (s && !s->in_callback_api) delete s;
+}
+int32_t sin_session_ensure_viewmodel_v1(sin_session_v1 *s){if(!s)return -1;SessionCall gate(s);if(!gate)return -1;try{return static_cast<int32_t>(s->session.ensure_viewmodel());}catch(...){return -1;}}
+int32_t sin_session_hide_weapon_v1(sin_session_v1 *s){if(!s)return -1;SessionCall gate(s);if(!gate)return -1;try{return static_cast<int32_t>(s->session.on_hide_weapon_input());}catch(...){return -1;}}
+int32_t sin_session_usercmd_v1(sin_session_v1 *s,uint32_t b,int block){if(!s)return -1;SessionCall gate(s);if(!gate)return -1;try{auto r=s->session.on_usercmd(b,block!=0);return (int)r.entered_zoom | ((int)r.exited_zoom<<1) | ((int)r.automatically_restored<<2) | ((int)r.was_interrupted<<3);}catch(...){return -1;}}
+int32_t sin_session_reload_begin_v1(sin_session_v1 *s,int32_t a,int32_t b){if(!s)return -1;SessionCall gate(s);if(!gate)return -1;try{return s->session.on_reload_begin(a,b);}catch(...){return -1;}}
+int32_t sin_session_reload_event_v1(sin_session_v1 *s,int32_t *p,int32_t *q){if(!s||!p||!q)return -1;SessionCall gate(s);if(!gate)return -1;try{const auto t=s->session.on_reload_transfer_event();*p=t.primary;*q=t.secondary;return 0;}catch(...){return -1;}}
+int32_t sin_session_reload_end_v1(sin_session_v1 *s){if(!s)return -1;SessionCall gate(s);if(!gate)return -1;try{s->session.on_reload_end();return 0;}catch(...){return -1;}}
+int32_t sin_session_set_ammo_v1(sin_session_v1 *s,sin_ammo_v1 a){if(!s||a.clip<0||a.clip2<0||a.reserve<0||a.reserve2<0)return -1;SessionCall gate(s);if(!gate)return -1;try{auto &w=s->session.runtime().ammo();if(w.reload_active)return -1;w.clip=a.clip;w.clip2=a.clip2;w.reserve=a.reserve;w.reserve2=a.reserve2;return 0;}catch(...){return -1;}}
+int32_t sin_session_get_ammo_v1(sin_session_v1 *s,sin_ammo_v1 *a){if(!s||!a)return -1;SessionCall gate(s);if(!gate)return -1;try{auto &w=s->session.runtime().ammo();*a={w.clip,w.clip2,w.reserve,w.reserve2};return 0;}catch(...){return -1;}}
+int32_t sin_session_holster_v1(sin_session_v1 *s){if(!s)return -1;SessionCall gate(s);if(!gate)return -1;try{return s->session.on_holster();}catch(...){return -1;}}
+int32_t sin_session_cleanup_v1(sin_session_v1 *s){if(!s)return -1;SessionCall gate(s);if(!gate)return -1;try{s->session.on_player_cleanup();return 0;}catch(...){return -1;}}
 }
