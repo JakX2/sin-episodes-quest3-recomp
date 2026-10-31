@@ -10,6 +10,18 @@ This archive preserves research **reports and selected original Python verificat
 - [Phase 5: dynamic difficulty and game rules](legacy/phase05-dynamic-difficulty.md) (historical excerpt only).
 - [Phase 22: vehicle views and monitor cameras](legacy/phase22-vehicle-cameras.md) (historical excerpt only).
 
+## Backfilled findings for previously missing Phases 23–43
+
+The original Phase 23–43 ZIP packages are **not** restored. However, the following recovered summaries and a **newly written, re-run original-DLL verifier** are now available:
+
+- [Recovered-research index and provenance](recovered/README.md)
+- [Vehicle, phone, poison and antigen (23–34)](recovered/phase23-34-gameplay.md)
+- [Assault rifle, scattergun and projectile callbacks (35–36)](recovered/phase35-36-weapons.md)
+- [Magnum DUAG, iron sights and quick grenades (37–43)](recovered/phase37-43-magnum-ads.md)
+- [Backfill verifier for the original 2006 x86 DLLs](verifiers/phase23-43-backfill-verify.py)
+
+The freshly written verifier passed two original DLL hashes, 23 instruction signatures and three firearm ZoomFOV virtual getters during the backfill. Its scope does **not** cover all archived claims. Missing historical reports/scripts remain missing, not fabricated.
+
 ## Original phase reports and verifier index
 
 | Phase | Focus | Original report | Independent verifier retained | Source archive SHA-256 |
@@ -43,4 +55,4 @@ This is an independent, unofficial project. SiN, Half-Life 2, Source and associa
 
 ## Still missing
 
-The full reports or evidence for Phases 2–4, 6–21 and 23–43 are not available in the recovered material used for this publication. Early grunt/vehicle notes are partial chat excerpts, not full reverse-engineering dossiers. Add recovered *independently authored* notes through pull requests with clear provenance; never invent a missing phase or mark a guess as confirmed.
+The full original reports or evidence for Phases 2–4, 6–21 and 23–43 remain unavailable in the recovered material used for this publication; newly written summaries and a limited independent verification baseline for 23–43 are linked above. Early grunt/vehicle notes are partial chat excerpts, not full reverse-engineering dossiers. Add recovered *independently authored* notes through pull requests with clear provenance; never invent a missing phase or mark a guess as confirmed.
