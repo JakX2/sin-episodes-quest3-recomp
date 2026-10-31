@@ -17,3 +17,26 @@ jobs:
         run: python3 -m unittest discover -s research/tests -p 'test_*.py' -v
       - name: Check freestanding Android ARM64 C ABI layout (not an NDK build)
         run: bash scripts/check_android_abi_layout.sh
+
+  android-arm64:
+    name: Android NDK ARM64 shared-library cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+      - name: Install pinned official Android NDK
+        shell: bash
+        run: |
+          sdkmanager --install "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Build real Android ARM64 C++ shared library and audit ELF exports
+        shell: bash
+        run: bash scripts/build_android_arm64.sh
+      - name: Upload ARM64 shared library for engineering review
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-compat-host-abi-android-arm64-api26
+          path: build-android-arm64/libsin_compat_host_abi.so
+          if-no-files-found: error
+          retention-days: 7
