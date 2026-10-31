@@ -13,6 +13,10 @@ public:
     // The original related-entity lookup is conditional on an owner type check.
     virtual bool is_player_owner(EntityRef owner) const = 0;
 
+    // The original 2006 SiN build registers two m_hViewModel handle slots,
+    // confirmed independently in server/client metadata (Phase 64). Use the
+    // actual selected host engine's bounds, not hard-coded PE32 offsets or an
+    // assumption that other SourceVR builds have identical viewmodel counts.
     // Host must obtain this index from the live weapon and reject invalid or
     // out-of-range slots *before* indexing an engine-side viewmodel array.
     virtual int viewmodel_index_of(EntityRef weapon) const = 0;

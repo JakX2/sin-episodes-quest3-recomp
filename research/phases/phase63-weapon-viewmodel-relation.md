@@ -1,5 +1,7 @@
 # Phase 63: Indexed related-entity lookup in weapon visibility
 
+> **Follow-up correction (Phase 64):** The owner-side `+0xBDC` array is now directly identified as **`m_hViewModel[2]`** by original server metadata initialization and matching client metadata (`+0x1058`). The Phase 63 uncertainty about the owner array *member name* is resolved. The dynamic type of the target entity and a real SourceVR host interface remain unverified. See `phase64-owner-viewmodel-array-metadata.md`.
+
 **Evidence date:** 31 October 2026. **Status:** verified against user-owned, SHA-256-pinned original 2006 SiN Episodes: Emergence Windows x86 `server.dll` and `client.dll`. This is static analysis only. No copyrighted binaries, game assets or original function dumps are published.
 
 ## Summary
