@@ -108,4 +108,13 @@ int main() {
     host.correct_model_owner = true;
     assert(invoke() == HideWeaponInputResult::Applied);
     assert(host.model_calls == 2 && host.weapon_calls == 7);
+
+    // Both of the *original SiN* two registered m_hViewModel indices are
+    // permitted by this fake host. The engine adapter sets its own bounds.
+    host.model_index = 0;
+    assert(invoke() == HideWeaponInputResult::Applied);
+    assert(host.model_calls == 3 && host.weapon_calls == 8);
+    host.model_index = 2; // index 2 is beyond the two-slot mock array
+    assert(invoke() == HideWeaponInputResult::Applied);
+    assert(host.model_calls == 3 && host.weapon_calls == 9);
 }
