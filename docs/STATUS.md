@@ -47,3 +47,7 @@ The eight reference headers in `third_party/research` retain their original comm
 ## Continuity
 
 This is the first **buildable project foundation**. All future scheduled research phases should update this repository and a versioned checkpoint when a persistent remote is connected. In the meantime, keep the released ZIP available for subsequent runs.
+
+## Public research archive checkpoint
+
+Phase 44–55 original reports and selected verifiers, plus carefully labeled early enemy/vehicle/difficulty historical summaries, are indexed at [`../research/README.md`](../research/README.md). This does not add runnable AI, car or campaign gameplay. The original DLL binaries, assets and excerpt dumps are excluded.

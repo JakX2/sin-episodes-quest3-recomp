@@ -1,0 +1,161 @@
+{
+  "policy": "Reports and selected verifier scripts only; original DLLs, game assets and disassembly dump files not distributed. Archive SHA-256 values refer to separately held local original research ZIPs.",
+  "records": [
+    {
+      "phase": "phase44",
+      "source_archive": "SiN_Phase44_Zoom_Input_Weapon_FOV_Reverse_Engineering(1).zip",
+      "archive_sha256": "979c1264d6f49e2dd6f114ddf9e9c394b0522c7a32bab0398ea93f1b1c4dded1",
+      "source_report": "README.md",
+      "source_report_sha256": "0bd630f32def843762f96a5b1166826c069369ee17e50a96c4cd2bdfa1f7dcc9",
+      "repo_report": "research/phases/phase44.md",
+      "verifier": "research/verifiers/phase44-verify.py",
+      "archive_entries": 15,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase45",
+      "source_archive": "SiN_Phase45_Zoom_Decision_Model.zip",
+      "archive_sha256": "dad96291451cf4e118a17af3c911f1a36fab1a8f3fd8c65f77e578c935388d35",
+      "source_report": "sin_phase45_zoom_control/README.md",
+      "source_report_sha256": "54c011d1a25431ca9bdd42177eddc3df8dc2cfd75d6aaf864c09d01806f9d3f3",
+      "repo_report": "research/phases/phase45.md",
+      "verifier": "research/verifiers/phase45-verify.py",
+      "archive_entries": 11,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase46",
+      "source_archive": "SiN_Phase46_Original_DLL_Verification_and_ADS_Input.zip",
+      "archive_sha256": "5b51228a0bd8cbee55e5d27d5d2c17cc8432aa8e9077fc1eb6bbc69c757b01cb",
+      "source_report": "SiN_Phase46/README.md",
+      "source_report_sha256": "81a353b2eb5208cde765e5db836806bab95eb2ee4667affd4c1430aa55607612",
+      "repo_report": "research/phases/phase46.md",
+      "verifier": "research/verifiers/phase46-verify.py",
+      "archive_entries": 13,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase47",
+      "source_archive": "SiN_Phase47_ADS_Weapon_Activity_Reverse_Engineering.zip",
+      "archive_sha256": "95fc11474d4bbb0121ed6222bd8ccd3ab5b6968445153669ff76c54997f7753c",
+      "source_report": "SiN_Phase47/README.md",
+      "source_report_sha256": "72323ccafefba8f2f3e15fd37baefe87829ae41c61c1dcbb2d8ad824250a2152",
+      "repo_report": "research/phases/phase47.md",
+      "verifier": "research/verifiers/phase47-verify.py",
+      "archive_entries": 13,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase48",
+      "source_archive": "SiN_Phase48_ADS_Animation_Timing_and_Viewmodel_Origin.zip",
+      "archive_sha256": "5a1ecb2bfda807aaaec3c2e8ad9e687086fe6e74c4ee7b968398f0f7889bfd47",
+      "source_report": "Phase48/README.md",
+      "source_report_sha256": "3246890fb358cc2bf6e02574af49608344f9ed63bb8d448bb267bd5fa679235c",
+      "repo_report": "research/phases/phase48.md",
+      "verifier": "research/verifiers/phase48-verify.py",
+      "archive_entries": 14,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase49",
+      "source_archive": "SiN_Phase49_Weapon_Script_Viewmodel_Offset_Reverse_Engineering.zip",
+      "archive_sha256": "39d571c7622352781fc7542b05aebe19a5ff3e3862f9a45847a67bb177f07fc2",
+      "source_report": "SiN_Phase49/README.md",
+      "source_report_sha256": "701ad9176f3d38cc05bda93984845cb4ca3ee537a44549a36a622a2f601039b1",
+      "repo_report": "research/phases/phase49.md",
+      "verifier": "research/verifiers/phase49-verify.py",
+      "archive_entries": 17,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase50",
+      "source_archive": "SiN_Phase50_Weapon_Script_to_Viewmodel_Transfer.zip",
+      "archive_sha256": "6e32388d272012ce3832a6d5c864af72a1b180618628b802c67e4f5914b3d1d2",
+      "source_report": "SiN_Phase50/README.md",
+      "source_report_sha256": "039bf13d4f23b69e4380fd12797f3b7808feee73aa5bb7bd6410cf13276a0483",
+      "repo_report": "research/phases/phase50.md",
+      "verifier": "research/verifiers/phase50-verify.py",
+      "archive_entries": 14,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase51",
+      "source_archive": "SiN_Phase51_Weapon_Animation_Viewmodel_Lifecycle.zip",
+      "archive_sha256": "1bae94aed852b1e9097e81bd84f06a3f777f207eaf74df5ed0dc9be0fd375e16",
+      "source_report": "sin_phase51/README.md",
+      "source_report_sha256": "3e96ac323fa6950cf661a4518b59c4d3e0f091dbd7374d2b4c868332f6d2f4a6",
+      "repo_report": "research/phases/phase51.md",
+      "verifier": "research/verifiers/phase51-verify.py",
+      "archive_entries": 19,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase52",
+      "source_archive": "SiN_Phase52_Weapon_Deployment_Holster_Reverse_Engineering.zip",
+      "archive_sha256": "666b5acd04ce81fe3790b5523b7885b30bee049172b0bd59b1e4ea8c63e59d7b",
+      "source_report": "README.md",
+      "source_report_sha256": "4af66dba2019dfcb62ce2ae173e3e73d21f5691990aa7aab371d62b45486cd7c",
+      "repo_report": "research/phases/phase52.md",
+      "verifier": "research/verifiers/phase52-verify.py",
+      "archive_entries": 18,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase53",
+      "source_archive": "SiN_Phase53_Reload_Activities_Ammo_Transfer_Reverse_Engineering.zip",
+      "archive_sha256": "acfa2a9cd347c5198362d09537a07a3a659e3de33227fd2ed58f408189718f4c",
+      "source_report": "README.md",
+      "source_report_sha256": "f0fffdaac923409c1074260f3e64d4acf9f5c38df6b15872fdf6a851fab108d9",
+      "repo_report": "research/phases/phase53.md",
+      "verifier": "research/verifiers/phase53-verify.py",
+      "archive_entries": 21,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase54",
+      "source_archive": "SiN_Phase54_Reload_Interruptions_Frame_Scheduling.zip",
+      "archive_sha256": "eea95acb86b52dbdca0a29f8b9d2d9ab346c2d09ee69ea1b19c41954178a18ca",
+      "source_report": "README.md",
+      "source_report_sha256": "6dacfd637d44ef35d83ab9513012e00fdb8849bedecb4b721d505099910e5b93",
+      "repo_report": "research/phases/phase54.md",
+      "verifier": "research/verifiers/phase54-verify.py",
+      "archive_entries": 21,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    },
+    {
+      "phase": "phase55",
+      "source_archive": "SiN_Phase55_Reload_Config_Clip_Accounting_Reverse_Engineering.zip",
+      "archive_sha256": "dd8373965c11ef64695239b431055ccf59ea855b1f945c7ffbd3cedd13920c45",
+      "source_report": "PHASE55_REPORT.md",
+      "source_report_sha256": "cc138f3ecbe85773dd65bf077badf09126231a59c05a0bf8a5403106818c8d72",
+      "repo_report": "research/phases/phase55.md",
+      "verifier": "research/verifiers/phase55-verify.py",
+      "archive_entries": 23,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "historical original binary analysis; no new original DLL re-verification"
+    },
+    {
+      "phase": "phase55-automation",
+      "source_archive": "SiN_Phase55_Reload_Mode_Audit_Weapon_VR_Bridge.zip",
+      "archive_sha256": "e8100758aed9e17470b410cdc7306798489178082c73c1bef42d79840c7fc9bb",
+      "source_report": "README.md",
+      "source_report_sha256": "131213ec533caa050ca21c00f0af71647998e6f602ccb8d1d0f09be70d8d0737",
+      "repo_report": "research/phases/phase55-automation.md",
+      "verifier": "research/verifiers/phase55-automation-verify.py",
+      "archive_entries": 35,
+      "archive_integrity": "zip_testzip_pass",
+      "scope": "archival report: no new original DLL re-verification"
+    }
+  ]
+}

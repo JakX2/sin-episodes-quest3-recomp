@@ -4,6 +4,10 @@
 
 This repository begins turning the project's earlier assembly-driven research into one accumulative implementation with a host boundary. The original 2006 `server.dll` and `client.dll` are **not** included, nor are Half-Life 2 DLLs, proprietary models, maps, scripts or game assets.
 
+## Preserved reverse-engineering research
+
+The public [research index](research/README.md) includes Phase 44–55 original research reports, original verifier scripts where retained, provenance hashes, and partial earlier enemy/difficulty/vehicle notes. Archived findings are **not** automatically playable functionality.
+
 ## Welcome, contributors
 
 This independent, unofficial project is designed to be **forkable and maintainable**.
