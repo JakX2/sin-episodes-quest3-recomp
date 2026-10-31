@@ -1,4 +1,4 @@
-# SiN Episodes: Emergence | Quest 3 Compatibility Prototype
+# SiN Episodes: Emergence | public reverse-engineering research
 
 **Status:** Phase 56 starting scaffold. Builds and runs as a **standalone native C++17 test library**. **Not a playable game, Source engine DLL, Android APK, or functional Quest 3 port.**
 
