@@ -18,14 +18,21 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=arm64-v8a \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
-  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-cmake --build "$BUILD" --target sin_compat_host_abi --parallel 2
+  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
+SMOKE="$BUILD/sin_android_host_abi_smoke"
 if [[ ! -s "$LIB" ]]; then
   echo "ERROR: Android shared-library output missing: $LIB" >&2
   exit 1
 fi
 
+# The C11 loader is also a genuine Android Bionic-linked executable, not a
+# desktop binary or a freestanding ABI contract. It is *not executed* in CI.
+if [[ ! -s "$SMOKE" ]]; then
+  echo "ERROR: Android dlopen smoke executable missing: $SMOKE" >&2
+  exit 1
+fi
 # Use binutils from the host for readelf (understands ELF64 AArch64), and the
 # NDK's architecture-agnostic llvm-nm for dynamic symbol inspection.
 HOST_TAG=linux-x86_64
@@ -41,6 +48,17 @@ ELF="$($READELF -h "$LIB")"
 grep -q 'Class:.*ELF64' <<< "$ELF" || { echo 'ERROR: not ELF64' >&2; exit 1; }
 grep -q 'Machine:.*AArch64' <<< "$ELF" || { echo 'ERROR: not AArch64' >&2; exit 1; }
 grep -q 'Type:.*DYN' <<< "$ELF" || { echo 'ERROR: not a shared ELF object' >&2; exit 1; }
+SMOKE_ELF="$($READELF -h "$SMOKE")"
+grep -q 'Class:.*ELF64' <<< "$SMOKE_ELF" || { echo 'ERROR: smoke binary not ELF64' >&2; exit 1; }
+grep -q 'Machine:.*AArch64' <<< "$SMOKE_ELF" || { echo 'ERROR: smoke binary not AArch64' >&2; exit 1; }
+grep -q 'Type:.*DYN' <<< "$SMOKE_ELF" || { echo 'ERROR: smoke binary not PIE executable' >&2; exit 1; }
+SMOKE_DYNAMIC="$($READELF -d "$SMOKE")"
+grep -q 'NEEDED.*libc.so' <<< "$SMOKE_DYNAMIC" || { echo 'ERROR: smoke binary not linked to Android libc' >&2; exit 1; }
+grep -q 'NEEDED.*libdl.so' <<< "$SMOKE_DYNAMIC" || { echo 'ERROR: smoke binary missing Android libdl' >&2; exit 1; }
+if grep -q 'NEEDED.*libsin_compat_host_abi.so' <<< "$SMOKE_DYNAMIC"; then
+  echo 'ERROR: smoke loader linked the library, it must use dlopen at runtime' >&2
+  exit 1
+fi
 SONAME="$($READELF -d "$LIB")"
 grep -q 'SONAME.*libsin_compat_host_abi.so' <<< "$SONAME" || {
   echo 'ERROR: unexpected shared-library SONAME' >&2
@@ -85,3 +103,12 @@ $READELF -h "$CONTRACT" | grep -q 'Machine:.*AArch64' || {
 printf 'Android NDK arm64-v8a API 26 C++ shared library verified: %s\n' "$LIB"
 printf '%s\n' 'ELF64 AArch64, shared SONAME, 13 C ABI exports, and native NDK C ABI layout verified.' \
   'This is NOT an in-SourceVR load test or Quest APK.'
+
+# Record exact provenance of *both* files so the GitHub artifact can be
+# checked/deployed independently; do not include any private game assets.
+{
+  printf 'build_target=arm64-v8a\nandroid_api=26\n'
+  grep '^Pkg.Revision' "$NDK/source.properties" | sed 's/ *= */=/' | tr -d ' '
+  sha256sum "$LIB" "$SMOKE" | sed "s#$BUILD/##"
+} > "$BUILD/android-smoke-manifest.txt"
+printf 'Android dlopen executable verified (compiled only, not executed): %s\n' "$SMOKE"

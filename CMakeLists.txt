@@ -66,3 +66,20 @@ if(BUILD_TESTING)
   set_target_properties(sin_host_abi_layout_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   add_test(NAME sin_host_abi_layout_tests COMMAND sin_host_abi_layout_tests)
 endif()
+
+# Phase 70: build a *real Android executable* which dlopens the Android .so.
+# Unlike an SDK-less compile, this is linked against Android Bionic by the NDK.
+# Do not conflate the executable's build with running it on a physical device.
+option(SIN_BUILD_ANDROID_SMOKE "Build a standalone Android dlopen smoke executable" OFF)
+if(SIN_BUILD_ANDROID_SMOKE AND NOT ANDROID)
+  message(FATAL_ERROR "SIN_BUILD_ANDROID_SMOKE requires the official Android NDK toolchain")
+endif()
+if(SIN_BUILD_ANDROID_SMOKE AND ANDROID)
+  add_executable(sin_android_host_abi_smoke tests/test_host_abi.c)
+  target_include_directories(sin_android_host_abi_smoke PRIVATE include)
+  target_compile_options(sin_android_host_abi_smoke PRIVATE -Wall -Wextra -Werror)
+  target_link_libraries(sin_android_host_abi_smoke PRIVATE dl)
+  set_target_properties(sin_android_host_abi_smoke PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  add_dependencies(sin_android_host_abi_smoke sin_compat_host_abi)
+endif()
