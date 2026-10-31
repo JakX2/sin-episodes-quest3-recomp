@@ -55,3 +55,7 @@ The verifier first executes the Phase 56–63 SHA-256-pinned verification chain,
 3. Integrate selection, hide/show, weapon switching, and associated model visibility in an engine-backed headless lifecycle test before attempting ARM64 APK packaging.
 
 Earlier work: Phase 63 [viewmodel relation](phase63-weapon-viewmodel-relation.md), Phase 62 [vtable visibility](phase62-hideweapon-concrete-vtables-visibility.md).
+
+## Follow-up: Phase 65
+
+Phase 65 identifies the original factory registration for classname `viewmodel`, validates its RTTI connection to `CEntityFactory<CBaseViewModel>`, and recovers the indexed lazy creation, EHANDLE assignment and two-slot teardown paths. See [`phase65-viewmodel-factory-and-lifecycle.md`](phase65-viewmodel-factory-and-lifecycle.md). This narrows the former class-identity uncertainty but does not constitute running SourceVR game-engine integration.
