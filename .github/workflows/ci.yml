@@ -91,4 +91,22 @@ jobs:
           target: google_apis
           emulator-boot-timeout: 480
           emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: SIN_SMOKE_EXPECTED_ABI=x86_64 bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
+          script: SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-runtime-evidence.txt bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
+      - name: Require actual Android pass evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=build-android-emulator-x86_64/android-runtime-evidence.txt
+          test -s "$EVIDENCE"
+          grep -qx 'result=PASS' "$EVIDENCE"
+          grep -qx 'abi=x86_64' "$EVIDENCE"
+          grep -qx 'remote_sha256_verified=true' "$EVIDENCE"
+          grep -qx 'loader_marker_verified=true' "$EVIDENCE"
+          grep -qx 'scope=standalone_native_abi_not_sourcevr' "$EVIDENCE"
+      - name: Upload Android x86_64 emulator evidence (NOT Quest device)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-compat-x86_64-emulator-runtime-evidence
+          path: build-android-emulator-x86_64/android-runtime-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
