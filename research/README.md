@@ -44,3 +44,7 @@ This is an independent, unofficial project. SiN, Half-Life 2, Source and associa
 ## Still missing
 
 The full reports or evidence for Phases 2–4, 6–21 and 23–43 are not available in the recovered material used for this publication. Early grunt/vehicle notes are partial chat excerpts, not full reverse-engineering dossiers. Add recovered *independently authored* notes through pull requests with clear provenance; never invent a missing phase or mark a guess as confirmed.
+
+### Phase 56: Reload field metadata
+
+[Phase 56, client/server typed weapon field metadata](phases/phase56-weapon-field-metadata.md) identifies the original `m_bReloadsSingly` / `m_bInReload` / clip fields at their build-specific offsets. [The standalone verifier](tools/verify_weapon_field_metadata.py) checks those descriptors against the original unmodified SiN DLLs supplied by a legitimate owner, and [the parser tests](tests/test_weapon_field_metadata.py) run on synthetic fixtures. **This does not establish a per-gun runtime activation of single-round reloads.**
