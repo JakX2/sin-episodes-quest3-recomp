@@ -1,0 +1,20 @@
+/* ELF dynamic symbol allowlist. The Android NDK's static libc++ can otherwise
+ * publish hundreds of unintended C++ symbols from the compatibility module.
+ * Keep the public surface fixed to the 13 v1 C functions. */
+{
+    global:
+        sin_abi_version_v1;
+        sin_session_cleanup_v1;
+        sin_session_create_v1;
+        sin_session_destroy_v1;
+        sin_session_ensure_viewmodel_v1;
+        sin_session_get_ammo_v1;
+        sin_session_hide_weapon_v1;
+        sin_session_holster_v1;
+        sin_session_reload_begin_v1;
+        sin_session_reload_end_v1;
+        sin_session_reload_event_v1;
+        sin_session_set_ammo_v1;
+        sin_session_usercmd_v1;
+    local: *;
+};
