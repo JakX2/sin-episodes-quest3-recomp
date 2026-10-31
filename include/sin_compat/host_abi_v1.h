@@ -4,7 +4,9 @@
 /* Independently authored, C-callable integration ABI. No Valve/SiN headers.
  * This is NOT a SourceVR/Source engine module loader ABI.
  * Callbacks and session use one calling thread; host must not destroy a
- * session while callbacks execute. Host references are opaque generations. */
+ * session while callbacks execute. Nested calls on the same session return -1;
+ * attempts to destroy from a callback are ignored and require explicit retry
+ * after the outer operation completes. Host refs are opaque generations. */
 #include <stdint.h>
 #include <stddef.h>
 #if defined(_WIN32)

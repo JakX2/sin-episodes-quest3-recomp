@@ -34,3 +34,5 @@ This is **R0.5: an engine-facing shared-library boundary**, not R1 as defined in
 - [nillerusr/source-engine](https://github.com/nillerusr/source-engine) advertises Android/ARM support but states it is based on a **2020 leaked TF2 Source engine codebase**. We are not adopting, importing or redistributing this source in this project. Its existence does not solve the public/legal engine integration requirement.
 
 **Next milestone:** obtain a lawful, buildable, pinned game engine with module source and VR/Android callbacks or permission/source from SourceVR maintainers; then implement these C callbacks using actual engine classes and event dispatch and compile/load in that engine. If no such target exists, independently reconstruct a compatible host or reconsider static recompilation feasibility with a properly isolated and legally evaluated experiment.
+
+**Follow-up (Phase 68):** The v1 ABI now rejects same-session callback reentrancy and checks its public data layout via a freestanding Android ARM64 C compilation. See [Phase 68](PHASE68_ANDROID_ABI_AND_REENTRANCY.md). Neither check constitutes a full Android or SourceVR build.
