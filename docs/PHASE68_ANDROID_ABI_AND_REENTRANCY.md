@@ -51,3 +51,7 @@ This command has **not** been executed in this environment; no Android NDK is in
 ## Scope and rights
 
 This phase modifies only independently authored C/C++ code, tests, scripts, and documentation. No original SiN/HL2 game DLLs, assets, SDK source or disassembly are included. Passing tests documents a staged host contract, **not** a playable port.
+
+## Follow-up: Phase 69 official NDK build job
+
+The optional local Phase 68 freestanding check remains useful but has been supplemented by a distinct full C++ cross-build workflow in [Phase 69](PHASE69_ANDROID_NDK_CROSS_BUILD.md). That job installs the official pinned NDK and verifies a linked Android ARM64 `.so`; the same game-engine/Quest loader limitations still apply.

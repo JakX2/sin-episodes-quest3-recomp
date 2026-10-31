@@ -17,3 +17,31 @@ jobs:
         run: python3 -m unittest discover -s research/tests -p 'test_*.py' -v
       - name: Check freestanding Android ARM64 C ABI layout (not an NDK build)
         run: bash scripts/check_android_abi_layout.sh
+
+  android-arm64:
+    name: Android NDK ARM64 shared-library cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned official Android NDK using runner SDK manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -n "$SDKMANAGER" && test -x "$SDKMANAGER"
+          # Avoid the setup-android action's unsupported legacy `tools` package.
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
+          test -f "$SDK_ROOT/ndk/27.2.12479018/build/cmake/android.toolchain.cmake"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Build real Android ARM64 C++ shared library and audit ELF exports
+        shell: bash
+        run: bash scripts/build_android_arm64.sh
+      - name: Upload ARM64 shared library for engineering review
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-compat-host-abi-android-arm64-api26
+          path: build-android-arm64/libsin_compat_host_abi.so
+          if-no-files-found: error
+          retention-days: 7

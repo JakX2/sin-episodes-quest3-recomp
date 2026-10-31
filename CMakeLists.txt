@@ -40,6 +40,15 @@ set_target_properties(sin_weapon_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON
 add_library(sin_compat_host_abi SHARED src/host_abi_v1.cpp)
 target_link_libraries(sin_compat_host_abi PRIVATE sin_weapon_runtime)
 target_include_directories(sin_compat_host_abi PUBLIC include)
+# The Android NDK's static libc++ library can inject hundreds of public
+# C++ dynamic exports. Bind the ELF symbol surface to the intentional v1 ABI.
+# This is also applied to Linux host tests so CI catches accidental ABI growth.
+if(UNIX AND NOT APPLE)
+  target_link_options(sin_compat_host_abi PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/host_abi_exports.map")
+  set_property(TARGET sin_compat_host_abi APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/host_abi_exports.map")
+endif()
 set_target_properties(sin_compat_host_abi PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 if(BUILD_TESTING AND UNIX)
   add_executable(sin_host_abi_dlopen_tests tests/test_host_abi.c)
