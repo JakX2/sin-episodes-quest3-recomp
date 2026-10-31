@@ -1,3 +1,5 @@
+> **Phase 67 update:** See [native C ABI shared-library smoke tests](PHASE67_NATIVE_C_ABI.md); this is a real `dlopen` bridge but **not** an in-engine SourceVR build. The public SourceVR APK currently does not support third-party code DLL mods.
+
 # Phase 66: engine-facing weapon session and R1 dependency audit
 
 **Status:** engine-agnostic C++17 source/test integration. Not a SourceVR-compiled module, Android library or playable Quest 3 build. This phase introduces **no new original-DLL reverse-engineering claims**.
