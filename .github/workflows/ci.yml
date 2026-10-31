@@ -71,13 +71,18 @@ jobs:
       - name: Compile emulator-native Android Bionic library and executable
         shell: bash
         run: bash scripts/build_android_emulator_x86_64.sh
-      - name: Enable KVM device permissions for Android emulator
+      - name: Allow KVM acceleration when available (optional on hosted runners)
         shell: bash
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -r /dev/kvm && test -w /dev/kvm
+          if [[ -c /dev/kvm ]]; then
+            sudo chmod a+rw /dev/kvm
+            test -r /dev/kvm && test -w /dev/kvm
+            echo 'KVM available; using accelerated Android emulator.'
+          else
+            # Some GitHub hosted runners lack /dev/kvm. The emulator action
+            # auto-detects this and can run with software acceleration instead.
+            echo 'No /dev/kvm exposed; emulator runner will select non-KVM mode.'
+          fi
       - name: Boot real Android emulator and execute Bionic dlopen smoke
         uses: ReactiveCircus/android-emulator-runner@v2
         with:

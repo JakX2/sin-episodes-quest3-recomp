@@ -55,3 +55,7 @@ The independently retrieved GitHub Actions log for runtime job `124590493583` sh
 - The real `adb shell` execution printed **`C ABI dlopen v1 smoke test passed`**, followed by the deployment script's successful completion notice; the emulator job exited zero.
 
 This is stronger evidence than Phase 70's compile-only CI. It remains an **x86_64** emulator result, **not** an ARM64 Quest/phone execution; physical-device execution and actual SourceVR engine integration still await verification.
+
+### CI runner portability correction
+
+A later documentation-only workflow run encountered a GitHub-hosted runner without a usable `/dev/kvm` device and failed in the *pre-boot* KVM permissions step; this was not a gameplay or Android-loader failure. The workflow now enables KVM directly when `/dev/kvm` is available and otherwise delegates software-emulator acceleration selection to the emulator runner. The actual emulator boot and `adb` execution remain **mandatory**; no test is skipped and a missing runtime pass still fails the job.
