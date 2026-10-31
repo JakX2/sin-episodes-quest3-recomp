@@ -19,7 +19,6 @@ if [[ "${1:-}" == shell && "${2:-}" == getprop ]]; then
     ro.kernel.qemu) printf '%s\n' "${MOCK_QEMU:-0}";;
     *) exit 9;;
   esac
-fi
 elif [[ "${1:-}" == shell && "${2:-}" == 'sha256sum '* ]]; then
   printf '%s  %s\n' "${MOCK_REMOTE_LIB_SHA:-$MOCK_LIBRARY_HASH}" /data/local/tmp/sin_compat_api26_smoke/libsin_compat_host_abi.so
   printf '%s  %s\n' "${MOCK_REMOTE_EXE_SHA:-$MOCK_LOADER_HASH}" /data/local/tmp/sin_compat_api26_smoke/sin_android_host_abi_smoke
