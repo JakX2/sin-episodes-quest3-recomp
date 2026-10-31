@@ -42,3 +42,16 @@ bash scripts/run_android_host_abi_smoke.sh build-android-arm64
 5. Mark real ARM64 device runtime and SourceVR in-engine integration **unverified** until supported by actual runtime traces.
 
 This is a **staging/validation milestone** (R0.5). It does **not** change R1's requirement for a lawful SourceVR/Source-variant engine repository with real game module loader and headers, discussed in issue #12.
+
+## Independent CI result, verified 31 October 2026
+
+**PASS: Actual Android execution.** Commit `e3f2bb1df223333d0fb2d35054807bc8fc88fa46` passed [push workflow #41219361107](https://github.com/JakX2/sin-episodes-quest3-recomp/actions/runs/41219361107) and [pull-request workflow #41219366441](https://github.com/JakX2/sin-episodes-quest3-recomp/actions/runs/41219366441). Both ran three jobs: Linux/reference test, official Android ARM64 library+loader cross-build, and **real x86_64 Android emulator runtime**.
+
+The independently retrieved GitHub Actions log for runtime job `124590493583` shows:
+
+- Official Android `google_apis` **API29 x86_64** system image installed and emulator boot completed.
+- The x86_64 API29 Bionic loader and C++ `.so` passed the NDK build and ELF/export checks.
+- `adb` pushed 497,592 bytes of `libsin_compat_host_abi.so` and 35,024 bytes of `sin_android_host_abi_smoke` to the Android guest.
+- The real `adb shell` execution printed **`C ABI dlopen v1 smoke test passed`**, followed by the deployment script's successful completion notice; the emulator job exited zero.
+
+This is stronger evidence than Phase 70's compile-only CI. It remains an **x86_64** emulator result, **not** an ARM64 Quest/phone execution; physical-device execution and actual SourceVR engine integration still await verification.
