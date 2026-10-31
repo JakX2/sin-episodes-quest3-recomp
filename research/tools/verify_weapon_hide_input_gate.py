@@ -17,9 +17,9 @@ from verify_weapon_reload_constructor_refs import at, verify as verify_phase60
 
 INPUT_VA = 0x222AD800
 ACTIVE_HANDLE_GETTER = 0x222AA640
-SERVER_WEAPON_VTABLE = 0x2245A578
+SERVER_WEAPON_VTABLE = 0x2245A554
 VIRTUAL_DISPATCH_OFFSET = 0x350
-BASE_DISPATCH_TARGET = 0x222AF450
+BASE_DISPATCH_TARGET = 0x222AE960
 
 # Exact opcode anchors observed in the original 2006 x86 PE image. Each
 # carries an independent control-flow fact. No 32-bit offsets are to be
@@ -57,9 +57,9 @@ ACTIVE_ANCHORS = (
     (0x222AA66B, '33 c0', 'return_null_on_invalid'),
 )
 BASE_DISPATCH_ANCHORS = (
-    (0x222AF450, '51 53 56 8b f1 33 db', 'base_virtual_target_prologue'),
-    (0x222AF457, '38 9e 08 05 00 00', 'base_virtual_target_reads_reload_mode'),
-    (0x222AF4C2, '38 9e ac 04 00 00', 'base_virtual_target_reads_in_reload'),
+    (0x222AE960, '53 56 8b f1 8b 86 94 04 00 00', 'base_virtual_target_prologue_and_owner'),
+    (0x222AE9C1, '80 7c 24 10 00', 'base_virtual_target_switch_argument'),
+    (0x222AEA4D, '6a 20 8b ce e8 ea dd e9 ff', 'base_virtual_target_hide_effect_20'),
 )
 
 
@@ -101,9 +101,10 @@ def inspect(pe: PE32) -> dict:
         'input_dispatch_argument_immediate': 0,
         'base_weapon_vtable_va': hex(SERVER_WEAPON_VTABLE),
         'base_weapon_virtual_target_va': hex(base_target),
-        'base_virtual_target_reads_reload_flags': True,
+        'base_virtual_target_reads_reload_flags': False,
+        'base_virtual_target_effect_bit_20': True,
         'verified_instruction_anchors': len(input_checked)+len(getter_checked)+len(base_checked),
-        'warning': 'This resolves one base-class vtable slot only; derived weapons may override it. It does not prove actual game hide/reload effects.'
+        'warning': 'Corrected primary constructor-installed vtable start; the target branches on argument and handles effects bit 0x20. Derived overrides and live effects remain separately testable.'
     }
 
 

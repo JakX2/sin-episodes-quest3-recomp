@@ -84,8 +84,8 @@ class Phase61InputTests(unittest.TestCase):
         p = fixture();p.content.write(SERVER_WEAPON_VTABLE + VIRTUAL_DISPATCH_OFFSET, b'\0'*4)
         with self.assertRaises(VerificationError): inspect(p)
 
-    def test_rejects_mutated_base_reload_flag_read(self):
-        p = fixture();p.content.write(0x222AF457, b'\x90')
+    def test_rejects_mutated_base_hide_effect_call(self):
+        p = fixture();p.content.write(0x222AEA4D, b'\x90')
         with self.assertRaises(VerificationError): inspect(p)
 
 
