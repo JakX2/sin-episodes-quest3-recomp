@@ -19,7 +19,7 @@ enum class WeaponKind { Magnum, AssaultRifle, Scattergun };
 struct WeaponConfig {
     std::string viewmodel_name;
     std::array<float, 3> origin_offset{{0.0f, 0.0f, 0.0f}};
-    int zoom_fov = 0;  // 0 means default FOV; actual SiN gun values not yet recovered.
+    int zoom_fov = 0;  // Host value; original SiN firearm values in original_sdk_weapon_config.hpp.
     sin_phase55::WeaponInfo ammo{};
 };
 
