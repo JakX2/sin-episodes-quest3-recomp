@@ -1,66 +1,62 @@
-# SiN Episodes: Emergence | public reverse-engineering research
+# SiN Episodes: Emergence | Quest 3 compatibility and reverse-engineering research
 
-**Status:** Phase 56 starting scaffold. Builds and runs as a **standalone native C++17 test library**. **Not a playable game, Source engine DLL, Android APK, or functional Quest 3 port.**
+**Implementation checkpoint: Phase 98. Documentation refresh: Phase 99.**
 
-This repository begins turning the project's earlier assembly-driven research into one accumulative implementation with a host boundary. The original 2006 `server.dll` and `client.dll` are **not** included, nor are Half-Life 2 DLLs, proprietary models, maps, scripts or game assets.
+This unofficial project is building an **independently authored, portable C++17 compatibility library** toward a standalone **Meta Quest 3 VR port** of *SiN Episodes: Emergence*. The public work is **not a playable game, Android APK, Source/SourceVR game DLL, or original game executable**. Here, **Q3 means the Quest 3 headset**, not the Quake III engine.
 
-## Preserved reverse-engineering research
+Development currently proceeds through stacked pull requests. The [Phase 98 implementation PR (#46)](https://github.com/JakX2/sin-episodes-quest3-recomp/pull/46) contains more recent work than the default-branch scaffold; this documentation refresh is stacked on it. Do not assume unmerged PR work is present on \`main\`.
 
-The public [research index](research/README.md) includes Phase 44–55 original research reports, original verifier scripts where retained, provenance hashes, and partial earlier enemy/difficulty/vehicle notes. Archived findings are **not** automatically playable functionality.
+## What is demonstrably implemented
 
-## Welcome, contributors
+These are *host-neutral reference behaviors* that compile and run against synthetic test hosts. In several places, original 2006 SiN DLL instructions and/or the original SDK scripts have been checked separately against owner-held copies. **That does not mean the game systems have run in the real engine.**
 
-This independent, unofficial project is designed to be **forkable and maintainable**.
-If the original organizer steps away, start with [the handoff guide](docs/HANDOFF.md)
-and the [contributing guide](CONTRIBUTING.md). Source code is provided under
-[MIT](LICENSE); **the original games and engine are not**. See
-[assets and rights guidance](docs/IP_AND_ASSETS.md).
+| Area | Portable implementation and evidence | Still missing for real gameplay |
+|---|---|---|
+| Weapon handling | ADS button edges, zoom state, activity/sequence selection, viewmodel callbacks, holster and guarded ammo transfers; generation-aware player/weapon/viewmodel lifecycle checks | Real Source weapon objects, complete attack/reload timing, network state and animation/event wiring |
+| Original weapon configuration | SDK-derived Magnum / assault rifle / Scattergun model paths, ZoomFOV values **50 / 40 / 60**, and clip sizes **20 / 45 / 6** | Loaded models, actual sequence data, real per-weapon sight poses and engine-side script loading |
+| Map and entity I/O | Host-neutral Hammer output routing, difficulty checkpoints, NPC template-maker inputs, child quotas, placement and spawn selection | BSP loading, native entity creation and map target resolution, full scripting and campaign transitions |
+| Grunt behavior | Original FGD/DLL-grounded grunt inputs including LookOn/LookOff, patrol toggles, and ThrowGrenades(bool); related state and equipment validation | Original perception, schedules, cover/aim/grenade decisions, squad AI and live combat |
+| Combat/stat data | Runtime KeyValues lookup of the owner's combat spread rules; schema for **62 stats**, percentage relationships and display/graph reference audits | Weapon ballistic sampling, actual game-stat recording and gameplay event delivery |
+| Dynamic difficulty | Independently authored reconstruction of challenge-value averaging, **14-variable** modifier interpolation, scheduling, publication latch, **six** feedback categories, routing and clamped category-band operations | Verified performance-to-adjustment weights/signs, full original control loop and real NPC/engine effects |
+| Portable binary interface | Versioned C host ABI shared module, Linux native/dlopen tests; official Android NDK **ARM64 build** and an Android **x86_64 emulator** Bionic dlopen smoke test | Real Quest runtime loader, SourceVR client/server module ABI, OpenXR headset/controller tracking, stereo rendering and in-headset validation |
 
-## Try it
+The dynamic-difficulty components are **not** proof that complete adaptive difficulty works in-game: some input selection, feedback decisions and downstream effects remain unknown. Vehicle features have research/editor metadata, **not live vehicle gameplay**.
+
+## Build and test the current development stack
+
+Use the **Phase 99 branch** or a descendant to include the full cumulative reference library:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
+python3 -m unittest discover -s research/tests -p 'test_*.py'
 ```
 
-The current CMake project builds `sin_weapon_runtime` and a `sin_weapon_runtime_tests` executable. The tests use a fake host and **synthetic fixture ammo capacity/model/FOV values**; they demonstrate integration behavior but do not establish live gameplay accuracy.
+The build includes the \`sin_weapon_runtime\` C++ static library and the \`sin_compat_host_abi\` shared module. Synthetic C++/Python tests do **not** require original game assets. Existing Android scripts build with a pinned official NDK and test module loading on an x86_64 emulator. **The x86_64 emulator is not a Quest 3**, and an ARM64 compilation success is **not** headset execution.
 
-## What works in the prototype
+## What is not yet working
 
-- Source-style zoom button edge recognition (`0x00080000`) and a guarded ADS toggle/restore reference.
-- Shared animation activity selection including assault-rifle unzoomed recoil activity mapping.
-- Sequencing of activity-to-sequence lookup, model/offset bind and animation playback; missing sequences do not trigger a bind.
-- Explicit no-HMD-FOV-change behavior in VR mode. Flatscreen FOV transitions are available to a host.
-- Engine-event-driven ammunition transfer; ammunition is *not* refilled immediately upon beginning reload.
-- Conservatively modeled single-round reload **only if externally enabled**. The original runtime enabling path is unproven.
-- Holster flow that exits ADS and cleans up reload state before requesting holster animation.
+- **Engine integration:** no real SourceVR/Source client/server ABI, engine callbacks or campaign-capable engine host. The C ABI is only a testable integration boundary.
+- **VR player:** no OpenXR session, tracked HMD and controllers, hand aiming/reloading, stereo view, VR player movement or Quest input binding.
+- **Original weapons in a game:** no rendered models, validated VR muzzle/sight offsets, complete reload schedule, real original NPC firing or all weapon attack gates.
+- **Campaign and AI:** no launched SiN BSP or scripted encounter, complete SinTEK AI, vehicle operation, map transition or original save/load compatibility.
+- **Original execution validation:** no original Windows executable executed by the port, no playable standalone Quest APK and no physical Quest 3 gameplay test.
 
-## Not yet implemented
+The priority is now **real Source/SourceVR-compatible host integration**, not treating successful isolated math/research tests as a playable port. [Engine integration issue #12](https://github.com/JakX2/sin-episodes-quest3-recomp/issues/12) and [campaign integration issue #20](https://github.com/JakX2/sin-episodes-quest3-recomp/issues/20) remain the major blockers.
 
-- Real SourceVR or Android/ARM64 engine hookup; no VR runtime bindings, headset position or motion controller interaction.
-- Weapon models and animation sequences, real `ZoomFOV` settings, aim poses or reliable gun-specific script values.
-- A complete state machine for all original reload timings, owner checks, and attack gates.
-- Enemy AI, dynamic difficulty, vehicles, map scripts and campaign integration.
-- Original game execution validation.
+## Development evidence and next steps
 
-## Project layout
+- [Current implementation/evidence status](docs/STATUS.md)
+- [Engineering roadmap](docs/ROADMAP.md)
+- [Maintainer handoff](docs/HANDOFF.md)
+- [Phase 76: original SDK weapon/map evidence](docs/PHASE76_SIN_SDK_RESEARCH.md)
+- [Phase 89: original grunt input handlers](docs/PHASE89_GRUNT_INPUT_HANDLER_EXECUTION.md)
+- [Phase 90: original combat spread rules](docs/PHASE90_ORIGINAL_COMBAT_SPREAD_RULES.md)
+- [Phase 91: original stat schema](docs/PHASE91_ORIGINAL_STAT_SCHEMA_AND_LAYOUT.md)
+- [Phase 93: gameplay-variable interpolation and rating](docs/PHASE93_GPV_INTERPOLATION_AND_CHALLENGE_AVERAGE.md)
+- [Phase 98: category-factor bands](docs/PHASE98_ORIGINAL_CATEGORY_FACTOR_BANDS.md)
 
-```text
-include/sin_compat/     Public host-agnostic weapon API
-src/                    Compatibility prototype implementation
-tests/                  Mock-host integration tests
-third_party/research/   Unmodified clean-room behavioral reference headers from earlier research
-docs/                   Roadmap, status and evidence limitations
-.github/workflows/      Linux CMake build/test CI (activates when hosted on GitHub)
-```
+Research binaries and original SDK data are used only from separately retained, legally owned copies. Original \`server.dll\`, \`client.dll\`, BSPs, maps, models, game scripts, SDK files and VR APKs **must not be committed**. Public code is separately licensed under [MIT](LICENSE); commercial game/engine content is not.
 
-## Connecting to a game engine
-
-Implement `sin_compat::IWeaponHost` for the selected SourceVR branch. This requires correct engine lifecycle integration for resolving weapon activity sequences, viewmodel binding, animation playback, and *flatscreen-only* FOV changes. The engine is responsible for deciding the authoritative reload transfer event, ensuring a valid owner/weapon, providing per-gun settings, and storing game state.
-
-This prototype deliberately does **not** claim to be a drop-in replacement for Ritual's compiled gameplay modules. See `docs/STATUS.md` for evidence and integration gaps.
-
-## Repository hygiene
-
-Never commit original `server.dll` or `client.dll`, extracted maps, models, assets, game archives, or personal game installation files. The `.gitignore` excludes common formats; review every file before publishing.
+To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md) and the handoff. Label evidence accurately: **binary-verified**, **SDK/config-verified**, **synthetic-test-verified**, or **not yet validated in the game**. Keep claims tied to the environment actually tested.
