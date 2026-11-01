@@ -1,6 +1,6 @@
 # Phase 84: SDK-grounded difficulty checkpoints and encounter integration
 
-**Evidence levels:** Owner-supplied original SiN Episodes SDK Hammer map settings (static inspection); an independently authored portable C++17 reference runtime; a historical interpretation of the 2006 binary's +/-one spawn-count rule. **No original game runtime, real NPC spawn, Quest game module, or headset tests are claimed.**
+**Evidence levels:** Owner-supplied original SiN Episodes SDK Hammer map settings (static inspection); an independently authored portable C++17 reference runtime; a now re-verified 2006 binary +/-one spawn-count branch (at pinned VA 0x222D4A00). **No original game runtime, real NPC spawn, Quest game module, or headset tests are claimed.**
 
 ## Original SDK settings
 
@@ -19,7 +19,7 @@ All 15 campaign checkpoint entities have ordinary spawnflags 1 and **none** has 
 ## New portable implementation
 
 - include/sin_compat/difficulty_checkpoint_runtime.hpp and src/difficulty_checkpoint_runtime.cpp: DifficultyCheckpointRuntime registers generation-safe checkpoint references, validates tiers/expected duration, reports elapsed time between *accepted* checkpoint touches and upcoming expected tier, supports a synthetic opt-in repeat mode (NOT assumed equivalent to FGD flag 1024) and refuses stale handles or time regression. Hosts own entity lifetime and map-clock inputs.
-- SpawnCountDecision adjust_spawn_count uses a supplied [0,1) host random roll and a [-1,1] modifier to deterministically model the previously reported CSE1Rules +/-one enemy-count branching. It cannot create negative spawn counts, overflow int or accept invalid/nonfinite values. **This historical reconstruction is not newly validated against original DLL instructions in Phase 84.**
+- SpawnCountDecision adjust_spawn_count uses a supplied [0,1) host random roll and a [-1,1] modifier to deterministically model the previously reported CSE1Rules +/-one enemy-count branching. It cannot create negative spawn counts, overflow int or accept invalid/nonfinite values. **The original 2006 server.dll function at 0x222D4A00 has now been re-verified**, including the inclusive threshold comparison (random roll <= |modifier|). The portable API adds safety restrictions absent from the observed original machine code: clamping zero/max-int, finite roll and modifier bounds, and explicit RNG injection.
 - Two new native tests cover checkpoint boundaries, one-shot/repeat state, endgame fields, stale generation, expected/actual elapsed values, RNG thresholds, and a synthetic trigger-to-relay-to-checkpoint-to-maker sequence driven by the existing Phase 74 EntityIoRuntime.
 - In the second test, the maker is a fake host and SyntheticReached is a test-only event. We do not claim that exact output name is part of any released SiN map.
 - The component is built into the portable library, including the official Android NDK target, with **no new exported C ABI functions**.
@@ -43,3 +43,9 @@ Local new C++ tests passed with GCC C++17 -Wall -Wextra -Wpedantic -Werror and A
 This implementation does **not** calculate adaptive challenge from player performance, spawn any actual SinTEK NPC, load a BSP, call an original Source trigger, implement Source event save/restore, or prove any gameplay mechanic in Quest. It intentionally separates expected checkpoint metadata from scoring policy until the original CSE1Rules behavior is verified. To progress beyond synthetic encounters: validate the original 2006 game-rule/spawn callsites, implement a real engine host after a legally usable SourceVR-compatible SDK becomes available (issue #12), and connect released map entities to the host (issue #20).
 
 **No VR hardware testing is attempted. No SDK, DLL, APK or map binaries are committed.**
+
+## Pinned original binary verification
+
+The original owner-held `server.dll` from `binsin.zip` has SHA-256 `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`. Direct PE32 disassembly at VA `0x222D4A00` confirms the `fabs` + `fcompp` probability decision, the skip branch when `abs(modifier) < random_roll`, and `add eax,1` / `sub eax,1` branches selected by the modifier sign. **A nonzero modifier at exact probability equality adjusts the requested count**, correcting the earlier strict-inequality historical pseudocode. The portable function now reflects that boundary while rejecting invalid arguments and guarding integer limits.
+
+`python3 scripts/verify_sin_spawn_count.py /private/server.dll` reproduces the pinned instruction/signature checks without running any game binaries or distributing original DLL bytes. Eight synthetic PE32 tests cover section RVA mapping, architecture checks, corruption, hash mismatch and the proof-level report. This still does **not** establish when NPC makers invoke the rules helper or what adaptive challenge modifier the original engine supplies.
