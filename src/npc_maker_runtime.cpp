@@ -76,6 +76,7 @@ NpcMakerResult NpcMakerRuntime::set_max_children(EntityRef maker, int count) {
         s.reenable_required = true;
         s.next_due = kNever;
     } else if (s.enabled && !s.reenable_required && !live_limit(s) &&
+               (s.cfg.spawn_frequency != -1.0 || s.children.empty()) &&
                !std::isfinite(s.next_due)) {
         s.next_due = now_;
     }
@@ -100,6 +101,7 @@ NpcMakerResult NpcMakerRuntime::set_max_live_children(EntityRef maker, int limit
     s.cfg.max_live_children = limit;
     if (live_limit(s)) s.next_due = kNever;
     else if (s.enabled && !s.reenable_required && !exhausted(s) &&
+             (s.cfg.spawn_frequency != -1.0 || s.children.empty()) &&
              !std::isfinite(s.next_due)) s.next_due = now_;
     return NpcMakerResult::Applied;
 }
