@@ -15,7 +15,8 @@ namespace sin_compat {
 class Source2013WeaponHost final : public IWeaponHost {
 public:
     Source2013WeaponHost(CBasePlayer* player, CBaseCombatWeapon* weapon,
-                         bool vr_mode, int viewmodel_index=0) noexcept;
+                         bool vr_mode, int viewmodel_index=0,
+                         std::string initial_model = {}) noexcept;
     bool selected() const noexcept;
     int resolve_sequence(int activity_id) override;
     void bind_viewmodel(const std::string& model,
@@ -29,10 +30,12 @@ public:
     }
 private:
     CBaseViewModel* viewmodel() const noexcept;
+    CBaseViewModel* ensure_model_bound();
     CBasePlayer* player_;
     CBaseCombatWeapon* weapon_;
     bool vr_mode_;
     int viewmodel_index_;
+    std::string expected_model_;
     std::string last_bound_model_;
     std::array<float,3> last_offset_{{0,0,0}};
 };
