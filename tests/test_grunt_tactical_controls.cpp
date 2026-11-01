@@ -88,5 +88,5 @@ int main() {
     assert(grunt_default_equipment("npc_druglab_grunt_assault_rifle")=="weapon_assault_rifle");
     assert(grunt_equipment_allowed("npc_sintek_grunt","weapon_npc_pistol"));
     assert(!grunt_equipment_allowed("npc_druglab_grunt_elite","weapon_npc_pistol"));
-    assert(grunts.grunt_count()==3); // stale old generation retained until explicit cleanup
+    assert(grunts.grunt_count()==2); // initial SinTEK grunt and third grunt remain after cleanup
 }
