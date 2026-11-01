@@ -26,7 +26,7 @@ Never collapse a Linux test, Android NDK cross-compile or Android x86_64 emulato
 - Hammer output binding, entity I/O, difficulty checkpoints, maker quotas/inputs, spawn placement and scripted spawn selection are host-neutral models, **not live Source map entities**.
 - The versioned \`sin_compat_host_abi\` C shared module tests a weapon-session interface through callbacks; it is **not** the original game DLL ABI or a working SourceVR plugin.
 
-Evidence: [Phase 76 original SDK research](PHASE76_SIN_SDK_RESEARCH.md), [Phase 87 NPC spawn placement](PHASE87_NPC_SPAWN_PLACEMENT.md), [Phase 89 grunt handler execution](PHASE89_GRUNT_INPUT_HANDLER_EXECUTION.md).
+Evidence: [Phase 76 original SDK research](PHASE76_SIN_SDK_RESEARCH.md), [Phase 89 grunt handler execution](PHASE89_GRUNT_INPUT_HANDLER_EXECUTION.md).
 
 ### Enemy and script behavior, Phases 84–90
 
