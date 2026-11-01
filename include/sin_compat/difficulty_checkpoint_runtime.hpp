@@ -9,7 +9,7 @@ struct DifficultyCheckpointConfig {
     double estimated_time_seconds = 0.0;
     int estimated_difficulty = 2;  // SDK FGD choices: 0..4.
     bool end_of_game = false;
-    bool repeatable = false;       // SDK FGD spawnflags 1024.
+    bool repeatable = false;       // Synthetic host option; NOT known to equal FGD 1024.
 };
 struct DifficultyCheckpointObservation {
     EntityRef checkpoint{};
