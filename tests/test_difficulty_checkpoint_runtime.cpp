@@ -82,9 +82,11 @@ int main() {
     assert(!runtime.register_checkpoint(EntityRef{}, {}));
     assert(adjust_spawn_count(3, 0.4, 0.0).count == 4);
     assert(adjust_spawn_count(3, 0.4, 0.399).change == SpawnChange::AddedOne);
-    assert(adjust_spawn_count(3, 0.4, 0.4).change == SpawnChange::Unchanged);
+    assert(adjust_spawn_count(3, 0.4, 0.4).change == SpawnChange::AddedOne);
+    assert(adjust_spawn_count(3, 0.4, 0.4000001).change == SpawnChange::Unchanged);
     assert(adjust_spawn_count(3, -0.1, 0.099).count == 2);
-    assert(adjust_spawn_count(3, -0.1, 0.1).count == 3);
+    assert(adjust_spawn_count(3, -0.1, 0.1).count == 2);
+    assert(adjust_spawn_count(3, -0.1, 0.100001).count == 3);
     assert(adjust_spawn_count(0, -1.0, 0.5).count == 0);
     assert(adjust_spawn_count(std::numeric_limits<int>::max(), 1, 0).change == SpawnChange::Unchanged);
     assert(adjust_spawn_count(3, 0.0, 0.1).count == 3);
