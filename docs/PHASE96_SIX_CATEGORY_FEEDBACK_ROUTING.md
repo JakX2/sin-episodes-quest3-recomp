@@ -44,7 +44,7 @@ A second **synthetic** integration test routes the selections through the Phase9
 
 ## Verification and reproducibility
 
-`scripts/verify_difficulty_feedback_routing.py` checks the exact owner-original DLL SHA-256, **27 pinned instruction spans**, six category-name pointers/string contents, and five difficulty-level pointers/string contents. The audit checks exact branch operands at +0x40/+0x20, skip paths for slots 4–5, the integer 2 override, category iteration and helper dispatch instructions.
+`scripts/verify_difficulty_feedback_routing.py` checks the exact owner-original DLL SHA-256, **29 pinned instruction spans**, six category-name pointers/string contents, and five difficulty-level pointers/string contents. The audit checks exact branch operands at +0x40/+0x20, skip paths for slots 4–5, the integer 2 override, category iteration and helper dispatch instructions.
 
 Ten synthetic original-free PE32 tests in `research/tests/test_verify_difficulty_feedback_routing.py` reject changed global/local field offsets, bypass-branch opcodes, the Medium override integer, category count, misdirected name pointers, corrupt level labels and hash/PE provenance.
 
