@@ -32,6 +32,11 @@ struct GruntTacticalSnapshot {
     bool patrol_requested = false; // only in Idle / Alert states
     bool aggressive_grenades_requested = false;
     bool secondary_fire_allowed = true;
+    // LookOn / LookOff mutate the *live* spawnflags word at original +0xB4.
+    std::uint32_t effective_spawnflags = 0;
+    // Original ThrowGrenades writes 0 to an auxiliary word at +0xC70.
+    // This only records that the handler was invoked, not how the AI uses it.
+    bool grenade_auxiliary_cleared = false;
     bool unlimited_grenades = false;
     bool grenades_available = false;
     int grenades_remaining = 0; // 999999 sentinel if unlimited
@@ -60,6 +65,11 @@ public:
     GruntCommandResult apply_input(EntityRef grunt, const std::string& name,
                                    const std::string& argument = {});
     GruntTacticalSnapshot snapshot(EntityRef grunt, GruntAlertState state) const;
+    // Original x86 InputThrowGrenades: DVariant type 6 is Boolean. All other
+    // types clear m_bGrenadeHappy. This typed adapter is intentionally kept
+    // separate from the strict Hammer-string input parser.
+    GruntCommandResult apply_typed_grenade_input(EntityRef grunt, int variant_type,
+                                                 bool boolean_value);
     // A host must report a *successful* grenade throw to decrement inventory.
     GruntCommandResult report_grenade_thrown(EntityRef grunt);
     std::size_t grunt_count() const noexcept { return states_.size(); }
@@ -75,6 +85,7 @@ private:
         bool patrol_enabled = false;
         bool aggressive_grenades = false;
         int remaining = 0;
+        bool grenade_auxiliary_cleared = false;
     };
     IGruntTacticalHost& host_;
     std::map<EntityRef, State, RefLess> states_;

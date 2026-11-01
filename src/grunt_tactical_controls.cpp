@@ -77,13 +77,28 @@ GruntCommandResult GruntTacticalControls::apply_input(
         value = false;
     } else if (name == "ThrowGrenades") {
         if (!parse_fgd_bool(argument, value)) return GruntCommandResult::InvalidParameter;
-        target = &state.aggressive_grenades;
+        return apply_typed_grenade_input(grunt, 6, value);
     } else {
         return GruntCommandResult::UnknownInput;
     }
     if (*target == value) return GruntCommandResult::NoChange;
     *target = value;
+    if (name == "LookOff") state.definition.spawnflags |= kGruntStartLookOff;
+    if (name == "LookOn") state.definition.spawnflags &= ~kGruntStartLookOff;
     return GruntCommandResult::Applied;
+}
+GruntCommandResult GruntTacticalControls::apply_typed_grenade_input(
+    EntityRef grunt, int variant_type, bool boolean_value) {
+    auto it = states_.find(grunt);
+    if (it == states_.end() || !host_.is_live(grunt)) return GruntCommandResult::InvalidGrunt;
+    auto& state = it->second;
+    // Original typed handler checks variant_type == 6; otherwise zeroes the
+    // grenade-aggression byte. Both paths clear the auxiliary +0xC70 word.
+    const bool desired = variant_type == 6 && boolean_value;
+    const bool changed = state.aggressive_grenades != desired;
+    state.aggressive_grenades = desired;
+    state.grenade_auxiliary_cleared = true;
+    return changed ? GruntCommandResult::Applied : GruntCommandResult::NoChange;
 }
 GruntTacticalSnapshot GruntTacticalControls::snapshot(EntityRef grunt,
                                                       GruntAlertState alert) const {
@@ -97,6 +112,8 @@ GruntTacticalSnapshot GruntTacticalControls::snapshot(EntityRef grunt,
         (alert == GruntAlertState::Idle || alert == GruntAlertState::Alert);
     out.aggressive_grenades_requested = s.aggressive_grenades;
     out.secondary_fire_allowed = !(s.definition.spawnflags & kGruntDontSecondaryFire);
+    out.effective_spawnflags = s.definition.spawnflags;
+    out.grenade_auxiliary_cleared = s.grenade_auxiliary_cleared;
     out.unlimited_grenades = s.remaining == kGruntUnlimitedGrenades;
     out.grenades_available = out.unlimited_grenades || s.remaining > 0;
     out.grenades_remaining = s.remaining;
