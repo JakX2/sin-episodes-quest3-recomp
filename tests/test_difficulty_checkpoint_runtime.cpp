@@ -50,7 +50,7 @@ int main() {
     assert(end && end.observation.end_of_game);
     assert(end.observation.expected_segment_seconds == 60.0);
     assert(end.observation.actual_segment_seconds == 60.0);
-    assert(runtime.touch(c, 310.0)); // Repeated trigger: FGD spawnflag 1024.
+    assert(runtime.touch(c, 310.0)); // Explicit synthetic repeatable option, not FGD parity.
     assert(runtime.last_checkpoint_time() == 310.0);
     assert(runtime.touch({9, 8}, 311).result == CheckpointResult::UnknownOrStaleEntity);
     host.generations[2] = 2;
