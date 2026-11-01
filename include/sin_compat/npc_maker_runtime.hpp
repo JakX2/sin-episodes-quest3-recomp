@@ -25,7 +25,7 @@ struct NpcMakerEvent {
 };
 enum class NpcMakerResult {
     Applied, InvalidMaker, Disabled, Exhausted, LiveLimitReached,
-    HostCreationFailed, NoChange
+    HostCreationFailed, NoChange, InvalidSetting, NeedsReenable
 };
 struct NpcMakerAction {
     NpcMakerResult result = NpcMakerResult::InvalidMaker;
@@ -56,6 +56,14 @@ public:
     NpcMakerResult enable(EntityRef maker);
     NpcMakerResult disable(EntityRef maker);
     NpcMakerResult toggle(EntityRef maker);
+    // SDK BaseNPCMaker inputs. After quota exhaustion, adding quota does not
+    // restart the maker until Enable explicitly rearms it.
+    NpcMakerResult add_max_children(EntityRef maker, int delta);
+    NpcMakerResult set_max_children(EntityRef maker, int max_children);
+    NpcMakerResult set_max_live_children(EntityRef maker, int max_live);
+    NpcMakerResult set_spawn_frequency(EntityRef maker, double seconds);
+    bool needs_reenable(EntityRef maker) const noexcept;
+    bool is_enabled(EntityRef maker) const noexcept;
     NpcMakerAction spawn_now(EntityRef maker);
     NpcMakerAdvance advance_to(double time, std::size_t budget = 1024);
     // Notify when the original child reference dies / is removed. Must be
@@ -74,6 +82,7 @@ private:
         bool enabled = false;
         bool all_spawned_announced = false;
         bool all_dead_announced = false;
+        bool reenable_required = false;
         int total_spawned = 0;
         double next_due = 0.0;
         std::set<EntityRef, RefLess> children;
