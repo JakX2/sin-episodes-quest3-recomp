@@ -84,6 +84,22 @@ int main(){
     assert(runtime.add_max_children(next,std::numeric_limits<int>::max())==NpcMakerResult::InvalidSetting);
     assert(runtime.set_max_live_children(next,-2)==NpcMakerResult::InvalidSetting);
     assert(runtime.set_spawn_frequency(next,INFINITY)==NpcMakerResult::InvalidSetting);
+    // The -1 mode must not spawn because a limit or total quota grows
+    // while an earlier child is still alive.
+    const auto death_only=host.add(3);
+    assert(runtime.register_maker(death_only,{3,2,-1,false,false}));
+    const auto death_start=runtime.advance_to(200);
+    assert(death_start.children_created==1);
+    assert(runtime.set_max_live_children(death_only,3)==NpcMakerResult::Applied);
+    assert(runtime.set_max_children(death_only,4)==NpcMakerResult::Applied);
+    assert(runtime.advance_to(220).children_created==0);
+    EntityRef alive_child{};
+    for(const auto& event:death_start.events)
+        if(event.type==NpcMakerEventType::Spawned && event.maker==death_only)
+            alive_child=event.child;
+    assert(host.is_live(alive_child));
+    assert(runtime.notify_child_removed(death_only,alive_child).result==NpcMakerResult::Applied);
+    assert(runtime.advance_to(220).children_created==1);
     host.gen[2]=2;
     assert(runtime.set_max_children(next,5)==NpcMakerResult::InvalidMaker);
     assert(runtime.set_spawn_frequency(next,2)==NpcMakerResult::InvalidMaker);
