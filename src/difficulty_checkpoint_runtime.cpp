@@ -45,7 +45,7 @@ SpawnCountDecision adjust_spawn_count(int requested_count, double modifier,
         modifier < -1.0 || modifier > 1.0 || !std::isfinite(random_roll) ||
         random_roll < 0.0 || random_roll >= 1.0)
         return {requested_count, SpawnChange::InvalidInput};
-    if (modifier == 0.0 || random_roll >= std::abs(modifier))
+    if (modifier == 0.0 || random_roll > std::abs(modifier))
         return {requested_count, SpawnChange::Unchanged};
     if (modifier > 0.0 && requested_count < std::numeric_limits<int>::max())
         return {requested_count + 1, SpawnChange::AddedOne};
