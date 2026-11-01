@@ -24,7 +24,8 @@ bool NpcMakerRuntime::register_maker(EntityRef maker, NpcMakerConfig config) {
     State state;
     state.cfg = config;
     state.enabled = !config.start_disabled;
-    state.next_due = state.enabled ? now_ : kNever;
+    state.reenable_required = exhausted(state);
+    state.next_due = state.enabled && !state.reenable_required ? now_ : kNever;
     return states_.emplace(maker, std::move(state)).second;
 }
 void NpcMakerRuntime::remove_maker(EntityRef maker) { states_.erase(maker); }
@@ -38,9 +39,16 @@ bool NpcMakerRuntime::live_limit(const State& s) const noexcept {
 NpcMakerResult NpcMakerRuntime::enable(EntityRef maker) {
     const auto it = states_.find(maker);
     if (it == states_.end() || !host_.is_live(maker)) return NpcMakerResult::InvalidMaker;
-    if (it->second.enabled) return NpcMakerResult::NoChange;
+    if (exhausted(it->second)) return NpcMakerResult::Exhausted;
+    if (it->second.enabled && !it->second.reenable_required)
+        return NpcMakerResult::NoChange;
     it->second.enabled = true;
-    it->second.next_due = exhausted(it->second) || live_limit(it->second) ? kNever : now_;
+    it->second.reenable_required = false;
+    it->second.all_spawned_announced = false;
+    it->second.all_dead_announced = false;
+    it->second.next_due = live_limit(it->second) ||
+        (it->second.cfg.spawn_frequency == -1.0 && !it->second.children.empty())
+        ? kNever : now_;
     return NpcMakerResult::Applied;
 }
 NpcMakerResult NpcMakerRuntime::disable(EntityRef maker) {
@@ -56,8 +64,77 @@ NpcMakerResult NpcMakerRuntime::toggle(EntityRef maker) {
     if (it == states_.end() || !host_.is_live(maker)) return NpcMakerResult::InvalidMaker;
     return it->second.enabled ? disable(maker) : enable(maker);
 }
+NpcMakerResult NpcMakerRuntime::set_max_children(EntityRef maker, int count) {
+    const auto it = states_.find(maker);
+    if (it == states_.end() || !host_.is_live(maker))
+        return NpcMakerResult::InvalidMaker;
+    if (count < 0) return NpcMakerResult::InvalidSetting;
+    State& s = it->second;
+    if (s.cfg.max_npcs == count) return NpcMakerResult::NoChange;
+    s.cfg.max_npcs = count;
+    if (exhausted(s)) {
+        s.reenable_required = true;
+        s.next_due = kNever;
+    } else if (s.enabled && !s.reenable_required && !live_limit(s) &&
+               !std::isfinite(s.next_due)) {
+        s.next_due = now_;
+    }
+    return NpcMakerResult::Applied;
+}
+NpcMakerResult NpcMakerRuntime::add_max_children(EntityRef maker, int delta) {
+    const auto it = states_.find(maker);
+    if (it == states_.end() || !host_.is_live(maker))
+        return NpcMakerResult::InvalidMaker;
+    const long long value = static_cast<long long>(it->second.cfg.max_npcs) + delta;
+    if (value < 0 || value > std::numeric_limits<int>::max())
+        return NpcMakerResult::InvalidSetting;
+    return set_max_children(maker, static_cast<int>(value));
+}
+NpcMakerResult NpcMakerRuntime::set_max_live_children(EntityRef maker, int limit) {
+    const auto it = states_.find(maker);
+    if (it == states_.end() || !host_.is_live(maker))
+        return NpcMakerResult::InvalidMaker;
+    if (limit != -1 && limit < 1) return NpcMakerResult::InvalidSetting;
+    State& s = it->second;
+    if (s.cfg.max_live_children == limit) return NpcMakerResult::NoChange;
+    s.cfg.max_live_children = limit;
+    if (live_limit(s)) s.next_due = kNever;
+    else if (s.enabled && !s.reenable_required && !exhausted(s) &&
+             !std::isfinite(s.next_due)) s.next_due = now_;
+    return NpcMakerResult::Applied;
+}
+NpcMakerResult NpcMakerRuntime::set_spawn_frequency(EntityRef maker, double frequency) {
+    const auto it = states_.find(maker);
+    if (it == states_.end() || !host_.is_live(maker))
+        return NpcMakerResult::InvalidMaker;
+    if (!std::isfinite(frequency) ||
+        (frequency != -1.0 && frequency <= 0.0))
+        return NpcMakerResult::InvalidSetting;
+    State& s = it->second;
+    if (s.cfg.spawn_frequency == frequency) return NpcMakerResult::NoChange;
+    s.cfg.spawn_frequency = frequency;
+    if (!s.enabled || s.reenable_required || exhausted(s) || live_limit(s))
+        s.next_due = kNever;
+    else if (frequency == -1.0)
+        s.next_due = s.children.empty() ? now_ : kNever;
+    else {
+        const double due = now_ + frequency;
+        s.next_due = std::isfinite(due) && due > now_ ? due : kNever;
+    }
+    return NpcMakerResult::Applied;
+}
+bool NpcMakerRuntime::needs_reenable(EntityRef maker) const noexcept {
+    const auto it = states_.find(maker);
+    return it != states_.end() && it->second.reenable_required;
+}
+bool NpcMakerRuntime::is_enabled(EntityRef maker) const noexcept {
+    const auto it = states_.find(maker);
+    return it != states_.end() && it->second.enabled;
+}
 NpcMakerAction NpcMakerRuntime::spawn_impl(EntityRef maker, State& s) {
     if (!s.enabled) return {NpcMakerResult::Disabled, {}};
+    if (s.reenable_required && !exhausted(s))
+        return {NpcMakerResult::NeedsReenable, {}};
     if (exhausted(s)) return {NpcMakerResult::Exhausted, {}};
     if (live_limit(s)) return {NpcMakerResult::LiveLimitReached, {}};
     const EntityRef child = host_.create_child(maker);
@@ -67,6 +144,7 @@ NpcMakerAction NpcMakerRuntime::spawn_impl(EntityRef maker, State& s) {
     ++s.total_spawned;
     NpcMakerAction result{NpcMakerResult::Applied, {{NpcMakerEventType::Spawned, maker, child}}};
     if (exhausted(s) && !s.all_spawned_announced) {
+        s.reenable_required = true;
         s.all_spawned_announced = true;
         result.events.push_back({NpcMakerEventType::AllSpawned, maker, {}});
     }
@@ -97,7 +175,7 @@ NpcMakerAdvance NpcMakerRuntime::advance_to(double time, std::size_t budget) {
     for (auto& item : states_) {
         const EntityRef maker = item.first;
         State& s = item.second;
-        if (!host_.is_live(maker) || !s.enabled) continue;
+        if (!host_.is_live(maker) || !s.enabled || s.reenable_required) continue;
         while (s.next_due <= now_ && !exhausted(s) && !live_limit(s)) {
             if (result.attempts >= budget) { result.budget_exhausted = true; break; }
             const double due = s.next_due;
@@ -127,7 +205,7 @@ NpcMakerAction NpcMakerRuntime::notify_child_removed(EntityRef maker, EntityRef 
         s.all_dead_announced = true;
         result.events.push_back({NpcMakerEventType::AllSpawnedDead, maker, {}});
     }
-    if (s.enabled && !exhausted(s) && !live_limit(s)) {
+    if (s.enabled && !s.reenable_required && !exhausted(s) && !live_limit(s)) {
         // Zero live children resumes the death-driven (-1) mode. Regular
         // timers resume from the host's current time once capacity opens.
         if (s.cfg.spawn_frequency != -1.0 || s.children.empty()) s.next_due = now_;
