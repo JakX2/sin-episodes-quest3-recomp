@@ -86,7 +86,8 @@ class ProjectStatusClaimsTest(unittest.TestCase):
         self.assertTrue((ROOT / "src/host_abi_v1.cpp").is_file())
         self.assertTrue((ROOT / "include/sin_compat/host_abi_v1.h").is_file())
         self.assertIn("sin_compat_host_abi", (ROOT / "CMakeLists.txt").read_text(encoding="utf-8"))
-        self.assertIn("original game DLL ABI", self.text["STATUS.md"])\n        self.assertIn("**not** the original game DLL ABI", self.text["STATUS.md"])
+        self.assertIn("original game DLL ABI", self.text["STATUS.md"])
+        self.assertIn("**not** the original game DLL ABI", self.text["STATUS.md"])
 
     def test_roadmap_acceptance_is_not_claimed_complete(self):
         road = self.text["ROADMAP.md"]
