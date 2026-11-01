@@ -17,6 +17,7 @@ def stub():
         '  65536 : "Start LookOff" : 0',
         '  16777216 : "Dont secondary fire" : 0',
         ' ]',
+        ' GrenadeHeight(float) : "Grenade toss height" : 0',
         ' NumGrenades(choices) : "Number of Grenades" : "5" =',
         ' [',
         '  "999999" : "Unlimited"',
