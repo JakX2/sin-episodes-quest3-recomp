@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "upstream_url": "https://github.com/ValveSoftware/source-sdk-2013",
+  "commit": "be57e3d01ac7d7aa6a2cacbfef187c0b46616db0",
+  "role": "reference-only",
+  "license_path": "LICENSE",
+  "required_files": {
+    "LICENSE": "6e729f1f55af106870bf42a95d8962ffa65abab1",
+    "src/public/eiface.h": "160de2c352859e1ba69120f25c12c155bf08d2b6",
+    "src/game/server/cbase.h": "0d56ec3bf1dfd4d798b81e73f2d01ea6a457f385",
+    "src/game/server/gameinterface.cpp": "eb99cdf4c3cdea7a87a2813c4a69b5fb9016c877",
+    "src/game/server/logicentities.cpp": "42b911006eba9559f50dcbe748c59738fa82a066",
+    "src/game/shared/basecombatweapon_shared.h": "4ca7cd03d32a4b222f010c18017ca3131cb30489"
+  }
+}
