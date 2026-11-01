@@ -75,7 +75,7 @@ def summarize(server, fgd, server_sha=SERVER_SHA256, fgd_sha=FGD_SHA256):
         raise EvidenceError("Grenade unlimited choice missing")
     expected = []
     for cls,weapon in DEFAULT_WEAPONS.items():
-        exp = r'@NPCClass\s+base\(BaseGrunt\)[^\n]*=\s*'+cls+r'\s*:[\s\S]*?additionalequipment\(choices\)[^\n]*:\s*"Weapons"\s*:\s*"'+weapon+r'"'
+        exp = r'@NPCClass\s+base\(BaseGrunt\)[^\n]*=\s*'+cls+r'\s*:[^@]*?additionalequipment\(choices\)[^\n]*:\s*"Weapons"\s*:\s*"'+weapon+r'"'
         if not re.search(exp, text):
             raise EvidenceError("original FGD grunt equipment default mismatch: "+cls)
         if (cls+"\0").encode() not in server:
