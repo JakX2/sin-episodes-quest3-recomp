@@ -12,8 +12,10 @@
 
 namespace sin_compat {
 Source2013WeaponHost::Source2013WeaponHost(
-    CBasePlayer* player,CBaseCombatWeapon* weapon,bool vr,int viewmodel_index) noexcept
-    : player_(player),weapon_(weapon),vr_mode_(vr),viewmodel_index_(viewmodel_index) {}
+    CBasePlayer* player,CBaseCombatWeapon* weapon,bool vr,int viewmodel_index,
+    std::string initial_model) noexcept
+    : player_(player),weapon_(weapon),vr_mode_(vr),viewmodel_index_(viewmodel_index),
+      expected_model_(std::move(initial_model)) {}
 
 bool Source2013WeaponHost::selected() const noexcept {
     return player_ && weapon_ && viewmodel_index_>=0 &&
@@ -23,9 +25,20 @@ bool Source2013WeaponHost::selected() const noexcept {
 CBaseViewModel* Source2013WeaponHost::viewmodel() const noexcept {
     return selected() ? player_->GetViewModel(viewmodel_index_, false) : nullptr;
 }
+CBaseViewModel* Source2013WeaponHost::ensure_model_bound() {
+    CBaseViewModel* vm=viewmodel();
+    if (!vm || expected_model_.empty()) return nullptr;
+    if (vm->GetWeapon()!=weapon_ || last_bound_model_!=expected_model_) {
+        vm->SetWeaponModel(expected_model_.c_str(),weapon_);
+        last_bound_model_=expected_model_;
+    }
+    return vm;
+}
 int Source2013WeaponHost::resolve_sequence(int activity_id) {
     if (activity_id<0) return -1;
-    CBaseViewModel* vm=viewmodel();
+    // Source SelectWeightedSequence needs a matching model/studio header.
+    // This is a deliberate SDK-specific pre-bind before generic selection.
+    CBaseViewModel* vm=ensure_model_bound();
     if (!vm) return -1;
     // Verified public SDK signatures: CBaseAnimating::SelectWeightedSequence
     // takes Activity, and CBasePlayer::GetViewModel returns CBaseViewModel*.
@@ -33,14 +46,9 @@ int Source2013WeaponHost::resolve_sequence(int activity_id) {
 }
 void Source2013WeaponHost::bind_viewmodel(
     const std::string& model,const std::array<float,3>& origin_offset) {
-    CBaseViewModel* vm=viewmodel();
-    if (!vm || model.empty()) return;
-    // Source's SetWeaponModel updates viewmodel model AND weapon association.
-    // Rebinding every animation would reset animation unnecessarily.
-    if (vm->GetWeapon()!=weapon_ || last_bound_model_!=model) {
-        vm->SetWeaponModel(model.c_str(),weapon_);
-        last_bound_model_=model;
-    }
+    if (model.empty() || model!=expected_model_) return;
+    CBaseViewModel* vm=ensure_model_bound();
+    if (!vm) return;
     // Store but do NOT apply an unverified SiN sight pose to the Source viewmodel.
     last_offset_=origin_offset;
 }
@@ -58,7 +66,7 @@ void Source2013WeaponHost::set_flatscreen_fov(int fov,float duration_seconds) {
 Source2013WeaponBridge::Source2013WeaponBridge(
     CBasePlayer* player,CBaseCombatWeapon* weapon,WeaponKind kind,
     WeaponConfig configuration,bool vr,int vm_index)
-    : host_(player,weapon,vr,vm_index),
+    : host_(player,weapon,vr,vm_index,configuration.viewmodel_name),
       runtime_(kind,std::move(configuration),host_,vr) {}
 FrameResult Source2013WeaponBridge::on_usercmd(
     std::uint32_t buttons,bool blocked) {
