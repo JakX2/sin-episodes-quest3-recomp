@@ -14,6 +14,16 @@ Earlier phase identified original CGrenadeAR : CBaseGrenade virtual slot **250**
 - Calls original **0x22288A90** at 0x22314873 with origin and immediate scalar arguments **25.0 amplitude, 150.0 frequency, 1.0 duration, 750.0 radius**, followed by command/airshake constants. Its original machine code clamps amplitude at **16.0** (also verified at 0x22288A95 and 0x22288AA2) and iterates over the original player list. The call shape and clamp closely match Valve Source SDK **UTIL_ScreenShake**, so that is a high-confidence identification rather than a blind guess. Secondary reference: https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/server/util.cpp . Note that the original SiN code, not the later Source SDK, supplied the actual numbers.
 - Resolves a possible attacker/owner using **0x222B2730** at 0x223148E7, constructs damage-related state with **0x221F89C0** at 0x223148F5, invokes a shared damage/effect dispatcher **0x222A5E10** at 0x223148FB (which itself calls engine virtual +0xB8), and finally calls removal **0x22286BF0** at 0x22314901. The precise C++ API name, damage radius units and ownership rules of the shared dispatch remain unverified.
 
+### Damage/radius member mapping, now supported by callsite stack order
+
+Further original 2006 instruction checks at **0x2231487E**, **0x2231489F**, **0x223148A2**, **0x223148D1**, **0x223148D5**, **0x223148D9**, **0x223148EC**, and the constructor's **ret 0x14** at 0x221F8A00 show that these two members enter different arguments:
+
+- Original **+0x7AC**, initialized to **100.0**, reaches the scalar damage argument of the CTakeDamageInfo-like constructor at **0x221F89C0**, alongside damage-type bit **0x40** (Source DMG_BLAST).
+- Original **+0x798**, initialized to **250.0**, remains on the stack as the explosion radius supplied to the subsequent shared damage dispatcher at **0x222A5E10**.
+- Later Source SDK source declares CTakeDamageInfo and GameRules::RadiusDamage with compatible argument roles (https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/shared/gamerules.h). This is **independent corroboration**, not proof of exact SiN-specific source field names or final runtime skill scaling.
+
+**Confidence:** strong original callsite argument-order evidence for *100 base damage / 250 base radius*, but original C++ member names and all subsequent modifiers are still unresolved.
+
 **Do not confuse these direct call targets with a reconstructed complete explosion**. The engine virtual callbacks, damage-info structure layout, networking, collision masks and trace interfaces must be implemented using compatible ARM64 SourceVR game interfaces.
 
 ## Touch and think conditions
@@ -40,7 +50,7 @@ Earlier phase identified original CGrenadeAR : CBaseGrenade virtual slot **250**
 | 0x2231434A / 0x22314444 | Original touch/think virtual calls at vtable +0x3E8 |
 | 0x22314450 / 0x22314463 | Compares +0x7C4 to 300.0, adds 15.0 |
 
-A new strict SHA-256-pinned standard-library tool, research/tools/audit_sin_ar_detonation.py, checks **23 original x86 instruction witnesses**, **12 rel32 direct callsite-to-callee edges**, both original decal strings and original float/double constants. It refuses a different server.dll build rather than silently applying addresses to other releases.
+A new strict SHA-256-pinned standard-library tool, research/tools/audit_sin_ar_detonation.py, checks **28 original x86 instruction witnesses**, **12 rel32 direct callsite-to-callee edges**, both original decal strings and original float/double constants. It refuses a different server.dll build rather than silently applying addresses to other releases.
 
 ## Reproduction
 
