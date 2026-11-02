@@ -182,3 +182,17 @@ if(SIN_BUILD_ANDROID_SMOKE AND ANDROID)
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   add_dependencies(sin_android_host_abi_smoke sin_compat_host_abi)
 endif()
+
+
+# Phase 102: engine-neutral lifecycle relay over the existing v1 shared ABI.
+# This provides a tested integration *boundary*, NOT a SourceVR loader or SDK.
+add_library(sin_engine_event_pump STATIC src/engine_event_pump.cpp)
+target_include_directories(sin_engine_event_pump PUBLIC include)
+target_link_libraries(sin_engine_event_pump PUBLIC sin_compat_host_abi)
+target_compile_options(sin_engine_event_pump PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+if(BUILD_TESTING)
+  add_executable(sin_engine_event_pump_tests tests/test_engine_event_pump.cpp)
+  target_link_libraries(sin_engine_event_pump_tests PRIVATE sin_engine_event_pump)
+  add_test(NAME sin_engine_event_pump_tests COMMAND sin_engine_event_pump_tests)
+endif()
