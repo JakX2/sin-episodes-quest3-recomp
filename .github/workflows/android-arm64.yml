@@ -1,0 +1,45 @@
+name: Android ARM64 bridge build
+on:
+  push:
+  pull_request:
+jobs:
+  arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # GitHub's Ubuntu runner already provides Android SDK command-line tools.
+      # setup-android@v3 currently requests the removed 'tools' package.
+      - name: Android SDK environment
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+      - name: Install pinned Android NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "ndk;27.2.12479018"
+      - name: Cross-compile native bridge
+        run: |
+          cmake -S . -B build-android -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/27.2.12479018/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_shared -DBUILD_TESTING=OFF
+          cmake --build build-android --target sin_weapon_bridge --parallel
+      - name: Check ARM64 shared library and exported C ABI
+        run: |
+          LIB="$(find build-android -type f -name libsin_weapon_bridge.so -print -quit)"
+          test -n "$LIB"
+          file "$LIB"
+          readelf -h "$LIB" | grep -q 'Machine:.*AArch64'
+          readelf --dyn-syms --wide "$LIB" | grep -q 'sin_weapon_abi_version'
+          readelf --dyn-syms --wide "$LIB" | grep -q 'sin_weapon_frame'
+          echo "Verified ARM64 ELF and C entry points: $LIB"
+      - name: Publish standalone shared-library artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-weapon-bridge-android-arm64
+          path: build-android/libsin_weapon_bridge.so
+          if-no-files-found: error
+          retention-days: 7

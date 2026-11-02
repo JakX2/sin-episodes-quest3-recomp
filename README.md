@@ -24,7 +24,7 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-The current CMake project builds `sin_weapon_runtime` and a `sin_weapon_runtime_tests` executable. The tests use a fake host and **synthetic fixture ammo capacity/model/FOV values**; they demonstrate integration behavior but do not establish live gameplay accuracy.
+The CMake project builds `sin_weapon_runtime`, a shared `sin_weapon_bridge` C ABI, and their smoke tests. The bridge is **not** a Source Engine game module. See [Android ARM64 native bridge](docs/ARM64_NATIVE_BRIDGE.md) for cross-compilation and limitations. The tests use a fake host and **synthetic fixture ammo capacity/model/FOV values**; they demonstrate integration behavior but do not establish live gameplay accuracy.
 
 ## What works in the prototype
 
@@ -38,7 +38,7 @@ The current CMake project builds `sin_weapon_runtime` and a `sin_weapon_runtime_
 
 ## Not yet implemented
 
-- Real SourceVR or Android/ARM64 engine hookup; no VR runtime bindings, headset position or motion controller interaction.
+- Real SourceVR engine hookup; no Source `CreateInterface` game DLL, VR runtime bindings, headset position or motion controller interaction. The new ARM64-compatible C ABI is only a host-neutral bridge.
 - Weapon models and animation sequences, real `ZoomFOV` settings, aim poses or reliable gun-specific script values.
 - A complete state machine for all original reload timings, owner checks, and attack gates.
 - Enemy AI, dynamic difficulty, vehicles, map scripts and campaign integration.
