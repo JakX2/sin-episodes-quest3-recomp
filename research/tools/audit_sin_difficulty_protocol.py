@@ -90,6 +90,20 @@ SUCCESS_CALLS = {
 }
 SUCCESS_LOOP_TEST = {"client":0x241F97AF,"server":0x222BAA34}
 REGISTRY_FUNCTION = {"client":0x241D0280,"server":0x220229A0}
+
+# Original CDynamicDifficultyAction::debug-print routine at server
+# 0x2215BDD0 names the original class field offsets itself:
+# "--Time started", "--Value", "--Decision", "--Advisor".
+ACTION_FIELDS = {
+    "time_started":(0x2215BE07,bytes.fromhex("d986bc020000"),0x2215BE10,
+                    0x22411368,b"--Time started: %.4f\n\x00","0x2BC","f32"),
+    "value":(0x2215BE17,bytes.fromhex("d986c8020000"),0x2215BE23,
+             0x224115A0,b"--Value: %.4f\n\x00","0x2C8","f32"),
+    "decision":(0x2215BE2A,bytes.fromhex("8b86c4020000"),0x2215BE31,
+                0x2241158C,b"--Decision: %.i\n\x00","0x2C4","i32"),
+    "advisor":(0x2215BE38,bytes.fromhex("8b8ec0020000"),0x2215BE3F,
+               0x2241157C,b"--Advisor: %.i\n\x00","0x2C0","i32"),
+}
 HOOK_REGISTER = 0x241CFF70
 
 def push(pe,site:int,imm:int)->None:
@@ -165,8 +179,22 @@ def verify_evidence(client_pe,server_pe)->dict:
                       (0x222BA6EE,"DDAdvisorScores"),
                       (0x222BA7CD,"DDAdvisorChannels")):
         push(server_pe,site,MESSAGES[name][2])
+    action_fields={}
+    for name,(read_va,read_bytes,fmt_push_va,fmt_va,fmt_text,offset,dtype) in ACTION_FIELDS.items():
+        if server_pe.at(read_va,len(read_bytes))!=read_bytes:
+            raise VerificationError("original difficulty action member read mismatch at "+hex(read_va))
+        push(server_pe,fmt_push_va,fmt_va)
+        if server_pe.at(fmt_va,len(fmt_text))!=fmt_text:
+            raise VerificationError("original difficulty action debug label mismatch at "+hex(fmt_va))
+        action_fields[name]={
+            "original_server_field_offset":offset,
+            "type":dtype,
+            "original_read_va":f"0x{read_va:08X}",
+            "label":fmt_text.decode("ascii").rstrip("\x00\n"),
+        }
     return {
         "paired_messages":rows,
+        "server_dynamic_difficulty_action_fields":action_fields,
         "paired_message_count":len(rows),
         "client_hooks_in_dynamic_difficulty_block":len(HOOKS),
         "extra_client_hooks_nearby":list(OTHER_CLIENT_HOOKS),
