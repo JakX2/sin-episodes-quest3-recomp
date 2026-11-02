@@ -122,15 +122,44 @@ def validate_signed_apk(path: Path, debug_package: str) -> dict:
             "package": debug_package, "size_bytes": path.stat().st_size}
 
 
+def validate_resume_stage(output: Path, source_inventory) -> Path:
+    """Validate the prior failure point following successful apktool decode.
+
+    No output files are modified during this preflight.
+    """
+    if source_inventory is None:
+        raise ValueError("resume requires --extracted-dir, not an APK input")
+    if not output.is_dir() or output.is_symlink():
+        raise ValueError("resume output must be an existing, non-symlink directory")
+    original = output / "original-extracted-unsigned.apk"
+    decoded = output / "decoded"
+    if not original.is_file() or not decoded.is_dir() or decoded.is_symlink():
+        raise ValueError("resume requires original-extracted-unsigned.apk and decoded/ from the previous run")
+    if not (decoded / "apktool.yml").is_file() or not (decoded / "AndroidManifest.xml").is_file():
+        raise ValueError("resume requires a completed apktool decode")
+    find_activity(decoded)
+    for name in ("unsigned.apk", "aligned.apk", "sin-sourcevr-loader-probe.apk",
+                 "build-report.json", "ephemeral-debug.keystore", "MainActivity.original.smali.txt"):
+        if (output / name).exists():
+            raise ValueError(f"resume cannot overwrite an existing partial artifact: {name}")
+    with zipfile.ZipFile(original) as archive:
+        if set(archive.namelist()) != {name for name, _ in source_inventory.files}:
+            raise ValueError("resume original APK members differ from extracted source")
+        verify_original_dex(archive.read("classes.dex"))
+    # A previous successful patch is not the pre-decode failure point.
+    patch_smali(find_activity(decoded).read_text(encoding="utf-8"))
+    return original
+
+
 def build(apk: Path | None, probe: Path, output: Path, package: str,
           apktool: str, zipalign: str, apksigner: str, keytool: str, aapt: str = "aapt",
-          extracted_dir: Path | None = None) -> dict:
+          extracted_dir: Path | None = None, resume: bool = False) -> dict:
     # Read/validate everything before creating the output directory.
     if (apk is None) == (extracted_dir is None):
         raise ValueError("specify exactly one complete original APK or extracted directory")
     if not probe.is_file():
         raise ValueError("diagnostic libclient.so must exist")
-    if output.exists():
+    if not resume and output.exists():
         raise ValueError("output directory already exists; refusing to overwrite")
     source_inventory = None
     if extracted_dir is not None:
@@ -168,13 +197,19 @@ def build(apk: Path | None, probe: Path, output: Path, package: str,
                 f"{free / (1024**3):.1f} GiB free, "
                 f"recommend at least {required / (1024**3):.1f} GiB"
             )
-    output.mkdir(parents=True, exist_ok=False)
-    if source_inventory is not None:
-        apk = output / "original-extracted-unsigned.apk"
-        reconstruct_unsigned(source_inventory, apk)
+    if resume:
+        apk = validate_resume_stage(output, source_inventory)
+        decoded = output / "decoded"
+        print(f"[RESUME] Verified prior decode: {decoded}; skipping original APK reconstruction and decoding")
+    else:
+        output.mkdir(parents=True, exist_ok=False)
+        if source_inventory is not None:
+            apk = output / "original-extracted-unsigned.apk"
+            reconstruct_unsigned(source_inventory, apk)
+        assert apk is not None
+        decoded = output / "decoded"
+        cmd([apktool, "d", "--force", "--output", str(decoded), str(apk)])
     assert apk is not None
-    decoded = output / "decoded"
-    cmd([apktool, "d", "--force", "--output", str(decoded), str(apk)])
     activity = find_activity(decoded)
     original_smali = activity.read_text(encoding="utf-8")
     changed_smali, summary = patch_smali(original_smali)
@@ -237,6 +272,7 @@ def main() -> int:
     p.add_argument("--keytool", default="keytool")
     p.add_argument("--aapt", default="aapt", help="Required to verify the signed Android package identity")
     p.add_argument("--build", action="store_true", help="Actually create a separate signed APK")
+    p.add_argument("--resume", action="store_true", help="Reuse prior decoded output after verified pre-patch failure")
     args = p.parse_args()
     try:
         source_inventory = inventory(args.extracted_dir) if args.extracted_dir else None
@@ -244,6 +280,10 @@ def main() -> int:
                else get_source_dex(apk=args.apk, dex=None))
         digest = verify_original_dex(dex)
         probe_hash = validate_arm64_probe(args.probe.read_bytes())
+        if args.resume:
+            if args.extracted_dir is None:
+                raise ValueError("--resume requires --extracted-dir")
+            validate_resume_stage(args.output, source_inventory)
         if not args.build:
             print(json.dumps({"status": "PLAN ONLY (no changes)",
                               "source_dex_sha256": digest,
@@ -255,11 +295,12 @@ def main() -> int:
                               "available_output_drive_bytes": shutil.disk_usage(args.output.parent).free if args.output.parent.exists() else None,
                               "probe_sha256": probe_hash,
                               "package": args.package, "output": str(args.output),
+                              "resume_validated": args.resume,
                               "next": "Pass --build to create the private signed test APK"}, indent=2))
             return 0
         result = build(args.apk, args.probe, args.output, args.package,
                        args.apktool, args.zipalign, args.apksigner, args.keytool, args.aapt,
-                       extracted_dir=args.extracted_dir)
+                       extracted_dir=args.extracted_dir, resume=args.resume)
         print(json.dumps(result, indent=2))
         return 0
     except (OSError, ValueError, zipfile.BadZipFile, KeyError, subprocess.CalledProcessError) as exc:
