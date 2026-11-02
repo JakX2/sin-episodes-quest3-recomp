@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import argparse
+import json
+import sys
 from pathlib import Path
 import re
 import stat
@@ -142,3 +145,39 @@ def reconstruct_unsigned(inventory_data: SourceInventory, target: Path) -> dict:
         "zip_bytes": target.stat().st_size,
         "note": "Unsigned transport container only; must rebuild and sign a separate debug APK.",
     }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Read-only verification of the owner's original extracted SourceVR APK folder")
+    parser.add_argument("extracted_dir", type=Path,
+                        help="Folder containing AndroidManifest.xml, classes*.dex and assets")
+    parser.add_argument("--report", type=Path, help="Optional JSON report output file")
+    args = parser.parse_args()
+    try:
+        info = inventory(args.extracted_dir)
+        report = {
+            "status": "COMPLETE EXTRACTED SOURCEVR FOLDER PREFLIGHT PASSED",
+            "source_directory": str(info.root),
+            "entries": len(info.files),
+            "total_bytes": info.bytes_total,
+            "classes_dex_sha256": info.dex_sha256,
+            "dex_files": list(info.dex_files),
+            "native_load_counts": dict(info.native_load_counts),
+            "next": "Run sourcevr_isolated_apk_builder.py with --extracted-dir, --probe and --build to construct an isolated private diagnostic APK.",
+            "not_proven": "No reconstructed APK has been built, signed or launched by this preflight."
+        }
+        text = json.dumps(report, indent=2, sort_keys=True) + "\n"
+        if args.report:
+            if args.report.exists():
+                raise ValueError("report path already exists; refusing to overwrite")
+            args.report.write_text(text, encoding="utf-8")
+        print(text)
+        return 0
+    except (OSError, ValueError) as error:
+        print(f"SOURCEVR EXTRACTED PREFLIGHT FAILED: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
