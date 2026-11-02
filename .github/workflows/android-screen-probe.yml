@@ -1,0 +1,118 @@
+name: Android on-screen diagnostic APK
+on:
+  push:
+    paths:
+      - "android-screen-test/**"
+      - "CMakeLists.txt"
+      - "src/**"
+      - "include/sin_compat/**"
+      - ".github/workflows/android-screen-probe.yml"
+  pull_request:
+    paths:
+      - "android-screen-test/**"
+      - "CMakeLists.txt"
+      - "src/**"
+      - "include/sin_compat/**"
+      - ".github/workflows/android-screen-probe.yml"
+
+jobs:
+  build-apk:
+    name: Build Android diagnostic APK (ARM64 and x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Install Android SDK and pinned NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install \
+            "platforms;android-35" "build-tools;35.0.0" \
+            "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Compile and package Android-screen test app
+        run: gradle -p android-screen-test :app:assembleDebug --no-daemon --stacktrace
+      - name: Verify ARM64 and emulator libraries are packaged
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=android-screen-test/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -Z1 "$APK" > /tmp/sin-probe-apk-paths.txt
+          for arch in arm64-v8a x86_64; do
+            for library in \
+              libsin_compat_host_abi.so \
+              libsin_compat_event_bridge.so \
+              libsin_android_screen_probe.so; do
+              grep -Fxq "lib/$arch/$library" /tmp/sin-probe-apk-paths.txt || {
+                echo "Missing $arch/$library from $APK" >&2
+                exit 1
+              }
+            done
+          done
+          echo "PASS: signed debug APK contains all three native libraries for both ABIs."
+          sha256sum "$APK"
+      - name: Upload installable debug APK (synthetic diagnostic only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-phase104-android-screen-probe-debug
+          path: android-screen-test/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  android-screen-runtime:
+    name: Launch Android screen app and check real JNI result
+    needs: build-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: sin-phase104-android-screen-probe-debug
+          path: probe-apk
+      - name: Enable KVM when available
+        shell: bash
+        run: |
+          if [[ -c /dev/kvm ]]; then
+            sudo chmod a+rw /dev/kvm
+          fi
+      - name: Boot Android emulator, install APK and show on-screen result
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          emulator-boot-timeout: 480
+          emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            set -e
+            adb install -r probe-apk/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n org.sincompat.screenprobe/.MainActivity
+            sleep 5
+            adb logcat -d -s 'SIN_ANDROID_PROBE:I' '*:S' > android-screen-probe-logcat.txt
+            adb exec-out screencap -p > android-screen-probe.png
+            test -s android-screen-probe.png
+            cat android-screen-probe-logcat.txt
+            grep -Fq 'RESULT: PASS (native JNI on-screen bridge self-test)' android-screen-probe-logcat.txt
+            echo 'PASS: Android Activity loaded and displayed passing native bridge diagnostic.'
+      - name: Upload UI screenshot and native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-phase104-android-emulator-screen-evidence
+          path: |
+            android-screen-probe.png
+            android-screen-probe-logcat.txt
+          if-no-files-found: warn
+          retention-days: 14
