@@ -20,6 +20,7 @@ import xml.etree.ElementTree as ET
 
 from sourcevr_java_env_audit import Dex, MAIN
 from sourcevr_isolated_modlib_patch import get_source_dex, verify_original_dex, find_activity, patch_smali
+from sourcevr_extracted_apk import inventory, reconstruct_unsigned
 
 ANDROID = "http://schemas.android.com/apk/res/android"
 A_NAME = "{%s}name" % ANDROID
@@ -91,6 +92,14 @@ def cmd(argv: list[str]) -> None:
     subprocess.run(argv, check=True)
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for data in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(data)
+    return digest.hexdigest()
+
+
 def validate_signed_apk(path: Path, debug_package: str) -> dict:
     if not path.is_file() or path.stat().st_size < 10000:
         raise ValueError("missing/empty signed APK")
@@ -109,28 +118,98 @@ def validate_signed_apk(path: Path, debug_package: str) -> dict:
         ]
         if values.count("APP_MOD_LIB") != 1 or values.count("APP_LIB_PATH") != 1:
             raise ValueError("rebuilt DEX missing or duplicating native library configuration")
-    return {"apk": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    return {"apk": str(path), "sha256": sha256_file(path),
             "package": debug_package, "size_bytes": path.stat().st_size}
 
 
-def build(apk: Path, probe: Path, output: Path, package: str,
-          apktool: str, zipalign: str, apksigner: str, keytool: str, aapt: str = "aapt") -> dict:
-    # Read/validate everything we can before creating any output directory.
-    if not apk.is_file() or not probe.is_file():
-        raise ValueError("original APK and diagnostic libclient.so must exist")
-    if output.exists():
-        raise ValueError("output directory already exists; refusing to overwrite")
-    with zipfile.ZipFile(apk) as archive:
+def validate_resume_stage(output: Path, source_inventory) -> Path:
+    """Validate the prior failure point following successful apktool decode.
+
+    No output files are modified during this preflight.
+    """
+    if source_inventory is None:
+        raise ValueError("resume requires --extracted-dir, not an APK input")
+    if not output.is_dir() or output.is_symlink():
+        raise ValueError("resume output must be an existing, non-symlink directory")
+    original = output / "original-extracted-unsigned.apk"
+    decoded = output / "decoded"
+    if not original.is_file() or not decoded.is_dir() or decoded.is_symlink():
+        raise ValueError("resume requires original-extracted-unsigned.apk and decoded/ from the previous run")
+    if not (decoded / "apktool.yml").is_file() or not (decoded / "AndroidManifest.xml").is_file():
+        raise ValueError("resume requires a completed apktool decode")
+    find_activity(decoded)
+    for name in ("unsigned.apk", "aligned.apk", "sin-sourcevr-loader-probe.apk",
+                 "build-report.json", "ephemeral-debug.keystore", "MainActivity.original.smali.txt"):
+        if (output / name).exists():
+            raise ValueError(f"resume cannot overwrite an existing partial artifact: {name}")
+    with zipfile.ZipFile(original) as archive:
+        if set(archive.namelist()) != {name for name, _ in source_inventory.files}:
+            raise ValueError("resume original APK members differ from extracted source")
         verify_original_dex(archive.read("classes.dex"))
+    # A previous successful patch is not the pre-decode failure point.
+    patch_smali(find_activity(decoded).read_text(encoding="utf-8"))
+    return original
+
+
+def build(apk: Path | None, probe: Path, output: Path, package: str,
+          apktool: str, zipalign: str, apksigner: str, keytool: str, aapt: str = "aapt",
+          extracted_dir: Path | None = None, resume: bool = False) -> dict:
+    # Read/validate everything before creating the output directory.
+    if (apk is None) == (extracted_dir is None):
+        raise ValueError("specify exactly one complete original APK or extracted directory")
+    if not probe.is_file():
+        raise ValueError("diagnostic libclient.so must exist")
+    if not resume and output.exists():
+        raise ValueError("output directory already exists; refusing to overwrite")
+    source_inventory = None
+    if extracted_dir is not None:
+        source_inventory = inventory(extracted_dir)
+        # Avoid accidentally archiving earlier builds under the original root.
+        try:
+            output.resolve(strict=False).relative_to(source_inventory.root)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("output directory must be outside the extracted source folder")
+    else:
+        assert apk is not None
+        if not apk.is_file():
+            raise ValueError("original APK must exist")
+        with zipfile.ZipFile(apk) as archive:
+            verify_original_dex(archive.read("classes.dex"))
     probe_hash = validate_arm64_probe(probe.read_bytes())
     for tool in (apktool, zipalign, apksigner, keytool, aapt):
         if shutil.which(tool) is None and not Path(tool).is_file():
             raise ValueError(f"required executable missing: {tool}")
     change_manifest('<manifest xmlns:android="%s" package="%s"><application/></manifest>' %
                     (ANDROID, ORIGINAL_PACKAGE), package)
-    output.mkdir(parents=True, exist_ok=False)
-    decoded = output / "decoded"
-    cmd([apktool, "d", "--force", "--output", str(decoded), str(apk)])
+    if source_inventory is not None:
+        # A 1.64GB input can briefly occupy many GB during decode/rebuild,
+        # ZIP alignment and APK signing. Fail early rather than filling the disk.
+        required = max(8 * 1024**3, source_inventory.bytes_total * 6)
+        try:
+            free = shutil.disk_usage(output.parent).free
+        except OSError as error:
+            raise ValueError(f"cannot check output-drive free space: {error}") from error
+        if free < required:
+            raise ValueError(
+                f"not enough free disk space for a safe APK rebuild: "
+                f"{free / (1024**3):.1f} GiB free, "
+                f"recommend at least {required / (1024**3):.1f} GiB"
+            )
+    if resume:
+        apk = validate_resume_stage(output, source_inventory)
+        decoded = output / "decoded"
+        print(f"[RESUME] Verified prior decode: {decoded}; skipping original APK reconstruction and decoding")
+    else:
+        output.mkdir(parents=True, exist_ok=False)
+        if source_inventory is not None:
+            apk = output / "original-extracted-unsigned.apk"
+            reconstruct_unsigned(source_inventory, apk)
+        assert apk is not None
+        decoded = output / "decoded"
+        cmd([apktool, "d", "--force", "--output", str(decoded), str(apk)])
+    assert apk is not None
     activity = find_activity(decoded)
     original_smali = activity.read_text(encoding="utf-8")
     changed_smali, summary = patch_smali(original_smali)
@@ -165,7 +244,9 @@ def build(apk: Path, probe: Path, output: Path, package: str,
     if not match or match.group(1) != package:
         raise ValueError("signed APK package mismatch; refusing unverified side-by-side identity")
     result = validate_signed_apk(signed, package)
-    result.update({"source_apk_sha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
+    result.update({"source_apk_sha256": sha256_file(apk),
+                   "source_input_kind": "extracted_directory" if source_inventory else "complete_apk",
+                   "extracted_member_count": len(source_inventory.files) if source_inventory else None,
                    "probe_sha256": probe_hash, "modlib_patch": summary,
                    "limitations": [
                        "No actual Android startup or native module selection tested",
@@ -178,7 +259,10 @@ def build(apk: Path, probe: Path, output: Path, package: str,
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--apk", type=Path, required=True, help="Complete private original SourceVR APK")
+    original = p.add_mutually_exclusive_group(required=True)
+    original.add_argument("--apk", type=Path, help="Complete private original SourceVR APK")
+    original.add_argument("--extracted-dir", type=Path,
+                          help="Original extracted APK directory containing AndroidManifest.xml, resources.arsc, classes*.dex")
     p.add_argument("--probe", type=Path, required=True, help="CI-built ARM64 diagnostic libclient.so")
     p.add_argument("--output", type=Path, required=True, help="New directory; must not already exist")
     p.add_argument("--package", default=DEFAULT_PACKAGE)
@@ -188,20 +272,35 @@ def main() -> int:
     p.add_argument("--keytool", default="keytool")
     p.add_argument("--aapt", default="aapt", help="Required to verify the signed Android package identity")
     p.add_argument("--build", action="store_true", help="Actually create a separate signed APK")
+    p.add_argument("--resume", action="store_true", help="Reuse prior decoded output after verified pre-patch failure")
     args = p.parse_args()
     try:
-        dex = get_source_dex(apk=args.apk, dex=None)
+        source_inventory = inventory(args.extracted_dir) if args.extracted_dir else None
+        dex = ((args.extracted_dir / "classes.dex").read_bytes() if args.extracted_dir
+               else get_source_dex(apk=args.apk, dex=None))
         digest = verify_original_dex(dex)
         probe_hash = validate_arm64_probe(args.probe.read_bytes())
+        if args.resume:
+            if args.extracted_dir is None:
+                raise ValueError("--resume requires --extracted-dir")
+            validate_resume_stage(args.output, source_inventory)
         if not args.build:
             print(json.dumps({"status": "PLAN ONLY (no changes)",
                               "source_dex_sha256": digest,
+                              "input_kind": "extracted_directory" if source_inventory else "complete_apk",
+                              "extracted_entries": len(source_inventory.files) if source_inventory else None,
+                              "extracted_bytes": source_inventory.bytes_total if source_inventory else None,
+                              "native_load_counts": dict(source_inventory.native_load_counts) if source_inventory else None,
+                              "recommended_free_space_bytes": max(8 * 1024**3, source_inventory.bytes_total * 6) if source_inventory else None,
+                              "available_output_drive_bytes": shutil.disk_usage(args.output.parent).free if args.output.parent.exists() else None,
                               "probe_sha256": probe_hash,
                               "package": args.package, "output": str(args.output),
+                              "resume_validated": args.resume,
                               "next": "Pass --build to create the private signed test APK"}, indent=2))
             return 0
         result = build(args.apk, args.probe, args.output, args.package,
-                       args.apktool, args.zipalign, args.apksigner, args.keytool, args.aapt)
+                       args.apktool, args.zipalign, args.apksigner, args.keytool, args.aapt,
+                       extracted_dir=args.extracted_dir, resume=args.resume)
         print(json.dumps(result, indent=2))
         return 0
     except (OSError, ValueError, zipfile.BadZipFile, KeyError, subprocess.CalledProcessError) as exc:
