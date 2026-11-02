@@ -154,6 +154,20 @@ def build(apk: Path | None, probe: Path, output: Path, package: str,
             raise ValueError(f"required executable missing: {tool}")
     change_manifest('<manifest xmlns:android="%s" package="%s"><application/></manifest>' %
                     (ANDROID, ORIGINAL_PACKAGE), package)
+    if source_inventory is not None:
+        # A 1.64GB input can briefly occupy many GB during decode/rebuild,
+        # ZIP alignment and APK signing. Fail early rather than filling the disk.
+        required = max(8 * 1024**3, source_inventory.bytes_total * 6)
+        try:
+            free = shutil.disk_usage(output.parent).free
+        except OSError as error:
+            raise ValueError(f"cannot check output-drive free space: {error}") from error
+        if free < required:
+            raise ValueError(
+                f"not enough free disk space for a safe APK rebuild: "
+                f"{free / (1024**3):.1f} GiB free, "
+                f"recommend at least {required / (1024**3):.1f} GiB"
+            )
     output.mkdir(parents=True, exist_ok=False)
     if source_inventory is not None:
         apk = output / "original-extracted-unsigned.apk"
@@ -237,6 +251,8 @@ def main() -> int:
                               "extracted_entries": len(source_inventory.files) if source_inventory else None,
                               "extracted_bytes": source_inventory.bytes_total if source_inventory else None,
                               "native_load_counts": dict(source_inventory.native_load_counts) if source_inventory else None,
+                              "recommended_free_space_bytes": max(8 * 1024**3, source_inventory.bytes_total * 6) if source_inventory else None,
+                              "available_output_drive_bytes": shutil.disk_usage(args.output.parent).free if args.output.parent.exists() else None,
                               "probe_sha256": probe_hash,
                               "package": args.package, "output": str(args.output),
                               "next": "Pass --build to create the private signed test APK"}, indent=2))
