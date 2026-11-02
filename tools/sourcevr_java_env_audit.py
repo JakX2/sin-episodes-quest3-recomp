@@ -117,8 +117,14 @@ def audit(data, enforce_sha=True):
     setup = dex.method(MAIN + "->setupEngineEnvironment")
     setter = dex.method(MAIN + "->setenv")
     profiles = dex.method(LAUNCHER + "->supportedProfiles")
+    on_create = dex.method(MAIN + "->onCreate")
     require(len(setup) > 46 and len(setter) > 3 and len(profiles) > 92,
             "startup method too short")
+    require(len(on_create) > 201 and (on_create[171] & 255) == 0x71 and
+            dex.methods[on_create[172]] == MAIN + "->setupEngineEnvironment" and
+            (on_create[200] & 255) == 0x6f and
+            dex.methods[on_create[201]] == "Landroid/app/NativeActivity;->onCreate",
+            "expected environment setup before NativeActivity.onCreate")
     require((setup[40] & 255) == 0x54, "expected iget-object before APP_LIB_PATH")
     require(dex.fields[setup[41]] ==
             "Landroid/content/pm/ApplicationInfo;->nativeLibraryDir",
@@ -143,6 +149,11 @@ def audit(data, enforce_sha=True):
         "dex_sha256": digest,
         "source": "user-supplied SourceVR APK classes.dex",
         "startup_method": MAIN + "->setupEngineEnvironment",
+        "on_create_order": {
+            "setupEngineEnvironment_pc": 171,
+            "NativeActivity_onCreate_pc": 200,
+            "interpretation": "normal startup code orders env initialization before native activity initialization",
+        },
         "startup_pc": {
             "nativeLibraryDir_iget": 40,
             "APP_LIB_PATH_const_string": 42,
