@@ -135,6 +135,13 @@ def build(apk: Path | None, probe: Path, output: Path, package: str,
     source_inventory = None
     if extracted_dir is not None:
         source_inventory = inventory(extracted_dir)
+        # Avoid accidentally archiving earlier builds under the original root.
+        try:
+            output.resolve(strict=False).relative_to(source_inventory.root)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("output directory must be outside the extracted source folder")
     else:
         assert apk is not None
         if not apk.is_file():
@@ -229,6 +236,7 @@ def main() -> int:
                               "input_kind": "extracted_directory" if source_inventory else "complete_apk",
                               "extracted_entries": len(source_inventory.files) if source_inventory else None,
                               "extracted_bytes": source_inventory.bytes_total if source_inventory else None,
+                              "native_load_counts": dict(source_inventory.native_load_counts) if source_inventory else None,
                               "probe_sha256": probe_hash,
                               "package": args.package, "output": str(args.output),
                               "next": "Pass --build to create the private signed test APK"}, indent=2))
