@@ -7,7 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu runner already provides Android SDK command-line tools.
+      # setup-android@v3 currently requests the removed 'tools' package.
+      - name: Android SDK environment
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          command -v sdkmanager
       - name: Install pinned Android NDK
         run: sdkmanager --install "ndk;27.2.12479018"
       - name: Cross-compile native bridge
