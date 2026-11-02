@@ -72,7 +72,7 @@ First use of the whole-DLL inventory on this *SiN-specific* subsystem, verified 
 
 **Client:**
 - **C_DynamicDifficulty : CBaseGameSystem** has 12 primary vtable slots, but only **2 differ** from CBaseGameSystem.
-- The changed slot indices are **0** (original parent 0x240566C0, child 0x241FAC90, consistent with destructor) and **11** (original parent 0x2413D2B0, child **0x241FAC70**). This last function is a targeted entry for client-side dynamic difficulty lifecycle investigation; its exact Source virtual name remains unverified.
+- **Corrected by the actual disassembly (PR #72):** slot **0** has child 0x241FAC90, which registers original user-message hooks via 0x241CFF70, and slot **11** has child 0x241FAC70, which follows a deleting-destructor path. The earlier tentative destructor label for slot 0 was backwards. Their original parent addresses were 0x240566C0 and 0x2413D2B0, respectively.
 
 **Server:**
 - **CDynamicDifficulty** has only **one RTTI-identified virtual slot** (0x222B9050). This means the vtable census alone is *especially inadequate* for reconstructing its manager logic; nonvirtual methods and global/static references must be traced separately.
