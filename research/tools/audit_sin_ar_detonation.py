@@ -60,6 +60,13 @@ WITNESSES = {
     0x22288A95: b"\xd8\x1d" + struct.pack("<I",0x22455F38), # screen shake clamp
     0x22288AA2: bytes.fromhex("c744240c00008041"), # clamp amplitude to 16
     0x222A5E39: bytes.fromhex("ff90b8000000"), # global engine vtable +0xB8
+    # x86 stack mapping through the CTakeDamageInfo-like constructor:
+    0x223148D1: bytes.fromhex("8b54240c"),     # radius candidate from +0x798
+    0x223148D5: bytes.fromhex("8b442414"),     # damage candidate from +0x7AC
+    0x223148D9: bytes.fromhex("6a01566a0052576a006a4050"), # arguments, DMG_BLAST=0x40
+    0x223148EC: bytes.fromhex("5055"),         # attacker + inflictor prior to constructor
+    0x221F8A00: bytes.fromhex("c21400"),       # constructor callee cleans five args
+
 }
 ORIGINAL_STRINGS = {
     0x22407CB0: b"Scorch\x00",
@@ -126,6 +133,12 @@ def audit(server: bytes, *, check_hash: bool=True) -> dict:
             "detonation_guard_flag_offset":"0x795",
             "guard_behavior":"returns without effects if zero; clears on detonation",
             "explosion_parameters_read_offsets":["0x798","0x7AC"],
+            "original_initial_damage_candidate":{"offset":"0x7AC","value":100.0,
+                "basis":"passed as damage scalar in CTakeDamageInfo-like constructor, compiler callsite stack order"},
+            "original_initial_blast_radius_candidate":{"offset":"0x798","value":250.0,
+                "basis":"remains radius scalar in subsequent area damage dispatch"},
+            "blast_damage_type_bitmask":"0x40",
+
             "evolving_think_field_offset":"0x7C4",
             "think_requeue_seconds":struct.unpack("<f",pe.at(0x223D9CB0,4))[0],
             "think_time_comparison_delta_seconds":struct.unpack("<f",pe.at(0x224771F8,4))[0],
@@ -149,7 +162,7 @@ def audit(server: bytes, *, check_hash: bool=True) -> dict:
         "verified_original_direct_calls":edges,
         "limitations":[
             "Label Detonate is based on four independently named grenade Detonate exports from prior report.",
-            "Field +0x798 and +0x7AC enter effect/damage-related paths, but neither is yet formally identified as radius or damage in the original class.",
+            "Original stack ordering plus Source CTakeDamageInfo/RadiusDamage signatures support +0x7AC as damage (100) and +0x798 as radius (250); exact SiN source field names and runtime skill scaling remain unverified.",
             "Camera feedback at 0x22288A90 and damage dispatch at 0x222A5E10 have contextual evidence; their exact Source API identifiers and argument types remain to prove.",
             "Literal effect parameter values are not automatically physical VR units.",
             "Other indirect/virtual calls and trace branch outcomes require full control-flow and original runtime comparison.",
