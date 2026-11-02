@@ -44,6 +44,7 @@ def fixtures():
         if name in HOOKS:
             site,cb=HOOKS[name]
             client.put(site-5,b"\x68"+struct.pack("<I",cb))
+            client.put(site,b"\x68"+struct.pack("<I",cv))
             client.put(site+5,rel32(site+5,HOOK_REGISTER))
     for name,(va,site,cb) in OTHER_CLIENT_HOOKS.items():
         client.put(va,name.encode()+b"\x00")
