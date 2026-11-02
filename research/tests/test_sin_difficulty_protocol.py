@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/"tools"))
 from audit_sin_difficulty_protocol import (
-    MESSAGES,HOOKS,OTHER_CLIENT_HOOKS,CLIENT_DELEGATIONS,
+    MESSAGES,HOOKS,OTHER_CLIENT_HOOKS,CLIENT_DELEGATIONS,ACTION_FIELDS,
     DECISION_SERVER_WRITES,DECISION_CLIENT_READS,SUCCESS_CALLS,
     SUCCESS_LOOP_TEST,REGISTRY_FUNCTION,HOOK_REGISTER,
     audit,verify_evidence,VerificationError,
@@ -66,6 +66,10 @@ def fixtures():
         client.put(site,b"\xD8\x1D"+struct.pack("<I",value_va))
     client.put(0x242DE2F8,struct.pack("<f",0.0))
     client.put(0x24276F84,struct.pack("<f",-1.0))
+    for name,(read_va,read_bytes,fmt_push_va,fmt_va,fmt_text,_,_) in ACTION_FIELDS.items():
+        server.put(read_va,read_bytes)
+        server.put(fmt_push_va,b"\x68"+struct.pack("<I",fmt_va))
+        server.put(fmt_va,fmt_text)
     for name,site in (
         ("DDDecisionMade",0x222B9775),
         ("DDSuccessModifiers",0x222BA9F6),
@@ -103,6 +107,21 @@ class DifficultyProtocolTests(unittest.TestCase):
     def test_success_modifiers_has_twenty_floats_in_ten_pairs(self):
         success=verify_evidence(self.client,self.server)["success_modifiers"]
         self.assertEqual(success["pairs_per_message"]*success["values_per_pair"],20)
+
+    def test_server_difficulty_action_member_names_and_offsets(self):
+        result=verify_evidence(self.client,self.server)
+        fields=result["server_dynamic_difficulty_action_fields"]
+        self.assertEqual({
+            key: value["original_server_field_offset"] for key,value in fields.items()
+        },{"time_started":"0x2BC","value":"0x2C8",
+           "decision":"0x2C4","advisor":"0x2C0"})
+        self.assertEqual(fields["advisor"]["type"],"i32")
+        self.assertEqual(fields["time_started"]["type"],"f32")
+
+    def test_corrupted_original_action_debug_field_read_is_rejected(self):
+        self.server.corrupt(ACTION_FIELDS["decision"][0])
+        with self.assertRaisesRegex(VerificationError,"member read"):
+            verify_evidence(self.client,self.server)
 
     def test_corrupted_server_message_size_is_detected(self):
         self.server.corrupt(MESSAGES["GamePlayVarValue"][3]-1)
