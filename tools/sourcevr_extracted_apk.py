@@ -31,6 +31,7 @@ class SourceInventory:
     bytes_total: int
     dex_files: tuple[str, ...]
     dex_sha256: str
+    native_load_counts: tuple[tuple[str, int], ...]
 
 
 def inventory(root: Path, *, pin_dex: bool = True) -> SourceInventory:
@@ -77,9 +78,30 @@ def inventory(root: Path, *, pin_dex: bool = True) -> SourceInventory:
     if dex_names != ["classes.dex"] + [f"classes{i}.dex" for i in range(2, len(dex_names)+1)]:
         raise ValueError(f"invalid / missing multidex sequence: {dex_names}")
     digest = hashlib.sha256((root / "classes.dex").read_bytes()).hexdigest()
-    if pin_dex and digest != _EXPECTED_DEX:
-        raise ValueError(f"unrecognized SourceVR classes.dex: {digest}")
-    return SourceInventory(root, tuple(members), bytes_total, tuple(dex_names), digest)
+    native_load_counts: list[tuple[str, int]] = []
+    if pin_dex:
+        if digest != _EXPECTED_DEX:
+            raise ValueError(f"unrecognized SourceVR classes.dex: {digest}")
+        if dex_names != [f"classes{i}.dex" if i > 1 else "classes.dex" for i in range(1, 6)]:
+            raise ValueError(f"expected five DEX files from this SourceVR build, got: {dex_names}")
+        for profile in ("hl2", "entropyzero"):
+            load_name = f"assets/sourcevr/v1/native/{profile}.load"
+            if load_name not in names:
+                raise ValueError(f"missing required native profile graph: {load_name}")
+            lines = (root / load_name).read_text(encoding="utf-8").splitlines()
+            if len(lines) != 31 or len(set(lines)) != len(lines):
+                raise ValueError(f"unexpected {profile} native .load graph (expected 31 distinct entries)")
+            for member in lines:
+                if not re.fullmatch(
+                    r"sourcevr/v1/native/blobs/[0-9a-f]{64}/lib[A-Za-z0-9_+.-]+\.so",
+                    member
+                ):
+                    raise ValueError(f"unexpected native blob name in {profile}.load: {member}")
+                if "assets/" + member not in names:
+                    raise ValueError(f"missing {profile} native blob: {member}")
+            native_load_counts.append((profile, len(lines)))
+    return SourceInventory(root, tuple(members), bytes_total, tuple(dex_names),
+                           digest, tuple(native_load_counts))
 
 
 def reconstruct_unsigned(inventory_data: SourceInventory, target: Path) -> dict:
@@ -116,6 +138,7 @@ def reconstruct_unsigned(inventory_data: SourceInventory, target: Path) -> dict:
         "dex": list(inventory_data.dex_files),
         "dex_sha256": inventory_data.dex_sha256,
         "input_bytes": inventory_data.bytes_total,
+        "native_load_counts": dict(inventory_data.native_load_counts),
         "zip_bytes": target.stat().st_size,
         "note": "Unsigned transport container only; must rebuild and sign a separate debug APK.",
     }
