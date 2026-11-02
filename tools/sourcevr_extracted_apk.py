@@ -25,6 +25,14 @@ REQUIRED = (
 _DEX = re.compile(r"classes([2-9][0-9]*)?\.dex$")
 _SIGNED_META = re.compile(r"(?i)^META-INF/[^/]+\.(?:RSA|DSA|EC|SF|MF)$")
 _EXPECTED_DEX = "0dea2c61aa36557f49d125bd91607228e522fb25dbe023c1867b54d7ae7ec74a"
+# Strict root layout of the owner's specific inspected SourceVR extraction.
+# User-created helpers under ./tools/ must never silently join the rebuilt APK.
+_ALLOWED_ROOT_FILES = {"AndroidManifest.xml", "resources.arsc", "DebugProbesKt.bin"}
+_ALLOWED_ROOT_DIRS = {"assets", "res", "lib", "META-INF", "in", "google", "kotlin", "org"}
+# Fail closed on unexpected *internal* files, but keep unrelated local tooling
+# completely outside the APK package. The original root-level names are pinned
+# by the exact classes.dex fingerprint below.
+
 
 
 @dataclass(frozen=True)
@@ -35,6 +43,7 @@ class SourceInventory:
     dex_files: tuple[str, ...]
     dex_sha256: str
     native_load_counts: tuple[tuple[str, int], ...]
+    ignored_files: tuple[str, ...]
 
 
 def inventory(root: Path, *, pin_dex: bool = True) -> SourceInventory:
@@ -44,6 +53,7 @@ def inventory(root: Path, *, pin_dex: bool = True) -> SourceInventory:
     members: list[tuple[str, Path]] = []
     seen: set[str] = set()
     bytes_total = 0
+    ignored_files: list[str] = []
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
             raise ValueError(f"symlink in input is forbidden: {path}")
@@ -53,6 +63,10 @@ def inventory(root: Path, *, pin_dex: bool = True) -> SourceInventory:
         if not stat.S_ISREG(mode):
             raise ValueError(f"non-regular extracted entry: {path}")
         rel = path.relative_to(root).as_posix()
+        top = rel.split("/", 1)[0]
+        if top not in _ALLOWED_ROOT_DIRS and top not in _ALLOWED_ROOT_FILES and not _DEX.fullmatch(top):
+            ignored_files.append(rel)
+            continue
         if not rel or rel.startswith("/") or ".." in rel.split("/") or "\\" in rel:
             raise ValueError(f"unsafe APK entry path: {rel}")
         folded = rel.casefold()
@@ -104,7 +118,7 @@ def inventory(root: Path, *, pin_dex: bool = True) -> SourceInventory:
                     raise ValueError(f"missing {profile} native blob: {member}")
             native_load_counts.append((profile, len(lines)))
     return SourceInventory(root, tuple(members), bytes_total, tuple(dex_names),
-                           digest, tuple(native_load_counts))
+                           digest, tuple(native_load_counts), tuple(ignored_files))
 
 
 def reconstruct_unsigned(inventory_data: SourceInventory, target: Path) -> dict:
@@ -142,6 +156,7 @@ def reconstruct_unsigned(inventory_data: SourceInventory, target: Path) -> dict:
         "dex_sha256": inventory_data.dex_sha256,
         "input_bytes": inventory_data.bytes_total,
         "native_load_counts": dict(inventory_data.native_load_counts),
+        "ignored_local_files": list(inventory_data.ignored_files),
         "zip_bytes": target.stat().st_size,
         "note": "Unsigned transport container only; must rebuild and sign a separate debug APK.",
     }
@@ -164,6 +179,9 @@ def main() -> int:
             "classes_dex_sha256": info.dex_sha256,
             "dex_files": list(info.dex_files),
             "native_load_counts": dict(info.native_load_counts),
+            "ignored_local_files": list(info.ignored_files),
+            "recommended_free_space_bytes": max(8 * 1024**3, info.bytes_total * 6),
+            "space_advice": "Builder temporarily stores a source APK, decoded resources, unsigned, aligned and signed copies. Allow at least the recommended free space in the output drive.",
             "next": "Run sourcevr_isolated_apk_builder.py with --extracted-dir, --probe and --build to construct an isolated private diagnostic APK.",
             "not_proven": "No reconstructed APK has been built, signed or launched by this preflight."
         }
