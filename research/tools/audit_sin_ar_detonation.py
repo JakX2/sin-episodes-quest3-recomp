@@ -57,6 +57,9 @@ WITNESSES = {
     0x2231444A: bytes.fromhex("d986c4070000"),       # evolving field +0x7C4
     0x22314450: b"\xd8\x1d" + struct.pack("<I",0x224771FC), # vs 300.0
     0x22314463: b"\xdc\x05" + struct.pack("<I",0x22467448), # +15.0 double
+    0x22288A95: b"\xd8\x1d" + struct.pack("<I",0x22455F38), # screen shake clamp
+    0x22288AA2: bytes.fromhex("c744240c00008041"), # clamp amplitude to 16
+    0x222A5E39: bytes.fromhex("ff90b8000000"), # global engine vtable +0xB8
 }
 ORIGINAL_STRINGS = {
     0x22407CB0: b"Scorch\x00",
@@ -67,6 +70,7 @@ FLOATS = {
     0x224771F8: 0.1,  # think-time compare
     0x223DDDCC: 60.0, # vector displacement multiplier during trace
     0x224771FC: 300.0, # evolving +0x7C4 threshold
+    0x22455F38: 16.0, # actual UTIL_ScreenShake clamp in original SiN server
 }
 DOUBLES = {0x22467448: 15.0}
 
@@ -135,6 +139,7 @@ def audit(server: bytes, *, check_hash: bool=True) -> dict:
             "trace_vector_scale":60.0,
             "area_feedback_function_va":"0x22288A90",
             "feedback_call_literal_float_args":[750.0,1.0,150.0,25.0],
+            "feedback_helper_original_amplitude_clamp":16.0,
             "engine_virtual_effect_call_offset":"0x4C",
             "damage_info_like_constructor_va":"0x221F89C0",
             "damage_effect_dispatch_va":"0x222A5E10",
