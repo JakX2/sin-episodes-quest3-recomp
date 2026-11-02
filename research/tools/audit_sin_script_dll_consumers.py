@@ -228,7 +228,11 @@ def inspect_scripts(script_zip: bytes, registered: set[str]) -> dict:
             vehicles.append({
                 "path":path,
                 "sha256":hashlib.sha256(z.read(path)).hexdigest(),
-                "engine_settings":{k:v for k,v in scalar(engine).items() if k in (
+                # Engine has intentionally repeated scalar gear keys; only
+                # collect distinct named overview settings here and report
+                # repeated gear entries separately instead of discarding them.
+                "engine_settings":{k.lower():v for k,v in engine if isinstance(v,str)
+                                   and k.lower() in (
                     "horsepower","maxrpm","maxspeed","maxreversespeed","autotransmission","axleratio")},
                 "gear_entries":sum(k.lower()=="gear" for k,_ in engine),
                 "axle_entries":sum(k.lower()=="axle" for k,_ in car),
