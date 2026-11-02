@@ -26,7 +26,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/27.2.12479018/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 \
             -DANDROID_STL=c++_shared -DBUILD_TESTING=OFF
-          cmake --build build-android --target sin_weapon_bridge --parallel
+          cmake --build build-android --target sin_weapon_bridge sin_weapon_bridge_loader --parallel
       - name: Check ARM64 shared library and exported C ABI
         run: |
           LIB="$(find build-android -type f -name libsin_weapon_bridge.so -print -quit)"
@@ -35,11 +35,28 @@ jobs:
           readelf -h "$LIB" | grep -q 'Machine:.*AArch64'
           readelf --dyn-syms --wide "$LIB" | grep -q 'sin_weapon_abi_version'
           readelf --dyn-syms --wide "$LIB" | grep -q 'sin_weapon_frame'
-          echo "Verified ARM64 ELF and C entry points: $LIB"
+          LOADER="$(find build-android -type f -name sin_weapon_bridge_loader -print -quit)"
+          test -n "$LOADER"
+          file "$LOADER"
+          readelf -h "$LOADER" | grep -q 'Machine:.*AArch64'
+          echo "Verified ARM64 bridge and dlopen loader: $LIB and $LOADER"
+      - name: Stage standalone Quest test package
+        run: |
+          mkdir -p build-android/quest-smoke
+          cp build-android/libsin_weapon_bridge.so build-android/quest-smoke/
+          cp build-android/sin_weapon_bridge_loader build-android/quest-smoke/
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          CXX_RUNTIME="$NDK/sources/cxx-stl/llvm-libc++/libs/arm64-v8a/libc++_shared.so"
+          if [ ! -f "$CXX_RUNTIME" ]; then
+            CXX_RUNTIME="$(find "$NDK" -type f -path '*/aarch64-linux-android/libc++_shared.so' -print -quit)"
+          fi
+          test -f "$CXX_RUNTIME"
+          cp "$CXX_RUNTIME" build-android/quest-smoke/
+          test -s build-android/quest-smoke/libc++_shared.so
       - name: Publish standalone shared-library artifact
         uses: actions/upload-artifact@v4
         with:
           name: sin-weapon-bridge-android-arm64
-          path: build-android/libsin_weapon_bridge.so
+          path: build-android/quest-smoke/
           if-no-files-found: error
           retention-days: 7
