@@ -75,7 +75,7 @@ The Phase 98 stacked PR's GitHub CI passed Linux, NDK ARM64 and x86_64 emulator 
 - Phase 100 adds a read-only SourceVR APK/TXT/native package inventory for library variants, manifests and architecture identification.
 - Phase 101 adds a bounded read-only ELF64 native dependency/export inspector. Neither tool proves compatible SourceVR mod loading.
 - Phase 102 implements an engine-neutral event relay on the original 13-symbol C host ABI, with stale-generation protection.
-- Phase 103 packages that relay as a separate native shared library with **six C entry points**, and adds a real `dlopen`/event-dispatch test using a synthetic host. See [Phase 103](PHASE103_NATIVE_EVENT_BRIDGE.md).
+- Phase 103 packages that relay as a separate native shared library with **six C entry points**. Linux `dlopen`/event-dispatch tests and an **Android x86_64 emulator Bionic runtime** test passed with a fabricated host; the new bridge also builds as an Android ARM64 ELF. None of these tests uses a real Source game host or Quest HMD. See [Phase 103](PHASE103_NATIVE_EVENT_BRIDGE.md).
 - **Still no real Source engine host, custom SourceVR game-DLL support, SiN map or headset execution.** R1 is blocked.
 
 ## Integration blockers and recommended next engineering work
