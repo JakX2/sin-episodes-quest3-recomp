@@ -96,11 +96,14 @@ class FullRegistryTests(unittest.TestCase):
         self.assertEqual(rows["registered_without_named_script"], ["weapon_smg"])
 
     def test_metadata_only_report(self):
-        x = report(self.fake, b".?AVC_WeaponMagnum@@\x00",
-                   check_hash=False)
+        client = bytearray(self.fake)
+        struct.pack_into("<I", client, 0x98 + 28, 0x24000000)
+        client.extend(b".?AVC_WeaponMagnum@@\x00")
+        x = report(self.fake, bytes(client), check_hash=False)
         self.assertEqual(x["registry"]["matching_callshape_entries"], 32)
         self.assertEqual(x["rtti"]["client_count"], 1)
         self.assertEqual(x["rtti"]["server_count"], 0)
+        self.assertEqual(x["actual_createinterface_registrations"]["client_count"], 0)
 
 
 if __name__ == "__main__":
