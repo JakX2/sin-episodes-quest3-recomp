@@ -26,6 +26,8 @@ ctest --test-dir build --output-on-failure
 
 The CMake project builds `sin_weapon_runtime`, a shared `sin_weapon_bridge` C ABI, and their smoke tests. The bridge is **not** a Source Engine game module. See [Android ARM64 native bridge](docs/ARM64_NATIVE_BRIDGE.md) for cross-compilation and limitations. The tests use a fake host and **synthetic fixture ammo capacity/model/FOV values**; they demonstrate integration behavior but do not establish live gameplay accuracy.
 
+The optional `sin_weapon_bridge_loader` dynamically loads our independent C ABI on Linux or Android. See the [Quest 3 ADB smoke test](docs/QUEST3_DEVICE_SMOKE.md). This is not a Source game module.
+
 ## What works in the prototype
 
 - Source-style zoom button edge recognition (`0x00080000`) and a guarded ADS toggle/restore reference.

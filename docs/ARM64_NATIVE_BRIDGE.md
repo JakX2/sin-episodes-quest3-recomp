@@ -37,3 +37,7 @@ Inspect the ELF architecture and exported symbols with `llvm-readelf -h -s` usin
 ## Next actual engine milestone
 
 Choose a compatible game-module SDK revision, implement the Source `CreateInterface`/game lifecycle interface with correct vtables, and verify a minimal implementation loading **in an isolated copy** of the target runtime. Keep launcher/package modifications local and retain legitimate game installation assets outside the public repository.
+
+## Dynamic-loader device smoke test
+
+The new `sin_weapon_bridge_loader` program uses `dlopen`/`dlsym` to exercise this C ABI without static linking and can run through ADB on the Quest 3. Follow [the device smoke test](QUEST3_DEVICE_SMOKE.md). It does not load SourceVR engine components.
