@@ -34,7 +34,7 @@ def make_fake_evidence():
         write(va,struct.pack("<f",value))
     for va,raw in OBJECT_FIELD_INIT.items():
         write(va,raw)
-    write(0x220017E0,b"\x30\xc0\xc3")
+    write(0x220017E0,b"\x32\xc0\xc3")
     write(0x22253C30,b"\xb0\x01\xc3")
     return bytes(data)
 
