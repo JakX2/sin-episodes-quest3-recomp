@@ -244,7 +244,8 @@ if(SIN_BUILD_ANDROID_SCREEN_PROBE)
   add_library(sin_android_screen_probe SHARED
     android-screen-test/app/src/main/cpp/probe_jni.cpp)
   target_include_directories(sin_android_screen_probe PRIVATE include)
-  target_link_libraries(sin_android_screen_probe PRIVATE sin_compat_event_bridge)
+  target_link_libraries(sin_android_screen_probe PRIVATE
+    sin_compat_event_bridge sin_compat_host_abi)
   target_compile_options(sin_android_screen_probe PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
   set_target_properties(sin_android_screen_probe PROPERTIES
