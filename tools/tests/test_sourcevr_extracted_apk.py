@@ -43,6 +43,15 @@ class SourceVRExtractedFolderTests(unittest.TestCase):
                          hashlib.sha256((self.root / "classes.dex").read_bytes()).hexdigest())
         self.assertGreater(result.bytes_total, 100)
 
+    def test_ignore_developer_helpers_outside_original_apk_layout(self):
+        helper = self.root / "tools/sourcevr_extracted_apk.py"
+        helper.parent.mkdir(parents=True)
+        helper.write_text("# helper from GitHub\\n", encoding="utf-8")
+        data = inventory(self.root, pin_dex=False)
+        self.assertIn("tools/sourcevr_extracted_apk.py", data.ignored_files)
+        self.assertNotIn(("tools/sourcevr_extracted_apk.py", helper), data.files)
+        self.assertEqual(len(data.files), 31)
+
     def test_reconstruct_integrity_and_immutability(self):
         source = inventory(self.root, pin_dex=False)
         target = pathlib.Path(self.tmp.name) / "unsigned.apk"
