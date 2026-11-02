@@ -6,6 +6,7 @@ import android.content.ClipboardManager;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -50,6 +51,10 @@ public final class MainActivity extends Activity {
                 + "Primary ABI: " + Build.SUPPORTED_ABIS[0] + "\n\n"
                 + nativeRunSelfTest();
             output.setText(diagnostic);
+            // CI checks the same diagnostic shown on the Android screen.
+            Log.i("SIN_ANDROID_PROBE", diagnostic.contains("RESULT: PASS")
+                ? "RESULT: PASS (native JNI on-screen bridge self-test)"
+                : "RESULT: FAIL (native JNI on-screen bridge self-test)");
             output.setTextColor(diagnostic.contains("RESULT: PASS")
                 ? Color.rgb(133, 235, 181) : Color.rgb(255, 170, 110));
         } catch (Throwable error) {
