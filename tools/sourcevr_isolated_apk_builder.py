@@ -114,7 +114,7 @@ def validate_signed_apk(path: Path, debug_package: str) -> dict:
 
 
 def build(apk: Path, probe: Path, output: Path, package: str,
-          apktool: str, zipalign: str, apksigner: str, keytool: str) -> dict:
+          apktool: str, zipalign: str, apksigner: str, keytool: str, aapt: str = "aapt") -> dict:
     # Read/validate everything we can before creating any output directory.
     if not apk.is_file() or not probe.is_file():
         raise ValueError("original APK and diagnostic libclient.so must exist")
@@ -123,7 +123,7 @@ def build(apk: Path, probe: Path, output: Path, package: str,
     with zipfile.ZipFile(apk) as archive:
         verify_original_dex(archive.read("classes.dex"))
     probe_hash = validate_arm64_probe(probe.read_bytes())
-    for tool in (apktool, zipalign, apksigner, keytool):
+    for tool in (apktool, zipalign, apksigner, keytool, aapt):
         if shutil.which(tool) is None and not Path(tool).is_file():
             raise ValueError(f"required executable missing: {tool}")
     change_manifest('<manifest xmlns:android="%s" package="%s"><application/></manifest>' %
@@ -158,6 +158,12 @@ def build(apk: Path, probe: Path, output: Path, package: str,
          "--ks-pass", "pass:android", "--key-pass", "pass:android",
          "--out", str(signed), str(aligned)])
     cmd([apksigner, "verify", "--verbose", str(signed)])
+    # Verify ACTUAL compiled manifest identity, not just our decoded XML.
+    manifest_dump = subprocess.run([aapt, "dump", "badging", str(signed)],
+                                   capture_output=True, text=True, check=True).stdout
+    match = re.search(r"(?m)^package:\\s+name='([^']+)'", manifest_dump)
+    if not match or match.group(1) != package:
+        raise ValueError("signed APK package mismatch; refusing unverified side-by-side identity")
     result = validate_signed_apk(signed, package)
     result.update({"source_apk_sha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
                    "probe_sha256": probe_hash, "modlib_patch": summary,
@@ -180,6 +186,7 @@ def main() -> int:
     p.add_argument("--zipalign", default="zipalign")
     p.add_argument("--apksigner", default="apksigner")
     p.add_argument("--keytool", default="keytool")
+    p.add_argument("--aapt", default="aapt", help="Required to verify the signed Android package identity")
     p.add_argument("--build", action="store_true", help="Actually create a separate signed APK")
     args = p.parse_args()
     try:
@@ -194,7 +201,7 @@ def main() -> int:
                               "next": "Pass --build to create the private signed test APK"}, indent=2))
             return 0
         result = build(args.apk, args.probe, args.output, args.package,
-                       args.apktool, args.zipalign, args.apksigner, args.keytool)
+                       args.apktool, args.zipalign, args.apksigner, args.keytool, args.aapt)
         print(json.dumps(result, indent=2))
         return 0
     except (OSError, ValueError, zipfile.BadZipFile, KeyError, subprocess.CalledProcessError) as exc:
