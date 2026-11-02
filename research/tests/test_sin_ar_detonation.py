@@ -52,6 +52,7 @@ class GrenadeDetonationTests(unittest.TestCase):
                          struct.unpack("<f", struct.pack("<f", .1))[0])
         self.assertEqual(result["effects"]["decals"], ["Scorch", "SmallScorch"])
         self.assertEqual(result["effects"]["trace_vector_scale"], 60.0)
+        self.assertEqual(result["effects"]["feedback_helper_original_amplitude_clamp"], 16.0)
         self.assertEqual(result["effects"]["feedback_call_literal_float_args"],
                          [750.0, 1.0, 150.0, 25.0])
         self.assertEqual(result["state"]["evolving_field_increment"], 15.0)
