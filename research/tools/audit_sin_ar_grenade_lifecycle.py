@@ -17,7 +17,7 @@ import struct
 
 from audit_full_sin_game_dlls import scan_registrations
 from audit_sin_rtti_vtables import scan
-from verify_gameplay_entity_registry import PEImage, VerificationError, SERVER_SHA256
+from verify_gameplay_entity_registry import PEImage, VerificationError, SERVER_SHA256, CLIENT_SHA256
 
 AR = "CGrenadeAR"
 BASE = "CBaseGrenade"
@@ -70,9 +70,12 @@ NUMERIC_FIELDS = {
     0x224771F8: 0.1,   # original single-precision value
 }
 OBJECT_FIELD_INIT = {
-    0x22314BD2: (0x7AC, 100.0),
-    0x22314C05: (0x798, 250.0),
-    0x22314CED: (0x7C4, 100.0),
+    # Actual compiled initialization instructions in CGrenadeAR's spawn setup.
+    0x22314BFB: b"\xc7\x86" + struct.pack("<I",0x7AC) + struct.pack("<f",100.0),
+    0x22314C05: b"\xb9" + struct.pack("<f",250.0),
+    0x22314C0A: bytes.fromhex("398e98070000"),
+    0x22314C2F: bytes.fromhex("898e98070000"),
+    0x22314CED: b"\xc7\x86" + struct.pack("<I",0x7C4) + struct.pack("<f",100.0),
 }
 # Decorated exports are evidence for the INDEX of the Detonate virtual in
 # other grenade subclasses. Then CGrenadeAR's same index gives its target.
@@ -152,22 +155,20 @@ def assert_original_evidence(binary: bytes, *, check_hash: bool=True) -> dict:
         raw = pe.at(addr, 4)
         if struct.unpack("<f", raw)[0] != struct.unpack("<f", struct.pack("<f", numeric))[0]:
             raise VerificationError(f"unexpected original float at 0x{addr:08X}")
-    # The two values below are in immediate cmp instructions, so check exact
-    # instruction payloads, not just float bytes appearing elsewhere in .rdata.
-    for instruction_va, (offset, value) in OBJECT_FIELD_INIT.items():
-        if instruction_va == 0x22314CED: continue  # verified in WITNESSES above
-        check_bytes(pe, instruction_va,
-                    b"\x81\xbe" + struct.pack("<I",offset) + struct.pack("<f",value))
-    # Test original IsPlayer virtual dispatch with *different real classes*,
-    # not merely the function's textual name.
-    assert pe.at(0x220017E0, 3) == b"\x30\xc0\xc3"  # false in CBaseCombatCharacter
-    assert pe.at(0x22253C30, 3) == b"\xb0\x01\xc3"  # true in CBasePlayer
+    for instruction_va, instruction in OBJECT_FIELD_INIT.items():
+        check_bytes(pe, instruction_va, instruction)
+    # IsPlayer-like virtual probe: base combat character returns false,
+    # original CBasePlayer override returns true.
+    check_bytes(pe, 0x220017E0, b"\x30\xc0\xc3")
+    check_bytes(pe, 0x22253C30, b"\xb0\x01\xc3")
     return {"sha256":digest, "code_witnesses":len(WITNESSES),
             "verified_direct_calls":len(CALL_EDGES)}
 
 
-def analyze(binary: bytes) -> dict:
+def analyze(binary: bytes, client: bytes | None = None) -> dict:
     proof = assert_original_evidence(binary)
+    if client is not None and hashlib.sha256(client).hexdigest() != CLIENT_SHA256:
+        raise VerificationError("original 2006 SiN client.dll SHA-256 mismatch")
     pe = PEImage(binary)
     rtti = scan(binary, "server")
     registrations = scan_registrations(binary)
@@ -262,8 +263,9 @@ def analyze(binary: bytes) -> dict:
             "timed_state_offset_candidates":["0x49C","0x4A0"],
         },
         "network_observation":{
-            "client_contains_literal_DT_GrenadeAR": False,
-            "server_contains_literal_DT_GrenadeAR": False,
+            "client_contains_literal_DT_GrenadeAR":
+                None if client is None else b"DT_GrenadeAR\0" in client,
+            "server_contains_literal_DT_GrenadeAR":b"DT_GrenadeAR\0" in binary,
             "warning":"No table name found is NOT proof this entity is unnetworked. It may inherit/base-share a sendtable.",
         },
         "limitations":[
@@ -279,10 +281,13 @@ def analyze(binary: bytes) -> dict:
 def main()->int:
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--server",type=Path,required=True)
+    p.add_argument("--client",type=Path,
+                   help="Optional original client.dll, for table-name comparison")
     p.add_argument("--output",type=Path,required=True)
     args=p.parse_args()
     try:
-        result=analyze(args.server.read_bytes())
+        result=analyze(args.server.read_bytes(),
+                       args.client.read_bytes() if args.client else None)
         args.output.write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
     except (OSError,ValueError,struct.error) as exc:
         p.exit(1,"SIN GRENADE LIFECYCLE AUDIT FAILED: "+str(exc)+"\n")
