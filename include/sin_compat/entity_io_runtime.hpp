@@ -59,6 +59,10 @@ public:
                      EntityRef activator);
 
     // Remove a source's output definitions and pending events on destruction.
+    // Cancel queued outputs without destroying the source's wiring. Used by
+    // logic_relay CancelPending; later Trigger calls may schedule anew.
+    std::size_t cancel_pending(EntityRef source);
+
     void remove_source(EntityRef source);
 
     // Advance monotonic synthetic/host time. A bounded per-call event budget
