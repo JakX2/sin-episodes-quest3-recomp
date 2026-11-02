@@ -13,6 +13,13 @@ target_include_directories(sin_weapon_bridge PUBLIC include)
 target_link_libraries(sin_weapon_bridge PRIVATE sin_weapon_runtime)
 target_compile_options(sin_weapon_bridge PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 set_target_properties(sin_weapon_bridge PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES)
+# Standalone dynamic-loader smoke test; does not link against the bridge.
+# On Android it can run as a shell executable via adb in /data/local/tmp.
+add_executable(sin_weapon_bridge_loader tests/test_weapon_c_dlopen.c)
+target_include_directories(sin_weapon_bridge_loader PRIVATE include)
+target_link_libraries(sin_weapon_bridge_loader PRIVATE ${CMAKE_DL_LIBS})
+target_compile_options(sin_weapon_bridge_loader PRIVATE $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+
 include(CTest)
 if(BUILD_TESTING)
   add_executable(sin_weapon_runtime_tests tests/test_weapon_runtime.cpp)
@@ -22,4 +29,6 @@ if(BUILD_TESTING)
   target_link_libraries(sin_weapon_bridge_tests PRIVATE sin_weapon_bridge)
   set_target_properties(sin_weapon_bridge_tests PROPERTIES LINKER_LANGUAGE CXX)
   add_test(NAME sin_weapon_bridge_tests COMMAND sin_weapon_bridge_tests)
+  add_test(NAME sin_weapon_bridge_dlopen_tests
+           COMMAND sin_weapon_bridge_loader $<TARGET_FILE:sin_weapon_bridge>)
 endif()
