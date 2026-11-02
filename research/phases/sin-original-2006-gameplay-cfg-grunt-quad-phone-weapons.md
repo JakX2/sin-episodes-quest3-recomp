@@ -58,3 +58,27 @@ The script uses the SHA-pinned original RTTI/vtable analyzer, follows decoded br
 2. Build full validated CFGs with reliable boundaries and switch tables; GNU objdump linear decoding is only a provisional foundation.
 3. Reconcile actual original scripts (PR #65), client/server network tables (PR #64), and per-class vtable offsets (PR #66) into true gameplay contracts.
 4. Port those behaviors to the real ARM64 SourceVR client/server ABI when verified. SiN BSP maps already load in Android HL2 and VR HL2, so map loading is not this project's current bottleneck.
+
+
+## Shared nonvirtual game routines called across class systems
+
+Cross-referencing the **original server DLL depth-zero virtual-entry calls** across GruntBase, Quadralex, CWeaponAssaultRifle and CPropPhone yields **33 different callee addresses used by at least two separate class groups**. This is stronger evidence of reusable server-side helpers than identifying each class in isolation. These are function *addresses*, not confirmed C++ function names.
+
+Three original direct-call targets appear in **all four** investigated groups:
+
+| Original server x86 helper address | GruntBase call sites | Quadralex | Assault Rifle | Payphone |
+|---|---:|---:|---:|---:|
+| 0x22287CB0 | 5 | 2 | 1 | 1 |
+| 0x22143610 | 2 | 1 | 1 | 1 |
+| 0x22138980 | 1 | 1 | 1 | 1 |
+
+Two likely resource/service-related original targets appear in three:
+
+- **0x221B6170:** GruntBase 3 call sites, Quadralex 16, phone 2.
+- **0x22149B70:** GruntBase 7, Quadralex 1, phone 1.
+
+Original instruction example: both Assault Rifle 0x22313780 and payphone 0x223027C0 push a specific entity classname string, call 0x22287CB0, then continue into their own class-level logic. The shared routine itself manipulates engine entity/string tables, so **entity precache/registration is a hypothesis worth testing**, not a proven source-level function name. Identifying exact helper semantics requires inspecting all call sites and the original helper's side effects.
+
+The new tool research/tools/audit_sin_shared_helpers.py derives this cross-class inventory from the previous per-class metadata JSON, requiring the matching original DLL fingerprint and rejecting client/server mixtures. It compares **distinct class groups**, not inflated counts from multiple call sites within a single class, and excludes second-hop calls from the shared-first-hop tally.
+
+Next: reconstruct these three shared helpers and their callers once, then integrate their verified behavior into the future ARM64 server modules where appropriate. This is more efficient than treating every weapon/NPC/phone subsystem as wholly isolated.
