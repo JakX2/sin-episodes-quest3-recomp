@@ -70,11 +70,11 @@ def scan_registrations(server: bytes, *, check_hash: bool = True,
             continue
         out.append({
             "classname": name.decode("ascii"),
-            "register_va": f"0x{va:08x}",
+            "registration_va": f"0x{va:08x}",
             "name_va": f"0x{name_va:08x}",
             "factory_object_va": f"0x{factory_va:08x}",
         })
-    for field in ("classname", "register_va", "factory_object_va"):
+    for field in ("classname", "registration_va", "factory_object_va"):
         if len({entry[field] for entry in out}) != len(out):
             raise VerificationError(f"duplicate {field} in registration scan")
     if verify_subset:
@@ -83,7 +83,7 @@ def scan_registrations(server: bytes, *, check_hash: bool = True,
         for row in selected:
             actual = by_name.get(row["classname"])
             if actual is None or any(actual[field] != row[field]
-                                    for field in ("register_va", "name_va", "factory_object_va")):
+                                    for field in ("registration_va", "name_va", "factory_object_va")):
                 raise VerificationError(f"failed independent 32-entry cross-check: {row['classname']}")
     return out
 
