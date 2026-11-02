@@ -45,6 +45,8 @@ The build includes the \`sin_weapon_runtime\` C++ static library and the \`sin_c
 
 **Infrastructure update (Phases 100–103):** An offline SourceVR package/ELF auditor and independently loadable native C event bridge have now been added on stacked PRs. The bridge can receive externally dispatched equip, input, reload and cleanup events in a synthetic host; the new bridge now compiles for Android ARM64 and has passed an Android x86_64 emulator Bionic `dlopen` smoke. **No SourceVR gameplay module loading or Quest execution has been shown**. See [Phase 103 native event bridge](docs/PHASE103_NATIVE_EVENT_BRIDGE.md).
 
+**New Phase 105 diagnostic:** A read-only, owner-local [srceng content preflight](docs/PHASE105_SRCENG_CONTENT_PREFLIGHT.md) identifies Source BSP/MDL header versions, resource counts and potential Android case-sensitive path conflicts before a privately owned SiN map is tested in an external Android engine. **No actual SiN map or Source game-code module has been run by this project.**
+
 The priority is now **real Source/SourceVR-compatible host integration**, not treating successful isolated math/research tests as a playable port. [Engine integration issue #12](https://github.com/JakX2/sin-episodes-quest3-recomp/issues/12) and [campaign integration issue #20](https://github.com/JakX2/sin-episodes-quest3-recomp/issues/20) remain the major blockers.
 
 ## Development evidence and next steps
