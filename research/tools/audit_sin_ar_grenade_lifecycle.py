@@ -159,7 +159,7 @@ def assert_original_evidence(binary: bytes, *, check_hash: bool=True) -> dict:
         check_bytes(pe, instruction_va, instruction)
     # IsPlayer-like virtual probe: base combat character returns false,
     # original CBasePlayer override returns true.
-    check_bytes(pe, 0x220017E0, b"\x30\xc0\xc3")
+    check_bytes(pe, 0x220017E0, b"\x32\xc0\xc3")
     check_bytes(pe, 0x22253C30, b"\xb0\x01\xc3")
     return {"sha256":digest, "code_witnesses":len(WITNESSES),
             "verified_direct_calls":len(CALL_EDGES)}
