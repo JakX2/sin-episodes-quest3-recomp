@@ -90,6 +90,7 @@ private:
     struct Slot {
         std::uint32_t generation = 1;
         bool alive = false;
+        bool trigger_consumed = false;
         ScenarioEntitySnapshot state{};
     };
     Slot* lookup(EntityRef entity);
