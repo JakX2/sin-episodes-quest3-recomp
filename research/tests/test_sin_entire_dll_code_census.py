@@ -24,7 +24,7 @@ class OriginalDllCensusTests(unittest.TestCase):
             "22200010: call 0x22200100",
             "22200015: call DWORD PTR [eax+0x4]",
             "22200020: jmp 0x22200100",
-            "22200040: mov eax,0x223d2000",
+            "22200120: mov eax,0x223d2000",
             "22200100: ret",
             "22200200: ret",
             "22200300: call 0x22200400",
