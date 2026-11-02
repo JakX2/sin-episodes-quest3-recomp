@@ -94,7 +94,7 @@ class OriginalNetworkTableTests(unittest.TestCase):
 
     def test_mutated_property_target_leaves_explicit_unresolved_slot(self):
         b = bytearray(self.client)
-        b[0x1200 + 18] ^= 0x40
+        b[0x1200 + 13] ^= 0x40
         tables = scan_client_tables(bytes(b), check_hash=False)
         found, missing = scan_client_properties(bytes(b), tables)
         self.assertEqual(len(found), 1)
@@ -111,7 +111,7 @@ class OriginalNetworkTableTests(unittest.TestCase):
         self.assertEqual(data["client"]["recovered_named_recvprop_slots"], 2)
         self.assertEqual(data["intersection"]["client_recvtable_and_server_string_name_count"], 1)
         self.assertNotIn("sendprops", data["server"])
-        self.assertIn("NOT", data["server"]["warning"])
+        self.assertIn("ONLY", data["server"]["warning"])
 
     def test_sha_pins_reject_synthetic_data(self):
         with self.assertRaisesRegex(VerificationError, "SHA-256"):
