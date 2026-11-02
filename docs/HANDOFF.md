@@ -66,6 +66,8 @@ The original research references in \`third_party/research\` cannot substitute f
 - Never commit original engine/game DLLs, BSPs, SDK files, models, scripts, sounds, textures or VR APKs.
 - Do not claim the SiN campaign works, or assign verified semantics to opaque original callback functions, merely because an Android module compiled or a mock host passed.
 
+**Newest integration artifacts:** Phases 100–101 supply private-only APK and ELF metadata inspection tools; Phase 102 supplies a native host-event relay; Phase 103 exposes it as a separate shared library with six versioned C exports and a synthetic-host dynamic-loading test. Read [Phase 103 native event bridge](PHASE103_NATIVE_EVENT_BRIDGE.md). No real SourceVR game DLL loader or Quest session exists.
+
 ### Handoff log
 
 - **2026-10-31:** Phase56 reference scaffold, initial weapon host boundary and tests.
