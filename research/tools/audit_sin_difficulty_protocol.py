@@ -106,6 +106,19 @@ ACTION_FIELDS = {
 }
 HOOK_REGISTER = 0x241CFF70
 
+# Action factory name selectors in original server 0x2215D1A0..
+# These are original compiled comparison labels, not guessed game behavior.
+ACTION_FACTORY_NAMES = {
+    "Look Action":(0x2215D1A7,0x224112B0,"mov_esi"),
+    "Use Action":(0x2215D21A,0x224112BC,"mov_esi"),
+    "Weapon Action":(0x2215D280,0x224112C8,"mov_esi"),
+    "Map Action":(0x2215D2E0,0x224112D8,"push"),
+    "Move Action":(0x2215D311,0x224112E4,"push"),
+    "Health Action":(0x2215D342,0x224112F0,"push"),
+    "Game Action":(0x2215D36F,0x22411300,"push"),
+    "Dynamic Difficulty Action":(0x2215D39C,0x2241130C,"push"),
+}
+
 def push(pe,site:int,imm:int)->None:
     if pe.at(site,5)!=b"\x68"+struct.pack("<I",imm):
         raise VerificationError(f"push-imm32 evidence mismatch at 0x{site:08X}")
@@ -192,8 +205,26 @@ def verify_evidence(client_pe,server_pe)->dict:
             "original_read_va":f"0x{read_va:08X}",
             "label":fmt_text.decode("ascii").rstrip("\x00\n"),
         }
+    action_factory=[]
+    for name,(load_va,label_va,opcode) in ACTION_FACTORY_NAMES.items():
+        expected=(b"\xBE" if opcode=="mov_esi" else b"\x68")+struct.pack("<I",label_va)
+        if server_pe.at(load_va,5)!=expected:
+            raise VerificationError("original action factory label pointer mismatch at "+hex(load_va))
+        if server_pe.at(label_va,len(name)+1)!=name.encode("ascii")+b"\0":
+            raise VerificationError("original action factory label mismatch at "+hex(label_va))
+        action_factory.append({"name":name,"original_code_va":f"0x{load_va:08X}"})
+    # Concrete CDynamicDifficultyAction constructor dispatch, not merely a name.
+    if server_pe.at(0x2215CD20,2)!=b"\x6A\x07":
+        raise VerificationError("original difficulty action constructor argument mismatch")
+    if server_pe.at(0x2215CD29,6)!=b"\xC7\x02"+struct.pack("<I",0x224116B8):
+        raise VerificationError("original CDynamicDifficultyAction vtable initialization mismatch")
+    tail=server_pe.at(0x2215D3C4,5)
+    if tail[0]!=0xE9 or 0x2215D3C9+struct.unpack_from("<i",tail,1)[0]!=0x2215CD20:
+        raise VerificationError("original dynamic difficulty action factory branch mismatch")
     return {
         "paired_messages":rows,
+        "server_action_factory_names":action_factory,
+        "server_dynamic_difficulty_action_constructor_va":"0x2215CD20",
         "server_dynamic_difficulty_action_fields":action_fields,
         "paired_message_count":len(rows),
         "client_hooks_in_dynamic_difficulty_block":len(HOOKS),
