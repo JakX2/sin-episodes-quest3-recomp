@@ -187,6 +187,7 @@ endif()
 # Phase 102: engine-neutral lifecycle relay over the existing v1 shared ABI.
 # This provides a tested integration *boundary*, NOT a SourceVR loader or SDK.
 add_library(sin_engine_event_pump STATIC src/engine_event_pump.cpp)
+set_target_properties(sin_engine_event_pump PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(sin_engine_event_pump PUBLIC include)
 target_link_libraries(sin_engine_event_pump PUBLIC sin_compat_host_abi)
 target_compile_options(sin_engine_event_pump PRIVATE
@@ -195,4 +196,27 @@ if(BUILD_TESTING)
   add_executable(sin_engine_event_pump_tests tests/test_engine_event_pump.cpp)
   target_link_libraries(sin_engine_event_pump_tests PRIVATE sin_engine_event_pump)
   add_test(NAME sin_engine_event_pump_tests COMMAND sin_engine_event_pump_tests)
+endif()
+
+# Phase 103: a real Linux/Android .so that an external native host can load,
+# but not a SourceVR/Source game module. Depends on sin_compat_host_abi at runtime.
+add_library(sin_compat_event_bridge SHARED src/event_bridge_v1.cpp)
+target_include_directories(sin_compat_event_bridge PUBLIC include)
+target_link_libraries(sin_compat_event_bridge PRIVATE sin_engine_event_pump)
+set_target_properties(sin_compat_event_bridge PROPERTIES
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+target_compile_options(sin_compat_event_bridge PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+if(UNIX AND NOT APPLE)
+  target_link_options(sin_compat_event_bridge PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/event_bridge_exports.map")
+  set_property(TARGET sin_compat_event_bridge APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/event_bridge_exports.map")
+endif()
+if(BUILD_TESTING AND UNIX)
+  add_executable(sin_event_bridge_dlopen_tests tests/test_event_bridge_dlopen.cpp)
+  target_include_directories(sin_event_bridge_dlopen_tests PRIVATE include)
+  target_link_libraries(sin_event_bridge_dlopen_tests PRIVATE ${CMAKE_DL_LIBS})
+  add_test(NAME sin_event_bridge_dlopen_tests
+    COMMAND sin_event_bridge_dlopen_tests $<TARGET_FILE:sin_compat_event_bridge>)
 endif()
