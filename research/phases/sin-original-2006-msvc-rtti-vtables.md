@@ -59,3 +59,25 @@ Generated JSON includes complete vtable slot addresses, class hierarchy arrays w
 User confirms SiN maps already load in Android/VR HL2. Do not divert the investigation into BSP/map loading, APK packaging or stand-alone synthetic gameplay in place of original client/server reconstruction.
 
 **Limit:** neither the complete original implementation nor a playable port has been reconstructed. The goal is systematic, code-address-grounded progress without implying otherwise.
+
+## Follow-up: original virtual function call graph and script/data cross-reference anchors
+
+The separate owner-only disassembly of the **238 distinct derived changed primary-vtable target addresses** (12 client, 226 server) uses GNU objdump instruction boundaries, not raw-byte searches. It found simple immediate references to printable original .rdata strings in **3 client methods** and **30 server methods**; direct call instruction targets in **3 client** and **133 server** methods. In that disassembly pass, all 238 candidate methods reached a ret/int3 compiler-padding end marker within an 8 KiB window. That is a **heuristic**, not a proof that all control-flow paths or function body bounds were recovered.
+
+Verified literal/code xrefs in real original server.dll include:
+
+| Original x86 method address | Owning comparison | Original data/strings seen directly in disassembled code |
+|---|---|---|
+| 0x223027C0 | CPropPhone vs CBaseAnimating, slot 26 | PhoneBook, prop_keypad, Failed to load phone book!, models/props_general/payphone_01.mdl |
+| 0x22313C60 | CWeaponAssaultRifle vs CHLSelectFireMachineGun, slot 227 | ARNADE, grenade_ar |
+| 0x22316910 | CWeaponMagnum vs CBaseHLCombatWeapon, slot 102 | DUAGDecal1, DUAGDecal2 |
+| 0x2235DE00 | CNPC_GruntBase vs CAI_BaseHumanoid, slot 26 | NPC_grunt.helmet_impact, head gib models, NPC_Grunt.WeaponBash, item_ammo_duag |
+| 0x2235BFD0 | CNPC_GruntBase vs CAI_BaseHumanoid, slot 273 | Squadmate got up, weapon_scattergun |
+| 0x223746B0 | CNPC_Quadralex vs CAI_BaseNPC, slot 26 | grenade_spit_poison, NPC_BigMutant.RunHurt, NPC_BigMutant.Walk, NPC_BigMutant.Die |
+| 0x22374CB0 | CNPC_Quadralex vs CAI_BaseNPC, slot 58 | InputSetPaceBehavior, InputSetDefaultBehavior, InputRagdoll, FireThink |
+| 0x22380690 | CNPC_SintekJetpack vs CNPC_JetpackGruntBase, slot 26 | models/characters/SintekGrunt/SintekGrunt.mdl |
+
+This provides **function-level disassembly entry points** for actual SiN gameplay behavior. A string reference or a direct call by itself does not prove the entire original method's semantics. Next step: recover complete control-flow graphs, follow called nonvirtual helper functions, identify member offsets, and connect script readers to live game behavior.
+
+Tool: research/tools/audit_sin_virtual_method_xrefs.py; requires GNU objdump, owner's original hash-pinned DLLs and emits metadata JSON only. Tests supply a deliberately authored synthetic PE32 with a push-immediate string + call-rel32 + ret/int3, and do not include any commercial binary bytes.
+
