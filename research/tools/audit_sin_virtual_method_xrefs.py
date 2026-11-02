@@ -42,7 +42,7 @@ def inspect_method(path:Path,pe:PEImage,address:int)->dict:
     if shutil.which("objdump") is None:
         raise ValueError("GNU binutils objdump not installed")
     process=subprocess.run(
-        ["objdump","-d","-M","intel","--no-show-raw-insn",
+        ["objdump","-D","-M","intel","--no-show-raw-insn",
          "--start-address="+hex(address),
          "--stop-address="+hex(address+BYTES_WINDOW),str(path)],
         text=True,capture_output=True,check=True,timeout=12,
