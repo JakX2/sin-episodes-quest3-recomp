@@ -19,8 +19,15 @@ EXPECTED_DEX_SHA256 = "0dea2c61aa36557f49d125bd91607228e522fb25dbe023c1867b54d7a
 EXPECTED_CLASS = "Lcom/sourcevrport/hl2vr/MainActivity;"
 SETENV = EXPECTED_CLASS + "->setenv(Ljava/lang/String;Ljava/lang/String;)V"
 
+# Verified from the pinned original classes.dex method proto. This method takes
+# two lists and a NativeGraph, NOT zero arguments.
+SETUP_DESCRIPTOR = (
+    "(Ljava/util/List;Ljava/util/List;"
+    "Lcom/sourcevrport/hl2vr/ProfileAssetStage$NativeGraph;)V"
+)
 METHOD = re.compile(
-    r"(?ms)^(?P<header>\.method[^\n]*\bsetupEngineEnvironment\(\)V\s*\n)"
+    r"(?ms)^(?P<header>\.method[^\n]*\bsetupEngineEnvironment"
+    + re.escape(SETUP_DESCRIPTOR) + r"[ \t]*\r?\n)"
     r"(?P<body>.*?)(?P<footer>^\.end method[ \t]*$)"
 )
 # Matches a short window of real smali, without assuming register numbers or
@@ -75,7 +82,11 @@ def find_activity(root: Path) -> Path:
 def patch_smali(source: str) -> tuple[str, str]:
     found = list(METHOD.finditer(source))
     if len(found) != 1:
-        raise ValueError("expected one setupEngineEnvironment()V method")
+        candidates = re.findall(r"(?m)^\.method[^\r\n]*setupEngineEnvironment[^\r\n]*", source)
+        raise ValueError(
+            "expected exactly one verified setupEngineEnvironment" + SETUP_DESCRIPTOR
+            + f" method; decoded candidates: {candidates or ['none']}"
+        )
     method = found[0]
     body = method.group("body")
     if '"APP_MOD_LIB"' in body:
