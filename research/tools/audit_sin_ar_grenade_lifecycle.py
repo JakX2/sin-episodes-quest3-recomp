@@ -43,7 +43,7 @@ WITNESSES = {
     0x222AA693: bytes.fromhex("8b84be4c0600002bc3"),  # ammo array - requested delta
     0x222AA6BB: bytes.fromhex("899cbe4c060000"),      # commit ammo array update
     0x22314B9A: b"\x68" + struct.pack("<I", 0x22314360),  # periodic think
-    0x22314BAB: b"\xc7\x86\x7c\x00\x00\x00" + struct.pack("<I", 0x223142F0),
+    0x22314BAB: b"\xc7\x46\x7c" + struct.pack("<I", 0x223142F0),
     0x22314C2F: b"\x89\x8e\x98\x07\x00\x00",  # follow-up +0x798 write
     0x22314CED: b"\xc7\x86\xc4\x07\x00\x00" + struct.pack("<f", 100.0),
 }
@@ -53,7 +53,7 @@ CALL_EDGES = {
     0x22313E2A: 0x22146C40,  # live projectile creation
     0x22313F39: 0x222AA670,  # owner ammo-count decrement
     0x22314BB2: 0x2214D6F0,  # think registration
-    0x22314BCA: 0x2214D7B0,  # next think scheduling
+    0x22314BCD: 0x2214D7B0,  # next think scheduling
     0x22146C48: 0x22266B00,  # CreateEntityByName
 }
 
