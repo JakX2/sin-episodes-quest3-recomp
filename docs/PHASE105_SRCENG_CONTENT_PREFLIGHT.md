@@ -66,6 +66,14 @@ The exact map/header subset examined is sample-limited. Do **not** claim all 32 
 
 No one has yet loaded one of these actual maps with `srceng` in this project. Keep the test **private, optional, and non-redistributed** due to third-party engine provenance. No proprietary game assets or source code should enter the public repo.
 
+## Follow-up: actual PC Half-Life 2 runtime observations (2 November 2026)
+
+**A new owner-local desktop test now exists.** With only `maps/`, `materials/`, `models/` and `sound/` mounted under `hl2/custom/SE1` (and colliding `background01`–`background06` BSPs excluded), the owner showed real SiN maps rendering convincingly in the **PC Half-Life 2 engine**. The owner additionally demonstrated a breakable supply crate with spawned pickups, both SiN vending-machine variants using `models/hl2_props/vendingmachine.mdl`, and console errors for unregistered SiN-specific `npc_jessica`, `npc_jc` and `npc_blade` classes. At least one console screenshot identifies `se1_docks02`. This is **not** an Android `srceng` render test.
+
+**Newly identified Android migration risk:** the disk directory `models/HL2_props` and some uppercase `VendingMachine` companion files do not match the casing of the in-engine lower-case reference. The existing scanner's zero case-folded **collisions** does not prove a case-correct asset/reference tree on Android. Investigate actual `srceng` filesystem behavior before normalization or conversion.
+
+The full reproducibility notes, evidence limitations and next-step gate are in **[Phase 105 PC HL2 runtime findings](PHASE105_PC_HL2_SIN_RUNTIME_FINDINGS.md)**. These observations lower perceived *content-format* risk on PC, **not** the legal host/game-DLL/Android/VR blockers.
+
 ## Concrete next in-engine experiment, contingent on the preflight
 
 1. Record exact BSP/MDL versions and whether the game layout actually contains the loose dependencies. **Do not assume** that a VPK/material mounting rule works unchanged.
