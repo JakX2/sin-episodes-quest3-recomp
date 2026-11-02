@@ -31,7 +31,7 @@ The new analyzer uses exact bounded `.text` function ranges and decodes actual `
 | CPropPhone `0x223027C0` | 1 | 1 | 2 | 4 |
 | CNPC_GruntBase `0x2235DE00` | 5 | 7 | 3 | 15 |
 | CNPC_Quadralex `0x223746B0` | 2 | 1 | 16 | 19 |
-| **Total** | **9** | **8** | **22** | **39** |
+| **Total** | **9** | **9** | **21** | **39** |
 
 Original **Assault Rifle**: the only classified entity precache here is `grenade_ar`. Its function then tail-jumps into a shared base routine; **this is not the grenade firing method**.
 
