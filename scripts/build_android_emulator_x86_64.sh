@@ -15,12 +15,14 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_compat_event_bridge sin_android_host_abi_smoke sin_android_event_bridge_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
+BRIDGE="$BUILD/libsin_compat_event_bridge.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
-for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
+BRIDGE_SMOKE="$BUILD/sin_android_event_bridge_smoke"
+for f in "$LIB" "$BRIDGE" "$SMOKE" "$BRIDGE_SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
 READELF="${READELF:-readelf}"
-for f in "$LIB" "$SMOKE"; do
+for f in "$LIB" "$BRIDGE" "$SMOKE" "$BRIDGE_SMOKE"; do
   header="$($READELF -h "$f")"
   grep -q 'Class:.*ELF64' <<<"$header" || { echo "ERROR: not ELF64: $f" >&2; exit 1; }
   grep -q 'Machine:.*Advanced Micro Devices X86-64' <<<"$header" || { echo "ERROR: not x86_64: $f" >&2; exit 1; }
@@ -37,6 +39,18 @@ $READELF -d "$LIB" | grep -q 'SONAME.*libsin_compat_host_abi.so' || {
 if $READELF -d "$LIB" | grep -q 'NEEDED.*libc++_shared.so'; then
   echo 'ERROR: expected static libc++' >&2; exit 1
 fi
+$READELF -d "$BRIDGE" | grep -q 'SONAME.*libsin_compat_event_bridge.so' || {
+  echo 'ERROR: event bridge has unexpected SONAME' >&2; exit 1
+}
+$READELF -d "$BRIDGE" | grep -q 'NEEDED.*libsin_compat_host_abi.so' || {
+  echo 'ERROR: event bridge missing host ABI dependency' >&2; exit 1
+}
+$READELF -d "$BRIDGE_SMOKE" | grep -q 'NEEDED.*libdl.so' || {
+  echo 'ERROR: event bridge loader not linked to Android libdl' >&2; exit 1
+}
+if $READELF -d "$BRIDGE_SMOKE" | grep -q 'NEEDED.*libsin_compat_event_bridge.so'; then
+  echo 'ERROR: event bridge loader bypasses dlopen' >&2; exit 1
+fi
 HOST_TAG=linux-x86_64
 if [[ "$(uname -s)" == Darwin ]]; then HOST_TAG=darwin-x86_64; fi
 NM="$NDK/toolchains/llvm/prebuilt/$HOST_TAG/bin/llvm-nm"
@@ -48,5 +62,12 @@ diff -u "$EXPECTED" "$ACTUAL" || { echo 'ERROR: exported C ABI symbols changed' 
 if [[ "$(wc -l < "$ACTUAL")" -ne 13 ]]; then
   echo 'ERROR: public ABI must contain 13 symbols' >&2; exit 1
 fi
-printf 'PASS: NDK Android x86_64 API29 library and Bionic dlopen PIE linked and audited.\n'
+# Verify the new shared bridge publishes only its six v1 C functions.
+awk '/^[[:space:]]+sin_event_bridge_[A-Za-z0-9_]+;/{gsub(/;/,"",$1); print $1}' "$ROOT/src/event_bridge_exports.map" | sort -u > "$EXPECTED"
+"$NM" -D --defined-only --format=posix "$BRIDGE" | awk 'NF{print $1}' | sort -u > "$ACTUAL"
+diff -u "$EXPECTED" "$ACTUAL" || { echo 'ERROR: bridge ABI symbols changed' >&2; exit 1; }
+if [[ "$(wc -l < "$ACTUAL")" -ne 6 ]]; then
+  echo 'ERROR: bridge ABI must contain six symbols' >&2; exit 1
+fi
+printf 'PASS: NDK Android x86_64 API29 host ABI + event bridge + Bionic dlopen executables linked and audited.\n'
 printf 'Not yet executed: Android emulator job must call scripts/run_android_host_abi_smoke.sh.\n'
