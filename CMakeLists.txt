@@ -203,6 +203,10 @@ endif()
 add_library(sin_compat_event_bridge SHARED src/event_bridge_v1.cpp)
 target_include_directories(sin_compat_event_bridge PUBLIC include)
 target_link_libraries(sin_compat_event_bridge PRIVATE sin_engine_event_pump)
+# Android linker resolves the companion host ABI from the bridge library directory.
+if(ANDROID)
+  set_target_properties(sin_compat_event_bridge PROPERTIES BUILD_RPATH "$ORIGIN")
+endif()
 set_target_properties(sin_compat_event_bridge PROPERTIES
   CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 target_compile_options(sin_compat_event_bridge PRIVATE
@@ -219,4 +223,13 @@ if(BUILD_TESTING AND UNIX)
   target_link_libraries(sin_event_bridge_dlopen_tests PRIVATE ${CMAKE_DL_LIBS})
   add_test(NAME sin_event_bridge_dlopen_tests
     COMMAND sin_event_bridge_dlopen_tests $<TARGET_FILE:sin_compat_event_bridge>)
+endif()
+
+# Native Android process smoke: compile the same actual dlopen harness against
+# Android Bionic, independent of BUILD_TESTING (which the NDK script disables).
+if(SIN_BUILD_ANDROID_SMOKE AND ANDROID)
+  add_executable(sin_android_event_bridge_smoke tests/test_event_bridge_dlopen.cpp)
+  target_include_directories(sin_android_event_bridge_smoke PRIVATE include)
+  target_link_libraries(sin_android_event_bridge_smoke PRIVATE dl)
+  add_dependencies(sin_android_event_bridge_smoke sin_compat_event_bridge)
 endif()
