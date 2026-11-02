@@ -49,7 +49,7 @@ WITNESSES = {
     0x22314868: b"\x68" + struct.pack("<f", 150.0),
     0x2231486D: b"\x68" + struct.pack("<f", 25.0),
     0x2231487E: bytes.fromhex("8b9698070000"),      # field +0x798
-    0x2231489F: bytes.fromhex("83f8ff"),            # handled separately below
+    0x2231489F: bytes.fromhex("83f8ff"),            # compare invalid entity handle
     0x2231433D: bytes.fromhex("80bf9507000000"),     # touch flag check
     0x2231434A: bytes.fromhex("ff92e8030000"),       # call vtable +0x3E8
     0x22314394: b"\xd8\x05" + struct.pack("<I",0x224771F8), # now+0.1 compare
@@ -72,10 +72,6 @@ DOUBLES = {0x22467448: 15.0}
 
 def check_byte_witnesses(pe: PEImage) -> None:
     for addr, original in WITNESSES.items():
-        if addr == 0x2231489F:
-            # Extra defensive check in report: this address is not a
-            # guaranteed opcode boundary, so don't accept it as a witness.
-            continue
         if pe.at(addr, len(original)) != original:
             raise VerificationError(f"detonation instruction mismatch at 0x{addr:08X}")
     for addr, text in ORIGINAL_STRINGS.items():
