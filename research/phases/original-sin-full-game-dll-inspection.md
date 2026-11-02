@@ -47,6 +47,18 @@ Examples of exactly verified original registration function VAs:
 
 These are **factory registrations**, not gameplay implementations or a claim that 510 distinct intelligent/gameplay systems are complete. The count is exhaustive **only for this specific 22-byte original compiler pattern**, not for every possible registration mechanism.
 
+## Verified exported Source interface registration constructors
+
+The original CreateInterface function in each DLL traverses a linked list of three-field InterfaceReg nodes. The exported factory entrypoints are at original x86 VAs client `0x24164180» and server `0x221FB5F0»; their InterfaceReg constructors are client `0x24164160» and server `0x221FB5D0». The registrations are populated by static initialization routines, using exactly `push name; push callback; mov ecx, InterfaceReg object; call constructor; ret». These are directly verified instruction sequences, not simply discovered string constants.
+
+The new scanner found **54 complete client** and **10 complete server** constructor-call registrations. Many of the 54 client entries register material proxies rather than engine game interfaces.
+
+**Client actual registrations (examples):** `VClient011» at `0x24268300», `VClientEntityList003» at `0x24268390», `VClientPrediction001» at `0x24271450», `GameClientExports001» at `0x242682B0», `GameMovement001» at `0x2426E960», `ClientLeafSystem001» at `0x24268460», `IEffects001» at `0x24268940», `VCENTERPRINT002» at `0x2426E2F0».
+
+**Server actual registrations (all ten):** `IEffects001», `ServerGameDLL003», `ServerGameEnts001», `ServerGameClients003», `PluginHelpersCheck001», `PlayerInfoManager001», `PlayerInfoManager002», `BotManager001», `HLTVDirector001», `GameMovement001».
+
+This confirms the original client/server interface versions at their actual factory-registration sites. It does **not** establish compatibility with SourceVR's newer ARM64 vtables, or any ability to substitute a proxy C function for the full Source C++ game interfaces.
+
 ## Client and server RTTI
 
 Searching exact NUL-terminated MSVC class/struct type descriptors produces **770 distinct client RTTI names**, **977 server RTTI names**, with **144 names shared**. Names include original SiN client weapons `C_WeaponMagnum», `C_WeaponAssaultRifle», `C_WeaponScatterGun», HUD `CHudGrenades» and `CHudPoisonTimer», plus server classes `CWeaponMagnum», `CNPC_SintekGrunt», `CNPC_SintekJetpack», `CNPC_Quadralex», `CNPC_Jessica», `CAntigenDispenser» and `CPoisonGas».
