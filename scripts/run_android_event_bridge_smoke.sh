@@ -40,7 +40,7 @@ mapfile -t LINES <<< "$HASHES"
    "$(awk '{print $1}' <<< "${LINES[2]}")" == "$LOCAL_EXE" ]] || {
   echo 'ERROR: Android transfer SHA-256 mismatch' >&2; exit 1;
 }
-OUTPUT="$("$ADB" shell "chmod 700 '$REMOTE/sin_android_event_bridge_smoke' && cd '$REMOTE' && ./sin_android_event_bridge_smoke ./libsin_compat_event_bridge.so" | tr -d '\r')"
+OUTPUT="$("$ADB" shell "chmod 700 '$REMOTE/sin_android_event_bridge_smoke' && cd '$REMOTE' && LD_LIBRARY_PATH='$REMOTE' ./sin_android_event_bridge_smoke ./libsin_compat_event_bridge.so" | tr -d '\r')"
 printf '%s\n' "$OUTPUT"
 grep -Fxq 'Native event bridge shared-library dlopen lifecycle passed' <<< "$OUTPUT" || {
   echo 'ERROR: event bridge pass marker missing' >&2; exit 1;
