@@ -4,10 +4,12 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from sourcevr_extracted_apk import inventory, reconstruct_unsigned
-from sourcevr_isolated_apk_builder import build
+from sourcevr_isolated_apk_builder import build, validate_resume_stage
+from test_sourcevr_isolated_modlib_patch import BASE
 
 
 class SourceVRExtractedFolderTests(unittest.TestCase):
@@ -64,6 +66,28 @@ class SourceVRExtractedFolderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "refusing to overwrite"):
             reconstruct_unsigned(source, target)
         self.assertTrue((self.root / "META-INF/CERT.SF").is_file())
+
+    def test_resume_reuses_verified_predecoded_output(self):
+        source = inventory(self.root, pin_dex=False)
+        out = pathlib.Path(self.tmp.name) / "previous_failed_build"
+        out.mkdir()
+        reconstructed = out / "original-extracted-unsigned.apk"
+        reconstruct_unsigned(source, reconstructed)
+        decoded = out / "decoded"
+        (decoded / "smali/com/sourcevrport/hl2vr").mkdir(parents=True)
+        (decoded / "smali/com/sourcevrport/hl2vr/MainActivity.smali").write_text(BASE)
+        (decoded / "apktool.yml").write_text("version: fixture")
+        (decoded / "AndroidManifest.xml").write_text("<manifest/>")
+        with patch("sourcevr_isolated_apk_builder.verify_original_dex", return_value="fixture"):
+            self.assertEqual(validate_resume_stage(out, source), reconstructed)
+            (out / "unsigned.apk").write_bytes(b"existing artifact")
+            with self.assertRaisesRegex(ValueError, "cannot overwrite"):
+                validate_resume_stage(out, source)
+            (out / "unsigned.apk").unlink()
+            (decoded / "smali/com/sourcevrport/hl2vr/MainActivity.smali").write_text(
+                BASE.replace("APP_LIB_PATH", "OTHER_KEY"))
+            with self.assertRaisesRegex(ValueError, "APP_LIB_PATH"):
+                validate_resume_stage(out, source)
 
     def test_detect_missing_or_misnumbered_dex(self):
         (self.root / "classes2.dex").rename(self.root / "classes3.dex")
