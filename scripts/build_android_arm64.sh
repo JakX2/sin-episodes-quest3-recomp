@@ -19,14 +19,24 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_compat_event_bridge sin_android_host_abi_smoke sin_android_event_bridge_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
+BRIDGE="$BUILD/libsin_compat_event_bridge.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
+BRIDGE_SMOKE="$BUILD/sin_android_event_bridge_smoke"
 if [[ ! -s "$LIB" ]]; then
   echo "ERROR: Android shared-library output missing: $LIB" >&2
   exit 1
 fi
+if [[ ! -s "$BRIDGE" ]]; then
+  echo "ERROR: Android event bridge output missing: $BRIDGE" >&2
+  exit 1
+fi
 
+if [[ ! -s "$BRIDGE_SMOKE" ]]; then
+  echo "ERROR: Android bridge smoke executable missing: $BRIDGE_SMOKE" >&2
+  exit 1
+fi
 # The C11 loader is also a genuine Android Bionic-linked executable, not a
 # desktop binary or a freestanding ABI contract. It is *not executed* in CI.
 if [[ ! -s "$SMOKE" ]]; then
@@ -48,10 +58,25 @@ ELF="$($READELF -h "$LIB")"
 grep -q 'Class:.*ELF64' <<< "$ELF" || { echo 'ERROR: not ELF64' >&2; exit 1; }
 grep -q 'Machine:.*AArch64' <<< "$ELF" || { echo 'ERROR: not AArch64' >&2; exit 1; }
 grep -q 'Type:.*DYN' <<< "$ELF" || { echo 'ERROR: not a shared ELF object' >&2; exit 1; }
+BRIDGE_ELF="$($READELF -h "$BRIDGE")"
+grep -q 'Class:.*ELF64' <<< "$BRIDGE_ELF" || { echo 'ERROR: bridge not ELF64' >&2; exit 1; }
+grep -q 'Machine:.*AArch64' <<< "$BRIDGE_ELF" || { echo 'ERROR: bridge not AArch64' >&2; exit 1; }
+grep -q 'Type:.*DYN' <<< "$BRIDGE_ELF" || { echo 'ERROR: bridge is not a shared ELF object' >&2; exit 1; }
 SMOKE_ELF="$($READELF -h "$SMOKE")"
 grep -q 'Class:.*ELF64' <<< "$SMOKE_ELF" || { echo 'ERROR: smoke binary not ELF64' >&2; exit 1; }
 grep -q 'Machine:.*AArch64' <<< "$SMOKE_ELF" || { echo 'ERROR: smoke binary not AArch64' >&2; exit 1; }
 grep -q 'Type:.*DYN' <<< "$SMOKE_ELF" || { echo 'ERROR: smoke binary not PIE executable' >&2; exit 1; }
+BRIDGE_SMOKE_ELF="$($READELF -h "$BRIDGE_SMOKE")"
+grep -q 'Class:.*ELF64' <<< "$BRIDGE_SMOKE_ELF" || { echo 'ERROR: bridge test not ELF64' >&2; exit 1; }
+grep -q 'Machine:.*AArch64' <<< "$BRIDGE_SMOKE_ELF" || { echo 'ERROR: bridge test not AArch64' >&2; exit 1; }
+grep -q 'Type:.*DYN' <<< "$BRIDGE_SMOKE_ELF" || { echo 'ERROR: bridge test is not PIE' >&2; exit 1; }
+BRIDGE_SMOKE_DYNAMIC="$($READELF -d "$BRIDGE_SMOKE")"
+grep -q 'NEEDED.*libdl.so' <<< "$BRIDGE_SMOKE_DYNAMIC" || {
+  echo 'ERROR: bridge test is not linked to Bionic libdl' >&2; exit 1
+}
+if grep -q 'NEEDED.*libsin_compat_event_bridge.so' <<< "$BRIDGE_SMOKE_DYNAMIC"; then
+  echo 'ERROR: bridge test linked directly to the bridge; expected dlopen' >&2; exit 1
+fi
 SMOKE_DYNAMIC="$($READELF -d "$SMOKE")"
 grep -q 'NEEDED.*libc.so' <<< "$SMOKE_DYNAMIC" || { echo 'ERROR: smoke binary not linked to Android libc' >&2; exit 1; }
 grep -q 'NEEDED.*libdl.so' <<< "$SMOKE_DYNAMIC" || { echo 'ERROR: smoke binary missing Android libdl' >&2; exit 1; }
@@ -66,6 +91,19 @@ grep -q 'SONAME.*libsin_compat_host_abi.so' <<< "$SONAME" || {
 }
 if grep -q 'NEEDED.*libc++_shared.so' <<< "$SONAME"; then
   echo 'ERROR: unexpected libc++_shared.so dependency; expected c++_static.' >&2
+  exit 1
+fi
+BRIDGE_DYNAMIC="$($READELF -d "$BRIDGE")"
+grep -q 'SONAME.*libsin_compat_event_bridge.so' <<< "$BRIDGE_DYNAMIC" || {
+  echo 'ERROR: unexpected event bridge SONAME' >&2
+  exit 1
+}
+grep -q 'NEEDED.*libsin_compat_host_abi.so' <<< "$BRIDGE_DYNAMIC" || {
+  echo 'ERROR: event bridge does not link against host ABI library' >&2
+  exit 1
+}
+if grep -q 'NEEDED.*libc++_shared.so' <<< "$BRIDGE_DYNAMIC"; then
+  echo 'ERROR: bridge unexpectedly depends on libc++_shared.so' >&2
   exit 1
 fi
 # Check exports against the fixed public C ABI v1 surface. Internal C++
@@ -94,6 +132,21 @@ if ! diff -u "$EXPECTED" "$ACTUAL"; then
   echo 'ERROR: unexpected/missing Android public symbol(s)' >&2
   exit 1
 fi
+# Phase103: a second, independent native shared module must export exactly
+# six documented event-bridge C functions. CI verifies the *actual* AArch64 ELF.
+cat > "$EXPECTED" <<'NAMES'
+sin_event_bridge_abi_version_v1
+sin_event_bridge_attach_v1
+sin_event_bridge_create_v1
+sin_event_bridge_destroy_v1
+sin_event_bridge_dispatch_v1
+sin_event_bridge_is_active_v1
+NAMES
+"$NM" -D --defined-only --format=posix "$BRIDGE" | awk 'NF { print $1 }' | sort -u > "$ACTUAL"
+if ! diff -u "$EXPECTED" "$ACTUAL"; then
+  echo 'ERROR: unexpected/missing Android event bridge public symbol(s)' >&2
+  exit 1
+fi
 "$CC" -std=c11 -Wall -Wextra -Werror -pedantic -I"$ROOT/include" \
   -c "$ROOT/tests/abi_layout_contract.c" -o "$CONTRACT"
 $READELF -h "$CONTRACT" | grep -q 'Machine:.*AArch64' || {
@@ -109,6 +162,8 @@ printf '%s\n' 'ELF64 AArch64, shared SONAME, 13 C ABI exports, and native NDK C 
 {
   printf 'build_target=arm64-v8a\nandroid_api=26\n'
   grep '^Pkg.Revision' "$NDK/source.properties" | sed 's/ *= */=/' | tr -d ' '
-  sha256sum "$LIB" "$SMOKE" | sed "s#$BUILD/##"
+  sha256sum "$LIB" "$BRIDGE" "$SMOKE" "$BRIDGE_SMOKE" | sed "s#$BUILD/##"
 } > "$BUILD/android-smoke-manifest.txt"
+printf 'Android event bridge ELF64 AArch64 with 6 C exports verified: %s\n' "$BRIDGE"
 printf 'Android dlopen executable verified (compiled only, not executed): %s\n' "$SMOKE"
+printf 'Android event bridge dlopen executable verified (compiled only, not executed): %s\n' "$BRIDGE_SMOKE"

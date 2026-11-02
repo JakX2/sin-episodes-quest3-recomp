@@ -46,7 +46,9 @@ jobs:
           name: sin-compat-android-arm64-api26-with-smoke
           path: |
             build-android-arm64/libsin_compat_host_abi.so
+            build-android-arm64/libsin_compat_event_bridge.so
             build-android-arm64/sin_android_host_abi_smoke
+            build-android-arm64/sin_android_event_bridge_smoke
             build-android-arm64/android-smoke-manifest.txt
           if-no-files-found: error
           retention-days: 7
@@ -91,7 +93,10 @@ jobs:
           target: google_apis
           emulator-boot-timeout: 480
           emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-runtime-evidence.txt bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
+          script: |
+            set -e
+            SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-runtime-evidence.txt bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
+            SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_BRIDGE_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-event-bridge-runtime-evidence.txt bash scripts/run_android_event_bridge_smoke.sh build-android-emulator-x86_64
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -103,10 +108,19 @@ jobs:
           grep -qx 'remote_sha256_verified=true' "$EVIDENCE"
           grep -qx 'loader_marker_verified=true' "$EVIDENCE"
           grep -qx 'scope=standalone_native_abi_not_sourcevr' "$EVIDENCE"
+          BRIDGE_EVIDENCE=build-android-emulator-x86_64/android-event-bridge-runtime-evidence.txt
+          test -s "$BRIDGE_EVIDENCE"
+          grep -qx 'result=PASS' "$BRIDGE_EVIDENCE"
+          grep -qx 'abi=x86_64' "$BRIDGE_EVIDENCE"
+          grep -qx 'remote_sha256_verified=true' "$BRIDGE_EVIDENCE"
+          grep -qx 'loader_marker_verified=true' "$BRIDGE_EVIDENCE"
+          grep -qx 'scope=standalone_native_event_bridge_not_sourcevr' "$BRIDGE_EVIDENCE"
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
           name: sin-compat-x86_64-emulator-runtime-evidence
-          path: build-android-emulator-x86_64/android-runtime-evidence.txt
+          path: |
+            build-android-emulator-x86_64/android-runtime-evidence.txt
+            build-android-emulator-x86_64/android-event-bridge-runtime-evidence.txt
           if-no-files-found: error
           retention-days: 7

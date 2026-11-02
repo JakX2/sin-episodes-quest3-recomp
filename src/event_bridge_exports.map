@@ -1,0 +1,12 @@
+/* Limit ELF exports of the event-bridge DSO to the six published C entry
+ * points. Runtime dependencies retain their own separate allowlists. */
+{
+    global:
+        sin_event_bridge_abi_version_v1;
+        sin_event_bridge_create_v1;
+        sin_event_bridge_attach_v1;
+        sin_event_bridge_dispatch_v1;
+        sin_event_bridge_is_active_v1;
+        sin_event_bridge_destroy_v1;
+    local: *;
+};

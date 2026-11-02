@@ -70,6 +70,14 @@ Evidence: [stat schema Phase 91](PHASE91_ORIGINAL_STAT_SCHEMA_AND_LAYOUT.md), [c
 
 The Phase 98 stacked PR's GitHub CI passed Linux, NDK ARM64 and x86_64 emulator jobs. No physical headset testing has been done.
 
+## New integration infrastructure, Phases 100–103
+
+- Phase 100 adds a read-only SourceVR APK/TXT/native package inventory for library variants, manifests and architecture identification.
+- Phase 101 adds a bounded read-only ELF64 native dependency/export inspector. Neither tool proves compatible SourceVR mod loading.
+- Phase 102 implements an engine-neutral event relay on the original 13-symbol C host ABI, with stale-generation protection.
+- Phase 103 packages that relay as a separate native shared library with **six C entry points**. Linux `dlopen`/event-dispatch tests and an **Android x86_64 emulator Bionic runtime** test passed with a fabricated host; the new bridge also builds as an Android ARM64 ELF. None of these tests uses a real Source game host or Quest HMD. See [Phase 103](PHASE103_NATIVE_EVENT_BRIDGE.md).
+- **Still no real Source engine host, custom SourceVR game-DLL support, SiN map or headset execution.** R1 is blocked.
+
 ## Integration blockers and recommended next engineering work
 
 1. **R1: choose and obtain an actual compatible engine/SDK target** with permitted build/runtime integration. Compile a real host adapter against its headers and test the required lifecycle and callbacks, without assuming Source 2006 x86 layout carries to ARM64. [Issue #12](https://github.com/JakX2/sin-episodes-quest3-recomp/issues/12)
