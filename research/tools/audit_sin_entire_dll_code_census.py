@@ -182,7 +182,7 @@ def inspect_original(path:Path,kind:str,original_rtti:dict)->tuple[dict,list[dic
     start,text=pe.section(".text")
     owners=defaultdict(list)
     for vt in original_rtti["vftables"]:
-        for addr in vt["function_va"]:
+        for addr in vt.get("functions",vt.get("function_va",[])):
             target=int(addr,16)
             if pe.in_section(target,".text"):
                 if len(owners[target])<16 and vt["class"] not in owners[target]:
