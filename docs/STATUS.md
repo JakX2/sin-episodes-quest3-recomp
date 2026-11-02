@@ -78,6 +78,10 @@ The Phase 98 stacked PR's GitHub CI passed Linux, NDK ARM64 and x86_64 emulator 
 - Phase 103 packages that relay as a separate native shared library with **six C entry points**. Linux `dlopen`/event-dispatch tests and an **Android x86_64 emulator Bionic runtime** test passed with a fabricated host; the new bridge also builds as an Android ARM64 ELF. None of these tests uses a real Source game host or Quest HMD. See [Phase 103](PHASE103_NATIVE_EVENT_BRIDGE.md).
 - **Still no real Source engine host, custom SourceVR game-DLL support, SiN map or headset execution.** R1 is blocked.
 
+## Phase 105: experimental srceng content preflight
+
+A separate [read-only srceng preflight](PHASE105_SRCENG_CONTENT_PREFLIGHT.md) can check owner's private BSP/MDL/VTF/VPK headers and directory structure against *upstream-advertised* format ranges with synthetic Python tests. **No actual SiN map was inspected or loaded by public CI; this does not solve Source game module compatibility, Android Quest rendering or R1.** The nillerusr engine's leaked-code provenance means it cannot be assumed a redistributable game foundation.
+
 ## Integration blockers and recommended next engineering work
 
 1. **R1: choose and obtain an actual compatible engine/SDK target** with permitted build/runtime integration. Compile a real host adapter against its headers and test the required lifecycle and callbacks, without assuming Source 2006 x86 layout carries to ARM64. [Issue #12](https://github.com/JakX2/sin-episodes-quest3-recomp/issues/12)
