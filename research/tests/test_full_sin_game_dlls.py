@@ -7,7 +7,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 from audit_full_sin_game_dlls import (
     VerificationError, inspect_weapon_scripts, rtti_names,
-    scan_registrations, report,
+    scan_registrations, scan_interface_registrations, report,
 )
 from test_gameplay_entity_registry import fake_registered_server, FACTORIES, PEImage
 
@@ -46,6 +46,35 @@ class FullRegistryTests(unittest.TestCase):
     def test_wrong_original_hash_rejected(self):
         with self.assertRaisesRegex(VerificationError, "SHA-256"):
             scan_registrations(self.fake)
+
+    def test_actual_interface_constructor_call_and_mutated_target(self):
+        pe = PEImage(self.fake)
+        buf = bytearray(self.fake)
+        reg_va = 0x223CF000
+        name_va = 0x22448000
+        callback_va = 0x22100000
+        obj_va = 0x22510000
+        ctor_va = 0x221FB5D0
+        code = (b"\x68" + struct.pack("<I", name_va) +
+                b"\x68" + struct.pack("<I", callback_va) +
+                b"\xb9" + struct.pack("<I", obj_va) +
+                b"\xe8" + struct.pack("<i", ctor_va - (reg_va + 20)) +
+                b"\xc3")
+        self.assertEqual(len(code), 21)
+        buf[pe.offset(reg_va, len(code)):pe.offset(reg_va, len(code)) + len(code)] = code
+        name = b"ServerGameDLL003\x00"
+        buf[pe.offset(name_va, len(name)):pe.offset(name_va, len(name)) + len(name)] = name
+        rows = scan_interface_registrations(bytes(buf), "server.dll")
+        self.assertEqual([row["name"] for row in rows], ["ServerGameDLL003"])
+        self.assertEqual(rows[0]["factory_callback_va"], "0x22100000")
+        # The same valid-looking instructions must NOT count if they call a
+        # different function, even when the version string is identical.
+        buf[pe.offset(reg_va + 16, 1)] ^= 0x10
+        self.assertEqual(scan_interface_registrations(bytes(buf), "server.dll"), [])
+
+    def test_interface_constructor_requires_known_original_dll(self):
+        with self.assertRaisesRegex(VerificationError, "unknown"):
+            scan_interface_registrations(self.fake, "fake.dll")
 
     def test_rtti_requires_valid_msvc_terminator(self):
         blob = (b"junk.?AVCNPC_SintekGrunt@@\x00"
