@@ -77,7 +77,7 @@ class ServerTablesTests(unittest.TestCase):
 
     def test_remove_field_initializer_leaves_unknown(self):
         bad=bytearray(self.server)
-        bad[0x1200+18]^=0x10
+        bad[0x1200+13]^=0x40
         props,missing=scan_server_properties(
             bytes(bad),scan_server_tables(bytes(bad),check_hash=False))
         self.assertFalse(props)
