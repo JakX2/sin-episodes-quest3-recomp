@@ -29,7 +29,7 @@ ctest --test-dir build --output-on-failure -R 'sin_event_bridge_dlopen_tests|sin
 
 The \`sin_event_bridge_dlopen_tests\` executable does **not** link directly against the bridge. It calls \`dlopen\`, obtains all six entry points with \`dlsym\`, constructs a fabricated engine host, runs session lifecycle/reload/usercmd/map cleanup, checks re-entrancy and recycled entity generations, and closes the library. All test data is generated within the test. This proves host-process dynamic invocation on the tested platform, not execution inside SourceVR or the Quest headset.
 
-To use on Android, build with the official NDK as in the existing Android CI, deploy \`libsin_compat_host_abi.so\` and \`libsin_compat_event_bridge.so\` for the **same ABI**, and ensure the native host can resolve both. No real Android host has yet invoked the bridge, and it must never be described as a working Quest port.
+To use on Android, build with the official NDK as in the existing Android CI, deploy \`libsin_compat_host_abi.so\` and \`libsin_compat_event_bridge.so\` for the **same ABI**, and ensure the native host can resolve both. The Phase 103 CI now executes a **Bionic Android x86_64 emulator smoke test**: it pushes both matching `.so` files and a separately built loader, verifies SHA-256 on the device, runs the native `dlopen` lifecycle with fabricated callbacks, and checks a pass marker. This is real Android **synthetic-host** execution, **not** SourceVR engine integration, an ARM64 device run or a playable Quest port. The Android shell fixture sets `LD_LIBRARY_PATH` to the private library directory so the bridge can resolve `libsin_compat_host_abi.so`.
 
 ## Remaining engine blocker
 
