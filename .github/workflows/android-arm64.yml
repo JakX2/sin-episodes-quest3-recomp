@@ -13,9 +13,13 @@ jobs:
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
           test -d "$ANDROID_HOME"
-          command -v sdkmanager
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
       - name: Install pinned Android NDK
-        run: sdkmanager --install "ndk;27.2.12479018"
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "ndk;27.2.12479018"
       - name: Cross-compile native bridge
         run: |
           cmake -S . -B build-android -DCMAKE_BUILD_TYPE=Release \
