@@ -27,6 +27,15 @@ No proprietary binaries, original game files or reconstructed APKs are committed
 
 ## Windows PowerShell workflow
 
+The **first check requires only Python 3**, no Android SDK and no diagnostic library:
+
+~~~powershell
+py .\tools\sourcevr_extracted_apk.py "C:\Users\Dav\Desktop\source vr"
+~~~
+
+Expected: a JSON report reporting **five DEX files**, **31 HL2 native modules**, and **31 Entropy: Zero native modules**. If any files were lost or changed during extraction, the tool fails and names the missing entry. This check is read-only and does not create or sign any APK.
+
+
 In a clone of branch `feat/sourcevr-extracted-folder-build», with `apktool», `zipalign», `aapt», `apksigner» and JDK `keytool» installed:
 
 First get the ARM64 diagnostic `libclient.so» from the passing GitHub Actions artifact for the `ARM64 Source factory diagnostic» workflow on this branch.
