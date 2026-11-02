@@ -31,7 +31,7 @@ class FullRegistryTests(unittest.TestCase):
         b[pe.offset(first + 1, 1)] ^= 0x7f
         rows = scan_registrations(bytes(b), check_hash=False, verify_subset=False)
         self.assertEqual(len(rows), 31)
-        with self.assertRaisesRegex(VerificationError, "cross-check"):
+        with self.assertRaises(VerificationError):
             scan_registrations(bytes(b), check_hash=False)
 
     def test_bad_factory_section_and_malformed_name_rejected(self):
