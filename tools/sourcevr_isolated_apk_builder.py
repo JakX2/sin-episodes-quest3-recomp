@@ -161,7 +161,7 @@ def build(apk: Path, probe: Path, output: Path, package: str,
     # Verify ACTUAL compiled manifest identity, not just our decoded XML.
     manifest_dump = subprocess.run([aapt, "dump", "badging", str(signed)],
                                    capture_output=True, text=True, check=True).stdout
-    match = re.search(r"(?m)^package:\\s+name='([^']+)'", manifest_dump)
+    match = re.search(r"(?m)^package:\s+name='([^']+)'", manifest_dump)
     if not match or match.group(1) != package:
         raise ValueError("signed APK package mismatch; refusing unverified side-by-side identity")
     result = validate_signed_apk(signed, package)
