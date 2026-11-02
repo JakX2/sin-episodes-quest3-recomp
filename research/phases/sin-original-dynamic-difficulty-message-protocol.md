@@ -100,3 +100,23 @@ The auditor checks exact message bytes, 9 paired registration callsites/sizes, 8
 5. Continue the whole-DLL work queue across original weapon, NPC, HUD, poison/antigen, vehicle, scene and save/load systems. The entire 2006 DLLs are not yet recovered.
 
 **Scope boundary:** this is binary-grounded message and member-field reconnaissance. It does not provide an Android executable gameplay module or complete SiN difficulty gameplay formulas.
+
+
+## Original server action factory: eight named script/action classes
+
+The original 2006 server compiled action-creation dispatcher at x86 0x2215D1A0 matches exactly **eight** original literal action labels in a sequence of compare-and-construct branches:
+
+| Original action label | Label-reference instruction |
+|---|---|
+| Look Action | 0x2215D1A7 |
+| Use Action | 0x2215D21A |
+| Weapon Action | 0x2215D280 |
+| Map Action | 0x2215D2E0 |
+| Move Action | 0x2215D311 |
+| Health Action | 0x2215D342 |
+| Game Action | 0x2215D36F |
+| **Dynamic Difficulty Action** | **0x2215D39C** |
+
+The **Dynamic Difficulty Action** comparison branch allocates a 0x2CC-byte object and tail-jumps at **0x2215D3C4** to original **0x2215CD20**. The constructor initializes its vfptr with the independently RTTI-validated primary vtable pointer **0x224116B8**, directly identifying the class as **CDynamicDifficultyAction** rather than assuming from string similarity. The constructor passes argument 7 to its shared action-base initializer.
+
+These strings establish eight recognized factory labels in this particular original dispatcher; they do not prove every script action is implemented on Quest, or fully reveal the execution semantics of any one action. Dynamic Difficulty Action specifically is a *server-side gameplay action class*, beyond the client network-message protocol described above.
