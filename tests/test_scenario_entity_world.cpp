@@ -87,10 +87,8 @@ int main() {
     assert(world.pending_events() == 0);
     assert(world.snapshot(touch,snap) && snap.disabled);
     assert(world.input(touch, "Enable"));
-    // A trigger_once remains used even when re-enabled via speculative input:
-    // current implementation treats Enable as reopening a separately activated
-    // trigger, which must be host-gated if original semantics differ.
-    assert(world.touch_once(touch, actor));
+    // Enabling a consumed trigger_once must never rearm its one-shot touch.
+    assert(!world.touch_once(touch, actor));
 
     // Native door controls use explicit movement request & acknowledgement.
     assert(world.input(door,"Lock"));
