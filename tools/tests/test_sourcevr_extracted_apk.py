@@ -1,11 +1,13 @@
 import hashlib
 import pathlib
+import sys
 import tempfile
 import unittest
 import zipfile
 
-from tools.sourcevr_extracted_apk import inventory, reconstruct_unsigned
-from tools.sourcevr_isolated_apk_builder import build
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from sourcevr_extracted_apk import inventory, reconstruct_unsigned
+from sourcevr_isolated_apk_builder import build
 
 
 class SourceVRExtractedFolderTests(unittest.TestCase):
