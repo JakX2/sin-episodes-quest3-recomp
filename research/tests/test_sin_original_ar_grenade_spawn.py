@@ -64,7 +64,7 @@ class AssaultGrenadeTests(unittest.TestCase):
             audit(bytes(data), check_hash=False)
         data = bytearray(self.blob)
         data[0x22477230-BASE] = ord("X")
-        with self.assertRaisesRegex(VerificationError, "classname"):
+        with self.assertRaisesRegex(VerificationError, "grenade_ar literal"):
             audit(bytes(data), check_hash=False)
 
     def test_unpinned_fake_rejected(self):
