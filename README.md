@@ -43,7 +43,7 @@ The build includes the \`sin_weapon_runtime\` C++ static library and the \`sin_c
 - **Campaign and AI:** no launched SiN BSP or scripted encounter, complete SinTEK AI, vehicle operation, map transition or original save/load compatibility.
 - **Original execution validation:** no original Windows executable executed by the port, no playable standalone Quest APK and no physical Quest 3 gameplay test.
 
-**Infrastructure update (Phases 100–103):** An offline SourceVR package/ELF auditor and independently loadable native C event bridge have now been added on stacked PRs. The bridge can receive externally dispatched equip, input, reload and cleanup events in a synthetic host, but **no SourceVR gameplay module loading or Quest execution has been shown**. See [Phase 103 native event bridge](docs/PHASE103_NATIVE_EVENT_BRIDGE.md).
+**Infrastructure update (Phases 100–103):** An offline SourceVR package/ELF auditor and independently loadable native C event bridge have now been added on stacked PRs. The bridge can receive externally dispatched equip, input, reload and cleanup events in a synthetic host; the new bridge now compiles for Android ARM64 and has passed an Android x86_64 emulator Bionic `dlopen` smoke. **No SourceVR gameplay module loading or Quest execution has been shown**. See [Phase 103 native event bridge](docs/PHASE103_NATIVE_EVENT_BRIDGE.md).
 
 The priority is now **real Source/SourceVR-compatible host integration**, not treating successful isolated math/research tests as a playable port. [Engine integration issue #12](https://github.com/JakX2/sin-episodes-quest3-recomp/issues/12) and [campaign integration issue #20](https://github.com/JakX2/sin-episodes-quest3-recomp/issues/20) remain the major blockers.
 
