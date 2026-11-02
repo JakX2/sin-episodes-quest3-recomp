@@ -88,6 +88,64 @@ def scan_registrations(server: bytes, *, check_hash: bool = True,
     return out
 
 
+INTERFACE_CONSTRUCTORS = {
+    "client.dll": (0x24000000, 0x24164160),
+    "server.dll": (0x22000000, 0x221FB5D0),
+}
+
+
+def scan_interface_registrations(image: bytes, dll: str) -> list[dict]:
+    """Find exact InterfaceReg constructor calls in the original MSVC binaries.
+
+    Pattern: push interface_name; push factory_callback; mov ecx, registry_obj;
+    call InterfaceReg::InterfaceReg; ret. Registry objects live in .data BSS
+    (virtual memory past the raw bytes), so section membership is intentional.
+    """
+    if dll not in INTERFACE_CONSTRUCTORS:
+        raise VerificationError("unknown original game DLL")
+    base, ctor = INTERFACE_CONSTRUCTORS[dll]
+    pe = PEImage(image)
+    if pe.base != base:
+        raise VerificationError("unexpected game interface image base")
+    section = next((row for row in pe.sections if row[0] == ".text"), None)
+    if section is None:
+        raise VerificationError("missing .text")
+    _, rva, _, raw, rawsize = section
+    code = image[raw:raw + rawsize]
+    results = []
+    for mark in re.finditer(b"\x68", code):
+        i = mark.start()
+        op = code[i:i + 21]
+        if (len(op) != 21 or op[0] != 0x68 or op[5] != 0x68 or
+            op[10] != 0xb9 or op[15] != 0xe8 or op[20] != 0xc3):
+            continue
+        va = pe.base + rva + i
+        if va + 20 + struct.unpack_from("<i", op, 16)[0] != ctor:
+            continue
+        name_va, callback_va, obj_va = (
+            struct.unpack_from("<I", op, p)[0] for p in (1, 6, 11))
+        if (pe.section_of(name_va) != ".rdata" or
+            pe.section_of(callback_va) != ".text" or
+            pe.section_of(obj_va) != ".data"):
+            continue
+        try:
+            rawname = pe.at(name_va, 96).split(b"\x00", 1)[0]
+        except VerificationError:
+            continue
+        if not CLASSNAME.fullmatch(rawname):
+            continue
+        results.append({
+            "name": rawname.decode("ascii"),
+            "registration_va": f"0x{va:08x}",
+            "factory_callback_va": f"0x{callback_va:08x}",
+            "InterfaceReg_object_va": f"0x{obj_va:08x}",
+        })
+    for field in ("name", "registration_va", "InterfaceReg_object_va"):
+        if len({row[field] for row in results}) != len(results):
+            raise VerificationError(f"duplicate registered interface {field}")
+    return results
+
+
 def rtti_names(data: bytes) -> list[str]:
     return sorted({m.group(1).decode("ascii") for m in RTTI.finditer(data)})
 
@@ -121,6 +179,8 @@ def report(server: bytes, client: bytes, *, scripts: bytes | None = None,
         raise VerificationError("original 2006 SiN client.dll SHA-256 mismatch")
     registrations = scan_registrations(server, check_hash=check_hash)
     client_types, server_types = rtti_names(client), rtti_names(server)
+    client_interfaces = scan_interface_registrations(client, "client.dll")
+    server_interfaces = scan_interface_registrations(server, "server.dll")
     names = {row["classname"] for row in registrations}
     result = {
         "scope": "Static x86 factory registration CALL-SHAPE and MSVC RTTI metadata only",
@@ -132,6 +192,13 @@ def report(server: bytes, client: bytes, *, scripts: bytes | None = None,
             "matching_callshape_entries": len(registrations),
             "category_by_prefix": dict(sorted(Counter(category(n) for n in names).items())),
             "registrations": registrations,
+        },
+        "actual_createinterface_registrations": {
+            "client_count": len(client_interfaces),
+            "server_count": len(server_interfaces),
+            "client": client_interfaces,
+            "server": server_interfaces,
+            "note": "Exact x86 factory-constructor calls, not string-only interface candidates."
         },
         "rtti": {
             "client_count": len(client_types),
