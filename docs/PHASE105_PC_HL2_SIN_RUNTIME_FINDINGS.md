@@ -56,6 +56,54 @@ The owner showed the asset directory name `models/HL2_props`, while the **in-eng
 
 **Windows file lookup is commonly case-insensitive, Android/Linux filesystem lookup is often case-sensitive.** The existing owner-local scanner found no *case-folded path collisions*, but that is **not a reference-to-path case-mismatch audit**. Before moving the working PC assets to Android, validate whether `srceng`'s virtual filesystem normalizes case and check all referenced model/material/companion paths. Do not mass-rename the original files; work on a temporary copy and fix only reproducible failures.
 
+## MAJOR FOLLOW-UP: actual Android srceng SiN BSP rendering (2 November 2026)
+
+**Supersedes the earlier statement that no Android SiN rendering has been shown.** Following the above PC tests, the owner supplied **four Android screenshots** of original SiN Episodes dock content displayed and navigated in a mobile `srceng` Source engine, with translucent on-screen touchscreen controls. One Android console screenshot explicitly identifies `Map: se1_docks02` and `Source Engine 25 (build 8491853)` at its upper right. The Android console also shows a path under `/storage/emulated/0/srceng/hl2/`, corroborating the Android source-engine file layout. The exact Android device chipset/OS version and the exact mount/search-path arrangement for SiN assets were not supplied.
+
+**Observed via owner screenshots:**
+
+- Original SiN `se1_docks02` world geometry is loaded and rendered on **Android**, with recognizably correct industrial architecture, metal rolling doors, warning signage, docks perimeter, concrete roads, props, sky and baked/local lights. This is **a real Android Source-host BSP/content test**, not Phase104's standalone synthetic JNI probe.
+- The mobile host renders a first-person HL2 pistol and crowbar and shows its touch-control overlay. Screenshots taken at multiple map locations show movement/navigation through the world; the screenshots do **not** demonstrate SiN weapons or VR controls.
+- A mobile screenshot of the dumpster/warehouse area shows a set of objects scattered near the dumpster, visually consistent with the PC supply-crate/drop experiment. Their exact spawn mechanism, pickup behavior and whether the original SiN loot logic was invoked **were not verified** by a console trace.
+- Graphics quality and effects can differ from desktop, but screenshots show recognizable textured world and assets without the original severe flat-shading failure.
+
+**Android console findings seen in the screenshot:**
+
+```text
+Saving /storage/emulated/0/srceng/hl2/hl2_sound_misc.vpk.sound.cache
+Constraint () attached to two shadow objects (brush_hinge and shitter_door)!!!
+Redownloading all lightmaps
+MP3 initialized with no sound cache, this may cause janking. [ music/docks_lighthouse.mp3 ]
+*** Invalid sample rate (0) for sound "#music/docks_lighthouse.mp3".
+```
+
+The audio error is important: **rendering success does not establish working soundtrack playback**. The map's physics constraint warning also persists across hosts. We have **not** established whether all SiN props, map entities, animated NPCs or scripted triggers work on Android.
+
+### Revised proof/status matrix
+
+| Goal | Evidence | Status |
+| --- | --- | --- |
+| PC HL2 engine loads original SiN dock BSPs | PC in-game/console screenshots | **Owner demonstrated** |
+| PC SiN textures/models/lighting | PC screenshots in the above observations | **Owner demonstrated, sampled maps/areas** |
+| Android `srceng` loads `se1_docks02` | Android console and gameplay screenshots | **Owner demonstrated** |
+| Android SiN content textures, world geometry and many static props render | Android gameplay screenshots | **Owner demonstrated, sampled areas** |
+| Android mobile controls navigate the map | Four screenshots from several positions with touch-control overlay | **Strong visual evidence** |
+| Android music, full physics and entity-specific gameplay | Warning and screenshots, no direct behavioral traces | **Not validated; audio warning remains** |
+| SiN entity registration and NPC behavior | PC HL2 reported `npc_jessica`, `npc_jc`, `npc_blade` unknown | **Still missing in HL2 host, Android not established** |
+| Original Windows SiN `client.dll`/`server.dll` running on Android ARM64 | Windows PE binaries cannot be directly used as Android ARM64 modules | **Not achieved** |
+| Distributable lawful Source-compatible engine + SiN gameplay module | Upstream `srceng` provenance/licence concerns, no integrated game module | **R1 still blocked** |
+| Standalone Quest 3 stereo VR gameplay/performance | No Quest device/VR renderer/input evidence | **Not achieved** |
+
+### Next narrow engineering gate after this Android success
+
+1. Archive an **owner-local** Android console log and note device/OS, `srceng` build, map command and actual SiN mount paths; avoid publishing copyrighted original files.
+2. Verify a few representative SiN map model/material references on Android and investigate whether case-insensitive lookups are supplied by `srceng` before mass-renaming content. Successful rendering means case mismatch is not an automatic universal blocker, **not** that every asset reference resolves.
+3. Address `music/docks_lighthouse.mp3` audio decoding/initialization as a separate test, without letting it block gameplay entity porting.
+4. Move the next implementation focus to **real SiN game-class registration and engine callbacks**, with a legally usable native host target; preserve the already proven Android map-render evidence and distinguish it from our synthetic CMake/JNI smoke.
+5. **No direct lift-and-shift of SiN Win32 client/server DLLs:** require source-compatible reimplementation/integration and legal engine provenance review.
+
+**Repository policy:** these are owner-reported screenshots/console observations; no engine or SiN proprietary binaries/assets/screen-captured asset bytes are checked in. This milestone reduces a major Android *content-render* uncertainty but does **not** finish the Quest 3 port.
+
 ## Engineering implications and next evidence gate
 
 1. **Preserve the PC configuration** as a reproducible baseline, noting engine version, the exact map command, mounted directories, console warnings and screenshots. Initial bad rendering vs the clean four-directory mount is evidence for a resource/mount or configuration conflict, not proof of its exact source.
