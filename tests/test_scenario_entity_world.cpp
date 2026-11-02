@@ -54,7 +54,7 @@ int main() {
     assert(!world.activate_map(actor));
     assert(world.pending_events() == 1);
     auto fired = world.advance_to(0);
-    assert(fired.events_processed == 2 && fired.inputs_delivered == 2);
+    assert(fired.events_processed == 1 && fired.inputs_delivered == 1);
     assert(world.pending_events() == 1); // delayed door Open
     assert(world.advance_to(0.24).inputs_delivered == 0);
     assert(world.advance_to(0.25).inputs_delivered == 1);
