@@ -111,6 +111,7 @@ ScenarioSpawnResult ScenarioEntityWorld::spawn(const ScenarioEntitySpec& spec) {
     Slot& slot = slots_[index];
     slot.alive = true;
     slot.state = {};
+    slot.trigger_consumed = false;
     slot.state.kind = kind;
     slot.state.targetname = std::move(targetname);
     slot.state.disabled = disabled;
@@ -167,10 +168,12 @@ bool ScenarioEntityWorld::activate_map(EntityRef activator) {
 bool ScenarioEntityWorld::touch_once(EntityRef trigger, EntityRef activator) {
     auto* slot = lookup(trigger);
     if (!slot || slot->state.kind != ScenarioEntityKind::TriggerOnce ||
-        slot->state.disabled || !is_live(activator)) return false;
+        slot->state.disabled || slot->trigger_consumed ||
+        !is_live(activator)) return false;
     // Keep source alive long enough for delayed outputs. A real host may remove
     // the collision trigger separately after it becomes inactive.
     slot->state.disabled = true;
+    slot->trigger_consumed = true;
     emit(trigger, "OnStartTouch", activator);
     return true;
 }
