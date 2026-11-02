@@ -5,14 +5,14 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from sourcevr_isolated_modlib_patch import (
-    EXPECTED_DEX_SHA256, find_activity, patch_smali, verify_original_dex
+    EXPECTED_DEX_SHA256, SETUP_DESCRIPTOR, find_activity, patch_smali, verify_original_dex
 )
 
 BASE = """\
 .class public Lcom/sourcevrport/hl2vr/MainActivity;
 .super Landroid/app/NativeActivity;
 
-.method private setupEngineEnvironment()V
+.method private setupEngineEnvironment(Ljava/util/List;Ljava/util/List;Lcom/sourcevrport/hl2vr/ProfileAssetStage$NativeGraph;)V
     .locals 2
 
     invoke-virtual {p0}, Lcom/sourcevrport/hl2vr/MainActivity;->getApplicationInfo()Landroid/content/pm/ApplicationInfo;
@@ -54,6 +54,13 @@ class PatchTests(unittest.TestCase):
         self.assertIn('invoke-static {}, Lcom/sourcevrport/hl2vr/importer/ContentPaths;', patched)
         with self.assertRaisesRegex(ValueError, "already present"):
             patch_smali(patched)
+
+    def test_original_dex_descriptor_is_used(self):
+        self.assertEqual(SETUP_DESCRIPTOR,
+            "(Ljava/util/List;Ljava/util/List;"
+            "Lcom/sourcevrport/hl2vr/ProfileAssetStage$NativeGraph;)V")
+        with self.assertRaisesRegex(ValueError, "verified setupEngineEnvironment"):
+            patch_smali(BASE.replace(SETUP_DESCRIPTOR, "()V"))
 
     def test_different_registers(self):
         source = BASE.replace("iget-object v0, v0,", "iget-object v4, v0,").replace(
