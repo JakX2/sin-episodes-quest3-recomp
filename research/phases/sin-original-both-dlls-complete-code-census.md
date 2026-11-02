@@ -64,3 +64,27 @@ Previous findings in PRs #63-70 still apply: 510 server entity registrations; or
 **Reality check:** This milestone inventories executable x86 code, but the original C++ source is not fully decompiled and no complete SiN-compatible Quest ARM64 gameplay client.so/server.so is running. The original x86 code cannot simply be loaded or relinked in Android.
 
 **GitHub backup:** source analyzers, synthetic tests, notes and PRs live on remote branches. The owner should retain local backups of original DLLs, scripts, the full generated machine-readable candidate lists and their exact hashes. No merges are implied by draft PR status.
+
+
+## Immediate cross-DLL lead: original dynamic-difficulty code
+
+First use of the whole-DLL inventory on this *SiN-specific* subsystem, verified independently against the original compiled RTTI/vftables and original 2006 .rdata strings (not inferred from modern HL2):
+
+**Client:**
+- **C_DynamicDifficulty : CBaseGameSystem** has 12 primary vtable slots, but only **2 differ** from CBaseGameSystem.
+- The changed slot indices are **0** (original parent 0x240566C0, child 0x241FAC90, consistent with destructor) and **11** (original parent 0x2413D2B0, child **0x241FAC70**). This last function is a targeted entry for client-side dynamic difficulty lifecycle investigation; its exact Source virtual name remains unverified.
+
+**Server:**
+- **CDynamicDifficulty** has only **one RTTI-identified virtual slot** (0x222B9050). This means the vtable census alone is *especially inadequate* for reconstructing its manager logic; nonvirtual methods and global/static references must be traced separately.
+- **CDynamicDifficultyAction : CEntityAction**: 11 shared slots, **9 changed**. Replacement original virtual entry addresses by slot: 0=0x2215C6A0, 1=0x2215C680, 3=0x2215C6C0, 5=0x2215C690, 6=0x2215BD00, 7=0x2215BD10, 8=0x2215BD30, 9=0x2215D090, 10=0x2215BDD0. Several parent slots were generic/pure-virtual stubs, so the action subclass carries substantive behavior candidates.
+- **CTriggerDynamicDifficulty : CBaseTrigger**: 167 shared slots, **4 changed**. Replacement entries: slot 0=0x221D5510, slot 13=0x221CCB60, slot 25=0x221D0740, slot 89=0x221CCB70. Do not assume these slots' method names without callsite disassembly.
+- Original server literal strings include **dynamic_difficulty**, **Dynamic Difficulty Action**, **EstimatedDifficulty**, **m_estimatedDifficulty**, **m_expectedDifficulty**, **g_debug_dynamic_difficulty**, and **Dynamic Difficulty Mode: No saving allowed**. String presence alone is only data evidence, but original machine-code PUSH-imm32 references are also present:
+  - 0x2215D6CC points at original dynamic_difficulty literal 0x2241129C.
+  - 0x2215D39C points at original Dynamic Difficulty Action literal 0x2241130C.
+  - 0x223C2D77 points at original debug cvar literal 0x2245CDBC.
+  - 0x223C2E2B points at original No saving allowed diagnostic 0x2245CE4C.
+  - 0x222B687F and 0x222B737D point at original dynamic_difficulty literal 0x2245C8D4.
+
+These addresses are **next original function-disassembly targets**. This does not yet establish calculation formulas, save restrictions, client/server message semantics or gameplay difficulty changes. Follow the executable CALL sites and field reads/writes before naming original methods or porting behavior.
+
+**Why this is a better next implementation priority:** dynamic difficulty appears across both binaries, and the server's main controller mostly lives outside obvious virtual slots. Reconstructing it links player performance, AI, grenade damage and client presentation rather than merely adding another isolated projectile.
