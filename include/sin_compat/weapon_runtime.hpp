@@ -21,6 +21,8 @@ struct WeaponConfig {
     std::array<float, 3> origin_offset{{0.0f, 0.0f, 0.0f}};
     int zoom_fov = 0;  // 0 means default FOV; actual SiN gun values not yet recovered.
     sin_phase55::WeaponInfo ammo{};
+    std::string primary_ammo_name;
+    std::string secondary_ammo_name;
 };
 
 // Implement with real engine APIs once the SourceVR branch is selected.

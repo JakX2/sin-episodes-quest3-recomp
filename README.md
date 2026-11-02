@@ -24,7 +24,7 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-The current CMake project builds `sin_weapon_runtime` and a `sin_weapon_runtime_tests` executable. The tests use a fake host and **synthetic fixture ammo capacity/model/FOV values**; they demonstrate integration behavior but do not establish live gameplay accuracy.
+The CMake project builds `sin_weapon_runtime`, `sin_weapon_scripts`, `sin_weapon_script_check`, and two test executables. Use `sin_weapon_script_check <game-directory>` to read local original SiN weapon data. See [local script guide](docs/LOCAL_WEAPON_SCRIPTS.md). The tests use a fake host and **synthetic fixture ammo capacity/model/FOV values**; they demonstrate integration behavior but do not establish live gameplay accuracy.
 
 ## What works in the prototype
 
@@ -39,7 +39,7 @@ The current CMake project builds `sin_weapon_runtime` and a `sin_weapon_runtime_
 ## Not yet implemented
 
 - Real SourceVR or Android/ARM64 engine hookup; no VR runtime bindings, headset position or motion controller interaction.
-- Weapon models and animation sequences, real `ZoomFOV` settings, aim poses or reliable gun-specific script values.
+- Weapon models and animation sequences, in-engine aim poses and actual SourceVR animation validation. The original script ZoomFOV, viewmodel paths and ammo capacities are now loadable locally.
 - A complete state machine for all original reload timings, owner checks, and attack gates.
 - Enemy AI, dynamic difficulty, vehicles, map scripts and campaign integration.
 - Original game execution validation.
@@ -49,7 +49,7 @@ The current CMake project builds `sin_weapon_runtime` and a `sin_weapon_runtime_
 ```text
 include/sin_compat/     Public host-agnostic weapon API
 src/                    Compatibility prototype implementation
-tests/                  Mock-host integration tests
+tests/                  Mock-host integration and synthetic weapon-script parser tests
 third_party/research/   Unmodified clean-room behavioral reference headers from earlier research
 docs/                   Roadmap, status and evidence limitations
 .github/workflows/      Linux CMake build/test CI (activates when hosted on GitHub)
