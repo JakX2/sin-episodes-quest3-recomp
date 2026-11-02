@@ -55,6 +55,10 @@ docs/                   Roadmap, status and evidence limitations
 .github/workflows/      Linux CMake build/test CI (activates when hosted on GitHub)
 ```
 
+## SourceVR Android loader investigation
+
+The private SourceVR APK DEX startup audit and **fail-closed** ARM64 game-interface factory diagnostic are documented in [SourceVR Android startup environment](docs/SOURCEVR_ANDROID_STARTUP_ENV.md). The diagnostic logs interface requests but never returns a fake C++ game-interface pointer. **It is not a playable game module or a SourceVR integration.**
+
 ## Connecting to a game engine
 
 Implement `sin_compat::IWeaponHost` for the selected SourceVR branch. This requires correct engine lifecycle integration for resolving weapon activity sequences, viewmodel binding, animation playback, and *flatscreen-only* FOV changes. The engine is responsible for deciding the authoritative reload transfer event, ensuring a valid owner/weapon, providing per-gun settings, and storing game state.
