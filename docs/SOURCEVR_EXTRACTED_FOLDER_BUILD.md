@@ -1,3 +1,26 @@
+## Resume a previously decoded build after the setupEngineEnvironment signature error
+
+If Apktool fully decoded the private source, but the builder failed with "expected one setupEngineEnvironment()V method", **do not rerun Apktool decode**. This error came from a bad assumption in the original patcher: the verified SourceVR DEX declares:
+
+~~~text
+setupEngineEnvironment(Ljava/util/List;Ljava/util/List;Lcom/sourcevrport/hl2vr/ProfileAssetStage$NativeGraph;)V
+~~~
+
+The patcher now matches that exact method descriptor and verifies its APP_LIB_PATH setter instructions.
+
+On Windows, with the previous failed directory still at Desktop\sinprobe-build, run these commands from the **updated repository checkout**:
+
+~~~powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\resume_sourcevr_probe.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\resume_sourcevr_probe.ps1" -Build
+~~~
+
+The first command is read-only and checks the previous decoded MainActivity.smali, its original input archive, stage completeness and existing output conflicts. The second is opt-in and continues to modifying the *decoded copy*, rebuilding, aligning, signing and inspecting the separate debug APK.
+
+The resume option rejects unknown original DEX fingerprints, source tree changes affecting the reconstructed archive member list, previously patched code, and any build stage that may be partially completed. It **does not overwrite** an installed APK or original SourceVR game data.
+
+If the files have moved, pass -SourceDir, -Probe, -BuildOutput or -ToolRoot. The resume mechanism only handles the specific failure point **before** any APK build/signing stages. It cannot safely resume arbitrary later build errors.
+
 # R1: SourceVR diagnostic APK from original extracted folder
 
 **Result:** A complete modern SourceVR APK upload is **no longer required** to prepare the private launcher experiment, if the owner's original extracted SourceVR directory is intact.
