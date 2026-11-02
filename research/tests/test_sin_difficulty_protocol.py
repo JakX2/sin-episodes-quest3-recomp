@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/"tools"))
 from audit_sin_difficulty_protocol import (
-    MESSAGES,HOOKS,OTHER_CLIENT_HOOKS,CLIENT_DELEGATIONS,ACTION_FIELDS,
+    MESSAGES,HOOKS,OTHER_CLIENT_HOOKS,CLIENT_DELEGATIONS,ACTION_FIELDS,ACTION_FACTORY_NAMES,
     DECISION_SERVER_WRITES,DECISION_CLIENT_READS,SUCCESS_CALLS,
     SUCCESS_LOOP_TEST,REGISTRY_FUNCTION,HOOK_REGISTER,
     audit,verify_evidence,VerificationError,
@@ -71,6 +71,12 @@ def fixtures():
         server.put(read_va,read_bytes)
         server.put(fmt_push_va,b"\x68"+struct.pack("<I",fmt_va))
         server.put(fmt_va,fmt_text)
+    for name,(load_va,label_va,opcode) in ACTION_FACTORY_NAMES.items():
+        server.put(load_va,(b"\xBE" if opcode=="mov_esi" else b"\x68")+struct.pack("<I",label_va))
+        server.put(label_va,name.encode()+b"\x00")
+    server.put(0x2215CD20,b"\x6A\x07")
+    server.put(0x2215CD29,b"\xC7\x02"+struct.pack("<I",0x224116B8))
+    server.put(0x2215D3C4,b"\xE9"+struct.pack("<i",0x2215CD20-0x2215D3C9))
     for name,site in (
         ("DDDecisionMade",0x222B9775),
         ("DDSuccessModifiers",0x222BA9F6),
@@ -122,6 +128,19 @@ class DifficultyProtocolTests(unittest.TestCase):
     def test_corrupted_original_action_debug_field_read_is_rejected(self):
         self.server.corrupt(ACTION_FIELDS["decision"][0])
         with self.assertRaisesRegex(VerificationError,"member read"):
+            verify_evidence(self.client,self.server)
+
+    def test_eight_original_named_script_action_factory_paths(self):
+        report=verify_evidence(self.client,self.server)
+        names=[x["name"] for x in report["server_action_factory_names"]]
+        self.assertEqual(names,list(ACTION_FACTORY_NAMES))
+        self.assertIn("Dynamic Difficulty Action",names)
+        self.assertEqual(report["server_dynamic_difficulty_action_constructor_va"],
+                         "0x2215CD20")
+
+    def test_original_action_factory_vtable_pointer_corruption_rejected(self):
+        self.server.corrupt(0x2215CD2B)
+        with self.assertRaisesRegex(VerificationError,"vtable initialization"):
             verify_evidence(self.client,self.server)
 
     def test_corrupted_server_message_size_is_detected(self):
