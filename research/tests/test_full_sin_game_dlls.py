@@ -1,0 +1,110 @@
+"""Synthetic validation of exhaustive Source x86 registration-callshape finder."""
+import pathlib
+import struct
+import sys
+import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
+from audit_full_sin_game_dlls import (
+    VerificationError, inspect_weapon_scripts, rtti_names,
+    scan_registrations, scan_interface_registrations, report,
+)
+from test_gameplay_entity_registry import fake_registered_server, FACTORIES, PEImage
+
+
+class FullRegistryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.fake = fake_registered_server()
+
+    def test_original_32_selected_entries_appear_from_auto_discovery(self):
+        rows = scan_registrations(self.fake, check_hash=False)
+        expected = {x[0] for x in FACTORIES}
+        self.assertEqual(len(rows), 32)
+        self.assertEqual({x["classname"] for x in rows}, expected)
+        self.assertEqual(len({x["factory_object_va"] for x in rows}), 32)
+
+    def test_wrong_registry_getter_rejected_by_scanner(self):
+        b = bytearray(self.fake)
+        pe = PEImage(b)
+        first = FACTORIES[0][2]
+        b[pe.offset(first + 1, 1)] ^= 0x7f
+        rows = scan_registrations(bytes(b), check_hash=False, verify_subset=False)
+        self.assertEqual(len(rows), 31)
+        with self.assertRaises(VerificationError):
+            scan_registrations(bytes(b), check_hash=False)
+
+    def test_bad_factory_section_and_malformed_name_rejected(self):
+        b = bytearray(self.fake)
+        pe = PEImage(b)
+        first, second = FACTORIES[0], FACTORIES[1]
+        struct.pack_into("<I", b, pe.offset(first[2] + 13, 4), 0x22001000)
+        b[pe.offset(second[3], 1)] = ord("!")
+        rows = scan_registrations(bytes(b), check_hash=False, verify_subset=False)
+        self.assertEqual(len(rows), 30)
+
+    def test_wrong_original_hash_rejected(self):
+        with self.assertRaisesRegex(VerificationError, "SHA-256"):
+            scan_registrations(self.fake)
+
+    def test_actual_interface_constructor_call_and_mutated_target(self):
+        pe = PEImage(self.fake)
+        buf = bytearray(self.fake)
+        reg_va = 0x223CF000
+        name_va = 0x22448000
+        callback_va = 0x22100000
+        obj_va = 0x22510000
+        ctor_va = 0x221FB5D0
+        code = (b"\x68" + struct.pack("<I", name_va) +
+                b"\x68" + struct.pack("<I", callback_va) +
+                b"\xb9" + struct.pack("<I", obj_va) +
+                b"\xe8" + struct.pack("<i", ctor_va - (reg_va + 20)) +
+                b"\xc3")
+        self.assertEqual(len(code), 21)
+        buf[pe.offset(reg_va, len(code)):pe.offset(reg_va, len(code)) + len(code)] = code
+        name = b"ServerGameDLL003\x00"
+        buf[pe.offset(name_va, len(name)):pe.offset(name_va, len(name)) + len(name)] = name
+        rows = scan_interface_registrations(bytes(buf), "server.dll")
+        self.assertEqual([row["name"] for row in rows], ["ServerGameDLL003"])
+        self.assertEqual(rows[0]["factory_callback_va"], "0x22100000")
+        # The same valid-looking instructions must NOT count if they call a
+        # different function, even when the version string is identical.
+        buf[pe.offset(reg_va + 16, 1)] ^= 0x10
+        self.assertEqual(scan_interface_registrations(bytes(buf), "server.dll"), [])
+
+    def test_interface_constructor_requires_known_original_dll(self):
+        with self.assertRaisesRegex(VerificationError, "unknown"):
+            scan_interface_registrations(self.fake, "fake.dll")
+
+    def test_rtti_requires_valid_msvc_terminator(self):
+        blob = (b"junk.?AVCNPC_SintekGrunt@@\x00"
+                b".?AUCWeaponMagnum@@\x00"
+                b".?AVCorrupt@@notterminated")
+        self.assertEqual(rtti_names(blob), ["CNPC_SintekGrunt", "CWeaponMagnum"])
+
+    def test_weapon_script_crosswalk(self):
+        import io
+        import zipfile
+        dst = io.BytesIO()
+        with zipfile.ZipFile(dst, "w") as z:
+            z.writestr("scripts/weapon_magnum.txt", "x")
+            z.writestr("scripts/weapon_rocket_launcher.txt", "x")
+            z.writestr("scripts/other.txt", "x")
+        rows = inspect_weapon_scripts(dst.getvalue(), {"weapon_magnum", "weapon_smg"})
+        self.assertEqual(rows["script_only_not_in_this_factory_callshape"],
+                         ["weapon_rocket_launcher"])
+        self.assertEqual(rows["registered_without_named_script"], ["weapon_smg"])
+
+    def test_metadata_only_report(self):
+        client = bytearray(self.fake)
+        struct.pack_into("<I", client, 0x98 + 28, 0x24000000)
+        client.extend(b".?AVC_WeaponMagnum@@\x00")
+        x = report(self.fake, bytes(client), check_hash=False)
+        self.assertEqual(x["registry"]["matching_callshape_entries"], 32)
+        self.assertEqual(x["rtti"]["client_count"], 1)
+        self.assertEqual(x["rtti"]["server_count"], 0)
+        self.assertEqual(x["actual_createinterface_registrations"]["client_count"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
