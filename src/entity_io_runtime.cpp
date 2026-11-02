@@ -54,14 +54,20 @@ std::size_t EntityIoRuntime::fire(EntityRef source, const std::string& output,
     return scheduled;
 }
 
+std::size_t EntityIoRuntime::cancel_pending(EntityRef source) {
+    const auto before = pending_.size();
+    pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
+        [source](const Pending& event) { return event.source == source; }),
+        pending_.end());
+    return before - pending_.size();
+}
+
 void EntityIoRuntime::remove_source(EntityRef source) {
     for (auto it = outputs_.begin(); it != outputs_.end();) {
         if (it->first.source == source) it = outputs_.erase(it);
         else ++it;
     }
-    pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
-        [source](const Pending& pending) { return pending.source == source; }),
-        pending_.end());
+    cancel_pending(source);
 }
 
 EntityIoDrain EntityIoRuntime::advance_to(double seconds, std::size_t budget) {
