@@ -56,6 +56,9 @@ class GrenadeDetonationTests(unittest.TestCase):
         self.assertEqual(result["effects"]["feedback_call_literal_float_args"],
                          [750.0, 1.0, 150.0, 25.0])
         self.assertEqual(result["state"]["evolving_field_increment"], 15.0)
+        self.assertEqual(result["state"]["original_initial_damage_candidate"]["value"], 100.0)
+        self.assertEqual(result["state"]["original_initial_blast_radius_candidate"]["value"], 250.0)
+        self.assertEqual(result["state"]["blast_damage_type_bitmask"], "0x40")
         self.assertEqual(result["state"]["evolving_field_upper_comparison"], 300.0)
 
     def test_strict_binary_sha_rejects_synthetic_fixtures(self):
