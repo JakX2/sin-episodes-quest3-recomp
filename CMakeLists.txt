@@ -12,6 +12,14 @@ target_compile_options(sin_factory_probe PRIVATE $<$<C_COMPILER_ID:GNU,Clang>:-W
 if(ANDROID)
   target_link_libraries(sin_factory_probe PRIVATE log)
 endif()
+# Explicit client.so name for a disposable APP_MOD_LIB selection probe only.
+# This is intentionally NOT a functional VClient017 game DLL.
+add_library(sin_factory_probe_client SHARED src/sourcevr_factory_probe.c)
+set_target_properties(sin_factory_probe_client PROPERTIES OUTPUT_NAME client)
+target_compile_options(sin_factory_probe_client PRIVATE $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+if(ANDROID)
+  target_link_libraries(sin_factory_probe_client PRIVATE log)
+endif()
 include(CTest)
 if(BUILD_TESTING)
   add_executable(sin_weapon_runtime_tests tests/test_weapon_runtime.cpp)
