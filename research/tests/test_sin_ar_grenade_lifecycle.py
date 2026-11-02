@@ -78,10 +78,12 @@ class GrenadeLifecycleTests(unittest.TestCase):
             assert_original_evidence(bytes(data),check_hash=False)
 
     def test_bad_x86_call_opcode_target(self):
-        pe=PEImage(self.fake)
         site=0x22313E2A
+        self.assertEqual(decode_rel_call(PEImage(self.fake),site),0x22146C40)
+        data=bytearray(self.fake)
+        data[site-BASE]=0x90
         with self.assertRaisesRegex(VerificationError,"not an x86 CALL"):
-            decode_rel_call(pe,site)
+            decode_rel_call(PEImage(bytes(data)),site)
         code=b"\xe8"+struct.pack("<i",0x22146C40-site-5)
         self.assertEqual(site+5+struct.unpack_from("<i",code,1)[0],0x22146C40)
 
