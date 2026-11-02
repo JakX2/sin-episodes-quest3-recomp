@@ -23,7 +23,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/27.2.12479018/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
             -DBUILD_TESTING=OFF
-          cmake --build build-android --target sin_factory_probe --parallel
+          cmake --build build-android --target sin_factory_probe sin_factory_probe_client --parallel
       - name: Verify ELF architecture and factory export
         run: |
           file build-android/libsin_factory_probe.so
@@ -32,9 +32,16 @@ jobs:
             grep -q 'CreateInterface'
           readelf --dyn-syms --wide build-android/libsin_factory_probe.so |
             grep -q 'SinFactoryProbeRequestCount'
+          file build-android/libclient.so
+          readelf -h build-android/libclient.so | grep -q 'Machine:.*AArch64'
+          readelf -d build-android/libclient.so | grep -q 'Library soname: \[libclient.so\]'
+          readelf --dyn-syms --wide build-android/libclient.so |
+            grep -q 'CreateInterface'
       - uses: actions/upload-artifact@v4
         with:
-          name: sourcevr-arm64-factory-diagnostic
-          path: build-android/libsin_factory_probe.so
+          name: sourcevr-arm64-factory-diagnostic-and-client-selection
+          path: |
+            build-android/libsin_factory_probe.so
+            build-android/libclient.so
           retention-days: 7
           if-no-files-found: error
