@@ -454,3 +454,26 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
   add_test(NAME sin101_provider_version_tests COMMAND sin101_provider_version_tests)
 endif()
+
+
+# Phase101 cross-library provider tests and real Android Bionic executable.
+if(BUILD_TESTING)
+  foreach(test_name sin101_two_library_smoke sin101_mock_provider_roundtrip)
+    add_executable(${test_name} tests/${test_name}.cpp)
+    target_include_directories(${test_name} PRIVATE include)
+    target_link_libraries(${test_name} PRIVATE sin_source_provider_abi)
+    target_compile_options(${test_name} PRIVATE
+      $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+    add_test(NAME ${test_name}
+      COMMAND ${test_name} $<TARGET_FILE:sin_legacy_bridge_abi>)
+  endforeach()
+endif()
+if(SIN_BUILD_ANDROID_SMOKE AND ANDROID)
+  add_executable(sin_android_source_provider_smoke
+    tests/sin101_mock_provider_roundtrip.cpp)
+  target_include_directories(sin_android_source_provider_smoke PRIVATE include)
+  target_link_libraries(sin_android_source_provider_smoke PRIVATE sin_source_provider_abi)
+  target_compile_options(sin_android_source_provider_smoke PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_dependencies(sin_android_source_provider_smoke sin_legacy_bridge_abi)
+endif()
