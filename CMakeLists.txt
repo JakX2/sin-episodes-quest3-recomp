@@ -212,3 +212,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_postinit_contract_tests
     COMMAND sin_original_postinit_contract_tests)
 endif()
+
+
+# Phase 87: original client/server registration and subsystem-startup
+# behavioral reference; not the Android SourceVR game module ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_subsystem_startup_tests
+    research/tests/sin_original_subsystem_startup_reference.cpp)
+  target_include_directories(sin_original_subsystem_startup_tests PRIVATE include)
+  target_compile_options(sin_original_subsystem_startup_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_original_subsystem_startup_tests
+    COMMAND sin_original_subsystem_startup_tests)
+endif()
