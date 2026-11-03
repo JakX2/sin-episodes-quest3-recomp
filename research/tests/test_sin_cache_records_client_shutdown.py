@@ -75,8 +75,10 @@ class OriginalCacheRecordTests(unittest.TestCase):
     def test_record_index_width_and_offsets(self):
         r=verify_one(fixture("server.dll"),"server.dll",False)
         self.assertEqual(r["record_index_width_bits"],16)
-        self.assertEqual(r["record_handler_index_offset"],12)
-        self.assertEqual(r["record_aux_pointer_offset"],20)
+        self.assertEqual(r["record_reader_view_offset"],8)
+        self.assertEqual(r["record_output_pointer_offset_from_array_base"],12)
+        self.assertEqual(r["record_handler_index_offset_from_array_base"],20)
+        self.assertEqual(r["record_insert_handler_store_offset_from_array_base"],20)
 
 if __name__=="__main__":
     unittest.main()
