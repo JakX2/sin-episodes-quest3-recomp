@@ -342,3 +342,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_sourcevr_factory_preflight_tests
     COMMAND sin_sourcevr_factory_preflight_tests)
 endif()
+
+
+# Phase 97: exact original SiN vs SourceVR 0.5.5 virtual-slot proof.
+# Host-only C++17 safety gate; not a native SiN libclient/libserver module.
+if(BUILD_TESTING)
+  add_executable(sin_sourcevr_method_slot_tests
+    research/tests/sin_sourcevr_method_slot_reference.cpp)
+  target_include_directories(sin_sourcevr_method_slot_tests PRIVATE include)
+  target_compile_options(sin_sourcevr_method_slot_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_sourcevr_method_slot_tests
+    COMMAND sin_sourcevr_method_slot_tests)
+endif()
