@@ -83,3 +83,14 @@ if(SIN_BUILD_ANDROID_SMOKE AND ANDROID)
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   add_dependencies(sin_android_host_abi_smoke sin_compat_host_abi)
 endif()
+
+
+# Cross-DLL dynamic-difficulty typed-call reference only. This is deliberately
+# separate from any SourceVR/Android engine module or network bitstream codec.
+if(BUILD_TESTING)
+  add_executable(sin_difficulty_message_contract_tests tests/test_difficulty_message_contract.cpp)
+  target_include_directories(sin_difficulty_message_contract_tests PRIVATE include)
+  target_compile_options(sin_difficulty_message_contract_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_difficulty_message_contract_tests COMMAND sin_difficulty_message_contract_tests)
+endif()
