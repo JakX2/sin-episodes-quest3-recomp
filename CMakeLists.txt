@@ -368,3 +368,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_engine_sound_vgui_tests
     COMMAND sin_original_engine_sound_vgui_tests)
 endif()
+
+
+# Phase99: original 2006 VGUI_System010 key translation and separate
+# original/native sound token namespace. No unverified ARM64 vtable calls.
+if(BUILD_TESTING)
+  add_executable(sin_legacy_sound_vgui_prebridge_tests
+    research/tests/sin_legacy_sound_vgui_prebridge_reference.cpp)
+  target_include_directories(sin_legacy_sound_vgui_prebridge_tests PRIVATE include)
+  target_compile_options(sin_legacy_sound_vgui_prebridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_legacy_sound_vgui_prebridge_tests
+    COMMAND sin_legacy_sound_vgui_prebridge_tests)
+endif()
