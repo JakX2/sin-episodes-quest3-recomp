@@ -103,3 +103,15 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
   add_test(NAME sin_difficulty_info_contract_tests COMMAND sin_difficulty_info_contract_tests)
 endif()
+
+
+# Phase 76: original SiN advisor score/channel typed operation reference.
+if(BUILD_TESTING)
+  add_executable(sin_difficulty_advisors_contract_tests
+    tests/test_difficulty_advisors_contract.cpp)
+  target_include_directories(sin_difficulty_advisors_contract_tests PRIVATE include)
+  target_compile_options(sin_difficulty_advisors_contract_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_difficulty_advisors_contract_tests
+    COMMAND sin_difficulty_advisors_contract_tests)
+endif()
