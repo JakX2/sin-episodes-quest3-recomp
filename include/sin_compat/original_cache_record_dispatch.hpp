@@ -13,9 +13,9 @@ inline constexpr std::size_t scene_new_record_object_bytes = 0x1c;
 inline constexpr std::size_t model_sounds_new_record_object_bytes = 0x18;
 struct RecordWords32 { std::uint32_t words[6]{}; };
 static_assert(sizeof(RecordWords32)==original_record_stride);
-inline constexpr std::size_t record_value_offset=0x04;
-inline constexpr std::size_t record_handler_index_offset=0x0c;
-inline constexpr std::size_t record_aux_pointer_offset=0x14;
+inline constexpr std::size_t record_value_offset=0x0c;
+inline constexpr std::size_t record_handler_index_offset=0x14;
+inline constexpr std::size_t original_record_reader_view_offset=0x08;
 
 // The original cache helpers return unsigned 16-bit record indices and
 // use 0xffff as a missing-index sentinel. This host adapter only tracks
@@ -26,8 +26,10 @@ std::uint16_t find_or_insert_record(Lookup&& lookup,Insert&& insert) {
     return existing==invalid_record_index ? insert() : existing;
 }
 
-// Original reader indexes slot[i*24], sets its +0x04 word, reads +0x0c
-// (handler index), and calls selected handler's virtual +0x04.
+// Original reader starts from base+index*24+8, writes +4 relative
+// to that view (= base+index*24+0x0C) and fetches handler index
+// from view+0x0C (= base+index*24+0x14), matching the insert helper.
+// Selected handler is called through original virtual byte offset +0x04.
 // All pointers and ownership are host-owned; no x86 pointer cast to ARM64.
 template<class LookupHandler, class Invoke>
 void dispatch_record(RecordWords32& record,std::uint32_t value,
