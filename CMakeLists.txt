@@ -150,3 +150,14 @@ if(BUILD_TESTING)
   add_test(NAME sin_difficulty_metric_consumers_tests
     COMMAND sin_difficulty_metric_consumers_tests)
 endif()
+
+# Phase 80: verified SiN dd_challenge ConVar and advisor preset math.
+if(BUILD_TESTING)
+  add_executable(sin_difficulty_advisor_preset_tests
+    research/tests/sin_difficulty_advisor_presets_reference.cpp)
+  target_include_directories(sin_difficulty_advisor_preset_tests PRIVATE include)
+  target_compile_options(sin_difficulty_advisor_preset_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_difficulty_advisor_preset_tests
+    COMMAND sin_difficulty_advisor_preset_tests)
+endif()
