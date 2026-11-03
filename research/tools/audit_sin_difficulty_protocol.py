@@ -63,12 +63,12 @@ CLIENT_DELEGATIONS = {
 }
 # Verified DDDecisionMade packet:
 # 1 initial float (special sentinel marker on some paths),
-# then 3 ints and 4 floats for an actual decision record.
+# then 3 signed 16-bit wire integers (stored in 32-bit registers) and 4 floats on the ordinary path.
 DECISION_SERVER_WRITES = [
     (0x222B9787,"f32",0x221E8830),
-    (0x222B9790,"i32",0x221E87A0),
-    (0x222B9799,"i32",0x221E87A0),
-    (0x222B97A2,"i32",0x221E87A0),
+    (0x222B9790,"s16",0x221E87A0),
+    (0x222B9799,"s16",0x221E87A0),
+    (0x222B97A2,"s16",0x221E87A0),
     (0x222B97AB,"f32",0x221E8830),
     (0x222B97B4,"f32",0x221E8830),
     (0x222B97BD,"f32",0x221E8830),
@@ -76,9 +76,9 @@ DECISION_SERVER_WRITES = [
 ]
 DECISION_CLIENT_READS = [
     (0x241FAB1D,"f32",0x240A5630),
-    (0x241FAB7C,"i32",0x240A5600),
-    (0x241FAB85,"i32",0x240A5600),
-    (0x241FAB8E,"i32",0x240A5600),
+    (0x241FAB7C,"s16",0x240A5600),
+    (0x241FAB85,"s16",0x240A5600),
+    (0x241FAB8E,"s16",0x240A5600),
     (0x241FAB99,"f32",0x240A5630),
     (0x241FABA4,"f32",0x240A5630),
     (0x241FABAF,"f32",0x240A5630),
@@ -177,14 +177,14 @@ def verify_evidence(client_pe,server_pe)->dict:
     for side,pe in (("client",client_pe),("server",server_pe)):
         if pe.at(SUCCESS_LOOP_TEST[side],3)!=b"\x83\xfe\x0a":
             raise VerificationError(f"ten-pair {side} loop limit mismatch")
-    # Original DDDecisionMade client handler compares first float to 0 and -1.
+    # Original DDDecisionMade handler uses FCOMP+TEST AH,5+JP threshold tests, not equality.
     for site,va in ((0x241FAB26,0x242DE2F8),(0x241FAB37,0x24276F84)):
         if client_pe.at(site,6)!=b"\xd8\x1d"+struct.pack("<I",va):
-            raise VerificationError("decision sentinel compare instruction mismatch")
+            raise VerificationError("decision threshold compare instruction mismatch")
     if client_pe.at(0x242DE2F8,4)!=struct.pack("<f",0.0):
-        raise VerificationError("decision zero sentinel changed")
+        raise VerificationError("decision zero threshold changed")
     if client_pe.at(0x24276F84,4)!=struct.pack("<f",-1.0):
-        raise VerificationError("decision negative sentinel changed")
+        raise VerificationError("decision negative threshold changed")
     # Two server-side actual message beginnings (send writer functions).
     for site,name in ((0x222B9775,"DDDecisionMade"),
                       (0x222BA9F6,"DDSuccessModifiers"),
@@ -235,8 +235,8 @@ def verify_evidence(client_pe,server_pe)->dict:
             "client_reader_va":"0x241FAB10",
             "ordinary_record_sequence":[kind for _,kind,_ in DECISION_CLIENT_READS],
             "server_writer_sequence":[kind for _,kind,_ in DECISION_SERVER_WRITES],
-            "special_first_float_sentinels":[0.0,-1.0],
-            "warning":"Sentinel branches change payload handling; ordinary record is not universal."
+            "special_first_float_comparison_thresholds":[0.0,-1.0],
+            "warning":"x87 threshold branches (first <0 and <-1) change payload handling; ordinary record is not universal."
         },
         "success_modifiers":{
             "message":"DDSuccessModifiers",
