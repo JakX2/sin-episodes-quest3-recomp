@@ -290,3 +290,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_cache_io_hud_lifecycle_tests
     COMMAND sin_original_cache_io_hud_lifecycle_tests)
 endif()
+
+
+# Phase 93: original 2006 SiN HUD constructor x86 layout and server cache
+# virtual slot-2 filtering. Host mock only, not a SourceVR game module.
+if(BUILD_TESTING)
+  add_executable(sin_original_hud_ctor_cache_slot2_tests
+    research/tests/sin_original_hud_ctor_cache_slot2_reference.cpp)
+  target_include_directories(sin_original_hud_ctor_cache_slot2_tests PRIVATE include)
+  target_compile_options(sin_original_hud_ctor_cache_slot2_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_hud_ctor_cache_slot2_tests
+    COMMAND sin_original_hud_ctor_cache_slot2_tests)
+endif()
