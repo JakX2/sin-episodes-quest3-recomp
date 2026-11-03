@@ -138,3 +138,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_difficulty_metric_math_tests
     COMMAND sin_difficulty_metric_math_tests)
 endif()
+
+
+# Phase 79: verified SiN difficulty gameplay metric consumption reference.
+if(BUILD_TESTING)
+  add_executable(sin_difficulty_metric_consumers_tests
+    research/tests/sin_metric_consumers_reference.cpp)
+  target_include_directories(sin_difficulty_metric_consumers_tests PRIVATE include)
+  target_compile_options(sin_difficulty_metric_consumers_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_difficulty_metric_consumers_tests
+    COMMAND sin_difficulty_metric_consumers_tests)
+endif()
