@@ -115,3 +115,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_difficulty_advisors_contract_tests
     COMMAND sin_difficulty_advisors_contract_tests)
 endif()
+
+
+# Phase 77: original SiN dynamic-difficulty manager archive-state contract.
+if(BUILD_TESTING)
+  add_executable(sin_difficulty_state_archive_tests
+    tests/test_difficulty_state_archive_contract.cpp)
+  target_include_directories(sin_difficulty_state_archive_tests PRIVATE include)
+  target_compile_options(sin_difficulty_state_archive_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_difficulty_state_archive_tests
+    COMMAND sin_difficulty_state_archive_tests)
+endif()
