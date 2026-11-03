@@ -303,3 +303,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_hud_ctor_cache_slot2_tests
     COMMAND sin_original_hud_ctor_cache_slot2_tests)
 endif()
+
+
+# Phase94: original 2006 client loading disc and server model sound
+# event mapping. Host-only reference; NOT original SourceVR native ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_loadingdisc_modelsound_tests
+    research/tests/sin_original_loadingdisc_modelsound_reference.cpp)
+  target_include_directories(sin_original_loadingdisc_modelsound_tests PRIVATE include)
+  target_compile_options(sin_original_loadingdisc_modelsound_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_loadingdisc_modelsound_tests
+    COMMAND sin_original_loadingdisc_modelsound_tests)
+endif()
