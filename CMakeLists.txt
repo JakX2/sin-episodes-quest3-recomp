@@ -225,3 +225,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_subsystem_startup_tests
     COMMAND sin_original_subsystem_startup_tests)
 endif()
+
+
+# Phase 88: original 2006 client/server shutdown and cache lifecycle contract.
+# Host test only, not the actual SourceVR ARM64 game engine interface.
+if(BUILD_TESTING)
+  add_executable(sin_original_shutdown_contract_tests
+    research/tests/sin_original_shutdown_reference.cpp)
+  target_include_directories(sin_original_shutdown_contract_tests PRIVATE include)
+  target_compile_options(sin_original_shutdown_contract_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_original_shutdown_contract_tests
+    COMMAND sin_original_shutdown_contract_tests)
+endif()
