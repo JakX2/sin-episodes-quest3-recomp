@@ -251,3 +251,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_cache_header_client_cleanup_tests
     COMMAND sin_original_cache_header_client_cleanup_tests)
 endif()
+
+
+# Phase 90: original SiN two-cache in-memory record addressing and
+# client late shutdown virtual-dispatch ordering (not SourceVR ABI).
+if(BUILD_TESTING)
+  add_executable(sin_original_cache_record_dispatch_tests
+    research/tests/sin_original_cache_record_dispatch_reference.cpp)
+  target_include_directories(sin_original_cache_record_dispatch_tests PRIVATE include)
+  target_compile_options(sin_original_cache_record_dispatch_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_cache_record_dispatch_tests
+    COMMAND sin_original_cache_record_dispatch_tests)
+endif()
