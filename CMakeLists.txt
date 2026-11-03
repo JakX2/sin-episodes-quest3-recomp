@@ -264,3 +264,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_cache_record_dispatch_tests
     COMMAND sin_original_cache_record_dispatch_tests)
 endif()
+
+
+# Phase 91: original SiN client HUD shutdown class RTTI and server cache
+# concrete RTTI handler vtables, host-only C++17 reference.
+if(BUILD_TESTING)
+  add_executable(sin_original_rtti_handler_tests
+    research/tests/sin_original_rtti_handler_reference.cpp)
+  target_include_directories(sin_original_rtti_handler_tests PRIVATE include)
+  target_compile_options(sin_original_rtti_handler_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_rtti_handler_tests
+    COMMAND sin_original_rtti_handler_tests)
+endif()
