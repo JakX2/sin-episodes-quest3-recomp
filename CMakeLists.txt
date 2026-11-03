@@ -355,3 +355,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_sourcevr_method_slot_tests
     COMMAND sin_sourcevr_method_slot_tests)
 endif()
+
+
+# Phase98: original 2006 SoundEmitterSystem.dll and vgui2.dll compared
+# with actual SourceVR 0.5.5 ARM64 methods; no unverified runtime alias.
+if(BUILD_TESTING)
+  add_executable(sin_original_engine_sound_vgui_tests
+    research/tests/sin_original_engine_sound_vgui_reference.cpp)
+  target_include_directories(sin_original_engine_sound_vgui_tests PRIVATE include)
+  target_compile_options(sin_original_engine_sound_vgui_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_engine_sound_vgui_tests
+    COMMAND sin_original_engine_sound_vgui_tests)
+endif()
