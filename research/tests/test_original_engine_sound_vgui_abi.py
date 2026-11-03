@@ -67,10 +67,12 @@ class Phase98Tests(unittest.TestCase):
      p=fixture();p.corrupt(va)
      with self.assertRaises(a.VerificationError):method(p,False)
  def test_all_three_old_vtable_hashes_enforced(self):
-  with self.assertRaisesRegex(a.VerificationError,'vtable SHA'):
-   a.old_sound(old_sound(),True)
-  with self.assertRaisesRegex(a.VerificationError,'vtable SHA'):
-   a.old_vgui(old_vgui(),True)
+  # Isolate table fingerprints; full DLL audits reject synthetic function
+  # regions earlier, before reaching their vtable checks.
+  for key,fixture in [('old_sound',old_sound),('old_input',old_vgui),('old_system',old_vgui)]:
+   with self.subTest(table=key):
+    with self.assertRaisesRegex(a.VerificationError,'vtable SHA'):
+     a.vtable(fixture(),key,True)
  def test_all_four_original_critical_slot_mutations(self):
   for factory,table,index,method in [
       (old_sound,a.VTABLES['old_sound'],3,a.old_sound),
