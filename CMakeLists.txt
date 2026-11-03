@@ -381,3 +381,52 @@ if(BUILD_TESTING)
   add_test(NAME sin_legacy_sound_vgui_prebridge_tests
     COMMAND sin_legacy_sound_vgui_prebridge_tests)
 endif()
+
+
+# Phase100: real standalone legacy keyboard/sound C ABI; NOT SourceVR game DLL.
+add_library(sin_legacy_bridge_abi SHARED src/legacy_bridge_c_api.cpp)
+target_include_directories(sin_legacy_bridge_abi PUBLIC include)
+target_compile_definitions(sin_legacy_bridge_abi PRIVATE SIN100_BUILD_SHARED=1)
+target_compile_options(sin_legacy_bridge_abi PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_legacy_bridge_abi PROPERTIES
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+if(UNIX AND NOT APPLE)
+  target_link_options(sin_legacy_bridge_abi PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/legacy_bridge_exports.map")
+  set_property(TARGET sin_legacy_bridge_abi APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/legacy_bridge_exports.map")
+endif()
+if(BUILD_TESTING)
+  add_executable(sin100_sha256_tests tests/sin100_sha256_tests.cpp)
+  target_include_directories(sin100_sha256_tests PRIVATE include)
+  target_compile_options(sin100_sha256_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin100_sha256_tests COMMAND sin100_sha256_tests)
+  if(UNIX AND NOT ANDROID)
+    add_executable(sin100_dlopen_smoke tests/sin100_dlopen_smoke.c)
+    target_include_directories(sin100_dlopen_smoke PRIVATE include)
+    set_target_properties(sin100_dlopen_smoke PROPERTIES
+      C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    target_compile_options(sin100_dlopen_smoke PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_link_libraries(sin100_dlopen_smoke PRIVATE ${CMAKE_DL_LIBS})
+    add_test(NAME sin100_dlopen_smoke
+      COMMAND sin100_dlopen_smoke $<TARGET_FILE:sin_legacy_bridge_abi>)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+      add_test(NAME sin100_python_ctypes
+        COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_phase100_ctypes.py
+          $<TARGET_FILE:sin_legacy_bridge_abi>)
+    endif()
+  endif()
+endif()
+if(SIN_BUILD_ANDROID_SMOKE AND ANDROID)
+  add_executable(sin_android_legacy_bridge_smoke tests/sin100_dlopen_smoke.c)
+  target_include_directories(sin_android_legacy_bridge_smoke PRIVATE include)
+  target_link_libraries(sin_android_legacy_bridge_smoke PRIVATE dl)
+  target_compile_options(sin_android_legacy_bridge_smoke PRIVATE -Wall -Wextra -Werror)
+  set_target_properties(sin_android_legacy_bridge_smoke PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  add_dependencies(sin_android_legacy_bridge_smoke sin_legacy_bridge_abi)
+endif()
