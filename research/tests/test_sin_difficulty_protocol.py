@@ -108,8 +108,8 @@ class DifficultyProtocolTests(unittest.TestCase):
         self.assertEqual(record["server_writer_sequence"],
                          record["ordinary_record_sequence"])
         self.assertEqual(record["ordinary_record_sequence"],
-                         ["f32","i32","i32","i32","f32","f32","f32","f32"])
-        self.assertEqual(record["special_first_float_sentinels"],[0.0,-1.0])
+                         ["f32","s16","s16","s16","f32","f32","f32","f32"])
+        self.assertEqual(record["special_first_float_comparison_thresholds"],[0.0,-1.0])
 
     def test_success_modifiers_has_twenty_floats_in_ten_pairs(self):
         success=verify_evidence(self.client,self.server)["success_modifiers"]
@@ -170,7 +170,7 @@ class DifficultyProtocolTests(unittest.TestCase):
 
     def test_corrupt_special_float_marker_rejected(self):
         self.client.corrupt(0x24276F84)
-        with self.assertRaisesRegex(VerificationError,"negative sentinel"):
+        with self.assertRaisesRegex(VerificationError,"negative threshold"):
             verify_evidence(self.client,self.server)
 
     def test_original_dll_hash_pinning(self):
