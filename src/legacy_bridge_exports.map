@@ -1,0 +1,15 @@
+SIN_LEGACY_BRIDGE_100 {
+  global:
+    sin100_abi_version;
+    sin100_create;
+    sin100_destroy;
+    sin100_install_keymap_le;
+    sin100_translate_key;
+    sin100_bind_sound;
+    sin100_old_to_native;
+    sin100_native_to_old;
+    sin100_copy_sound_name;
+    sin100_sound_count;
+    sin100_reset;
+  local: *;
+};

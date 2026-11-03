@@ -19,7 +19,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 if [[ ! -s "$LIB" ]]; then
@@ -112,3 +112,37 @@ printf '%s\n' 'ELF64 AArch64, shared SONAME, 13 C ABI exports, and native NDK C 
   sha256sum "$LIB" "$SMOKE" | sed "s#$BUILD/##"
 } > "$BUILD/android-smoke-manifest.txt"
 printf 'Android dlopen executable verified (compiled only, not executed): %s\n' "$SMOKE"
+
+# Phase100: separately versioned keyboard/sound prebridge. Do NOT conflate
+# its 11 symbols with the original 13-export weapon-session ABI.
+LEGACY="$BUILD/libsin_legacy_bridge_abi.so"
+LEGACY_SMOKE="$BUILD/sin_android_legacy_bridge_smoke"
+for f in "$LEGACY" "$LEGACY_SMOKE"; do
+  test -s "$f" || { echo "ERROR: missing Phase100 ARM64 artifact $f" >&2; exit 1; }
+  "$READELF" -h "$f" | grep -q 'Machine:.*AArch64' || {
+    echo "ERROR: Phase100 output is not AArch64: $f" >&2; exit 1;
+  }
+done
+"$READELF" -d "$LEGACY" | grep -q 'SONAME.*libsin_legacy_bridge_abi.so' || {
+  echo 'ERROR: Phase100 legacy bridge missing expected SONAME' >&2; exit 1; }
+"$READELF" -d "$LEGACY_SMOKE" | grep -q 'NEEDED.*libdl.so' || {
+  echo 'ERROR: Phase100 Android loader missing libdl' >&2; exit 1; }
+if "$READELF" -d "$LEGACY_SMOKE" | grep -q 'NEEDED.*libsin_legacy_bridge_abi.so'; then
+  echo 'ERROR: Phase100 loader is linked to module instead of using dlopen' >&2; exit 1
+fi
+LEGACY_EXPECTED="$(mktemp)"
+LEGACY_ACTUAL="$(mktemp)"
+trap 'rm -f "$EXPECTED" "$ACTUAL" "$CONTRACT" "$LEGACY_EXPECTED" "$LEGACY_ACTUAL"' EXIT
+sed -n '/^[[:space:]]*sin100_[a-z_]*;/s/[[:space:];]//gp' \
+  "$ROOT/src/legacy_bridge_exports.map" | sort -u > "$LEGACY_EXPECTED"
+"$NM" -D --defined-only --format=posix "$LEGACY" |
+  awk 'NF{ sub(/@@.*/, "", $1); print $1 }' | sort -u > "$LEGACY_ACTUAL"
+diff -u "$LEGACY_EXPECTED" "$LEGACY_ACTUAL" || {
+  echo 'ERROR: Phase100 ARM64 module exports changed' >&2; exit 1; }
+test "$(wc -l < "$LEGACY_ACTUAL")" -eq 11 || {
+  echo 'ERROR: Phase100 C ABI must export 11 symbols' >&2; exit 1; }
+{
+  printf 'phase100_scope=standalone_prebridge_not_sourcevr\n'
+  sha256sum "$LEGACY" "$LEGACY_SMOKE" | sed "s#$BUILD/##"
+} >> "$BUILD/android-smoke-manifest.txt"
+echo 'PASS: Phase100 ARM64 shared module and Bionic dlopen executable built, eleven exports verified.'
