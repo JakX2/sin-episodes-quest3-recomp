@@ -20,8 +20,8 @@ The previous Phase 89 phase recovered *only the four 32-bit header fields* of `s
 ## server.dll: 16-bit record indices and distinct allocations
 
 Both original functions accept a record descriptor and return an **unsigned 16-bit index**, zero-extended by the original reader. The search helpers are distinct:
-- Scenes: `0x221ACFD0` calls `0x221A7FB0`, tests `AX == 0xFFFF` at `0x221AD01C`. If missing, allocates a **28-byte** per-record helper object via `0x2226E790` (push `0x1C` at `0x221AD023`), then uses helper calls `0x221A6620`, `0x221ACD00` and stores an auxiliary pointer into **record +0x14**.
-- Model sounds: `0x22149770` calls `0x22142670`, tests the same **0xFFFF** sentinel at `0x221497BC`. On miss, allocates a **24-byte** helper object (push `0x18` at `0x221497C3`), then uses `0x22140810` and `0x22146EF0` before storing the auxiliary pointer at **record +0x14**.
+- Scenes: `0x221ACFD0` calls `0x221A7FB0`, tests `AX == 0xFFFF` at `0x221AD01C`. If missing, allocates a **28-byte** per-record helper object via `0x2226E790` (push `0x1C` at `0x221AD023`), then uses helper calls `0x221A6620`, `0x221ACD00` and stores the **handler-table index** at **array-base + index*24 +0x14**; the reader subsequently loads this same field.
+- Model sounds: `0x22149770` calls `0x22142670`, tests the same **0xFFFF** sentinel at `0x221497BC`. On miss, allocates a **24-byte** helper object (push `0x18` at `0x221497C3`), then uses `0x22140810` and `0x22146EF0` before storing the **handler-table index** at **array-base + index*24 +0x14**.
 
 Original helpers maintain other fields and associated objects. The allocations above **are not** the record's own size; do not conflate the 28/24-byte helper objects with the table entry.
 
@@ -31,12 +31,12 @@ The original readers independently repeat a matching per-entry sequence:
 |---|---|---|
 | `0x221AD566` | `0x22149A46` | Zero-extend record index `AX` |
 | `0x221AD569/56C` | `0x22149A49/4C` | Compute **`base+index*24+8`** table entry address |
-| `0x221AD57C` | `0x22149A5C` | Store parsed/derived pointer-like value to **entry+0x04** |
-| `0x221AD579` | `0x22149A59` | Read handler index from **entry+0x0C** |
+| `0x221AD57C` | `0x22149A5C` | Store parsed/derived pointer-like value at **array-base + index*24 +0x0C** (reader-view +0x04) |
+| `0x221AD579` | `0x22149A59` | Read handler index from **array-base + index*24 +0x14** (reader-view +0x0C) |
 | `0x221AD57F/582` | `0x22149A5F/562` | Get handler pointer from array at **owner+0x20** |
 | `0x221AD58C` | `0x22149A6C` | Invoke selected handler's **virtual byte offset +0x04**, passing temporary record data |
 
-The record address description is relative to **the pointer read from owner+0x08** and `+8` extra per original code. Slot fields are thus at effective offsets relative to that computed entry, not an independently verified C++ object type. The C++ reference retains 24-byte word layout and neutral handler indices but does **not** use x86 addresses as host pointers, own original handlers, or decode original payloads.
+The reader's temporary pointer is **array-base + index*24 +0x08**. Thus reader-view +0x04 is actual per-record offset **+0x0C**, and reader-view +0x0C is actual offset **+0x14**. Crucially, the insert helper writes the same **+0x14 handler index** that the reader retrieves. This two-path check avoids confusing reader-relative offsets with array-relative offsets. The C++ reference retains 24-byte word layout and neutral handler indices but does **not** use x86 addresses as host pointers, own original handlers, or decode original payloads.
 
 The disk-record parsing loop includes other original calls `0x2228D7D0`, `0x2228D6A0`, `0x2228D810` with a `0x200` size parameter before the record is inserted. **Exact on-disk per-record structure, text encoding, variable-length components and callback semantics remain unknown.** Neither a 24-byte disk entry nor a working cache writer is claimed. As in Phase89, corrupted cache content can result in recovery and regeneration rather than a fatal server startup failure.
 
