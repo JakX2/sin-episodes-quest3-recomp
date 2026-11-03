@@ -26,7 +26,7 @@ static float unbits(std::uint32_t b) {
     return v;
 }
 static Scalar f(float x) { return {'f', bits(x)}; }
-static Scalar i(std::int32_t x) { return {'i', static_cast<std::uint32_t>(x)}; }
+static Scalar i(std::int16_t x) { return {'i', static_cast<std::uint32_t>(x)}; }
 
 struct Fixture final : TypedReader, TypedWriter {
     std::vector<Scalar> cells;
@@ -36,16 +36,16 @@ struct Fixture final : TypedReader, TypedWriter {
         if (cursor >= cells.size() || cursor >= fail_after || cells[cursor].type != 'f') return false;
         v = unbits(cells[cursor++].bits); return true;
     }
-    bool read_i32(std::int32_t& v) override {
+    bool read_i16(std::int16_t& v) override {
         if (cursor >= cells.size() || cursor >= fail_after || cells[cursor].type != 'i') return false;
         std::uint32_t b = cells[cursor++].bits;
-        std::memcpy(&v, &b, sizeof v); return true;
+        v = static_cast<std::int16_t>(static_cast<std::uint16_t>(b)); return true;
     }
     bool write_f32(float v) override {
         if (cells.size() >= fail_after) return false;
         cells.push_back(f(v)); return true;
     }
-    bool write_i32(std::int32_t v) override {
+    bool write_i16(std::int16_t v) override {
         if (cells.size() >= fail_after) return false;
         cells.push_back(i(v)); return true;
     }
@@ -65,13 +65,13 @@ int main() {
 
     DecisionOrdinaryRecord original{};
     original.first = 0.25f;
-    original.integers = {{-42, 0, 2147483647}};
+    original.integers = {{-42, 0, 32767}};
     original.floats = {{1.5f, -2.75f, 0.125f, 13.0f}};
     Fixture send;
     assert(write_decision_ordinary(send, original));
     assert(send.cells.size() == 8);
     assert(send.cells[0] == f(0.25f));
-    assert(send.cells[1] == i(-42) && send.cells[2] == i(0) && send.cells[3] == i(2147483647));
+    assert(send.cells[1] == i(-42) && send.cells[2] == i(0) && send.cells[3] == i(32767));
     for (std::size_t n = 4; n < 8; ++n) assert(send.cells[n].type == 'f');
     DecisionPrefix decoded{};
     assert(read_decision_known_prefix(send, decoded));
@@ -80,21 +80,30 @@ int main() {
     assert(decoded.ordinary.integers == original.integers);
     assert(decoded.ordinary.floats == original.floats);
 
-    // The known special prefixes are NOT treated as eight-field records.
-    for (float marker : {0.0f, -1.0f}) {
-        Fixture sentinel;
-        sentinel.cells = {f(marker), i(99)}; // Tail is intentionally unknown.
+    // Binary-grounded x87 threshold handling: 0 is ordinary, not special.
+    for (float marker : {-2.0f, -1.0f, -0.5f}) {
+        Fixture special;
+        special.cells = {f(marker), i(99)}; // Remaining tail is unknown.
         DecisionPrefix prefix{};
-        assert(read_decision_known_prefix(sentinel, prefix));
-        assert(sentinel.cursor == 1);
-        assert(prefix.kind == (marker == 0.0f ? DecisionPrefixKind::ZeroSentinel
-                                                    : DecisionPrefixKind::MinusOneSentinel));
+        assert(read_decision_known_prefix(special, prefix));
+        assert(special.cursor == 1);
+        assert(prefix.kind == (marker < -1.0f
+            ? DecisionPrefixKind::LessThanMinusOne
+            : DecisionPrefixKind::NegativeAtLeastMinusOne));
         DecisionOrdinaryRecord invalid = original;
         invalid.first = marker;
         Fixture no_write;
         assert(!write_decision_ordinary(no_write, invalid) && no_write.cells.empty());
     }
-
+    {
+        DecisionOrdinaryRecord zero = original;
+        zero.first = 0.0f;
+        Fixture plain;
+        assert(write_decision_ordinary(plain, zero));
+        DecisionPrefix got{};
+        assert(read_decision_known_prefix(plain, got));
+        assert(got.kind == DecisionPrefixKind::OrdinaryRecord && plain.cursor == 8);
+    }
     // Failure must not expose a partially decoded record, or read wrong types.
     for (std::size_t cutoff = 0; cutoff < 8; ++cutoff) {
         Fixture truncated;
