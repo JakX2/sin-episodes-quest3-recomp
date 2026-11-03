@@ -238,3 +238,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_shutdown_contract_tests
     COMMAND sin_original_shutdown_contract_tests)
 endif()
+
+
+# Phase 89: original 2006 SiN server cache read-header guards and
+# client release/teardown reference; no actual filesystem or SourceVR ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_cache_header_client_cleanup_tests
+    research/tests/sin_original_cache_header_client_cleanup_reference.cpp)
+  target_include_directories(sin_original_cache_header_client_cleanup_tests PRIVATE include)
+  target_compile_options(sin_original_cache_header_client_cleanup_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_cache_header_client_cleanup_tests
+    COMMAND sin_original_cache_header_client_cleanup_tests)
+endif()
