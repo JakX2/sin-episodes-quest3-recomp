@@ -50,6 +50,8 @@ jobs:
             build-android-arm64/android-smoke-manifest.txt
             build-android-arm64/libsin_legacy_bridge_abi.so
             build-android-arm64/sin_android_legacy_bridge_smoke
+            build-android-arm64/libsin_source_provider_abi.so
+            build-android-arm64/sin_android_source_provider_smoke
           if-no-files-found: error
           retention-days: 7
 
@@ -102,6 +104,17 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_legacy_bridge_smoke /data/local/tmp/sin_phase100/sin_android_legacy_bridge_smoke
             adb shell 'cd /data/local/tmp/sin_phase100 && chmod 700 sin_android_legacy_bridge_smoke && ./sin_android_legacy_bridge_smoke ./libsin_legacy_bridge_abi.so' | tr -d '\r' | tee build-android-emulator-x86_64/phase100-bionic-output.txt
             grep -Fxq 'PASS: native shared-library dlopen + C ABI isolation, error and token translation tests' build-android-emulator-x86_64/phase100-bionic-output.txt
+          test -f build-android-emulator-x86_64/phase101-bionic-output.txt
+
+            # Phase101: load new provider .so on real Android Bionic x86_64.
+            # It dynamically loads Phase100 and supplies MOCK callbacks only.
+            adb shell mkdir -p /data/local/tmp/sin_phase101
+            adb push build-android-emulator-x86_64/libsin_legacy_bridge_abi.so /data/local/tmp/sin_phase101/libsin_legacy_bridge_abi.so
+            adb push build-android-emulator-x86_64/libsin_source_provider_abi.so /data/local/tmp/sin_phase101/libsin_source_provider_abi.so
+            adb push build-android-emulator-x86_64/sin_android_source_provider_smoke /data/local/tmp/sin_phase101/sin_android_source_provider_smoke
+            adb shell 'cd /data/local/tmp/sin_phase101 && chmod 700 sin_android_source_provider_smoke && LD_LIBRARY_PATH=. ./sin_android_source_provider_smoke ./libsin_legacy_bridge_abi.so' | tr -d '\r' | tee build-android-emulator-x86_64/phase101-bionic-output.txt
+            test -f build-android-emulator-x86_64/phase101-bionic-output.txt
+            echo 'PASS: Phase101 mock-provider Bionic two-library mapping executed'
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -121,5 +134,6 @@ jobs:
           path: |
             build-android-emulator-x86_64/android-runtime-evidence.txt
             build-android-emulator-x86_64/phase100-bionic-output.txt
+            build-android-emulator-x86_64/phase101-bionic-output.txt
           if-no-files-found: error
           retention-days: 7

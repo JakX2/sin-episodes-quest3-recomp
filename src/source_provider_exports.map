@@ -1,0 +1,16 @@
+SIN_SOURCE_PROVIDER_101 {
+  global:
+    sin101_abi_version;
+    sin101_create;
+    sin101_destroy;
+    sin101_register_provider;
+    sin101_map_sound;
+    sin101_old_to_native;
+    sin101_native_to_old;
+    sin101_copy_sound_name;
+    sin101_install_keymap_le;
+    sin101_translate_key;
+    sin101_sound_count;
+    sin101_reset;
+  local: *;
+};

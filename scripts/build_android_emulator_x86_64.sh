@@ -15,7 +15,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
@@ -77,3 +77,28 @@ diff -u "$LEGACY_EXPECTED" "$LEGACY_ACTUAL" || {
 test "$(wc -l < "$LEGACY_ACTUAL")" -eq 11 || {
   echo 'ERROR: Phase100 must have 11 public exports' >&2; exit 1; }
 printf 'PASS: Phase100 Bionic emulator shared module and dlopen runner built with 11 stable exports.\n'
+
+# Phase101: verify a SECOND independent Source-provider callback shared library.
+# The 11 Phase100 and 13 original host exports remain unchanged.
+PROVIDER="$BUILD/libsin_source_provider_abi.so"
+PROVIDER_SMOKE="$BUILD/sin_android_source_provider_smoke"
+for path in "$PROVIDER" "$PROVIDER_SMOKE"; do
+  test -s "$path" || { echo "ERROR: Phase101 Android output missing: $path" >&2; exit 1; }
+done
+EXPECTED_101="$(mktemp)"
+ACTUAL_101="$(mktemp)"
+trap 'rm -f "$EXPECTED" "$ACTUAL" "$LEGACY_EXPECTED" "$LEGACY_ACTUAL" "$EXPECTED_101" "$ACTUAL_101"' EXIT
+sed -n '/^[[:space:]]*sin101_[a-z_]*;/s/[[:space:];]//gp' \
+  "$ROOT/src/source_provider_exports.map" | sort -u > "$EXPECTED_101"
+"$NM" -D --defined-only --format=posix "$PROVIDER" |
+  awk '$1 ~ /^sin101_/ { sub(/@@.*/, "", $1); print $1 }' | sort -u > "$ACTUAL_101"
+diff -u "$EXPECTED_101" "$ACTUAL_101" || {
+  echo "ERROR: Phase101 12-function ABI drift" >&2; exit 1; }
+test "$(wc -l < "$ACTUAL_101")" -eq 12 || {
+  echo 'ERROR: Phase101 provider must export exactly 12 C methods' >&2; exit 1; }
+"$READELF" -d "$PROVIDER_SMOKE" | grep -q 'NEEDED.*libsin_source_provider_abi.so' || {
+  echo 'ERROR: Phase101 smoke must load the new shared library' >&2; exit 1; }
+if "$READELF" -d "$PROVIDER" | grep -q 'NEEDED.*libsin_legacy_bridge_abi.so'; then
+  echo 'ERROR: Phase101 must resolve Phase100 dynamically, not via direct DT_NEEDED' >&2; exit 1
+fi
+echo 'PASS: Phase101 provider shared library and Android test executable, 12 exports verified.'
