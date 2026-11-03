@@ -136,7 +136,7 @@ trap 'rm -f "$EXPECTED" "$ACTUAL" "$CONTRACT" "$LEGACY_EXPECTED" "$LEGACY_ACTUAL
 sed -n '/^[[:space:]]*sin100_[a-z_]*;/s/[[:space:];]//gp' \
   "$ROOT/src/legacy_bridge_exports.map" | sort -u > "$LEGACY_EXPECTED"
 "$NM" -D --defined-only --format=posix "$LEGACY" |
-  awk 'NF { print $1 }' | sort -u > "$LEGACY_ACTUAL"
+  awk 'NF{ sub(/@@.*/, "", $1); print $1 }' | sort -u > "$LEGACY_ACTUAL"
 diff -u "$LEGACY_EXPECTED" "$LEGACY_ACTUAL" || {
   echo 'ERROR: Phase100 ARM64 module exports changed' >&2; exit 1; }
 test "$(wc -l < "$LEGACY_ACTUAL")" -eq 11 || {
