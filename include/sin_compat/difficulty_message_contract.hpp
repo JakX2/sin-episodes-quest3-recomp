@@ -31,32 +31,33 @@ inline constexpr std::array<Registration, 9> registrations{{
 }};
 
 // Operations correspond to the confirmed *types and order* of original
-// x86 read/write CALLs. They DO NOT define bit widths, byte order, frame
+// x86 read/write CALLs. For DDDecisionMade, the three signed integers are exactly 16-bit wire
+// operations; float values use 32 bits. They DO NOT define byte order, frame
 // boundaries or a compatible network transport.
 class TypedReader {
 public:
     virtual ~TypedReader() = default;
     virtual bool read_f32(float& out) = 0;
-    virtual bool read_i32(std::int32_t& out) = 0;
+    virtual bool read_i16(std::int16_t& out) = 0;
 };
 class TypedWriter {
 public:
     virtual ~TypedWriter() = default;
     virtual bool write_f32(float value) = 0;
-    virtual bool write_i32(std::int32_t value) = 0;
+    virtual bool write_i16(std::int16_t value) = 0;
 };
 
 // Anonymous fields: their gameplay meanings have NOT been established.
 struct DecisionOrdinaryRecord {
     float first = 0.0f;
-    std::array<std::int32_t, 3> integers{};
+    std::array<std::int16_t, 3> integers{};
     std::array<float, 4> floats{};
 };
 
 enum class DecisionPrefixKind {
     OrdinaryRecord,
-    ZeroSentinel,
-    MinusOneSentinel,
+    NegativeAtLeastMinusOne, // -1 <= first < 0; clears two client members
+    LessThanMinusOne,       // first < -1; calls list-clear routine
 };
 
 struct DecisionPrefix {
@@ -71,17 +72,18 @@ struct DecisionPrefix {
 inline bool read_decision_known_prefix(TypedReader& reader, DecisionPrefix& out) {
     DecisionPrefix next{};
     if (!reader.read_f32(next.ordinary.first)) return false;
-    if (next.ordinary.first == 0.0f) {
-        next.kind = DecisionPrefixKind::ZeroSentinel;
+    // Original x87 FCOMP + TEST AH,5 + JP branches on inequalities,
+    // not equality to 0 and -1. A zero value is an ORDINARY record.
+    // Negatives in [-1, 0) reset two client members; <-1 takes a
+    // different client list-clear branch. No further fields are read.
+    if (next.ordinary.first < 0.0f) {
+        next.kind = next.ordinary.first < -1.0f
+            ? DecisionPrefixKind::LessThanMinusOne
+            : DecisionPrefixKind::NegativeAtLeastMinusOne;
         out = next;
         return true;
     }
-    if (next.ordinary.first == -1.0f) {
-        next.kind = DecisionPrefixKind::MinusOneSentinel;
-        out = next;
-        return true;
-    }
-    for (auto& v : next.ordinary.integers) if (!reader.read_i32(v)) return false;
+    for (auto& v : next.ordinary.integers) if (!reader.read_i16(v)) return false;
     for (auto& v : next.ordinary.floats) if (!reader.read_f32(v)) return false;
     out = next; // No partially initialized result on read failure.
     return true;
@@ -91,10 +93,11 @@ inline bool read_decision_known_prefix(TypedReader& reader, DecisionPrefix& out)
 // paths that have not been completely recovered.
 inline bool write_decision_ordinary(TypedWriter& writer,
                                     const DecisionOrdinaryRecord& record) {
-    // Guard against accidentally writing a sentinel as a full record.
-    if (record.first == 0.0f || record.first == -1.0f) return false;
+    // All negative first-floats take client control-message branches.
+    // Zero, positive, and unordered values follow the ordinary read path.
+    if (record.first < 0.0f) return false;
     if (!writer.write_f32(record.first)) return false;
-    for (auto v : record.integers) if (!writer.write_i32(v)) return false;
+    for (auto v : record.integers) if (!writer.write_i16(v)) return false;
     for (auto v : record.floats) if (!writer.write_f32(v)) return false;
     return true;
 }
