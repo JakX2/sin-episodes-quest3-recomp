@@ -316,3 +316,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_loadingdisc_modelsound_tests
     COMMAND sin_original_loadingdisc_modelsound_tests)
 endif()
+
+
+# Phase 95: original SiN 2006 nested CLoadingDiscPanel/vgui::Label and
+# server VSoundEmitter001 mapping. Host-only contract, not Android game ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_loading_panel_emitter_tests
+    research/tests/sin_original_loading_panel_sound_emitter_reference.cpp)
+  target_include_directories(sin_original_loading_panel_emitter_tests PRIVATE include)
+  target_compile_options(sin_original_loading_panel_emitter_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_loading_panel_emitter_tests
+    COMMAND sin_original_loading_panel_emitter_tests)
+endif()
