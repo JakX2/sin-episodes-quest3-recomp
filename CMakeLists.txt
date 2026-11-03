@@ -127,3 +127,14 @@ if(BUILD_TESTING)
   add_test(NAME sin_difficulty_state_archive_tests
     COMMAND sin_difficulty_state_archive_tests)
 endif()
+
+# Phase 78: original SiN named difficulty metric math and modifier clamps.
+if(BUILD_TESTING)
+  add_executable(sin_difficulty_metric_math_tests
+    tests/test_difficulty_metric_math.cpp)
+  target_include_directories(sin_difficulty_metric_math_tests PRIVATE include)
+  target_compile_options(sin_difficulty_metric_math_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_difficulty_metric_math_tests
+    COMMAND sin_difficulty_metric_math_tests)
+endif()
