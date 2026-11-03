@@ -48,6 +48,8 @@ jobs:
             build-android-arm64/libsin_compat_host_abi.so
             build-android-arm64/sin_android_host_abi_smoke
             build-android-arm64/android-smoke-manifest.txt
+            build-android-arm64/libsin_legacy_bridge_abi.so
+            build-android-arm64/sin_android_legacy_bridge_smoke
           if-no-files-found: error
           retention-days: 7
 
@@ -91,7 +93,15 @@ jobs:
           target: google_apis
           emulator-boot-timeout: 480
           emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-runtime-evidence.txt bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
+          script: |
+            SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-runtime-evidence.txt bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
+            # Phase100: test a SECOND genuine Android Bionic dlopen module, not
+            # the original 13-export host ABI and not the SourceVR engine.
+            adb shell mkdir -p /data/local/tmp/sin_phase100
+            adb push build-android-emulator-x86_64/libsin_legacy_bridge_abi.so /data/local/tmp/sin_phase100/libsin_legacy_bridge_abi.so
+            adb push build-android-emulator-x86_64/sin_android_legacy_bridge_smoke /data/local/tmp/sin_phase100/sin_android_legacy_bridge_smoke
+            adb shell 'cd /data/local/tmp/sin_phase100 && chmod 700 sin_android_legacy_bridge_smoke && ./sin_android_legacy_bridge_smoke ./libsin_legacy_bridge_abi.so' | tr -d '\r' | tee build-android-emulator-x86_64/phase100-bionic-output.txt
+            grep -Fxq 'PASS: native shared-library dlopen + C ABI isolation, error and token translation tests' build-android-emulator-x86_64/phase100-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -103,10 +113,13 @@ jobs:
           grep -qx 'remote_sha256_verified=true' "$EVIDENCE"
           grep -qx 'loader_marker_verified=true' "$EVIDENCE"
           grep -qx 'scope=standalone_native_abi_not_sourcevr' "$EVIDENCE"
+          grep -Fxq 'PASS: native shared-library dlopen + C ABI isolation, error and token translation tests' build-android-emulator-x86_64/phase100-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
           name: sin-compat-x86_64-emulator-runtime-evidence
-          path: build-android-emulator-x86_64/android-runtime-evidence.txt
+          path: |
+            build-android-emulator-x86_64/android-runtime-evidence.txt
+            build-android-emulator-x86_64/phase100-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
