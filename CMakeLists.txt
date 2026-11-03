@@ -277,3 +277,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_rtti_handler_tests
     COMMAND sin_original_rtti_handler_tests)
 endif()
+
+
+# Phase 92: original SiN 2006 client HUD release shapes and server
+# cache virtual read/write call ordering. Host-only reference, not SourceVR ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_cache_io_hud_lifecycle_tests
+    research/tests/sin_original_cache_io_hud_lifecycle_reference.cpp)
+  target_include_directories(sin_original_cache_io_hud_lifecycle_tests PRIVATE include)
+  target_compile_options(sin_original_cache_io_hud_lifecycle_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_cache_io_hud_lifecycle_tests
+    COMMAND sin_original_cache_io_hud_lifecycle_tests)
+endif()
