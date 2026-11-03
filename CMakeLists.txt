@@ -329,3 +329,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_loading_panel_emitter_tests
     COMMAND sin_original_loading_panel_emitter_tests)
 endif()
+
+
+# Phase 96: original SiN 2006 PE32 vs SourceVR 0.5.5 ARM64
+# CreateInterface VERSION preflight. This is not a native game module.
+if(BUILD_TESTING)
+  add_executable(sin_sourcevr_factory_preflight_tests
+    research/tests/sin_sourcevr_factory_preflight_reference.cpp)
+  target_include_directories(sin_sourcevr_factory_preflight_tests PRIVATE include)
+  target_compile_options(sin_sourcevr_factory_preflight_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_sourcevr_factory_preflight_tests
+    COMMAND sin_sourcevr_factory_preflight_tests)
+endif()
