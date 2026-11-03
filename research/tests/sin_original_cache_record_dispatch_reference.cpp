@@ -11,8 +11,8 @@ int main() {
   static_assert(original_record_stride==24);
   static_assert(scene_new_record_object_bytes==28);
   static_assert(model_sounds_new_record_object_bytes==24);
-  assert(record_value_offset==4 && record_handler_index_offset==12);
-  assert(record_aux_pointer_offset==20 && invalid_record_index==0xffff);
+  assert(record_value_offset==12 && record_handler_index_offset==20);
+  assert(original_record_reader_view_offset==8 && invalid_record_index==0xffff);
   int lookups=0,inserts=0;
   auto existing=find_or_insert_record([&](){++lookups;return std::uint16_t(7);},
                                        [&](){++inserts;return std::uint16_t(5);});
@@ -22,13 +22,13 @@ int main() {
   assert(new_record==9 && lookups==2 && inserts==1);
   RecordWords32 slot{};
   slot.words[record_handler_index_offset/4]=3;
-  slot.words[record_aux_pointer_offset/4]=0x1234u;
+  slot.words[2]=0x1234u; // unchanged unrelated original 32-bit slot
   int handler=42;
   int handler_queries=0, handler_invocations=0;
   dispatch_record(slot,0xcafeu,
       [&](std::uint32_t idx)->int&{assert(idx==3);++handler_queries;return handler;},
       [&](int& h,RecordWords32& entry){++handler_invocations;assert(h==42);
-          assert(entry.words[1]==0xcafe && entry.words[5]==0x1234u);});
+          assert(entry.words[3]==0xcafe && entry.words[2]==0x1234u);});
   assert(handler_queries==1 && handler_invocations==1);
   std::vector<std::string> calls;
   run_late_shutdown(
