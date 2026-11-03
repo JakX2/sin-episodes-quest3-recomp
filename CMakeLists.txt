@@ -199,3 +199,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_init_contract_tests
     COMMAND sin_original_init_contract_tests)
 endif()
+
+
+# Phase 86: original client.dll/server.dll post-core Init gates and
+# nonfatal factory/allocation paths, not an Android SourceVR module.
+if(BUILD_TESTING)
+  add_executable(sin_original_postinit_contract_tests
+    research/tests/test_original_postinit_contract.cpp)
+  target_include_directories(sin_original_postinit_contract_tests PRIVATE include)
+  target_compile_options(sin_original_postinit_contract_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_original_postinit_contract_tests
+    COMMAND sin_original_postinit_contract_tests)
+endif()
