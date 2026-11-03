@@ -186,3 +186,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_factory_contract_tests
     COMMAND sin_original_factory_contract_tests)
 endif()
+
+
+# Phase 85: original SiN 2006 client.dll/server.dll ordered engine
+# factory handshake reference. Not a SourceVR-native module Init() ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_init_contract_tests
+    research/tests/sin_original_init_contract_reference.cpp)
+  target_include_directories(sin_original_init_contract_tests PRIVATE include)
+  target_compile_options(sin_original_init_contract_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_original_init_contract_tests
+    COMMAND sin_original_init_contract_tests)
+endif()
