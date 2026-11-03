@@ -430,3 +430,27 @@ if(SIN_BUILD_ANDROID_SMOKE AND ANDROID)
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   add_dependencies(sin_android_legacy_bridge_smoke sin_legacy_bridge_abi)
 endif()
+
+# Phase101: separate provider C ABI; original Phase100 exports unchanged.
+add_library(sin_source_provider_abi SHARED src/source_provider_c_api.cpp)
+target_include_directories(sin_source_provider_abi PUBLIC include)
+target_compile_definitions(sin_source_provider_abi PRIVATE SIN101_BUILD_SHARED=1)
+target_compile_options(sin_source_provider_abi PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_source_provider_abi PROPERTIES
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+if(UNIX AND NOT APPLE)
+  target_link_libraries(sin_source_provider_abi PRIVATE ${CMAKE_DL_LIBS})
+  target_link_options(sin_source_provider_abi PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/source_provider_exports.map")
+  set_property(TARGET sin_source_provider_abi APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/source_provider_exports.map")
+endif()
+if(BUILD_TESTING)
+  add_executable(sin101_provider_version_tests tests/sin101_provider_version.cpp)
+  target_include_directories(sin101_provider_version_tests PRIVATE include)
+  target_link_libraries(sin101_provider_version_tests PRIVATE sin_source_provider_abi)
+  target_compile_options(sin101_provider_version_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin101_provider_version_tests COMMAND sin101_provider_version_tests)
+endif()
