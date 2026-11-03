@@ -173,3 +173,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_difficulty_advisor_state_flow_tests
     COMMAND sin_difficulty_advisor_state_flow_tests)
 endif()
+
+
+# Phase 84: independent original SiN x86 CreateInterface registry behavior
+# contract; not a SourceVR CreateInterface game module ABI implementation.
+if(BUILD_TESTING)
+  add_executable(sin_original_factory_contract_tests
+    research/tests/sin_original_factory_reference.cpp)
+  target_include_directories(sin_original_factory_contract_tests PRIVATE include)
+  target_compile_options(sin_original_factory_contract_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+  add_test(NAME sin_original_factory_contract_tests
+    COMMAND sin_original_factory_contract_tests)
+endif()
