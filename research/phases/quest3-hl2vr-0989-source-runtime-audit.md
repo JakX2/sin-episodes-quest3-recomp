@@ -50,3 +50,11 @@ Audit and six local Python tests passed. GitHub CI may run the tests separately;
 4. Build a game-specific Android ARM64 module against verified native interfaces, then test it first with a loader smoke run and one original SiN map. No gameplay fidelity or Quest headset success claimed prematurely.
 
 **Copyright and privacy:** Do not commit HL2VR APK, original SiN DLLs, third-party protected art, or sourcevr proprietary libraries.
+
+## Additional read-only inspection: multipart `source vr` ZIP central directory
+
+The final `source vr.zip` segment (127,842,505 bytes) was downloaded separately from the verified project Drive folder and opened **read-only** with Python `zipfile`. Its central directory is accessible even though the preceding `.z01/.z02` segments have not been loaded into this audit. This gives authoritative **member names and listed compressed/uncompressed sizes**, **not verified content hashes or extracted bytes**.
+
+The central directory contains **1,563 ZIP entries**, including **1,229 content-addressed members** under `source vr/assets/sourcevr/v1/blobs/sha256/`. Direct native module names in `source vr/lib/arm64-v8a/` include `libc++_shared.so`, **`libhl2vrbridge.so`**, **`libsourcevrbootstrap.so`**, and `libzstd-jni-1.5.7-6.so`. The full archive also includes asset manifests under `sourcevr/v1/native/`, `overlay/`, and `vr/`, with titles for `hl2`, `ep1`, `ep2`, `lostcoast`, `portal`, `portal2`, and `entropyzero`. Among the VR manifests are `hl2vr`, `ep1vr`, `ep2vr`, `portalvr` and `portal2vr`.
+
+**Interpretation, not yet confirmed:** this appears to use a content-addressed asset/module selection or installation layer. The exact relationship between the package bootstrap library, embedded blobs and the separately supplied HL2VR standalone APK remains unverified until all split volumes are inspected and individual manifest bytes are read. There is no SiN-specific manifest name visible in this central directory listing.
