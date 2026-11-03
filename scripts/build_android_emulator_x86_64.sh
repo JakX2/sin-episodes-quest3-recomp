@@ -15,7 +15,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
@@ -50,3 +50,30 @@ if [[ "$(wc -l < "$ACTUAL")" -ne 13 ]]; then
 fi
 printf 'PASS: NDK Android x86_64 API29 library and Bionic dlopen PIE linked and audited.\n'
 printf 'Not yet executed: Android emulator job must call scripts/run_android_host_abi_smoke.sh.\n'
+
+# Phase100: independent Bionic x86_64 C API .so and loader for actual
+# Android emulator runtime execution. The original weapon v1 ABI is unchanged.
+LEGACY="$BUILD/libsin_legacy_bridge_abi.so"
+LEGACY_SMOKE="$BUILD/sin_android_legacy_bridge_smoke"
+for f in "$LEGACY" "$LEGACY_SMOKE"; do
+  test -s "$f" || { echo "ERROR: missing Phase100 emulator artifact: $f" >&2; exit 1; }
+  "$READELF" -h "$f" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+    echo "ERROR: Phase100 is not Android emulator x86_64: $f" >&2; exit 1; }
+done
+"$READELF" -d "$LEGACY_SMOKE" | grep -q 'NEEDED.*libdl.so' || {
+  echo 'ERROR: Phase100 loader missing Bionic libdl' >&2; exit 1; }
+if "$READELF" -d "$LEGACY_SMOKE" | grep -q 'NEEDED.*libsin_legacy_bridge_abi.so'; then
+  echo 'ERROR: Phase100 Android test links directly rather than dlopen' >&2; exit 1
+fi
+LEGACY_EXPECTED="$(mktemp)"
+LEGACY_ACTUAL="$(mktemp)"
+trap 'rm -f "$EXPECTED" "$ACTUAL" "$LEGACY_EXPECTED" "$LEGACY_ACTUAL"' EXIT
+sed -n '/^[[:space:]]*sin100_[a-z_]*;/s/[[:space:];]//gp' \
+  "$ROOT/src/legacy_bridge_exports.map" | sort -u > "$LEGACY_EXPECTED"
+"$NM" -D --defined-only --format=posix "$LEGACY" |
+  awk 'NF{print $1}' | sort -u > "$LEGACY_ACTUAL"
+diff -u "$LEGACY_EXPECTED" "$LEGACY_ACTUAL" || {
+  echo 'ERROR: Phase100 exported C ABI changed' >&2; exit 1; }
+test "$(wc -l < "$LEGACY_ACTUAL")" -eq 11 || {
+  echo 'ERROR: Phase100 must have 11 public exports' >&2; exit 1; }
+printf 'PASS: Phase100 Bionic emulator shared module and dlopen runner built with 11 stable exports.\n'
