@@ -17,6 +17,7 @@
 struct MockState {
     std::string name{"step"};
     uint32_t token{77};
+    bool omit_terminator{false};
     sin101_context* parent{nullptr};
     sin101_provider_v1* replace_with{nullptr};
 };
@@ -37,7 +38,8 @@ static int32_t valid(void* user,uint32_t token,uint32_t* out) {
 static int32_t reverse(void* user,uint32_t token,char* buffer,uint32_t cap,uint32_t* n) {
     auto& s=*static_cast<MockState*>(user);
     if(token!=s.token || cap<s.name.size()+1)return -1;
-    std::memcpy(buffer,s.name.c_str(),s.name.size()+1);
+    std::memcpy(buffer,s.name.data(),s.name.size());
+    if(!s.omit_terminator)buffer[s.name.size()]='\0';
     *n=static_cast<uint32_t>(s.name.size()+1);
     return 0;
 }
@@ -63,6 +65,12 @@ int main(int argc,char** argv) {
     a.parent=b.parent=c;
     auto pa=provider(a),pb=provider(b);
     assert(sin101_register_provider(c,&pa)==SIN101_OK);
+    // A valid name without the explicit trailing NUL must be rejected.
+    a.omit_terminator=true;
+    assert(sin101_map_sound(c,70000,100000,"step",4)==SIN101_NAME_MISMATCH);
+    uint32_t count_before=999;
+    assert(sin101_sound_count(c,&count_before)==SIN101_OK && count_before==0);
+    a.omit_terminator=false;
     assert(sin101_map_sound(c,70000,100000,"step",4)==SIN101_OK);
     check_mapping(c,70000,77);
     auto rejected=pb;

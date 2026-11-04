@@ -97,6 +97,7 @@ jobs:
           emulator-boot-timeout: 480
           emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
+            set -euo pipefail
             SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-runtime-evidence.txt bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
             # Phase100: test a SECOND genuine Android Bionic dlopen module, not
             # the original 13-export host ABI and not the SourceVR engine.
@@ -113,7 +114,7 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_source_provider_smoke /data/local/tmp/sin_phase101/sin_android_source_provider_smoke
             adb shell 'cd /data/local/tmp/sin_phase101 && chmod 700 sin_android_source_provider_smoke && LD_LIBRARY_PATH=. ./sin_android_source_provider_smoke ./libsin_legacy_bridge_abi.so' | tr -d '\r' | tee build-android-emulator-x86_64/phase101-bionic-output.txt
             test -f build-android-emulator-x86_64/phase101-bionic-output.txt
-            echo 'PASS: Phase101 mock-provider Bionic two-library mapping executed'
+            echo 'PASS: Phase101 mock-provider Bionic two-library mapping executed' | tee -a build-android-emulator-x86_64/phase101-bionic-output.txt
             # Phase102: previous provider mappings MUST disappear when replacing
             # provider A with B; test against real Android Bionic shared modules.
             adb push build-android-emulator-x86_64/sin102_provider_lifecycle /data/local/tmp/sin_phase101/sin102_provider_lifecycle
@@ -131,7 +132,8 @@ jobs:
           grep -qx 'loader_marker_verified=true' "$EVIDENCE"
           grep -qx 'scope=standalone_native_abi_not_sourcevr' "$EVIDENCE"
           grep -Fxq 'PASS: native shared-library dlopen + C ABI isolation, error and token translation tests' build-android-emulator-x86_64/phase100-bionic-output.txt
-          grep -Fq 'PASS: Phase102 provider replacement invalidates sound namespace' build-android-emulator-x86_64/phase102-bionic-output.txt
+          grep -Fxq 'PASS: Phase101 mock-provider Bionic two-library mapping executed' build-android-emulator-x86_64/phase101-bionic-output.txt
+          grep -Fxq 'PASS: Phase102 provider replacement invalidates sound namespace, keyboard survives, epoch guarded' build-android-emulator-x86_64/phase102-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
