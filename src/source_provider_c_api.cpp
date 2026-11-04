@@ -137,7 +137,9 @@ SIN101_API sin101_status sin101_map_sound(sin101_context* ctx,int32_t old_id,
         uint32_t valid=0;
         if(cb.validate_token(cb.userdata,static_cast<uint32_t>(token),&valid)!=0 || valid!=1)
             return SIN101_PROVIDER_FAILED;
-        std::array<char,SIN101_MAX_NAME_BYTES+1> reversed{};
+        // Nonzero sentinel catches callbacks that forget the promised NUL.
+        std::array<char,SIN101_MAX_NAME_BYTES+1> reversed;
+        reversed.fill(static_cast<char>(0x7f));
         uint32_t required=0;
         if(cb.token_to_name(cb.userdata,static_cast<uint32_t>(token),reversed.data(),
                             static_cast<uint32_t>(reversed.size()),&required)!=0)
