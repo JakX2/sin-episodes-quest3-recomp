@@ -15,7 +15,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
@@ -102,3 +102,12 @@ if "$READELF" -d "$PROVIDER" | grep -q 'NEEDED.*libsin_legacy_bridge_abi.so'; th
   echo 'ERROR: Phase101 must resolve Phase100 dynamically, not via direct DT_NEEDED' >&2; exit 1
 fi
 echo 'PASS: Phase101 provider shared library and Android test executable, 12 exports verified.'
+
+# Phase102: verify compiled native provider-epoch lifecycle regression runner.
+SIN102_RUNNER="$BUILD/sin102_provider_lifecycle"
+test -s "$SIN102_RUNNER" || { echo "ERROR: missing Phase102 Android lifecycle test" >&2; exit 1; }
+"$READELF" -h "$SIN102_RUNNER" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+  echo "ERROR: Phase102 runner has wrong target architecture" >&2; exit 1; }
+"$READELF" -d "$SIN102_RUNNER" | grep -q 'NEEDED.*libsin_source_provider_abi.so' || {
+  echo "ERROR: Phase102 runner must link the separate provider ABI library" >&2; exit 1; }
+echo 'PASS: Phase102 provider-epoch test executable built for Android.'

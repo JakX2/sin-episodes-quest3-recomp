@@ -10,7 +10,8 @@
 #include <string>
 struct sin101_context {
     void* module=nullptr;
-    sin100_context* legacy=nullptr;
+    sin100_context* legacy=nullptr;  // provider-scoped sound mappings
+    sin100_context* keyboard=nullptr; // independent original VGUI keymap
     uint32_t (*old_version)(void)=nullptr;
     sin100_status (*old_create)(uint32_t,sin100_context**)=nullptr;
     void (*old_destroy)(sin100_context*)=nullptr;
@@ -82,11 +83,17 @@ SIN101_API sin101_status sin101_create(uint32_t version,const char* path,sin101_
         if(p->old_create(SIN100_ABI_VERSION,&p->legacy)!=SIN100_OK || !p->legacy) {
             dlclose(p->module);return SIN101_LEGACY_LOAD_FAILED;
         }
+        // Keep the keyboard table independently of sound-provider epochs.
+        if(p->old_create(SIN100_ABI_VERSION,&p->keyboard)!=SIN100_OK || !p->keyboard) {
+            p->old_destroy(p->legacy);dlclose(p->module);
+            return SIN101_LEGACY_LOAD_FAILED;
+        }
         *out=p.release();return SIN101_OK;
     } catch(...) {return SIN101_INTERNAL_ERROR;}
 }
 SIN101_API void sin101_destroy(sin101_context* ctx) {
     if(!ctx)return;
+    if(ctx->keyboard)ctx->old_destroy(ctx->keyboard);
     if(ctx->legacy)ctx->old_destroy(ctx->legacy);
     if(ctx->module)dlclose(ctx->module);
     delete ctx;
@@ -102,7 +109,11 @@ SIN101_API sin101_status sin101_register_provider(sin101_context* ctx,const sin1
     if(in->kind!=SIN101_PROVIDER_MOCK)return SIN101_INVALID_ARGUMENT;
     try {
         std::lock_guard<std::mutex> guard(ctx->mutex);
-        ctx->provider=*in;ctx->active=true;++ctx->epoch;return SIN101_OK;
+        // Never leave mappings produced by the prior provider accessible.
+        ctx->active=false;ctx->provider={};++ctx->epoch;
+        const auto cleared=ctx->reset_old(ctx->legacy);
+        if(cleared!=SIN100_OK)return adapt(cleared);
+        ctx->provider=*in;ctx->active=true;return SIN101_OK;
     } catch(...) {return SIN101_INTERNAL_ERROR;}
 }
 SIN101_API sin101_status sin101_map_sound(sin101_context* ctx,int32_t old_id,
@@ -165,13 +176,13 @@ SIN101_API sin101_status sin101_copy_sound_name(sin101_context* ctx,int32_t id,
 SIN101_API sin101_status sin101_install_keymap_le(sin101_context* ctx,const uint8_t* input,uint32_t bytes) {
     if(!ctx)return SIN101_INVALID_ARGUMENT;
     try {std::lock_guard<std::mutex> guard(ctx->mutex);
-      return adapt(ctx->install_map(ctx->legacy,input,bytes));}
+      return adapt(ctx->install_map(ctx->keyboard,input,bytes));}
     catch(...) {return SIN101_INTERNAL_ERROR;}
 }
 SIN101_API sin101_status sin101_translate_key(sin101_context* ctx,int32_t key,uint32_t* value) {
     if(!ctx || !value)return SIN101_INVALID_ARGUMENT;
     try {std::lock_guard<std::mutex> guard(ctx->mutex);
-      return adapt(ctx->translate_key(ctx->legacy,key,value));}
+      return adapt(ctx->translate_key(ctx->keyboard,key,value));}
     catch(...) {return SIN101_INTERNAL_ERROR;}
 }
 SIN101_API sin101_status sin101_sound_count(sin101_context* ctx,uint32_t* count) {
@@ -184,7 +195,10 @@ SIN101_API sin101_status sin101_reset(sin101_context* ctx) {
     if(!ctx)return SIN101_INVALID_ARGUMENT;
     try {std::lock_guard<std::mutex> guard(ctx->mutex);
       ctx->active=false;ctx->provider={};++ctx->epoch;
-      return adapt(ctx->reset_old(ctx->legacy));}
+      const auto sound=ctx->reset_old(ctx->legacy);
+      const auto keyboard=ctx->reset_old(ctx->keyboard);
+      if(sound!=SIN100_OK)return adapt(sound);
+      return adapt(keyboard);}
     catch(...) {return SIN101_INTERNAL_ERROR;}
 }
 } // extern "C"

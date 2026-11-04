@@ -477,3 +477,29 @@ if(SIN_BUILD_ANDROID_SMOKE AND ANDROID)
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
   add_dependencies(sin_android_source_provider_smoke sin_legacy_bridge_abi)
 endif()
+
+
+# Phase102: provider-generation isolation, keeping verified VGUI keys on
+# registration and rejecting stale legacy/native sound mappings.
+if(BUILD_TESTING OR (SIN_BUILD_ANDROID_SMOKE AND ANDROID))
+  find_package(Threads REQUIRED)
+  add_executable(sin102_provider_lifecycle tests/sin102_provider_lifecycle.cpp)
+  target_include_directories(sin102_provider_lifecycle PRIVATE include)
+  target_link_libraries(sin102_provider_lifecycle PRIVATE
+    sin_source_provider_abi Threads::Threads)
+  target_compile_options(sin102_provider_lifecycle PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_dependencies(sin102_provider_lifecycle sin_legacy_bridge_abi)
+  if(BUILD_TESTING AND NOT ANDROID)
+    add_test(NAME sin102_provider_lifecycle
+      COMMAND sin102_provider_lifecycle $<TARGET_FILE:sin_legacy_bridge_abi>)
+  endif()
+endif()
+if(BUILD_TESTING AND NOT ANDROID)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin102_native_sound_abi_metadata_tests
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tests/test_phase102_native_abi.py)
+  endif()
+endif()
