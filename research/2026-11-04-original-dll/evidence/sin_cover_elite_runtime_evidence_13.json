@@ -1,0 +1,323 @@
+{
+  "chapter": "13 - active takecover behavior, six-task dispatch, and elite weapon event gates",
+  "scope": "verified original 2006 binary code and archived console logs; incomplete static decompilation, no runnable port",
+  "sha256": {
+    "server.dll": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
+    "client.dll": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d"
+  },
+  "checks_passed": 114,
+  "checks": [
+    "server SHA matches 2006 original",
+    "client SHA matches 2006 original: '6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d' != '6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d'",
+    "factory ai_goal_takecover: 'CAI_TakeCoverGoal' != 'CAI_TakeCoverGoal'",
+    "factory npc_druglab_grunt_elite: 'CNPC_EliteGrunt' != 'CNPC_EliteGrunt'",
+    "factory weapon_chaingun: 'CWeaponChaingun' != 'CWeaponChaingun'",
+    "CAI_TakecoverBehavior primary vtable: 575333924 != 575333924",
+    "behavior virtual CanSelectSchedule: 574194256 != 574194256",
+    "behavior virtual BeginBehavior: 574194368 != 574194368",
+    "behavior virtual BehaviorTick: 574196112 != 574196112",
+    "behavior virtual BehaviorEnterState: 574194640 != 574194640",
+    "behavior virtual UpdateShotParameters: 574194576 != 574194576",
+    "behavior virtual SelectCombatSchedule: 571265760 != 571265760",
+    "behavior virtual SelectScheduleSpecific: 574194800 != 574194800",
+    "behavior virtual SelectTask: 574195312 != 574195312",
+    "behavior virtual StopOrReleaseBehavior: 574194768 != 574194768",
+    "behavior virtual ScheduleLookup: 574194928 != 574194928",
+    "behavior virtual ConditionScheduleLookup: 574194976 != 574194976",
+    "cover map key records: 8 != 8",
+    "code bytes 0x22399B85",
+    "code bytes 0x22399B96",
+    "code bytes 0x22399B9E",
+    "code bytes 0x22399BAE",
+    "code bytes 0x22399BB0",
+    "code bytes 0x22399BB2",
+    "code bytes 0x22399BCB",
+    "code bytes 0x22399BCF",
+    "code bytes 0x22399BD3",
+    "call 0x22399BE5 to 0x220B1A80",
+    "call 0x22399BFB to 0x220B1AA0",
+    "code bytes 0x220B1A8A",
+    "code bytes 0x220B1A8E",
+    "code bytes 0x220B1AA8",
+    "code bytes 0x220B1AAB",
+    "call 0x22399AAC to 0x22399B00",
+    "call 0x22399AE9 to 0x22399B80",
+    "call 0x22399C2C to 0x22399B00",
+    "call 0x22399C60 to 0x22399B80",
+    "code bytes 0x22399ACB",
+    "code bytes 0x22399C45",
+    "call 0x223982D8 to 0x220B1AE0",
+    "call 0x223982EE to 0x220B1B00",
+    "call 0x22398304 to 0x220B1A80",
+    "call 0x2239831A to 0x220B1AA0",
+    "call 0x2239832A to 0x220B1B40",
+    "code bytes 0x22398332",
+    "code bytes 0x2239833B",
+    "call 0x22398993 to 0x223988B0",
+    "code bytes 0x2239899E",
+    "call 0x223989B5 to 0x220B1A80",
+    "call 0x223989CB to 0x220B1AA0",
+    "code bytes 0x22398259",
+    "eligibility float zero: 0.0 != 0.0",
+    "code bytes 0x22398282",
+    "code bytes 0x2239829A",
+    "call 0x223982A3 to 0x222AA640",
+    "compiled behavior schedule has SCHED_COVER_TAKE_COVER_FROM_BEST_SOUND",
+    "compiled behavior schedule has TASK_STOP_MOVING",
+    "compiled behavior schedule has TASK_FIND_COVER_FROM_BEST_SOUND",
+    "compiled behavior schedule has TASK_RUN_PATH",
+    "compiled behavior schedule has TASK_WAIT_FOR_MOVEMENT",
+    "compiled behavior schedule has TASK_WAIT_RANDOM",
+    "compiled behavior schedule has TASK_FACE_REASONABLE",
+    "code bytes 0x22398526",
+    "call 0x22398528 to 0x220397C0",
+    "code bytes 0x22398534",
+    "call 0x22398536 to 0x220397C0",
+    "call 0x22398544 to 0x220398A0",
+    "call 0x2239854E to 0x220398A0",
+    "code bytes 0x22398553",
+    "code bytes 0x22398560",
+    "code bytes 0x22398565",
+    "code bytes 0x2239865D",
+    "code bytes 0x2239865D",
+    "code bytes 0x22398565",
+    "code bytes 0x223985DC",
+    "code bytes 0x223985F5",
+    "code bytes 0x2239860E",
+    "code bytes 0x22398627",
+    "code bytes 0x22398114",
+    "code bytes 0x223985D1",
+    "code bytes 0x223985EA",
+    "code bytes 0x22398603",
+    "code bytes 0x2239861C",
+    "code bytes 0x22398675",
+    "code bytes 0x223987A4",
+    "code bytes 0x223987E5",
+    "code bytes 0x223987EA",
+    "code bytes 0x22399662",
+    "code bytes 0x22399667",
+    "code bytes 0x22399671",
+    "six task dispatch entries: [574199582, 574199853, 574200128, 574200149, 574199525, 574199416] != [574199582, 574199853, 574200128, 574200149, 574199525, 574199416]",
+    "code bytes 0x22399757",
+    "code bytes 0x2239975C",
+    "code bytes 0x22399778",
+    "code bytes 0x22399818",
+    "elite calls tick from primary vtable: 573920752 != 573920752",
+    "code bytes 0x22355494",
+    "code bytes 0x22355499",
+    "call 0x223554BA to 0x22315440",
+    "call 0x22355503 to 0x22315320",
+    "code bytes 0x2235550A",
+    "code bytes 0x223556A9",
+    "code bytes 0x223556B2",
+    "code bytes 0x22355737",
+    "call 0x22355772 to 0x22315320",
+    "call 0x22355645 to 0x22315390",
+    "code bytes 0x22315343",
+    "code bytes 0x22315413",
+    "code bytes 0x223153EB",
+    "code bytes 0x223153C4",
+    "chaingun state seconds threshold: 1.0 != 1.0",
+    "five-log total attempts: 1531 != 1531",
+    "cover goal failures: 26 != 26",
+    "elite failures: 69 != 69"
+  ],
+  "takecover": {
+    "behavior_class": "CAI_TakecoverBehavior",
+    "vtable_va": "0x224AE624",
+    "vtable_entries": 58,
+    "selected_virtuals": {
+      "CanSelectSchedule": {
+        "vtable_offset": "0x18",
+        "function_va": "0x22398250",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "BeginBehavior": {
+        "vtable_offset": "0x1C",
+        "function_va": "0x223982C0",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "BehaviorTick": {
+        "vtable_offset": "0x20",
+        "function_va": "0x22398990",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "BehaviorEnterState": {
+        "vtable_offset": "0x24",
+        "function_va": "0x223983D0",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "UpdateShotParameters": {
+        "vtable_offset": "0x28",
+        "function_va": "0x22398390",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "SelectCombatSchedule": {
+        "vtable_offset": "0x5C",
+        "function_va": "0x220CD2E0",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "SelectScheduleSpecific": {
+        "vtable_offset": "0x64",
+        "function_va": "0x22398470",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "SelectTask": {
+        "vtable_offset": "0x7C",
+        "function_va": "0x22398670",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "StopOrReleaseBehavior": {
+        "vtable_offset": "0x78",
+        "function_va": "0x22398450",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "ScheduleLookup": {
+        "vtable_offset": "0xDC",
+        "function_va": "0x223984F0",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      },
+      "ConditionScheduleLookup": {
+        "vtable_offset": "0xE0",
+        "function_va": "0x22398520",
+        "note": "descriptive analyst label; not recovered C++ virtual name"
+      }
+    },
+    "map_goal_apply_va": "0x22399B80",
+    "map_goal_begin_va": "0x22399AA0",
+    "map_goal_stop_va": "0x22399C20",
+    "copies_28_bytes_to_behavior_at": "behavior+0x14",
+    "npc_cover_config_base_offset": "NPC+0x9A8",
+    "npc_cover_config_written_offsets": [
+      "NPC+0x9B0 (16-bit)",
+      "NPC+0x9B2 (16-bit)",
+      "NPC+0x9B4 (32-bit)",
+      "NPC+0x9B8 (32-bit)"
+    ],
+    "behavior_begin_va": "0x223982C0",
+    "behavior_end_va": "0x22398990",
+    "npc_preserved_field": "NPC+0xA20",
+    "npc_temporary_value": "0x7F7FFFFF (FLT_MAX)",
+    "abandon_if_enemy_hides_effect": "when false zero 7th float; when true preserve row 7th float",
+    "presets": [
+      {
+        "index": 0,
+        "cover_on_reload": 1,
+        "min_time_between_shots": 4.0,
+        "max_time_between_shots": 8.0,
+        "min_shots": 2,
+        "max_shots": 4,
+        "odds_cover": 50,
+        "seventh_float_when_abandon_enabled": 30.0,
+        "seventh_float_when_abandon_disabled": 0.0
+      },
+      {
+        "index": 1,
+        "cover_on_reload": 1,
+        "min_time_between_shots": 2.0,
+        "max_time_between_shots": 5.0,
+        "min_shots": 3,
+        "max_shots": 5,
+        "odds_cover": 25,
+        "seventh_float_when_abandon_enabled": 20.0,
+        "seventh_float_when_abandon_disabled": 0.0
+      },
+      {
+        "index": 2,
+        "cover_on_reload": 1,
+        "min_time_between_shots": 0.6000000238418579,
+        "max_time_between_shots": 2.5,
+        "min_shots": 3,
+        "max_shots": 6,
+        "odds_cover": 25,
+        "seventh_float_when_abandon_enabled": 10.0,
+        "seventh_float_when_abandon_disabled": 0.0
+      },
+      {
+        "index": 3,
+        "cover_on_reload": 1,
+        "min_time_between_shots": 0.20000000298023224,
+        "max_time_between_shots": 1.5,
+        "min_shots": 5,
+        "max_shots": 8,
+        "odds_cover": 10,
+        "seventh_float_when_abandon_enabled": 10.0,
+        "seventh_float_when_abandon_disabled": 0.0
+      },
+      {
+        "index": 4,
+        "cover_on_reload": 0,
+        "min_time_between_shots": 0.0,
+        "max_time_between_shots": 0.0,
+        "min_shots": 100,
+        "max_shots": 100,
+        "odds_cover": 0,
+        "seventh_float_when_abandon_enabled": 5.0,
+        "seventh_float_when_abandon_disabled": 0.0
+      }
+    ],
+    "schedule_text": "SCHED_COVER_TAKE_COVER_FROM_BEST_SOUND\tTasks\t\t TASK_STOP_MOVING\t\t\t\t\t0\t\t TASK_FIND_COVER_FROM_BEST_SOUND\t0\t\t TASK_RUN_PATH\t\t\t\t\t\t0\t\t TASK_WAIT_FOR_MOVEMENT\t\t\t\t0\t     TASK_WAIT                          0.5\t     TASK_WAIT_RANDOM\t\t\t\t\t1.0\t\t TASK_FACE_REASONABLE\t\t\t\t0\tInterrupts\n",
+    "schedule_selection_va": "0x22398520",
+    "schedule_ids": [
+      "0x186A0",
+      "0x186A1",
+      "0x186A2",
+      "0x186A3",
+      "0x186A4",
+      "0x186A5",
+      "0x186A6"
+    ],
+    "schedule_candidate_branch": "0x22398553 calls an RNG with arguments 0..10; >8 selects schedule 0x186A1, no probability asserted",
+    "target_handle_field": "NPC+0xA18; likely enemy but not yet independently assigned an original C++ member name",
+    "target_classification_codes_observed": [
+      100,
+      101,
+      107,
+      108
+    ],
+    "six_task_dispatch_va": "0x22399650",
+    "six_task_jump_table_va": "0x22399980",
+    "six_task_targets": [
+      "0x2239971E",
+      "0x2239982D",
+      "0x22399940",
+      "0x22399955",
+      "0x223996E5",
+      "0x22399678"
+    ],
+    "active_gate_va": "0x22398250",
+    "caveats": [
+      "C++ method names for vtable slots are analyst descriptions, not recovered symbols.",
+      "A full schedule/animation playback model remains unresolved.",
+      "The function that reads cover odds at runtime remains to be traced.",
+      "Custom map values versus table index bounds require further confirmation."
+    ]
+  },
+  "elite": {
+    "class": "CNPC_EliteGrunt",
+    "animation_event_handler_va": "0x22355480",
+    "secondary_event_handler_va": "0x223556A0",
+    "event_ids": [
+      3,
+      67,
+      71
+    ],
+    "id_0x43": "queries CWeaponChaingun::0x22315320 and stores result to elite+0xFD9",
+    "id_0x47": "calls CWeaponChaingun::0x22315440, setting state 3",
+    "control_flag_offset": "elite+0xFD9",
+    "weapon_handle_offset": "elite+0xFDC",
+    "weapon_tick_override_va": "0x223555F0",
+    "weapon_state_tick_va": "0x22315390",
+    "weapon_state_word": "chaingun+0x594",
+    "elapsed_time_threshold_seconds": 1.0,
+    "caveats": [
+      "Event numeric IDs are verified, but original symbolic animation-event names remain unknown.",
+      "No fixed RPM or burst cadence is established from state-timer data alone."
+    ]
+  },
+  "log_context": {
+    "ai_goal_takecover_failed_attempts": 26,
+    "npc_druglab_grunt_elite_failed_attempts": 69,
+    "all_failed_attempts": 1531
+  }
+}

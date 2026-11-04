@@ -1,0 +1,393 @@
+{
+  "chapter": "Elite grunt and take-cover behavior, decompilation 12",
+  "disclaimer": "read-only static evidence and partial pseudocode, not a complete decompilation or tested quest runtime",
+  "hashes": {
+    "server.dll": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
+    "client.dll": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d",
+    "scripts.zip": "517d5b72f23cd6e1164e7c43d72eef97d4c80285365734747c8ced9199e6985d"
+  },
+  "checks_passed": 98,
+  "assertions": [
+    "original server SHA256",
+    "original client SHA256",
+    "factory npc_druglab_grunt_elite ('CNPC_EliteGrunt' vs 'CNPC_EliteGrunt')",
+    "factory npc_druglab_grunt_pistol ('CNPC_MobGrunt' vs 'CNPC_MobGrunt')",
+    "factory npc_druglab_grunt_assault_rifle ('CNPC_MobGrunt' vs 'CNPC_MobGrunt')",
+    "factory npc_druglab_grunt_scattergun ('CNPC_MobGrunt' vs 'CNPC_MobGrunt')",
+    "factory ai_goal_takecover ('CAI_TakeCoverGoal' vs 'CAI_TakeCoverGoal')",
+    "factory weapon_chaingun ('CWeaponChaingun' vs 'CWeaponChaingun')",
+    "elite own datamap count (2 vs 2)",
+    "elite field layouts ([('m_canFire', '0xFD9', 6), ('m_pChaingun', '0xFDC', 13)] vs [('m_canFire', '0xFD9', 6), ('m_pChaingun', '0xFDC', 13)])",
+    "goal fields count (8 vs 8)",
+    "map key Aggressiveness (('Aggressiveness', '0x3C8') vs ('Aggressiveness', '0x3C8'))",
+    "map key AbandonIfEnemyHides (('AbandonIfEnemyHides', '0x3CC') vs ('AbandonIfEnemyHides', '0x3CC'))",
+    "map key CustomCoverOnReload (('CustomCoverOnReload', '0x3D0') vs ('CustomCoverOnReload', '0x3D0'))",
+    "map key CustomMinTimeShots (('CustomMinTimeShots', '0x3D4') vs ('CustomMinTimeShots', '0x3D4'))",
+    "map key CustomMaxTimeShots (('CustomMaxTimeShots', '0x3D8') vs ('CustomMaxTimeShots', '0x3D8'))",
+    "map key CustomMinShots (('CustomMinShots', '0x3DC') vs ('CustomMinShots', '0x3DC'))",
+    "map key CustomMaxShots (('CustomMaxShots', '0x3E0') vs ('CustomMaxShots', '0x3E0'))",
+    "map key CustomOddsCover (('CustomOddsCover', '0x3E4') vs ('CustomOddsCover', '0x3E4'))",
+    "elite spawn vtable slot (573921312 vs 573921312)",
+    "call@223558CF->2235F2A0",
+    "bytes@223558DA",
+    "bytes@2235590C",
+    "bytes@2235594C",
+    "call@223559E4->222AA640",
+    "call@223559EA->223A5BAB",
+    "RTTI cast destination ('.?AVCWeaponChaingun@@' vs '.?AVCWeaponChaingun@@')",
+    "RTTI cast source ('.?AVCBaseCombatWeapon@@' vs '.?AVCBaseCombatWeapon@@')",
+    "bytes@223559FF",
+    "bytes@22355A0A",
+    "bytes@22355D1C",
+    "bytes@22355489",
+    "bytes@22355494",
+    "bytes@22355499",
+    "bytes@223556A9",
+    "bytes@223556B2",
+    "bytes@2235550A",
+    "bytes@22355737",
+    "call@223554BA->22315440",
+    "call@22355503->22315320",
+    "call@22355645->22315390",
+    "call@22355772->22315320",
+    "elite behavior tail-jumps parent update (b'\\xe9' vs b'\\xe9')",
+    "elite vtable delegates weapon tick",
+    "bytes@22315323",
+    "bytes@22315329",
+    "bytes@22315343",
+    "bytes@22315393",
+    "bytes@223153C4",
+    "bytes@223153EB",
+    "bytes@22315413",
+    "bytes@22315440",
+    "chaingun four state jump table ([573657909, 573657962, 573657966, 573657962] vs [573657909, 573657962, 573657966, 573657962])",
+    "bytes@223153D8",
+    "bytes@22315400",
+    "state-machine interval constant 1.0 seconds (1.0 vs 1.0)",
+    "elite schedule exists SCHED_ELITE_MELEE_ATTACK1",
+    "elite announce attack SCHED_ELITE_MELEE_ATTACK1",
+    "elite schedule exists SCHED_ELITE_RANGE_ATTACK1",
+    "elite announce attack SCHED_ELITE_RANGE_ATTACK1",
+    "elite repeated range attack four tasks",
+    "bytes@22399A1E",
+    "bytes@22399A28",
+    "bytes@22399A35",
+    "bytes@22399A3A",
+    "behavior cast destination RTTI ('.?AVCAI_TakecoverBehavior@@' vs '.?AVCAI_TakecoverBehavior@@')",
+    "behavior cast source RTTI ('.?AVCAI_BehaviorBase@@' vs '.?AVCAI_BehaviorBase@@')",
+    "call@22399AAC->22399B00",
+    "call@22399C2C->22399B00",
+    "call@22399B42->223A5BAB",
+    "bytes@22399B85",
+    "bytes@22399B96",
+    "bytes@22399B9E",
+    "bytes@22399BA5",
+    "bytes@22399BAE",
+    "bytes@22399BB2",
+    "bytes@22399BC6",
+    "bytes@22399BCF",
+    "call@22399BE5->220B1A80",
+    "call@22399BFB->220B1AA0",
+    "bytes@22399ACB",
+    "bytes@22399C45",
+    "cover aggressiveness preset 0 ((1, 4.0, 8.0, 2, 4, 50, 30.0) vs (1, 4.0, 8.0, 2, 4, 50, 30.0))",
+    "cover aggressiveness preset 1 ((1, 2.0, 5.0, 3, 5, 25, 20.0) vs (1, 2.0, 5.0, 3, 5, 25, 20.0))",
+    "cover aggressiveness preset 2 ((1, 0.6000000238418579, 2.5, 3, 6, 25, 10.0) vs (1, 0.6000000238418579, 2.5, 3, 6, 25, 10.0))",
+    "cover aggressiveness preset 3 ((1, 0.20000000298023224, 1.5, 5, 8, 10, 10.0) vs (1, 0.20000000298023224, 1.5, 5, 8, 10, 10.0))",
+    "cover aggressiveness preset 4 ((0, 0.0, 0.0, 100, 100, 0, 5.0) vs (0, 0.0, 0.0, 100, 100, 0, 5.0))",
+    "constructor custom parameter defaults ((1, 1.5, 2.5, 1, 3, 25, 0) vs (1, 1.5, 2.5, 1, 3, 25, 0))",
+    "elite failures in five logs (69 vs 69)",
+    "takecover goal failures in five logs (26 vs 26)",
+    "full five-log count (1531 vs 1531)",
+    "chaingun script \"clip_size\"\t\t\t\"30\"",
+    "chaingun script \"default_clip\"\t\t\t\"30\"",
+    "chaingun script \"primary_ammo\"\t\t\t\"CHAIN\"",
+    "chaingun script \"ITEM_FLAG_NOPLAYERPICKUP\"\t\"1\"",
+    "chaingun script Weapon_Chaingun.NPC_SpinUp",
+    "chaingun script Weapon_Chaingun.NPC_SpinDown",
+    "elite sound config exists"
+  ],
+  "factories": {
+    "npc_druglab_grunt_elite": {
+      "classname": "npc_druglab_grunt_elite",
+      "class": "CNPC_EliteGrunt",
+      "registration_va": "0x223C6947",
+      "factory_instance_va": "0x225346A0"
+    },
+    "npc_druglab_grunt_pistol": {
+      "classname": "npc_druglab_grunt_pistol",
+      "class": "CNPC_MobGrunt",
+      "registration_va": "0x223C6FE7",
+      "factory_instance_va": "0x22536840"
+    },
+    "npc_druglab_grunt_assault_rifle": {
+      "classname": "npc_druglab_grunt_assault_rifle",
+      "class": "CNPC_MobGrunt",
+      "registration_va": "0x223C7027",
+      "factory_instance_va": "0x22536848"
+    },
+    "npc_druglab_grunt_scattergun": {
+      "classname": "npc_druglab_grunt_scattergun",
+      "class": "CNPC_MobGrunt",
+      "registration_va": "0x223C7007",
+      "factory_instance_va": "0x22536844"
+    },
+    "ai_goal_takecover": {
+      "classname": "ai_goal_takecover",
+      "class": "CAI_TakeCoverGoal",
+      "registration_va": "0x223C7F87",
+      "factory_instance_va": "0x2253B6A8"
+    },
+    "weapon_chaingun": {
+      "classname": "weapon_chaingun",
+      "class": "CWeaponChaingun",
+      "registration_va": "0x223C5037",
+      "factory_instance_va": "0x2252D9FC"
+    }
+  },
+  "elite": {
+    "datamap": {
+      "primary_vtable_va": "0x2248DF04",
+      "datamap_accessor_va": "0x22354CA0",
+      "datamap_va": "0x22534674",
+      "field_array_va": "0x22534714",
+      "parent_datamap_va": "0x22534DA4",
+      "compiled_datamap_name": "CNPC_EliteGrunt",
+      "declared_records": 2,
+      "statically_resolved_records": 2,
+      "runtime_initialized_or_empty_records": 0,
+      "fields": [
+        {
+          "record_va": "0x22534714",
+          "field_type_code": 6,
+          "internal_name": "m_canFire",
+          "offset": "0xFD9",
+          "external_name": null,
+          "input_handler_va": null,
+          "statically_resolved": true
+        },
+        {
+          "record_va": "0x22534748",
+          "field_type_code": 13,
+          "internal_name": "m_pChaingun",
+          "offset": "0xFDC",
+          "external_name": null,
+          "input_handler_va": null,
+          "statically_resolved": true
+        }
+      ]
+    },
+    "primary_vtable_va": "0x2248DF04",
+    "spawn_va": "0x22355820",
+    "weapon_runtime_cast_va": "0x223559EA",
+    "weapon_handle_offset": "0xFDC",
+    "can_fire_offset": "0xFD9",
+    "animation_related_handler_va": "0x22355480",
+    "event_numbers_observed": [
+      3,
+      67,
+      71
+    ],
+    "weapon_ticking_va": "0x223555F0",
+    "chaingun_fsm": {
+      "state_offset": "0x594",
+      "clock_offsets": [
+        "0x58C",
+        "0x590"
+      ],
+      "state_ids": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "check_true_in_state": 2,
+      "timing_constant_seconds": 1.0,
+      "start_check_va": "0x22315320",
+      "update_va": "0x22315390",
+      "force_end_va": "0x22315440",
+      "check_jump_table": [
+        "0x22315335",
+        "0x2231536A",
+        "0x2231536E",
+        "0x2231536A"
+      ]
+    },
+    "schedule_descriptions": {
+      "SCHED_ELITE_MELEE_ATTACK1": "SCHED_ELITE_MELEE_ATTACK1 Tasks  TASK_STOP_MOVING  0  TASK_FACE_ENEMY   0  TASK_ANNOUNCE_ATTACK 1  TASK_MELEE_ATTACK1  0 Interrupts  COND_NEW_ENEMY  COND_ENEMY_DEAD  COND_LIGHT_DAMAGE  COND_ENEMY_OCCLUDED",
+      "SCHED_ELITE_RANGE_ATTACK1": "SCHED_ELITE_RANGE_ATTACK1 Tasks  TASK_STOP_MOVING    0  TASK_FACE_ENEMY     0  TASK_ANNOUNCE_ATTACK   1  TASK_RANGE_ATTACK1    0  TASK_RANGE_ATTACK1    0  TASK_RANGE_ATTACK1    0  TASK_RANGE_ATTACK1    0  TASK_GRUNT_IGNORE_ATTACKS  0.1 Interrupts  COND_NEW_ENEMY  COND_ENEMY_DEAD  COND_HEAVY_DAMAGE  COND_LOW_PRIMARY_AMMO  COND_NO_PRIMARY_AMMO  COND_WEAPON_BLOCKED_BY_FRIEND  COND_TOO_CLOSE_TO_ATTACK  COND_GIVE_WAY  COND_HEAR_DANGER  COND_HEAR_MOVE_AWAY  COND_GRUNT_NO_FIRE"
+    }
+  },
+  "take_cover": {
+    "datamap": {
+      "primary_vtable_va": "0x224AE37C",
+      "datamap_accessor_va": "0x22398190",
+      "datamap_va": "0x2253B68C",
+      "field_array_va": "0x2253BC2C",
+      "parent_datamap_va": "0x224DF31C",
+      "compiled_datamap_name": "CAI_TakeCoverGoal",
+      "declared_records": 8,
+      "statically_resolved_records": 8,
+      "runtime_initialized_or_empty_records": 0,
+      "fields": [
+        {
+          "record_va": "0x2253BC2C",
+          "field_type_code": 5,
+          "internal_name": "m_aggressiveness",
+          "offset": "0x3C8",
+          "external_name": "Aggressiveness",
+          "input_handler_va": null,
+          "statically_resolved": true
+        },
+        {
+          "record_va": "0x2253BC60",
+          "field_type_code": 6,
+          "internal_name": "m_bAbandonIfEnemyHides",
+          "offset": "0x3CC",
+          "external_name": "AbandonIfEnemyHides",
+          "input_handler_va": null,
+          "statically_resolved": true
+        },
+        {
+          "record_va": "0x2253BC94",
+          "field_type_code": 6,
+          "internal_name": "m_customParams.fCoverOnReload",
+          "offset": "0x3D0",
+          "external_name": "CustomCoverOnReload",
+          "input_handler_va": null,
+          "statically_resolved": true
+        },
+        {
+          "record_va": "0x2253BCC8",
+          "field_type_code": 1,
+          "internal_name": "m_customParams.minTimeShots",
+          "offset": "0x3D4",
+          "external_name": "CustomMinTimeShots",
+          "input_handler_va": null,
+          "statically_resolved": true
+        },
+        {
+          "record_va": "0x2253BCFC",
+          "field_type_code": 1,
+          "internal_name": "m_customParams.maxTimeShots",
+          "offset": "0x3D8",
+          "external_name": "CustomMaxTimeShots",
+          "input_handler_va": null,
+          "statically_resolved": true
+        },
+        {
+          "record_va": "0x2253BD30",
+          "field_type_code": 5,
+          "internal_name": "m_customParams.minShots",
+          "offset": "0x3DC",
+          "external_name": "CustomMinShots",
+          "input_handler_va": null,
+          "statically_resolved": true
+        },
+        {
+          "record_va": "0x2253BD64",
+          "field_type_code": 5,
+          "internal_name": "m_customParams.maxShots",
+          "offset": "0x3E0",
+          "external_name": "CustomMaxShots",
+          "input_handler_va": null,
+          "statically_resolved": true
+        },
+        {
+          "record_va": "0x2253BD98",
+          "field_type_code": 5,
+          "internal_name": "m_customParams.oddsCover",
+          "offset": "0x3E4",
+          "external_name": "CustomOddsCover",
+          "input_handler_va": null,
+          "statically_resolved": true
+        }
+      ]
+    },
+    "constructor_va": "0x223999F0",
+    "preset_table_va": "0x2253B600",
+    "preset_stride_bytes": 28,
+    "presets": [
+      {
+        "index": 0,
+        "cover_on_reload": 1,
+        "min_time_between_shots": 4.0,
+        "max_time_between_shots": 8.0,
+        "min_shots": 2,
+        "max_shots": 4,
+        "cover_odds_value": 50,
+        "unidentified_seventh_float": 30.0
+      },
+      {
+        "index": 1,
+        "cover_on_reload": 1,
+        "min_time_between_shots": 2.0,
+        "max_time_between_shots": 5.0,
+        "min_shots": 3,
+        "max_shots": 5,
+        "cover_odds_value": 25,
+        "unidentified_seventh_float": 20.0
+      },
+      {
+        "index": 2,
+        "cover_on_reload": 1,
+        "min_time_between_shots": 0.6000000238418579,
+        "max_time_between_shots": 2.5,
+        "min_shots": 3,
+        "max_shots": 6,
+        "cover_odds_value": 25,
+        "unidentified_seventh_float": 10.0
+      },
+      {
+        "index": 3,
+        "cover_on_reload": 1,
+        "min_time_between_shots": 0.20000000298023224,
+        "max_time_between_shots": 1.5,
+        "min_shots": 5,
+        "max_shots": 8,
+        "cover_odds_value": 10,
+        "unidentified_seventh_float": 10.0
+      },
+      {
+        "index": 4,
+        "cover_on_reload": 0,
+        "min_time_between_shots": 0.0,
+        "max_time_between_shots": 0.0,
+        "min_shots": 100,
+        "max_shots": 100,
+        "cover_odds_value": 0,
+        "unidentified_seventh_float": 5.0
+      }
+    ],
+    "default_custom_words": [
+      "0x00000001",
+      "0x3FC00000",
+      "0x40200000",
+      "0x00000001",
+      "0x00000003",
+      "0x00000019",
+      "0x00000000"
+    ],
+    "behavior_type": ".?AVCAI_TakecoverBehavior@@",
+    "actor_behavior_finder_va": "0x22399B00",
+    "parameter_apply_va": "0x22399B80",
+    "configuration_helper_calls": [
+      "0x220B1A80",
+      "0x220B1AA0"
+    ],
+    "behavior_events_observed": [
+      "0x3E8",
+      "0x3E9"
+    ],
+    "caveats": [
+      "The seventh float was not named in the datamap; do not assign semantic label from inference.",
+      "The code indexes presets using m_aggressiveness; valid user input range/validation not established by this trace.",
+      "Custom* key fields exist but direct use by 0x22399B80 is not demonstrated.",
+      "Not every compiled schedule is proven to execute in campaign combat."
+    ]
+  },
+  "hl2_log_creation_attempts": {
+    "npc_druglab_grunt_elite": 69,
+    "ai_goal_takecover": 26
+  }
+}

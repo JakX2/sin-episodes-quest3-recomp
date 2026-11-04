@@ -56,3 +56,7 @@ This is an independent, unofficial project. SiN, Half-Life 2, Source and associa
 ## Still missing
 
 The full original reports or evidence for Phases 2–4, 6–21 and 23–43 remain unavailable in the recovered material used for this publication; newly written summaries and a limited independent verification baseline for 23–43 are linked above. Early grunt/vehicle notes are partial chat excerpts, not full reverse-engineering dossiers. Add recovered *independently authored* notes through pull requests with clear provenance; never invent a missing phase or mark a guess as confirmed.
+
+## November 2026 original-DLL investigations
+
+The read-only original-binary and SiN-in-HL2 compatibility research continues in the [November 2026 research archive](2026-11-04-original-dll/README.md). These findings do **not** mean the missing entities are implemented or that a Quest 3 game port exists.

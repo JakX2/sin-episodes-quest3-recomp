@@ -1,0 +1,790 @@
+{
+  "scope": "Read-only evidence from original PE32 x86 server.dll and client.dll, scripts.zip, five HL2 console logs",
+  "source_sha256": {
+    "server.dll": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
+    "client.dll": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d",
+    "scripts.zip": "517d5b72f23cd6e1164e7c43d72eef97d4c80285365734747c8ced9199e6985d"
+  },
+  "checks_passed": 102,
+  "original_entity_factories": {
+    "npc_druglab_grunt_pistol": {
+      "classname": "npc_druglab_grunt_pistol",
+      "class": "CNPC_MobGrunt",
+      "registration_va": "0x223C6FE7",
+      "factory_instance_va": "0x22536840"
+    },
+    "npc_druglab_grunt_scattergun": {
+      "classname": "npc_druglab_grunt_scattergun",
+      "class": "CNPC_MobGrunt",
+      "registration_va": "0x223C7007",
+      "factory_instance_va": "0x22536844"
+    },
+    "npc_druglab_grunt_assault_rifle": {
+      "classname": "npc_druglab_grunt_assault_rifle",
+      "class": "CNPC_MobGrunt",
+      "registration_va": "0x223C7027",
+      "factory_instance_va": "0x22536848"
+    },
+    "npc_druglab_grunt_elite": {
+      "classname": "npc_druglab_grunt_elite",
+      "class": "CNPC_EliteGrunt",
+      "registration_va": "0x223C6947",
+      "factory_instance_va": "0x225346A0"
+    },
+    "npc_sintek_grunt": {
+      "classname": "npc_sintek_grunt",
+      "class": "CNPC_SintekGrunt",
+      "registration_va": "0x223C77A7",
+      "factory_instance_va": "0x22537CEC"
+    },
+    "weapon_chaingun": {
+      "classname": "weapon_chaingun",
+      "class": "CWeaponChaingun",
+      "registration_va": "0x223C5037",
+      "factory_instance_va": "0x2252D9FC"
+    }
+  },
+  "vtable_primary_va": {
+    "CNPC_GruntBase": "0x224954A4",
+    "CNPC_MobGrunt": "0x2249AAA4",
+    "CNPC_SintekGrunt": "0x224A416C",
+    "CNPC_EliteGrunt": "0x2248DF04"
+  },
+  "vtable_differences_vs_CNPC_GruntBase": {
+    "CNPC_MobGrunt": [
+      {
+        "slot_offset": "0x0",
+        "entrypoint": "0x2236A3B0",
+        "parent_entrypoint": "0x22360F00"
+      },
+      {
+        "slot_offset": "0x64",
+        "entrypoint": "0x22369E40",
+        "parent_entrypoint": "0x2235F2A0"
+      },
+      {
+        "slot_offset": "0x68",
+        "entrypoint": "0x22369D90",
+        "parent_entrypoint": "0x2235DE00"
+      },
+      {
+        "slot_offset": "0xD0",
+        "entrypoint": "0x2236A3A0",
+        "parent_entrypoint": "0x22358410"
+      }
+    ],
+    "CNPC_SintekGrunt": [
+      {
+        "slot_offset": "0x0",
+        "entrypoint": "0x22380670",
+        "parent_entrypoint": "0x22360F00"
+      }
+    ],
+    "CNPC_EliteGrunt": [
+      {
+        "slot_offset": "0x0",
+        "entrypoint": "0x22355DB0",
+        "parent_entrypoint": "0x22360F00"
+      },
+      {
+        "slot_offset": "0x28",
+        "entrypoint": "0x22354CC0",
+        "parent_entrypoint": "0x22357DF0"
+      },
+      {
+        "slot_offset": "0x2C",
+        "entrypoint": "0x22354CB0",
+        "parent_entrypoint": "0x22357DE0"
+      },
+      {
+        "slot_offset": "0x30",
+        "entrypoint": "0x22354CD0",
+        "parent_entrypoint": "0x22357E00"
+      },
+      {
+        "slot_offset": "0x34",
+        "entrypoint": "0x22354CA0",
+        "parent_entrypoint": "0x22357DD0"
+      },
+      {
+        "slot_offset": "0x64",
+        "entrypoint": "0x22355820",
+        "parent_entrypoint": "0x2235F2A0"
+      },
+      {
+        "slot_offset": "0x68",
+        "entrypoint": "0x22354CE0",
+        "parent_entrypoint": "0x2235DE00"
+      },
+      {
+        "slot_offset": "0xD0",
+        "entrypoint": "0x22355D60",
+        "parent_entrypoint": "0x22358410"
+      },
+      {
+        "slot_offset": "0xE8",
+        "entrypoint": "0x22354FB0",
+        "parent_entrypoint": "0x2235E0B0"
+      },
+      {
+        "slot_offset": "0x180",
+        "entrypoint": "0x22355410",
+        "parent_entrypoint": "0x22001880"
+      },
+      {
+        "slot_offset": "0x424",
+        "entrypoint": "0x223555F0",
+        "parent_entrypoint": "0x2235DF10"
+      },
+      {
+        "slot_offset": "0x43C",
+        "entrypoint": "0x22354D60",
+        "parent_entrypoint": "0x2235D5B0"
+      },
+      {
+        "slot_offset": "0x444",
+        "entrypoint": "0x22355480",
+        "parent_entrypoint": "0x2235BFD0"
+      },
+      {
+        "slot_offset": "0x44C",
+        "entrypoint": "0x223556A0",
+        "parent_entrypoint": "0x2235CCE0"
+      },
+      {
+        "slot_offset": "0x464",
+        "entrypoint": "0x22355D90",
+        "parent_entrypoint": "0x2235EF10"
+      },
+      {
+        "slot_offset": "0x488",
+        "entrypoint": "0x22355D50",
+        "parent_entrypoint": "0x22360EF0"
+      },
+      {
+        "slot_offset": "0x48C",
+        "entrypoint": "0x22354F00",
+        "parent_entrypoint": "0x22358F00"
+      },
+      {
+        "slot_offset": "0x5B8",
+        "entrypoint": "0x22355D80",
+        "parent_entrypoint": "0x22358870"
+      },
+      {
+        "slot_offset": "0x68C",
+        "entrypoint": "0x22354F10",
+        "parent_entrypoint": "0x22358F10"
+      },
+      {
+        "slot_offset": "0x720",
+        "entrypoint": "0x22354DF0",
+        "parent_entrypoint": "0x22358E00"
+      },
+      {
+        "slot_offset": "0x760",
+        "entrypoint": "0x22355D40",
+        "parent_entrypoint": "0x22360EE0"
+      },
+      {
+        "slot_offset": "0x7A4",
+        "entrypoint": "0x22355DA0",
+        "parent_entrypoint": "0x22353F50"
+      },
+      {
+        "slot_offset": "0x848",
+        "entrypoint": "0x22355D70",
+        "parent_entrypoint": "0x22359620"
+      }
+    ]
+  },
+  "grunt_base_datamap": {
+    "primary_vtable_va": "0x224954A4",
+    "datamap_accessor_va": "0x22357DD0",
+    "datamap_va": "0x22534DA4",
+    "field_array_va": "0x22534E8C",
+    "parent_datamap_va": "0x224DBD9C",
+    "compiled_datamap_name": "CNPC_GruntBase",
+    "declared_records": 39,
+    "statically_resolved_records": 39,
+    "runtime_initialized_or_empty_records": 0,
+    "fields": [
+      {
+        "record_va": "0x22534E8C",
+        "field_type_code": 5,
+        "internal_name": "m_nKickDamage",
+        "offset": "0xC54",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22534EC0",
+        "field_type_code": 3,
+        "internal_name": "m_vecTossVelocity",
+        "offset": "0xC58",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22534EF4",
+        "field_type_code": 6,
+        "internal_name": "m_bStanding",
+        "offset": "0xC64",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22534F28",
+        "field_type_code": 6,
+        "internal_name": "m_bShouldPatrol",
+        "offset": "0xC65",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22534F5C",
+        "field_type_code": 6,
+        "internal_name": "m_bCanCrouch",
+        "offset": "0xC66",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22534F90",
+        "field_type_code": 6,
+        "internal_name": "m_bFirstEncounter",
+        "offset": "0xC67",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22534FC4",
+        "field_type_code": 16,
+        "internal_name": "m_flNextPainSoundTime",
+        "offset": "0xC78",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22534FF8",
+        "field_type_code": 16,
+        "internal_name": "m_flNextAlertSoundTime",
+        "offset": "0xC7C",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x2253502C",
+        "field_type_code": 16,
+        "internal_name": "m_flNextGrenadeCheck",
+        "offset": "0xC80",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535060",
+        "field_type_code": 16,
+        "internal_name": "m_flAltFireCheck",
+        "offset": "0xC84",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535094",
+        "field_type_code": 16,
+        "internal_name": "m_flNextLostSoundTime",
+        "offset": "0xC88",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225350C8",
+        "field_type_code": 16,
+        "internal_name": "m_flAlertPatrolTime",
+        "offset": "0xC8C",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225350FC",
+        "field_type_code": 16,
+        "internal_name": "m_flNextAltFireTime",
+        "offset": "0xC90",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535130",
+        "field_type_code": 16,
+        "internal_name": "m_flNextCoughTime",
+        "offset": "0xC94",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535164",
+        "field_type_code": 5,
+        "internal_name": "m_nShots",
+        "offset": "0xC98",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535198",
+        "field_type_code": 1,
+        "internal_name": "m_flShotDelay",
+        "offset": "0xC9C",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225351CC",
+        "field_type_code": 5,
+        "internal_name": "m_iNumGrenades",
+        "offset": "0xC38",
+        "external_name": "NumGrenades",
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535200",
+        "field_type_code": 10,
+        "internal_name": "m_Sentences",
+        "offset": "0xCC0",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535234",
+        "field_type_code": 6,
+        "internal_name": "m_bWounded",
+        "offset": "0xCA0",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535268",
+        "field_type_code": 12,
+        "internal_name": "m_pWounded",
+        "offset": "0xCA4",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x2253529C",
+        "field_type_code": 12,
+        "internal_name": "m_pHelper",
+        "offset": "0xCA8",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225352D0",
+        "field_type_code": 1,
+        "internal_name": "m_fKneeDamage",
+        "offset": "0xCAC",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535304",
+        "field_type_code": 6,
+        "internal_name": "m_bHaveSat",
+        "offset": "0xCB0",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535338",
+        "field_type_code": 6,
+        "internal_name": "m_bGrenadeHappy",
+        "offset": "0xC6C",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x2253536C",
+        "field_type_code": 6,
+        "internal_name": "m_shouldPlayDeathSound",
+        "offset": "0xCB1",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225353A0",
+        "field_type_code": 1,
+        "internal_name": "m_flGrenadeHeight",
+        "offset": "0xC70",
+        "external_name": "GrenadeHeight",
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225353D4",
+        "field_type_code": 13,
+        "internal_name": "m_hPhysicsEnt",
+        "offset": "0xCB4",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535408",
+        "field_type_code": 13,
+        "internal_name": "m_hCurrentGrenade",
+        "offset": "0xCB8",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x2253543C",
+        "field_type_code": 13,
+        "internal_name": "m_hTargetBarrel",
+        "offset": "0xCBC",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535470",
+        "field_type_code": 13,
+        "internal_name": "m_hIgnitor",
+        "offset": "0xC3C",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225354A4",
+        "field_type_code": 2,
+        "internal_name": "m_szFlameInflictor",
+        "offset": "0xC40",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225354D8",
+        "field_type_code": 0,
+        "internal_name": "InputLookOff",
+        "offset": "0x0",
+        "external_name": "LookOff",
+        "input_handler_va": "0x2235F260",
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x2253550C",
+        "field_type_code": 0,
+        "internal_name": "InputLookOn",
+        "offset": "0x0",
+        "external_name": "LookOn",
+        "input_handler_va": "0x2235DDC0",
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535540",
+        "field_type_code": 0,
+        "internal_name": "InputStartPatrolling",
+        "offset": "0x0",
+        "external_name": "StartPatrolling",
+        "input_handler_va": "0x22357E30",
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535574",
+        "field_type_code": 0,
+        "internal_name": "InputStopPatrolling",
+        "offset": "0x0",
+        "external_name": "StopPatrolling",
+        "input_handler_va": "0x22357E40",
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225355A8",
+        "field_type_code": 2,
+        "internal_name": "InputAssault",
+        "offset": "0x0",
+        "external_name": "Assault",
+        "input_handler_va": "0x22357E50",
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x225355DC",
+        "field_type_code": 6,
+        "internal_name": "InputThrowGrenades",
+        "offset": "0x0",
+        "external_name": "ThrowGrenades",
+        "input_handler_va": "0x22357EA0",
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535610",
+        "field_type_code": 5,
+        "internal_name": "m_iLastAnimEventHandled",
+        "offset": "0xFC8",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22535644",
+        "field_type_code": 3,
+        "internal_name": "m_vecAltFireTarget",
+        "offset": "0xFCC",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      }
+    ]
+  },
+  "elite_datamap": {
+    "primary_vtable_va": "0x2248DF04",
+    "datamap_accessor_va": "0x22354CA0",
+    "datamap_va": "0x22534674",
+    "field_array_va": "0x22534714",
+    "parent_datamap_va": "0x22534DA4",
+    "compiled_datamap_name": "CNPC_EliteGrunt",
+    "declared_records": 2,
+    "statically_resolved_records": 2,
+    "runtime_initialized_or_empty_records": 0,
+    "fields": [
+      {
+        "record_va": "0x22534714",
+        "field_type_code": 6,
+        "internal_name": "m_canFire",
+        "offset": "0xFD9",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      },
+      {
+        "record_va": "0x22534748",
+        "field_type_code": 13,
+        "internal_name": "m_pChaingun",
+        "offset": "0xFDC",
+        "external_name": null,
+        "input_handler_va": null,
+        "statically_resolved": true
+      }
+    ]
+  },
+  "map_inputs": [
+    {
+      "map_input": "StartPatrolling",
+      "internal_handler": "InputStartPatrolling",
+      "entrypoint": "0x22357E30"
+    },
+    {
+      "map_input": "StopPatrolling",
+      "internal_handler": "InputStopPatrolling",
+      "entrypoint": "0x22357E40"
+    },
+    {
+      "map_input": "Assault",
+      "internal_handler": "InputAssault",
+      "entrypoint": "0x22357E50"
+    },
+    {
+      "map_input": "ThrowGrenades",
+      "internal_handler": "InputThrowGrenades",
+      "entrypoint": "0x22357EA0"
+    },
+    {
+      "map_input": "LookOff",
+      "internal_handler": "InputLookOff",
+      "entrypoint": "0x2235F260"
+    },
+    {
+      "map_input": "LookOn",
+      "internal_handler": "InputLookOn",
+      "entrypoint": "0x2235DDC0"
+    }
+  ],
+  "confirmed_grenade_mode_timing_seconds": {
+    "fast_check": 0.25,
+    "normal_check": 1.0,
+    "fast_followup": 2.5,
+    "normal_followup": 6.0
+  },
+  "original_ai_symbol_spellings": {
+    "grunt_schedules": [
+      "SCHED_GRUNT_ALTFIRE",
+      "SCHED_GRUNT_ASSAULT",
+      "SCHED_GRUNT_ATTACK_BARREL",
+      "SCHED_GRUNT_BURNING_FLY",
+      "SCHED_GRUNT_BURNING_STAND",
+      "SCHED_GRUNT_CHARGE_TURRET",
+      "SCHED_GRUNT_COMBAT_FACE",
+      "SCHED_GRUNT_COMBAT_FAIL",
+      "SCHED_GRUNT_DODGE",
+      "SCHED_GRUNT_ESTABLISH_LINE_OF_FIRE",
+      "SCHED_GRUNT_GETUP",
+      "SCHED_GRUNT_GRENADE_AND_RELOAD",
+      "SCHED_GRUNT_GRENADE_COVER1",
+      "SCHED_GRUNT_HELMET_FLINCH",
+      "SCHED_GRUNT_HELP_STUNNED",
+      "SCHED_GRUNT_HIDE_AND_RELOAD",
+      "SCHED_GRUNT_KICK_ATTACK",
+      "SCHED_GRUNT_KICK_GRENADE",
+      "SCHED_GRUNT_MOBILITY_SIDESTEP",
+      "SCHED_GRUNT_MOVE_TO_PLAYER",
+      "SCHED_GRUNT_PATROL",
+      "SCHED_GRUNT_PATROL_ENEMY",
+      "SCHED_GRUNT_PRESS_ATTACK",
+      "SCHED_GRUNT_RANGE_ATTACK1",
+      "SCHED_GRUNT_RANGE_ATTACK2",
+      "SCHED_GRUNT_RUN_AWAY_FROM_BEST_SOUND",
+      "SCHED_GRUNT_SHOOT_COVER",
+      "SCHED_GRUNT_SIGNAL_SUPPRESS",
+      "SCHED_GRUNT_SITTING",
+      "SCHED_GRUNT_STUNNED",
+      "SCHED_GRUNT_SUPPRESS",
+      "SCHED_GRUNT_TAKECOVER_FAILED",
+      "SCHED_GRUNT_TAKE_COVER1",
+      "SCHED_GRUNT_TAKE_COVER_FROM_BEST_SOUND",
+      "SCHED_GRUNT_THROW_GRENADE",
+      "SCHED_GRUNT_TOSS_GRENADE_COVER1",
+      "SCHED_GRUNT_VICTORY_DANCE",
+      "SCHED_GRUNT_WAIT_IN_COVER"
+    ],
+    "elite_schedules": [
+      "SCHED_ELITE_MELEE_ATTACK1",
+      "SCHED_ELITE_RANGE_ATTACK1"
+    ],
+    "grunt_tasks": [
+      "TASK_GRUNT_ASK_FOR_HELP",
+      "TASK_GRUNT_BURN_TALK",
+      "TASK_GRUNT_CHASE_ENEMY_CONTINUOUSLY",
+      "TASK_GRUNT_CLEAR_WOUNDED",
+      "TASK_GRUNT_DEFER_SQUAD_GRENADES",
+      "TASK_GRUNT_DEFER_SQUAD_GRENADE_KICK",
+      "TASK_GRUNT_DIE_INSTANTLY",
+      "TASK_GRUNT_DOWN_ATTACK",
+      "TASK_GRUNT_FACE_SQUADMATE",
+      "TASK_GRUNT_FACE_TOSS_DIR",
+      "TASK_GRUNT_FIND_SIDESTEP_POSITION",
+      "TASK_GRUNT_GOTO_TARGET",
+      "TASK_GRUNT_HELP_UP",
+      "TASK_GRUNT_IGNORE_ATTACKS",
+      "TASK_GRUNT_KICK_ATTACK",
+      "TASK_GRUNT_LOOKOUT_TALK",
+      "TASK_GRUNT_SIDESTEP_GOAL",
+      "TASK_GRUNT_SIGNAL_BEST_SOUND",
+      "TASK_GRUNT_TARGET_BARREL"
+    ],
+    "grunt_conditions": [
+      "COND_GRUNT_DEAD_FRIEND",
+      "COND_GRUNT_HELPER_FOUND_PLAYER",
+      "COND_GRUNT_HELP_UP",
+      "COND_GRUNT_IN_PLAYER_SIGHTS",
+      "COND_GRUNT_KICKABLE_GRENADE",
+      "COND_GRUNT_NO_FIRE",
+      "COND_GRUNT_ON_FIRE",
+      "COND_GRUNT_SHOT_IN_HELMET",
+      "COND_GRUNT_SHOT_IN_KNEE",
+      "COND_GRUNT_SHOULD_PATROL",
+      "COND_GRUNT_SQUADMATE_NEEDS_HELP",
+      "COND_GRUNT_THROW_GRENADE"
+    ],
+    "jetpack_schedules": [
+      "SCHED_JETPACK_CHASE_ENEMY",
+      "SCHED_JETPACK_FOLLOW_HOVER",
+      "SCHED_JETPACK_MOVE_TO_INSPECT",
+      "SCHED_JETPACK_PATROL",
+      "SCHED_JETPACK_RANGE_ATTACK1",
+      "SCHED_JETPACK_SHOOT_COVER"
+    ]
+  },
+  "verified_schedule_task_anchors": {
+    "SCHED_GRUNT_ATTACK_BARREL": [
+      "TASK_GRUNT_TARGET_BARREL",
+      "TASK_FACE_ENEMY",
+      "TASK_RANGE_ATTACK1"
+    ],
+    "SCHED_GRUNT_KICK_GRENADE": [
+      "TASK_GRUNT_DEFER_SQUAD_GRENADE_KICK",
+      "TASK_FACE_ENEMY",
+      "TASK_GRUNT_KICK_ATTACK"
+    ],
+    "SCHED_GRUNT_HELP_STUNNED": [
+      "TASK_GRUNT_GOTO_TARGET",
+      "TASK_GRUNT_FACE_SQUADMATE",
+      "TASK_GRUNT_HELP_UP"
+    ],
+    "SCHED_GRUNT_PATROL": [
+      "TASK_WANDER",
+      "TASK_WALK_PATH",
+      "TASK_WAIT_FOR_MOVEMENT"
+    ]
+  },
+  "original_weapon_script_data": {
+    "weapon_npc_pistol": {
+      "printname": "NPC Pistol",
+      "clip_size": "20",
+      "default_clip": "20",
+      "primary_ammo": "MAG",
+      "secondary_ammo": "DUAG"
+    },
+    "weapon_scattergun": {
+      "printname": "Scatter Gun",
+      "clip_size": "6",
+      "default_clip": "6",
+      "primary_ammo": "BUCK",
+      "secondary_ammo": "FLAK"
+    },
+    "weapon_assault_rifle": {
+      "printname": "Assault Rifle",
+      "clip_size": "45",
+      "default_clip": "45",
+      "primary_ammo": "AR",
+      "secondary_ammo": "ARNADE"
+    },
+    "weapon_chaingun": {
+      "printname": "Chaingun",
+      "clip_size": "30",
+      "default_clip": "30",
+      "primary_ammo": "CHAIN",
+      "secondary_ammo": null
+    }
+  },
+  "console_attempt_counts": {
+    "npc_druglab_grunt_assault_rifle": 103,
+    "npc_druglab_grunt_elite": 69,
+    "npc_druglab_grunt_pistol": 195,
+    "npc_druglab_grunt_scattergun": 66,
+    "npc_sintek_grunt": 2
+  },
+  "limitations": [
+    "A datamap method can be inherited; same return pointer does not prove an independent class-specific datamap.",
+    "Vtable differing slots include destructors and do not count unique gameplay systems.",
+    "String labels prove compiled names, not that every AI schedule executes during released gameplay.",
+    "Original CVAR runtime values and map override behavior not established.",
+    "WeaponData describes archive configuration, not proof of instantiated weapon runtime state.",
+    "Damage/accuracy/covers system not completely decompiled."
+  ]
+}

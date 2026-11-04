@@ -1,0 +1,190 @@
+{
+  "chapter": 14,
+  "scope": "static SHA-verified disassembly, original 2006 DLL, scripts.zip and user HL2 console logs; no runtime game test",
+  "sha256": {
+    "server.dll": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
+    "client.dll": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d",
+    "scripts.zip": "517d5b72f23cd6e1164e7c43d72eef97d4c80285365734747c8ced9199e6985d"
+  },
+  "checks_passed": 90,
+  "checks": [
+    "original 2006 server.dll SHA256; expected '568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650', got '568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650'",
+    "original 2006 client.dll SHA256; expected '6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d', got '6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d'",
+    "factory weapon_chaingun; expected 'CWeaponChaingun', got 'CWeaponChaingun'",
+    "factory npc_druglab_grunt_elite; expected 'CNPC_EliteGrunt', got 'CNPC_EliteGrunt'",
+    "factory ai_goal_takecover; expected 'CAI_TakeCoverGoal', got 'CAI_TakeCoverGoal'",
+    "weapon readiness reads state +0x594; expected '8b8694050000', got '8b8694050000'",
+    "readiness bounds state to 0..3 [0x22315329]",
+    "readiness uses four-state jump table [0x2231532E]",
+    "readiness dispatch states 0/1/2/3; expected [573657909, 573657962, 573657966, 573657962], got [573657909, 573657962, 573657966, 573657962]",
+    "not-ready returns 0 [0x2231536A]",
+    "ready returns 1 in state 2 [0x2231536E]",
+    "state0 startup sets state1 [0x22315343]",
+    "state0 stores current time +0x590 [0x22315356]",
+    "state0 stores current time +0x58C [0x22315364]",
+    "update dispatch first state step [0x22315399]",
+    "update dispatch state2 [0x223153A1]",
+    "update dispatch state3 [0x223153A6]",
+    "state1 compares time since +0x590 [0x22315400]",
+    "state1 after timer enters ready state2 [0x22315413]",
+    "state2 compares time since +0x58C [0x223153D8]",
+    "state2 after timer enters state3 [0x223153EB]",
+    "state3 stop enters state0 [0x223153C4]",
+    "force-stop sets state3 [0x22315440]",
+    "weapon state timer threshold float equals 1s; expected 1.0, got 1.0",
+    "startup queues sound/event index 13 [0x22315337]",
+    "shutdown stops sound/event index 13 [0x223153AE]",
+    "shutdown starts sound/event index 14 [0x223153B8]",
+    "startup calls weapon sound/event vtable +0x3C4 [0x2231533D]",
+    "shutdown calls weapon stop/event vtable +0x3C8 [0x223153B0]",
+    "shutdown calls weapon sound/event vtable +0x3C4 [0x223153BE]",
+    "elite has custom weapon update vtable slot; expected 573920752, got 573920752",
+    "elite primary handler recognizes event 3 [0x22355489]",
+    "elite primary handler recognizes event 0x43 [0x22355494]",
+    "elite primary handler recognizes event 0x47 [0x22355499]",
+    "event 0x47 forces weapon state3 [0x223554BA -> 0x22315440]",
+    "event 0x43 queries weapon readiness [0x22355503 -> 0x22315320]",
+    "event 0x43 stores elite m_canFire [0x2235550A]",
+    "event 3 reads float event parameter [0x22355524]",
+    "event 3 requires integer-converted parameter ==1 [0x2235553F]",
+    "event 3 compares time against elite+0x99C [0x22355581]",
+    "event 3 compares time difference to double [0x22355587]",
+    "event 3 cooldown constant 3 seconds; expected 3.0, got 3.0",
+    "event 3 writes timestamp on accepted branch [0x2235559B]",
+    "event3 updates custom NPC state at +0xCC0 [0x223555B2 -> 0x220A35C0]",
+    "event3 invokes float-2.0 NPC action helper [0x223555C0 -> 0x220325C0]",
+    "event3 invokes NPC vtable+0x4DC [0x223555CD]",
+    "elite secondary handler also tests 0x43 [0x223556A9]",
+    "elite secondary handler also tests 0x47 [0x223556B2]",
+    "secondary 0x43 tests m_canFire [0x22355737]",
+    "secondary 0x43 checks readiness if m_canFire is false [0x22355772 -> 0x22315320]",
+    "secondary 0x47 clears condition 3 [0x22355713 -> 0x220398A0]",
+    "secondary 0x47 clears condition 4 [0x2235571C -> 0x220398A0]",
+    "secondary 0x47 clears condition 5 [0x22355725 -> 0x220398A0]",
+    "elite vtable update ticks chaingun controller [0x22355645 -> 0x22315390]",
+    "elite tick obtains chaingun handle +0xFDC [0x223555F3]",
+    "original cover behavior vtable; expected 575333924, got 575333924",
+    "behavior constructor resets retry counter +0x7C [0x22399D99]",
+    "cover selection threshold equals three [0x2239840F]",
+    "cover selection checks retry count +0x7C [0x22398414]",
+    "cover selection disables behavior at retry limit [0x22398419]",
+    "schedule fallback increments retry counter [0x22398653]",
+    "cover path failure increments retry counter [0x22399772]",
+    "target search failure increments retry counter [0x2239983D]",
+    "cover search starts with cleared retry timestamp [0x22399742]",
+    "cover path calls custom nearest cover finding helper [0x22399749 -> 0x22398B80]",
+    "first fallback picks randomized timer [0x22399761]",
+    "second fallback picks randomized timer [0x2239979F]",
+    "third fallback picks randomized timer [0x22399804]",
+    "retry float upper bound 4 seconds [0x22399757]",
+    "retry float lower bound 2 seconds [0x2239975C]",
+    "cover task invokes condition/event 11 on fallback [0x22399818]",
+    "missing target path uses No hint node diagnostic [0x22399843]",
+    "lost cover path uses diagnostic string [0x22399921]",
+    "cover diagnostic string No hint node; expected 'No hint node', got 'No hint node'",
+    "cover diagnostic string No longer behind cover; expected 'No longer behind cover', got 'No longer behind cover'",
+    "elite cooldown double recheck; expected 3.0, got 3.0",
+    "goal copies all seven preset words including cover odds [0x22399BCF]",
+    "behavior copies seven preset words when updated [0x22398216]",
+    "AbandonIfEnemyHides false zeroes seventh word [0x22399BB2]",
+    "preset zero sixth word = 50 (cover odds); expected 50, got 50",
+    "preset four sixth word = 0 (cover odds); expected 0, got 0",
+    "weapon script special1 maps Weapon_Chaingun.NPC_SpinUp",
+    "sound script defines Weapon_Chaingun.NPC_SpinUp",
+    "weapon script special2 maps Weapon_Chaingun.NPC_SpinDown",
+    "sound script defines Weapon_Chaingun.NPC_SpinDown",
+    "game sounds has audio path weapons/chaingun/chaingun_spinup.wav",
+    "game sounds has audio path weapons/chaingun/chaingun_spindown.wav",
+    "elite missing attempts in all logs; expected 69, got 69",
+    "take-cover goal missing attempts in all logs; expected 26, got 26",
+    "all five log missing creation attempts; expected 1531, got 1531"
+  ],
+  "chaingun": {
+    "readiness_function_va": "0x22315320",
+    "state_word_offset": "weapon+0x594",
+    "readiness_jump_table_va": "0x22315374",
+    "states": [
+      {
+        "state": 0,
+        "return_ready": false,
+        "target_va": "0x22315335"
+      },
+      {
+        "state": 1,
+        "return_ready": false,
+        "target_va": "0x2231536A"
+      },
+      {
+        "state": 2,
+        "return_ready": true,
+        "target_va": "0x2231536E"
+      },
+      {
+        "state": 3,
+        "return_ready": false,
+        "target_va": "0x2231536A"
+      }
+    ],
+    "controller_function_va": "0x22315390",
+    "force_state3_va": "0x22315440",
+    "transitions": "0->1 on readiness/start, 1->2 if elapsed>=1.0, 2->3 if elapsed>=1.0, 3->0 on next controller tick; state3 can be forced by elite event 0x47",
+    "timer_offset_seconds": "weapon+0x590 and weapon+0x58C; per phase elapsed vs literal 1.0f",
+    "sound_event_indices": [
+      13,
+      14
+    ],
+    "sound_script_special1": "Weapon_Chaingun.NPC_SpinUp",
+    "sound_script_special2": "Weapon_Chaingun.NPC_SpinDown",
+    "note": "Exact mapping from sound event indices 13/14 to script special1/special2 is not independently verified by a direct lookup trace."
+  },
+  "elite": {
+    "event_primary_va": "0x22355480",
+    "event_secondary_va": "0x223556A0",
+    "event3": {
+      "requires_event_parameter_integer": 1,
+      "min_elapsed_since_elite_plus_0x99c": 3.0,
+      "timestamp_update_va": "0x2235559B",
+      "state_action_va": "0x223555B2",
+      "note": "event 3 symbolic name and exact gameplay semantic not recovered"
+    },
+    "event_0x43": "readiness gate via 0x22315320 and m_canFire +0xFD9",
+    "event_0x47": "force weapon state 3 in primary handler; secondary event clears NPC conditions 3,4,5 if guards pass"
+  },
+  "cover": {
+    "retry_counter_offset": "behavior+0x7C",
+    "retry_limit": 3,
+    "constructor_reset_va": "0x22399D99",
+    "schedule_gate_va": "0x22398400",
+    "retry_count_increment_vas": [
+      "0x22398653",
+      "0x22399772",
+      "0x2239983D"
+    ],
+    "cover_path_helper_va": "0x22398B80",
+    "retry_timer_random_float_range": [
+      2.0,
+      4.0
+    ],
+    "diagnostics": [
+      "No hint node",
+      "No longer behind cover"
+    ],
+    "cover_odds_preset_index": 5,
+    "cover_odds_examples": {
+      "aggressiveness_0": 50,
+      "aggressiveness_4": 0
+    },
+    "cover_odds_consumer": "not positively identified; copied to behavior, not proven applied to selection or outcome"
+  },
+  "logs": {
+    "failed_elite_attempts": 69,
+    "failed_takecover_attempts": 26,
+    "failed_total_attempts": 1531
+  },
+  "caveats": [
+    "This is partial static reverse engineering, not recovered full C++.",
+    "Symbolic animation-event names are not yet established.",
+    "Sound enum indices are not conclusively mapped to special1/special2.",
+    "Cover odds and seventh preset word consumer remain unresolved."
+  ]
+}
