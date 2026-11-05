@@ -5,6 +5,7 @@ This is a temporary stock-HL2 scene test, not a restoration of Ritual classes.
 Never rewrites the input, never redistributes the game map. Usage:
   python sin_bsp_scene_actor_trial.py map.bsp --report
   python sin_bsp_scene_actor_trial.py map.bsp --write map_actor_trial.bsp
+  python sin_bsp_scene_actor_trial.py map.bsp --verify map_actor_trial.bsp
 
 Use only on lawfully obtained local BSPs; test the output in a separate mod
 folder, with the correct original assets and scene cache mounted.
@@ -89,6 +90,8 @@ def main(argv=None):
     action=ap.add_mutually_exclusive_group(required=True)
     action.add_argument('--report', action='store_true')
     action.add_argument('--write',type=pathlib.Path)
+    action.add_argument('--verify',type=pathlib.Path,
+                        help='check an existing trial copy byte-for-byte against the expected rewrite')
     ap.add_argument('--include-generic',action='store_true',help='also try npc_generic_actor -> npc_citizen')
     args=ap.parse_args(argv)
     source=args.bsp.resolve()
@@ -97,15 +100,35 @@ def main(argv=None):
         result, counts=make_trial(data,args.include_generic)
         print(f"Source {source.name}: class rewrites {counts}")
         if result is None:
+            if args.verify:
+                raise BspError('No matching original actor classes; cannot verify a trial rewrite')
             print('No matching actor classnames; input unchanged')
+            return 0
+        if args.verify:
+            target = args.verify.resolve()
+            if target == source:
+                raise BspError('Verification requires a separate experimental BSP copy')
+            # Reconstruct the complete expected BSP from the untouched original.
+            # This verifies the entity rewrite AND that all other bytes match.
+            if target.read_bytes() != result:
+                raise BspError('Trial BSP does not match the expected copy-only actor rewrite')
+            print(f'VERIFIED experimental BSP copy: {target.name} (all {len(result)} bytes)')
+            print('Structural verification only; HL2/SourceVR loading and scenes remain untested.')
             return 0
         if args.write:
             target=args.write.resolve()
             if target == source:
                 raise BspError('Will not overwrite input BSP')
-            if target.exists():
+            # The --write request explicitly authorizes this destination. The
+            # original input is never touched; parent directories may be new.
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                # Atomic existence check: no race between exists() and write().
+                # 'xb' also refuses to follow an existing destination symlink.
+                with target.open('xb') as output:
+                    output.write(result)
+            except FileExistsError:
                 raise BspError('Will not overwrite existing output BSP')
-            target.write_bytes(result)
             print(f"Created experimental map COPY: {target} ({len(result)} bytes)")
             print('Not validated against Source runtime; original SiN AI and scenes remain unresolved.')
         else:

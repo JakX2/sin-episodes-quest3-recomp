@@ -63,4 +63,37 @@ class TrialTest(unittest.TestCase):
             self.assertEqual(trial.main([str(src),'--write',str(out)]),2)
             self.assertEqual(trial.main([str(src),'--write',str(src)]),2)
 
+
+    def test_write_makes_missing_parent_and_verifies_exact_copy(self):
+        with tempfile.TemporaryDirectory() as d:
+            base=pathlib.Path(d)
+            src=base/'original.bsp'
+            dst=base/'isolated'/'maps'/'se1_finale01.bsp'
+            original=fixture()
+            src.write_bytes(original)
+            self.assertEqual(trial.main([str(src),'--write',str(dst)]),0)
+            self.assertTrue(dst.is_file())
+            self.assertEqual(trial.main([str(src),'--verify',str(dst)]),0)
+            self.assertEqual(src.read_bytes(),original)
+            self.assertEqual(trial.main([str(src),'--write',str(dst)]),2)
+
+            # One-byte corruption cannot be mistaken for a successful trial.
+            damaged=bytearray(dst.read_bytes())
+            damaged[-1] ^= 0x01
+            dst.write_bytes(damaged)
+            self.assertEqual(trial.main([str(src),'--verify',str(dst)]),2)
+            self.assertEqual(src.read_bytes(),original)
+
+    def test_verification_rejects_source_and_wrong_generic_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            base=pathlib.Path(d)
+            src=base/'original.bsp'
+            dst=base/'trial.bsp'
+            src.write_bytes(fixture())
+            self.assertEqual(trial.main([str(src),'--verify',str(src)]),2)
+            self.assertEqual(trial.main([str(src),'--verify',str(dst)]),2)
+            self.assertEqual(trial.main([str(src),'--write',str(dst),'--include-generic']),0)
+            self.assertEqual(trial.main([str(src),'--verify',str(dst)]),2)
+            self.assertEqual(trial.main([str(src),'--verify',str(dst),'--include-generic']),0)
+
 if __name__=='__main__': unittest.main()
