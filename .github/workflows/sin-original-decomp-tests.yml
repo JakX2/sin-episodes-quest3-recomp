@@ -5,11 +5,13 @@ on:
     paths:
       - 'research/tools/audit_sin_rifle_client_server_registration.py'
       - 'research/tools/audit_sin_original_mobgrunt_datamap.py'
+      - 'research/tools/audit_sin_mobgrunt_assault_rally_timing.py'
       - 'research/tools/audit_sin_original_druglab_vtables.py'
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
       - 'research/tools/verify_gameplay_entity_registry.py'
       - 'research/tests/test_audit_sin_rifle_client_server_registration.py'
       - 'research/tests/test_audit_sin_original_mobgrunt_datamap.py'
+      - 'research/tests/test_audit_sin_mobgrunt_assault_rally_timing.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
       - 'research/tests/test_audit_sin_original_druglab_vtable_diff.py'
       - '.github/workflows/sin-original-decomp-tests.yml'
@@ -17,11 +19,13 @@ on:
     paths:
       - 'research/tools/audit_sin_rifle_client_server_registration.py'
       - 'research/tools/audit_sin_original_mobgrunt_datamap.py'
+      - 'research/tools/audit_sin_mobgrunt_assault_rally_timing.py'
       - 'research/tools/audit_sin_original_druglab_vtables.py'
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
       - 'research/tools/verify_gameplay_entity_registry.py'
       - 'research/tests/test_audit_sin_rifle_client_server_registration.py'
       - 'research/tests/test_audit_sin_original_mobgrunt_datamap.py'
+      - 'research/tests/test_audit_sin_mobgrunt_assault_rally_timing.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
       - 'research/tests/test_audit_sin_original_druglab_vtable_diff.py'
       - '.github/workflows/sin-original-decomp-tests.yml'
@@ -41,6 +45,8 @@ jobs:
         run: python -m unittest discover -s research/tests -p 'test_audit_sin_rifle_client_server_registration.py' -v
       - name: Verify original MobGrunt datamap and input-handler decoder
         run: python -m unittest discover -s research/tests -p 'test_audit_sin_original_mobgrunt_datamap.py' -v
+      - name: Verify original MobGrunt assault rally point and conditional tuning
+        run: python -m unittest discover -s research/tests -p 'test_audit_sin_mobgrunt_assault_rally_timing.py' -v
       - name: Verify original Druglab class RTTI and vtable constructors
         run: python -m unittest discover -s research/tests -p 'test_audit_sin_original_druglab_vtables.py' -v
       - name: Compare original MobGrunt and Elite virtual method overrides
