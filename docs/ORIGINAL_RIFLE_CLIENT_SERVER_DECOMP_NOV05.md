@@ -95,20 +95,20 @@ This is a reconstructed **control-flow summary**, not exact recovered C++.
 
 ## Newly located original SinTEK Druglab grunt implementations
 
-The **actual map class** \`npc_druglab_grunt_assault_rifle\` is separately registered in the original \`server.dll\`, not merely covered by the general \`npc_sintek_grunt\` family. The owner has already verified an isolated HL2 proxy for \`roof_grunt_1_seq1\` from this map class. The original factory and RTTI establish the game code we actually need to reproduce:
+The **actual map class** `npc_druglab_grunt_assault_rifle` is separately registered in the original `server.dll`, not merely covered by the general `npc_sintek_grunt` family. The owner has already verified an isolated HL2 proxy for `roof_grunt_1_seq1` from this map class. The original factory and RTTI establish the game code we actually need to reproduce:
 
 | Original BSP classname | Original server registry thunk | Original C++ factory specialization | Factory object |
 |---|---|---|---|
-| \`npc_druglab_grunt_assault_rifle\` | \`0x223C7020\` | \`CEntityFactory<CNPC_MobGrunt>\` | \`0x22536848\` |
-| \`npc_druglab_grunt_elite\` | \`0x223C6940\` | \`CEntityFactory<CNPC_EliteGrunt>\` | \`0x225346A0\` |
+| `npc_druglab_grunt_assault_rifle` | `0x223C7020` | `CEntityFactory<CNPC_MobGrunt>` | `0x22536848` |
+| `npc_druglab_grunt_elite` | `0x223C6940` | `CEntityFactory<CNPC_EliteGrunt>` | `0x225346A0` |
 
-Their name string arguments are at \`0x22490EA0\` and \`0x2248E760\`, respectively. Both stubs call the same native entity registry getter at \`0x2228B110\`, but pass **different factory objects**. MSVC RTTI confirms original class \`CNPC_MobGrunt\` (type descriptor at \`0x22536824\`, factory RTTI at \`0x225367F4\`) versus \`CNPC_EliteGrunt\` (factory RTTI at \`0x225346AC\`). These are verified original PE32 x86 byte patterns, not guesses from FGD alone.
+Their name string arguments are at `0x22490EA0` and `0x2248E760`, respectively. Both stubs call the same native entity registry getter at `0x2228B110`, but pass **different factory objects**. MSVC RTTI confirms original class `CNPC_MobGrunt` (type descriptor at `0x22536824`, factory RTTI at `0x225367F4`) versus `CNPC_EliteGrunt` (factory RTTI at `0x225346AC`). These are verified original PE32 x86 byte patterns, not guesses from FGD alone.
 
-The original MobGrunt-specific adjacent metadata string area has labels such as \`InputThrowGrenades\`, \`InputAssault\`, \`InputLookOn\`, \`InputLookOff\`, \`GrenadeHeight\`, \`m_iNumGrenades\`, \`m_flShotDelay\`, \`m_nShots\`, \`m_flNextAltFireTime\`, \`m_bCanCrouch\` and \`m_nKickDamage\`. This directly aligns with the original finale BSP's \`NumGrenades=5\`, \`GrenadeHeight=0\` and relay-driven \`Assault\` events. The list is **field/input name evidence only**; the actual datamap field offsets, input dispatch behavior, scheduling and timing are not yet recovered.
+The original MobGrunt-specific adjacent metadata string area has labels such as `InputThrowGrenades`, `InputAssault`, `InputLookOn`, `InputLookOff`, `GrenadeHeight`, `m_iNumGrenades`, `m_flShotDelay`, `m_nShots`, `m_flNextAltFireTime`, `m_bCanCrouch` and `m_nKickDamage`. This directly aligns with the original finale BSP's `NumGrenades=5`, `GrenadeHeight=0` and relay-driven `Assault` events. The list is **field/input name evidence only**; the actual datamap field offsets, input dispatch behavior, scheduling and timing are not yet recovered.
 
-Elite-specific skill labels also exist in the original server binary: \`sk_elite_grunt_health\`, \`sk_elite_grunt_kick\` and \`sk_elite_grunt_head_mult\`. Their actual configured values and gameplay application have not been established.
+Elite-specific skill labels also exist in the original server binary: `sk_elite_grunt_health`, `sk_elite_grunt_kick` and `sk_elite_grunt_head_mult`. Their actual configured values and gameplay application have not been established.
 
-**Engineering consequence:** restore two separate native NPC classes and corresponding factory registrations, rather than substituting \`npc_sintek_grunt\` for both or treating HL2 \`npc_combine_s\` as finished implementation. Keep the proven one-grunt desktop HL2 proxy as a smoke-test baseline while independent original AI logic is reconstructed.
+**Engineering consequence:** restore two separate native NPC classes and corresponding factory registrations, rather than substituting `npc_sintek_grunt` for both or treating HL2 `npc_combine_s` as finished implementation. Keep the proven one-grunt desktop HL2 proxy as a smoke-test baseline while independent original AI logic is reconstructed.
 
 ## Verify without modifying the game
 
