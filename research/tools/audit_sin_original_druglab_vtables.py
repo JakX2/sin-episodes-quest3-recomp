@@ -76,6 +76,55 @@ def verify_class(pe: PEImage, name, descriptor_va, constructor_va, rows) -> dict
     }
 
 
+# Original MSVC32 CHD contains 17 base classes. The array includes the
+# concrete class at index 0, shared CNPC_GruntBase at index 1, and interfaces.
+HIERARCHIES = (
+    ('CNPC_MobGrunt', 0x224D2490, 0x224D2448),
+    ('CNPC_EliteGrunt', 0x224D17B0, 0x224D1768),
+)
+BASE_WITNESSES = (
+    (1, 'CNPC_GruntBase', 0x2252D5B0, 0),
+    (2, 'CAI_BaseHumanoid', 0x224F9960, 0),
+    (5, 'CAI_BaseNPC', 0x224DBF58, 0),
+    (14, 'CAI_DefMovementSink', 0x224DBF74, 0x790),
+    (15, 'IAI_MovementSink', 0x224DBE2C, 0x790),
+    (16, 'IBehaviorBackBridge', 0x224F98C0, 0xC14),
+)
+
+
+def verify_hierarchy(pe: PEImage, classname: str, hierarchy_va: int,
+                     array_va: int) -> dict:
+    """Read original MSVC 32-bit class-hierarchy and selected base PMDs."""
+    signature, attrs, count, base_array = struct.unpack('<4I', pe.at(hierarchy_va, 16))
+    if (signature, attrs, count, base_array) != (0, 1, 17, array_va):
+        raise VerificationError(f'{classname}: original 17-base RTTI hierarchy differs')
+    bcds = [struct.unpack('<I', pe.at(array_va + 4*i, 4))[0]
+            for i in range(count)]
+    seen = []
+    witnesses = [(0, classname, None, 0)] + list(BASE_WITNESSES)
+    for index, expected, type_va, expected_mdisp in witnesses:
+        bcd = bcds[index]
+        td, _, mdisp = struct.unpack('<3I', pe.at(bcd, 12))
+        if mdisp != expected_mdisp or (type_va is not None and td != type_va):
+            raise VerificationError(f'{classname}: inherited {expected} PMD/RTTI changed')
+        label = f'.?AV{expected}@@'.encode('ascii') + b'\0'
+        if pe.at(td + 8, len(label)) != label:
+            raise VerificationError(f'{classname}: base RTTI class differs for {expected}')
+        seen.append({
+            'base_index': index,
+            'base_rtti_class': expected,
+            'member_displacement_hex': f'0x{mdisp:X}',
+            'base_descriptor_va': f'0x{bcd:08X}',
+        })
+    return {
+        'class': classname,
+        'original_class_hierarchy_va': f'0x{hierarchy_va:08X}',
+        'original_base_class_count_including_self': count,
+        'selected_inheritance_witnesses': seen,
+        'meaning': 'MobGrunt and EliteGrunt share CNPC_GruntBase but are distinct sibling classes',
+    }
+
+
 def audit(server: bytes, hash_check: bool = True) -> dict:
     digest = hashlib.sha256(server).hexdigest()
     if hash_check and digest != SERVER_SHA256:
@@ -88,6 +137,10 @@ def audit(server: bytes, hash_check: bool = True) -> dict:
         'class_layouts': [
             verify_class(pe, name, td, constructor, rows)
             for name, td, constructor, rows in CLASSES
+        ],
+        'original_rtti_inheritance': [
+            verify_hierarchy(pe, name, hierarchy_va, array_va)
+            for name, hierarchy_va, array_va in HIERARCHIES
         ],
         'limits': [
             'These are original 32-bit MSVC virtual table and RTTI witnesses, not C++ class definitions.',
