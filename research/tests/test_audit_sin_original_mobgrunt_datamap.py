@@ -109,5 +109,30 @@ class OriginalMobGruntDataMapTests(unittest.TestCase):
             audit.audit_handler_code(pe)
 
 
+    def test_original_look_inputs_toggle_same_bit_in_opposite_directions(self):
+        regions = [
+            (0x2235DDC0, b'\x8b\x91\xb4\x00\x00\x00'),
+            (0x2235DDC8, b'\x25\xff\xff\xfe\xff'),
+            (0x2235DDD1, b'\x80\xb9\xf0\x01\x00\x00\x00'),
+            (0x2235DDDA, b'\xc6\x81\x00\x02\x00\x00\x01'),
+            (0x2235DDF4, b'\x83\x0a\x01'),
+            (0x2235F260, b'\x8b\x91\xb4\x00\x00\x00'),
+            (0x2235F268, b'\x0d\x00\x00\x01\x00'),
+            (0x2235F271, b'\x80\xb9\xf0\x01\x00\x00\x00'),
+            (0x2235F27A, b'\xc6\x81\x00\x02\x00\x00\x01'),
+            (0x2235F294, b'\x83\x0a\x01'),
+        ]
+        state = audit.audit_look_target_flag(FakePE(regions))
+        self.assertEqual(state['bit_mask'], '0x00010000')
+        self.assertEqual(state['look_on_operation'], 'flags &= ~0x00010000')
+        self.assertEqual(state['look_off_operation'], 'flags |= 0x00010000')
+        # Alter only the LookOff OR bitmask and reject the result.
+        modified = [
+            (va, b'\x0d\x00\x00\x02\x00' if va == 0x2235F268 else data)
+            for va, data in regions
+        ]
+        with self.assertRaises(audit.VerificationError):
+            audit.audit_look_target_flag(FakePE(modified))
+
 if __name__ == '__main__':
     unittest.main()
