@@ -8,7 +8,9 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import struct
+import zipfile
 from verify_gameplay_entity_registry import PEImage, SERVER_SHA256, VerificationError
 
 
@@ -110,6 +112,34 @@ def audit_code(pe):
     }
 
 
+def check_sdk_fgd(base_fgd: bytes, game_fgd: bytes):
+    """Cross-correlate the original SDK FGD contract with machine-code semantics."""
+    base = base_fgd.decode('latin1')
+    game = game_fgd.decode('latin1')
+    exact_assault = (r'input\s+Assault\(string\)\s*:\s*'
+                     r'"Start an assault\. Parameter passed in should be the name of the rally point\."')
+    if len(re.findall(exact_assault, base, flags=re.I)) != 1:
+        raise VerificationError('SDK base.fgd Assault(string) rally-point contract differs')
+    cue = re.findall(
+        r'AssaultCue\(choices\)\s*:\s*"Assault Cue"\s*:\s*1\s*=\s*\[([^\]]+)\]',
+        game, flags=re.S)
+    if len(cue) != 1 or not re.search(r'3\s*:\s*"Don.t wait for a cue\."', cue[0]):
+        raise VerificationError('SDK AssaultCue=3 contract differs')
+    kinds = ['assault_rallypoint', 'assault_assaultpoint', 'ai_goal_assault']
+    for name in kinds:
+        if len(re.findall(r'=\s*' + re.escape(name) + r'\s*:', game)) != 1:
+            raise VerificationError(f'SDK entity definition missing: {name}')
+    return {
+        'assault_input': 'Assault(string) expects the name of a rally point',
+        'assault_cue_value_3': 'Don\'t wait for a cue.',
+        'assault_entity_classnames': kinds,
+        'interpretation': (
+            'SDK AssaultCue 3 matches original machine-code parameter 3; '
+            'relationship is corroboration, not a full reconstructed enum/implementation.'
+        ),
+    }
+
+
 def audit(server, verify_hash=True):
     digest = hashlib.sha256(server).hexdigest()
     if verify_hash and digest != SERVER_SHA256:
@@ -123,10 +153,17 @@ def audit(server, verify_hash=True):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--server', type=Path, required=True)
+    p.add_argument('--sdk-zip', type=Path,
+                   help='optional original SinEpisodesSDK.zip, to verify FGD semantics')
     p.add_argument('--output', type=Path)
     args = p.parse_args(argv)
     try:
         value = audit(args.server.read_bytes())
+        if args.sdk_zip:
+            with zipfile.ZipFile(args.sdk_zip) as sdk:
+                value['original_sdk_fgd'] = check_sdk_fgd(
+                    sdk.read('SinEpisodesSDK/bin/base.fgd'),
+                    sdk.read('SinEpisodesSDK/bin/SinEpisodes.fgd'))
         data = json.dumps(value, indent=2) + '\n'
         if args.output:
             with args.output.open('x', encoding='utf8') as f:
@@ -134,7 +171,7 @@ def main(argv=None):
         else:
             print(data, end='')
         return 0
-    except (OSError, ValueError, struct.error) as err:
+    except (OSError, ValueError, struct.error, KeyError, zipfile.BadZipFile) as err:
         p.exit(2, 'Original assault behavior audit failed: ' + str(err) + '\n')
 
 
