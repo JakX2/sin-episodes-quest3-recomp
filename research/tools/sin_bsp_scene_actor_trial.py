@@ -7,6 +7,7 @@ Never rewrites the input, never redistributes the game map. Usage:
   python sin_bsp_scene_actor_trial.py map.bsp --write map_actor_trial.bsp
   python sin_bsp_scene_actor_trial.py map.bsp --verify map_actor_trial.bsp
   python sin_bsp_scene_actor_trial.py map.bsp --generic-target heli_name --write heli_trial.bsp
+  python sin_bsp_scene_actor_trial.py map.bsp --pickup-proxies --write pickup_trial.bsp
 
 Use only on lawfully obtained local BSPs; test the output in a separate mod
 folder, with the correct original assets and scene cache mounted.
@@ -23,6 +24,15 @@ ALIASES = {
     "npc_jessica": "npc_alyx",       # tentative companion substitute
 }
 GENERIC = {"npc_generic_actor": "npc_citizen"}
+# Temporary stock-HL2 pickup equivalents, NOT Ritual weapon implementations.
+# Opt-in only: effects, ammo counts, fire modes and I/O may differ from SiN.
+PICKUP_PROXIES = {
+    "weapon_magnum": "weapon_357",
+    "weapon_assault_rifle": "weapon_ar2",
+    "weapon_scattergun": "weapon_shotgun",
+    "weapon_grenade": "weapon_frag",
+    "item_ammo_magnum": "item_ammo_357",
+}
 CLASSNAME_RE = re.compile(rb'(?m)(^\s*"classname"\s*")([^"\r\n]+)(")')
 ENTITY_BLOCK_RE = re.compile(rb'\{[^{}]*\}')
 KV_PAIR_RE = re.compile(rb'"([^"\r\n]+)"\s*"([^"\r\n]*)"')
@@ -89,10 +99,12 @@ def patch_targeted_generic_actor(data: bytes, name: str):
     return data[:start] + replacement + data[stop:]
 
 
-def patch_entities(data: bytes, include_generic=False, generic_targets=()):
+def patch_entities(data: bytes, include_generic=False, generic_targets=(), pickup_proxies=False):
     replacements = dict(ALIASES)
     if include_generic:
         replacements.update(GENERIC)
+    if pickup_proxies:
+        replacements.update(PICKUP_PROXIES)
     count = {k: 0 for k in replacements}
     def sub(m):
         name = m.group(2).decode('ascii', errors='ignore')
@@ -109,9 +121,9 @@ def patch_entities(data: bytes, include_generic=False, generic_targets=()):
     return patched, count
 
 
-def make_trial(blob: bytes, include_generic=False, generic_targets=()):
+def make_trial(blob: bytes, include_generic=False, generic_targets=(), pickup_proxies=False):
     version, offset, size, lumpversion, data = read_bsp(blob)
-    changed, counts = patch_entities(data, include_generic, generic_targets)
+    changed, counts = patch_entities(data, include_generic, generic_targets, pickup_proxies)
     if not any(counts.values()):
         return None, counts
     # Appending a replacement lump avoids relocating any existing maps/lighting
@@ -139,13 +151,15 @@ def main(argv=None):
     action.add_argument('--verify',type=pathlib.Path,
                         help='check an existing trial copy byte-for-byte against the expected rewrite')
     ap.add_argument('--include-generic',action='store_true',help='also try ALL npc_generic_actor -> npc_citizen (old experiment)')
+    ap.add_argument('--pickup-proxies',action='store_true',
+                    help='opt-in SiN weapon and ammo pickups -> stock HL2 counterparts; not original mechanics')
     ap.add_argument('--generic-target',action='append',default=[],metavar='TARGETNAME',
                     help='only rewrite this named npc_generic_actor to generic_actor (repeatable)')
     args=ap.parse_args(argv)
     source=args.bsp.resolve()
     try:
         data=source.read_bytes()
-        result, counts=make_trial(data,args.include_generic,args.generic_target)
+        result, counts=make_trial(data,args.include_generic,args.generic_target,args.pickup_proxies)
         print(f"Source {source.name}: class rewrites {counts}")
         if result is None:
             if args.verify:
