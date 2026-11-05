@@ -74,6 +74,39 @@ class DiagnosticsTest(unittest.TestCase):
             self.assertTrue(jess['has_scene_alias'])
             self.assertTrue(binding[1]['actors'][0]['alias_set_in_controller'])
             self.assertTrue(all(x['present_in_supplied_archive'] for x in binding))
+    def test_extracted_scenes_folder_and_game_parent_match_zip(self):
+        with tempfile.TemporaryDirectory() as d:
+            base=pathlib.Path(d)
+            bsp=base/'test.bsp'
+            bsp.write_bytes(map_fixture())
+            game=base/'unpacked'
+            folder=game/'scenes'
+            finale=folder/'se1_finale'
+            highrise=folder/'se1_highrise'
+            finale.mkdir(parents=True)
+            highrise.mkdir(parents=True)
+            (finale/'teaser_jc_hospital.vcd').write_text('actor "JC_Hospital"\n')
+            (highrise/'jess_wakeupblade.vcd').write_text('actor "!Target1"\n')
+            archive=base/'scenes.zip'
+            with zipfile.ZipFile(archive,'w') as z:
+                z.write(finale/'teaser_jc_hospital.vcd', 'scenes/se1_finale/teaser_jc_hospital.vcd')
+                z.write(highrise/'jess_wakeupblade.vcd', 'scenes/se1_highrise/jess_wakeupblade.vcd')
+            from_zip=diag.preflight(bsp,archive,[])
+            self.assertEqual(from_zip['archive_vcd_count'],2)
+            for root in (folder,game):
+                unpacked=diag.preflight(bsp,root,[])
+                self.assertEqual(unpacked['archive_vcd_count'],2)
+                self.assertEqual(unpacked['scene_bindings'],from_zip['scene_bindings'])
+            # The source directory contains exactly the original VCD bytes.
+            self.assertEqual((finale/'teaser_jc_hospital.vcd').read_text(), 'actor "JC_Hospital"\n')
+
+    def test_extracted_scenes_empty_folder_is_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=pathlib.Path(d)/'scenes'
+            root.mkdir()
+            with self.assertRaisesRegex(diag.DiagnosticsError, 'No .vcd files found'):
+                diag.load_scene_actors(root)
+
     def test_unresolved_alias_not_falsely_claimed_resolved(self):
         with tempfile.TemporaryDirectory() as t:
             base=pathlib.Path(t);bsp=base/'map.bsp';bsp.write_bytes(map_fixture())
