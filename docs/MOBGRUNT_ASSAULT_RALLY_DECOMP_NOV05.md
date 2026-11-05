@@ -36,6 +36,28 @@ All three 22-byte x86 thunks call original registry getter `0x2228B110` and regi
 
 This is how the original map's assault-order logic is intended to connect to AI navigation and rally points. The user's desktop HL2 test verified the map-defined `roof_grunt_1_seq1` with temporary `npc_combine_s` and `weapon_ar2`; **it did not verify Ritual's native rally-point schedule**. The original relay `begin_roof_battle_seq1` sends an `Assault` input naming `seq1_assualt_point_start` to `roof_grunt_2_seq1`, not directly to the converted grunt #1. Before implementing that encounter, inspect this exact target's BSP classname and whether it is a rallypoint or assaultpoint, without silently correcting the original spelling.
 
+## Decompilation of rally-point candidate ranking
+
+Inside original `CAI_AssaultBehavior::SetParameters` at `0x220CFC00`, the server iterates candidate rally entities. The initial best-priority sentinel is `-1` (`0x220CFC62`). At `0x220CFCA1` it reads each candidate's integer field **`+0x3A0`**, compares it with the best priority and keeps the higher value. When priorities match, the function measures squared three-dimensional distances using the owner's and candidate's position fields at **entity `+0x2BC`**; the x87 compare and conditional replacement are visible at `0x220CFDD7`. Equal priority and equal distance retain the earlier candidate. On success, it stores a selected entity handle in the assault-behavior subobject at **`+0x18`**. On failure the original diagnostic is `%s Didn't find a best rally point!`.
+
+This is consistent with the original SDK FGD's `assault_rallypoint.priority` field, which explicitly says **“Higher priority rally points get selected first.”**
+
+Readable reconstruction for valid, eligible rally candidates:
+
+```cpp
+best = none;
+for (candidate : rally_points_with_matching_name) {
+    if (!candidate_is_eligible(candidate)) continue; // precise lock checks pending
+    if (!best || candidate.priority > best.priority ||
+        (candidate.priority == best.priority &&
+         squared_distance(candidate, npc) < squared_distance(best, npc))) {
+        best = candidate;
+    }
+}
+```
+
+The ranking instruction witnesses are now checked by the original-DLL audit. A standalone **engine-neutral C++17 reference** implements only this behavior in `include/sin_compat/mobgrunt_rally_rank.hpp`, tested by `tests/test_mobgrunt_rally_rank.cpp` and CTest. It does not reconstruct the original candidate discovery, lock/eligibility checks, actual entity handles, AI navigation, or `CAI_AssaultBehavior` schedules. It rejects invalid coordinates and negative priority instead of copying x87 corner cases into the future ARM64 code.
+
 ## Grenade-related toggle and timing, original server x86
 
 The original `InputThrowGrenades` handler at `0x22357EA0` checks the variant type against **6**, resets member **`+0xC70`** (`m_flGrenadeHeight`) to zero and writes the input byte to **`+0xC6C`**, clearing both fields for another variant type.
