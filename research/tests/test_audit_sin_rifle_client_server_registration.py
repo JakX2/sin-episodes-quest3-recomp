@@ -113,6 +113,29 @@ class OriginalRifleRegistrationTests(unittest.TestCase):
             a.original_client_registration(pe)
 
 
+    def test_original_druglab_grunt_factories_are_distinct_cpp_classes(self):
+        # Synthetic PE regions establish the byte-shape of the original RTTI,
+        # without embedding either game DLL in our repository.
+        regions = [
+            (0x225367F4, b'.?AV?$CEntityFactory@VCNPC_MobGrunt@@@@\0'),
+            (0x22536824, b'.?AVCNPC_MobGrunt@@\0'),
+            (0x225346AC, b'.?AV?$CEntityFactory@VCNPC_EliteGrunt@@@@\0'),
+        ]
+        for label, va in a.MOBGRUNT_FIELD_LABELS + a.ELITE_SKILL_LABELS:
+            regions.append((va, label.encode('ascii') + b'\0'))
+        result = a.original_druglab_grunt_metadata(FakePE(regions))
+        self.assertEqual(result['assault_rifle_cpp_class_rtti'], 'CNPC_MobGrunt')
+        self.assertEqual(result['elite_factory_cpp_class_rtti'], 'CNPC_EliteGrunt')
+        self.assertIn('m_flShotDelay', result['original_assault_grunt_string_labels'])
+        self.assertIn('sk_elite_grunt_health',
+                      result['original_elite_skill_setting_labels'])
+        corrupted = [
+            (va, b'X' + data[1:] if va == 0x225367F4 else data)
+            for va, data in regions
+        ]
+        with self.assertRaises(a.VerificationError):
+            a.original_druglab_grunt_metadata(FakePE(corrupted))
+
     def test_original_primary_fire_interval_and_clip_path(self):
         table = 0x224776AC
         regions = [
