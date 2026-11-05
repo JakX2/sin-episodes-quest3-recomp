@@ -113,6 +113,30 @@ class OriginalRifleRegistrationTests(unittest.TestCase):
             a.original_client_registration(pe)
 
 
+    def test_original_primary_fire_interval_and_clip_path(self):
+        table = 0x224776AC
+        regions = [
+            (table+0x388, struct.pack('<I', 0x2230BA30)),
+            (table+0x3AC, struct.pack('<I', 0x22313850)),
+            (0x22313850, b'\xd9\x05\x04\x72\x47\x22\xc3'),
+            (0x22477204, struct.pack('<f', 0.075)),
+            (0x2230B4C8, b'\xff\x90\xac\x03\x00\x00'),
+            (0x2230BA7D, x86_call(0x2230BA7D, 0x2230B430)),
+            (0x2230BA76, b'\xe9\x75\xfd\xff\xff'),
+            (0x2230B84E, x86_call(0x2230B84E, 0x2230B430)),
+            (0x2230B584, b'\x8b\x86\xec\x04\x00\x00'),
+            (0x2230B59F, x86_call(0x2230B59F, 0x222A8210)),
+            (0x222A821B, b'\x2b\x0e'),
+        ]
+        result = a.original_primary_shared_fire_path(FakePE(regions))
+        self.assertAlmostEqual(result['verified_interval_seconds'], 0.075, places=6)
+        self.assertEqual(result['clip_integer_field_offset'], '0x4EC')
+
+        corrupted = [(va, struct.pack('<f', 0.1) if va == 0x22477204 else code)
+                     for va, code in regions]
+        with self.assertRaises(a.VerificationError):
+            a.original_primary_shared_fire_path(FakePE(corrupted))
+
     def test_client_rejects_recv_table_name_corruption(self):
         regions = client_regions(client_thunk())
         mutated = [(va, b'DT_CorruptWeapon\0' if va == 0x242C298C else blob)
