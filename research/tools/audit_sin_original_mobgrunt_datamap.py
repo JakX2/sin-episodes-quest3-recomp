@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Read-only pinned original 2006 SiN MobGrunt datamap + input dispatch audit.
+
+This is original x86 Windows PE structural evidence, not recovered C++ code.
+The private original server DLL stays on the owner's machine.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import struct
+
+from verify_gameplay_entity_registry import PEImage, SERVER_SHA256, VerificationError
+
+# (C++ member, descriptor VA, string VA, Source FieldType ordinal,
+#  original object-relative member offset, flags, external KV name VA)
+# Original 2006 32-bit Source typedescription_t is 0x34 bytes on these witnesses.
+MEMBERS = (
+    ('m_iNumGrenades', 0x225351CC, 0x22491030, 5, 0xC38, 6, 0x22491024),
+    ('m_flGrenadeHeight', 0x225353A0, 0x22490F9C, 1, 0xC70, 6, 0x22490F8C),
+    ('m_flShotDelay', 0x22535198, 0x22491040, 1, 0xC9C, 2, 0),
+    ('m_nShots', 0x22535164, 0x22491050, 5, 0xC98, 2, 0),
+    ('m_flNextAltFireTime', 0x225350FC, 0x22491070, 16, 0xC90, 2, 0),
+    ('m_vecAltFireTarget', 0x22535644, 0x22490EC0, 3, 0xFCC, 2, 0),
+    ('m_iLastAnimEventHandled', 0x22535610, 0x22490ED4, 5, 0xFC8, 2, 0),
+    ('m_bCanCrouch', 0x22534F5C, 0x22491108, 6, 0xC66, 2, 0),
+    ('m_nKickDamage', 0x22534E8C, 0x22491124, 5, 0xC54, 2, 0),
+)
+
+# (handler field name, descriptor VA, field name string VA, type ordinal,
+#  external Hammer I/O name, external name VA, original member-function VA)
+INPUTS = (
+    ('InputAssault', 0x225355A8, 0x22490F10, 2, 'Assault',
+     0x223F5624, 0x22357E50),
+    ('InputThrowGrenades', 0x225355DC, 0x22490EFC, 6, 'ThrowGrenades',
+     0x22490EEC, 0x22357EA0),
+    ('InputLookOn', 0x2253550C, 0x22490F28, 0, 'LookOn',
+     0x22490F20, 0x2235DDC0),
+    ('InputLookOff', 0x225354D8, 0x22490F3C, 0, 'LookOff',
+     0x22490F34, 0x2235F260),
+)
+
+
+def check_label(pe: PEImage, address: int, expected: str) -> None:
+    encoded = expected.encode('ascii') + b'\0'
+    if pe.at(address, len(encoded)) != encoded:
+        raise VerificationError(
+            f'SiN NPC datamap string mismatch at 0x{address:08X}: {expected}')
+
+
+def read_descriptor(pe: PEImage, desc: int) -> dict:
+    raw = pe.at(desc, 52)
+    dtype, field_name_va, offset0, offset1, size_flags, external_name_va, \
+        _reserved, handler_va = struct.unpack_from('<8I', raw)
+    return dict(type_id=dtype, name_va=field_name_va,
+                offset=offset0, secondary_offset=offset1,
+                size=size_flags & 0xFFFF, flags=size_flags >> 16,
+                external_name_va=external_name_va, input_handler_va=handler_va)
+
+
+def audit_datamap(pe: PEImage) -> dict:
+    fields, inputs = [], []
+    for name, desc, string_va, dtype, offset, flags, external_va in MEMBERS:
+        d = read_descriptor(pe, desc)
+        if not (d['type_id'] == dtype and d['name_va'] == string_va and
+                d['offset'] == offset and d['secondary_offset'] == 0 and
+                d['size'] == 1 and d['flags'] == flags and
+                d['external_name_va'] == external_va):
+            raise VerificationError(f'{name}: original MobGrunt datamap differs')
+        check_label(pe, string_va, name)
+        external = None
+        if external_va:
+            external = {0x22491024: 'NumGrenades',
+                        0x22490F8C: 'GrenadeHeight'}[external_va]
+            check_label(pe, external_va, external)
+        fields.append(dict(member=name, offset_hex=f'0x{offset:X}',
+                           descriptor_va=f'0x{desc:08X}', field_type_id=dtype,
+                           flags=flags, hammer_key=external))
+
+    for label, desc, string_va, dtype, input_name, external_va, handler in INPUTS:
+        d = read_descriptor(pe, desc)
+        if not (d['type_id'] == dtype and d['name_va'] == string_va and
+                d['offset'] == 0 and d['size'] == 1 and d['flags'] == 8 and
+                d['external_name_va'] == external_va and
+                d['input_handler_va'] == handler):
+            raise VerificationError(f'{label}: original input dispatch datamap differs')
+        check_label(pe, string_va, label)
+        check_label(pe, external_va, input_name)
+        inputs.append(dict(member_handler=label, external_input=input_name,
+                           descriptor_va=f'0x{desc:08X}',
+                           function_va=f'0x{handler:08X}', field_type_id=dtype))
+    return dict(
+        original_server_class='CNPC_MobGrunt',
+        original_npc_classname='npc_druglab_grunt_assault_rifle',
+        member_descriptors=fields,
+        input_descriptors=inputs,
+        limitations=[
+            'These are original x86 datamap member offsets for a specific 2006 build.',
+            'Offsets are not transferable to another compiler or 64-bit ARM64 class.',
+            'Field type ordinals/flag values are original binary values; more semantics require matching SDK headers.',
+            'The Assault input has a known original handler, but full AI schedule behavior is not yet recovered.',
+        ],
+    )
+
+
+def audit_handler_code(pe: PEImage) -> dict:
+    # Actual InputAssault: push state 3 and call a handler on object+0xDB8.
+    if pe.at(0x22357E50, 3) != b'\x56\x8b\xf1':
+        raise VerificationError('InputAssault handler prologue differs')
+    if pe.at(0x22357E82, 2) != b'\x6a\x03':
+        raise VerificationError('InputAssault state argument differs')
+    if pe.at(0x22357E85, 6) != b'\x8d\x8e\xb8\x0d\x00\x00':
+        raise VerificationError('InputAssault state object offset differs')
+    call = pe.at(0x22357E8B, 5)
+    if call[0] != 0xE8 or 0x22357E90 + struct.unpack_from('<i', call, 1)[0] != 0x220CFC00:
+        raise VerificationError('InputAssault state call target differs')
+    # InputThrowGrenades: reset m_flGrenadeHeight at +0xC70,
+    # set 0xC6C byte from accepted bool value or reset on wrong input type.
+    if pe.at(0x22357EA4, 4) != b'\x83\x78\x18\x06':
+        raise VerificationError('InputThrowGrenades value type check differs')
+    if pe.at(0x22357EAD, 10) != b'\xc7\x81\x70\x0c\x00\x00\x00\x00\x00\x00':
+        raise VerificationError('InputThrowGrenades height reset differs')
+    if pe.at(0x22357EB7, 6) != b'\x88\x81\x6c\x0c\x00\x00':
+        raise VerificationError('InputThrowGrenades bool write differs')
+    return dict(
+        assault_input=dict(handler_va='0x22357E50',
+                           relative_state_object_offset='0xDB8',
+                           submitted_state_argument=3,
+                           target_call_va='0x220CFC00'),
+        grenade_input=dict(handler_va='0x22357EA0',
+                           expected_variant_type_id=6,
+                           reset_grenade_height_offset='0xC70',
+                           bool_field_offset='0xC6C'),
+        limitations=[
+            'The state argument 3 is observed, but its AI meaning is not yet decoded.',
+            'The boolean field at +0xC6C must be linked to its actual name and update cycle.',
+        ],
+    )
+
+
+def audit(server: bytes, *, hash_check: bool = True) -> dict:
+    digest = hashlib.sha256(server).hexdigest()
+    if hash_check and digest != SERVER_SHA256:
+        raise VerificationError('expected original 2006 SiN server.dll SHA-256')
+    pe = PEImage(server)
+    if pe.base != 0x22000000:
+        raise VerificationError('unexpected SiN server PE image base')
+    return dict(dll_sha256=digest,
+                mobgrunt_datamap=audit_datamap(pe),
+                original_input_handlers=audit_handler_code(pe))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--server', type=Path, required=True)
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    try:
+        info = audit(args.server.read_bytes())
+        payload = json.dumps(info, indent=2) + '\n'
+        if args.output:
+            with args.output.open('x', encoding='utf8') as output:
+                output.write(payload)
+        else:
+            print(payload, end='')
+        return 0
+    except (OSError, ValueError, struct.error) as exc:
+        parser.exit(2, f'Original MobGrunt datamap audit failed: {exc}\n')
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
