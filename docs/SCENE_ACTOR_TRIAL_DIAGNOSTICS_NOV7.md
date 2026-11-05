@@ -91,3 +91,19 @@ py research/tools/sin_scene_actor_diagnostics.py preflight --bsp "D:\SiN_Test_On
 No need for a separate `New-Item` call now. If the output BSP already exists, `--write` returns an error by design; use `--verify` to check it or select a new test-only filename instead of overwriting it. If `--include-generic` was used to create the copy, also supply `--include-generic` when verifying.
 
 **Meaning of a verification pass:** only that the generated binary exactly matches the intended classname-only BSP rewrite. It is not evidence of HL2 engine acceptance, model/skeleton compatibility, scene cache mounting, actor binding, or successful Quest 3 gameplay. Retain the existing before/after single-map console-log procedure for those runtime questions.
+
+
+## Direct use of already-extracted SiN scenes (November 5 follow-up)
+
+The preflight tool can now load the original VCD text directly from a directory, without recreating `scenes.zip`. Use the extracted **scenes directory** containing `se1_finale/` and `se1_highrise/`, or its game-content parent folder containing `scenes/`. Files are only read; no original content is copied or rewritten.
+
+```powershell
+# First locate your already-extracted copy:
+Get-ChildItem -Path "D:\SiN" -Filter "finale_cinematic.vcd" -File -Recurse |
+  Select-Object -First 5 -ExpandProperty FullName
+
+# Example ONLY if results point under D:\SiN\scenes\se1_finale\ :
+py research/tools/sin_scene_actor_diagnostics.py preflight --bsp "D:\SiN\maps\se1_finale01.bsp" --scenes "D:\SiN\scenes" --output "D:\SiN_Test_Only\finale_preflight.json"
+```
+
+The script also accepts `--scenes "D:\SiN"` if that is the parent that directly contains `scenes\`. It counts and tokenizes the VCD files found, and shows actor names and map/controller alias candidates. Omit `--output` if the report filename already exists, because reports are not overwritten. **This verifies file presence and bindings only, not scene.cache acceptance or working choreography in HL2.**
