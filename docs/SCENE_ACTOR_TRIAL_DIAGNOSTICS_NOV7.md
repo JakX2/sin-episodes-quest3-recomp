@@ -156,3 +156,34 @@ unhandled input: (Wake) -> (end_hardcorps_heli2), from (scripted_sequence,end_ha
 **Validated:** the first actor exists in actual HL2 and is renderable; `BeginSequence` is accepted; the associated `OnEndSequence` outputs fire; the +2 second kill input reaches the first helicopter. The screenshot also depicts a helicopter airborne with rotating rotor blades, consistent with the animation. The trailing `Cancelling script` occurs after the first actor's scheduled removal and must not alone be interpreted as failed sequence startup.
 
 **Next diagnosed blocker:** `end_hardcorps_heli2` is missing when the first sequence's completion output sends `Wake`. Identify the original BSP classname, model, targetname, and any `scripted_sequence` fields of helicopter 2 before adding another targeted actor substitution. Test once with the new isolated BSP rather than mutating the working helicopter-1 version. This finding does not establish full automatic endgame flow, scene.cache / Finale_Cinematic VCD playback, complete SiN generic-actor behavior, or Quest 3 compatibility.
+
+## Owner-verified dual-helicopter handoff and scene-image blocker (November 5)
+
+**Confirmed in a live desktop HL2 custom-content test**, using a trial BSP where both `end_hardcorps_heli1` and `end_hardcorps_heli2` are selectively remapped from SiN `npc_generic_actor` to Source `generic_actor`:
+
+```text
+scripted_sequence 525:"end_hardcorps_heli1_sequence" using NPC 524:"end_hardcorps_heli1"(end_hardcorps_heli1)
+(10.56) input : end_hardcorps_heli1_sequence.BeginSequence()
+(28.42) output: (scripted_sequence,end_hardcorps_heli1_sequence) -> (end_hardcorps_heli1,Kill,2.0)()
+(28.42) output: (scripted_sequence,end_hardcorps_heli1_sequence) -> (end_hardcorps_heli2,Wake,2.0)()
+(30.43) input end_hardcorps_heli1_sequence: end_hardcorps_heli1.Kill()
+(30.43) input end_hardcorps_heli1_sequence: end_hardcorps_heli2.Wake()
+```
+
+Subsequent `ent_dump end_hardcorps_heli2` returned `classname: generic_actor`, `cycle: 0.75`, and `health: 8`. **Handoff PASS**: the formerly missing second actor exists and receives the explicit Wake event. It remains unverified whether the full second helicopter action plays identically to Ritual's original, and no player-driven complete finale test has passed.
+
+**Independent scripted finale blockers observed in the same log:**
+
+```text
+(7.80) input : jessica.Wake()
+unhandled input: (Wake) -> (helicopter), from (logic_relay,); target entity not found
+unhandled input: (Wake) -> (roddick), from (logic_relay,); target entity not found
+(7.80) input : full_anim_fp_1.Start()
+Blocking load of scene from 'scenes/se1_finale/Finale_Cinematic.vcd'
+scenes/se1_finale/Finale_Cinematic.vcd missing from scenes.image
+```
+
+Original VCD was previously proven present in the owner's extracted `D:\SiN\scenes\`, and BSP preflight showed direct actor-targetname candidates for Jessica, Roddick, Elexis and Helicopter. However, the current build's runtime scene-image index lacks the requested scene. The **next gating task is a matching `scenes.image` compiled for the selected HL2 runtime**, independently of the helicopter fallback. `scenes.image` is the Source choreography binary index; the historical documentation's `scene.cache` reference is not the observed missing resource. Preserve existing original/HL2 scene images and build only in an isolated staging mod; an incomplete rebuild can discard other scenes from the rebuilt index. Check targetname/model compatibility for `roddick` and `helicopter` separately after fixing scene loading; never global-rewrite all `npc_generic_actor` entities.
+
+**Other log errors:** SiN-specific grunt/NPC classes, items and triggers absent in HL2; `Found npc_alyx that isn't in a squad` indicates Jessica's fallback spawned but does not establish ally AI equivalence; incompatible 32kHz `finale_encounter.mp3` is a separate audio issue. None of these are evidence of a completed SiN campaign port or Android/Quest 3 gameplay.
+
