@@ -140,6 +140,41 @@ def audit_handler_code(pe: PEImage) -> dict:
     )
 
 
+def audit_look_target_flag(pe: PEImage) -> dict:
+    """The two real map input handlers toggle a Source entity flag bit.
+
+    On clears 0x10000, Off sets it. The class object's +0xB4 field is a
+    flags word in this original x86 build. Source singleplayer variants
+    commonly name bit 0x10000 FL_NOTARGET; confirm the branch before
+    assigning that symbol to this exact executable.
+    """
+    evidence = (
+        (0x2235DDC0, b'\x8b\x91\xb4\x00\x00\x00', 'LookOn flags read'),
+        (0x2235DDC8, b'\x25\xff\xff\xfe\xff', 'LookOn bit clear'),
+        (0x2235DDD1, b'\x80\xb9\xf0\x01\x00\x00\x00', 'LookOn notify conditional'),
+        (0x2235DDDA, b'\xc6\x81\x00\x02\x00\x00\x01', 'LookOn deferred dirty flag'),
+        (0x2235DDF4, b'\x83\x0a\x01', 'LookOn change notifier'),
+        (0x2235F260, b'\x8b\x91\xb4\x00\x00\x00', 'LookOff flags read'),
+        (0x2235F268, b'\x0d\x00\x00\x01\x00', 'LookOff bit set'),
+        (0x2235F271, b'\x80\xb9\xf0\x01\x00\x00\x00', 'LookOff notify conditional'),
+        (0x2235F27A, b'\xc6\x81\x00\x02\x00\x00\x01', 'LookOff deferred dirty flag'),
+        (0x2235F294, b'\x83\x0a\x01', 'LookOff change notifier'),
+    )
+    for va, expected, desc in evidence:
+        if pe.at(va, len(expected)) != expected:
+            raise VerificationError(f'original MobGrunt {desc} changed at 0x{va:08X}')
+    return dict(
+        handlers=dict(LookOn='0x2235DDC0', LookOff='0x2235F260'),
+        original_flags_field_offset='0xB4',
+        bit_mask='0x00010000',
+        look_on_operation='flags &= ~0x00010000',
+        look_off_operation='flags |= 0x00010000',
+        change_notification_observed=True,
+        meaning='Likely AI targetability/no-target switch, not a look animation',
+        semantic_caveat='Exact Source branch flag naming must be verified separately',
+    )
+
+
 def audit(server: bytes, *, hash_check: bool = True) -> dict:
     digest = hashlib.sha256(server).hexdigest()
     if hash_check and digest != SERVER_SHA256:
@@ -149,7 +184,8 @@ def audit(server: bytes, *, hash_check: bool = True) -> dict:
         raise VerificationError('unexpected SiN server PE image base')
     return dict(dll_sha256=digest,
                 mobgrunt_datamap=audit_datamap(pe),
-                original_input_handlers=audit_handler_code(pe))
+                original_input_handlers=audit_handler_code(pe),
+                look_on_off_flag_behavior=audit_look_target_flag(pe))
 
 
 def main() -> int:
