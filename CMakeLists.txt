@@ -59,6 +59,31 @@ if(UNIX AND NOT APPLE)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/host_abi_exports.map")
 endif()
 set_target_properties(sin_compat_host_abi PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+
+# Original SiN rifle metadata + portable C session bridge. This is NOT a
+# registered native Source entity; SourceVR factory integration remains open.
+add_library(sin_original_rifle_bridge SHARED src/original_rifle_c_api_v1.cpp)
+target_include_directories(sin_original_rifle_bridge PUBLIC include)
+target_link_libraries(sin_original_rifle_bridge PRIVATE sin_compat_host_abi)
+set_target_properties(sin_original_rifle_bridge PROPERTIES
+    CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+if(UNIX AND NOT APPLE)
+    target_link_options(sin_original_rifle_bridge PRIVATE
+      "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/original_rifle_c_api_exports.map")
+    set_property(TARGET sin_original_rifle_bridge APPEND PROPERTY LINK_DEPENDS
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/original_rifle_c_api_exports.map")
+endif()
+if(BUILD_TESTING)
+    add_executable(sin_original_rifle_c_bridge_tests tests/test_original_rifle_c_api_v1.c)
+    target_include_directories(sin_original_rifle_c_bridge_tests PRIVATE include)
+    target_link_libraries(sin_original_rifle_c_bridge_tests
+      PRIVATE sin_original_rifle_bridge sin_compat_host_abi)
+    set_target_properties(sin_original_rifle_c_bridge_tests PROPERTIES
+      C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME sin_original_rifle_c_bridge_tests
+      COMMAND sin_original_rifle_c_bridge_tests)
+endif()
+
 if(BUILD_TESTING AND UNIX)
   add_executable(sin_host_abi_dlopen_tests tests/test_host_abi.c)
   target_include_directories(sin_host_abi_dlopen_tests PRIVATE include)
