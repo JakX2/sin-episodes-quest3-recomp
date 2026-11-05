@@ -1,0 +1,99 @@
+{
+  "research": "Deep Dive 16",
+  "date": "2026-11-05",
+  "source_scope": "original x86 2006 server/client DLL and 5 HL2 compatibility logs",
+  "server_sha256": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
+  "client_sha256": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d",
+  "static_assertions_passed": 56,
+  "factories": [
+    {
+      "classname": "npc_druglab_jetpack",
+      "cxx": "CNPC_DruglabJetpack",
+      "registration_va": "0x223C68B7"
+    },
+    {
+      "classname": "npc_druglab_elite_jetpack",
+      "cxx": "CNPC_EliteJetpack",
+      "registration_va": "0x223C6A97"
+    },
+    {
+      "classname": "npc_sintek_jetpack",
+      "cxx": "CNPC_SintekJetpack",
+      "registration_va": "0x223C77C7"
+    },
+    {
+      "classname": "npc_securitybot",
+      "cxx": "CNPC_SecurityBot",
+      "registration_va": "0x223C7707"
+    },
+    {
+      "classname": "pulse",
+      "cxx": "CPulseShot",
+      "registration_va": "0x223C7777"
+    }
+  ],
+  "vtable_changed_slot_counts": {
+    "CNPC_JetpackGruntBase_vs_CNPC_GruntBase": 31,
+    "CNPC_DruglabJetpack_vs_CNPC_JetpackGruntBase": 5,
+    "CNPC_EliteJetpack_vs_CNPC_JetpackGruntBase": 4,
+    "CNPC_SintekJetpack_vs_CNPC_JetpackGruntBase": 4,
+    "CNPC_SecurityBot_vs_CNPC_CBot": 16,
+    "CPulseShot_vs_CBaseCombatCharacter": 7
+  },
+  "pulse": {
+    "primary_vtable_va": "0x224A32D4",
+    "spawn_va": "0x223803F0",
+    "precache_va": "0x2237EB80",
+    "touch_va": "0x2237F4C0",
+    "think_thunk_va": "0x22380200",
+    "think_target_va": "0x22380010",
+    "first_think_delay_seconds": 0.25,
+    "declared_datamap_records": 3,
+    "resolved_datamap_records": 0
+  },
+  "securitybot": {
+    "event_handler_va": "0x2237F280",
+    "firing_event_id": "0x43",
+    "warning_event_id": "0x95",
+    "projectile_helper_va": "0x2237ED60",
+    "projectile_launch_speed_constant": 1500,
+    "gun_attachment_names": [
+      "gun_right",
+      "gun_left"
+    ],
+    "warning_seconds_range": [
+      5,
+      6
+    ],
+    "shot_sound_name": "NPC_CScanner.Shoot",
+    "warning_sound_name": "NPC_CScanner.PreShoot"
+  },
+  "jetpack": {
+    "attached_classname": "prop_dynamic",
+    "attached_creation_call_va": "0x22367FF9",
+    "attached_handle_offset_hex": "0x1028",
+    "named_schedules": [
+      "SCHED_JETPACK_PATROL",
+      "SCHED_JETPACK_CHASE_ENEMY",
+      "SCHED_JETPACK_FOLLOW_HOVER",
+      "SCHED_JETPACK_RANGE_ATTACK1",
+      "SCHED_JETPACK_MOVE_TO_INSPECT",
+      "SCHED_JETPACK_SHOOT_COVER"
+    ]
+  },
+  "log_counts": {
+    "unknown_creation_attempts": 1531,
+    "unique_unknown_classnames": 49,
+    "npc_druglab_jetpack": 29,
+    "npc_securitybot": 16,
+    "pulse": 0,
+    "npc_druglab_elite_jetpack": 0,
+    "npc_sintek_jetpack": 0
+  },
+  "limitations": [
+    "No runtime gameplay test",
+    "Jetpack flight math not fully recovered",
+    "Pulse collision damage not recovered",
+    "Numerical event IDs not symbolically named"
+  ]
+}
