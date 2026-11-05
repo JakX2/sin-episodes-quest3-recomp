@@ -46,3 +46,9 @@ ent_fire sin_mobgrunt_anim_test SetAnimation shootAR2s
 ```
 
 Despite the AR2 label, this is a sequence name from the original SiN MobGrunt animation bundle, **not** a request to restore HL2 rifle gameplay. Check whether the animation plays and whether its arms align with the separately rendered original rifle. Do not equate an animation playing with working projectiles/sounds/ammo or original SinTEK AI.
+
+## Verified original firing sequence playback (owner, Nov 5)
+
+**PASS:** The owner ran the next proposed `ent_fire sin_mobgrunt_anim_test SetAnimation shootAR2s` test and confirmed "it's workin". This adds verified desktop HL2 animation playback for the original SiN MobGrunt firing sequence `shootAR2s` (original included `mobgrunt_anims.mdl`, local sequence index 98). The confirmation does **not** establish an actual projectile, gun entity, muzzle flash, original sound, equipment attachment, AI integration or Quest runtime.
+
+**Next isolated hypothesis:** check whether stock HL2 `npc_combine_s` can be instantiated with `model models/characters/MobGrunt/mobgrunt.mdl` using a map-spawn keyvalue rather than changing an active NPC's model. Test one named NPC in a disposable copy of the known working map, no global BSP rewrites. A different game-class animation activity table may leave the NPC idle, in reference pose or unable to attack; even success remains a Combine AI proxy, not original Ritual's SinTEK AI.
