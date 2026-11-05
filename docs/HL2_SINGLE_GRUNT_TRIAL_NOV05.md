@@ -192,3 +192,40 @@ find_ent roof_grunt
 **Still pending:** whether the *map-defined* NPC actively responds to the original `Wake` input, traverses its rooftop AI encounter, fires automatically, and is appropriately damageable. `find_ent` proves creation and registration, not behavioral success; there is no `developer 2` I/O trace attached after the `ent_fire` in this report.
 
 Next single diagnostic: with `developer 2` active, `ent_fire begin_roof_battle_seq1 Trigger`, inspect I/O and visually observe the actual rooftop NPC; `ent_dump roof_grunt_1_seq1` can now reconfirm its runtime `health`, `sequence`, `additionalequipment`, and `sleepstate`. The original `damagefilter grunt_unkillable` and `sleepstate 3` can still block combat/damage. Avoid changing original BSP or claiming native SiN AI.
+
+## First working map-defined MobGrunt encounter: owner-confirmed (Nov 5, 2026)
+
+The owner confirmed that the **single converted named rooftop grunt works** in desktop HL2 after directly issuing `ent_fire roof_grunt_1_seq1 Wake`. This is the first reported functioning **map-defined** SinTEK grunt visual/AI proxy in the isolated modified SiN finale BSP, building on prior manual-spawn combat success. Console evidence immediately preceding the observation:
+
+```text
+find_ent roof_grunt
+  'npc_combine_s' : 'roof_grunt_1_seq1' (entindex 218)
+  'weapon_ar2' : 'roof_grunt_1_seq1_weapon' (entindex 62)
+find_ent npc_combine_s
+  'npc_combine_s' : 'roof_grunt_1_seq1' (entindex 218)
+find_ent begin_roof_battle_seq1
+  'logic_relay' : 'begin_roof_battle_seq1' (entindex 0)
+ent_fire begin_roof_battle_seq1 Trigger
+find_ent roof_grunt
+  'npc_combine_s' : 'roof_grunt_1_seq1' (entindex 218)
+  'weapon_ar2' : 'roof_grunt_1_seq1_weapon' (entindex 62)
+ent_dump roof_grunt_1_seq1
+  NumGrenades: 5
+  squadname: seq1
+  additionalequipment: weapon_ar2
+  physdamagescale: 1.00
+  sequence: 39
+  playbackrate: 1.00
+  modelscale: 1.00
+  classname: npc_combine_s
+  max_health: 50
+  health: 50
+  gravity: 1.00
+  friction: 1.00
+  spawnflags: 516
+ent_fire roof_grunt_1_seq1 Wake
+```
+
+Owner reported: **"this one grunt yeah it's workin"**. The original extracted BSP had the named actor #388 at `992 -56 257`; the experimental BSP preserves that target and original MobGrunt model path while substituting the `npc_combine_s` class and AR2 as a temporary desktop AI/weapon proxy. `sequence: 39` shows an active sequence index, but runtime indices must not be equated directly with included MDL local sequences. The user did not provide an explicit shot/damage/death trace for this **specific map-defined target**. Preserve this distinction.
+
+**Milestone scope:** one working, naturally map-defined, named proxy NPC and controlled waking. Original Ritual server/client C++ gameplay classes, actual `weapon_assault_rifle` factory, complete rooftop encounter for all four NPCs, authentic combat parameters and Quest 3 runtime remain unimplemented/unverified. Do not roll out to other grunt entities until precise functional testing and source-compatible registration is planned. No original game assets have been committed.
