@@ -90,6 +90,12 @@ def read_descriptor(pe: PEImage, desc: int) -> dict:
 
 
 def audit_datamap(pe: PEImage) -> dict:
+    # The observed original MobGrunt datamap is a contiguous 39-descriptor
+    # array at 0x22534E8C..0x22535644, with a stride of 0x34 bytes.
+    addresses = [entry[1] for entry in MEMBERS] + [entry[1] for entry in INPUTS]
+    expected = list(range(0x22534E8C, 0x22535644 + 1, 0x34))
+    if len(addresses) != 39 or sorted(addresses) != expected:
+        raise VerificationError('MobGrunt datamap descriptor inventory is not complete')
     fields, inputs = [], []
     for name, desc, string_va, dtype, offset, flags, external_va in MEMBERS:
         d = read_descriptor(pe, desc)
@@ -123,6 +129,12 @@ def audit_datamap(pe: PEImage) -> dict:
     return dict(
         original_server_class='CNPC_MobGrunt',
         original_npc_classname='npc_druglab_grunt_assault_rifle',
+        descriptor_count=len(addresses),
+        member_descriptor_count=len(fields),
+        input_descriptor_count=len(inputs),
+        datamap_start_va='0x22534E8C',
+        datamap_end_va='0x22535644',
+        datamap_entry_size_bytes=52,
         member_descriptors=fields,
         input_descriptors=inputs,
         limitations=[
@@ -135,6 +147,12 @@ def audit_datamap(pe: PEImage) -> dict:
 
 
 def audit_handler_code(pe: PEImage) -> dict:
+    # Original StartPatrolling/StopPatrolling handlers are simple byte writes
+    # to the datamap-verified m_bShouldPatrol field at +0xC65.
+    if pe.at(0x22357E30, 10) != b'\xc6\x81\x65\x0c\x00\x00\x01\xc2\x04\x00':
+        raise VerificationError('StartPatrolling original bool write differs')
+    if pe.at(0x22357E40, 10) != b'\xc6\x81\x65\x0c\x00\x00\x00\xc2\x04\x00':
+        raise VerificationError('StopPatrolling original bool write differs')
     # Actual InputAssault: push state 3 and call a handler on object+0xDB8.
     if pe.at(0x22357E50, 3) != b'\x56\x8b\xf1':
         raise VerificationError('InputAssault handler prologue differs')
@@ -175,13 +193,19 @@ def audit_handler_code(pe: PEImage) -> dict:
                            empty_string_fallback_va='0x223D47A8',
                            non_string_conversion_va='0x221561D0',
                            string_pool_intern_va='0x221F3DE0'),
+        patrol_inputs=dict(
+            StartPatrolling=dict(handler_va='0x22357E30', member='m_bShouldPatrol',
+                                 field_offset='0xC65', assigned_bool=True),
+            StopPatrolling=dict(handler_va='0x22357E40', member='m_bShouldPatrol',
+                                field_offset='0xC65', assigned_bool=False)),
         grenade_input=dict(handler_va='0x22357EA0',
                            expected_variant_type_id=6,
                            reset_grenade_height_offset='0xC70',
-                           bool_field_offset='0xC6C'),
+                           bool_field_offset='0xC6C',
+                           bool_member='m_bGrenadeHappy'),
         limitations=[
             'The state argument 3 is observed, but its AI meaning is not yet decoded.',
-            'The boolean field at +0xC6C must be linked to its actual name and update cycle.',
+            'The grenade input directly sets the datamap-verified m_bGrenadeHappy at +0xC6C, but the downstream grenade selection/throw behavior is not yet recovered.',
         ],
     )
 
