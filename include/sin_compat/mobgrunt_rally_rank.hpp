@@ -3,7 +3,8 @@
 // verified rally-point ranking, NOT a recreated CAI_AssaultBehavior or entity.
 // Original server.dll 0x220CFC00 prefers highest priority (candidate+0x3A0),
 // then smaller squared 3D origin distance (+0x2BC) on priority ties.
-// Eligibility (including original point locking) is deliberately host-supplied.
+// Original point locking uses m_hLockedBy (+0x3BC); the live handle-resolution
+// check remains host-supplied as candidate.eligible.
 
 #include <array>
 #include <cmath>
