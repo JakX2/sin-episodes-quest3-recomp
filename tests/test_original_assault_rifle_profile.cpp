@@ -37,6 +37,9 @@ int main() {
     assert(std::string(P::worldmodel) == "models/weapons/w_assault_rifle/w_assault_rifle.mdl");
     assert(std::string(P::primary_ammo) == "AR");
     assert(std::string(P::secondary_ammo) == "ARNADE");
+    assert(std::string(P::secondary_projectile_classname) == "grenade_ar");
+    assert(std::string(P::secondary_projectile_model) ==
+           "models/weapons/grenades/ar_grenade.mdl");
     assert(std::string(P::npc_shot_sound) == "Weapon_Assault.NPC_Single");
     assert(data.viewmodel_name == "models/weapons/v_assault_rifle/v_assault_rifle.mdl");
     assert(data.zoom_fov == 40);
