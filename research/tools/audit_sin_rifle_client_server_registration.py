@@ -67,12 +67,38 @@ def original_client_registration(pe: PEImage) -> dict:
     require(observed == expected, 'client registration arguments differ')
     require(pe.at(0x2429B020, len(b'weapon_assault_rifle\0')) ==
             b'weapon_assault_rifle\0', 'client classname mismatch')
+    require(pe.at(0x242C2954, len(b'C_WeaponAssaultRifle\0')) ==
+            b'C_WeaponAssaultRifle\0',
+            'client registration class-name argument mismatch')
     require(pe.at(0x24320A60, len(b'.?AVC_WeaponAssaultRifle@@\0')) ==
             b'.?AVC_WeaponAssaultRifle@@\0', 'client C_WeaponAssaultRifle RTTI mismatch')
+    # The registration argument at 0x242C2954 is C_WeaponAssaultRifle,
+    # NOT the RecvTable. Distinct DT_WeaponAssaultRifle is constructed below.
+    require(pe.at(0x242C298C, len(b'DT_WeaponAssaultRifle\0')) ==
+            b'DT_WeaponAssaultRifle\0', 'missing genuine weapon RecvTable label')
+    require(pe.at(0x2422A6A8, 5) == b'\x68\x8c\x29\x2c\x24' and
+            pe.at(0x2422A6AD, 2) == b'\x6a\x01' and
+            pe.at(0x2422A6AF, 5) == b'\x68\x34\xf0\x37\x24' and
+            pe.at(0x2422A6B4, 5) == b'\xb9\x98\xf5\x37\x24',
+            'original client DT_WeaponAssaultRifle construction differs')
+    require(call_target(0x2422A6B9, pe.at(0x2422A6B9, 5)) == 0x24126A30,
+            'original client receive table constructor call differs')
+    require(pe.at(0x2427643C, len(b'baseclass\0')) == b'baseclass\0',
+            'original client receive-table baseclass label missing')
+    require(pe.at(0x2422A696, 5) == b'\x68\x3c\x64\x27\x24',
+            'baseclass receive property reference missing')
     return {'classname': 'weapon_assault_rifle', 'registration_va': f'0x{entry:08X}',
             'registry_getter_va': '0x24103BF0',
             'registration_callback_va': '0x2422B5B0',
-            'size_argument': 0x830, 'table_pointer_argument': '0x242C2954',
+            'size_argument': 0x830,
+            'client_class_name_va': '0x242C2954',
+            'client_class_name': 'C_WeaponAssaultRifle',
+            'recv_table_name': 'DT_WeaponAssaultRifle',
+            'recv_table_name_va': '0x242C298C',
+            'recv_table_constructor_va': '0x2422A660',
+            'recv_table_constructor_call_va': '0x24126A30',
+            'recv_table_declared_direct_props': 1,
+            'direct_prop_name_observed': 'baseclass',
             'rtti_class': 'C_WeaponAssaultRifle'}
 
 
@@ -142,7 +168,8 @@ def audit(server: bytes, client: bytes, verify_hash: bool = True) -> dict:
         'server_weapon_virtual_projectile_path': original_projectile_virtual_path(sp),
         'limitations': [
             'These are original x86 instruction and RTTI witnesses, not recovered C++ source.',
-            'The client registration arguments are verified by value, but their exact field types are not all proven.',
+            'The client registration arg 0x242C2954 is a class-name string, not a receive-table pointer.',
+            'A distinct DT_WeaponAssaultRifle receive table is registered with 1 direct baseclass prop; inherited field layout remains to decode.',
             'The verified 1000 and 2000 multipliers occur in branch-specific projectile calculations; units and branch conditions need further analysis.',
             'The verified 0.5 and 1.0 constants occur in state/timing paths; exact firing cooldown semantics need further analysis.',
             'Automatic primary fire, NPC attack behavior, prediction and networking still need native reconstruction.',
