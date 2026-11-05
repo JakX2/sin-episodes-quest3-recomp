@@ -9,6 +9,7 @@ Never rewrites the input, never redistributes the game map. Usage:
   python sin_bsp_scene_actor_trial.py map.bsp --generic-target heli_name --write heli_trial.bsp
   python sin_bsp_scene_actor_trial.py map.bsp --pickup-proxies --write pickup_trial.bsp
   python sin_bsp_scene_actor_trial.py map.bsp --grunt-target roof_grunt_1_seq1 --write grunt_trial.bsp
+  python sin_bsp_scene_actor_trial.py map.bsp --grunt-target roof_grunt_1_seq1 --grunt-original-model --grunt-equipment-override --write original_visual_trial.bsp
 
 Use only on lawfully obtained local BSPs; test the output in a separate mod
 folder, with the correct original assets and scene cache mounted.
@@ -27,6 +28,7 @@ ALIASES = {
 GENERIC = {"npc_generic_actor": "npc_citizen"}
 # Temporary stock-HL2 pickup equivalents, NOT Ritual weapon implementations.
 # Opt-in only: effects, ammo counts, fire modes and I/O may differ from SiN.
+MOBGRUNT_MODEL = b"models/characters/MobGrunt/mobgrunt.mdl"
 PICKUP_PROXIES = {
     "weapon_magnum": "weapon_357",
     "weapon_assault_rifle": "weapon_ar2",
@@ -101,13 +103,14 @@ def patch_targeted_generic_actor(data: bytes, name: str):
 
 
 
-def patch_targeted_grunt(data: bytes, name: str, override_equipment=False):
+def patch_targeted_grunt(data: bytes, name: str, override_equipment=False, original_model=False):
     """Replace EXACTLY one uniquely named SiN grunt with armed HL2 npc_combine_s.
 
     Preserve original keys including targetname, squadname, and spawnflags.
-    Add AR2 equipment only when absent. Fail closed on duplicate targetnames,
-    unexpected classes, or incompatible existing equipment. This is a desktop
-    test proxy, not a faithful Ritual enemy implementation.
+    Supply the owner's runtime-tested original SiN MobGrunt model only when
+    explicitly requested for the assault-rifle grunt. Fail closed on any
+    ambiguous original model or equipment field. This is a desktop AI proxy,
+    not an implementation of Ritual's NPC or authentic weapon behavior.
     """
     if not name or not name.isascii() or any(ch in name for ch in '"{}\\'):
         raise BspError('Invalid --grunt-target; expected a plain ASCII targetname')
@@ -126,6 +129,13 @@ def patch_targeted_grunt(data: bytes, name: str, override_equipment=False):
             [b'npc_druglab_grunt_assault_rifle'], [b'npc_druglab_grunt_elite']
         ):
             raise BspError(f'Target {name} must be exactly one supported SiN grunt')
+
+        models = [v for k, v in pairs if k == b'model']
+        if original_model:
+            if classes != [b'npc_druglab_grunt_assault_rifle']:
+                raise BspError('--grunt-original-model is only for npc_druglab_grunt_assault_rifle')
+            if len(models) > 1 or (models and models[0].lower() != MOBGRUNT_MODEL.lower()):
+                raise BspError(f'Target {name} already has a different or duplicate model')
 
         equipment = [v for k, v in pairs if k == b'additionalequipment']
         if len(equipment) > 1:
@@ -152,6 +162,8 @@ def patch_targeted_grunt(data: bytes, name: str, override_equipment=False):
             )
             if replaced != 1:
                 raise BspError(f'Cannot rewrite equipment for {name}')
+        if original_model and not models:
+            changed = changed[:-1] + b'\n"model" "' + MOBGRUNT_MODEL + b'"\n}'
         matches.append((match.span(), changed))
 
     if len(matches) != 1:
@@ -159,7 +171,7 @@ def patch_targeted_grunt(data: bytes, name: str, override_equipment=False):
     (start, stop), replacement = matches[0]
     return data[:start] + replacement + data[stop:]
 
-def patch_entities(data: bytes, include_generic=False, generic_targets=(), pickup_proxies=False, grunt_targets=(), grunt_equipment_override=False):
+def patch_entities(data: bytes, include_generic=False, generic_targets=(), pickup_proxies=False, grunt_targets=(), grunt_equipment_override=False, grunt_original_model=False):
     replacements = dict(ALIASES)
     if include_generic:
         replacements.update(GENERIC)
@@ -179,14 +191,14 @@ def patch_entities(data: bytes, include_generic=False, generic_targets=(), picku
         patched = patch_targeted_generic_actor(patched, target)
         count[f'npc_generic_actor:{target}'] = 1
     for target in grunt_targets:
-        patched = patch_targeted_grunt(patched, target, override_equipment=grunt_equipment_override)
+        patched = patch_targeted_grunt(patched, target, override_equipment=grunt_equipment_override, original_model=grunt_original_model)
         count[f'grunt:{target}'] = 1
     return patched, count
 
 
-def make_trial(blob: bytes, include_generic=False, generic_targets=(), pickup_proxies=False, grunt_targets=(), grunt_equipment_override=False):
+def make_trial(blob: bytes, include_generic=False, generic_targets=(), pickup_proxies=False, grunt_targets=(), grunt_equipment_override=False, grunt_original_model=False):
     version, offset, size, lumpversion, data = read_bsp(blob)
-    changed, counts = patch_entities(data, include_generic, generic_targets, pickup_proxies, grunt_targets, grunt_equipment_override)
+    changed, counts = patch_entities(data, include_generic, generic_targets, pickup_proxies, grunt_targets, grunt_equipment_override, grunt_original_model)
     if not any(counts.values()):
         return None, counts
     # Appending a replacement lump avoids relocating any existing maps/lighting
@@ -216,6 +228,8 @@ def main(argv=None):
     ap.add_argument('--include-generic',action='store_true',help='also try ALL npc_generic_actor -> npc_citizen (old experiment)')
     ap.add_argument('--pickup-proxies',action='store_true',
                     help='opt-in SiN weapon and ammo pickups -> stock HL2 counterparts; not original mechanics')
+    ap.add_argument('--grunt-original-model',action='store_true',
+                    help='opt-in set original SiN MobGrunt .mdl on a single named assault-rifle grunt copy')
     ap.add_argument('--grunt-equipment-override',action='store_true',
                     help='opt-in override selected SiN grunt equipment to weapon_ar2 in test COPY')
     ap.add_argument('--grunt-target',action='append',default=[],metavar='TARGETNAME',
@@ -228,7 +242,9 @@ def main(argv=None):
         data=source.read_bytes()
         if args.grunt_equipment_override and not args.grunt_target:
             raise BspError('--grunt-equipment-override requires --grunt-target')
-        result, counts=make_trial(data,args.include_generic,args.generic_target,args.pickup_proxies,args.grunt_target,args.grunt_equipment_override)
+        if args.grunt_original_model and not args.grunt_target:
+            raise BspError('--grunt-original-model requires --grunt-target')
+        result, counts=make_trial(data,args.include_generic,args.generic_target,args.pickup_proxies,args.grunt_target,args.grunt_equipment_override,args.grunt_original_model)
         print(f"Source {source.name}: class rewrites {counts}")
         if result is None:
             if args.verify:
