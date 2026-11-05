@@ -253,4 +253,41 @@ class TrialTest(unittest.TestCase):
                 grunt.replace(b'\n}', b'\n"additionalequipment" "weapon_sin_rifle"\n}')
             ), grunt_targets=['roof_grunt_1_seq1'])
 
+
+    def test_explicit_equipment_override_does_not_touch_original(self):
+        original = fixture()
+        entity = (
+            b'{\n"classname" "npc_druglab_grunt_assault_rifle"\n'
+            b'"targetname" "roof_grunt_1_seq1"\n'
+            b'"additionalequipment" "weapon_assault_rifle"\n'
+            b'"spawnflags" "516"\n}\n'
+            b'{\n"classname" "npc_druglab_grunt_elite"\n'
+            b'"targetname" "untouched_elite"\n'
+            b'"additionalequipment" "weapon_other"\n}\n'
+        )
+        modified_entity = trial.read_bsp(original)[-1][:-1] + entity + b'\0'
+        source = bytearray(original)
+        struct.pack_into('<iii4s', source, 8, len(source), len(modified_entity), 0, b'\0'*4)
+        source.extend(modified_entity)
+        source = bytes(source)
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(source, grunt_targets=['roof_grunt_1_seq1'])
+        copy, counts = trial.make_trial(
+            source, grunt_targets=['roof_grunt_1_seq1'], grunt_equipment_override=True
+        )
+        body = trial.read_bsp(copy)[-1]
+        self.assertEqual(counts['grunt:roof_grunt_1_seq1'], 1)
+        self.assertIn(b'"additionalequipment" "weapon_ar2"', body)
+        self.assertIn(b'"additionalequipment" "weapon_other"', body)
+        self.assertNotIn(b'"additionalequipment" "weapon_assault_rifle"', body)
+        self.assertIn(b'"additionalequipment" "weapon_assault_rifle"', trial.read_bsp(source)[-1])
+        self.assertEqual(source[1400:1404], copy[1400:1404])
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = pathlib.Path(d)/'source.bsp', pathlib.Path(d)/'trial.bsp'
+            src.write_bytes(source)
+            opts = ['--grunt-target', 'roof_grunt_1_seq1', '--grunt-equipment-override']
+            self.assertEqual(trial.main([str(src), *opts, '--write', str(dst)]), 0)
+            self.assertEqual(trial.main([str(src), *opts, '--verify', str(dst)]), 0)
+            self.assertEqual(src.read_bytes(), source)
+
 if __name__=='__main__': unittest.main()
