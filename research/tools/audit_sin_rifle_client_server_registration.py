@@ -155,24 +155,24 @@ def original_primary_shared_fire_path(pe: PEImage) -> dict:
     # The weapon-specific 0x3AC virtual returns a constant 0.075 float.
     require(struct.unpack('<I', pe.at(0x224776AC + 0x3AC, 4))[0] == 0x22313850,
             'rifle fire interval virtual slot mismatch')
-    require(pe.at(0x22313850, 7) == b'\\xd9\\x05\\x04\\x72\\x47\\x22\\xc3',
+    require(pe.at(0x22313850, 7) == b'\xd9\x05\x04\x72\x47\x22\xc3',
             'rifle interval method shape differs')
     fire_interval, = struct.unpack('<f', pe.at(0x22477204, 4))
     require(abs(fire_interval - 0.075) < 1e-6,
             'original rifle fire interval constant differs')
-    require(pe.at(0x2230B4C8, 6) == b'\\xff\\x90\\xac\\x03\\x00\\x00',
+    require(pe.at(0x2230B4C8, 6) == b'\xff\x90\xac\x03\x00\x00',
             'shared firing routine lacks interval virtual dispatch')
     require(call_target(0x2230BA7D, pe.at(0x2230BA7D, 5)) == 0x2230B430,
             'single-fire branch no longer calls shared shot routine')
-    require(pe.at(0x2230BA76, 5) == b'\\xe9\\x75\\xfd\\xff\\xff',
+    require(pe.at(0x2230BA76, 5) == b'\xe9\x75\xfd\xff\xff',
             'shared fire mode/burst branch changed')
     require(call_target(0x2230B84E, pe.at(0x2230B84E, 5)) == 0x2230B430,
             'multi-shot path no longer calls shared shot routine')
-    require(pe.at(0x2230B584, 6) == b'\\x8b\\x86\\xec\\x04\\x00\\x00',
+    require(pe.at(0x2230B584, 6) == b'\x8b\x86\xec\x04\x00\x00',
             'shared shot routine no longer reads clip at +0x4EC')
     require(call_target(0x2230B59F, pe.at(0x2230B59F, 5)) == 0x222A8210,
             'shared bullet count to clip subtract helper call differs')
-    require(pe.at(0x222A821B, 2) == b'\\x2b\\x0e',
+    require(pe.at(0x222A821B, 2) == b'\x2b\x0e',
             'clip helper no longer subtracts count')
     return {
         'rifle_fire_mode_dispatch_vtable_offset': '0x388',
