@@ -64,7 +64,7 @@ set_target_properties(sin_compat_host_abi PROPERTIES CXX_VISIBILITY_PRESET hidde
 # registered native Source entity; SourceVR factory integration remains open.
 add_library(sin_original_rifle_bridge SHARED src/original_rifle_c_api_v1.cpp)
 target_include_directories(sin_original_rifle_bridge PUBLIC include)
-target_link_libraries(sin_original_rifle_bridge PRIVATE sin_compat_host_abi)
+target_link_libraries(sin_original_rifle_bridge PRIVATE sin_compat_host_abi sin_weapon_runtime)
 set_target_properties(sin_original_rifle_bridge PROPERTIES
     CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 if(UNIX AND NOT APPLE)
