@@ -1,7 +1,8 @@
 # November 2026 original DLL and HL2-log research
 
-Independent SiN Episodes: Emergence reverse-engineering notes, archived on **2026-11-04**.
+Independent SiN Episodes: Emergence reverse-engineering notes, begun on **2026-11-04**, with later rounds appended.
 
+- [Security-bot pulse projectile and three jetpack variants: Deep Dive 16](reports/SiN_Original_Jetpack_SecurityBot_Pulse_DeepDive_16.md)
 - [Jetpack grunts & security bots: Deep Dive 15](reports/SiN_Original_Jetpack_SecurityBot_DeepDive_15.md)
 - [HL2 unknown entity errors: Deep Dive 08](reports/SiN_HL2_Runtime_Entity_Failure_DeepDive_08.md)
 - [DLL and archive crosswalk: Deep Dive 09](reports/SiN_Original_Drive_DLL_Asset_Crosswalk_DeepDive_09.md)
