@@ -143,6 +143,28 @@ This provides a concrete route for restoring the original `begin_roof_battle_seq
 
 Verifier: `research/tools/audit_sin_original_mobgrunt_datamap.py`, with synthetic regression tests `research/tests/test_audit_sin_original_mobgrunt_datamap.py`. It refuses any unexpected original DLL hash, datamap offset, field type, registration string or handler instruction. It neither outputs machine code nor needs any proprietary binary in the GitHub repository.
 
+## Complete original MobGrunt data-map: 39 descriptors recovered
+
+The original `CNPC_MobGrunt` data-map is now fully enumerated at `0x22534E8C..0x22535644`: **39 contiguous 52-byte descriptors**. The updated verifier compares all **33 saved/input-key fields** and **6 Hammer input handlers** against the original binary's field strings, type IDs, object offsets, flags, Hammer names and function pointers. A discontinuity, duplicate, missing entry or changed descriptor fails the check.
+
+Additional reconstructed member fields include `m_vecTossVelocity +0xC58`, `m_bStanding +0xC64`, `m_bShouldPatrol +0xC65`, `m_bFirstEncounter +0xC67`, `m_flNextGrenadeCheck +0xC80`, `m_bWounded +0xCA0`, `m_bHaveSat +0xCB0`, `m_hCurrentGrenade +0xCB8` and `m_hTargetBarrel +0xCBC`. This is a serialization/input map, **not** an entire source class layout or a proof of runtime tactics. The verifier emits the complete human-readable inventory without reproducing game code.
+
+### Original patrol and grenade controls
+
+Native `InputStartPatrolling` at `0x22357E30` writes byte `1` to `this+0xC65`, mapped to `m_bShouldPatrol`. `InputStopPatrolling` at `0x22357E40` writes `0` to the same boolean. These are recovered and tested directly from the original x86 instruction bytes.
+
+Crucially, the data-map establishes that the earlier unidentified `this+0xC6C` boolean is actually **`m_bGrenadeHappy`**. `InputThrowGrenades` writes the supplied boolean to this member and resets `m_flGrenadeHeight` at `+0xC70`. It does not directly spawn a grenade in that input handler. This explains how map scripts can enable grenade behavior independently of the rifle's secondary `grenade_ar` projectile path.
+
+### `InputAssault`: string input to an internal assault behavior
+
+The x86 handler at `0x22357E50` tests the incoming Source variant's string type ID `2`; for a non-string value, it calls conversion helper `0x221561D0`, and for a null string uses an empty-string fallback at `0x223D47A8`. It interns the resulting string via `0x221F3DE0`, then passes it and numeric state `3` to `0x220CFC00`, operating on the **internal behavior object at `this+0xDB8`**. The original map's relay value `seq1_assualt_point_start` therefore follows a real named-input processing path. The actual meaning of behavior state `3`, targeting, movement schedules and squad coordination remain to be decompiled.
+
+### `LookOn` and `LookOff`: original engine flag transitions
+
+At `0x2235DDC0`, `InputLookOn` clears bit `0x00010000` from a flags word at `this+0xB4`; at `0x2235F260`, `InputLookOff` sets that same bit. Both paths contain a matching dirty/notification update when the flag changes. This strongly suggests target-visibility/AI targetability control, **not** an animation sequence command. Source SDK singleplayer branches define `FL_NOTARGET` as bit `1<<16`; this is consistent with the observed operation, but the exact branch used by this original SiN executable should be validated before fixing a symbolic constant in the port.
+
+Source SDK branch-sensitive reference: https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/public/const.h
+
 ## Verify without modifying the game
 
 ```powershell
