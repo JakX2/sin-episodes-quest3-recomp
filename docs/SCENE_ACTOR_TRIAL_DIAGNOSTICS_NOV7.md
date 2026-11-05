@@ -132,3 +132,27 @@ py research/tools/sin_scene_actor_diagnostics.py preflight --bsp "D:\SiN_Test_On
 The `--generic-target` selector refuses missing or ambiguous names, non-`npc_generic_actor` source classes, and `--include-generic` conflicts. It still creates only a separate output BSP. To actually load the experimental variant via `map se1_finale01`, the owner must select it within the already-existing HL2 custom test setup, backing up any previous trial map and avoiding multiple copies of the same map name in the search path.
 
 **Evidence required:** absence/presence of `generic_actor` unknown-class errors, whether `end_hardcorps_heli1` exists as an NPC, whether `idle` and `highrise_scene` are available in its model, whether `OnEndSequence` fires and the helicopter is removed. If the engine rejects `generic_actor`, stop and implement a real compatible entity in a Source-based game module rather than substituting a static prop. This is a **desktop engine compatibility hypothesis**, not a complete SiN vehicle/NPC behavior implementation.
+
+
+## Owner's live HL2 result: helicopter 1 scripted sequence completed (November 5)
+
+**Evidence: owner-supplied HL2 console capture and screenshot**, using a copy-only trial map from this branch (not Quest/Android). After changing only `end_hardcorps_heli1` from SiN `npc_generic_actor` to HL2 `generic_actor`, the running HL2 engine displayed the original model `models/vehicles/hardcorps_helicopter/helicopter_prop.mdl` and reported that the actor exists with classname `generic_actor` and schedule `SCHED_SCRIPTED_WAIT`. The owner then manually executed:
+
+```text
+ent_fire end_hardcorps_heli1_sequence BeginSequence
+```
+
+The observed console reported the following event chain:
+
+```text
+(132.76) input : end_hardcorps_heli1_sequence.BeginSequence()
+(150.68) output: (scripted_sequence,end_hardcorps_heli1_sequence) -> (end_hardcorps_heli1,Kill,2.0)()
+(150.68) output: (scripted_sequence,end_hardcorps_heli1_sequence) -> (end_hardcorps_heli2,Wake,2.0)()
+(152.68) input end_hardcorps_heli1_sequence: end_hardcorps_heli1.Kill()
+Cancelling script: highrise_scene
+unhandled input: (Wake) -> (end_hardcorps_heli2), from (scripted_sequence,end_hardcorps_heli1_sequence); target entity not found
+```
+
+**Validated:** the first actor exists in actual HL2 and is renderable; `BeginSequence` is accepted; the associated `OnEndSequence` outputs fire; the +2 second kill input reaches the first helicopter. The screenshot also depicts a helicopter airborne with rotating rotor blades, consistent with the animation. The trailing `Cancelling script` occurs after the first actor's scheduled removal and must not alone be interpreted as failed sequence startup.
+
+**Next diagnosed blocker:** `end_hardcorps_heli2` is missing when the first sequence's completion output sends `Wake`. Identify the original BSP classname, model, targetname, and any `scripted_sequence` fields of helicopter 2 before adding another targeted actor substitution. Test once with the new isolated BSP rather than mutating the working helicopter-1 version. This finding does not establish full automatic endgame flow, scene.cache / Finale_Cinematic VCD playback, complete SiN generic-actor behavior, or Quest 3 compatibility.
