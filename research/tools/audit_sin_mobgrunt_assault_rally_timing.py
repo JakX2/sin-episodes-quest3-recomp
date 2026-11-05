@@ -32,6 +32,34 @@ def original_float(pe, address, expected):
     return actual
 
 
+# Original 2006 server.dll static registry thunks: (class, entry VA, name VA, factory VA).
+ASSAULT_REGISTRATIONS = (
+    ('assault_rallypoint', 0x223B9190, 0x223F5640, 0x224E4BB8),
+    ('assault_assaultpoint', 0x223B91B0, 0x223F5654, 0x224E4BBC),
+    ('ai_goal_assault', 0x223B91F0, 0x223F566C, 0x224E4BC0),
+)
+
+
+def verify_assault_class_registration(pe):
+    registrations = []
+    for name, entry, name_va, factory_va in ASSAULT_REGISTRATIONS:
+        chunk = pe.at(entry, 22)
+        if not (chunk[:1] == b'\xe8' and chunk[5:8] == b'\x8b\x10\x68' and
+                chunk[12] == 0x68 and chunk[17:] == b'\x8b\xc8\xff\x12\xc3'):
+            raise VerificationError(f'{name}: original registry thunk shape differs')
+        call_to(pe, entry, 0x2228B110)
+        if (struct.unpack_from('<I', chunk, 8)[0] != name_va or
+                struct.unpack_from('<I', chunk, 13)[0] != factory_va):
+            raise VerificationError(f'{name}: original name/factory pointer differs')
+        same(pe, name_va, name.encode('ascii') + b'\0', name + ' original class literal')
+        registrations.append({
+            'classname': name, 'registration_va': f'0x{entry:08X}',
+            'factory_object_va': f'0x{factory_va:08X}',
+            'registry_getter_va': '0x2228B110',
+        })
+    return registrations
+
+
 def audit_code(pe):
     # InputAssault turns the Source variant into a string; an assault-behavior
     # subobject at this+0xDB8 takes that cue/rally point and an integer 3.
@@ -81,6 +109,7 @@ def audit_code(pe):
     same(pe, 0x2235F461, b'\x88\x9d\x6c\x0c\x00\x00', 'flag reset')
 
     return {
+        'registered_assault_entities': verify_assault_class_registration(pe),
         'assault_input': {
             'handler_va': '0x22357E50',
             'string_variant_type_comparison': 2,
