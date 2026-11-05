@@ -165,6 +165,29 @@ At `0x2235DDC0`, `InputLookOn` clears bit `0x00010000` from a flags word at `thi
 
 Source SDK branch-sensitive reference: https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/public/const.h
 
+## Verified original MSVC32 virtual-table and inheritance topology
+
+The full original `server.dll` PE was further inspected for MSVC RTTI Complete Object Locators (COL), class-hierarchy descriptors and constructor-assigned virtual pointers. Unlike matching arbitrary names, these checks bind **specific native C++ classes to original object layouts and constructor instructions**. New verifier: `research/tools/audit_sin_original_druglab_vtables.py`.
+
+| Original C++ class | Primary vtable | Auxiliary vtable at +0x790 | Auxiliary vtable at +0xC14 |
+|---|---|---|---|
+| `CNPC_MobGrunt` | `0x2249AAA4` | `0x2249AA7C` | `0x2249AA40` |
+| `CNPC_EliteGrunt` | `0x2248DF04` | `0x2248DED8` | `0x2248DE9C` |
+
+Original constructors install these three pointers in an ordered sequence beginning at `0x2236A35F` for MobGrunt and `0x22355CD8` for Elite. The corresponding original Complete Object Locators carry exact offsets `0`, `0x790` and `0xC14`. Both classes share auxiliary interface implementations, while their primary virtual tables differ. These offsets describe original 32-bit MSVC layout only, not a Quest 3 ABI.
+
+**RTTI hierarchy establishes both classes are siblings under a common base `CNPC_GruntBase`.** Each class-hierarchy descriptor lists **17 entries including self**, spanning `CAI_BaseHumanoid`, `CAI_BaseNPC`, `CBaseCombatCharacter` and `CBaseEntity`. The interface positions identify the auxiliary subobjects:
+
+| Subobject offset | Original RTTI types |
+|---|---|
+| `0x000` | Derived grunt, shared `CNPC_GruntBase` and Source entity/AI base classes |
+| `0x790` | `CAI_DefMovementSink`, `IAI_MovementSink` |
+| `0xC14` | `IBehaviorBackBridge` |
+
+Therefore reconstruct **`CNPC_GruntBase` once with common behavior**, then provide distinct subclasses/factories for the rifle MobGrunt and elite. This is far more faithful than treating the elite as a cosmetic MobGrunt or leaving both as stock Combine NPCs.
+
+The new synthetic regression tests validate both class vtables, constructor assignments and 17-entry hierarchy, including failed assertions when RTTI or movement subobject offsets change. The owner-supplied pinned original `server.dll` was also inspected locally at those exact virtual addresses. No original binary bytes are distributed by the repository.
+
 ## Verify without modifying the game
 
 ```powershell
