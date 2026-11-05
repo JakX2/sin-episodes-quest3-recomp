@@ -72,6 +72,26 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
         self.assertEqual(result['conditional_values']['disabled'], [1.0, 6.0])
         self.assertEqual(result['conditional_values']['initialization_timestamp_offset'], '0xC80')
 
+    def test_original_sdk_contract_explains_rally_point_parameter_and_cue_three(self):
+        base = b'input Assault(string) : "Start an assault. Parameter passed in should be the name of the rally point."'
+        game = (
+            b'@PointClass = assault_rallypoint : "rally"\n'
+            b'@PointClass = assault_assaultpoint : "assault"\n'
+            b'@PointClass = ai_goal_assault : "goal"\n'
+            b'AssaultCue(choices) : "Assault Cue" : 1 = [\n'
+            b'1 : "Entity System Input"\n2 : "Gunfire"\n'
+            b'3 : "Don\'t wait for a cue."\n]\n'
+        )
+        found = a.check_sdk_fgd(base, game)
+        self.assertIn('rally point', found['assault_input'])
+        self.assertEqual(found['assault_cue_value_3'], "Don't wait for a cue.")
+        self.assertIn('assault_rallypoint', found['assault_entity_classnames'])
+
+        with self.assertRaises(a.VerificationError):
+            a.check_sdk_fgd(base.replace(b'rally point', b'assault point'), game)
+        with self.assertRaises(a.VerificationError):
+            a.check_sdk_fgd(base, game.replace(b'3 :', b'4 :'))
+
     def test_refuses_wrong_assault_behavior_target(self):
         data = fixture()
         data[0x22357E8B] = call(0x22357E8B, 0x220CFC20)
