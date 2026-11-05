@@ -61,3 +61,25 @@ The owner ran `Test-Path` against `D:\SiN` and confirmed all four **.mdl** files
 This confirms **file existence only**, not valid model headers, required .vvd/.vtx sidecar presence, shader/material mounting, animations, compatibility with HL2/SourceVR, or functioning rifle/NPC game code. No original asset bytes are committed.
 
 **Next local desktop HL2 runtime smoke (no BSP rewrite):** with original SiN assets already mounted, console `sv_cheats 1` followed by `ent_create prop_dynamic model models/characters/MobGrunt/mobgrunt.mdl` and, separately, `ent_create prop_dynamic model models/weapons/w_assault_rifle/w_assault_rifle.mdl`. Check visible geometry, missing material/model messages and crashes. This tests rendering of an actor's static pose and the world weapon only, **not** original NPC AI or gun firing; some NPC/viewmodel-only models may refuse prop_dynamic. Do not treat such refusal as evidence the original model is corrupt. If runtime fails, inspect model sidecars and .mdl version/checksum before trying more workarounds.
+
+## Owner live HL2 visual model tests (Nov 5, 2026)
+
+The owner supplied **two in-game screenshots** of the original MobGrunt model(s) visibly rendered in a SiN finale map inside desktop HL2, with coherent original suit textures/materials, plus the world-model assault rifle visible as a separate prop. The grunt(s) appear in a static reference/T-pose; **no animation or AI behavior is established by these screenshots**.
+
+Developer console confirms both original model references were loaded:
+```
+Loading virtual model for Characters\\MobGrunt\\MobGrunt.mdl
+Loading models/characters/MobGrunt/mobgrunt_anims.mdl
+Loading: models/weapons/w_assault_rifle/w_assault_rifle.mdl
+```
+This provides **live desktop Source compatibility evidence** for visual models and the MobGrunt animation companion load, beyond the previous on-disk existence test. It does **not** prove a valid gameplay sequence is resolved or played, original gun fires, or an NPC factory exists on Quest.
+
+The provided console also logs:
+```
+Trying to precache breakable prop, but has no model name
+prop_dynamic at (0.000, 0.000, 0.000) has no model name!
+Late precache of models/characters/MobGrunt/mobgrunt.mdl, need to rebuild modelsounds.cache
+```
+These are warnings for the console-based prop creation/precache path and should not be interpreted as failure of the visibly loaded model. They may also signal an additional empty prop created by `ent_create`. The next test should use a proper model-spawn command and, separately, test an actual **named animation sequence** on a targeted MobGrunt prop. Avoid treating `SetAnimation idle` failure as decisive unless the sequence name is verified through the Source SDK model viewer, the model's sequence table, or a trustworthy instrumented engine read.
+
+The test has not involved editing original game assets, native engine binaries, or the BSP.
