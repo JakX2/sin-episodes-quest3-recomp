@@ -18,9 +18,10 @@ class FakePE:
         self.mapping = mapping
 
     def at(self, va, size):
-        if va not in self.mapping or len(self.mapping[va]) != size:
-            raise a.VerificationError(f'no synthetic original address {va:08X}')
-        return self.mapping[va]
+        for start, blob in self.mapping.items():
+            if start <= va and va + size <= start + len(blob):
+                return blob[va - start:va - start + size]
+        raise a.VerificationError(f'no synthetic original range {va:08X}+{size}')
 
 
 def call(src, dst):
