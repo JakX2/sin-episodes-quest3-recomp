@@ -49,3 +49,15 @@ Source: https://github.com/tinsarfal/SourceVR (README, Install content mods sect
 **Consequence:** Copying `libsin_original_rifle_bridge.so` to `custom` or attempting to reuse the original Windows `client.dll` / `server.dll` cannot activate an original SiN weapon. The bridge is a buildable **integration component**, not a deployable content mod or factory injection for this APK.
 
 The safe next paths are (1) content-only desktop/Quest SourceVR visual/map smoke tests while keeping original game logic research separate, or (2) obtain or independently develop a legally compatible native Source server-game build with a documented replacement-module loader, then implement and validate `weapon_assault_rifle` factory registration there. Never assume runtime ABI compatibility from the matching `CreateInterface` symbol alone.
+
+## Original assets existence confirmed by owner (Nov 5, 2026)
+
+The owner ran `Test-Path` against `D:\SiN` and confirmed all four **.mdl** files exist:
+- `models/weapons/v_assault_rifle/v_assault_rifle.mdl`
+- `models/weapons/w_assault_rifle/w_assault_rifle.mdl`
+- `models/weapons/grenades/ar_grenade.mdl`
+- `models/characters/MobGrunt/mobgrunt.mdl`
+
+This confirms **file existence only**, not valid model headers, required .vvd/.vtx sidecar presence, shader/material mounting, animations, compatibility with HL2/SourceVR, or functioning rifle/NPC game code. No original asset bytes are committed.
+
+**Next local desktop HL2 runtime smoke (no BSP rewrite):** with original SiN assets already mounted, console `sv_cheats 1` followed by `prop_dynamic_create models/characters/MobGrunt/mobgrunt.mdl` and, separately, `prop_dynamic_create models/weapons/w_assault_rifle/w_assault_rifle.mdl`. Check visible geometry, missing material/model messages and crashes. This tests rendering of an actor's static pose and the world weapon only, **not** original NPC AI or gun firing; some NPC/viewmodel-only models may refuse prop_dynamic. Do not treat such refusal as evidence the original model is corrupt. If runtime fails, inspect model sidecars and .mdl version/checksum before trying more workarounds.
