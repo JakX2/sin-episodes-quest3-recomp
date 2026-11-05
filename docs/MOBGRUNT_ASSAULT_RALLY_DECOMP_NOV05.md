@@ -24,6 +24,16 @@ The SDK's `SinEpisodes.fgd` also declares an `ai_goal_assault` `AssaultCue` choi
 | `assault_assaultpoint` | `assaultgroup`, `nextassaultpoint`, `assaulttimeout`, `clearoncontact`, `allowdiversion`, `nevertimeout` |
 | `ai_goal_assault` | `actor`, `rallypoint`, `AssaultCue`, `Activate`, `Deactivate`, `BeginAssault` |
 
+The **three assault classes are registered in the actual 2006 `server.dll`**, not merely declared as editor-side types:
+
+| Native entity class | Registry thunk VA | Factory object VA |
+|---|---|---|
+| `assault_rallypoint` | `0x223B9190` | `0x224E4BB8` |
+| `assault_assaultpoint` | `0x223B91B0` | `0x224E4BBC` |
+| `ai_goal_assault` | `0x223B91F0` | `0x224E4BC0` |
+
+All three 22-byte x86 thunks call original registry getter `0x2228B110` and register a distinct classname/factory object. The verifier checks the complete instruction shapes and target C strings, rather than treating string presence as registration proof.
+
 This is how the original map's assault-order logic is intended to connect to AI navigation and rally points. The user's desktop HL2 test verified the map-defined `roof_grunt_1_seq1` with temporary `npc_combine_s` and `weapon_ar2`; **it did not verify Ritual's native rally-point schedule**. The original relay `begin_roof_battle_seq1` sends an `Assault` input naming `seq1_assualt_point_start` to `roof_grunt_2_seq1`, not directly to the converted grunt #1. Before implementing that encounter, inspect this exact target's BSP classname and whether it is a rallypoint or assaultpoint, without silently correcting the original spelling.
 
 ## Grenade-related toggle and timing, original server x86
