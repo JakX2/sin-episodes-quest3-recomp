@@ -42,3 +42,15 @@ For rollback use `map se1_finale01_dual_heli_trial` (the earlier known working d
 ## Separate blockers
 
 This experiment does not fix the many missing SinTEK NPC classes, `trigger_dynamic_difficulty`, `item_antigen_dispenser`, `logic_choreographed_scene`/missing `Finale_Cinematic.vcd` in `scenes.image`, or Android/standalone VR support. Those require independent tests and/or native code. The user's verified dual-helicopter sequence remains the desktop runtime baseline.
+
+## Owner's desktop HL2 runtime observation (Nov 5, 2026)
+
+The user launched the new pickup-proxy copy of the SiN finale BSP and shared a screenshot plus console output. The screenshot depicts a first-person weapon held by the player and a small pickup box on the floor of a stairwell. The visible console section contains **no `Attempted to create unknown entity type` messages for the five pickup classes**: `weapon_magnum`, `weapon_assault_rifle`, `weapon_scattergun`, `weapon_grenade`, and `item_ammo_magnum`. The already validated first helicopter scripted sequence was still matched to `end_hardcorps_heli1`, reported by the log as:
+
+```text
+scripted_sequence 535:"end_hardcorps_heli1_sequence" using NPC 534:"end_hardcorps_heli1"(end_hardcorps_heli1)
+```
+
+This is **initial stock-HL2 entity-class acceptance and rendering evidence**, not yet a proof of weapon pickup, ammo increment, fire/reload, or original SiN-specific gameplay mechanics. The user did not provide before/after pickup ammo counters or a firing test. Follow-up: walk over a known SiN pickup, compare HUD ammo/inventory before/after, fire the converted weapon, and note whether it persists after pickup.
+
+Independent blockers persist in the same log: `unhandled input: (Wake) -> (helicopter)`; `unhandled input: (Wake) -> (roddick)`; `Finale_Cinematic.vcd missing from scenes.image`; incompatible `finale_encounter.mp3` sample rate. Do not conflate these with the pickup proxy result. No Android, Quest 3, or true standalone game runtime tested by this screenshot.
