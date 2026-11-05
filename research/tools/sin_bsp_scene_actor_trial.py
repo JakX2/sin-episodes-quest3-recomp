@@ -8,6 +8,7 @@ Never rewrites the input, never redistributes the game map. Usage:
   python sin_bsp_scene_actor_trial.py map.bsp --verify map_actor_trial.bsp
   python sin_bsp_scene_actor_trial.py map.bsp --generic-target heli_name --write heli_trial.bsp
   python sin_bsp_scene_actor_trial.py map.bsp --pickup-proxies --write pickup_trial.bsp
+  python sin_bsp_scene_actor_trial.py map.bsp --grunt-target roof_grunt_1_seq1 --write grunt_trial.bsp
 
 Use only on lawfully obtained local BSPs; test the output in a separate mod
 folder, with the correct original assets and scene cache mounted.
@@ -99,7 +100,53 @@ def patch_targeted_generic_actor(data: bytes, name: str):
     return data[:start] + replacement + data[stop:]
 
 
-def patch_entities(data: bytes, include_generic=False, generic_targets=(), pickup_proxies=False):
+
+def patch_targeted_grunt(data: bytes, name: str):
+    """Replace EXACTLY one uniquely named SiN grunt with armed HL2 npc_combine_s.
+
+    Preserve original keys including targetname, squadname, and spawnflags.
+    Add AR2 equipment only when absent. Fail closed on duplicate targetnames,
+    unexpected classes, or incompatible existing equipment. This is a desktop
+    test proxy, not a faithful Ritual enemy implementation.
+    """
+    if not name or not name.isascii() or any(ch in name for ch in '"{}\\'):
+        raise BspError('Invalid --grunt-target; expected a plain ASCII targetname')
+
+    wanted = name.encode('ascii').lower()
+    matches = []
+    expected = {b'npc_druglab_grunt_assault_rifle', b'npc_druglab_grunt_elite'}
+    for match in ENTITY_BLOCK_RE.finditer(data):
+        block = match.group(0)
+        pairs = [(key.lower(), value) for key, value in KV_PAIR_RE.findall(block)]
+        names = [v for k, v in pairs if k == b'targetname']
+        if not any(v.lower() == wanted for v in names):
+            continue
+
+        classes = [v.lower() for k, v in pairs if k == b'classname']
+        if len(names) != 1 or classes not in (
+            [b'npc_druglab_grunt_assault_rifle'], [b'npc_druglab_grunt_elite']
+        ):
+            raise BspError(f'Target {name} must be exactly one supported SiN grunt')
+
+        equipment = [v.lower() for k, v in pairs if k == b'additionalequipment']
+        if equipment and equipment != [b'weapon_ar2']:
+            raise BspError(f'Target {name} already has incompatible equipment')
+
+        changed, count = CLASSNAME_RE.subn(
+            lambda m: m.group(1) + b'npc_combine_s' + m.group(3), block
+        )
+        if count != 1:
+            raise BspError(f'Could not rewrite classname for target {name}')
+        if not equipment:
+            changed = changed[:-1] + b'\n"additionalequipment" "weapon_ar2"\n}'
+        matches.append((match.span(), changed))
+
+    if len(matches) != 1:
+        raise BspError(f'Expected exactly one uniquely named SiN grunt {name}; found {len(matches)}')
+    (start, stop), replacement = matches[0]
+    return data[:start] + replacement + data[stop:]
+
+def patch_entities(data: bytes, include_generic=False, generic_targets=(), pickup_proxies=False, grunt_targets=()):
     replacements = dict(ALIASES)
     if include_generic:
         replacements.update(GENERIC)
@@ -118,12 +165,15 @@ def patch_entities(data: bytes, include_generic=False, generic_targets=(), picku
     for target in generic_targets:
         patched = patch_targeted_generic_actor(patched, target)
         count[f'npc_generic_actor:{target}'] = 1
+    for target in grunt_targets:
+        patched = patch_targeted_grunt(patched, target)
+        count[f'grunt:{target}'] = 1
     return patched, count
 
 
-def make_trial(blob: bytes, include_generic=False, generic_targets=(), pickup_proxies=False):
+def make_trial(blob: bytes, include_generic=False, generic_targets=(), pickup_proxies=False, grunt_targets=()):
     version, offset, size, lumpversion, data = read_bsp(blob)
-    changed, counts = patch_entities(data, include_generic, generic_targets, pickup_proxies)
+    changed, counts = patch_entities(data, include_generic, generic_targets, pickup_proxies, grunt_targets)
     if not any(counts.values()):
         return None, counts
     # Appending a replacement lump avoids relocating any existing maps/lighting
@@ -153,13 +203,15 @@ def main(argv=None):
     ap.add_argument('--include-generic',action='store_true',help='also try ALL npc_generic_actor -> npc_citizen (old experiment)')
     ap.add_argument('--pickup-proxies',action='store_true',
                     help='opt-in SiN weapon and ammo pickups -> stock HL2 counterparts; not original mechanics')
+    ap.add_argument('--grunt-target',action='append',default=[],metavar='TARGETNAME',
+                    help='only replace this uniquely named SiN grunt with armed npc_combine_s (repeatable)')
     ap.add_argument('--generic-target',action='append',default=[],metavar='TARGETNAME',
                     help='only rewrite this named npc_generic_actor to generic_actor (repeatable)')
     args=ap.parse_args(argv)
     source=args.bsp.resolve()
     try:
         data=source.read_bytes()
-        result, counts=make_trial(data,args.include_generic,args.generic_target,args.pickup_proxies)
+        result, counts=make_trial(data,args.include_generic,args.generic_target,args.pickup_proxies,args.grunt_target)
         print(f"Source {source.name}: class rewrites {counts}")
         if result is None:
             if args.verify:
