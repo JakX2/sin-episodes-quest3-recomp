@@ -40,6 +40,21 @@ def witness(name, type_descriptor, constructor, entries):
     return regions
 
 
+def hierarchy_witness(name, hierarchy, array):
+    td = {item[0]: item[1] for item in audit.CLASSES}[name]
+    slots = [0] * 17
+    regs = []
+    all_types = [(0, name, td, 0)] + list(audit.BASE_WITNESSES)
+    for index, base_name, type_va, disp in all_types:
+        bcd = 0x13000000 + 0x40*index
+        slots[index] = bcd
+        regs.append((bcd, struct.pack('<3I', type_va, 0, disp)))
+        regs.append((type_va+8, ('.?AV'+base_name+'@@\0').encode('ascii')))
+    regs.append((hierarchy, struct.pack('<4I', 0, 1, 17, array)))
+    regs.append((array, struct.pack('<17I', *slots)))
+    return regs
+
+
 class DruglabVtablesTests(unittest.TestCase):
     def test_both_rtti_classes_and_three_constructor_vptrs(self):
         for name, td, constructor, entries in audit.CLASSES:
@@ -86,6 +101,31 @@ class DruglabVtablesTests(unittest.TestCase):
         with self.assertRaises(audit.VerificationError):
             audit.verify_class(FakePE(bad), name, td, constructor, entries)
 
+
+    def test_original_shared_17_base_grunt_hierarchy(self):
+        for name, hierarchy, base_array in audit.HIERARCHIES:
+            parsed = audit.verify_hierarchy(
+                FakePE(hierarchy_witness(name, hierarchy, base_array)),
+                name, hierarchy, base_array)
+            self.assertEqual(parsed['original_base_class_count_including_self'], 17)
+            bases = {v['base_rtti_class']: v['member_displacement_hex']
+                     for v in parsed['selected_inheritance_witnesses']}
+            self.assertEqual(bases['CNPC_GruntBase'], '0x0')
+            self.assertEqual(bases['CAI_BaseNPC'], '0x0')
+            self.assertEqual(bases['IAI_MovementSink'], '0x790')
+            self.assertEqual(bases['IBehaviorBackBridge'], '0xC14')
+
+    def test_changed_movement_sink_inheritance_is_rejected(self):
+        name, hierarchy, base_array = audit.HIERARCHIES[0]
+        regions = hierarchy_witness(name, hierarchy, base_array)
+        bcd = 0x13000000 + 0x40*15
+        corrupted = [
+            (va, struct.pack('<3I', 0x224DBE2C, 0, 0x794)
+             if va == bcd else raw)
+            for va, raw in regions
+        ]
+        with self.assertRaises(audit.VerificationError):
+            audit.verify_hierarchy(FakePE(corrupted), name, hierarchy, base_array)
 
 if __name__ == '__main__':
     unittest.main()
