@@ -39,3 +39,13 @@ Obtain and inspect a buildable, legally usable **game server module source tree*
 After a successful native gun test, restore `roof_grunt_1_seq1` with its original equipment, `sleepstate=3`, `NumGrenades=5`, spawnflags 516, and `grunt_unkillable` map filter. Temporary HL2 Combine/AR2 fallbacks are not the shipping plan.
 
 No proprietary game DLLs, assets, SDK archives, SourceVR modules or personal device identifiers are included.
+
+## Stock SourceVR deployment restriction (public project documentation, Nov 5)
+
+The SourceVR project's published installation README expressly says **"Mods that include their own client.dll or server.dll game code are not supported."** Its `custom` mounts are for content-only maps, materials, models, scripts, sounds, and VPK assets. This is corroborated by the owner's binary-only SourceVR loader subset: no independently buildable game-server source or documented drop-in native module registration API is present.
+
+Source: https://github.com/tinsarfal/SourceVR (README, Install content mods section).
+
+**Consequence:** Copying `libsin_original_rifle_bridge.so` to `custom` or attempting to reuse the original Windows `client.dll` / `server.dll` cannot activate an original SiN weapon. The bridge is a buildable **integration component**, not a deployable content mod or factory injection for this APK.
+
+The safe next paths are (1) content-only desktop/Quest SourceVR visual/map smoke tests while keeping original game logic research separate, or (2) obtain or independently develop a legally compatible native Source server-game build with a documented replacement-module loader, then implement and validate `weapon_assault_rifle` factory registration there. Never assume runtime ABI compatibility from the matching `CreateInterface` symbol alone.
