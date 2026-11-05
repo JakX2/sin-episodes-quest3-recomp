@@ -22,6 +22,11 @@ struct OriginalAssaultRifle {
     static constexpr const char* primary_ammo = "AR";
     // Separate secondary ammo type; clip2_size=-1, do not treat this as a magazine.
     static constexpr const char* secondary_ammo = "ARNADE";
+    // 2006 server.dll: x86 weapon routine selects the grenade_ar classname;
+    // this is evidence metadata, not a recreated projectile implementation.
+    static constexpr const char* secondary_projectile_classname = "grenade_ar";
+    static constexpr const char* secondary_projectile_model =
+        "models/weapons/grenades/ar_grenade.mdl";
 
     static constexpr int clip_size = 45;
     static constexpr int default_clip = 45;
