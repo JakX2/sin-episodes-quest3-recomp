@@ -122,3 +122,9 @@ ent_text roof_grunt_1_seq1
 If the original `sleepstate=3` prevents activation, test `ent_fire roof_grunt_1_seq1 Wake` and watch for input acceptance. A map-defined NPC may be on the rooftop far from the initial player spawn. The original `grunt_unkillable` damage filter may affect damage until the scripted trigger disables it. Distinguish these cases from model/animation incompatibility. This is **not yet verified in the user's map**; currently only manually spawned MobGrunt visual-combat behavior is confirmed.
 
 **Rollback:** `map se1_finale01_dual_heli_pickups_trial`.
+
+## Owner live map-defined spawn confirmation (Nov 5)
+
+Owner loaded the isolated `se1_finale01_mobgrunt_live_trial` test map following the one-grunt BSP rewrite and reported **"it spawned grunts"**. This supports that the test BSP loads and produces visible NPC spawns without manual `ent_create` for those observed grunts. It is not yet confirmed from this report whether the uniquely named original rooftop target `roof_grunt_1_seq1` is among those seen, whether its model is the original MobGrunt, or whether that map-defined soldier moves/shoots and responds to scripted wake inputs. The experimental rewrite intentionally targeted only `roof_grunt_1_seq1`; plural grunts may reflect other map entities, scripted spawners, or existing HL2 entities.
+
+Follow-up evidence: `ent_dump roof_grunt_1_seq1` plus observation of whether the originally modeled grunt moves/shoots without `npc_create`. Do not claim full encounter or authentic SiN AI until those results are established.
