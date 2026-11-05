@@ -120,6 +120,23 @@ Adjust the SDK ZIP path to the actual owner's folder. Output is read-only eviden
 
 Synthetic regression tests under `research/tests/test_audit_sin_mobgrunt_assault_rally_timing.py` exercise expected code shapes, calls, conditionals, original FGD semantics, and fail-closed altered instruction values. These tests run in `.github/workflows/sin-original-decomp-tests.yml`. Independently, the researcher also executed the equivalent byte-level audit **against the supplied original 2006 `server.dll`** and inspected the original SDK archive locally. Synthetic CI cannot substitute for an owner's original-asset check.
 
+## Static map assault-graph preflight (no map rewrite)
+
+A second new read-only tool, `research/tools/analyze_sin_assault_graph.py`, joins this reconstructed DLL/SDK contract to the user's **original BSP**:
+
+- Enumerates `assault_rallypoint`, `assault_assaultpoint`, and `ai_goal_assault` map entities, their chained names and configurable fields.
+- Checks rally-to-assault links, optional `nextassaultpoint` links, exact or prefix-wildcard rally target matches, and `Assault` inputs emitted by map relays.
+- Reports whether each `Assault` input parameter actually resolves to a **rally point** (as required by `base.fgd`), identifies wrong-class/missing/ambiguous targets, and retains the original spelling.
+- Does **not** modify the map, automatically rename targets, instantiate entities, or claim to execute Ritual's original AI.
+
+On the owner's Windows working tree:
+
+```powershell
+py research\tools\analyze_sin_assault_graph.py --bsp "D:\SiN\maps\se1_finale01.bsp" --output "D:\SiN_Test_Only\assault_graph.json"
+```
+
+This will specifically reveal whether `seq1_assualt_point_start`, used as the `Assault` parameter by the original `begin_roof_battle_seq1` relay, is an existing `assault_rallypoint`, an `assault_assaultpoint`, or neither. We have **not yet run this tool against the owner's actual finale BSP**, so its graph result remains pending. A synthetic graph test and missing/wrong-class cases are included in CI.
+
 ## Next code reconstruction step
 
 Trace `CAI_AssaultBehavior::SetParameters` further through its rally-point search and schedule selection, then reconstruct the map-aware `InputAssault` behavior using a legally buildable Source-compatible native game-server module. Preserve the original distinction among `CNPC_MobGrunt`, `CNPC_EliteGrunt`, the original `weapon_assault_rifle` and `grenade_ar` factories. The stock SourceVR content-only mod loader cannot load replacement server-game DLL code.
