@@ -83,3 +83,15 @@ Late precache of models/characters/MobGrunt/mobgrunt.mdl, need to rebuild models
 These are warnings for the console-based prop creation/precache path and should not be interpreted as failure of the visibly loaded model. They may also signal an additional empty prop created by `ent_create`. The next test should use a proper model-spawn command and, separately, test an actual **named animation sequence** on a targeted MobGrunt prop. Avoid treating `SetAnimation idle` failure as decisive unless the sequence name is verified through the Source SDK model viewer, the model's sequence table, or a trustworthy instrumented engine read.
 
 The test has not involved editing original game assets, native engine binaries, or the BSP.
+
+## MobGrunt animation console test correction (owner log)
+
+Previous suggestion `prop_dynamic_create models/characters/MobGrunt/mobgrunt.mdl` was incorrect: the command automatically prefixes `models/` and produced `models/models/characters/MobGrunt/mobgrunt.mdl`. Owner's subsequent `ent_fire !picker SetAnimation idle` targeted `npc_bullseye` named `jc_radio` instead of MobGrunt; **animation remains untested**. Correct model path for `prop_dynamic_create` is `characters/MobGrunt/mobgrunt.mdl`. A safer test avoids `!picker` altogether:
+
+```
+ent_create prop_dynamic model models/characters/MobGrunt/mobgrunt.mdl targetname sin_mobgrunt_anim_test
+ent_dump sin_mobgrunt_anim_test
+ent_fire sin_mobgrunt_anim_test SetAnimation idle
+```
+
+Only issue SetAnimation if `ent_dump` confirms `classname=prop_dynamic` and the expected model. `idle` is a trial sequence name, **not verified** against the original `mobgrunt_anims.mdl` table. Lack of motion by itself is not proof of incompatible animation. This is a render/animation smoke, not native AI or original weapon entity restoration.
