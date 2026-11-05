@@ -69,6 +69,9 @@ class DiagnosticsTest(unittest.TestCase):
             binding=result['scene_bindings']
             self.assertTrue(binding[0]['actors'][0]['targetname_candidate_present'])
             self.assertEqual(binding[1]['actors'][0]['aliased_targetnames'],['Jessica'])
+            self.assertTrue(binding[1]['actors'][0]['alias_targetname_found_in_entity_lump'])
+            jess = next(x for x in result['source_actor_entities'] if x['classname']=='npc_jessica')
+            self.assertTrue(jess['has_scene_alias'])
             self.assertTrue(binding[1]['actors'][0]['alias_set_in_controller'])
             self.assertTrue(all(x['present_in_supplied_archive'] for x in binding))
     def test_unresolved_alias_not_falsely_claimed_resolved(self):
@@ -79,6 +82,23 @@ class DiagnosticsTest(unittest.TestCase):
                 z.writestr('scenes/se1_highrise/jess_wakeupblade.vcd','actor "!Target2"\n')
             result=diag.preflight(bsp,scenes,[])
             self.assertFalse(result['scene_bindings'][1]['actors'][0]['alias_set_in_controller'])
+    def test_alias_to_missing_targetname_is_not_counted_as_bound_actor(self):
+        with tempfile.TemporaryDirectory() as d:
+            base=pathlib.Path(d)
+            bsp=base/'missing.bsp'
+            bsp.write_bytes(map_fixture().replace(b'"target1" "Jessica"',
+                                                  b'"target1" "Missing"'))
+            scenes=base/'scenes.zip'
+            with zipfile.ZipFile(scenes,'w') as z:
+                z.writestr('scenes/se1_highrise/jess_wakeupblade.vcd','actor "!Target1"\n')
+            result=diag.preflight(bsp,scenes,[])
+            alias=result['scene_bindings'][1]['actors'][0]
+            self.assertTrue(alias['alias_set_in_controller'])
+            self.assertEqual(alias['aliased_targetnames'],['Missing'])
+            self.assertFalse(alias['alias_targetname_found_in_entity_lump'])
+            jess=next(x for x in result['source_actor_entities'] if x['classname']=='npc_jessica')
+            self.assertFalse(jess['has_scene_alias'])
+
     def test_log_comparison_does_not_claim_animation(self):
         before='''Attempted to create unknown entity type npc_jessica!\nAttempted to create unknown entity type npc_jc!\nScene 'scenes\\abc.vcd' missing!\n'''
         after='''Attempted to create unknown entity type npc_druglab_grunt_elite!\nScene 'scenes\\abc.vcd' missing!\n'''

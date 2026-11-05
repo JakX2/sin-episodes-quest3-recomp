@@ -105,11 +105,6 @@ def preflight(bsp: pathlib.Path, scenes: pathlib.Path | None, logs: list[pathlib
     for x in summary:
         if x.get('targetname'):
             named[x['targetname'].casefold()].append(x.get('classname', ''))
-    actors = [
-        {'classname': x.get('classname', ''), 'targetname': x.get('targetname', ''),
-         'model': x.get('model', ''), 'has_scene_alias': any(k.startswith('target') and k[6:].isdigit() for k in x)}
-        for x in summary if x.get('classname','').casefold() in ACTOR_TYPES
-    ]
     ctrls = []
     for x in summary:
         if x.get('classname','').casefold() != 'logic_choreographed_scene':
@@ -118,6 +113,16 @@ def preflight(bsp: pathlib.Path, scenes: pathlib.Path | None, logs: list[pathlib
         aliases = {k:v for k,v in sorted(x.items()) if re.fullmatch(r'target[1-8]', k)}
         ctrls.append({'targetname': x.get('targetname', ''),
                       'scene': scene_path(key) if key else '', 'aliases': aliases})
+    # Alias names belong to the scene CONTROLLER, not to the NPC entity.
+    # Checking for a targetname in this map lump is only a candidate: some
+    # map scripts can spawn actors dynamically after initial BSP parsing.
+    alias_targetnames = {v.casefold() for c in ctrls for v in c['aliases'].values()}
+    actors = [
+        {'classname': x.get('classname', ''), 'targetname': x.get('targetname', ''),
+         'model': x.get('model', ''),
+         'has_scene_alias': bool(x.get('targetname')) and x['targetname'].casefold() in alias_targetnames}
+        for x in summary if x.get('classname','').casefold() in ACTOR_TYPES
+    ]
     archive = {}
     if scenes:
         with zipfile.ZipFile(scenes, 'r') as zipf:
@@ -140,8 +145,12 @@ def preflight(bsp: pathlib.Path, scenes: pathlib.Path | None, logs: list[pathlib
                 # A VCD !Target1 is a *scene alias*. It is NOT an entity name.
                 suffix = token[1:].casefold()
                 slots = [c['aliases'][suffix] for c in controllers if suffix in c['aliases']]
+                candidates = {name: named.get(name.casefold(), []) for name in slots}
                 token_rows.append({'token':token,'kind':'scene_controller_alias',
-                                   'aliased_targetnames':slots,'alias_set_in_controller': bool(slots)})
+                                   'aliased_targetnames':slots,'alias_set_in_controller': bool(slots),
+                                   'alias_targetname_found_in_entity_lump': bool(slots) and
+                                       all(name.casefold() in named for name in slots),
+                                   'alias_candidate_classnames':candidates})
             else:
                 token_rows.append({'token':token,'kind':'direct_actor_token',
                                    'targetname_candidate_present':token.casefold() in named,
@@ -159,6 +168,7 @@ def preflight(bsp: pathlib.Path, scenes: pathlib.Path | None, logs: list[pathlib
         'archive_vcd_count':len(archive) if scenes else None,
         'warnings':[
             'A targetname match is a candidate only, not proof the VCD resolves that actor.',
+            'An alias target absent from the initial entity lump may be created later by map I/O; confirm runtime.' ,
             '!Target1 refers to logic_choreographed_scene Target1, not a map entity named !Target1.',
             'VCD file presence does not prove scene.cache, mount or animation compatibility.',
             'This is a read-only preflight. No game map, DLL or APK has been modified.',

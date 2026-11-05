@@ -68,3 +68,6 @@ Counts may contain repeat map loads and are **not** counts of independent NPC pl
 The project does **not** yet have a verified real SourceVR entity factory/game-module adapter, a generated and accepted `scene.cache` for the chosen Source branch, or headset testing of the JC/Jessica actors. This tooling is intentionally limited to safe static inspection and repeatable local measurements.
 
 Do **not** merge the stacked draft branch automatically. All tools are pure Python standard library or host-only C++17; no third-party proprietary game code/assets are committed.
+### Round 19 actor alias preflight correction
+
+The BSP scanner now computes `has_scene_alias` from `logic_choreographed_scene` controller `Target1..Target8` values, **not** from arbitrary NPC fields. An alias row additionally records whether the referenced targetname is visible in the *initial BSP entity lump* and the matching classname candidates. An unresolved targetname could still be created later by map I/O, so this is diagnostic evidence rather than a failed runtime test. One synthetic regression test guards the previously false-positive `!Target1` binding case.
