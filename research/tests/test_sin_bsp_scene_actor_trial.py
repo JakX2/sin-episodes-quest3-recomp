@@ -102,7 +102,7 @@ class TrialTest(unittest.TestCase):
         self.assertEqual(counts['npc_generic_actor:extra'],1)
         self.assertEqual(counts['npc_jessica'],1)
         _,_,_,_,body=trial.read_bsp(changed)
-        self.assertIn(b'"classname" "generic_actor"\\n"targetname" "extra"',body)
+        self.assertIn(b'"classname" "generic_actor"\n"targetname" "extra"',body)
         self.assertIn(b'"classname" "npc_alyx"',body)
         self.assertEqual(source[1400:1404],changed[1400:1404])
         self.assertEqual(trial.read_bsp(source)[-1].count(b'generic_actor'),1)
