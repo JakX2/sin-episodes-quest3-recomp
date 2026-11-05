@@ -65,10 +65,10 @@ INPUTS = (
      0x22490F20, 0x2235DDC0),
     ('InputLookOff', 0x225354D8, 0x22490F3C, 0, 'LookOff',
      0x22490F34, 0x2235F260),
-    ('InputStartPatrolling', 0x22535540, 0x22485CB4, 0, 'StartPatrolling',
-     0x22477C70, 0x22357E30),
-    ('InputStopPatrolling', 0x22535574, 0x22485CC4, 0, 'StopPatrolling',
-     0x22477C80, 0x22357E40),
+    ('InputStartPatrolling', 0x22535540, 0x22485B84, 0, 'StartPatrolling',
+     0x22485B74, 0x22357E30),
+    ('InputStopPatrolling', 0x22535574, 0x22485B60, 0, 'StopPatrolling',
+     0x22485B50, 0x22357E40),
 )
 
 
