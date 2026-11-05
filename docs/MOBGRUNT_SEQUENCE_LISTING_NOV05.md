@@ -20,3 +20,15 @@ The parser reads only `IDST`/little-endian Source 1 studio headers, version 36-5
 Once a **non-empty, verified** sequence name is found, test it on the named prop, e.g. `ent_fire sin_mobgrunt_anim_test SetAnimation <exactly-reported-sequence-name>`. Do not hardcode `idle`, `walk`, `run` without evidence. A listed local animation may still depend on engine activities, pose parameters or include remapping. A successful sequence transition is visual animation proof, not proof of restored SinTEK AI or weapon mechanics.
 
 Data boundary: no original model, SDK binaries, client.dll/server.dll or game assets are distributed in the repository.
+
+## Original model listing, owner-confirmed
+
+The owner ran the read-only sequence inspector on the extracted SiN models. For `D:\SiN\models\characters\MobGrunt\mobgrunt_anims.mdl`, it reported **IDST version 44** and **240 local sequences**. The complete 240-entry output was provided in chat, including these indexed names:
+- 38 `Idle1`, 39 `Idle1_SMG1`, 40 `CombatIdle1`, 41 `CombatIdle1_SG`, 42 `CombatIdle1_SMG1`, 43 `CrouchIdle`
+- 81 `grenThrow`, 85 `reload`, 86-91 reload gestures, 92 `kick`
+- 98 `shootAR2s`, 99 `shootAR2c`, 101 `shootAR2alt`, 145 `RunALL`, 151 `Walk_all`, 162 `gesture_shoot_ar1`, 163 `gesture_shoot_ar2`
+- 223 `Idle_Unarmed`, 234 `checkpoint_grunt_check`, 235 `checkpoint_grunt_idle`
+
+This is **sequence metadata discovery**, not animation playback. The first tester previously sent `SetAnimation idle`, which returned "no sequence named:idle". The exact source-listed spellings to try next against `sin_mobgrunt_anim_test` are `Idle1`, `CombatIdle1`, and `reload`, one at a time. Check for transition out of reference pose and absence of "no sequence named". If none work, inspect `mobgrunt.mdl` include-table mapping/virtual sequences and consult original SDK HLMV before treating included local sequences as directly callable.
+
+Original assets remain local; no binary files are committed.
