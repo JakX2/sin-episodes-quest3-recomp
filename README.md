@@ -64,3 +64,7 @@ This prototype deliberately does **not** claim to be a drop-in replacement for R
 ## Repository hygiene
 
 Never commit original `server.dll` or `client.dll`, extracted maps, models, assets, game archives, or personal game installation files. The `.gitignore` excludes common formats; review every file before publishing.
+
+## Quest 3 headset-testable tech slice (not the native game)
+
+A small, independently authored WebXR dock encounter is available under [docs/quest3-prototype/](docs/quest3-prototype/). It can be hosted over HTTPS and tried in Quest Browser with Touch controllers. **This is not an APK, SourceVR adapter or the original SiN game**, and cannot substitute for real native client/server integration. See its [acceptance criteria](docs/quest3-prototype/MILESTONE.md).

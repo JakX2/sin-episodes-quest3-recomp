@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#101a26">
+<title>SiN Episodes Quest 3 | Dock Encounter Tech Slice</title>
+<style>
+  :root{color-scheme:dark;--cyan:#6ce3ef;--orange:#ffad60;--ink:#101922}
+  *{box-sizing:border-box} body{margin:0;background:#090f16;color:#e9f1f5;font:14px/1.5 system-ui,Segoe UI,sans-serif;overflow:hidden}
+  #overlay{position:fixed;top:16px;left:16px;padding:15px 18px;width:min(380px,calc(100vw - 32px));background:rgba(8,17,28,.87);border:1px solid #28505d;border-radius:10px;z-index:2;pointer-events:none;box-shadow:0 4px 30px #0008}
+  .mark{font-size:11px;color:#70dcf0;letter-spacing:.24em;font-weight:800}.title{font-size:20px;font-weight:750;letter-spacing:.02em}.readout{display:flex;gap:20px;align-items:center;margin:8px 0;font-weight:650}.readout span{color:var(--cyan)}
+  #status{color:#d4e4ef;min-height:40px}#info{font-size:12px;color:#9daebd}#cross{position:fixed;top:50%;left:50%;width:18px;height:18px;transform:translate(-50%,-50%);z-index:1;pointer-events:none;opacity:.7}
+  #cross:before,#cross:after{content:"";position:absolute;background:#c4fcff}#cross:before{left:8px;top:0;width:2px;height:18px}#cross:after{top:8px;left:0;height:2px;width:18px}
+  #notice{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#172b3cdb;padding:9px 14px;border-radius:8px;border:1px solid #284d5d;font-size:12px;color:#c6dfef;z-index:2;white-space:nowrap;max-width:calc(100vw - 32px)}
+  button{cursor:pointer}#start{pointer-events:auto;border:1px solid #6ce3ef;padding:9px 16px;background:#163344;color:#eaffff;border-radius:6px;font-weight:700;margin-top:7px}
+  #error{display:none;position:fixed;inset:auto 16px 18px 16px;padding:16px;background:#391c28;border:1px solid #ff7383;z-index:30;white-space:pre-wrap;max-height:45vh;overflow:auto}
+  body.xr #overlay,body.xr #notice,body.xr #cross{display:none}#VRButton{z-index:22 !important}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="overlay"><div class="mark">QUEST 3 / EXPERIMENT 001</div><div class="title">DOCK ENCOUNTER</div><div id="meters" class="readout">HP <span id="health">100</span> &nbsp; AMMO <span id="ammo">18 / 54</span> &nbsp; KILLS <span id="kills">0/2</span></div><div id="status">Prototype encounter ready.</div><div id="info">Desktop: WASD move, mouse look / shoot, R reload, E console, Space start or restart. Headset: left thumbstick move, right thumbstick snap turn, trigger fire, grip interact, A/X reload.</div><button id="start">START ENCOUNTER</button></div>
+<div id="cross"></div><div id="notice">Desktop preview available. On a Quest, select ENTER VR to test controllers.</div>
+<div id="error"></div>
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+const UI={hp:document.getElementById('health'),ammo:document.getElementById('ammo'),kills:document.getElementById('kills'),status:document.getElementById('status'),start:document.getElementById('start')};
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x07141d);scene.fog=new THREE.FogExp2(0x0c1d28,0.026);
+const camera=new THREE.PerspectiveCamera(74,window.innerWidth/window.innerHeight,0.05,130);
+const rig=new THREE.Group(); rig.position.set(0,0,8); rig.add(camera); camera.position.set(0,1.65,0);scene.add(rig);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'}); renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.3;
+renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');document.body.appendChild(renderer.domElement);
+let vrButton;
+try{vrButton=VRButton.createButton(renderer);document.body.appendChild(vrButton)}catch(e){console.warn('WebXR button:',e)}
+renderer.xr.addEventListener('sessionstart',()=>{document.body.classList.add('xr');showMessage('VR active. Trigger to start and fire.',3)});
+renderer.xr.addEventListener('sessionend',()=>{document.body.classList.remove('xr');showMessage('Returned to desktop view',3)});
+scene.add(new THREE.HemisphereLight(0xb8eaff,0x101820,1.25));const sunlight=new THREE.DirectionalLight(0xc5f3ff,1.35);sunlight.position.set(4,15,8);scene.add(sunlight);
+const c=new THREE.Color();const normalMat=(hex,metal=.35,rough=.6)=>new THREE.MeshStandardMaterial({color:hex,metalness:metal,roughness:rough});
+const metal=normalMat(0x334552,.75,.5),dark=normalMat(0x1d2e3c,.6,.65),concrete=normalMat(0x34464b,.1,.9),orange=normalMat(0xff9647,.1,.65),trim=normalMat(0x1e738e,.55,.4);
+function mesh(box,mat,x,y,z){const o=new THREE.Mesh(new THREE.BoxGeometry(...box),mat);o.position.set(x,y,z);scene.add(o);return o}
+mesh([15,.2,29],concrete,0,-.16,-1.6);mesh([.3,5,29],metal,-7.3,2.3,-1.6);mesh([.3,5,29],metal,7.3,2.3,-1.6);
+mesh([15,5,.35],metal,0,2.3,12.6);mesh([15,5,.35],metal,0,2.3,-15.8);
+for(let z=-13;z<=12;z+=4.8){mesh([.22,4,.7],metal,-7.02,2,z);mesh([.22,4,.7],metal,7.02,2,z);mesh([14,.1,.15],trim,0,3.8,z);}
+for(let x=-5;x<=5;x+=2.5){let beam=mesh([.07,.02,28],trim,x,.01,-1.6);beam.material=trim}
+for(let i=0;i<7;i++){const z=11-i*4;const lamp=new THREE.PointLight(i%2?0xff733e:0x50d5fa,i%2?3:2.7,11,2.2);lamp.position.set(i%2?5.9:-5.9,3.4,z);scene.add(lamp);mesh([.9,.12,.32],i%2?orange:trim,i%2?6.9:-6.9,3.5,z)}
+function crate(x,z,w=1.4,h=1.2,d=1.2){mesh([w,h,d],dark,x,h/2,z);mesh([w,.1,.12],trim,x,h-.1,z);mesh([.07,h,.07],metal,x-w/2+.12,h/2,z-d/2+.12);mesh([.07,h,.07],metal,x+w/2-.12,h/2,z+d/2-.12)}
+crate(-4.8,3,1.9,1.7,2);crate(4.3,-2,2,1.5,2);crate(3.9,-8.3,2.3,1.25,1.7);crate(-4.2,-9.9,2,1.65,1.8);
+// Docks gate: visually and physically separates the extraction area.
+const gate=mesh([8,3.55,.28],metal,0,1.65,-11.9);gate.userData.closedY=1.65;const gateLight=new THREE.PointLight(0xff5b3c,3.5,5);gateLight.position.set(0,3.45,-11.5);scene.add(gateLight);
+mesh([3,.22,.9],metal,0,3.65,-11.9);
+let decal=mesh([6,.07,.24],orange,0,.01,-12.25);
+// Terminal. Original layout; no proprietary textures, scripts, models or VCDs.
+mesh([1.55,2,.55],metal,-5.6,1,-5);mesh([1.4,1.05,.12],dark,-5.6,1.58,-4.68);
+const termCanvas=document.createElement('canvas');termCanvas.width=512;termCanvas.height=320;const tx=termCanvas.getContext('2d');
+const termTexture=new THREE.CanvasTexture(termCanvas);termTexture.colorSpace=THREE.SRGBColorSpace;
+const termMat=new THREE.MeshBasicMaterial({map:termTexture,side:THREE.DoubleSide,transparent:false});
+const terminal=new THREE.Mesh(new THREE.PlaneGeometry(1.25,.79),termMat);terminal.position.set(-5.6,1.58,-4.6);terminal.userData.interaction='terminal';scene.add(terminal);
+function drawTerm(){tx.fillStyle='#041c26';tx.fillRect(0,0,512,320);tx.strokeStyle='#5deaff';tx.lineWidth=5;tx.strokeRect(11,11,490,298);tx.fillStyle='#83eeff';tx.font='bold 23px monospace';tx.fillText('SINTEK DOCK CONTROL',28,58);tx.font='19px monospace';tx.fillText('FLOODGATE 01',28,100);tx.fillStyle=terminalOnline?'#74ff9c':'#ff9059';tx.fillText(terminalOnline?'OVERRIDE ACCEPTED':'OVERRIDE OFFLINE',28,154);tx.fillStyle='#b2cad4';tx.font='16px monospace';tx.fillText('GRIP / E TO ACTIVATE',28,225);tx.fillText(terminalOnline?'LOCK RELEASED':'ACCESS PANEL READY',28,263);termTexture.needsUpdate=true;}
+const playerHudCanvas=document.createElement('canvas');playerHudCanvas.width=512;playerHudCanvas.height=256;const hx=playerHudCanvas.getContext('2d');
+const hudTexture=new THREE.CanvasTexture(playerHudCanvas);const hud=new THREE.Mesh(new THREE.PlaneGeometry(1.42,.71),new THREE.MeshBasicMaterial({map:hudTexture,transparent:true,side:THREE.DoubleSide,depthTest:false}));hud.position.set(0,2.55,-3.5);rig.add(hud);
+function drawHud(){hx.clearRect(0,0,512,256);hx.fillStyle='#071e2ccb';hx.fillRect(0,0,512,256);hx.strokeStyle='#57c9e6';hx.strokeRect(8,8,496,240);hx.fillStyle='#b9f5ff';hx.font='bold 26px monospace';hx.fillText('DOCK  /  PROTOTYPE 001',24,51);hx.font='25px monospace';hx.fillText('HP '+Math.ceil(health)+'  AMMO '+clip+'/'+reserve,24,106);hx.fillText('HOSTILES '+(2-kills)+'   '+(terminalOnline?'GATE UNLOCKED':'GATE LOCKED'),24,150);hx.font='18px monospace';hx.fillStyle='#ffac70';hx.fillText(message.slice(0,40),24,204);hudTexture.needsUpdate=true;}
+let state='idle',health=100,clip=18,reserve=54,kills=0,shots=0,hits=0,terminalOnline=false,now=0,nextShot=0,msgUntil=0,message='TRIGGER OR SPACE TO START',gameTime=0;
+const npcs=[];const red=normalMat(0xc44848,.35,.55),botMat=normalMat(0xa3cfdb,.75,.25),hitBoxes=[],effects=[];
+function buildGrunt(){const g=new THREE.Group();const body=new THREE.Mesh(new THREE.BoxGeometry(.72,1.1,.45),red);body.position.y=1.2;g.add(body);const head=new THREE.Mesh(new THREE.SphereGeometry(.25,12,9),normalMat(0xcb9b7f,.2,.8));head.position.y=1.95;g.add(head);const gun=new THREE.Mesh(new THREE.BoxGeometry(.55,.16,.21),metal);gun.position.set(.38,1.3,-.35);g.add(gun);g.position.set(-1.3,0,-7.5);scene.add(g);const obj={type:'grunt',group:g,hp:3,alive:true,lastFire:0,spawn:[-1.3,0,-7.5],meshes:[body,head,gun]};for(const m of obj.meshes){m.userData.npc=obj;hitBoxes.push(m)}npcs.push(obj)}
+function buildBot(){const g=new THREE.Group();const body=new THREE.Mesh(new THREE.SphereGeometry(.52,16,12),botMat);g.add(body);const eye=new THREE.Mesh(new THREE.SphereGeometry(.19,12,8),new THREE.MeshBasicMaterial({color:0xff583c}));eye.position.z=.42;g.add(eye);for(const x of [-.61,.61]){const gun=new THREE.Mesh(new THREE.BoxGeometry(.19,.23,.7),metal);gun.position.set(x,-.14,.12);g.add(gun);gun.userData.npc=null;}g.position.set(2.4,2.2,-8.9);scene.add(g);const obj={type:'bot',group:g,hp:4,alive:true,lastFire:0,spawn:[2.4,2.2,-8.9],meshes:[body,eye]};for(const m of obj.meshes){m.userData.npc=obj;hitBoxes.push(m)}npcs.push(obj)}
+buildGrunt();buildBot();
+const pickupMesh=new THREE.Mesh(new THREE.CylinderGeometry(.22,.22,.62,10),normalMat(0x50dc9c,.25,.2));pickupMesh.position.set(4,.38,-4.8);scene.add(pickupMesh);const pickupLight=new THREE.PointLight(0x50ffb4,1.8,4);pickupLight.position.copy(pickupMesh.position);scene.add(pickupLight);let pickupActive=true;
+function updateUI(){UI.hp.textContent=Math.ceil(health);UI.ammo.textContent=clip+' / '+reserve;UI.kills.textContent=kills+'/2';UI.status.textContent=message;drawHud()}
+function showMessage(msg,seconds=2.6){message=msg;msgUntil=now+seconds;updateUI()}
+function startGame(){state='playing';health=100;clip=18;reserve=54;kills=0;shots=0;hits=0;terminalOnline=false;gameTime=0;nextShot=0;rig.position.set(0,0,8);rig.rotation.y=0;gate.position.y=gate.userData.closedY;gateLight.color.setHex(0xff5b3c);pickupActive=true;pickupMesh.visible=true;pickupLight.visible=true;for(const e of effects)scene.remove(e.mesh);effects.length=0;for(const e of npcs){e.alive=true;e.hp=e.type==='grunt'?3:4;e.group.visible=true;e.group.position.set(...e.spawn);e.lastFire=0;}drawTerm();showMessage('Neutralize hostiles. Override the floodgate.',6);UI.start.textContent='RESTART ENCOUNTER';}
+UI.start.addEventListener('click',startGame);
+function finish(success){state=success?'win':'dead';showMessage(success?'EXTRACTION COMPLETE - PROTOTYPE CLEAR':'YOU WERE DOWNED - RESTART',60)}
+const raycaster=new THREE.Raycaster();raycaster.far=70;const tempQ=new THREE.Quaternion(),dir=new THREE.Vector3(),origin=new THREE.Vector3(),clock=new THREE.Clock();
+function aimingRay(ctrl){if(ctrl){ctrl.getWorldPosition(origin);ctrl.getWorldQuaternion(tempQ);dir.set(0,0,-1).applyQuaternion(tempQ).normalize()}else{camera.getWorldPosition(origin);camera.getWorldDirection(dir)}raycaster.set(origin,dir)}
+function makeFlash(point,color=0xffbd6b){const m=new THREE.Mesh(new THREE.SphereGeometry(.11,8,6),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.95}));m.position.copy(point);scene.add(m);effects.push({mesh:m,life:.13})}
+function shoot(ctrl){if(state==='idle'||state==='dead'||state==='win'){startGame();return}if(now<nextShot)return;if(clip<=0){showMessage('EMPTY MAG - RELOAD',1);return}
+clip--;shots++;nextShot=now+.19;aimingRay(ctrl);const hitsRay=raycaster.intersectObjects([...hitBoxes,terminal],false);const first=hitsRay[0];if(first && first.distance<3.1 && first.object===terminal){activateTerminal();return}
+if(first&&first.object.userData.npc?.alive){const npc=first.object.userData.npc;npc.hp--;hits++;makeFlash(first.point,0xff7b5e);if(npc.hp<=0){npc.alive=false;npc.group.visible=false;kills++;showMessage('TARGET DISABLED  '+kills+'/2',2);if(kills===2&&terminalOnline)showMessage('GATE OPEN - ENTER THE EXTRACTION AREA',6)}}else{const p=origin.clone().addScaledVector(dir,Math.min(12,raycaster.far));makeFlash(p,0x69baff)}updateUI()}
+function activateTerminal(){if(state!=='playing')return;const p=rig.position.distanceTo(terminal.position);if(p>4.5){showMessage('MOVE CLOSER TO THE OVERRIDE PANEL',2);return}if(terminalOnline){showMessage('OVERRIDE ALREADY ACTIVE',2);return}terminalOnline=true;drawTerm();gateLight.color.setHex(0x4df7a8);showMessage(kills===2?'OVERRIDE ACCEPTED. PROCEED TO EXIT':'OVERRIDE ACCEPTED. CLEAR HOSTILES.',5)}
+function interact(ctrl){if(state!=='playing'){startGame();return}aimingRay(ctrl);const r=raycaster.intersectObject(terminal,false);if(r[0]&&r[0].distance<4.5){activateTerminal();return}if(!ctrl&&rig.position.distanceTo(terminal.position)<4.5){activateTerminal();return}showMessage('POINT AT TERMINAL, MOVE CLOSER',1.6)}
+function reload(){if(state!=='playing'||clip===18||reserve===0)return;const load=Math.min(18-clip,reserve);clip+=load;reserve-=load;showMessage('RELOAD  +'+load,1.2)}
+for(let i=0;i<2;i++){const ctrl=renderer.xr.getController(i);ctrl.addEventListener('selectstart',()=>shoot(ctrl));ctrl.addEventListener('squeezestart',()=>interact(ctrl));const gun=new THREE.Mesh(new THREE.BoxGeometry(.08,.12,.28),metal);gun.position.set(0,-.04,-.14);ctrl.add(gun);const laserGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,-.25),new THREE.Vector3(0,0,-3)]);const laser=new THREE.Line(laserGeo,new THREE.LineBasicMaterial({color:0x89eaff,transparent:true,opacity:.4}));ctrl.add(laser);rig.add(ctrl)}
+const pressed=new Set();let yaw=0,pitch=0,locked=false;
+window.addEventListener('keydown',e=>{pressed.add(e.code);if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();if(e.code==='KeyR'&&!e.repeat)reload();if(e.code==='KeyE'&&!e.repeat)interact(null);if(e.code==='Space'&&!e.repeat&&state!=='playing')startGame()});window.addEventListener('keyup',e=>pressed.delete(e.code));
+renderer.domElement.addEventListener('click',()=>{if(!renderer.xr.isPresenting){if(state==='playing'){if(document.pointerLockElement!==renderer.domElement)renderer.domElement.requestPointerLock?.();else shoot(null)}else startGame()}});
+document.addEventListener('pointerlockchange',()=>locked=document.pointerLockElement===renderer.domElement);
+document.addEventListener('mousemove',e=>{if(!locked||renderer.xr.isPresenting)return;yaw-=e.movementX*.0021;pitch=Math.max(-1.35,Math.min(1.35,pitch-e.movementY*.0019));rig.rotation.y=yaw;camera.rotation.x=pitch});
+let rightLatch=false,buttonLatch=false;
+function updateMovement(dt){const move=new THREE.Vector2(),isVR=renderer.xr.isPresenting;let turn=0,load=false;
+if(isVR){const sess=renderer.xr.getSession();if(sess){for(const input of sess.inputSources){const gp=input.gamepad;if(!gp)continue;const axes=gp.axes||[];const rawX=Math.abs(axes[2]??0)>.18?(axes[2]??0):(axes[0]??0);const rawY=Math.abs(axes[3]??0)>.18?(axes[3]??0):(axes[1]??0);if(input.handedness==='left'){move.x=Math.abs(rawX)>.18?rawX:0;move.y=Math.abs(rawY)>.18?rawY:0}else if(input.handedness==='right'){turn=Math.abs(rawX)>.62?rawX:0;const a=gp.buttons[4]?.pressed||gp.buttons[5]?.pressed||false;load=load||a}}}}
+else{if(pressed.has('KeyW')||pressed.has('ArrowUp'))move.y--;if(pressed.has('KeyS')||pressed.has('ArrowDown'))move.y++;if(pressed.has('KeyA'))move.x--;if(pressed.has('KeyD'))move.x++;if(pressed.has('ArrowLeft'))rig.rotation.y+=1.8*dt;if(pressed.has('ArrowRight'))rig.rotation.y-=1.8*dt}
+if(load&&!buttonLatch)reload();buttonLatch=load;if(turn&&!rightLatch)rig.rotation.y-=Math.sign(turn)*Math.PI/6;rightLatch=!!turn;
+move.clampLength(0,1);if(!move.length())return;
+const horizontal=new THREE.Vector3();if(isVR){const view=renderer.xr.getCamera(camera);view.getWorldDirection(horizontal)}else camera.getWorldDirection(horizontal);horizontal.y=0;horizontal.normalize();if(!Number.isFinite(horizontal.x)||horizontal.lengthSq()<.1)horizontal.set(0,0,-1);
+const right=new THREE.Vector3().crossVectors(horizontal,new THREE.Vector3(0,1,0)).normalize();const displacement=horizontal.multiplyScalar(-move.y*dt*2.6).addScaledVector(right,move.x*dt*2.6);
+const dest=rig.position.clone().add(displacement);dest.x=THREE.MathUtils.clamp(dest.x,-6.6,6.6);dest.z=THREE.MathUtils.clamp(dest.z,-14.4,11.9);if(!terminalOnline || kills<2)dest.z=Math.max(dest.z,-10.4);rig.position.copy(dest)}
+function updateEnemies(dt){for(const e of npcs){if(!e.alive)continue;const elapsed=gameTime;e.group.position.x=e.spawn[0]+Math.sin(elapsed*(e.type==='grunt'?.65:1.4)+(e.type==='bot'?1:0))*(e.type==='grunt'?1.6:.8);if(e.type==='bot')e.group.position.y=e.spawn[1]+Math.sin(elapsed*2)*.24;
+if(state!=='playing')continue;const distance=rig.position.distanceTo(e.group.position);if(distance>16||distance<.5)continue;
+if(gameTime-e.lastFire>(e.type==='grunt'?3.5:2.9)){e.lastFire=gameTime+(Math.random()*.65);const attacker=e.group.position.clone();attacker.y+=(e.type==='grunt'?1.6:0);makeFlash(attacker,e.type==='bot'?0x4ef6fe:0xff6342);
+// Explicitly synthetic damage. This is a technical interaction test, NOT SiN's recovered combat model.
+const damage=e.type==='bot'?8:10;health=Math.max(0,health-damage);if(health===0){finish(false)}else{showMessage(e.type==='bot'?'SECURITY BOT HIT':'HOSTILE FIRE',.8)}updateUI()}}}
+function updateEffects(dt){for(let i=effects.length-1;i>=0;i--){const e=effects[i];e.life-=dt;if(e.life<=0){scene.remove(e.mesh);e.mesh.geometry.dispose();effects.splice(i,1)}}}
+function animate(){const dt=Math.min(clock.getDelta(),.06);now+=dt;if(state==='playing'){gameTime+=dt;updateMovement(dt);updateEnemies(dt);if(terminalOnline&&kills===2)gate.position.y=THREE.MathUtils.lerp(gate.position.y,5.7,Math.min(1,dt*1.7));if(terminalOnline&&kills===2&&rig.position.z< -13.1)finish(true);
+if(pickupActive&&rig.position.distanceTo(pickupMesh.position)<1.25){pickupActive=false;pickupMesh.visible=false;pickupLight.visible=false;health=Math.min(100,health+25);reserve+=18;showMessage('ANTIGEN +25 HP  /  AMMO +18',3)}}
+if(message!=='TRIGGER OR SPACE TO START'&&msgUntil<now&&state==='playing'){message='TERMINAL: -5.6, -5.0   /   EXIT: FAR END';updateUI()}
+pickupMesh.rotation.y+=dt;updateEffects(dt);renderer.render(scene,camera)}
+drawTerm();updateUI();renderer.setAnimationLoop(animate);
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+window.addEventListener('error',e=>{const box=document.getElementById('error');box.style.display='block';box.textContent='Prototype error: '+e.message});
+</script>
+</body></html>
