@@ -19,6 +19,8 @@ from verify_gameplay_entity_registry import (
 SERVER_REGISTRATIONS = (
     ('weapon_assault_rifle', 0x223C4F60, 0x22477C30, 0x2252D4FC),
     ('grenade_ar', 0x223C4FC0, 0x22477230, 0x2252D500),
+    ('npc_druglab_grunt_assault_rifle', 0x223C7020, 0x22490EA0, 0x22536848),
+    ('npc_druglab_grunt_elite', 0x223C6940, 0x2248E760, 0x225346A0),
 )
 
 
