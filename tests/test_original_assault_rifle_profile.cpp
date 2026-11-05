@@ -47,6 +47,8 @@ int main() {
     assert(data.ammo.clip2_size == -1 && data.ammo.default_clip2 == 0);
     assert(!data.ammo.melee_weapon);
     assert(P::kick_min[0] == 0.175f && P::kick_ramp_max[2] == 0.275f);
+    // Source-verifiable virtual dispatch interval; not yet a native weapon timer.
+    assert(P::primary_fire_interval_seconds == 0.075f);
 
     // The actual engine has not been connected: verify that existing
     // engine-neutral runtime CONSUMES the original configuration.
