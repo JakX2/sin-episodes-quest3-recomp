@@ -114,7 +114,6 @@ def patch_targeted_grunt(data: bytes, name: str):
 
     wanted = name.encode('ascii').lower()
     matches = []
-    expected = {b'npc_druglab_grunt_assault_rifle', b'npc_druglab_grunt_elite'}
     for match in ENTITY_BLOCK_RE.finditer(data):
         block = match.group(0)
         pairs = [(key.lower(), value) for key, value in KV_PAIR_RE.findall(block)]
