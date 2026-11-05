@@ -66,6 +66,23 @@ def fixture():
         assert len(parts) == 22
         pairs[entry] = parts
         pairs[string_va] = classname.encode('ascii') + b'\0'
+    pairs.update({
+        0x220CFC62: b'\x83\xcd\xff',
+        0x220CFCA1: b'\x8b\x86\xa0\x03\x00\x00',
+        0x220CFCA7: b'\x3b\xc5\x7e\x07',
+        0x220CFCAB: b'\x8b\xe8',
+        0x220CFCB2: b'\x0f\x85\x2c\x01\x00\x00',
+        0x220CFCCF: b'\x81\xc7\xbc\x02\x00\x00',
+        0x220CFCFE: b'\xd9\x86\xbc\x02\x00\x00',
+        0x220CFD4C: b'\xd9\x44\x24\x20\xd8\x4c\x24\x20',
+        0x220CFD75: b'\xd9\x83\xbc\x02\x00\x00',
+        0x220CFDBB: b'\xd9\x44\x24\x38\xd8\x4c\x24\x38',
+        0x220CFDD7: b'\xd8\x5c\x24\x14\xdf\xe0\xf6\xc4\x41\x75\x02\x8b\xde',
+        0x220CFE22: b'\x85\xdb',
+        0x220CFE5A: b'\x89\x47\x18',
+        0x220CFE30: b'\x68\xd0\x3c\x3f\x22',
+        0x223F3CD0: b"%s Didn't find a best rally point!\n\0",
+    })
     return pairs
 
 
@@ -73,6 +90,8 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
     def test_original_rally_point_and_timing_labels(self):
         result = a.audit_code(FakePE(fixture()))
         self.assertEqual(result['assault_input']['behavior_object_offset'], '0xDB8')
+        self.assertEqual(result['rally_point_ranking']['original_priority_field_offset'], '0x3A0')
+        self.assertEqual(result['rally_point_ranking']['original_entity_origin_field_offset'], '0x2BC')
         self.assertEqual([r['classname'] for r in result['registered_assault_entities']],
                          ['assault_rallypoint', 'assault_assaultpoint', 'ai_goal_assault'])
         self.assertEqual(result['assault_input']['passed_integer'], 3)
@@ -111,6 +130,12 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
         )
         with self.assertRaises(a.VerificationError):
             a.audit_code(FakePE(fixture_bytes))
+
+    def test_corrupt_rally_priority_offset_fails(self):
+        bytes_map = fixture()
+        bytes_map[0x220CFCA1] = b'\x8b\x86\xa4\x03\x00\x00'
+        with self.assertRaises(a.VerificationError):
+            a.audit_code(FakePE(bytes_map))
 
     def test_refuses_wrong_assault_behavior_target(self):
         data = fixture()
