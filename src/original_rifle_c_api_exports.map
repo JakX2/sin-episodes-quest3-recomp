@@ -1,0 +1,8 @@
+/* Allowlist: only the three original SiN rifle bridge C ABI exports. */
+{
+    global:
+        sin_original_rifle_abi_version_v1;
+        sin_original_rifle_get_info_v1;
+        sin_original_rifle_create_session_v1;
+    local: *;
+};
