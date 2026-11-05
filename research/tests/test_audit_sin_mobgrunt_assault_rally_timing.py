@@ -92,6 +92,19 @@ def fixture():
         pairs[name_va] = name.encode('ascii') + b'\x00'
         if external_name:
             pairs[external_va] = external_name.encode('ascii') + b'\x00'
+    for name, desc, name_va, dtype, offset, flags, external_va, external_name, handler in a.ASSAULT_POINT_TYPEDESC:
+        pairs[desc] = (struct.pack('<8I', dtype, name_va, offset, 0,
+                                   (flags << 16) | 1, external_va, 0, handler) + b'\0' * 20)
+        pairs[name_va] = name.encode('ascii') + b'\0'
+        pairs[external_va] = external_name.encode('ascii') + b'\0'
+    pairs.update({
+        0x220CDE74: b'\x83\x78\x18\x06',
+        0x220CDE7D: b'\x88\x81\xb8\x03\x00\x00',
+        0x220CDE88: b'\x88\x81\xb8\x03\x00\x00',
+        0x220CDEA4: b'\x83\x78\x18\x06',
+        0x220CDEAD: b'\x88\x81\xb9\x03\x00\x00',
+        0x220CDEB8: b'\x88\x81\xb9\x03\x00\x00',
+    })
     return pairs
 
 
@@ -104,6 +117,12 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
         self.assertEqual(fields['m_iPriority']['original_offset'], '0x3A0')
         self.assertEqual(fields['m_hLockedBy']['original_offset'], '0x3BC')
         self.assertEqual(fields['m_AssaultPointName']['external_key'], 'assaultpoint')
+        assault = {e['member']: e for e in result['original_assault_point_datamap']['fields']}
+        self.assertEqual(assault['m_NextAssaultPointName']['external_name'], 'nextassaultpoint')
+        self.assertEqual(assault['m_flAssaultTimeout']['offset'], '0x3B4')
+        self.assertEqual(assault['m_bClearOnContact']['offset'], '0x3B8')
+        self.assertEqual(assault['m_bAllowDiversion']['offset'], '0x3B9')
+        self.assertEqual(assault['InputSetClearOnContact']['original_input_handler'], '0x220CDE70')
         self.assertEqual(result['rally_point_ranking']['original_entity_origin_field_offset'], '0x2BC')
         self.assertEqual([r['classname'] for r in result['registered_assault_entities']],
                          ['assault_rallypoint', 'assault_assaultpoint', 'ai_goal_assault'])
@@ -143,6 +162,12 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
         )
         with self.assertRaises(a.VerificationError):
             a.audit_code(FakePE(fixture_bytes))
+
+    def test_corrupted_assault_point_bool_setter_fails(self):
+        mapping = fixture()
+        mapping[0x220CDEAD] = b'\x88\x81\xb8\x03\x00\x00'
+        with self.assertRaises(a.VerificationError):
+            a.audit_code(FakePE(mapping))
 
     def test_corrupt_rallypoint_lock_datamap_fails(self):
         data = fixture()
