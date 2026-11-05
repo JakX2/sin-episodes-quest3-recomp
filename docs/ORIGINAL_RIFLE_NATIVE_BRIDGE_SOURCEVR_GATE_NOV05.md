@@ -1,0 +1,97 @@
+# Native original-rifle C bridge and SourceVR ARM64 integration gate
+
+**November 5, 2026. Status: mock-host native bridge, NOT engine weapon registration or playable Quest port.**
+
+## Actual owner's input evidence
+
+- Original SiN SDK and shipped weapon scripts establish classname `weapon_assault_rifle`, 45-round `AR` magazine, `ARNADE` secondary ammo, FOV 40, original models, sounds, and MobGrunt equipment.
+- Original Windows x86 `server.dll` contains `CWeaponAssaultRifle` factory RTTI and verified `grenade_ar` projectile-creation path. Those original x86 pointers are **not** callable on AArch64.
+- Owner's SourceVR loader subset, `native/hl2/libserver.so`: ELF64 AArch64, SHA-256 `fdc8bb8777e044875609da75850fdf0a58155d5caf84b834a9d72486fe0a2322`, `CreateInterface` is a GLOBAL dynamic export. `native/hl2/libclient.so`: ELF64 AArch64, SHA-256 `0a8d1082e86d857cad812a65ca682695098de2498919931b08e87fb3b38bc362`, also exports `CreateInterface`.
+- The inspected SourceVR server `.dynsym` does **not** export `CreateEntityByName`, `CanCreateEntityClass`, or any named standalone entity-factory registration API. This does **not** prove the functions are absent: the stripped native binary contains internal references/diagnostics for `CreateEntityByName` and `CanCreateEntityClass`, and RTTI-like `CEntityFactory` strings.
+- The SourceVR native server contains a `ServerGameDLL010` string, whereas the original 2006 SiN server static interface audit identifies `ServerGameDLL003`. A version-string mismatch is evidence of an integration risk, not proof of any exact method ABI or suitability of an adapter.
+- The SDK ZIP contains FGD/script/tool binaries but **no C++ `.cpp`/`.h` game code**. The SourceVR loader subset contains native ELF binaries and manifests, not a ready-to-compile SourceVR game server source tree.
+
+## New deliverable
+
+The standalone shared library `libsin_original_rifle_bridge.so` provides three C ABI exports:
+
+1. `sin_original_rifle_abi_version_v1`
+2. `sin_original_rifle_get_info_v1` to expose source-verified original classname, models, AR/ARNADE ammo and 45-round configuration
+3. `sin_original_rifle_create_session_v1` to create the already tested engine-neutral `sin_session_v1` for the **exact original classname** `weapon_assault_rifle`. It rejects other classes and malformed callback ABI tables, and sets the initial clip to 45.
+
+The library depends on `libsin_compat_host_abi.so`. Its ELF version map restricts the newly exported symbols to the above three. The genuine C-language test uses fake engine callbacks for original model binding, 45-round reload transfer, flatscreen ADS FOV and VR headset FOV protection. These callbacks are **not** copied from SourceVR or original SiN engine DLLs.
+
+### Build/test on a normal development machine
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+readelf --dyn-syms --wide build/libsin_original_rifle_bridge.so | grep sin_original_rifle_
+```
+
+The official Android NDK cross-build is performed by CI. Its success indicates a valid AArch64 shared-library build; it does not load into an actual Quest device or SourceVR server.
+
+## Next non-negotiable gate
+
+Obtain and inspect a buildable, legally usable **game server module source tree** compatible with the chosen ARM64 SourceVR loader. Independently implement the native `weapon_assault_rifle` entity class and its factory registration, then connect native entity lifecycle to `sin_original_rifle_create_session_v1`. Implement native model precache, sound, animations, real `AR` ammo consumption, firing and `grenade_ar` secondary projectile. Test that the real engine's `CreateEntityByName("weapon_assault_rifle")` returns a valid live game weapon before patching any original MobGrunt NPC. Do not patch the private binary or claim the sidecar bridge alone registers an entity.
+
+After a successful native gun test, restore `roof_grunt_1_seq1` with its original equipment, `sleepstate=3`, `NumGrenades=5`, spawnflags 516, and `grunt_unkillable` map filter. Temporary HL2 Combine/AR2 fallbacks are not the shipping plan.
+
+No proprietary game DLLs, assets, SDK archives, SourceVR modules or personal device identifiers are included.
+
+## Stock SourceVR deployment restriction (public project documentation, Nov 5)
+
+The SourceVR project's published installation README expressly says **"Mods that include their own client.dll or server.dll game code are not supported."** Its `custom` mounts are for content-only maps, materials, models, scripts, sounds, and VPK assets. This is corroborated by the owner's binary-only SourceVR loader subset: no independently buildable game-server source or documented drop-in native module registration API is present.
+
+Source: https://github.com/tinsarfal/SourceVR (README, Install content mods section).
+
+**Consequence:** Copying `libsin_original_rifle_bridge.so` to `custom` or attempting to reuse the original Windows `client.dll` / `server.dll` cannot activate an original SiN weapon. The bridge is a buildable **integration component**, not a deployable content mod or factory injection for this APK.
+
+The safe next paths are (1) content-only desktop/Quest SourceVR visual/map smoke tests while keeping original game logic research separate, or (2) obtain or independently develop a legally compatible native Source server-game build with a documented replacement-module loader, then implement and validate `weapon_assault_rifle` factory registration there. Never assume runtime ABI compatibility from the matching `CreateInterface` symbol alone.
+
+## Original assets existence confirmed by owner (Nov 5, 2026)
+
+The owner ran `Test-Path` against `D:\SiN` and confirmed all four **.mdl** files exist:
+- `models/weapons/v_assault_rifle/v_assault_rifle.mdl`
+- `models/weapons/w_assault_rifle/w_assault_rifle.mdl`
+- `models/weapons/grenades/ar_grenade.mdl`
+- `models/characters/MobGrunt/mobgrunt.mdl`
+
+This confirms **file existence only**, not valid model headers, required .vvd/.vtx sidecar presence, shader/material mounting, animations, compatibility with HL2/SourceVR, or functioning rifle/NPC game code. No original asset bytes are committed.
+
+**Next local desktop HL2 runtime smoke (no BSP rewrite):** with original SiN assets already mounted, console `sv_cheats 1` followed by `ent_create prop_dynamic model models/characters/MobGrunt/mobgrunt.mdl` and, separately, `ent_create prop_dynamic model models/weapons/w_assault_rifle/w_assault_rifle.mdl`. Check visible geometry, missing material/model messages and crashes. This tests rendering of an actor's static pose and the world weapon only, **not** original NPC AI or gun firing; some NPC/viewmodel-only models may refuse prop_dynamic. Do not treat such refusal as evidence the original model is corrupt. If runtime fails, inspect model sidecars and .mdl version/checksum before trying more workarounds.
+
+## Owner live HL2 visual model tests (Nov 5, 2026)
+
+The owner supplied **two in-game screenshots** of the original MobGrunt model(s) visibly rendered in a SiN finale map inside desktop HL2, with coherent original suit textures/materials, plus the world-model assault rifle visible as a separate prop. The grunt(s) appear in a static reference/T-pose; **no animation or AI behavior is established by these screenshots**.
+
+Developer console confirms both original model references were loaded:
+```
+Loading virtual model for Characters\\MobGrunt\\MobGrunt.mdl
+Loading models/characters/MobGrunt/mobgrunt_anims.mdl
+Loading: models/weapons/w_assault_rifle/w_assault_rifle.mdl
+```
+This provides **live desktop Source compatibility evidence** for visual models and the MobGrunt animation companion load, beyond the previous on-disk existence test. It does **not** prove a valid gameplay sequence is resolved or played, original gun fires, or an NPC factory exists on Quest.
+
+The provided console also logs:
+```
+Trying to precache breakable prop, but has no model name
+prop_dynamic at (0.000, 0.000, 0.000) has no model name!
+Late precache of models/characters/MobGrunt/mobgrunt.mdl, need to rebuild modelsounds.cache
+```
+These are warnings for the console-based prop creation/precache path and should not be interpreted as failure of the visibly loaded model. They may also signal an additional empty prop created by `ent_create`. The next test should use a proper model-spawn command and, separately, test an actual **named animation sequence** on a targeted MobGrunt prop. Avoid treating `SetAnimation idle` failure as decisive unless the sequence name is verified through the Source SDK model viewer, the model's sequence table, or a trustworthy instrumented engine read.
+
+The test has not involved editing original game assets, native engine binaries, or the BSP.
+
+## MobGrunt animation console test correction (owner log)
+
+Previous suggestion `prop_dynamic_create models/characters/MobGrunt/mobgrunt.mdl` was incorrect: the command automatically prefixes `models/` and produced `models/models/characters/MobGrunt/mobgrunt.mdl`. Owner's subsequent `ent_fire !picker SetAnimation idle` targeted `npc_bullseye` named `jc_radio` instead of MobGrunt; **animation remains untested**. Correct model path for `prop_dynamic_create` is `characters/MobGrunt/mobgrunt.mdl`. A safer test avoids `!picker` altogether:
+
+```
+ent_create prop_dynamic model models/characters/MobGrunt/mobgrunt.mdl targetname sin_mobgrunt_anim_test
+ent_dump sin_mobgrunt_anim_test
+ent_fire sin_mobgrunt_anim_test SetAnimation idle
+```
+
+Only issue SetAnimation if `ent_dump` confirms `classname=prop_dynamic` and the expected model. `idle` is a trial sequence name, **not verified** against the original `mobgrunt_anims.mdl` table. Lack of motion by itself is not proof of incompatible animation. This is a render/animation smoke, not native AI or original weapon entity restoration.
