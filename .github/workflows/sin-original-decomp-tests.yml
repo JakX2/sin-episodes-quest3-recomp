@@ -1,0 +1,35 @@
+name: Original SiN DLL decomp synthetic audit tests
+
+on:
+  push:
+    paths:
+      - 'research/tools/audit_sin_rifle_client_server_registration.py'
+      - 'research/tools/audit_sin_original_mobgrunt_datamap.py'
+      - 'research/tools/verify_gameplay_entity_registry.py'
+      - 'research/tests/test_audit_sin_rifle_client_server_registration.py'
+      - 'research/tests/test_audit_sin_original_mobgrunt_datamap.py'
+      - '.github/workflows/sin-original-decomp-tests.yml'
+  pull_request:
+    paths:
+      - 'research/tools/audit_sin_rifle_client_server_registration.py'
+      - 'research/tools/audit_sin_original_mobgrunt_datamap.py'
+      - 'research/tools/verify_gameplay_entity_registry.py'
+      - 'research/tests/test_audit_sin_rifle_client_server_registration.py'
+      - 'research/tests/test_audit_sin_original_mobgrunt_datamap.py'
+      - '.github/workflows/sin-original-decomp-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  synthetic-decomp-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify original client/server rifle factory and firing-path decoder
+        run: python -m unittest discover -s research/tests -p 'test_audit_sin_rifle_client_server_registration.py' -v
+      - name: Verify original MobGrunt datamap and input-handler decoder
+        run: python -m unittest discover -s research/tests -p 'test_audit_sin_original_mobgrunt_datamap.py' -v
