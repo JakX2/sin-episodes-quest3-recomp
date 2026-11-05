@@ -35,6 +35,12 @@ struct OriginalAssaultRifle {
     static constexpr int zoom_fov = 40;
     static constexpr int weight = 7;
 
+    // Verified from original 2006 server.dll:
+    // CWeaponAssaultRifle vtable+0x3AC -> 0x22313850 returns the
+    // float at 0x22477204 (0.075), called from shared primary-fire path.
+    // This is verified timing metadata, not yet connected to native firing.
+    static constexpr float primary_fire_interval_seconds = 0.075f;
+
     // Original weapon script recoil keys. Values are not yet consumed by the
     // prototype's weapon firing code: no claim of authentic recoil physics.
     static constexpr std::array<float, 3> kick_min{{0.175f, 0.0f, 0.0f}};

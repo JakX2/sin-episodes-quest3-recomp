@@ -16,6 +16,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_assault_rifle_profile_tests
     COMMAND sin_original_assault_rifle_profile_tests)
 endif()
+# Source-derived original MobGrunt assault rally point ranking reference.
+# Tests verify priority + squared-distance tie-break only, not native NPC AI.
+if(BUILD_TESTING)
+  add_executable(sin_mobgrunt_rally_rank_tests tests/test_mobgrunt_rally_rank.cpp)
+  target_include_directories(sin_mobgrunt_rally_rank_tests PRIVATE include)
+  target_compile_options(sin_mobgrunt_rally_rank_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_mobgrunt_rally_rank_tests COMMAND sin_mobgrunt_rally_rank_tests)
+endif()
+
 if(BUILD_TESTING)
   add_executable(sin_weapon_runtime_tests tests/test_weapon_runtime.cpp)
   target_link_libraries(sin_weapon_runtime_tests PRIVATE sin_weapon_runtime)
