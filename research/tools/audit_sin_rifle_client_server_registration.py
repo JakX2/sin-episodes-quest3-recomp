@@ -150,6 +150,65 @@ def original_projectile_virtual_path(pe: PEImage) -> dict:
     }
 
 
+# Adjacent original 2006 class metadata string witnesses. These labels are
+# useful reconstruction evidence but NOT recovered field offsets or behavior.
+MOBGRUNT_FIELD_LABELS = (
+    ('m_vecAltFireTarget', 0x22490EC0),
+    ('m_iLastAnimEventHandled', 0x22490ED4),
+    ('ThrowGrenades', 0x22490EEC),
+    ('InputThrowGrenades', 0x22490EFC),
+    ('InputAssault', 0x22490F10),
+    ('LookOn', 0x22490F20),
+    ('InputLookOn', 0x22490F28),
+    ('LookOff', 0x22490F34),
+    ('InputLookOff', 0x22490F3C),
+    ('GrenadeHeight', 0x22490F8C),
+    ('m_flGrenadeHeight', 0x22490F9C),
+    ('NumGrenades', 0x22491024),
+    ('m_iNumGrenades', 0x22491030),
+    ('m_flShotDelay', 0x22491040),
+    ('m_nShots', 0x22491050),
+    ('m_flNextAltFireTime', 0x22491070),
+    ('m_bCanCrouch', 0x22491108),
+    ('m_nKickDamage', 0x22491124),
+    ('squadslot', 0x22491134),
+)
+
+ELITE_SKILL_LABELS = (
+    ('sk_elite_grunt_health', 0x2248E778),
+    ('sk_elite_grunt_kick', 0x2248E790),
+    ('sk_elite_grunt_head_mult', 0x2248E7A4),
+)
+
+
+def original_druglab_grunt_metadata(pe: PEImage) -> dict:
+    """Original factory RTTI ties distinct BSP classes to distinct C++ types."""
+    rtti = (
+        (0x225367F4, '.?AV?$CEntityFactory@VCNPC_MobGrunt@@@@'),
+        (0x22536824, '.?AVCNPC_MobGrunt@@'),
+        (0x225346AC, '.?AV?$CEntityFactory@VCNPC_EliteGrunt@@@@'),
+    )
+    for va, name in rtti:
+        require(pe.at(va, len(name) + 1) == name.encode('ascii') + b'\0',
+                f'original Druglab NPC factory RTTI differs at 0x{va:08X}')
+    for name, va in MOBGRUNT_FIELD_LABELS + ELITE_SKILL_LABELS:
+        require(pe.at(va, len(name) + 1) == name.encode('ascii') + b'\0',
+                f'original Druglab NPC string witness differs: {name}')
+    return {
+        'assault_rifle_map_class': 'npc_druglab_grunt_assault_rifle',
+        'assault_rifle_cpp_class_rtti': 'CNPC_MobGrunt',
+        'elite_map_class': 'npc_druglab_grunt_elite',
+        'elite_factory_cpp_class_rtti': 'CNPC_EliteGrunt',
+        'original_assault_grunt_string_labels': [s for s, _ in MOBGRUNT_FIELD_LABELS],
+        'original_elite_skill_setting_labels': [s for s, _ in ELITE_SKILL_LABELS],
+        'limitations': [
+            'Factory RTTI proves distinct original C++ factory specializations; does not reconstruct the NPC classes.',
+            'Field and input labels are string witnesses, not recovered member offsets, hook dispatch, or gameplay semantics.',
+            'Original collision, schedules, animation activity mapping, damage, equipment and scripted I/O still need reconstruction.',
+        ],
+    }
+
+
 def original_primary_shared_fire_path(pe: PEImage) -> dict:
     """Trace rifle vtable -> shared firing state machine -> bullet/clip path."""
     require(struct.unpack('<I', pe.at(0x224776AC + 0x388, 4))[0] == 0x2230BA30,
@@ -216,6 +275,7 @@ def audit(server: bytes, client: bytes, verify_hash: bool = True) -> dict:
         'client_class_registration': original_client_registration(cp),
         'server_weapon_virtual_projectile_path': original_projectile_virtual_path(sp),
         'server_primary_shared_fire_path': original_primary_shared_fire_path(sp),
+        'server_druglab_grunt_factory_metadata': original_druglab_grunt_metadata(sp),
         'limitations': [
             'These are original x86 instruction and RTTI witnesses, not recovered C++ source.',
             'The client registration arg 0x242C2954 is a class-name string, not a receive-table pointer.',
