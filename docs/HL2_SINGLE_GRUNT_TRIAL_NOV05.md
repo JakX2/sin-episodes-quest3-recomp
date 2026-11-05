@@ -136,3 +136,35 @@ After the owner reported seeing multiple grunts spawned in the experimental map,
 A plausible, testable explanation is Source `point_template` mechanics. Valve Source SDK code creates template copies from source BSP entities and can remove template originals; on `ForceSpawn`, the spawned instance's name can be uniquified unless `SF_POINTTEMPLATE_PRESERVE_NAMES` is used. See `TemplateEntities.cpp`, `point_template.cpp` in Source SDK 2013. Do not assume the template hypothesis without inspecting original BSP `point_template` / `env_entity_maker` references.
 
 **Next read-only local diagnostic:** compare the installed new BSP against the generated test output; enumerate the converted `roof_grunt_1_seq1` classname/model/equipment in the installed BSP; and list every BSP entity whose keyvalues reference that name (especially point_template `Template0x` slots). If installed bytes contain the expected single converted entity but no exact live target, investigate template identity/name fixup or map outputs before changing NPC flags or touching scene.cache. Keep the original BSP untouched.
+
+## Correct installed BSP, map relay verified; point_template hypothesis eliminated
+
+Owner's read-only local BSP inspection (on the installed trial map) reported:
+- **Generated and installed BSP are SHA256-identical**: `cc2875d74a328c120f7bfbe53c120137b2450e585a5fbda3afa01b71997fd923`.
+- Entity #388 in the installed BSP is `classname npc_combine_s`, `targetname roof_grunt_1_seq1`, `origin 992 -56 257`, `model models/characters/MobGrunt/mobgrunt.mdl`, `additionalequipment weapon_ar2`, `squadname seq1`, `spawnflags 516`, `sleepstate 3`, `damagefilter grunt_unkillable`.
+- Entity #409 is `logic_relay` named `begin_roof_battle_seq1`, with `OnTrigger` outputs sending `Wake` to rooftop grunts #1-4, and `SetDamageFilter` with empty parameter to rooftop grunts #1-2; also an `Assault` input to grunt #2 after 0.05s and various door/blocker changes.
+- Listed `point_template` entities are for bridges and map pickup templates, **none** references `roof_grunt_1_seq1`. Therefore the previously suggested `point_template` explanation has been ruled out for this specific target.
+- Yet live `ent_dump roof_grunt_1_seq1` produced `no such entity` during the owner's check. Thus **the BSP rewrite and installation passed, but live targetname presence did not**. Do not describe the targeted rooftop NPC as successfully map-spawned yet.
+
+SDK cross-check: Source 2013 `ai_basenpc.h` declares `AISS_WAITING_FOR_INPUT` for sleepstate 3 and base NPC spawnflag bits 4 (`SF_NPC_FALL_TO_GROUND`) + 512 (`SF_NPC_FADE_CORPSE`) = 516. Neither is the `SF_NPC_TEMPLATE` flag (2048). Sleeping should not in itself make the entity undiscoverable by exact name, although it may affect visibility. The fall-to-ground+fade-corpse combination raises a **hypothesis**, not proof, of death/removal at startup. Another possibility is `DispatchSpawn`/model initialization failure.
+
+**Next zero-edit live console test**, directly after loading the isolated copy, before interacting with level scripts:
+
+```text
+developer 2
+sv_cheats 1
+map se1_finale01_mobgrunt_live_trial
+find_ent roof_grunt_1_seq1
+find_ent roof_grunt
+find_ent npc_combine_s
+find_ent begin_roof_battle_seq1
+```
+
+If the relay is found, test explicitly in this **throwaway map only**:
+
+```text
+ent_fire begin_roof_battle_seq1 Trigger
+find_ent roof_grunt_1_seq1
+```
+
+`find_ent` is a documented Source 1 console command that searches partial classname and targetname, useful to catch renamed or other live Combine NPCs; unlike `ent_dump`, it gives the matching class/name/index. Capture console error/warning around map loading and trigger. If no exact entity exists both before and after, the relay's `Wake` alone cannot instantiate the missing NPC: next isolate map-spawn flags or conflicting Ritual-specific keyvalues in **one separate copy**, rather than editing the original map or globally replacing entities.
