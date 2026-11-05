@@ -97,6 +97,55 @@ def verify_rally_datamap(pe):
     }
 
 
+# Original CAssaultPoint / assault_assaultpoint data map and scripted controls.
+ASSAULT_POINT_TYPEDESC = (
+    ('m_AssaultHintGroup', 0x224E4EFC, 0x223F43C8, 2, 0x394, 6, 0x223F43B8, 'assaultgroup', 0),
+    ('m_NextAssaultPointName', 0x224E4F30, 0x223F43A0, 2, 0x398, 6, 0x223F438C, 'nextassaultpoint', 0),
+    ('m_flAssaultTimeout', 0x224E4F64, 0x223F4378, 1, 0x3B4, 6, 0x223F4368, 'assaulttimeout', 0),
+    ('m_bClearOnContact', 0x224E4F98, 0x223F4354, 6, 0x3B8, 6, 0x223F4344, 'clearoncontact', 0),
+    ('m_bAllowDiversion', 0x224E4FCC, 0x223F4330, 6, 0x3B9, 6, 0x223F4320, 'allowdiversion', 0),
+    ('m_bNeverTimeout', 0x224E5000, 0x223F4310, 6, 0x3BA, 6, 0x223F4300, 'nevertimeout', 0),
+    ('InputSetClearOnContact', 0x224E5034, 0x223F42E8, 6, 0, 8, 0x223F42D4, 'SetClearOnContact', 0x220CDE70),
+    ('InputSetAllowDiversion', 0x224E5068, 0x223F42BC, 6, 0, 8, 0x223F42A8, 'SetAllowDiversion', 0x220CDEA0),
+    ('m_OnArrival', 0x224E509C, 0x223F4224, 11, 0x3BC, 22, 0x223F4218, 'OnArrival', 0),
+)
+
+
+def verify_assault_point_datamap(pe):
+    fields = []
+    for name, desc, name_va, dtype, offset, flags, external_va, external_name, handler in ASSAULT_POINT_TYPEDESC:
+        words = struct.unpack_from('<8I', pe.at(desc, 52))
+        expected = (dtype, name_va, offset, 0, (flags << 16) | 1, external_va, 0, handler)
+        if words != expected:
+            raise VerificationError(f'{name}: original assaultpoint datamap changed')
+        same(pe, name_va, name.encode('ascii') + b'\0', name + ' label')
+        same(pe, external_va, external_name.encode('ascii') + b'\0', external_name + ' Hammer input/key')
+        fields.append({
+            'member': name, 'offset': f'0x{offset:X}',
+            'external_name': external_name,
+            'original_input_handler': f'0x{handler:08X}' if handler else None,
+        })
+    for faddr, bytearray_expected, label in (
+        (0x220CDE74, b'\x83\x78\x18\x06', 'ClearOnContact variant bool'),
+        (0x220CDE7D, b'\x88\x81\xb8\x03\x00\x00', 'ClearOnContact true assignment'),
+        (0x220CDE88, b'\x88\x81\xb8\x03\x00\x00', 'ClearOnContact fallback zero'),
+        (0x220CDEA4, b'\x83\x78\x18\x06', 'AllowDiversion variant bool'),
+        (0x220CDEAD, b'\x88\x81\xb9\x03\x00\x00', 'AllowDiversion true assignment'),
+        (0x220CDEB8, b'\x88\x81\xb9\x03\x00\x00', 'AllowDiversion fallback zero'),
+    ):
+        same(pe, faddr, bytearray_expected, label)
+    return {
+        'original_assaultpoint_class': 'CAssaultPoint',
+        'fields': fields,
+        'input_variant_type_comparison': 6,
+        'input_effect': 'SetClearOnContact and SetAllowDiversion write bools at +0x3B8/+0x3B9, clearing invalid variants',
+        'limits': [
+            'Entity linking and point timeout/clear transitions are not yet reconstructed.',
+            'Original 32-bit offsets are not native AArch64 class-layout offsets.',
+        ],
+    }
+
+
 def verify_rally_selection_rank_and_distance(pe):
     """Verify original rally selection comparison paths, not every lock rule."""
     same(pe, 0x220CFC70, b'\x8b\x86\xbc\x03\x00\x00\x83\xf8\xff\x74\x26',
@@ -190,6 +239,7 @@ def audit_code(pe):
     return {
         'registered_assault_entities': verify_assault_class_registration(pe),
         'original_rally_point_datamap': verify_rally_datamap(pe),
+        'original_assault_point_datamap': verify_assault_point_datamap(pe),
         'rally_point_ranking': verify_rally_selection_rank_and_distance(pe),
         'assault_input': {
             'handler_va': '0x22357E50',
