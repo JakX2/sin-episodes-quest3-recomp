@@ -70,6 +70,29 @@ void original_rifle_projectile_path(/* unknown exact signature */) {
 }
 ```
 
+## Newly recovered primary-fire dispatch and clip update
+
+The same rifle vtable has a virtual method at **`+0x388` -> `0x2230BA30`** that dispatches through shared firing-mode code. One branch calls the shared shot routine **`0x2230B430`** directly (callsite `0x2230BA7D`); a burst/queued-shot path goes through `0x2230B7F0` and calls the same shot routine from `0x2230B84E`. The `+0x584` field used in that latter routine is a countdown/queued-shot counter, **not the magazine size**.
+
+The original `CWeaponAssaultRifle` vtable method at **`+0x3AC` -> `0x22313850`** returns the float stored at original VA `0x22477204`: **0.075 seconds**. Shared firing code at `0x2230B4C8` calls this virtual interval method and uses it to advance primary-fire timing. This original binary constant now appears as metadata in the engine-neutral `OriginalAssaultRifle` profile, with a C++ test, but has not yet been applied to a native engine firing loop.
+
+The shared shot routine also reads **weapon + `0x4EC`** at `0x2230B584` and passes a fired-shot counter into integer subtraction helper **`0x222A8210`** from `0x2230B59F`; the helper's x86 instruction `sub ecx, [esi]` verifies clip subtraction. The shipped weapon script independently gives the original magazine capacity as 45 rounds. The code has more branching and ammo/prediction side effects; do not assume a uniform 13.33 shots/second under every fire mode or after dry fire.
+
+Partial reconstruction with unresolved logic preserved:
+
+```cpp
+void shared_primary_fire_path(/* inherited Source weapon class */) {
+    // Check valid owner, available clip, weapon mode and event state.
+    float interval_seconds = rifle_virtual_fire_interval(); // 0.075 for SiN rifle
+    fired_shots = decide_shots_due_from_time_and_mode(/* unknown exact conditions */);
+    // Compose shot info and invoke original engine fire bullets path.
+    clip1 -= min(fired_shots, clip1);
+    // Update next-shot state, fire effects and animations.
+}
+```
+
+This is a reconstructed **control-flow summary**, not exact recovered C++.
+
 ## Verify without modifying the game
 
 ```powershell
@@ -80,7 +103,7 @@ Adjust the input paths to the location of the two *actual original 2006 game DLL
 
 ## Next reverse-engineering gates
 
-1. Identify the original rifle's inherited/shared primary attack method, trace clip decrement and 45-round primary firing cadence.
+1. Further decode the now-verified shared primary-fire mode branches, burst counter at +0x584, clip decrement at +0x4EC, and distinction between 75ms rifle interval and other cooldowns.
 2. Decode the genuine client `DT_WeaponAssaultRifle` receive table built at `0x2422A660` (name at `0x242C298C`), then follow its `baseclass` property into inherited weapon network and prediction fields.
 3. Reverse the full grenade projectile lifecycle including owner, physics, impact, damage, fuse, and ammo decrement.
 4. Implement equivalents through a **buildable native engine/game DLL** and class factory, not by copying x86 addresses into ARM64. The stock SourceVR content-only mod loader does not accept custom game-server DLL replacements.
