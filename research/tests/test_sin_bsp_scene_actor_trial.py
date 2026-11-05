@@ -96,4 +96,38 @@ class TrialTest(unittest.TestCase):
             self.assertEqual(trial.main([str(src),'--verify',str(dst)]),2)
             self.assertEqual(trial.main([str(src),'--verify',str(dst),'--include-generic']),0)
 
+    def test_named_generic_actor_changes_only_one_entity(self):
+        source=fixture()
+        changed,counts=trial.make_trial(source,generic_targets=['extra'])
+        self.assertEqual(counts['npc_generic_actor:extra'],1)
+        self.assertEqual(counts['npc_jessica'],1)
+        _,_,_,_,body=trial.read_bsp(changed)
+        self.assertIn(b'"classname" "generic_actor"\\n"targetname" "extra"',body)
+        self.assertIn(b'"classname" "npc_alyx"',body)
+        self.assertEqual(source[1400:1404],changed[1400:1404])
+        self.assertEqual(trial.read_bsp(source)[-1].count(b'generic_actor'),1)
+        self.assertEqual(body.count(b'"classname" "generic_actor"'),1)
+
+    def test_named_generic_actor_refuses_unsafe_targets(self):
+        source=fixture()
+        for target in ('missing','JC_Hospital','jess01','bad"quote'):
+            with self.assertRaises(trial.BspError):
+                trial.make_trial(source,generic_targets=[target])
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(source,include_generic=True,generic_targets=['extra'])
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(source,generic_targets=['extra','extra'])
+
+    def test_targeted_trial_cli_write_and_verify(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base=pathlib.Path(folder)
+            source=base/'original.bsp'
+            target=base/'heli_trial'/'se1_finale01.bsp'
+            source.write_bytes(fixture())
+            opts=['--generic-target','extra']
+            self.assertEqual(trial.main([str(source),*opts,'--write',str(target)]),0)
+            self.assertEqual(trial.main([str(source),*opts,'--verify',str(target)]),0)
+            self.assertEqual(trial.main([str(source),'--verify',str(target)]),2)
+            self.assertEqual(trial.main([str(source),*opts,'--write',str(target)]),2)
+
 if __name__=='__main__': unittest.main()
