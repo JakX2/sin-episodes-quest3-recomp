@@ -97,7 +97,9 @@ jobs:
           emulator-boot-timeout: 480
           emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
-            set -euo pipefail
+            # The emulator action invokes this script with /bin/sh, not Bash.
+            # Keep POSIX strict mode; the explicit marker greps below validate output.
+            set -eu
             SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-runtime-evidence.txt bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
             # Phase100: test a SECOND genuine Android Bionic dlopen module, not
             # the original 13-export host ABI and not the SourceVR engine.
