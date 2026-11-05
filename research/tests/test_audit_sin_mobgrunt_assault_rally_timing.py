@@ -67,6 +67,8 @@ def fixture():
         pairs[entry] = parts
         pairs[string_va] = classname.encode('ascii') + b'\0'
     pairs.update({
+        0x220CFC70: b'\x8b\x86\xbc\x03\x00\x00\x83\xf8\xff\x74\x26',
+        0x220CFC98: b'\x83\x39\x00\x0f\x85\x43\x01\x00\x00',
         0x220CFC62: b'\x83\xcd\xff',
         0x220CFCA1: b'\x8b\x86\xa0\x03\x00\x00',
         0x220CFCA7: b'\x3b\xc5\x7e\x07',
@@ -83,6 +85,12 @@ def fixture():
         0x220CFE30: b'\x68\xd0\x3c\x3f\x22',
         0x223F3CD0: b"%s Didn't find a best rally point!\n\0",
     })
+    for name, desc, name_va, dtype, offset, flags, external_va, external_name in a.RALLY_TYPEDESC:
+        pairs[desc] = (struct.pack('<8I', dtype, name_va, offset, 0,
+                                   (flags << 16) | 1, external_va, 0, 0) + b'\x00' * 20)
+        pairs[name_va] = name.encode('ascii') + b'\x00'
+        if external_name:
+            pairs[external_va] = external_name.encode('ascii') + b'\x00'
     return pairs
 
 
@@ -91,6 +99,10 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
         result = a.audit_code(FakePE(fixture()))
         self.assertEqual(result['assault_input']['behavior_object_offset'], '0xDB8')
         self.assertEqual(result['rally_point_ranking']['original_priority_field_offset'], '0x3A0')
+        fields = {f['member']: f for f in result['original_rally_point_datamap']['field_descriptors']}
+        self.assertEqual(fields['m_iPriority']['original_offset'], '0x3A0')
+        self.assertEqual(fields['m_hLockedBy']['original_offset'], '0x3BC')
+        self.assertEqual(fields['m_AssaultPointName']['external_key'], 'assaultpoint')
         self.assertEqual(result['rally_point_ranking']['original_entity_origin_field_offset'], '0x2BC')
         self.assertEqual([r['classname'] for r in result['registered_assault_entities']],
                          ['assault_rallypoint', 'assault_assaultpoint', 'ai_goal_assault'])
@@ -130,6 +142,14 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
         )
         with self.assertRaises(a.VerificationError):
             a.audit_code(FakePE(fixture_bytes))
+
+    def test_corrupt_rallypoint_lock_datamap_fails(self):
+        data = fixture()
+        name, desc, name_va, dtype, offset, flags, external_va, external_name = a.RALLY_TYPEDESC[4]
+        data[desc] = (struct.pack('<8I', dtype, name_va, offset + 4, 0,
+                                 (flags << 16) | 1, external_va, 0, 0) + b'\0' * 20)
+        with self.assertRaises(a.VerificationError):
+            a.audit_code(FakePE(data))
 
     def test_corrupt_rally_priority_offset_fails(self):
         bytes_map = fixture()
