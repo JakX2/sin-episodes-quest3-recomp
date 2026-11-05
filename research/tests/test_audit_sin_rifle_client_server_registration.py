@@ -34,12 +34,32 @@ def server_thunk(entry, name_va, factory_va):
             struct.pack('<I', factory_va) + b'\x8b\xc8\xff\x12\xc3')
 
 
+def recv_table_thunk():
+    return (b'\x68' + struct.pack('<I', 0x242C298C) + b'\x6a\x01' +
+            b'\x68' + struct.pack('<I', 0x2437F034) +
+            b'\xb9' + struct.pack('<I', 0x2437F598) +
+            x86_call(0x2422A6B9, 0x24126A30))
+
+
 def client_thunk():
     return (x86_call(0x24270B80, 0x24103BF0) + b'\x8b\x10\x68' +
             struct.pack('<I', 0x2422B5B0) + b'\x68' +
             struct.pack('<I', 0x830) + b'\x68' +
             struct.pack('<I', 0x242C2954) + b'\x68' +
             struct.pack('<I', 0x2429B020) + b'\x8b\xc8\xff\x12\xc3')
+
+
+def client_regions(code):
+    return [
+        (0x24270B80, code),
+        (0x2429B020, b'weapon_assault_rifle\0'),
+        (0x242C2954, b'C_WeaponAssaultRifle\0'),
+        (0x242C298C, b'DT_WeaponAssaultRifle\0'),
+        (0x24320A60, b'.?AVC_WeaponAssaultRifle@@\0'),
+        (0x2422A6A8, recv_table_thunk()),
+        (0x2427643C, b'baseclass\0'),
+        (0x2422A696, b'\x68\x3c\x64\x27\x24'),
+    ]
 
 
 class OriginalRifleRegistrationTests(unittest.TestCase):
@@ -77,26 +97,28 @@ class OriginalRifleRegistrationTests(unittest.TestCase):
     def test_original_client_registration(self):
         code = client_thunk()
         self.assertEqual(len(code), 32)
-        pe = FakePE([
-            (0x24270B80, code),
-            (0x2429B020, b'weapon_assault_rifle\0'),
-            (0x24320A60, b'.?AVC_WeaponAssaultRifle@@\0'),
-        ])
+        pe = FakePE(client_regions(code))
         record = a.original_client_registration(pe)
         self.assertEqual(record['size_argument'], 0x830)
         self.assertEqual(record['rtti_class'], 'C_WeaponAssaultRifle')
+        self.assertEqual(record['client_class_name'], 'C_WeaponAssaultRifle')
+        self.assertEqual(record['recv_table_name'], 'DT_WeaponAssaultRifle')
+        self.assertEqual(record['recv_table_declared_direct_props'], 1)
 
     def test_client_rejects_size_mutation(self):
         bad = bytearray(client_thunk())
         bad[13] ^= 1
-        pe = FakePE([
-            (0x24270B80, bytes(bad)),
-            (0x2429B020, b'weapon_assault_rifle\0'),
-            (0x24320A60, b'.?AVC_WeaponAssaultRifle@@\0'),
-        ])
+        pe = FakePE(client_regions(bytes(bad)))
         with self.assertRaises(a.VerificationError):
             a.original_client_registration(pe)
 
+
+    def test_client_rejects_recv_table_name_corruption(self):
+        regions = client_regions(client_thunk())
+        mutated = [(va, b'DT_CorruptWeapon\0' if va == 0x242C298C else blob)
+                   for va, blob in regions]
+        with self.assertRaises(a.VerificationError):
+            a.original_client_registration(FakePE(mutated))
 
 if __name__ == '__main__':
     unittest.main()
