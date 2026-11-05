@@ -60,6 +60,44 @@ def verify_assault_class_registration(pe):
     return registrations
 
 
+def verify_rally_selection_rank_and_distance(pe):
+    """Verify original rally selection comparison paths, not every lock rule."""
+    same(pe, 0x220CFC62, b'\x83\xcd\xff', 'initial best priority = -1')
+    same(pe, 0x220CFCA1, b'\x8b\x86\xa0\x03\x00\x00', 'candidate priority offset')
+    same(pe, 0x220CFCA7, b'\x3b\xc5\x7e\x07', 'higher priority branch')
+    same(pe, 0x220CFCAB, b'\x8b\xe8', 'best priority update')
+    same(pe, 0x220CFCB2, b'\x0f\x85\x2c\x01\x00\x00', 'equal priority tie gate')
+    same(pe, 0x220CFCCF, b'\x81\xc7\xbc\x02\x00\x00', 'owner position offset')
+    same(pe, 0x220CFCFE, b'\xd9\x86\xbc\x02\x00\x00', 'candidate position offset')
+    same(pe, 0x220CFD4C, b'\xd9\x44\x24\x20\xd8\x4c\x24\x20',
+         'candidate delta square')
+    same(pe, 0x220CFD75, b'\xd9\x83\xbc\x02\x00\x00',
+         'selected position offset')
+    same(pe, 0x220CFDBB, b'\xd9\x44\x24\x38\xd8\x4c\x24\x38',
+         'selected delta square')
+    same(pe, 0x220CFDD7,
+         b'\xd8\x5c\x24\x14\xdf\xe0\xf6\xc4\x41\x75\x02\x8b\xde',
+         'equal-priority distance comparison and closer replacement')
+    same(pe, 0x220CFE22, b'\x85\xdb', 'no candidate selected check')
+    same(pe, 0x220CFE5A, b'\x89\x47\x18', 'selected rally handle storage')
+    same(pe, 0x220CFE30, b'\x68\xd0\x3c\x3f\x22',
+         'rally selection error string xref')
+    same(pe, 0x223F3CD0, b"%s Didn't find a best rally point!\n\0",
+         'missing best rally point diagnostic')
+    return {
+        'selection_function_va': '0x220CFC00',
+        'original_priority_field_offset': '0x3A0',
+        'original_entity_origin_field_offset': '0x2BC',
+        'selection_behavior_member_offset': '0x18',
+        'ranking': 'highest integer priority; equal priority chooses nearest in squared 3D distance',
+        'equal_priority_and_equal_distance': 'retains earlier selected candidate',
+        'limitations': [
+            'Candidate validity/locking and tie floating-point corner cases are not fully reconstructed.',
+            'Original x86 offsets must never be copied into the native ARM64 class layout.',
+        ],
+    }
+
+
 def audit_code(pe):
     # InputAssault turns the Source variant into a string; an assault-behavior
     # subobject at this+0xDB8 takes that cue/rally point and an integer 3.
@@ -110,6 +148,7 @@ def audit_code(pe):
 
     return {
         'registered_assault_entities': verify_assault_class_registration(pe),
+        'rally_point_ranking': verify_rally_selection_rank_and_distance(pe),
         'assault_input': {
             'handler_va': '0x22357E50',
             'string_variant_type_comparison': 2,
