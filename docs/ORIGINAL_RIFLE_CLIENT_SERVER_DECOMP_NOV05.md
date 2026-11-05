@@ -188,6 +188,24 @@ Therefore reconstruct **`CNPC_GruntBase` once with common behavior**, then provi
 
 The new synthetic regression tests validate both class vtables, constructor assignments and 17-entry hierarchy, including failed assertions when RTTI or movement subobject offsets change. The owner-supplied pinned original `server.dll` was also inspected locally at those exact virtual addresses. No original binary bytes are distributed by the repository.
 
+## MobGrunt vs Elite: original virtual function override map
+
+Comparing the two real primary virtual tables in the original, hash-pinned 2006 `server.dll` yielded:
+
+| Metric | Result |
+|---|---:|
+| MobGrunt contiguous executable virtual slots | 532 |
+| EliteGrunt contiguous executable virtual slots | 533 |
+| Corresponding slots compared | 532 |
+| **Shared exact implementation pointers** | **509** |
+| **Different implementation pointers** | **23** |
+
+The 23 different slot indices are: **0, 10, 11, 12, 13, 25, 26, 52, 58, 96, 265, 271, 273, 275, 281, 290, 291, 366, 419, 456, 472, 489, 530**. The read-only verifier `research/tools/audit_sin_original_druglab_vtable_diff.py` outputs each original method address and vtable byte offset. It verifies class RTTI and constructor vptr assignments before comparing, and refuses altered original hashes, boundaries or override patterns.
+
+**Interpretation:** the two enemies share the overwhelming majority of their virtual dispatch implementations in the original game, providing evidence for reusing common `CNPC_GruntBase` systems. Different pointers are candidate specialized methods, **not yet named tactics**, and pointer identity is not the same as proving identical all-round gameplay. Some specialized behavior may also reside in non-virtual helpers, shared functions with different data or external scripts. We must trace calls and data for each override before porting combat behaviors.
+
+This comparison uses a conservative contiguous `.text`-pointer scan; the 532/533-slot boundaries are observed original binary facts, not guaranteed source-level class method counts. Only virtual method addresses and comparisons are published, never original code bytes.
+
 ## Verify without modifying the game
 
 ```powershell
