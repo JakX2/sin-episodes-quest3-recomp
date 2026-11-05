@@ -53,6 +53,8 @@ jobs:
             build-android-arm64/libsin_source_provider_abi.so
             build-android-arm64/sin_android_source_provider_smoke
             build-android-arm64/sin102_provider_lifecycle
+            build-android-arm64/libsin_scene_actor_c_abi.so
+            build-android-arm64/sin_android_scene_actor_c_abi_smoke
           if-no-files-found: error
           retention-days: 7
 

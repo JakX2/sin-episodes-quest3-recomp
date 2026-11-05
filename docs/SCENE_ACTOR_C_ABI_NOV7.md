@@ -45,3 +45,6 @@ This local release build and test passed, with precisely eight function exports 
 6. A Quest 3 standalone playable port additionally needs a real SourceVR-compatible entity game module and headset integration, which this shared library alone does not provide.
 
 **Ownership:** the engine host owns spawned entities. Destroying the compatibility session does not implicitly delete a live engine NPC; the host must tear down its level/game entities. Callbacks must remain valid for the session lifetime, must be single-threaded, and must not throw through the C interface. Reentrant calls fail closed. Do not ship original DLLs, BSPs, VCD payloads, or assets with this library.
+## GitHub ARM64 CI artifacts
+
+The PR's Android ARM64 Actions artifact includes `libsin_scene_actor_c_abi.so` and `sin_android_scene_actor_c_abi_smoke` alongside the prior native bridge tests. The x86_64 emulator produces a `scene-actor-bionic-output.txt` log with the actual fake-host `dlopen` marker. These artifacts are **not** an APK, SourceVR game-module implementation, or executable SiN campaign. Download and inspect only after the commit's CI has passed.
