@@ -71,3 +71,23 @@ Do **not** merge the stacked draft branch automatically. All tools are pure Pyth
 ### Round 19 actor alias preflight correction
 
 The BSP scanner now computes `has_scene_alias` from `logic_choreographed_scene` controller `Target1..Target8` values, **not** from arbitrary NPC fields. An alias row additionally records whether the referenced targetname is visible in the *initial BSP entity lump* and the matching classname candidates. An unresolved targetname could still be created later by map I/O, so this is diagnostic evidence rather than a failed runtime test. One synthetic regression test guards the previously false-positive `!Target1` binding case.
+
+
+## November 5 follow-up: output-directory fix and deterministic BSP verification
+
+The BSP trial writer now creates missing destination parent directories for explicit `--write` requests. Output files are opened in exclusive-create mode, so it will still **refuse to overwrite** an existing trial or original. No input BSP is ever changed. A new read-only `--verify` mode regenerates the expected trial bytes in memory and compares **every byte** of the written copy to that expectation, including all unmodified lumps and map data.
+
+From the repository root in PowerShell, using the owner's previously reported paths:
+
+```powershell
+py research/tools/sin_bsp_scene_actor_trial.py "D:\SiN\maps\se1_finale01.bsp" --report
+py research/tools/sin_bsp_scene_actor_trial.py "D:\SiN\maps\se1_finale01.bsp" --write "D:\SiN_Test_Only\se1_finale01.bsp"
+py research/tools/sin_bsp_scene_actor_trial.py "D:\SiN\maps\se1_finale01.bsp" --verify "D:\SiN_Test_Only\se1_finale01.bsp"
+
+py research/tools/sin_scene_actor_diagnostics.py preflight --bsp "D:\SiN\maps\se1_finale01.bsp"
+py research/tools/sin_scene_actor_diagnostics.py preflight --bsp "D:\SiN_Test_Only\se1_finale01.bsp"
+```
+
+No need for a separate `New-Item` call now. If the output BSP already exists, `--write` returns an error by design; use `--verify` to check it or select a new test-only filename instead of overwriting it. If `--include-generic` was used to create the copy, also supply `--include-generic` when verifying.
+
+**Meaning of a verification pass:** only that the generated binary exactly matches the intended classname-only BSP rewrite. It is not evidence of HL2 engine acceptance, model/skeleton compatibility, scene cache mounting, actor binding, or successful Quest 3 gameplay. Retain the existing before/after single-map console-log procedure for those runtime questions.
