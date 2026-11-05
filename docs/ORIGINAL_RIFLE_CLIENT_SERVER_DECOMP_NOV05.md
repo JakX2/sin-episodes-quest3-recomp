@@ -110,6 +110,39 @@ Elite-specific skill labels also exist in the original server binary: `sk_elite_
 
 **Engineering consequence:** restore two separate native NPC classes and corresponding factory registrations, rather than substituting `npc_sintek_grunt` for both or treating HL2 `npc_combine_s` as finished implementation. Keep the proven one-grunt desktop HL2 proxy as a smoke-test baseline while independent original AI logic is reconstructed.
 
+## Decompiled MobGrunt data-map offsets and scripted I/O (original server.dll)
+
+The following are not just strings: the original `server.dll` contains consistent **52-byte (`0x34`) Source `typedescription_t` records** with a field type, name, member offset, flag bits, optional external Hammer name, and input function pointer. The new fail-closed verifier reads those actual records and original x86 input-handler instructions. All positions below are relative to the **original 2006 x86 MobGrunt object**, not the future Quest AArch64 class.
+
+| MobGrunt member | Original object offset | Datamap / Hammer name |
+|---|---:|---|
+| `m_iNumGrenades` | `+0xC38` | `NumGrenades` |
+| `m_flGrenadeHeight` | `+0xC70` | `GrenadeHeight` |
+| `m_flShotDelay` | `+0xC9C` | internal field |
+| `m_nShots` | `+0xC98` | internal field |
+| `m_flNextAltFireTime` | `+0xC90` | internal field |
+| `m_vecAltFireTarget` | `+0xFCC` | internal field |
+| `m_iLastAnimEventHandled` | `+0xFC8` | internal field |
+| `m_bCanCrouch` | `+0xC66` | internal field |
+| `m_nKickDamage` | `+0xC54` | internal field |
+
+The original script-addressed input dispatch table is now traced:
+
+| Hammer input | C++ data-map handler | Original `server.dll` implementation VA |
+|---|---|---|
+| `Assault` | `InputAssault` | `0x22357E50` |
+| `ThrowGrenades` | `InputThrowGrenades` | `0x22357EA0` |
+| `LookOn` | `InputLookOn` | `0x2235DDC0` |
+| `LookOff` | `InputLookOff` | `0x2235F260` |
+
+**Handler-level machine-code facts:**
+- `InputAssault` at `0x22357E50` prepares an internal object at **`this+0xDB8`**, pushes integer `3` and invokes `0x220CFC00`. The meaning of the state `3` and the actual schedule transition must still be reversed.
+- `InputThrowGrenades` at `0x22357EA0` inspects input data's type discriminator `6`; it **resets `this+0xC70`** (the mapped `m_flGrenadeHeight`) to zero and updates a byte at `this+0xC6C` based on the supplied value, or clears the byte on the other branch. The exact semantic field name for `+0xC6C` is not yet confirmed. This is the input handler, **not** a proof that a grenade is immediately thrown.
+
+This provides a concrete route for restoring the original `begin_roof_battle_seq1` relay's `Assault` input and the FGD-defined grenade controls. The original map's `NumGrenades=5` and `GrenadeHeight=0` correspond to real native datamap fields; they are not arbitrary editor-only metadata.
+
+Verifier: `research/tools/audit_sin_original_mobgrunt_datamap.py`, with synthetic regression tests `research/tests/test_audit_sin_original_mobgrunt_datamap.py`. It refuses any unexpected original DLL hash, datamap offset, field type, registration string or handler instruction. It neither outputs machine code nor needs any proprietary binary in the GitHub repository.
+
 ## Verify without modifying the game
 
 ```powershell
@@ -123,6 +156,6 @@ Adjust the input paths to the location of the two *actual original 2006 game DLL
 1. Further decode the now-verified shared primary-fire mode branches, burst counter at +0x584, clip decrement at +0x4EC, and distinction between 75ms rifle interval and other cooldowns.
 2. Decode the genuine client `DT_WeaponAssaultRifle` receive table built at `0x2422A660` (name at `0x242C298C`), then follow its `baseclass` property into inherited weapon network and prediction fields.
 3. Reverse the full grenade projectile lifecycle including owner, physics, impact, damage, fuse, and ammo decrement.
-4. Trace `CNPC_MobGrunt` class datamap offsets and actual `InputAssault`/`InputThrowGrenades` dispatch, then the distinct `CNPC_EliteGrunt` behavior and skill convars.
+4. Continue from the now-verified MobGrunt data-map/handler addresses: identify the `+0xDB8` assault state machine and `+0xC6C` grenade toggle semantics; then reconstruct `CNPC_EliteGrunt` schedule and skill convar behavior.
 4. Implement equivalents through a **buildable native engine/game DLL** and class factory, not by copying x86 addresses into ARM64. The stock SourceVR content-only mod loader does not accept custom game-server DLL replacements.
 5. Keep the verified HL2 map-defined `roof_grunt_1_seq1` model/AI/AR2 prototype as an independent regression baseline. Its Combine AI and AR2 are not authentic Ritual gameplay.
