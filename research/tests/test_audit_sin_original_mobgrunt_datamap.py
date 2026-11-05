@@ -50,15 +50,22 @@ def test_regions():
 class OriginalMobGruntDataMapTests(unittest.TestCase):
     def test_actual_layout_hypotheses_have_matching_synthetic_witnesses(self):
         result = audit.audit_datamap(FakePE(test_regions()))
+        self.assertEqual(result['descriptor_count'], 39)
+        self.assertEqual(result['member_descriptor_count'], 33)
+        self.assertEqual(result['input_descriptor_count'], 6)
         members = {m['member']: m for m in result['member_descriptors']}
         self.assertEqual(members['m_iNumGrenades']['offset_hex'], '0xC38')
         self.assertEqual(members['m_flShotDelay']['offset_hex'], '0xC9C')
         self.assertEqual(members['m_flNextAltFireTime']['offset_hex'], '0xC90')
+        self.assertEqual(members['m_bGrenadeHappy']['offset_hex'], '0xC6C')
+        self.assertEqual(members['m_bShouldPatrol']['offset_hex'], '0xC65')
         self.assertEqual(members['m_flGrenadeHeight']['hammer_key'], 'GrenadeHeight')
         inputs = {e['external_input']: e['function_va']
                   for e in result['input_descriptors']}
         self.assertEqual(inputs['Assault'], '0x22357E50')
         self.assertEqual(inputs['ThrowGrenades'], '0x22357EA0')
+        self.assertEqual(inputs['StartPatrolling'], '0x22357E30')
+        self.assertEqual(inputs['StopPatrolling'], '0x22357E40')
 
     def test_refuse_mutated_datamap_field_offset(self):
         regions = test_regions()
@@ -85,6 +92,8 @@ class OriginalMobGruntDataMapTests(unittest.TestCase):
         callsite, target = 0x22357E8B, 0x220CFC00
         call = b'\xe8' + struct.pack('<i', target-callsite-5)
         pe = FakePE([
+            (0x22357E30, b'\xc6\x81\x65\x0c\x00\x00\x01\xc2\x04\x00'),
+            (0x22357E40, b'\xc6\x81\x65\x0c\x00\x00\x00\xc2\x04\x00'),
             (0x22357E50, b'\x56\x8b\xf1'),
             (0x22357E5A, b'\x83\x79\x10\x02'),
             (0x22357E66, b'\xb8\xa8\x47\x3d\x22'),
@@ -101,6 +110,9 @@ class OriginalMobGruntDataMapTests(unittest.TestCase):
         value = audit.audit_handler_code(pe)
         self.assertEqual(value['assault_input']['submitted_state_argument'], 3)
         self.assertEqual(value['grenade_input']['bool_field_offset'], '0xC6C')
+        self.assertEqual(value['grenade_input']['bool_member'], 'm_bGrenadeHappy')
+        self.assertTrue(value['patrol_inputs']['StartPatrolling']['assigned_bool'])
+        self.assertFalse(value['patrol_inputs']['StopPatrolling']['assigned_bool'])
 
     def test_refuse_corrupt_original_input_handler_call(self):
         callsite = 0x22357E8B
