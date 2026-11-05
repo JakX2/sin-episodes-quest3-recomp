@@ -27,6 +27,31 @@ MEMBERS = (
     ('m_iLastAnimEventHandled', 0x22535610, 0x22490ED4, 5, 0xFC8, 2, 0),
     ('m_bCanCrouch', 0x22534F5C, 0x22491108, 6, 0xC66, 2, 0),
     ('m_nKickDamage', 0x22534E8C, 0x22491124, 5, 0xC54, 2, 0),
+    # Remaining 24 descriptor entries recovered from the contiguous 0x34-byte table.
+    ('m_vecTossVelocity', 0x22534EC0, 0x22477BC0, 3, 0xC58, 2, 0),
+    ('m_bStanding', 0x22534EF4, 0x22491118, 6, 0xC64, 2, 0),
+    ('m_bShouldPatrol', 0x22534F28, 0x22485CA4, 6, 0xC65, 2, 0),
+    ('m_bFirstEncounter', 0x22534F90, 0x224910F4, 6, 0xC67, 2, 0),
+    ('m_flNextPainSoundTime', 0x22534FC4, 0x224910DC, 16, 0xC78, 2, 0),
+    ('m_flNextAlertSoundTime', 0x22534FF8, 0x224910C4, 16, 0xC7C, 2, 0),
+    ('m_flNextGrenadeCheck', 0x2253502C, 0x22477BA8, 16, 0xC80, 2, 0),
+    ('m_flAltFireCheck', 0x22535060, 0x224910B0, 16, 0xC84, 2, 0),
+    ('m_flNextLostSoundTime', 0x22535094, 0x22491098, 16, 0xC88, 2, 0),
+    ('m_flAlertPatrolTime', 0x225350C8, 0x22491084, 16, 0xC8C, 2, 0),
+    ('m_flNextCoughTime', 0x22535130, 0x2249105C, 16, 0xC94, 2, 0),
+    ('m_Sentences', 0x22535200, 0x22491018, 10, 0xCC0, 2, 0),
+    ('m_bWounded', 0x22535234, 0x2249100C, 6, 0xCA0, 2, 0),
+    ('m_pWounded', 0x22535268, 0x22491000, 12, 0xCA4, 2, 0),
+    ('m_pHelper', 0x2253529C, 0x22490FF4, 12, 0xCA8, 2, 0),
+    ('m_fKneeDamage', 0x225352D0, 0x22490FE4, 1, 0xCAC, 2, 0),
+    ('m_bHaveSat', 0x22535304, 0x22490FD8, 6, 0xCB0, 2, 0),
+    ('m_bGrenadeHappy', 0x22535338, 0x22490FC8, 6, 0xC6C, 2, 0),
+    ('m_shouldPlayDeathSound', 0x2253536C, 0x22490FB0, 6, 0xCB1, 2, 0),
+    ('m_hPhysicsEnt', 0x225353D4, 0x22490F7C, 13, 0xCB4, 2, 0),
+    ('m_hCurrentGrenade', 0x22535408, 0x22490F68, 13, 0xCB8, 2, 0),
+    ('m_hTargetBarrel', 0x2253543C, 0x22490F58, 13, 0xCBC, 2, 0),
+    ('m_hIgnitor', 0x22535470, 0x22490F4C, 13, 0xC3C, 2, 0),
+    ('m_szFlameInflictor', 0x225354A4, 0x2241221C, 2, 0xC40, 2, 0),
 )
 
 # (handler field name, descriptor VA, field name string VA, type ordinal,
@@ -40,6 +65,10 @@ INPUTS = (
      0x22490F20, 0x2235DDC0),
     ('InputLookOff', 0x225354D8, 0x22490F3C, 0, 'LookOff',
      0x22490F34, 0x2235F260),
+    ('InputStartPatrolling', 0x22535540, 0x22485CB4, 0, 'StartPatrolling',
+     0x22477C70, 0x22357E30),
+    ('InputStopPatrolling', 0x22535574, 0x22485CC4, 0, 'StopPatrolling',
+     0x22477C80, 0x22357E40),
 )
 
 
