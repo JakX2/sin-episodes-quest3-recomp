@@ -1,0 +1,61 @@
+{
+  "vcd_count": 261,
+  "log_missing_scene_distinct": 4,
+  "log_missing_scene_occurrences": 4,
+  "log_scenes_found_in_archive": 4,
+  "log_scenes_absent_from_archive": 0,
+  "log_crosswalk": [
+    {
+      "scene": "scenes/se1_finale/teaser_elexis_laughing.vcd",
+      "log_occurrences": 1,
+      "archive_present": true,
+      "actor_tokens": [
+        "Elexis"
+      ]
+    },
+    {
+      "scene": "scenes/se1_finale/teaser_jc_hospital.vcd",
+      "log_occurrences": 1,
+      "archive_present": true,
+      "actor_tokens": [
+        "JC_Hospital"
+      ]
+    },
+    {
+      "scene": "scenes/se1_finale/teaser_radek_and_jessica.vcd",
+      "log_occurrences": 1,
+      "archive_present": true,
+      "actor_tokens": [
+        "Roddick",
+        "Jessica",
+        "Helicopter"
+      ]
+    },
+    {
+      "scene": "scenes/se1_highrise/jess_wakeupblade.vcd",
+      "log_occurrences": 1,
+      "archive_present": true,
+      "actor_tokens": [
+        "!Target1"
+      ]
+    }
+  ],
+  "example_actor_tokens": {
+    "scenes/se1_finale/teaser_jc_hospital.vcd": [
+      "JC_Hospital"
+    ],
+    "scenes/se1_finale/teaser_radek_and_jessica.vcd": [
+      "Roddick",
+      "Jessica",
+      "Helicopter"
+    ],
+    "scenes/se1_highrise/jess_wakeupblade.vcd": [
+      "!Target1"
+    ]
+  },
+  "limits": [
+    "Archive presence does not establish VCD runtime mounting, scene.cache, engine compatibility or working animation.",
+    "Actor names inside VCDs are map bindings, not necessarily NPC classnames.",
+    "No VCD, voice data or proprietary scene payload is redistributed."
+  ]
+}

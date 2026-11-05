@@ -1,0 +1,12 @@
+SIN_SCENE_1 {
+  global:
+    sin_scene_abi_version_v1;
+    sin_scene_create_v1;
+    sin_scene_destroy_v1;
+    sin_scene_spawn_v1;
+    sin_scene_begin_v1;
+    sin_scene_input_v1;
+    sin_scene_animation_event_v1;
+    sin_scene_get_actor_v1;
+  local: *;
+};

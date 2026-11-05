@@ -53,6 +53,8 @@ jobs:
             build-android-arm64/libsin_source_provider_abi.so
             build-android-arm64/sin_android_source_provider_smoke
             build-android-arm64/sin102_provider_lifecycle
+            build-android-arm64/libsin_scene_actor_c_abi.so
+            build-android-arm64/sin_android_scene_actor_c_abi_smoke
           if-no-files-found: error
           retention-days: 7
 
@@ -97,7 +99,9 @@ jobs:
           emulator-boot-timeout: 480
           emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
-            set -euo pipefail
+            # The emulator action invokes this script with /bin/sh, not Bash.
+            # Keep POSIX strict mode; the explicit marker greps below validate output.
+            set -eu
             SIN_SMOKE_EXPECTED_ABI=x86_64 SIN_SMOKE_REPORT_PATH=build-android-emulator-x86_64/android-runtime-evidence.txt bash scripts/run_android_host_abi_smoke.sh build-android-emulator-x86_64
             # Phase100: test a SECOND genuine Android Bionic dlopen module, not
             # the original 13-export host ABI and not the SourceVR engine.
@@ -120,6 +124,14 @@ jobs:
             adb push build-android-emulator-x86_64/sin102_provider_lifecycle /data/local/tmp/sin_phase101/sin102_provider_lifecycle
             adb shell 'cd /data/local/tmp/sin_phase101 && chmod 700 sin102_provider_lifecycle && LD_LIBRARY_PATH=. ./sin102_provider_lifecycle ./libsin_legacy_bridge_abi.so' | tr -d '\r' | tee build-android-emulator-x86_64/phase102-bionic-output.txt
             grep -Fq 'PASS: Phase102 provider replacement invalidates sound namespace, keyboard survives, epoch guarded' build-android-emulator-x86_64/phase102-bionic-output.txt
+
+            # Round19: load scene actor .so in real Android Bionic using fake
+            # engine callbacks. This does NOT instantiate a SourceVR NPC.
+            adb shell mkdir -p /data/local/tmp/sin_scene_actor
+            adb push build-android-emulator-x86_64/libsin_scene_actor_c_abi.so /data/local/tmp/sin_scene_actor/libsin_scene_actor_c_abi.so
+            adb push build-android-emulator-x86_64/sin_android_scene_actor_c_abi_smoke /data/local/tmp/sin_scene_actor/sin_android_scene_actor_c_abi_smoke
+            adb shell 'cd /data/local/tmp/sin_scene_actor && chmod 700 sin_android_scene_actor_c_abi_smoke && ./sin_android_scene_actor_c_abi_smoke ./libsin_scene_actor_c_abi.so' | tr -d '\r' | tee build-android-emulator-x86_64/scene-actor-bionic-output.txt
+            grep -Fxq 'PASS: independently authored SiN JC/Jessica C ABI dlopen, callback guards and scene events (fake host)' build-android-emulator-x86_64/scene-actor-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -134,6 +146,7 @@ jobs:
           grep -Fxq 'PASS: native shared-library dlopen + C ABI isolation, error and token translation tests' build-android-emulator-x86_64/phase100-bionic-output.txt
           grep -Fxq 'PASS: Phase101 mock-provider Bionic two-library mapping executed' build-android-emulator-x86_64/phase101-bionic-output.txt
           grep -Fxq 'PASS: Phase102 provider replacement invalidates sound namespace, keyboard survives, epoch guarded' build-android-emulator-x86_64/phase102-bionic-output.txt
+          grep -Fxq 'PASS: independently authored SiN JC/Jessica C ABI dlopen, callback guards and scene events (fake host)' build-android-emulator-x86_64/scene-actor-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -143,5 +156,6 @@ jobs:
             build-android-emulator-x86_64/phase100-bionic-output.txt
             build-android-emulator-x86_64/phase101-bionic-output.txt
             build-android-emulator-x86_64/phase102-bionic-output.txt
+            build-android-emulator-x86_64/scene-actor-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
