@@ -148,6 +148,53 @@ def original_projectile_virtual_path(pe: PEImage) -> dict:
     }
 
 
+def original_primary_shared_fire_path(pe: PEImage) -> dict:
+    """Trace rifle vtable -> shared firing state machine -> bullet/clip path."""
+    require(struct.unpack('<I', pe.at(0x224776AC + 0x388, 4))[0] == 0x2230BA30,
+            'rifle shared primary dispatch vtable slot mismatch')
+    # The weapon-specific 0x3AC virtual returns a constant 0.075 float.
+    require(struct.unpack('<I', pe.at(0x224776AC + 0x3AC, 4))[0] == 0x22313850,
+            'rifle fire interval virtual slot mismatch')
+    require(pe.at(0x22313850, 7) == b'\\xd9\\x05\\x04\\x72\\x47\\x22\\xc3',
+            'rifle interval method shape differs')
+    fire_interval, = struct.unpack('<f', pe.at(0x22477204, 4))
+    require(abs(fire_interval - 0.075) < 1e-6,
+            'original rifle fire interval constant differs')
+    require(pe.at(0x2230B4C8, 6) == b'\\xff\\x90\\xac\\x03\\x00\\x00',
+            'shared firing routine lacks interval virtual dispatch')
+    require(call_target(0x2230BA7D, pe.at(0x2230BA7D, 5)) == 0x2230B430,
+            'single-fire branch no longer calls shared shot routine')
+    require(pe.at(0x2230BA76, 5) == b'\\xe9\\x75\\xfd\\xff\\xff',
+            'shared fire mode/burst branch changed')
+    require(call_target(0x2230B84E, pe.at(0x2230B84E, 5)) == 0x2230B430,
+            'multi-shot path no longer calls shared shot routine')
+    require(pe.at(0x2230B584, 6) == b'\\x8b\\x86\\xec\\x04\\x00\\x00',
+            'shared shot routine no longer reads clip at +0x4EC')
+    require(call_target(0x2230B59F, pe.at(0x2230B59F, 5)) == 0x222A8210,
+            'shared bullet count to clip subtract helper call differs')
+    require(pe.at(0x222A821B, 2) == b'\\x2b\\x0e',
+            'clip helper no longer subtracts count')
+    return {
+        'rifle_fire_mode_dispatch_vtable_offset': '0x388',
+        'rifle_fire_mode_dispatch_va': '0x2230BA30',
+        'weapon_specific_interval_vtable_offset': '0x3AC',
+        'weapon_specific_interval_va': '0x22313850',
+        'verified_interval_seconds': fire_interval,
+        'shared_shot_routine_va': '0x2230B430',
+        'single_branch_call_va': '0x2230BA7D',
+        'burst_branch_call_va': '0x2230B84E',
+        'shot_count_subtract_call_va': '0x2230B59F',
+        'clip_integer_field_offset': '0x4EC',
+        'subtract_helper_va': '0x222A8210',
+        'interpretation_limits': [
+            'The +0x4EC field is used as a magazine/clip counter by the shared shot routine.',
+            'The +0x584 field is a separate burst/queued-shot counter; do not confuse it with clip ammo.',
+            '0.075 seconds is the verified rifle virtual fire interval; mode and timer branch semantics require further work.',
+            'This remains Windows x86 code and is not a Quest runtime implementation.'
+        ],
+    }
+
+
 def audit(server: bytes, client: bytes, verify_hash: bool = True) -> dict:
     server_sha, client_sha = (hashlib.sha256(server).hexdigest(),
                               hashlib.sha256(client).hexdigest())
@@ -166,6 +213,7 @@ def audit(server: bytes, client: bytes, verify_hash: bool = True) -> dict:
         ],
         'client_class_registration': original_client_registration(cp),
         'server_weapon_virtual_projectile_path': original_projectile_virtual_path(sp),
+        'server_primary_shared_fire_path': original_primary_shared_fire_path(sp),
         'limitations': [
             'These are original x86 instruction and RTTI witnesses, not recovered C++ source.',
             'The client registration arg 0x242C2954 is a class-name string, not a receive-table pointer.',
