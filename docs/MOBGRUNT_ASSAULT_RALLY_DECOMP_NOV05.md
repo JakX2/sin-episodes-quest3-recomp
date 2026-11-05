@@ -73,6 +73,26 @@ for (candidate : rally_points_with_matching_name) {
 
 The ranking instruction witnesses are now checked by the original-DLL audit. A standalone **engine-neutral C++17 reference** implements only this behavior in `include/sin_compat/mobgrunt_rally_rank.hpp`, tested by `tests/test_mobgrunt_rally_rank.cpp` and CTest. It does not resolve actual engine entity handles or implement the original candidate discovery, AI navigation, or `CAI_AssaultBehavior` schedules. It rejects invalid coordinates and negative priority instead of copying x87 corner cases into the future ARM64 code.
 
+## Original assault-point chaining, timeout and diversion data map
+
+The native **`CAssaultPoint`** class (map classname `assault_assaultpoint`) has separate 52-byte original x86 `typedescription_t` entries:
+
+| Original member | 2006 x86 offset | Hammer key / input |
+|---|---|---|
+| `m_AssaultHintGroup` | `0x394` | `assaultgroup` |
+| `m_NextAssaultPointName` | `0x398` | `nextassaultpoint` |
+| `m_flAssaultTimeout` | `0x3B4` | `assaulttimeout` |
+| `m_bClearOnContact` | `0x3B8` | `clearoncontact` |
+| `m_bAllowDiversion` | `0x3B9` | `allowdiversion` |
+| `m_bNeverTimeout` | `0x3BA` | `nevertimeout` |
+| `m_OnArrival` | `0x3BC` | `OnArrival` |
+
+Two genuine original scripted input handlers are now decoded:
+- `InputSetClearOnContact` at `0x220CDE70`: checks variant type `6` and sets boolean **`this+0x3B8`** from the input, or resets it to zero when the type differs.
+- `InputSetAllowDiversion` at `0x220CDEA0`: same pattern, writing boolean **`this+0x3B9`**.
+
+These fields independently match the shipped FGD definitions of assault-point progression and conditional behavior. The native server binary verifies the **data and input behavior**, but the exact use of `m_flAssaultTimeout`, conditions for clearing a point, and transition to `m_NextAssaultPointName` remain to be traced. Do not interpret the existence of the field as proof of a finished Quest AI schedule.
+
 ## Grenade-related toggle and timing, original server x86
 
 The original `InputThrowGrenades` handler at `0x22357EA0` checks the variant type against **6**, resets member **`+0xC70`** (`m_flGrenadeHeight`) to zero and writes the input byte to **`+0xC6C`**, clearing both fields for another variant type.
