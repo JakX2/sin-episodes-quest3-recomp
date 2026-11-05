@@ -6,6 +6,7 @@ Never rewrites the input, never redistributes the game map. Usage:
   python sin_bsp_scene_actor_trial.py map.bsp --report
   python sin_bsp_scene_actor_trial.py map.bsp --write map_actor_trial.bsp
   python sin_bsp_scene_actor_trial.py map.bsp --verify map_actor_trial.bsp
+  python sin_bsp_scene_actor_trial.py map.bsp --generic-target heli_name --write heli_trial.bsp
 
 Use only on lawfully obtained local BSPs; test the output in a separate mod
 folder, with the correct original assets and scene cache mounted.
@@ -23,6 +24,9 @@ ALIASES = {
 }
 GENERIC = {"npc_generic_actor": "npc_citizen"}
 CLASSNAME_RE = re.compile(rb'(?m)(^\s*"classname"\s*")([^"\r\n]+)(")')
+ENTITY_BLOCK_RE = re.compile(rb'\{[^{}]*\}')
+KV_PAIR_RE = re.compile(rb'"([^"\r\n]+)"\s*"([^"\r\n]*)"')
+
 
 
 class BspError(ValueError):
@@ -48,7 +52,44 @@ def read_bsp(blob: bytes):
     return version, ofs, size, lumpversion, data
 
 
-def patch_entities(data: bytes, include_generic=False):
+def patch_targeted_generic_actor(data: bytes, name: str):
+    """Replace one named SiN generic actor with Source's generic_actor.
+
+    Scope is a single entity's classname, not a global classname replace.
+    Fail closed if the name is absent, ambiguous, or belongs to another class.
+    """
+    if not name or not name.isascii() or any(ch in name for ch in '"{}\\'):
+        raise BspError('Invalid --generic-target; expected a plain ASCII targetname')
+
+    wanted = name.encode('ascii').lower()
+    matches = []
+
+    for match in ENTITY_BLOCK_RE.finditer(data):
+        block = match.group(0)
+        pairs = [(key.lower(), value) for key, value in KV_PAIR_RE.findall(block)]
+        names = [value for key, value in pairs if key == b'targetname']
+        if any(value.lower() == wanted for value in names):
+            classes = [value.lower() for key, value in pairs if key == b'classname']
+            if names != [name.encode('ascii')] and not (
+                len(names) == 1 and names[0].lower() == wanted
+            ):
+                raise BspError('Ambiguous or duplicate targetname keys')
+            if classes != [b'npc_generic_actor']:
+                raise BspError(f'Target {name} must be exactly one npc_generic_actor')
+            result, count = CLASSNAME_RE.subn(
+                lambda m: m.group(1) + b'generic_actor' + m.group(3), block
+            )
+            if count != 1:
+                raise BspError(f'Could not rewrite classname for target {name}')
+            matches.append((match.span(), result))
+
+    if len(matches) != 1:
+        raise BspError(f'Expected exactly one npc_generic_actor named {name}; found {len(matches)}')
+    (start, stop), replacement = matches[0]
+    return data[:start] + replacement + data[stop:]
+
+
+def patch_entities(data: bytes, include_generic=False, generic_targets=()):
     replacements = dict(ALIASES)
     if include_generic:
         replacements.update(GENERIC)
@@ -60,12 +101,17 @@ def patch_entities(data: bytes, include_generic=False):
         count[name] += 1
         return m.group(1) + replacements[name].encode() + m.group(3)
     patched = CLASSNAME_RE.sub(sub, data)
+    if include_generic and generic_targets:
+        raise BspError('--include-generic cannot be combined with --generic-target')
+    for target in generic_targets:
+        patched = patch_targeted_generic_actor(patched, target)
+        count[f'npc_generic_actor:{target}'] = 1
     return patched, count
 
 
-def make_trial(blob: bytes, include_generic=False):
+def make_trial(blob: bytes, include_generic=False, generic_targets=()):
     version, offset, size, lumpversion, data = read_bsp(blob)
-    changed, counts = patch_entities(data, include_generic)
+    changed, counts = patch_entities(data, include_generic, generic_targets)
     if not any(counts.values()):
         return None, counts
     # Appending a replacement lump avoids relocating any existing maps/lighting
@@ -92,12 +138,14 @@ def main(argv=None):
     action.add_argument('--write',type=pathlib.Path)
     action.add_argument('--verify',type=pathlib.Path,
                         help='check an existing trial copy byte-for-byte against the expected rewrite')
-    ap.add_argument('--include-generic',action='store_true',help='also try npc_generic_actor -> npc_citizen')
+    ap.add_argument('--include-generic',action='store_true',help='also try ALL npc_generic_actor -> npc_citizen (old experiment)')
+    ap.add_argument('--generic-target',action='append',default=[],metavar='TARGETNAME',
+                    help='only rewrite this named npc_generic_actor to generic_actor (repeatable)')
     args=ap.parse_args(argv)
     source=args.bsp.resolve()
     try:
         data=source.read_bytes()
-        result, counts=make_trial(data,args.include_generic)
+        result, counts=make_trial(data,args.include_generic,args.generic_target)
         print(f"Source {source.name}: class rewrites {counts}")
         if result is None:
             if args.verify:
