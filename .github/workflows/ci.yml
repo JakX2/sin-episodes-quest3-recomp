@@ -13,3 +13,5 @@ jobs:
         run: cmake --build build --parallel
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
+      - name: Validate Quest WebXR prototype source
+        run: python3 tests/test_webxr_static.py
