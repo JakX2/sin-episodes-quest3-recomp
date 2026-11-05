@@ -522,5 +522,7 @@ if(BUILD_TESTING)
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/research/tests/test_sin_bsp_scene_actor_trial.py)
     add_test(NAME sin_scene_archive_preflight_tests
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/research/tests/test_sin_scene_archive_preflight.py)
+    add_test(NAME sin_scene_actor_diagnostics_tests
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/research/tests/test_sin_scene_actor_diagnostics.py)
   endif()
 endif()

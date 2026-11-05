@@ -65,3 +65,6 @@ The presence of VCD text is **not proof of a working `scene.cache`**. The provid
 4. **Quest 3:** Only after real SourceVR engine/game-module integration is available; native arm64 module and headset test needed. Building the portable C++ bridge or loading the WebXR proof alone **does not pass this gate**.
 
 Until gate 1 and gate 2 are observed, claim **"actor compatibility test harness"** rather than **"working SiN NPCs"**. Do not merge stacked draft branches automatically or publish proprietary game content.
+## Automated scene/console diagnostics
+
+Use the [November 7 actor trial diagnostics playbook](SCENE_ACTOR_TRIAL_DIAGNOSTICS_NOV7.md) to inspect a user-owned BSP's actor targetnames and scene aliases, summarize the five original logs and compare one fresh before/after HL2 console capture. The historical five-log baseline contains **6 JC, 17 Jessica and 49 generic-actor failed creation attempts**, with repeated loads possible. It does **not** prove any actor spawns or animates. The new tests are synthetic; live HL2/Quest trials remain outstanding.
