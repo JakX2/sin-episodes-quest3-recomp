@@ -8,6 +8,8 @@ classnames, targetnames, VCD actor tokens and diagnostic counts.
 Commands:
   python sin_scene_actor_diagnostics.py preflight --bsp map.bsp \
       --scenes scenes.zip --log console.txt --output preflight.json
+  python sin_scene_actor_diagnostics.py preflight --bsp map.bsp \
+      --scenes D:/SiN/scenes --output preflight.json
   python sin_scene_actor_diagnostics.py compare --before old_log.txt \
       --after new_log.txt --output comparison.json
 """
@@ -83,6 +85,41 @@ def scene_path(value):
     return path if path.endswith('.vcd') else path + '.vcd'
 
 
+def load_scene_actors(scenes: pathlib.Path) -> dict[str, list[str]]:
+    """Load actor tokens from a scene ZIP or an already-unpacked scenes folder.
+
+    Both the `scenes/` folder itself and its game-data parent directory
+    work. This is strictly read-only, never creating or copying asset files.
+    """
+    archive = {}
+
+    def remember(name: str, content: bytes):
+        normalized = scene_path(name)
+        if normalized in archive:
+            raise DiagnosticsError(f'Duplicate scene path: {normalized}')
+        archive[normalized] = list(dict.fromkeys(
+            ACTOR_RE.findall(content.decode('utf-8', 'replace'))))
+
+    if scenes.is_dir():
+        # rglob accepts a folder with or without the surrounding `scenes/`.
+        for file in scenes.rglob('*'):
+            if not file.is_file() or file.suffix.casefold() != '.vcd':
+                continue
+            rel = file.relative_to(scenes).as_posix()
+            remember(rel, file.read_bytes())
+    else:
+        with zipfile.ZipFile(scenes, 'r') as zipf:
+            for name in zipf.namelist():
+                if name.casefold().endswith('.vcd'):
+                    remember(name, zipf.read(name))
+
+    if not archive:
+        raise DiagnosticsError(
+            'No .vcd files found; pass scenes.zip, the extracted scenes folder, '
+            'or the game-data folder containing scenes/')
+    return archive
+
+
 def capture_log(text: str) -> dict:
     counts = collections.Counter(UNKNOWN.findall(text))
     missing = collections.Counter(canon(s) for s in MISSING_RE.findall(text))
@@ -123,13 +160,7 @@ def preflight(bsp: pathlib.Path, scenes: pathlib.Path | None, logs: list[pathlib
          'has_scene_alias': bool(x.get('targetname')) and x['targetname'].casefold() in alias_targetnames}
         for x in summary if x.get('classname','').casefold() in ACTOR_TYPES
     ]
-    archive = {}
-    if scenes:
-        with zipfile.ZipFile(scenes, 'r') as zipf:
-            for name in zipf.namelist():
-                if name.lower().endswith('.vcd'):
-                    archive[canon(name)] = list(dict.fromkeys(
-                        ACTOR_RE.findall(zipf.read(name).decode('utf-8','replace'))))
+    archive = load_scene_actors(scenes) if scenes else {}
     missinglog = collections.Counter()
     for p in logs:
         missinglog.update(capture_log(p.read_text(encoding='utf-8', errors='replace'))['missing_scenes'])
@@ -208,7 +239,8 @@ def main(argv=None):
     sub=ap.add_subparsers(dest='mode',required=True)
     p=sub.add_parser('preflight',help='inspect original BSP entity bindings without changing it')
     p.add_argument('--bsp',type=pathlib.Path,required=True)
-    p.add_argument('--scenes',type=pathlib.Path)
+    p.add_argument('--scenes',type=pathlib.Path,
+                   help='original scenes.zip OR an extracted scenes directory/game-data parent')
     p.add_argument('--log',action='append',type=pathlib.Path,default=[])
     p.add_argument('--output',type=pathlib.Path)
     b=sub.add_parser('baseline',help='summarize one or more existing HL2 logs without a BSP')
