@@ -59,6 +59,13 @@ def fixture():
         0x2235F410: b'\xd9\x9d\x80\x0c\x00\x00',
         0x2235F461: b'\x88\x9d\x6c\x0c\x00\x00',
     }
+    for classname, entry, string_va, factory_va in a.ASSAULT_REGISTRATIONS:
+        parts = (call(entry, 0x2228B110) + b'\x8b\x10\x68' +
+                 struct.pack('<I', string_va) + b'\x68' +
+                 struct.pack('<I', factory_va) + b'\x8b\xc8\xff\x12\xc3')
+        assert len(parts) == 22
+        pairs[entry] = parts
+        pairs[string_va] = classname.encode('ascii') + b'\0'
     return pairs
 
 
@@ -66,6 +73,8 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
     def test_original_rally_point_and_timing_labels(self):
         result = a.audit_code(FakePE(fixture()))
         self.assertEqual(result['assault_input']['behavior_object_offset'], '0xDB8')
+        self.assertEqual([r['classname'] for r in result['registered_assault_entities']],
+                         ['assault_rallypoint', 'assault_assaultpoint', 'ai_goal_assault'])
         self.assertEqual(result['assault_input']['passed_integer'], 3)
         self.assertEqual(result['throw_grenades_input']['toggle_byte_offset'], '0xC6C')
         self.assertEqual(result['conditional_values']['enabled'], [0.25, 2.5])
@@ -91,6 +100,17 @@ class MobGruntOriginalAssaultTests(unittest.TestCase):
             a.check_sdk_fgd(base.replace(b'rally point', b'assault point'), game)
         with self.assertRaises(a.VerificationError):
             a.check_sdk_fgd(base, game.replace(b'3 :', b'4 :'))
+
+    def test_rejects_corrupted_assault_rallypoint_factory(self):
+        fixture_bytes = fixture()
+        name, entry, name_va, factory_va = a.ASSAULT_REGISTRATIONS[0]
+        fixture_bytes[entry] = (
+            call(entry, 0x2228B110) + b'\x8b\x10\x68' +
+            struct.pack('<I', name_va) + b'\x68' +
+            struct.pack('<I', factory_va + 4) + b'\x8b\xc8\xff\x12\xc3'
+        )
+        with self.assertRaises(a.VerificationError):
+            a.audit_code(FakePE(fixture_bytes))
 
     def test_refuses_wrong_assault_behavior_target(self):
         data = fixture()
