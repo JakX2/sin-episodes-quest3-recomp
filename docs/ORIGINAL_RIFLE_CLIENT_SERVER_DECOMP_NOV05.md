@@ -38,12 +38,12 @@ At original `client.dll:0x24270B80` a client-side registration function calls ge
 | Witness | Value |
 |---|---|
 | Classname | `weapon_assault_rifle`, literal VA `0x2429B020` |
-| Table-like pointer | `0x242C2954` |
+| Client C++ class name string | `0x242C2954` = `C_WeaponAssaultRifle` |
 | Size argument | `0x830` (2096 decimal) |
 | Registration callback pointer | `0x2422B5B0` |
 | Client class RTTI | `C_WeaponAssaultRifle`, name VA `0x24320A60` |
 
-The table pointer and size argument are verified but the network/prediction field layout **is not yet decoded**. Do not assume `0x830` is the network message payload size.
+**Further decompilation resolved an important distinction:** `0x242C2954` is the literal client class name `C_WeaponAssaultRifle`, **not a network table pointer**. The separate `DT_WeaponAssaultRifle` receive-table name is at `0x242C298C`. The original client initialization routine `0x2422A660` refers to the receive-table name at `0x2422A6A8`, declares **one direct property**, and invokes a receive-table constructor at `0x24126A30`. A nearby property-construction call references `baseclass` (`0x2427643C`). This is strong evidence the rifle's own receive table delegates to an inherited baseclass, but the inherited fields and exact prediction behavior still need decoding. The verified `0x830` argument is not established as network payload size.
 
 ## New: rifle RTTI -> vtable -> launcher call path
 
@@ -81,7 +81,7 @@ Adjust the input paths to the location of the two *actual original 2006 game DLL
 ## Next reverse-engineering gates
 
 1. Identify the original rifle's inherited/shared primary attack method, trace clip decrement and 45-round primary firing cadence.
-2. Decode the client table at `0x242C2954` and map prediction/receive fields to original server data.
+2. Decode the genuine client `DT_WeaponAssaultRifle` receive table built at `0x2422A660` (name at `0x242C298C`), then follow its `baseclass` property into inherited weapon network and prediction fields.
 3. Reverse the full grenade projectile lifecycle including owner, physics, impact, damage, fuse, and ammo decrement.
 4. Implement equivalents through a **buildable native engine/game DLL** and class factory, not by copying x86 addresses into ARM64. The stock SourceVR content-only mod loader does not accept custom game-server DLL replacements.
 5. Keep the verified HL2 map-defined `roof_grunt_1_seq1` model/AI/AR2 prototype as an independent regression baseline. Its Combine AI and AR2 are not authentic Ritual gameplay.
