@@ -180,4 +180,195 @@ class TrialTest(unittest.TestCase):
             self.assertEqual(trial.main([str(src), '--verify', str(output)]), 2)
             self.assertEqual(src.read_bytes(), source)
 
+
+    def test_single_grunt_proxy_keeps_other_enemies_and_equips_ar2(self):
+        original = fixture()
+        block = (
+            b'{\n"classname" "npc_druglab_grunt_assault_rifle"\n'
+            b'"targetname" "roof_grunt_1_seq1"\n"squadname" "seq1"\n'
+            b'"spawnflags" "516"\n}\n'
+            b'{\n"classname" "npc_druglab_grunt_elite"\n'
+            b'"targetname" "roof_grunt_3_seq1"\n}\n'
+        )
+        old_ent = trial.read_bsp(original)[-1]
+        new_ent = old_ent[:-1] + block + b'\0'
+        source = bytearray(original)
+        struct.pack_into('<iii4s', source, 8, len(source), len(new_ent), 0, b'\0'*4)
+        source.extend(new_ent)
+        source = bytes(source)
+
+        without, counts = trial.make_trial(source, pickup_proxies=True)
+        self.assertNotIn('grunt:roof_grunt_1_seq1', counts)
+        self.assertIn(b'"classname" "npc_druglab_grunt_assault_rifle"', trial.read_bsp(without)[-1])
+
+        name = 'roof_grunt_1_seq1'
+        out, counts = trial.make_trial(source, grunt_targets=[name], pickup_proxies=True)
+        body = trial.read_bsp(out)[-1]
+        self.assertEqual(counts['grunt:' + name], 1)
+        self.assertIn(b'"classname" "npc_combine_s"', body)
+        self.assertIn(b'"targetname" "roof_grunt_1_seq1"', body)
+        self.assertIn(b'"squadname" "seq1"', body)
+        self.assertIn(b'"spawnflags" "516"', body)
+        self.assertIn(b'"additionalequipment" "weapon_ar2"', body)
+        self.assertIn(b'"classname" "npc_druglab_grunt_elite"', body)
+        self.assertEqual(source[1400:1404], out[1400:1404])
+        self.assertEqual(source[8+16:1036], out[8+16:1036])
+
+        with tempfile.TemporaryDirectory() as folder:
+            base = pathlib.Path(folder)
+            src = base / 'original.bsp'
+            target = base / 'test' / 'grunt.bsp'
+            src.write_bytes(source)
+            opts = ['--grunt-target', name, '--pickup-proxies']
+            self.assertEqual(trial.main([str(src), *opts, '--write', str(target)]), 0)
+            self.assertEqual(trial.main([str(src), *opts, '--verify', str(target)]), 0)
+            self.assertEqual(src.read_bytes(), source)
+
+    def test_grunt_proxy_refuses_duplicates_and_bad_targets(self):
+        original = fixture()
+        def with_more(extra):
+            old = trial.read_bsp(original)[-1]
+            content = old[:-1] + extra + b'\0'
+            buf = bytearray(original)
+            struct.pack_into('<iii4s', buf, 8, len(buf), len(content), 0, b'\0'*4)
+            buf.extend(content)
+            return bytes(buf)
+        grunt = (b'{\n"classname" "npc_druglab_grunt_assault_rifle"\n'
+                 b'"targetname" "roof_grunt_1_seq1"\n}\n')
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(with_more(grunt + grunt),
+                             grunt_targets=['roof_grunt_1_seq1'])
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(with_more(grunt), grunt_targets=['extra'])
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(with_more(grunt),
+                             grunt_targets=['roof_grunt_1_seq1', 'roof_grunt_1_seq1'])
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(with_more(
+                b'{\n"classname" "npc_generic_actor"\n'
+                b'"targetname" "roof_grunt_1_seq1"\n}\n'
+            ), grunt_targets=['roof_grunt_1_seq1'])
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(with_more(
+                grunt.replace(b'\n}', b'\n"additionalequipment" "weapon_sin_rifle"\n}')
+            ), grunt_targets=['roof_grunt_1_seq1'])
+
+
+    def test_explicit_equipment_override_does_not_touch_original(self):
+        original = fixture()
+        entity = (
+            b'{\n"classname" "npc_druglab_grunt_assault_rifle"\n'
+            b'"targetname" "roof_grunt_1_seq1"\n'
+            b'"additionalequipment" "weapon_assault_rifle"\n'
+            b'"spawnflags" "516"\n}\n'
+            b'{\n"classname" "npc_druglab_grunt_elite"\n'
+            b'"targetname" "untouched_elite"\n'
+            b'"additionalequipment" "weapon_other"\n}\n'
+        )
+        modified_entity = trial.read_bsp(original)[-1][:-1] + entity + b'\0'
+        source = bytearray(original)
+        struct.pack_into('<iii4s', source, 8, len(source), len(modified_entity), 0, b'\0'*4)
+        source.extend(modified_entity)
+        source = bytes(source)
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(source, grunt_targets=['roof_grunt_1_seq1'])
+        copy, counts = trial.make_trial(
+            source, grunt_targets=['roof_grunt_1_seq1'], grunt_equipment_override=True
+        )
+        body = trial.read_bsp(copy)[-1]
+        self.assertEqual(counts['grunt:roof_grunt_1_seq1'], 1)
+        self.assertIn(b'"additionalequipment" "weapon_ar2"', body)
+        self.assertIn(b'"additionalequipment" "weapon_other"', body)
+        self.assertNotIn(b'"additionalequipment" "weapon_assault_rifle"', body)
+        self.assertIn(b'"additionalequipment" "weapon_assault_rifle"', trial.read_bsp(source)[-1])
+        self.assertEqual(source[1400:1404], copy[1400:1404])
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = pathlib.Path(d)/'source.bsp', pathlib.Path(d)/'trial.bsp'
+            src.write_bytes(source)
+            opts = ['--grunt-target', 'roof_grunt_1_seq1', '--grunt-equipment-override']
+            self.assertEqual(trial.main([str(src), *opts, '--write', str(dst)]), 0)
+            self.assertEqual(trial.main([str(src), *opts, '--verify', str(dst)]), 0)
+            self.assertEqual(src.read_bytes(), source)
+
+
+    def test_original_mobgrunt_model_is_opt_in_and_one_target_only(self):
+        original = fixture()
+        entities = (
+            b'{\n"classname" "npc_druglab_grunt_assault_rifle"\n'
+            b'"targetname" "roof_grunt_1_seq1"\n'
+            b'"additionalequipment" "weapon_assault_rifle"\n'
+            b'"spawnflags" "516"\n"sleepstate" "3"\n'
+            b'"damagefilter" "grunt_unkillable"\n}\n'
+            b'{\n"classname" "npc_druglab_grunt_elite"\n'
+            b'"targetname" "roof_grunt_3_seq1"\n}\n'
+        )
+        body = trial.read_bsp(original)[-1][:-1] + entities + b'\0'
+        source = bytearray(original)
+        struct.pack_into('<iii4s', source, 8, len(source), len(body), 0, b'\0'*4)
+        source.extend(body)
+        source = bytes(source)
+        options = dict(grunt_targets=['roof_grunt_1_seq1'],
+                       grunt_equipment_override=True)
+        base, _ = trial.make_trial(source, **options)
+        self.assertNotIn(b'"model" "models/characters/MobGrunt/mobgrunt.mdl"',
+                         trial.read_bsp(base)[-1])
+        changed, counts = trial.make_trial(source, **options, grunt_original_model=True)
+        rendered = trial.read_bsp(changed)[-1]
+        self.assertEqual(counts['grunt:roof_grunt_1_seq1'], 1)
+        self.assertEqual(rendered.count(b'"model" "models/characters/MobGrunt/mobgrunt.mdl"'), 1)
+        self.assertIn(b'"additionalequipment" "weapon_ar2"', rendered)
+        self.assertIn(b'"targetname" "roof_grunt_3_seq1"', rendered)
+        self.assertIn(b'"classname" "npc_druglab_grunt_elite"', rendered)
+        self.assertIn(b'"sleepstate" "3"', rendered)
+        self.assertIn(b'"damagefilter" "grunt_unkillable"', rendered)
+        self.assertEqual(source[1400:1404], changed[1400:1404])
+        self.assertIn(b'"additionalequipment" "weapon_assault_rifle"',
+                      trial.read_bsp(source)[-1])
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder)
+            src = root / 'original.bsp'
+            dst = root / 'new' / 'one_grunt.bsp'
+            src.write_bytes(source)
+            flags = ['--grunt-target', 'roof_grunt_1_seq1',
+                     '--grunt-equipment-override', '--grunt-original-model']
+            self.assertEqual(trial.main([str(src), *flags, '--write', str(dst)]), 0)
+            self.assertEqual(trial.main([str(src), *flags, '--verify', str(dst)]), 0)
+            self.assertEqual(trial.main([str(src), '--grunt-original-model',
+                                         '--write', str(root / 'bad.bsp')]), 2)
+            self.assertFalse((root / 'bad.bsp').exists())
+            self.assertEqual(src.read_bytes(), source)
+
+    def test_original_model_refuses_other_classes_and_existing_model_conflict(self):
+        base = fixture()
+        def embedded(source):
+            body = trial.read_bsp(base)[-1][:-1] + source + b'\0'
+            data = bytearray(base)
+            struct.pack_into('<iii4s', data, 8, len(data), len(body), 0, b'\0'*4)
+            data.extend(body)
+            return bytes(data)
+        head = b'{\n"classname" "npc_druglab_grunt_assault_rifle"\n"targetname" "test"\n'
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(
+                embedded(head + b'"model" "models/combine_soldier.mdl"\n}\n'),
+                grunt_targets=['test'], grunt_original_model=True
+            )
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(
+                embedded(head + b'"model" "models/characters/MobGrunt/mobgrunt.mdl"\n'
+                          b'"model" "models/characters/MobGrunt/mobgrunt.mdl"\n}\n'),
+                grunt_targets=['test'], grunt_original_model=True
+            )
+        with self.assertRaises(trial.BspError):
+            trial.make_trial(
+                embedded(head.replace(b'npc_druglab_grunt_assault_rifle',
+                                      b'npc_druglab_grunt_elite') + b'}\n'),
+                grunt_targets=['test'], grunt_original_model=True
+            )
+        same, _ = trial.make_trial(
+            embedded(head + b'"model" "models/characters/MobGrunt/mobgrunt.mdl"\n}\n'),
+            grunt_targets=['test'], grunt_original_model=True
+        )
+        self.assertEqual(trial.read_bsp(same)[-1].count(
+            b'"model" "models/characters/MobGrunt/mobgrunt.mdl"'), 1)
+
 if __name__=='__main__': unittest.main()
