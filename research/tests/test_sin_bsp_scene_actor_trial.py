@@ -130,4 +130,54 @@ class TrialTest(unittest.TestCase):
             self.assertEqual(trial.main([str(source),'--verify',str(target)]),2)
             self.assertEqual(trial.main([str(source),*opts,'--write',str(target)]),2)
 
+
+    def test_pickup_proxies_only_when_opted_in_and_with_dual_heli(self):
+        original = fixture()
+        pickup_entities = (
+            b'{\n"classname" "weapon_magnum"\n"targetname" "pickup1"\n}\n'
+            b'{\n"classname" "weapon_assault_rifle"\n}\n'
+            b'{\n"classname" "weapon_scattergun"\n}\n'
+            b'{\n"classname" "weapon_grenade"\n}\n'
+            b'{\n"classname" "item_ammo_magnum"\n}\n'
+            b'{\n"classname" "npc_druglab_grunt_elite"\n}\n'
+            b'{\n"classname" "npc_generic_actor"\n"targetname" "end_hardcorps_heli1"\n}\n'
+            b'{\n"classname" "npc_generic_actor"\n"targetname" "end_hardcorps_heli2"\n}\n'
+        )
+        old_ent = trial.read_bsp(original)[-1]
+        new_ent = old_ent[:-1] + pickup_entities + b'\0'
+        source = bytearray(original)
+        entity_offset = len(source)
+        struct.pack_into('<iii4s', source, 8, entity_offset, len(new_ent), 0, b'\0'*4)
+        source.extend(new_ent)
+        source = bytes(source)
+
+        without, old_counts = trial.make_trial(source)
+        self.assertNotIn('weapon_magnum', old_counts)
+        self.assertIn(b'"classname" "weapon_magnum"', trial.read_bsp(without)[-1])
+
+        targets = ['end_hardcorps_heli1', 'end_hardcorps_heli2']
+        changed, counts = trial.make_trial(source, generic_targets=targets, pickup_proxies=True)
+        actual = trial.read_bsp(changed)[-1]
+        for old, replacement in trial.PICKUP_PROXIES.items():
+            self.assertEqual(counts[old], 1)
+            self.assertNotIn(('"classname" "' + old + '"').encode(), actual)
+            self.assertIn(('"classname" "' + replacement + '"').encode(), actual)
+        self.assertEqual(actual.count(b'"classname" "generic_actor"'), 2)
+        self.assertIn(b'"classname" "npc_druglab_grunt_elite"', actual)
+        self.assertIn(b'"targetname" "pickup1"', actual)
+        self.assertEqual(changed[1400:1404], b'abcd')
+        self.assertEqual(source[1400:1404], b'abcd')
+
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            src = root / 'original.bsp'
+            output = root / 'pickup_trial.bsp'
+            src.write_bytes(source)
+            options = ['--pickup-proxies', '--generic-target', targets[0],
+                       '--generic-target', targets[1]]
+            self.assertEqual(trial.main([str(src), *options, '--write', str(output)]), 0)
+            self.assertEqual(trial.main([str(src), *options, '--verify', str(output)]), 0)
+            self.assertEqual(trial.main([str(src), '--verify', str(output)]), 2)
+            self.assertEqual(src.read_bytes(), source)
+
 if __name__=='__main__': unittest.main()
