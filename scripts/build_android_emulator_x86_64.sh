@@ -15,7 +15,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
@@ -111,3 +111,29 @@ test -s "$SIN102_RUNNER" || { echo "ERROR: missing Phase102 Android lifecycle te
 "$READELF" -d "$SIN102_RUNNER" | grep -q 'NEEDED.*libsin_source_provider_abi.so' || {
   echo "ERROR: Phase102 runner must link the separate provider ABI library" >&2; exit 1; }
 echo 'PASS: Phase102 provider-epoch test executable built for Android.'
+
+
+# Round19: verify the independent scene actor ABI builds for Android, not SourceVR.
+SCENE="$BUILD/libsin_scene_actor_c_abi.so"
+SCENE_SMOKE="$BUILD/sin_android_scene_actor_c_abi_smoke"
+for f in "$SCENE" "$SCENE_SMOKE"; do
+  test -s "$f" || { echo "ERROR: missing Round19 Android output: $f" >&2; exit 1; }
+done
+"$READELF" -h "$SCENE" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+  echo "ERROR: scene actor module built for wrong ABI" >&2; exit 1; }
+"$READELF" -d "$SCENE" | grep -q 'SONAME.*libsin_scene_actor_c_abi.so' || {
+  echo "ERROR: scene actor module missing proper SONAME" >&2; exit 1; }
+"$READELF" -h "$SCENE_SMOKE" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+  echo "ERROR: scene actor C11 dlopen smoke target wrong ABI" >&2; exit 1; }
+SCENE_EXPECTED="$(mktemp)"
+SCENE_ACTUAL="$(mktemp)"
+awk '/^[[:space:]]+sin_scene_[A-Za-z0-9_]+;/{gsub(/;/,"",$1); print $1}' \
+  "$ROOT/src/scene_actor_exports.map" | sort -u > "$SCENE_EXPECTED"
+"$NM" -D --defined-only --format=posix "$SCENE" |
+  awk 'NF{sub(/@@.*/,"",$1); print $1}' | sort -u > "$SCENE_ACTUAL"
+diff -u "$SCENE_EXPECTED" "$SCENE_ACTUAL" || {
+  echo "ERROR: Round19 scene actor public ABI changed" >&2; exit 1; }
+test "$(wc -l < "$SCENE_ACTUAL")" -eq 8 || {
+  echo "ERROR: scene actor module must export exactly eight functions" >&2; exit 1; }
+rm -f "$SCENE_EXPECTED" "$SCENE_ACTUAL"
+echo "PASS: Round19 scene actor library and C11 dlopen test built for Android, eight exports verified."

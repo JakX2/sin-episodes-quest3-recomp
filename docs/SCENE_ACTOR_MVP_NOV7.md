@@ -68,3 +68,7 @@ Until gate 1 and gate 2 are observed, claim **"actor compatibility test harness"
 ## Automated scene/console diagnostics
 
 Use the [November 7 actor trial diagnostics playbook](SCENE_ACTOR_TRIAL_DIAGNOSTICS_NOV7.md) to inspect a user-owned BSP's actor targetnames and scene aliases, summarize the five original logs and compare one fresh before/after HL2 console capture. The historical five-log baseline contains **6 JC, 17 Jessica and 49 generic-actor failed creation attempts**, with repeated loads possible. It does **not** prove any actor spawns or animates. The new tests are synthetic; live HL2/Quest trials remain outstanding.
+
+## Round 19 native scene actor ABI
+
+A real, independently authored **eight-function C ABI shared library** now wraps the C++ JC/Jessica host bridge. The Linux `dlopen` test exercises mock engine callbacks with Release assertions active; both Android ARM64 and Android x86_64 NDK targets build the same module, and emulator CI tests the C ABI with a real Bionic `dlopen` call. These checks **do not** create SourceVR NPCs or play original VCDs. See [Round 19 integration contract](SCENE_ACTOR_C_ABI_NOV7.md).
