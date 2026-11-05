@@ -503,3 +503,24 @@ if(BUILD_TESTING AND NOT ANDROID)
         ${CMAKE_CURRENT_SOURCE_DIR}/research/tests/test_phase102_native_abi.py)
   endif()
 endif()
+
+
+# November 7 scripted-character proof: host-only original JC/Jessica mapping.
+# No real SourceVR/Android game entity factory is implemented by this target.
+add_library(sin_scene_actor_bridge STATIC src/scene_actor_bridge.cpp)
+target_include_directories(sin_scene_actor_bridge PUBLIC include)
+set_target_properties(sin_scene_actor_bridge PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_options(sin_scene_actor_bridge PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_scene_actor_bridge_tests tests/test_scene_actor_bridge.cpp)
+  target_link_libraries(sin_scene_actor_bridge_tests PRIVATE sin_scene_actor_bridge)
+  add_test(NAME sin_scene_actor_bridge_tests COMMAND sin_scene_actor_bridge_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_scene_bsp_safety_tests
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/research/tests/test_sin_bsp_scene_actor_trial.py)
+    add_test(NAME sin_scene_archive_preflight_tests
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/research/tests/test_sin_scene_archive_preflight.py)
+  endif()
+endif()
