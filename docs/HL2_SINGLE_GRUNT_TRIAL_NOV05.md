@@ -168,3 +168,27 @@ find_ent roof_grunt_1_seq1
 ```
 
 `find_ent` is a documented Source 1 console command that searches partial classname and targetname, useful to catch renamed or other live Combine NPCs; unlike `ent_dump`, it gives the matching class/name/index. Capture console error/warning around map loading and trigger. If no exact entity exists both before and after, the relay's `Wake` alone cannot instantiate the missing NPC: next isolate map-spawn flags or conflicting Ritual-specific keyvalues in **one separate copy**, rather than editing the original map or globally replacing entities.
+
+## Owner-confirmed live rooftop NPC and weapon (Nov 5)
+
+The owner repeated the live console diagnostic in `se1_finale01_mobgrunt_live_trial` and supplied:
+
+```text
+find_ent roof_grunt
+  'npc_combine_s' : 'roof_grunt_1_seq1' (entindex 218)
+  'weapon_ar2' : 'roof_grunt_1_seq1_weapon' (entindex 62)
+find_ent npc_combine_s
+  'npc_combine_s' : 'roof_grunt_1_seq1' (entindex 218)
+find_ent begin_roof_battle_seq1
+  'logic_relay' : 'begin_roof_battle_seq1' (entindex 0)
+ent_fire begin_roof_battle_seq1 Trigger
+find_ent roof_grunt
+  'npc_combine_s' : 'roof_grunt_1_seq1' (entindex 218)
+  'weapon_ar2' : 'roof_grunt_1_seq1_weapon' (entindex 62)
+```
+
+**PASS:** The converted **map-defined** named rooftop NPC, its AR2 weapon entity and the original battle relay all exist in the live HL2 engine entity list. NPC and weapon remain present after attempting to trigger the battle relay. This supersedes earlier speculation that `roof_grunt_1_seq1` was absent due to `point_template` or failed BSP conversion: the earlier `ent_dump` only establishes absence at the earlier check's moment/context. Owner's earlier manual-spawn NPC used the same original MobGrunt model and walked/fired.
+
+**Still pending:** whether the *map-defined* NPC actively responds to the original `Wake` input, traverses its rooftop AI encounter, fires automatically, and is appropriately damageable. `find_ent` proves creation and registration, not behavioral success; there is no `developer 2` I/O trace attached after the `ent_fire` in this report.
+
+Next single diagnostic: with `developer 2` active, `ent_fire begin_roof_battle_seq1 Trigger`, inspect I/O and visually observe the actual rooftop NPC; `ent_dump roof_grunt_1_seq1` can now reconfirm its runtime `health`, `sequence`, `additionalequipment`, and `sleepstate`. The original `damagefilter grunt_unkillable` and `sleepstate 3` can still block combat/damage. Avoid changing original BSP or claiming native SiN AI.
