@@ -107,3 +107,28 @@ py research/tools/sin_scene_actor_diagnostics.py preflight --bsp "D:\SiN\maps\se
 ```
 
 The script also accepts `--scenes "D:\SiN"` if that is the parent that directly contains `scenes\`. It counts and tokenizes the VCD files found, and shows actor names and map/controller alias candidates. Omit `--output` if the report filename already exists, because reports are not overwritten. **This verifies file presence and bindings only, not scene.cache acceptance or working choreography in HL2.**
+
+
+## November 5 follow-up: boss helicopter scripted sequence
+
+The owner confirmed that original `se1_finale01.bsp` contains the following linked entities:
+
+- `boss_death_counter` (`math_counter`) signals `end_hardcorps_heli1` with `Wake`, and `end_hardcorps_heli1_sequence` with `BeginSequence`.
+- `end_hardcorps_heli1` is `npc_generic_actor` with original model `models/vehicles/hardcorps_helicopter/helicopter_prop.mdl`.
+- `end_hardcorps_heli1_sequence` is `scripted_sequence`, target `end_hardcorps_heli1`, action `highrise_scene`, pre-action idle `idle`, and `OnEndSequence` requests actor deletion.
+
+Stock HL2 currently emits `scripted_sequence ... can't find NPC "end_hardcorps_heli1"`, consistent with the unsupported SiN `npc_generic_actor` factory. An older Valve Source implementation defines `generic_actor` as a `CAI_BaseActor` NPC explicitly intended for scripted sequence work. **Its availability and ability to play the SiN helicopter model's animation have not been verified on the owner's HL2 build.**
+
+A *targeted* new opt-in `--generic-target` flag rewrites only the named SiN generic actor to `generic_actor`, preserving Jessica's `npc_alyx` substitution, the original helicopter model, the actor's targetname, and the `scripted_sequence` I/O. It **does not** change the other four generic actors.
+
+From the repository root (requires the updated feature branch):
+
+```powershell
+py research/tools/sin_bsp_scene_actor_trial.py "D:\SiN\maps\se1_finale01.bsp" --generic-target end_hardcorps_heli1 --write "D:\SiN_Test_Only\heli_trial\se1_finale01.bsp"
+py research/tools/sin_bsp_scene_actor_trial.py "D:\SiN\maps\se1_finale01.bsp" --generic-target end_hardcorps_heli1 --verify "D:\SiN_Test_Only\heli_trial\se1_finale01.bsp"
+py research/tools/sin_scene_actor_diagnostics.py preflight --bsp "D:\SiN_Test_Only\heli_trial\se1_finale01.bsp" --scenes "D:\SiN\scenes"
+```
+
+The `--generic-target` selector refuses missing or ambiguous names, non-`npc_generic_actor` source classes, and `--include-generic` conflicts. It still creates only a separate output BSP. To actually load the experimental variant via `map se1_finale01`, the owner must select it within the already-existing HL2 custom test setup, backing up any previous trial map and avoiding multiple copies of the same map name in the search path.
+
+**Evidence required:** absence/presence of `generic_actor` unknown-class errors, whether `end_hardcorps_heli1` exists as an NPC, whether `idle` and `highrise_scene` are available in its model, whether `OnEndSequence` fires and the helicopter is removed. If the engine rejects `generic_actor`, stop and implement a real compatible entity in a Source-based game module rather than substituting a static prop. This is a **desktop engine compatibility hypothesis**, not a complete SiN vehicle/NPC behavior implementation.
