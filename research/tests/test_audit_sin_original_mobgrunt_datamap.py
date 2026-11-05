@@ -86,6 +86,11 @@ class OriginalMobGruntDataMapTests(unittest.TestCase):
         call = b'\xe8' + struct.pack('<i', target-callsite-5)
         pe = FakePE([
             (0x22357E50, b'\x56\x8b\xf1'),
+            (0x22357E5A, b'\x83\x79\x10\x02'),
+            (0x22357E66, b'\xb8\xa8\x47\x3d\x22'),
+            (0x22357E6D, b'\xe8' + struct.pack('<i', 0x221561D0-0x22357E72)),
+            (0x22357E78, b'\xe8' + struct.pack('<i', 0x221F3DE0-0x22357E7D)),
+
             (0x22357E82, b'\x6a\x03'),
             (0x22357E85, b'\x8d\x8e\xb8\x0d\x00\x00'),
             (callsite, call),
