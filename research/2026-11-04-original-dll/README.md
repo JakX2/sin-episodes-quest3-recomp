@@ -2,6 +2,7 @@
 
 Independent SiN Episodes: Emergence reverse-engineering notes, begun on **2026-11-04**, with later rounds appended.
 
+- [All 49 HL2-missing entities: original server/client DLL code crosswalk (Deep Dive 17)](reports/SiN_Original_Missing_Entity_Code_Crosswalk_DeepDive_17.md)
 - [Security-bot pulse projectile and three jetpack variants: Deep Dive 16](reports/SiN_Original_Jetpack_SecurityBot_Pulse_DeepDive_16.md)
 - [Jetpack grunts & security bots: Deep Dive 15](reports/SiN_Original_Jetpack_SecurityBot_DeepDive_15.md)
 - [HL2 unknown entity errors: Deep Dive 08](reports/SiN_HL2_Runtime_Entity_Failure_DeepDive_08.md)

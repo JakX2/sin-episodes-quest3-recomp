@@ -1,0 +1,52 @@
+<PARSED TEXT FOR SHEET: 1 / 1 TABS
+TAB NAME: sin_original_entity_code_crosswalk_17.csv>
+index,classname,category,failed_attempts,server_cxx_class,server_registration_va,server_factory_instance_va,server_primary_vtable_va,server_datamap_va,server_datamap_records,server_datamap_names_resolved,server_named_input_handlers,server_named_inputs,server_named_map_keys_and_outputs,client_named_counterpart,client_primary_vtable_va,client_first_virtual_method_va,client_vtable_entry_count
+0,ai_goal_takecover,AI goal,26,CAI_TakeCoverGoal,0x223C7F87,0x2253B6A8,0x224AE37C,0x2253B68C,8,8,0,,Aggressiveness; AbandonIfEnemyHides; CustomCoverOnReload; CustomMinTimeShots; CustomMaxTimeShots; CustomMinShots; CustomMaxShots; CustomOddsCover,,,,
+1,env_faint,Map effect / radio,6,CEnvFaint,0x223C3907,0x22523FC8,0x224626EC,0x22523FB0,10,6,0,,IsActive; FadeTime; OnBeginFaint,,,,
+2,env_poison_gas,Map effect / radio,4,CPoisonGas,0x223C4557,0x2252A018,0x2246E81C,0x22529FB0,17,0,0,,,,,,
+3,env_radio,Map effect / radio,1,CRadio,0x223C3937,0x22524264,0x22462B44,0x2252424C,12,5,0,,Volume; ScriptFile,,,,
+4,env_radio_message,Map effect / radio,52,CRadioMessage,0x223C3A27,0x22524A68,0x224635EC,0x22524938,10,9,5,SetMessage; SetSpeaker; SetPriority; Dispatch; Remove,message; speaker; priority; SetMessage; SetSpeaker; SetPriority; Dispatch; Remove; OnDispatch,,,,
+5,item_ammo_ar,Ammo pickup,3,CItemAmmoAR,0x223C3F97,0x22528118,0x22468EA4,0x224FA55C,5,1,0,,,,,,
+6,item_ammo_ar_grenade,Ammo pickup,17,CItemAmmoARGrenade,0x223C4017,0x22528128,0x22469B54,0x224FA55C,5,1,0,,,,,,
+7,item_ammo_buckshot,Ammo pickup,20,CItemAmmoBuckshot,0x223C3FB7,0x2252811C,0x224691DC,0x224FA55C,5,1,0,,,,,,
+8,item_ammo_duag,Ammo pickup,39,CItemAmmoDUAG,0x223C4057,0x22528130,0x2246A1BC,0x224FA55C,5,1,0,,,,,,
+9,item_ammo_flak,Ammo pickup,38,CItemAmmoFLAK,0x223C4037,0x2252812C,0x22469E8C,0x224FA55C,5,1,0,,,,,,
+10,item_ammo_magnum,Ammo pickup,23,CItemAmmoMagnum,0x223C3F77,0x22528114,0x22468B6C,0x224FA55C,5,1,0,,,,,,
+11,item_antigen_dispenser,Health / item,49,CAntigenDispenser,0x223C40A7,0x225285DC,0x2246AA6C,0x225285C4,14,8,0,,Antigen,,,,
+12,item_megahealth,Health / item,10,CMegaHealth,0x223C42D7,0x22528C0C,0x2246BFE4,0x224FA55C,5,1,0,,,,,,
+13,npc_civilian,NPC / AI,32,CNPC_Citizen,0x223C6637,0x2253342C,0x224868E4,0x225333E0,27,1,0,,,,,,
+14,npc_druglab_grunt_assault_rifle,NPC / AI,103,CNPC_MobGrunt,0x223C7027,0x22536848,0x2249AAA4,0x22534DA4,39,39,6,LookOff; LookOn; StartPatrolling; StopPatrolling; Assault; ThrowGrenades,NumGrenades; GrenadeHeight; LookOff; LookOn; StartPatrolling; StopPatrolling; Assault; ThrowGrenades,,,,
+15,npc_druglab_grunt_elite,NPC / AI,69,CNPC_EliteGrunt,0x223C6947,0x225346A0,0x2248DF04,0x22534674,2,2,0,,,C_NPC_EliteGrunt,0x242B710C,0x2421CAF0,175.0
+16,npc_druglab_grunt_pistol,NPC / AI,195,CNPC_MobGrunt,0x223C6FE7,0x22536840,0x2249AAA4,0x22534DA4,39,39,6,LookOff; LookOn; StartPatrolling; StopPatrolling; Assault; ThrowGrenades,NumGrenades; GrenadeHeight; LookOff; LookOn; StartPatrolling; StopPatrolling; Assault; ThrowGrenades,,,,
+17,npc_druglab_grunt_scattergun,NPC / AI,66,CNPC_MobGrunt,0x223C7007,0x22536844,0x2249AAA4,0x22534DA4,39,39,6,LookOff; LookOn; StartPatrolling; StopPatrolling; Assault; ThrowGrenades,NumGrenades; GrenadeHeight; LookOff; LookOn; StartPatrolling; StopPatrolling; Assault; ThrowGrenades,,,,
+18,npc_druglab_helicopter,NPC / AI,9,CNPC_SintekHelicopter,0x223C77E7,0x22537DB0,0x224A5324,0x225323CC,83,0,0,,,,,,
+19,npc_druglab_jetpack,NPC / AI,29,CNPC_DruglabJetpack,0x223C68B7,0x22534514,0x2248C514,0x22535B28,26,1,0,,,,,,
+20,npc_druglab_worker,NPC / AI,14,CNPC_DruglabWorker,0x223C68E7,0x22534544,0x2248D1EC,0x22534518,3,3,0,,,,,,
+21,npc_generic_actor,NPC / AI,49,CNPC_GenericActor,0x223C6B97,0x22534BDC,0x2249037C,0x22534BC0,6,6,1,PlayerCollide,bloodColor; initialHealth; heads; dontHammerBBox; PlayerCollide,,,,
+22,npc_hologram,NPC / AI,3,CNPC_Hologram,0x223C6D77,0x22535794,0x22496734,0x22535774,4,4,2,HologramOn; HologramOff,HologramOn; HologramOff,C_NPC_Hologram,0x242B7624,0x2421DB60,175.0
+23,npc_jc,NPC / AI,6,CNPC_JC,0x223C6DF7,0x22535938,0x22496FBC,0x224DB1FC,44,12,0,,,,,,
+24,npc_jessica,NPC / AI,17,CNPC_Jessica,0x223C6E17,0x22535964,0x22497A14,0x2253593C,6,5,4,ThrowItemAtPlayer; SetPrimaryAmmoCountToThrow; SetSecondaryAmmoCountToThrow; HolsterWeapon,ThrowItemAtPlayer; SetPrimaryAmmoCountToThrow; SetSecondaryAmmoCountToThrow; HolsterWeapon,,,,
+25,npc_quadralex,NPC / AI,8,CNPC_Quadralex,0x223C7357,0x22536CF8,0x2249ED8C,0x22536C50,20,12,0,,,,,,
+26,npc_recombinant_major,NPC / AI,21,CNPC_RecombinantMajor,0x223C74E7,0x225372B8,0x224A0D8C,0x2253728C,17,17,0,,SpawnType,,,,
+27,npc_recombinant_minor,NPC / AI,17,CNPC_RecombinantMinor,0x223C7637,0x22537788,0x224A2974,0x22537744,12,9,0,,,,,,
+28,npc_securitybot,NPC / AI,16,CNPC_SecurityBot,0x223C7707,0x22537B2C,0x224A3974,0x22537AEC,2,2,0,,,,,,
+29,npc_sintek_grunt,NPC / AI,2,CNPC_SintekGrunt,0x223C77A7,0x22537CEC,0x224A416C,0x22534DA4,39,39,6,LookOff; LookOn; StartPatrolling; StopPatrolling; Assault; ThrowGrenades,NumGrenades; GrenadeHeight; LookOff; LookOn; StartPatrolling; StopPatrolling; Assault; ThrowGrenades,,,,
+30,prop_acetylene_tank,Interactive prop / vehicle,69,CAcetyleneTank,0x223C4627,0x2252A0B0,0x2246FBCC,0x2252A06C,9,8,1,Kill,Percent; ContainerFlags; Kill; OnExplode,,,,
+31,prop_antigen_canister,Interactive prop / vehicle,21,CAntigenCanister,0x223C46D7,0x2252A0C4,0x2246F094,0x2252A084,1,0,0,,,,,,
+32,prop_antigen_explosive_barrel,Interactive prop / vehicle,19,CAntigenCanister,0x223C46B7,0x2252A0C0,0x2246F094,0x2252A084,1,0,0,,,,,,
+33,prop_exploding_barrel,Interactive prop / vehicle,92,CExplodingBarrel,0x223C4647,0x2252A0B4,0x2246FF8C,0x2252A06C,9,8,1,Kill,Percent; ContainerFlags; Kill; OnExplode,,,,
+34,prop_mutagen_barrel,Interactive prop / vehicle,39,CMutagenBarrel,0x223C4687,0x2252A0BC,0x2247034C,0x2252A06C,9,8,1,Kill,Percent; ContainerFlags; Kill; OnExplode,,,,
+35,prop_oxygen_tank,Interactive prop / vehicle,5,COxygenTankSmall,0x223C4607,0x2252A0AC,0x2246F80C,0x2252A06C,9,8,1,Kill,Percent; ContainerFlags; Kill; OnExplode,,,,
+36,prop_oxygen_tank_large,Interactive prop / vehicle,16,COxygenTankLarge,0x223C45A7,0x2252A0A0,0x2246F42C,0x2252A06C,9,8,1,Kill,Percent; ContainerFlags; Kill; OnExplode,,,,
+37,prop_oxygen_tank_small,Interactive prop / vehicle,9,COxygenTankSmall,0x223C45E7,0x2252A0A8,0x2246F80C,0x2252A06C,9,8,1,Kill,Percent; ContainerFlags; Kill; OnExplode,,,,
+38,prop_phone,Interactive prop / vehicle,23,CPropPhone,0x223C47A7,0x2252A7D0,0x2247106C,0x2252A7B4,11,10,3,DialNumber; Enable; Disable,Disabled; FailSound; KeypadName; PhoneBook; DialNumber; Enable; Disable,C_PropPhone,0x242B8D94,0x242208F0,170.0
+39,prop_propane_tank,Interactive prop / vehicle,9,COxygenTankLarge,0x223C45C7,0x2252A0A4,0x2246F42C,0x2252A06C,9,8,1,Kill,Percent; ContainerFlags; Kill; OnExplode,,,,
+40,prop_u4_barrel,Interactive prop / vehicle,62,CMutagenBarrel,0x223C4667,0x2252A0B8,0x2247034C,0x2252A06C,9,8,1,Kill,Percent; ContainerFlags; Kill; OnExplode,,,,
+41,prop_vehicle_sin,Interactive prop / vehicle,5,CPropSinVehicle,0x223C5BE7,0x22531398,0x2247E23C,0x225312F8,54,49,25,EnterVehicle; ExitVehicle; EnableUse; SetView; LockView; OpenDoor; OpenWindow; CloseDoor; CloseWindow; OpenDoors; CloseDoors; OpenWindows; CloseWindows; HeadlightOn; HeadlightOff; WipersOn; WipersOff; MonitorOn; MonitorOff; SetCamera; EnableHints; EnableAmmo; RadioOn; RadioOff; SetRadioStation,EnterVehicle; ExitVehicle; EnableUse; SetView; LockView; OpenDoor; OpenWindow; CloseDoor; CloseWindow; OpenDoors; CloseDoors; OpenWindows; CloseWindows; HeadlightOn; HeadlightOff; WipersOn; WipersOff; MonitorOn; MonitorOff; SetCamera; EnableHints; EnableAmmo; RadioOn; RadioOff; SetRadioStation; EnableUse; ViewsLocked; InfiniteAmmo; Invunerable; DriverDoorLocked; DamageTolerance; MonitorActive; MonitorCamera; HintsEnabled; DoorClosed,C_PropSinVehicle,0x242BAC8C,0x24227040,173.0
+42,trigger_dynamic_difficulty,Map trigger / difficulty,88,CTriggerDynamicDifficulty,0x223BE4A7,0x2250B404,0x2243B96C,0x2250B374,3,3,0,,EstimatedTime; EstimatedDifficulty; EndOfGame,,,,
+43,trigger_secret,Map trigger / difficulty,44,CTriggerSecret,0x223BE4D7,0x2250B408,0x2243BC0C,0x2250B38C,1,0,0,,,,,,
+44,weapon_assault_rifle,Weapon,7,CWeaponAssaultRifle,0x223C4F67,0x2252D4FC,0x224776AC,0x2252D1F8,2,2,0,,,C_WeaponAssaultRifle,0x242C56C4,0x2422B590,301.0
+45,weapon_grenade,Weapon,41,CWeaponGrenade,0x223C50E7,0x2252DB50,0x22478214,0x2252DB28,3,3,0,,,C_WeaponGrenade,0x242C3B14,0x2422B300,301.0
+46,weapon_magnum,Weapon,14,CWeaponMagnum,0x223C5157,0x2252DDF0,0x2247875C,0x2252DC84,1,0,0,,,C_WeaponMagnum,0x242C4654,0x2422B1B0,301.0
+47,weapon_npc_pistol,Weapon,2,CWeaponNPCPistol,0x223C52C7,0x2252E0B0,0x2247924C,0x2252DF44,1,0,0,,,C_WeaponNPCPistol,0x242C40AC,0x2422B420,301.0
+48,weapon_scattergun,Weapon,22,CWeaponScatterGun,0x223C54C7,0x2252E8A4,0x2247A1E4,0x2252E644,3,3,0,,,C_WeaponScatterGun,0x242C2FF4,0x2422B2C0,301.0
