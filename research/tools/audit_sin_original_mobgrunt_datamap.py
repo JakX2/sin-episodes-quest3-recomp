@@ -116,6 +116,19 @@ def audit_handler_code(pe: PEImage) -> dict:
     call = pe.at(0x22357E8B, 5)
     if call[0] != 0xE8 or 0x22357E90 + struct.unpack_from('<i', call, 1)[0] != 0x220CFC00:
         raise VerificationError('InputAssault state call target differs')
+    # InputAssault also receives a Source input variant. If variant type is
+    # 2 (string), it uses that pointer or a shared empty string; otherwise
+    # invokes the original string conversion helper. The value is then
+    # interned before dispatch to the assault behavior object at +0xDB8.
+    if pe.at(0x22357E5A, 4) != b'\x83\x79\x10\x02':
+        raise VerificationError('InputAssault variant string type branch differs')
+    if pe.at(0x22357E66, 5) != b'\xb8\xa8\x47\x3d\x22':
+        raise VerificationError('InputAssault empty string fallback differs')
+    for va, target in ((0x22357E6D, 0x221561D0),
+                       (0x22357E78, 0x221F3DE0)):
+        code = pe.at(va, 5)
+        if code[0] != 0xE8 or va + 5 + struct.unpack_from('<i', code, 1)[0] != target:
+            raise VerificationError('InputAssault string conversion/intern edge differs')
     # InputThrowGrenades: reset m_flGrenadeHeight at +0xC70,
     # set 0xC6C byte from accepted bool value or reset on wrong input type.
     if pe.at(0x22357EA4, 4) != b'\x83\x78\x18\x06':
@@ -128,7 +141,11 @@ def audit_handler_code(pe: PEImage) -> dict:
         assault_input=dict(handler_va='0x22357E50',
                            relative_state_object_offset='0xDB8',
                            submitted_state_argument=3,
-                           target_call_va='0x220CFC00'),
+                           target_call_va='0x220CFC00',
+                           string_variant_type_id=2,
+                           empty_string_fallback_va='0x223D47A8',
+                           non_string_conversion_va='0x221561D0',
+                           string_pool_intern_va='0x221F3DE0'),
         grenade_input=dict(handler_va='0x22357EA0',
                            expected_variant_type_id=6,
                            reset_grenade_height_offset='0xC70',
