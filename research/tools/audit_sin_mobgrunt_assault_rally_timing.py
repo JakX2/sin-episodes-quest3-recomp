@@ -60,8 +60,49 @@ def verify_assault_class_registration(pe):
     return registrations
 
 
+# Original CAssaultRallyPoint typedescription_t (0x34 bytes each).
+# member name, descriptor VA, name VA, ordinal, offset, flags, external VA/name.
+RALLY_TYPEDESC = (
+    ('m_AssaultPointName', 0x224E4D8C, 0x223F4294, 2, 0x394, 6, 0x223F4284, 'assaultpoint'),
+    ('m_RallySequenceName', 0x224E4DC0, 0x223F4270, 2, 0x398, 6, 0x223F4260, 'rallysequence'),
+    ('m_flAssaultDelay', 0x224E4DF4, 0x223F424C, 1, 0x39C, 6, 0x223F423C, 'assaultdelay'),
+    ('m_iPriority', 0x224E4E28, 0x223E8A24, 5, 0x3A0, 6, 0x223E8A18, 'priority'),
+    ('m_hLockedBy', 0x224E4E5C, 0x223F4230, 13, 0x3BC, 2, 0, None),
+    ('m_OnArrival', 0x224E4E90, 0x223F4224, 11, 0x3A4, 22, 0x223F4218, 'OnArrival'),
+)
+
+
+def verify_rally_datamap(pe):
+    fields = []
+    for name, desc, name_va, dtype, offset, flags, external_va, external_name in RALLY_TYPEDESC:
+        data = pe.at(desc, 52)
+        words = struct.unpack_from('<8I', data)
+        expected = (dtype, name_va, offset, 0, (flags << 16) | 1, external_va, 0, 0)
+        if words != expected:
+            raise VerificationError(f'{name}: original rallypoint datamap mismatch')
+        same(pe, name_va, name.encode('ascii') + b'\0', name + ' field name')
+        if external_name:
+            same(pe, external_va, external_name.encode('ascii') + b'\0',
+                 name + ' external Hammer key')
+        fields.append({
+            'member': name, 'original_offset': f'0x{offset:X}',
+            'field_type_id': dtype, 'flags': flags,
+            'external_key': external_name,
+        })
+    return {
+        'original_rallypoint_class': 'CAssaultRallyPoint',
+        'field_descriptors': fields,
+        'locked_by_field_type_id': 13,
+        'lock_eligibility_rule': 'exclude candidate when m_hLockedBy handle resolves to an existing entity',
+    }
+
+
 def verify_rally_selection_rank_and_distance(pe):
     """Verify original rally selection comparison paths, not every lock rule."""
+    same(pe, 0x220CFC70, b'\x8b\x86\xbc\x03\x00\x00\x83\xf8\xff\x74\x26',
+         'rally point locked handle read and null sentinel')
+    same(pe, 0x220CFC98, b'\x83\x39\x00\x0f\x85\x43\x01\x00\x00',
+         'resolved locked handle skips candidate')
     same(pe, 0x220CFC62, b'\x83\xcd\xff', 'initial best priority = -1')
     same(pe, 0x220CFCA1, b'\x8b\x86\xa0\x03\x00\x00', 'candidate priority offset')
     same(pe, 0x220CFCA7, b'\x3b\xc5\x7e\x07', 'higher priority branch')
@@ -148,6 +189,7 @@ def audit_code(pe):
 
     return {
         'registered_assault_entities': verify_assault_class_registration(pe),
+        'original_rally_point_datamap': verify_rally_datamap(pe),
         'rally_point_ranking': verify_rally_selection_rank_and_distance(pe),
         'assault_input': {
             'handler_va': '0x22357E50',
