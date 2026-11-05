@@ -42,12 +42,27 @@ Inside original `CAI_AssaultBehavior::SetParameters` at `0x220CFC00`, the server
 
 This is consistent with the original SDK FGD's `assault_rallypoint.priority` field, which explicitly says **“Higher priority rally points get selected first.”**
 
+**New direct class-data confirmation:** the `CAssaultRallyPoint` original 52-byte `typedescription_t` records establish these exact fields:
+
+| Rally-point member | Original object offset | FGD/Hammer name |
+|---|---:|---|
+| `m_AssaultPointName` | `0x394` | `assaultpoint` |
+| `m_RallySequenceName` | `0x398` | `rallysequence` |
+| `m_flAssaultDelay` | `0x39C` | `assaultdelay` |
+| `m_iPriority` | `0x3A0` | `priority` |
+| `m_OnArrival` | `0x3A4` | `OnArrival` |
+| `m_hLockedBy` | `0x3BC` | Internal entity handle |
+
+Crucially, `SetParameters` checks the original `m_hLockedBy` handle at **`0x220CFC70`** before ranking. If the handle refers to an existing entity, the candidate is skipped. This resolves the main rally-point eligibility check using **both the real data map and original x86 handle-lookup branch**. The standalone C++ reference takes `eligible` as host-supplied because only a real Source engine can resolve a live entity handle.
+
+
+
 Readable reconstruction for valid, eligible rally candidates:
 
 ```cpp
 best = none;
 for (candidate : rally_points_with_matching_name) {
-    if (!candidate_is_eligible(candidate)) continue; // precise lock checks pending
+    if (!candidate_is_eligible(candidate)) continue; // skip locked point
     if (!best || candidate.priority > best.priority ||
         (candidate.priority == best.priority &&
          squared_distance(candidate, npc) < squared_distance(best, npc))) {
@@ -56,7 +71,7 @@ for (candidate : rally_points_with_matching_name) {
 }
 ```
 
-The ranking instruction witnesses are now checked by the original-DLL audit. A standalone **engine-neutral C++17 reference** implements only this behavior in `include/sin_compat/mobgrunt_rally_rank.hpp`, tested by `tests/test_mobgrunt_rally_rank.cpp` and CTest. It does not reconstruct the original candidate discovery, lock/eligibility checks, actual entity handles, AI navigation, or `CAI_AssaultBehavior` schedules. It rejects invalid coordinates and negative priority instead of copying x87 corner cases into the future ARM64 code.
+The ranking instruction witnesses are now checked by the original-DLL audit. A standalone **engine-neutral C++17 reference** implements only this behavior in `include/sin_compat/mobgrunt_rally_rank.hpp`, tested by `tests/test_mobgrunt_rally_rank.cpp` and CTest. It does not resolve actual engine entity handles or implement the original candidate discovery, AI navigation, or `CAI_AssaultBehavior` schedules. It rejects invalid coordinates and negative priority instead of copying x87 corner cases into the future ARM64 code.
 
 ## Grenade-related toggle and timing, original server x86
 
