@@ -7,6 +7,15 @@ add_library(sin_weapon_runtime STATIC src/weapon_runtime.cpp src/weapon_entity_i
 target_include_directories(sin_weapon_runtime PUBLIC include third_party/research)
 target_compile_options(sin_weapon_runtime PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 include(CTest)
+# Source-derived SiN assault-rifle settings consumed by the existing
+# engine-neutral weapon state machine (not a native Source game entity).
+if(BUILD_TESTING)
+  add_executable(sin_original_assault_rifle_profile_tests
+    tests/test_original_assault_rifle_profile.cpp)
+  target_link_libraries(sin_original_assault_rifle_profile_tests PRIVATE sin_weapon_runtime)
+  add_test(NAME sin_original_assault_rifle_profile_tests
+    COMMAND sin_original_assault_rifle_profile_tests)
+endif()
 if(BUILD_TESTING)
   add_executable(sin_weapon_runtime_tests tests/test_weapon_runtime.cpp)
   target_link_libraries(sin_weapon_runtime_tests PRIVATE sin_weapon_runtime)
