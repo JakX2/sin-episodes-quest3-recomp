@@ -32,3 +32,17 @@ The owner ran the read-only sequence inspector on the extracted SiN models. For 
 This is **sequence metadata discovery**, not animation playback. The first tester previously sent `SetAnimation idle`, which returned "no sequence named:idle". The exact source-listed spellings to try next against `sin_mobgrunt_anim_test` are `Idle1`, `CombatIdle1`, and `reload`, one at a time. Check for transition out of reference pose and absence of "no sequence named". If none work, inspect `mobgrunt.mdl` include-table mapping/virtual sequences and consult original SDK HLMV before treating included local sequences as directly callable.
 
 Original assets remain local; no binary files are committed.
+
+## Owner-confirmed MobGrunt animation playback (Nov 5, 2026)
+
+**PASS: at least one of the exact listed original model sequences plays in desktop HL2 on the owner-created named prop `sin_mobgrunt_anim_test`.** Owner confirmed "workin" and supplied a screenshot with the original MobGrunt moved out of its earlier rigid T-pose into a distinct arm/torso pose. The preceding local-source test plan used `Idle1`, `CombatIdle1`, and `reload`; the screenshot alone does not establish which specific sequence(s) were tested or guarantee that all three passed. Record only at-least-one-sequence playback.
+
+This independently demonstrates the original 2006 Source model assets can be loaded and animated by HL2's prop animation path with `mobgrunt_anims.mdl` included. It **does not** prove combat motion blending, attachment and correct weapon grip, original NPC schedules or damage, original firing, or a native Quest port.
+
+Next useful incremental desktop smoke: with the same named prop (and no BSP rewrite), try the original local firing sequence `shootAR2s`:
+
+```
+ent_fire sin_mobgrunt_anim_test SetAnimation shootAR2s
+```
+
+Despite the AR2 label, this is a sequence name from the original SiN MobGrunt animation bundle, **not** a request to restore HL2 rifle gameplay. Check whether the animation plays and whether its arms align with the separately rendered original rifle. Do not equate an animation playing with working projectiles/sounds/ammo or original SinTEK AI.
