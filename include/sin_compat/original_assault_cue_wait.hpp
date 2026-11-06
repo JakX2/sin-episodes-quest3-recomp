@@ -22,17 +22,28 @@ struct OriginalAssaultCueGate {
     // The host supplies the actual Source NPC numeric condition 0x33.
     // This does not prove the native C++ enum symbol corresponding to 0x33.
     // Mode 3 has a verified side effect: sets m_ReceivedAssaultCue to 3.
-    bool check(bool npc_condition_0x33) {
+    // Port-facing callback boundary: query the native NPC condition only
+    // when the recovered mode-2 branch actually needs it. This lazy
+    // callback API is new adapter design, not a recovered C++ signature.
+    template <typename ConditionQuery>
+    bool check_with_condition(ConditionQuery&& condition_0x33_query) {
         if (received_cue == 4) return true;
         switch (configured_mode) {
             case 1: return received_cue == 1;
-            case 2: return npc_condition_0x33;
+            case 2: return static_cast<bool>(condition_0x33_query());
             case 3:
                 received_cue = 3;
                 return true;
             default:
                 return false;
         }
+    }
+
+    // Retain the simple value-based semantic reference for existing callers.
+    bool check(bool npc_condition_0x33) {
+        return check_with_condition([npc_condition_0x33] {
+            return npc_condition_0x33;
+        });
     }
 };
 
