@@ -75,6 +75,48 @@ SCHEDULE_SKELETONS = (
     ), ("COND_HEAR_DANGER", "COND_PROVOKED", "COND_NO_PRIMARY_AMMO")),
 )
 
+# Every declarative schedule is actually submitted to the original Source
+# runtime parser at 0x22042620. Original code stores script VA into stack
+# frame (esp+0x1C, except one esp+0x14) before calling parser.
+# (schedule symbol, string VA, x86 mov-imm instruction VA, stack byte offset,
+#  x86 call site).
+ORIGINAL_SCRIPT_REGISTRATIONS = (
+    ("SCHED_MOVE_TO_RALLY_POINT", 0x223F4D00, 0x220D0694, 0x1C, 0x220D069C),
+    ("SCHED_ASSAULT_FAILED_TO_MOVE", 0x223F4C78, 0x220D06D2, 0x1C, 0x220D06DA),
+    ("SCHED_FAIL_MOVE_TO_RALLY_POINT", 0x223F4BC8, 0x220D0710, 0x1C, 0x220D0718),
+    ("SCHED_HOLD_RALLY_POINT", 0x223F4A80, 0x220D073C, 0x14, 0x220D0752),
+    ("SCHED_HOLD_ASSAULT_POINT", 0x223F4900, 0x220D0784, 0x1C, 0x220D078C),
+    ("SCHED_MOVE_TO_ASSAULT_POINT", 0x223F4788, 0x220D07C2, 0x1C, 0x220D07CA),
+    ("SCHED_WAIT_AND_CLEAR", 0x223F4620, 0x220D0800, 0x1C, 0x220D0808),
+    ("SCHED_CLEAR_ASSAULT_POINT", 0x223F45B0, 0x220D083A, 0x1C, 0x220D0842),
+    ("SCHED_ASSAULT_MOVE_AWAY", 0x223F4508, 0x220D0878, 0x1C, 0x220D0880),
+)
+
+ORIGINAL_SCRIPT_PARSER_VA = 0x22042620
+
+
+def audit_registration_call_paths(pe: PEImage) -> list[dict]:
+    links = []
+    for name, literal_va, mov_va, stack_offset, call_va in ORIGINAL_SCRIPT_REGISTRATIONS:
+        original_mov = b"\xc7\x44\x24" + bytes([stack_offset]) + struct.pack("<I", literal_va)
+        if pe.at(mov_va, 8) != original_mov:
+            raise VerificationError(f"{name}: original parser text pointer does not match")
+        call = pe.at(call_va, 5)
+        if call[0] != 0xE8:
+            raise VerificationError(f"{name}: missing original script-parser call")
+        target = (call_va + 5 + struct.unpack_from("<i", call, 1)[0]) & 0xFFFFFFFF
+        if target != ORIGINAL_SCRIPT_PARSER_VA:
+            raise VerificationError(f"{name}: original parser call target changed")
+        links.append({
+            "schedule": name,
+            "script_original_va": f"0x{literal_va:08X}",
+            "mov_original_va": f"0x{mov_va:08X}",
+            "parser_call_va": f"0x{call_va:08X}",
+            "original_parser_va": f"0x{target:08X}",
+        })
+    return links
+
+
 SCHEDULE_RE = re.compile(
     r"^\s*Schedule\s+(SCHED_[A-Z0-9_]+)\s+Tasks\s+(.*?)\s+Interrupts\s*(.*?)\s*$",
     flags=re.S,
@@ -131,7 +173,13 @@ def audit_schedules(pe: PEImage) -> dict:
             "tasks": [{"symbol": task, "parameter": value} for task, value in tasks],
             "interrupt_conditions": list(interrupts),
         })
+    submitted_scripts = audit_registration_call_paths(pe)
+    if {item["schedule"] for item in submitted_scripts} != names:
+        raise VerificationError("original script registration set differs from nine schedules")
     return {
+        "original_register_calls": submitted_scripts,
+        "registered_script_count": len(submitted_scripts),
+        "original_parser_va": f"0x{ORIGINAL_SCRIPT_PARSER_VA:08X}",
         "schedule_count": len(verified),
         "total_tasks": sum(s["task_count"] for s in verified),
         "total_interrupt_declarations": sum(s["interrupt_count"] for s in verified),
@@ -139,6 +187,7 @@ def audit_schedules(pe: PEImage) -> dict:
         "limitations": [
             "Only the original schedule task symbols, scalar parameters and interrupt masks are recovered.",
             "Schedule registration numeric IDs are verified separately in audit_sin_assault_diversion.py.",
+            "All nine scripts are linked to the original Source schedule parser by direct x86 callsite witnesses.",
             "These declarations do not implement actual Source AI tasks, NPC condition enumeration, movement or animation.",
             "No complete proprietary schedule text or Windows instructions are redistributed.",
         ],
