@@ -27,6 +27,7 @@ def fixture():
         for _, address, target in audit.CALL_EDGES
     })
     data[audit.ERROR_LITERAL_VA] = audit.ERROR_LITERAL
+    data[audit.NEXT_ERROR_LITERAL_VA] = audit.NEXT_ERROR_LITERAL
     return data
 
 
@@ -50,7 +51,11 @@ class RallyLockOriginalTests(unittest.TestCase):
         self.assertEqual(result["rallypoint_lock"]["release_function_va"], "0x220CE4A0")
         self.assertEqual(result["assault_state_transition"]["linked_assaultpoint_handle_original_offset"],
                          "0x14")
-        self.assertEqual(result["evidence"]["verified_call_edges"], 3)
+        self.assertEqual(result["evidence"]["verified_call_edges"], 5)
+        self.assertEqual(result["next_assaultpoint_chain"]["advance_function_va"],
+                         "0x220CE5B0")
+        self.assertEqual(result["next_assaultpoint_chain"]["terminal_rally_lock_release_call_va"],
+                         "0x220CE70F")
         self.assertEqual(result["evidence"]["verified_instruction_witnesses"],
                          len(audit.PATTERNS))
 
@@ -69,6 +74,24 @@ class RallyLockOriginalTests(unittest.TestCase):
     def test_wrong_assaultpoint_link_field_fails_closed(self):
         changed = fixture()
         changed[0x220CE9A7] = b"\x8b\x80\x98\x03\x00\x00"
+        with self.assertRaises(audit.VerificationError):
+            audit.audit_instruction_evidence(FakePE(changed))
+
+    def test_corrupt_terminal_unlock_target_fails_closed(self):
+        changed = fixture()
+        changed[0x220CE70F] = direct_call(0x220CE70F, 0x220CE430)
+        with self.assertRaises(audit.VerificationError):
+            audit.audit_instruction_evidence(FakePE(changed))
+
+    def test_corrupt_next_assaultpoint_name_offset_fails_closed(self):
+        changed = fixture()
+        changed[0x220CE610] = b"\x8b\x89\x94\x03\x00\x00"
+        with self.assertRaises(audit.VerificationError):
+            audit.audit_instruction_evidence(FakePE(changed))
+
+    def test_corrupt_missing_next_point_message_fails_closed(self):
+        changed = fixture()
+        changed[audit.NEXT_ERROR_LITERAL_VA] = b"unrelated diagnostic\0"
         with self.assertRaises(audit.VerificationError):
             audit.audit_instruction_evidence(FakePE(changed))
 
