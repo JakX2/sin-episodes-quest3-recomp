@@ -26,6 +26,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_mobgrunt_rally_rank_tests COMMAND sin_mobgrunt_rally_rank_tests)
 endif()
 
+# A synthetic two-MobGrunt integration test joins ranking, exclusive
+# rally ownership and callback-driven original assault task progression.
+# These simulated NPCs do not instantiate any Source engine entities.
+if(BUILD_TESTING)
+  add_executable(sin_assault_simulated_encounter_tests
+    tests/test_assault_simulated_encounter.cpp)
+  target_include_directories(sin_assault_simulated_encounter_tests PRIVATE include)
+  target_compile_options(sin_assault_simulated_encounter_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_assault_simulated_encounter_tests
+    COMMAND sin_assault_simulated_encounter_tests)
+endif()
+
 # Engine-neutral host-driven assault task runner. Original tasks and interrupt
 # declarations are source-verified; callbacks are a new, explicit host boundary.
 # No native SourceVR AI schedule, NPC factory or game module registration.
