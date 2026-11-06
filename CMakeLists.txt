@@ -50,6 +50,18 @@ if(BUILD_TESTING)
   add_test(NAME sin_assault_schedule_runner_tests COMMAND sin_assault_schedule_runner_tests)
 endif()
 
+# Direct source-derived behavior effects for arrival outputs, map-configured
+# waits and deferred schedule-selection timestamp; not engine task handlers.
+if(BUILD_TESTING)
+  add_executable(sin_original_assault_task_effects_tests
+    tests/test_original_assault_task_effects.cpp)
+  target_include_directories(sin_original_assault_task_effects_tests PRIVATE include)
+  target_compile_options(sin_original_assault_task_effects_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_assault_task_effects_tests
+    COMMAND sin_original_assault_task_effects_tests)
+endif()
+
 # Original 2006 SiN 11 task IDs and the separate schedule ID namespace;
 # typed metadata only, never native SourceVR task/schedule registration.
 if(BUILD_TESTING)
