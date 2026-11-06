@@ -60,6 +60,61 @@ class OriginalAssaultGraphTests(unittest.TestCase):
                           for p in value['original_assault_input_signals']],
                          ['missing', 'wrong_class', 'ambiguous'])
 
+    def test_original_begin_assault_targets_goal_not_individual_npc(self):
+        entities = [
+            ent(('classname', 'ai_goal_assault'), ('targetname', 'goal_a'),
+                ('actor', 'roof_grunt_1_seq1'), ('rallypoint', 'rp_a'),
+                ('AssaultCue', '1')),
+            ent(('classname', 'npc_druglab_grunt_assault_rifle'),
+                ('targetname', 'roof_grunt_1_seq1')),
+            ent(('classname', 'assault_rallypoint'),
+                ('targetname', 'rp_a')),
+            ent(('classname', 'logic_relay'), ('targetname', 'battle_start'),
+                ('OnTrigger', 'goal_a,BeginAssault,,0,1'),
+                ('OnTrigger', 'roof_grunt_1_seq1,Assault,rp_a,0.2,1')),
+        ]
+        value = a.analyze_entities(entities)
+        self.assertEqual(value['summary']['directed_begin_assault_inputs'], 1)
+        self.assertEqual(value['summary']['directed_assault_inputs'], 1)
+        signal = value['original_goal_begin_assault_signals'][0]
+        self.assertEqual(signal['goal_recipient']['status'], 'ok')
+        self.assertEqual(signal['goal_recipient']['matching_expected_class'][0]['index'], 0)
+        self.assertEqual(signal['recipient'], 'goal_a')
+        self.assertEqual(signal['parameter'], '')
+        self.assertEqual(value['original_assault_input_signals'][0]
+                         ['rallypoint_parameter']['status'], 'ok')
+
+    def test_begin_assault_wrong_class_missing_ambiguous_and_dynamic(self):
+        entities = [
+            ent(('classname', 'logic_relay'),
+                ('OnTrigger', 'grunt,BeginAssault,,0,-1'),
+                ('OnTrigger', 'missing_goal,BeginAssault,,0,-1'),
+                ('OnTrigger', 'dup_goal,BeginAssault,,0,-1'),
+                ('OnTrigger', '!activator,BeginAssault,,0,-1')),
+            ent(('classname', 'npc_druglab_grunt_assault_rifle'),
+                ('targetname', 'grunt')),
+            ent(('classname', 'ai_goal_assault'), ('targetname', 'dup_goal')),
+            ent(('classname', 'ai_goal_assault'), ('targetname', 'dup_goal')),
+        ]
+        value = a.analyze_entities(entities)
+        self.assertEqual(
+            [row['goal_recipient']['status']
+             for row in value['original_goal_begin_assault_signals']],
+            ['wrong_class', 'missing', 'ambiguous', 'dynamic_target'])
+        self.assertEqual(value['summary']['directed_begin_assault_inputs'], 4)
+        self.assertEqual(value['summary']['point_or_input_link_status']['dynamic_target'], 1)
+
+    def test_begin_assault_esc_separated_output(self):
+        entities = [
+            ent(('classname', 'ai_goal_assault'), ('targetname', 'goal_a')),
+            ent(('classname', 'logic_relay'),
+                ('OnTrigger', 'goal_a\x1bBeginAssault\x1b\x1b0\x1b1')),
+        ]
+        value = a.analyze_entities(entities)
+        self.assertEqual(value['summary']['directed_begin_assault_inputs'], 1)
+        self.assertEqual(value['original_goal_begin_assault_signals'][0]
+                         ['goal_recipient']['status'], 'ok')
+
     def test_output_esc_separator_and_malformed_rejected(self):
         self.assertEqual(a.parse_output('x\x1bAssault\x1brally\x1b0\x1b1')['input'],
                          'Assault')
