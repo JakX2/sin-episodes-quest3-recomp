@@ -104,6 +104,35 @@ does **not** prove that the Quest SourceVR binary accepts replacement
 `server.dll`/`client.dll`, that MobGrunt uses the authentic AI in the
 working desktop HL2 prototype, or that the original game has launched.
 
+## Synthetic two-MobGrunt integration proof
+
+`tests/test_assault_simulated_encounter.cpp` connects the three separate
+source-derived references already in this stacked PR series:
+
+1. The original rally selector ranks the highest-priority available point
+   before nearer lower-priority points.
+2. Each rally point's separately reconstructed `RallyPointLease` refuses a
+   second living NPC owner. The mock host supplies entity-generation-aware
+   liveness and explicitly releases a stale owner's point. No raw original
+   Windows x86 EHANDLE is exposed.
+3. A **fake** navigation/cue/delay host drives the newly created task runner.
+   The initial rally schedule pauses on original declared danger interrupts;
+   the host reports one pending movement step before completion; the task
+   sequence explicitly switches to hold-rally, then waits separately for a
+   cue and for the fake assault-delay completion.
+
+The test verifies two competing simulated grunts reserve different points,
+a second living owner cannot acquire/release the first point, and completing
+the hold schedule does **not** silently release the rally lease or invent
+native follow-on AI. This scenario uses synthetic positions and actor IDs,
+**not** actual finale map coordinates or physical Source AI navigation.
+
+The test is built as `sin_assault_simulated_encounter_tests` in CTest. This
+integration is useful precisely because its host obligations remain explicit:
+a future Source-compatible engine adapter must implement real navigation,
+entity handles, scripted outputs and schedule selection before the same
+behavior can be claimed for Quest.
+
 ## Next engineering work
 
 1. Recover the instruction-level implementations and enum meanings of the
