@@ -235,7 +235,46 @@ static void test_every_registered_original_schedule_has_callable_tasks() {
     }
 }
 
+static void test_invalid_restart_fails_closed_mid_task() {
+    AssaultScheduleRunner runner(AssaultSchedule::MoveToRallyPoint);
+    assert(runner.start(AssaultSchedule::MoveToRallyPoint));
+    auto r = runner.tick({}, [](const AssaultTaskWitness&) {
+        assert(false && "metadata must not reach host");
+        return AssaultHostTaskResult::Failed;
+    });
+    assert(r.result == AssaultTickResult::TaskCompleted);
+    assert(runner.fallback_schedule() == AssaultSchedule::AssaultFailedToMove);
+    r = runner.tick({}, [](const AssaultTaskWitness&) {
+        return AssaultHostTaskResult::Pending;
+    });
+    assert(r.result == AssaultTickResult::TaskPending);
+    assert(runner.next_task_position() == 1);
+
+    assert(!runner.start(static_cast<AssaultSchedule>(0xFF)));
+    assert(!runner.active());
+    assert(!runner.fallback_schedule());
+    assert(runner.next_task_position() == 0);
+    int callbacks = 0;
+    r = runner.tick({}, [&](const AssaultTaskWitness&) {
+        ++callbacks;
+        return AssaultHostTaskResult::Completed;
+    });
+    assert(r.result == AssaultTickResult::Inactive);
+    assert(callbacks == 0);
+
+    // A subsequent valid restart must begin cleanly at task zero.
+    assert(runner.start(AssaultSchedule::HoldRallyPoint));
+    assert(runner.next_task_position() == 0);
+    assert(!runner.fallback_schedule());
+    r = runner.tick({}, [](const AssaultTaskWitness& task) {
+        assert(task.original_task_symbol == "TASK_AWAIT_CUE");
+        return AssaultHostTaskResult::Pending;
+    });
+    assert(r.result == AssaultTickResult::TaskPending);
+}
+
 int main() {
+    test_invalid_restart_fails_closed_mid_task();
     test_lookup_and_inactive();
     test_original_rally_path_pending_interrupt_and_transition();
     test_path_failure_selects_original_fallback();
