@@ -64,7 +64,6 @@ public:
             // Fail closed even when an invalid restart is attempted mid-task.
             // Do not retain the old active task or its fallback target.
             stop();
-            position_ = 0;
             return false;
         }
         schedule_ = schedule;
@@ -81,6 +80,7 @@ public:
 
     void stop() {
         active_ = false;
+        position_ = 0;
         fallback_.reset();
     }
 
