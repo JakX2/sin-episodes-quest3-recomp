@@ -60,7 +60,13 @@ public:
         : schedule_(initial) {}
 
     bool start(AssaultSchedule schedule) {
-        if (original_task_count_for(schedule) == 0) return false;
+        if (original_task_count_for(schedule) == 0) {
+            // Fail closed even when an invalid restart is attempted mid-task.
+            // Do not retain the old active task or its fallback target.
+            stop();
+            position_ = 0;
+            return false;
+        }
         schedule_ = schedule;
         position_ = 0;
         fallback_.reset();
