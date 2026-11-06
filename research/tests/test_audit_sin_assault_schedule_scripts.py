@@ -1,6 +1,7 @@
 """Synthetic 2006 SiN assault-script fixtures, no original game text or DLL."""
 import importlib.util
 import re
+import struct
 from pathlib import Path
 import sys
 import unittest
@@ -25,10 +26,16 @@ def fake_script(name, tasks, interrupts):
 
 
 def original_synthetic_scripts():
-    return {
+    regions = {
         va: (fake_script(name, tasks, interrupts).encode("ascii") + b"\0").ljust(960, b"\0")
         for name, va, tasks, interrupts in a.SCHEDULE_SKELETONS
     }
+    for _, script_va, mov_va, stack_offset, call_va in a.ORIGINAL_SCRIPT_REGISTRATIONS:
+        regions[mov_va] = (b"\xc7\x44\x24" + bytes([stack_offset]) +
+                           struct.pack("<I", script_va))
+        regions[call_va] = (b"\xe8" +
+                            struct.pack("<i", a.ORIGINAL_SCRIPT_PARSER_VA - call_va - 5))
+    return regions
 
 
 class FakePE:
@@ -45,6 +52,8 @@ class OriginalAssaultScheduleScriptTests(unittest.TestCase):
     def test_all_nine_schedule_scripts_with_ordered_parameters_and_interrupts(self):
         result = a.audit_schedules(FakePE(original_synthetic_scripts()))
         self.assertEqual(result["schedule_count"], 9)
+        self.assertEqual(result["registered_script_count"], 9)
+        self.assertEqual(result["original_parser_va"], "0x22042620")
         self.assertEqual(result["total_tasks"], 29)
         self.assertEqual(result["total_interrupt_declarations"], 35)
         by_name = {r["schedule"]: r for r in result["schedule_skeletons"]}
@@ -58,6 +67,19 @@ class OriginalAssaultScheduleScriptTests(unittest.TestCase):
             "TASK_HIT_ASSAULT_POINT")
         self.assertIn("COND_HEAR_BULLET_IMPACT",
                       by_name["SCHED_HOLD_ASSAULT_POINT"]["interrupt_conditions"])
+
+    def test_original_parser_wiring_fails_on_changed_pointer_or_call(self):
+        regions = original_synthetic_scripts()
+        _, script_va, mov_va, offset, call_va = a.ORIGINAL_SCRIPT_REGISTRATIONS[0]
+        regions[mov_va] = (b"\xc7\x44\x24" + bytes([offset]) +
+                           struct.pack("<I", script_va + 16))
+        with self.assertRaises(a.VerificationError):
+            a.audit_schedules(FakePE(regions))
+        regions = original_synthetic_scripts()
+        regions[call_va] = (b"\xe8" + struct.pack(
+            "<i", a.ORIGINAL_SCRIPT_PARSER_VA + 16 - call_va - 5))
+        with self.assertRaises(a.VerificationError):
+            a.audit_schedules(FakePE(regions))
 
     def test_rejects_order_mutation(self):
         regions = original_synthetic_scripts()
