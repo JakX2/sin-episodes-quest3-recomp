@@ -26,6 +26,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_mobgrunt_rally_rank_tests COMMAND sin_mobgrunt_rally_rank_tests)
 endif()
 
+# Recovered 2006 assault schedule registry. Strong task vs schedule ID types
+# prevent using legacy Windows x86 numeric IDs as new native engine schedules.
+if(BUILD_TESTING)
+  add_executable(sin_original_assault_schedule_tests tests/test_original_assault_schedule.cpp)
+  target_include_directories(sin_original_assault_schedule_tests PRIVATE include)
+  target_compile_options(sin_original_assault_schedule_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_assault_schedule_tests COMMAND sin_original_assault_schedule_tests)
+endif()
+
 # Original SiN 2006 CAssaultRallyPoint::Lock/Unlock reference, backed by
 # real x86 call-graph research. No engine-owned EHANDLE pointers exported.
 if(BUILD_TESTING)
