@@ -50,6 +50,18 @@ if(BUILD_TESTING)
   add_test(NAME sin_assault_schedule_runner_tests COMMAND sin_assault_schedule_runner_tests)
 endif()
 
+# Original 2006 SiN 11 task IDs and the separate schedule ID namespace;
+# typed metadata only, never native SourceVR task/schedule registration.
+if(BUILD_TESTING)
+  add_executable(sin_original_assault_task_ids_tests
+    tests/test_original_assault_task_ids.cpp)
+  target_include_directories(sin_original_assault_task_ids_tests PRIVATE include)
+  target_compile_options(sin_original_assault_task_ids_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_assault_task_ids_tests
+    COMMAND sin_original_assault_task_ids_tests)
+endif()
+
 # Original 2006 assault schedule task/interrupt skeletons recovered directly
 # from server.dll text; reference metadata only, no native AI task execution.
 if(BUILD_TESTING)
