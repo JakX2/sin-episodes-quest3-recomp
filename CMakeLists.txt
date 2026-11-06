@@ -50,6 +50,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_assault_schedule_runner_tests COMMAND sin_assault_schedule_runner_tests)
 endif()
 
+# Original ai_goal_assault BeginAssault input: setup, per-actor cue=1
+# and native NPC condition ID 0x18, plus direct MobGrunt mode-3 distinction.
+# Engine host owns real Source actor list, state reset and condition setting.
+if(BUILD_TESTING)
+  add_executable(sin_original_goal_assault_input_tests
+    tests/test_original_goal_assault_input.cpp)
+  target_include_directories(sin_original_goal_assault_input_tests PRIVATE include)
+  target_compile_options(sin_original_goal_assault_input_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_goal_assault_input_tests
+    COMMAND sin_original_goal_assault_input_tests)
+endif()
+
 # Original SiN 2006 AssaultCue five-way predicate and deterministic x87
 # decisecond wait completion: engine-neutral typed reference and host test.
 if(BUILD_TESTING)

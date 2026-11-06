@@ -61,7 +61,7 @@ def analyze_entities(entities):
                             'ambiguous' if len(good) != 1 or len(matched) != 1 else
                             'ok'))
 
-    rally, assault, goals, inputs = [], [], [], []
+    rally, assault, goals, inputs, begin_signals = [], [], [], [], []
     for ent in indexed:
         cls = ent['classname']
         kv = ent['keys']
@@ -101,7 +101,26 @@ def analyze_entities(entities):
             if not key.casefold().startswith('on'):
                 continue
             parsed = parse_output(value)
-            if not parsed or normalize(parsed['input']) != 'assault':
+            if not parsed:
+                continue
+            input_name = normalize(parsed['input'])
+            if input_name == 'beginassault':
+                target = parsed['target']
+                # Hammer special target tokens require runtime resolution.
+                # They are not absent map entities and must not be flagged
+                # as missing named ai_goal_assault targets.
+                goal = (dict(name=target, all_matching_entities=[],
+                             matching_expected_class=[], status='dynamic_target')
+                        if target.startswith('!') else link(target, GOAL))
+                begin_signals.append({
+                    'entity_index': ent['index'], 'controller_classname': cls,
+                    'controller_name': ent['targetname'], 'output': key,
+                    'recipient': target, 'goal_recipient': goal,
+                    'parameter': parsed['parameter'],
+                    'delay': parsed['delay'], 'times': parsed['times'],
+                })
+                continue
+            if input_name != 'assault':
                 continue
             recipients = resolve(parsed['target'])
             cue = link(parsed['parameter'], RALLY)
@@ -120,17 +139,23 @@ def analyze_entities(entities):
             states[point['next_assault_point']['status']] += 1
     for signal in inputs:
         states[signal['rallypoint_parameter']['status']] += 1
+    for signal in begin_signals:
+        states[signal['goal_recipient']['status']] += 1
     return dict(
         summary=dict(rally_points=len(rally), assault_points=len(assault),
                      goals=len(goals), directed_assault_inputs=len(inputs),
+                     directed_begin_assault_inputs=len(begin_signals),
                      point_or_input_link_status=dict(sorted(states.items()))),
         rally_points=rally, assault_points=assault, assault_goals=goals,
         original_assault_input_signals=inputs,
+        original_goal_begin_assault_signals=begin_signals,
         limitations=[
             'This reads static BSP entity keys, not the live runtime entity or AI schedule.',
             'Targetname ambiguity and wrong-class links are diagnostics, not automatic fixes.',
             'Runtime code may spawn, rename, disable or remove entities after map load.',
             'The original input Assault(string) expects a rally-point name (SDK base.fgd).',
+            'BeginAssault(void) belongs to ai_goal_assault, not to individual MobGrunts.',
+            'Special !target recipients are runtime-resolved and remain dynamic, not missing.',
         ],
     )
 
