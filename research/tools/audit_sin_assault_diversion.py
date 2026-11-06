@@ -117,7 +117,8 @@ def audit_datamap_and_schedule_ids(pe: PEImage) -> dict:
     for name, desc, name_va, dtype, offset in ASSAULT_BEHAVIOR_FIELDS:
         words = struct.unpack("<8I", pe.at(desc, 32))
         expected = (dtype, name_va, offset, 0, (2 << 16) | 1, 0, 0, 0)
-        if words != expected or pe.at(desc + 32, 20) != b"\x00" * 20:
+        trailer = struct.pack("<5I", 0, 1 if dtype == 6 else 4, 0, 0, 0)
+        if words != expected or pe.at(desc + 32, 20) != trailer:
             raise VerificationError(f"CAI_AssaultBehavior field {name} datamap mismatch")
         literal = name.encode("ascii") + b"\x00"
         if pe.at(name_va, len(literal)) != literal:
