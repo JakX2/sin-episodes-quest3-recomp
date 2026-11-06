@@ -26,6 +26,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_mobgrunt_rally_rank_tests COMMAND sin_mobgrunt_rally_rank_tests)
 endif()
 
+# Original SiN 2006 CAssaultRallyPoint::Lock/Unlock reference, backed by
+# real x86 call-graph research. No engine-owned EHANDLE pointers exported.
+if(BUILD_TESTING)
+  add_executable(sin_rally_point_lease_tests tests/test_rally_point_lease.cpp)
+  target_include_directories(sin_rally_point_lease_tests PRIVATE include)
+  target_compile_options(sin_rally_point_lease_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_rally_point_lease_tests COMMAND sin_rally_point_lease_tests)
+endif()
+
 if(BUILD_TESTING)
   add_executable(sin_weapon_runtime_tests tests/test_weapon_runtime.cpp)
   target_link_libraries(sin_weapon_runtime_tests PRIVATE sin_weapon_runtime)
