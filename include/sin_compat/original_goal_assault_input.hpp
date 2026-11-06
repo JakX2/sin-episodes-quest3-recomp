@@ -9,11 +9,12 @@
 //  1. resolves actor and CAI_AssaultBehavior,
 //  2. resets original owner NPC fields +0x864/+0x85C (if owner pointer exists),
 //  3. writes m_ReceivedAssaultCue=1 in behavior,
-//  4. invokes NPC condition setter with numeric ID 0x18.
+//  4. invokes NPC condition setter with COND_PROVOKED (original ID 0x18).
 // Engine handles, Source goal-entity iteration and NPC ownership are all host-
 // supplied; this header does not use any original x86 object offset as ABI.
 
 #include "sin_compat/original_assault_cue_wait.hpp"
+#include "sin_compat/original_assault_condition_ids.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -56,8 +57,8 @@ bool configure_goal_assault_actor(
 // Source InputBeginAssault uses this per-actor *ordering*. No cue-mode test
 // occurs in the original handler: it writes received=1 even if the chosen
 // mode is 2 or 3, leaving the cue gate to interpret its own mode.
-// Host callbacks are used for the two unknown NPC fields and condition ID 24
-// (0x18). No unsupported semantic condition name is invented.
+// Host callbacks are used for the two unknown NPC fields and original COND_PROVOKED (ID 0x18); its name and numeric
+// registration are now independently verified from the original DLL.
 template <typename HostResetNpcFields, typename HostSetNpcCondition>
 std::size_t begin_goal_assault(
     const std::vector<OriginalGoalAssaultActor>& actors,
@@ -72,7 +73,8 @@ std::size_t begin_goal_assault(
             continue;
         reset_npc_fields(actor.actor_token);
         actor.behavior_cue->received_cue = 1;
-        set_npc_condition(actor.actor_token, 0x18);
+        set_npc_condition(actor.actor_token,
+            original_assault_condition_id(OriginalAssaultCondition::Provoked).value);
         ++signaled;
     }
     return signaled;
