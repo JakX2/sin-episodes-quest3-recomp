@@ -273,7 +273,44 @@ static void test_invalid_restart_fails_closed_mid_task() {
     assert(r.result == AssaultTickResult::TaskPending);
 }
 
+static void test_explicit_stop_clears_position_and_fallback() {
+    AssaultScheduleRunner runner(AssaultSchedule::MoveToRallyPoint);
+    assert(runner.start(AssaultSchedule::MoveToRallyPoint));
+    auto r = runner.tick({}, [](const AssaultTaskWitness&) {
+        assert(false && "declarative fallback must not dispatch to host");
+        return AssaultHostTaskResult::Failed;
+    });
+    assert(r.result == AssaultTickResult::TaskCompleted);
+    assert(runner.next_task_position() == 1);
+    assert(runner.fallback_schedule() == AssaultSchedule::AssaultFailedToMove);
+
+    runner.stop();
+    assert(!runner.active());
+    assert(runner.next_task_position() == 0);
+    assert(!runner.fallback_schedule());
+    int calls = 0;
+    r = runner.tick({}, [&](const AssaultTaskWitness&) {
+        ++calls;
+        return AssaultHostTaskResult::Completed;
+    });
+    assert(r.result == AssaultTickResult::Inactive);
+    assert(r.original_task_position == 0);
+    assert(calls == 0);
+
+    // Stop is idempotent and a new schedule starts from its first task.
+    runner.stop();
+    assert(runner.next_task_position() == 0);
+    assert(runner.start(AssaultSchedule::HoldRallyPoint));
+    r = runner.tick({}, [](const AssaultTaskWitness& task) {
+        assert(task.original_task_symbol == "TASK_AWAIT_CUE");
+        return AssaultHostTaskResult::Pending;
+    });
+    assert(r.result == AssaultTickResult::TaskPending);
+    assert(runner.next_task_position() == 0);
+}
+
 int main() {
+    test_explicit_stop_clears_position_and_fallback();
     test_invalid_restart_fails_closed_mid_task();
     test_lookup_and_inactive();
     test_original_rally_path_pending_interrupt_and_transition();
