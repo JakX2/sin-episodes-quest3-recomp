@@ -40,6 +40,20 @@ def fixture():
         data[a.VTABLE_VA + off] = struct.pack("<I", target)
     for _, address, number in a.LITERAL_FLOATS:
         data[address] = struct.pack("<f", number)
+    for name, desc, name_va, dtype, offset in a.ASSAULT_BEHAVIOR_FIELDS:
+        data[desc] = (struct.pack("<8I", dtype, name_va, offset, 0,
+                                 (2 << 16) | 1, 0, 0, 0) +
+                      struct.pack("<5I", 0, 1 if dtype == 6 else 4, 0, 0, 0))
+        data[name_va] = name.encode("ascii") + b"\0"
+    for name, string_va, name_site, id_site, number in a.DIRECT_SCHEDULES:
+        data[string_va] = name.encode("ascii") + b"\0"
+        data[name_site] = b"\xc7\x44\x24\x1c" + struct.pack("<I", string_va)
+        data[id_site] = b"\xc7\x44\x24\x20" + struct.pack("<I", number)
+    for name, string_va, name_site, load_site, load_code, store_site, store_code, _ in a.REGISTER_SCHEDULES:
+        data[string_va] = name.encode("ascii") + b"\0"
+        data[name_site] = b"\xc7\x44\x24\x1c" + struct.pack("<I", string_va)
+        data[load_site] = load_code
+        data[store_site] = store_code
     return data
 
 
@@ -62,6 +76,16 @@ class AssaultDiversionOriginalTests(unittest.TestCase):
                          [0x19, 0x0A])
         self.assertEqual(len(result["original_virtual_methods"]), 3)
         self.assertEqual(result["verified_direct_calls"], len(a.DIRECT_CALLS))
+        mapping = result["original_behavior_datamap_and_schedules"]
+        fields = {v["member"]: v["x86_offset"] for v in mapping["member_descriptors"]}
+        self.assertEqual(fields["m_bDiverting"], "0x26")
+        self.assertEqual(fields["m_flLastSawAnEnemyAt"], "0x28")
+        self.assertEqual(fields["m_flTimeDeferScheduleSelection"], "0x2C")
+        schedule_ids = {v["schedule"]: v["id"] for v in mapping["original_schedule_ids"]}
+        self.assertEqual(schedule_ids["SCHED_MOVE_TO_RALLY_POINT"], "0x186A0")
+        self.assertEqual(schedule_ids["SCHED_MOVE_TO_ASSAULT_POINT"], "0x186A3")
+        self.assertEqual(schedule_ids["SCHED_HOLD_RALLY_POINT"], "0x186A4")
+        self.assertEqual(len(schedule_ids), 9)
 
     def test_original_sdk_describes_diversion_separately_from_timeout(self):
         record = a.corroborate_sdk_fgd(FGD)
@@ -73,6 +97,29 @@ class AssaultDiversionOriginalTests(unittest.TestCase):
         with self.assertRaises(a.VerificationError):
             a.corroborate_sdk_fgd(FGD.replace(b'allowdiversion(choices)',
                                                 b'allowdiversion(float)'))
+
+    def test_mutated_original_behavior_member_name_or_offset_fails(self):
+        data = fixture()
+        data[0x224E5274] = (
+            struct.pack("<8I", 6, 0x223F4438, 0x27, 0,
+                        (2 << 16) | 1, 0, 0, 0) +
+            struct.pack("<5I", 0, 1, 0, 0, 0)
+        )
+        with self.assertRaises(a.VerificationError):
+            a.audit_code(FakePE(data))
+
+    def test_corrupted_schedule_registration_id_fails_closed(self):
+        data = fixture()
+        data[0x220D07A7] = (b"\xc7\x44\x24\x20" +
+                             struct.pack("<I", 0x186A5))
+        with self.assertRaises(a.VerificationError):
+            a.audit_code(FakePE(data))
+
+    def test_corrupted_register_borne_schedule_id_fails_closed(self):
+        data = fixture()
+        data[0x220D060A] = b"\xbf\xa5\x86\x01\x00"
+        with self.assertRaises(a.VerificationError):
+            a.audit_code(FakePE(data))
 
     def test_corrupted_vtable_method_fails_closed(self):
         data = fixture()
