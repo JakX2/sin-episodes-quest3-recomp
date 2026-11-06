@@ -9,6 +9,7 @@ on:
       - 'research/tools/audit_sin_rally_lock_assault_link.py'
       - 'research/tools/audit_sin_assault_diversion.py'
       - 'research/tools/audit_sin_assault_schedule_scripts.py'
+      - 'research/tools/audit_sin_native_assault_task_ids.py'
       - 'research/tools/analyze_sin_assault_graph.py'
       - 'research/tools/audit_sin_original_druglab_vtables.py'
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
@@ -19,6 +20,7 @@ on:
       - 'research/tests/test_audit_sin_rally_lock_assault_link.py'
       - 'research/tests/test_audit_sin_assault_diversion.py'
       - 'research/tests/test_audit_sin_assault_schedule_scripts.py'
+      - 'research/tests/test_audit_sin_native_assault_task_ids.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
       - 'research/tests/test_audit_sin_original_druglab_vtable_diff.py'
@@ -31,6 +33,7 @@ on:
       - 'research/tools/audit_sin_rally_lock_assault_link.py'
       - 'research/tools/audit_sin_assault_diversion.py'
       - 'research/tools/audit_sin_assault_schedule_scripts.py'
+      - 'research/tools/audit_sin_native_assault_task_ids.py'
       - 'research/tools/analyze_sin_assault_graph.py'
       - 'research/tools/audit_sin_original_druglab_vtables.py'
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
@@ -41,6 +44,7 @@ on:
       - 'research/tests/test_audit_sin_rally_lock_assault_link.py'
       - 'research/tests/test_audit_sin_assault_diversion.py'
       - 'research/tests/test_audit_sin_assault_schedule_scripts.py'
+      - 'research/tests/test_audit_sin_native_assault_task_ids.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
       - 'research/tests/test_audit_sin_original_druglab_vtable_diff.py'
@@ -69,6 +73,8 @@ jobs:
         run: python -m unittest discover -s research/tests -p 'test_audit_sin_assault_diversion.py' -v
       - name: Verify nine original assault schedule task sequences and interrupts
         run: python -m unittest discover -s research/tests -p 'test_audit_sin_assault_schedule_scripts.py' -v
+      - name: Verify original SiN native assault task IDs and virtual dispatch registration
+        run: python -m unittest discover -s research/tests -p 'test_audit_sin_native_assault_task_ids.py' -v
       - name: Check original SiN assault BSP graph routing
         run: python -m unittest discover -s research/tests -p 'test_analyze_sin_assault_graph.py' -v
       - name: Verify original Druglab class RTTI and vtable constructors
