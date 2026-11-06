@@ -76,6 +76,95 @@ LITERAL_FLOATS = (
     ("elapsed threshold", 0x223DDCF4, 4.0),
 )
 
+# Original CAI_AssaultBehavior 0x34-byte Source typedescription_t records.
+# Name, descriptor VA, string VA, field type ordinal, 32-bit object offset.
+ASSAULT_BEHAVIOR_FIELDS = (
+    ("m_hAssaultPoint", 0x224E513C, 0x223F44A8, 13, 0x14),
+    ("m_hRallyPoint", 0x224E5170, 0x223F4498, 13, 0x18),
+    ("m_AssaultCue", 0x224E51A4, 0x223F4488, 5, 0x1C),
+    ("m_ReceivedAssaultCue", 0x224E51D8, 0x223F4470, 5, 0x20),
+    ("m_bHitRallyPoint", 0x224E520C, 0x223F445C, 6, 0x24),
+    ("m_bHitAssaultPoint", 0x224E5240, 0x223F4448, 6, 0x25),
+    ("m_bDiverting", 0x224E5274, 0x223F4438, 6, 0x26),
+    ("m_flLastSawAnEnemyAt", 0x224E52A8, 0x223F4420, 1, 0x28),
+    ("m_flTimeDeferScheduleSelection", 0x224E52DC, 0x223F4400, 16, 0x2C),
+)
+
+# Schedule ID space is distinct from task ID space: both may reuse 0x186A0.
+# Name VA, instruction VA storing label pointer, instruction VA storing ID.
+# These are direct stack stores from the original schedule-registration routine.
+DIRECT_SCHEDULES = (
+    ("SCHED_MOVE_TO_RALLY_POINT", 0x223F4E94, 0x220D0675, 0x220D067D, 0x186A0),
+    ("SCHED_ASSAULT_FAILED_TO_MOVE", 0x223F4CE0, 0x220D06AF, 0x220D06B7, 0x186A1),
+    ("SCHED_FAIL_MOVE_TO_RALLY_POINT", 0x223F4C58, 0x220D06ED, 0x220D06F5, 0x186A2),
+    ("SCHED_MOVE_TO_ASSAULT_POINT", 0x223F48E4, 0x220D079F, 0x220D07A7, 0x186A3),
+    ("SCHED_WAIT_AND_CLEAR", 0x223F476C, 0x220D07DD, 0x220D07E5, 0x186A6),
+    ("SCHED_ASSAULT_MOVE_AWAY", 0x223F4594, 0x220D0855, 0x220D085D, 0x186A7),
+)
+# Register-borne numeric IDs, still validated through both the load and store.
+REGISTER_SCHEDULES = (
+    ("SCHED_HOLD_RALLY_POINT", 0x223F4BAC, 0x220D072B, 0x220D060A,
+     b"\xbf\xa4\x86\x01\x00", 0x220D0733, b"\x89\x7c\x24\x20", 0x186A4),
+    ("SCHED_HOLD_ASSAULT_POINT", 0x223F4A60, 0x220D0765, 0x220D062D,
+     b"\xbe\xa5\x86\x01\x00", 0x220D076D, b"\x89\x74\x24\x20", 0x186A5),
+    ("SCHED_CLEAR_ASSAULT_POINT", 0x223F4604, 0x220D081B, 0x220D05C2,
+     b"\xbd\xa8\x86\x01\x00", 0x220D0823, b"\x89\x6c\x24\x20", 0x186A8),
+)
+
+
+def audit_datamap_and_schedule_ids(pe: PEImage) -> dict:
+    members = []
+    for name, desc, name_va, dtype, offset in ASSAULT_BEHAVIOR_FIELDS:
+        words = struct.unpack("<8I", pe.at(desc, 32))
+        expected = (dtype, name_va, offset, 0, (2 << 16) | 1, 0, 0, 0)
+        if words != expected or pe.at(desc + 32, 20) != b"\x00" * 20:
+            raise VerificationError(f"CAI_AssaultBehavior field {name} datamap mismatch")
+        literal = name.encode("ascii") + b"\x00"
+        if pe.at(name_va, len(literal)) != literal:
+            raise VerificationError(f"CAI_AssaultBehavior field literal changed: {name}")
+        members.append({
+            "member": name, "x86_offset": f"0x{offset:X}",
+            "field_type_id": dtype,
+        })
+
+    schedules = []
+    for name, string_va, name_site, id_site, id_value in DIRECT_SCHEDULES:
+        literal = name.encode("ascii") + b"\0"
+        label_store = b"\xc7\x44\x24\x1c" + struct.pack("<I", string_va)
+        id_store = b"\xc7\x44\x24\x20" + struct.pack("<I", id_value)
+        if (pe.at(string_va, len(literal)) != literal or
+                pe.at(name_site, 8) != label_store or
+                pe.at(id_site, 8) != id_store):
+            raise VerificationError(f"original assault schedule mapping differs: {name}")
+        schedules.append({"schedule": name, "id": f"0x{id_value:05X}",
+                          "label_va": f"0x{string_va:08X}"})
+    for name, string_va, name_site, load_site, load_code, store_site, store_code, id_value in REGISTER_SCHEDULES:
+        literal = name.encode("ascii") + b"\0"
+        label_store = b"\xc7\x44\x24\x1c" + struct.pack("<I", string_va)
+        if (pe.at(string_va, len(literal)) != literal or
+                pe.at(name_site, 8) != label_store or
+                pe.at(load_site, len(load_code)) != load_code or
+                pe.at(store_site, len(store_code)) != store_code):
+            raise VerificationError(f"register-borne assault schedule differs: {name}")
+        schedules.append({"schedule": name, "id": f"0x{id_value:05X}",
+                          "label_va": f"0x{string_va:08X}"})
+    return {
+        "original_cpp_class": "CAI_AssaultBehavior",
+        "member_descriptors": members,
+        "original_schedule_ids": sorted(schedules, key=lambda row: row["id"]),
+        "numeric_schedule_ids_used_in_diversion_handler": {
+            "0x186A3": "SCHED_MOVE_TO_ASSAULT_POINT",
+            "0x186A0": "SCHED_MOVE_TO_RALLY_POINT",
+            "0x186A4": "SCHED_HOLD_RALLY_POINT",
+        },
+        "interpretation_limit": (
+            "Original registration names and IDs are verified. Source task IDs "
+            "reuse the same numeric range, so do not confuse task and schedule registries."
+        ),
+    }
+
+
+
 
 def verify_call(pe: PEImage, address: int, target: int) -> None:
     code = pe.at(address, 5)
@@ -132,9 +221,10 @@ def audit_code(pe: PEImage) -> dict:
         "tested_schedule_ids": ["0x186A3", "0x186A0", "0x186A4"],
         "verified_x86_instruction_witnesses": len(INSTRUCTIONS),
         "verified_direct_calls": len(DIRECT_CALLS),
+        "original_behavior_datamap_and_schedules": audit_datamap_and_schedule_ids(pe),
         "limitations": [
-            "The original FGD describes what allowdiversion means, but the "
-            "complete AI schedule/task and condition enums are not reconstructed.",
+            "The original FGD describes allowdiversion and nine original schedule IDs are resolved, "
+            "but some NPC condition IDs and full task-transition logic remain unresolved.",
             "The 4.0 float is compared against an elapsed-time expression; "
             "not the FGD's configurable 3.0 default assaulttimeout.",
             "No damage, grenade fuse, or generic reaction time should be "
