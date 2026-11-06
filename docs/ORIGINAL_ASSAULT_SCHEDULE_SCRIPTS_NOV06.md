@@ -22,6 +22,28 @@ The original DLL contains **29 ordered task declarations** and **35 interrupt de
 | `SCHED_CLEAR_ASSAULT_POINT` | 1 | 0 | Announce clearance |
 | `SCHED_ASSAULT_MOVE_AWAY` | 3 | 0 | Move away, run path, wait for movement completion |
 
+### Verified runtime registration of all nine scripts
+
+A further instruction-level cross-check established that these are **the actual
+schedule scripts passed into the original Source runtime parser**, not dead or
+unreferenced text in `.rdata`. Original `server.dll` registers all nine
+through a common parser at **`0x22042620`**. For each script, the binary
+loads its `.rdata` string VA into a stack slot and makes a direct relative x86
+`CALL` to the parser. The original pointer and destination bytes have now
+been verified independently for **all nine registrations**.
+
+For example, `SCHED_MOVE_TO_RALLY_POINT` uses the original script at
+`0x223F4D00`, stores that pointer at `0x220D0694`, and calls the parser
+from `0x220D069C`. The `SCHED_MOVE_TO_ASSAULT_POINT` script at
+`0x223F4788` is passed from `0x220D07C2` and the parser call occurs
+at `0x220D07CA`. Both target `0x22042620`.
+
+The same explicit 8-byte pointer-store and 5-byte relative-call checks exist
+in `audit_sin_assault_schedule_scripts.py` for all nine text references.
+Synthetic tests corrupt a script pointer and the parser target separately
+to ensure the verifier fails closed. This links the recovered task/interrupt
+contents to the actual registration/initialization path.
+
 ### Specific original transitions now established
 
 - `SCHED_MOVE_TO_RALLY_POINT` ends with `TASK_HIT_RALLY_POINT` followed by `TASK_SET_SCHEDULE` selecting `SCHED_HOLD_RALLY_POINT`. This provides the direct declarative schedule bridge from movement to rally waiting.
