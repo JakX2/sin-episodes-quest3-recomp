@@ -51,11 +51,13 @@ class RallyLockOriginalTests(unittest.TestCase):
         self.assertEqual(result["rallypoint_lock"]["release_function_va"], "0x220CE4A0")
         self.assertEqual(result["assault_state_transition"]["linked_assaultpoint_handle_original_offset"],
                          "0x14")
-        self.assertEqual(result["evidence"]["verified_call_edges"], 5)
+        self.assertEqual(result["evidence"]["verified_call_edges"], 9)
         self.assertEqual(result["next_assaultpoint_chain"]["advance_function_va"],
                          "0x220CE5B0")
         self.assertEqual(result["next_assaultpoint_chain"]["terminal_rally_lock_release_call_va"],
                          "0x220CE70F")
+        self.assertEqual(result["progression_trigger_sites"]["clear_on_contact"]["queried_condition_numeric_id"], 10)
+        self.assertEqual(result["progression_trigger_sites"]["rally_arrival"]["OnArrival_event_member_offset"], "0x3A4")
         self.assertEqual(result["evidence"]["verified_instruction_witnesses"],
                          len(audit.PATTERNS))
 
@@ -74,6 +76,18 @@ class RallyLockOriginalTests(unittest.TestCase):
     def test_wrong_assaultpoint_link_field_fails_closed(self):
         changed = fixture()
         changed[0x220CE9A7] = b"\x8b\x80\x98\x03\x00\x00"
+        with self.assertRaises(audit.VerificationError):
+            audit.audit_instruction_evidence(FakePE(changed))
+
+    def test_corrupt_clear_on_contact_gate_fails_closed(self):
+        changed = fixture()
+        changed[0x220CF960] = b"\x80\xb8\xb9\x03\x00\x00\x00"
+        with self.assertRaises(audit.VerificationError):
+            audit.audit_instruction_evidence(FakePE(changed))
+
+    def test_corrupt_onarrival_output_call_fails_closed(self):
+        changed = fixture()
+        changed[0x220CF556] = direct_call(0x220CF556, 0x22156910)
         with self.assertRaises(audit.VerificationError):
             audit.audit_instruction_evidence(FakePE(changed))
 
