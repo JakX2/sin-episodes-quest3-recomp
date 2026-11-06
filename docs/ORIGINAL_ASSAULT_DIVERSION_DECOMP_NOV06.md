@@ -71,6 +71,15 @@ schedules whose numeric IDs are stored indirectly through registers.
 | `0x186A7` | `SCHED_ASSAULT_MOVE_AWAY` |
 | `0x186A8` | `SCHED_CLEAR_ASSAULT_POINT` |
 
+The new `include/sin_compat/original_assault_schedule.hpp` provides
+a **portable C++17 semantic enum** for all nine schedules and separately
+typed original-x86 schedule IDs and task IDs, making accidental use of
+`TASK_*` numbers where `SCHED_*` is required a compile-time type error.
+`tests/test_original_assault_schedule.cpp` verifies all names, unique
+legacy IDs, the three diversion-handler references, and type separation
+through CTest/Android builds. These are **reference metadata**, not
+newly registered native SourceVR AI schedules.
+
 This resolves the three numbers tested by virtual routine
 `0x220CED00`: **move toward the rally point**, **move toward the
 assault point**, and **hold at the rally point**. The routine checks
