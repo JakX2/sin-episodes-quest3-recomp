@@ -120,12 +120,56 @@ recovered all movement, pathing, squad scheduling, weapon firing, or exact
 conditions that trigger the transition. No real Quest game-module entity
 has been registered.
 
+## 4. Original arrival and progression trigger sites recovered
+
+Call-site inspection of the original 2006 x86 server now establishes **two callers** of the
+advance-to-next-point method `0x220CE5B0`, rather than leaving the triggering path
+entirely unknown.
+
+- **Rally arrival:** at `0x220CF539` the assault behavior sets flag `+0x24`
+  to `1`. It then accesses the selected rally point's `m_OnArrival` output
+  at **`+0x3A4`** (`0x220CF54E`) and invokes the engine event output
+  function `0x22156900` from **`0x220CF556`**. The member offset matches
+  the original `CAssaultRallyPoint` data map recovered in PR #113.
+- **Case/timeout-related branch:** at `0x220CF5CA` a handler checks the
+  current `CAssaultPoint.m_bNeverTimeout` boolean at **`+0x3BA`**.
+  A subsequent test at `0x220CF5DA` checks whether its
+  `m_NextAssaultPointName` at **`+0x398`** exists. One combination
+  (`neverTimeout` true and no next point) bypasses the normal transition,
+  while the other path calls **`0x220CE5B0`** at **`0x220CF5E9`**.
+  This is a switch-handler branch; a complete event/AI task enum name is
+  still unverified.
+- **Clear-on-contact branch:** at `0x220CF960` another routine checks
+  `CAssaultPoint.m_bClearOnContact` at **`+0x3B8`**, then asks an NPC
+  condition-check method `0x220397C0` about **numeric condition 10**,
+  through a call at `0x220CF972`. When both conditions pass, it calls
+  the actual next-point method at **`0x220CF981`**.
+
+The **field names** are confirmed independently by original 52-byte Source
+data-map records; the **branch and call targets** are confirmed by exact
+instructions from the original DLL. In particular, condition 10 is an
+observed engine numeric ID, not yet proven to mean a specifically named
+enemy-contact event. The conditional logic is source-derived; complete AI
+scheduling, path movement and player/enemy contact detection are not.
+
+This extends the recovered gameplay path:
+
+```text
+rallypoint selected -> acquired for owning NPC
+  -> output OnArrival fired when rally reached
+  -> linked first assaultpoint
+  -> branch via point event / NeverTimeout
+     OR branch via ClearOnContact + condition test
+  -> nextassaultpoint name lookup
+  -> next point handle stored OR terminal rally lock released
+```
+
 ## Reproducible verification
 
 The new standard-library script
 `research/tools/audit_sin_rally_lock_assault_link.py` reads an exact
-SHA-256-pinned original 2006 `server.dll`, verifies **31 separate x86 instruction
-witnesses, 5 relative call targets, and both diagnostic strings**, and
+SHA-256-pinned original 2006 `server.dll`, verifies **37 separate x86 instruction
+witnesses, 9 relative call targets, and both diagnostic strings**, and
 outputs structured evidence. The owner's original DLL was checked directly in
 the research environment. Tests create synthetic instruction witnesses,
 including intentional corruption; no proprietary DLL bytes are committed.
@@ -147,7 +191,7 @@ custom native entity code.
 ## Next decompilation priorities
 
 1. Identify the exact events/conditions that invoke progression function
-   `0x220CE5B0`, especially arrival, timeout, contact, and diversion.
+   `0x220CE5B0` beyond the now-known never-timeout/contact callers, particularly the event ID, divert branch, and scheduling impacts.
 2. Trace later calls in the terminal path after unlocking to resolve the
    output/event behavior.
 3. Implement a **separate engine-neutral assault route progression reference**
