@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <initializer_list>
 #include <optional>
 #include <string_view>
 
@@ -49,6 +50,45 @@ static void test_original_cue_decision_table() {
     cue.received_cue = 4;
     assert(cue.check(false));
     assert(cue.received_cue == 4);
+}
+
+static void test_lazy_native_condition_query_boundary() {
+    OriginalAssaultCueGate cue;
+    int queries = 0;
+    bool condition = true;
+    auto query = [&] { ++queries; return condition; };
+
+    // No host condition query for input mode, unconditional mode, or
+    // invalid/reserved modes, even if the host query would be expensive.
+    for (int mode : {0, 1, 3, 4, -1, 999}) {
+        cue.configured_mode = mode;
+        cue.received_cue = 0;
+        (void)cue.check_with_condition(query);
+        assert(queries == 0);
+    }
+    assert(cue.received_cue == 0); // final unsupported mode does not mutate
+
+    cue.configured_mode = 2;
+    cue.received_cue = 0;
+    assert(cue.check_with_condition(query));
+    assert(queries == 1);
+    condition = false;
+    assert(!cue.check_with_condition(query));
+    assert(queries == 2);
+    assert(cue.received_cue == 0);
+
+    // Original received-cue override bypasses the mode-2 condition branch.
+    cue.received_cue = 4;
+    assert(cue.check_with_condition(query));
+    assert(queries == 2);
+    assert(cue.received_cue == 4);
+
+    // Mode 3 must set the received cue, without polling the condition.
+    cue.received_cue = 0;
+    cue.configured_mode = 3;
+    assert(cue.check_with_condition(query));
+    assert(cue.received_cue == 3);
+    assert(queries == 2);
 }
 
 static void test_original_wait_quantization_and_completion() {
@@ -137,6 +177,7 @@ static void test_original_cue_and_wait_inside_host_runner() {
 
 int main() {
     test_original_cue_decision_table();
+    test_lazy_native_condition_query_boundary();
     test_original_wait_quantization_and_completion();
     test_original_cue_and_wait_inside_host_runner();
     return 0;
