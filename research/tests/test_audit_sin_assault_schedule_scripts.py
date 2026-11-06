@@ -1,5 +1,6 @@
 """Synthetic 2006 SiN assault-script fixtures, no original game text or DLL."""
 import importlib.util
+import re
 from pathlib import Path
 import sys
 import unittest
@@ -94,6 +95,39 @@ class OriginalAssaultScheduleScriptTests(unittest.TestCase):
             a.parse_schedule_string(good.replace("TASK_WAIT\t0", "TASK_WAIT\tBAD_PARAM"))
         with self.assertRaises(a.VerificationError):
             a.parse_schedule_string(good + "unexpected trailer")
+
+    def test_portable_cpp_task_witnesses_match_original_binary_audit(self):
+        # Prevent accidental divergence between source-verified Python audit
+        # and portable C++ metadata used by the future native AI scheduler.
+        header = (Path(__file__).resolve().parents[2] /
+                  "include/sin_compat/original_assault_tasks.hpp").read_text()
+        cpp_enum = {
+            "SCHED_MOVE_TO_RALLY_POINT": "MoveToRallyPoint",
+            "SCHED_ASSAULT_FAILED_TO_MOVE": "AssaultFailedToMove",
+            "SCHED_FAIL_MOVE_TO_RALLY_POINT": "FailMoveToRallyPoint",
+            "SCHED_MOVE_TO_ASSAULT_POINT": "MoveToAssaultPoint",
+            "SCHED_HOLD_RALLY_POINT": "HoldRallyPoint",
+            "SCHED_HOLD_ASSAULT_POINT": "HoldAssaultPoint",
+            "SCHED_WAIT_AND_CLEAR": "WaitAndClear",
+            "SCHED_ASSAULT_MOVE_AWAY": "AssaultMoveAway",
+            "SCHED_CLEAR_ASSAULT_POINT": "ClearAssaultPoint",
+        }
+        expected_tasks = []
+        expected_interrupts = []
+        for name, _, tasks, interrupts in a.SCHEDULE_SKELETONS:
+            expected_tasks.extend((cpp_enum[name], i, symbol, param)
+                                  for i, (symbol, param) in enumerate(tasks))
+            expected_interrupts.extend((cpp_enum[name], condition)
+                                       for condition in interrupts)
+        task_re = re.compile(
+            r'\{AssaultSchedule::(\w+),\s*(\d+),\s*"(TASK_[A-Z0-9_]+)",\s*"([^"]+)"\}')
+        interrupt_re = re.compile(
+            r'\{AssaultSchedule::(\w+),\s*"(COND_[A-Z0-9_]+)"\}')
+        found_tasks = [(ename, int(index), task, param)
+                       for ename, index, task, param in task_re.findall(header)]
+        found_interrupts = interrupt_re.findall(header)
+        self.assertEqual(found_tasks, expected_tasks)
+        self.assertEqual(found_interrupts, expected_interrupts)
 
     def test_unknown_routine_rejects_original_hash(self):
         with self.assertRaises(a.VerificationError):
