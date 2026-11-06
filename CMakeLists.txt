@@ -636,3 +636,12 @@ if(ANDROID AND SIN_BUILD_ANDROID_SMOKE)
   target_link_libraries(sin_android_scene_actor_c_abi_smoke PRIVATE dl)
   add_dependencies(sin_android_scene_actor_c_abi_smoke sin_scene_actor_c_abi)
 endif()
+
+# Portable declarative assault task runner, host callback behavior only.
+if(BUILD_TESTING)
+  add_executable(sin_assault_task_runner_tests tests/test_assault_task_runner.cpp)
+  target_include_directories(sin_assault_task_runner_tests PRIVATE include)
+  target_compile_options(sin_assault_task_runner_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_assault_task_runner_tests COMMAND sin_assault_task_runner_tests)
+endif()
