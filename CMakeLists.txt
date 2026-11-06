@@ -26,6 +26,30 @@ if(BUILD_TESTING)
   add_test(NAME sin_mobgrunt_rally_rank_tests COMMAND sin_mobgrunt_rally_rank_tests)
 endif()
 
+# A synthetic two-MobGrunt integration test joins ranking, exclusive
+# rally ownership and callback-driven original assault task progression.
+# These simulated NPCs do not instantiate any Source engine entities.
+if(BUILD_TESTING)
+  add_executable(sin_assault_simulated_encounter_tests
+    tests/test_assault_simulated_encounter.cpp)
+  target_include_directories(sin_assault_simulated_encounter_tests PRIVATE include)
+  target_compile_options(sin_assault_simulated_encounter_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_assault_simulated_encounter_tests
+    COMMAND sin_assault_simulated_encounter_tests)
+endif()
+
+# Engine-neutral host-driven assault task runner. Original tasks and interrupt
+# declarations are source-verified; callbacks are a new, explicit host boundary.
+# No native SourceVR AI schedule, NPC factory or game module registration.
+if(BUILD_TESTING)
+  add_executable(sin_assault_schedule_runner_tests tests/test_assault_schedule_runner.cpp)
+  target_include_directories(sin_assault_schedule_runner_tests PRIVATE include)
+  target_compile_options(sin_assault_schedule_runner_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_assault_schedule_runner_tests COMMAND sin_assault_schedule_runner_tests)
+endif()
+
 # Original 2006 assault schedule task/interrupt skeletons recovered directly
 # from server.dll text; reference metadata only, no native AI task execution.
 if(BUILD_TESTING)
@@ -635,4 +659,13 @@ if(ANDROID AND SIN_BUILD_ANDROID_SMOKE)
   target_compile_options(sin_android_scene_actor_c_abi_smoke PRIVATE -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
   target_link_libraries(sin_android_scene_actor_c_abi_smoke PRIVATE dl)
   add_dependencies(sin_android_scene_actor_c_abi_smoke sin_scene_actor_c_abi)
+endif()
+
+# Portable declarative assault task runner, host callback behavior only.
+if(BUILD_TESTING)
+  add_executable(sin_assault_task_runner_tests tests/test_assault_task_runner.cpp)
+  target_include_directories(sin_assault_task_runner_tests PRIVATE include)
+  target_compile_options(sin_assault_task_runner_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_assault_task_runner_tests COMMAND sin_assault_task_runner_tests)
 endif()
