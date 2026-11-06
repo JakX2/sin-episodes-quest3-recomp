@@ -53,6 +53,18 @@ PATTERNS = (
     ("missing next point diagnostics xref", 0x220CE68F, b"\x68\x8c\x3b\x3f\x22"),
     ("terminal point clears assault state", 0x220CE6DA,
      b"\xc7\x46\x1c\x00\x00\x00\x00"),
+    ("rallypoint arrival sets behavior flag +0x24", 0x220CF539,
+     b"\xc6\x46\x24\x01"),
+    ("rally OnArrival output address +0x3A4", 0x220CF54E,
+     b"\x8b\xc8\x81\xc1\xa4\x03\x00\x00"),
+    ("case progression checks never-timeout flag", 0x220CF5CA,
+     b"\x80\xb8\xba\x03\x00\x00\x00"),
+    ("case progression checks nonempty next point", 0x220CF5DA,
+     b"\x83\xb8\x98\x03\x00\x00\x00"),
+    ("contact progression checks clear-on-contact flag", 0x220CF960,
+     b"\x80\xb8\xb8\x03\x00\x00\x00"),
+    ("contact progression tests condition integer 10", 0x220CF970,
+     b"\x6a\x0a"),
 )
 
 
@@ -62,6 +74,10 @@ CALL_EDGES = (
     ("resolve assaultpoint by linked map name", 0x220CE9D1, 0x223A5BAB),
     ("resolve next assaultpoint by map name", 0x220CE63F, 0x223A5BAB),
     ("release rally ownership at end of assault chain", 0x220CE70F, 0x220CE4A0),
+    ("rallypoint OnArrival output method", 0x220CF556, 0x22156900),
+    ("case-triggered point chain advance", 0x220CF5E9, 0x220CE5B0),
+    ("clear-on-contact NPC condition query", 0x220CF972, 0x220397C0),
+    ("contact-triggered point chain advance", 0x220CF981, 0x220CE5B0),
 )
 
 ERROR_LITERAL_VA = 0x223F3BC0
@@ -124,6 +140,26 @@ def audit_instruction_evidence(pe: PEImage) -> dict:
             "terminal_rally_lock_release_call_va": "0x220CE70F",
             "behavior_state_reset_offset": "0x1C",
         },
+        "progression_trigger_sites": {
+            "rally_arrival": {
+                "flag_set_va": "0x220CF539",
+                "OnArrival_event_member_offset": "0x3A4",
+                "event_output_call_va": "0x220CF556",
+            },
+            "case_triggered": {
+                "advance_call_va": "0x220CF5E9",
+                "never_timeout_member_offset": "0x3BA",
+                "next_point_name_member_offset": "0x398",
+                "observed_conditional": "when neverTimeout and no next name, bypass this advance path",
+            },
+            "clear_on_contact": {
+                "advance_call_va": "0x220CF981",
+                "enabled_flag_offset": "0x3B8",
+                "npc_condition_query_va": "0x220CF972",
+                "queried_condition_numeric_id": 10,
+                "interpretation": "both clear-on-contact flag and NPC condition query gate advancement",
+            },
+        },
         "evidence": {
             "verified_instruction_witnesses": len(PATTERNS),
             "verified_call_edges": len(CALL_EDGES),
@@ -137,6 +173,7 @@ def audit_instruction_evidence(pe: PEImage) -> dict:
             "A missing or stale entity handle is safely modeled by host liveness; "
             "original Source 32-bit serial/index handle encoding is not a Quest ABI.",
             "The original x86 object offsets are not valid native ARM64 offsets.",
+            "NPC condition ID 10 and the case-triggered event enumeration are observed numbers, not yet fully named.",
         ],
     }
 
