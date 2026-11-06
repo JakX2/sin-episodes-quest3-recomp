@@ -82,6 +82,8 @@ CALL_EDGES = (
 
 ERROR_LITERAL_VA = 0x223F3BC0
 ERROR_LITERAL = b"**ERROR: Can't find assault point named: %s\n\x00"
+NEXT_ERROR_LITERAL_VA = 0x223F3B8C
+NEXT_ERROR_LITERAL = b"**ERROR: Can't find next assault point: %s\n\x00"
 
 
 def verify_call(pe: PEImage, call_va: int, target_va: int) -> None:
