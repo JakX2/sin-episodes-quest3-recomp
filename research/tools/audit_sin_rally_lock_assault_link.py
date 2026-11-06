@@ -43,6 +43,16 @@ PATTERNS = (
      b"\x8b\x80\x94\x03\x00\x00"),
     ("assault advance stores resolved assaultpoint handle", 0x220CE9E6, b"\x89\x46\x14"),
     ("missing assaultpoint diagnostics xref", 0x220CEA4A, b"\x68\xc0\x3b\x3f\x22"),
+    ("chain advance reads active assaultpoint handle", 0x220CE5B9, b"\x8b\x46\x14"),
+    ("chain advance checks next-assaultpoint name", 0x220CE5DE,
+     b"\x83\xb9\x98\x03\x00\x00\x00"),
+    ("chain advance reads next-assaultpoint name", 0x220CE610,
+     b"\x8b\x89\x98\x03\x00\x00"),
+    ("chain advance stores new assaultpoint handle", 0x220CE654, b"\x89\x46\x14"),
+    ("chain advance resets point-arrival flag", 0x220CE657, b"\xc6\x46\x25\x00"),
+    ("missing next point diagnostics xref", 0x220CE68F, b"\x68\x8c\x3b\x3f\x22"),
+    ("terminal point clears assault state", 0x220CE6DA,
+     b"\xc7\x46\x1c\x00\x00\x00\x00"),
 )
 
 
@@ -50,6 +60,8 @@ CALL_EDGES = (
     ("selected point acquire owner lock", 0x220CFE49, 0x220CE430),
     ("after successful selection reset/link state", 0x220CFEDD, 0x220CE960),
     ("resolve assaultpoint by linked map name", 0x220CE9D1, 0x223A5BAB),
+    ("resolve next assaultpoint by map name", 0x220CE63F, 0x223A5BAB),
+    ("release rally ownership at end of assault chain", 0x220CE70F, 0x220CE4A0),
 )
 
 ERROR_LITERAL_VA = 0x223F3BC0
@@ -73,6 +85,8 @@ def audit_instruction_evidence(pe: PEImage) -> dict:
         verify_call(pe, address, target)
     if pe.at(ERROR_LITERAL_VA, len(ERROR_LITERAL)) != ERROR_LITERAL:
         raise VerificationError("original missing-assaultpoint diagnostic differs")
+    if pe.at(NEXT_ERROR_LITERAL_VA, len(NEXT_ERROR_LITERAL)) != NEXT_ERROR_LITERAL:
+        raise VerificationError("original missing-next-assaultpoint diagnostic differs")
     # The observed Source handle index uses 12 low bits and the serial in the
     # remaining upper bits. This is evidence only, not a reusable ABI.
     return {
@@ -98,14 +112,26 @@ def audit_instruction_evidence(pe: PEImage) -> dict:
             "assaultpoint_by_name_lookup_call_va": "0x220CE9D1",
             "missing_name_diagnostic": "Can't find assault point named",
         },
+        "next_assaultpoint_chain": {
+            "advance_function_va": "0x220CE5B0",
+            "current_point_handle_original_offset": "0x14",
+            "next_assaultpoint_key_original_offset": "0x398",
+            "lookup_by_next_point_name_call_va": "0x220CE63F",
+            "found_point_handle_store_va": "0x220CE654",
+            "reset_arrival_flag_original_offset": "0x25",
+            "missing_target_diagnostic_va": "0x223F3B8C",
+            "no_next_point_termination_branch_va": "0x220CE6D7",
+            "terminal_rally_lock_release_call_va": "0x220CE70F",
+            "behavior_state_reset_offset": "0x1C",
+        },
         "evidence": {
             "verified_instruction_witnesses": len(PATTERNS),
             "verified_call_edges": len(CALL_EDGES),
             "verified_error_literal_va": "0x223F3BC0",
         },
         "limits": [
-            "State init and linked assault-point lookup are proven, but complete "
-            "AI schedule selection and point progression are not yet decoded.",
+            "Original named next-point lookup and terminal lock release are verified, "
+            "but the complete conditions that trigger progression and AI schedules remain unresolved.",
             "Acquisition/release calls and comparisons are original x86 evidence, "
             "not a field-level copy of the original 2006 C++ source.",
             "A missing or stale entity handle is safely modeled by host liveness; "
