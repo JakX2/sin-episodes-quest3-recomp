@@ -26,6 +26,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_mobgrunt_rally_rank_tests COMMAND sin_mobgrunt_rally_rank_tests)
 endif()
 
+# Engine-neutral host-driven assault task runner. Original tasks and interrupt
+# declarations are source-verified; callbacks are a new, explicit host boundary.
+# No native SourceVR AI schedule, NPC factory or game module registration.
+if(BUILD_TESTING)
+  add_executable(sin_assault_schedule_runner_tests tests/test_assault_schedule_runner.cpp)
+  target_include_directories(sin_assault_schedule_runner_tests PRIVATE include)
+  target_compile_options(sin_assault_schedule_runner_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_assault_schedule_runner_tests COMMAND sin_assault_schedule_runner_tests)
+endif()
+
 # Original 2006 assault schedule task/interrupt skeletons recovered directly
 # from server.dll text; reference metadata only, no native AI task execution.
 if(BUILD_TESTING)
