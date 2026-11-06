@@ -167,6 +167,27 @@ real Source entity I/O, or native Quest 3 gameplay.
 The standalone SourceVR-compatible game module and original
 NPC combat still require implementation.
 
+## Read-only static BSP I/O verification extension
+
+The earlier `research/tools/analyze_sin_assault_graph.py`
+has been updated to recognize the original `BeginAssault`
+input **independently** from the MobGrunt `Assault` input.
+The report now includes `original_goal_begin_assault_signals`
+and `directed_begin_assault_inputs`, plus class-specific
+resolution statuses for the recipient goal entity.
+
+A `BeginAssault` connection pointing to `npc_combine_s`
+or original `npc_druglab_grunt_assault_rifle` is reported
+as a wrong-class target (the original map input belongs to
+`ai_goal_assault`). Duplicate targetnames are reported as
+ambiguous. Dynamic `!activator`-style targets are not falsely
+reported missing. The tool does not rewrite any entity.
+
+The new synthetic test cases cover both original input types,
+valid and missing goal targets, wrong-class/duplicate goal
+targets, and ESC-separated Hammer outputs. This check **has
+not been run against the original finale BSP** in this session.
+
 ## Next steps
 
 1. Investigate original input/entity behavior that writes
@@ -175,10 +196,17 @@ NPC combat still require implementation.
 2. Trace original condition ID `0x18` and the two
    NPC state fields `+0x864`/`+0x85C` to authoritative
    native enum and data-map symbols, not guesses.
-3. Add a read-only BSP preflight reporting whether
-   original `BeginAssault` outputs target actual
-   `ai_goal_assault` entities and whether each goal's
-   rallypoint key resolves correctly.
+3. **Static BSP preflight now implemented:** the existing
+   `research/tools/analyze_sin_assault_graph.py` separately enumerates
+   `BeginAssault` outputs, checks that named recipients are actual
+   `ai_goal_assault` entities, and flags missing, wrong-class or
+   ambiguous recipients. It keeps runtime `!activator`-style targets
+   labeled dynamic rather than falsely claiming they are missing.
+   The original direct NPC `Assault` analysis is preserved separately.
+   Tests use synthetic BSP entity lists; the user's original finale
+   BSP was **not** available to run the new check in this session.
+   The next task is to verify the original finale map and report any
+   real map-level mistakes without changing the BSP.
 4. Build a real native game-server adapter with
    engine-compatible SourceVR AArch64 registration,
    actor iteration, I/O, nav, cues and model activities.
