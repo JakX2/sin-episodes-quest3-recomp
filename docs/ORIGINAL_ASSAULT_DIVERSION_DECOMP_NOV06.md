@@ -29,6 +29,60 @@ begins at `0x223F5544`.
 These are grounded through the *actual class RTTI and virtual table pointers*.
 We do not infer C++ method names or a public ABI beyond those witnesses.
 
+## 1a. Actual class member names, recovered from 52-byte data maps
+
+The original DLL's `CAI_AssaultBehavior` typedescription records now establish
+the member names and locations **directly**, so the previous anonymous byte
+offsets can be identified:
+
+| Original 2006 member | Original x86 behavior object offset |
+|---|---:|
+| `m_hAssaultPoint` | `0x14` |
+| `m_hRallyPoint` | `0x18` |
+| `m_AssaultCue` | `0x1C` |
+| `m_ReceivedAssaultCue` | `0x20` |
+| `m_bHitRallyPoint` | `0x24` |
+| `m_bHitAssaultPoint` | `0x25` |
+| `m_bDiverting` | `0x26` |
+| `m_flLastSawAnEnemyAt` | `0x28` |
+| `m_flTimeDeferScheduleSelection` | `0x2C` |
+
+The verifier checks each actual member name, field-type ordinal, member
+offset and original 52-byte descriptor layout, including the recorded
+one-byte/32-bit field sizes. They are facts about this **specific Windows
+x86 build**, not offsets for a rebuilt Quest ARM64 class.
+
+## 1b. All nine original assault schedules recovered by name
+
+The original `server.dll` also embeds named, textual AI schedule
+definitions. Crucially, their **registered numeric IDs are recoverable
+from the code** at `0x220D0675` through `0x220D085D`, including the
+schedules whose numeric IDs are stored indirectly through registers.
+
+| Original schedule ID | Registered original name |
+|---|---|
+| `0x186A0` | `SCHED_MOVE_TO_RALLY_POINT` |
+| `0x186A1` | `SCHED_ASSAULT_FAILED_TO_MOVE` |
+| `0x186A2` | `SCHED_FAIL_MOVE_TO_RALLY_POINT` |
+| `0x186A3` | `SCHED_MOVE_TO_ASSAULT_POINT` |
+| `0x186A4` | `SCHED_HOLD_RALLY_POINT` |
+| `0x186A5` | `SCHED_HOLD_ASSAULT_POINT` |
+| `0x186A6` | `SCHED_WAIT_AND_CLEAR` |
+| `0x186A7` | `SCHED_ASSAULT_MOVE_AWAY` |
+| `0x186A8` | `SCHED_CLEAR_ASSAULT_POINT` |
+
+This resolves the three numbers tested by virtual routine
+`0x220CED00`: **move toward the rally point**, **move toward the
+assault point**, and **hold at the rally point**. The routine checks
+whether those schedules are active when deciding whether to clear
+conditions under the `allowdiversion` gate.
+
+**Important:** The Source AI framework also assigns numeric IDs to
+`TASK_*` names in a *separate task registry*, which can reuse the
+same numeric values. Do not mix task ID `0x186A3` with schedule
+ID `0x186A3` during reimplementation. The original textual schedule
+definitions are not being copied wholesale into this repository.
+
 ## 2. The diversion flag and internal elapsed-time condition
 
 Inside `0x220CEAF0` the original method:
@@ -50,7 +104,7 @@ Inside `0x220CEAF0` the original method:
    and arrival flags `+0x24`/`+0x25`.
 
 **Crucial limitation:** The dataflow and the 4-second literal are verified;
-the full meaning of `+0x26`, the NPC condition enumeration and the game's
+the `+0x26` field is now definitively `m_bDiverting`, but the NPC condition enumeration and the game's
 x87 floating-point corner cases are not yet decoded. The literal must not
 be reported as “damage,” “grenade fuse,” or a generic four-second NPC reaction
 time.
@@ -59,8 +113,10 @@ time.
 
 The function at `0x220CED00` is a distinct virtual method (`+0x78`).
 It verifies a current assault-point handle and checks the same
-`m_bAllowDiversion` at `+0x3B9`. It tests three internal schedule IDs via
-`0x220CD3B0`: `0x186A3`, `0x186A0` and `0x186A4`.
+`m_bAllowDiversion` at `+0x3B9`. It tests three original schedule IDs via
+`0x220CD3B0`: `SCHED_MOVE_TO_ASSAULT_POINT` (`0x186A3`),
+`SCHED_MOVE_TO_RALLY_POINT` (`0x186A0`) and
+`SCHED_HOLD_RALLY_POINT` (`0x186A4`).
 In the recognized cases, it calls `0x22039C70` twice with NPC numeric
 condition IDs `0x19` and `0x0A`. This is *schedule-dependent condition
 cleanup*, not proof of specific named player-contact events.
@@ -103,9 +159,9 @@ Actions workflow exercise the verifier without embedding proprietary binaries.
 
 ## Next decompilation targets
 
-1. Identify the numeric NPC condition IDs `0x3B`, `0x18`, `0x19`,
-   `0x0A`, and schedule IDs `0x186A3`, `0x186A0`, `0x186A4`
-   from original enum/schedule registration evidence.
+1. Identify the remaining numeric NPC condition IDs `0x3B`, `0x18`,
+   `0x19` and `0x0A`. The nine registered `SCHED_*` IDs are now resolved
+   independently from actual schedule-registration instructions.
 2. Trace `0x220CEAF0` callers through the verified vtable and determine
    precisely when `+0x26` enables/resets.
 3. Trace original assault-point output firing (`OnArrival`,
