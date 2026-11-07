@@ -134,7 +134,6 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_scene_actor_c_abi_smoke /data/local/tmp/sin_scene_actor/sin_android_scene_actor_c_abi_smoke
             adb shell 'cd /data/local/tmp/sin_scene_actor && chmod 700 sin_android_scene_actor_c_abi_smoke && ./sin_android_scene_actor_c_abi_smoke ./libsin_scene_actor_c_abi.so' | tr -d '\r' | tee build-android-emulator-x86_64/scene-actor-bionic-output.txt
             grep -Fxq 'PASS: independently authored SiN JC/Jessica C ABI dlopen, callback guards and scene events (fake host)' build-android-emulator-x86_64/scene-actor-bionic-output.txt
-          grep -Fxq 'PASS: independent assault NPC C ABI dlopen with fake host, exclusive rally locks, cue and registered condition callbacks' build-android-emulator-x86_64/assault-npc-bionic-output.txt
             # Independent assault NPC shared ABI, still using fake host callbacks.
             # C11 smoke must actually dlopen the compiled Android Bionic .so.
             adb shell mkdir -p /data/local/tmp/sin_assault_npc
@@ -157,6 +156,7 @@ jobs:
           grep -Fxq 'PASS: Phase101 mock-provider Bionic two-library mapping executed' build-android-emulator-x86_64/phase101-bionic-output.txt
           grep -Fxq 'PASS: Phase102 provider replacement invalidates sound namespace, keyboard survives, epoch guarded' build-android-emulator-x86_64/phase102-bionic-output.txt
           grep -Fxq 'PASS: independently authored SiN JC/Jessica C ABI dlopen, callback guards and scene events (fake host)' build-android-emulator-x86_64/scene-actor-bionic-output.txt
+          grep -Fxq 'PASS: independent assault NPC C ABI dlopen with fake host, exclusive rally locks, cue and registered condition callbacks' build-android-emulator-x86_64/assault-npc-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
