@@ -19,7 +19,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 if [[ ! -s "$LIB" ]]; then
@@ -252,3 +252,15 @@ test -s "$GOAL_FANOUT" || { echo 'ERROR: missing ARM64 goal fanout fixture' >&2;
   sha256sum "$GOAL_FANOUT" | sed "s#$BUILD/##"
 } >> "$BUILD/android-smoke-manifest.txt"
 echo 'PASS: multi-NPC ai_goal_assault fanout executable built for AArch64 with native assault C ABI linkage.'
+
+# Portable Quest-ready tracking math: target-architecture checked only.
+# This is NOT a headset OpenXR/SourceVR game runtime execution.
+XR_TRACKING="$BUILD/sin_android_xr_source_tracking_tests"
+test -s "$XR_TRACKING" || { echo 'ERROR: missing XR mapping ARM64 regression' >&2; exit 1; }
+"$READELF" -h "$XR_TRACKING" | grep -q 'Machine:.*AArch64' || {
+  echo 'ERROR: XR tracking regression has incorrect ELF architecture' >&2; exit 1; }
+{
+  printf 'xr_tracking_scope=rigid_pose_math_only_no_runtime\n'
+  sha256sum "$XR_TRACKING" | sed "s#$BUILD/##"
+} >> "$BUILD/android-smoke-manifest.txt"
+echo 'PASS: OpenXR-convention tracking to Source pose math test compiled for AArch64; not run on headset.'
