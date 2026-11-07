@@ -714,6 +714,43 @@ if(BUILD_TESTING)
 endif()
 
 
+# November 7: separate original assault NPC callback ABI. The future engine
+# host supplies generation-aware NPC/point refs, actual rally locks, callbacks.
+# This is not yet an implementation of a SourceVR entity game module.
+add_library(sin_assault_npc_c_abi SHARED src/assault_npc_c_api.cpp)
+target_include_directories(sin_assault_npc_c_abi PUBLIC include)
+set_target_properties(sin_assault_npc_c_abi PROPERTIES
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+target_compile_options(sin_assault_npc_c_abi PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(UNIX AND NOT APPLE)
+  target_link_options(sin_assault_npc_c_abi PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/assault_npc_exports.map")
+  set_property(TARGET sin_assault_npc_c_abi APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/assault_npc_exports.map")
+endif()
+if(BUILD_TESTING AND UNIX AND NOT ANDROID)
+  add_executable(sin_assault_npc_c_abi_smoke tests/test_assault_npc_c_abi.c)
+  target_include_directories(sin_assault_npc_c_abi_smoke PRIVATE include)
+  set_target_properties(sin_assault_npc_c_abi_smoke PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_compile_options(sin_assault_npc_c_abi_smoke PRIVATE
+    -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+  target_link_libraries(sin_assault_npc_c_abi_smoke PRIVATE ${CMAKE_DL_LIBS})
+  add_test(NAME sin_assault_npc_c_abi_smoke
+    COMMAND sin_assault_npc_c_abi_smoke $<TARGET_FILE:sin_assault_npc_c_abi>)
+endif()
+if(ANDROID AND SIN_BUILD_ANDROID_SMOKE)
+  add_executable(sin_android_assault_npc_c_abi_smoke tests/test_assault_npc_c_abi.c)
+  target_include_directories(sin_android_assault_npc_c_abi_smoke PRIVATE include)
+  set_target_properties(sin_android_assault_npc_c_abi_smoke PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_compile_options(sin_android_assault_npc_c_abi_smoke PRIVATE
+    -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+  target_link_libraries(sin_android_assault_npc_c_abi_smoke PRIVATE dl)
+  add_dependencies(sin_android_assault_npc_c_abi_smoke sin_assault_npc_c_abi)
+endif()
+
 # Native C ABI wrapper around scene actor bridge. Still NOT Source/Quest game DLL.
 add_library(sin_scene_actor_c_abi SHARED src/scene_actor_c_api.cpp)
 target_link_libraries(sin_scene_actor_c_abi PRIVATE sin_scene_actor_bridge)

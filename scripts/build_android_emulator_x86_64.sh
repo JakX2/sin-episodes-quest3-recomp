@@ -15,7 +15,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
@@ -137,3 +137,31 @@ test "$(wc -l < "$SCENE_ACTUAL")" -eq 8 || {
   echo "ERROR: scene actor module must export exactly eight functions" >&2; exit 1; }
 rm -f "$SCENE_EXPECTED" "$SCENE_ACTUAL"
 echo "PASS: Round19 scene actor library and C11 dlopen test built for Android, eight exports verified."
+
+# Engine-neutral assault NPC module and C11 dlopen runner for Bionic x86_64.
+ASSAULT_NPC="$BUILD/libsin_assault_npc_c_abi.so"
+ASSAULT_NPC_SMOKE="$BUILD/sin_android_assault_npc_c_abi_smoke"
+for f in "$ASSAULT_NPC" "$ASSAULT_NPC_SMOKE"; do
+  test -s "$f" || { echo "ERROR: missing assault NPC Bionic artifact $f" >&2; exit 1; }
+  "$READELF" -h "$f" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+    echo "ERROR: assault NPC artifact is not emulator x86_64: $f" >&2; exit 1; }
+done
+"$READELF" -d "$ASSAULT_NPC" | grep -q 'SONAME.*libsin_assault_npc_c_abi.so' || {
+  echo 'ERROR: assault NPC SONAME mismatch' >&2; exit 1; }
+"$READELF" -d "$ASSAULT_NPC_SMOKE" | grep -q 'NEEDED.*libdl.so' || {
+  echo 'ERROR: assault NPC Bionic smoke missing libdl' >&2; exit 1; }
+if "$READELF" -d "$ASSAULT_NPC_SMOKE" | grep -q 'NEEDED.*libsin_assault_npc_c_abi.so'; then
+  echo 'ERROR: assault NPC smoke bypassed dlopen' >&2; exit 1
+fi
+NPC_EXPECTED="$(mktemp)"
+NPC_ACTUAL="$(mktemp)"
+awk '/^[[:space:]]+sin_assault_[A-Za-z0-9_]+;/{gsub(/;/,"",$1); print $1}' \
+  "$ROOT/src/assault_npc_exports.map" | sort -u > "$NPC_EXPECTED"
+"$NM" -D --defined-only --format=posix "$ASSAULT_NPC" |
+  awk 'NF{sub(/@@.*/,"",$1); print $1}' | sort -u > "$NPC_ACTUAL"
+diff -u "$NPC_EXPECTED" "$NPC_ACTUAL" || {
+  echo 'ERROR: assault NPC Bionic exports mismatch' >&2; exit 1; }
+test "$(wc -l < "$NPC_ACTUAL")" -eq 8 || {
+  echo 'ERROR: assault NPC Bionic must export exactly eight C methods' >&2; exit 1; }
+rm -f "$NPC_EXPECTED" "$NPC_ACTUAL"
+echo 'PASS: assault NPC x86_64 Bionic shared module and fake-host dlopen smoke built; eight exports verified.'
