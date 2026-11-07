@@ -33,7 +33,7 @@ class SetParametersOutcomeTests(unittest.TestCase):
     def test_valid_native_path_fixture(self):
         r = a.verify_original(FakePE())
         self.assertEqual((r["verified_witnesses"], r["verified_branches"], r["verified_calls"]),
-                         (26, 5, 3))
+                         (27, 5, 3))
         self.assertIn("received cue +0x20 = 0", r["outcomes"]["candidate_resolved"])
 
     def test_branches_resolve_as_expected(self):
@@ -57,6 +57,14 @@ class SetParametersOutcomeTests(unittest.TestCase):
         pe = FakePE()
         pe.memory[0x220CFEA0] = bytes.fromhex("c7 47 1c 01 00 00 00")
         with self.assertRaisesRegex(a.VerificationError, "invalid handle clears"):
+            a.verify_original(pe)
+
+    def test_original_lock_return_was_not_checked(self):
+        pe = FakePE()
+        # Replace the actual post-call sequence with an AL test; verifier
+        # must detect a different game binary's control-flow semantics.
+        pe.memory[0x220CFE4E] = bytes.fromhex("84 c0 8b cb ff 52 08")
+        with self.assertRaisesRegex(a.VerificationError, "post-lock vtable"):
             a.verify_original(pe)
 
     def test_success_mode_field_corruption(self):
