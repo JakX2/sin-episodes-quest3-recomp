@@ -15,7 +15,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests sin_sourcevr_probe_server sin_sourcevr_probe_client sin_android_sourcevr_module_probe_tests --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
@@ -182,3 +182,36 @@ test -s "$XR_TRACKING" || { echo 'ERROR: missing Android XR pose regression exec
 "$READELF" -h "$XR_TRACKING" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
   echo 'ERROR: XR pose regression has wrong emulator architecture' >&2; exit 1; }
 echo 'PASS: XR to Source coordinate math executable compiled for Android x86_64 Bionic.'
+
+# Real Android Bionic x86_64 build of the two inert, game-NAMED .so probes.
+# The emulator will independently dlopen these through a simulated module
+# resolver. SourceVR engine-specific module loading is NOT executed here.
+PROBE_ROOT="$BUILD/sourcevr-probe"
+PROBE_SMOKE="$BUILD/sin_android_sourcevr_module_probe_tests"
+for role in server client; do
+  so="$PROBE_ROOT/lib${role}.so"
+  test -s "$so" || { echo "ERROR: missing Bionic module $so" >&2; exit 1; }
+  "$READELF" -h "$so" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+    echo "ERROR: wrong emulator module architecture: $so" >&2; exit 1; }
+  "$READELF" -d "$so" | grep -q "SONAME.*lib${role}.so" || {
+    echo "ERROR: wrong emulator SONAME: $so" >&2; exit 1; }
+  actual="$(mktemp)"
+  "$NM" -D --defined-only --format=posix "$so" |
+    awk 'NF{sub(/@@.*/,"",$1); print $1}' | sort -u > "$actual"
+  test "$(wc -l < "$actual")" -eq 1 && grep -Fxq CreateInterface "$actual" || {
+    cat "$actual" >&2
+    echo "ERROR: Bionic probe must export ONLY CreateInterface" >&2
+    rm -f "$actual"
+    exit 1
+  }
+  rm -f "$actual"
+done
+test -s "$PROBE_SMOKE" || { echo 'ERROR: missing emulator probe test' >&2; exit 1; }
+"$READELF" -d "$PROBE_SMOKE" | grep -q 'NEEDED.*libdl.so' || {
+  echo 'ERROR: probe smoke must link Bionic libdl' >&2; exit 1; }
+for role in server client; do
+  if "$READELF" -d "$PROBE_SMOKE" | grep -q "NEEDED.*lib${role}.so"; then
+    echo 'ERROR: Bionic probe smoke must dlopen modules, not link them' >&2; exit 1
+  fi
+done
+echo 'PASS: Bionic x86_64 game-named libserver/libclient module probes built and exports audited.'
