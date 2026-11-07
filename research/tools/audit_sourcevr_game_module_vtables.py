@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 from audit_sourcevr_native_game_factories import (
-    AuditError, NativeELF, PROFILE_SHAS, WITNESSES,
+    AuditError, NativeELF, PROFILE_SHAS, WITNESSES, ORIGINAL,
     decode_add, decode_adrp, require, verify_registration,
 )
 
@@ -159,7 +159,130 @@ def verify_module(elf, sha):
     }
 
 
-def audit(sourcevr_zip):
+
+# Independently verified original SiN Episodes 2006 PE32/MSVC RTTI.
+# (TypeDescriptor.name, native CompleteObjectLocator VA, x86 vtable VA,
+#  method count, full SHA256 of *every* 32-bit virtual function pointer,
+#  first method VA, last method VA).
+ORIGINAL_VTABLES = {
+    "server.dll": (
+        b".?AVCServerGameDLL@@", 0x224c51e8, 0x22442efc, 31,
+        "97e42f1905b28e6aad0e3de21473d12725c49b25980be4a5db285333774a8299",
+        0x221e7640, 0x221e7cf0,
+    ),
+    "client.dll": (
+        b".?AVCHLClient@@", 0x242e5818, 0x24296c6c, 48,
+        "9d28eccf91315f7a6ecc2394386d7b4077919d8649d34297a951eb7a1cafa664",
+        0x240fe0e0, 0x240fe670,
+    ),
+}
+
+def inspect_original_pe_game_table(blob, name):
+    """Read-only PE32 RTTI COL -> primary vftable, no DLL execution."""
+    require(name in ORIGINAL_VTABLES, "unknown original SiN game module")
+    needle, col_va, expected_vtable, count, digest, first, last = ORIGINAL_VTABLES[name]
+    require(hashlib.sha256(blob).hexdigest() == ORIGINAL[name][0],
+            "owner's original x86 game DLL SHA256 changed")
+    require(blob[:2] == b"MZ", "original game module is not PE")
+    require(len(blob) >= 0x100, "truncated PE DOS header")
+    header = struct.unpack_from("<I", blob, 0x3c)[0]
+    require(header+24 < len(blob) and blob[header:header+4] == b"PE\x00\x00",
+            "original PE signature missing")
+    require(struct.unpack_from("<H",blob,header+4)[0] == 0x14c,
+            "original PE must be x86")
+    num_sections = struct.unpack_from("<H",blob,header+6)[0]
+    option_len = struct.unpack_from("<H",blob,header+20)[0]
+    option = header+24
+    require(option+option_len <= len(blob) and
+            struct.unpack_from("<H",blob,option)[0] == 0x10b,
+            "original module must be PE32")
+    image_base = struct.unpack_from("<I",blob,option+28)[0]
+    section_table = option+option_len
+    require(2 <= num_sections <= 64 and
+            section_table+40*num_sections <= len(blob),
+            "invalid original PE section table")
+    sections = {}
+    for idx in range(num_sections):
+        at = section_table+40*idx
+        label = blob[at:at+8].split(b"\x00",1)[0].decode("ascii","replace")
+        vsize, rva, rsize, raw = struct.unpack_from("<IIII",blob,at+8)
+        require(raw+rsize <= len(blob),"invalid original section raw extent")
+        sections[label]=(image_base+rva,vsize,raw,rsize)
+    require(all(x in sections for x in (".text",".rdata",".data")),
+            "original game section missing")
+    def address_of(file_offset):
+        for va,vsz,raw,rsize in sections.values():
+            if raw <= file_offset < raw+rsize:
+                return va + file_offset-raw
+        raise AuditError("unmapped original PE offset")
+    def offset_of(va):
+        for begin, vsize, raw, rsize in sections.values():
+            if begin <= va < begin+min(vsize,rsize):
+                return raw + va-begin
+        raise AuditError("unmapped original PE virtual address")
+    require(blob.count(needle+b"\x00") == 1,
+            "original game concrete MSVC RTTI name ambiguous")
+    rtti_name_offset = blob.index(needle+b"\x00")
+    original_type = address_of(rtti_name_offset-8)
+    col = offset_of(col_va)
+    require(struct.unpack_from("<III",blob,col) == (0,0,0),
+            "original MSVC complete object locator header changed")
+    require(struct.unpack_from("<I",blob,col+12)[0] == original_type,
+            "original locator no longer points to concrete TypeDescriptor")
+    hierarchy = struct.unpack_from("<I",blob,col+16)[0]
+    require(sections[".rdata"][0] <= hierarchy <
+            sections[".rdata"][0]+sections[".rdata"][1],
+            "original MSVC class hierarchy not in .rdata")
+    rstart, _, roff, rsize = sections[".rdata"]
+    native_rdata = blob[roff:roff+rsize]
+    col_refs = [rstart+i for i in range(0,len(native_rdata)-3,4)
+                if struct.unpack_from("<I",native_rdata,i)[0] == col_va]
+    require(len(col_refs) == 1,"original game vtable locator reference ambiguous")
+    vtable = col_refs[0]+4
+    require(vtable == expected_vtable,"original game x86 vtable address changed")
+    start = offset_of(vtable)
+    raw_table = blob[start:start+count*4]
+    require(len(raw_table)==count*4,"truncated original game vtable")
+    methods = struct.unpack("<%dI" % count,raw_table)
+    text_va,text_len,_,_ = sections[".text"]
+    require(all(text_va <= p < text_va+text_len for p in methods),
+            "original vtable contains non-text pointer")
+    require(methods[0] == first and methods[-1] == last,
+            "original x86 game method boundary differs")
+    require(hashlib.sha256(raw_table).hexdigest() == digest,
+            "original game pointer table SHA256 mismatch")
+    after = struct.unpack_from("<I",blob,start+count*4)[0]
+    require(not (text_va <= after < text_va+text_len),
+            "original x86 game vtable unexpectedly extends beyond pinned slots")
+    return {
+        "module": name,
+        "required_factory": ORIGINAL[name][1],
+        "original_sha256": ORIGINAL[name][0],
+        "concrete_rtti": needle.decode("ascii"),
+        "complete_object_locator_va": hex(col_va),
+        "class_hierarchy_va": hex(hierarchy),
+        "vtable_va": hex(vtable),
+        "method_slots":count,
+        "pointer_bits":32,
+        "pointer_table_sha256":digest,
+        "first_method_va":hex(first),
+        "last_method_va":hex(last),
+    }
+
+def inspect_original_zip(original_zip):
+    with zipfile.ZipFile(original_zip) as archive:
+        result = [inspect_original_pe_game_table(archive.read(name),name)
+                  for name in ("server.dll","client.dll")]
+    return {
+        "original_game_module_vtables": result,
+        "original_server_slots":31, "original_client_slots":48,
+        "native_server_slots":47, "native_client_slots":78,
+        "method_count_delta_server":16,
+        "method_count_delta_client":30,
+        "warning":"The delta counts are NOT proven appended methods; method order, signatures and semantics require independent ABI verification."
+    }
+
+def audit(sourcevr_zip, sin_bin_zip=None):
     profiles = []
     results = {}
     with zipfile.ZipFile(sourcevr_zip) as z:
@@ -195,7 +318,9 @@ def audit(sourcevr_zip):
                              "client_sha256": recorded["libclient.so"][0]})
     require(set(results) == set(SERVER_TABLES) | set(CLIENT_TABLES),
             "not all eleven unique game module vtables were verified")
+    original = inspect_original_zip(sin_bin_zip) if sin_bin_zip else None
     return {
+        "original_game_modules": original,
         "native_game_profiles": profiles,
         "verified_unique_module_vtables": list(results.values()),
         "server_method_slots": 47,
@@ -215,9 +340,11 @@ def audit(sourcevr_zip):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--sourcevr-zip", required=True, type=Path)
+    p.add_argument("--sin-bin-zip", type=Path,
+                   help="Optional owner-provided 2006 original client/server PE32 ZIP")
     args = p.parse_args()
     try:
-        print(json.dumps(audit(args.sourcevr_zip), indent=2))
+        print(json.dumps(audit(args.sourcevr_zip, args.sin_bin_zip), indent=2))
     except (AuditError, KeyError, OSError, struct.error,
             UnicodeDecodeError, zipfile.BadZipFile) as exc:
         p.exit(2, f"SourceVR 0.5.5 game vtable audit FAILED: {exc}\n")
