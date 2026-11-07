@@ -528,6 +528,18 @@ if(BUILD_TESTING)
 endif()
 
 
+# Engine-backed native client/server startup dispatch evidence.
+# C++ fixture checks metadata only and NEVER invokes unknown engine ABI.
+if(BUILD_TESTING)
+  add_executable(sin_sourcevr_game_startup_abi_tests
+    research/tests/sin_sourcevr_game_startup_abi_reference.cpp)
+  target_include_directories(sin_sourcevr_game_startup_abi_tests PRIVATE include)
+  target_compile_options(sin_sourcevr_game_startup_abi_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_sourcevr_game_startup_abi_tests
+    COMMAND sin_sourcevr_game_startup_abi_tests)
+endif()
+
 # Recovered concrete client/server native RTTI vtables (47/78 slots).
 # No C++ game dispatch: actual method signatures and lifecycle remain blocked.
 if(BUILD_TESTING)
