@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace sin_compat {
@@ -59,25 +60,40 @@ bool configure_goal_assault_actor(
 // mode is 2 or 3, leaving the cue gate to interpret its own mode.
 // Host callbacks are used for the two unknown NPC fields and original COND_PROVOKED (ID 0x18); its name and numeric
 // registration are now independently verified from the original DLL.
+// Semantic variant for new ports: never expose historical x86 numeric
+// conditions to the native runtime. The original registration still proves
+// the historical numeric ID for COND_PROVOKED, but the host decides its own ID.
+template <typename HostResetNpcFields, typename HostSetSemanticCondition>
+std::size_t begin_goal_assault_semantic(
+    const std::vector<OriginalGoalAssaultActor>& actors,
+    HostResetNpcFields&& reset_npc_fields,
+    HostSetSemanticCondition&& set_npc_condition) {
+    std::size_t signaled = 0;
+    for (const auto& actor : actors) {
+        // Original invalid actor / missing assault behavior is skipped.
+        // A missing owner is skipped as a NEW host-side safety choice.
+        if (!actor.behavior_cue || !actor.owning_npc_resolved)
+            continue;
+        reset_npc_fields(actor.actor_token);
+        actor.behavior_cue->received_cue = 1;
+        set_npc_condition(actor.actor_token, OriginalAssaultCondition::Provoked);
+        ++signaled;
+    }
+    return signaled;
+}
+
+// Preserve the original number-based reference API for evidence/tests.
+// Historical IDs must never be passed directly to an ARM64 engine API.
 template <typename HostResetNpcFields, typename HostSetNpcCondition>
 std::size_t begin_goal_assault(
     const std::vector<OriginalGoalAssaultActor>& actors,
     HostResetNpcFields&& reset_npc_fields,
     HostSetNpcCondition&& set_npc_condition) {
-    std::size_t signaled = 0;
-    for (const auto& actor : actors) {
-        // Original invalid actor / missing assault behavior is skipped.
-        // A valid behavior's owner is expected to be an NPC; a missing owner
-        // is treated as an unresolved host case rather than dereferenced.
-        if (!actor.behavior_cue || !actor.owning_npc_resolved)
-            continue;
-        reset_npc_fields(actor.actor_token);
-        actor.behavior_cue->received_cue = 1;
-        set_npc_condition(actor.actor_token,
-            original_assault_condition_id(OriginalAssaultCondition::Provoked).value);
-        ++signaled;
-    }
-    return signaled;
+    return begin_goal_assault_semantic(
+        actors, std::forward<HostResetNpcFields>(reset_npc_fields),
+        [&](std::uint64_t token, OriginalAssaultCondition semantic) {
+            set_npc_condition(token, original_assault_condition_id(semantic).value);
+        });
 }
 
 } // namespace sin_compat
