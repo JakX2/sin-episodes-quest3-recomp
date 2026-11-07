@@ -58,7 +58,9 @@ static int32_t unlock_after_error(sin_assault_session_v1* s, uint32_t point) {
     // Even if unlock fails, return a fatal host failure rather than continue
     // with a stale lease. The host retains cleanup responsibility.
     const int32_t released = s->host.unlock_rally(s->userdata, point, s->actor);
-    return released == 1 ? SIN_ASSAULT_UNRESOLVED_RALLY : SIN_ASSAULT_HOST_FAILED;
+    if (released == 1) return SIN_ASSAULT_UNRESOLVED_RALLY;
+    s->rally_id = point; // preserve lease for explicit finish retry
+    return SIN_ASSAULT_HOST_FAILED;
 }
 } // namespace
 
@@ -119,7 +121,7 @@ int32_t sin_assault_bind_v1(sin_assault_session_v1* s,
         if (!locked) return SIN_ASSAULT_LOCK_REJECTED;
         const int32_t resolved = s->host.resolve_rally(s->userdata, id);
         if (!trit(resolved)) {
-            (void)s->host.unlock_rally(s->userdata, id, s->actor);
+            (void)unlock_after_error(s, id);
             return SIN_ASSAULT_HOST_FAILED;
         }
         if (!resolved) {
@@ -131,7 +133,7 @@ int32_t sin_assault_bind_v1(sin_assault_session_v1* s,
         }
         const int32_t initialized = s->host.initialize_behavior(s->userdata, s->actor, id);
         if (initialized != 1) {
-            (void)s->host.unlock_rally(s->userdata, id, s->actor);
+            (void)unlock_after_error(s, id);
             return SIN_ASSAULT_HOST_FAILED;
         }
         apply_original_setparameters_cue_effects(
