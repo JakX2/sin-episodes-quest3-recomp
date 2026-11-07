@@ -30,6 +30,17 @@ struct NativeGameObjectLayout {
     MethodAuditLevel method_signatures;
 };
 
+// The original SHA256-pinned SiN 2006 Windows x86 vftables were separately
+// recovered using MSVC TypeDescriptor / CompleteObjectLocator references:
+// server CServerGameDLL: 31 methods, client CHLClient: 48 methods.
+// Method count differences are NOT necessarily appended new methods.
+inline constexpr std::uint32_t original_sin_server_slots = 31u;
+inline constexpr std::uint32_t original_sin_client_slots = 48u;
+inline constexpr std::uint32_t native_sourcevr_server_slots = 47u;
+inline constexpr std::uint32_t native_sourcevr_client_slots = 78u;
+static_assert(native_sourcevr_server_slots - original_sin_server_slots == 16u);
+static_assert(native_sourcevr_client_slots - original_sin_client_slots == 30u);
+
 inline constexpr std::array<NativeGameObjectLayout, 2> verified_layouts{{
     {NativeGameObjectRole::Server, "CServerGameDLL", "IServerGameDLL",
      "ServerGameDLL010", 47, 64, true, true, MethodAuditLevel::Unverified},
