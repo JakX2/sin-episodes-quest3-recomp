@@ -26,7 +26,7 @@ struct OriginalAssaultCueGate {
         if (received_cue == 4) return true;
         switch (configured_mode) {
             case 1: return received_cue == 1;
-            case 2: return npc_condition_0x33;
+            case 2: return cond_hear_combat;
             case 3:
                 received_cue = 3;
                 return true;
