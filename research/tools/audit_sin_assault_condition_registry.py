@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
+import tempfile
 
 from verify_gameplay_entity_registry import PEImage, SERVER_SHA256, VerificationError
 
@@ -211,8 +213,23 @@ def main(argv=None) -> int:
         content = json.dumps(audit(args.server.read_bytes()), indent=2) + "\n"
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
-            with args.output.open("x", encoding="utf-8") as report:
-                report.write(content)
+            # Stage a complete report in the destination directory, then publish
+            # through an exclusive hard link. A failed write cannot leave a
+            # truncated file at the final evidence-report path.
+            staged = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=args.output.parent,
+                    prefix=f".{args.output.name}.", suffix=".tmp", delete=False,
+                ) as report:
+                    staged = Path(report.name)
+                    report.write(content)
+                    report.flush()
+                    os.fsync(report.fileno())
+                os.link(staged, args.output)
+            finally:
+                if staged is not None:
+                    staged.unlink(missing_ok=True)
         else:
             print(content, end="")
         return 0
