@@ -42,6 +42,11 @@ def fixture():
         memory[name_va] = b"\x68" + struct.pack("<I", text_va)
         memory[name_va + 5] = b"\xB9" + struct.pack("<I", a.REGISTRY_THIS_VA)
         memory[call_va] = direct_call(call_va, a.REGISTRY_FUNCTION_VA)
+    for va, opcode in a.RECEIVED_CUE_SETTER_WITNESSES:
+        memory[va] = opcode
+    memory[a.RECEIVED_CUE_TAIL_JUMP_VA] = (
+        b"\xe9" + struct.pack("<i", a.RECEIVED_CUE_TAIL_TARGET_VA -
+                               a.RECEIVED_CUE_TAIL_JUMP_VA - 5))
     for _, push_va, cond_id, call_va, destination in a.ASSAULT_USE_SITES:
         memory[push_va] = bytes((0x6A, cond_id))
         memory[call_va] = direct_call(call_va, destination)
@@ -53,6 +58,13 @@ class OriginalAssaultConditionRegistryTests(unittest.TestCase):
         result = a.audit_original(FakePE(fixture()))
         self.assertEqual(result["verified_registration_count"], 9)
         self.assertEqual(result["verified_assault_callsites"], 7)
+        self.assertEqual(
+            result["original_received_cue_signaling_helper"]["original_helper_va"],
+            "0x220CE520")
+        self.assertIn(
+            "no caller supplying override value 4",
+            result["limits"][-1])
+
         mapping = {x["original_numeric_id"]: x["symbol"]
                    for x in result["original_conditions"]}
         self.assertEqual(mapping["0x18"], "COND_PROVOKED")
@@ -70,6 +82,32 @@ class OriginalAssaultConditionRegistryTests(unittest.TestCase):
         self.assertEqual(by_role[
             "CAI_AssaultBehavior diversion queries COND_RECEIVED_ORDERS"],
             "COND_RECEIVED_ORDERS")
+
+    def test_original_generic_received_cue_arg_and_provoked_signal(self):
+        result = a.verify_received_cue_signaling_helper(FakePE(fixture()))
+        self.assertIn("integer", result["input"])
+        self.assertEqual(result["tail_jump_target"], "0x22039760")
+        self.assertIn("No verified caller passing value 4", result["important_limit"])
+
+    def test_generic_received_cue_helper_wrong_storage_offset_rejected(self):
+        memory = fixture()
+        memory[0x220CE539] = b"\x89\x41\x1c"
+        with self.assertRaises(a.VerificationError):
+            a.verify_received_cue_signaling_helper(FakePE(memory))
+
+    def test_generic_received_cue_helper_wrong_condition_rejected(self):
+        memory = fixture()
+        memory[0x220CE53F] = b"\xc7\x44\x24\x04\x3b\x00\x00\x00"
+        with self.assertRaises(a.VerificationError):
+            a.verify_received_cue_signaling_helper(FakePE(memory))
+
+    def test_generic_received_cue_helper_wrong_tail_target_rejected(self):
+        memory = fixture()
+        source = a.RECEIVED_CUE_TAIL_JUMP_VA
+        memory[source] = (b"\xe9" + struct.pack(
+            "<i", 0x220397C0 - source - 5))
+        with self.assertRaises(a.VerificationError):
+            a.verify_received_cue_signaling_helper(FakePE(memory))
 
     def test_wrong_registration_id_rejected(self):
         memory = fixture()
