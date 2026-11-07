@@ -50,6 +50,18 @@ if(BUILD_TESTING)
   add_test(NAME sin_assault_schedule_runner_tests COMMAND sin_assault_schedule_runner_tests)
 endif()
 
+# Host-side orchestration of original rally ranking, lease and cue outcomes.
+# This test does not construct a SourceVR NPC or touch game assets.
+if(BUILD_TESTING)
+  add_executable(sin_assault_rally_binding_tests
+    tests/test_assault_rally_binding.cpp)
+  target_include_directories(sin_assault_rally_binding_tests PRIVATE include)
+  target_compile_options(sin_assault_rally_binding_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_assault_rally_binding_tests
+    COMMAND sin_assault_rally_binding_tests)
+endif()
+
 # Original x86 CAI_AssaultBehavior::SetParameters outcome distinctions:
 # no rally, unresolved rally handle, successful link + cue reset.
 # Only a portable source-grounded reference, not SourceVR NPC integration.
