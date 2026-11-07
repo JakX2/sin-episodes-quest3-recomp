@@ -123,7 +123,7 @@ class OriginalAssaultConditionRegistryTests(unittest.TestCase):
         header = (Path(__file__).resolve().parents[2] /
                   "include/sin_compat/original_assault_condition_ids.hpp").read_text()
         cpp = re.findall(
-            r'\{"(COND_[A-Z0-9_]+)",\s*LegacyAssaultConditionId\{(0x[0-9A-Fa-f]+)\}\}',
+            r'\{"(COND_[A-Z0-9_]+)",\s*LegacyAssaultConditionId\{(0x[0-9A-Fa-f]+)\},\s*OriginalAssaultCondition::\w+\}',
             header)
         expected = [(name, cond_id)
                     for name, cond_id, *_ in a.SOURCE_CONDITIONS]
