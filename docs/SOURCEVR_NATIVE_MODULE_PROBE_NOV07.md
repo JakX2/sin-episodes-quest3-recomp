@@ -82,6 +82,21 @@ build-android-arm64/sourcevr-probe/libclient.so. They are
 experimental inert modules, NOT substitutes for the private game's
 real client/server libraries or an installer.
 
+## SourceVR public mod-distribution constraint
+
+The public upstream SourceVR project README explicitly distinguishes
+content-only mods from mods with their own client.dll or server.dll:
+the latter are **not supported by the launcher mod workflow**.
+As of 7 November 2026 this is documented at
+https://github.com/tinsarfal/SourceVR (section: Install content mods).
+
+Therefore installing these probe modules through the public
+game-folder custom/ directory is **not** a valid integration test.
+No instruction in this repository should overwrite the installed
+SourceVR game's bundled native library or call it a supported
+third-party plugin. The next gate is a separately controlled native
+loader/host or an explicitly supported module development interface.
+
 ## Critical next steps toward gameplay
 
 1. Determine supported native custom-module deployment and profile
