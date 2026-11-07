@@ -1,0 +1,5 @@
+SIN_SOURCEVR_PROBE_1 {
+  global:
+    CreateInterface;
+  local: *;
+};
