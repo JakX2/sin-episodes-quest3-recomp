@@ -528,6 +528,19 @@ if(BUILD_TESTING)
 endif()
 
 
+# Actual seven-profile SourceVR 0.5.5 ARM64 game module factory names,
+# separately proved against original SiN server/client and native registrar.
+# Both factory interfaces are DISALLOWED until a real compatibility ABI exists.
+if(BUILD_TESTING)
+  add_executable(sin_sourcevr_game_factory_preflight_tests
+    research/tests/sin_sourcevr_game_factory_preflight_reference.cpp)
+  target_include_directories(sin_sourcevr_game_factory_preflight_tests PRIVATE include)
+  target_compile_options(sin_sourcevr_game_factory_preflight_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_sourcevr_game_factory_preflight_tests
+    COMMAND sin_sourcevr_game_factory_preflight_tests)
+endif()
+
 # Phase 97: exact original SiN vs SourceVR 0.5.5 virtual-slot proof.
 # Host-only C++17 safety gate; not a native SiN libclient/libserver module.
 if(BUILD_TESTING)
