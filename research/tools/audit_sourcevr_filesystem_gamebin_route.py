@@ -103,8 +103,6 @@ def verify_filesystem(elf):
             "module extension normalization changed")
     require(verify_text_argument(elf, 0x6f1a0, 2, "lib%s") == 0x8fd5,
             "missing module lib-prefix formatting")
-    require(verify_text_argument(elf, 0x6ee4, 2, "") if False else True,
-            "unused")  # intentionally no invented register pattern
     # Verify exact code path performing a lib prefix test, before fallback.
     for site, expected in (
         (0x6f184, 0x794803e8),
