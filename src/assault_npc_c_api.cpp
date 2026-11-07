@@ -118,7 +118,8 @@ int32_t sin_assault_bind_v1(sin_assault_session_v1* s,
             const auto& c = candidates[i];
             if (!c.rally_id || !ids.insert(c.rally_id).second ||
                 (!empty(c.snapshot_owner) && !valid(c.snapshot_owner)) ||
-                c.eligible > 1) return SIN_ASSAULT_INVALID_ARGUMENT;
+                c.eligible > 1 || !valid_origin(c.origin))
+                return SIN_ASSAULT_INVALID_ARGUMENT;
             // Fail closed if a live owner can't be resolved by the host.
             bool eligible = c.eligible != 0;
             if (eligible && valid(c.snapshot_owner)) {
