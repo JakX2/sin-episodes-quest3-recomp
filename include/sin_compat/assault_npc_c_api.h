@@ -83,7 +83,9 @@ SIN_ASSAULT_API sin_assault_session_v1 *sin_assault_create_v1(
 SIN_ASSAULT_API int32_t sin_assault_destroy_v1(sin_assault_session_v1 *);
 /* The snapshot is read synchronously. If no candidate: cue state unchanged.
  * On invalid selected point: configured mode=0, received cue unchanged;
- * any acquired lock is rolled back. Rollback is a NEW port policy.
+ * acquired lock is rolled back. If host unlock fails, the session retains
+ * the rally token and must be released by finish_v1 before destruction.
+ * Rollback and failure retention are NEW port safety policies.
  * A successful binding resets received cue=0, notifies host reset callback.
  */
 SIN_ASSAULT_API int32_t sin_assault_bind_v1(sin_assault_session_v1 *,
