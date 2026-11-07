@@ -50,6 +50,18 @@ if(BUILD_TESTING)
   add_test(NAME sin_assault_schedule_runner_tests COMMAND sin_assault_schedule_runner_tests)
 endif()
 
+# A typed host-owned condition registry for portable assault AI reference.
+# The 2006 binary IDs are evidence only; never SourceVR native IDs.
+if(BUILD_TESTING)
+  add_executable(sin_assault_runtime_condition_adapter_tests
+    tests/test_assault_runtime_condition_adapter.cpp)
+  target_include_directories(sin_assault_runtime_condition_adapter_tests PRIVATE include)
+  target_compile_options(sin_assault_runtime_condition_adapter_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_assault_runtime_condition_adapter_tests
+    COMMAND sin_assault_runtime_condition_adapter_tests)
+endif()
+
 # Original 2006 Source condition registry IDs (names and x86 integer values).
 # Keep historic condition/task/schedule ID namespaces strictly separated.
 if(BUILD_TESTING)
