@@ -1,0 +1,12 @@
+SIN_ASSAULT_1 {
+  global:
+    sin_assault_abi_version_v1;
+    sin_assault_create_v1;
+    sin_assault_destroy_v1;
+    sin_assault_bind_v1;
+    sin_assault_begin_v1;
+    sin_assault_check_cue_v1;
+    sin_assault_finish_v1;
+    sin_assault_get_state_v1;
+  local: *;
+};
