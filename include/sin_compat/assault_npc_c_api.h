@@ -30,7 +30,8 @@ enum {
     SIN_ASSAULT_HOST_FAILED = -2,
     SIN_ASSAULT_REENTRANT = -3,
     SIN_ASSAULT_NOT_BOUND = -4,
-    SIN_ASSAULT_ALREADY_BOUND = -5
+    SIN_ASSAULT_ALREADY_BOUND = -5,
+    SIN_ASSAULT_ACTOR_EXPIRED = -6 /* Host says full NPC generation is stale */
 };
 typedef struct sin_assault_ref_v1 {
     uint32_t index;
@@ -93,13 +94,17 @@ SIN_ASSAULT_API int32_t sin_assault_bind_v1(sin_assault_session_v1 *,
     uint32_t count, int32_t requested_mode, uint32_t *out_rally_id);
 /* Resets two NPC fields via host callback, records received cue=1, then sets
  * host-registered COND_PROVOKED. Failed host condition writes restore cue.
+ * Expired actor handles are refused even if the session remains bound.
  */
 SIN_ASSAULT_API int32_t sin_assault_begin_v1(sin_assault_session_v1 *);
 /* Polls host-registered COND_HEAR_COMBAT ONLY for configured mode 2,
  * unless received cue=4 override; mode 3 stores received cue=3. */
 SIN_ASSAULT_API int32_t sin_assault_check_cue_v1(
     sin_assault_session_v1 *, uint32_t *out_ready);
-/* Releases acquired rally and clears configured mode; received cue remains. */
+/* Releases acquired rally and clears configured mode; received cue remains.
+ * Finish deliberately works with expired NPC references so a held point can
+ * be released. The host unlock operation must validate ownership by generation.
+ */
 SIN_ASSAULT_API int32_t sin_assault_finish_v1(sin_assault_session_v1 *);
 SIN_ASSAULT_API int32_t sin_assault_get_state_v1(
     sin_assault_session_v1 *, sin_assault_state_v1 *out_state);
