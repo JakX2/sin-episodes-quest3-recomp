@@ -19,7 +19,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests sin_sourcevr_probe_server sin_sourcevr_probe_client sin_android_sourcevr_module_probe_tests --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 if [[ ! -s "$LIB" ]]; then
@@ -264,3 +264,42 @@ test -s "$XR_TRACKING" || { echo 'ERROR: missing XR mapping ARM64 regression' >&
   sha256sum "$XR_TRACKING" | sed "s#$BUILD/##"
 } >> "$BUILD/android-smoke-manifest.txt"
 echo 'PASS: OpenXR-convention tracking to Source pose math test compiled for AArch64; not run on headset.'
+
+# SourceVR GAME-NAMED native module loader probes. These do not expose a
+# working IServerGameDLL/IBaseClientDLL and are not a Quest game runtime.
+PROBE_ROOT="$BUILD/sourcevr-probe"
+PROBE_SMOKE="$BUILD/sin_android_sourcevr_module_probe_tests"
+for role in server client; do
+  so="$PROBE_ROOT/lib${role}.so"
+  test -s "$so" || { echo "ERROR: missing AArch64 game-name probe $so" >&2; exit 1; }
+  "$READELF" -h "$so" | grep -q 'Machine:.*AArch64' || {
+    echo "ERROR: wrong game-name module architecture: $so" >&2; exit 1; }
+  "$READELF" -d "$so" | grep -q "SONAME.*lib${role}.so" || {
+    echo "ERROR: game-name probe SONAME wrong: $so" >&2; exit 1; }
+  actual="$(mktemp)"
+  "$NM" -D --defined-only --format=posix "$so" |
+    awk 'NF{sub(/@@.*/,"",$1); print $1}' | sort -u > "$actual"
+  test "$(wc -l < "$actual")" -eq 1 && grep -Fxq CreateInterface "$actual" || {
+    cat "$actual" >&2
+    echo "ERROR: probe must export ONLY CreateInterface: $so" >&2
+    rm -f "$actual"
+    exit 1
+  }
+  rm -f "$actual"
+done
+test -s "$PROBE_SMOKE" || { echo 'ERROR: AArch64 sourcevr probe test missing' >&2; exit 1; }
+"$READELF" -h "$PROBE_SMOKE" | grep -q 'Machine:.*AArch64' || {
+  echo 'ERROR: SourceVR load smoke must be AArch64' >&2; exit 1; }
+"$READELF" -d "$PROBE_SMOKE" | grep -q 'NEEDED.*libdl.so' || {
+  echo 'ERROR: native load probe missing Android libdl' >&2; exit 1; }
+for role in server client; do
+  if "$READELF" -d "$PROBE_SMOKE" | grep -q "NEEDED.*lib${role}.so"; then
+    echo 'ERROR: probe loader must use dlopen instead of linking game module' >&2; exit 1
+  fi
+done
+{
+  printf 'sourcevr_game_probe_scope=inert_CreateInterface_no_engine_methods\n'
+  sha256sum "$PROBE_ROOT/libserver.so" "$PROBE_ROOT/libclient.so" "$PROBE_SMOKE" |
+    sed "s#$BUILD/##"
+} >> "$BUILD/android-smoke-manifest.txt"
+echo 'PASS: ARM64 game-named libserver/libclient ELF probes, unique factory exports and separate dlopen test built; no game ABI.'
