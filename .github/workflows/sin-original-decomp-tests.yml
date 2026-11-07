@@ -19,6 +19,7 @@ on:
       - 'research/tools/audit_sourcevr_native_game_factories.py'
       - 'research/tools/audit_sourcevr_engine_module_loader.py'
       - 'research/tools/audit_sourcevr_filesystem_gamebin_route.py'
+      - 'research/tools/audit_sourcevr_game_module_vtables.py'
       - 'research/tools/analyze_sin_assault_graph.py'
       - 'research/tools/audit_sin_original_druglab_vtables.py'
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
@@ -39,6 +40,7 @@ on:
       - 'research/tests/test_audit_sourcevr_native_game_factories.py'
       - 'research/tests/test_audit_sourcevr_engine_module_loader.py'
       - 'research/tests/test_audit_sourcevr_filesystem_gamebin_route.py'
+      - 'research/tests/test_audit_sourcevr_game_module_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
       - 'research/tests/test_audit_sin_original_druglab_vtable_diff.py'
@@ -61,6 +63,7 @@ on:
       - 'research/tools/audit_sourcevr_native_game_factories.py'
       - 'research/tools/audit_sourcevr_engine_module_loader.py'
       - 'research/tools/audit_sourcevr_filesystem_gamebin_route.py'
+      - 'research/tools/audit_sourcevr_game_module_vtables.py'
       - 'research/tools/analyze_sin_assault_graph.py'
       - 'research/tools/audit_sin_original_druglab_vtables.py'
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
@@ -81,6 +84,7 @@ on:
       - 'research/tests/test_audit_sourcevr_native_game_factories.py'
       - 'research/tests/test_audit_sourcevr_engine_module_loader.py'
       - 'research/tests/test_audit_sourcevr_filesystem_gamebin_route.py'
+      - 'research/tests/test_audit_sourcevr_game_module_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
       - 'research/tests/test_audit_sin_original_druglab_vtable_diff.py'
@@ -129,6 +133,8 @@ jobs:
         run: python -m unittest discover -s research/tests -p 'test_audit_sourcevr_engine_module_loader.py' -v
       - name: Verify concrete CBaseFileSystem virtual dlopen and launcher path setup (synthetic only)
         run: python -m unittest discover -s research/tests -p 'test_audit_sourcevr_filesystem_gamebin_route.py' -v
+      - name: Verify native client/server game vtable topology and factory-owned constructor vptr (synthetic only)
+        run: python -m unittest discover -s research/tests -p 'test_audit_sourcevr_game_module_vtables.py' -v
       - name: Check original SiN assault BSP graph routing
         run: python -m unittest discover -s research/tests -p 'test_analyze_sin_assault_graph.py' -v
       - name: Verify original Druglab class RTTI and vtable constructors
