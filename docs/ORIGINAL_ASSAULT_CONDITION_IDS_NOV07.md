@@ -116,6 +116,36 @@ Adjust the actual server.dll path. The output is written
 only as a new JSON file, and no original DLL bytes are
 copied to the repository.
 
+## Additional original behavior: an integer received-cue setter
+
+Original function **`0x220CE520`** is a direct, independent
+write path for `CAI_AssaultBehavior.m_ReceivedAssaultCue`:
+
+- It checks the assault behavior's owning NPC pointer at
+  behavior `+0x04` and, when present, zeros the owner's
+  fields `+0x864` and `+0x85C`.
+- It reads a caller-supplied **integer argument** from
+  original x86 stack `+0x04` (`0x220CE535`) and stores
+  that integer into behavior `m_ReceivedAssaultCue`
+  at `+0x20` (`0x220CE539`).
+- It tail-jumps from **`0x220CE547`** into the native
+  `SetCondition` method **`0x22039760`** after
+  replacing its argument with `0x18`, now independently
+  proven to mean **`COND_PROVOKED`**.
+
+The verifier now checks seven original instruction groups
+covering those effects **and the exact native tail-jump
+destination**. Its synthetic tests reject a changed cue
+storage field, a changed condition number, or a changed
+tail-jump destination.
+
+This is a verified *parameterized* signal helper. It
+demonstrates how **any supplied integer cue value** can
+reach the original behavior's received-cue field. It does
+**not** establish that any actual code or map input invokes
+the helper with the value 4. The caller graph remains a
+separate reverse-engineering question.
+
 ## Important limit: received cue override 4
 
 The earlier `CAI_AssaultBehavior` cue helper at `0x220CEA90`
