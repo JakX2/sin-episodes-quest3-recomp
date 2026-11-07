@@ -751,6 +751,22 @@ if(ANDROID AND SIN_BUILD_ANDROID_SMOKE)
   add_dependencies(sin_android_assault_npc_c_abi_smoke sin_assault_npc_c_abi)
 endif()
 
+# Engine-independent right-handed tracking-space -> Source room-space mapping.
+# Math-only bridge for future verified OpenXR/Quest host, no headset/runtime ABI.
+if(BUILD_TESTING AND NOT ANDROID)
+  add_executable(sin_xr_source_tracking_tests tests/test_xr_source_tracking.cpp)
+  target_include_directories(sin_xr_source_tracking_tests PRIVATE include)
+  target_compile_options(sin_xr_source_tracking_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_xr_source_tracking_tests COMMAND sin_xr_source_tracking_tests)
+endif()
+if(ANDROID AND SIN_BUILD_ANDROID_SMOKE)
+  add_executable(sin_android_xr_source_tracking_tests tests/test_xr_source_tracking.cpp)
+  target_include_directories(sin_android_xr_source_tracking_tests PRIVATE include)
+  target_compile_options(sin_android_xr_source_tracking_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+endif()
+
 # Host-side ai_goal_assault fanout over the independently compiled native NPC
 # module. Uses a FAKE level and generation-aware actor/rally registry only.
 if(BUILD_TESTING AND NOT ANDROID)
