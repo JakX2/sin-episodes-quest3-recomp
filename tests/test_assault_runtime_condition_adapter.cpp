@@ -1,4 +1,5 @@
 #include "sin_compat/assault_runtime_condition_adapter.hpp"
+#include "sin_compat/original_assault_schedule.hpp"
 
 #ifdef NDEBUG
 #undef NDEBUG
