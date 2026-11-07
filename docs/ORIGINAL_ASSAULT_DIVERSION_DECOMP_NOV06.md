@@ -96,8 +96,8 @@ definitions are not being copied wholesale into this repository.
 
 Inside `0x220CEAF0` the original method:
 
-1. Checks an NPC virtual method at vtable `+0x450`, then numeric condition
-   `0x3B` by calling `0x220397C0`.
+1. Checks an NPC virtual method at vtable `+0x450`, then **`COND_RECEIVED_ORDERS`**
+   (`0x3B`) by calling `0x220397C0`.
 2. Uses behavior field `+0x2C` in a comparison with global game time, and
    checks behavior state `+0x1C`.
 3. Validates the current assault point and rally references.
@@ -108,12 +108,12 @@ Inside `0x220CEAF0` the original method:
    original static **`4.0f`** literal at `0x223DDCF4`. The code also compares
    against `0.0f` at `0x223D2590`, with x87 status-flag branches.
 6. One branch sets a behavior byte `+0x26` to `1`; the alternate path may
-   call `0x22039760` with NPC numeric condition `0x18` and resets that
+   call `0x22039760` with **`COND_PROVOKED`** (`0x18`) and resets that
    byte to `0`. Invalid/stale reference paths also clear state `+0x1C`
    and arrival flags `+0x24`/`+0x25`.
 
 **Crucial limitation:** The dataflow and the 4-second literal are verified;
-the `+0x26` field is now definitively `m_bDiverting`, but the NPC condition enumeration and the game's
+the `+0x26` field is now definitively `m_bDiverting`, but the remaining condition-event producers and the game's
 x87 floating-point corner cases are not yet decoded. The literal must not
 be reported as “damage,” “grenade fuse,” or a generic four-second NPC reaction
 time.
@@ -168,9 +168,7 @@ Actions workflow exercise the verifier without embedding proprietary binaries.
 
 ## Next decompilation targets
 
-1. Identify the remaining numeric NPC condition IDs `0x3B`, `0x18`,
-   `0x19` and `0x0A`. The nine registered `SCHED_*` IDs are now resolved
-   independently from actual schedule-registration instructions.
+1. Trace the original producers and consumers of `COND_RECEIVED_ORDERS` (`0x3B`), `COND_PROVOKED` (`0x18`), `COND_NEW_ENEMY` (`0x19`) and `COND_SEE_ENEMY` (`0x0A`). The original binary registry now proves these names and numeric IDs independently of the nine known schedule registrations.
 2. Trace `0x220CEAF0` callers through the verified vtable and determine
    precisely when `+0x26` enables/resets.
 3. Trace original assault-point output firing (`OnArrival`,

@@ -19,14 +19,14 @@ struct OriginalAssaultCueGate {
     std::int32_t configured_mode = 1;
     std::int32_t received_cue = 0;
 
-    // The host supplies the actual Source NPC numeric condition 0x33.
-    // This does not prove the native C++ enum symbol corresponding to 0x33.
+    // The host supplies original COND_HEAR_COMBAT (numeric 0x33),
+    // verified through the native 2006 condition registry.
     // Mode 3 has a verified side effect: sets m_ReceivedAssaultCue to 3.
-    bool check(bool npc_condition_0x33) {
+    bool check(bool cond_hear_combat) {
         if (received_cue == 4) return true;
         switch (configured_mode) {
             case 1: return received_cue == 1;
-            case 2: return npc_condition_0x33;
+            case 2: return cond_hear_combat;
             case 3:
                 received_cue = 3;
                 return true;
