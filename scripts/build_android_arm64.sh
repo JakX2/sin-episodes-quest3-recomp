@@ -278,7 +278,7 @@ for role in server client; do
     echo "ERROR: game-name probe SONAME wrong: $so" >&2; exit 1; }
   actual="$(mktemp)"
   "$NM" -D --defined-only --format=posix "$so" |
-    awk 'NF{sub(/@@.*/,"",$1); print $1}' | sort -u > "$actual"
+    awk 'NF && $2 != "A" {sub(/@@.*/,"",$1); print $1}' | sort -u > "$actual"
   test "$(wc -l < "$actual")" -eq 1 && grep -Fxq CreateInterface "$actual" || {
     cat "$actual" >&2
     echo "ERROR: probe must export ONLY CreateInterface: $so" >&2
