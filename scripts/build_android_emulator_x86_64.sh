@@ -15,7 +15,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
@@ -175,3 +175,10 @@ test -s "$GOAL_FANOUT" || { echo 'ERROR: missing goal fanout Bionic executable' 
 "$READELF" -d "$GOAL_FANOUT" | grep -q 'NEEDED.*libsin_assault_npc_c_abi.so' || {
   echo 'ERROR: goal fanout executable not linked to assault C ABI shared library' >&2; exit 1; }
 echo 'PASS: multi-NPC ai_goal_assault fanout Bionic test binary linked to shared assault module.'
+
+# Portable stereo/pose math regression built for Android x86_64 Bionic.
+XR_TRACKING="$BUILD/sin_android_xr_source_tracking_tests"
+test -s "$XR_TRACKING" || { echo 'ERROR: missing Android XR pose regression executable' >&2; exit 1; }
+"$READELF" -h "$XR_TRACKING" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+  echo 'ERROR: XR pose regression has wrong emulator architecture' >&2; exit 1; }
+echo 'PASS: XR to Source coordinate math executable compiled for Android x86_64 Bionic.'
