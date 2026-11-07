@@ -34,9 +34,12 @@ struct Mock {
     uint32_t held, acquired, released, init_calls, reset_calls;
     uint32_t cond_queries, last_set, last_query;
     int32_t deny_lock, fail_unlock, fail_init, fail_reset, fail_set, fail_query, hear_combat;
+    int32_t actor_live, expire_during_init, expire_during_reset, liveness_error;
 };
 static int32_t is_live(void* ctx, sin_assault_ref_v1 ref) {
-    (void)ctx;
+    struct Mock* m=(struct Mock*)ctx;
+    if (m->liveness_error) return -1;
+    if (ref.index == 11 && ref.generation == 2) return m->actor_live;
     return ref.index == 22 && ref.generation == 1;
 }
 static int32_t try_lock(void* ctx, uint32_t point, sin_assault_ref_v1 actor) {
@@ -63,6 +66,7 @@ static int32_t init(void* ctx,sin_assault_ref_v1 actor,uint32_t point) {
     struct Mock* m=(struct Mock*)ctx;
     assert(actor.index == 11 && point == m->held);
     ++m->init_calls;
+    if (m->expire_during_init) m->actor_live=0;
     if (m->session) {
         sin_assault_state_v1 state;
         m->reenter_state=m->state(m->session,&state);
@@ -74,6 +78,7 @@ static int32_t reset(void* ctx,sin_assault_ref_v1 actor) {
     struct Mock* m=(struct Mock*)ctx;
     assert(actor.index == 11);
     ++m->reset_calls;
+    if (m->expire_during_reset) m->actor_live=0;
     return m->fail_reset ? 0 : 1;
 }
 static int32_t set_cond(void* ctx,sin_assault_ref_v1 actor,uint32_t condition) {
@@ -112,6 +117,7 @@ int main(int argc,char** argv) {
         is_live,try_lock,resolve,unlock,init,reset,set_cond,has_cond
     };
     struct Mock mock={0};
+    mock.actor_live=1;
     mock.state=state;
     mock.destroy=destroy;
     sin_assault_ref_v1 actor={11,2};
@@ -133,6 +139,13 @@ int main(int argc,char** argv) {
     uint32_t selected=0,ready=0;
     sin_assault_state_v1 snapshot={0};
     assert(begin(session)==SIN_ASSAULT_NOT_BOUND);
+    mock.actor_live=0;
+    assert(bind(session,origin,points,3,2,&selected)==SIN_ASSAULT_ACTOR_EXPIRED);
+    assert(selected==0 && mock.acquired==0);
+    mock.actor_live=1;
+    mock.liveness_error=1;
+    assert(bind(session,origin,points,3,2,&selected)==SIN_ASSAULT_HOST_FAILED);
+    mock.liveness_error=0;
     assert(bind(session,origin,points,3,2,&selected)==SIN_ASSAULT_OK && selected==200);
     assert(mock.acquired==1 && mock.held==200 && mock.init_calls==1);
     assert(mock.reenter_state==SIN_ASSAULT_REENTRANT);
@@ -150,7 +163,14 @@ int main(int argc,char** argv) {
     assert(begin(session)==SIN_ASSAULT_OK && mock.reset_calls==1);
     assert(mock.last_set==9001);
     assert(state(session,&snapshot)==SIN_ASSAULT_OK && snapshot.received_cue==1);
+    mock.actor_live=0;
+    const uint32_t pre_expire_resets=mock.reset_calls;
+    assert(check(session,&ready)==SIN_ASSAULT_ACTOR_EXPIRED && ready==0);
+    assert(begin(session)==SIN_ASSAULT_ACTOR_EXPIRED);
+    assert(mock.reset_calls==pre_expire_resets);
+    // Cleanup MUST remain possible after actor death to avoid held rallypoints.
     assert(finish(session)==SIN_ASSAULT_OK && mock.held==0);
+    mock.actor_live=1;
     assert(state(session,&snapshot)==SIN_ASSAULT_OK);
     assert(snapshot.configured_mode==0 && snapshot.received_cue==1 && snapshot.rally_id==0);
     assert(check(session,&ready)==SIN_ASSAULT_NOT_BOUND);
@@ -178,6 +198,12 @@ int main(int argc,char** argv) {
     assert(bind(session,origin,points,3,3,&selected)==SIN_ASSAULT_HOST_FAILED);
     assert(mock.held==0 && mock.released==3);
     mock.fail_init=0;
+    mock.expire_during_init=1;
+    assert(bind(session,origin,points,3,3,&selected)==SIN_ASSAULT_ACTOR_EXPIRED);
+    assert(mock.held==0);
+    assert(state(session,&snapshot)==SIN_ASSAULT_OK && snapshot.rally_id==0);
+    mock.actor_live=1;
+    mock.expire_during_init=0;
     assert(bind(session,origin,points,3,3,&selected)==SIN_ASSAULT_OK && selected==200);
     const uint32_t before=mock.cond_queries;
     assert(check(session,&ready)==SIN_ASSAULT_OK && ready==1);
@@ -187,6 +213,11 @@ int main(int argc,char** argv) {
     assert(begin(session)==SIN_ASSAULT_HOST_FAILED);
     assert(state(session,&snapshot)==SIN_ASSAULT_OK && snapshot.received_cue==3);
     mock.fail_reset=0;
+    mock.expire_during_reset=1;
+    assert(begin(session)==SIN_ASSAULT_ACTOR_EXPIRED);
+    assert(state(session,&snapshot)==SIN_ASSAULT_OK && snapshot.received_cue==3);
+    mock.expire_during_reset=0;
+    mock.actor_live=1;
     mock.fail_set=1;
     assert(begin(session)==SIN_ASSAULT_HOST_FAILED);
     assert(state(session,&snapshot)==SIN_ASSAULT_OK && snapshot.received_cue==3);
