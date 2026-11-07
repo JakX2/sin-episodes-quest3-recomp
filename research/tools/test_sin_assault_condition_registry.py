@@ -33,6 +33,14 @@ class SyntheticPE:
             self.put(push, b"\x68" + struct.pack("<I", symbol))
             self.put(push + 5, b"\xB9" + struct.pack("<I", audit.REGISTRY_THIS_VA))
             self.call(call, audit.REGISTRY_FUNCTION_VA)
+        # The auditor also requires the original received-cue helper witness.
+        # Without this, every negative test passes for the wrong reason:
+        # an unrelated missing helper instruction rather than its mutation.
+        for address, opcode in audit.RECEIVED_CUE_SETTER_WITNESSES:
+            self.put(address, opcode)
+        self.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\\xE9" + struct.pack(
+            "<i", audit.RECEIVED_CUE_TAIL_TARGET_VA -
+            audit.RECEIVED_CUE_TAIL_JUMP_VA - 5))
         for _, push, number, call, target in audit.ASSAULT_USE_SITES:
             self.put(push, bytes([0x6A, number]))
             self.call(call, target)
@@ -53,7 +61,7 @@ class RegistryAuditTests(unittest.TestCase):
         result = audit.audit_original(SyntheticPE())
         self.assertEqual(result["verified_registration_count"], len(audit.SOURCE_CONDITIONS))
         self.assertEqual(result["verified_assault_callsites"], len(audit.ASSAULT_USE_SITES))
-        self.assertIn("COND_PROVOKED", result["semantic_milestones"]["BeginAssault"])
+        self.assertIn("COND_PROVOKED", result["semantic_milestones"]["BeginAssault"])\n        self.assertEqual(result["original_received_cue_signaling_helper"]["tail_jump_target"], "0x22039760")
 
     def test_every_registration_rejects_corrupt_id(self):
         for name, number, _, immediate, _, _ in audit.SOURCE_CONDITIONS:
