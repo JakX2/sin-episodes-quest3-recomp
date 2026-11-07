@@ -57,6 +57,7 @@ jobs:
             build-android-arm64/sin_android_scene_actor_c_abi_smoke
             build-android-arm64/libsin_assault_npc_c_abi.so
             build-android-arm64/sin_android_assault_npc_c_abi_smoke
+            build-android-arm64/sin_android_assault_goal_fanout_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -141,6 +142,12 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_assault_npc_c_abi_smoke /data/local/tmp/sin_assault_npc/sin_android_assault_npc_c_abi_smoke
             adb shell 'cd /data/local/tmp/sin_assault_npc && chmod 700 sin_android_assault_npc_c_abi_smoke && ./sin_android_assault_npc_c_abi_smoke ./libsin_assault_npc_c_abi.so' | tr -d '\r' | tee build-android-emulator-x86_64/assault-npc-bionic-output.txt
             grep -Fxq 'PASS: independent assault NPC C ABI dlopen with fake host, exclusive rally locks, cue and registered condition callbacks' build-android-emulator-x86_64/assault-npc-bionic-output.txt
+          grep -Fxq 'PASS: original ai_goal_assault C ABI fanout across multiple generation-safe mock NPCs and rally ownership' build-android-emulator-x86_64/assault-goal-fanout-bionic-output.txt
+            # Multi-NPC original ai_goal_assault fanout: tests real shared
+            # module linkage, but only simulated level/NPC callbacks.
+            adb push build-android-emulator-x86_64/sin_android_assault_goal_fanout_tests /data/local/tmp/sin_assault_npc/sin_android_assault_goal_fanout_tests
+            adb shell 'cd /data/local/tmp/sin_assault_npc && chmod 700 sin_android_assault_goal_fanout_tests && LD_LIBRARY_PATH=. ./sin_android_assault_goal_fanout_tests' | tr -d '\r' | tee build-android-emulator-x86_64/assault-goal-fanout-bionic-output.txt
+            grep -Fxq 'PASS: original ai_goal_assault C ABI fanout across multiple generation-safe mock NPCs and rally ownership' build-android-emulator-x86_64/assault-goal-fanout-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -168,5 +175,6 @@ jobs:
             build-android-emulator-x86_64/phase102-bionic-output.txt
             build-android-emulator-x86_64/scene-actor-bionic-output.txt
             build-android-emulator-x86_64/assault-npc-bionic-output.txt
+            build-android-emulator-x86_64/assault-goal-fanout-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
