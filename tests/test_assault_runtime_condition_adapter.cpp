@@ -141,7 +141,50 @@ static void test_gunfire_cue_queries_only_the_runtime_hear_combat_id() {
     assert(query_count == 1);
 }
 
+
+static void test_runtime_cue_negative_and_unregistered_fast_paths() {
+    AssaultRuntimeConditionBindings unregistered;
+    int queries = 0;
+    auto never_query = [&](std::uint64_t, RuntimeAssaultConditionId) {
+        ++queries;
+        return true;
+    };
+
+    // No HearCombat binding is needed for original modes 1 and 3 or
+    // the received-cue override. A future adapter must not query sensors.
+    OriginalAssaultCueGate input{1, 0};
+    OriginalAssaultCueGate bypass{3, 0};
+    OriginalAssaultCueGate override{2, 4};
+    assert(check_assault_cue_with_runtime_conditions(
+        input, 7, unregistered, never_query).value() == false);
+    assert(input.received_cue == 0);
+    assert(check_assault_cue_with_runtime_conditions(
+        bypass, 7, unregistered, never_query).value());
+    assert(bypass.received_cue == 3);
+    assert(check_assault_cue_with_runtime_conditions(
+        override, 7, unregistered, never_query).value());
+    assert(override.received_cue == 4);
+    assert(queries == 0);
+
+    // A registered but absent combat sound is a definite false, not
+    // a missing-registration result, and does not mutate the cue.
+    AssaultRuntimeConditionBindings registered;
+    assert(registered.bind(OriginalAssaultCondition::HearCombat,
+                           RuntimeAssaultConditionId{7003}));
+    OriginalAssaultCueGate gunfire{2, 0};
+    auto no_combat = [&](std::uint64_t actor, RuntimeAssaultConditionId id) {
+        ++queries;
+        assert(actor == 7 && id.value == 7003);
+        return false;
+    };
+    const auto result = check_assault_cue_with_runtime_conditions(
+        gunfire, 7, registered, no_combat);
+    assert(result.has_value() && !*result);
+    assert(queries == 1 && gunfire.received_cue == 0);
+}
+
 int main() {
+    test_runtime_cue_negative_and_unregistered_fast_paths();
     test_runtime_registry_rejects_ambiguous_bindings();
     test_begin_assault_fails_before_any_side_effect_without_binding();
     test_begin_assault_translates_semantic_and_preserves_order();
