@@ -54,6 +54,40 @@ The original native client callback 0x36C4F0 returns singleton
 table 0x81FE10 into that object. Its first method is at 0x36C820
 and its 78th method is at 0x36F7C0.
 
+## Genuine original SiN 2006 Windows x86 game vftables
+
+The owner's original server.dll and client.dll from bin.zip were
+also checked against their exact SHA256 values, then parsed as real
+PE32 x86 binaries with Microsoft RTTI TypeDescriptors,
+CompleteObjectLocators (COL), class hierarchies and virtual tables.
+This exposes a material difference in interface shape:
+
+| Game DLL | Original MSVC class | Locator VA | Vtable VA | Methods | Complete table SHA256 |
+| --- | --- | --- | --- | ---: | --- |
+| Original 2006 server.dll | CServerGameDLL | 0x224C51E8 | 0x22442EFC | **31** | 97e42f1905b28e6aad0e3de21473d12725c49b25980be4a5db285333774a8299 |
+| Original 2006 client.dll | CHLClient | 0x242E5818 | 0x24296C6C | **48** | 9d28eccf91315f7a6ecc2394386d7b4077919d8649d34297a951eb7a1cafa664 |
+
+Every original 32-bit entry is a pointer into the corresponding
+original DLL's executable .text section, and the following word is
+not an executable function pointer. The first/last original server
+methods are 0x221E7640/0x221E7CF0; the first/last original client
+methods are 0x240FE0E0/0x240FE670. Both tables are SHA-pinned in full.
+
+Comparing with the AArch64 vtables:
+
+- Server: original **31** slots versus ARM64 **47**, a delta of 16.
+- Client: original **48** slots versus ARM64 **78**, a delta of 30.
+
+Those deltas do **not** establish that the newer interfaces simply
+append 16/30 methods. Versions may insert, reorder, remove or change
+earlier methods. No blind virtual-pointer index translation is safe.
+
+The auditor now accepts optional --sin-bin-zip to validate original
+PE32/MSVC RTTI, COL pointer, both entire 31/48 pointer tables and
+their exact fingerprints. A separate synthetic-only test file checks
+corrupted PE headers, RTTI pointers, locator links, method execution
+bounds, table boundaries and SHA failure.
+
 ## Source SDK labels remain candidates only
 
 Valve's publicly available Source SDK 2013 header eiface.h declares
