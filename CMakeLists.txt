@@ -528,6 +528,18 @@ if(BUILD_TESTING)
 endif()
 
 
+# Reconstructed original SiN 2006 server.dll/client.dll required factory
+# lookups and common null-failure edges. Preflight only, no game module.
+if(BUILD_TESTING)
+  add_executable(sin_original_dllinit_factory_contract_tests
+    tests/test_original_dllinit_factory_contract.cpp)
+  target_include_directories(sin_original_dllinit_factory_contract_tests PRIVATE include)
+  target_compile_options(sin_original_dllinit_factory_contract_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_dllinit_factory_contract_tests
+    COMMAND sin_original_dllinit_factory_contract_tests)
+endif()
+
 # Engine-backed native client/server startup dispatch evidence.
 # C++ fixture checks metadata only and NEVER invokes unknown engine ABI.
 if(BUILD_TESTING)
