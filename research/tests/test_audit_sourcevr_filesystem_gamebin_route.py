@@ -28,6 +28,7 @@ class FakeELF:
     """Only locally synthesized words and strings, not a game binary."""
     def __init__(self, launcher=False):
         self.words = {}
+        self.is_launcher = launcher
         self.data = bytearray()
         self.sections = {}
         self.strings = {}
@@ -92,9 +93,13 @@ class FakeELF:
         raise a.AuditError(f"invalid synthetic VA {va:#x}")
 
 
-def fake_plt(_elf, symbol):
-    return {"dlopen": 0x94c30, "getenv": 0x945b0,
-            "setenv": 0x7a810, "dladdr": 0x7aab0}[symbol]
+def fake_plt(elf, symbol):
+    # The filesystem and launcher are distinct ELF builds, each with its own
+    # import order and therefore a different getenv@PLT address.
+    if elf.is_launcher:
+        return {"getenv": 0x7a700, "setenv": 0x7a810,
+                "dladdr": 0x7aab0}[symbol]
+    return {"dlopen": 0x94c30, "getenv": 0x945b0}[symbol]
 
 
 class LoaderTests(unittest.TestCase):
@@ -179,7 +184,7 @@ class LoaderTests(unittest.TestCase):
     def test_plt_symbol_resolution_from_synthetic_elf_relocation(self):
         fixture = FakeELF()
         data = bytearray(300)
-        data[0:7] = b"\x00dlopen\x00"
+        data[0:8] = b"\x00dlopen\x00"
         struct.pack_into("<I", data, 64+24, 1)
         struct.pack_into("<QQq", data, 180, 0x40000,
                          (1 << 32) | 0x402, 0)
@@ -187,7 +192,7 @@ class LoaderTests(unittest.TestCase):
         def section(va, off, length, entry=0):
             return (0,1,0,va,off,length,0,0,1,entry)
         fixture.sections = {
-            ".dynstr": section(0x10000, 0, 7),
+            ".dynstr": section(0x10000, 0, 8),
             ".dynsym": section(0x20000, 64, 48, 24),
             ".rela.plt": section(0x30000, 180, 24, 24),
             ".plt": section(0x40000, 240, 64),
