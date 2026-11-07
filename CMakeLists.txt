@@ -528,6 +528,18 @@ if(BUILD_TESTING)
 endif()
 
 
+# Recovered concrete client/server native RTTI vtables (47/78 slots).
+# No C++ game dispatch: actual method signatures and lifecycle remain blocked.
+if(BUILD_TESTING)
+  add_executable(sin_sourcevr_game_vtable_layout_tests
+    research/tests/sin_sourcevr_game_vtable_layout_reference.cpp)
+  target_include_directories(sin_sourcevr_game_vtable_layout_tests PRIVATE include)
+  target_compile_options(sin_sourcevr_game_vtable_layout_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_sourcevr_game_vtable_layout_tests
+    COMMAND sin_sourcevr_game_vtable_layout_tests)
+endif()
+
 # Actual seven-profile SourceVR 0.5.5 ARM64 game module factory names,
 # separately proved against original SiN server/client and native registrar.
 # Both factory interfaces are DISALLOWED until a real compatibility ABI exists.
