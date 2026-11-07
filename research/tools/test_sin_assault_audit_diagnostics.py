@@ -72,7 +72,7 @@ class AssaultAuditDiagnosticTests(unittest.TestCase):
                 ):
                     audit.audit_original(pe)
         pe = SyntheticPE()
-        pe.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\\x90")
+        pe.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\x90")
         with self.assertRaisesRegex(
             audit.VerificationError, "generic cue helper no longer tail-jumps"
         ):
@@ -84,7 +84,7 @@ class AssaultAuditDiagnosticTests(unittest.TestCase):
         )
         pe.put(
             audit.RECEIVED_CUE_TAIL_JUMP_VA,
-            b"\\xE9" + struct.pack("<i", offset),
+            b"\xE9" + struct.pack("<i", offset),
         )
         with self.assertRaisesRegex(
             audit.VerificationError, "generic cue helper no longer signals COND_PROVOKED"
