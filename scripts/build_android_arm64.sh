@@ -19,7 +19,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 if [[ ! -s "$LIB" ]]; then
@@ -206,3 +206,35 @@ test "$(wc -l < "$SCENE_ACTUAL")" -eq 8 || {
   echo "ERROR: scene actor module must export exactly eight functions" >&2; exit 1; }
 rm -f "$SCENE_EXPECTED" "$SCENE_ACTUAL"
 echo "PASS: Round19 scene actor library and C11 dlopen test built for Android, eight exports verified."
+
+# Host-backed assault NPC C ABI: independent module, NOT a SourceVR NPC.
+ASSAULT_NPC="$BUILD/libsin_assault_npc_c_abi.so"
+ASSAULT_NPC_SMOKE="$BUILD/sin_android_assault_npc_c_abi_smoke"
+for f in "$ASSAULT_NPC" "$ASSAULT_NPC_SMOKE"; do
+  test -s "$f" || { echo "ERROR: assault NPC ARM64 artifact missing: $f" >&2; exit 1; }
+  "$READELF" -h "$f" | grep -q 'Machine:.*AArch64' || {
+    echo "ERROR: assault NPC artifact has wrong architecture: $f" >&2; exit 1; }
+done
+"$READELF" -d "$ASSAULT_NPC" | grep -q 'SONAME.*libsin_assault_npc_c_abi.so' || {
+  echo 'ERROR: assault NPC module has wrong SONAME' >&2; exit 1; }
+"$READELF" -d "$ASSAULT_NPC_SMOKE" | grep -q 'NEEDED.*libdl.so' || {
+  echo 'ERROR: assault NPC ARM64 smoke does not link Android libdl' >&2; exit 1; }
+if "$READELF" -d "$ASSAULT_NPC_SMOKE" | grep -q 'NEEDED.*libsin_assault_npc_c_abi.so'; then
+  echo 'ERROR: assault NPC smoke must dlopen module, not link to it' >&2; exit 1
+fi
+NPC_EXPECTED="$(mktemp)"
+NPC_ACTUAL="$(mktemp)"
+awk '/^[[:space:]]+sin_assault_[A-Za-z0-9_]+;/{gsub(/;/,"",$1); print $1}' \
+  "$ROOT/src/assault_npc_exports.map" | sort -u > "$NPC_EXPECTED"
+"$NM" -D --defined-only --format=posix "$ASSAULT_NPC" |
+  awk 'NF{sub(/@@.*/,"",$1); print $1}' | sort -u > "$NPC_ACTUAL"
+diff -u "$NPC_EXPECTED" "$NPC_ACTUAL" || {
+  echo 'ERROR: assault NPC ABI exports drifted' >&2; exit 1; }
+test "$(wc -l < "$NPC_ACTUAL")" -eq 8 || {
+  echo 'ERROR: assault NPC ABI must export eight functions' >&2; exit 1; }
+rm -f "$NPC_EXPECTED" "$NPC_ACTUAL"
+{
+  printf 'assault_npc_scope=mock_engine_callbacks_not_sourcevr\n'
+  sha256sum "$ASSAULT_NPC" "$ASSAULT_NPC_SMOKE" | sed "s#$BUILD/##"
+} >> "$BUILD/android-smoke-manifest.txt"
+echo 'PASS: assault NPC standalone ARM64 callback module, C11 dlopen smoke and eight exports built; no engine integration.'
