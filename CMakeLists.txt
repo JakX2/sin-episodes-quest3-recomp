@@ -803,6 +803,59 @@ if(ANDROID AND SIN_BUILD_ANDROID_SMOKE)
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
 endif()
 
+# First genuinely game-NAMED Android module-loading probe. These separately
+# linked libserver.so / libclient.so contain only an inert CreateInterface,
+# never unverified ServerGameDLL/VClient virtual method objects.
+foreach(probe_role IN ITEMS server client)
+  add_library(sin_sourcevr_probe_${probe_role} SHARED
+    src/sourcevr_module_probe.c)
+  target_include_directories(sin_sourcevr_probe_${probe_role} PUBLIC include)
+  set_target_properties(sin_sourcevr_probe_${probe_role} PROPERTIES
+    OUTPUT_NAME "${probe_role}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sourcevr-probe"
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    C_VISIBILITY_PRESET hidden)
+  if(probe_role STREQUAL "server")
+    target_compile_definitions(sin_sourcevr_probe_${probe_role}
+      PRIVATE SIN_SOURCEVR_PROBE_BUILD_SERVER=1)
+  else()
+    target_compile_definitions(sin_sourcevr_probe_${probe_role}
+      PRIVATE SIN_SOURCEVR_PROBE_BUILD_CLIENT=1)
+  endif()
+  target_compile_options(sin_sourcevr_probe_${probe_role} PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  if(UNIX AND NOT APPLE)
+    target_link_options(sin_sourcevr_probe_${probe_role} PRIVATE
+      "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/sourcevr_module_probe_exports.map")
+    set_property(TARGET sin_sourcevr_probe_${probe_role}
+      APPEND PROPERTY LINK_DEPENDS
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/sourcevr_module_probe_exports.map")
+  endif()
+endforeach()
+if((BUILD_TESTING AND UNIX AND NOT ANDROID) OR
+   (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_module_probe_smoke_target sin_android_sourcevr_module_probe_tests)
+  else()
+    set(sin_module_probe_smoke_target sin_sourcevr_module_probe_tests)
+  endif()
+  add_executable(${sin_module_probe_smoke_target}
+    tests/test_sourcevr_module_probe.c)
+  target_include_directories(${sin_module_probe_smoke_target} PRIVATE include)
+  set_target_properties(${sin_module_probe_smoke_target} PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_compile_options(${sin_module_probe_smoke_target} PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  target_link_libraries(${sin_module_probe_smoke_target} PRIVATE ${CMAKE_DL_LIBS})
+  add_dependencies(${sin_module_probe_smoke_target}
+    sin_sourcevr_probe_server sin_sourcevr_probe_client)
+  if(NOT ANDROID)
+    add_test(NAME sin_sourcevr_module_probe_tests
+      COMMAND ${sin_module_probe_smoke_target}
+      "${CMAKE_CURRENT_BINARY_DIR}/sourcevr-probe")
+  endif()
+endif()
+
 # Native C ABI wrapper around scene actor bridge. Still NOT Source/Quest game DLL.
 add_library(sin_scene_actor_c_abi SHARED src/scene_actor_c_api.cpp)
 target_link_libraries(sin_scene_actor_c_abi PRIVATE sin_scene_actor_bridge)

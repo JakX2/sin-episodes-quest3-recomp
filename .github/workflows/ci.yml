@@ -59,6 +59,9 @@ jobs:
             build-android-arm64/sin_android_assault_npc_c_abi_smoke
             build-android-arm64/sin_android_assault_goal_fanout_tests
             build-android-arm64/sin_android_xr_source_tracking_tests
+            build-android-arm64/sourcevr-probe/libserver.so
+            build-android-arm64/sourcevr-probe/libclient.so
+            build-android-arm64/sin_android_sourcevr_module_probe_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -153,6 +156,14 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_xr_source_tracking_tests /data/local/tmp/sin_assault_npc/sin_android_xr_source_tracking_tests
             adb shell 'cd /data/local/tmp/sin_assault_npc && chmod 700 sin_android_xr_source_tracking_tests && ./sin_android_xr_source_tracking_tests && echo XR_SOURCE_POSE_BIONIC_PASS' | tr -d '\r' | tee build-android-emulator-x86_64/xr-pose-bionic-output.txt
             grep -Fxq 'XR_SOURCE_POSE_BIONIC_PASS' build-android-emulator-x86_64/xr-pose-bionic-output.txt
+            # First game-NAMED Bionic modules. These exports are inert;
+            # this is a separate C11 harness, not a SourceVR engine execution.
+            adb shell mkdir -p /data/local/tmp/sin_sourcevr_module_probe
+            adb push build-android-emulator-x86_64/sourcevr-probe/libserver.so /data/local/tmp/sin_sourcevr_module_probe/libserver.so
+            adb push build-android-emulator-x86_64/sourcevr-probe/libclient.so /data/local/tmp/sin_sourcevr_module_probe/libclient.so
+            adb push build-android-emulator-x86_64/sin_android_sourcevr_module_probe_tests /data/local/tmp/sin_sourcevr_module_probe/sin_android_sourcevr_module_probe_tests
+            adb shell 'cd /data/local/tmp/sin_sourcevr_module_probe && chmod 700 sin_android_sourcevr_module_probe_tests && ./sin_android_sourcevr_module_probe_tests /data/local/tmp/sin_sourcevr_module_probe' | tr -d '\r' | tee build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
+            grep -Fxq 'PASS: two native libserver/libclient CreateInterface probes dlopen via simulated GAMEBIN paths; real game interfaces fail closed' build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -171,6 +182,7 @@ jobs:
           grep -Fxq 'PASS: independent assault NPC C ABI dlopen with fake host, exclusive rally locks, cue and registered condition callbacks' build-android-emulator-x86_64/assault-npc-bionic-output.txt
           grep -Fxq 'PASS: original ai_goal_assault C ABI fanout across multiple generation-safe mock NPCs and rally ownership' build-android-emulator-x86_64/assault-goal-fanout-bionic-output.txt
           grep -Fxq 'XR_SOURCE_POSE_BIONIC_PASS' build-android-emulator-x86_64/xr-pose-bionic-output.txt
+          grep -Fxq 'PASS: two native libserver/libclient CreateInterface probes dlopen via simulated GAMEBIN paths; real game interfaces fail closed' build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -184,5 +196,6 @@ jobs:
             build-android-emulator-x86_64/assault-npc-bionic-output.txt
             build-android-emulator-x86_64/assault-goal-fanout-bionic-output.txt
             build-android-emulator-x86_64/xr-pose-bionic-output.txt
+            build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
