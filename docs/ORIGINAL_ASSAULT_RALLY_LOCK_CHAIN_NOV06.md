@@ -141,15 +141,13 @@ entirely unknown.
   still unverified.
 - **Clear-on-contact branch:** at `0x220CF960` another routine checks
   `CAssaultPoint.m_bClearOnContact` at **`+0x3B8`**, then asks an NPC
-  condition-check method `0x220397C0` about **numeric condition 10**,
+  condition-check method `0x220397C0` about **`COND_SEE_ENEMY`** (numeric `0x0A`),
   through a call at `0x220CF972`. When both conditions pass, it calls
   the actual next-point method at **`0x220CF981`**.
 
 The **field names** are confirmed independently by original 52-byte Source
 data-map records; the **branch and call targets** are confirmed by exact
-instructions from the original DLL. In particular, condition 10 is an
-observed engine numeric ID, not yet proven to mean a specifically named
-enemy-contact event. The conditional logic is source-derived; complete AI
+instructions from the original DLL. The separate original condition registry now proves that numeric condition 10 is **`COND_SEE_ENEMY`**. That identifies the condition queried, but does not by itself prove the engine's full perception or schedule update mechanics. The conditional logic is source-derived; complete AI
 scheduling, path movement and player/enemy contact detection are not.
 
 This extends the recovered gameplay path:
