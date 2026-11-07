@@ -13,6 +13,10 @@ int main() {
     static_assert(server.role == NativeGameObjectRole::Server);
     static_assert(client.role == NativeGameObjectRole::Client);
     static_assert(server.method_slots == 47 && client.method_slots == 78);
+    static_assert(original_sin_server_slots == 31);
+    static_assert(original_sin_client_slots == 48);
+    static_assert(native_sourcevr_server_slots - original_sin_server_slots == 16);
+    static_assert(native_sourcevr_client_slots - original_sin_client_slots == 30);
     static_assert(server.native_factory == "ServerGameDLL010");
     static_assert(client.native_factory == "VClient017");
     static_assert(server.base_type_name == "IServerGameDLL");
