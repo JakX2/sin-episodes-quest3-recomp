@@ -7,6 +7,7 @@
 #include "sin_compat/assault_npc_c_api.h"
 #include <assert.h>
 #include <dlfcn.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -169,6 +170,21 @@ int main(int argc,char** argv) {
     assert(bind(session,origin,points,3,4,&selected)==SIN_ASSAULT_INVALID_ARGUMENT);
     sin_assault_candidate_v1 duplicate[]={points[1],points[1]};
     assert(bind(session,origin,duplicate,2,3,&selected)==SIN_ASSAULT_INVALID_ARGUMENT);
+
+    /* Reject nonfinite candidate coordinates before ranking or locking. */
+    sin_assault_candidate_v1 nonfinite=points[1];
+    const uint32_t locks_before=mock.acquired;
+    nonfinite.origin[0]=NAN;
+    assert(bind(session,origin,&nonfinite,1,2,&selected)==SIN_ASSAULT_INVALID_ARGUMENT);
+    assert(selected==0 && mock.acquired==locks_before && mock.held==0);
+    nonfinite.origin[0]=2;
+    nonfinite.origin[1]=INFINITY;
+    assert(bind(session,origin,&nonfinite,1,2,&selected)==SIN_ASSAULT_INVALID_ARGUMENT);
+    assert(selected==0 && mock.acquired==locks_before && mock.held==0);
+    nonfinite.origin[1]=-INFINITY;
+    assert(bind(session,origin,&nonfinite,1,2,&selected)==SIN_ASSAULT_INVALID_ARGUMENT);
+    assert(selected==0 && mock.acquired==locks_before && mock.held==0);
+    assert(state(session,&snapshot)==SIN_ASSAULT_OK && snapshot.rally_id==0);
 
     mock.deny_lock=1;
     assert(bind(session,origin,points,3,3,&selected)==SIN_ASSAULT_LOCK_REJECTED);
