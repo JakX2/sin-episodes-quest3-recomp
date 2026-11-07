@@ -33,7 +33,7 @@ struct Mock {
     int32_t reenter_destroy;
     uint32_t held, acquired, released, init_calls, reset_calls;
     uint32_t cond_queries, last_set, last_query;
-    int32_t deny_lock, fail_init, fail_reset, fail_set, fail_query, hear_combat;
+    int32_t deny_lock, fail_unlock, fail_init, fail_reset, fail_set, fail_query, hear_combat;
 };
 static int32_t is_live(void* ctx, sin_assault_ref_v1 ref) {
     (void)ctx;
@@ -54,7 +54,7 @@ static int32_t resolve(void* ctx,uint32_t point) {
 static int32_t unlock(void* ctx,uint32_t point,sin_assault_ref_v1 actor) {
     struct Mock* m=(struct Mock*)ctx;
     assert(actor.index == 11 && actor.generation == 2);
-    if (m->held != point) return 0;
+    if (m->fail_unlock || m->held != point) return 0;
     m->held=0;
     ++m->released;
     return 1;
@@ -192,6 +192,16 @@ int main(int argc,char** argv) {
     assert(state(session,&snapshot)==SIN_ASSAULT_OK && snapshot.received_cue==3);
     mock.fail_set=0;
     assert(finish(session)==SIN_ASSAULT_OK);
+    // An unresolved selected point with failed unlock must NOT be silently
+    // discarded: retain the point token until finish retries host cleanup.
+    mock.fail_unlock=1;
+    assert(bind(session,origin,&missing,1,2,&selected)==SIN_ASSAULT_HOST_FAILED);
+    assert(mock.held==400);
+    assert(state(session,&snapshot)==SIN_ASSAULT_OK && snapshot.rally_id==400);
+    assert(destroy(session)==SIN_ASSAULT_ALREADY_BOUND);
+    assert(bind(session,origin,points,3,2,&selected)==SIN_ASSAULT_ALREADY_BOUND);
+    mock.fail_unlock=0;
+    assert(finish(session)==SIN_ASSAULT_OK && mock.held==0);
     assert(destroy(session)==SIN_ASSAULT_OK);
     assert(dlclose(lib)==0);
     puts("PASS: independent assault NPC C ABI dlopen with fake host, exclusive rally locks, cue and registered condition callbacks");
