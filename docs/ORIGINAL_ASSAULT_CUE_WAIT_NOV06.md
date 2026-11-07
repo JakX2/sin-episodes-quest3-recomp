@@ -33,11 +33,7 @@ The helper reads two original data-map members:
 | 4 | Return false unless received-cue override is 4 | Not a documented FGD choice |
 
 A corrupt or unsupported requested cue value above 4 also returns false,
-unless the received value was already 4. **Important:** the original x86
-condition ID `0x33` is verified, but its native C++ enum name is
-not yet established. Calling this mode “gunfire” is supported by the
-*SDK editor contract*, not independent proof of the exact NPC
-condition enumeration.
+unless the received value was already 4. **Updated original-binary proof:** the November 7 condition-registry audit establishes that native condition `0x33` is **`COND_HEAR_COMBAT`**. The SDK's “Gunfire” description and the x86 instruction both agree. The exact combat-hearing sensor's implementation still requires a separate trace.
 
 This resolves the actual `TASK_AWAIT_CUE` gate and lets the future
 native AI wait for real input/condition signals rather than for a
@@ -101,7 +97,7 @@ and distinct usage.
 - `include/sin_compat/original_assault_cue_wait.hpp`:
   **new engine-neutral C++17 reference**, with the actual
   `m_ReceivedAssaultCue` state mutation for mode 3,
-  explicit host-provided numeric NPC condition `0x33`,
+  explicit host-provided `COND_HEAR_COMBAT` (`0x33`),
   deterministic decisecond deadline calculations and time
   completion check.
 - `tests/test_original_assault_cue_wait.cpp`:
@@ -130,9 +126,7 @@ original game DLL, BSP or any installed engine files.
 
 ## Remaining native integration gaps
 
-- Identify the original numeric NPC condition `0x33` by tracing
-  its condition-setting and inherited Source schedule code, rather
-  than guessing a C++ enum name.
+- Trace the original conditions that **set/clear `COND_HEAR_COMBAT`** (`0x33`) in the NPC hearing code. Its enum name and registration ID are now proven by the original condition-registration instructions.
 - Verify the engine's exact entity-input path that sets
   `m_ReceivedAssaultCue=1`, and the source event that sets 4.
 - Implement a real engine host that supplies entity handles,
