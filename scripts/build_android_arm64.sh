@@ -19,7 +19,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 if [[ ! -s "$LIB" ]]; then
@@ -238,3 +238,17 @@ rm -f "$NPC_EXPECTED" "$NPC_ACTUAL"
   sha256sum "$ASSAULT_NPC" "$ASSAULT_NPC_SMOKE" | sed "s#$BUILD/##"
 } >> "$BUILD/android-smoke-manifest.txt"
 echo 'PASS: assault NPC standalone ARM64 callback module, C11 dlopen smoke and eight exports built; no engine integration.'
+
+# Multi-NPC ai_goal_assault host snapshot fanout linked to the actual AArch64
+# assault module. Compiled and inspected only; not executed on Quest hardware.
+GOAL_FANOUT="$BUILD/sin_android_assault_goal_fanout_tests"
+test -s "$GOAL_FANOUT" || { echo 'ERROR: missing ARM64 goal fanout fixture' >&2; exit 1; }
+"$READELF" -h "$GOAL_FANOUT" | grep -q 'Machine:.*AArch64' || {
+  echo 'ERROR: goal fanout fixture is not AArch64' >&2; exit 1; }
+"$READELF" -d "$GOAL_FANOUT" | grep -q 'NEEDED.*libsin_assault_npc_c_abi.so' || {
+  echo 'ERROR: goal fanout fixture must link actual native NPC shared module' >&2; exit 1; }
+{
+  printf 'assault_goal_fanout_scope=mock_engine_not_sourcevr\n'
+  sha256sum "$GOAL_FANOUT" | sed "s#$BUILD/##"
+} >> "$BUILD/android-smoke-manifest.txt"
+echo 'PASS: multi-NPC ai_goal_assault fanout executable built for AArch64 with native assault C ABI linkage.'

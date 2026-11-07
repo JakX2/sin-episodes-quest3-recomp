@@ -751,6 +751,29 @@ if(ANDROID AND SIN_BUILD_ANDROID_SMOKE)
   add_dependencies(sin_android_assault_npc_c_abi_smoke sin_assault_npc_c_abi)
 endif()
 
+# Host-side ai_goal_assault fanout over the independently compiled native NPC
+# module. Uses a FAKE level and generation-aware actor/rally registry only.
+if(BUILD_TESTING AND NOT ANDROID)
+  add_executable(sin_assault_goal_fanout_tests
+    tests/test_assault_goal_fanout.cpp)
+  target_include_directories(sin_assault_goal_fanout_tests PRIVATE include)
+  target_link_libraries(sin_assault_goal_fanout_tests PRIVATE sin_assault_npc_c_abi)
+  target_compile_options(sin_assault_goal_fanout_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_assault_goal_fanout_tests
+    COMMAND sin_assault_goal_fanout_tests)
+endif()
+# Same compiled host integration fixture running on Android Bionic x86_64;
+# this still does not create a SourceVR game entity or register map inputs.
+if(ANDROID AND SIN_BUILD_ANDROID_SMOKE)
+  add_executable(sin_android_assault_goal_fanout_tests
+    tests/test_assault_goal_fanout.cpp)
+  target_include_directories(sin_android_assault_goal_fanout_tests PRIVATE include)
+  target_link_libraries(sin_android_assault_goal_fanout_tests PRIVATE sin_assault_npc_c_abi)
+  target_compile_options(sin_android_assault_goal_fanout_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+endif()
+
 # Native C ABI wrapper around scene actor bridge. Still NOT Source/Quest game DLL.
 add_library(sin_scene_actor_c_abi SHARED src/scene_actor_c_api.cpp)
 target_link_libraries(sin_scene_actor_c_abi PRIVATE sin_scene_actor_bridge)
