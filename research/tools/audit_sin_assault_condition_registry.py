@@ -62,6 +62,52 @@ ASSAULT_USE_SITES = (
 )
 
 
+# A separate original CAI_AssaultBehavior helper at 0x220CE520 accepts an
+# arbitrary integer argument and stores it into m_ReceivedAssaultCue (+0x20),
+# resets two owner NPC fields, then tail-jumps to SetCondition(COND_PROVOKED).
+# Its name and any callsite passing 4 remain UNKNOWN. This demonstrates an
+# integer cue signaling mechanism, NOT proof of the source of cue override 4.
+RECEIVED_CUE_SETTER_VA = 0x220CE520
+RECEIVED_CUE_SETTER_WITNESSES = (
+    (0x220CE520, bytes.fromhex("8b 41 04 33 d2 3b c2 74 0c")),
+    (0x220CE529, bytes.fromhex("89 90 64 08 00 00")),
+    (0x220CE52F, bytes.fromhex("89 90 5c 08 00 00")),
+    (0x220CE535, bytes.fromhex("8b 44 24 04")),
+    (0x220CE539, bytes.fromhex("89 41 20")),
+    (0x220CE53C, bytes.fromhex("8b 49 04")),
+    (0x220CE53F, bytes.fromhex("c7 44 24 04 18 00 00 00")),
+)
+RECEIVED_CUE_TAIL_JUMP_VA = 0x220CE547
+RECEIVED_CUE_TAIL_TARGET_VA = 0x22039760
+
+
+def verify_received_cue_signaling_helper(pe: PEImage) -> dict:
+    for va, opcode in RECEIVED_CUE_SETTER_WITNESSES:
+        require(pe.at(va, len(opcode)) == opcode,
+                f"generic assault received-cue helper changed at 0x{va:08X}")
+    code = pe.at(RECEIVED_CUE_TAIL_JUMP_VA, 5)
+    require(code[0] == 0xE9, "generic cue helper no longer tail-jumps")
+    target = (RECEIVED_CUE_TAIL_JUMP_VA + 5 +
+              struct.unpack_from("<i", code, 1)[0]) & 0xFFFFFFFF
+    require(target == RECEIVED_CUE_TAIL_TARGET_VA,
+            "generic cue helper no longer signals COND_PROVOKED")
+    return {
+        "original_helper_va": "0x220CE520",
+        "input": "integer argument at original stack +0x04",
+        "effect": "store integer into m_ReceivedAssaultCue at behavior +0x20",
+        "additional_effects": [
+            "if owner NPC exists, zero owner fields +0x864 and +0x85C",
+            "tail jump into original SetCondition(COND_PROVOKED, ID 0x18)",
+        ],
+        "tail_jump_va": "0x220CE547",
+        "tail_jump_target": "0x22039760",
+        "important_limit":
+            "No verified caller passing value 4 was found. "
+            "This helper can accept integer 4 in principle, but does not prove "
+            "which engine event or map input sets received cue override 4.",
+    }
+
+
 def require(condition: bool, explanation: str) -> None:
     if not condition:
         raise VerificationError(explanation)
@@ -130,6 +176,7 @@ def audit_original(pe: PEImage) -> dict:
         "verified_assault_callsites": len(callers),
         "original_conditions": conditions,
         "original_assault_condition_use_sites": callers,
+        "original_received_cue_signaling_helper": verify_received_cue_signaling_helper(pe),
         "semantic_milestones": {
             "BeginAssault": "COND_PROVOKED (0x18), not COND_RECEIVED_ORDERS (0x3B)",
             "gunfire_assault_cue": "COND_HEAR_COMBAT (0x33)",
@@ -142,7 +189,7 @@ def audit_original(pe: PEImage) -> dict:
             "The meaning of each registered condition is resolved, not its entire NPC sensor/state propagation logic.",
             "This is a selected assault-relevant subset, not an exhaustive list of Source AI conditions.",
             "Original 2006 numeric condition IDs are diagnostic metadata, not a SourceVR/AArch64 engine ABI.",
-            "Received assault-cue override value 4 has NOT been proven to be a write to CAI_AssaultBehavior.",
+            "A verified generic integer cue setter exists at 0x220CE520, but no caller supplying override value 4 has been proven.",
         ],
     }
 
