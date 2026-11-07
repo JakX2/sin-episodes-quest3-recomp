@@ -66,7 +66,7 @@ global flag:
    with numeric condition **`0x18`**, at
    **`0x220CFFAC`**.
 
-The precise name of NPC condition `0x18` remains unproven.
+The original DLL's independent condition-name registry (new November 7 audit) proves that condition **`0x18` is `COND_PROVOKED`**. This is distinct from `COND_RECEIVED_ORDERS` (`0x3B`), which the assault diversion routine checks.
 The input does not check the configured cue mode before writing
 `m_ReceivedAssaultCue=1`. It is the separately recovered
 `CAI_AssaultBehavior` cue helper at `0x220CEA90` that
@@ -75,7 +75,7 @@ interprets the configured mode.
 Therefore, a goal configured with **mode 1** can remain in
 `TASK_AWAIT_CUE` until `BeginAssault` delivers value 1.
 A goal configured with **mode 2** still queries NPC
-condition `0x33` for its gunfire cue; the received value
+**`COND_HEAR_COMBAT`** (`0x33`) for its gunfire cue; the received value
 1 does not override that separate condition. Mode 3 writes
 received value 3 and succeeds without waiting.
 
@@ -193,7 +193,7 @@ not been run against the original finale BSP** in this session.
 1. Investigate original input/entity behavior that writes
    `m_ReceivedAssaultCue=4`, which the original cue
    predicate treats as an unconditional success override.
-2. Trace original condition ID `0x18` and the two
+2. Trace the producers/consumers of `COND_PROVOKED` (`0x18`) and the two
    NPC state fields `+0x864`/`+0x85C` to authoritative
    native enum and data-map symbols, not guesses.
 3. **Static BSP preflight now implemented:** the existing
