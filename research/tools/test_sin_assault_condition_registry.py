@@ -38,7 +38,7 @@ class SyntheticPE:
         # an unrelated missing helper instruction rather than its mutation.
         for address, opcode in audit.RECEIVED_CUE_SETTER_WITNESSES:
             self.put(address, opcode)
-        self.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\\xE9" + struct.pack(
+        self.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\xE9" + struct.pack(
             "<i", audit.RECEIVED_CUE_TAIL_TARGET_VA -
             audit.RECEIVED_CUE_TAIL_JUMP_VA - 5))
         for _, push, number, call, target in audit.ASSAULT_USE_SITES:
@@ -61,7 +61,8 @@ class RegistryAuditTests(unittest.TestCase):
         result = audit.audit_original(SyntheticPE())
         self.assertEqual(result["verified_registration_count"], len(audit.SOURCE_CONDITIONS))
         self.assertEqual(result["verified_assault_callsites"], len(audit.ASSAULT_USE_SITES))
-        self.assertIn("COND_PROVOKED", result["semantic_milestones"]["BeginAssault"])\n        self.assertEqual(result["original_received_cue_signaling_helper"]["tail_jump_target"], "0x22039760")
+        self.assertIn("COND_PROVOKED", result["semantic_milestones"]["BeginAssault"])
+        self.assertEqual(result["original_received_cue_signaling_helper"]["tail_jump_target"], "0x22039760")
 
     def test_every_received_cue_helper_witness_rejects_mutation(self):
         for address, opcode in audit.RECEIVED_CUE_SETTER_WITNESSES:
@@ -73,11 +74,11 @@ class RegistryAuditTests(unittest.TestCase):
 
     def test_received_cue_tail_jump_rejects_wrong_opcode_and_target(self):
         pe = SyntheticPE()
-        pe.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\\x90")
+        pe.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\x90")
         with self.assertRaises(audit.VerificationError):
             audit.audit_original(pe)
         pe = SyntheticPE()
-        pe.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\\xE9" + struct.pack(
+        pe.put(audit.RECEIVED_CUE_TAIL_JUMP_VA, b"\xE9" + struct.pack(
             "<i", audit.RECEIVED_CUE_TAIL_TARGET_VA + 4 -
             audit.RECEIVED_CUE_TAIL_JUMP_VA - 5))
         with self.assertRaises(audit.VerificationError):
