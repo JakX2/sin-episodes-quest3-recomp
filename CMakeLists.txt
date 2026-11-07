@@ -50,6 +50,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_assault_schedule_runner_tests COMMAND sin_assault_schedule_runner_tests)
 endif()
 
+# Original x86 CAI_AssaultBehavior::SetParameters outcome distinctions:
+# no rally, unresolved rally handle, successful link + cue reset.
+# Only a portable source-grounded reference, not SourceVR NPC integration.
+if(BUILD_TESTING)
+  add_executable(sin_original_assault_setparameters_outcomes_tests
+    tests/test_original_assault_setparameters_outcomes.cpp)
+  target_include_directories(sin_original_assault_setparameters_outcomes_tests PRIVATE include)
+  target_compile_options(sin_original_assault_setparameters_outcomes_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_assault_setparameters_outcomes_tests
+    COMMAND sin_original_assault_setparameters_outcomes_tests)
+endif()
+
 # Original 2006 Source condition registry IDs (names and x86 integer values).
 # Keep historic condition/task/schedule ID namespaces strictly separated.
 if(BUILD_TESTING)
