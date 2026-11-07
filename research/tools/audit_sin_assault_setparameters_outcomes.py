@@ -23,6 +23,8 @@ WITNESSES = (
     (0x220CFE30, "68 d0 3c 3f 22", "missing-candidate diagnostic format"),
     (0x220CFE3E, "e9 9f 00 00 00", "missing-candidate exit jump"),
     (0x220CFE49, "e8 e2 e5 ff ff", "selected point ownership helper call"),
+    (0x220CFE4E, "8b 13 8b cb ff 52 08",
+     "post-lock vtable GetRefEHandle without testing lock return AL"),
     (0x220CFE55, "8b 00 83 f8 ff 89 47 18", "stores selected rally EHANDLE"),
     (0x220CFE5D, "74 22", "unresolved/invalid handle jumps to failure"),
     (0x220CFE7C, "83 39 00", "resolved handle pointer test"),
