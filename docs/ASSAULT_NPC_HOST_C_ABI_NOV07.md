@@ -56,7 +56,9 @@ within one candidate snapshot.
    unlocks the point and the configured cue mode becomes zero;
    the previously received cue is preserved.
 3. If initialization fails after locking, the port attempts
-   an unlock without committing new cue fields.
+   an unlock without committing new cue fields. If that unlock fails,
+   the session retains the rally token and rejects destruction until a
+   later finish call successfully releases it.
 4. BeginAssault requires a bound session. A failed host condition
    setter restores the prior received-cue value, though the
    host's earlier reset side effects are not undone.
