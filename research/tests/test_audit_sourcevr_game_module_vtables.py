@@ -144,7 +144,7 @@ class SourceVRVTableTests(unittest.TestCase):
     def test_duplicate_concrete_rtti_reference(self):
         elf=FakeELF("libserver.so")
         elf.q(0x20600,0x10020)
-        with self.assertRaisesRegex(a.AuditError,"ambiguous"):
+        with self.assertRaisesRegex(a.AuditError,"RTTI references changed"):
             a.method_table(elf,"libserver.so")
 
     def test_missing_base_class_name(self):
