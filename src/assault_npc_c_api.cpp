@@ -51,14 +51,25 @@ private:
     bool ok_ = false;
 };
 static bool trit(int32_t value) noexcept { return value == 0 || value == 1; }
+// Original handle generations are NOT copied into this host-native identity.
+// The host must check the full current (index,generation) on every operation.
+static int32_t require_live_actor(sin_assault_session_v1* s) {
+    const int32_t live = s->host.is_actor_live(s->userdata, s->actor);
+    return live == 1 ? SIN_ASSAULT_OK :
+           live == 0 ? SIN_ASSAULT_ACTOR_EXPIRED : SIN_ASSAULT_HOST_FAILED;
+}
 static bool valid_origin(const float* p) noexcept {
     return p && std::isfinite(p[0]) && std::isfinite(p[1]) && std::isfinite(p[2]);
 }
 static int32_t unlock_after_error(sin_assault_session_v1* s, uint32_t point) {
     // Even if unlock fails, return a fatal host failure rather than continue
     // with a stale lease. The host retains cleanup responsibility.
-    const int32_t released = s->host.unlock_rally(s->userdata, point, s->actor);
-    if (released == 1) return SIN_ASSAULT_UNRESOLVED_RALLY;
+    try {
+        if (s->host.unlock_rally(s->userdata, point, s->actor) == 1) {
+            s->rally_id = 0;
+            return SIN_ASSAULT_UNRESOLVED_RALLY;
+        }
+    } catch (...) {} // never allow a host exception to hide a held lease
     s->rally_id = point; // preserve lease for explicit finish retry
     return SIN_ASSAULT_HOST_FAILED;
 }
@@ -70,7 +81,10 @@ uint32_t sin_assault_abi_version_v1(void) { return SIN_ASSAULT_ABI_VERSION_1; }
 sin_assault_session_v1* sin_assault_create_v1(
     const sin_assault_host_v1* host, void* user, sin_assault_ref_v1 actor,
     uint32_t provoked, uint32_t combat) {
-    if (!host || !complete(*host) || !valid(actor) ||
+    // Only access callback slots after the caller-declared table size agrees.
+    if (!host || host->version != SIN_ASSAULT_ABI_VERSION_1 ||
+        host->struct_size != sizeof(sin_assault_host_v1) ||
+        !complete(*host) || !valid(actor) ||
         provoked == UINT32_MAX || combat == UINT32_MAX || provoked == combat)
         return nullptr;
     try { return new (std::nothrow) sin_assault_session_v1{*host, user, actor, provoked, combat}; }
@@ -95,6 +109,8 @@ int32_t sin_assault_bind_v1(sin_assault_session_v1* s,
         count > SIN_ASSAULT_MAX_CANDIDATES || (count && !candidates) ||
         mode < 1 || mode > 3) return SIN_ASSAULT_INVALID_ARGUMENT;
     try {
+        const int32_t alive = require_live_actor(s);
+        if (alive != SIN_ASSAULT_OK) return alive;
         std::unordered_set<uint32_t> ids;
         std::vector<RallyPointCandidate> ranks;
         ranks.reserve(count);
@@ -119,6 +135,9 @@ int32_t sin_assault_bind_v1(sin_assault_session_v1* s,
         const int32_t locked = s->host.try_lock_rally(s->userdata, id, s->actor);
         if (!trit(locked)) return SIN_ASSAULT_HOST_FAILED;
         if (!locked) return SIN_ASSAULT_LOCK_REJECTED;
+        // From here forward rollback must be able to find this reservation,
+        // including if a hostile or broken callback unexpectedly throws.
+        s->rally_id = id;
         const int32_t resolved = s->host.resolve_rally(s->userdata, id);
         if (!trit(resolved)) {
             (void)unlock_after_error(s, id);
@@ -136,12 +155,22 @@ int32_t sin_assault_bind_v1(sin_assault_session_v1* s,
             (void)unlock_after_error(s, id);
             return SIN_ASSAULT_HOST_FAILED;
         }
+        // A host callback can remove or replace an NPC during setup.
+        // Recheck the exact generation before committing its cue fields.
+        const int32_t still_alive = require_live_actor(s);
+        if (still_alive != SIN_ASSAULT_OK) {
+            const int32_t released = unlock_after_error(s, id);
+            return released == SIN_ASSAULT_UNRESOLVED_RALLY
+                ? still_alive : SIN_ASSAULT_HOST_FAILED;
+        }
         apply_original_setparameters_cue_effects(
             s->cue, mode, OriginalAssaultParameterOutcome::ResolvedRally);
-        s->rally_id = id;
         *out_id = id;
         return SIN_ASSAULT_OK;
-    } catch (...) { return SIN_ASSAULT_HOST_FAILED; }
+    } catch (...) {
+        if (s->rally_id) (void)unlock_after_error(s, s->rally_id);
+        return SIN_ASSAULT_HOST_FAILED;
+    }
 }
 int32_t sin_assault_begin_v1(sin_assault_session_v1* s) {
     if (!s) return SIN_ASSAULT_INVALID_ARGUMENT;
@@ -149,8 +178,12 @@ int32_t sin_assault_begin_v1(sin_assault_session_v1* s) {
     if (!guard) return SIN_ASSAULT_REENTRANT;
     if (!s->rally_id) return SIN_ASSAULT_NOT_BOUND;
     try {
+        const int32_t alive = require_live_actor(s);
+        if (alive != SIN_ASSAULT_OK) return alive;
         if (s->host.reset_begin_assault_fields(s->userdata, s->actor) != 1)
             return SIN_ASSAULT_HOST_FAILED;
+        const int32_t after_reset = require_live_actor(s);
+        if (after_reset != SIN_ASSAULT_OK) return after_reset;
         const auto old = s->cue.received_cue;
         s->cue.received_cue = 1;
         if (s->host.set_npc_condition(s->userdata, s->actor, s->provoked) != 1) {
@@ -168,6 +201,8 @@ int32_t sin_assault_check_cue_v1(sin_assault_session_v1* s, uint32_t* out_ready)
     *out_ready = 0;
     if (!s->rally_id) return SIN_ASSAULT_NOT_BOUND;
     try {
+        const int32_t alive = require_live_actor(s);
+        if (alive != SIN_ASSAULT_OK) return alive;
         bool combat = false;
         if (s->cue.received_cue != 4 && s->cue.configured_mode == 2) {
             const int32_t heard = s->host.has_npc_condition(s->userdata, s->actor, s->hear_combat);
