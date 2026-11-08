@@ -1213,3 +1213,38 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_world_transform.py)
   endif()
 endif()
+
+# Phase 109: original SiN 2006 +0xEC parent attachment / world matrix
+# selection. The 2006 engine owns EHANDLE, animation vtables and lifetime.
+add_library(sin_original_parent_attachment STATIC
+  src/original_parent_attachment.cpp)
+target_include_directories(sin_original_parent_attachment PUBLIC include)
+target_link_libraries(sin_original_parent_attachment PUBLIC
+  sin_original_world_transform)
+target_compile_options(sin_original_parent_attachment PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_parent_attachment_tests
+    tests/test_original_parent_attachment.cpp)
+  target_link_libraries(sin_original_parent_attachment_tests PRIVATE
+    sin_original_parent_attachment)
+  target_compile_options(sin_original_parent_attachment_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_parent_attachment_tests
+    COMMAND sin_original_parent_attachment_tests)
+
+  add_executable(sin_original_parent_attachment_world_bridge_tests
+    tests/test_original_parent_attachment_world_bridge.cpp)
+  target_link_libraries(sin_original_parent_attachment_world_bridge_tests PRIVATE
+    sin_original_parent_attachment)
+  target_compile_options(sin_original_parent_attachment_world_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_parent_attachment_world_bridge_tests
+    COMMAND sin_original_parent_attachment_world_bridge_tests)
+
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_parent_attachment_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_parent_attachment.py)
+  endif()
+endif()
