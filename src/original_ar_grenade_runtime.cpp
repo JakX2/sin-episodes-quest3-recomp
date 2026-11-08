@@ -12,7 +12,7 @@ bool valid_vec(const Vec3& v) noexcept {
 
 bool valid_time_and_delay(float time, float delay) noexcept {
     return std::isfinite(time) && std::isfinite(time + delay) &&
-           time + delay >= time;
+           time + delay > time;
 }
 
 bool half_velocity_point(const Vec3& origin, const Vec3& velocity,
