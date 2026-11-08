@@ -26,6 +26,28 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_ar_grenade_runtime_tests
     COMMAND sin_original_ar_grenade_runtime_tests)
 endif()
+# Original 2006 rifle secondary-fire to CGrenadeAR gameplay integration:
+# authoritative player secondary ammo, source-backed player/NPC velocity
+# multipliers, generation-safe weapon selection and atomic host publication.
+# Engine-neutral only. NOT a SourceVR weapon or native game-server entity.
+add_library(sin_original_rifle_grenade_launch STATIC
+  src/original_rifle_grenade_launch.cpp)
+target_include_directories(sin_original_rifle_grenade_launch PUBLIC include)
+target_link_libraries(sin_original_rifle_grenade_launch PUBLIC
+  sin_original_ar_grenade_runtime sin_weapon_runtime)
+target_compile_options(sin_original_rifle_grenade_launch PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_rifle_grenade_launch_tests
+    tests/test_original_rifle_grenade_launch.cpp)
+  target_link_libraries(sin_original_rifle_grenade_launch_tests PRIVATE
+    sin_original_rifle_grenade_launch)
+  target_compile_options(sin_original_rifle_grenade_launch_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_rifle_grenade_launch_tests
+    COMMAND sin_original_rifle_grenade_launch_tests)
+endif()
+
 # Source-derived SiN assault-rifle settings consumed by the existing
 # engine-neutral weapon state machine (not a native Source game entity).
 if(BUILD_TESTING)
