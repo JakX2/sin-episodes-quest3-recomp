@@ -186,3 +186,11 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Added two C++ test executables and a synthetic PE32 audit CTest. The standalone harness passes **26/26** in Release and UndefinedBehaviorSanitizer locally, plus the owner-only original-DLL binary audit.
 - Details: [Phase 116 original pose-driver first pass](../research/phases/sin-original-pose-driver-initial-command-pass-20261108.md).
 - Still missing: actual second-pass pose evaluation, full native skeleton animation, full `client.dll`/`server.dll` replacements, campaign execution, and a standalone Meta Quest 3 VR application. No original executable or game assets distributed.
+
+## 2026-11-08: recursive pose-bone world matrices (Phase 117)
+
+- Verified the entire original `server.dll` recursive pose bone-world-matrix function `0x22100F30..0x22101026` called by the second pose pass at `0x22103DC8`. It tests a 32-bit per-bone computed bitset and avoids rebuilding cached results.
+- Original parent IDs come from 216-byte studio bone records; root bones multiply the external entity-root matrix by their local quaternion matrix. Child bones recursively ensure the parent world matrix, then compose parent × local, marking each resulting bone as computed.
+- Added `sin_original_pose_bone_matrix` portable C++17 library, retained bitset/snapshot support, cycle and invalid input guards, a Phase 116 pose-driver integration test and new CTest targets.
+- Original read-only DLL audit passes **5 SHA-pinned code regions, 8 CALL targets, 15 opcode anchors**. Local fresh ZIP extraction, Release tests and UBSan each pass 29/29. [Research](../research/phases/sin-original-pose-recursive-bone-matrices-20261108.md).
+- **Still not playable**: the rest of the second pose-driver pass, animation sampling, `CStudioHdr` and MDL-cache native adapters, full `client.dll`/`server.dll` replacements, actual campaign and Quest 3 VR app remain pending.
