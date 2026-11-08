@@ -176,6 +176,12 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_original_ar_grenade_touch_tests /data/local/tmp/sin_grenade_touch/sin_android_original_ar_grenade_touch_tests
             adb shell 'cd /data/local/tmp/sin_grenade_touch && chmod 700 sin_android_original_ar_grenade_touch_tests && ./sin_android_original_ar_grenade_touch_tests' | tr -d '\r' | tee build-android-emulator-x86_64/grenade-touch-bionic-output.txt
             grep -Fxq 'PASS: original SiN grenade touch contact/flag gates and one-shot blast (mock host only)' build-android-emulator-x86_64/grenade-touch-bionic-output.txt
+            # Native Bionic execution of the behavior-backed 2006 classname
+            # registrar and live weapon/grenade logic. MOCK engine host only.
+            adb shell mkdir -p /data/local/tmp/sin_gameplay_factory
+            adb push build-android-emulator-x86_64/sin_android_original_gameplay_entity_factory_tests /data/local/tmp/sin_gameplay_factory/sin_android_original_gameplay_entity_factory_tests
+            adb shell 'cd /data/local/tmp/sin_gameplay_factory && chmod 700 sin_android_original_gameplay_entity_factory_tests && ./sin_android_original_gameplay_entity_factory_tests' | tr -d '\r' | tee build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
+            grep -Fxq 'PASS: original SiN named rifle/grenade entity factories create actual portable gameplay (mock host only)' build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -197,6 +203,7 @@ jobs:
           grep -Fxq 'PASS: two native libserver/libclient CreateInterface probes dlopen via simulated GAMEBIN paths; real game interfaces fail closed' build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
           grep -Fxq 'PASS: original SiN ARNADE player/grunt rifle-to-grenade gameplay (mock host only)' build-android-emulator-x86_64/rifle-grenade-gameplay-bionic-output.txt
           grep -Fxq 'PASS: original SiN grenade touch contact/flag gates and one-shot blast (mock host only)' build-android-emulator-x86_64/grenade-touch-bionic-output.txt
+          grep -Fxq 'PASS: original SiN named rifle/grenade entity factories create actual portable gameplay (mock host only)' build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -213,5 +220,6 @@ jobs:
             build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
             build-android-emulator-x86_64/rifle-grenade-gameplay-bionic-output.txt
             build-android-emulator-x86_64/grenade-touch-bionic-output.txt
+            build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
           if-no-files-found: error
           retention-days: 7

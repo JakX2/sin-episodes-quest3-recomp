@@ -54,6 +54,34 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_ar_grenade_runtime_tests
     COMMAND sin_original_ar_grenade_runtime_tests)
 endif()
+# Original 2006 SiN server entity registrations. This actually constructs the
+# independently reconstructed rifle WeaponSession and CGrenadeAR Runtime when
+# the native host supplies a live entity ref. No guessed SourceVR game ABI.
+add_library(sin_original_gameplay_entity_factory STATIC
+  src/original_gameplay_entity_factory.cpp)
+target_include_directories(sin_original_gameplay_entity_factory PUBLIC include)
+target_link_libraries(sin_original_gameplay_entity_factory PUBLIC
+  sin_weapon_runtime sin_original_ar_grenade_touch sin_original_ar_grenade_runtime)
+target_compile_options(sin_original_gameplay_entity_factory PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_entity_factory_test_target sin_android_original_gameplay_entity_factory_tests)
+  else()
+    set(sin_entity_factory_test_target sin_original_gameplay_entity_factory_tests)
+  endif()
+  add_executable(${sin_entity_factory_test_target}
+    tests/test_original_gameplay_entity_factory.cpp)
+  target_link_libraries(${sin_entity_factory_test_target} PRIVATE
+    sin_original_gameplay_entity_factory)
+  target_compile_options(${sin_entity_factory_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_gameplay_entity_factory_tests
+      COMMAND ${sin_entity_factory_test_target})
+  endif()
+endif()
+
 # Original 2006 rifle secondary-fire to CGrenadeAR gameplay integration:
 # authoritative player secondary ammo, source-backed player/NPC velocity
 # multipliers, generation-safe weapon selection and atomic host publication.
