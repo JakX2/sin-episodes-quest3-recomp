@@ -7,6 +7,25 @@ add_library(sin_weapon_runtime STATIC src/weapon_runtime.cpp src/weapon_entity_i
 target_include_directories(sin_weapon_runtime PUBLIC include third_party/research)
 target_compile_options(sin_weapon_runtime PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 include(CTest)
+
+# Original SiN 2006 grenade_ar gameplay behavior reconstructed from server.dll.
+# Builds as a portable static component for future native gameplay host; no
+# SourceVR engine, map assets or Android runtime is linked into this module.
+add_library(sin_original_ar_grenade_runtime STATIC
+  src/original_ar_grenade_runtime.cpp)
+target_include_directories(sin_original_ar_grenade_runtime PUBLIC include)
+target_compile_options(sin_original_ar_grenade_runtime PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_ar_grenade_runtime_tests
+    tests/test_original_ar_grenade_runtime.cpp)
+  target_link_libraries(sin_original_ar_grenade_runtime_tests PRIVATE
+    sin_original_ar_grenade_runtime)
+  target_compile_options(sin_original_ar_grenade_runtime_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_ar_grenade_runtime_tests
+    COMMAND sin_original_ar_grenade_runtime_tests)
+endif()
 # Source-derived SiN assault-rifle settings consumed by the existing
 # engine-neutral weapon state machine (not a native Source game entity).
 if(BUILD_TESTING)
