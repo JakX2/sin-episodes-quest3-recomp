@@ -41,7 +41,9 @@ ANCHORS={
  0x220FE1F6:'83ed01',       # decrement ancestor index
  0x220FE203:'81c460020000', # 0x260-byte local frame
 }
-def read(pe,va,n):return pe.read_va(va,n)
+def read(pe,va,n):
+    reader=getattr(pe,"read",None)
+    return reader(va,n) if callable(reader) else pe.read_va(va,n)
 def branch(pe,va):
     b=read(pe,va,5)
     if b[0]!=0xe8:raise ValueError('expected near CALL at '+hex(va))
@@ -50,7 +52,8 @@ def verify(data):
     digest=hashlib.sha256(data).hexdigest()
     if digest!=SERVER_SHA:raise ValueError('original server DLL SHA-256 mismatch')
     pe=PE32(data)
-    if pe.image_base!=0x22000000:raise ValueError('original preferred image base mismatch')
+    base=getattr(pe,"image_base",getattr(pe,"base",None))
+    if base!=0x22000000:raise ValueError('original preferred image base mismatch')
     for name,(lo,hi,sha) in FUNCTIONS.items():
         if hashlib.sha256(read(pe,lo,hi-lo)).hexdigest()!=sha:
             raise ValueError('complete-function witness failed: '+name)
