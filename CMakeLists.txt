@@ -1039,3 +1039,27 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
   add_test(NAME sin_assault_task_runner_tests COMMAND sin_assault_task_runner_tests)
 endif()
+
+# Reconstructed 2006 CNPC_Jessica scripted item-throw behavior.
+# This is an original-free C++17 host reference, NOT a registered engine NPC.
+add_library(sin_original_jessica_throw STATIC
+  src/original_jessica_throw.cpp)
+target_include_directories(sin_original_jessica_throw PUBLIC include)
+target_compile_options(sin_original_jessica_throw PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_jessica_throw_tests
+    tests/test_original_jessica_throw.cpp)
+  target_link_libraries(sin_original_jessica_throw_tests PRIVATE
+    sin_original_jessica_throw)
+  target_compile_options(sin_original_jessica_throw_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_jessica_throw_tests
+    COMMAND sin_original_jessica_throw_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_jessica_binary_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_jessica_throw.py)
+  endif()
+endif()
