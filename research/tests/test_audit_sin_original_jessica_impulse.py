@@ -44,7 +44,7 @@ def test():
     bad[0]=0
     raises_value_error(lambda:audit.PE32(bad))
     bad=fake_pe()
-    bad[0x98]=0x0B
+    bad[0x98]=0x0C
     raises_value_error(lambda:audit.PE32(bad))
     bad=fake_pe()
     struct.pack_into("<I",bad,0x98+0xE0+20,0xFFFFFFFF)
