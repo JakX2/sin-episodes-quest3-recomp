@@ -1479,3 +1479,32 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_pose_driver_first_pass.py)
   endif()
 endif()
+
+# Phase 117: original pose driver recursive per-bone matrix path 0x22100F30.
+add_library(sin_original_pose_bone_matrix STATIC
+  src/original_pose_bone_matrix.cpp)
+target_include_directories(sin_original_pose_bone_matrix PUBLIC include)
+target_link_libraries(sin_original_pose_bone_matrix PUBLIC
+  sin_original_parent_bone_merge)
+target_compile_options(sin_original_pose_bone_matrix PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+add_executable(original_pose_bone_matrix
+  tests/test_original_pose_bone_matrix.cpp)
+target_link_libraries(original_pose_bone_matrix PRIVATE
+  sin_original_pose_bone_matrix)
+target_compile_options(original_pose_bone_matrix PRIVATE
+  -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+add_test(NAME original_pose_bone_matrix COMMAND original_pose_bone_matrix)
+add_executable(original_pose_bone_matrix_driver_bridge
+  tests/test_original_pose_bone_matrix_driver_bridge.cpp)
+target_link_libraries(original_pose_bone_matrix_driver_bridge PRIVATE
+  sin_original_pose_bone_matrix sin_original_pose_driver_first_pass)
+target_compile_options(original_pose_bone_matrix_driver_bridge PRIVATE
+  -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+add_test(NAME original_pose_bone_matrix_driver_bridge
+  COMMAND original_pose_bone_matrix_driver_bridge)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME original_pose_bone_matrix_audit_synthetic
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_pose_bone_matrix.py)
+endif()
