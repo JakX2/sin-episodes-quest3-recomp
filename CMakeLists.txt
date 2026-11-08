@@ -1315,3 +1315,38 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_bone_cache.py)
   endif()
 endif()
+
+# Phase 112: original SiN 2006 CBaseAnimating bone cache lifecycle
+# 0x220EB8D0, 0x22100450, 0x220FC5A0; no native x86 ABI calls.
+add_library(sin_original_bone_preparation STATIC
+  src/original_bone_preparation.cpp)
+target_include_directories(sin_original_bone_preparation PUBLIC include)
+target_link_libraries(sin_original_bone_preparation PUBLIC
+  sin_original_bone_cache)
+target_compile_options(sin_original_bone_preparation PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_bone_preparation_tests
+    tests/test_original_bone_preparation.cpp)
+  target_link_libraries(sin_original_bone_preparation_tests PRIVATE
+    sin_original_bone_preparation)
+  target_compile_options(sin_original_bone_preparation_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_bone_preparation_tests
+    COMMAND sin_original_bone_preparation_tests)
+
+  add_executable(sin_original_bone_preparation_studio_bridge_tests
+    tests/test_original_bone_preparation_studio_bridge.cpp)
+  target_link_libraries(sin_original_bone_preparation_studio_bridge_tests PRIVATE
+    sin_original_bone_preparation)
+  target_compile_options(sin_original_bone_preparation_studio_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_bone_preparation_studio_bridge_tests
+    COMMAND sin_original_bone_preparation_studio_bridge_tests)
+
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_bone_preparation_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_bone_preparation.py)
+  endif()
+endif()
