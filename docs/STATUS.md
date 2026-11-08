@@ -157,3 +157,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Locally verified **15/15 standalone CTests** in release and Debug UndefinedBehaviorSanitizer; **private original DLL audit passed**. GitHub CI results should be checked on the exact branch head.
 - Research and unimplemented internals: [Phase 113 original skeletal setup](../research/phases/sin-original-skeletal-setup-dispatch-20261108.md).
 - **Not yet playable**: `0x22106840` / `0x22103A60` / `0x22104D10` pose internals, `0x220ED290` / `0x220FE0C0` bone math, native model cache, `client.dll`/full `server.dll`, engine initialization and standalone Quest 3 VR gameplay remain pending.
+
+## 2026-11-08: parent-linked bone-name merge (Phase 114)
+
+- Original 2006 `server.dll` parent-bone constructor `0x220ED290` now reconstructed as independent C++17 behavior, including original case-insensitive studio-bone name resolver `0x220FFB30`, quaternion+position matrix construction `0x2226D250`, cached-parent-world bone copies, and local hierarchical fallback.
+- Proprietary PE32 verification passed **6 complete function SHA-256 ranges, 12 relative CALL targets and 20 instruction anchors** against unchanged `server.dll`. Original studiohdr bone count `+0x9C`, bone offset `+0xA0`, sorted-name byte indices `+0x16C`, and 216-byte bone-record stride are preserved in the safe metadata decoder.
+- Added `OriginalParentBoneMergeSkeletalAdapter` to plug the actual parent-bone matrix calculation into Phase 113's previous `compose_parented_bones` native callback while leaving model cache locking, pose drivers, live studiohdr and actual `SetupBones` host-controlled.
+- Added **4 new CTests**: cached/uncached matching and fallback, copied studiohdr validation, Phase 113 integration, and synthetic binary-audit corruption tests. Local standalone **19/19 CTests**, repeated under **UndefinedBehaviorSanitizer**, pass.
+- Research: [Phase 114 original parent-bone name merge](../research/phases/sin-original-parent-bone-name-merge-20261108.md).
+- Still **not a playable SiN build**: real animation solve, IK, native engine interfaces, complete `client.dll`/`server.dll`, campaign runtime, graphics and Meta Quest 3 APK remain pending. No proprietary binary or assets committed.
