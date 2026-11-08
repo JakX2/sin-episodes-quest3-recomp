@@ -5,6 +5,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <cstdio>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -302,4 +303,5 @@ int main() {
                LaunchCode::WrongWeaponOrOwner);
         assert(npc.prepared==1);
     }
+    std::puts("PASS: original SiN ARNADE player/grunt rifle-to-grenade gameplay (mock host only)");
 }
