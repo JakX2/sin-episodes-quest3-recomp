@@ -22,6 +22,7 @@ on:
       - 'research/tools/audit_sourcevr_game_module_vtables.py'
       - 'research/tools/audit_sourcevr_game_startup_dispatch.py'
       - 'research/tools/audit_original_sin_dllinit_factories.py'
+      - 'research/tools/audit_sin_original_ar_touch_gate.py'
       - 'research/tools/analyze_sin_assault_graph.py'
       - 'research/tools/audit_sin_original_druglab_vtables.py'
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
@@ -45,6 +46,7 @@ on:
       - 'research/tests/test_audit_sourcevr_game_module_vtables.py'
       - 'research/tests/test_audit_sourcevr_game_startup_dispatch.py'
       - 'research/tests/test_audit_original_sin_dllinit_factories.py'
+      - 'research/tests/test_audit_sin_original_ar_touch_gate.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -71,6 +73,7 @@ on:
       - 'research/tools/audit_sourcevr_game_module_vtables.py'
       - 'research/tools/audit_sourcevr_game_startup_dispatch.py'
       - 'research/tools/audit_original_sin_dllinit_factories.py'
+      - 'research/tools/audit_sin_original_ar_touch_gate.py'
       - 'research/tools/analyze_sin_assault_graph.py'
       - 'research/tools/audit_sin_original_druglab_vtables.py'
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
@@ -94,6 +97,7 @@ on:
       - 'research/tests/test_audit_sourcevr_game_module_vtables.py'
       - 'research/tests/test_audit_sourcevr_game_startup_dispatch.py'
       - 'research/tests/test_audit_original_sin_dllinit_factories.py'
+      - 'research/tests/test_audit_sin_original_ar_touch_gate.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -149,6 +153,8 @@ jobs:
         run: python -m unittest discover -s research/tests -p 'test_audit_sourcevr_game_startup_dispatch.py' -v
       - name: Verify original 2006 SiN server/client DLLInit factory requirements and failure exits (synthetic only)
         run: python -m unittest discover -s research/tests -p 'test_audit_original_sin_dllinit_factories.py' -v
+      - name: Verify original 2006 grenade collision contact/flag/Detonate gates (synthetic only)
+        run: python -m unittest discover -s research/tests -p 'test_audit_sin_original_ar_touch_gate.py' -v
       - name: Verify original 2006 SiN client/server PE32 vtable RTTI and counts (synthetic only)
         run: python -m unittest discover -s research/tests -p 'test_audit_original_sin_game_vtables.py' -v
       - name: Check original SiN assault BSP graph routing
