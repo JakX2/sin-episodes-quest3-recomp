@@ -146,3 +146,14 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Private original binary verification: **six complete function SHA-256 witnesses, 15 exact CALL targets, 22 instruction anchors, eight inherited vtable slot matches**. Standalone project: **12/12 CTests**, including undefined-behavior sanitizer.
 - Research and limitations: [Phase 112 original bone-cache preparation](../research/phases/sin-original-bone-cache-preparation-20261108.md).
 - This is **not** a replacement game server/client DLL or a playable Quest 3 app. Native MDL and bone solver `0x220EF510`, renderer, complete client HUD and engine interfaces are still pending.
+
+## 2026-11-08: original skeletal setup dispatch (Phase 113)
+
+- Byte-verified 2006 SiN `server.dll` virtual `+0x2B4` at `0x220EF510`: acquires MDL-cache lock, refreshes world origin, conditionally evaluates pose-driver stages when entity `+0x3D8` is nonnull, always calls virtual base pose `+0x2AC`, then chooses parent-bone merge `0x220ED290` or ordinary construction `0x220FE0C0`.
+- Source evidence: **3 complete SHA-256 function witnesses, 22 exact x86 relative CALL edges, 21 instruction byte anchors and 8 inherited virtual table checks** against the owner-provided original DLL.
+- Verified `CBaseAnimating` virtual `+0x2AC` maps to `0x220F2AC0`; `CNPC_Jessica` and other derived classes checked map to `0x220F5430`. Virtual `+0x2B8` is `0x220F0B80` in all eight tables.
+- New host-neutral `IOriginalSkeletalSetupHost` and portable `run_original_skeletal_setup` coordinate callback ordering while preserving native-owner boundaries for real model-cache locks, animation solvers, parent EHANDLE validation, and bone matrices.
+- `OriginalSkeletalPreparationAdapter` connects the dispatcher to Phase 112 cache preparation, Phase 111 compact matrix remap and Phase 110 studio attachment. Added tests for normal/pose-driver/parent-merge routes, dynamic parent changes, failure cleanup, stale versus fresh cache effects and synthetic PE32 mutations.
+- Locally verified **15/15 standalone CTests** in release and Debug UndefinedBehaviorSanitizer; **private original DLL audit passed**. GitHub CI results should be checked on the exact branch head.
+- Research and unimplemented internals: [Phase 113 original skeletal setup](../research/phases/sin-original-skeletal-setup-dispatch-20261108.md).
+- **Not yet playable**: `0x22106840` / `0x22103A60` / `0x22104D10` pose internals, `0x220ED290` / `0x220FE0C0` bone math, native model cache, `client.dll`/full `server.dll`, engine initialization and standalone Quest 3 VR gameplay remain pending.
