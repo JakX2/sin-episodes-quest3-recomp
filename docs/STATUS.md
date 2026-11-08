@@ -81,3 +81,13 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Original DLL full hash, nine exact opcode anchors and three relative calls were privately checked against the unchanged original PE32. Script: [original impulse audit](../research/tools/audit_sin_original_jessica_impulse.py).
 - Evidence and open questions: [Phase 105 report](../research/phases/sin-original-jessica-additive-velocity-20261108.md).
 - **Not yet proven:** complete real SourceVR physics ABI, real player virtual target getter, runtime value of zero-vector sentinel under all conditions, or actual Quest 3 gameplay. This is a host-neutral approximation, not a native client/server module.
+
+
+## 2026-11-08: original Jessica player collision-center getter
+
+- Original 2006 SHA-pinned server.dll vtable byte slot +0x214 in CBasePlayer, CHL2_Player and CNPC_Jessica resolves to the same function at `0x2214BD40`. Jessica calls this slot at `0x22362509`.
+- This returns a copyable world-space collision OBB midpoint, **not eye position**. Helpers `0x2214B020` and `0x2214B0D0` compute the midpoint and select translation vs entity-world transform based on collision flags, numeric solid type and orientation.
+- New independently authored C++17 `sin_original_jessica_target_center` library and target/ballistic integration tests. A read-only private binary verifier checks three complete function digests, three RTTI/vtable chains, three call targets, twelve opcode anchors and the original 0.5f multiplier.
+- Local original-DLL audit and C++ tests passed. GitHub CI should be treated separately until its run completes.
+- This is **not** an engine-owned player, native game DLL, executable campaign, Android APK or Quest 3 headset test. Source engine vector temporary storage, collision snapshots and correct real entity transforms require host implementation.
+- Detailed provenance: [Phase 106 report](../research/phases/sin-original-jessica-player-world-center-20261108.md). Kept on a stacked draft branch above PR #157.
