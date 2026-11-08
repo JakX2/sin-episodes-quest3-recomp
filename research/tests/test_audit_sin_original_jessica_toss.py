@@ -29,12 +29,12 @@ def rejects(fn):
 def test():
     b=fake_pe()
     pe=audit.PE32(b)
-    assert pe.read_va(0x22001000,5)==b"\xE8\xFB\x0F\x00\x00"
-    assert audit.rel_target(pe,0x22001000,0xE8)==0x22002000
+    assert pe.read(0x22001000,5)==b"\xE8\xFB\x0F\x00\x00"
+    assert pe.branch_target(0x22001000,0xE8)==0x22002000
     rejects(lambda:audit.verify(b))
-    rejects(lambda:pe.read_va(0x2200103F,2))
-    rejects(lambda:pe.read_va(0x22000000,1))
-    rejects(lambda:audit.rel_target(pe,0x22001000,0xE9))
+    rejects(lambda:pe.read(0x2200103F,2))
+    rejects(lambda:pe.read(0x22000000,1))
+    rejects(lambda:pe.branch_target(0x22001000,0xE9))
     for at,val in ((0,0),(0x80,0),(0x98,0x0C)):
         broken=fake_pe();broken[at]=val
         rejects(lambda:audit.PE32(broken))
