@@ -1282,3 +1282,36 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_studio_attachment.py)
   endif()
 endif()
+
+# Phase 111: original SiN compact animated bone cache remap and entity
+# world-matrix fallback (0x220ED1B0/0x221004C0/0x220EBE70).
+add_library(sin_original_bone_cache STATIC src/original_bone_cache.cpp)
+target_include_directories(sin_original_bone_cache PUBLIC include)
+target_link_libraries(sin_original_bone_cache PUBLIC
+  sin_original_studio_attachment)
+target_compile_options(sin_original_bone_cache PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_bone_cache_tests
+    tests/test_original_bone_cache.cpp)
+  target_link_libraries(sin_original_bone_cache_tests PRIVATE
+    sin_original_bone_cache)
+  target_compile_options(sin_original_bone_cache_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_bone_cache_tests COMMAND sin_original_bone_cache_tests)
+
+  add_executable(sin_original_bone_cache_studio_bridge_tests
+    tests/test_original_bone_cache_studio_bridge.cpp)
+  target_link_libraries(sin_original_bone_cache_studio_bridge_tests PRIVATE
+    sin_original_bone_cache)
+  target_compile_options(sin_original_bone_cache_studio_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_bone_cache_studio_bridge_tests
+    COMMAND sin_original_bone_cache_studio_bridge_tests)
+
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_bone_cache_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_bone_cache.py)
+  endif()
+endif()
