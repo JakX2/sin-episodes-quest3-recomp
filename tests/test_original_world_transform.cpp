@@ -124,7 +124,11 @@ void test_invalid(){
     Host h;
     assert(refresh_original_world_transform(h,1).code==Code::MissingEntity);
     h.nodes[1]=node({0,0,0},{0,0,0},2);
-    assert(refresh_original_world_transform(h,1).code==Code::MissingParent);
+    // Original invalid EHANDLE serial falls through to no-parent copy.
+    auto stale=refresh_original_world_transform(h,1);
+    assert(stale.code==Code::Refreshed);
+    vec(stale.world_origin,{0,0,0});
+    h.events.clear();h.nodes[1].dirty=true;
     h.nodes[2]=node({1,0,0},{0,0,0},1);
     assert(refresh_original_world_transform(h,1).code==Code::ParentCycle);
     assert(h.events.empty());

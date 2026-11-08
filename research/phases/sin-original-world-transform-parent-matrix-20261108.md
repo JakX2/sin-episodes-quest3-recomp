@@ -29,7 +29,13 @@ twelve original relative CALL destinations and fourteen instruction witnesses.
 The original `0x2213D960` chooses either parent world matrix or an
 attachment-based transform depending on the child's `+0xEC` selector, parent
 model/virtual query, and attachment-resolution success. On attachment lookup
-failure it may fall back to ordinary parent world matrix. The original
+failure it may fall back to ordinary parent world matrix. 
+A stale or serial-mismatched parent handle takes the original no-parent
+branch. The portable runtime now models this as a local-to-world fallback
+instead of failing the whole refresh. A host must resolve EHANDLE generation
+before reporting a parent entity snapshot.
+
+The original
 attachment lookup's *full* ABI and complete parent matrix getter are not yet
 reconstructed. Therefore an engine host supplies the optional attachment
 matrix rather than this portable module inventing attachment/bone data.

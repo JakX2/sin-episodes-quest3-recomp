@@ -58,7 +58,9 @@ WorldRefreshResult refresh_impl(Walk& walk,WorldEntityId id) {
     updated.world_matrix=*local;
     updated.world_origin=initial->local_origin;
     updated.world_angles=initial->local_angles;
-    if(initial->parent) {
+    // The 2006 EHANDLE generation check treats a stale/deleted parent
+    // as absent; in that case retain the direct local->world fallback.
+    if(initial->parent && walk.host.snapshot(*initial->parent)) {
         auto parent_result=refresh_impl(walk,*initial->parent);
         if(!parent_result.successful()) {
             return {parent_result.code==Code::MissingEntity?
