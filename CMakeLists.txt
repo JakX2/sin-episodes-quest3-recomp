@@ -1248,3 +1248,37 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_parent_attachment.py)
   endif()
 endif()
+
+# Phase 110: original SiN CBaseAnimating attachment matrix / bone resolve,
+# with a native-host-only studiohdr and MDL cache boundary.
+add_library(sin_original_studio_attachment STATIC
+  src/original_studio_attachment.cpp)
+target_include_directories(sin_original_studio_attachment PUBLIC include)
+target_link_libraries(sin_original_studio_attachment PUBLIC
+  sin_original_parent_attachment sin_original_world_transform)
+target_compile_options(sin_original_studio_attachment PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_studio_attachment_tests
+    tests/test_original_studio_attachment.cpp)
+  target_link_libraries(sin_original_studio_attachment_tests PRIVATE
+    sin_original_studio_attachment)
+  target_compile_options(sin_original_studio_attachment_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_studio_attachment_tests
+    COMMAND sin_original_studio_attachment_tests)
+
+  add_executable(sin_original_studio_attachment_world_bridge_tests
+    tests/test_original_studio_attachment_world_bridge.cpp)
+  target_link_libraries(sin_original_studio_attachment_world_bridge_tests PRIVATE
+    sin_original_studio_attachment)
+  target_compile_options(sin_original_studio_attachment_world_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_studio_attachment_world_bridge_tests
+    COMMAND sin_original_studio_attachment_world_bridge_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_studio_attachment_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_studio_attachment.py)
+  endif()
+endif()
