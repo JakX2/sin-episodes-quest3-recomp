@@ -50,8 +50,8 @@ weight, and uses the smaller current/new cap. The quaternion operation
 is represented by a host callback rather than a guessed native formula.
 
 Types 4/6 use command `+0x5C` as an enable/disable condition for a
-track cap. When zero, they clear the cap; otherwise, they clamp it against
-`1 - command[+0x54]`. Type 4 additionally multiplies influence by
+track cap. When **positive**, they clear the cap; when zero or negative,
+they clamp it against `1 - command[+0x54]`. Type 4 additionally multiplies influence by
 `1 - command[+0x58] * command[+0x54]`.
 
 ## Binary verification
