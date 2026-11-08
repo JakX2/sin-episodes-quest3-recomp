@@ -164,6 +164,13 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_sourcevr_module_probe_tests /data/local/tmp/sin_sourcevr_module_probe/sin_android_sourcevr_module_probe_tests
             adb shell 'cd /data/local/tmp/sin_sourcevr_module_probe && chmod 700 sin_android_sourcevr_module_probe_tests && ./sin_android_sourcevr_module_probe_tests /data/local/tmp/sin_sourcevr_module_probe' | tr -d '\r' | tee build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
             grep -Fxq 'PASS: two native libserver/libclient CreateInterface probes dlopen via simulated GAMEBIN paths; real game interfaces fail closed' build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
+            # Independently reconstructed original SiN Assault Rifle -> CGrenadeAR
+            # game logic. This executes ON real x86_64 Android Bionic with
+            # fabricated host callbacks, NOT a SourceVR game module or Quest.
+            adb shell mkdir -p /data/local/tmp/sin_rifle_grenade
+            adb push build-android-emulator-x86_64/sin_android_original_rifle_grenade_launch_tests /data/local/tmp/sin_rifle_grenade/sin_android_original_rifle_grenade_launch_tests
+            adb shell 'cd /data/local/tmp/sin_rifle_grenade && chmod 700 sin_android_original_rifle_grenade_launch_tests && ./sin_android_original_rifle_grenade_launch_tests' | tr -d '\r' | tee build-android-emulator-x86_64/rifle-grenade-gameplay-bionic-output.txt
+            grep -Fxq 'PASS: original SiN ARNADE player/grunt rifle-to-grenade gameplay (mock host only)' build-android-emulator-x86_64/rifle-grenade-gameplay-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -183,6 +190,7 @@ jobs:
           grep -Fxq 'PASS: original ai_goal_assault C ABI fanout across multiple generation-safe mock NPCs and rally ownership' build-android-emulator-x86_64/assault-goal-fanout-bionic-output.txt
           grep -Fxq 'XR_SOURCE_POSE_BIONIC_PASS' build-android-emulator-x86_64/xr-pose-bionic-output.txt
           grep -Fxq 'PASS: two native libserver/libclient CreateInterface probes dlopen via simulated GAMEBIN paths; real game interfaces fail closed' build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
+          grep -Fxq 'PASS: original SiN ARNADE player/grunt rifle-to-grenade gameplay (mock host only)' build-android-emulator-x86_64/rifle-grenade-gameplay-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -197,5 +205,6 @@ jobs:
             build-android-emulator-x86_64/assault-goal-fanout-bionic-output.txt
             build-android-emulator-x86_64/xr-pose-bionic-output.txt
             build-android-emulator-x86_64/sourcevr-module-probe-bionic-output.txt
+            build-android-emulator-x86_64/rifle-grenade-gameplay-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
