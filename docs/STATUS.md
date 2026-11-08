@@ -99,3 +99,13 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Portably reconstructed parent-relative set and recursive refresh with matrix transpose, cache invalidation mask 4, host-based original effects, and added malformed-parent/NaN safety checks. New `OriginalAbsoluteImpulseAdapter` connects this to the prior additive velocity/Jessica throw reconstruction without pretending a native engine vtable is complete.
 - Standalone original-free C++ behavior, adapter integration and synthetic PE32 tests passed locally; GitHub CI is checked separately. Full research: [Phase 107 original parent-aware absolute velocity](../research/phases/sin-original-parent-aware-absolute-velocity-20261108.md).
 - **Not yet playable:** full native SourceVR `CBaseEntity` ownership, EHANDLE resolution, `0x2213FA60` world-transform recalculation, real entity virtual side effects, `client.dll` game HUD connection, running SiN maps or Quest 3 standalone VR package. No original binary/assets committed.
+
+## 2026-11-08: original parented world-transform refresh (Phase 108)
+
+- Verified authentic original 2006 server.dll world-transform routine at `0x2213FA60`, local AngleMatrix helper `0x2226CC20`, parent affine concatenation `0x22269520`, MatrixAngles `0x22268A60`, parent/attachment transform getter `0x2213D960`, matrix copy, translation extraction and angle-comparison helper.
+- Private read-only SHA-pinned audit PASSED **8 complete function hashes, 12 relative CALL targets and 14 instruction anchors** against the owner's unchanged original `server.dll`. Original DLLs are never committed.
+- New host-neutral `sin_original_world_transform` reconstructs local/world origin, angles and 3x4 matrices with optional parent/attachment transform, lazy dirty cache, finite checks and cycle/depth guards. The host retains real EHANDLE ownership, attachment lookup and engine callback side effects.
+- New `OriginalWorldTransformVelocityBridge` connects the preceding Phase 107 absolute-velocity module to parent matrix refresh. An integration test shows the existing additive impulse uses the updated parent orientation.
+- Local C++17 standalone tests, adapter integration and synthetic PE32 audit passed; GitHub Actions status must be checked on the final commit.
+- Evidence: [Phase 108 original parented world transforms](../research/phases/sin-original-world-transform-parent-matrix-20261108.md). This is a stacked draft above PR #159.
+- **Not yet done:** original native CBaseEntity ABI/attachments, full SourceVR engine integration, playable SiN maps, replacement client/server DLLs or a standalone Quest 3 APK.

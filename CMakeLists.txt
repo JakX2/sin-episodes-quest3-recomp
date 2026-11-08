@@ -1180,3 +1180,36 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_absolute_velocity.py)
   endif()
 endif()
+
+# Phase 108: original SiN world transform refresh 0x2213FA60.
+# All EHANDLE / attachment and engine-side callbacks are host controlled.
+add_library(sin_original_world_transform STATIC
+  src/original_world_transform.cpp)
+target_include_directories(sin_original_world_transform PUBLIC include)
+target_compile_options(sin_original_world_transform PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_world_transform_tests
+    tests/test_original_world_transform.cpp)
+  target_link_libraries(sin_original_world_transform_tests PRIVATE
+    sin_original_world_transform)
+  target_compile_options(sin_original_world_transform_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_world_transform_tests
+    COMMAND sin_original_world_transform_tests)
+
+  add_executable(sin_world_transform_velocity_bridge_tests
+    tests/test_original_world_transform_velocity_bridge.cpp)
+  target_link_libraries(sin_world_transform_velocity_bridge_tests PRIVATE
+    sin_original_world_transform sin_original_absolute_velocity
+    sin_original_jessica_impulse)
+  target_compile_options(sin_world_transform_velocity_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_world_transform_velocity_bridge_tests
+    COMMAND sin_world_transform_velocity_bridge_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_world_transform_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_world_transform.py)
+  endif()
+endif()
