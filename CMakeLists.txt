@@ -8,6 +8,34 @@ target_include_directories(sin_weapon_runtime PUBLIC include third_party/researc
 target_compile_options(sin_weapon_runtime PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 include(CTest)
 
+# Original grenade touch collision guard from genuine 2006 server.dll:
+# raw +0x11C, +0x120 mask 0x4, virtual +0xFC reference, separate +0x795
+# flag setter and Detonate slot250. No SourceVR physics method is called.
+add_library(sin_original_ar_grenade_touch STATIC
+  src/original_ar_grenade_touch.cpp)
+target_include_directories(sin_original_ar_grenade_touch PUBLIC include)
+target_link_libraries(sin_original_ar_grenade_touch PUBLIC
+  sin_original_ar_grenade_runtime)
+target_compile_options(sin_original_ar_grenade_touch PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_touch_test_target sin_android_original_ar_grenade_touch_tests)
+  else()
+    set(sin_touch_test_target sin_original_ar_grenade_touch_tests)
+  endif()
+  add_executable(${sin_touch_test_target}
+    tests/test_original_ar_grenade_touch.cpp)
+  target_link_libraries(${sin_touch_test_target} PRIVATE
+    sin_original_ar_grenade_touch)
+  target_compile_options(${sin_touch_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_ar_grenade_touch_tests
+      COMMAND ${sin_touch_test_target})
+  endif()
+endif()
+
 # Original SiN 2006 grenade_ar gameplay behavior reconstructed from server.dll.
 # Builds as a portable static component for future native gameplay host; no
 # SourceVR engine, map assets or Android runtime is linked into this module.
