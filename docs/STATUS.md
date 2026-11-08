@@ -91,3 +91,11 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Local original-DLL audit and C++ tests passed. GitHub CI should be treated separately until its run completes.
 - This is **not** an engine-owned player, native game DLL, executable campaign, Android APK or Quest 3 headset test. Source engine vector temporary storage, collision snapshots and correct real entity transforms require host implementation.
 - Detailed provenance: [Phase 106 report](../research/phases/sin-original-jessica-player-world-center-20261108.md). Kept on a stacked draft branch above PR #157.
+
+## 2026-11-08: original parent-aware absolute velocity (Phase 107)
+
+- Recovered additional authentic 2006 `server.dll` x86 entity motion functions: `0x22141A00` absolute velocity update, `0x2213D750` lazy absolute velocity refresh, `0x22268E90` inverse parent rotation, `0x22268C80` forward parent rotation, `0x2213E1A0` local vector setter and `0x2214B620` dependency invalidation.
+- Original DLL read-only verification passed **six complete function hashes, ten relative call targets, fifteen instruction signatures**. Source-like fields are world velocity `+0x250`, local velocity `+0x2C8`, parent matrix `+0x268`, parent handle `+0xF0`, dirty flags `+0xB8`.
+- Portably reconstructed parent-relative set and recursive refresh with matrix transpose, cache invalidation mask 4, host-based original effects, and added malformed-parent/NaN safety checks. New `OriginalAbsoluteImpulseAdapter` connects this to the prior additive velocity/Jessica throw reconstruction without pretending a native engine vtable is complete.
+- Standalone original-free C++ behavior, adapter integration and synthetic PE32 tests passed locally; GitHub CI is checked separately. Full research: [Phase 107 original parent-aware absolute velocity](../research/phases/sin-original-parent-aware-absolute-velocity-20261108.md).
+- **Not yet playable:** full native SourceVR `CBaseEntity` ownership, EHANDLE resolution, `0x2213FA60` world-transform recalculation, real entity virtual side effects, `client.dll` game HUD connection, running SiN maps or Quest 3 standalone VR package. No original binary/assets committed.
