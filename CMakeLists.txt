@@ -1454,3 +1454,28 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_ordinary_bone.py)
   endif()
 endif()
+
+# Phase 116: source-observed SiN 2006 pose-driver reset and FIRST command pass.
+# Full animation second pass and original x86 runtime are not implemented.
+add_library(sin_original_pose_driver_first_pass STATIC
+  src/original_pose_driver_first_pass.cpp)
+target_include_directories(sin_original_pose_driver_first_pass PUBLIC include)
+target_link_libraries(sin_original_pose_driver_first_pass PUBLIC
+  sin_original_ordinary_bone)
+target_compile_options(sin_original_pose_driver_first_pass PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  foreach(name original_pose_driver_first_pass original_pose_driver_record_parser)
+    add_executable(sin_${name}_tests tests/test_${name}.cpp)
+    target_link_libraries(sin_${name}_tests PRIVATE
+      sin_original_pose_driver_first_pass)
+    target_compile_options(sin_${name}_tests PRIVATE
+      $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+    add_test(NAME sin_${name}_tests COMMAND sin_${name}_tests)
+  endforeach()
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_pose_driver_first_pass_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_pose_driver_first_pass.py)
+  endif()
+endif()
