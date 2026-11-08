@@ -61,6 +61,7 @@ int main(){
     data.prior_world_matrices.resize(3);
     data.prior_world_matrices[2]=*make_local_angle_matrix({0,0,0},{90,0,0});
     data.world_origin={10,20,30};
+    data.bone_mask=0; // stale host mask must NOT override caller mask
     args.data=data;
     OriginalOrdinaryBoneSkeletalAdapter ordinary(native,args);
     OriginalParentBoneMergeSkeletalAdapter both(ordinary,parent);
