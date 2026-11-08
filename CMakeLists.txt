@@ -37,15 +37,24 @@ target_link_libraries(sin_original_rifle_grenade_launch PUBLIC
   sin_original_ar_grenade_runtime sin_weapon_runtime)
 target_compile_options(sin_original_rifle_grenade_launch PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
-if(BUILD_TESTING)
-  add_executable(sin_original_rifle_grenade_launch_tests
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_rifle_grenade_test_target
+      sin_android_original_rifle_grenade_launch_tests)
+  else()
+    set(sin_rifle_grenade_test_target
+      sin_original_rifle_grenade_launch_tests)
+  endif()
+  add_executable(${sin_rifle_grenade_test_target}
     tests/test_original_rifle_grenade_launch.cpp)
-  target_link_libraries(sin_original_rifle_grenade_launch_tests PRIVATE
+  target_link_libraries(${sin_rifle_grenade_test_target} PRIVATE
     sin_original_rifle_grenade_launch)
-  target_compile_options(sin_original_rifle_grenade_launch_tests PRIVATE
+  target_compile_options(${sin_rifle_grenade_test_target} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
-  add_test(NAME sin_original_rifle_grenade_launch_tests
-    COMMAND sin_original_rifle_grenade_launch_tests)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_rifle_grenade_launch_tests
+      COMMAND ${sin_rifle_grenade_test_target})
+  endif()
 endif()
 
 # Source-derived SiN assault-rifle settings consumed by the existing
