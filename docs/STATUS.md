@@ -127,3 +127,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Read-only private original `server.dll` audit passes **8 whole function SHA-256 witnesses, 15 call targets, 15 instruction anchors and 8 RTTI/vtable bindings**. Synthetic PE audit and new integration unit tests are registered in CMake.
 - Full proof and native limitations: [Phase 110 original studio attachment](../research/phases/sin-original-studio-attachment-bone-matrix-20261108.md).
 - Still **not a game runtime**: native `CStudioHdr`, `SetupBones`, x86-to-ARM64 engine callback adapters, complete `client.dll`/`server.dll` reconstruction, campaign map execution and Quest 3 VR APK remain pending. No original game binary or assets committed.
+
+## 2026-11-08: compact original bone-cache lookup (Phase 111)
+
+- Reconstructed from unchanged original 2006 `server.dll` the bone getter `0x220ED1B0`, signed 16-bit compact bone-cache remap `0x221004C0`, entity world-matrix fallback `0x220EBE70` and 48-byte matrix copier `0x22268EF0`.
+- Verified **4 complete original function SHA-256 ranges, 7 relative CALL targets and 17 instruction anchors**. Cached matrix layout is `cache+0x14+uint16(cache+0x0E)+48*int16(cache+0x14+2*bone)`, with **negative entries uncached**. Studio bone count is checked at original header `+0x9C` before the helper.
+- Added safe bounded C++17 decoder, host callback for actual SetupBones and model cache, owner-owned entity world-matrix fallback, and an adapter into Phase 110's attachment resolver.
+- New CTest units check packed matrices, malformed caches and signed remaps; integration test verifies cached and uncached attachment positions; synthetic PE32 audit verifies corruption is rejected.
+- Details: [Phase 111 original bone cache](../research/phases/sin-original-compact-bone-cache-20261108.md).
+- **Not yet playable**: original `0x220EB8D0` bone preparation, native studiohdr, full SourceVR/SiN entity runtime, actual desktop game modules, and Quest 3 Android application remain pending. No original game binaries/assets are committed.
