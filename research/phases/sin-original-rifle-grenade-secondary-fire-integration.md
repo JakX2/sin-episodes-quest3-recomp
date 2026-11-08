@@ -48,7 +48,7 @@ New sin_original_rifle_grenade_launch_tests runs against two independent synthet
 - wrong owner classification, invalid direction and game clock, duplicate projectile binding;
 - failed staged entity creation, failed atomic commit with precise abort, and nested reentrant callbacks.
 
-The official existing Android ARM64 and Bionic x86_64 build scripts now cross-compile the new library, but NO test claims a native engine-issued SiN projectile or actual Quest 3 execution.
+The official Android ARM64 API26 and Bionic x86_64 build scripts now cross-compile the new static library AND the original rifle-grenade integration regression executable. GitHub CI stages and actually executes the C++17 mock-host gameplay test on an Android API29 x86_64 Bionic emulator, verifies its pass marker, and archives an output log. This is real Android execution of host-neutral reconstructed gameplay, NOT an engine-issued SiN projectile, actual SourceVR loaded game module, or Quest 3 headset run.
 
 Standalone tests (no original commercial files required):
 
