@@ -1145,3 +1145,38 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_jessica_target.py)
   endif()
 endif()
+
+# Phase 107: 2006 SiN server.dll's parent-aware absolute velocity cache.
+# Original functions 0x22141A00, 0x2213D750, rotation helpers, invalidation.
+# Engine-owned entity pointers and EHANDLE slots remain outside this library.
+add_library(sin_original_absolute_velocity STATIC
+  src/original_absolute_velocity.cpp)
+target_include_directories(sin_original_absolute_velocity PUBLIC include)
+target_compile_options(sin_original_absolute_velocity PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_absolute_velocity_tests
+    tests/test_original_absolute_velocity.cpp)
+  target_link_libraries(sin_original_absolute_velocity_tests PRIVATE
+    sin_original_absolute_velocity)
+  target_compile_options(sin_original_absolute_velocity_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_absolute_velocity_tests
+    COMMAND sin_original_absolute_velocity_tests)
+
+  # Host bridge: Phase 105 impulse -> Phase 107 parent-aware setter/refresh.
+  add_executable(sin_original_absolute_impulse_adapter_tests
+    tests/test_original_absolute_impulse_adapter.cpp)
+  target_link_libraries(sin_original_absolute_impulse_adapter_tests PRIVATE
+    sin_original_absolute_velocity sin_original_jessica_impulse)
+  target_compile_options(sin_original_absolute_impulse_adapter_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_absolute_impulse_adapter_tests
+    COMMAND sin_original_absolute_impulse_adapter_tests)
+
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_absolute_velocity_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_absolute_velocity.py)
+  endif()
+endif()
