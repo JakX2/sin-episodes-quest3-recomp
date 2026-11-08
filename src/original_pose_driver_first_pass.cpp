@@ -91,8 +91,8 @@ OriginalPoseFirstPassResult apply_original_pose_driver_first_pass(
                 auto& track=out.tracks[static_cast<std::size_t>(cmd.track_index)];
                 if(cmd.type==4||cmd.type==6) {
                     // Both types cap track+0x44 against (1-cmd+0x54)
-                    // unless cmd+0x5C is zero, when it is cleared.
-                    track.cap=cmd.limit==0.f?0.f:
+                    // when cmd+0x5C <= 0; positive values clear the cap.
+                    track.cap=cmd.limit>0.f?0.f:
                               std::fmin(track.cap,1.f-cmd.influence);
                     if(cmd.type==4)
                         track.influence*=1.f-cmd.weight*cmd.influence;
