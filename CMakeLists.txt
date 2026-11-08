@@ -1096,3 +1096,29 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_jessica_toss.py)
   endif()
 endif()
+
+# Original 2006 server.dll 0x2214BA20 additive velocity impulse.
+# Both physics type-6 and non-physics absolute velocity paths are modeled
+# behind a host contract. No private engine ABI is assumed.
+add_library(sin_original_jessica_impulse STATIC
+  src/original_jessica_impulse.cpp)
+target_include_directories(sin_original_jessica_impulse PUBLIC include)
+target_compile_options(sin_original_jessica_impulse PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+target_link_libraries(sin_original_jessica_throw PUBLIC
+  sin_original_jessica_impulse)
+if(BUILD_TESTING)
+  add_executable(sin_original_jessica_impulse_tests
+    tests/test_original_jessica_impulse.cpp)
+  target_link_libraries(sin_original_jessica_impulse_tests PRIVATE
+    sin_original_jessica_impulse)
+  target_compile_options(sin_original_jessica_impulse_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_jessica_impulse_tests
+    COMMAND sin_original_jessica_impulse_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_jessica_impulse_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_jessica_impulse.py)
+  endif()
+endif()

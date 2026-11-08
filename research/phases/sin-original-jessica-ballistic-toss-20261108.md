@@ -6,6 +6,11 @@ Primary input: unchanged private original 2006 `server.dll`, SHA-256
 This file is NOT present in GitHub. This server-side pass does not claim to
 decompile new client HUD logic or execute a native Quest 3 game.
 
+> **Correction from the subsequent velocity-impulse audit:** The final
+> call to `0x2214BA20` **adds** the ballistic vector to existing entity
+> velocity (or forwards it to physics), rather than blindly setting its
+> initial velocity. See [Phase 105](sin-original-jessica-additive-velocity-20261108.md).
+
 ## What the binary proves
 
 - Jessica's animation handler is at `0x22362420`. After the original
@@ -24,7 +29,7 @@ decompile new client HUD logic or execute a native Quest 3 game.
   player target pointer, gravity and 15.0 to the helper at
   **`0x2204C850`** (callsite `0x2236251A`). The initial velocity
   is then sent to spawned-entity method **`0x2214BA20`** (callsite
-  `0x22362529`). That setter handles different entity physics states.
+  `0x22362529`). That additive impulse routine dispatches separate physics and non-physics paths.
 - The helper zeroes the horizontal direction's Z component, normalizes
   XY, retains `dz`, performs two x87 square roots and divides the
   horizontal motion by the resulting flight time. The fifth argument
@@ -67,7 +72,7 @@ so it is not a uniquely Jessica-only physics primitive.
   future hosts; the original DLL itself is not proven to check them.
 - Extends `ThrowRuntime` with optional `IOriginalTossProvider`. A native
   host supplies the captured attachment/player geometry, the **live**
-  ConVar value and the genuine entity initial-velocity setter. Missing
+  ConVar value and the genuine engine additive-velocity impulse routine. Missing
   or invalid geometry fails closed, without falling back to an invented
   throw velocity. The legacy Phase 103 callback remains for existing
   original-free tests only.

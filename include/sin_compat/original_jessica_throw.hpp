@@ -3,6 +3,7 @@
 // CNPC_Jessica scripting chain. Not Ritual source, a native Source AI class,
 // or a claim that the original campaign has run on an Android engine.
 #include "sin_compat/original_jessica_toss.hpp"
+#include "sin_compat/original_jessica_impulse.hpp"
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -52,13 +53,13 @@ public:
 // Source/Quest engine adapter chooses the attachment and player target
 // positions; no original memory layouts or stale EHANDLE pointers cross
 // this seam. Missing/invalid physics data fails closed.
-class IOriginalTossProvider {
+class IOriginalTossProvider : public IOriginalImpulseHost {
 public:
     virtual ~IOriginalTossProvider()=default;
     virtual std::optional<TossGeometry> observe_toss(
         SpawnedEntity entity,std::string_view attachment_name)=0;
-    virtual bool set_initial_velocity(SpawnedEntity entity,
-                                      const TossVec3& velocity)=0;
+    // The x86 routine applies a velocity IMPULSE, not a replacement.
+    // All branch effects are supplied through IOriginalImpulseHost.
 };
 
 enum class AnimationResult {
