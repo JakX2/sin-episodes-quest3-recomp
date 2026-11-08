@@ -30,7 +30,19 @@ struct EntityRef {
 
 struct ViewRecord {
     bool allow_weapons = false;
-    std::optional<float> damage_modifier;
+    // The original constructor initializes view_damage_mod to 1.0f.
+    float damage_modifier = 1.0f;
+};
+
+enum class DamageViewPath : std::uint8_t {
+    NonPlayer,
+    PlayerViewModifier,
+    InvalidViewFallback
+};
+
+struct DamageViewResult {
+    float damage = 0.0f;
+    DamageViewPath path = DamageViewPath::NonPlayer;
 };
 
 struct VehicleState {
@@ -115,6 +127,14 @@ public:
                        const InputValue& value,
                        IOriginalVehicleHost& host);
     Result refresh_monitor_camera(IOriginalVehicleHost& host);
+
+    // Applies only the final player-specific view_damage_mod stage. The caller
+    // supplies damage after earlier damage-type/global scaling and the
+    // engine-derived player classification/current view index.
+    DamageViewResult apply_view_damage_modifier(
+        float damage_after_pre_view_scaling,
+        bool entity_is_player,
+        std::optional<int> selected_view_index) const noexcept;
 
 private:
     Result clear_camera_link(IOriginalVehicleHost& host);
