@@ -54,6 +54,25 @@ OriginalVehicleRuntime::OriginalVehicleRuntime(EntityRef self,
                                                VehicleState initial_state)
     : self_(self), state_(std::move(initial_state)), views_(std::move(views)) {}
 
+DamageViewResult OriginalVehicleRuntime::apply_view_damage_modifier(
+    float damage_after_pre_view_scaling,
+    bool entity_is_player,
+    std::optional<int> selected_view_index) const noexcept {
+    if (!entity_is_player)
+        return {damage_after_pre_view_scaling, DamageViewPath::NonPlayer};
+
+    // The original x86 routine does not show an equivalent bounds check here.
+    // Preserve the already-scaled damage instead of indexing an invalid view.
+    if (!selected_view_index || *selected_view_index < 0 ||
+        static_cast<std::size_t>(*selected_view_index) >= views_.size()) {
+        return {damage_after_pre_view_scaling, DamageViewPath::InvalidViewFallback};
+    }
+
+    const auto& view = views_[static_cast<std::size_t>(*selected_view_index)];
+    return {damage_after_pre_view_scaling * view.damage_modifier,
+            DamageViewPath::PlayerViewModifier};
+}
+
 Result OriginalVehicleRuntime::clear_camera_link(IOriginalVehicleHost& host) {
     if (!camera_link_) return Result::Unchanged;
     const auto old = *camera_link_;

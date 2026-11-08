@@ -124,6 +124,50 @@ InputValue void_value() { return {std::monostate{}, std::nullopt}; }
 InputValue int_value(int n, std::optional<EntityRef> activator = std::nullopt) { return {n, activator}; }
 InputValue string_value(std::string_view s) { return {s, std::nullopt}; }
 
+void test_view_damage_stage_is_player_only_and_uses_selected_record() {
+    std::vector<ViewRecord> views{{false, 0.5f}, {true, 1.25f}};
+    OriginalVehicleRuntime vehicle({1, 1}, views);
+
+    const auto player = vehicle.apply_view_damage_modifier(80.0f, true, 1);
+    assert(player.path == DamageViewPath::PlayerViewModifier);
+    assert(player.damage == 100.0f);
+
+    const auto non_player = vehicle.apply_view_damage_modifier(80.0f, false, 1);
+    assert(non_player.path == DamageViewPath::NonPlayer);
+    assert(non_player.damage == 80.0f);
+}
+
+void test_view_damage_stage_default_and_invalid_view_fallback() {
+    OriginalVehicleRuntime vehicle({1, 1}, {ViewRecord{}});
+    assert(vehicle.views().size() == 1);
+    assert(vehicle.views()[0].damage_modifier == 1.0f);
+
+    const auto missing = vehicle.apply_view_damage_modifier(42.0f, true, std::nullopt);
+    assert(missing.path == DamageViewPath::InvalidViewFallback);
+    assert(missing.damage == 42.0f);
+
+    const auto negative = vehicle.apply_view_damage_modifier(42.0f, true, -1);
+    assert(negative.path == DamageViewPath::InvalidViewFallback);
+    assert(negative.damage == 42.0f);
+
+    const auto too_large = vehicle.apply_view_damage_modifier(42.0f, true, 1);
+    assert(too_large.path == DamageViewPath::InvalidViewFallback);
+    assert(too_large.damage == 42.0f);
+}
+
+void test_view_damage_modifier_is_not_clamped() {
+    std::vector<ViewRecord> views{
+        {false, 0.0f},
+        {false, 1.5f},
+        {false, -0.5f}
+    };
+    OriginalVehicleRuntime vehicle({1, 1}, views);
+
+    assert(vehicle.apply_view_damage_modifier(10.0f, true, 0).damage == 0.0f);
+    assert(vehicle.apply_view_damage_modifier(10.0f, true, 1).damage == 15.0f);
+    assert(vehicle.apply_view_damage_modifier(10.0f, true, 2).damage == -5.0f);
+}
+
 void test_input_registry_and_types() {
     assert(original_input_specs().size() == 25);
     assert(find_input_spec("SetCamera") != nullptr);
@@ -275,6 +319,9 @@ void test_integer_flags_keep_original_field_meaning() {
 } // namespace
 
 int main() {
+    test_view_damage_stage_is_player_only_and_uses_selected_record();
+    test_view_damage_stage_default_and_invalid_view_fallback();
+    test_view_damage_modifier_is_not_clamped();
     test_input_registry_and_types();
     test_door_and_window_fanout();
     test_set_view_updates_both_player_fields();
