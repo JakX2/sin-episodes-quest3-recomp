@@ -49,7 +49,9 @@ ANCHORS={
  0x221048B1:'81c7e4000000', # track stride 0xE4
  0x221048C2:'0f8ca8f4ffff', # second loop backedge
 }
-def read(pe,address,count):return pe.read_va(address,count)
+def read(pe,address,count):
+    fn=getattr(pe,'read',None)
+    return fn(address,count) if callable(fn) else pe.read_va(address,count)
 def target(pe,address):
     b=read(pe,address,5)
     if b[0]!=0xE8:raise ValueError('not relative CALL: '+hex(address))
