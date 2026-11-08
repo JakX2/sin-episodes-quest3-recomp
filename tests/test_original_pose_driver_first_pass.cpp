@@ -60,21 +60,21 @@ void test_reset_and_simple_commands(){
 }
 void test_modifiers_and_groups(){
     auto c=data(3);c.limit=0.8f;c.influence=0.8f;
-    auto m4=data(4);m4.influence=0.3f;m4.weight=0.5f;m4.limit=1;
-    auto m6=data(6);m6.influence=0.6f;m6.limit=1;
+    auto m4=data(4);m4.influence=0.3f;m4.weight=0.5f;m4.limit=0;
+    auto m6=data(6);m6.influence=0.6f;m6.limit=0;
     auto ignored=data(2,123456);
     auto r=apply_original_pose_driver_first_pass(1,{{c,ignored},{m4,m6}},5);
     assert(r.successful());assert(r.commands_applied==3);
     assert(r.commands_ignored==1&&r.commands_seen==4);
     eq(r.tracks[0].cap,0.4f);
     eq(r.tracks[0].influence,0.8f*(1.f-0.5f*0.3f));
-    m4.limit=0;
+    m4.limit=1;
     r=apply_original_pose_driver_first_pass(1,{{c,m4}},5);
     assert(r.successful());eq(r.tracks[0].cap,0);
-    m6.limit=0;
+    m6.limit=1;
     r=apply_original_pose_driver_first_pass(1,{{c,m6}},5);
     assert(r.successful());eq(r.tracks[0].cap,0);
-    m4=data(4);m4.influence=0.1f;m4.limit=1;
+    m4=data(4);m4.influence=0.1f;m4.limit=0;
     r=apply_original_pose_driver_first_pass(1,{{m4}},0);
     assert(r.successful());eq(r.tracks[0].cap,0.9f);
     eq(r.tracks[0].influence,0);
