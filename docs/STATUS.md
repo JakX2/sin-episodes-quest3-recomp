@@ -109,3 +109,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Local C++17 standalone tests, adapter integration and synthetic PE32 audit passed; GitHub Actions status must be checked on the final commit.
 - Evidence: [Phase 108 original parented world transforms](../research/phases/sin-original-world-transform-parent-matrix-20261108.md). This is a stacked draft above PR #159.
 - **Not yet done:** original native CBaseEntity ABI/attachments, full SourceVR engine integration, playable SiN maps, replacement client/server DLLs or a standalone Quest 3 APK.
+
+## 2026-11-08: original parent attachment selector (Phase 109)
+
+- Examined genuine untouched x86 `server.dll` function `0x2213D960` and its `0x220ED470` attachment getter, `0x22269F60` identity writer and `0x2226CC20` matrix constructor. The private binary verifier passed **four complete function hashes, nine relative call targets and sixteen opcode anchors**.
+- Parent EHANDLE `+0xF0` includes a 12-bit slot/generation check: a missing or stale parent produces an identity matrix. A valid parent with nonzero child attachment `+0xEC` checks parent animating virtual `+0xC4`; attachment getter virtual `+0x2C4` must return **true** before attachment angle/origin values are converted to a matrix.
+- **Failure gate recovered:** unsuccessful attachment lookups fall back to the parent's cached world matrix `+0x268`, optionally refreshing dirty bit `0x800` with `0x2213FA60`. The original getter's fallback output coordinates are not used as an attachment when its return is false.
+- Added `sin_original_parent_attachment` C++17 module, standalone original-free behavior tests, Phase 108 world-transform bridge tests and synthetic PE32 audit mutation tests.
+- Local C++ tests and original binary SHA audit passed; check hosted CI separately. [Phase 109 technical report](../research/phases/sin-original-parent-attachment-selector-20261108.md).
+- Remaining: real SourceVR EHANDLE/animation virtual callbacks, engine-owned matrix lifetimes and model attachment data, an integrated native `client.dll`/`server.dll`, and a playable Meta Quest 3 campaign. This is still testable reconstructed behavior, **not** native game execution.
