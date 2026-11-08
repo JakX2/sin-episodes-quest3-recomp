@@ -1532,3 +1532,23 @@ if(Python3_Interpreter_FOUND)
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_pose_second_pass_state.py)
 endif()
+
+
+# Original SiN 2006 CPropSinVehicle map-input and monitor-camera behavior.
+# Engine-neutral reconstruction only; the eventual host must provide the actual
+# Source vehicle physics, entity references, client replication and rendering.
+add_library(sin_original_vehicle_runtime STATIC
+  src/original_vehicle_runtime.cpp)
+target_include_directories(sin_original_vehicle_runtime PUBLIC include)
+target_compile_options(sin_original_vehicle_runtime PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING AND NOT ANDROID)
+  add_executable(sin_original_vehicle_runtime_tests
+    tests/test_original_vehicle_runtime.cpp)
+  target_link_libraries(sin_original_vehicle_runtime_tests PRIVATE
+    sin_original_vehicle_runtime)
+  target_compile_options(sin_original_vehicle_runtime_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_vehicle_runtime_tests
+    COMMAND sin_original_vehicle_runtime_tests)
+endif()
