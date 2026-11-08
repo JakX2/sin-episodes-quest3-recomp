@@ -121,9 +121,7 @@ struct Host final : IOriginalVehicleHost {
 };
 
 InputValue void_value() { return {std::monostate{}, std::nullopt}; }
-InputValue int_value(int n, std::optional<EntityRef> activator = std::nullopt) {
-    return {n, activator};
-}
+InputValue int_value(int n, std::optional<EntityRef> activator = std::nullopt) { return {n, activator}; }
 InputValue string_value(std::string_view s) { return {s, std::nullopt}; }
 
 void test_input_registry_and_types() {
@@ -160,7 +158,6 @@ void test_door_and_window_fanout() {
 
     host.reject_door_index_one = true;
     assert(vehicle.handle_input("CloseDoors", void_value(), host) == Result::HostRejected);
-    // A failure at index one does not stop the original-style collection walk.
     assert(host.events.back() == "door:2:close");
 }
 
@@ -204,7 +201,7 @@ void test_monitor_camera_lifecycle() {
     initial.monitor_active = false;
     OriginalVehicleRuntime vehicle({1, 1}, {}, initial);
     assert(vehicle.handle_input("SetCamera", string_value("camera_a"), host) == Result::Applied);
-    assert(vehicle.state().monitor_camera == "camera_a");
+    assert(vehicle.state().monitor_camera && *vehicle.state().monitor_camera == "camera_a");
     assert(vehicle.refresh_monitor_camera(host) == Result::Unchanged);
     assert(vehicle.handle_input("MonitorOn", void_value(), host) == Result::Applied);
     assert(vehicle.handle_input("MonitorOn", void_value(), host) == Result::Unchanged);
@@ -233,7 +230,7 @@ void test_camera_failure_clears_name_and_stale_handle_is_not_unlinked() {
     vehicle.handle_input("MonitorOn", void_value(), host);
     host.camera_is_point = false;
     assert(vehicle.refresh_monitor_camera(host) == Result::WrongEntityType);
-    assert(vehicle.state().monitor_camera.empty());
+    assert(vehicle.state().monitor_camera && vehicle.state().monitor_camera->empty());
 
     host.camera_is_point = true;
     vehicle.handle_input("SetCamera", string_value("camera_c"), host);
@@ -244,7 +241,7 @@ void test_camera_failure_clears_name_and_stale_handle_is_not_unlinked() {
     host.live_camera = true;
     host.reject_link = true;
     assert(vehicle.refresh_monitor_camera(host) == Result::HostRejected);
-    assert(vehicle.state().monitor_camera.empty());
+    assert(vehicle.state().monitor_camera && vehicle.state().monitor_camera->empty());
 }
 
 void test_radio_and_vehicle_entry_are_host_owned() {
