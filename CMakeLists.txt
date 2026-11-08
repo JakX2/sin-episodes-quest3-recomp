@@ -1350,3 +1350,38 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_bone_preparation.py)
   endif()
 endif()
+
+# Phase 113: original SiN 2006 CBaseAnimating +0x2B4 skeletal setup
+# coordinator, 0x220EF510, with native pose/MDL callbacks owned by host.
+add_library(sin_original_skeletal_setup STATIC
+  src/original_skeletal_setup.cpp)
+target_include_directories(sin_original_skeletal_setup PUBLIC include)
+target_link_libraries(sin_original_skeletal_setup PUBLIC
+  sin_original_bone_preparation)
+target_compile_options(sin_original_skeletal_setup PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_skeletal_setup_tests
+    tests/test_original_skeletal_setup.cpp)
+  target_link_libraries(sin_original_skeletal_setup_tests PRIVATE
+    sin_original_skeletal_setup)
+  target_compile_options(sin_original_skeletal_setup_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_skeletal_setup_tests
+    COMMAND sin_original_skeletal_setup_tests)
+
+  add_executable(sin_original_skeletal_setup_cache_bridge_tests
+    tests/test_original_skeletal_setup_cache_bridge.cpp)
+  target_link_libraries(sin_original_skeletal_setup_cache_bridge_tests PRIVATE
+    sin_original_skeletal_setup)
+  target_compile_options(sin_original_skeletal_setup_cache_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_skeletal_setup_cache_bridge_tests
+    COMMAND sin_original_skeletal_setup_cache_bridge_tests)
+
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_skeletal_setup_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_skeletal_setup.py)
+  endif()
+endif()
