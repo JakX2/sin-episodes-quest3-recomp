@@ -84,6 +84,8 @@ def check_touch(view,strict_touch_hash=False):
          "contact mask bit4 no longer returns")
     need(view.at(0x22314310,6)==bytes.fromhex("ff 90 fc 00 00 00"),
          "other virtual method +0xFC changed")
+    need(rel32_target(view,0x2231431c,b"\x8b\xcf\xe8")==0x222b2730,
+         "original grenade related object helper call changed")
     need(view.at(0x22314323,2)==b"\x3b\xc6",
          "original related object comparison changed")
     need(short_branch_target(view,0x22314325,0x74)==0x2231433c,
