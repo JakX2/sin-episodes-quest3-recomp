@@ -68,10 +68,17 @@ AnimationResult ThrowRuntime::on_animation_event(int event_id) {
             *entity,kRightHandAttachment);
         if (!geometry) return AnimationResult::LaunchRejected;
         const auto solution=solve_toss(*geometry);
-        // Invalid gravity/NaNs are rejected rather than publishing unsafe
-        // motion. This guard was not established in the original x87.
+        // Invalid gravity/NaNs are rejected before any velocity impulse.
+        // This guard was not established in the original x87.
         if (!solution.valid()) return AnimationResult::LaunchRejected;
-        return toss_provider_->set_initial_velocity(*entity,solution.velocity)
+        const auto result=apply_original_velocity_impulse(
+            *toss_provider_,*entity,solution.velocity);
+        // The original animation dispatch does not require a new entity
+        // velocity when the impulse is zero. The solver's normal throw
+        // path produces a nonzero up component, but retain the contract.
+        return result==ImpulseCode::AppliedPhysics ||
+               result==ImpulseCode::AppliedNonPhysics ||
+               result==ImpulseCode::IgnoredZero
             ? AnimationResult::Launched : AnimationResult::LaunchRejected;
     }
     // The abstract callback only remains for the Phase-103 mock host.
