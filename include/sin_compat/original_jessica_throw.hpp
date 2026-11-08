@@ -2,6 +2,7 @@
 // Independent C++17 behavioral reconstruction of a specific original 2006
 // CNPC_Jessica scripting chain. Not Ritual source, a native Source AI class,
 // or a claim that the original campaign has run on an Android engine.
+#include "sin_compat/original_jessica_toss.hpp"
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -41,12 +42,23 @@ public:
     virtual void set_primary_ammo(SpawnedEntity weapon, std::int32_t count) = 0;
     virtual void set_secondary_ammo(SpawnedEntity weapon, std::int32_t count) = 0;
 
-    // Exact original trajectory calculation is NOT yet known; host must
-    // provide its own explicitly validated behavior. Never imply that
-    // the observed float 15.0 is a proven throw speed.
+    // Kept for older mock-host tests. A real host should supply a separate
+    // IOriginalTossProvider to apply the independently recovered equation.
     virtual bool launch_toward_player(SpawnedEntity entity) = 0;
     // The original HolsterWeapon input resolves the local player first.
     virtual bool holster_local_player_weapon() = 0;
+};
+
+// Source/Quest engine adapter chooses the attachment and player target
+// positions; no original memory layouts or stale EHANDLE pointers cross
+// this seam. Missing/invalid physics data fails closed.
+class IOriginalTossProvider {
+public:
+    virtual ~IOriginalTossProvider()=default;
+    virtual std::optional<TossGeometry> observe_toss(
+        SpawnedEntity entity,std::string_view attachment_name)=0;
+    virtual bool set_initial_velocity(SpawnedEntity entity,
+                                      const TossVec3& velocity)=0;
 };
 
 enum class AnimationResult {
@@ -59,7 +71,9 @@ enum class AnimationResult {
 
 class ThrowRuntime final {
 public:
-    explicit ThrowRuntime(IHost& host) noexcept : host_(host) {}
+    explicit ThrowRuntime(IHost& host,
+                          IOriginalTossProvider* toss_provider=nullptr) noexcept
+        : host_(host), toss_provider_(toss_provider) {}
     // The animation registry ID is assigned at runtime, not permanently
     // equal to 0x59 or 0x47 (those are the separate schedule/condition).
     void bind_animation_event(int registered_id) noexcept {
@@ -85,6 +99,7 @@ public:
 
 private:
     IHost& host_;
+    IOriginalTossProvider* toss_provider_=nullptr;
     std::optional<int> registered_event_id_;
     std::string throw_name_;
     // The original Jessica spawn initializes these temporary amounts to -1.
