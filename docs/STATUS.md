@@ -136,3 +136,13 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - New CTest units check packed matrices, malformed caches and signed remaps; integration test verifies cached and uncached attachment positions; synthetic PE32 audit verifies corruption is rejected.
 - Details: [Phase 111 original bone cache](../research/phases/sin-original-compact-bone-cache-20261108.md).
 - **Not yet playable**: original `0x220EB8D0` bone preparation, native studiohdr, full SourceVR/SiN entity runtime, actual desktop game modules, and Quest 3 Android application remain pending. No original game binaries/assets are committed.
+
+## 2026-11-08: original CBaseAnimating bone cache preparation and reverse-map refresh (Phase 112)
+
+- Original 2006 `server.dll` entry `0x220EB8D0` uses bone cache handle at entity `+0x478` and compares elapsed `curtime - cache.timestamp` with **0.1f**, returning fresh caches without a bone computation. Cache type **`0x300`** is tested only if expired; a stale wrong-type cache is released before allocation.
+- Resolved virtual byte slot **`+0x2B4`** -> `0x220EF510` across eight inherited MSVC RTTI classes, including `CNPC_Jessica`; its output pose buffer and **mask `0x300`** are consumed by cache update or native cache allocation. The actual skeletal solver behind this virtual call is **not yet reconstructed**.
+- Original `0x22100450` uses a **reverse signed-int16 table** at `cache+0x14+uint16(cache+0x10)` to map *compact cached matrix index -> source bone index*. It copies 48-byte matrices to `cache+0x14+uint16(cache+0x0E)` and updates the timestamp.
+- Added C++17 safe cache-preparation state machine, reverse-matrix updater, and `OriginalPreparedBoneCacheAdapter` to Phase 111 bone getter/Phase 110 studio attachment. Tests exercise cache hits, expiration, dirty updates, wrong-type eviction, allocation, reverse mappings, malformed buffers and attachment results.
+- Private original binary verification: **six complete function SHA-256 witnesses, 15 exact CALL targets, 22 instruction anchors, eight inherited vtable slot matches**. Standalone project: **12/12 CTests**, including undefined-behavior sanitizer.
+- Research and limitations: [Phase 112 original bone-cache preparation](../research/phases/sin-original-bone-cache-preparation-20261108.md).
+- This is **not** a replacement game server/client DLL or a playable Quest 3 app. Native MDL and bone solver `0x220EF510`, renderer, complete client HUD and engine interfaces are still pending.
