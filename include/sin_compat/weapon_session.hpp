@@ -41,6 +41,12 @@ public:
     bool on_holster();
     void on_player_cleanup();
 
+    // Guard-only entrypoint for the original assault rifle's grenade path.
+    // Does not request an animation or invent Source firing semantics.
+    bool can_launch_rifle_grenade() const;
+    EntityRef owner_ref() const noexcept { return owner_; }
+    EntityRef weapon_ref() const noexcept { return weapon_; }
+
     WeaponRuntime& runtime() { return runtime_; }
     const WeaponRuntime& runtime() const { return runtime_; }
 

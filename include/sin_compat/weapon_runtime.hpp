@@ -65,6 +65,7 @@ public:
     bool reload_active() const { return ammo_.reload_active; }
     sin_phase55::Weapon& ammo() { return ammo_; }
     const sin_phase55::Weapon& ammo() const { return ammo_; }
+    WeaponKind kind() const noexcept { return kind_; }
     const WeaponConfig& config() const { return config_; }
 
 private:

@@ -17,6 +17,14 @@ bool WeaponSession::selected() const {
     return host_.is_live(selected_weapon) && selected_weapon == weapon_;
 }
 
+bool WeaponSession::can_launch_rifle_grenade() const {
+    // Selection comes from the live-generation-aware game host. Reload and
+    // holster are checked without playing any unverified firing animation.
+    return runtime_.kind() == WeaponKind::AssaultRifle &&
+           selected() && !runtime_.reload_active() &&
+           !runtime_.is_holstered();
+}
+
 FrameResult WeaponSession::on_usercmd(std::uint32_t bits, bool block) {
     const bool active = selected();
     if (!active) {
