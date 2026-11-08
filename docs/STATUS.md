@@ -176,3 +176,13 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - **4 new CTests**: masked and ancestor-only calculation, studio flag parser, parent/ordinary dispatcher integration and synthetic PE32 audit; the standalone **23/23** suite passes in Release and with UndefinedBehaviorSanitizer.
 - Research: [Phase 115 original ordinary bone constructor](../research/phases/sin-original-ordinary-masked-bone-hierarchy-20261108.md).
 - **Still no playable game or standalone Quest 3 build**: real animation pose blending, native engine interfaces, original DLL exports, rendering, audio and input integration remain pending.
+
+## 2026-11-08: original pose-driver initialization and first command pass (Phase 116)
+
+- Independently reconstructed the first loop of SiN's original `server.dll` `0x22103A60`, following Phase 115's masked ordinary-bone construction. The original **3,701-byte function** remains only partially reconstructed; the second loop is intentionally not claimed.
+- Verified **four complete code-region SHA-256 witnesses, sixteen original relative CALL targets, twenty-three instruction anchors, four command jump-table entries** and original numeric constants against the owner's private unchanged 2006 PE32 DLL.
+- Track reset stride is **0xE4 (228 bytes)**; group stride is **0x14 (20 bytes)** and command stride is **0x7C (124 bytes)**. The jump table implements type **3** (pose with side effect), **4** (cap/attenuate), **5** (pose with optional payload) and **6** (cap only). Unknown types skip this first-pass dispatch.
+- New bounded C++17 value-owned record parser and grouped first-pass engine preserve original reset omissions, model direct pose assignments and weighted accumulation, and delegate quaternion interpolation to a host callback matching the original `0x2226D210` boundary.
+- Added two C++ test executables and a synthetic PE32 audit CTest. The standalone harness passes **26/26** in Release and UndefinedBehaviorSanitizer locally, plus the owner-only original-DLL binary audit.
+- Details: [Phase 116 original pose-driver first pass](../research/phases/sin-original-pose-driver-initial-command-pass-20261108.md).
+- Still missing: actual second-pass pose evaluation, full native skeleton animation, full `client.dll`/`server.dll` replacements, campaign execution, and a standalone Meta Quest 3 VR application. No original executable or game assets distributed.
