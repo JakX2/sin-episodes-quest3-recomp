@@ -72,3 +72,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Local binary verifier passed four complete function hashes and five direct call witnesses; standalone C++17 original-free tests passed. Hosted CI is checked separately.
 - **Not completed:** real native engine NPC, physical entity/animation ownership, first actual SiN map load, complete actor/player engine vtables or a runnable Quest 3 port. No proprietary binaries/assets committed.
 - Evidence: [Jessica original ballistic throw](../research/phases/sin-original-jessica-ballistic-toss-20261108.md). Kept as a stacked draft above previous Jessica PR #155.
+
+## 2026-11-08: original Jessica velocity impulse correction
+
+- Verified original 2006 `server.dll` x86 function at `0x2214BA20` is **additive**, not an initial-velocity setter. SHA-256 of exact 177-byte function: `5eb87e06301e647f9ab83b4463e940e6bc14b5e78eae08897a5723ad58e5a3f4`.
+- Original type-6 physics branch invokes physics virtual byte offset `+0xB0`, with null angular argument. Other movement types conditionally refresh dirty absolute velocity and add the requested vector to fields `+0x250..+0x258` before calling `0x22141A00`.
+- New C++17 `sin_original_jessica_impulse` library and synthetic host tests, including invalid data and physics dispatch, correct the previous `set_initial_velocity` design.
+- Original DLL full hash, nine exact opcode anchors and three relative calls were privately checked against the unchanged original PE32. Script: [original impulse audit](../research/tools/audit_sin_original_jessica_impulse.py).
+- Evidence and open questions: [Phase 105 report](../research/phases/sin-original-jessica-additive-velocity-20261108.md).
+- **Not yet proven:** complete real SourceVR physics ABI, real player virtual target getter, runtime value of zero-vector sentinel under all conditions, or actual Quest 3 gameplay. This is a host-neutral approximation, not a native client/server module.
