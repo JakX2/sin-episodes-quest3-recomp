@@ -1429,3 +1429,28 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_parent_bone_merge.py)
   endif()
 endif()
+
+# Phase 115: 2006 SiN original 0x220FE0C0 masked ordinary bone builder.
+# Supports all-bones and single-ancestor-chain modes plus seeded skip slots.
+add_library(sin_original_ordinary_bone STATIC src/original_ordinary_bone.cpp)
+target_include_directories(sin_original_ordinary_bone PUBLIC include)
+target_link_libraries(sin_original_ordinary_bone PUBLIC
+  sin_original_parent_bone_merge)
+target_compile_options(sin_original_ordinary_bone PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  foreach(name original_ordinary_bone original_ordinary_bone_studio_parser
+               original_ordinary_bone_setup_bridge)
+    add_executable(sin_${name}_tests tests/test_${name}.cpp)
+    target_link_libraries(sin_${name}_tests PRIVATE
+      sin_original_ordinary_bone)
+    target_compile_options(sin_${name}_tests PRIVATE
+      $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+    add_test(NAME sin_${name}_tests COMMAND sin_${name}_tests)
+  endforeach()
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_ordinary_bone_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_ordinary_bone.py)
+  endif()
+endif()

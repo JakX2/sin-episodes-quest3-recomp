@@ -166,3 +166,13 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Added **4 new CTests**: cached/uncached matching and fallback, copied studiohdr validation, Phase 113 integration, and synthetic binary-audit corruption tests. Local standalone **19/19 CTests**, repeated under **UndefinedBehaviorSanitizer**, pass.
 - Research: [Phase 114 original parent-bone name merge](../research/phases/sin-original-parent-bone-name-merge-20261108.md).
 - Still **not a playable SiN build**: real animation solve, IK, native engine interfaces, complete `client.dll`/`server.dll`, campaign runtime, graphics and Meta Quest 3 APK remain pending. No proprietary binary or assets committed.
+
+## 2026-11-08: masked ordinary skeletal hierarchy (Phase 115)
+
+- Original 2006 `server.dll` **`0x220FE0C0`** independently reconstructed as a host-neutral C++17 masked ordinary bone builder. This complements Phase 114's name-based parent rig merge and completes both previously stubbed skeletal matrix construction **branches** in the Phase 113 dispatcher, not its pose evaluation algorithms.
+- The original `-1` target processes all bones in studio order; requesting an individual index first gathers its parent chain and processes root-to-leaf. Invalid indices map to bone 0. A studio bone's record **flags at +0xA0** are masked before quaternion+position composition. Masked-out output slots remain untouched.
+- Checks against the unchanged private original `server.dll` pass **3 whole-function hashes, 4 exact relative CALL targets and 14 instruction anchors**. No original game bytes/asset files have been checked in.
+- Added bounded 216-byte studio bone-mask metadata parsing, seedable output matrices for skipped bones, hierarchy and finite guards, and `OriginalOrdinaryBoneSkeletalAdapter`. Two adapters can be composed to choose parent-merged or ordinary bone paths in `run_original_skeletal_setup` while keeping engine-side animated poses and model cache as callbacks.
+- **4 new CTests**: masked and ancestor-only calculation, studio flag parser, parent/ordinary dispatcher integration and synthetic PE32 audit; the standalone **23/23** suite passes in Release and with UndefinedBehaviorSanitizer.
+- Research: [Phase 115 original ordinary bone constructor](../research/phases/sin-original-ordinary-masked-bone-hierarchy-20261108.md).
+- **Still no playable game or standalone Quest 3 build**: real animation pose blending, native engine interfaces, original DLL exports, rendering, audio and input integration remain pending.
