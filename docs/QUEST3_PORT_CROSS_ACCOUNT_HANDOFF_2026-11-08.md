@@ -25,7 +25,7 @@ GitHub repository:
 https://github.com/JakX2/sin-episodes-quest3-recomp
 
 **Most recent continuation branch as of this document:**
-feature/sin-original-grenade-touch-gates-handoff-20261108
+feature/sin-gameplay-entity-factory-bridge-20261108
 
 This branch is stacked on #152. All work stays in isolated **DRAFT PRs**
 and should NOT merge into main or overwrite user assets without explicit
@@ -162,7 +162,7 @@ Clone and checkout the current branch:
     git clone https://github.com/JakX2/sin-episodes-quest3-recomp.git
     cd sin-episodes-quest3-recomp
     git fetch origin
-    git checkout feature/sin-original-grenade-touch-gates-handoff-20261108
+    git checkout feature/sin-gameplay-entity-factory-bridge-20261108
 
 Native desktop C++:
 
@@ -195,6 +195,57 @@ not Quest execution.
 
 GitHub Actions:
 https://github.com/JakX2/sin-episodes-quest3-recomp/actions
+
+## PR #154: verified original entity factories, now behavior-backed
+
+The most recent new stacked DRAFT PR is:
+https://github.com/JakX2/sin-episodes-quest3-recomp/pull/154
+Head: feature/sin-gameplay-entity-factory-bridge-20261108
+Base: PR #153 branch. No merge.
+
+A genuine SHA-pinned 2006 server.dll audit found exact original
+entity-registry getter usage for two source-proven classes:
+- weapon_assault_rifle: registration 0x223C4F60, classname literal
+  0x22477C30, original entity-factory object 0x2252D4FC.
+- grenade_ar: registration 0x223C4FC0, classname literal
+  0x22477230, original entity-factory object 0x2252D500.
+
+New real independent C++17 host-neutral factory:
+
+include/sin_compat/original_gameplay_entity_factory.hpp
+src/original_gameplay_entity_factory.cpp
+
+It registers these exact classnames into an explicit host registrar,
+creates an unowned real portable Assault Rifle world pickup,
+binds its original WeaponSession when picked up by a verified
+generation-safe player, creates the real CGrenadeAR flight and
+detonation Runtime, and binds the actual touch flag+blast logic
+with a required original network-field setter callback. Failed
+registration is rolled back; unknown map classnames are not
+falsely accepted; it protects against stale generations and
+reentrant entity callbacks.
+
+Tests:
+tests/test_original_gameplay_entity_factory.cpp
+research/tools/audit_sin_original_rifle_grenade_factories.py
+research/tests/test_audit_sin_original_rifle_grenade_factories.py
+
+Full phase documentation:
+research/phases/sin-original-rifle-grenade-gameplay-entity-factory-bridge.md
+
+CMake, Android ARM64 and Android Bionic emulator mock-host tests
+are included. The native SourceVR 47/78 vtable-compatible game
+server and genuine engine entity registry are STILL UNIMPLEMENTED.
+PR #154 cannot eliminate the actual runtime unknown-entity errors
+until the real engine loads these callbacks and creates game
+actors with correct lifetimes, network semantics and assets.
+
+IMPORTANT: Among the 49 unknown classes in the Drive logs,
+only weapon_assault_rifle is implemented by this two-name
+bridge. grenade_ar is an original class verified from original
+rifle firing but wasn't in the five runtime error inventories.
+Other original classes, including trigger_dynamic_difficulty
+and MobGrunt variants, still require a concrete runtime.
 
 ## New real map runtime evidence: five Google Drive text logs
 
@@ -266,7 +317,7 @@ synthetic Android host is a playable game.
 > GitHub JakX2/sin-episodes-quest3-recomp, especially
 > docs/QUEST3_PORT_CROSS_ACCOUNT_HANDOFF_2026-11-08.md.
 > Connect to my GitHub and first inspect the newest stacked DRAFT
-> PR/CI head, starting at PR #153 if no newer work exists.
+> PR/CI head, starting at PR #154 if no newer work exists.
 > Original 2006 server.dll/client.dll and SourceVR 0.5.5 ELFs
 > are private and should only be read from owner-provided files.
 > Do NOT commit them. Priorities: real original gameplay DLL
