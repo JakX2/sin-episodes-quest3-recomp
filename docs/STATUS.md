@@ -118,3 +118,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Added `sin_original_parent_attachment` C++17 module, standalone original-free behavior tests, Phase 108 world-transform bridge tests and synthetic PE32 audit mutation tests.
 - Local C++ tests and original binary SHA audit passed; check hosted CI separately. [Phase 109 technical report](../research/phases/sin-original-parent-attachment-selector-20261108.md).
 - Remaining: real SourceVR EHANDLE/animation virtual callbacks, engine-owned matrix lifetimes and model attachment data, an integrated native `client.dll`/`server.dll`, and a playable Meta Quest 3 campaign. This is still testable reconstructed behavior, **not** native game execution.
+
+## 2026-11-08: original studio bone attachments (Phase 110)
+
+- Binary-verified `CBaseAnimating` attachment virtual `+0x2C4` -> original `0x220ED530` and bone getter `+0x2B0` -> `0x220ED1B0` in eight MSVC RTTI-linked classes, including `CNPC_Jessica`.
+- Original attachment indices are **1-based**, records stride 92 bytes, and `flags & 0x100` chooses **world-aligned orientation with bone-transformed position** instead of standard bone-world × attachment-local matrix composition.
+- Reconstructed a pure C++17 studio attachment host, one-based validation, ordinary/world-aligned matrix branches, missing-resource errors and finite guards. `OriginalStudioNativeAttachmentAdapter` hooks the original-style success/failure gate to Phase 109 parent-selection and Phase 108 world-refresh code.
+- Read-only private original `server.dll` audit passes **8 whole function SHA-256 witnesses, 15 call targets, 15 instruction anchors and 8 RTTI/vtable bindings**. Synthetic PE audit and new integration unit tests are registered in CMake.
+- Full proof and native limitations: [Phase 110 original studio attachment](../research/phases/sin-original-studio-attachment-bone-matrix-20261108.md).
+- Still **not a game runtime**: native `CStudioHdr`, `SetupBones`, x86-to-ARM64 engine callback adapters, complete `client.dll`/`server.dll` reconstruction, campaign map execution and Quest 3 VR APK remain pending. No original game binary or assets committed.
