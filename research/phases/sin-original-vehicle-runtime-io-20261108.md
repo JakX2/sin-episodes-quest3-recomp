@@ -30,9 +30,9 @@ The original class inherits from CPropVehicleDriveable. This component reconstru
 - EnableUse, LockView, EnableHints and EnableAmmo update the corresponding recovered state fields. EnableAmmo maps to the original m_bInfiniteAmmo field.
 - HeadlightOn/HeadlightOff delegate the full light-side effect to the host and publish the confirmed client property m_bHeadlightIsOn. The original handler performs additional work beyond a Boolean write.
 - SetView validates the player-like activator and the index against the configured view count. Phase 24 records that the selected index and the view_allow_weapons byte are copied into two player fields. The remaining seat/view record layout is not guessed.
-- SetCamera stores the monitor camera name and unlinks the previous camera handle. Resolution is deferred to refresh_monitor_camera(), matching the separation between the input handler and recurring vehicle update.
-- MonitorOn/MonitorOff are idempotent. On a transition they send the named entity monitor the open/close input. MonitorOff then clears the camera link.
-- Camera refresh requires an active monitor, a nonempty name, a live named entity, and a CPointCamera-compatible host object. Failed lookup/type/link paths clear the saved camera name.
+- SetCamera stores the monitor camera name and unlinks the previous camera handle. Resolution is deferred to refresh_monitor_camera(), matching the separation between the input handler and recurring vehicle update. An absent map key remains unknown rather than being treated as an empty name.
+- MonitorOn/MonitorOff are idempotent. On a transition they send the named entity monitor the open/close input. MonitorOff then clears the camera link. The initial monitor flag must be supplied; an unknown constructor default returns UninitializedState.
+- Camera refresh requires an active monitor, a known nonempty name, a live named entity, and a CPointCamera-compatible host object. Failed lookup/type/link paths clear the saved camera name.
 - RadioOn/RadioOff/SetRadioStation resolve the linked radio entity and delegate to it. The original missing-handle fallback is not sufficiently named, so the portable layer reports MissingLinkedEntity rather than inventing a radio effect.
 - EnterVehicle/ExitVehicle delegate to the real host passenger/vehicle API; they are not simulated here.
 
@@ -42,9 +42,7 @@ The client-side report independently identifies C_PropSinVehicle and DT_PropSinV
 
 This is not a Source entity class or a SourceVR module. It does not implement the CPropVehicleDriveable base, full vehicle physics, NPC driver, door/window animation, sound, interactive dashboard hitboxes, monitor render texture, the complete 100-byte view records, all 23 saved datamap fields, the DoorClosed output, or a complete SaveRestore implementation.
 
-The damage_modifier field at view-record offset +0x60 is preserved as metadata but not applied: the Phase 24 report identifies the player-type branch and field copy, but the full damage callsite and direction are not sufficiently established for an authoritative effect.
-
-The original monitor state must be supplied from map/save state or a future verified constructor reconstruction. An absent value returns UninitializedState instead of assuming that the original constructor defaulted it to false.
+The damage_modifier field at view-record offset +0x60 is preserved as optional metadata but not applied: the Phase 24 report identifies the player-type branch and field copy, but the full damage callsite and direction are not sufficiently established for an authoritative effect.
 
 ## Local verification
 
