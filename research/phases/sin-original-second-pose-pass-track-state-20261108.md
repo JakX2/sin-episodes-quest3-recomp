@@ -35,10 +35,12 @@ buffers. **This phase does not substitute invented results for them.** Its
 The caller must eventually bridge that callback to verified model data and the
 Phase 117 matrix evaluator.
 
-The original `0x22103E15..0x22103E39` compares `float` track cap `+0x44`
-against `double` constant **1.0** at `0x223D22B8` using `FUCOMPP`, parity
-and `test ah,0x44`. It sets byte `+0xA0` to `1` **on equality** (else `0`).
-The unordered case sets `0`.
+The original `0x22103E15..0x22103E39` compares track cap `+0x44` against
+constant **1.0** at `0x223D22B8` using `FUCOMPP`, parity and `test ah,0x44`.
+It sets byte `+0xA0` to `1` **on equality** (else `0`). The unordered case
+sets `0`, as do positive and negative infinity because neither compares equal
+to `1.0`. The independent C++ implementation therefore uses exact equality
+rather than rejecting nonfinite cap values before the comparison.
 
 At `0x22103EEA..0x22103F1B`, the original checks sequence index supplied at
 frame `+0x70` against track's stored sequence at `+0xA8`.
@@ -72,10 +74,11 @@ rejects corrupted fabricated PE32 images and incorrect call opcodes, without
 embedding copyrighted executable content.
 
 The C++ tests include positive/zero/negative/NaN influence, exact cap markers,
-sequence-history carry across equal or next sequence, history resets on skipped
-indexes and negative sequences, track bytes parsing, invalid bounds, and a
-3-stage integration of the first pose pass, recursive bone matrix helper and
-second-pass metadata callbacks. CTest also runs all inherited phases.
+unordered and infinite cap comparisons, sequence-history carry across equal or
+next sequence, history resets on skipped indexes and negative sequences, track
+bytes parsing, invalid bounds, and a 3-stage integration of the first pose
+pass, recursive bone matrix helper and second-pass metadata callbacks. CTest
+also runs all inherited phases.
 
 ## Current limits
 
@@ -83,5 +86,7 @@ This stage does **not** reconstruct the remainder of the original second-loop
 state from `0x22103F1C` to `0x221048A6`, pose-driver effect physics, native
 model memory layout, `SetupBones` scheduling, host engine ABI, full playable
 `server.dll` / `client.dll`, or Quest 3 standalone rendering. Portable code
-adds finite guards and returns structured errors instead of reproducing
-undefined behavior from the native game.
+retains a finite guard for positive nonfinite influence before calling host
+geometry, but preserves the original comparison behavior for unordered cap
+values. Structured errors replace unsafe host-boundary behavior without
+changing the original cap equality result.
