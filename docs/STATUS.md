@@ -55,3 +55,11 @@ Phase 44–55 original reports and selected verifiers, plus carefully labeled ea
 ## Phase 56: Named reload-field metadata (verified static evidence)
 
 The original SiN `server.dll` and `client.dll` were available during this investigation and both SHA-256 hashes matched `research/binary-provenance.json`. Typed metadata identifies `m_bReloadsSingly` (`server+0x508` / `client+0x7FC`), `m_bInReload` (`+0x4AC` / `+0x7A0`), and clip1/clip2 fields. See [`../research/phases/phase56-weapon-field-metadata.md`](../research/phases/phase56-weapon-field-metadata.md). Both a binary verifier and independently generated synthetic PE-parser unit tests were run; **no Quest, engine runtime or original game execution was performed**. The meaning of two parallel server descriptor groups and runtime enabling of one-round reload are unresolved.
+
+## 2026-11-08: original Jessica scripted throw C++ reference
+
+- Re-audited six exact functions from the unchanged 2006 Windows x86 `server.dll` (SHA256 `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`) for `CNPC_Jessica` scripted item throwing. The original DLL is not in the repository.
+- New independent `sin_original_jessica_throw` portable C++17 library and synthetic unit tests: typed map inputs, AI condition `0x47`, throw schedule `0x59`, animation event ID forwarding, ammo transfer and original callback ordering.
+- Added a read-only, SHA-pinned Python PE32 verifier and binary-free parser regression tests. Local original function/check audit and independent C++ tests passed.
+- **Not implemented:** native Jessica SourceVR factory or engine scheduler, original throw trajectory equation, actual animations and any game-level validation. This does not change Quest 3 runtime readiness.
+- Research: [original Jessica throw deep dive](../research/phases/sin-original-jessica-scripted-item-throw-20261108.md). Work is kept in stacked draft PR #155 for review.
