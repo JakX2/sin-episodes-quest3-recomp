@@ -1063,3 +1063,36 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_jessica_throw.py)
   endif()
 endif()
+
+# Exact original 2006 Jessica x87 ballistic toss, reconstructed as a portable
+# C++17 math helper. No original source or proprietary binary is embedded.
+add_library(sin_original_jessica_toss STATIC src/original_jessica_toss.cpp)
+target_include_directories(sin_original_jessica_toss PUBLIC include)
+target_compile_options(sin_original_jessica_toss PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+target_link_libraries(sin_original_jessica_throw PUBLIC
+  sin_original_jessica_toss)
+if(BUILD_TESTING)
+  add_executable(sin_original_jessica_toss_tests
+    tests/test_original_jessica_toss.cpp)
+  target_link_libraries(sin_original_jessica_toss_tests PRIVATE
+    sin_original_jessica_toss)
+  target_compile_options(sin_original_jessica_toss_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_jessica_toss_tests
+    COMMAND sin_original_jessica_toss_tests)
+
+  add_executable(sin_original_jessica_toss_host_tests
+    tests/test_original_jessica_toss_host.cpp)
+  target_link_libraries(sin_original_jessica_toss_host_tests PRIVATE
+    sin_original_jessica_throw sin_original_jessica_toss)
+  target_compile_options(sin_original_jessica_toss_host_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_jessica_toss_host_tests
+    COMMAND sin_original_jessica_toss_host_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_jessica_toss_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_jessica_toss.py)
+  endif()
+endif()

@@ -63,6 +63,18 @@ AnimationResult ThrowRuntime::on_animation_event(int event_id) {
             secondary_ammo_ = -1;
         }
     }
+    if (toss_provider_) {
+        const auto geometry=toss_provider_->observe_toss(
+            *entity,kRightHandAttachment);
+        if (!geometry) return AnimationResult::LaunchRejected;
+        const auto solution=solve_toss(*geometry);
+        // Invalid gravity/NaNs are rejected rather than publishing unsafe
+        // motion. This guard was not established in the original x87.
+        if (!solution.valid()) return AnimationResult::LaunchRejected;
+        return toss_provider_->set_initial_velocity(*entity,solution.velocity)
+            ? AnimationResult::Launched : AnimationResult::LaunchRejected;
+    }
+    // The abstract callback only remains for the Phase-103 mock host.
     return host_.launch_toward_player(*entity)
         ? AnimationResult::Launched : AnimationResult::LaunchRejected;
 }

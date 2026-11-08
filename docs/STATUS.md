@@ -63,3 +63,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Added a read-only, SHA-pinned Python PE32 verifier and binary-free parser regression tests. Local original function/check audit and independent C++ tests passed.
 - **Not implemented:** native Jessica SourceVR factory or engine scheduler, original throw trajectory equation, actual animations and any game-level validation. This does not change Quest 3 runtime readiness.
 - Research: [original Jessica throw deep dive](../research/phases/sin-original-jessica-scripted-item-throw-20261108.md). Work is kept in stacked draft PR #155 for review.
+
+## 2026-11-08: original Jessica ballistic trajectory (stacked draft)
+
+- Re-inspected the original 2006 SHA-256-pinned `server.dll` and recovered the previously unknown x87 helper at `0x2204C850`, called by Jessica's throw animation at `0x2236251A`.
+- The throw reads the registered `sv_gravity` ConVar (original default 600), combines it with the caller's float 15.0 as **extra apex height**, calculates an initial three-axis velocity and calls the original entity motion method at `0x2214BA20`.
+- New host-neutral `sin_original_jessica_toss` C++17 solver, optional `IOriginalTossProvider` integration, analytical trajectory tests, mock-host sequence test and read-only original SHA-pinned binary verifier.
+- Local binary verifier passed four complete function hashes and five direct call witnesses; standalone C++17 original-free tests passed. Hosted CI is checked separately.
+- **Not completed:** real native engine NPC, physical entity/animation ownership, first actual SiN map load, complete actor/player engine vtables or a runnable Quest 3 port. No proprietary binaries/assets committed.
+- Evidence: [Jessica original ballistic throw](../research/phases/sin-original-jessica-ballistic-toss-20261108.md). Kept as a stacked draft above previous Jessica PR #155.
