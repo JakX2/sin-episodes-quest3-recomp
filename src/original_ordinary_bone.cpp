@@ -142,8 +142,11 @@ bool OriginalOrdinaryBoneSkeletalAdapter::compose_parented_bones(
 bool OriginalOrdinaryBoneSkeletalAdapter::compose_unparented_bones(
     WorldEntityId child,std::uint32_t mask){
     composed_.erase(child);
-    const auto args=input_.ordinary_inputs(child,mask);
+    auto args=input_.ordinary_inputs(child,mask);
     if(!args)return false;
+    // The original caller explicitly passes this mask. Never trust a
+    // stale mask inside host-supplied pose/metadata snapshots.
+    args->bone_mask=mask;
     auto result=build_original_ordinary_bones(*args);
     if(!result.successful())return false;
     std::vector<WorldMatrix3x4> complete;complete.reserve(result.matrices.size());
