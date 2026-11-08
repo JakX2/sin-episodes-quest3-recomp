@@ -9,7 +9,7 @@ import hashlib
 import json
 import struct
 from pathlib import Path
-from audit_sin_original_jessica_throw import PE32,rel_target
+from audit_sin_original_jessica_throw import PE32
 
 SHA="568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650"
 WITNESSES={
@@ -29,31 +29,31 @@ def verify(data):
     digest=hashlib.sha256(data).hexdigest()
     if digest!=SHA: raise ValueError("original server.dll SHA-256 mismatch")
     pe=PE32(data)
-    if pe.image_base!=0x22000000: raise ValueError("wrong original preferred image base")
+    if pe.base!=0x22000000: raise ValueError("wrong original preferred image base")
     for name,(first,end,expected) in WITNESSES.items():
-        if hashlib.sha256(pe.read_va(first,end-first)).hexdigest()!=expected:
+        if hashlib.sha256(pe.read(first,end-first)).hexdigest()!=expected:
             raise ValueError("original function witness changed: "+name)
     for at,target in CALLS.items():
-        if rel_target(pe,at,0xE8)!=target:
+        if pe.branch_target(at,0xE8)!=target:
             raise ValueError("unexpected original call at "+hex(at))
     # 0x22572DC0 is original sv_gravity ConVar object, with its internal
     # pointer at +0x18. Jessica reads that pointer's float at +0x28.
-    if pe.read_va(0x22445168,11)!=b"sv_gravity\0":
+    if pe.read(0x22445168,11)!=b"sv_gravity\0":
         raise ValueError("gravity cvar name mismatch")
-    if pe.read_va(0x22445174,4)!=b"600\0":
+    if pe.read(0x22445174,4)!=b"600\0":
         raise ValueError("gravity registered default mismatch")
-    if pe.read_va(0x223BF9F4,5)!=b"\xb9\xc0\x2d\x57\x22":
+    if pe.read(0x223BF9F4,5)!=b"\xb9\xc0\x2d\x57\x22":
         raise ValueError("gravity ConVar object mismatch")
-    if pe.read_va(0x223624ED,9)!=b"\x8b\x15\xd8\x2d\x57\x22\x8b\x42\x28":
+    if pe.read(0x223624ED,9)!=b"\x8b\x15\xd8\x2d\x57\x22\x8b\x42\x28":
         raise ValueError("Jessica gravity field access mismatch")
-    if pe.read_va(0x223624FD,5)!=b"\x68\x00\x00\x70\x41":
+    if pe.read(0x223624FD,5)!=b"\x68\x00\x00\x70\x41":
         raise ValueError("15.0 arc parameter mismatch")
-    if pe.read_va(0x22362509,6)!=b"\xff\x92\x14\x02\x00\x00":
+    if pe.read(0x22362509,6)!=b"\xff\x92\x14\x02\x00\x00":
         raise ValueError("player target virtual call mismatch")
-    helper=pe.read_va(0x2204C850,0x103)
+    helper=pe.read(0x2204C850,0x103)
     if helper.count(b"\xd9\xfa")!=2 or b"\xde\xfa" not in helper:
         raise ValueError("x87 sqrt/divide structure mismatch")
-    if struct.unpack("<f",pe.read_va(0x223D2590,4))[0]!=0.0:
+    if struct.unpack("<f",pe.read(0x223D2590,4))[0]!=0.0:
         raise ValueError("zero comparison witness mismatch")
     return {"server_sha256":digest,"verified_functions":len(WITNESSES),
             "verified_calls":len(CALLS),"gravity":"sv_gravity",
