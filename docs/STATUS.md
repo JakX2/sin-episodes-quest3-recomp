@@ -194,3 +194,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Added `sin_original_pose_bone_matrix` portable C++17 library, retained bitset/snapshot support, cycle and invalid input guards, a Phase 116 pose-driver integration test and new CTest targets.
 - Original read-only DLL audit passes **5 SHA-pinned code regions, 8 CALL targets, 15 opcode anchors**. Local fresh ZIP extraction, Release tests and UBSan each pass 29/29. [Research](../research/phases/sin-original-pose-recursive-bone-matrices-20261108.md).
 - **Still not playable**: the rest of the second pose-driver pass, animation sampling, `CStudioHdr` and MDL-cache native adapters, full `client.dll`/`server.dll` replacements, actual campaign and Quest 3 VR app remain pending.
+
+## 2026-11-08: second pose-pass track admission and history (Phase 118)
+
+- Binary-verified the original `0x22103D70` second pose loop: influence `+0x5C` must be >0 to evaluate a track; zero/negative/NaN skip it without updating its metadata.
+- After native geometry operations, cap `+0x44` equals **1.0** marks byte `+0xA0=1`; other values set `0`. Previous sequence `+0xA8` is retained only if current sequence is nonnegative and prior index lies between `current-1` and `current`; otherwise clear `+0xA1` history and opaque DWORD `+0xA4`.
+- Independently authored safe C++17 evaluator, native track-state parser, host geometry callback and Phase 116→117→118 pipeline test. Original private DLL audit: **5 code-region SHA-256, 5 relative CALL targets, 21 instruction anchors and 2 floating-point constants**.
+- Local Release and UBSan research harness: **33/33 tests each**.
+- [Phase 118 original pose second pass](../research/phases/sin-original-second-pose-pass-track-state-20261108.md).
+- Still not a complete effect solver or runnable SiN game; the rest of the original loop, native entity animation, full `client.dll`/`server.dll`, and Quest 3 gameplay remain incomplete. No original game binaries or assets committed.

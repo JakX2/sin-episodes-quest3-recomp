@@ -1508,3 +1508,27 @@ if(Python3_Interpreter_FOUND)
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_pose_bone_matrix.py)
 endif()
+
+
+# Phase 118: second pose-pass eligibility, exact cap flag and sequence history.
+add_library(sin_original_pose_second_pass_state STATIC
+  src/original_pose_second_pass_state.cpp)
+target_include_directories(sin_original_pose_second_pass_state PUBLIC include)
+target_link_libraries(sin_original_pose_second_pass_state PUBLIC
+  sin_original_pose_driver_first_pass sin_original_pose_bone_matrix)
+target_compile_options(sin_original_pose_second_pass_state PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+foreach(name original_pose_second_pass_state original_pose_second_track_parser
+             original_pose_second_pass_pipeline)
+  add_executable(${name} tests/test_${name}.cpp)
+  target_link_libraries(${name} PRIVATE sin_original_pose_second_pass_state
+    sin_original_pose_bone_matrix)
+  target_compile_options(${name} PRIVATE
+    -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+  add_test(NAME ${name} COMMAND ${name})
+endforeach()
+if(Python3_Interpreter_FOUND)
+  add_test(NAME original_pose_second_pass_state_audit_synthetic
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_SOURCE_DIR}/research/tests/test_audit_sin_original_pose_second_pass_state.py)
+endif()
