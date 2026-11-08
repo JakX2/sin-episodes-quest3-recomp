@@ -42,14 +42,10 @@ InputValueKind to_value_kind(InputKind kind) noexcept {
 }
 } // namespace
 
-const std::array<InputSpec, 25>& original_input_specs() noexcept {
-    return kInputs;
-}
+const std::array<InputSpec, 25>& original_input_specs() noexcept { return kInputs; }
 
 const InputSpec* find_input_spec(std::string_view name) noexcept {
-    for (const auto& spec : kInputs) {
-        if (spec.name == name) return &spec;
-    }
+    for (const auto& spec : kInputs) if (spec.name == name) return &spec;
     return nullptr;
 }
 
@@ -82,23 +78,19 @@ Result OriginalVehicleRuntime::set_one_window(int index, bool open,
         ? Result::Applied : Result::HostRejected;
 }
 
-Result OriginalVehicleRuntime::set_all_doors(bool open,
-                                             IOriginalVehicleHost& host) {
+Result OriginalVehicleRuntime::set_all_doors(bool open, IOriginalVehicleHost& host) {
     bool all_applied = true;
     const auto count = host.door_count();
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < count; ++i)
         if (!host.set_door_open(i, open)) all_applied = false;
-    }
     return all_applied ? Result::Applied : Result::HostRejected;
 }
 
-Result OriginalVehicleRuntime::set_all_windows(bool open,
-                                               IOriginalVehicleHost& host) {
+Result OriginalVehicleRuntime::set_all_windows(bool open, IOriginalVehicleHost& host) {
     bool all_applied = true;
     const auto count = host.window_count();
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < count; ++i)
         if (!host.set_window_open(i, open)) all_applied = false;
-    }
     return all_applied ? Result::Applied : Result::HostRejected;
 }
 
@@ -106,17 +98,11 @@ Result OriginalVehicleRuntime::handle_input(std::string_view name,
                                             const InputValue& value,
                                             IOriginalVehicleHost& host) {
     const auto* spec = find_input_spec(name);
-    if (!spec || value.kind() != to_value_kind(spec->kind))
-        return Result::RejectedInput;
+    if (!spec || value.kind() != to_value_kind(spec->kind)) return Result::RejectedInput;
+    const int n = std::holds_alternative<int>(value.payload) ? std::get<int>(value.payload) : 0;
 
-    const int n = std::holds_alternative<int>(value.payload)
-        ? std::get<int>(value.payload) : 0;
-    if (name == "WipersOn") {
-        state_.wipers_on = true;
-        return Result::Applied;
-    }
-    if (name == "WipersOff") {
-        state_.wipers_on = false;
+    if (name == "WipersOn" || name == "WipersOff") {
+        state_.wipers_on = name == "WipersOn";
         return Result::Applied;
     }
     if (name == "HeadlightOn" || name == "HeadlightOff") {
@@ -135,49 +121,28 @@ Result OriginalVehicleRuntime::handle_input(std::string_view name,
     if (name == "OpenWindows") return set_all_windows(true, host);
     if (name == "CloseWindows") return set_all_windows(false, host);
 
-    if (name == "EnableUse") {
-        state_.enable_use = n != 0;
-        return Result::Applied;
-    }
-    if (name == "LockView") {
-        state_.views_locked = n != 0;
-        return Result::Applied;
-    }
-    if (name == "EnableAmmo") {
-        state_.infinite_ammo = n != 0;
-        return Result::Applied;
-    }
-    if (name == "EnableHints") {
-        state_.hints_enabled = n != 0;
-        return Result::Applied;
-    }
-
-    if (name == "EnterVehicle") {
-        return host.enter_vehicle(value.activator, n)
-            ? Result::Applied : Result::HostRejected;
-    }
-    if (name == "ExitVehicle") {
-        return host.exit_vehicle(value.activator, n)
-            ? Result::Applied : Result::HostRejected;
-    }
+    if (name == "EnableUse") { state_.enable_use = n != 0; return Result::Applied; }
+    if (name == "LockView") { state_.views_locked = n != 0; return Result::Applied; }
+    if (name == "EnableAmmo") { state_.infinite_ammo = n != 0; return Result::Applied; }
+    if (name == "EnableHints") { state_.hints_enabled = n != 0; return Result::Applied; }
+    if (name == "EnterVehicle")
+        return host.enter_vehicle(value.activator, n) ? Result::Applied : Result::HostRejected;
+    if (name == "ExitVehicle")
+        return host.exit_vehicle(value.activator, n) ? Result::Applied : Result::HostRejected;
 
     if (name == "SetView") {
-        if (!value.activator || !value.activator->valid())
-            return Result::MissingActivator;
-        if (n < 0 || static_cast<std::size_t>(n) >= views_.size())
-            return Result::OutOfRange;
+        if (!value.activator || !value.activator->valid()) return Result::MissingActivator;
+        if (n < 0 || static_cast<std::size_t>(n) >= views_.size()) return Result::OutOfRange;
         const auto player = host.resolve_player(*value.activator);
         if (!player || !player->valid()) return Result::MissingActivator;
-        const auto& view = views_[static_cast<std::size_t>(n)];
         host.set_player_view_index(*player, n);
-        host.set_player_allow_weapons(*player, view.allow_weapons);
-        return host.apply_vehicle_view(*player, n)
-            ? Result::Applied : Result::HostRejected;
+        host.set_player_allow_weapons(*player, views_[static_cast<std::size_t>(n)].allow_weapons);
+        return host.apply_vehicle_view(*player, n) ? Result::Applied : Result::HostRejected;
     }
 
     if (name == "SetCamera") {
         const auto camera_name = std::get<std::string_view>(value.payload);
-        state_.monitor_camera.assign(camera_name.begin(), camera_name.end());
+        state_.monitor_camera = std::string(camera_name.begin(), camera_name.end());
         clear_camera_link(host);
         return Result::Applied;
     }
@@ -196,40 +161,35 @@ Result OriginalVehicleRuntime::handle_input(std::string_view name,
         clear_camera_link(host);
         return Result::Applied;
     }
-
     if (name == "RadioOn" || name == "RadioOff" || name == "SetRadioStation") {
         const auto radio = host.resolve_radio();
-        if (!radio || !radio->valid() || !host.is_live(*radio))
-            return Result::MissingLinkedEntity;
-        if (name == "SetRadioStation") {
-            return host.set_radio_station(*radio, n)
-                ? Result::Applied : Result::HostRejected;
-        }
-        return host.set_radio_power(*radio, name == "RadioOn")
-            ? Result::Applied : Result::HostRejected;
+        if (!radio || !radio->valid() || !host.is_live(*radio)) return Result::MissingLinkedEntity;
+        if (name == "SetRadioStation")
+            return host.set_radio_station(*radio, n) ? Result::Applied : Result::HostRejected;
+        return host.set_radio_power(*radio, name == "RadioOn") ? Result::Applied : Result::HostRejected;
     }
-
     return Result::RejectedInput;
 }
 
 Result OriginalVehicleRuntime::refresh_monitor_camera(IOriginalVehicleHost& host) {
     if (!state_.monitor_active) return Result::UninitializedState;
-    if (!*state_.monitor_active || state_.monitor_camera.empty())
-        return Result::Unchanged;
+    if (!*state_.monitor_active) return Result::Unchanged;
+    if (!state_.monitor_camera) return Result::UninitializedState;
+    if (state_.monitor_camera->empty()) return Result::Unchanged;
     if (camera_link_ && host.is_live(*camera_link_)) return Result::Unchanged;
     if (camera_link_) camera_link_.reset();
 
-    const auto candidate = host.resolve_named_entity(state_.monitor_camera);
+    const auto candidate = host.resolve_named_entity(*state_.monitor_camera);
     if (!candidate || !candidate->valid() || !host.is_live(*candidate)) {
-        state_.monitor_camera.clear();
+        state_.monitor_camera = std::string{};
         return Result::MissingLinkedEntity;
     }
     if (!host.is_point_camera(*candidate)) {
-        state_.monitor_camera.clear();
+        state_.monitor_camera = std::string{};
         return Result::WrongEntityType;
     }
     if (!host.link_monitor_camera(*candidate)) {
-        state_.monitor_camera.clear();
+        state_.monitor_camera = std::string{};
         return Result::HostRejected;
     }
     camera_link_ = *candidate;
