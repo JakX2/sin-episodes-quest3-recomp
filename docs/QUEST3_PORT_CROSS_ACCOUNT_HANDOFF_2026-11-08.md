@@ -196,6 +196,39 @@ not Quest execution.
 GitHub Actions:
 https://github.com/JakX2/sin-episodes-quest3-recomp/actions
 
+## New real map runtime evidence: five Google Drive text logs
+
+The owner has supplied a folder of actual map load console logs,
+containing five .txt files for Arena, Finale, Highrise, U4-to-Pit
+and Intro-to-U4. All five were inspected on 8 November 2026.
+The durable, source-attributed inventory is:
+
+research/phases/sin-original-map-runtime-unknown-entity-logs-nov08.md
+
+Google Drive folder:
+https://drive.google.com/drive/folders/1ExaddVDbt0UTrvec4jJdg1lXVdn6AAEJ?usp=sharing
+
+Across those five logs, **49 distinct game entity classnames** were
+rejected in **1,531 unknown-entity messages**. Most common:
+npc_druglab_grunt_pistol (195), npc_druglab_grunt_assault_rifle (103),
+prop_exploding_barrel (92), trigger_dynamic_difficulty (88),
+npc_druglab_grunt_elite (69) and npc_druglab_grunt_scattergun (66).
+These are error counts from potentially repeated load attempts,
+NOT unique world placements or unimplemented C++ functions.
+
+CRITICAL: The original 2006 server.dll has a proven static factory
+registration for trigger_dynamic_difficulty, but the runtime that
+produced these text logs still could not instantiate it. This
+confirms why we need a REAL native engine-host game module
+and entity registry, not only decompiled classes or mock-host tests.
+
+The logs also report point_template target failures, missing
+cinematic .vcd scenes, Highrise prop_door_rotating model
+door_options, VMT material parse issues and some save open errors.
+These are separate from the primary missing game factory problem.
+No raw console logs, screenshots or proprietary game content were
+copied to GitHub; the public report records aggregate metadata only.
+
 ## High-value next development tasks, in order
 
 1. Inspect live branch/PR head and latest GitHub Actions result.
