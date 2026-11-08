@@ -68,9 +68,19 @@ void test_window_and_numeric_checks(){
     r=apply_original_pose_second_pass_state(
         {track(std::numeric_limits<float>::infinity(),1.f)},0);
     assert(r.code==Code::InvalidFloat && r.states.empty());
+
+    // Original FUCOMPP sets unordered for a NaN cap. The parity path clears
+    // full-cap mode; it does not reject the track or abort the pass.
     r=apply_original_pose_second_pass_state(
         {track(1.f,std::numeric_limits<float>::quiet_NaN())},0);
-    assert(r.code==Code::InvalidFloat && r.states.empty());
+    assert(r.successful() && !r.states[0].full_cap_mode);
+    r=apply_original_pose_second_pass_state(
+        {track(1.f,std::numeric_limits<float>::infinity())},0);
+    assert(r.successful() && !r.states[0].full_cap_mode);
+    r=apply_original_pose_second_pass_state(
+        {track(1.f,-std::numeric_limits<float>::infinity())},0);
+    assert(r.successful() && !r.states[0].full_cap_mode);
+
     r=apply_original_pose_second_pass_state({track(1.f,1.f)},0,
         std::vector<OriginalPoseSecondPassState>(2));
     assert(r.code==Code::InvalidTrackCount);
