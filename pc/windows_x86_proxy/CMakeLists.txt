@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(sin_pc_win32_factory_proxy LANGUAGES C)
+project(sin_pc_win32_factory_proxy LANGUAGES C CXX)
+
+# Synthetic original server's decorated MSVC virtual exports must be generated
+# by the C++ compiler itself; DEF aliases for C targets truncate at '@'.
+set_source_files_properties(tests/fake_original.c PROPERTIES LANGUAGE CXX)
 
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
   message(FATAL_ERROR "This smoke target requires a Windows x86 (Win32/PE32) compiler, not x64 or Android.")
