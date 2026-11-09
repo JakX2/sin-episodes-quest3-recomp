@@ -62,6 +62,8 @@ jobs:
             build-android-arm64/sourcevr-probe/libserver.so
             build-android-arm64/sourcevr-probe/libclient.so
             build-android-arm64/sin_android_sourcevr_module_probe_tests
+            build-android-arm64/libsin_original_alive_damage.a
+            build-android-arm64/sin_android_original_alive_damage_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -182,6 +184,13 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_original_gameplay_entity_factory_tests /data/local/tmp/sin_gameplay_factory/sin_android_original_gameplay_entity_factory_tests
             adb shell 'cd /data/local/tmp/sin_gameplay_factory && chmod 700 sin_android_original_gameplay_entity_factory_tests && ./sin_android_original_gameplay_entity_factory_tests' | tr -d '\r' | tee build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
             grep -Fxq 'PASS: original SiN named rifle/grenade entity factories create actual portable gameplay (mock host only)' build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
+            # Common original combat-character integer health reduction. This
+            # executes the reconstructed damage stage on Android Bionic x86_64
+            # with a fake host; it is not SourceVR or Quest gameplay.
+            adb shell mkdir -p /data/local/tmp/sin_alive_damage
+            adb push build-android-emulator-x86_64/sin_android_original_alive_damage_tests /data/local/tmp/sin_alive_damage/sin_android_original_alive_damage_tests
+            adb shell 'cd /data/local/tmp/sin_alive_damage && chmod 700 sin_android_original_alive_damage_tests && ./sin_android_original_alive_damage_tests' | tr -d '\r' | tee build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
+            grep -Fxq 'PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch' build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -204,6 +213,7 @@ jobs:
           grep -Fxq 'PASS: original SiN ARNADE player/grunt rifle-to-grenade gameplay (mock host only)' build-android-emulator-x86_64/rifle-grenade-gameplay-bionic-output.txt
           grep -Fxq 'PASS: original SiN grenade touch contact/flag gates and one-shot blast (mock host only)' build-android-emulator-x86_64/grenade-touch-bionic-output.txt
           grep -Fxq 'PASS: original SiN named rifle/grenade entity factories create actual portable gameplay (mock host only)' build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
+          grep -Fxq 'PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch' build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -221,5 +231,6 @@ jobs:
             build-android-emulator-x86_64/rifle-grenade-gameplay-bionic-output.txt
             build-android-emulator-x86_64/grenade-touch-bionic-output.txt
             build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
+            build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
