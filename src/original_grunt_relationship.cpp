@@ -5,7 +5,8 @@ std::int32_t original_grunt_relation_type(
     const IOriginalGruntRelationshipHost& host,
     bool hostility_mode_enabled,
     OriginalGruntEntityToken target) noexcept {
-    if (!hostility_mode_enabled) return host.parent_relation_type(target);
+    const std::int32_t parent_relation = host.parent_relation_type(target);
+    if (!hostility_mode_enabled) return parent_relation;
 
     // Original slot 240 checks IsNPC first and short-circuits before IsPlayer.
     if (host.target_is_npc(target) || host.target_is_player(target))
@@ -25,8 +26,6 @@ OriginalGruntConditionGatherResult gather_original_grunt_conditions(
     result.disposition =
         OriginalGruntConditionGatherDisposition::PartialHostilityMode;
     const auto targets = host.relationship_targets_in_original_order();
-    const OriginalGruntEntityToken enemy = host.current_enemy();
-
     for (const OriginalGruntEntityToken target : targets) {
         ++result.targets_visited;
 
@@ -40,7 +39,7 @@ OriginalGruntConditionGatherResult gather_original_grunt_conditions(
             continue;
         }
 
-        if (target == enemy)
+        if (target == host.current_enemy())
             host.set_ai_condition(OriginalSharedAiCondition::SeeEnemy);
 
         const std::int32_t priority = host.relation_priority(target);

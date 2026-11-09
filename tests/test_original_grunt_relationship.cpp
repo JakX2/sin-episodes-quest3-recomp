@@ -85,17 +85,17 @@ void test_disabled_relation_uses_parent() {
 void test_enabled_npc_short_circuits_player() {
     FakeHost h; h.targets.push_back({1U,true,false,0});
     assert(original_grunt_relation_type(h,true,1U)==disposition_hate);
-    assert((h.calls==std::vector<std::string>{"is_npc:1"}));
+    assert((h.calls==std::vector<std::string>{"parent_relation:1","is_npc:1"}));
 }
 void test_enabled_player_checks_npc_then_player() {
     FakeHost h; h.targets.push_back({2U,false,true,0});
     assert(original_grunt_relation_type(h,true,2U)==disposition_hate);
-    assert((h.calls==std::vector<std::string>{"is_npc:2","is_player:2"}));
+    assert((h.calls==std::vector<std::string>{"parent_relation:2","is_npc:2","is_player:2"}));
 }
 void test_enabled_other_is_neutral() {
     FakeHost h; h.targets.push_back({3U,false,false,0});
     assert(original_grunt_relation_type(h,true,3U)==disposition_neutral);
-    assert((h.calls==std::vector<std::string>{"is_npc:3","is_player:3"}));
+    assert((h.calls==std::vector<std::string>{"parent_relation:3","is_npc:3","is_player:3"}));
 }
 void test_disabled_gather_delegates_to_parent() {
     FakeHost h; h.ordered_tokens={1U};
@@ -121,9 +121,9 @@ void test_enabled_gather_preserves_order_enemy_and_priority_bands() {
     assert(has_condition(h,OriginalSharedAiCondition::SeeHate));
     assert((h.deferred_tails==std::vector<OriginalGruntEntityToken>{1U,2U,4U}));
     const std::vector<std::string> prefix={
-        "enumerate_targets","current_enemy",
-        "is_player:1","is_npc:1","is_player:1","priority:1","set_condition:9","unresolved_tail:1",
-        "is_player:2","set_condition:31","is_npc:2","is_player:2"};
+        "enumerate_targets",
+        "is_player:1","parent_relation:1","is_npc:1","current_enemy","priority:1","set_condition:9","unresolved_tail:1",
+        "is_player:2","set_condition:31","parent_relation:2","is_npc:2","is_player:2"};
     assert(h.calls.size()>=prefix.size());
     for(std::size_t i=0;i<prefix.size();++i) assert(h.calls[i]==prefix[i]);
 }
