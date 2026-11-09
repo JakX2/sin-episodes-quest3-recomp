@@ -11,6 +11,16 @@ jobs:
         run: cmake -S pc/windows_x86_proxy -B build-pc-win32 -G "Visual Studio 17 2022" -A Win32
       - name: Build native PE32 server.dll/client.dll and synthetic originals
         run: cmake --build build-pc-win32 --config Release --parallel
+      - name: Inspect exact PE32 DLL exports
+        shell: pwsh
+        run: |
+          $vs = Join-Path ${env:ProgramFiles} "Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC"
+          $dumpbin = Get-ChildItem $vs -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match 'Hostx64[\\/]x86' } | Select-Object -First 1
+          if (!$dumpbin) { throw "MSVC dumpbin.exe not found" }
+          foreach ($dll in @("server.dll","client.dll","sin_original_server.dll","sin_original_client.dll")) {
+            Write-Output "=== $dll exports ==="
+            & $dumpbin.FullName /exports "build-pc-win32/bin/Release/$dll"
+          }
       - name: Execute genuine Win32 LoadLibrary/GetProcAddress tests
         run: ctest --test-dir build-pc-win32 -C Release --output-on-failure
       - name: Show module machine and export evidence
