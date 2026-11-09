@@ -35,7 +35,7 @@ Phase148 proved slot9 writes code 3/4, slot10 writes code 0/1, and slot11 writes
 
 - include/sin_compat/original_stat_advisor_sample_runtime.hpp: portable C++17 model with listener callbacks, classifier selection and gate.
 - tests/test_original_stat_advisor_sample_runtime.cpp: CTest route matrices, notification ordering, mean, failure and NaN cases.
-- research/tools/audit_sin_original_stat_advisor_sample_pipeline.py: chains earlier SHA-pinned *both-DLL* verification; checks 4 full original code hashes, 54 opcode anchors, 4 vtable pointers and 2 direct calls.
+- research/tools/audit_sin_original_stat_advisor_sample_pipeline.py: chains earlier SHA-pinned *both-DLL* verification; checks 5 full original code hashes, 54 opcode anchors, 4 vtable pointers and 2 direct calls.
 - research/tests/test_sin_original_stat_advisor_sample_pipeline.py: original-free synthetic mutation tests and independent x87 flag emulator.
 - Root CMakeLists.txt: added CTest target for the new C++ test.
 
