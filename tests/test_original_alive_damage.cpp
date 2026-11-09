@@ -1,4 +1,5 @@
 #include "sin_compat/original_alive_damage.hpp"
+#include "sin_compat/original_game_rules.hpp"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -11,6 +12,7 @@
 
 using namespace sin_compat;
 using namespace sin_compat::combat;
+using namespace sin_compat::rules;
 
 struct State {
     EntityRef ref{};
@@ -203,6 +205,40 @@ void test_unsupported_class_and_dead_state() {
     assert(host.find(victim)->health == 100);
 }
 
+void test_cse1rules_damage_scaling_and_mask() {
+    assert(apply_damage_done_scale(12.0f, 1.5f) == 18.0f);
+    assert(apply_damage_done_scale(12.0f, 2.0f) == 24.0f);
+    assert(apply_damage_taken_scale(12.0f, 0x00000002U, 0.5f) == 6.0f);
+    assert(apply_damage_taken_scale(12.0f, 0x00000001U, 0.5f) == 12.0f);
+    assert(apply_damage_taken_scale(12.0f, 0x00000020U, 0.5f) == 12.0f);
+    assert(apply_damage_taken_scale(12.0f, 0x00020000U, 0.5f) == 12.0f);
+    assert(apply_damage_taken_scale(12.0f, 0x80000000U, 0.5f) == 12.0f);
+    assert(apply_damage_taken_scale(12.0f, 0x80024023U, 0.5f) == 12.0f);
+}
+
+void test_cse1rules_signed_spawn_count_adjustment() {
+    assert(adjust_npc_spawn_count(10, 0.4f, 0.399f) == 11);
+    assert(adjust_npc_spawn_count(10, 0.4f, 0.4f) == 10);
+    assert(adjust_npc_spawn_count(10, -0.1f, 0.099f) == 9);
+    assert(adjust_npc_spawn_count(10, -0.1f, 0.1f) == 10);
+    assert(adjust_npc_spawn_count(10, 0.0f, 0.0f) == 10);
+    assert(adjust_npc_spawn_count(10, 1.2f, 0.9f) == 11);
+}
+
+void test_cse1rules_spawn_count_uses_32_bit_add_sub() {
+    assert(adjust_npc_spawn_count(
+        std::numeric_limits<std::int32_t>::max(), 0.5f, 0.1f) ==
+        std::numeric_limits<std::int32_t>::min());
+    assert(adjust_npc_spawn_count(
+        std::numeric_limits<std::int32_t>::min(), -0.5f, 0.1f) ==
+        std::numeric_limits<std::int32_t>::max());
+}
+
+void test_cse1rules_npc_wait_modifier_is_additive() {
+    assert(add_npc_wait_before_shoot(0.25f, 0.5f) == 0.75f);
+    assert(add_npc_wait_before_shoot(0.1f, -0.5f) == -0.4f);
+}
+
 int main() {
     test_verified_call_routes();
     test_x87_truncate_toward_zero_and_integer_subtraction();
@@ -211,6 +247,11 @@ int main() {
     test_invalid_damage_and_generation_safe_handles();
     test_health_overflow_and_host_failures_are_transactional();
     test_unsupported_class_and_dead_state();
+    test_cse1rules_damage_scaling_and_mask();
+    test_cse1rules_signed_spawn_count_adjustment();
+    test_cse1rules_spawn_count_uses_32_bit_add_sub();
+    test_cse1rules_npc_wait_modifier_is_additive();
     std::puts("PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch");
+    std::puts("PASS: reconstructed CSE1Rules damage, spawn-count and wait hooks");
     return 0;
 }
