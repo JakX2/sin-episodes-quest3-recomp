@@ -67,8 +67,8 @@ static int run_case(const wchar_t *proxy_path, const wchar_t *original_name,
             FARPROC forwarded = GetProcAddress(proxy, server_det_exports[i]);
             FARPROC direct = GetProcAddress(original, server_det_exports[i]);
             if (forwarded == NULL || direct == NULL || forwarded != direct) {
-                fprintf(stderr, "failed original thiscall export forwarding: %s\n",
-                        server_det_exports[i]);
+                fprintf(stderr, "failed original thiscall export forwarding: %s (proxy=%p, original=%p, winerr=%lu)\n",
+                        server_det_exports[i], (void*)forwarded, (void*)direct, (unsigned long)GetLastError());
                 return 10;
             }
         }
