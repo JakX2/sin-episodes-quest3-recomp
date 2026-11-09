@@ -280,5 +280,6 @@ jobs:
             build-android-emulator-x86_64/grunt-beserk-bionic-output.txt
             build-android-emulator-x86_64/grunt-kick-bionic-output.txt
             build-android-emulator-x86_64/scene-io-bionic-output.txt
+            build-android-emulator-x86_64/scene-playback-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
