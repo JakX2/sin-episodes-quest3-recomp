@@ -5,6 +5,7 @@
 // This is not Ritual source and does not expose the old x86 ABI.
 
 #include <bitset>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
