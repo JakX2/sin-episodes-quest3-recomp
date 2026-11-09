@@ -8,16 +8,20 @@
 #if defined(SIN_PC_FAKE_SERVER)
 #define REQUEST_NAME "ServerGameDLL003"
 static unsigned long instance_token = 0x53494E53UL;
-void __cdecl FakeDetonateHomer(void) {}
-void __cdecl FakeDetonatePathfollower(void) {}
-void __cdecl FakeDetonateSpitMutant(void) {}
-void __cdecl FakeDetonateSpitPoison(void) {}
+class CGrenadeHomer { public: virtual void Detonate(); };
+class CGrenadePathfollower { public: virtual void Detonate(); };
+class CGrenadeSpitMutant { public: virtual void Detonate(); };
+class CGrenadeSpitPoison { public: virtual void Detonate(); };
+void CGrenadeHomer::Detonate() {}
+void CGrenadePathfollower::Detonate() {}
+void CGrenadeSpitMutant::Detonate() {}
+void CGrenadeSpitPoison::Detonate() {}
 #else
 #define REQUEST_NAME "VClient011"
 static unsigned long instance_token = 0x53494E43UL;
 #endif
 
-void *__cdecl CreateInterface(const char *name, int *return_code) {
+extern "C" void *__cdecl CreateInterface(const char *name, int *return_code) {
     if (return_code != NULL)
         *return_code = 1;
     if (name == NULL || strcmp(name, REQUEST_NAME) != 0)
