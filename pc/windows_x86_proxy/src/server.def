@@ -1,0 +1,9 @@
+; Exact five named exports found in the owner's SHA-verified 2006 server.dll.
+; The four C++ functions are PE forwarders, never reimplemented with guessed
+; thiscall calling conventions. Original DLL must be sin_original_server.dll.
+EXPORTS
+    CreateInterface=_CreateInterface
+    ?Detonate@CGrenadeHomer@@UAEXXZ=sin_original_server.?Detonate@CGrenadeHomer@@UAEXXZ
+    ?Detonate@CGrenadePathfollower@@UAEXXZ=sin_original_server.?Detonate@CGrenadePathfollower@@UAEXXZ
+    ?Detonate@CGrenadeSpitMutant@@UAEXXZ=sin_original_server.?Detonate@CGrenadeSpitMutant@@UAEXXZ
+    ?Detonate@CGrenadeSpitPoison@@UAEXXZ=sin_original_server.?Detonate@CGrenadeSpitPoison@@UAEXXZ

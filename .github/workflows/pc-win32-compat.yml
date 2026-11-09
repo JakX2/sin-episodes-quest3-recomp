@@ -1,0 +1,35 @@
+name: PC Win32 original-DLL factory compatibility
+on:
+  push:
+  pull_request:
+jobs:
+  win32-factory-proxy:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure native Windows x86 (not x64 or Android)
+        run: cmake -S pc/windows_x86_proxy -B build-pc-win32 -G "Visual Studio 17 2022" -A Win32
+      - name: Build native PE32 server.dll/client.dll and synthetic originals
+        run: cmake --build build-pc-win32 --config Release --parallel
+      - name: Execute genuine Win32 LoadLibrary/GetProcAddress tests
+        run: ctest --test-dir build-pc-win32 -C Release --output-on-failure
+      - name: Show module machine and export evidence
+        shell: pwsh
+        run: |
+          $server = "build-pc-win32/bin/Release/server.dll"
+          $client = "build-pc-win32/bin/Release/client.dll"
+          if (!(Test-Path $server) -or !(Test-Path $client)) { throw "Missing Win32 PE DLL output" }
+          Get-Item $server, $client | Select-Object Name, Length
+          $python = @'
+          import pathlib, struct
+          for name in ('server.dll', 'client.dll'):
+              b = pathlib.Path('build-pc-win32/bin/Release', name).read_bytes()
+              assert b[:2] == b'MZ'
+              pe, = struct.unpack_from('<I', b, 0x3c)
+              assert b[pe:pe+4] == b'PE\\x00\\x00'
+              machine, = struct.unpack_from('<H', b, pe+4)
+              opt_magic, = struct.unpack_from('<H', b, pe+24)
+              assert (machine, opt_magic) == (0x014c, 0x010b), (name, hex(machine), hex(opt_magic))
+              print('PASS PE32 i386:', name)
+          '@
+          $python | python -
