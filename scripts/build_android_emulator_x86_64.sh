@@ -15,7 +15,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-29 \
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests sin_sourcevr_probe_server sin_sourcevr_probe_client sin_android_sourcevr_module_probe_tests sin_original_ar_grenade_runtime sin_original_rifle_grenade_launch sin_android_original_rifle_grenade_launch_tests sin_original_ar_grenade_touch sin_android_original_ar_grenade_touch_tests sin_original_gameplay_entity_factory sin_android_original_gameplay_entity_factory_tests sin_original_alive_damage sin_android_original_alive_damage_tests --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests sin_sourcevr_probe_server sin_sourcevr_probe_client sin_android_sourcevr_module_probe_tests sin_original_ar_grenade_runtime sin_original_rifle_grenade_launch sin_android_original_rifle_grenade_launch_tests sin_original_ar_grenade_touch sin_android_original_ar_grenade_touch_tests sin_original_gameplay_entity_factory sin_android_original_gameplay_entity_factory_tests sin_original_alive_damage sin_android_original_alive_damage_tests sin_original_grunt_ai sin_android_original_grunt_help_up_task_tests --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 for f in "$LIB" "$SMOKE"; do test -s "$f" || { echo "ERROR: missing $f" >&2; exit 1; }; done
@@ -215,3 +215,12 @@ for role in server client; do
   fi
 done
 echo 'PASS: Bionic x86_64 game-named libserver/libclient module probes built and exports audited.'
+
+# Phase134: compile the same portable grunt task host-contract for Android Bionic.
+GRUNT_AI="$BUILD/libsin_original_grunt_ai.a"
+GRUNT_HELP_UP_TEST="$BUILD/sin_android_original_grunt_help_up_task_tests"
+test -s "$GRUNT_AI" || { echo "ERROR: missing emulator grunt AI library: $GRUNT_AI" >&2; exit 1; }
+test -s "$GRUNT_HELP_UP_TEST" || { echo "ERROR: missing emulator grunt help-up test: $GRUNT_HELP_UP_TEST" >&2; exit 1; }
+"$READELF" -h "$GRUNT_HELP_UP_TEST" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+  echo 'ERROR: grunt help-up regression executable is not Android x86_64' >&2; exit 1; }
+echo 'PASS: original grunt TASK_GRUNT_HELP_UP library and Bionic x86_64 regression executable built.'
