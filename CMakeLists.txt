@@ -1948,3 +1948,16 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND ${sin_source_map_runtime_test_target})
   endif()
 endif()
+
+# Phase 148: exact original CStatAdvisor virtual-slot evaluation recovery.
+# Uses Phase 76 client/server advisor wire contract; no engine ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_stat_advisor_evaluators_tests
+    tests/test_original_stat_advisor_evaluators.cpp)
+  target_include_directories(sin_original_stat_advisor_evaluators_tests PRIVATE include)
+  target_compile_features(sin_original_stat_advisor_evaluators_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_stat_advisor_evaluators_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_stat_advisor_evaluators_tests
+    COMMAND sin_original_stat_advisor_evaluators_tests)
+endif()
