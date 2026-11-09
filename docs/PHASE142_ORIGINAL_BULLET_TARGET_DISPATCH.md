@@ -42,3 +42,12 @@ This is the target filter and TraceAttack dispatch boundary, not a complete hits
 The focused C++17 regression covers exact-type rejection, the combined DUAG type, player override ordering, optional/stale filters, filter rejection, all three TraceAttack routes, and host failures. Standard C++ CI compiles and runs it. No new synthetic binary audit, placeholder .so, APK, or emulator smoke test was added.
 
 The owner-held binsin.zip and SourceVR archive were located in Library, but raw-byte materialization was denied for both in this run. Therefore no new original PE/ELF bytes were read or disassembled here; the implementation is grounded in the previously preserved Phase 42 report, not a fresh binary scan.
+
+
+## Native host and mod-loader gate (checked 9 November 2026)
+
+The current public SourceVRPort README says its custom-mod path is for content-only additions and explicitly says mods that include their own client.dll or server.dll game code are not supported ([SourceVR README](https://github.com/tinsarfal/SourceVR/blob/main/README.md)). Its public repository tree currently exposes only the README and release-validation notes, with no engine source tree, public native game-module SDK, or LICENSE file ([SourceVR repository](https://github.com/tinsarfal/SourceVR)). Its private native binaries therefore cannot be treated as a documented extension API or assumed redistributable.
+
+The public Source SDK 2013 license grants use to develop a modified Valve game running on Valve's Source 1 engine; it does not itself grant a standalone SiN game-engine license ([Valve Source SDK 2013 LICENSE](https://github.com/ValveSoftware/source-sdk-2013/blob/master/LICENSE)). A separate written permission or a genuinely independent engine implementation is needed before choosing that route.
+
+**Conclusion:** no supported, publicly documented, legally established native host/mod loader for SiN game-code DLLs is currently identified. SourceVR content mounting is not a game-code loader, and the Source SDK 2013 grant is not a substitute for a SiN/standalone engine license. Do not build the release path around undocumented binary injection or a guessed loader symbol.
