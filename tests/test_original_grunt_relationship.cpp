@@ -122,8 +122,8 @@ void test_enabled_gather_preserves_order_enemy_and_priority_bands() {
     assert((h.deferred_tails==std::vector<OriginalGruntEntityToken>{1U,2U,4U}));
     const std::vector<std::string> prefix={
         "enumerate_targets","current_enemy",
-        "is_player:1","is_npc:1","is_player:1","priority:1","unresolved_tail:1",
-        "is_player:2","is_npc:2","is_player:2"};
+        "is_player:1","is_npc:1","is_player:1","priority:1","set_condition:9","unresolved_tail:1",
+        "is_player:2","set_condition:31","is_npc:2","is_player:2"};
     assert(h.calls.size()>=prefix.size());
     for(std::size_t i=0;i<prefix.size();++i) assert(h.calls[i]==prefix[i]);
 }
