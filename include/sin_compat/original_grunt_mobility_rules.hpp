@@ -11,13 +11,14 @@ namespace sin_compat::rules {
 
 enum class GruntMobilityCallSite : std::uint8_t {
     GruntVtable292,
-    GruntVtable530Condition4D,
+    GruntVtable530InPlayerSights,
     GruntVtable530Alternate,
     GruntVtable271ScheduleTranslation
 };
 
-// Phase 6's receiver-aware static trace recorded these original call-site
-// factors. The semantic meaning of numeric condition 0x4D is still unknown.
+// Phase 6's receiver-aware call trace recorded these factors. Phase 7's
+// binary registration extraction names grunt-local condition 0x4D as
+// COND_GRUNT_IN_PLAYER_SIGHTS.
 constexpr float grunt_mobility_factor(GruntMobilityCallSite site) noexcept {
     switch (site) {
     case GruntMobilityCallSite::GruntVtable292:
