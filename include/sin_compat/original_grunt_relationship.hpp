@@ -9,12 +9,14 @@
 
 namespace sin_compat::ai::grunt {
 using OriginalGruntEntityToken = std::uint64_t;
+
+class OriginalGruntBeserkBehavior;
 inline constexpr std::int32_t disposition_hate = 1;
 inline constexpr std::int32_t disposition_neutral = 4;
 
 enum class OriginalSharedAiCondition : std::uint8_t {
     SeeHate = 0x07, SeeDislike = 0x09, SeeEnemy = 0x0A,
-    SeePlayer = 0x1F, SeeNemesis = 0x20,
+    SeePlayer = 0x1F, SeeNemesis = 0x20, ScheduleDone = 0x22,
 };
 
 class IOriginalGruntRelationshipHost {
@@ -69,4 +71,13 @@ struct OriginalGruntConditionGatherResult {
 OriginalGruntConditionGatherResult gather_original_grunt_conditions(
     IOriginalGruntRelationshipHost& host,
     bool hostility_mode_enabled);
+
+std::int32_t original_grunt_relation_type(
+    const IOriginalGruntRelationshipHost& host,
+    const OriginalGruntBeserkBehavior& behavior,
+    OriginalGruntEntityToken target) noexcept;
+
+OriginalGruntConditionGatherResult gather_original_grunt_conditions(
+    IOriginalGruntRelationshipHost& host,
+    const OriginalGruntBeserkBehavior& behavior);
 } // namespace sin_compat::ai::grunt
