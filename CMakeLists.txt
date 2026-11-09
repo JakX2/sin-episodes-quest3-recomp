@@ -1833,3 +1833,24 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_bullet_target_dispatch_tests
     COMMAND sin_original_bullet_target_dispatch_tests)
 endif()
+
+
+# Phase 143: original CWeaponMagnum DUAG impact-effect branch.
+# The host supplies native trace state and owns actual decal/effect dispatch.
+add_library(sin_original_magnum_impact_effects STATIC
+  src/original_magnum_impact_effects.cpp)
+target_include_directories(sin_original_magnum_impact_effects PUBLIC include)
+target_compile_options(sin_original_magnum_impact_effects PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_original_magnum_impact_effects PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+if(BUILD_TESTING)
+  add_executable(sin_original_magnum_impact_effects_tests
+    tests/test_original_magnum_impact_effects.cpp)
+  target_link_libraries(sin_original_magnum_impact_effects_tests PRIVATE
+    sin_original_magnum_impact_effects)
+  target_compile_options(sin_original_magnum_impact_effects_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_magnum_impact_effects_tests
+    COMMAND sin_original_magnum_impact_effects_tests)
+endif()
