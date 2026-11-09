@@ -26,7 +26,7 @@ jobs:
               b = pathlib.Path('build-pc-win32/bin/Release', name).read_bytes()
               assert b[:2] == b'MZ'
               pe, = struct.unpack_from('<I', b, 0x3c)
-              assert b[pe:pe+4] == b'PE\\x00\\x00'
+              assert b[pe:pe+4] == b'PE' + bytes((0, 0))
               machine, = struct.unpack_from('<H', b, pe+4)
               opt_magic, = struct.unpack_from('<H', b, pe+24)
               assert (machine, opt_magic) == (0x014c, 0x010b), (name, hex(machine), hex(opt_magic))
