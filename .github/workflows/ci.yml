@@ -237,7 +237,7 @@ jobs:
             # Phase141: execute the reconstructed vehicle view/runtime contract on Android Bionic.
             adb shell mkdir -p /data/local/tmp/sin_vehicle_runtime
             adb push build-android-emulator-x86_64/sin_android_original_vehicle_runtime_tests /data/local/tmp/sin_vehicle_runtime/sin_android_original_vehicle_runtime_tests
-            adb shell 'cd /data/local/tmp/sin_vehicle_runtime && chmod 700 sin_android_original_vehicle_runtime_tests && ./sin_android_original_vehicle_runtime_tests' | tr -d '\\r' | tee build-android-emulator-x86_64/vehicle-runtime-bionic-output.txt
+            adb shell 'cd /data/local/tmp/sin_vehicle_runtime && chmod 700 sin_android_original_vehicle_runtime_tests && ./sin_android_original_vehicle_runtime_tests' | tr -d '\r' | tee build-android-emulator-x86_64/vehicle-runtime-bionic-output.txt
             grep -Fxq 'PASS: original SiN vehicle runtime inputs, view permissions and damage modifier (mock host only)' build-android-emulator-x86_64/vehicle-runtime-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
