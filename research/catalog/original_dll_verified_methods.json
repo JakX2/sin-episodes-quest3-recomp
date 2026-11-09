@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "dll_sha256": {
+    "client": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d",
+    "server": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650"
+  },
+  "description": "Manually reviewed original-machine-code region evidence. This is an initial ledger, not every verified method in older phases; no full decompilation percentage can be inferred.",
+  "methods": [
+    {
+      "dll": "server",
+      "entry_va": "0x221E7640",
+      "label": "ServerGameDLL003 initialization entry (partial call contract)",
+      "owner": "ServerGameDLL003",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "abb6eb2fc523fc0cb6301630e7ba9f0b61e70e48f15d5809145171250898b680",
+      "evidence_path": "research/phases/sin-original-client-server-init-handshakes.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x240FE0E0",
+      "label": "VClient011 initialization entry (partial call contract)",
+      "owner": "VClient011",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "14d81449866220aaef1f5f906b577179ea107df78a424a364c715261adbb35db",
+      "evidence_path": "research/phases/sin-original-client-server-init-handshakes.md"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C4D00",
+      "label": "CStatAdvisor classifier virtual slot9 3/4",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "ba4446916b2baada2f5229979341353f023ebaa439771cd95f00718d6dda4aa6",
+      "evidence_path": "research/phases/phase148-original-cstatadvisor-evaluators.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_evaluators.hpp",
+      "test_path": "tests/test_original_stat_advisor_evaluators.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C4D40",
+      "label": "CStatAdvisor classifier virtual slot10 0/1",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "26fd8d85153ce0f15d8f330a47c6e578def1ca78f5523e50e1dd480eee14417d",
+      "evidence_path": "research/phases/phase148-original-cstatadvisor-evaluators.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_evaluators.hpp",
+      "test_path": "tests/test_original_stat_advisor_evaluators.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C4D80",
+      "label": "CStatAdvisor classifier virtual slot11 neutral",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "f81dfaa3b110b49a0b389c8a6ac3e33e6c57a7740464ed32763d6062e9c66bd1",
+      "evidence_path": "research/phases/phase148-original-cstatadvisor-evaluators.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_evaluators.hpp",
+      "test_path": "tests/test_original_stat_advisor_evaluators.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C4D90",
+      "label": "CStatAdvisor floating gate advance",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "87727a576cb0f316ce7ce278056bb560756a83d6b36b4703fadca42a34986250",
+      "evidence_path": "research/phases/phase148-original-cstatadvisor-evaluators.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_evaluators.hpp",
+      "test_path": "tests/test_original_stat_advisor_evaluators.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C4DC0",
+      "label": "CStatAdvisor sample callback and aggregate dispatch",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "1ae1d1ce3a05553c94fa47aad02c2d8dd4bb0c1082b43d0bdef9f89ec50a4372",
+      "evidence_path": "research/phases/phase149-original-cstatadvisor-sample-dispatch.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_sample_runtime.hpp",
+      "test_path": "tests/test_original_stat_advisor_sample_runtime.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C6750",
+      "label": "CStatAdvisor listener input fanout",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "7ccb2679f144b8b485ce2638b524e208aef6ef93c7b35615d935b7eb8071a1ee",
+      "evidence_path": "research/phases/phase149-original-cstatadvisor-sample-dispatch.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_sample_runtime.hpp",
+      "test_path": "tests/test_original_stat_advisor_sample_runtime.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C6830",
+      "label": "CStatAdvisor listener value averaging",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "c89963bb26fa2e9f3a4ca307d25ee916fe9f0750ed132b620948b9165ea72497",
+      "evidence_path": "research/phases/phase149-original-cstatadvisor-sample-dispatch.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_sample_runtime.hpp",
+      "test_path": "tests/test_original_stat_advisor_sample_runtime.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C4C80",
+      "label": "CStatAdvisor virtual classifier routing",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "0b40f3c8e6aeb436b3dd8cc1bebbe4aebb92f50484ab956a73b3496d38f20c46",
+      "evidence_path": "research/phases/phase149-original-cstatadvisor-sample-dispatch.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_sample_runtime.hpp",
+      "test_path": "tests/test_original_stat_advisor_sample_runtime.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222BAE20",
+      "label": "Dynamic difficulty manager six-advisor batch and conditional send",
+      "owner": "CStatAdvisor",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "8bc6209a82366141a09ef8b2cf3094917f172670bf2780b2ec0a8b19fcc86f6b",
+      "evidence_path": "research/phases/phase149-original-cstatadvisor-sample-dispatch.md",
+      "implementation_path": "include/sin_compat/original_stat_advisor_sample_runtime.hpp",
+      "test_path": "tests/test_original_stat_advisor_sample_runtime.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C6600",
+      "label": "CShortTermStatGate constructor",
+      "owner": "CShortTermStatGate family",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "0eed18121db5af0bdb4d71133be223da9a4af07c1191216d1ac34967c45c2449",
+      "evidence_path": "research/phases/phase150-original-short-term-stat-gates.md",
+      "implementation_path": "include/sin_compat/original_short_term_stat_gates.hpp",
+      "test_path": "tests/test_original_short_term_stat_gates.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C66A0",
+      "label": "CShortTermStatGateConjugate constructor",
+      "owner": "CShortTermStatGate family",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "1ee9d538fe20c62e12d711747c23e2ce070dd8e2aef451f310fde9b80ce01a73",
+      "evidence_path": "research/phases/phase150-original-short-term-stat-gates.md",
+      "implementation_path": "include/sin_compat/original_short_term_stat_gates.hpp",
+      "test_path": "tests/test_original_short_term_stat_gates.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C6670",
+      "label": "CShortTermStatGate cached-value getter",
+      "owner": "CShortTermStatGate family",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "933a6c85af8213a87a347402fdaa62905c7b53039e4c483855521c3da6fd9509",
+      "evidence_path": "research/phases/phase150-original-short-term-stat-gates.md",
+      "implementation_path": "include/sin_compat/original_short_term_stat_gates.hpp",
+      "test_path": "tests/test_original_short_term_stat_gates.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C6370",
+      "label": "CShortTermStatGate normalized stat update",
+      "owner": "CShortTermStatGate family",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "1124fe36fec84be51a5879424064d5ee1330ab355932395d24d3f639566ba11d",
+      "evidence_path": "research/phases/phase150-original-short-term-stat-gates.md",
+      "implementation_path": "include/sin_compat/original_short_term_stat_gates.hpp",
+      "test_path": "tests/test_original_short_term_stat_gates.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C63A0",
+      "label": "CShortTermStatGate ordinary score refresh",
+      "owner": "CShortTermStatGate family",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "34d384c82ff5819c9ef5d021e4e6fd31b575a53ca619e88c511e6fba0d608b6e",
+      "evidence_path": "research/phases/phase150-original-short-term-stat-gates.md",
+      "implementation_path": "include/sin_compat/original_short_term_stat_gates.hpp",
+      "test_path": "tests/test_original_short_term_stat_gates.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C6420",
+      "label": "CShortTermStatGateConjugate complementary refresh",
+      "owner": "CShortTermStatGate family",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "367cfdf63e773c461edc8a3e87b6bc9390bf03d935f6d32bcf0a80bcfb169c54",
+      "evidence_path": "research/phases/phase150-original-short-term-stat-gates.md",
+      "implementation_path": "include/sin_compat/original_short_term_stat_gates.hpp",
+      "test_path": "tests/test_original_short_term_stat_gates.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C94C0",
+      "label": "CFloatShortTermStat constructor",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "e88f67926f1b308b2627794f46635a51488d00e8048d06a03b6a28e87b002d7b",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C8EE0",
+      "label": "CFloatShortTermStat ring allocation/initialization",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "d0c67fe99ca9bc65e3c8f975d49fef5cad27038f9e6a1ad35857051aba891a38",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C9050",
+      "label": "CFloatShortTermStat mean getter",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "9cbbab52ba3fadb137f6fda792559cc95eb133846345af0fbc0a11dccf0f8146",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C64A0",
+      "label": "CFloatShortTermStat ring sum",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "5a4d4b9c090e88b37576434e2b7d7569fb073d46276784dd2f1137638aca907b",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C9500",
+      "label": "CFloatShortTermStat fill entire history",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "05b3374ab164ab8df893c98b9f618f593bee9efb8419e5591ef08521b8dfdc3c",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C9530",
+      "label": "CFloatShortTermStat append single sample",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "7cff2102b93d236b86f59f8cc6b641a4b7e8ab0cad6f2e4523ba0bb412d40fcf",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C9090",
+      "label": "CFloatShortTermStat resize preserve current mean",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "c3f2a5d91e7b0679c57513811cb5ee3cdbf2a07666daac9415a599a0c37bb4a0",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C8E40",
+      "label": "CFloatShortTermStat dirty status peek",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "e0eb8cffec07b89f095aa1e60d89eed1f3338b76216e649ad3aeb3ba92dc7d04",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222C8E50",
+      "label": "CFloatShortTermStat dirty status consume",
+      "owner": "CFloatShortTermStat",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_sha256": "bb9a10ca7bb347cc13896787e247cdd9b8149e51f5987cc0155c051d1dd1817f",
+      "evidence_path": "research/phases/phase151-original-float-short-term-stat.md",
+      "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
+      "test_path": "tests/test_original_float_short_term_stat.cpp"
+    }
+  ]
+}
