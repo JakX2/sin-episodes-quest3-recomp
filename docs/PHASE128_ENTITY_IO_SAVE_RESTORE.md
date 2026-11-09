@@ -17,7 +17,7 @@ Pending due times are stored as **remaining game-time durations**, not wall-cloc
 
 Raw EntityRef index/generation pairs are deliberately not serialized as persistent identity. The engine host implements IEntityIoPersistenceMap:
 
-- stable_id_for maps a currently live entity to a unique, nonzero game-owned ID.
+- stable_id_for maps a currently live entity to a unique, nonzero game-owned ID. A host must not alias distinct live sources to one ID or reuse IDs while a save can reference them.
 - entity_for_stable_id maps those IDs to newly recreated live entities after the host has restored its entity set.
 
 Zero is the serialized null-handle sentinel. Expired or unresolved weak caller/activator references become null while their pending event survives. A missing output-definition source is different: restore fails because silently dropping an entity's registered outputs would produce an incomplete map runtime.
@@ -35,7 +35,7 @@ The codec uses a bounded, versioned little-endian format:
 - Fixed-width IDs, ordinals, signed fire counters and IEEE-754 binary64 delays.
 - Length-prefixed byte strings.
 
-The decoder rejects unsupported versions, oversized records/strings, invalid counters or delays, duplicate output groups/ordinals, missing required fields, truncated data and trailing bytes. Encode/decode leave the destination unchanged on failure. The current cap is 16 MiB; this is a compatibility save chunk, not a general-purpose unbounded archive.
+The decoder rejects unsupported versions, oversized records/strings, more than 65,536 connections, invalid counters or delays, duplicate output groups/ordinals, missing required fields, truncated data and trailing bytes. Encode/decode leave the destination unchanged on failure. The current cap is 16 MiB; this is a compatibility save chunk, not a general-purpose unbounded archive.
 
 ## Verification added
 
@@ -49,7 +49,7 @@ The dedicated sin_entity_io_snapshot_tests target covers:
 6. Stale caller/activator handles serialized as null.
 7. Stale output-definition sources omitted at capture.
 8. Required source remapping failure without mutating the destination runtime.
-9. Unsupported versions, duplicate ordinals, invalid fire counters and non-finite restore time.
+9. Stable-ID collision rejection, unsupported versions, duplicate ordinals, invalid fire counters and non-finite restore time.
 
 ## Evidence boundary
 

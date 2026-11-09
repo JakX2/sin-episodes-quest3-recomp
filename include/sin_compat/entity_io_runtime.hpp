@@ -75,6 +75,8 @@ struct EntityIoSnapshot {
     std::vector<EntityIoSavedEvent> pending_events;
 };
 
+// Stable IDs must be unique per live entity and must not be reused for a
+// different entity while a save may still reference the old one.
 class IEntityIoPersistenceMap {
 public:
     virtual ~IEntityIoPersistenceMap() = default;

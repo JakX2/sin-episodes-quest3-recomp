@@ -14,7 +14,7 @@ constexpr std::size_t kMaxSnapshotBytes = 16U * 1024U * 1024U;
 constexpr std::size_t kMaxStringBytes = 4096U;
 constexpr std::uint32_t kMaxOutputGroups = 65536U;
 constexpr std::uint32_t kMaxPendingEvents = 65536U;
-constexpr std::uint32_t kMaxConnections = 262144U;
+constexpr std::uint32_t kMaxConnections = 65536U;
 constexpr std::uint32_t kMaxConnectionsPerOutput = 4096U;
 
 bool add_size(std::size_t& total, std::size_t amount) {
@@ -244,6 +244,7 @@ bool decode_entity_io_snapshot(const std::uint8_t* bytes, std::size_t size,
         output_count > kMaxOutputGroups ||
         event_count > kMaxPendingEvents) return false;
 
+    std::uint32_t decoded_connection_count = 0;
     decoded.outputs.reserve(output_count);
     for (std::uint32_t i = 0; i < output_count; ++i) {
         EntityIoSavedOutput output;
@@ -252,7 +253,9 @@ bool decode_entity_io_snapshot(const std::uint8_t* bytes, std::size_t size,
             !reader.read_string(output.output) ||
             !reader.read_u32(connection_count) ||
             connection_count == 0 ||
-            connection_count > kMaxConnectionsPerOutput) return false;
+            connection_count > kMaxConnectionsPerOutput ||
+            connection_count > kMaxConnections - decoded_connection_count) return false;
+        decoded_connection_count += connection_count;
 
         output.connections.reserve(connection_count);
         for (std::uint32_t j = 0; j < connection_count; ++j) {

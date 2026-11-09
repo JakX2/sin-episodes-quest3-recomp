@@ -220,6 +220,23 @@ int main() {
     assert(atomic_runtime.now() == old_now);
     assert(atomic_runtime.fire(atomic_source, "Keep", atomic_source) == 1);
 
+    // A host must not alias two distinct live source entities to one stable ID.
+    TestHost collision_host;
+    const EntityRef collision_a = collision_host.add(81, 1);
+    const EntityRef collision_b = collision_host.add(82, 1);
+    TestIdentityMap collision_ids;
+    collision_ids.bind(collision_a, 8100);
+    collision_ids.bind(collision_b, 8100);
+    EntityIoRuntime collision_runtime(collision_host);
+    assert(collision_runtime.connect(collision_a, "OnA",
+        {"door", "Use", "a", 0.0, -1}));
+    assert(collision_runtime.connect(collision_b, "OnB",
+        {"door", "Use", "b", 0.0, -1}));
+    EntityIoSnapshot collision_snapshot;
+    collision_snapshot.next_ordinal = 99;
+    assert(!collision_runtime.save_state(collision_snapshot, collision_ids));
+    assert(collision_snapshot.next_ordinal == 99);
+
     auto invalid = snapshot;
     invalid.version = 2;
     std::vector<std::uint8_t> preserved{0x11, 0x22};

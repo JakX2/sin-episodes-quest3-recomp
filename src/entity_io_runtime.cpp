@@ -74,6 +74,7 @@ bool EntityIoRuntime::save_state(
 
     EntityIoSnapshot saved;
     saved.next_ordinal = next_ordinal_;
+    std::map<std::uint64_t, EntityRef> source_identities;
     const auto stable_id_or_null = [&](EntityRef entity,
                                        std::uint64_t& stable_id) {
         if (!host_.is_live(entity)) {
@@ -87,6 +88,10 @@ bool EntityIoRuntime::save_state(
         if (!host_.is_live(entry.first.source)) continue;
         std::uint64_t source_id = 0;
         if (!stable_id_or_null(entry.first.source, source_id)) return false;
+        const auto known_source = source_identities.find(source_id);
+        if (known_source != source_identities.end() &&
+            known_source->second != entry.first.source) return false;
+        source_identities.emplace(source_id, entry.first.source);
         EntityIoSavedOutput output;
         output.source_id = source_id;
         output.output = entry.first.output;
