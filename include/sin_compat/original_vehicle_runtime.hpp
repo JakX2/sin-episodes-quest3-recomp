@@ -29,13 +29,15 @@ struct EntityRef {
 };
 
 struct ViewRecord {
-    bool allow_weapons = false;
+    // Original byte is copied into the player field and tested against zero.
+    std::uint8_t allow_weapons = 0;
     // The original constructor initializes view_damage_mod to 1.0f.
     float damage_modifier = 1.0f;
 };
 
-// Decodes only the original binary-backed view_damage_mod member from the
-// 100-byte x86 view records. Other fields remain at conservative defaults.
+// Decodes the two verified original fields from each 100-byte x86 view record:
+// the raw view_allow_weapons byte (+0x55) and view_damage_mod float (+0x60).
+// Other fields remain at conservative defaults.
 // The output is replaced only after the complete requested range is valid.
 bool decode_original_view_records(const std::uint8_t* bytes,
                                   std::size_t byte_count,
@@ -102,7 +104,7 @@ public:
     virtual bool set_window_open(std::size_t index, bool open) = 0;
     virtual std::optional<EntityRef> resolve_player(EntityRef activator) = 0;
     virtual void set_player_view_index(EntityRef player, int index) = 0;
-    virtual void set_player_allow_weapons(EntityRef player, bool allow) = 0;
+    virtual void set_player_allow_weapons(EntityRef player, std::uint8_t allow) = 0;
     virtual bool apply_vehicle_view(EntityRef player, int index) = 0;
     virtual bool set_vehicle_headlights(bool enabled) = 0;
     virtual void publish_headlight_state(bool enabled) = 0;
