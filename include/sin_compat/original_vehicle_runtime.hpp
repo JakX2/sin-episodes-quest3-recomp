@@ -44,6 +44,11 @@ bool decode_original_view_records(const std::uint8_t* bytes,
                                   std::size_t view_count,
                                   std::vector<ViewRecord>& output);
 
+enum class AutomaticViewPermission : std::uint8_t {
+    CopyViewRecordByte,
+    ForceZero
+};
+
 enum class DamageViewPath : std::uint8_t {
     NonPlayer,
     PlayerViewModifier,
@@ -137,6 +142,16 @@ public:
                        const InputValue& value,
                        IOriginalVehicleHost& host);
     Result refresh_monitor_camera(IOriginalVehicleHost& host);
+
+    // Mirrors the verified automatic vehicle-update setter pair: update the
+    // player's selected view, then either copy that view's raw permission byte
+    // or explicitly clear the permission byte. The caller supplies the branch
+    // mode because the original trigger semantics are not yet identified.
+    Result apply_automatic_view_transition(
+        EntityRef player,
+        int selected_view_index,
+        AutomaticViewPermission permission_mode,
+        IOriginalVehicleHost& host);
 
     // Applies only the final player-specific view_damage_mod stage. The caller
     // supplies damage after earlier damage-type/global scaling and the
