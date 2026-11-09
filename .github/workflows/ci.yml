@@ -313,6 +313,5 @@ jobs:
             build-android-emulator-x86_64/grunt-map-inputs-bionic-output.txt
             build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
             build-android-emulator-x86_64/source-bsp-entities-bionic-output.txt
-            build-android-emulator-x86_64/source-bsp-entities-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
