@@ -239,6 +239,11 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_original_vehicle_runtime_tests /data/local/tmp/sin_vehicle_runtime/sin_android_original_vehicle_runtime_tests
             adb shell 'cd /data/local/tmp/sin_vehicle_runtime && chmod 700 sin_android_original_vehicle_runtime_tests && ./sin_android_original_vehicle_runtime_tests' | tr -d '\r' | tee build-android-emulator-x86_64/vehicle-runtime-bionic-output.txt
             grep -Fxq 'PASS: original SiN vehicle runtime inputs, view permissions and damage modifier (mock host only)' build-android-emulator-x86_64/vehicle-runtime-bionic-output.txt
+            # Phase144: execute original client viewmodel offset composition on Bionic.
+            adb shell mkdir -p /data/local/tmp/sin_viewmodel_origin_offset
+            adb push build-android-emulator-x86_64/sin_android_original_viewmodel_origin_offset_tests /data/local/tmp/sin_viewmodel_origin_offset/sin_android_original_viewmodel_origin_offset_tests
+            adb shell 'cd /data/local/tmp/sin_viewmodel_origin_offset && chmod 700 sin_android_original_viewmodel_origin_offset_tests && ./sin_android_original_viewmodel_origin_offset_tests' | tr -d '\r' | tee build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
+            grep -Fxq 'PASS: original SiN client viewmodel origin-offset composition (portable math only)' build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -270,6 +275,7 @@ jobs:
           grep -Fxq 'PASS: original CSceneEntity Start/Pause/Resume/Cancel input order (mock host only)' build-android-emulator-x86_64/scene-playback-bionic-output.txt
           grep -Fxq 'PASS: original SiN grunt map inputs update patrol, look flag, assault dispatch and grenade mode (mock host only)' build-android-emulator-x86_64/grunt-map-inputs-bionic-output.txt
           grep -Fxq 'PASS: original SiN vehicle runtime inputs, view permissions and damage modifier (mock host only)' build-android-emulator-x86_64/vehicle-runtime-bionic-output.txt
+          grep -Fxq 'PASS: original SiN client viewmodel origin-offset composition (portable math only)' build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -296,5 +302,6 @@ jobs:
             build-android-emulator-x86_64/scene-playback-bionic-output.txt
             build-android-emulator-x86_64/vehicle-runtime-bionic-output.txt
             build-android-emulator-x86_64/grunt-map-inputs-bionic-output.txt
+            build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
