@@ -33,10 +33,11 @@ These files were consulted as behavioral references only. No Valve source implem
 The entity-I/O tests now verify:
 
 1. A delayed event survives source removal and delivers to a live named target with a null caller.
-2. A recycled entity index does not become the old caller.
-3. Explicit caller cancellation removes pending events.
-4. Output definitions are removed independently of already queued events.
-5. Zero-delay relay-loop budgeting and the existing scheduling tests remain intact.
+2. A removed activator is delivered as a null handle without dropping the event.
+3. A recycled entity index does not become the old caller.
+4. Explicit caller cancellation removes pending events.
+5. Output definitions are removed independently of already queued events.
+6. Zero-delay relay-loop budgeting and the existing scheduling tests remain intact.
 
 ## Evidence boundary
 

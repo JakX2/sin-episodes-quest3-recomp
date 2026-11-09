@@ -27,6 +27,8 @@ public:
     virtual bool is_live(EntityRef entity) const = 0;
     // Resolved at DELIVERY time. Host must supply actual Source-compatible
     // dynamic targetname semantics. Returned order determines delivery order.
+    // Activator/caller may be EntityRef{} when a queued weak handle has expired;
+    // the native adapter must translate that sentinel to a null engine handle.
     virtual std::vector<EntityRef> resolve_targets(
         const std::string& target, EntityRef activator, EntityRef caller) = 0;
     virtual void accept_input(EntityRef target, const std::string& input,

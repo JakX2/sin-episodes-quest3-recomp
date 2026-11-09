@@ -129,12 +129,25 @@ int main() {
     assert(host.contexts.back().second == EntityRef{});
     assert(io.fire(auto_ent, "OnBuzz", player) == 0);
     host.generations[1] = 1;
+
+    // A removed activator also becomes null without dropping the queued event.
+    const auto short_lived_activator = host.add(13, 1, "short-lived");
+    assert(io.connect(auto_ent, "OnActivatorGone",
+                      link("door", "Use", 0.1)));
+    assert(io.fire(auto_ent, "OnActivatorGone", short_lived_activator) == 1);
+    host.generations[13] = 2;
+    const auto activator_orphaned = io.advance_to(1.85);
+    assert(activator_orphaned.inputs_delivered == 1);
+    assert(host.contexts.back().first == EntityRef{});
+    assert(host.contexts.back().second == auto_ent);
+
     // Target itself can be stale (index reuse of a named target).
     assert(io.fire(auto_ent, "OnBuzz", player) == 2);
     host.generations[5] = 6;
     auto stale_target = io.advance_to(1.75);
     assert(stale_target.inputs_delivered == 2); // buzzer2 and door, not buzzer1
-    assert(host.deliveries[8] == "6:Ring:first");
+    assert(host.deliveries[host.deliveries.size() - 2] == "6:Ring:first");
+    assert(host.deliveries.back() == "3:Close:second");
 
     // Removing an entity unregisters its outputs but does not implicitly
     // cancel global queue entries. CancelPending is an explicit operation.
@@ -158,7 +171,7 @@ int main() {
     assert(io.advance_to(1.0).invalid_time);
     assert(io.advance_to(NAN).invalid_time);
     assert(io.advance_to(INFINITY).invalid_time);
-    assert(io.now() == 1.75);
+    assert(io.now() == 1.85);
 
     // A looping zero-delay relay must not freeze the host frame.
     FakeMap cycles;
