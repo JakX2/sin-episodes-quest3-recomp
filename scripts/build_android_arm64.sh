@@ -366,3 +366,14 @@ test -s "$SCENE_PLAYBACK_TEST" || { echo "ERROR: missing ARM64 scene playback re
   echo 'ERROR: scene playback regression is not AArch64' >&2; exit 1;
 }
 echo 'PASS: original CSceneEntity playback input runtime and regression compiled for Android ARM64; no engine execution.'
+
+
+# Phase 140: compile the original CNPC_GruntBase map-input runtime for ARM64.
+GRUNT_MAP_INPUTS_LIB="$BUILD/libsin_original_grunt_ai.a"
+GRUNT_MAP_INPUTS_TEST="$BUILD/sin_android_original_grunt_map_inputs_tests"
+test -s "$GRUNT_MAP_INPUTS_LIB" || { echo "ERROR: missing ARM64 grunt AI library: $GRUNT_MAP_INPUTS_LIB" >&2; exit 1; }
+test -s "$GRUNT_MAP_INPUTS_TEST" || { echo "ERROR: missing ARM64 grunt map-input regression: $GRUNT_MAP_INPUTS_TEST" >&2; exit 1; }
+"$READELF" -h "$GRUNT_MAP_INPUTS_TEST" | grep -q 'Machine:.*AArch64' || {
+  echo 'ERROR: grunt map-input regression is not AArch64' >&2; exit 1;
+}
+echo 'PASS: original CNPC_GruntBase map-input runtime and regression compiled for Android ARM64; no engine execution.'

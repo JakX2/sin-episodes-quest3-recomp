@@ -273,3 +273,14 @@ test -s "$SCENE_PLAYBACK_TEST" || { echo "ERROR: missing Bionic scene playback r
   echo 'ERROR: scene playback regression is not Android x86_64' >&2; exit 1;
 }
 echo 'PASS: original CSceneEntity playback input runtime built for Android Bionic x86_64.'
+
+
+# Phase 140: verify the grunt map-input regression is an Android Bionic binary.
+GRUNT_MAP_INPUTS_LIB="$BUILD/libsin_original_grunt_ai.a"
+GRUNT_MAP_INPUTS_TEST="$BUILD/sin_android_original_grunt_map_inputs_tests"
+test -s "$GRUNT_MAP_INPUTS_LIB" || { echo "ERROR: missing Bionic grunt AI library: $GRUNT_MAP_INPUTS_LIB" >&2; exit 1; }
+test -s "$GRUNT_MAP_INPUTS_TEST" || { echo "ERROR: missing Bionic grunt map-input regression: $GRUNT_MAP_INPUTS_TEST" >&2; exit 1; }
+"$READELF" -h "$GRUNT_MAP_INPUTS_TEST" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+  echo 'ERROR: grunt map-input regression is not Android x86_64' >&2; exit 1;
+}
+echo 'PASS: original CNPC_GruntBase map-input runtime built for Android Bionic x86_64.'
