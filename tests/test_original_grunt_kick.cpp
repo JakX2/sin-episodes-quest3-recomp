@@ -24,6 +24,16 @@ public:
     std::uint32_t activity = 0;
     void set_activity(std::uint32_t v) noexcept override { activity = v; }
 };
+
+class FakeSelectorExtension final : public IGruntSelectorExtension {
+public:
+    std::vector<UnrecoveredSelectorGap> calls;
+    std::optional<OriginalGruntScheduleId> select_unrecovered(
+        UnrecoveredSelectorGap gap, GruntSelectorState&) override {
+        calls.push_back(gap);
+        return std::nullopt;
+    }
+};
 class FakeKickHost final : public IOriginalGruntKickEventHost {
 public:
     OriginalGruntKickPhysicsResolution resolution = OriginalGruntKickPhysicsResolution::Ready;
@@ -170,6 +180,51 @@ void test_other_events_delegate_to_parent() {
     assert(handle_original_grunt_kick_animation_event(s,4U,h)==OriginalGruntKickEventResult::NotHandled);
     assert(h.calls.empty() && s.physics_entity);
 }
+
+void test_selector_kick_branch_runs_eligibility_before_returning_schedule() {
+    GruntSelectorState selector{};
+    selector.conditions.set(GruntConditionId::KickableGrenade);
+    OriginalGruntKickState kick{};
+    kick.current_grenade = 42U;
+    FakeSelectorExtension extension;
+    const auto result = select_verified_grunt_schedule_with_kick_gate(
+        selector, extension, kick, eligible_input());
+    assert(result && result->value == 0x73U);
+    assert(!kick.current_grenade && kick.physics_entity && *kick.physics_entity == 42U);
+    assert(extension.calls.empty());
+}
+
+void test_rejected_kick_candidate_does_not_hide_later_selector_priority() {
+    GruntSelectorState selector{};
+    selector.conditions.set(GruntConditionId::KickableGrenade);
+    selector.conditions.set(GruntConditionId::ShotInHelmet);
+    OriginalGruntKickState kick{};
+    kick.current_grenade = 43U;
+    auto input = eligible_input();
+    input.npc_solid_trace_fraction = 0.5F;
+    FakeSelectorExtension extension;
+    const auto result = select_verified_grunt_schedule_with_kick_gate(
+        selector, extension, kick, input);
+    assert(result && result->value == 0x75U);
+    assert(kick.current_grenade && *kick.current_grenade == 43U);
+    assert(!kick.physics_entity);
+}
+
+void test_rejected_kick_candidate_falls_through_to_parent_after_known_gaps() {
+    GruntSelectorState selector{};
+    selector.conditions.set(GruntConditionId::KickableGrenade);
+    OriginalGruntKickState kick{};
+    kick.current_grenade = 44U;
+    auto input = eligible_input();
+    input.grenade_detonate_time = 0.5F;
+    FakeSelectorExtension extension;
+    const auto result = select_verified_grunt_schedule_with_kick_gate(
+        selector, extension, kick, input);
+    assert(!result);
+    assert(kick.current_grenade && *kick.current_grenade == 44U);
+    assert(!kick.physics_entity);
+    assert(extension.calls.size() == 3U);
+}
 }
 int main() {
     test_constants(); test_eligibility_default_passes(); test_enemy_and_grenade_required_in_order();
@@ -179,6 +234,9 @@ int main() {
     test_event_three_computes_velocity_spin_and_clears(); test_missing_entity_uses_melee_fallback();
     test_absent_handle_uses_melee_fallback(); test_missing_physics_object_remains_unresolved();
     test_zero_length_direction_is_not_fabricated(); test_other_events_delegate_to_parent();
+    test_selector_kick_branch_runs_eligibility_before_returning_schedule();
+    test_rejected_kick_candidate_does_not_hide_later_selector_priority();
+    test_rejected_kick_candidate_falls_through_to_parent_after_known_gaps();
     std::puts("PASS: original SiN grunt grenade-kick eligibility, task start and event-3 host contract (mock host only)");
     return 0;
 }

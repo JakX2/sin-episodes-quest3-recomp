@@ -2,6 +2,22 @@
 #include <cmath>
 namespace sin_compat::ai::grunt {
 namespace {
+class OriginalGruntKickScheduleGate final : public IGruntKickScheduleGate {
+public:
+    OriginalGruntKickScheduleGate(
+        OriginalGruntKickState& state,
+        const OriginalGruntKickEligibilityInput& input) noexcept
+        : state_(state), input_(input) {}
+
+    bool prepare_kick_schedule() override {
+        return prepare_original_grunt_kick_schedule(state_, input_).has_value();
+    }
+
+private:
+    OriginalGruntKickState& state_;
+    const OriginalGruntKickEligibilityInput& input_;
+};
+
 float distance3d(const OriginalGruntKickVector3& a, const OriginalGruntKickVector3& b) noexcept {
     const float dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
     return std::sqrt(dx * dx + dy * dy + dz * dz);
@@ -104,4 +120,13 @@ OriginalGruntKickEventResult handle_original_grunt_kick_animation_event(
     host.record_last_anim_event_handled(event_id);
     return OriginalGruntKickEventResult::PhysicsVelocityApplied;
 }
+std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule_with_kick_gate(
+    GruntSelectorState& selector_state,
+    IGruntSelectorExtension& extension,
+    OriginalGruntKickState& kick_state,
+    const OriginalGruntKickEligibilityInput& eligibility_input) {
+    OriginalGruntKickScheduleGate gate(kick_state, eligibility_input);
+    return select_verified_grunt_schedule(selector_state, extension, gate);
+}
+
 } // namespace sin_compat::ai::grunt

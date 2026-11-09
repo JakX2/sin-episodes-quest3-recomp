@@ -3,6 +3,7 @@
 // SiN CNPC_GruntBase grenade-kick eligibility, task start and animation event 3.
 // Original PE32 offsets are evidence only; the host supplies all engine objects.
 #include "sin_compat/original_grunt_relationship.hpp"
+#include "sin_compat/original_grunt_schedule_selector.hpp"
 #include <cstdint>
 #include <optional>
 namespace sin_compat::ai::grunt {
@@ -102,4 +103,12 @@ public:
 OriginalGruntKickEventResult handle_original_grunt_kick_animation_event(
     OriginalGruntKickState& state, std::uint32_t event_id,
     IOriginalGruntKickEventHost& host) noexcept;
+
+// Couples the recovered KickableGrenade selector branch to eligibility and
+// handle transfer. A rejected candidate lets the selector continue priorities.
+std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule_with_kick_gate(
+    GruntSelectorState& selector_state,
+    IGruntSelectorExtension& extension,
+    OriginalGruntKickState& kick_state,
+    const OriginalGruntKickEligibilityInput& eligibility_input);
 } // namespace sin_compat::ai::grunt

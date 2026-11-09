@@ -31,7 +31,7 @@ The two dot-product vector operands remain incompletely identified. The host sup
 ### Schedule and task
 
 - TASK_GRUNT_KICK_ATTACK is registered as local task ID 0x9A.
-- The eligibility/handle-transfer branch copies the current grenade handle to m_hPhysicsEnt (original +0xCB4), clears m_hCurrentGrenade, and returns SCHED_GRUNT_KICK_GRENADE (0x73).
+- The eligibility/handle-transfer branch copies the current grenade handle to m_hPhysicsEnt (original +0xCB4), clears m_hCurrentGrenade, and returns SCHED_GRUNT_KICK_GRENADE (0x73). PR #189 now gates the existing portable KickableGrenade selector branch through this operation; an ineligible candidate falls through to later known selector priorities instead of selecting the kick schedule.
 - The task-start case stores current time at original +0x99C and passes the registered ACT_MELEE_KICK activity ID to the host.
 - The task's update case is shared with TASK_GRUNT_SIGNAL_BEST_SOUND at 0x2235D125. That helper/virtual-call path remains unresolved and is not replaced by guessed behavior.
 
@@ -67,7 +67,7 @@ The implementation is a portable gameplay component with explicit engine host se
 The local C++17 regression executable passed with -Wall -Wextra -Wpedantic -Werror.
 
 The PR CI additionally checks:
-- Desktop CTest.
+- Desktop CTest, including selector-to-eligibility handle-transfer integration.
 - Android NDK ARM64 compilation of the actual gameplay library and test executable.
 - Android Bionic x86_64 execution of the mock-host regression.
 
