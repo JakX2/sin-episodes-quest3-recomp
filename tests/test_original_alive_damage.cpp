@@ -208,10 +208,7 @@ void test_unsupported_class_and_dead_state() {
 void test_cse1rules_damage_scaling_and_mask() {
     assert(apply_damage_done_scale(12.0f, 1.5f) == 18.0f);
     assert(apply_damage_done_scale(12.0f, 2.0f) == 24.0f);
-
-    // A zero/non-masked damage type receives DAMAGE_TAKEN_SCALE.
     assert(apply_damage_taken_scale(12.0f, 0x00000002U, 0.5f) == 6.0f);
-    // Any bit in the observed combined bypass mask skips scaling.
     assert(apply_damage_taken_scale(12.0f, 0x00000001U, 0.5f) == 12.0f);
     assert(apply_damage_taken_scale(12.0f, 0x00000020U, 0.5f) == 12.0f);
     assert(apply_damage_taken_scale(12.0f, 0x00020000U, 0.5f) == 12.0f);
@@ -225,7 +222,6 @@ void test_cse1rules_signed_spawn_count_adjustment() {
     assert(adjust_npc_spawn_count(10, -0.1f, 0.099f) == 9);
     assert(adjust_npc_spawn_count(10, -0.1f, 0.1f) == 10);
     assert(adjust_npc_spawn_count(10, 0.0f, 0.0f) == 10);
-    // The observed branch compares against abs(modifier), without clamping it.
     assert(adjust_npc_spawn_count(10, 1.2f, 0.9f) == 11);
 }
 
@@ -255,6 +251,7 @@ int main() {
     test_cse1rules_signed_spawn_count_adjustment();
     test_cse1rules_spawn_count_uses_32_bit_add_sub();
     test_cse1rules_npc_wait_modifier_is_additive();
-    std::puts("PASS: original SiN combat health reduction and CSE1Rules gameplay hooks");
+    std::puts("PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch");
+    std::puts("PASS: reconstructed CSE1Rules damage, spawn-count and wait hooks");
     return 0;
 }
