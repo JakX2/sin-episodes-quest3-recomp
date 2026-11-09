@@ -1,5 +1,6 @@
 #include "sin_compat/original_alive_damage.hpp"
 #include "sin_compat/original_game_rules.hpp"
+#include "sin_compat/original_grunt_mobility_rules.hpp"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -239,6 +240,32 @@ void test_cse1rules_npc_wait_modifier_is_additive() {
     assert(add_npc_wait_before_shoot(0.1f, -0.5f) == -0.4f);
 }
 
+
+void test_cse1rules_grunt_mobility_probability() {
+    assert(should_npc_be_mobile(0.5f, 1.0f, 0.1f));
+    assert(!should_npc_be_mobile(0.5f, 1.0f, 0.1001f));
+    assert(should_npc_be_mobile(0.5f, 4.0f, 0.4f));
+    assert(!should_npc_be_mobile(0.5f, 4.0f, 0.4001f));
+    assert(should_npc_be_mobile(-0.5f, 1.0f, 0.1f));
+    assert(!should_npc_be_mobile(0.0f, 20.0f, 0.0f));
+    // The original does not clamp the computed threshold to one.
+    assert(should_npc_be_mobile(0.5f, 20.0f, 1.0f));
+}
+
+void test_cse1rules_grunt_callsite_factors() {
+    assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable292) == 1.0f);
+    assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable530Condition4D) == 4.0f);
+    assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable530Alternate) == 1.0f);
+    assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable271ScheduleTranslation) == 20.0f);
+
+    assert(grunt_mobility_decision(
+        0.5f, GruntMobilityCallSite::GruntVtable530Condition4D, 0.4f));
+    assert(!grunt_mobility_decision(
+        0.5f, GruntMobilityCallSite::GruntVtable530Alternate, 0.1001f));
+    assert(grunt_mobility_decision(
+        0.5f, GruntMobilityCallSite::GruntVtable271ScheduleTranslation, 1.0f));
+}
+
 int main() {
     test_verified_call_routes();
     test_x87_truncate_toward_zero_and_integer_subtraction();
@@ -251,7 +278,9 @@ int main() {
     test_cse1rules_signed_spawn_count_adjustment();
     test_cse1rules_spawn_count_uses_32_bit_add_sub();
     test_cse1rules_npc_wait_modifier_is_additive();
+    test_cse1rules_grunt_mobility_probability();
+    test_cse1rules_grunt_callsite_factors();
     std::puts("PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch");
-    std::puts("PASS: reconstructed CSE1Rules damage, spawn-count and wait hooks");
+    std::puts("PASS: reconstructed CSE1Rules damage, spawn-count, wait and grunt mobility hooks");
     return 0;
 }
