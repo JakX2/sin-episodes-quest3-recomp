@@ -195,7 +195,7 @@ int main() {
     direct_context = {};
     direct_context.direct_entity = prefix_name;
     auto direct_only = resolver.resolve("func_door", direct_context);
-    assert((direct_only.targets == std::vector<EntityRef>{named_first}));
+    assert((direct_only.targets == std::vector<EntityRef>{prefix_name}));
     assert(direct_only.matched_direct_entity);
     assert(!direct_only.used_classname_fallback);
 
