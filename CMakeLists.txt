@@ -1592,7 +1592,8 @@ add_library(sin_original_grunt_ai STATIC
   src/original_grunt_help_up_task.cpp
   src/original_grunt_relationship.cpp
   src/original_grunt_beserk_behavior.cpp
-  src/original_grunt_kick.cpp)
+  src/original_grunt_kick.cpp
+  src/original_grunt_squad_kick_deferral.cpp)
 target_include_directories(sin_original_grunt_ai PUBLIC include)
 target_compile_options(sin_original_grunt_ai PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
@@ -1720,5 +1721,28 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
   if(NOT ANDROID)
     add_test(NAME sin_original_grunt_kick_tests
       COMMAND ${sin_grunt_kick_test_target})
+  endif()
+endif()
+
+
+# Phase 138: original TASK_GRUNT_DEFER_SQUAD_GRENADE_KICK start path.
+# Squad enumeration/resolution remains an explicit engine-host responsibility.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_grunt_squad_kick_deferral_test_target
+      sin_android_original_grunt_squad_kick_deferral_tests)
+  else()
+    set(sin_grunt_squad_kick_deferral_test_target
+      sin_original_grunt_squad_kick_deferral_tests)
+  endif()
+  add_executable(${sin_grunt_squad_kick_deferral_test_target}
+    tests/test_original_grunt_squad_kick_deferral.cpp)
+  target_link_libraries(${sin_grunt_squad_kick_deferral_test_target} PRIVATE
+    sin_original_grunt_ai)
+  target_compile_options(${sin_grunt_squad_kick_deferral_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_grunt_squad_kick_deferral_tests
+      COMMAND ${sin_grunt_squad_kick_deferral_test_target})
   endif()
 endif()
