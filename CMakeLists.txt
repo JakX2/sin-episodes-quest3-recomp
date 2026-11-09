@@ -1892,3 +1892,31 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND ${sin_viewmodel_offset_test_target})
   endif()
 endif()
+
+
+# Phase 145: read Source BSP entity lump into ordered, value-owned map records.
+# This is a file parser only; no map geometry or engine entity ABI is assumed.
+add_library(sin_source_bsp_entities STATIC
+  src/source_bsp_entities.cpp)
+target_include_directories(sin_source_bsp_entities PUBLIC include)
+target_compile_options(sin_source_bsp_entities PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_source_bsp_entities PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_bsp_entities_test_target sin_android_source_bsp_entities_tests)
+  else()
+    set(sin_bsp_entities_test_target sin_source_bsp_entities_tests)
+  endif()
+  add_executable(${sin_bsp_entities_test_target}
+    tests/test_source_bsp_entities.cpp)
+  target_link_libraries(${sin_bsp_entities_test_target} PRIVATE
+    sin_source_bsp_entities)
+  target_compile_options(${sin_bsp_entities_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_source_bsp_entities_tests
+      COMMAND ${sin_bsp_entities_test_target})
+  endif()
+endif()
