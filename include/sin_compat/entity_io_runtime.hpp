@@ -3,7 +3,7 @@
 // Independently authored, portable Source-style entity output scheduling model.
 // No Source SDK ABI, original SiN code, or engine integration is implied.
 
-#include "sin_compat/weapon_entity_io.hpp" // Generation-safe EntityRef
+#include "sin_compat/weapon_entity_io.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,21 +14,17 @@
 namespace sin_compat {
 
 struct EntityOutputConnection {
-    std::string target;    // Host resolves !activator, !caller, wildcards, etc.
+    std::string target;
     std::string input;
     std::string parameter;
     double delay_seconds = 0.0;
-    int max_fires = -1;  // -1: unlimited, 0: disabled; positive: once per firing
+    int max_fires = -1;
 };
 
 class IEntityOutputHost {
 public:
     virtual ~IEntityOutputHost() = default;
     virtual bool is_live(EntityRef entity) const = 0;
-    // Resolved at DELIVERY time. Host must supply actual Source-compatible
-    // dynamic targetname semantics. Returned order determines delivery order.
-    // Activator/caller may be EntityRef{} when a queued weak handle has expired;
-    // the native adapter must translate that sentinel to a null engine handle.
     virtual std::vector<EntityRef> resolve_targets(
         const std::string& target, EntityRef activator, EntityRef caller) = 0;
     virtual void accept_input(EntityRef target, const std::string& input,
@@ -45,34 +41,79 @@ struct EntityIoDrain {
     bool reentrant = false;
 };
 
+constexpr std::uint32_t kEntityIoSnapshotVersion = 1;
+
+struct EntityIoSavedConnection {
+    std::string target;
+    std::string input;
+    std::string parameter;
+    double delay_seconds = 0.0;
+    int max_fires = -1;
+    int remaining = -1;
+};
+
+struct EntityIoSavedOutput {
+    std::uint64_t source_id = 0;
+    std::string output;
+    std::vector<EntityIoSavedConnection> connections;
+};
+
+struct EntityIoSavedEvent {
+    std::uint64_t caller_id = 0;
+    std::uint64_t activator_id = 0;
+    std::string target;
+    std::string input;
+    std::string parameter;
+    double remaining_seconds = 0.0;
+    std::uint64_t ordinal = 0;
+};
+
+struct EntityIoSnapshot {
+    std::uint32_t version = kEntityIoSnapshotVersion;
+    std::uint64_t next_ordinal = 0;
+    std::vector<EntityIoSavedOutput> outputs;
+    std::vector<EntityIoSavedEvent> pending_events;
+};
+
+class IEntityIoPersistenceMap {
+public:
+    virtual ~IEntityIoPersistenceMap() = default;
+    virtual bool stable_id_for(EntityRef live_entity,
+                               std::uint64_t& stable_id) const = 0;
+    virtual EntityRef entity_for_stable_id(std::uint64_t stable_id) const = 0;
+};
+
+bool validate_entity_io_snapshot(const EntityIoSnapshot& snapshot);
+bool encode_entity_io_snapshot(const EntityIoSnapshot& snapshot,
+                               std::vector<std::uint8_t>& bytes);
+bool decode_entity_io_snapshot(const std::uint8_t* bytes, std::size_t size,
+                               EntityIoSnapshot& snapshot);
+
 class EntityIoRuntime final {
 public:
     explicit EntityIoRuntime(IEntityOutputHost& host) : host_(host) {}
 
-    // Registers a fixed connection on the supplied, currently-live source.
-    // Runtime never takes ownership of the entity. This is NOT an engine entity
-    // factory, original map parser, or a Source event queue replacement.
     bool connect(EntityRef source, const std::string& output,
                  EntityOutputConnection connection);
-
-    // One call represents one output firing, not one input per target.
-    // Limits decrement at output-fire time; targets are resolved later.
     std::size_t fire(EntityRef source, const std::string& output,
                      EntityRef activator);
-
-    // Remove a source's output definitions. Already-queued events survive;
-    // their caller/activator handles are revalidated and become null on delivery.
     void remove_source(EntityRef source);
-
-    // Explicit Source-style cancellation for queued events created by caller.
-    // Returns the number of pending events removed.
     std::size_t cancel_events_from_caller(EntityRef caller);
 
-    // Advance monotonic synthetic/host time. A bounded per-call event budget
-    // prevents infinite zero-delay relay loops from hanging the main thread.
-    // Reentrant advance is rejected; nested fire() from a callback is allowed.
-    EntityIoDrain advance_to(double seconds, std::size_t event_budget = 1024);
+    // Captures definitions, fire counts and pending events using host-owned IDs.
+    // Fails while an input callback is being serviced.
+    bool save_state(EntityIoSnapshot& snapshot,
+                    const IEntityIoPersistenceMap& identities) const;
 
+    // Call only after the host has recreated its entity set. Required output
+    // sources must resolve; expired weak event handles become null. The new
+    // clock origin preserves remaining game-time delays across process pause.
+    // Failed restore leaves the existing runtime untouched.
+    bool restore_state(const EntityIoSnapshot& snapshot,
+                       const IEntityIoPersistenceMap& identities,
+                       double restored_time = 0.0);
+
+    EntityIoDrain advance_to(double seconds, std::size_t event_budget = 1024);
     double now() const { return now_; }
     std::size_t pending_events() const { return pending_.size(); }
 
@@ -87,8 +128,6 @@ private:
         int remaining;
     };
     struct Pending {
-        // Source-style event records retain weak caller/activator handles.
-        // A stale generation is delivered as EntityRef{} (the null sentinel).
         EntityRef caller;
         EntityRef activator;
         EntityOutputConnection config;

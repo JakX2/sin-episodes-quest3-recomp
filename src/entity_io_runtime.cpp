@@ -26,7 +26,6 @@ bool EntityIoRuntime::connect(EntityRef source, const std::string& output,
 }
 
 void EntityIoRuntime::enqueue(Pending pending) {
-    // Append equal-time events after older events for deterministic FIFO order.
     auto pos = std::upper_bound(pending_.begin(), pending_.end(), pending,
         [](const Pending& key, const Pending& value) {
             if (key.due != value.due) return key.due < value.due;
@@ -47,17 +46,13 @@ std::size_t EntityIoRuntime::fire(EntityRef source, const std::string& output,
         const double due = now_ + link.config.delay_seconds;
         if (!std::isfinite(due)) continue;
         if (link.remaining > 0) --link.remaining;
-        enqueue(Pending{source, activator, link.config, due,
-                        next_ordinal_++});
+        enqueue(Pending{source, activator, link.config, due, next_ordinal_++});
         ++scheduled;
     }
     return scheduled;
 }
 
 void EntityIoRuntime::remove_source(EntityRef source) {
-    // Entity-owned output definitions disappear with their source. The global
-    // event queue is separate: pending events retain weak caller handles and
-    // are still serviced with a null caller if that entity is later removed.
     for (auto it = outputs_.begin(); it != outputs_.end();) {
         if (it->first.source == source) it = outputs_.erase(it);
         else ++it;
@@ -70,6 +65,115 @@ std::size_t EntityIoRuntime::cancel_events_from_caller(EntityRef caller) {
         [caller](const Pending& pending) { return pending.caller == caller; }),
         pending_.end());
     return before - pending_.size();
+}
+
+bool EntityIoRuntime::save_state(
+    EntityIoSnapshot& snapshot,
+    const IEntityIoPersistenceMap& identities) const {
+    if (draining_) return false;
+
+    EntityIoSnapshot saved;
+    saved.next_ordinal = next_ordinal_;
+    const auto stable_id_or_null = [&](EntityRef entity,
+                                       std::uint64_t& stable_id) {
+        if (!host_.is_live(entity)) {
+            stable_id = 0;
+            return true;
+        }
+        return identities.stable_id_for(entity, stable_id) && stable_id != 0;
+    };
+
+    for (const auto& entry : outputs_) {
+        if (!host_.is_live(entry.first.source)) continue;
+        std::uint64_t source_id = 0;
+        if (!stable_id_or_null(entry.first.source, source_id)) return false;
+        EntityIoSavedOutput output;
+        output.source_id = source_id;
+        output.output = entry.first.output;
+        output.connections.reserve(entry.second.size());
+        for (const auto& link : entry.second) {
+            output.connections.push_back(EntityIoSavedConnection{
+                link.config.target, link.config.input, link.config.parameter,
+                link.config.delay_seconds, link.config.max_fires, link.remaining});
+        }
+        saved.outputs.push_back(std::move(output));
+    }
+
+    saved.pending_events.reserve(pending_.size());
+    for (const auto& event : pending_) {
+        std::uint64_t caller_id = 0;
+        std::uint64_t activator_id = 0;
+        if (!stable_id_or_null(event.caller, caller_id) ||
+            !stable_id_or_null(event.activator, activator_id)) return false;
+        const double remaining = event.due > now_ ? event.due - now_ : 0.0;
+        if (!std::isfinite(remaining)) return false;
+        saved.pending_events.push_back(EntityIoSavedEvent{
+            caller_id, activator_id, event.config.target, event.config.input,
+            event.config.parameter, remaining, event.ordinal});
+    }
+
+    if (!validate_entity_io_snapshot(saved)) return false;
+    snapshot = std::move(saved);
+    return true;
+}
+
+bool EntityIoRuntime::restore_state(
+    const EntityIoSnapshot& snapshot,
+    const IEntityIoPersistenceMap& identities,
+    double restored_time) {
+    if (draining_ || !std::isfinite(restored_time) || restored_time < 0.0 ||
+        !validate_entity_io_snapshot(snapshot)) return false;
+
+    std::map<SourceKey, std::vector<ConnectionState>> restored_outputs;
+    for (const auto& saved_output : snapshot.outputs) {
+        const EntityRef source =
+            identities.entity_for_stable_id(saved_output.source_id);
+        if (!host_.is_live(source)) return false;
+
+        std::vector<ConnectionState> connections;
+        connections.reserve(saved_output.connections.size());
+        for (const auto& saved_link : saved_output.connections) {
+            EntityOutputConnection config{
+                saved_link.target, saved_link.input, saved_link.parameter,
+                saved_link.delay_seconds, saved_link.max_fires};
+            connections.push_back(ConnectionState{std::move(config),
+                                                  saved_link.remaining});
+        }
+        const auto inserted = restored_outputs.emplace(
+            SourceKey{source, saved_output.output}, std::move(connections));
+        if (!inserted.second) return false;
+    }
+
+    const auto weak_entity = [&](std::uint64_t stable_id) {
+        if (stable_id == 0) return EntityRef{};
+        const EntityRef entity = identities.entity_for_stable_id(stable_id);
+        return host_.is_live(entity) ? entity : EntityRef{};
+    };
+
+    std::vector<Pending> restored_pending;
+    restored_pending.reserve(snapshot.pending_events.size());
+    for (const auto& saved_event : snapshot.pending_events) {
+        const double due = restored_time + saved_event.remaining_seconds;
+        if (!std::isfinite(due)) return false;
+        EntityOutputConnection config{
+            saved_event.target, saved_event.input, saved_event.parameter, 0.0, -1};
+        restored_pending.push_back(Pending{
+            weak_entity(saved_event.caller_id),
+            weak_entity(saved_event.activator_id),
+            std::move(config), due, saved_event.ordinal});
+    }
+
+    std::sort(restored_pending.begin(), restored_pending.end(),
+        [](const Pending& left, const Pending& right) {
+            if (left.due != right.due) return left.due < right.due;
+            return left.ordinal < right.ordinal;
+        });
+
+    outputs_.swap(restored_outputs);
+    pending_.swap(restored_pending);
+    now_ = restored_time;
+    next_ordinal_ = snapshot.next_ordinal;
+    return true;
 }
 
 EntityIoDrain EntityIoRuntime::advance_to(double seconds, std::size_t budget) {
@@ -91,22 +195,16 @@ EntityIoDrain EntityIoRuntime::advance_to(double seconds, std::size_t budget) {
 
     while (!pending_.empty() && pending_.front().due <= now_ &&
            result.events_processed < budget) {
-        // Remove before calling the host: callbacks may fire further outputs.
         Pending event = std::move(pending_.front());
         pending_.erase(pending_.begin());
         ++result.events_processed;
-        // EHANDLE-like references become null when their generation is no
-        // longer live; they do not invalidate the queued event itself.
         const EntityRef activator = host_.is_live(event.activator)
             ? event.activator : EntityRef{};
         const EntityRef caller = host_.is_live(event.caller)
             ? event.caller : EntityRef{};
-        auto targets = host_.resolve_targets(event.config.target,
-                                             activator, caller);
+        auto targets = host_.resolve_targets(event.config.target, activator, caller);
         for (EntityRef target : targets) {
             if (!host_.is_live(target)) continue;
-            // Revalidate weak context handles for each delivery because an
-            // earlier target input may remove/recycle the activator or caller.
             const EntityRef current_activator = host_.is_live(event.activator)
                 ? event.activator : EntityRef{};
             const EntityRef current_caller = host_.is_live(event.caller)
