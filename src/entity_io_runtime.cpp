@@ -74,24 +74,32 @@ bool EntityIoRuntime::save_state(
 
     EntityIoSnapshot saved;
     saved.next_ordinal = next_ordinal_;
-    std::map<std::uint64_t, EntityRef> source_identities;
+    // Validate the persistence map as a bijection for every live entity that
+    // enters the snapshot, not only output sources. Otherwise two different
+    // weak caller/activator handles could serialize to one ID and restore as
+    // the wrong entity.
+    std::map<std::uint64_t, EntityRef> stable_id_entities;
     const auto stable_id_or_null = [&](EntityRef entity,
                                        std::uint64_t& stable_id) {
         if (!host_.is_live(entity)) {
             stable_id = 0;
             return true;
         }
-        return identities.stable_id_for(entity, stable_id) && stable_id != 0;
+        if (!identities.stable_id_for(entity, stable_id) || stable_id == 0)
+            return false;
+        const EntityRef reverse = identities.entity_for_stable_id(stable_id);
+        if (!host_.is_live(reverse) || reverse != entity) return false;
+        const auto known = stable_id_entities.find(stable_id);
+        if (known != stable_id_entities.end() && known->second != entity)
+            return false;
+        stable_id_entities.emplace(stable_id, entity);
+        return true;
     };
 
     for (const auto& entry : outputs_) {
         if (!host_.is_live(entry.first.source)) continue;
         std::uint64_t source_id = 0;
         if (!stable_id_or_null(entry.first.source, source_id)) return false;
-        const auto known_source = source_identities.find(source_id);
-        if (known_source != source_identities.end() &&
-            known_source->second != entry.first.source) return false;
-        source_identities.emplace(source_id, entry.first.source);
         EntityIoSavedOutput output;
         output.source_id = source_id;
         output.output = entry.first.output;
@@ -129,10 +137,22 @@ bool EntityIoRuntime::restore_state(
     if (draining_ || !std::isfinite(restored_time) || restored_time < 0.0 ||
         !validate_entity_io_snapshot(snapshot)) return false;
 
+    // A stable ID is accepted only when both directions agree. Required output
+    // owners fail restore on any mismatch; weak caller/activator references
+    // degrade to null so the queued event itself is retained.
+    const auto resolve_live_identity = [&](std::uint64_t stable_id) {
+        if (stable_id == 0) return EntityRef{};
+        const EntityRef entity = identities.entity_for_stable_id(stable_id);
+        if (!host_.is_live(entity)) return EntityRef{};
+        std::uint64_t reverse_id = 0;
+        if (!identities.stable_id_for(entity, reverse_id) ||
+            reverse_id != stable_id) return EntityRef{};
+        return entity;
+    };
+
     std::map<SourceKey, std::vector<ConnectionState>> restored_outputs;
     for (const auto& saved_output : snapshot.outputs) {
-        const EntityRef source =
-            identities.entity_for_stable_id(saved_output.source_id);
+        const EntityRef source = resolve_live_identity(saved_output.source_id);
         if (!host_.is_live(source)) return false;
 
         std::vector<ConnectionState> connections;
@@ -150,9 +170,7 @@ bool EntityIoRuntime::restore_state(
     }
 
     const auto weak_entity = [&](std::uint64_t stable_id) {
-        if (stable_id == 0) return EntityRef{};
-        const EntityRef entity = identities.entity_for_stable_id(stable_id);
-        return host_.is_live(entity) ? entity : EntityRef{};
+        return resolve_live_identity(stable_id);
     };
 
     std::vector<Pending> restored_pending;
