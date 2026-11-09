@@ -15,11 +15,11 @@ Phase 74 adds `EntityIoRuntime` in `include/sin_compat/entity_io_runtime.hpp` an
 - Deliver pending output events at monotonic host-provided time. Sort by due time and insertion ordinal so same-time inputs are deterministic.
 - Defer targetname resolution until delivery. The `IEntityOutputHost` adapter owns `!activator`, `!caller`, duplicate names, dynamic names, wildcard logic, target search order, and game entity-input execution. The synthetic host tests only selected examples.
 - Carry the originating activator and caller handles through delayed events. Nested output firings from an input handler are safe; **nested event-loop pumping is rejected**.
-- Refuse dispatch to stale, deleted or recycled entity generations; remove pending events and output registrations by source on explicit destruction.
+- Keep queued events independent of output-definition lifetime. At delivery, stale/recycled caller and activator generations are presented to the host as null handles; explicit caller cancellation is a separate operation.
 - Bound the count of processed **events per advance** so an immediate zero-delay feedback loop does not hang the host. Remaining pending events can continue on subsequent frames.
 - Reject malformed output bindings, NaN/infinite delays and nonmonotonic/invalid timestamps.
 
-**This model has intentionally stricter lifetime semantics** than an unverified original Source event queue: a queued event is dropped if its *source* has been deleted or recycled. The original game may permit queued outputs after caller removal. Only actual engine tests and lawful original research can settle that distinction.
+**Engine-reference boundary:** The weak-handle lifetime rule follows public Valve Source SDK 2013 reference code: queued events store EHANDLE caller/activator values, due events continue to service with a null caller, and cancellation is explicit. This does not prove the original SiN 2006 fork is identical or that SourceVR 0.5.5 uses the same implementation; original-game parity still requires raw binary evidence and an in-engine test.
 
 ## Reproduce
 

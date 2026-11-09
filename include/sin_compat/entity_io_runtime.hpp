@@ -58,8 +58,13 @@ public:
     std::size_t fire(EntityRef source, const std::string& output,
                      EntityRef activator);
 
-    // Remove a source's output definitions and pending events on destruction.
+    // Remove a source's output definitions. Already-queued events survive;
+    // their caller/activator handles are revalidated and become null on delivery.
     void remove_source(EntityRef source);
+
+    // Explicit Source-style cancellation for queued events created by caller.
+    // Returns the number of pending events removed.
+    std::size_t cancel_events_from_caller(EntityRef caller);
 
     // Advance monotonic synthetic/host time. A bounded per-call event budget
     // prevents infinite zero-delay relay loops from hanging the main thread.
@@ -80,9 +85,10 @@ private:
         int remaining;
     };
     struct Pending {
-        EntityRef source;
-        EntityRef activator;
+        // Source-style event records retain weak caller/activator handles.
+        // A stale generation is delivered as EntityRef{} (the null sentinel).
         EntityRef caller;
+        EntityRef activator;
         EntityOutputConnection config;
         double due;
         std::uint64_t ordinal;
