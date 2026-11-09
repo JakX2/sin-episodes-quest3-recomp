@@ -40,13 +40,15 @@ The code-census counts are the limits of known *discovery methods*, not true exh
 
 ## New searchable catalogs
 
-The owner-local atlas generator creates exactly five evidence-only artifacts:
+The owner-local atlas generator creates seven evidence-only artifacts:
 
 1. SiN_2006_Both_DLLs_Recovery_Atlas.json: per-DLL discovered/verified/reconstructed status counts, fingerprints, caveats.
 2. SiN_2006_Function_Recovery_Atlas.csv: every candidate VA and its seed evidence, RTTI class *hints*, incoming call count, string *hints*, and explicitly reviewed recovery level.
 3. SiN_2006_RTTI_Class_Atlas.csv: class/type descriptor labels, verified hierarchy availability, vtable counts and virtual target counts. Covers RTTI TypeDescriptors as well as classes with inheritance metadata.
 4. SiN_2006_Server_Entity_Factory_Atlas.csv: every factory recognized by the validated compiler idiom.
 5. SiN_2006_Engine_Interface_Atlas.csv: original 55 client and 10 server InterfaceReg constructor registrations.
+6. SiN_2006_Network_Table_Atlas.csv: all constructor-backed tables recognized by the two existing network analyzers; server DT_* strings without a verified constructor are separately labelled **string-only**.
+7. SiN_2006_Network_Property_Atlas.csv: every named property initializer from recognized tables, plus each unresolved declared slot, with actual original client/server x86 object offsets only where validated.
 
 CSV files are searchable with ordinary spreadsheet/terminal tools or can be imported into a SQLite database for later UI work. The full metadata files generated from the owner's original binaries stay **local to the owner**; only scanner sources and a small manually reviewed evidence ledger live in this public repository.
 
@@ -71,10 +73,12 @@ From repo root, using the real private 2006 DLLs, with GNU binutils objdump acce
 py research/tools/audit_sin_rtti_vtables.py --client "C:\SiN\bin\client.dll" --server "C:\SiN\bin\server.dll" --output "C:\private\sin-rtti.json"
 py research/tools/audit_sin_entire_dll_code_census.py --client "C:\SiN\bin\client.dll" --server "C:\SiN\bin\server.dll" --rtti "C:\private\sin-rtti.json" --output-dir "C:\private\sin-census"
 py research/tools/audit_full_sin_game_dlls.py --client "C:\SiN\bin\client.dll" --server "C:\SiN\bin\server.dll" --output "C:\private\sin-factories.json"
+py research/tools/audit_sin_recv_tables.py --client "C:\\SiN\\bin\\client.dll" --server "C:\\SiN\\bin\\server.dll" --output "C:\\private\\sin-recv.json"
+py research/tools/audit_sin_send_tables.py --client "C:\\SiN\\bin\\client.dll" --server "C:\\SiN\\bin\\server.dll" --output "C:\\private\\sin-send.json"
 py research/tools/build_sin_both_dll_recovery_atlas.py --client "C:\SiN\bin\client.dll" --server "C:\SiN\bin\server.dll" --rtti "C:\private\sin-rtti.json" --census-dir "C:\private\sin-census" --factories "C:\private\sin-factories.json" --verified "research/catalog/original_dll_verified_methods.json" --repo-root . --output-dir "C:\private\sin-recovery-atlas"
 ~~~
 
-The atlas builder performs no disassembly itself. It requires the already verified RTTI, code census and factory reports. Any mismatch between those reports and the original SHA-pinned binaries or the expected candidate-row counts is a **fatal error**. It also verifies every reviewed method's original code-region SHA directly from the private binary. Every output entry is metadata only, never copied executable bytes.
+The atlas builder performs no disassembly itself. Supplying both network reports enables the two network CSVs; leaving them out produces empty network CSVs with an explicit network_audit_supplied=false flag, rather than pretending to have checked those tables. It requires the already verified RTTI, code census and factory reports. Any mismatch between those reports and the original SHA-pinned binaries or the expected candidate-row counts is a **fatal error**. It also verifies every reviewed method's original code-region SHA directly from the private binary. Every output entry is metadata only, never copied executable bytes.
 
 Synthetic test (does not require the original game files):
 
