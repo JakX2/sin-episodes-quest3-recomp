@@ -27,8 +27,9 @@ ScenePlaybackInputDispatch dispatch_original_scene_playback_input(
         // before InputStart invokes the playback virtual. FireOutput has no
         // control-flow return in the original path, so host rejection is
         // reported but must not suppress playback.
-        const bool output_accepted = host.fire_choreographed_scene_output(
-            scene, ChoreographedSceneOutput::OnStart, context);
+        const DispatchResult output_result = fire_choreographed_scene_output(
+            scene, ChoreographedSceneOutput::OnStart, context, host);
+        const bool output_accepted = output_result == DispatchResult::Fired;
 
         host.start_playback(scene);
         return {ScenePlaybackInputResult::Started, output_accepted};
