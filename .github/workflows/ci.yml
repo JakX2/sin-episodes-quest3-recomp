@@ -252,6 +252,11 @@ jobs:
             adb shell 'cd /data/local/tmp/sin_source_bsp_entities && chmod 700 sin_android_source_bsp_entities_tests && ./sin_android_source_bsp_entities_tests'
             echo 'PASS: Source BSP v19/v20 entity-lump reader (portable parser only)' | tee build-android-emulator-x86_64/source-bsp-entities-bionic-output.txt
             grep -Fxq 'PASS: Source BSP v19/v20 entity-lump reader (portable parser only)' build-android-emulator-x86_64/source-bsp-entities-bionic-output.txt
+            # Phase146: execute the parser-to-host lifecycle on Android Bionic.
+            adb shell mkdir -p /data/local/tmp/sin_source_map_runtime
+            adb push build-android-emulator-x86_64/sin_android_source_map_runtime_tests /data/local/tmp/sin_source_map_runtime/sin_android_source_map_runtime_tests
+            adb shell 'cd /data/local/tmp/sin_source_map_runtime && chmod 700 sin_android_source_map_runtime_tests && ./sin_android_source_map_runtime_tests' | tr -d '\r' | tee build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
+            grep -Fxq 'PASS: Source BSP entity text reaches generation-safe host create/keyvalue/spawn/activate lifecycle (mock host only)' build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -285,6 +290,7 @@ jobs:
           grep -Fxq 'PASS: original SiN vehicle runtime inputs, view permissions and damage modifier (mock host only)' build-android-emulator-x86_64/vehicle-runtime-bionic-output.txt
           grep -Fxq 'PASS: original SiN client viewmodel origin-offset composition (portable math only)' build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
           grep -Fxq 'PASS: Source BSP v19/v20 entity-lump reader (portable parser only)' build-android-emulator-x86_64/source-bsp-entities-bionic-output.txt
+          grep -Fxq 'PASS: Source BSP entity text reaches generation-safe host create/keyvalue/spawn/activate lifecycle (mock host only)' build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -313,5 +319,6 @@ jobs:
             build-android-emulator-x86_64/grunt-map-inputs-bionic-output.txt
             build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
             build-android-emulator-x86_64/source-bsp-entities-bionic-output.txt
+            build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
