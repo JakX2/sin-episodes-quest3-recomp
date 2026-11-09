@@ -14,6 +14,7 @@ from audit_sin_original_stat_advisor_evaluators import audit as phase148_audit
 from audit_sin_manager_state import PEImage, VerificationError
 
 REGION_HASHES = {
+    "six_advisor_batch": (0x222BAE20, 60, "8bc6209a82366141a09ef8b2cf3094917f172670bf2780b2ec0a8b19fcc86f6b"),
     "route_decision": (0x222C4C80, 126, "0b40f3c8e6aeb436b3dd8cc1bebbe4aebb92f50484ab956a73b3496d38f20c46"),
     "sample_callback": (0x222C4DC0, 66, "1ae1d1ce3a05553c94fa47aad02c2d8dd4bb0c1082b43d0bdef9f89ec50a4372"),
     "sample_fanout": (0x222C6750, 42, "7ccb2679f144b8b485ce2638b524e208aef6ef93c7b35615d935b7eb8071a1ee"),
@@ -31,6 +32,13 @@ VTABLE = {
 # These validate owner field accesses, loops, x87 status tests, virtual
 # indices, and sample callback ordering. Complete hashes cover every byte.
 OPCODES = {
+    0x222BAE28: "8d7548", 0x222BAE2B: "bf06000000",
+    0x222BAE30: "8b442414", 0x222BAE34: "8b0e",
+    0x222BAE3C: "84c0", 0x222BAE3E: "7402",
+    0x222BAE40: "b301", 0x222BAE42: "83c604",
+    0x222BAE45: "83ef01", 0x222BAE48: "75e6",
+    0x222BAE4A: "84db", 0x222BAE4C: "7407",
+    0x222BAE4E: "8bcd", 0x222BAE59: "c20400",
     0x222C4C80: "80793c00",        # +0x3C state byte
     0x222C4C86: "8b511c",          # current score +0x1C
     0x222C4C8C: "ff502c",          # neutral virtual slot11
@@ -61,7 +69,9 @@ OPCODES = {
     0x222C6864: "d95c240c", 0x222C686A: "db442410",
     0x222C6871: "d83c24", # x87 FDIVR sum/count
 }
-CALLS = {0x222C4DE0: 0x222C6750,
+CALLS = {0x222BAE37: 0x222C4DC0,
+         0x222BAE50: 0x222BA6A0,
+         0x222C4DE0: 0x222C6750,
          0x222C4DF1: 0x222C4C80}
 
 def verify_sample_pipeline(server_pe, check_hashes=True):
@@ -81,6 +91,8 @@ def verify_sample_pipeline(server_pe, check_hashes=True):
             if hashlib.sha256(server_pe.at(va, size)).hexdigest() != sha:
                 raise VerificationError('CStatAdvisor SHA-256 mismatch for ' + name)
     return {
+        'six_advisor_batch_va': '0x222BAE20',
+        'conditional_scores_sender_va': '0x222BA6A0',
         'sample_callback_va': '0x222C4DC0',
         'sample_gate_offsets': ['+0x34', '+0x38'],
         'listener_fanout_va': '0x222C6750',
