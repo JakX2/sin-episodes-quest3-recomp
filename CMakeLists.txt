@@ -1589,7 +1589,8 @@ endif()
 add_library(sin_original_grunt_ai STATIC
   src/original_grunt_schedule_selector.cpp
   src/original_grunt_schedule_translation.cpp
-  src/original_grunt_help_up_task.cpp)
+  src/original_grunt_help_up_task.cpp
+  src/original_grunt_relationship.cpp)
 target_include_directories(sin_original_grunt_ai PUBLIC include)
 target_compile_options(sin_original_grunt_ai PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
@@ -1654,5 +1655,28 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
   if(NOT ANDROID)
     add_test(NAME sin_original_grunt_help_up_task_tests
       COMMAND ${sin_grunt_help_up_test_target})
+  endif()
+endif()
+
+# Phase 135: original grunt hostility-mode relationship and condition gather.
+# The +0xDB1 flag and +0x898 collection are host supplied; +0x678 remains an
+# explicit unresolved callback, not a guessed engine operation.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_grunt_relationship_test_target
+      sin_android_original_grunt_relationship_tests)
+  else()
+    set(sin_grunt_relationship_test_target
+      sin_original_grunt_relationship_tests)
+  endif()
+  add_executable(${sin_grunt_relationship_test_target}
+    tests/test_original_grunt_relationship.cpp)
+  target_link_libraries(${sin_grunt_relationship_test_target} PRIVATE
+    sin_original_grunt_ai)
+  target_compile_options(${sin_grunt_relationship_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_grunt_relationship_tests
+      COMMAND ${sin_grunt_relationship_test_target})
   endif()
 endif()

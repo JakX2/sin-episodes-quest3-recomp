@@ -66,6 +66,7 @@ jobs:
             build-android-arm64/sin_android_original_alive_damage_tests
             build-android-arm64/libsin_original_grunt_ai.a
             build-android-arm64/sin_android_original_grunt_help_up_task_tests
+            build-android-arm64/sin_android_original_grunt_relationship_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -199,6 +200,12 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_original_grunt_help_up_task_tests /data/local/tmp/sin_grunt_help_up/sin_android_original_grunt_help_up_task_tests
             adb shell 'cd /data/local/tmp/sin_grunt_help_up && chmod 700 sin_android_original_grunt_help_up_task_tests && ./sin_android_original_grunt_help_up_task_tests' | tr -d '\r' | tee build-android-emulator-x86_64/grunt-help-up-bionic-output.txt
             grep -Fxq 'PASS: original SiN grunt help-up start/update paths and inherited fallback' build-android-emulator-x86_64/grunt-help-up-bionic-output.txt
+            # Phase135: run the original hostility-mode condition subset on
+            # Android Bionic with a mock host; not SourceVR or Quest gameplay.
+            adb shell mkdir -p /data/local/tmp/sin_grunt_relationship
+            adb push build-android-emulator-x86_64/sin_android_original_grunt_relationship_tests /data/local/tmp/sin_grunt_relationship/sin_android_original_grunt_relationship_tests
+            adb shell 'cd /data/local/tmp/sin_grunt_relationship && chmod 700 sin_android_original_grunt_relationship_tests && ./sin_android_original_grunt_relationship_tests' | tr -d '\r' | tee build-android-emulator-x86_64/grunt-relationship-bionic-output.txt
+            grep -Fxq 'PASS: original SiN grunt hostility-mode relation and condition gathering (mock host only)' build-android-emulator-x86_64/grunt-relationship-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -223,6 +230,7 @@ jobs:
           grep -Fxq 'PASS: original SiN named rifle/grenade entity factories create actual portable gameplay (mock host only)' build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
           grep -Fxq 'PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch' build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
           grep -Fxq 'PASS: original SiN grunt help-up start/update paths and inherited fallback' build-android-emulator-x86_64/grunt-help-up-bionic-output.txt
+          grep -Fxq 'PASS: original SiN grunt hostility-mode relation and condition gathering (mock host only)' build-android-emulator-x86_64/grunt-relationship-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -242,5 +250,6 @@ jobs:
             build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
             build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
             build-android-emulator-x86_64/grunt-help-up-bionic-output.txt
+            build-android-emulator-x86_64/grunt-relationship-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
