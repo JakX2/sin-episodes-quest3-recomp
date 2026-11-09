@@ -377,3 +377,13 @@ test -s "$GRUNT_MAP_INPUTS_TEST" || { echo "ERROR: missing ARM64 grunt map-input
   echo 'ERROR: grunt map-input regression is not AArch64' >&2; exit 1;
 }
 echo 'PASS: original CNPC_GruntBase map-input runtime and regression compiled for Android ARM64; no engine execution.'
+
+# Phase141: compile and architecture-check the CPropSinVehicle runtime regression.
+VEHICLE_RUNTIME_LIB="$BUILD/libsin_original_vehicle_runtime.a"
+VEHICLE_RUNTIME_TEST="$BUILD/sin_android_original_vehicle_runtime_tests"
+test -s "$VEHICLE_RUNTIME_LIB" || { echo "ERROR: missing ARM64 vehicle runtime library: $VEHICLE_RUNTIME_LIB" >&2; exit 1; }
+test -s "$VEHICLE_RUNTIME_TEST" || { echo "ERROR: missing ARM64 vehicle runtime regression: $VEHICLE_RUNTIME_TEST" >&2; exit 1; }
+"$READELF" -h "$VEHICLE_RUNTIME_TEST" | grep -q 'Machine:.*AArch64' || {
+  echo 'ERROR: vehicle runtime regression is not AArch64' >&2; exit 1;
+}
+echo 'PASS: CPropSinVehicle runtime and automatic view-transition regression compiled for Android ARM64; not run on headset.'
