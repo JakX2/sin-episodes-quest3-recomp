@@ -68,7 +68,7 @@ class Phase149Tests(unittest.TestCase):
         self.assertEqual(report['aggregate_virtual_slot'],1)
         self.assertEqual(report['route_virtual_slots'],[9,10,11])
         self.assertEqual(report['verified_opcode_sites'],len(OPCODES))
-        self.assertEqual(report['verified_call_edges'],2)
+        self.assertEqual(report['verified_call_edges'],4)
     def test_every_opcode_tampering_is_rejected(self):
         for va in OPCODES:
             with self.subTest(va=hex(va)):
@@ -84,7 +84,7 @@ class Phase149Tests(unittest.TestCase):
                 p=fixture();p.corrupt(va+1)
                 with self.assertRaises(VerificationError):verify_sample_pipeline(p,False)
     def test_full_original_function_hashes_required(self):
-        self.assertEqual(len(REGION_HASHES),4)
+        self.assertEqual(len(REGION_HASHES),5)
         with self.assertRaisesRegex(VerificationError,'SHA-256'):
             verify_sample_pipeline(fixture(),True)
     def test_bad_original_dlls_rejected(self):
