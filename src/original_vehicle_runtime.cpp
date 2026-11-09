@@ -51,6 +51,7 @@ bool decode_original_view_records(const std::uint8_t* bytes,
                                   std::size_t view_count,
                                   std::vector<ViewRecord>& output) {
     constexpr std::size_t kRecordStride = 100;
+    constexpr std::size_t kAllowWeaponsOffset = 0x55;
     constexpr std::size_t kDamageModifierOffset = 0x60;
     static_assert(sizeof(float) == sizeof(std::uint32_t),
                   "SiN view record float must be 32-bit");
@@ -70,6 +71,9 @@ bool decode_original_view_records(const std::uint8_t* bytes,
         float modifier = 1.0f;
         std::memcpy(&modifier, &bits, sizeof(modifier));
         ViewRecord record{};
+        // The original SetView path copies this byte to the player permission
+        // field; the consumer checks it against zero. Preserve the raw byte.
+        record.allow_weapons = bytes[offset + kAllowWeaponsOffset];
         record.damage_modifier = modifier;
         decoded.push_back(record);
     }
