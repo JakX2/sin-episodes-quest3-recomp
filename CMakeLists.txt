@@ -1863,3 +1863,32 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND ${sin_magnum_impact_test_target})
   endif()
 endif()
+
+# Phase 144: original client.dll C_BaseViewModel origin-offset composition.
+# This is one portable render-math stage; the host owns RecvTable and rendering.
+add_library(sin_original_viewmodel_origin_offset STATIC
+  src/original_viewmodel_origin_offset.cpp)
+target_include_directories(sin_original_viewmodel_origin_offset PUBLIC include)
+target_compile_options(sin_original_viewmodel_origin_offset PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_original_viewmodel_origin_offset PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_viewmodel_offset_test_target
+      sin_android_original_viewmodel_origin_offset_tests)
+  else()
+    set(sin_viewmodel_offset_test_target
+      sin_original_viewmodel_origin_offset_tests)
+  endif()
+  add_executable(${sin_viewmodel_offset_test_target}
+    tests/test_original_viewmodel_origin_offset.cpp)
+  target_link_libraries(${sin_viewmodel_offset_test_target} PRIVATE
+    sin_original_viewmodel_origin_offset)
+  target_compile_options(${sin_viewmodel_offset_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_viewmodel_origin_offset_tests
+      COMMAND ${sin_viewmodel_offset_test_target})
+  endif()
+endif()
