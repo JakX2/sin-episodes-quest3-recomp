@@ -1811,3 +1811,25 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND ${sin_grunt_map_inputs_test_target})
   endif()
 endif()
+
+
+# Phase 142: original SiN bullet target damage-filter and TraceAttack routing.
+# The host owns all native entities and maps the verified class route to its
+# own engine methods; no original x86 vtable or object offset is reused.
+add_library(sin_original_bullet_target_dispatch STATIC
+  src/original_bullet_target_dispatch.cpp)
+target_include_directories(sin_original_bullet_target_dispatch PUBLIC include)
+target_compile_options(sin_original_bullet_target_dispatch PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_original_bullet_target_dispatch PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+if(BUILD_TESTING)
+  add_executable(sin_original_bullet_target_dispatch_tests
+    tests/test_original_bullet_target_dispatch.cpp)
+  target_link_libraries(sin_original_bullet_target_dispatch_tests PRIVATE
+    sin_original_bullet_target_dispatch)
+  target_compile_options(sin_original_bullet_target_dispatch_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_bullet_target_dispatch_tests
+    COMMAND sin_original_bullet_target_dispatch_tests)
+endif()
