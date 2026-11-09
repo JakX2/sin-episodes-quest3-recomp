@@ -11,7 +11,7 @@
 
 namespace sin_compat::ai::grunt {
 
-inline constexpr std::int32_t original_grunt_beserk_activation_seconds = 10;
+inline constexpr float original_grunt_beserk_activation_seconds = 10.0F;
 inline constexpr std::uint32_t original_grunt_schedule_beserk = 0x171U;
 
 class IOriginalGruntBeserkHost {
@@ -20,7 +20,7 @@ public:
 
     // Confirmed first-activation call: original shared condition 0x22,
     // registered as COND_SCHEDULE_DONE.
-    virtual void set_schedule_done_condition() noexcept = 0;
+    virtual void set_ai_condition(OriginalSharedAiCondition condition) noexcept = 0;
 
     // The original activation routine calls another NPC operation with arg 3.
     // Its method identity and semantic purpose are unresolved.

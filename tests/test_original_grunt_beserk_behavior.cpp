@@ -18,8 +18,8 @@ public:
     std::vector<std::string> calls;
     std::int32_t unresolved_argument = -1;
 
-    void set_schedule_done_condition() noexcept override {
-        calls.push_back("condition:COND_SCHEDULE_DONE");
+    void set_ai_condition(OriginalSharedAiCondition condition) noexcept override {
+        calls.push_back("condition:" + std::to_string(static_cast<unsigned>(condition)));
     }
     void invoke_unresolved_npc_operation(
         std::int32_t argument) noexcept override {
@@ -76,7 +76,7 @@ void test_first_activation_sets_ten_second_deadline_and_callbacks_in_order() {
     assert(behavior.deadline() == 22.5F);
     assert(host.unresolved_argument == 3);
     assert((host.calls == std::vector<std::string>{
-        "condition:COND_SCHEDULE_DONE",
+        "condition:34",
         "unresolved_npc_operation",
         "unresolved_npc_state_change_if_required"}));
 }

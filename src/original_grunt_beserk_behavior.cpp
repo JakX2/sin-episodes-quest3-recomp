@@ -16,10 +16,10 @@ void OriginalGruntBeserkBehavior::activate(
     float current_time,
     IOriginalGruntBeserkHost& host) noexcept {
     deadline_ = current_time +
-        static_cast<float>(original_grunt_beserk_activation_seconds);
+        original_grunt_beserk_activation_seconds;
 
     if (!active_) {
-        host.set_schedule_done_condition();
+        host.set_ai_condition(OriginalSharedAiCondition::ScheduleDone);
         host.invoke_unresolved_npc_operation(3);
         host.apply_unresolved_npc_state_change_if_required();
     }
