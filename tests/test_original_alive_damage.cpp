@@ -4,6 +4,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <cstdio>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -210,5 +211,6 @@ int main() {
     test_invalid_damage_and_generation_safe_handles();
     test_health_overflow_and_host_failures_are_transactional();
     test_unsupported_class_and_dead_state();
+    std::puts("PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch");
     return 0;
 }
