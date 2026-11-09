@@ -4,6 +4,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <cstdio>
 #include <cstdint>
 #include <vector>
 
@@ -166,5 +167,6 @@ int main() {
     test_other_start_task_delegates_without_side_effects();
     test_other_run_task_delegates_even_outside_update_range();
     test_start_then_run_does_not_repeat_target_helper_after_clear();
+    std::puts("PASS: original SiN grunt help-up start/update paths and inherited fallback");
     return 0;
 }

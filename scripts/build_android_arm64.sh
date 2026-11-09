@@ -19,7 +19,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests sin_sourcevr_probe_server sin_sourcevr_probe_client sin_android_sourcevr_module_probe_tests sin_original_ar_grenade_runtime sin_original_rifle_grenade_launch sin_android_original_rifle_grenade_launch_tests sin_original_ar_grenade_touch sin_android_original_ar_grenade_touch_tests sin_original_gameplay_entity_factory sin_android_original_gameplay_entity_factory_tests sin_original_alive_damage sin_android_original_alive_damage_tests --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests sin_sourcevr_probe_server sin_sourcevr_probe_client sin_android_sourcevr_module_probe_tests sin_original_ar_grenade_runtime sin_original_rifle_grenade_launch sin_android_original_rifle_grenade_launch_tests sin_original_ar_grenade_touch sin_android_original_ar_grenade_touch_tests sin_original_gameplay_entity_factory sin_android_original_gameplay_entity_factory_tests sin_original_alive_damage sin_android_original_alive_damage_tests sin_original_grunt_ai sin_android_original_grunt_help_up_task_tests --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 if [[ ! -s "$LIB" ]]; then
@@ -112,6 +112,20 @@ printf '%s\n' 'ELF64 AArch64, shared SONAME, 13 C ABI exports, and native NDK C 
   sha256sum "$LIB" "$SMOKE" | sed "s#$BUILD/##"
 } > "$BUILD/android-smoke-manifest.txt"
 printf 'Android dlopen executable verified (compiled only, not executed): %s\n' "$SMOKE"
+ 
+# Phase134: compile the reconstructed grunt AI library and its task host-contract
+# regression for AArch64. This is a build check, not a Quest runtime test.
+GRUNT_AI="$BUILD/libsin_original_grunt_ai.a"
+GRUNT_HELP_UP_TEST="$BUILD/sin_android_original_grunt_help_up_task_tests"
+test -s "$GRUNT_AI" || { echo "ERROR: missing ARM64 grunt AI library: $GRUNT_AI" >&2; exit 1; }
+test -s "$GRUNT_HELP_UP_TEST" || { echo "ERROR: missing ARM64 grunt help-up test: $GRUNT_HELP_UP_TEST" >&2; exit 1; }
+"$READELF" -h "$GRUNT_HELP_UP_TEST" | grep -q 'Machine:.*AArch64' || {
+  echo 'ERROR: grunt help-up regression executable is not AArch64' >&2; exit 1; }
+{
+  printf 'grunt_help_up_scope=portable_host_callbacks_not_engine_or_quest\n'
+  sha256sum "$GRUNT_AI" "$GRUNT_HELP_UP_TEST" | sed "s#$BUILD/##"
+} >> "$BUILD/android-smoke-manifest.txt"
+printf 'PASS: original grunt TASK_GRUNT_HELP_UP library and AArch64 regression executable built; not run on headset.\n'
 
 # Phase100: separately versioned keyboard/sound prebridge. Do NOT conflate
 # its 11 symbols with the original 13-export weapon-session ABI.
