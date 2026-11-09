@@ -284,3 +284,13 @@ test -s "$GRUNT_MAP_INPUTS_TEST" || { echo "ERROR: missing Bionic grunt map-inpu
   echo 'ERROR: grunt map-input regression is not Android x86_64' >&2; exit 1;
 }
 echo 'PASS: original CNPC_GruntBase map-input runtime built for Android Bionic x86_64.'
+
+# Phase141: build the vehicle runtime regression for real Android Bionic execution.
+VEHICLE_RUNTIME_LIB="$BUILD/libsin_original_vehicle_runtime.a"
+VEHICLE_RUNTIME_TEST="$BUILD/sin_android_original_vehicle_runtime_tests"
+test -s "$VEHICLE_RUNTIME_LIB" || { echo "ERROR: missing Bionic vehicle runtime library: $VEHICLE_RUNTIME_LIB" >&2; exit 1; }
+test -s "$VEHICLE_RUNTIME_TEST" || { echo "ERROR: missing Bionic vehicle runtime regression: $VEHICLE_RUNTIME_TEST" >&2; exit 1; }
+"$READELF" -h "$VEHICLE_RUNTIME_TEST" | grep -q 'Machine:.*Advanced Micro Devices X86-64' || {
+  echo 'ERROR: vehicle runtime regression is not Android x86_64' >&2; exit 1;
+}
+echo 'PASS: CPropSinVehicle runtime and automatic view-transition regression built for Android Bionic x86_64.'
