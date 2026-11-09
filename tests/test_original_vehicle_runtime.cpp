@@ -2,6 +2,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <limits>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -168,6 +172,52 @@ void test_view_damage_modifier_is_not_clamped() {
     assert(vehicle.apply_view_damage_modifier(10.0f, true, 2).damage == -5.0f);
 }
 
+
+void write_little_endian_float(std::vector<std::uint8_t>& bytes,
+                               std::size_t offset, float value) {
+    std::uint32_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(value), "32-bit float expected");
+    std::memcpy(&bits, &value, sizeof(bits));
+    bytes.at(offset + 0) = static_cast<std::uint8_t>(bits & 0xffu);
+    bytes.at(offset + 1) = static_cast<std::uint8_t>((bits >> 8u) & 0xffu);
+    bytes.at(offset + 2) = static_cast<std::uint8_t>((bits >> 16u) & 0xffu);
+    bytes.at(offset + 3) = static_cast<std::uint8_t>((bits >> 24u) & 0xffu);
+}
+
+void test_original_view_record_decoder_reads_only_verified_member() {
+    std::vector<std::uint8_t> raw(200, 0xCD);
+    write_little_endian_float(raw, 0x60, 0.75f);
+    write_little_endian_float(raw, 100 + 0x60, -1.25f);
+    std::vector<ViewRecord> decoded{{true, 99.0f}};
+
+    assert(decode_original_view_records(raw.data(), raw.size(), 2, decoded));
+    assert(decoded.size() == 2);
+    assert(decoded[0].damage_modifier == 0.75f);
+    assert(decoded[1].damage_modifier == -1.25f);
+    // The parser deliberately does not guess the unrelated allow-weapons byte.
+    assert(!decoded[0].allow_weapons && !decoded[1].allow_weapons);
+}
+
+void test_original_view_record_decoder_is_bounded_and_transactional() {
+    std::vector<std::uint8_t> raw(199, 0);
+    std::vector<ViewRecord> decoded{{true, 2.0f}};
+    assert(!decode_original_view_records(raw.data(), raw.size(), 2, decoded));
+    assert(decoded.size() == 1);
+    assert(decoded[0].allow_weapons && decoded[0].damage_modifier == 2.0f);
+    assert(!decode_original_view_records(nullptr, 100, 1, decoded));
+    assert(decoded.size() == 1);
+    assert(decode_original_view_records(nullptr, 0, 0, decoded));
+    assert(decoded.empty());
+}
+
+void test_original_view_record_decoder_preserves_ieee_payload() {
+    std::vector<std::uint8_t> raw(100, 0);
+    write_little_endian_float(raw, 0x60, std::numeric_limits<float>::quiet_NaN());
+    std::vector<ViewRecord> decoded;
+    assert(decode_original_view_records(raw.data(), raw.size(), 1, decoded));
+    assert(decoded.size() == 1 && std::isnan(decoded[0].damage_modifier));
+}
+
 void test_input_registry_and_types() {
     assert(original_input_specs().size() == 25);
     assert(find_input_spec("SetCamera") != nullptr);
@@ -322,6 +372,9 @@ int main() {
     test_view_damage_stage_is_player_only_and_uses_selected_record();
     test_view_damage_stage_default_and_invalid_view_fallback();
     test_view_damage_modifier_is_not_clamped();
+    test_original_view_record_decoder_reads_only_verified_member();
+    test_original_view_record_decoder_is_bounded_and_transactional();
+    test_original_view_record_decoder_preserves_ieee_payload();
     test_input_registry_and_types();
     test_door_and_window_fanout();
     test_set_view_updates_both_player_fields();
