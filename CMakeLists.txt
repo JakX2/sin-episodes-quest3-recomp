@@ -1974,3 +1974,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_stat_advisor_sample_runtime_tests
     COMMAND sin_original_stat_advisor_sample_runtime_tests)
 endif()
+
+# Phase150: original SiN CShortTermStatGate and Conjugate listener classes,
+# grounded in the original 2006 server.dll RTTI, vtables and method bodies.
+if(BUILD_TESTING)
+  add_executable(sin_original_short_term_stat_gates_tests
+    tests/test_original_short_term_stat_gates.cpp)
+  target_include_directories(sin_original_short_term_stat_gates_tests PRIVATE include)
+  target_compile_features(sin_original_short_term_stat_gates_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_short_term_stat_gates_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_short_term_stat_gates_tests
+    COMMAND sin_original_short_term_stat_gates_tests)
+endif()
