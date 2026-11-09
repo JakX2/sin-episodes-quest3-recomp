@@ -34,6 +34,14 @@ struct ViewRecord {
     float damage_modifier = 1.0f;
 };
 
+// Decodes only the original binary-backed view_damage_mod member from the
+// 100-byte x86 view records. Other fields remain at conservative defaults.
+// The output is replaced only after the complete requested range is valid.
+bool decode_original_view_records(const std::uint8_t* bytes,
+                                  std::size_t byte_count,
+                                  std::size_t view_count,
+                                  std::vector<ViewRecord>& output);
+
 enum class DamageViewPath : std::uint8_t {
     NonPlayer,
     PlayerViewModifier,

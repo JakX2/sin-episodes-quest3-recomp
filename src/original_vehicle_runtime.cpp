@@ -1,5 +1,6 @@
 #include "sin_compat/original_vehicle_runtime.hpp"
 
+#include <cstring>
 #include <utility>
 
 namespace sin_compat::vehicle {
@@ -43,6 +44,39 @@ InputValueKind to_value_kind(InputKind kind) noexcept {
 } // namespace
 
 const std::array<InputSpec, 25>& original_input_specs() noexcept { return kInputs; }
+
+
+bool decode_original_view_records(const std::uint8_t* bytes,
+                                  std::size_t byte_count,
+                                  std::size_t view_count,
+                                  std::vector<ViewRecord>& output) {
+    constexpr std::size_t kRecordStride = 100;
+    constexpr std::size_t kDamageModifierOffset = 0x60;
+    static_assert(sizeof(float) == sizeof(std::uint32_t),
+                  "SiN view record float must be 32-bit");
+
+    if (view_count > byte_count / kRecordStride) return false;
+    if (view_count != 0 && bytes == nullptr) return false;
+
+    std::vector<ViewRecord> decoded;
+    decoded.reserve(view_count);
+    for (std::size_t i = 0; i < view_count; ++i) {
+        const auto offset = i * kRecordStride + kDamageModifierOffset;
+        const std::uint32_t bits =
+            static_cast<std::uint32_t>(bytes[offset]) |
+            (static_cast<std::uint32_t>(bytes[offset + 1]) << 8u) |
+            (static_cast<std::uint32_t>(bytes[offset + 2]) << 16u) |
+            (static_cast<std::uint32_t>(bytes[offset + 3]) << 24u);
+        float modifier = 1.0f;
+        std::memcpy(&modifier, &bits, sizeof(modifier));
+        ViewRecord record{};
+        record.damage_modifier = modifier;
+        decoded.push_back(record);
+    }
+
+    output = std::move(decoded);
+    return true;
+}
 
 const InputSpec* find_input_spec(std::string_view name) noexcept {
     for (const auto& spec : kInputs) if (spec.name == name) return &spec;
