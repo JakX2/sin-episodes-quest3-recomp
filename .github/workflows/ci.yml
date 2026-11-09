@@ -217,6 +217,11 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_original_grunt_kick_tests /data/local/tmp/sin_grunt_kick/sin_android_original_grunt_kick_tests
             adb shell 'cd /data/local/tmp/sin_grunt_kick && chmod 700 sin_android_original_grunt_kick_tests && ./sin_android_original_grunt_kick_tests' | tr -d '\r' | tee build-android-emulator-x86_64/grunt-kick-bionic-output.txt
             grep -Fxq 'PASS: original SiN grunt grenade-kick eligibility, task start and event-3 host contract (mock host only)' build-android-emulator-x86_64/grunt-kick-bionic-output.txt
+            # Phase138: execute the reconstructed scene/map-output routing on Android Bionic.
+            adb shell mkdir -p /data/local/tmp/sin_scene_io
+            adb push build-android-emulator-x86_64/sin_android_original_scene_io_tests /data/local/tmp/sin_scene_io/sin_android_original_scene_io_tests
+            adb shell 'cd /data/local/tmp/sin_scene_io && chmod 700 sin_android_original_scene_io_tests && ./sin_android_original_scene_io_tests' | tr -d '\r' | tee build-android-emulator-x86_64/scene-io-bionic-output.txt
+            grep -Fxq 'PASS: original SiN choreographed-scene trigger and scripted-sequence output routing (mock host only)' build-android-emulator-x86_64/scene-io-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -244,6 +249,7 @@ jobs:
           grep -Fxq 'PASS: original SiN grunt hostility-mode relation and condition gathering (mock host only)' build-android-emulator-x86_64/grunt-relationship-bionic-output.txt
           grep -Fxq 'PASS: original SiN CAI_BeserkBehavior timer, schedule gate and relationship integration (mock host only)' build-android-emulator-x86_64/grunt-beserk-bionic-output.txt
           grep -Fxq 'PASS: original SiN grunt grenade-kick eligibility, task start and event-3 host contract (mock host only)' build-android-emulator-x86_64/grunt-kick-bionic-output.txt
+          grep -Fxq 'PASS: original SiN choreographed-scene trigger and scripted-sequence output routing (mock host only)' build-android-emulator-x86_64/scene-io-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -266,5 +272,6 @@ jobs:
             build-android-emulator-x86_64/grunt-relationship-bionic-output.txt
             build-android-emulator-x86_64/grunt-beserk-bionic-output.txt
             build-android-emulator-x86_64/grunt-kick-bionic-output.txt
+            build-android-emulator-x86_64/scene-io-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
