@@ -259,7 +259,7 @@ void test_cse1rules_grunt_callsite_factors() {
     assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable271ScheduleTranslation) == 20.0f);
 
     assert(grunt_mobility_decision(
-        0.5f, GruntMobilityCallSite::GruntVtable530Condition4D, 0.4f));
+        0.5f, GruntMobilityCallSite::GruntVtable530InPlayerSights, 0.4f));
     assert(!grunt_mobility_decision(
         0.5f, GruntMobilityCallSite::GruntVtable530Alternate, 0.1001f));
     assert(grunt_mobility_decision(
