@@ -19,7 +19,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
   -DANDROID_PLATFORM=android-26 \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DSIN_BUILD_ANDROID_SMOKE=ON
-cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests sin_sourcevr_probe_server sin_sourcevr_probe_client sin_android_sourcevr_module_probe_tests sin_original_ar_grenade_runtime sin_original_rifle_grenade_launch sin_android_original_rifle_grenade_launch_tests sin_original_ar_grenade_touch sin_android_original_ar_grenade_touch_tests sin_original_gameplay_entity_factory sin_android_original_gameplay_entity_factory_tests sin_original_alive_damage sin_android_original_alive_damage_tests sin_original_grunt_ai sin_android_original_grunt_help_up_task_tests sin_android_original_grunt_relationship_tests sin_android_original_grunt_beserk_behavior_tests sin_android_original_grunt_kick_tests sin_android_original_grunt_map_inputs_tests sin_original_scene_io sin_android_original_scene_io_tests sin_original_scene_playback sin_android_original_scene_playback_tests --parallel 2
+cmake --build "$BUILD" --target sin_compat_host_abi sin_android_host_abi_smoke sin_legacy_bridge_abi sin_android_legacy_bridge_smoke sin_source_provider_abi sin_android_source_provider_smoke sin102_provider_lifecycle sin_scene_actor_c_abi sin_android_scene_actor_c_abi_smoke sin_assault_npc_c_abi sin_android_assault_npc_c_abi_smoke sin_android_assault_goal_fanout_tests sin_android_xr_source_tracking_tests sin_sourcevr_probe_server sin_sourcevr_probe_client sin_android_sourcevr_module_probe_tests sin_original_ar_grenade_runtime sin_original_rifle_grenade_launch sin_android_original_rifle_grenade_launch_tests sin_original_ar_grenade_touch sin_android_original_ar_grenade_touch_tests sin_original_gameplay_entity_factory sin_android_original_gameplay_entity_factory_tests sin_original_alive_damage sin_android_original_alive_damage_tests sin_original_grunt_ai sin_android_original_grunt_help_up_task_tests sin_android_original_grunt_relationship_tests sin_android_original_grunt_beserk_behavior_tests sin_android_original_grunt_kick_tests sin_android_original_grunt_map_inputs_tests sin_original_vehicle_runtime sin_android_original_vehicle_runtime_tests sin_original_scene_io sin_android_original_scene_io_tests sin_original_scene_playback sin_android_original_scene_playback_tests --parallel 2
 LIB="$BUILD/libsin_compat_host_abi.so"
 SMOKE="$BUILD/sin_android_host_abi_smoke"
 if [[ ! -s "$LIB" ]]; then
@@ -377,3 +377,13 @@ test -s "$GRUNT_MAP_INPUTS_TEST" || { echo "ERROR: missing ARM64 grunt map-input
   echo 'ERROR: grunt map-input regression is not AArch64' >&2; exit 1;
 }
 echo 'PASS: original CNPC_GruntBase map-input runtime and regression compiled for Android ARM64; no engine execution.'
+
+# Phase141: compile and architecture-check the CPropSinVehicle runtime regression.
+VEHICLE_RUNTIME_LIB="$BUILD/libsin_original_vehicle_runtime.a"
+VEHICLE_RUNTIME_TEST="$BUILD/sin_android_original_vehicle_runtime_tests"
+test -s "$VEHICLE_RUNTIME_LIB" || { echo "ERROR: missing ARM64 vehicle runtime library: $VEHICLE_RUNTIME_LIB" >&2; exit 1; }
+test -s "$VEHICLE_RUNTIME_TEST" || { echo "ERROR: missing ARM64 vehicle runtime regression: $VEHICLE_RUNTIME_TEST" >&2; exit 1; }
+"$READELF" -h "$VEHICLE_RUNTIME_TEST" | grep -q 'Machine:.*AArch64' || {
+  echo 'ERROR: vehicle runtime regression is not AArch64' >&2; exit 1;
+}
+echo 'PASS: CPropSinVehicle runtime and automatic view-transition regression compiled for Android ARM64; not run on headset.'

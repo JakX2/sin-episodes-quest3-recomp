@@ -26,6 +26,7 @@ struct Host final : IOriginalVehicleHost {
     bool reject_door_index_one = false;
     bool reject_link = false;
     bool live_camera = true;
+    bool live_player = true;
     int selected_view = -1;
     std::uint8_t allow_weapons = 0;
     bool headlights = false;
@@ -79,6 +80,7 @@ struct Host final : IOriginalVehicleHost {
         events.push_back(std::string(target) + ":" + std::string(input));
     }
     bool is_live(EntityRef ref) override {
+        if (ref.index == 10) return live_player && ref.generation == 2;
         if (ref.index == 30) return live_camera && ref.generation == 4;
         if (ref.index == 20) return ref.generation == 3;
         return ref.valid();
@@ -127,6 +129,53 @@ struct Host final : IOriginalVehicleHost {
 InputValue void_value() { return {std::monostate{}, std::nullopt}; }
 InputValue int_value(int n, std::optional<EntityRef> activator = std::nullopt) { return {n, activator}; }
 InputValue string_value(std::string_view s) { return {s, std::nullopt}; }
+
+void test_automatic_view_transitions_update_view_then_permission_byte() {
+    Host host;
+    OriginalVehicleRuntime vehicle({1, 1}, {{0x00, 1.0f}, {0xA5, 0.75f}});
+
+    assert(vehicle.apply_automatic_view_transition(
+        EntityRef{10, 2}, 1, AutomaticViewPermission::CopyViewRecordByte, host)
+        == Result::Applied);
+    assert(host.selected_view == 1);
+    assert(host.allow_weapons == 0xA5);
+    assert((host.events == std::vector<std::string>{
+        "player-view-index", "player-view-weapons"}));
+
+    host.events.clear();
+    assert(vehicle.apply_automatic_view_transition(
+        EntityRef{10, 2}, 0, AutomaticViewPermission::ForceZero, host)
+        == Result::Applied);
+    assert(host.selected_view == 0);
+    assert(host.allow_weapons == 0);
+    assert((host.events == std::vector<std::string>{
+        "player-view-index", "player-view-weapons"}));
+}
+
+void test_automatic_view_transition_rejects_stale_players_and_bad_indices() {
+    Host host;
+    OriginalVehicleRuntime vehicle({1, 1}, {{0xFF, 1.0f}});
+
+    assert(vehicle.apply_automatic_view_transition(
+        EntityRef{10, 2}, 0, AutomaticViewPermission::CopyViewRecordByte, host)
+        == Result::Applied);
+
+    host.events.clear();
+    host.live_player = false;
+    assert(vehicle.apply_automatic_view_transition(
+        EntityRef{10, 2}, 0, AutomaticViewPermission::CopyViewRecordByte, host)
+        == Result::MissingActivator);
+    assert(host.events.empty());
+
+    host.live_player = true;
+    assert(vehicle.apply_automatic_view_transition(
+        EntityRef{10, 2}, -1, AutomaticViewPermission::CopyViewRecordByte, host)
+        == Result::OutOfRange);
+    assert(vehicle.apply_automatic_view_transition(
+        EntityRef{10, 2}, 1, AutomaticViewPermission::CopyViewRecordByte, host)
+        == Result::OutOfRange);
+    assert(host.events.empty());
+}
 
 void test_view_damage_stage_is_player_only_and_uses_selected_record() {
     std::vector<ViewRecord> views{{false, 0.5f}, {true, 1.25f}};
@@ -389,6 +438,8 @@ void test_integer_flags_keep_original_field_meaning() {
 } // namespace
 
 int main() {
+    test_automatic_view_transitions_update_view_then_permission_byte();
+    test_automatic_view_transition_rejects_stale_players_and_bad_indices();
     test_view_damage_stage_is_player_only_and_uses_selected_record();
     test_view_damage_stage_default_and_invalid_view_fallback();
     test_view_damage_modifier_is_not_clamped();
@@ -405,5 +456,5 @@ int main() {
     test_camera_failure_clears_name_and_stale_handle_is_not_unlinked();
     test_radio_and_vehicle_entry_are_host_owned();
     test_integer_flags_keep_original_field_meaning();
-    std::cout << "Original SiN vehicle runtime tests passed" << std::endl;
+    std::cout << "PASS: original SiN vehicle runtime inputs, view permissions and damage modifier (mock host only)" << std::endl;
 }

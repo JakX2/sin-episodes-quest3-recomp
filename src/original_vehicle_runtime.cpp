@@ -93,6 +93,28 @@ OriginalVehicleRuntime::OriginalVehicleRuntime(EntityRef self,
                                                VehicleState initial_state)
     : self_(self), state_(std::move(initial_state)), views_(std::move(views)) {}
 
+Result OriginalVehicleRuntime::apply_automatic_view_transition(
+    EntityRef player,
+    int selected_view_index,
+    AutomaticViewPermission permission_mode,
+    IOriginalVehicleHost& host) {
+    if (!player.valid() || !host.is_live(player)) return Result::MissingActivator;
+    if (selected_view_index < 0 ||
+        static_cast<std::size_t>(selected_view_index) >= views_.size())
+        return Result::OutOfRange;
+
+    const auto& view = views_[static_cast<std::size_t>(selected_view_index)];
+    const std::uint8_t allow_weapons =
+        permission_mode == AutomaticViewPermission::CopyViewRecordByte
+            ? view.allow_weapons : static_cast<std::uint8_t>(0);
+
+    // Preserve the original setter order observed at all three automatic
+    // transition sites: selected view first, permission byte second.
+    host.set_player_view_index(player, selected_view_index);
+    host.set_player_allow_weapons(player, allow_weapons);
+    return Result::Applied;
+}
+
 DamageViewResult OriginalVehicleRuntime::apply_view_damage_modifier(
     float damage_after_pre_view_scaling,
     bool entity_is_player,
