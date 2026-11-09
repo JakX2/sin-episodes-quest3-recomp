@@ -43,3 +43,13 @@ jobs:
               print('PASS PE32 i386:', name)
           '@
           $python | python -
+
+      - name: Upload independently built Win32 factory proxies only
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-pc-win32-original-factory-proxies
+          path: |
+            build-pc-win32/bin/Release/server.dll
+            build-pc-win32/bin/Release/client.dll
+          if-no-files-found: error
+          retention-days: 14
