@@ -1987,3 +1987,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_short_term_stat_gates_tests
     COMMAND sin_original_short_term_stat_gates_tests)
 endif()
+
+# Phase 151: original SiN CFloatShortTermStat source for Phase150 gates.
+# Host-neutral reference only; no x86 Source engine binary ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_float_short_term_stat_tests
+    tests/test_original_float_short_term_stat.cpp)
+  target_include_directories(sin_original_float_short_term_stat_tests PRIVATE include)
+  target_compile_features(sin_original_float_short_term_stat_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_float_short_term_stat_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_float_short_term_stat_tests
+    COMMAND sin_original_float_short_term_stat_tests)
+endif()
