@@ -254,7 +254,7 @@ void test_cse1rules_grunt_mobility_probability() {
 
 void test_cse1rules_grunt_callsite_factors() {
     assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable292) == 1.0f);
-    assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable530Condition4D) == 4.0f);
+    assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable530InPlayerSights) == 4.0f);
     assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable530Alternate) == 1.0f);
     assert(grunt_mobility_factor(GruntMobilityCallSite::GruntVtable271ScheduleTranslation) == 20.0f);
 
