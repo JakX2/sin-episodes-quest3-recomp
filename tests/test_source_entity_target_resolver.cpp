@@ -270,7 +270,7 @@ int main() {
         world.add(31, 1, std::string("door"), "prop_dynamic");
     const EntityRef target_b =
         world.add(32, 1, std::string("door"), "prop_dynamic");
-    const EntityRef class_fallback =
+    const EntityRef class_fallback_entity =
         world.add(33, 1, std::nullopt, "func_door");
     const EntityRef player =
         world.add(34, 1, std::string("player"), "player");
@@ -284,13 +284,13 @@ int main() {
     assert(world.delivered[1].target == target_b);
     assert(world.delivered[0].activator == player);
     assert(world.delivered[0].caller == source);
-    assert(!world.delivered[0].target != class_fallback);
+    assert(world.delivered[0].target != class_fallback_entity);
 
     assert(io.connect(source, "OnClassFallback", link("func_door", "Open")));
     assert(io.fire(source, "OnClassFallback", player) == 1);
     auto class_delivery = io.advance_to(0.0);
     assert(class_delivery.inputs_delivered == 1);
-    assert(world.delivered.back().target == class_fallback);
+    assert(world.delivered.back().target == class_fallback_entity);
 
     assert(io.connect(source, "OnActivator", link("!activator", "Use")));
     assert(io.fire(source, "OnActivator", target_a) == 1);
