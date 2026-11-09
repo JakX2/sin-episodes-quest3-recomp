@@ -1592,7 +1592,8 @@ add_library(sin_original_grunt_ai STATIC
   src/original_grunt_help_up_task.cpp
   src/original_grunt_relationship.cpp
   src/original_grunt_beserk_behavior.cpp
-  src/original_grunt_kick.cpp)
+  src/original_grunt_kick.cpp
+  src/original_grunt_map_inputs.cpp)
 target_include_directories(sin_original_grunt_ai PUBLIC include)
 target_compile_options(sin_original_grunt_ai PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
@@ -1777,5 +1778,27 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
   if(NOT ANDROID)
     add_test(NAME sin_original_scene_playback_tests
       COMMAND ${sin_scene_playback_test_target})
+  endif()
+endif()
+
+
+# Phase 140: original CNPC_GruntBase map-input behavior.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_grunt_map_inputs_test_target
+      sin_android_original_grunt_map_inputs_tests)
+  else()
+    set(sin_grunt_map_inputs_test_target
+      sin_original_grunt_map_inputs_tests)
+  endif()
+  add_executable(${sin_grunt_map_inputs_test_target}
+    tests/test_original_grunt_map_inputs.cpp)
+  target_link_libraries(${sin_grunt_map_inputs_test_target} PRIVATE
+    sin_original_grunt_ai)
+  target_compile_options(${sin_grunt_map_inputs_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_grunt_map_inputs_tests
+      COMMAND ${sin_grunt_map_inputs_test_target})
   endif()
 endif()
