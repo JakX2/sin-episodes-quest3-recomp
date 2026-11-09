@@ -68,6 +68,8 @@ jobs:
             build-android-arm64/sin_android_original_grunt_help_up_task_tests
             build-android-arm64/sin_android_original_grunt_relationship_tests
             build-android-arm64/sin_android_original_grunt_beserk_behavior_tests
+            build-android-arm64/libsin_original_scene_playback.a
+            build-android-arm64/sin_android_original_scene_playback_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -222,6 +224,11 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_original_scene_io_tests /data/local/tmp/sin_scene_io/sin_android_original_scene_io_tests
             adb shell 'cd /data/local/tmp/sin_scene_io && chmod 700 sin_android_original_scene_io_tests && ./sin_android_original_scene_io_tests' | tr -d '\r' | tee build-android-emulator-x86_64/scene-io-bionic-output.txt
             grep -Fxq 'PASS: original SiN choreographed-scene trigger and scripted-sequence output routing (mock host only)' build-android-emulator-x86_64/scene-io-bionic-output.txt
+            # Phase139: execute original scene playback input order on Android Bionic.
+            adb shell mkdir -p /data/local/tmp/sin_scene_playback
+            adb push build-android-emulator-x86_64/sin_android_original_scene_playback_tests /data/local/tmp/sin_scene_playback/sin_android_original_scene_playback_tests
+            adb shell 'cd /data/local/tmp/sin_scene_playback && chmod 700 sin_android_original_scene_playback_tests && ./sin_android_original_scene_playback_tests' | tr -d '\\r' | tee build-android-emulator-x86_64/scene-playback-bionic-output.txt
+            grep -Fxq 'PASS: original CSceneEntity Start/Pause/Resume/Cancel input order (mock host only)' build-android-emulator-x86_64/scene-playback-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
