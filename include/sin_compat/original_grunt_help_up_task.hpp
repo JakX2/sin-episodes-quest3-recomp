@@ -40,6 +40,7 @@ struct HostWoundedObjectToken {
 enum class GruntTaskDispatchDisposition : std::uint8_t {
     Handled,
     DelegateToHumanoid,
+    UnresolvedGruntTask,
 };
 
 class IOriginalGruntTaskHost {
@@ -62,7 +63,7 @@ public:
     // 0x2203D2D0. The recovered TASK_GRUNT_HELP_UP paths pass argument zero.
     virtual void complete_task_with_argument(std::int32_t argument) noexcept = 0;
 
-    // The original slot-273/slot-275 dispatchers call the inherited humanoid
+    // The original slot-273/slot-275 dispatchers use the inherited humanoid
     // implementation for tasks without a grunt-specific case.
     virtual void delegate_start_task_to_humanoid(
         OriginalGruntTaskId task) noexcept = 0;
@@ -71,14 +72,16 @@ public:
 };
 
 // Handles the recovered slot-273 StartTask-style path for TASK_GRUNT_HELP_UP.
-// All other task IDs retain the original inherited humanoid fallback.
+// Other registered grunt tasks are reported as unresolved so a complete
+// grunt dispatcher can continue its own custom case; only unregistered IDs
+// use the inherited humanoid fallback.
 GruntTaskDispatchDisposition start_original_grunt_task(
     OriginalGruntTaskId task,
     IOriginalGruntTaskHost& host) noexcept;
 
 // Handles the recovered slot-275 RunTask-style path for TASK_GRUNT_HELP_UP.
-// All other task IDs retain the original inherited humanoid fallback,
-// including IDs outside the grunt update dispatcher's explicit range.
+// Other explicit grunt update cases remain unresolved; tasks without a custom
+// update case (including 0x9B..0x9E outside the update range) use the parent.
 GruntTaskDispatchDisposition run_original_grunt_task(
     OriginalGruntTaskId task,
     IOriginalGruntTaskHost& host) noexcept;
