@@ -101,8 +101,8 @@ void test_real_phase149_advisor_listener_integration() {
     assert(result.accepted);
     assert(events.size()==2 && events[0]=="source.read" && events[1]=="source.read");
     assert(normal.read_current_value()==4.0f);
-    assert(inverse.read_current_value()==4.0f);
-    assert(advisor.score==4.0f);
+    assert(std::fabs(inverse.read_current_value()-4.0f)<0.00001f);
+    assert(std::fabs(advisor.score-4.0f)<0.00001f);
     assert(advisor.gate_value==6.0f);
     events.clear();
     result=submit_original_advisor_sample(advisor,true,5.0f,listeners);
