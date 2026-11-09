@@ -5,6 +5,7 @@
 #endif
 #include <cassert>
 #include <cstdint>
+#include <initializer_list>
 
 using namespace sin_compat::ai::grunt;
 
