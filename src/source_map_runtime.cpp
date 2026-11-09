@@ -172,9 +172,17 @@ SourceMapLoadResult SourceMapRuntime::load_document(
         const bool live = valid && safe_is_live(entity);
         bool duplicate_index = false;
         if (valid && live) {
-            duplicate_index = !entity_indices.insert(entity.index).second;
+            // Record the host-owned handle before any allocating index-set
+            // operation, so an allocation failure still rolls it back.
             if (std::find(created.begin(), created.end(), entity) == created.end()) {
                 created.push_back(entity);
+            }
+            result.entities_created = created.size();
+            try {
+                duplicate_index = !entity_indices.insert(entity.index).second;
+            } catch (...) {
+                return fail(SourceMapLoadCode::AllocationFailed, i,
+                            SourceMapLoadResult::no_index);
             }
         }
         result.entities_created = created.size();
