@@ -117,27 +117,47 @@ int main() {
     assert(host.deliveries[6] == "4:Ping:");
     assert(host.deliveries[7] == "1:Echo:");
 
-    // Stale generation must not deliver queued event or resolve a recycled ID.
+    // Queued events survive caller deletion. The EHANDLE-style caller becomes
+    // null, while the still-live target receives the input.
     assert(io.connect(auto_ent, "OnDestroy", link("door", "Delete", 1)));
     assert(io.fire(auto_ent, "OnDestroy", player) == 1);
     host.generations[1] = 2;
-    auto drop = io.advance_to(1.75);
-    assert(drop.dropped_events == 1 && drop.inputs_delivered == 0);
+    auto orphaned = io.advance_to(1.75);
+    assert(orphaned.events_processed == 1 && orphaned.inputs_delivered == 1);
+    assert(host.deliveries.back() == "3:Delete:");
+    assert(host.contexts.back().first == player);
+    assert(host.contexts.back().second == EntityRef{});
     assert(io.fire(auto_ent, "OnBuzz", player) == 0);
     host.generations[1] = 1;
+
+    // A removed activator also becomes null without dropping the queued event.
+    const auto short_lived_activator = host.add(13, 1, "short-lived");
+    assert(io.connect(auto_ent, "OnActivatorGone",
+                      link("door", "Use", 0.1)));
+    assert(io.fire(auto_ent, "OnActivatorGone", short_lived_activator) == 1);
+    host.generations[13] = 2;
+    const auto activator_orphaned = io.advance_to(1.85);
+    assert(activator_orphaned.inputs_delivered == 1);
+    assert(host.contexts.back().first == EntityRef{});
+    assert(host.contexts.back().second == auto_ent);
+
     // Target itself can be stale (index reuse of a named target).
     assert(io.fire(auto_ent, "OnBuzz", player) == 2);
     host.generations[5] = 6;
-    auto stale_target = io.advance_to(1.75);
+    auto stale_target = io.advance_to(1.85);
     assert(stale_target.inputs_delivered == 2); // buzzer2 and door, not buzzer1
-    assert(host.deliveries[8] == "6:Ring:first");
+    assert(host.deliveries[host.deliveries.size() - 2] == "6:Ring:first");
+    assert(host.deliveries.back() == "3:Close:second");
 
-    // Explicit source destruction cancels all its pending events.
+    // Removing an entity unregisters its outputs but does not implicitly
+    // cancel global queue entries. CancelPending is an explicit operation.
     assert(io.connect(auto_ent, "DestroyMe", link("door", "Open", 3)));
     assert(io.fire(auto_ent, "DestroyMe", player) == 1);
     io.remove_source(auto_ent);
-    assert(io.pending_events() == 0);
+    assert(io.pending_events() == 1);
     assert(io.fire(auto_ent, "OnBuzz", player) == 0);
+    assert(io.cancel_events_from_caller(auto_ent) == 1);
+    assert(io.pending_events() == 0);
 
     // Zero/negative/non-finite delay and non-monotonic time are not accepted.
     assert(!io.connect(relay, "Bad", link("door", "Open", -0.1)));
@@ -151,7 +171,7 @@ int main() {
     assert(io.advance_to(1.0).invalid_time);
     assert(io.advance_to(NAN).invalid_time);
     assert(io.advance_to(INFINITY).invalid_time);
-    assert(io.now() == 1.75);
+    assert(io.now() == 1.85);
 
     // A looping zero-delay relay must not freeze the host frame.
     FakeMap cycles;
@@ -169,6 +189,11 @@ int main() {
     assert(limited.events_processed == 5 && limited.inputs_delivered == 5);
     assert(limited.budget_exhausted && bounded.pending_events() == 1);
     bounded.remove_source(loop);
+    assert(bounded.pending_events() == 1);
+    cycles.generations[loop.index] = loop.generation + 1;
+    const auto orphan_loop = bounded.advance_to(0);
+    assert(orphan_loop.events_processed == 1);
+    assert(orphan_loop.inputs_delivered == 0);
     assert(bounded.pending_events() == 0);
 
     // Zero budget must not lose pending events, and invalid times keep queue.

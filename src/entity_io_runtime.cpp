@@ -47,7 +47,7 @@ std::size_t EntityIoRuntime::fire(EntityRef source, const std::string& output,
         const double due = now_ + link.config.delay_seconds;
         if (!std::isfinite(due)) continue;
         if (link.remaining > 0) --link.remaining;
-        enqueue(Pending{source, activator, source, link.config, due,
+        enqueue(Pending{source, activator, link.config, due,
                         next_ordinal_++});
         ++scheduled;
     }
@@ -55,13 +55,21 @@ std::size_t EntityIoRuntime::fire(EntityRef source, const std::string& output,
 }
 
 void EntityIoRuntime::remove_source(EntityRef source) {
+    // Entity-owned output definitions disappear with their source. The global
+    // event queue is separate: pending events retain weak caller handles and
+    // are still serviced with a null caller if that entity is later removed.
     for (auto it = outputs_.begin(); it != outputs_.end();) {
         if (it->first.source == source) it = outputs_.erase(it);
         else ++it;
     }
+}
+
+std::size_t EntityIoRuntime::cancel_events_from_caller(EntityRef caller) {
+    const auto before = pending_.size();
     pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
-        [source](const Pending& pending) { return pending.source == source; }),
+        [caller](const Pending& pending) { return pending.caller == caller; }),
         pending_.end());
+    return before - pending_.size();
 }
 
 EntityIoDrain EntityIoRuntime::advance_to(double seconds, std::size_t budget) {
@@ -87,17 +95,24 @@ EntityIoDrain EntityIoRuntime::advance_to(double seconds, std::size_t budget) {
         Pending event = std::move(pending_.front());
         pending_.erase(pending_.begin());
         ++result.events_processed;
-        if (!host_.is_live(event.source)) {
-            ++result.dropped_events;
-            continue;
-        }
+        // EHANDLE-like references become null when their generation is no
+        // longer live; they do not invalidate the queued event itself.
+        const EntityRef activator = host_.is_live(event.activator)
+            ? event.activator : EntityRef{};
+        const EntityRef caller = host_.is_live(event.caller)
+            ? event.caller : EntityRef{};
         auto targets = host_.resolve_targets(event.config.target,
-                                             event.activator, event.caller);
+                                             activator, caller);
         for (EntityRef target : targets) {
-            if (!host_.is_live(event.source)) break;
             if (!host_.is_live(target)) continue;
+            // Revalidate weak context handles for each delivery because an
+            // earlier target input may remove/recycle the activator or caller.
+            const EntityRef current_activator = host_.is_live(event.activator)
+                ? event.activator : EntityRef{};
+            const EntityRef current_caller = host_.is_live(event.caller)
+                ? event.caller : EntityRef{};
             host_.accept_input(target, event.config.input, event.config.parameter,
-                               event.activator, event.caller);
+                               current_activator, current_caller);
             ++result.inputs_delivered;
         }
     }
