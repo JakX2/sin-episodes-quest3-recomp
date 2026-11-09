@@ -90,9 +90,35 @@ void test_no_listeners_and_unordered() {
     const auto again=submit_original_advisor_sample(s,true,2.0f,{});
     assert(again.accepted && s.gate_value==3.0f);
 }
+void test_real_original_six_advisor_sender_gate() {
+    std::array<OriginalStatAdvisorFields,original_advisor_batch_count> state{};
+    std::array<bool,original_advisor_batch_count> enabled{};
+    std::array<std::vector<IOriginalAdvisorListener*>,original_advisor_batch_count> listeners{};
+    std::vector<std::string> log;
+    Listener a(log,"a",7.0f);
+    for (std::size_t i=0;i<state.size();++i) {
+        state[i]=advisor(0.0f,2.0f,4.0f);
+        state[i].gate_value = 100.0f;
+        enabled[i]=true;
+    }
+    auto sender=[&] {log.push_back("DDAdvisorScores");};
+    auto skipped=submit_original_advisor_batch(state,enabled,5.0f,listeners,sender);
+    assert(!skipped.any_accepted && log.empty());
+    state[0].gate_value=4.0f;
+    state[2].gate_value=4.0f;
+    state[5].gate_value=4.0f;
+    listeners[0].push_back(&a);
+    const auto processed=submit_original_advisor_batch(state,enabled,5.0f,listeners,sender);
+    assert(processed.any_accepted);
+    for (std::size_t i=0;i<state.size();++i)
+        assert(processed.samples[i].accepted==(i==0U||i==2U||i==5U));
+    assert((log==std::vector<std::string>{"sample:a","read:a","DDAdvisorScores"}));
+}
+
 }
 int main() {
     test_route_matrix();
     test_sample_pipeline_order_average_and_gating();
     test_no_listeners_and_unordered();
+    test_real_original_six_advisor_sender_gate();
 }
