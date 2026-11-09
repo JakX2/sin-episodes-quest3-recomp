@@ -12,9 +12,10 @@ std::optional<OriginalGruntScheduleId> extension_result(
 
 } // namespace
 
-std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule(
+static std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule_impl(
     GruntSelectorState& state,
-    IGruntSelectorExtension& extension) {
+    IGruntSelectorExtension& extension,
+    IGruntKickScheduleGate* kick_gate) {
     const auto selected = [](GruntSchedule schedule) {
         return std::optional<OriginalGruntScheduleId>{
             original_schedule_id(schedule)};
@@ -34,7 +35,11 @@ std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule(
         return selected(GruntSchedule::BurningStand);
     }
     if (state.conditions.has(GruntConditionId::KickableGrenade)) {
-        return selected(GruntSchedule::KickGrenade);
+        if (kick_gate == nullptr || kick_gate->prepare_kick_schedule()) {
+            return selected(GruntSchedule::KickGrenade);
+        }
+        // A failed grenade eligibility check does not consume the condition;
+        // the original selector continues through its later priorities.
     }
     if (state.conditions.has(GruntConditionId::ShotInHelmet)) {
         return selected(GruntSchedule::HelmetFlinch);
@@ -100,6 +105,19 @@ std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule(
     // Original 0x2235E8B0 tail-jumps to CAI_BaseHumanoid slot 269 at
     // 0x22089700. The caller performs that engine-specific parent fallback.
     return std::nullopt;
+}
+
+std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule(
+    GruntSelectorState& state,
+    IGruntSelectorExtension& extension) {
+    return select_verified_grunt_schedule_impl(state, extension, nullptr);
+}
+
+std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule(
+    GruntSelectorState& state,
+    IGruntSelectorExtension& extension,
+    IGruntKickScheduleGate& kick_gate) {
+    return select_verified_grunt_schedule_impl(state, extension, &kick_gate);
 }
 
 } // namespace sin_compat::ai::grunt

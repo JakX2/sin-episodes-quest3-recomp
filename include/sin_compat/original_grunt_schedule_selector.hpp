@@ -116,6 +116,16 @@ public:
         GruntSelectorState& state) = 0;
 };
 
+// The original KickableGrenade selector branch also resolves the tracked
+// grenade, checks the original eligibility helper, transfers the handle, and
+// only then returns schedule 0x73. This gate lets the portable selector keep
+// that operation coupled to the verified branch without importing engine ABI.
+class IGruntKickScheduleGate {
+public:
+    virtual ~IGruntKickScheduleGate() = default;
+    virtual bool prepare_kick_schedule() = 0;
+};
+
 // Runs only the branch segments supported by the preserved Phase 7 trace.
 // The extension is called at each gap containing unmodeled original logic.
 // A null result after the last segment means the caller must delegate to the
@@ -123,5 +133,9 @@ public:
 std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule(
     GruntSelectorState& state,
     IGruntSelectorExtension& extension);
+std::optional<OriginalGruntScheduleId> select_verified_grunt_schedule(
+    GruntSelectorState& state,
+    IGruntSelectorExtension& extension,
+    IGruntKickScheduleGate& kick_gate);
 
 } // namespace sin_compat::ai::grunt

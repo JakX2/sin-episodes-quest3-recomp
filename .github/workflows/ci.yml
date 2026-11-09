@@ -212,6 +212,11 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_original_grunt_beserk_behavior_tests /data/local/tmp/sin_grunt_beserk/sin_android_original_grunt_beserk_behavior_tests
             adb shell 'cd /data/local/tmp/sin_grunt_beserk && chmod 700 sin_android_original_grunt_beserk_behavior_tests && ./sin_android_original_grunt_beserk_behavior_tests' | tr -d '\r' | tee build-android-emulator-x86_64/grunt-beserk-bionic-output.txt
             grep -Fxq 'PASS: original SiN CAI_BeserkBehavior timer, schedule gate and relationship integration (mock host only)' build-android-emulator-x86_64/grunt-beserk-bionic-output.txt
+            # Phase137: execute the reconstructed grunt grenade-kick host contract on Bionic.
+            adb shell mkdir -p /data/local/tmp/sin_grunt_kick
+            adb push build-android-emulator-x86_64/sin_android_original_grunt_kick_tests /data/local/tmp/sin_grunt_kick/sin_android_original_grunt_kick_tests
+            adb shell 'cd /data/local/tmp/sin_grunt_kick && chmod 700 sin_android_original_grunt_kick_tests && ./sin_android_original_grunt_kick_tests' | tr -d '\r' | tee build-android-emulator-x86_64/grunt-kick-bionic-output.txt
+            grep -Fxq 'PASS: original SiN grunt grenade-kick eligibility, task start and event-3 host contract (mock host only)' build-android-emulator-x86_64/grunt-kick-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -238,6 +243,7 @@ jobs:
           grep -Fxq 'PASS: original SiN grunt help-up start/update paths and inherited fallback' build-android-emulator-x86_64/grunt-help-up-bionic-output.txt
           grep -Fxq 'PASS: original SiN grunt hostility-mode relation and condition gathering (mock host only)' build-android-emulator-x86_64/grunt-relationship-bionic-output.txt
           grep -Fxq 'PASS: original SiN CAI_BeserkBehavior timer, schedule gate and relationship integration (mock host only)' build-android-emulator-x86_64/grunt-beserk-bionic-output.txt
+          grep -Fxq 'PASS: original SiN grunt grenade-kick eligibility, task start and event-3 host contract (mock host only)' build-android-emulator-x86_64/grunt-kick-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -259,5 +265,6 @@ jobs:
             build-android-emulator-x86_64/grunt-help-up-bionic-output.txt
             build-android-emulator-x86_64/grunt-relationship-bionic-output.txt
             build-android-emulator-x86_64/grunt-beserk-bionic-output.txt
+            build-android-emulator-x86_64/grunt-kick-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
