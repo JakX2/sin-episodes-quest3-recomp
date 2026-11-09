@@ -1,4 +1,5 @@
 #include "sin_compat/original_grunt_relationship.hpp"
+#include "sin_compat/original_grunt_beserk_behavior.hpp"
 namespace sin_compat::ai::grunt {
 
 std::int32_t original_grunt_relation_type(
@@ -55,4 +56,18 @@ OriginalGruntConditionGatherResult gather_original_grunt_conditions(
     }
     return result;
 }
+
+std::int32_t original_grunt_relation_type(
+    const IOriginalGruntRelationshipHost& host,
+    const OriginalGruntBeserkBehavior& behavior,
+    OriginalGruntEntityToken target) noexcept {
+    return original_grunt_relation_type(host, behavior.active(), target);
+}
+
+OriginalGruntConditionGatherResult gather_original_grunt_conditions(
+    IOriginalGruntRelationshipHost& host,
+    const OriginalGruntBeserkBehavior& behavior) {
+    return gather_original_grunt_conditions(host, behavior.active());
+}
+
 } // namespace sin_compat::ai::grunt
