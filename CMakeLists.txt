@@ -1738,14 +1738,14 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
   else()
     set(sin_scene_io_test_target sin_original_scene_io_tests)
   endif()
-  add_executable(\${sin_scene_io_test_target}
+  add_executable(${sin_scene_io_test_target}
     tests/test_original_scene_io.cpp)
-  target_link_libraries(\${sin_scene_io_test_target} PRIVATE
+  target_link_libraries(${sin_scene_io_test_target} PRIVATE
     sin_original_scene_io)
-  target_compile_options(\${sin_scene_io_test_target} PRIVATE
+  target_compile_options(${sin_scene_io_test_target} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
   if(NOT ANDROID)
     add_test(NAME sin_original_scene_io_tests
-      COMMAND \${sin_scene_io_test_target})
+      COMMAND ${sin_scene_io_test_target})
   endif()
 endif()
