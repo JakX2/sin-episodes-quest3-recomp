@@ -20,7 +20,7 @@ Observed behavior:
 5. Only when false, call target virtual slot 72 (+0x120, high-confidence IsPlayer match).
 6. Return D_HT (1) for NPC or player targets; otherwise D_NU (4).
 
-The flag name, constructor value, setter and activation path remain unknown. The portable API takes a descriptive boolean and never enables it by default.
+Phase 18 subsequently identified +0xDB1 as the active byte of an embedded CAI_BeserkBehavior beginning at grunt +0xDA0. Its constructor initializes the byte to zero and its +0x14 deadline from current time. An activation-like routine sets the deadline to current time plus 10 seconds, but no static direct caller was found, so the real trigger and runtime reachability remain unverified. This PR's portable API takes a boolean representing that active byte and never enables it by default.
 
 ## Slot 316: condition-gather subset
 
