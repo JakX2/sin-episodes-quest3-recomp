@@ -32,7 +32,7 @@ The portable helper accepts the random sample from its caller. It does not inven
 | `0x223596B8` | vtable slot 530 | 1.0 | Alternative branch |
 | `0x2235D889` | vtable slot 271 | 20.0 | Integer/schedule translation switch |
 
-The later Phase 7 registration extraction identifies grunt-local condition `0x4D` as `COND_GRUNT_IN_PLAYER_SIGHTS`. The earlier Phase 6 report had only the numeric ID. The factor-20 call is inside a schedule-related translation path; it is not described as ordinary movement speed. The factor-20 call is inside a schedule-related translation path; it is not described as ordinary movement speed.
+The later Phase 7 registration extraction identifies grunt-local condition `0x4D` as `COND_GRUNT_IN_PLAYER_SIGHTS`. The earlier Phase 6 report had only the numeric ID. The factor-20 call is inside a schedule-related translation path; it is not described as ordinary movement speed.
 
 A separate scan hit at `0x223568E7` uses the NPC's own vtable slot 107, not the game-rules pointer. It is deliberately excluded from this rules-call-site mapping.
 
