@@ -18,11 +18,12 @@ namespace {
 class FakeScenePlaybackHost final : public IOriginalScenePlaybackHost {
 public:
     std::set<SceneEntityToken> live{7U};
-    std::vector<std::string> calls;
+    mutable std::vector<std::string> calls;
     bool playing = false;
     bool waiting_for_actor = false;
     bool accept_start_output = true;
     bool pause_flag = false;
+    int pause_flag_writes = 0;
     OutputContextToken last_context = 0U;
 
     bool is_live(SceneEntityToken scene) const noexcept override {
@@ -50,13 +51,13 @@ public:
 
     bool is_playing(SceneEntityToken scene) const noexcept override {
         assert(scene == 7U);
-        const_cast<FakeScenePlaybackHost*>(this)->calls.emplace_back("is_playing");
+        calls.emplace_back("is_playing");
         return playing;
     }
 
     bool is_waiting_for_actor(SceneEntityToken scene) const noexcept override {
         assert(scene == 7U);
-        const_cast<FakeScenePlaybackHost*>(this)->calls.emplace_back("is_waiting");
+        calls.emplace_back("is_waiting");
         return waiting_for_actor;
     }
 
@@ -78,6 +79,7 @@ public:
     void set_pause_flag(SceneEntityToken scene, bool paused) noexcept override {
         assert(scene == 7U);
         calls.emplace_back(paused ? "pause_flag_true" : "pause_flag_false");
+        ++pause_flag_writes;
         pause_flag = paused;
     }
 
@@ -164,7 +166,7 @@ void test_resume_delegates_without_fabricating_a_pause_flag_write() {
 
     assert(result.result == ScenePlaybackInputResult::Resumed);
     assert((host.calls == std::vector<std::string>{"resume_virtual"}));
-    assert(host.pause_flag);
+    assert(host.pause_flag_writes == 0);
 }
 
 void test_cancel_delegates_without_double_firing_on_canceled() {
