@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 import re
 
-from audit_sin_entire_dll_code_census import HASHES, CensusError
+from audit_sin_entire_dll_code_census import HASHES, CensusError, PE
 from build_sin_dll_recovery_queue import GROUPS
 
 SIDES = ("client", "server")
@@ -33,10 +33,47 @@ def fail(reason: str) -> None:
     raise CensusError("SiN recovery atlas: " + reason)
 
 
-def validate_original_files(client: Path, server: Path) -> None:
+def validate_original_files(client: Path, server: Path) -> dict[str, bytes]:
+    originals = {}
     for side, source in (("client", client), ("server", server)):
-        if hashlib.sha256(source.read_bytes()).hexdigest() != HASHES[side]:
+        original = source.read_bytes()
+        if hashlib.sha256(original).hexdigest() != HASHES[side]:
             fail("incorrect original SHA256 for " + side + ".dll")
+        originals[side] = original
+    return originals
+
+
+def check_code_region(text_va: int, text: bytes, entry_va: str,
+                      length: int, digest: str) -> None:
+    """Pin exact original bytes; a nearby string or vtable is not enough."""
+    address = int(entry_va, 16)
+    if not isinstance(length, int) or not 1 <= length <= 16384:
+        fail("invalid original function code length at " + entry_va)
+    offset = address - text_va
+    if offset < 0 or offset + length > len(text):
+        fail("verified function body outside original .text: " + entry_va)
+    actual = hashlib.sha256(text[offset:offset+length]).hexdigest()
+    if actual != digest:
+        fail("original function-region SHA256 mismatch at " + entry_va)
+
+
+def verify_manifest_against_original_code(
+        originals: dict[str, bytes], manifest: dict) -> None:
+    texts = {}
+    for side in SIDES:
+        image = PE(originals[side])
+        expected_base = 0x24000000 if side == "client" else 0x22000000
+        if image.base != expected_base:
+            fail("incorrect original PE32 load base for " + side)
+        texts[side] = image.section(".text")
+    for method in manifest["methods"]:
+        side = method["dll"]
+        if side not in SIDES:
+            fail("unknown verified method owner")
+        va, text = texts[side]
+        check_code_region(va, text, method["entry_va"],
+                          method["original_code_length"],
+                          method["original_code_sha256"])
 
 
 def check_side_metadata(rtti: dict, census: dict, factory: dict, manifest: dict) -> None:
@@ -117,6 +154,9 @@ def merge_verified(functions: dict, manifest: dict, repository_root: Path) -> di
         code_sha = row.get("original_code_sha256", "")
         if not HEX_SHA.fullmatch(code_sha):
             fail("verified code requires a 64-character SHA256 region pin")
+        if not isinstance(row.get("original_code_length"), int) or not (
+                1 <= row["original_code_length"] <= 16384):
+            fail("verified code requires a precise original code length")
         if not isinstance(row.get("label"), str) or not row["label"].strip():
             fail("verified method missing meaningful label")
         evidence_path = row.get("evidence_path", "")
@@ -327,10 +367,11 @@ def main() -> int:
     ap.add_argument("--output-dir", type=Path, required=True)
     args = ap.parse_args()
     try:
-        validate_original_files(args.client,args.server)
+        originals = validate_original_files(args.client,args.server)
         rtti = json.loads(args.rtti.read_text(encoding="utf-8"))
         factories = json.loads(args.factories.read_text(encoding="utf-8"))
         manifest = json.loads(args.verified.read_text(encoding="utf-8"))
+        verify_manifest_against_original_code(originals, manifest)
         census = {}
         candidates = {}
         combined = json.loads(
