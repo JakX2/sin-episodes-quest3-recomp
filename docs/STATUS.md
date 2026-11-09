@@ -203,3 +203,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Local Release and UBSan research harness: **33/33 tests each**.
 - [Phase 118 original pose second pass](../research/phases/sin-original-second-pose-pass-track-state-20261108.md).
 - Still not a complete effect solver or runnable SiN game; the rest of the original loop, native entity animation, full `client.dll`/`server.dll`, and Quest 3 gameplay remain incomplete. No original game binaries or assets committed.
+
+
+## 2026-11-09: original vehicle view-record permission byte
+
+- Phase 123 extends the bounded 100-byte view-record decoder using the preserved SHA-pinned Phase 24 verifier: `view_allow_weapons` is the raw byte at record `+0x55` (constructor default zero), and `view_damage_mod` is the 32-bit float at `+0x60` (constructor default 1.0).
+- The original SetView path loads the permission byte, passes it to the player setter, and the player-side consumer compares the stored byte against zero. The portable record and host contract therefore preserve the byte rather than narrowing it to a C++ `bool`.
+- Added a decoded-record-to-SetView regression proving the selected view's permission byte reaches the player host unchanged, plus multi-record zero/nonzero parsing coverage.
+- Evidence source: the Library-held `phase24_verify.py` witness table, including the exact constructor, SetView load, player setter, consumer and record-stride anchors. The raw DLL ZIP was not materialized in this run; no fresh original-binary audit is claimed.
+- This completes two verified view-record fields only. Other view fields, complete damage arithmetic, native vehicle host, client monitor rendering, campaign map I/O and Quest execution remain unimplemented.
