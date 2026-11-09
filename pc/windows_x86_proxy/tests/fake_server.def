@@ -1,6 +1,6 @@
 EXPORTS
-    CreateInterface=_CreateInterface
-    ?Detonate@CGrenadeHomer@@UAEXXZ=_FakeDetonateHomer
-    ?Detonate@CGrenadePathfollower@@UAEXXZ=_FakeDetonatePathfollower
-    ?Detonate@CGrenadeSpitMutant@@UAEXXZ=_FakeDetonateSpitMutant
-    ?Detonate@CGrenadeSpitPoison@@UAEXXZ=_FakeDetonateSpitPoison
+    CreateInterface
+    ?Detonate@CGrenadeHomer@@UAEXXZ=FakeDetonateHomer
+    ?Detonate@CGrenadePathfollower@@UAEXXZ=FakeDetonatePathfollower
+    ?Detonate@CGrenadeSpitMutant@@UAEXXZ=FakeDetonateSpitMutant
+    ?Detonate@CGrenadeSpitPoison@@UAEXXZ=FakeDetonateSpitPoison
