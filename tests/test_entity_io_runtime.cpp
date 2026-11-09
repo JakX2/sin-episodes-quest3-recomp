@@ -144,7 +144,7 @@ int main() {
     // Target itself can be stale (index reuse of a named target).
     assert(io.fire(auto_ent, "OnBuzz", player) == 2);
     host.generations[5] = 6;
-    auto stale_target = io.advance_to(1.75);
+    auto stale_target = io.advance_to(1.85);
     assert(stale_target.inputs_delivered == 2); // buzzer2 and door, not buzzer1
     assert(host.deliveries[host.deliveries.size() - 2] == "6:Ring:first");
     assert(host.deliveries.back() == "3:Close:second");
