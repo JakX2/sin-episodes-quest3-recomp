@@ -237,8 +237,79 @@ def class_catalog(rtti: dict) -> list[dict]:
     return all_rows
 
 
+
+def network_catalog(recv: dict, send: dict) -> tuple[list[dict], list[dict]]:
+    """Keep constructor evidence distinct from mere DT_* string presence."""
+    if recv["sha256"] != {side+".dll": HASHES[side] for side in SIDES}:
+        fail("client RecvTable audit SHA256 mismatch")
+    if send["sha256"] != HASHES:
+        fail("server SendTable audit SHA256 mismatch")
+    tables = []
+    fields = []
+    for side, source in (("client", recv["client"]), ("server", send["server"])):
+        source_tables = source["tables"]
+        known = set()
+        for table in source_tables:
+            reg = table["registration_va"]
+            va_key(reg, side)
+            name = table["table"]
+            size = table["property_count"]
+            if not isinstance(size, int) or size < 0 or size > 2048:
+                fail("bad original network property_count")
+            key = (name, reg.lower())
+            if key in known:
+                fail("duplicate network table registration " + str(key))
+            known.add(key)
+            tables.append({
+                "dll":side+".dll","table":name,"source_kind":
+                    "RecvTable_constructor" if side=="client" else "SendTable_constructor",
+                "registration_va":reg,
+                "property_count":size,
+            })
+        found = source["named_props"] if side=="client" else source["props"]
+        missing = (source["unresolved_slots"] if side=="client"
+                   else source["unresolved_prop_slots"])
+        by_slot = {}
+        for group, resolved in ((found,True),(missing,False)):
+            for prop in group:
+                key = (prop["table"],prop["table_registration_va"],
+                       int(prop["slot"]))
+                if key in by_slot:
+                    fail("duplicate network table property slot " + str(key))
+                if (key[0],key[1].lower()) not in known:
+                    fail("property belongs to no verified table constructor " + str(key))
+                offset = (prop.get("client_object_offset") if side=="client"
+                          else prop.get("server_object_offset"))
+                by_slot[key] = {
+                    "dll":side+".dll","table":key[0],"registration_va":key[1],
+                    "slot":key[2],"property_name":prop.get("name",""),
+                    "original_object_offset":offset,
+                    "property_constructor_va":prop.get("property_constructor_va",""),
+                    "evidence_status":("original_named_property_initializer" if resolved
+                                       else "unresolved_property_slot"),
+                }
+        for table in source_tables:
+            slots=[k[2] for k in by_slot if
+                   k[0]==table["table"] and
+                   k[1].lower()==table["registration_va"].lower()]
+            if sorted(slots)!=list(range(table["property_count"])):
+                fail("network property slots do not cover declared table " +
+                     table["table"])
+        fields.extend(by_slot.values())
+    captured_server_names={x["table"] for x in tables if x["dll"]=="server.dll"}
+    for name in recv["server"]["name_strings"]:
+        if name not in captured_server_names:
+            tables.append({"dll":"server.dll","table":name,
+                           "source_kind":"DT_string_only_unverified_registration",
+                           "registration_va":"","property_count":""})
+    tables.sort(key=lambda x:(x["dll"],x["table"],x["registration_va"]))
+    fields.sort(key=lambda x:(x["dll"],x["table"],x["registration_va"],x["slot"]))
+    return tables,fields
+
+
 def assemble(rtti: dict, census: dict, candidates: dict[str, list[dict]],
-             factories: dict, manifest: dict, repo_root: Path) -> dict:
+             factories: dict, manifest: dict, repo_root: Path,
+             recv: dict | None = None, send: dict | None = None) -> dict:
     check_side_metadata(rtti, census, factories, manifest)
     methods = {}
     for side in SIDES:
@@ -268,6 +339,10 @@ def assemble(rtti: dict, census: dict, candidates: dict[str, list[dict]],
             "factory_object_va": row["factory_object_va"],
             "evidence": "verified_22_byte_compiler_registration_pattern",
         })
+    if (recv is None) != (send is None):
+        fail("network audits must be supplied together")
+    network_tables, network_props = (network_catalog(recv, send)
+                                     if recv is not None else ([], []))
     counts = {}
     for side in SIDES:
         statuses = Counter(row["recovery_status"] for row in methods[side].values())
@@ -290,12 +365,28 @@ def assemble(rtti: dict, census: dict, candidates: dict[str, list[dict]],
                 row["dll"] == side+".dll" for row in interface_rows),
         }
     counts["server"]["recognized_entity_factory_registrations"] = len(entities)
+    for side in SIDES:
+        counts[side]["network_table_constructors"] = sum(
+            t["dll"]==side+".dll" and t["registration_va"]!=""
+            for t in network_tables)
+        counts[side]["recognized_named_network_properties"] = sum(
+            p["dll"]==side+".dll" and
+            p["evidence_status"]=="original_named_property_initializer"
+            for p in network_props)
+        counts[side]["unresolved_network_properties_in_known_tables"] = sum(
+            p["dll"]==side+".dll" and
+            p["evidence_status"]=="unresolved_property_slot"
+            for p in network_props)
+    counts["server"]["DT_string_only_without_verified_constructor"] = sum(
+        t["source_kind"]=="DT_string_only_unverified_registration"
+        for t in network_tables)
     summary = {
         "schema_version": 1,
         "original_dll_sha256": HASHES,
         "counts": counts,
         "method_ledger": manual_counts,
         "full_decompilation_percentage": None,
+        "network_audit_supplied": recv is not None,
         "census_is_not_an_exhaustive_function_list": True,
         "recovery_ledger_is_not_exhaustive_of_previous_research": True,
         "source_files": [
@@ -313,7 +404,8 @@ def assemble(rtti: dict, census: dict, candidates: dict[str, list[dict]],
         ],
     }
     return {"summary": summary, "classes": classes, "functions": result_methods,
-            "entities": entities, "interfaces": interface_rows}
+            "entities": entities, "interfaces": interface_rows,
+            "network_tables":network_tables, "network_properties":network_props}
 
 
 def csv_rows(path: Path, rows: list[dict], fields: list[str]) -> None:
@@ -344,6 +436,11 @@ def write_catalog(out_dir: Path, atlas: dict) -> None:
             ["dll","classname","registration_va","factory_object_va","evidence"]),
         "interfaces": ("SiN_2006_Engine_Interface_Atlas.csv",
             ["dll","name","registration_va","factory_callback_va","evidence"]),
+        "network_tables": ("SiN_2006_Network_Table_Atlas.csv",
+            ["dll","table","source_kind","registration_va","property_count"]),
+        "network_properties": ("SiN_2006_Network_Property_Atlas.csv",
+            ["dll","table","registration_va","slot","property_name",
+             "original_object_offset","property_constructor_va","evidence_status"]),
     }
     for kind,(file_name,fields) in layouts.items():
         csv_rows(out_dir/file_name, atlas[kind], fields)
@@ -361,6 +458,10 @@ def main() -> int:
                     help="Directory from audit_sin_entire_dll_code_census.py")
     ap.add_argument("--factories", type=Path, required=True,
                     help="JSON from audit_full_sin_game_dlls.py")
+    ap.add_argument("--recv-tables", type=Path,
+                    help="Optional JSON from audit_sin_recv_tables.py")
+    ap.add_argument("--send-tables", type=Path,
+                    help="Optional JSON from audit_sin_send_tables.py")
     ap.add_argument("--verified", type=Path,
                     default=Path("research/catalog/original_dll_verified_methods.json"))
     ap.add_argument("--repo-root", type=Path, default=Path("."))
@@ -386,7 +487,14 @@ def main() -> int:
                 "SiN_2006_"+side.capitalize()+"_Code_Entry_Candidates.csv")).open(
                     newline="",encoding="utf-8") as handle:
                 candidates[side] = list(csv.DictReader(handle))
-        atlas = assemble(rtti,census,candidates,factories,manifest,args.repo_root)
+        if (args.recv_tables is None) != (args.send_tables is None):
+            fail("supply both --recv-tables and --send-tables, or neither")
+        recv = (json.loads(args.recv_tables.read_text(encoding="utf-8"))
+                if args.recv_tables else None)
+        send = (json.loads(args.send_tables.read_text(encoding="utf-8"))
+                if args.send_tables else None)
+        atlas = assemble(rtti,census,candidates,factories,manifest,
+                         args.repo_root,recv,send)
         write_catalog(args.output_dir, atlas)
         print(json.dumps(atlas["summary"],indent=2,sort_keys=True))
     except (OSError,ValueError,KeyError,TypeError) as error:
