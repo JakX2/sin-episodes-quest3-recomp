@@ -1722,3 +1722,30 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND ${sin_grunt_kick_test_target})
   endif()
 endif()
+
+# Phase 138: original CSceneEntity and CAI_ScriptedSequence map-output routing.
+# The engine host owns Source output objects and the FireOutput ABI.
+add_library(sin_original_scene_io STATIC
+  src/original_scene_io.cpp)
+target_include_directories(sin_original_scene_io PUBLIC include)
+target_compile_options(sin_original_scene_io PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_original_scene_io PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_scene_io_test_target sin_android_original_scene_io_tests)
+  else()
+    set(sin_scene_io_test_target sin_original_scene_io_tests)
+  endif()
+  add_executable(\${sin_scene_io_test_target}
+    tests/test_original_scene_io.cpp)
+  target_link_libraries(\${sin_scene_io_test_target} PRIVATE
+    sin_original_scene_io)
+  target_compile_options(\${sin_scene_io_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_scene_io_tests
+      COMMAND \${sin_scene_io_test_target})
+  endif()
+endif()
