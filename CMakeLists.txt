@@ -1920,3 +1920,31 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND ${sin_bsp_entities_test_target})
   endif()
 endif()
+
+# Phase 146: instantiate the ordinary entity subset parsed from a Source BSP.
+# The native host supplies its real classname factories and engine callbacks.
+add_library(sin_source_map_runtime STATIC
+  src/source_map_runtime.cpp)
+target_include_directories(sin_source_map_runtime PUBLIC include)
+target_link_libraries(sin_source_map_runtime PUBLIC sin_source_bsp_entities)
+target_compile_options(sin_source_map_runtime PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_source_map_runtime PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_source_map_runtime_test_target sin_android_source_map_runtime_tests)
+  else()
+    set(sin_source_map_runtime_test_target sin_source_map_runtime_tests)
+  endif()
+  add_executable(${sin_source_map_runtime_test_target}
+    tests/test_source_map_runtime.cpp)
+  target_link_libraries(${sin_source_map_runtime_test_target} PRIVATE
+    sin_source_map_runtime)
+  target_compile_options(${sin_source_map_runtime_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_source_map_runtime_tests
+      COMMAND ${sin_source_map_runtime_test_target})
+  endif()
+endif()
