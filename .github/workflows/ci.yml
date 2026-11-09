@@ -193,7 +193,6 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_original_alive_damage_tests /data/local/tmp/sin_alive_damage/sin_android_original_alive_damage_tests
             adb shell 'cd /data/local/tmp/sin_alive_damage && chmod 700 sin_android_original_alive_damage_tests && ./sin_android_original_alive_damage_tests' | tr -d '\r' | tee build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
             grep -Fxq 'PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch' build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
-          grep -Fxq 'PASS: original SiN grunt help-up start/update paths and inherited fallback' build-android-emulator-x86_64/grunt-help-up-bionic-output.txt
             # Phase134: execute the portable grunt help-up contract on Android
             # Bionic with a fake host; this is not an engine NPC or Quest test.
             adb shell mkdir -p /data/local/tmp/sin_grunt_help_up
@@ -223,6 +222,7 @@ jobs:
           grep -Fxq 'PASS: original SiN grenade touch contact/flag gates and one-shot blast (mock host only)' build-android-emulator-x86_64/grenade-touch-bionic-output.txt
           grep -Fxq 'PASS: original SiN named rifle/grenade entity factories create actual portable gameplay (mock host only)' build-android-emulator-x86_64/gameplay-entity-factory-bionic-output.txt
           grep -Fxq 'PASS: original SiN common alive-damage truncation, HP subtraction and death dispatch' build-android-emulator-x86_64/original-alive-damage-bionic-output.txt
+          grep -Fxq 'PASS: original SiN grunt help-up start/update paths and inherited fallback' build-android-emulator-x86_64/grunt-help-up-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
