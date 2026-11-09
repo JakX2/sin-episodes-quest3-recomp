@@ -3,6 +3,7 @@
 // pipeline: 0x222C4DC0 -> 0x222C6750 -> vtable slot1 0x222C6830
 // -> 0x222C4C80 -> slots 9/10/11. The real x86 ABI is not used.
 #include "sin_compat/original_stat_advisor_evaluators.hpp"
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -92,5 +93,32 @@ inline OriginalAdvisorSampleResult submit_original_advisor_sample(
         : sum / static_cast<float>(listeners.size());
     auto dispatch = classify_original_advisor(advisor, use_threshold_routes);
     return {true, dispatch};
+}
+
+// Original manager 0x222BAE20: call the same sample callback on all six
+// advisor pointers at manager +0x48..+0x5C and transmit DDAdvisorScores
+// once if ANY callback accepted. This is only the dispatch seam; the
+// host owns the actual Phase76 Source usermessage writer.
+inline constexpr std::size_t original_advisor_batch_count = 6U;
+struct OriginalAdvisorBatchResult {
+    bool any_accepted = false;
+    std::array<OriginalAdvisorSampleResult, original_advisor_batch_count> samples{};
+};
+template <typename SendScores>
+OriginalAdvisorBatchResult submit_original_advisor_batch(
+    std::array<OriginalStatAdvisorFields, original_advisor_batch_count>& advisors,
+    const std::array<bool, original_advisor_batch_count>& threshold_flags,
+    float sample,
+    const std::array<std::vector<IOriginalAdvisorListener*>,
+                     original_advisor_batch_count>& listeners,
+    SendScores&& send_scores_once) {
+    OriginalAdvisorBatchResult result{};
+    for (std::size_t i=0; i<original_advisor_batch_count; ++i) {
+        result.samples[i] = submit_original_advisor_sample(
+            advisors[i], threshold_flags[i], sample, listeners[i]);
+        result.any_accepted = result.any_accepted || result.samples[i].accepted;
+    }
+    if (result.any_accepted) send_scores_once();
+    return result;
 }
 } // namespace sin_compat::difficulty
