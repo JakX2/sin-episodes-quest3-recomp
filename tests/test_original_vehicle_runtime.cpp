@@ -27,7 +27,7 @@ struct Host final : IOriginalVehicleHost {
     bool reject_link = false;
     bool live_camera = true;
     int selected_view = -1;
-    bool allow_weapons = false;
+    std::uint8_t allow_weapons = 0;
     bool headlights = false;
     bool published_headlights = false;
     bool radio_power = false;
@@ -57,7 +57,7 @@ struct Host final : IOriginalVehicleHost {
         selected_view = index;
         events.emplace_back("player-view-index");
     }
-    void set_player_allow_weapons(EntityRef, bool allow) override {
+    void set_player_allow_weapons(EntityRef, std::uint8_t allow) override {
         allow_weapons = allow;
         events.emplace_back("player-view-weapons");
     }
@@ -186,16 +186,18 @@ void write_little_endian_float(std::vector<std::uint8_t>& bytes,
 
 void test_original_view_record_decoder_reads_only_verified_member() {
     std::vector<std::uint8_t> raw(200, 0xCD);
+    raw[0x55] = 0x00;
+    raw[100 + 0x55] = 0x7F;
     write_little_endian_float(raw, 0x60, 0.75f);
     write_little_endian_float(raw, 100 + 0x60, -1.25f);
-    std::vector<ViewRecord> decoded{{true, 99.0f}};
+    std::vector<ViewRecord> decoded{{1, 99.0f}};
 
     assert(decode_original_view_records(raw.data(), raw.size(), 2, decoded));
     assert(decoded.size() == 2);
+    assert(decoded[0].allow_weapons == 0x00);
+    assert(decoded[1].allow_weapons == 0x7F);
     assert(decoded[0].damage_modifier == 0.75f);
     assert(decoded[1].damage_modifier == -1.25f);
-    // The parser deliberately does not guess the unrelated allow-weapons byte.
-    assert(!decoded[0].allow_weapons && !decoded[1].allow_weapons);
 }
 
 void test_original_view_record_decoder_is_bounded_and_transactional() {
@@ -216,6 +218,24 @@ void test_original_view_record_decoder_preserves_ieee_payload() {
     std::vector<ViewRecord> decoded;
     assert(decode_original_view_records(raw.data(), raw.size(), 1, decoded));
     assert(decoded.size() == 1 && std::isnan(decoded[0].damage_modifier));
+}
+
+
+void test_decoded_view_permission_byte_reaches_set_view_unchanged() {
+    std::vector<std::uint8_t> raw(100, 0);
+    raw[0x55] = 0xA5;
+    write_little_endian_float(raw, 0x60, 1.0f);
+
+    std::vector<ViewRecord> decoded;
+    assert(decode_original_view_records(raw.data(), raw.size(), 1, decoded));
+    assert(decoded.size() == 1 && decoded[0].allow_weapons == 0xA5);
+
+    Host host;
+    OriginalVehicleRuntime vehicle({1, 1}, decoded);
+    assert(vehicle.handle_input("SetView", int_value(0, EntityRef{99, 1}), host)
+           == Result::Applied);
+    assert(host.selected_view == 0);
+    assert(host.allow_weapons == 0xA5);
 }
 
 void test_input_registry_and_types() {
@@ -375,6 +395,7 @@ int main() {
     test_original_view_record_decoder_reads_only_verified_member();
     test_original_view_record_decoder_is_bounded_and_transactional();
     test_original_view_record_decoder_preserves_ieee_payload();
+    test_decoded_view_permission_byte_reaches_set_view_unchanged();
     test_input_registry_and_types();
     test_door_and_window_fanout();
     test_set_view_updates_both_player_fields();
