@@ -62,18 +62,19 @@ bool decode_original_view_records(const std::uint8_t* bytes,
     std::vector<ViewRecord> decoded;
     decoded.reserve(view_count);
     for (std::size_t i = 0; i < view_count; ++i) {
-        const auto offset = i * kRecordStride + kDamageModifierOffset;
+        const auto record_offset = i * kRecordStride;
+        const auto damage_offset = record_offset + kDamageModifierOffset;
         const std::uint32_t bits =
-            static_cast<std::uint32_t>(bytes[offset]) |
-            (static_cast<std::uint32_t>(bytes[offset + 1]) << 8u) |
-            (static_cast<std::uint32_t>(bytes[offset + 2]) << 16u) |
-            (static_cast<std::uint32_t>(bytes[offset + 3]) << 24u);
+            static_cast<std::uint32_t>(bytes[damage_offset]) |
+            (static_cast<std::uint32_t>(bytes[damage_offset + 1]) << 8u) |
+            (static_cast<std::uint32_t>(bytes[damage_offset + 2]) << 16u) |
+            (static_cast<std::uint32_t>(bytes[damage_offset + 3]) << 24u);
         float modifier = 1.0f;
         std::memcpy(&modifier, &bits, sizeof(modifier));
         ViewRecord record{};
         // The original SetView path copies this byte to the player permission
         // field; the consumer checks it against zero. Preserve the raw byte.
-        record.allow_weapons = bytes[offset + kAllowWeaponsOffset];
+        record.allow_weapons = bytes[record_offset + kAllowWeaponsOffset];
         record.damage_modifier = modifier;
         decoded.push_back(record);
     }
