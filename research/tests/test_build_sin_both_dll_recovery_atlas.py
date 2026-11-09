@@ -13,7 +13,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]/"tools"))
 from build_sin_both_dll_recovery_atlas import (
     HASHES, assemble, class_catalog, check_code_region,
-    check_side_metadata, load_candidates, validate_original_files,
+    check_side_metadata, load_candidates, network_catalog, validate_original_files,
     write_catalog, CensusError,
 )
 
@@ -114,7 +114,7 @@ class AtlasTests(unittest.TestCase):
         atlas=self.atlas()
         dest=self.repo/"private_generated"
         write_catalog(dest,atlas)
-        self.assertEqual(len(list(dest.glob("*"))),5)
+        self.assertEqual(len(list(dest.glob("*"))),7)
         summary=json.loads((dest/"SiN_2006_Both_DLLs_Recovery_Atlas.json").read_text())
         self.assertEqual(summary["method_ledger"]["evidence_ledger_entries"],{"client":1,"server":1})
         with (dest/"SiN_2006_Function_Recovery_Atlas.csv").open(newline="") as f:
@@ -194,6 +194,54 @@ class AtlasTests(unittest.TestCase):
             check_code_region(start,text,"0x24000200",6,good)
         with self.assertRaisesRegex(CensusError,"code length"):
             check_code_region(start,text,"0x24000104",0,good)
+
+    def test_network_atlas_preserves_constructor_and_string_only_evidence(self):
+        recv={
+            "sha256":{side+".dll":HASHES[side] for side in ("client","server")},
+            "client":{
+                "tables":[{"table":"DT_Weapon","registration_va":"0x24100200",
+                           "property_count":2}],
+                "named_props":[{
+                    "table":"DT_Weapon","table_registration_va":"0x24100200",
+                    "slot":0,"name":"m_iClip1","client_object_offset":0x7E0,
+                    "property_constructor_va":"0x24101000"}],
+                "unresolved_slots":[{
+                    "table":"DT_Weapon","table_registration_va":"0x24100200",
+                    "slot":1}],
+            },
+            "server":{"name_strings":["DT_Weapon","DT_UnregisteredName"]},
+        }
+        send={
+            "sha256":HASHES,
+            "server":{
+                "tables":[{"table":"DT_Weapon","registration_va":"0x22100200",
+                           "property_count":1}],
+                "props":[{
+                    "table":"DT_Weapon","table_registration_va":"0x22100200",
+                    "slot":0,"name":"m_iClip1","server_object_offset":0x4EC,
+                    "property_constructor_va":"0x22103000"}],
+                "unresolved_prop_slots":[],
+            },
+        }
+        tables,fields=network_catalog(recv,send)
+        self.assertEqual(len(tables),3)
+        self.assertEqual(len(fields),3)
+        self.assertEqual(sum(t["source_kind"]=="DT_string_only_unverified_registration"
+                             for t in tables),1)
+        missing=next(f for f in fields if f["evidence_status"]=="unresolved_property_slot")
+        self.assertEqual(missing["slot"],1)
+        atlas=assemble(self.rtti,self.census,self.candidates,
+                       self.factories,self.manifest,self.repo,recv,send)
+        self.assertTrue(atlas["summary"]["network_audit_supplied"])
+        self.assertEqual(atlas["summary"]["counts"]["client"]["recognized_named_network_properties"],1)
+        self.assertEqual(atlas["summary"]["counts"]["server"]["DT_string_only_without_verified_constructor"],1)
+        send["server"]["props"][0]["slot"]=3
+        with self.assertRaisesRegex(CensusError,"do not cover declared"):
+            network_catalog(recv,send)
+        send["server"]["props"][0]["slot"]=0
+        recv["sha256"]["client.dll"]="0"*64
+        with self.assertRaisesRegex(CensusError,"RecvTable audit SHA256"):
+            network_catalog(recv,send)
 
     def test_wrong_proprietary_originals_rejected_without_writing_outputs(self):
         fake=self.repo/"fake.dll"
