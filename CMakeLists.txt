@@ -1542,15 +1542,24 @@ add_library(sin_original_vehicle_runtime STATIC
 target_include_directories(sin_original_vehicle_runtime PUBLIC include)
 target_compile_options(sin_original_vehicle_runtime PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
-if(BUILD_TESTING AND NOT ANDROID)
-  add_executable(sin_original_vehicle_runtime_tests
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_vehicle_runtime_test_target
+      sin_android_original_vehicle_runtime_tests)
+  else()
+    set(sin_vehicle_runtime_test_target
+      sin_original_vehicle_runtime_tests)
+  endif()
+  add_executable(${sin_vehicle_runtime_test_target}
     tests/test_original_vehicle_runtime.cpp)
-  target_link_libraries(sin_original_vehicle_runtime_tests PRIVATE
+  target_link_libraries(${sin_vehicle_runtime_test_target} PRIVATE
     sin_original_vehicle_runtime)
-  target_compile_options(sin_original_vehicle_runtime_tests PRIVATE
+  target_compile_options(${sin_vehicle_runtime_test_target} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
-  add_test(NAME sin_original_vehicle_runtime_tests
-    COMMAND sin_original_vehicle_runtime_tests)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_vehicle_runtime_tests
+      COMMAND ${sin_vehicle_runtime_test_target})
+  endif()
 endif()
 
 
