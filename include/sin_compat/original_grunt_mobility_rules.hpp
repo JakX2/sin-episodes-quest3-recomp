@@ -23,7 +23,7 @@ constexpr float grunt_mobility_factor(GruntMobilityCallSite site) noexcept {
     switch (site) {
     case GruntMobilityCallSite::GruntVtable292:
         return 1.0f; // original call site 0x223587A3
-    case GruntMobilityCallSite::GruntVtable530Condition4D:
+    case GruntMobilityCallSite::GruntVtable530InPlayerSights:
         return 4.0f; // original call site 0x223596A9
     case GruntMobilityCallSite::GruntVtable530Alternate:
         return 1.0f; // original call site 0x223596B8
