@@ -30,6 +30,23 @@ Both are native PE32 Intel x86 game modules, not ARM64 ELF libraries. The new at
 
 The code-census counts are the limits of known *discovery methods*, not true exhaustive counts of machine-code functions. Nonvirtual functions reached only by indirect calls or tail jumps, jump-table targets, callbacks, and code hidden from the linear disassembler may be absent. A candidate can instead be a thunk or a bad linear decode. Inherited virtual slots cause massive duplication. Neither a total candidate count nor a total phase count yields a truthful percentage of decompiled SiN game logic.
 
+## New direct owner-binary import/export and RTTI inventory
+
+A separate direct PE32 metadata pass was run against the **actual owner-held original binaries** in this session, rather than merely quoting older reports:
+
+| PE metadata directly extracted | Original client.dll | Original server.dll |
+|---|---:|---:|
+| Original MSVC RTTI TypeDescriptor strings (including templated types) | 799 | 1,499 |
+| Imported Windows/Source DLLs | 7 | 4 |
+| Imported named functions | 154 | 115 |
+| Exported functions | 1 | 5 |
+| InterfaceReg constructor sites captured by the strict 21-byte pattern | 54 | 10 |
+| Server entity registrations captured by verified 22-byte pattern | not applicable | 510 |
+
+**The 21-byte client factory-pattern scan returns 54 sites, while the earlier verified linked InterfaceReg registry audit resolves 55 actual client registrations.** This is a scanner-pattern coverage difference, not proof an original interface is missing. The 2006 client imports WINMM.dll, KERNEL32.dll, USER32.dll, GDI32.dll, ADVAPI32.dll, vstdlib.dll and tier0.dll; the server imports KERNEL32.dll, USER32.dll, vstdlib.dll and tier0.dll. Client exports only CreateInterface; server additionally exports four decorated grenade Detonate functions. The complete RTTI TypeDescriptor string sets share 155 exact decorated class tokens, including templated types. The older limited readable RTTI-name scanner reports a subset (770 client, 977 server, 144 shared); **do not confuse the two detection scopes**.
+
+The owner-local direct inventory was packaged separately as a ZIP of metadata JSON/CSV. This phase does not commit those generated whole-binary inventories or original executable bytes into the public repository. Existing reproducible source scanners in research/tools remain the authoritative extraction path for class/factory metadata; import/export counts here were independently checked directly against original PE32 tables.
+
 ## Other code and data already inventoried
 
 - **Client/server interface layout:** engine-facing VClient011, ServerGameDLL003, ServerGameEnts001, ServerGameClients003; original vtable counts and initial factory dependencies. The source game's old x86 interfaces are **not** interchangeable with SourceVR/HL2VR modern ARM64 versions.
