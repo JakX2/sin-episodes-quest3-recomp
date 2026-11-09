@@ -1909,14 +1909,14 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
   else()
     set(sin_bsp_entities_test_target sin_source_bsp_entities_tests)
   endif()
-  add_executable(\${sin_bsp_entities_test_target}
+  add_executable(${sin_bsp_entities_test_target}
     tests/test_source_bsp_entities.cpp)
-  target_link_libraries(\${sin_bsp_entities_test_target} PRIVATE
+  target_link_libraries(${sin_bsp_entities_test_target} PRIVATE
     sin_source_bsp_entities)
-  target_compile_options(\${sin_bsp_entities_test_target} PRIVATE
+  target_compile_options(${sin_bsp_entities_test_target} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
   if(NOT ANDROID)
     add_test(NAME sin_source_bsp_entities_tests
-      COMMAND \${sin_bsp_entities_test_target})
+      COMMAND ${sin_bsp_entities_test_target})
   endif()
 endif()
