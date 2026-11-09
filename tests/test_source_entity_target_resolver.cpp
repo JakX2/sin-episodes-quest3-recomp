@@ -97,6 +97,10 @@ class OutputWorld final : public Directory, public IEntityOutputHost {
 public:
     OutputWorld() : resolver(*this) {}
 
+    bool is_live(EntityRef entity) const override {
+        return Directory::is_live(entity);
+    }
+
     std::vector<EntityRef> resolve_targets(
         const std::string& target, EntityRef activator,
         EntityRef caller) override {
@@ -107,7 +111,7 @@ public:
     void accept_input(EntityRef target, const std::string& input,
                       const std::string& parameter, EntityRef activator,
                       EntityRef caller) override {
-        delivered.emplace_back(target, input, parameter, activator, caller);
+        delivered.push_back(Delivery{target, input, parameter, activator, caller});
     }
 
     SourceEntityTargetResolver resolver;
@@ -130,7 +134,7 @@ int main() {
     const EntityRef named_first =
         directory.add(7, 1, std::string("Door"), "prop_dynamic");
     const EntityRef named_second =
-        directory.add(3, 1, std::string("door"), "npc_sintek_grunt");
+        directory.add(3, 1, std::string("door"), "npc");
     const EntityRef class_only_door =
         directory.add(4, 1, std::nullopt, "door");
     const EntityRef prefix_name =
@@ -189,21 +193,22 @@ int main() {
 
     // A direct entity alone also suppresses classname fallback.
     direct_context = {};
-    direct_context.direct_entity = named_first;
+    direct_context.direct_entity = prefix_name;
     auto direct_only = resolver.resolve("func_door", direct_context);
     assert((direct_only.targets == std::vector<EntityRef>{named_first}));
     assert(direct_only.matched_direct_entity);
     assert(!direct_only.used_classname_fallback);
 
     // A stale direct entity is ignored, allowing the classname fallback.
-    directory.recycle(named_first, 2);
-    direct_context.direct_entity = named_first;
+    const EntityRef stale_direct_ref =
+        directory.add(25, 1, std::string("stale_direct"), "prop_dynamic");
+    directory.recycle(stale_direct_ref, 2);
+    direct_context.direct_entity = stale_direct_ref;
     auto stale_direct = resolver.resolve("func_door", direct_context);
     assert((stale_direct.targets ==
             std::vector<EntityRef>{func_door_a, func_door_b}));
     assert(!stale_direct.matched_direct_entity);
     assert(stale_direct.used_classname_fallback);
-    directory.recycle(named_first, 1);
 
     // Stale entity-list entries are skipped without changing the relative
     // order of the remaining duplicate targetname matches.
@@ -211,7 +216,6 @@ int main() {
     auto after_recycle = resolver.resolve("door");
     assert((after_recycle.targets == std::vector<EntityRef>{named_first}));
     assert(!after_recycle.used_classname_fallback);
-    directory.recycle(named_second, 1);
 
     // Procedural targets use the original Source SDK 2013 token spellings.
     const EntityRef player_one =
@@ -280,7 +284,7 @@ int main() {
     assert(world.delivered[1].target == target_b);
     assert(world.delivered[0].activator == player);
     assert(world.delivered[0].caller == source);
-    assert(!world.delivered[0].target.operator!=(class_fallback));
+    assert(!world.delivered[0].target != class_fallback);
 
     assert(io.connect(source, "OnClassFallback", link("func_door", "Open")));
     assert(io.fire(source, "OnClassFallback", player) == 1);
