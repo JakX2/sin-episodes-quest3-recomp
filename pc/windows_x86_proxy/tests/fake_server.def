@@ -1,0 +1,6 @@
+EXPORTS
+    CreateInterface
+    ?Detonate@CGrenadeHomer@@UAEXXZ
+    ?Detonate@CGrenadePathfollower@@UAEXXZ
+    ?Detonate@CGrenadeSpitMutant@@UAEXXZ
+    ?Detonate@CGrenadeSpitPoison@@UAEXXZ

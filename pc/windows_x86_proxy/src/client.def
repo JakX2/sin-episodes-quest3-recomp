@@ -1,0 +1,3 @@
+; Original SHA-verified 2006 client.dll exposes only CreateInterface.
+EXPORTS
+    CreateInterface
