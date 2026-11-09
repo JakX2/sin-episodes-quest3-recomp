@@ -1581,3 +1581,34 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND ${sin_alive_damage_test_target})
   endif()
 endif()
+
+
+# Partial original SiN grunt schedule selector, reconstructed from Phase 7
+# registration pairs and confirmed 2006 control-flow branches. Unknown gaps
+# remain explicit host callbacks; this is not a native Source NPC.
+add_library(sin_original_grunt_ai STATIC
+  src/original_grunt_schedule_selector.cpp)
+target_include_directories(sin_original_grunt_ai PUBLIC include)
+target_compile_options(sin_original_grunt_ai PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_original_grunt_ai PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  if(ANDROID)
+    set(sin_grunt_selector_test_target
+      sin_android_original_grunt_schedule_selector_tests)
+  else()
+    set(sin_grunt_selector_test_target
+      sin_original_grunt_schedule_selector_tests)
+  endif()
+  add_executable(${sin_grunt_selector_test_target}
+    tests/test_original_grunt_schedule_selector.cpp)
+  target_link_libraries(${sin_grunt_selector_test_target} PRIVATE
+    sin_original_grunt_ai)
+  target_compile_options(${sin_grunt_selector_test_target} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_grunt_schedule_selector_tests
+      COMMAND ${sin_grunt_selector_test_target})
+  endif()
+endif()
