@@ -227,7 +227,7 @@ jobs:
             # Phase139: execute original scene playback input order on Android Bionic.
             adb shell mkdir -p /data/local/tmp/sin_scene_playback
             adb push build-android-emulator-x86_64/sin_android_original_scene_playback_tests /data/local/tmp/sin_scene_playback/sin_android_original_scene_playback_tests
-            adb shell 'cd /data/local/tmp/sin_scene_playback && chmod 700 sin_android_original_scene_playback_tests && ./sin_android_original_scene_playback_tests' | tr -d '\\r' | tee build-android-emulator-x86_64/scene-playback-bionic-output.txt
+            adb shell 'cd /data/local/tmp/sin_scene_playback && chmod 700 sin_android_original_scene_playback_tests && ./sin_android_original_scene_playback_tests' | tr -d '\r' | tee build-android-emulator-x86_64/scene-playback-bionic-output.txt
             grep -Fxq 'PASS: original CSceneEntity Start/Pause/Resume/Cancel input order (mock host only)' build-android-emulator-x86_64/scene-playback-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
