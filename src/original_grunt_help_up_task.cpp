@@ -1,5 +1,7 @@
 #include "sin_compat/original_grunt_help_up_task.hpp"
 
+#include <cstddef>
+
 namespace sin_compat::ai::grunt {
 namespace {
 
