@@ -1,4 +1,5 @@
 #include "sin_compat/original_alive_damage.hpp"
+#include "sin_compat/original_game_rules.hpp"
 
 #include <cmath>
 #include <limits>
