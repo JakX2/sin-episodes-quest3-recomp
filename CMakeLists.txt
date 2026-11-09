@@ -1961,3 +1961,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_stat_advisor_evaluators_tests
     COMMAND sin_original_stat_advisor_evaluators_tests)
 endif()
+
+# Phase149: original SiN CStatAdvisor 2006 sample callback and routing model.
+# Uses existing Phase148 evaluators, never guessed engine-owned vtables.
+if(BUILD_TESTING)
+  add_executable(sin_original_stat_advisor_sample_runtime_tests
+    tests/test_original_stat_advisor_sample_runtime.cpp)
+  target_include_directories(sin_original_stat_advisor_sample_runtime_tests PRIVATE include)
+  target_compile_features(sin_original_stat_advisor_sample_runtime_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_stat_advisor_sample_runtime_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_stat_advisor_sample_runtime_tests
+    COMMAND sin_original_stat_advisor_sample_runtime_tests)
+endif()
