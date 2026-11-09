@@ -456,5 +456,5 @@ int main() {
     test_camera_failure_clears_name_and_stale_handle_is_not_unlinked();
     test_radio_and_vehicle_entry_are_host_owned();
     test_integer_flags_keep_original_field_meaning();
-    std::cout << "Original SiN vehicle runtime tests passed" << std::endl;
+    std::cout << "PASS: original SiN vehicle runtime inputs, view permissions and damage modifier (mock host only)" << std::endl;
 }
