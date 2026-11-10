@@ -60,7 +60,7 @@ FlakSpawnRecord* original_spawn_flak(
         }
     }
     host.created_virtual_50(flak, optional_source);
-    host.initialize_flak_vector_221439C0(flak, second_arg);
+    host.set_flak_absolute_angles_221439C0(flak, second_arg); // Phase169: native absolute orientation setter
     host.created_virtual_64(flak);
     return flak;
 }
