@@ -83,7 +83,7 @@ class OriginalSecondaryTests(unittest.TestCase):
     def test_independent_gate_matrix(self):
         count=0
         for owner,mode,vectors,uses_clip,clip in itertools.product(
-            (False,True),(0,1,3,4),(False,True),(False,True),
+            (False,True),(0,1,2,3,4,5,6,7),(False,True),(False,True),
             (0,1,7,0x7fffffff,0x80000000,0xffffffff)):
             result=independent_outcome(owner,mode,vectors,uses_clip,clip)
             if not owner:self.assertEqual(result,"missing_owner")
