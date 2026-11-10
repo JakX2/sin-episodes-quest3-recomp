@@ -24,9 +24,10 @@ struct FadeUpdateResult {
     FadeCue emitted = FadeCue::None;
 };
 
-// Original subobject field +0xA6 is compared with signed byte values 0 and
-// 0xFF (i.e. -1) but never written by original 0x24236320. Its source and
-// semantic name remain unknown, so the host supplies it explicitly.
+// Panel+0xA6 is the FOURTH BYTE of registered native Color
+// PoisonTimerColor (m_poisonTimerColor), at panel +0xA3..+0xA6.
+// Phase162 verified default "255 255 255 0". This update reads that
+// fourth byte but never writes it; engine setter/ABI is still unknown.
 //
 // Recovered original execution order:
 //  1. Missing local player -> return immediately.
@@ -43,20 +44,20 @@ template <typename EmitSoundToken>
 FadeUpdateResult update_poison_timer_with_fades(State& state,
                                                 bool has_local_player,
                                                 float player_poison_timer,
-                                                std::uint8_t original_status_byte,
+                                                std::uint8_t original_color_fourth_byte,
                                                 EmitSoundToken&& emit_sound) {
     if (!has_local_player || player_poison_timer == state.display_fraction) {
         return {};
     }
     FadeCue cue = FadeCue::None;
     if (player_poison_timer < 1.0f) {
-        if (original_status_byte == 0U) {
+        if (original_color_fourth_byte == 0U) {
             cue = FadeCue::PoisonTimeFadeIn;
         }
     } else if (!(player_poison_timer < 0.25f) &&
                player_poison_timer != 0.0f &&
                player_poison_timer >= 1.0f &&
-               original_status_byte == 0xFFU) {
+               original_color_fourth_byte == 0xFFU) {
         cue = FadeCue::PoisonTimeFadeOut;
     }
     if (cue != FadeCue::None) {
