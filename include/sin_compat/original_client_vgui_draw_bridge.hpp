@@ -98,7 +98,7 @@ inline float original_surface_clip_ratio(
 inline float original_x87_lerp_store(
     float a,float b,long double ratio) noexcept {
     return static_cast<float>(
-        static_cast<long double>(b - a) * ratio +
+        (static_cast<long double>(b) - static_cast<long double>(a)) * ratio +
         static_cast<long double>(a));
 }
 inline OriginalClipPlan plan_original_surface_clip(
