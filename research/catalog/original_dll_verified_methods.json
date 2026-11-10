@@ -401,6 +401,42 @@
       "original_code_length": 233,
       "original_code_sha256": "0b18199261f6fb6a0477a08022d60bb0791cd5379184ec0f9fcc14022b91a43b",
       "evidence_path": "research/phases/phase155-original-client-breath-timer.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24154AB0",
+      "label": "Original 2006 client shared x87 two-float HUD coordinate scaler",
+      "owner": "shared client HUD viewport math",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 38,
+      "original_code_sha256": "50d91b1f479c892647073f2d261f57d59da75ac4bce34301551dac6607ff3e13",
+      "evidence_path": "research/phases/phase156-original-client-hud-coordinate-scale.md",
+      "implementation_path": "include/sin_compat/original_client_hud_coordinate_scale.hpp",
+      "test_path": "tests/test_original_client_hud_coordinate_scale.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x240FFAD0",
+      "label": "Original 2006 client 32-bit primary viewport global getter",
+      "owner": "shared client HUD viewport math",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 6,
+      "original_code_sha256": "a12626a34807f5853399a7d19183b8f64421a56c9825868a16a9f9c3cbe351f3",
+      "evidence_path": "research/phases/phase156-original-client-hud-coordinate-scale.md",
+      "implementation_path": "include/sin_compat/original_client_hud_coordinate_scale.hpp",
+      "test_path": "tests/test_original_client_hud_coordinate_scale.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x240FFAE0",
+      "label": "Original 2006 client 32-bit secondary viewport global getter",
+      "owner": "shared client HUD viewport math",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 6,
+      "original_code_sha256": "80f5c525298aecd4e3077fe952d3bc0977e1f06d65bbd7cef8fe3c80df1f618b",
+      "evidence_path": "research/phases/phase156-original-client-hud-coordinate-scale.md",
+      "implementation_path": "include/sin_compat/original_client_hud_coordinate_scale.hpp",
+      "test_path": "tests/test_original_client_hud_coordinate_scale.cpp"
     }
   ]
 }
