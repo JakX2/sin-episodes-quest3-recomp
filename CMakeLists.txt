@@ -2091,3 +2091,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_vgui_draw_bridge_tests
     COMMAND sin_original_client_vgui_draw_bridge_tests)
 endif()
+
+# Phase159: native original SiN Episodes 2006 client x87 FISTP
+# float-to-signed-int HUD adapter and 9-word draw worker packet.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_vgui_integer_draw_adapter_tests
+    tests/test_original_client_vgui_integer_draw_adapter.cpp)
+  target_include_directories(sin_original_client_vgui_integer_draw_adapter_tests PRIVATE include)
+  target_compile_features(sin_original_client_vgui_integer_draw_adapter_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_vgui_integer_draw_adapter_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_vgui_integer_draw_adapter_tests
+    COMMAND sin_original_client_vgui_integer_draw_adapter_tests)
+endif()
