@@ -2104,3 +2104,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_vgui_integer_draw_adapter_tests
     COMMAND sin_original_client_vgui_integer_draw_adapter_tests)
 endif()
+
+# Phase160: original SiN 2006 client CHudElement constructor, vtable
+# accessors/setters and global HUD suppression predicate (reference C++).
+if(BUILD_TESTING)
+  add_executable(sin_original_client_hud_element_visibility_tests
+    tests/test_original_client_hud_element_visibility.cpp)
+  target_include_directories(sin_original_client_hud_element_visibility_tests PRIVATE include)
+  target_compile_features(sin_original_client_hud_element_visibility_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_hud_element_visibility_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_hud_element_visibility_tests
+    COMMAND sin_original_client_hud_element_visibility_tests)
+endif()
