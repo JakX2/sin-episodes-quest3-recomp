@@ -2052,3 +2052,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_breath_timer_hud_tests
     COMMAND sin_original_client_breath_timer_hud_tests)
 endif()
+
+# Phase156: original 2006 client shared x87 HUD coordinate scaler and
+# two 32-bit global dimension getters. Reference, not the VGUI ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_hud_coordinate_scale_tests
+    tests/test_original_client_hud_coordinate_scale.cpp)
+  target_include_directories(sin_original_client_hud_coordinate_scale_tests PRIVATE include)
+  target_compile_features(sin_original_client_hud_coordinate_scale_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_hud_coordinate_scale_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_hud_coordinate_scale_tests
+    COMMAND sin_original_client_hud_coordinate_scale_tests)
+endif()
