@@ -2169,3 +2169,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_panel_animation_registry_tests
     COMMAND sin_original_client_panel_animation_registry_tests)
 endif()
+
+# Phase165: original SiN Episodes server.dll CWeaponScatterGun
+# ammo snapshot/pending state and secondary clip decrement.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_scattergun_ammo_tests
+    tests/test_original_server_scattergun_ammo.cpp)
+  target_include_directories(sin_original_server_scattergun_ammo_tests PRIVATE include)
+  target_compile_features(sin_original_server_scattergun_ammo_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_server_scattergun_ammo_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_server_scattergun_ammo_tests
+    COMMAND sin_original_server_scattergun_ammo_tests)
+endif()
