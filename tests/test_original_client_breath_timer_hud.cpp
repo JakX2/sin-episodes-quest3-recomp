@@ -15,6 +15,7 @@
 using namespace sin_compat::original_client_breath_hud;
 namespace {
 struct Recording {
+    explicit Recording(State& hud) : state(hud) {}
     State& state;
     std::vector<std::string> sounds;
     float value_at_emission = 0.0f;
