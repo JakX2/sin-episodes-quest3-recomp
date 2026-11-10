@@ -1079,6 +1079,42 @@
       "owner": "server entity factory registry",
       "original_code_length": 96,
       "original_code_sha256": "7fd117f38076655eb4b0e4c2911d8ba3954986ec2488250b1efb4987b009faf6"
+    },
+    {
+      "dll": "server",
+      "owner": "Original server entity factory registry",
+      "recovery_status": "machine_code_verified",
+      "implementation_path": "include/sin_compat/original_server_entity_registry_lookup.hpp",
+      "test_path": "tests/test_original_server_entity_registry_lookup.cpp",
+      "evidence_path": "research/phases/phase171-original-server-entity-registry-lookup.md",
+      "entry_va": "0x22285550",
+      "original_code_length": 46,
+      "original_code_sha256": "58f62479791e357d5b220d60803a1a72e2cfc003944000c50f667f30730854f1",
+      "label": "Original server registry virtual+0x04 classname creation resolver, unknown diagnostic and registered provider virtual+0x00"
+    },
+    {
+      "dll": "server",
+      "owner": "Original server entity factory registry",
+      "recovery_status": "machine_code_verified",
+      "implementation_path": "include/sin_compat/original_server_entity_registry_lookup.hpp",
+      "test_path": "tests/test_original_server_entity_registry_lookup.cpp",
+      "evidence_path": "research/phases/phase171-original-server-entity-registry-lookup.md",
+      "entry_va": "0x22285580",
+      "original_code_length": 50,
+      "original_code_sha256": "83eb972b13abd551e76ba781d13eed5ab614cd013c0d7f8c133020f7a2b2a5db",
+      "label": "Original server registry virtual+0x08 classname destruction resolver, unknown diagnostic and registered provider virtual+0x04"
+    },
+    {
+      "dll": "server",
+      "owner": "Original server entity factory registry",
+      "recovery_status": "machine_code_verified",
+      "implementation_path": "include/sin_compat/original_server_entity_registry_lookup.hpp",
+      "test_path": "tests/test_original_server_entity_registry_lookup.cpp",
+      "evidence_path": "research/phases/phase171-original-server-entity-registry-lookup.md",
+      "entry_va": "0x2228B010",
+      "original_code_length": 94,
+      "original_code_sha256": "ba7b2d918b3b72235c9457731f50ebcfb3b6f001c699d981c788d7fed8c9abf5",
+      "label": "Original server registry virtual+0x0C symbol intern, ushort index lookup and 16-byte record+0x0C provider pointer"
     }
   ]
 }
