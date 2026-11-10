@@ -87,6 +87,11 @@ void test_player_value_to_hud_projection() {
     assert(state.display_fraction == 8.0f);
     assert(update_display_from_player(state, true, 0.0f));
     assert(state.display_fraction == 1.0f);
+    // Original 0x24236320 compares incoming raw value against the
+    // previous HUD display_fraction first; equal means no update.
+    assert(!update_display_from_player(state, true, 1.0f));
+    assert(state.display_fraction == 1.0f);
+    state.display_fraction = 0.5f;
     assert(update_display_from_player(state, true, 1.0f));
     assert(state.display_fraction == 0.0f);
     assert(update_display_from_player(state, true, 0.25f));
