@@ -9,7 +9,7 @@ This phase recovers the *original metadata and once-registration behavior* for a
 
 ## Seven real original 96-byte guarded registrar methods
 
-Every entry below is an independently SHA-pinned original function body and points to real strings within the 2006 executable. Its code reads a unique global guard byte, returns immediately if it is already nonzero, sets the guard to 1 before invoking the original owner resolver at 0x24011DC0, builds a metadata descriptor, and calls the native engine property registrar at 0x2400A300. The complete native parser/registration engine is **not reconstructed**. Our C++ reference models only metadata and the exactly observed guard/callback order.
+Every entry below is an independently SHA-pinned original function body and points to real strings within the 2006 executable. Its code reads a unique global guard byte, returns immediately if it is already nonzero, sets the guard to 1 before invoking the original owner resolver at 0x24011DC0, builds a metadata descriptor, and calls the native descriptor-array insertion routine at 0x2400A300. Phase163 verifies that it appends a 24-byte six-DWORD record, not that it parses Color or string values. The complete native parser/registration engine is **not reconstructed**. Our C++ reference models only metadata and the exactly observed guard/callback order.
 
 | Original function | Type byte | Property name | Native source member | Original default |
 |---|---:|---|---|---|
@@ -44,7 +44,7 @@ The original registration body pattern is confirmed through sparse original x86 
 - At +0x18: CALL native owner lookup 0x24011DC0.
 - At +0x2A/+0x32/+0x3A/+0x42/+0x4A: store pointers to external property name, original member name, type string, default text and member resolver function.
 - At +0x52: set the original kind byte, 0 for Color or 1 for string.
-- At +0x57: CALL original property descriptor dispatcher 0x2400A300.
+- At +0x57: CALL original 24-byte property descriptor dynamic-array insertion helper 0x2400A300 (Phase163).
 - At +0x5C: restore the native 24-byte temporary stack frame and return.
 
 The original constructor CALLs establish actual class/registration order: Breath 0x24230FC2 -> Color, 0x24230FDF -> Foreground, 0x24230FE4 -> Background; Poison 0x242366A2 -> Color, 0x242366BF -> Foreground, 0x242366C4 -> Background, 0x242366C9 -> Inactive. All 7 constructor edges are exact x86 rel32 instructions.
