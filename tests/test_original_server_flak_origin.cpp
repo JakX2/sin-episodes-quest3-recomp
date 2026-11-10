@@ -71,7 +71,7 @@ void test_flak_spawn_order_and_optional_binding(){
     entity=s::original_spawn_flak(first,second,0,host);
     assert(entity==&host.spawned&&entity->binding_794==0xffffffffu);
     assert((host.log==std::vector<std::string>{"create","init","flak+50",
-        "vector","flak+64"}));
+        "angles","flak+64"}));
     host=FlakHost{};host.virtual_source=0;
     s::original_spawn_flak(first,second,55,host);
     assert(host.virtual_queries==1);
