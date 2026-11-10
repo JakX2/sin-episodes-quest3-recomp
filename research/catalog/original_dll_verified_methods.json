@@ -471,6 +471,28 @@
       "original_code_length": 1271,
       "original_code_sha256": "73b217a2cde0cd55eaf467aeaa6352fd64e2fba8b844df4ec078d9b445ffaa54",
       "recovery_status": "machine_code_verified"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241417C0",
+      "label": "Original VGUI resource seven-word draw adapter expanding into nine-word native worker",
+      "owner": "original client VGUI draw resource",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 69,
+      "original_code_sha256": "1907a1db9b89a39b6e4d9583ecfddd9c3c6da4cd47a3096571723747870dc637",
+      "implementation_path": "include/sin_compat/original_client_vgui_draw_bridge.hpp",
+      "test_path": "tests/test_original_client_vgui_draw_bridge.cpp",
+      "evidence_path": "research/phases/phase158-original-client-vgui-draw-bridge.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24141DD0",
+      "label": "Original native VGUI surface draw worker with clipped and textured-subrectangle paths, partially reconstructed",
+      "owner": "original client VGUI draw resource",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 757,
+      "original_code_sha256": "ee860c6fc19ae1f9954dd8a40920be425f6a5191dbb332198087868508de1766",
+      "evidence_path": "research/phases/phase158-original-client-vgui-draw-bridge.md"
     }
   ]
 }
