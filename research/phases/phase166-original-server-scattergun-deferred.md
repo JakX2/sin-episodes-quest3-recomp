@@ -62,7 +62,7 @@ Original virtual method offsets +0x3C4 and +0x314 are verified by sparse opcode 
 - include/sin_compat/original_server_scattergun_deferred.hpp: callback-driven C++17 host state, signed ammo gate, two clock samples, three float setters and two-mode state-change notifications.
 - tests/test_original_server_scattergun_deferred.cpp: early exits, unsigned-bit representation of signed ammo, NaN deadline, signed zero, player absence, changed tracking mode after event, separate dirty/flag routes, exact callback order and Phase165 integration.
 - research/tools/audit_sin_original_server_scattergun_deferred.py: private original DLL SHA gate, four original region digests, 59 opcode witnesses and seven call/tail-jump relationships.
-- research/tests/test_sin_original_server_scattergun_deferred.py: synthetic witness mutation tests and independent x87 C0/C2/C3 status-word, 720-case gate model and 882-case notifier matrix.
+- research/tests/test_sin_original_server_scattergun_deferred.py: synthetic witness mutation tests and independent x87 C0/C2/C3 status-word, 1,440-case gate model and 882-case notifier matrix.
 - Root CMake/CTest target.
 - Reviewed-function recovery ledger rises from 77 to 81 (31 server, 50 client). Three shared float setters are behavior-reconstructed; the 240-byte deferred handler is machine-code-verified with an external-callback behavior model. The evidence ledger is NOT a count of all native functions or a percentage of game completion.
 
