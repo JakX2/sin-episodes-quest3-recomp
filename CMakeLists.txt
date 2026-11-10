@@ -2195,3 +2195,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_scattergun_deferred_tests
     COMMAND sin_original_server_scattergun_deferred_tests)
 endif()
+
+# Phase167: original 2006 server.dll ScatterGun secondary-fire host control flow.
+# This references the genuine original x86 routine, but does not link the
+# Source engine or implement original MSVC weapon objects or pellet hit physics.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_scattergun_secondary_fire_tests
+    tests/test_original_server_scattergun_secondary_fire.cpp)
+  target_include_directories(sin_original_server_scattergun_secondary_fire_tests
+    PRIVATE include)
+  target_compile_options(sin_original_server_scattergun_secondary_fire_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_scattergun_secondary_fire_tests
+    COMMAND sin_original_server_scattergun_secondary_fire_tests)
+endif()
