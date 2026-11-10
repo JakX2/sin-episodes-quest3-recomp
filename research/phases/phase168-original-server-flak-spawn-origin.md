@@ -20,7 +20,7 @@ The original ScatterGun secondary-fire pellet loop at `0x2231CA0B` calls `0x2231
 3. Read optional original third argument, representing another engine object. If null, skip binding resolution entirely.
 4. If nonnull, invoke its virtual method `+0xFC` and test the result. If null, skip binding assignment. Otherwise invoke **the same virtual again** (not necessarily identical result), call `0x222AA640` with the new result, and test returned pointer. If null, write `-1` to the created flak entity's DWORD `+0x794`. If nonnull, invoke its virtual `+0x8`, dereference the resulting pointer to read a DWORD, and write that raw DWORD to flak `+0x794`.
 5. Invoke newly created entity's virtual method `+0x50` with the original optional source pointer (even if null).
-6. Call `0x221439C0` with the entity and second vector/argument pointer; the precise downstream engine effects are not reconstructed.
+6. Call `0x221439C0` with the entity and second vector/argument pointer. Phase169 verifies that this is the **entity absolute-angle setter**, including parent-relative rotation handling; the second vector is therefore an orientation input, not an unknown generic position vector.
 7. Invoke entity virtual `+0x64`, and return the original newly created entity pointer.
 
 The host-neutral reference retains this exact order and conditional writes. It models the original assumption that the factory succeeds and does **not** invent missing native allocator/factory implementation.
@@ -56,4 +56,4 @@ ctest --test-dir build -R sin_original_server_flak_origin_tests --output-on-fail
 
 ## Remaining work
 
-The executable game still depends on unreconstructed native entity factory/allocator, virtual +0x50/+0x64 setup, CBaseEntity parent handles and transformation matrix, 3D collision detection, projectile physics and damage processing. Future original-code targets are `0x22266B00` (actual entity factory), `0x221439C0` (spawn vector application), and the flak entity's virtual callbacks/impact handlers. No working independent Windows replacement DLL pair, Android gameplay runtime, or Quest 3 playable port is claimed. Leave the stacked PR **draft and unmerged**.
+The executable game still depends on unreconstructed native entity factory/allocator, virtual +0x50/+0x64 setup, CBaseEntity parent handles and transformation matrix, 3D collision detection, projectile physics and damage processing. Future original-code targets are `0x22266B00` (actual entity factory), the flak entity's virtual callbacks/impact handlers (the original `0x221439C0` absolute-angle routine is addressed in Phase169). No working independent Windows replacement DLL pair, Android gameplay runtime, or Quest 3 playable port is claimed. Leave the stacked PR **draft and unmerged**.

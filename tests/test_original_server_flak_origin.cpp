@@ -50,9 +50,9 @@ struct FlakHost {
         log.emplace_back("flak+50");
         assert(p==&spawned&&(source==0u||source==55u));
     }
-    void initialize_flak_vector_221439C0(s::FlakSpawnRecord* p,
+    void set_flak_absolute_angles_221439C0(s::FlakSpawnRecord* p,
                                            const s::RawVector3& v){
-        log.emplace_back("vector");
+        log.emplace_back("angles");
         assert(p==&spawned&&eq(v,4,5,6));
     }
     void created_virtual_64(s::FlakSpawnRecord* p){
@@ -66,17 +66,17 @@ void test_flak_spawn_order_and_optional_binding(){
     assert(entity==&host.spawned&&entity->binding_794==host.read_value);
     assert(host.virtual_queries==2);
     assert((host.log==std::vector<std::string>{"create","init","source+FC",
-        "source+FC","binding","binding+8","flak+50","vector","flak+64"}));
+        "source+FC","binding","binding+8","flak+50","angles","flak+64"}));
     host=FlakHost{};
     entity=s::original_spawn_flak(first,second,0,host);
     assert(entity==&host.spawned&&entity->binding_794==0xffffffffu);
     assert((host.log==std::vector<std::string>{"create","init","flak+50",
-        "vector","flak+64"}));
+        "angles","flak+64"}));
     host=FlakHost{};host.virtual_source=0;
     s::original_spawn_flak(first,second,55,host);
     assert(host.virtual_queries==1);
     assert((host.log==std::vector<std::string>{"create","init",
-        "source+FC","flak+50","vector","flak+64"}));
+        "source+FC","flak+50","angles","flak+64"}));
     host=FlakHost{};host.binding=0;host.spawned.binding_794=17;
     s::original_spawn_flak(first,second,55,host);
     assert(host.spawned.binding_794==0xffffffffu);
