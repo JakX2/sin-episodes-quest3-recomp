@@ -493,6 +493,18 @@
       "original_code_length": 757,
       "original_code_sha256": "ee860c6fc19ae1f9954dd8a40920be425f6a5191dbb332198087868508de1766",
       "evidence_path": "research/phases/phase158-original-client-vgui-draw-bridge.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241420D0",
+      "label": "Complete original native HUD x87 float32 to signed-int nine-word draw adapter, with FISTP truncation and getter ordering",
+      "owner": "original client VGUI draw resource",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 327,
+      "original_code_sha256": "e0717404d4d24787028e5db0f7cef56b8c9c0f33f1f31b468db975a80e573c75",
+      "implementation_path": "include/sin_compat/original_client_vgui_integer_draw_adapter.hpp",
+      "test_path": "tests/test_original_client_vgui_integer_draw_adapter.cpp",
+      "evidence_path": "research/phases/phase159-original-client-vgui-x87-integer-draw.md"
     }
   ]
 }
