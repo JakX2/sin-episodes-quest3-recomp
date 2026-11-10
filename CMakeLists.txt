@@ -2209,3 +2209,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_scattergun_secondary_fire_tests
     COMMAND sin_original_server_scattergun_secondary_fire_tests)
 endif()
+
+# Phase168: SHA-verified original 2006 server.dll flak spawn/origin host model.
+# The engine's factory, handle registry, parent matrices, and original native
+# ABI are external dependencies, not replaced by this standalone test.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_flak_origin_tests
+    tests/test_original_server_flak_origin.cpp)
+  target_include_directories(sin_original_server_flak_origin_tests PRIVATE include)
+  target_compile_options(sin_original_server_flak_origin_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_flak_origin_tests
+    COMMAND sin_original_server_flak_origin_tests)
+endif()
