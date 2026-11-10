@@ -2026,3 +2026,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_poison_timer_network_tests
     COMMAND sin_original_poison_timer_network_tests)
 endif()
+
+# Phase154: original CHudPoisonTimer fade event selection in 2006 client.dll.
+# Host-neutral replay of exact x87 compare branches and sound-token order.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_poison_timer_fade_tests
+    tests/test_original_client_poison_timer_fade.cpp)
+  target_include_directories(sin_original_client_poison_timer_fade_tests PRIVATE include)
+  target_compile_features(sin_original_client_poison_timer_fade_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_poison_timer_fade_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_poison_timer_fade_tests
+    COMMAND sin_original_client_poison_timer_fade_tests)
+endif()
