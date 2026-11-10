@@ -1031,6 +1031,54 @@
       "recovery_status": "behavior_reconstructed",
       "original_code_length": 99,
       "original_code_sha256": "c3fcfa2b46be4418d626a752cd75307102200c365d9d1e308cd9afec3d7710e4"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase170-original-server-entity-factory-registry.md",
+      "implementation_path": "include/sin_compat/original_server_entity_factory.hpp",
+      "test_path": "tests/test_original_server_entity_factory.cpp",
+      "entry_va": "0x22266B00",
+      "label": "Original CreateEntityByName classname factory lookup, optional edict creation and context clear",
+      "owner": "server game entity factory",
+      "original_code_length": 89,
+      "original_code_sha256": "3325571079cbbca426a5bbf82b3107161480a5084af1865ced302e7a2f2d236b"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase170-original-server-entity-factory-registry.md",
+      "implementation_path": "include/sin_compat/original_server_entity_factory.hpp",
+      "test_path": "tests/test_original_server_entity_factory.cpp",
+      "entry_va": "0x22266B60",
+      "label": "Original alternate registry classname dispatch to factory virtual +0x20",
+      "owner": "server game entity factory",
+      "original_code_length": 29,
+      "original_code_sha256": "0ca3b1d05299ea46641fd1e12e7c9c415d649a07be32acd90af6da9c0b44a9db"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase170-original-server-entity-factory-registry.md",
+      "implementation_path": "include/sin_compat/original_server_entity_factory.hpp",
+      "test_path": "tests/test_original_server_entity_factory.cpp",
+      "entry_va": "0x2228B110",
+      "label": "Original lazy global classname factory singleton guard and destructor registration",
+      "owner": "server entity factory registry",
+      "original_code_length": 48,
+      "original_code_sha256": "19b2485323f81a818354e47c14ed282e982f371827a7af4c1556a5293a49d558"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase170-original-server-entity-factory-registry.md",
+      "implementation_path": "include/sin_compat/original_server_entity_factory.hpp",
+      "test_path": "tests/test_original_server_entity_factory.cpp",
+      "entry_va": "0x2228AFB0",
+      "label": "Original classname factory registry constructor, native allocation and index initialization",
+      "owner": "server entity factory registry",
+      "original_code_length": 96,
+      "original_code_sha256": "7fd117f38076655eb4b0e4c2911d8ba3954986ec2488250b1efb4987b009faf6"
     }
   ]
 }
