@@ -98,6 +98,10 @@ std::uintptr_t original_create_entity_by_name(
     }
     RegistryStorage* registry = original_registry_singleton(globals.registry,
                                                             host);
+    // Phase171: registry vtable +0x04 first resolves a 16-byte provider
+    // record via registry +0x0C, then calls provider virtual +0x00.
+    // The return value, not the provider record pointer, is the object
+    // dispatched below via factory virtual +0x24 (or +0x20).
     const std::uintptr_t factory = host.lookup_class_factory(
         *registry, classname, kFactoryLookupVirtualOffset);
     globals.current_edict_context = 0;
