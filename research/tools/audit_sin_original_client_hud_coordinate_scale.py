@@ -25,7 +25,6 @@ REGIONS = {
        "80f5c525298aecd4e3077fe952d3bc0977e1f06d65bbd7cef8fe3c80df1f618b"),
 }
 OPCODES = {
-    0x24154AB0:"51",
     0x24154AB6:"890424",        # store returned screen integer on stack
     0x24154AB9:"db0424",        # FILD signed 32-bit dimension
     0x24154ABC:"8b442408",      # first pointer
@@ -36,12 +35,9 @@ OPCODES = {
     0x24154ACA:"8b44240c",      # second pointer
     0x24154ACE:"d808",          # multiply second float (aliasing matters)
     0x24154AD0:"d918",          # store second float
-    0x24154AD2:"59",
     0x24154AD3:"c21000",        # four stdcall/thiscall stack args
     0x240FFAD0:"a114fc3324",  # first getter reads *0x2433FC14
-    0x240FFAD5:"c3",
     0x240FFAE0:"a110fc3324",  # other getter reads *0x2433FC10
-    0x240FFAE5:"c3",
 }
 # Callsites from independently inspected original client.dll disassembly;
 # both CHudPoisonTimer and CHudBreathTimer paint methods are included.
