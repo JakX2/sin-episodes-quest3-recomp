@@ -437,6 +437,40 @@
       "evidence_path": "research/phases/phase156-original-client-hud-coordinate-scale.md",
       "implementation_path": "include/sin_compat/original_client_hud_coordinate_scale.hpp",
       "test_path": "tests/test_original_client_hud_coordinate_scale.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original shared client HUD resource geometry/draw",
+      "evidence_path": "research/phases/phase157-original-client-hud-renderer-preflight.md",
+      "entry_va": "0x241417A0",
+      "label": "Native original resource rectangle dimension A getter (+0xAC minus +0xA8)",
+      "original_code_length": 13,
+      "original_code_sha256": "e398c45791c0ff3cde3fe62f5b117d42ab0a6c4413411187922f938ef65e87f9",
+      "recovery_status": "behavior_reconstructed",
+      "implementation_path": "include/sin_compat/original_client_hud_renderer_preflight.hpp",
+      "test_path": "tests/test_original_client_hud_renderer_preflight.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original shared client HUD resource geometry/draw",
+      "evidence_path": "research/phases/phase157-original-client-hud-renderer-preflight.md",
+      "entry_va": "0x241417B0",
+      "label": "Native original resource rectangle dimension B getter (+0xB4 minus +0xB0)",
+      "original_code_length": 13,
+      "original_code_sha256": "50ee9b1f22450afc4495431683d02390ac4d89474c01aa338d09eae515f13587",
+      "recovery_status": "behavior_reconstructed",
+      "implementation_path": "include/sin_compat/original_client_hud_renderer_preflight.hpp",
+      "test_path": "tests/test_original_client_hud_renderer_preflight.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original shared client HUD resource geometry/draw",
+      "evidence_path": "research/phases/phase157-original-client-hud-renderer-preflight.md",
+      "entry_va": "0x24154D50",
+      "label": "Native shared client HUD renderer, four-mode draw with partially reconstructed entry/preflight",
+      "original_code_length": 1271,
+      "original_code_sha256": "73b217a2cde0cd55eaf467aeaa6352fd64e2fba8b844df4ec078d9b445ffaa54",
+      "recovery_status": "machine_code_verified"
     }
   ]
 }

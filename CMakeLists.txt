@@ -2065,3 +2065,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_hud_coordinate_scale_tests
     COMMAND sin_original_client_hud_coordinate_scale_tests)
 endif()
+
+# Phase157: original SiN 2006 client HUD renderer entry-stage and
+# two resource rectangle extent getters (not a full VGUI renderer).
+if(BUILD_TESTING)
+  add_executable(sin_original_client_hud_renderer_preflight_tests
+    tests/test_original_client_hud_renderer_preflight.cpp)
+  target_include_directories(sin_original_client_hud_renderer_preflight_tests PRIVATE include)
+  target_compile_features(sin_original_client_hud_renderer_preflight_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_hud_renderer_preflight_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_hud_renderer_preflight_tests
+    COMMAND sin_original_client_hud_renderer_preflight_tests)
+endif()
