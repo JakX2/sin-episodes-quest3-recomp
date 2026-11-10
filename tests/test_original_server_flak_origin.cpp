@@ -164,7 +164,7 @@ void test_parent_lookup_and_relative_transform_order(){
     assert(state.flags_b9==0xefu);
 }
 void test_parent_flags_off_and_valid_unchanged(){
-    s::OriginState state{};
+    s::OriginState state{};state.flags_b9=0x10u;
     state.parent_handle_f0=0x1234;
     OriginHost host{};host.parent_enabled=true;
     host.parent.world_origin_250=vec(1,2,3);
