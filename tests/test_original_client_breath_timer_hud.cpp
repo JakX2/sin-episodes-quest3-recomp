@@ -1,4 +1,5 @@
 #include "sin_compat/original_client_breath_timer_hud.hpp"
+#include "sin_compat/original_breath_timer_network_contract.hpp"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -66,6 +67,14 @@ void test_original_resource_and_panel_paint_gate() {
     s.second_paint_resource=2;
     s.first_paint_resource=0;
     assert(!should_paint_after_base(s));
+}
+void test_original_client_server_breath_netprop_contract() {
+    using namespace sin_compat::original_breath_timer_network;
+    static_assert(kNestedOffset == 0x28U, "original RecvProp and SendProp");
+    static_assert(kClientPlayerOffset == 0x11F0U, "2006 original client");
+    static_assert(kServerPlayerOffset == 0x13A4U, "2006 original server");
+    assert(kTable == "DT_HL2Local");
+    assert(kProperty == "m_breathTimer");
 }
 void test_equal_and_no_player_early_exit() {
     State s{};
@@ -147,6 +156,7 @@ void test_thresholds_nan_infinity_and_no_event() {
 }
 }
 int main() {
+    test_original_client_server_breath_netprop_contract();
     test_reset_is_single_field_only();
     test_original_resource_and_panel_paint_gate();
     test_equal_and_no_player_early_exit();
