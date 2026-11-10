@@ -11,7 +11,7 @@ namespace sin_compat::original_client_breath_hud {
 
 struct State {
     float previous_breath_value = 0.0f; // original HUD +0xEC
-    std::uint8_t shared_status_byte = 0; // original HUD +0xA6, meaning not recovered
+    std::uint8_t shared_status_byte = 0; // legacy name: Panel+0xA6 is 4th native m_breathTimerColor byte
     std::uintptr_t first_paint_resource = 0; // original HUD +0xF0
     std::uintptr_t second_paint_resource = 0; // original HUD +0xF4
     float reset_value = 0.0f; // original HUD +0x100
@@ -32,7 +32,7 @@ void bind_two_resources(State& state,
 }
 
 // Original panel slot 109 at 0x24230C90 calls inherited paint first,
-// then tests +0xA6 != 0, +0xF0 != 0 and +0xF4 != 0 in that order.
+// then tests Color's fourth byte +0xA6 and resource handles +0xF0/+0xF4.
 // Actual VGUI geometry, numerical conversion and rendering are NOT modeled.
 inline bool should_paint_after_base(const State& state) noexcept {
     return state.shared_status_byte != 0 &&

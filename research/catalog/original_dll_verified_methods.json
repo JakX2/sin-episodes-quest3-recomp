@@ -727,6 +727,76 @@
       "original_code_length": 233,
       "original_code_sha256": "d7eef583516dc96c6fb1eb82bf419b5546c1ac4333509c970225d860b7071ff1",
       "evidence_path": "research/phases/phase161-original-timer-constructors-and-visibility-masks.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24230DE0",
+      "label": "CHudBreathTimer original BreathTimerColor native Color property registration",
+      "owner": "CHudBreathTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 96,
+      "original_code_sha256": "efd0b2d7313e3cc2b6171ced8f771b8688205a6efe5bd4f4a1d903aa7caf64ef",
+      "evidence_path": "research/phases/phase162-original-timer-property-registrars.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24230E50",
+      "label": "CHudBreathTimer original BreathBarForeground string property registration",
+      "owner": "CHudBreathTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 96,
+      "original_code_sha256": "a677055002b590862fb1bae7f3b9803f269f6acee348c7420f9770da01be1419",
+      "evidence_path": "research/phases/phase162-original-timer-property-registrars.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24230EC0",
+      "label": "CHudBreathTimer original BreathBarBackground string property registration",
+      "owner": "CHudBreathTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 96,
+      "original_code_sha256": "7cce7da6f28c95bdb469aacb21d0543b14a273b2e0744b1342e63567860a07f4",
+      "evidence_path": "research/phases/phase162-original-timer-property-registrars.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24236450",
+      "label": "CHudPoisonTimer original PoisonTimerColor native Color property registration",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 96,
+      "original_code_sha256": "f580f5a30eb2da9e39f237ce4b82ab4893e6be1d1385a5b465b0685cc32af7a3",
+      "evidence_path": "research/phases/phase162-original-timer-property-registrars.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x242364C0",
+      "label": "CHudPoisonTimer original MutagenBarForeground string property registration",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 96,
+      "original_code_sha256": "391237abf11e211c1c64ef5da5eafc69bdc179e865b7c49926c130875ab0c7a6",
+      "evidence_path": "research/phases/phase162-original-timer-property-registrars.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24236530",
+      "label": "CHudPoisonTimer original MutagenBarBackground string property registration",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 96,
+      "original_code_sha256": "dfc9a2b9b13923550539a0b052199dbaf15e7486a8471f44646d846eaff3497c",
+      "evidence_path": "research/phases/phase162-original-timer-property-registrars.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x242365A0",
+      "label": "CHudPoisonTimer original MutagenBarInactive string property registration",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 96,
+      "original_code_sha256": "75881836e013ae46e23c1cb8e375b64c49da116cdc9390441c4184af2581451f",
+      "evidence_path": "research/phases/phase162-original-timer-property-registrars.md"
     }
   ]
 }
