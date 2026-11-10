@@ -60,10 +60,10 @@ inline PaintSelection choose_paint_resource(const State& state) noexcept {
 // float at player+0x11EC and, if player exists, eventually stores
 // double 1.0 minus that float at HUD+0x10C. The original routine also
 // branches to PoisonTimeFadeIn/PoisonTimeFadeOut event callbacks; those
-// engine-specific audio side effects remain UNIMPLEMENTED here.
+// engine-specific audio side effects are modeled separately in original_client_poison_timer_fade.hpp. This helper omits audio but preserves the verified early-exit equality guard.
 inline bool update_display_from_player(State& state, bool has_player,
                                        float original_player_value) noexcept {
-    if (!has_player) return false;
+    if (!has_player || original_player_value == state.display_fraction) return false;
     state.display_fraction = static_cast<float>(
         1.0 - static_cast<double>(original_player_value));
     return true;
