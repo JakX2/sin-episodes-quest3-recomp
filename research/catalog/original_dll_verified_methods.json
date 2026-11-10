@@ -887,6 +887,54 @@
       "evidence_path": "research/phases/phase165-original-server-scattergun-ammo-state.md",
       "implementation_path": "include/sin_compat/original_server_scattergun_ammo.hpp",
       "test_path": "tests/test_original_server_scattergun_ammo.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2231C2F0",
+      "label": "Original CWeaponScatterGun 240-byte deferred ammo/timer gate and player/weapon timer notification dispatch",
+      "owner": "CWeaponScatterGun",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 240,
+      "original_code_sha256": "a1150899b9ecb8e31f9c5b93d749cc6c93abe7529fc5a2ccdbf0f6749efc8916",
+      "evidence_path": "research/phases/phase166-original-server-scattergun-deferred.md",
+      "implementation_path": "include/sin_compat/original_server_scattergun_deferred.hpp",
+      "test_path": "tests/test_original_server_scattergun_deferred.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2203D190",
+      "label": "Original owner/player +0x60C x87 tracked float setter, dirty flag or external bit0 event",
+      "owner": "server shared tracked float setter",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 64,
+      "original_code_sha256": "afa46015b3a6f73bdab83b3095e84c7e0fe6aa42419e92cc5c5529c6dbf87357",
+      "evidence_path": "research/phases/phase166-original-server-scattergun-deferred.md",
+      "implementation_path": "include/sin_compat/original_server_scattergun_deferred.hpp",
+      "test_path": "tests/test_original_server_scattergun_deferred.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22173260",
+      "label": "Original weapon +0x49C x87 tracked float setter, dirty flag or external bit0 event",
+      "owner": "server shared tracked float setter",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 64,
+      "original_code_sha256": "d95240a043eb30317c36583e375a0cadcde6bc95f8856e5ccbdacb635ec7f8c3",
+      "evidence_path": "research/phases/phase166-original-server-scattergun-deferred.md",
+      "implementation_path": "include/sin_compat/original_server_scattergun_deferred.hpp",
+      "test_path": "tests/test_original_server_scattergun_deferred.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221732A0",
+      "label": "Original weapon +0x4A0 x87 tracked float setter, dirty flag or external bit0 event",
+      "owner": "server shared tracked float setter",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 64,
+      "original_code_sha256": "a0544a00be1504ca79951ac0e73096c194eab280690c5359884646a68f84819e",
+      "evidence_path": "research/phases/phase166-original-server-scattergun-deferred.md",
+      "implementation_path": "include/sin_compat/original_server_scattergun_deferred.hpp",
+      "test_path": "tests/test_original_server_scattergun_deferred.cpp"
     }
   ]
 }
