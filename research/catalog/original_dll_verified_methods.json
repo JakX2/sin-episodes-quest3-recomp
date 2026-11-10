@@ -313,6 +313,50 @@
       "implementation_path": "include/sin_compat/original_float_short_term_stat.hpp",
       "test_path": "tests/test_original_float_short_term_stat.cpp",
       "original_code_length": 8
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x242360B0",
+      "label": "CHudPoisonTimer primary slot2 reset at +0x120",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 11,
+      "original_code_sha256": "4dfd88bca790581954a5a77ef16d80c8cd3e50c95525a01731d0998c0cce4151",
+      "evidence_path": "research/phases/phase153-original-client-poison-timer-hud.md",
+      "implementation_path": "include/sin_compat/original_client_poison_timer_hud.hpp",
+      "test_path": "tests/test_original_client_poison_timer_hud.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x242360C0",
+      "label": "CHudPoisonTimer primary slot3 ordered resource handle binding",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 74,
+      "original_code_sha256": "b3e2c15990cc1a70df2faeeaca0bc09be2e224a43fa71484115c1fc1a030f06d",
+      "evidence_path": "research/phases/phase153-original-client-poison-timer-hud.md",
+      "implementation_path": "include/sin_compat/original_client_poison_timer_hud.hpp",
+      "test_path": "tests/test_original_client_poison_timer_hud.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24236120",
+      "label": "CHudPoisonTimer panel slot109 paint and x87 rendering predicate",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 243,
+      "original_code_sha256": "ca1b8cf8c14c650150eb8b2c8258deaaba3c712888bf6b6f495f0a458972d0e4",
+      "evidence_path": "research/phases/phase153-original-client-poison-timer-hud.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24236320",
+      "label": "CHudPoisonTimer panel slot93 player timer and fade event path",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 203,
+      "original_code_sha256": "921a342df76c159e6121789f111bcfaf66c4154cb47e4afd8b76fa2c06297150",
+      "evidence_path": "research/phases/phase153-original-client-poison-timer-hud.md"
     }
   ]
 }

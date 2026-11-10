@@ -2000,3 +2000,29 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_float_short_term_stat_tests
     COMMAND sin_original_float_short_term_stat_tests)
 endif()
+
+# Phase 153: original 2006 client CHudPoisonTimer state and rendering gates.
+# Portable reference; not the native VGUI class or x86 engine ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_poison_timer_hud_tests
+    tests/test_original_client_poison_timer_hud.cpp)
+  target_include_directories(sin_original_client_poison_timer_hud_tests PRIVATE include)
+  target_compile_features(sin_original_client_poison_timer_hud_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_poison_timer_hud_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_poison_timer_hud_tests
+    COMMAND sin_original_client_poison_timer_hud_tests)
+endif()
+
+# Phase153b: original 2006 client/server poison-timer nested netprop offsets.
+# This C++ reference models original x86 metadata, not ARM64 object ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_poison_timer_network_tests
+    tests/test_original_poison_timer_network_contract.cpp)
+  target_include_directories(sin_original_poison_timer_network_tests PRIVATE include)
+  target_compile_features(sin_original_poison_timer_network_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_poison_timer_network_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_poison_timer_network_tests
+    COMMAND sin_original_poison_timer_network_tests)
+endif()
