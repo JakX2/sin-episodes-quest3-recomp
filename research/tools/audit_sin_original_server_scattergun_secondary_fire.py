@@ -76,7 +76,7 @@ def verify_original_secondary(pe:PEImage,*,check_hashes=True)->dict:
         if pe.at(va,len(expected))!=expected:
             raise VerificationError("original secondary-fire opcode mismatch at %#x"%va)
     for va,target in CALLS.items():
-        expected=b"\\xe8"+struct.pack("<i",target-va-5)
+        expected=bytes((0xE8,))+struct.pack("<i",target-va-5)
         if pe.at(va,5)!=expected:
             raise VerificationError("original secondary-fire CALL mismatch at %#x"%va)
     for va,expected in CONSTANTS.items():
@@ -123,7 +123,7 @@ def main()->None:
     parser.add_argument("--server",type=Path,required=True)
     parser.add_argument("--output",type=Path)
     args=parser.parse_args()
-    result=json.dumps(audit(args.client.read_bytes(),args.server.read_bytes()),indent=2)+"\\n"
+    result=json.dumps(audit(args.client.read_bytes(),args.server.read_bytes()),indent=2)+chr(10)
     if args.output:
         args.output.parent.mkdir(parents=True,exist_ok=True)
         args.output.write_text(result,encoding="utf-8")
