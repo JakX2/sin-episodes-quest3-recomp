@@ -56,6 +56,39 @@ cmake -S . -B build && cmake --build build --target sin_original_client_poison_t
 ctest --test-dir build -R '^sin_original_client_poison_timer_hud_tests$' --output-on-failure
 ```
 
+## Newly verified cross-DLL network property path
+
+The original player field `+0x11EC` read by the poison HUD has now been independently matched to its named **networked** property, rather than left as an unknown raw offset. On the original client, the `DT_HL2Local` `RecvTable` initializes `m_poisonTimer` at local offset **`+0x24`** (callsite `0x2421AD24`–`0x2421AD30`), while the parent `m_HL2Local` datatable is attached at player offset **`+0x11C8`** (callsite `0x24216415`–`0x24216424`). Addition gives **`0x11C8 + 0x24 = 0x11EC`**, exactly matching the HUD's assembly.
+
+The original server uses the same nested `DT_HL2Local` `m_poisonTimer` field at **`+0x24`** (SendProp initializer `0x223A2917`–`0x223A2923`), but attaches the parent `m_HL2Local` at original server player **`+0x137C`** (initializer `0x2239F563`–`0x2239F572`). Thus **`0x137C + 0x24 = 0x13A0`**, confirming a shared network property with *different original client and server x86 memory addresses*. The Source engine's actual network quantization/proxy behavior still needs decoding.
+
+Four bounded instruction sequences were SHA-pinned on the actual binaries:
+
+| DLL | Original registration site | Bytes | SHA-256 |
+|---|---|---:|---|
+| client | `0x24216409` parent datatable property | 32 | `13a824b620334a4d93962764935d5809527cc93d5306c080d5af152c83e84fe0` |
+| client | `0x2421AD1B` nested poison property | 26 | `3aefc92ca08b291e32ed0b0bef1fc31d3c8a90d6ed21752eff97439eb50089e0` |
+| server | `0x2239F559` parent datatable property | 30 | `0a5a750e0128edc71fe58ce10834fb5f1b50e9a1c4d0b4963ab28b69641d2d10` |
+| server | `0x223A2905` nested poison property | 35 | `fe02bdc1e9a771d06145116ec6269167ad0cecbe23e63531ca54d45af4741ab2` |
+
+These are **bounded registration instruction sequences**, not whole reconstructed functions. The auditor additionally verifies **10 individual operand/field access anchors, four original direct CALL destinations, and six client/server property/table string literals**.
+
+The following new host-neutral files capture the proven offset relationship and exercise it without original game bytes:
+
+- `include/sin_compat/original_poison_timer_network_contract.hpp`, original Windows x86 client/server nested offsets as constants with C++ static assertions.
+- `tests/test_original_poison_timer_network_contract.cpp`, synthetic old-layout player memory, two different original offsets, and the real portable poison HUD projection.
+- `research/tools/audit_sin_original_poison_timer_network.py`, exact original dual-DLL SHA, original poison HUD verifier chain and four new bounded registration code-region fingerprints.
+- `research/tests/test_sin_original_poison_timer_network.py`, original-free corruption tests for each instruction, call, name and code hash.
+- Additional CMake/CTest network test.
+
+Owner-only verification:
+
+```bash
+python3 research/tools/audit_sin_original_poison_timer_network.py \
+  --client /private/client.dll --server /private/server.dll \
+  --output /private/phase153-poison-network.json
+```
+
 ## Next client DLL recovery work
 
 1. Recover the complete `0x24236120` paint-to-VGUI argument graph, including x87 integer conversion and resource setup.
