@@ -863,6 +863,30 @@
       "original_code_length": 107,
       "original_code_sha256": "ee5d099c12c1689f9934a681bdde25f685469454b9ae4960d25a89c6fc66bdcb",
       "evidence_path": "research/phases/phase164-original-client-vgui-panel-registry-owner.md"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2231C3E0",
+      "label": "Original CWeaponScatterGun vtable slot216 ammo snapshot change detection and deferred action dispatch",
+      "owner": "CWeaponScatterGun",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 104,
+      "original_code_sha256": "5e5668894afb65fd7dd45078abe9d58cae147714e302b7e5952411b9fb91af43",
+      "evidence_path": "research/phases/phase165-original-server-scattergun-ammo-state.md",
+      "implementation_path": "include/sin_compat/original_server_scattergun_ammo.hpp",
+      "test_path": "tests/test_original_server_scattergun_ammo.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2231C740",
+      "label": "Original CWeaponScatterGun secondary clip decrement and two-mode player notification helper",
+      "owner": "CWeaponScatterGun",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 51,
+      "original_code_sha256": "b88574dc44edf04e41c044514f9a371e8e955c9f1ca9786c24d22fc70eb0ec0e",
+      "evidence_path": "research/phases/phase165-original-server-scattergun-ammo-state.md",
+      "implementation_path": "include/sin_compat/original_server_scattergun_ammo.hpp",
+      "test_path": "tests/test_original_server_scattergun_ammo.cpp"
     }
   ]
 }
