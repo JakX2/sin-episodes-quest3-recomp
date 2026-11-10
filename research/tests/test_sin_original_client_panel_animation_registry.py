@@ -151,7 +151,7 @@ class OriginalPanelRegistryTests(unittest.TestCase):
 
     def test_original_PE_image_base_required(self):
         pe=fixture();pe.base=0x22000000
-        with self.assertRaisesRegex(VerificationError,"image base"):
+        with self.assertRaisesRegex(VerificationError,"base mismatch"):
             verify_original_registry(pe,check_hashes=False)
 
 if __name__=="__main__":
