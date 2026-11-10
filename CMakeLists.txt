@@ -2182,3 +2182,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_scattergun_ammo_tests
     COMMAND sin_original_server_scattergun_ammo_tests)
 endif()
+
+# Phase166: original 2006 SiN server CWeaponScatterGun deferred ammo
+# event, deadline gate and three 32-bit tracked-float notification setters.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_scattergun_deferred_tests
+    tests/test_original_server_scattergun_deferred.cpp)
+  target_include_directories(sin_original_server_scattergun_deferred_tests PRIVATE include)
+  target_compile_features(sin_original_server_scattergun_deferred_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_server_scattergun_deferred_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_server_scattergun_deferred_tests
+    COMMAND sin_original_server_scattergun_deferred_tests)
+endif()
