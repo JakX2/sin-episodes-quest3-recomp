@@ -821,6 +821,48 @@
       "evidence_path": "research/phases/phase163-original-client-property-descriptor-vector.md",
       "implementation_path": "include/sin_compat/original_client_property_descriptor_array.hpp",
       "test_path": "tests/test_original_client_property_descriptor_array.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24011D30",
+      "label": "Original VGUI Panel Animation class registry lazy singleton constructor",
+      "owner": "original VGUI Panel Animation class registry",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 129,
+      "original_code_sha256": "03bb9a680ba41e011f0a4181986be0ccaa1c0bdd2d07c7047ae4b8578c105d97",
+      "evidence_path": "research/phases/phase164-original-client-vgui-panel-registry-owner.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24011DC0",
+      "label": "Original VGUI class name to registry owner wrapper (singleton followed by find-or-create)",
+      "owner": "original VGUI Panel Animation class registry",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 17,
+      "original_code_sha256": "65352515a9960692d154459a17610080cf15935918816e34129b64f387297e6e",
+      "evidence_path": "research/phases/phase164-original-client-vgui-panel-registry-owner.md",
+      "implementation_path": "include/sin_compat/original_client_panel_animation_registry.hpp",
+      "test_path": "tests/test_original_client_panel_animation_registry.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24011B80",
+      "label": "Original VGUI existing class owner lookup with case-insensitive vgui:: namespace stripping",
+      "owner": "original VGUI Panel Animation class registry",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 101,
+      "original_code_sha256": "4a16915de0aa14d2133e1125a2dc4804ec1adef39edf20d8895670dfb9f260fd",
+      "evidence_path": "research/phases/phase164-original-client-vgui-panel-registry-owner.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24011BF0",
+      "label": "Original VGUI class owner find-or-create, seven-DWORD owner initialization and symbol map insertion",
+      "owner": "original VGUI Panel Animation class registry",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 107,
+      "original_code_sha256": "ee5d099c12c1689f9934a681bdde25f685469454b9ae4960d25a89c6fc66bdcb",
+      "evidence_path": "research/phases/phase164-original-client-vgui-panel-registry-owner.md"
     }
   ]
 }
