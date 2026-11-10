@@ -935,6 +935,30 @@
       "evidence_path": "research/phases/phase166-original-server-scattergun-deferred.md",
       "implementation_path": "include/sin_compat/original_server_scattergun_deferred.hpp",
       "test_path": "tests/test_original_server_scattergun_deferred.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2231C810",
+      "label": "Original CWeaponScatterGun secondary fire owner/clip gates, timer writes, ammo consumption and eight-pellet callback pipeline",
+      "owner": "CWeaponScatterGun",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 612,
+      "original_code_sha256": "323253a226cad936b4bc6c1e56c349b39eae8391b5414e203d86ba725fe16d5e",
+      "evidence_path": "research/phases/phase167-original-server-scattergun-secondary-fire.md",
+      "implementation_path": "include/sin_compat/original_server_scattergun_secondary_fire.hpp",
+      "test_path": "tests/test_original_server_scattergun_secondary_fire.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222CBC20",
+      "label": "Original shared firing-vector acquisition helper with owner and fallback-entity virtual branches",
+      "owner": "server shared weapon vector helper",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 225,
+      "original_code_sha256": "ee1c0a4bf7a3913881d5809a637847b1d3d2ee0251bfb27d0f1df630532f91f3",
+      "evidence_path": "research/phases/phase167-original-server-scattergun-secondary-fire.md",
+      "implementation_path": "include/sin_compat/original_server_scattergun_secondary_fire.hpp",
+      "test_path": "tests/test_original_server_scattergun_secondary_fire.cpp"
     }
   ]
 }
