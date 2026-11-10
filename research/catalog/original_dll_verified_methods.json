@@ -615,8 +615,8 @@
     {
       "dll": "client",
       "entry_va": "0x24235E80",
-      "label": "CHudPoisonTimer native constructor: primary and panel vtables, three tail DWORD clears, visibility mask 0x18",
-      "owner": "CHudPoisonTimer",
+      "label": "Original CHudHealth constructor: health vtables, visibility mask 0x18 and three tail DWORD zeroes (RTTI verified; previously mislabeled poison)",
+      "owner": "CHudHealth",
       "recovery_status": "machine_code_verified",
       "original_code_length": 201,
       "original_code_sha256": "7dc7ea0b731d13de89fcd70f5ff34c5b64aa07ed62a38a1a1d097542817bcafb",
@@ -717,6 +717,16 @@
       "evidence_path": "research/phases/phase161-original-timer-constructors-and-visibility-masks.md",
       "implementation_path": "include/sin_compat/original_client_timer_constructor_contract.hpp",
       "test_path": "tests/test_original_client_timer_constructor_contract.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24236610",
+      "label": "RTTI-verified actual CHudPoisonTimer constructor: primary/panel vtables, mask 0x10, four panel Color bytes initialized to zero",
+      "owner": "CHudPoisonTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 233,
+      "original_code_sha256": "d7eef583516dc96c6fb1eb82bf419b5546c1ac4333509c970225d860b7071ff1",
+      "evidence_path": "research/phases/phase161-original-timer-constructors-and-visibility-masks.md"
     }
   ]
 }
