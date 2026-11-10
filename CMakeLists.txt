@@ -2039,3 +2039,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_poison_timer_fade_tests
     COMMAND sin_original_client_poison_timer_fade_tests)
 endif()
+
+# Phase155: original SiN 2006 client CHudBreathTimer and dual-DLL
+# DT_HL2Local.m_breathTimer contract. Host-neutral, not VGUI ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_breath_timer_hud_tests
+    tests/test_original_client_breath_timer_hud.cpp)
+  target_include_directories(sin_original_client_breath_timer_hud_tests PRIVATE include)
+  target_compile_features(sin_original_client_breath_timer_hud_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_breath_timer_hud_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_breath_timer_hud_tests
+    COMMAND sin_original_client_breath_timer_hud_tests)
+endif()
