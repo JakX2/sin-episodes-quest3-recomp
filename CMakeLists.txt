@@ -2078,3 +2078,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_hud_renderer_preflight_tests
     COMMAND sin_original_client_hud_renderer_preflight_tests)
 endif()
+
+# Phase158: original SiN 2006 client draw-resource seven-to-nine arg bridge,
+# surface clipping/UV preflight; not a complete VGUI texture renderer.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_vgui_draw_bridge_tests
+    tests/test_original_client_vgui_draw_bridge.cpp)
+  target_include_directories(sin_original_client_vgui_draw_bridge_tests PRIVATE include)
+  target_compile_features(sin_original_client_vgui_draw_bridge_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_vgui_draw_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_vgui_draw_bridge_tests
+    COMMAND sin_original_client_vgui_draw_bridge_tests)
+endif()
