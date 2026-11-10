@@ -357,6 +357,50 @@
       "original_code_length": 203,
       "original_code_sha256": "921a342df76c159e6121789f111bcfaf66c4154cb47e4afd8b76fa2c06297150",
       "evidence_path": "research/phases/phase153-original-client-poison-timer-hud.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24230A50",
+      "label": "CHudBreathTimer primary slot2 reset",
+      "owner": "CHudBreathTimer",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 11,
+      "original_code_sha256": "8cb95062e758c4f0a32de92459dee9830edf87cd39c1c601676cdd6a51a75eb5",
+      "evidence_path": "research/phases/phase155-original-client-breath-timer.md",
+      "implementation_path": "include/sin_compat/original_client_breath_timer_hud.hpp",
+      "test_path": "tests/test_original_client_breath_timer_hud.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24230A60",
+      "label": "CHudBreathTimer primary slot3 bind two VGUI resources",
+      "owner": "CHudBreathTimer",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 51,
+      "original_code_sha256": "e80f0d9011daa95ee7bcd3a71cc86856219588ec61cff3d6ea773bf4c2ee8ef7",
+      "evidence_path": "research/phases/phase155-original-client-breath-timer.md",
+      "implementation_path": "include/sin_compat/original_client_breath_timer_hud.hpp",
+      "test_path": "tests/test_original_client_breath_timer_hud.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24230BB0",
+      "label": "CHudBreathTimer panel slot93 player value and four sound token paths",
+      "owner": "CHudBreathTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 224,
+      "original_code_sha256": "1a04ae5f33db4ca385e92b0328ad3b280e6dd0994f4c5ec467717b2ce4eb6114",
+      "evidence_path": "research/phases/phase155-original-client-breath-timer.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24230C90",
+      "label": "CHudBreathTimer panel slot109 paint VGUI path",
+      "owner": "CHudBreathTimer",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 233,
+      "original_code_sha256": "0b18199261f6fb6a0477a08022d60bb0791cd5379184ec0f9fcc14022b91a43b",
+      "evidence_path": "research/phases/phase155-original-client-breath-timer.md"
     }
   ]
 }
