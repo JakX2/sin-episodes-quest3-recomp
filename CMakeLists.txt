@@ -2247,3 +2247,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_entity_factory_tests
     COMMAND sin_original_server_entity_factory_tests)
 endif()
+
+# Phase171: actual 2006 original server registry classname lookup and
+# distinct create/destroy wrappers; engine allocator/ABI remain host-owned.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_factory_dispatch_tests
+    tests/test_original_server_factory_dispatch.cpp)
+  target_include_directories(sin_original_server_factory_dispatch_tests PRIVATE include)
+  target_compile_options(sin_original_server_factory_dispatch_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_factory_dispatch_tests
+    COMMAND sin_original_server_factory_dispatch_tests)
+endif()
