@@ -2247,3 +2247,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_entity_factory_tests
     COMMAND sin_original_server_entity_factory_tests)
 endif()
+
+# Phase171: original registry vtable +0x04/+0x08/+0x0C lookup and provider
+# callback decisions; no proprietary game DLL bytes or Source runtime.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_entity_registry_lookup_tests
+    tests/test_original_server_entity_registry_lookup.cpp)
+  target_include_directories(sin_original_server_entity_registry_lookup_tests
+    PRIVATE include)
+  target_compile_options(sin_original_server_entity_registry_lookup_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_entity_registry_lookup_tests
+    COMMAND sin_original_server_entity_registry_lookup_tests)
+endif()
