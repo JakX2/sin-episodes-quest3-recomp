@@ -2222,3 +2222,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_flak_origin_tests
     COMMAND sin_original_server_flak_origin_tests)
 endif()
+
+# Phase169: original 2006 server.dll absolute-angle and three x87 vector
+# routine behavior models. Not the original Source engine/MSVC object ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_entity_angles_tests
+    tests/test_original_server_entity_angles.cpp)
+  target_include_directories(sin_original_server_entity_angles_tests PRIVATE include)
+  target_compile_options(sin_original_server_entity_angles_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_entity_angles_tests
+    COMMAND sin_original_server_entity_angles_tests)
+endif()
