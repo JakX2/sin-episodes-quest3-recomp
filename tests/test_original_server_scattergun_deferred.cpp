@@ -172,7 +172,7 @@ void test_equal_owner_deadline_preserves_negative_zero_when_copied() {
     d::ScatterGunState s{};
     s.primary_clip_4ec=1;s.pending_byte_589=1;
     s.gate_timer_49c=-0.0f;
-    s.mirrored_timer_4a0=10.0f;
+    s.mirrored_timer_4a0=0.0f; // +0 remains untouched when proposed -0 compares equal
     d::OwnerState owner{};
     owner.float_timer_60c=-0.0f;
     FakeHost host{s};host.owner=&owner;
