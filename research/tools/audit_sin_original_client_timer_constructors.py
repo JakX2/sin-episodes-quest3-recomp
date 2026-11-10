@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Phase161: original 2006 client breath/poison HUD constructor witnesses.
 
-Owner-only PE32 verifier checks SHA256 of both original DLLs, two complete
+Owner-only PE32 verifier checks SHA256 of both original DLLs, three complete
 native constructor code regions, eight tiny member-offset helper regions,
-native vtable writes, exact four-byte breath initialization, poison direct
+native vtable writes, exact four-byte breath AND poison initialization, health tail
 field clears, original visibility-mask values and verified call edges.
 No original executable code is copied to output or GitHub.
 """
@@ -18,7 +18,8 @@ from verify_gameplay_entity_registry import PEImage,VerificationError,CLIENT_SHA
 # (original client VA, full method length, exact original code SHA256)
 REGIONS={
  "breath_timer_constructor":(0x24230F30,230,"38c93563155918495201f0bbb99a75c339e8a16533033cb91917ef58424cb3b1"),
- "poison_timer_constructor":(0x24235E80,201,"7dc7ea0b731d13de89fcd70f5ff34c5b64aa07ed62a38a1a1d097542817bcafb"),
+ "health_constructor":(0x24235E80,201,"7dc7ea0b731d13de89fcd70f5ff34c5b64aa07ed62a38a1a1d097542817bcafb"),
+ "poison_timer_constructor":(0x24236610,233,"d7eef583516dc96c6fb1eb82bf419b5546c1ac4333509c970225d860b7071ff1"),
  "breath_panel_field_address":(0x242309F0,16,"7b425799d9562e26157a8051624ce73a5a995f1e1c2a0fa98f43f3eb7cf7762b"),
  "breath_complete_field_offset":(0x24230A00,6,"bd36350ae3bfe08df6fb572ebee9f406ed4ea953003deb777e245d2f5a156e11"),
  "poison_panel_field_address":(0x24236030,16,"7b425799d9562e26157a8051624ce73a5a995f1e1c2a0fa98f43f3eb7cf7762b"),
@@ -40,13 +41,22 @@ OPCODES={
  0x24230FFC:"6a10",         # breath CHudElement mask
  0x24231013:"c20400",
  0x24235E80:"8b442404",
- 0x24235E9F:"c706ec8d2c24", # poison primary vtable
- 0x24235EA5:"c707248b2c24", # poison panel vtable
- 0x24235F27:"6a18",         # poison CHudElement mask
- 0x24235F2B:"8986fc020000", # poison clears +0x2FC
+ 0x24235E9F:"c706ec8d2c24", # HEALTH primary vtable
+ 0x24235EA5:"c707248b2c24", # HEALTH panel vtable
+ 0x24235F27:"6a18",         # HEALTH CHudElement mask
+ 0x24235F2B:"8986fc020000", # HEALTH clears +0x2FC
  0x24235F31:"898600030000", # poison clears +0x300
  0x24235F37:"898604030000", # poison clears +0x304
  0x24235F46:"c20400",
+ 0x24236610:"8b442404", # ACTUAL CHudPoisonTimer constructor
+ 0x24236632:"c706c4912c24", # poison primary vtable
+ 0x24236638:"c707948f2c24", # poison panel vtable
+ 0x242366A7:"889eb7000000", # poison clears complete+0xB7
+ 0x242366AD:"889eb8000000",
+ 0x242366B3:"889eb9000000",
+ 0x242366B9:"889eba000000", # original panel+0xA6
+ 0x242366E1:"6a10", # POISON mask is 0x10, NOT 0x18
+ 0x242366F8:"c20400",
  0x242309F0:"8b442404",0x242309F8:"05a3000000",
  0x24230A00:"b8b7000000",
  0x242309F4:"85c0",
@@ -63,13 +73,32 @@ CALLS={
  0x24230FDF:0x24230E50, # original breath VGUI property registration
  0x24230FE4:0x24230EC0, # original breath VGUI property registration
  0x24231000:0x24141850, # breath -> CHudElement mask setter
- 0x24235E89:0x24142220, # poison -> CHudElement ctor
- 0x24235E9A:0x24153320, # poison -> panel ctor
- 0x24235F3D:0x24141850, # poison -> CHudElement mask setter
+ 0x24235E89:0x24142220, # HEALTH -> CHudElement ctor
+ 0x24235E9A:0x24153320, # HEALTH -> panel ctor
+ 0x24235F3D:0x24141850, # HEALTH -> CHudElement mask setter
+ 0x2423661B:0x24142220, # true poison -> base constructor
+ 0x2423662D:0x24003910, # poison -> Panel constructor
+ 0x242366A2:0x24236450, # poison Color property
+ 0x242366BF:0x242364C0, # poison foreground texture property
+ 0x242366C4:0x24236530, # poison background texture property
+ 0x242366C9:0x242365A0, # poison remaining texture property
+ 0x242366E5:0x24141850, # poison visibility mask = 0x10
 }
 RTTI_NAMES={
  0x24320D3C:b".?AVCHudBreathTimer@@\x00",
+ 0x24320E94:b".?AVCHudHealth@@\x00",
  0x24320EB0:b".?AVCHudPoisonTimer@@\x00",
+}
+# Real MSVC RTTI CompleteObjectLocator pointers immediately preceding
+# each primary and secondary vtable, and each COL+0x0C TypeDescriptor.
+# This check would have prevented the Phase161 health/poison mix-up.
+RTTI_LINKS={
+ 0x242C78C8:0x242EF7BC, 0x242C7698:0x242EF768,
+ 0x242C8DE8:0x242EFA6C, 0x242C8B20:0x242EFA10,
+ 0x242C91C0:0x242EFAD4, 0x242C8F90:0x242EFA80,
+ 0x242EF7C8:0x24320D34, 0x242EF774:0x24320D34,
+ 0x242EFA78:0x24320E8C, 0x242EFA1C:0x24320E8C,
+ 0x242EFAE0:0x24320EA8, 0x242EFA8C:0x24320EA8,
 }
 def verify_original_client(pe:PEImage,*,check_hashes=True)->dict:
     if pe.base!=0x24000000:
@@ -77,6 +106,9 @@ def verify_original_client(pe:PEImage,*,check_hashes=True)->dict:
     for addr,raw in RTTI_NAMES.items():
         if pe.at(addr,len(raw))!=raw:
             raise VerificationError("original timer HUD RTTI identity mismatch at %#x"%addr)
+    for addr,target in RTTI_LINKS.items():
+        if pe.at(addr,4)!=struct.pack("<I",target):
+            raise VerificationError("original constructor MSVC RTTI type/vtable mismatch at %#x"%addr)
     for addr,hexcode in OPCODES.items():
         expected=bytes.fromhex(hexcode)
         if pe.at(addr,len(expected))!=expected:
@@ -91,25 +123,28 @@ def verify_original_client(pe:PEImage,*,check_hashes=True)->dict:
                 raise VerificationError("original timer HUD complete code SHA mismatch: "+name)
     return {
         "verified_complete_code_region_hashes":len(REGIONS) if check_hashes else 0,
-        "verified_constructor_hashes":2 if check_hashes else 0,
+        "verified_constructor_hashes":3 if check_hashes else 0,
         "verified_small_offset_accessor_hashes":8 if check_hashes else 0,
         "original_opcode_witnesses":len(OPCODES),
         "original_direct_call_edges":len(CALLS),
+        "verified_original_rtti_links":len(RTTI_LINKS),
         "original_vtable_writes":{
             "breath":{"primary":"0x242C78CC","panel":"0x242C769C"},
-            "poison":{"primary":"0x242C8DEC","panel":"0x242C8B24"},
+            "health":{"primary":"0x242C8DEC","panel":"0x242C8B24"},
+            "poison":{"primary":"0x242C91C4","panel":"0x242C8F94"},
         },
-        "original_visibility_masks":{"breath":16,"poison":24},
+        "original_visibility_masks":{"breath":16,"poison":16,"health":24},
         "original_panel_offset":20,
         "panel_relative_four_byte_field":[163,164,165,166],
         "complete_object_four_byte_field":[183,184,185,186],
-        "explicit_zero_initialization":{"breath":"+0xB7..+0xBA"},
-        "poison_explicit_zero_dwords":["+0x2FC","+0x300","+0x304"],
+        "explicit_zero_initialization":{"breath":"+0xB7..+0xBA","poison":"+0xB7..+0xBA"},
+        "health_explicit_zero_dwords":["+0x2FC","+0x300","+0x304"],
         "scope":[
             "Only explicit constructor fields and small offset accessors are modeled.",
             "Constructor registration, native Panel setup and VGUI surface are NOT reimplemented.",
-            "Original byte +0xA6 appears as fourth of four consecutive panel bytes; source-level alpha type is unproven.",
-            "Do not infer that poison constructor explicitly zeroes the same color bytes.",
+            "RTTI links prove the previously mislabeled 0x24235E80 constructor is CHudHealth, not CHudPoisonTimer.",
+            "Original poison constructor 0x24236610 explicitly clears its four-byte Color-like field and uses 0x10 visibility mask.",
+            "Breath and poison both register named Color properties; setter and VGUI lifetime remain unresolved.",
         ],
     }
 def audit(client_bytes:bytes,server_bytes:bytes)->dict:
