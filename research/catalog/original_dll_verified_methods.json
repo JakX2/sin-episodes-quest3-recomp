@@ -797,6 +797,30 @@
       "original_code_length": 96,
       "original_code_sha256": "75881836e013ae46e23c1cb8e375b64c49da116cdc9390441c4184af2581451f",
       "evidence_path": "research/phases/phase162-original-timer-property-registrars.md"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2400A300",
+      "label": "Original 2006 client six-DWORD (24-byte) VGUI property descriptor dynamic-array insert",
+      "owner": "original client HUD property descriptor vector",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 141,
+      "original_code_sha256": "3fc3fcbdc8f5f3515e23f4b2cfd0146af268702aa270d6e892935f9a9ecaccf8",
+      "evidence_path": "research/phases/phase163-original-client-property-descriptor-vector.md",
+      "implementation_path": "include/sin_compat/original_client_property_descriptor_array.hpp",
+      "test_path": "tests/test_original_client_property_descriptor_array.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2400B140",
+      "label": "Original 2006 client 24-byte-record array capacity growth using -1 sentinel, fixed increment or doubling",
+      "owner": "original client HUD property descriptor vector",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 119,
+      "original_code_sha256": "ca54ced9589a979692188164c701cb963a17196ed6bf5ffe886433c5f0fed60f",
+      "evidence_path": "research/phases/phase163-original-client-property-descriptor-vector.md",
+      "implementation_path": "include/sin_compat/original_client_property_descriptor_array.hpp",
+      "test_path": "tests/test_original_client_property_descriptor_array.cpp"
     }
   ]
 }
