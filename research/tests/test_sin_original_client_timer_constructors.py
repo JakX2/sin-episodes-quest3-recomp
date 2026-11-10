@@ -89,12 +89,22 @@ class TimerConstructorEvidenceTests(unittest.TestCase):
             audit(b"fake client",b"fake server")
 
     def test_original_32bit_nullable_pointer_offsets(self):
-        for original in (0,1,0x1000,0xFFFFFFF0,0xFFFFFFFF):
-            for field_offset,complete_offset in ((0xA3,0xB7),(0xA8,0xBC)):
-                expected=(original+field_offset)&0xFFFFFFFF if original else 0
-                self.assertEqual(expected,
-                    ((original+field_offset)&0xFFFFFFFF if original else 0))
-                self.assertEqual(complete_offset,field_offset+0x14)
+        # Independent expected table; not a tautological expression check.
+        samples={
+            0x00000000:(0x00000000,0x00000000),
+            0x00000001:(0x000000A4,0x000000A9),
+            0x00001000:(0x000010A3,0x000010A8),
+            0xFFFFFFF0:(0x00000093,0x00000098),
+            0xFFFFFFFF:(0x000000A2,0x000000A7),
+        }
+        for original,(expected_panel,expected_resource) in samples.items():
+            with self.subTest(pointer=hex(original)):
+                adjusted=lambda offset: (
+                    ((original+offset)&0xFFFFFFFF) if original else 0)
+                self.assertEqual(adjusted(0xA3),expected_panel)
+                self.assertEqual(adjusted(0xA8),expected_resource)
+        self.assertEqual(0xA3+0x14,0xB7)
+        self.assertEqual(0xA8+0x14,0xBC)
 
     def test_breath_and_poison_visibility_differ_on_original_mask_bit8(self):
         count=0
