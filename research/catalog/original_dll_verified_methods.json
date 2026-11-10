@@ -1079,6 +1079,54 @@
       "owner": "server entity factory registry",
       "original_code_length": 96,
       "original_code_sha256": "7fd117f38076655eb4b0e4c2911d8ba3954986ec2488250b1efb4987b009faf6"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase171-original-server-classname-lookup-dispatch.md",
+      "implementation_path": "include/sin_compat/original_server_factory_dispatch.hpp",
+      "test_path": "tests/test_original_server_factory_dispatch.cpp",
+      "entry_va": "0x2228B010",
+      "owner": "original server entity factory registry",
+      "label": "Original registry classname lookup via interned 16-bit key, native indexed lookup and factory pointer at 16-byte record+0xC",
+      "original_code_length": 94,
+      "original_code_sha256": "ba7b2d918b3b72235c9457731f50ebcfb3b6f001c699d981c788d7fed8c9abf5"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase171-original-server-classname-lookup-dispatch.md",
+      "implementation_path": "include/sin_compat/original_server_factory_dispatch.hpp",
+      "test_path": "tests/test_original_server_factory_dispatch.cpp",
+      "entry_va": "0x22285550",
+      "owner": "original server entity factory registry",
+      "label": "Original registry vtable+0x04 create-by-classname wrapper and per-class virtual+0 dispatcher",
+      "original_code_length": 46,
+      "original_code_sha256": "58f62479791e357d5b220d60803a1a72e2cfc003944000c50f667f30730854f1"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase171-original-server-classname-lookup-dispatch.md",
+      "implementation_path": "include/sin_compat/original_server_factory_dispatch.hpp",
+      "test_path": "tests/test_original_server_factory_dispatch.cpp",
+      "entry_va": "0x22285580",
+      "owner": "original server entity factory registry",
+      "label": "Original registry vtable+0x08 destroy-by-classname wrapper and per-class virtual+4 dispatcher",
+      "original_code_length": 50,
+      "original_code_sha256": "83eb972b13abd551e76ba781d13eed5ab614cd013c0d7f8c133020f7a2b2a5db"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase171-original-server-classname-lookup-dispatch.md",
+      "implementation_path": "include/sin_compat/original_server_factory_dispatch.hpp",
+      "test_path": "tests/test_original_server_factory_dispatch.cpp",
+      "entry_va": "0x2228AEA0",
+      "owner": "original server entity factory registry indexed-record accessor",
+      "label": "Original raw 16-bit record index scaled by 16 to address record+0xC",
+      "original_code_length": 18,
+      "original_code_sha256": "28b0a8d65b4efb61b7c2be4b21a107fa30757f2208c14612ceb98396691cde47"
     }
   ]
 }
