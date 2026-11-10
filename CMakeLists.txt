@@ -2117,3 +2117,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_hud_element_visibility_tests
     COMMAND sin_original_client_hud_element_visibility_tests)
 endif()
+
+# Phase161: verified original 2006 client breath/poison constructor stores,
+# VGUI panel offset thunks and distinct CHudElement visibility masks.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_timer_constructor_contract_tests
+    tests/test_original_client_timer_constructor_contract.cpp)
+  target_include_directories(sin_original_client_timer_constructor_contract_tests PRIVATE include)
+  target_compile_features(sin_original_client_timer_constructor_contract_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_timer_constructor_contract_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_timer_constructor_contract_tests
+    COMMAND sin_original_client_timer_constructor_contract_tests)
+endif()
