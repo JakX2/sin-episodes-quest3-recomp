@@ -139,7 +139,7 @@ class OriginalScatterGunDeferredTests(unittest.TestCase):
                 self.assertTrue(pending and owner and not blocked)
                 self.assertTrue(clip>0 and clip<0x80000000)
             count+=1
-        self.assertEqual(count,720)
+        self.assertEqual(count,1440)
         self.assertTrue(due_original(math.nan,5.0))
         self.assertTrue(due_original(5.0,math.nan))
         self.assertFalse(due_original(math.inf,5.0))
