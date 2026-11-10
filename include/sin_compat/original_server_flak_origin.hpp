@@ -97,7 +97,7 @@ OriginOutcome original_set_world_origin(
         self.flags_b9 & static_cast<std::uint8_t>(~0x10u));
     copy_native_vector(self.world_origin_250, proposed);
 
-    ParentSnapshot* parent = host.resolve_parent(self.parent_handle_f0);
+    ParentSnapshot* parent = self.parent_handle_f0 == kFlakBindingUnassigned\n        ? nullptr : host.resolve_parent(self.parent_handle_f0);
     if (parent == nullptr) {
         host.set_local_origin(self, proposed); // 0x2213E1A0
         return OriginOutcome::ChangedNoValidParent;
