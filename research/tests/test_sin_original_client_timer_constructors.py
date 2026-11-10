@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/"tools"))
 from audit_sin_original_client_timer_constructors import (
-    REGIONS,OPCODES,CALLS,RTTI_NAMES,
+    REGIONS,OPCODES,CALLS,RTTI_NAMES,RTTI_LINKS,
     verify_original_client,audit,VerificationError,
 )
 
@@ -29,6 +29,8 @@ def fixture():
     pe=FakePE()
     for addr,token in RTTI_NAMES.items():
         pe.put(addr,token)
+    for addr,target in RTTI_LINKS.items():
+        pe.put(addr,struct.pack("<I",target))
     for addr,hexcode in OPCODES.items():
         pe.put(addr,bytes.fromhex(hexcode))
     for site,target in CALLS.items():
@@ -48,14 +50,22 @@ class TimerConstructorEvidenceTests(unittest.TestCase):
         report=verify_original_client(fixture(),check_hashes=False)
         self.assertEqual(report["verified_complete_code_region_hashes"],0)
         self.assertEqual(report["original_visibility_masks"],
-                         {"breath":16,"poison":24})
+                         {"breath":16,"poison":16,"health":24})
         self.assertEqual(report["verified_small_offset_accessor_hashes"],0)
         self.assertEqual(report["original_opcode_witnesses"],len(OPCODES))
-        self.assertEqual(report["original_direct_call_edges"],8)
+        self.assertEqual(report["original_direct_call_edges"],15)
         self.assertEqual(report["original_panel_offset"],20)
         self.assertEqual(report["panel_relative_four_byte_field"],[163,164,165,166])
         self.assertEqual(report["complete_object_four_byte_field"],[183,184,185,186])
-        self.assertEqual(len(REGIONS),10)
+        self.assertEqual(len(REGIONS),11)
+
+    def test_each_original_ms_vtable_and_type_descriptor_link_guarded(self):
+        self.assertEqual(len(RTTI_LINKS),12)
+        for va in RTTI_LINKS:
+            with self.subTest(msvc_link=hex(va)):
+                pe=fixture();pe.corrupt(va)
+                with self.assertRaises(VerificationError):
+                    verify_original_client(pe,check_hashes=False)
 
     def test_every_original_opcode_anchor_rejects_corruption(self):
         for va in OPCODES:
@@ -106,7 +116,7 @@ class TimerConstructorEvidenceTests(unittest.TestCase):
         self.assertEqual(0xA3+0x14,0xB7)
         self.assertEqual(0xA8+0x14,0xBC)
 
-    def test_breath_and_poison_visibility_differ_on_original_mask_bit8(self):
+    def test_breath_and_poison_share_mask_health_differs_on_bit8(self):
         count=0
         for flags,override,virtual,engine,has_player in itertools.product(
             (0,4,8,16,24,32,128), (0,8,16), (-1,0,1),
@@ -115,14 +125,19 @@ class TimerConstructorEvidenceTests(unittest.TestCase):
             breath=original_x86_element_mask_drawing(
                 0x10,engine,has_player,active,virtual)
             poison=original_x86_element_mask_drawing(
+                0x10,engine,has_player,active,virtual)
+            health=original_x86_element_mask_drawing(
                 0x18,engine,has_player,active,virtual)
+            self.assertEqual(breath,poison)
             if flags==8 and override==0 and virtual>0 and engine and has_player:
                 self.assertTrue(breath)
-                self.assertFalse(poison)
+                self.assertTrue(poison)
+                self.assertFalse(health)
             if not engine or not has_player or virtual<=0 or (active&4):
                 self.assertFalse(breath)
                 self.assertFalse(poison)
-            if breath!=poison:
+                self.assertFalse(health)
+            if breath!=health:
                 self.assertTrue(active&8)
             count+=1
         self.assertEqual(count,7*3*3*2*2)
