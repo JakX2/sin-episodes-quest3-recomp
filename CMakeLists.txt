@@ -2234,3 +2234,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_entity_angles_tests
     COMMAND sin_original_server_entity_angles_tests)
 endif()
+
+# Phase170: original 2006 server.dll classname factory and registry reference.
+# Host-neutral branch model; original Source engine allocator and DLL ABI
+# remain separate reconstruction targets.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_entity_factory_tests
+    tests/test_original_server_entity_factory.cpp)
+  target_include_directories(sin_original_server_entity_factory_tests PRIVATE include)
+  target_compile_options(sin_original_server_entity_factory_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_entity_factory_tests
+    COMMAND sin_original_server_entity_factory_tests)
+endif()
