@@ -983,6 +983,54 @@
       "evidence_path": "research/phases/phase168-original-server-flak-spawn-origin.md",
       "implementation_path": "include/sin_compat/original_server_flak_origin.hpp",
       "test_path": "tests/test_original_server_flak_origin.cpp"
+    },
+    {
+      "dll": "server",
+      "evidence_path": "research/phases/phase169-original-server-entity-angles.md",
+      "implementation_path": "include/sin_compat/original_server_entity_angles.hpp",
+      "test_path": "tests/test_original_server_entity_angles.cpp",
+      "entry_va": "0x221439C0",
+      "owner": "server shared entity absolute angles setter",
+      "label": "Original networked entity absolute angles update, parent-relative orientation matrix and change notification dispatch",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 412,
+      "original_code_sha256": "6ad0a90de973cdb3fded0dca507c5905d8c40ec3d06c9d3ee0f1cccd3b708205"
+    },
+    {
+      "dll": "server",
+      "evidence_path": "research/phases/phase169-original-server-entity-angles.md",
+      "implementation_path": "include/sin_compat/original_server_entity_angles.hpp",
+      "test_path": "tests/test_original_server_entity_angles.cpp",
+      "entry_va": "0x2213A360",
+      "owner": "server shared 3-float compare helper",
+      "label": "Original x87 3-component angle vector differs comparator, returns 1 on changed or unordered",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 91,
+      "original_code_sha256": "0b856a01ccd342b7e18d656d1ac7c8708dd318942fe53d6efd11653ab4ef4410"
+    },
+    {
+      "dll": "server",
+      "evidence_path": "research/phases/phase169-original-server-entity-angles.md",
+      "implementation_path": "include/sin_compat/original_server_entity_angles.hpp",
+      "test_path": "tests/test_original_server_entity_angles.cpp",
+      "entry_va": "0x220E2E70",
+      "owner": "server shared 3-float compare helper",
+      "label": "Original x87 angle vector equality comparator, numerically equal including signed zero, unordered false",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 60,
+      "original_code_sha256": "a6ad19ca3a57bed3a25fdcddaae6a80dbac81ae489f7bba36a39ec52167e04ab"
+    },
+    {
+      "dll": "server",
+      "evidence_path": "research/phases/phase169-original-server-entity-angles.md",
+      "implementation_path": "include/sin_compat/original_server_entity_angles.hpp",
+      "test_path": "tests/test_original_server_entity_angles.cpp",
+      "entry_va": "0x22140040",
+      "owner": "server shared tracked networked 3-float setter",
+      "label": "Original tracked 3-float angle assignment, x87 compare, dirty byte or external event bit0 then raw DWORD copy",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 99,
+      "original_code_sha256": "c3fcfa2b46be4418d626a752cd75307102200c365d9d1e308cd9afec3d7710e4"
     }
   ]
 }
