@@ -2130,3 +2130,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_timer_constructor_contract_tests
     COMMAND sin_original_client_timer_constructor_contract_tests)
 endif()
+
+# Phase162: exact original 2006 Breath/Poison/MutagenBar VGUI
+# Color/string property registration metadata and once-guard behavior.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_timer_property_registrar_tests
+    tests/test_original_client_timer_property_registrars.cpp)
+  target_include_directories(sin_original_client_timer_property_registrar_tests PRIVATE include)
+  target_compile_features(sin_original_client_timer_property_registrar_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_timer_property_registrar_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_original_client_timer_property_registrar_tests
+    COMMAND sin_original_client_timer_property_registrar_tests)
+endif()
