@@ -2286,3 +2286,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_registry_intern_insert_tests
     COMMAND sin_original_server_registry_intern_insert_tests)
 endif()
+
+# Phase174: original 2006 SiN server.dll 16-byte insertion tree,
+# 12-byte symbol search tree, slot registration, guarded cleanup.
+# Engine comparators/allocators are host callbacks, not native DLL ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_registry_tree_search_tests
+    tests/test_original_server_registry_tree_search.cpp)
+  target_include_directories(sin_original_server_registry_tree_search_tests
+    PRIVATE include)
+  target_compile_options(sin_original_server_registry_tree_search_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_registry_tree_search_tests
+    COMMAND sin_original_server_registry_tree_search_tests)
+endif()
