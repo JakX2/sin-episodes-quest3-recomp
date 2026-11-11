@@ -212,3 +212,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Added a decoded-record-to-SetView regression proving the selected view's permission byte reaches the player host unchanged, plus multi-record zero/nonzero parsing coverage.
 - Evidence source: the Library-held `phase24_verify.py` witness table, including the exact constructor, SetView load, player setter, consumer and record-stride anchors. The raw DLL ZIP was not materialized in this run; no fresh original-binary audit is claimed.
 - This completes two verified view-record fields only. Other view fields, complete damage arithmetic, native vehicle host, client monitor rendering, campaign map I/O and Quest execution remain unimplemented.
+
+
+## 2026-11-11: original CreateInterface singleton RTTI/vtable inventory (Phase178)
+
+- Chained the original 2006 server/client full-DLL PE32 hash and Phase177 export/registration audit. Recovered nine complete native 6-byte interface singleton-return factory functions, five PE-initialized C++ interface objects, five original 20-byte MSVC32 RTTI CompleteObjectLocator records and **105 original vtable method-pointer addresses** across five distinct original classes.
+- Original server `ServerGameDLL003` = `CServerGameDLL` instance `0x22510650` and 31 executable prefix method slots (slot0 `0x221E7640`); original client `VClient011` = `CHLClient` instance `0x242FA4B8` and 48 executable prefix method slots (slot0 `0x240FE0E0`). Also pinned `CServerGameEnts`, `CServerGameClients`, and `CGameClientExports`.
+- Critical evidence boundary: `GameMovement001` server/client, `VClientEntityList003`, and `VClientPrediction001` return singleton addresses in uninitialized `.data`; the original file cannot establish their runtime vtable pointers. The auditor explicitly rejects fabricated static entries.
+- Added host-neutral C++17 reference, original-only SHA-pinned byte-level auditor and original-free mutation regressions. Reviewed original method atlas **122 -> 131 (74 server, 57 client)**. These are NOT callable native engine interfaces nor proof that the original game loads reconstructed modules.
+- See `research/phases/phase178-original-engine-interface-singletons-vtables.md`. Next: original slot-0 initialization functions and real MSVC x86 engine interface callbacks. Windows PC gameplay before Android/Quest3.
