@@ -1175,6 +1175,54 @@
       "recovery_status": "behavior_reconstructed",
       "original_code_length": 40,
       "original_code_sha256": "1cbb4f8f3651d9dbfae4235ec60dce656bbf53569dca30ad8af027799571403a"
+    },
+    {
+      "dll": "server",
+      "owner": "original server classname registry / symbol pool",
+      "evidence_path": "research/phases/phase173-original-server-registry-intern-insert.md",
+      "implementation_path": "include/sin_compat/original_server_registry_intern_insert.hpp",
+      "test_path": "tests/test_original_server_registry_intern_insert.cpp",
+      "entry_va": "0x2228B0A0",
+      "label": "Original hash-registry entry insertion with pre-insert callback, unconditional slot allocator, 16-byte record key copy",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 102,
+      "original_code_sha256": "e09e609fb445ee14e43c8dcd9633b786c25609c1a81be79087cd8b3e11621ecb"
+    },
+    {
+      "dll": "server",
+      "owner": "original server classname registry / symbol pool",
+      "evidence_path": "research/phases/phase173-original-server-registry-intern-insert.md",
+      "implementation_path": "include/sin_compat/original_server_registry_intern_insert.hpp",
+      "test_path": "tests/test_original_server_registry_intern_insert.cpp",
+      "entry_va": "0x2228A3B0",
+      "label": "Original 16-bit registry slot acquisition from recycle free-list or growing allocation, sentinel reset",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 98,
+      "original_code_sha256": "364bc2a8b99b85727e3b1a44260fd397cd89ff2246e909323bd5169fe78c8ab1"
+    },
+    {
+      "dll": "server",
+      "owner": "original server classname registry / symbol pool",
+      "evidence_path": "research/phases/phase173-original-server-registry-intern-insert.md",
+      "implementation_path": "include/sin_compat/original_server_registry_intern_insert.hpp",
+      "test_path": "tests/test_original_server_registry_intern_insert.cpp",
+      "entry_va": "0x2228EA30",
+      "label": "Original signed 32-bit first-fit string pool selector compares 32-bit capacity minus used",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 49,
+      "original_code_sha256": "4ab5c9df0008a18273557239880acde69b643370c1c936e12d96a5f2bcff4f25"
+    },
+    {
+      "dll": "server",
+      "owner": "original server classname registry / symbol pool",
+      "evidence_path": "research/phases/phase173-original-server-registry-intern-insert.md",
+      "implementation_path": "include/sin_compat/original_server_registry_intern_insert.hpp",
+      "test_path": "tests/test_original_server_registry_intern_insert.cpp",
+      "entry_va": "0x2228F7A0",
+      "label": "Original symbol interning into 2048-byte-minimum string chunks, existing-match and NULL-name sentinel routes",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 261,
+      "original_code_sha256": "d84e5bbcbf05a7501ef5094690ae0827a991d8e63a33d33fe60d46a32d15268f"
     }
   ]
 }
