@@ -1331,6 +1331,54 @@
       "original_code_length": 109,
       "original_code_sha256": "9da5ebfd31dde84f40dbb9c53852824e085b2b2ad5958e5b908d1dca83a03a8a",
       "recovery_status": "machine_code_verified"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server symbol registry/tree and buffer",
+      "evidence_path": "research/phases/phase176-original-server-symbol-growth-traversal.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_growth_traversal.hpp",
+      "test_path": "tests/test_original_server_symbol_growth_traversal.cpp",
+      "recovery_status": "machine_code_verified",
+      "entry_va": "0x2228E200",
+      "label": "Original 12-byte symbol record array reserve: initial 3, signed modular grow, native allocation/reallocation",
+      "original_code_length": 115,
+      "original_code_sha256": "bf973beee94fe5f7c2bd5e649e41eb973f99bb49dee68e28b9861757796adb2b"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server symbol registry/tree and buffer",
+      "evidence_path": "research/phases/phase176-original-server-symbol-growth-traversal.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_growth_traversal.hpp",
+      "test_path": "tests/test_original_server_symbol_growth_traversal.cpp",
+      "recovery_status": "machine_code_verified",
+      "entry_va": "0x2228E280",
+      "label": "Original 4-byte slot array reserve: initial 8, signed modular grow, native allocation/reallocation",
+      "original_code_length": 112,
+      "original_code_sha256": "1b91b29a1820e36300655fa1f9440dfc0f2653be30b61ca5a6f1ea44d6e8565b"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server symbol registry/tree and buffer",
+      "evidence_path": "research/phases/phase176-original-server-symbol-growth-traversal.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_growth_traversal.hpp",
+      "test_path": "tests/test_original_server_symbol_growth_traversal.cpp",
+      "recovery_status": "machine_code_verified",
+      "entry_va": "0x2228E470",
+      "label": "Original comparator-driven symbol tree insertion traversal and lazy native sentinel initialization",
+      "original_code_length": 261,
+      "original_code_sha256": "52909d48c6bde81a72b0e10e3f871e8d13de62ab03ca3a3aa2ffe6b145f3b871"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server symbol registry/tree and buffer",
+      "evidence_path": "research/phases/phase176-original-server-symbol-growth-traversal.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_growth_traversal.hpp",
+      "test_path": "tests/test_original_server_symbol_growth_traversal.cpp",
+      "recovery_status": "machine_code_verified",
+      "entry_va": "0x2228E5B0",
+      "label": "Original indexed symbol storage guard/counter reset and cached allocation pointer update",
+      "original_code_length": 58,
+      "original_code_sha256": "341f65a09dc5ce440ffbf168cdc6403706b1c409fd77f272c2adc041f1d5754b"
     }
   ]
 }

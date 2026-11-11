@@ -2313,3 +2313,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_symbol_tree_storage_tests
     COMMAND sin_original_server_symbol_tree_storage_tests)
 endif()
+
+# Phase176: SHA-verified original SiN 2006 server.dll 12-byte / 4-byte
+# buffer growth, symbol insertion traversal and guarded storage reset.
+# The native MSVC x86 allocator/comparator remain explicit host callbacks.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_symbol_growth_traversal_tests
+    tests/test_original_server_symbol_growth_traversal.cpp)
+  target_include_directories(sin_original_server_symbol_growth_traversal_tests
+    PRIVATE include)
+  target_compile_options(sin_original_server_symbol_growth_traversal_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_symbol_growth_traversal_tests
+    COMMAND sin_original_server_symbol_growth_traversal_tests)
+endif()
