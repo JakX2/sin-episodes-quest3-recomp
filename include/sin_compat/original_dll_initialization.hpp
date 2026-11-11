@@ -1,5 +1,5 @@
 #pragma once
-// Phase179: verified ORIGINAL 2006 Windows engine interface negotiation
+// Phase179: address-precise extension of Phase85 original Init negotiation
 // prefix from server CServerGameDLL::DLLInit and client CHLClient::Init.
 // This is a partial, host-neutral branch model, NOT complete x86 ABI or
 // a game-loadable client/server DLL implementation.
