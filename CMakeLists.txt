@@ -2327,3 +2327,34 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_symbol_growth_traversal_tests
     COMMAND sin_original_server_symbol_growth_traversal_tests)
 endif()
+
+
+# Phase177: verified original 2006 server/client CreateInterface entrypoints,
+# MSVC x86 three-DWORD interface registrations and synthetic host behavior.
+if(BUILD_TESTING)
+  add_executable(sin_original_dll_interface_abi_tests
+    tests/test_original_dll_interface_abi.cpp)
+  target_include_directories(sin_original_dll_interface_abi_tests PRIVATE include)
+  target_compile_options(sin_original_dll_interface_abi_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_dll_interface_abi_tests
+    COMMAND sin_original_dll_interface_abi_tests)
+endif()
+
+# This is a self-contained synthetic *loader ABI* probe, not an original game
+# DLL nor a Source engine interface implementation. The .def makes the export
+# explicitly undecorated as in the actual 2006 PE32 game modules.
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND BUILD_TESTING)
+  add_library(sin_original_win32_interface_probe SHARED
+    tests/original_win32_loader_probe.cpp
+    tests/original_win32_loader_probe.def)
+  set_target_properties(sin_original_win32_interface_probe PROPERTIES
+    OUTPUT_NAME "sin_original_abi_probe")
+  add_executable(sin_original_win32_loader_tests
+    tests/test_original_win32_loader.cpp)
+  add_dependencies(sin_original_win32_loader_tests
+    sin_original_win32_interface_probe)
+  add_test(NAME sin_original_win32_loader_tests
+    COMMAND sin_original_win32_loader_tests
+      $<TARGET_FILE:sin_original_win32_interface_probe>)
+endif()
