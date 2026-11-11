@@ -1,0 +1,3 @@
+LIBRARY "sin_original_abi_probe"
+EXPORTS
+    CreateInterface
