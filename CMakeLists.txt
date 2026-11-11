@@ -2348,6 +2348,7 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND BUILD_TESTING)
   add_library(sin_original_win32_interface_probe SHARED
     tests/original_win32_loader_probe.cpp
     tests/original_win32_loader_probe.def)
+  target_include_directories(sin_original_win32_interface_probe PRIVATE include)
   set_target_properties(sin_original_win32_interface_probe PROPERTIES
     OUTPUT_NAME "sin_original_abi_probe")
   add_executable(sin_original_win32_loader_tests
