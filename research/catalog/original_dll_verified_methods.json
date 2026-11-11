@@ -1379,6 +1379,54 @@
       "label": "Original indexed symbol storage guard/counter reset and cached allocation pointer update",
       "original_code_length": 58,
       "original_code_sha256": "341f65a09dc5ce440ffbf168cdc6403706b1c409fd77f272c2adc041f1d5754b"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221FB5D0",
+      "label": "Original MSVC x86 interface registration constructor, prepend 12-byte node to server list",
+      "owner": "Original server.dll CreateInterface interface registration system",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 32,
+      "original_code_sha256": "5e4a38bbe846cdfddece56859b823676d516af3f171181d7415ebbdfc1376654",
+      "evidence_path": "research/phases/phase177-original-dll-createinterface-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_dll_interface_abi.hpp",
+      "test_path": "tests/test_original_dll_interface_abi.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221FB5F0",
+      "label": "Original exported server CreateInterface, linked-list case-sensitive name lookup, return codes and factory callback",
+      "owner": "Original server.dll CreateInterface interface registration system",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 114,
+      "original_code_sha256": "39ed7fe9be839faa563964d7f5c2ad810dcd1992511131659da7fe823194b98a",
+      "evidence_path": "research/phases/phase177-original-dll-createinterface-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_dll_interface_abi.hpp",
+      "test_path": "tests/test_original_dll_interface_abi.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24164160",
+      "label": "Original MSVC x86 interface registration constructor, prepend 12-byte node to client list",
+      "owner": "Original client.dll CreateInterface interface registration system",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 32,
+      "original_code_sha256": "48699a1f29f3e63113789813739fcb588bfdc154be3047b2a5e712ea873c1a80",
+      "evidence_path": "research/phases/phase177-original-dll-createinterface-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_dll_interface_abi.hpp",
+      "test_path": "tests/test_original_dll_interface_abi.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24164180",
+      "label": "Original exported client CreateInterface, linked-list case-sensitive name lookup, return codes and factory callback",
+      "owner": "Original client.dll CreateInterface interface registration system",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 114,
+      "original_code_sha256": "f74837ce59ab917becd4c214e627ed91762085cb52883617278a206118267eec",
+      "evidence_path": "research/phases/phase177-original-dll-createinterface-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_dll_interface_abi.hpp",
+      "test_path": "tests/test_original_dll_interface_abi.cpp"
     }
   ]
 }
