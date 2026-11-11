@@ -230,3 +230,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Added `research/catalog/original_dll_initialization_requests.json`, a SHA-pinned owner-only audit of both whole function bodies and every interface-version/call/global/branch, ten original-free Python regression tests and C++17 native failure-injection reference tested under GCC/Clang and wired into MSVC Win32 CI.
 - **Important:** This extends earlier **Phase85 original Init handshake** evidence, without recounting its two already reviewed functions. The host-neutral model covers only early negotiation and separately invoked late requests. Original helper callbacks, full native initialization, game engine acceptance and level loading are not implemented. The ledger remains **131 reviewed functions: 74 server and 57 client**.
 - See `research/phases/phase179-original-win32-initialization-interface-contract.md`. Next: reconstruct post-query engine callback chain, real x86 interface vtables and original-engine-hosted Windows test.
+
+
+## 2026-11-11: Original client app-system Init, rollback and physics triplet (Phase180)
+
+- Verified **three new complete original client.dll x86 functions**, 199 bytes: `0x241640F0` app-system linked-list cleanup, `0x24164120` required vs optional app-system factory creation with whole-list rollback on required null, and `0x24182C60` physics negotiation.
+- Native physics handshake requires, in order, `VPhysics030`, `VPhysicsSurfaceProps001`, `VPhysicsCollision007`, each stored into its original client global before a fatal null test. Only three successes invoke the opaque `0x241927A0` coupling callback with SurfaceProps and the original filesystem global. Original CHLClient Init caller edges and app cleanup edge are pinned.
+- Owner-only original full dual-DLL SHA256 gate and Phase179 audit chain, all **three complete client function hashes, 51 opcode witnesses, 4 original exact CALL edges, 3 name/string and result-global addresses** passed. Ten original-free Python tests and local GCC+Clang C++17 `-Werror` reference tests pass; native MSVC Win32 CTest target added for CI.
+- Original reviewed-function atlas **131 → 134 (74 server, 60 client)**. An invalid native success with null output would dereference null; portable model deliberately rejects it instead.
+- Source: `research/phases/phase180-original-client-app-physics-postinit.md`. The original physics coupling callback, full client engine ABI, and playable original game DLLs remain unresolved. Windows PC first, then Android and Quest3.
