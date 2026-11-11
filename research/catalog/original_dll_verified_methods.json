@@ -1223,6 +1223,54 @@
       "recovery_status": "machine_code_verified",
       "original_code_length": 261,
       "original_code_sha256": "d84e5bbcbf05a7501ef5094690ae0827a991d8e63a33d33fe60d46a32d15268f"
+    },
+    {
+      "dll": "server",
+      "owner": "original server registry and symbol table indexed trees",
+      "evidence_path": "research/phases/phase174-original-server-registry-tree-search.md",
+      "implementation_path": "include/sin_compat/original_server_registry_tree_search.hpp",
+      "test_path": "tests/test_original_server_registry_tree_search.cpp",
+      "entry_va": "0x2228A280",
+      "label": "Original registry 16-byte tree insertion-position comparator traversal, last index/direction outputs and lazy sentinel",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 255,
+      "original_code_sha256": "54592a1af0f32a419dc34900a07841d6f7ddf15e56cc48b80c06da7a998b78eb"
+    },
+    {
+      "dll": "server",
+      "owner": "original server registry and symbol table indexed trees",
+      "evidence_path": "research/phases/phase174-original-server-registry-tree-search.md",
+      "implementation_path": "include/sin_compat/original_server_registry_tree_search.hpp",
+      "test_path": "tests/test_original_server_registry_tree_search.cpp",
+      "entry_va": "0x2228A380",
+      "label": "Original indexed storage guarded cleanup with allocator callback, pointer and auxiliary count clear",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 39,
+      "original_code_sha256": "6913ebe2f4e0b5df55d05094db7e47e45db00f0a3388932c3da16f16ed296a3d"
+    },
+    {
+      "dll": "server",
+      "owner": "original server registry and symbol table indexed trees",
+      "evidence_path": "research/phases/phase174-original-server-registry-tree-search.md",
+      "implementation_path": "include/sin_compat/original_server_registry_tree_search.hpp",
+      "test_path": "tests/test_original_server_registry_tree_search.cpp",
+      "entry_va": "0x2228EB40",
+      "label": "Original 12-byte symbol ordered-tree search, two comparator passes, equality return, lazy sentinel",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 266,
+      "original_code_sha256": "e100a658453e531d18ff90797618c5f3d2fa61304b9d8f54c50b7458f8804550"
+    },
+    {
+      "dll": "server",
+      "owner": "original server registry and symbol table indexed trees",
+      "evidence_path": "research/phases/phase174-original-server-registry-tree-search.md",
+      "implementation_path": "include/sin_compat/original_server_registry_tree_search.hpp",
+      "test_path": "tests/test_original_server_registry_tree_search.cpp",
+      "entry_va": "0x2228F710",
+      "label": "Original symbol record preparation, 16-bit slot allocation, link and 12-byte slot data word installation",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 94,
+      "original_code_sha256": "7ca27d4cc81fb20c1576b8289ed71e4d7f1bf889baef72018a811357a799f52d"
     }
   ]
 }
