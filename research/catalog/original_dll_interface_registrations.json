@@ -1,0 +1,492 @@
+{
+  "phase": 177,
+  "source": "owner-original SiN Episodes: Emergence 2006 PE32 DLLs",
+  "scope": "PE exports and static CreateInterface registration thunk metadata; not a complete engine interface ABI",
+  "dlls": {
+    "server": {
+      "image_base": "0x22000000",
+      "native_constructor_va": "0x221fb5d0",
+      "native_CreateInterface_va": "0x221fb5f0",
+      "native_registration_head_va": "0x22573c5c",
+      "pe_exports": {
+        "?Detonate@CGrenadeHomer@@UAEXXZ": "0x2230f4e0",
+        "?Detonate@CGrenadePathfollower@@UAEXXZ": "0x22310ea0",
+        "?Detonate@CGrenadeSpitMutant@@UAEXXZ": "0x223120b0",
+        "?Detonate@CGrenadeSpitPoison@@UAEXXZ": "0x22312b70",
+        "CreateInterface": "0x221fb5f0"
+      },
+      "static_registration_count": 10,
+      "ordered_registration_manifest_sha256": "586dc57ff45e59d4b10e313245a120c02643418eea34403544bdd1edb480d461",
+      "interface_registrations": [
+        {
+          "interface": "IEffects001",
+          "registration_va": 574333600,
+          "name_va": 574642660,
+          "factory_va": 571643520,
+          "registration_node_va": 576027032
+        },
+        {
+          "interface": "ServerGameDLL003",
+          "registration_va": 574353728,
+          "name_va": 574894764,
+          "factory_va": 572421680,
+          "registration_node_va": 576135916
+        },
+        {
+          "interface": "ServerGameEnts001",
+          "registration_va": 574353936,
+          "name_va": 574894868,
+          "factory_va": 572424896,
+          "registration_node_va": 576136164
+        },
+        {
+          "interface": "ServerGameClients003",
+          "registration_va": 574353968,
+          "name_va": 574894888,
+          "factory_va": 572424992,
+          "registration_node_va": 576136176
+        },
+        {
+          "interface": "PluginHelpersCheck001",
+          "registration_va": 574357840,
+          "name_va": 574908560,
+          "factory_va": 572507376,
+          "registration_node_va": 576142476
+        },
+        {
+          "interface": "PlayerInfoManager001",
+          "registration_va": 574364176,
+          "name_va": 574959256,
+          "factory_va": 572880768,
+          "registration_node_va": 576162624
+        },
+        {
+          "interface": "PlayerInfoManager002",
+          "registration_va": 574364208,
+          "name_va": 574959280,
+          "factory_va": 572880800,
+          "registration_node_va": 576162636
+        },
+        {
+          "interface": "BotManager001",
+          "registration_va": 574364240,
+          "name_va": 574959304,
+          "factory_va": 572880816,
+          "registration_node_va": 576162648
+        },
+        {
+          "interface": "HLTVDirector001",
+          "registration_va": 574364512,
+          "name_va": 574963348,
+          "factory_va": 572913856,
+          "registration_node_va": 576172408
+        },
+        {
+          "interface": "GameMovement001",
+          "registration_va": 574370832,
+          "name_va": 575008828,
+          "factory_va": 573374432,
+          "registration_node_va": 576271928
+        }
+      ]
+    },
+    "client": {
+      "image_base": "0x24000000",
+      "native_constructor_va": "0x24164160",
+      "native_CreateInterface_va": "0x24164180",
+      "native_registration_head_va": "0x24369378",
+      "pe_exports": {
+        "CreateInterface": "0x24164180"
+      },
+      "static_registration_count": 55,
+      "ordered_registration_manifest_sha256": "88c9b99ce45befa36461be556e49d0f4abdb47c9cd759c80db74ad82dd3034a9",
+      "interface_registrations": [
+        {
+          "interface": "Alpha_IMaterialProxy003",
+          "registration_va": 606491792,
+          "name_va": 606616732,
+          "factory_va": 604542448,
+          "registration_node_va": 607302256
+        },
+        {
+          "interface": "AnimatedEntityTexture_IMaterialProxy003",
+          "registration_va": 606491824,
+          "name_va": 606616836,
+          "factory_va": 604544304,
+          "registration_node_va": 607302268
+        },
+        {
+          "interface": "AnimatedOffsetTexture_IMaterialProxy003",
+          "registration_va": 606491856,
+          "name_va": 606616904,
+          "factory_va": 604544544,
+          "registration_node_va": 607302280
+        },
+        {
+          "interface": "AnimatedTexture_IMaterialProxy003",
+          "registration_va": 606491888,
+          "name_va": 606616972,
+          "factory_va": 604544736,
+          "registration_node_va": 607302292
+        },
+        {
+          "interface": "BreakableSurface_IMaterialProxy003",
+          "registration_va": 606498000,
+          "name_va": 606657640,
+          "factory_va": 604891344,
+          "registration_node_va": 607369252
+        },
+        {
+          "interface": "ConveyorScroll_IMaterialProxy003",
+          "registration_va": 606498112,
+          "name_va": 606658544,
+          "factory_va": 604900608,
+          "registration_node_va": 607369472
+        },
+        {
+          "interface": "MaterialModify_IMaterialProxy003",
+          "registration_va": 606499152,
+          "name_va": 606667484,
+          "factory_va": 604924208,
+          "registration_node_va": 607373520
+        },
+        {
+          "interface": "Camo_IMaterialProxy003",
+          "registration_va": 606503376,
+          "name_va": 606692912,
+          "factory_va": 605017696,
+          "registration_node_va": 607385204
+        },
+        {
+          "interface": "GameClientExports001",
+          "registration_va": 606503600,
+          "name_va": 606694928,
+          "factory_va": 605018128,
+          "registration_node_va": 607385572
+        },
+        {
+          "interface": "VClient011",
+          "registration_va": 606503680,
+          "name_va": 606694952,
+          "factory_va": 605018176,
+          "registration_node_va": 607385584
+        },
+        {
+          "interface": "VClientEntityList003",
+          "registration_va": 606503824,
+          "name_va": 606696428,
+          "factory_va": 605050544,
+          "registration_node_va": 607485512
+        },
+        {
+          "interface": "ClientLeafSystem001",
+          "registration_va": 606504032,
+          "name_va": 606697024,
+          "factory_va": 605063968,
+          "registration_node_va": 607486072
+        },
+        {
+          "interface": "Shadow_IMaterialProxy003",
+          "registration_va": 606504704,
+          "name_va": 606699084,
+          "factory_va": 605094848,
+          "registration_node_va": 607487064
+        },
+        {
+          "interface": "ShadowModel_IMaterialProxy003",
+          "registration_va": 606504736,
+          "name_va": 606699112,
+          "factory_va": 605090304,
+          "registration_node_va": 607487076
+        },
+        {
+          "interface": "Dummy_IMaterialProxy003",
+          "registration_va": 606505168,
+          "name_va": 606702876,
+          "factory_va": 605189376,
+          "registration_node_va": 607521324
+        },
+        {
+          "interface": "IEffects001",
+          "registration_va": 606505280,
+          "name_va": 606703268,
+          "factory_va": 605190016,
+          "registration_node_va": 607522624
+        },
+        {
+          "interface": "lampbeam_IMaterialProxy003",
+          "registration_va": 606517296,
+          "name_va": 606733396,
+          "factory_va": 605450496,
+          "registration_node_va": 607560168
+        },
+        {
+          "interface": "lamphalo_IMaterialProxy003",
+          "registration_va": 606517328,
+          "name_va": 606733456,
+          "factory_va": 605450864,
+          "registration_node_va": 607560180
+        },
+        {
+          "interface": "Add_IMaterialProxy003",
+          "registration_va": 606517360,
+          "name_va": 606734356,
+          "factory_va": 605480656,
+          "registration_node_va": 607594548
+        },
+        {
+          "interface": "Subtract_IMaterialProxy003",
+          "registration_va": 606517392,
+          "name_va": 606734380,
+          "factory_va": 605480992,
+          "registration_node_va": 607594560
+        },
+        {
+          "interface": "Multiply_IMaterialProxy003",
+          "registration_va": 606517424,
+          "name_va": 606734408,
+          "factory_va": 605481328,
+          "registration_node_va": 607594572
+        },
+        {
+          "interface": "Divide_IMaterialProxy003",
+          "registration_va": 606517456,
+          "name_va": 606734436,
+          "factory_va": 605481760,
+          "registration_node_va": 607594584
+        },
+        {
+          "interface": "Clamp_IMaterialProxy003",
+          "registration_va": 606517488,
+          "name_va": 606734464,
+          "factory_va": 605482304,
+          "registration_node_va": 607594596
+        },
+        {
+          "interface": "Sine_IMaterialProxy003",
+          "registration_va": 606517520,
+          "name_va": 606734488,
+          "factory_va": 605482384,
+          "registration_node_va": 607594608
+        },
+        {
+          "interface": "Equals_IMaterialProxy003",
+          "registration_va": 606517552,
+          "name_va": 606734512,
+          "factory_va": 605482608,
+          "registration_node_va": 607594620
+        },
+        {
+          "interface": "Frac_IMaterialProxy003",
+          "registration_va": 606517584,
+          "name_va": 606734540,
+          "factory_va": 605483040,
+          "registration_node_va": 607594632
+        },
+        {
+          "interface": "LinearRamp_IMaterialProxy003",
+          "registration_va": 606517616,
+          "name_va": 606734564,
+          "factory_va": 605483120,
+          "registration_node_va": 607594644
+        },
+        {
+          "interface": "UniformNoise_IMaterialProxy003",
+          "registration_va": 606517648,
+          "name_va": 606734596,
+          "factory_va": 605483200,
+          "registration_node_va": 607594656
+        },
+        {
+          "interface": "GaussianNoise_IMaterialProxy003",
+          "registration_va": 606517680,
+          "name_va": 606734628,
+          "factory_va": 605483280,
+          "registration_node_va": 607594668
+        },
+        {
+          "interface": "Exponential_IMaterialProxy003",
+          "registration_va": 606517712,
+          "name_va": 606734660,
+          "factory_va": 605483360,
+          "registration_node_va": 607594680
+        },
+        {
+          "interface": "Abs_IMaterialProxy003",
+          "registration_va": 606517744,
+          "name_va": 606734692,
+          "factory_va": 605483440,
+          "registration_node_va": 607594692
+        },
+        {
+          "interface": "Empty_IMaterialProxy003",
+          "registration_va": 606517776,
+          "name_va": 606734716,
+          "factory_va": 605483616,
+          "registration_node_va": 607594704
+        },
+        {
+          "interface": "LessOrEqual_IMaterialProxy003",
+          "registration_va": 606517808,
+          "name_va": 606734740,
+          "factory_va": 605483888,
+          "registration_node_va": 607594716
+        },
+        {
+          "interface": "TextureTransform_IMaterialProxy003",
+          "registration_va": 606517840,
+          "name_va": 606734872,
+          "factory_va": 605484720,
+          "registration_node_va": 607594728
+        },
+        {
+          "interface": "MatrixRotate_IMaterialProxy003",
+          "registration_va": 606517872,
+          "name_va": 606734908,
+          "factory_va": 605484960,
+          "registration_node_va": 607594740
+        },
+        {
+          "interface": "ParticleSphereProxy_IMaterialProxy003",
+          "registration_va": 606519539,
+          "name_va": 606738840,
+          "factory_va": 605530336,
+          "registration_node_va": 607599936
+        },
+        {
+          "interface": "Health_IMaterialProxy003",
+          "registration_va": 606521360,
+          "name_va": 606750780,
+          "factory_va": 605666976,
+          "registration_node_va": 607602928
+        },
+        {
+          "interface": "PlayerProximity_IMaterialProxy003",
+          "registration_va": 606521392,
+          "name_va": 606750964,
+          "factory_va": 605668128,
+          "registration_node_va": 607602952
+        },
+        {
+          "interface": "PlayerView_IMaterialProxy003",
+          "registration_va": 606521424,
+          "name_va": 606751000,
+          "factory_va": 605668384,
+          "registration_node_va": 607602964
+        },
+        {
+          "interface": "PlayerSpeed_IMaterialProxy003",
+          "registration_va": 606521456,
+          "name_va": 606751032,
+          "factory_va": 605668544,
+          "registration_node_va": 607602976
+        },
+        {
+          "interface": "PlayerPosition_IMaterialProxy003",
+          "registration_va": 606521488,
+          "name_va": 606751064,
+          "factory_va": 605668720,
+          "registration_node_va": 607602988
+        },
+        {
+          "interface": "EntitySpeed_IMaterialProxy003",
+          "registration_va": 606521520,
+          "name_va": 606751100,
+          "factory_va": 605668896,
+          "registration_node_va": 607603000
+        },
+        {
+          "interface": "EntityRandom_IMaterialProxy003",
+          "registration_va": 606521552,
+          "name_va": 606751132,
+          "factory_va": 605669040,
+          "registration_node_va": 607603012
+        },
+        {
+          "interface": "PlayerLogo_IMaterialProxy003",
+          "registration_va": 606521584,
+          "name_va": 606751164,
+          "factory_va": 605672880,
+          "registration_node_va": 607603024
+        },
+        {
+          "interface": "Pupil_IMaterialProxy003",
+          "registration_va": 606521616,
+          "name_va": 606751396,
+          "factory_va": 605674288,
+          "registration_node_va": 607603036
+        },
+        {
+          "interface": "TextureScroll_IMaterialProxy003",
+          "registration_va": 606523504,
+          "name_va": 606766652,
+          "factory_va": 605862800,
+          "registration_node_va": 607611072
+        },
+        {
+          "interface": "CurrentTime_IMaterialProxy003",
+          "registration_va": 606523536,
+          "name_va": 606766724,
+          "factory_va": 605869648,
+          "registration_node_va": 607612640
+        },
+        {
+          "interface": "ToggleTexture_IMaterialProxy003",
+          "registration_va": 606523568,
+          "name_va": 606766844,
+          "factory_va": 605870128,
+          "registration_node_va": 607612652
+        },
+        {
+          "interface": "WaterLOD_IMaterialProxy003",
+          "registration_va": 606527264,
+          "name_va": 606773752,
+          "factory_va": 605971760,
+          "registration_node_va": 607618796
+        },
+        {
+          "interface": "WorldDims_IMaterialProxy003",
+          "registration_va": 606528160,
+          "name_va": 606775396,
+          "factory_va": 605982176,
+          "registration_node_va": 607619516
+        },
+        {
+          "interface": "VCENTERPRINT002",
+          "registration_va": 606528240,
+          "name_va": 606780560,
+          "factory_va": 605996352,
+          "registration_node_va": 607619612
+        },
+        {
+          "interface": "GameMovement001",
+          "registration_va": 606529888,
+          "name_va": 606805220,
+          "factory_va": 606140992,
+          "registration_node_va": 607623848
+        },
+        {
+          "interface": "HeliBlade_IMaterialProxy003",
+          "registration_va": 606530720,
+          "name_va": 606809948,
+          "factory_va": 606166656,
+          "registration_node_va": 607627144
+        },
+        {
+          "interface": "VClientPrediction001",
+          "registration_va": 606540880,
+          "name_va": 606890020,
+          "factory_va": 606267952,
+          "registration_node_va": 607648308
+        },
+        {
+          "interface": "Shield_IMaterialProxy003",
+          "registration_va": 606540912,
+          "name_va": 606890084,
+          "factory_va": 606268576,
+          "registration_node_va": 607648320
+        }
+      ]
+    }
+  }
+}
