@@ -2359,3 +2359,17 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND BUILD_TESTING)
     COMMAND sin_original_win32_loader_tests
       $<TARGET_FILE:sin_original_win32_interface_probe>)
 endif()
+
+
+# Phase178: genuine 2006 original client/server singleton factory, MSVC32
+# RTTI and original vtable-prefix address metadata. No original engine ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_dll_engine_interface_objects_tests
+    tests/test_original_dll_engine_interface_objects.cpp)
+  target_include_directories(sin_original_dll_engine_interface_objects_tests
+    PRIVATE include)
+  target_compile_options(sin_original_dll_engine_interface_objects_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_dll_engine_interface_objects_tests
+    COMMAND sin_original_dll_engine_interface_objects_tests)
+endif()
