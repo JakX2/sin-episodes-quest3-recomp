@@ -51,3 +51,29 @@ add_dependencies(sin_pc_proxy_tests
 add_test(NAME sin_pc_win32_factory_forwarding COMMAND $<TARGET_FILE:sin_pc_proxy_tests>)
 set_tests_properties(sin_pc_win32_factory_forwarding PROPERTIES
   WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_proxy_tests>")
+
+
+# Phase177: test the original 2006 DLL CreateInterface registry semantics
+# using independently reconstructed host-neutral code.
+add_executable(sin_pc_abi_registry_tests
+  ../../tests/test_original_dll_interface_abi.cpp)
+target_include_directories(sin_pc_abi_registry_tests PRIVATE ../../include)
+sin_pc_configure(sin_pc_abi_registry_tests sin_pc_abi_registry_tests)
+add_test(NAME sin_original_dll_interface_abi_win32
+  COMMAND $<TARGET_FILE:sin_pc_abi_registry_tests>)
+
+# Real Windows x86 LoadLibrary/GetProcAddress probe of a SYNTHETIC DLL.
+# It checks only the undecorated CreateInterface cdecl export and the
+# matched/missing return-status convention; never claims to load the game.
+add_library(sin_pc_abi_probe SHARED
+  ../../tests/original_win32_loader_probe.cpp
+  ../../tests/original_win32_loader_probe.def)
+sin_pc_configure(sin_pc_abi_probe sin_original_abi_probe)
+
+add_executable(sin_pc_abi_loader_tests
+  ../../tests/test_original_win32_loader.cpp)
+sin_pc_configure(sin_pc_abi_loader_tests sin_pc_abi_loader_tests)
+add_dependencies(sin_pc_abi_loader_tests sin_pc_abi_probe)
+add_test(NAME sin_original_win32_CreateInterface_loader
+  COMMAND $<TARGET_FILE:sin_pc_abi_loader_tests>
+    $<TARGET_FILE:sin_pc_abi_probe>)
