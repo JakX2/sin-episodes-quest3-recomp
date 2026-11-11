@@ -2259,3 +2259,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_factory_dispatch_tests
     COMMAND sin_original_server_factory_dispatch_tests)
 endif()
+
+# Phase172: original 2006 server.dll registration slot, provider writers,
+# and signed-byte classname hash. Native engine allocator remains separate.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_registry_registration_tests
+    tests/test_original_server_registry_registration.cpp)
+  target_include_directories(sin_original_server_registry_registration_tests
+    PRIVATE include)
+  target_compile_options(sin_original_server_registry_registration_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_registry_registration_tests
+    COMMAND sin_original_server_registry_registration_tests)
+endif()

@@ -1127,6 +1127,54 @@
       "label": "Original raw 16-bit record index scaled by 16 to address record+0xC",
       "original_code_length": 18,
       "original_code_sha256": "28b0a8d65b4efb61b7c2be4b21a107fa30757f2208c14612ceb98396691cde47"
+    },
+    {
+      "dll": "server",
+      "owner": "server original classname factory registry",
+      "evidence_path": "research/phases/phase172-original-server-registry-registration-hash.md",
+      "implementation_path": "include/sin_compat/original_server_registry_registration.hpp",
+      "test_path": "tests/test_original_server_registry_registration.cpp",
+      "entry_va": "0x2228AEC0",
+      "label": "Original registry embedded-table existing symbol slot finder with native intern and 0xFFFF 16-bit index result",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 60,
+      "original_code_sha256": "22925b759c92d8e17fea6181e5eb1ac9c6fbb3c68cb081b731592ff10e72c8ec"
+    },
+    {
+      "dll": "server",
+      "owner": "server original classname factory registry",
+      "evidence_path": "research/phases/phase172-original-server-registry-registration-hash.md",
+      "implementation_path": "include/sin_compat/original_server_registry_registration.hpp",
+      "test_path": "tests/test_original_server_registry_registration.cpp",
+      "entry_va": "0x2228B140",
+      "label": "Original embedded registry subobject pointer-indirect 32-bit provider registration into indexed 16-byte record",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 79,
+      "original_code_sha256": "a66c1b2ab5b3ff865fe672c5b02aa2ab10858ed3f867589593c3f6d537b09259"
+    },
+    {
+      "dll": "server",
+      "owner": "server original classname factory registry",
+      "evidence_path": "research/phases/phase172-original-server-registry-registration-hash.md",
+      "implementation_path": "include/sin_compat/original_server_registry_registration.hpp",
+      "test_path": "tests/test_original_server_registry_registration.cpp",
+      "entry_va": "0x2228B190",
+      "label": "Original registry vtable slot0 classname/direct provider record registration and find-or-insert",
+      "recovery_status": "machine_code_verified",
+      "original_code_length": 78,
+      "original_code_sha256": "cc1922a54b06dc0518f57e6d20c30b0d7bf18fcfea58180fcfdcefbd2de79752"
+    },
+    {
+      "dll": "server",
+      "owner": "server original classname factory registry",
+      "evidence_path": "research/phases/phase172-original-server-registry-registration-hash.md",
+      "implementation_path": "include/sin_compat/original_server_registry_registration.hpp",
+      "test_path": "tests/test_original_server_registry_registration.cpp",
+      "entry_va": "0x2228B1E0",
+      "label": "Original zero-terminated classname DJB2-style hash with signed 8-bit bytes and uint32 wrap",
+      "recovery_status": "behavior_reconstructed",
+      "original_code_length": 40,
+      "original_code_sha256": "1cbb4f8f3651d9dbfae4235ec60dce656bbf53569dca30ad8af027799571403a"
     }
   ]
 }
