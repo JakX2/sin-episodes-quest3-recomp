@@ -1,4 +1,9 @@
 #include "sin_compat/original_dll_initialization.hpp"
+// Win32 MSVC CI builds Release with NDEBUG; these assertions are the test,
+// so ensure they remain active rather than silently passing an empty run.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cstdint>
 #include <cstring>
