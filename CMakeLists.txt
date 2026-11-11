@@ -2300,3 +2300,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_registry_tree_search_tests
     COMMAND sin_original_server_registry_tree_search_tests)
 endif()
+
+# Phase175: owner-original x86 12-byte node storage, free-list and tree-link
+# reference. Original Source/MSVC allocation and balancing remain external.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_symbol_tree_storage_tests
+    tests/test_original_server_symbol_tree_storage.cpp)
+  target_include_directories(sin_original_server_symbol_tree_storage_tests
+    PRIVATE include)
+  target_compile_options(sin_original_server_symbol_tree_storage_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_symbol_tree_storage_tests
+    COMMAND sin_original_server_symbol_tree_storage_tests)
+endif()

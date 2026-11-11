@@ -1271,6 +1271,66 @@
       "recovery_status": "machine_code_verified",
       "original_code_length": 94,
       "original_code_sha256": "7ca27d4cc81fb20c1576b8289ed71e4d7f1bf889baef72018a811357a799f52d"
+    },
+    {
+      "dll": "server",
+      "owner": "original server 12-byte symbol registry storage",
+      "evidence_path": "research/phases/phase175-original-server-symbol-tree-storage.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_tree_storage.hpp",
+      "test_path": "tests/test_original_server_symbol_tree_storage.cpp",
+      "entry_va": "0x2228E0E0",
+      "label": "Original 12-byte symbol record index-to-pointer accessor, unchecked zero-extended uint16 offset",
+      "original_code_length": 17,
+      "original_code_sha256": "9047b1c9eb80f184fa071a6108f8601051de53ea7ff23b549b7ea28a6233fc18",
+      "recovery_status": "behavior_reconstructed"
+    },
+    {
+      "dll": "server",
+      "owner": "original server 12-byte symbol registry storage",
+      "evidence_path": "research/phases/phase175-original-server-symbol-tree-storage.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_tree_storage.hpp",
+      "test_path": "tests/test_original_server_symbol_tree_storage.cpp",
+      "entry_va": "0x2228E450",
+      "label": "Original symbol record right child WORD writer at record+2",
+      "original_code_length": 24,
+      "original_code_sha256": "3a19f97ad1b4b9d5abf34e4bbd2a7fff9dd645dee2b2aa3519ac2cca35cded05",
+      "recovery_status": "behavior_reconstructed"
+    },
+    {
+      "dll": "server",
+      "owner": "original server 12-byte symbol registry storage",
+      "evidence_path": "research/phases/phase175-original-server-symbol-tree-storage.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_tree_storage.hpp",
+      "test_path": "tests/test_original_server_symbol_tree_storage.cpp",
+      "entry_va": "0x2228E620",
+      "label": "Original 16-bit symbol free-list / fresh slot allocator and optional capacity grow",
+      "original_code_length": 86,
+      "original_code_sha256": "9b74307d379f272da366ba0b6d6ce0c8f486dbd23744783f101446acd14cb14b",
+      "recovery_status": "machine_code_verified"
+    },
+    {
+      "dll": "server",
+      "owner": "original server 12-byte symbol registry storage",
+      "evidence_path": "research/phases/phase175-original-server-symbol-tree-storage.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_tree_storage.hpp",
+      "test_path": "tests/test_original_server_symbol_tree_storage.cpp",
+      "entry_va": "0x2228E680",
+      "label": "Original signed DWORD capacity reserve and append with wrapping used count",
+      "original_code_length": 46,
+      "original_code_sha256": "4723bd92f6896d1f8887b2652295669e8280e5d4373b6cf2947b7947ed0927a4",
+      "recovery_status": "behavior_reconstructed"
+    },
+    {
+      "dll": "server",
+      "owner": "original server 12-byte symbol registry storage",
+      "evidence_path": "research/phases/phase175-original-server-symbol-tree-storage.md",
+      "implementation_path": "include/sin_compat/original_server_symbol_tree_storage.hpp",
+      "test_path": "tests/test_original_server_symbol_tree_storage.cpp",
+      "entry_va": "0x2228F460",
+      "label": "Original 12-byte symbol node left/right/root wiring with unconditional native rebalance callback",
+      "original_code_length": 109,
+      "original_code_sha256": "9da5ebfd31dde84f40dbb9c53852824e085b2b2ad5958e5b908d1dca83a03a8a",
+      "recovery_status": "machine_code_verified"
     }
   ]
 }
