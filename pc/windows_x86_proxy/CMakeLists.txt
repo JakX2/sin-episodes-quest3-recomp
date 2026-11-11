@@ -71,6 +71,9 @@ add_test(NAME sin_original_dll_interface_abi_win32
 add_library(sin_pc_abi_probe SHARED
   ../../tests/original_win32_loader_probe.cpp
   ../../tests/original_win32_loader_probe.def)
+target_include_directories(sin_pc_abi_probe PRIVATE ../../include)
+set_target_properties(sin_pc_abi_probe PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 sin_pc_configure(sin_pc_abi_probe sin_original_abi_probe)
 
 add_executable(sin_pc_abi_loader_tests
