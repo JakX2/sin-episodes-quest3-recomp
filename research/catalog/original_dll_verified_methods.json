@@ -1427,6 +1427,114 @@
       "evidence_path": "research/phases/phase177-original-dll-createinterface-entrypoints.md",
       "implementation_path": "include/sin_compat/original_dll_interface_abi.hpp",
       "test_path": "tests/test_original_dll_interface_abi.cpp"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x221E7630",
+      "owner": "original server engine-interface CreateInterface factory",
+      "label": "Original ServerGameDLL003 six-byte singleton-return factory; PE-backed RTTI/vtable",
+      "original_code_length": 6,
+      "original_code_sha256": "d878272797e03ad3c82d0a18ffaceef5be1f25fb3d33dbaf1493c240fefc369b"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x221E82C0",
+      "owner": "original server engine-interface CreateInterface factory",
+      "label": "Original ServerGameEnts001 six-byte singleton-return factory; PE-backed RTTI/vtable",
+      "original_code_length": 6,
+      "original_code_sha256": "81f3c5629ce13db9b52fddf5328c9d8301d28f7d02a510d2108ede5d9d3ea532"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x221E8320",
+      "owner": "original server engine-interface CreateInterface factory",
+      "label": "Original ServerGameClients003 six-byte singleton-return factory; PE-backed RTTI/vtable",
+      "original_code_length": 6,
+      "original_code_sha256": "c811e01f62d7f1a8ec30e417c67c5e99dbf5f6dd9fa6a7112f92790e4bdece9c"
+    },
+    {
+      "dll": "server",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x222CFFE0",
+      "owner": "original server engine-interface CreateInterface factory",
+      "label": "Original GameMovement001 six-byte singleton-return factory; runtime-initialized vptr unresolved",
+      "original_code_length": 6,
+      "original_code_sha256": "70c5729215c8f7f0d736f6cd9f1c6c780eaa4e2763c0db5d6c881628720f6117"
+    },
+    {
+      "dll": "client",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x240FD810",
+      "owner": "original client engine-interface CreateInterface factory",
+      "label": "Original GameClientExports001 six-byte singleton-return factory; PE-backed RTTI/vtable",
+      "original_code_length": 6,
+      "original_code_sha256": "e65c1e17c05a9b36167fe1e9bee4af19b9055e0b9764c299ee84d053f73d2d26"
+    },
+    {
+      "dll": "client",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x240FD840",
+      "owner": "original client engine-interface CreateInterface factory",
+      "label": "Original VClient011 six-byte singleton-return factory; PE-backed RTTI/vtable",
+      "original_code_length": 6,
+      "original_code_sha256": "72b920d06b2ea5b37dc9fe0b0a8821128ab5d7604d4d4bae35a9f6e01a86aa6c"
+    },
+    {
+      "dll": "client",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x241056B0",
+      "owner": "original client engine-interface CreateInterface factory",
+      "label": "Original VClientEntityList003 six-byte singleton-return factory; runtime-initialized vptr unresolved",
+      "original_code_length": 6,
+      "original_code_sha256": "af71d0de06e3cbfaf91c55fd1a68e973d49c6998f6dea1b6e834d33aaa465905"
+    },
+    {
+      "dll": "client",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x2422EA30",
+      "owner": "original client engine-interface CreateInterface factory",
+      "label": "Original VClientPrediction001 six-byte singleton-return factory; runtime-initialized vptr unresolved",
+      "original_code_length": 6,
+      "original_code_sha256": "72a64b5a986505d8284d4487eb23c37528a0d79f7ba3a000a2c484790b33d1d8"
+    },
+    {
+      "dll": "client",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase178-original-engine-interface-singletons-vtables.md",
+      "implementation_path": "include/sin_compat/original_dll_engine_interface_objects.hpp",
+      "test_path": "tests/test_original_dll_engine_interface_objects.cpp",
+      "entry_va": "0x2420FA40",
+      "owner": "original client engine-interface CreateInterface factory",
+      "label": "Original GameMovement001 six-byte singleton-return factory; runtime-initialized vptr unresolved",
+      "original_code_length": 6,
+      "original_code_sha256": "2d707f00df3baa85babb91c2ae1f759df7e49cb70ce82bc7dc25dbfa57066cde"
     }
   ]
 }
