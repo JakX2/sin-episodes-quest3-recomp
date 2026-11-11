@@ -58,6 +58,9 @@ set_tests_properties(sin_pc_win32_factory_forwarding PROPERTIES
 add_executable(sin_pc_abi_registry_tests
   ../../tests/test_original_dll_interface_abi.cpp)
 target_include_directories(sin_pc_abi_registry_tests PRIVATE ../../include)
+# MSVC defaults to an older dialect here; the recovered ABI header is C++17.
+set_target_properties(sin_pc_abi_registry_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 sin_pc_configure(sin_pc_abi_registry_tests sin_pc_abi_registry_tests)
 add_test(NAME sin_original_dll_interface_abi_win32
   COMMAND $<TARGET_FILE:sin_pc_abi_registry_tests>)
