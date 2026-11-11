@@ -14,7 +14,12 @@
       "recovery_status": "machine_code_verified",
       "original_code_sha256": "abb6eb2fc523fc0cb6301630e7ba9f0b61e70e48f15d5809145171250898b680",
       "evidence_path": "research/phases/sin-original-client-server-init-handshakes.md",
-      "original_code_length": 875
+      "original_code_length": 875,
+      "additional_evidence_paths": [
+        "research/phases/phase179-original-win32-initialization-interface-contract.md"
+      ],
+      "additional_implementation_path": "include/sin_compat/original_dll_initialization.hpp",
+      "additional_test_path": "tests/test_original_dll_initialization.cpp"
     },
     {
       "dll": "client",
@@ -24,7 +29,12 @@
       "recovery_status": "machine_code_verified",
       "original_code_sha256": "14d81449866220aaef1f5f906b577179ea107df78a424a364c715261adbb35db",
       "evidence_path": "research/phases/sin-original-client-server-init-handshakes.md",
-      "original_code_length": 1220
+      "original_code_length": 1220,
+      "additional_evidence_paths": [
+        "research/phases/phase179-original-win32-initialization-interface-contract.md"
+      ],
+      "additional_implementation_path": "include/sin_compat/original_dll_initialization.hpp",
+      "additional_test_path": "tests/test_original_dll_initialization.cpp"
     },
     {
       "dll": "server",

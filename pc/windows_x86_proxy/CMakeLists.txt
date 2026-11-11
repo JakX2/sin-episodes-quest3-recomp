@@ -83,3 +83,16 @@ add_dependencies(sin_pc_abi_loader_tests sin_pc_abi_probe)
 add_test(NAME sin_original_win32_CreateInterface_loader
   COMMAND $<TARGET_FILE:sin_pc_abi_loader_tests>
     $<TARGET_FILE:sin_pc_abi_probe>)
+
+
+# Phase179: test original server/client Init early interface negotiation
+# using the real Windows x86 MSVC compiler, against synthetic callbacks.
+# This does NOT load the original game or implement full engine startup.
+add_executable(sin_pc_original_init_contract_tests
+  ../../tests/test_original_dll_initialization.cpp)
+target_include_directories(sin_pc_original_init_contract_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_init_contract_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_init_contract_tests sin_pc_original_init_contract_tests)
+add_test(NAME sin_original_win32_initialization_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_init_contract_tests>)

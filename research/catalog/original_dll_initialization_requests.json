@@ -1,0 +1,438 @@
+{
+  "phase": 179,
+  "source": "exact 2006 owner-original SHA-pinned PE32 engine game initialization methods",
+  "scope": "prefix interface negotiation and late interface lookup evidence; NOT full initializer implementation",
+  "dlls": {
+    "server": {
+      "function_va": "0x221e7640",
+      "function_len": 875,
+      "original_sha256": "abb6eb2fc523fc0cb6301630e7ba9f0b61e70e48f15d5809145171250898b680",
+      "prefix_requests": [
+        {
+          "name": "VEngineServer021",
+          "request_va": "0x221e7649",
+          "name_va": "0x22442a48",
+          "storage_va": "0x22572198",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "VoiceServer001",
+          "request_va": "0x221e7662",
+          "name_va": "0x22442a38",
+          "storage_va": "0x2257219c",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "VEngineCvar002",
+          "request_va": "0x221e767b",
+          "name_va": "0x22442a28",
+          "storage_va": "0x225721a0",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "VEngineServerStringTable001",
+          "request_va": "0x221e7694",
+          "name_va": "0x22442a0c",
+          "storage_va": "0x225721a8",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "StaticPropMgrServer002",
+          "request_va": "0x221e76ad",
+          "name_va": "0x224429f4",
+          "storage_va": "0x225721ac",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "VEngineRandom001",
+          "request_va": "0x221e76c6",
+          "name_va": "0x224429e0",
+          "storage_va": "0x225721b0",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "IEngineSoundServer003",
+          "request_va": "0x221e76df",
+          "name_va": "0x224429c8",
+          "storage_va": "0x225721b4",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "SpatialPartition001",
+          "request_va": "0x221e76f8",
+          "name_va": "0x224429b4",
+          "storage_va": "0x225721b8",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "VModelInfoServer001",
+          "request_va": "0x221e7711",
+          "name_va": "0x224429a0",
+          "storage_va": "0x225721bc",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "EngineTraceServer003",
+          "request_va": "0x221e772a",
+          "name_va": "0x22442988",
+          "storage_va": "0x225721c0",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "VFileSystem012",
+          "request_va": "0x221e7747",
+          "name_va": "0x22442978",
+          "storage_va": "0x225721a4",
+          "factory": "filesystem",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "GAMEEVENTSMANAGER002",
+          "request_va": "0x221e7760",
+          "name_va": "0x22442960",
+          "storage_va": "0x225721c4",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "VEngineCache001",
+          "request_va": "0x221e7779",
+          "name_va": "0x22442950",
+          "storage_va": "0x225721c8",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "VSoundEmitter001",
+          "request_va": "0x221e7792",
+          "name_va": "0x2244293c",
+          "storage_va": "0x225721d0",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "ServerUploadGameStats001",
+          "request_va": "0x221e77ab",
+          "name_va": "0x22442920",
+          "storage_va": "0x22572194",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        },
+        {
+          "name": "ISERVERPLUGINHELPERS001",
+          "request_va": "0x221e77c4",
+          "name_va": "0x22442908",
+          "storage_va": "0x225721d4",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x221e79a1"
+        }
+      ],
+      "later_requests": [
+        {
+          "name": "VDebugOverlay003",
+          "request_va": "0x221e7942",
+          "name_va": "0x224428b8",
+          "storage_va": "0x225721cc",
+          "factory": "engine",
+          "required": false,
+          "phase": "late_optional"
+        }
+      ],
+      "failure_return_va": "0x221e79a1"
+    },
+    "client": {
+      "function_va": "0x240fe0e0",
+      "function_len": 1220,
+      "original_sha256": "14d81449866220aaef1f5f906b577179ea107df78a424a364c715261adbb35db",
+      "prefix_requests": [
+        {
+          "name": "VEngineClient012",
+          "request_va": "0x240fe109",
+          "name_va": "0x24296aec",
+          "storage_va": "0x2433f684",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e",
+          "special_initial_store": true
+        },
+        {
+          "name": "VEngineModel012",
+          "request_va": "0x240fe127",
+          "name_va": "0x24296adc",
+          "storage_va": "0x2433f688",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VEngineEffects001",
+          "request_va": "0x240fe140",
+          "name_va": "0x24296ac8",
+          "storage_va": "0x2433f68c",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VEngineCvar002",
+          "request_va": "0x240fe159",
+          "name_va": "0x24296ab8",
+          "storage_va": "0x2433f690",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "EngineTraceClient003",
+          "request_va": "0x240fe172",
+          "name_va": "0x24296aa0",
+          "storage_va": "0x2433f6d8",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VEngineRenderView011",
+          "request_va": "0x240fe18b",
+          "name_va": "0x24296a88",
+          "storage_va": "0x2433f694",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VDebugOverlay003",
+          "request_va": "0x240fe1a4",
+          "name_va": "0x24296a74",
+          "storage_va": "0x2433f698",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VMaterialSystem076",
+          "request_va": "0x240fe1bd",
+          "name_va": "0x24296a60",
+          "storage_va": "0x2433f69c",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VEngineCache001",
+          "request_va": "0x240fe1d6",
+          "name_va": "0x24296a50",
+          "storage_va": "0x2433f6a8",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VModelInfoClient003",
+          "request_va": "0x240fe1ef",
+          "name_va": "0x24296a3c",
+          "storage_va": "0x2433f6ac",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VEngineVGui001",
+          "request_va": "0x240fe208",
+          "name_va": "0x24296a2c",
+          "storage_va": "0x2433f6b0",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VEngineClientStringTable001",
+          "request_va": "0x240fe221",
+          "name_va": "0x24296a10",
+          "storage_va": "0x2433f6b4",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "SpatialPartition001",
+          "request_va": "0x240fe23a",
+          "name_va": "0x242969fc",
+          "storage_va": "0x2433f6b8",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VEngineShadowMgr002",
+          "request_va": "0x240fe253",
+          "name_va": "0x242969e8",
+          "storage_va": "0x2433f6c0",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "StaticPropMgrClient004",
+          "request_va": "0x240fe26c",
+          "name_va": "0x242969d0",
+          "storage_va": "0x2433f6c4",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "IEngineSoundClient003",
+          "request_va": "0x240fe285",
+          "name_va": "0x242969b8",
+          "storage_va": "0x2433f6c8",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VFileSystem012",
+          "request_va": "0x240fe29e",
+          "name_va": "0x242d328c",
+          "storage_va": "0x2433f6bc",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VEngineRandom001",
+          "request_va": "0x240fe2b7",
+          "name_va": "0x242969a4",
+          "storage_va": "0x2433f6cc",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VENGINE_GAMEUIFUNCS_VERSION004",
+          "request_va": "0x240fe2d0",
+          "name_va": "0x24296984",
+          "storage_va": "0x2433f6dc",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "GAMEEVENTSMANAGER002",
+          "request_va": "0x240fe2e9",
+          "name_va": "0x2429696c",
+          "storage_va": "0x2433f6e0",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "VSoundEmitter001",
+          "request_va": "0x240fe302",
+          "name_va": "0x24296958",
+          "storage_va": "0x2433f6e4",
+          "factory": "engine",
+          "required": true,
+          "phase": "mandatory_prefix",
+          "failure_target": "0x240fe59e"
+        }
+      ],
+      "later_requests": [
+        {
+          "name": "VMaterialSystemStub001",
+          "request_va": "0x240fe347",
+          "name_va": "0x24296934",
+          "storage_va": "0x2433f6a0",
+          "factory": "engine",
+          "required": false,
+          "phase": "late_optional"
+        },
+        {
+          "name": "MaterialSystemHardwareConfig012",
+          "request_va": "0x240fe362",
+          "name_va": "0x24296914",
+          "storage_va": "0x2433f6a4",
+          "factory": "derived_virtual",
+          "required": true,
+          "phase": "later_conditional",
+          "call_va": "0x240fe367",
+          "failure_target": "0x240fe59e"
+        },
+        {
+          "name": "MatSystemSurface003",
+          "request_va": "0x240fe3e1",
+          "name_va": "0x24296900",
+          "storage_va": "0x2433f6d0",
+          "factory": "derived_virtual",
+          "required": true,
+          "phase": "later_conditional",
+          "call_va": "0x240fe3e6",
+          "failure_target": "0x240fe59e"
+        }
+      ],
+      "failure_return_va": "0x240fe59e"
+    }
+  }
+}

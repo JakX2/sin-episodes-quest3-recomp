@@ -2373,3 +2373,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_dll_engine_interface_objects_tests
     COMMAND sin_original_dll_engine_interface_objects_tests)
 endif()
+
+
+# Phase179: both SHA-pinned original 2006 server/client Init function bodies
+# with 37 mandatory early engine interface requests and isolated late queries.
+# Synthetic host model, not a real Source engine module init implementation.
+if(BUILD_TESTING)
+  add_executable(sin_original_dll_initialization_tests
+    tests/test_original_dll_initialization.cpp)
+  target_include_directories(sin_original_dll_initialization_tests PRIVATE include)
+  target_compile_options(sin_original_dll_initialization_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_dll_initialization_tests
+    COMMAND sin_original_dll_initialization_tests)
+endif()
