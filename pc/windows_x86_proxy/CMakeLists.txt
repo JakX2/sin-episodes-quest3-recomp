@@ -96,3 +96,17 @@ set_target_properties(sin_pc_original_init_contract_tests PROPERTIES
 sin_pc_configure(sin_pc_original_init_contract_tests sin_pc_original_init_contract_tests)
 add_test(NAME sin_original_win32_initialization_contract
   COMMAND $<TARGET_FILE:sin_pc_original_init_contract_tests>)
+
+
+# Phase180: verify original app-system creation rollback and physics three-
+# interface failure ordering on native MSVC Win32 x86. Synthetic callbacks.
+add_executable(sin_pc_original_client_postinit_contract_tests
+  ../../tests/test_original_client_postinit.cpp)
+target_include_directories(sin_pc_original_client_postinit_contract_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_postinit_contract_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_postinit_contract_tests
+  sin_pc_original_client_postinit_contract_tests)
+add_test(NAME sin_original_win32_client_postinit_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_postinit_contract_tests>)

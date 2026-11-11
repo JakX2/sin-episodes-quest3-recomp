@@ -1545,6 +1545,42 @@
       "label": "Original GameMovement001 six-byte singleton-return factory; runtime-initialized vptr unresolved",
       "original_code_length": 6,
       "original_code_sha256": "2d707f00df3baa85babb91c2ae1f759df7e49cb70ce82bc7dc25dbfa57066cde"
+    },
+    {
+      "dll": "client",
+      "owner": "original 2006 client.dll post-init app-system / physics startup",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase180-original-client-app-physics-postinit.md",
+      "implementation_path": "include/sin_compat/original_client_postinit.hpp",
+      "test_path": "tests/test_original_client_postinit.cpp",
+      "entry_va": "0x241640F0",
+      "label": "Original client app-system linked-list cleanup: callback on owned pointers and global zeroing",
+      "original_code_length": 48,
+      "original_code_sha256": "93dbf327403a2963eba2ee6341b0aa5bfc0a7fef581840e57b71b418d7ae78d2"
+    },
+    {
+      "dll": "client",
+      "owner": "original 2006 client.dll post-init app-system / physics startup",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase180-original-client-app-physics-postinit.md",
+      "implementation_path": "include/sin_compat/original_client_postinit.hpp",
+      "test_path": "tests/test_original_client_postinit.cpp",
+      "entry_va": "0x24164120",
+      "label": "Original client optional/required app-system creation and full-list rollback on mandatory failure",
+      "original_code_length": 54,
+      "original_code_sha256": "645a9002d77b476692fe8688d691e87c4d2ebf8a61976be9eda071e41d7d3b7f"
+    },
+    {
+      "dll": "client",
+      "owner": "original 2006 client.dll post-init app-system / physics startup",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase180-original-client-app-physics-postinit.md",
+      "implementation_path": "include/sin_compat/original_client_postinit.hpp",
+      "test_path": "tests/test_original_client_postinit.cpp",
+      "entry_va": "0x24182C60",
+      "label": "Original client ordered VPhysics030, surface props and collision interface bootstrap and coupling callback",
+      "original_code_length": 97,
+      "original_code_sha256": "46e079ea76e0cfee721efe3a421d68920cf980079aea4d76d7542f6f9b5281f2"
     }
   ]
 }

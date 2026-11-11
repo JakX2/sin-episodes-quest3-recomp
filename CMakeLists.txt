@@ -2387,3 +2387,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_dll_initialization_tests
     COMMAND sin_original_dll_initialization_tests)
 endif()
+
+
+# Phase180: exact original client.dll post-Init app list creation/cleanup
+# and triple VPhysics interface negotiation; host-neutral, not game ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_postinit_tests
+    tests/test_original_client_postinit.cpp)
+  target_include_directories(sin_original_client_postinit_tests PRIVATE include)
+  target_compile_options(sin_original_client_postinit_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_postinit_tests
+    COMMAND sin_original_client_postinit_tests)
+endif()
