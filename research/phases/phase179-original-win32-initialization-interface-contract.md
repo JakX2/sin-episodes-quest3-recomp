@@ -1,6 +1,6 @@
 # Phase 179: Real 2006 Win32 game-module Init interface negotiation
 
-11 November 2026. Stacked on Phase178 draft PR #231. Actual owner-supplied original Windows PE32 `server.dll` and `client.dll` binaries were read locally. Neither file, original executable body, commercial assets or full disassembly is committed.
+11 November 2026. Stacked on Phase178 draft PR #231. **Extension of Phase85** original Init handshake research: its two functions and 37 early requests are not counted again. Actual owner-supplied original Windows PE32 `server.dll` and `client.dll` binaries were read locally. Neither file, original executable body, commercial assets or full disassembly is committed.
 
 ## Original PE32 provenance and complete function body hashes
 
@@ -87,7 +87,7 @@ Important distinction: original server `VFileSystem012` is called through its **
 - `research/catalog/original_dll_initialization_requests.json`: exact per-site request VA, native `.rdata` string address, source, global DWORD, required/optional behavior; SHA256 `fcd4df72892e18013d8167e62f65ede456f454a05ee4ee9b0cc85c9077a80bef` including terminal newline.
 - `research/tools/audit_sin_original_dll_initialization.py`: chains Phase178 full-original client/server SHA, native PE exports, 65 static registrations, nine factory singleton bodies, five RTTI object families and 105 vtable pointers. Additionally verifies both full original native Init body SHA256s, all **41** interface query names/call instruction patterns/published global addresses, **39** required interface failure branches, the differing filesystem callback origins and original success/failure epilogues.
 - `research/tests/test_sin_original_dll_initialization.py`: **10 original-free Python tests** including 41 interface-name byte mutations, 82 instruction mutations, all 37 mandatory-prefix failure edge mutations, two derived failure edges, full native hash rejection for synthetic fixtures and 39 independent early-failure/success branch cases.
-- Original reviewed-method atlas **131 -> 133** (`server 75`, `client 58`). The native bodies are hash verified but the executable-original ABI and full function side effects remain unported.
+- **No new unique function count:** the same two full original Init function hashes were already catalogued in **Phase85** (`research/phases/sin-original-client-server-init-handshakes.md`). Phase179 adds 41-site call/global metadata, two separately verified later derived-virtual requests, a staged late-query model and Windows MSVC regression coverage. The reviewed atlas remains **131** (`74 server`, `57 client`).
 - Root CMake and actual Windows x86 proxy CMake register the independent C++17 regression; Windows PE32 CI does **not** load the real game engine.
 
 ### Original owner-local verification
