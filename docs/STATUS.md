@@ -259,3 +259,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Owner-only original dual-DLL SHA256 gate and Phase181 chaining; five whole native function hashes, **48 sparse opcode + 8 indirect vtable CALL witnesses, 5 internal and 2 incoming direct CALLs**, separate type-table SHA and four original strings verified. Eleven original-free Python tests, local GCC/Clang optimized C++17 `-Werror` reference tests pass; real Win32 MSVC CTest target added.
 - Unique reviewed-function atlas **141 -> 146 (74 server, 72 client)**. This is not whole-game completion or original-engine gameplay proof.
 - See `research/phases/phase182-original-client-surface-file-typed-values.md`. Native file data parser, real Win32 engine startup and game-level validation still outstanding; Windows PC first, Android then Quest 3.
+
+
+## 2026-11-12: original nested KeyValues lookup and setter routines (Phase183)
+
+- Directly recovered **six complete original 2006 client.dll x86 functions totaling 609 bytes**: slash-segmented `FindKey` search/creation `0x241656E0` (267 bytes), narrow string setter `0x24165AE0` (126), wide UTF-16 setter `0x24165B60` (117), and three 33-byte tagged integer/float/opaque-DWORD setter wrappers at `0x24165BE0`, `0x24165C10`, `0x24165C40`.
+- Nested lookup uses KeyValuesSystem virtual +0x0C for symbol lookup, child +0x1C / peer +0x18 / fallback chain +0x20, creation via `0x24165010` and 0x28-byte allocation, optional recursion on slash suffix, and parent type clear on child creation. String setters release prior narrow/wide values; raw setters write type-tag +0x10 and raw bits +0x0C.
+- Owner-only paired original DLL SHA256 and six complete native region SHA256 checks, **54 sparse instruction witnesses, 16 internal and 4 incoming exact x86 CALL rel32 edges, two original empty literals**. Standalone native audit, eleven original-free Python mutation tests and local GCC/Clang C++17 `-Werror` tests passed. Synthetic real-MSVC Win32 CTest target added; CI result must be checked independently.
+- Reviewed unique function ledger **146 → 152 (74 server, 78 client)**. The original KeyValuesSystem symbol allocator, constructor, memory ownership, whole physics file parser, live Source engine startup and gameplay are still unresolved. This is a host-neutral model and not a working original client DLL.
+- See `research/phases/phase183-original-client-keyvalues-find-create-and-setters.md`; original Windows executable gameplay first, Android second, Quest3 third.

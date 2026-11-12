@@ -137,3 +137,17 @@ sin_pc_configure(sin_pc_original_surface_file_tests
   sin_pc_original_surface_file_tests)
 add_test(NAME sin_original_win32_client_surface_file_contract
   COMMAND $<TARGET_FILE:sin_pc_original_surface_file_tests>)
+
+
+# Phase183: native Win32 MSVC x86 synthetic KeyValues branch and typed setter
+# tests; no actual SiN game engine object or commercial DLL bytes involved.
+add_executable(sin_pc_original_keyvalues_setters_tests
+  ../../tests/test_original_client_keyvalues_setters.cpp)
+target_include_directories(sin_pc_original_keyvalues_setters_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_keyvalues_setters_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_keyvalues_setters_tests
+  sin_pc_original_keyvalues_setters_tests)
+add_test(NAME sin_original_win32_client_keyvalues_setters_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_keyvalues_setters_tests>)

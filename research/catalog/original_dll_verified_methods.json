@@ -1725,6 +1725,78 @@
       "original_code_sha256": "00ecc6870ea5a88df35279c6bba7ed2c9b626b3600bec486303451b64ceede86",
       "label": "Original surface properties virtual method +0xC raw two-input forwarder",
       "recovery_status": "behavior_reconstructed"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues tree lookup, creation and value setters",
+      "entry_va": "0x241656E0",
+      "label": "Original client KeyValues nested slash path FindKey and optional child creation",
+      "original_code_length": 267,
+      "original_code_sha256": "132b5ecb73db4bee8a0d930a26c35006115d25aceaf6d42b3e6a4558c46cfbc3",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase183-original-client-keyvalues-find-create-and-setters.md",
+      "implementation_path": "include/sin_compat/original_client_keyvalues_setters.hpp",
+      "test_path": "tests/test_original_client_keyvalues_setters.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues tree lookup, creation and value setters",
+      "entry_va": "0x24165AE0",
+      "label": "Original client KeyValues narrow string setter with old buffer release",
+      "original_code_length": 126,
+      "original_code_sha256": "e23c92e211203861ea33fa597159207d0dc27582008b2dcce8d598699425258a",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase183-original-client-keyvalues-find-create-and-setters.md",
+      "implementation_path": "include/sin_compat/original_client_keyvalues_setters.hpp",
+      "test_path": "tests/test_original_client_keyvalues_setters.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues tree lookup, creation and value setters",
+      "entry_va": "0x24165B60",
+      "label": "Original client KeyValues wide string setter with old buffer release",
+      "original_code_length": 117,
+      "original_code_sha256": "7e252f1ef17364fca5531956e1bda4cbeedc9032d4ead89c985bf6ba6e9f550d",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase183-original-client-keyvalues-find-create-and-setters.md",
+      "implementation_path": "include/sin_compat/original_client_keyvalues_setters.hpp",
+      "test_path": "tests/test_original_client_keyvalues_setters.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues tree lookup, creation and value setters",
+      "entry_va": "0x24165BE0",
+      "label": "Original client KeyValues type2 signed integer raw DWORD setter",
+      "original_code_length": 33,
+      "original_code_sha256": "e2c8ded0de6cb99c3c1fd37ec712b02f4c882e206abf7a4fbcb20c06647d2ccd",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase183-original-client-keyvalues-find-create-and-setters.md",
+      "implementation_path": "include/sin_compat/original_client_keyvalues_setters.hpp",
+      "test_path": "tests/test_original_client_keyvalues_setters.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues tree lookup, creation and value setters",
+      "entry_va": "0x24165C10",
+      "label": "Original client KeyValues type3 float raw bit setter",
+      "original_code_length": 33,
+      "original_code_sha256": "b4ee4b29519066a4b4ab518ab541e7659a4b2ae1bfca7411025a243165a81829",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase183-original-client-keyvalues-find-create-and-setters.md",
+      "implementation_path": "include/sin_compat/original_client_keyvalues_setters.hpp",
+      "test_path": "tests/test_original_client_keyvalues_setters.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues tree lookup, creation and value setters",
+      "entry_va": "0x24165C40",
+      "label": "Original client KeyValues type4 opaque DWORD setter",
+      "original_code_length": 33,
+      "original_code_sha256": "91ba8d9a8fffdb393e9a7f239751eb1d8ff53db6d57071b1c302421954a69764",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase183-original-client-keyvalues-find-create-and-setters.md",
+      "implementation_path": "include/sin_compat/original_client_keyvalues_setters.hpp",
+      "test_path": "tests/test_original_client_keyvalues_setters.cpp"
     }
   ]
 }
