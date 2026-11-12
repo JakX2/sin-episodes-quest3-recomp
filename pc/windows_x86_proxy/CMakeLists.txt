@@ -283,3 +283,17 @@ sin_pc_configure(sin_pc_original_cache_key_comparator_tests
   sin_pc_original_cache_key_comparator_tests)
 add_test(NAME sin_original_win32_server_cache_key_comparator_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_key_comparator_tests>)
+
+
+# Phase193: native Win32 x86 MSVC contract for insertion wrappers and
+# linked Phase191/192 lookup/comparator models; not commercial DLL loading.
+add_executable(sin_pc_original_cache_tree_insert_tests
+  ../../tests/test_original_server_cache_tree_insert.cpp)
+target_include_directories(sin_pc_original_cache_tree_insert_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_tree_insert_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_tree_insert_tests
+  sin_pc_original_cache_tree_insert_tests)
+add_test(NAME sin_original_win32_server_cache_tree_insert_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_insert_tests>)
