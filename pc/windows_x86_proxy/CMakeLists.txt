@@ -270,3 +270,16 @@ sin_pc_configure(sin_pc_original_cache_tree_lookup_tests
   sin_pc_original_cache_tree_lookup_tests)
 add_test(NAME sin_original_win32_server_cache_tree_lookup_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_lookup_tests>)
+
+
+# Phase192: compile and test recovered unsigned comparator through the
+# Phase191 reference tree on real native 32-bit MSVC. Synthetic, not game DLL.
+add_executable(sin_pc_original_cache_key_comparator_tests
+  ../../tests/test_original_server_cache_key_comparators.cpp)
+target_include_directories(sin_pc_original_cache_key_comparator_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_key_comparator_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_key_comparator_tests
+  sin_pc_original_cache_key_comparator_tests)
+add_test(NAME sin_original_win32_server_cache_key_comparator_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_key_comparator_tests>)

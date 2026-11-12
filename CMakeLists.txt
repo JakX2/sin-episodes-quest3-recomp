@@ -2544,3 +2544,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_tree_lookup_tests
     COMMAND sin_original_server_cache_tree_lookup_tests)
 endif()
+
+
+# Phase192: original 2006 server cached-record unsigned comparators, as
+# synthetic host-neutral C++17 behavior and Phase191 tree integration.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_key_comparator_tests
+    tests/test_original_server_cache_key_comparators.cpp)
+  target_include_directories(sin_original_server_cache_key_comparator_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_key_comparator_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_key_comparator_tests
+    COMMAND sin_original_server_cache_key_comparator_tests)
+endif()
