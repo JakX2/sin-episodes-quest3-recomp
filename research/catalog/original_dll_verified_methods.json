@@ -1581,6 +1581,90 @@
       "label": "Original client ordered VPhysics030, surface props and collision interface bootstrap and coupling callback",
       "original_code_length": 97,
       "original_code_sha256": "46e079ea76e0cfee721efe3a421d68920cf980079aea4d76d7542f6f9b5281f2"
+    },
+    {
+      "dll": "client",
+      "owner": "original client surface manifest / KeyValues startup",
+      "entry_va": "0x241927A0",
+      "label": "Client surface-properties manifest load/dispatch and cleanup",
+      "original_code_length": 247,
+      "original_code_sha256": "7357bdfb9934f175e0d67f4a81236d81087a07bb6145918083c44fd255ca6905",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase181-original-client-surfaceprops-manifest.md",
+      "implementation_path": "include/sin_compat/original_client_surface_manifest.hpp",
+      "test_path": "tests/test_original_client_surface_manifest.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client surface manifest / KeyValues startup",
+      "entry_va": "0x24164B90",
+      "label": "KeyValues first child pointer from +0x1C",
+      "original_code_length": 4,
+      "original_code_sha256": "0b78473b3a56c63ff2a64431fb600078066cbe407d3dee7ea8fd7575bd7f82d5",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase181-original-client-surfaceprops-manifest.md",
+      "implementation_path": "include/sin_compat/original_client_surface_manifest.hpp",
+      "test_path": "tests/test_original_client_surface_manifest.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client surface manifest / KeyValues startup",
+      "entry_va": "0x24164BA0",
+      "label": "KeyValues next peer pointer from +0x18",
+      "original_code_length": 4,
+      "original_code_sha256": "38058506e8e859d5be73a33baa621352c08ea01f2224ee170173253757193941",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase181-original-client-surfaceprops-manifest.md",
+      "implementation_path": "include/sin_compat/original_client_surface_manifest.hpp",
+      "test_path": "tests/test_original_client_surface_manifest.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client surface manifest / KeyValues startup",
+      "entry_va": "0x24164B20",
+      "label": "KeyValues child list search by DWORD interned name symbol",
+      "original_code_length": 32,
+      "original_code_sha256": "5264003f4859e6bc4704ba42c9ba251e689725135f8d3c4c6b4a4b3815ee90da",
+      "recovery_status": "behavior_reconstructed",
+      "evidence_path": "research/phases/phase181-original-client-surfaceprops-manifest.md",
+      "implementation_path": "include/sin_compat/original_client_surface_manifest.hpp",
+      "test_path": "tests/test_original_client_surface_manifest.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client surface manifest / KeyValues startup",
+      "entry_va": "0x24164770",
+      "label": "KeyValues node name fetch through external KeyValuesSystem virtual slot",
+      "original_code_length": 21,
+      "original_code_sha256": "e6fedc91b795bc4c5e8120f9744bfc75b5ca12785e94bc50411881423cf5710f",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase181-original-client-surfaceprops-manifest.md",
+      "implementation_path": "include/sin_compat/original_client_surface_manifest.hpp",
+      "test_path": "tests/test_original_client_surface_manifest.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client surface manifest / KeyValues startup",
+      "entry_va": "0x24164C60",
+      "label": "KeyValues allocator forwarding through KeyValuesSystem virtual slot",
+      "original_code_length": 19,
+      "original_code_sha256": "33a5a0dbfb95c16aeb48f7a64b929b8ccf3742e823518c3b01e20a076ac6dd11",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase181-original-client-surfaceprops-manifest.md",
+      "implementation_path": "include/sin_compat/original_client_surface_manifest.hpp",
+      "test_path": "tests/test_original_client_surface_manifest.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client surface manifest / KeyValues startup",
+      "entry_va": "0x24166050",
+      "label": "Null guarded KeyValues payload destructor and KeyValuesSystem free",
+      "original_code_length": 28,
+      "original_code_sha256": "7907cfaa8ae3f25951a87879d7050db0d8491e6b835008976883899a004814f2",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase181-original-client-surfaceprops-manifest.md",
+      "implementation_path": "include/sin_compat/original_client_surface_manifest.hpp",
+      "test_path": "tests/test_original_client_surface_manifest.cpp"
     }
   ]
 }
