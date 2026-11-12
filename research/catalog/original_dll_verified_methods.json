@@ -1833,6 +1833,90 @@
       "evidence_path": "research/phases/phase184-original-client-keyvalues-construction-destruction.md",
       "implementation_path": "include/sin_compat/original_client_keyvalues_lifetime.hpp",
       "test_path": "tests/test_original_client_keyvalues_lifetime.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll tier0.dll g_pMemAlloc import forwarding",
+      "entry_va": "0x2416FCF0",
+      "original_code_length": 79,
+      "original_code_sha256": "84fffc04db883f146d64edf1f474b61b5fe03cb36e95b5fcd717ece17e793acf",
+      "label": "Original x86 tier0 allocator lazy debug-context forwarder A",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase185-original-client-tier0-memalloc-bridge.md",
+      "implementation_path": "include/sin_compat/original_client_memalloc_bridge.hpp",
+      "test_path": "tests/test_original_client_memalloc_bridge.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll tier0.dll g_pMemAlloc import forwarding",
+      "entry_va": "0x2416FD40",
+      "original_code_length": 27,
+      "original_code_sha256": "06b28fa8c3b5d5701c214e37a09179591199cf5de9364c3f37e0349fbafc7b17",
+      "label": "Original x86 tier0 allocator explicit 3-argument debug forwarder A",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase185-original-client-tier0-memalloc-bridge.md",
+      "implementation_path": "include/sin_compat/original_client_memalloc_bridge.hpp",
+      "test_path": "tests/test_original_client_memalloc_bridge.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll tier0.dll g_pMemAlloc import forwarding",
+      "entry_va": "0x2416FD60",
+      "original_code_length": 18,
+      "original_code_sha256": "c597a60f0eca41a3544aef8a22df99bd70535de676d5bf7f73477f0865daea73",
+      "label": "Original x86 tier0 imported g_pMemAlloc Free virtual +0x14 forwarder A",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase185-original-client-tier0-memalloc-bridge.md",
+      "implementation_path": "include/sin_compat/original_client_memalloc_bridge.hpp",
+      "test_path": "tests/test_original_client_memalloc_bridge.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll tier0.dll g_pMemAlloc import forwarding",
+      "entry_va": "0x2416FD80",
+      "original_code_length": 79,
+      "original_code_sha256": "44318a97f116b1b629cb2fe1794e14c28ed58b61a7606b7784a4e7b785c20d08",
+      "label": "Original x86 tier0 allocator lazy debug-context forwarder B",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase185-original-client-tier0-memalloc-bridge.md",
+      "implementation_path": "include/sin_compat/original_client_memalloc_bridge.hpp",
+      "test_path": "tests/test_original_client_memalloc_bridge.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll tier0.dll g_pMemAlloc import forwarding",
+      "entry_va": "0x2416FDD0",
+      "original_code_length": 27,
+      "original_code_sha256": "06b28fa8c3b5d5701c214e37a09179591199cf5de9364c3f37e0349fbafc7b17",
+      "label": "Original x86 tier0 allocator explicit 3-argument debug forwarder B",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase185-original-client-tier0-memalloc-bridge.md",
+      "implementation_path": "include/sin_compat/original_client_memalloc_bridge.hpp",
+      "test_path": "tests/test_original_client_memalloc_bridge.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll tier0.dll g_pMemAlloc import forwarding",
+      "entry_va": "0x2416FDF0",
+      "original_code_length": 18,
+      "original_code_sha256": "c597a60f0eca41a3544aef8a22df99bd70535de676d5bf7f73477f0865daea73",
+      "label": "Original x86 tier0 imported g_pMemAlloc Free virtual +0x14 forwarder B",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase185-original-client-tier0-memalloc-bridge.md",
+      "implementation_path": "include/sin_compat/original_client_memalloc_bridge.hpp",
+      "test_path": "tests/test_original_client_memalloc_bridge.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll tier0.dll g_pMemAlloc import forwarding",
+      "entry_va": "0x2416FE10",
+      "original_code_length": 14,
+      "original_code_sha256": "e0cbbd04cffa5347279a626191f42bafb3f112ce195ffd26d344f03b26a896e4",
+      "label": "Original x86 imported tier0 allocator global pointer presence query",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase185-original-client-tier0-memalloc-bridge.md",
+      "implementation_path": "include/sin_compat/original_client_memalloc_bridge.hpp",
+      "test_path": "tests/test_original_client_memalloc_bridge.cpp"
     }
   ]
 }
