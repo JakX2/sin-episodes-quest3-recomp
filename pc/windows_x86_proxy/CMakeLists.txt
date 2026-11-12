@@ -151,3 +151,17 @@ sin_pc_configure(sin_pc_original_keyvalues_setters_tests
   sin_pc_original_keyvalues_setters_tests)
 add_test(NAME sin_original_win32_client_keyvalues_setters_contract
   COMMAND $<TARGET_FILE:sin_pc_original_keyvalues_setters_tests>)
+
+
+# Phase184: exercise original KeyValues lifetime branch order and native
+# 40-byte x86 field snapshot under MSVC Win32. Synthetic callbacks only.
+add_executable(sin_pc_original_keyvalues_lifetime_tests
+  ../../tests/test_original_client_keyvalues_lifetime.cpp)
+target_include_directories(sin_pc_original_keyvalues_lifetime_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_keyvalues_lifetime_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_keyvalues_lifetime_tests
+  sin_pc_original_keyvalues_lifetime_tests)
+add_test(NAME sin_original_win32_client_keyvalues_lifetime_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_keyvalues_lifetime_tests>)
