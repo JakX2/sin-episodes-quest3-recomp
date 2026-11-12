@@ -217,3 +217,16 @@ sin_pc_configure(sin_pc_original_server_post_emitter_tests
   sin_pc_original_server_post_emitter_tests)
 add_test(NAME sin_original_win32_server_post_emitter_contract
   COMMAND $<TARGET_FILE:sin_pc_original_server_post_emitter_tests>)
+
+
+# Phase188: x86 MSVC original server scene/model cache Init header validation
+# and reload branch model. This is synthetic; not game engine DLL loading.
+add_executable(sin_pc_original_server_cache_repositories_tests
+  ../../tests/test_original_server_cache_repositories.cpp)
+target_include_directories(sin_pc_original_server_cache_repositories_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_server_cache_repositories_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_cache_repositories_tests
+  sin_pc_original_server_cache_repositories_tests)
+add_test(NAME sin_original_win32_server_cache_repositories_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_server_cache_repositories_tests>)

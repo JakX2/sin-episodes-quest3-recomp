@@ -2493,3 +2493,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_post_emitter_tests
     COMMAND sin_original_server_post_emitter_tests)
 endif()
+
+
+# Phase188: original scene.cache / modelsounds.cache Init and reload wrappers.
+# Host filesystem/record processing remains synthetic until engine ABI work.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_repositories_tests
+    tests/test_original_server_cache_repositories.cpp)
+  target_include_directories(sin_original_server_cache_repositories_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_repositories_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_repositories_tests
+    COMMAND sin_original_server_cache_repositories_tests)
+endif()

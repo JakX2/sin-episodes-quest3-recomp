@@ -2025,6 +2025,54 @@
       "evidence_path": "research/phases/phase187-original-server-post-emitter-auto-systems.md",
       "implementation_path": "include/sin_compat/original_server_post_emitter.hpp",
       "test_path": "tests/test_original_server_post_emitter.cpp"
+    },
+    {
+      "entry_va": "0x221AD3E0",
+      "original_code_length": 576,
+      "original_code_sha256": "7b9db352473a8fc2d5343473b673ac52c89a8c98320847b0b4dd451dcf8e4e69",
+      "label": "Original scene.cache repository initializer, header/metadata/record loop with reload-invalidations",
+      "dll": "server",
+      "owner": "original 2006 server.dll scene/model-sounds cache file initialization",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase188-original-server-scene-modelsounds-cache.md",
+      "implementation_path": "include/sin_compat/original_server_cache_repositories.hpp",
+      "test_path": "tests/test_original_server_cache_repositories.cpp"
+    },
+    {
+      "entry_va": "0x221498C0",
+      "original_code_length": 576,
+      "original_code_sha256": "94b55dbf7e21d7b45362d277505a8a7c02537667c3c4c4afbeeded9c40ec2218",
+      "label": "Original modelsounds.cache repository initializer, sibling code body with distinct record handler",
+      "dll": "server",
+      "owner": "original 2006 server.dll scene/model-sounds cache file initialization",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase188-original-server-scene-modelsounds-cache.md",
+      "implementation_path": "include/sin_compat/original_server_cache_repositories.hpp",
+      "test_path": "tests/test_original_server_cache_repositories.cpp"
+    },
+    {
+      "entry_va": "0x221AD620",
+      "original_code_length": 80,
+      "original_code_sha256": "94ca224968818a97ef138555040b7c14075dd21dc1f31b273675e2ba32974cf9",
+      "label": "Original scene.cache retry/reload wrapper with invalid cleanup or optional rebuild",
+      "dll": "server",
+      "owner": "original 2006 server.dll scene/model-sounds cache file initialization",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase188-original-server-scene-modelsounds-cache.md",
+      "implementation_path": "include/sin_compat/original_server_cache_repositories.hpp",
+      "test_path": "tests/test_original_server_cache_repositories.cpp"
+    },
+    {
+      "entry_va": "0x22149B00",
+      "original_code_length": 80,
+      "original_code_sha256": "1f2ea46fd39f2c9e8708e1e58a8a72ac5c9aed0c447f43cef04b7e6750e328c1",
+      "label": "Original modelsounds.cache retry/reload wrapper with invalid cleanup or optional rebuild",
+      "dll": "server",
+      "owner": "original 2006 server.dll scene/model-sounds cache file initialization",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase188-original-server-scene-modelsounds-cache.md",
+      "implementation_path": "include/sin_compat/original_server_cache_repositories.hpp",
+      "test_path": "tests/test_original_server_cache_repositories.cpp"
     }
   ]
 }
