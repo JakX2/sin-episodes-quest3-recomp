@@ -2480,3 +2480,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_debug_owner_tests
     COMMAND sin_original_client_debug_owner_tests)
 endif()
+
+
+# Phase187: server.dll post-emitter AutoGameSystem registration and three
+# mandatory Init gates. Original repository parsers remain opaque callbacks.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_post_emitter_tests
+    tests/test_original_server_post_emitter.cpp)
+  target_include_directories(sin_original_server_post_emitter_tests PRIVATE include)
+  target_compile_options(sin_original_server_post_emitter_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_post_emitter_tests
+    COMMAND sin_original_server_post_emitter_tests)
+endif()

@@ -1965,6 +1965,66 @@
       "evidence_path": "research/phases/phase186-original-client-debug-owner-win32.md",
       "implementation_path": "include/sin_compat/original_client_debug_owner.hpp",
       "test_path": "tests/test_original_client_debug_owner.cpp"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server.dll post-emitter game systems and repository initialization",
+      "entry_va": "0x221F5700",
+      "original_code_length": 277,
+      "original_code_sha256": "1e2a6e068b24b061fbd5cba16741f8ca8f470421b7ccbca3fa0239f579a9c530",
+      "label": "Original AutoGameSystem pending list dedupe, registration and vtable[0] init gate",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase187-original-server-post-emitter-auto-systems.md",
+      "implementation_path": "include/sin_compat/original_server_post_emitter.hpp",
+      "test_path": "tests/test_original_server_post_emitter.cpp"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server.dll post-emitter game systems and repository initialization",
+      "entry_va": "0x221AD8A0",
+      "original_code_length": 10,
+      "original_code_sha256": "83762183370ab5370d0c099c4350b20768c57043ed99066edb8e1b1804da49e0",
+      "label": "Original hardcoded repository A singleton thiscall trampoline to 0x221AD3E0",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase187-original-server-post-emitter-auto-systems.md",
+      "implementation_path": "include/sin_compat/original_server_post_emitter.hpp",
+      "test_path": "tests/test_original_server_post_emitter.cpp"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server.dll post-emitter game systems and repository initialization",
+      "entry_va": "0x22149B60",
+      "original_code_length": 10,
+      "original_code_sha256": "47793d5818d074eb9ad8526102a131bb60fd50ab5fcaaa52aa5afe6e940852d9",
+      "label": "Original hardcoded repository B singleton thiscall trampoline to 0x221498C0",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase187-original-server-post-emitter-auto-systems.md",
+      "implementation_path": "include/sin_compat/original_server_post_emitter.hpp",
+      "test_path": "tests/test_original_server_post_emitter.cpp"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server.dll post-emitter game systems and repository initialization",
+      "entry_va": "0x221E6450",
+      "original_code_length": 35,
+      "original_code_sha256": "93b09228e176da1f87b61fb302a3e761389c8f67a788ec1f3e382ddb22df8470",
+      "label": "Original server descriptor registration and developer ConVar lookup before Init gates",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase187-original-server-post-emitter-auto-systems.md",
+      "implementation_path": "include/sin_compat/original_server_post_emitter.hpp",
+      "test_path": "tests/test_original_server_post_emitter.cpp"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server.dll post-emitter game systems and repository initialization",
+      "entry_va": "0x221F56E0",
+      "original_code_length": 23,
+      "original_code_sha256": "76cce08b11d37afa67eeda003f01b78d06106290ed4205c165cb6704622534d5",
+      "label": "Original AutoGameSystem registered-vector forwarding helper",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase187-original-server-post-emitter-auto-systems.md",
+      "implementation_path": "include/sin_compat/original_server_post_emitter.hpp",
+      "test_path": "tests/test_original_server_post_emitter.cpp"
     }
   ]
 }

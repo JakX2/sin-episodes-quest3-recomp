@@ -203,3 +203,17 @@ sin_pc_configure(sin_pc_original_debug_owner_kernel32_tests
   sin_pc_original_debug_owner_kernel32_tests)
 add_test(NAME sin_original_win32_debug_owner_real_kernel32
   COMMAND $<TARGET_FILE:sin_pc_original_debug_owner_kernel32_tests>)
+
+
+# Phase187: run original server game-system list and three required Init gates
+# under native 32-bit MSVC CI. Repository callback targets are synthetic and
+# this is NOT original Windows engine gameplay.
+add_executable(sin_pc_original_server_post_emitter_tests
+  ../../tests/test_original_server_post_emitter.cpp)
+target_include_directories(sin_pc_original_server_post_emitter_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_server_post_emitter_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_post_emitter_tests
+  sin_pc_original_server_post_emitter_tests)
+add_test(NAME sin_original_win32_server_post_emitter_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_server_post_emitter_tests>)
