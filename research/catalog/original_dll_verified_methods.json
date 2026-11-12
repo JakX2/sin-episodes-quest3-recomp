@@ -1665,6 +1665,66 @@
       "evidence_path": "research/phases/phase181-original-client-surfaceprops-manifest.md",
       "implementation_path": "include/sin_compat/original_client_surface_manifest.hpp",
       "test_path": "tests/test_original_client_surface_manifest.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues typed value and physics surface-file bridge",
+      "evidence_path": "research/phases/phase182-original-client-surface-file-typed-values.md",
+      "implementation_path": "include/sin_compat/original_client_surface_file.hpp",
+      "test_path": "tests/test_original_client_surface_file.cpp",
+      "entry_va": "0x241667C0",
+      "original_code_length": 232,
+      "original_code_sha256": "ff0eb63ceb387d73abca9cd91928809eac5a902ee04fc3eea2098c22325a5124",
+      "label": "Original KeyValues GetString five-tag inline/numeric/wide UTF8 converter, table verified separately",
+      "recovery_status": "machine_code_verified"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues typed value and physics surface-file bridge",
+      "evidence_path": "research/phases/phase182-original-client-surface-file-typed-values.md",
+      "implementation_path": "include/sin_compat/original_client_surface_file.hpp",
+      "test_path": "tests/test_original_client_surface_file.cpp",
+      "entry_va": "0x24191EC0",
+      "original_code_length": 136,
+      "original_code_sha256": "f5e1bbb19b7d8305690aa65992653d244ee0e8aaaf105e057fb760a889c218b5",
+      "label": "Original surface-properties file open, read, close, null terminate, parse or warn",
+      "recovery_status": "machine_code_verified"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues typed value and physics surface-file bridge",
+      "evidence_path": "research/phases/phase182-original-client-surface-file-typed-values.md",
+      "implementation_path": "include/sin_compat/original_client_surface_file.hpp",
+      "test_path": "tests/test_original_client_surface_file.cpp",
+      "entry_va": "0x24192050",
+      "original_code_length": 32,
+      "original_code_sha256": "b558e0cbc0c489b26369d3ea1e38d16e5668952877b892e698051b5979a742e8",
+      "label": "Guarded two-input original surface properties virtual method +4 forwarder",
+      "recovery_status": "behavior_reconstructed"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues typed value and physics surface-file bridge",
+      "evidence_path": "research/phases/phase182-original-client-surface-file-typed-values.md",
+      "implementation_path": "include/sin_compat/original_client_surface_file.hpp",
+      "test_path": "tests/test_original_client_surface_file.cpp",
+      "entry_va": "0x24192070",
+      "original_code_length": 32,
+      "original_code_sha256": "4123fed65cbc55dbc746751ac69c5ed77b6fe95e597eb7f37971373b37dc1f4e",
+      "label": "Guarded two-input original surface properties virtual method +8 forwarder",
+      "recovery_status": "behavior_reconstructed"
+    },
+    {
+      "dll": "client",
+      "owner": "original client.dll KeyValues typed value and physics surface-file bridge",
+      "evidence_path": "research/phases/phase182-original-client-surface-file-typed-values.md",
+      "implementation_path": "include/sin_compat/original_client_surface_file.hpp",
+      "test_path": "tests/test_original_client_surface_file.cpp",
+      "entry_va": "0x24192090",
+      "original_code_length": 22,
+      "original_code_sha256": "00ecc6870ea5a88df35279c6bba7ed2c9b626b3600bec486303451b64ceede86",
+      "label": "Original surface properties virtual method +0xC raw two-input forwarder",
+      "recovery_status": "behavior_reconstructed"
     }
   ]
 }
