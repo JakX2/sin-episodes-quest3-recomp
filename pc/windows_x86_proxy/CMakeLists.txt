@@ -179,3 +179,27 @@ sin_pc_configure(sin_pc_original_memalloc_bridge_tests
   sin_pc_original_memalloc_bridge_tests)
 add_test(NAME sin_original_win32_client_memalloc_bridge_contract
   COMMAND $<TARGET_FILE:sin_pc_original_memalloc_bridge_tests>)
+
+
+# Phase186: verify native 2006 x86 cache dispatch under MSVC, and separately
+# exercise actual kernel32 GetProcessHeap/HeapAlloc/VirtualQuery/
+# GetModuleFileNameA on real 32-bit Windows (synthetic executable anchor).
+add_executable(sin_pc_original_debug_owner_tests
+  ../../tests/test_original_client_debug_owner.cpp)
+target_include_directories(sin_pc_original_debug_owner_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_debug_owner_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_debug_owner_tests
+  sin_pc_original_debug_owner_tests)
+add_test(NAME sin_original_win32_debug_owner_model
+  COMMAND $<TARGET_FILE:sin_pc_original_debug_owner_tests>)
+
+add_executable(sin_pc_original_debug_owner_kernel32_tests
+  ../../tests/test_original_client_debug_owner_win32.cpp)
+target_include_directories(sin_pc_original_debug_owner_kernel32_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_debug_owner_kernel32_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_debug_owner_kernel32_tests
+  sin_pc_original_debug_owner_kernel32_tests)
+add_test(NAME sin_original_win32_debug_owner_real_kernel32
+  COMMAND $<TARGET_FILE:sin_pc_original_debug_owner_kernel32_tests>)
