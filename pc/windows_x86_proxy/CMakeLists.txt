@@ -165,3 +165,17 @@ sin_pc_configure(sin_pc_original_keyvalues_lifetime_tests
   sin_pc_original_keyvalues_lifetime_tests)
 add_test(NAME sin_original_win32_client_keyvalues_lifetime_contract
   COMMAND $<TARGET_FILE:sin_pc_original_keyvalues_lifetime_tests>)
+
+
+# Phase185: verify original x86 tier0 g_pMemAlloc virtual slot and shared
+# cached-context branches under real MSVC Win32 CI. Synthetic tier0 only.
+add_executable(sin_pc_original_memalloc_bridge_tests
+  ../../tests/test_original_client_memalloc_bridge.cpp)
+target_include_directories(sin_pc_original_memalloc_bridge_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_memalloc_bridge_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_memalloc_bridge_tests
+  sin_pc_original_memalloc_bridge_tests)
+add_test(NAME sin_original_win32_client_memalloc_bridge_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_memalloc_bridge_tests>)

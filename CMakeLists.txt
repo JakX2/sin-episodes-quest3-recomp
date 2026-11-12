@@ -2453,3 +2453,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_keyvalues_lifetime_tests
     COMMAND sin_original_client_keyvalues_lifetime_tests)
 endif()
+
+
+# Phase185: native 2006 SiN client.dll tier0 g_pMemAlloc forwarding,
+# debug-source caching, and Phase184 KeyValues destructor/free integration.
+# Host callbacks only, no original Source engine allocator implementation.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_memalloc_bridge_tests
+    tests/test_original_client_memalloc_bridge.cpp)
+  target_include_directories(sin_original_client_memalloc_bridge_tests PRIVATE include)
+  target_compile_options(sin_original_client_memalloc_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_memalloc_bridge_tests
+    COMMAND sin_original_client_memalloc_bridge_tests)
+endif()
