@@ -297,3 +297,15 @@ sin_pc_configure(sin_pc_original_cache_tree_insert_tests
   sin_pc_original_cache_tree_insert_tests)
 add_test(NAME sin_original_win32_server_cache_tree_insert_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_insert_tests>)
+
+
+# Phase194 native Win32 x86 CTest for host-neutral original free-list allocators.
+add_executable(sin_pc_original_cache_slot_allocation_tests
+  ../../tests/test_original_server_cache_slot_allocation.cpp)
+target_include_directories(sin_pc_original_cache_slot_allocation_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_slot_allocation_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_slot_allocation_tests
+  sin_pc_original_cache_slot_allocation_tests)
+add_test(NAME sin_original_win32_server_cache_slot_allocation_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_slot_allocation_tests>)
