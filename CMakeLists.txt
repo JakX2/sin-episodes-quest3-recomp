@@ -2519,3 +2519,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_startup_composition_tests
     COMMAND sin_original_server_startup_composition_tests)
 endif()
+
+
+# Phase190: native-cache record identity branch models (synthetic callbacks).
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_record_identity_tests
+    tests/test_original_server_cache_record_identity.cpp)
+  target_include_directories(sin_original_server_cache_record_identity_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_record_identity_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_record_identity_tests
+    COMMAND sin_original_server_cache_record_identity_tests)
+endif()

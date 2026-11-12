@@ -243,3 +243,16 @@ sin_pc_configure(sin_pc_original_server_startup_composition_tests
   sin_pc_original_server_startup_composition_tests)
 add_test(NAME sin_original_win32_server_startup_composition_contract
   COMMAND $<TARGET_FILE:sin_pc_original_server_startup_composition_tests>)
+
+
+# Phase190: native 32-bit MSVC contract for host-modeled original cache records.
+add_executable(sin_pc_original_cache_record_identity_tests
+  ../../tests/test_original_server_cache_record_identity.cpp)
+target_include_directories(sin_pc_original_cache_record_identity_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_record_identity_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_record_identity_tests
+  sin_pc_original_cache_record_identity_tests)
+add_test(NAME sin_original_win32_server_cache_record_identity_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_record_identity_tests>)

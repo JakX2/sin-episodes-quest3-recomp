@@ -2073,6 +2073,30 @@
       "evidence_path": "research/phases/phase188-original-server-scene-modelsounds-cache.md",
       "implementation_path": "include/sin_compat/original_server_cache_repositories.hpp",
       "test_path": "tests/test_original_server_cache_repositories.cpp"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server.dll scene cache record identity/index insertion",
+      "entry_va": "0x221ACFD0",
+      "original_code_length": 190,
+      "original_code_sha256": "48004fea0993479cec22accfbf75523c49b3e7f0cebb5a05ef228e178d4c0804",
+      "label": "Original scene record key lookup, 28-byte payload allocation and 24-byte index slot publication",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase190-original-server-cache-record-identities.md",
+      "implementation_path": "include/sin_compat/original_server_cache_record_identity.hpp",
+      "test_path": "tests/test_original_server_cache_record_identity.cpp"
+    },
+    {
+      "dll": "server",
+      "owner": "original 2006 server.dll model-sounds cache record identity/index insertion",
+      "entry_va": "0x22149770",
+      "original_code_length": 187,
+      "original_code_sha256": "c79d38ec382e6477cf1872553addccc307629672bcafaf5a5f7e2c22e97b8e49",
+      "label": "Original model-sounds record key lookup, 24-byte payload allocation and 24-byte index slot publication",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase190-original-server-cache-record-identities.md",
+      "implementation_path": "include/sin_compat/original_server_cache_record_identity.hpp",
+      "test_path": "tests/test_original_server_cache_record_identity.cpp"
     }
   ]
 }
