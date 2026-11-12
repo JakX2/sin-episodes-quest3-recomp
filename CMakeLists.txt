@@ -2413,3 +2413,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_surface_manifest_tests
     COMMAND sin_original_client_surface_manifest_tests)
 endif()
+
+
+# Phase182: exact original 2006 client KeyValues GetString tagged conversion,
+# filesystem surface-file loading and three surfaceprops virtual dispatches.
+# Original Source engine file/physics implementations remain opaque callbacks.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_surface_file_tests
+    tests/test_original_client_surface_file.cpp)
+  target_include_directories(sin_original_client_surface_file_tests PRIVATE include)
+  target_compile_options(sin_original_client_surface_file_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_surface_file_tests
+    COMMAND sin_original_client_surface_file_tests)
+endif()
