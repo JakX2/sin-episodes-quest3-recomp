@@ -123,3 +123,17 @@ sin_pc_configure(sin_pc_original_surface_manifest_tests
   sin_pc_original_surface_manifest_tests)
 add_test(NAME sin_original_win32_client_surface_manifest_contract
   COMMAND $<TARGET_FILE:sin_pc_original_surface_manifest_tests>)
+
+
+# Phase182: real MSVC Win32 x86 tests of reconstructed original client file
+# read/close/parse order, KeyValues type-switch, and surface dispatch guards.
+# All engine and filesystem interfaces here are synthetic callbacks.
+add_executable(sin_pc_original_surface_file_tests
+  ../../tests/test_original_client_surface_file.cpp)
+target_include_directories(sin_pc_original_surface_file_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_surface_file_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_surface_file_tests
+  sin_pc_original_surface_file_tests)
+add_test(NAME sin_original_win32_client_surface_file_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_surface_file_tests>)
