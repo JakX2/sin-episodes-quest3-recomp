@@ -333,3 +333,11 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - New strict original-only auditor validates **72 sparse opcode witnesses**, four indirect comparator dispatches, four `ret 8` exits, 28 absolute address references, and boundaries. Eight original-free Python mutation groups and optimized GCC/Clang C++17 synthetic branch model pass locally. Windows x86 MSVC CTest target registered, hosted result pending.
 - Reviewed native atlas **177 → 179 (87 server, 92 client)**. Key format, actual comparator callback, original tree allocator and original-engine DLL execution remain opaque. Windows PC first, Android second, Quest 3 third.
 - See `research/phases/phase191-original-server-cache-tree-lookups.md` in the stacked draft branch.
+
+
+## 2026-11-12: original scene/model-sounds unsigned key comparators (Phase192)
+
+- **Two new exact original 2006 server.dll native comparator functions**: scene `0x221A2F40` and model sounds `0x2213A3F0`, **17 bytes each** and **byte-identical**. Both complete SHA256 `77b87ba9017ac5403ea41c488944263dd6475f82ddf3b8f28b36155b9e8f15f4`; original full server/client DLL hashes verified privately against Drive binaries.
+- Native singleton tree `+4` pointers verify exact callback association: `0x22503EE4 -> 0x221A2F40`, `0x224F038C -> 0x2213A3F0`. The comparator reads **only the first DWORD of each pointed-to key** and returns **unsigned lhs < rhs as 0/1**. Exact native `cmp/sbb/neg` semantics proven, including bit31. The original routine returns with plain `ret`, caller cleans two arguments.
+- Host-neutral C++17 reference plus Phase191 tree integration tests pass optimized GCC/Clang `-Werror`. Original-only Python auditor checks complete method hashes, both 15-byte INT3 boundaries, 10 sparse opcode witnesses and both data pointers. Eight original-free mutation test groups pass. Root and Win32 x86 CTest targets registered; hosted CI pending.
+- Unique reviewed functions **179 → 181 (89 server, 92 client)**. Native filesystem virtual `+0xD4` and complete record payload encoding still opaque; replacement DLL gameplay not achieved. Windows PC first, Android second, Quest 3 third. See `research/phases/phase192-original-server-cache-key-comparators.md`.
