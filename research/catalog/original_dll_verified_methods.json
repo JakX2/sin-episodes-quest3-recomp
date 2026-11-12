@@ -2193,6 +2193,30 @@
       "evidence_path": "research/phases/phase194-original-server-cache-slot-allocation.md",
       "implementation_path": "include/sin_compat/original_server_cache_slot_allocation.hpp",
       "test_path": "tests/test_original_server_cache_slot_allocation.cpp"
+    },
+    {
+      "entry_va": "0x221A4D90",
+      "original_code_length": 84,
+      "original_code_sha256": "84be32439e28d397699f9afaadf46ac70d857f88bd26ab6d19bd8eb2d7b7c855",
+      "label": "Original scene cache tree indexed node/sentinel resolver with lazy static sentinel initialization",
+      "owner": "original 2006 server.dll scene cached-repository tree",
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase195-original-server-cache-node-sentinel-resolver.md",
+      "implementation_path": "include/sin_compat/original_server_cache_node_resolver.hpp",
+      "test_path": "tests/test_original_server_cache_node_resolver.cpp"
+    },
+    {
+      "entry_va": "0x2213E990",
+      "original_code_length": 84,
+      "original_code_sha256": "fd045383426de31ea6e97afd788d3959bcf057a2290be6cff4b870e5a2a82a64",
+      "label": "Original model-sounds cache tree indexed node/sentinel resolver with separate static sentinel",
+      "owner": "original 2006 server.dll model-sounds cached-repository tree",
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase195-original-server-cache-node-sentinel-resolver.md",
+      "implementation_path": "include/sin_compat/original_server_cache_node_resolver.hpp",
+      "test_path": "tests/test_original_server_cache_node_resolver.cpp"
     }
   ]
 }
