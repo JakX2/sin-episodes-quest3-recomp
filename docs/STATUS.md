@@ -249,3 +249,13 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - New portable `original_client_surface_manifest.hpp` and focused tests include KeyValues native 32-bit layout offsets, host-safe failed allocation/cycle guards and explicit unimplemented engine callback boundaries. Neither the original KeyValues file parser nor surface file loader has been independently reconstructed.
 - Unique reviewed-function atlas **134 -> 141 (74 server, 67 client)**. Not a completion percentage or executable game DLL validation.
 - See `research/phases/phase181-original-client-surfaceprops-manifest.md`. Next recover `0x241667C0`/ `0x24191EC0` and original Windows engine-side initialization; Android / Quest3 only after Windows gameplay.
+
+
+## 2026-11-12: original surface-property file read and typed KeyValues data (Phase182)
+
+- Five additional complete 2006 `client.dll` native x86 functions **454 bytes**, independently full-function SHA256-pinned against the original client DLL: KeyValues typed value-to-string `0x241667C0`, surface file open/read/close/parse `0x24191EC0`, and guarded/unguarded surface-properties vtable wrappers `0x24192050`, `0x24192070`, `0x24192090`.
+- Separately pinned original **20-byte jump table** at `0x241668A8`: tags 1..5 map to existing string, signed decimal, float, signed decimal and Win32 CP_UTF8 wide conversion. Original `GetString` uses node type DWORD +0x10, string DWORD +4, numeric DWORD +0xC, and wide source DWORD +8.
+- Surface-file loading opens referenced entry path using native mode `rb`, reads file byte count, closes handle **before** passing NUL-terminated contents to the physics surfaceprops parser. Missing files print original filename+manifest warning. Actual Source filesystem/physics and KeyValues setter/find-key implementations remain callback boundaries.
+- Owner-only original dual-DLL SHA256 gate and Phase181 chaining; five whole native function hashes, **48 sparse opcode + 8 indirect vtable CALL witnesses, 5 internal and 2 incoming direct CALLs**, separate type-table SHA and four original strings verified. Eleven original-free Python tests, local GCC/Clang optimized C++17 `-Werror` reference tests pass; real Win32 MSVC CTest target added.
+- Unique reviewed-function atlas **141 -> 146 (74 server, 72 client)**. This is not whole-game completion or original-engine gameplay proof.
+- See `research/phases/phase182-original-client-surface-file-typed-values.md`. Native file data parser, real Win32 engine startup and game-level validation still outstanding; Windows PC first, Android then Quest 3.
