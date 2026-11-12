@@ -230,3 +230,16 @@ sin_pc_configure(sin_pc_original_server_cache_repositories_tests
   sin_pc_original_server_cache_repositories_tests)
 add_test(NAME sin_original_win32_server_cache_repositories_contract
   COMMAND $<TARGET_FILE:sin_pc_original_server_cache_repositories_tests>)
+
+
+# Phase189: native x86 MSVC test of the synthetic three-gate composition.
+add_executable(sin_pc_original_server_startup_composition_tests
+  ../../tests/test_original_server_startup_composition.cpp)
+target_include_directories(sin_pc_original_server_startup_composition_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_server_startup_composition_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_startup_composition_tests
+  sin_pc_original_server_startup_composition_tests)
+add_test(NAME sin_original_win32_server_startup_composition_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_server_startup_composition_tests>)
