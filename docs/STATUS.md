@@ -268,3 +268,13 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Owner-only paired original DLL SHA256 and six complete native region SHA256 checks, **54 sparse instruction witnesses, 16 internal and 4 incoming exact x86 CALL rel32 edges, two original empty literals**. Standalone native audit, eleven original-free Python mutation tests and local GCC/Clang C++17 `-Werror` tests passed. Synthetic real-MSVC Win32 CTest target added; CI result must be checked independently.
 - Reviewed unique function ledger **146 → 152 (74 server, 78 client)**. The original KeyValuesSystem symbol allocator, constructor, memory ownership, whole physics file parser, live Source engine startup and gameplay are still unresolved. This is a host-neutral model and not a working original client DLL.
 - See `research/phases/phase183-original-client-keyvalues-find-create-and-setters.md`; original Windows executable gameplay first, Android second, Quest3 third.
+
+
+## 2026-11-12: original client KeyValues native constructor and recursive cleanup (Phase184)
+
+- Newly SHA-pinned **three complete owner-original 2006 client.dll x86 functions totaling 231 bytes**: `0x24165010` KeyValues constructor (61 bytes), `0x24165050` scalar deleting destructor (35 bytes), `0x24166620` recursive contents destructor (135 bytes).
+- Original 0x28-byte KeyValues fields: name symbol +0, narrow +4, wide +8, payload +0xC, type +0x10, peer +0x18, first child +0x1C, fallback +0x20, escape byte +0x24. Constructor **does not** initialize +0x14 or trailing bytes +0x25..0x27; it interns its name via KeyValuesSystem provider `0x24276230`, vtable +0x0C.
+- Recursive destructor releases child list before peers, severs each freed node's next link before recursive destruction, special-cases peer == self, frees string buffers through original `0x2416FD60` even for null, and clears buffer pointers. Deleting wrapper conditionally frees *this* through KeyValuesSystem virtual +8 only when deletion flags bit0 is set.
+- Verified original dual-DLL whole-file SHA256s, all three complete original native-body SHA256s, **40 sparse instruction witnesses, five internal and two incoming exact CALL rel32 edges**; optimized GCC/Clang C++17 tests and 11 original-free Python mutation tests pass. New Win32 x86 MSVC CTest registration pending hosted CI.
+- Unique native reviewed-function atlas **152 → 155 (74 server, 81 client)**. Host model deliberately adds cycle/depth protection and severs returned host child links; original does not.
+- Report: `research/phases/phase184-original-client-keyvalues-construction-destruction.md`. Engine allocator/KeyValuesSystem interface and actual Windows playable game module remain unresolved; PC gameplay first, Android then Quest 3.
