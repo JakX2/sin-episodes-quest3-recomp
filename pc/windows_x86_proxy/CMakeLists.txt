@@ -256,3 +256,17 @@ sin_pc_configure(sin_pc_original_cache_record_identity_tests
   sin_pc_original_cache_record_identity_tests)
 add_test(NAME sin_original_win32_server_cache_record_identity_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_record_identity_tests>)
+
+
+# Phase191: original server tree lookup contract, compiled with native x86 MSVC.
+# Only independent host-simulated callbacks, not a loadable game DLL.
+add_executable(sin_pc_original_cache_tree_lookup_tests
+  ../../tests/test_original_server_cache_tree_lookup.cpp)
+target_include_directories(sin_pc_original_cache_tree_lookup_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_tree_lookup_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_tree_lookup_tests
+  sin_pc_original_cache_tree_lookup_tests)
+add_test(NAME sin_original_win32_server_cache_tree_lookup_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_lookup_tests>)

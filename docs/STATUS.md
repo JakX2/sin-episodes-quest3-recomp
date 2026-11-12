@@ -323,3 +323,13 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Original auditor validates both full code hashes, **34 sparse opcode witnesses**, **8 outgoing + 2 incoming exact rel32 CALLs**, original `ret 4` and static vtable locations. Native original-file audit and **7 original-free Python mutation groups** pass locally. C++17 synthetic branch model passes local optimized GCC/Clang `-Werror`. Native Win32 MSVC CTest registration added; hosted Windows CI pending.
 - Unique-reviewed atlas **175 → 177 (85 server, 92 client)**. Filesystem vtable +0xD4 semantics, internal lookup/insert helpers, the serialized record format and original executable-hosted replacement DLLs remain unimplemented. Windows PC first, then Android, then Quest 3.
 - See `research/phases/phase190-original-server-cache-record-identities.md` (draft stacked on Phase189).
+
+
+## 2026-11-12: original scene/model-sounds cache tree lookup pair (Phase191)
+
+- Two newly reviewed complete original **server.dll** functions, each **260 x86 bytes**: scene tree lookup `0x221A7FB0` and model-sounds lookup `0x22142670`. Both original full function SHA256s and original full `server.dll` / `client.dll` SHA256s verified against private owner Drive files.
+- Both methods are fully byte-identical after normalizing **only 14 native absolute DWORD addresses** pointing at their respective static sentinel records, normalized whole-body SHA256 `9dc7a270eed6024f374820355e3097d25f96d64547b3c38d29d25c502732ec41`.
+- Observed root field `+0x10` unsigned 16-bit, `0xFFFF` not-found sentinel, 24-byte indexed node stride, child indices at `+0/+2`, node key address at `+8`, indirect two-argument comparator at object `+0`, and lazy distinct `.data` sentinel setup.
+- New strict original-only auditor validates **72 sparse opcode witnesses**, four indirect comparator dispatches, four `ret 8` exits, 28 absolute address references, and boundaries. Eight original-free Python mutation groups and optimized GCC/Clang C++17 synthetic branch model pass locally. Windows x86 MSVC CTest target registered, hosted result pending.
+- Reviewed native atlas **177 → 179 (87 server, 92 client)**. Key format, actual comparator callback, original tree allocator and original-engine DLL execution remain opaque. Windows PC first, Android second, Quest 3 third.
+- See `research/phases/phase191-original-server-cache-tree-lookups.md` in the stacked draft branch.

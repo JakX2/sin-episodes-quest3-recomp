@@ -2531,3 +2531,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_record_identity_tests
     COMMAND sin_original_server_cache_record_identity_tests)
 endif()
+
+
+# Phase191: SHA-grounded paired native server cache tree search reference.
+# All comparators/sentinels are synthetic, NOT the Source engine ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_tree_lookup_tests
+    tests/test_original_server_cache_tree_lookup.cpp)
+  target_include_directories(sin_original_server_cache_tree_lookup_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_tree_lookup_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_tree_lookup_tests
+    COMMAND sin_original_server_cache_tree_lookup_tests)
+endif()
