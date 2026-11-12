@@ -309,3 +309,16 @@ sin_pc_configure(sin_pc_original_cache_slot_allocation_tests
   sin_pc_original_cache_slot_allocation_tests)
 add_test(NAME sin_original_win32_server_cache_slot_allocation_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_slot_allocation_tests>)
+
+
+# Phase195: native Windows x86 C++17 contract for original node/sentinel
+# resolution and Phase194 free-list integration; synthetic engine state.
+add_executable(sin_pc_original_cache_node_resolver_tests
+  ../../tests/test_original_server_cache_node_resolver.cpp)
+target_include_directories(sin_pc_original_cache_node_resolver_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_node_resolver_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_node_resolver_tests
+  sin_pc_original_cache_node_resolver_tests)
+add_test(NAME sin_original_win32_server_cache_node_resolver_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_node_resolver_tests>)
