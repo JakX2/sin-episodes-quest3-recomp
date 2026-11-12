@@ -1917,6 +1917,54 @@
       "evidence_path": "research/phases/phase185-original-client-tier0-memalloc-bridge.md",
       "implementation_path": "include/sin_compat/original_client_memalloc_bridge.hpp",
       "test_path": "tests/test_original_client_memalloc_bridge.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original 2006 client.dll Win32 module filename owner and tier0 debug allocator",
+      "entry_va": "0x2416F7F0",
+      "original_code_length": 90,
+      "original_code_sha256": "c2a27c407aa1fa127dc525282abb96d283e1026826f428c0855df9480123cce0",
+      "label": "Original tier0 allocator virtual +0x5C gate and Win32 GetProcessHeap/HeapAlloc/VirtualQuery/GetModuleFileNameA filename resolver",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase186-original-client-debug-owner-win32.md",
+      "implementation_path": "include/sin_compat/original_client_debug_owner.hpp",
+      "test_path": "tests/test_original_client_debug_owner.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original 2006 client.dll Win32 module filename owner and tier0 debug allocator",
+      "entry_va": "0x2416F850",
+      "original_code_length": 71,
+      "original_code_sha256": "e42a8f93b8166c2510985587937279800f654aa5ec7483aa6efec9cfaa6f200c",
+      "label": "Original client ESI-based single-size allocation with primary cached filename context",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase186-original-client-debug-owner-win32.md",
+      "implementation_path": "include/sin_compat/original_client_debug_owner.hpp",
+      "test_path": "tests/test_original_client_debug_owner.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original 2006 client.dll Win32 module filename owner and tier0 debug allocator",
+      "entry_va": "0x2416F8A0",
+      "original_code_length": 74,
+      "original_code_sha256": "fd969723fbe917bc9107e2920679fed8dcfd5c91809fe57db7330651d4dbe7ac",
+      "label": "Original client EDI/ESI pair allocator dispatch with separate cached filename and tier0 vtable +0x08/+0x0C",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase186-original-client-debug-owner-win32.md",
+      "implementation_path": "include/sin_compat/original_client_debug_owner.hpp",
+      "test_path": "tests/test_original_client_debug_owner.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "original 2006 client.dll Win32 module filename owner and tier0 debug allocator",
+      "entry_va": "0x2416F8F0",
+      "original_code_length": 79,
+      "original_code_sha256": "e4682f7b52bf956d9769e11f7390b3f6b17076d25e36f35951211b5a6e1fe82a",
+      "label": "Original client stack-size allocation using primary cached filename context",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase186-original-client-debug-owner-win32.md",
+      "implementation_path": "include/sin_compat/original_client_debug_owner.hpp",
+      "test_path": "tests/test_original_client_debug_owner.cpp"
     }
   ]
 }
