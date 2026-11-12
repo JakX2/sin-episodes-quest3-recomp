@@ -2145,6 +2145,30 @@
       "evidence_path": "research/phases/phase192-original-server-cache-key-comparators.md",
       "implementation_path": "include/sin_compat/original_server_cache_key_comparators.hpp",
       "test_path": "tests/test_original_server_cache_key_comparators.cpp"
+    },
+    {
+      "entry_va": "0x221ACD00",
+      "original_code_length": 112,
+      "original_code_sha256": "b878d9830b6e5cee73e17681d2c89c518f45c8f8f1f5811aab516c42f14e0640",
+      "label": "Original scene cache tree insertion wrapper, 16-byte key copy to 24-byte indexed slot",
+      "owner": "original 2006 server.dll scene cached-repository indexed tree",
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase193-original-server-cache-tree-insertion.md",
+      "implementation_path": "include/sin_compat/original_server_cache_tree_insert.hpp",
+      "test_path": "tests/test_original_server_cache_tree_insert.cpp"
+    },
+    {
+      "entry_va": "0x22146EF0",
+      "original_code_length": 112,
+      "original_code_sha256": "2bc1a6156b3b845d14935402d317b8ec6f285f1d9858a67fd4054a780db821af",
+      "label": "Original model-sounds cache tree insertion wrapper, sibling 16-byte key copy",
+      "owner": "original 2006 server.dll modelsounds cached-repository indexed tree",
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase193-original-server-cache-tree-insertion.md",
+      "implementation_path": "include/sin_compat/original_server_cache_tree_insert.hpp",
+      "test_path": "tests/test_original_server_cache_tree_insert.cpp"
     }
   ]
 }

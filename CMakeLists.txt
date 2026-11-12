@@ -2557,3 +2557,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_key_comparator_tests
     COMMAND sin_original_server_cache_key_comparator_tests)
 endif()
+
+
+# Phase193: original paired server cache tree insertion 16-byte key copy.
+# Host-neutral model, not engine ABI or an original game DLL.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_tree_insert_tests
+    tests/test_original_server_cache_tree_insert.cpp)
+  target_include_directories(sin_original_server_cache_tree_insert_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_tree_insert_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_tree_insert_tests
+    COMMAND sin_original_server_cache_tree_insert_tests)
+endif()
