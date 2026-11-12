@@ -2400,3 +2400,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_postinit_tests
     COMMAND sin_original_client_postinit_tests)
 endif()
+
+
+# Phase181: the real original client KeyValues surfaceproperties manifest
+# and callback-based post-physics Init reference. Not engine owned objects.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_surface_manifest_tests
+    tests/test_original_client_surface_manifest.cpp)
+  target_include_directories(sin_original_client_surface_manifest_tests PRIVATE include)
+  target_compile_options(sin_original_client_surface_manifest_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_surface_manifest_tests
+    COMMAND sin_original_client_surface_manifest_tests)
+endif()
