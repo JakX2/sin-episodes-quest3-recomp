@@ -110,3 +110,16 @@ sin_pc_configure(sin_pc_original_client_postinit_contract_tests
   sin_pc_original_client_postinit_contract_tests)
 add_test(NAME sin_original_win32_client_postinit_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_postinit_contract_tests>)
+
+
+# Phase181: run native MSVC x86 synthetic manifest startup contract.
+# KeyValues parser and surface-file loader are callbacks, not game binaries.
+add_executable(sin_pc_original_surface_manifest_tests
+  ../../tests/test_original_client_surface_manifest.cpp)
+target_include_directories(sin_pc_original_surface_manifest_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_surface_manifest_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_surface_manifest_tests
+  sin_pc_original_surface_manifest_tests)
+add_test(NAME sin_original_win32_client_surface_manifest_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_surface_manifest_tests>)
