@@ -2674,3 +2674,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_array_growth_tests
     COMMAND sin_original_server_cache_array_growth_tests)
 endif()
+
+
+# Phase202: original 2006 server.dll allocator context/dispatch wrappers.
+# Host-neutral fake memory ownership only, not a live engine heap ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_allocator_dispatch_tests
+    tests/test_original_server_allocator_dispatch.cpp)
+  target_include_directories(sin_original_server_allocator_dispatch_tests PRIVATE include)
+  target_compile_options(sin_original_server_allocator_dispatch_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_allocator_dispatch_tests
+    COMMAND sin_original_server_allocator_dispatch_tests)
+endif()

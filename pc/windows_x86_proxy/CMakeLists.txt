@@ -400,3 +400,17 @@ sin_pc_configure(sin_pc_original_cache_array_growth_tests
   sin_pc_original_cache_array_growth_tests)
 add_test(NAME sin_original_win32_server_cache_array_growth_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_array_growth_tests>)
+
+
+# Phase202: native MSVC Win32 x86 CTest for the original server allocator
+# wrapper path and Phase194/201 cache vector ownership integration.
+add_executable(sin_pc_original_server_allocator_dispatch_tests
+  ../../tests/test_original_server_allocator_dispatch.cpp)
+target_include_directories(sin_pc_original_server_allocator_dispatch_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_server_allocator_dispatch_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_allocator_dispatch_tests
+  sin_pc_original_server_allocator_dispatch_tests)
+add_test(NAME sin_original_win32_server_allocator_dispatch_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_server_allocator_dispatch_tests>)
