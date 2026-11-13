@@ -2622,3 +2622,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_balance_preflight_tests
     COMMAND sin_original_server_cache_balance_preflight_tests)
 endif()
+
+
+# Phase198: original scene/model-sounds paired left/right tree rotations.
+# Original resolver and remaining Phase197 balancing flow are separate.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_tree_rotations_tests
+    tests/test_original_server_cache_tree_rotations.cpp)
+  target_include_directories(sin_original_server_cache_tree_rotations_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_tree_rotations_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_tree_rotations_tests
+    COMMAND sin_original_server_cache_tree_rotations_tests)
+endif()
