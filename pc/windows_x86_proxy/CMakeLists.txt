@@ -335,3 +335,16 @@ sin_pc_configure(sin_pc_original_cache_tree_link_tests
   sin_pc_original_cache_tree_link_tests)
 add_test(NAME sin_original_win32_server_cache_tree_link_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_link_tests>)
+
+
+# Phase197: native PE32/MSVC C++17 tests of original cache rebalance fast
+# paths. Red-parent branches fail closed, not a full native rebalancer.
+add_executable(sin_pc_original_cache_balance_preflight_tests
+  ../../tests/test_original_server_cache_balance_preflight.cpp)
+target_include_directories(sin_pc_original_cache_balance_preflight_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_balance_preflight_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_balance_preflight_tests
+  sin_pc_original_cache_balance_preflight_tests)
+add_test(NAME sin_original_win32_server_cache_balance_preflight_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_balance_preflight_tests>)
