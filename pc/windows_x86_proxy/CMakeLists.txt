@@ -348,3 +348,16 @@ sin_pc_configure(sin_pc_original_cache_balance_preflight_tests
   sin_pc_original_cache_balance_preflight_tests)
 add_test(NAME sin_original_win32_server_cache_balance_preflight_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_balance_preflight_tests>)
+
+
+# Phase198: native 32-bit MSVC contract for original cache tree rotations.
+# Synthetic node storage; not a game DLL, real engine or original heap.
+add_executable(sin_pc_original_cache_tree_rotations_tests
+  ../../tests/test_original_server_cache_tree_rotations.cpp)
+target_include_directories(sin_pc_original_cache_tree_rotations_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_tree_rotations_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_tree_rotations_tests
+  sin_pc_original_cache_tree_rotations_tests)
+add_test(NAME sin_original_win32_server_cache_tree_rotations_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_rotations_tests>)
