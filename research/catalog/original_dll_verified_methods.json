@@ -2829,6 +2829,18 @@
       "evidence_path": "research/phases/phase211-original-client-snapshot-argpack-dispatch-chain.md",
       "implementation_path": "include/sin_compat/original_client_prediction_snapshot_dispatch.hpp",
       "test_path": "tests/test_original_client_prediction_snapshot_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241996F0",
+      "original_code_length": 1036,
+      "original_code_sha256": "71406e900eef6ba6d8abd37ab73f8730c71c35d95a8700a8cb4ab7c9a2b6a7a6",
+      "label": "Original client prediction SaveData record writer, 27-field-type selector, 13-case branch table, 39 direct native helper calls",
+      "owner": "Original SiN Episodes 2006 client.dll prediction snapshot per-record serializer dispatcher",
+      "recovery_status": "complete_native_sha_verified_partial_type_dispatch_reference",
+      "evidence_path": "research/phases/phase212-original-client-snapshot-record-type-switch.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_record_router.hpp",
+      "test_path": "tests/test_original_client_snapshot_record_router.cpp"
     }
   ]
 }

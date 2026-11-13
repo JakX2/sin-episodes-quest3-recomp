@@ -2779,3 +2779,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_prediction_snapshot_dispatch_tests
     COMMAND sin_original_client_prediction_snapshot_dispatch_tests)
 endif()
+
+
+# Phase212: SHA-verified original 1036-byte client snapshot record writer.
+# Portable tests exercise exactly 27 type selectors, 13 case branches,
+# and x86 mode/flag filtering, not real game record serialization.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_record_router_tests
+    tests/test_original_client_snapshot_record_router.cpp)
+  target_include_directories(sin_original_client_snapshot_record_router_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_record_router_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_record_router_tests
+    COMMAND sin_original_client_snapshot_record_router_tests)
+endif()
