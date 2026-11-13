@@ -99,7 +99,7 @@ static void sin_trace_event(const char *phase, const char *name, DWORD detail) {
     if (n != 1 || trace[0] != '1')
         return;
     (void)snprintf(line, sizeof(line),
-                   "[SiN PC proxy] " SIN_ROLE_NAME " %s name=%.240s detail=%lu\\n",
+                   "[SiN PC proxy] " SIN_ROLE_NAME " %s name=%.240s detail=%lu\n",
                    phase, name != NULL ? name : "<none>",
                    (unsigned long)detail);
     OutputDebugStringA(line);
