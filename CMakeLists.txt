@@ -2583,3 +2583,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_slot_allocation_tests
     COMMAND sin_original_server_cache_slot_allocation_tests)
 endif()
+
+
+# Phase195: original server cache node resolver and Phase194 free-list handoff.
+# Safe synthetic host pointers, no original Source engine ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_node_resolver_tests
+    tests/test_original_server_cache_node_resolver.cpp)
+  target_include_directories(sin_original_server_cache_node_resolver_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_node_resolver_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_node_resolver_tests
+    COMMAND sin_original_server_cache_node_resolver_tests)
+endif()
