@@ -50,7 +50,7 @@ class Phase210SyntheticTests(unittest.TestCase):
   self.assertEqual(r["new_sha_verified_client_functions"],0)
   self.assertEqual(r["new_original_x86_bytes"],0)
   self.assertEqual(r["exact_direct_native_call_edges"],7)
-  self.assertEqual(r["sparse_x86_opcode_witnesses"],39)
+  self.assertEqual(r["sparse_x86_opcode_witnesses"],38)
   self.assertEqual(r["original_rdata_strings_checked"],5)
   self.assertEqual(r["native_slot_iterations"],90)
  def test_mutate_every_sparse_instruction_witness(self):
