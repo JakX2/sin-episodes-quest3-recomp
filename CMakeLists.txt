@@ -2596,3 +2596,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_node_resolver_tests
     COMMAND sin_original_server_cache_node_resolver_tests)
 endif()
+
+
+# Phase196: binary-grounded original scene/model-sounds cache tree linker.
+# Balancing is a synthetic callback, not a native engine implementation.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_tree_link_tests
+    tests/test_original_server_cache_tree_link.cpp)
+  target_include_directories(sin_original_server_cache_tree_link_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_tree_link_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_tree_link_tests
+    COMMAND sin_original_server_cache_tree_link_tests)
+endif()

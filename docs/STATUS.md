@@ -366,3 +366,12 @@ The original SiN `server.dll` and `client.dll` were available during this invest
 - Original-only auditor passes both complete DLL and native method SHA256s, checks **32 sparse x86 witnesses**, **14 exact address operands**, two original Phase194 incoming CALL edges and both native boundaries. Eight original-free Python mutation groups and optimized GCC/Clang C++17 Phase194 integration tests pass locally. Root CTest and native Win32 x86 CTest registered; hosted CI checked separately.
 - Reviewed original native functions **185 → 187 (95 server, 92 client)**. This is research coverage, not playable game progress. Original vector growth, tree linking and Source filesystem +0xD4 remain incomplete. Windows-first engine startup tracing is the next integration milestone.
 - Research: `research/phases/phase195-original-server-cache-node-sentinel-resolver.md` (stacked draft).
+
+
+## 2026-11-13: paired original server cached-tree link wrappers (Phase196)
+
+- Read-only original SHA-matched 2006 SiN PE32 DLL inspection identifies **two new complete original server functions**, scene `0x221AA890` (109 bytes) and model-sounds `0x221441B0` (109 bytes). Their complete bodies normalize byte-identical after removing only three native balance-helper CALL rel32 operands per function; normalized SHA256 `2b1dd748abfd04da2818f807c2ce84be6be4e28aef95c8d92f8ad6b41573d461`.
+- Native link implementation sets new 24-byte slot's child WORDs at +0/+2 to `0xFFFF`, parent WORD +4, flag WORD +6 to zero; sets root +0x10 when parent missing, otherwise links first child +0 for nonzero selector or second child +2 for zero. It preserves slot key/payload. It passes the **full 32-bit index** into a repository-specific opaque balance function after indexing slots with the low 16 bits.
+- New C++17 host-neutral model and Phase191/192/193 integration tests; original-only SHA auditor checks **36 sparse native opcode witnesses**, six outgoing balance calls, two incoming insertion-wrapper calls, full method SHA256s and post-return INT3 boundaries. Eight independent original-free mutation groups included. Hosted CI must be observed on PR #249 before claiming success.
+- Unique reviewed method atlas **187 -> 189 (97 server, 92 client)**. Real balancing logic and Windows retail-engine startup remain unimplemented. Windows PC first, Android second, Quest 3 third.
+- See `research/phases/phase196-original-server-cache-tree-link.md`.
