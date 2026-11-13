@@ -2889,6 +2889,42 @@
       "evidence_path": "research/phases/phase213-original-client-snapshot-field-copy-helpers.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_field_copy.hpp",
       "test_path": "tests/test_original_client_snapshot_field_copy.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198B80",
+      "original_code_length": 83,
+      "original_code_sha256": "94b49be4773d3a2acc1dee70c21e4551b0f9891843d9c98942da89d4dd57b268",
+      "label": "Original client prediction type-2 NUL-terminated string byte-equality status helper; enabled/descriptor bypass branches",
+      "owner": "Original 2006 client.dll prediction snapshot type-2 specialist chain",
+      "recovery_status": "complete_original_sha_verified_type2_specialist_host_reference",
+      "evidence_path": "research/phases/phase215-original-client-type2-string-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_type2.hpp",
+      "test_path": "tests/test_original_client_snapshot_type2.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197D00",
+      "original_code_length": 65,
+      "original_code_sha256": "b4673143787130ff0988b900b3427626a3d9fdcda8d265e5385ae93cb7274986",
+      "label": "Original client prediction type-2 string diagnostics: conditional net/pred mismatch message and status log",
+      "owner": "Original 2006 client.dll prediction snapshot type-2 specialist chain",
+      "recovery_status": "complete_original_sha_verified_type2_specialist_host_reference",
+      "evidence_path": "research/phases/phase215-original-client-type2-string-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_type2.hpp",
+      "test_path": "tests/test_original_client_snapshot_type2.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241984A0",
+      "original_code_length": 30,
+      "original_code_sha256": "ac12b87f0269180714911a5f6c8b0c28f41ba2eb4e6d1f33c2774a68223dfe23",
+      "label": "Original client prediction type-2 display/preview callback gated by original +0x34/+0x18 DWORD equality",
+      "owner": "Original 2006 client.dll prediction snapshot type-2 specialist chain",
+      "recovery_status": "complete_original_sha_verified_type2_specialist_host_reference",
+      "evidence_path": "research/phases/phase215-original-client-type2-string-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_type2.hpp",
+      "test_path": "tests/test_original_client_snapshot_type2.cpp"
     }
   ]
 }
