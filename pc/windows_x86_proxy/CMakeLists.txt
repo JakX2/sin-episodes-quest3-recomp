@@ -449,3 +449,16 @@ add_test(NAME sin_pc_original_owner_staging_fail_closed
     -GameBin "$<TARGET_FILE_DIR:sin_pc_owner_module_probe>")
 set_tests_properties(sin_pc_original_owner_staging_fail_closed
   PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_owner_module_probe>")
+
+
+# Phase205: genuine Win32 x86/MSVC validation of the paired original
+# SiN server/client allocator wrapper model (synthetic tier0 callbacks).
+add_executable(sin_pc_original_cross_dll_tier0_allocator_tests
+  ../../tests/test_original_cross_dll_tier0_allocator.cpp)
+target_include_directories(sin_pc_original_cross_dll_tier0_allocator_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cross_dll_tier0_allocator_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cross_dll_tier0_allocator_tests
+  sin_pc_original_cross_dll_tier0_allocator_tests)
+add_test(NAME sin_original_win32_cross_dll_tier0_allocator_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cross_dll_tier0_allocator_tests>)
