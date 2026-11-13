@@ -414,3 +414,26 @@ sin_pc_configure(sin_pc_original_server_allocator_dispatch_tests
   sin_pc_original_server_allocator_dispatch_tests)
 add_test(NAME sin_original_win32_server_allocator_dispatch_contract
   COMMAND $<TARGET_FILE:sin_pc_original_server_allocator_dispatch_tests>)
+
+
+# Phase203: actual Windows x86 LoadLibrary/GetProcAddress preflight for the
+# independently built proxies and (in owner-only use) exact real SiN DLLs.
+# CI uses ONLY synthesized fake originals. The default probe NEVER invokes
+# a game factory; the optional flag does so explicitly, with no engine host.
+add_executable(sin_pc_owner_module_probe tests/owner_module_probe.c)
+sin_pc_configure(sin_pc_owner_module_probe sin_pc_owner_module_probe)
+add_dependencies(sin_pc_owner_module_probe
+  sin_pc_server sin_pc_client sin_pc_fake_server sin_pc_fake_client)
+
+add_test(NAME sin_pc_original_module_exports_only
+  COMMAND $<TARGET_FILE:sin_pc_owner_module_probe>)
+add_test(NAME sin_pc_original_module_factory_handshake
+  COMMAND $<TARGET_FILE:sin_pc_owner_module_probe> --query-factories)
+add_test(NAME sin_pc_original_module_factory_traced
+  COMMAND ${CMAKE_COMMAND} -E env SIN_PC_PROXY_TRACE=1
+    $<TARGET_FILE:sin_pc_owner_module_probe> --query-factories)
+set_tests_properties(
+  sin_pc_original_module_exports_only
+  sin_pc_original_module_factory_handshake
+  sin_pc_original_module_factory_traced
+  PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_owner_module_probe>")
