@@ -2700,3 +2700,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_cross_dll_tier0_allocator_tests
     COMMAND sin_original_cross_dll_tier0_allocator_tests)
 endif()
+
+
+# Phase206: paired original 2006 server/client zero-fill allocator and
+# opaque tier0 virtual-call dispatch. Synthetic host backing only.
+if(BUILD_TESTING)
+  add_executable(sin_original_tier0_zero_allocation_tests
+    tests/test_original_tier0_zero_allocation.cpp)
+  target_include_directories(sin_original_tier0_zero_allocation_tests PRIVATE include)
+  target_compile_options(sin_original_tier0_zero_allocation_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_tier0_zero_allocation_tests
+    COMMAND sin_original_tier0_zero_allocation_tests)
+endif()

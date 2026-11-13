@@ -2457,6 +2457,78 @@
       "evidence_path": "research/phases/phase205-original-cross-dll-tier0-allocator-mirrors.md",
       "implementation_path": "include/sin_compat/original_cross_dll_tier0_allocator.hpp",
       "test_path": "tests/test_original_cross_dll_tier0_allocator.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E460",
+      "original_code_length": 107,
+      "original_code_sha256": "c9a369e37d6bf6a269cf66f1dcab52f38a95b8c73384671d44ad500251da0861",
+      "label": "Original server tier0 zero-initialized element-count times size allocator with REP STOSD/STOSB",
+      "owner": "Original 2006 server.dll tier0 shared allocator helper family",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "evidence_path": "research/phases/phase206-original-cross-dll-tier0-zero-allocation-and-vcalls.md",
+      "implementation_path": "include/sin_compat/original_tier0_zero_allocation.hpp",
+      "test_path": "tests/test_original_tier0_zero_allocation.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416F9C0",
+      "original_code_length": 107,
+      "original_code_sha256": "12b19a35967f33db88219a0ca0abf348b2ecf8091651a418107f0f19ae6eb512",
+      "label": "Original client tier0 zero-initialized element-count times size allocator with same native control flow",
+      "owner": "Original 2006 client.dll tier0 shared allocator helper family",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "evidence_path": "research/phases/phase206-original-cross-dll-tier0-zero-allocation-and-vcalls.md",
+      "implementation_path": "include/sin_compat/original_tier0_zero_allocation.hpp",
+      "test_path": "tests/test_original_tier0_zero_allocation.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E5A0",
+      "original_code_length": 12,
+      "original_code_sha256": "be248372e1ae80572616db55e092bcfcbcbbed484a1e139b15752a334b7d8d57",
+      "label": "Original server imported allocator-object vtable +0x58 unconditional tail jump",
+      "owner": "Original 2006 server.dll opaque tier0 virtual dispatch",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "evidence_path": "research/phases/phase206-original-cross-dll-tier0-zero-allocation-and-vcalls.md",
+      "implementation_path": "include/sin_compat/original_tier0_zero_allocation.hpp",
+      "test_path": "tests/test_original_tier0_zero_allocation.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FB00",
+      "original_code_length": 12,
+      "original_code_sha256": "ea5a906b1f443fc6c98e936b39d629d3b492e994551a8281a11031b5619ff856",
+      "label": "Original client imported allocator-object vtable +0x58 unconditional tail jump",
+      "owner": "Original 2006 client.dll opaque tier0 virtual dispatch",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "evidence_path": "research/phases/phase206-original-cross-dll-tier0-zero-allocation-and-vcalls.md",
+      "implementation_path": "include/sin_compat/original_tier0_zero_allocation.hpp",
+      "test_path": "tests/test_original_tier0_zero_allocation.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E5C0",
+      "original_code_length": 18,
+      "original_code_sha256": "895cd1c5f870dd7ff343225897583863df86dcbe96010ecf12a3c3760a52e041",
+      "label": "Original server single-argument imported allocator-object vtable +0x20 wrapper",
+      "owner": "Original 2006 server.dll opaque tier0 virtual dispatch",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "evidence_path": "research/phases/phase206-original-cross-dll-tier0-zero-allocation-and-vcalls.md",
+      "implementation_path": "include/sin_compat/original_tier0_zero_allocation.hpp",
+      "test_path": "tests/test_original_tier0_zero_allocation.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FB20",
+      "original_code_length": 18,
+      "original_code_sha256": "3407dec8c90462f67a8084470e5d362fc741ed9ae0bf24befeb54b269ee70dc1",
+      "label": "Original client single-argument imported allocator-object vtable +0x20 wrapper",
+      "owner": "Original 2006 client.dll opaque tier0 virtual dispatch",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "evidence_path": "research/phases/phase206-original-cross-dll-tier0-zero-allocation-and-vcalls.md",
+      "implementation_path": "include/sin_compat/original_tier0_zero_allocation.hpp",
+      "test_path": "tests/test_original_tier0_zero_allocation.cpp"
     }
   ]
 }
