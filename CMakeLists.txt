@@ -2687,3 +2687,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_allocator_dispatch_tests
     COMMAND sin_original_server_allocator_dispatch_tests)
 endif()
+
+
+# Phase205: exact original 2006 client/server tier0 allocator twin contract.
+# Original x86 register argument wrappers and shared per-DLL lazy caches.
+if(BUILD_TESTING)
+  add_executable(sin_original_cross_dll_tier0_allocator_tests
+    tests/test_original_cross_dll_tier0_allocator.cpp)
+  target_include_directories(sin_original_cross_dll_tier0_allocator_tests PRIVATE include)
+  target_compile_options(sin_original_cross_dll_tier0_allocator_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_cross_dll_tier0_allocator_tests
+    COMMAND sin_original_cross_dll_tier0_allocator_tests)
+endif()
