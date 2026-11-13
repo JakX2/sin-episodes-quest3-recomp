@@ -64,7 +64,7 @@ std::uint32_t allocate_zeroed(cross::ModuleState& module,
 // load an explicit argument. Do not infer a semantic name or reinterpret
 // the target vtable as a SourceVR or ARM64 allocator implementation.
 template<class Host>
-std::uint32_t dispatch_opaque_vtable_58(Host& host) {
+decltype(auto) dispatch_opaque_vtable_58(Host& host) {
     return host.dispatch_opaque_vtable_58();
 }
 
@@ -72,7 +72,7 @@ std::uint32_t dispatch_opaque_vtable_58(Host& host) {
 // calls the imported tier0 allocator object's virtual slot +0x20 and RETs.
 // Its precise externally implemented method meaning remains unknown.
 template<class Host>
-std::uint32_t dispatch_opaque_vtable_20(Host& host,std::uint32_t arg) {
+decltype(auto) dispatch_opaque_vtable_20(Host& host,std::uint32_t arg) {
     return host.dispatch_opaque_vtable_20(arg);
 }
 
