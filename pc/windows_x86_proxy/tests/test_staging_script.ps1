@@ -10,6 +10,16 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+function Get-LocalSha256([string]$path) {
+  $hash=[System.Security.Cryptography.SHA256]::Create()
+  $stream=[System.IO.File]::OpenRead($path)
+  try {
+    return [System.BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+  } finally {
+    $stream.Dispose()
+    $hash.Dispose()
+  }
+}
 $tokens=$null
 $errors=$null
 [void][System.Management.Automation.Language.Parser]::ParseFile(
@@ -25,7 +35,7 @@ foreach ($name in $names) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Synthetic CI prerequisite missing: $path"
     }
-    $before[$name]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    $before[$name]=(Get-LocalSha256 $path)
 }
 foreach ($action in @('Check','Install','Restore')) {
     $rejected=$false
@@ -44,7 +54,7 @@ foreach ($action in @('Check','Install','Restore')) {
 }
 foreach ($name in $names) {
     $path=Join-Path $GameBin $name
-    $after=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    $after=(Get-LocalSha256 $path)
     if ($after -ne $before[$name]) { throw "Staging script modified a synthetic binary: $name" }
 }
 Write-Output "PASS: staging script parses, rejects synthetic originals and unauthorized mutations, and never changes CI DLLs"
