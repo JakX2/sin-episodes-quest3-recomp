@@ -2841,6 +2841,54 @@
       "evidence_path": "research/phases/phase212-original-client-snapshot-record-type-switch.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_record_router.hpp",
       "test_path": "tests/test_original_client_snapshot_record_router.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198A10",
+      "original_code_length": 34,
+      "original_code_sha256": "8c6cd7b6e20fc8e508282f71240c46268eda44d67f968d00b699b197caaeade8",
+      "label": "Original client snapshot type-5 DWORD-count forward REP MOVSD copy, gated on this+0x2C and argument one",
+      "owner": "Original 2006 client.dll prediction snapshot record type 5 specialist copy helper",
+      "recovery_status": "complete_original_sha_verified_partial_specialist_copy_host_reference",
+      "evidence_path": "research/phases/phase213-original-client-snapshot-field-copy-helpers.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_field_copy.hpp",
+      "test_path": "tests/test_original_client_snapshot_field_copy.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198A40",
+      "original_code_length": 46,
+      "original_code_sha256": "61e309166f7591611a783cd90c9c749f686d2c202ad3280fe87d821d37fb6f02",
+      "label": "Original client snapshot type-6 explicit byte-count forward REP MOVSD/REP MOVSB copy",
+      "owner": "Original 2006 client.dll prediction snapshot record type 6 specialist copy helper",
+      "recovery_status": "complete_original_sha_verified_partial_specialist_copy_host_reference",
+      "evidence_path": "research/phases/phase213-original-client-snapshot-field-copy-helpers.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_field_copy.hpp",
+      "test_path": "tests/test_original_client_snapshot_field_copy.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198A70",
+      "original_code_length": 34,
+      "original_code_sha256": "8c6cd7b6e20fc8e508282f71240c46268eda44d67f968d00b699b197caaeade8",
+      "label": "Original client snapshot type-1 DWORD-count forward REP MOVSD copy, byte-for-byte duplicate of type-5 helper",
+      "owner": "Original 2006 client.dll prediction snapshot record type 1 specialist copy helper",
+      "recovery_status": "complete_original_sha_verified_partial_specialist_copy_host_reference",
+      "evidence_path": "research/phases/phase213-original-client-snapshot-field-copy-helpers.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_field_copy.hpp",
+      "test_path": "tests/test_original_client_snapshot_field_copy.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198B40",
+      "original_code_length": 61,
+      "original_code_sha256": "98a4f883c300f0aeec3998db6434c5b7b7068552a6957140e352d64262af2e67",
+      "label": "Original client snapshot type-2 NUL-terminated string forward copy with REP MOVSD and REP MOVSB",
+      "owner": "Original 2006 client.dll prediction snapshot record type 2 specialist copy helper",
+      "recovery_status": "complete_original_sha_verified_partial_specialist_copy_host_reference",
+      "evidence_path": "research/phases/phase213-original-client-snapshot-field-copy-helpers.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_field_copy.hpp",
+      "test_path": "tests/test_original_client_snapshot_field_copy.cpp"
     }
   ]
 }
