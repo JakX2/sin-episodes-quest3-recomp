@@ -462,3 +462,16 @@ sin_pc_configure(sin_pc_original_cross_dll_tier0_allocator_tests
   sin_pc_original_cross_dll_tier0_allocator_tests)
 add_test(NAME sin_original_win32_cross_dll_tier0_allocator_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cross_dll_tier0_allocator_tests>)
+
+
+# Phase206: true Windows i386/MSVC compile and execution of synthetic
+# original server/client zeroed allocation and opaque tier0 vcall paths.
+add_executable(sin_pc_original_tier0_zero_allocation_tests
+  ../../tests/test_original_tier0_zero_allocation.cpp)
+target_include_directories(sin_pc_original_tier0_zero_allocation_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_tier0_zero_allocation_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_tier0_zero_allocation_tests
+  sin_pc_original_tier0_zero_allocation_tests)
+add_test(NAME sin_original_win32_tier0_zero_allocation_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_tier0_zero_allocation_tests>)
