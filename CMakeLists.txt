@@ -2806,3 +2806,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_field_copy_tests
     COMMAND sin_original_client_snapshot_field_copy_tests)
 endif()
+
+# Phase215: original SiN 2006 client type-2 snapshot equality/trace/preview.
+# Three SHA-verified native methods, modeled with synthetic buffer callbacks.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_type2_tests
+    tests/test_original_client_snapshot_type2.cpp)
+  target_include_directories(sin_original_client_snapshot_type2_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_type2_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_type2_tests
+    COMMAND sin_original_client_snapshot_type2_tests)
+endif()
