@@ -2313,6 +2313,54 @@
       "evidence_path": "research/phases/phase198-original-server-cache-tree-rotations.md",
       "implementation_path": "include/sin_compat/original_server_cache_tree_rotations.hpp",
       "test_path": "tests/test_original_server_cache_tree_rotations.cpp"
+    },
+    {
+      "entry_va": "0x221A3A10",
+      "original_code_length": 119,
+      "original_code_sha256": "e4affe6087ab30ce324d99a085b63f7f6589c3532bfbf9969dc2a5dac389abd5",
+      "label": "Original scene cache 24-byte array capacity growth: fixed step or doubling and malloc/realloc dispatch",
+      "owner": "2006 server.dll scene tree vector at tree object +4",
+      "dll": "server",
+      "recovery_status": "machine_code_verified_host_neutral_model",
+      "evidence_path": "research/phases/phase201-original-server-cache-array-growth-and-key-init.md",
+      "implementation_path": "include/sin_compat/original_server_cache_array_growth.hpp",
+      "test_path": "tests/test_original_server_cache_array_growth.cpp"
+    },
+    {
+      "entry_va": "0x2213AAC0",
+      "original_code_length": 119,
+      "original_code_sha256": "c8cd4dd9c3ea9eaf97582206ea260481dde62a981a0518fede75a4fa42986f8f",
+      "label": "Original model-sounds cache 24-byte array capacity growth with identical policy",
+      "owner": "2006 server.dll modelsounds tree vector at tree object +4",
+      "dll": "server",
+      "recovery_status": "machine_code_verified_host_neutral_model",
+      "evidence_path": "research/phases/phase201-original-server-cache-array-growth-and-key-init.md",
+      "implementation_path": "include/sin_compat/original_server_cache_array_growth.hpp",
+      "test_path": "tests/test_original_server_cache_array_growth.cpp"
+    },
+    {
+      "entry_va": "0x221A3A90",
+      "original_code_length": 36,
+      "original_code_sha256": "f55c402b759c9af8cb82f01ca4ae3844018f8e2cf6e886e5e083b75d3b2ea53e",
+      "label": "Original scene cache 16-byte key descriptor initializer: zero, zero, fffffffe, ffffffff",
+      "owner": "2006 server.dll scene tree descriptor helper",
+      "dll": "server",
+      "recovery_status": "machine_code_verified_host_neutral_model",
+      "evidence_path": "research/phases/phase201-original-server-cache-array-growth-and-key-init.md",
+      "implementation_path": "include/sin_compat/original_server_cache_array_growth.hpp",
+      "test_path": "tests/test_original_server_cache_array_growth.cpp"
+    },
+    {
+      "entry_va": "0x2213AB40",
+      "original_code_length": 36,
+      "original_code_sha256": "f55c402b759c9af8cb82f01ca4ae3844018f8e2cf6e886e5e083b75d3b2ea53e",
+      "label": "Original model-sounds cache 16-byte key descriptor initializer",
+      "owner": "2006 server.dll modelsounds descriptor helper",
+      "dll": "server",
+      "recovery_status": "machine_code_verified_host_neutral_model",
+      "evidence_path": "research/phases/phase201-original-server-cache-array-growth-and-key-init.md",
+      "implementation_path": "include/sin_compat/original_server_cache_array_growth.hpp",
+      "test_path": "tests/test_original_server_cache_array_growth.cpp"
     }
   ]
 }
