@@ -437,3 +437,15 @@ set_tests_properties(
   sin_pc_original_module_factory_handshake
   sin_pc_original_module_factory_traced
   PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_owner_module_probe>")
+
+
+# Phase203: fail-closed PowerShell staging safety test, using ONLY synthetic
+# CI binaries. Script parses but must reject fake original SHA256s and any
+# mutation without explicit user permission; no commercial DLLs in CI.
+add_test(NAME sin_pc_original_owner_staging_fail_closed
+  COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_staging_script.ps1"
+    -ScriptPath "${CMAKE_CURRENT_SOURCE_DIR}/Prepare-SiNWin32ProxyTest.ps1"
+    -GameBin "$<TARGET_FILE_DIR:sin_pc_owner_module_probe>")
+set_tests_properties(sin_pc_original_owner_staging_fail_closed
+  PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_owner_module_probe>")
