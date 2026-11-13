@@ -2609,3 +2609,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_tree_link_tests
     COMMAND sin_original_server_cache_tree_link_tests)
 endif()
+
+
+# Phase197: original SiN server cache balancing safe-prefix semantics.
+# The 1,387-byte original algorithms' rotations remain deliberately gated.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_balance_preflight_tests
+    tests/test_original_server_cache_balance_preflight.cpp)
+  target_include_directories(sin_original_server_cache_balance_preflight_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_balance_preflight_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_balance_preflight_tests
+    COMMAND sin_original_server_cache_balance_preflight_tests)
+endif()
