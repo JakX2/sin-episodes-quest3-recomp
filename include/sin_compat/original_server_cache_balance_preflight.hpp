@@ -10,10 +10,10 @@ namespace tree = original_server_cache_tree_lookup;
 
 inline constexpr std::uint32_t kSceneBalanceVA = 0x221A8F20u;
 inline constexpr std::uint32_t kModelSoundsBalanceVA = 0x221429D0u;
-inline constexpr std::uint32_t kSceneLeftRotationVA = 0x221A6BB0u;
-inline constexpr std::uint32_t kSceneRightRotationVA = 0x221A6CA0u;
-inline constexpr std::uint32_t kModelSoundsLeftRotationVA = 0x221409B0u;
-inline constexpr std::uint32_t kModelSoundsRightRotationVA = 0x22140AA0u;
+inline constexpr std::uint32_t kSceneRotationHelperAVA = 0x221A6BB0u;
+inline constexpr std::uint32_t kSceneRotationHelperBVA = 0x221A6CA0u;
+inline constexpr std::uint32_t kModelSoundsRotationHelperAVA = 0x221409B0u;
+inline constexpr std::uint32_t kModelSoundsRotationHelperBVA = 0x22140AA0u;
 inline constexpr std::uint16_t kNil = 0xffffu;
 inline constexpr std::uint16_t kBlack = 1u;
 inline constexpr std::uint16_t kRed = 0u;
