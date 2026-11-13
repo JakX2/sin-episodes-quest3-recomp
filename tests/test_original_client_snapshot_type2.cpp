@@ -49,8 +49,12 @@ static void check_original_equality_and_gate_order() {
     a.descriptor_byte_13 = 0;
     bool threw = false;
     try { type2::compare_status(a,Bytes{'a'},0,bytes("a"),0); }
-    catch (const std::runtime_error&) { threw = true; }
+    catch (const std::out_of_range&) { threw = true; }
     assert(threw);
+    // Original native comparison exits on the first mismatched byte.
+    // Neither source needs a NUL if their first bytes already differ.
+    assert(type2::compare_status(a,Bytes{'a'},0,Bytes{'b'},0)==0u);
+    assert(type2::compare_status(a,Bytes{'a','b'},0,Bytes{'a','X'},0)==0u);
 }
 static void check_original_diagnostic_branches() {
     auto a=active();
