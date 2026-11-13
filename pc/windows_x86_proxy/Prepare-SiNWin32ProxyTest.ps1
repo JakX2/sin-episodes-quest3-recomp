@@ -12,13 +12,23 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+function Get-LocalSha256([string]$path) {
+  $hash=[System.Security.Cryptography.SHA256]::Create()
+  $stream=[System.IO.File]::OpenRead($path)
+  try {
+    return [System.BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+  } finally {
+    $stream.Dispose()
+    $hash.Dispose()
+  }
+}
 $Originals=@(
   @{Name='server.dll';Sibling='sin_original_server.dll';Hash='568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650'},
   @{Name='client.dll';Sibling='sin_original_client.dll';Hash='6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d'}
 )
 function Require-Original([string]$path,[string]$digest) {
   if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing owner original: $path" }
-  $hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+  $hash=(Get-LocalSha256 $path)
   if ($hash -ne $digest) { throw "Original 2006 SiN DLL SHA256 mismatch: $path" }
 }
 function Require-PE32([string]$path) {
@@ -58,7 +68,7 @@ if ($Action -eq 'Install') {
     Require-Original $live $spec.Hash
     if (!(Test-Path -LiteralPath $built -PathType Leaf)) { throw "Missing built proxy: $built" }
     Require-PE32 $built
-    $digest=(Get-FileHash -LiteralPath $built -Algorithm SHA256).Hash.ToLowerInvariant()
+    $digest=(Get-LocalSha256 $built)
     if ($digest -eq $spec.Hash) { throw "Built proxy must not be the owner-original binary: $built" }
     $plan+=@{Live=$live;Sibling=$sibling;Built=$built;Hash=$digest}
   }
@@ -70,7 +80,7 @@ if ($Action -eq 'Install') {
     }
     foreach($part in $plan) {
       Copy-Item -LiteralPath $part.Built -Destination $part.Live
-      $got=(Get-FileHash -LiteralPath $part.Live -Algorithm SHA256).Hash.ToLowerInvariant()
+      $got=(Get-LocalSha256 $part.Live)
       if ($got -ne $part.Hash) { throw "Proxy file copy did not preserve SHA256" }
     }
   } catch {
@@ -95,7 +105,7 @@ if ($Action -eq 'Restore') {
     $sibling=Join-Path $dir $spec.Sibling
     Require-Original $sibling $spec.Hash
     if (!(Test-Path -LiteralPath $live -PathType Leaf)) { throw "Missing installed proxy: $live" }
-    $hash=(Get-FileHash -LiteralPath $live -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash=(Get-LocalSha256 $live)
     if ($hash -eq $spec.Hash) { Write-Output "ALREADY RESTORED: $live";continue }
     $pending="$live.sin-restore-pending"
     $backup="$live.sin-proxy-pre-restore"
