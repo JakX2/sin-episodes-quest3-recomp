@@ -322,3 +322,16 @@ sin_pc_configure(sin_pc_original_cache_node_resolver_tests
   sin_pc_original_cache_node_resolver_tests)
 add_test(NAME sin_original_win32_server_cache_node_resolver_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_node_resolver_tests>)
+
+
+# Phase196: MSVC x86 host-neutral parent/child/root tree-link contract,
+# including native-index-width handling and synthetic balancing callbacks.
+add_executable(sin_pc_original_cache_tree_link_tests
+  ../../tests/test_original_server_cache_tree_link.cpp)
+target_include_directories(sin_pc_original_cache_tree_link_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_tree_link_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_tree_link_tests
+  sin_pc_original_cache_tree_link_tests)
+add_test(NAME sin_original_win32_server_cache_tree_link_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_link_tests>)
