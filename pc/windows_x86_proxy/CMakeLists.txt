@@ -387,3 +387,16 @@ sin_pc_configure(sin_pc_original_cache_balance_stress_tests
   sin_pc_original_cache_balance_stress_tests)
 add_test(NAME sin_original_win32_server_cache_balance_stress_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_balance_stress_tests>)
+
+
+# Phase201: native MSVC x86 contract against the 32-bit original array
+# capacity algorithm; only synthetic host pointer tokens and memory.
+add_executable(sin_pc_original_cache_array_growth_tests
+  ../../tests/test_original_server_cache_array_growth.cpp)
+target_include_directories(sin_pc_original_cache_array_growth_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_array_growth_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_array_growth_tests
+  sin_pc_original_cache_array_growth_tests)
+add_test(NAME sin_original_win32_server_cache_array_growth_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_array_growth_tests>)
