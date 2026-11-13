@@ -2753,3 +2753,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_allocator_game_callers_tests
     COMMAND sin_original_allocator_game_callers_tests)
 endif()
+
+
+# Phase210: verified original client prediction/SaveData caller and 90-slot
+# snapshot loop, composed with Phase209's 91-buffer host model.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_prediction_savedata_tests
+    tests/test_original_client_prediction_savedata.cpp)
+  target_include_directories(sin_original_client_prediction_savedata_tests PRIVATE include)
+  target_compile_options(sin_original_client_prediction_savedata_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_prediction_savedata_tests
+    COMMAND sin_original_client_prediction_savedata_tests)
+endif()
