@@ -56,30 +56,35 @@ static_assert(sizeof(ModuleState)==16u);
 static_assert(sizeof(client::CacheState32)==8u);
 static_assert(sizeof(server::NativeLazyContexts32)==16u);
 
-// Phase186's CacheState32 presents flags first, then owner; native layout
-// stores owner first, then flags. Adapt by VALUE around each call and write
-// back to the SINGLE native 16-byte state. This is essential: original
-// register and stack entrypoints address the SAME global flag/owner slots.
+// Native register and stack entrypoints access the SAME four DWORD globals.
+// Set bit0 in the real modeled global BEFORE invoking the filename resolver,
+// rather than staging this change in a temporary CacheState32. This preserves
+// native callback visibility and avoids a re-entrant double initialization.
+template<class Host>
+std::uint32_t ensure_register_owner(Host& host,std::uint32_t& owner,
+                                    std::uint32_t& flags) {
+    if ((flags&1u)==0u) {
+        flags|=1u;
+        owner=static_cast<std::uint32_t>(host.resolve_filename_owner());
+    }
+    return owner;
+}
 template<class Host>
 std::uintptr_t allocate_from_esi(ModuleState& state,Host& host,
                                  std::uint32_t esi_size) {
-    client::CacheState32 view{state.original.alloc_flags_04,
-                              state.original.alloc_context_00};
-    const auto result=client::allocate_single(host,view,esi_size);
-    state.original.alloc_flags_04=view.flags;
-    state.original.alloc_context_00=view.filename;
-    return result;
+    const auto owner=ensure_register_owner(host,state.original.alloc_context_00,
+                                               state.original.alloc_flags_04);
+    return owner==0u ? host.allocate_plain(esi_size)
+                     : host.allocate_with_owner(esi_size,owner,0u);
 }
 template<class Host>
 std::uintptr_t dispatch_from_edi_esi(ModuleState& state,Host& host,
                                      std::uint32_t edi_value,
                                      std::uint32_t esi_value) {
-    client::CacheState32 view{state.original.realloc_flags_0c,
-                              state.original.realloc_context_08};
-    const auto result=client::dispatch_pair(host,view,edi_value,esi_value);
-    state.original.realloc_flags_0c=view.flags;
-    state.original.realloc_context_08=view.filename;
-    return result;
+    const auto owner=ensure_register_owner(host,state.original.realloc_context_08,
+                                               state.original.realloc_flags_0c);
+    return owner==0u ? host.pair_plain(edi_value,esi_value)
+                     : host.pair_with_owner(edi_value,esi_value,owner,0u);
 }
 
 // Original 79-byte and 90-byte stack wrappers in both DLLs share the
