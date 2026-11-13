@@ -2635,3 +2635,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_tree_rotations_tests
     COMMAND sin_original_server_cache_tree_rotations_tests)
 endif()
+
+
+# Phase199: composed red-black fixup for SHA-reviewed original cache tree
+# layout/rotations. Reference algorithm, NOT proven complete native x86 ABI.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_balance_composition_tests
+    tests/test_original_server_cache_balance_composition.cpp)
+  target_include_directories(sin_original_server_cache_balance_composition_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_balance_composition_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_balance_composition_tests
+    COMMAND sin_original_server_cache_balance_composition_tests)
+endif()
