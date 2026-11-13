@@ -7,7 +7,7 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 import audit_sin_original_allocator_game_callers as original
 from audit_sin_original_allocator_game_callers import (
- SERVER_VA,SERVER_LEN,CLIENT_VA,CLIENT_LEN,SERVER_WITNESSES,CLIENT_WITNESSES,
+ SERVER_VA,SERVER_LEN,CLIENT_VA,CLIENT_LEN,
  WITNESSES,CALL_EDGES,RDATA_REFERENCES,
  rel_call,verify_native,audit,rdata_refs,VerificationError
 )
