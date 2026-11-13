@@ -2409,6 +2409,54 @@
       "evidence_path": "research/phases/phase202-original-server-allocator-dispatch-and-ownership.md",
       "implementation_path": "include/sin_compat/original_server_allocator_dispatch.hpp",
       "test_path": "tests/test_original_server_allocator_dispatch.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E2F0",
+      "original_code_length": 71,
+      "original_code_sha256": "e2c2ae1408ce91691982e97c2d3836de3345664f7d177fee7c5313bab26d6389",
+      "label": "Original SiN server tier0 ESI-register allocation using cached module filename owner",
+      "owner": "Original 2006 server.dll register-based heap allocator dispatch",
+      "recovery_status": "machine_code_verified_host_neutral_shared_state_model",
+      "evidence_path": "research/phases/phase205-original-cross-dll-tier0-allocator-mirrors.md",
+      "implementation_path": "include/sin_compat/original_cross_dll_tier0_allocator.hpp",
+      "test_path": "tests/test_original_cross_dll_tier0_allocator.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E340",
+      "original_code_length": 74,
+      "original_code_sha256": "2ab07ccb733a46a88571bb1cb32596b85937dc904b5454c2c1e714b4275fd4c2",
+      "label": "Original SiN server tier0 EDI/ESI-register pair allocator dispatch with separate cached owner",
+      "owner": "Original 2006 server.dll register-based heap allocator dispatch",
+      "recovery_status": "machine_code_verified_host_neutral_shared_state_model",
+      "evidence_path": "research/phases/phase205-original-cross-dll-tier0-allocator-mirrors.md",
+      "implementation_path": "include/sin_compat/original_cross_dll_tier0_allocator.hpp",
+      "test_path": "tests/test_original_cross_dll_tier0_allocator.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416F940",
+      "original_code_length": 18,
+      "original_code_sha256": "c597a60f0eca41a3544aef8a22df99bd70535de676d5bf7f73477f0865daea73",
+      "label": "Original SiN client deallocation wrapper, direct imported tier0 allocator vtable +0x14",
+      "owner": "Original 2006 client.dll tier0 heap allocator dispatch",
+      "recovery_status": "machine_code_verified_host_neutral_shared_state_model",
+      "evidence_path": "research/phases/phase205-original-cross-dll-tier0-allocator-mirrors.md",
+      "implementation_path": "include/sin_compat/original_cross_dll_tier0_allocator.hpp",
+      "test_path": "tests/test_original_cross_dll_tier0_allocator.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416F960",
+      "original_code_length": 90,
+      "original_code_sha256": "c763dd4ddaf1c66858586c95c266ee2d19585a9f655e91edb9bfcb3d6d9e3cc2",
+      "label": "Original SiN client stack-pair realloc-like wrapper with independent lazy filename context",
+      "owner": "Original 2006 client.dll tier0 heap allocator dispatch",
+      "recovery_status": "machine_code_verified_host_neutral_shared_state_model",
+      "evidence_path": "research/phases/phase205-original-cross-dll-tier0-allocator-mirrors.md",
+      "implementation_path": "include/sin_compat/original_cross_dll_tier0_allocator.hpp",
+      "test_path": "tests/test_original_cross_dll_tier0_allocator.cpp"
     }
   ]
 }
