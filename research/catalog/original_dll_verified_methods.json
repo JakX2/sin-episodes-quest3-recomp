@@ -2793,6 +2793,42 @@
       "evidence_path": "research/phases/phase210-original-client-initpredictable-savedata-slots.md",
       "implementation_path": "include/sin_compat/original_client_prediction_savedata.hpp",
       "test_path": "tests/test_original_client_prediction_savedata.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241978A0",
+      "original_code_length": 104,
+      "original_code_sha256": "13bac9785ff2c2f21cd983d5d911f542538a449f4990bd21ab825a96d24f2c82",
+      "label": "Original SiN client 52-byte prediction snapshot argument block constructor from ten stack DWORDs",
+      "owner": "Original 2006 client.dll snapshot argument-pack layout and constructor",
+      "recovery_status": "sha_verified_partial_game_caller_host_neutral_reference",
+      "evidence_path": "research/phases/phase211-original-client-snapshot-argpack-dispatch-chain.md",
+      "implementation_path": "include/sin_compat/original_client_prediction_snapshot_dispatch.hpp",
+      "test_path": "tests/test_original_client_prediction_snapshot_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24199BA0",
+      "original_code_length": 71,
+      "original_code_sha256": "9dfd73ea32a62b437e7492038a3b7f01706d6ba62966d162e8b776c897cfeab3",
+      "label": "Original client process-global snapshot invocation counter, optional preprocess, prepare and record-walker dispatcher",
+      "owner": "Original 2006 client.dll prediction snapshot dispatch",
+      "recovery_status": "sha_verified_partial_game_caller_host_neutral_reference",
+      "evidence_path": "research/phases/phase211-original-client-snapshot-argpack-dispatch-chain.md",
+      "implementation_path": "include/sin_compat/original_client_prediction_snapshot_dispatch.hpp",
+      "test_path": "tests/test_original_client_prediction_snapshot_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24199B50",
+      "original_code_length": 65,
+      "original_code_sha256": "45490bbfdb993b0b40c255aaf9612d1f1e116d10de5b3c55d220f10a524e5005",
+      "label": "Original client linked-record writer calls opaque 0x241996F0 for head and next+0x0C records, ret 8",
+      "owner": "Original 2006 client.dll snapshot record forwarding",
+      "recovery_status": "sha_verified_partial_game_caller_host_neutral_reference",
+      "evidence_path": "research/phases/phase211-original-client-snapshot-argpack-dispatch-chain.md",
+      "implementation_path": "include/sin_compat/original_client_prediction_snapshot_dispatch.hpp",
+      "test_path": "tests/test_original_client_prediction_snapshot_dispatch.cpp"
     }
   ]
 }
