@@ -2769,6 +2769,30 @@
       "evidence_path": "research/phases/phase209-original-game-callers-random-token-client-91-buffers.md",
       "implementation_path": "include/sin_compat/original_allocator_game_callers.hpp",
       "test_path": "tests/test_original_allocator_game_callers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x240CAF40",
+      "original_code_length": 90,
+      "original_code_sha256": "78c3167df98218dd8298d9e7f7c194fac9bc224a0d3c773d65e023e22ff2ed2e",
+      "label": "Original client InitPredictable flag, descriptor setup, Phase209 91-buffer initializer and 90 SaveData calls",
+      "owner": "Original 2006 client.dll client prediction initialization caller",
+      "recovery_status": "machine_code_verified_partial_host_neutral_reference",
+      "evidence_path": "research/phases/phase210-original-client-initpredictable-savedata-slots.md",
+      "implementation_path": "include/sin_compat/original_client_prediction_savedata.hpp",
+      "test_path": "tests/test_original_client_prediction_savedata.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x240C5960",
+      "original_code_length": 241,
+      "original_code_sha256": "2c11e9007379162694493491f4f794c975019f3abd2c7119b228bcce84d7a58f",
+      "label": "Original client C_BaseEntity::SaveData profiler wrapper, index -1 sentinel or index % 90 buffer selection and opaque snapshot serialization",
+      "owner": "Original 2006 client.dll SaveData object helper",
+      "recovery_status": "machine_code_verified_partial_host_neutral_reference",
+      "evidence_path": "research/phases/phase210-original-client-initpredictable-savedata-slots.md",
+      "implementation_path": "include/sin_compat/original_client_prediction_savedata.hpp",
+      "test_path": "tests/test_original_client_prediction_savedata.cpp"
     }
   ]
 }
