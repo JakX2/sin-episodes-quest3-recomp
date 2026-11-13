@@ -2625,6 +2625,126 @@
       "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
       "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
       "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E720",
+      "original_code_length": 27,
+      "original_code_sha256": "59032b061ad657a4b65e535c30bf8597ed1fe4c28ba3cbae8b6dc0aec80dbd9c",
+      "label": "Imported tier0 allocator virtual +0x00 three-argument forwarding (source order)",
+      "owner": "Original SiN Episodes 2006 server.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FC80",
+      "original_code_length": 27,
+      "original_code_sha256": "6cc143aece17495514ffc1e1c9e7f58b04b2391670ea68fe66b475813979cefb",
+      "label": "Imported tier0 allocator virtual +0x00 three-argument forwarding (source order)",
+      "owner": "Original SiN Episodes 2006 client.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E740",
+      "original_code_length": 28,
+      "original_code_sha256": "7dd353c922692127a061e2b9dcbb9c4a75021744bdee3ad0d5e98cf6f125bb83",
+      "label": "Imported tier0 allocator opaque virtual +0x10 three-argument forwarding",
+      "owner": "Original SiN Episodes 2006 server.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FCA0",
+      "original_code_length": 28,
+      "original_code_sha256": "a870764ec093252a4945e3eb8bc80af4f9cc5472c189e3db7ee1c1002579cc0e",
+      "label": "Imported tier0 allocator opaque virtual +0x10 three-argument forwarding",
+      "owner": "Original SiN Episodes 2006 client.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E760",
+      "original_code_length": 33,
+      "original_code_sha256": "028af88c5784da167afc6bcd718877bb57ff3a21e528f35a930ba78501677c8d",
+      "label": "Imported tier0 allocator virtual +0x08 four-argument forwarding",
+      "owner": "Original SiN Episodes 2006 server.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FCC0",
+      "original_code_length": 33,
+      "original_code_sha256": "1e32b0610e9e25e09c3e8d12cc4c57f199e81b27f74f4c6964e4efb8279eedaa",
+      "label": "Imported tier0 allocator virtual +0x08 four-argument forwarding",
+      "owner": "Original SiN Episodes 2006 client.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E790",
+      "original_code_length": 79,
+      "original_code_sha256": "1ba57fe89ebae2110c154315e1371c8481cc0bd1cf8363a4c83689219ff9714f",
+      "label": "Original server cached tier0 allocation alias A with shared primary owner flag",
+      "owner": "Original SiN Episodes 2006 server.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E7E0",
+      "original_code_length": 27,
+      "original_code_sha256": "f903cbb82919679192b60918d3ee9f9087444206f9cfc37eb4ee09ac607e5565",
+      "label": "Original server tier0 virtual +0x00 wrapper forwarding first, third and fourth stack arguments",
+      "owner": "Original SiN Episodes 2006 server.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E800",
+      "original_code_length": 18,
+      "original_code_sha256": "4d45603c1544ce399c6783bb8fd0019698929a223663d256d112ce57d66868fc",
+      "label": "Original server direct tier0 virtual +0x14 deallocation alias",
+      "owner": "Original SiN Episodes 2006 server.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E820",
+      "original_code_length": 79,
+      "original_code_sha256": "f0b61188dfa38e2eea163e724678c5ec46319874062766bbe9b78dd29dcf1884",
+      "label": "Original server cached tier0 allocation alias B with shared primary owner flag",
+      "owner": "Original SiN Episodes 2006 server.dll tier0 g_pMemAlloc bridge",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase208-original-tier0-direct-argument-bridges.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_bridges.hpp",
+      "test_path": "tests/test_original_tier0_allocator_bridges.cpp"
     }
   ]
 }
