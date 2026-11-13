@@ -515,3 +515,17 @@ sin_pc_configure(sin_pc_original_allocator_game_callers_tests
   sin_pc_original_allocator_game_callers_tests)
 add_test(NAME sin_original_win32_allocator_game_callers_contract
   COMMAND $<TARGET_FILE:sin_pc_original_allocator_game_callers_tests>)
+
+
+# Phase210: real Win32 x86/MSVC regression for original client prediction
+# setup order and SaveData buffer slots, with independent fake host callbacks.
+add_executable(sin_pc_original_client_prediction_savedata_tests
+  ../../tests/test_original_client_prediction_savedata.cpp)
+target_include_directories(sin_pc_original_client_prediction_savedata_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_prediction_savedata_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_prediction_savedata_tests
+  sin_pc_original_client_prediction_savedata_tests)
+add_test(NAME sin_original_win32_client_prediction_savedata_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_prediction_savedata_tests>)
