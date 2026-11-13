@@ -2648,3 +2648,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_balance_composition_tests
     COMMAND sin_original_server_cache_balance_composition_tests)
 endif()
+
+
+# Phase200: independent 64-node unsigned-key stress for the canonical
+# Phase199 red-black fixup candidate (not a native game DLL parity claim).
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_balance_stress_tests
+    tests/test_original_server_cache_balance_stress.cpp)
+  target_include_directories(sin_original_server_cache_balance_stress_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_balance_stress_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_balance_stress_tests
+    COMMAND sin_original_server_cache_balance_stress_tests)
+endif()
