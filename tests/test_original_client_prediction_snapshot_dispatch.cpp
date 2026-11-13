@@ -167,7 +167,8 @@ static void test_wrapping_and_host_only_loop_guard() {
     auto looping=simple_host(&counter2);
     looping.records[0x200u].next_token_0c=0x100u;
     bool threw=false;
-    try {(void)snap::dispatch_original_snapshot(block,looping,counter2,
+    snap::ArgumentBlock32 second_block{};
+    try {(void)snap::dispatch_original_snapshot(second_block,looping,counter2,
                                                 1u,2u,0x100u);}
     catch(const std::runtime_error&){threw=true;}
     assert(threw && counter2==1u && looping.write_calls==2);
