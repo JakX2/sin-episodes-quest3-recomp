@@ -2529,6 +2529,102 @@
       "evidence_path": "research/phases/phase206-original-cross-dll-tier0-zero-allocation-and-vcalls.md",
       "implementation_path": "include/sin_compat/original_tier0_zero_allocation.hpp",
       "test_path": "tests/test_original_tier0_zero_allocation.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E5E0",
+      "original_code_length": 18,
+      "original_code_sha256": "895cd1c5f870dd7ff343225897583863df86dcbe96010ecf12a3c3760a52e041",
+      "label": "Original server duplicate one-argument tier0 +0x20 virtual wrapper",
+      "owner": "2006 server.dll tier0 allocator",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
+      "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FB40",
+      "original_code_length": 18,
+      "original_code_sha256": "3407dec8c90462f67a8084470e5d362fc741ed9ae0bf24befeb54b269ee70dc1",
+      "label": "Original client duplicate one-argument tier0 +0x20 virtual wrapper",
+      "owner": "2006 client.dll tier0 allocator",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
+      "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E600",
+      "original_code_length": 79,
+      "original_code_sha256": "631b6917d8e62170590843a21f22c22893e5609169125b67b2a0cbb623636e66",
+      "label": "Original server primary-context stack allocator duplicate alias A",
+      "owner": "2006 server.dll tier0 allocator",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
+      "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FB60",
+      "original_code_length": 79,
+      "original_code_sha256": "49018cbed857fb9700e1514c35d82b715c2458c212371295863becb5b6ce1d50",
+      "label": "Original client primary-context stack allocator duplicate alias A",
+      "owner": "2006 client.dll tier0 allocator",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
+      "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E650",
+      "original_code_length": 79,
+      "original_code_sha256": "5317deb75ca3c33c3bd1167bcb04e9353970665a5a59f40b5fb8cb5d5342effa",
+      "label": "Original server primary-context stack allocator duplicate alias B",
+      "owner": "2006 server.dll tier0 allocator",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
+      "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FBB0",
+      "original_code_length": 79,
+      "original_code_sha256": "ca40a5c6f99fb923ff0e69a34763d74a9a6e78d2d4bbc239d5abf48df5c3840c",
+      "label": "Original client primary-context stack allocator duplicate alias B",
+      "owner": "2006 client.dll tier0 allocator",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
+      "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2226E6A0",
+      "original_code_length": 23,
+      "original_code_sha256": "c6b2156b641595c0db8146e1b6461ef5a1668b5ee350d7959958ef70ae9f2b94",
+      "label": "Original server two-argument tier0 vtable +0x1C virtual dispatch wrapper",
+      "owner": "2006 server.dll opaque tier0 virtual dispatch",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
+      "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2416FC00",
+      "original_code_length": 23,
+      "original_code_sha256": "7041a7c7eb1e3fabe53b9c4ca9b807b08ca01531ebdce8cddf8d7978d6cf0f27",
+      "label": "Original client two-argument tier0 vtable +0x1C virtual dispatch wrapper",
+      "owner": "2006 client.dll opaque tier0 virtual dispatch",
+      "recovery_status": "machine_code_verified_opaque_host_reference",
+      "evidence_path": "research/phases/phase207-original-tier0-allocator-alias-entrypoints.md",
+      "implementation_path": "include/sin_compat/original_tier0_allocator_aliases.hpp",
+      "test_path": "tests/test_original_tier0_allocator_aliases.cpp"
     }
   ]
 }

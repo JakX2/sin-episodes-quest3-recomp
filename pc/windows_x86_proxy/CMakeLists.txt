@@ -475,3 +475,16 @@ sin_pc_configure(sin_pc_original_tier0_zero_allocation_tests
   sin_pc_original_tier0_zero_allocation_tests)
 add_test(NAME sin_original_win32_tier0_zero_allocation_contract
   COMMAND $<TARGET_FILE:sin_pc_original_tier0_zero_allocation_tests>)
+
+
+# Phase207: native Win32 MSVC i386 CTest for original duplicate allocator
+# wrappers and opaque two-argument tier0 virtual dispatch contract.
+add_executable(sin_pc_original_tier0_allocator_aliases_tests
+  ../../tests/test_original_tier0_allocator_aliases.cpp)
+target_include_directories(sin_pc_original_tier0_allocator_aliases_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_tier0_allocator_aliases_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_tier0_allocator_aliases_tests
+  sin_pc_original_tier0_allocator_aliases_tests)
+add_test(NAME sin_original_win32_tier0_allocator_aliases_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_tier0_allocator_aliases_tests>)

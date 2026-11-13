@@ -2713,3 +2713,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_tier0_zero_allocation_tests
     COMMAND sin_original_tier0_zero_allocation_tests)
 endif()
+
+
+# Phase207: original 2006 SiN server/client alias allocation entrypoints,
+# shared primary cache and opaque imported tier0 +0x1C two-arg bridge.
+if(BUILD_TESTING)
+  add_executable(sin_original_tier0_allocator_aliases_tests
+    tests/test_original_tier0_allocator_aliases.cpp)
+  target_include_directories(sin_original_tier0_allocator_aliases_tests PRIVATE include)
+  target_compile_options(sin_original_tier0_allocator_aliases_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_tier0_allocator_aliases_tests
+    COMMAND sin_original_tier0_allocator_aliases_tests)
+endif()
