@@ -102,16 +102,18 @@ void client_init_91_buffers(ClientBufferSpan32& memory,
     if (bytes>1048576u)
         throw std::overflow_error("host-only original client buffer too large");
 
-    auto create_buffer=[&]() -> std::uint32_t {
+    auto create_buffer=[&](std::uint32_t& destination) {
         const auto token=bridge::allocate_cached_alias_b(allocator,host,bytes);
         if (token==0u)
             throw std::runtime_error("host-only original client allocation failed");
+        // Native MOV stores the object pointer BEFORE clearing via REP STOS.
+        // A host callback can therefore observe partially initialized state.
+        destination=token;
         host.zero_bytes(token,bytes);
-        return token;
     };
-    memory.sentinel_454=create_buffer();
+    create_buffer(memory.sentinel_454);
     for (std::uint32_t i=0;i<kClientBufferCount;++i)
-        memory.pointers_2ec_to_450[i]=create_buffer();
+        create_buffer(memory.pointers_2ec_to_450[i]);
 }
 
 } // namespace sin_compat::original_allocator_game_callers
