@@ -374,3 +374,16 @@ sin_pc_configure(sin_pc_original_cache_balance_composition_tests
   sin_pc_original_cache_balance_composition_tests)
 add_test(NAME sin_original_win32_server_cache_balance_composition_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_balance_composition_tests>)
+
+
+# Phase200: independent native Win32 x86 MSVC randomized cache tree stress.
+# Uses synthetic host nodes; not an original PE32 playable engine module.
+add_executable(sin_pc_original_cache_balance_stress_tests
+  ../../tests/test_original_server_cache_balance_stress.cpp)
+target_include_directories(sin_pc_original_cache_balance_stress_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_balance_stress_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_balance_stress_tests
+  sin_pc_original_cache_balance_stress_tests)
+add_test(NAME sin_original_win32_server_cache_balance_stress_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_balance_stress_tests>)
