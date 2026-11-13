@@ -52,8 +52,21 @@ inline std::uint32_t compare_status(const OriginalFields& fields,
                                     const Bytes& second, std::size_t second_off) {
     if (fields.byte_14 == 0u) return 0u;
     if ((fields.descriptor_byte_13 & 0x04u) != 0u) return 1u;
-    return safe_c_string(first, first_off) == safe_c_string(second, second_off)
-        ? 1u : 0u;
+    // Native compares byte-by-byte and exits on the FIRST difference,
+    // without scanning either complete string beforehand. A missing NUL
+    // therefore matters only when the compared prefix never diverges.
+    if (first_off >= first.size() || second_off >= second.size())
+        throw std::out_of_range("host-only native compare starting pointer bounds");
+    std::size_t i = 0u;
+    for (;;) {
+        if (i >= first.size() - first_off || i >= second.size() - second_off)
+            throw std::out_of_range("host-only native compare unterminated equal prefix");
+        const auto lhs = first[first_off + i];
+        const auto rhs = second[second_off + i];
+        if (lhs != rhs) return 0u;
+        if (lhs == 0u) return 1u;
+        ++i;
+    }
 }
 
 enum class TraceKind { Difference, Status, Preview };
