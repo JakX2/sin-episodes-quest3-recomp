@@ -2217,6 +2217,30 @@
       "evidence_path": "research/phases/phase195-original-server-cache-node-sentinel-resolver.md",
       "implementation_path": "include/sin_compat/original_server_cache_node_resolver.hpp",
       "test_path": "tests/test_original_server_cache_node_resolver.cpp"
+    },
+    {
+      "entry_va": "0x221AA890",
+      "original_code_length": 109,
+      "original_code_sha256": "7df2e686b670494a7683bd72793a5dc87594159ce7916ce8354ae8821cfc1fc5",
+      "label": "Original scene cache tree parent/child/root link wrapper with per-insert balancing call",
+      "owner": "original 2006 server.dll scene cached-repository tree",
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase196-original-server-cache-tree-link.md",
+      "implementation_path": "include/sin_compat/original_server_cache_tree_link.hpp",
+      "test_path": "tests/test_original_server_cache_tree_link.cpp"
+    },
+    {
+      "entry_va": "0x221441B0",
+      "original_code_length": 109,
+      "original_code_sha256": "2430a2e9c122c44c12371b9c63ed7aaeddfe2dd7add4fb42f61a0a914edf2e25",
+      "label": "Original model-sounds cache tree parent/child/root link wrapper with independent balancing helper",
+      "owner": "original 2006 server.dll model-sounds cached-repository tree",
+      "dll": "server",
+      "recovery_status": "machine_code_verified",
+      "evidence_path": "research/phases/phase196-original-server-cache-tree-link.md",
+      "implementation_path": "include/sin_compat/original_server_cache_tree_link.hpp",
+      "test_path": "tests/test_original_server_cache_tree_link.cpp"
     }
   ]
 }
