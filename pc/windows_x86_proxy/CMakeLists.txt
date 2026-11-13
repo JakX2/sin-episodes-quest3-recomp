@@ -361,3 +361,16 @@ sin_pc_configure(sin_pc_original_cache_tree_rotations_tests
   sin_pc_original_cache_tree_rotations_tests)
 add_test(NAME sin_original_win32_server_cache_tree_rotations_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_rotations_tests>)
+
+
+# Phase199: MSVC x86 tests of the host-side compositional red-black fixup.
+# The actual 1387-byte native balancing ABI is not fully reconstructed.
+add_executable(sin_pc_original_cache_balance_composition_tests
+  ../../tests/test_original_server_cache_balance_composition.cpp)
+target_include_directories(sin_pc_original_cache_balance_composition_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_balance_composition_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_balance_composition_tests
+  sin_pc_original_cache_balance_composition_tests)
+add_test(NAME sin_original_win32_server_cache_balance_composition_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_balance_composition_tests>)
