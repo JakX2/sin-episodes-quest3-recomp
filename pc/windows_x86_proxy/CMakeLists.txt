@@ -529,3 +529,17 @@ sin_pc_configure(sin_pc_original_client_prediction_savedata_tests
   sin_pc_original_client_prediction_savedata_tests)
 add_test(NAME sin_original_win32_client_prediction_savedata_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_prediction_savedata_tests>)
+
+
+# Phase211: genuine Win32 i386/MSVC synthetic-host original prediction
+# snapshot argument-block, counter and linked record dispatch validation.
+add_executable(sin_pc_original_client_prediction_snapshot_dispatch_tests
+  ../../tests/test_original_client_prediction_snapshot_dispatch.cpp)
+target_include_directories(sin_pc_original_client_prediction_snapshot_dispatch_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_prediction_snapshot_dispatch_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_prediction_snapshot_dispatch_tests
+  sin_pc_original_client_prediction_snapshot_dispatch_tests)
+add_test(NAME sin_original_win32_client_prediction_snapshot_dispatch_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_prediction_snapshot_dispatch_tests>)
