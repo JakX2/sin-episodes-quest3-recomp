@@ -105,7 +105,7 @@ def verify_native(server:PEImage,client:PEImage,*,check_hash=True,
         "sparse_opcode_witnesses":n_witnesses,
         "exact_direct_owner_helper_calls":n_direct_calls,
         "original_tier0_imports_checked":2 if check_imports else 0,
-        "original_normalized_full_method_sha256":{k:v[6] if False else v[5] for k,v in REGIONS.items()} if check_hash else None,
+        "original_normalized_full_method_sha256":{k:v[5] for k,v in REGIONS.items()} if check_hash else None,
         "zero_allocator_native_semantics":{
             "arguments":"two stack uint32 operands","native_count_times_size":"low 32 bits IMUL",
             "allocator_virt_basic_byte_offset":4,"allocator_virt_owner_byte_offset":0,
