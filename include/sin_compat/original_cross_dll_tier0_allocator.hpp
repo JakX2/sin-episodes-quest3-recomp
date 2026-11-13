@@ -49,30 +49,37 @@ static_assert(kServer.tier0_memalloc_iat_va==server::kAllocatorGlobalSlotVA);
 // DLL share their primary/secondary contexts; never use this host struct to
 // merge server and client global memory.
 struct ModuleState {
-    client::CacheState32 primary{};
-    client::CacheState32 secondary{};
-    server::NativeLazyContexts32 stack_compat{};
+    server::NativeLazyContexts32 original{};
 };
 static_assert(std::is_standard_layout<ModuleState>::value);
+static_assert(sizeof(ModuleState)==16u);
 static_assert(sizeof(client::CacheState32)==8u);
 static_assert(sizeof(server::NativeLazyContexts32)==16u);
 
-// Native register allocation: ESI=size. Original server and client share
-// the same lazy owner caching, plain +0x04 / tagged +0x00 virtual calls.
+// Phase186's CacheState32 presents flags first, then owner; native layout
+// stores owner first, then flags. Adapt by VALUE around each call and write
+// back to the SINGLE native 16-byte state. This is essential: original
+// register and stack entrypoints address the SAME global flag/owner slots.
 template<class Host>
 std::uintptr_t allocate_from_esi(ModuleState& state,Host& host,
                                  std::uint32_t esi_size) {
-    return client::allocate_single(host,state.primary,esi_size);
+    client::CacheState32 view{state.original.alloc_flags_04,
+                              state.original.alloc_context_00};
+    const auto result=client::allocate_single(host,view,esi_size);
+    state.original.alloc_flags_04=view.flags;
+    state.original.alloc_context_00=view.filename;
+    return result;
 }
-
-// Native register pair: EDI=raw first value, ESI=raw second value.
-// Original dispatches vtable +0x0C plain or +0x08 with owner and zero.
-// Do not assume calling conventions of an external tier0 library.
 template<class Host>
 std::uintptr_t dispatch_from_edi_esi(ModuleState& state,Host& host,
                                      std::uint32_t edi_value,
                                      std::uint32_t esi_value) {
-    return client::dispatch_pair(host,state.secondary,edi_value,esi_value);
+    client::CacheState32 view{state.original.realloc_flags_0c,
+                              state.original.realloc_context_08};
+    const auto result=client::dispatch_pair(host,view,edi_value,esi_value);
+    state.original.realloc_flags_0c=view.flags;
+    state.original.realloc_context_08=view.filename;
+    return result;
 }
 
 // Original 79-byte and 90-byte stack wrappers in both DLLs share the
@@ -81,13 +88,13 @@ std::uintptr_t dispatch_from_edi_esi(ModuleState& state,Host& host,
 template<class Host>
 std::uint32_t allocate_from_stack(ModuleState& state,Host& host,
                                   std::uint32_t bytes) {
-    return server::allocate(state.stack_compat,host,bytes);
+    return server::allocate(state.original,host,bytes);
 }
 template<class Host>
 std::uint32_t dispatch_stack_reallocation(ModuleState& state,Host& host,
                                           std::uint32_t old_token,
                                           std::uint32_t requested_bytes) {
-    return server::reallocate(state.stack_compat,host,old_token,requested_bytes);
+    return server::reallocate(state.original,host,old_token,requested_bytes);
 }
 // The 18-byte free wrapper in client and server uses the imported allocator
 // interface vtable +0x14 directly, without a cached context.
