@@ -543,3 +543,17 @@ sin_pc_configure(sin_pc_original_client_prediction_snapshot_dispatch_tests
   sin_pc_original_client_prediction_snapshot_dispatch_tests)
 add_test(NAME sin_original_win32_client_prediction_snapshot_dispatch_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_prediction_snapshot_dispatch_tests>)
+
+
+# Phase212: original native record type routing under actual Win32 x86
+# MSVC. Synthetic helper callbacks only; no original retail gameplay.
+add_executable(sin_pc_original_client_snapshot_record_router_tests
+  ../../tests/test_original_client_snapshot_record_router.cpp)
+target_include_directories(sin_pc_original_client_snapshot_record_router_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_snapshot_record_router_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_snapshot_record_router_tests
+  sin_pc_original_client_snapshot_record_router_tests)
+add_test(NAME sin_original_win32_client_snapshot_record_router_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_snapshot_record_router_tests>)
