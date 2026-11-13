@@ -2726,3 +2726,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_tier0_allocator_aliases_tests
     COMMAND sin_original_tier0_allocator_aliases_tests)
 endif()
+
+
+# Phase208: source-grounded original SiN server/client tier0 allocator
+# three/four-argument bridges, skipped-parameter debug allocation, and
+# module-local cached allocation aliases. Host-owned synthetic memory only.
+if(BUILD_TESTING)
+  add_executable(sin_original_tier0_allocator_bridges_tests
+    tests/test_original_tier0_allocator_bridges.cpp)
+  target_include_directories(sin_original_tier0_allocator_bridges_tests PRIVATE include)
+  target_compile_options(sin_original_tier0_allocator_bridges_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_tier0_allocator_bridges_tests
+    COMMAND sin_original_tier0_allocator_bridges_tests)
+endif()
