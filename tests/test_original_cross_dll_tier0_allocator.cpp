@@ -147,6 +147,38 @@ static void verify_phase194_and_201() {
         assert(h.live.empty());
     }
 }
+
+static void verify_native_pre_callback_flag_order() {
+    // Original x86 ORs bit0 into the module-global flag BEFORE it calls
+    // the 90-byte filename-context constructor. Observe the same global
+    // directly from a host callback, not a deferred temporary copy.
+    struct ObservingHost : Host {
+        std::uint32_t* active_flag=nullptr;
+        int observations=0;
+        std::uintptr_t resolve_filename_owner() {
+            assert(active_flag && (*active_flag&1u)!=0u);
+            ++observations;
+            return 0u;
+        }
+    };
+    ObservingHost h;
+    x::ModuleState state{};
+    h.active_flag=&state.original.alloc_flags_04;
+    auto first=static_cast<std::uint32_t>(x::allocate_from_esi(state,h,11u));
+    assert(h.observations==1 && state.original.alloc_flags_04==1u);
+    h.active_flag=&state.original.realloc_flags_0c;
+    first=static_cast<std::uint32_t>(
+        x::dispatch_from_edi_esi(state,h,first,22u));
+    assert(h.observations==2 && state.original.realloc_flags_0c==1u);
+    // Stack wrappers must see the same once-only FAILED context.
+    auto second=x::allocate_from_stack(state,h,7u);
+    second=x::dispatch_stack_reallocation(state,h,second,13u);
+    assert(h.observations==2 && h.metadata_queries==0);
+    x::deallocate_from_stack(h,first);
+    x::deallocate_from_stack(h,second);
+    assert(h.live.empty());
+}
+
 int main() {
     static_assert(sizeof(x::ModuleState)==16u);
     static_assert(x::kServer.original_register_alloc_va==0x2226e2f0u);
@@ -156,4 +188,5 @@ int main() {
     verify_twin(x::kServer);verify_twin(x::kClient);
     verify_zero_context_and_inverse_order();
     verify_phase194_and_201();
+    verify_native_pre_callback_flag_order();
 }
