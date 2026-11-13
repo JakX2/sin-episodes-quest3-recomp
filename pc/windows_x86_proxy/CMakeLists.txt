@@ -361,3 +361,16 @@ sin_pc_configure(sin_pc_original_cache_tree_rotations_tests
   sin_pc_original_cache_tree_rotations_tests)
 add_test(NAME sin_original_win32_server_cache_tree_rotations_contract
   COMMAND $<TARGET_FILE:sin_pc_original_cache_tree_rotations_tests>)
+
+
+# Phase199: native Win32 x86 MSVC exhaustive synthetic insert-fixup tests.
+# This does not load the original engine or claim branch-for-branch x86 parity.
+add_executable(sin_pc_original_cache_insert_fixup_tests
+  ../../tests/test_original_server_cache_insert_fixup.cpp)
+target_include_directories(sin_pc_original_cache_insert_fixup_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_cache_insert_fixup_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_cache_insert_fixup_tests
+  sin_pc_original_cache_insert_fixup_tests)
+add_test(NAME sin_original_win32_server_cache_insert_fixup_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_cache_insert_fixup_tests>)
