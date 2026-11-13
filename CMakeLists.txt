@@ -2766,3 +2766,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_prediction_savedata_tests
     COMMAND sin_original_client_prediction_savedata_tests)
 endif()
+
+
+# Phase211: complete original 2006 client.dll 52-byte prediction argpack,
+# global-counter snapshot dispatcher, and linked-list record walker.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_prediction_snapshot_dispatch_tests
+    tests/test_original_client_prediction_snapshot_dispatch.cpp)
+  target_include_directories(sin_original_client_prediction_snapshot_dispatch_tests PRIVATE include)
+  target_compile_options(sin_original_client_prediction_snapshot_dispatch_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_prediction_snapshot_dispatch_tests
+    COMMAND sin_original_client_prediction_snapshot_dispatch_tests)
+endif()
