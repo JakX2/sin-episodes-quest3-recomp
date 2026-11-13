@@ -2635,3 +2635,17 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_server_cache_tree_rotations_tests
     COMMAND sin_original_server_cache_tree_rotations_tests)
 endif()
+
+
+# Phase199: explicitly provisional red-black insertion fixup using the
+# binary-verified 16-bit nodes, parent colors, and Phase198 rotations.
+# This is a safe host model, NOT original engine-hosted 2006 DLL gameplay.
+if(BUILD_TESTING)
+  add_executable(sin_original_server_cache_insert_fixup_tests
+    tests/test_original_server_cache_insert_fixup.cpp)
+  target_include_directories(sin_original_server_cache_insert_fixup_tests PRIVATE include)
+  target_compile_options(sin_original_server_cache_insert_fixup_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_cache_insert_fixup_tests
+    COMMAND sin_original_server_cache_insert_fixup_tests)
+endif()
