@@ -502,3 +502,16 @@ sin_pc_configure(sin_pc_original_tier0_allocator_bridges_tests
   sin_pc_original_tier0_allocator_bridges_tests)
 add_test(NAME sin_original_win32_tier0_allocator_bridges_contract
   COMMAND $<TARGET_FILE:sin_pc_original_tier0_allocator_bridges_tests>)
+
+
+# Phase209: native MSVC Win32 i386 validation of original server/client
+# allocator callers and their host-owned synthetic game objects/buffers.
+add_executable(sin_pc_original_allocator_game_callers_tests
+  ../../tests/test_original_allocator_game_callers.cpp)
+target_include_directories(sin_pc_original_allocator_game_callers_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_allocator_game_callers_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_allocator_game_callers_tests
+  sin_pc_original_allocator_game_callers_tests)
+add_test(NAME sin_original_win32_allocator_game_callers_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_allocator_game_callers_tests>)
