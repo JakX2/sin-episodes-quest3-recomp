@@ -44,7 +44,21 @@ inline void forward_copy(const std::vector<std::uint8_t>& src,
     if(source_off>src.size() || bytes>src.size()-source_off ||
        dest_off>dst.size() || bytes>dst.size()-dest_off)
         throw std::out_of_range("host-only native copy buffer bounds");
-    for(std::size_t i=0;i<bytes;++i)
+    // REP MOVSD transfers one complete four-byte word at a time. The
+    // source word must be read before ANY of that DWORD is written:
+    // for overlapping buffers, a naive byte loop is NOT equivalent.
+    const auto word_count=bytes/4u;
+    for(std::size_t w=0;w<word_count;++w) {
+        const auto i=w*4u;
+        const std::uint8_t word[4]{
+            src[source_off+i],src[source_off+i+1u],
+            src[source_off+i+2u],src[source_off+i+3u]
+        };
+        for(std::size_t j=0;j<4u;++j)
+            dst[dest_off+i+j]=word[j];
+    }
+    // Original trailing REP MOVSB copies each remaining byte FORWARDS.
+    for(std::size_t i=word_count*4u;i<bytes;++i)
         dst[dest_off+i]=src[source_off+i];
 }
 
