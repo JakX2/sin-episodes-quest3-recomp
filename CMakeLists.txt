@@ -2793,3 +2793,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_record_router_tests
     COMMAND sin_original_client_snapshot_record_router_tests)
 endif()
+
+
+# Phase213: original complete client.dll field copy helpers from snapshot
+# type 1, 2, 5 and 6, including byte/DWORD REP MOVS and NUL-inclusive text.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_field_copy_tests
+    tests/test_original_client_snapshot_field_copy.cpp)
+  target_include_directories(sin_original_client_snapshot_field_copy_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_field_copy_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_field_copy_tests
+    COMMAND sin_original_client_snapshot_field_copy_tests)
+endif()
