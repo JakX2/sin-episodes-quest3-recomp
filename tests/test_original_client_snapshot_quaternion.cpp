@@ -56,14 +56,23 @@ static void original_exact_forced_and_disabled_gates() {
 }
 static void original_unordered_x87_parity_gate() {
     const float nan=std::numeric_limits<float>::quiet_NaN();
-    assert(q::native_unordered_or_equal(nan,1.0f));
-    assert(q::native_unordered_or_equal(nan,nan));
-    assert(!q::native_unordered_or_equal(1.0f,2.0f));
+    assert(!q::native_ordered_equal(nan,1.0f));
+    assert(!q::native_ordered_equal(nan,nan));
+    assert(!q::native_ordered_equal(1.0f,2.0f));
+    assert(q::native_ordered_equal(+0.0f,-0.0f));
     auto f=fields();
-    // Original TEST AH,0x44; JP regards unordered as "equal" when
-    // exceptions are masked. Normal float operator== would disagree.
+    // Original TEST AH,0x44; JP is TAKEN for unordered: AH&0x44
+    // has TWO set bits (even parity). Without positive tolerance,
+    // this is a status-0 mismatch; with tolerance, scratch is needed.
+    f.descriptor_tolerance_30=0.0f;
     assert(q::compare(f,encoded({nan,2,3,4}),0,
-                        encoded({1,2,3,4}),0,1)==1u);
+                        encoded({1,2,3,4}),0,1)==0u);
+    f.descriptor_tolerance_30=0.5f;
+    bool missing=false;
+    try {q::compare(f,encoded({nan,2,3,4}),0,
+                      encoded({1,2,3,4}),0,1);}
+    catch(const q::MissingOriginalScratch&) {missing=true;}
+    assert(missing);
     assert(q::compare(f,encoded({+0.0f,2,3,4}),0,
                         encoded({-0.0f,2,3,4}),0,1)==1u);
 }
