@@ -3753,6 +3753,90 @@
       "evidence_path": "research/phases/phase229-original-embedded-interface-virtual-accessors.md",
       "implementation_path": "include/sin_compat/original_embedded_virtual_accessors.hpp",
       "test_path": "tests/test_original_embedded_virtual_accessors.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24105AF0",
+      "original_code_length": 36,
+      "original_code_sha256": "010be7e7997efd85df59f59260fba5498a35eea7f7d00be9592578987ee80506",
+      "label": "Original client VClientEntityList003 slot3 signed index entity virtual +0x18 dispatch",
+      "owner": "Original 2006 SiN client.dll entity-list EHandle and game virtual dispatch",
+      "recovery_status": "complete_original_sha_verified_entitylist_dispatch_host_reference",
+      "evidence_path": "research/phases/phase230-original-client-entitylist-handle-dispatch.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_handle_dispatch.hpp",
+      "test_path": "tests/test_original_client_entitylist_handle_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24105B20",
+      "original_code_length": 48,
+      "original_code_sha256": "c0ca3b059853bb32b91236c0dcdecc0f47d98f1a7157657368071418c704d29a",
+      "label": "Original client parent entity-list highest occupied slot 2047..0 recomputation",
+      "owner": "Original 2006 SiN client.dll entity-list EHandle and game virtual dispatch",
+      "recovery_status": "complete_original_sha_verified_entitylist_dispatch_host_reference",
+      "evidence_path": "research/phases/phase230-original-client-entitylist-handle-dispatch.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_handle_dispatch.hpp",
+      "test_path": "tests/test_original_client_entitylist_handle_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24105B50",
+      "original_code_length": 34,
+      "original_code_sha256": "8c6620646e8ab5c7aa066bd27631d9dc448144ee40543c27470c4f14c7eaf68c",
+      "label": "Original client parent entity-list index to virtual +0x1C helper",
+      "owner": "Original 2006 SiN client.dll entity-list EHandle and game virtual dispatch",
+      "recovery_status": "complete_original_sha_verified_entitylist_dispatch_host_reference",
+      "evidence_path": "research/phases/phase230-original-client-entitylist-handle-dispatch.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_handle_dispatch.hpp",
+      "test_path": "tests/test_original_client_entitylist_handle_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24105B80",
+      "original_code_length": 34,
+      "original_code_sha256": "eba653c74bdaa08a8fa0d4210f0747e6a49f902711e86965d6e0ed37801cbb79",
+      "label": "Original client parent entity-list index to virtual +0x0C helper",
+      "owner": "Original 2006 SiN client.dll entity-list EHandle and game virtual dispatch",
+      "recovery_status": "complete_original_sha_verified_entitylist_dispatch_host_reference",
+      "evidence_path": "research/phases/phase230-original-client-entitylist-handle-dispatch.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_handle_dispatch.hpp",
+      "test_path": "tests/test_original_client_entitylist_handle_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24105BB0",
+      "original_code_length": 33,
+      "original_code_sha256": "f7b0f8459b8668297a723f983ccb184b7db31427a00e9ab4d28a16493bbd2c7b",
+      "label": "Original client VClientEntityList003 slot1 EHandle to entity virtual +0x10",
+      "owner": "Original 2006 SiN client.dll entity-list EHandle and game virtual dispatch",
+      "recovery_status": "complete_original_sha_verified_entitylist_dispatch_host_reference",
+      "evidence_path": "research/phases/phase230-original-client-entitylist-handle-dispatch.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_handle_dispatch.hpp",
+      "test_path": "tests/test_original_client_entitylist_handle_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24105BE0",
+      "original_code_length": 33,
+      "original_code_sha256": "b905524f103a461177b4c02f4541100c4425c7663b68d8783d7f4870466da56d",
+      "label": "Original client VClientEntityList003 slot4 EHandle to entity virtual +0x18",
+      "owner": "Original 2006 SiN client.dll entity-list EHandle and game virtual dispatch",
+      "recovery_status": "complete_original_sha_verified_entitylist_dispatch_host_reference",
+      "evidence_path": "research/phases/phase230-original-client-entitylist-handle-dispatch.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_handle_dispatch.hpp",
+      "test_path": "tests/test_original_client_entitylist_handle_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241074D0",
+      "original_code_length": 44,
+      "original_code_sha256": "4ab8dfccb518e758d2af09b81bed3fcabe80219b0890d885392cc42ac7f55520",
+      "label": "Original client VClientEntityList003 slot2 native EHandle pointer and serial resolver",
+      "owner": "Original 2006 SiN client.dll entity-list EHandle and game virtual dispatch",
+      "recovery_status": "complete_original_sha_verified_entitylist_dispatch_host_reference",
+      "evidence_path": "research/phases/phase230-original-client-entitylist-handle-dispatch.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_handle_dispatch.hpp",
+      "test_path": "tests/test_original_client_entitylist_handle_dispatch.cpp"
     }
   ]
 }
