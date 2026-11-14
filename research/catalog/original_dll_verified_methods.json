@@ -3009,6 +3009,54 @@
       "evidence_path": "research/phases/phase217-original-client-binary-integer-specialists.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_binary_integer.hpp",
       "test_path": "tests/test_original_client_snapshot_binary_integer.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197D50",
+      "original_code_length": 84,
+      "original_code_sha256": "451e236f93e76e4bbb98c8403fbfe966f5902fb8d7de339ba19999010d96ca59",
+      "label": "Original client snapshot type-7 16-bit WORD array equality with signed word count and descriptor bypass",
+      "owner": "Original 2006 SiN Episodes client.dll prediction snapshot type-7 short field helpers",
+      "recovery_status": "complete_original_sha_verified_short_specialist_host_reference",
+      "evidence_path": "research/phases/phase218-original-client-short-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_short.hpp",
+      "test_path": "tests/test_original_client_snapshot_short.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241989E0",
+      "original_code_length": 48,
+      "original_code_sha256": "e2ddec19682c14da96bb43b3ad18312d1b6789e38f25dd3c629f8d412f209bd6",
+      "label": "Original client snapshot type-7 short count times-two forward REP MOVSD/MOVSB copy",
+      "owner": "Original 2006 SiN Episodes client.dll prediction snapshot type-7 short field helpers",
+      "recovery_status": "complete_original_sha_verified_short_specialist_host_reference",
+      "evidence_path": "research/phases/phase218-original-client-short-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_short.hpp",
+      "test_path": "tests/test_original_client_snapshot_short.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197B10",
+      "original_code_length": 79,
+      "original_code_sha256": "a82821988ab380a78ec609508f6f43502daa19b9ff5d63ad211de7f9c0362fbf",
+      "label": "Original client snapshot type-7 signed-short mismatch/status diagnostics",
+      "owner": "Original 2006 SiN Episodes client.dll prediction snapshot type-7 short field helpers",
+      "recovery_status": "complete_original_sha_verified_short_specialist_host_reference",
+      "evidence_path": "research/phases/phase218-original-client-short-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_short.hpp",
+      "test_path": "tests/test_original_client_snapshot_short.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198380",
+      "original_code_length": 33,
+      "original_code_sha256": "80ed762c28807f23273f2449855fd6063b3b3d37ee4068a007b77e3b2783cb2f",
+      "label": "Original client snapshot type-7 pointer-token gated signed-short preview",
+      "owner": "Original 2006 SiN Episodes client.dll prediction snapshot type-7 short field helpers",
+      "recovery_status": "complete_original_sha_verified_short_specialist_host_reference",
+      "evidence_path": "research/phases/phase218-original-client-short-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_short.hpp",
+      "test_path": "tests/test_original_client_snapshot_short.cpp"
     }
   ]
 }

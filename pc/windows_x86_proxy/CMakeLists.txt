@@ -607,3 +607,16 @@ sin_pc_configure(sin_pc_original_snapshot_binary_integer_tests
   sin_pc_original_snapshot_binary_integer_tests)
 add_test(NAME sin_original_win32_snapshot_binary_integer_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_snapshot_binary_integer_tests>)
+
+# Phase218: native MSVC Win32 x86 CTest of the original 2006 client type7
+# signed-short field helper host reconstruction. No actual SiN engine loaded.
+add_executable(sin_pc_original_snapshot_short_tests
+  ../../tests/test_original_client_snapshot_short.cpp)
+target_include_directories(sin_pc_original_snapshot_short_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_snapshot_short_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_snapshot_short_tests
+  sin_pc_original_snapshot_short_tests)
+add_test(NAME sin_original_win32_snapshot_short_specialists
+  COMMAND $<TARGET_FILE:sin_pc_original_snapshot_short_tests>)
