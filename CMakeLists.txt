@@ -2950,3 +2950,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_core_factory_thunks_tests
     COMMAND sin_original_core_factory_thunks_tests)
 endif()
+
+# Phase227: original runtime singleton ctor/vptr/teardown event-reference
+# regression; never loads actual retail Source engine game modules.
+if(BUILD_TESTING)
+  add_executable(sin_original_runtime_singleton_initializers_tests
+    tests/test_original_runtime_singleton_initializers.cpp)
+  target_include_directories(sin_original_runtime_singleton_initializers_tests PRIVATE include)
+  target_compile_options(sin_original_runtime_singleton_initializers_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_runtime_singleton_initializers_tests
+    COMMAND sin_original_runtime_singleton_initializers_tests)
+endif()

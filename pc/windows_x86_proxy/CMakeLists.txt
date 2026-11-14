@@ -715,3 +715,15 @@ sin_pc_configure(sin_pc_original_core_factory_thunks_tests
   sin_pc_original_core_factory_thunks_tests)
 add_test(NAME sin_original_win32_core_factory_thunks
   COMMAND $<TARGET_FILE:sin_pc_original_core_factory_thunks_tests>)
+
+# Phase227: native Win32 MSVC x86 synthetic model of original PE .data
+# initializer callbacks, vptr overwrites and singleton destruction.
+add_executable(sin_pc_original_singleton_init_tests
+  ../../tests/test_original_runtime_singleton_initializers.cpp)
+target_include_directories(sin_pc_original_singleton_init_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_singleton_init_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_singleton_init_tests
+  sin_pc_original_singleton_init_tests)
+add_test(NAME sin_original_win32_runtime_singleton_initializers
+  COMMAND $<TARGET_FILE:sin_pc_original_singleton_init_tests>)
