@@ -55,7 +55,10 @@ static void test_original_early_skip_preserves_invalid_pointer_shortcuts() {
     // Operation status 2 is NOT an original skip condition.
     const Bytes src{1u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,
                     13u,14u,15u,16u};
-    native::copy_type3({1u},2u,src,0u,dest,0u,1u);
+    Bytes copied_destination(16u,0u);
+    native::copy_type3({1u},2u,src,0u,copied_destination,0u,1u);
+    for(std::size_t i=0;i<12u;++i)
+        assert(copied_destination[i]==src[i]);
 }
 static void test_x86_forward_dword_overlap_not_memmove() {
     Bytes type3=sequential(18u);
