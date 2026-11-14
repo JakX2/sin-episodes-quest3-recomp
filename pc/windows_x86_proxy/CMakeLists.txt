@@ -643,3 +643,15 @@ sin_pc_configure(sin_pc_original_snapshot_dword_tests
   sin_pc_original_snapshot_dword_tests)
 add_test(NAME sin_original_win32_snapshot_dword_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_snapshot_dword_tests>)
+
+# Phase221: actual MSVC native Win32 x86 compilation of the independent
+# original type3/4 fixed-stride copy reference, not the retail game engine.
+add_executable(sin_pc_original_vector_copy_tests
+  ../../tests/test_original_client_snapshot_vector_copy.cpp)
+target_include_directories(sin_pc_original_vector_copy_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_vector_copy_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_vector_copy_tests
+  sin_pc_original_vector_copy_tests)
+add_test(NAME sin_original_win32_vector_copy_specialists
+  COMMAND $<TARGET_FILE:sin_pc_original_vector_copy_tests>)
