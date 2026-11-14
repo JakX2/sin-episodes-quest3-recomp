@@ -2843,3 +2843,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_binary_integer_tests
     COMMAND sin_original_client_snapshot_binary_integer_tests)
 endif()
+
+# Phase218: original 2006 client prediction type7 16-bit short specialists.
+# Original-free C++17 host reference; not real retail game module loading.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_short_tests
+    tests/test_original_client_snapshot_short.cpp)
+  target_include_directories(sin_original_client_snapshot_short_tests
+    PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_short_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_short_tests
+    COMMAND sin_original_client_snapshot_short_tests)
+endif()
