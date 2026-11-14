@@ -655,3 +655,15 @@ sin_pc_configure(sin_pc_original_vector_copy_tests
   sin_pc_original_vector_copy_tests)
 add_test(NAME sin_original_win32_vector_copy_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_vector_copy_tests>)
+
+# Phase222: genuine MSVC native Win32 x86 synthetic vec3 specialist host
+# tests, not a reconstructed game DLL running in original engine.
+add_executable(sin_pc_original_snapshot_vec3_tests
+  ../../tests/test_original_client_snapshot_vec3.cpp)
+target_include_directories(sin_pc_original_snapshot_vec3_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_snapshot_vec3_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_snapshot_vec3_tests
+  sin_pc_original_snapshot_vec3_tests)
+add_test(NAME sin_original_win32_snapshot_vec3_specialists
+  COMMAND $<TARGET_FILE:sin_pc_original_snapshot_vec3_tests>)
