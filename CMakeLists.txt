@@ -2818,3 +2818,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_type2_tests
     COMMAND sin_original_client_snapshot_type2_tests)
 endif()
+
+# Phase216: original 2006 client prediction type-1 x87 float comparison,
+# numeric tolerance, diagnostics and preview (clean-room host reference).
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_type1_tests
+    tests/test_original_client_snapshot_type1.cpp)
+  target_include_directories(sin_original_client_snapshot_type1_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_type1_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_type1_tests
+    COMMAND sin_original_client_snapshot_type1_tests)
+endif()
