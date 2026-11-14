@@ -135,10 +135,13 @@ def verify_module(pe:PEImage,module:str, *,
         if pe.at(site,5)!=call32(site,dest,0xE9):
             raise VerificationError("Phase227 original teardown tail JMP drift: "+hex(site))
     for site,vptr in INITIAL_VPTR_WRITES[module]:
-        if (pe.at(site,2)!=b"\xc7\x00" if site not in (0x2410C7A6,0x2410C7AD) else
-                pe.at(site,3) not in (b"\xc7\x40\x04",b"\xc7\x40\x08")):
+        prefix=pe.at(site,2)
+        if prefix in (b"\xc7\x00",b"\xc7\x02"):
+            size=6  # MOV [eax]/[edx], vtable VA
+        elif pe.at(site,3) in (b"\xc7\x40\x04",b"\xc7\x40\x08"):
+            size=7  # MOV [eax+4]/[eax+8], vtable VA
+        else:
             raise VerificationError("Phase227 original constructor vptr MOV opcode drift")
-        size=6 if pe.at(site,2)==b"\xc7\x00" else 7
         encoded=int.from_bytes(pe.at(site+size-4,4),"little")
         if encoded!=vptr:
             raise VerificationError("Phase227 constructor initial vptr immediate drift")
