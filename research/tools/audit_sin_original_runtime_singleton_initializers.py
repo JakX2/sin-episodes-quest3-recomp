@@ -149,8 +149,8 @@ def verify_module(pe:PEImage,module:str, *,
             raise VerificationError("Phase227 missing original constructor vptr HIGHLOW relocation")
     rows=[]
     factory_names={n:(factory,singleton) for n,factory,singleton,*_ in FACTORIES[module]}
-    for name,cell,initializer,singleton,constructor,shutdown,shutdown_dest,register,
-        initial_vptr,final_vptr in LIFECYCLES[module]:
+    for (name,cell,initializer,singleton,constructor,shutdown,shutdown_dest,
+         register,initial_vptr,final_vptr) in LIFECYCLES[module]:
         if (name not in factory_names or factory_names[name][1]!=singleton):
             raise VerificationError("Phase227 original Phase226 factory singleton disagreement")
         if (pe.section_of(cell)!=".data" or
