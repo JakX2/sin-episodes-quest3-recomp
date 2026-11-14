@@ -3093,6 +3093,30 @@
       "evidence_path": "research/phases/phase219-original-client-boolean-specialists.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_boolean.hpp",
       "test_path": "tests/test_original_client_snapshot_boolean.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197DB0",
+      "original_code_length": 125,
+      "original_code_sha256": "256748201d4c29fb46076705316ea2345bbeb24a885a978e21d7b6bb9824cdbf",
+      "label": "Original client type-5 DWORD-array comparison with immediate first-mismatch native logging",
+      "owner": "Original 2006 SiN client.dll prediction snapshot type-5 DWORD field helper chain",
+      "recovery_status": "complete_original_sha_verified_type5_dword_host_reference",
+      "evidence_path": "research/phases/phase220-original-client-type5-dword-preview.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_type5.hpp",
+      "test_path": "tests/test_original_client_snapshot_type5.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241983B0",
+      "original_code_length": 144,
+      "original_code_sha256": "88eb84ee0d78cae0b3754d272b8b462e89e662e52f2735a8c547018b48fad874",
+      "label": "Original client type-5 integer preview with conditional registry symbol lookup and Q_FileBase",
+      "owner": "Original 2006 SiN client.dll prediction snapshot type-5 DWORD field helper chain",
+      "recovery_status": "complete_original_sha_verified_type5_dword_host_reference",
+      "evidence_path": "research/phases/phase220-original-client-type5-dword-preview.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_type5.hpp",
+      "test_path": "tests/test_original_client_snapshot_type5.cpp"
     }
   ]
 }
