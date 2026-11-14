@@ -3057,6 +3057,42 @@
       "evidence_path": "research/phases/phase218-original-client-short-specialists.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_short.hpp",
       "test_path": "tests/test_original_client_snapshot_short.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197E30",
+      "original_code_length": 82,
+      "original_code_sha256": "ed96e875573440132a3652b4a5a419966e46722da843d655b63ac3efd506b334",
+      "label": "Original type-6 Boolean field raw-byte comparison with signed byte count and descriptor bypass",
+      "owner": "Original 2006 SiN Episodes client.dll prediction type-6 Boolean snapshot field specialists",
+      "recovery_status": "complete_original_sha_verified_boolean_specialist_host_reference",
+      "evidence_path": "research/phases/phase219-original-client-boolean-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_boolean.hpp",
+      "test_path": "tests/test_original_client_snapshot_boolean.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197C30",
+      "original_code_length": 110,
+      "original_code_sha256": "2e200672f44e367c38412b1d9d0e6d19ad6aebfd6b3a4eb923ef04f74a17295b",
+      "label": "Original type-6 Boolean mismatch/status diagnostics with native true/false string values",
+      "owner": "Original 2006 SiN Episodes client.dll prediction type-6 Boolean snapshot field specialists",
+      "recovery_status": "complete_original_sha_verified_boolean_specialist_host_reference",
+      "evidence_path": "research/phases/phase219-original-client-boolean-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_boolean.hpp",
+      "test_path": "tests/test_original_client_snapshot_boolean.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198440",
+      "original_code_length": 45,
+      "original_code_sha256": "e0cb1517e7cab7e23b5d5fe5d6442515c73dd474ead4050d96b9e0831ae98e74",
+      "label": "Original type-6 Boolean preview gated on source descriptor token identity",
+      "owner": "Original 2006 SiN Episodes client.dll prediction type-6 Boolean snapshot field specialists",
+      "recovery_status": "complete_original_sha_verified_boolean_specialist_host_reference",
+      "evidence_path": "research/phases/phase219-original-client-boolean-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_boolean.hpp",
+      "test_path": "tests/test_original_client_snapshot_boolean.cpp"
     }
   ]
 }
