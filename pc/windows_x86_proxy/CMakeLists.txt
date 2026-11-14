@@ -594,3 +594,16 @@ sin_pc_configure(sin_pc_original_snapshot_type1_tests
   sin_pc_original_snapshot_type1_tests)
 add_test(NAME sin_original_win32_snapshot_type1_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_snapshot_type1_tests>)
+
+# Phase217: genuine MSVC Win32 x86 compilation/test of original-fidelity
+# snapshot binary/int host reference; NO actual SiN engine loaded.
+add_executable(sin_pc_original_snapshot_binary_integer_tests
+  ../../tests/test_original_client_snapshot_binary_integer.cpp)
+target_include_directories(sin_pc_original_snapshot_binary_integer_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_snapshot_binary_integer_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_snapshot_binary_integer_tests
+  sin_pc_original_snapshot_binary_integer_tests)
+add_test(NAME sin_original_win32_snapshot_binary_integer_specialists
+  COMMAND $<TARGET_FILE:sin_pc_original_snapshot_binary_integer_tests>)
