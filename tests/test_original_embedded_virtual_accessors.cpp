@@ -95,6 +95,10 @@ static void client_entitylist_stride8_indexed_values() {
     assert(n::client_slot0_indexed_dword(bytes,self,2u)==0x99887766u);
     bool refused=false;
     try {n::client_slot0_indexed_dword(bytes,self,0xFFFFFFFFu);}
+    // x86 size_t is 32-bit: overflowing the host offset is refused
+    // BEFORE the out-of-bounds memory read. On x64 the offset fits
+    // size_t but is beyond the supplied byte buffer.
+    catch(const std::overflow_error&){refused=true;}
     catch(const std::out_of_range&){refused=true;}
     assert(refused);
     refused=false;
