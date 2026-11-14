@@ -40,7 +40,7 @@ METHODS = {
          12,5,0,{0:"8b41"}),
         ("hltv_copy_three_dwords_from_14",0x2225F970,30,
          "3bb7057383057b467573a706b63c99a8a0e5a96a9458c6b6295a720eef8e79f7",
-         2,6,4,{0:"8b442404",4:"83c114",7:"56",26:"c20400"}),
+         2,6,4,{0:"8b442404",4:"83c114",7:"56",27:"c20400"}),
         ("hltv_get_global_pointer_token",0x2225F990,6,
          "bbfc0932da48683f3210f699f5e5a3892cecaa5c8fd48ae3a2eb4a5bcfb5dbcc",
          10,8,0,{0:"b8"}),
