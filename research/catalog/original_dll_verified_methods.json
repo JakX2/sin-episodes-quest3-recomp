@@ -3117,6 +3117,30 @@
       "evidence_path": "research/phases/phase220-original-client-dword-specialists.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_dword.hpp",
       "test_path": "tests/test_original_client_snapshot_dword.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198DA0",
+      "original_code_length": 53,
+      "original_code_sha256": "4a10b9e0f382e4732ecd64991a5a6ea8fcd67caf8a8ac8521c9281f7dd36eac0",
+      "label": "Original type-3 12-byte-per-record count-multiplied forward REP MOVSD/MOVSB copy",
+      "owner": "Original 2006 client.dll prediction snapshot type3/type4 fixed-size record field copy helpers",
+      "recovery_status": "complete_original_sha_verified_fixed_stride_copy_host_reference",
+      "evidence_path": "research/phases/phase221-original-client-vector-field-copy.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_vector_copy.hpp",
+      "test_path": "tests/test_original_client_snapshot_vector_copy.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198DE0",
+      "original_code_length": 49,
+      "original_code_sha256": "4fe077835ba1cc25f17844afb49b481eabcf130515231479bc3fe22e45ccc33b",
+      "label": "Original type-4 16-byte-per-record count-shifted forward REP MOVSD/MOVSB copy",
+      "owner": "Original 2006 client.dll prediction snapshot type3/type4 fixed-size record field copy helpers",
+      "recovery_status": "complete_original_sha_verified_fixed_stride_copy_host_reference",
+      "evidence_path": "research/phases/phase221-original-client-vector-field-copy.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_vector_copy.hpp",
+      "test_path": "tests/test_original_client_snapshot_vector_copy.cpp"
     }
   ]
 }
