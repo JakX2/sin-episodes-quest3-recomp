@@ -57,7 +57,7 @@ class Phase220Tests(unittest.TestCase):
      with self.assertRaises(native.VerificationError):self.check(fake)
  def test_every_real_native_callsite_mutation_fails(self):
   edges=[(x[4],x[0]) for x in native.METHODS.values()]
-  edges+=list(native.NESTED_CALLS)+(native.PHASE213_COPY,native.PHASE217_DIAGNOSTIC)
+  edges+=list(native.NESTED_CALLS)+[native.PHASE213_COPY,native.PHASE217_DIAGNOSTIC]
   for caller,target in edges:
    with self.subTest(site=hex(caller),target=hex(target)):
     fake=SyntheticPE();fake.flip(caller+1)
