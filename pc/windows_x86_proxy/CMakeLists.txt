@@ -679,3 +679,15 @@ sin_pc_configure(sin_pc_original_snapshot_quaternion_tests
   sin_pc_original_snapshot_quaternion_tests)
 add_test(NAME sin_original_win32_snapshot_quaternion_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_snapshot_quaternion_tests>)
+
+# Phase224: native MSVC Win32 x86 original EHandle host regression,
+# not a real original Source engine client.dll/server.dll runtime.
+add_executable(sin_pc_original_snapshot_ehandle_tests
+  ../../tests/test_original_client_snapshot_ehandle.cpp)
+target_include_directories(sin_pc_original_snapshot_ehandle_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_snapshot_ehandle_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_snapshot_ehandle_tests
+  sin_pc_original_snapshot_ehandle_tests)
+add_test(NAME sin_original_win32_snapshot_ehandle_specialists
+  COMMAND $<TARGET_FILE:sin_pc_original_snapshot_ehandle_tests>)
