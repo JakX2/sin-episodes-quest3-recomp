@@ -2830,3 +2830,16 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_type1_tests
     COMMAND sin_original_client_snapshot_type1_tests)
 endif()
+
+# Phase217: recovered original 2006 SiN client prediction type8/9 binary
+# and integer specialists. Original-free C++17 host reference tests.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_binary_integer_tests
+    tests/test_original_client_snapshot_binary_integer.cpp)
+  target_include_directories(sin_original_client_snapshot_binary_integer_tests
+    PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_binary_integer_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_binary_integer_tests
+    COMMAND sin_original_client_snapshot_binary_integer_tests)
+endif()
