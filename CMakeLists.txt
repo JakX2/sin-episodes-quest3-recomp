@@ -2856,3 +2856,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_short_tests
     COMMAND sin_original_client_snapshot_short_tests)
 endif()
+
+# Phase219 original 2006 client prediction type6 Boolean comparison and trace.
+# Synthetic host reference only; NOT original Windows engine module loading.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_boolean_tests
+    tests/test_original_client_snapshot_boolean.cpp)
+  target_include_directories(sin_original_client_snapshot_boolean_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_boolean_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_boolean_tests
+    COMMAND sin_original_client_snapshot_boolean_tests)
+endif()
