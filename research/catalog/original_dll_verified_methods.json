@@ -3213,6 +3213,54 @@
       "evidence_path": "research/phases/phase223-original-client-quaternion-specialists.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_quaternion.hpp",
       "test_path": "tests/test_original_client_snapshot_quaternion.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24199060",
+      "original_code_length": 160,
+      "original_code_sha256": "2a5a05257fce45a49037e02d10d537b429f617c8f174bbacc8f471b1fecf343d",
+      "label": "Original client snapshot type-13 EHandle resolved entity pointer comparison (12-bit slot, serial)",
+      "owner": "Original 2006 SiN client.dll prediction snapshot type-13 EHandle specialists",
+      "recovery_status": "complete_original_sha_verified_ehandle_specialist_host_reference",
+      "evidence_path": "research/phases/phase224-original-client-ehandle-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_ehandle.hpp",
+      "test_path": "tests/test_original_client_snapshot_ehandle.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197E90",
+      "original_code_length": 49,
+      "original_code_sha256": "fb6a1f47681fbd9b2ab63d77985fe211a4925308b032a83a1306260598fa7794",
+      "label": "Original client snapshot type-13 forward DWORD EHandle copy with signed count and status gate",
+      "owner": "Original 2006 SiN client.dll prediction snapshot type-13 EHandle specialists",
+      "recovery_status": "complete_original_sha_verified_ehandle_specialist_host_reference",
+      "evidence_path": "research/phases/phase224-original-client-ehandle-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_ehandle.hpp",
+      "test_path": "tests/test_original_client_snapshot_ehandle.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241994C0",
+      "original_code_length": 288,
+      "original_code_sha256": "df09716ab9b3746c9e7dfb9b44e8b910d26462de937bfaa8805580cd6a386fa5",
+      "label": "Original client snapshot type-13 EHandle mismatch, entity/debug-name and null formatting",
+      "owner": "Original 2006 SiN client.dll prediction snapshot type-13 EHandle specialists",
+      "recovery_status": "complete_original_sha_verified_ehandle_specialist_host_reference",
+      "evidence_path": "research/phases/phase224-original-client-ehandle-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_ehandle.hpp",
+      "test_path": "tests/test_original_client_snapshot_ehandle.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241995E0",
+      "original_code_length": 175,
+      "original_code_sha256": "ac19b58ac8891a70cdb75e226bf717f1a1b99e8e8f4b62f405393a9c9d90ccb2",
+      "label": "Original client snapshot type-13 pointer-token gated entity EHandle preview",
+      "owner": "Original 2006 SiN client.dll prediction snapshot type-13 EHandle specialists",
+      "recovery_status": "complete_original_sha_verified_ehandle_specialist_host_reference",
+      "evidence_path": "research/phases/phase224-original-client-ehandle-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_ehandle.hpp",
+      "test_path": "tests/test_original_client_snapshot_ehandle.cpp"
     }
   ]
 }
