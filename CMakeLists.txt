@@ -2974,3 +2974,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_embedded_interface_initializers_tests
     COMMAND sin_original_embedded_interface_initializers_tests)
 endif()
+
+# Phase229: source-grounded HLTVDirector and VClientEntityList embedded
+# virtual accessors. Independent host reference, not original DLL loader.
+if(BUILD_TESTING)
+  add_executable(sin_original_embedded_virtual_accessors_tests
+    tests/test_original_embedded_virtual_accessors.cpp)
+  target_include_directories(sin_original_embedded_virtual_accessors_tests PRIVATE include)
+  target_compile_options(sin_original_embedded_virtual_accessors_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_embedded_virtual_accessors_tests
+    COMMAND sin_original_embedded_virtual_accessors_tests)
+endif()
