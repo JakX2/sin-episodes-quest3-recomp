@@ -739,3 +739,15 @@ sin_pc_configure(sin_pc_original_embedded_interface_tests
   sin_pc_original_embedded_interface_tests)
 add_test(NAME sin_original_win32_embedded_interface_initializers
   COMMAND $<TARGET_FILE:sin_pc_original_embedded_interface_tests>)
+
+# Phase229: real MSVC Win32 x86 host regression of original embedded
+# interface vtable slot semantics, not actual gameplay module startup.
+add_executable(sin_pc_original_embedded_virtual_tests
+  ../../tests/test_original_embedded_virtual_accessors.cpp)
+target_include_directories(sin_pc_original_embedded_virtual_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_embedded_virtual_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_embedded_virtual_tests
+  sin_pc_original_embedded_virtual_tests)
+add_test(NAME sin_original_win32_embedded_virtual_accessors
+  COMMAND $<TARGET_FILE:sin_pc_original_embedded_virtual_tests>)
