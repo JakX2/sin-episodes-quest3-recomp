@@ -25,6 +25,9 @@ class SyntheticPE:
         self.relocations=set()
         self.vtable=(audit.SERVER_VTABLE_VA if module=="server"
                      else audit.CLIENT_VTABLE_VA)
+        # An original vtable starts at slot zero even when this phase
+        # deliberately samples only later slots (HLTV slots 1,3..8).
+        self.rdata.add(self.vtable)
         for name,va,size,sha,pad,slot,pop,witnesses in audit.METHODS[module]:
             body=bytearray(size)
             if pop:
