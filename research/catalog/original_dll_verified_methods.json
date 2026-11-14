@@ -3405,6 +3405,138 @@
       "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
       "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
       "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x223C33F0",
+      "original_code_length": 32,
+      "original_code_sha256": "c4968533bfb17b863ef43b4238b056c1163f73e3c0d7d41c76329c488d03eb73",
+      "label": "Original server GameMovement BSS singleton ctor/atexit initializer",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x223CF2C0",
+      "original_code_length": 10,
+      "original_code_sha256": "e62c172da3df757cdcb4b417da1711ba42441d265ba6ddd7038f8ee5f8958a9e",
+      "label": "Original server GameMovement singleton shutdown trampoline",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221EBF40",
+      "original_code_length": 58,
+      "original_code_sha256": "b41623a8cfab6393ae2b33ae1d89a290cd4a99528c4568fea25e10c58b89edbf",
+      "label": "Original server GameMovement constructor initial vptr and zeroed movement fields",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24268440",
+      "original_code_length": 22,
+      "original_code_sha256": "ba92fca69ae0bacce3f0eaf0caaba7371b9ca216aff659d76eb8b67bb0582adb",
+      "label": "Original client ClientLeafSystem BSS singleton initializer and teardown registration",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x2426E940",
+      "original_code_length": 32,
+      "original_code_sha256": "d0e6bafd640d3ed0dc19c2a1b7d2f50805ab7103c6105de11d6dfa6fa46e64cf",
+      "label": "Original client GameMovement BSS singleton ctor, final-vptr override and teardown registration",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24271430",
+      "original_code_length": 22,
+      "original_code_sha256": "cd1e62790abbf1083835c043be37815a772d807424a3d0661ce0669380ed7c79",
+      "label": "Original client prediction BSS singleton constructor and teardown registration",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24273500",
+      "original_code_length": 10,
+      "original_code_sha256": "398f89ccc6255fd4c5a31a22092e38bdfc614326cb4ccd90999e352f3886bfe0",
+      "label": "Original client ClientLeafSystem singleton teardown trampoline",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x242757A0",
+      "original_code_length": 10,
+      "original_code_sha256": "2ea1c0a296a9dc53c9c987b679fbd1594db882bfe585af1495f1b68d17ff39b7",
+      "label": "Original client GameMovement singleton teardown trampoline",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24275E50",
+      "original_code_length": 10,
+      "original_code_sha256": "c6a242c2156899d53244328a8edc28bb1d1ae2b79c12cacf44cde38782098651",
+      "label": "Original client prediction singleton teardown trampoline",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24136F80",
+      "original_code_length": 58,
+      "original_code_sha256": "4d6388f8810aac5e43bf305ad75231f3e48ab2a5b77e77179e6364083f9fac24",
+      "label": "Original client GameMovement constructor initial vptr and zeroed movement fields",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24195A10",
+      "original_code_length": 50,
+      "original_code_sha256": "9b0b5c77c72ae369a286600971788b3820d79ffff740fc6c7721b3fc5277f8a7",
+      "label": "Original client prediction singleton constructor primary vptr and initialization fields",
+      "owner": "Original SiN 2006 PE32 runtime singleton static initialization and teardown group",
+      "recovery_status": "complete_original_sha_verified_singleton_startup_host_reference",
+      "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
+      "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
+      "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
     }
   ]
 }
