@@ -2925,6 +2925,42 @@
       "evidence_path": "research/phases/phase215-original-client-type2-string-specialists.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_type2.hpp",
       "test_path": "tests/test_original_client_snapshot_type2.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198AA0",
+      "original_code_length": 152,
+      "original_code_sha256": "a9234d21d65a6b08005d10cefaa7f76be3733a5cf406734afebd74dc85fa437d",
+      "label": "Original client type-1 binary32 float-array comparison with x87 exact/tolerance statuses 0, 1, 2",
+      "owner": "Original 2006 client.dll prediction snapshot type-1 floating-point specialist chain",
+      "recovery_status": "complete_original_sha_verified_type1_float_specialist_host_reference",
+      "evidence_path": "research/phases/phase216-original-client-type1-float-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_type1.hpp",
+      "test_path": "tests/test_original_client_snapshot_type1.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197CA0",
+      "original_code_length": 92,
+      "original_code_sha256": "1a1bf9db4a3e6b585669372ce3f80b0408033bc0d23b0d2ebad627c0b86fd728",
+      "label": "Original client type-1 first-float mismatch diagnostic and post-copy status print",
+      "owner": "Original 2006 client.dll prediction snapshot type-1 floating-point specialist chain",
+      "recovery_status": "complete_original_sha_verified_type1_float_specialist_host_reference",
+      "evidence_path": "research/phases/phase216-original-client-type1-float-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_type1.hpp",
+      "test_path": "tests/test_original_client_snapshot_type1.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198470",
+      "original_code_length": 37,
+      "original_code_sha256": "0e047eb6c2d6c90164f88e69be9fe7853f57a7268b48cacfd86ab1023ce0d41d",
+      "label": "Original client type-1 conditional first-float preview callback",
+      "owner": "Original 2006 client.dll prediction snapshot type-1 floating-point specialist chain",
+      "recovery_status": "complete_original_sha_verified_type1_float_specialist_host_reference",
+      "evidence_path": "research/phases/phase216-original-client-type1-float-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_type1.hpp",
+      "test_path": "tests/test_original_client_snapshot_type1.cpp"
     }
   ]
 }
