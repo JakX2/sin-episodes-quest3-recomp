@@ -29,8 +29,8 @@ class FakePE:
             self.write(va+n,b"\xCC"*pad)
             self.text.update(range(va,va+n+pad))
         for record in native.LIFECYCLES[module]:
-            name,cell,init,object_va,ctor,shutdown,destructor,register,
-                initial_vptr,final_vptr=record
+            (name,cell,init,object_va,ctor,shutdown,destructor,register,
+             initial_vptr,final_vptr)=record
             self.write(cell,struct.pack("<I",init))
             self.data.update(range(cell,cell+4))
             self.unbacked.add(object_va)
@@ -151,8 +151,8 @@ class Phase227Tests(unittest.TestCase):
     def test_movement_post_ctor_final_vptr_writes_and_relocations(self):
         for module in ("server","client"):
             for row in native.LIFECYCLES[module]:
-                name,cell,init,singleton,ctor,shutdown,destructor,register,
-                    old_vptr,new_vptr=row
+                (name,cell,init,singleton,ctor,shutdown,destructor,register,
+                 old_vptr,new_vptr)=row
                 if old_vptr==new_vptr:continue
                 for offset in (15,17,21):
                     with self.subTest(module=module,offset=offset):
