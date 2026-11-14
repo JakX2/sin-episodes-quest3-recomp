@@ -2879,3 +2879,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_dword_tests
     COMMAND sin_original_client_snapshot_dword_tests)
 endif()
+
+# Phase221: authentic 2006 client type3/type4 stride12/16 copy host tests.
+# These CTests do not execute the retail Source engine.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_vector_copy_tests
+    tests/test_original_client_snapshot_vector_copy.cpp)
+  target_include_directories(sin_original_client_snapshot_vector_copy_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_vector_copy_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_vector_copy_tests
+    COMMAND sin_original_client_snapshot_vector_copy_tests)
+endif()
