@@ -3297,6 +3297,114 @@
       "evidence_path": "research/phases/phase225-original-client-shared-trace-formatters.md",
       "implementation_path": "include/sin_compat/original_client_shared_trace.hpp",
       "test_path": "tests/test_original_client_shared_trace.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22129680",
+      "original_code_length": 6,
+      "original_code_sha256": "2eac16d4c0cfda2bcb592a089d6762c3c6697740eac955659c0abe3362ed83ef",
+      "label": "Original IEffects001 singleton-return thunk and original PE HIGHLOW relocation",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221FC4F0",
+      "original_code_length": 6,
+      "original_code_sha256": "9171cdfc432102e603561d2be6b8ab08815e29993474946b32f7b5bf03e83d72",
+      "label": "Original PluginHelpersCheck001 singleton-return thunk and original PE HIGHLOW relocation",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22257780",
+      "original_code_length": 6,
+      "original_code_sha256": "e828c0b8f05a5fb5ae09c15fab91f334910e50d6084e79e4faddc65d47addb10",
+      "label": "Original PlayerInfoManager001 singleton-return thunk aliasing the 002 object",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222577A0",
+      "original_code_length": 6,
+      "original_code_sha256": "e828c0b8f05a5fb5ae09c15fab91f334910e50d6084e79e4faddc65d47addb10",
+      "label": "Original PlayerInfoManager002 singleton-return thunk aliasing the 001 object",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222577B0",
+      "original_code_length": 6,
+      "original_code_sha256": "c9d32770c94fb85fde54f6d6d895aa092924ab0574d4242fc104013bbd0b13c5",
+      "label": "Original BotManager001 singleton-return thunk and initial RTTI/vtable pointer evidence",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2225F8C0",
+      "original_code_length": 6,
+      "original_code_sha256": "9a50234d1328f0c8cfd361e0d497e1df4d3a5310eaeb5e7f18f97c5bfb4d689a",
+      "label": "Original HLTVDirector001 singleton-return thunk with unbacked .data vptr",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24108B20",
+      "original_code_length": 6,
+      "original_code_sha256": "9328e36548ae5755e8637e94a5a3712571f822f49b9ea290e973bef7e9ea6de6",
+      "label": "Original ClientLeafSystem001 singleton-return thunk with unbacked .data vptr",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24127780",
+      "original_code_length": 6,
+      "original_code_sha256": "13b0ec8347529f2c88a47912819ef52895a47e95b6da8dcd0e85a66a930a99e4",
+      "label": "Original IEffects001 client singleton-return thunk with file-backed vtable",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241EC540",
+      "original_code_length": 6,
+      "original_code_sha256": "81267ad71e6a917e5251cb606e3180b7d36d219e6be716ed03bc97674e9c0aca",
+      "label": "Original VCENTERPRINT002 singleton-return thunk with file-backed vtable",
+      "owner": "Original 2006 SiN registered static CreateInterface singleton-return factory callbacks",
+      "recovery_status": "complete_original_sha_verified_factory_thunk_with_relocation",
+      "evidence_path": "research/phases/phase226-original-core-factory-thunks-relocations.md",
+      "implementation_path": "include/sin_compat/original_core_factory_thunks.hpp",
+      "test_path": "tests/test_original_core_factory_thunks.cpp"
     }
   ]
 }
