@@ -26,7 +26,7 @@ from audit_sin_original_embedded_interface_virtual_accessors import CLIENT_VTABL
 METHODS = {
     "client_entity_slot3_indexed_vcall_18": (
         0x24105AF0,36,"010be7e7997efd85df59f59260fba5498a35eea7f7d00be9592578987ee80506",
-        12,(0x1C,0x21),{},
+        12,(0x1C,0x21),(),
         {0x00:"8b44240485c0",0x06:"7c17",0x08:"05ffefffff",
          0x0D:"c1e004",0x10:"8b0c08",0x17:"8b01ff5018",0x1F:"33c0"}),
     "client_parent_recalculate_max_live_slot": (
@@ -37,27 +37,27 @@ METHODS = {
          0x21:"83ea10",0x29:"898124000100"}),
     "client_parent_slot_index_vcall_1c": (
         0x24105B50,34,"8c6620646e8ab5c7aa066bd27631d9dc448144ee40543c27470c4f14c7eaf68c",
-        14,(0x1A,0x1F),{},
+        14,(0x1A,0x1F),(),
         {0x00:"8b44240485c0",0x06:"7c15",0x08:"c1e004",
          0x0B:"8b440804",0x15:"8bc8ff521c",0x1D:"33c0"}),
     "client_parent_slot_index_vcall_0c": (
         0x24105B80,34,"eba653c74bdaa08a8fa0d4210f0747e6a49f902711e86965d6e0ed37801cbb79",
-        14,(0x1A,0x1F),{},
+        14,(0x1A,0x1F),(),
         {0x00:"8b44240485c0",0x06:"7c15",0x08:"c1e004",
          0x0B:"8b440804",0x15:"8bc8ff520c",0x1D:"33c0"}),
     "client_entity_slot1_handle_vcall_10": (
         0x24105BB0,33,"f7b0f8459b8668297a723f983ccb184b7db31427a00e9ab4d28a16493bbd2c7b",
-        15,(0x19,0x1E),{},
+        15,(0x19,0x1E),(),
         {0x00:"8b54240451",0x05:"8bc48910",0x09:"8b01ff5008",
          0x0E:"85c0",0x14:"8bc8ff5210",0x1C:"33c0"}),
     "client_entity_slot4_handle_vcall_18": (
         0x24105BE0,33,"b905524f103a461177b4c02f4541100c4425c7663b68d8783d7f4870466da56d",
-        15,(0x19,0x1E),{},
+        15,(0x19,0x1E),(),
         {0x00:"8b54240451",0x05:"8bc48910",0x09:"8b01ff5008",
          0x0E:"85c0",0x14:"8bc8ff5218",0x1C:"33c0"}),
     "client_entity_slot2_ehandle_serial_resolver": (
         0x241074D0,44,"4ab8dfccb518e758d2af09b81bed3fcabe80219b0890d885392cc42ac7f55520",
-        4,(0x24,0x29),{},
+        4,(0x24,0x29),(),
         {0x00:"8b542404",0x04:"83faff",0x09:"8bc225ff0f0000",
          0x10:"2d01100000",0x15:"c1e004",0x18:"03c1c1ea0c",
          0x1D:"395004",0x22:"8b00",0x27:"33c0"}),
