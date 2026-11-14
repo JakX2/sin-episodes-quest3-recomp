@@ -2914,3 +2914,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_quaternion_tests
     COMMAND sin_original_client_snapshot_quaternion_tests)
 endif()
+
+# Phase224: original SiN 2006 client prediction type13 EHandle specialist
+# host reference tests. Does not run actual retail gameplay DLLs.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_ehandle_tests
+    tests/test_original_client_snapshot_ehandle.cpp)
+  target_include_directories(sin_original_client_snapshot_ehandle_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_ehandle_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_ehandle_tests
+    COMMAND sin_original_client_snapshot_ehandle_tests)
+endif()
