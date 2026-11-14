@@ -2938,3 +2938,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_shared_trace_tests
     COMMAND sin_original_client_shared_trace_tests)
 endif()
+
+# Phase226: native factory singleton return identities and PE32 relocation
+# contracts (host-only reference, not executable retail game objects).
+if(BUILD_TESTING)
+  add_executable(sin_original_core_factory_thunks_tests
+    tests/test_original_core_factory_thunks.cpp)
+  target_include_directories(sin_original_core_factory_thunks_tests PRIVATE include)
+  target_compile_options(sin_original_core_factory_thunks_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_core_factory_thunks_tests
+    COMMAND sin_original_core_factory_thunks_tests)
+endif()
