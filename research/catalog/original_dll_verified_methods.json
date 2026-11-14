@@ -3261,6 +3261,42 @@
       "evidence_path": "research/phases/phase224-original-client-ehandle-specialists.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_ehandle.hpp",
       "test_path": "tests/test_original_client_snapshot_ehandle.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197910",
+      "original_code_length": 166,
+      "original_code_sha256": "d5d121f8e3a25d66fc8f3814fe2a11b6124d751dd640469e844050df608ce7d9",
+      "label": "Original shared difference formatter with unconditional modulo32 counter and tier0 Msg",
+      "owner": "Original 2006 SiN client.dll shared prediction snapshot trace formatting wrappers",
+      "recovery_status": "complete_original_sha_verified_shared_trace_host_reference",
+      "evidence_path": "research/phases/phase225-original-client-shared-trace-formatters.md",
+      "implementation_path": "include/sin_compat/original_client_shared_trace.hpp",
+      "test_path": "tests/test_original_client_shared_trace.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241979C0",
+      "original_code_length": 185,
+      "original_code_sha256": "026244a82ffe4c257ea97eaacbb7e83c812b4fd6ffbcd064a0fad88dccd52e32",
+      "label": "Original shared field status callback with type name table and descriptor flags",
+      "owner": "Original 2006 SiN client.dll shared prediction snapshot trace formatting wrappers",
+      "recovery_status": "complete_original_sha_verified_shared_trace_host_reference",
+      "evidence_path": "research/phases/phase225-original-client-shared-trace-formatters.md",
+      "implementation_path": "include/sin_compat/original_client_shared_trace.hpp",
+      "test_path": "tests/test_original_client_shared_trace.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24197FE0",
+      "original_code_length": 93,
+      "original_code_sha256": "880a186d02da86b94b953158d2fdaee8a93d59456fdaf4f482031da3bab09cac",
+      "label": "Original shared field preview formatter with global prefix and tier0 Msg",
+      "owner": "Original 2006 SiN client.dll shared prediction snapshot trace formatting wrappers",
+      "recovery_status": "complete_original_sha_verified_shared_trace_host_reference",
+      "evidence_path": "research/phases/phase225-original-client-shared-trace-formatters.md",
+      "implementation_path": "include/sin_compat/original_client_shared_trace.hpp",
+      "test_path": "tests/test_original_client_shared_trace.cpp"
     }
   ]
 }
