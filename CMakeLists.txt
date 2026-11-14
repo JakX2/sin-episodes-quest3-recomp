@@ -2926,3 +2926,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_ehandle_tests
     COMMAND sin_original_client_snapshot_ehandle_tests)
 endif()
+
+# Phase225: common original 2006 SiN client snapshot trace wrappers and
+# field-type table. Clean-room host tests; no original game engine loading.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_shared_trace_tests
+    tests/test_original_client_shared_trace.cpp)
+  target_include_directories(sin_original_client_shared_trace_tests PRIVATE include)
+  target_compile_options(sin_original_client_shared_trace_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_shared_trace_tests
+    COMMAND sin_original_client_shared_trace_tests)
+endif()
