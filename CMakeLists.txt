@@ -2891,3 +2891,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_vector_copy_tests
     COMMAND sin_original_client_snapshot_vector_copy_tests)
 endif()
+
+# Phase222: three authentic original SiN 2006 type3 vec3 x87 and trace
+# methods (synthetic host reference; no retail engine module loaded).
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_vec3_tests
+    tests/test_original_client_snapshot_vec3.cpp)
+  target_include_directories(sin_original_client_snapshot_vec3_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_vec3_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_vec3_tests
+    COMMAND sin_original_client_snapshot_vec3_tests)
+endif()
