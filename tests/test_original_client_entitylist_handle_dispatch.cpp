@@ -69,11 +69,18 @@ static void verify_ehandle_slot_serial_and_null_cases() {
     assert(n::interface_slot2_resolve_handle(parent,self,0xFFFFFFFFu)==0u);
     // Unknown entry with an initialized buffer but serial mismatch.
     assert(n::interface_slot2_resolve_handle(parent,self,0x1004u)==0u);
-    // Null pointer is accepted if serial matches.
-    n::write_u32(parent,4u+4u*16u,4u);
+    // Null entity pointer is accepted when the upper serial matches.
+    n::write_u32(parent,4u+4u*16u,0u);
+    n::write_u32(parent,8u+4u*16u,4u);
     assert(n::interface_slot2_resolve_handle(parent,self,0x4004u)==0u);
+    // Full handle index range is 12-bit (4096 possible slots),
+    // DISTINCT from the separate helper's scan of only 2048 slots.
+    n::write_u32(parent,4u+0xFFFu*16u,0xABCD1234u);
+    n::write_u32(parent,8u+0xFFFu*16u,1u);
+    assert(n::interface_slot2_resolve_handle(parent,self,0x1FFFu)==0xABCD1234u);
     bool refused=false;
-    try {n::interface_slot2_resolve_handle(parent,self,0x1FFFu);}
+    const Bytes too_small(32u,0u);
+    try {n::interface_slot2_resolve_handle(too_small,self,0x1002u);}
     catch(const std::out_of_range&) {refused=true;}
     assert(refused);
     refused=false;
