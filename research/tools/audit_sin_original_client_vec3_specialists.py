@@ -75,7 +75,7 @@ def call_bytes(site: int, target: int) -> bytes:
 def verify_native(client: PEImage, *, check_hash: bool = True) -> dict:
     if client.base != BASE["client"]:
         raise VerificationError("Phase222 incorrect original client PE32 image base")
-    if TYPE_CASES[3] != 3 or COPY_METHODS["type3_vec3_12byte_copy"][0] != 0x24198DA0:
+    if TYPE_CASES[3] != 3 or COPY_METHODS["type3_stride12_forward_copy"][0] != 0x24198DA0:
         raise VerificationError("Phase222 original type3 switch/Phase221 copy drift")
     evidence = {}
     count = 0
