@@ -632,3 +632,15 @@ sin_pc_configure(sin_pc_original_snapshot_boolean_tests
   sin_pc_original_snapshot_boolean_tests)
 add_test(NAME sin_original_win32_snapshot_boolean_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_snapshot_boolean_tests>)
+
+# Phase220: native Windows x86 MSVC host reference tests for original
+# type5 DWORD compare, pre-copy reporting and symbolic preview.
+add_executable(sin_pc_original_snapshot_type5_tests
+  ../../tests/test_original_client_snapshot_type5.cpp)
+target_include_directories(sin_pc_original_snapshot_type5_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_snapshot_type5_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_snapshot_type5_tests
+  sin_pc_original_snapshot_type5_tests)
+add_test(NAME sin_original_win32_snapshot_type5_specialists
+  COMMAND $<TARGET_FILE:sin_pc_original_snapshot_type5_tests>)
