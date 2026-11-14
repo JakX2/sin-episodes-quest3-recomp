@@ -81,7 +81,8 @@ def verify_native_factories(
     pe:PEImage,module:str, *,
     registrations:list[dict]|None=None,
     relocated_sites:set[int]|None=None,
-    check_hash:bool=True
+    check_hash:bool=True,
+    original_provenance_verified:bool=False
 )->dict:
     if module not in FACTORIES or pe.base!=ORIGINALS[module]["base"]:
         raise VerificationError("Phase226 incorrect original DLL or image base")
@@ -152,9 +153,9 @@ def verify_native_factories(
     return {
         "module":module,
         "checked_static_core_factories":len(result),
-        "new_whole_SHA_verified_original_methods":new if check_hash else 0,
+        "new_whole_SHA_verified_original_methods":new if check_hash and original_provenance_verified else 0,
         "previously_reviewed_Phase178_methods":len(result)-new,
-        "new_whole_original_x86_bytes":new*6 if check_hash else 0,
+        "new_whole_original_x86_bytes":new*6 if check_hash and original_provenance_verified else 0,
         "file_backed_vptr_and_slot0_evidence":backed,
         "runtime_only_unbacked_singletons":len(result)-backed,
         "all_factory_immediates_highlow_relocated":True,
@@ -166,8 +167,8 @@ def audit(server_bytes:bytes,client_bytes:bytes)->dict:
     # tables, 10/55 registrations, and complete ordered manifest SHA256.
     verify_original_interface_abi(server_bytes,"server")
     verify_original_interface_abi(client_bytes,"client")
-    server=verify_native_factories(PEImage(server_bytes),"server")
-    client=verify_native_factories(PEImage(client_bytes),"client")
+    server=verify_native_factories(PEImage(server_bytes),"server",original_provenance_verified=True)
+    client=verify_native_factories(PEImage(client_bytes),"client",original_provenance_verified=True)
     if (server["new_whole_SHA_verified_original_methods"]!=6 or
         client["new_whole_SHA_verified_original_methods"]!=3 or
         server["file_backed_vptr_and_slot0_evidence"]!=8 or
