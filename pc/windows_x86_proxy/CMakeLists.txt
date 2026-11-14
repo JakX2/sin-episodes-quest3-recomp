@@ -751,3 +751,15 @@ sin_pc_configure(sin_pc_original_embedded_virtual_tests
   sin_pc_original_embedded_virtual_tests)
 add_test(NAME sin_original_win32_embedded_virtual_accessors
   COMMAND $<TARGET_FILE:sin_pc_original_embedded_virtual_tests>)
+
+# Phase230: real Win32 MSVC x86 build/run of independent original
+# VClientEntityList003 EHandle and index-dispatch host reference.
+add_executable(sin_pc_original_client_entitylist_dispatch_tests
+  ../../tests/test_original_client_entitylist_handle_dispatch.cpp)
+target_include_directories(sin_pc_original_client_entitylist_dispatch_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_entitylist_dispatch_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_entitylist_dispatch_tests
+  sin_pc_original_client_entitylist_dispatch_tests)
+add_test(NAME sin_original_win32_client_entitylist_handle_dispatch
+  COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_dispatch_tests>)
