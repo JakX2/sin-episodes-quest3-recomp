@@ -620,3 +620,15 @@ sin_pc_configure(sin_pc_original_snapshot_short_tests
   sin_pc_original_snapshot_short_tests)
 add_test(NAME sin_original_win32_snapshot_short_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_snapshot_short_tests>)
+
+# Phase219 native MSVC Win32 x86 compilation of independent original Boolean
+# snapshot reference; not actual retail game engine gameplay DLLs.
+add_executable(sin_pc_original_snapshot_boolean_tests
+  ../../tests/test_original_client_snapshot_boolean.cpp)
+target_include_directories(sin_pc_original_snapshot_boolean_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_snapshot_boolean_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_snapshot_boolean_tests
+  sin_pc_original_snapshot_boolean_tests)
+add_test(NAME sin_original_win32_snapshot_boolean_specialists
+  COMMAND $<TARGET_FILE:sin_pc_original_snapshot_boolean_tests>)
