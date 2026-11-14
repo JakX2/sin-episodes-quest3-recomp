@@ -78,7 +78,7 @@ static void test_exact_word_count_copy_and_reps() {
     // x86 REP MOVSD snapshots a whole DWORD before each forward write.
     Bytes overlap{0,1,2,3,4,5,6,7,8,9};
     native::copy_words(state,0u,overlap,0u,overlap,1u,3u);
-    assert((overlap==Bytes{0,0,1,2,3,3,5,7,8,9}));
+    // Tail REP MOVSB cascades too: the first tail store overwrites the\n    // source of the second tail read in this +1 overlap.\n    assert((overlap==Bytes{0,0,1,2,3,3,3,7,8,9}));
 }
 static void test_signed_diagnostics_original_order() {
     const auto state=active();
