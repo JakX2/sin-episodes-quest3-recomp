@@ -156,7 +156,7 @@ def verify_native(client:PEImage,*,check_hash:bool=True,check_imports:bool=True)
         "sparse_original_opcode_witnesses":witness_count,
         "original_stack_probe_calls":len(PROBE_CALLS),
         "verified_nested_serializer_calls":len(NESTED_CALLS),
-        "original_format_liter als".replace(" ",""):len(LITERALS),
+        "original_format_literals":len(LITERALS),
         "original_field_type_name_entries":len(FIELD_NAMES),
         "original_field_type_table_terminal_null":True,
         "original_Q_vsnprintf_IAT":f"0x{Q_VSNPRINTF_IAT:08X}" if check_imports else None,
