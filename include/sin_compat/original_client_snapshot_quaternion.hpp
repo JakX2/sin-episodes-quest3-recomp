@@ -74,12 +74,13 @@ struct MissingOriginalScratch : std::runtime_error {
         :std::runtime_error("original type4 x87 nonexact comparison reads uninitialized stack slots") {}
 };
 
-// For FUCOMPP with masked unordered exceptions, the original
-// TEST AH,0x44; JP classifies BOTH ordered equality and unordered NaN
-// as "not different" (one or two flag bits set, parity NOT even for
-// equal, or even for unordered). This is not normal float ==.
-inline bool native_unordered_or_equal(float a,float b) {
-    return a==b || std::isunordered(a,b);
+// Original FUCOMPP; FNSTSW AX; TEST AH,0x44; JP:
+// ordered equal has only C3 (bit 0x40): odd parity, JP not taken;
+// ordered unequal has neither: even parity, JP taken;
+// unordered has BOTH C3/C2 (0x44): even parity, JP taken.
+// With masked x87 invalid exceptions, NaN is NONEXACT.
+inline bool native_ordered_equal(float a,float b) {
+    return a==b;
 }
 
 // Original 258-byte method at 0x24198F50; returns 0, 1, 2.
@@ -105,7 +106,7 @@ inline std::uint32_t compare(const OriginalFields& state,
         const auto src=read_quat(net,net_off+advance);
         bool nonexact=false;
         for(std::size_t axis=0;axis<4;axis++) {
-            if(!native_unordered_or_equal(pred[axis],src[axis])) {
+            if(!native_ordered_equal(pred[axis],src[axis])) {
                 nonexact=true;
                 break;
             }
