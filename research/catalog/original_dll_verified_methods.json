@@ -3177,6 +3177,42 @@
       "evidence_path": "research/phases/phase222-original-client-vec3-specialists.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_vec3.hpp",
       "test_path": "tests/test_original_client_snapshot_vec3.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198F50",
+      "original_code_length": 258,
+      "original_code_sha256": "b5d783421c4b15d965de57fde1cb89fe99b659ddac4bfecf2a68aeee3b603fb4",
+      "label": "Original client type4 quaternion native x87 compare with record-indexed scratch-slot tolerance dependency",
+      "owner": "Original SiN 2006 client.dll prediction type4 quaternion native specialist chain",
+      "recovery_status": "complete_original_sha_verified_quaternion_specialist_partial_host_reference",
+      "evidence_path": "research/phases/phase223-original-client-quaternion-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_quaternion.hpp",
+      "test_path": "tests/test_original_client_snapshot_quaternion.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241987C0",
+      "original_code_length": 406,
+      "original_code_sha256": "20111b64456070863f319501c20ba6c558dba85c4b5d3200f54024dcd1ea4323",
+      "label": "Original client type4 quaternion mismatch/status formatter branch and partial argument tracing",
+      "owner": "Original SiN 2006 client.dll prediction type4 quaternion native specialist chain",
+      "recovery_status": "complete_original_sha_verified_quaternion_specialist_partial_host_reference",
+      "evidence_path": "research/phases/phase223-original-client-quaternion-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_quaternion.hpp",
+      "test_path": "tests/test_original_client_snapshot_quaternion.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241989A0",
+      "original_code_length": 58,
+      "original_code_sha256": "86c7478c414c10d3e4e9247e47cbdbad416e67b4f2e936df2987cb756b3a0afb",
+      "label": "Original client type4 quaternion four-float preview gated by descriptor-token equality",
+      "owner": "Original SiN 2006 client.dll prediction type4 quaternion native specialist chain",
+      "recovery_status": "complete_original_sha_verified_quaternion_specialist_partial_host_reference",
+      "evidence_path": "research/phases/phase223-original-client-quaternion-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_quaternion.hpp",
+      "test_path": "tests/test_original_client_snapshot_quaternion.cpp"
     }
   ]
 }
