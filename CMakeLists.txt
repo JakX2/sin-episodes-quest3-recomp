@@ -2868,3 +2868,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_snapshot_boolean_tests
     COMMAND sin_original_client_snapshot_boolean_tests)
 endif()
+
+# Phase220: original 2006 client snapshot type5 DWORD comparator/preview
+# host reference. Does not execute reconstructed retail gameplay DLLs.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_snapshot_type5_tests
+    tests/test_original_client_snapshot_type5.cpp)
+  target_include_directories(sin_original_client_snapshot_type5_tests PRIVATE include)
+  target_compile_options(sin_original_client_snapshot_type5_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_snapshot_type5_tests
+    COMMAND sin_original_client_snapshot_type5_tests)
+endif()
