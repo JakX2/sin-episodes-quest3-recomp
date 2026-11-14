@@ -3537,6 +3537,78 @@
       "evidence_path": "research/phases/phase227-original-runtime-singleton-initializers.md",
       "implementation_path": "include/sin_compat/original_runtime_singleton_initializers.hpp",
       "test_path": "tests/test_original_runtime_singleton_initializers.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x223C1B40",
+      "original_code_length": 22,
+      "original_code_sha256": "0a8559afff5663dd07f3a188c57dbf67c4400392f671ff5bda47bb26c593db22",
+      "label": "Original server HLTV containing-object startup initializer; embedded interface at parent+8",
+      "owner": "Original 2006 SiN game DLL embedded Source engine interface construction and shutdown",
+      "recovery_status": "complete_original_sha_verified_embedded_interface_constructor_host_event_reference",
+      "evidence_path": "research/phases/phase228-original-embedded-interface-initializers.md",
+      "implementation_path": "include/sin_compat/original_embedded_interface_initializers.hpp",
+      "test_path": "tests/test_original_embedded_interface_initializers.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x223CE6A0",
+      "original_code_length": 10,
+      "original_code_sha256": "d828ee3fcabdccea745ae1e1e46471a4758208133e02dc4feee729cd9a959790",
+      "label": "Original server HLTV containing-object teardown MOV ECX and tail JMP",
+      "owner": "Original 2006 SiN game DLL embedded Source engine interface construction and shutdown",
+      "recovery_status": "complete_original_sha_verified_embedded_interface_constructor_host_event_reference",
+      "evidence_path": "research/phases/phase228-original-embedded-interface-initializers.md",
+      "implementation_path": "include/sin_compat/original_embedded_interface_initializers.hpp",
+      "test_path": "tests/test_original_embedded_interface_initializers.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x222625E0",
+      "original_code_length": 158,
+      "original_code_sha256": "deb717a3779cf5019a19d8f259009314c670dc5e6bbe4fa36759f8364ab3782a",
+      "label": "Original server HLTV containing-object constructor with three primary/subobject vptr overwrites",
+      "owner": "Original 2006 SiN game DLL embedded Source engine interface construction and shutdown",
+      "recovery_status": "complete_original_sha_verified_embedded_interface_constructor_host_event_reference",
+      "evidence_path": "research/phases/phase228-original-embedded-interface-initializers.md",
+      "implementation_path": "include/sin_compat/original_embedded_interface_initializers.hpp",
+      "test_path": "tests/test_original_embedded_interface_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24268370",
+      "original_code_length": 22,
+      "original_code_sha256": "446b15473c55849da8f446f80f090e459e2e1d6073464871d62803b977e896a6",
+      "label": "Original client entity-list embedded interface containing-object initializer",
+      "owner": "Original 2006 SiN game DLL embedded Source engine interface construction and shutdown",
+      "recovery_status": "complete_original_sha_verified_embedded_interface_constructor_host_event_reference",
+      "evidence_path": "research/phases/phase228-original-embedded-interface-initializers.md",
+      "implementation_path": "include/sin_compat/original_embedded_interface_initializers.hpp",
+      "test_path": "tests/test_original_embedded_interface_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x242734C0",
+      "original_code_length": 10,
+      "original_code_sha256": "c6f9ff177371c32624dcd45c17b338cc235c3b9dcc173ddcc1e288bf30e35c08",
+      "label": "Original client entity-list containing-object teardown native tail JMP",
+      "owner": "Original 2006 SiN game DLL embedded Source engine interface construction and shutdown",
+      "recovery_status": "complete_original_sha_verified_embedded_interface_constructor_host_event_reference",
+      "evidence_path": "research/phases/phase228-original-embedded-interface-initializers.md",
+      "implementation_path": "include/sin_compat/original_embedded_interface_initializers.hpp",
+      "test_path": "tests/test_original_embedded_interface_initializers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24108190",
+      "original_code_length": 264,
+      "original_code_sha256": "c7811e3f10bbf60d9beb9dd54fdc8251fe59445b59d3be0050ae02e3fda209fd",
+      "label": "Original client entity-list constructor with +0x10014 secondary interface vptr",
+      "owner": "Original 2006 SiN game DLL embedded Source engine interface construction and shutdown",
+      "recovery_status": "complete_original_sha_verified_embedded_interface_constructor_host_event_reference",
+      "evidence_path": "research/phases/phase228-original-embedded-interface-initializers.md",
+      "implementation_path": "include/sin_compat/original_embedded_interface_initializers.hpp",
+      "test_path": "tests/test_original_embedded_interface_initializers.cpp"
     }
   ]
 }

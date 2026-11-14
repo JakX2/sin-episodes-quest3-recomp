@@ -727,3 +727,15 @@ sin_pc_configure(sin_pc_original_singleton_init_tests
   sin_pc_original_singleton_init_tests)
 add_test(NAME sin_original_win32_runtime_singleton_initializers
   COMMAND $<TARGET_FILE:sin_pc_original_singleton_init_tests>)
+
+# Phase228: genuine native MSVC Win32 x86 tests of original embedded
+# secondary interface return addresses and constructor/atexit events.
+add_executable(sin_pc_original_embedded_interface_tests
+  ../../tests/test_original_embedded_interface_initializers.cpp)
+target_include_directories(sin_pc_original_embedded_interface_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_embedded_interface_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_embedded_interface_tests
+  sin_pc_original_embedded_interface_tests)
+add_test(NAME sin_original_win32_embedded_interface_initializers
+  COMMAND $<TARGET_FILE:sin_pc_original_embedded_interface_tests>)
