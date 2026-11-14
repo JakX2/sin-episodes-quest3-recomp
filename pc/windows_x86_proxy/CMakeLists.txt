@@ -691,3 +691,15 @@ sin_pc_configure(sin_pc_original_snapshot_ehandle_tests
   sin_pc_original_snapshot_ehandle_tests)
 add_test(NAME sin_original_win32_snapshot_ehandle_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_snapshot_ehandle_tests>)
+
+# Phase225: genuine Win32 x86 MSVC compilation/test of independent
+# common original trace models. No rebuilt game DLL is engine-loaded.
+add_executable(sin_pc_original_client_shared_trace_tests
+  ../../tests/test_original_client_shared_trace.cpp)
+target_include_directories(sin_pc_original_client_shared_trace_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_shared_trace_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_shared_trace_tests
+  sin_pc_original_client_shared_trace_tests)
+add_test(NAME sin_original_win32_shared_trace_formatters
+  COMMAND $<TARGET_FILE:sin_pc_original_client_shared_trace_tests>)
