@@ -86,8 +86,8 @@ inline void binary_diagnostics(
         std::uint32_t byte_count,ITraceSink& sink) {
     if(state.enabled_14==0u) return;
     if(status==0u)
-        sink.on_event({TraceKind::BinaryDifference,status,byte_count});
-    sink.on_event({TraceKind::BinaryStatus,status,byte_count});
+        sink.on_event({TraceKind::BinaryDifference,status,byte_count,0,0,0,{}});
+    sink.on_event({TraceKind::BinaryStatus,status,byte_count,0,0,0,{}});
 }
 
 // Original 30-byte shared preview at 0x24198360, original RET 16.
@@ -96,7 +96,7 @@ inline void binary_diagnostics(
 inline void binary_preview(const OriginalFields& state,
                            std::uint32_t byte_count,ITraceSink& sink) {
     if(state.preview_token_34!=state.descriptor_token_18) return;
-    sink.on_event({TraceKind::BinaryPreview,0u,byte_count});
+    sink.on_event({TraceKind::BinaryPreview,0u,byte_count,0,0,0,{}});
 }
 
 inline std::int32_t signed_32(std::uint32_t value) {
@@ -130,7 +130,7 @@ inline void integer_diagnostics(
         const auto diff=signed_32(static_cast<std::uint32_t>(predicted)-
                                   static_cast<std::uint32_t>(net));
         sink.on_event({TraceKind::IntegerDifference,status,0u,
-                       net,predicted,diff});
+                       net,predicted,diff,{}});
     }
     if((state.descriptor_flags_13 & 0x08u)!=0u) {
         if(!symbols)
@@ -145,7 +145,7 @@ inline void integer_diagnostics(
             return;
         }
     }
-    sink.on_event({TraceKind::IntegerNumeric,status,0u,0,predicted});
+    sink.on_event({TraceKind::IntegerNumeric,status,0u,0,predicted,0,{}});
 }
 
 // Synthetic-only selected Phase212 case-9 direct branch composition.
