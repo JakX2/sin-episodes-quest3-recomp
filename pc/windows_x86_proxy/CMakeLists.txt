@@ -632,3 +632,14 @@ sin_pc_configure(sin_pc_original_snapshot_boolean_tests
   sin_pc_original_snapshot_boolean_tests)
 add_test(NAME sin_original_win32_snapshot_boolean_specialists
   COMMAND $<TARGET_FILE:sin_pc_original_snapshot_boolean_tests>)
+
+# Phase220 native MSVC Win32 x86 test of clean-room original DWORD helpers.
+add_executable(sin_pc_original_snapshot_dword_tests
+  ../../tests/test_original_client_snapshot_dword.cpp)
+target_include_directories(sin_pc_original_snapshot_dword_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_snapshot_dword_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_snapshot_dword_tests
+  sin_pc_original_snapshot_dword_tests)
+add_test(NAME sin_original_win32_snapshot_dword_specialists
+  COMMAND $<TARGET_FILE:sin_pc_original_snapshot_dword_tests>)
