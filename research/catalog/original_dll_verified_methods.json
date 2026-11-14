@@ -3141,6 +3141,42 @@
       "evidence_path": "research/phases/phase221-original-client-vector-field-copy.md",
       "implementation_path": "include/sin_compat/original_client_snapshot_vector_copy.hpp",
       "test_path": "tests/test_original_client_snapshot_vector_copy.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24198E20",
+      "original_code_length": 289,
+      "original_code_sha256": "1b13b7672ab3ff4932694d934d76d6f7bbdb656c1f09941b827d31d4c7842360",
+      "label": "Original type3 12-byte vec3 x87 comparison with exact/positive tolerance statuses 0,1,2",
+      "owner": "Original 2006 SiN Episodes client.dll prediction snapshot type3 vec3 x87 specialist chain",
+      "recovery_status": "complete_original_sha_verified_vec3_specialist_host_reference",
+      "evidence_path": "research/phases/phase222-original-client-vec3-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_vec3.hpp",
+      "test_path": "tests/test_original_client_snapshot_vec3.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241985A0",
+      "original_code_length": 219,
+      "original_code_sha256": "d5abf2cbbbf02ba5dac02c32fb7c98f999d363042aae3413f7661808de71ec39",
+      "label": "Original type3 first vec3 mismatch and post-copy status diagnostic formatter calls",
+      "owner": "Original 2006 SiN Episodes client.dll prediction snapshot type3 vec3 x87 specialist chain",
+      "recovery_status": "complete_original_sha_verified_vec3_specialist_host_reference",
+      "evidence_path": "research/phases/phase222-original-client-vec3-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_vec3.hpp",
+      "test_path": "tests/test_original_client_snapshot_vec3.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241986C0",
+      "original_code_length": 51,
+      "original_code_sha256": "19c07ccae5e728b90a818a248a449719bc02e81bc6e41eccc1b03c4c184bb6a4",
+      "label": "Original type3 pointer-token gated vec3 first-record preview callback",
+      "owner": "Original 2006 SiN Episodes client.dll prediction snapshot type3 vec3 x87 specialist chain",
+      "recovery_status": "complete_original_sha_verified_vec3_specialist_host_reference",
+      "evidence_path": "research/phases/phase222-original-client-vec3-specialists.md",
+      "implementation_path": "include/sin_compat/original_client_snapshot_vec3.hpp",
+      "test_path": "tests/test_original_client_snapshot_vec3.cpp"
     }
   ]
 }
