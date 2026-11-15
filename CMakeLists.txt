@@ -2998,3 +2998,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_entitylist_handle_dispatch_tests
     COMMAND sin_original_client_entitylist_handle_dispatch_tests)
 endif()
+
+# Phase231: original entity-list containing-object vtable slots 0-2.
+# Host event/field reference only; NOT a real reconstructed gameplay DLL.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_entitylist_parent_lifecycle_tests
+    tests/test_original_client_entitylist_parent_lifecycle.cpp)
+  target_include_directories(sin_original_client_entitylist_parent_lifecycle_tests PRIVATE include)
+  target_compile_options(sin_original_client_entitylist_parent_lifecycle_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_entitylist_parent_lifecycle_tests
+    COMMAND sin_original_client_entitylist_parent_lifecycle_tests)
+endif()
