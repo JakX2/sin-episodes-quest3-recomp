@@ -4089,6 +4089,18 @@
       "original_code_length": 110,
       "original_code_sha256": "8adf0bd0a02d5471c712cbbe4b97bca99a4d6c92b30450f309ab865df37914ae",
       "label": "Original client map-specific sixteen-byte record capacity growth with signed policy and native allocate/reallocate dispatch"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241076E0",
+      "original_code_length": 106,
+      "original_code_sha256": "fd141c9025d7975a43a24b398a6b5bee1f34cead227171e5319c269e78c8df9f",
+      "label": "Original client PVS tree node attach frontend: initialize 16-byte record, link as root or left/right child, delegate to native 0x24106E30 balancer",
+      "owner": "Original 2006 SiN client PVS tree attachment",
+      "recovery_status": "complete_original_sha_verified_pvs_tree_attachment_host_reference",
+      "evidence_path": "research/phases/phase239-original-client-pvs-tree-attach.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_tree_attach.hpp",
+      "test_path": "tests/test_original_client_pvs_tree_attach.cpp"
     }
   ]
 }
