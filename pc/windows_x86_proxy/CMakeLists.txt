@@ -856,3 +856,17 @@ sin_pc_configure(sin_pc_original_client_pvs_map_search_index_tests
   sin_pc_original_client_pvs_map_search_index_tests)
 add_test(NAME sin_original_win32_client_pvs_map_search_index_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_map_search_index_tests>)
+
+
+# Phase238: native MSVC Win32 x86 test of the standalone 2006 client PVS
+# map node resolver / 16-byte growth host model, not original game loading.
+add_executable(sin_pc_original_client_pvs_map_node_growth_tests
+  ../../tests/test_original_client_pvs_map_node_growth.cpp)
+target_include_directories(sin_pc_original_client_pvs_map_node_growth_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_map_node_growth_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_map_node_growth_tests
+  sin_pc_original_client_pvs_map_node_growth_tests)
+add_test(NAME sin_original_win32_client_pvs_map_node_growth_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_map_node_growth_tests>)
