@@ -4101,6 +4101,42 @@
       "evidence_path": "research/phases/phase239-original-client-pvs-tree-attach.md",
       "implementation_path": "include/sin_compat/original_client_pvs_tree_attach.hpp",
       "test_path": "tests/test_original_client_pvs_tree_attach.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes 2006 PVS red-black map insertion balancing",
+      "recovery_status": "complete_original_sha_verified_pvs_red_black_rotations_host_reference",
+      "evidence_path": "research/phases/phase240-original-client-pvs-rb-fixup.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_rb_fixup.hpp",
+      "test_path": "tests/test_original_client_pvs_rb_fixup.cpp",
+      "entry_va": "0x241067C0",
+      "original_code_length": 231,
+      "original_code_sha256": "a32bf577a10663ba6734c3a35a5324e80b3b66141b75f5e8d1a9fefd9a0789db",
+      "label": "Original client PVS red-black tree left rotation preserving parent/child links and root"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes 2006 PVS red-black map insertion balancing",
+      "recovery_status": "complete_original_sha_verified_pvs_red_black_rotations_host_reference",
+      "evidence_path": "research/phases/phase240-original-client-pvs-rb-fixup.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_rb_fixup.hpp",
+      "test_path": "tests/test_original_client_pvs_rb_fixup.cpp",
+      "entry_va": "0x24106D40",
+      "original_code_length": 234,
+      "original_code_sha256": "9aee654ed5490c3e25fea44e6961666620d7e28493f8cbff80de9dff293981b8",
+      "label": "Original client PVS red-black tree right rotation preserving parent/child links and root"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes 2006 PVS red-black map insertion balancing",
+      "recovery_status": "complete_original_sha_verified_pvs_red_black_rotations_host_reference",
+      "evidence_path": "research/phases/phase240-original-client-pvs-rb-fixup.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_rb_fixup.hpp",
+      "test_path": "tests/test_original_client_pvs_rb_fixup.cpp",
+      "entry_va": "0x24106E30",
+      "original_code_length": 1482,
+      "original_code_sha256": "f778c9c8b49e5a2f40cb79694d3c0a7191da19137edea216d456c31705775e81",
+      "label": "Original client PVS tree red-black insertion fixup: recoloring, four left/right rotation calls and black root"
     }
   ]
 }
