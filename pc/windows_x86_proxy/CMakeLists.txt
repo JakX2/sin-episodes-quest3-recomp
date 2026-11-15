@@ -912,3 +912,17 @@ sin_pc_configure(sin_pc_original_client_pvs_tree_erase_tests
   sin_pc_original_client_pvs_tree_erase_tests)
 add_test(NAME sin_original_win32_client_pvs_tree_erase_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_tree_erase_tests>)
+
+
+# Phase242: genuine MSVC Win32 x86 build/test of the independent original
+# PVS red-black delete fixup host reference, not retail gameplay startup.
+add_executable(sin_pc_original_client_pvs_delete_fixup_tests
+  ../../tests/test_original_client_pvs_delete_fixup.cpp)
+target_include_directories(sin_pc_original_client_pvs_delete_fixup_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_delete_fixup_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_delete_fixup_tests
+  sin_pc_original_client_pvs_delete_fixup_tests)
+add_test(NAME sin_original_win32_client_pvs_delete_fixup_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_delete_fixup_tests>)
