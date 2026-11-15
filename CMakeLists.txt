@@ -3010,3 +3010,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_entitylist_parent_lifecycle_tests
     COMMAND sin_original_client_entitylist_parent_lifecycle_tests)
 endif()
+
+# Phase232: original client.dll PVS notifier/auxiliary 8-byte linked-list
+# reference and synthetic native instruction regression tests.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_pvs_aux_helpers_tests
+    tests/test_original_client_pvs_aux_helpers.cpp)
+  target_include_directories(sin_original_client_pvs_aux_helpers_tests PRIVATE include)
+  target_compile_options(sin_original_client_pvs_aux_helpers_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_pvs_aux_helpers_tests
+    COMMAND sin_original_client_pvs_aux_helpers_tests)
+endif()
