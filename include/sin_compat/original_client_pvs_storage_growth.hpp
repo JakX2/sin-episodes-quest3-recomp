@@ -55,16 +55,19 @@ struct Manager {
         const auto target=static_cast<std::int64_t>(capacity)+additional;
         if(target > max)
             throw std::overflow_error("PVS native signed capacity overflow");
-        if(target <= capacity) return MemoryAction::unchanged;
-        if(grow_policy < 0)
-            throw std::out_of_range("nonprogressing native growth policy");
+        // Native JGE skips ONLY the capacity-growth loop. It still invokes
+        // the memory helper afterward, even for a zero additional request.
         std::int64_t next=capacity;
-        while(next < target) {
-            if(next == 0) next=InitialCapacity;
-            else if(grow_policy != 0) next+=grow_policy;
-            else next*=2;
-            if(next > max || next <= 0)
-                throw std::overflow_error("native PVS capacity growth overflow");
+        if(target > capacity) {
+            if(grow_policy < 0)
+                throw std::out_of_range("nonprogressing native growth policy");
+            while(next < target) {
+                if(next == 0) next=InitialCapacity;
+                else if(grow_policy != 0) next+=grow_policy;
+                else next*=2;
+                if(next > max || next <= 0)
+                    throw std::overflow_error("native PVS capacity growth overflow");
+            }
         }
         if(static_cast<std::uint64_t>(next) >
            std::numeric_limits<std::size_t>::max()/Stride)
