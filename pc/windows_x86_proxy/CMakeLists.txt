@@ -799,3 +799,17 @@ sin_pc_configure(sin_pc_original_client_pvs_sixteen_tests
   sin_pc_original_client_pvs_sixteen_tests)
 add_test(NAME sin_original_win32_client_pvs_sixteen_list
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_sixteen_tests>)
+
+
+# Phase234: native MSVC Win32 x86 host-reference regression for the two
+# original client PVS index allocators. Synthetic storage, NOT gameplay DLLs.
+add_executable(sin_pc_original_client_pvs_index_allocators_tests
+  ../../tests/test_original_client_pvs_index_allocators.cpp)
+target_include_directories(sin_pc_original_client_pvs_index_allocators_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_index_allocators_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_index_allocators_tests
+  sin_pc_original_client_pvs_index_allocators_tests)
+add_test(NAME sin_original_win32_client_pvs_index_allocators_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_index_allocators_tests>)
