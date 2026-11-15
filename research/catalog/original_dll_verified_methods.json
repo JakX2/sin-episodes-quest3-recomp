@@ -4149,6 +4149,18 @@
       "evidence_path": "research/phases/phase241-original-client-pvs-tree-erase.md",
       "implementation_path": "include/sin_compat/original_client_pvs_tree_erase.hpp",
       "test_path": "tests/test_original_client_pvs_tree_erase.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24107750",
+      "original_code_length": 2609,
+      "original_code_sha256": "7bed48e41a436fb3a0e2fc69e69b3cfe83c42aee02be58f5fd6872e4c7f0c12a",
+      "label": "Original client PVS red-black post-delete fixup with sibling recoloring and six original left/right rotation callsites",
+      "owner": "Original SiN Episodes (2006) client PVS map deletion balancing",
+      "recovery_status": "complete_original_sha_verified_pvs_delete_fixup_host_reference",
+      "evidence_path": "research/phases/phase242-original-client-pvs-delete-fixup.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_delete_fixup.hpp",
+      "test_path": "tests/test_original_client_pvs_delete_fixup.cpp"
     }
   ]
 }
