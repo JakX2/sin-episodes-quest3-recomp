@@ -884,3 +884,17 @@ sin_pc_configure(sin_pc_original_client_pvs_tree_attach_tests
   sin_pc_original_client_pvs_tree_attach_tests)
 add_test(NAME sin_original_win32_client_pvs_tree_attach_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_tree_attach_tests>)
+
+
+# Phase240 original-client PVS red-black fixup + rotations host contracts.
+# Genuine MSVC Win32 x86 tests; no reconstructed game-engine gameplay boot.
+add_executable(sin_pc_original_client_pvs_rb_fixup_tests
+  ../../tests/test_original_client_pvs_rb_fixup.cpp)
+target_include_directories(sin_pc_original_client_pvs_rb_fixup_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_rb_fixup_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_rb_fixup_tests
+  sin_pc_original_client_pvs_rb_fixup_tests)
+add_test(NAME sin_original_win32_client_pvs_rb_fixup_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_rb_fixup_tests>)
