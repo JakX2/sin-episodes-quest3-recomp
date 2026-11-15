@@ -3098,3 +3098,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_pvs_map_search_index_tests
     COMMAND sin_original_client_pvs_map_search_index_tests)
 endif()
+
+
+# Phase238 original client PVS map node resolution and 16-byte growth.
+# Clean C++17 host composition; not reconstructed engine gameplay modules.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_pvs_map_node_growth_tests
+    tests/test_original_client_pvs_map_node_growth.cpp)
+  target_include_directories(sin_original_client_pvs_map_node_growth_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_pvs_map_node_growth_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_pvs_map_node_growth_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_pvs_map_node_growth_tests
+    COMMAND sin_original_client_pvs_map_node_growth_tests)
+endif()
