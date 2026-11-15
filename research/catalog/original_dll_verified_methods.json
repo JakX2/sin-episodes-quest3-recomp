@@ -3921,6 +3921,30 @@
       "evidence_path": "research/phases/phase232-original-client-pvs-aux-helpers.md",
       "implementation_path": "include/sin_compat/original_client_pvs_aux_helpers.hpp",
       "test_path": "tests/test_original_client_pvs_aux_helpers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241086F0",
+      "original_code_length": 96,
+      "original_code_sha256": "6d86459297ef74bda6ee895e7bff44215f4895c61d0942c5ab555303e0851197",
+      "label": "Original client PVS 16-byte manager reserve and append active list node",
+      "owner": "Original 2006 SiN client PVS sixteen-byte index list append/unlink",
+      "recovery_status": "complete_original_sha_verified_pvs_sixteen_list_host_reference",
+      "evidence_path": "research/phases/phase233-original-client-pvs-sixteen-list.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_sixteen_list.hpp",
+      "test_path": "tests/test_original_client_pvs_sixteen_list.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24106CB0",
+      "original_code_length": 140,
+      "original_code_sha256": "65dbc842dd6a24b1934b0fd24295b119e0e9c7bcf2d67fb4f775e0daaaaca7ff",
+      "label": "Original client PVS 16-byte manager unlink active node and self-link free marker",
+      "owner": "Original 2006 SiN client PVS sixteen-byte index list append/unlink",
+      "recovery_status": "complete_original_sha_verified_pvs_sixteen_list_host_reference",
+      "evidence_path": "research/phases/phase233-original-client-pvs-sixteen-list.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_sixteen_list.hpp",
+      "test_path": "tests/test_original_client_pvs_sixteen_list.cpp"
     }
   ]
 }

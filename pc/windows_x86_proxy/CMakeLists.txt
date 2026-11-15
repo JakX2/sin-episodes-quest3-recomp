@@ -787,3 +787,15 @@ sin_pc_configure(sin_pc_original_client_pvs_aux_helpers_tests
   sin_pc_original_client_pvs_aux_helpers_tests)
 add_test(NAME sin_original_win32_client_pvs_aux_helpers
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_aux_helpers_tests>)
+
+# Phase233: actual native MSVC Win32 x86 CTest for independent PVS
+# sixteen-byte linked-list index append/unlink model.
+add_executable(sin_pc_original_client_pvs_sixteen_tests
+  ../../tests/test_original_client_pvs_sixteen_list.cpp)
+target_include_directories(sin_pc_original_client_pvs_sixteen_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_sixteen_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_sixteen_tests
+  sin_pc_original_client_pvs_sixteen_tests)
+add_test(NAME sin_original_win32_client_pvs_sixteen_list
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_sixteen_tests>)
