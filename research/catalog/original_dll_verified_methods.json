@@ -3837,6 +3837,42 @@
       "evidence_path": "research/phases/phase230-original-client-entitylist-handle-dispatch.md",
       "implementation_path": "include/sin_compat/original_client_entitylist_handle_dispatch.hpp",
       "test_path": "tests/test_original_client_entitylist_handle_dispatch.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241089D0",
+      "original_code_length": 157,
+      "original_code_sha256": "4c3874fcb23e149e035f7b7c853ae45b2c89c4cb5f9c64d7dc95ba4debfddd4e",
+      "label": "Original client entity-list parent vtable slot0 registration, mirror counter and secondary callbacks",
+      "owner": "Original 2006 SiN client entity-list parent vtable lifecycle callbacks",
+      "recovery_status": "complete_original_sha_verified_entitylist_parent_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase231-original-client-entitylist-parent-lifecycle.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_parent_lifecycle.hpp",
+      "test_path": "tests/test_original_client_entitylist_parent_lifecycle.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24108A70",
+      "original_code_length": 161,
+      "original_code_sha256": "0d6734b30784e88c1e0aee96c4eef76cae0aa221f95086a62838bd37743996f0",
+      "label": "Original client entity-list parent vtable slot1 unregister with pre-removal highest-slot scan",
+      "owner": "Original 2006 SiN client entity-list parent vtable lifecycle callbacks",
+      "recovery_status": "complete_original_sha_verified_entitylist_parent_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase231-original-client-entitylist-parent-lifecycle.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_parent_lifecycle.hpp",
+      "test_path": "tests/test_original_client_entitylist_parent_lifecycle.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x241082A0",
+      "original_code_length": 30,
+      "original_code_sha256": "069ece106e6326af9c4449dc188f4a08c0d1b2e5479cad2a53dd79ea29a2d191",
+      "label": "Original client entity-list parent vtable slot2 scalar deleting destructor wrapper",
+      "owner": "Original 2006 SiN client entity-list parent vtable lifecycle callbacks",
+      "recovery_status": "complete_original_sha_verified_entitylist_parent_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase231-original-client-entitylist-parent-lifecycle.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_parent_lifecycle.hpp",
+      "test_path": "tests/test_original_client_entitylist_parent_lifecycle.cpp"
     }
   ]
 }
