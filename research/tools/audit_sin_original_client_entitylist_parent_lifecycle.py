@@ -30,7 +30,7 @@ METHODS=(
  ("parent_slot0_register_entity",0x241089D0,157,
   "4c3874fcb23e149e035f7b7c853ae45b2c89c4cb5f9c64d7dc95ba4debfddd4e",3,
   (0x8A,0x9A),{
-    0x00:"53",0x03:"8b7c2414",0x0B:"81e7ff0f0000",
+    0x00:"53",0x07:"8b7c2414",0x0B:"81e7ff0f0000",
     0x1D:"83861800010001",0x36:"ff5010",
     0x39:"8984fe28000100",0x4C:"ff521c",
     0x69:"668984fe2c000100",0x75:"ff92c4000000",
