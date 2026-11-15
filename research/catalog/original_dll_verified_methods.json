@@ -3873,6 +3873,54 @@
       "evidence_path": "research/phases/phase231-original-client-entitylist-parent-lifecycle.md",
       "implementation_path": "include/sin_compat/original_client_entitylist_parent_lifecycle.hpp",
       "test_path": "tests/test_original_client_entitylist_parent_lifecycle.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24108680",
+      "original_code_length": 105,
+      "original_code_sha256": "e6e8903a2ca41cf82c90d08ec01862893525edbb459db00db9de2ee6f3b05175",
+      "label": "Original client auxiliary eight-byte manager reserve and append doubly linked node",
+      "owner": "Original 2006 SiN Episodes client.dll PVS notifier and auxiliary list helpers",
+      "recovery_status": "complete_original_sha_verified_pvs_aux_list_host_reference",
+      "evidence_path": "research/phases/phase232-original-client-pvs-aux-helpers.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_aux_helpers.hpp",
+      "test_path": "tests/test_original_client_pvs_aux_helpers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24106C20",
+      "original_code_length": 137,
+      "original_code_sha256": "17cb2bddf5ae89c032798869d9063ba42412e9a018f176e38928409529a3e743",
+      "label": "Original client auxiliary eight-byte active node unlink with self-linked free marker",
+      "owner": "Original 2006 SiN Episodes client.dll PVS notifier and auxiliary list helpers",
+      "recovery_status": "complete_original_sha_verified_pvs_aux_list_host_reference",
+      "evidence_path": "research/phases/phase232-original-client-pvs-aux-helpers.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_aux_helpers.hpp",
+      "test_path": "tests/test_original_client_pvs_aux_helpers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24108880",
+      "original_code_length": 132,
+      "original_code_sha256": "30770d1648b0a0d71d62752ee3a9d108ac91bbf9cdccca479ab1a9a644c4796e",
+      "label": "Original client entity PVS notifier registration via nested 16-byte list and map helpers",
+      "owner": "Original 2006 SiN Episodes client.dll PVS notifier and auxiliary list helpers",
+      "recovery_status": "complete_original_sha_verified_pvs_aux_list_host_reference",
+      "evidence_path": "research/phases/phase232-original-client-pvs-aux-helpers.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_aux_helpers.hpp",
+      "test_path": "tests/test_original_client_pvs_aux_helpers.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24108910",
+      "original_code_length": 190,
+      "original_code_sha256": "51ce5be9512ec947d5fdfb5b87de3314d651657195ae12717ca7fe418cfdf394",
+      "label": "Original client entity PVS notifier unregistration and tier0 Warning fallback",
+      "owner": "Original 2006 SiN Episodes client.dll PVS notifier and auxiliary list helpers",
+      "recovery_status": "complete_original_sha_verified_pvs_aux_list_host_reference",
+      "evidence_path": "research/phases/phase232-original-client-pvs-aux-helpers.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_aux_helpers.hpp",
+      "test_path": "tests/test_original_client_pvs_aux_helpers.cpp"
     }
   ]
 }
