@@ -828,3 +828,17 @@ sin_pc_configure(sin_pc_original_client_pvs_storage_growth_tests
   sin_pc_original_client_pvs_storage_growth_tests)
 add_test(NAME sin_original_win32_client_pvs_storage_growth_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_storage_growth_tests>)
+
+
+# Phase236: independent original x86 client PVS map frontend host contract.
+# Native MSVC Win32 x86 tests with synthetic callbacks, not game execution.
+add_executable(sin_pc_original_client_pvs_map_frontends_tests
+  ../../tests/test_original_client_pvs_map_frontends.cpp)
+target_include_directories(sin_pc_original_client_pvs_map_frontends_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_map_frontends_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_map_frontends_tests
+  sin_pc_original_client_pvs_map_frontends_tests)
+add_test(NAME sin_original_win32_client_pvs_map_frontends_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_map_frontends_tests>)

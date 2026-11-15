@@ -3066,3 +3066,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_pvs_storage_growth_tests
     COMMAND sin_original_client_pvs_storage_growth_tests)
 endif()
+
+
+# Phase236: original client PVS map insert/lookup/release frontend reference.
+# Synthetic callbacks only; does NOT link or load original game DLL classes.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_pvs_map_frontends_tests
+    tests/test_original_client_pvs_map_frontends.cpp)
+  target_include_directories(sin_original_client_pvs_map_frontends_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_pvs_map_frontends_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_pvs_map_frontends_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_pvs_map_frontends_tests
+    COMMAND sin_original_client_pvs_map_frontends_tests)
+endif()
