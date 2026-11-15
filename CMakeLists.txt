@@ -3082,3 +3082,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_pvs_map_frontends_tests
     COMMAND sin_original_client_pvs_map_frontends_tests)
 endif()
+
+
+# Phase237 original 2006 client PVS tree placement and free-index allocator.
+# Independent C++17 callback model, not an engine-owned game DLL.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_pvs_map_search_index_tests
+    tests/test_original_client_pvs_map_search_index.cpp)
+  target_include_directories(sin_original_client_pvs_map_search_index_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_pvs_map_search_index_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_pvs_map_search_index_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_pvs_map_search_index_tests
+    COMMAND sin_original_client_pvs_map_search_index_tests)
+endif()
