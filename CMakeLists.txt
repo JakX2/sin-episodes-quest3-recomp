@@ -3146,3 +3146,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_pvs_rb_fixup_tests
     COMMAND sin_original_client_pvs_rb_fixup_tests)
 endif()
+
+
+# Phase241: original-client PVS tree-erasure frontend with opaque native
+# deletion fixup. Independent C++17 host model only, no retail game boot.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_pvs_tree_erase_tests
+    tests/test_original_client_pvs_tree_erase.cpp)
+  target_include_directories(sin_original_client_pvs_tree_erase_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_pvs_tree_erase_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_pvs_tree_erase_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_pvs_tree_erase_tests
+    COMMAND sin_original_client_pvs_tree_erase_tests)
+endif()
