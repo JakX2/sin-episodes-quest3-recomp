@@ -813,3 +813,18 @@ sin_pc_configure(sin_pc_original_client_pvs_index_allocators_tests
   sin_pc_original_client_pvs_index_allocators_tests)
 add_test(NAME sin_original_win32_client_pvs_index_allocators_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_index_allocators_tests>)
+
+
+# Phase235: actual MSVC Win32 x86 compilation of the independent client
+# PVS 8/16-byte growth model against synthetic storage/backend callbacks.
+# This does NOT run the original game or replace its gameplay DLLs.
+add_executable(sin_pc_original_client_pvs_storage_growth_tests
+  ../../tests/test_original_client_pvs_storage_growth.cpp)
+target_include_directories(sin_pc_original_client_pvs_storage_growth_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_storage_growth_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_storage_growth_tests
+  sin_pc_original_client_pvs_storage_growth_tests)
+add_test(NAME sin_original_win32_client_pvs_storage_growth_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_storage_growth_tests>)

@@ -3969,6 +3969,30 @@
       "evidence_path": "research/phases/phase234-original-client-pvs-index-allocators.md",
       "implementation_path": "include/sin_compat/original_client_pvs_index_allocators.hpp",
       "test_path": "tests/test_original_client_pvs_index_allocators.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24106010",
+      "original_code_length": 116,
+      "original_code_sha256": "4b28687cce6676118984f4bb2c61efedb173f6e8093cd355181020e5e8c9c160",
+      "label": "Original client 8-byte auxiliary linked-list storage capacity growth and allocate/reallocate dispatch",
+      "owner": "Original SiN Episodes client PVS eight/sixteen-byte storage growth",
+      "recovery_status": "complete_original_sha_verified_pvs_growth_host_reference",
+      "evidence_path": "research/phases/phase235-original-client-pvs-storage-growth.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_storage_growth.hpp",
+      "test_path": "tests/test_original_client_pvs_storage_growth.cpp"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24106090",
+      "original_code_length": 110,
+      "original_code_sha256": "39507159482f561fce8300268e7f9798266b8b6592fb76513959267c669274ba",
+      "label": "Original client 16-byte PVS linked-list storage capacity growth and allocate/reallocate dispatch",
+      "owner": "Original SiN Episodes client PVS eight/sixteen-byte storage growth",
+      "recovery_status": "complete_original_sha_verified_pvs_growth_host_reference",
+      "evidence_path": "research/phases/phase235-original-client-pvs-storage-growth.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_storage_growth.hpp",
+      "test_path": "tests/test_original_client_pvs_storage_growth.cpp"
     }
   ]
 }
