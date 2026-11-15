@@ -763,3 +763,15 @@ sin_pc_configure(sin_pc_original_client_entitylist_dispatch_tests
   sin_pc_original_client_entitylist_dispatch_tests)
 add_test(NAME sin_original_win32_client_entitylist_handle_dispatch
   COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_dispatch_tests>)
+
+# Phase231: native MSVC Win32 x86 regression for original parent
+# entity-list registration/removal/deleting destructor event reference.
+add_executable(sin_pc_original_client_entitylist_parent_tests
+  ../../tests/test_original_client_entitylist_parent_lifecycle.cpp)
+target_include_directories(sin_pc_original_client_entitylist_parent_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_entitylist_parent_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_entitylist_parent_tests
+  sin_pc_original_client_entitylist_parent_tests)
+add_test(NAME sin_original_win32_client_entitylist_parent_lifecycle
+  COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_parent_tests>)
