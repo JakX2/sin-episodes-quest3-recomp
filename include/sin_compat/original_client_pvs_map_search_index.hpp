@@ -39,9 +39,9 @@ inline map::Placement find_insertion_placement(
     std::size_t traversed=0u;
     while(current!=map::kAbsent) {
         // Safety-only: original x86 assumes a valid acyclic tree.
+        const auto& node=map::checked(manager,current);
         if(++traversed>manager.nodes.size())
             throw std::runtime_error("cyclic synthetic PVS placement tree");
-        const auto& node=map::checked(manager,current);
         placement.parent=current;
         placement.as_left=comparator.less(key,node.payload);
         current=placement.as_left?node.left:node.right;
