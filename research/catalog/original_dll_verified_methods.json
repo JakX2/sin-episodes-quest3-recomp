@@ -4065,6 +4065,30 @@
       "original_code_length": 86,
       "original_code_sha256": "15307e759a5ad044b5f781b7eb42914c95b1be056748356d53d664f68fd3344c",
       "label": "Original client PVS map index allocator: recycled free head or next unused, with original growth and node-resolver calls"
+    },
+    {
+      "dll": "client",
+      "owner": "Original 2006 SiN client PVS map record resolution and storage growth",
+      "recovery_status": "complete_original_sha_verified_pvs_map_node_growth_host_reference",
+      "evidence_path": "research/phases/phase238-original-client-pvs-map-node-growth.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_map_node_growth.hpp",
+      "test_path": "tests/test_original_client_pvs_map_node_growth.cpp",
+      "entry_va": "0x24105F40",
+      "original_code_length": 81,
+      "original_code_sha256": "b9b6f5ec6f6a914b682e44461b33942b02006a864bb2bd5e0f8bf695f52028c1",
+      "label": "Original client map record resolver with lazy process-global FFFF/FFFF/FFFF/0001 nil header and 16-byte indexed base address"
+    },
+    {
+      "dll": "client",
+      "owner": "Original 2006 SiN client PVS map record resolution and storage growth",
+      "recovery_status": "complete_original_sha_verified_pvs_map_node_growth_host_reference",
+      "evidence_path": "research/phases/phase238-original-client-pvs-map-node-growth.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_map_node_growth.hpp",
+      "test_path": "tests/test_original_client_pvs_map_node_growth.cpp",
+      "entry_va": "0x24106140",
+      "original_code_length": 110,
+      "original_code_sha256": "8adf0bd0a02d5471c712cbbe4b97bca99a4d6c92b30450f309ab865df37914ae",
+      "label": "Original client map-specific sixteen-byte record capacity growth with signed policy and native allocate/reallocate dispatch"
     }
   ]
 }
