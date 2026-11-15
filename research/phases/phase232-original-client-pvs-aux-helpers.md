@@ -48,7 +48,7 @@ On success the native function reads a 16-byte node's WORD at offset +0x0C, call
 | 0x2410895C | 0x24106B20 |
 | 0x24108966 | 0x24105F40 |
 | 0x241089A2 | 0x24106CB0 |
-| 0x241089BB | 0x24108840 |
+| 0x241089BF | 0x24108840 |
 
 Both absolute original PVS-global store instructions at 0x241088EA and 0x2410894E have HIGHLOW relocations on their 32-bit operands. All eight E8 rel32 CALLs, 34 sparse opcode witnesses, original return/padding bounds, the exact original warning string and Warning imported-call operands are rechecked by source-grounded Python verification.
 
