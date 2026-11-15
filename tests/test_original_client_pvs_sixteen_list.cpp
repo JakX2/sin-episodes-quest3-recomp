@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
+#include <utility>
 #include "sin_compat/original_client_pvs_sixteen_list.hpp"
 
 namespace n=sin_compat::original_client_pvs_sixteen_list;
