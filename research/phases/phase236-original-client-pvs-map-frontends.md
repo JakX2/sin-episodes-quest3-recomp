@@ -4,7 +4,7 @@
 
 **Whole owner-original provenance SHA256 requirements (before native method review credit):**
 - client.dll (3,592,192 bytes): 6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d
-- server.dll (6,049,792 bytes): 568a0086fde607345adf31d7cfb2a5bf4eefe9a86f416faa97076ddf9d97650
+- server.dll (6,049,792 bytes): 568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650
 
 Do not publish commercial original DLLs, native method-body bytes, full original disassemblies or game assets.
 
