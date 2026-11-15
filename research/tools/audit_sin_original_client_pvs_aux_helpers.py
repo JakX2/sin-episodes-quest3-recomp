@@ -60,7 +60,7 @@ CALLS=(
  (0x2410895C,0x24106B20),  # PVS map lookup
  (0x24108966,0x24105F40),  # retrieve map node by index
  (0x241089A2,0x24106CB0),  # unlink 16-byte linked node
- (0x241089BB,0x24108840),  # remove mapping
+ (0x241089BF,0x24108840),  # remove mapping
 )
 # The native warning branch must not be mistaken for tier0 Msg.
 WARN_LITERAL_VA=0x242973C4
