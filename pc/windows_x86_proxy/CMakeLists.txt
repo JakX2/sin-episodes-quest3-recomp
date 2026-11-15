@@ -775,3 +775,15 @@ sin_pc_configure(sin_pc_original_client_entitylist_parent_tests
   sin_pc_original_client_entitylist_parent_tests)
 add_test(NAME sin_original_win32_client_entitylist_parent_lifecycle
   COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_parent_tests>)
+
+# Phase232: native Win32 MSVC x86 tests of original-free PVS notifier
+# callback sequence and 8-byte auxiliary list link/unlink semantics.
+add_executable(sin_pc_original_client_pvs_aux_helpers_tests
+  ../../tests/test_original_client_pvs_aux_helpers.cpp)
+target_include_directories(sin_pc_original_client_pvs_aux_helpers_tests PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_aux_helpers_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_aux_helpers_tests
+  sin_pc_original_client_pvs_aux_helpers_tests)
+add_test(NAME sin_original_win32_client_pvs_aux_helpers
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_aux_helpers_tests>)
