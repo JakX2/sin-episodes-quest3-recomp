@@ -898,3 +898,17 @@ sin_pc_configure(sin_pc_original_client_pvs_rb_fixup_tests
   sin_pc_original_client_pvs_rb_fixup_tests)
 add_test(NAME sin_original_win32_client_pvs_rb_fixup_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_rb_fixup_tests>)
+
+
+# Phase241: real MSVC Win32 x86 compilation of independent original client
+# PVS deletion frontend; no reconstructed game-engine module executed.
+add_executable(sin_pc_original_client_pvs_tree_erase_tests
+  ../../tests/test_original_client_pvs_tree_erase.cpp)
+target_include_directories(sin_pc_original_client_pvs_tree_erase_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_tree_erase_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_tree_erase_tests
+  sin_pc_original_client_pvs_tree_erase_tests)
+add_test(NAME sin_original_win32_client_pvs_tree_erase_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_tree_erase_tests>)
