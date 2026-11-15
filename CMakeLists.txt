@@ -3130,3 +3130,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_pvs_tree_attach_tests
     COMMAND sin_original_client_pvs_tree_attach_tests)
 endif()
+
+
+# Phase240: independent original-client PVS red-black fixup/rotation reference.
+# This host CTest never executes the original game or proprietary DLLs.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_pvs_rb_fixup_tests
+    tests/test_original_client_pvs_rb_fixup.cpp)
+  target_include_directories(sin_original_client_pvs_rb_fixup_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_pvs_rb_fixup_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_pvs_rb_fixup_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_pvs_rb_fixup_tests
+    COMMAND sin_original_client_pvs_rb_fixup_tests)
+endif()
