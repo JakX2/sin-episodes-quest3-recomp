@@ -24,21 +24,21 @@ struct RecordingBackend final:n::IMemoryBackend {
 static void test_eight_byte_zero_seed_and_realloc() {
     n::AuxEight state;
     RecordingBackend backend;
-    assert(state.grow(0,backend)==n::MemoryAction::unchanged);
-    assert(backend.events.empty());
     assert(state.grow(1,backend)==n::MemoryAction::allocate);
     assert(state.capacity==4 && state.storage.size()==4u);
     assert(backend.events.size()==1u);
     assert(backend.events[0].action==n::MemoryAction::allocate);
     assert(backend.events[0].bytes==32u);
     state.storage[0u][1u]=0xA5u;
-    assert(state.grow(0,backend)==n::MemoryAction::unchanged);
-    assert(state.capacity==4 && backend.events.size()==1u);
+    // Native JGE skips capacity growth, NOT the memory helper.
+    assert(state.grow(0,backend)==n::MemoryAction::reallocate);
+    assert(state.capacity==4 && backend.events.size()==2u);
+    assert(backend.events[1].bytes==32u);
     assert(state.grow(1,backend)==n::MemoryAction::reallocate);
     assert(state.capacity==8 && state.storage.size()==8u);
-    assert(backend.events.size()==2u);
-    assert(backend.events[1].action==n::MemoryAction::reallocate);
-    assert(backend.events[1].bytes==64u);
+    assert(backend.events.size()==3u);
+    assert(backend.events[2].action==n::MemoryAction::reallocate);
+    assert(backend.events[2].bytes==64u);
     assert(state.storage[0u][1u]==0xA5u);
 }
 static void test_sixteen_byte_zero_seed_and_realloc() {
@@ -64,6 +64,19 @@ static void test_increment_policy_and_large_request() {
     RecordingBackend bb;
     assert(pvs.grow(12,bb)==n::MemoryAction::allocate);
     assert(pvs.capacity==12 && bb.events.back().bytes==192u);
+}
+static void test_native_zero_additional_still_calls_memory() {
+    n::PvsSixteen state;
+    RecordingBackend backend;
+    // Original can request an allocation of 0 bytes if the caller asks for 0
+    // while capacity is 0. The host treats a successful callback as a buffer.
+    assert(state.grow(0,backend)==n::MemoryAction::allocate);
+    assert(state.capacity==0 && state.storage.empty());
+    assert(backend.events.size()==1u && backend.events[0].bytes==0u);
+    assert(state.grow(0,backend)==n::MemoryAction::reallocate);
+    assert(backend.events.size()==2u && backend.events[1].bytes==0u);
+    assert(state.grow(1,backend)==n::MemoryAction::reallocate);
+    assert(state.capacity==2 && backend.events[2].bytes==32u);
 }
 static void test_fixed_capacity_and_existing_buffer_gate() {
     n::AuxEight state;
@@ -126,6 +139,7 @@ int main() {
     test_eight_byte_zero_seed_and_realloc();
     test_sixteen_byte_zero_seed_and_realloc();
     test_increment_policy_and_large_request();
+    test_native_zero_additional_still_calls_memory();
     test_fixed_capacity_and_existing_buffer_gate();
     test_reject_backend_invalid_and_signed_overflow();
     return 0;
