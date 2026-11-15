@@ -870,3 +870,17 @@ sin_pc_configure(sin_pc_original_client_pvs_map_node_growth_tests
   sin_pc_original_client_pvs_map_node_growth_tests)
 add_test(NAME sin_original_win32_client_pvs_map_node_growth_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_map_node_growth_tests>)
+
+
+# Phase239: native MSVC Win32 x86 test for original-client PVS tree attach
+# host model. Does not execute or replace original game-engine modules.
+add_executable(sin_pc_original_client_pvs_tree_attach_tests
+  ../../tests/test_original_client_pvs_tree_attach.cpp)
+target_include_directories(sin_pc_original_client_pvs_tree_attach_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_tree_attach_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_tree_attach_tests
+  sin_pc_original_client_pvs_tree_attach_tests)
+add_test(NAME sin_original_win32_client_pvs_tree_attach_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_tree_attach_tests>)

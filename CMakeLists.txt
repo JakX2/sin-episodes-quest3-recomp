@@ -3114,3 +3114,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_pvs_map_node_growth_tests
     COMMAND sin_original_client_pvs_map_node_growth_tests)
 endif()
+
+
+# Phase239 original 2006 client PVS map tree-attachment host reference.
+# Original 0x24106E30 balancing is an opaque callback, not decompiled here.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_pvs_tree_attach_tests
+    tests/test_original_client_pvs_tree_attach.cpp)
+  target_include_directories(sin_original_client_pvs_tree_attach_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_pvs_tree_attach_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_pvs_tree_attach_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_pvs_tree_attach_tests
+    COMMAND sin_original_client_pvs_tree_attach_tests)
+endif()
