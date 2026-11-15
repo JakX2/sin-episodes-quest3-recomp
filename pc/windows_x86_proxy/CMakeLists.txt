@@ -842,3 +842,17 @@ sin_pc_configure(sin_pc_original_client_pvs_map_frontends_tests
   sin_pc_original_client_pvs_map_frontends_tests)
 add_test(NAME sin_original_win32_client_pvs_map_frontends_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_map_frontends_tests>)
+
+
+# Phase237: compile original PVS map placement/index host contracts under real
+# MSVC Win32 x86, with synthetic callbacks (not original game startup).
+add_executable(sin_pc_original_client_pvs_map_search_index_tests
+  ../../tests/test_original_client_pvs_map_search_index.cpp)
+target_include_directories(sin_pc_original_client_pvs_map_search_index_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_map_search_index_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_map_search_index_tests
+  sin_pc_original_client_pvs_map_search_index_tests)
+add_test(NAME sin_original_win32_client_pvs_map_search_index_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_map_search_index_tests>)

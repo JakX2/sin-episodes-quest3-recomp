@@ -4041,6 +4041,30 @@
       "original_code_length": 61,
       "original_code_sha256": "46609fee9369fed12e4ee0765eacd3b31a98855929d5a94dc7b03bb1bd9d4a01",
       "label": "Original client PVS map index release B, separately compiled native equivalent of A"
+    },
+    {
+      "dll": "client",
+      "owner": "Original 2006 SiN client PVS map placement and index allocator",
+      "recovery_status": "complete_original_sha_verified_pvs_map_search_index_host_reference",
+      "evidence_path": "research/phases/phase237-original-client-pvs-map-search-index.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_map_search_index.hpp",
+      "test_path": "tests/test_original_client_pvs_map_search_index.cpp",
+      "entry_va": "0x24106440",
+      "original_code_length": 255,
+      "original_code_sha256": "23e29d786cbdb4acf862213297595c65259484779730a3c7788ea6325046006a",
+      "label": "Original client PVS map comparator-driven insertion parent and branch search, RET16"
+    },
+    {
+      "dll": "client",
+      "owner": "Original 2006 SiN client PVS map placement and index allocator",
+      "recovery_status": "complete_original_sha_verified_pvs_map_search_index_host_reference",
+      "evidence_path": "research/phases/phase237-original-client-pvs-map-search-index.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_map_search_index.hpp",
+      "test_path": "tests/test_original_client_pvs_map_search_index.cpp",
+      "entry_va": "0x24106700",
+      "original_code_length": 86,
+      "original_code_sha256": "15307e759a5ad044b5f781b7eb42914c95b1be056748356d53d664f68fd3344c",
+      "label": "Original client PVS map index allocator: recycled free head or next unused, with original growth and node-resolver calls"
     }
   ]
 }
