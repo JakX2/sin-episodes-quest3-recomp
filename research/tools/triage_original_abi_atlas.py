@@ -30,6 +30,22 @@ def address(value):
         raise ValueError("VA outside PE32")
     return n
 
+def ghidra_address(value):
+    """Ghidra Address.toString() emits bare hex; inventory uses 0x-prefixed VAs.
+
+    Accept both formats for Ghidra CSV only, never decimal or >32-bit input.
+    """
+    if not isinstance(value, str):
+        raise ValueError("invalid Ghidra PE32 address")
+    raw = value.strip()
+    digits = raw[2:] if raw.lower().startswith("0x") else raw
+    if not 1 <= len(digits) <= 8 or any(
+        character not in "0123456789abcdefABCDEF" for character in digits
+    ):
+        raise ValueError("invalid Ghidra PE32 hexadecimal address")
+    return int(digits, 16)
+
+
 def check_provenance(directory):
     # Checks reported inventory digests. The upstream scanner must hash actual
     # original bytes; this metadata check is NOT an independent rehash.
@@ -48,7 +64,7 @@ def build(directory, module, ghidra=None):
     edges = read_csv(directory / f"{module}_direct_edges.csv", ("caller", "target", "kind"))
     ghidra_starts = set()
     if ghidra:
-        ghidra_starts = {address(r["entry"]) for r in read_csv(
+        ghidra_starts = {ghidra_address(r["entry"]) for r in read_csv(
             ghidra / f"{module}.dll_functions.csv", ("entry",))}
     export_by_address = {}
     for item in exports:
@@ -119,7 +135,8 @@ def main():
     print(json.dumps({name: {
         key: data[key] for key in ("candidate_count", "ghidra_inferred_starts_matched",
                                    "export_anchored_candidates")}
-        for name, data in report.items()}, indent=2))
+        for name in ("client", "server")
+        for data in (report[name],)}, indent=2))
 
 if __name__ == "__main__":
     main()
