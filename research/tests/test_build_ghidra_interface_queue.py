@@ -74,6 +74,13 @@ class InterfaceQueueTests(unittest.TestCase):
         self.assertFalse(client["queue"][0]["original_function_verified_by_this_tool"])
         self.assertTrue(client["createinterface_ghidra_inferred_start_match"])
 
+    def test_jump_references_not_counted_as_calls(self):
+        with (self.p / "client.dll_callers.csv").open("a", encoding="utf-8") as stream:
+            stream.write("10000001,24001234,CONDITIONAL_JUMP\\n")
+        report = build(self.p, self.manifest)
+        target = report["modules"]["client"]["queue"][0]
+        self.assertEqual(target["factory_direct_callee_functions"], 1)
+
     def test_absent_factory_does_not_gain_verification(self):
         item = build(self.p, self.manifest)["modules"]["client"]["queue"][1]
         self.assertFalse(item["factory_ghidra_inferred_start_match"])
