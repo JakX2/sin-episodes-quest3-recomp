@@ -101,7 +101,7 @@ class BatchDiscoveryTests(unittest.TestCase):
         with self.assertRaises(inventory.PEError):
             pe.at(0x24001100, 0x200)
         with self.assertRaises(inventory.PEError):
-            pe.string(0x24002000, 1)
+            pe.string(0x24002070, 1)
 
     @staticmethod
     def fake_disassembly(path, pe):
