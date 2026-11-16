@@ -35,6 +35,10 @@ jobs:
         shell: pwsh
         run: |
           python research/independent_factory/audit_pe_imports.py factory.dll --forbid client.dll --forbid server.dll
+      - name: Audit PE32 delay imports and forwarded exports
+        shell: pwsh
+        run: |
+          python research/independent_factory/audit_pe_extended.py factory.dll --forbid client.dll --forbid server.dll
       - name: Build native Win32 x86 executable loader
         shell: cmd
         run: cl /nologo /std:c++17 /EHsc /W4 /WX research\independent_factory\win32_loader_smoke.cpp /Fe:win32_loader_smoke.exe
