@@ -76,7 +76,7 @@ def analyze_module(root, name, manifest):
         if not row["caller_entry"].strip():
             continue
         source, target = va(row["caller_entry"]), va(row["function_entry"])
-        if row["kind"].strip().upper().startswith("UNCONDITIONAL_JUMP"):
+        if "CALL" not in row["kind"].strip().upper():
             continue
         incoming[target].add(source)
         outgoing[source].add(target)
