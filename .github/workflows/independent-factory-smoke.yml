@@ -31,6 +31,10 @@ jobs:
           if ($headers -notmatch '14C machine \(x86\)') { throw 'Expected PE32 x86 DLL' }
           $exports = & dumpbin /exports factory.dll | Out-String
           if ($exports -notmatch 'CreateInterface') { throw 'Missing CreateInterface export' }
+      - name: Audit independent PE32 static import boundary
+        shell: pwsh
+        run: |
+          python research/independent_factory/audit_pe_imports.py factory.dll --forbid client.dll --forbid server.dll
       - name: Build native Win32 x86 executable loader
         shell: cmd
         run: cl /nologo /std:c++17 /EHsc /W4 /WX research\independent_factory\win32_loader_smoke.cpp /Fe:win32_loader_smoke.exe
