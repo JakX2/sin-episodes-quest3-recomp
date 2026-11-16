@@ -58,6 +58,17 @@ class SyntheticGhidraAtlasTests(unittest.TestCase):
         self.assertEqual(server["sha_reviewed_entries_matched_by_ghidra"], 1)
         self.assertEqual(server["inferred_entries_not_SHA_reviewed"], 1)
 
+    def test_missing_unmerged_catalog_reports_unavailable_not_zero_project_progress(self):
+        self.file("client.dll", ["24126c40", "241281d0"])
+        self.file("server.dll", ["221FB5F0"])
+        result = atlas.analyze(self.root, self.root / "not-yet-merged.json")
+        self.assertFalse(result["catalog_loaded"])
+        self.assertIn("NOT zero project-wide verified",
+                      result["catalog_limitation"])
+        self.assertEqual(result["modules"]["client.dll"][
+            "ghidra_inferred_function_entries"], 2)
+        self.assertEqual(result["total_new_verified_methods"], 0)
+
     def test_duplicate_entries_refused(self):
         self.file("client.dll", ["24126C40", "0x24126c40"])
         with self.assertRaisesRegex(atlas.AtlasError, "duplicate"):
