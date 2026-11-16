@@ -31,4 +31,24 @@ class AuditTests(unittest.TestCase):
         p=self.path/'server.dll_factory_seed_results.csv'
         with p.open('a') as f: f.write('1000,ITest001,seeded_candidate,1000\n')
         with self.assertRaisesRegex(ValueError,'duplicated'): audit(self.path,self.path)
+    def test_mismatched_recovered_entry(self):
+        p=self.path/'client.dll_factory_seed_results.csv'
+        p.write_text('entry,interface,outcome,result_function_entry\n1000,ITest001,seeded_candidate,1004\n')
+        with self.assertRaisesRegex(ValueError,'does not match'): audit(self.path,self.path)
+    def test_malformed_seed_address(self):
+        p=self.path/'client.dll_factory_seeds.csv'
+        p.write_text('entry,interface,source\nnot_hex,ITest001,reviewed_original_static_registration\n')
+        with self.assertRaisesRegex(ValueError,'invalid PE32 address'): audit(self.path,self.path)
+    def test_malformed_result_address(self):
+        p=self.path/'client.dll_factory_seed_results.csv'
+        p.write_text('entry,interface,outcome,result_function_entry\n1000,ITest001,seeded_candidate,1000garbage\n')
+        with self.assertRaisesRegex(ValueError,'invalid PE32 address'): audit(self.path,self.path)
+    def test_canonical_hex_formats(self):
+        p=self.path/'client.dll_factory_seed_results.csv'
+        p.write_text('entry,interface,outcome,result_function_entry\n0x00001000,ITest001,already_inferred,00001000\n')
+        self.assertEqual(audit(self.path,self.path)['modules']['client.dll']['outcomes']['already_inferred'],1)
+    def test_out_of_range_address(self):
+        p=self.path/'client.dll_factory_seeds.csv'
+        p.write_text('entry,interface,source\n100000000,ITest001,reviewed_original_static_registration\n')
+        with self.assertRaisesRegex(ValueError,'invalid PE32 address'): audit(self.path,self.path)
 if __name__=='__main__': unittest.main()
