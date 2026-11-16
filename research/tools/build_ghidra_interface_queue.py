@@ -61,6 +61,26 @@ def priority(name):
     return 50
 
 
+def read_seed_report(root, name, registrations):
+    path = root / (name + ".dll_factory_seed_results.csv")
+    if not path.is_file():
+        return None
+    expected = {(item["interface"], va(item["factory_va"])) for item in registrations}
+    found = {}
+    for row in rows(path, ("entry", "interface", "outcome", "result_function_entry")):
+        key = row["interface"], va(row["entry"])
+        if key not in expected or key in found:
+            raise ValueError(f"{name}: seed report contains unknown or duplicated interface factory")
+        status = row["outcome"]
+        if status not in ("already_inferred", "seeded_candidate", "non_executable",
+                          "overlaps_another_inferred_function", "unresolved_candidate") and not status.startswith("seed_error_"):
+            raise ValueError(f"{name}: invalid factory seed outcome")
+        found[key] = status
+    if set(found) != expected:
+        raise ValueError(f"{name}: incomplete reviewed factory seed report")
+    return found
+
+
 def analyze_module(root, name, manifest):
     file_functions = root / (name + ".dll_functions.csv")
     file_callers = root / (name + ".dll_callers.csv")
@@ -84,6 +104,7 @@ def analyze_module(root, name, manifest):
     records = manifest["interface_registrations"]
     if len(records) != manifest["static_registration_count"]:
         raise ValueError(f"{name}: interface-registration manifest count disagrees")
+    seed_statuses = read_seed_report(root, name, records)
     seen_names = set()
     queue = []
     for reg in records:
@@ -94,12 +115,20 @@ def analyze_module(root, name, manifest):
         factory, wrapper = va(reg["factory_va"]), va(reg["registration_va"])
         factory_row = functions.get(factory)
         wrapper_row = functions.get(wrapper)
+        seed_outcome = (seed_statuses.get((interface, factory)) if seed_statuses is not None
+                        else None)
+        if seed_outcome in ("already_inferred", "seeded_candidate") and factory_row is None:
+            raise ValueError(f"{name}: seed report claims recovered start absent from Ghidra atlas")
         queue.append({
             "interface": interface,
             "priority": priority(interface),
             "factory_va": fmt(factory),
             "registration_wrapper_va": fmt(wrapper),
             "factory_ghidra_inferred_start_match": factory_row is not None,
+            "factory_seed_outcome": seed_outcome,
+            "factory_auto_discovered_before_seeding": (
+                seed_outcome == "already_inferred" if seed_statuses is not None else None),
+            "factory_seeded_candidate_created": seed_outcome == "seeded_candidate",
             "wrapper_ghidra_inferred_start_match": wrapper_row is not None,
             "factory_inferred_signature": factory_row["prototype"] if factory_row else None,
             "factory_direct_caller_functions": len(incoming[factory]),
@@ -121,6 +150,11 @@ def analyze_module(root, name, manifest):
         "createinterface_va": fmt(exported_factory),
         "createinterface_ghidra_inferred_start_match": exported_factory in functions,
         "matched_factory_inferred_starts": sum(x["factory_ghidra_inferred_start_match"] for x in queue),
+        "factory_seed_report_available": seed_statuses is not None,
+        "factory_auto_discovered_prior_to_seeding": sum(
+            x["factory_auto_discovered_before_seeding"] is True for x in queue),
+        "factory_seeds_created_as_candidates": sum(
+            x["factory_seeded_candidate_created"] for x in queue),
         "matched_registration_wrapper_inferred_starts": sum(x["wrapper_ghidra_inferred_start_match"] for x in queue),
         "queue": queue,
     }
@@ -138,7 +172,7 @@ def build(ghidra_dir, manifest_path):
         "original_binary_rehashed_by_this_tool": False,
         "new_sha_verified_original_functions": 0,
         "new_independently_load_tested_original_functions": 0,
-        "warning": "Metadata match is not a recovered implementation or a verified virtual table.",
+        "warning": "Post-seeding function starts are candidates, not independently inferred originals, recovered implementations, or verified virtual tables.",
         "modules": modules,
     }
 
