@@ -78,7 +78,7 @@ static_assert(offsetof(List16Node,next)==14u);
 inline bool list16_is_active(const std::vector<List16Node>& records,
                              std::uint16_t index) {
     if(index>=records.size())return false;
-    const auto& node=records[index];
+    const auto& node=records.at(static_cast<std::size_t>(index));
     return node.prev!=index || node.next!=index;
 }
 
