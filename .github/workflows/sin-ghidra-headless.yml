@@ -13,6 +13,8 @@ on:
       - 'research/ghidra/ExportOriginalFunctionAtlas.py'
       - 'research/ghidra/ExportOriginalFunctionAtlas.java'
       - 'research/tools/compare_ghidra_original_atlas.py'
+      - 'research/tools/build_ghidra_interface_queue.py'
+      - 'research/tests/test_build_ghidra_interface_queue.py'
   workflow_dispatch:
   schedule:
     - cron: '23 2,14 * * *'
@@ -39,6 +41,7 @@ jobs:
         run: |
           python3 -m unittest discover -s research/tests -p 'test_stage_original_pe_from_drive_zips.py' -v
           python3 -m unittest discover -s research/tests -p 'test_compare_ghidra_original_atlas.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_build_ghidra_interface_queue.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
@@ -162,6 +165,18 @@ jobs:
             --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
             --catalog research/catalog/original_dll_verified_methods.json \
             --out "$RUNNER_TEMP/sin-ghidra-metadata/verified_coverage_summary.json"
+      - name: Prioritize reviewed original interface factory anchors automatically
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f research/catalog/original_dll_interface_registrations.json ]]; then
+            python3 research/tools/build_ghidra_interface_queue.py \
+              --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+              --manifest research/catalog/original_dll_interface_registrations.json \
+              --out "$RUNNER_TEMP/sin-ghidra-metadata/interface_factory_review_queue.json"
+          else
+            echo "::warning::Reviewed interface registration manifest is absent on this branch; no queue or ABI claim produced"
+          fi
       - name: Upload metadata only (NEVER game binaries or pseudocode)
         uses: actions/upload-artifact@v4
         with:
