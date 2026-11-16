@@ -4389,6 +4389,66 @@
       "original_code_length": 42,
       "original_code_sha256": "2d2aad642b4d04a75ee602b01dd872dc26c005d768dbbb5012b6626b45c97392",
       "label": "Original PVS map index allocation plus tree attachment, count increment, no payload copying"
+    },
+    {
+      "dll": "client",
+      "entry_va": "0x24105FE0",
+      "original_code_length": 39,
+      "original_code_sha256": "305edbceeb790e6a91f91fa5815f31c11f606f71e1831384350bb5c265186fe2",
+      "label": "Predecessor Phase246 original client conditional indexed array-owner heap release and count reset",
+      "owner": "Original SiN Episodes 2006 client conditional array-owner release",
+      "recovery_status": "complete_original_sha_verified_phase246_catalog_carry_forward",
+      "evidence_path": "research/phases/phase246-original-client-array-owner-clear.md",
+      "implementation_path": "include/sin_compat/original_client_array_owner_clear.hpp",
+      "test_path": "tests/test_original_client_array_owner_clear.cpp"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list base handle lifecycle",
+      "recovery_status": "complete_original_sha_verified_entitylist_base_removal_host_reference",
+      "evidence_path": "research/phases/phase247-original-client-entitylist-base-removal.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_removal.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_removal.cpp",
+      "entry_va": "0x24127E20",
+      "original_code_length": 91,
+      "original_code_sha256": "a7a4fce2f5f71f02f28ed914f974c0eb6bc10f525b511336c7bfe170c506fcc3",
+      "label": "Original entity-list high-slot doubly linked free-chain remove-if-linked and tail append"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list base handle lifecycle",
+      "recovery_status": "complete_original_sha_verified_entitylist_base_removal_host_reference",
+      "evidence_path": "research/phases/phase247-original-client-entitylist-base-removal.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_removal.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_removal.cpp",
+      "entry_va": "0x24127FC0",
+      "original_code_length": 176,
+      "original_code_sha256": "3dda702afe19b7f523be5d57e8abc1cd947dc94a0feb315e01f7e1df8b284af5",
+      "label": "Original entity-list raw slot removal, entity/parent virtual callbacks, serial wrap, active unlink and high free chain"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list base handle lifecycle",
+      "recovery_status": "complete_original_sha_verified_entitylist_base_removal_host_reference",
+      "evidence_path": "research/phases/phase247-original-client-entitylist-base-removal.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_removal.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_removal.cpp",
+      "entry_va": "0x24128070",
+      "original_code_length": 48,
+      "original_code_sha256": "60ccb6988afda1e4d8aae4497391ef6ec5f27d504aaa0a8526e205fce9fad7cb",
+      "label": "Original entity-list base destructor, base vtable reset and drain live slots through raw slot removal"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list base handle lifecycle",
+      "recovery_status": "complete_original_sha_verified_entitylist_base_removal_host_reference",
+      "evidence_path": "research/phases/phase247-original-client-entitylist-base-removal.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_removal.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_removal.cpp",
+      "entry_va": "0x24128180",
+      "original_code_length": 18,
+      "original_code_sha256": "fe23a8e377538a49ae4a22f04ca9d4057a0a356e92151e00597b9f245b17bad5",
+      "label": "Original entity-list handle masking thunk, index & 0xFFF then E9 tail jump to raw remove"
     }
   ]
 }
