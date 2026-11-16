@@ -18,7 +18,7 @@ def verify_pe32(blob, digest):
     assert sha(blob) == digest, "complete retail DLL SHA256 mismatch"
     assert blob[:2] == b"MZ"
     pe = struct.unpack_from("<I", blob, 0x3C)[0]
-    assert blob[pe:pe+4] == b"PE\\0\\0"
+    assert blob[pe:pe+4] == b"PE\x00\x00"
     assert struct.unpack_from("<H", blob, pe+4)[0] == 0x14C
     assert struct.unpack_from("<H", blob, pe+24)[0] == 0x10B
 
@@ -30,7 +30,7 @@ def main(client, server):
     body = c[VA - 0x24000000:VA - 0x24000000 + SIZE]
     assert len(body) == SIZE and sha(body) == EXPECTED_BODY
     assert body[-2:] == bytes.fromhex("5ec3")  # pop esi; ret
-    assert c[VA - 0x24000000 + SIZE:VA - 0x24000000 + SIZE + 9] == b"\\xCC"*9
+    assert c[VA - 0x24000000 + SIZE:VA - 0x24000000 + SIZE + 9] == b"\xCC"*9
     call_offset = 0x24105FF0 - VA
     assert body[call_offset] == 0xE8
     rel = struct.unpack_from("<i", body, call_offset+1)[0]
