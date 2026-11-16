@@ -1,0 +1,26 @@
+name: Original PE batch inventory (synthetic-only tests)
+
+on:
+  pull_request:
+    paths:
+      - 'research/tools/inventory_original_pe.py'
+      - 'research/tests/test_inventory_original_pe.py'
+      - '.github/workflows/original-pe-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-scanner-tests:
+    name: Synthetic PE32 import/export/relocation and candidate tiers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test batch PE32 discovery without proprietary DLLs
+        run: python3 -m unittest discover -s research/tests -p 'test_inventory_original_pe.py' -v
+      - name: Check analyzer CLI help
+        run: python3 research/tools/inventory_original_pe.py --help
