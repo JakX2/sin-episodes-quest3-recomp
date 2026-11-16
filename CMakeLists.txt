@@ -3210,3 +3210,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_pvs_node_fields_list_reset_tests
     COMMAND sin_original_client_pvs_node_fields_list_reset_tests)
 endif()
+
+
+# Phase245 original client entity-list destructor/drain and PVS index wrappers.
+# Native source-grounded C++17 host model, not a game-engine runtime boot.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_entitylist_pvs_lifecycle_wrappers_tests
+    tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp)
+  target_include_directories(sin_original_client_entitylist_pvs_lifecycle_wrappers_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_entitylist_pvs_lifecycle_wrappers_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_entitylist_pvs_lifecycle_wrappers_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_entitylist_pvs_lifecycle_wrappers_tests
+    COMMAND sin_original_client_entitylist_pvs_lifecycle_wrappers_tests)
+endif()
