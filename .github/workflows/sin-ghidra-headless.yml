@@ -11,6 +11,7 @@ on:
       - 'research/tests/test_stage_original_pe_from_drive_zips.py'
       - 'research/tools/run_ghidra_original.sh'
       - 'research/ghidra/ExportOriginalFunctionAtlas.py'
+      - 'research/ghidra/ExportOriginalFunctionAtlas.java'
       - 'research/tools/compare_ghidra_original_atlas.py'
   workflow_dispatch:
   schedule:
@@ -72,7 +73,7 @@ jobs:
           "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
             -import "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" \
             -scriptPath "$GITHUB_WORKSPACE/research/ghidra" \
-            -postScript ExportOriginalFunctionAtlas.py "$RUNNER_TEMP/sin-ghidra-smoke" \
+            -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
             -deleteProject
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_functions.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_callers.csv"
