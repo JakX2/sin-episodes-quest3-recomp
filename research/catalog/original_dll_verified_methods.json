@@ -4509,6 +4509,114 @@
       "original_code_length": 17,
       "original_code_sha256": "13be98bd3c171a6acbe7e5e895939b352b95778c23860569cb51ea9c328739d6",
       "label": "Original serial RNG helper invoking imported vstdlib RandomInt(0,32767)"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127C80",
+      "original_code_length": 7,
+      "original_code_sha256": "5a7018f52a7e9b612ef6070e55e66c84d87c73491d4f5ab7a72318192f149305",
+      "label": "Original 16-byte entity slot resets prev/next pointers to self"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127C90",
+      "original_code_length": 16,
+      "original_code_sha256": "9d20fb9737545d0eeb198c79dc5d325beabd6d570a4058d3f1e7f4a887df0403",
+      "label": "Original intrusive-list manager zeroes head and tail DWORDs"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127CA0",
+      "original_code_length": 17,
+      "original_code_sha256": "1e2f1affbccb04c25e27dafd454fe1ac8c0c0935f714a6dfd7d22ff0c203b67b",
+      "label": "Original 16-byte entity slot linked-state predicate compares prev DWORD+8 to self"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127CC0",
+      "original_code_length": 3,
+      "original_code_sha256": "1d10894625976bca9d8906f3ecf1e766b94e9219ec3bf1c30e02feea5e18e45a",
+      "label": "Original CBaseEntityList base vtable virtual slot0 no-op RET8"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127CD0",
+      "original_code_length": 3,
+      "original_code_sha256": "1d10894625976bca9d8906f3ecf1e766b94e9219ec3bf1c30e02feea5e18e45a",
+      "label": "Original CBaseEntityList base vtable virtual slot1 no-op RET8"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127CE0",
+      "original_code_length": 3,
+      "original_code_sha256": "19d200194d49b34530548575f37a1bb4203ee60f18d42f0084e86b7a8c899faa",
+      "label": "Original entity slot DWORD+0 entity pointer getter"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127CF0",
+      "original_code_length": 67,
+      "original_code_sha256": "74eccc13557d320aae9d1ea67f0f030c3180423ae617a9582ee385c3402cbe44",
+      "label": "Original entity intrusive linked-list unlink if prev pointer not self"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127D40",
+      "original_code_length": 106,
+      "original_code_sha256": "e9faf33f4d1d0dd86a256414e97a9947d7a2f6b1625a70091695833038951359",
+      "label": "Original entity intrusive linked-list insert before given slot, null means append tail"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client CBaseEntityList intrusive-list primitives and parent/base virtual slot wiring",
+      "recovery_status": "complete_original_sha_verified_entitylist_intrusive_list_vtable_host_reference",
+      "evidence_path": "research/phases/phase249-original-client-entitylist-intrusive-list-vtable.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_intrusive_list_vtable.hpp",
+      "test_path": "tests/test_original_client_entitylist_intrusive_list_vtable.cpp",
+      "entry_va": "0x24127DB0",
+      "original_code_length": 105,
+      "original_code_sha256": "880abd3b6e2202c6f80b688ffc1583ca7e5f0f974e6635b9001f6accc5b6788a",
+      "label": "Original entity intrusive linked-list insert after given slot, null means prepend head"
     }
   ]
 }
