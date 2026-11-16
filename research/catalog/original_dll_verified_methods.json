@@ -4305,6 +4305,90 @@
       "original_code_length": 24,
       "original_code_sha256": "ed5b194512b3e405f7b96a020481c590fc1a29f87c59fb1b1be4ae80ddf135ef",
       "label": "Original PVS map node color WORD+6 setter"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list cleanup and indexed PVS manager wrappers",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_pvs_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase245-original-client-entitylist-pvs-lifecycle-wrappers.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_pvs_lifecycle_wrappers.hpp",
+      "test_path": "tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp",
+      "entry_va": "0x241061E0",
+      "original_code_length": 209,
+      "original_code_sha256": "371ab22a53c0c0927ca9098f22df381543b2beecb0c75347f2091009dd61b64d",
+      "label": "Original entity-list primary-handle drain, virtual release dispatch, clearing counters and high-water"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list cleanup and indexed PVS manager wrappers",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_pvs_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase245-original-client-entitylist-pvs-lifecycle-wrappers.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_pvs_lifecycle_wrappers.hpp",
+      "test_path": "tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp",
+      "entry_va": "0x24107430",
+      "original_code_length": 156,
+      "original_code_sha256": "ba31e5b972b0d2a3242e636970ad553c1df5e7e72ab49f3d0ebfd48aa99b8787",
+      "label": "Original entity-list parent destructor with drain, PVS map/free-list resets, conditional heap frees and tail base destructor"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list cleanup and indexed PVS manager wrappers",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_pvs_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase245-original-client-entitylist-pvs-lifecycle-wrappers.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_pvs_lifecycle_wrappers.hpp",
+      "test_path": "tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp",
+      "entry_va": "0x241082C0",
+      "original_code_length": 37,
+      "original_code_sha256": "122e5732b38e8f7d785aa9bcb1c50954a08ebb2f1d6566f8d582cf323aa9454f",
+      "label": "Original auxiliary eight-byte list unlink and free-chain push wrapper"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list cleanup and indexed PVS manager wrappers",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_pvs_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase245-original-client-entitylist-pvs-lifecycle-wrappers.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_pvs_lifecycle_wrappers.hpp",
+      "test_path": "tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp",
+      "entry_va": "0x241082F0",
+      "original_code_length": 40,
+      "original_code_sha256": "8b3136ca2362a79f47968c2c3d648db881b2c50337bd5835493718d87f56027e",
+      "label": "Original separate 16-byte list unlink and free-chain push wrapper"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list cleanup and indexed PVS manager wrappers",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_pvs_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase245-original-client-entitylist-pvs-lifecycle-wrappers.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_pvs_lifecycle_wrappers.hpp",
+      "test_path": "tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp",
+      "entry_va": "0x24108320",
+      "original_code_length": 54,
+      "original_code_sha256": "af3290321c9fbb9b378386b7106b59344e6d50c5b958295dc1df2e3e342cace4",
+      "label": "Original auxiliary eight-byte index allocation, list insert-before and payload DWORD copy"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list cleanup and indexed PVS manager wrappers",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_pvs_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase245-original-client-entitylist-pvs-lifecycle-wrappers.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_pvs_lifecycle_wrappers.hpp",
+      "test_path": "tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp",
+      "entry_va": "0x24108360",
+      "original_code_length": 34,
+      "original_code_sha256": "ce40641871fb98845468e99cebde1c872d57f1821150414248c74929ace84163",
+      "label": "Original 16-byte linked-list index acquisition and insert-before wrapper"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client entity-list cleanup and indexed PVS manager wrappers",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_pvs_lifecycle_host_reference",
+      "evidence_path": "research/phases/phase245-original-client-entitylist-pvs-lifecycle-wrappers.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_pvs_lifecycle_wrappers.hpp",
+      "test_path": "tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp",
+      "entry_va": "0x24108390",
+      "original_code_length": 42,
+      "original_code_sha256": "2d2aad642b4d04a75ee602b01dd872dc26c005d768dbbb5012b6626b45c97392",
+      "label": "Original PVS map index allocation plus tree attachment, count increment, no payload copying"
     }
   ]
 }
