@@ -33,7 +33,7 @@ def audit(seed_dir, result_dir):
         seeds = read_csv(seed_dir / f'{module}_factory_seeds.csv', ['entry', 'interface', 'source'])
         results = read_csv(result_dir / f'{module}_factory_seed_results.csv', ['entry', 'interface', 'outcome', 'result_function_entry'])
         expected = {(address(r['entry']), r['interface']) for r in seeds}
-        actual = {(r['entry'].lower().lstrip('0') or '0', r['interface']) for r in results}
+        actual = {(address(r['entry']), r['interface']) for r in results}
         if len(expected) != len(seeds) or len(actual) != len(results) or expected != actual:
             raise ValueError(f'{module}: missing, duplicated or unexpected reviewed seed')
         if any(r['source'] != 'reviewed_original_static_registration' for r in seeds):
