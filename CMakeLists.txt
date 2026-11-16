@@ -3259,3 +3259,20 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_entitylist_base_register_tests
     COMMAND sin_original_client_entitylist_base_register_tests)
 endif()
+
+
+# Phase249: original 2006 client CBaseEntityList intrusive-list operations
+# and genuine base virtual slot0/slot1 no-op RET8 interface contracts.
+# Independent C++17 host model; NOT a retail gameplay client.dll boot.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_entitylist_intrusive_list_vtable_tests
+    tests/test_original_client_entitylist_intrusive_list_vtable.cpp)
+  target_include_directories(sin_original_client_entitylist_intrusive_list_vtable_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_entitylist_intrusive_list_vtable_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_entitylist_intrusive_list_vtable_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_entitylist_intrusive_list_vtable_tests
+    COMMAND sin_original_client_entitylist_intrusive_list_vtable_tests)
+endif()
