@@ -4617,6 +4617,54 @@
       "original_code_length": 105,
       "original_code_sha256": "880abd3b6e2202c6f80b688ffc1583ca7e5f0f974e6635b9001f6accc5b6788a",
       "label": "Original entity intrusive linked-list insert after given slot, null means prepend head"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client DT_EntityParticleTrailInfo RecvTable and original CRT initializer/cleanup lifecycle",
+      "recovery_status": "complete_original_sha_verified_particle_trail_recvtable_crt_host_reference",
+      "evidence_path": "research/phases/phase250-original-client-particle-trail-recvtable-crt.md",
+      "implementation_path": "include/sin_compat/original_client_particle_trail_recvtable_crt.hpp",
+      "test_path": "tests/test_original_client_particle_trail_recvtable_crt.cpp",
+      "entry_va": "0x241281D0",
+      "original_code_length": 151,
+      "original_code_sha256": "e698bb21d94f55d82c0ba326c696c30b94be1cf7c2f3817f9bf0f2762614173b",
+      "label": "Original DT_EntityParticleTrailInfo lazy RecvTable init: internal placeholder, three float fields offsets +8/+12/+16, conditional one-shot construction and unconditional table registration"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client DT_EntityParticleTrailInfo RecvTable and original CRT initializer/cleanup lifecycle",
+      "recovery_status": "complete_original_sha_verified_particle_trail_recvtable_crt_host_reference",
+      "evidence_path": "research/phases/phase250-original-client-particle-trail-recvtable-crt.md",
+      "implementation_path": "include/sin_compat/original_client_particle_trail_recvtable_crt.hpp",
+      "test_path": "tests/test_original_client_particle_trail_recvtable_crt.cpp",
+      "entry_va": "0x24268960",
+      "original_code_length": 22,
+      "original_code_sha256": "24f60e9f71ec970f8cbe34bcd6922716367b5df0e3b7d42337b0e40d3126d9ba",
+      "label": "Original client EntityParticleTrailInfo CRT recvtable-object construction and termination-handler registration"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client DT_EntityParticleTrailInfo RecvTable and original CRT initializer/cleanup lifecycle",
+      "recovery_status": "complete_original_sha_verified_particle_trail_recvtable_crt_host_reference",
+      "evidence_path": "research/phases/phase250-original-client-particle-trail-recvtable-crt.md",
+      "implementation_path": "include/sin_compat/original_client_particle_trail_recvtable_crt.hpp",
+      "test_path": "tests/test_original_client_particle_trail_recvtable_crt.cpp",
+      "entry_va": "0x24268980",
+      "original_code_length": 16,
+      "original_code_sha256": "9066c780197419033104792af48e29300c27fe14781d802f78bbbc74a81556ec",
+      "label": "Original client EntityParticleTrailInfo CRT initializer wrapper calls native lazy RecvTable initializer and caches EAX in global"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client DT_EntityParticleTrailInfo RecvTable and original CRT initializer/cleanup lifecycle",
+      "recovery_status": "complete_original_sha_verified_particle_trail_recvtable_crt_host_reference",
+      "evidence_path": "research/phases/phase250-original-client-particle-trail-recvtable-crt.md",
+      "implementation_path": "include/sin_compat/original_client_particle_trail_recvtable_crt.hpp",
+      "test_path": "tests/test_original_client_particle_trail_recvtable_crt.cpp",
+      "entry_va": "0x242736B0",
+      "original_code_length": 10,
+      "original_code_sha256": "4861e23fe970b18f32c9effba6e5d18711adce11b391326c118c157668179b6c",
+      "label": "Original client EntityParticleTrailInfo CRT cleanup thunk adjusts this to table object and E9 tail-JMPs table destructor"
     }
   ]
 }
