@@ -99,13 +99,22 @@ def build(directory, module, ghidra=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inventory", type=Path, required=True)
+    parser.add_argument("--original-dir", type=Path, help="Rehash both owner originals before ranking; required for authenticated results")
     parser.add_argument("--ghidra", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     check_provenance(args.inventory)
+    if args.original_dir:
+        from verify_original_batch import authenticate
+        verified = authenticate(args.original_dir)
+        summary = json.loads((args.inventory / "summary.json").read_text(encoding="utf-8"))
+        for dll, details in verified["modules"].items():
+            if summary["modules"][dll]["sha256"].lower() != details["sha256"]:
+                raise ValueError(f"{dll}: inventory digest disagrees with independently hashed original")
     report = {name: build(args.inventory, name, args.ghidra)
               for name in ("client", "server")}
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    report["_authentication"] = {"original_bytes_rehashed": bool(args.original_dir), "both_originals_verified": bool(args.original_dir), "candidate_counts_are_not_verified_functions": True}
     args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({name: {
         key: data[key] for key in ("candidate_count", "ghidra_inferred_starts_matched",
