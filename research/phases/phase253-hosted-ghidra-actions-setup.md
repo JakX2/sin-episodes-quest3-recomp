@@ -46,3 +46,22 @@ After those two steps, run the workflow once manually under Actions, then allow 
 This phase does not itself add new original whole-native-code SHA-reviewed functions. The trusted catalog remains 403 (client 256, server 147). A successful synthetic Ghidra smoke is NOT proof that the owner-original DLLs were already analyzed on GitHub. The real original Ghidra hosted job requires the two GitHub secrets and merging the workflow file to default. A public-repository metadata artifact may be readable by visitors; do not include original binaries, complete native instruction listings, or C-like decompilation text in it.
 
 Priorities remain an independent non-forwarding Windows x86 gameplay DLL boot first, Android ARM64 second, Quest 3 VR third.
+
+## Standalone deployment without merging the research stack
+
+The original long-running reconstruction has many stacked DRAFT PRs and main
+currently lacks their SHA-reviewed-method catalog. This independent deployment
+branch contains only the Ghidra runner, verified input staging, metadata
+comparator, original-only Java script, synthetic tests and documentation.
+It is intentionally based on **main** so the owner can merge ONE automation PR
+without prematurely merging hundreds of unreleased recovery changes.
+
+The default-branch comparator explicitly records **catalog_loaded=false** when
+the reviewed catalog is not present, and must NOT report its zero overlap as
+zero project-wide verified functions. Once the original method ledger is
+merged to main, future runs will start cross-referencing it automatically.
+
+The two required Google Drive Actions secrets and the default-branch merge
+remain owner-controlled. The GitHub connector used to author this PR cannot
+write secrets, approve a workflow, or merge the PR under the project's explicit
+DRAFT-only policy.
