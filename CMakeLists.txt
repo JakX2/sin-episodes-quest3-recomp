@@ -3276,3 +3276,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_entitylist_intrusive_list_vtable_tests
     COMMAND sin_original_client_entitylist_intrusive_list_vtable_tests)
 endif()
+
+
+# Phase250 original client EntityParticleTrailInfo RecvTable and CRT glue.
+# Independent C++17 host model, NOT original gameplay DLL startup.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_particle_trail_recvtable_crt_tests
+    tests/test_original_client_particle_trail_recvtable_crt.cpp)
+  target_include_directories(sin_original_client_particle_trail_recvtable_crt_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_particle_trail_recvtable_crt_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_particle_trail_recvtable_crt_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_particle_trail_recvtable_crt_tests
+    COMMAND sin_original_client_particle_trail_recvtable_crt_tests)
+endif()
