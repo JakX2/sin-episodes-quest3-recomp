@@ -174,8 +174,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sin-ghidra-metadata"
           bash research/tools/run_ghidra_original.sh "$GHIDRA_HOME" \
-            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata" \
-            "$RUNNER_TEMP/sin-reviewed-factory-seeds"
+            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_functions.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_functions.csv"
           if [[ -n "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
