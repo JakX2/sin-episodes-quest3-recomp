@@ -1,0 +1,22 @@
+name: SiN original PE32 authentication synthetic regressions
+on:
+  push:
+    paths:
+      - 'research/tools/verify_original_batch.py'
+      - 'research/tools/test_verify_original_batch.py'
+      - 'research/tools/triage_original_abi_atlas.py'
+      - '.github/workflows/sin-original-authentication.yml'
+  pull_request:
+  workflow_dispatch:
+jobs:
+  synthetic-authentication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run synthetic authentication regressions
+        run: python3 -m unittest discover -s research/tools -p 'test_verify_original_batch.py' -v
+      - name: Run existing ABI triage regressions
+        run: python3 -m unittest discover -s research/tools -p 'test_triage_original_abi_atlas.py' -v
