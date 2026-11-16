@@ -19,4 +19,4 @@ jobs:
       - name: Run synthetic authentication regressions
         run: python3 -m unittest discover -s research/tools -p 'test_verify_original_batch.py' -v
       - name: Run existing ABI triage regressions
-        run: python3 -m unittest discover -s research/tools -p 'test_triage_original_abi_atlas.py' -v
+        run: python3 -m unittest discover -s research/tests -p 'test_triage_original_abi_atlas.py' -v
