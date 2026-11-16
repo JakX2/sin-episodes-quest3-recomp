@@ -1,0 +1,178 @@
+name: SiN original DLL Ghidra headless batch atlas
+
+# Retail binaries stay on ephemeral runner disk; PR smoke uses SYNTHETIC ELF.
+# Scheduling takes effect ONLY after merging this workflow to default branch.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sin-ghidra-headless.yml'
+      - 'research/tools/install_pinned_ghidra.sh'
+      - 'research/tools/stage_original_pe_from_drive_zips.py'
+      - 'research/tests/test_stage_original_pe_from_drive_zips.py'
+      - 'research/tools/run_ghidra_original.sh'
+      - 'research/ghidra/ExportOriginalFunctionAtlas.py'
+      - 'research/ghidra/ExportOriginalFunctionAtlas.java'
+      - 'research/tools/compare_ghidra_original_atlas.py'
+  workflow_dispatch:
+  schedule:
+    - cron: '23 2,14 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sin-original-ghidra-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  synthetic-zip-tests:
+    name: Synthetic-only original ZIP staging
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run tests without original game DLLs
+        run: |
+          python3 -m unittest discover -s research/tests -p 'test_stage_original_pe_from_drive_zips.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_compare_ghidra_original_atlas.py' -v
+          bash -n research/tools/install_pinned_ghidra.sh
+          bash -n research/tools/run_ghidra_original.sh
+
+  ghidra-headless-smoke:
+    name: Actual Ghidra 12.2 headless smoke on synthetic ELF
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ghidra-archive/ghidra_12.2_PUBLIC_20261016.zip
+          key: verified-ghidra-12-2-sha256-2c2cd776
+      - name: Install pinned SHA256 verified original Ghidra release
+        shell: bash
+        run: |
+          set -euo pipefail
+          GHIDRA_HOME="$(bash research/tools/install_pinned_ghidra.sh "$RUNNER_TEMP/ghidra-archive" "$RUNNER_TEMP/ghidra-installed")"
+          echo "GHIDRA_HOME=$GHIDRA_HOME" >> "$GITHUB_ENV"
+      - name: Compile harmless sample and run actual Ghidra postScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-project"
+          printf '%s\n' 'int helper(int x) { return x + 5; }' 'int main(void) { return helper(37) == 42 ? 0 : 1; }' > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
+          cc -O0 -fno-inline -o "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
+          "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
+            -import "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" \
+            -scriptPath "$GITHUB_WORKSPACE/research/ghidra" \
+            -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
+            -deleteProject
+          test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_functions.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_callers.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_relocated_code_pointers.csv"
+          test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_DECOMPILATION"
+
+  analyze-owner-originals:
+    name: Original client/server Ghidra metadata using private Drive inputs
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fail clearly unless both original Drive IDs are configured
+        env:
+          DRIVE_BIN_ZIP: ${{ secrets.SIN_ORIGINAL_DRIVE_BIN_ZIP_ID }}
+          DRIVE_BIN_1_ZIP: ${{ secrets.SIN_ORIGINAL_DRIVE_BIN_1_ZIP_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$DRIVE_BIN_ZIP" || -z "$DRIVE_BIN_1_ZIP" ]]; then
+            echo "::error::Configure SIN_ORIGINAL_DRIVE_BIN_ZIP_ID and SIN_ORIGINAL_DRIVE_BIN_1_ZIP_ID in repository Actions secrets"
+            exit 1
+          fi
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ghidra-archive/ghidra_12.2_PUBLIC_20261016.zip
+          key: verified-ghidra-12-2-sha256-2c2cd776
+      - name: Install pinned verified Ghidra 12.2
+        run: |
+          GHIDRA_HOME="$(bash research/tools/install_pinned_ghidra.sh "$RUNNER_TEMP/ghidra-archive" "$RUNNER_TEMP/ghidra-installed")"
+          echo "GHIDRA_HOME=$GHIDRA_HOME" >> "$GITHUB_ENV"
+      - name: Download two Google Drive ZIPs into ephemeral runner scratch
+        env:
+          DRIVE_BIN_ZIP: ${{ secrets.SIN_ORIGINAL_DRIVE_BIN_ZIP_ID }}
+          DRIVE_BIN_1_ZIP: ${{ secrets.SIN_ORIGINAL_DRIVE_BIN_1_ZIP_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet 'gdown==5.2.0'
+          mkdir -p "$RUNNER_TEMP/sin-original-drive-private"
+          chmod 700 "$RUNNER_TEMP/sin-original-drive-private"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import gdown
+          folder = Path(os.environ["RUNNER_TEMP"]) / "sin-original-drive-private"
+          for env, target in (("DRIVE_BIN_ZIP", "bin.zip"), ("DRIVE_BIN_1_ZIP", "bin_1.zip")):
+              output = folder / target
+              if not gdown.download(id=os.environ[env], output=str(output), quiet=True):
+                  raise SystemExit("Drive retrieval failed; check file permissions or quota")
+              if not output.is_file():
+                  raise SystemExit("Drive retrieval did not create ZIP")
+          PY
+      - name: Verify original full-file SHA256s and safely stage DLLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/stage_original_pe_from_drive_zips.py \
+            --archive "$RUNNER_TEMP/sin-original-drive-private/bin.zip" \
+            --archive "$RUNNER_TEMP/sin-original-drive-private/bin_1.zip" \
+            --output-dir "$RUNNER_TEMP/sin-original-pe-private"
+      - name: Run real Ghidra headless batch analysis on both owner-original DLLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sin-ghidra-metadata"
+          bash research/tools/run_ghidra_original.sh "$GHIDRA_HOME" \
+            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_functions.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_functions.csv"
+          test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_DECOMPILATION"
+          test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_DECOMPILATION"
+      - name: Separate Ghidra inferred functions from SHA-reviewed methods
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/compare_ghidra_original_atlas.py \
+            --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --catalog research/catalog/original_dll_verified_methods.json \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/verified_coverage_summary.json"
+      - name: Upload metadata only (NEVER game binaries or pseudocode)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-ghidra-12-2-atlas-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/sin-ghidra-metadata/*.csv
+            ${{ runner.temp }}/sin-ghidra-metadata/*.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove private originals and generated analysis from runner scratch
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/sin-original-drive-private" \
+            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata"
