@@ -181,7 +181,7 @@ struct RemovalSpy final:base::Callbacks {
 static void test_cross_phase_native_entitylist_removal_and_destructor() {
     base::State state;
     base::Chain& active=state.active;
-    for(const std::uint16_t id:{3u,5u,7u}) {
+    for(const auto id:std::vector<std::uint16_t>{3u,5u,7u}) {
         auto& slot=base::checked(state,id);
         slot.entity_token=static_cast<std::uint32_t>(100u+id);
         slot.serial=id;
