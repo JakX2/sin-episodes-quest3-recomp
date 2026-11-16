@@ -4209,6 +4209,102 @@
       "original_code_length": 54,
       "original_code_sha256": "90ed1a6166e503620e701e59198499e531b64dec6be6f665edb9fffa6c9bf9d3",
       "label": "Original client typed map insertion adapter: stack DWORD+WORD key prefix, conditional comparator global store, map insert"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client PVS node field primitives and auxiliary list reset",
+      "recovery_status": "complete_original_sha_verified_pvs_node_fields_list_reset_host_reference",
+      "evidence_path": "research/phases/phase244-original-client-pvs-node-fields-list-reset.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_node_fields_list_reset.hpp",
+      "test_path": "tests/test_original_client_pvs_node_fields_list_reset.cpp",
+      "entry_va": "0x24105D10",
+      "original_code_length": 18,
+      "original_code_sha256": "c1940e69b4f114920d06d56700083f2cd9edaf9d6145fdd2020485eb2ad84188",
+      "label": "Original 16-byte PVS map record indexed payload pointer (base+index*16+8)"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client PVS node field primitives and auxiliary list reset",
+      "recovery_status": "complete_original_sha_verified_pvs_node_fields_list_reset_host_reference",
+      "evidence_path": "research/phases/phase244-original-client-pvs-node-fields-list-reset.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_node_fields_list_reset.hpp",
+      "test_path": "tests/test_original_client_pvs_node_fields_list_reset.cpp",
+      "entry_va": "0x24105DD0",
+      "original_code_length": 81,
+      "original_code_sha256": "be605e319bc1bc6c2ac86feea8b724e3b9d051d4f59dc4752deb527031d106a9",
+      "label": "Original eight-byte auxiliary linked-list free-chain reset, capacity-zero fast path"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client PVS node field primitives and auxiliary list reset",
+      "recovery_status": "complete_original_sha_verified_pvs_node_fields_list_reset_host_reference",
+      "evidence_path": "research/phases/phase244-original-client-pvs-node-fields-list-reset.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_node_fields_list_reset.hpp",
+      "test_path": "tests/test_original_client_pvs_node_fields_list_reset.cpp",
+      "entry_va": "0x24105E80",
+      "original_code_length": 46,
+      "original_code_sha256": "89b9061da55ddeadc3179e6ee9c9235b1e75ba17b5c773920d0472f810078763",
+      "label": "Original 16-byte linked-list active predicate via +C/+E self marker"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client PVS node field primitives and auxiliary list reset",
+      "recovery_status": "complete_original_sha_verified_pvs_node_fields_list_reset_host_reference",
+      "evidence_path": "research/phases/phase244-original-client-pvs-node-fields-list-reset.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_node_fields_list_reset.hpp",
+      "test_path": "tests/test_original_client_pvs_node_fields_list_reset.cpp",
+      "entry_va": "0x24105EE0",
+      "original_code_length": 24,
+      "original_code_sha256": "b1c6c757afdf5106f71ba3452c69c46ee0713d822bcc6ebb238132c6e7eafbfb",
+      "label": "Original 16-byte PVS map record parent WORD+4 setter"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client PVS node field primitives and auxiliary list reset",
+      "recovery_status": "complete_original_sha_verified_pvs_node_fields_list_reset_host_reference",
+      "evidence_path": "research/phases/phase244-original-client-pvs-node-fields-list-reset.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_node_fields_list_reset.hpp",
+      "test_path": "tests/test_original_client_pvs_node_fields_list_reset.cpp",
+      "entry_va": "0x24105F00",
+      "original_code_length": 23,
+      "original_code_sha256": "49174d895e56856ee7877c8eab60c667cf613ea4254052d7f20067fd7bb510f7",
+      "label": "Original 16-byte PVS map record left child WORD+0 setter"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client PVS node field primitives and auxiliary list reset",
+      "recovery_status": "complete_original_sha_verified_pvs_node_fields_list_reset_host_reference",
+      "evidence_path": "research/phases/phase244-original-client-pvs-node-fields-list-reset.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_node_fields_list_reset.hpp",
+      "test_path": "tests/test_original_client_pvs_node_fields_list_reset.cpp",
+      "entry_va": "0x24105F20",
+      "original_code_length": 24,
+      "original_code_sha256": "ed3757cb13ea83780882d9e45819bb069f2c58ae86a7750d2371fcb85765403b",
+      "label": "Original 16-byte PVS map record right child WORD+2 setter"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client PVS node field primitives and auxiliary list reset",
+      "recovery_status": "complete_original_sha_verified_pvs_node_fields_list_reset_host_reference",
+      "evidence_path": "research/phases/phase244-original-client-pvs-node-fields-list-reset.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_node_fields_list_reset.hpp",
+      "test_path": "tests/test_original_client_pvs_node_fields_list_reset.cpp",
+      "entry_va": "0x24105FA0",
+      "original_code_length": 17,
+      "original_code_sha256": "d7b08a570e5450bdaf0fc9aaadf9ebaf09d07d7701b79e5cadf1e4be2ed21c75",
+      "label": "Original map node color WORD+6 reader, calling verified native nil/node resolver"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes (2006) client PVS node field primitives and auxiliary list reset",
+      "recovery_status": "complete_original_sha_verified_pvs_node_fields_list_reset_host_reference",
+      "evidence_path": "research/phases/phase244-original-client-pvs-node-fields-list-reset.md",
+      "implementation_path": "include/sin_compat/original_client_pvs_node_fields_list_reset.hpp",
+      "test_path": "tests/test_original_client_pvs_node_fields_list_reset.cpp",
+      "entry_va": "0x24105FC0",
+      "original_code_length": 24,
+      "original_code_sha256": "ed5b194512b3e405f7b96a020481c590fc1a29f87c59fb1b1be4ae80ddf135ef",
+      "label": "Original PVS map node color WORD+6 setter"
     }
   ]
 }
