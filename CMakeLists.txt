@@ -3242,3 +3242,20 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_entitylist_base_removal_tests
     COMMAND sin_original_client_entitylist_base_removal_tests)
 endif()
+
+
+# Phase248: original client CBaseEntityList constructor, explicit and
+# non-networked registration, and vstdlib RandomInt(0,32767) serial wrapper.
+# Independent C++17 host reference: NOT retail Windows gameplay module boot.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_entitylist_base_register_tests
+    tests/test_original_client_entitylist_base_register.cpp)
+  target_include_directories(sin_original_client_entitylist_base_register_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_entitylist_base_register_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_entitylist_base_register_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_entitylist_base_register_tests
+    COMMAND sin_original_client_entitylist_base_register_tests)
+endif()
