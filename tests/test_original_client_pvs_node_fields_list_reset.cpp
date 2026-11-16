@@ -84,8 +84,12 @@ static void test_separate_list16_active_predicate() {
     assert(!n::list16_is_active(list,1u));
     list[2].prev=0u;list[2].next=2u;
     assert(n::list16_is_active(list,2u));
-    assert(!n::list16_is_active(list,3u));
-    assert(!n::list16_is_active(list,n::kAbsent));
+    // Keep invalid indices runtime-valued: GCC may otherwise emit a
+    // misleading -Warray-bounds diagnostic for proven rejected indices.
+    volatile std::uint16_t outside_capacity=3u;
+    volatile std::uint16_t nil_index=n::kAbsent;
+    assert(!n::list16_is_active(list,outside_capacity));
+    assert(!n::list16_is_active(list,nil_index));
 }
 static void test_all_four_map_node_word_writes_and_color_read() {
     m::Map map(4u);
