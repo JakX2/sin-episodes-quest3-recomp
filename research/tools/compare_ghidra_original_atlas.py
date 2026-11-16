@@ -64,7 +64,12 @@ def module_atlas(ghidra_csv: Path, methods: list[dict],
 
 
 def analyze(ghidra_dir: Path, catalog: Path) -> dict:
-    data = json.loads(catalog.read_text(encoding="utf-8"))
+    # The standalone deployment PR can run from main without the hundreds
+    # of still-unmerged research branches. A missing SHA catalog must not
+    # turn inferred Ghidra starts into a fictitious verified-method count.
+    catalog_available = catalog.is_file()
+    data = (json.loads(catalog.read_text(encoding="utf-8"))
+            if catalog_available else {"methods": []})
     if not isinstance(data, dict) or not isinstance(data.get("methods"), list):
         raise AtlasError("expected verified original method catalog")
     results = {}
@@ -74,6 +79,11 @@ def analyze(ghidra_dir: Path, catalog: Path) -> dict:
             data["methods"], name)
     return {
         "note": "Ghidra function discovery is independent of SHA-reviewed methods.",
+        "catalog_loaded": catalog_available,
+        "catalog_limitation": (
+            "The reviewed method catalog is not present on this deployment "
+            "branch; zero overlap is NOT zero project-wide verified methods."
+            if not catalog_available else None),
         "total_new_verified_methods": 0,
         "modules": results,
     }
