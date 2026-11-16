@@ -968,3 +968,17 @@ sin_pc_configure(sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests
   sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests)
 add_test(NAME sin_original_win32_client_entitylist_pvs_lifecycle_wrappers_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests>)
+
+
+# Phase247: genuine MSVC Windows x86 host-only contract for retail
+# client base entity-list destructor and masked handle removal.
+add_executable(sin_pc_original_client_entitylist_base_removal_tests
+  ../../tests/test_original_client_entitylist_base_removal.cpp)
+target_include_directories(sin_pc_original_client_entitylist_base_removal_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_entitylist_base_removal_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_entitylist_base_removal_tests
+  sin_pc_original_client_entitylist_base_removal_tests)
+add_test(NAME sin_original_win32_client_entitylist_base_removal_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_base_removal_tests>)
