@@ -3292,3 +3292,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_particle_trail_recvtable_crt_tests
     COMMAND sin_original_client_particle_trail_recvtable_crt_tests)
 endif()
+
+
+# Phase251: original 2006 client recv-proxy, RecvProp and RecvTable factories.
+# Host C++17 references only; not independently rebuilt gameplay DLL boot.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_recvprop_proxies_factories_tests
+    tests/test_original_client_recvprop_proxies_factories.cpp)
+  target_include_directories(sin_original_client_recvprop_proxies_factories_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_recvprop_proxies_factories_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_recvprop_proxies_factories_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_recvprop_proxies_factories_tests
+    COMMAND sin_original_client_recvprop_proxies_factories_tests)
+endif()

@@ -1024,3 +1024,17 @@ sin_pc_configure(sin_pc_original_client_particle_trail_recvtable_crt_tests
   sin_pc_original_client_particle_trail_recvtable_crt_tests)
 add_test(NAME sin_original_win32_client_particle_trail_recvtable_crt_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_particle_trail_recvtable_crt_tests>)
+
+
+# Phase251: genuine MSVC x86 native host-contract checks for retail
+# client ReceiveProp/ReceiveTable constructors and receive proxies.
+add_executable(sin_pc_original_client_recvprop_proxies_factories_tests
+  ../../tests/test_original_client_recvprop_proxies_factories.cpp)
+target_include_directories(sin_pc_original_client_recvprop_proxies_factories_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_recvprop_proxies_factories_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_recvprop_proxies_factories_tests
+  sin_pc_original_client_recvprop_proxies_factories_tests)
+add_test(NAME sin_original_win32_client_recvprop_proxies_factories_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_recvprop_proxies_factories_tests>)
