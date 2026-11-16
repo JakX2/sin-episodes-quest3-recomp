@@ -954,3 +954,17 @@ sin_pc_configure(sin_pc_original_client_pvs_node_fields_list_reset_tests
   sin_pc_original_client_pvs_node_fields_list_reset_tests)
 add_test(NAME sin_original_win32_client_pvs_node_fields_list_reset_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_node_fields_list_reset_tests>)
+
+
+# Phase245: original 2006 client entity-list drain/destructor and PVS
+# index wrappers as genuine MSVC PE32 x86 host-only contract tests.
+add_executable(sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests
+  ../../tests/test_original_client_entitylist_pvs_lifecycle_wrappers.cpp)
+target_include_directories(sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests
+  sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests)
+add_test(NAME sin_original_win32_client_entitylist_pvs_lifecycle_wrappers_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_pvs_lifecycle_wrappers_tests>)
