@@ -15,6 +15,9 @@ on:
       - 'research/tools/compare_ghidra_original_atlas.py'
       - 'research/tools/build_ghidra_interface_queue.py'
       - 'research/tests/test_build_ghidra_interface_queue.py'
+      - 'research/tools/prepare_reviewed_factory_seeds.py'
+      - 'research/tests/test_prepare_reviewed_factory_seeds.py'
+      - 'research/ghidra/SeedReviewedInterfaceFactories.java'
   workflow_dispatch:
   schedule:
     - cron: '23 2,14 * * *'
@@ -42,6 +45,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_stage_original_pe_from_drive_zips.py' -v
           python3 -m unittest discover -s research/tests -p 'test_compare_ghidra_original_atlas.py' -v
           python3 -m unittest discover -s research/tests -p 'test_build_ghidra_interface_queue.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_prepare_reviewed_factory_seeds.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
@@ -72,15 +76,21 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-project"
           printf '%s\n' 'int helper(int x) { return x + 5; }' 'int main(void) { return helper(37) == 42 ? 0 : 1; }' > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
-          cc -O0 -fno-inline -o "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
+          cc -no-pie -O0 -fno-inline -o "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
+          seed_address="$(nm -n "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" | awk '$3 == "helper" { print $1; exit }')"
+          test -n "$seed_address"
+          printf '%s\n' 'entry,interface,source' "$seed_address,SyntheticEngine001,reviewed_original_static_registration" > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seeds.csv"
           "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
             -import "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" \
             -scriptPath "$GITHUB_WORKSPACE/research/ghidra" \
+            -postScript SeedReviewedInterfaceFactories.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
             -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
             -deleteProject
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_functions.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_callers.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_relocated_code_pointers.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
+          grep -q 'SyntheticEngine001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
           test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_DECOMPILATION"
 
   analyze-owner-originals:
@@ -146,15 +156,32 @@ jobs:
             --archive "$RUNNER_TEMP/sin-original-drive-private/bin.zip" \
             --archive "$RUNNER_TEMP/sin-original-drive-private/bin_1.zip" \
             --output-dir "$RUNNER_TEMP/sin-original-pe-private"
+      - name: Prepare reviewed interface factory seeds when manifest is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f research/catalog/original_dll_interface_registrations.json ]]; then
+            python3 research/tools/prepare_reviewed_factory_seeds.py \
+              --manifest research/catalog/original_dll_interface_registrations.json \
+              --out-dir "$RUNNER_TEMP/sin-reviewed-factory-seeds"
+            echo "SIN_GHIDRA_SEED_DIRECTORY=$RUNNER_TEMP/sin-reviewed-factory-seeds" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Original interface registration catalog unavailable on default branch; target seeding disabled"
+          fi
       - name: Run real Ghidra headless batch analysis on both owner-original DLLs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sin-ghidra-metadata"
           bash research/tools/run_ghidra_original.sh "$GHIDRA_HOME" \
-            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata"
+            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata" \
+            "$RUNNER_TEMP/sin-reviewed-factory-seeds"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_functions.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_functions.csv"
+          if [[ -n "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
+            test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_factory_seed_results.csv"
+            test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_factory_seed_results.csv"
+          fi
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_DECOMPILATION"
       - name: Separate Ghidra inferred functions from SHA-reviewed methods
