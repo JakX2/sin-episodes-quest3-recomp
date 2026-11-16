@@ -48,8 +48,8 @@ else
   "$headless" "$private_project" SiNOriginalPrivate \
     -import "$original_bin/client.dll" "$original_bin/server.dll" \
     -scriptPath "$scripts" \
-    -postScript ExportOriginalFunctionAtlas.py "$output" \
+    -postScript ExportOriginalFunctionAtlas.java "$output" \
     -deleteProject
 fi
 echo "Ghidra candidate atlas generated under $output"
-echo "Do not push raw Ghidra decompilation to GitHub."
+echo "Metadata mode uses Ghidra 12.2 Java script; emit-c requires a PyGhidra-enabled environment."\necho "Do not push raw Ghidra decompilation to GitHub."
