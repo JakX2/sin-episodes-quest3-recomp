@@ -11,7 +11,7 @@ import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.reloc.Relocation;
 import ghidra.program.model.symbol.Reference;
-import ghidra.program.model.symbol.ReferenceType;
+import ghidra.program.model.symbol.RefType;
 import java.io.File;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -84,7 +84,7 @@ public class ExportOriginalFunctionAtlas extends GhidraScript {
                 int directCallers = 0;
                 for (Reference ref : currentProgram.getReferenceManager()
                         .getReferencesTo(entry)) {
-                    ReferenceType type = ref.getReferenceType();
+                    RefType type = ref.getReferenceType();
                     if (!type.isCall() && !type.isJump()) {
                         continue;
                     }
