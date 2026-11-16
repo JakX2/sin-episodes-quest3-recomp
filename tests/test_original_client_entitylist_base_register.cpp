@@ -158,7 +158,7 @@ static void test_non_networked_draws_exact_first_high_slot_and_removal_requeues(
     assert(base::remove_packed_handle(state,first,events));
     assert(state.active.head==base::kMissing&&state.active.tail==base::kMissing);
     assert(state.high_free.head==2050u&&state.high_free.tail==2049u);
-    assert(base::checked(state,2049u).serial==(expected_serial+1u)&0x7FFFu);
+    assert(base::checked(state,2049u).serial==((expected_serial+1u)&0x7FFFu));
     assert(base::checked(state,2049u).in_high_free);
     assert(events.removal_handles.size()==1u);
     assert(events.removal_handles[0]==first);
