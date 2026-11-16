@@ -78,10 +78,18 @@ def audit(data):
     return {"delay_imports":sorted(set(delays),key=str.casefold),"export_forwarders":sorted(set(forwards),key=str.casefold)}
 
 def forbidden(result,names):
-    deny={x.casefold() for x in names}
+    # A forwarder is MODULE.SYMBOL; MODULE can itself end in .dll.
+    deny={x.casefold().removesuffix(".dll") for x in names}
+    def forwarded_to_denied(value):
+        if "." not in value:
+            raise PEError("malformed export forwarder")
+        module, symbol = value.rsplit(".", 1)
+        if not module or not symbol:
+            raise PEError("malformed export forwarder")
+        return module.casefold().removesuffix(".dll") in deny
     return {
-        "delay_imports":[x for x in result["delay_imports"] if x.casefold() in deny],
-        "export_forwarders":[x for x in result["export_forwarders"] if (x.split(".",1)[0]+".dll").casefold() in deny],
+        "delay_imports":[x for x in result["delay_imports"] if x.casefold().removesuffix(".dll") in deny],
+        "export_forwarders":[x for x in result["export_forwarders"] if forwarded_to_denied(x)],
     }
 
 if __name__=="__main__":

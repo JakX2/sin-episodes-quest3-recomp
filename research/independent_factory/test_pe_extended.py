@@ -41,6 +41,17 @@ class Tests(unittest.TestCase):
     def test_delay_denied(self): self.assertTrue(forbidden(audit(delayed()),["client.dll"])["delay_imports"])
     def test_forward(self): self.assertEqual(audit(forwarded())["export_forwarders"],["SERVER.CreateInterface"])
     def test_forward_denied(self): self.assertTrue(forbidden(audit(forwarded()),["server.dll"])["export_forwarders"])
+    def test_forward_explicit_dll_module_denied(self):
+        self.assertTrue(forbidden(audit(forwarded(b"CLIENT.dll.CreateInterface")), ["client.dll"])["export_forwarders"])
+    def test_forward_ordinal_denied(self):
+        self.assertTrue(forbidden(audit(forwarded(b"SERVER.#7")), ["server.dll"])["export_forwarders"])
+    def test_forward_unrelated_module_allowed(self):
+        self.assertFalse(forbidden(audit(forwarded(b"KERNEL32.Sleep")), ["server.dll"])["export_forwarders"])
+    def test_forward_malformed_rejected(self):
+        with self.assertRaises(PEError):
+            forbidden(audit(forwarded(b"SERVER.")), ["server.dll"])
+    def test_delay_without_extension_denied(self):
+        self.assertTrue(forbidden(audit(delayed(b"CLIENT")), ["client.dll"])["delay_imports"])
     def test_invalid_delay_name(self):
         b=delayed()
         struct.pack_into("<I",b,0x204,0x90000000)
