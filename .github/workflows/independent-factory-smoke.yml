@@ -31,3 +31,14 @@ jobs:
           if ($headers -notmatch '14C machine \(x86\)') { throw 'Expected PE32 x86 DLL' }
           $exports = & dumpbin /exports factory.dll | Out-String
           if ($exports -notmatch 'CreateInterface') { throw 'Missing CreateInterface export' }
+      - name: Build native Win32 x86 executable loader
+        shell: cmd
+        run: cl /nologo /std:c++17 /EHsc /W4 /WX research\independent_factory\win32_loader_smoke.cpp /Fe:win32_loader_smoke.exe
+      - name: Verify loader executable architecture
+        shell: pwsh
+        run: |
+          $headers = & dumpbin /headers win32_loader_smoke.exe | Out-String
+          if ($headers -notmatch '14C machine \(x86\)') { throw 'Expected Win32 x86 loader' }
+      - name: Run native independent DLL loader and factory contract
+        shell: cmd
+        run: win32_loader_smoke.exe factory.dll
