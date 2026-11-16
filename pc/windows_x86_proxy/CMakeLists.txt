@@ -982,3 +982,17 @@ sin_pc_configure(sin_pc_original_client_entitylist_base_removal_tests
   sin_pc_original_client_entitylist_base_removal_tests)
 add_test(NAME sin_original_win32_client_entitylist_base_removal_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_base_removal_tests>)
+
+
+# Phase248 genuine MSVC PE32 x86 CTest of original client entity-list
+# ctor/registration host reference. Not an independent gameplay DLL boot.
+add_executable(sin_pc_original_client_entitylist_base_register_tests
+  ../../tests/test_original_client_entitylist_base_register.cpp)
+target_include_directories(sin_pc_original_client_entitylist_base_register_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_entitylist_base_register_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_entitylist_base_register_tests
+  sin_pc_original_client_entitylist_base_register_tests)
+add_test(NAME sin_original_win32_client_entitylist_base_register_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_entitylist_base_register_tests>)

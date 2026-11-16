@@ -4449,6 +4449,66 @@
       "original_code_length": 18,
       "original_code_sha256": "fe23a8e377538a49ae4a22f04ca9d4057a0a356e92151e00597b9f245b17bad5",
       "label": "Original entity-list handle masking thunk, index & 0xFFF then E9 tail jump to raw remove"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client base entity-list constructor, registration and vstdlib serial helper",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_base_register_host_reference",
+      "evidence_path": "research/phases/phase248-original-client-entitylist-base-register.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_register.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_register.cpp",
+      "entry_va": "0x24127E80",
+      "original_code_length": 200,
+      "original_code_sha256": "3bd028ccda4ac019dbf491fbc834c2fc7713baeae2e4253e84702131e8882d3e",
+      "label": "Original entity-list base constructor: vtable, 4096 serial-initialized slots and high free-list slots 2049..4095"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client base entity-list constructor, registration and vstdlib serial helper",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_base_register_host_reference",
+      "evidence_path": "research/phases/phase248-original-client-entitylist-base-register.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_register.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_register.cpp",
+      "entry_va": "0x24127F50",
+      "original_code_length": 106,
+      "original_code_sha256": "9fc4b5d7f510991579d995c6de2ff6f3e4a5685909e99fb59f295ff05874d3e8",
+      "label": "Original explicit entity binding: optional raw serial override, active tail insertion and entity/parent callbacks"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client base entity-list constructor, registration and vstdlib serial helper",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_base_register_host_reference",
+      "evidence_path": "research/phases/phase248-original-client-entitylist-base-register.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_register.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_register.cpp",
+      "entry_va": "0x241280A0",
+      "original_code_length": 32,
+      "original_code_sha256": "d94b9d0d4d8e4bc3c2f0b807c25f9e2219cc0c28f279b1e08f2169c2ab05a266",
+      "label": "Original four-argument entity registration wrapper, returns caller-provided output pointer"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client base entity-list constructor, registration and vstdlib serial helper",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_base_register_host_reference",
+      "evidence_path": "research/phases/phase248-original-client-entitylist-base-register.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_register.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_register.cpp",
+      "entry_va": "0x241280C0",
+      "original_code_length": 181,
+      "original_code_sha256": "e762b3bfac73a8566578848cfc8d7e7fcb8a285b1558789ae29b05aa24870583",
+      "label": "Original non-networked entity registration from high free-list with native fatal no-slots branch"
+    },
+    {
+      "dll": "client",
+      "owner": "Original SiN Episodes: Emergence (2006) client base entity-list constructor, registration and vstdlib serial helper",
+      "recovery_status": "complete_original_sha_verified_client_entitylist_base_register_host_reference",
+      "evidence_path": "research/phases/phase248-original-client-entitylist-base-register.md",
+      "implementation_path": "include/sin_compat/original_client_entitylist_base_register.hpp",
+      "test_path": "tests/test_original_client_entitylist_base_register.cpp",
+      "entry_va": "0x241A8B90",
+      "original_code_length": 17,
+      "original_code_sha256": "13be98bd3c171a6acbe7e5e895939b352b95778c23860569cb51ea9c328739d6",
+      "label": "Original serial RNG helper invoking imported vstdlib RandomInt(0,32767)"
     }
   ]
 }
