@@ -100,7 +100,8 @@ static void test_all_four_map_node_word_writes_and_color_read() {
     assert(n::read_color_via_resolver(map,2u)==1u);
     assert(n::read_color_via_resolver(map,n::kAbsent)==rb::kBlack);
     assert(n::map_payload_byte_offset(map,2u)==40u);
-    assert(map.nodes[2].payload==m::Payload({{1u,2u,3u,4u,5u,6u,7u,8u}}));
+    const m::Payload expected_payload{{1u,2u,3u,4u,5u,6u,7u,8u}};
+    assert(map.nodes[2].payload==expected_payload);
     n::set_color_word(map,2u,0x1234u);
     assert(map.nodes[2].opaque_header==0x1234ABCDu);
     n::set_parent_word(map,2u,0xFEDCu);
