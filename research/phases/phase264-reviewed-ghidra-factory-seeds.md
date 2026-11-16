@@ -34,8 +34,10 @@ another undirected whole-binary scan.
    manually anchored function is never misreported as independently
    Ghidra-discovered.
 5. The existing hosted workflow tests the Java pass with a harmless
-   synthetic non-PIE ELF and tests the seed generator with constructed
-   registration metadata. On an authenticated owner-original run, the
+   synthetic non-PIE ELF. The synthetic-only smoke first removes its known
+   helper function from Ghidra's inferred function list, then verifies that
+   the seed pass actually recreates a `seeded_candidate`. The seed generator
+   also has constructed-input tests. On an authenticated owner-original run, the
    script uses the reviewed manifest if present in that branch, and
    archives seed outcomes alongside the metadata-only function atlas.
 
