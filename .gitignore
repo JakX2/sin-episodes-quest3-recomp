@@ -18,3 +18,10 @@
 *.bsp
 *.vpk
 .DS_Store
+
+# Local original PE/Ghidra analysis outputs; never commit pseudocode or game DLLs.
+/research/private-analysis/
+/research/ghidra-output/
+/research/batch-output/
+*.gpr
+*.rep
