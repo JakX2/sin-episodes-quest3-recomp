@@ -98,6 +98,40 @@ class InterfaceQueueTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate"):
             build(self.p, self.manifest)
 
+    def test_seeded_factory_is_not_auto_discovery(self):
+        for module, factory, label in (
+            ("client", "0x24001234", "VClient011"),
+            ("server", "0x22001234", "ServerGameDLL003"),
+        ):
+            manifest_records = self.data["dlls"][module]["interface_registrations"]
+            details = []
+            for item in manifest_records:
+                details.append({
+                    "entry": item["factory_va"],
+                    "interface": item["interface"],
+                    "outcome": ("seeded_candidate" if item["interface"] == label
+                                else "unresolved_candidate"),
+                    "result_function_entry": (factory if item["interface"] == label else ""),
+                })
+            csvwrite(self.p / (module + ".dll_factory_seed_results.csv"),
+                     ["entry", "interface", "outcome", "result_function_entry"], details)
+        report = build(self.p, self.manifest)
+        client = report["modules"]["client"]
+        self.assertTrue(client["factory_seed_report_available"])
+        self.assertEqual(client["factory_seeds_created_as_candidates"], 1)
+        self.assertEqual(client["factory_auto_discovered_prior_to_seeding"], 0)
+        self.assertFalse(client["queue"][0]["factory_auto_discovered_before_seeding"])
+        self.assertTrue(client["queue"][0]["factory_seeded_candidate_created"])
+        self.assertFalse(client["queue"][0]["original_function_verified_by_this_tool"])
+
+    def test_seed_report_requires_all_reviewed_factories(self):
+        csvwrite(self.p / "client.dll_factory_seed_results.csv",
+                 ["entry", "interface", "outcome", "result_function_entry"], [
+                     {"entry": "0x24001234", "interface": "VClient011",
+                      "outcome": "seeded_candidate", "result_function_entry": "0x24001234"}])
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            build(self.p, self.manifest)
+
     def test_cli_metadata_output(self):
         out = self.p / "queue.json"
         script = Path(__file__).resolve().parents[1] / "tools" / "build_ghidra_interface_queue.py"
