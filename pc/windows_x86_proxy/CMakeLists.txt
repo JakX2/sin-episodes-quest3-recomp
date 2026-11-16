@@ -940,3 +940,17 @@ sin_pc_configure(sin_pc_original_client_pvs_comparator_dispatch_tests
   sin_pc_original_client_pvs_comparator_dispatch_tests)
 add_test(NAME sin_original_win32_client_pvs_comparator_dispatch_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_comparator_dispatch_tests>)
+
+
+# Phase244: genuine MSVC Win32 x86 tests for independent original
+# client PVS indexed-node field and eight-byte free-chain host models.
+add_executable(sin_pc_original_client_pvs_node_fields_list_reset_tests
+  ../../tests/test_original_client_pvs_node_fields_list_reset.cpp)
+target_include_directories(sin_pc_original_client_pvs_node_fields_list_reset_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_client_pvs_node_fields_list_reset_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_pvs_node_fields_list_reset_tests
+  sin_pc_original_client_pvs_node_fields_list_reset_tests)
+add_test(NAME sin_original_win32_client_pvs_node_fields_list_reset_contract
+  COMMAND $<TARGET_FILE:sin_pc_original_client_pvs_node_fields_list_reset_tests>)
