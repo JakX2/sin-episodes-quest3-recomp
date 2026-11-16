@@ -3226,3 +3226,19 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_entitylist_pvs_lifecycle_wrappers_tests
     COMMAND sin_original_client_entitylist_pvs_lifecycle_wrappers_tests)
 endif()
+
+
+# Phase247 original client entity-list base destructor/handle-removal helpers.
+# Portable independent C++17 host tests, not retail gameplay DLL execution.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_entitylist_base_removal_tests
+    tests/test_original_client_entitylist_base_removal.cpp)
+  target_include_directories(sin_original_client_entitylist_base_removal_tests
+    PRIVATE include)
+  target_compile_features(sin_original_client_entitylist_base_removal_tests
+    PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_entitylist_base_removal_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_entitylist_base_removal_tests
+    COMMAND sin_original_client_entitylist_base_removal_tests)
+endif()
