@@ -1,0 +1,20 @@
+name: SiN metadata-only ABI atlas triage
+on:
+  pull_request:
+    paths:
+      - 'research/tools/triage_original_abi_atlas.py'
+      - 'research/tests/test_triage_original_abi_atlas.py'
+      - '.github/workflows/sin-abi-atlas-triage.yml'
+  workflow_dispatch:
+jobs:
+  synthetic-abi-atlas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Synthetic batch ABI triage tests
+        run: python -m unittest discover -s research/tests -p test_triage_original_abi_atlas.py -v
+      - name: CLI help smoke
+        run: python research/tools/triage_original_abi_atlas.py --help
