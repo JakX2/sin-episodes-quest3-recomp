@@ -1,0 +1,33 @@
+name: Independent synthetic factory boundary
+on:
+  pull_request:
+    paths:
+      - 'research/independent_factory/**'
+      - '.github/workflows/independent-factory-smoke.yml'
+  workflow_dispatch:
+jobs:
+  linux-synthetic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s research/independent_factory -p 'test_*.py' -v
+  windows-win32:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Build real 32-bit synthetic DLL
+        shell: cmd
+        run: cl /nologo /std:c++17 /EHsc /W4 /WX /LD research\independent_factory\factory.cpp /Fe:factory.dll
+      - name: Inspect PE machine and exported factory
+        shell: pwsh
+        run: |
+          $headers = & dumpbin /headers factory.dll | Out-String
+          if ($headers -notmatch '14C machine \(x86\)') { throw 'Expected PE32 x86 DLL' }
+          $exports = & dumpbin /exports factory.dll | Out-String
+          if ($exports -notmatch 'CreateInterface') { throw 'Missing CreateInterface export' }
