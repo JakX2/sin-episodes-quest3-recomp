@@ -76,7 +76,7 @@ class InterfaceQueueTests(unittest.TestCase):
 
     def test_jump_references_not_counted_as_calls(self):
         with (self.p / "client.dll_callers.csv").open("a", encoding="utf-8") as stream:
-            stream.write("10000001,24001234,CONDITIONAL_JUMP\\n")
+            stream.write("10000001,24001234,CONDITIONAL_JUMP" + chr(10))
         report = build(self.p, self.manifest)
         target = report["modules"]["client"]["queue"][0]
         self.assertEqual(target["factory_direct_callee_functions"], 1)
