@@ -1,0 +1,18 @@
+name: SiN vtable evidence queue synthetic tests
+on:
+  pull_request:
+    paths:
+      - 'tools/abi_vtable_evidence.py'
+      - 'tests/test_abi_vtable_evidence.py'
+      - '.github/workflows/sin-vtable-evidence.yml'
+  workflow_dispatch:
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run synthetic vtable evidence regression suite
+        run: python -m unittest discover -s tests -p test_abi_vtable_evidence.py -v
