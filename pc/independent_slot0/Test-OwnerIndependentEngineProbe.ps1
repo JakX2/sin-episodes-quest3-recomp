@@ -27,11 +27,24 @@ foreach ($required in @(
     'OWNER_ENGINE_MODULE_NOT_OBSERVED:',
     'OWNER_ENGINE_MODULE_INSPECTION:',
     'OrdinalIgnoreCase',
-    '$moduleInspectionSucceeded'
+    '$moduleInspectionSucceeded',
+    '$moduleInspectionSamples',
+    '$moduleInspectionFirstError',
+    '$child.WaitForExit(50)'
 )) {
     if (-not $launcherText.Contains($required)) {
         throw "Missing owner module-observation contract: $required"
     }
+}
+# Fast-failing game processes must get at least one attempted module
+# snapshot; the original HasExited loop guard skipped them entirely.
+if (-not $launcherText.Contains('do {') -or
+    -not $launcherText.Contains('} while ($true)') -or
+    $launcherText.Contains('while (-not $child.HasExited')) {
+    throw 'Owner launcher may skip first module inspection on early game exit'
+}
+if (-not $launcherText.Contains('samples={2} first_error={3}')) {
+    throw 'Owner launcher must report sample count and first inspection error'
 }
 if ($launcherText.Contains('OWNER_ENGINE_MODULE_MISSING:')) {
     throw 'Module polling must not infer absence from an unobserved sample'
@@ -99,7 +112,7 @@ try {
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
 
-    Write-Output "PASS owner independent Windows PowerShell launcher syntax, module-observation contract and 4 non-destructive rejection gates"
+    Write-Output "PASS owner independent Windows PowerShell launcher syntax, immediate module sampling contract and 4 non-destructive rejection gates"
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }

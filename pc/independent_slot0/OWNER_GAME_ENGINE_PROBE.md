@@ -139,3 +139,18 @@ records whether enumeration ever succeeded. For reliable inspection on
 32-bit retail processes, launch the script from an appropriately privileged
 PowerShell session, without weakening the disposable-copy and SHA256 gates.
 These observations remain local; public CI cannot provide retail evidence.
+
+## Early-exit module inspection (Phase 302)
+
+The owner launcher now attempts its **first module snapshot immediately**
+after `Start-Process`, even if the game process exited before the first
+`HasExited` check. Earlier builds skipped all module inspection for a
+fast-failing executable. While the game remains alive, polling is now
+50 ms rather than 250 ms. The report includes the number of attempted
+snapshots and the first inspection exception type:
+`OWNER_ENGINE_MODULE_INSPECTION: success=<bool> failures=<n> samples=<n> first_error=<type|none>`.
+
+A sampled DLL path is direct owner-process evidence. No observed path is
+still inconclusive, including when snapshots fail or the process exits
+before a DLL is loaded. This change does not make the two-slot independent
+DLLs safe to run as a normal game, and does not claim retail initialization.

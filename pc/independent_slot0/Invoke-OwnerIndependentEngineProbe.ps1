@@ -159,10 +159,16 @@ try {
         $observedModules = @{}
         $moduleInspectionSucceeded = $false
         $moduleInspectionFailures = 0
+        $moduleInspectionSamples = 0
+        $moduleInspectionFirstError = $null
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
-        while (-not $child.HasExited -and $watch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        # Inspect immediately, including a process that has already exited.
+        # The old HasExited loop guard skipped the first sample entirely for
+        # fast-failing retail processes. A failed snapshot remains inconclusive.
+        do {
             try {
                 $child.Refresh()
+                $moduleInspectionSamples++
                 foreach ($module in $child.Modules) {
                     foreach ($step in $plan) {
                         if ([string]::Equals($module.FileName,$step.Live,
@@ -174,9 +180,17 @@ try {
                 $moduleInspectionSucceeded = $true
             } catch {
                 $moduleInspectionFailures++
+                if ($null -eq $moduleInspectionFirstError) {
+                    $moduleInspectionFirstError = $_.Exception.GetType().Name
+                }
             }
-            if ($child.WaitForExit(250)) { break }
-        }
+            $child.Refresh()
+            if ($child.HasExited) { break }
+            if ($watch.Elapsed.TotalSeconds -ge $TimeoutSeconds) { break }
+            # A short sampling interval reduces, but cannot eliminate, the
+            # chance of missing transient DLL loads during early startup.
+            if ($child.WaitForExit(50)) { break }
+        } while ($true)
         $watch.Stop()
         if (-not $child.HasExited) {
             Write-Warning "Timeout: terminating only the launched disposable game process tree"
@@ -192,8 +206,9 @@ try {
                 Write-Output ("OWNER_ENGINE_MODULE_NOT_OBSERVED: {0}" -f $name)
             }
         }
-        Write-Output ("OWNER_ENGINE_MODULE_INSPECTION: success={0} failures={1}" -f
-            $moduleInspectionSucceeded,$moduleInspectionFailures)
+        Write-Output ("OWNER_ENGINE_MODULE_INSPECTION: success={0} failures={1} samples={2} first_error={3}" -f
+            $moduleInspectionSucceeded,$moduleInspectionFailures,$moduleInspectionSamples,
+            $(if ($null -eq $moduleInspectionFirstError) { 'none' } else { $moduleInspectionFirstError }))
         Write-Output ("OWNER_ENGINE_EXIT_CODE: {0}" -f $child.ExitCode)
     } finally {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE',$previous,'Process')
