@@ -159,6 +159,8 @@ int main(int argc, char** argv) {
     // when invoked by an owner terminal with a session variable set.
     if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", nullptr))
         return fail(24, "clear inherited session");
+    if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE", "0"))
+        return fail(34, "disable inherited traces before factory checks");
     HMODULE dll = LoadLibraryA(argv[1]);
     if (!dll) return fail(2, "LoadLibrary");
     auto exported = GetProcAddress(dll, "CreateInterface");
@@ -248,10 +250,21 @@ int main(int argc, char** argv) {
     if (!getLogPath(sessionPath, sizeof(sessionPath)))
         return fail(26, "scoped diagnostic path");
     (void)DeleteFileA(sessionPath);
+    status = -1;
+    if (create(kName, &status) != object || status != 0)
+        return fail(31, "scoped expected factory result");
+    status = -1;
+    if (create(otherName, &status) != nullptr || status != 1)
+        return fail(32, "scoped rejected factory result");
     if (!invokeSecond(object, slots[1]))
         return fail(27, "scoped second virtual slot call");
     if (!logContains(sessionPath, "role="))
         return fail(28, "missing run-scoped trace");
+    if (!logContains(sessionPath, "phase=factory-accepted version=") ||
+        !logContains(sessionPath, kName) ||
+        !logContains(sessionPath, "phase=factory-rejected version=") ||
+        !logContains(sessionPath, otherName))
+        return fail(33, "missing native CreateInterface negotiation traces");
     if (!DeleteFileA(sessionPath))
         return fail(29, "remove run-scoped trace");
     if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", nullptr))
@@ -260,6 +273,6 @@ int main(int argc, char** argv) {
         return fail(19, "disable tracing after test");
     if (!DeleteFileA(path)) return fail(20, "clean synthetic diagnostic trace");
     if (!FreeLibrary(dll)) return fail(21, "FreeLibrary");
-    std::puts("PASS independent PE32: real MSVC x86 SDK2004 first dependency preflight, short-circuit, opt-in traces, fail-closed");
+    std::puts("PASS independent PE32: x86 factory negotiation + SDK2004 bounded preflight, session traces, fail-closed");
     return 0;
 }
