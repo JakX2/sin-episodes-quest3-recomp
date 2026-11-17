@@ -1,0 +1,45 @@
+name: SiN independent PE32 slot-zero runtime boundary
+on:
+  pull_request:
+    paths:
+      - 'pc/independent_slot0/**'
+      - '.github/workflows/sin-win32-independent-slot0.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  independent-pe32:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure native MSVC Win32
+        run: cmake -S pc/independent_slot0 -B build-slot0 -G "Visual Studio 17 2022" -A Win32
+      - name: Build non-forwarding DLLs and ABI tests
+        run: cmake --build build-slot0 --config Release --parallel
+      - name: Run actual PE32 loader and slot0 tests
+        run: ctest --test-dir build-slot0 -C Release --output-on-failure
+      - name: Verify PE32 architecture and reject original-DLL forwarding imports
+        shell: pwsh
+        run: |
+          @'
+          import pathlib, struct
+          for name in ('client.dll','server.dll'):
+              path=pathlib.Path('build-slot0/bin/Release')/name
+              b=path.read_bytes()
+              assert b[:2]==b'MZ'
+              pe=struct.unpack_from('<I',b,0x3c)[0]
+              assert b[pe:pe+4]==b'PE\0\0'
+              assert struct.unpack_from('<H',b,pe+4)[0]==0x14c
+              assert struct.unpack_from('<H',b,pe+24)[0]==0x10b
+              assert b'sin_original_client.dll' not in b.lower()
+              assert b'sin_original_server.dll' not in b.lower()
+              print('PASS independent PE32:',name)
+          '@ | python -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sin-independent-pe32-slot0-diagnostic-not-playable
+          path: |
+            build-slot0/bin/Release/client.dll
+            build-slot0/bin/Release/server.dll
+          if-no-files-found: error
+          retention-days: 7
