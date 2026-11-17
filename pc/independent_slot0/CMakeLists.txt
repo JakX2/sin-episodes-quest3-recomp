@@ -65,3 +65,11 @@ add_executable(sin_server_entity_conversion_test
 target_compile_features(sin_server_entity_conversion_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_entity_conversion_native
   COMMAND sin_server_entity_conversion_test)
+
+# Original-guided FreeContainingEntity detach and cleanup callback-order core.
+# Unit test uses synthetic edicts; original cleanup routines are still
+# unidentified, so this is not exported as a playable ServerGameEnts001.
+add_executable(sin_server_entity_release_test test_server_entity_release_core.cpp)
+target_compile_features(sin_server_entity_release_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_entity_release_native
+  COMMAND sin_server_entity_release_test)
