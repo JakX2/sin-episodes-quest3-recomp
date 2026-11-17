@@ -195,6 +195,15 @@ int main(int argc, char** argv) {
     if (!invokeInit(object, slots[0], true) || g_callCount != 2 ||
         g_invalid || g_unexpectedFactory)
         return fail(13, "missing second interface should stop after two queries");
+#if defined(SIN_ROLE_server)
+    // The third server callback (engine cvar) must also be observed as a
+    // distinct startup blocker when the earlier two interfaces are present.
+    g_callCount = 0;
+    g_availableCount = 2;
+    if (!invokeInit(object, slots[0], true) || g_callCount != 3 ||
+        g_invalid || g_unexpectedFactory)
+        return fail(22, "third server interface must be probed exactly once");
+#endif
     g_callCount = 0;
     g_availableCount = kQueries;
     if (!invokeInit(object, slots[0], true) ||
@@ -215,6 +224,11 @@ int main(int argc, char** argv) {
     for (int i = 0; i < kQueries; ++i)
         if (!logContains(path, kExpected[i]))
             return fail(18, "missing expected SDK2004 version request evidence");
+#if defined(SIN_ROLE_server)
+    if (!logContains(path,
+                     "phase=missing-interface version=VEngineCvar002"))
+        return fail(23, "third server dependency has no specific missing log");
+#endif
     if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE", "0"))
         return fail(19, "disable tracing after test");
     if (!DeleteFileA(path)) return fail(20, "clean synthetic diagnostic trace");
