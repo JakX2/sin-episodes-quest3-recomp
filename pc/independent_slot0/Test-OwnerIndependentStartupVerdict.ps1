@@ -75,6 +75,42 @@ try {
     if (@($out | Where-Object { $_ -like '*BLOCKER*' }).Count -gt 0) {
         throw 'Unknown game-module version was falsely promoted to a fatal Init blocker'
     }
+    # The second actual retail engine test used the same factory negotiation,
+    # reached VClient011 Init, and found all five checked interface versions.
+    # Replay it separately: no server DLLInit entry and no successful boot.
+    $replayLines = @(
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameDLL003',
+        '[SiN independent] role=server phase=factory-rejected version=ServerGameEnts001',
+        '[SiN independent] role=client phase=factory-accepted version=VClient011',
+        '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=request version=VEngineClient012',
+        '[SiN independent] role=client phase=found-interface version=VEngineClient012',
+        '[SiN independent] role=client phase=request version=VEngineModel012',
+        '[SiN independent] role=client phase=found-interface version=VEngineModel012',
+        '[SiN independent] role=client phase=request version=VEngineEffects001',
+        '[SiN independent] role=client phase=found-interface version=VEngineEffects001',
+        '[SiN independent] role=client phase=request version=VEngineCvar002',
+        '[SiN independent] role=client phase=found-interface version=VEngineCvar002',
+        '[SiN independent] role=client phase=request version=EngineTraceClient003',
+        '[SiN independent] role=client phase=found-interface version=EngineTraceClient003',
+        '[SiN independent] role=client phase=sdk2004-preflight-only version=<none>'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]$replayLines)
+    $out = Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF'
+    foreach ($expected in @(
+        'OWNER_INDEPENDENT_TRACE_FILES: 1',
+        'OWNER_INDEPENDENT_ROLES_OBSERVED: client,server',
+        'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: client',
+        'OWNER_INDEPENDENT_FACTORY_REQUESTS: client:VEngineClient012,client:VEngineModel012,client:VEngineEffects001,client:VEngineCvar002,client:EngineTraceClient003',
+        'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: server:factory-accepted:ServerGameDLL003,server:factory-rejected:ServerGameEnts001,client:factory-accepted:VClient011'
+    )) {
+        if (-not ($out -ccontains $expected)) {
+            throw "Owner-five-interface replay unexpectedly changed: $expected"
+        }
+    }
+    if (@($out | Where-Object { $_ -like '*BLOCKER*' }).Count -gt 0) {
+        throw 'Five-interface preflight should not produce an inferred fatal blocker'
+    }
     Remove-Item -LiteralPath $retailReplay -Force
     [IO.File]::WriteAllText($client,
         "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine)
