@@ -81,15 +81,22 @@ public class ExportStartupFactoryDependencyCensus extends GhidraScript {
         long methodVa = -1;
         for (int i = 1; i < rows.size(); i++) {
             String[] fields = rows.get(i).split(",", -1);
-            if (fields.length != 4 || !fields[0].matches("(?i)[0-9a-f]{1,8}") ||
+            if (fields.length != 4 || !fields[0].matches("(?i)[0-9a-f]{1,16}") ||
                 !fields[1].matches("[A-Za-z0-9_]+") ||
                 !fields[2].matches("[0-9]{1,3}") ||
                 !source.equals(fields[3])) {
                 throw new IllegalArgumentException("Unsafe vtable seed");
             }
+            // Linux nm zero-pads synthetic ELF symbol addresses to 16 hex
+            // digits. Retail PE32 still uses its own SHA-reviewed 32-bit
+            // pointer values. Accept text width, NOT addresses above PE32.
+            long entry = Long.parseUnsignedLong(fields[0], 16);
+            if (entry == 0 || Long.compareUnsigned(entry, 0xffffffffL) > 0) {
+                throw new IllegalArgumentException("Vtable seed exceeds PE32 address range");
+            }
             if (iface.equals(fields[1]) && "0".equals(fields[2])) {
                 if (methodVa != -1) throw new IllegalArgumentException("Duplicate slot zero");
-                methodVa = Long.parseLong(fields[0], 16);
+                methodVa = entry;
             }
         }
         if (methodVa <= 0) throw new IllegalArgumentException("Missing startup method seed");
