@@ -123,8 +123,7 @@ def build(evidence):
                 "sdk_header": SDK_ROOT + SDK_HEADERS[name],
                 "sdk_declared_virtual_slots": len(methods),
                 "authenticated_original_pointer_prefix_slots": len(slots),
-                "sdk_exact_version_name_in_2004_headers": name not in (
-                    "ServerGameEnts001",),
+                "sdk_exact_version_name_in_2004_headers": True,
                 "slot_count_matches": len(methods) == len(slots),
                 "slot_order_proven": False,
                 "extra_original_prefix_entries_beyond_sdk": max(0, len(slots) - len(methods)),
