@@ -7,7 +7,7 @@
 
 #if defined(SIN_PC_FAKE_SERVER)
 #define REQUEST_NAME "ServerGameDLL003"
-static unsigned long instance_token = 0x53494E53UL;
+#define SIN_SYNTHETIC_TOKEN 0x53494E53UL
 class CGrenadeHomer { public: virtual void Detonate(); };
 class CGrenadePathfollower { public: virtual void Detonate(); };
 class CGrenadeSpitMutant { public: virtual void Detonate(); };
@@ -18,8 +18,16 @@ void CGrenadeSpitMutant::Detonate() {}
 void CGrenadeSpitPoison::Detonate() {}
 #else
 #define REQUEST_NAME "VClient011"
-static unsigned long instance_token = 0x53494E43UL;
+#define SIN_SYNTHETIC_TOKEN 0x53494E43UL
 #endif
+
+// Test-only MSVC x86 virtual object. No original vtable or gameplay code.
+// The native owner probe may call slot 0 ONLY in --synthetic mode.
+class SyntheticFactoryToken {
+public:
+    virtual unsigned long __thiscall token() { return SIN_SYNTHETIC_TOKEN; }
+};
+static SyntheticFactoryToken instance_token;
 
 extern "C" void *__cdecl CreateInterface(const char *name, int *return_code) {
     if (return_code != NULL)
