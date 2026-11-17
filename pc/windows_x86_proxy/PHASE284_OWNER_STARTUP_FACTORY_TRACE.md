@@ -122,6 +122,12 @@ Remove-Item Env:\SIN_PC_PROXY_TRACE_FILE -ErrorAction SilentlyContinue
 
 - A successful factory request confirms only that the *original* returned
   a pointer through our proxy. It does not establish independent gameplay.
+- This is **engine -> gameplay DLL CreateInterface** visibility only. It does
+  **not** yet capture the gameplay DLL's reverse `engineFactory`,
+  `physicsFactory` or `fileSystemFactory` queries during `DLLInit` /
+  `Init`. If both interface factories succeed and the engine fails later,
+  use the next, explicitly ABI-verified lifecycle trace; do not mislabel
+  the failure as a factory-registration issue.
 - Missing logs may mean the game never loaded these modules, launched
   another process, or did not inherit the switch; it is **not proof**
   of an ABI mismatch.
