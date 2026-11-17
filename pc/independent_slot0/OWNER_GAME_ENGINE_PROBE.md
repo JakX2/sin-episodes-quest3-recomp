@@ -14,7 +14,7 @@ The built pair lives at build-slot0/bin/Release/client.dll and server.dll. They 
 
 ## Prepare a disposable standalone test copy
 
-Copy the *entire* owned game installation outside the live Steam folder into a new directory (example: D:\SiN-DisposableTest). Include the actual game executable and both original bin/client.dll and bin/server.dll. Keep another backup independent of this test copy. The script checks full pinned SHA-256 values of both originals and refuses unexpected versions.
+Copy the *entire* owned game installation outside the live Steam folder into a new directory (example: `D:\SiN-DisposableTest`). The installed game layout has `SinEpisodes.exe` in the root, engine modules in root `bin/`, and original gameplay `client.dll` / `server.dll` in `SE1/bin/` beside `SE1/GameInfo.txt`. Keep another backup independent of this test copy. The script checks full pinned SHA-256 values of both original gameplay DLLs and refuses unexpected versions.
 
 Place an explicit test-copy marker in the new game root:
 
@@ -25,14 +25,14 @@ Place an explicit test-copy marker in the new game root:
 From your repository checkout:
 
     .\pc\independent_slot0\Invoke-OwnerIndependentEngineProbe.ps1 `
-      -GameBin 'D:\SiN-DisposableTest\bin' `
-      -GameExecutable 'D:\SiN-DisposableTest\YOUR_ACTUAL_GAME_EXE.exe' `
+      -GameBin 'D:\SiN-DisposableTest\SE1\bin' `
+      -GameExecutable 'D:\SiN-DisposableTest\SinEpisodes.exe' `
       -IndependentBin '.\build-slot0\bin\Release' `
       -GameArguments '-console' `
       -TimeoutSeconds 90 `
       -DisposableTestCopyConfirmed
 
-Use your actual installed game executable name. The script intentionally rejects an executable outside the same disposable game root and a root path in steamapps/common.
+When `-GameBin` targets `SE1/bin`, the launcher requires `SinEpisodes.exe` in the disposable game root and `SE1/GameInfo.txt`. Do not point `-GameBin` to root engine `bin/`, which does not contain the gameplay DLLs. Linked parent directories and paths in `steamapps/common` are rejected.
 
 The script validates all source and destination files before staging anything, moves SHA-verified originals to sin_independent_saved_client.dll / sin_independent_saved_server.dll, copies independent DLLs, launches the game with its own independent log switch, waits for exit, and restores both SHA-verified originals in a finally block. On timeout it terminates the launched process tree first. If a process cannot be stopped it deliberately leaves the original DLLs in the saved backup files for manual restoration after the game has closed.
 
@@ -189,3 +189,22 @@ A Windows synthetic regression creates a junctioned test root, confirms
 the launcher rejects it, verifies both fake original DLL hashes stay
 unchanged, and checks that no backup staging occurred. CI exercises only
 synthetic test files; it still cannot demonstrate retail game startup.
+
+## Verified uploaded game layout (Phase 307)
+
+The reorganized owner's Drive folder contains the 32-bit `SinEpisodes.exe`
+(73,728 bytes, SHA-256
+`e524115c13b4113511bbb3111e78aadfae0088b07c3485787695048cf4b56f07`)
+alongside `bin/`, `SE1/`, and `platform/`. The archived
+`SE1/bin.zip` contains the expected original `client.dll` and `server.dll`;
+both match the exact pinned SHA-256 values used by the launcher. Its
+`SE1/GameInfo.txt` specifies `SteamAppId 1300` and the game search paths.
+These facts verify layout and inputs, not a successful executable launch.
+
+Phase 307 teaches the owner launcher to locate the disposable marker in the
+**installation root** when `-GameBin` points to `SE1/bin` instead of treating
+`SE1` as the root. It also requires the root `SinEpisodes.exe` and
+`SE1/GameInfo.txt`. Synthetic Windows guardrails exercise this layout with
+fake DLLs and refuse any staging before the normal original-DLL SHA gate.
+Run only from a complete standalone installation, not a partial Drive
+download lacking other required Source engine assets.
