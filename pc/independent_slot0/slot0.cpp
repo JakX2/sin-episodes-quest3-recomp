@@ -1,7 +1,7 @@
 // Independently authored Win32 PE32 engine-interface initialization diagnostic.
 // TWO vtable slots ONLY. No original DLL forwarding and NOT playable SiN.
 // The original VClient011 first five factory queries and server
-// ServerGameDLL003 DLLInit first ten engine-factory queries are now reviewed
+// ServerGameDLL003 DLLInit first sixteen cross-factory queries are now reviewed
 // against SHA-pinned owner originals. All bodies remain fail-closed.
 // These methods deliberately fail closed after a bounded early factory probe.
 #define WIN32_LEAN_AND_MEAN
@@ -47,6 +47,14 @@ constexpr char kSeventhEngineVersion[] = "IEngineSoundServer003";
 constexpr char kEighthEngineVersion[] = "SpatialPartition001";
 constexpr char kNinthEngineVersion[] = "VModelInfoServer001";
 constexpr char kTenthEngineVersion[] = "EngineTraceServer003";
+// Original DLLInit next requests VFileSystem012 from fileSystemFactory,
+// then these five additional interface names from engineFactory.
+constexpr char kFileSystemVersion[] = "VFileSystem012";
+constexpr char kEleventhEngineVersion[] = "GAMEEVENTSMANAGER002";
+constexpr char kTwelfthEngineVersion[] = "VEngineCache001";
+constexpr char kThirteenthEngineVersion[] = "VSoundEmitter001";
+constexpr char kFourteenthEngineVersion[] = "ServerUploadGameStats001";
+constexpr char kFifteenthEngineVersion[] = "ISERVERPLUGINHELPERS001";
 #else
 #error Choose exactly one DLL role
 #endif
@@ -158,9 +166,11 @@ public:
             diagnostic("invalid-init-arguments", nullptr);
             return false;
         }
-        // First TEN SHA-verified original ServerGameDLL003::DLLInit
-        // engine-factory requests. Fail at the first missing name, never
-        // retain/dereference pointers, and NEVER report successful Init.
+        // First SIXTEEN original DLLInit interface dependencies are now
+        // authenticated against the pinned server. The filesystem request
+        // uses the THIRD factory argument; the surrounding 15 use the
+        // engine factory. Stop at the first unavailable pointer, never
+        // dereference or retain it, and NEVER report successful Init.
         if (!require(engineFactory, kFirstEngineVersion) ||
             !require(engineFactory, kSecondEngineVersion) ||
             !require(engineFactory, kThirdEngineVersion) ||
@@ -170,7 +180,13 @@ public:
             !require(engineFactory, kSeventhEngineVersion) ||
             !require(engineFactory, kEighthEngineVersion) ||
             !require(engineFactory, kNinthEngineVersion) ||
-            !require(engineFactory, kTenthEngineVersion)) return false;
+            !require(engineFactory, kTenthEngineVersion) ||
+            !require(fileSystemFactory, kFileSystemVersion) ||
+            !require(engineFactory, kEleventhEngineVersion) ||
+            !require(engineFactory, kTwelfthEngineVersion) ||
+            !require(engineFactory, kThirteenthEngineVersion) ||
+            !require(engineFactory, kFourteenthEngineVersion) ||
+            !require(engineFactory, kFifteenthEngineVersion)) return false;
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
         return false;
