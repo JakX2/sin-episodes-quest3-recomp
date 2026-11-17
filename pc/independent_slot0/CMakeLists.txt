@@ -29,3 +29,11 @@ add_test(NAME independent_owner_startup_verdict
   COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
     -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerIndependentStartupVerdict.ps1"
     -Classifier "${CMAKE_CURRENT_SOURCE_DIR}/Get-OwnerIndependentStartupVerdict.ps1")
+
+# Actual owner game exit classification, exercised only with synthetic statuses
+# in public CI. Real retail process exit is never fabricated.
+add_test(NAME independent_owner_engine_exit_diagnosis
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerEngineExitDiagnosis.ps1"
+    -Classifier "${CMAKE_CURRENT_SOURCE_DIR}/Get-OwnerEngineExitDiagnosis.ps1"
+    -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerIndependentEngineProbe.ps1")
