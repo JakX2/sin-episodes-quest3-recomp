@@ -131,7 +131,7 @@ def inspect(data):
                 # arbitrary or untrusted PE bytes.
                 if not slots[index] <= end_rva < slots[index] + 0x1000:
                     raise ValueError("Method epilogue outside its slot")
-                if pe.raw(end_rva, 3) != b"\\xc2" + struct.pack("<H", callee_bytes):
+                if pe.raw(end_rva, 3) != b"\xc2" + struct.pack("<H", callee_bytes):
                     raise ValueError(method + " x86 stack cleanup mismatch")
             result["vtable_slot_rvas"] = [hex(i) for i in slots]
             result["slot_signatures"] = [
