@@ -33,6 +33,12 @@ struct QueueDrainResult {
 template <std::size_t Capacity>
 class EntityDeletionQueue final {
 public:
+    EntityDeletionQueue() noexcept = default;
+    EntityDeletionQueue(const EntityDeletionQueue&) = delete;
+    EntityDeletionQueue& operator=(const EntityDeletionQueue&) = delete;
+    EntityDeletionQueue(EntityDeletionQueue&&) = delete;
+    EntityDeletionQueue& operator=(EntityDeletionQueue&&) = delete;
+
     std::size_t Count() const noexcept { return count_; }
     bool InCleanup() const noexcept { return cleaning_; }
 
