@@ -75,3 +75,30 @@ uploaded. It can also be run independently against local logs:
 -LogDirectory $env:TEMP`. Public Windows CI exercises it using synthetic
 logs, including cross-session isolation. Actual owner-engine evidence
 requires the disposable-copy launcher and cannot be produced by CI alone.
+
+## Game-module factory negotiation, before Init (Phase 297)
+
+The opt-in independent PE32 diagnostics now record an actual call to the
+module's exported `CreateInterface`, even if the engine requests an unknown
+game-module version and never reaches virtual slot zero.
+
+* `phase=factory-accepted version=VClient011` or
+  `phase=factory-accepted version=ServerGameDLL003`: the independent DLL
+  returned its SDK 2004 candidate object to the requesting caller.
+* `phase=factory-rejected version=<requested-name>`: the caller requested a
+  different name and this experimental DLL returned null. An individual
+  rejection is **not** proof that the engine treats the request as fatal.
+* `OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS`: all accepted/rejected requests
+  captured within the current session, separate from engine-factory queries
+  made later by the candidate `Init` or `DLLInit` implementation.
+* `GAME_MODULE_FACTORY_ONLY_NO_INIT_EVIDENCE`: one or more game-module
+  factory requests reached our export, but there is no recorded virtual
+  callback entry. This improves diagnosis over a generic no-trace verdict;
+  it still does **not** establish successful initialization or executable
+  startup.
+
+The native x86 loader regression explicitly exercises accepted and rejected
+`CreateInterface` calls and verifies both opt-in trace messages. PowerShell
+synthetic classifier tests ensure factory-only observations are not mistaken
+for `Init` and cannot receive a successful startup verdict. The original
+game installation is never used in public CI.
