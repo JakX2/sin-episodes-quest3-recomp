@@ -20,12 +20,12 @@ struct EntityRemovalHooks {
     void (*destroy)(CBaseEntity*,void*) noexcept = nullptr;
     // Original deferred path passes the embedded networkable to its
     // deletion-queue helper. An independent owner supplies that adapter.
-    void (*defer)(CBaseEntity*,void*) noexcept = nullptr;
+    bool (*defer)(CBaseEntity*,void*) noexcept = nullptr;
     void* context = nullptr;
 };
 enum class ImmediateRemovalResult {
-    NoEntity, AlreadyMarked, Deferred, Destroyed, MissingDependency,
-    DestructionInProgress
+    NoEntity, AlreadyMarked, Deferred, DeferredRefused, Destroyed,
+    MissingDependency, DestructionInProgress
 };
 
 // No entity/record access after destroy. Callers own the entity and record;
@@ -43,8 +43,9 @@ inline ImmediateRemovalResult TryRemoveImmediate(
         return ImmediateRemovalResult::DestructionInProgress;
     if (env.deferDepth) {
         if (!hooks.defer) return ImmediateRemovalResult::MissingDependency;
-        hooks.defer(entity,hooks.context);
-        return ImmediateRemovalResult::Deferred;
+        return hooks.defer(entity,hooks.context)
+            ? ImmediateRemovalResult::Deferred
+            : ImmediateRemovalResult::DeferredRefused;
     }
     if (!hooks.updateOnRemove || !hooks.destroy)
         return ImmediateRemovalResult::MissingDependency;
