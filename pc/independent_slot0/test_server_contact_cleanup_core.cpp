@@ -2,6 +2,7 @@
 #include "server_contact_cleanup_core.h"
 #include <array>
 #include <cstdio>
+#include <initializer_list>
 
 class CBaseEntity { public: int id; };
 
