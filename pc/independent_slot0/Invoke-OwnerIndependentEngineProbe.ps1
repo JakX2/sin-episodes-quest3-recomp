@@ -265,27 +265,41 @@ try {
     if ($null -ne $child) {
         try { $childStillAlive = -not $child.HasExited } catch { $childStillAlive = $true }
     }
+    $restoreIncomplete = $childStillAlive
     if ($childStillAlive) {
         Write-Warning "Game still running: originals deliberately remain backed up. Stop game and restore manually."
         Write-Warning "Backups: sin_independent_saved_client.dll and sin_independent_saved_server.dll"
     } else {
         foreach ($step in $staged) {
-            if (Test-Path -LiteralPath $step.Saved -PathType Leaf) {
+            # A retail launcher can exit before a separate engine process
+            # unloads client.dll. Do not let its Windows sharing violation
+            # abort evidence collection or prevent other DLL restorations.
+            try {
+                if (-not (Test-Path -LiteralPath $step.Saved -PathType Leaf)) {
+                    throw "Saved original backup no longer exists"
+                }
                 if ((Sha256 $step.Saved) -cne $step.OriginalHash) {
-                    Write-Warning "Original backup hash changed; retained for manual recovery: $($step.Saved)"
-                    continue
+                    throw "Saved original backup SHA256 mismatch"
                 }
                 if (Test-Path -LiteralPath $step.Live) {
-                    Remove-Item -LiteralPath $step.Live -Force
+                    Remove-Item -LiteralPath $step.Live -Force -ErrorAction Stop
                 }
                 Move-Item -LiteralPath $step.Saved -Destination $step.Live -ErrorAction Stop
                 if ((Sha256 $step.Live) -cne $step.OriginalHash) {
-                    throw "Original restoration verification failed: $($step.Live)"
+                    throw "Restored original SHA256 verification failed"
                 }
                 Write-Output ("RESTORED_VERIFIED: {0}" -f $step.Live)
+            } catch {
+                $restoreIncomplete = $true
+                # The SHA-verified backup must never be deleted in response
+                # to a locked game DLL. Surface the error and continue to
+                # the other role and session-specific diagnostic traces.
+                Write-Warning ("RESTORE_PENDING: {0} backup={1} reason={2}" -f
+                    $step.Live,$step.Saved,$_.Exception.GetType().Name)
             }
         }
     }
+    Write-Output ("OWNER_INDEPENDENT_RESTORATION: {0}" -f $(if ($restoreIncomplete) { 'INCOMPLETE_MANUAL_RECOVERY_REQUIRED' } else { 'VERIFIED_COMPLETE' }))
     # Never attribute a previous or concurrent independent engine attempt
     # to this launch, even if it logged inside the same time window.
     $logs = @(Get-ChildItem -LiteralPath ([System.IO.Path]::GetTempPath()) -Filter ("sin-independent-{0}-*.log" -f $session) -File |
