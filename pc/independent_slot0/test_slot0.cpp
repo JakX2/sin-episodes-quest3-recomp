@@ -13,7 +13,10 @@
 using Factory = void* (__cdecl *)(const char*, int*);
 #if defined(SIN_ROLE_client)
 constexpr char kName[] = "VClient011";
-constexpr const char* kExpected[] = {"VEngineClient012", "VEngineModel012"};
+constexpr const char* kExpected[] = {
+    "VEngineClient012", "VEngineModel012", "VEngineEffects001",
+    "VEngineCvar002", "EngineTraceClient003"
+};
 using Slot0 = int (__thiscall *)(void*, Factory, Factory, void*);
 using Slot1 = void (__thiscall *)(void*);
 #else
@@ -209,6 +212,17 @@ int main(int argc, char** argv) {
     if (!invokeInit(object, slots[0], true) || g_callCount != 2 ||
         g_invalid || g_unexpectedFactory)
         return fail(13, "missing second interface should stop after two queries");
+#if defined(SIN_ROLE_client)
+    // Each additional interface is an owner-reviewed original Init dependency:
+    // fail safely at the first unavailable name without reading its pointer.
+    for (int available = 2; available < kQueries; ++available) {
+        g_callCount = 0;
+        g_availableCount = available;
+        if (!invokeInit(object, slots[0], true) ||
+            g_callCount != available + 1 || g_invalid || g_unexpectedFactory)
+            return fail(36, "owner-reviewed client query order / early failure");
+    }
+#endif
 #if defined(SIN_ROLE_server)
     // The third server callback (engine cvar) must also be observed as a
     // distinct startup blocker when the earlier two interfaces are present.

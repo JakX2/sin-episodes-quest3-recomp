@@ -77,3 +77,33 @@ The `Test-OwnerIndependentStartupVerdict.ps1` synthetic replay of this
 observed sequence guards against reclassifying an unknown/possibly optional
 module factory request as a fatal client Init blocker, and against inventing
 server Init entry or a playable retail boot.
+
+## Owner-original VClient011 first-method metadata (Phase 310)
+
+A bounded local inspection of the **original SHA-authenticated** x86
+`client.dll` (not the independent diagnostic) verified a Source-style
+`CreateInterface` registration for `VClient011`, whose factory returns
+the original client interface object. Its first virtual method is at
+**RVA `0x0FE0E0`** (image base `0x24000000`). These are address/identity
+metadata for private targeted analysis, not copied original code.
+
+The beginning of that original client Init performs a run of ordered
+factory requests, each checked before proceeding. The **first five**
+interface names are:
+
+| Order | Original client factory query | Independent test status |
+| --- | --- | --- |
+| 1 | `VEngineClient012` | Observed available in owner retail run |
+| 2 | `VEngineModel012` | Observed available in owner retail run |
+| 3 | `VEngineEffects001` | Found in original Init, not yet owner-run tested |
+| 4 | `VEngineCvar002` | Found in original Init, not yet owner-run tested |
+| 5 | `EngineTraceClient003` | Found in original Init, not yet owner-run tested |
+
+The Phase 310 non-forwarding client preflight now **only queries these first
+five in the original order**, stops at the first null, and always returns
+failure. It never calls a method through returned third-party interface
+pointers, cannot safely advertise successful client initialization, and
+does not alter the unreviewed server DLLInit candidate sequence. Native
+synthetic x86 tests verify all five names and early-stop behavior at
+each missing interface. Do not re-run the owner game until originals are
+restored and the updated launcher is validated.
