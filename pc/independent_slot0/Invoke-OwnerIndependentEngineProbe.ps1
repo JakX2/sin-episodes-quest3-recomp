@@ -27,7 +27,16 @@ $MarkerFile = 'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY.txt'
 $MarkerValue = 'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1'
 
 function Sha256([string]$Path) {
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    # Windows PowerShell runner images may omit the Get-FileHash cmdlet.
+    # This is the same .NET SHA-256 calculation as the existing owner stager.
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return [System.BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $hasher.Dispose()
+    }
 }
 function Require-Pe32([string]$Path) {
     $stream = [System.IO.File]::OpenRead($Path)
