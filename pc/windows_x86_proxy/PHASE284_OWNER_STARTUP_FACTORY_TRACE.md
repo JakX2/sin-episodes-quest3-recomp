@@ -50,7 +50,25 @@ Do not re-stage a copy already staged. Keep independent backups.
 
 ## Launch the user's actual game executable
 
-Use an existing PowerShell terminal and set the environment variable
+The optional guarded launcher performs the existing SHA256 staging `Check`,
+requires explicit confirmation that the directory is a disposable test copy,
+enables factory-file tracing only for the launched process, waits for it to
+exit, restores the original PowerShell environment setting, and lists
+recently created trace paths. Supply your actual executable and arguments;
+no executable filename is assumed:
+
+```powershell
+.\pc\windows_x86_proxy\Invoke-OwnerSiNStartupTrace.ps1 `
+  -GameBin "D:\SiN-DisposableTest\bin" `
+  -GameExecutable "D:\SiN-DisposableTest\YOUR_GAME_EXECUTABLE.exe" `
+  -GameArguments "-console" -DisposableTestCopyConfirmed
+```
+
+The launcher **does not stage DLLs** itself; stage them with the preceding
+`Install` step first. Running the command without the explicit confirmation
+switch or with unstaged originals is refused.
+
+Alternatively, use an existing PowerShell terminal and set the environment variable
 *before launching the test-copy executable*. The following is an example
 only: supply the actual executable path and normal owner-specific launch
 arguments, which depend on the game installation.
