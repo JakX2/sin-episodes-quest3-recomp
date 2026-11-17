@@ -85,7 +85,7 @@ static bool invokeInit(void* object, void* function, bool validGlobals) {
     Factory app = &expectedFactory;
     Factory other = &unusedFactory;
 #if defined(SIN_ROLE_server)
-    Factory fs = &fileSystemFactory;
+    Factory filesystemCallback = &fileSystemFactory;
 #endif
     std::uintptr_t before = 0, after = 0;
     int result = -1;
@@ -108,7 +108,7 @@ static bool invokeInit(void* object, void* function, bool validGlobals) {
         mov eax, esp
         mov before, eax
         push globalData
-        push fs
+        push filesystemCallback
         push other
         push app
         mov ecx, object
