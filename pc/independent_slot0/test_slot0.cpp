@@ -21,7 +21,12 @@ using Slot0 = int (__thiscall *)(void*, Factory, Factory, void*);
 using Slot1 = void (__thiscall *)(void*);
 #else
 constexpr char kName[] = "ServerGameDLL003";
-constexpr const char* kExpected[] = {"VEngineServer021", "VoiceServer001", "VEngineCvar002"};
+constexpr const char* kExpected[] = {
+    "VEngineServer021", "VoiceServer001", "VEngineCvar002",
+    "VEngineServerStringTable001", "StaticPropMgrServer002",
+    "VEngineRandom001", "IEngineSoundServer003", "SpatialPartition001",
+    "VModelInfoServer001", "EngineTraceServer003"
+};
 using Slot0 = bool (__thiscall *)(void*, Factory, Factory, Factory, void*);
 using Slot1 = bool (__thiscall *)(void*);
 #endif
@@ -231,6 +236,16 @@ int main(int argc, char** argv) {
     if (!invokeInit(object, slots[0], true) || g_callCount != 3 ||
         g_invalid || g_unexpectedFactory)
         return fail(22, "third server interface must be probed exactly once");
+    // All later engine-factory requests occur in the original
+    // ServerGameDLL003::DLLInit. Stop exactly at each first unavailable
+    // dependency, with correct MSVC __thiscall stack cleanup.
+    for (int available = 3; available < kQueries; ++available) {
+        g_callCount = 0;
+        g_availableCount = available;
+        if (!invokeInit(object, slots[0], true) ||
+            g_callCount != available + 1 || g_invalid || g_unexpectedFactory)
+            return fail(37, "owner-original server DLLInit query sequence mismatch");
+    }
 #endif
     g_callCount = 0;
     g_availableCount = kQueries;
