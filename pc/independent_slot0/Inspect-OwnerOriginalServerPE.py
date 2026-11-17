@@ -8,6 +8,7 @@ registration identity and method RVAs, not original code or pseudocode.
 import argparse
 import hashlib
 import json
+import re
 import struct
 from pathlib import Path
 
@@ -33,6 +34,15 @@ ENTS_SLOT_ABI = (
     ("CheckTransmit", 0x1e962f, 12),
 )
 
+
+# The first ten original ServerGameDLL003::DLLInit engineFactory requests,
+# all independently recovered from the owner's SHA-authenticated server.
+SERVER_DLLINIT_FIRST_TEN = (
+    "VEngineServer021", "VoiceServer001", "VEngineCvar002",
+    "VEngineServerStringTable001", "StaticPropMgrServer002",
+    "VEngineRandom001", "IEngineSoundServer003", "SpatialPartition001",
+    "VModelInfoServer001", "EngineTraceServer003",
+)
 
 class PE32:
     def __init__(self, data):
@@ -139,9 +149,25 @@ def inspect(data):
                 for method, _end_rva, callee_bytes in ENTS_SLOT_ABI
             ]
         records.append(result)
+    # The original ServerGameDLL003 vtable's first method is native DLLInit.
+    # Only its first ten sequential calls to the first engineFactory are
+    # reported; the next request uses the filesystem factory and is out
+    # of this deliberately bounded dependency probe.
+    if pe.rva(pe.u32(0x442efc)) != 0x1e7640:
+        raise ValueError("Original ServerGameDLL003 DLLInit slot mismatch")
+    start_rva = 0x1e7640
+    code = pe.raw(start_rva, 0x103)
+    calls = list(re.finditer(rb"\x6a\x00\x68(.{4})\xff\xd6", code, re.DOTALL))
+    versions = tuple(
+        pe.string(pe.rva(struct.unpack("<I", match.group(1))[0]))
+        for match in calls
+    )
+    if versions != SERVER_DLLINIT_FIRST_TEN:
+        raise ValueError("Original server DLLInit first-ten query order mismatch")
     return {"original_server_sha256": PIN, "format": "PE32 x86",
             "status": "ABI research only, no server gameplay implementation",
-            "factory_registrations": records}
+            "factory_registrations": records,
+            "server_dllinit_first_ten_engine_queries": versions}
 
 
 def synthetic_test():
