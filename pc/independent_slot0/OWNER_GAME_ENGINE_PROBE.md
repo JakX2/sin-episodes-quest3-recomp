@@ -171,3 +171,21 @@ probe. The classifier is separately testable with synthetic signed and
 unsigned statuses using `Test-OwnerEngineExitDiagnosis.ps1`; CI does not
 execute commercial game code. Original retail SHA-256 pins and automatic
 restoration remain unchanged.
+
+## Reparse-point parent safety gate (Phase 306)
+
+The owner-only launcher refuses junctions, symbolic links, or other Windows
+reparse points **anywhere along the input paths** for the disposable game
+`bin` directory, the real game executable, and the independent build
+directory. Previous leaf-only checks could miss an innocent-looking test
+folder whose parent was a junction redirecting into a live installation.
+
+This check occurs **before the first DLL move** and does not weaken the
+existing full-file original SHA-256 pinning, disposable-copy marker,
+reversible staging, or engine timeout protection. Prepare the disposable
+game as a regular copied directory without linked ancestors.
+
+A Windows synthetic regression creates a junctioned test root, confirms
+the launcher rejects it, verifies both fake original DLL hashes stay
+unchanged, and checks that no backup staging occurred. CI exercises only
+synthetic test files; it still cannot demonstrate retail game startup.
