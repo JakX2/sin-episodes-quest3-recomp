@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 #if !defined(_M_IX86)
 #error MSVC Win32 x86 required
@@ -21,7 +22,12 @@ using Slot0 = int (__thiscall *)(void*, Factory, Factory, void*);
 using Slot1 = void (__thiscall *)(void*);
 #else
 constexpr char kName[] = "ServerGameDLL003";
-constexpr const char* kExpected[] = {"VEngineServer021", "VoiceServer001", "VEngineCvar002"};
+constexpr const char* kExpected[] = {
+    "VEngineServer021", "VoiceServer001", "VEngineCvar002",
+    "VEngineServerStringTable001", "StaticPropMgrServer002",
+    "VEngineRandom001", "IEngineSoundServer003", "SpatialPartition001",
+    "VModelInfoServer001", "EngineTraceServer003"
+};
 using Slot0 = bool (__thiscall *)(void*, Factory, Factory, Factory, void*);
 using Slot1 = bool (__thiscall *)(void*);
 #endif
@@ -143,11 +149,26 @@ static bool getLogPath(char* path, size_t capacity) {
 static bool logContains(const char* path, const char* needle) {
     FILE* file = nullptr;
     if (fopen_s(&file, path, "rb") != 0 || !file) return false;
-    char buffer[8192] = {};
-    size_t count = std::fread(buffer, 1, sizeof(buffer)-1, file);
+    // The original ten-entry server Init preflight intentionally generates
+    // more than 8 KiB of synthetic logs. Scan the entire file in chunks,
+    // preserving overlap so matches across read boundaries are not lost.
+    const size_t wanted = std::strlen(needle);
+    char buffer[4096] = {};
+    std::string tail;
+    bool found = false;
+    size_t count = 0;
+    while ((count = std::fread(buffer, 1, sizeof(buffer), file)) != 0) {
+        tail.append(buffer, count);
+        if (tail.find(needle) != std::string::npos) {
+            found = true;
+            break;
+        }
+        if (tail.size() > wanted) {
+            tail.erase(0, tail.size() - wanted);
+        }
+    }
     std::fclose(file);
-    buffer[count] = '\0';
-    if (std::strstr(buffer, needle)) return true;
+    if (found) return true;
     std::fprintf(stderr, "missing diagnostic event: %s\n", needle);
     return false;
 }
@@ -231,6 +252,16 @@ int main(int argc, char** argv) {
     if (!invokeInit(object, slots[0], true) || g_callCount != 3 ||
         g_invalid || g_unexpectedFactory)
         return fail(22, "third server interface must be probed exactly once");
+    // All later engine-factory requests occur in the original
+    // ServerGameDLL003::DLLInit. Stop exactly at each first unavailable
+    // dependency, with correct MSVC __thiscall stack cleanup.
+    for (int available = 3; available < kQueries; ++available) {
+        g_callCount = 0;
+        g_availableCount = available;
+        if (!invokeInit(object, slots[0], true) ||
+            g_callCount != available + 1 || g_invalid || g_unexpectedFactory)
+            return fail(37, "owner-original server DLLInit query sequence mismatch");
+    }
 #endif
     g_callCount = 0;
     g_availableCount = kQueries;
