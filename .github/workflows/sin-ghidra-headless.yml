@@ -41,6 +41,10 @@ on:
       - 'research/tests/test_build_source_sdk_2004_crosswalk.py'
       - 'research/tools/verify_original_sdk2004_init_abi.py'
       - 'research/tests/test_verify_original_sdk2004_init_abi.py'
+      - 'research/ghidra/ExportStartupFactoryDependencyCensus.java'
+      - 'research/tools/summarize_startup_factory_census.py'
+      - 'research/tests/test_summarize_startup_factory_census.py'
+      - 'research/phases/phase286-startup-factory-census.md'
       - 'research/phases/phase285-sdk2004-original-x86-method-abi.md'
       - 'research/phases/phase281h-sdk-2004-abi-crosswalk.md'
       - 'research/tools/recover_original_vtable_prefixes.py'
@@ -91,6 +95,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_summarize_private_vtable_method_decomp.py' -v
           python3 -m unittest discover -s research/tests -p 'test_build_source_sdk_2004_crosswalk.py' -v
           python3 -m unittest discover -s research/tests -p 'test_verify_original_sdk2004_init_abi.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_summarize_startup_factory_census.py' -v
           python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
@@ -301,6 +306,8 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-private/server.dll_targeted_decomp_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/client.dll_vtable_targeted_decomp_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/server.dll_vtable_targeted_decomp_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/client.dll_startup_factory_census.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/server.dll_startup_factory_census.csv"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_TARGETED_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_TARGETED_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_DECOMPILATION"
@@ -386,6 +393,16 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/private_vtable_method_decomp_summary.json"
           test ! -e "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_VTABLE_METHOD_DECOMPILATION"
           test ! -e "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_VTABLE_METHOD_DECOMPILATION"
+      - name: Sanitize bounded original Init/DLLInit factory callsite census
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/summarize_startup_factory_census.py \
+            --private-census-dir "$RUNNER_TEMP/sin-ghidra-private" \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/startup_factory_dependency_census.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/startup_factory_dependency_census.json"
+          test ! -e "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_startup_factory_census.csv"
+          test ! -e "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_startup_factory_census.csv"
       - name: Mine relocated read-only code pointer runs for manual vtable triage
         shell: bash
         run: |
