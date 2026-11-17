@@ -115,6 +115,53 @@ try {
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
 
+    # Retail install layout: root/SinEpisodes.exe, root/bin/engine.dll,
+    # root/SE1/GameInfo.txt and original gameplay DLLs in root/SE1/bin/.
+    # The outer game root, NOT SE1/, must own the disposable marker.
+    $se1Root = Join-Path $root 'SE1'
+    $se1Bin = Join-Path $se1Root 'bin'
+    [void](New-Item -ItemType Directory -Path $se1Bin -Force)
+    [System.IO.File]::WriteAllText((Join-Path $se1Root 'GameInfo.txt'),'synthetic GameInfo only')
+    [System.IO.File]::WriteAllText((Join-Path $se1Bin 'client.dll'),'synthetic SE1 client DLL')
+    [System.IO.File]::WriteAllText((Join-Path $se1Bin 'server.dll'),'synthetic SE1 server DLL')
+    $se1Client = Join-Path $se1Bin 'client.dll'
+    $se1Server = Join-Path $se1Bin 'server.dll'
+    $se1BeforeClient = Sha256 $se1Client
+    $se1BeforeServer = Sha256 $se1Server
+    $se1Exe = Join-Path $root 'SinEpisodes.exe'
+    [System.IO.File]::WriteAllText($se1Exe,'This is NOT the real SiN executable.')
+    $rejectedWrongExe = $false
+    try {
+        & $Launcher -GameBin $se1Bin -GameExecutable $exe `
+            -IndependentBin $IndependentBin -DisposableTestCopyConfirmed | Out-Null
+    } catch {
+        if (-not $_.Exception.Message.Contains('requires SinEpisodes.exe')) {
+            throw "Expected SE1 root executable guard, got $($_.Exception.Message)"
+        }
+        $rejectedWrongExe = $true
+    }
+    if (-not $rejectedWrongExe) { throw 'SE1 probe accepted a different root executable name' }
+    $rejectedSe1 = $false
+    try {
+        & $Launcher -GameBin $se1Bin -GameExecutable $se1Exe `
+            -IndependentBin $IndependentBin -DisposableTestCopyConfirmed | Out-Null
+    } catch {
+        if (-not $_.Exception.Message.Contains('SHA256 mismatch')) {
+            throw "SE1 layout did not reach original DLL authentication: $($_.Exception.Message)"
+        }
+        $rejectedSe1 = $true
+    }
+    if (-not $rejectedSe1) { throw 'Synthetic SE1 layout unexpectedly passed SHA gate' }
+    if ((Sha256 $se1Client) -ne $se1BeforeClient -or
+        (Sha256 $se1Server) -ne $se1BeforeServer) {
+        throw 'Synthetic SE1 test DLLs changed before SHA authentication'
+    }
+    foreach ($role in @('server.dll','client.dll')) {
+        if (Test-Path -LiteralPath (Join-Path $se1Bin ("sin_independent_saved_" + $role))) {
+            throw 'SE1 layout staged fake originals before SHA authentication'
+        }
+    }
+
     # A junction at the parent root is *not* visible in leaf-only attribute
     # checks. It must be rejected before original hashes or any Move-Item.
     # This exercises the bypass using synthetic, never commercial, files.
@@ -150,7 +197,7 @@ try {
         }
     }
 
-    Write-Output "PASS owner independent Windows PowerShell launcher syntax, module sampling and 5 non-destructive safety rejection gates"
+    Write-Output "PASS owner independent Windows PowerShell launcher syntax, module sampling, SE1 real-game-root regression, and 7 non-destructive safety rejection gates"
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
