@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <initializer_list>
 
 class CBaseHandle { public: unsigned int value = 0; };
 class CBaseEntity { public: unsigned int marker = 0x51A0BEEF; };
