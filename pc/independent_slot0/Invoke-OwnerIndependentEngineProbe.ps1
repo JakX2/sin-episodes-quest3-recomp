@@ -74,6 +74,22 @@ function Require-ActualDirectory([string]$Path) {
         throw "Refusing directory reparse point: $Path"
     }
 }
+# Walk the input paths lexically rather than following Resolve-Path alone.
+# A junction or symbolic link in *any ancestor* can hide the live Steam game
+# behind an apparently disposable directory name. Resolve-Path on the leaf
+# and leaf-only attribute checks are not sufficient protection.
+function Require-NoReparseAncestors([string]$Path) {
+    $current = [System.IO.Path]::GetFullPath($Path)
+    while ($true) {
+        $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing reparse point ancestor: $current"
+        }
+        $parent = [System.IO.Directory]::GetParent($current)
+        if ($null -eq $parent) { break }
+        $current = $parent.FullName
+    }
+}
 # All user assertions and *all* binary preflight validations must pass
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
@@ -82,6 +98,10 @@ if (-not $DisposableTestCopyConfirmed) {
 Require-ActualDirectory $GameBin
 Require-ActualDirectory $IndependentBin
 Require-ActualFile $GameExecutable
+# Reject linked parents in all three locations *before* any staging.
+Require-NoReparseAncestors $GameBin
+Require-NoReparseAncestors $IndependentBin
+Require-NoReparseAncestors $GameExecutable
 $bin = (Resolve-Path -LiteralPath $GameBin).ProviderPath.TrimEnd('\')
 $build = (Resolve-Path -LiteralPath $IndependentBin).ProviderPath.TrimEnd('\')
 $exe = (Resolve-Path -LiteralPath $GameExecutable).ProviderPath
