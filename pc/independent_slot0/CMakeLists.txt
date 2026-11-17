@@ -111,3 +111,9 @@ add_executable(sin_server_full_teardown_test test_server_entity_full_teardown.cp
 target_compile_features(sin_server_full_teardown_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_full_teardown_native
   COMMAND sin_server_full_teardown_test)
+
+# Deferred entity queue with FIFO releases and generation invalidation.
+add_executable(sin_server_deferred_queue_test test_server_deferred_entity_queue.cpp)
+target_compile_features(sin_server_deferred_queue_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_deferred_queue_native
+  COMMAND sin_server_deferred_queue_test)
