@@ -107,3 +107,45 @@ does not alter the unreviewed server DLLInit candidate sequence. Native
 synthetic x86 tests verify all five names and early-stop behavior at
 each missing interface. Do not re-run the owner game until originals are
 restored and the updated launcher is validated.
+
+## Second actual owner Windows experiment: all five found (Phase 311)
+
+A subsequent owner run of the Phase 310 diagnostic against the disposable
+retail installation confirmed the following **in the real engine**, in order:
+
+1. `ServerGameDLL003` accepted, `ServerGameEnts001` rejected (no server
+   `DLLInit` entry observed).
+2. `VClient011` accepted, client `Init` entered.
+3. `VEngineClient012` returned a non-null interface.
+4. `VEngineModel012` returned a non-null interface.
+5. `VEngineEffects001` returned a non-null interface.
+6. `VEngineCvar002` returned a non-null interface.
+7. `EngineTraceClient003` returned a non-null interface.
+8. `sdk2004-preflight-only` emitted, independent Init intentionally
+   returned zero, still **not a playable boot**.
+
+The owner launcher recorded one matching session trace, actual PID 9724,
+372 best-effort module samples, a tracked process exit of `0x00000000`,
+and `DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF`. Sampling never showed either
+gameplay DLL despite the direct in-process diagnostic logs. Do not treat
+these sampling misses as no-load evidence.
+
+**Restoration failure recurred:** server.dll was restored and hash-verified;
+client.dll remained locked with `UnauthorizedAccessException`.
+The newer Phase 308 launcher correctly preserved diagnostics, reported
+`RESTORE_PENDING` for the backed-up original client, and flagged
+`INCOMPLETE_MANUAL_RECOVERY_REQUIRED`. Owner must close any remaining
+game process and restore client.dll from its SHA-pinned saved original
+before another run. No in-process handle owner is proven by these logs.
+
+### Research impact
+
+The first five original client factory names and their presence on the
+actual SiN engine are now corroborated by two distinct evidence types:
+authenticated original-binary Init order and opt-in owner retail runtime
+diagnostics. But the virtual methods on these interfaces, later client
+Init work, the original server `ServerGameEnts001` implementation, and
+the server `DLLInit` ABI are **not yet reconstructed**. Further work
+should pursue the real implementation, not simply request more
+already-present interfaces. The classifier regression now also replays
+all 15 second-run independent diagnostic lines.
