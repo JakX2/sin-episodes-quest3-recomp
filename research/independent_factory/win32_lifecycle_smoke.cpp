@@ -55,6 +55,15 @@ int main(int argc, char** argv) {
         status = -7;
         if (factory(nullptr, &status) || status != 1)
             return fail("null interface name accepted", dll);
+        // A synthetic DLL must never advertise retail engine interfaces.
+        // Failed lookups must not disturb the valid singleton or success status.
+        for (const char* retail : {"VClient011", "ServerGameDLL003",
+                                   "VClient017", "ServerGameDLL005"}) {
+            status = -7;
+            if (factory(retail, &status) != nullptr || status != 1 ||
+                factory(kName, &status) != api || status != 0)
+                return fail("retail ABI rejection or singleton corruption", dll);
+        }
         auto* const* slots = *reinterpret_cast<void* const* const*>(api);
         if (!slots || !belongs(dll, slots) ||
             !belongs(dll, slots[0]) || !belongs(dll, slots[1]) ||
@@ -68,6 +77,12 @@ int main(int argc, char** argv) {
             api->initialize(nullptr) || api->initialize(&invalid) ||
             api->initialized() || api->generation() != 0u)
             return fail("invalid initialization must fail without side effects", dll);
+        HostCallbacks null_notify{sizeof(HostCallbacks), nullptr, &rec};
+        HostCallbacks null_context{sizeof(HostCallbacks), &notify, nullptr};
+        if (api->initialize(&null_notify) || api->initialize(&null_context) ||
+            api->initialized() || api->generation() != 0u ||
+            rec.attached || rec.detached || rec.invalid)
+            return fail("invalid callback pointers must be side-effect free", dll);
         if (!api->initialize(&valid) || !api->initialized() ||
             api->generation() != 1u || rec.attached != 1u || rec.invalid)
             return fail("initialization callback or state", dll);
