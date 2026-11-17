@@ -69,6 +69,34 @@ class StartupReviewGate(unittest.TestCase):
         with self.assertRaises(ValueError):
             gate.validate(self.path, "client.dll")
 
+    def test_reject_duplicate_call_site_with_distinct_rank(self):
+        second = self.row.copy()
+        second[3] = "2"
+        # Same computed indirect-call address is not two factory candidates.
+        self.write([self.row, second])
+        with self.assertRaises(ValueError):
+            gate.validate(self.path, "client.dll")
+
+    def test_reject_reordered_call_sites_even_with_valid_ranks(self):
+        second = self.row.copy()
+        second[3], second[4] = "2", "127"
+        second[5], second[6] = "", ""
+        second[7], second[8] = "", ""
+        self.write([self.row, second])
+        with self.assertRaises(ValueError):
+            gate.validate(self.path, "client.dll")
+
+    def test_accept_distinct_ascending_call_sites(self):
+        second = self.row.copy()
+        second[3], second[4] = "2", "256"
+        second[5], second[6] = "", ""
+        second[7], second[8] = "", ""
+        self.write([self.row, second])
+        result = gate.validate(self.path, "client.dll")
+        self.assertEqual(result["candidate_count"], 2)
+        self.assertEqual(result["candidates_with_prior_literal"], 1)
+        self.assertEqual(result["verified_factory_calls"], 0)
+
     def test_reject_extra_columns_rows_and_large_files(self):
         self.write([self.row + ["untrusted"]])
         with self.assertRaises(ValueError):
