@@ -16,7 +16,9 @@ $logs = @(Get-ChildItem -LiteralPath $LogDirectory -File -Filter ("sin-independe
 $seen = @{}
 $issues = New-Object System.Collections.Generic.List[string]
 $requests = New-Object System.Collections.Generic.List[string]
+$blockersByLog = New-Object System.Collections.Generic.List[string]
 foreach ($log in $logs) {
+    $logFirstBlocker = $null
     foreach ($line in (Get-Content -LiteralPath $log.FullName)) {
         if ($line -notmatch '^\[SiN independent\] role=(client|server) phase=([a-z0-9-]+) version=([^\s]+)$') {
             continue
@@ -29,20 +31,31 @@ foreach ($log in $logs) {
         if ($phase -eq 'missing-interface' -or
             $phase -eq 'missing-factory' -or
             $phase -eq 'invalid-init-arguments') {
-            $issues.Add(("{0}:{1}:{2}" -f $role,$phase,$version))
+            $blocker = ("{0}:{1}:{2}" -f $role,$phase,$version)
+            $issues.Add($blocker)
+            if ($null -eq $logFirstBlocker) { $logFirstBlocker = $blocker }
         }
+    }
+    if ($null -ne $logFirstBlocker) {
+        $blockersByLog.Add(("{0}={1}" -f $log.Name,$logFirstBlocker))
     }
 }
 Write-Output ("OWNER_INDEPENDENT_TRACE_FILES: {0}" -f $logs.Count)
 Write-Output ("OWNER_INDEPENDENT_ROLES_OBSERVED: {0}" -f ((@('client','server') | Where-Object { $seen.ContainsKey($_) }) -join ','))
 Write-Output ("OWNER_INDEPENDENT_FACTORY_REQUESTS: {0}" -f ($requests -join ','))
 if ($issues.Count -gt 0) {
-    Write-Output ("OWNER_INDEPENDENT_FIRST_RECORDED_BLOCKER: {0}" -f $issues[0])
+    Write-Output ("OWNER_INDEPENDENT_BLOCKERS_BY_LOG: {0}" -f ($blockersByLog -join ','))
+    if ($blockersByLog.Count -eq 1) {
+        Write-Output ("OWNER_INDEPENDENT_FIRST_RECORDED_BLOCKER: {0}" -f $issues[0])
+    } else {
+        Write-Output "OWNER_INDEPENDENT_FIRST_RECORDED_BLOCKER: AMBIGUOUS_ACROSS_PROCESSES"
+    }
     Write-Output "OWNER_INDEPENDENT_VERDICT: ENGINE_ENTERED_INDEPENDENT_INIT_BUT_REJECTED"
 } elseif ($logs.Count -eq 0 -or $seen.Count -eq 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: NO_INDEPENDENT_INIT_EVIDENCE"
 } else {
     Write-Output "OWNER_INDEPENDENT_VERDICT: DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF"
 }
+# PID-sorted files cannot establish cross-process event chronology.
 # Intentionally no SUCCESS verdict: the current independent DLLs always
 # return failure and do not implement a playable retail engine contract.
