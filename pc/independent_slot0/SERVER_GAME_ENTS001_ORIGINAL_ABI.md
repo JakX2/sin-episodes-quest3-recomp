@@ -81,3 +81,41 @@ is available, and never downloads or executes the owner's game binary.
 Current independent server diagnostic still exports
 `ServerGameDLL003` only and deliberately rejects initialization.
 **No playable server has been demonstrated.**
+
+## Typed ABI crosswalk and native tests (Phase 313)
+
+The owner's `source-sdk-2004-master.zip` was inspected directly at
+`src_mod/public/eiface.h`. Its `IServerGameEnts` declaration has a
+virtual destructor followed by exactly six virtual methods. The order and
+pointer signatures match the seven entries in the original SiN binary:
+
+| Slot | SDK2004 signature | Original x86 callee cleanup |
+| --- | --- | --- |
+| 0 | `virtual ~IServerGameEnts()` | 4 bytes (MSVC deleting-destructor flag) |
+| 1 | `void SetDebugEdictBase(edict_t*)` | 4 bytes |
+| 2 | `void MarkEntitiesAsTouching(edict_t*, edict_t*)` | 8 bytes |
+| 3 | `void FreeContainingEntity(edict_t*)` | 4 bytes |
+| 4 | `edict_t* BaseEntityToEdict(CBaseEntity*)` | 4 bytes |
+| 5 | `CBaseEntity* EdictToBaseEntity(edict_t*)` | 4 bytes |
+| 6 | `void CheckTransmit(CCheckTransmitInfo*, const unsigned short*, int)` | 12 bytes |
+
+These stack cleanup byte counts were independently checked in the original
+SHA-verified `server.dll`, using each slot's method RVA. The first entry
+is directly consistent with an MSVC x86 scalar deleting destructor.
+
+The new independently authored `server_gameents_abi.h` declares exactly
+this seven-slot contract. `test_server_gameents_abi.cpp` compiles a
+synthetic implementation in **native MSVC x86**, exercises the seven
+slots by direct vtable index, checks argument identity/return values,
+and verifies the CPU stack pointer is balanced across every call.
+The original-private metadata verifier also checks all seven original
+return epilogues against the expected callee cleanup count, after
+checking the exact original SHA-256.
+
+**Deliberately not wired to exported `server.dll`:** The code currently
+establishes ABI layout, not the actual entity lifecycle. In particular,
+`MarkEntitiesAsTouching`, `FreeContainingEntity`, and `CheckTransmit`
+must perform real game-state work rather than no-op; exposing
+placeholder implementations would risk silent gameplay corruption or
+a later crash. Original Win32 server startup still needs its
+`DLLInit` implementation and other interfaces reconstructed.

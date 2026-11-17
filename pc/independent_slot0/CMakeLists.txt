@@ -47,3 +47,11 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalServerPE.py"
       --self-test)
 endif()
+
+# Source SDK 2004-compatible ServerGameEnts001 is now represented as a
+# seven-slot typed MSVC x86 ABI, validated with a synthetic object only.
+# Do NOT attach the unimplemented interface to independent server.dll yet.
+add_executable(sin_server_gameents_abi_test test_server_gameents_abi.cpp)
+target_compile_features(sin_server_gameents_abi_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_7slot_native_abi
+  COMMAND sin_server_gameents_abi_test)

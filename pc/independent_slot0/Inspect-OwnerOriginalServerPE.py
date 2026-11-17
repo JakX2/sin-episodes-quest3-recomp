@@ -20,6 +20,19 @@ REG = (
 ENTS_SLOTS = (0x1e9360, 0x1e82d0, 0x1e9380, 0x1e82e0,
               0x1e94b0, 0x1e82f0, 0x1e94d0)
 
+# Offset of a verified epilogue for each virtual entry, with the exact
+# Windows x86 callee-cleanup byte count. These are metadata checks against
+# the owner-private original, not executable method bodies.
+ENTS_SLOT_ABI = (
+    ("scalar_deleting_destructor", 0x1e937c, 4),
+    ("SetDebugEdictBase", 0x1e82d9, 4),
+    ("MarkEntitiesAsTouching", 0x1e94a8, 8),
+    ("FreeContainingEntity", 0x1e82eb, 4),
+    ("BaseEntityToEdict", 0x1e94c3, 4),
+    ("EdictToBaseEntity", 0x1e8309, 4),
+    ("CheckTransmit", 0x1e962f, 12),
+)
+
 
 class PE32:
     def __init__(self, data):
@@ -113,7 +126,18 @@ def inspect(data):
                 if not any(s == ".text" and start <= slot < start+vsize
                            for s, start, vsize, rawsize, fileoff in pe.sections):
                     raise ValueError("Non-code entry in server entity vtable")
+            for index, (method, end_rva, callee_bytes) in enumerate(ENTS_SLOT_ABI):
+                # Reject stale/nonmatching originals, without disassembling
+                # arbitrary or untrusted PE bytes.
+                if not slots[index] <= end_rva < slots[index] + 0x1000:
+                    raise ValueError("Method epilogue outside its slot")
+                if pe.raw(end_rva, 3) != b"\xc2" + struct.pack("<H", callee_bytes):
+                    raise ValueError(method + " x86 stack cleanup mismatch")
             result["vtable_slot_rvas"] = [hex(i) for i in slots]
+            result["slot_signatures"] = [
+                {"method": method, "callee_cleanup_bytes": callee_bytes}
+                for method, _end_rva, callee_bytes in ENTS_SLOT_ABI
+            ]
         records.append(result)
     return {"original_server_sha256": PIN, "format": "PE32 x86",
             "status": "ABI research only, no server gameplay implementation",
