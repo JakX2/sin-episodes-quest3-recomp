@@ -8,7 +8,9 @@
 // edict +0x0c and the first edict dword before invoking three separate
 // cleanup routines on that same base-entity pointer, in sequence.
 //
-// The three original cleanup routine semantics are NOT yet reconstructed.
+// Source SDK 2004 mapentities.cpp names the corresponding helpers as
+// PhysicsRemoveTouchedList, PhysicsRemoveGroundList, UTIL_RemoveImmediate.
+// Exact SiN implementations/side effects are NOT yet reconstructed.
 // Callers must explicitly provide all three independently implemented
 // callbacks. Missing callbacks cause a non-mutating refusal. This component
 // does NOT advertise the incomplete ServerGameEnts001 through CreateInterface.
@@ -22,13 +24,13 @@ using OriginalEntityCleanupStage =
     void (__cdecl *)(CBaseEntity* entity, void* context) noexcept;
 
 struct EntityReleaseHooks {
-    OriginalEntityCleanupStage stage1 = nullptr;
-    OriginalEntityCleanupStage stage2 = nullptr;
-    OriginalEntityCleanupStage stage3 = nullptr;
+    OriginalEntityCleanupStage removeTouchedList = nullptr;
+    OriginalEntityCleanupStage removeGroundList = nullptr;
+    OriginalEntityCleanupStage removeImmediate = nullptr;
     void* context = nullptr;
 
     bool Complete() const noexcept {
-        return stage1 && stage2 && stage3;
+        return removeTouchedList && removeGroundList && removeImmediate;
     }
 };
 
@@ -60,9 +62,9 @@ inline EntityReleaseStatus TryReleaseContainingEntity(
     const std::uint32_t clearedState = 0;
     std::memcpy(bytes, &clearedState, sizeof(clearedState));
 
-    hooks.stage1(entity, hooks.context);
-    hooks.stage2(entity, hooks.context);
-    hooks.stage3(entity, hooks.context);
+    hooks.removeTouchedList(entity, hooks.context);
+    hooks.removeGroundList(entity, hooks.context);
+    hooks.removeImmediate(entity, hooks.context);
     return EntityReleaseStatus::DetachedAndHooksInvoked;
 }
 
