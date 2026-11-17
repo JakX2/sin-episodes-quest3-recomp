@@ -81,3 +81,9 @@ add_executable(sin_server_entity_handle_test test_server_entity_handle_core.cpp)
 target_compile_features(sin_server_entity_handle_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_entity_handle_native
   COMMAND sin_server_entity_handle_test)
+
+# Independently owned touch/ground cleanup traversal (no retail object layout).
+add_executable(sin_server_contact_cleanup_test test_server_contact_cleanup_core.cpp)
+target_compile_features(sin_server_contact_cleanup_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_contact_cleanup_native
+  COMMAND sin_server_contact_cleanup_test)
