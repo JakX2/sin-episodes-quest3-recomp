@@ -54,6 +54,26 @@ else
     done
     post_scripts+=(-postScript SeedReviewedInterfaceFactories.java "$SIN_GHIDRA_SEED_DIRECTORY" "$output")
   fi
+  if [[ -n "${SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY:-}" ]]; then
+    if [[ -z "${SIN_GHIDRA_SEED_DIRECTORY:-}" || "${SIN_PRIVATE_DECOMP_ACK:-}" != "1" ]]; then
+      echo "Targeted private decompilation requires reviewed seeds and explicit acknowledgement" >&2
+      exit 1
+    fi
+    # Ensure private C-like output is never under the checkout or public
+    # metadata directory even when the caller supplies a symlink path.
+    mkdir -p "$SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY"
+    private_output="$(cd "$SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY" && pwd -P)"
+    repository_root="$(cd "$(dirname "$0")/../.." && pwd -P)"
+    case "$private_output/" in
+      "$repository_root/"* | "$output/"*)
+        echo "Refusing original pseudocode output in repository or metadata artifact directory" >&2
+        exit 1
+        ;;
+    esac
+    umask 077
+    chmod 700 "$private_output"
+    post_scripts+=(-postScript ExportTargetedInterfacePseudocode.java "$SIN_GHIDRA_SEED_DIRECTORY" "$private_output")
+  fi
   "$headless" "$private_project" SiNOriginalPrivate \
     -import "$original_bin/client.dll" "$original_bin/server.dll" \
     -scriptPath "$scripts" \
@@ -63,6 +83,11 @@ else
   if [[ -n "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
     for dll in client.dll server.dll; do
       test -s "$output/${dll}_factory_seed_results.csv"
+    done
+  fi
+  if [[ -n "${SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY:-}" ]]; then
+    for dll in client.dll server.dll; do
+      test -s "$private_output/${dll}_targeted_decomp_status.csv"
     done
   fi
 fi
