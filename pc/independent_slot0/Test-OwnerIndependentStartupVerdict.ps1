@@ -42,6 +42,19 @@ try {
     if (-not ($out -contains 'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011')) {
         throw "Accepted factory request falsely classified as Init"
     }
+    # A Shutdown-only callback does not establish that retail Init ran.
+    [IO.File]::WriteAllText($client,
+        "[SiN independent] role=client phase=shutdown version=<none>" + [Environment]::NewLine)
+    [void](Verify 'NO_INDEPENDENT_INIT_EVIDENCE')
+    # An explicit slot-zero entry is authoritative even if the body stops
+    # before issuing the first engine factory request.
+    [IO.File]::WriteAllText($client,(
+        "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine +
+        "[SiN independent] role=client phase=init-entered version=<none>" + [Environment]::NewLine))
+    $out = Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF'
+    if (-not ($out -contains 'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: client')) {
+        throw "Explicit retail Init entry not reported"
+    }
     [IO.File]::WriteAllText($client,(
         "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine +
         "[SiN independent] role=client phase=request version=VEngineClient012" + [Environment]::NewLine +
