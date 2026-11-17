@@ -1,7 +1,59 @@
-# Phase 288: independent PE32 retail-named slot-zero diagnostic
+# Independently compiled PE32 Source-era interface diagnostic (Phase 289)
 
-These two DLLs are **independently compiled**, do not load or forward to original game DLLs, and expose the exact retail version strings `VClient011` and `ServerGameDLL003`. Their **only implemented virtual method** is slot zero. Client has three x86 stack arguments and server four, matching the SHA-authenticated original `ret 12` / `ret 16` evidence in Phase 285 PR #344. The method names and pointer roles are *Source SDK 2004 hypotheses*, not verified SiN argument types or complete vtables.
+The `client.dll` and `server.dll` produced by this project are **independently
+compiled**, do not load or forward to original retail DLLs, and export
+`CreateInterface` for `VClient011` and `ServerGameDLL003` respectively.
 
-Both methods deliberately return false. They do **not** initialize the game, issue unverified factory calls, or claim retail interoperability. They are not safe drop-in replacements for unrestricted retail gameplay: the engine may call further virtual slots that are not implemented. Use only in an isolated disposable test copy, with opt-in owner supervision and the existing Phase 284 trace launcher. Never overwrite original binaries. No commercial bytes or SDK source are embedded.
+**Exactly two virtual methods exist per DLL. This is NOT a playable game
+implementation, nor a generally safe drop-in retail replacement.**
+The engine may call other virtual methods that do not exist in these vtables.
+Both initialization methods intentionally fail closed, so engine startup
+should not proceed, even if the object is successfully returned by its factory.
 
-Build on MSVC 2022 x86: `cmake -S pc/independent_slot0 -B build-slot0 -G "Visual Studio 17 2022" -A Win32`, then `cmake --build build-slot0 --config Release` and `ctest --test-dir build-slot0 -C Release --output-on-failure`. GitHub Actions uploads independent `client.dll` and `server.dll` as separate diagnostic artifacts. They are **not** the Phase 284 forwarding proxies. The next gate is a SHA-authenticated, owner-local retail executable startup trace to determine actual factory requests and first rejected Init/DLLInit; never interpret a synthetic pass as a retail boot.
+## Why the Phase 289 change is necessary
+
+Phase 288 validated x86 stack cleanup for virtual slot zero but had a
+semantic type mismatch against the actual **Source SDK 2004** headers:
+
+| Native interface | SDK2004 slot 0 | SDK2004 slot 1 | Original SiN ABI observation |
+| --- | --- | --- | --- |
+| `VClient011` | `int Init(CreateInterfaceFn appSystemFactory, CreateInterfaceFn physicsFactory, CGlobalVarsBase* pGlobals)` | `void Shutdown()` | slot0 callee pops 12 stack bytes |
+| `ServerGameDLL003` | `bool DLLInit(CreateInterfaceFn engineFactory, CreateInterfaceFn physicsFactory, CreateInterfaceFn fileSystemFactory, CGlobalVars* pGlobals)` | `bool GameInit()` | slot0 callee pops 16 stack bytes |
+
+The third argument to the **client** `Init` is a pointer to engine
+**data**, not a third function pointer. The original `ret 12` instruction
+cannot distinguish these two kinds of 32-bit pointer. We use the Source
+SDK 2004 C++ declaration as a *candidate type hypothesis*, not a claim
+of fully recovered SiN-specific method semantics.
+
+These prototypes and method names are described by the archived
+[SDK 2004 cdll_int.h](https://github.com/Source-SDK-Archives/source-sdk-2004/blob/master/src_mod/public/cdll_int.h)
+and
+[SDK 2004 eiface.h](https://github.com/Source-SDK-Archives/source-sdk-2004/blob/master/src_mod/public/eiface.h).
+No SDK header bodies or commercial code are copied into this project.
+
+The 32-bit native MSVC tests now check the type-correct client
+globals-data pointer in the x86 call sequence, both initialized vtable
+slots being owned by the newly built DLL, independent `__thiscall`
+dispatch, stack balance, fail-closed return, and the absence of outgoing
+factory requests. The second client method safely clears diagnostic
+state; server `GameInit` remains false.
+
+## Compile and test
+
+```powershell
+cmake -S pc/independent_slot0 -B build-slot0 -G "Visual Studio 17 2022" -A Win32
+cmake --build build-slot0 --config Release
+ctest --test-dir build-slot0 -C Release --output-on-failure
+```
+
+GitHub Actions builds PE32 native diagnostic DLLs and tests with fake
+host callbacks; it never runs the original SiN game. The outputs are
+separate from Phase 284's **forwarding original-DLL proxies** and
+must never be confused with a playable release.
+
+**Next meaningful integration work:** recover the real original
+engine-factory query contracts and expand a verified, complete
+`IBaseClientDLL`/`IServerGameDLL` interface shape. Then use a
+reversible, isolated owner-side game startup test, recording
+the exact next failure without publishing any original game binaries.
