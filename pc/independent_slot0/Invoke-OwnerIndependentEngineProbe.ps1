@@ -151,12 +151,49 @@ try {
         }
         $child = Start-Process @options
         Write-Output ("OWNER_ENGINE_PROCESS_ID: {0}" -f $child.Id)
-        if (-not $child.WaitForExit($TimeoutSeconds*1000)) {
+        # Poll the actual owner-launched process for its loaded modules.
+        # This is direct retail-engine boundary evidence, independent of
+        # CreateInterface/Init logging. Module enumeration is best effort:
+        # an early exit or access-denied enumeration is NOT evidence that
+        # the engine did not load either DLL.
+        $observedModules = @{}
+        $moduleInspectionSucceeded = $false
+        $moduleInspectionFailures = 0
+        $watch = [System.Diagnostics.Stopwatch]::StartNew()
+        while (-not $child.HasExited -and $watch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+            try {
+                $child.Refresh()
+                foreach ($module in $child.Modules) {
+                    foreach ($step in $plan) {
+                        if ([string]::Equals($module.FileName,$step.Live,
+                                [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $observedModules[[System.IO.Path]::GetFileName($step.Live)] = $true
+                        }
+                    }
+                }
+                $moduleInspectionSucceeded = $true
+            } catch {
+                $moduleInspectionFailures++
+            }
+            if ($child.WaitForExit(250)) { break }
+        }
+        $watch.Stop()
+        if (-not $child.HasExited) {
             Write-Warning "Timeout: terminating only the launched disposable game process tree"
             & taskkill.exe /PID $child.Id /T /F | Out-Null
             [void]$child.WaitForExit(15000)
             throw "Disposable game launch timed out"
         }
+        foreach ($step in $plan) {
+            $name = [System.IO.Path]::GetFileName($step.Live)
+            if ($observedModules.ContainsKey($name)) {
+                Write-Output ("OWNER_ENGINE_MODULE_OBSERVED: {0}" -f $name)
+            } else {
+                Write-Output ("OWNER_ENGINE_MODULE_NOT_OBSERVED: {0}" -f $name)
+            }
+        }
+        Write-Output ("OWNER_ENGINE_MODULE_INSPECTION: success={0} failures={1}" -f
+            $moduleInspectionSucceeded,$moduleInspectionFailures)
         Write-Output ("OWNER_ENGINE_EXIT_CODE: {0}" -f $child.ExitCode)
     } finally {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE',$previous,'Process')
