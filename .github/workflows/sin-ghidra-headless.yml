@@ -28,6 +28,7 @@ on:
       - 'research/tests/test_summarize_factory_data_references.py'
       - 'research/tools/join_factory_pointer_candidates.py'
       - 'research/tests/test_join_factory_pointer_candidates.py'
+      - 'research/tests/test_owner_ghidra_workflow_contract.py'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
       - 'research/tests/test_prepare_reviewed_factory_seeds.py'
       - 'research/tools/build_ghidra_interface_queue.py'
@@ -68,6 +69,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_build_relocated_pointer_table_queue.py' -v
           python3 -m unittest discover -s research/tests -p 'test_summarize_factory_data_references.py' -v
           python3 -m unittest discover -s research/tests -p 'test_join_factory_pointer_candidates.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_owner_ghidra_workflow_contract.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
@@ -234,10 +236,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sin-ghidra-metadata"
+          # The runner accepts GHIDRA_HOME, original-bin, metadata-dir,
+          # and an optional MODE. Reviewed seeds/private scratch use env.
           bash research/tools/run_ghidra_original.sh "$GHIDRA_HOME" \
-            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata" \
-            "$RUNNER_TEMP/sin-reviewed-factory-seeds" \
-            "$RUNNER_TEMP/sin-ghidra-private"
+            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_functions.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_functions.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_factory_seed_results.csv"
@@ -323,5 +325,10 @@ jobs:
       - name: Remove private originals and generated analysis from runner scratch
         if: always()
         run: |
+          # Original DLLs, seeded metadata and private pseudocode are all
+          # runner-only scratch; never retain on failure or completion.
           rm -rf -- "$RUNNER_TEMP/sin-original-drive-private" \
-            "$RUNNER_TEMP/sin-original-pe-private" "$RUNNER_TEMP/sin-ghidra-metadata"
+            "$RUNNER_TEMP/sin-original-pe-private" \
+            "$RUNNER_TEMP/sin-ghidra-metadata" \
+            "$RUNNER_TEMP/sin-reviewed-factory-seeds" \
+            "$RUNNER_TEMP/sin-ghidra-private"
