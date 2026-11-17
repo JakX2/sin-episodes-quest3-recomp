@@ -57,8 +57,11 @@ int main(int argc, char** argv) {
             return fail("null interface name accepted", dll);
         // A synthetic DLL must never advertise retail engine interfaces.
         // Failed lookups must not disturb the valid singleton or success status.
-        for (const char* retail : {"VClient011", "ServerGameDLL003",
-                                   "VClient017", "ServerGameDLL005"}) {
+        constexpr const char* retail_names[] = {
+            "VClient011", "ServerGameDLL003",
+            "VClient017", "ServerGameDLL005"
+        };
+        for (const char* retail : retail_names) {
             status = -7;
             if (factory(retail, &status) != nullptr || status != 1 ||
                 factory(kName, &status) != api || status != 0)
