@@ -1060,3 +1060,9 @@ set_tests_properties(
   sin_pc_synthetic_server_vptr_readonly_probe
   sin_pc_synthetic_client_vptr_readonly_probe
   PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_owner_vptr_probe>")
+add_test(NAME sin_pc_owner_vptr_rejects_fake_original_by_sha256
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/Test-OwnerVptrHashGate.ps1"
+    -Probe "$<TARGET_FILE:sin_pc_owner_vptr_probe>"
+    -FakeDll "$<TARGET_FILE:sin_pc_fake_server>" -Role server)
+
