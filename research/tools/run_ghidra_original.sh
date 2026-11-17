@@ -83,6 +83,11 @@ else
     umask 077
     chmod 700 "$private_output"
     post_scripts+=(-postScript ExportTargetedInterfacePseudocode.java "$SIN_GHIDRA_SEED_DIRECTORY" "$private_output")
+    if [[ -n "${SIN_GHIDRA_VTABLE_SEED_DIRECTORY:-}" ]]; then
+      # C-like output remains ephemeral beside the existing private factory
+      # C output; only the sanitized status is eligible for metadata upload.
+      post_scripts+=(-postScript ExportTargetedVtableMethodPseudocode.java "$SIN_GHIDRA_VTABLE_SEED_DIRECTORY" "$private_output")
+    fi
   fi
   if [[ "${SIN_GHIDRA_FACTORY_XREFS:-0}" == "1" ]]; then
     if [[ -z "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
@@ -116,6 +121,9 @@ else
   if [[ -n "${SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY:-}" ]]; then
     for dll in client.dll server.dll; do
       test -s "$private_output/${dll}_targeted_decomp_status.csv"
+      if [[ -n "${SIN_GHIDRA_VTABLE_SEED_DIRECTORY:-}" ]]; then
+        test -s "$private_output/${dll}_vtable_targeted_decomp_status.csv"
+      fi
     done
   fi
 fi
