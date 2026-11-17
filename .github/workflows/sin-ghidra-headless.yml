@@ -44,6 +44,8 @@ on:
       - 'research/ghidra/ExportStartupFactoryDependencyCensus.java'
       - 'research/tools/summarize_startup_factory_census.py'
       - 'research/tests/test_summarize_startup_factory_census.py'
+      - 'research/tools/validate_private_first_startup_review.py'
+      - 'research/tests/test_validate_private_first_startup_review.py'
       - 'research/tools/build_startup_abi_handoff.py'
       - 'research/tests/test_build_startup_abi_handoff.py'
       - 'research/phases/phase286-startup-factory-census.md'
@@ -99,6 +101,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_verify_original_sdk2004_init_abi.py' -v
           python3 -m unittest discover -s research/tests -p 'test_summarize_startup_factory_census.py' -v
           python3 -m unittest discover -s research/tests -p 'test_build_startup_abi_handoff.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_validate_private_first_startup_review.py' -v
           python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
