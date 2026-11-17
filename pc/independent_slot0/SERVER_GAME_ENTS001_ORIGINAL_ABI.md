@@ -193,3 +193,9 @@ The method-level contract still requires independently
 implementing and original-verifying the three SDK-identified cleanup
 behaviors, plus entity ownership,
 before `FreeContainingEntity` can be wired to `ServerGameEnts001`.
+
+The SHA-gated `Inspect-OwnerOriginalServerPE.py` now also verifies the
+original `FreeContainingEntity` wrapper's relative call and all three
+cleanup calls' target RVAs. Its `--self-test` uses an invented PE32 image
+to verify the bounded call-target decoder. That makes the helper chain
+reproducibly address-authenticated without packaging original methods.
