@@ -43,6 +43,9 @@ try {
         "[SiN independent] role=server phase=missing-interface version=VEngineServer021" + [Environment]::NewLine))
     $out = Verify 'ENGINE_ENTERED_INDEPENDENT_INIT_BUT_REJECTED'
     if (-not ($out -contains 'OWNER_INDEPENDENT_TRACE_FILES: 2')) { throw "Missing second log" }
+    if (-not ($out -contains 'OWNER_INDEPENDENT_FIRST_RECORDED_BLOCKER: AMBIGUOUS_ACROSS_PROCESSES')) { throw "Cross-process chronology incorrectly inferred" }
+    if (-not (($out | Where-Object { $_ -like 'OWNER_INDEPENDENT_BLOCKERS_BY_LOG: *' }) -match 'client:missing-interface:VEngineModel012')) { throw "Client blocker omitted" }
+    if (-not (($out | Where-Object { $_ -like 'OWNER_INDEPENDENT_BLOCKERS_BY_LOG: *' }) -match 'server:missing-interface:VEngineServer021')) { throw "Server blocker omitted" }
     [IO.File]::WriteAllText($client,
         "[SiN independent] role=client phase=sdk2004-preflight-only version=<none>" + [Environment]::NewLine)
     [IO.File]::WriteAllText($server,
