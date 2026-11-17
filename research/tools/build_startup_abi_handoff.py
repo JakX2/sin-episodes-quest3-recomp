@@ -45,6 +45,74 @@ VERSION = re.compile(
     r"(?:V[A-Za-z][A-Za-z0-9_]{1,48}|ServerGame[A-Za-z0-9_]{1,48}|GameClientExports)[0-9]{3}\Z"
 )
 
+# The source census is a public-metadata boundary. Reject unknown keys rather
+# than silently dropping them: a future producer must not smuggle private
+# pseudocode, instruction bytes, paths or unreviewed claims into this pipeline.
+CENSUS_KEYS = frozenset({
+    "schema", "evidence_tier",
+    "original_instruction_bytes_or_pseudocode_embedded",
+    "independently_tested_retail_startup", "modules",
+})
+MODULE_KEYS = frozenset({
+    "interface", "slot", "original_entry_va",
+    "sdk2004_method_name_hypothesis", "ghidra_inferred_method_status",
+    "ghidra_inferred_function_bytes", "ghidra_inferred_instruction_count",
+    "ghidra_direct_call_site_count", "ghidra_indirect_call_site_count",
+    "direct_string_reference_interface_version_candidates",
+    "original_factory_argument_types_verified",
+    "original_first_failure_branch_verified",
+    "original_method_body_verified",
+})
+CENSUS_EVIDENCE_TIER = "sha_reviewed_method_entries_ghidra_inferred_callsite_counts"
+
+
+def bounded_counter(value, maximum: int) -> bool:
+    # bool is a subclass of int; never treat True as a verified count.
+    return type(value) is int and 0 <= value <= maximum
+
+
+def check_census_metadata(census: dict, row: dict) -> None:
+    if not set(census).issubset(CENSUS_KEYS):
+        raise ValueError("Unexpected top-level metadata, possible private payload")
+    if census.get("evidence_tier", CENSUS_EVIDENCE_TIER) != CENSUS_EVIDENCE_TIER:
+        raise ValueError("Unrecognized original evidence tier")
+    if not set(row).issubset(MODULE_KEYS):
+        raise ValueError("Unexpected method metadata, possible private payload")
+    keys = {
+        "ghidra_inferred_function_bytes": 2**20,
+        "ghidra_inferred_instruction_count": 25001,
+        "ghidra_direct_call_site_count": 25000,
+        "ghidra_indirect_call_site_count": 25000,
+    }
+    present = [k for k in keys if k in row]
+    if present and len(present) != len(keys):
+        raise ValueError("Partial inferred Ghidra counters")
+    for key, maximum in keys.items():
+        if key in row and not bounded_counter(row[key], maximum):
+            raise ValueError("Invalid inferred Ghidra counter")
+    if not present:
+        return  # Supports minimal synthetic fixtures; no new evidence implied.
+    extent, ins, direct, indirect = (row[k] for k in keys)
+    status = row["ghidra_inferred_method_status"]
+    if direct + indirect > ins:
+        raise ValueError("Inferred calls exceed instructions")
+    if status == "missing_exact_ghidra_function" and any((extent, ins, direct, indirect)):
+        raise ValueError("Missing original method cannot have observations")
+    if status == "unbounded_inferred_function" and (
+            extent == 0 or ins or direct or indirect):
+        raise ValueError("Unbounded method must not have call observations")
+    if status == "bounded_inferred_function" and not 0 < extent <= 65536:
+        raise ValueError("Bounded method has invalid extent")
+    if status == "excessive_instruction_count" and ins != 25001:
+        raise ValueError("Instruction cap not reached")
+
+
+def validate_observation_consistency(row: dict, literals: list) -> None:
+    status = row["ghidra_inferred_method_status"]
+    if status in ("missing_exact_ghidra_function", "unbounded_inferred_function"):
+        if literals:
+            raise ValueError("No direct string references for missing/unbounded method")
+
 
 def handoff(census: dict) -> dict:
     if not isinstance(census, dict) or census.get("schema") != "sin-private-startup-factory-census-v1":
@@ -53,6 +121,8 @@ def handoff(census: dict) -> dict:
         raise ValueError("Unsafe original instruction or pseudocode payload")
     if census.get("independently_tested_retail_startup") is not False:
         raise ValueError("Unexpected retail startup claim")
+    if not set(census).issubset(CENSUS_KEYS):
+        raise ValueError("Unexpected top-level census fields")
     modules = census.get("modules")
     if not isinstance(modules, dict) or set(modules) != set(CONTRACTS):
         raise ValueError("Expected exactly two pinned modules")
@@ -67,6 +137,7 @@ def handoff(census: dict) -> dict:
                 raise ValueError("Unreviewed original entry or SDK method mismatch")
         if row.get("ghidra_inferred_method_status") not in ALLOWED_STATUS:
             raise ValueError("Unrecognized Ghidra method status")
+        check_census_metadata(census, row)
         for key in ("original_factory_argument_types_verified",
                     "original_first_failure_branch_verified",
                     "original_method_body_verified"):
@@ -77,6 +148,7 @@ def handoff(census: dict) -> dict:
                 any(not isinstance(x, str) or not VERSION.fullmatch(x) for x in literals) or
                 literals != sorted(set(literals))):
             raise ValueError("Unsafe interface-version candidates")
+        validate_observation_consistency(row, literals)
         output[module] = {
             "interface": contract["interface"],
             "slot": 0,
