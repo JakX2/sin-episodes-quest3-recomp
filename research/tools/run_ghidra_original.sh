@@ -45,11 +45,27 @@ if [[ "$mode" == "emit-c" ]]; then
     -postScript ExportOriginalFunctionAtlas.py "$output" emit-c \
     -deleteProject
 else
+  # Optional reviewed static registration addresses enrich discovery ONLY after
+  # the upstream job has authenticated the complete owner-original PE32 files.
+  post_scripts=()
+  if [[ -n "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
+    for dll in client.dll server.dll; do
+      test -s "$SIN_GHIDRA_SEED_DIRECTORY/${dll}_factory_seeds.csv"
+    done
+    post_scripts+=(-postScript SeedReviewedInterfaceFactories.java "$SIN_GHIDRA_SEED_DIRECTORY" "$output")
+  fi
   "$headless" "$private_project" SiNOriginalPrivate \
     -import "$original_bin/client.dll" "$original_bin/server.dll" \
     -scriptPath "$scripts" \
+    "${post_scripts[@]}" \
     -postScript ExportOriginalFunctionAtlas.java "$output" \
     -deleteProject
+  if [[ -n "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
+    for dll in client.dll server.dll; do
+      test -s "$output/${dll}_factory_seed_results.csv"
+    done
+  fi
 fi
 echo "Ghidra candidate atlas generated under $output"
-echo "Metadata mode uses Ghidra 12.2 Java script; emit-c requires a PyGhidra-enabled environment."\necho "Do not push raw Ghidra decompilation to GitHub."
+echo "Metadata mode uses Ghidra 12.2 Java script; emit-c requires a PyGhidra-enabled environment."
+echo "Do not push raw Ghidra decompilation to GitHub."
