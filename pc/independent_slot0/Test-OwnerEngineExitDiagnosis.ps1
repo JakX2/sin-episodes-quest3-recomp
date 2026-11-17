@@ -1,0 +1,39 @@
+# Synthetic exit-code regression. Never launches retail executable.
+[CmdletBinding()]
+param([Parameter(Mandatory=$true)][string]$Classifier,
+      [Parameter(Mandatory=$true)][string]$Launcher)
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+$cases = @(
+    @{ Signed=0L; Hex='0x00000000'; Meaning='PROCESS_EXITED_ZERO_NOT_BOOT_PROOF' },
+    @{ Signed=-1073741515L; Hex='0xC0000135'; Meaning='STATUS_DLL_NOT_FOUND' },
+    @{ Signed=-1073741701L; Hex='0xC000007B'; Meaning='STATUS_INVALID_IMAGE_FORMAT' },
+    @{ Signed=-1073741502L; Hex='0xC0000142'; Meaning='STATUS_DLL_INIT_FAILED' },
+    @{ Signed=-1073741511L; Hex='0xC0000139'; Meaning='STATUS_ENTRYPOINT_NOT_FOUND' },
+    @{ Signed=-1073741819L; Hex='0xC0000005'; Meaning='STATUS_ACCESS_VIOLATION' },
+    @{ Signed=-1073740791L; Hex='0xC0000409'; Meaning='STATUS_STACK_BUFFER_OVERRUN_OR_FAIL_FAST' },
+    @{ Signed=123L; Hex='0x0000007B'; Meaning='UNCLASSIFIED_EXIT_STATUS' }
+)
+foreach ($case in $cases) {
+    $out = @(& $Classifier -ExitCode $case.Signed)
+    if (-not ($out -ccontains ('OWNER_ENGINE_EXIT_HEX: ' + $case.Hex)) -or
+        -not ($out -ccontains ('OWNER_ENGINE_EXIT_DIAGNOSIS: ' + $case.Meaning))) {
+        throw ('Incorrect Windows exit classification for ' + $case.Hex + ': ' + ($out -join ';'))
+    }
+    $unsigned = [long]($case.Signed -band 0xFFFFFFFFL)
+    $unsignedOut = @(& $Classifier -ExitCode $unsigned)
+    if (($unsignedOut -join '|') -cne ($out -join '|')) {
+        throw ('Unsigned/signed status mismatch for ' + $case.Hex)
+    }
+}
+foreach ($bad in @(-2147483649L,4294967296L)) {
+    $rejected = $false
+    try { & $Classifier -ExitCode $bad | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Out-of-range exit code accepted' }
+}
+$launcherText = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $Launcher).ProviderPath)
+if (-not $launcherText.Contains("Get-OwnerEngineExitDiagnosis.ps1") -or
+    -not $launcherText.Contains('OWNER_ENGINE_EXIT_CODE:')) {
+    throw 'Owner launcher does not report raw and decoded process exit'
+}
+Write-Output 'PASS Windows owner process exit classification: 8 statuses, signed/unsigned parity, 2 rejection gates, launcher integration'

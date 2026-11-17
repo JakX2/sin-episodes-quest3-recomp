@@ -154,3 +154,20 @@ A sampled DLL path is direct owner-process evidence. No observed path is
 still inconclusive, including when snapshots fail or the process exits
 before a DLL is loaded. This change does not make the two-slot independent
 DLLs safe to run as a normal game, and does not claim retail initialization.
+
+## Native owner process exit diagnosis (Phase 304)
+
+Even when the retail executable exits before any module snapshot, the launcher
+now records its **actual** Windows process exit code and the unsigned hexadecimal
+form. It identifies common OS loader statuses: `0xC0000135` missing DLL,
+`0xC000007B` invalid image format, `0xC0000139` missing entry point,
+`0xC0000142` DLL initialization failure, and crash statuses
+`0xC0000005` / `0xC0000409`. A zero exit code explicitly means only
+that the process returned zero, **not** that SiN initialized or booted.
+
+These generic Windows statuses **cannot identify which DLL failed**. A
+missing trace remains inconclusive until the owner runs the disposable-copy
+probe. The classifier is separately testable with synthetic signed and
+unsigned statuses using `Test-OwnerEngineExitDiagnosis.ps1`; CI does not
+execute commercial game code. Original retail SHA-256 pins and automatic
+restoration remain unchanged.
