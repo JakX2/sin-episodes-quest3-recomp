@@ -114,6 +114,26 @@ jobs:
           find "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_TARGETED_DECOMPILATION" -type f -name 'SyntheticEngine001_*.c' -size +0c | grep -q .
           test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_TARGETED_DECOMPILATION"
           test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_DECOMPILATION"
+          # Feed actual Ghidra-generated synthetic pointer metadata through
+          # the same candidate-queue CLI, never original game data on PRs.
+          for dll in client.dll server.dll; do
+            cp "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_relocated_code_pointers.csv" \
+              "$RUNNER_TEMP/sin-ghidra-smoke/${dll}_relocated_code_pointers.csv"
+          done
+          python3 research/tools/build_relocated_pointer_table_queue.py \
+            --ghidra-dir "$RUNNER_TEMP/sin-ghidra-smoke" \
+            --out "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_relocated_pointer_queue.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads((Path(os.environ["RUNNER_TEMP"]) /
+              "sin-ghidra-smoke/synthetic_relocated_pointer_queue.json").read_text())
+          assert report["schema"] == "sin-relocated-code-pointer-runs-v1"
+          assert report["new_verified_original_methods"] == 0
+          assert report["original_code_or_pseudocode_included"] is False
+          assert set(report["modules"]) == {"client.dll", "server.dll"}
+          PY
 
   analyze-owner-originals:
     name: Original client/server Ghidra metadata using private Drive inputs
