@@ -101,5 +101,68 @@ class StartupAbiHandoffTests(unittest.TestCase):
             handoff(data)
 
 
+    def test_reject_unexpected_private_metadata_at_both_levels(self):
+        for level in ("top", "module"):
+            with self.subTest(level=level):
+                data = fixture()
+                target = data if level == "top" else data["modules"]["client.dll"]
+                target["private_original_pseudocode"] = "unreviewed proprietary data"
+                with self.assertRaises(ValueError):
+                    handoff(data)
+
+    def test_reject_wrong_evidence_tier(self):
+        data = fixture()
+        data["evidence_tier"] = "engine_tested_complete_method"
+        with self.assertRaises(ValueError):
+            handoff(data)
+
+    def test_reject_inferred_count_overflow_and_boolean(self):
+        for value in (True, -1, 25002, "2"):
+            with self.subTest(value=value):
+                data = fixture()
+                data["modules"]["client.dll"].update({
+                    "ghidra_inferred_function_bytes": 20,
+                    "ghidra_inferred_instruction_count": value,
+                    "ghidra_direct_call_site_count": 0,
+                    "ghidra_indirect_call_site_count": 0,
+                })
+                with self.assertRaises(ValueError):
+                    handoff(data)
+
+    def test_reject_inconsistent_missing_function_observations(self):
+        data = fixture()
+        row = data["modules"]["client.dll"]
+        row["ghidra_inferred_method_status"] = "missing_exact_ghidra_function"
+        with self.assertRaises(ValueError):
+            handoff(data)  # A missing function cannot contain version literals.
+
+    def test_reject_partial_and_impossible_call_counts(self):
+        data = fixture()
+        row = data["modules"]["server.dll"]
+        row["ghidra_inferred_instruction_count"] = 3
+        with self.assertRaises(ValueError):
+            handoff(data)
+        row.update({
+            "ghidra_inferred_function_bytes": 100,
+            "ghidra_direct_call_site_count": 2,
+            "ghidra_indirect_call_site_count": 2,
+        })
+        with self.assertRaises(ValueError):
+            handoff(data)
+
+    def test_accept_bounded_consistent_counters_without_promotion(self):
+        data = fixture()
+        data["evidence_tier"] = "sha_reviewed_method_entries_ghidra_inferred_callsite_counts"
+        data["modules"]["client.dll"].update({
+            "ghidra_inferred_function_bytes": 64,
+            "ghidra_inferred_instruction_count": 12,
+            "ghidra_direct_call_site_count": 1,
+            "ghidra_indirect_call_site_count": 2,
+        })
+        result = handoff(data)
+        self.assertFalse(result["modules"]["client.dll"]["original_first_failure_branch_verified"])
+        self.assertFalse(result["retail_engine_startup_verified"])
+
+
 if __name__ == "__main__":
     unittest.main()
