@@ -13,6 +13,7 @@ struct ContactNode {
     ContactNode* next = nullptr;
     ContactNode* previous = nullptr;
     std::uint32_t flags = 0;
+    int stamp = 0;
 };
 struct ContactList {
     ContactNode* root = nullptr; // root is a sentinel, never a contact allocation
