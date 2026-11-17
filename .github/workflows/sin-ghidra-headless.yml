@@ -39,6 +39,9 @@ on:
       - 'research/tests/test_summarize_private_vtable_method_decomp.py'
       - 'research/tools/build_source_sdk_2004_crosswalk.py'
       - 'research/tests/test_build_source_sdk_2004_crosswalk.py'
+      - 'research/tools/verify_original_sdk2004_init_abi.py'
+      - 'research/tests/test_verify_original_sdk2004_init_abi.py'
+      - 'research/phases/phase285-sdk2004-original-x86-method-abi.md'
       - 'research/phases/phase281h-sdk-2004-abi-crosswalk.md'
       - 'research/tools/recover_original_vtable_prefixes.py'
       - 'research/tests/test_recover_original_vtable_prefixes.py'
@@ -87,6 +90,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_audit_original_vtable_seed_results.py' -v
           python3 -m unittest discover -s research/tests -p 'test_summarize_private_vtable_method_decomp.py' -v
           python3 -m unittest discover -s research/tests -p 'test_build_source_sdk_2004_crosswalk.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_verify_original_sdk2004_init_abi.py' -v
           python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
@@ -314,6 +318,10 @@ jobs:
             --evidence "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_prefix_review.json" \
             --out "$RUNNER_TEMP/sin-ghidra-metadata/source_sdk_2004_interface_crosswalk.json"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/source_sdk_2004_interface_crosswalk.json"
+          python3 research/tools/verify_original_sdk2004_init_abi.py \
+            --original-dir "$RUNNER_TEMP/sin-original-pe-private" \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/source_sdk_2004_original_x86_abi_stack_shapes.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/source_sdk_2004_original_x86_abi_stack_shapes.json"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_vtable_method_seeds.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_vtable_method_seeds.csv"
       - name: Separate Ghidra inferred functions from SHA-reviewed methods
