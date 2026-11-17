@@ -26,6 +26,8 @@ on:
       - 'research/ghidra/ExportReviewedFactoryDataReferences.java'
       - 'research/tools/summarize_factory_data_references.py'
       - 'research/tests/test_summarize_factory_data_references.py'
+      - 'research/tools/join_factory_pointer_candidates.py'
+      - 'research/tests/test_join_factory_pointer_candidates.py'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
       - 'research/tests/test_prepare_reviewed_factory_seeds.py'
       - 'research/tools/build_ghidra_interface_queue.py'
@@ -65,6 +67,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_private_ghidra_runner.py' -v
           python3 -m unittest discover -s research/tests -p 'test_build_relocated_pointer_table_queue.py' -v
           python3 -m unittest discover -s research/tests -p 'test_summarize_factory_data_references.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_join_factory_pointer_candidates.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
@@ -299,6 +302,15 @@ jobs:
             --data-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
             --out "$RUNNER_TEMP/sin-ghidra-metadata/factory_global_data_reference_review.json"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/factory_global_data_reference_review.json"
+      - name: Join exact factory data references to read-only pointer candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/join_factory_pointer_candidates.py \
+            --seed-dir "$RUNNER_TEMP/sin-reviewed-factory-seeds" \
+            --data-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/factory_pointer_run_overlap_review.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/factory_pointer_run_overlap_review.json"
       - name: Upload metadata only (NEVER game binaries or pseudocode)
         uses: actions/upload-artifact@v4
         with:
