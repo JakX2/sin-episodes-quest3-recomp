@@ -1038,3 +1038,25 @@ sin_pc_configure(sin_pc_original_client_recvprop_proxies_factories_tests
   sin_pc_original_client_recvprop_proxies_factories_tests)
 add_test(NAME sin_original_win32_client_recvprop_proxies_factories_contract
   COMMAND $<TARGET_FILE:sin_pc_original_client_recvprop_proxies_factories_tests>)
+
+
+# Phase279: a real native Win32 x86 tool for owner-original DLL vptr prefix
+# *observation only*. Public CI uses ONLY synthetic fake original DLLs.
+# Actual original use is explicit, SHA-gated, and never invokes a native
+# virtual method whose signature has not been independently recovered.
+add_executable(sin_pc_owner_vptr_probe tests/owner_vptr_probe.cpp)
+sin_pc_configure(sin_pc_owner_vptr_probe sin_pc_owner_vptr_probe)
+set_target_properties(sin_pc_owner_vptr_probe PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_link_libraries(sin_pc_owner_vptr_probe PRIVATE bcrypt)
+add_dependencies(sin_pc_owner_vptr_probe sin_pc_fake_server sin_pc_fake_client)
+add_test(NAME sin_pc_synthetic_server_vptr_readonly_probe
+  COMMAND $<TARGET_FILE:sin_pc_owner_vptr_probe>
+    --synthetic server $<TARGET_FILE:sin_pc_fake_server>)
+add_test(NAME sin_pc_synthetic_client_vptr_readonly_probe
+  COMMAND $<TARGET_FILE:sin_pc_owner_vptr_probe>
+    --synthetic client $<TARGET_FILE:sin_pc_fake_client>)
+set_tests_properties(
+  sin_pc_synthetic_server_vptr_readonly_probe
+  sin_pc_synthetic_client_vptr_readonly_probe
+  PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_owner_vptr_probe>")
