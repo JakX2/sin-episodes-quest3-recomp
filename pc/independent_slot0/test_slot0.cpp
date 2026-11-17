@@ -230,6 +230,8 @@ int main(int argc, char** argv) {
 
     if (!invokeSecond(object, slots[1]) || g_unexpectedFactory)
         return fail(16, "second virtual slot must fail closed/no factory calls");
+    if (!logContains(path, "phase=init-entered version=<none>"))
+        return fail(35, "missing explicit native Init/DLLInit entry");
     if (!logContains(path, "phase=missing-interface") ||
         !logContains(path, "phase=found-interface") ||
         !logContains(path, "phase=sdk2004-preflight-only") ||
