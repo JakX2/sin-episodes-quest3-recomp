@@ -99,3 +99,15 @@ add_executable(sin_server_contact_pair_test test_server_contact_pair_cleanup.cpp
 target_compile_features(sin_server_contact_pair_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_contact_pair_native
   COMMAND sin_server_contact_pair_test)
+
+# Independent immediate-deletion lifecycle and deferred routing.
+add_executable(sin_server_immediate_removal_test test_server_entity_immediate_removal_core.cpp)
+target_compile_features(sin_server_immediate_removal_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_immediate_removal_native
+  COMMAND sin_server_immediate_removal_test)
+
+# Full detach + reciprocal contact cleanup + deletion in an owned synthetic world.
+add_executable(sin_server_full_teardown_test test_server_entity_full_teardown.cpp)
+target_compile_features(sin_server_full_teardown_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_full_teardown_native
+  COMMAND sin_server_full_teardown_test)
