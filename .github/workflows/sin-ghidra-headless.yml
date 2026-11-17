@@ -16,6 +16,7 @@ on:
       - 'research/catalog/original_dll_interface_registrations.json'
       - 'research/catalog/original_dll_verified_methods.json'
       - 'research/ghidra/SeedReviewedInterfaceFactories.java'
+      - 'research/ghidra/RemoveSyntheticFactoryForSmoke.java'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
       - 'research/tests/test_prepare_reviewed_factory_seeds.py'
       - 'research/tools/build_ghidra_interface_queue.py'
@@ -88,6 +89,7 @@ jobs:
           "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
             -import "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" \
             -scriptPath "$GITHUB_WORKSPACE/research/ghidra" \
+            -postScript RemoveSyntheticFactoryForSmoke.java "$seed_address" \
             -postScript SeedReviewedInterfaceFactories.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
             -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
             -deleteProject
@@ -96,6 +98,7 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_relocated_code_pointers.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
           grep -q 'SyntheticEngine001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
+          grep -q 'seeded_candidate' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
           test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_DECOMPILATION"
 
   analyze-owner-originals:
