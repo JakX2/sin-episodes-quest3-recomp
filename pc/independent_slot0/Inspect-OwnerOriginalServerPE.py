@@ -101,6 +101,16 @@ class PE32:
             raise ValueError("Unterminated factory string")
         return self.data[o:end].decode("ascii")
 
+def direct_call_target(pe, call_rva):
+    # Small bounded PE32 relative-call decoder, not a general disassembler.
+    call = pe.raw(call_rva, 5)
+    if call[0] != 0xE8:
+        raise ValueError("Expected x86 relative call at RVA " + hex(call_rva))
+    rel = struct.unpack_from("<i", call, 1)[0]
+    target = call_rva + 5 + rel
+    pe.off(target)  # the target must exist in a mapped PE section
+    return target
+
 
 def inspect(data):
     if hashlib.sha256(data).hexdigest() != PIN:
@@ -154,6 +164,20 @@ def inspect(data):
                 for method, _end_rva, callee_bytes in ENTS_SLOT_ABI
             ]
         records.append(result)
+    # Entity FreeContainingEntity's slot 3 delegates to the shared helper;
+    # helper then invokes three distinct cleanup functions, in order.
+    # These are *addresses only*, not original method code.
+    if direct_call_target(pe, 0x1e82e5) != 0x266e60:
+        raise ValueError("ServerGameEnts001 release wrapper target mismatch")
+    cleanup_edges = (
+        (0x266e8a, 0x21ffd0),
+        (0x266e90, 0x220190),
+        (0x266e96, 0x286c10),
+    )
+    for source, expected in cleanup_edges:
+        if direct_call_target(pe, source) != expected:
+            raise ValueError("FreeContainingEntity cleanup target mismatch")
+
     # The original ServerGameDLL003 vtable's first method is native DLLInit.
     # Only its first ten sequential calls to the first engineFactory are
     # reported; the next request uses the filesystem factory and is out
@@ -192,7 +216,9 @@ def inspect(data):
             "factory_registrations": records,
             "server_dllinit_first_ten_engine_queries": versions,
             "server_dllinit_filesystem_queries": filesystem_versions,
-            "server_dllinit_next_five_engine_queries": additional_versions}
+            "server_dllinit_next_five_engine_queries": additional_versions,
+            "entity_release_helper_rva": hex(0x266e60),
+            "entity_release_cleanup_targets_rva": [hex(t) for _, t in cleanup_edges]}
 
 
 def synthetic_test():
@@ -213,6 +239,16 @@ def synthetic_test():
     pe = PE32(bytes(b))
     assert pe.raw(0x1000, 4) == b"TEST"
     assert pe.rva(0x22001004) == 0x1004
+    struct.pack_into("<B", b, 0x408, 0xE8)
+    struct.pack_into("<i", b, 0x409, 0x1014 - (0x1008 + 5))
+    pe = PE32(bytes(b))
+    assert direct_call_target(pe, 0x1008) == 0x1014
+    try:
+        direct_call_target(pe, 0x1000)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Non-call instruction treated as call")
     try:
         pe.raw(0x1100, 0x200)
     except ValueError:
