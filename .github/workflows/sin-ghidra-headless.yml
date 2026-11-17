@@ -20,6 +20,8 @@ on:
       - 'research/tools/audit_factory_seeds.py'
       - 'research/tests/test_audit_factory_seeds.py'
       - 'research/ghidra/SeedReviewedInterfaceFactories.java'
+      - 'research/ghidra/ExportTargetedInterfacePseudocode.java'
+      - 'research/tests/test_targeted_ghidra_runner.py'
   workflow_dispatch:
   schedule:
     - cron: '23 2,14 * * *'
@@ -51,6 +53,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_audit_factory_seeds.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
+          python3 -m unittest discover -s research/tests -p 'test_targeted_ghidra_runner.py' -v
 
   ghidra-headless-smoke:
     name: Actual Ghidra 12.2 headless smoke on synthetic ELF
@@ -83,10 +86,11 @@ jobs:
           seed_address="$(nm -n "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" | awk '$3 == "helper" { print $1; exit }')"
           test -n "$seed_address"
           printf '%s\n' 'entry,interface,source' "$seed_address,SyntheticEngine001,reviewed_original_static_registration" > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seeds.csv"
-          "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
+          SIN_PRIVATE_DECOMP_ACK=1 "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
             -import "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" \
             -scriptPath "$GITHUB_WORKSPACE/research/ghidra" \
             -postScript SeedReviewedInterfaceFactories.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
+            -postScript ExportTargetedInterfacePseudocode.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-private" \
             -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
             -deleteProject
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_functions.csv"
@@ -94,6 +98,10 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_relocated_code_pointers.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
           grep -q 'SyntheticEngine001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_targeted_decomp_status.csv"
+          grep -q 'decompiled_candidate' "$RUNNER_TEMP/sin-ghidra-private/synthetic_targeted_decomp_status.csv"
+          find "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_TARGETED_DECOMPILATION" -type f -name 'SyntheticEngine001_*.c' -size +0c | grep -q .
+          test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_TARGETED_DECOMPILATION"
           test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_DECOMPILATION"
 
   analyze-owner-originals:
