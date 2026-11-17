@@ -23,3 +23,9 @@ add_test(NAME independent_owner_probe_guardrails
     -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerIndependentEngineProbe.ps1"
     -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerIndependentEngineProbe.ps1"
     -IndependentBin "$<TARGET_FILE_DIR:sin_slot0_client>")
+
+# Session-isolated owner-engine failure classification; synthetic logs only.
+add_test(NAME independent_owner_startup_verdict
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerIndependentStartupVerdict.ps1"
+    -Classifier "${CMAKE_CURRENT_SOURCE_DIR}/Get-OwnerIndependentStartupVerdict.ps1")

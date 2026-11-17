@@ -196,6 +196,10 @@ try {
         Write-Output ("OWNER_INDEPENDENT_TRACE: {0}" -f $log.FullName)
         Get-Content -LiteralPath $log.FullName -Tail 24
     }
+    # Produce a deterministic first-blocker summary from this launch's own
+    # session logs only. No inference from synthetic tests or old log files.
+    $verdictScript = Join-Path $PSScriptRoot 'Get-OwnerIndependentStartupVerdict.ps1'
+    & $verdictScript -Session $session -LogDirectory ([System.IO.Path]::GetTempPath())
     if ($logs.Count -eq 0) {
         Write-Warning "No independent startup trace observed. The retail executable may not have loaded the game DLLs."
     }
