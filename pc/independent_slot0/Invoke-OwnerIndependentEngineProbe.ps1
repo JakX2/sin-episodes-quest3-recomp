@@ -13,6 +13,7 @@ param(
     [Parameter(Mandatory=$true)][string]$GameExecutable,
     [Parameter(Mandatory=$true)][string]$IndependentBin,
     [string]$GameArguments = '-console',
+    [ValidateSet('Both','Server','Client')][string]$ProbeRole = 'Both',
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -139,18 +140,30 @@ Require-ActualFile $marker
 if ((Get-Content -LiteralPath $marker -Raw).Trim() -cne $MarkerValue) {
     throw "Explicit disposable-copy marker content mismatch: $MarkerFile"
 }
+# Authenticate both originals, even when staging only one. The retained
+# original is not copied, moved or opened for writing.
+$selectedNames = switch ($ProbeRole) {
+    'Server' { 'server.dll' }
+    'Client' { 'client.dll' }
+    'Both' { 'server.dll'; 'client.dll' }
+}
 $plan = @()
+$retained = @()
 foreach ($spec in $HashPins) {
     $live = Join-Path $bin $spec.Name
     $candidate = Join-Path $build $spec.Name
     $saved = Join-Path $bin ("sin_independent_saved_" + $spec.Name)
     Require-ActualFile $live
-    Require-ActualFile $candidate
     if (Test-Path -LiteralPath $saved) { throw "Pre-existing independent backup, refuse: $saved" }
     if (Test-Path -LiteralPath (Join-Path $bin ("sin_original_" + $spec.Name))) {
         throw "Original-forwarding proxy staging detected: $($spec.Name)"
     }
     if ((Sha256 $live) -cne $spec.Hash) { throw "Owner-original DLL SHA256 mismatch: $live" }
+    if ($selectedNames -notcontains $spec.Name) {
+        $retained += [pscustomobject]@{ Live=$live; OriginalHash=$spec.Hash }
+        continue
+    }
+    Require-ActualFile $candidate
     Require-Pe32 $candidate
     $hash = Sha256 $candidate
     if ($hash -ceq $spec.Hash) { throw "Expected independent binary, got original: $candidate" }
@@ -161,6 +174,11 @@ foreach ($spec in $HashPins) {
         OriginalHash = $spec.Hash
         CandidateHash = $hash
     }
+}
+Write-Output ("OWNER_INDEPENDENT_PROBE_ROLE: {0}" -f $ProbeRole.ToUpperInvariant())
+Write-Output ("OWNER_INDEPENDENT_PLANNED_DLLS: {0}" -f ($selectedNames -join ','))
+foreach ($step in $retained) {
+    Write-Output ("RETAINED_ORIGINAL_VERIFIED: {0}" -f $step.Live)
 }
 $session = [Guid]::NewGuid().ToString('N')
 $staged = New-Object System.Collections.Generic.List[object]
@@ -175,7 +193,7 @@ try {
             throw "Independent DLL copy integrity check failed"
         }
     }
-    Write-Output "STAGED_INDEPENDENT: two standalone PE32 test DLLs; retail originals preserved as sibling backups"
+    Write-Output ("STAGED_INDEPENDENT: {0} standalone PE32 test DLL(s); selected retail originals preserved as sibling backups" -f $staged.Count)
     $previous = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','Process')
     $previousSession = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION','Process')
     try {
@@ -268,7 +286,9 @@ try {
     $restoreIncomplete = $childStillAlive
     if ($childStillAlive) {
         Write-Warning "Game still running: originals deliberately remain backed up. Stop game and restore manually."
-        Write-Warning "Backups: sin_independent_saved_client.dll and sin_independent_saved_server.dll"
+        foreach ($step in $staged) {
+            Write-Warning ("Backup: {0}" -f $step.Saved)
+        }
     } else {
         foreach ($step in $staged) {
             # A retail launcher can exit before a separate engine process
@@ -299,6 +319,19 @@ try {
             }
         }
     }
+    # Also check the retained role has not changed. Never overwrite it:
+    # a discrepancy must be surfaced, including failures to read the file.
+    foreach ($step in $retained) {
+        try {
+            if ((Sha256 $step.Live) -cne $step.OriginalHash) {
+                throw "Retained original SHA256 mismatch"
+            }
+            Write-Output ("RETAINED_ORIGINAL_UNCHANGED: {0}" -f $step.Live)
+        } catch {
+            $restoreIncomplete = $true
+            Write-Warning ("RETAINED_ORIGINAL_CHECK_FAILED: {0} reason={1}" -f $step.Live,$_.Exception.GetType().Name)
+        }
+    }
     Write-Output ("OWNER_INDEPENDENT_RESTORATION: {0}" -f $(if ($restoreIncomplete) { 'INCOMPLETE_MANUAL_RECOVERY_REQUIRED' } else { 'VERIFIED_COMPLETE' }))
     # Never attribute a previous or concurrent independent engine attempt
     # to this launch, even if it logged inside the same time window.
@@ -306,7 +339,16 @@ try {
         Sort-Object LastWriteTimeUtc -Descending)
     foreach ($log in $logs) {
         Write-Output ("OWNER_INDEPENDENT_TRACE: {0}" -f $log.FullName)
-        Get-Content -LiteralPath $log.FullName -Tail 24
+        # The full 16-query server preflight is >24 lines. Do not
+        # silently lose its initial factory/Init evidence. Bound console
+        # output while the classifier below consumes the complete log.
+        $lines = @(Get-Content -LiteralPath $log.FullName -TotalCount 1001)
+        if ($lines.Count -gt 1000) {
+            $lines | Select-Object -First 1000
+            Write-Warning "Trace console output capped at 1000 lines; classifier reads entire session."
+        } else {
+            $lines
+        }
     }
     # Produce a deterministic first-blocker summary from this launch's own
     # session logs only. No inference from synthetic tests or old log files.
