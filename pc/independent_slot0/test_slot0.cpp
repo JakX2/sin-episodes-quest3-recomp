@@ -124,9 +124,17 @@ static bool getLogPath(char* path, size_t capacity) {
     char temp[MAX_PATH] = {};
     DWORD used = GetTempPathA(MAX_PATH, temp);
     if (used == 0 || used >= MAX_PATH) return false;
-    int written = std::snprintf(path, capacity,
-                                "%ssin-independent-%lu.log",
-                                temp, static_cast<unsigned long>(GetCurrentProcessId()));
+    char session[33] = {};
+    DWORD sessionLength =
+        GetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", session,
+                                static_cast<DWORD>(sizeof(session)));
+    if (sessionLength && sessionLength != 32) return false;
+    int written = sessionLength == 32
+        ? std::snprintf(path, capacity, "%ssin-independent-%s-%lu.log",
+                        temp, session,
+                        static_cast<unsigned long>(GetCurrentProcessId()))
+        : std::snprintf(path, capacity, "%ssin-independent-%lu.log",
+                        temp, static_cast<unsigned long>(GetCurrentProcessId()));
     return written > 0 && static_cast<size_t>(written) < capacity;
 }
 static bool logContains(const char* path, const char* needle) {
@@ -147,6 +155,10 @@ static int fail(int code, const char* message) {
 
 int main(int argc, char** argv) {
     if (argc != 2) return fail(1, "expected path");
+    // Keep the existing unscoped synthetic diagnostics deterministic even
+    // when invoked by an owner terminal with a session variable set.
+    if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", nullptr))
+        return fail(24, "clear inherited session");
     HMODULE dll = LoadLibraryA(argv[1]);
     if (!dll) return fail(2, "LoadLibrary");
     auto exported = GetProcAddress(dll, "CreateInterface");
@@ -229,6 +241,21 @@ int main(int argc, char** argv) {
                      "phase=missing-interface version=VEngineCvar002"))
         return fail(23, "third server dependency has no specific missing log");
 #endif
+    constexpr char kSession[] = "0123456789abcdef0123456789abcdef";
+    if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", kSession))
+        return fail(25, "enable scoped trace session");
+    char sessionPath[MAX_PATH] = {};
+    if (!getLogPath(sessionPath, sizeof(sessionPath)))
+        return fail(26, "scoped diagnostic path");
+    (void)DeleteFileA(sessionPath);
+    if (!invokeSecond(object, slots[1]))
+        return fail(27, "scoped second virtual slot call");
+    if (!logContains(sessionPath, "role="))
+        return fail(28, "missing run-scoped trace");
+    if (!DeleteFileA(sessionPath))
+        return fail(29, "remove run-scoped trace");
+    if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", nullptr))
+        return fail(30, "clear run-scoped trace session");
     if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE", "0"))
         return fail(19, "disable tracing after test");
     if (!DeleteFileA(path)) return fail(20, "clean synthetic diagnostic trace");
