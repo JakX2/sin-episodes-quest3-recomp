@@ -135,7 +135,7 @@ jobs:
           test "$vtable_address" != "$seed_address"
           printf '%s\n' 'entry,interface,source' "$seed_address,SyntheticEngine001,reviewed_original_static_registration" > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seeds.csv"
           printf '%s\n' 'entry,interface,slot,source' "$vtable_address,SyntheticVtable001,0,synthetic_vtable_test_fixture" > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_vtable_method_seeds.csv"
-          SIN_PRIVATE_DECOMP_ACK=1 "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
+          SIN_SYNTHETIC_STARTUP_CENSUS=1 SIN_PRIVATE_DECOMP_ACK=1 "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
             -import "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" \
             -scriptPath "$GITHUB_WORKSPACE/research/ghidra" \
             -postScript RemoveSyntheticFactoryForSmoke.java "$seed_address" \
@@ -145,6 +145,7 @@ jobs:
             -postScript ExportReviewedFactoryDataReferences.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
             -postScript ExportTargetedInterfacePseudocode.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-private" \
             -postScript ExportTargetedVtableMethodPseudocode.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-private" \
+            -postScript ExportStartupFactoryDependencyCensus.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-private" \
             -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
             -deleteProject
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_functions.csv"
@@ -162,6 +163,8 @@ jobs:
           grep -q '.data' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_direct_data_refs.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_targeted_decomp_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_startup_factory_census.csv"
+          grep -q "SyntheticVtable001" "$RUNNER_TEMP/sin-ghidra-private/synthetic_startup_factory_census.csv"
           grep -q 'SyntheticVtable001' "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
           grep -q 'decompiled_candidate' "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_VTABLE_METHOD_DECOMPILATION/SyntheticVtable001_slot0_${vtable_address: -8}.c"
