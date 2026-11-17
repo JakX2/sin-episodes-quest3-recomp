@@ -52,23 +52,21 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_prepare_reviewed_factory_seeds.py' -v
           python3 -m unittest discover -s research/tests -p 'test_audit_factory_seeds.py' -v
           python3 - <<'PY'
-          import re
           from pathlib import Path
           source = Path(".github/workflows/sin-ghidra-headless.yml").read_text()
-          match = re.search(
-              r"(?m)^ *python3 research/tools/audit_factory_seeds[.]py[^\\n]*(?:\\n[^\\n]*){3}",
-              source,
-          )
-          if match is None:
-              raise SystemExit("Missing four-line owner factory-seed audit invocation")
-          lines = match.group(0).splitlines()
+          lines = source.splitlines()
+          starts = [i for i, line in enumerate(lines)
+                    if line.lstrip().startswith("python3 research/tools/audit_factory_seeds.py ")]
+          if len(starts) != 1:
+              raise SystemExit("Expected exactly one owner factory-seed audit invocation")
+          command = lines[starts[0]:starts[0] + 4]
           expected = ("audit_factory_seeds.py", "--seed-dir", "--result-dir", "--out")
-          if len(lines) != 4 or not all(flag in line for flag, line in zip(expected, lines)):
+          if len(command) != 4 or not all(flag in line for flag, line in zip(expected, command)):
               raise SystemExit("Factory-seed audit argument order or count changed")
           if any(not line.rstrip().endswith(chr(92)) or line.rstrip().endswith(chr(92) * 2)
-                 for line in lines[:3]):
+                 for line in command[:3]):
               raise SystemExit("Factory-seed audit Bash continuation must be one backslash")
-          if lines[3].rstrip().endswith(chr(92)):
+          if command[3].rstrip().endswith(chr(92)):
               raise SystemExit("Factory-seed audit terminal argument cannot continue")
           print("PASS: owner Ghidra factory-seed audit command continuations")
           PY
