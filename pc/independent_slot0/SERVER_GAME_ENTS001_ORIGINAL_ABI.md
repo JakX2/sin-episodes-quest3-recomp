@@ -169,9 +169,16 @@ The following observable behavior is recovered:
 5. It then passes that same base entity to **three cleanup routines
    in order**, at RVAs `0x21FFD0`, `0x220190`, and `0x286C10`.
 
-The precise three cleanup routines' ownership and gameplay semantics are
-**not yet established**. A premature direct implementation that skips them
-would strand entity resources or corrupt the game's entity graph.
+The owner's `source-sdk-2004-master.zip` contains a matching global
+`FreeContainingEntity` implementation in `src_mod/dlls/mapentities.cpp`.
+The SDK identifies the ordered helpers as
+`CBaseEntity::PhysicsRemoveTouchedList`,
+`CBaseEntity::PhysicsRemoveGroundList`, and `UTIL_RemoveImmediate`.
+These names and call order are **SDK-supported functional attributions**,
+rather than original SiN symbol/debug-name proof for the three target RVAs.
+Their exact SiN-specific ownership and gameplay effects are still being
+reconstructed. A premature implementation that skips them could strand
+entity resources or corrupt the game's entity graph.
 
 `server_entity_release_core.h` therefore implements the verified null
 guards, disconnection and callback order using **three explicitly supplied
@@ -182,6 +189,7 @@ pointer identity, ordering of state reset before any cleanup call,
 preservation of unrelated edict fields, and repeated-call no-op.
 
 The owner-private `server.dll` is not committed or loaded by tests.
-The method-level contract still requires identifying and independently
-implementing the three original cleanup behaviors, plus entity ownership,
+The method-level contract still requires independently
+implementing and original-verifying the three SDK-identified cleanup
+behaviors, plus entity ownership,
 before `FreeContainingEntity` can be wired to `ServerGameEnts001`.
