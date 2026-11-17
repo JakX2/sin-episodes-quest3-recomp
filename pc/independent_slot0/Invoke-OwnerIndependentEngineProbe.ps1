@@ -210,6 +210,11 @@ try {
             $moduleInspectionSucceeded,$moduleInspectionFailures,$moduleInspectionSamples,
             $(if ($null -eq $moduleInspectionFirstError) { 'none' } else { $moduleInspectionFirstError }))
         Write-Output ("OWNER_ENGINE_EXIT_CODE: {0}" -f $child.ExitCode)
+        # A process can terminate before a single module snapshot or trace.
+        # Preserve the actual signed Win32 exit status, then decode common
+        # NT loader failures without attributing them to our DLLs.
+        $exitDiagnosis = Join-Path $PSScriptRoot 'Get-OwnerEngineExitDiagnosis.ps1'
+        & $exitDiagnosis -ExitCode ([long]$child.ExitCode)
     } finally {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE',$previous,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$previousSession,'Process')
