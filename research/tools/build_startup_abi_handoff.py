@@ -42,7 +42,7 @@ ALLOWED_STATUS = {
     "bounded_inferred_function", "excessive_instruction_count",
 }
 VERSION = re.compile(
-    r"(?:V[A-Za-z][A-Za-z0-9_]{1,48}|ServerGame[A-Za-z0-9_]{1,48}|GameClientExports)[0-9]{3}\\Z"
+    r"(?:V[A-Za-z][A-Za-z0-9_]{1,48}|ServerGame[A-Za-z0-9_]{1,48}|GameClientExports)[0-9]{3}\Z"
 )
 
 
