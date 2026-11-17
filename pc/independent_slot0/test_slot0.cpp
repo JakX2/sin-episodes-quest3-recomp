@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 #if !defined(_M_IX86)
 #error MSVC Win32 x86 required
@@ -148,11 +149,26 @@ static bool getLogPath(char* path, size_t capacity) {
 static bool logContains(const char* path, const char* needle) {
     FILE* file = nullptr;
     if (fopen_s(&file, path, "rb") != 0 || !file) return false;
-    char buffer[8192] = {};
-    size_t count = std::fread(buffer, 1, sizeof(buffer)-1, file);
+    // The original ten-entry server Init preflight intentionally generates
+    // more than 8 KiB of synthetic logs. Scan the entire file in chunks,
+    // preserving overlap so matches across read boundaries are not lost.
+    const size_t wanted = std::strlen(needle);
+    char buffer[4096] = {};
+    std::string tail;
+    bool found = false;
+    size_t count = 0;
+    while ((count = std::fread(buffer, 1, sizeof(buffer), file)) != 0) {
+        tail.append(buffer, count);
+        if (tail.find(needle) != std::string::npos) {
+            found = true;
+            break;
+        }
+        if (tail.size() > wanted) {
+            tail.erase(0, tail.size() - wanted);
+        }
+    }
     std::fclose(file);
-    buffer[count] = '\0';
-    if (std::strstr(buffer, needle)) return true;
+    if (found) return true;
     std::fprintf(stderr, "missing diagnostic event: %s\n", needle);
     return false;
 }
