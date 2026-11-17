@@ -55,9 +55,9 @@ struct CleanupTrace {
     bool sameEntity = true;
 };
 
-void __cdecl Stage1(CBaseEntity* entity, void* context) noexcept;
-void __cdecl Stage2(CBaseEntity* entity, void* context) noexcept;
-void __cdecl Stage3(CBaseEntity* entity, void* context) noexcept;
+void __cdecl RemoveTouchedList(CBaseEntity* entity, void* context) noexcept;
+void __cdecl RemoveGroundList(CBaseEntity* entity, void* context) noexcept;
+void __cdecl RemoveImmediate(CBaseEntity* entity, void* context) noexcept;
 
 static void RecordStage(int stage, CBaseEntity* entity, void* context) noexcept {
     auto* trace = static_cast<CleanupTrace*>(context);
@@ -73,9 +73,9 @@ static void RecordStage(int stage, CBaseEntity* entity, void* context) noexcept 
         trace->edict->networkable != trace->expectedNetworkable)
         trace->allDetachedBeforeHooks = false;
 }
-void __cdecl Stage1(CBaseEntity* e, void* ctx) noexcept { RecordStage(1,e,ctx); }
-void __cdecl Stage2(CBaseEntity* e, void* ctx) noexcept { RecordStage(2,e,ctx); }
-void __cdecl Stage3(CBaseEntity* e, void* ctx) noexcept { RecordStage(3,e,ctx); }
+void __cdecl RemoveTouchedList(CBaseEntity* e, void* ctx) noexcept { RecordStage(1,e,ctx); }
+void __cdecl RemoveGroundList(CBaseEntity* e, void* ctx) noexcept { RecordStage(2,e,ctx); }
+void __cdecl RemoveImmediate(CBaseEntity* e, void* ctx) noexcept { RecordStage(3,e,ctx); }
 
 static int fail(int code, const char* message) {
     std::fprintf(stderr, "FAIL original FreeContainingEntity %d: %s\n",
@@ -96,7 +96,7 @@ int main() {
     edict.networkable = networkable;
     edict.unknown = &unknown;
     CleanupTrace trace{&edict, &entity, networkable};
-    EntityReleaseHooks hooks{&Stage1,&Stage2,&Stage3,&trace};
+    EntityReleaseHooks hooks{&RemoveTouchedList,&RemoveGroundList,&RemoveImmediate,&trace};
 
     // Null edict is a strict no-op: no callbacks and no unknown dispatch.
     if (TryReleaseContainingEntity(conversions,nullptr,hooks)
@@ -106,9 +106,9 @@ int main() {
 
     // Missing any required cleanup stage refuses before mutating state or
     // reading an unknown pointer, avoiding an unrecoverable partial release.
-    EntityReleaseHooks missing1{nullptr,&Stage2,&Stage3,&trace};
-    EntityReleaseHooks missing2{&Stage1,nullptr,&Stage3,&trace};
-    EntityReleaseHooks missing3{&Stage1,&Stage2,nullptr,&trace};
+    EntityReleaseHooks missing1{nullptr,&RemoveGroundList,&RemoveImmediate,&trace};
+    EntityReleaseHooks missing2{&RemoveTouchedList,nullptr,&RemoveImmediate,&trace};
+    EntityReleaseHooks missing3{&RemoveTouchedList,&RemoveGroundList,nullptr,&trace};
     for (auto* missing : {&missing1,&missing2,&missing3}) {
         if (TryReleaseContainingEntity(conversions,&edict,*missing)
             != EntityReleaseStatus::MissingCleanupHooks ||
@@ -131,6 +131,9 @@ int main() {
         empty.Calls() != 1)
         return fail(4,"missing base entity");
 
+    // Original game/SDK ordering: remove touched-list links, ground-list
+    // links, then remove entity immediately. These are injected probes,
+    // not implementation of those actual game subsystems.
     // First successful release clears unknown + flags before any callback;
     // all stages receive the SAME base pointer, exactly in A/B/C order.
     edict.unknown = &unknown;
