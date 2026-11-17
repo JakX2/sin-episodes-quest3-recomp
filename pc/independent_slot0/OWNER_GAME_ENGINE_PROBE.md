@@ -51,3 +51,27 @@ Do not treat a successful first request as a working game. Client/server initial
 ## Automated validation
 
 Native Win32 CTest independent_owner_probe_guardrails checks that the owner script parses and refuses cases with no explicit confirmation, no marker, wrong marker, or wrong original DLL SHA256 **without modifying the synthetic test files**. The separate native independent DLL tests probe callbacks against synthetic factories. These tests do not execute the retail game. Source SDK 2004 defines candidate interface types and names, but Valve game source code is not bundled here.
+
+## Session-specific first startup failure (Phase 294)
+
+The owner launcher now prints `OWNER_INDEPENDENT_VERDICT`, the observed DLL
+roles, the exact factory requests and the first recorded blocker from the
+current session's logs. This is intentionally an **evidence classification**,
+not an assertion of working engine initialization:
+
+* `NO_INDEPENDENT_INIT_EVIDENCE`: no matching role-bearing diagnostic lines;
+  verify game executable, DLL load paths and imports before changing ABI.
+* `ENGINE_ENTERED_INDEPENDENT_INIT_BUT_REJECTED`: at least one observed
+  missing interface, missing factory, or invalid argument. Fix the first
+  named blocker using owner evidence and provenance-checked layouts.
+* `DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF`: a DLL logged other phases, but
+  there is no observed blocker. The independent initializers **still return
+  failure**, so this is never a successful game boot.
+
+The classifier runs locally on the owner's machine, using only the random
+session token assigned by the launcher. No original game code or log is
+uploaded. It can also be run independently against local logs:
+`Get-OwnerIndependentStartupVerdict.ps1 -Session <32-lowercase-hex-token>
+-LogDirectory $env:TEMP`. Public Windows CI exercises it using synthetic
+logs, including cross-session isolation. Actual owner-engine evidence
+requires the disposable-copy launcher and cannot be produced by CI alone.
