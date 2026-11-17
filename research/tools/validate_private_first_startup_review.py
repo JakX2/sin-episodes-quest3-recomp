@@ -50,6 +50,7 @@ def validate(path, module):
         raise ValueError("unexpected private metadata schema or row count")
     iface, entry = MODULES[module]
     prior_count = branch_count = 0
+    previous_call = -1
     for rank, row in enumerate(rows[1:], start=1):
         if len(row) != len(HEADER):
             raise ValueError("unexpected private metadata row width")
@@ -60,6 +61,12 @@ def validate(path, module):
         ) or number(observed_rank, 8) != rank:
             raise ValueError("unreviewed interface, entry, tier or rank")
         call = number(call_offset, 65535)
+        # Ghidra iterates instructions in increasing address order. A second
+        # record at the same site, or a reordered call, is not a valid export
+        # even if ranks are sequential. Do not silently double-count it.
+        if call <= previous_call:
+            raise ValueError("duplicate or non-monotonic candidate call site")
+        previous_call = call
         if version:
             if not VERSION.fullmatch(version) or not prior_offset:
                 raise ValueError("invalid prior literal evidence")
