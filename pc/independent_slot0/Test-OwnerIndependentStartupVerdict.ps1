@@ -42,6 +42,42 @@ try {
     if (-not ($out -contains 'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011')) {
         throw "Accepted factory request falsely classified as Init"
     }
+    # Synthetic replay of the owner's first real retail-engine trace.
+    # These lines come from our independent diagnostic, not game binaries.
+    # The rejected optional/unknown ServerGameEnts001 factory query did not
+    # stop the engine from entering the client's virtual Init callback.
+    $retailReplay = Join-Path $dir "sin-independent-$session-13124.log"
+    $replayLines = @(
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameDLL003',
+        '[SiN independent] role=server phase=factory-rejected version=ServerGameEnts001',
+        '[SiN independent] role=client phase=factory-accepted version=VClient011',
+        '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=request version=VEngineClient012',
+        '[SiN independent] role=client phase=found-interface version=VEngineClient012',
+        '[SiN independent] role=client phase=request version=VEngineModel012',
+        '[SiN independent] role=client phase=found-interface version=VEngineModel012',
+        '[SiN independent] role=client phase=sdk2004-preflight-only version=<none>'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]$replayLines)
+    Remove-Item -LiteralPath $client -Force
+    $out = Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF'
+    foreach ($expected in @(
+        'OWNER_INDEPENDENT_TRACE_FILES: 1',
+        'OWNER_INDEPENDENT_ROLES_OBSERVED: client,server',
+        'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: client',
+        'OWNER_INDEPENDENT_FACTORY_REQUESTS: client:VEngineClient012,client:VEngineModel012',
+        'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: server:factory-accepted:ServerGameDLL003,server:factory-rejected:ServerGameEnts001,client:factory-accepted:VClient011'
+    )) {
+        if (-not ($out -ccontains $expected)) {
+            throw "Owner-first-startup replay unexpectedly changed: $expected"
+        }
+    }
+    if (@($out | Where-Object { $_ -like '*BLOCKER*' }).Count -gt 0) {
+        throw 'Unknown game-module version was falsely promoted to a fatal Init blocker'
+    }
+    Remove-Item -LiteralPath $retailReplay -Force
+    [IO.File]::WriteAllText($client,
+        "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine)
     # A Shutdown-only callback does not establish that retail Init ran.
     [IO.File]::WriteAllText($client,
         "[SiN independent] role=client phase=shutdown version=<none>" + [Environment]::NewLine)
