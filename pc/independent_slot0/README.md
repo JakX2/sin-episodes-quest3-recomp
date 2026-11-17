@@ -35,9 +35,27 @@ No SDK header bodies or commercial code are copied into this project.
 The 32-bit native MSVC tests now check the type-correct client
 globals-data pointer in the x86 call sequence, both initialized vtable
 slots being owned by the newly built DLL, independent `__thiscall`
-dispatch, stack balance, fail-closed return, and the absence of outgoing
-factory requests. The second client method safely clears diagnostic
-state; server `GameInit` remains false.
+dispatch, stack balance, and fail-closed return. The two SDK2004
+candidates deliberately query only the first **two client**
+(`VEngineClient012`, `VEngineModel012`) or **three server**
+(`VEngineServer021`, `VoiceServer001`, `VEngineCvar002`)
+engine interfaces, stopping on the first missing one. The returned
+factory objects are never dereferenced or retained. The version names
+are taken from SDK2004, not yet independently confirmed for SiN.
+
+For an opt-in owner diagnostic set `SIN_INDEPENDENT_TRACE_FILE=1`
+*before starting the process*. The independent DLL logs
+`request`, `found-interface`, `missing-interface`,
+`invalid-init-arguments`, and `sdk2004-preflight-only` to
+`%TEMP%\sin-independent-<PID>.log`. File tracing is OFF by default.
+It is intentionally separate from the original-DLL forwarding proxy's
+`SIN_PC_PROXY_TRACE_FILE` logs.
+
+Native MSVC test fixtures exercise first/second interface misses,
+all first dependencies found, invalid globals, fail-closed return and
+the opt-in log. The client second method safely clears diagnostic
+state; server `GameInit` remains false. No real SiN game engine was
+run or asserted to succeed.
 
 ## Compile and test
 
