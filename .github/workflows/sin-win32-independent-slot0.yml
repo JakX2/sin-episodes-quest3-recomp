@@ -1,5 +1,11 @@
 name: SiN independent PE32 slot-zero runtime boundary
 on:
+  push:
+    branches:
+      - 'feature/sin-win32-owner-startup-verdict-phase294-20261117'
+    paths:
+      - 'pc/independent_slot0/**'
+      - '.github/workflows/sin-win32-independent-slot0.yml'
   pull_request:
     paths:
       - 'pc/independent_slot0/**'
