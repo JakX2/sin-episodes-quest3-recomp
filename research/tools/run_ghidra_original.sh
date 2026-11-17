@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ $# -lt 3 || $# -gt 4 ]]; then
-  echo "Usage: $0 /path/to/ghidra /private/extracted/bin /private/output [emit-c]" >&2
+  echo "Usage: $0 /path/to/ghidra /private/extracted/bin /private/output [metadata-only|emit-c|targeted-c]" >&2
   exit 2
 fi
 
@@ -14,8 +14,8 @@ mode="metadata-only"
 if [[ $# -eq 4 ]]; then
   mode="$4"
 fi
-if [[ "$mode" != "metadata-only" && "$mode" != "emit-c" ]]; then
-  echo "Mode must be metadata-only or emit-c" >&2
+if [[ "$mode" != "metadata-only" && "$mode" != "emit-c" && "$mode" != "targeted-c" ]]; then
+  echo "Mode must be metadata-only, emit-c or targeted-c" >&2
   exit 2
 fi
 
@@ -37,6 +37,34 @@ mkdir -p "$output"
 output="$(cd "$output" && pwd)"
 private_project="$(mktemp -d /tmp/sin-ghidra.XXXXXXXX)"
 trap 'rm -rf "$private_project"' EXIT
+
+if [[ "$mode" == "targeted-c" ]]; then
+  # Deliberately opt-in: the sole output is private, never uploaded by CI.
+  # The owner must supply a local trusted Ghidra and owner-original DLLs.
+  repository_root="$(cd "$(dirname "$0")/../.." && pwd -P)"
+  case "$output/" in
+    "$repository_root/"*)
+      echo "Refusing to generate game pseudocode inside the public checkout" >&2
+      exit 1
+      ;;
+  esac
+  umask 077
+  chmod 700 "$output"
+  seed_dir="$(mktemp -d /tmp/sin-reviewed-factories.XXXXXXXX)"
+  trap 'rm -rf -- "$private_project" "$seed_dir"' EXIT
+  python3 "$scripts/../tools/verify_original_batch.py" \
+    --original-dir "$original_bin" --out "$output/original_pe32_identity.json"
+  python3 "$scripts/../tools/prepare_reviewed_factory_seeds.py" \
+    --manifest "$scripts/../catalog/original_dll_interface_registrations.json" \
+    --out-dir "$seed_dir"
+  SIN_PRIVATE_DECOMP_ACK=1 "$headless" "$private_project" SiNPrivateTargeted     -import "$original_bin/client.dll" "$original_bin/server.dll"     -scriptPath "$scripts"     -postScript SeedReviewedInterfaceFactories.java "$seed_dir" "$output"     -postScript ExportTargetedInterfacePseudocode.java "$seed_dir" "$output"     -deleteProject
+  for dll in client.dll server.dll; do
+    test -s "$output/${dll}_targeted_decomp_status.csv"
+  done
+  echo "Private targeted pseudocode and status CSVs saved only under: $output"
+  echo "Ghidra output is approximate and no original methods are newly SHA verified."
+  exit 0
+fi
 
 if [[ "$mode" == "emit-c" ]]; then
   "$headless" "$private_project" SiNOriginalPrivate \
@@ -67,4 +95,4 @@ else
   fi
 fi
 echo "Ghidra candidate atlas generated under $output"
-echo "Metadata mode uses Ghidra 12.2 Java script; emit-c requires a PyGhidra-enabled environment."\necho "Do not push raw Ghidra decompilation to GitHub."
+echo "Metadata mode uses Ghidra 12.2 Java; targeted-c generates private C-like output only."\necho "Do not push raw Ghidra decompilation to GitHub."
