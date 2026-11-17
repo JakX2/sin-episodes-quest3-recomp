@@ -1,8 +1,8 @@
 // Independently authored Win32 PE32 engine-interface initialization diagnostic.
 // TWO vtable slots ONLY. No original DLL forwarding and NOT playable SiN.
-// The original VClient011 first five factory queries are now reviewed
-// against owner-provided SHA-pinned retail client.dll. Server names are
-// still SDK2004 hypotheses pending original server DLLInit verification.
+// The original VClient011 first five factory queries and server
+// ServerGameDLL003 DLLInit first ten engine-factory queries are now reviewed
+// against SHA-pinned owner originals. All bodies remain fail-closed.
 // These methods deliberately fail closed after a bounded early factory probe.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -38,6 +38,15 @@ constexpr char kRole[] = "server";
 constexpr char kFirstEngineVersion[] = "VEngineServer021";
 constexpr char kSecondEngineVersion[] = "VoiceServer001";
 constexpr char kThirdEngineVersion[] = "VEngineCvar002";
+// Next seven names and order were recovered from the SHA-pinned original
+// server.dll ServerGameDLL003 slot-zero DLLInit. All ten use engineFactory.
+constexpr char kFourthEngineVersion[] = "VEngineServerStringTable001";
+constexpr char kFifthEngineVersion[] = "StaticPropMgrServer002";
+constexpr char kSixthEngineVersion[] = "VEngineRandom001";
+constexpr char kSeventhEngineVersion[] = "IEngineSoundServer003";
+constexpr char kEighthEngineVersion[] = "SpatialPartition001";
+constexpr char kNinthEngineVersion[] = "VModelInfoServer001";
+constexpr char kTenthEngineVersion[] = "EngineTraceServer003";
 #else
 #error Choose exactly one DLL role
 #endif
@@ -149,10 +158,19 @@ public:
             diagnostic("invalid-init-arguments", nullptr);
             return false;
         }
-        // These are the FIRST THREE SDK2004 game-server engine requests.
+        // First TEN SHA-verified original ServerGameDLL003::DLLInit
+        // engine-factory requests. Fail at the first missing name, never
+        // retain/dereference pointers, and NEVER report successful Init.
         if (!require(engineFactory, kFirstEngineVersion) ||
             !require(engineFactory, kSecondEngineVersion) ||
-            !require(engineFactory, kThirdEngineVersion)) return false;
+            !require(engineFactory, kThirdEngineVersion) ||
+            !require(engineFactory, kFourthEngineVersion) ||
+            !require(engineFactory, kFifthEngineVersion) ||
+            !require(engineFactory, kSixthEngineVersion) ||
+            !require(engineFactory, kSeventhEngineVersion) ||
+            !require(engineFactory, kEighthEngineVersion) ||
+            !require(engineFactory, kNinthEngineVersion) ||
+            !require(engineFactory, kTenthEngineVersion)) return false;
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
         return false;
