@@ -208,3 +208,44 @@ Phase 307 teaches the owner launcher to locate the disposable marker in the
 fake DLLs and refuse any staging before the normal original-DLL SHA gate.
 Run only from a complete standalone installation, not a partial Drive
 download lacking other required Source engine assets.
+
+## Locked client.dll recovery after the first real engine probe (Phase 308)
+
+The first owner Windows run observed the **retail engine's actual UI error**
+`Client.dll Init() in library client failed.` Our current independent
+`VClient011[0]` intentionally returns `0`, so this is a meaningful
+initialization-boundary observation but **not playable game startup**.
+The tracked process reported exit `0x00000000`, no module samples of either
+game DLL, and the client DLL remained locked after that process exited.
+That combination suggests an additional process or delayed file handle
+may have outlived the tracked process; it does **not** identify the lock
+holder or prove client Init arguments or factory calls. The first run's
+PowerShell diagnostics were truncated because restoring `client.dll`
+raised a Windows sharing/permission error. The subsequent test correctly
+refused the still-present `sin_independent_saved_client.dll` backup.
+
+Phase 308 handles an individual restoration error per DLL: report
+`RESTORE_PENDING`, retain the original SHA256-verified backup, mark
+`OWNER_INDEPENDENT_RESTORATION: INCOMPLETE_MANUAL_RECOVERY_REQUIRED`,
+and continue to print **the same session's** trace and verdict. It never
+silently treats a zero exit or unlocked server.dll as full restoration.
+Public CI tests fail-closed contracts, not any commercial game launch.
+
+**Do not re-run on the disposable installation until both originals are
+restored and verified.** Stop all processes using the disposable copy.
+For the original client backup, the pinned full-file SHA256 remains
+`6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d`.
+When no game process is using the file, verify that hash on
+`SE1/bin/sin_independent_saved_client.dll` before removing the independent
+`SE1/bin/client.dll` and renaming the saved original into place. Leave
+the backup untouched if the file is still locked. Keep the already-restored
+`server.dll` unchanged.
+
+The original probe session token was
+`fdc27ef894ec4b688dda399ed53adfbb`. Even after the transcript has
+been overwritten by a failed rerun, any opt-in DLL trace remains under
+`%TEMP%/sin-independent-fdc27ef894ec4b688dda399ed53adfbb-<pid>.log`.
+Classify them locally with:
+`Get-OwnerIndependentStartupVerdict.ps1 -Session fdc27ef894ec4b688dda399ed53adfbb -LogDirectory $env:TEMP`.
+An absent trace is inconclusive, especially if the game runs in a
+separate process that did not inherit the launcher environment.
