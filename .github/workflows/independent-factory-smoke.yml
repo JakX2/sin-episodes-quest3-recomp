@@ -50,3 +50,20 @@ jobs:
       - name: Run native independent DLL loader and factory contract
         shell: cmd
         run: win32_loader_smoke.exe factory.dll
+      - name: Build separate native x86 vtable-producing DLL and caller
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /LD research\independent_factory\virtual_factory.cpp /Fe:sin_synthetic_virtual.dll
+          cl /nologo /std:c++17 /EHsc /W4 /WX research\independent_factory\win32_virtual_dispatch_smoke.cpp /Fe:win32_virtual_dispatch_smoke.exe
+      - name: Verify independently loaded synthetic C++ vtable through MSVC thiscall
+        shell: cmd
+        run: win32_virtual_dispatch_smoke.exe sin_synthetic_virtual.dll
+      - name: Verify virtual dispatch module's PE32 export/import boundary
+        shell: pwsh
+        run: |
+          $headers = & dumpbin /headers sin_synthetic_virtual.dll | Out-String
+          if ($headers -notmatch '14C machine \(x86\)') { throw 'Virtual interface DLL must be PE32 x86' }
+          $exports = & dumpbin /exports sin_synthetic_virtual.dll | Out-String
+          if ($exports -notmatch '\bCreateInterface\b') { throw 'Missing synthetic CreateInterface export' }
+          python research/independent_factory/audit_pe_imports.py sin_synthetic_virtual.dll --forbid client.dll --forbid server.dll
+          python research/independent_factory/audit_pe_extended.py sin_synthetic_virtual.dll --forbid client.dll --forbid server.dll
