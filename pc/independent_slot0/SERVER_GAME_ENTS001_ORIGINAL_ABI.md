@@ -119,3 +119,34 @@ must perform real game-state work rather than no-op; exposing
 placeholder implementations would risk silent gameplay corruption or
 a later crash. Original Win32 server startup still needs its
 `DLLInit` implementation and other interfaces reconstructed.
+
+## Three independently implemented, original-verified behaviors (Phase 316)
+
+Read-only inspection of the owner-original server DLL at the previously
+authenticated entity vtable method RVAs verifies these bounded behaviors:
+
+| Method | Original binary behavior | Independent core |
+| --- | --- | --- |
+| `SetDebugEdictBase` | Save the supplied edict base pointer | Stores pointer in independent core state, supports replacement and clearing |
+| `BaseEntityToEdict` | Return null if no entity; otherwise read the edict pointer at `CBaseEntity + 0x16C` | Reads that pointer from a synthetic x86 entity fixture, including null cases |
+| `EdictToBaseEntity` | Return null for null edict/unknown; otherwise fetch unknown pointer from `edict + 0x0C` and invoke virtual method slot 5 (`GetBaseEntity`) | Mirrors this pointer chain with a six-slot `IServerUnknown` ABI fixture and validates the native x86 call |
+
+The independent `server_entity_conversion_core.h` implements these three
+**real isolated method behaviors** using x86 object-offset evidence.
+The independent synthetic test `test_server_entity_conversion_core.cpp`
+checks pointer identity, null paths, mutation, `IServerUnknown` virtual
+slot order, and balanced `__thiscall` stack before returning. It
+does not link against or execute the commercial DLL.
+
+This is intentionally **not** an exported `ServerGameEnts001` object.
+The real `CBaseEntity` allocation, `edict_t` storage, unknown-provider
+lifecycle, collision/touch callbacks, entity deletion, and transmit-bit
+behavior must be independently implemented before the interface can
+safely be advertised to the engine. The hard-coded `0x16C` and
+`0x0C` offsets are specific to the SHA-pinned original Win32 x86
+layout. Android/Quest code must use an independently defined native
+layout and must not reuse these offsets blindly.
+
+The next meaningful server milestone is reconstructing and testing the
+entity ownership/unknown-object lifecycle and then introducing a
+complete, non-placeholder implementation for all seven slots.
