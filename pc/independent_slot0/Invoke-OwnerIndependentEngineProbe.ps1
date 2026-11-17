@@ -121,7 +121,7 @@ foreach ($spec in $HashPins) {
         CandidateHash = $hash
     }
 }
-$start = [DateTime]::UtcNow.AddSeconds(-2)
+$session = [Guid]::NewGuid().ToString('N')
 $staged = New-Object System.Collections.Generic.List[object]
 $child = $null
 $childStillAlive = $false
@@ -136,8 +136,11 @@ try {
     }
     Write-Output "STAGED_INDEPENDENT: two standalone PE32 test DLLs; retail originals preserved as sibling backups"
     $previous = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','Process')
+    $previousSession = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
+        Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
             FilePath = $exe
             WorkingDirectory = [System.IO.Path]::GetDirectoryName($exe)
@@ -157,6 +160,7 @@ try {
         Write-Output ("OWNER_ENGINE_EXIT_CODE: {0}" -f $child.ExitCode)
     } finally {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE',$previous,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$previousSession,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.
@@ -184,8 +188,9 @@ try {
             }
         }
     }
-    $logs = @(Get-ChildItem -LiteralPath ([System.IO.Path]::GetTempPath()) -Filter 'sin-independent-*.log' -File |
-        Where-Object { $_.LastWriteTimeUtc -ge $start } |
+    # Never attribute a previous or concurrent independent engine attempt
+    # to this launch, even if it logged inside the same time window.
+    $logs = @(Get-ChildItem -LiteralPath ([System.IO.Path]::GetTempPath()) -Filter ("sin-independent-{0}-*.log" -f $session) -File |
         Sort-Object LastWriteTimeUtc -Descending)
     foreach ($log in $logs) {
         Write-Output ("OWNER_INDEPENDENT_TRACE: {0}" -f $log.FullName)
