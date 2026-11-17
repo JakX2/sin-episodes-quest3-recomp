@@ -51,6 +51,25 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_build_ghidra_interface_queue.py' -v
           python3 -m unittest discover -s research/tests -p 'test_prepare_reviewed_factory_seeds.py' -v
           python3 -m unittest discover -s research/tests -p 'test_audit_factory_seeds.py' -v
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path(".github/workflows/sin-ghidra-headless.yml").read_text()
+          lines = source.splitlines()
+          starts = [i for i, line in enumerate(lines)
+                    if line.lstrip().startswith("python3 research/tools/audit_factory_seeds.py ")]
+          if len(starts) != 1:
+              raise SystemExit("Expected exactly one owner factory-seed audit invocation")
+          command = lines[starts[0]:starts[0] + 4]
+          expected = ("audit_factory_seeds.py", "--seed-dir", "--result-dir", "--out")
+          if len(command) != 4 or not all(flag in line for flag, line in zip(expected, command)):
+              raise SystemExit("Factory-seed audit argument order or count changed")
+          if any(not line.rstrip().endswith(chr(92)) or line.rstrip().endswith(chr(92) * 2)
+                 for line in command[:3]):
+              raise SystemExit("Factory-seed audit Bash continuation must be one backslash")
+          if command[3].rstrip().endswith(chr(92)):
+              raise SystemExit("Factory-seed audit terminal argument cannot continue")
+          print("PASS: owner Ghidra factory-seed audit command continuations")
+          PY
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
           python3 -m unittest discover -s research/tests -p 'test_targeted_ghidra_runner.py' -v
@@ -199,9 +218,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 research/tools/audit_factory_seeds.py \\
-            --seed-dir "$SIN_GHIDRA_SEED_DIRECTORY" \\
-            --result-dir "$RUNNER_TEMP/sin-ghidra-metadata" \\
+          python3 research/tools/audit_factory_seeds.py \
+            --seed-dir "$SIN_GHIDRA_SEED_DIRECTORY" \
+            --result-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
             --out "$RUNNER_TEMP/sin-ghidra-metadata/factory_seed_audit.json"
       - name: Separate Ghidra inferred functions from SHA-reviewed methods
         shell: bash
