@@ -61,9 +61,6 @@ static void* __cdecl unusedFactory(const char*, int*) {
 }
 #if defined(SIN_ROLE_server)
 static void* __cdecl fileSystemFactory(const char* name, int* status) {
-    std::fprintf(stderr, "[server x86 test] filesystem request count=%d name=%s\n",
-                 g_fileSystemCalls, name ? name : "<null>");
-    std::fflush(stderr);
     if (name == nullptr || std::strcmp(name,kFileSystemVersion) != 0 ||
         status != nullptr || g_fileSystemCalls != 0) {
         ++g_invalid;
@@ -85,6 +82,8 @@ static bool invokeInit(void* object, void* function, bool validGlobals) {
     Factory app = &expectedFactory;
     Factory other = &unusedFactory;
 #if defined(SIN_ROLE_server)
+    // Never call this variable 'fs': MSVC inline assembler reserves FS
+    // as the x86 segment register; "push fs" would corrupt the call ABI.
     Factory filesystemCallback = &fileSystemFactory;
 #endif
     std::uintptr_t before = 0, after = 0;
@@ -289,8 +288,6 @@ int main(int argc, char** argv) {
     }
     // First ten engine interfaces found, but filesystem unavailable:
     // fail without making the eleventh engineFactory request.
-    std::fprintf(stderr, "[server x86 test] beginning filesystem boundary\n");
-    std::fflush(stderr);
     g_callCount = 0;
     g_fileSystemCalls = 0;
     g_availableCount = kBeforeFileSystem;
@@ -300,8 +297,6 @@ int main(int argc, char** argv) {
         return fail(38, "missing VFileSystem012 must stop before further engine queries");
     g_fileSystemAvailable = true;
     for (int available = kBeforeFileSystem; available < kQueries; ++available) {
-        std::fprintf(stderr, "[server x86 test] post-filesystem available=%d\n",available);
-        std::fflush(stderr);
         g_callCount = 0;
         g_fileSystemCalls = 0;
         g_availableCount = available;
@@ -311,8 +306,6 @@ int main(int argc, char** argv) {
             return fail(39, "server post-filesystem engine query order mismatch");
     }
 #endif
-    std::fprintf(stderr, "[server x86 test] all names available\n");
-    std::fflush(stderr);
     g_callCount = 0;
     g_fileSystemCalls = 0;
     g_availableCount = kQueries;
