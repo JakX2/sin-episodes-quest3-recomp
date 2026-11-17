@@ -95,4 +95,5 @@ else
   fi
 fi
 echo "Ghidra candidate atlas generated under $output"
-echo "Metadata mode uses Ghidra 12.2 Java; targeted-c generates private C-like output only."\necho "Do not push raw Ghidra decompilation to GitHub."
+echo "Metadata mode uses Ghidra 12.2 Java; targeted-c generates private C-like output only."
+echo "Do not push raw Ghidra decompilation to GitHub."
