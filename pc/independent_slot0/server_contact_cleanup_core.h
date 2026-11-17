@@ -11,6 +11,8 @@ enum class ContactKind { Touch, Ground };
 struct ContactNode {
     std::uint32_t handle = kInvalidEntityHandle;
     ContactNode* next = nullptr;
+    ContactNode* previous = nullptr;
+    std::uint32_t flags = 0;
 };
 struct ContactList {
     ContactNode* root = nullptr; // root is a sentinel, never a contact allocation

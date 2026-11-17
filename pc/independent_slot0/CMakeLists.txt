@@ -87,3 +87,15 @@ add_executable(sin_server_contact_cleanup_test test_server_contact_cleanup_core.
 target_compile_features(sin_server_contact_cleanup_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_contact_cleanup_native
   COMMAND sin_server_contact_cleanup_test)
+
+# Reciprocal unlink and contact callbacks in a native independently-owned list.
+add_executable(sin_server_reciprocal_contact_test test_server_reciprocal_contact_core.cpp)
+target_compile_features(sin_server_reciprocal_contact_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_reciprocal_contact_native
+  COMMAND sin_server_reciprocal_contact_test)
+
+# Exercise bulk and reciprocal cleanup together, including shared counters.
+add_executable(sin_server_contact_pair_test test_server_contact_pair_cleanup.cpp)
+target_compile_features(sin_server_contact_pair_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_contact_pair_native
+  COMMAND sin_server_contact_pair_test)
