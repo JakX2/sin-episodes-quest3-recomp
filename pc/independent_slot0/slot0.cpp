@@ -1,6 +1,8 @@
 // Independently authored Win32 PE32 engine-interface initialization diagnostic.
 // TWO vtable slots ONLY. No original DLL forwarding and NOT playable SiN.
-// Source SDK 2004 names/order are hypotheses for the SiN retail engine.
+// The original VClient011 first five factory queries are now reviewed
+// against owner-provided SHA-pinned retail client.dll. Server names are
+// still SDK2004 hypotheses pending original server DLLInit verification.
 // These methods deliberately fail closed after a bounded early factory probe.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -24,6 +26,12 @@ constexpr char kName[] = "VClient011";
 constexpr char kRole[] = "client";
 constexpr char kFirstEngineVersion[] = "VEngineClient012";
 constexpr char kSecondEngineVersion[] = "VEngineModel012";
+// These next three names and query order were reviewed directly from the
+// owner's SHA-pinned original retail client.dll VClient011 slot-zero Init.
+// We only inspect returned non-nullness; NO interface methods are invoked.
+constexpr char kThirdEngineVersion[] = "VEngineEffects001";
+constexpr char kFourthEngineVersion[] = "VEngineCvar002";
+constexpr char kFifthEngineVersion[] = "EngineTraceClient003";
 #elif defined(SIN_ROLE_server)
 constexpr char kName[] = "ServerGameDLL003";
 constexpr char kRole[] = "server";
@@ -104,10 +112,15 @@ public:
             diagnostic("invalid-init-arguments", nullptr);
             return 0;
         }
-        // These are the FIRST TWO SDK2004 client app-system queries, not a
-        // claim that SiN uses identical versions or initialization order.
+        // The FIRST FIVE names/order were confirmed from the authenticated
+        // original retail VClient011 Init slot. We never dereference engine
+        // pointers or advertise successful initialization. Stop at first
+        // unavailable interface so each owner probe finds a precise blocker.
         if (!require(appSystemFactory, kFirstEngineVersion) ||
-            !require(appSystemFactory, kSecondEngineVersion)) return 0;
+            !require(appSystemFactory, kSecondEngineVersion) ||
+            !require(appSystemFactory, kThirdEngineVersion) ||
+            !require(appSystemFactory, kFourthEngineVersion) ||
+            !require(appSystemFactory, kFifthEngineVersion)) return 0;
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
         return 0; // Never advertise successful independent startup.
