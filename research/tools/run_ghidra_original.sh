@@ -74,6 +74,13 @@ else
     chmod 700 "$private_output"
     post_scripts+=(-postScript ExportTargetedInterfacePseudocode.java "$SIN_GHIDRA_SEED_DIRECTORY" "$private_output")
   fi
+  if [[ "${SIN_GHIDRA_FACTORY_XREFS:-0}" == "1" ]]; then
+    if [[ -z "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
+      echo "Reviewed factory data xrefs require seed directory" >&2
+      exit 1
+    fi
+    post_scripts+=(-postScript ExportReviewedFactoryDataReferences.java "$SIN_GHIDRA_SEED_DIRECTORY" "$output")
+  fi
   "$headless" "$private_project" SiNOriginalPrivate \
     -import "$original_bin/client.dll" "$original_bin/server.dll" \
     -scriptPath "$scripts" \
@@ -83,6 +90,12 @@ else
   if [[ -n "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
     for dll in client.dll server.dll; do
       test -s "$output/${dll}_factory_seed_results.csv"
+    done
+  fi
+  if [[ "${SIN_GHIDRA_FACTORY_XREFS:-0}" == "1" ]]; then
+    for dll in client.dll server.dll; do
+      test -s "$output/${dll}_factory_data_ref_status.csv"
+      test -s "$output/${dll}_factory_direct_data_refs.csv"
     done
   fi
   if [[ -n "${SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY:-}" ]]; then

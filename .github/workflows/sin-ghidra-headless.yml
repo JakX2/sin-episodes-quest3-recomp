@@ -23,6 +23,9 @@ on:
       - 'research/tools/build_relocated_pointer_table_queue.py'
       - 'research/tests/test_build_relocated_pointer_table_queue.py'
       - 'research/ghidra/RemoveSyntheticFactoryForSmoke.java'
+      - 'research/ghidra/ExportReviewedFactoryDataReferences.java'
+      - 'research/tools/summarize_factory_data_references.py'
+      - 'research/tests/test_summarize_factory_data_references.py'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
       - 'research/tests/test_prepare_reviewed_factory_seeds.py'
       - 'research/tools/build_ghidra_interface_queue.py'
@@ -61,6 +64,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_summarize_private_ghidra_decomp.py' -v
           python3 -m unittest discover -s research/tests -p 'test_private_ghidra_runner.py' -v
           python3 -m unittest discover -s research/tests -p 'test_build_relocated_pointer_table_queue.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_summarize_factory_data_references.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
@@ -90,7 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-project"
-          printf '%s\n' 'int helper(int x) { return x + 5; }' 'int main(void) { return helper(37) == 42 ? 0 : 1; }' > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
+          printf '%s\n' 'volatile int synthetic_data=5;' 'int helper(int x) { return x + synthetic_data; }' 'int main(void) { return helper(37) == 42 ? 0 : 1; }' > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
           cc -no-pie -O0 -fno-inline -o "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
           seed_address="$(nm -n "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" | awk '$3 == "helper" { print $1; exit }')"
           test -n "$seed_address"
@@ -100,6 +104,7 @@ jobs:
             -scriptPath "$GITHUB_WORKSPACE/research/ghidra" \
             -postScript RemoveSyntheticFactoryForSmoke.java "$seed_address" \
             -postScript SeedReviewedInterfaceFactories.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
+            -postScript ExportReviewedFactoryDataReferences.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
             -postScript ExportTargetedInterfacePseudocode.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-private" \
             -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
             -deleteProject
@@ -109,6 +114,10 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
           grep -q 'SyntheticEngine001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
           grep -q 'seeded_candidate' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_data_ref_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_direct_data_refs.csv"
+          grep -q 'SyntheticEngine001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_direct_data_refs.csv"
+          grep -q '.data' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_direct_data_refs.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_targeted_decomp_status.csv"
           grep -q 'decompiled_candidate' "$RUNNER_TEMP/sin-ghidra-private/synthetic_targeted_decomp_status.csv"
           find "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_TARGETED_DECOMPILATION" -type f -name 'SyntheticEngine001_*.c' -size +0c | grep -q .
@@ -208,6 +217,7 @@ jobs:
           test -s "$RUNNER_TEMP/sin-reviewed-factory-seeds/client.dll_factory_seeds.csv"
           test -s "$RUNNER_TEMP/sin-reviewed-factory-seeds/server.dll_factory_seeds.csv"
           echo "SIN_GHIDRA_SEED_DIRECTORY=$RUNNER_TEMP/sin-reviewed-factory-seeds" >> "$GITHUB_ENV"
+          echo "SIN_GHIDRA_FACTORY_XREFS=1" >> "$GITHUB_ENV"
       - name: Authorize ephemeral private Ghidra decompilation after authenticated original staging
         shell: bash
         run: |
@@ -229,6 +239,10 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_functions.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_factory_seed_results.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_factory_seed_results.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_factory_data_ref_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_factory_data_ref_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_factory_direct_data_refs.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_factory_direct_data_refs.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/client.dll_targeted_decomp_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/server.dll_targeted_decomp_status.csv"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_TARGETED_DECOMPILATION"
@@ -276,6 +290,15 @@ jobs:
             --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
             --out "$RUNNER_TEMP/sin-ghidra-metadata/relocated_pointer_table_review_queue.json"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/relocated_pointer_table_review_queue.json"
+      - name: Reconcile reviewed factory data references for ABI object triage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/summarize_factory_data_references.py \
+            --seed-dir "$RUNNER_TEMP/sin-reviewed-factory-seeds" \
+            --data-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/factory_global_data_reference_review.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/factory_global_data_reference_review.json"
       - name: Upload metadata only (NEVER game binaries or pseudocode)
         uses: actions/upload-artifact@v4
         with:
