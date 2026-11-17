@@ -44,6 +44,8 @@ on:
       - 'research/ghidra/ExportStartupFactoryDependencyCensus.java'
       - 'research/tools/summarize_startup_factory_census.py'
       - 'research/tests/test_summarize_startup_factory_census.py'
+      - 'research/tools/build_startup_abi_handoff.py'
+      - 'research/tests/test_build_startup_abi_handoff.py'
       - 'research/phases/phase286-startup-factory-census.md'
       - 'research/phases/phase285-sdk2004-original-x86-method-abi.md'
       - 'research/phases/phase281h-sdk-2004-abi-crosswalk.md'
@@ -96,6 +98,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_build_source_sdk_2004_crosswalk.py' -v
           python3 -m unittest discover -s research/tests -p 'test_verify_original_sdk2004_init_abi.py' -v
           python3 -m unittest discover -s research/tests -p 'test_summarize_startup_factory_census.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_build_startup_abi_handoff.py' -v
           python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
