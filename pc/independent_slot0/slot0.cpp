@@ -43,10 +43,25 @@ static void diagnostic(const char* phase, const char* version) noexcept {
     char temp[MAX_PATH] = {};
     DWORD used = GetTempPathA(MAX_PATH, temp);
     if (!used || used >= MAX_PATH) return;
+    // A per-launch, validated lowercase hex token prevents confusing old
+    // or concurrent diagnostics with an owner's retail startup attempt.
+    char session[33] = {};
+    const DWORD sessionLength =
+        GetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", session,
+                                static_cast<DWORD>(sizeof(session)));
+    if (sessionLength && sessionLength != 32) return;
+    for (DWORD i = 0; i < sessionLength; ++i) {
+        if (!((session[i] >= '0' && session[i] <= '9') ||
+              (session[i] >= 'a' && session[i] <= 'f'))) return;
+    }
     char path[MAX_PATH] = {};
-    int n = std::snprintf(path, sizeof(path),
-                          "%ssin-independent-%lu.log",
-                          temp, static_cast<unsigned long>(GetCurrentProcessId()));
+    int n = sessionLength == 32
+        ? std::snprintf(path, sizeof(path),
+                        "%ssin-independent-%s-%lu.log", temp, session,
+                        static_cast<unsigned long>(GetCurrentProcessId()))
+        : std::snprintf(path, sizeof(path),
+                        "%ssin-independent-%lu.log", temp,
+                        static_cast<unsigned long>(GetCurrentProcessId()));
     if (n <= 0 || static_cast<size_t>(n) >= sizeof(path)) return;
     char line[240] = {};
     n = std::snprintf(line, sizeof(line),
