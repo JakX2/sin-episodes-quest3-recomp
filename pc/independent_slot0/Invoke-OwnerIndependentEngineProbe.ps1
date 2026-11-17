@@ -105,13 +105,34 @@ Require-NoReparseAncestors $GameExecutable
 $bin = (Resolve-Path -LiteralPath $GameBin).ProviderPath.TrimEnd('\')
 $build = (Resolve-Path -LiteralPath $IndependentBin).ProviderPath.TrimEnd('\')
 $exe = (Resolve-Path -LiteralPath $GameExecutable).ProviderPath
-$root = [System.IO.Path]::GetFullPath((Join-Path $bin '..')).TrimEnd('\')
+# Retail SiN splits the root engine bin/ from the game-specific
+# SE1/bin/ containing the original client.dll and server.dll.
+# Resolve the marker root from the actual game-content path, not always
+# from the DLL directory's immediate parent.
+$gameBinParent = [System.IO.Path]::GetFullPath((Join-Path $bin '..')).TrimEnd('\')
+$isSe1Layout = [string]::Equals([System.IO.Path]::GetFileName($gameBinParent),
+    'SE1',[System.StringComparison]::OrdinalIgnoreCase)
+$root = $gameBinParent
+if ($isSe1Layout) {
+    $root = [System.IO.Path]::GetFullPath((Join-Path $gameBinParent '..')).TrimEnd('\')
+}
 $prefix = $root + [System.IO.Path]::DirectorySeparatorChar
-if ($bin -eq $build -or
+if (-not [string]::Equals([System.IO.Path]::GetFileName($bin),'bin',
+        [System.StringComparison]::OrdinalIgnoreCase) -or
+    $bin -eq $build -or
     -not $exe.EndsWith('.exe',[System.StringComparison]::OrdinalIgnoreCase) -or
     -not $exe.StartsWith($prefix,[System.StringComparison]::OrdinalIgnoreCase) -or
     $root -match '(?i)[\\/]steamapps[\\/]common[\\/]') {
     throw "Expected a standalone disposable owner game-copy root outside steamapps/common"
+}
+if ($isSe1Layout) {
+    if (-not [string]::Equals([System.IO.Path]::GetFileName($exe),
+            'SinEpisodes.exe',[System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([System.IO.Path]::GetDirectoryName($exe),$root,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "SE1 game DLL layout requires SinEpisodes.exe in the disposable game root"
+    }
+    Require-ActualFile (Join-Path $gameBinParent 'GameInfo.txt')
 }
 $marker = Join-Path $root $MarkerFile
 Require-ActualFile $marker
