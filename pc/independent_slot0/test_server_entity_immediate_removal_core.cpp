@@ -46,7 +46,7 @@ static void Destroy(CBaseEntity* e,void* ctx) noexcept {
     delete e;
     f.entity=nullptr;
 }
-static void Defer(CBaseEntity* e,void* ctx) noexcept {
+static bool Defer(CBaseEntity* e,void* ctx) noexcept {
     auto& f=*static_cast<Fixture*>(ctx);
     if(e!=f.entity || !f.env.deferDepth ||
        f.env.handleAccessDisabled || f.record.extendedFlags!=0x10)
@@ -55,6 +55,7 @@ static void Defer(CBaseEntity* e,void* ctx) noexcept {
     // deliberately NOT represented as a reconstructed retail delete list.
     f.record.extendedFlags|=kEntityKillMe;
     ++f.deferred;
+    return true;
 }
 static int fail(int code,const char* msg) {
     std::fprintf(stderr,"FAIL immediate removal %d: %s\n",code,msg);
