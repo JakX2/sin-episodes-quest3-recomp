@@ -63,9 +63,17 @@ function, non-executable and explicit error statuses.
 
 An independent synthetic ELF smoke removes two harmless function starts
 and checks that both the existing factory seeder and new vtable seeder can
-rebuild their respective candidates. Twelve synthetic PE32 Python tests
-cover SHA256 gating, memory-section ownership, RTTI, corrupted pointers,
-method-target validation and metadata-only output.
+rebuild their respective candidates. Seven committed synthetic PE32 parser
+tests cover SHA256 gating, memory-section ownership, RTTI, corrupted
+pointers and Ghidra-atlas comparison.
+
+The separate fail-closed audit_original_vtable_seed_results.py reconciles
+all 105 per-slot statuses with their exact reviewed addresses and rejects
+missing, duplicated, unreviewed and mismatched records. Eight synthetic
+audit regressions validate this contract. The resulting
+original_vtable_seed_coverage.json separates already-inferred starts,
+newly created **Ghidra candidates**, and blocked/overlapping addresses by
+interface. No seed outcome adds a verified original method body.
 
 New interface-vtable seeding runs against originals on GitHub Actions
 **only after the draft research branch is integrated into main**. The
