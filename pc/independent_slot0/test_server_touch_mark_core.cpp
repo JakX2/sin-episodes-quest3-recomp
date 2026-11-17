@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdio>
 #include <new>
+#include <initializer_list>
 
 class CBaseEntity { public: unsigned id; };
 using namespace sin_independent;
@@ -13,6 +14,7 @@ struct Fixture {
     ContactCleanupState state{};
     TouchTraceState trace{};
     unsigned refresh=0,start=0,touch=0,freed=0,allocations=0;
+    unsigned ended=0,destroyed=0;
     std::array<unsigned,2> refreshOrder{};
     bool failSecond=false,valid=true;
     Fixture() {
@@ -63,6 +65,31 @@ static TouchMarkResult Run(Fixture& f) {
     TouchMarkHooks h{&Refresh,&Allocate,&Free,&Start,&Touch,&f};
     return MarkTouchPair(f.first,f.second,f.state,f.View(),f.trace,h);
 }
+static void End(CBaseEntity* owner,CBaseEntity* other,void* ctx) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);
+    if(owner!=&f.b || other!=&f.a || f.state.cleanupDataObjects) f.valid=false;
+    ++f.ended;
+}
+static void CleanupNode(ContactNode* n,ContactKind kind,void* ctx) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);
+    if(kind!=ContactKind::Touch)f.valid=false;
+    ++f.freed; delete n;
+}
+static void DestroyRoot(CBaseEntity* owner,ContactNode* root,ContactKind kind,void* ctx) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);
+    if(owner!=&f.a || root!=&f.ra || kind!=ContactKind::Touch ||
+       !f.state.cleanupDataObjects) f.valid=false;
+    root->next=root->previous=root;
+    ++f.destroyed;
+}
+static void Notify(CBaseEntity* owner,CBaseEntity* partner,ContactKind kind,void* ctx) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);
+    if(owner!=&f.a || partner!=&f.b || kind!=ContactKind::Touch) {f.valid=false;return;}
+    ReciprocalHooks hooks{&End,nullptr,&CleanupNode,&DestroyRoot,&f};
+    if(RemoveReciprocalContact(owner,partner,kind,f.second.contacts,f.state,f.View(),hooks)
+       !=ReciprocalResult::Removed)f.valid=false;
+}
+
 static int fail(int code,const char* msg) {
     std::fprintf(stderr,"FAIL touch marking %d: %s\n",code,msg);
     return code;
@@ -83,6 +110,20 @@ int main() {
        f.touch!=2 || f.ra.next->stamp!=11 || f.rb.next->stamp!=13 ||
        f.state.touchAllocated!=2)
         return fail(2,"refresh existing links without allocating duplicates");
+    // Exercise actual creation -> repeated contact -> bulk unlink and
+    // reciprocal removal -> recreate. No manually preseeded contact nodes.
+    ContactCleanupHooks cleanup{&Notify,&CleanupNode,&DestroyRoot,&f};
+    if(RemoveContactList(&f.a,ContactKind::Touch,f.first.contacts,f.state,
+                         f.first.touchStamp,f.View(),cleanup)!=ContactCleanupResult::Removed ||
+       !f.valid || f.freed!=2 || f.ended!=1 || f.destroyed!=1 ||
+       f.state.touchAllocated || f.first.contacts.present || f.first.contacts.root ||
+       !f.second.contacts.present || f.rb.next!=&f.rb || f.rb.previous!=&f.rb ||
+       f.first.touchStamp || !f.state.cleanupDataObjects)
+        return fail(10,"created contacts clean up in both directions");
+    f.first.contacts={&f.ra,true}; f.first.touchStamp=15;
+    if(Run(f)!=TouchMarkResult::Recorded || !f.valid || f.allocations!=4 ||
+       f.state.touchAllocated!=2 || f.start!=4 || f.ra.next->stamp!=15)
+        return fail(11,"contact recreation after cleanup");
     Fixture blocked;
     blocked.first.parent=blocked.second.handle;
     if(Run(blocked)!=TouchMarkResult::Ignored || blocked.allocations ||
