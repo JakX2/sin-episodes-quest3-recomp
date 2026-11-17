@@ -45,7 +45,7 @@ public class ExportTargetedInterfacePseudocode extends GhidraScript {
         stream.println();
     }
 
-    private static long parseAddress(String raw) {
+    private static long parsePe32Entry(String raw) {
         if (!raw.matches("(?i)[0-9a-f]{1,16}")) {
             throw new IllegalArgumentException("Invalid seed address format");
         }
@@ -96,7 +96,7 @@ public class ExportTargetedInterfacePseudocode extends GhidraScript {
                     || !columns[2].equals("reviewed_original_static_registration")) {
                 throw new IllegalArgumentException("Invalid reviewed seed row");
             }
-            long entry = parseAddress(columns[0]);
+            long entry = parsePe32Entry(columns[0]);
             if (!seen.add(columns[1])) {
                 throw new IllegalArgumentException("Repeated reviewed interface name");
             }
@@ -104,6 +104,9 @@ public class ExportTargetedInterfacePseudocode extends GhidraScript {
                     && ("synthetic".equals(programName) == "SyntheticEngine001".equals(columns[1]))) {
                 batch.add(new Seed(columns[1], entry));
             }
+        }
+        if (batch.isEmpty()) {
+            throw new IllegalArgumentException("No reviewed priority factories selected");
         }
         if (batch.size() > MAX_FUNCTIONS_PER_MODULE) {
             throw new IllegalArgumentException("Refusing unbounded pseudocode export");
@@ -127,7 +130,7 @@ public class ExportTargetedInterfacePseudocode extends GhidraScript {
                 throw new IllegalStateException("Ghidra decompiler could not open program");
             }
             try (PrintWriter status = new PrintWriter(Files.newBufferedWriter(
-                    report, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW))) {
+                    report, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
                 csv(status, "interface", "entry", "outcome", "inferred_function_bytes");
                 for (Seed seed : batch) {
                     monitor.checkCancelled();
@@ -151,7 +154,7 @@ public class ExportTargetedInterfacePseudocode extends GhidraScript {
                                         String.format("%08x", seed.address) + ".c";
                                     Path output = privateDirectory.resolve(filename);
                                     try (java.io.BufferedWriter stream = Files.newBufferedWriter(
-                                            output, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW)) {
+                                            output, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
                                         stream.write(pseudocode);
                                     }
                                     privatePermissions(output, false);
