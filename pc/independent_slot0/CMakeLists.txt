@@ -14,3 +14,12 @@ foreach(role IN ITEMS client server)
   target_compile_definitions(sin_slot0_${role}_test PRIVATE SIN_ROLE_${role}=1)
   add_test(NAME independent_slot0_${role} COMMAND sin_slot0_${role}_test "$<TARGET_FILE:sin_slot0_${role}>")
 endforeach()
+
+
+# Owner-side reversible independent-DLL startup probe: syntax and fail-closed
+# validation ONLY. Public CI does not launch a retail game or stage originals.
+add_test(NAME independent_owner_probe_guardrails
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerIndependentEngineProbe.ps1"
+    -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerIndependentEngineProbe.ps1"
+    -IndependentBin "$<TARGET_FILE_DIR:sin_slot0_client>")
