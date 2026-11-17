@@ -55,14 +55,22 @@ public class ExportStartupFactoryDependencyCensus extends GhidraScript {
         String module = currentProgram.getName();
         final String iface;
         final String sdkCandidate;
+        final String source;
         if ("client.dll".equals(module)) {
+            source = SOURCE;
             iface = "VClient011";
             sdkCandidate = "Init";
         } else if ("server.dll".equals(module)) {
             iface = "ServerGameDLL003";
             sdkCandidate = "DLLInit";
+            source = SOURCE;
+        } else if ("synthetic".equals(module) &&
+                "1".equals(System.getenv("SIN_SYNTHETIC_STARTUP_CENSUS"))) {
+            iface = "SyntheticVtable001";
+            sdkCandidate = "SyntheticTestOnly";
+            source = "synthetic_vtable_test_fixture";
         } else {
-            throw new SecurityException("Original-only program allowlist");
+            throw new SecurityException("Original-only program allowlist except explicitly gated synthetic CI");
         }
         File seeds = new File(args[0], module + "_vtable_method_seeds.csv").getCanonicalFile();
         List<String> rows = Files.readAllLines(seeds.toPath(), StandardCharsets.UTF_8);
@@ -76,7 +84,7 @@ public class ExportStartupFactoryDependencyCensus extends GhidraScript {
             if (fields.length != 4 || !fields[0].matches("(?i)[0-9a-f]{1,8}") ||
                 !fields[1].matches("[A-Za-z0-9_]+") ||
                 !fields[2].matches("[0-9]{1,3}") ||
-                !SOURCE.equals(fields[3])) {
+                !source.equals(fields[3])) {
                 throw new IllegalArgumentException("Unsafe vtable seed");
             }
             if (iface.equals(fields[1]) && "0".equals(fields[2])) {
