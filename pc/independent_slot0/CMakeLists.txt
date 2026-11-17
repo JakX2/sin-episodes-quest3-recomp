@@ -117,3 +117,15 @@ add_executable(sin_server_deferred_queue_test test_server_deferred_entity_queue.
 target_compile_features(sin_server_deferred_queue_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_deferred_queue_native
   COMMAND sin_server_deferred_queue_test)
+
+# Independently owned contact creation, refresh, unlink and recreation.
+add_executable(sin_server_touch_mark_test test_server_touch_mark_core.cpp)
+target_compile_features(sin_server_touch_mark_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_touch_mark_native
+  COMMAND sin_server_touch_mark_test)
+
+# Bounded original-guided entity transmit decisions with synthetic PVS.
+add_executable(sin_server_transmit_policy_test test_server_transmit_policy_core.cpp)
+target_compile_features(sin_server_transmit_policy_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_transmit_policy_native
+  COMMAND sin_server_transmit_policy_test)
