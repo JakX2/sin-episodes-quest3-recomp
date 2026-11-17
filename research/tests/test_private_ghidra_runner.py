@@ -51,6 +51,7 @@ class RunnerContracts(unittest.TestCase):
             "        Path(os.environ['SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'],mod+'_targeted_decomp_status.csv').write_text('interface,entry,outcome,inferred_function_bytes\\nSyntheticEngine001,0x00001000,decompiled_candidate,22\\n')\n"
             "        if os.getenv('SIN_GHIDRA_VTABLE_SEED_DIRECTORY'):\n"
             "            Path(os.environ['SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'],mod+'_vtable_targeted_decomp_status.csv').write_text('interface,slot,entry,outcome,inferred_function_bytes\\nSyntheticVtable001,0,0x00001000,decompiled_candidate,22\\n')\n",
+            "            Path(os.environ['SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'],mod+'_startup_factory_census.csv').write_text('interface,slot,entry,sdk_method_hypothesis,outcome,inferred_body_bytes,instruction_count,direct_call_sites,indirect_call_sites,interface_literal_count,interface_version_literals\\nSyntheticVtable001,0,0x00001000,SyntheticTestOnly,bounded_inferred_function,22,3,1,0,0,\\n')\\n",
             encoding="utf-8",
         )
         fake.chmod(0o755)
@@ -88,12 +89,14 @@ class RunnerContracts(unittest.TestCase):
         run = self.execute(with_vtable=True)
         self.assertEqual(run.returncode, 0, run.stderr)
         args = json.loads(self.argv_file.read_text(encoding="utf-8"))
-        self.assertEqual(args.count("-postScript"), 5)
+        self.assertEqual(args.count("-postScript"), 6)
         self.assertIn("SeedAuthenticatedVtablePrefixMethods.java", args)
         self.assertIn("ExportTargetedVtableMethodPseudocode.java", args)
+        self.assertIn("ExportStartupFactoryDependencyCensus.java", args)
         self.assertLess(args.index("SeedAuthenticatedVtablePrefixMethods.java"),
                         args.index("ExportTargetedVtableMethodPseudocode.java"))
         self.assertTrue((self.private / "client.dll_vtable_targeted_decomp_status.csv").exists())
+        self.assertTrue((self.private / "client.dll_startup_factory_census.csv").exists())
         self.assertTrue((self.metadata / "client.dll_vtable_seed_results.csv").exists())
         self.assertNotIn(str(self.vtable_seeds), args[:6])
 
