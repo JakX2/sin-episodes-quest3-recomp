@@ -17,6 +17,16 @@ $issues = $null
 if ($issues.Count -gt 0) {
     throw ("Launcher script is not valid Windows PowerShell: " + $issues[0].Message)
 }
+function Sha256([string]$Path) {
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return [System.BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $hasher.Dispose()
+    }
+}
 $root = Join-Path ([System.IO.Path]::GetTempPath()) ("sin-independent-guard-" + [Guid]::NewGuid().ToString("N"))
 $bin = Join-Path $root 'bin'
 $exe = Join-Path $root 'fake-owned-test.exe'
@@ -28,8 +38,8 @@ try {
     [System.IO.File]::WriteAllText((Join-Path $bin 'server.dll'),'synthetic invalid owner DLL')
     $server = Join-Path $bin 'server.dll'
     $client = Join-Path $bin 'client.dll'
-    $beforeServer = (Get-FileHash -LiteralPath $server -Algorithm SHA256).Hash
-    $beforeClient = (Get-FileHash -LiteralPath $client -Algorithm SHA256).Hash
+    $beforeServer = (Sha256 $server)
+    $beforeClient = (Sha256 $client)
 
     function Reject([string]$Expected,[bool]$Confirm) {
         $args = @{
@@ -51,8 +61,8 @@ try {
         if (-not $rejected) {
             throw "Owner-only probe did not reject test case: $Expected"
         }
-        if ((Get-FileHash -LiteralPath $server -Algorithm SHA256).Hash -ne $beforeServer -or
-            (Get-FileHash -LiteralPath $client -Algorithm SHA256).Hash -ne $beforeClient) {
+        if ((Sha256 $server) -ne $beforeServer -or
+            (Sha256 $client) -ne $beforeClient) {
             throw "Fail-closed probe modified fake retail DLLs!"
         }
         foreach ($role in @('server.dll','client.dll')) {
