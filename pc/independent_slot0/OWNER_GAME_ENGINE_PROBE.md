@@ -118,3 +118,24 @@ This observation does not verify the remaining vtable layout or establish
 successful initialization. Both independent initializers still return
 failure intentionally. The first *actual* owner-local trace is needed
 before changing the first retail-incompatible factory version or ABI.
+
+
+## Owner engine module-load evidence (Phase 300)
+
+The opt-in disposable-copy launcher also polls the **actual owner-launched
+Windows game process** for loaded module paths during its bounded execution
+window. The resulting `OWNER_ENGINE_MODULE_OBSERVED: client.dll` or
+`server.dll` line confirms that the corresponding staged independent DLL
+was present in the game's module list when sampled. It is separate from the
+`factory-accepted` and `init-entered` trace events: a loaded DLL does
+**not** prove that the engine accepted its `CreateInterface` export or called
+its initializer.
+
+`OWNER_ENGINE_MODULE_NOT_OBSERVED` is strictly inconclusive. The process
+may exit before the first 250 ms poll, and Windows may deny module inspection
+from the launching PowerShell process. The
+`OWNER_ENGINE_MODULE_INSPECTION: success=<bool> failures=<count>` line
+records whether enumeration ever succeeded. For reliable inspection on
+32-bit retail processes, launch the script from an appropriately privileged
+PowerShell session, without weakening the disposable-copy and SHA256 gates.
+These observations remain local; public CI cannot provide retail evidence.

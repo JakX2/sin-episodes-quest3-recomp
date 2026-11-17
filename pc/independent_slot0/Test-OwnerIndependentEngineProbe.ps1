@@ -17,6 +17,26 @@ $issues = $null
 if ($issues.Count -gt 0) {
     throw ("Launcher script is not valid Windows PowerShell: " + $issues[0].Message)
 }
+# Contract checks for owner-only retail module-load evidence. These
+# assertions do not claim a retail executable was run in public CI.
+$launcherText = [System.IO.File]::ReadAllText(
+    (Resolve-Path -LiteralPath $Launcher).ProviderPath)
+foreach ($required in @(
+    '$child.Modules',
+    'OWNER_ENGINE_MODULE_OBSERVED:',
+    'OWNER_ENGINE_MODULE_NOT_OBSERVED:',
+    'OWNER_ENGINE_MODULE_INSPECTION:',
+    'OrdinalIgnoreCase',
+    '$moduleInspectionSucceeded'
+)) {
+    if (-not $launcherText.Contains($required)) {
+        throw "Missing owner module-observation contract: $required"
+    }
+}
+if ($launcherText.Contains('OWNER_ENGINE_MODULE_MISSING:')) {
+    throw 'Module polling must not infer absence from an unobserved sample'
+}
+
 function Sha256([string]$Path) {
     $hasher = [System.Security.Cryptography.SHA256]::Create()
     $stream = [System.IO.File]::OpenRead($Path)
@@ -79,7 +99,7 @@ try {
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
 
-    Write-Output "PASS owner independent Windows PowerShell launcher syntax and 4 non-destructive rejection gates"
+    Write-Output "PASS owner independent Windows PowerShell launcher syntax, module-observation contract and 4 non-destructive rejection gates"
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
