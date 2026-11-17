@@ -43,6 +43,11 @@ SERVER_DLLINIT_FIRST_TEN = (
     "VEngineRandom001", "IEngineSoundServer003", "SpatialPartition001",
     "VModelInfoServer001", "EngineTraceServer003",
 )
+SERVER_DLLINIT_FILESYSTEM = ("VFileSystem012",)
+SERVER_DLLINIT_NEXT_FIVE = (
+    "GAMEEVENTSMANAGER002", "VEngineCache001", "VSoundEmitter001",
+    "ServerUploadGameStats001", "ISERVERPLUGINHELPERS001",
+)
 
 class PE32:
     def __init__(self, data):
@@ -164,10 +169,30 @@ def inspect(data):
     )
     if versions != SERVER_DLLINIT_FIRST_TEN:
         raise ValueError("Original server DLLInit first-ten query order mismatch")
+
+    # The original implementation switches from engineFactory (ESI) to
+    # fileSystemFactory (EDI), then back to ESI for five more mandatory
+    # queries. Inspect only those three bounded call regions and assert
+    # the exact versioned names, not arbitrary nearby code.
+    def query_names(start_rva, byte_count, factory_call_bytes):
+        matches = list(re.finditer(
+            rb"\x6a\x00\x68(.{4})" + factory_call_bytes,
+            pe.raw(start_rva, byte_count), re.DOTALL))
+        return tuple(pe.string(pe.rva(struct.unpack("<I", match.group(1))[0]))
+                     for match in matches)
+
+    filesystem_versions = query_names(0x1e7743, 0x1d, rb"\xff\xd7")
+    if filesystem_versions != SERVER_DLLINIT_FILESYSTEM:
+        raise ValueError("Original DLLInit filesystem factory query mismatch")
+    additional_versions = query_names(0x1e7760, 0x7d, rb"\xff\xd6")
+    if additional_versions != SERVER_DLLINIT_NEXT_FIVE:
+        raise ValueError("Original DLLInit post-filesystem engine query mismatch")
     return {"original_server_sha256": PIN, "format": "PE32 x86",
             "status": "ABI research only, no server gameplay implementation",
             "factory_registrations": records,
-            "server_dllinit_first_ten_engine_queries": versions}
+            "server_dllinit_first_ten_engine_queries": versions,
+            "server_dllinit_filesystem_queries": filesystem_versions,
+            "server_dllinit_next_five_engine_queries": additional_versions}
 
 
 def synthetic_test():

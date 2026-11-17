@@ -26,8 +26,12 @@ constexpr const char* kExpected[] = {
     "VEngineServer021", "VoiceServer001", "VEngineCvar002",
     "VEngineServerStringTable001", "StaticPropMgrServer002",
     "VEngineRandom001", "IEngineSoundServer003", "SpatialPartition001",
-    "VModelInfoServer001", "EngineTraceServer003"
+    "VModelInfoServer001", "EngineTraceServer003",
+    "GAMEEVENTSMANAGER002", "VEngineCache001", "VSoundEmitter001",
+    "ServerUploadGameStats001", "ISERVERPLUGINHELPERS001"
 };
+constexpr char kFileSystemVersion[] = "VFileSystem012";
+constexpr int kBeforeFileSystem = 10;
 using Slot0 = bool (__thiscall *)(void*, Factory, Factory, Factory, void*);
 using Slot1 = bool (__thiscall *)(void*);
 #endif
@@ -37,6 +41,8 @@ static int g_callCount = 0;
 static int g_availableCount = 0;
 static int g_invalid = 0;
 static int g_unexpectedFactory = 0;
+static int g_fileSystemCalls = 0;
+static bool g_fileSystemAvailable = false;
 static unsigned long g_fakeGlobals = 0x53494E45UL;
 
 static void* __cdecl expectedFactory(const char* name, int* status) {
@@ -53,6 +59,16 @@ static void* __cdecl unusedFactory(const char*, int*) {
     ++g_unexpectedFactory;
     return nullptr;
 }
+#if defined(SIN_ROLE_server)
+static void* __cdecl fileSystemFactory(const char* name, int* status) {
+    if (name == nullptr || std::strcmp(name,kFileSystemVersion) != 0 ||
+        status != nullptr || g_fileSystemCalls != 0) {
+        ++g_invalid;
+    }
+    ++g_fileSystemCalls;
+    return g_fileSystemAvailable ? static_cast<void*>(&g_fakeGlobals) : nullptr;
+}
+#endif
 static bool owned(HMODULE module, const void* address) {
     HMODULE found = nullptr;
     return GetModuleHandleExA(
@@ -65,6 +81,11 @@ static bool invokeInit(void* object, void* function, bool validGlobals) {
     void* globalData = validGlobals ? static_cast<void*>(&g_fakeGlobals) : nullptr;
     Factory app = &expectedFactory;
     Factory other = &unusedFactory;
+#if defined(SIN_ROLE_server)
+    // Never call this variable 'fs': MSVC inline assembler reserves FS
+    // as the x86 segment register; "push fs" would corrupt the call ABI.
+    Factory filesystemCallback = &fileSystemFactory;
+#endif
     std::uintptr_t before = 0, after = 0;
     int result = -1;
 #if defined(SIN_ROLE_client)
@@ -86,7 +107,7 @@ static bool invokeInit(void* object, void* function, bool validGlobals) {
         mov eax, esp
         mov before, eax
         push globalData
-        push other
+        push filesystemCallback
         push other
         push app
         mov ecx, object
@@ -219,6 +240,8 @@ int main(int argc, char** argv) {
         return fail(9, "disable file traces");
     (void)DeleteFileA(path);
     g_callCount = g_invalid = g_unexpectedFactory = 0;
+    g_fileSystemCalls = 0;
+    g_fileSystemAvailable = false;
     g_availableCount = 0;
     if (!invokeInit(object, slots[0], true) || g_callCount != 1 ||
         g_invalid || g_unexpectedFactory)
@@ -252,25 +275,51 @@ int main(int argc, char** argv) {
     if (!invokeInit(object, slots[0], true) || g_callCount != 3 ||
         g_invalid || g_unexpectedFactory)
         return fail(22, "third server interface must be probed exactly once");
-    // All later engine-factory requests occur in the original
-    // ServerGameDLL003::DLLInit. Stop exactly at each first unavailable
-    // dependency, with correct MSVC __thiscall stack cleanup.
-    for (int available = 3; available < kQueries; ++available) {
+    // Exact engineFactory prefix in original DLLInit, then a separate
+    // fileSystemFactory(VFileSystem012), then five more engine requests.
+    for (int available = 3; available < kBeforeFileSystem; ++available) {
         g_callCount = 0;
+        g_fileSystemCalls = 0;
         g_availableCount = available;
         if (!invokeInit(object, slots[0], true) ||
-            g_callCount != available + 1 || g_invalid || g_unexpectedFactory)
-            return fail(37, "owner-original server DLLInit query sequence mismatch");
+            g_callCount != available + 1 || g_fileSystemCalls != 0 ||
+            g_invalid || g_unexpectedFactory)
+            return fail(37, "owner-original server first ten query order mismatch");
+    }
+    // First ten engine interfaces found, but filesystem unavailable:
+    // fail without making the eleventh engineFactory request.
+    g_callCount = 0;
+    g_fileSystemCalls = 0;
+    g_availableCount = kBeforeFileSystem;
+    if (!invokeInit(object, slots[0], true) ||
+        g_callCount != kBeforeFileSystem || g_fileSystemCalls != 1 ||
+        g_invalid || g_unexpectedFactory)
+        return fail(38, "missing VFileSystem012 must stop before further engine queries");
+    g_fileSystemAvailable = true;
+    for (int available = kBeforeFileSystem; available < kQueries; ++available) {
+        g_callCount = 0;
+        g_fileSystemCalls = 0;
+        g_availableCount = available;
+        if (!invokeInit(object, slots[0], true) ||
+            g_callCount != available + 1 || g_fileSystemCalls != 1 ||
+            g_invalid || g_unexpectedFactory)
+            return fail(39, "server post-filesystem engine query order mismatch");
     }
 #endif
     g_callCount = 0;
+    g_fileSystemCalls = 0;
     g_availableCount = kQueries;
     if (!invokeInit(object, slots[0], true) ||
         g_callCount != kQueries || g_invalid || g_unexpectedFactory)
         return fail(14, "all available still must fail closed");
+#if defined(SIN_ROLE_server)
+    if (g_fileSystemCalls != 1)
+        return fail(40, "required filesystemFactory called an unexpected number of times");
+#endif
     g_callCount = 0;
+    g_fileSystemCalls = 0;
     if (!invokeInit(object, slots[0], false) || g_callCount != 0 ||
-        g_invalid || g_unexpectedFactory)
+        g_fileSystemCalls != 0 || g_invalid || g_unexpectedFactory)
         return fail(15, "invalid globals must refuse without factory calls");
 
     if (!invokeSecond(object, slots[1]) || g_unexpectedFactory)
@@ -289,6 +338,11 @@ int main(int argc, char** argv) {
     if (!logContains(path,
                      "phase=missing-interface version=VEngineCvar002"))
         return fail(23, "third server dependency has no specific missing log");
+    if (!logContains(path,
+                     "phase=missing-interface version=VFileSystem012") ||
+        !logContains(path,
+                     "phase=found-interface version=VFileSystem012"))
+        return fail(41, "cross-factory filesystem request has no explicit log");
 #endif
     constexpr char kSession[] = "0123456789abcdef0123456789abcdef";
     if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", kSession))

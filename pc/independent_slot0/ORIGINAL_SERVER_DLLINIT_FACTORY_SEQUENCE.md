@@ -60,3 +60,46 @@ the required server initialization side effects and state, plus actual
 `ServerGameEnts001` and `ServerGameClients003` method behavior.
 Do not simply change `DLLInit` to return `true` before these are
 supported, and do not inject dummy engine interface pointers.
+
+## Authenticated cross-factory continuation (Phase 315)
+
+The owner's exact SHA-256-pinned original `server.dll` was read
+directly. The first ten engine-factory requests (RVA `0x1E7640`
+onwards) are immediately followed by these six **additional required
+interface queries**, each with an original null-result branch to
+DLLInit's failure return:
+
+| Original order | Interface | Factory passed to DLLInit |
+| --- | --- | --- |
+| 11 | `VFileSystem012` | `fileSystemFactory` (third factory argument) |
+| 12 | `GAMEEVENTSMANAGER002` | `engineFactory` (first factory argument) |
+| 13 | `VEngineCache001` | `engineFactory` |
+| 14 | `VSoundEmitter001` | `engineFactory` |
+| 15 | `ServerUploadGameStats001` | `engineFactory` |
+| 16 | `ISERVERPLUGINHELPERS001` | `engineFactory` |
+
+The factory switch is supported by original call-site register use, not
+guessed from interface naming. The owner-local metadata inspector now
+verifies **three bounded, original call regions**, including exact names
+and which factory is invoked.
+
+The Phase 315 independent diagnostic reproduces that order, refusing
+immediately when the filesystem factory is unavailable, and refusing
+when any subsequent engine dependency is unavailable. It still
+returns `false` even after all 16 return non-null, without
+dereferencing the returned pointers. Its MSVC x86 synthetic tests
+exercise the separate filesystem callback, ensure physicsFactory is
+**never accidentally used as the filesystem callback**, test the
+failure boundary after every request, and verify native stack balance.
+
+**Next original-side initialization behavior:** the server invokes
+a method on the retrieved `VSoundEmitter001` interface with the
+engine factory as input, then begins registering/initializing subsystems.
+Those effects require actual typed engine interfaces and are **not**
+implemented by this probe. The subsequent `VDebugOverlay003` request
+occurs much later and is not part of the initial sixteen required
+factory acquisitions.
+
+This is independent C++ ABI reconstruction and Windows synthetic
+testing. There is still **no observed retail server DLLInit entry** and
+no claim of playable startup.
