@@ -91,8 +91,8 @@ $marker = Join-Path $root 'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY.txt'
 New-Item -ItemType Directory -Path $bin -Force | Out-Null
 try {
     [System.IO.File]::WriteAllText($exe,'This is NOT an actual game executable.')
-    [System.IO.File]::WriteAllText((Join-Path $bin 'client.dll'),'synthetic invalid owner DLL')
-    [System.IO.File]::WriteAllText((Join-Path $bin 'server.dll'),'synthetic invalid owner DLL')
+    [System.IO.File]::WriteAllText((Join-Path $bin 'client.dll'),'synthetic invalid original CLIENT DLL')
+    [System.IO.File]::WriteAllText((Join-Path $bin 'server.dll'),'synthetic invalid original SERVER DLL')
     $server = Join-Path $bin 'server.dll'
     $client = Join-Path $bin 'client.dll'
     $beforeServer = (Sha256 $server)
