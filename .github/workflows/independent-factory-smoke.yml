@@ -67,3 +67,21 @@ jobs:
           if ($exports -notmatch '\bCreateInterface\b') { throw 'Missing synthetic CreateInterface export' }
           python research/independent_factory/audit_pe_imports.py sin_synthetic_virtual.dll --forbid client.dll --forbid server.dll
           python research/independent_factory/audit_pe_extended.py sin_synthetic_virtual.dll --forbid client.dll --forbid server.dll
+
+      - name: Compile independent x86 lifecycle ABI fixture and executable
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX /LD research\independent_factory\lifecycle_factory.cpp /Fe:sin_synthetic_lifecycle.dll
+          cl /nologo /std:c++17 /EHsc /W4 /WX research\independent_factory\win32_lifecycle_smoke.cpp /Fe:win32_lifecycle_smoke.exe
+      - name: Run native x86 lifecycle initialization, rollback, callback and shutdown smoke
+        shell: cmd
+        run: win32_lifecycle_smoke.exe sin_synthetic_lifecycle.dll
+      - name: Check independent lifecycle DLL architecture, export and forbidden imports
+        shell: pwsh
+        run: |
+          $headers = & dumpbin /headers sin_synthetic_lifecycle.dll | Out-String
+          if ($headers -notmatch '14C machine \(x86\)') { throw 'Lifecycle DLL is not PE32 x86' }
+          $exports = & dumpbin /exports sin_synthetic_lifecycle.dll | Out-String
+          if ($exports -notmatch '\bCreateInterface\b') { throw 'Lifecycle CreateInterface missing' }
+          python research/independent_factory/audit_pe_imports.py sin_synthetic_lifecycle.dll --forbid client.dll --forbid server.dll
+          python research/independent_factory/audit_pe_extended.py sin_synthetic_lifecycle.dll --forbid client.dll --forbid server.dll
