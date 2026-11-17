@@ -29,6 +29,13 @@ on:
       - 'research/tools/join_factory_pointer_candidates.py'
       - 'research/tests/test_join_factory_pointer_candidates.py'
       - 'research/tests/test_owner_ghidra_workflow_contract.py'
+      - 'research/tools/recover_original_vtable_prefixes.py'
+      - 'research/tests/test_recover_original_vtable_prefixes.py'
+      - 'research/tools/audit_original_vtable_seed_results.py'
+      - 'research/tests/test_audit_original_vtable_seed_results.py'
+      - 'research/ghidra/SeedAuthenticatedVtablePrefixMethods.java'
+      - 'research/tools/recover_original_vtable_prefixes.py'
+      - 'research/tests/test_recover_original_vtable_prefixes.py'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
       - 'research/tests/test_prepare_reviewed_factory_seeds.py'
       - 'research/tools/build_ghidra_interface_queue.py'
@@ -70,6 +77,9 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_summarize_factory_data_references.py' -v
           python3 -m unittest discover -s research/tests -p 'test_join_factory_pointer_candidates.py' -v
           python3 -m unittest discover -s research/tests -p 'test_owner_ghidra_workflow_contract.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_audit_original_vtable_seed_results.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
@@ -99,16 +109,22 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-project"
-          printf '%s\n' 'volatile int synthetic_data=5;' 'int helper(int x) { return x + synthetic_data; }' 'int main(void) { return helper(37) == 42 ? 0 : 1; }' > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
+          printf '%s\n' 'volatile int synthetic_data=5;' 'int helper(int x) { return x + synthetic_data; }' 'int vtable_helper(int x) { return x + 3; }' 'int main(void) { return helper(37) == 42 && vtable_helper(39) == 42 ? 0 : 1; }' > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
           cc -no-pie -O0 -fno-inline -o "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" "$RUNNER_TEMP/sin-ghidra-smoke/synthetic.c"
           seed_address="$(nm -n "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" | awk '$3 == "helper" { print $1; exit }')"
           test -n "$seed_address"
+          vtable_address="$(nm -n "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" | awk '$3 == "vtable_helper" { print $1; exit }')"
+          test -n "$vtable_address"
+          test "$vtable_address" != "$seed_address"
           printf '%s\n' 'entry,interface,source' "$seed_address,SyntheticEngine001,reviewed_original_static_registration" > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seeds.csv"
+          printf '%s\n' 'entry,interface,slot,source' "$vtable_address,SyntheticVtable001,0,synthetic_vtable_test_fixture" > "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_vtable_method_seeds.csv"
           SIN_PRIVATE_DECOMP_ACK=1 "$GHIDRA_HOME/support/analyzeHeadless" "$RUNNER_TEMP/sin-ghidra-project" SyntheticSmoke \
             -import "$RUNNER_TEMP/sin-ghidra-smoke/synthetic" \
             -scriptPath "$GITHUB_WORKSPACE/research/ghidra" \
             -postScript RemoveSyntheticFactoryForSmoke.java "$seed_address" \
+            -postScript RemoveSyntheticFactoryForSmoke.java "$vtable_address" \
             -postScript SeedReviewedInterfaceFactories.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
+            -postScript SeedAuthenticatedVtablePrefixMethods.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
             -postScript ExportReviewedFactoryDataReferences.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
             -postScript ExportTargetedInterfacePseudocode.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-private" \
             -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
@@ -119,6 +135,9 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
           grep -q 'SyntheticEngine001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
           grep -q 'seeded_candidate' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_seed_results.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_vtable_seed_results.csv"
+          grep -q 'SyntheticVtable001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_vtable_seed_results.csv"
+          grep -q 'seeded_candidate' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_vtable_seed_results.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_data_ref_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_direct_data_refs.csv"
           grep -q 'SyntheticEngine001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_direct_data_refs.csv"
@@ -223,6 +242,16 @@ jobs:
           test -s "$RUNNER_TEMP/sin-reviewed-factory-seeds/server.dll_factory_seeds.csv"
           echo "SIN_GHIDRA_SEED_DIRECTORY=$RUNNER_TEMP/sin-reviewed-factory-seeds" >> "$GITHUB_ENV"
           echo "SIN_GHIDRA_FACTORY_XREFS=1" >> "$GITHUB_ENV"
+      - name: Recover SHA-authenticated file-backed 2006 vtable prefix method seeds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/recover_original_vtable_prefixes.py \
+            --original-dir "$RUNNER_TEMP/sin-original-pe-private" \
+            --out-dir "$RUNNER_TEMP/sin-reviewed-vtable-seeds"
+          test -s "$RUNNER_TEMP/sin-reviewed-vtable-seeds/client.dll_vtable_method_seeds.csv"
+          test -s "$RUNNER_TEMP/sin-reviewed-vtable-seeds/server.dll_vtable_method_seeds.csv"
+          echo "SIN_GHIDRA_VTABLE_SEED_DIRECTORY=$RUNNER_TEMP/sin-reviewed-vtable-seeds" >> "$GITHUB_ENV"
       - name: Authorize ephemeral private Ghidra decompilation after authenticated original staging
         shell: bash
         run: |
@@ -244,6 +273,8 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_functions.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_factory_seed_results.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_factory_seed_results.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_vtable_seed_results.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_vtable_seed_results.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_factory_data_ref_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_factory_data_ref_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_factory_direct_data_refs.csv"
@@ -254,6 +285,17 @@ jobs:
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_TARGETED_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_DECOMPILATION"
+      - name: Authenticate owner originals and recover pinned vtable pointer prefixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/recover_original_vtable_prefixes.py \
+            --original-dir "$RUNNER_TEMP/sin-original-pe-private" \
+            --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --out-dir "$RUNNER_TEMP/sin-ghidra-metadata"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_prefix_review.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_vtable_method_seeds.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_vtable_method_seeds.csv"
       - name: Separate Ghidra inferred functions from SHA-reviewed methods
         shell: bash
         run: |
@@ -262,6 +304,24 @@ jobs:
             --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
             --catalog research/catalog/original_dll_verified_methods.json \
             --out "$RUNNER_TEMP/sin-ghidra-metadata/verified_coverage_summary.json"
+      - name: Re-authenticate original pinned vtable entries against Ghidra function atlas
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/recover_original_vtable_prefixes.py \
+            --original-dir "$RUNNER_TEMP/sin-original-pe-private" \
+            --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --out-dir "$RUNNER_TEMP/sin-ghidra-metadata"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_prefix_review.json"
+      - name: Reconcile all 105 reviewed vtable method seed outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/audit_original_vtable_seed_results.py \
+            --seed-dir "$RUNNER_TEMP/sin-reviewed-vtable-seeds" \
+            --result-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_seed_coverage.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_seed_coverage.json"
       - name: Audit reviewed interface factory seeds without promoting inferred methods
         shell: bash
         run: |
@@ -331,4 +391,5 @@ jobs:
             "$RUNNER_TEMP/sin-original-pe-private" \
             "$RUNNER_TEMP/sin-ghidra-metadata" \
             "$RUNNER_TEMP/sin-reviewed-factory-seeds" \
+            "$RUNNER_TEMP/sin-reviewed-vtable-seeds" \
             "$RUNNER_TEMP/sin-ghidra-private"

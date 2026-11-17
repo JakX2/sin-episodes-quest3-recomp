@@ -27,6 +27,7 @@ CLEANUP_PATHS = [
     "$RUNNER_TEMP/sin-original-pe-private",
     "$RUNNER_TEMP/sin-ghidra-metadata",
     "$RUNNER_TEMP/sin-reviewed-factory-seeds",
+    "$RUNNER_TEMP/sin-reviewed-vtable-seeds",
     "$RUNNER_TEMP/sin-ghidra-private",
 ]
 
@@ -76,6 +77,7 @@ def validate_owner_job(workflow):
     # from exported environment variables, never positional CLI arguments.
     for setting in (
         'echo "SIN_GHIDRA_SEED_DIRECTORY=$RUNNER_TEMP/sin-reviewed-factory-seeds" >> "$GITHUB_ENV"',
+        'echo "SIN_GHIDRA_VTABLE_SEED_DIRECTORY=$RUNNER_TEMP/sin-reviewed-vtable-seeds" >> "$GITHUB_ENV"',
         'echo "SIN_GHIDRA_FACTORY_XREFS=1" >> "$GITHUB_ENV"',
         'echo "SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY=$RUNNER_TEMP/sin-ghidra-private" >> "$GITHUB_ENV"',
         'echo "SIN_PRIVATE_DECOMP_ACK=1" >> "$GITHUB_ENV"',

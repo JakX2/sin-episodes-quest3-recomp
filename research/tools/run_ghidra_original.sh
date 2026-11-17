@@ -54,6 +54,16 @@ else
     done
     post_scripts+=(-postScript SeedReviewedInterfaceFactories.java "$SIN_GHIDRA_SEED_DIRECTORY" "$output")
   fi
+  if [[ -n "${SIN_GHIDRA_VTABLE_SEED_DIRECTORY:-}" ]]; then
+    if [[ -z "${SIN_GHIDRA_SEED_DIRECTORY:-}" ]]; then
+      echo "Original vtable entries require reviewed factory seeds" >&2
+      exit 1
+    fi
+    for dll in client.dll server.dll; do
+      test -s "$SIN_GHIDRA_VTABLE_SEED_DIRECTORY/${dll}_vtable_method_seeds.csv"
+    done
+    post_scripts+=(-postScript SeedAuthenticatedVtablePrefixMethods.java "$SIN_GHIDRA_VTABLE_SEED_DIRECTORY" "$output")
+  fi
   if [[ -n "${SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY:-}" ]]; then
     if [[ -z "${SIN_GHIDRA_SEED_DIRECTORY:-}" || "${SIN_PRIVATE_DECOMP_ACK:-}" != "1" ]]; then
       echo "Targeted private decompilation requires reviewed seeds and explicit acknowledgement" >&2
@@ -96,6 +106,11 @@ else
     for dll in client.dll server.dll; do
       test -s "$output/${dll}_factory_data_ref_status.csv"
       test -s "$output/${dll}_factory_direct_data_refs.csv"
+    done
+  fi
+  if [[ -n "${SIN_GHIDRA_VTABLE_SEED_DIRECTORY:-}" ]]; then
+    for dll in client.dll server.dll; do
+      test -s "$output/${dll}_vtable_seed_results.csv"
     done
   fi
   if [[ -n "${SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY:-}" ]]; then
