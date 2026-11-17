@@ -24,8 +24,26 @@ try {
     [IO.File]::WriteAllText((Join-Path $dir "sin-independent-$other-101.log"),
         "[SiN independent] role=client phase=missing-interface version=VEngineClient012" + [Environment]::NewLine)
     [void](Verify 'NO_INDEPENDENT_INIT_EVIDENCE')
+    # A real game can reach exported CreateInterface and reject our proposed
+    # version without ever calling client Init / server DLLInit.
     $client = Join-Path $dir "sin-independent-$session-202.log"
     [IO.File]::WriteAllText($client,(
+        "[SiN independent] role=client phase=factory-rejected version=VClient012" + [Environment]::NewLine))
+    $out = Verify 'GAME_MODULE_FACTORY_ONLY_NO_INIT_EVIDENCE'
+    if (-not ($out -contains 'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-rejected:VClient012')) {
+        throw "Rejected game-module factory request not preserved"
+    }
+    if (-not ($out -contains 'OWNER_INDEPENDENT_ROLES_OBSERVED: client')) {
+        throw "Factory entry was not attributed to client.dll"
+    }
+    [IO.File]::WriteAllText($client,(
+        "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine))
+    $out = Verify 'GAME_MODULE_FACTORY_ONLY_NO_INIT_EVIDENCE'
+    if (-not ($out -contains 'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011')) {
+        throw "Accepted factory request falsely classified as Init"
+    }
+    [IO.File]::WriteAllText($client,(
+        "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine +
         "[SiN independent] role=client phase=request version=VEngineClient012" + [Environment]::NewLine +
         "[SiN independent] role=client phase=found-interface version=VEngineClient012" + [Environment]::NewLine +
         "[SiN independent] role=client phase=request version=VEngineModel012" + [Environment]::NewLine +
@@ -51,7 +69,7 @@ try {
     [IO.File]::WriteAllText($server,
         "[SiN independent] role=server phase=sdk2004-preflight-only version=<none>" + [Environment]::NewLine)
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
-    Write-Output "PASS owner session classifier: no trace, foreign session, first blocker, two roles, no false retail boot"
+    Write-Output "PASS owner session classifier: cross-session, game-module factory entry, native Init blocker, two roles, no false retail boot"
 } finally {
     Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
 }
