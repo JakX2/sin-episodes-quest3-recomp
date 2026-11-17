@@ -52,6 +52,27 @@ if (-not $launcherText.Contains('samples={2} first_error={3}')) {
 if ($launcherText.Contains('OWNER_ENGINE_MODULE_MISSING:')) {
     throw 'Module polling must not infer absence from an unobserved sample'
 }
+# The actual owner's first retail test exited its tracked PID with zero
+# while Windows still locked client.dll. The cleanup exception used to hide
+# session traces and verdicts; the original backup was correctly retained.
+# Guard the fail-closed recovery report and diagnostic tail of the launcher.
+foreach ($required in @(
+    'RESTORE_PENDING:',
+    'OWNER_INDEPENDENT_RESTORATION:',
+    'INCOMPLETE_MANUAL_RECOVERY_REQUIRED',
+    'Saved original backup SHA256 mismatch'
+)) {
+    if (-not $launcherText.Contains($required)) {
+        throw "Missing locked-DLL recovery contract: $required"
+    }
+}
+$recoveryIndex = $launcherText.IndexOf('RESTORE_PENDING:')
+$traceIndex = $launcherText.IndexOf('OWNER_INDEPENDENT_TRACE:')
+$verdictIndex = $launcherText.IndexOf("Get-OwnerIndependentStartupVerdict.ps1")
+if ($recoveryIndex -lt 0 -or $traceIndex -le $recoveryIndex -or
+    $verdictIndex -le $traceIndex) {
+    throw 'Locked-DLL recovery must retain later session traces and verdict'
+}
 
 function Sha256([string]$Path) {
     $hasher = [System.Security.Cryptography.SHA256]::Create()
@@ -197,7 +218,7 @@ try {
         }
     }
 
-    Write-Output "PASS owner independent Windows PowerShell launcher syntax, module sampling, SE1 real-game-root regression, and 7 non-destructive safety rejection gates"
+    Write-Output "PASS owner independent Windows PowerShell launcher syntax, module sampling, SE1 layout, locked-DLL trace preservation and 7 safety rejection gates"
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
