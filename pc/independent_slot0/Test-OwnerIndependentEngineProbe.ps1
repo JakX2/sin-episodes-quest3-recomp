@@ -1,0 +1,75 @@
+# PowerShell native Windows fail-closed owner probe tests.
+# No real game executable or original DLLs, no game process launched.
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory=$true)][string]$Launcher,
+    [Parameter(Mandatory=$true)][string]$IndependentBin
+)
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$tokens = $null
+$issues = $null
+[void][System.Management.Automation.Language.Parser]::ParseFile(
+    (Resolve-Path -LiteralPath $Launcher).ProviderPath,
+    [ref]$tokens, [ref]$issues
+)
+if ($issues.Count -gt 0) {
+    throw ("Launcher script is not valid Windows PowerShell: " + $issues[0].Message)
+}
+$root = Join-Path ([System.IO.Path]::GetTempPath()) ("sin-independent-guard-" + [Guid]::NewGuid().ToString("N"))
+$bin = Join-Path $root 'bin'
+$exe = Join-Path $root 'fake-owned-test.exe'
+$marker = Join-Path $root 'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY.txt'
+New-Item -ItemType Directory -Path $bin -Force | Out-Null
+try {
+    [System.IO.File]::WriteAllText($exe,'This is NOT an actual game executable.')
+    [System.IO.File]::WriteAllText((Join-Path $bin 'client.dll'),'synthetic invalid owner DLL')
+    [System.IO.File]::WriteAllText((Join-Path $bin 'server.dll'),'synthetic invalid owner DLL')
+    $server = Join-Path $bin 'server.dll'
+    $client = Join-Path $bin 'client.dll'
+    $beforeServer = (Get-FileHash -LiteralPath $server -Algorithm SHA256).Hash
+    $beforeClient = (Get-FileHash -LiteralPath $client -Algorithm SHA256).Hash
+
+    function Reject([string]$Expected,[bool]$Confirm) {
+        $args = @{
+            GameBin = $bin
+            GameExecutable = $exe
+            IndependentBin = $IndependentBin
+            GameArguments = '-console'
+        }
+        if ($Confirm) { $args.DisposableTestCopyConfirmed = $true }
+        $rejected = $false
+        try {
+            & $Launcher @args | Out-Null
+        } catch {
+            if (-not $_.Exception.Message.Contains($Expected)) {
+                throw "Unexpected fail-closed error: $($_.Exception.Message); expected: $Expected"
+            }
+            $rejected = $true
+        }
+        if (-not $rejected) {
+            throw "Owner-only probe did not reject test case: $Expected"
+        }
+        if ((Get-FileHash -LiteralPath $server -Algorithm SHA256).Hash -ne $beforeServer -or
+            (Get-FileHash -LiteralPath $client -Algorithm SHA256).Hash -ne $beforeClient) {
+            throw "Fail-closed probe modified fake retail DLLs!"
+        }
+        foreach ($role in @('server.dll','client.dll')) {
+            if (Test-Path -LiteralPath (Join-Path $bin ("sin_independent_saved_" + $role))) {
+                throw "Fail-closed probe moved a fake original before verification"
+            }
+        }
+    }
+
+    Reject 'DisposableTestCopyConfirmed' $false
+    Reject 'Missing file' $true
+    [System.IO.File]::WriteAllText($marker,'INVALID_TEST_MARKER')
+    Reject 'marker content mismatch' $true
+    [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
+    Reject 'SHA256 mismatch' $true
+
+    Write-Output "PASS owner independent Windows PowerShell launcher syntax and 4 non-destructive rejection gates"
+} finally {
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
