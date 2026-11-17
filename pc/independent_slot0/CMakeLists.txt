@@ -73,3 +73,11 @@ add_executable(sin_server_entity_release_test test_server_entity_release_core.cp
 target_compile_features(sin_server_entity_release_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_entity_release_native
   COMMAND sin_server_entity_release_test)
+
+# Original contact cleanup uses a generation-checked entity handle lookup.
+# This portable independent component also checks the PE32 record shape
+# when compiled as native MSVC x86. Does not export a new game interface.
+add_executable(sin_server_entity_handle_test test_server_entity_handle_core.cpp)
+target_compile_features(sin_server_entity_handle_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_entity_handle_native
+  COMMAND sin_server_entity_handle_test)
