@@ -31,6 +31,8 @@ on:
       - 'research/tests/test_owner_ghidra_workflow_contract.py'
       - 'research/tools/recover_original_vtable_prefixes.py'
       - 'research/tests/test_recover_original_vtable_prefixes.py'
+      - 'research/tools/audit_original_vtable_seed_results.py'
+      - 'research/tests/test_audit_original_vtable_seed_results.py'
       - 'research/ghidra/SeedAuthenticatedVtablePrefixMethods.java'
       - 'research/tools/recover_original_vtable_prefixes.py'
       - 'research/tests/test_recover_original_vtable_prefixes.py'
@@ -76,6 +78,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_join_factory_pointer_candidates.py' -v
           python3 -m unittest discover -s research/tests -p 'test_owner_ghidra_workflow_contract.py' -v
           python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_audit_original_vtable_seed_results.py' -v
           python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
@@ -310,6 +313,15 @@ jobs:
             --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
             --out-dir "$RUNNER_TEMP/sin-ghidra-metadata"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_prefix_review.json"
+      - name: Reconcile all 105 reviewed vtable method seed outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/audit_original_vtable_seed_results.py \
+            --seed-dir "$RUNNER_TEMP/sin-reviewed-vtable-seeds" \
+            --result-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_seed_coverage.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_seed_coverage.json"
       - name: Audit reviewed interface factory seeds without promoting inferred methods
         shell: bash
         run: |
