@@ -30,7 +30,10 @@ foreach ($required in @(
     '$moduleInspectionSucceeded',
     '$moduleInspectionSamples',
     '$moduleInspectionFirstError',
-    '$child.WaitForExit(50)'
+    '$child.WaitForExit(50)',
+    'Require-NoReparseAncestors $GameBin',
+    'Require-NoReparseAncestors $GameExecutable',
+    'Require-NoReparseAncestors $IndependentBin'
 )) {
     if (-not $launcherText.Contains($required)) {
         throw "Missing owner module-observation contract: $required"
@@ -112,7 +115,42 @@ try {
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
 
-    Write-Output "PASS owner independent Windows PowerShell launcher syntax, immediate module sampling contract and 4 non-destructive rejection gates"
+    # A junction at the parent root is *not* visible in leaf-only attribute
+    # checks. It must be rejected before original hashes or any Move-Item.
+    # This exercises the bypass using synthetic, never commercial, files.
+    $junction = Join-Path ([System.IO.Path]::GetTempPath()) ("sin-owner-linked-root-" + [Guid]::NewGuid().ToString("N"))
+    try {
+        New-Item -ItemType Junction -Path $junction -Target $root -ErrorAction Stop | Out-Null
+        $linkedBin = Join-Path $junction 'bin'
+        $linkedExe = Join-Path $junction 'fake-owned-test.exe'
+        $rejected = $false
+        try {
+            & $Launcher -GameBin $linkedBin -GameExecutable $linkedExe `
+                -IndependentBin $IndependentBin -DisposableTestCopyConfirmed | Out-Null
+        } catch {
+            if (-not $_.Exception.Message.Contains('Refusing reparse point ancestor')) {
+                throw "Linked parent failed for the wrong reason: $($_.Exception.Message)"
+            }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw 'Owner launcher accepted a linked disposable-game root' }
+        if ((Sha256 $server) -ne $beforeServer -or
+            (Sha256 $client) -ne $beforeClient) {
+            throw 'Linked-root rejection modified the synthetic originals'
+        }
+        foreach ($role in @('server.dll','client.dll')) {
+            if (Test-Path -LiteralPath (Join-Path $bin ("sin_independent_saved_" + $role))) {
+                throw 'Linked-root rejection moved a synthetic original'
+            }
+        }
+    } finally {
+        # Delete only the junction itself, never recurse into its target.
+        if (Test-Path -LiteralPath $junction) {
+            [System.IO.Directory]::Delete($junction)
+        }
+    }
+
+    Write-Output "PASS owner independent Windows PowerShell launcher syntax, module sampling and 5 non-destructive safety rejection gates"
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
