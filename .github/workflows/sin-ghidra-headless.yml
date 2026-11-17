@@ -199,7 +199,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 research/tools/audit_factory_seeds.py \\
+          python3 research/tools/audit_factory_seeds.py \
             --seed-dir "$SIN_GHIDRA_SEED_DIRECTORY" \\
             --result-dir "$RUNNER_TEMP/sin-ghidra-metadata" \\
             --out "$RUNNER_TEMP/sin-ghidra-metadata/factory_seed_audit.json"
