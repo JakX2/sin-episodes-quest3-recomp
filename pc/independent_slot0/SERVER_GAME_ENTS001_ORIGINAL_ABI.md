@@ -150,3 +150,38 @@ layout and must not reuse these offsets blindly.
 The next meaningful server milestone is reconstructing and testing the
 entity ownership/unknown-object lifecycle and then introducing a
 complete, non-placeholder implementation for all seven slots.
+
+## Bounded original FreeContainingEntity teardown sequence (Phase 317)
+
+This phase inspected the owner's **SHA-verified actual original** `server.dll`
+in a private local workspace, rather than inferring the behavior from
+SDK headers alone. The `ServerGameEnts001` slot 3 wrapper at RVA
+`0x1E82E0` forwards to a shared cleanup helper at RVA `0x266E60`.
+
+The following observable behavior is recovered:
+
+1. A null edict has no effect.
+2. A null unknown interface at `edict + 0x0C` has no effect.
+3. The unknown interface's virtual slot 5 retrieves the base entity;
+   if that pointer is null, nothing is changed.
+4. If a real base entity is found, the helper **clears the edict's
+   unknown pointer**, then **clears the first 32-bit edict state word**.
+5. It then passes that same base entity to **three cleanup routines
+   in order**, at RVAs `0x21FFD0`, `0x220190`, and `0x286C10`.
+
+The precise three cleanup routines' ownership and gameplay semantics are
+**not yet established**. A premature direct implementation that skips them
+would strand entity resources or corrupt the game's entity graph.
+
+`server_entity_release_core.h` therefore implements the verified null
+guards, disconnection and callback order using **three explicitly supplied
+cleanup hooks**, refusing to mutate anything when one is missing. This is
+a testable independent core, not an exported game interface. The native
+MSVC x86 synthetic test checks all null and missing-hook branches,
+pointer identity, ordering of state reset before any cleanup call,
+preservation of unrelated edict fields, and repeated-call no-op.
+
+The owner-private `server.dll` is not committed or loaded by tests.
+The method-level contract still requires identifying and independently
+implementing the three original cleanup behaviors, plus entity ownership,
+before `FreeContainingEntity` can be wired to `ServerGameEnts001`.
