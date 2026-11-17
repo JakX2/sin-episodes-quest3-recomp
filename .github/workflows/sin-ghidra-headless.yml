@@ -29,6 +29,8 @@ on:
       - 'research/tools/join_factory_pointer_candidates.py'
       - 'research/tests/test_join_factory_pointer_candidates.py'
       - 'research/tests/test_owner_ghidra_workflow_contract.py'
+      - 'research/tools/recover_original_vtable_prefixes.py'
+      - 'research/tests/test_recover_original_vtable_prefixes.py'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
       - 'research/tests/test_prepare_reviewed_factory_seeds.py'
       - 'research/tools/build_ghidra_interface_queue.py'
@@ -70,6 +72,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_summarize_factory_data_references.py' -v
           python3 -m unittest discover -s research/tests -p 'test_join_factory_pointer_candidates.py' -v
           python3 -m unittest discover -s research/tests -p 'test_owner_ghidra_workflow_contract.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
@@ -254,6 +257,17 @@ jobs:
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_TARGETED_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_DECOMPILATION"
+      - name: Authenticate owner originals and recover pinned vtable pointer prefixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/recover_original_vtable_prefixes.py \
+            --original-dir "$RUNNER_TEMP/sin-original-pe-private" \
+            --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --out-dir "$RUNNER_TEMP/sin-ghidra-metadata"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/original_vtable_prefix_review.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_vtable_method_seeds.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_vtable_method_seeds.csv"
       - name: Separate Ghidra inferred functions from SHA-reviewed methods
         shell: bash
         run: |
