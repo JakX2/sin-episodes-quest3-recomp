@@ -37,3 +37,13 @@ add_test(NAME independent_owner_engine_exit_diagnosis
     -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerEngineExitDiagnosis.ps1"
     -Classifier "${CMAKE_CURRENT_SOURCE_DIR}/Get-OwnerEngineExitDiagnosis.ps1"
     -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerIndependentEngineProbe.ps1")
+
+# Original server.dll is owner-private. CI tests only the SHA-gated
+# metadata parser with an invented PE32 image, never commercial game code.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_server_original_metadata_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalServerPE.py"
+      --self-test)
+endif()
