@@ -87,22 +87,75 @@ static BOOL CALLBACK sin_initialize_original(PINIT_ONCE once, PVOID parameter,
     return TRUE;
 }
 
-/* Debug-output-only trace: no file writes or factory ABI changes.
- * 'detail' is Win32 GetLastError for load failures and factory return
- * code for results. A NULL result is always reported as 'result-null'.
+/* Both trace channels are explicitly opt-in and never modify factory
+ * behavior. File tracing is useful for real engine launches where no debugger
+ * is attached, unlike OutputDebugStringA alone.
+ *
+ * The log is always in the user's Win32 TEMP directory, named
+ * sin-pc-proxy-<PID>.log. No arbitrary path or original binary bytes are read
+ * from the environment. No logging is performed in DllMain.
+ */
+static int sin_trace_enabled(const char *variable) {
+    char value[2] = {0, 0};
+    DWORD n = GetEnvironmentVariableA(variable, value, (DWORD)sizeof(value));
+    return n == 1 && value[0] == '1';
+}
+
+static void sin_trace_file(const char *line) {
+    wchar_t path[MAX_PATH];
+    wchar_t leaf[80];
+    DWORD n = GetTempPathW((DWORD)(sizeof(path) / sizeof(path[0])), path);
+    size_t used, extra;
+    int formatted;
+    HANDLE file;
+    DWORD written;
+    if (n == 0 || n >= (DWORD)(sizeof(path) / sizeof(path[0])))
+        return;
+    formatted = swprintf(leaf, sizeof(leaf) / sizeof(leaf[0]),
+                         L"sin-pc-proxy-%lu.log",
+                         (unsigned long)GetCurrentProcessId());
+    if (formatted <= 0 || (size_t)formatted >= sizeof(leaf)/sizeof(leaf[0]))
+        return;
+    used = wcslen(path);
+    extra = wcslen(leaf);
+    if (used + extra >= sizeof(path)/sizeof(path[0]))
+        return;
+    memcpy(path + used, leaf, (extra + 1U) * sizeof(wchar_t));
+    file = CreateFileW(path, FILE_APPEND_DATA,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE,
+                       NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE)
+        return;
+    (void)WriteFile(file, line, (DWORD)strlen(line), &written, NULL);
+    CloseHandle(file);
+}
+
+/* 'detail' is Win32 GetLastError for load failures or the CreateInterface
+ * return status. No original function pointers, addresses or filesystem paths
+ * are written. Raw interface names are sanitized to prevent forged log lines.
  */
 static void sin_trace_event(const char *phase, const char *name, DWORD detail) {
-    char trace[2] = {0, 0};
-    char line[420];
-    DWORD n = GetEnvironmentVariableA("SIN_PC_PROXY_TRACE", trace,
-                                      (DWORD)sizeof(trace));
-    if (n != 1 || trace[0] != '1')
+    char safe_name[121];
+    char line[360];
+    size_t i;
+    int debug_enabled = sin_trace_enabled("SIN_PC_PROXY_TRACE");
+    int file_enabled = sin_trace_enabled("SIN_PC_PROXY_TRACE_FILE");
+    if (!debug_enabled && !file_enabled)
         return;
+    if (name == NULL)
+        name = "<none>";
+    for (i = 0; i < sizeof(safe_name)-1U && name[i] != '\0'; ++i) {
+        unsigned char ch = (unsigned char)name[i];
+        safe_name[i] = (ch >= 32U && ch <= 126U) ? (char)ch : '?';
+    }
+    safe_name[i] = '\0';
     (void)snprintf(line, sizeof(line),
-                   "[SiN PC proxy] " SIN_ROLE_NAME " %s name=%.240s detail=%lu\n",
-                   phase, name != NULL ? name : "<none>",
-                   (unsigned long)detail);
-    OutputDebugStringA(line);
+                   "[SiN PC proxy] role=%s phase=%s name=%s detail=%lu\n",
+                   SIN_ROLE_NAME, phase, safe_name, (unsigned long)detail);
+    if (debug_enabled)
+        OutputDebugStringA(line);
+    if (file_enabled)
+        sin_trace_file(line);
 }
 
 /* Exported with the undecorated name CreateInterface via the .def file.

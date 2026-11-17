@@ -52,6 +52,24 @@ add_test(NAME sin_pc_win32_factory_forwarding COMMAND $<TARGET_FILE:sin_pc_proxy
 set_tests_properties(sin_pc_win32_factory_forwarding PROPERTIES
   WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_proxy_tests>")
 
+# Opt-in real Win32 file-backed CreateInterface trace. Both client and server
+# are the independently built proxy plus fake original; never retail binaries.
+add_executable(sin_pc_factory_trace_tests tests/test_factory_trace_file.c)
+sin_pc_configure(sin_pc_factory_trace_tests sin_pc_factory_trace_tests)
+add_dependencies(sin_pc_factory_trace_tests
+  sin_pc_server sin_pc_client sin_pc_fake_server sin_pc_fake_client)
+add_test(NAME sin_pc_win32_original_factory_startup_trace
+  COMMAND $<TARGET_FILE:sin_pc_factory_trace_tests>)
+set_tests_properties(sin_pc_win32_original_factory_startup_trace PROPERTIES
+  WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_factory_trace_tests>")
+
+# Parse the owner-only launcher under the real Windows PowerShell interpreter.
+# It never launches a real game in public CI.
+add_test(NAME sin_pc_owner_startup_trace_launcher_syntax
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/Test-OwnerStartupTraceLauncherSyntax.ps1"
+    -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerSiNStartupTrace.ps1")
+
 
 # Phase177: test the original 2006 DLL CreateInterface registry semantics
 # using independently reconstructed host-neutral code.
