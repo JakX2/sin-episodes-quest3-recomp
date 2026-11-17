@@ -163,5 +163,9 @@ extern "C" __declspec(dllexport) void* __cdecl CreateInterface(
     const char* name, int* status) noexcept {
     const bool found = name && std::strcmp(name, kName) == 0;
     if (status) *status = found ? 0 : 1;
+    // The retail engine may reject our candidate version before it ever
+    // calls slot zero. This is a factory negotiation observation ONLY.
+    // A rejected probe does not prove the engine considers it fatal.
+    diagnostic(found ? "factory-accepted" : "factory-rejected", name);
     return found ? static_cast<void*>(&instance) : nullptr;
 }
