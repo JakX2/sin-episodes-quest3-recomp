@@ -19,6 +19,7 @@ on:
       - 'research/ghidra/ExportTargetedInterfacePseudocode.java'
       - 'research/tools/summarize_private_ghidra_decomp.py'
       - 'research/tests/test_summarize_private_ghidra_decomp.py'
+      - 'research/tests/test_private_ghidra_runner.py'
       - 'research/ghidra/RemoveSyntheticFactoryForSmoke.java'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
       - 'research/tests/test_prepare_reviewed_factory_seeds.py'
@@ -56,6 +57,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_build_ghidra_interface_queue.py' -v
           python3 -m unittest discover -s research/tests -p 'test_audit_factory_seeds.py' -v
           python3 -m unittest discover -s research/tests -p 'test_summarize_private_ghidra_decomp.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_private_ghidra_runner.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
