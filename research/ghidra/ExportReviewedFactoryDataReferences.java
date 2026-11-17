@@ -32,11 +32,13 @@ public class ExportReviewedFactoryDataReferences extends GhidraScript {
     }
 
     private static long pe32(String value) {
-        if (!value.matches("(?i)[0-9a-f]{1,8}")) {
+        if (!value.matches("(?i)[0-9a-f]{1,16}")) {
             throw new IllegalArgumentException("Malformed reviewed factory VA");
         }
         long result = Long.parseUnsignedLong(value, 16);
-        if (result == 0) throw new IllegalArgumentException("Null factory VA");
+        if (result == 0 || Long.compareUnsigned(result, 0xffffffffL) > 0) {
+            throw new IllegalArgumentException("Factory VA outside PE32");
+        }
         return result;
     }
 
