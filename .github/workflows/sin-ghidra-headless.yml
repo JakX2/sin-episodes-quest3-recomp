@@ -34,6 +34,9 @@ on:
       - 'research/tools/audit_original_vtable_seed_results.py'
       - 'research/tests/test_audit_original_vtable_seed_results.py'
       - 'research/ghidra/SeedAuthenticatedVtablePrefixMethods.java'
+      - 'research/ghidra/ExportTargetedVtableMethodPseudocode.java'
+      - 'research/tools/summarize_private_vtable_method_decomp.py'
+      - 'research/tests/test_summarize_private_vtable_method_decomp.py'
       - 'research/tools/recover_original_vtable_prefixes.py'
       - 'research/tests/test_recover_original_vtable_prefixes.py'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
@@ -79,6 +82,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_owner_ghidra_workflow_contract.py' -v
           python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           python3 -m unittest discover -s research/tests -p 'test_audit_original_vtable_seed_results.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_summarize_private_vtable_method_decomp.py' -v
           python3 -m unittest discover -s research/tests -p 'test_recover_original_vtable_prefixes.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
@@ -127,6 +131,7 @@ jobs:
             -postScript SeedAuthenticatedVtablePrefixMethods.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
             -postScript ExportReviewedFactoryDataReferences.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-smoke" \
             -postScript ExportTargetedInterfacePseudocode.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-private" \
+            -postScript ExportTargetedVtableMethodPseudocode.java "$RUNNER_TEMP/sin-ghidra-smoke" "$RUNNER_TEMP/sin-ghidra-private" \
             -postScript ExportOriginalFunctionAtlas.java "$RUNNER_TEMP/sin-ghidra-smoke" \
             -deleteProject
           test -s "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_functions.csv"
@@ -143,6 +148,11 @@ jobs:
           grep -q 'SyntheticEngine001' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_direct_data_refs.csv"
           grep -q '.data' "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_factory_direct_data_refs.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_targeted_decomp_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
+          grep -q 'SyntheticVtable001' "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
+          grep -q 'decompiled_candidate' "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_VTABLE_METHOD_DECOMPILATION/SyntheticVtable001_slot0_${vtable_address}.c"
+          test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_VTABLE_METHOD_DECOMPILATION"
           grep -q 'decompiled_candidate' "$RUNNER_TEMP/sin-ghidra-private/synthetic_targeted_decomp_status.csv"
           find "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_TARGETED_DECOMPILATION" -type f -name 'SyntheticEngine001_*.c' -size +0c | grep -q .
           test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_TARGETED_DECOMPILATION"
@@ -281,6 +291,8 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_factory_direct_data_refs.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/client.dll_targeted_decomp_status.csv"
           test -s "$RUNNER_TEMP/sin-ghidra-private/server.dll_targeted_decomp_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/client.dll_vtable_targeted_decomp_status.csv"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/server.dll_vtable_targeted_decomp_status.csv"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_TARGETED_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_TARGETED_DECOMPILATION"
           test ! -d "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_DECOMPILATION"
@@ -347,6 +359,17 @@ jobs:
             --status-dir "$RUNNER_TEMP/sin-ghidra-private" \
             --out "$RUNNER_TEMP/sin-ghidra-metadata/private_targeted_decomp_summary.json"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/private_targeted_decomp_summary.json"
+      - name: Summarize bounded original vtable decompilation without exposing C text
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/summarize_private_vtable_method_decomp.py \
+            --seed-dir "$RUNNER_TEMP/sin-reviewed-vtable-seeds" \
+            --status-dir "$RUNNER_TEMP/sin-ghidra-private" \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/private_vtable_method_decomp_summary.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/private_vtable_method_decomp_summary.json"
+          test ! -e "$RUNNER_TEMP/sin-ghidra-metadata/client.dll_PRIVATE_VTABLE_METHOD_DECOMPILATION"
+          test ! -e "$RUNNER_TEMP/sin-ghidra-metadata/server.dll_PRIVATE_VTABLE_METHOD_DECOMPILATION"
       - name: Mine relocated read-only code pointer runs for manual vtable triage
         shell: bash
         run: |
