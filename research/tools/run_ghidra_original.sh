@@ -87,6 +87,7 @@ else
       # C-like output remains ephemeral beside the existing private factory
       # C output; only the sanitized status is eligible for metadata upload.
       post_scripts+=(-postScript ExportTargetedVtableMethodPseudocode.java "$SIN_GHIDRA_VTABLE_SEED_DIRECTORY" "$private_output")
+      post_scripts+=(-postScript ExportStartupFactoryDependencyCensus.java "$SIN_GHIDRA_VTABLE_SEED_DIRECTORY" "$private_output")
     fi
   fi
   if [[ "${SIN_GHIDRA_FACTORY_XREFS:-0}" == "1" ]]; then
@@ -123,6 +124,7 @@ else
       test -s "$private_output/${dll}_targeted_decomp_status.csv"
       if [[ -n "${SIN_GHIDRA_VTABLE_SEED_DIRECTORY:-}" ]]; then
         test -s "$private_output/${dll}_vtable_targeted_decomp_status.csv"
+        test -s "$private_output/${dll}_startup_factory_census.csv"
       fi
     done
   fi
