@@ -24,6 +24,29 @@ static void __cdecl notify(void* context, std::uint32_t event) {
         if (rec.runtime->initialized()) ++rec.invalid;
     } else ++rec.invalid;
 }
+// Explicit x86 cdecl factory probe. The caller, not the DLL, must pop two args.
+// MSVC x86 inline assembly prevents the compiler from silently repairing a
+// callee stack imbalance before the assertion. This is synthetic ABI evidence.
+static __declspec(noinline) bool factory_cdecl_stack_balanced(
+    Factory factory, const char* name, void* expected) {
+    int status = -7;
+    void* result = nullptr;
+    std::uintptr_t before = 0, after = 0;
+    int* status_ptr = &status;
+    __asm {
+        mov eax, esp
+        mov before, eax
+        push status_ptr
+        push name
+        mov eax, factory
+        call eax
+        add esp, 8
+        mov result, eax
+        mov eax, esp
+        mov after, eax
+    }
+    return before == after && result == expected && status == 0;
+}
 static int fail(const char* msg, HMODULE dll = nullptr) {
     std::fprintf(stderr, "FAIL synthetic lifecycle: %s (win32=%lu)\n",
                  msg, static_cast<unsigned long>(GetLastError()));
@@ -49,6 +72,8 @@ int main(int argc, char** argv) {
         auto* api = static_cast<IRuntime*>(factory(kName, &status));
         if (!api || status != 0 || factory(kName, nullptr) != api)
             return fail("factory negotiation or singleton identity", dll);
+        if (!factory_cdecl_stack_balanced(factory, kName, api))
+            return fail("cdecl CreateInterface caller stack balance", dll);
         status = -7;
         if (factory("ServerGameDLL003", &status) || status != 1)
             return fail("retail interface name incorrectly accepted", dll);
