@@ -20,6 +20,8 @@ on:
       - 'research/tools/summarize_private_ghidra_decomp.py'
       - 'research/tests/test_summarize_private_ghidra_decomp.py'
       - 'research/tests/test_private_ghidra_runner.py'
+      - 'research/tools/build_relocated_pointer_table_queue.py'
+      - 'research/tests/test_build_relocated_pointer_table_queue.py'
       - 'research/ghidra/RemoveSyntheticFactoryForSmoke.java'
       - 'research/tools/prepare_reviewed_factory_seeds.py'
       - 'research/tests/test_prepare_reviewed_factory_seeds.py'
@@ -58,6 +60,7 @@ jobs:
           python3 -m unittest discover -s research/tests -p 'test_audit_factory_seeds.py' -v
           python3 -m unittest discover -s research/tests -p 'test_summarize_private_ghidra_decomp.py' -v
           python3 -m unittest discover -s research/tests -p 'test_private_ghidra_runner.py' -v
+          python3 -m unittest discover -s research/tests -p 'test_build_relocated_pointer_table_queue.py' -v
           bash -n research/tools/install_pinned_ghidra.sh
           bash -n research/tools/run_ghidra_original.sh
 
@@ -245,6 +248,14 @@ jobs:
             --status-dir "$RUNNER_TEMP/sin-ghidra-private" \
             --out "$RUNNER_TEMP/sin-ghidra-metadata/private_targeted_decomp_summary.json"
           test -s "$RUNNER_TEMP/sin-ghidra-metadata/private_targeted_decomp_summary.json"
+      - name: Mine relocated read-only code pointer runs for manual vtable triage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/tools/build_relocated_pointer_table_queue.py \
+            --ghidra-dir "$RUNNER_TEMP/sin-ghidra-metadata" \
+            --out "$RUNNER_TEMP/sin-ghidra-metadata/relocated_pointer_table_review_queue.json"
+          test -s "$RUNNER_TEMP/sin-ghidra-metadata/relocated_pointer_table_review_queue.json"
       - name: Upload metadata only (NEVER game binaries or pseudocode)
         uses: actions/upload-artifact@v4
         with:
