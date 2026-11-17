@@ -50,8 +50,8 @@ class RunnerContracts(unittest.TestCase):
             "    if os.getenv('SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'):\n"
             "        Path(os.environ['SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'],mod+'_targeted_decomp_status.csv').write_text('interface,entry,outcome,inferred_function_bytes\\nSyntheticEngine001,0x00001000,decompiled_candidate,22\\n')\n"
             "        if os.getenv('SIN_GHIDRA_VTABLE_SEED_DIRECTORY'):\n"
-            "            Path(os.environ['SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'],mod+'_vtable_targeted_decomp_status.csv').write_text('interface,slot,entry,outcome,inferred_function_bytes\\nSyntheticVtable001,0,0x00001000,decompiled_candidate,22\\n')\n",
-            "            Path(os.environ['SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'],mod+'_startup_factory_census.csv').write_text('interface,slot,entry,sdk_method_hypothesis,outcome,inferred_body_bytes,instruction_count,direct_call_sites,indirect_call_sites,interface_literal_count,interface_version_literals\\nSyntheticVtable001,0,0x00001000,SyntheticTestOnly,bounded_inferred_function,22,3,1,0,0,\\n')\\n",
+            "            Path(os.environ['SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'],mod+'_vtable_targeted_decomp_status.csv').write_text('interface,slot,entry,outcome,inferred_function_bytes\\nSyntheticVtable001,0,0x00001000,decompiled_candidate,22\\n')\n"
+            "            Path(os.environ['SIN_GHIDRA_TARGETED_PRIVATE_DIRECTORY'],mod+'_startup_factory_census.csv').write_text('interface,slot,entry,sdk_method_hypothesis,outcome,inferred_body_bytes,instruction_count,direct_call_sites,indirect_call_sites,interface_literal_count,interface_version_literals\\nSyntheticVtable001,0,0x00001000,SyntheticTestOnly,bounded_inferred_function,22,3,1,0,0,\\n')\n",
             encoding="utf-8",
         )
         fake.chmod(0o755)
