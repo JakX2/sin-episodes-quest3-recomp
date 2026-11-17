@@ -81,7 +81,7 @@ public class ExportStartupFactoryDependencyCensus extends GhidraScript {
         long methodVa = -1;
         for (int i = 1; i < rows.size(); i++) {
             String[] fields = rows.get(i).split(",", -1);
-            if (fields.length != 4 || !fields[0].matches("(?i)[0-9a-f]{1,8}") ||
+            if (fields.length != 4 || !fields[0].matches("(?i)(?:[0-9a-f]{1,8}|0{8}[0-9a-f]{8})") ||
                 !fields[1].matches("[A-Za-z0-9_]+") ||
                 !fields[2].matches("[0-9]{1,3}") ||
                 !source.equals(fields[3])) {
