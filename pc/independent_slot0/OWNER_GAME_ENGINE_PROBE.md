@@ -36,7 +36,7 @@ Use your actual installed game executable name. The script intentionally rejects
 
 The script validates all source and destination files before staging anything, moves SHA-verified originals to sin_independent_saved_client.dll / sin_independent_saved_server.dll, copies independent DLLs, launches the game with its own independent log switch, waits for exit, and restores both SHA-verified originals in a finally block. On timeout it terminates the launched process tree first. If a process cannot be stopped it deliberately leaves the original DLLs in the saved backup files for manual restoration after the game has closed.
 
-No log or original code is uploaded. Logs are written only to TEMP/sin-independent-PID.log.
+No log or original code is uploaded. Each owner attempt generates a fresh lowercase hexadecimal session ID, inherited by the launched game process. The launcher reports `OWNER_INDEPENDENT_SESSION` and collects **only** matching `%TEMP%\sin-independent-SESSION-PID.log` files. This avoids mistaking recent output from another process for the current engine result. Standalone synthetic tests retain the legacy PID-only trace path when no session is set.
 
 ## Outcome classification
 
