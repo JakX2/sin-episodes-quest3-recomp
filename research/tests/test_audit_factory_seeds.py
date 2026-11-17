@@ -51,4 +51,24 @@ class AuditTests(unittest.TestCase):
         p=self.path/'client.dll_factory_seeds.csv'
         p.write_text('entry,interface,source\n100000000,ITest001,reviewed_original_static_registration\n')
         with self.assertRaisesRegex(ValueError,'invalid PE32 address'): audit(self.path,self.path)
+    def test_interface_batch_summary(self):
+        result = audit(self.path, self.path)
+        self.assertEqual(result['modules']['client.dll']['interfaces']['ITest001']['outcomes']['seeded_candidate'], 1)
+        self.assertEqual(result['modules']['server.dll']['interfaces']['ITest001']['seed_count'], 1)
+    def test_null_entrypoint(self):
+        p = self.path / 'client.dll_factory_seeds.csv'
+        p.write_text('entry,interface,source\n0,ITest001,reviewed_original_static_registration\n')
+        with self.assertRaisesRegex(ValueError, 'null entrypoint'): audit(self.path, self.path)
+    def test_empty_interface(self):
+        p = self.path / 'client.dll_factory_seed_results.csv'
+        p.write_text('entry,interface,outcome,result_function_entry\n1000,,seeded_candidate,1000\n')
+        with self.assertRaisesRegex(ValueError, 'invalid interface'): audit(self.path, self.path)
+    def test_extra_csv_column(self):
+        p = self.path / 'client.dll_factory_seed_results.csv'
+        p.write_text('entry,interface,outcome,result_function_entry\n1000,ITest001,seeded_candidate,1000,unexpected\n')
+        with self.assertRaisesRegex(ValueError, 'malformed CSV row'): audit(self.path, self.path)
+    def test_short_csv_row(self):
+        p = self.path / 'client.dll_factory_seed_results.csv'
+        p.write_text('entry,interface,outcome,result_function_entry\n1000,ITest001,seeded_candidate\n')
+        with self.assertRaisesRegex(ValueError, 'malformed CSV row'): audit(self.path, self.path)
 if __name__=='__main__': unittest.main()

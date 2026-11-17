@@ -17,7 +17,10 @@ def address(value):
         digits = digits[2:]
     if not 1 <= len(digits) <= 8 or any(c not in '0123456789abcdefABCDEF' for c in digits):
         raise ValueError(f'invalid PE32 address {value!r}')
-    return int(digits, 16)
+    parsed = int(digits, 16)
+    if parsed == 0:
+        raise ValueError('invalid PE32 address: null entrypoint')
+    return parsed
 
 
 def read_csv(path, fields):
@@ -25,13 +28,18 @@ def read_csv(path, fields):
         reader = csv.DictReader(stream)
         if reader.fieldnames != fields:
             raise ValueError(f'{path.name}: unexpected CSV schema')
-        return list(reader)
+        rows = list(reader)
+        if any(None in row or any(value is None for value in row.values()) for row in rows):
+            raise ValueError(f'{path.name}: malformed CSV row')
+        return rows
 
 def audit(seed_dir, result_dir):
     output = {'schema': 1, 'evidence_tier': 'ghidra_inferred_or_seeded_candidates_only', 'modules': {}}
     for module in MODULES:
         seeds = read_csv(seed_dir / f'{module}_factory_seeds.csv', ['entry', 'interface', 'source'])
         results = read_csv(result_dir / f'{module}_factory_seed_results.csv', ['entry', 'interface', 'outcome', 'result_function_entry'])
+        if any(not r['interface'] or r['interface'].strip() != r['interface'] for r in seeds + results):
+            raise ValueError(f'{module}: invalid interface identifier')
         expected = {(address(r['entry']), r['interface']) for r in seeds}
         actual = {(address(r['entry']), r['interface']) for r in results}
         if len(expected) != len(seeds) or len(actual) != len(results) or expected != actual:
@@ -51,7 +59,14 @@ def audit(seed_dir, result_dir):
             if outcome not in ('already_inferred', 'seeded_candidate') and r['result_function_entry']:
                 raise ValueError(f'{module}: unresolved seed has function entry')
             counts[outcome] = counts.get(outcome, 0) + 1
-        output['modules'][module] = {'reviewed_seed_count': len(seeds), 'outcomes': dict(sorted(counts.items())), 'newly_verified_original_methods': 0, 'independently_engine_tested_original_methods': 0}
+        by_interface = {}
+        for r in results:
+            row = by_interface.setdefault(r['interface'], {'seed_count': 0, 'outcomes': {}})
+            row['seed_count'] += 1
+            row['outcomes'][r['outcome']] = row['outcomes'].get(r['outcome'], 0) + 1
+        for row in by_interface.values():
+            row['outcomes'] = dict(sorted(row['outcomes'].items()))
+        output['modules'][module] = {'reviewed_seed_count': len(seeds), 'outcomes': dict(sorted(counts.items())), 'interfaces': dict(sorted(by_interface.items())), 'newly_verified_original_methods': 0, 'independently_engine_tested_original_methods': 0}
     return output
 
 def main():
