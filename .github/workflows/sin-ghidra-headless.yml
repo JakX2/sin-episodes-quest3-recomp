@@ -151,7 +151,7 @@ jobs:
           test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
           grep -q 'SyntheticVtable001' "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
           grep -q 'decompiled_candidate' "$RUNNER_TEMP/sin-ghidra-private/synthetic_vtable_targeted_decomp_status.csv"
-          test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_VTABLE_METHOD_DECOMPILATION/SyntheticVtable001_slot0_${vtable_address}.c"
+          test -s "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_VTABLE_METHOD_DECOMPILATION/SyntheticVtable001_slot0_${vtable_address: -8}.c"
           test ! -e "$RUNNER_TEMP/sin-ghidra-smoke/synthetic_PRIVATE_VTABLE_METHOD_DECOMPILATION"
           grep -q 'decompiled_candidate' "$RUNNER_TEMP/sin-ghidra-private/synthetic_targeted_decomp_status.csv"
           find "$RUNNER_TEMP/sin-ghidra-private/synthetic_PRIVATE_TARGETED_DECOMPILATION" -type f -name 'SyntheticEngine001_*.c' -size +0c | grep -q .
