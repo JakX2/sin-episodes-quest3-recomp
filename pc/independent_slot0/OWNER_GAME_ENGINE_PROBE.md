@@ -1,0 +1,53 @@
+# Phase 291: First independent-DLL load attempt in the actual owned Windows game
+
+This diagnostic (NOT playable) is an owner-only attempt to load the two independently built Windows PE32 gameplay DLLs in an actual SiN Episodes: Emergence executable. The initializers deliberately return failure after checking at most the first few SDK2004 engine interface factories. The entire game remains on the owner's computer.
+
+## Obtain independent diagnostic DLLs
+
+Build from the repo with Visual Studio 2022 Win32 (or use the independent PE32 diagnostic artifact on GitHub Actions):
+
+    cmake -S pc/independent_slot0 -B build-slot0 -G "Visual Studio 17 2022" -A Win32
+    cmake --build build-slot0 --config Release --parallel
+    ctest --test-dir build-slot0 -C Release --output-on-failure
+
+The built pair lives at build-slot0/bin/Release/client.dll and server.dll. They do **not** forward to the original DLLs. They are not normal playable game DLLs and only expose two virtual slots per module.
+
+## Prepare a disposable standalone test copy
+
+Copy the *entire* owned game installation outside the live Steam folder into a new directory (example: D:\SiN-DisposableTest). Include the actual game executable and both original bin/client.dll and bin/server.dll. Keep another backup independent of this test copy. The script checks full pinned SHA-256 values of both originals and refuses unexpected versions.
+
+Place an explicit test-copy marker in the new game root:
+
+    Set-Content -LiteralPath 'D:\SiN-DisposableTest\SIN_INDEPENDENT_DISPOSABLE_TEST_COPY.txt' -Value 'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1'
+
+## Run the one-command engine probe
+
+From your repository checkout:
+
+    .\pc\independent_slot0\Invoke-OwnerIndependentEngineProbe.ps1 `
+      -GameBin 'D:\SiN-DisposableTest\bin' `
+      -GameExecutable 'D:\SiN-DisposableTest\YOUR_ACTUAL_GAME_EXE.exe' `
+      -IndependentBin '.\build-slot0\bin\Release' `
+      -GameArguments '-console' `
+      -TimeoutSeconds 90 `
+      -DisposableTestCopyConfirmed
+
+Use your actual installed game executable name. The script intentionally rejects an executable outside the same disposable game root and a root path in steamapps/common.
+
+The script validates all source and destination files before staging anything, moves SHA-verified originals to sin_independent_saved_client.dll / sin_independent_saved_server.dll, copies independent DLLs, launches the game with its own independent log switch, waits for exit, and restores both SHA-verified originals in a finally block. On timeout it terminates the launched process tree first. If a process cannot be stopped it deliberately leaves the original DLLs in the saved backup files for manual restoration after the game has closed.
+
+No log or original code is uploaded. Logs are written only to TEMP/sin-independent-PID.log.
+
+## Outcome classification
+
+* No log: the game may not have loaded either independent DLL; launcher behavior / path must be checked.
+* Client request VEngineClient012: the retail executable called our independent client Init candidate.
+* Server request VEngineServer021: the retail executable called our independent server DLLInit candidate.
+* missing-interface: the first SDK2004 factory interface request unavailable from the real 2006 game.
+* sdk2004-preflight-only: the bounded first factory names were found, but the code still **returns failure** and is not game startup.
+
+Do not treat a successful first request as a working game. Client/server initialization, remaining vtable layout and SiN-specific gameplay are not implemented here.
+
+## Automated validation
+
+Native Win32 CTest independent_owner_probe_guardrails checks that the owner script parses and refuses cases with no explicit confirmation, no marker, wrong marker, or wrong original DLL SHA256 **without modifying the synthetic test files**. The separate native independent DLL tests probe callbacks against synthetic factories. These tests do not execute the retail game. Source SDK 2004 defines candidate interface types and names, but Valve game source code is not bundled here.
