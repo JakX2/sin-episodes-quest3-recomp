@@ -218,7 +218,75 @@ try {
         }
     }
 
-    Write-Output "PASS owner independent Windows PowerShell launcher syntax, module sampling, SE1 layout, locked-DLL trace preservation and 7 safety rejection gates"
+    # Nonlaunching test-only copy uses invented file hashes. The
+    # production launcher has no override for its original SHA pins.
+    $fixtureLauncher = Join-Path $root 'synthetic-stage-only.ps1'
+    $fixtureText = $launcherText.Replace(
+        '568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650',$beforeServer).Replace(
+        '6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d',$beforeClient)
+    $launchAnchor = '$child = Start-Process @options'
+    if (($fixtureText.Split([string[]]@($launchAnchor),[System.StringSplitOptions]::None)).Count -ne 2) {
+        throw 'Cannot construct nonlaunching staging fixture'
+    }
+    $stageAssertions = @'
+        $expectedNames = @()
+        if ($ProbeRole -eq 'Both' -or $ProbeRole -eq 'Server') { $expectedNames += 'server.dll' }
+        if ($ProbeRole -eq 'Both' -or $ProbeRole -eq 'Client') { $expectedNames += 'client.dll' }
+        if ($staged.Count -ne $expectedNames.Count) { throw 'Wrong staged count' }
+        foreach ($spec in $HashPins) {
+            $live = Join-Path $bin $spec.Name
+            $saved = Join-Path $bin ("sin_independent_saved_" + $spec.Name)
+            if ($expectedNames -contains $spec.Name) {
+                if (-not (Test-Path -LiteralPath $saved -PathType Leaf) -or
+                    (Sha256 $saved) -cne $spec.Hash -or
+                    (Sha256 $live) -cne (Sha256 (Join-Path $build $spec.Name))) {
+                    throw "Wrong staged role or saved original: $($spec.Name)"
+                }
+            } else {
+                if ((Test-Path -LiteralPath $saved) -or (Sha256 $live) -cne $spec.Hash) {
+                    throw "Retained original was modified: $($spec.Name)"
+                }
+            }
+        }
+        throw 'SYNTHETIC_STAGE_ASSERTIONS_COMPLETE_NO_PROCESS_LAUNCHED'
+'@
+    $fixtureText = $fixtureText.Replace($launchAnchor,$stageAssertions)
+    if ($fixtureText.Contains('Start-Process @options')) {
+        throw 'Synthetic staging fixture must never launch a process'
+    }
+    [System.IO.File]::WriteAllText($fixtureLauncher,$fixtureText)
+    Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $Launcher) 'Get-OwnerIndependentStartupVerdict.ps1') -Destination $root
+    foreach ($mode in @('Server','Client','Both')) {
+        $testBuild = Join-Path $root ("build-" + $mode)
+        [void](New-Item -ItemType Directory -Path $testBuild)
+        if ($mode -eq 'Server' -or $mode -eq 'Both') {
+            Copy-Item -LiteralPath (Join-Path $IndependentBin 'server.dll') -Destination $testBuild
+        }
+        if ($mode -eq 'Client' -or $mode -eq 'Both') {
+            Copy-Item -LiteralPath (Join-Path $IndependentBin 'client.dll') -Destination $testBuild
+        }
+        $completed = $false
+        $testArgs = @{GameBin=$bin; GameExecutable=$exe; IndependentBin=$testBuild; ProbeRole=$mode; DisposableTestCopyConfirmed=$true}
+        try {
+            & $fixtureLauncher @testArgs | Out-Null
+        } catch {
+            if (-not $_.Exception.Message.Contains('SYNTHETIC_STAGE_ASSERTIONS_COMPLETE_NO_PROCESS_LAUNCHED')) {
+                throw "Role $mode synthetic staging failed: $($_.Exception.Message)"
+            }
+            $completed = $true
+        }
+        if (-not $completed -or (Sha256 $server) -cne $beforeServer -or
+            (Sha256 $client) -cne $beforeClient) {
+            throw "Role $mode did not restore both fake originals"
+        }
+        foreach ($name in @('server.dll','client.dll')) {
+            if (Test-Path -LiteralPath (Join-Path $bin ("sin_independent_saved_" + $name))) {
+                throw "Role $mode left a backup after synthetic restoration"
+            }
+        }
+    }
+
+    Write-Output "PASS owner independent launcher guardrails, role-isolated staging and both-original restoration (synthetic only)"
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
