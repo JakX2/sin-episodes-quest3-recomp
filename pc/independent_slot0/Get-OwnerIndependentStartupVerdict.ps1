@@ -18,6 +18,8 @@ $issues = New-Object System.Collections.Generic.List[string]
 $requests = New-Object System.Collections.Generic.List[string]
 $factoryResults = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
+$explicitInitRoles = @{}
+$legacyInitEvents = 0
 $blockersByLog = New-Object System.Collections.Generic.List[string]
 foreach ($log in $logs) {
     $logFirstBlocker = $null
@@ -34,6 +36,12 @@ foreach ($log in $logs) {
         } else {
             $callbackEvents++
         }
+        if ($phase -eq 'init-entered') { $explicitInitRoles[$role] = $true }
+        # Backward-compatible classification of old traces. Only an actual
+        # Init/DLLInit body can emit these, unlike Shutdown or factory probes.
+        if ($phase -eq 'request' -or $phase -eq 'missing-interface' -or
+            $phase -eq 'missing-factory' -or $phase -eq 'invalid-init-arguments' -or
+            $phase -eq 'sdk2004-preflight-only') { $legacyInitEvents++ }
         if ($phase -eq 'request') { $requests.Add(("{0}:{1}" -f $role,$version)) }
         if ($phase -eq 'missing-interface' -or
             $phase -eq 'missing-factory' -or
@@ -49,6 +57,7 @@ foreach ($log in $logs) {
 }
 Write-Output ("OWNER_INDEPENDENT_TRACE_FILES: {0}" -f $logs.Count)
 Write-Output ("OWNER_INDEPENDENT_ROLES_OBSERVED: {0}" -f ((@('client','server') | Where-Object { $seen.ContainsKey($_) }) -join ','))
+Write-Output ("OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: {0}" -f ((@('client','server') | Where-Object { $explicitInitRoles.ContainsKey($_) }) -join ','))
 Write-Output ("OWNER_INDEPENDENT_FACTORY_REQUESTS: {0}" -f ($requests -join ','))
 Write-Output ("OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: {0}" -f ($factoryResults -join ','))
 if ($issues.Count -gt 0) {
@@ -59,11 +68,11 @@ if ($issues.Count -gt 0) {
         Write-Output "OWNER_INDEPENDENT_FIRST_RECORDED_BLOCKER: AMBIGUOUS_ACROSS_PROCESSES"
     }
     Write-Output "OWNER_INDEPENDENT_VERDICT: ENGINE_ENTERED_INDEPENDENT_INIT_BUT_REJECTED"
-} elseif ($callbackEvents -eq 0 -and $factoryResults.Count -gt 0) {
+} elseif ($explicitInitRoles.Count -eq 0 -and $legacyInitEvents -eq 0 -and $factoryResults.Count -gt 0) {
     # The engine reached CreateInterface, but may have probed optional
     # names. No claim that a rejection is the fatal retail startup cause.
     Write-Output "OWNER_INDEPENDENT_VERDICT: GAME_MODULE_FACTORY_ONLY_NO_INIT_EVIDENCE"
-} elseif ($logs.Count -eq 0 -or $seen.Count -eq 0) {
+} elseif ($explicitInitRoles.Count -eq 0 -and $legacyInitEvents -eq 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: NO_INDEPENDENT_INIT_EVIDENCE"
 } else {
     Write-Output "OWNER_INDEPENDENT_VERDICT: DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF"

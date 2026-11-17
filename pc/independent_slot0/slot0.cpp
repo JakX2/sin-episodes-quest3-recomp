@@ -99,6 +99,7 @@ public:
     virtual int __thiscall Init(
         Factory appSystemFactory, Factory physicsFactory,
         CGlobalVarsBase* globals) noexcept {
+        diagnostic("init-entered", nullptr);
         if (!appSystemFactory || !physicsFactory || !globals) {
             diagnostic("invalid-init-arguments", nullptr);
             return 0;
@@ -130,6 +131,7 @@ public:
     virtual bool __thiscall DLLInit(
         Factory engineFactory, Factory physicsFactory,
         Factory fileSystemFactory, CGlobalVars* globals) noexcept {
+        diagnostic("init-entered", nullptr);
         if (!engineFactory || !physicsFactory || !fileSystemFactory || !globals) {
             diagnostic("invalid-init-arguments", nullptr);
             return false;

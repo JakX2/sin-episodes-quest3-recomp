@@ -102,3 +102,19 @@ The native x86 loader regression explicitly exercises accepted and rejected
 synthetic classifier tests ensure factory-only observations are not mistaken
 for `Init` and cannot receive a successful startup verdict. The original
 game installation is never used in public CI.
+
+## Explicit independent Init/DLLInit entry (Phase 298)
+
+The owner-local trace now emits `phase=init-entered version=<none>`
+**before** inspecting the three client or four server arguments. This is
+direct evidence that the retail process invoked the independent virtual
+slot zero, rather than merely calling `CreateInterface`. The classifier
+prints `OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES` with `client`, `server`
+or both. An isolated `shutdown` record is no longer treated as an Init
+attempt. Older logs with actual factory queries or Init failures remain
+classifiable, but do not gain an invented explicit-entry marker.
+
+This observation does not verify the remaining vtable layout or establish
+successful initialization. Both independent initializers still return
+failure intentionally. The first *actual* owner-local trace is needed
+before changing the first retail-incompatible factory version or ABI.
