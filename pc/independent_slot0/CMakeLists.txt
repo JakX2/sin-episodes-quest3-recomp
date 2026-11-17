@@ -55,3 +55,13 @@ add_executable(sin_server_gameents_abi_test test_server_gameents_abi.cpp)
 target_compile_features(sin_server_gameents_abi_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_gameents_7slot_native_abi
   COMMAND sin_server_gameents_abi_test)
+
+# The first independently reconstructed real server entity-method behavior,
+# validated against synthetic x86 Source object layouts. Not exported yet:
+# MarkEntitiesAsTouching, FreeContainingEntity and CheckTransmit still need
+# the full game-side entity graph before ServerGameEnts001 is safe to expose.
+add_executable(sin_server_entity_conversion_test
+  test_server_entity_conversion_core.cpp)
+target_compile_features(sin_server_entity_conversion_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_entity_conversion_native
+  COMMAND sin_server_entity_conversion_test)
