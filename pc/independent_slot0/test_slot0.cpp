@@ -230,6 +230,8 @@ int main(int argc, char** argv) {
     if (argc != 2) return fail(1, "expected path");
     // Keep the existing unscoped synthetic diagnostics deterministic even
     // when invoked by an owner terminal with a session variable set.
+    if (!SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_SOUND_PROBE", "0"))
+        return fail(47, "disable inherited retail sound probe");
     if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", nullptr))
         return fail(24, "clear inherited session");
     if (!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE", "0"))
