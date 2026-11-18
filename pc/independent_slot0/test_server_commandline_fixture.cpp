@@ -5,6 +5,7 @@
 namespace {
 int g_present=0, g_rate=0;
 unsigned g_checks=0,g_values=0,g_invalid=0,g_provider=0;
+int g_textMode=0; unsigned g_find=0;
 class Fixture final {
 public:
     virtual void __thiscall Slot0() noexcept { ++g_invalid; }
@@ -24,6 +25,13 @@ public:
             ++g_invalid;
         return g_rate;
     }
+    virtual void __thiscall Slot8() noexcept { ++g_invalid; }
+    virtual void __thiscall Slot9() noexcept { ++g_invalid; }
+    virtual int __thiscall FindParm(const char* name) const noexcept {
+        ++g_find;
+        if(!name || std::strcmp(name,"-textmode"))++g_invalid;
+        return g_textMode?3:0;
+    }
 };
 Fixture object;
 }
@@ -38,4 +46,11 @@ extern "C" __declspec(dllexport) void __cdecl SetTickFixture(int present,int rat
 extern "C" __declspec(dllexport) bool __cdecl VerifyTickFixture() noexcept {
     return !g_invalid && g_checks==1 &&
         g_values==(g_present?1u:0u) && g_provider==(g_present?2u:1u);
+}
+
+extern "C" __declspec(dllexport) void __cdecl SetTextFixture(int present) noexcept {
+    g_textMode=present;g_find=g_checks=g_values=g_invalid=g_provider=0;
+}
+extern "C" __declspec(dllexport) bool __cdecl VerifyTextFixture() noexcept {
+    return !g_invalid && !g_checks && !g_values && g_find==1 && g_provider==1;
 }
