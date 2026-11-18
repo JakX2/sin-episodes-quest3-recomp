@@ -66,6 +66,23 @@ def inspect(data):
     vtable = pe.rva(pe.u32(obj))
     if vtable != 0x296c6c or pe.rva(pe.u32(vtable)) != 0xfe0e0:
         raise ValueError("Client vtable/Init slot mismatch")
+    expected_slots = (
+        0xfe0e0, 0xff3d0, 0xfdb40, 0xfdc00, 0xff4a0, 0xfd990,
+        0xfd8b0, 0xfd8d0, 0xfd8f0, 0xfd970, 0xfd980, 0xfd9a0,
+        0xfd9b0, 0xfd9c0, 0xfd9d0, 0xfd9e0, 0xfd9f0, 0xfda20,
+        0xfda60, 0xfda30, 0xfdaa0, 0xfdab0, 0xfdac0, 0xfdad0,
+        0xfdc20, 0xfdb20, 0xfdc30, 0xfdc40, 0xfdc60, 0xfdc70,
+        0xfdc80, 0xff850, 0xfedf0, 0xfdcd0, 0xfdce0, 0xff570,
+        0xff5c0, 0xfdcf0, 0xfefd0, 0xff000, 0xff040, 0xff080,
+        0xff0c0, 0xfdd10, 0xfdd00, 0xfe600, 0xfe630, 0xfe670,
+    )
+    actual_slots = tuple(pe.rva(pe.u32(vtable+4*i)) for i in range(48))
+    _, text_start, text_size, _, _ = next(s for s in pe.sections if s[0]==".text")
+    if actual_slots != expected_slots or not all(text_start<=x<text_start+text_size for x in actual_slots):
+        raise ValueError("Client original complete vtable mismatch")
+    next_word = pe.u32(vtable+4*48)
+    if pe.base+text_start<=next_word<pe.base+text_start+text_size:
+        raise ValueError("Unexpected additional client vtable slot")
     begin = 0xfe109
     versions = query_prefix(pe.raw(begin, 0xfe31b-begin), begin,
                             lambda va: pe.string(pe.rva(va)), 0xfe59e)
@@ -79,6 +96,8 @@ def inspect(data):
         "original_client_sha256": PIN,
         "interface": "VClient011",
         "init_rva": hex(0xfe0e0),
+        "vtable_slot_count": len(actual_slots),
+        "vtable_slots_rva": [hex(x) for x in actual_slots],
         "initial_required_app_system_queries": versions,
         "next_boundary": "VSoundEmitter001::Connect",
         "status": "original metadata only; client startup incomplete",
