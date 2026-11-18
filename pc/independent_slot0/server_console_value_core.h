@@ -39,8 +39,9 @@ public:
     }
     bool LinkTo(ConsoleValue& root) noexcept {
         if(!initialized_ || !root.initialized_ || root.parent_ ||
-           parent_ || this==&root)return false;
+           parent_ || hasAliases_ || this==&root)return false;
         parent_=&root;
+        root.hasAliases_=true;
         return true;
     }
     const char* Default() const noexcept {return Root().default_.c_str();}
@@ -130,7 +131,7 @@ private:
     std::uint32_t flags_=0;
     float number_=0;
     int integer_=0;
-    bool initialized_=false;
+    bool initialized_=false,hasAliases_=false;
     Changed callback_=nullptr;
     void* context_=nullptr;
 };
