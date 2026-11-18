@@ -18,6 +18,7 @@
 #include "client_material_startup_core.h"
 #include "client_screen_random_core.h"
 #include "client_cvar_probe.h"
+#include "client_owned_startup_probe.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -329,6 +330,19 @@ static bool clientCvarProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_CVAR_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientOwnedStartupProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientCvarProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientOwnedStartupProbe() noexcept {
+    const bool verified=sin_independent::RunOwnedClientStartup(&diagnostic);
+    diagnostic("owned-startup-probe-result",verified?"verified":"refused");
+    diagnostic("owned-startup-terminal-stop","independent-only");
+    TerminateProcess(GetCurrentProcess(),verified?0x53494E57u:0x53494E58u);
+    __fastfail(7);
+}
 [[noreturn]] static void stopAfterClientCvarProbe(void* cvar) noexcept {
     using namespace sin_independent::console_abi;
     static ClientProbeVariables owned;
@@ -337,6 +351,8 @@ static bool clientCvarProbeEnabled() noexcept {
     std::snprintf(outcome,sizeof(outcome),"%s:%u/%u",ResultName(result.result),
         static_cast<unsigned>(result.verified),static_cast<unsigned>(kClientSpecCount));
     diagnostic("client-cvar-probe-result",outcome);
+    if(result.result==SingleCvarResult::Verified && clientOwnedStartupProbeEnabled())
+        stopAfterClientOwnedStartupProbe();
     diagnostic("client-cvar-probe-terminal-stop","3");
     TerminateProcess(GetCurrentProcess(),result.result==SingleCvarResult::Verified?0x53494E55u:0x53494E56u);
     __fastfail(7);

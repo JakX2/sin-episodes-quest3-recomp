@@ -26,6 +26,8 @@ $clientMaterialTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientScreenTerminalLogs = New-Object System.Collections.Generic.List[string]
 $gaussianTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientCvarTerminalLogs = New-Object System.Collections.Generic.List[string]
+$ownedStartupLogs = New-Object System.Collections.Generic.List[string]
+$ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
 $clientCvarNames = @('cl_starfield_distance','cl_starfield_diameter','cl_show_bloodspray')
 $eventTerminalLogs = New-Object System.Collections.Generic.List[string]
 $cvarTerminalLogs = New-Object System.Collections.Generic.List[string]
@@ -75,6 +77,8 @@ foreach ($log in $logs) {
     $clientCvarStage = 0
     $clientCvarVerified = 0
     $clientCvarResult = $null
+    $ownedStartupStage = 0
+    $ownedStartupResult = $null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -197,6 +201,19 @@ foreach ($log in $logs) {
                 $clientCvarStage = 5
             }
         }
+        if ($role -eq 'client' -and $clientCvarStage -eq 4 -and $clientCvarResult -eq 'verified:3/3') {
+            if ($ownedStartupStage -lt $ownedStartupEvents.Count -and
+                ("${phase}:${version}" -ceq $ownedStartupEvents[$ownedStartupStage])) {
+                $ownedStartupStage++
+            } elseif ($phase -eq 'owned-startup-probe-result' -and
+                (($version -eq 'verified' -and $ownedStartupStage -eq $ownedStartupEvents.Count) -or
+                 ($version -eq 'refused' -and $ownedStartupStage -ge 1))) {
+                $ownedStartupResult=$version
+            } elseif ($null -ne $ownedStartupResult -and $phase -eq 'owned-startup-terminal-stop' -and $version -eq 'independent-only') {
+                $ownedStartupLogs.Add(("{0}:client:{1}" -f $log.Name,$ownedStartupResult))
+                $clientCvarStage=5
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -302,6 +319,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($ownedStartupLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_OWNED_STARTUP_RESULTS: {0}" -f ($ownedStartupLogs -join ','))
+}
 if ($clientCvarTerminalLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_CVAR_PROBE_RESULTS: {0}" -f ($clientCvarTerminalLogs -join ','))
 }
@@ -344,6 +364,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($ownedStartupLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_OWNED_STARTUP_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($clientCvarTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($gaussianTerminalLogs.Count -gt 0) {
