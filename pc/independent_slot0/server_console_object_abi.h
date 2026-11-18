@@ -67,7 +67,7 @@ public:
 };
 static_assert(sizeof(CommandBase)==0x18,"original console base stride");
 
-class Variable final:public CommandBase {
+class Variable:public CommandBase {
 public:
     Variable()=default;
     ~Variable() override {delete[] string;}
@@ -78,6 +78,8 @@ public:
     const char* __thiscall GetHelpText() const noexcept override{return parent->help;}
     bool __thiscall IsRegistered() const noexcept override{return parent->registered;}
 
+    // Root setters must stay virtual: a linked root can have a different
+    // vtable. Do not mark this class final or directly call its own body.
     // Explicit distinct names preserve the original MSVC overloaded
     // setter ordering: int, float, string, then internal string/float/int.
     virtual void __thiscall SetInt(int value) {parent->InternalInt(value);} // 9
