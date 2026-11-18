@@ -22,7 +22,7 @@ The 533 immediate constructor sites comprise 384 variable records
 and 149 command records, including 82 +/- input commands. All object
 RVAs are distinct. Case-insensitive names total 532: mat_fullbright
 has two original declarations (default 0, flags 0x4000), at object
-RVAs 0x33DCE8 and 0x358860. The metadata digest (canonical sorted
+RVAs 0x33DCE8 and 0x358960. The metadata digest (canonical sorted
 JSON) is ec58b826b784b5a296fdb5465ccd594aa456b1fd57d028f9833c85656fb75c4b.
 There are 71 declarations with replicated flag 0x2000 and nine
 with unregistered flag 1. There are 81 numeric, flags-zero,
