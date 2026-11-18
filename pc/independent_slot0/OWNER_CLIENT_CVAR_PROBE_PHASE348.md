@@ -43,5 +43,38 @@ requires exact ordered per-object evidence and a valid earlier
 Gaussian prefix. Native distributed DLL tests exercise all-success,
 preflight existing variable/command conflicts, partial relink,
 late first-value mutation, and refusal after failed Gaussian attach.
-The real engine has not yet run the three-variable probe. No original
-game binary or implementation body committed.
+The original engine has now verified the three-variable probe (see below).
+No original game binary or implementation body committed.
+
+## Actual owner engine verification (2026-11-18)
+
+Owner-provided Phase 348 report from the CI bundle built at merge commit
+`8abb78cd1163479e66537cb40c1f1647ad184a97` (PR #412's initial build).
+The reconstructed client was the only staged DLL; the original server
+was retained.
+
+Observed results (sanitized; no local paths, session identifiers or
+commercial binaries published):
+
+- VClient011 accepted and Init entered; all 21 required interfaces found.
+- Sound Connect succeeded, optional material stub and required hardware
+  configuration acquired, screen query returned 1920:1080 and Gaussian
+  attachment verified.
+- Per-variable registration verified for cl_starfield_distance,
+  cl_starfield_diameter and cl_show_bloodspray in that order.
+- Final client-cvar-probe-result: verified:3/3.
+- Actual process exit: 0x53494E55
+  (INDEPENDENT_CLIENT_CVAR_VERIFIED_DIAGNOSTIC_STOP).
+- Client original restored and retained server unchanged; restoration
+  VERIFIED_COMPLETE.
+- Classifier: CLIENT_CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF.
+
+The module snapshot did not observe client.dll, but the session trace
+contains explicit client factory and Init entry plus the terminal result.
+This is owner-observed retail registration evidence, not independent
+execution of the entire original Init. It does not verify the remaining
+console catalog, deferred object list, particle allocator, VGUI or rendering.
+
+Next gate: integrate an explicitly bounded deferred-object initialization
+diagnostic with the verified console prefix; establish authentic required
+object constructors and ownership before claiming retail parity.
