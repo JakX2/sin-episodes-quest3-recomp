@@ -5,6 +5,7 @@
 // against SHA-pinned owner originals. All bodies remain fail-closed.
 // These methods deliberately fail closed after a bounded early factory probe.
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
@@ -16,6 +17,7 @@
 #include "server_gameents_abi.h"
 #include "server_tick_interval_core.h"
 #include "sin_user_message_catalog.h"
+#include "server_post_connect_core.h"
 #include <new>
 #include <intrin.h>
 #endif
@@ -208,12 +210,36 @@ static bool retailSoundProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_SOUND_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
-// The owner has authorized one actual engine callback, not incomplete
-// game startup. Immediately stop after recording its result. Do NOT
-// run later game systems or call a guessed Disconnect/Shutdown API.
+static bool retailEventProbeEnabled() noexcept {
+    char enabled[2]={};
+    return retailSoundProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_EVENT_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+// Keep the original Phase 330 sound-only termination unless a second
+// opt-in explicitly allows the post-Connect event boundary.
 [[noreturn]] static void stopAfterSoundProbe(bool connected) noexcept {
     diagnostic("sound-probe-terminal-stop","VSoundEmitter001");
     TerminateProcess(GetCurrentProcess(), connected ? 0x53494E46u : 0x53494E47u);
+    __fastfail(7);
+}
+[[noreturn]] static void stopAfterEventProbe(
+    void* events, CGlobalVars* globals, Factory engine, Factory physics,
+    Factory filesystem) noexcept {
+    static sin_independent::ServerPostConnectState state;
+    if(!state.Initialize(globals,engine,physics,filesystem))
+        stopUnsupported("ServerPostConnect.Initialize");
+    diagnostic("math-tables-initialized","server-scalar");
+    diagnostic("factory-state-cached","server");
+    diagnostic("event-load-entered","resource/gameevents.res");
+    int count=0;
+    if(!state.LoadInitialEvents(events,count))
+        stopUnsupported("GAMEEVENTSMANAGER002.LoadEventsFromFile.missing-abi-input");
+    char result[80]={};
+    std::snprintf(result,sizeof(result),"resource/gameevents.res:%d",count);
+    diagnostic("event-load-returned",result);
+    diagnostic("event-probe-terminal-stop","resource/gameevents.res");
+    TerminateProcess(GetCurrentProcess(),0x53494E48u);
     __fastfail(7);
 }
 #endif
@@ -279,6 +305,7 @@ public:
         // engine factory. Stop at the first unavailable pointer, never
         // dereference or retain it, and NEVER report successful Init.
         void* sound=nullptr;
+        void* events=nullptr;
         if (!require(engineFactory, kFirstEngineVersion) ||
             !require(engineFactory, kSecondEngineVersion) ||
             !require(engineFactory, kThirdEngineVersion) ||
@@ -290,7 +317,7 @@ public:
             !require(engineFactory, kNinthEngineVersion) ||
             !require(engineFactory, kTenthEngineVersion) ||
             !require(fileSystemFactory, kFileSystemVersion) ||
-            !require(engineFactory, kEleventhEngineVersion) ||
+            !require(engineFactory, kEleventhEngineVersion, &events) ||
             !require(engineFactory, kTwelfthEngineVersion) ||
             !require(engineFactory, kThirteenthEngineVersion, &sound) ||
             !require(engineFactory, kFourteenthEngineVersion) ||
@@ -298,8 +325,12 @@ public:
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
         if (!connectSound(sound,engineFactory)) return false;
 #else
-        if (retailSoundProbeEnabled())
-            stopAfterSoundProbe(connectSound(sound,engineFactory));
+        if (retailSoundProbeEnabled()) {
+            const bool connected=connectSound(sound,engineFactory);
+            if(connected && retailEventProbeEnabled())
+                stopAfterEventProbe(events,globals,engineFactory,physicsFactory,fileSystemFactory);
+            stopAfterSoundProbe(connected);
+        }
 #endif
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
