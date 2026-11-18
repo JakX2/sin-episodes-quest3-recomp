@@ -60,6 +60,7 @@ jobs:
           $errors=$null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) 'owner-diagnostic-bundle/Run-ClientCvarDiagnostic.ps1'),[ref]$tokens,[ref]$errors)
           if ($errors.Count -ne 0) { throw ($errors | Out-String) }
+          & pc/independent_slot0/Test-OwnerClientDiagnosticBundle.ps1 -Wrapper owner-diagnostic-bundle/Run-ClientCvarDiagnostic.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: sin-owner-client-cvar-diagnostic-bundle-not-playable
