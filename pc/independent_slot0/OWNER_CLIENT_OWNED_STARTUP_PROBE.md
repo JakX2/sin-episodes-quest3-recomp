@@ -17,3 +17,30 @@ No original code bodies or binaries are included.
 Owner switch (only after CI passes): EnableClientOwnedStartupProbe, in
 addition to the existing five client switches. Success 0x53494E57,
 refusal 0x53494E58. The existing Phase 348 mode is unchanged by default.
+
+## Actual owner runtime verification (2026-11-18)
+
+The owner ran the CI-built diagnostic bundle at merge commit
+`18fde9fd41a199de5d11dedc0b9a5d7cfcad8b06`, corresponding to
+PR #413 head `26f829f81677447eb4f729084a3c51ff82c9a50b`.
+Only the independent client was staged; the original server was retained.
+
+Observed ordered checkpoints (sanitized):
+- VClient011 factory accepted; Init entered; all 21 initial required interfaces found.
+- Sound connected, material configuration acquired, screen 1920:1080, Gaussian attached.
+- All three client console variables registered and verified again.
+- owned-startup-entered: independent-only
+- owned-startup-objects-ready: 1
+- owned-startup-pool-ready: 2048x96
+- owned-startup-pool-verified: allocate-reuse-release
+- owned-startup-cleanup-verified: pool-objects
+- owned-startup-probe-result: verified
+- owned-startup-terminal-stop: independent-only
+- Process exit: 0x53494E57 (1397313111).
+- Classifier: CLIENT_OWNED_STARTUP_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF.
+- Original client restored, original server unchanged; VERIFIED_COMPLETE.
+
+This is owner-observed execution of the independent owned lifecycle
+inside the actual game process, not original particle allocator parity.
+The original registry population and VGUI helpers remain unresolved.
+No rendering, simulation, or successful VClient011 Init return is claimed.
