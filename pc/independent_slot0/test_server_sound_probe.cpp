@@ -16,23 +16,35 @@ static constexpr const char* kSequence[]={
     "VEngineCache001","VSoundEmitter001","ServerUploadGameStats001",
     "ISERVERPLUGINHELPERS001"
 };
-static int step=0,mode=0,token=0,calls=0;
+static int step=0,mode=0,token=0,calls=0,eventCalls=0;
 static void* __cdecl Engine(const char*,int*);
 class Sound final {
 public:
     virtual bool __thiscall Connect(Factory f) noexcept {
         if(f!=&Engine || step!=16 || ++calls!=1 ||
-           (mode!=1 && mode!=2)) ExitProcess(91);
-        return mode==1;
+           (mode!=1 && mode!=2 && mode!=5 && mode!=6 && mode!=7 && mode!=8)) ExitProcess(91);
+        return mode!=2 && mode!=7;
     }
 };
 static Sound sound;
+class Events final {
+public:
+    virtual void __thiscall Guard0() noexcept { ExitProcess(101); }
+    virtual int __thiscall Load(const char* name) noexcept {
+        if(calls!=1 || step!=16 || ++eventCalls!=1 || !name ||
+           std::strcmp(name,"resource/gameevents.res") || (mode!=5 && mode!=6 && mode!=8)) ExitProcess(102);
+        return mode==5?42:mode==6?0:-1;
+    }
+};
+static Events events;
 static void* __cdecl Engine(const char* name,int* status) {
     if(step>=16 || step==10 || !name || status ||
        std::strcmp(name,kSequence[step])) ExitProcess(92);
     ++step;
     if(mode==3 && step==16)return nullptr;
-    return std::strcmp(name,"VSoundEmitter001")==0 ? static_cast<void*>(&sound) : &token;
+    if(std::strcmp(name,"VSoundEmitter001")==0)return &sound;
+    if(std::strcmp(name,"GAMEEVENTSMANAGER002")==0)return &events;
+    return &token;
 }
 static void* __cdecl FileSystem(const char* name,int* status) {
     if(step!=10 || !name || status || std::strcmp(name,kSequence[step]))
@@ -45,7 +57,8 @@ static int Child(const char* dll,int selected) {
     if(!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE","1") ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION",kSession) ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_FACTORY_PROBE",mode==4?"0":"1") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_SOUND_PROBE",mode==0?"0":"1"))
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_SOUND_PROBE",mode==0?"0":"1") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_EVENT_PROBE",mode>=5?"1":"0"))
         return 95;
     HMODULE module=LoadLibraryA(dll);
     if(!module)return 96;
@@ -56,7 +69,7 @@ static int Child(const char* dll,int selected) {
     auto** table=*reinterpret_cast<void***>(object);
     auto init=reinterpret_cast<bool (__thiscall *)(void*,Factory,Factory,Factory,void*)>(table[0]);
     const bool result=init(object,&Engine,&Physics,&FileSystem,&token);
-    if(result || calls || step!=16 || mode==1 || mode==2)return 99;
+    if(result || calls || eventCalls || step!=16 || mode==1 || mode==2 || mode>=5)return 99;
     FreeLibrary(module);
     return 0;
 }
@@ -85,9 +98,25 @@ static bool Run(const char* dll,int selected) {
     while(auto n=std::fread(buf,1,sizeof(buf),file))data.append(buf,n);
     std::fclose(file);DeleteFileA(log);
     const auto has=[&](const char* text){return data.find(text)!=std::string::npos;};
-    const DWORD expected=selected==1?0x53494E46u:selected==2?0x53494E47u:0u;
+    const bool event=selected==5 || selected==6 || selected==8;
+    const DWORD expected=event?0x53494E48u:selected==1?0x53494E46u:
+        selected==2 || selected==7?0x53494E47u:0u;
     if(result!=expected || !has("phase=init-entered"))return false;
-    if(selected==1 || selected==2) {
+    if(event) {
+        const auto connected=data.find("phase=sound-connect-succeeded");
+        const auto math=data.find("phase=math-tables-initialized version=server-scalar");
+        const auto cached=data.find("phase=factory-state-cached version=server");
+        const auto entered=data.find("phase=event-load-entered version=resource/gameevents.res");
+        const auto returned=data.find(selected==5?"phase=event-load-returned version=resource/gameevents.res:42":
+            selected==6?"phase=event-load-returned version=resource/gameevents.res:0":
+            "phase=event-load-returned version=resource/gameevents.res:-1");
+        const auto stop=data.find("phase=event-probe-terminal-stop");
+        return connected!=std::string::npos && math!=std::string::npos && cached!=std::string::npos &&
+            entered!=std::string::npos && returned!=std::string::npos && stop!=std::string::npos &&
+            connected<math && math<cached && cached<entered && entered<returned && returned<stop &&
+            !has("phase=sound-probe-terminal-stop") && !has("phase=sdk2004-preflight-only");
+    }
+    if(selected==1 || selected==2 || selected==7) {
         const auto found=data.find("phase=found-interface version=ISERVERPLUGINHELPERS001");
         const auto entered=data.find("phase=sound-connect-entered version=VSoundEmitter001");
         const auto returned=data.find(selected==1?"phase=sound-connect-succeeded":"phase=sound-connect-rejected");
@@ -95,7 +124,7 @@ static bool Run(const char* dll,int selected) {
         return found!=std::string::npos && entered!=std::string::npos &&
                returned!=std::string::npos && stopped!=std::string::npos &&
                found<entered && entered<returned && returned<stopped &&
-               !has("phase=sdk2004-preflight-only");
+               !has("phase=sdk2004-preflight-only") && !has("phase=event-load-entered");
     }
     return !has("phase=sound-connect-entered") && !has("phase=sound-probe-terminal-stop") &&
            (selected==3?has("phase=missing-interface version=ISERVERPLUGINHELPERS001"):
@@ -104,9 +133,9 @@ static bool Run(const char* dll,int selected) {
 int main(int argc,char** argv) {
     if(argc==3)return Child(argv[1],std::atoi(argv[2]));
     if(argc!=2)return 1;
-    for(int i=0;i<5;++i)if(!Run(argv[1],i)) {
+    for(int i=0;i<9;++i)if(!Run(argv[1],i)) {
         std::fprintf(stderr,"FAIL actual server sound probe child case %d\n",i);return 2;
     }
-    std::puts("PASS distributed DLL: default off, real typed Connect success/rejection, missing dependency, factory gate");
+    std::puts("PASS distributed DLL: sound gate, math startup, event call ordering, positive/zero/negative results and refusal on sound failure");
     return 0;
 }
