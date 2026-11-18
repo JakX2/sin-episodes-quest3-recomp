@@ -51,7 +51,8 @@ inline ConsoleRecord* FindConsoleRecord(ConsoleRecord* head,const char* name,
 // throughout registration. They own the engine-side links and values.
 class ServerConsoleRegistration {
 public:
-    bool Ready() const noexcept {return initialized_;}
+    bool Ready() const noexcept {return initialized_ && cheats_;}
+    bool RegistrationAttempted() const noexcept {return initialized_;}
     ConsoleRecord* Developer() const noexcept {return developer_;}
     ConsoleRecord* SvCheats() const noexcept {return cheats_;}
 
