@@ -20,6 +20,7 @@
 #include "client_cvar_probe.h"
 #include "client_owned_startup_probe.h"
 #include "client_vgui_vtable_probe.h"
+#include "client_engine_vgui_slot1_probe.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -343,11 +344,27 @@ static bool clientVGuiProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static void* g_engineVgui=nullptr;
 static bool clientVGuiLayoutProbeEnabled() noexcept {
     char value[2]={};
     return clientVGuiProbeEnabled() &&
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_LAYOUT_PROBE",value,2)==1 &&
         value[0]=='1';
+}
+static bool clientEngineVGuiSlot1ProbeEnabled() noexcept {
+    char value[2]={};
+    return clientVGuiLayoutProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_PROBE",value,2)==1 &&
+        value[0]=='1';
+}
+[[noreturn]] static void stopAfterClientEngineVGuiSlot1Probe() noexcept {
+    diagnostic("engine-vgui-slot1-entered","VEngineVGui001:arg2");
+    const auto result=sin_independent::engine_vgui::CallSlot1Arg2(g_engineVgui);
+    diagnostic("engine-vgui-slot1-result",sin_independent::engine_vgui::Name(result));
+    diagnostic("engine-vgui-slot1-terminal-stop","original-slot1");
+    TerminateProcess(GetCurrentProcess(),result==sin_independent::engine_vgui::Slot1Result::Nonzero?
+        0x53494E5Du:0x53494E5Eu);
+    __fastfail(7);
 }
 [[noreturn]] static void stopAfterClientVGuiLayoutProbe(
     HMODULE module,void* input,void* system) noexcept {
@@ -362,6 +379,8 @@ static bool clientVGuiLayoutProbeEnabled() noexcept {
         else diagnostic("vgui-layout-system-verified","0+24");
     }
     diagnostic("vgui-layout-probe-result",result);
+    if(std::strcmp(result,"verified")==0 && clientEngineVGuiSlot1ProbeEnabled())
+        stopAfterClientEngineVGuiSlot1Probe();
     diagnostic("vgui-layout-terminal-stop","read-only");
     TerminateProcess(GetCurrentProcess(),std::strcmp(result,"verified")==0?0x53494E5Bu:0x53494E5Cu);
     __fastfail(7);
@@ -487,6 +506,7 @@ public:
         // advertise successful initialization. Stop at first missing input.
         void* engine=nullptr;
         void* cvar=nullptr;
+        g_engineVgui=nullptr;
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
@@ -499,7 +519,8 @@ public:
             if (!require(appSystemFactory, version,
                          std::strcmp(version,"VSoundEmitter001")==0 ? &sound :
                          std::strcmp(version,"VMaterialSystem076")==0 ? &materials :
-                         std::strcmp(version,"VEngineRandom001")==0 ? &uniform : nullptr))
+                         std::strcmp(version,"VEngineRandom001")==0 ? &uniform :
+                         std::strcmp(version,"VEngineVGui001")==0 ? &g_engineVgui : nullptr))
                 return 0;
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
         if (!connectSound(sound,appSystemFactory)) return 0;
