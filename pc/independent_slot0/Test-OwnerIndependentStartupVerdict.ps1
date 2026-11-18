@@ -625,6 +625,60 @@ try {
         '[SiN independent] role=client phase=engine-vgui-slot1-result version=nonzero',
         $engineSlotStop)))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # VGui_InitInterfacesList owns eight exact factory names and the
+    # IVGui.Init(factory*,1) call before the panel lookup.
+    $controlsStart='[SiN independent] role=client phase=vgui-controls-bootstrap-entered version=CLIENT:factory-count-1'
+    $controlsStop='[SiN independent] role=client phase=vgui-controls-bootstrap-terminal-stop version=source2004'
+    $controlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
+    $controlsEvents=New-Object System.Collections.Generic.List[string]
+    foreach($name in $controlsNames) {
+        $controlsEvents.Add(("[SiN independent] role=client phase=vgui-controls-request version={0}" -f $name))
+        $controlsEvents.Add(("[SiN independent] role=client phase=vgui-controls-found version={0}" -f $name))
+    }
+    foreach($return in @('true','false')) {
+        [IO.File]::WriteAllLines($retailReplay,[string[]]($engineSlotPrefix+@($controlsStart)+
+            @($controlsEvents)+@(
+            '[SiN independent] role=client phase=vgui-controls-init-entered version=VGUI_ivgui006:factory-count-1',
+            ("[SiN independent] role=client phase=vgui-controls-init-returned version={0}" -f $return),
+            ("[SiN independent] role=client phase=vgui-controls-bootstrap-result version=init-{0}" -f $return),
+            $engineSlotEntry,
+            '[SiN independent] role=client phase=engine-vgui-slot1-result version=nonzero',
+            $engineSlotStop,
+            $controlsStop)))
+        $out=Verify 'CLIENT_VGUI_CONTROLS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(-not (($out -join '|').Contains(":client:init-$return:panel-nonzero"))) {
+            throw "VGUI controls initialization classification missing for $return"
+        }
+    }
+    $missingEvents=New-Object System.Collections.Generic.List[string]
+    for($i=0;$i -lt $controlsNames.Count;$i++){
+        $name=$controlsNames[$i]
+        $missingEvents.Add(("[SiN independent] role=client phase=vgui-controls-request version={0}" -f $name))
+        $state=if($i -eq 3){'missing'}else{'found'}
+        $missingEvents.Add(("[SiN independent] role=client phase=vgui-controls-{0} version={1}" -f $state,$name))
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($engineSlotPrefix+@($controlsStart)+
+        @($missingEvents)+@(
+        '[SiN independent] role=client phase=vgui-controls-bootstrap-result version=missing-interface',
+        $controlsStop)))
+    $out=Verify 'CLIENT_VGUI_CONTROLS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if(-not (($out -join '|').Contains(':client:missing-interface:panel-not-reached'))) {
+        throw 'VGUI controls missing-interface classifier result absent'
+    }
+    # A claimed success without Init invocation must not be accepted.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($engineSlotPrefix+@($controlsStart)+
+        @($controlsEvents)+@(
+        '[SiN independent] role=client phase=vgui-controls-bootstrap-result version=init-true',
+        $controlsStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # A missing VGUI interface must not be followed by an accepted Init.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($engineSlotPrefix+@($controlsStart)+
+        @($missingEvents)+@(
+        '[SiN independent] role=client phase=vgui-controls-init-entered version=VGUI_ivgui006:factory-count-1',
+        '[SiN independent] role=client phase=vgui-controls-init-returned version=true',
+        '[SiN independent] role=client phase=vgui-controls-bootstrap-result version=init-true',
+        $controlsStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
