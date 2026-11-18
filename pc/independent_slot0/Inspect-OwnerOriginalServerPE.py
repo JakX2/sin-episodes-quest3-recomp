@@ -243,9 +243,23 @@ def inspect(data):
     additional_versions = query_names(0x1e7760, 0x7d, rb"\xff\xd6")
     if additional_versions != SERVER_DLLINIT_NEXT_FIVE:
         raise ValueError("Original DLLInit post-filesystem engine query mismatch")
+    # Tick interval method is the original main table's slot 9. Its
+    # command-line key, constants and vstdlib call slot indices were
+    # observed in the bounded original method at RVA 0x1E7A90.
+    if MAIN_SLOTS[9] != 0x1e7a90 or pe.string(0x442a68) != "-tickrate":
+        raise ValueError("Original tick interval identity mismatch")
+    default_interval = struct.unpack("<f", pe.raw(0x1e7a9e, 4))[0]
+    minimum_rate = struct.unpack("<f", pe.raw(0x3d8f14, 4))[0]
+    numerator = struct.unpack("<f", pe.raw(0x3d22f8, 4))[0]
+    if abs(default_interval - 0.015) > 1e-9 or minimum_rate != 10 or numerator != 1:
+        raise ValueError("Original server tick interval constants mismatch")
+
     return {"original_server_sha256": PIN, "format": "PE32 x86",
             "status": "ABI research only, no server gameplay implementation",
             "factory_registrations": records,
+            "tick_interval": {"slot": 9, "default_seconds": default_interval,
+                              "override_rate_exclusive_minimum": minimum_rate,
+                              "command_line_flag": "-tickrate"},
             "server_dllinit_first_ten_engine_queries": versions,
             "server_dllinit_filesystem_queries": filesystem_versions,
             "server_dllinit_next_five_engine_queries": additional_versions,
