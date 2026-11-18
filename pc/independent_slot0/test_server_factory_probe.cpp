@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <cmath>
 #include "server_gameents_abi.h"
 
 using Factory = void* (__cdecl *)(const char*,int*);
@@ -106,7 +107,7 @@ static bool runChild(const char* dll,int role,int slot,const char* method) {
     return true;
 }
 int main(int argc,char** argv) {
-    if(argc!=2 && argc!=5)return fail("expected DLL path");
+    if(argc!=3 && argc!=5)return fail("expected server DLL and synthetic command-line provider paths");
     if(!configure(argc==5))return fail("environment");
     HMODULE dll=LoadLibraryA(argv[1]);
     if(!dll)return fail("LoadLibrary");
@@ -146,8 +147,38 @@ int main(int argc,char** argv) {
     reinterpret_cast<Limits>(clientsTable[0])(objects[2],low,high,def);
     if(low!=1||high!=32||def!=1)return fail("original player limits");
 
+    // The server's actual slot 9 uses a loaded vstdlib command-line
+    // singleton. This synthetic DLL lives outside the gameplay artifact.
+    HMODULE fixture=LoadLibraryA(argv[2]);
+    if(!fixture)return fail("test-only command-line provider");
+    using SetFixture=void (__cdecl *)(int,int);
+    using VerifyFixture=bool (__cdecl *)();
+    auto setFixture=reinterpret_cast<SetFixture>(GetProcAddress(fixture,"SetTickFixture"));
+    auto verifyFixture=reinterpret_cast<VerifyFixture>(GetProcAddress(fixture,"VerifyTickFixture"));
+    if(!setFixture || !verifyFixture ||
+       GetModuleHandleA("vstdlib.dll")!=fixture)
+        return fail("synthetic provider identity");
+    using TickInterval=float (__thiscall *)(const void*);
+    auto** serverTable=*reinterpret_cast<void***>(objects[0]);
+    auto tick=reinterpret_cast<TickInterval>(serverTable[9]);
+    struct TickCase { int present; int rate; float expected; };
+    const TickCase cases[] = {
+        {0,60,0.015f},{1,-1,0.015f},{1,0,0.015f},
+        {1,10,0.015f},{1,11,1.0f/11.0f},{1,60,1.0f/60.0f},
+        {1,100,0.01f},{1,1000,0.001f},{1,2147483647,1.0f/2147483647.0f}
+    };
+    for(const auto& c:cases) {
+        setFixture(c.present,c.rate);
+        const float actual=tick(objects[0]);
+        if(!verifyFixture() || !std::isfinite(actual) ||
+           std::fabs(actual-c.expected)>1e-7f*std::fabs(c.expected))
+            return fail("original tick interval or command-line callback sequence");
+    }
+    FreeLibrary(fixture);
+
     for(int i=2;i<31;++i) {
-        auto name=std::string(kNames[0])+".slot"+std::to_string(i);
+        const auto name=i==9 ? std::string("ServerGameDLL003.GetTickInterval.missing-commandline")
+            : std::string(kNames[0])+".slot"+std::to_string(i);
         if(!runChild(argv[1],0,i,name.c_str()))return fail("main table guard");
     }
     for(int i=1;i<15;++i) {
@@ -162,6 +193,6 @@ int main(int argc,char** argv) {
     }
     FreeLibrary(dll);
     DeleteFileA(logPath(GetCurrentProcessId()).c_str());
-    std::puts("PASS opt-in server factory probe: original table spans 31/7/15, player limits, null paths, 49 nonreturning child guards with trace");
+    std::puts("PASS opt-in server factory probe: original table spans 31/7/15, player limits, null paths, 49 nonreturning child guards (including absent command-line provider), nine tick cases with trace");
     return 0;
 }
