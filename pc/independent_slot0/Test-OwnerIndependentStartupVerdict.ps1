@@ -442,8 +442,9 @@ try {
     )))
     $out = Verify 'CLIENT_MATERIAL_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
     if (-not (($out -join '|').Contains(':client:acquired'))) { throw 'Actual Phase 341 result missing' }
-    # Future Gaussian result remains synthetic. Require the entire
-    # successful screen path before checking the attach evidence.
+    # Actual Phase 344 owner observed 1920:1080 and attached, with
+    # exit 0x53494E53 and verified restoration. Alternate refusals below
+    # remain synthetic. Require the full successful screen path.
     $gaussianPrefix = @($retail341) + @(
         '[SiN independent] role=client phase=screen-query-entered version=VEngineClient012.GetScreenSize',
         '[SiN independent] role=client phase=screen-query-returned version=1920:1080',
@@ -463,7 +464,7 @@ try {
         )
         [IO.File]::WriteAllLines($retailReplay,[string[]]$trace)
         $out = Verify 'CLIENT_GAUSSIAN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
-        if (-not (($out -join '|').Contains(":client:$attachResult"))) { throw 'Gaussian result missing' }
+        if (-not (($out -join '|').Contains(":client:$attachResult"))) { throw 'Phase 344 observed or alternate Gaussian result missing' }
     }
     [IO.File]::WriteAllLines($retailReplay,[string[]](@($gaussianPrefix) + @(
         '[SiN independent] role=client phase=gaussian-probe-result version=attached',
