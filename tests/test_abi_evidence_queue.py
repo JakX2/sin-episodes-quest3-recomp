@@ -19,7 +19,7 @@ class EvidenceQueueTests(unittest.TestCase):
         second = module.report(module.validate({"records": [b, a]}))
         self.assertEqual(first, second)
         self.assertEqual(first["counts"]["engine_tested"], 0)
-        self.assertEqual(first["records"][0]["rva"], "0x0002")
+        self.assertEqual(first["records"][0]["rva"], "0x2")
 
     def test_rva_padding_is_canonical_and_stable(self):
         padded = dict(BASE, rva="0x0002")
@@ -30,6 +30,15 @@ class EvidenceQueueTests(unittest.TestCase):
         self.assertEqual(a["records"][0]["rva"], "0x2")
         with self.assertRaises(ValueError):
             module.validate({"records": [padded, plain]})
+
+    def test_optional_null_and_absent_fields_have_same_fingerprint(self):
+        with_null = dict(BASE, test_id=None)
+        without_null = {k: v for k, v in BASE.items() if k != "body_sha256"}
+        a = module.report(module.validate({"records": [with_null]}))
+        b = module.report(module.validate({"records": [without_null]}))
+        self.assertEqual(a, b)
+        self.assertNotIn("body_sha256", a["records"][0])
+        self.assertNotIn("test_id", a["records"][0])
 
     def test_duplicate_rejected(self):
         with self.assertRaises(ValueError):
