@@ -18,6 +18,8 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+      - name: Validate original-free VEngineVGui001 PE parser
+        run: python research/tests/test_sin_client_engine_vgui_slot1.py
       - name: Configure native MSVC Win32
         run: cmake -S pc/independent_slot0 -B build-slot0 -G "Visual Studio 17 2022" -A Win32
       - name: Build non-forwarding DLLs and ABI tests
