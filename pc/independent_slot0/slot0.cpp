@@ -191,6 +191,10 @@ static bool connectSound(void* sound, Factory factory) noexcept {
     using sin_independent::SoundConnectResult;
     const auto result=sin_independent::TryConnectSoundEmitter(sound,factory);
     const bool connected=result==SoundConnectResult::Connected;
+#if defined(SIN_ROLE_server) && !defined(SIN_SYNTHETIC_SOUND_CONNECT)
+    if (!connected && result!=SoundConnectResult::Rejected)
+        stopUnsupported("VSoundEmitter001.Connect.missing-abi-input");
+#endif
     diagnostic(connected ? "sound-connect-succeeded" : "sound-connect-rejected",
                "VSoundEmitter001");
     return connected;
