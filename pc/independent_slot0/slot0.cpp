@@ -20,6 +20,7 @@
 #include "sin_user_message_catalog.h"
 #include "server_post_connect_core.h"
 #include "server_single_cvar_probe.h"
+#include "server_batch_cvar_probe.h"
 #include <new>
 #endif
 
@@ -227,6 +228,26 @@ static bool retailCvarProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_CVAR_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool retailBatchCvarProbeEnabled() noexcept {
+    char enabled[2]={};
+    return retailCvarProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_CVAR_BATCH_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterBatchCvarProbe(void* cvar) noexcept {
+    using namespace sin_independent::console_abi;
+    static BatchVariables variables;
+    const auto result=variables.Register(cvar,&diagnostic);
+    char outcome[96]={};
+    std::snprintf(outcome,sizeof(outcome),"%s:%u/%u",
+        ResultName(result.result),static_cast<unsigned>(result.verified),
+        static_cast<unsigned>(kBatchCount));
+    diagnostic("cvar-batch-result",outcome);
+    diagnostic("cvar-batch-terminal-stop","24");
+    TerminateProcess(GetCurrentProcess(),result.result==SingleCvarResult::Verified?
+        0x53494E4Du:0x53494E4Eu);
+    __fastfail(7);
+}
 static void traceCvar(const char* phase) noexcept {
     diagnostic(phase,sin_independent::console_abi::kProbeVarName);
 }
@@ -263,6 +284,7 @@ static void traceCvar(const char* phase) noexcept {
     char result[80]={};
     std::snprintf(result,sizeof(result),"resource/gameevents.res:%d",count);
     diagnostic("event-load-returned",result);
+    if(count>0 && retailBatchCvarProbeEnabled())stopAfterBatchCvarProbe(cvar);
     if(count>0 && retailCvarProbeEnabled())stopAfterCvarProbe(cvar);
     diagnostic("event-probe-terminal-stop","resource/gameevents.res");
     TerminateProcess(GetCurrentProcess(),0x53494E48u);
