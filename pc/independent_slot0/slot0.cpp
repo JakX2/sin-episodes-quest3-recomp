@@ -15,6 +15,7 @@
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
 #include "server_tick_interval_core.h"
+#include "sin_user_message_catalog.h"
 #include <new>
 #include <intrin.h>
 #endif
@@ -286,7 +287,7 @@ public:
         return false;
     }
     // Original ServerGameDLL003 has 31 entries, not the SDK's 29.
-    // Slots 2..30 remain guards except tick interval and game description.
+    // Unimplemented slots remain terminal guards; verified methods are typed.
     SIN_GUARD_SLOT(2, "ServerGameDLL003")
     SIN_GUARD_SLOT(3, "ServerGameDLL003")
     SIN_GUARD_SLOT(4, "ServerGameDLL003")
@@ -333,7 +334,13 @@ public:
     SIN_GUARD_SLOT(25, "ServerGameDLL003")
     SIN_GUARD_SLOT(26, "ServerGameDLL003")
     SIN_GUARD_SLOT(27, "ServerGameDLL003")
-    SIN_GUARD_SLOT(28, "ServerGameDLL003")
+    // Original slot 28, RVA 0x1e7c80: bounded name and size lookup
+    // from the shared message catalog registered on game DLL load.
+    virtual bool __thiscall GetUserMessageInfo(
+        int index, char* name, int capacity, int& bytes) noexcept {
+        diagnostic("diagnostic-callback","ServerGameDLL003.GetUserMessageInfo");
+        return sin_independent::GetUserMessageInfo(index,name,capacity,bytes);
+    }
     SIN_GUARD_SLOT(29, "ServerGameDLL003")
     SIN_GUARD_SLOT(30, "ServerGameDLL003")
     bool seen_ = false;
