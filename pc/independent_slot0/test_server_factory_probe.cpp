@@ -186,8 +186,106 @@ int main(int argc,char** argv) {
        description(objects[0])!=firstDescription)
         return fail("original slot 11 stable pre-init game description");
 
+    using MessageInfo=bool (__thiscall *)(void*,int,char*,int,int&);
+    const auto info=reinterpret_cast<MessageInfo>(serverTable[28]);
+    struct ExpectedMessage { const char* name; int size; };
+    const ExpectedMessage expected[]={
+        {"Train",1},
+        {"HudText",-1},
+        {"SayText",-1},
+        {"TextMsg",-1},
+        {"HudMsg",-1},
+        {"ResetHUD",1},
+        {"GameTitle",0},
+        {"ItemPickup",-1},
+        {"ShowMenu",-1},
+        {"Shake",13},
+        {"Fade",10},
+        {"VGUIMenu",-1},
+        {"Damage",18},
+        {"VoiceMask",9},
+        {"RequestState",0},
+        {"CloseCaption",6},
+        {"HintText",-1},
+        {"SquadMemberDied",0},
+        {"AmmoDenied",2},
+        {"AmmoPickup",4},
+        {"ArenaMode",1},
+        {"ArenaUpdate",12},
+        {"DynamicDecision",2},
+        {"CreditsMsg",1},
+        {"HUDCamera",2},
+        {"NewGameInfo",-1},
+        {"Cheating",1},
+        {"StaticStat",-1},
+        {"DynamicStat",-1},
+        {"GamePlayVarValue",6},
+        {"Progression",4},
+        {"DDInfo",-1},
+        {"DDAdvisorScores",-1},
+        {"DDAdvisorChannels",-1},
+        {"DDAdvisorsUpdate",-1},
+        {"DDDecisionMade",-1},
+        {"DDDecisionsPerf",-1},
+        {"DDSuccessModifiers",-1},
+        {"PoliceRadioMessage",-1},
+    };
+    static_assert(sizeof(expected)/sizeof(expected[0])==39,"original registry count");
+    for(int i=0;i<39;++i) {
+        char name[64]={};
+        int size=-999;
+        if(!info(objects[0],i,name,sizeof(name),size) ||
+           std::strcmp(name,expected[i].name) || size!=expected[i].size)
+            return fail("original user message id/name/size");
+    }
+    char tiny[4]={'X','X','X','X'};
+    int size=-999;
+    if(!info(objects[0],38,tiny,3,size) || std::strcmp(tiny,"Po") ||
+       tiny[3]!='X' || size!=-1)return fail("bounded user-message name");
+    char single[2]={'X','Q'};
+    if(!info(objects[0],0,single,1,size) || single[0] || single[1]!='Q' ||
+       size!=1)return fail("one-byte user-message name buffer");
+    const int invalidIndices[]={-1,39,65535};
+    for(int index:invalidIndices) {
+        char unchanged[8]="KEEP";
+        size=123;
+        if(info(objects[0],index,unchanged,sizeof(unchanged),size) ||
+           std::strcmp(unchanged,"KEEP") || size!=123)
+            return fail("invalid user-message index mutated outputs");
+    }
+    char unchanged[8]="KEEP";
+    size=456;
+    if(info(objects[0],0,nullptr,8,size) || info(objects[0],0,unchanged,0,size) ||
+       info(objects[0],0,unchanged,-1,size) || size!=456 ||
+       std::strcmp(unchanged,"KEEP"))return fail("invalid name buffer");
+
+    // Verify the x86 calling convention independently of a typed C++ call:
+    // ECX receiver, four stack arguments, callee pops 16 bytes.
+    void* self=objects[0];
+    void* target=serverTable[28];
+    char buffer[64]={};
+    char* output=buffer;
+    int outputSize=-999;
+    int* sizeOutput=&outputSize;
+    DWORD before=0,after=0,returned=0;
+    __asm {
+        mov before,esp
+        push sizeOutput
+        push 64
+        push output
+        push 21
+        mov ecx,self
+        mov eax,target
+        call eax
+        movzx eax,al
+        mov returned,eax
+        mov after,esp
+    }
+    if(before!=after || returned!=1 || std::strcmp(buffer,"ArenaUpdate") ||
+       outputSize!=12)return fail("native original slot 28 stack/return");
+
     for(int i=2;i<31;++i) {
-        if(i==11)continue;
+        if(i==11 || i==28)continue;
         const auto name=i==9 ? std::string("ServerGameDLL003.GetTickInterval.missing-commandline")
             : std::string(kNames[0])+".slot"+std::to_string(i);
         if(!runChild(argv[1],0,i,name.c_str()))return fail("main table guard");
@@ -204,6 +302,6 @@ int main(int argc,char** argv) {
     }
     FreeLibrary(dll);
     DeleteFileA(logPath(GetCurrentProcessId()).c_str());
-    std::puts("PASS opt-in server factory probe: original table spans 31/7/15, player limits, null paths, 48 terminal child cases, nine tick cases and original pre-init game description");
+    std::puts("PASS opt-in server factory probe: original table spans 31/7/15, player limits, null paths, 47 terminal child cases, nine tick cases, pre-init game description and all 39 original user-message records");
     return 0;
 }
