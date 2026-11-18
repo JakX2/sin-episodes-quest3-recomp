@@ -33,7 +33,7 @@ class OriginalPE:
         if len(data) < 0x100 or data[:2] != b"MZ":
             raise ValueError("Invalid PE DOS header")
         peoff = struct.unpack_from("<I", data, 0x3c)[0]
-        if peoff + 24 > len(data) or data[peoff:peoff+4] != b"PE\\0\\0":
+        if peoff + 24 > len(data) or data[peoff:peoff+4] != b"PE\0\0":
             raise ValueError("Invalid PE signature")
         nsects, optsize = struct.unpack_from("<HH", data, peoff+6)[0], struct.unpack_from("<H", data, peoff+20)[0]
         if optsize < 32 or struct.unpack_from("<H", data, peoff+24)[0] != 0x10b:
