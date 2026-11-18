@@ -367,6 +367,89 @@ try {
         '[SiN independent] role=server phase=event-probe-terminal-stop version=resource/gameevents.res'
     )))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Actual Phase 339 owner trace: all 21 acquisitions and real sound
+    # success with exit 0x53494E4B and verified original restoration.
+    $client339 = @(
+        '[SiN independent] role=client phase=factory-accepted version=VClient011',
+        '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=request version=VEngineClient012',
+        '[SiN independent] role=client phase=found-interface version=VEngineClient012',
+        '[SiN independent] role=client phase=request version=VEngineModel012',
+        '[SiN independent] role=client phase=found-interface version=VEngineModel012',
+        '[SiN independent] role=client phase=request version=VEngineEffects001',
+        '[SiN independent] role=client phase=found-interface version=VEngineEffects001',
+        '[SiN independent] role=client phase=request version=VEngineCvar002',
+        '[SiN independent] role=client phase=found-interface version=VEngineCvar002',
+        '[SiN independent] role=client phase=request version=EngineTraceClient003',
+        '[SiN independent] role=client phase=found-interface version=EngineTraceClient003',
+        '[SiN independent] role=client phase=request version=VEngineRenderView011',
+        '[SiN independent] role=client phase=found-interface version=VEngineRenderView011',
+        '[SiN independent] role=client phase=request version=VDebugOverlay003',
+        '[SiN independent] role=client phase=found-interface version=VDebugOverlay003',
+        '[SiN independent] role=client phase=request version=VMaterialSystem076',
+        '[SiN independent] role=client phase=found-interface version=VMaterialSystem076',
+        '[SiN independent] role=client phase=request version=VEngineCache001',
+        '[SiN independent] role=client phase=found-interface version=VEngineCache001',
+        '[SiN independent] role=client phase=request version=VModelInfoClient003',
+        '[SiN independent] role=client phase=found-interface version=VModelInfoClient003',
+        '[SiN independent] role=client phase=request version=VEngineVGui001',
+        '[SiN independent] role=client phase=found-interface version=VEngineVGui001',
+        '[SiN independent] role=client phase=request version=VEngineClientStringTable001',
+        '[SiN independent] role=client phase=found-interface version=VEngineClientStringTable001',
+        '[SiN independent] role=client phase=request version=SpatialPartition001',
+        '[SiN independent] role=client phase=found-interface version=SpatialPartition001',
+        '[SiN independent] role=client phase=request version=VEngineShadowMgr002',
+        '[SiN independent] role=client phase=found-interface version=VEngineShadowMgr002',
+        '[SiN independent] role=client phase=request version=StaticPropMgrClient004',
+        '[SiN independent] role=client phase=found-interface version=StaticPropMgrClient004',
+        '[SiN independent] role=client phase=request version=IEngineSoundClient003',
+        '[SiN independent] role=client phase=found-interface version=IEngineSoundClient003',
+        '[SiN independent] role=client phase=request version=VFileSystem012',
+        '[SiN independent] role=client phase=found-interface version=VFileSystem012',
+        '[SiN independent] role=client phase=request version=VEngineRandom001',
+        '[SiN independent] role=client phase=found-interface version=VEngineRandom001',
+        '[SiN independent] role=client phase=request version=VENGINE_GAMEUIFUNCS_VERSION004',
+        '[SiN independent] role=client phase=found-interface version=VENGINE_GAMEUIFUNCS_VERSION004',
+        '[SiN independent] role=client phase=request version=GAMEEVENTSMANAGER002',
+        '[SiN independent] role=client phase=found-interface version=GAMEEVENTSMANAGER002',
+        '[SiN independent] role=client phase=request version=VSoundEmitter001',
+        '[SiN independent] role=client phase=found-interface version=VSoundEmitter001',
+        '[SiN independent] role=client phase=sound-connect-entered version=VSoundEmitter001',
+        '[SiN independent] role=client phase=sound-connect-succeeded version=VSoundEmitter001'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($client339) + @(
+        '[SiN independent] role=client phase=sound-probe-terminal-stop version=VSoundEmitter001'
+    )))
+    $out = Verify 'CLIENT_SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (-not ($out -ccontains 'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: client') -or
+        -not ($out -ccontains 'OWNER_INDEPENDENT_FACTORY_REQUESTS: client:VEngineClient012,client:VEngineModel012,client:VEngineEffects001,client:VEngineCvar002,client:EngineTraceClient003,client:VEngineRenderView011,client:VDebugOverlay003,client:VMaterialSystem076,client:VEngineCache001,client:VModelInfoClient003,client:VEngineVGui001,client:VEngineClientStringTable001,client:SpatialPartition001,client:VEngineShadowMgr002,client:StaticPropMgrClient004,client:IEngineSoundClient003,client:VFileSystem012,client:VEngineRandom001,client:VENGINE_GAMEUIFUNCS_VERSION004,client:GAMEEVENTSMANAGER002,client:VSoundEmitter001') -or
+        -not (($out -join '|').Contains(':client:sound-connect-succeeded'))) {
+        throw 'Actual Phase 339 client evidence missing'
+    }
+    # Synthetic future material outcome. A missing stub is nonfatal.
+    $materialPrefix = @($client339) + @(
+        '[SiN independent] role=client phase=textmode-checked version=absent',
+        '[SiN independent] role=client phase=optional-request version=VMaterialSystemStub001',
+        '[SiN independent] role=client phase=optional-missing version=VMaterialSystemStub001',
+        '[SiN independent] role=client phase=hardware-config-entered version=MaterialSystemHardwareConfig012'
+    )
+    foreach ($found in @($true,$false)) {
+        $status = if ($found) { 'acquired' } else { 'missing-hardware' }
+        $phase = if ($found) { 'hardware-config-found' } else { 'hardware-config-missing' }
+        [IO.File]::WriteAllLines($retailReplay,[string[]](@($materialPrefix) + @(
+            ("[SiN independent] role=client phase={0} version=MaterialSystemHardwareConfig012" -f $phase),
+            ("[SiN independent] role=client phase=material-probe-result version={0}" -f $status),
+            '[SiN independent] role=client phase=material-probe-terminal-stop version=MaterialSystemHardwareConfig012'
+        )))
+        $out = Verify 'CLIENT_MATERIAL_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if (-not (($out -join '|').Contains(":client:$status"))) { throw 'Material result missing' }
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($client339) + @(
+        '[SiN independent] role=client phase=material-probe-result version=acquired',
+        '[SiN independent] role=client phase=material-probe-terminal-stop version=MaterialSystemHardwareConfig012'
+    )))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+
     # Hypothetical client-only probe (not an owner-observed result).
     # Distinguish its terminal Connect from any server outcome.
     foreach ($phase in @('sound-connect-succeeded','sound-connect-rejected')) {
