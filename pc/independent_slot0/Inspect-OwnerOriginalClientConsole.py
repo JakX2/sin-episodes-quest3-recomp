@@ -70,6 +70,19 @@ def recover(code,begin,base,resolve,mapped,executable,ctors=CTORS):
     return rows,counts
 
 
+def verify_probe_specs(candidates):
+    header=(root/"client_cvar_probe.h").read_text()
+    selected=[(n,v,int(c,16),int(o,16)) for n,v,c,o in
+        re.findall(r'\{"([^"]+)","([^"]+)",(0x[0-9a-f]+),(0x[0-9a-f]+)\}',header)]
+    expected=[("cl_starfield_distance","256.0",0x26f031,0x37b108),
+        ("cl_starfield_diameter","128.0",0x26f001,0x37b0c0),
+        ("cl_show_bloodspray","1",0x268e01,0x361978)]
+    available={(r["name"],r["default"],r["call_rva"],r["object_rva"]) for r in candidates}
+    if selected!=expected or not set(selected).issubset(available):
+        raise ValueError("Client selected probe declaration mismatch")
+    return selected
+
+
 def inspect(data,server):
     if hashlib.sha256(data).hexdigest()!=PIN:
         raise ValueError("Original client SHA256 mismatch")
@@ -130,7 +143,9 @@ def inspect(data,server):
         NUMERIC.fullmatch(r["default"]) and r["name"].encode("ascii")+b"\0" not in server]
     if len(candidates)!=81:
         raise ValueError("Client candidate selection mismatch")
+    selected=verify_probe_specs(candidates)
     return {"status":"static metadata only","declarations":rows,
+        "probe_selection_count":len(selected),
         "variables":sum(r["kind"]=="variable" for r in rows),
         "commands":sum(r["kind"]=="command" for r in rows),
         "input_commands":sum(r["name"].startswith(("+","-")) for r in rows),
