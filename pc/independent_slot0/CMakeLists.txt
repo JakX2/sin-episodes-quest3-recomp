@@ -193,3 +193,8 @@ set_tests_properties(independent_server_sound_probe_native PROPERTIES TIMEOUT 90
 add_executable(sin_server_send_datatable_test test_server_send_datatable_core.cpp)
 target_compile_features(sin_server_send_datatable_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_send_datatable_native COMMAND sin_server_send_datatable_test)
+
+# Scalar independently owned startup math tables, not original SIMD pointers.
+add_executable(sin_server_math_tables_test test_server_math_tables_core.cpp)
+target_compile_features(sin_server_math_tables_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_math_tables_native COMMAND sin_server_math_tables_test)
