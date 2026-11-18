@@ -92,18 +92,14 @@ public:
             std::snprintf(normalized,sizeof(normalized),"%f",number);
             value=normalized;
         }
-        if(!(flags&0x1000) && !PrepareString(value))return;
-        real=number;integer=ToInt(number);
-        if(!(flags&0x1000))ChangeString(value);
+        Commit(number,ToInt(number),value);
     }
     virtual void __thiscall InternalFloat(float value) { // 13
         if(!string || !std::isfinite(value) || real==value)return;
         Clamp(value);
         char formatted[64]{};
         std::snprintf(formatted,sizeof(formatted),"%f",value);
-        if(!(flags&0x1000) && !PrepareString(formatted))return;
-        real=value;integer=ToInt(value);
-        if(!(flags&0x1000))ChangeString(formatted);
+        Commit(value,ToInt(value),formatted);
     }
     virtual void __thiscall InternalInt(int value) { // 14
         if(!string || integer==value)return;
@@ -111,9 +107,7 @@ public:
         if(Clamp(number))value=ToInt(number);
         char formatted[64]{};
         std::snprintf(formatted,sizeof(formatted),"%d",value);
-        if(!(flags&0x1000) && !PrepareString(formatted))return;
-        real=number;integer=value;
-        if(!(flags&0x1000))ChangeString(formatted);
+        Commit(number,value,formatted);
     }
     virtual bool __thiscall Clamp(float& value) noexcept { // 15
         if(hasMin && value<min) {value=min;return true;}
@@ -122,22 +116,7 @@ public:
     }
     virtual void __thiscall ChangeString(const char* value) { // 16
         if(!value || !string)return;
-        // Retain old storage until after copying, including self-aliased
-        // input. Old callback text must survive reentrant setter calls.
-        const auto n=std::strlen(value)+1;
-        if(n>kMaxString)return;
-        std::unique_ptr<char[]> old(new(std::nothrow) char[std::strlen(string)+1]);
-        if(!old)return;
-        std::strcpy(old.get(),string);
-        if(n>static_cast<std::size_t>(capacity)) {
-            std::unique_ptr<char[]> fresh(new(std::nothrow) char[n]);
-            if(!fresh)return;
-            std::memcpy(fresh.get(),value,n);
-            delete[] string;string=fresh.release();capacity=static_cast<int>(n);
-        } else {
-            std::memmove(string,value,n);
-        }
-        if(callback)callback(this,old.get());
+        ReplaceValue(real,integer,value);
     }
     virtual void __thiscall CreateVariable(const char* n,const char* def,int f,const char* h,
             bool minEnabled,float minimum,bool maxEnabled,float maximum,
@@ -185,13 +164,34 @@ private:
             v>(std::numeric_limits<int>::max)()?
             (std::numeric_limits<int>::min)():static_cast<int>(v);
     }
-    bool PrepareString(const char* s) const noexcept {
-        return std::strlen(s)<kMaxString;
+    void Commit(float n,int i,const char* text) {
+        if(flags&0x1000) {real=n;integer=i;return;}
+        ReplaceValue(n,i,text);
+    }
+    void ReplaceValue(float number,int integerValue,const char* value) {
+        // Retain old storage until after copying, including self-aliased
+        // input. Old callback text must survive reentrant setter calls.
+        const auto n=std::strlen(value)+1;
+        if(n>kMaxString)return;
+        std::unique_ptr<char[]> old(new(std::nothrow) char[std::strlen(string)+1]);
+        if(!old)return;
+        std::strcpy(old.get(),string);
+        if(n>static_cast<std::size_t>(capacity)) {
+            std::unique_ptr<char[]> fresh(new(std::nothrow) char[n]);
+            if(!fresh)return;
+            std::memcpy(fresh.get(),value,n);
+            delete[] string;string=fresh.release();capacity=static_cast<int>(n);
+        } else {
+            std::memmove(string,value,n);
+        }
+        real=number;integer=integerValue;
+        if(callback)callback(this,old.get());
     }
 };
 
 class Command final:public CommandBase {
 public:
+    static int __cdecl NoCompletion(const char*,char (*)[64]) {return 0;}
     virtual int __thiscall Complete(const char* partial,char (*out)[64]) { // 9
         return completion&&partial&&out?completion(partial,out):0;
     }
@@ -200,7 +200,7 @@ public:
     virtual void __thiscall CreateCommand(const char* n,CommandCallback fn,const char* h,
                                        int f,CompletionCallback complete) { // 12
         if(!n || !*n || !fn || registered)return;
-        execute=fn;completion=complete;hasCompletion=complete!=nullptr;
+        execute=fn;completion=complete?complete:&NoCompletion;hasCompletion=complete!=nullptr;
         CreateBase(n,h,f);
         if(AccessorScope::current)Init();
     }
