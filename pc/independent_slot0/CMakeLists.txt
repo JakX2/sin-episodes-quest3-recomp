@@ -42,6 +42,10 @@ add_test(NAME independent_owner_engine_exit_diagnosis
 # metadata parser with an invented PE32 image, never commercial game code.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_server_console_inventory_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalConsole.py"
+      --self-test)
   add_test(NAME independent_server_send_table_inventory_synthetic
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalSendTables.py"
