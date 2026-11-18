@@ -39,13 +39,26 @@ struct BatchOutcome {
     std::size_t verified;
 };
 using BatchTrace=void (*)(const char*,const char*) noexcept;
-class BatchVariables {
+template<std::size_t Count>
+class BatchVariablesFor {
+    static_assert(Count>0 && Count<=1024,"bounded catalog batch");
 public:
-    BatchVariables()=default;
-    BatchVariables(const BatchVariables&)=delete;
-    BatchVariables& operator=(const BatchVariables&)=delete;
-    BatchOutcome Register(void* engine,BatchTrace trace) noexcept {
+    BatchVariablesFor()=default;
+    BatchVariablesFor(const BatchVariablesFor&)=delete;
+    BatchVariablesFor& operator=(const BatchVariablesFor&)=delete;
+    BatchOutcome Register(const BatchSpec (&specs)[Count],void* engine,BatchTrace trace) noexcept {
         if(!engine || !trace || attempted_)return {SingleCvarResult::InvalidInterface,0};
+        // The catalog string buffers must have static lifetime for the
+        // engine's retained object names/defaults. Reject duplicates before
+        // querying any engine interface. One terminal attempt per owner.
+        attempted_=true;
+        for(std::size_t i=0;i<Count;++i) {
+            if(!specs[i].name || !*specs[i].name || !specs[i].value)
+                return {SingleCvarResult::BadObject,0};
+            for(std::size_t j=0;j<i;++j)
+                if(SameName(specs[i].name,specs[j].name))
+                    return {SingleCvarResult::BadObject,0};
+        }
         auto** slots=*reinterpret_cast<void***>(engine);
         if(!slots || !slots[0] || !slots[1] || !slots[3] || !slots[4])
             return {SingleCvarResult::InvalidInterface,0};
@@ -55,7 +68,7 @@ public:
         auto commands=reinterpret_cast<CommandsSlot>(slots[4]);
         // An existing name or override anywhere in this subset prevents
         // ALL registration. No writes to existing engine-owned variables.
-        for(const auto& spec:kBatchSpecs) {
+        for(const auto& spec:specs) {
             if(find(engine,spec.name))return {SingleCvarResult::ExistingName,0};
             if(getOverride(engine,spec.name))return {SingleCvarResult::OverridePresent,0};
         }
@@ -66,28 +79,33 @@ public:
             if(!vt || !vt[4])return {SingleCvarResult::InvalidList,0};
             const char* name=reinterpret_cast<NameSlot>(vt[4])(node);
             if(!name)return {SingleCvarResult::InvalidList,0};
-            for(const auto& spec:kBatchSpecs)
+            for(const auto& spec:specs)
                 if(SameName(name,spec.name))return {SingleCvarResult::ExistingName,0};
             void* next=nullptr;
             std::memcpy(&next,static_cast<const unsigned char*>(node)+4,sizeof(next));
             node=next;
         }
-        attempted_=true;
         // Allocate every owned variable before first external registration.
-        for(std::size_t i=0;i<kBatchCount;++i) {
-            const auto& spec=kBatchSpecs[i];auto& v=variables_[i];
+        for(std::size_t i=0;i<Count;++i) {
+            const auto& spec=specs[i];auto& v=variables_[i];
             v.CreateVariable(spec.name,spec.value,0,nullptr,false,0,false,0,nullptr);
             if(!v.string || v.parent!=&v || v.registered || v.next ||
                std::strcmp(v.String(),spec.value))
                 return {SingleCvarResult::BadObject,0};
         }
-        trace("cvar-batch-preflight-complete","24");
+        char total[16]={};
+        std::snprintf(total,sizeof(total),"%u",static_cast<unsigned>(Count));
+        trace("cvar-batch-preflight-complete",total);
+        std::array<const char*,Count> strings{};
+        std::array<float,Count> reals{};
+        std::array<int,Count> integers{};
         std::size_t verified=0;
-        for(std::size_t i=0;i<kBatchCount;++i) {
-            const auto& spec=kBatchSpecs[i];auto& v=variables_[i];
+        for(std::size_t i=0;i<Count;++i) {
+            const auto& spec=specs[i];auto& v=variables_[i];
             if(find(engine,spec.name))return {SingleCvarResult::ExistingName,verified};
             const auto* storage=v.string;
             const float originalReal=v.real;const int originalInt=v.integer;
+            strings[i]=storage;reals[i]=originalReal;integers[i]=originalInt;
             v.AddFlags(4);v.next=nullptr;
             trace("cvar-batch-register-entered",spec.name);
             reg(engine,&v);
@@ -106,16 +124,26 @@ public:
         }
         // Re-query the whole registry after the last insertion. Earlier
         // objects must remain visible and self-owned after later relinks.
-        for(std::size_t i=0;i<kBatchCount;++i) {
-            auto& v=variables_[i];const auto& spec=kBatchSpecs[i];
+        for(std::size_t i=0;i<Count;++i) {
+            auto& v=variables_[i];const auto& spec=specs[i];
             if(find(engine,spec.name)!=&v || v.parent!=&v || !v.registered ||
-               !v.string || std::strcmp(v.String(),spec.value))
+               v.string!=strings[i] || !v.GetName() || std::strcmp(v.GetName(),spec.name) ||
+               !v.IsBitSet(4) || v.real!=reals[i] || v.integer!=integers[i] ||
+               std::strcmp(v.String(),spec.value))
                 return {SingleCvarResult::LookupMismatch,verified};
         }
         return {SingleCvarResult::Verified,verified};
     }
 private:
-    std::array<Variable,kBatchCount> variables_{};
+    std::array<Variable,Count> variables_{};
     bool attempted_=false;
+};
+// Preserve the existing retail-tested 24-declaration entry point and
+// its diagnostic labels.
+class BatchVariables final:public BatchVariablesFor<kBatchCount> {
+public:
+    BatchOutcome Register(void* engine,BatchTrace trace) noexcept {
+        return BatchVariablesFor<kBatchCount>::Register(kBatchSpecs,engine,trace);
+    }
 };
 } // namespace sin_independent::console_abi
