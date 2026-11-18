@@ -254,9 +254,29 @@ def inspect(data):
     if abs(default_interval - 0.015) > 1e-9 or minimum_rate != 10 or numerator != 1:
         raise ValueError("Original server tick interval constants mismatch")
 
+    # Retail-observed pre-initialization callback, main server slot 11.
+    # Its wrapper jumps to a game-rules-aware helper; the no-rules
+    # branch returns an immutable string. Validate just these metadata.
+    wrapper_rva = MAIN_SLOTS[11]
+    jump = pe.raw(wrapper_rva, 5)
+    if jump[0] != 0xe9:
+        raise ValueError("Original description wrapper no longer jumps")
+    helper_rva = wrapper_rva + 5 + struct.unpack_from("<i", jump, 1)[0]
+    if helper_rva != 0x2f0cc0:
+        raise ValueError("Original description helper changed")
+    fallback = pe.raw(helper_rva + 0x12, 6)
+    if fallback[0] != 0xb8 or fallback[5] != 0xc3:
+        raise ValueError("Original description fallback changed")
+    fallback_rva = pe.rva(struct.unpack_from("<I", fallback, 1)[0])
+    game_description = pe.string(fallback_rva)
+    if fallback_rva != 0x466df8 or game_description != "SiN Episodes":
+        raise ValueError("Original game description changed")
     return {"original_server_sha256": PIN, "format": "PE32 x86",
             "status": "ABI research only, no server gameplay implementation",
             "factory_registrations": records,
+            "game_description": {"slot": 11, "wrapper_rva": hex(wrapper_rva),
+                                 "helper_rva": hex(helper_rva),
+                                 "pre_init": game_description},
             "tick_interval": {"slot": 9, "default_seconds": default_interval,
                               "override_rate_exclusive_minimum": minimum_rate,
                               "command_line_flag": "-tickrate"},
