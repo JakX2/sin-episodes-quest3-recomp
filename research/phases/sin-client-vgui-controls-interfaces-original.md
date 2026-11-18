@@ -38,3 +38,41 @@ Next: reconstruct these eight queries and IVGui.Init under a separate
 opt-in gate, verify with native x86 synthetic fixtures, and only
 then attempt the retail game startup sequence. This is not proof of a
 normal VClient011 Init return, game HUD, or gameplay.
+
+## Owner-engine verification: 2026-11-18 (PR #428)
+
+The owner ran the independently compiled Windows x86 client from
+bundle merge commit `6a2b47ba4924f01f1fedecf4cb1cd714ded5df74`
+(PR #428 head `9abeb8e96570fea659721bd74e021829072eae95`) in a disposable copy of the actual 2006
+SiN Episodes engine. Uploaded `sin-vgui-controls-probe.txt` and
+matching pasted console log agree on the ordered result:
+
+- `VClient011` factory was accepted, then real Init entered.
+- All 21 required engine factory interfaces were found; sound, material,
+  screen, Gaussian, console (3/3) and independent deferred/pool stages
+  reached their existing accepted checkpoints.
+- Original loaded `vgui2.dll` supplied `VGUI_InputInternal001`,
+  `VGUI_System010` and the checked vtable anchors.
+- At `vgui-controls-bootstrap-entered CLIENT:factory-count-1`,
+  the engine factory returned non-null pointers for **all eight** named
+  VGUI controls interfaces in the expected original order.
+- `vgui-controls-init-entered VGUI_ivgui006:factory-count-1`,
+  `vgui-controls-init-returned true`,
+  `vgui-controls-bootstrap-result init-true`.
+- Subsequent `VEngineVGui001` virtual slot1 (SDK2004
+  `GetPanel(PANEL_CLIENTDLL)`) returned **nonzero** again.
+- Exact diagnostic exit `0x53494E5F` (decimal 1397313119) was
+  intentional; classifier:
+  `CLIENT_VGUI_CONTROLS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF`.
+- `RESTORED_VERIFIED` original client and
+  `RETAINED_ORIGINAL_UNCHANGED` original server:
+  `OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE`.
+
+This is original retail-engine execution of our new client bootstrap
+ABI, not just synthetic CI tests. It proves the return of the
+`IVGui::Init` call, **not** complete original VGUI startup equivalence,
+`CHudTextureHandle` property converter setup, root HUD panel creation,
+a normal `VClient011::Init` return, or a playable game.
+The sampler reported no observed client module in 15 polling samples
+despite the factory, trace, and exit evidence; this is not treated
+as an exhaustive module survey.
