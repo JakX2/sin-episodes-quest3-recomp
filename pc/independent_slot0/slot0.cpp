@@ -9,6 +9,9 @@
 #include <cstdio>
 #include <cstring>
 #include <type_traits>
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+#include "sound_emitter_connect_core.h"
+#endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
 #include "server_tick_interval_core.h"
@@ -159,22 +162,40 @@ static bool extraFactoriesEnabled() noexcept {
     virtual void __thiscall GuardSlot##n() noexcept { stopUnsupported(prefix ".slot" #n); }
 #endif
 
-// Probe strictly an SDK2004 candidate interface name. The engine-owned
-// factory may be called as a cdecl callback, but its returned pointer is
-// NEVER dereferenced or retained by this experimental diagnostic.
-static bool require(Factory factory, const char* name) noexcept {
+// The production diagnostic only acquires pointers, never dereferences
+// them. The separately built synthetic-only variant captures the sound
+// pointer locally for the first original post-factory callback.
+static bool require(Factory factory, const char* name,
+                    void** captured = nullptr) noexcept {
+    if (captured) *captured = nullptr;
     if (factory == nullptr) {
         diagnostic("missing-factory", name);
         return false;
     }
     diagnostic("request", name);
-    if (factory(name, nullptr) == nullptr) {
+    void* value = factory(name, nullptr);
+    if (!value) {
         diagnostic("missing-interface", name);
         return false;
     }
+    if (captured) *captured = value;
     diagnostic("found-interface", name);
     return true;
 }
+
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+// This code is compiled ONLY in fixture-only DLLs used by public CI.
+// It cannot be enabled in the distributed owner retail diagnostics.
+static bool connectSyntheticSound(void* sound, Factory factory) noexcept {
+    diagnostic("sound-connect-entered", "VSoundEmitter001");
+    using sin_independent::SoundConnectResult;
+    const auto result=sin_independent::TryConnectSoundEmitter(sound,factory);
+    const bool connected=result==SoundConnectResult::Connected;
+    diagnostic(connected ? "sound-connect-succeeded" : "sound-connect-rejected",
+               "VSoundEmitter001");
+    return connected;
+}
+#endif
 
 #if defined(SIN_ROLE_client)
 class Boundary final {
@@ -195,8 +216,14 @@ public:
             !require(appSystemFactory, kThirdEngineVersion) ||
             !require(appSystemFactory, kFourthEngineVersion) ||
             !require(appSystemFactory, kFifthEngineVersion)) return 0;
+        void* sound=nullptr;
         for (const char* version : kRemainingClientVersions)
-            if (!require(appSystemFactory, version)) return 0;
+            if (!require(appSystemFactory, version,
+                         std::strcmp(version,"VSoundEmitter001")==0 ? &sound : nullptr))
+                return 0;
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+        if (!connectSyntheticSound(sound,appSystemFactory)) return 0;
+#endif
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
         return 0; // Never advertise successful independent startup.
@@ -230,6 +257,7 @@ public:
         // uses the THIRD factory argument; the surrounding 15 use the
         // engine factory. Stop at the first unavailable pointer, never
         // dereference or retain it, and NEVER report successful Init.
+        void* sound=nullptr;
         if (!require(engineFactory, kFirstEngineVersion) ||
             !require(engineFactory, kSecondEngineVersion) ||
             !require(engineFactory, kThirdEngineVersion) ||
@@ -243,9 +271,12 @@ public:
             !require(fileSystemFactory, kFileSystemVersion) ||
             !require(engineFactory, kEleventhEngineVersion) ||
             !require(engineFactory, kTwelfthEngineVersion) ||
-            !require(engineFactory, kThirteenthEngineVersion) ||
+            !require(engineFactory, kThirteenthEngineVersion, &sound) ||
             !require(engineFactory, kFourteenthEngineVersion) ||
             !require(engineFactory, kFifteenthEngineVersion)) return false;
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+        if (!connectSyntheticSound(sound,engineFactory)) return false;
+#endif
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
         return false;
