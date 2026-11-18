@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $cases = @(
     @{ Signed=0L; Hex='0x00000000'; Meaning='PROCESS_EXITED_ZERO_NOT_BOOT_PROOF' },
+    @{ Signed=1397313093L; Hex='0x53494E45'; Meaning='INDEPENDENT_UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP' },
     @{ Signed=-1073741515L; Hex='0xC0000135'; Meaning='STATUS_DLL_NOT_FOUND' },
     @{ Signed=-1073741701L; Hex='0xC000007B'; Meaning='STATUS_INVALID_IMAGE_FORMAT' },
     @{ Signed=-1073741502L; Hex='0xC0000142'; Meaning='STATUS_DLL_INIT_FAILED' },
@@ -36,4 +37,4 @@ if (-not $launcherText.Contains("Get-OwnerEngineExitDiagnosis.ps1") -or
     -not $launcherText.Contains('OWNER_ENGINE_EXIT_CODE:')) {
     throw 'Owner launcher does not report raw and decoded process exit'
 }
-Write-Output 'PASS Windows owner process exit classification: 8 statuses, signed/unsigned parity, 2 rejection gates, launcher integration'
+Write-Output 'PASS Windows owner process exit classification: 9 statuses, signed/unsigned parity, 2 rejection gates, launcher integration'

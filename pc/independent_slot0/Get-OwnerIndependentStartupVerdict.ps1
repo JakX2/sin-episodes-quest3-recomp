@@ -18,6 +18,7 @@ $issues = New-Object System.Collections.Generic.List[string]
 $requests = New-Object System.Collections.Generic.List[string]
 $factoryResults = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
+$unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $explicitInitRoles = @{}
 $legacyInitEvents = 0
 $blockersByLog = New-Object System.Collections.Generic.List[string]
@@ -35,6 +36,9 @@ foreach ($log in $logs) {
             $factoryResults.Add(("{0}:{1}:{2}" -f $role,$phase,$version))
         } else {
             $callbackEvents++
+        }
+        if ($phase -eq 'unsupported-callback') {
+            $unsupportedCallbacks.Add(("{0}:{1}:{2}" -f $log.Name,$role,$version))
         }
         if ($phase -eq 'init-entered') { $explicitInitRoles[$role] = $true }
         # Backward-compatible classification of old traces. Only an actual
@@ -60,6 +64,9 @@ Write-Output ("OWNER_INDEPENDENT_ROLES_OBSERVED: {0}" -f ((@('client','server') 
 Write-Output ("OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: {0}" -f ((@('client','server') | Where-Object { $explicitInitRoles.ContainsKey($_) }) -join ','))
 Write-Output ("OWNER_INDEPENDENT_FACTORY_REQUESTS: {0}" -f ($requests -join ','))
 Write-Output ("OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: {0}" -f ($factoryResults -join ','))
+if ($unsupportedCallbacks.Count -gt 0) {
+    Write-Output ("OWNER_INDEPENDENT_UNSUPPORTED_CALLBACKS: {0}" -f ($unsupportedCallbacks -join ','))
+}
 if ($issues.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_BLOCKERS_BY_LOG: {0}" -f ($blockersByLog -join ','))
     if ($blockersByLog.Count -eq 1) {
@@ -68,6 +75,10 @@ if ($issues.Count -gt 0) {
         Write-Output "OWNER_INDEPENDENT_FIRST_RECORDED_BLOCKER: AMBIGUOUS_ACROSS_PROCESSES"
     }
     Write-Output "OWNER_INDEPENDENT_VERDICT: ENGINE_ENTERED_INDEPENDENT_INIT_BUT_REJECTED"
+} elseif ($unsupportedCallbacks.Count -gt 0) {
+    # A terminal callback can occur before the first Init call. It proves
+    # virtual entry and diagnostic termination, not that Init was entered.
+    Write-Output "OWNER_INDEPENDENT_VERDICT: UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF"
 } elseif ($explicitInitRoles.Count -eq 0 -and $legacyInitEvents -eq 0 -and $factoryResults.Count -gt 0) {
     # The engine reached CreateInterface, but may have probed optional
     # names. No claim that a rejection is the fatal retail startup cause.

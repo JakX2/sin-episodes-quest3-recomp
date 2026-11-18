@@ -129,3 +129,11 @@ add_executable(sin_server_transmit_policy_test test_server_transmit_policy_core.
 target_compile_features(sin_server_transmit_policy_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_transmit_policy_native
   COMMAND sin_server_transmit_policy_test)
+
+# Opt-in extended server factory boundary; all terminal guards tested in
+# synthetic child processes, never in a retail executable.
+add_executable(sin_server_factory_probe_test test_server_factory_probe.cpp)
+target_compile_features(sin_server_factory_probe_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_factory_probe_native
+  COMMAND sin_server_factory_probe_test "$<TARGET_FILE:sin_slot0_server>")
+set_tests_properties(independent_server_factory_probe_native PROPERTIES TIMEOUT 180)

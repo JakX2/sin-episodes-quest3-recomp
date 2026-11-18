@@ -111,6 +111,32 @@ try {
     if (@($out | Where-Object { $_ -like '*BLOCKER*' }).Count -gt 0) {
         throw 'Five-interface preflight should not produce an inferred fatal blocker'
     }
+    # Replay the owner's real server-only experiment. The original client
+    # was retained and unchanged; no server DLLInit event was seen.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]@(
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameDLL003',
+        '[SiN independent] role=server phase=factory-rejected version=ServerGameEnts001'
+    ))
+    $out = Verify 'GAME_MODULE_FACTORY_ONLY_NO_INIT_EVIDENCE'
+    foreach ($expected in @(
+        'OWNER_INDEPENDENT_ROLES_OBSERVED: server',
+        'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: ',
+        'OWNER_INDEPENDENT_FACTORY_REQUESTS: ',
+        'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: server:factory-accepted:ServerGameDLL003,server:factory-rejected:ServerGameEnts001'
+    )) {
+        if (-not ($out -ccontains $expected)) { throw "Server-only replay changed: $expected" }
+    }
+    # Hypothetical next-probe trace, deliberately not claimed retail evidence.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]@(
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameDLL003',
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameEnts001',
+        '[SiN independent] role=server phase=unsupported-callback version=ServerGameEnts001.CheckTransmit'
+    ))
+    $out = Verify 'UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF'
+    if (-not ($out -ccontains 'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: ') -or
+        -not (($out -join '|').Contains(':server:ServerGameEnts001.CheckTransmit'))) {
+        throw 'Pre-Init terminal callback falsely attributed to Init or lost'
+    }
     Remove-Item -LiteralPath $retailReplay -Force
     [IO.File]::WriteAllText($client,
         "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine)
