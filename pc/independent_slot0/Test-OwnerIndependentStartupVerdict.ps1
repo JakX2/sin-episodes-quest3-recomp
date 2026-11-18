@@ -229,6 +229,44 @@ try {
         '[SiN independent] role=server phase=sound-probe-terminal-stop version=VSoundEmitter001'
     ))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Real Phase 330 owner trace: exactly the same 38 acquisition
+    # events as Phase 328, followed by actual successful Connect.
+    $retail330 = @($soundPrefix) + @(
+        '[SiN independent] role=server phase=sound-connect-entered version=VSoundEmitter001',
+        '[SiN independent] role=server phase=sound-connect-succeeded version=VSoundEmitter001',
+        '[SiN independent] role=server phase=sound-probe-terminal-stop version=VSoundEmitter001'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]$retail330)
+    $out = Verify 'SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (-not (($out -join '|').Contains(':server:sound-connect-succeeded'))) {
+        throw 'Actual Phase 330 sound evidence missing'
+    }
+    # Hypothetical next boundary, not owner-observed. Preserve the
+    # signed event result (including zero or negative), never infer boot.
+    $eventPrefix = @($soundPrefix) + @(
+        '[SiN independent] role=server phase=sound-connect-entered version=VSoundEmitter001',
+        '[SiN independent] role=server phase=sound-connect-succeeded version=VSoundEmitter001',
+        '[SiN independent] role=server phase=math-tables-initialized version=server-scalar',
+        '[SiN independent] role=server phase=factory-state-cached version=server',
+        '[SiN independent] role=server phase=event-load-entered version=resource/gameevents.res'
+    )
+    foreach ($count in @(42,0,-1)) {
+        $eventTrace = @($eventPrefix) + @(
+            ("[SiN independent] role=server phase=event-load-returned version=resource/gameevents.res:{0}" -f $count),
+            '[SiN independent] role=server phase=event-probe-terminal-stop version=resource/gameevents.res'
+        )
+        [IO.File]::WriteAllLines($retailReplay,[string[]]$eventTrace)
+        $out = Verify 'EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        $result = @($out | Where-Object { $_ -like 'OWNER_SERVER_EVENT_LOAD_RESULTS: *' })
+        if ($result.Count -ne 1 -or -not $result[0].EndsWith(":$count")) {
+            throw 'Signed initial event result missing'
+        }
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($soundPrefix) + @(
+        '[SiN independent] role=server phase=event-load-returned version=resource/gameevents.res:42',
+        '[SiN independent] role=server phase=event-probe-terminal-stop version=resource/gameevents.res'
+    )))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     Remove-Item -LiteralPath $retailReplay -Force
     [IO.File]::WriteAllText($client,
         "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine)
