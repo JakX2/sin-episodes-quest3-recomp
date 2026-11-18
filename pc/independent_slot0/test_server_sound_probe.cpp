@@ -7,7 +7,7 @@
 #include <cstring>
 #include <string>
 #include <cstdlib>
-#include "server_single_cvar_probe.h"
+#include "server_batch_cvar_probe.h"
 using Factory=void* (__cdecl *)(const char*,int*);
 static constexpr const char* kSession="33000000000000000000000000000001";
 static constexpr const char* kSequence[]={
@@ -85,6 +85,60 @@ public:
     }
 };
 static CvarFixture cvar;
+class BatchFixture final:public EngineCvar {
+public:
+    Variable existing;
+    Command conflicting;
+    CommandBase* head=nullptr;
+    Variable* objects[kBatchCount]{};
+    unsigned registered=0, over=0;
+    mutable unsigned finds=0;
+    unsigned lists=0;
+    void Prepare() {
+        existing.CreateVariable(kBatchSpecs[23].name,"99",0,nullptr,false,0,false,0,nullptr);
+        conflicting.CreateCommand(kBatchSpecs[22].name,&NoopCommand,nullptr,0,nullptr);
+    }
+    static int Index(const char* name) {
+        for(unsigned i=0;i<kBatchCount;++i)if(!std::strcmp(name,kBatchSpecs[i].name))return i;
+        ExitProcess(110);
+    }
+    void __thiscall RegisterConCommandBase(CommandBase* p) noexcept override {
+        if(eventCalls!=1 || !p || p->IsCommand() || p->registered || p->next ||
+           !p->IsBitSet(4) || registered>=kBatchCount || over!=kBatchCount+registered ||
+           lists!=1 || mode==18 || mode==19 || mode==21 || mode==22)
+            ExitProcess(111);
+        auto* v=static_cast<Variable*>(p);const auto& spec=kBatchSpecs[registered];
+        if(std::strcmp(v->GetName(),spec.name) || std::strcmp(v->String(),spec.value) ||
+           v->parent!=v || v->callback || v->hasMin || v->hasMax)ExitProcess(112);
+        objects[registered++]=v;
+        v->next=head;head=v;
+        if(mode==20 && registered==4)v->parent=&existing;
+    }
+    const char* __thiscall GetCommandLineValue(const char* n) noexcept override {
+        const auto i=Index(n);
+        ++over;
+        if(mode==19 && i==23)return "0";
+        return nullptr;
+    }
+    Variable* __thiscall FindMutableVar(const char*) noexcept override {ExitProcess(113);}
+    const Variable* __thiscall FindConstVar(const char* n) const noexcept override {
+        if(eventCalls!=1)ExitProcess(114);
+        ++finds;
+        const auto i=Index(n);
+        if(mode==18 && i==23)return &existing;
+        if(mode==23 && registered==kBatchCount && i==0)return nullptr;
+        if(mode==24 && registered==4 && i==3)return nullptr;
+        if(objects[i] && !objects[i]->registered)ExitProcess(115);
+        return objects[i];
+    }
+    CommandBase* __thiscall GetCommands() noexcept override {
+        if(++lists!=1 || over!=kBatchCount || registered)ExitProcess(116);
+        if(mode==21)return &conflicting;
+        if(mode==22) {conflicting.name="cycle";conflicting.next=&conflicting;return &conflicting;}
+        return head;
+    }
+};
+static BatchFixture batch;
 static void* __cdecl Engine(const char* name,int* status) {
     if(step>=16 || step==10 || !name || status ||
        std::strcmp(name,kSequence[step])) ExitProcess(92);
@@ -92,7 +146,7 @@ static void* __cdecl Engine(const char* name,int* status) {
     if(mode==3 && step==16)return nullptr;
     if(std::strcmp(name,"VSoundEmitter001")==0)return &sound;
     if(std::strcmp(name,"GAMEEVENTSMANAGER002")==0)return &events;
-    if(std::strcmp(name,"VEngineCvar002")==0)return &cvar;
+    if(std::strcmp(name,"VEngineCvar002")==0)return mode>=17?static_cast<void*>(&batch):static_cast<void*>(&cvar);
     return &token;
 }
 static void* __cdecl FileSystem(const char* name,int* status) {
@@ -103,13 +157,14 @@ static void* __cdecl FileSystem(const char* name,int* status) {
 static void* __cdecl Physics(const char*,int*) { ExitProcess(94); }
 static int Child(const char* dll,int selected) {
     mode=selected;
-    cvar.Prepare();
+    cvar.Prepare();batch.Prepare();
     if(!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE","1") ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION",kSession) ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_FACTORY_PROBE",mode==4?"0":"1") ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_SOUND_PROBE",mode==0?"0":"1") ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_EVENT_PROBE",mode>=5?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_CVAR_PROBE",mode>=9?"1":"0"))
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_CVAR_PROBE",mode>=9?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_CVAR_BATCH_PROBE",mode>=17?"1":"0"))
         return 95;
     HMODULE module=LoadLibraryA(dll);
     if(!module)return 96;
@@ -151,10 +206,40 @@ static bool Run(const char* dll,int selected) {
     const auto has=[&](const char* text){return data.find(text)!=std::string::npos;};
     const bool cvarCase=selected>=9 && selected!=15;
     const bool event=selected==5 || selected==6 || selected==8 || selected==15;
-    const DWORD expected=cvarCase?(selected==9?0x53494E49u:0x53494E4Au):
+    const DWORD expected=selected>=17?(selected==17?0x53494E4Du:0x53494E4Eu):
+        cvarCase?(selected==9?0x53494E49u:0x53494E4Au):
         event?0x53494E48u:selected==1?0x53494E46u:
         selected==2 || selected==7?0x53494E47u:0u;
     if(result!=expected || !has("phase=init-entered"))return false;
+    if(selected>=17) {
+        const char* outcome=selected==17?"verified:24/24":
+            selected==18 || selected==21?"existing-name:0/24":
+            selected==19?"override-present:0/24":
+            selected==20?"unexpected-relink:3/24":
+            selected==22?"invalid-list:0/24":
+            selected==23?"lookup-mismatch:24/24":"lookup-mismatch:3/24";
+        const auto prefix=data.find("phase=event-load-returned version=resource/gameevents.res:42");
+        const auto resultAt=data.find(std::string("phase=cvar-batch-result version=")+outcome);
+        const auto stop=data.find("phase=cvar-batch-terminal-stop version=24");
+        if(prefix==std::string::npos || resultAt==std::string::npos || stop==std::string::npos ||
+           !(prefix<resultAt && resultAt<stop) || has("phase=cvar-register-entered") ||
+           has("phase=event-probe-terminal-stop"))return false;
+        const unsigned verified=selected==17 || selected==23?24:
+            selected==20 || selected==24?3:0;
+        size_t last=prefix;
+        for(unsigned i=0;i<verified;++i) {
+            const auto name=std::string(kBatchSpecs[i].name)+"\n";
+            const auto entered=data.find("phase=cvar-batch-register-entered version="+name);
+            const auto returned=data.find("phase=cvar-batch-register-returned version="+name);
+            const auto checked=data.find("phase=cvar-batch-registration-verified version="+name);
+            if(entered==std::string::npos || returned==std::string::npos ||
+               checked==std::string::npos || !(last<entered && entered<returned && returned<checked &&
+               checked<resultAt))return false;
+            last=checked;
+        }
+        if(!verified && has("phase=cvar-batch-register-entered"))return false;
+        return true;
+    }
     if(cvarCase) {
         const auto eventReturn=data.find("phase=event-load-returned version=resource/gameevents.res:42");
         const char* outcome=selected==9?"verified":
@@ -207,9 +292,9 @@ static bool Run(const char* dll,int selected) {
 int main(int argc,char** argv) {
     if(argc==3)return Child(argv[1],std::atoi(argv[2]));
     if(argc!=2)return 1;
-    for(int i=0;i<17;++i)if(!Run(argv[1],i)) {
+    for(int i=0;i<25;++i)if(!Run(argv[1],i)) {
         std::fprintf(stderr,"FAIL actual server sound probe child case %d\n",i);return 2;
     }
-    std::puts("PASS distributed DLL: sound/event stages and single native console registration with conflict, override, relink, lookup and cyclic-list refusals");
+    std::puts("PASS distributed DLL: sound/event, single and 24-variable batch registration with preflight, partial failure and final registry recheck");
     return 0;
 }
