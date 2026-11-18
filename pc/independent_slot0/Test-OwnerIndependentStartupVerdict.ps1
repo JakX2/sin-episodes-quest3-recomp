@@ -137,6 +137,26 @@ try {
         -not (($out -join '|').Contains(':server:ServerGameEnts001.CheckTransmit'))) {
         throw 'Pre-Init terminal callback falsely attributed to Init or lost'
     }
+    # Actual Phase 325 owner observation: all three server factories
+    # accepted; HLTV rejected; slot 11 reached BEFORE any DLLInit.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]@(
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameDLL003',
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameEnts001',
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameClients003',
+        '[SiN independent] role=server phase=factory-rejected version=HLTVDirector001',
+        '[SiN independent] role=server phase=unsupported-callback version=ServerGameDLL003.slot11'
+    ))
+    $out = Verify 'UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF'
+    foreach ($expected in @(
+        'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: ',
+        'OWNER_INDEPENDENT_FACTORY_REQUESTS: ',
+        'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: server:factory-accepted:ServerGameDLL003,server:factory-accepted:ServerGameEnts001,server:factory-accepted:ServerGameClients003,server:factory-rejected:HLTVDirector001'
+    )) {
+        if (-not ($out -ccontains $expected)) { throw "Phase 325 replay changed: $expected" }
+    }
+    if (-not (($out -join '|').Contains(':server:ServerGameDLL003.slot11'))) {
+        throw 'Actual slot 11 stop omitted'
+    }
     Remove-Item -LiteralPath $retailReplay -Force
     [IO.File]::WriteAllText($client,
         "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine)
