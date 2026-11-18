@@ -263,6 +263,39 @@ try {
         -not ($out -ccontains 'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: server')) {
         throw 'Actual Phase 332 event-load result missing'
     }
+    # Synthetic next-phase outcome only. Require actual registration
+    # entry and return, lookup verification, and positive event result.
+    $cvarPrefix = @($eventPrefix) + @(
+        '[SiN independent] role=server phase=event-load-returned version=resource/gameevents.res:47'
+    )
+    $cvarTrace = @($cvarPrefix) + @(
+        '[SiN independent] role=server phase=cvar-name-available version=dd_log_events',
+        '[SiN independent] role=server phase=cvar-register-entered version=dd_log_events',
+        '[SiN independent] role=server phase=cvar-register-returned version=dd_log_events',
+        '[SiN independent] role=server phase=cvar-registration-verified version=dd_log_events',
+        '[SiN independent] role=server phase=cvar-probe-result version=verified',
+        '[SiN independent] role=server phase=cvar-probe-terminal-stop version=dd_log_events'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]$cvarTrace)
+    $out = Verify 'CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $line = @($out | Where-Object { $_ -like 'OWNER_SERVER_CVAR_PROBE_RESULTS: *' })
+    if ($line.Count -ne 1 -or -not $line[0].EndsWith(':verified')) {
+        throw 'Missing verified single-variable result'
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($cvarPrefix) + @(
+        '[SiN independent] role=server phase=cvar-probe-result version=existing-name',
+        '[SiN independent] role=server phase=cvar-probe-terminal-stop version=dd_log_events'
+    )))
+    $out = Verify 'CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $line = @($out | Where-Object { $_ -like 'OWNER_SERVER_CVAR_PROBE_RESULTS: *' })
+    if ($line.Count -ne 1 -or -not $line[0].EndsWith(':existing-name')) {
+        throw 'Missing distinct single-variable refusal'
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($cvarPrefix) + @(
+        '[SiN independent] role=server phase=cvar-probe-result version=verified',
+        '[SiN independent] role=server phase=cvar-probe-terminal-stop version=dd_log_events'
+    )))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     foreach ($count in @(42,0,-1)) {
         $eventTrace = @($eventPrefix) + @(
             ("[SiN independent] role=server phase=event-load-returned version=resource/gameevents.res:{0}" -f $count),

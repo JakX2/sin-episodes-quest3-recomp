@@ -18,6 +18,7 @@
 #include "server_tick_interval_core.h"
 #include "sin_user_message_catalog.h"
 #include "server_post_connect_core.h"
+#include "server_single_cvar_probe.h"
 #include <new>
 #include <intrin.h>
 #endif
@@ -216,6 +217,26 @@ static bool retailEventProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_EVENT_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool retailCvarProbeEnabled() noexcept {
+    char enabled[2]={};
+    return retailEventProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_CVAR_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+static void traceCvar(const char* phase) noexcept {
+    diagnostic(phase,sin_independent::console_abi::kProbeVarName);
+}
+[[noreturn]] static void stopAfterCvarProbe(void* cvar) noexcept {
+    using namespace sin_independent::console_abi;
+    // The engine may retain this object. Never destroy or unload it
+    // while the engine is running; the bounded probe terminates instead.
+    static Variable variable;
+    const auto result=RegisterSingleProbeVariable(cvar,variable,&traceCvar);
+    diagnostic("cvar-probe-result",ResultName(result));
+    diagnostic("cvar-probe-terminal-stop",kProbeVarName);
+    TerminateProcess(GetCurrentProcess(),result==SingleCvarResult::Verified?0x53494E49u:0x53494E4Au);
+    __fastfail(7);
+}
 // Keep the original Phase 330 sound-only termination unless a second
 // opt-in explicitly allows the post-Connect event boundary.
 [[noreturn]] static void stopAfterSoundProbe(bool connected) noexcept {
@@ -224,7 +245,7 @@ static bool retailEventProbeEnabled() noexcept {
     __fastfail(7);
 }
 [[noreturn]] static void stopAfterEventProbe(
-    void* events, CGlobalVars* globals, Factory engine, Factory physics,
+    void* events, void* cvar, CGlobalVars* globals, Factory engine, Factory physics,
     Factory filesystem) noexcept {
     static sin_independent::ServerPostConnectState state;
     if(!state.Initialize(globals,engine,physics,filesystem))
@@ -238,6 +259,7 @@ static bool retailEventProbeEnabled() noexcept {
     char result[80]={};
     std::snprintf(result,sizeof(result),"resource/gameevents.res:%d",count);
     diagnostic("event-load-returned",result);
+    if(count>0 && retailCvarProbeEnabled())stopAfterCvarProbe(cvar);
     diagnostic("event-probe-terminal-stop","resource/gameevents.res");
     TerminateProcess(GetCurrentProcess(),0x53494E48u);
     __fastfail(7);
@@ -306,9 +328,10 @@ public:
         // dereference or retain it, and NEVER report successful Init.
         void* sound=nullptr;
         void* events=nullptr;
+        void* cvar=nullptr;
         if (!require(engineFactory, kFirstEngineVersion) ||
             !require(engineFactory, kSecondEngineVersion) ||
-            !require(engineFactory, kThirdEngineVersion) ||
+            !require(engineFactory, kThirdEngineVersion, &cvar) ||
             !require(engineFactory, kFourthEngineVersion) ||
             !require(engineFactory, kFifthEngineVersion) ||
             !require(engineFactory, kSixthEngineVersion) ||
@@ -328,7 +351,7 @@ public:
         if (retailSoundProbeEnabled()) {
             const bool connected=connectSound(sound,engineFactory);
             if(connected && retailEventProbeEnabled())
-                stopAfterEventProbe(events,globals,engineFactory,physicsFactory,fileSystemFactory);
+                stopAfterEventProbe(events,cvar,globals,engineFactory,physicsFactory,fileSystemFactory);
             stopAfterSoundProbe(connected);
         }
 #endif
