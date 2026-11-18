@@ -176,7 +176,18 @@ int main(int argc,char** argv) {
     }
     FreeLibrary(fixture);
 
+    // Exact original pre-game-rules branch. Invoke via the actual exported
+    // server table, not a duplicate literal-only helper.
+    using Description=const char* (__thiscall *)(void*);
+    auto description=reinterpret_cast<Description>(serverTable[11]);
+    const char* firstDescription=description(objects[0]);
+    if(!firstDescription || std::strcmp(firstDescription,"SiN Episodes") ||
+       !dllOwns(dll,firstDescription) ||
+       description(objects[0])!=firstDescription)
+        return fail("original slot 11 stable pre-init game description");
+
     for(int i=2;i<31;++i) {
+        if(i==11)continue;
         const auto name=i==9 ? std::string("ServerGameDLL003.GetTickInterval.missing-commandline")
             : std::string(kNames[0])+".slot"+std::to_string(i);
         if(!runChild(argv[1],0,i,name.c_str()))return fail("main table guard");
@@ -193,6 +204,6 @@ int main(int argc,char** argv) {
     }
     FreeLibrary(dll);
     DeleteFileA(logPath(GetCurrentProcessId()).c_str());
-    std::puts("PASS opt-in server factory probe: original table spans 31/7/15, player limits, null paths, 49 nonreturning child guards (including absent command-line provider), nine tick cases with trace");
+    std::puts("PASS opt-in server factory probe: original table spans 31/7/15, player limits, null paths, 48 terminal child cases, nine tick cases and original pre-init game description");
     return 0;
 }
