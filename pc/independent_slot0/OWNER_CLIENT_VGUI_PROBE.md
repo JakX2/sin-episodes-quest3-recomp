@@ -10,7 +10,8 @@ module if absent. It does not dereference the returned interfaces. It
 requires successful owned lifecycle cleanup and separate opt-in.
 
 Native actual-DLL child tests use a fixture-only vgui2.dll and cover
-success, missing module, missing input, missing system, aliased returns and
+success, missing module, missing CreateInterface export, missing input,
+missing system, aliased returns and
 prior console refusal. The original module is not distributed. Success
 0x53494E59, refusal 0x53494E5A. Both are terminal diagnostic stops, not
 successful Init or gameplay. No original code bodies committed.

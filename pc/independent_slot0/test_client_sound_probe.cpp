@@ -21,13 +21,14 @@ constexpr const char* names[]={
 static unsigned progress=0,calls=0,hardwareCalls=0,screenCalls=0;static int mode=0,token=0;
 static const char* fixturePath=nullptr;
 static const char* vguiFixturePath=nullptr;
+static const char* missingFactoryFixturePath=nullptr;
 using VerifyText=bool (__cdecl *)();
 static VerifyText verifyText=nullptr;
 static void* __cdecl App(const char*,int*);
 class Sound {
 public:
     virtual bool __thiscall Connect(Factory factory) noexcept {
-        if(factory!=&App || progress!=21 || ++calls!=1 || (mode!=1 && mode!=2 && (mode<5 || mode>32)))
+        if(factory!=&App || progress!=21 || ++calls!=1 || (mode!=1 && mode!=2 && (mode<5 || mode>33)))
             ExitProcess(91);
         return mode!=2 && mode!=9 && mode!=13 && mode!=17;
     }
@@ -60,7 +61,7 @@ public:
     virtual void __thiscall Guard4() noexcept {ExitProcess(120);}
     virtual void __thiscall GetScreenSize(int& w,int& h) noexcept {
         if(progress!=22 || calls!=1 || hardwareCalls!=1 || ++screenCalls!=1 ||
-           &w==&h || w || h || (mode!=10 && mode!=11 && mode!=14 && mode!=15 && (mode<18 || mode>32)))ExitProcess(121);
+           &w==&h || w || h || (mode!=10 && mode!=11 && mode!=14 && mode!=15 && (mode<18 || mode>33)))ExitProcess(121);
         w=mode==11?0:1920;h=mode==11?0:1080;
     }
 };
@@ -84,7 +85,7 @@ public:
         ExitProcess(123);
     }
     void __thiscall RegisterConCommandBase(CommandBase* object) noexcept override {
-        if(mode!=18 && mode!=20 && mode!=21 && mode!=24 && (mode<27 || mode>31))ExitProcess(124);
+        if(mode!=18 && mode!=20 && mode!=21 && mode!=24 && (mode<27 || mode>31) && mode!=33)ExitProcess(124);
         if(screenCalls!=1 || calls>=kClientSpecCount || lists!=1 ||
            !object || object->IsCommand() || object->registered ||
            object->next || object->flags!=8)ExitProcess(125);
@@ -115,7 +116,7 @@ public:
 static ClientCvarFixture clientCvar;
 static void* __cdecl App(const char* name,int* status) {
     if(!name || status)ExitProcess(92);
-    if(progress==21 && ((mode>=5 && mode<=7) || ((mode>=10 && mode<=16 && mode!=13) || (mode>=18 && mode<=32)))) {
+    if(progress==21 && ((mode>=5 && mode<=7) || ((mode>=10 && mode<=16 && mode!=13) || (mode>=18 && mode<=33)))) {
         if(std::strcmp(name,"VMaterialSystemStub001") || calls!=1 ||
            !verifyText || !verifyText())ExitProcess(112);
         ++progress;
@@ -139,7 +140,7 @@ static bool Owns(HMODULE module,const void* ptr) {
 static int Child(const char* dll,int selected) {
     mode=selected;
     clientCvar.Prepare();
-    if((mode>=5 && mode<=7) || ((mode>=10 && mode<=16 && mode!=13) || (mode>=18 && mode<=32))) {
+    if((mode>=5 && mode<=7) || ((mode>=10 && mode<=16 && mode!=13) || (mode>=18 && mode<=33))) {
         auto module=LoadLibraryA(fixturePath);
         if(!module)return 113;
         auto set=reinterpret_cast<void (__cdecl *)(int)>(GetProcAddress(module,"SetTextFixture"));
@@ -150,6 +151,7 @@ static int Child(const char* dll,int selected) {
         if(!gaussian)return 122;
         gaussian(&token,mode==15 || mode==22 || mode==26?1:0);
     }
+    if(mode==33 && !LoadLibraryA(missingFactoryFixturePath))return 144;
     if(mode>=27 && mode<=31 && mode!=28) {
         if(!LoadLibraryA(vguiFixturePath) ||
            !SetEnvironmentVariableA("SIN_TEST_VGUI_FIXTURE_MODE",std::to_string(mode).c_str()))return 143;
@@ -157,12 +159,12 @@ static int Child(const char* dll,int selected) {
     if(!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE","1") ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION",mode==4?"invalid":kSession) ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUND_PROBE",mode==0?"0":"1") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE",mode>=5 && mode<=32?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SCREEN_PROBE",mode>=10 && mode<=32?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE",mode>=14 && mode<=32?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_CVAR_PROBE",mode>=18 && mode<=32?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE",mode>=24 && mode<=32?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_PROBE",mode>=27 && mode<=32?"1":"0"))
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE",mode>=5 && mode<=33?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SCREEN_PROBE",mode>=10 && mode<=33?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE",mode>=14 && mode<=33?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_CVAR_PROBE",mode>=18 && mode<=33?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE",mode>=24 && mode<=33?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_PROBE",(mode>=27 && mode<=31) || mode==33?"1":"0"))
         return 94;
     HMODULE module=LoadLibraryA(dll);
     if(!module)return 95;
@@ -191,6 +193,7 @@ static bool Run(const char* dll,int selected) {
     command+="\" ";command+=std::to_string(selected);
     command+=" \"";command+=fixturePath;command+="\"";
     command+=" \"";command+=vguiFixturePath;command+="\"";
+    command+=" \"";command+=missingFactoryFixturePath;command+="\"";
     STARTUPINFOA si{};si.cb=sizeof(si);PROCESS_INFORMATION pi{};
     if(!CreateProcessA(exe,&command[0],nullptr,nullptr,FALSE,0,nullptr,nullptr,&si,&pi))
         return false;
@@ -202,7 +205,7 @@ static bool Run(const char* dll,int selected) {
     GetExitCodeProcess(pi.hProcess,&result);CloseHandle(pi.hProcess);
     const DWORD expected=selected>=102?0x53494E45u:
         selected==27?0x53494E59u:
-        selected>=28 && selected<=31?0x53494E5Au:
+        (selected>=28 && selected<=31) || selected==33?0x53494E5Au:
         selected==24?0x53494E57u:
         selected==18?0x53494E55u:
         selected==19 || selected==20 || selected==21 || selected==23 || selected==25 || selected==32?0x53494E56u:
@@ -226,9 +229,10 @@ static bool Run(const char* dll,int selected) {
         return text.find(marker)!=std::string::npos && !has("phase=init-entered");
     }
     if(!has("role=client phase=init-entered"))return false;
-    if(selected>=27 && selected<=31) {
+    if((selected>=27 && selected<=31) || selected==33) {
         const char* result=selected==27?"acquired":selected==28?"missing-module":
-            selected==29?"missing-input":selected==30?"missing-system":"aliased-interfaces";
+            selected==29?"missing-input":selected==30?"missing-system":
+            selected==33?"missing-factory":"aliased-interfaces";
         const char* prefix[]={"phase=owned-startup-probe-result version=verified",
             "phase=vgui-probe-entered version=vgui2.dll"};
         std::size_t after=0;
@@ -238,7 +242,7 @@ static bool Run(const char* dll,int selected) {
             after=at+event.size();return true;
         };
         for(auto event:prefix)if(!ordered(event))return false;
-        if(selected!=28) {
+        if(selected!=28 && selected!=33) {
             if(!ordered("phase=vgui-provider-found version=vgui2.dll") ||
                !ordered("phase=vgui-query-entered version=VGUI_InputInternal001"))return false;
             if(selected!=29) {
@@ -350,10 +354,10 @@ static bool Run(const char* dll,int selected) {
                      has("phase=sdk2004-preflight-only"));
 }
 int main(int argc,char** argv) {
-    if(argc==5){fixturePath=argv[3];vguiFixturePath=argv[4];return Child(argv[1],std::atoi(argv[2]));}
-    if(argc!=4)return 1;
-    fixturePath=argv[2];vguiFixturePath=argv[3];
-    for(int i=0;i<33;++i)if(!Run(argv[1],i)){
+    if(argc==6){fixturePath=argv[3];vguiFixturePath=argv[4];missingFactoryFixturePath=argv[5];return Child(argv[1],std::atoi(argv[2]));}
+    if(argc!=5)return 1;
+    fixturePath=argv[2];vguiFixturePath=argv[3];missingFactoryFixturePath=argv[4];
+    for(int i=0;i<34;++i)if(!Run(argv[1],i)){
         std::fprintf(stderr,"FAIL client sound case %d\n",i);return 2;
     }
     for(int i=102;i<=147;++i)if(!Run(argv[1],i)){

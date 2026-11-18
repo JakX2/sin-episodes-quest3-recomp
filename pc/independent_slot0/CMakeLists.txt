@@ -244,11 +244,17 @@ add_library(sin_test_vgui_fixture SHARED test_client_vgui_fixture.cpp)
 target_compile_features(sin_test_vgui_fixture PRIVATE cxx_std_17)
 set_target_properties(sin_test_vgui_fixture PROPERTIES OUTPUT_NAME "vgui2" PREFIX ""
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/fixture-only")
+# Loaded-module refusal fixture: deliberately exports no CreateInterface.
+add_library(sin_test_vgui_missing_factory SHARED test_client_vgui_missing_factory.cpp)
+target_compile_features(sin_test_vgui_missing_factory PRIVATE cxx_std_17)
+set_target_properties(sin_test_vgui_missing_factory PROPERTIES OUTPUT_NAME "vgui2" PREFIX ""
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/fixture-missing")
 add_executable(sin_client_sound_probe_test test_client_sound_probe.cpp)
 target_compile_features(sin_client_sound_probe_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_sound_probe_native
   COMMAND sin_client_sound_probe_test "$<TARGET_FILE:sin_slot0_client>"
-    "$<TARGET_FILE:sin_test_commandline_fixture>" "$<TARGET_FILE:sin_test_vgui_fixture>")
+    "$<TARGET_FILE:sin_test_commandline_fixture>" "$<TARGET_FILE:sin_test_vgui_fixture>"
+    "$<TARGET_FILE:sin_test_vgui_missing_factory>")
 set_tests_properties(independent_client_sound_probe_native PROPERTIES TIMEOUT 180)
 
 add_executable(sin_client_screen_random_test test_client_screen_random_core.cpp)
