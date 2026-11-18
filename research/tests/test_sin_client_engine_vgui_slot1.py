@@ -44,6 +44,20 @@ class Verify(unittest.TestCase):
         section=0x80+24+0xe0
         struct.pack_into("<I",variant,section+8+12,0xffffffff)
         with self.assertRaises(ValueError):audit.OriginalPE(variant)
+    def test_reject_unbounded_optional_header_and_empty_sections(self):
+        original=synthetic_pe()
+        for change in ("zero_sections","oversized_optional","truncated_table"):
+            data=bytearray(original)
+            if change=="zero_sections":
+                struct.pack_into("<H",data,0x80+6,0)
+            elif change=="oversized_optional":
+                struct.pack_into("<H",data,0x80+20,0xffff)
+            else:
+                # A valid optional header whose section table extends beyond EOF.
+                struct.pack_into("<H",data,0x80+6,0x100)
+            with self.subTest(change=change):
+                with self.assertRaises(ValueError):
+                    audit.OriginalPE(data)
     def test_sha_refusal_before_inspection(self):
         with tempfile.TemporaryDirectory() as root:
             p=pathlib.Path(root)/"client.dll"

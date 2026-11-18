@@ -39,6 +39,8 @@ class OriginalPE:
         if peoff + 24 > len(data) or data[peoff:peoff+4] != b"PE\0\0":
             raise ValueError("Invalid PE signature")
         nsects, optsize = struct.unpack_from("<HH", data, peoff+6)[0], struct.unpack_from("<H", data, peoff+20)[0]
+        if nsects == 0 or peoff + 24 + optsize > len(data):
+            raise ValueError("Truncated PE optional header or missing sections")
         if optsize < 32 or struct.unpack_from("<H", data, peoff+24)[0] != 0x10b:
             raise ValueError("Not PE32")
         self.base = struct.unpack_from("<I", data, peoff+24+28)[0]
