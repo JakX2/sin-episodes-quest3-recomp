@@ -78,6 +78,17 @@ class EvidenceQueueTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.validate({"records": [reviewed]})
 
+    def test_malformed_json_field_types_fail_closed(self):
+        # Untrusted batch metadata must raise ValueError, never TypeError.
+        for mutation in (
+            {"module": ["client"]}, {"module": {"name": "client"}},
+            {"interface": ["VClient011"]}, {"interface": {"name": "VClient011"}},
+            {"evidence": ["candidate"]}, {"evidence": {"tier": "candidate"}},
+            {"evidence": None}, {"rva": 1234}, {"rva": ["0x1234"]},
+        ):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                module.validate({"records": [dict(BASE, **mutation)]})
+
     def test_rejects_unknown_anchor_and_malformed_rva(self):
         for mutation in ({"interface": "Unknown001"}, {"rva": "1234"}, {"rva": "0xZZ"}):
             with self.assertRaises(ValueError):
