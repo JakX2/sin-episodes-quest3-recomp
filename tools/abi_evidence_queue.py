@@ -18,6 +18,7 @@ SHA = re.compile(r"^[0-9a-f]{64}$")
 RVA = re.compile(r"^0x[0-9a-f]{1,8}$")
 ALLOWED = {"module", "interface", "rva", "evidence", "body_sha256", "test_id"}
 ROOT = {"records"}
+MODULE_FOR_ANCHOR = {anchor: ("server" if anchor.startswith("Server") else "client") for anchor in ANCHORS}
 
 
 def validate(payload):
@@ -39,6 +40,8 @@ def validate(payload):
         test = record.get("test_id")
         if module not in ("client", "server") or interface not in ANCHORS:
             raise ValueError(f"record {index}: invalid module/interface")
+        if module != MODULE_FOR_ANCHOR[interface]:
+            raise ValueError(f"record {index}: interface belongs to {MODULE_FOR_ANCHOR[interface]} module")
         if not isinstance(rva, str) or not RVA.fullmatch(rva):
             raise ValueError(f"record {index}: invalid normalized RVA")
         if level not in LEVELS:
@@ -52,6 +55,10 @@ def validate(payload):
             raise ValueError(f"record {index}: engine test identifier required")
         if test is not None and (not isinstance(test, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]{1,120}", test)):
             raise ValueError(f"record {index}: invalid test identifier")
+        if level in ("candidate", "inferred") and (digest is not None or test is not None):
+            raise ValueError(f"record {index}: unreviewed evidence cannot carry authenticated fields")
+        if level == "sha_reviewed" and test is not None:
+            raise ValueError(f"record {index}: engine test ID requires engine_tested tier")
         key = (module, interface, rva)
         if key in seen:
             raise ValueError(f"record {index}: duplicate identity")
