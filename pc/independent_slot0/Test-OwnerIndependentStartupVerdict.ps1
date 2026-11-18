@@ -679,6 +679,35 @@ try {
         '[SiN independent] role=client phase=vgui-controls-bootstrap-result version=init-true',
         $controlsStop)))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Post-VGUI original secondary IAppSystem slot-2 QueryInterface.
+    $matSurfaceEntry='[SiN independent] role=client phase=mat-surface-query-entered version=VGUI_Surface028:IAppSystem+4'
+    $matSurfaceStop='[SiN independent] role=client phase=mat-surface-query-terminal-stop version=original-abi'
+    $matSurfacePrefix=$engineSlotPrefix+@($controlsStart)+@($controlsEvents)+@(
+        '[SiN independent] role=client phase=vgui-controls-init-entered version=VGUI_ivgui006:factory-count-1',
+        '[SiN independent] role=client phase=vgui-controls-init-returned version=true',
+        '[SiN independent] role=client phase=vgui-controls-bootstrap-result version=init-true',
+        $engineSlotEntry,
+        '[SiN independent] role=client phase=engine-vgui-slot1-result version=nonzero',
+        $engineSlotStop)
+    foreach($state in @('found','missing-interface','invalid-vtable','invalid-method')) {
+        [IO.File]::WriteAllLines($retailReplay,[string[]]($matSurfacePrefix+@(
+            $matSurfaceEntry,
+            ("[SiN independent] role=client phase=mat-surface-query-result version={0}" -f $state),
+            $matSurfaceStop)))
+        $out=Verify 'CLIENT_MAT_SURFACE_QUERY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(-not (($out -join '|').Contains(":client:$state"))) {throw "MatSystemSurface $state outcome missing"}
+    }
+    # Classifier must not promote a fabricated success missing the
+    # exact original GetPanel call-and-return prerequisite.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($engineSlotPrefix+@($controlsStart)+
+        @($controlsEvents)+@(
+        '[SiN independent] role=client phase=vgui-controls-init-entered version=VGUI_ivgui006:factory-count-1',
+        '[SiN independent] role=client phase=vgui-controls-init-returned version=true',
+        '[SiN independent] role=client phase=vgui-controls-bootstrap-result version=init-true',
+        $matSurfaceEntry,
+        '[SiN independent] role=client phase=mat-surface-query-result version=found',
+        $matSurfaceStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
