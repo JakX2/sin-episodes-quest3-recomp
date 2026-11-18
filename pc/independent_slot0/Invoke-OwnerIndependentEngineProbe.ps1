@@ -15,6 +15,7 @@ param(
     [string]$GameArguments = '-console',
     [ValidateSet('Both','Server','Client')][string]$ProbeRole = 'Both',
     [switch]$EnableServerFactoryProbe,
+    [switch]$EnableServerSoundProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -96,6 +97,9 @@ function Require-NoReparseAncestors([string]$Path) {
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
     throw "Refusing without -DisposableTestCopyConfirmed (NEVER test your live Steam install)."
+}
+if ($EnableServerSoundProbe -and ($ProbeRole -ne 'Server' -or -not $EnableServerFactoryProbe)) {
+    throw 'EnableServerSoundProbe requires Server-only mode and EnableServerFactoryProbe'
 }
 if ($EnableServerFactoryProbe -and $ProbeRole -ne 'Server') {
     throw "EnableServerFactoryProbe requires the explicit Server-only diagnostic mode"
@@ -201,6 +205,7 @@ try {
     $previous = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','Process')
     $previousSession = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION','Process')
     $previousFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_FACTORY_PROBE','Process')
+    $previousSoundProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_SOUND_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
@@ -208,6 +213,9 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_FACTORY_PROBE',
             $(if ($EnableServerFactoryProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_SERVER_FACTORY_PROBE: {0}" -f $(if ($EnableServerFactoryProbe) { 'ENABLED_DIAGNOSTIC_ONLY' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_SOUND_PROBE',
+            $(if ($EnableServerSoundProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_SERVER_SOUND_PROBE: {0}" -f $(if ($EnableServerSoundProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
             FilePath = $exe
@@ -287,6 +295,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE',$previous,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$previousSession,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_FACTORY_PROBE',$previousFactoryProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_SOUND_PROBE',$previousSoundProbe,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.
