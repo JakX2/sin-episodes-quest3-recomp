@@ -286,6 +286,7 @@ try {
             $(if ($EnableClientCvarProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_CVAR_PROBE: {0}" -f $(if ($EnableClientCvarProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE',$(if ($EnableClientOwnedStartupProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_CLIENT_OWNED_STARTUP_PROBE: {0}" -f $(if ($EnableClientOwnedStartupProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
             FilePath = $exe

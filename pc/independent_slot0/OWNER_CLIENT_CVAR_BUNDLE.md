@@ -24,6 +24,9 @@ report VERIFIED_COMPLETE. Exit 0x53494E56 is a refusal, not a success.
 Include the full text report when reporting results. If restoration is
 incomplete, follow the existing launcher's manual recovery messages.
 
-This package does not advance the retail startup beyond Phase 348, and
-does not enable the independent particle/VGUI fixture in the game.
-No original game data is included.
+The previously verified Phase 348 command remains the default. The
+optional -EnableClientOwnedStartupProbe switch extends the diagnostic
+with independently owned deferred-object and particle-pool lifecycle
+checks. Its expected exit is 0x53494E57, or 0x53494E58 on refusal. This
+is not original registry or allocator parity, VGUI initialization,
+or a successful Init return. No original game data is included.

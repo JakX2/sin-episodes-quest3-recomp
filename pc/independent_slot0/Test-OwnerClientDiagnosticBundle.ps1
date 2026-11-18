@@ -17,7 +17,7 @@ param(
     [string]$GameArguments,[int]$TimeoutSeconds,[string]$ProbeRole,
     [switch]$EnableClientSoundProbe,[switch]$EnableClientMaterialProbe,
     [switch]$EnableClientScreenProbe,[switch]$EnableClientGaussianProbe,
-    [switch]$EnableClientCvarProbe,[switch]$DisposableTestCopyConfirmed
+    [switch]$EnableClientCvarProbe,[switch]$EnableClientOwnedStartupProbe,[switch]$DisposableTestCopyConfirmed
 )
 $ErrorActionPreference='Stop'
 if ($ProbeRole -cne 'Client' -or -not $EnableClientSoundProbe -or
@@ -28,7 +28,7 @@ if ($ProbeRole -cne 'Client' -or -not $EnableClientSoundProbe -or
     $GameBin -cne (Join-Path $env:SIN_TEST_BUNDLE_GAME 'SE1/bin') -or
     $GameExecutable -cne (Join-Path $env:SIN_TEST_BUNDLE_GAME 'SinEpisodes.exe') -or
     $IndependentBin -cne (Join-Path $PSScriptRoot 'bin')) { throw 'Incorrect delegated parameters' }
-Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value 'called'
+Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value $(if($EnableClientOwnedStartupProbe){'owned'}else{'called'})
 '@ | Set-Content -LiteralPath $stub
     $files=@('bin/client.dll','bin/server.dll','Invoke-OwnerIndependentEngineProbe.ps1',
         'Get-OwnerEngineExitDiagnosis.ps1','Get-OwnerIndependentStartupVerdict.ps1',
@@ -61,7 +61,10 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value 'called'
     try {
         Expect-Refusal '*explicit confirmation*' $false
         & $run -GameRoot $game -TimeoutSeconds 45 -GameArguments '-console -windowed' -DisposableTestCopyConfirmed
-        if(-not (Test-Path -LiteralPath $called)){throw 'Stub was not called'}
+        if((Get-Content -LiteralPath $called -Raw).Trim() -cne 'called'){throw 'Default wrapper did not preserve Phase 348 mode'}
+        Remove-Item -LiteralPath $called
+        & $run -GameRoot $game -TimeoutSeconds 45 -GameArguments '-console -windowed' -EnableClientOwnedStartupProbe -DisposableTestCopyConfirmed
+        if((Get-Content -LiteralPath $called -Raw).Trim() -cne 'owned'){throw 'Owned startup switch was not delegated'}
         Remove-Item -LiteralPath $called
         $client=Join-Path $bundle 'bin/client.dll'
         Add-Content -LiteralPath $client -Value 'modified'
