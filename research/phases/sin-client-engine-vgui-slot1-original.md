@@ -47,3 +47,45 @@ The matching `src_mod/cl_dll/vgui_int.cpp` calls
 `vgui::VPANEL` handle. The original binary proves the dispatched slot
 and argument; SDK2004 supplies the symbolic method/enum names. We do
 not dereference the returned handle or claim GUI panel creation.
+
+
+## Owner-original engine result: 18 November 2026
+
+This is an actual owner-side retail engine process test, using the
+independent PE32 client from PR #426 at CI diagnostic merge commit
+`07eda44132ed61049b365a3e708574849b984ccc`.
+
+Owner supplied both the console paste (150 lines) and
+`sin-engine-vgui-panel-probe.txt` (UTF-16, 126 log lines).
+Both independent sources agree:
+
+- Owner launched a disposable, SHA-pinned original SiN Episodes copy.
+  Only `client.dll` was staged; original `server.dll` was unchanged.
+- `VClient011` factory accepted; actual Init entered.
+- All 21 required engine interfaces found, including
+  `VEngineVGui001`; SoundEmitter connected, material hardware
+  configuration obtained, screen queried, Gaussian attached and
+  three client console variables registered.
+- The independent owned object and particle lifecycle reported verified.
+- The loaded original `vgui2.dll` provided both VGUI interface
+  pointers; input and system anchor slots passed memory inspection.
+- `engine-vgui-slot1-entered version=VEngineVGui001:arg2` followed by
+  `engine-vgui-slot1-result version=nonzero`.
+- Exact exit `0x53494E5D` / decimal `1397313117`, classified
+  `INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_NONZERO_DIAGNOSTIC_STOP`.
+- Classifier:
+  `CLIENT_ENGINE_VGUI_SLOT1_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF`.
+- `RESTORED_VERIFIED: ...client.dll`,
+  `RETAINED_ORIGINAL_UNCHANGED: ...server.dll` and
+  `OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE`.
+- Module sampling noted `client.dll` not observed despite 34
+  successful polling samples; positive factory and trace evidence
+  establishes native DLL execution, but sampling is not exhaustive.
+
+Interpretation: the original engine returned a **nonzero**
+`IEngineVGui::GetPanel(PANEL_CLIENTDLL)` VPANEL handle for this
+independently built client. The diagnostic deliberately terminated
+before a normal `Init` return. This does NOT show that any GUI panels
+were constructed/registered, that in-game HUD or rendering works,
+that the original one-time `CHudTextureHandle` converter exists, or
+that `VClient011::Init` completed.
