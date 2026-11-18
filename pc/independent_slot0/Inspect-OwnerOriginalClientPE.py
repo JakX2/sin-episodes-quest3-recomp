@@ -107,8 +107,29 @@ def inspect(data):
     branch = pe.raw(0xfe371,6)
     if branch[:2]!=b"\x0f\x84" or 0xfe377+struct.unpack_from("<i",branch,2)[0]!=0xfe59e:
         raise ValueError("Original required hardware-config failure edge mismatch")
+    # GetScreenSize calls VEngineClient slot 5 with height then
+    # width pushes; Gaussian attach follows the acquired random stream.
+    call = pe.raw(0xfe377,5)
+    if call[0]!=0xe8 or 0xfe37c+struct.unpack_from("<i",call,1)[0]!=0xffab0:
+        raise ValueError("Original client screen helper edge mismatch")
+    if pe.raw(0xffab0,22)!=bytes.fromhex(
+            "8b0d84f633248b016814fc33246810fc3324ff5014c3"):
+        raise ValueError("Original client screen callback ABI mismatch")
+    if pe.raw(0xfe37c,18)!=bytes.fromhex(
+            "8b0dccf6332451b900f73324ff1544622724"):
+        raise ValueError("Original client Gaussian attach mismatch")
+    if pe.raw(0x2681f0,14)!=bytes.fromhex(
+            "6a00b900f73324ff1540622724c3"):
+        raise ValueError("Original Gaussian static initializer mismatch")
     return {
         "original_client_sha256": PIN,
+        "screen_random": {"screen_helper_rva":hex(0xffab0),
+                          "engine_slot":5,
+                          "width_global_rva":hex(0x33fc10),
+                          "height_global_rva":hex(0x33fc14),
+                          "gaussian_constructor_iat_rva":hex(0x276240),
+                          "gaussian_attach_iat_rva":hex(0x276244),
+                          "gaussian_storage_rva":hex(0x33f700)},
         "post_connect": {"commandline_import_rva":hex(0x276250),
                          "find_parm_slot":10, "flag":"-textmode",
                          "optional_factory":"VMaterialSystemStub001",
