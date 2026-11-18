@@ -84,7 +84,7 @@ inline SingleCvarResult RegisterSingleProbeVariable(void* engine,Variable& varia
     if(find(engine,kProbeVarName)!=&variable)
         return SingleCvarResult::LookupMismatch;
     if(variable.parent!=&variable || variable.string!=storage ||
-       std::strcmp(variable.GetName(),kProbeVarName) ||
+       !variable.GetName() || std::strcmp(variable.GetName(),kProbeVarName) ||
        !variable.IsBitSet(4) || variable.integer!=0 ||
        variable.real!=0 || std::strcmp(variable.String(),"0"))
         return SingleCvarResult::BadObject;
