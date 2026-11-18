@@ -2,7 +2,7 @@
 
 Phase 348 commit 1d77de3f81e3ab37a6c6642465a634fa5936e2dc passed all four CI workflows. The real engine has not yet run the Phase 348 three-variable diagnostic.
 
-The earlier SHA-pinned subsystem audit `research/tools/audit_sin_subsystem_startup.py` and `research/phases/phase180-original-client-app-physics-postinit.md` are distinct from the particle-trail RecvTable work. The original startup evidence identifies the following:
+The earlier SHA-pinned subsystem audit `research/tools/audit_sin_subsystem_startup.py` and `research/phases/sin-original-client-server-subsystem-startup.md` are distinct from the particle-trail RecvTable work. The original startup evidence identifies the following:
 - After the deferred object initializer succeeds, the client particle startup is called before VGUI.
 - The original manager resets before allocating a 48-byte bucket object.
 - The bucket constructor is passed the numeric argument 96 and label CParticleMgr::m_pParticleBucket; the resulting pointer is stored at manager offset +0x84.
