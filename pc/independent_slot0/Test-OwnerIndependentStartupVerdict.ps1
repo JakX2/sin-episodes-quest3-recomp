@@ -313,6 +313,29 @@ try {
         '[SiN independent] role=server phase=event-probe-terminal-stop version=resource/gameevents.res'
     )))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Hypothetical client-only probe (not an owner-observed result).
+    # Distinguish its terminal Connect from any server outcome.
+    foreach ($phase in @('sound-connect-succeeded','sound-connect-rejected')) {
+        [IO.File]::WriteAllLines($retailReplay,[string[]]@(
+            '[SiN independent] role=client phase=factory-accepted version=VClient011',
+            '[SiN independent] role=client phase=init-entered version=<none>',
+            '[SiN independent] role=client phase=sound-connect-entered version=VSoundEmitter001',
+            ("[SiN independent] role=client phase={0} version=VSoundEmitter001" -f $phase),
+            '[SiN independent] role=client phase=sound-probe-terminal-stop version=VSoundEmitter001'
+        ))
+        $out = Verify 'CLIENT_SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if (-not (($out -join '|').Contains(":client:$phase")) -or
+            @($out | Where-Object { $_ -like 'OWNER_SERVER_SOUND_CONNECT_RESULTS: *' }).Count) {
+            throw 'Client sound result mixed with server evidence'
+        }
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]]@(
+        '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=sound-connect-entered version=VSoundEmitter001',
+        '[SiN independent] role=server phase=sound-connect-succeeded version=VSoundEmitter001',
+        '[SiN independent] role=client phase=sound-probe-terminal-stop version=VSoundEmitter001'
+    ))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     Remove-Item -LiteralPath $retailReplay -Force
     [IO.File]::WriteAllText($client,
         "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine)
