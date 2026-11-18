@@ -38,13 +38,13 @@ def validate(payload):
         level = record.get("evidence")
         digest = record.get("body_sha256")
         test = record.get("test_id")
-        if module not in ("client", "server") or interface not in ANCHORS:
+        if not isinstance(module, str) or not isinstance(interface, str) or module not in ("client", "server") or interface not in ANCHORS:
             raise ValueError(f"record {index}: invalid module/interface")
         if module != MODULE_FOR_ANCHOR[interface]:
             raise ValueError(f"record {index}: interface belongs to {MODULE_FOR_ANCHOR[interface]} module")
         if not isinstance(rva, str) or not RVA.fullmatch(rva):
             raise ValueError(f"record {index}: invalid normalized RVA")
-        if level not in LEVELS:
+        if not isinstance(level, str) or level not in LEVELS:
             raise ValueError(f"record {index}: invalid evidence tier")
         if level in ("sha_reviewed", "engine_tested") and (
             not isinstance(digest, str) or not SHA.fullmatch(digest)):
