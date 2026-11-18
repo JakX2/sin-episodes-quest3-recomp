@@ -24,6 +24,7 @@ $soundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientSoundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientMaterialTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientScreenTerminalLogs = New-Object System.Collections.Generic.List[string]
+$gaussianTerminalLogs = New-Object System.Collections.Generic.List[string]
 $eventTerminalLogs = New-Object System.Collections.Generic.List[string]
 $cvarTerminalLogs = New-Object System.Collections.Generic.List[string]
 $batchTerminalLogs = New-Object System.Collections.Generic.List[string]
@@ -67,6 +68,8 @@ foreach ($log in $logs) {
     $screenStage = 0
     $screenDimensions = $null
     $screenResult = $null
+    $gaussianStage = 0
+    $gaussianResult = $null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -148,6 +151,23 @@ foreach ($log in $logs) {
             } elseif ($screenStage -eq 3 -and $phase -eq 'screen-probe-terminal-stop' -and $version -eq 'VEngineClient012.GetScreenSize') {
                 $clientScreenTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$screenResult))
                 $screenStage = 4
+            }
+        }
+        if ($role -eq 'client' -and $screenStage -eq 3 -and $screenResult -like 'returned:*') {
+            if ($gaussianStage -eq 0 -and $phase -eq 'gaussian-attach-entered' -and $version -eq 'VEngineRandom001') {
+                $gaussianStage = 1
+            } elseif ($gaussianStage -eq 1 -and $phase -eq 'gaussian-attach-verified' -and $version -eq 'VEngineRandom001') {
+                $gaussianStage = 2
+            } elseif ($phase -eq 'gaussian-probe-result') {
+                if (($gaussianStage -eq 2 -and $version -eq 'attached') -or
+                    ($gaussianStage -eq 1 -and $version -eq 'layout-or-attach-refused') -or
+                    ($gaussianStage -eq 0 -and $version -eq 'missing-abi-input')) {
+                    $gaussianResult = $version
+                    $gaussianStage = 3
+                }
+            } elseif ($gaussianStage -eq 3 -and $phase -eq 'gaussian-probe-terminal-stop' -and $version -eq 'VEngineRandom001') {
+                $gaussianTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$gaussianResult))
+                $gaussianStage = 4
             }
         }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
@@ -255,6 +275,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($gaussianTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_GAUSSIAN_PROBE_RESULTS: {0}" -f ($gaussianTerminalLogs -join ','))
+}
 if ($clientScreenTerminalLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SCREEN_PROBE_RESULTS: {0}" -f ($clientScreenTerminalLogs -join ','))
 }
@@ -291,6 +314,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($gaussianTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_GAUSSIAN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($clientScreenTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SCREEN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($clientMaterialTerminalLogs.Count -gt 0) {

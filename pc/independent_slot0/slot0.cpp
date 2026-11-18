@@ -316,8 +316,32 @@ static bool clientScreenProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SCREEN_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
-[[noreturn]] static void stopAfterClientScreenProbe(void* engine) noexcept {
-    static sin_independent::ScreenState screen;
+static bool clientGaussianProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientScreenProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientGaussianProbe(
+    sin_independent::ClientScreenRandomState& state,void* uniform) noexcept {
+    using namespace sin_independent;
+    const auto module=GetModuleHandleA("vstdlib.dll");
+    const auto ctor=module?reinterpret_cast<GaussianCtor>(
+        GetProcAddress(module,"??0CGaussianRandomStream@@QAE@PAVIUniformRandomStream@@@Z")):nullptr;
+    const auto attach=module?reinterpret_cast<GaussianAttach>(
+        GetProcAddress(module,"?AttachToStream@CGaussianRandomStream@@QAEXPAVIUniformRandomStream@@@Z")):nullptr;
+    const bool available=ctor && attach && uniform;
+    if(available)diagnostic("gaussian-attach-entered","VEngineRandom001");
+    const bool attached=available && state.Attach(uniform,ctor,attach);
+    if(attached)diagnostic("gaussian-attach-verified","VEngineRandom001");
+    diagnostic("gaussian-probe-result",attached?"attached":available?"layout-or-attach-refused":"missing-abi-input");
+    diagnostic("gaussian-probe-terminal-stop","VEngineRandom001");
+    TerminateProcess(GetCurrentProcess(),attached?0x53494E53u:0x53494E54u);
+    __fastfail(7);
+}
+[[noreturn]] static void stopAfterClientScreenProbe(void* engine,void* uniform) noexcept {
+    static sin_independent::ClientScreenRandomState state;
+    auto& screen=state.screen;
     diagnostic("screen-query-entered","VEngineClient012.GetScreenSize");
     const bool queried=screen.Query(engine);
     if(queried) {
@@ -326,11 +350,12 @@ static bool clientScreenProbeEnabled() noexcept {
         diagnostic("screen-query-returned",dimensions);
     }
     diagnostic("screen-probe-result",queried?"returned":"missing-abi-input");
+    if(queried && clientGaussianProbeEnabled())stopAfterClientGaussianProbe(state,uniform);
     diagnostic("screen-probe-terminal-stop","VEngineClient012.GetScreenSize");
     TerminateProcess(GetCurrentProcess(),queried?0x53494E51u:0x53494E52u);
     __fastfail(7);
 }
-[[noreturn]] static void stopAfterClientMaterialProbe(Factory app,void* materials,void* engine) noexcept {
+[[noreturn]] static void stopAfterClientMaterialProbe(Factory app,void* materials,void* engine,void* uniform) noexcept {
     using namespace sin_independent;
     const auto module=GetModuleHandleA("vstdlib.dll");
     const auto provider=module?reinterpret_cast<ClientCommandLine>(
@@ -339,7 +364,7 @@ static bool clientScreenProbeEnabled() noexcept {
     const auto result=AcquireClientMaterialState(provider,app,materials,state,&diagnostic);
     diagnostic("material-probe-result",ClientMaterialResultName(result));
     if(result==ClientMaterialResult::Acquired && clientScreenProbeEnabled())
-        stopAfterClientScreenProbe(engine);
+        stopAfterClientScreenProbe(engine,uniform);
     diagnostic("material-probe-terminal-stop","MaterialSystemHardwareConfig012");
     TerminateProcess(GetCurrentProcess(),result==ClientMaterialResult::Acquired?0x53494E4Fu:0x53494E50u);
     __fastfail(7);
@@ -371,10 +396,12 @@ public:
             !require(appSystemFactory, kFifthEngineVersion)) return 0;
         void* sound=nullptr;
         void* materials=nullptr;
+        void* uniform=nullptr;
         for (const char* version : kRemainingClientVersions)
             if (!require(appSystemFactory, version,
                          std::strcmp(version,"VSoundEmitter001")==0 ? &sound :
-                         std::strcmp(version,"VMaterialSystem076")==0 ? &materials : nullptr))
+                         std::strcmp(version,"VMaterialSystem076")==0 ? &materials :
+                         std::strcmp(version,"VEngineRandom001")==0 ? &uniform : nullptr))
                 return 0;
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
         if (!connectSound(sound,appSystemFactory)) return 0;
@@ -382,7 +409,7 @@ public:
         if(clientSoundProbeEnabled()) {
             const bool connected=connectSound(sound,appSystemFactory);
             if(connected && clientMaterialProbeEnabled())
-                stopAfterClientMaterialProbe(appSystemFactory,materials,engine);
+                stopAfterClientMaterialProbe(appSystemFactory,materials,engine,uniform);
             stopAfterClientSoundProbe(connected);
         }
 #endif

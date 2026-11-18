@@ -22,6 +22,7 @@ param(
     [switch]$EnableClientSoundProbe,
     [switch]$EnableClientMaterialProbe,
     [switch]$EnableClientScreenProbe,
+    [switch]$EnableClientGaussianProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -103,6 +104,9 @@ function Require-NoReparseAncestors([string]$Path) {
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
     throw "Refusing without -DisposableTestCopyConfirmed (NEVER test your live Steam install)."
+}
+if ($EnableClientGaussianProbe -and -not $EnableClientScreenProbe) {
+    throw 'EnableClientGaussianProbe requires EnableClientScreenProbe and its Client-only prerequisites'
 }
 if ($EnableClientScreenProbe -and -not $EnableClientMaterialProbe) {
     throw 'EnableClientScreenProbe requires EnableClientMaterialProbe and Client-only prerequisites'
@@ -236,6 +240,7 @@ try {
     $previousClientSoundProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_PROBE','Process')
     $previousClientMaterialProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE','Process')
     $previousClientScreenProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SCREEN_PROBE','Process')
+    $previousClientGaussianProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
@@ -264,6 +269,9 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SCREEN_PROBE',
             $(if ($EnableClientScreenProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_SCREEN_PROBE: {0}" -f $(if ($EnableClientScreenProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE',
+            $(if ($EnableClientGaussianProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_CLIENT_GAUSSIAN_PROBE: {0}" -f $(if ($EnableClientGaussianProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
             FilePath = $exe
@@ -350,6 +358,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_PROBE',$previousClientSoundProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE',$previousClientMaterialProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SCREEN_PROBE',$previousClientScreenProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE',$previousClientGaussianProbe,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.

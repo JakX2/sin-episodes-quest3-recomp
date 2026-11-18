@@ -442,6 +442,34 @@ try {
     )))
     $out = Verify 'CLIENT_MATERIAL_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
     if (-not (($out -join '|').Contains(':client:acquired'))) { throw 'Actual Phase 341 result missing' }
+    # Future Gaussian result remains synthetic. Require the entire
+    # successful screen path before checking the attach evidence.
+    $gaussianPrefix = @($retail341) + @(
+        '[SiN independent] role=client phase=screen-query-entered version=VEngineClient012.GetScreenSize',
+        '[SiN independent] role=client phase=screen-query-returned version=1920:1080',
+        '[SiN independent] role=client phase=screen-probe-result version=returned'
+    )
+    foreach ($attachResult in @('attached','layout-or-attach-refused','missing-abi-input')) {
+        $trace = @($gaussianPrefix)
+        if ($attachResult -ne 'missing-abi-input') {
+            $trace += '[SiN independent] role=client phase=gaussian-attach-entered version=VEngineRandom001'
+        }
+        if ($attachResult -eq 'attached') {
+            $trace += '[SiN independent] role=client phase=gaussian-attach-verified version=VEngineRandom001'
+        }
+        $trace += @(
+            ("[SiN independent] role=client phase=gaussian-probe-result version={0}" -f $attachResult),
+            '[SiN independent] role=client phase=gaussian-probe-terminal-stop version=VEngineRandom001'
+        )
+        [IO.File]::WriteAllLines($retailReplay,[string[]]$trace)
+        $out = Verify 'CLIENT_GAUSSIAN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if (-not (($out -join '|').Contains(":client:$attachResult"))) { throw 'Gaussian result missing' }
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($gaussianPrefix) + @(
+        '[SiN independent] role=client phase=gaussian-probe-result version=attached',
+        '[SiN independent] role=client phase=gaussian-probe-terminal-stop version=VEngineRandom001'
+    )))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
