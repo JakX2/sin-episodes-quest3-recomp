@@ -306,6 +306,12 @@ def inspect(data):
     reverse_calls = (0x1e7a1d, 0x1e7a06, 0x1e79f0, 0x1e79d9, 0x1e79c2)
     for call, (_, getter, obj, _) in zip(reverse_calls, save_getters):
         verify_getter(call, getter, obj)
+        if pe.raw(call+12, 3) != bytes.fromhex("ff5628"):
+            raise ValueError("Original RemoveBlockHandler slot mismatch")
+    if pe.raw(0x1f57fa, 2) != bytes.fromhex("ff12") or \
+       pe.raw(0x1f53a0, 3) != bytes.fromhex("ff5214") or \
+       pe.raw(0x1f53af, 3) != bytes.fromhex("ff5018"):
+        raise ValueError("Original system Init or cache-lock dispatch slot mismatch")
     mod_event_name = pe.string(0x4428cc)
     if mod_event_name != "resource/ModEvents.res" or pe.raw(0x1e7924, 3) != bytes.fromhex("ff5204"):
         raise ValueError("Original mod-event load mismatch")
