@@ -18,6 +18,19 @@ REG = (
     ("ServerGameEnts001", 0x3bf210, 0x1e82c0, 0x510654, 0x443030),
     ("ServerGameClients003", 0x3bf230, 0x1e8320, 0x510658, 0x443054),
 )
+MAIN_SLOTS = (
+    0x1e7640, 0x1e7b00, 0x1ea060, 0x1e8f80, 0x1e9080, 0x1e91d0,
+    0x1e7be0, 0x1e7b30, 0x1e79b0, 0x1e7a90, 0x1e7c30, 0x1e7c40,
+    0x1e92b0, 0x1e7c50, 0x1ea290, 0x1ea2e0, 0x1e7c60, 0x1e7c70,
+    0x1e7d10, 0x1e9a30, 0x1e7d20, 0x1e9b80, 0x1e9bc0, 0x1e9aa0,
+    0x1e7b50, 0x1e7e50, 0x1e9ae0, 0x1e7e90, 0x1e7c80, 0x1e7ce0,
+    0x1e7cf0,
+)
+CLIENTS_SLOTS = (
+    0x1e63f0, 0x1e8330, 0x1ea330, 0x1ea3a0, 0x1e8340,
+    0x1e9650, 0x1e8510, 0x1e8370, 0x1e9c00, 0x1ea600,
+    0x1e84d0, 0x1e85b0, 0x1e8530, 0x1e8520, 0x1e85e0,
+)
 ENTS_SLOTS = (0x1e9360, 0x1e82d0, 0x1e9380, 0x1e82e0,
               0x1e94b0, 0x1e82f0, 0x1e94d0)
 
@@ -142,6 +155,25 @@ def inspect(data):
             "object_rva": hex(obj),
             "vtable_rva": hex(vtable),
         }
+        expected_slots = {
+            "ServerGameDLL003": MAIN_SLOTS,
+            "ServerGameEnts001": ENTS_SLOTS,
+            "ServerGameClients003": CLIENTS_SLOTS,
+        }[name]
+        actual_slots = tuple(pe.rva(pe.u32(vtable+4*i))
+                             for i in range(len(expected_slots)))
+        if actual_slots != expected_slots:
+            raise ValueError(name + " original table entries mismatch")
+        def executable_rva(rva):
+            return any(section == ".text" and start <= rva < start+size
+                       for section, start, size, _, _ in pe.sections)
+        if not all(executable_rva(slot) for slot in actual_slots):
+            raise ValueError(name + " contains a non-code entry")
+        next_word = pe.u32(vtable+4*len(expected_slots))
+        if next_word >= pe.base and executable_rva(next_word-pe.base):
+            raise ValueError(name + " unexpectedly has another contiguous code entry")
+        result["vtable_slot_count"] = len(actual_slots)
+        result["vtable_slot_rvas"] = [hex(slot) for slot in actual_slots]
         if name == "ServerGameEnts001":
             slots = tuple(pe.rva(pe.u32(vtable+4*i))
                           for i in range(len(ENTS_SLOTS)))
