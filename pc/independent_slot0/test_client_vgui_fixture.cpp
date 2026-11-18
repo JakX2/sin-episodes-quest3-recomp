@@ -4,7 +4,7 @@
 #include <cstring>
 #include <cstdlib>
 #pragma comment(linker, "/EXPORT:CreateInterface=_CreateInterface")
-static int input=1,system=2;
+static int input=1,systemToken=2;
 static unsigned requests=0;
 extern "C" void* __cdecl CreateInterface(const char* name,int* status) {
     char mode[8]={};
@@ -16,5 +16,5 @@ extern "C" void* __cdecl CreateInterface(const char* name,int* status) {
         return selected==29?nullptr:&input;
     }
     if(requests!=2 || std::strcmp(name,"VGUI_System010") || selected==29)ExitProcess(142);
-    return selected==30?nullptr:selected==31?&input:&system;
+    return selected==30?nullptr:selected==31?&input:&systemToken;
 }
