@@ -42,6 +42,10 @@ add_test(NAME independent_owner_engine_exit_diagnosis
 # metadata parser with an invented PE32 image, never commercial game code.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_server_console_inventory_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalConsole.py"
+      --self-test)
   add_test(NAME independent_server_send_table_inventory_synthetic
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalSendTables.py"
@@ -203,3 +207,7 @@ add_test(NAME independent_server_math_tables_native COMMAND sin_server_math_tabl
 add_executable(sin_server_cvar_registration_test test_server_cvar_registration_core.cpp)
 target_compile_features(sin_server_cvar_registration_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_cvar_registration_native COMMAND sin_server_cvar_registration_test)
+
+add_executable(sin_server_console_value_test test_server_console_value_core.cpp)
+target_compile_features(sin_server_console_value_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_console_value_native COMMAND sin_server_console_value_test)
