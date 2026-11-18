@@ -66,7 +66,7 @@ def validate(payload):
         if key in seen:
             raise ValueError(f"record {index}: duplicate identity")
         seen.add(key)
-        result.append({**record, "rva": normalized_rva})
+        result.append({**{field: value for field, value in record.items() if value is not None}, "rva": normalized_rva})
     result.sort(key=lambda r: (ANCHORS.index(r["interface"]), r["module"], int(r["rva"], 16)))
     return result
 
