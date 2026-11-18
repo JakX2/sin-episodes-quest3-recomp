@@ -52,7 +52,7 @@ class Verify(unittest.TestCase):
                 audit.verify_original(p)
     def test_original_regions_unique(self):
         self.assertEqual(len(audit.REGIONS),7)
-        self.assertEqual(len(set(x[0] for x in audit.REGIONS.values())),5)
+        self.assertEqual(len(set(x[0] for x in audit.REGIONS.values())),7)
         for va,count,digest in audit.REGIONS.values():
             self.assertGreater(count,0)
             self.assertEqual(len(digest),64)
