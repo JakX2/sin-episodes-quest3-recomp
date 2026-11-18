@@ -54,3 +54,34 @@ extern "C" __declspec(dllexport) void __cdecl SetTextFixture(int present) noexce
 extern "C" __declspec(dllexport) bool __cdecl VerifyTextFixture() noexcept {
     return !g_invalid && !g_checks && !g_values && g_find==1 && g_provider==1;
 }
+
+// Export exactly the original decorated constructor and attach names.
+// Fixture-only matching x86 record; no real vstdlib used in CI.
+class IUniformRandomStream;
+static void* gaussianExpected=nullptr;
+static unsigned gaussianConstructs=0,gaussianAttaches=0;
+static bool gaussianRefuse=false;
+extern "C" __declspec(dllexport) void __cdecl SetGaussianFixture(void* expected,int refuse) noexcept {
+    gaussianExpected=expected;gaussianRefuse=refuse!=0;
+    gaussianConstructs=gaussianAttaches=0;
+}
+class __declspec(dllexport) CGaussianRandomStream {
+public:
+    explicit CGaussianRandomStream(IUniformRandomStream* stream);
+    void AttachToStream(IUniformRandomStream* stream);
+private:
+    IUniformRandomStream* uniform_;
+    bool cached_;
+    float value_;
+};
+static_assert(sizeof(CGaussianRandomStream)==12);
+CGaussianRandomStream::CGaussianRandomStream(IUniformRandomStream* stream):
+    uniform_(stream),cached_(false),value_(0) {
+    if(!stream && g_find==1 && g_provider==1)++gaussianConstructs;
+}
+void CGaussianRandomStream::AttachToStream(IUniformRandomStream* stream) {
+    if(gaussianConstructs==1 && stream==gaussianExpected && !gaussianAttaches) {
+        ++gaussianAttaches;
+        uniform_=gaussianRefuse?nullptr:stream;cached_=false;
+    }
+}
