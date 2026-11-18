@@ -428,7 +428,38 @@ try {
         -not (($out -join '|').Contains(':client:sound-connect-succeeded'))) {
         throw 'Actual Phase 339 client evidence missing'
     }
-    # Synthetic future material outcome. A missing stub is nonfatal.
+    # Actual Phase 341 owner trace, including optional stub success.
+    $retail341 = @($client339) + @(
+        '[SiN independent] role=client phase=textmode-checked version=absent',
+        '[SiN independent] role=client phase=optional-request version=VMaterialSystemStub001',
+        '[SiN independent] role=client phase=optional-found version=VMaterialSystemStub001',
+        '[SiN independent] role=client phase=hardware-config-entered version=MaterialSystemHardwareConfig012',
+        '[SiN independent] role=client phase=hardware-config-found version=MaterialSystemHardwareConfig012',
+        '[SiN independent] role=client phase=material-probe-result version=acquired'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($retail341) + @(
+        '[SiN independent] role=client phase=material-probe-terminal-stop version=MaterialSystemHardwareConfig012'
+    )))
+    $out = Verify 'CLIENT_MATERIAL_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (-not (($out -join '|').Contains(':client:acquired'))) { throw 'Actual Phase 341 result missing' }
+    # Future screen events are synthetic only. Preserve zero as a real
+    # returned value, not proof of a rendering surface.
+    foreach ($dimensions in @('1920:1080','0:0')) {
+        [IO.File]::WriteAllLines($retailReplay,[string[]](@($retail341) + @(
+            '[SiN independent] role=client phase=screen-query-entered version=VEngineClient012.GetScreenSize',
+            ("[SiN independent] role=client phase=screen-query-returned version={0}" -f $dimensions),
+            '[SiN independent] role=client phase=screen-probe-result version=returned',
+            '[SiN independent] role=client phase=screen-probe-terminal-stop version=VEngineClient012.GetScreenSize'
+        )))
+        $out = Verify 'CLIENT_SCREEN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if (-not (($out -join '|').Contains(":client:returned:$dimensions"))) { throw 'Screen dimensions missing' }
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($retail341) + @(
+        '[SiN independent] role=client phase=screen-probe-result version=returned',
+        '[SiN independent] role=client phase=screen-probe-terminal-stop version=VEngineClient012.GetScreenSize'
+    )))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Synthetic alternate material outcome. A missing stub is nonfatal.
     $materialPrefix = @($client339) + @(
         '[SiN independent] role=client phase=textmode-checked version=absent',
         '[SiN independent] role=client phase=optional-request version=VMaterialSystemStub001',
