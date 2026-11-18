@@ -646,7 +646,7 @@ try {
             $engineSlotStop,
             $controlsStop)))
         $out=Verify 'CLIENT_VGUI_CONTROLS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
-        if(-not (($out -join '|').Contains(":client:init-$return:panel-nonzero"))) {
+        if(-not (($out -join '|').Contains(":client:init-${return}:panel-nonzero"))) {
             throw "VGUI controls initialization classification missing for $return"
         }
     }
