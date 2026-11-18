@@ -271,7 +271,57 @@ def inspect(data):
     game_description = pe.string(fallback_rva)
     if fallback_rva != 0x466df8 or game_description != "SiN Episodes":
         raise ValueError("Original game description changed")
+    # Original DLLInit post-cvar lifecycle registration. The six
+    # explicit game system calls are kept as separate identities, rather
+    # than silently substituting the five SDK2004 systems.
+    save_getters = (
+        (0x1e7868, 0x273be0, 0x51ba84, 0x1e7874),
+        (0x1e787f, 0x22eca0, 0x575288, 0x1e788b),
+        (0x1e7896, 0x09df20, 0x4e250c, 0x1e78a2),
+        (0x1e78ac, 0x1c2f90, 0x50967c, 0x1e78b8),
+        (0x1e78c3, 0x091790, 0x4e1e4c, 0x1e78cf),
+    )
+    system_getters = (
+        (0x1e78d2, 0x1f3db0, 0x572ae0, 0x1e78d8),
+        (0x1e78dd, 0x20d900, 0x513ae0, 0x1e78e3),
+        (0x1e78e8, 0x2f0fa0, 0x595f58, 0x1e78ee),
+        (0x1e78f3, 0x2b67d0, 0x521864, 0x1e78f9),
+        (0x1e78fe, 0x25f8e0, 0x57ae9c, 0x1e7904),
+        (0x1e7909, 0x1b4e50, 0x507558, 0x1e790f),
+    )
+    def verify_getter(call, getter, obj):
+        if direct_call_target(pe, call) != getter:
+            raise ValueError("Original startup getter edge mismatch")
+        code = pe.raw(getter, 6)
+        if code[0] != 0xb8 or code[5] != 0xc3 or pe.rva(struct.unpack_from("<I", code, 1)[0]) != obj:
+            raise ValueError("Original startup singleton identity mismatch")
+    for call, getter, obj, registration in save_getters:
+        verify_getter(call, getter, obj)
+        if pe.raw(registration, 3) != bytes.fromhex("ff5724"):
+            raise ValueError("Original AddBlockHandler slot mismatch")
+    for call, getter, obj, registration in system_getters:
+        verify_getter(call, getter, obj)
+        if direct_call_target(pe, registration) != 0x1f56e0:
+            raise ValueError("Original Add game system edge mismatch")
+    reverse_calls = (0x1e7a1d, 0x1e7a06, 0x1e79f0, 0x1e79d9, 0x1e79c2)
+    for call, (_, getter, obj, _) in zip(reverse_calls, save_getters):
+        verify_getter(call, getter, obj)
+        if pe.raw(call+12, 3) != bytes.fromhex("ff5628"):
+            raise ValueError("Original RemoveBlockHandler slot mismatch")
+    if pe.raw(0x1f57fa, 2) != bytes.fromhex("ff12") or \
+       pe.raw(0x1f53a0, 3) != bytes.fromhex("ff5214") or \
+       pe.raw(0x1f53af, 3) != bytes.fromhex("ff5018"):
+        raise ValueError("Original system Init or cache-lock dispatch slot mismatch")
+    mod_event_name = pe.string(0x4428cc)
+    if mod_event_name != "resource/ModEvents.res" or pe.raw(0x1e7924, 3) != bytes.fromhex("ff5204"):
+        raise ValueError("Original mod-event load mismatch")
+    for source, target in ((0x1e7927, 0x1f5700), (0x1e7930, 0x1ad8a0), (0x1e7939, 0x149b60)):
+        if direct_call_target(pe, source) != target:
+            raise ValueError("Original late initialization edge mismatch")
     return {"original_server_sha256": PIN, "format": "PE32 x86",
+            "save_block_getters": [{"getter_rva":hex(g), "object_rva":hex(o)} for _,g,o,_ in save_getters],
+            "explicit_game_system_getters": [{"getter_rva":hex(g), "object_rva":hex(o)} for _,g,o,_ in system_getters],
+            "mod_events_path": mod_event_name,
             "status": "ABI research only, no server gameplay implementation",
             "factory_registrations": records,
             "game_description": {"slot": 11, "wrapper_rva": hex(wrapper_rva),
