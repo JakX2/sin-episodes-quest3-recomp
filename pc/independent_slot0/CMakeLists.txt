@@ -198,3 +198,8 @@ add_test(NAME independent_server_send_datatable_native COMMAND sin_server_send_d
 add_executable(sin_server_math_tables_test test_server_math_tables_core.cpp)
 target_compile_features(sin_server_math_tables_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_math_tables_native COMMAND sin_server_math_tables_test)
+
+# Independently owned console registration after post-Connect event load.
+add_executable(sin_server_cvar_registration_test test_server_cvar_registration_core.cpp)
+target_compile_features(sin_server_cvar_registration_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_cvar_registration_native COMMAND sin_server_cvar_registration_test)
