@@ -471,6 +471,38 @@ try {
         '[SiN independent] role=client phase=gaussian-probe-terminal-stop version=VEngineRandom001'
     )))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Future client console registrations remain synthetic evidence.
+    $clientCvarPrefix = @($gaussianPrefix) + @(
+        '[SiN independent] role=client phase=gaussian-attach-entered version=VEngineRandom001',
+        '[SiN independent] role=client phase=gaussian-attach-verified version=VEngineRandom001',
+        '[SiN independent] role=client phase=gaussian-probe-result version=attached'
+    )
+    $clientCvarTrace = @($clientCvarPrefix) + @(
+        '[SiN independent] role=client phase=client-cvar-preflight-complete version=3'
+    )
+    foreach ($name in @('cl_starfield_distance','cl_starfield_diameter','cl_show_bloodspray')) {
+        foreach ($phase in @('client-cvar-register-entered','client-cvar-register-returned','client-cvar-registration-verified')) {
+            $clientCvarTrace += ("[SiN independent] role=client phase={0} version={1}" -f $phase,$name)
+        }
+    }
+    $clientCvarTrace += @(
+        '[SiN independent] role=client phase=client-cvar-probe-result version=verified:3/3',
+        '[SiN independent] role=client phase=client-cvar-probe-terminal-stop version=3'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]$clientCvarTrace)
+    $out = Verify 'CLIENT_CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (-not (($out -join '|').Contains(':client:verified:3/3'))) { throw 'Client cvar result missing' }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($clientCvarPrefix) + @(
+        '[SiN independent] role=client phase=client-cvar-probe-result version=existing-name:0/3',
+        '[SiN independent] role=client phase=client-cvar-probe-terminal-stop version=3'
+    )))
+    $out = Verify 'CLIENT_CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (-not (($out -join '|').Contains(':client:existing-name:0/3'))) { throw 'Client cvar refusal missing' }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($clientCvarPrefix) + @(
+        '[SiN independent] role=client phase=client-cvar-probe-result version=verified:3/3',
+        '[SiN independent] role=client phase=client-cvar-probe-terminal-stop version=3'
+    )))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
