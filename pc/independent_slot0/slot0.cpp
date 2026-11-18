@@ -9,7 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <type_traits>
-#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT) || defined(SIN_ROLE_server)
 #include "sound_emitter_connect_core.h"
 #endif
 #if defined(SIN_ROLE_server)
@@ -163,9 +163,8 @@ static bool extraFactoriesEnabled() noexcept {
     virtual void __thiscall GuardSlot##n() noexcept { stopUnsupported(prefix ".slot" #n); }
 #endif
 
-// The production diagnostic only acquires pointers, never dereferences
-// them. The separately built synthetic-only variant captures the sound
-// pointer locally for the first original post-factory callback.
+// Acquire pointers without dereferencing. The sound pointer is retained
+// locally only for the explicitly selected first post-factory operation.
 static bool require(Factory factory, const char* name,
                     void** captured = nullptr) noexcept {
     if (captured) *captured = nullptr;
@@ -184,17 +183,38 @@ static bool require(Factory factory, const char* name,
     return true;
 }
 
-#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
-// This code is compiled ONLY in fixture-only DLLs used by public CI.
-// It cannot be enabled in the distributed owner retail diagnostics.
-static bool connectSyntheticSound(void* sound, Factory factory) noexcept {
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT) || defined(SIN_ROLE_server)
+// Shared typed first post-acquisition callback. Default owner builds
+// still refuse before calling it unless separately opted in.
+static bool connectSound(void* sound, Factory factory) noexcept {
     diagnostic("sound-connect-entered", "VSoundEmitter001");
     using sin_independent::SoundConnectResult;
     const auto result=sin_independent::TryConnectSoundEmitter(sound,factory);
     const bool connected=result==SoundConnectResult::Connected;
+#if defined(SIN_ROLE_server) && !defined(SIN_SYNTHETIC_SOUND_CONNECT)
+    if (!connected && result!=SoundConnectResult::Rejected)
+        stopUnsupported("VSoundEmitter001.Connect.missing-abi-input");
+#endif
     diagnostic(connected ? "sound-connect-succeeded" : "sound-connect-rejected",
                "VSoundEmitter001");
     return connected;
+}
+#endif
+
+#if defined(SIN_ROLE_server) && !defined(SIN_SYNTHETIC_SOUND_CONNECT)
+static bool retailSoundProbeEnabled() noexcept {
+    char enabled[2]={};
+    return extraFactoriesEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_SOUND_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+// The owner has authorized one actual engine callback, not incomplete
+// game startup. Immediately stop after recording its result. Do NOT
+// run later game systems or call a guessed Disconnect/Shutdown API.
+[[noreturn]] static void stopAfterSoundProbe(bool connected) noexcept {
+    diagnostic("sound-probe-terminal-stop","VSoundEmitter001");
+    TerminateProcess(GetCurrentProcess(), connected ? 0x53494E46u : 0x53494E47u);
+    __fastfail(7);
 }
 #endif
 
@@ -223,7 +243,7 @@ public:
                          std::strcmp(version,"VSoundEmitter001")==0 ? &sound : nullptr))
                 return 0;
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
-        if (!connectSyntheticSound(sound,appSystemFactory)) return 0;
+        if (!connectSound(sound,appSystemFactory)) return 0;
 #endif
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
@@ -276,7 +296,10 @@ public:
             !require(engineFactory, kFourteenthEngineVersion) ||
             !require(engineFactory, kFifteenthEngineVersion)) return false;
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
-        if (!connectSyntheticSound(sound,engineFactory)) return false;
+        if (!connectSound(sound,engineFactory)) return false;
+#else
+        if (retailSoundProbeEnabled())
+            stopAfterSoundProbe(connectSound(sound,engineFactory));
 #endif
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
@@ -308,7 +331,11 @@ public:
         diagnostic("diagnostic-callback","ServerGameDLL003.GetTickInterval");
         return interval;
     }
-    SIN_GUARD_SLOT(10, "ServerGameDLL003")
+    // Original slot 10 returns the registered server-class linked-list
+    // head. Do not give the engine an empty or metadata-only send schema.
+    virtual struct ServerClass* __thiscall GetAllServerClasses() noexcept {
+        stopUnsupported("ServerGameDLL003.GetAllServerClasses");
+    }
     // Original slot 11, RVA 0x1e7c40, delegates to the description
     // helper at RVA 0x2f0cc0. Before a game-rules object exists, that
     // helper returns the process-lifetime "SiN Episodes" string.

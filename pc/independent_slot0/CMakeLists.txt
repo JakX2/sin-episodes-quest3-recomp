@@ -42,6 +42,10 @@ add_test(NAME independent_owner_engine_exit_diagnosis
 # metadata parser with an invented PE32 image, never commercial game code.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_server_class_inventory_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalServerClasses.py"
+      --self-test)
   add_test(NAME independent_user_message_metadata_synthetic
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalUserMessages.py"
@@ -173,3 +177,10 @@ foreach(role IN ITEMS client server)
   add_test(NAME independent_${role}_synthetic_full_prefix_connect
     COMMAND sin_fixture_connect_${role}_test "$<TARGET_FILE:sin_fixture_connect_${role}>")
 endforeach()
+
+# Production server opt-in only, controlled synthetic child fixtures.
+add_executable(sin_server_sound_probe_test test_server_sound_probe.cpp)
+target_compile_features(sin_server_sound_probe_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_sound_probe_native
+  COMMAND sin_server_sound_probe_test "$<TARGET_FILE:sin_slot0_server>")
+set_tests_properties(independent_server_sound_probe_native PROPERTIES TIMEOUT 90)

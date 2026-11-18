@@ -157,6 +157,78 @@ try {
     if (-not (($out -join '|').Contains(':server:ServerGameDLL003.slot11'))) {
         throw 'Actual slot 11 stop omitted'
     }
+    # Exact Phase 328 owner trace: real server Init and all 16 acquisitions.
+    $retail328 = @(
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameDLL003',
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameEnts001',
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameClients003',
+        '[SiN independent] role=server phase=factory-rejected version=HLTVDirector001',
+        '[SiN independent] role=server phase=diagnostic-callback version=ServerGameDLL003.GetGameDescription',
+        '[SiN independent] role=server phase=init-entered version=<none>',
+        '[SiN independent] role=server phase=request version=VEngineServer021',
+        '[SiN independent] role=server phase=found-interface version=VEngineServer021',
+        '[SiN independent] role=server phase=request version=VoiceServer001',
+        '[SiN independent] role=server phase=found-interface version=VoiceServer001',
+        '[SiN independent] role=server phase=request version=VEngineCvar002',
+        '[SiN independent] role=server phase=found-interface version=VEngineCvar002',
+        '[SiN independent] role=server phase=request version=VEngineServerStringTable001',
+        '[SiN independent] role=server phase=found-interface version=VEngineServerStringTable001',
+        '[SiN independent] role=server phase=request version=StaticPropMgrServer002',
+        '[SiN independent] role=server phase=found-interface version=StaticPropMgrServer002',
+        '[SiN independent] role=server phase=request version=VEngineRandom001',
+        '[SiN independent] role=server phase=found-interface version=VEngineRandom001',
+        '[SiN independent] role=server phase=request version=IEngineSoundServer003',
+        '[SiN independent] role=server phase=found-interface version=IEngineSoundServer003',
+        '[SiN independent] role=server phase=request version=SpatialPartition001',
+        '[SiN independent] role=server phase=found-interface version=SpatialPartition001',
+        '[SiN independent] role=server phase=request version=VModelInfoServer001',
+        '[SiN independent] role=server phase=found-interface version=VModelInfoServer001',
+        '[SiN independent] role=server phase=request version=EngineTraceServer003',
+        '[SiN independent] role=server phase=found-interface version=EngineTraceServer003',
+        '[SiN independent] role=server phase=request version=VFileSystem012',
+        '[SiN independent] role=server phase=found-interface version=VFileSystem012',
+        '[SiN independent] role=server phase=request version=GAMEEVENTSMANAGER002',
+        '[SiN independent] role=server phase=found-interface version=GAMEEVENTSMANAGER002',
+        '[SiN independent] role=server phase=request version=VEngineCache001',
+        '[SiN independent] role=server phase=found-interface version=VEngineCache001',
+        '[SiN independent] role=server phase=request version=VSoundEmitter001',
+        '[SiN independent] role=server phase=found-interface version=VSoundEmitter001',
+        '[SiN independent] role=server phase=request version=ServerUploadGameStats001',
+        '[SiN independent] role=server phase=found-interface version=ServerUploadGameStats001',
+        '[SiN independent] role=server phase=request version=ISERVERPLUGINHELPERS001',
+        '[SiN independent] role=server phase=found-interface version=ISERVERPLUGINHELPERS001',
+        '[SiN independent] role=server phase=sdk2004-preflight-only version=<none>',
+        '[SiN independent] role=server phase=factory-rejected version=PluginHelpersCheck001',
+        '[SiN independent] role=server phase=diagnostic-callback version=ServerGameDLL003.GetGameDescription',
+        '[SiN independent] role=server phase=unsupported-callback version=ServerGameDLL003.slot10'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]$retail328)
+    $out = Verify 'UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF'
+    if (-not ($out -ccontains 'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: server') -or
+        -not ($out -ccontains 'OWNER_INDEPENDENT_FACTORY_REQUESTS: server:VEngineServer021,server:VoiceServer001,server:VEngineCvar002,server:VEngineServerStringTable001,server:StaticPropMgrServer002,server:VEngineRandom001,server:IEngineSoundServer003,server:SpatialPartition001,server:VModelInfoServer001,server:EngineTraceServer003,server:VFileSystem012,server:GAMEEVENTSMANAGER002,server:VEngineCache001,server:VSoundEmitter001,server:ServerUploadGameStats001,server:ISERVERPLUGINHELPERS001') -or
+        -not (($out -join '|').Contains(':server:ServerGameDLL003.slot10'))) {
+        throw 'Phase 328 real Init/dependency evidence changed'
+    }
+    # Hypothetical terminal sound result, NOT retail evidence. Test both
+    # outcomes and require an explicit entry/result/terminal sequence.
+    $soundPrefix = $retail328[0..37]
+    foreach ($phase in @('sound-connect-succeeded','sound-connect-rejected')) {
+        $soundTrace = @($soundPrefix) + @(
+            '[SiN independent] role=server phase=sound-connect-entered version=VSoundEmitter001',
+            ("[SiN independent] role=server phase={0} version=VSoundEmitter001" -f $phase),
+            '[SiN independent] role=server phase=sound-probe-terminal-stop version=VSoundEmitter001'
+        )
+        [IO.File]::WriteAllLines($retailReplay,[string[]]$soundTrace)
+        $out = Verify 'SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if (-not (($out -join '|').Contains(":server:$phase"))) {
+            throw 'Missing same-process sound outcome'
+        }
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]]@(
+        '[SiN independent] role=server phase=init-entered version=<none>',
+        '[SiN independent] role=server phase=sound-probe-terminal-stop version=VSoundEmitter001'
+    ))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     Remove-Item -LiteralPath $retailReplay -Force
     [IO.File]::WriteAllText($client,
         "[SiN independent] role=client phase=factory-accepted version=VClient011" + [Environment]::NewLine)

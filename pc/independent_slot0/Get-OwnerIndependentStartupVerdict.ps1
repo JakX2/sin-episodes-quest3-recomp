@@ -19,11 +19,15 @@ $requests = New-Object System.Collections.Generic.List[string]
 $factoryResults = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
+$soundCallbacks = New-Object System.Collections.Generic.List[string]
+$soundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $explicitInitRoles = @{}
 $legacyInitEvents = 0
 $blockersByLog = New-Object System.Collections.Generic.List[string]
 foreach ($log in $logs) {
     $logFirstBlocker = $null
+    $soundEntered = $false
+    $soundResult = $null
     foreach ($line in (Get-Content -LiteralPath $log.FullName)) {
         if ($line -notmatch '^\[SiN independent\] role=(client|server) phase=([a-z0-9-]+) version=([^\s]+)$') {
             continue
@@ -39,6 +43,16 @@ foreach ($log in $logs) {
         }
         if ($phase -eq 'unsupported-callback') {
             $unsupportedCallbacks.Add(("{0}:{1}:{2}" -f $log.Name,$role,$version))
+        }
+        if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
+            if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
+            if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
+                $soundResult = $phase
+                $soundCallbacks.Add(("{0}:{1}:{2}" -f $log.Name,$role,$phase))
+            }
+            if ($soundEntered -and $null -ne $soundResult -and $phase -eq 'sound-probe-terminal-stop') {
+                $soundTerminalLogs.Add(("{0}:{1}" -f $log.Name,$soundResult))
+            }
         }
         if ($phase -eq 'init-entered') { $explicitInitRoles[$role] = $true }
         # Backward-compatible classification of old traces. Only an actual
@@ -67,6 +81,9 @@ Write-Output ("OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: {0}" -f ($factoryResult
 if ($unsupportedCallbacks.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_UNSUPPORTED_CALLBACKS: {0}" -f ($unsupportedCallbacks -join ','))
 }
+if ($soundCallbacks.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
+}
 if ($issues.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_BLOCKERS_BY_LOG: {0}" -f ($blockersByLog -join ','))
     if ($blockersByLog.Count -eq 1) {
@@ -79,6 +96,8 @@ if ($issues.Count -gt 0) {
     # A terminal callback can occur before the first Init call. It proves
     # virtual entry and diagnostic termination, not that Init was entered.
     Write-Output "OWNER_INDEPENDENT_VERDICT: UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF"
+} elseif ($soundTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($explicitInitRoles.Count -eq 0 -and $legacyInitEvents -eq 0 -and $factoryResults.Count -gt 0) {
     # The engine reached CreateInterface, but may have probed optional
     # names. No claim that a rejection is the fatal retail startup cause.

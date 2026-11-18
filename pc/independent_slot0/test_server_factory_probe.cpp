@@ -19,7 +19,8 @@ static int fail(const char* reason) {
     std::fprintf(stderr,"FAIL server factory probe: %s\n",reason);return 1;
 }
 static bool configure(bool on,const char* session=kSession,bool traces=true) {
-    return SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_FACTORY_PROBE",on?"1":"0") &&
+    return SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_SOUND_PROBE","0") &&
+           SetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_FACTORY_PROBE",on?"1":"0") &&
            SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION",session) &&
            SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE",traces?"1":"0");
 }
@@ -287,6 +288,7 @@ int main(int argc,char** argv) {
     for(int i=2;i<31;++i) {
         if(i==11 || i==28)continue;
         const auto name=i==9 ? std::string("ServerGameDLL003.GetTickInterval.missing-commandline")
+            : i==10 ? std::string("ServerGameDLL003.GetAllServerClasses")
             : std::string(kNames[0])+".slot"+std::to_string(i);
         if(!runChild(argv[1],0,i,name.c_str()))return fail("main table guard");
     }
