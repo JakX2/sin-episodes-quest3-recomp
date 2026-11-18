@@ -51,12 +51,13 @@ class Verify(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"SHA256 mismatch"):
                 audit.verify_original(p)
     def test_original_regions_unique(self):
-        self.assertEqual(len(audit.REGIONS),5)
+        self.assertEqual(len(audit.REGIONS),7)
         self.assertEqual(len(set(x[0] for x in audit.REGIONS.values())),5)
         for va,count,digest in audit.REGIONS.values():
             self.assertGreater(count,0)
             self.assertEqual(len(digest),64)
             int(digest,16)
         self.assertIn("VEngineVGui001",audit.STRINGS.values())
+        self.assertIn("MatSystemSurface003",audit.STRINGS.values())
 
 if __name__=="__main__":unittest.main()
