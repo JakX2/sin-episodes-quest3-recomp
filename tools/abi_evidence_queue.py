@@ -59,11 +59,14 @@ def validate(payload):
             raise ValueError(f"record {index}: unreviewed evidence cannot carry authenticated fields")
         if level == "sha_reviewed" and test is not None:
             raise ValueError(f"record {index}: engine test ID requires engine_tested tier")
-        key = (module, interface, rva)
+        # Normalize numeric identity: 0x0002 and 0x2 are the same RVA.
+        # Never let alternate padding bypass duplicate detection or change fingerprints.
+        normalized_rva = f"0x{int(rva, 16):x}"
+        key = (module, interface, normalized_rva)
         if key in seen:
             raise ValueError(f"record {index}: duplicate identity")
         seen.add(key)
-        result.append(record)
+        result.append({**record, "rva": normalized_rva})
     result.sort(key=lambda r: (ANCHORS.index(r["interface"]), r["module"], int(r["rva"], 16)))
     return result
 
