@@ -211,3 +211,8 @@ add_test(NAME independent_server_cvar_registration_native COMMAND sin_server_cva
 add_executable(sin_server_console_value_test test_server_console_value_core.cpp)
 target_compile_features(sin_server_console_value_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_console_value_native COMMAND sin_server_console_value_test)
+
+# Original console-object x86 layouts, actual vtable calls, owned fixture.
+add_executable(sin_server_console_abi_test test_server_console_object_abi.cpp)
+target_compile_features(sin_server_console_abi_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_console_abi_native COMMAND sin_server_console_abi_test)

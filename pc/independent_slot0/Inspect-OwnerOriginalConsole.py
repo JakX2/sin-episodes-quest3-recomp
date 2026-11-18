@@ -110,7 +110,29 @@ def inspect(data):
     encoded=json.dumps(rows,sort_keys=True,separators=(",",":"),ensure_ascii=True).encode("ascii")
     if dict(calls)!=EXPECTED or len(rows)!=625 or hashlib.sha256(encoded).hexdigest()!=INVENTORY_PIN:
         raise ValueError("Original console declaration inventory mismatch")
+    # Check complete original console vtables, including the unusually
+    # ordered public int/float/string slots of the Win32 ConVar class.
+    tables={
+        "base":(0x45377c,(0x25bb80,0x25b3b0,0x25b4b0,0x25b4c0,
+            0x25b460,0x25b550,0x25b560,0x25b3c0,0x25b410)),
+        "variable":(0x4537a4,(0x25bd60,0x25b6f0,0x25b6a0,0x25b6c0,
+            0x25b6e0,0x25b6b0,0x25b6d0,0x25b3c0,0x25b700,
+            0x25bae0,0x25bad0,0x25bac0,0x25b720,0x25b8b0,0x25b930,
+            0x25b860,0x25b7b0,0x25b9c0)),
+        "command":(0x4537f0,(0x25bd00,0x25b580,0x25b4b0,0x25b4c0,
+            0x25b460,0x25b550,0x25b560,0x25b3c0,0x25b410,
+            0x25b620,0x25b640,0x25b590,0x25b5b0)),
+    }
+    for role,(rva,slots) in tables.items():
+        actual=tuple(pe.rva(pe.u32(rva+4*i)) for i in range(len(slots)))
+        if actual!=slots or not all(begin<=x<begin+size for x in actual):
+            raise ValueError("Original console "+role+" vtable mismatch")
+        next_word=pe.u32(rva+4*len(slots))
+        if pe.base+begin<=next_word<pe.base+begin+size:
+            raise ValueError("Unexpected additional original console vtable entry")
     return {"status":"static declaration metadata, not a complete live command registry",
+            "vtable_slots":{kind:[hex(slot) for slot in slots]
+                            for kind,(_,slots) in tables.items()},
             "variables":sum(r["kind"]=="variable" for r in rows),
             "commands":sum(r["kind"]=="command" for r in rows),
             "replicated":sum(bool(r["flags"]&0x2000) for r in rows),
