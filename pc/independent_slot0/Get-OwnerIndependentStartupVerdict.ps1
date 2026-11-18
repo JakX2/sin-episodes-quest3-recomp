@@ -22,6 +22,7 @@ $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
 $soundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientSoundTerminalLogs = New-Object System.Collections.Generic.List[string]
+$clientMaterialTerminalLogs = New-Object System.Collections.Generic.List[string]
 $eventTerminalLogs = New-Object System.Collections.Generic.List[string]
 $cvarTerminalLogs = New-Object System.Collections.Generic.List[string]
 $batchTerminalLogs = New-Object System.Collections.Generic.List[string]
@@ -59,6 +60,9 @@ foreach ($log in $logs) {
     $soundEntered = $false
     $clientSoundEntered = $false
     $clientSoundResult = $null
+    $clientMaterialStage = 0
+    $clientMaterialResult = $null
+    $clientHardwareFound = $false
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -93,6 +97,31 @@ foreach ($log in $logs) {
                 $clientSoundTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$clientSoundResult))
                 $clientSoundEntered = $false
                 $clientSoundResult = $null
+            }
+        }
+        if ($role -eq 'client' -and $clientSoundResult -eq 'sound-connect-succeeded') {
+            if ($clientMaterialStage -eq 0 -and $phase -eq 'textmode-checked' -and $version -cin @('present','absent')) {
+                $clientMaterialStage = 1
+            } elseif ($clientMaterialStage -eq 1 -and $phase -eq 'optional-request' -and $version -eq 'VMaterialSystemStub001') {
+                $clientMaterialStage = 2
+            } elseif ($clientMaterialStage -eq 2 -and $phase -cin @('optional-found','optional-missing') -and $version -eq 'VMaterialSystemStub001') {
+                $clientMaterialStage = 3
+            } elseif ($clientMaterialStage -eq 3 -and $phase -eq 'hardware-config-entered' -and $version -eq 'MaterialSystemHardwareConfig012') {
+                $clientMaterialStage = 4
+            } elseif ($clientMaterialStage -eq 4 -and $phase -cin @('hardware-config-found','hardware-config-missing') -and $version -eq 'MaterialSystemHardwareConfig012') {
+                $clientHardwareFound = $phase -eq 'hardware-config-found'
+                $clientMaterialStage = 5
+            } elseif ($phase -eq 'material-probe-result') {
+                if (($version -eq 'acquired' -and $clientMaterialStage -eq 5 -and $clientHardwareFound) -or
+                    ($version -eq 'missing-hardware' -and $clientMaterialStage -eq 5 -and -not $clientHardwareFound) -or
+                    ($version -eq 'invalid-commandline' -and $clientMaterialStage -eq 0) -or
+                    ($version -eq 'invalid-material' -and $clientMaterialStage -eq 3)) {
+                    $clientMaterialResult = $version
+                    $clientMaterialStage = 6
+                }
+            } elseif ($clientMaterialStage -eq 6 -and $phase -eq 'material-probe-terminal-stop' -and $version -eq 'MaterialSystemHardwareConfig012') {
+                $clientMaterialTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$clientMaterialResult))
+                $clientMaterialStage = 7
             }
         }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
@@ -200,6 +229,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($clientMaterialTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_MATERIAL_PROBE_RESULTS: {0}" -f ($clientMaterialTerminalLogs -join ','))
+}
 if ($clientSoundTerminalLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SOUND_CONNECT_RESULTS: {0}" -f ($clientSoundTerminalLogs -join ','))
 }
@@ -230,6 +262,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($clientMaterialTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_MATERIAL_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($clientSoundTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($soundTerminalLogs.Count -gt 0) {

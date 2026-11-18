@@ -234,5 +234,6 @@ add_test(NAME independent_server_save_system_lifecycle_native COMMAND sin_server
 add_executable(sin_client_sound_probe_test test_client_sound_probe.cpp)
 target_compile_features(sin_client_sound_probe_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_sound_probe_native
-  COMMAND sin_client_sound_probe_test "$<TARGET_FILE:sin_slot0_client>")
+  COMMAND sin_client_sound_probe_test "$<TARGET_FILE:sin_slot0_client>"
+    "$<TARGET_FILE:sin_test_commandline_fixture>")
 set_tests_properties(independent_client_sound_probe_native PROPERTIES TIMEOUT 180)

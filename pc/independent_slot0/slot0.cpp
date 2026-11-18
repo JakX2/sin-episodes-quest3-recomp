@@ -14,6 +14,9 @@
 #if defined(SIN_ROLE_client) || defined(SIN_ROLE_server)
 #include "sound_emitter_connect_core.h"
 #endif
+#if defined(SIN_ROLE_client)
+#include "client_material_startup_core.h"
+#endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
 #include "server_tick_interval_core.h"
@@ -300,6 +303,24 @@ static bool clientSoundProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUND_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientMaterialProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientSoundProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientMaterialProbe(Factory app,void* materials) noexcept {
+    using namespace sin_independent;
+    const auto module=GetModuleHandleA("vstdlib.dll");
+    const auto provider=module?reinterpret_cast<ClientCommandLine>(
+        GetProcAddress(module,"CommandLine")):nullptr;
+    static ClientMaterialState state;
+    const auto result=AcquireClientMaterialState(provider,app,materials,state,&diagnostic);
+    diagnostic("material-probe-result",ClientMaterialResultName(result));
+    diagnostic("material-probe-terminal-stop","MaterialSystemHardwareConfig012");
+    TerminateProcess(GetCurrentProcess(),result==ClientMaterialResult::Acquired?0x53494E4Fu:0x53494E50u);
+    __fastfail(7);
+}
 [[noreturn]] static void stopAfterClientSoundProbe(bool connected) noexcept {
     diagnostic("sound-probe-terminal-stop","VSoundEmitter001");
     TerminateProcess(GetCurrentProcess(),connected?0x53494E4Bu:0x53494E4Cu);
@@ -325,15 +346,21 @@ public:
             !require(appSystemFactory, kFourthEngineVersion) ||
             !require(appSystemFactory, kFifthEngineVersion)) return 0;
         void* sound=nullptr;
+        void* materials=nullptr;
         for (const char* version : kRemainingClientVersions)
             if (!require(appSystemFactory, version,
-                         std::strcmp(version,"VSoundEmitter001")==0 ? &sound : nullptr))
+                         std::strcmp(version,"VSoundEmitter001")==0 ? &sound :
+                         std::strcmp(version,"VMaterialSystem076")==0 ? &materials : nullptr))
                 return 0;
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
         if (!connectSound(sound,appSystemFactory)) return 0;
 #else
-        if(clientSoundProbeEnabled())
-            stopAfterClientSoundProbe(connectSound(sound,appSystemFactory));
+        if(clientSoundProbeEnabled()) {
+            const bool connected=connectSound(sound,appSystemFactory);
+            if(connected && clientMaterialProbeEnabled())
+                stopAfterClientMaterialProbe(appSystemFactory,materials);
+            stopAfterClientSoundProbe(connected);
+        }
 #endif
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
