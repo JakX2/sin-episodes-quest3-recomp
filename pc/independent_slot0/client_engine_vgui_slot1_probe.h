@@ -1,7 +1,7 @@
 #pragma once
 // Independently reconstructed call boundary, not the full IVEngineVGui ABI.
 // Evidence: original SHA-pinned client.dll 0x2422ECF0 and caller 0x241EDFB0.
-// Slots/argument are authenticated. Method name and handle type remain unknown.
+// Slots/argument are authenticated. SDK2004 identifies this as GetPanel(PANEL_CLIENTDLL), returning VPANEL.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -40,7 +40,8 @@ inline Slot1Result CallSlot1Arg2(void* object) noexcept {
         return Slot1Result::InvalidMethod;
     using Method = std::uintptr_t (__thiscall *)(void*,int);
     const auto fn=reinterpret_cast<Method>(address);
-    // Original game: ECX=VEngineVGui001; push 2; call vtable + 4.
+    // Original game: ECX=VEngineVGui001; push PANEL_CLIENTDLL (2); call vtable + 4.
+    // SDK2004 calls this GetPanel; the VPANEL handle stays opaque.
     return fn(object,2)!=0 ? Slot1Result::Nonzero : Slot1Result::Zero;
 }
 } // namespace sin_independent::engine_vgui

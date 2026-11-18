@@ -29,5 +29,21 @@ successful `VClient011::Init` or gameplay.
 
 The next Windows candidate is a *separately gated* call into the original
 engine's already-provided `VEngineVGui001` object using the exactly
-observed slot and argument; the result must be recorded without claiming
-any semantic method name or implementing unrelated engine methods.
+observed slot and argument; the result is recorded only as zero/nonzero
+without implementing unrelated engine methods.
+
+## Corroboration from the owner's historical Source SDK 2004
+
+The owner's `source-sdk-2004-master.zip` contains
+`src_mod/public/ienginevgui.h`. It declares `IEngineVGui` with a virtual
+destructor (slot 0), then `vgui::VPANEL GetPanel(VGuiPanel_t type)`
+(slot 1). Its `VGuiPanel_t` enumerator `PANEL_CLIENTDLL` has value 2.
+The matching `src_mod/cl_dll/vgui_int.cpp` calls
+`enginevgui->GetPanel(PANEL_CLIENTDLL)` and separately
+`enginevgui->GetPanel(PANEL_TOOLS)` when constructing GUI panels.
+
+**Interpretation:** original SHA-pinned slot1(arg2) is the 2004
+`IEngineVGui::GetPanel(PANEL_CLIENTDLL)` ABI and returns an opaque
+`vgui::VPANEL` handle. The original binary proves the dispatched slot
+and argument; SDK2004 supplies the symbolic method/enum names. We do
+not dereference the returned handle or claim GUI panel creation.
