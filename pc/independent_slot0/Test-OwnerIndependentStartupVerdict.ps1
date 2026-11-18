@@ -250,6 +250,19 @@ try {
         '[SiN independent] role=server phase=factory-state-cached version=server',
         '[SiN independent] role=server phase=event-load-entered version=resource/gameevents.res'
     )
+    # Actual Phase 332 owner trace: the real engine event loader
+    # returned 47 after sound success, scalar tables and factory caching.
+    $retail332 = @($eventPrefix) + @(
+        '[SiN independent] role=server phase=event-load-returned version=resource/gameevents.res:47',
+        '[SiN independent] role=server phase=event-probe-terminal-stop version=resource/gameevents.res'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]$retail332)
+    $out = Verify 'EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $result = @($out | Where-Object { $_ -like 'OWNER_SERVER_EVENT_LOAD_RESULTS: *' })
+    if ($result.Count -ne 1 -or -not $result[0].EndsWith(':47') -or
+        -not ($out -ccontains 'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: server')) {
+        throw 'Actual Phase 332 event-load result missing'
+    }
     foreach ($count in @(42,0,-1)) {
         $eventTrace = @($eventPrefix) + @(
             ("[SiN independent] role=server phase=event-load-returned version=resource/gameevents.res:{0}" -f $count),
