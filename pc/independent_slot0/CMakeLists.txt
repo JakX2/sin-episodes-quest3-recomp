@@ -237,3 +237,7 @@ add_test(NAME independent_client_sound_probe_native
   COMMAND sin_client_sound_probe_test "$<TARGET_FILE:sin_slot0_client>"
     "$<TARGET_FILE:sin_test_commandline_fixture>")
 set_tests_properties(independent_client_sound_probe_native PROPERTIES TIMEOUT 180)
+
+add_executable(sin_client_screen_random_test test_client_screen_random_core.cpp)
+target_compile_features(sin_client_screen_random_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_screen_random_native COMMAND sin_client_screen_random_test)

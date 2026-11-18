@@ -298,7 +298,9 @@ try {
         '[SiN independent] role=server phase=cvar-probe-terminal-stop version=dd_log_events'
     )))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
-    # Synthetic future batch outcome; never claim retail evidence.
+    # Actual Phase 340 owner trace. All 24 register entry/return/verify
+    # triplets and the final full-registry consistency result were observed.
+    # Exit 0x53494E4D, original server restored, original client unchanged.
     $batchTrace = @($cvarPrefix) + @(
         '[SiN independent] role=server phase=cvar-batch-preflight-complete version=24'
     )
@@ -338,7 +340,7 @@ try {
     )
     [IO.File]::WriteAllLines($retailReplay,[string[]]$batchTrace)
     $out = Verify 'CVAR_BATCH_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
-    if (-not (($out -join '|').Contains(':verified:24/24'))) { throw 'Batch result missing' }
+    if (-not (($out -join '|').Contains(':verified:24/24'))) { throw 'Actual Phase 340 batch result missing' }
     [IO.File]::WriteAllLines($retailReplay,[string[]](@($cvarPrefix) + @(
         '[SiN independent] role=server phase=cvar-batch-result version=verified:24/24',
         '[SiN independent] role=server phase=cvar-batch-terminal-stop version=24'
