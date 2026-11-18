@@ -18,6 +18,7 @@ param(
     [switch]$EnableServerSoundProbe,
     [switch]$EnableServerEventProbe,
     [switch]$EnableServerCvarProbe,
+    [switch]$EnableServerCvarBatchProbe,
     [switch]$EnableClientSoundProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
@@ -103,6 +104,9 @@ if (-not $DisposableTestCopyConfirmed) {
 }
 if ($EnableClientSoundProbe -and $ProbeRole -ne 'Client') {
     throw 'EnableClientSoundProbe requires explicit Client-only mode'
+}
+if ($EnableServerCvarBatchProbe -and -not $EnableServerCvarProbe) {
+    throw 'EnableServerCvarBatchProbe requires EnableServerCvarProbe and preceding server gates'
 }
 if ($EnableServerCvarProbe -and -not $EnableServerEventProbe) {
     throw 'EnableServerCvarProbe requires EnableServerEventProbe (and its server-only prerequisites)'
@@ -220,6 +224,7 @@ try {
     $previousSoundProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_SOUND_PROBE','Process')
     $previousEventProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_EVENT_PROBE','Process')
     $previousCvarProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_CVAR_PROBE','Process')
+    $previousBatchProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_CVAR_BATCH_PROBE','Process')
     $previousClientSoundProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
@@ -237,6 +242,9 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_CVAR_PROBE',
             $(if ($EnableServerCvarProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_SERVER_CVAR_PROBE: {0}" -f $(if ($EnableServerCvarProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_CVAR_BATCH_PROBE',
+            $(if ($EnableServerCvarBatchProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_SERVER_CVAR_BATCH_PROBE: {0}" -f $(if ($EnableServerCvarBatchProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_PROBE',
             $(if ($EnableClientSoundProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_SOUND_PROBE: {0}" -f $(if ($EnableClientSoundProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
@@ -322,6 +330,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_SOUND_PROBE',$previousSoundProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_EVENT_PROBE',$previousEventProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_CVAR_PROBE',$previousCvarProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_CVAR_BATCH_PROBE',$previousBatchProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_PROBE',$previousClientSoundProbe,'Process')
     }
 } finally {
