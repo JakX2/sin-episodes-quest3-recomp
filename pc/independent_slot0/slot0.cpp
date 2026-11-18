@@ -19,6 +19,7 @@
 #include "client_screen_random_core.h"
 #include "client_cvar_probe.h"
 #include "client_owned_startup_probe.h"
+#include "client_vgui_vtable_probe.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -342,6 +343,29 @@ static bool clientVGuiProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientVGuiLayoutProbeEnabled() noexcept {
+    char value[2]={};
+    return clientVGuiProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_LAYOUT_PROBE",value,2)==1 &&
+        value[0]=='1';
+}
+[[noreturn]] static void stopAfterClientVGuiLayoutProbe(
+    HMODULE module,void* input,void* system) noexcept {
+    diagnostic("vgui-layout-entered","input:0+56,system:0+24");
+    const char* result="verified";
+    if(!sin_independent::vgui_layout::Verify(module,input,56)) {
+        result="invalid-input";
+    } else {
+        diagnostic("vgui-layout-input-verified","0+56");
+        if(!sin_independent::vgui_layout::Verify(module,system,24))
+            result="invalid-system";
+        else diagnostic("vgui-layout-system-verified","0+24");
+    }
+    diagnostic("vgui-layout-probe-result",result);
+    diagnostic("vgui-layout-terminal-stop","read-only");
+    TerminateProcess(GetCurrentProcess(),std::strcmp(result,"verified")==0?0x53494E5Bu:0x53494E5Cu);
+    __fastfail(7);
+}
 // Query only the already-loaded engine provider. Do not load a new DLL,
 // invoke virtual methods, or claim the original CLIENT helper ran.
 [[noreturn]] static void stopAfterClientVGuiProbe() noexcept {
@@ -366,6 +390,8 @@ static bool clientVGuiProbeEnabled() noexcept {
             input==system?"aliased-interfaces":"acquired";
     }
     diagnostic("vgui-probe-result",result);
+    if(std::strcmp(result,"acquired")==0 && clientVGuiLayoutProbeEnabled())
+        stopAfterClientVGuiLayoutProbe(module,input,system);
     diagnostic("vgui-probe-terminal-stop","factory-only");
     TerminateProcess(GetCurrentProcess(),std::strcmp(result,"acquired")==0?0x53494E59u:0x53494E5Au);
     __fastfail(7);
