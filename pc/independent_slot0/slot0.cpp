@@ -10,7 +10,8 @@
 #include <cstdio>
 #include <cstring>
 #include <type_traits>
-#if defined(SIN_SYNTHETIC_SOUND_CONNECT) || defined(SIN_ROLE_server)
+#include <intrin.h>
+#if defined(SIN_ROLE_client) || defined(SIN_ROLE_server)
 #include "sound_emitter_connect_core.h"
 #endif
 #if defined(SIN_ROLE_server)
@@ -20,7 +21,6 @@
 #include "server_post_connect_core.h"
 #include "server_single_cvar_probe.h"
 #include <new>
-#include <intrin.h>
 #endif
 
 #if !defined(_M_IX86)
@@ -134,8 +134,7 @@ static void diagnostic(const char* phase, const char* version) noexcept {
     CloseHandle(file);
 }
 
-#if defined(SIN_ROLE_server)
-// Every unsupported server callback terminates ONLY the current game
+// Every unsupported callback terminates ONLY the current game
 // process with a recognizable diagnostic exit code. No invented return
 // value, dereference, or fallback to a commercial DLL. These boundaries
 // are diagnostic surfaces, NOT implementations of gameplay APIs.
@@ -144,27 +143,32 @@ static void diagnostic(const char* phase, const char* version) noexcept {
     TerminateProcess(GetCurrentProcess(), 0x53494E45u);
     __fastfail(7);
 }
+static bool validTraceSession() noexcept {
+    char value[2]={};
+    if(GetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE",value,2)!=1 ||
+       value[0]!='1')return false;
+    char session[33]={};
+    if(GetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION",session,33)!=32)
+        return false;
+    for(unsigned i=0;i<32;++i)
+        if(!((session[i]>='0' && session[i]<='9') ||
+             (session[i]>='a' && session[i]<='f')))return false;
+    return true;
+}
+#if defined(SIN_ROLE_server)
 static bool extraFactoriesEnabled() noexcept {
     char value[2] = {};
     if (GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_FACTORY_PROBE", value, 2) != 1 ||
         value[0] != '1') return false;
-    if (GetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE", value, 2) != 1 ||
-        value[0] != '1') return false;
-    char session[33] = {};
-    if (GetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", session, 33) != 32)
-        return false;
-    for (unsigned i=0;i<32;++i)
-        if (!((session[i]>='0' && session[i]<='9') ||
-              (session[i]>='a' && session[i]<='f'))) return false;
-    return true;
+    return validTraceSession();
 }
+#endif
 // Slot-index-only traps have no reconstructed parameter/return signatures.
 // They are NEVER allowed to return (so no guessed x86 callee stack cleanup).
 // This covers every authenticated original table entry, not arbitrary
 // positions beyond that table. Do not treat these traps as ABI parity.
 #define SIN_GUARD_SLOT(n, prefix) \
     virtual void __thiscall GuardSlot##n() noexcept { stopUnsupported(prefix ".slot" #n); }
-#endif
 
 // Acquire pointers without dereferencing. The sound pointer is retained
 // locally only for the explicitly selected first post-factory operation.
@@ -186,7 +190,7 @@ static bool require(Factory factory, const char* name,
     return true;
 }
 
-#if defined(SIN_SYNTHETIC_SOUND_CONNECT) || defined(SIN_ROLE_server)
+#if defined(SIN_ROLE_client) || defined(SIN_ROLE_server)
 // Shared typed first post-acquisition callback. Default owner builds
 // still refuse before calling it unless separately opted in.
 static bool connectSound(void* sound, Factory factory) noexcept {
@@ -194,7 +198,7 @@ static bool connectSound(void* sound, Factory factory) noexcept {
     using sin_independent::SoundConnectResult;
     const auto result=sin_independent::TryConnectSoundEmitter(sound,factory);
     const bool connected=result==SoundConnectResult::Connected;
-#if defined(SIN_ROLE_server) && !defined(SIN_SYNTHETIC_SOUND_CONNECT)
+#if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
     if (!connected && result!=SoundConnectResult::Rejected)
         stopUnsupported("VSoundEmitter001.Connect.missing-abi-input");
 #endif
@@ -267,6 +271,19 @@ static void traceCvar(const char* phase) noexcept {
 #endif
 
 #if defined(SIN_ROLE_client)
+#if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
+static bool clientSoundProbeEnabled() noexcept {
+    char enabled[2]={};
+    return validTraceSession() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUND_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientSoundProbe(bool connected) noexcept {
+    diagnostic("sound-probe-terminal-stop","VSoundEmitter001");
+    TerminateProcess(GetCurrentProcess(),connected?0x53494E4Bu:0x53494E4Cu);
+    __fastfail(7);
+}
+#endif
 class Boundary final {
 public:
     virtual int __thiscall Init(
@@ -292,6 +309,9 @@ public:
                 return 0;
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
         if (!connectSound(sound,appSystemFactory)) return 0;
+#else
+        if(clientSoundProbeEnabled())
+            stopAfterClientSoundProbe(connectSound(sound,appSystemFactory));
 #endif
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
@@ -301,6 +321,55 @@ public:
         seen_ = false;
         diagnostic("shutdown", nullptr);
     }
+    // Original VClient011 contains 48 contiguous code entries. The
+    // remaining positions terminate rather than inventing result types
+    // or callee cleanup. These are NOT recovered gameplay methods.
+    SIN_GUARD_SLOT(2, "VClient011")
+    SIN_GUARD_SLOT(3, "VClient011")
+    SIN_GUARD_SLOT(4, "VClient011")
+    SIN_GUARD_SLOT(5, "VClient011")
+    SIN_GUARD_SLOT(6, "VClient011")
+    SIN_GUARD_SLOT(7, "VClient011")
+    SIN_GUARD_SLOT(8, "VClient011")
+    SIN_GUARD_SLOT(9, "VClient011")
+    SIN_GUARD_SLOT(10, "VClient011")
+    SIN_GUARD_SLOT(11, "VClient011")
+    SIN_GUARD_SLOT(12, "VClient011")
+    SIN_GUARD_SLOT(13, "VClient011")
+    SIN_GUARD_SLOT(14, "VClient011")
+    SIN_GUARD_SLOT(15, "VClient011")
+    SIN_GUARD_SLOT(16, "VClient011")
+    SIN_GUARD_SLOT(17, "VClient011")
+    SIN_GUARD_SLOT(18, "VClient011")
+    SIN_GUARD_SLOT(19, "VClient011")
+    SIN_GUARD_SLOT(20, "VClient011")
+    SIN_GUARD_SLOT(21, "VClient011")
+    SIN_GUARD_SLOT(22, "VClient011")
+    SIN_GUARD_SLOT(23, "VClient011")
+    SIN_GUARD_SLOT(24, "VClient011")
+    SIN_GUARD_SLOT(25, "VClient011")
+    SIN_GUARD_SLOT(26, "VClient011")
+    SIN_GUARD_SLOT(27, "VClient011")
+    SIN_GUARD_SLOT(28, "VClient011")
+    SIN_GUARD_SLOT(29, "VClient011")
+    SIN_GUARD_SLOT(30, "VClient011")
+    SIN_GUARD_SLOT(31, "VClient011")
+    SIN_GUARD_SLOT(32, "VClient011")
+    SIN_GUARD_SLOT(33, "VClient011")
+    SIN_GUARD_SLOT(34, "VClient011")
+    SIN_GUARD_SLOT(35, "VClient011")
+    SIN_GUARD_SLOT(36, "VClient011")
+    SIN_GUARD_SLOT(37, "VClient011")
+    SIN_GUARD_SLOT(38, "VClient011")
+    SIN_GUARD_SLOT(39, "VClient011")
+    SIN_GUARD_SLOT(40, "VClient011")
+    SIN_GUARD_SLOT(41, "VClient011")
+    SIN_GUARD_SLOT(42, "VClient011")
+    SIN_GUARD_SLOT(43, "VClient011")
+    SIN_GUARD_SLOT(44, "VClient011")
+    SIN_GUARD_SLOT(45, "VClient011")
+    SIN_GUARD_SLOT(46, "VClient011")
+    SIN_GUARD_SLOT(47, "VClient011")
     bool seen_ = false;
 };
 using ExpectedInit = int (__thiscall Boundary::*)(

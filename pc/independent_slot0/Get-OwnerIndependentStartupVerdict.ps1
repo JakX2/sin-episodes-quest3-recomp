@@ -21,6 +21,7 @@ $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
 $soundTerminalLogs = New-Object System.Collections.Generic.List[string]
+$clientSoundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $eventTerminalLogs = New-Object System.Collections.Generic.List[string]
 $cvarTerminalLogs = New-Object System.Collections.Generic.List[string]
 $explicitInitRoles = @{}
@@ -29,6 +30,8 @@ $blockersByLog = New-Object System.Collections.Generic.List[string]
 foreach ($log in $logs) {
     $logFirstBlocker = $null
     $soundEntered = $false
+    $clientSoundEntered = $false
+    $clientSoundResult = $null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -49,6 +52,18 @@ foreach ($log in $logs) {
         }
         if ($phase -eq 'unsupported-callback') {
             $unsupportedCallbacks.Add(("{0}:{1}:{2}" -f $log.Name,$role,$version))
+        }
+        if ($role -eq 'client' -and $version -eq 'VSoundEmitter001') {
+            if ($phase -eq 'sound-connect-entered') {
+                $clientSoundEntered = $true
+                $clientSoundResult = $null
+            } elseif ($clientSoundEntered -and $phase -cin @('sound-connect-succeeded','sound-connect-rejected')) {
+                $clientSoundResult = $phase
+            } elseif ($clientSoundEntered -and $null -ne $clientSoundResult -and $phase -eq 'sound-probe-terminal-stop') {
+                $clientSoundTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$clientSoundResult))
+                $clientSoundEntered = $false
+                $clientSoundResult = $null
+            }
         }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
@@ -132,6 +147,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($clientSoundTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SOUND_CONNECT_RESULTS: {0}" -f ($clientSoundTerminalLogs -join ','))
+}
 if ($eventTerminalLogs.Count -gt 0) {
     Write-Output ("OWNER_SERVER_EVENT_LOAD_RESULTS: {0}" -f ($eventTerminalLogs -join ','))
 }
@@ -154,6 +172,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($clientSoundTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($soundTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($explicitInitRoles.Count -eq 0 -and $legacyInitEvents -eq 0 -and $factoryResults.Count -gt 0) {
