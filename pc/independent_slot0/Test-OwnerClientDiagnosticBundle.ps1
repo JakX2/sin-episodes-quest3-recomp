@@ -17,7 +17,7 @@ param(
     [string]$GameArguments,[int]$TimeoutSeconds,[string]$ProbeRole,
     [switch]$EnableClientSoundProbe,[switch]$EnableClientMaterialProbe,
     [switch]$EnableClientScreenProbe,[switch]$EnableClientGaussianProbe,
-    [switch]$EnableClientCvarProbe,[switch]$EnableClientOwnedStartupProbe,[switch]$EnableClientVGuiProbe,[switch]$DisposableTestCopyConfirmed
+    [switch]$EnableClientCvarProbe,[switch]$EnableClientOwnedStartupProbe,[switch]$EnableClientVGuiProbe,[switch]$EnableClientVGuiLayoutProbe,[switch]$DisposableTestCopyConfirmed
 )
 $ErrorActionPreference='Stop'
 if ($ProbeRole -cne 'Client' -or -not $EnableClientSoundProbe -or
@@ -28,7 +28,7 @@ if ($ProbeRole -cne 'Client' -or -not $EnableClientSoundProbe -or
     $GameBin -cne (Join-Path $env:SIN_TEST_BUNDLE_GAME 'SE1/bin') -or
     $GameExecutable -cne (Join-Path $env:SIN_TEST_BUNDLE_GAME 'SinEpisodes.exe') -or
     $IndependentBin -cne (Join-Path $PSScriptRoot 'bin')) { throw 'Incorrect delegated parameters' }
-Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value $(if($EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'vgui'}elseif($EnableClientOwnedStartupProbe){'owned'}else{'called'})
+Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value $(if($EnableClientVGuiLayoutProbe -and $EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'layout'}elseif($EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'vgui'}elseif($EnableClientOwnedStartupProbe){'owned'}else{'called'})
 '@ | Set-Content -LiteralPath $stub
     $files=@('bin/client.dll','bin/server.dll','Invoke-OwnerIndependentEngineProbe.ps1',
         'Get-OwnerEngineExitDiagnosis.ps1','Get-OwnerIndependentStartupVerdict.ps1',
@@ -68,6 +68,9 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value $(if($Ena
         Remove-Item -LiteralPath $called
         & $run -GameRoot $game -TimeoutSeconds 45 -GameArguments '-console -windowed' -EnableClientOwnedStartupProbe -EnableClientVGuiProbe -DisposableTestCopyConfirmed
         if((Get-Content -LiteralPath $called -Raw).Trim() -cne 'vgui'){throw 'VGUI switch was not delegated'}
+        Remove-Item -LiteralPath $called
+        & $run -GameRoot $game -TimeoutSeconds 45 -GameArguments '-console -windowed' -EnableClientOwnedStartupProbe -EnableClientVGuiProbe -EnableClientVGuiLayoutProbe -DisposableTestCopyConfirmed
+        if((Get-Content -LiteralPath $called -Raw).Trim() -cne 'layout'){throw 'VGUI layout switch was not delegated'}
         Remove-Item -LiteralPath $called
         $client=Join-Path $bundle 'bin/client.dll'
         Add-Content -LiteralPath $client -Value 'modified'
