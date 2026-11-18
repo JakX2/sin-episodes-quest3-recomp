@@ -12,6 +12,7 @@ $bits = [uint32]($ExitCode -band 0xFFFFFFFFL)
 $hex = ('0x{0:X8}' -f $bits)
 $meaning = switch ($hex) {
     '0x00000000' { 'PROCESS_EXITED_ZERO_NOT_BOOT_PROOF'; break }
+    '0x53494E45' { 'INDEPENDENT_UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP'; break }
     '0xC0000135' { 'STATUS_DLL_NOT_FOUND'; break }
     '0xC000007B' { 'STATUS_INVALID_IMAGE_FORMAT'; break }
     '0xC0000142' { 'STATUS_DLL_INIT_FAILED'; break }
