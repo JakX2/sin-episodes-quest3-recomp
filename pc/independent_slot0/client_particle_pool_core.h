@@ -5,6 +5,7 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <utility>
 
 namespace sin_independent {
 // Independent storage policy, NOT the original CParticleMgr/CMemoryPool ABI.

@@ -276,3 +276,8 @@ add_test(NAME independent_client_post_console_startup_native COMMAND sin_client_
 add_executable(sin_client_particle_pool_test test_client_particle_pool_core.cpp)
 target_compile_features(sin_client_particle_pool_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_particle_pool_native COMMAND sin_client_particle_pool_test)
+
+add_executable(sin_client_post_console_pool_test test_client_post_console_pool.cpp)
+target_compile_features(sin_client_post_console_pool_test PRIVATE cxx_std_17)
+target_include_directories(sin_client_post_console_pool_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+add_test(NAME independent_client_post_console_pool_native COMMAND sin_client_post_console_pool_test)

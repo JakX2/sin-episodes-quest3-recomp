@@ -16,3 +16,9 @@ ParticleBucketOwner boundary. It does not expose any guessed Source object
 layout, call the real engine, simulate particle effects or integrate into
 the shipped diagnostic DLL. No original method coverage or retail startup
 credit is claimed. The next retail test still is Phase 348.
+
+A second native test composes the real owned pool backend with the combined
+post-console startup coordinator. It verifies GUI callbacks can access live
+particle storage, GUI cleanup precedes pool destruction, deferred objects
+are released after the pool, and invalid capacity prevents any GUI calls.
+This still exercises owned fixtures only, not the retail VGUI ABI.
