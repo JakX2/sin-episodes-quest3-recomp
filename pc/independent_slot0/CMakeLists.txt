@@ -42,6 +42,10 @@ add_test(NAME independent_owner_engine_exit_diagnosis
 # metadata parser with an invented PE32 image, never commercial game code.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_client_console_inventory_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalClientConsole.py"
+      --self-test)
   add_test(NAME independent_server_extended_cvar_metadata_synthetic
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalExtendedCvars.py"
@@ -253,3 +257,7 @@ add_test(NAME independent_server_extended_cvar_catalog_native COMMAND sin_server
 add_executable(sin_client_object_initializer_test test_client_object_initializer_core.cpp)
 target_compile_features(sin_client_object_initializer_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_object_initializer_native COMMAND sin_client_object_initializer_test)
+
+add_executable(sin_client_console_registration_test test_client_console_registration_core.cpp)
+target_compile_features(sin_client_console_registration_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_console_registration_native COMMAND sin_client_console_registration_test)
