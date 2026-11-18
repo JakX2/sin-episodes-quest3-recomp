@@ -266,3 +266,9 @@ add_test(NAME independent_client_console_registration_native COMMAND sin_client_
 add_executable(sin_client_particle_bucket_test test_client_particle_bucket_core.cpp)
 target_compile_features(sin_client_particle_bucket_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_particle_bucket_native COMMAND sin_client_particle_bucket_test)
+
+# Combined independent native post-console startup fixture (no engine callbacks).
+add_executable(sin_client_post_console_startup_test test_client_post_console_startup_core.cpp)
+target_compile_features(sin_client_post_console_startup_test PRIVATE cxx_std_17)
+target_include_directories(sin_client_post_console_startup_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+add_test(NAME independent_client_post_console_startup_native COMMAND sin_client_post_console_startup_test)
