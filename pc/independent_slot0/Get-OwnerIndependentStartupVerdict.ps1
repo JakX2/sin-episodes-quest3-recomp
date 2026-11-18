@@ -23,6 +23,7 @@ $soundCallbacks = New-Object System.Collections.Generic.List[string]
 $soundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientSoundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientMaterialTerminalLogs = New-Object System.Collections.Generic.List[string]
+$clientScreenTerminalLogs = New-Object System.Collections.Generic.List[string]
 $eventTerminalLogs = New-Object System.Collections.Generic.List[string]
 $cvarTerminalLogs = New-Object System.Collections.Generic.List[string]
 $batchTerminalLogs = New-Object System.Collections.Generic.List[string]
@@ -63,6 +64,9 @@ foreach ($log in $logs) {
     $clientMaterialStage = 0
     $clientMaterialResult = $null
     $clientHardwareFound = $false
+    $screenStage = 0
+    $screenDimensions = $null
+    $screenResult = $null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -122,6 +126,28 @@ foreach ($log in $logs) {
             } elseif ($clientMaterialStage -eq 6 -and $phase -eq 'material-probe-terminal-stop' -and $version -eq 'MaterialSystemHardwareConfig012') {
                 $clientMaterialTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$clientMaterialResult))
                 $clientMaterialStage = 7
+            }
+        }
+        if ($role -eq 'client' -and $clientMaterialStage -eq 6 -and $clientMaterialResult -eq 'acquired') {
+            if ($screenStage -eq 0 -and $phase -eq 'screen-query-entered' -and $version -eq 'VEngineClient012.GetScreenSize') {
+                $screenStage = 1
+            } elseif ($screenStage -eq 1 -and $phase -eq 'screen-query-returned' -and $version -cmatch '^(-?[0-9]+):(-?[0-9]+)$') {
+                $w = 0; $h = 0
+                if ([int]::TryParse($Matches[1],[ref]$w) -and [int]::TryParse($Matches[2],[ref]$h)) {
+                    $screenDimensions = $version
+                    $screenStage = 2
+                }
+            } elseif ($phase -eq 'screen-probe-result') {
+                if ($version -eq 'returned' -and $screenStage -eq 2) {
+                    $screenResult = "returned:$screenDimensions"
+                    $screenStage = 3
+                } elseif ($version -eq 'missing-abi-input' -and $screenStage -eq 1) {
+                    $screenResult = $version
+                    $screenStage = 3
+                }
+            } elseif ($screenStage -eq 3 -and $phase -eq 'screen-probe-terminal-stop' -and $version -eq 'VEngineClient012.GetScreenSize') {
+                $clientScreenTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$screenResult))
+                $screenStage = 4
             }
         }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
@@ -229,6 +255,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($clientScreenTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SCREEN_PROBE_RESULTS: {0}" -f ($clientScreenTerminalLogs -join ','))
+}
 if ($clientMaterialTerminalLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MATERIAL_PROBE_RESULTS: {0}" -f ($clientMaterialTerminalLogs -join ','))
 }
@@ -262,6 +291,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($clientScreenTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SCREEN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($clientMaterialTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_MATERIAL_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($clientSoundTerminalLogs.Count -gt 0) {
