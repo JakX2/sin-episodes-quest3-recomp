@@ -6,6 +6,7 @@ param(
     [ValidateRange(10,300)][int]$TimeoutSeconds=90,
     [switch]$EnableClientOwnedStartupProbe,
     [switch]$EnableClientVGuiProbe,
+    [switch]$EnableClientVGuiLayoutProbe,
     [switch]$DisposableTestCopyConfirmed
 )
 $ErrorActionPreference='Stop'
@@ -44,4 +45,4 @@ Write-Output ("OWNER_DIAGNOSTIC_BUNDLE_COMMIT: {0}" -f $manifest.commit)
     -GameArguments $GameArguments -TimeoutSeconds $TimeoutSeconds `
     -ProbeRole Client -EnableClientSoundProbe -EnableClientMaterialProbe `
     -EnableClientScreenProbe -EnableClientGaussianProbe -EnableClientCvarProbe `
-    -EnableClientOwnedStartupProbe:$EnableClientOwnedStartupProbe -EnableClientVGuiProbe:$EnableClientVGuiProbe -DisposableTestCopyConfirmed
+    -EnableClientOwnedStartupProbe:$EnableClientOwnedStartupProbe -EnableClientVGuiProbe:$EnableClientVGuiProbe -EnableClientVGuiLayoutProbe:$EnableClientVGuiLayoutProbe -DisposableTestCopyConfirmed

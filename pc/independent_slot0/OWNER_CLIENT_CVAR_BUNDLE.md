@@ -35,3 +35,10 @@ Optional VGUI factory-only diagnostic: add both -EnableClientOwnedStartupProbe
 and -EnableClientVGuiProbe. The original engine's already-loaded vgui2.dll
 factory is queried for the two exact legacy interface names. Success is
 0x53494E59; refusal 0x53494E5A. No GUI methods or registration helpers run.
+
+Optional read-only VGUI vtable anchor check: add -EnableClientVGuiLayoutProbe
+together with -EnableClientVGuiProbe and -EnableClientOwnedStartupProbe.
+This checks vtable memory ownership and the original-used slots 0/56
+(InputInternal) and 0/24 (System) without invoking any virtual method.
+Success 0x53494E5B, refusal 0x53494E5C. This does not prove complete GUI
+initialization or a successful VClient011::Init return.

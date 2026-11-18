@@ -28,6 +28,7 @@ $gaussianTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientCvarTerminalLogs = New-Object System.Collections.Generic.List[string]
 $ownedStartupLogs = New-Object System.Collections.Generic.List[string]
 $vguiLogs = New-Object System.Collections.Generic.List[string]
+$vguiLayoutLogs = New-Object System.Collections.Generic.List[string]
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
 $clientCvarNames = @('cl_starfield_distance','cl_starfield_diameter','cl_show_bloodspray')
@@ -83,6 +84,8 @@ foreach ($log in $logs) {
     $ownedStartupResult = $null
     $vguiStage=0
     $vguiResult=$null
+    $vguiLayoutStage=0
+    $vguiLayoutResult=$null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -232,6 +235,28 @@ foreach ($log in $logs) {
                 $clientCvarStage=5
             }
         }
+        if ($role -eq 'client' -and $vguiStage -eq 6 -and $vguiResult -eq 'acquired') {
+            if ($vguiLayoutStage -eq 0 -and $phase -eq 'vgui-layout-entered' -and
+                $version -eq 'input:0+56,system:0+24') {
+                $vguiLayoutStage=1
+            } elseif ($vguiLayoutStage -eq 1 -and $phase -eq 'vgui-layout-input-verified' -and
+                $version -eq '0+56') {
+                $vguiLayoutStage=2
+            } elseif ($vguiLayoutStage -eq 2 -and $phase -eq 'vgui-layout-system-verified' -and
+                $version -eq '0+24') {
+                $vguiLayoutStage=3
+            } elseif ($phase -eq 'vgui-layout-probe-result' -and (
+                ($vguiLayoutStage -eq 1 -and $version -eq 'invalid-input') -or
+                ($vguiLayoutStage -eq 2 -and $version -eq 'invalid-system') -or
+                ($vguiLayoutStage -eq 3 -and $version -eq 'verified'))) {
+                $vguiLayoutResult=$version
+                $vguiLayoutStage=4
+            } elseif ($vguiLayoutStage -eq 4 -and $phase -eq 'vgui-layout-terminal-stop' -and
+                $version -eq 'read-only') {
+                $vguiLayoutLogs.Add(("{0}:client:{1}" -f $log.Name,$vguiLayoutResult))
+                $vguiLayoutStage=5
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -337,6 +362,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($vguiLayoutLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_VGUI_VTABLE_RESULTS: {0}" -f ($vguiLayoutLogs -join ','))
+}
 if ($vguiLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_VGUI_RESULTS: {0}" -f ($vguiLogs -join ','))
 }
@@ -385,6 +413,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($vguiLayoutLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_VGUI_VTABLE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($vguiLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_VGUI_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($ownedStartupLogs.Count -gt 0) {
