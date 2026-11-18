@@ -8,8 +8,10 @@ on:
     paths:
       - 'tools/abi_evidence_queue.py'
       - 'tools/abi_queue_delta.py'
+      - 'tools/abi_anchor_coverage.py'
       - 'tests/test_abi_evidence_queue.py'
       - 'tests/test_abi_queue_delta.py'
+      - 'tests/test_abi_anchor_coverage.py'
       - '.github/workflows/abi-evidence-queue.yml'
   workflow_dispatch:
 
