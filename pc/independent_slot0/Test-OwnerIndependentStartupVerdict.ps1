@@ -471,7 +471,7 @@ try {
         '[SiN independent] role=client phase=gaussian-probe-terminal-stop version=VEngineRandom001'
     )))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
-    # Future client console registrations remain synthetic evidence.
+    # Owner Phase 348 verified the successful client console trace; variants remain synthetic.
     $clientCvarPrefix = @($gaussianPrefix) + @(
         '[SiN independent] role=client phase=gaussian-attach-entered version=VEngineRandom001',
         '[SiN independent] role=client phase=gaussian-attach-verified version=VEngineRandom001',
@@ -502,6 +502,29 @@ try {
         '[SiN independent] role=client phase=client-cvar-probe-result version=verified:3/3',
         '[SiN independent] role=client phase=client-cvar-probe-terminal-stop version=3'
     )))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Owned startup is still synthetic. It must follow a complete cvar prefix.
+    $ownedPrefix=@($clientCvarTrace[0..($clientCvarTrace.Count-2)])
+    $ownedEvents=@(
+        '[SiN independent] role=client phase=owned-startup-entered version=independent-only',
+        '[SiN independent] role=client phase=owned-startup-objects-ready version=1',
+        '[SiN independent] role=client phase=owned-startup-pool-ready version=2048x96',
+        '[SiN independent] role=client phase=owned-startup-pool-verified version=allocate-reuse-release',
+        '[SiN independent] role=client phase=owned-startup-cleanup-verified version=pool-objects',
+        '[SiN independent] role=client phase=owned-startup-probe-result version=verified',
+        '[SiN independent] role=client phase=owned-startup-terminal-stop version=independent-only'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($ownedPrefix+$ownedEvents))
+    $out=Verify 'CLIENT_OWNED_STARTUP_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if(-not (($out -join '|').Contains(':client:verified'))) {throw 'Owned startup result missing'}
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($ownedPrefix+@($ownedEvents[0],
+        '[SiN independent] role=client phase=owned-startup-probe-result version=refused',
+        $ownedEvents[6])))
+    $out=Verify 'CLIENT_OWNED_STARTUP_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if(-not (($out -join '|').Contains(':client:refused'))) {throw 'Owned startup refusal missing'}
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($ownedPrefix+@($ownedEvents[0],$ownedEvents[1])+$ownedEvents[3..6]))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($clientCvarPrefix)+@($ownedEvents)))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
