@@ -286,7 +286,7 @@ public:
         return false;
     }
     // Original ServerGameDLL003 has 31 entries, not the SDK's 29.
-    // Slots 2..30 remain guards except the original tick-interval method.
+    // Slots 2..30 remain guards except tick interval and game description.
     SIN_GUARD_SLOT(2, "ServerGameDLL003")
     SIN_GUARD_SLOT(3, "ServerGameDLL003")
     SIN_GUARD_SLOT(4, "ServerGameDLL003")
@@ -308,7 +308,15 @@ public:
         return interval;
     }
     SIN_GUARD_SLOT(10, "ServerGameDLL003")
-    SIN_GUARD_SLOT(11, "ServerGameDLL003")
+    // Original slot 11, RVA 0x1e7c40, delegates to the description
+    // helper at RVA 0x2f0cc0. Before a game-rules object exists, that
+    // helper returns the process-lifetime "SiN Episodes" string.
+    // This DLL never initializes game rules, so only the authenticated
+    // pre-initialization branch is reachable here.
+    virtual const char* __thiscall GetGameDescription() noexcept {
+        diagnostic("diagnostic-callback", "ServerGameDLL003.GetGameDescription");
+        return "SiN Episodes";
+    }
     SIN_GUARD_SLOT(12, "ServerGameDLL003")
     SIN_GUARD_SLOT(13, "ServerGameDLL003")
     SIN_GUARD_SLOT(14, "ServerGameDLL003")
