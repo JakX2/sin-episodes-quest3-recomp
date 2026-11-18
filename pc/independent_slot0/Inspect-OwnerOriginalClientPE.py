@@ -121,8 +121,43 @@ def inspect(data):
     if pe.raw(0x2681f0,14)!=bytes.fromhex(
             "6a00b900f73324ff1540622724c3"):
         raise ValueError("Original Gaussian static initializer mismatch")
+    # Initializer lifecycle follows console registration. The original
+    # linked-list constructor exists, but no direct caller or absolute
+    # function address was found in the mapped raw sections. Indirect
+    # runtime construction is not ruled out by this metadata.
+    def expect_call(source,target):
+        raw=pe.raw(source,5)
+        if raw[0]!=0xe8 or source+5+struct.unpack_from("<i",raw,1)[0]!=target:
+            raise ValueError("Original client initializer edge mismatch")
+    expect_call(0xfe39b,0x164120)
+    expect_call(0x16414d,0x1640f0)
+    expect_call(0xff422,0x1640f0)
+    if pe.raw(0x164130,3)!=bytes.fromhex("ff5604") or \
+       pe.raw(0x164109,3)!=bytes.fromhex("ff5608"):
+        raise ValueError("Original initializer callback field mismatch")
+    _,data_start,data_size,data_raw,_=next(s for s in pe.sections if s[0]==".data")
+    head=0x369374
+    if not (data_start+data_raw<=head and head+4<=data_start+data_size):
+        raise ValueError("Original initializer list head mapping mismatch")
+    code=pe.raw(text_start,text_size)
+    direct=[]
+    for i in range(len(code)-4):
+        if code[i] in (0xe8,0xe9) and text_start+i+5+struct.unpack_from("<i",code,i+1)[0]==0x1640c0:
+            direct.append(text_start+i)
+    abs_refs=0
+    for n,rva,vs,raw,off in pe.sections:
+        if n in (".text",".rdata",".data"):
+            abs_refs+=data[off:off+min(vs,raw)].count(struct.pack("<I",pe.base+0x1640c0))
+    if direct or abs_refs:
+        raise ValueError("Unexpected direct client initializer constructor references")
     return {
         "original_client_sha256": PIN,
+        "object_initializer": {"constructor_rva":hex(0x1640c0),
+                               "initialize_rva":hex(0x164120),
+                               "free_rva":hex(0x1640f0),
+                               "head_rva":hex(head),"record_size":16,
+                               "direct_constructor_references":len(direct),
+                               "absolute_constructor_references":abs_refs},
         "screen_random": {"screen_helper_rva":hex(0xffab0),
                           "engine_slot":5,
                           "width_global_rva":hex(0x33fc10),
