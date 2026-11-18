@@ -336,9 +336,44 @@ static bool clientOwnedStartupProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientVGuiProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientOwnedStartupProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+// Query only the already-loaded engine provider. Do not load a new DLL,
+// invoke virtual methods, or claim the original CLIENT helper ran.
+[[noreturn]] static void stopAfterClientVGuiProbe() noexcept {
+    diagnostic("vgui-probe-entered","vgui2.dll");
+    const auto module=GetModuleHandleA("vgui2.dll");
+    const auto factory=module?reinterpret_cast<Factory>(
+        GetProcAddress(module,"CreateInterface")):nullptr;
+    const char* result=module?"missing-factory":"missing-module";
+    static void* input=nullptr;
+    static void* system=nullptr;
+    if(factory) {
+        diagnostic("vgui-provider-found","vgui2.dll");
+        diagnostic("vgui-query-entered","VGUI_InputInternal001");
+        input=factory("VGUI_InputInternal001",nullptr);
+        if(input) {
+            diagnostic("vgui-query-found","VGUI_InputInternal001");
+            diagnostic("vgui-query-entered","VGUI_System010");
+            system=factory("VGUI_System010",nullptr);
+            if(system)diagnostic("vgui-query-found","VGUI_System010");
+        }
+        result=!input?"missing-input":!system?"missing-system":
+            input==system?"aliased-interfaces":"acquired";
+    }
+    diagnostic("vgui-probe-result",result);
+    diagnostic("vgui-probe-terminal-stop","factory-only");
+    TerminateProcess(GetCurrentProcess(),std::strcmp(result,"acquired")==0?0x53494E59u:0x53494E5Au);
+    __fastfail(7);
+}
 [[noreturn]] static void stopAfterClientOwnedStartupProbe() noexcept {
     const bool verified=sin_independent::RunOwnedClientStartup(&diagnostic);
     diagnostic("owned-startup-probe-result",verified?"verified":"refused");
+    if(verified && clientVGuiProbeEnabled())stopAfterClientVGuiProbe();
     diagnostic("owned-startup-terminal-stop","independent-only");
     TerminateProcess(GetCurrentProcess(),verified?0x53494E57u:0x53494E58u);
     __fastfail(7);

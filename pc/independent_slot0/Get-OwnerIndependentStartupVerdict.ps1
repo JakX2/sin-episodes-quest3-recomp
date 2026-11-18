@@ -27,6 +27,8 @@ $clientScreenTerminalLogs = New-Object System.Collections.Generic.List[string]
 $gaussianTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientCvarTerminalLogs = New-Object System.Collections.Generic.List[string]
 $ownedStartupLogs = New-Object System.Collections.Generic.List[string]
+$vguiLogs = New-Object System.Collections.Generic.List[string]
+$vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
 $clientCvarNames = @('cl_starfield_distance','cl_starfield_diameter','cl_show_bloodspray')
 $eventTerminalLogs = New-Object System.Collections.Generic.List[string]
@@ -79,6 +81,8 @@ foreach ($log in $logs) {
     $clientCvarResult = $null
     $ownedStartupStage = 0
     $ownedStartupResult = $null
+    $vguiStage=0
+    $vguiResult=$null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -214,6 +218,20 @@ foreach ($log in $logs) {
                 $clientCvarStage=5
             }
         }
+        if ($role -eq 'client' -and $clientCvarStage -eq 4 -and $ownedStartupResult -eq 'verified') {
+            if ($vguiStage -lt $vguiEvents.Count -and ("${phase}:${version}" -ceq $vguiEvents[$vguiStage])) {
+                $vguiStage++
+            } elseif ($phase -eq 'vgui-probe-result' -and (
+                ($vguiStage -eq 1 -and $version -in @('missing-module','missing-factory')) -or
+                ($vguiStage -eq 3 -and $version -eq 'missing-input') -or
+                ($vguiStage -eq 5 -and $version -eq 'missing-system') -or
+                ($vguiStage -eq 6 -and $version -in @('acquired','aliased-interfaces')))) {
+                $vguiResult=$version
+            } elseif ($null -ne $vguiResult -and $phase -eq 'vgui-probe-terminal-stop' -and $version -eq 'factory-only') {
+                $vguiLogs.Add(("{0}:client:{1}" -f $log.Name,$vguiResult))
+                $clientCvarStage=5
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -319,6 +337,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($vguiLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_VGUI_RESULTS: {0}" -f ($vguiLogs -join ','))
+}
 if ($ownedStartupLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_OWNED_STARTUP_RESULTS: {0}" -f ($ownedStartupLogs -join ','))
 }
@@ -364,6 +385,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($vguiLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_VGUI_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($ownedStartupLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_OWNED_STARTUP_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($clientCvarTerminalLogs.Count -gt 0) {

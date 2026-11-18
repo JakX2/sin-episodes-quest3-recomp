@@ -5,6 +5,7 @@ param(
     [string]$GameArguments = '-console',
     [ValidateRange(10,300)][int]$TimeoutSeconds=90,
     [switch]$EnableClientOwnedStartupProbe,
+    [switch]$EnableClientVGuiProbe,
     [switch]$DisposableTestCopyConfirmed
 )
 $ErrorActionPreference='Stop'
@@ -43,4 +44,4 @@ Write-Output ("OWNER_DIAGNOSTIC_BUNDLE_COMMIT: {0}" -f $manifest.commit)
     -GameArguments $GameArguments -TimeoutSeconds $TimeoutSeconds `
     -ProbeRole Client -EnableClientSoundProbe -EnableClientMaterialProbe `
     -EnableClientScreenProbe -EnableClientGaussianProbe -EnableClientCvarProbe `
-    -EnableClientOwnedStartupProbe:$EnableClientOwnedStartupProbe -DisposableTestCopyConfirmed
+    -EnableClientOwnedStartupProbe:$EnableClientOwnedStartupProbe -EnableClientVGuiProbe:$EnableClientVGuiProbe -DisposableTestCopyConfirmed

@@ -526,6 +526,45 @@ try {
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     [IO.File]::WriteAllLines($retailReplay,[string[]](@($clientCvarPrefix)+@($ownedEvents)))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    $vguiPrefix=$ownedPrefix+@($ownedEvents[0..5])
+    $vguiEvents=@(
+        '[SiN independent] role=client phase=vgui-probe-entered version=vgui2.dll',
+        '[SiN independent] role=client phase=vgui-provider-found version=vgui2.dll',
+        '[SiN independent] role=client phase=vgui-query-entered version=VGUI_InputInternal001',
+        '[SiN independent] role=client phase=vgui-query-found version=VGUI_InputInternal001',
+        '[SiN independent] role=client phase=vgui-query-entered version=VGUI_System010',
+        '[SiN independent] role=client phase=vgui-query-found version=VGUI_System010',
+        '[SiN independent] role=client phase=vgui-probe-result version=acquired',
+        '[SiN independent] role=client phase=vgui-probe-terminal-stop version=factory-only'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($vguiPrefix+$vguiEvents))
+    [void](Verify 'CLIENT_VGUI_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF')
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($vguiPrefix+@($vguiEvents[0..2])+@(
+        '[SiN independent] role=client phase=vgui-probe-result version=missing-input',$vguiEvents[7])))
+    [void](Verify 'CLIENT_VGUI_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF')
+    # Distinguish a missing module from a loaded DLL with no factory.
+    foreach($refusal in @('missing-module','missing-factory')) {
+        [IO.File]::WriteAllLines($retailReplay,[string[]]($vguiPrefix+@(
+            $vguiEvents[0],
+            ("[SiN independent] role=client phase=vgui-probe-result version={0}" -f $refusal),
+            $vguiEvents[7])))
+        $out=Verify 'CLIENT_VGUI_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(-not (($out -join '|').Contains(":client:$refusal"))) {throw 'Module/factory refusal missing'}
+    }
+    # Input succeeded but the second interface was unavailable.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($vguiPrefix+@($vguiEvents[0..4])+@(
+        '[SiN independent] role=client phase=vgui-probe-result version=missing-system',$vguiEvents[7])))
+    $out=Verify 'CLIENT_VGUI_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if(-not (($out -join '|').Contains(':client:missing-system'))) {throw 'System refusal missing'}
+    # Both names resolved, but the provider returned the same identity.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($vguiPrefix+@($vguiEvents[0..5])+@(
+        '[SiN independent] role=client phase=vgui-probe-result version=aliased-interfaces',$vguiEvents[7])))
+    $out=Verify 'CLIENT_VGUI_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if(-not (($out -join '|').Contains(':client:aliased-interfaces'))) {throw 'Alias refusal missing'}
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($vguiPrefix+@($vguiEvents[0..2])+$vguiEvents[4..7]))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($ownedPrefix+$vguiEvents))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
