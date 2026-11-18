@@ -21,6 +21,7 @@ $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
 $soundTerminalLogs = New-Object System.Collections.Generic.List[string]
+$eventTerminalLogs = New-Object System.Collections.Generic.List[string]
 $explicitInitRoles = @{}
 $legacyInitEvents = 0
 $blockersByLog = New-Object System.Collections.Generic.List[string]
@@ -28,6 +29,8 @@ foreach ($log in $logs) {
     $logFirstBlocker = $null
     $soundEntered = $false
     $soundResult = $null
+    $eventStage = 0
+    $eventResult = $null
     foreach ($line in (Get-Content -LiteralPath $log.FullName)) {
         if ($line -notmatch '^\[SiN independent\] role=(client|server) phase=([a-z0-9-]+) version=([^\s]+)$') {
             continue
@@ -52,6 +55,26 @@ foreach ($log in $logs) {
             }
             if ($soundEntered -and $null -ne $soundResult -and $phase -eq 'sound-probe-terminal-stop') {
                 $soundTerminalLogs.Add(("{0}:{1}" -f $log.Name,$soundResult))
+            }
+        }
+        if ($role -eq 'server' -and $soundResult -eq 'sound-connect-succeeded') {
+            if ($phase -eq 'math-tables-initialized' -and $version -eq 'server-scalar') {
+                $eventStage = 1
+                $eventResult = $null
+            } elseif ($eventStage -eq 1 -and $phase -eq 'factory-state-cached' -and $version -eq 'server') {
+                $eventStage = 2
+            } elseif ($eventStage -eq 2 -and $phase -eq 'event-load-entered' -and $version -eq 'resource/gameevents.res') {
+                $eventStage = 3
+            } elseif ($eventStage -eq 3 -and $phase -eq 'event-load-returned' -and
+                $version -cmatch '^resource/gameevents\.res:(-?[0-9]+)$') {
+                $count = 0
+                if ([int]::TryParse($Matches[1],[ref]$count)) {
+                    $eventResult = $count
+                    $eventStage = 4
+                }
+            } elseif ($eventStage -eq 4 -and $phase -eq 'event-probe-terminal-stop' -and $version -eq 'resource/gameevents.res') {
+                $eventTerminalLogs.Add(("{0}:{1}" -f $log.Name,$eventResult))
+                $eventStage = 5
             }
         }
         if ($phase -eq 'init-entered') { $explicitInitRoles[$role] = $true }
@@ -84,6 +107,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($eventTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_EVENT_LOAD_RESULTS: {0}" -f ($eventTerminalLogs -join ','))
+}
 if ($issues.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_BLOCKERS_BY_LOG: {0}" -f ($blockersByLog -join ','))
     if ($blockersByLog.Count -eq 1) {
@@ -96,6 +122,8 @@ if ($issues.Count -gt 0) {
     # A terminal callback can occur before the first Init call. It proves
     # virtual entry and diagnostic termination, not that Init was entered.
     Write-Output "OWNER_INDEPENDENT_VERDICT: UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF"
+} elseif ($eventTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($soundTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($explicitInitRoles.Count -eq 0 -and $legacyInitEvents -eq 0 -and $factoryResults.Count -gt 0) {
