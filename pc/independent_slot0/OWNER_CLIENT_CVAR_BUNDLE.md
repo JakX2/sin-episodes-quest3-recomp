@@ -56,3 +56,10 @@ along with -EnableClientEngineVGuiSlot1Probe and earlier client switches.
 Success plus a nonzero engine GetPanel(PANEL_CLIENTDLL) returns 0x53494E5F;
 missing interface, unsafe method or zero panel returns 0x53494E60.
 Both remain terminal diagnostics, not normal Client Init or gameplay.
+
+Next original post-VGUI boundary: enable -EnableClientMatSurfaceProbe together
+with -EnableClientVGuiControlsBootstrapProbe and all earlier client switches.
+The original VGUI_Surface028 has a secondary IAppSystem base at +4 x86 bytes.
+Its QueryInterface virtual slot2 is invoked with "MatSystemSurface003".
+Exit 0x53494E61 means non-null; 0x53494E62 means refused. These are
+reversible terminal diagnostics, not successful VClient011::Init or gameplay.

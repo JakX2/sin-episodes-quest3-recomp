@@ -17,7 +17,7 @@ param(
     [string]$GameArguments,[int]$TimeoutSeconds,[string]$ProbeRole,
     [switch]$EnableClientSoundProbe,[switch]$EnableClientMaterialProbe,
     [switch]$EnableClientScreenProbe,[switch]$EnableClientGaussianProbe,
-    [switch]$EnableClientCvarProbe,[switch]$EnableClientOwnedStartupProbe,[switch]$EnableClientVGuiProbe,[switch]$EnableClientVGuiLayoutProbe,[switch]$EnableClientEngineVGuiSlot1Probe,[switch]$EnableClientVGuiControlsBootstrapProbe,[switch]$DisposableTestCopyConfirmed
+    [switch]$EnableClientCvarProbe,[switch]$EnableClientOwnedStartupProbe,[switch]$EnableClientVGuiProbe,[switch]$EnableClientVGuiLayoutProbe,[switch]$EnableClientEngineVGuiSlot1Probe,[switch]$EnableClientVGuiControlsBootstrapProbe,[switch]$EnableClientMatSurfaceProbe,[switch]$DisposableTestCopyConfirmed
 )
 $ErrorActionPreference='Stop'
 if ($ProbeRole -cne 'Client' -or -not $EnableClientSoundProbe -or
@@ -28,7 +28,7 @@ if ($ProbeRole -cne 'Client' -or -not $EnableClientSoundProbe -or
     $GameBin -cne (Join-Path $env:SIN_TEST_BUNDLE_GAME 'SE1/bin') -or
     $GameExecutable -cne (Join-Path $env:SIN_TEST_BUNDLE_GAME 'SinEpisodes.exe') -or
     $IndependentBin -cne (Join-Path $PSScriptRoot 'bin')) { throw 'Incorrect delegated parameters' }
-Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value $(if($EnableClientVGuiControlsBootstrapProbe -and $EnableClientEngineVGuiSlot1Probe -and $EnableClientVGuiLayoutProbe -and $EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'controls'}elseif($EnableClientEngineVGuiSlot1Probe -and $EnableClientVGuiLayoutProbe -and $EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'slot1'}elseif($EnableClientVGuiLayoutProbe -and $EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'layout'}elseif($EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'vgui'}elseif($EnableClientOwnedStartupProbe){'owned'}else{'called'})
+Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value $(if($EnableClientMatSurfaceProbe -and $EnableClientVGuiControlsBootstrapProbe -and $EnableClientEngineVGuiSlot1Probe -and $EnableClientVGuiLayoutProbe -and $EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'mat-surface'}elseif($EnableClientVGuiControlsBootstrapProbe -and $EnableClientEngineVGuiSlot1Probe -and $EnableClientVGuiLayoutProbe -and $EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'controls'}elseif($EnableClientEngineVGuiSlot1Probe -and $EnableClientVGuiLayoutProbe -and $EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'slot1'}elseif($EnableClientVGuiLayoutProbe -and $EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'layout'}elseif($EnableClientVGuiProbe -and $EnableClientOwnedStartupProbe){'vgui'}elseif($EnableClientOwnedStartupProbe){'owned'}else{'called'})
 '@ | Set-Content -LiteralPath $stub
     $files=@('bin/client.dll','bin/server.dll','Invoke-OwnerIndependentEngineProbe.ps1',
         'Get-OwnerEngineExitDiagnosis.ps1','Get-OwnerIndependentStartupVerdict.ps1',
@@ -77,6 +77,9 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value $(if($Ena
         Remove-Item -LiteralPath $called
         & $run -GameRoot $game -TimeoutSeconds 45 -GameArguments '-console -windowed' -EnableClientOwnedStartupProbe -EnableClientVGuiProbe -EnableClientVGuiLayoutProbe -EnableClientEngineVGuiSlot1Probe -EnableClientVGuiControlsBootstrapProbe -DisposableTestCopyConfirmed
         if((Get-Content -LiteralPath $called -Raw).Trim() -cne 'controls'){throw 'VGUI controls bootstrap switch was not delegated'}
+        Remove-Item -LiteralPath $called
+        & $run -GameRoot $game -TimeoutSeconds 45 -GameArguments '-console -windowed' -EnableClientOwnedStartupProbe -EnableClientVGuiProbe -EnableClientVGuiLayoutProbe -EnableClientEngineVGuiSlot1Probe -EnableClientVGuiControlsBootstrapProbe -EnableClientMatSurfaceProbe -DisposableTestCopyConfirmed
+        if((Get-Content -LiteralPath $called -Raw).Trim() -cne 'mat-surface'){throw 'MatSystemSurface switch was not delegated'}
         Remove-Item -LiteralPath $called
         $client=Join-Path $bundle 'bin/client.dll'
         Add-Content -LiteralPath $client -Value 'modified'

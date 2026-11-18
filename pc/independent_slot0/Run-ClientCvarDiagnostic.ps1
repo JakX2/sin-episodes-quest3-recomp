@@ -9,6 +9,7 @@ param(
     [switch]$EnableClientVGuiLayoutProbe,
     [switch]$EnableClientEngineVGuiSlot1Probe,
     [switch]$EnableClientVGuiControlsBootstrapProbe,
+    [switch]$EnableClientMatSurfaceProbe,
     [switch]$DisposableTestCopyConfirmed
 )
 $ErrorActionPreference='Stop'
@@ -47,4 +48,4 @@ Write-Output ("OWNER_DIAGNOSTIC_BUNDLE_COMMIT: {0}" -f $manifest.commit)
     -GameArguments $GameArguments -TimeoutSeconds $TimeoutSeconds `
     -ProbeRole Client -EnableClientSoundProbe -EnableClientMaterialProbe `
     -EnableClientScreenProbe -EnableClientGaussianProbe -EnableClientCvarProbe `
-    -EnableClientOwnedStartupProbe:$EnableClientOwnedStartupProbe -EnableClientVGuiProbe:$EnableClientVGuiProbe -EnableClientVGuiLayoutProbe:$EnableClientVGuiLayoutProbe -EnableClientEngineVGuiSlot1Probe:$EnableClientEngineVGuiSlot1Probe -EnableClientVGuiControlsBootstrapProbe:$EnableClientVGuiControlsBootstrapProbe -DisposableTestCopyConfirmed
+    -EnableClientOwnedStartupProbe:$EnableClientOwnedStartupProbe -EnableClientVGuiProbe:$EnableClientVGuiProbe -EnableClientVGuiLayoutProbe:$EnableClientVGuiLayoutProbe -EnableClientEngineVGuiSlot1Probe:$EnableClientEngineVGuiSlot1Probe -EnableClientVGuiControlsBootstrapProbe:$EnableClientVGuiControlsBootstrapProbe -EnableClientMatSurfaceProbe:$EnableClientMatSurfaceProbe -DisposableTestCopyConfirmed
