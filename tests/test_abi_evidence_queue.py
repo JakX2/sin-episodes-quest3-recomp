@@ -21,6 +21,16 @@ class EvidenceQueueTests(unittest.TestCase):
         self.assertEqual(first["counts"]["engine_tested"], 0)
         self.assertEqual(first["records"][0]["rva"], "0x0002")
 
+    def test_rva_padding_is_canonical_and_stable(self):
+        padded = dict(BASE, rva="0x0002")
+        plain = dict(BASE, rva="0x2")
+        a = module.report(module.validate({"records": [padded]}))
+        b = module.report(module.validate({"records": [plain]}))
+        self.assertEqual(a, b)
+        self.assertEqual(a["records"][0]["rva"], "0x2")
+        with self.assertRaises(ValueError):
+            module.validate({"records": [padded, plain]})
+
     def test_duplicate_rejected(self):
         with self.assertRaises(ValueError):
             module.validate({"records": [BASE, dict(BASE)]})
