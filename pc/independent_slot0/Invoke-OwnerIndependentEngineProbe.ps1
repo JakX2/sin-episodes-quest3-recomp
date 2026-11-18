@@ -27,6 +27,7 @@ param(
     [switch]$EnableClientOwnedStartupProbe,
     [switch]$EnableClientVGuiProbe,
     [switch]$EnableClientVGuiLayoutProbe,
+    [switch]$EnableClientEngineVGuiSlot1Probe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -108,6 +109,9 @@ function Require-NoReparseAncestors([string]$Path) {
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
     throw "Refusing without -DisposableTestCopyConfirmed (NEVER test your live Steam install)."
+}
+if ($EnableClientEngineVGuiSlot1Probe -and -not $EnableClientVGuiLayoutProbe) {
+    throw 'EnableClientEngineVGuiSlot1Probe requires EnableClientVGuiLayoutProbe and all preceding Client-only gates'
 }
 if ($EnableClientVGuiLayoutProbe -and -not $EnableClientVGuiProbe) {
     throw 'EnableClientVGuiLayoutProbe requires EnableClientVGuiProbe and preceding Client-only gates'
@@ -261,6 +265,7 @@ try {
     $previousOwnedStartupProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE','Process')
     $previousVGuiProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_PROBE','Process')
     $previousVGuiLayoutProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_LAYOUT_PROBE','Process')
+    $previousEngineVGuiSlot1Probe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
@@ -300,6 +305,8 @@ try {
         Write-Output ("OWNER_CLIENT_VGUI_PROBE: {0}" -f $(if ($EnableClientVGuiProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_LAYOUT_PROBE',$(if ($EnableClientVGuiLayoutProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_VGUI_LAYOUT_PROBE: {0}" -f $(if ($EnableClientVGuiLayoutProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_PROBE',$(if ($EnableClientEngineVGuiSlot1Probe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_CLIENT_ENGINE_VGUI_SLOT1_PROBE: {0}" -f $(if ($EnableClientEngineVGuiSlot1Probe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_OWNED_STARTUP_PROBE: {0}" -f $(if ($EnableClientOwnedStartupProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
@@ -392,6 +399,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE',$previousOwnedStartupProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_PROBE',$previousVGuiProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_LAYOUT_PROBE',$previousVGuiLayoutProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_PROBE',$previousEngineVGuiSlot1Probe,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.

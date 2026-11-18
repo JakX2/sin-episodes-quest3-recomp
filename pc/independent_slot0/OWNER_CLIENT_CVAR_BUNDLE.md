@@ -42,3 +42,10 @@ This checks vtable memory ownership and the original-used slots 0/56
 (InputInternal) and 0/24 (System) without invoking any virtual method.
 Success 0x53494E5B, refusal 0x53494E5C. This does not prove complete GUI
 initialization or a successful VClient011::Init return.
+
+Next original engine-panel query: -EnableClientEngineVGuiSlot1Probe together
+with all three preceding VGUI/owned startup switches. This invokes the
+SHA-authenticated original VEngineVGui001 virtual slot 1 with integer
+argument 2 only after the read-only VGUI anchor checks. Nonzero return
+is 0x53494E5D, refused / zero is 0x53494E5E. Neither is proof of
+GUI initialization or complete game startup.

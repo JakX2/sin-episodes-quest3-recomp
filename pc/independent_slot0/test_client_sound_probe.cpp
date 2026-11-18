@@ -28,7 +28,7 @@ static void* __cdecl App(const char*,int*);
 class Sound {
 public:
     virtual bool __thiscall Connect(Factory factory) noexcept {
-        if(factory!=&App || progress!=21 || ++calls!=1 || (mode!=1 && mode!=2 && (mode<5 || mode>37)))
+        if(factory!=&App || progress!=21 || ++calls!=1 || (mode!=1 && mode!=2 && (mode<5 || mode>40)))
             ExitProcess(91);
         return mode!=2 && mode!=9 && mode!=13 && mode!=17;
     }
@@ -61,11 +61,21 @@ public:
     virtual void __thiscall Guard4() noexcept {ExitProcess(120);}
     virtual void __thiscall GetScreenSize(int& w,int& h) noexcept {
         if(progress!=22 || calls!=1 || hardwareCalls!=1 || ++screenCalls!=1 ||
-           &w==&h || w || h || (mode!=10 && mode!=11 && mode!=14 && mode!=15 && (mode<18 || mode>37)))ExitProcess(121);
+           &w==&h || w || h || (mode!=10 && mode!=11 && mode!=14 && mode!=15 && (mode<18 || mode>40)))ExitProcess(121);
         w=mode==11?0:1920;h=mode==11?0:1080;
     }
 };
 static ScreenEngine screenEngine;
+static unsigned engineVGuiCalls=0;
+class EngineVGuiFixture {
+public:
+    virtual std::uintptr_t __thiscall Guard0() noexcept {ExitProcess(145);return 0;}
+    virtual std::uintptr_t __thiscall Slot1(int value) noexcept {
+        if(value!=2 || ++engineVGuiCalls!=1 || mode<38 || mode>40)ExitProcess(146);
+        return mode==39?0:0x1234u;
+    }
+};
+static EngineVGuiFixture engineVGuiFixture;
 using namespace sin_independent::console_abi;
 static void __cdecl Noop(){}
 class ClientCvarFixture final:public EngineCvar {
@@ -85,7 +95,7 @@ public:
         ExitProcess(123);
     }
     void __thiscall RegisterConCommandBase(CommandBase* object) noexcept override {
-        if(mode!=18 && mode!=20 && mode!=21 && mode!=24 && (mode<27 || mode>31) && mode!=33 && (mode<34 || mode>37))ExitProcess(124);
+        if(mode!=18 && mode!=20 && mode!=21 && mode!=24 && (mode<27 || mode>31) && mode!=33 && (mode<34 || mode>40))ExitProcess(124);
         if(screenCalls!=1 || calls>=kClientSpecCount || lists!=1 ||
            !object || object->IsCommand() || object->registered ||
            object->next || object->flags!=8)ExitProcess(125);
@@ -116,7 +126,7 @@ public:
 static ClientCvarFixture clientCvar;
 static void* __cdecl App(const char* name,int* status) {
     if(!name || status)ExitProcess(92);
-    if(progress==21 && ((mode>=5 && mode<=7) || ((mode>=10 && mode<=16 && mode!=13) || (mode>=18 && mode<=37)))) {
+    if(progress==21 && ((mode>=5 && mode<=7) || ((mode>=10 && mode<=16 && mode!=13) || (mode>=18 && mode<=40)))) {
         if(std::strcmp(name,"VMaterialSystemStub001") || calls!=1 ||
            !verifyText || !verifyText())ExitProcess(112);
         ++progress;
@@ -128,6 +138,8 @@ static void* __cdecl App(const char* name,int* status) {
     if(progress==1)return &screenEngine;
     if(progress==4)return &clientCvar;
     if(progress==8)return &materials;
+    if(progress==11 && mode>=38 && mode<=40)
+        return mode==40?static_cast<void*>(&token):static_cast<void*>(&engineVGuiFixture);
     return progress==21?static_cast<void*>(&sound):&token;
 }
 static void* __cdecl Physics(const char*,int*){ExitProcess(93);}
@@ -140,7 +152,7 @@ static bool Owns(HMODULE module,const void* ptr) {
 static int Child(const char* dll,int selected) {
     mode=selected;
     clientCvar.Prepare();
-    if((mode>=5 && mode<=7) || ((mode>=10 && mode<=16 && mode!=13) || (mode>=18 && mode<=37))) {
+    if((mode>=5 && mode<=7) || ((mode>=10 && mode<=16 && mode!=13) || (mode>=18 && mode<=40))) {
         auto module=LoadLibraryA(fixturePath);
         if(!module)return 113;
         auto set=reinterpret_cast<void (__cdecl *)(int)>(GetProcAddress(module,"SetTextFixture"));
@@ -152,20 +164,21 @@ static int Child(const char* dll,int selected) {
         gaussian(&token,mode==15 || mode==22 || mode==26?1:0);
     }
     if(mode==33 && !LoadLibraryA(missingFactoryFixturePath))return 144;
-    if((mode>=27 && mode<=31 && mode!=28) || (mode>=34 && mode<=37)) {
+    if((mode>=27 && mode<=31 && mode!=28) || (mode>=34 && mode<=40)) {
         if(!LoadLibraryA(vguiFixturePath) ||
-           !SetEnvironmentVariableA("SIN_TEST_VGUI_FIXTURE_MODE",std::to_string(mode).c_str()))return 143;
+           !SetEnvironmentVariableA("SIN_TEST_VGUI_FIXTURE_MODE",std::to_string(mode>=38?34:mode).c_str()))return 143;
     }
     if(!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE","1") ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION",mode==4?"invalid":kSession) ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUND_PROBE",mode==0?"0":"1") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE",mode>=5 && mode<=37?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SCREEN_PROBE",mode>=10 && mode<=37?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE",mode>=14 && mode<=37?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_CVAR_PROBE",mode>=18 && mode<=37?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE",mode>=24 && mode<=37?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_PROBE",(mode>=27 && mode<=31) || mode==33 || (mode>=34 && mode<=37)?"1":"0") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_LAYOUT_PROBE",mode>=34 && mode<=37?"1":"0"))
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE",mode>=5 && mode<=40?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SCREEN_PROBE",mode>=10 && mode<=40?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE",mode>=14 && mode<=40?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_CVAR_PROBE",mode>=18 && mode<=40?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE",mode>=24 && mode<=40?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_PROBE",(mode>=27 && mode<=31) || mode==33 || (mode>=34 && mode<=40)?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_LAYOUT_PROBE",mode>=34 && mode<=40?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_PROBE",mode>=38 && mode<=40?"1":"0"))
         return 94;
     HMODULE module=LoadLibraryA(dll);
     if(!module)return 95;
@@ -205,6 +218,8 @@ static bool Run(const char* dll,int selected) {
     }
     GetExitCodeProcess(pi.hProcess,&result);CloseHandle(pi.hProcess);
     const DWORD expected=selected>=102?0x53494E45u:
+        selected==38?0x53494E5Du:
+        selected==39 || selected==40?0x53494E5Eu:
         selected==34?0x53494E5Bu:
         selected>=35 && selected<=37?0x53494E5Cu:
         selected==27?0x53494E59u:
@@ -232,6 +247,20 @@ static bool Run(const char* dll,int selected) {
         return text.find(marker)!=std::string::npos && !has("phase=init-entered");
     }
     if(!has("role=client phase=init-entered"))return false;
+    if(selected>=38 && selected<=40) {
+        const char* outcome=selected==38?"nonzero":selected==39?"zero":"invalid-vtable";
+        std::size_t after=0;
+        const auto ordered=[&](const std::string& str) {
+            const auto at=text.find(str,after);
+            if(at==std::string::npos)return false;
+            after=at+str.size();return true;
+        };
+        return ordered("phase=vgui-layout-probe-result version=verified") &&
+            ordered("phase=engine-vgui-slot1-entered version=VEngineVGui001:arg2") &&
+            ordered(std::string("phase=engine-vgui-slot1-result version=")+outcome) &&
+            ordered("phase=engine-vgui-slot1-terminal-stop version=original-slot1") &&
+            !has("phase=vgui-layout-terminal-stop") && !has("phase=vgui-probe-terminal-stop");
+    }
     if(selected>=34 && selected<=37) {
         const char* expected=selected==34?"verified":
             selected==36?"invalid-system":"invalid-input";
@@ -383,7 +412,7 @@ int main(int argc,char** argv) {
     if(argc==6){fixturePath=argv[3];vguiFixturePath=argv[4];missingFactoryFixturePath=argv[5];return Child(argv[1],std::atoi(argv[2]));}
     if(argc!=5)return 1;
     fixturePath=argv[2];vguiFixturePath=argv[3];missingFactoryFixturePath=argv[4];
-    for(int i=0;i<38;++i)if(!Run(argv[1],i)){
+    for(int i=0;i<41;++i)if(!Run(argv[1],i)){
         std::fprintf(stderr,"FAIL client sound case %d\n",i);return 2;
     }
     for(int i=102;i<=147;++i)if(!Run(argv[1],i)){
