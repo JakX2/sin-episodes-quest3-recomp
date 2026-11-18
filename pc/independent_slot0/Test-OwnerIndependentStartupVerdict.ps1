@@ -599,6 +599,32 @@ try {
         '[SiN independent] role=client phase=vgui-layout-probe-result version=invalid-input',
         $layoutStop)))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Original VEngineVGui001 virtual slot1 with argument two, after
+    # fully ordered VGUI provider and layout verification.
+    $engineSlotPrefix=$layoutPrefix+$layoutBase+@(
+        $layoutInput,$layoutSystem,
+        '[SiN independent] role=client phase=vgui-layout-probe-result version=verified'
+    )
+    $engineSlotEntry='[SiN independent] role=client phase=engine-vgui-slot1-entered version=VEngineVGui001:arg2'
+    $engineSlotStop='[SiN independent] role=client phase=engine-vgui-slot1-terminal-stop version=original-slot1'
+    foreach($outcome in @('nonzero','zero','invalid-vtable','invalid-object','invalid-method')) {
+        [IO.File]::WriteAllLines($retailReplay,[string[]]($engineSlotPrefix+@(
+            $engineSlotEntry,
+            ("[SiN independent] role=client phase=engine-vgui-slot1-result version={0}" -f $outcome),
+            $engineSlotStop)))
+        $out=Verify 'CLIENT_ENGINE_VGUI_SLOT1_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(-not (($out -join '|').Contains(":client:$outcome"))) {throw "Engine VGUI slot1 outcome missing: $outcome"}
+    }
+    # Missing original-ABI prerequisite must never become a verified result.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($layoutPrefix+$layoutBase+@(
+        $engineSlotEntry,
+        '[SiN independent] role=client phase=engine-vgui-slot1-result version=nonzero',
+        $engineSlotStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($engineSlotPrefix+@(
+        '[SiN independent] role=client phase=engine-vgui-slot1-result version=nonzero',
+        $engineSlotStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
