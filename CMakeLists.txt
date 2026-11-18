@@ -3308,3 +3308,11 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_client_recvprop_proxies_factories_tests
     COMMAND sin_original_client_recvprop_proxies_factories_tests)
 endif()
+
+# Portable independent particle storage test; not a retail allocator ABI.
+if(BUILD_TESTING)
+  add_executable(sin_independent_particle_pool_tests pc/independent_slot0/test_client_particle_pool_core.cpp)
+  target_compile_features(sin_independent_particle_pool_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_independent_particle_pool_tests PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+  add_test(NAME sin_independent_particle_pool_tests COMMAND sin_independent_particle_pool_tests)
+endif()
