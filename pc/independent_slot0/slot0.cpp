@@ -1,6 +1,6 @@
 // Independently authored Win32 PE32 engine-interface initialization diagnostic.
 // Native, fail-closed diagnostic. No original DLL forwarding; NOT playable.
-// The original VClient011 first five factory queries and server
+// The original VClient011 first twenty-one factory queries and server
 // ServerGameDLL003 DLLInit first sixteen cross-factory queries are now reviewed
 // against SHA-pinned owner originals. All bodies remain fail-closed.
 // These methods deliberately fail closed after a bounded early factory probe.
@@ -11,6 +11,7 @@
 #include <type_traits>
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
+#include "server_tick_interval_core.h"
 #include <new>
 #include <intrin.h>
 #endif
@@ -37,6 +38,26 @@ constexpr char kSecondEngineVersion[] = "VEngineModel012";
 constexpr char kThirdEngineVersion[] = "VEngineEffects001";
 constexpr char kFourthEngineVersion[] = "VEngineCvar002";
 constexpr char kFifthEngineVersion[] = "EngineTraceClient003";
+// Remaining initial app-system factory dependencies authenticated in
+// original VClient011 Init (RVA 0xFE0E0), before sound-emitter Connect.
+constexpr const char* kRemainingClientVersions[] = {
+    "VEngineRenderView011",
+    "VDebugOverlay003",
+    "VMaterialSystem076",
+    "VEngineCache001",
+    "VModelInfoClient003",
+    "VEngineVGui001",
+    "VEngineClientStringTable001",
+    "SpatialPartition001",
+    "VEngineShadowMgr002",
+    "StaticPropMgrClient004",
+    "IEngineSoundClient003",
+    "VFileSystem012",
+    "VEngineRandom001",
+    "VENGINE_GAMEUIFUNCS_VERSION004",
+    "GAMEEVENTSMANAGER002",
+    "VSoundEmitter001",
+};
 #elif defined(SIN_ROLE_server)
 constexpr char kName[] = "ServerGameDLL003";
 constexpr char kRole[] = "server";
@@ -166,15 +187,16 @@ public:
             diagnostic("invalid-init-arguments", nullptr);
             return 0;
         }
-        // The FIRST FIVE names/order were confirmed from the authenticated
-        // original retail VClient011 Init slot. We never dereference engine
-        // pointers or advertise successful initialization. Stop at first
-        // unavailable interface so each owner probe finds a precise blocker.
+        // All 21 initial names/order are authenticated from the original
+        // VClient011 Init slot. Never dereference engine pointers or
+        // advertise successful initialization. Stop at first missing input.
         if (!require(appSystemFactory, kFirstEngineVersion) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
             !require(appSystemFactory, kFourthEngineVersion) ||
             !require(appSystemFactory, kFifthEngineVersion)) return 0;
+        for (const char* version : kRemainingClientVersions)
+            if (!require(appSystemFactory, version)) return 0;
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
         return 0; // Never advertise successful independent startup.
@@ -233,7 +255,7 @@ public:
         return false;
     }
     // Original ServerGameDLL003 has 31 entries, not the SDK's 29.
-    // Slots 2..30 remain terminal guards, not implemented methods.
+    // Slots 2..30 remain guards except the original tick-interval method.
     SIN_GUARD_SLOT(2, "ServerGameDLL003")
     SIN_GUARD_SLOT(3, "ServerGameDLL003")
     SIN_GUARD_SLOT(4, "ServerGameDLL003")
@@ -241,7 +263,19 @@ public:
     SIN_GUARD_SLOT(6, "ServerGameDLL003")
     SIN_GUARD_SLOT(7, "ServerGameDLL003")
     SIN_GUARD_SLOT(8, "ServerGameDLL003")
-    SIN_GUARD_SLOT(9, "ServerGameDLL003")
+    // Original slot 9 (RVA 0x1E7A90). The engine owns the command-line
+    // singleton; resolve its existing vstdlib module, never load a new one.
+    virtual float __thiscall GetTickInterval() const noexcept {
+        auto module = GetModuleHandleA("vstdlib.dll");
+        if (!module) stopUnsupported("ServerGameDLL003.GetTickInterval.missing-commandline");
+        auto commandLine = reinterpret_cast<sin_independent::CommandLineProvider>(
+            GetProcAddress(module,"CommandLine"));
+        float interval = 0;
+        if (!sin_independent::TryGetTickInterval(commandLine, interval))
+            stopUnsupported("ServerGameDLL003.GetTickInterval.missing-commandline");
+        diagnostic("diagnostic-callback","ServerGameDLL003.GetTickInterval");
+        return interval;
+    }
     SIN_GUARD_SLOT(10, "ServerGameDLL003")
     SIN_GUARD_SLOT(11, "ServerGameDLL003")
     SIN_GUARD_SLOT(12, "ServerGameDLL003")

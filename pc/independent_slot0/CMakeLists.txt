@@ -46,6 +46,10 @@ if(Python3_Interpreter_FOUND)
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalServerPE.py"
       --self-test)
+  add_test(NAME independent_client_original_metadata_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/Inspect-OwnerOriginalClientPE.py"
+      --self-test)
 endif()
 
 # Source SDK 2004-compatible ServerGameEnts001 is now represented as a
@@ -134,6 +138,13 @@ add_test(NAME independent_server_transmit_policy_native
 # synthetic child processes, never in a retail executable.
 add_executable(sin_server_factory_probe_test test_server_factory_probe.cpp)
 target_compile_features(sin_server_factory_probe_test PRIVATE cxx_std_17)
+# The test-only vstdlib provider MUST be outside bin/ and never packaged.
+add_library(sin_test_commandline_fixture SHARED test_server_commandline_fixture.cpp)
+target_compile_features(sin_test_commandline_fixture PRIVATE cxx_std_17)
+set_target_properties(sin_test_commandline_fixture PROPERTIES
+  OUTPUT_NAME "vstdlib" PREFIX ""
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/fixture-only")
 add_test(NAME independent_server_factory_probe_native
-  COMMAND sin_server_factory_probe_test "$<TARGET_FILE:sin_slot0_server>")
+  COMMAND sin_server_factory_probe_test "$<TARGET_FILE:sin_slot0_server>"
+    "$<TARGET_FILE:sin_test_commandline_fixture>")
 set_tests_properties(independent_server_factory_probe_native PROPERTIES TIMEOUT 180)

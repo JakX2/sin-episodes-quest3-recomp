@@ -16,7 +16,13 @@ using Factory = void* (__cdecl *)(const char*, int*);
 constexpr char kName[] = "VClient011";
 constexpr const char* kExpected[] = {
     "VEngineClient012", "VEngineModel012", "VEngineEffects001",
-    "VEngineCvar002", "EngineTraceClient003"
+    "VEngineCvar002", "EngineTraceClient003", "VEngineRenderView011",
+    "VDebugOverlay003", "VMaterialSystem076", "VEngineCache001",
+    "VModelInfoClient003", "VEngineVGui001", "VEngineClientStringTable001",
+    "SpatialPartition001", "VEngineShadowMgr002", "StaticPropMgrClient004",
+    "IEngineSoundClient003", "VFileSystem012", "VEngineRandom001",
+    "VENGINE_GAMEUIFUNCS_VERSION004", "GAMEEVENTSMANAGER002",
+    "VSoundEmitter001"
 };
 using Slot0 = int (__thiscall *)(void*, Factory, Factory, void*);
 using Slot1 = void (__thiscall *)(void*);
