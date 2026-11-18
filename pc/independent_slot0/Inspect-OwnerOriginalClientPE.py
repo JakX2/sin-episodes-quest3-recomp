@@ -92,8 +92,28 @@ def inspect(data):
     # passing the same app-system factory and checking its boolean result.
     if pe.raw(0xfe31b, 9) != bytes.fromhex("8b10568bc8ff1284c0"):
         raise ValueError("Original sound emitter Connect boundary mismatch")
+    # Original post-Connect CommandLine import and material acquisition.
+    # Validate the observed call offsets and argument names independently.
+    if pe.raw(0xfe32a,6) != bytes.fromhex("ff1550622724") or \
+       pe.raw(0xfe339,3) != bytes.fromhex("ff5228") or \
+       pe.raw(0xfe34e,2) != bytes.fromhex("ffd6") or \
+       pe.raw(0xfe367,3) != bytes.fromhex("ff5020"):
+        raise ValueError("Original post-Connect client callback slots mismatch")
+    strings = ((0xfe332,"-textmode"), (0xfe349,"VMaterialSystemStub001"),
+               (0xfe362,"MaterialSystemHardwareConfig012"))
+    for push,name in strings:
+        if pe.raw(push,1)!=b"\x68" or pe.string(pe.rva(pe.u32(push+1)))!=name:
+            raise ValueError("Original client post-Connect argument mismatch")
+    branch = pe.raw(0xfe371,6)
+    if branch[:2]!=b"\x0f\x84" or 0xfe377+struct.unpack_from("<i",branch,2)[0]!=0xfe59e:
+        raise ValueError("Original required hardware-config failure edge mismatch")
     return {
         "original_client_sha256": PIN,
+        "post_connect": {"commandline_import_rva":hex(0x276250),
+                         "find_parm_slot":10, "flag":"-textmode",
+                         "optional_factory":"VMaterialSystemStub001",
+                         "hardware_config_slot":8,
+                         "required_hardware_config":"MaterialSystemHardwareConfig012"},
         "interface": "VClient011",
         "init_rva": hex(0xfe0e0),
         "vtable_slot_count": len(actual_slots),
