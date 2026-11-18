@@ -263,11 +263,13 @@ try {
         -not ($out -ccontains 'OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: server')) {
         throw 'Actual Phase 332 event-load result missing'
     }
-    # Synthetic next-phase outcome only. Require actual registration
-    # entry and return, lookup verification, and positive event result.
+    # Actual Phase 337 owner evidence (registration verified, exit 0x53494E49).
+    # Require entry/return, lookup verification and positive event result.
     $cvarPrefix = @($eventPrefix) + @(
         '[SiN independent] role=server phase=event-load-returned version=resource/gameevents.res:47'
     )
+    # Phase 337's full positive sequence below is now owner-observed:
+    # engine register and exact lookup identity completed successfully.
     $cvarTrace = @($cvarPrefix) + @(
         '[SiN independent] role=server phase=cvar-name-available version=dd_log_events',
         '[SiN independent] role=server phase=cvar-register-entered version=dd_log_events',
@@ -296,6 +298,58 @@ try {
         '[SiN independent] role=server phase=cvar-probe-terminal-stop version=dd_log_events'
     )))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Synthetic future batch outcome; never claim retail evidence.
+    $batchTrace = @($cvarPrefix) + @(
+        '[SiN independent] role=server phase=cvar-batch-preflight-complete version=24'
+    )
+    foreach ($name in @(
+        'g_debug_dynamic_difficulty',
+        'dd_log_events',
+        'g_debug_damage',
+        'sk_dynamic_resupply_modifier',
+        'sk_healthmega',
+        'sk_flashgrenade_radius',
+        'sk_dmg_homer_grenade',
+        'sk_homer_grenade_radius',
+        'sk_dmg_pathfollower_grenade',
+        'sk_pathfollower_grenade_radius',
+        'grunt_spawn_health',
+        'ai_use_readiness',
+        'ai_readiness_decay',
+        'ai_new_aiming',
+        'g_debug_bigmutant',
+        'major_ambushdist',
+        'g_debug_major_phys_hit',
+        'minor_spit_arc',
+        'g_debug_turret_ceiling',
+        'g_debug_turret',
+        'ai_newgroundturret',
+        'ai_ally_manager_debug',
+        'player_sprint_enabled',
+        'accuracy_change_time'
+    )) {
+        foreach ($phase in @('cvar-batch-register-entered','cvar-batch-register-returned','cvar-batch-registration-verified')) {
+            $batchTrace += ("[SiN independent] role=server phase={0} version={1}" -f $phase,$name)
+        }
+    }
+    $batchTrace += @(
+        '[SiN independent] role=server phase=cvar-batch-result version=verified:24/24',
+        '[SiN independent] role=server phase=cvar-batch-terminal-stop version=24'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]]$batchTrace)
+    $out = Verify 'CVAR_BATCH_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (-not (($out -join '|').Contains(':verified:24/24'))) { throw 'Batch result missing' }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($cvarPrefix) + @(
+        '[SiN independent] role=server phase=cvar-batch-result version=verified:24/24',
+        '[SiN independent] role=server phase=cvar-batch-terminal-stop version=24'
+    )))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($cvarPrefix) + @(
+        '[SiN independent] role=server phase=cvar-batch-result version=existing-name:0/24',
+        '[SiN independent] role=server phase=cvar-batch-terminal-stop version=24'
+    )))
+    $out = Verify 'CVAR_BATCH_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (-not (($out -join '|').Contains(':existing-name:0/24'))) { throw 'Batch refusal missing' }
     foreach ($count in @(42,0,-1)) {
         $eventTrace = @($eventPrefix) + @(
             ("[SiN independent] role=server phase=event-load-returned version=resource/gameevents.res:{0}" -f $count),
