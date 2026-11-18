@@ -7,6 +7,8 @@
 #error Win32 original ABI only
 #endif
 #include <cstddef>
+#include <array>
+#include <cstdint>
 namespace sin_independent {
 using ScreenSizeSlot=void (__thiscall *)(void*,int&,int&);
 struct ScreenState {
@@ -37,15 +39,25 @@ using GaussianAttach=void (__thiscall *)(GaussianStorage*,void*);
 struct ClientScreenRandomState {
     ScreenState screen{};
     GaussianStorage gaussian{};
+    // Extra owned guard storage detects unexpected provider writes past
+    // the SDK layout. This is diagnostic detection, not memory isolation.
+    std::array<std::uint32_t,16> guard{};
     bool attached=false;
+    bool attempted=false;
     bool Attach(void* uniform,GaussianCtor ctor,GaussianAttach attach) noexcept {
-        if(!screen.queried || attached || !uniform || !ctor || !attach)return false;
+        if(!screen.queried || attempted || !uniform || !ctor || !attach)return false;
+        attempted=true;
+        guard.fill(0x53494E47u);
+        const auto intact=[this]() noexcept {
+            for(auto word:guard)if(word!=0x53494E47u)return false;
+            return true;
+        };
         // Original static initializer constructed with null. The live
         // Init path attaches the acquired VEngineRandom001 interface.
         // Construct on owned storage, not the original DLL's globals.
-        if(ctor(&gaussian,nullptr)!=&gaussian)return false;
+        if(ctor(&gaussian,nullptr)!=&gaussian || !intact())return false;
         attach(&gaussian,uniform);
-        attached=gaussian.uniform==uniform && !gaussian.haveValue;
+        attached=intact() && gaussian.uniform==uniform && !gaussian.haveValue;
         return attached;
     }
 };
