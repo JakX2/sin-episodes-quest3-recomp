@@ -36,10 +36,13 @@ public:
         if(state_!=InitializerState::Pending || count_==Capacity ||
            !record.create || (record.destination&&!record.destroy) || record.next)
             return false;
+        std::size_t walked=0;
         for(auto* p=head_;p;p=p->next) {
-            if(p==&record || (p->destination && p->destination==record.destination))
+            if(walked++==count_ || p==&record ||
+               (p->destination && p->destination==record.destination))
                 return false;
         }
+        if(walked!=count_)return false;
         record.next=head_;head_=&record;++count_;
         return true;
     }
