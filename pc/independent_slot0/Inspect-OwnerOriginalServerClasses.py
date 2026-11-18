@@ -81,7 +81,7 @@ def self_test():
                        names.__getitem__,lambda r,n: r>=0x5000)
     assert [row[0] for row in rows]==["alpha","Zulu"]
     for bad in (first+record(start+20,3,0x5000,0x6040,ctor),
-                second+record(start+20,3,0x5040,0x6040,ctor)):
+                record(start,2,0x5020,0x6020,ctor)+record(start+20,3,0x5040,0x6040,ctor)):
         try:
             registrations(bad,start,base,ctor,names.__getitem__,lambda r,n: True)
         except ValueError:
