@@ -301,6 +301,8 @@ static void traceCvar(const char* phase) noexcept {
 #endif
 
 #if defined(SIN_ROLE_client)
+// Retain the original engine interface for both actual and synthetic Init paths.
+static void* g_engineVgui=nullptr;
 #if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
 static bool clientSoundProbeEnabled() noexcept {
     char enabled[2]={};
@@ -344,7 +346,6 @@ static bool clientVGuiProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
-static void* g_engineVgui=nullptr;
 static bool clientVGuiLayoutProbeEnabled() noexcept {
     char value[2]={};
     return clientVGuiProbeEnabled() &&
