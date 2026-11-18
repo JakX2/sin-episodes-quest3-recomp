@@ -39,7 +39,8 @@ inline bool Completed(Result r) noexcept {
     // important observation is that the authenticated ABI call returned.
     return r==Result::InitReturnedTrue || r==Result::InitReturnedFalse;
 }
-inline Result Start(Factory factory,Trace trace) noexcept {
+inline Result Start(Factory factory,Trace trace,void** surfaceOut=nullptr) noexcept {
+    if(surfaceOut)*surfaceOut=nullptr;
     if(!factory) return Result::MissingFactory;
     std::array<void*,kNames.size()> objects{};
     for(std::size_t i=0;i<kNames.size();++i) {
@@ -55,6 +56,7 @@ inline Result Start(Factory factory,Trace trace) noexcept {
     // engine method. Original calls IVGui.Init before checking the
     // remaining seven, but we deliberately don't risk a partial set.
     for(void* p:objects)if(!p)return Result::MissingInterface;
+    if(surfaceOut)*surfaceOut=objects[2];  // VGUI_Surface028
     void* core=objects[0];
     if(!vgui_layout::Readable(core,sizeof(void*)))
         return Result::InvalidCoreObject;
