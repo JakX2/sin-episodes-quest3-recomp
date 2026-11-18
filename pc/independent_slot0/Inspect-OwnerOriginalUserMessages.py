@@ -71,7 +71,7 @@ def self_test():
     second = record(start+18, -1, 2, True)
     rows = parse_registration(first+second,start,helper,receiver,lambda p:str(p))
     assert rows == [{"id":0,"name":"1","bytes":1},{"id":1,"name":"2","bytes":-1}]
-    for bad in (first+second[:-1], first[:-1]+b"\x00", first+record(start+18,1,1,False)):
+    for bad in (first+second[:-1], first[:-1]+bytes([first[-1] ^ 1]), first+record(start+18,1,1,False)):
         try:
             parse_registration(bad,start,helper,receiver,lambda p:str(p))
         except ValueError:
