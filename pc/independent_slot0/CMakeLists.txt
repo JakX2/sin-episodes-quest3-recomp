@@ -249,6 +249,10 @@ add_library(sin_test_vgui_missing_factory SHARED test_client_vgui_missing_factor
 target_compile_features(sin_test_vgui_missing_factory PRIVATE cxx_std_17)
 set_target_properties(sin_test_vgui_missing_factory PROPERTIES OUTPUT_NAME "vgui2" PREFIX ""
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/fixture-missing")
+add_executable(sin_client_vgui_vtable_probe_test test_client_vgui_vtable_core.cpp)
+target_compile_features(sin_client_vgui_vtable_probe_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_vgui_vtable_probe_native COMMAND
+  sin_client_vgui_vtable_probe_test "$<TARGET_FILE:sin_test_vgui_fixture>")
 add_executable(sin_client_sound_probe_test test_client_sound_probe.cpp)
 target_compile_features(sin_client_sound_probe_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_sound_probe_native
