@@ -24,6 +24,33 @@ $soundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientSoundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $eventTerminalLogs = New-Object System.Collections.Generic.List[string]
 $cvarTerminalLogs = New-Object System.Collections.Generic.List[string]
+$batchTerminalLogs = New-Object System.Collections.Generic.List[string]
+$batchNames = @(
+    'g_debug_dynamic_difficulty',
+    'dd_log_events',
+    'g_debug_damage',
+    'sk_dynamic_resupply_modifier',
+    'sk_healthmega',
+    'sk_flashgrenade_radius',
+    'sk_dmg_homer_grenade',
+    'sk_homer_grenade_radius',
+    'sk_dmg_pathfollower_grenade',
+    'sk_pathfollower_grenade_radius',
+    'grunt_spawn_health',
+    'ai_use_readiness',
+    'ai_readiness_decay',
+    'ai_new_aiming',
+    'g_debug_bigmutant',
+    'major_ambushdist',
+    'g_debug_major_phys_hit',
+    'minor_spit_arc',
+    'g_debug_turret_ceiling',
+    'g_debug_turret',
+    'ai_newgroundturret',
+    'ai_ally_manager_debug',
+    'player_sprint_enabled',
+    'accuracy_change_time'
+)
 $explicitInitRoles = @{}
 $legacyInitEvents = 0
 $blockersByLog = New-Object System.Collections.Generic.List[string]
@@ -37,6 +64,9 @@ foreach ($log in $logs) {
     $eventResult = $null
     $cvarStage = 0
     $cvarResult = $null
+    $batchVerified = 0
+    $batchStage = 0
+    $batchResult = $null
     foreach ($line in (Get-Content -LiteralPath $log.FullName)) {
         if ($line -notmatch '^\[SiN independent\] role=(client|server) phase=([a-z0-9-]+) version=([^\s]+)$') {
             continue
@@ -117,6 +147,29 @@ foreach ($log in $logs) {
                 $cvarStage = 6
             }
         }
+        if ($role -eq 'server' -and $eventStage -eq 4 -and $eventResult -gt 0) {
+            if ($phase -eq 'cvar-batch-preflight-complete' -and $version -eq '24' -and $batchStage -eq 0) {
+                $batchStage = 1
+            } elseif ($batchVerified -lt $batchNames.Count -and $version -ceq $batchNames[$batchVerified]) {
+                if ($phase -eq 'cvar-batch-register-entered' -and $batchStage -eq 1) { $batchStage = 2 }
+                elseif ($phase -eq 'cvar-batch-register-returned' -and $batchStage -eq 2) { $batchStage = 3 }
+                elseif ($phase -eq 'cvar-batch-registration-verified' -and $batchStage -eq 3) {
+                    $batchVerified++
+                    $batchStage = 1
+                }
+            } elseif ($phase -eq 'cvar-batch-result' -and $version -cmatch '^(verified|invalid-interface|existing-name|invalid-list|bad-owned-object|lookup-mismatch|unexpected-relink|override-present):([0-9]+)/24$') {
+                $status = $Matches[1]
+                $count = [int]$Matches[2]
+                if ($count -eq $batchVerified -and ($status -ne 'verified' -or
+                    ($batchStage -eq 1 -and $batchVerified -eq $batchNames.Count))) {
+                    $batchResult = $version
+                    $batchStage = 4
+                }
+            } elseif ($phase -eq 'cvar-batch-terminal-stop' -and $version -eq '24' -and $batchStage -eq 4) {
+                $batchTerminalLogs.Add(("{0}:{1}" -f $log.Name,$batchResult))
+                $batchStage = 5
+            }
+        }
         if ($phase -eq 'init-entered') { $explicitInitRoles[$role] = $true }
         # Backward-compatible classification of old traces. Only an actual
         # Init/DLLInit body can emit these, unlike Shutdown or factory probes.
@@ -156,6 +209,9 @@ if ($eventTerminalLogs.Count -gt 0) {
 if ($cvarTerminalLogs.Count -gt 0) {
     Write-Output ("OWNER_SERVER_CVAR_PROBE_RESULTS: {0}" -f ($cvarTerminalLogs -join ','))
 }
+if ($batchTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_CVAR_BATCH_RESULTS: {0}" -f ($batchTerminalLogs -join ','))
+}
 if ($issues.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_BLOCKERS_BY_LOG: {0}" -f ($blockersByLog -join ','))
     if ($blockersByLog.Count -eq 1) {
@@ -168,6 +224,8 @@ if ($issues.Count -gt 0) {
     # A terminal callback can occur before the first Init call. It proves
     # virtual entry and diagnostic termination, not that Init was entered.
     Write-Output "OWNER_INDEPENDENT_VERDICT: UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF"
+} elseif ($batchTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_BATCH_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($cvarTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
