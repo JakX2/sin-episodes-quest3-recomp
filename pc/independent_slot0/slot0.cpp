@@ -17,6 +17,7 @@
 #if defined(SIN_ROLE_client)
 #include "client_material_startup_core.h"
 #include "client_screen_random_core.h"
+#include "client_cvar_probe.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -322,8 +323,26 @@ static bool clientGaussianProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientCvarProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientGaussianProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_CVAR_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientCvarProbe(void* cvar) noexcept {
+    using namespace sin_independent::console_abi;
+    static ClientProbeVariables owned;
+    const auto result=owned.Register(cvar,&diagnostic);
+    char outcome[96]={};
+    std::snprintf(outcome,sizeof(outcome),"%s:%u/%u",ResultName(result.result),
+        static_cast<unsigned>(result.verified),static_cast<unsigned>(kClientSpecCount));
+    diagnostic("client-cvar-probe-result",outcome);
+    diagnostic("client-cvar-probe-terminal-stop","3");
+    TerminateProcess(GetCurrentProcess(),result.result==SingleCvarResult::Verified?0x53494E55u:0x53494E56u);
+    __fastfail(7);
+}
 [[noreturn]] static void stopAfterClientGaussianProbe(
-    sin_independent::ClientScreenRandomState& state,void* uniform) noexcept {
+    sin_independent::ClientScreenRandomState& state,void* uniform,void* cvar) noexcept {
     using namespace sin_independent;
     const auto module=GetModuleHandleA("vstdlib.dll");
     const auto ctor=module?reinterpret_cast<GaussianCtor>(
@@ -335,11 +354,12 @@ static bool clientGaussianProbeEnabled() noexcept {
     const bool attached=available && state.Attach(uniform,ctor,attach);
     if(attached)diagnostic("gaussian-attach-verified","VEngineRandom001");
     diagnostic("gaussian-probe-result",attached?"attached":available?"layout-or-attach-refused":"missing-abi-input");
+    if(attached && clientCvarProbeEnabled())stopAfterClientCvarProbe(cvar);
     diagnostic("gaussian-probe-terminal-stop","VEngineRandom001");
     TerminateProcess(GetCurrentProcess(),attached?0x53494E53u:0x53494E54u);
     __fastfail(7);
 }
-[[noreturn]] static void stopAfterClientScreenProbe(void* engine,void* uniform) noexcept {
+[[noreturn]] static void stopAfterClientScreenProbe(void* engine,void* uniform,void* cvar) noexcept {
     static sin_independent::ClientScreenRandomState state;
     auto& screen=state.screen;
     diagnostic("screen-query-entered","VEngineClient012.GetScreenSize");
@@ -350,12 +370,12 @@ static bool clientGaussianProbeEnabled() noexcept {
         diagnostic("screen-query-returned",dimensions);
     }
     diagnostic("screen-probe-result",queried?"returned":"missing-abi-input");
-    if(queried && clientGaussianProbeEnabled())stopAfterClientGaussianProbe(state,uniform);
+    if(queried && clientGaussianProbeEnabled())stopAfterClientGaussianProbe(state,uniform,cvar);
     diagnostic("screen-probe-terminal-stop","VEngineClient012.GetScreenSize");
     TerminateProcess(GetCurrentProcess(),queried?0x53494E51u:0x53494E52u);
     __fastfail(7);
 }
-[[noreturn]] static void stopAfterClientMaterialProbe(Factory app,void* materials,void* engine,void* uniform) noexcept {
+[[noreturn]] static void stopAfterClientMaterialProbe(Factory app,void* materials,void* engine,void* uniform,void* cvar) noexcept {
     using namespace sin_independent;
     const auto module=GetModuleHandleA("vstdlib.dll");
     const auto provider=module?reinterpret_cast<ClientCommandLine>(
@@ -364,7 +384,7 @@ static bool clientGaussianProbeEnabled() noexcept {
     const auto result=AcquireClientMaterialState(provider,app,materials,state,&diagnostic);
     diagnostic("material-probe-result",ClientMaterialResultName(result));
     if(result==ClientMaterialResult::Acquired && clientScreenProbeEnabled())
-        stopAfterClientScreenProbe(engine,uniform);
+        stopAfterClientScreenProbe(engine,uniform,cvar);
     diagnostic("material-probe-terminal-stop","MaterialSystemHardwareConfig012");
     TerminateProcess(GetCurrentProcess(),result==ClientMaterialResult::Acquired?0x53494E4Fu:0x53494E50u);
     __fastfail(7);
@@ -389,10 +409,11 @@ public:
         // VClient011 Init slot. Never dereference engine pointers or
         // advertise successful initialization. Stop at first missing input.
         void* engine=nullptr;
+        void* cvar=nullptr;
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
-            !require(appSystemFactory, kFourthEngineVersion) ||
+            !require(appSystemFactory, kFourthEngineVersion, &cvar) ||
             !require(appSystemFactory, kFifthEngineVersion)) return 0;
         void* sound=nullptr;
         void* materials=nullptr;
@@ -409,7 +430,7 @@ public:
         if(clientSoundProbeEnabled()) {
             const bool connected=connectSound(sound,appSystemFactory);
             if(connected && clientMaterialProbeEnabled())
-                stopAfterClientMaterialProbe(appSystemFactory,materials,engine,uniform);
+                stopAfterClientMaterialProbe(appSystemFactory,materials,engine,uniform,cvar);
             stopAfterClientSoundProbe(connected);
         }
 #endif
