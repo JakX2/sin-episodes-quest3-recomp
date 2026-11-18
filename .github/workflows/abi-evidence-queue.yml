@@ -1,0 +1,26 @@
+name: ABI evidence queue synthetic regressions
+
+on:
+  push:
+    branches:
+      - 'automation/phase-*'
+  pull_request:
+    paths:
+      - 'tools/abi_evidence_queue.py'
+      - 'tests/test_abi_evidence_queue.py'
+      - '.github/workflows/abi-evidence-queue.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-abi-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run isolated evidence queue tests
+        run: python3 -m unittest discover -s tests -p test_abi_evidence_queue.py -v
