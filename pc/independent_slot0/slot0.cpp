@@ -16,6 +16,7 @@
 #endif
 #if defined(SIN_ROLE_client)
 #include "client_material_startup_core.h"
+#include "client_screen_random_core.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -309,7 +310,27 @@ static bool clientMaterialProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
-[[noreturn]] static void stopAfterClientMaterialProbe(Factory app,void* materials) noexcept {
+static bool clientScreenProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientMaterialProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SCREEN_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientScreenProbe(void* engine) noexcept {
+    static sin_independent::ScreenState screen;
+    diagnostic("screen-query-entered","VEngineClient012.GetScreenSize");
+    const bool queried=screen.Query(engine);
+    if(queried) {
+        char dimensions[80]={};
+        std::snprintf(dimensions,sizeof(dimensions),"%d:%d",screen.width,screen.height);
+        diagnostic("screen-query-returned",dimensions);
+    }
+    diagnostic("screen-probe-result",queried?"returned":"missing-abi-input");
+    diagnostic("screen-probe-terminal-stop","VEngineClient012.GetScreenSize");
+    TerminateProcess(GetCurrentProcess(),queried?0x53494E51u:0x53494E52u);
+    __fastfail(7);
+}
+[[noreturn]] static void stopAfterClientMaterialProbe(Factory app,void* materials,void* engine) noexcept {
     using namespace sin_independent;
     const auto module=GetModuleHandleA("vstdlib.dll");
     const auto provider=module?reinterpret_cast<ClientCommandLine>(
@@ -317,6 +338,8 @@ static bool clientMaterialProbeEnabled() noexcept {
     static ClientMaterialState state;
     const auto result=AcquireClientMaterialState(provider,app,materials,state,&diagnostic);
     diagnostic("material-probe-result",ClientMaterialResultName(result));
+    if(result==ClientMaterialResult::Acquired && clientScreenProbeEnabled())
+        stopAfterClientScreenProbe(engine);
     diagnostic("material-probe-terminal-stop","MaterialSystemHardwareConfig012");
     TerminateProcess(GetCurrentProcess(),result==ClientMaterialResult::Acquired?0x53494E4Fu:0x53494E50u);
     __fastfail(7);
@@ -340,7 +363,8 @@ public:
         // All 21 initial names/order are authenticated from the original
         // VClient011 Init slot. Never dereference engine pointers or
         // advertise successful initialization. Stop at first missing input.
-        if (!require(appSystemFactory, kFirstEngineVersion) ||
+        void* engine=nullptr;
+        if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
             !require(appSystemFactory, kFourthEngineVersion) ||
@@ -358,7 +382,7 @@ public:
         if(clientSoundProbeEnabled()) {
             const bool connected=connectSound(sound,appSystemFactory);
             if(connected && clientMaterialProbeEnabled())
-                stopAfterClientMaterialProbe(appSystemFactory,materials);
+                stopAfterClientMaterialProbe(appSystemFactory,materials,engine);
             stopAfterClientSoundProbe(connected);
         }
 #endif
