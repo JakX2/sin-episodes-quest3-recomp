@@ -565,6 +565,40 @@ try {
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     [IO.File]::WriteAllLines($retailReplay,[string[]]($ownedPrefix+$vguiEvents))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Read-only vtable anchors: no original virtual methods are called.
+    $layoutPrefix=$vguiPrefix+@($vguiEvents[0..6])
+    $layoutBase=@(
+        '[SiN independent] role=client phase=vgui-layout-entered version=input:0+56,system:0+24'
+    )
+    $layoutInput='[SiN independent] role=client phase=vgui-layout-input-verified version=0+56'
+    $layoutSystem='[SiN independent] role=client phase=vgui-layout-system-verified version=0+24'
+    $layoutStop='[SiN independent] role=client phase=vgui-layout-terminal-stop version=read-only'
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($layoutPrefix+$layoutBase+@(
+        $layoutInput,$layoutSystem,
+        '[SiN independent] role=client phase=vgui-layout-probe-result version=verified',
+        $layoutStop)))
+    $out=Verify 'CLIENT_VGUI_VTABLE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if(-not (($out -join '|').Contains(':client:verified'))) {throw 'VGUI vtable success missing'}
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($layoutPrefix+$layoutBase+@(
+        '[SiN independent] role=client phase=vgui-layout-probe-result version=invalid-input',
+        $layoutStop)))
+    $out=Verify 'CLIENT_VGUI_VTABLE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if(-not (($out -join '|').Contains(':client:invalid-input'))) {throw 'VGUI input refusal missing'}
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($layoutPrefix+$layoutBase+@(
+        $layoutInput,
+        '[SiN independent] role=client phase=vgui-layout-probe-result version=invalid-system',
+        $layoutStop)))
+    $out=Verify 'CLIENT_VGUI_VTABLE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if(-not (($out -join '|').Contains(':client:invalid-system'))) {throw 'VGUI system refusal missing'}
+    # A fabricated success without verified input/system anchors must be rejected.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($layoutPrefix+$layoutBase+@(
+        '[SiN independent] role=client phase=vgui-layout-probe-result version=verified',
+        $layoutStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($vguiPrefix+$layoutBase+@(
+        '[SiN independent] role=client phase=vgui-layout-probe-result version=invalid-input',
+        $layoutStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
