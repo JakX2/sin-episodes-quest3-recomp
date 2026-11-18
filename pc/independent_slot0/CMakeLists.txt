@@ -148,3 +148,24 @@ add_test(NAME independent_server_factory_probe_native
   COMMAND sin_server_factory_probe_test "$<TARGET_FILE:sin_slot0_server>"
     "$<TARGET_FILE:sin_test_commandline_fixture>")
 set_tests_properties(independent_server_factory_probe_native PROPERTIES TIMEOUT 180)
+
+# First real post-factory virtual call, exercised by owned fixtures only.
+# Neither synthetic Connect DLL is a distributable owner game binary.
+add_executable(sin_sound_connect_core_test test_sound_emitter_connect_core.cpp)
+target_compile_features(sin_sound_connect_core_test PRIVATE cxx_std_17)
+add_test(NAME independent_sound_connect_core_native COMMAND sin_sound_connect_core_test)
+foreach(role IN ITEMS client server)
+  add_library(sin_fixture_connect_${role} SHARED slot0.cpp)
+  target_compile_features(sin_fixture_connect_${role} PRIVATE cxx_std_17)
+  target_compile_definitions(sin_fixture_connect_${role} PRIVATE
+    SIN_ROLE_${role}=1 SIN_SYNTHETIC_SOUND_CONNECT=1)
+  set_target_properties(sin_fixture_connect_${role} PROPERTIES
+    OUTPUT_NAME "sin_fixture_connect_${role}" PREFIX ""
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/fixture-only")
+  add_executable(sin_fixture_connect_${role}_test test_slot0.cpp)
+  target_compile_features(sin_fixture_connect_${role}_test PRIVATE cxx_std_17)
+  target_compile_definitions(sin_fixture_connect_${role}_test PRIVATE
+    SIN_ROLE_${role}=1 SIN_SYNTHETIC_SOUND_CONNECT=1)
+  add_test(NAME independent_${role}_synthetic_full_prefix_connect
+    COMMAND sin_fixture_connect_${role}_test "$<TARGET_FILE:sin_fixture_connect_${role}>")
+endforeach()

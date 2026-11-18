@@ -51,6 +51,24 @@ static int g_fileSystemCalls = 0;
 static bool g_fileSystemAvailable = false;
 static unsigned long g_fakeGlobals = 0x53494E45UL;
 
+static void* __cdecl expectedFactory(const char* name, int* status);
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+static bool g_soundAccept=true;
+static unsigned g_soundCalls=0;
+class SyntheticSound final {
+public:
+    virtual bool __thiscall Connect(Factory factory) noexcept {
+        ++g_soundCalls;
+        if (factory!=&expectedFactory || g_callCount!=kQueries)
+            ++g_invalid;
+#if defined(SIN_ROLE_server)
+        if(g_fileSystemCalls!=1)++g_invalid;
+#endif
+        return g_soundAccept;
+    }
+};
+SyntheticSound g_sound;
+#endif
 static void* __cdecl expectedFactory(const char* name, int* status) {
     // The SDK2004 initializer passes NULL as the optional status pointer.
     if (g_callCount >= kQueries || name == nullptr ||
@@ -59,6 +77,10 @@ static void* __cdecl expectedFactory(const char* name, int* status) {
     }
     const bool found = g_callCount < g_availableCount;
     ++g_callCount;
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+    if (found && name && std::strcmp(name,"VSoundEmitter001")==0)
+        return &g_sound;
+#endif
     return found ? static_cast<void*>(&g_fakeGlobals) : nullptr;
 }
 static void* __cdecl unusedFactory(const char*, int*) {
@@ -312,12 +334,31 @@ int main(int argc, char** argv) {
             return fail(39, "server post-filesystem engine query order mismatch");
     }
 #endif
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+    // Every earlier missing-dependency path must stop before Connect.
+    if(g_soundCalls) return fail(42,"Connect executed before all required dependencies");
+    g_callCount=0;
+    g_fileSystemCalls=0;
+    g_availableCount=kQueries;
+    g_soundAccept=false;
+    if(!invokeInit(object,slots[0],true) || g_soundCalls!=1 ||
+       g_callCount!=kQueries || g_invalid || g_unexpectedFactory)
+        return fail(43,"Connect rejection / acquisition ordering");
+    if(!logContains(path,"phase=sound-connect-rejected version=VSoundEmitter001"))
+        return fail(44,"missing Connect rejection trace");
+    g_soundAccept=true;
+#endif
     g_callCount = 0;
     g_fileSystemCalls = 0;
     g_availableCount = kQueries;
     if (!invokeInit(object, slots[0], true) ||
         g_callCount != kQueries || g_invalid || g_unexpectedFactory)
         return fail(14, "all available still must fail closed");
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+    if(g_soundCalls!=2 ||
+       !logContains(path,"phase=sound-connect-succeeded version=VSoundEmitter001"))
+        return fail(45,"missing successful synthetic Connect boundary");
+#endif
 #if defined(SIN_ROLE_server)
     if (g_fileSystemCalls != 1)
         return fail(40, "required filesystemFactory called an unexpected number of times");
@@ -327,6 +368,9 @@ int main(int argc, char** argv) {
     if (!invokeInit(object, slots[0], false) || g_callCount != 0 ||
         g_fileSystemCalls != 0 || g_invalid || g_unexpectedFactory)
         return fail(15, "invalid globals must refuse without factory calls");
+#if defined(SIN_SYNTHETIC_SOUND_CONNECT)
+    if(g_soundCalls!=2)return fail(46,"invalid globals reached sound Connect");
+#endif
 
     if (!invokeSecond(object, slots[1]) || g_unexpectedFactory)
         return fail(16, "second virtual slot must fail closed/no factory calls");
