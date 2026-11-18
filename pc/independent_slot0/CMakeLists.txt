@@ -173,3 +173,10 @@ foreach(role IN ITEMS client server)
   add_test(NAME independent_${role}_synthetic_full_prefix_connect
     COMMAND sin_fixture_connect_${role}_test "$<TARGET_FILE:sin_fixture_connect_${role}>")
 endforeach()
+
+# Production server opt-in only, controlled synthetic child fixtures.
+add_executable(sin_server_sound_probe_test test_server_sound_probe.cpp)
+target_compile_features(sin_server_sound_probe_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_sound_probe_native
+  COMMAND sin_server_sound_probe_test "$<TARGET_FILE:sin_slot0_server>")
+set_tests_properties(independent_server_sound_probe_native PROPERTIES TIMEOUT 90)
