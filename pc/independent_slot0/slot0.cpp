@@ -1,5 +1,5 @@
 // Independently authored Win32 PE32 engine-interface initialization diagnostic.
-// TWO vtable slots ONLY. No original DLL forwarding and NOT playable SiN.
+// Native, fail-closed diagnostic. No original DLL forwarding; NOT playable.
 // The original VClient011 first five factory queries and server
 // ServerGameDLL003 DLLInit first sixteen cross-factory queries are now reviewed
 // against SHA-pinned owner originals. All bodies remain fail-closed.
@@ -9,6 +9,11 @@
 #include <cstdio>
 #include <cstring>
 #include <type_traits>
+#if defined(SIN_ROLE_server)
+#include "server_gameents_abi.h"
+#include <new>
+#include <intrin.h>
+#endif
 
 #if !defined(_M_IX86)
 #error Native MSVC x86 PE32 only
@@ -100,6 +105,38 @@ static void diagnostic(const char* phase, const char* version) noexcept {
     (void)WriteFile(file, line, static_cast<DWORD>(n), &written, nullptr);
     CloseHandle(file);
 }
+
+#if defined(SIN_ROLE_server)
+// Every unsupported server callback terminates ONLY the current game
+// process with a recognizable diagnostic exit code. No invented return
+// value, dereference, or fallback to a commercial DLL. These boundaries
+// are diagnostic surfaces, NOT implementations of gameplay APIs.
+[[noreturn]] static void stopUnsupported(const char* method) noexcept {
+    diagnostic("unsupported-callback", method);
+    TerminateProcess(GetCurrentProcess(), 0x53494E45u);
+    __fastfail(7);
+}
+static bool extraFactoriesEnabled() noexcept {
+    char value[2] = {};
+    if (GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_FACTORY_PROBE", value, 2) != 1 ||
+        value[0] != '1') return false;
+    if (GetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE", value, 2) != 1 ||
+        value[0] != '1') return false;
+    char session[33] = {};
+    if (GetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION", session, 33) != 32)
+        return false;
+    for (unsigned i=0;i<32;++i)
+        if (!((session[i]>='0' && session[i]<='9') ||
+              (session[i]>='a' && session[i]<='f'))) return false;
+    return true;
+}
+// Slot-index-only traps have no reconstructed parameter/return signatures.
+// They are NEVER allowed to return (so no guessed x86 callee stack cleanup).
+// This covers every authenticated original table entry, not arbitrary
+// positions beyond that table. Do not treat these traps as ABI parity.
+#define SIN_GUARD_SLOT(n, prefix) \
+    virtual void __thiscall GuardSlot##n() noexcept { stopUnsupported(prefix ".slot" #n); }
+#endif
 
 // Probe strictly an SDK2004 candidate interface name. The engine-owned
 // factory may be called as a cdecl callback, but its returned pointer is
@@ -195,6 +232,37 @@ public:
         diagnostic("gameinit-rejected", nullptr);
         return false;
     }
+    // Original ServerGameDLL003 has 31 entries, not the SDK's 29.
+    // Slots 2..30 remain terminal guards, not implemented methods.
+    SIN_GUARD_SLOT(2, "ServerGameDLL003")
+    SIN_GUARD_SLOT(3, "ServerGameDLL003")
+    SIN_GUARD_SLOT(4, "ServerGameDLL003")
+    SIN_GUARD_SLOT(5, "ServerGameDLL003")
+    SIN_GUARD_SLOT(6, "ServerGameDLL003")
+    SIN_GUARD_SLOT(7, "ServerGameDLL003")
+    SIN_GUARD_SLOT(8, "ServerGameDLL003")
+    SIN_GUARD_SLOT(9, "ServerGameDLL003")
+    SIN_GUARD_SLOT(10, "ServerGameDLL003")
+    SIN_GUARD_SLOT(11, "ServerGameDLL003")
+    SIN_GUARD_SLOT(12, "ServerGameDLL003")
+    SIN_GUARD_SLOT(13, "ServerGameDLL003")
+    SIN_GUARD_SLOT(14, "ServerGameDLL003")
+    SIN_GUARD_SLOT(15, "ServerGameDLL003")
+    SIN_GUARD_SLOT(16, "ServerGameDLL003")
+    SIN_GUARD_SLOT(17, "ServerGameDLL003")
+    SIN_GUARD_SLOT(18, "ServerGameDLL003")
+    SIN_GUARD_SLOT(19, "ServerGameDLL003")
+    SIN_GUARD_SLOT(20, "ServerGameDLL003")
+    SIN_GUARD_SLOT(21, "ServerGameDLL003")
+    SIN_GUARD_SLOT(22, "ServerGameDLL003")
+    SIN_GUARD_SLOT(23, "ServerGameDLL003")
+    SIN_GUARD_SLOT(24, "ServerGameDLL003")
+    SIN_GUARD_SLOT(25, "ServerGameDLL003")
+    SIN_GUARD_SLOT(26, "ServerGameDLL003")
+    SIN_GUARD_SLOT(27, "ServerGameDLL003")
+    SIN_GUARD_SLOT(28, "ServerGameDLL003")
+    SIN_GUARD_SLOT(29, "ServerGameDLL003")
+    SIN_GUARD_SLOT(30, "ServerGameDLL003")
     bool seen_ = false;
 };
 using ExpectedInit = bool (__thiscall Boundary::*)(
@@ -204,17 +272,91 @@ static_assert(std::is_same<decltype(&Boundary::DLLInit), ExpectedInit>::value,
               "SDK2004 server DLLInit signature mismatch");
 static_assert(std::is_same<decltype(&Boundary::GameInit), ExpectedSecond>::value,
               "SDK2004 server GameInit signature mismatch");
+
+class EntityFactoryProbe final : public sin_independent::ServerGameEntsAbi {
+public:
+    ~EntityFactoryProbe() noexcept override {
+        stopUnsupported("ServerGameEnts001.destructor");
+    }
+    void __thiscall SetDebugEdictBase(edict_t* base) noexcept override {
+        // Verified original behavior: save the pointer, never dereference.
+        debugBase_ = base;
+        diagnostic("diagnostic-callback","ServerGameEnts001.SetDebugEdictBase");
+    }
+    void __thiscall MarkEntitiesAsTouching(edict_t*,edict_t*) noexcept override {
+        stopUnsupported("ServerGameEnts001.MarkEntitiesAsTouching");
+    }
+    void __thiscall FreeContainingEntity(edict_t*) noexcept override {
+        stopUnsupported("ServerGameEnts001.FreeContainingEntity");
+    }
+    edict_t* __thiscall BaseEntityToEdict(CBaseEntity* entity) noexcept override {
+        if (!entity) return nullptr;
+        stopUnsupported("ServerGameEnts001.BaseEntityToEdict");
+    }
+    CBaseEntity* __thiscall EdictToBaseEntity(edict_t* edict) noexcept override {
+        if (!edict) return nullptr;
+        stopUnsupported("ServerGameEnts001.EdictToBaseEntity");
+    }
+    void __thiscall CheckTransmit(CCheckTransmitInfo*, const unsigned short*, int) noexcept override {
+        stopUnsupported("ServerGameEnts001.CheckTransmit");
+    }
+private:
+    edict_t* debugBase_ = nullptr;
+};
+// Process-lifetime singleton with no automatic destructor invocation on
+// DLL detach. A caller attempting to delete it reaches the terminal guard.
+static EntityFactoryProbe* entityFactoryProbe() noexcept {
+    alignas(EntityFactoryProbe) static unsigned char storage[sizeof(EntityFactoryProbe)];
+    static auto* const object = new (storage) EntityFactoryProbe;
+    return object;
+}
+
+class ClientsFactoryProbe final {
+public:
+    // Original slot 0 RVA 0x1E63F0 writes exactly min=1,max=32,default=1.
+    virtual void __thiscall GetPlayerLimits(int& minPlayers,int& maxPlayers,
+                                           int& defaultPlayers) const noexcept {
+        minPlayers=1;
+        maxPlayers=32;
+        defaultPlayers=1;
+        diagnostic("diagnostic-callback","ServerGameClients003.GetPlayerLimits");
+    }
+    SIN_GUARD_SLOT(1, "ServerGameClients003")
+    SIN_GUARD_SLOT(2, "ServerGameClients003")
+    SIN_GUARD_SLOT(3, "ServerGameClients003")
+    SIN_GUARD_SLOT(4, "ServerGameClients003")
+    SIN_GUARD_SLOT(5, "ServerGameClients003")
+    SIN_GUARD_SLOT(6, "ServerGameClients003")
+    SIN_GUARD_SLOT(7, "ServerGameClients003")
+    SIN_GUARD_SLOT(8, "ServerGameClients003")
+    SIN_GUARD_SLOT(9, "ServerGameClients003")
+    SIN_GUARD_SLOT(10, "ServerGameClients003")
+    SIN_GUARD_SLOT(11, "ServerGameClients003")
+    SIN_GUARD_SLOT(12, "ServerGameClients003")
+    SIN_GUARD_SLOT(13, "ServerGameClients003")
+    SIN_GUARD_SLOT(14, "ServerGameClients003")
+};
+ClientsFactoryProbe clientsFactoryProbe;
+#undef SIN_GUARD_SLOT
 #endif
 Boundary instance;
 } // namespace
 
 extern "C" __declspec(dllexport) void* __cdecl CreateInterface(
     const char* name, int* status) noexcept {
-    const bool found = name && std::strcmp(name, kName) == 0;
+    void* result = name && std::strcmp(name, kName) == 0
+        ? static_cast<void*>(&instance) : nullptr;
+#if defined(SIN_ROLE_server)
+    if (!result && name && extraFactoriesEnabled()) {
+        if (std::strcmp(name,"ServerGameEnts001")==0) result=entityFactoryProbe();
+        else if (std::strcmp(name,"ServerGameClients003")==0) result=&clientsFactoryProbe;
+    }
+#endif
+    const bool found = result != nullptr;
     if (status) *status = found ? 0 : 1;
     // The retail engine may reject our candidate version before it ever
     // calls slot zero. This is a factory negotiation observation ONLY.
     // A rejected probe does not prove the engine considers it fatal.
     diagnostic(found ? "factory-accepted" : "factory-rejected", name);
-    return found ? static_cast<void*>(&instance) : nullptr;
+    return result;
 }
