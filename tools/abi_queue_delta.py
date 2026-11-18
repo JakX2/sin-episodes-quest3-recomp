@@ -16,7 +16,7 @@ def load_queue(path):
     if not isinstance(payload, dict):
         raise ValueError("queue must be a JSON object")
     if set(payload) == {"records"}:
-        return validate(payload["records"] and payload or {"records": []})
+        return validate(payload)
     if set(payload) != {"anchor_order", "counts", "note", "queue_sha256", "records", "schema"}:
         raise ValueError("unexpected queue report fields")
     if payload["schema"] != 1:
