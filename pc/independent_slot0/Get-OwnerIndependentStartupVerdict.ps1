@@ -25,6 +25,8 @@ $clientSoundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientMaterialTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientScreenTerminalLogs = New-Object System.Collections.Generic.List[string]
 $gaussianTerminalLogs = New-Object System.Collections.Generic.List[string]
+$clientCvarTerminalLogs = New-Object System.Collections.Generic.List[string]
+$clientCvarNames = @('cl_starfield_distance','cl_starfield_diameter','cl_show_bloodspray')
 $eventTerminalLogs = New-Object System.Collections.Generic.List[string]
 $cvarTerminalLogs = New-Object System.Collections.Generic.List[string]
 $batchTerminalLogs = New-Object System.Collections.Generic.List[string]
@@ -70,6 +72,9 @@ foreach ($log in $logs) {
     $screenResult = $null
     $gaussianStage = 0
     $gaussianResult = $null
+    $clientCvarStage = 0
+    $clientCvarVerified = 0
+    $clientCvarResult = $null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -168,6 +173,28 @@ foreach ($log in $logs) {
             } elseif ($gaussianStage -eq 3 -and $phase -eq 'gaussian-probe-terminal-stop' -and $version -eq 'VEngineRandom001') {
                 $gaussianTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$gaussianResult))
                 $gaussianStage = 4
+            }
+        }
+        if ($role -eq 'client' -and $gaussianStage -eq 3 -and $gaussianResult -eq 'attached') {
+            if ($clientCvarStage -eq 0 -and $phase -eq 'client-cvar-preflight-complete' -and $version -eq '3') {
+                $clientCvarStage = 1
+            } elseif ($clientCvarVerified -lt $clientCvarNames.Count -and $version -ceq $clientCvarNames[$clientCvarVerified]) {
+                if ($phase -eq 'client-cvar-register-entered' -and $clientCvarStage -eq 1) { $clientCvarStage = 2 }
+                elseif ($phase -eq 'client-cvar-register-returned' -and $clientCvarStage -eq 2) { $clientCvarStage = 3 }
+                elseif ($phase -eq 'client-cvar-registration-verified' -and $clientCvarStage -eq 3) {
+                    $clientCvarVerified++
+                    $clientCvarStage = 1
+                }
+            } elseif ($phase -eq 'client-cvar-probe-result' -and $version -cmatch '^(verified|invalid-interface|existing-name|invalid-list|bad-owned-object|lookup-mismatch|unexpected-relink):([0-3])/3$') {
+                $status = $Matches[1]; $count = [int]$Matches[2]
+                if ($count -eq $clientCvarVerified -and
+                    ($status -ne 'verified' -or ($clientCvarStage -eq 1 -and $count -eq 3))) {
+                    $clientCvarResult = $version
+                    $clientCvarStage = 4
+                }
+            } elseif ($clientCvarStage -eq 4 -and $phase -eq 'client-cvar-probe-terminal-stop' -and $version -eq '3') {
+                $clientCvarTerminalLogs.Add(("{0}:client:{1}" -f $log.Name,$clientCvarResult))
+                $clientCvarStage = 5
             }
         }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
@@ -275,6 +302,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($clientCvarTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_CVAR_PROBE_RESULTS: {0}" -f ($clientCvarTerminalLogs -join ','))
+}
 if ($gaussianTerminalLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_GAUSSIAN_PROBE_RESULTS: {0}" -f ($gaussianTerminalLogs -join ','))
 }
@@ -314,6 +344,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($clientCvarTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($gaussianTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_GAUSSIAN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($clientScreenTerminalLogs.Count -gt 0) {
