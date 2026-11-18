@@ -177,7 +177,18 @@ def self_test():
         pass
     else:
         raise AssertionError("Duplicate receiver accepted")
-    print("PASS client console metadata, input command syntax and duplicate-name preservation")
+    selected=[dict(name=n,default=v,call_rva=c,object_rva=o) for n,v,c,o in (
+        ("cl_starfield_distance","256.0",0x26f031,0x37b108),
+        ("cl_starfield_diameter","128.0",0x26f001,0x37b0c0),
+        ("cl_show_bloodspray","1",0x268e01,0x361978))]
+    assert len(verify_probe_specs(selected))==3
+    try:
+        verify_probe_specs(selected[:-1])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Unverified client probe subset accepted")
+    print("PASS client console metadata, input commands, duplicate names and selected declarations")
 
 
 if __name__=="__main__":
