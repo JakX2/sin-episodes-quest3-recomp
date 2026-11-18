@@ -21,6 +21,7 @@
 #include "client_owned_startup_probe.h"
 #include "client_vgui_vtable_probe.h"
 #include "client_engine_vgui_slot1_probe.h"
+#include "client_vgui_controls_bootstrap.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -303,6 +304,7 @@ static void traceCvar(const char* phase) noexcept {
 #if defined(SIN_ROLE_client)
 // Retain the original engine interface for both actual and synthetic Init paths.
 static void* g_engineVgui=nullptr;
+static Factory g_clientAppFactory=nullptr;
 #if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
 static bool clientSoundProbeEnabled() noexcept {
     char enabled[2]={};
@@ -358,13 +360,32 @@ static bool clientEngineVGuiSlot1ProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_PROBE",value,2)==1 &&
         value[0]=='1';
 }
+static bool clientVGuiControlsBootstrapProbeEnabled() noexcept {
+    char value[2]={};
+    return clientEngineVGuiSlot1ProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_CONTROLS_BOOTSTRAP_PROBE",value,2)==1 &&
+        value[0]=='1';
+}
 [[noreturn]] static void stopAfterClientEngineVGuiSlot1Probe() noexcept {
+    const bool bootstrap=clientVGuiControlsBootstrapProbeEnabled();
+    if(bootstrap) {
+        diagnostic("vgui-controls-bootstrap-entered","CLIENT:factory-count-1");
+        const auto result=sin_independent::vgui_controls::Start(g_clientAppFactory,&diagnostic);
+        diagnostic("vgui-controls-bootstrap-result",sin_independent::vgui_controls::Name(result));
+        if(!sin_independent::vgui_controls::Completed(result)) {
+            diagnostic("vgui-controls-bootstrap-terminal-stop","source2004");
+            TerminateProcess(GetCurrentProcess(),0x53494E60u);
+            __fastfail(7);
+        }
+    }
     diagnostic("engine-vgui-slot1-entered","VEngineVGui001:arg2");
     const auto result=sin_independent::engine_vgui::CallSlot1Arg2(g_engineVgui);
     diagnostic("engine-vgui-slot1-result",sin_independent::engine_vgui::Name(result));
     diagnostic("engine-vgui-slot1-terminal-stop","original-slot1");
-    TerminateProcess(GetCurrentProcess(),result==sin_independent::engine_vgui::Slot1Result::Nonzero?
-        0x53494E5Du:0x53494E5Eu);
+    if(bootstrap)diagnostic("vgui-controls-bootstrap-terminal-stop","source2004");
+    TerminateProcess(GetCurrentProcess(),bootstrap?
+        (result==sin_independent::engine_vgui::Slot1Result::Nonzero?0x53494E5Fu:0x53494E60u):
+        (result==sin_independent::engine_vgui::Slot1Result::Nonzero?0x53494E5Du:0x53494E5Eu));
     __fastfail(7);
 }
 [[noreturn]] static void stopAfterClientVGuiLayoutProbe(
@@ -508,6 +529,7 @@ public:
         void* engine=nullptr;
         void* cvar=nullptr;
         g_engineVgui=nullptr;
+        g_clientAppFactory=appSystemFactory;
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||

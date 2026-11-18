@@ -30,6 +30,8 @@ $ownedStartupLogs = New-Object System.Collections.Generic.List[string]
 $vguiLogs = New-Object System.Collections.Generic.List[string]
 $vguiLayoutLogs = New-Object System.Collections.Generic.List[string]
 $engineVGuiSlot1Logs = New-Object System.Collections.Generic.List[string]
+$vguiControlsLogs = New-Object System.Collections.Generic.List[string]
+$vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
 $clientCvarNames = @('cl_starfield_distance','cl_starfield_diameter','cl_show_bloodspray')
@@ -89,6 +91,11 @@ foreach ($log in $logs) {
     $vguiLayoutResult=$null
     $engineVGuiSlot1Stage=0
     $engineVGuiSlot1Result=$null
+    $vguiControlsStage=0
+    $vguiControlsIndex=0
+    $vguiControlsMissing=0
+    $vguiControlsInitReturn=$null
+    $vguiControlsResult=$null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -273,6 +280,45 @@ foreach ($log in $logs) {
                 $engineVGuiSlot1Stage=3
             }
         }
+        if ($role -eq 'client' -and $vguiLayoutStage -eq 4 -and $vguiLayoutResult -eq 'verified') {
+            if ($vguiControlsStage -eq 0 -and $phase -eq 'vgui-controls-bootstrap-entered' -and
+                $version -eq 'CLIENT:factory-count-1') {
+                $vguiControlsStage=1
+            } elseif ($vguiControlsStage -eq 1 -and $vguiControlsIndex -lt $vguiControlsNames.Count -and
+                $phase -eq 'vgui-controls-request' -and $version -ceq $vguiControlsNames[$vguiControlsIndex]) {
+                $vguiControlsStage=2
+            } elseif ($vguiControlsStage -eq 2 -and $version -ceq $vguiControlsNames[$vguiControlsIndex] -and
+                $phase -in @('vgui-controls-found','vgui-controls-missing')) {
+                if($phase -eq 'vgui-controls-missing') {$vguiControlsMissing++}
+                $vguiControlsIndex++
+                $vguiControlsStage=1
+            } elseif ($vguiControlsStage -eq 1 -and $vguiControlsIndex -eq $vguiControlsNames.Count -and
+                $vguiControlsMissing -eq 0 -and $phase -eq 'vgui-controls-init-entered' -and
+                $version -eq 'VGUI_ivgui006:factory-count-1') {
+                $vguiControlsStage=3
+            } elseif ($vguiControlsStage -eq 3 -and $phase -eq 'vgui-controls-init-returned' -and
+                $version -in @('true','false')) {
+                $vguiControlsStage=4
+                $vguiControlsInitReturn=$version
+            } elseif ($vguiControlsStage -eq 4 -and $phase -eq 'vgui-controls-bootstrap-result' -and
+                $version -eq ('init-'+$vguiControlsInitReturn)) {
+                $vguiControlsStage=5
+                $vguiControlsResult=$version
+            } elseif ($vguiControlsStage -eq 1 -and $vguiControlsIndex -eq $vguiControlsNames.Count -and
+                $phase -eq 'vgui-controls-bootstrap-result' -and (
+                ($vguiControlsMissing -gt 0 -and $version -eq 'missing-interface') -or
+                ($vguiControlsMissing -eq 0 -and $version -in @('invalid-core-object','invalid-core-vtable','invalid-init-method')))) {
+                $vguiControlsStage=5
+                $vguiControlsResult=$version
+            } elseif ($vguiControlsStage -eq 5 -and $phase -eq 'vgui-controls-bootstrap-terminal-stop' -and
+                $version -eq 'source2004' -and (
+                ($vguiControlsResult -notin @('init-true','init-false')) -or
+                ($engineVGuiSlot1Stage -eq 3))) {
+                $vguiControlsLogs.Add(("{0}:client:{1}:panel-{2}" -f $log.Name,
+                    $vguiControlsResult,$(if($engineVGuiSlot1Stage -eq 3){$engineVGuiSlot1Result}else{'not-reached'})))
+                $vguiControlsStage=6
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -378,6 +424,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($vguiControlsLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_VGUI_CONTROLS_BOOTSTRAP_RESULTS: {0}" -f ($vguiControlsLogs -join ','))
+}
 if ($engineVGuiSlot1Logs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_ENGINE_VGUI_SLOT1_RESULTS: {0}" -f ($engineVGuiSlot1Logs -join ','))
 }
@@ -432,6 +481,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($vguiControlsLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_VGUI_CONTROLS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($engineVGuiSlot1Logs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_VGUI_SLOT1_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($vguiLayoutLogs.Count -gt 0) {

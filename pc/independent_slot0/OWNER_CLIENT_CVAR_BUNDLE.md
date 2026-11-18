@@ -49,3 +49,10 @@ SHA-authenticated original VEngineVGui001 virtual slot 1 with integer
 argument 2 only after the read-only VGUI anchor checks. Nonzero return
 is 0x53494E5D, refused / zero is 0x53494E5E. Neither is proof of
 GUI initialization or complete game startup.
+
+Original 2006 VGui_InitInterfacesList stage (eight app factory interfaces and
+IVGui.Init slot1) is separately gated by -EnableClientVGuiControlsBootstrapProbe
+along with -EnableClientEngineVGuiSlot1Probe and earlier client switches.
+Success plus a nonzero engine GetPanel(PANEL_CLIENTDLL) returns 0x53494E5F;
+missing interface, unsafe method or zero panel returns 0x53494E60.
+Both remain terminal diagnostics, not normal Client Init or gameplay.
