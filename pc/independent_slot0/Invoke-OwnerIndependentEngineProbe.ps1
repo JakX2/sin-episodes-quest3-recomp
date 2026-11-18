@@ -25,6 +25,7 @@ param(
     [switch]$EnableClientGaussianProbe,
     [switch]$EnableClientCvarProbe,
     [switch]$EnableClientOwnedStartupProbe,
+    [switch]$EnableClientVGuiProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -106,6 +107,9 @@ function Require-NoReparseAncestors([string]$Path) {
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
     throw "Refusing without -DisposableTestCopyConfirmed (NEVER test your live Steam install)."
+}
+if ($EnableClientVGuiProbe -and -not $EnableClientOwnedStartupProbe) {
+    throw 'EnableClientVGuiProbe requires EnableClientOwnedStartupProbe and preceding Client-only gates'
 }
 if ($EnableClientOwnedStartupProbe -and -not $EnableClientCvarProbe) {
     throw 'EnableClientOwnedStartupProbe requires EnableClientCvarProbe and preceding Client-only gates'
@@ -251,6 +255,7 @@ try {
     $previousClientGaussianProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE','Process')
     $previousClientCvarProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_CVAR_PROBE','Process')
     $previousOwnedStartupProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE','Process')
+    $previousVGuiProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
@@ -286,6 +291,8 @@ try {
             $(if ($EnableClientCvarProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_CVAR_PROBE: {0}" -f $(if ($EnableClientCvarProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE',$(if ($EnableClientOwnedStartupProbe) { '1' } else { '0' }),'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_PROBE',$(if ($EnableClientVGuiProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_CLIENT_VGUI_PROBE: {0}" -f $(if ($EnableClientVGuiProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_OWNED_STARTUP_PROBE: {0}" -f $(if ($EnableClientOwnedStartupProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
@@ -376,6 +383,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE',$previousClientGaussianProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_CVAR_PROBE',$previousClientCvarProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_OWNED_STARTUP_PROBE',$previousOwnedStartupProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_PROBE',$previousVGuiProbe,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.

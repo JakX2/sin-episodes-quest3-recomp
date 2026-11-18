@@ -30,3 +30,8 @@ with independently owned deferred-object and particle-pool lifecycle
 checks. Its expected exit is 0x53494E57, or 0x53494E58 on refusal. This
 is not original registry or allocator parity, VGUI initialization,
 or a successful Init return. No original game data is included.
+
+Optional VGUI factory-only diagnostic: add both -EnableClientOwnedStartupProbe
+and -EnableClientVGuiProbe. The original engine's already-loaded vgui2.dll
+factory is queried for the two exact legacy interface names. Success is
+0x53494E59; refusal 0x53494E5A. No GUI methods or registration helpers run.
