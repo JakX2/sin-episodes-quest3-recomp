@@ -16,7 +16,7 @@ constexpr const char* names[]={
     "VEngineShadowMgr002","StaticPropMgrClient004","IEngineSoundClient003",
     "VFileSystem012","VEngineRandom001","VENGINE_GAMEUIFUNCS_VERSION004",
     "GAMEEVENTSMANAGER002","VSoundEmitter001"};
-static unsigned progress=0,calls=0,hardwareCalls=0;static int mode=0,token=0;
+static unsigned progress=0,calls=0,hardwareCalls=0,screenCalls=0;static int mode=0,token=0;
 static const char* fixturePath=nullptr;
 using VerifyText=bool (__cdecl *)();
 static VerifyText verifyText=nullptr;
@@ -24,9 +24,9 @@ static void* __cdecl App(const char*,int*);
 class Sound {
 public:
     virtual bool __thiscall Connect(Factory factory) noexcept {
-        if(factory!=&App || progress!=21 || ++calls!=1 || (mode!=1 && mode!=2 && (mode<5 || mode>9)))
+        if(factory!=&App || progress!=21 || ++calls!=1 || (mode!=1 && mode!=2 && (mode<5 || mode>13)))
             ExitProcess(91);
-        return mode!=2 && mode!=9;
+        return mode!=2 && mode!=9 && mode!=13;
     }
 };
 static Sound sound;
@@ -44,13 +44,27 @@ public:
         if(progress!=22 || calls!=1 || ++hardwareCalls!=1 ||
            !version || std::strcmp(version,"MaterialSystemHardwareConfig012") ||
            status || !verifyText || !verifyText())ExitProcess(111);
-        return mode==7?nullptr:&token;
+        return mode==7 || mode==12?nullptr:&token;
     }
 };
 static Materials materials;
+class ScreenEngine {
+public:
+    virtual void __thiscall Guard0() noexcept {ExitProcess(120);}
+    virtual void __thiscall Guard1() noexcept {ExitProcess(120);}
+    virtual void __thiscall Guard2() noexcept {ExitProcess(120);}
+    virtual void __thiscall Guard3() noexcept {ExitProcess(120);}
+    virtual void __thiscall Guard4() noexcept {ExitProcess(120);}
+    virtual void __thiscall GetScreenSize(int& w,int& h) noexcept {
+        if(progress!=22 || calls!=1 || hardwareCalls!=1 || ++screenCalls!=1 ||
+           &w==&h || w || h || (mode!=10 && mode!=11))ExitProcess(121);
+        w=mode==10?1920:0;h=mode==10?1080:0;
+    }
+};
+static ScreenEngine screenEngine;
 static void* __cdecl App(const char* name,int* status) {
     if(!name || status)ExitProcess(92);
-    if(progress==21 && mode>=5 && mode<=7) {
+    if(progress==21 && ((mode>=5 && mode<=7) || (mode>=10 && mode<=12))) {
         if(std::strcmp(name,"VMaterialSystemStub001") || calls!=1 ||
            !verifyText || !verifyText())ExitProcess(112);
         ++progress;
@@ -59,6 +73,7 @@ static void* __cdecl App(const char* name,int* status) {
     if(progress>=21 || std::strcmp(name,names[progress]))ExitProcess(92);
     ++progress;
     if(mode==3 && progress==21)return nullptr;
+    if(progress==1)return &screenEngine;
     if(progress==8)return &materials;
     return progress==21?static_cast<void*>(&sound):&token;
 }
@@ -71,7 +86,7 @@ static bool Owns(HMODULE module,const void* ptr) {
 }
 static int Child(const char* dll,int selected) {
     mode=selected;
-    if(mode>=5 && mode<=7) {
+    if((mode>=5 && mode<=7) || (mode>=10 && mode<=12)) {
         auto module=LoadLibraryA(fixturePath);
         if(!module)return 113;
         auto set=reinterpret_cast<void (__cdecl *)(int)>(GetProcAddress(module,"SetTextFixture"));
@@ -82,7 +97,8 @@ static int Child(const char* dll,int selected) {
     if(!SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_FILE","1") ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_TRACE_SESSION",mode==4?"invalid":kSession) ||
        !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUND_PROBE",mode==0?"0":"1") ||
-       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE",mode>=5 && mode<=9?"1":"0"))
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE",mode>=5 && mode<=13?"1":"0") ||
+       !SetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SCREEN_PROBE",mode>=10 && mode<=13?"1":"0"))
         return 94;
     HMODULE module=LoadLibraryA(dll);
     if(!module)return 95;
@@ -120,9 +136,10 @@ static bool Run(const char* dll,int selected) {
     }
     GetExitCodeProcess(pi.hProcess,&result);CloseHandle(pi.hProcess);
     const DWORD expected=selected>=102?0x53494E45u:
+        selected==10 || selected==11?0x53494E51u:
         selected==5 || selected==6?0x53494E4Fu:
-        selected==7 || selected==8?0x53494E50u:
-        selected==1?0x53494E4Bu:selected==2 || selected==9?0x53494E4Cu:0u;
+        selected==7 || selected==8 || selected==12?0x53494E50u:
+        selected==1?0x53494E4Bu:selected==2 || selected==9 || selected==13?0x53494E4Cu:0u;
     if(result!=expected)return false;
     if(selected==4)return true; // invalid session deliberately makes no file
     const int len=std::snprintf(path,sizeof(path),"%ssin-independent-%s-%lu.log",
@@ -138,10 +155,22 @@ static bool Run(const char* dll,int selected) {
         return text.find(marker)!=std::string::npos && !has("phase=init-entered");
     }
     if(!has("role=client phase=init-entered"))return false;
-    if(selected>=5 && selected<=8) {
+    if(selected==10 || selected==11) {
+        const auto acquired=text.find("phase=material-probe-result version=acquired");
+        const auto query=text.find("phase=screen-query-entered version=VEngineClient012.GetScreenSize");
+        const auto returned=text.find(selected==10?"phase=screen-query-returned version=1920:1080":
+            "phase=screen-query-returned version=0:0");
+        const auto result=text.find("phase=screen-probe-result version=returned");
+        const auto stop=text.find("phase=screen-probe-terminal-stop version=VEngineClient012.GetScreenSize");
+        return acquired!=std::string::npos && query!=std::string::npos &&
+            returned!=std::string::npos && result!=std::string::npos && stop!=std::string::npos &&
+            acquired<query && query<returned && returned<result && result<stop &&
+            !has("phase=material-probe-terminal-stop");
+    }
+    if(selected>=5 && selected<=8 || selected==12) {
         const auto connected=text.find("phase=sound-connect-succeeded");
         const auto result=text.find(selected<=6?"phase=material-probe-result version=acquired":
-            selected==7?"phase=material-probe-result version=missing-hardware":
+            selected==7 || selected==12?"phase=material-probe-result version=missing-hardware":
             "phase=material-probe-result version=invalid-commandline");
         const auto stop=text.find("phase=material-probe-terminal-stop");
         if(connected==std::string::npos || result==std::string::npos || stop==std::string::npos ||
@@ -151,13 +180,13 @@ static bool Run(const char* dll,int selected) {
         const auto optional=text.find(selected==5?"phase=optional-missing version=VMaterialSystemStub001":
             "phase=optional-found version=VMaterialSystemStub001");
         const auto entered=text.find("phase=hardware-config-entered version=MaterialSystemHardwareConfig012");
-        const auto returned=text.find(selected==7?"phase=hardware-config-missing version=MaterialSystemHardwareConfig012":
+        const auto returned=text.find(selected==7 || selected==12?"phase=hardware-config-missing version=MaterialSystemHardwareConfig012":
             "phase=hardware-config-found version=MaterialSystemHardwareConfig012");
         return modeCheck!=std::string::npos && optional!=std::string::npos &&
             entered!=std::string::npos && returned!=std::string::npos &&
-            connected<modeCheck && modeCheck<optional && optional<entered && entered<returned && returned<result;
+            connected<modeCheck && modeCheck<optional && optional<entered && entered<returned && returned<result && !has("phase=screen-query-entered");
     }
-    if(selected==1 || selected==2 || selected==9) {
+    if(selected==1 || selected==2 || selected==9 || selected==13) {
         const auto found=text.find("phase=found-interface version=VSoundEmitter001");
         const auto entered=text.find("phase=sound-connect-entered version=VSoundEmitter001");
         const auto returned=text.find(selected==1?"phase=sound-connect-succeeded":"phase=sound-connect-rejected");
@@ -175,12 +204,12 @@ int main(int argc,char** argv) {
     if(argc==4){fixturePath=argv[3];return Child(argv[1],std::atoi(argv[2]));}
     if(argc!=3)return 1;
     fixturePath=argv[2];
-    for(int i=0;i<10;++i)if(!Run(argv[1],i)){
+    for(int i=0;i<14;++i)if(!Run(argv[1],i)){
         std::fprintf(stderr,"FAIL client sound case %d\n",i);return 2;
     }
     for(int i=102;i<=147;++i)if(!Run(argv[1],i)){
         std::fprintf(stderr,"FAIL client terminal guard %d\n",i-100);return 3;
     }
-    std::puts("PASS client native 48-slot table, 46 terminal guards and five original-prefix sound cases");
+    std::puts("PASS client native 48-slot table, 46 terminal guards, sound/material/screen query cases");
     return 0;
 }
