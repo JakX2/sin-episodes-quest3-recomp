@@ -4,7 +4,7 @@ Stacked on PR #449. The historical Source SDK 2004 reference
 Source-SDK-Archives/source-sdk-2004, src_mod/public/filesystem.h,
 blob SHA b01864b6b8aae8b300079c663fa4bb192d67debe declares
 VFileSystem012 with IBaseFileSystem primary methods:
-Read=0, Open=2, Close=3, Size(handle)=6, FileExists=10.
+Read=0, Open=2, Close=3, Size(handle)=7, FileExists=10.
 SiN's original client Init requests VFileSystem012 (21 original factory queries).
 These are SDK-derived slots, **not yet owner-retail-verified** for SiN.
 
@@ -36,3 +36,9 @@ Use only an existing disposable game copy and the reversible owner launcher;
 do not stage the independent DLLs into your Steam installation.
 Original C_StatsSystem helper, engine resource list and event callbacks
 remain unresolved; no normal VClient011::Init success or map load.
+
+The MSVC x86 synthetic fixture showed that the two overloaded Size
+methods occupy slots 6/7 in the opposite order from their source
+listing: slot6 dispatched Size(path,pathID), while slot7 is the
+candidate for Size(handle). This compiler-ABI distinction is still
+only synthetic evidence until the owner tests the 2006 engine.
