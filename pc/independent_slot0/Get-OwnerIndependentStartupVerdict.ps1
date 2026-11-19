@@ -32,6 +32,7 @@ $vguiLayoutLogs = New-Object System.Collections.Generic.List[string]
 $engineVGuiSlot1Logs = New-Object System.Collections.Generic.List[string]
 $vguiControlsLogs = New-Object System.Collections.Generic.List[string]
 $matSurfaceLogs = New-Object System.Collections.Generic.List[string]
+$soundSystemInitLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -99,6 +100,8 @@ foreach ($log in $logs) {
     $vguiControlsResult=$null
     $matSurfaceStage=0
     $matSurfaceResult=$null
+    $soundSystemInitStage=0
+    $soundSystemInitResult=$null
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -339,6 +342,25 @@ foreach ($log in $logs) {
                 $matSurfaceStage=3
             }
         }
+        if ($role -eq 'client' -and $matSurfaceStage -eq 2 -and
+            $matSurfaceResult -eq 'found') {
+            if ($soundSystemInitStage -eq 0 -and
+                $phase -eq 'sound-system-init-entered' -and
+                $version -eq 'CSoundEmitterSystem:VSoundEmitter001+1') {
+                $soundSystemInitStage=1
+            } elseif ($soundSystemInitStage -eq 1 -and
+                $phase -eq 'sound-system-init-result' -and
+                $version -in @('called-true','called-false','invalid-object',
+                               'invalid-vtable','invalid-method')) {
+                $soundSystemInitStage=2
+                $soundSystemInitResult=$version
+            } elseif ($soundSystemInitStage -eq 2 -and
+                $phase -eq 'sound-system-init-terminal-stop' -and
+                $version -eq 'original-slot1') {
+                $soundSystemInitLogs.Add(("{0}:client:{1}" -f $log.Name,$soundSystemInitResult))
+                $soundSystemInitStage=3
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -444,6 +466,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
 }
+if ($soundSystemInitLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_INIT_RESULTS: {0}" -f ($soundSystemInitLogs -join ','))
+}
 if ($matSurfaceLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))
 }
@@ -504,6 +529,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($soundSystemInitLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($matSurfaceLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_MAT_SURFACE_QUERY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($vguiControlsLogs.Count -gt 0) {

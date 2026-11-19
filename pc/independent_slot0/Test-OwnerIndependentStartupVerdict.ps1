@@ -708,6 +708,37 @@ try {
         '[SiN independent] role=client phase=mat-surface-query-result version=found',
         $matSurfaceStop)))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Owner-original CSoundEmitterSystem::Init delegates to the
+    # already acquired VSoundEmitter001 interface slot 1 after surface.
+    $soundInitEntry='[SiN independent] role=client phase=sound-system-init-entered version=CSoundEmitterSystem:VSoundEmitter001+1'
+    $soundInitStop='[SiN independent] role=client phase=sound-system-init-terminal-stop version=original-slot1'
+    $soundInitPrefix=$matSurfacePrefix+@(
+        $matSurfaceEntry,
+        '[SiN independent] role=client phase=mat-surface-query-result version=found')
+    foreach($state in @('called-true','called-false','invalid-object',
+                        'invalid-vtable','invalid-method')) {
+        [IO.File]::WriteAllLines($retailReplay,[string[]]($soundInitPrefix+@(
+            $soundInitEntry,
+            ("[SiN independent] role=client phase=sound-system-init-result version={0}" -f $state),
+            $soundInitStop)))
+        $out=Verify 'CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(-not (($out -join '|').Contains(":client:$state"))) {throw "Sound system Init outcome missing: $state"}
+    }
+    # A trace without the preceding surface-query success cannot be
+    # promoted to a sound-system Init checkpoint.
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($matSurfacePrefix+@(
+        $matSurfaceEntry,
+        $soundInitEntry,
+        '[SiN independent] role=client phase=sound-system-init-result version=called-true',
+        $soundInitStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    [IO.File]::WriteAllLines($retailReplay,[string[]]($matSurfacePrefix+@(
+        $matSurfaceEntry,
+        '[SiN independent] role=client phase=mat-surface-query-result version=missing-interface',
+        $soundInitEntry,
+        '[SiN independent] role=client phase=sound-system-init-result version=called-true',
+        $soundInitStop)))
+    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
