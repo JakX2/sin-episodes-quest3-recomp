@@ -102,6 +102,7 @@ foreach ($log in $logs) {
     $matSurfaceResult=$null
     $soundSystemInitStage=0
     $soundSystemInitResult=$null
+    $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
     $eventResult = $null
@@ -342,6 +343,9 @@ foreach ($log in $logs) {
                 $matSurfaceStage=3
             }
         }
+        if($role -eq 'client' -and $phase -like 'sound-system-init-*') {
+            $soundInitSeenEvents.Add(("$phase=$version;mat=$matSurfaceStage/$matSurfaceResult;control=$vguiControlsStage/$vguiControlsResult;panel=$engineVGuiSlot1Stage/$engineVGuiSlot1Result"))
+        }
         if ($role -eq 'client' -and $matSurfaceStage -eq 2 -and
             $matSurfaceResult -eq 'found') {
             if ($soundSystemInitStage -eq 0 -and
@@ -465,6 +469,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 }
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
+}
+if($env:SIN_INDEPENDENT_VERDICT_DEBUG -eq '1') {
+    Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_DEBUG: {0}" -f ($soundInitSeenEvents -join ' | '))
 }
 if ($soundSystemInitLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_INIT_RESULTS: {0}" -f ($soundSystemInitLogs -join ','))
