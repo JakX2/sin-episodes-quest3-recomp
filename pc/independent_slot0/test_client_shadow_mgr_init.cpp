@@ -16,10 +16,10 @@ static void Record(void* context,const shadow::Operation& operation) noexcept {
 static bool Check(const std::vector<shadow::Operation>& events,bool refresh) {
     using shadow::Action;
     std::vector<Action> expected={
-        Action::PrecacheDecalTexture,Action::ConfigureVector,
-        Action::ConfigureRadius,Action::ConfigureBias};
-    if(refresh)expected.push_back(Action::ConditionalRefresh);
-    expected.push_back(Action::RegisterEngineCallback);
+        Action::InitSimpleShadowTexture,Action::SetShadowDirection,
+        Action::SetShadowDistance,Action::SetShadowBlobbyCutoffArea};
+    if(refresh)expected.push_back(Action::InitRenderToTextureShadows);
+    expected.push_back(Action::AddMaterialRestoreFunc);
     if(events.size()!=expected.size())return false;
     for(std::size_t i=0;i<events.size();++i)
         if(events[i].action!=expected[i])return false;

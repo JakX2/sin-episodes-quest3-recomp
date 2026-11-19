@@ -40,3 +40,35 @@ This is *not* the complete original ShadowMgr behavior, not a
 finished one-of-twelve game-system Init replacement, and not a new
 owner-game runtime checkpoint. Last owner runtime checkpoint is
 0x53494E63, real sound-system Init returned true.
+
+## Source SDK 2004 method identity corroboration
+
+The user-supplied `source-sdk-2004-master.zip` contains
+`src_mod/cl_dll/clientshadowmgr.cpp`, with
+`CClientShadowMgr::Init` and its Source-era class method declarations.
+The SDK `Init` logic matches the original 2006 146-byte native
+method's order, constants, conditional and callback arguments:
+
+- `m_bRenderTargetNeedsClear = false` corresponds to `this+0xCD`.
+- `m_SimpleShadow.Init("decals/simpleshadow", TEXTURE_GROUP_DECAL)`
+  corresponds to resource call at original 0x2411889A on
+  `this+0x14`; the original category literal is "Decal textures".
+- Own virtual slots 24, 27 and 28 correspond to
+  `SetShadowDirection(Vector(0.1,0.1,-1))`,
+  `SetShadowDistance(50)` and
+  `SetShadowBlobbyCutoffArea(0.005)`.
+- `m_nMaxModelsRendered = 8` corresponds to `this+0xD8`.
+- `if (r_shadowrendertotexture.GetBool()) InitRenderToTextureShadows()`
+  corresponds to the original provider at global
+  `0x243581C0`, flag at offset `+0x2C`, and helper 0x24118610.
+- `materials->AddRestoreFunc(ShadowRestoreFunc)` corresponds to
+  the engine interface at original global `0x2433F69C`,
+  virtual slot 116 (byte offset 0x1D0), with
+  callback function pointer `0x24115E70`.
+
+The original 2006 binary and Source SDK 2004 together establish
+the *intent* of each step and exact original ABI positions. This
+supports porting the **named dependency methods** next instead of
+inventing VGUI/gameplay APIs. It still does not imply our independent
+module has registered the callback, initialized the shadow texture
+or reconstructed the internal render-to-texture graph.

@@ -8,12 +8,12 @@
 #include <cstring>
 namespace sin_independent::client_shadow {
 enum class Action {
-    PrecacheDecalTexture,
-    ConfigureVector,
-    ConfigureRadius,
-    ConfigureBias,
-    ConditionalRefresh,
-    RegisterEngineCallback
+    InitSimpleShadowTexture,
+    SetShadowDirection,
+    SetShadowDistance,
+    SetShadowBlobbyCutoffArea,
+    InitRenderToTextureShadows,
+    AddMaterialRestoreFunc
 };
 struct Operation {
     Action action;
@@ -34,22 +34,22 @@ inline constexpr char kDecal[]="decals/simpleshadow";
 inline constexpr char kTextureCategory[]="Decal textures";
 using ActionSink=void (*)(void*,const Operation&) noexcept;
 inline constexpr Operation kPrecache{
-    Action::PrecacheDecalTexture,0x2411889au,0,
+    Action::InitSimpleShadowTexture,0x2411889au,0,
     kDecal,kTextureCategory,nullptr,0.0f,0};
 inline constexpr Operation kVector{
-    Action::ConfigureVector,0x241188c0u,24,
+    Action::SetShadowDirection,0x241188c0u,24,
     nullptr,nullptr,kOriginalVector,0.0f,0};
 inline constexpr Operation kRadius{
-    Action::ConfigureRadius,0x241188ccu,27,
+    Action::SetShadowDistance,0x241188ccu,27,
     nullptr,nullptr,nullptr,50.0f,0};
 inline constexpr Operation kBias{
-    Action::ConfigureBias,0x241188d8u,28,
+    Action::SetShadowBlobbyCutoffArea,0x241188d8u,28,
     nullptr,nullptr,nullptr,0.005f,0};
 inline constexpr Operation kRefresh{
-    Action::ConditionalRefresh,0x241188f3u,0,
+    Action::InitRenderToTextureShadows,0x241188f3u,0,
     nullptr,nullptr,nullptr,0.0f,0};
 inline constexpr Operation kRegisterCallback{
-    Action::RegisterEngineCallback,0x24118905u,116,
+    Action::AddMaterialRestoreFunc,0x24118905u,116,
     nullptr,nullptr,nullptr,0.0f,kOriginalEngineCallbackVA};
 // This host expects callbacks implementing the missing original helper
 // and virtual-method behavior. It does not silently fake that work.
