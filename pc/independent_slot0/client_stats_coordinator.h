@@ -6,11 +6,14 @@
 #include <cstddef>
 #include "client_stats_storage_init.h"
 #include "client_stats_catalog_init.h"
+#include "client_stats_asset_loader.h"
 
 namespace sin_independent::stats_coordinator {
 struct State final {
     stats_storage::Storage definitions;
     stats_catalog::Catalog catalog;
+    stats_assets::Documents scripts;
+    std::string last_script_error;
     State()=default;
     State(const State&)=delete;
     State& operator=(const State&)=delete;
@@ -24,12 +27,16 @@ struct Hooks {
     stats_catalog::AllowAllocation allow_catalog=nullptr;
     stats_catalog::ContinueResourceLoad load_catalog_resources=nullptr;
     stats_storage::RemainingStep run_unreconstructed_step=nullptr;
+    // Optional content root; disabled by default for prior ABI fixtures.
+    // This is a standard C++17 filesystem path, NOT engine IFileSystem.
+    const std::filesystem::path* game_content_root=nullptr;
 };
 enum class Outcome {
     Success,
     InvalidHost,
     MissingResourceLoader,
     ResourceLoaderRefused,
+    AssetLoadRefused,
     MissingLaterStep,
     LaterStepRefused
 };
@@ -45,6 +52,7 @@ inline const char* OutcomeName(Outcome result) noexcept {
         case Outcome::InvalidHost:return "invalid-host";
         case Outcome::MissingResourceLoader:return "missing-resource-loader";
         case Outcome::ResourceLoaderRefused:return "resource-loader-refused";
+        case Outcome::AssetLoadRefused:return "asset-load-refused";
         case Outcome::MissingLaterStep:return "missing-later-step";
         case Outcome::LaterStepRefused:return "later-step-refused";
     }
@@ -87,6 +95,24 @@ inline Result Initialize(State& state,void* system,void* registry,
                 }
                 break;
             case stats_system::StepKind::LoadDisplayLayout:
+                // The recovered on-disk parser validates both original
+                // source files here. The remaining 2006 layout helper
+                // and engine-side hookup still require host callbacks.
+                if(hooks.game_content_root &&
+                   !state.scripts.LoadContentRoot(
+                        *hooks.game_content_root,state.last_script_error)) {
+                    result.outcome=Outcome::AssetLoadRefused;
+                    return result;
+                }
+                if(!hooks.run_unreconstructed_step) {
+                    result.outcome=Outcome::MissingLaterStep;
+                    return result;
+                }
+                if(!hooks.run_unreconstructed_step(system,step)) {
+                    result.outcome=Outcome::LaterStepRefused;
+                    return result;
+                }
+                break;
             case stats_system::StepKind::RegisterCallback:
                 if(!hooks.run_unreconstructed_step) {
                     result.outcome=Outcome::MissingLaterStep;
