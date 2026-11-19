@@ -253,6 +253,9 @@ int main() {
     if(!run.succeeded()||run.completed!=7||coordinatorCalls!=4 ||
        state.scripts.definitions().size()!=62 ||
        !state.last_script_error.empty())return Fail(18);
+    // Staged reads intentionally use the original per-resource Open mode/pathID.
+    // Switch the fixture contract before exercising that API, not afterward.
+    stagedParams=true;
     std::string single="old";
     error="old";
     if(!fs::ReadForStagedStats(&owner,fs::kDefinitions,single,error) ||
