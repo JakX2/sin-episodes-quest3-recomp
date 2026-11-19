@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <new>
+#include <utility>
 namespace sin_independent::stats_catalog {
 inline constexpr std::size_t kOriginalCatalogSlots=66;
 inline constexpr std::size_t kOriginalSubobjectOffset=0x84;
@@ -37,6 +38,12 @@ public:
             entries_[index].reset(record);
             ++count_; // native vector appends even a null allocation
         }
+    }
+    // Atomic ownership publication between the pending stage-3 catalog
+    // and the last known-good catalog. No allocation or raw-pointer copy.
+    void Swap(Catalog& other) noexcept {
+        entries_.swap(other.entries_);
+        std::swap(count_,other.count_);
     }
     std::size_t size() const noexcept{return count_;}
     const Entry* at(std::size_t index) const noexcept {

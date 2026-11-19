@@ -32,6 +32,12 @@ public:
         if(!ReadBounded(folder/"stats_display_layout.txt",layout,error))return false;
         return LoadTexts(defs,layout,error);
     }
+    // Both parsed vectors publish together after all third/fourth-stage
+    // validations. std::vector's default allocator makes swap noexcept.
+    void Swap(Documents& other) noexcept {
+        definitions_.swap(other.definitions_);
+        layout_.swap(other.layout_);
+    }
     const std::vector<stats_scripts::Definition>& definitions() const noexcept {
         return definitions_;
     }

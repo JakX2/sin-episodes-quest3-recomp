@@ -4,6 +4,8 @@
 // the still-missing proprietary resource/layout/registration operations.
 // DO NOT pass original retail client.dll objects or function addresses.
 #include <cstddef>
+#include <vector>
+#include <utility>
 #include "client_stats_storage_init.h"
 #include "client_stats_catalog_init.h"
 #include "client_stats_asset_loader.h"
@@ -86,9 +88,11 @@ inline const char* OutcomeName(Outcome result) noexcept {
 }
 // Original C_StatsSystem::Init unconditionally returns true. This
 // independent coordinator instead fails closed when an unresolved
-// dependency is unavailable or explicitly refuses to run. A refusal
-// retains earlier completed stages and never rolls back partial work;
-// retry starts at step zero and resets all three owned collections.
+// dependency is unavailable or refuses to run. For staged resource
+// loading, its Catalog, Projection, and Documents owners are committed
+// as one transaction at stage 4. The earlier static/dynamic Storage
+// vectors and any externally executed callback side effects are NOT
+// rolled back. Retry always starts at original step zero.
 inline Result Initialize(State& state,void* system,void* registry,
                          Hooks hooks) noexcept {
     Result result{};
@@ -118,10 +122,16 @@ inline Result Initialize(State& state,void* system,void* registry,
         result.outcome=Outcome::MissingAssetReaderContext;
         return result;
     }
-    // Per-attempt transaction: the original third stage consumes
-    // definitions, whereas the fourth stage consumes display layout.
-    // Preserve published Documents until the fourth stage validates.
+    // SHA-pinned 2006 call ordering: third stage reads definitions,
+    // fourth stage reads layout. The previous implementation reset
+    // state.catalog immediately at stage 3 while retaining old scripts
+    // on a subsequent stage-4 failure. Keep ALL three related owners
+    // private until the entire staged document pair has passed checks.
     std::string stagedDefinitions;
+    std::vector<stats_scripts::Definition> stagedParsedDefinitions;
+    stats_catalog::Catalog pendingCatalog;
+    stats_binding::Projection pendingProjection;
+    stats_assets::Documents pendingDocuments;
     for(const auto& step:stats_system::kInitSteps) {
         ++result.attempted;
         switch(step.kind) {
@@ -141,19 +151,30 @@ inline Result Initialize(State& state,void* system,void* registry,
                     // and binds names to compiled IDs. The host instead
                     // validates independent text without constructing
                     // unknown original engine KeyValues objects.
-                    state.catalog.Rebuild(hooks.context,hooks.allow_catalog);
+                    pendingCatalog.Rebuild(hooks.context,hooks.allow_catalog);
                     bool valid=false;
                     try {
-                        std::vector<stats_scripts::Definition> parsed;
-                        valid=hooks.read_stats_resource(
-                                  hooks.stats_resource_context,
-                                  "scripts/stats/stats_definitions.txt",
-                                  stagedDefinitions,state.last_script_error) &&
-                              stats_scripts::ParseDefinitions(
-                                  stagedDefinitions,parsed,state.last_script_error) &&
-                              stats_binding::Bind(
-                                  state.catalog,state.catalog_text,parsed,
-                                  state.last_script_error);
+                        if(hooks.read_stats_resource(
+                               hooks.stats_resource_context,
+                               "scripts/stats/stats_definitions.txt",
+                               stagedDefinitions,state.last_script_error) &&
+                           stats_scripts::ParseDefinitions(
+                               stagedDefinitions,stagedParsedDefinitions,
+                               state.last_script_error)) {
+                            std::size_t percentageRefs=0;
+                            for(const auto& item:stagedParsedDefinitions)
+                                if(!item.percentage_of.empty())
+                                    ++percentageRefs;
+                            if(stagedParsedDefinitions.size()!=62 ||
+                               percentageRefs!=8)
+                                state.last_script_error=
+                                    "unexpected original definitions count";
+                            else
+                                valid=stats_binding::Bind(
+                                    pendingCatalog,pendingProjection,
+                                    stagedParsedDefinitions,
+                                    state.last_script_error);
+                        }
                     } catch(...) {
                         state.last_script_error.clear();
                     }
@@ -182,13 +203,27 @@ inline Result Initialize(State& state,void* system,void* registry,
                     bool loaded=false;
                     try {
                         std::string layout;
-                        loaded=hooks.read_stats_resource(
-                                   hooks.stats_resource_context,
-                                   "scripts/stats/stats_display_layout.txt",
-                                   layout,state.last_script_error) &&
-                               state.scripts.LoadTexts(
-                                   stagedDefinitions,layout,
-                                   state.last_script_error);
+                        if(hooks.read_stats_resource(
+                                hooks.stats_resource_context,
+                                "scripts/stats/stats_display_layout.txt",
+                                layout,state.last_script_error)) {
+                            std::vector<stats_scripts::DisplayEntry> parsed;
+                            if(stats_scripts::ParseDisplayLayout(
+                                    layout,stagedParsedDefinitions,
+                                    parsed,state.last_script_error)) {
+                                std::size_t pairs=0,dividers=0;
+                                for(const auto& item:parsed)
+                                    if(item.divider)++dividers;
+                                    else ++pairs;
+                                if(pairs!=156 || dividers!=66)
+                                    state.last_script_error=
+                                        "unexpected original display counts";
+                                else
+                                    loaded=pendingDocuments.LoadTexts(
+                                        stagedDefinitions,layout,
+                                        state.last_script_error);
+                            }
+                        }
                     } catch(...) {
                         state.last_script_error.clear();
                     }
@@ -196,6 +231,11 @@ inline Result Initialize(State& state,void* system,void* registry,
                         result.outcome=Outcome::AssetLoadRefused;
                         return result;
                     }
+                    // Commit Catalog, Projection and Documents together.
+                    // These three swaps cannot throw and allocate nothing.
+                    state.catalog.Swap(pendingCatalog);
+                    state.catalog_text.Swap(pendingProjection);
+                    state.scripts.Swap(pendingDocuments);
                 } else if(hooks.game_content_root || hooks.read_engine_documents) {
                     bool loaded=false;
                     try {
@@ -224,10 +264,25 @@ inline Result Initialize(State& state,void* system,void* registry,
                     }
                 }
                 if(!hooks.run_unreconstructed_step) {
+                    // Nothing external was invoked; restore the entire
+                    // previous catalog+text+script trio at this boundary.
+                    if(hooks.read_stats_resource) {
+                        state.catalog.Swap(pendingCatalog);
+                        state.catalog_text.Swap(pendingProjection);
+                        state.scripts.Swap(pendingDocuments);
+                    }
                     result.outcome=Outcome::MissingLaterStep;
                     return result;
                 }
                 if(!hooks.run_unreconstructed_step(system,step)) {
+                    // A callback may have effects outside the independent
+                    // resource owners. Only these three snapshots can be
+                    // rolled back here; no external side effects are undone.
+                    if(hooks.read_stats_resource) {
+                        state.catalog.Swap(pendingCatalog);
+                        state.catalog_text.Swap(pendingProjection);
+                        state.scripts.Swap(pendingDocuments);
+                    }
                     result.outcome=Outcome::LaterStepRefused;
                     return result;
                 }
