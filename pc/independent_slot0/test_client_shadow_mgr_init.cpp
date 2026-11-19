@@ -187,11 +187,78 @@ static bool RegistryShadowIntegration(bool rejectFirst) {
            Check(shadowSystem.capture.actions,true);
 }
 
+
+// Integrate the pending-constructor list with direct registration and a
+// constructor that arrives after initialization has already begun. This
+// exercises LIFO pending order, duplicate suppression, and live iteration
+// together with the shadow subsystem, without invoking retail pointers.
+struct ConstructDuringInit:gs::System {
+    gs::Registry* registry=nullptr;
+    gs::System* late=nullptr;
+    std::vector<int>* order=nullptr;
+    bool Init() noexcept override {
+        order->push_back(4);
+        registry->Construct(late);
+        return true;
+    }
+};
+static bool PendingConstructorShadowIntegration(bool rejectShadow) {
+    gs::Registry registry;
+    std::vector<int> order;
+    OrderedSystem pendingOld{};
+    pendingOld.order=&order;pendingOld.id=1;pendingOld.accept=true;
+    OrderedSystem pendingNew{};
+    pendingNew.order=&order;pendingNew.id=2;pendingNew.accept=true;
+    OrderedSystem late{};
+    late.order=&order;late.id=5;late.accept=true;
+    ConstructDuringInit construct{};
+    construct.registry=&registry;construct.late=&late;construct.order=&order;
+    // The shadow Init executes in the direct vector before pending systems.
+    // The failure branch must prevent both pending callbacks and late
+    // construction, while the success branch preserves LIFO pending order.
+    struct ShadowGate:gs::System {
+        std::array<unsigned char,0xdc> storage{};
+        Capture capture;
+        std::vector<int>* order=nullptr;
+        bool accept=true;
+        bool Init() noexcept override {
+            order->push_back(3);
+            if(!accept)return false;
+            return shadow::Init(storage.data(),storage.size(),
+                                false,&capture,&Record);
+        }
+    } shadowGate;
+    shadowGate.order=&order;shadowGate.accept=!rejectShadow;
+    registry.Construct(&pendingOld);
+    registry.Construct(&pendingNew);
+    registry.DirectRegister(&shadowGate);
+    // Duplicate pending entry is skipped, not invoked twice.
+    registry.DirectRegister(&pendingOld);
+    registry.DirectRegister(&construct);
+    if(!registry.has_pending() || registry.initialization_started())
+        return false;
+    const auto result=registry.Initialize();
+    if(registry.has_pending() || !registry.initialization_started() ||
+       result.duplicate_skipped!=1)return false;
+    if(rejectShadow)
+        return result.outcome==gs::Outcome::InitRefused &&
+               result.initialized_count==0 &&
+               registry.registered_size()==4 &&
+               order==std::vector<int>{3} &&
+               shadowGate.capture.actions.empty();
+    return result.succeeded() && result.initialized_count==5 &&
+           registry.registered_size()==5 &&
+           order==std::vector<int>({3,1,4,2,5}) &&
+           Check(shadowGate.capture.actions,false);
+}
+
 int main(){
     static_assert(sizeof(void*)==4,"original engine uses MSVC x86");
     if(!TimingContract(false) || !TimingContract(true))return 7;
     if(!MetadataContract(false) || !MetadataContract(true))return 8;
     if(!RegistryShadowIntegration(false) || !RegistryShadowIntegration(true))return 9;
+    if(!PendingConstructorShadowIntegration(false) ||
+       !PendingConstructorShadowIntegration(true))return 10;
     System system;
     system.storage.fill(0xa5);
     if(shadow::Init(nullptr,system.storage.size(),false,&system.capture,&Record) ||
