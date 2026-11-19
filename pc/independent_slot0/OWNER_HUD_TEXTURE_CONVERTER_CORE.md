@@ -33,3 +33,18 @@ modified in a running game. The genuine Windows owner checkpoint is
 0x53494E61 (MatSystemSurface003 interface acquired). Further work must
 authenticate live Panel::AddPropertyConverter ABI and lifecycle before
 invoking it, then reconstruct root-panel construction and later Init.
+
+## Source SDK 2004 ABI corroboration
+
+Historical `public/vgui_controls/Panel.h` defines
+`IPanelAnimationPropertyConverter` with **exactly three** `void`
+virtual methods and **no** virtual destructor:
+`GetData(Panel*,KeyValues*,PanelAnimationMapEntry*)`,
+`SetData(Panel*,KeyValues*,PanelAnimationMapEntry*)`,
+`InitFromDefault(Panel*,PanelAnimationMapEntry*)`.
+The new `client_hud_texture_converter_abi.h` models these positions
+with opaque parameter types in an independently owned MSVC class.
+A separate 32-bit virtual-table dispatch fixture checks slots 0,1,2
+against the converter core. This is a **synthetic ABI fixture**, not
+proof of an original 2006 Panel::AddPropertyConverter linkage. The
+original GUI registration call remains unimplemented.
