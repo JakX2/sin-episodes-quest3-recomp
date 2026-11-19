@@ -44,9 +44,14 @@ struct BaseFileSystem {
     virtual unsigned Tell(void*){return 0;}
     virtual unsigned Size(void* file) {
         if(file!=&handle)std::abort();
-        return hugeSize?300000u:static_cast<unsigned>(handle.bytes->size());
+        const auto result=hugeSize?300000u:static_cast<unsigned>(handle.bytes->size());
+        std::fprintf(stderr,"fixture Size(handle) value=%u huge=%d\n",result,hugeSize?1:0);
+        return result;
     }
-    virtual unsigned Size(const char*,const char*){return 0;}
+    virtual unsigned Size(const char*,const char*) {
+        std::fprintf(stderr,"fixture Size(path) unexpectedly called\n");
+        return 0;
+    }
     virtual void Flush(void*){}
     virtual bool Precache(const char*,const char*){return false;}
     virtual bool FileExists(const char* path,const char* pathID) {
