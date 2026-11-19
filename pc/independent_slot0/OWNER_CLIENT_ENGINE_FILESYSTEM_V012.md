@@ -42,3 +42,37 @@ methods occupy slots 6/7 in the opposite order from their source
 listing: slot6 dispatched Size(path,pathID), while slot7 is the
 candidate for Size(handle). This compiler-ABI distinction is still
 only synthetic evidence until the owner tests the 2006 engine.
+
+## Example reversible owner launch
+
+Use the same disposable game-copy prerequisites as the previous
+owner-verified sound probe. Check that the selected independent build
+directory contains client.dll and the disposable copy retains matching
+original SHA-pinned client.dll/server.dll before running.
+
+```powershell
+$game = 'D:\SiN-DisposableTest'  # example disposable copy only
+$probe = '.\Invoke-OwnerIndependentEngineProbe.ps1'
+$independent = '<directory-containing-new-client.dll>'
+& $probe -GameBin (Join-Path $game 'SE1\bin') `
+  -GameExecutable (Join-Path $game 'SinEpisodes.exe') `
+  -IndependentBin $independent -ProbeRole Client `
+  -EnableClientSoundProbe -EnableClientMaterialProbe `
+  -EnableClientScreenProbe -EnableClientGaussianProbe `
+  -EnableClientCvarProbe -EnableClientOwnedStartupProbe `
+  -EnableClientVGuiProbe -EnableClientVGuiLayoutProbe `
+  -EnableClientEngineVGuiSlot1Probe `
+  -EnableClientVGuiControlsBootstrapProbe `
+  -EnableClientMatSurfaceProbe -EnableClientSoundSystemInitProbe `
+  -EnableClientEngineFsProbe -DisposableTestCopyConfirmed
+```
+
+The first test only checks FileExists via engine mounts. Only after
+its trace and 0x53494E68 terminal exit are confirmed should the
+separate -EnableClientEngineFsReadProbe switch be added for a second
+run. Each command is a deliberate terminal diagnostic, not a game boot.
+Check OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE after each launch;
+do not rerun if recovery is incomplete.
+
+The SDK-specific ABI ordering is synthetic MSVC x86 evidence; the
+retail-engine result remains unknown until the owner conducts this test.
