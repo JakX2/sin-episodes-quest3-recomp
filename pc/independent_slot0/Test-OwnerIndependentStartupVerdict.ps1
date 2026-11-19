@@ -740,6 +740,9 @@ try {
                 $surfaceStartIndex,$surfaceFoundIndex,$written.Length,
                 (@($written | Where-Object { $_ -like '*mat-surface*' }) -join '|'))
         }
+        Write-Output ("DEBUG_WRITTEN_SURFACE_EVENT_ORDER: start={0}, found={1}, eventCount={2}" -f
+            $surfaceStartIndex,$surfaceFoundIndex,$written.Length)
+        Write-Output ("DEBUG_WRITTEN_TAIL: {0}" -f (($written | Select-Object -Last 8) -join ' | '))
         $out=Verify 'CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
         if(-not (($out -join '|').Contains(":client:$state"))) {throw "Sound system Init outcome missing: $state"}
     }
