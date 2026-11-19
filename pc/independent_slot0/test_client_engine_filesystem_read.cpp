@@ -106,9 +106,18 @@ int main() {
        fs::ReadAndValidate(&owner)!=fs::Status::MissingLayout)return Fail(6);
     missingLayout=false;
     fs::Counts counts{};
-    if(fs::ReadAndValidate(&owner,&counts)!=fs::Status::ParsedAndVerified||
+    const auto verified=fs::ReadAndValidate(&owner,&counts);
+    if(verified!=fs::Status::ParsedAndVerified||
        counts.definitions!=62||counts.refs!=8||counts.pairs!=156||
-       counts.dividers!=66||openCalls!=closeCalls||readCalls<10)return Fail(7);
+       counts.dividers!=66||openCalls!=closeCalls||readCalls<10) {
+        std::fprintf(stderr,
+            "read=%s counts=%u,%u,%u,%u io=%d/%d/%d exists=%d\n",
+            fs::Name(verified),static_cast<unsigned>(counts.definitions),
+            static_cast<unsigned>(counts.refs),static_cast<unsigned>(counts.pairs),
+            static_cast<unsigned>(counts.dividers),openCalls,closeCalls,
+            readCalls,existsCalls);
+        return Fail(7);
+    }
     const int closed=closeCalls;
     hugeSize=true;
     if(fs::ReadAndValidate(&owner)!=fs::Status::ReadRefused ||
