@@ -64,54 +64,54 @@ int main(){
                   "published record pointers cannot be copied");
     System system;
     if(storage::ExecuteKnownStages(system.store,nullptr,&system.registry,
-            &system.fixture,&CreateDefinition,&Allowed,&Observe))return 1;
+            &system.fixture,&CreateDefinition,&Allowed,&Observe)){ std::fprintf(stderr,"Stats storage fixture failure at assertion 1\n");return 1; }
     auto& f=system.fixture;
     f.staticDenied=5;f.dynamicDenied=7;
     if(!system.Init() || f.badContext || f.remaining.size()!=5 ||
        system.store.staticCount()!=55 || system.store.dynamicCount()!=11 ||
-       f.factoryCalls!=54)return 2;
+       f.factoryCalls!=54){ std::fprintf(stderr,"Stats storage fixture failure at assertion 2\n");return 2; }
     for(std::size_t i=0;i<55;++i){
         auto* record=system.store.staticAt(i);
         if(i==5){
-            if(record || f.attempted[i])return 3;
+            if(record || f.attempted[i]){ std::fprintf(stderr,"Stats storage fixture failure at assertion 3\n");return 3; }
         } else {
-            if(!record || f.attempted[i]!=1 || record->runtime)return 4;
+            if(!record || f.attempted[i]!=1 || record->runtime){ std::fprintf(stderr,"Stats storage fixture failure at assertion 4\n");return 4; }
             const auto expected=i<16?
                 reinterpret_cast<void*>(static_cast<std::uintptr_t>(i+1)):nullptr;
-            if(record->definition!=expected)return 5;
+            if(record->definition!=expected){ std::fprintf(stderr,"Stats storage fixture failure at assertion 5\n");return 5; }
         }
     }
     for(std::size_t i=0;i<11;++i){
         auto* record=system.store.dynamicAt(i);
-        if(i==7){if(record)return 6;}
+        if(i==7){if(record){ std::fprintf(stderr,"Stats storage fixture failure at assertion 6\n");return 6; }}
         else {
-            if(!record)return 7;
-            for(auto field:record->fields)if(field)return 8;
+            if(!record){ std::fprintf(stderr,"Stats storage fixture failure at assertion 7\n");return 7; }
+            for(auto field:record->fields)if(field){ std::fprintf(stderr,"Stats storage fixture failure at assertion 8\n");return 8; }
         }
     }
-    if(system.store.staticAt(55) || system.store.dynamicAt(11))return 9;
+    if(system.store.staticAt(55) || system.store.dynamicAt(11)){ std::fprintf(stderr,"Stats storage fixture failure at assertion 9\n");return 9; }
     // Reinitializing destroys previous records and resets all payloads,
     // then appends 55 + 11 pointer entries in the original order.
     f.staticDenied=f.dynamicDenied=-1;f.remaining.clear();
     if(!system.Init() || f.remaining.size()!=5 || f.factoryCalls!=109 ||
-       !system.store.staticAt(5) || !system.store.dynamicAt(7))return 10;
+       !system.store.staticAt(5) || !system.store.dynamicAt(7)){ std::fprintf(stderr,"Stats storage fixture failure at assertion 10\n");return 10; }
     for(std::size_t i=0;i<55;++i)
-        if(f.attempted[i]!=(i==5?1:2))return 11;
+        if(f.attempted[i]!=(i==5?1:2)){ std::fprintf(stderr,"Stats storage fixture failure at assertion 11\n");return 11; }
     for(std::size_t i=0;i<11;++i)
-        for(auto field:system.store.dynamicAt(i)->fields)if(field)return 12;
+        for(auto field:system.store.dynamicAt(i)->fields)if(field){ std::fprintf(stderr,"Stats storage fixture failure at assertion 12\n");return 12; }
     // The next original Stats callsite after both now-owned helpers
     // is the owner-memory helper at VA 0x241FC5A0.
     if(f.remaining[0].original_callee!=0x241FC5A0u ||
        f.remaining[1].original_callee!=0x24204F30u ||
        f.remaining[2].original_callback_va!=0x241FB7A0u ||
        f.remaining[3].original_callback_va!=0x241FB7E0u ||
-       f.remaining[4].original_callback_va!=0x241FCA60u)return 13;
+       f.remaining[4].original_callback_va!=0x241FCA60u){ std::fprintf(stderr,"Stats storage fixture failure at assertion 13\n");return 13; }
     // A missing external helper refuses this independent adapter.
     f.rejectLast=true;f.remaining.clear();
-    if(system.Init() || f.remaining.size()!=5)return 14;
+    if(system.Init() || f.remaining.size()!=5){ std::fprintf(stderr,"Stats storage fixture failure at assertion 14\n");return 14; }
     // The enclosing game-system loop now receives that refusal.
     gs::Registry registry;registry.DirectRegister(&system);
-    if(registry.Initialize().outcome!=gs::Outcome::InitRefused)return 15;
+    if(registry.Initialize().outcome!=gs::Outcome::InitRefused){ std::fprintf(stderr,"Stats storage fixture failure at assertion 15\n");return 15; }
     std::puts("PASS owned 55 static + 11 dynamic original Stats records, null slots, reset and 7-call Init ordering");
     return 0;
 }
