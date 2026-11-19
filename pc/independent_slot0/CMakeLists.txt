@@ -24,6 +24,13 @@ add_test(NAME independent_owner_probe_guardrails
     -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerIndependentEngineProbe.ps1"
     -IndependentBin "$<TARGET_FILE_DIR:sin_slot0_client>")
 
+# No original binary or retail process: exercise exact phase selection and
+# refusal of forged, stale, incomplete or cross-session owner evidence.
+add_test(NAME independent_owner_filesystem_gate_synthetic
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerFileSystemRetailGate.ps1"
+    -Gate "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerFileSystemRetailGate.ps1")
+
 # Session-isolated owner-engine failure classification; synthetic logs only.
 add_test(NAME independent_owner_startup_verdict
   COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
