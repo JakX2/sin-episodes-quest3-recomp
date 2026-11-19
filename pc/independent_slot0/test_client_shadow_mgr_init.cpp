@@ -131,10 +131,67 @@ struct System:gs::System {
                             condition,&capture,&Record);
     }
 };
+
+// Exercise the original registry's live-count semantics with a shadow
+// subsystem that registers another system during Init. This remains a
+// synthetic Windows ABI fixture, not execution of retail game methods.
+struct OrderedSystem:gs::System {
+    std::vector<int>* order;
+    int id;
+    bool accept;
+    gs::Registry* registry=nullptr;
+    gs::System* late=nullptr;
+    bool Init() noexcept override {
+        order->push_back(id);
+        if(registry && late)registry->DirectRegister(late);
+        return accept;
+    }
+};
+struct ShadowWithLateRegistration:gs::System {
+    std::array<unsigned char,0xdc> storage{};
+    Capture capture;
+    std::vector<int>* order;
+    gs::Registry* registry;
+    gs::System* late;
+    bool Init() noexcept override {
+        order->push_back(2);
+        const bool ok=shadow::Init(storage.data(),storage.size(),
+                                   true,&capture,&Record);
+        if(ok)registry->DirectRegister(late);
+        return ok;
+    }
+};
+static bool RegistryShadowIntegration(bool rejectFirst) {
+    std::vector<int> order;
+    gs::Registry registry;
+    OrderedSystem before{ };
+    before.order=&order;before.id=1;before.accept=!rejectFirst;
+    OrderedSystem late{ };
+    late.order=&order;late.id=3;late.accept=true;
+    ShadowWithLateRegistration shadowSystem{ };
+    shadowSystem.order=&order;
+    shadowSystem.registry=&registry;
+    shadowSystem.late=&late;
+    registry.DirectRegister(&before);
+    registry.DirectRegister(&shadowSystem);
+    const auto result=registry.Initialize();
+    if(rejectFirst)
+        return result.outcome==gs::Outcome::InitRefused &&
+               result.initialized_count==0 &&
+               order==std::vector<int>{1} &&
+               shadowSystem.capture.actions.empty() &&
+               registry.registered_size()==2;
+    return result.succeeded() && result.initialized_count==3 &&
+           order==std::vector<int>({1,2,3}) &&
+           registry.registered_size()==3 &&
+           Check(shadowSystem.capture.actions,true);
+}
+
 int main(){
     static_assert(sizeof(void*)==4,"original engine uses MSVC x86");
     if(!TimingContract(false) || !TimingContract(true))return 7;
     if(!MetadataContract(false) || !MetadataContract(true))return 8;
+    if(!RegistryShadowIntegration(false) || !RegistryShadowIntegration(true))return 9;
     System system;
     system.storage.fill(0xa5);
     if(shadow::Init(nullptr,system.storage.size(),false,&system.capture,&Record) ||
