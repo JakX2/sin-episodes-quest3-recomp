@@ -18,6 +18,8 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+      - name: Validate original-free SiN HUD converter ABI audit
+        run: python research/tests/test_sin_client_hud_converter_native.py
       - name: Validate original-free VEngineVGui001 PE parser
         run: python research/tests/test_sin_client_engine_vgui_slot1.py
       - name: Configure native MSVC Win32

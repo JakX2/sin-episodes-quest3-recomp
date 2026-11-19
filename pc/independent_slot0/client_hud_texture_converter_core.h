@@ -71,6 +71,10 @@ using RegisterFn=void (*)(void*,const char*,Converter*) noexcept;
 class OneTimeOwner {
 public:
     explicit OneTimeOwner(Hooks callbacks) noexcept:converter_(callbacks){}
+    OneTimeOwner(const OneTimeOwner&)=delete;
+    OneTimeOwner& operator=(const OneTimeOwner&)=delete;
+    OneTimeOwner(OneTimeOwner&&)=delete;
+    OneTimeOwner& operator=(OneTimeOwner&&)=delete;
     bool Register(void* ctx,RegisterFn registrar) noexcept {
         if(initialized_ || !registrar)return false;
         initialized_=true;  // reentrant calls do not double-register
