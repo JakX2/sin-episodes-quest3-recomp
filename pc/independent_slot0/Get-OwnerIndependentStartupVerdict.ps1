@@ -343,6 +343,9 @@ foreach ($log in $logs) {
                 $matSurfaceStage=3
             }
         }
+        if($role -eq 'client' -and $phase -like 'mat-surface-*') {
+            $soundInitSeenEvents.Add(("mat:$phase=$version;previous=$matSurfaceStage/$matSurfaceResult;control=$vguiControlsStage/$vguiControlsResult;panel=$engineVGuiSlot1Stage/$engineVGuiSlot1Result"))
+        }
         if($role -eq 'client' -and $phase -like 'sound-system-init-*') {
             $soundInitSeenEvents.Add(("$phase=$version;mat=$matSurfaceStage/$matSurfaceResult;control=$vguiControlsStage/$vguiControlsResult;panel=$engineVGuiSlot1Stage/$engineVGuiSlot1Result"))
         }
