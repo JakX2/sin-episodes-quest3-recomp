@@ -8,7 +8,7 @@ import unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"tools"))
 from audit_sin_client_constructed_gamesystems import (
-    CONSTRUCTED,store_bytes,verify_constructed,audit_original,AuditError,BASE)
+    CONSTRUCTED,store_bytes,verify_constructed,verify_detail_full,DETAIL_INIT,audit_original,AuditError,BASE)
 class FakePE:
     base=BASE
     def __init__(self):
@@ -55,6 +55,16 @@ class ConstructorTests(unittest.TestCase):
                 f=FakePE();v=f.regions[key];f.regions[key]=bytes([v[0]^1])+v[1:]
                 with self.subTest(index=idx,field=hex(key[0])),self.assertRaises(AuditError):
                     verify_constructed(f,f.specs)
+    def test_complete_detail_init_sha_refusal(self):
+        f=FakePE()
+        va,length,_=DETAIL_INIT
+        sample=bytes([31])*length
+        f.regions[va,length]=sample
+        h=hashlib.sha256(sample).hexdigest()
+        self.assertEqual(verify_detail_full(f,h)["complete_bytes"],31)
+        f.regions[va,length]=bytes([32])*length
+        with self.assertRaisesRegex(AuditError,"complete DetailObjectSystem"):
+            verify_detail_full(f,h)
     def test_wrong_original_refused(self):
         with tempfile.TemporaryDirectory() as root:
             p=pathlib.Path(root)/"client.dll";p.write_bytes(b"not original")

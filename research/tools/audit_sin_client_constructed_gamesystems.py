@@ -36,6 +36,21 @@ CONSTRUCTED=(
   "dc786f99f772336c10e6a531ee10294d5737ad13b6e1537b1b0c2153711a8d85")
 )
 BASE=0x24000000
+DETAIL_INIT=(0x24126300,31,
+    "0deaa3657822d8b54852e1a66ef806b10667f3217e80a63f51bea3a3b8a53939")
+def verify_detail_full(pe,digest=DETAIL_INIT[2]):
+    va,length,_=DETAIL_INIT
+    if hashlib.sha256(pe.read(va,length)).hexdigest()!=digest:
+        raise AuditError("original complete DetailObjectSystem Init SHA mismatch")
+    # Original copies provider+0x28 twice to this+0x806C and +0x8070.
+    # Distinct offsets/call order are backed by the complete 31-byte SHA.
+    return {"original_va":hex(va),"complete_bytes":length,
+            "original_sha256":DETAIL_INIT[2],
+            "source_globals":["0x24358930","0x243588E8"],
+            "source_offsets":[40,40],
+            "destination_offsets":[0x806c,0x8070],
+            "returns_true":True}
+
 def store_bytes(obj,vt,kind):
     u32=lambda v:struct.pack("<I",v)
     if kind=="absolute":return b"\xc7\x05"+u32(obj)+u32(vt)
@@ -85,7 +100,10 @@ def audit_original(path):
     blob=pathlib.Path(path).read_bytes()
     if hashlib.sha256(blob).hexdigest()!=CLIENT_SHA256:
         raise AuditError("original client.dll full SHA256 mismatch")
-    return verify_constructed(OriginalPE(blob))
+    pe=OriginalPE(blob)
+    result=verify_constructed(pe)
+    result["complete_detail_object_init"]=verify_detail_full(pe)
+    return result
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("client")
