@@ -78,3 +78,39 @@ line-ending translation may cause Size(handle) to differ from the
 number of returned bytes. Until a real owner test confirms it, the
 strict 256 KiB exact-read and parser safeguards fail closed rather
 than accepting incomplete content.
+
+## Original resource-owner consistency fix
+
+The earlier staged prototype reset the published 66-record Catalog in
+step three and rebound its 62 text entries before step four loaded and
+parsed the layout. On step-three or step-four failure it preserved old
+Documents but could leave the published Catalog reset and its textual
+Projection out of sync. Counting entries alone did not catch this.
+
+The independent stage-three implementation now allocates a separate
+pending Catalog and validates/binds the 62 parsed definitions into a
+separate pending Projection. Neither replaces the published owners until
+stage four has read a valid complete layout: 156 name/format pairs plus
+66 dividers, cross-checked against the exact 62 definitions and eight
+percentage_of references.
+
+Three independent resource owners (Catalog, Projection, Documents)
+publish via allocation-free noexcept Swap after validation. If the
+unreconstructed stage-four callback is missing or refuses, those three
+swaps are reversed immediately. Both original-stage failure counts
+remain unchanged: definitions failure completed=2/attempted=3;
+layout failure completed=3/attempted=4. Successful resource loading
+allows the stage-four callback to observe the newly published owners.
+
+This guarantees only resource-owner snapshot consistency at the
+stage-three/four boundary. Earlier separately owned static/dynamic
+records are reset during retry and external callback side effects are
+NOT reversible. A later registration refusal does not imply an atomic
+full seven-stage game-system transaction.
+
+The standalone Win32 x86 pointer-identity fixture compares the actual
+Catalog record, Projection text and both Documents vector data pointers
+across refused reads, malformed inputs, valid-but-truncated scripts,
+one denied record allocation, and a refusing layout callback. Only a
+successful complete retry replaces the last-good resource snapshot.
+Both the retail scripts and game DLL stay owner-private.
