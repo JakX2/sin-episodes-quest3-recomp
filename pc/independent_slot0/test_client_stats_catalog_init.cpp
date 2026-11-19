@@ -66,6 +66,42 @@ int main(){
     gs::Registry outer;outer.DirectRegister(&system);
     if(outer.Initialize().outcome!=gs::Outcome::InitRefused ||
        system.host.continuations!=3)return 4;
+    // Exhaustive synthetic fault injection: every possible single failed
+    // allocation must retain all 66 logical slots and reach the continuation.
+    // This is host behavior, not a claim about the proprietary resource ABI.
+    for(int denied=0;denied<66;++denied){
+        GameSystem trial;
+        trial.host.deniedIndex=denied;
+        if(!trial.Init() || trial.host.badState ||
+           trial.host.allocations!=66 || trial.host.continuations!=1 ||
+           trial.catalog.size()!=66 || trial.catalog.at(denied))return 5;
+        for(int i=0;i<66;++i){
+            auto* entry=trial.catalog.at(i);
+            if(i!=denied && (!entry || entry->identifier!=-1 ||
+                             entry->first!=0 || entry->second!=0))return 6;
+        }
+        // A second pass must replace the missing slot and reset all values.
+        trial.host.deniedIndex=-1;
+        if(!trial.Init() || trial.host.badState ||
+           trial.host.allocations!=132 || trial.host.continuations!=2 ||
+           !trial.catalog.at(denied))return 7;
+    }
+    // A refused resource continuation must never be mistaken for a
+    // successful AutoGameSystem initialization. Reinitialization can recover.
+    GameSystem recovering;
+    recovering.host.shouldContinue=false;
+    gs::Registry registry;
+    registry.DirectRegister(&recovering);
+    if(registry.Initialize().outcome!=gs::Outcome::InitRefused ||
+       recovering.host.continuations!=1 ||
+       recovering.catalog.size()!=66)return 8;
+    recovering.host.shouldContinue=true;
+    gs::Registry retry;
+    retry.DirectRegister(&recovering);
+    if(retry.Initialize().outcome!=gs::Outcome::Initialized ||
+       recovering.host.continuations!=2 ||
+       recovering.catalog.size()!=66 ||
+       recovering.host.badState)return 9;
     std::puts("PASS Stats original 66 x 12 catalog reset/nullable allocation and unknown resource callback boundary");
     return 0;
 }
