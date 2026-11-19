@@ -236,6 +236,7 @@ int main() {
     if(!run.succeeded()||run.completed!=7||coordinatorCalls!=4 ||
        state.scripts.definitions().size()!=62 ||
        !state.last_script_error.empty())return Fail(18);
+    stagedParams=true;
     std::string single="old";
     error="old";
     if(!fs::ReadForStagedStats(&owner,fs::kDefinitions,single,error) ||
@@ -245,7 +246,6 @@ int main() {
        error!="unrecognized stats resource" || single!="retain-me")
         return Fail(20);
     defs=OriginalDefs();layout=OriginalLayout();
-    stagedParams=true;
     co::State staged;
     hooks.read_engine_documents=nullptr;
     hooks.asset_reader_context=nullptr;
