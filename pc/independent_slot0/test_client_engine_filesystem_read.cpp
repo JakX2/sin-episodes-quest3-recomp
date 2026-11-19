@@ -1,10 +1,16 @@
 // SDK2004 VFileSystem012 original-free MSVC x86 executable test.
 #include "client_engine_filesystem_read.h"
+#include "client_stats_coordinator.h"
+#include <type_traits>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <cstdint>
 namespace fs=sin_independent::engine_fs;
+namespace co=sin_independent::stats_coordinator;
+static void* expectedStatsContext=nullptr;
+static_assert(std::is_same<co::AssetReader,decltype(&fs::ReadForStatsCoordinator)>::value,
+    "Engine-backed stats reader must match injected coordinator ABI");
 static int existsCalls=0,openCalls=0,closeCalls=0,readCalls=0;
 static bool missingDefs=false,missingLayout=false,shortRead=false,hugeSize=false;
 static bool rejectOpen=false;
@@ -90,6 +96,14 @@ static std::string Layout(int count) {
     for(int i=0;i<66;++i)result+="\"==========================\"\n";
     return result;
 }
+static int coordinatorCalls=0;
+static bool ResourceForCoordinator(void* context,sin_independent::stats_catalog::Catalog& c) noexcept {
+    return context==expectedStatsContext && c.size()==66;
+}
+static bool LaterForCoordinator(void*,const sin_independent::stats_system::Step&) noexcept {
+    ++coordinatorCalls;
+    return true;
+}
 static int Fail(int i) {std::fprintf(stderr,"engine-fs-fixture step=%d\n",i);return i;}
 int main() {
     FileSystem owner;
@@ -141,6 +155,53 @@ int main() {
     defs=Definitions(62);layout=Layout(62);
     if(fs::ReadAndValidate(&owner)!=fs::Status::ParsedAndVerified ||
        closeCalls!=openCalls-1)return Fail(12);
-    std::puts("PASS SDK2004 primary FileSystem slots, partial reads, close-on-refusal, owner counts");
+    std::string providedDefinitions="retain-old-defs";
+    std::string providedLayout="retain-old-layout";
+    std::string error="previous";
+    if(!fs::ReadForStatsCoordinator(&owner,providedDefinitions,providedLayout,error) ||
+       providedDefinitions!=defs || providedLayout!=layout || !error.empty() ||
+       openCalls!=closeCalls+1)return Fail(13);
+    const auto previousDefinitions=providedDefinitions;
+    const auto previousLayout=providedLayout;
+    shortRead=true;
+    if(fs::ReadForStatsCoordinator(&owner,providedDefinitions,providedLayout,error) ||
+       error!="read-refused" ||
+       providedDefinitions!=previousDefinitions ||
+       providedLayout!=previousLayout ||
+       openCalls!=closeCalls+1)return Fail(14);
+    shortRead=false;missingDefs=true;
+    if(fs::ReadForStatsCoordinator(&owner,providedDefinitions,providedLayout,error) ||
+       error!="missing-definitions" ||
+       providedDefinitions!=previousDefinitions ||
+       providedLayout!=previousLayout)return Fail(15);
+    missingDefs=false;
+    co::State state;
+    int statsOwner=1,registry=2;
+    expectedStatsContext=&statsOwner;
+    co::Hooks hooks{};
+    hooks.context=&statsOwner;
+    hooks.asset_reader_context=&owner;
+    hooks.load_catalog_resources=&ResourceForCoordinator;
+    hooks.run_unreconstructed_step=&LaterForCoordinator;
+    hooks.read_engine_documents=&fs::ReadForStatsCoordinator;
+    coordinatorCalls=0;
+    auto run=co::Initialize(state,&statsOwner,&registry,hooks);
+    if(!run.succeeded() || run.completed!=7 || run.attempted!=7 ||
+       state.scripts.definitions().size()!=62 ||
+       state.scripts.display().size()!=222 ||
+       coordinatorCalls!=4)return Fail(16);
+    shortRead=true;coordinatorCalls=0;
+    run=co::Initialize(state,&statsOwner,&registry,hooks);
+    if(run.outcome!=co::Outcome::AssetLoadRefused ||
+       run.completed!=3||run.attempted!=4||coordinatorCalls!=0 ||
+       state.scripts.definitions().size()!=62 ||
+       state.scripts.display().size()!=222 ||
+       state.last_script_error!="read-refused")return Fail(17);
+    shortRead=false;coordinatorCalls=0;
+    run=co::Initialize(state,&statsOwner,&registry,hooks);
+    if(!run.succeeded()||run.completed!=7||coordinatorCalls!=4 ||
+       state.scripts.definitions().size()!=62 ||
+       !state.last_script_error.empty())return Fail(18);
+    std::puts("PASS VFileSystem012 MSVC slots, injected stats coordinator, partial reads, rollback and retry");
     return 0;
 }

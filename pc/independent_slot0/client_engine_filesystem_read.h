@@ -19,7 +19,7 @@ inline constexpr const char* kLayout="scripts/stats/stats_display_layout.txt";
 inline constexpr std::size_t kLimit=256u*1024u;
 enum class Status {
     InvalidAbi, MissingDefinitions, MissingLayout, BothPresent,
-    ReadRefused, UnexpectedCounts, ParsedAndVerified
+    ReadRefused, UnexpectedCounts, ParsedAndVerified, TextsRead
 };
 inline const char* Name(Status value) noexcept {
     switch(value) {
@@ -30,6 +30,7 @@ inline const char* Name(Status value) noexcept {
         case Status::ReadRefused:return "read-refused";
         case Status::UnexpectedCounts:return "unexpected-counts";
         case Status::ParsedAndVerified:return "parsed-and-verified";
+        case Status::TextsRead:return "texts-read";
     }
     return "unknown";
 }
@@ -103,17 +104,44 @@ inline bool ReadOne(void* fileSystem,const Methods& f,const char* path,
     output.swap(buffer);
     return true;
 }
-inline Status ReadAndValidate(void* fileSystem,Counts* counts=nullptr) noexcept {
-    if(counts)*counts={};
+// This lower-level reader returns BOTH raw documents only after both
+// bounded engine reads complete. On refusal, caller strings stay intact.
+inline Status ReadPair(void* fileSystem,std::string& definitions,
+                       std::string& layout) noexcept {
     const auto presence=Presence(fileSystem);
     if(presence!=Status::BothPresent)return presence;
-    Methods f{};
-    if(!Resolve(fileSystem,f,true))return Status::InvalidAbi;
+    Methods methods{};
+    if(!Resolve(fileSystem,methods,true))return Status::InvalidAbi;
     try {
-        std::string definitions,layout;
-        if(!ReadOne(fileSystem,f,kDefinitions,definitions) ||
-           !ReadOne(fileSystem,f,kLayout,layout))
+        std::string first,second;
+        if(!ReadOne(fileSystem,methods,kDefinitions,first) ||
+           !ReadOne(fileSystem,methods,kLayout,second))
             return Status::ReadRefused;
+        definitions.swap(first);
+        layout.swap(second);
+        return Status::TextsRead;
+    } catch(...) {
+        return Status::ReadRefused;
+    }
+}
+inline bool ReadForStatsCoordinator(void* engineFileSystem,
+                                    std::string& definitions,
+                                    std::string& layout,
+                                    std::string& error) noexcept {
+    const auto status=ReadPair(engineFileSystem,definitions,layout);
+    if(status!=Status::TextsRead) {
+        try {error=Name(status);} catch(...) {error.clear();}
+        return false;
+    }
+    error.clear();
+    return true;
+}
+inline Status ReadAndValidate(void* fileSystem,Counts* counts=nullptr) noexcept {
+    if(counts)*counts={};
+    std::string definitions,layout;
+    const auto readStatus=ReadPair(fileSystem,definitions,layout);
+    if(readStatus!=Status::TextsRead)return readStatus;
+    try {
         stats_assets::Documents parsed;
         std::string error;
         if(!parsed.LoadTexts(definitions,layout,error))return Status::ReadRefused;
