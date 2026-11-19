@@ -34,6 +34,14 @@ struct BaseFileSystem {
     // must start immediately after this base's 32-bit primary vptr.
     virtual int Read(void* output,int size,void* file) {
         ++readCalls;
+        if(file!=&handle || !handle.bytes) {
+            FixtureAbiViolation("Read invalid handle");
+            return 0;
+        }
+        if(size<0 || (!output && size>0)) {
+            FixtureAbiViolation("Read invalid buffer/size");
+            return 0;
+        }
         auto* h=static_cast<Handle*>(file);
         if(shortRead)return 0;
         const auto amount=std::min<std::size_t>(
@@ -47,7 +55,7 @@ struct BaseFileSystem {
     virtual int Write(const void*,int,void*){return -1;}
     virtual void* Open(const char* path,const char* mode,const char* pathId) {
         ++openCalls;
-        if(!mode||rejectOpen)return nullptr;
+        if(!path || !mode || rejectOpen)return nullptr;
         if(stagedParams) {
             if(!std::strcmp(path,fs::kDefinitions) &&
                (std::strcmp(mode,"rb") || !pathId ||
@@ -68,19 +76,20 @@ struct BaseFileSystem {
     virtual void Seek(void*,int,int){}
     virtual unsigned Tell(void*){return 0;}
     virtual unsigned Size(void* file) {
-        if(file!=&handle) {FixtureAbiViolation("invalid Size handle");return 0;}
+        if(file!=&handle || !handle.bytes) {FixtureAbiViolation("invalid Size handle");return 0;}
         const auto result=hugeSize?300000u:static_cast<unsigned>(handle.bytes->size());
         std::fprintf(stderr,"fixture Size(handle) value=%u huge=%d\n",result,hugeSize?1:0);
         return result;
     }
     virtual unsigned Size(const char*,const char*) {
-        std::fprintf(stderr,"fixture Size(path) unexpectedly called\n");
+        FixtureAbiViolation("Size(path) overload unexpectedly called");
         return 0;
     }
     virtual void Flush(void*){}
     virtual bool Precache(const char*,const char*){return false;}
     virtual bool FileExists(const char* path,const char* pathID) {
         ++existsCalls;
+        if(!path) {FixtureAbiViolation("FileExists null path");return false;}
         if(pathID) {FixtureAbiViolation("FileExists pathID");return false;}
         if(!std::strcmp(path,fs::kDefinitions))return !missingDefs;
         if(!std::strcmp(path,fs::kLayout))return !missingLayout;
