@@ -39,3 +39,44 @@ native type-specific stat-definition constructors, registry or
 `C_StatsSystem` itself. It does not invoke original virtual methods,
 change the retail engine, or establish successful full VClient011 Init.
 The owner-verified Windows checkpoint remains 0x53494E63.
+
+## All sixteen native stat definition type identities
+
+Using the original 2006 switch table at `0x24205DF0`, all sixteen
+case entry instructions, allocation sizes, native constructor calls,
+final vptr assignments, MSVC CompleteObjectLocators and
+RTTI TypeDescriptors are now authenticated separately. Source code
+`client_stats_definition_types.h` exposes metadata **without copying
+or calling the original constructors**.
+
+| Index | Original class | Original allocation |
+|---:|---|---:|
+| 0 | CIntStat | 16 |
+| 1 | CFloatStat | 16 |
+| 2 | CIntOutOfStat | 20 |
+| 3 | CFloatOutOfStat | 20 |
+| 4 | CPercentageStat | 20 |
+| 5 | CAccuracyStat | 20 |
+| 6 | CAverageStat | 20 |
+| 7 | CTimeStat | 20 |
+| 8 | CPerTimeStat | 28 |
+| 9 | CPerTimeStat | 28 |
+| 10 | CPerTimeStat | 28 |
+| 11 | CAveragePerTimeStat | 32 |
+| 12 | CMaxStat | 16 |
+| 13 | CMinStat | 16 |
+| 14 | CMaxAccumulatorStat | 20 |
+| 15 | CMinAccumulatorStat | 20 |
+
+Cases 8–10 share one CPerTimeStat vtable but pass distinct
+floating-point initialization bit patterns `0x3F800000`,
+`0x3C888889`, and `0x3991A2B4`.
+Case 11 initializes CAveragePerTimeStat with `0x3F800000`.
+These are 16 dispatch entries but **14 distinct classes**.
+
+The owner-only `audit_sin_client_stats_definition_types.py`
+verifies the full dispatch SHA, every table entry and constructor
+allocation, exact MSVC RTTI class identity, vptr assignment and
+rate parameters. Original-free CI mutations reject mismatched
+metadata. This inventory reduces constructor unknowns but DOES NOT
+equate to 16 reconstructed type-specific method implementations.

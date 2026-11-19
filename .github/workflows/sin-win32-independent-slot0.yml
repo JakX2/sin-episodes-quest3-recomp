@@ -26,6 +26,8 @@ jobs:
         run: python research/tests/test_sin_client_static_gamesystem_rtti.py
       - name: Validate original-free SiN ClientShadowMgr Init audit
         run: python research/tests/test_sin_client_shadow_mgr_init.py
+      - name: Validate original-free SiN Stats definition factory RTTI audit
+        run: python research/tests/test_sin_client_stats_definition_types.py
       - name: Validate original-free SiN Stats storage helper audit
         run: python research/tests/test_sin_client_stats_storage.py
       - name: Validate original-free SiN StatsSystem Init audit
