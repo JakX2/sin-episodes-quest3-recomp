@@ -9,9 +9,11 @@ static int existsCalls=0,openCalls=0,closeCalls=0,readCalls=0;
 static bool missingDefs=false,missingLayout=false,shortRead=false,hugeSize=false;
 static bool rejectOpen=false;
 static std::string defs,layout;
+struct Handle {const std::string* bytes=nullptr;std::size_t cursor=0;};
+static Handle handle;
 struct BaseFileSystem {
-    struct Handle {const std::string* bytes=nullptr;std::size_t cursor=0;};
-    Handle handle;
+    // SDK IBaseFileSystem has NO instance fields: secondary IAppSystem
+    // must start immediately after this base's 32-bit primary vptr.
     virtual int Read(void* output,int size,void* file) {
         ++readCalls;
         auto* h=static_cast<Handle*>(file);
