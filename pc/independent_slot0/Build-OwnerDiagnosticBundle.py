@@ -26,6 +26,13 @@ FS_SCRIPTS = (
     "Invoke-OwnerFileSystemRetailGate.ps1",
     "OWNER_CLIENT_ENGINE_FILESYSTEM_V012.md",
 )
+# Human-facing ONE ZIP. All required independent binaries/scripts already
+# inside, so the owner never has to move DLLs into a game folder manually.
+ONE_CLICK_SCRIPTS = FS_SCRIPTS + (
+    "RUN_SIN_TEST.bat",
+    "Start-SiNFileSystemTest.ps1",
+    "README_ONE_CLICK_FIRST.txt",
+)
 ORIGINAL_HASHES = {
     "client.dll": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d",
     "server.dll": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
@@ -88,6 +95,33 @@ class TestStage(unittest.TestCase):
             for name,expected in manifest["files"].items():
                 self.assertEqual(digest(output/name),expected)
 
+    def test_one_click_bundle_complete_and_distinct(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=pathlib.Path(temporary)
+            binaries=root/"binaries"
+            scripts=root/"scripts"
+            destination=root/"one-click"
+            binaries.mkdir()
+            scripts.mkdir()
+            for name in BINARIES:
+                (binaries/name).write_bytes(b"synthetic independent PE test")
+            for name in ONE_CLICK_SCRIPTS:
+                (scripts/name).write_text("test only: "+name, encoding="utf-8")
+            (scripts/"UNRELATED_PRIVATE_RETAIL.dll").write_bytes(b"forbidden")
+            stage(binaries,scripts,destination,"c"*40,ONE_CLICK_SCRIPTS)
+            manifest=json.loads(
+                (destination/"manifest.json").read_text(encoding="utf-8"))
+            desired={"bin/"+name for name in BINARIES} | set(ONE_CLICK_SCRIPTS)
+            self.assertEqual(set(manifest["files"]),desired)
+            self.assertEqual(len(manifest["files"]),len(desired))
+            self.assertEqual(manifest["commit"],"c"*40)
+            self.assertTrue((destination/"RUN_SIN_TEST.bat").is_file())
+            self.assertTrue((destination/"Start-SiNFileSystemTest.ps1").is_file())
+            self.assertNotIn("UNRELATED_PRIVATE_RETAIL.dll",manifest["files"])
+            self.assertNotIn("Run-ClientCvarDiagnostic.ps1",manifest["files"])
+            for name,digest_string in manifest["files"].items():
+                self.assertEqual(digest(destination/name),digest_string)
+
     def test_allowlist_and_manifest(self):
         with tempfile.TemporaryDirectory() as root:
             root = pathlib.Path(root)
@@ -126,17 +160,22 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--filesystem", action="store_true",
                         help="build dedicated filesystem-presence/read bundle")
+    parser.add_argument("--one-click", action="store_true",
+                        help="build user-ready standalone Windows one-click ZIP contents")
     args = parser.parse_args()
     if args.self_test:
         unittest.main(argv=["self-test"])
     else:
         if args.bin is None or args.output is None:
             parser.error("--bin and --output required")
+        if args.one_click and args.filesystem:
+            parser.error("--one-click and --filesystem are mutually exclusive")
         commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], text=True).strip()
         stage(args.bin, pathlib.Path(__file__).resolve().parent,
               args.output, commit,
-              FS_SCRIPTS if args.filesystem else SCRIPTS)
+              ONE_CLICK_SCRIPTS if args.one_click else (
+                  FS_SCRIPTS if args.filesystem else SCRIPTS))
 
 if __name__ == "__main__":
     main()
