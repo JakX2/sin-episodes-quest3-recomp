@@ -81,22 +81,32 @@ try {
     }
     # All of these modifications must block the read phase, even though the
     # text still contains plausible marker names and both-present strings.
-    foreach($mutation in @(
-        @('VERIFIED_COMPLETE','INCOMPLETE_MANUAL_RECOVERY_REQUIRED'),
-        @('0x53494E68','0x53494E69'),
-        @('1397313128','1397313129'),
-        @('OWNER_CLIENT_ENGINE_FS_READ_PROBE: DISABLED',
-          'OWNER_CLIENT_ENGINE_FS_READ_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'),
-        @('sin-independent-'+$session+'-2222.log',
-          'sin-independent-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2222.log'),
-        @('CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF',
-          'CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'),
-        @('OWNER_INDEPENDENT_PROBE_ROLE: CLIENT','OWNER_INDEPENDENT_PROBE_ROLE: SERVER')
-    )) {
+    $mutations = @(
+        [pscustomobject]@{ Before='VERIFIED_COMPLETE'; After='INCOMPLETE_MANUAL_RECOVERY_REQUIRED' }
+        [pscustomobject]@{ Before='0x53494E68'; After='0x53494E69' }
+        [pscustomobject]@{ Before='1397313128'; After='1397313129' }
+        [pscustomobject]@{
+            Before='OWNER_CLIENT_ENGINE_FS_READ_PROBE: DISABLED'
+            After='OWNER_CLIENT_ENGINE_FS_READ_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
+        }
+        [pscustomobject]@{
+            Before=('sin-independent-'+$session+'-2222.log')
+            After='sin-independent-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2222.log'
+        }
+        [pscustomobject]@{
+            Before='CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+            After='CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        }
+        [pscustomobject]@{ Before='OWNER_INDEPENDENT_PROBE_ROLE: CLIENT'; After='OWNER_INDEPENDENT_PROBE_ROLE: SERVER' }
+    )
+    if($mutations.Count -ne 7) {
+        throw 'Expected seven explicit independent evidence mutations'
+    }
+    foreach($mutation in $mutations) {
         $wrong=Join-Path $dir 'mutated.txt'
         [System.IO.File]::WriteAllText($wrong,(
             [System.IO.File]::ReadAllText($presence).Replace(
-                [string]$mutation[0],[string]$mutation[1])
+                [string]$mutation.Before,[string]$mutation.After)
         ))
         $bad=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
                Phase='Read';PlanOnly=$true;PriorPresenceTranscript=$wrong}
