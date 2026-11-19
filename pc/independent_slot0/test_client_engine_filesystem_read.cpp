@@ -369,6 +369,35 @@ int main() {
        staged.scripts.display().size()!=publishedLayout ||
        !staged.last_script_error.empty())
         return Fail(31);
+    // A syntactically malformed definitions document must fail in stage three,
+    // before the layout resource is opened. Previously published state is
+    // immutable, and a corrected source must permit a complete retry.
+    const std::string goodDefinitions=defs;
+    const auto priorDefinitionCount=staged.scripts.definitions().size();
+    const auto priorLayoutCount=staged.scripts.display().size();
+    const auto priorBindingCount=staged.catalog_text.count();
+    const int malformedDefsOpen=openCalls;
+    const int malformedDefsClose=closeCalls;
+    defs="\"StatDefinitions\" { \"stat\" { \"name\" \"unterminated\"\n";
+    coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(run.outcome!=co::Outcome::ResourceLoaderRefused ||
+       run.completed!=2 || run.attempted!=3 || coordinatorCalls!=0 ||
+       staged.scripts.definitions().size()!=priorDefinitionCount ||
+       staged.scripts.display().size()!=priorLayoutCount ||
+       staged.catalog_text.count()!=priorBindingCount ||
+       openCalls!=malformedDefsOpen+1 ||
+       closeCalls!=malformedDefsClose+1)
+        return Fail(32);
+    defs=goodDefinitions;
+    coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(!run.succeeded() || run.completed!=7 || run.attempted!=7 ||
+       coordinatorCalls!=4 || staged.catalog_text.count()!=priorBindingCount ||
+       staged.scripts.definitions().size()!=priorDefinitionCount ||
+       staged.scripts.display().size()!=priorLayoutCount ||
+       !staged.last_script_error.empty())
+        return Fail(33);
     if(fixtureAbiViolations) {
         std::fprintf(stderr,"fixture ABI violations=%d last=%s\n",fixtureAbiViolations,
                      fixtureAbiReason?fixtureAbiReason:"unknown");
