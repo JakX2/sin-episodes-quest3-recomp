@@ -18,6 +18,7 @@ static_assert(std::is_same<co::AssetReader,decltype(&fs::ReadForStatsCoordinator
 static int existsCalls=0,openCalls=0,closeCalls=0,readCalls=0;
 static bool missingDefs=false,missingLayout=false,shortRead=false,hugeSize=false;
 static bool rejectOpen=false;
+static bool rejectLayoutOpen=false;
 static bool stagedParams=false;
 static int fixtureAbiViolations=0;
 static const char* fixtureAbiReason=nullptr;
@@ -55,7 +56,8 @@ struct BaseFileSystem {
     virtual int Write(const void*,int,void*){return -1;}
     virtual void* Open(const char* path,const char* mode,const char* pathId) {
         ++openCalls;
-        if(!path || !mode || rejectOpen)return nullptr;
+        if(!path || !mode || rejectOpen ||
+           (rejectLayoutOpen && !std::strcmp(path,fs::kLayout)))return nullptr;
         if(stagedParams) {
             if(!std::strcmp(path,fs::kDefinitions) &&
                (std::strcmp(mode,"rb") || !pathId ||
@@ -317,6 +319,29 @@ int main() {
     if(!run.succeeded() || run.completed!=7 || coordinatorCalls!=4 ||
        staged.catalog_text.count()!=62 ||
        !staged.last_script_error.empty())return Fail(23);
+    // Failure in stage four must retain both previously published documents and
+    // the bound 62-record catalog; the next attempt must recover completely.
+    const std::string retainedDefs=staged.scripts.definitions().empty()?"":defs;
+    const std::size_t retainedCount=staged.catalog_text.count();
+    const int beforeLayoutRefusal=closeCalls;
+    rejectLayoutOpen=true;
+    coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(run.outcome!=co::Outcome::AssetLoadRefused ||
+       run.completed!=3 || run.attempted!=4 || coordinatorCalls!=0 ||
+       staged.catalog_text.count()!=retainedCount ||
+       staged.scripts.definitions().size()!=62 ||
+       staged.scripts.display().size()!=222 ||
+       defs!=retainedDefs || closeCalls!=beforeLayoutRefusal+1)
+        return Fail(28);
+    rejectLayoutOpen=false;
+    coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(!run.succeeded() || run.completed!=7 || run.attempted!=7 ||
+       coordinatorCalls!=4 || staged.catalog_text.count()!=62 ||
+       staged.scripts.definitions().size()!=62 ||
+       staged.scripts.display().size()!=222 || !staged.last_script_error.empty())
+        return Fail(29);
     if(fixtureAbiViolations) {
         std::fprintf(stderr,"fixture ABI violations=%d last=%s\n",fixtureAbiViolations,
                      fixtureAbiReason?fixtureAbiReason:"unknown");
