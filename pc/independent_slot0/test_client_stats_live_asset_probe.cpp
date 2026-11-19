@@ -18,10 +18,10 @@ static std::string Definitions(int n) {
     }
     return text+"}\n";
 }
-static std::string Display() {
+static std::string Display(int definitions=62) {
     std::string text;
     for(int i=0;i<156;++i)
-        text+="\"STAT_"+std::to_string(i%62)+"\" \"value\"\n";
+        text+="\"STAT_"+std::to_string(i%definitions)+"\" \"value\"\n";
     for(int i=0;i<66;++i)
         text+="\"==========================\"\n";
     return text;
@@ -50,7 +50,7 @@ int main() {
     if(probe::Validate(&root,&counts)!=probe::Result::Verified ||
        counts.definitions!=62 || counts.percentage_refs!=8 ||
        counts.display_pairs!=156 || counts.dividers!=66)return Fail(5);
-    if(!Write(defs,Definitions(61)))return Fail(6);
+    if(!Write(defs,Definitions(61)) || !Write(layout,Display(61)))return Fail(6);
     if(probe::Validate(&root,&counts)!=probe::Result::UnexpectedRetailCounts ||
        counts.definitions!=61 || counts.dividers!=66)return Fail(7);
     if(!Write(defs,Definitions(62)) ||
