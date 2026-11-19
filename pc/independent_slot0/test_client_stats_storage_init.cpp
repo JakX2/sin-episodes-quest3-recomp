@@ -110,6 +110,7 @@ int main(){
     f.rejectLast=true;f.remaining.clear();
     if(system.Init() || f.remaining.size()!=5){ std::fprintf(stderr,"Stats storage fixture failure at assertion 14\n");return 14; }
     // The enclosing game-system loop now receives that refusal.
+    f.remaining.clear(); // reset per-Init callback count before outer gate
     gs::Registry registry;registry.DirectRegister(&system);
     if(registry.Initialize().outcome!=gs::Outcome::InitRefused){ std::fprintf(stderr,"Stats storage fixture failure at assertion 15\n");return 15; }
     std::puts("PASS owned 55 static + 11 dynamic original Stats records, null slots, reset and 7-call Init ordering");
