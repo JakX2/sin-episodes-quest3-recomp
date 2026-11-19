@@ -39,6 +39,45 @@ static bool Check(const std::vector<shadow::Operation>& events,bool refresh) {
         last.original_callback_va==0x24115e70u &&
         last.callsite_va==0x24118905u;
 }
+
+// Assert observable state at every host callback boundary, not just after Init.
+// This detects accidental reordering of the two original object writes.
+struct Timing {
+    unsigned char* owner;
+    std::size_t seen=0;
+    bool valid=true;
+    bool refresh=false;
+};
+static void CheckTiming(void* context,const shadow::Operation& operation) noexcept {
+    auto& t=*static_cast<Timing*>(context);
+    const auto flag=t.owner[shadow::kOriginalFlagOffset];
+    std::uint32_t mode=0;
+    std::memcpy(&mode,t.owner+shadow::kOriginalModeOffset,sizeof(mode));
+    if(flag!=0)t.valid=false;
+    // The mode write happens after the fourth action and before refresh/restore.
+    const bool modeWritten=t.seen>=4;
+    if(mode!=(modeWritten?8u:0xa5a5a5a5u))t.valid=false;
+    if(t.seen==0 && operation.action!=shadow::Action::InitSimpleShadowTexture)t.valid=false;
+    if(t.seen==4 && operation.action!=(t.refresh?
+        shadow::Action::InitRenderToTextureShadows:shadow::Action::AddMaterialRestoreFunc))
+        t.valid=false;
+    ++t.seen;
+}
+static bool TimingContract(bool refresh) {
+    std::array<unsigned char,0xe0> storage{};
+    storage.fill(0xa5);
+    Timing timing{storage.data(),0,true,refresh};
+    if(!shadow::Init(storage.data(),storage.size(),refresh,&timing,&CheckTiming))
+        return false;
+    if(!timing.valid || timing.seen!=(refresh?6u:5u))return false;
+    // Exact minimum valid object extent must also be accepted.
+    Timing exact{storage.data(),0,true,refresh};
+    storage.fill(0xa5);
+    if(!shadow::Init(storage.data(),0xdc,refresh,&exact,&CheckTiming) ||
+       !exact.valid || exact.seen!=(refresh?6u:5u))return false;
+    return storage[0xdc]==0xa5 && storage[0xdf]==0xa5;
+}
+
 struct System:gs::System {
     std::array<unsigned char,0xdc> storage{};
     Capture capture;
@@ -50,6 +89,7 @@ struct System:gs::System {
 };
 int main(){
     static_assert(sizeof(void*)==4,"original engine uses MSVC x86");
+    if(!TimingContract(false) || !TimingContract(true))return 7;
     System system;
     system.storage.fill(0xa5);
     if(shadow::Init(nullptr,system.storage.size(),false,&system.capture,&Record) ||
