@@ -14,6 +14,10 @@ struct AnimationConverterAbi {
 class NativeConverter final:public AnimationConverterAbi {
 public:
     explicit NativeConverter(Hooks hooks) noexcept:core_(hooks){}
+    NativeConverter(const NativeConverter&)=delete;
+    NativeConverter& operator=(const NativeConverter&)=delete;
+    NativeConverter(NativeConverter&&)=delete;
+    NativeConverter& operator=(NativeConverter&&)=delete;
     void GetData(void* panel,void* kv,void* entry) noexcept override {
         lastResult_=core_.GetData(panel,kv,entry);
     }
