@@ -1,7 +1,7 @@
 #pragma once
 // Independent 32-bit Source 2004 VFileSystem012 read-only probe.
 // SDK 2004: IFileSystem : IBaseFileSystem, IAppSystem. Primary slots
-// Read=0, Open=2, Close=3, Size(handle)=6, FileExists=10.
+// Read=0, Open=2, Close=3, Size(handle)=7, FileExists=10.
 // This is an SDK-guided ABI experiment, NOT yet owner-retail verified.
 #if !defined(_M_IX86)
 #error Windows MSVC x86 only
@@ -57,7 +57,9 @@ inline bool Resolve(void* fileSystem,Methods& out,bool deep) noexcept {
     if(!deep)return true;
     auto* open=VerifiedMethod(fileSystem,2,refused);
     auto* close=VerifiedMethod(fileSystem,3,refused);
-    auto* size=VerifiedMethod(fileSystem,6,refused);
+    // MSVC x86 emits the overloaded Size(const char*,const char*) at
+    // slot 6 and Size(FileHandle_t) at slot 7 for this interface layout.
+    auto* size=VerifiedMethod(fileSystem,7,refused);
     auto* read=VerifiedMethod(fileSystem,0,refused);
     if(!open||!close||!size||!read)return false;
     out.open=reinterpret_cast<Open>(open);
