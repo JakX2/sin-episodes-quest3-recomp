@@ -712,7 +712,6 @@ try {
         '[SiN independent] role=client phase=mat-surface-query-result version=found',
         $matSurfaceStop)))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
-    $env:SIN_INDEPENDENT_VERDICT_DEBUG='1'
     # Owner-original CSoundEmitterSystem::Init delegates to the
     # already acquired VSoundEmitter001 interface slot 1 after surface.
     $soundInitEntry='[SiN independent] role=client phase=sound-system-init-entered version=CSoundEmitterSystem:VSoundEmitter001+1'
@@ -740,27 +739,30 @@ try {
                 $surfaceStartIndex,$surfaceFoundIndex,$written.Length,
                 (@($written | Where-Object { $_ -like '*mat-surface*' }) -join '|'))
         }
-        Write-Output ("DEBUG_WRITTEN_SURFACE_EVENT_ORDER: start={0}, found={1}, eventCount={2}" -f
-            $surfaceStartIndex,$surfaceFoundIndex,$written.Length)
-        Write-Output ("DEBUG_WRITTEN_TAIL: {0}" -f (($written | Select-Object -Last 8) -join ' | '))
         $out=Verify 'CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
         if(-not (($out -join '|').Contains(":client:$state"))) {throw "Sound system Init outcome missing: $state"}
     }
-    # A trace without the preceding surface-query success cannot be
-    # promoted to a sound-system Init checkpoint.
+    # Invalid sound traces must NOT be promoted to SoundSystem Init,
+    # but retain the already verified earlier engine-panel milestone.
     [IO.File]::WriteAllLines($retailReplay,[string[]]($matSurfacePrefix+@(
         $matSurfaceEntry,
         $soundInitEntry,
         '[SiN independent] role=client phase=sound-system-init-result version=called-true',
         $soundInitStop)))
-    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    $negative=Verify 'CLIENT_ENGINE_VGUI_SLOT1_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (($negative -join '|').Contains('OWNER_CLIENT_SOUND_SYSTEM_INIT_RESULTS:')) {
+        throw 'Missing surface-result improperly promoted sound Init'
+    }
     [IO.File]::WriteAllLines($retailReplay,[string[]]($matSurfacePrefix+@(
         $matSurfaceEntry,
         '[SiN independent] role=client phase=mat-surface-query-result version=missing-interface',
         $soundInitEntry,
         '[SiN independent] role=client phase=sound-system-init-result version=called-true',
         $soundInitStop)))
-    [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    $negative=Verify 'CLIENT_ENGINE_VGUI_SLOT1_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    if (($negative -join '|').Contains('OWNER_CLIENT_SOUND_SYSTEM_INIT_RESULTS:')) {
+        throw 'Failed surface-query improperly promoted sound Init'
+    }
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {
