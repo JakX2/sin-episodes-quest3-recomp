@@ -10,6 +10,7 @@
 #include "client_stats_asset_loader.h"
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <utility>
 
@@ -85,8 +86,9 @@ struct CloseGuard {
     ~CloseGuard() noexcept {if(owner&&handle&&close)close(owner,handle);}
 };
 inline bool ReadOne(void* fileSystem,const Methods& f,const char* path,
-                    std::string& output) {
-    void* handle=f.open(fileSystem,path,"rb",nullptr);
+                    std::string& output,const char* mode="rb",
+                    const char* pathID=nullptr) {
+    void* handle=f.open(fileSystem,path,mode,pathID);
     if(!handle)return false;
     CloseGuard guard{fileSystem,handle,f.close};
     const unsigned length=f.size(fileSystem,handle);
@@ -135,6 +137,38 @@ inline bool ReadForStatsCoordinator(void* engineFileSystem,
     }
     error.clear();
     return true;
+}
+// Original 2006 Stats definitions resource precedes display layout.
+// Enforce two precise, read-only game-relative paths and return either
+// whole text atomically; this is not original KeyValues object creation.
+inline bool ReadForStagedStats(void* engineFileSystem,const char* path,
+                               std::string& output,std::string& error) noexcept {
+    auto refuse=[&error](const char* reason) noexcept -> bool {
+        try {error=reason;} catch(...) {}
+        return false;
+    };
+    if(!path || (std::strcmp(path,kDefinitions)!=0 &&
+                 std::strcmp(path,kLayout)!=0))
+        return refuse("unrecognized stats resource");
+    Methods methods{};
+    if(!Resolve(engineFileSystem,methods,true))
+        return refuse("invalid-abi");
+    try {
+        std::string data;
+        // SHA-matched 2006 client:
+        // KeyValues::LoadFromFile in 0x241FC5A0 opens definitions
+        // using "rb" and pathID="GAME", while 0x24204D90 opens
+        // layout with "rt" and pathID=nullptr.
+        const bool definitions=std::strcmp(path,kDefinitions)==0;
+        if(!ReadOne(engineFileSystem,methods,path,data,
+                    definitions?"rb":"rt",definitions?"GAME":nullptr))
+            return refuse("read-refused");
+        output.swap(data);
+        error.clear();
+        return true;
+    } catch(...) {
+        return refuse("read-refused");
+    }
 }
 inline Status ReadAndValidate(void* fileSystem,Counts* counts=nullptr) noexcept {
     if(counts)*counts={};

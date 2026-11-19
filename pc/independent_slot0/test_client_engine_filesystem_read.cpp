@@ -1,6 +1,7 @@
 // SDK2004 VFileSystem012 original-free MSVC x86 executable test.
 #include "client_engine_filesystem_read.h"
 #include "client_stats_coordinator.h"
+#include "client_stats_original_id_map.h"
 #include <type_traits>
 #include <cstdio>
 #include <cstring>
@@ -8,12 +9,16 @@
 #include <cstdint>
 namespace fs=sin_independent::engine_fs;
 namespace co=sin_independent::stats_coordinator;
+namespace ids=sin_independent::stat_name_ids;
+static_assert(std::is_same<co::StagedResourceReader,
+    decltype(&fs::ReadForStagedStats)>::value,"staged engine reader ABI");
 static void* expectedStatsContext=nullptr;
 static_assert(std::is_same<co::AssetReader,decltype(&fs::ReadForStatsCoordinator)>::value,
     "Engine-backed stats reader must match injected coordinator ABI");
 static int existsCalls=0,openCalls=0,closeCalls=0,readCalls=0;
 static bool missingDefs=false,missingLayout=false,shortRead=false,hugeSize=false;
 static bool rejectOpen=false;
+static bool stagedParams=false;
 static std::string defs,layout;
 struct Handle {const std::string* bytes=nullptr;std::size_t cursor=0;};
 static Handle handle;
@@ -35,7 +40,14 @@ struct BaseFileSystem {
     virtual int Write(const void*,int,void*){return -1;}
     virtual void* Open(const char* path,const char* mode,const char* pathId) {
         ++openCalls;
-        if(!mode||std::strcmp(mode,"rb")||pathId||rejectOpen)return nullptr;
+        if(!mode||rejectOpen)return nullptr;
+        if(stagedParams) {
+            if(!std::strcmp(path,fs::kDefinitions) &&
+               (std::strcmp(mode,"rb") || !pathId ||
+                std::strcmp(pathId,"GAME")))std::abort();
+            if(!std::strcmp(path,fs::kLayout) &&
+               (std::strcmp(mode,"rt") || pathId))std::abort();
+        } else if(std::strcmp(mode,"rb") || pathId)std::abort();
         if(!std::strcmp(path,fs::kDefinitions))handle.bytes=&defs;
         else if(!std::strcmp(path,fs::kLayout))handle.bytes=&layout;
         else return nullptr;
@@ -103,6 +115,28 @@ static bool ResourceForCoordinator(void* context,sin_independent::stats_catalog:
 static bool LaterForCoordinator(void*,const sin_independent::stats_system::Step&) noexcept {
     ++coordinatorCalls;
     return true;
+}
+static std::string OriginalDefs() {
+    std::string result="\"StatDefinitions\" {\n";
+    for(std::size_t id=0;id<ids::kCount;++id) {
+        if(id>=51&&id<=54)continue;
+        result+="\"stat\" { \"name\" \""+std::string(ids::NameForId(id));
+        result+="\" \"short_text\" \"#s\" \"long_text\" \"#l\"";
+        if(id>0 && id<=8)result+=" \"percentage_of\" \"STAT_TOTAL_TIME\"";
+        result+=" }\n";
+    }
+    return result+"}\n";
+}
+static std::string OriginalLayout(){
+    std::string result;
+    for(std::size_t i=0;i<156;++i){
+        const auto id=i%ids::kCount;
+        result+=(id>=51&&id<=54)?
+            "\"#synthetic_title\" \"title\"\n":
+            "\""+std::string(ids::NameForId(id))+"\" \"value\"\n";
+    }
+    for(int i=0;i<66;++i)result+="\"==========================\"\n";
+    return result;
 }
 static int Fail(int i) {std::fprintf(stderr,"engine-fs-fixture step=%d\n",i);return i;}
 int main() {
@@ -202,6 +236,43 @@ int main() {
     if(!run.succeeded()||run.completed!=7||coordinatorCalls!=4 ||
        state.scripts.definitions().size()!=62 ||
        !state.last_script_error.empty())return Fail(18);
+    stagedParams=true;
+    std::string single="old";
+    error="old";
+    if(!fs::ReadForStagedStats(&owner,fs::kDefinitions,single,error) ||
+       single!=defs || !error.empty())return Fail(19);
+    single="retain-me";
+    if(fs::ReadForStagedStats(&owner,"scripts/../../unsafe",single,error) ||
+       error!="unrecognized stats resource" || single!="retain-me")
+        return Fail(20);
+    defs=OriginalDefs();layout=OriginalLayout();
+    co::State staged;
+    hooks.read_engine_documents=nullptr;
+    hooks.asset_reader_context=nullptr;
+    hooks.load_catalog_resources=nullptr;
+    hooks.stats_resource_context=&owner;
+    hooks.read_stats_resource=&fs::ReadForStagedStats;
+    coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(!run.succeeded() || run.completed!=7 || run.attempted!=7 ||
+       staged.catalog_text.count()!=62 ||
+       staged.catalog.at(1)->identifier!=0 ||
+       staged.catalog.at(54)->identifier!=-1 ||
+       staged.scripts.definitions().size()!=62 ||
+       staged.scripts.display().size()!=222 ||
+       coordinatorCalls!=4)return Fail(21);
+    shortRead=true;coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(run.outcome!=co::Outcome::ResourceLoaderRefused ||
+       run.completed!=2 || run.attempted!=3 || coordinatorCalls!=0 ||
+       staged.scripts.definitions().size()!=62 ||
+       staged.scripts.display().size()!=222 ||
+       staged.last_script_error!="read-refused")return Fail(22);
+    shortRead=false;coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(!run.succeeded() || run.completed!=7 || coordinatorCalls!=4 ||
+       staged.catalog_text.count()!=62 ||
+       !staged.last_script_error.empty())return Fail(23);
     std::puts("PASS VFileSystem012 MSVC slots, injected stats coordinator, partial reads, rollback and retry");
     return 0;
 }
