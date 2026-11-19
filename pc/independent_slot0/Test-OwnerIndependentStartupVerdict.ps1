@@ -14,7 +14,11 @@ $other = 'ffffffffffffffffffffffffffffffff'
 function Verify([string]$Expected) {
     $out = @(& $Classifier -Session $session -LogDirectory $dir)
     if (-not ($out -contains ("OWNER_INDEPENDENT_VERDICT: " + $Expected))) {
-        throw ("Unexpected startup verdict: " + ($out -join ' | '))
+        $replay = Join-Path $dir ("sin-independent-" + $session + "-13124.log")
+        $tail = if (Test-Path -LiteralPath $replay) {
+            (Get-Content -LiteralPath $replay -Tail 16) -join ' | '
+        } else { 'no synthetic replay file' }
+        throw ("Unexpected startup verdict: " + ($out -join ' | ') + " | TRACE_TAIL: " + $tail)
     }
     return $out
 }
