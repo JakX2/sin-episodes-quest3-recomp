@@ -28,6 +28,25 @@ static bool Continue(void* ctx,stats::Catalog& catalog) noexcept {
     }
     return h.shouldContinue;
 }
+
+struct NestedHost {
+    stats::Catalog* nested=nullptr;
+    int calls=0;
+    bool nestedOk=false;
+};
+static bool NestedContinue(void* ctx,stats::Catalog& outer) noexcept {
+    auto& h=*static_cast<NestedHost*>(ctx);
+    ++h.calls;
+    if(!h.nested || &outer==h.nested || outer.size()!=66)return false;
+    Host inner{};
+    inner.deniedIndex=31;
+    h.nestedOk=stats::BeginOwnerSetup(*h.nested,&inner,&Continue,&Allow) &&
+        !inner.badState && inner.allocations==66 && inner.continuations==1 &&
+        h.nested->at(31)==nullptr && h.nested->at(30)!=nullptr &&
+        outer.at(31)!=nullptr;
+    return h.nestedOk;
+}
+
 struct GameSystem:gs::System {
     stats::Catalog catalog;
     Host host;
@@ -102,6 +121,27 @@ int main(){
        recovering.host.continuations!=2 ||
        recovering.catalog.size()!=66 ||
        recovering.host.badState)return 9;
+
+    // Independent client-side catalog owners must not share allocation
+    // state or record pointers, including nested resource continuations.
+    stats::Catalog outerCatalog;
+    stats::Catalog nestedCatalog;
+    NestedHost nestedHost{&nestedCatalog};
+    if(!stats::BeginOwnerSetup(outerCatalog,&nestedHost,&NestedContinue) ||
+       !nestedHost.nestedOk || nestedHost.calls!=1 ||
+       outerCatalog.size()!=66 || nestedCatalog.size()!=66)return 10;
+    for(std::size_t i=0;i<66;++i){
+        if(i==31)continue;
+        if(!outerCatalog.at(i) || !nestedCatalog.at(i) ||
+           outerCatalog.at(i)==nestedCatalog.at(i))return 11;
+    }
+    outerCatalog.mutableAt(31)->identifier=1234;
+    if(nestedCatalog.at(31) || outerCatalog.at(30)->identifier!=-1)return 12;
+    // Rebuilding one owner must not invalidate or modify another owner.
+    auto* saved=nestedCatalog.at(30);
+    outerCatalog.Rebuild();
+    if(nestedCatalog.at(30)!=saved || nestedCatalog.at(31) ||
+       !outerCatalog.at(31) || outerCatalog.at(31)->identifier!=-1)return 13;
     std::puts("PASS Stats original 66 x 12 catalog reset/nullable allocation and unknown resource callback boundary");
     return 0;
 }
