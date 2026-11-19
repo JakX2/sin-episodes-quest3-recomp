@@ -17,6 +17,15 @@ SCRIPTS = (
     "Run-ClientCvarDiagnostic.ps1",
     "OWNER_CLIENT_CVAR_BUNDLE.md",
 )
+# Separate explicit allowlist: do NOT expand the historical cvar bundle's
+# fixed seven-entry manifest, which its own owner wrapper authenticates.
+FS_SCRIPTS = (
+    "Invoke-OwnerIndependentEngineProbe.ps1",
+    "Get-OwnerEngineExitDiagnosis.ps1",
+    "Get-OwnerIndependentStartupVerdict.ps1",
+    "Invoke-OwnerFileSystemRetailGate.ps1",
+    "OWNER_CLIENT_ENGINE_FILESYSTEM_V012.md",
+)
 ORIGINAL_HASHES = {
     "client.dll": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d",
     "server.dll": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
@@ -25,13 +34,13 @@ ORIGINAL_HASHES = {
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def stage(binaries, scripts, output, commit):
+def stage(binaries, scripts, output, commit, script_names=SCRIPTS):
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Expected a complete checked-out commit SHA")
     if output.exists():
         raise FileExistsError(output)
     plan = [(binaries / name, pathlib.Path("bin") / name) for name in BINARIES]
-    plan += [(scripts / name, pathlib.Path(name)) for name in SCRIPTS]
+    plan += [(scripts / name, pathlib.Path(name)) for name in script_names]
     # Verify every input before creating the output directory.
     for source, relative in plan:
         if not source.is_file() or source.is_symlink():
@@ -54,6 +63,31 @@ def stage(binaries, scripts, output, commit):
         raise
 
 class TestStage(unittest.TestCase):
+    def test_filesystem_bundle_is_separate_and_original_free(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            binaries, scripts, output = (
+                root / "binaries", root / "scripts", root / "filesystem")
+            binaries.mkdir()
+            scripts.mkdir()
+            for name in BINARIES:
+                (binaries / name).write_bytes(b"synthetic independent PE test")
+            for name in FS_SCRIPTS:
+                (scripts / name).write_text(
+                    "synthetic script "+name, encoding="utf-8")
+            (scripts / "Run-ClientCvarDiagnostic.ps1").write_text(
+                "not part of filesystem bundle", encoding="utf-8")
+            stage(binaries, scripts, output, "b"*40,FS_SCRIPTS)
+            manifest = json.loads(
+                (output/"manifest.json").read_text(encoding="utf-8"))
+            required = {("bin/"+name) for name in BINARIES} | set(FS_SCRIPTS)
+            self.assertEqual(set(manifest["files"]),required)
+            self.assertEqual(manifest["commit"],"b"*40)
+            self.assertNotIn("Run-ClientCvarDiagnostic.ps1",manifest["files"])
+            self.assertNotIn("OWNER_CLIENT_CVAR_BUNDLE.md",manifest["files"])
+            for name,expected in manifest["files"].items():
+                self.assertEqual(digest(output/name),expected)
+
     def test_allowlist_and_manifest(self):
         with tempfile.TemporaryDirectory() as root:
             root = pathlib.Path(root)
@@ -90,6 +124,8 @@ def main():
     parser.add_argument("--bin", type=pathlib.Path)
     parser.add_argument("--output", type=pathlib.Path)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--filesystem", action="store_true",
+                        help="build dedicated filesystem-presence/read bundle")
     args = parser.parse_args()
     if args.self_test:
         unittest.main(argv=["self-test"])
@@ -99,7 +135,8 @@ def main():
         commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], text=True).strip()
         stage(args.bin, pathlib.Path(__file__).resolve().parent,
-              args.output, commit)
+              args.output, commit,
+              FS_SCRIPTS if args.filesystem else SCRIPTS)
 
 if __name__ == "__main__":
     main()
