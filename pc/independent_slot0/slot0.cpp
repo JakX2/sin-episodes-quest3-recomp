@@ -22,6 +22,7 @@
 #include "client_vgui_vtable_probe.h"
 #include "client_engine_vgui_slot1_probe.h"
 #include "client_vgui_controls_bootstrap.h"
+#include "client_mat_surface_query.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -305,6 +306,7 @@ static void traceCvar(const char* phase) noexcept {
 // Retain the original engine interface for both actual and synthetic Init paths.
 static void* g_engineVgui=nullptr;
 static Factory g_clientAppFactory=nullptr;
+static void* g_clientVGuiSurface=nullptr;
 #if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
 static bool clientSoundProbeEnabled() noexcept {
     char enabled[2]={};
@@ -366,11 +368,27 @@ static bool clientVGuiControlsBootstrapProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_VGUI_CONTROLS_BOOTSTRAP_PROBE",value,2)==1 &&
         value[0]=='1';
 }
+static bool clientMatSurfaceProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientVGuiControlsBootstrapProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MAT_SURFACE_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientMatSurfaceQuery() noexcept {
+    diagnostic("mat-surface-query-entered","VGUI_Surface028:IAppSystem+4");
+    void* obtained=nullptr;
+    const auto result=sin_independent::mat_surface::Query(g_clientVGuiSurface,&obtained);
+    diagnostic("mat-surface-query-result",sin_independent::mat_surface::Name(result));
+    diagnostic("mat-surface-query-terminal-stop","original-abi");
+    TerminateProcess(GetCurrentProcess(),result==sin_independent::mat_surface::Result::Found?
+        0x53494E61u:0x53494E62u);
+    __fastfail(7);
+}
 [[noreturn]] static void stopAfterClientEngineVGuiSlot1Probe() noexcept {
     const bool bootstrap=clientVGuiControlsBootstrapProbeEnabled();
     if(bootstrap) {
         diagnostic("vgui-controls-bootstrap-entered","CLIENT:factory-count-1");
-        const auto result=sin_independent::vgui_controls::Start(g_clientAppFactory,&diagnostic);
+        const auto result=sin_independent::vgui_controls::Start(g_clientAppFactory,&diagnostic,&g_clientVGuiSurface);
         diagnostic("vgui-controls-bootstrap-result",sin_independent::vgui_controls::Name(result));
         if(!sin_independent::vgui_controls::Completed(result)) {
             diagnostic("vgui-controls-bootstrap-terminal-stop","source2004");
@@ -382,6 +400,9 @@ static bool clientVGuiControlsBootstrapProbeEnabled() noexcept {
     const auto result=sin_independent::engine_vgui::CallSlot1Arg2(g_engineVgui);
     diagnostic("engine-vgui-slot1-result",sin_independent::engine_vgui::Name(result));
     diagnostic("engine-vgui-slot1-terminal-stop","original-slot1");
+    if(bootstrap && clientMatSurfaceProbeEnabled() &&
+       result==sin_independent::engine_vgui::Slot1Result::Nonzero)
+        stopAfterClientMatSurfaceQuery();
     if(bootstrap)diagnostic("vgui-controls-bootstrap-terminal-stop","source2004");
     TerminateProcess(GetCurrentProcess(),bootstrap?
         (result==sin_independent::engine_vgui::Slot1Result::Nonzero?0x53494E5Fu:0x53494E60u):
@@ -530,6 +551,7 @@ public:
         void* cvar=nullptr;
         g_engineVgui=nullptr;
         g_clientAppFactory=appSystemFactory;
+        g_clientVGuiSurface=nullptr;
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||

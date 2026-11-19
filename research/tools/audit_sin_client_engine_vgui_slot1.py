@@ -20,11 +20,14 @@ REGIONS = {
     "vgui_post_acquire_noop": (0x2422ECD0, 1, "ae3f4619b0413d70d3004b9131c3752153074e45725be13b9a148978895e359e"),
     "engine_vgui_slot1_arg2": (0x2422ECF0, 14, "d1f9d41fb9e6c8628fa934c2ac6a848a9aae39e604b44f7b4f1ddab5ceed29b3"),
     "one_time_converter_registration": (0x24009340, 101, "a0851e6f97bc087734723394de37dfb925db41c1764087f4c9e94ede1a1b384e"),
+    "post_vgui_mat_surface_query": (0x240FE3D7, 31, "d9f987e6679cac9e491de40a996293b9fada35e5047bc5561a588f1376281cb0"),
+    "vgui_surface_accessor": (0x24001040, 6, "e5099f1323cd1754c2a4c0968d0165ffe11561ba66a6540ee5717ddc3e58dd03"),
 }
 STRINGS = {
     0x24296A2C: "VEngineVGui001",
     0x242AC524: "CLIENT",
     0x242AC4F8: "CHudTextureHandle",
+    0x24296900: "MatSystemSurface003",
 }
 
 class OriginalPE:
@@ -82,7 +85,15 @@ def verify_original(binary):
             "last_post_acquire_helper":"0x2422ECF0: virtual slot 1, argument 2, returns 32-bit value",
             "init_succeeds_if_last_helper_nonzero":True,
         },
-        "not_proven":["engine virtual method name","complete VGUI Init","GUI rendering","full client boot"],
+        "post_vgui_surface_query":{
+            "interface":"VGUI_Surface028",
+            "secondary_subobject_x86_offset":4,
+            "method":"IAppSystem::QueryInterface",
+            "method_vtable_slot":2,
+            "argument":"MatSystemSurface003",
+            "null_result_rejects_client_init":True,
+        },
+        "not_proven":["complete VGUI Init","GUI rendering","full client boot"],
     }
 
 def main():
