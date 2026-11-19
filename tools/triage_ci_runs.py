@@ -30,25 +30,29 @@ def summarize(paths):
     runs = {}
     for path in paths:
         for run in unpack(json.loads(pathlib.Path(path).read_text(encoding="utf-8"))):
-            if not isinstance(run, dict) or not isinstance(run.get("id"), int):
+            if not isinstance(run, dict) or type(run.get("id")) is not int or run["id"] <= 0:
                 raise ValueError("run must contain an integer id")
             # Latest attempt wins; ties resolve deterministically by input order.
             key = run["id"]
             attempt = int(run.get("run_attempt") or 1)
+            if attempt < 1:
+                raise ValueError("run_attempt must be positive")
             if key not in runs or attempt >= int(runs[key].get("run_attempt") or 1):
                 runs[key] = run
     def rank(run):
         status = str(run.get("status") or "")
         conclusion = str(run.get("conclusion") or "")
-        category = 0 if status == "completed" and conclusion in PRIORITY and PRIORITY[conclusion] < 5 else (1 if status in ACTIVE else 2)
+        category = 0 if status == "completed" and conclusion not in {"success", "neutral", "skipped"} else (1 if status in ACTIVE or status != "completed" else 2)
         return (category, PRIORITY.get(conclusion, 99), str(run.get("name") or ""), run["id"])
+    # A missing or unknown completion conclusion is not a successful CI gate.
+    # Preserve cancellation as non-success and reject unknown active states as pending.
     for run in sorted(runs.values(), key=rank):
         status = str(run.get("status") or "unknown")
         conclusion = str(run.get("conclusion") or "pending")
         url = run.get("html_url") or ("https://github.com/" + str(run.get("repository", {}).get("full_name", "")) + "/actions/runs/" + str(run["id"]))
         print(f"{status:12} {conclusion:16} {run['id']:>12}  {run.get('name', 'unnamed')}  {url}")
-    failed = [r for r in runs.values() if r.get("status") == "completed" and r.get("conclusion") in {"failure", "timed_out", "startup_failure", "action_required"}]
-    pending = [r for r in runs.values() if r.get("status") in ACTIVE]
+    failed = [r for r in runs.values() if r.get("status") == "completed" and r.get("conclusion") not in {"success", "neutral", "skipped"}]
+    pending = [r for r in runs.values() if r.get("status") != "completed"]
     print(f"SUMMARY total={len(runs)} failed={len(failed)} pending={len(pending)}")
     return 1 if failed else 2 if pending else 0
 
