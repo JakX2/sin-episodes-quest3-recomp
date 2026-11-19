@@ -733,9 +733,12 @@ try {
         $written = [IO.File]::ReadAllLines($retailReplay)
         $surfaceStartIndex = [Array]::IndexOf($written,$matSurfaceEntry)
         $surfaceFoundIndex = [Array]::IndexOf($written,$matSurfaceFound)
-        if ($surfaceFoundIndex -ne ($surfaceStartIndex + 1)) {
-            throw ("Sound fixture surface-result order invalid: entered={0}, found={1}, total={2}" -f
-                $surfaceStartIndex,$surfaceFoundIndex,$written.Length)
+        if ($surfaceStartIndex -lt 0 -or $surfaceFoundIndex -ne ($surfaceStartIndex + 1) -or
+            @($written | Where-Object { $_ -ceq $matSurfaceEntry }).Count -ne 1 -or
+            @($written | Where-Object { $_ -ceq $matSurfaceFound }).Count -ne 1) {
+            throw ("Sound fixture surface-result order invalid: entered={0}, found={1}, total={2}; matching={3}" -f
+                $surfaceStartIndex,$surfaceFoundIndex,$written.Length,
+                (@($written | Where-Object { $_ -like '*mat-surface*' }) -join '|'))
         }
         $out=Verify 'CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
         if(-not (($out -join '|').Contains(":client:$state"))) {throw "Sound system Init outcome missing: $state"}
