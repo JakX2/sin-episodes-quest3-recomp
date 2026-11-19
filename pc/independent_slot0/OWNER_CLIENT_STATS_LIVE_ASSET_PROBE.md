@@ -25,7 +25,13 @@ Use the existing disposable Windows retail test copy and its full
 previously verified, session-bound probe environment, through
 `SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE=1`.
 
-Add both:
+Use `Invoke-OwnerIndependentEngineProbe.ps1` with the existing Client-only
+prerequisite switches, plus `-EnableClientStatsAssetProbe` and
+`-ClientStatsContentRoot '<absolute-path-to-SE1>'`. The launcher
+validates the absolute directory and linked ancestors, then restores
+the original client.dll after the disposable test.
+
+For manual diagnostic invocations, the corresponding process variables are:
 
 - `SIN_INDEPENDENT_CLIENT_STATS_ASSET_PROBE=1`
 - `SIN_INDEPENDENT_CLIENT_STATS_ROOT=<absolute-path-to-SE1>`
