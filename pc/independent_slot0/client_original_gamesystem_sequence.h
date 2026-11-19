@@ -24,7 +24,7 @@ inline constexpr std::array<Entry,12> kOriginalOrder{{
     {0x240FE441u,"CClientEffectPrecacheSystem",0x2433FD9Cu,0x2433FD9Cu,0x24297334u,0x241055A0u,true},
     {0x240FE44Du,"CClientShadowMgr",0x24358280u,0x24358280u,0x24297C4Cu,0x24118880u,false},
     {0x240FE457u,"C_StatsSystem",0x24378DE8u,0x24378DE8u,0x242AE124u,0x241FCAA0u,false},
-    {0x240FE461u,"C_DynamicDifficulty",0x24378D18u,0x24378D18u,0x242ADF34u,0x241FAC90u,false},
+    {0x240FE461u,"C_DynamicDifficulty",0x24378D18u,0x24378D18u,0x242ADF34u,0x241FAC90u,true},
     {0x240FE46Bu,"CClientThinkList",0x242FA6B8u,0x242FA6B8u,0x24297300u,0x24103DF0u,true},
     {0x240FE476u,"C_SoundscapeSystem",0x2433E4F8u,0x2433E4F8u,0x24293C34u,0x240F4160u,false},
     {0x240FE481u,"CPerfVisualBenchmark",0x242FC9DCu,0x242FC9DCu,0x242A209Cu,0x24182800u,false}
@@ -47,6 +47,6 @@ constexpr bool MatchesVerifiedCalls() noexcept {
     return true;
 }
 static_assert(MatchesVerifiedCalls(),"Original ABI order must match callsite audit");
-static_assert(ReconstructedCount()==7,"Seven complete original Init bodies");
-static_assert(PendingCount()==5,"Five game-system Init bodies remain");
+static_assert(ReconstructedCount()==8,"Eight complete original Init bodies");
+static_assert(PendingCount()==4,"Four game-system Init bodies remain");
 } // namespace sin_independent::gamesystem_sequence

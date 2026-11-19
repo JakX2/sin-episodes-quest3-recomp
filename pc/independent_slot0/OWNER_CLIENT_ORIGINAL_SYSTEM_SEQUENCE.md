@@ -10,15 +10,14 @@ The table is crosschecked against the twelve exact original CALL rel32
 anchors in client_auto_gamesystem_init_core.h and the two SHA-attested
 RTTI auditors (raw-PE static owners, and BSS-constructor-owned vptrs).
 
-Full Init method behavior reconstructed for **7 of 12**:
+Full Init method behavior reconstructed for **8 of 12**:
 CGameStringPool, CSoundEmitterSystem, CClientLeafSystem secondary
 +4, CDetailObjectSystem, CViewportClientSystem,
-CClientEffectPrecacheSystem and CClientThinkList.
+CClientEffectPrecacheSystem, C_DynamicDifficulty and CClientThinkList.
 
-The **next five original Init methods**, in exact startup order:
+The **next four original Init methods**, in exact startup order:
 - CClientShadowMgr: 0x24118880
 - C_StatsSystem: 0x241FCAA0
-- C_DynamicDifficulty: 0x241FAC90
 - C_SoundscapeSystem: 0x240F4160
 - CPerfVisualBenchmark: 0x24182800
 

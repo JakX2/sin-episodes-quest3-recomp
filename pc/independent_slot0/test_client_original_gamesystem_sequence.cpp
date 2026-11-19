@@ -5,8 +5,8 @@
 using namespace sin_independent::gamesystem_sequence;
 int main(){
     static_assert(MatchesVerifiedCalls(),"Original source order");
-    static_assert(ReconstructedCount()==7,"Seven finished");
-    static_assert(PendingCount()==5,"Five missing");
+    static_assert(ReconstructedCount()==8,"Eight finished");
+    static_assert(PendingCount()==4,"Four missing");
     std::set<std::uint32_t> objects,methods;
     for(const auto& row:kOriginalOrder){
         if(!row.class_name || !row.class_name[0] ||
@@ -25,7 +25,6 @@ int main(){
         return 4;
     if(kOriginalOrder[6].init_body_reconstructed ||
        kOriginalOrder[7].init_body_reconstructed ||
-       kOriginalOrder[8].init_body_reconstructed ||
        kOriginalOrder[10].init_body_reconstructed ||
        kOriginalOrder[11].init_body_reconstructed)return 5;
     std::puts("PASS all 12 original RTTI systems, registration order, secondary subobject and 7/5 Init status");
