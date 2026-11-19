@@ -708,6 +708,7 @@ try {
         '[SiN independent] role=client phase=mat-surface-query-result version=found',
         $matSurfaceStop)))
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    $env:SIN_INDEPENDENT_VERDICT_DEBUG='1'
     # Owner-original CSoundEmitterSystem::Init delegates to the
     # already acquired VSoundEmitter001 interface slot 1 after surface.
     $soundInitEntry='[SiN independent] role=client phase=sound-system-init-entered version=CSoundEmitterSystem:VSoundEmitter001+1'
