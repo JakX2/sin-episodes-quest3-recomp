@@ -82,6 +82,10 @@ if(Python3_Interpreter_FOUND)
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_filesystem_steam.py"
       --self-test)
+  add_test(NAME independent_original_stats_registry_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stats_registry.py"
+      --self-test)
 endif()
 
 # Source SDK 2004-compatible ServerGameEnts001 is now represented as a
@@ -324,6 +328,11 @@ add_executable(sin_client_stats_catalog_init_test test_client_stats_catalog_init
 target_compile_features(sin_client_stats_catalog_init_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_catalog_init_native
   COMMAND sin_client_stats_catalog_init_test)
+add_executable(sin_client_stats_original_id_map_test
+  test_client_stats_original_id_map.cpp)
+target_compile_features(sin_client_stats_original_id_map_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_original_id_map_native
+  COMMAND sin_client_stats_original_id_map_test)
 add_executable(sin_client_stats_storage_init_test test_client_stats_storage_init.cpp)
 target_compile_features(sin_client_stats_storage_init_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_storage_init_native
