@@ -43,11 +43,15 @@ function Check-PresenceEvidence([string]$Path) {
     $sessions=@($lines | Where-Object {
         $_ -cmatch '^OWNER_INDEPENDENT_SESSION: [0-9a-f]{32}$'
     })
-    if ($sessions.Count -ne 1 -or
-        $sessions[0] -cnotmatch '^OWNER_INDEPENDENT_SESSION: ([0-9a-f]{32})$') {
+    if ($sessions.Count -ne 1) {
         throw 'Presence evidence missing a single exact session ID'
     }
-    $session=$Matches[1]
+    $sessionMatch=[regex]::Match($sessions[0],
+        '^OWNER_INDEPENDENT_SESSION: ([0-9a-f]{32})$')
+    if (-not $sessionMatch.Success -or $sessionMatch.Groups.Count -ne 2) {
+        throw 'Presence evidence missing a single exact session ID'
+    }
+    $session=$sessionMatch.Groups[1].Value
     if (-not (ExactLine $lines 'OWNER_INDEPENDENT_PROBE_ROLE: CLIENT') -or
         -not (ExactLine $lines 'OWNER_CLIENT_ENGINE_FS_PROBE: ENABLED_TERMINAL_DIAGNOSTIC') -or
         -not (ExactLine $lines 'OWNER_CLIENT_ENGINE_FS_READ_PROBE: DISABLED') -or
