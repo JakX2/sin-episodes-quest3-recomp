@@ -19,6 +19,13 @@ static int existsCalls=0,openCalls=0,closeCalls=0,readCalls=0;
 static bool missingDefs=false,missingLayout=false,shortRead=false,hugeSize=false;
 static bool rejectOpen=false;
 static bool stagedParams=false;
+static int fixtureAbiViolations=0;
+static const char* fixtureAbiReason=nullptr;
+static void FixtureAbiViolation(const char* reason) noexcept {
+    ++fixtureAbiViolations;
+    fixtureAbiReason=reason;
+    std::fprintf(stderr,"fixture ABI mismatch: %s\n",reason);
+}
 static std::string defs,layout;
 struct Handle {const std::string* bytes=nullptr;std::size_t cursor=0;};
 static Handle handle;
@@ -44,10 +51,10 @@ struct BaseFileSystem {
         if(stagedParams) {
             if(!std::strcmp(path,fs::kDefinitions) &&
                (std::strcmp(mode,"rb") || !pathId ||
-                std::strcmp(pathId,"GAME")))std::abort();
+                std::strcmp(pathId,"GAME"))) {FixtureAbiViolation("definitions Open mode/pathID");return nullptr;}
             if(!std::strcmp(path,fs::kLayout) &&
-               (std::strcmp(mode,"rt") || pathId))std::abort();
-        } else if(std::strcmp(mode,"rb") || pathId)std::abort();
+               (std::strcmp(mode,"rt") || pathId)) {FixtureAbiViolation("layout Open mode/pathID");return nullptr;}
+        } else if(std::strcmp(mode,"rb") || pathId) {FixtureAbiViolation("legacy Open mode/pathID");return nullptr;}
         if(!std::strcmp(path,fs::kDefinitions))handle.bytes=&defs;
         else if(!std::strcmp(path,fs::kLayout))handle.bytes=&layout;
         else return nullptr;
@@ -56,12 +63,12 @@ struct BaseFileSystem {
     }
     virtual void Close(void* file) {
         ++closeCalls;
-        if(file!=&handle)std::abort();
+        if(file!=&handle) {FixtureAbiViolation("invalid file handle");return;}
     }
     virtual void Seek(void*,int,int){}
     virtual unsigned Tell(void*){return 0;}
     virtual unsigned Size(void* file) {
-        if(file!=&handle)std::abort();
+        if(file!=&handle) {FixtureAbiViolation("invalid Size handle");return 0;}
         const auto result=hugeSize?300000u:static_cast<unsigned>(handle.bytes->size());
         std::fprintf(stderr,"fixture Size(handle) value=%u huge=%d\n",result,hugeSize?1:0);
         return result;
@@ -74,10 +81,11 @@ struct BaseFileSystem {
     virtual bool Precache(const char*,const char*){return false;}
     virtual bool FileExists(const char* path,const char* pathID) {
         ++existsCalls;
-        if(pathID)std::abort();
+        if(pathID) {FixtureAbiViolation("FileExists pathID");return false;}
         if(!std::strcmp(path,fs::kDefinitions))return !missingDefs;
         if(!std::strcmp(path,fs::kLayout))return !missingLayout;
-        std::abort();
+        FixtureAbiViolation("FileExists unexpected path");
+        return false;
     }
     virtual bool IsFileWritable(const char*,const char*){return false;}
     virtual bool SetFileWritable(const char*,bool,const char*){return false;}
@@ -273,6 +281,11 @@ int main() {
     if(!run.succeeded() || run.completed!=7 || coordinatorCalls!=4 ||
        staged.catalog_text.count()!=62 ||
        !staged.last_script_error.empty())return Fail(23);
+    if(fixtureAbiViolations) {
+        std::fprintf(stderr,"fixture ABI violations=%d last=%s\n",fixtureAbiViolations,
+                     fixtureAbiReason?fixtureAbiReason:"unknown");
+        return Fail(24);
+    }
     std::puts("PASS VFileSystem012 MSVC slots, injected stats coordinator, partial reads, rollback and retry");
     return 0;
 }
