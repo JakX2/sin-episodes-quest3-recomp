@@ -10,7 +10,7 @@
 #include <unordered_set>
 #include <vector>
 namespace sin_independent::auto_gamesystem {
-enum class DirectSource {CallbackReturn, SavedGlobalValue, NullableGlobalPlusFour, FixedAddress};
+enum class DirectSource {CallbackReturn, LazySingletonReturn, SavedGlobalValue, NullableGlobalPlusFour, FixedAddress};
 struct DirectRegistration {std::uint32_t callsite_va;DirectSource source;std::uint32_t source_va;};
 // Twelve original 2006 client Init callsites, not reconstructed objects.
 inline constexpr std::array<DirectRegistration,12> kOriginalDirectRegistrations{{
@@ -19,13 +19,23 @@ inline constexpr std::array<DirectRegistration,12> kOriginalDirectRegistrations{
     {0x240FE420u,DirectSource::NullableGlobalPlusFour,0x242FA79Cu},
     {0x240FE42Bu,DirectSource::CallbackReturn,0x24123CB0u},
     {0x240FE436u,DirectSource::CallbackReturn,0x241ED2F0u},
-    {0x240FE441u,DirectSource::CallbackReturn,0x24105660u},
+    {0x240FE441u,DirectSource::LazySingletonReturn,0x24105660u},
     {0x240FE44Du,DirectSource::SavedGlobalValue,0x242FA890u},
     {0x240FE457u,DirectSource::FixedAddress,0x24378DE8u},
     {0x240FE461u,DirectSource::FixedAddress,0x24378D18u},
     {0x240FE46Bu,DirectSource::FixedAddress,0x242FA6B8u},
     {0x240FE476u,DirectSource::CallbackReturn,0x240F23A0u},
     {0x240FE481u,DirectSource::CallbackReturn,0x24181FC0u}
+}};
+struct StaticGetter {std::uint32_t getter_va;std::uint32_t native_object_va;};
+// Six original six-byte return-address getters, SHA checked privately.
+inline constexpr std::array<StaticGetter,6> kOriginalDirectStaticGetters{{
+    {0x2413D240u,0x2436212Cu},
+    {0x241BCAA0u,0x242FFC1Cu},
+    {0x24123CB0u,0x243589A8u},
+    {0x241ED2F0u,0x2431DD84u},
+    {0x240F23A0u,0x2433E4F8u},
+    {0x24181FC0u,0x242FC9DCu}
 }};
 struct System {
     // Original 0x24156950 dispatches the first virtual method, returning bool.

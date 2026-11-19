@@ -37,6 +37,11 @@ int main(){
     for(std::size_t i=1;i<reg::kOriginalDirectRegistrations.size();++i)
         if(reg::kOriginalDirectRegistrations[i-1].callsite_va>=
            reg::kOriginalDirectRegistrations[i].callsite_va)return 15;
+    if(reg::kOriginalDirectStaticGetters.size()!=6 ||
+       reg::kOriginalDirectStaticGetters[0].native_object_va!=0x2436212Cu ||
+       reg::kOriginalDirectStaticGetters[5].native_object_va!=0x242FC9DCu ||
+       reg::kOriginalDirectRegistrations[5].source!=reg::DirectSource::LazySingletonReturn)
+        return 16;
     // Genuine constructor writes one pointer at +0 and a next link at +4.
     std::vector<int> calls;
     reg::Registry startup;

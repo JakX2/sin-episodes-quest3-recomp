@@ -74,3 +74,29 @@ gameplay class names. Ordered native registration source values:
 The next implementation target is the concrete constructors and
 their original virtual Init methods. This source list is metadata,
 not a live game-system implementation.
+
+## Six native static object getters, one lazy initializer
+
+Direct inspection of the SHA-authenticated original binary confirms
+six of the twelve direct-registration sources are short six-byte
+constant-pointer getters, with no other side effects in those helpers:
+
+| Getter VA | Returned original object VA | Whole-function SHA256 |
+| --- | --- | --- |
+| 0x2413D240 | 0x2436212C | 476c508b6290a607c69eb45a804d6a3321986ec976bb899174e13dd4c9bf4be9 |
+| 0x241BCAA0 | 0x242FFC1C | 47eb8a989c87817033ced6033cd041b6be91946dc2196cbe63f8578e98675762 |
+| 0x24123CB0 | 0x243589A8 | 746aa02a3ce17e03d0b9cb08aad13a7d8baf1554dd3c9611ae506b5fd3151798 |
+| 0x241ED2F0 | 0x2431DD84 | cc2d6553a8a626bd33b95745ab14cd90d24ace839df34df9dbb174e4f3a09dfc |
+| 0x240F23A0 | 0x2433E4F8 | 383c1684e871fd4f861f3b2c4f221fd6c9a5b068a3e5c7183b7045a22d445073 |
+| 0x24181FC0 | 0x242FC9DC | 321038b118e32adb91abf36814bdfe20ce0cfbde70a28a2ff6caa304e1868e5c |
+
+A seventh source, original `0x24105660`, is **not** a pure
+getter: first call sets a bit at `0x2433FDB4`, initializes
+the object at `0x2433FD9C`, registers shutdown, then returns that
+object's address. Its complete 75-byte native region has SHA256
+`e7a2d2c4016bc3394dde6bfc556f312f311ca1072ae210fb0038464d83fe1c54`.
+
+These identities do not recover those objects' virtual Init bodies.
+The portable `kOriginalDirectStaticGetters` and
+`LazySingletonReturn` record this distinction so a future startup
+implementation does not silently skip singleton initialization.
