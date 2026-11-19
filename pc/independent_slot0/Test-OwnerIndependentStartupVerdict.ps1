@@ -717,9 +717,11 @@ try {
     # already acquired VSoundEmitter001 interface slot 1 after surface.
     $soundInitEntry='[SiN independent] role=client phase=sound-system-init-entered version=CSoundEmitterSystem:VSoundEmitter001+1'
     $soundInitStop='[SiN independent] role=client phase=sound-system-init-terminal-stop version=original-slot1'
-    $soundInitPrefix=$matSurfacePrefix+@(
-        $matSurfaceEntry,
-        '[SiN independent] role=client phase=mat-surface-query-result version=found')
+    $matSurfaceFound='[SiN independent] role=client phase=mat-surface-query-result version=found'
+    $soundInitPrefix = [string[]](@($matSurfacePrefix) + @($matSurfaceEntry) + @($matSurfaceFound))
+    if (-not ($soundInitPrefix -contains $matSurfaceFound)) {
+        throw 'Synthetic sound Init fixture omitted its mandatory surface-result predecessor'
+    }
     foreach($state in @('called-true','called-false','invalid-object',
                         'invalid-vtable','invalid-method')) {
         [IO.File]::WriteAllLines($retailReplay,[string[]]($soundInitPrefix+@(
