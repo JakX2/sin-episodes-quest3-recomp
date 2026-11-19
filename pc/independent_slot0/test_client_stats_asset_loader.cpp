@@ -1,5 +1,6 @@
 // Native C++17 disk loader fixture; no original commercial scripts in CI.
 #include "client_stats_asset_loader.h"
+#include "client_stats_coordinator.h"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -9,6 +10,12 @@ namespace fs=std::filesystem;
 namespace a=sin_independent::stats_assets;
 static const char* kDefs=R"text("StatDefinitions" {"stat" {"name" "STAT_HP" "short_text" "#hp" "long_text" "#health"}})text";
 static const char* kLayout="\"==========================\"\n\"STAT_HP\" \"value\"\n";
+static bool CatalogContinues(void*,sin_independent::stats_catalog::Catalog&) noexcept {
+    return true;
+}
+static bool StageContinues(void*,const sin_independent::stats_system::Step&) noexcept {
+    return true;
+}
 static bool Put(const fs::path& file,const std::string& data){
     std::ofstream f(file,std::ios::binary);f<<data;return bool(f);
 }
@@ -38,6 +45,35 @@ int main(int argc,char** argv){
     if(!Put(folder/"stats_definitions.txt",std::string(262145,'a')))return 10;
     if(docs.LoadContentRoot(root,err)||docs.definitions().size()!=1||
        docs.display().size()!=2)return 11;
+    // Optional original game content root can be consumed at the
+    // actual seven-stage coordinator's display-layout callsite.
+    if(!Put(folder/"stats_definitions.txt",kDefs)||
+       !Put(folder/"stats_display_layout.txt",kLayout))return 15;
+    sin_independent::stats_coordinator::State state;
+    sin_independent::stats_coordinator::Hooks hook{};
+    hook.context=&docs;
+    hook.load_catalog_resources=&CatalogContinues;
+    hook.run_unreconstructed_step=&StageContinues;
+    hook.game_content_root=&root;
+    int owner=1,registry=2;
+    auto result=sin_independent::stats_coordinator::Initialize(
+        state,&owner,&registry,hook);
+    if(!result.succeeded()||result.completed!=7||
+       state.scripts.definitions().size()!=1||
+       state.scripts.display().size()!=2)return 16;
+    if(!Put(folder/"stats_display_layout.txt",
+            "\"STAT_MISSING\" \"value\""))return 17;
+    result=sin_independent::stats_coordinator::Initialize(
+        state,&owner,&registry,hook);
+    if(result.outcome!=sin_independent::stats_coordinator::Outcome::AssetLoadRefused ||
+       result.completed!=3||result.attempted!=4||
+       state.scripts.definitions().size()!=1||
+       state.scripts.display().size()!=2)return 18;
+    if(!Put(folder/"stats_display_layout.txt",kLayout))return 19;
+    result=sin_independent::stats_coordinator::Initialize(
+        state,&owner,&registry,hook);
+    if(!result.succeeded()||result.completed!=7||
+       state.scripts.definitions().size()!=1)return 20;
     fs::remove_all(root,ec);
     if(argc==2){
         if(!docs.LoadContentRoot(argv[1],err)){

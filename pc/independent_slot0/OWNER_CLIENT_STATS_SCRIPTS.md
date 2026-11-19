@@ -48,3 +48,23 @@ the two genuine owner Drive stats scripts under an SE1 directory,
 reporting exactly 62 definitions, 8 references, 156 layout pairs and
 66 dividers. This is real source asset IO, not a replacement for the
 proprietary 2006 engine IFileSystem or in-game HUD renderer.
+
+## Optional integration at the seven-stage Stats Init boundary
+
+The existing independent C_StatsSystem Init coordinator now accepts an
+optional SE1 content-root pointer. When enabled, its original
+LoadDisplayLayout callsite reads both real stats text documents into an
+owned, atomic stats_assets::Documents object. Missing/broken files
+produce AssetLoadRefused at attempted step 4 (three completed), and
+the last valid documents remain readable. The normal callback for
+the still-unimplemented original layout helper is REQUIRED afterwards:
+parsing a script is not a full 2006 engine layout registration.
+
+Without a content-root pointer, earlier independent CTest and ABI
+behavior are unchanged. The new synthetic native integration test
+covers success, malformed layout refusal, retained prior state, and
+successful retry. This deliberately does not claim that original
+stats_definitions resource enumeration runs in exactly this order:
+the source files are reloaded together at the independently owned
+display-layout stage for host safety. No retail game initialization
+or complete original filesystem ABI is claimed.
