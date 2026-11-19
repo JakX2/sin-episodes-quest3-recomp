@@ -98,7 +98,7 @@ int main(){
     recovering.host.shouldContinue=true;
     gs::Registry retry;
     retry.DirectRegister(&recovering);
-    if(retry.Initialize().outcome!=gs::Outcome::Success ||
+    if(retry.Initialize().outcome!=gs::Outcome::Initialized ||
        recovering.host.continuations!=2 ||
        recovering.catalog.size()!=66 ||
        recovering.host.badState)return 9;
