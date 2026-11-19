@@ -22,10 +22,10 @@ struct FakeGameSystem {
     bool wrongOrder=false;
 };
 static FakeGameSystem* current=nullptr;
-static std::string Definitions(){
+static std::string Definitions(int omit=-1){
     std::string s="\"StatDefinitions\" {\n";
     for(std::size_t id=0;id<ids::kCount;++id){
-        if(id>=51&&id<=54)continue; // four original compiled-only IDs
+        if((id>=51&&id<=54)||static_cast<int>(id)==omit)continue; // four compiled-only IDs
         const std::string name(ids::NameForId(id));
         s+="\"stat\" { \"name\" \""+name+"\" \"short_text\" \"#s_"+
             std::to_string(id)+"\" \"long_text\" \"#l_"+std::to_string(id)+"\"";
@@ -34,14 +34,14 @@ static std::string Definitions(){
     }
     return s+"}\n";
 }
-static std::string Layout(){
+static std::string Layout(int count=156){
     std::string s;
-    for(int i=0;i<156;++i)
+    for(int i=0;i<count;++i)
         s+="\"STAT_"+std::to_string(i)+"\" \"value\"\n";
     // The fixture uses arbitrary non-STAT titles, so avoid out-of-range
     // display names while still exercising parsed source references.
     s.clear();
-    for(int i=0;i<156;++i){
+    for(int i=0;i<count;++i){
         const auto id=static_cast<std::size_t>(i%66);
         if(id>=51&&id<=54)s+="\"#fixture_title\" \"title\"\n";
         else s+="\""+std::string(ids::NameForId(id))+"\" \"value\"\n";
@@ -123,6 +123,26 @@ int main(){
     if(run.outcome!=co::Outcome::ResourceLoaderRefused ||
        run.attempted!=3||run.completed!=2||game.laterCalls!=0)return Fail(5);
     fs.definitions=Definitions();
+    // A parsed, internally consistent but incomplete defs list cannot
+    // silently replace the owner's 62 original compiled bindings.
+    fs.definitions=Definitions(2);
+    run=co::Initialize(game.state,&game.owner,&game.registry,hooks);
+    if(run.outcome!=co::Outcome::ResourceLoaderRefused ||
+       run.attempted!=3||run.completed!=2||
+       game.state.last_script_error!="unexpected original definitions count" ||
+       game.state.scripts.definitions().size()!=62 ||
+       game.laterCalls!=0)return Fail(10);
+    fs.definitions=Definitions();
+    // 155 syntactically valid display pairs must not publish over the
+    // last good full 156 + 66 layout document.
+    fs.layout=Layout(155);
+    run=co::Initialize(game.state,&game.owner,&game.registry,hooks);
+    if(run.outcome!=co::Outcome::AssetLoadRefused ||
+       run.attempted!=4||run.completed!=3 ||
+       game.state.last_script_error!="unexpected original display counts" ||
+       game.state.scripts.display().size()!=222 ||
+       game.laterCalls!=0)return Fail(11);
+    fs.layout=Layout();
     game.laterCalls=0;
     run=co::Initialize(game.state,&game.owner,&game.registry,hooks);
     if(!run.succeeded()||run.completed!=7||run.attempted!=7||

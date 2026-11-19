@@ -122,6 +122,7 @@ inline Result Initialize(State& state,void* system,void* registry,
     // definitions, whereas the fourth stage consumes display layout.
     // Preserve published Documents until the fourth stage validates.
     std::string stagedDefinitions;
+    std::vector<stats_scripts::Definition> stagedParsedDefinitions;
     for(const auto& step:stats_system::kInitSteps) {
         ++result.attempted;
         switch(step.kind) {
@@ -144,16 +145,26 @@ inline Result Initialize(State& state,void* system,void* registry,
                     state.catalog.Rebuild(hooks.context,hooks.allow_catalog);
                     bool valid=false;
                     try {
-                        std::vector<stats_scripts::Definition> parsed;
-                        valid=hooks.read_stats_resource(
-                                  hooks.stats_resource_context,
-                                  "scripts/stats/stats_definitions.txt",
-                                  stagedDefinitions,state.last_script_error) &&
-                              stats_scripts::ParseDefinitions(
-                                  stagedDefinitions,parsed,state.last_script_error) &&
-                              stats_binding::Bind(
-                                  state.catalog,state.catalog_text,parsed,
-                                  state.last_script_error);
+                        if(hooks.read_stats_resource(
+                                hooks.stats_resource_context,
+                                "scripts/stats/stats_definitions.txt",
+                                stagedDefinitions,state.last_script_error) &&
+                           stats_scripts::ParseDefinitions(
+                                stagedDefinitions,stagedParsedDefinitions,
+                                state.last_script_error)) {
+                            std::size_t percentageRefs=0;
+                            for(const auto& def:stagedParsedDefinitions)
+                                if(!def.percentage_of.empty())++percentageRefs;
+                            if(stagedParsedDefinitions.size()!=62 ||
+                               percentageRefs!=8)
+                                state.last_script_error=
+                                    "unexpected original definitions count";
+                            else
+                                valid=stats_binding::Bind(
+                                    state.catalog,state.catalog_text,
+                                    stagedParsedDefinitions,
+                                    state.last_script_error);
+                        }
                     } catch(...) {
                         state.last_script_error.clear();
                     }
@@ -182,13 +193,30 @@ inline Result Initialize(State& state,void* system,void* registry,
                     bool loaded=false;
                     try {
                         std::string layout;
-                        loaded=hooks.read_stats_resource(
-                                   hooks.stats_resource_context,
-                                   "scripts/stats/stats_display_layout.txt",
-                                   layout,state.last_script_error) &&
-                               state.scripts.LoadTexts(
-                                   stagedDefinitions,layout,
-                                   state.last_script_error);
+                        if(hooks.read_stats_resource(
+                                hooks.stats_resource_context,
+                                "scripts/stats/stats_display_layout.txt",
+                                layout,state.last_script_error)) {
+                            // Parse against the exact stage-3 definitions,
+                            // verify full original counts before publishing
+                            // either document to the persistent State.
+                            std::vector<stats_scripts::DisplayEntry> parsed;
+                            if(stats_scripts::ParseDisplayLayout(
+                                   layout,stagedParsedDefinitions,
+                                   parsed,state.last_script_error)) {
+                                std::size_t pairs=0,dividers=0;
+                                for(const auto& e:parsed)
+                                    if(e.divider)++dividers;
+                                    else ++pairs;
+                                if(pairs!=156||dividers!=66)
+                                    state.last_script_error=
+                                        "unexpected original display counts";
+                                else
+                                    loaded=state.scripts.LoadTexts(
+                                        stagedDefinitions,layout,
+                                        state.last_script_error);
+                            }
+                        }
                     } catch(...) {
                         state.last_script_error.clear();
                     }

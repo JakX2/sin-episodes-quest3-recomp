@@ -78,3 +78,16 @@ line-ending translation may cause Size(handle) to differ from the
 number of returned bytes. Until a real owner test confirms it, the
 strict 256 KiB exact-read and parser safeguards fail closed rather
 than accepting incomplete content.
+
+## Fail-closed exact original source counts
+
+The owner SHA-pinned original source scripts contain 62 definitions,
+eight percentage_of references, 156 paired display entries and 66
+divider lines. The new staged-mode parser validates those counts
+BEFORE permanently publishing either Documents vector. Correct-looking
+but shortened source documents must be rejected at the corresponding
+third or fourth original Init step. Existing combined-document probes
+and explicit loose-file workflow are unchanged. These strict counts
+are appropriate for reconstructing the unmodified SiN Episodes retail
+content; supporting custom stats mods can become a separate option
+after authentic Windows startup is established.
