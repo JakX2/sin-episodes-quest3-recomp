@@ -124,6 +124,10 @@ try {
         throw 'Owner gate synthetic tests attempted to launch a game'
     }
     Write-Output 'PASS owner filesystem gate: presence first, read transcript, restoration, session isolation and no-game CI'
+} catch {
+    Write-Output ('OWNER_GATE_SYNTHETIC_FAILURE_POSITION: '+$_.InvocationInfo.PositionMessage)
+    Write-Output ('OWNER_GATE_SYNTHETIC_FAILURE_STACK: '+$_.ScriptStackTrace)
+    throw
 } finally {
     if(Test-Path -LiteralPath $dir) {
         Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
