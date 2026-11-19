@@ -24,6 +24,7 @@
 #include "client_vgui_controls_bootstrap.h"
 #include "client_mat_surface_query.h"
 #include "client_known_gamesystem_init.h"
+#include "client_stats_live_asset_probe.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -382,10 +383,50 @@ static bool clientSoundSystemInitProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientStatsAssetProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientSoundSystemInitProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_STATS_ASSET_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientStatsAssetProbe() noexcept {
+    diagnostic("stats-asset-probe-entered","scripts/stats");
+    wchar_t contentRoot[1024]={};
+    const DWORD length=GetEnvironmentVariableW(
+        L"SIN_INDEPENDENT_CLIENT_STATS_ROOT",contentRoot,1024);
+    sin_independent::stats_live_probe::Counts counts{};
+    auto result=sin_independent::stats_live_probe::Result::MissingAbsoluteRoot;
+    if(length>0 && length<1024) {
+        try {
+            const std::filesystem::path root(contentRoot);
+            result=sin_independent::stats_live_probe::Validate(&root,&counts);
+        } catch(...) {
+            result=sin_independent::stats_live_probe::Result::ReadOrParseRefused;
+        }
+    }
+    char summary[96]={};
+    std::snprintf(summary,sizeof(summary),"%u:%u:%u:%u",
+        static_cast<unsigned>(counts.definitions),
+        static_cast<unsigned>(counts.percentage_refs),
+        static_cast<unsigned>(counts.display_pairs),
+        static_cast<unsigned>(counts.dividers));
+    diagnostic("stats-asset-probe-counts",summary);
+    diagnostic("stats-asset-probe-result",
+        sin_independent::stats_live_probe::Name(result));
+    const DWORD code=result==sin_independent::stats_live_probe::Result::Verified?
+        0x53494E65u:
+        result==sin_independent::stats_live_probe::Result::UnexpectedRetailCounts?
+        0x53494E67u:0x53494E66u;
+    diagnostic("stats-asset-probe-terminal-stop","independent-content-io");
+    TerminateProcess(GetCurrentProcess(),code);
+    __fastfail(7);
+}
 [[noreturn]] static void stopAfterClientSoundSystemInit() noexcept {
     diagnostic("sound-system-init-entered","CSoundEmitterSystem:VSoundEmitter001+1");
     const auto result=sin_independent::known_game_system::InitSoundEmitter(g_clientSoundEmitter);
     diagnostic("sound-system-init-result",sin_independent::known_game_system::Name(result));
+    if(result==sin_independent::known_game_system::CallResult::CalledTrue &&
+       clientStatsAssetProbeEnabled())stopAfterClientStatsAssetProbe();
     diagnostic("sound-system-init-terminal-stop","original-slot1");
     TerminateProcess(GetCurrentProcess(),
         result==sin_independent::known_game_system::CallResult::CalledTrue?

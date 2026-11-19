@@ -763,6 +763,52 @@ try {
     if (($negative -join '|').Contains('OWNER_CLIENT_SOUND_SYSTEM_INIT_RESULTS:')) {
         throw 'Failed surface-query improperly promoted sound Init'
     }
+    # Synthetic future stats-content probe: require the same-process sound
+    # game-system true return before allowing a post-sound verdict.
+    $statsPrefix=[string[]](@($soundInitPrefix)+@(
+        $soundInitEntry,
+        '[SiN independent] role=client phase=sound-system-init-result version=called-true'
+    ))
+    foreach($case in @(
+        @{ Counts='62:8:156:66'; State='verified-original-counts' },
+        @{ Counts='61:8:156:66'; State='unexpected-retail-counts' },
+        @{ Counts='0:0:0:0'; State='missing-absolute-root' },
+        @{ Counts='0:0:0:0'; State='asset-read-or-parse-refused' }
+    )) {
+        $trace=[string[]](@($statsPrefix)+@(
+            '[SiN independent] role=client phase=stats-asset-probe-entered version=scripts/stats',
+            ("[SiN independent] role=client phase=stats-asset-probe-counts version={0}" -f $case.Counts),
+            ("[SiN independent] role=client phase=stats-asset-probe-result version={0}" -f $case.State),
+            '[SiN independent] role=client phase=stats-asset-probe-terminal-stop version=independent-content-io'
+        ))
+        [IO.File]::WriteAllLines($retailReplay,$trace)
+        $out=Verify 'CLIENT_STATS_ASSET_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(-not (($out -join '|').Contains(":client:$($case.State):$($case.Counts)"))) {
+            throw "Stats asset probe outcome missing: $($case.State)"
+        }
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($soundInitPrefix)+@(
+        $soundInitEntry,
+        '[SiN independent] role=client phase=sound-system-init-result version=called-false',
+        '[SiN independent] role=client phase=stats-asset-probe-entered version=scripts/stats',
+        '[SiN independent] role=client phase=stats-asset-probe-counts version=62:8:156:66',
+        '[SiN independent] role=client phase=stats-asset-probe-result version=verified-original-counts',
+        '[SiN independent] role=client phase=stats-asset-probe-terminal-stop version=independent-content-io'
+    )))
+    $out=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($out -join '|').Contains('OWNER_CLIENT_STATS_ASSET_PROBE_RESULTS:')) {
+        throw 'Failed sound Init improperly promoted the stats probe'
+    }
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($statsPrefix)+@(
+        '[SiN independent] role=client phase=stats-asset-probe-entered version=scripts/stats',
+        '[SiN independent] role=client phase=stats-asset-probe-counts version=0:0:0:0',
+        '[SiN independent] role=client phase=stats-asset-probe-result version=verified-original-counts',
+        '[SiN independent] role=client phase=stats-asset-probe-terminal-stop version=independent-content-io'
+    )))
+    $out=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($out -join '|').Contains('OWNER_CLIENT_STATS_ASSET_PROBE_RESULTS:')) {
+        throw 'Mismatched counts improperly promoted the stats probe'
+    }
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {

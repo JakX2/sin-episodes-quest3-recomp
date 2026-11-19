@@ -33,6 +33,7 @@ $engineVGuiSlot1Logs = New-Object System.Collections.Generic.List[string]
 $vguiControlsLogs = New-Object System.Collections.Generic.List[string]
 $matSurfaceLogs = New-Object System.Collections.Generic.List[string]
 $soundSystemInitLogs = New-Object System.Collections.Generic.List[string]
+$statsAssetProbeLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -102,6 +103,9 @@ foreach ($log in $logs) {
     $matSurfaceResult=$null
     $soundSystemInitStage=0
     $soundSystemInitResult=$null
+    $statsAssetStage=0
+    $statsAssetCounts=$null
+    $statsAssetResult=$null
     $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
@@ -368,6 +372,35 @@ foreach ($log in $logs) {
                 $soundSystemInitStage=3
             }
         }
+        if ($role -eq 'client' -and $soundSystemInitStage -eq 2 -and
+            $soundSystemInitResult -eq 'called-true') {
+            if ($statsAssetStage -eq 0 -and
+                $phase -eq 'stats-asset-probe-entered' -and
+                $version -eq 'scripts/stats') {
+                $statsAssetStage=1
+            } elseif ($statsAssetStage -eq 1 -and
+                $phase -eq 'stats-asset-probe-counts' -and
+                $version -cmatch '^([0-9]{1,4}:){3}[0-9]{1,4}$') {
+                $statsAssetStage=2
+                $statsAssetCounts=$version
+            } elseif ($statsAssetStage -eq 2 -and
+                $phase -eq 'stats-asset-probe-result' -and
+                (($version -eq 'verified-original-counts' -and
+                  $statsAssetCounts -eq '62:8:156:66') -or
+                 ($version -eq 'unexpected-retail-counts' -and
+                  $statsAssetCounts -ne '62:8:156:66') -or
+                 ($version -in @('missing-absolute-root','asset-read-or-parse-refused') -and
+                  $statsAssetCounts -eq '0:0:0:0'))) {
+                $statsAssetStage=3
+                $statsAssetResult=$version
+            } elseif ($statsAssetStage -eq 3 -and
+                $phase -eq 'stats-asset-probe-terminal-stop' -and
+                $version -eq 'independent-content-io') {
+                $statsAssetProbeLogs.Add(('{0}:client:{1}:{2}' -f $log.Name,
+                    $statsAssetResult,$statsAssetCounts))
+                $statsAssetStage=4
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -479,6 +512,9 @@ if($env:SIN_INDEPENDENT_VERDICT_DEBUG -eq '1') {
 if ($soundSystemInitLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_INIT_RESULTS: {0}" -f ($soundSystemInitLogs -join ','))
 }
+if ($statsAssetProbeLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_STATS_ASSET_PROBE_RESULTS: {0}" -f ($statsAssetProbeLogs -join ','))
+}
 if ($matSurfaceLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))
 }
@@ -539,6 +575,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($statsAssetProbeLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_STATS_ASSET_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($soundSystemInitLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($matSurfaceLogs.Count -gt 0) {
