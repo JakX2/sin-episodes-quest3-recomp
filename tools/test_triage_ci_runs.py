@@ -41,6 +41,30 @@ class TriageTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("failed=0 pending=0", output)
 
+    def test_fail_closed_completed_unknown_and_cancelled(self):
+        for conclusion in (None, "mystery", "cancelled", "timed_out", "startup_failure"):
+            code, output = self.check([{"id": 10, "status": "completed", "conclusion": conclusion}])
+            self.assertEqual(code, 1, conclusion)
+            self.assertIn("failed=1", output)
+
+    def test_unknown_active_state_is_pending(self):
+        code, output = self.check([{"id": 11, "status": "awaiting_runner", "conclusion": None}])
+        self.assertEqual(code, 2)
+        self.assertIn("pending=1", output)
+
+    def test_invalid_boolean_id_and_attempt(self):
+        for obj in ({"id": True, "status": "completed", "conclusion": "success"},
+                    {"id": 0, "status": "completed", "conclusion": "success"},
+                    {"id": 12, "status": "completed", "conclusion": "success", "run_attempt": -1}):
+            with self.assertRaises(ValueError):
+                self.check([obj])
+
+    def test_newer_attempt_replaces_failed_old_attempt(self):
+        code, output = self.check([[{"id": 13, "status": "completed", "conclusion": "failure", "run_attempt": 1}],
+                                   [{"id": 13, "status": "completed", "conclusion": "success", "run_attempt": 2}]])
+        self.assertEqual(code, 0)
+        self.assertIn("total=1 failed=0 pending=0", output)
+
     def test_invalid_shape(self):
         with self.assertRaises(ValueError):
             self.check([{"workflow_runs": [{"name": "missing id"}]}])
