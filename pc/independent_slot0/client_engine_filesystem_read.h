@@ -103,8 +103,8 @@ inline bool ReadOne(void* fileSystem,const Methods& f,const char* path,
 }
 inline Status ReadAndValidate(void* fileSystem,Counts* counts=nullptr) noexcept {
     if(counts)*counts={};
-    if(Presence(fileSystem)!=Status::BothPresent)
-        return Presence(fileSystem);
+    const auto presence=Presence(fileSystem);
+    if(presence!=Status::BothPresent)return presence;
     Methods f{};
     if(!Resolve(fileSystem,f,true))return Status::InvalidAbi;
     try {
