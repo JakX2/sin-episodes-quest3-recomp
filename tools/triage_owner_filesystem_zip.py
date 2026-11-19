@@ -8,6 +8,7 @@ import argparse
 import json
 import pathlib
 import re
+import stat
 import sys
 import zipfile
 
@@ -29,18 +30,24 @@ def inspect(path):
             raise ValueError("too many archive members")
         if sum(m.file_size for m in members) > MAX_TOTAL:
             raise ValueError("archive uncompressed size exceeds limit")
+        normalized = set()
         for info in members:
             name = info.filename.replace("\\", "/")
             parts = name.split("/")
+            canonical = name.casefold()
+            mode = info.external_attr >> 16
+            if stat.S_IFMT(mode) == stat.S_IFLNK:
+                raise ValueError("archive contains symbolic link: " + name)
             if (info.is_dir() or name.startswith("/") or ".." in parts or
                     ":" in name or "\x00" in name or
                     info.file_size > MAX_MEMBER or
                     not name.lower().endswith(TEXT_SUFFIXES) or
-                    name in documents):
+                    canonical in normalized):
                 raise ValueError("unsafe, duplicate or non-text archive member: " + name)
             raw = archive.read(info)
             if len(raw) != info.file_size:
                 raise ValueError("archive member size mismatch: " + name)
+            normalized.add(canonical)
             documents[name] = raw.decode("utf-8-sig", errors="replace")
     def select(basename):
         matches = [v for k, v in documents.items() if k.rsplit("/", 1)[-1].lower() == basename]
