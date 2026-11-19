@@ -33,6 +33,8 @@ param(
     [switch]$EnableClientSoundSystemInitProbe,
     [switch]$EnableClientStatsAssetProbe,
     [string]$ClientStatsContentRoot,
+    [switch]$EnableClientEngineFsProbe,
+    [switch]$EnableClientEngineFsReadProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -114,6 +116,15 @@ function Require-NoReparseAncestors([string]$Path) {
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
     throw "Refusing without -DisposableTestCopyConfirmed (NEVER test your live Steam install)."
+}
+if ($EnableClientEngineFsReadProbe -and -not $EnableClientEngineFsProbe) {
+    throw 'EnableClientEngineFsReadProbe requires EnableClientEngineFsProbe'
+}
+if ($EnableClientEngineFsProbe -and -not $EnableClientSoundSystemInitProbe) {
+    throw 'EnableClientEngineFsProbe requires EnableClientSoundSystemInitProbe and all preceding client gates'
+}
+if ($EnableClientStatsAssetProbe -and $EnableClientEngineFsProbe) {
+    throw 'Select only one stats content probe per owner retail launch'
 }
 if ($EnableClientStatsAssetProbe -and -not $EnableClientSoundSystemInitProbe) {
     throw 'EnableClientStatsAssetProbe requires EnableClientSoundSystemInitProbe and all preceding client gates'
@@ -301,6 +312,8 @@ try {
     $previousSoundSystemInitProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE','Process')
     $previousStatsAssetProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_STATS_ASSET_PROBE','Process')
     $previousStatsContentRoot = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_STATS_ROOT','Process')
+    $previousEngineFsProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_PROBE','Process')
+    $previousEngineFsReadProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_READ_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
@@ -351,6 +364,10 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_STATS_ASSET_PROBE',$(if ($EnableClientStatsAssetProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_STATS_ROOT',$(if ($EnableClientStatsAssetProbe) { [System.IO.Path]::GetFullPath($ClientStatsContentRoot) } else { $null }),'Process')
         Write-Output ("OWNER_CLIENT_STATS_ASSET_PROBE: {0}" -f $(if ($EnableClientStatsAssetProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_PROBE',$(if ($EnableClientEngineFsProbe) { '1' } else { '0' }),'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_READ_PROBE',$(if ($EnableClientEngineFsReadProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_CLIENT_ENGINE_FS_PROBE: {0}" -f $(if ($EnableClientEngineFsProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
+        Write-Output ("OWNER_CLIENT_ENGINE_FS_READ_PROBE: {0}" -f $(if ($EnableClientEngineFsReadProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_OWNED_STARTUP_PROBE: {0}" -f $(if ($EnableClientOwnedStartupProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
@@ -449,6 +466,8 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE',$previousSoundSystemInitProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_STATS_ASSET_PROBE',$previousStatsAssetProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_STATS_ROOT',$previousStatsContentRoot,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_PROBE',$previousEngineFsProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_READ_PROBE',$previousEngineFsReadProbe,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.
