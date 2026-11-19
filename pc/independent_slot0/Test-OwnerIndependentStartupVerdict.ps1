@@ -730,8 +730,12 @@ try {
         $soundReplay.Add(("[SiN independent] role=client phase=sound-system-init-result version={0}" -f $state))
         $soundReplay.Add($soundInitStop)
         [IO.File]::WriteAllLines($retailReplay,$soundReplay.ToArray())
-        if (-not ((Get-Content -LiteralPath $retailReplay) -contains $matSurfaceFound)) {
-            throw 'Written sound-system replay did not retain mat-surface-query-result=found'
+        $written = [IO.File]::ReadAllLines($retailReplay)
+        $surfaceStartIndex = [Array]::IndexOf($written,$matSurfaceEntry)
+        $surfaceFoundIndex = [Array]::IndexOf($written,$matSurfaceFound)
+        if ($surfaceFoundIndex -ne ($surfaceStartIndex + 1)) {
+            throw ("Sound fixture surface-result order invalid: entered={0}, found={1}, total={2}" -f
+                $surfaceStartIndex,$surfaceFoundIndex,$written.Length)
         }
         $out=Verify 'CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
         if(-not (($out -join '|').Contains(":client:$state"))) {throw "Sound system Init outcome missing: $state"}
