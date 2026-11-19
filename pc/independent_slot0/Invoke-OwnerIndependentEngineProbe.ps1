@@ -30,6 +30,7 @@ param(
     [switch]$EnableClientEngineVGuiSlot1Probe,
     [switch]$EnableClientVGuiControlsBootstrapProbe,
     [switch]$EnableClientMatSurfaceProbe,
+    [switch]$EnableClientSoundSystemInitProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -111,6 +112,9 @@ function Require-NoReparseAncestors([string]$Path) {
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
     throw "Refusing without -DisposableTestCopyConfirmed (NEVER test your live Steam install)."
+}
+if ($EnableClientSoundSystemInitProbe -and -not $EnableClientMatSurfaceProbe) {
+    throw 'EnableClientSoundSystemInitProbe requires EnableClientMatSurfaceProbe and all preceding client gates'
 }
 if ($EnableClientMatSurfaceProbe -and -not $EnableClientVGuiControlsBootstrapProbe) {
     throw 'EnableClientMatSurfaceProbe requires EnableClientVGuiControlsBootstrapProbe and earlier Client-only gates'
@@ -276,6 +280,7 @@ try {
     $previousEngineVGuiSlot1Probe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_PROBE','Process')
     $previousVGuiControlsBootstrapProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_CONTROLS_BOOTSTRAP_PROBE','Process')
     $previousMatSurfaceProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MAT_SURFACE_PROBE','Process')
+    $previousSoundSystemInitProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
@@ -321,6 +326,8 @@ try {
         Write-Output ("OWNER_CLIENT_VGUI_CONTROLS_BOOTSTRAP_PROBE: {0}" -f $(if ($EnableClientVGuiControlsBootstrapProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MAT_SURFACE_PROBE',$(if ($EnableClientMatSurfaceProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_MAT_SURFACE_PROBE: {0}" -f $(if ($EnableClientMatSurfaceProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE',$(if ($EnableClientSoundSystemInitProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_INIT_PROBE: {0}" -f $(if ($EnableClientSoundSystemInitProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_OWNED_STARTUP_PROBE: {0}" -f $(if ($EnableClientOwnedStartupProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
@@ -416,6 +423,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_VGUI_SLOT1_PROBE',$previousEngineVGuiSlot1Probe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_VGUI_CONTROLS_BOOTSTRAP_PROBE',$previousVGuiControlsBootstrapProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MAT_SURFACE_PROBE',$previousMatSurfaceProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE',$previousSoundSystemInitProbe,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.
