@@ -42,7 +42,10 @@ int main(){
            expected.original_callsite!=actual.original_callsite ||
            expected.original_callee!=actual.original_callee ||
            expected.original_argument_va!=actual.original_argument_va ||
-           expected.original_callback_va!=actual.original_callback_va)return 3;
+           expected.original_callback_va!=actual.original_callback_va ||
+           expected.original_this_offset!=actual.original_this_offset ||
+           ((expected.argument==nullptr)!=(actual.argument==nullptr)) ||
+           (expected.argument && std::strcmp(expected.argument,actual.argument)))return 3;
         if(i && stats::kInitSteps[i-1].original_callsite>=expected.original_callsite)
             return 4;
     }
@@ -61,6 +64,11 @@ int main(){
     gs::Registry registryOwner;registryOwner.DirectRegister(&system);
     if(!registryOwner.Initialize().succeeded() ||
        calls.records.size()!=7 || calls.wrong_context)return 7;
+    // Rejecting the StatsSystem must prevent the next system from running.
+    struct LaterSystem : gs::System {
+        int calls=0;
+        bool Init() noexcept override { ++calls; return true; }
+    } later;
     system.fail=true;
     gs::Registry reject;reject.DirectRegister(&system);
     if(reject.Initialize().outcome!=gs::Outcome::InitRefused)return 8;
