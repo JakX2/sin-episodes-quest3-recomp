@@ -26,3 +26,25 @@ display_pairs=156 dividers=66.
 This is not the 2006 game's KeyValues/file-manager binary ABI.
 No claim of full C_StatsSystem Init or playable Windows game.
 The latest retail owner checkpoint remains 0x53494E63.
+
+## Independent on-disk SE1 asset loading
+
+client_stats_asset_loader.h implements an owned standard-C++17
+filesystem loader taking the SE1 content directory and reading
+scripts/stats/stats_definitions.txt and
+scripts/stats/stats_display_layout.txt. Inputs are bounded at 256 KiB,
+then both parse into temporary vectors. Only after BOTH parse
+successfully does the owner replace its existing parsed state.
+Missing, truncated, oversized or malformed files preserve the last
+valid definitions/layout and return a concrete error.
+
+Native CTest exercises synthetic temporary directory files, successful
+read, invalid layout rollback, successful reload and oversized input.
+The optional owner mode runs:
+sin_client_stats_asset_loader_test.exe <path-to-SE1>
+
+The code was also compiled with GCC 14 C++17 locally and run against
+the two genuine owner Drive stats scripts under an SE1 directory,
+reporting exactly 62 definitions, 8 references, 156 layout pairs and
+66 dividers. This is real source asset IO, not a replacement for the
+proprietary 2006 engine IFileSystem or in-game HUD renderer.
