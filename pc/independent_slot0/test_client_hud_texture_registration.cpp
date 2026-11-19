@@ -19,7 +19,7 @@ static hud::AnimationConverterAbi* Find(void* context,const char* name) noexcept
     auto& s=*static_cast<State*>(context);
     ++s.finds;
     if(s.reenter && s.owner && s.host &&
-       !s.owner->started() || s.owner->Start(*s.host)!=hud::AddResult::Invalid)
+       (!s.owner->started() || s.owner->Start(*s.host)!=hud::AddResult::Invalid))
         std::abort(); // inner call MUST be already started; see below
     return s.name && !std::strcmp(s.name,name)?s.converter:nullptr;
 }
