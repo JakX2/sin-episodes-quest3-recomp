@@ -36,11 +36,15 @@ struct Hooks {
     // supplies bytes; this coordinator owns parsing, rollback and ordering.
     // Exactly one asset input source can be selected per Init attempt.
     AssetReader read_engine_documents=nullptr;
+    // The filesystem interface belongs to the engine, not the game stats
+    // resource-provider host. Never reinterpret hooks.context as IFileSystem.
+    void* asset_reader_context=nullptr;
 };
 enum class Outcome {
     Success,
     InvalidHost,
     ConflictingAssetSources,
+    MissingAssetReaderContext,
     MissingResourceLoader,
     ResourceLoaderRefused,
     AssetLoadRefused,
@@ -58,6 +62,7 @@ inline const char* OutcomeName(Outcome result) noexcept {
         case Outcome::Success:return "success";
         case Outcome::InvalidHost:return "invalid-host";
         case Outcome::ConflictingAssetSources:return "conflicting-asset-sources";
+        case Outcome::MissingAssetReaderContext:return "missing-asset-reader-context";
         case Outcome::MissingResourceLoader:return "missing-resource-loader";
         case Outcome::ResourceLoaderRefused:return "resource-loader-refused";
         case Outcome::AssetLoadRefused:return "asset-load-refused";
@@ -81,6 +86,10 @@ inline Result Initialize(State& state,void* system,void* registry,
     if(hooks.game_content_root && hooks.read_engine_documents) {
         // Reject ambiguous IO sources before *any* catalog/storage writes.
         result.outcome=Outcome::ConflictingAssetSources;
+        return result;
+    }
+    if(hooks.read_engine_documents && !hooks.asset_reader_context) {
+        result.outcome=Outcome::MissingAssetReaderContext;
         return result;
     }
     for(const auto& step:stats_system::kInitSteps) {
@@ -120,7 +129,7 @@ inline Result Initialize(State& state,void* system,void* registry,
                             // Parse into temporary vectors inside LoadTexts,
                             // then publish only when BOTH inputs are valid.
                             loaded=hooks.read_engine_documents(
-                                hooks.context,definitions,layout,
+                                hooks.asset_reader_context,definitions,layout,
                                 state.last_script_error) &&
                                 state.scripts.LoadTexts(
                                     definitions,layout,state.last_script_error);

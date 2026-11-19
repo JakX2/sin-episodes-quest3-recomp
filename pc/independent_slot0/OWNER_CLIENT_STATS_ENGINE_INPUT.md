@@ -32,7 +32,11 @@ bool (*)(void* context, std::string& definitions,
 ```
 
 `engine_fs::ReadForStatsCoordinator` implements that signature using
-the previously reconstructed SDK virtual calls. Both files must read
+the previously reconstructed SDK virtual calls. The reader receives the
+separate non-null Hooks::asset_reader_context engine interface pointer,
+while catalog and event callbacks continue to receive Hooks::context.
+A missing engine context fails before the first owned storage reset as
+MissingAssetReaderContext. Both files must read
 successfully before it swaps either caller-visible string. The stats
 coordinator then validates the actual SiN grammars via
 `stats_assets::Documents::LoadTexts`, atomically publishing both parsed

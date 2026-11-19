@@ -60,6 +60,7 @@ int main(){
     co::Hooks h{};
     h.context=&fixture;h.load_catalog_resources=&Resources;
     h.run_unreconstructed_step=&Later;h.read_engine_documents=&Read;
+    h.asset_reader_context=&fixture;
     auto r=co::Initialize(state,&owner,&registry,h);
     if(!r.succeeded()||r.attempted!=7||r.completed!=7||
        fixture.reads!=1||fixture.resources!=1||fixture.called!=4||
@@ -99,8 +100,18 @@ int main(){
     if(!r.succeeded()||r.completed!=7||fixture.called!=4||
        state.scripts.definitions().size()!=62||state.scripts.display().size()!=222||
        !state.last_script_error.empty())return Fail(7);
+    // A supplied reader without its engine object is invalid before
+    // any Stats records or callback registration work starts.
+    auto missingContext=h;
+    missingContext.asset_reader_context=nullptr;
+    int readsBefore=fixture.reads,resourcesBefore=fixture.resources;
+    r=co::Initialize(state,&owner,&registry,missingContext);
+    if(r.outcome!=co::Outcome::MissingAssetReaderContext ||
+       r.attempted!=0||r.completed!=0||fixture.reads!=readsBefore||
+       fixture.resources!=resourcesBefore)return Fail(9);
     // Asset callback remains opt-in, preserving all earlier test semantics.
     h.read_engine_documents=nullptr;
+    fixture.called=0;
     r=co::Initialize(state,&owner,&registry,h);
     if(!r.succeeded()||r.completed!=7||
        state.scripts.definitions().size()!=62)return Fail(8);

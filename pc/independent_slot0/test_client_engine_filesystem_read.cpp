@@ -8,6 +8,7 @@
 #include <cstdint>
 namespace fs=sin_independent::engine_fs;
 namespace co=sin_independent::stats_coordinator;
+static void* expectedStatsContext=nullptr;
 static_assert(std::is_same<co::AssetReader,decltype(&fs::ReadForStatsCoordinator)>::value,
     "Engine-backed stats reader must match injected coordinator ABI");
 static int existsCalls=0,openCalls=0,closeCalls=0,readCalls=0;
@@ -96,8 +97,8 @@ static std::string Layout(int count) {
     return result;
 }
 static int coordinatorCalls=0;
-static bool ResourceForCoordinator(void*,sin_independent::stats_catalog::Catalog& c) noexcept {
-    return c.size()==66;
+static bool ResourceForCoordinator(void* context,sin_independent::stats_catalog::Catalog& c) noexcept {
+    return context==expectedStatsContext && c.size()==66;
 }
 static bool LaterForCoordinator(void*,const sin_independent::stats_system::Step&) noexcept {
     ++coordinatorCalls;
@@ -175,12 +176,14 @@ int main() {
        providedLayout!=previousLayout)return Fail(15);
     missingDefs=false;
     co::State state;
+    int statsOwner=1,registry=2;
+    expectedStatsContext=&statsOwner;
     co::Hooks hooks{};
-    hooks.context=&owner;
+    hooks.context=&statsOwner;
+    hooks.asset_reader_context=&owner;
     hooks.load_catalog_resources=&ResourceForCoordinator;
     hooks.run_unreconstructed_step=&LaterForCoordinator;
     hooks.read_engine_documents=&fs::ReadForStatsCoordinator;
-    int statsOwner=1,registry=2;
     coordinatorCalls=0;
     auto run=co::Initialize(state,&statsOwner,&registry,hooks);
     if(!run.succeeded() || run.completed!=7 || run.attempted!=7 ||
