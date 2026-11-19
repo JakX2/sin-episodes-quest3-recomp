@@ -31,6 +31,13 @@ add_test(NAME independent_owner_filesystem_gate_synthetic
     -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerFileSystemRetailGate.ps1"
     -Gate "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerFileSystemRetailGate.ps1")
 
+# One-click user package: public Windows CI verifies only dry-run and
+# original-game safety preflight. Never copy/run owner game binaries in CI.
+add_test(NAME independent_owner_oneclick_package_synthetic
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-SiNOneClickPackage.ps1"
+    -Runner "${CMAKE_CURRENT_SOURCE_DIR}/Start-SiNFileSystemTest.ps1")
+
 # Session-isolated owner-engine failure classification; synthetic logs only.
 add_test(NAME independent_owner_startup_verdict
   COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
