@@ -264,6 +264,30 @@ int main() {
     if(fs::ReadForStagedStats(&owner,"scripts/../../unsafe",single,error) ||
        error!="unrecognized stats resource" || single!="retain-me")
         return Fail(20);
+    // A failed staged read must not publish partial text, leak its handle,
+    // or poison a later successful read. Exercise each original resource mode.
+    const int stagedClosedBefore=closeCalls;
+    shortRead=true;
+    single="preserve-definitions";
+    error.clear();
+    if(fs::ReadForStagedStats(&owner,fs::kDefinitions,single,error) ||
+       single!="preserve-definitions" || error!="read-refused" ||
+       closeCalls!=stagedClosedBefore+1)return Fail(25);
+    shortRead=false;
+    missingLayout=true;
+    // Staged loading opens the exact resource directly; no presence probe.
+    // An Open refusal must leave the output unchanged.
+    rejectOpen=true;
+    single="preserve-layout";
+    error.clear();
+    if(fs::ReadForStagedStats(&owner,fs::kLayout,single,error) ||
+       single!="preserve-layout" || error!="read-refused" ||
+       closeCalls!=stagedClosedBefore+1)return Fail(26);
+    rejectOpen=false;
+    missingLayout=false;
+    if(!fs::ReadForStagedStats(&owner,fs::kLayout,single,error) ||
+       single!=layout || !error.empty() ||
+       closeCalls!=stagedClosedBefore+2)return Fail(27);
     defs=OriginalDefs();layout=OriginalLayout();
     stagedParams=true;
     co::State staged;
