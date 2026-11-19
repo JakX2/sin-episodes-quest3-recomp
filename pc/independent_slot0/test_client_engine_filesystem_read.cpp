@@ -342,6 +342,33 @@ int main() {
        staged.scripts.definitions().size()!=62 ||
        staged.scripts.display().size()!=222 || !staged.last_script_error.empty())
         return Fail(29);
+    // A readable but malformed layout must be rejected by the parser, not
+    // mistaken for an Open/Read failure. Keep the last published documents.
+    const auto publishedDefinitions=staged.scripts.definitions().size();
+    const auto publishedLayout=staged.scripts.display().size();
+    const auto publishedBindings=staged.catalog_text.count();
+    const int beforeMalformedOpen=openCalls;
+    const int beforeMalformedClose=closeCalls;
+    const std::string goodLayout=layout;
+    layout="\"broken\" { \"unterminated\"\n";
+    coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(run.outcome!=co::Outcome::AssetLoadRefused ||
+       run.completed!=3 || run.attempted!=4 || coordinatorCalls!=0 ||
+       staged.scripts.definitions().size()!=publishedDefinitions ||
+       staged.scripts.display().size()!=publishedLayout ||
+       staged.catalog_text.count()!=publishedBindings ||
+       openCalls!=beforeMalformedOpen+2 ||
+       closeCalls!=beforeMalformedClose+2)
+        return Fail(30);
+    layout=goodLayout;
+    coordinatorCalls=0;
+    run=co::Initialize(staged,&statsOwner,&registry,hooks);
+    if(!run.succeeded() || run.completed!=7 || run.attempted!=7 ||
+       coordinatorCalls!=4 || staged.catalog_text.count()!=publishedBindings ||
+       staged.scripts.display().size()!=publishedLayout ||
+       !staged.last_script_error.empty())
+        return Fail(31);
     if(fixtureAbiViolations) {
         std::fprintf(stderr,"fixture ABI violations=%d last=%s\n",fixtureAbiViolations,
                      fixtureAbiReason?fixtureAbiReason:"unknown");
