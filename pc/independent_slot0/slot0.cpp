@@ -25,6 +25,7 @@
 #include "client_mat_surface_query.h"
 #include "client_known_gamesystem_init.h"
 #include "client_stats_live_asset_probe.h"
+#include "client_engine_filesystem_read.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -310,6 +311,7 @@ static void* g_engineVgui=nullptr;
 static Factory g_clientAppFactory=nullptr;
 static void* g_clientVGuiSurface=nullptr;
 static void* g_clientSoundEmitter=nullptr;
+static void* g_clientFileSystem=nullptr;
 #if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
 static bool clientSoundProbeEnabled() noexcept {
     char enabled[2]={};
@@ -383,6 +385,44 @@ static bool clientSoundSystemInitProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientEngineFsProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientSoundSystemInitProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_FS_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+static bool clientEngineFsReadProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientEngineFsProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_FS_READ_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientEngineFsProbe() noexcept {
+    using namespace sin_independent::engine_fs;
+    diagnostic("engine-fs-presence-entered","VFileSystem012:source2004");
+    auto status=Presence(g_clientFileSystem);
+    diagnostic("engine-fs-presence-result",Name(status));
+    DWORD code=status==Status::BothPresent?0x53494E68u:
+               status==Status::InvalidAbi?0x53494E6Au:0x53494E69u;
+    if(status==Status::BothPresent && clientEngineFsReadProbeEnabled()) {
+        diagnostic("engine-fs-read-entered","VFileSystem012:read-only");
+        Counts counts{};
+        status=ReadAndValidate(g_clientFileSystem,&counts);
+        char summary[96]={};
+        std::snprintf(summary,sizeof(summary),"%u:%u:%u:%u",
+            static_cast<unsigned>(counts.definitions),
+            static_cast<unsigned>(counts.refs),
+            static_cast<unsigned>(counts.pairs),
+            static_cast<unsigned>(counts.dividers));
+        diagnostic("engine-fs-read-counts",summary);
+        diagnostic("engine-fs-read-result",Name(status));
+        code=status==Status::ParsedAndVerified?0x53494E6Bu:
+             status==Status::UnexpectedCounts?0x53494E6Du:0x53494E6Cu;
+    }
+    diagnostic("engine-fs-terminal-stop","read-only-diagnostic");
+    TerminateProcess(GetCurrentProcess(),code);
+    __fastfail(7);
+}
 static bool clientStatsAssetProbeEnabled() noexcept {
     char enabled[2]={};
     return clientSoundSystemInitProbeEnabled() &&
@@ -425,6 +465,8 @@ static bool clientStatsAssetProbeEnabled() noexcept {
     diagnostic("sound-system-init-entered","CSoundEmitterSystem:VSoundEmitter001+1");
     const auto result=sin_independent::known_game_system::InitSoundEmitter(g_clientSoundEmitter);
     diagnostic("sound-system-init-result",sin_independent::known_game_system::Name(result));
+    if(result==sin_independent::known_game_system::CallResult::CalledTrue &&
+       clientEngineFsProbeEnabled())stopAfterClientEngineFsProbe();
     if(result==sin_independent::known_game_system::CallResult::CalledTrue &&
        clientStatsAssetProbeEnabled())stopAfterClientStatsAssetProbe();
     diagnostic("sound-system-init-terminal-stop","original-slot1");
@@ -615,6 +657,7 @@ public:
         g_clientAppFactory=appSystemFactory;
         g_clientVGuiSurface=nullptr;
         g_clientSoundEmitter=nullptr;
+        g_clientFileSystem=nullptr;
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
@@ -628,7 +671,8 @@ public:
                          std::strcmp(version,"VSoundEmitter001")==0 ? &sound :
                          std::strcmp(version,"VMaterialSystem076")==0 ? &materials :
                          std::strcmp(version,"VEngineRandom001")==0 ? &uniform :
-                         std::strcmp(version,"VEngineVGui001")==0 ? &g_engineVgui : nullptr))
+                         std::strcmp(version,"VEngineVGui001")==0 ? &g_engineVgui :
+                         std::strcmp(version,"VFileSystem012")==0 ? &g_clientFileSystem : nullptr))
                 return 0;
         g_clientSoundEmitter=sound;
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)

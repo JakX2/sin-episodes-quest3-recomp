@@ -809,6 +809,83 @@ try {
     if(($out -join '|').Contains('OWNER_CLIENT_STATS_ASSET_PROBE_RESULTS:')) {
         throw 'Mismatched counts improperly promoted the stats probe'
     }
+    # SDK2004 VFileSystem read-only owner probe fixtures are synthetic.
+    # Require the same-process original sound callback to return true.
+    $engineFsPrefix=[string[]](@($soundInitPrefix)+@(
+        $soundInitEntry,
+        '[SiN independent] role=client phase=sound-system-init-result version=called-true'
+    ))
+    $engineFsStart='[SiN independent] role=client phase=engine-fs-presence-entered version=VFileSystem012:source2004'
+    $engineFsStop='[SiN independent] role=client phase=engine-fs-terminal-stop version=read-only-diagnostic'
+    foreach($kind in @('both-present','missing-definitions','missing-layout','invalid-abi')) {
+        $trace=[string[]](@($engineFsPrefix)+@(
+            $engineFsStart,
+            ('[SiN independent] role=client phase=engine-fs-presence-result version='+$kind),
+            $engineFsStop
+        ))
+        [IO.File]::WriteAllLines($retailReplay,$trace)
+        $out=Verify 'CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(-not (($out -join '|').Contains((':client:'+$kind)))) {
+            throw ('Engine filesystem presence not classified: '+$kind)
+        }
+    }
+    $engineFsReadStart='[SiN independent] role=client phase=engine-fs-read-entered version=VFileSystem012:read-only'
+    foreach($case in @(
+        @{ Counts='62:8:156:66'; State='parsed-and-verified' },
+        @{ Counts='61:8:156:66'; State='unexpected-counts' },
+        @{ Counts='0:0:0:0'; State='read-refused' },
+        @{ Counts='0:0:0:0'; State='invalid-abi' }
+    )) {
+        $trace=[string[]](@($engineFsPrefix)+@(
+            $engineFsStart,
+            '[SiN independent] role=client phase=engine-fs-presence-result version=both-present',
+            $engineFsReadStart,
+            ('[SiN independent] role=client phase=engine-fs-read-counts version='+$case.Counts),
+            ('[SiN independent] role=client phase=engine-fs-read-result version='+$case.State),
+            $engineFsStop
+        ))
+        [IO.File]::WriteAllLines($retailReplay,$trace)
+        $out=Verify 'CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(-not (($out -join '|').Contains((':client:both-present:'+$case.State+':'+$case.Counts)))) {
+            throw ('Engine filesystem read not classified: '+$case.State)
+        }
+    }
+    # Do not claim an engine-filesystem milestone after a false sound Init.
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($soundInitPrefix)+@(
+        $soundInitEntry,
+        '[SiN independent] role=client phase=sound-system-init-result version=called-false',
+        $engineFsStart,
+        '[SiN independent] role=client phase=engine-fs-presence-result version=both-present',
+        $engineFsStop
+    )))
+    $out=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($out -join '|').Contains('OWNER_CLIENT_ENGINE_FS_PRESENCE_RESULTS:')) {
+        throw 'False sound Init improperly promoted engine filesystem evidence'
+    }
+    # Do not accept a read verdict that lacks its presence predecessor.
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($engineFsPrefix)+@(
+        $engineFsReadStart,
+        '[SiN independent] role=client phase=engine-fs-read-counts version=62:8:156:66',
+        '[SiN independent] role=client phase=engine-fs-read-result version=parsed-and-verified',
+        $engineFsStop
+    )))
+    $out=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($out -join '|').Contains('OWNER_CLIENT_ENGINE_FS_READ_RESULTS:')) {
+        throw 'Read result promoted despite missing filesystem presence'
+    }
+    # Do not accept a forged successful count pairing.
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($engineFsPrefix)+@(
+        $engineFsStart,
+        '[SiN independent] role=client phase=engine-fs-presence-result version=both-present',
+        $engineFsReadStart,
+        '[SiN independent] role=client phase=engine-fs-read-counts version=0:0:0:0',
+        '[SiN independent] role=client phase=engine-fs-read-result version=parsed-and-verified',
+        $engineFsStop
+    )))
+    $out=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($out -join '|').Contains('OWNER_CLIENT_ENGINE_FS_READ_RESULTS:')) {
+        throw 'Read result promoted despite invalid original counts'
+    }
     # Future screen events are synthetic only. Preserve zero as a real
     # returned value, not proof of a rendering surface.
     foreach ($dimensions in @('1920:1080','0:0')) {

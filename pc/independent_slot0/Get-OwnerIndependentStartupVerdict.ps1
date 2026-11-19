@@ -34,6 +34,8 @@ $vguiControlsLogs = New-Object System.Collections.Generic.List[string]
 $matSurfaceLogs = New-Object System.Collections.Generic.List[string]
 $soundSystemInitLogs = New-Object System.Collections.Generic.List[string]
 $statsAssetProbeLogs = New-Object System.Collections.Generic.List[string]
+$engineFsPresenceLogs = New-Object System.Collections.Generic.List[string]
+$engineFsReadLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -106,6 +108,10 @@ foreach ($log in $logs) {
     $statsAssetStage=0
     $statsAssetCounts=$null
     $statsAssetResult=$null
+    $engineFsStage=0
+    $engineFsPresence=$null
+    $engineFsRead=$null
+    $engineFsCounts=$null
     $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
@@ -401,6 +407,51 @@ foreach ($log in $logs) {
                 $statsAssetStage=4
             }
         }
+        if ($role -eq 'client' -and $soundSystemInitStage -eq 2 -and
+            $soundSystemInitResult -eq 'called-true') {
+            if ($engineFsStage -eq 0 -and
+                $phase -eq 'engine-fs-presence-entered' -and
+                $version -eq 'VFileSystem012:source2004') {
+                $engineFsStage=1
+            } elseif ($engineFsStage -eq 1 -and
+                $phase -eq 'engine-fs-presence-result' -and
+                $version -in @('both-present','missing-definitions',
+                               'missing-layout','invalid-abi')) {
+                $engineFsPresence=$version
+                $engineFsStage=2
+            } elseif ($engineFsStage -eq 2 -and
+                $engineFsPresence -eq 'both-present' -and
+                $phase -eq 'engine-fs-read-entered' -and
+                $version -eq 'VFileSystem012:read-only') {
+                $engineFsStage=3
+            } elseif ($engineFsStage -eq 3 -and
+                $phase -eq 'engine-fs-read-counts' -and
+                $version -cmatch '^[0-9]+:[0-9]+:[0-9]+:[0-9]+$') {
+                $engineFsCounts=$version
+                $engineFsStage=4
+            } elseif ($engineFsStage -eq 4 -and
+                $phase -eq 'engine-fs-read-result' -and
+                (($version -eq 'parsed-and-verified' -and
+                  $engineFsCounts -eq '62:8:156:66') -or
+                 ($version -eq 'unexpected-counts' -and
+                  $engineFsCounts -ne '62:8:156:66') -or
+                 ($version -in @('invalid-abi','read-refused',
+                                 'missing-definitions','missing-layout') -and
+                  $engineFsCounts -eq '0:0:0:0'))) {
+                $engineFsRead=$version
+                $engineFsStage=5
+            } elseif ($phase -eq 'engine-fs-terminal-stop' -and
+                $version -eq 'read-only-diagnostic') {
+                if ($engineFsStage -eq 2) {
+                    $engineFsPresenceLogs.Add(('{0}:client:{1}' -f $log.Name,$engineFsPresence))
+                    $engineFsStage=6
+                } elseif ($engineFsStage -eq 5) {
+                    $engineFsReadLogs.Add(('{0}:client:{1}:{2}:{3}' -f $log.Name,
+                        $engineFsPresence,$engineFsRead,$engineFsCounts))
+                    $engineFsStage=6
+                }
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -515,6 +566,12 @@ if ($soundSystemInitLogs.Count -gt 0) {
 if ($statsAssetProbeLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_STATS_ASSET_PROBE_RESULTS: {0}" -f ($statsAssetProbeLogs -join ','))
 }
+if ($engineFsPresenceLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_ENGINE_FS_PRESENCE_RESULTS: {0}" -f ($engineFsPresenceLogs -join ','))
+}
+if ($engineFsReadLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_ENGINE_FS_READ_RESULTS: {0}" -f ($engineFsReadLogs -join ','))
+}
 if ($matSurfaceLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))
 }
@@ -575,6 +632,10 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineFsReadLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineFsPresenceLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($statsAssetProbeLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_STATS_ASSET_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($soundSystemInitLogs.Count -gt 0) {
