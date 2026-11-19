@@ -26,7 +26,6 @@ static Fixture* active=nullptr;
 static void* Define(void* ctx,std::size_t index) noexcept {
     auto& f=*static_cast<Fixture*>(ctx);
     ++f.definition_calls;
-    if(index==0)f.order.emplace_back("static");
     return index<16?
         reinterpret_cast<void*>(static_cast<std::uintptr_t>(index+1)):
         nullptr;
