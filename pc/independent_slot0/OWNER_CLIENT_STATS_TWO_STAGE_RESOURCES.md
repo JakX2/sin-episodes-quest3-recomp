@@ -60,3 +60,21 @@ Retail FileSystem method invocation, original KeyValues, callback
 registration, complete normal VClient011 Init and gameplay boot
 are not yet verified. Source PC startup first, Android second,
 Quest 3 third. No original binaries or scripts are committed.
+
+## Exact original mode and path group evidence
+
+Original SHA-matched client.dll's KeyValues load at 0x24164A50
+is reached from original stats catalog 0x241FC5A0 with path group
+"GAME" and Open mode "rb" for stats_definitions.txt.
+The next display layout helper at 0x24204D90 uses Open mode "rt"
+and a null path group for stats_display_layout.txt. The staged
+reader now selects those original parameters based on the two
+whitelisted resource names; the older combined reader keeps its
+existing explicit binary/null probing behavior. Native synthetic
+VFileSystem012 checks reject an incorrect mode/pathID combination.
+
+Owner retail behavior is still unverified: in particular, text-mode
+line-ending translation may cause Size(handle) to differ from the
+number of returned bytes. Until a real owner test confirms it, the
+strict 256 KiB exact-read and parser safeguards fail closed rather
+than accepting incomplete content.

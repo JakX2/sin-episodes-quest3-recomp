@@ -86,8 +86,9 @@ struct CloseGuard {
     ~CloseGuard() noexcept {if(owner&&handle&&close)close(owner,handle);}
 };
 inline bool ReadOne(void* fileSystem,const Methods& f,const char* path,
-                    std::string& output) {
-    void* handle=f.open(fileSystem,path,"rb",nullptr);
+                    std::string& output,const char* mode="rb",
+                    const char* pathID=nullptr) {
+    void* handle=f.open(fileSystem,path,mode,pathID);
     if(!handle)return false;
     CloseGuard guard{fileSystem,handle,f.close};
     const unsigned length=f.size(fileSystem,handle);
@@ -154,7 +155,13 @@ inline bool ReadForStagedStats(void* engineFileSystem,const char* path,
         return refuse("invalid-abi");
     try {
         std::string data;
-        if(!ReadOne(engineFileSystem,methods,path,data))
+        // SHA-matched 2006 client:
+        // KeyValues::LoadFromFile in 0x241FC5A0 opens definitions
+        // using "rb" and pathID="GAME", while 0x24204D90 opens
+        // layout with "rt" and pathID=nullptr.
+        const bool definitions=std::strcmp(path,kDefinitions)==0;
+        if(!ReadOne(engineFileSystem,methods,path,data,
+                    definitions?"rb":"rt",definitions?"GAME":nullptr))
             return refuse("read-refused");
         output.swap(data);
         error.clear();

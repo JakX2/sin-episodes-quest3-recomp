@@ -18,6 +18,7 @@ static_assert(std::is_same<co::AssetReader,decltype(&fs::ReadForStatsCoordinator
 static int existsCalls=0,openCalls=0,closeCalls=0,readCalls=0;
 static bool missingDefs=false,missingLayout=false,shortRead=false,hugeSize=false;
 static bool rejectOpen=false;
+static bool stagedParams=false;
 static std::string defs,layout;
 struct Handle {const std::string* bytes=nullptr;std::size_t cursor=0;};
 static Handle handle;
@@ -39,7 +40,14 @@ struct BaseFileSystem {
     virtual int Write(const void*,int,void*){return -1;}
     virtual void* Open(const char* path,const char* mode,const char* pathId) {
         ++openCalls;
-        if(!mode||std::strcmp(mode,"rb")||pathId||rejectOpen)return nullptr;
+        if(!mode||rejectOpen)return nullptr;
+        if(stagedParams) {
+            if(!std::strcmp(path,fs::kDefinitions) &&
+               (std::strcmp(mode,"rb") || !pathId ||
+                std::strcmp(pathId,"GAME")))std::abort();
+            if(!std::strcmp(path,fs::kLayout) &&
+               (std::strcmp(mode,"rt") || pathId))std::abort();
+        } else if(std::strcmp(mode,"rb") || pathId)std::abort();
         if(!std::strcmp(path,fs::kDefinitions))handle.bytes=&defs;
         else if(!std::strcmp(path,fs::kLayout))handle.bytes=&layout;
         else return nullptr;
@@ -237,6 +245,7 @@ int main() {
        error!="unrecognized stats resource" || single!="retain-me")
         return Fail(20);
     defs=OriginalDefs();layout=OriginalLayout();
+    stagedParams=true;
     co::State staged;
     hooks.read_engine_documents=nullptr;
     hooks.asset_reader_context=nullptr;
