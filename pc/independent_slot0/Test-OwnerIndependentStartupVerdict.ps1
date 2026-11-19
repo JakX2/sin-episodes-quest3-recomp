@@ -724,10 +724,15 @@ try {
     }
     foreach($state in @('called-true','called-false','invalid-object',
                         'invalid-vtable','invalid-method')) {
-        [IO.File]::WriteAllLines($retailReplay,[string[]]($soundInitPrefix+@(
-            $soundInitEntry,
-            ("[SiN independent] role=client phase=sound-system-init-result version={0}" -f $state),
-            $soundInitStop)))
+        $soundReplay = New-Object 'System.Collections.Generic.List[string]'
+        foreach ($event in $soundInitPrefix) { $soundReplay.Add([string]$event) }
+        $soundReplay.Add($soundInitEntry)
+        $soundReplay.Add(("[SiN independent] role=client phase=sound-system-init-result version={0}" -f $state))
+        $soundReplay.Add($soundInitStop)
+        [IO.File]::WriteAllLines($retailReplay,$soundReplay.ToArray())
+        if (-not ((Get-Content -LiteralPath $retailReplay) -contains $matSurfaceFound)) {
+            throw 'Written sound-system replay did not retain mat-surface-query-result=found'
+        }
         $out=Verify 'CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
         if(-not (($out -join '|').Contains(":client:$state"))) {throw "Sound system Init outcome missing: $state"}
     }
