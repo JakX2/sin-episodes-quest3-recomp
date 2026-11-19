@@ -63,3 +63,11 @@ The original VGUI_Surface028 has a secondary IAppSystem base at +4 x86 bytes.
 Its QueryInterface virtual slot2 is invoked with "MatSystemSurface003".
 Exit 0x53494E61 means non-null; 0x53494E62 means refused. These are
 reversible terminal diagnostics, not successful VClient011::Init or gameplay.
+
+Independent original engine sound-system Init probe: add
+-EnableClientSoundSystemInitProbe to -EnableClientMatSurfaceProbe and
+all earlier client probe flags. This invokes original engine
+VSoundEmitter001 slot 1, equivalent to the 2006 client
+CSoundEmitterSystem::Init 11-byte tail call. Success 0x53494E63,
+false or memory validation refusal 0x53494E64. Diagnostic-only stop;
+not a normal VClient011::Init or full game boot.

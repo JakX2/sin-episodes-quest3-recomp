@@ -23,6 +23,7 @@
 #include "client_engine_vgui_slot1_probe.h"
 #include "client_vgui_controls_bootstrap.h"
 #include "client_mat_surface_query.h"
+#include "client_known_gamesystem_init.h"
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -307,6 +308,7 @@ static void traceCvar(const char* phase) noexcept {
 static void* g_engineVgui=nullptr;
 static Factory g_clientAppFactory=nullptr;
 static void* g_clientVGuiSurface=nullptr;
+static void* g_clientSoundEmitter=nullptr;
 #if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
 static bool clientSoundProbeEnabled() noexcept {
     char enabled[2]={};
@@ -374,11 +376,30 @@ static bool clientMatSurfaceProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_MAT_SURFACE_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientSoundSystemInitProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientMatSurfaceProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUND_SYSTEM_INIT_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientSoundSystemInit() noexcept {
+    diagnostic("sound-system-init-entered","CSoundEmitterSystem:VSoundEmitter001+1");
+    const auto result=sin_independent::known_game_system::InitSoundEmitter(g_clientSoundEmitter);
+    diagnostic("sound-system-init-result",sin_independent::known_game_system::Name(result));
+    diagnostic("sound-system-init-terminal-stop","original-slot1");
+    TerminateProcess(GetCurrentProcess(),
+        result==sin_independent::known_game_system::CallResult::CalledTrue?
+        0x53494E63u:0x53494E64u);
+    __fastfail(7);
+}
 [[noreturn]] static void stopAfterClientMatSurfaceQuery() noexcept {
     diagnostic("mat-surface-query-entered","VGUI_Surface028:IAppSystem+4");
     void* obtained=nullptr;
     const auto result=sin_independent::mat_surface::Query(g_clientVGuiSurface,&obtained);
     diagnostic("mat-surface-query-result",sin_independent::mat_surface::Name(result));
+    if(result==sin_independent::mat_surface::Result::Found &&
+       clientSoundSystemInitProbeEnabled())
+        stopAfterClientSoundSystemInit();
     diagnostic("mat-surface-query-terminal-stop","original-abi");
     TerminateProcess(GetCurrentProcess(),result==sin_independent::mat_surface::Result::Found?
         0x53494E61u:0x53494E62u);
@@ -552,6 +573,7 @@ public:
         g_engineVgui=nullptr;
         g_clientAppFactory=appSystemFactory;
         g_clientVGuiSurface=nullptr;
+        g_clientSoundEmitter=nullptr;
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
@@ -567,6 +589,7 @@ public:
                          std::strcmp(version,"VEngineRandom001")==0 ? &uniform :
                          std::strcmp(version,"VEngineVGui001")==0 ? &g_engineVgui : nullptr))
                 return 0;
+        g_clientSoundEmitter=sound;
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
         if (!connectSound(sound,appSystemFactory)) return 0;
 #else
