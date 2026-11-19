@@ -14,6 +14,8 @@ static_assert(std::is_same<co::AssetReader,decltype(&fs::ReadForStatsCoordinator
 static int existsCalls=0,openCalls=0,closeCalls=0,readCalls=0;
 static bool missingDefs=false,missingLayout=false,shortRead=false,hugeSize=false;
 static bool rejectOpen=false;
+static bool failLayoutRead=false, overlongLayoutRead=false, failLayoutOpen=false;
+static int layoutReadCalls=0;
 static std::string defs,layout;
 struct Handle {const std::string* bytes=nullptr;std::size_t cursor=0;};
 static Handle handle;
@@ -23,7 +25,11 @@ struct BaseFileSystem {
     virtual int Read(void* output,int size,void* file) {
         ++readCalls;
         auto* h=static_cast<Handle*>(file);
-        if(shortRead)return 0;
+        if(shortRead || (failLayoutRead && h->bytes==&layout))return 0;
+        if(h->bytes==&layout) {
+            ++layoutReadCalls;
+            if(overlongLayoutRead)return size+1;
+        }
         const auto amount=std::min<std::size_t>(
             static_cast<std::size_t>(size),h->bytes->size()-h->cursor);
         // Deliberate partial reads exercise our loop.
@@ -35,7 +41,8 @@ struct BaseFileSystem {
     virtual int Write(const void*,int,void*){return -1;}
     virtual void* Open(const char* path,const char* mode,const char* pathId) {
         ++openCalls;
-        if(!mode||std::strcmp(mode,"rb")||pathId||rejectOpen)return nullptr;
+        if(!mode||std::strcmp(mode,"rb")||pathId||rejectOpen ||
+           (failLayoutOpen && !std::strcmp(path,fs::kLayout)))return nullptr;
         if(!std::strcmp(path,fs::kDefinitions))handle.bytes=&defs;
         else if(!std::strcmp(path,fs::kLayout))handle.bytes=&layout;
         else return nullptr;
@@ -202,6 +209,33 @@ int main() {
     if(!run.succeeded()||run.completed!=7||coordinatorCalls!=4 ||
        state.scripts.definitions().size()!=62 ||
        !state.last_script_error.empty())return Fail(18);
-    std::puts("PASS VFileSystem012 MSVC slots, injected stats coordinator, partial reads, rollback and retry");
+    // A failure in the SECOND document must close both opened handles and
+    // publish neither document, even after the first read succeeded.
+    std::string sentinelDefs="previous-definitions",sentinelLayout="previous-layout";
+    const int beforeSecond=openCalls;
+    const int beforeSecondClose=closeCalls;
+    failLayoutRead=true;
+    if(fs::ReadPair(&owner,sentinelDefs,sentinelLayout)!=fs::Status::ReadRefused ||
+       sentinelDefs!="previous-definitions" || sentinelLayout!="previous-layout" ||
+       openCalls!=beforeSecond+2 || closeCalls!=beforeSecondClose+2 ||
+       layoutReadCalls==0)return Fail(19);
+    failLayoutRead=false;
+    const int beforeOpen=openCalls,beforeClose=closeCalls;
+    failLayoutOpen=true;
+    if(fs::ReadPair(&owner,sentinelDefs,sentinelLayout)!=fs::Status::ReadRefused ||
+       sentinelDefs!="previous-definitions" || sentinelLayout!="previous-layout" ||
+       openCalls!=beforeOpen+2 || closeCalls!=beforeClose+1)return Fail(20);
+    failLayoutOpen=false;
+    // An impossible overlong engine Read return must be refused before
+    // any buffer publication. Both handles must still be closed.
+    const int beforeOverlongClose=closeCalls;
+    overlongLayoutRead=true;
+    if(fs::ReadPair(&owner,sentinelDefs,sentinelLayout)!=fs::Status::ReadRefused ||
+       sentinelDefs!="previous-definitions" || sentinelLayout!="previous-layout" ||
+       closeCalls!=beforeOverlongClose+2)return Fail(21);
+    overlongLayoutRead=false;
+    if(fs::ReadPair(&owner,sentinelDefs,sentinelLayout)!=fs::Status::TextsRead ||
+       sentinelDefs!=defs || sentinelLayout!=layout)return Fail(22);
+    std::puts("PASS VFileSystem012 MSVC slots, injected stats coordinator, second-file atomicity, refusal and retry");
     return 0;
 }
