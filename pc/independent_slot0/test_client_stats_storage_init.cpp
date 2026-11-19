@@ -1,5 +1,6 @@
 // Original-guided, owner-free Win32 x86 stats storage and callback contract.
 #include "client_stats_storage_init.h"
+#include "client_stats_definition_types.h"
 #include "client_auto_gamesystem_init_core.h"
 #include <array>
 #include <cstdint>
@@ -27,6 +28,7 @@ static void* CreateDefinition(void* context,std::size_t index) noexcept {
     if(index>=storage::kStaticSlots)return nullptr;
     ++f.factoryCalls;
     ++f.attempted[index];
+    // Original RTTI type table identifies exact specialized 0..15 cases.
     // Original 0x24205BC0 type dispatch only has specialized 0..15
     // cases. These invented nonnull tags are NOT original types.
     return index<storage::kStaticDefinitionCases?
@@ -62,6 +64,26 @@ int main(){
     static_assert(sizeof(storage::DynamicRecord)==20,"native record size");
     static_assert(!std::is_copy_constructible<storage::Storage>::value,
                   "published record pointers cannot be copied");
+    namespace types=sin_independent::stats_definition;
+    if(types::kCases.size()!=16 || types::kDistinctTypes!=14 ||
+       types::Describe(16)!=nullptr || types::Describe(55)!=nullptr ||
+       types::Describe(0)->original_vtable_va!=0x242AF384u ||
+       types::Describe(0)->native_bytes!=16 ||
+       types::Describe(7)->native_bytes!=20 ||
+       types::Describe(8)->native_bytes!=28 ||
+       types::Describe(11)->native_bytes!=32 ||
+       types::Describe(8)->original_vtable_va!=types::Describe(9)->original_vtable_va ||
+       types::Describe(8)->initialization_float_bits!=0x3F800000u ||
+       types::Describe(9)->initialization_float_bits!=0x3C888889u ||
+       types::Describe(10)->initialization_float_bits!=0x3991A2B4u)
+        {std::fprintf(stderr,"Stats subtype metadata table invalid\n");return 16;}
+    for(std::size_t i=0;i<16;++i) {
+        if(!types::Describe(i) || types::Describe(i)->case_entry_va==0u ||
+           types::Describe(i)->original_vtable_va==0u ||
+           (i>1 && types::Describe(i)->native_constructor_va==0u))
+            {std::fprintf(stderr,"Stats subtype constructor metadata missing %u\n",
+                         static_cast<unsigned>(i));return 17;}
+    }
     System system;
     if(storage::ExecuteKnownStages(system.store,nullptr,&system.registry,
             &system.fixture,&CreateDefinition,&Allowed,&Observe)){ std::fprintf(stderr,"Stats storage fixture failure at assertion 1\n");return 1; }
