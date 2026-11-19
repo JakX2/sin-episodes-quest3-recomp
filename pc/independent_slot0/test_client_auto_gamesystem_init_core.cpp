@@ -28,6 +28,15 @@ static bool Equal(const std::vector<int>& a,const std::vector<int>& b){
 }
 int main(){
     static_assert(sizeof(void*)==4,"original ABI is 32-bit");
+    if(reg::kOriginalDirectRegistrations.size()!=12 ||
+       reg::kOriginalDirectRegistrations.front().callsite_va!=0x240FE3FCu ||
+       reg::kOriginalDirectRegistrations.back().callsite_va!=0x240FE481u ||
+       reg::kOriginalDirectRegistrations[2].source!=reg::DirectSource::NullableGlobalPlusFour ||
+       reg::kOriginalDirectRegistrations[9].source!=reg::DirectSource::FixedAddress)
+        return 14;
+    for(std::size_t i=1;i<reg::kOriginalDirectRegistrations.size();++i)
+        if(reg::kOriginalDirectRegistrations[i-1].callsite_va>=
+           reg::kOriginalDirectRegistrations[i].callsite_va)return 15;
     // Genuine constructor writes one pointer at +0 and a next link at +4.
     std::vector<int> calls;
     reg::Registry startup;

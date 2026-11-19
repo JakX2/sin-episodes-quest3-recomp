@@ -32,6 +32,12 @@ ANCHORS={
     0x241569B8:bytes.fromhex("895604"), # node->next
     0x241569BB:bytes.fromhex("89358c6c3624") # pending head
 }
+DIRECT_CALLS=(
+    0x240FE3FC,0x240FE407,0x240FE420,0x240FE42B,
+    0x240FE436,0x240FE441,0x240FE44D,0x240FE457,
+    0x240FE461,0x240FE46B,0x240FE476,0x240FE481
+)
+REGISTER_TARGET=0x24156840
 CALL_VA=0x240FE4B3
 NATIVE_MESSAGE_VA=0x2429EED0
 NATIVE_MESSAGE=b"AutoGameSystem already added to game system list!!!\n\x00"
@@ -47,6 +53,10 @@ def verify_native(pe,regions=REGIONS):
             raise AuditError("original instruction witness mismatch at %#x"%addr)
     if pe.read(NATIVE_MESSAGE_VA,len(NATIVE_MESSAGE))!=NATIVE_MESSAGE:
         raise AuditError("original duplicate-game-system warning mismatch")
+    for callsite in DIRECT_CALLS:
+        expected=b"\xe8"+struct.pack("<i",REGISTER_TARGET-callsite-5)
+        if pe.read(callsite,5)!=expected:
+            raise AuditError("original twelve direct system registration calls mismatch at %#x"%callsite)
     target=REGIONS["merge_and_init"][0]
     if pe.read(CALL_VA,5)!=b"\xe8"+struct.pack("<i",target-CALL_VA-5):
         raise AuditError("original client Init call to registry mismatch")
@@ -55,6 +65,8 @@ def verify_native(pe,regions=REGIONS):
         "complete_function_or_callsite_regions":len(regions),
         "native_opcode_witnesses":len(ANCHORS),
         "client_init_registration_gate_va":hex(CALL_VA),
+        "direct_registration_calls":len(DIRECT_CALLS),
+        "direct_registration_callsite_vas":[hex(x) for x in DIRECT_CALLS],
         "merge_and_init_va":hex(target),
         "vector_data_global_va":"0x242FBFA8",
         "vector_count_global_va":"0x242FBFB4",

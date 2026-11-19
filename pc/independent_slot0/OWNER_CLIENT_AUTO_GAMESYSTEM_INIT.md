@@ -49,3 +49,28 @@ This recovers another **mandatory original VClient011 Init gate** beyond
 the factory and VGUI checks, but this helper has NOT yet run inside
 the actual 2006 game process with our independent client. No full
 Init return or playable game is claimed.
+
+## Exact twelve original direct registration sources
+
+Original VClient011 Init calls 0x24156840 twelve times before its
+mandatory game-system Init gate. The owner-only audit verifies all
+twelve exact native CALL rel32 instructions; the portable header
+exposes original callsites and pointer provenance without inventing
+gameplay class names. Ordered native registration source values:
+
+1. Return of 0x2413D240
+2. Return of 0x241BCAA0
+3. Nonnull [0x242FA79C] +4, else null
+4. Return of 0x24123CB0
+5. Return of 0x241ED2F0
+6. Return of 0x24105660
+7. Pointer [0x242FA890]
+8. Address 0x24378DE8
+9. Address 0x24378D18
+10. Address 0x242FA6B8
+11. Return of 0x240F23A0
+12. Return of 0x24181FC0
+
+The next implementation target is the concrete constructors and
+their original virtual Init methods. This source list is metadata,
+not a live game-system implementation.
