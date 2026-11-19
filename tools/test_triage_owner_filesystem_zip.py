@@ -53,6 +53,22 @@ class OwnerZipTriageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             triage.inspect(self.make_zip({"../presence.txt": "bad"}))
 
+    def test_rejects_case_colliding_archive_names(self):
+        with self.assertRaises(ValueError):
+            triage.inspect(self.make_zip({"presence.txt": "first", "PRESENCE.TXT": "second"}))
+
+    def test_rejects_symlink_member(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        path = pathlib.Path(temp.name) / "symlink.zip"
+        info = zipfile.ZipInfo("presence.txt")
+        info.create_system = 3
+        info.external_attr = (0o120777 << 16)
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr(info, "target")
+        with self.assertRaises(ValueError):
+            triage.inspect(path)
+
     def test_rejects_binary_member(self):
         with self.assertRaises(ValueError):
             triage.inspect(self.make_zip({"client.dll": "not allowed"}))
