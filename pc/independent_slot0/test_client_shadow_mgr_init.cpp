@@ -78,6 +78,50 @@ static bool TimingContract(bool refresh) {
     return storage[0xdc]==0xa5 && storage[0xdf]==0xa5;
 }
 
+// Full host-facing metadata contract for every recovered callsite. This is
+// synthetic ABI evidence: it does not establish original helper execution.
+static bool MetadataContract(bool refresh) {
+    std::array<unsigned char,0xdc> owner{};
+    Capture first;
+    if(!shadow::Init(owner.data(),owner.size(),refresh,&first,&Record) ||
+       !Check(first.actions,refresh))return false;
+    const shadow::Operation expected[]={
+        shadow::kPrecache,shadow::kVector,shadow::kRadius,shadow::kBias,
+        shadow::kRefresh,shadow::kRegisterCallback
+    };
+    std::size_t next=0;
+    for(const auto& actual:first.actions) {
+        if(next==4 && !refresh)++next;
+        if(next>=6)return false;
+        const auto& reference=expected[next++];
+        if(actual.action!=reference.action ||
+           actual.callsite_va!=reference.callsite_va ||
+           actual.original_slot!=reference.original_slot ||
+           actual.original_callback_va!=reference.original_callback_va ||
+           actual.scalar_arg!=reference.scalar_arg ||
+           actual.name!=reference.name ||
+           actual.category!=reference.category ||
+           actual.vector_arg!=reference.vector_arg)return false;
+    }
+    if(next!=6)return false;
+    // Re-entry must replay identical callbacks and must not accumulate
+    // hidden registration state in this independent orchestration model.
+    Capture again;
+    if(!shadow::Init(owner.data(),owner.size(),refresh,&again,&Record) ||
+       again.actions.size()!=first.actions.size())return false;
+    for(std::size_t i=0;i<first.actions.size();++i) {
+        const auto& a=first.actions[i];
+        const auto& b=again.actions[i];
+        if(a.action!=b.action || a.callsite_va!=b.callsite_va ||
+           a.original_slot!=b.original_slot ||
+           a.original_callback_va!=b.original_callback_va ||
+           a.name!=b.name || a.category!=b.category ||
+           a.vector_arg!=b.vector_arg || a.scalar_arg!=b.scalar_arg)
+            return false;
+    }
+    return true;
+}
+
 struct System:gs::System {
     std::array<unsigned char,0xdc> storage{};
     Capture capture;
@@ -90,6 +134,7 @@ struct System:gs::System {
 int main(){
     static_assert(sizeof(void*)==4,"original engine uses MSVC x86");
     if(!TimingContract(false) || !TimingContract(true))return 7;
+    if(!MetadataContract(false) || !MetadataContract(true))return 8;
     System system;
     system.storage.fill(0xa5);
     if(shadow::Init(nullptr,system.storage.size(),false,&system.capture,&Record) ||
