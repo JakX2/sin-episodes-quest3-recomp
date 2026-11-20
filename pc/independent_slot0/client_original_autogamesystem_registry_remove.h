@@ -19,6 +19,9 @@
 namespace sin_independent::original_gamesystem_registry {
 inline constexpr std::uint32_t kOriginalBaseDestructorVA=0x24156820u;
 inline constexpr std::uint32_t kOriginalRemoveVA=0x241565E0u;
+inline constexpr std::uint32_t kOriginalInsertVA=0x24156640u;
+inline constexpr std::uint32_t kOriginalAppendVA=0x24156800u;
+inline constexpr std::uint32_t kOriginalEnsureCapacityVA=0x241562F0u;
 inline constexpr std::uint32_t kOriginalRegistryVA=0x242FBFA8u;
 inline constexpr std::uint32_t kOriginalRegistryCountVA=0x242FBFB4u;
 inline constexpr std::uint32_t kOriginalBaseVtableVA=0x24293B1Cu;
@@ -27,6 +30,15 @@ inline constexpr std::uint32_t kOriginalMemmoveVA=0x24248B50u;
 inline constexpr std::size_t kOwnedRegistryMax=1024u; // owned policy
 enum class RemoveResult {Removed,NotFound,Empty};
 enum class SeedResult {Accepted,TooLarge};
+enum class InsertResult {Inserted,InvalidIndex,OwnedCapacityRefused};
+struct InsertReport final {
+    InsertResult result=InsertResult::InvalidIndex;
+    std::size_t index=0u;
+    std::size_t elements_shifted=0u;
+    std::size_t count_before=0u;
+    std::size_t count_after=0u;
+    bool original_capacity_growth_simulated=false;
+};
 struct RemoveReport final {
     RemoveResult result=RemoveResult::Empty;
     std::size_t index=0u;
@@ -54,6 +66,38 @@ public:
         count_=count;
         ++revision_;
         return SeedResult::Accepted;
+    }
+    InsertReport InsertAt(std::size_t index,
+                          std::uint32_t identity) noexcept {
+        InsertReport out{};
+        out.index=index;
+        out.count_before=count_;
+        out.count_after=count_;
+        // Original source assumes a valid insertion index and may
+        // call a grow-capacity helper. These are independent caps,
+        // NOT claims of original allocator/realloc parity.
+        if(index>count_)return out;
+        if(count_>=data_.size()){
+            out.result=InsertResult::OwnedCapacityRefused;
+            return out;
+        }
+        out.result=InsertResult::Inserted;
+        out.elements_shifted=count_-index;
+        // Source increments count, memmoves later 32-bit entries
+        // one position right from index, then writes the
+        // address supplied by the caller into slot[index].
+        for(std::size_t j=count_;j>index;--j)
+            data_[j]=data_[j-1u];
+        data_[index]=identity;
+        ++count_;
+        out.count_after=count_;
+        ++revision_;
+        return out;
+    }
+    InsertReport Append(std::uint32_t identity) noexcept {
+        // Original wrapper 0x24156800 forwards current count
+        // as the positional insert index.
+        return InsertAt(count_,identity);
     }
     RemoveReport RemoveFirst(std::uint32_t identity) noexcept {
         RemoveReport out{};
