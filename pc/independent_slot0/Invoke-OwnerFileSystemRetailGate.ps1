@@ -10,7 +10,7 @@ THIS IS TERMINAL DIAGNOSTIC, NEVER GAME BOOT PROOF.
 param(
     [Parameter(Mandatory=$true)][string]$DisposableGameRoot,
     [Parameter(Mandatory=$true)][string]$IndependentBin,
-    [ValidateSet('Presence','Read','Staged','Hooks')][string]$Phase='Presence',
+    [ValidateSet('Presence','Read','Staged','Hooks','Soundscape')][string]$Phase='Presence',
     [string]$PriorPresenceTranscript,
     [string]$PriorReadTranscript,
     [string]$TranscriptPath,
@@ -136,13 +136,13 @@ if ($Phase -eq 'Read') {
 } elseif (-not [string]::IsNullOrWhiteSpace($PriorPresenceTranscript)) {
     throw 'PriorPresenceTranscript is valid only for Read phase'
 }
-if ($Phase -in @('Staged','Hooks')) {
+if ($Phase -in @('Staged','Hooks','Soundscape')) {
     if ([string]::IsNullOrWhiteSpace($PriorReadTranscript)) {
         throw 'Staged phase requires a previous verified owner read transcript'
     }
     $previousReadSession=Check-ReadEvidence $PriorReadTranscript
 } elseif (-not [string]::IsNullOrWhiteSpace($PriorReadTranscript)) {
-    throw 'PriorReadTranscript is valid only for Staged or Hooks phase'
+    throw 'PriorReadTranscript is valid only for Staged, Hooks or Soundscape phase'
 }
 if (-not $PlanOnly -and -not $DisposableTestCopyConfirmed) {
     throw 'Real owner launch requires -DisposableTestCopyConfirmed'
@@ -191,14 +191,17 @@ $settings=@{
     EnableClientSoundSystemInitProbe=$true
     EnableClientEngineFsProbe=$true
 }
-if ($Phase -in @('Read','Staged','Hooks')) {
+if ($Phase -in @('Read','Staged','Hooks','Soundscape')) {
     $settings.EnableClientEngineFsReadProbe=$true
 }
-if ($Phase -in @('Staged','Hooks')) {
+if ($Phase -in @('Staged','Hooks','Soundscape')) {
     $settings.EnableClientEngineFsStagedProbe=$true
 }
-if ($Phase -eq 'Hooks') {
+if ($Phase -in @('Hooks','Soundscape')) {
     $settings.EnableClientEngineFsHookProbe=$true
+}
+if ($Phase -eq 'Soundscape') {
+    $settings.EnableClientSoundscapeCatalogProbe=$true
 }
 if ($PlanOnly) {
     Write-Output 'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED'
@@ -209,7 +212,7 @@ if ($PlanOnly) {
     if ($Phase -eq 'Read') {
         Write-Output ("OWNER_ENGINE_FS_GATE_PREVIOUS_PRESENCE_SESSION: {0}" -f $previousSession)
     }
-    if ($Phase -in @('Staged','Hooks')) {
+    if ($Phase -in @('Staged','Hooks','Soundscape')) {
         Write-Output ("OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: {0}" -f $previousReadSession)
     }
     return
@@ -230,15 +233,17 @@ $report=[System.IO.File]::ReadAllLines($out)
 if (-not (ExactLine $report 'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE')) {
     throw 'Owner restoration not verified: do not repeat or re-stage until recovered'
 }
-$expected=if($Phase -eq 'Presence'){'0x53494E68'}elseif($Phase -eq 'Read'){'0x53494E6B'}elseif($Phase -eq 'Staged'){'0x53494E70'}else{'0x53494E74'}
+$expected=if($Phase -eq 'Presence'){'0x53494E68'}elseif($Phase -eq 'Read'){'0x53494E6B'}elseif($Phase -eq 'Staged'){'0x53494E70'}elseif($Phase -eq 'Hooks'){'0x53494E74'}else{'0x53494E76'}
 $verdict=if($Phase -eq 'Presence'){
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
 } elseif ($Phase -eq 'Read') {
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
 } elseif ($Phase -eq 'Staged') {
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_STAGED_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
-} else {
+} elseif ($Phase -eq 'Hooks') {
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_HOOKS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+} else {
+    'OWNER_INDEPENDENT_VERDICT: CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
 }
 if (-not (ExactLine $report ("OWNER_ENGINE_EXIT_HEX: "+$expected)) -or
     -not (ExactLine $report $verdict)) {
@@ -270,7 +275,7 @@ if ($Phase -eq 'Presence') {
         @($report | Where-Object {$_ -cmatch $strict}).Count -ne 1) {
         throw 'Staged diagnostic exit lacks same-session original-mode 66:62:8:156:66 owned-binding proof'
     }
-    if ($Phase -eq 'Hooks') {
+    if ($Phase -in @('Hooks','Soundscape')) {
         $hookPattern=('^OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS: sin-independent-'+
             $session+'-[0-9]+\.log:client:three-owned-hooks-bound-not-dispatched:27:28:5:3$')
         if (-not (ExactLine $report 'OWNER_CLIENT_ENGINE_FS_HOOK_PROBE: ENABLED_TERMINAL_DIAGNOSTIC') -or
@@ -283,6 +288,22 @@ if ($Phase -eq 'Presence') {
     } else {
         if (-not (ExactLine $report 'OWNER_CLIENT_ENGINE_FS_HOOK_PROBE: DISABLED')) {
             throw 'Original staged gate unexpectedly enabled the new hook proof'
+        }
+    }
+    if ($Phase -eq 'Soundscape') {
+        # Independent fourth-stage proof: the SAME session that showed
+        # all three Stats hooks must have read and parsed seven original
+        # soundscape scripts through VFileSystem012 with rb/GAME.
+        $pattern=('^OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS: sin-independent-'+
+            $session+'-[0-9]+\.log:client:owned-soundscape-catalog-verified-original-files:7:301:242:3
+    $Phase.ToUpperInvariant())
+)
+        if (-not (ExactLine $report 'OWNER_CLIENT_SOUNDSCAPE_CATALOG_PROBE: ENABLED_TERMINAL_DIAGNOSTIC') -or
+            @($report | Where-Object {
+                $_ -cmatch '^OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS: '
+            }).Count -ne 1 -or
+            @($report | Where-Object {$_ -cmatch $pattern}).Count -ne 1) {
+            throw 'Soundscape proof lacks original 7:301:242:3 engine-read catalog evidence'
         }
     }
 }
