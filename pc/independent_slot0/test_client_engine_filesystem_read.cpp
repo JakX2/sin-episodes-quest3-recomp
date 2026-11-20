@@ -20,6 +20,8 @@ static bool missingDefs=false,missingLayout=false,shortRead=false,hugeSize=false
 static bool rejectOpen=false;
 static bool rejectLayoutOpen=false;
 static bool stagedParams=false;
+static bool translateLayoutText=false,spoofTextSize=false;
+static std::string translatedLayout;
 static int fixtureAbiViolations=0;
 static const char* fixtureAbiReason=nullptr;
 static void FixtureAbiViolation(const char* reason) noexcept {
@@ -28,7 +30,11 @@ static void FixtureAbiViolation(const char* reason) noexcept {
     std::fprintf(stderr,"fixture ABI mismatch: %s\n",reason);
 }
 static std::string defs,layout;
-struct Handle {const std::string* bytes=nullptr;std::size_t cursor=0;};
+struct Handle {
+    const std::string* bytes=nullptr;
+    std::size_t cursor=0;
+    std::size_t reportedLength=0;
+};
 static Handle handle;
 struct BaseFileSystem {
     // SDK IBaseFileSystem has NO instance fields: secondary IAppSystem
@@ -65,9 +71,22 @@ struct BaseFileSystem {
             if(!std::strcmp(path,fs::kLayout) &&
                (std::strcmp(mode,"rt") || pathId)) {FixtureAbiViolation("layout Open mode/pathID");return nullptr;}
         } else if(std::strcmp(mode,"rb") || pathId) {FixtureAbiViolation("legacy Open mode/pathID");return nullptr;}
-        if(!std::strcmp(path,fs::kDefinitions))handle.bytes=&defs;
-        else if(!std::strcmp(path,fs::kLayout))handle.bytes=&layout;
-        else return nullptr;
+        if(!std::strcmp(path,fs::kDefinitions)) {
+            handle.bytes=&defs;
+            handle.reportedLength=defs.size();
+        } else if(!std::strcmp(path,fs::kLayout)) {
+            if(translateLayoutText && stagedParams) {
+                // Simulate CRT text-mode CRLF translation ONLY for rt,
+                // while Size(handle) still reports the physical bytes.
+                translatedLayout.clear();
+                for(const char character:layout)
+                    if(character!='\r')translatedLayout.push_back(character);
+                handle.bytes=&translatedLayout;
+            } else {
+                handle.bytes=&layout;
+            }
+            handle.reportedLength=layout.size()+(spoofTextSize?1:0);
+        } else return nullptr;
         handle.cursor=0;
         return &handle;
     }
@@ -79,7 +98,7 @@ struct BaseFileSystem {
     virtual unsigned Tell(void*){return 0;}
     virtual unsigned Size(void* file) {
         if(file!=&handle || !handle.bytes) {FixtureAbiViolation("invalid Size handle");return 0;}
-        const auto result=hugeSize?300000u:static_cast<unsigned>(handle.bytes->size());
+        const auto result=hugeSize?300000u:static_cast<unsigned>(handle.reportedLength);
         std::fprintf(stderr,"fixture Size(handle) value=%u huge=%d\n",result,hugeSize?1:0);
         return result;
     }
@@ -432,6 +451,39 @@ int main() {
     if(fs::ReadBindAndValidateStaged(nullptr,&stagedObserved)!=
             fs::StagedStatus::InvalidEngineAbi ||
        stagedObserved.catalog!=0)return Fail(55);
+    // Owner-original text layout has CRLF on disk. A CRT-backed rt
+    // Read may return each CRLF as one LF while Size(handle) continues
+    // to expose the physical file size. Permit ONLY that precise delta.
+    std::string crlf;
+    for(const char character:layout) {
+        if(character=='\n')crlf.push_back('\r');
+        crlf.push_back(character);
+    }
+    layout.swap(crlf);
+    translateLayoutText=true;
+    const int beforeTranslatedOpen=openCalls;
+    const int beforeTranslatedClose=closeCalls;
+    if(fs::ReadBindAndValidateStaged(&owner,&stagedObserved)!=
+            fs::StagedStatus::OwnedStagedVerified ||
+       stagedObserved.catalog!=66 || stagedObserved.definitions!=62 ||
+       stagedObserved.refs!=8 || stagedObserved.pairs!=156 ||
+       stagedObserved.dividers!=66 ||
+       openCalls!=beforeTranslatedOpen+2 ||
+       closeCalls!=beforeTranslatedClose+2)return Fail(56);
+    // Reject arbitrary short content even in text mode: one additional
+    // missing octet is NOT explained by CRLF-to-LF translation.
+    spoofTextSize=true;
+    const int beforeBadTranslationClose=closeCalls;
+    if(fs::ReadBindAndValidateStaged(&owner,&stagedObserved)!=
+            fs::StagedStatus::LayoutRefused ||
+       stagedObserved.completed!=3 || stagedObserved.attempted!=4 ||
+       closeCalls!=beforeBadTranslationClose+2)return Fail(57);
+    spoofTextSize=false;
+    if(fs::ReadBindAndValidateStaged(&owner,&stagedObserved)!=
+            fs::StagedStatus::OwnedStagedVerified ||
+       stagedObserved.completed!=7 || stagedObserved.attempted!=7)
+        return Fail(58);
+    translateLayoutText=false;
     if(fixtureAbiViolations) {
         std::fprintf(stderr,"fixture ABI violations=%d last=%s\n",fixtureAbiViolations,
                      fixtureAbiReason?fixtureAbiReason:"unknown");
