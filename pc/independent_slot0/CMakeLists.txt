@@ -469,6 +469,25 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Test-only MSVC x86 VClient011 slot33 implementation with explicit
+# trusted owned reader. This target is NEVER deployed as client.dll.
+# Production sin_slot0_client remains fail-closed and is separately
+# loaded by the fixture to verify the boundary has not been loosened.
+add_library(sin_slot33_owned_fixture SHARED slot0.cpp)
+target_compile_features(sin_slot33_owned_fixture PRIVATE cxx_std_17)
+target_compile_definitions(sin_slot33_owned_fixture PRIVATE
+  SIN_ROLE_client=1 SIN_SYNTHETIC_SLOT33_OWNED=1)
+set_target_properties(sin_slot33_owned_fixture PROPERTIES
+  OUTPUT_NAME "sin_slot33_owned_fixture" PREFIX ""
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/fixture-bf-read")
+add_executable(sin_slot33_owned_fixture_test
+  test_client_slot33_synthetic_reader.cpp)
+target_compile_features(sin_slot33_owned_fixture_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_slot33_trusted_synthetic_native
+  COMMAND sin_slot33_owned_fixture_test
+    "$<TARGET_FILE:sin_slot33_owned_fixture>"
+    "$<TARGET_FILE:sin_slot0_client>")
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
