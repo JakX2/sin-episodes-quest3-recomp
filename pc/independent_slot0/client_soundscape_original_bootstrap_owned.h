@@ -99,13 +99,16 @@ inline bool ParsePermissiveEmptyManifest(std::string_view text,
     auto status=manifest::Parse(text,out);
     if(status==manifest::Status::Ready)return true;
     if(status!=manifest::Status::NoFileEntries)return false;
-    manifest::detail::Lexer lexer(text);
-    const auto root=lexer.Next();
-    if(root.kind!=manifest::detail::Kind::Word ||
-       root.text.empty())return false;
-    out={};
-    out.root=root.text; // full grammar was already checked by Parse
-    return true;
+    try {
+        manifest::detail::Lexer lexer(text);
+        const auto root=lexer.Next();
+        if(root.kind!=manifest::detail::Kind::Word ||
+           root.text.empty())return false;
+        manifest::Manifest pending{};
+        pending.root=root.text; // full grammar was checked by Parse
+        out=std::move(pending);
+        return true;
+    }catch(...){return false;}
 }
 class OwnedInit final {
 public:
