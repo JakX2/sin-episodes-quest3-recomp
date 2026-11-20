@@ -10,8 +10,9 @@ THIS IS TERMINAL DIAGNOSTIC, NEVER GAME BOOT PROOF.
 param(
     [Parameter(Mandatory=$true)][string]$DisposableGameRoot,
     [Parameter(Mandatory=$true)][string]$IndependentBin,
-    [ValidateSet('Presence','Read')][string]$Phase='Presence',
+    [ValidateSet('Presence','Read','Staged')][string]$Phase='Presence',
     [string]$PriorPresenceTranscript,
+    [string]$PriorReadTranscript,
     [string]$TranscriptPath,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90,
     [switch]$DisposableTestCopyConfirmed,
@@ -72,6 +73,54 @@ function Check-PresenceEvidence([string]$Path) {
     return $session
 }
 
+function Check-ReadEvidence([string]$Path) {
+    # Require a fully restored previous retail READ session before staged
+    # original-mode resource probing. Transcript text remains owner-local
+    # workflow gating rather than cryptographic proof.
+    $full=Full-Absolute $Path 'PriorReadTranscript'
+    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+        throw 'Staged phase requires an existing previous read transcript'
+    }
+    $item=Get-Item -LiteralPath $full
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Refusing linked previous read transcript'
+    }
+    $lines=[IO.File]::ReadAllLines($full)
+    $sessions=@($lines | Where-Object {
+        $_ -cmatch '^OWNER_INDEPENDENT_SESSION: [0-9a-f]{32}$'
+    })
+    if ($sessions.Count -ne 1) {
+        throw 'Read evidence requires one exact session ID'
+    }
+    $match=[regex]::Match($sessions[0],
+        '^OWNER_INDEPENDENT_SESSION: ([0-9a-f]{32})$')
+    if (-not $match.Success) {throw 'Read evidence requires one exact session ID'}
+    $session=$match.Groups[1].Value
+    foreach($required in @(
+        'OWNER_INDEPENDENT_PROBE_ROLE: CLIENT'
+        'OWNER_CLIENT_ENGINE_FS_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
+        'OWNER_CLIENT_ENGINE_FS_READ_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
+        'OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: DISABLED'
+        'OWNER_ENGINE_EXIT_HEX: 0x53494E6B'
+        'OWNER_ENGINE_EXIT_CODE: 1397313131'
+        'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE'
+        'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    )) {
+        if (-not (ExactLine $lines $required)) {
+            throw ('Read evidence lacks exact stage/exit/restoration: '+$required)
+        }
+    }
+    $results=@($lines | Where-Object {
+        $_ -cmatch '^OWNER_CLIENT_ENGINE_FS_READ_RESULTS: '
+    })
+    $exact=('^OWNER_CLIENT_ENGINE_FS_READ_RESULTS: sin-independent-'+
+        $session+'-[0-9]+\.log:client:both-present:parsed-and-verified:62:8:156:66$')
+    if ($results.Count -ne 1 -or $results[0] -cnotmatch $exact) {
+        throw 'Read evidence lacks session-bound validated count trace'
+    }
+    return $session
+}
+
 $root=Full-Absolute $DisposableGameRoot 'DisposableGameRoot'
 $independent=Full-Absolute $IndependentBin 'IndependentBin'
 $sep=[System.IO.Path]::DirectorySeparatorChar
@@ -86,6 +135,14 @@ if ($Phase -eq 'Read') {
     $previousSession=Check-PresenceEvidence $PriorPresenceTranscript
 } elseif (-not [string]::IsNullOrWhiteSpace($PriorPresenceTranscript)) {
     throw 'PriorPresenceTranscript is valid only for Read phase'
+}
+if ($Phase -eq 'Staged') {
+    if ([string]::IsNullOrWhiteSpace($PriorReadTranscript)) {
+        throw 'Staged phase requires a previous verified owner read transcript'
+    }
+    $previousReadSession=Check-ReadEvidence $PriorReadTranscript
+} elseif (-not [string]::IsNullOrWhiteSpace($PriorReadTranscript)) {
+    throw 'PriorReadTranscript is valid only for Staged phase'
 }
 if (-not $PlanOnly -and -not $DisposableTestCopyConfirmed) {
     throw 'Real owner launch requires -DisposableTestCopyConfirmed'
@@ -134,8 +191,11 @@ $settings=@{
     EnableClientSoundSystemInitProbe=$true
     EnableClientEngineFsProbe=$true
 }
-if ($Phase -eq 'Read') {
+if ($Phase -eq 'Read' -or $Phase -eq 'Staged') {
     $settings.EnableClientEngineFsReadProbe=$true
+}
+if ($Phase -eq 'Staged') {
+    $settings.EnableClientEngineFsStagedProbe=$true
 }
 if ($PlanOnly) {
     Write-Output 'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED'
@@ -145,6 +205,9 @@ if ($PlanOnly) {
         ((@($settings.Keys) | Sort-Object) -join ','))
     if ($Phase -eq 'Read') {
         Write-Output ("OWNER_ENGINE_FS_GATE_PREVIOUS_PRESENCE_SESSION: {0}" -f $previousSession)
+    }
+    if ($Phase -eq 'Staged') {
+        Write-Output ("OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: {0}" -f $previousReadSession)
     }
     return
 }
@@ -164,11 +227,13 @@ $report=[System.IO.File]::ReadAllLines($out)
 if (-not (ExactLine $report 'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE')) {
     throw 'Owner restoration not verified: do not repeat or re-stage until recovered'
 }
-$expected=if($Phase -eq 'Presence'){'0x53494E68'}else{'0x53494E6B'}
+$expected=if($Phase -eq 'Presence'){'0x53494E68'}elseif($Phase -eq 'Read'){'0x53494E6B'}else{'0x53494E70'}
 $verdict=if($Phase -eq 'Presence'){
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
-} else {
+} elseif ($Phase -eq 'Read') {
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+} else {
+    'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_STAGED_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
 }
 if (-not (ExactLine $report ("OWNER_ENGINE_EXIT_HEX: "+$expected)) -or
     -not (ExactLine $report $verdict)) {
@@ -177,11 +242,28 @@ if (-not (ExactLine $report ("OWNER_ENGINE_EXIT_HEX: "+$expected)) -or
 }
 if ($Phase -eq 'Presence') {
     [void](Check-PresenceEvidence $out)
+} elseif ($Phase -eq 'Read') {
+    [void](Check-ReadEvidence $out)
 } else {
-    if (@($report | Where-Object {
-        $_ -cmatch '^OWNER_CLIENT_ENGINE_FS_READ_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:both-present:parsed-and-verified:62:8:156:66$'
-    }).Count -ne 1) {
-        throw 'Read diagnostic exited with success code but did not verify original counts'
+    # Same-session terminal: original rb/GAME and rt/null resource inputs
+    # were read into wholly independent C++ 66-slot and text owners.
+    $current=@($report | Where-Object {
+        $_ -cmatch '^OWNER_INDEPENDENT_SESSION: [0-9a-f]{32}$'
+    })
+    if ($current.Count -ne 1) {
+        throw 'Staged diagnostic missing exactly one retail session'
+    }
+    $session=([regex]::Match($current[0],
+        '^OWNER_INDEPENDENT_SESSION: ([0-9a-f]{32})$')).Groups[1].Value
+    $strict=('^OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS: sin-independent-'+
+        $session+'-[0-9]+\.log:client:owned-staged-verified-not-engine-init:66:62:8:156:66:7:7$')
+    if (-not (ExactLine $report 'OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: ENABLED_TERMINAL_DIAGNOSTIC') -or
+        -not (ExactLine $report 'OWNER_CLIENT_ENGINE_FS_READ_PROBE: ENABLED_TERMINAL_DIAGNOSTIC') -or
+        @($report | Where-Object {
+            $_ -cmatch '^OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS: '
+        }).Count -ne 1 -or
+        @($report | Where-Object {$_ -cmatch $strict}).Count -ne 1) {
+        throw 'Staged diagnostic exit lacks same-session original-mode 66:62:8:156:66 owned-binding proof'
     }
 }
 Write-Output ("OWNER_ENGINE_FS_GATE_RESULT: {0}_DIAGNOSTIC_ONLY_NO_GAME_BOOT" -f
