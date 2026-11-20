@@ -681,6 +681,22 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# 2006 source original 100-byte AutoGameSystem ordered registry
+# insert and 17-byte append wrapper (uses count as index).
+# Real allocator growth is NOT modeled; independent owner capacity
+# is bounded. Native Win32 fixture plus source-free method auditor.
+add_executable(sin_client_original_autogamesystem_registry_insert_test
+  test_client_original_autogamesystem_registry_insert.cpp)
+target_compile_features(sin_client_original_autogamesystem_registry_insert_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_original_autogamesystem_registry_insert_native
+  COMMAND sin_client_original_autogamesystem_registry_insert_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_autogamesystem_registry_insert_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_autogamesystem_registry_insert.py"
+      --self-test)
+endif()
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
