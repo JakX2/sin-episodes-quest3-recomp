@@ -14,6 +14,7 @@
 // returns raw 32-bit value fields and a copy of dynamic text.
 #include "client_stats_bitbuf_cursor.h"
 #include "client_stats_value_factory_contract.h"
+#include "client_stats_original_type_registry.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -140,5 +141,31 @@ inline Status InspectFrame(
     if(output)*output=staged;
     source=pending;
     return Status::DecodedRawFieldsOnly;
+}
+
+// Main original-data-driven entrypoint. The SHA-pinned compiled
+// 66-record metadata at 0x2431E660 identifies which of the 16 factory
+// cases each stat ID constructs. The packet itself does NOT carry
+// factoryType: obtain it from the authenticated registry, never from
+// user-controlled bytes. The original 16-bit header is first examined
+// using a reader *copy*; actual Parse+string+values happens only once
+// using the original input cursor transactionally.
+inline Status InspectFrameForRegisteredId(
+    const stats_messages::OwnedRegistry& hooks,int messageId,
+    stats_bitbuf::Cursor& source,Frame* output=nullptr) noexcept {
+    if(output)*output={};
+    if(messageId!=27 && messageId!=28)
+        return Status::UnsupportedMessage;
+    stats_bitbuf::Cursor preview=source;
+    stats_bitbuf::ParsedHeader header{};
+    if(stats_bitbuf::InspectBitHeader(
+           hooks,messageId,preview,&header)!=
+           stats_messages::HeaderStatus::KnownHeaderOnly ||
+       header.stat_id<0)
+        return Status::RejectedHeader;
+    const auto* entry=stats_original_types::TryGet(
+        static_cast<unsigned>(header.stat_id));
+    if(!entry) return Status::UnverifiedFactoryType;
+    return InspectFrame(hooks,messageId,entry->factory_type,source,output);
 }
 } // namespace sin_independent::stats_wire_values
