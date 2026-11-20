@@ -592,6 +592,22 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Phase 499: original 2006 C_SoundscapeSystem 120-byte constructor
+# (20 known zero DWORDs, two -1 fields, embedded vptr), full
+# 12-slot vtable, original 12-byte slot7 global+4 copy. Source-free
+# Win32 fixture and SHA method/slot audit, NO retail engine objects.
+add_executable(sin_client_soundscape_original_object_ctor_test
+  test_client_soundscape_original_object_ctor.cpp)
+target_compile_features(sin_client_soundscape_original_object_ctor_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_original_object_ctor_native
+  COMMAND sin_client_soundscape_original_object_ctor_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_object_ctor_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_object_ctor.py"
+      --self-test)
+endif()
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
