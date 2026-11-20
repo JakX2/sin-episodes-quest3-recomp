@@ -5,8 +5,10 @@
 //
 // SHA-pinned client 0x24164A50 KeyValues::LoadFromFile invokes the
 // original 2006 IFileSystem::Open slot 2 with "rb" (rdata 0x24289C0C).
-// Original C_SoundscapeSystem::Init passes "GAME" and the manifest path;
-// it also loads each manifest "file" via the same KeyValues helper.
+// Original C_SoundscapeSystem::Init passes "GAME" for the manifest;
+// the separate per-file loader at 0x240F4070 passes a null pathID
+// through the same KeyValues::LoadFromFile method. Never collapse
+// these two search scopes into a single mode.
 // The independently rebuilt VFileSystem012 slots 0,2,3,7 are reused
 // via client_engine_filesystem_read.h. Actual engine calls must be
 // separately approved and verified in a disposable owner process.
@@ -102,8 +104,13 @@ public:
                 trace.stage=Stage::ReadScript;
                 ++trace.script_reads_attempted;
                 std::string name(relativePath);
+                // Original SHA-matched 2006 per-script helper:
+                // 0x240F409C pushes null pathID and 0x240F40A6
+                // calls KeyValues::LoadFromFile at 0x24164A50.
+                // The manifest in Init (0x240F4160) uses "GAME".
+                // Keep the two search scopes separate.
                 const bool ok=engine_fs::ReadOne(
-                    fileSystem,methods,name.c_str(),output,"rb","GAME");
+                    fileSystem,methods,name.c_str(),output,"rb",nullptr);
                 if(ok)++trace.script_reads_succeeded;
                 return ok;
             };

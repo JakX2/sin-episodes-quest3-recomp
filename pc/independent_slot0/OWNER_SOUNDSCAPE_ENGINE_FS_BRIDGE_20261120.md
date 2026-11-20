@@ -23,8 +23,12 @@ VFileSystem012 read-only helper from client_engine_filesystem_read.h.
 
 The bridge resolves/validates engine method slots for Read=0,
 Open=2, Close=3 and Size(handle)=7. It reads the manifest and
-all referenced soundscape scripts with mode "rb" and path id "GAME"
-rather than guessing text mode or silently accepting truncated reads.
+all referenced soundscape scripts with mode "rb". Importantly, the
+original manifest uses path id "GAME", but **individual script files
+use a null path id**. This distinction was recovered from the complete
+SHA-authenticated original 343-byte Init and 233-byte loader methods.
+The exact per-script engine search scope is now respected, rather than
+guessing from the manifest or accepting truncated reads.
 
 It publishes a new complete **owned** snapshot only after all
 file handles close, every resource is bounded, the KeyValues-like
