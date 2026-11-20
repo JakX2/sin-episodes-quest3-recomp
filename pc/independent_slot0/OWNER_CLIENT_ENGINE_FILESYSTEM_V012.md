@@ -140,3 +140,29 @@ For synthetic flag inspection without touching game files:
 The public CTest named independent_owner_filesystem_gate_synthetic
 uses fake paths/transcripts in PlanOnly mode; it never starts the
 commercial executable or substitutes its original modules.
+
+## Real owner Windows filesystem milestone: 2026-11-20
+
+The owner-provided, privately inspected standalone report confirmed
+genuine real-engine VFileSystem012 FileExists for both stats paths
+(exit 0x53494E68, original DLL restoration verified) and actual
+Open(rb/null), Size(handle), Read and Close of both files (exit
+0x53494E6B). The independent parser produced the complete original
+document counts 62 definitions / 8 percentage references / 156 layout
+pairs / 66 dividers. This establishes authentic execution of the
+read-only engine filesystem ABI in a disposable Windows copy.
+
+**Important:** The exact original per-file staged Open parameters
+(rb/GAME for definitions, rt/null for layout) have not been verified
+in the live owner engine. This result verified the older combined
+ReadPair probe using rb/null for both paths.
+
+The original retail process returned the expected read diagnostic
+code before the launcher got UnauthorizedAccessException restoring
+the temporary copy's client.dll. The original SHA-verified backup was
+preserved and the installed Steam DLL was never swapped. Automatic
+recovery and bounded retry handling are tracked in
+OWNER_RETAIL_FILESYSTEM_REAL_RUNTIME_20261120.md.
+
+These results do not establish original KeyValues operations, normal
+VClient011::Init success, game startup, or playable map loading.

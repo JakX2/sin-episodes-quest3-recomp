@@ -492,12 +492,47 @@ try {
                 if ((Sha256 $step.Saved) -cne $step.OriginalHash) {
                     throw "Saved original backup SHA256 mismatch"
                 }
-                if (Test-Path -LiteralPath $step.Live) {
-                    Remove-Item -LiteralPath $step.Live -Force -ErrorAction Stop
+                # Owner retail evidence (2026-11-20): the READ diagnostic
+                # returned 0x53494E6B with valid 62:8:156:66 counts, but a
+                # transient UnauthorizedAccessException during immediate DLL
+                # removal kept the test clone un-restored. Never discard the
+                # SHA-pinned backup. Retry bounded post-exit Windows locks.
+                $replacementVerified = $false
+                $lastRestoreReason = 'not-attempted'
+                for ($restoreAttempt=1; $restoreAttempt -le 16; ++$restoreAttempt) {
+                    try {
+                        # Verify backup again on EACH attempt. A previous
+                        # failed rename must not silently turn into deletion.
+                        if (-not (Test-Path -LiteralPath $step.Saved -PathType Leaf)) {
+                            throw "Saved original backup disappeared"
+                        }
+                        if ((Sha256 $step.Saved) -cne $step.OriginalHash) {
+                            throw "Saved original backup SHA256 mismatch"
+                        }
+                        if (Test-Path -LiteralPath $step.Live) {
+                            Remove-Item -LiteralPath $step.Live -Force -ErrorAction Stop
+                        }
+                        Move-Item -LiteralPath $step.Saved -Destination $step.Live -ErrorAction Stop
+                        if ((Sha256 $step.Live) -cne $step.OriginalHash) {
+                            throw "Restored original SHA256 verification failed"
+                        }
+                        $replacementVerified = $true
+                        break
+                    } catch {
+                        $lastRestoreReason = $_.Exception.GetType().Name
+                        if (-not (Test-Path -LiteralPath $step.Saved -PathType Leaf)) {
+                            # After a successful move, we must never
+                            # retry by deleting the only original copy.
+                            throw
+                        }
+                        if ($restoreAttempt -eq 16) { break }
+                        Write-Output ("OWNER_INDEPENDENT_RESTORE_RETRY: attempt={0}/16 reason={1}" -f
+                            $restoreAttempt,$lastRestoreReason)
+                        Start-Sleep -Milliseconds 400
+                    }
                 }
-                Move-Item -LiteralPath $step.Saved -Destination $step.Live -ErrorAction Stop
-                if ((Sha256 $step.Live) -cne $step.OriginalHash) {
-                    throw "Restored original SHA256 verification failed"
+                if (-not $replacementVerified) {
+                    throw ("Restoration retries exhausted; preserved SHA-checked original backup; last reason=" + $lastRestoreReason)
                 }
                 Write-Output ("RESTORED_VERIFIED: {0}" -f $step.Live)
             } catch {

@@ -31,6 +31,8 @@ FS_SCRIPTS = (
 ONE_CLICK_SCRIPTS = FS_SCRIPTS + (
     "RUN_SIN_TEST.bat",
     "Start-SiNFileSystemTest.ps1",
+    "Recover-SiNRetainedTestCopy.ps1",
+    "RECOVER_PREVIOUS_TEST.bat",
     "README_ONE_CLICK_FIRST.txt",
 )
 ORIGINAL_HASHES = {
@@ -117,6 +119,8 @@ class TestStage(unittest.TestCase):
             self.assertEqual(manifest["commit"],"c"*40)
             self.assertTrue((destination/"RUN_SIN_TEST.bat").is_file())
             self.assertTrue((destination/"Start-SiNFileSystemTest.ps1").is_file())
+            self.assertTrue((destination/"RECOVER_PREVIOUS_TEST.bat").is_file())
+            self.assertTrue((destination/"Recover-SiNRetainedTestCopy.ps1").is_file())
             self.assertNotIn("UNRELATED_PRIVATE_RETAIL.dll",manifest["files"])
             self.assertNotIn("Run-ClientCvarDiagnostic.ps1",manifest["files"])
             for name,digest_string in manifest["files"].items():
