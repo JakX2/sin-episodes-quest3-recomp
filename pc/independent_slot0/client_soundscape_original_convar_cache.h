@@ -75,6 +75,9 @@ public:
             engine,kOriginalCvarVirtualSlot,refused);
         if(!method)return output;
         const bool changed=engine_!=nullptr&&engine_!=engine;
+        // A new provider invalidates all references from the old provider,
+        // even if the new FindVar callback throws before commit.
+        if(changed)Reset();
         const auto mixerAtStart=changed?nullptr:mixer_;
         const auto dspAtStart=changed?nullptr:dsp_;
         const void* newMixer=mixerAtStart;
@@ -98,7 +101,10 @@ public:
             }
         }catch(...) {
             output.result=Result::CallbackRefused;
-            return output; // old complete cache survives refusal
+            output.different_engine_instance=changed;
+            output.mixer_cached=mixer_!=nullptr;
+            output.dsp_cached=dsp_!=nullptr;
+            return output; // same-provider cache survives; switched provider is cleared
         }
         mixer_=newMixer;
         dsp_=newDsp;
