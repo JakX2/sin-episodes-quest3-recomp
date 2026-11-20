@@ -151,7 +151,11 @@ def inventory(named_scripts):
         raise ValueError("duplicate soundscape names")
     missing = [(owner, target, path) for owner, target, path in refs
                if target.lower() not in normalized]
-    stats.update(definitions=len(names), nested_references=len(refs),
+    # C++ OwnedCatalog::ParseChildren counts entries *inside* each
+    # named root. 301 root definitions are separate tree nodes.
+    stats.update(definitions=len(names),
+                 nodes_including_roots=stats["property_nodes"]+len(names),
+                 nested_references=len(refs),
                  unresolved_references=len(missing),
                  unresolved_unique_targets=sorted(set(
                      target for _, target, _ in missing)))
@@ -170,7 +174,8 @@ def real_assets(path):
             files.append((name, data.decode("latin1")))
     output = inventory(files)
     expected_counts = dict(
-        documents=7, definitions=301, property_nodes=4874,
+        documents=7, definitions=301, property_nodes=4573,
+        nodes_including_roots=4874,
         looping_blocks=281, random_blocks=150, random_wave_blocks=150,
         wave_properties=1224, nested_soundscape_blocks=242,
         nested_references=242, unresolved_references=3)
@@ -198,6 +203,8 @@ def synthetic():
     """
     r = inventory([("scripts/example.txt", source)])
     assert r["definitions"] == 2
+    assert r["property_nodes"] == 9
+    assert r["nodes_including_roots"] == 11
     assert r["looping_blocks"] == 1
     assert r["random_blocks"] == 1
     assert r["wave_properties"] == 2
