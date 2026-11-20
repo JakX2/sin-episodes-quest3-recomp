@@ -488,6 +488,21 @@ add_test(NAME independent_client_slot33_trusted_synthetic_native
     "$<TARGET_FILE:sin_slot33_owned_fixture>"
     "$<TARGET_FILE:sin_slot0_client>")
 
+# SHA-pinned original CClientShadowMgr::Init top-level side effects.
+# Independent callbacks preserve order and original numeric bit patterns;
+# no actual renderer or original engine callback gets invoked.
+add_executable(sin_client_shadow_mgr_known_init_sequence_test
+  test_client_shadow_mgr_known_init_sequence.cpp)
+target_compile_features(sin_client_shadow_mgr_known_init_sequence_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_shadow_mgr_known_init_sequence_native
+  COMMAND sin_client_shadow_mgr_known_init_sequence_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_shadow_mgr_known_init_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_shadow_mgr_known_init.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
