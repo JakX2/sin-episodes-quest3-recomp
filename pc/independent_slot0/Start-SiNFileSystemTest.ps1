@@ -12,6 +12,7 @@ param(
     [switch]$HookProof,
     [switch]$SoundscapeCatalog,
     [switch]$SoundscapeCvarLookup,
+    [switch]$PhysicsFactoryLookup,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
 $ErrorActionPreference='Stop'
@@ -27,6 +28,9 @@ if ($SoundscapeCatalog -and (-not $HookProof -or -not $StagedStats)) {
 }
 if ($SoundscapeCvarLookup -and -not $SoundscapeCatalog) {
     throw 'SoundscapeCvarLookup requires -SoundscapeCatalog, -HookProof and -StagedStats'
+}
+if ($PhysicsFactoryLookup -and -not $SoundscapeCvarLookup) {
+    throw 'PhysicsFactoryLookup requires -SoundscapeCvarLookup and the existing Soundscape, Hooks and StagedStats gates'
 }
 $bin=Join-Path $PSScriptRoot 'bin'
 
@@ -162,6 +166,9 @@ if ($PlanOnly) {
                 if ($SoundscapeCvarLookup) {
                     Write-Output 'SOUNDSCAPE CVAR LOOKUP: opt-in read-only VEngineCvar002 slot3 FindVar for two names, no writes or game Init'
                 }
+                if ($PhysicsFactoryLookup) {
+                    Write-Output 'PHYSICS FACTORY LOOKUP: opt-in read-only 2006 VPhysics030/VPhysicsSurfaceProps001/VPhysicsCollision007; no coupling or game Init'
+                }
             }
         }
     }
@@ -276,6 +283,9 @@ try {
                 TimeoutSeconds=$TimeoutSeconds;DisposableTestCopyConfirmed=$true}
             if ($SoundscapeCvarLookup) {
                 $options.ReadOnlySoundscapeCvarLookup=$true
+            }
+            if ($PhysicsFactoryLookup) {
+                $options.ReadOnlyPhysicsFactoryProbe=$true
             }
             & $gate @options *>&1 | Tee-Object -FilePath $stagedRun | Out-Host
         } catch {
@@ -458,6 +468,22 @@ try {
                 }
             }
         }
+        $physicsFactorySummary='NOT_REQUESTED'
+        if ($PhysicsFactoryLookup) {
+            $physicsFactorySummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                $physicsPattern='^OWNER_CLIENT_PHYSICS_FACTORY_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:original-physics-three-available:3:3:1|original-physics-missing-first:1:0:0|original-physics-missing-second:2:1:0|original-physics-missing-third:3:2:0|original-physics-no-factory:0:0:0))$'
+                $physicsHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $physicsPattern})
+                if ($physicsHits.Count -eq 1) {
+                    $match=[regex]::Match($physicsHits[0],$physicsPattern)
+                    if ($match.Success) {
+                        $physicsFactorySummary=$match.Groups[1].Value
+                    }
+                }
+            }
+        }
         $summary=Join-Path $reports 'SUMMARY.txt'
         $rows=@(
             'SiN Episodes 2006 independent filesystem diagnostic'
@@ -468,6 +494,7 @@ try {
             ('Original soundscape manifest and owned 7:301:242:3 catalog: '+$(if($SoundscapeCatalog -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($SoundscapeCatalog){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Soundscape read/parse stage: '+$soundscapeDetail)
             ('Original soundscape ConVar lookup (read-only): '+$soundscapeCvarSummary)
+            ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
             ('Copied original files: '+$copyStatus)
             ('Temporary game cleanup: '+$cleanup)
             'No complete normal VClient011::Init or playable map boot is claimed.'
