@@ -548,7 +548,17 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
-# Original KeyValues::LoadFromFile rb/GAME soundscape path through
+# Original 2006 soundscape loader: the manifest uses rb/GAME,
+# but the per-script helper uses rb/null pathID. Two original complete
+# method SHA checks (343B + 233B) have source-free fabricated CI tests.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_dual_pathid_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_pathid.py"
+      --self-test)
+endif()
+
+# Original KeyValues::LoadFromFile dual-pathID soundscape through
 # SDK2004 VFileSystem012 slots, tested ONLY with fabricated Win32 objects.
 # Never wire into production VClient011::Init without live ABI validation.
 add_executable(sin_client_soundscape_engine_fs_bridge_test
