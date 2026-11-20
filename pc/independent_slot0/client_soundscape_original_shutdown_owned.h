@@ -173,6 +173,44 @@ public:
           static_cast<std::size_t>(state_.handle_9c!=-1)+
           static_cast<std::size_t>(state_.handle_94!=-1))
             return Result::PlanRejected;
+        // Never accept a caller-forged plan merely because its revision
+        // and total event count happen to match. Verify exact source
+        // order, stop route, sound IDs, handles and resource identities.
+        std::size_t event=0;
+        for(std::size_t i=state_.active_sounds.size();i>0;--i){
+            const auto& source=state_.active_sounds[i-1];
+            const auto& action=plan.actions[event++];
+            if(action.kind!=(source.mixer_route?
+                              ActionKind::StopMixerVirtual11:
+                              ActionKind::StopLegacyHelper) ||
+               action.source_index!=i-1 ||
+               action.sound_id!=source.id)
+                return Result::PlanRejected;
+        }
+        if(plan.actions[event++].kind!=ActionKind::ClearActiveCount0xAC ||
+           plan.actions[event++].kind!=ActionKind::ClearAuxiliaryCount0xC0 ||
+           plan.actions[event++].kind!=ActionKind::ClearLoadedPointerCount0x28)
+            return Result::PlanRejected;
+        if(state_.handle_9c!=-1){
+            const auto& action=plan.actions[event++];
+            if(action.kind!=ActionKind::ReleaseHandle0x9C ||
+               action.candidate_handle!=state_.handle_9c)
+                return Result::PlanRejected;
+        }
+        if(state_.handle_94!=-1){
+            const auto& action=plan.actions[event++];
+            if(action.kind!=ActionKind::ReleaseHandle0x94 ||
+               action.candidate_handle!=state_.handle_94)
+                return Result::PlanRejected;
+        }
+        for(std::size_t i=0;i<state_.loaded_keyvalues_owners.size();++i){
+            const auto& action=plan.actions[event++];
+            if(action.kind!=ActionKind::DeleteKeyValuesFirst ||
+               action.source_index!=i ||
+               action.resource_name!=state_.loaded_keyvalues_owners[i])
+                return Result::PlanRejected;
+        }
+        if(event!=plan.actions.size())return Result::PlanRejected;
         // This is an independent state transition, not a claim that
         // the original game can stop sounds without a mixer callback.
         Clear();
