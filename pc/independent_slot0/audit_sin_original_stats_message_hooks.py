@@ -92,8 +92,8 @@ def check_original(data: bytes) -> dict:
         raise ValueError("StaticStat definition virtual-dispatch helper changed")
     if data[off(0x241FE5A6):off(0x241FE5A9)]!=b"\xff\x52\x4c":
         raise ValueError("StaticStat final type-specific virtual method changed")
-    if data[off(0x241FB7B7):off(0x241FB7BA)]!=b"\x83\xf8\x37" or
-       data[off(0x241FB7BC):off(0x241FB7BF)]!=b"\x83\xf8\x42":
+    if (data[off(0x241FB7B7):off(0x241FB7BA)]!=b"\x83\xf8\x37" or
+        data[off(0x241FB7BC):off(0x241FB7BF)]!=b"\x83\xf8\x42"):
         raise ValueError("StaticStat original ID skip band changed")
     if data[off(0x241FB395):off(0x241FB398)]!=b"\x83\xfb\x37":
         raise ValueError("DynamicStat original ID class split changed")
