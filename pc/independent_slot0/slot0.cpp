@@ -26,6 +26,9 @@
 #include "client_known_gamesystem_init.h"
 #include "client_stats_live_asset_probe.h"
 #include "client_engine_filesystem_read.h"
+#if defined(SIN_SYNTHETIC_SLOT33_OWNED)
+#include "client_bf_read_candidate_layout.h"
+#endif
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
@@ -47,6 +50,17 @@ struct CGlobalVars;
 
 namespace {
 using Factory = void* (__cdecl *)(const char*, int*);
+
+#if defined(SIN_ROLE_client) && defined(SIN_SYNTHETIC_SLOT33_OWNED)
+// Fixture-only state: never compiled into the published client.dll.
+// Installed reader must be the address of THIS owned test object,
+// not an arbitrary engine-supplied bf_read*. Unknown pointers are refused
+// before dereference, and only explicitly installed test storage is read.
+static sin_independent::stats_owned_dispatch::Dispatcher g_slot33Owned{};
+static sin_independent::bf_read_candidate::Layout g_slot33Reader{};
+static sin_independent::bf_read_candidate::TrustedBytes g_slot33Trusted{};
+static bool g_slot33Ready=false;
+#endif
 
 #if defined(SIN_ROLE_client)
 constexpr char kName[] = "VClient011";
@@ -754,6 +768,12 @@ public:
     }
     virtual void __thiscall Shutdown() noexcept {
         seen_ = false;
+#if defined(SIN_SYNTHETIC_SLOT33_OWNED)
+        g_slot33Ready=false;
+        g_slot33Reader={};
+        g_slot33Trusted={};
+        g_slot33Owned.Disable();
+#endif
         diagnostic("shutdown", nullptr);
     }
     // Original VClient011 contains 48 contiguous code entries. The
@@ -796,12 +816,23 @@ public:
     // with thiscall ret 8. The full handler graph is not rebuilt yet.
     virtual bool __thiscall DispatchUserMessage(
         int messageIndex, void* bitReader) noexcept {
+#if defined(SIN_SYNTHETIC_SLOT33_OWNED)
+        // Only the explicitly installed, internally owned fixture
+        // reader is accepted. NO retail game pointer is dereferenced.
+        if(!g_slot33Ready || bitReader!=static_cast<void*>(&g_slot33Reader))
+            return false;
+        const auto outcome=sin_independent::bf_read_candidate::
+            DispatchOwnedCandidate(
+                g_slot33Owned,messageIndex,g_slot33Reader,g_slot33Trusted);
+        return outcome.delivered();
+#else
         const bool known=messageIndex>=0 &&
             messageIndex<static_cast<int>(sin_independent::kUserMessageCount);
         diagnostic("client-user-message-dispatch-refused",
                    known && bitReader?"known-message-unbound":
                    "invalid-message-or-reader");
         return false; // No fabricated network message delivery.
+#endif
     }
     SIN_GUARD_SLOT(34, "VClient011")
     SIN_GUARD_SLOT(35, "VClient011")
@@ -1037,3 +1068,47 @@ extern "C" __declspec(dllexport) void* __cdecl CreateInterface(
     diagnostic(found ? "factory-accepted" : "factory-rejected", name);
     return result;
 }
+
+// The following exports only exist in the SEPARATE synthetic test DLL.
+// They never appear in the independently distributed client.dll.
+#if defined(SIN_ROLE_client) && defined(SIN_SYNTHETIC_SLOT33_OWNED)
+extern "C" __declspec(dllexport)
+bool __cdecl SiNTestInitializeOwnedMessageRuntime() noexcept {
+    g_slot33Reader={};
+    g_slot33Trusted={};
+    g_slot33Ready=g_slot33Owned.Initialize();
+    return g_slot33Ready;
+}
+extern "C" __declspec(dllexport)
+void* __cdecl SiNTestInstallOwnedReader(
+    const sin_independent::bf_read_candidate::Layout* reader,
+    const std::uint8_t* trusted,std::size_t accessible) noexcept {
+    if(!g_slot33Ready || !reader || !trusted ||
+       accessible==0 || accessible>sin_independent::stats_bitbuf::kMaxMessageBytes)
+        return nullptr;
+    // Only caller-owned test memory explicitly provided through the
+    // fixture export is subsequently permitted as the buffer source.
+    g_slot33Reader=*reader;
+    g_slot33Trusted={trusted,accessible};
+    return &g_slot33Reader;
+}
+extern "C" __declspec(dllexport)
+std::uint32_t __cdecl SiNTestStaticFieldBits(unsigned id,unsigned field) noexcept {
+    const auto* value=g_slot33Owned.stats().staticValues().at(id);
+    return g_slot33Ready && value?value->fieldBits(field):0u;
+}
+extern "C" __declspec(dllexport)
+std::uint32_t __cdecl SiNTestDynamicFieldBits(
+    unsigned id,const char* name,std::size_t length) noexcept {
+    const auto* value=g_slot33Owned.stats().dynamicValues().Find(id,name,length);
+    return g_slot33Ready && value?value->fieldBits(0):0u;
+}
+extern "C" __declspec(dllexport)
+std::size_t __cdecl SiNTestDynamicCount() noexcept {
+    return g_slot33Ready?g_slot33Owned.stats().dynamicValues().size():0u;
+}
+extern "C" __declspec(dllexport)
+std::size_t __cdecl SiNTestResetCount() noexcept {
+    return g_slot33Ready?g_slot33Owned.stats().resetCount():0u;
+}
+#endif
