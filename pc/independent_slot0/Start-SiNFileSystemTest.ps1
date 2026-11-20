@@ -18,7 +18,14 @@ $gate=Join-Path $PSScriptRoot 'Invoke-OwnerFileSystemRetailGate.ps1'
 $bin=Join-Path $PSScriptRoot 'bin'
 
 function Digest([string]$Path) {
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hasher=[Security.Cryptography.SHA256]::Create()
+    $stream=[IO.File]::OpenRead($Path)
+    try {
+        return [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $hasher.Dispose()
+    }
 }
 function Require-Plain([string]$Path,[bool]$Directory) {
     if ($Directory) {

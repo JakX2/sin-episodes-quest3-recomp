@@ -16,7 +16,16 @@ $clientHash='6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d'
 $serverHash='568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650'
 $temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
 function Digest([string]$Path) {
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    # Older Windows PowerShell runners can lack Get-FileHash. Use the same
+    # .NET SHA-256 routine as the original authenticated owner stager.
+    $hasher=[Security.Cryptography.SHA256]::Create()
+    $stream=[IO.File]::OpenRead($Path)
+    try {
+        return [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $hasher.Dispose()
+    }
 }
 function Plain([string]$Path,[bool]$IsDirectory) {
     if (-not (Test-Path -LiteralPath $Path -PathType $(if($IsDirectory){'Container'}else{'Leaf'}))) {
