@@ -13,6 +13,7 @@ param(
     [ValidateSet('Presence','Read','Staged','Hooks','Soundscape')][string]$Phase='Presence',
     [switch]$ReadOnlySoundscapeCvarLookup,
     [switch]$ReadOnlyPhysicsFactoryProbe,
+    [switch]$ReadOnlySurfacePropsReadProbe,
     [string]$PriorPresenceTranscript,
     [string]$PriorReadTranscript,
     [string]$TranscriptPath,
@@ -28,6 +29,10 @@ if ($ReadOnlySoundscapeCvarLookup -and $Phase -ne 'Soundscape') {
 if ($ReadOnlyPhysicsFactoryProbe -and
     ($Phase -ne 'Soundscape' -or -not $ReadOnlySoundscapeCvarLookup)) {
     throw 'ReadOnlyPhysicsFactoryProbe requires Soundscape phase and ReadOnlySoundscapeCvarLookup'
+}
+if ($ReadOnlySurfacePropsReadProbe -and
+    ($Phase -ne 'Soundscape' -or -not $ReadOnlyPhysicsFactoryProbe)) {
+    throw 'ReadOnlySurfacePropsReadProbe requires Soundscape phase and ReadOnlyPhysicsFactoryProbe'
 }
 
 function Full-Absolute([string]$Path,[string]$Label) {
@@ -216,6 +221,9 @@ if ($Phase -eq 'Soundscape') {
     }
     if ($ReadOnlyPhysicsFactoryProbe) {
         $settings.EnableClientPhysicsFactoryProbe=$true
+    }
+    if ($ReadOnlySurfacePropsReadProbe) {
+        $settings.EnableClientSurfacePropsReadProbe=$true
     }
 }
 if ($PlanOnly) {
