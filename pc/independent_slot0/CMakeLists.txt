@@ -397,6 +397,14 @@ add_executable(sin_client_stats_wire_value_decoder_test
 target_compile_features(sin_client_stats_wire_value_decoder_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_wire_value_decoder_native
   COMMAND sin_client_stats_wire_value_decoder_test)
+# Verify all 66 ID/type associations recovered from the original
+# compiled 12-byte stat registry, plus end-to-end bounded wire reads.
+add_executable(sin_client_stats_original_type_registry_test
+  test_client_stats_original_type_registry.cpp)
+target_compile_features(sin_client_stats_original_type_registry_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_original_type_registry_native
+  COMMAND sin_client_stats_original_type_registry_test)
+
 
 
 
