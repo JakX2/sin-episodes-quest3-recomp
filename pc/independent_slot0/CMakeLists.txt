@@ -408,27 +408,22 @@ add_executable(sin_client_stats_original_type_registry_test
 target_compile_features(sin_client_stats_original_type_registry_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_original_type_registry_native
   COMMAND sin_client_stats_original_type_registry_test)
-# Full independent original-data-driven stat value mutation test.
-add_executable(sin_client_stats_owned_value_mutation_test
-  test_client_stats_owned_value_mutation.cpp)
-target_compile_features(sin_client_stats_owned_value_mutation_test PRIVATE cxx_std_17)
-add_test(NAME independent_client_stats_owned_value_mutation_native
-  COMMAND sin_client_stats_owned_value_mutation_test)
-
 # SHA-pinned 16 original value-object setters and their data-field
 # mutation semantics, implemented ONLY in independent owned state.
-# The native test exercises 55 static stat records with x87 narrowing,
-# paired int/float fields, direct-write and min/max-gated updates.
+# Verify all 55 static records with x87 narrowing, pairs and extrema.
 add_executable(sin_client_stats_owned_value_mutation_test
   test_client_stats_owned_value_mutation.cpp)
 target_compile_features(sin_client_stats_owned_value_mutation_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_owned_value_mutation_native
   COMMAND sin_client_stats_owned_value_mutation_test)
 
-
-
-
-
+# Original DynamicStat uses a different name-keyed hierarchy. Verify
+# exact 256-byte "%s%i" keys, missing/create semantics, atomic updates.
+add_executable(sin_client_stats_owned_dynamic_values_test
+  test_client_stats_owned_dynamic_values.cpp)
+target_compile_features(sin_client_stats_owned_dynamic_values_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_owned_dynamic_values_native
+  COMMAND sin_client_stats_owned_dynamic_values_test)
 
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
