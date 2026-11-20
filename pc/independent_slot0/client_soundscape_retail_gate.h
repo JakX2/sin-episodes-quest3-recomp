@@ -37,6 +37,7 @@ struct Report final {
     Counts counts{};
     soundscape_engine_fs::Status bridge_result=
         soundscape_engine_fs::Status::InvalidEngineAbi;
+    soundscape_engine_fs::Trace diagnostic{};
     bool verified() const noexcept {
         return status==Status::CatalogVerified;
     }
@@ -53,7 +54,7 @@ inline bool ValidateExpectedRetail(const Counts& n,
 inline Report Verify(void* engineFileSystem) noexcept {
     Report report{};
     soundscape_engine_fs::Bridge bridge{};
-    report.bridge_result=bridge.Load(engineFileSystem);
+    report.bridge_result=bridge.Load(engineFileSystem,&report.diagnostic);
     if(report.bridge_result!=
        soundscape_engine_fs::Status::OwnedCatalogReady)
         return report;
