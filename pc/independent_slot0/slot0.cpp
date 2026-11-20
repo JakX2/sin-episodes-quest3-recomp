@@ -27,6 +27,7 @@
 #include "client_stats_live_asset_probe.h"
 #include "client_engine_filesystem_read.h"
 #include "client_soundscape_retail_gate.h"
+#include "client_soundscape_original_convar_cache.h"
 #include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
@@ -328,6 +329,9 @@ static Factory g_clientAppFactory=nullptr;
 static void* g_clientVGuiSurface=nullptr;
 static void* g_clientSoundEmitter=nullptr;
 static void* g_clientFileSystem=nullptr;
+// Acquired as original fourth app-system interface; retained only while
+// the opt-in diagnostic is running, never dereferenced by normal Init.
+static void* g_clientCvar=nullptr;
 #if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
 static bool clientSoundProbeEnabled() noexcept {
     char enabled[2]={};
@@ -435,6 +439,16 @@ static bool clientSoundscapeCatalogProbeEnabled() noexcept {
                                 enabled,2)==1 &&
         enabled[0]=='1';
 }
+// Phase 497: opt-in ORIGINAL 2006 soundscape ICvar::FindVar source
+// virtual-slot3 probe. Requires all previous session-bound safety gates
+// AND the existing soundscape diagnostic. It cannot change exit codes.
+static bool clientSoundscapeCvarLookupProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientSoundscapeCatalogProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
 [[noreturn]] static void stopAfterClientSoundscapeCatalogProbe() noexcept {
     using namespace sin_independent::soundscape_retail_gate;
     diagnostic("engine-fs-soundscape-entered","rb-GAME:read-only");
@@ -455,6 +469,24 @@ static bool clientSoundscapeCatalogProbeEnabled() noexcept {
             result,detail,sizeof(detail));
     diagnostic("engine-fs-soundscape-detail",
                formatted?detail:"diagnostic-format-refused");
+    if(clientSoundscapeCvarLookupProbeEnabled()) {
+        // Source vtable slot3 0x240F3C40 resolves only two ConVar
+        // pointers. We log only bounded name-free status/count fields,
+        // never real pointers, ConVar values or game file contents.
+        diagnostic("engine-fs-soundscape-cvar-entered",
+                   "VEngineCvar002:slot3:read-only");
+        static sin_independent::soundscape_original_cvars::OwnedCache cache{};
+        const auto outcome=cache.Resolve(g_clientCvar);
+        char summary[128]={};
+        std::snprintf(summary,sizeof(summary),"%s:%u:%u:%u:%u",
+            sin_independent::soundscape_original_cvars::Name(outcome.result),
+            outcome.requested,outcome.found_this_call,
+            static_cast<unsigned>(outcome.mixer_cached),
+            static_cast<unsigned>(outcome.dsp_cached));
+        diagnostic("engine-fs-soundscape-cvar-result",summary);
+        diagnostic("engine-fs-soundscape-cvar-terminal-stop",
+                   "no-convar-writes-no-game-init");
+    }
     diagnostic("engine-fs-soundscape-terminal-stop",
                "owner-original-files-no-game-init");
     TerminateProcess(GetCurrentProcess(),
@@ -775,11 +807,13 @@ public:
         g_clientVGuiSurface=nullptr;
         g_clientSoundEmitter=nullptr;
         g_clientFileSystem=nullptr;
+        g_clientCvar=nullptr;
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
             !require(appSystemFactory, kFourthEngineVersion, &cvar) ||
             !require(appSystemFactory, kFifthEngineVersion)) return 0;
+        g_clientCvar=cvar; // non-owning pointer, only used by opt-in stage
         void* sound=nullptr;
         void* materials=nullptr;
         void* uniform=nullptr;

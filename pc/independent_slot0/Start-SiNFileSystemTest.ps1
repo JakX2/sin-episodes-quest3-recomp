@@ -11,6 +11,7 @@ param(
     [switch]$StagedStats,
     [switch]$HookProof,
     [switch]$SoundscapeCatalog,
+    [switch]$SoundscapeCvarLookup,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
 $ErrorActionPreference='Stop'
@@ -23,6 +24,9 @@ if ($HookProof -and -not $StagedStats) {
 }
 if ($SoundscapeCatalog -and (-not $HookProof -or -not $StagedStats)) {
     throw 'SoundscapeCatalog requires -StagedStats -HookProof and the same restored owner read prerequisite'
+}
+if ($SoundscapeCvarLookup -and -not $SoundscapeCatalog) {
+    throw 'SoundscapeCvarLookup requires -SoundscapeCatalog, -HookProof and -StagedStats'
 }
 $bin=Join-Path $PSScriptRoot 'bin'
 
@@ -154,7 +158,10 @@ if ($PlanOnly) {
         if ($HookProof) {
             Write-Output 'HOOK PROOF: three independently owned CUserMessages hook IDs 27:28:5, not dispatch'
             if ($SoundscapeCatalog) {
-                Write-Output 'SOUNDSCAPE PROOF: optional rb/GAME seven-file 301-definition catalog; no audio or game Init'
+                Write-Output 'SOUNDSCAPE PROOF: original rb/GAME manifest and rb/null script catalog; no audio or game Init'
+                if ($SoundscapeCvarLookup) {
+                    Write-Output 'SOUNDSCAPE CVAR LOOKUP: opt-in read-only VEngineCvar002 slot3 FindVar for two names, no writes or game Init'
+                }
             }
         }
     }
@@ -267,6 +274,9 @@ try {
             $options=@{DisposableGameRoot=$disposable;IndependentBin=$bin;
                 Phase=$(if($SoundscapeCatalog){'Soundscape'}elseif($HookProof){'Hooks'}else{'Staged'});PriorReadTranscript=$read;TranscriptPath=$staged;
                 TimeoutSeconds=$TimeoutSeconds;DisposableTestCopyConfirmed=$true}
+            if ($SoundscapeCvarLookup) {
+                $options.ReadOnlySoundscapeCvarLookup=$true
+            }
             & $gate @options *>&1 | Tee-Object -FilePath $stagedRun | Out-Host
         } catch {
             $problems.Add('staged: '+$_.Exception.Message)
@@ -429,6 +439,25 @@ try {
                 }
             }
         }
+        # The ConVar result may be missing when earlier gates refused
+        # or the engine CVar interface was never reached. It is strictly
+        # advisory and never changes the existing catalog exit verdict.
+        $soundscapeCvarSummary='NOT_REQUESTED'
+        if ($SoundscapeCvarLookup) {
+            $soundscapeCvarSummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                $cvarPattern='^OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:original-soundscape-both-vars-cached|original-soundscape-one-var-cached|original-soundscape-vars-unavailable|soundscape-cvar-invalid-abi|soundscape-cvar-callback-refused):[0-2]:[0-2]:[01]:[01])$'
+                $cvarLines=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $cvarPattern})
+                if ($cvarLines.Count -eq 1) {
+                    $matched=[regex]::Match($cvarLines[0],$cvarPattern)
+                    if ($matched.Success) {
+                        $soundscapeCvarSummary=$matched.Groups[1].Value
+                    }
+                }
+            }
+        }
         $summary=Join-Path $reports 'SUMMARY.txt'
         $rows=@(
             'SiN Episodes 2006 independent filesystem diagnostic'
@@ -438,6 +467,7 @@ try {
             ('Independent Stats CUserMessages hooks 27:28:5: '+$(if($HookProof -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($HookProof){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Original soundscape manifest and owned 7:301:242:3 catalog: '+$(if($SoundscapeCatalog -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($SoundscapeCatalog){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Soundscape read/parse stage: '+$soundscapeDetail)
+            ('Original soundscape ConVar lookup (read-only): '+$soundscapeCvarSummary)
             ('Copied original files: '+$copyStatus)
             ('Temporary game cleanup: '+$cleanup)
             'No complete normal VClient011::Init or playable map boot is claimed.'

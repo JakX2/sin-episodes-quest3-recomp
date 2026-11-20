@@ -11,6 +11,7 @@ param(
     [Parameter(Mandatory=$true)][string]$DisposableGameRoot,
     [Parameter(Mandatory=$true)][string]$IndependentBin,
     [ValidateSet('Presence','Read','Staged','Hooks','Soundscape')][string]$Phase='Presence',
+    [switch]$ReadOnlySoundscapeCvarLookup,
     [string]$PriorPresenceTranscript,
     [string]$PriorReadTranscript,
     [string]$TranscriptPath,
@@ -20,6 +21,9 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+if ($ReadOnlySoundscapeCvarLookup -and $Phase -ne 'Soundscape') {
+    throw 'ReadOnlySoundscapeCvarLookup requires Soundscape phase and previous read/hook proof'
+}
 
 function Full-Absolute([string]$Path,[string]$Label) {
     if ([string]::IsNullOrWhiteSpace($Path) -or
@@ -202,6 +206,9 @@ if ($Phase -in @('Hooks','Soundscape')) {
 }
 if ($Phase -eq 'Soundscape') {
     $settings.EnableClientSoundscapeCatalogProbe=$true
+    if ($ReadOnlySoundscapeCvarLookup) {
+        $settings.EnableClientSoundscapeCvarLookupProbe=$true
+    }
 }
 if ($PlanOnly) {
     Write-Output 'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED'

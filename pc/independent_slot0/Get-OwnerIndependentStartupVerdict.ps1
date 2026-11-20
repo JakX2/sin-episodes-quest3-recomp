@@ -40,6 +40,7 @@ $engineFsStagedLogs = New-Object System.Collections.Generic.List[string]
 $engineFsHooksLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSoundscapeLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSoundscapeDetailLogs = New-Object System.Collections.Generic.List[string]
+$engineFsSoundscapeCvarLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -129,6 +130,9 @@ foreach ($log in $logs) {
     $soundscapeResult=$null
     $soundscapeDetail=$null
     $soundscapeDetailCount=0
+    $soundscapeCvarStage=0
+    $soundscapeCvarEvents=0
+    $soundscapeCvarResult=$null
     $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
@@ -582,6 +586,42 @@ foreach ($log in $logs) {
                     $soundscapeDetail=$version
                 }
             } elseif ($soundscapeStage -eq 3 -and
+                $phase -clike 'engine-fs-soundscape-cvar-*') {
+                # Advisory independent FindVar trace only. Count every
+                # related event, even a malformed/duplicated one, so
+                # nothing can masquerade as a clean three-event result.
+                $soundscapeCvarEvents++
+                if($soundscapeCvarStage -eq 0 -and
+                   $phase -eq 'engine-fs-soundscape-cvar-entered' -and
+                   $version -eq 'VEngineCvar002:slot3:read-only') {
+                    $soundscapeCvarStage=1
+                } elseif($soundscapeCvarStage -eq 1 -and
+                    $phase -eq 'engine-fs-soundscape-cvar-result' -and
+                    $version -cmatch '^(original-soundscape-both-vars-cached|original-soundscape-one-var-cached|original-soundscape-vars-unavailable|soundscape-cvar-invalid-abi|soundscape-cvar-callback-refused):([0-2]):([0-2]):([01]):([01])$') {
+                    $kind=$Matches[1]
+                    $requested=[int]$Matches[2]
+                    $found=[int]$Matches[3]
+                    $mixer=[int]$Matches[4]
+                    $dsp=[int]$Matches[5]
+                    $validCounters=$found -le $requested
+                    $validKind=switch($kind) {
+                        'original-soundscape-both-vars-cached' {$mixer -eq 1 -and $dsp -eq 1}
+                        'original-soundscape-one-var-cached' {$mixer -ne $dsp}
+                        'original-soundscape-vars-unavailable' {$mixer -eq 0 -and $dsp -eq 0}
+                        'soundscape-cvar-invalid-abi' {$requested -eq 0 -and $found -eq 0 -and $mixer -eq 0 -and $dsp -eq 0}
+                        'soundscape-cvar-callback-refused' {$mixer -eq 0 -and $dsp -eq 0}
+                        default {$false}
+                    }
+                    if($validCounters -and $validKind) {
+                        $soundscapeCvarResult=$version
+                        $soundscapeCvarStage=2
+                    }
+                } elseif($soundscapeCvarStage -eq 2 -and
+                    $phase -eq 'engine-fs-soundscape-cvar-terminal-stop' -and
+                    $version -eq 'no-convar-writes-no-game-init') {
+                    $soundscapeCvarStage=3
+                }
+            } elseif ($soundscapeStage -eq 3 -and
                 $phase -eq 'engine-fs-soundscape-terminal-stop' -and
                 $version -eq 'owner-original-files-no-game-init') {
                 $engineFsSoundscapeLogs.Add(('{0}:client:{1}:{2}' -f
@@ -592,6 +632,13 @@ foreach ($log in $logs) {
                 if($soundscapeDetailCount -eq 1 -and $null -ne $soundscapeDetail) {
                     $engineFsSoundscapeDetailLogs.Add(('{0}:client:{1}' -f
                         $log.Name,$soundscapeDetail))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $soundscapeCvarEvents -eq 3 -and
+                   $soundscapeCvarStage -eq 3 -and
+                   $null -ne $soundscapeCvarResult) {
+                    $engineFsSoundscapeCvarLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$soundscapeCvarResult))
                 }
                 $soundscapeStage=4
             }
@@ -727,6 +774,9 @@ if ($engineFsSoundscapeLogs.Count -gt 0) {
 }
 if ($engineFsSoundscapeDetailLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SOUNDSCAPE_DETAILS: {0}" -f ($engineFsSoundscapeDetailLogs -join ','))
+}
+if ($engineFsSoundscapeCvarLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_RESULTS: {0}" -f ($engineFsSoundscapeCvarLogs -join ','))
 }
 if ($matSurfaceLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))
