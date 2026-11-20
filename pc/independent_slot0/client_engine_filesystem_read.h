@@ -243,6 +243,7 @@ struct StagedCounts {
     std::size_t catalog=0,definitions=0,refs=0,pairs=0,dividers=0;
     std::size_t completed=0,attempted=0;
     std::size_t owned_user_message_hooks=0;
+    int hook_ids[3]={-1,-1,-1};
 };
 // Stage-four UI layout attachment is still a safe no-op, but the last
 // THREE original CUserMessages::HookMessage steps now perform genuine
@@ -270,6 +271,8 @@ inline StagedStatus ReadBindAndValidateStaged(
         report.completed=result.completed;
         report.attempted=result.attempted;
         report.owned_user_message_hooks=messageHooks.count();
+        for(std::size_t i=0;i<3;++i)
+            report.hook_ids[i]=messageHooks.at(i);
         if(result.outcome==stats_coordinator::Outcome::ResourceLoaderRefused) {
             if(observed)*observed=report;
             return StagedStatus::DefinitionsRefused;
@@ -293,6 +296,8 @@ inline StagedStatus ReadBindAndValidateStaged(
         if(observed)*observed=report;
         if(report.catalog!=66 || state.catalog_text.count()!=62 ||
            !messageHooks.Complete() || report.owned_user_message_hooks!=3 ||
+           report.hook_ids[0]!=27 || report.hook_ids[1]!=28 ||
+           report.hook_ids[2]!=5 ||
            report.definitions!=62 || report.refs!=8 ||
            report.pairs!=156 || report.dividers!=66 ||
            report.completed!=7 || report.attempted!=7 ||
