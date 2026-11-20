@@ -427,8 +427,11 @@ int main() {
             fs::StagedStatus::OwnedStagedVerified ||
        stagedObserved.catalog!=66 || stagedObserved.definitions!=62 ||
        stagedObserved.refs!=8 || stagedObserved.pairs!=156 ||
-       stagedObserved.dividers!=66 || stagedObserved.completed!=7 ||
-       stagedObserved.attempted!=7 ||
+       stagedObserved.dividers!=66 ||
+       stagedObserved.owned_user_message_hooks!=3 ||
+       stagedObserved.hook_ids[0]!=27 || stagedObserved.hook_ids[1]!=28 ||
+       stagedObserved.hook_ids[2]!=5 ||
+       stagedObserved.completed!=7 || stagedObserved.attempted!=7 ||
        openCalls!=stagedStartOpen+2 ||
        closeCalls!=stagedStartClose+2)return Fail(51);
     shortRead=true;

@@ -171,6 +171,36 @@ try {
               PriorPresenceTranscript=$presence}) 'valid only for Staged'
     Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
               Phase='Staged';PlanOnly=$true;PriorReadTranscript=$presence}) 'Read evidence lacks'
+    # Distinct HookProof opt-in must require the same authentic restored
+    # prior read, then enable exactly one additional client probe flag.
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Hooks';PlanOnly=$true}) 'previous verified owner read transcript'
+    $hooks=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+             Phase='Hooks';PlanOnly=$true;PriorReadTranscript=$priorRead}
+    $hookText=@(& $Gate @hooks) -join [Environment]::NewLine
+    foreach($required in @(
+        'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED',
+        'OWNER_ENGINE_FS_GATE_PHASE: Hooks',
+        ('OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: '+$session),
+        'EnableClientEngineFsProbe',
+        'EnableClientEngineFsReadProbe',
+        'EnableClientEngineFsStagedProbe',
+        'EnableClientEngineFsHookProbe'
+    )) {
+        if (-not $hookText.Contains($required)) {
+            throw ('Missing hook-proof gated prerequisite: '+$required)
+        }
+    }
+    if($stagedText.Contains('EnableClientEngineFsHookProbe')) {
+        throw 'Ordinary staged phase accidentally enabled owned-hook proof'
+    }
+    $mutatedHookPrior=Join-Path $dir 'hook-invalid-read.txt'
+    [IO.File]::WriteAllText($mutatedHookPrior,
+        [IO.File]::ReadAllText($priorRead).Replace('VERIFIED_COMPLETE','INCOMPLETE'))
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Hooks';PlanOnly=$true;PriorReadTranscript=$mutatedHookPrior}) 'Read evidence lacks'
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Presence';PlanOnly=$true;PriorReadTranscript=$priorRead}) 'valid only for Staged or Hooks'
     # Duplicate session IDs are not allowed, nor is stale earlier evidence
     # that belongs to an unrelated process.
     $duplicate=Join-Path $dir 'duplicate.txt'

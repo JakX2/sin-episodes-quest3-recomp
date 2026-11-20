@@ -36,6 +36,7 @@ param(
     [switch]$EnableClientEngineFsProbe,
     [switch]$EnableClientEngineFsReadProbe,
     [switch]$EnableClientEngineFsStagedProbe,
+    [switch]$EnableClientEngineFsHookProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -117,6 +118,9 @@ function Require-NoReparseAncestors([string]$Path) {
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
     throw "Refusing without -DisposableTestCopyConfirmed (NEVER test your live Steam install)."
+}
+if ($EnableClientEngineFsHookProbe -and -not $EnableClientEngineFsStagedProbe) {
+    throw 'EnableClientEngineFsHookProbe requires EnableClientEngineFsStagedProbe'
 }
 if ($EnableClientEngineFsStagedProbe -and -not $EnableClientEngineFsReadProbe) {
     throw 'EnableClientEngineFsStagedProbe requires EnableClientEngineFsReadProbe'
@@ -319,6 +323,7 @@ try {
     $previousEngineFsProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_PROBE','Process')
     $previousEngineFsReadProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_READ_PROBE','Process')
     $previousEngineFsStagedProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_STAGED_PROBE','Process')
+    $previousEngineFsHookProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_HOOK_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
@@ -372,9 +377,11 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_PROBE',$(if ($EnableClientEngineFsProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_READ_PROBE',$(if ($EnableClientEngineFsReadProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_STAGED_PROBE',$(if ($EnableClientEngineFsStagedProbe) { '1' } else { '0' }),'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_HOOK_PROBE',$(if ($EnableClientEngineFsHookProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_ENGINE_FS_PROBE: {0}" -f $(if ($EnableClientEngineFsProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_ENGINE_FS_READ_PROBE: {0}" -f $(if ($EnableClientEngineFsReadProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: {0}" -f $(if ($EnableClientEngineFsStagedProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
+        Write-Output ("OWNER_CLIENT_ENGINE_FS_HOOK_PROBE: {0}" -f $(if ($EnableClientEngineFsHookProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_OWNED_STARTUP_PROBE: {0}" -f $(if ($EnableClientOwnedStartupProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
@@ -476,6 +483,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_PROBE',$previousEngineFsProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_READ_PROBE',$previousEngineFsReadProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_STAGED_PROBE',$previousEngineFsStagedProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENGINE_FS_HOOK_PROBE',$previousEngineFsHookProbe,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.

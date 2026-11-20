@@ -37,6 +37,7 @@ $statsAssetProbeLogs = New-Object System.Collections.Generic.List[string]
 $engineFsPresenceLogs = New-Object System.Collections.Generic.List[string]
 $engineFsReadLogs = New-Object System.Collections.Generic.List[string]
 $engineFsStagedLogs = New-Object System.Collections.Generic.List[string]
+$engineFsHooksLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -117,6 +118,10 @@ foreach ($log in $logs) {
     $engineFsStagedCounts=$null
     $engineFsStagedSteps=$null
     $engineFsStagedResult=$null
+    $engineFsHooksStage=0
+    $engineFsHookIds=$null
+    $engineFsHookCount=$null
+    $engineFsHookResult=$null
     $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
@@ -503,6 +508,43 @@ foreach ($log in $logs) {
                 $engineFsStagedStage=5
             }
         }
+        # Only SAME-LOG successful original staged stats may unlock a
+        # distinct owned user-message hook verdict (not dispatch).
+        if ($role -eq 'client' -and $engineFsStagedStage -eq 5 -and
+            $engineFsStagedResult -eq 'owned-staged-verified-not-engine-init' -and
+            $engineFsStagedCounts -eq '66:62:8:156:66' -and
+            $engineFsStagedSteps -eq '7:7') {
+            if ($engineFsHooksStage -eq 0 -and
+                $phase -eq 'engine-fs-hooks-entered' -and
+                $version -eq 'CUserMessages:owned-only') {
+                $engineFsHooksStage=1
+            } elseif ($engineFsHooksStage -eq 1 -and
+                $phase -eq 'engine-fs-hooks-ids' -and
+                $version -cmatch '^(-?[0-9]+:){2}-?[0-9]+$') {
+                $engineFsHookIds=$version
+                $engineFsHooksStage=2
+            } elseif ($engineFsHooksStage -eq 2 -and
+                $phase -eq 'engine-fs-hooks-count' -and
+                $version -cmatch '^[0-3]$') {
+                $engineFsHookCount=$version
+                $engineFsHooksStage=3
+            } elseif ($engineFsHooksStage -eq 3 -and
+                $phase -eq 'engine-fs-hooks-result' -and
+                (($version -eq 'three-owned-hooks-bound-not-dispatched' -and
+                  $engineFsHookIds -eq '27:28:5' -and
+                  $engineFsHookCount -eq '3') -or
+                 $version -eq 'refused')) {
+                $engineFsHookResult=$version
+                $engineFsHooksStage=4
+            } elseif ($engineFsHooksStage -eq 4 -and
+                $phase -eq 'engine-fs-hooks-terminal-stop' -and
+                $version -eq 'independent-only') {
+                $engineFsHooksLogs.Add(('{0}:client:{1}:{2}:{3}' -f
+                    $log.Name,$engineFsHookResult,$engineFsHookIds,
+                    $engineFsHookCount))
+                $engineFsHooksStage=5
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -626,6 +668,9 @@ if ($engineFsReadLogs.Count -gt 0) {
 if ($engineFsStagedLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS: {0}" -f ($engineFsStagedLogs -join ','))
 }
+if ($engineFsHooksLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS: {0}" -f ($engineFsHooksLogs -join ','))
+}
 if ($matSurfaceLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))
 }
@@ -686,6 +731,8 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineFsHooksLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_HOOKS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($engineFsStagedLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_STAGED_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($engineFsReadLogs.Count -gt 0) {

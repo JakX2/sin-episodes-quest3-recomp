@@ -112,3 +112,32 @@ No original KeyValues object, unknown game callback or complete
 VClient011 Init is executed. Existing RUN_SIN_TEST.bat still runs
 only the previous two filesystem phases, and all DLLs are included
 in the package. There is NO manual DLL copying.
+
+NEW: INDEPENDENT STATISTICS USER-MESSAGE HOOK PROOF
+--------------------------------------------------
+The actual 2026-11-20 owner results reached 0x53494E70, proving
+the original 2006 engine filesystem's rb/GAME and rt/null reads and
+the independent 66-ID statistics catalog. The old trace did NOT
+separately identify the three new user-message hook bindings.
+
+To test that exact next milestone, double-click RUN_STATS_HOOK_PROOF.bat
+in this extracted package. Choose the ORIGINAL game root only.
+No copying, DLL replacement, or setup is required.
+
+The new terminal diagnostic reports 0x53494E74 ONLY if:
+- both original stats file reads and staged 66-ID binding succeeded;
+- the independent Stats HookMessage registry has exactly 3 entries;
+- their original protocol IDs are StaticStat=27, DynamicStat=28 and
+  ResetHUD=5, in that order;
+- all 7 independent modeled steps were completed.
+
+A refusal reports 0x53494E75. The owner report includes the exact
+same-session 27:28:5 hook sequence. This proves INDEPENDENT metadata
+binding only, not actual game-engine dispatch, KeyValues or playable
+client initialization. RUN_SIN_TEST.bat and RUN_STAGED_STATS_TEST.bat
+retain their older behavior.
+
+The launcher automatically creates and cleans a disposable game copy,
+restoring original SHA-pinned client/server DLLs before deletion.
+Send the results ZIP to continue decompilation. The ZIP contains
+diagnostic text only, never the original retail game binaries.

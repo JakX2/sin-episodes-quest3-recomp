@@ -875,6 +875,38 @@ try {
     if (-not ($out -ccontains $expectedLine)) {
         throw ('Original staged mode not attributed to its own session: '+($out -join '|'))
     }
+    # New hook-proof trace is a DISTINCT terminal after staged success,
+    # and can only be classified with the correct same-session 27:28:5.
+    $hookSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-hooks-entered version=CUserMessages:owned-only'
+        '[SiN independent] role=client phase=engine-fs-hooks-ids version=27:28:5'
+        '[SiN independent] role=client phase=engine-fs-hooks-count version=3'
+        '[SiN independent] role=client phase=engine-fs-hooks-result version=three-owned-hooks-bound-not-dispatched'
+        '[SiN independent] role=client phase=engine-fs-hooks-terminal-stop version=independent-only'
+    )
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)))
+    $hookOut=Verify 'CLIENT_ENGINE_FS_HOOKS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedHooks=('OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'three-owned-hooks-bound-not-dispatched:27:28:5:3')
+    if (-not ($hookOut -ccontains $expectedHooks)) {
+        throw ('Independent client Stats owned-hook trace not bound: '+($hookOut -join '|'))
+    }
+    $wrongIds=@($hookSteps)
+    $wrongIds[1]=$wrongIds[1].Replace('27:28:5','27:5:28')
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($wrongIds)))
+    $refused=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($refused -join '|').Contains('OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS:')) {
+        throw 'Swapped owned user-message IDs improperly promoted as success'
+    }
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($engineFsPrefix)+@($hookSteps)))
+    $refused=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($refused -join '|').Contains('OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS:')) {
+        throw 'User-message hook proof promoted without prior staged resources'
+    }
     # Reject impossible "success" if counts were forged/mismatched.
     $badStages=@($stagedSteps)
     $badStages[1]=$badStages[1].Replace('66:62:8:156:66','66:61:8:156:66')
