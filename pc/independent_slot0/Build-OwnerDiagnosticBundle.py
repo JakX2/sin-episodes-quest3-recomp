@@ -30,10 +30,12 @@ FS_SCRIPTS = (
 # inside, so the owner never has to move DLLs into a game folder manually.
 ONE_CLICK_SCRIPTS = FS_SCRIPTS + (
     "RUN_SIN_TEST.bat",
+    "RUN_STAGED_STATS_TEST.bat",
     "Start-SiNFileSystemTest.ps1",
     "Recover-SiNRetainedTestCopy.ps1",
     "RECOVER_PREVIOUS_TEST.bat",
     "README_ONE_CLICK_FIRST.txt",
+    "OWNER_ORIGINAL_STAGED_STATS_RETAIL_GATE_20261120.md",
 )
 ORIGINAL_HASHES = {
     "client.dll": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d",
@@ -118,6 +120,7 @@ class TestStage(unittest.TestCase):
             self.assertEqual(len(manifest["files"]),len(desired))
             self.assertEqual(manifest["commit"],"c"*40)
             self.assertTrue((destination/"RUN_SIN_TEST.bat").is_file())
+            self.assertTrue((destination/"RUN_STAGED_STATS_TEST.bat").is_file())
             self.assertTrue((destination/"Start-SiNFileSystemTest.ps1").is_file())
             self.assertTrue((destination/"RECOVER_PREVIOUS_TEST.bat").is_file())
             self.assertTrue((destination/"Recover-SiNRetainedTestCopy.ps1").is_file())
