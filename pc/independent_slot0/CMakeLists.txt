@@ -697,6 +697,16 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Original 2006 VClient011::Init final mandatory physics factory
+# helper 0x24182C60, complete 97B SHA-pinned in Phase 180.
+# Tests only real function-pointer query ABI with FAKE Win32 engine.
+# No unknown 0x241927A0 physics coupling or positive game Init.
+add_executable(sin_client_original_physics_factory_probe_test
+  test_client_original_physics_factory_probe.cpp)
+target_compile_features(sin_client_original_physics_factory_probe_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_original_physics_factory_probe_native
+  COMMAND sin_client_original_physics_factory_probe_test)
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
