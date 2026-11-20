@@ -404,6 +404,16 @@ add_executable(sin_client_stats_original_type_registry_test
 target_compile_features(sin_client_stats_original_type_registry_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_original_type_registry_native
   COMMAND sin_client_stats_original_type_registry_test)
+# SHA-pinned 16 original value-object setters and their data-field
+# mutation semantics, implemented ONLY in independent owned state.
+# The native test exercises 55 static stat records with x87 narrowing,
+# paired int/float fields, direct-write and min/max-gated updates.
+add_executable(sin_client_stats_owned_value_mutation_test
+  test_client_stats_owned_value_mutation.cpp)
+target_compile_features(sin_client_stats_owned_value_mutation_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_owned_value_mutation_native
+  COMMAND sin_client_stats_owned_value_mutation_test)
+
 
 
 
