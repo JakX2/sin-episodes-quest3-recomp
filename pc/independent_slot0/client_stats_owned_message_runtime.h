@@ -99,7 +99,8 @@ public:
         if(messageId==27){
             const auto updated=static_.ApplyStatic(frame);
             if(updated==stats_value_mutation::Result::UpdatedOwnedValue){
-                reset_dirty_=true;
+                // Per-value dirty marker is set by OwnedValue::Apply;
+                // do not fabricate the original global ResetHUD flag.
                 stream=candidate;
                 return Result::StaticUpdated;
             }
@@ -112,11 +113,9 @@ public:
         const auto dynamicStatus=dynamic_.Apply(frame,true);
         switch(dynamicStatus){
             case stats_dynamic_values::Status::CreatedAndUpdated:
-                reset_dirty_=true;
                 stream=candidate;
                 return Result::DynamicCreated;
             case stats_dynamic_values::Status::ReusedAndUpdated:
-                reset_dirty_=true;
                 stream=candidate;
                 return Result::DynamicUpdated;
             case stats_dynamic_values::Status::CreatedWithoutExtremumAdvance:
