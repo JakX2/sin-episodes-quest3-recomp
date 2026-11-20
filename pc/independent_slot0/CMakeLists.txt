@@ -641,6 +641,21 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Phase 491: source-authenticated ShadowMgr::refresh helper at
+# 0x24115E80 (125B) iterates 120-byte linked shadow records with 16-bit
+# next indices. Pure fake state, no original renderer or actual callbacks.
+add_executable(sin_client_shadow_original_refresh_owned_test
+  test_client_shadow_original_refresh_owned.cpp)
+target_compile_features(sin_client_shadow_original_refresh_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_shadow_original_refresh_owned_native
+  COMMAND sin_client_shadow_original_refresh_owned_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_shadow_refresh_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_shadow_refresh.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
