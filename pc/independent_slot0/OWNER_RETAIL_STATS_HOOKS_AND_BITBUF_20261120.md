@@ -155,11 +155,76 @@ proves type-dispatch metadata, not the meaning of each reader vtable
 method. Those target methods and exact value mutation rules must be
 reconstructed and tested before they are enabled in runtime.
 
+## Further SHA-grounded recovery: all 66 stat IDs mapped to wire types
+
+The retail client contains a compile-time **66 x 12-byte table** at
+**0x2431E660**. The helper at **0x241FD220** returns the first
+32-bit field of record `statId`, using the addressing expression
+`0x2431E660 + statId*12`. Its value selects the **0..15** factory
+cases described above. The adjacent helpers at 0x241FD230 and
+0x241FD240 read the second and third fields, whose semantics are
+not yet proven. Their original numeric values are kept unchanged in
+the independent registry, not given guessed names.
+
+All **66** records, 792 bytes, have original SHA256
+`63c1ee30f9b2a021115150b8b98a298530f4f2e0ebd621fca3ff7132d7b80ffb`.
+Our independently authored `client_stats_original_type_registry.h`
+contains all 66 triples; a compile-time canonical little-endian
+FNV64 check `0xfb1f4af74099b337` verifies the **entire** original
+dataset, not just spot checks. The SHA auditor validates the original
+file's exact bytes, accessors and type distribution privately.
+Only 11 of the 16 possible type codes occur in these 66 records.
+
+Original type-code frequency across all 66 stat IDs:
+- type 0: 38; type 1: 3; type 2: 3; type 5: 4
+- type 6: 1; type 7: 5; type 8: 3; type 9: 3
+- type 10: 1; type 11: 3; type 14: 2
+
+The actual **live wire** reader is MSVC RTTI class **CStatReader**,
+vtable **0x242AE06C**, distinct from the file/persistence class
+**CStatBufferReader** at **0x242AF06C**. All nine CStatReader methods
+selected by the 16-type factory were audited against original code.
+Their underlying source bit-buffer methods are either:
+
+- **0x240A5630**, 32 raw bits interpreted as IEEE754 float;
+- **0x240A5620**, 32 raw bits interpreted through signed-integer x87
+  `FILD` conversion to float.
+
+Factory **type 2** reads two integer32 fields; type **3** reads two
+float32 fields. The remaining types read one 32-bit raw field. This
+is authenticated by 9/9 original virtual-method targets and the
+correct count of their original 32-bit read call edges.
+
+New `client_stats_wire_value_decoder.h` performs bounded, independent
+bit-accurate extraction of those fields after the known message
+header and optional DynamicStat string. It returns **raw 32-bit
+patterns** rather than changing actual stat records, because the
+original value-object mutation semantics are not yet fully recovered.
+Its main entrypoint `InspectFrameForRegisteredId` reads the stat ID,
+looks up its **authenticated original type** from all 66 records, then
+invokes the independently authored numeric decoder. It never guesses
+the type from user-controlled packet bits and refuses malformed IDs.
+
+Native original-free test `test_client_stats_original_type_registry.cpp`
+now exercises ALL **66/66** mappings and static/dynamic messages,
+the correct one/two-field widths, unaligned input, truncation, unknown
+IDs and transactional rollback. Further wire reader fixtures exercise
+all 16 possible types, not just those used by the original registry.
+
+**Evidence separation:** these are verified structural facts from
+the original *retail DLL* plus independent native synthetic payload
+tests. We have **NOT** processed a real multiplayer/gameplay packet
+in the original engine. This new decoder must not be wired to the
+engine's live slot33 until the original bf_read ABI and all necessary
+stat update side effects are reconstructed.
+
 ## Next tasks
 
-1. Reverse engineer the original type-specific +0x4c stat update
-   vtables and the post-string dynamic record update helper at
-   0x241FFCD0. The ID+string format is now recovered.
+1. Reconstruct the actual *mutation semantics* behind the
+   original value-object reader virtual calls. The factory types,
+   66 statID/type associations and 32/64-bit wire field counts are
+   now recovered. The post-string dynamic name helper 0x241FFCD0
+   and mutation virtuals still need careful original-class modeling.
 2. Recover original 24-byte bf_read ABI from SHA-grounded original
    CUserMessages::DispatchUserMessage and Source SDK evidence; build
    a verified, side-effect-safe adapter before enabling real engine calls.
