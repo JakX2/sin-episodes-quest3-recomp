@@ -165,6 +165,11 @@ int main(){
     if(bb::InspectBitHeader(registered,38,unbound)!=Status::InvalidMessage ||
        bb::InspectBitHeader(registered,-1,unbound)!=Status::InvalidMessage ||
        unbound.position()!=1)return Fail(19);
+    // The previous test intentionally cleared the registry to exercise
+    // unbound messages. Restore it before the original string fixtures.
+    for(std::size_t i=0;i<3;++i)
+        if(!registered.RegisterStatsStep(
+            sin_independent::stats_system::kInitSteps[4+i]))return Fail(29);
     // The pinned ORIGINAL DynamicStat helper 0x241FB370 decodes a
     // ReadUBitLong(16) followed by ReadString with 0x800-byte buffer.
     // Recover that actual header-plus-string path, not guessed floats.
