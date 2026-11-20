@@ -64,10 +64,48 @@ New `client_stats_owned_value_mutation.h` provides:
 
 The **11 dynamic IDs 55..65** include a name string and a separate
 original name-keyed object hierarchy. They are NOT faked as one
-global value object per stat ID. A caller can apply a decoded dynamic
-frame to an explicitly supplied independent `OwnedValue`, but the
-original collection creation/reuse and lifecycle still require
-further analysis.
+global value object per stat ID.
+
+### Original dynamic named object creation independently recovered
+
+The original SHA-authenticated `0x241FFCD0` helper builds a 256-byte
+lookup key using **`snprintf("%s%i", dynamicName, statId)`**, then
+searches a keyed tree. If a match exists, it returns the wrapped
+value object. If the name is missing, it returns null when its
+`create` flag is false; with `create` true, it invokes original
+`0x24206430` to construct a new type-specific value object and
+insert it into the owner's tree.
+
+The original `DynamicStat` callback passes `create=1`. For
+stat IDs **55..65**, the factory additionally constructs a separate
+**272-byte (0x110) dynamic wrapper** via `0x24206280`, forwarding
+the value update through its embedded 16-type factory object.
+
+The new `client_stats_owned_dynamic_values.h` implements an
+independent conservative named store with:
+
+- Exact original key composition **name followed by 2-digit stat ID**
+  without separators, e.g. `pistol55`, and distinct per-name values;
+- Create-on-miss, reuse-on-hit, and optional lookup without creation;
+- The same SHA-recovered ID→factoryType map and owned mutator methods;
+- Safe refusal of names longer than **253 bytes**, instead of silent
+  truncation/collision in the original 256-byte formatting buffer;
+- A conservative **4096-record cap**, atomic new-record publication
+  and no original allocator or engine-object pointers.
+
+The exact **original tree comparator and memory-allocation failure
+semantics remain unverified**. Our owned map currently uses byte-exact,
+case-sensitive lookup and does NOT claim perfect matching behavior
+for unusual names, case variants, truncated strings or malformed
+original memory. Those differences are deliberate boundaries
+rather than invented original engine behavior.
+
+The new native synthetic dynamic fixture covers all 11 dynamic IDs,
+unaligned message parsing into named records, existing-value reuse,
+missing/create-disabled behavior, empty names, 253/254-byte limits,
+malformed frames, atomic failure and capacity exhaustion.
+A new read-only auditor SHA-pins the exact original formatter,
+dynamic factory, wrapper and name lookup call edges.
 
 ## Validation and exact boundaries
 
@@ -96,8 +134,9 @@ playable boot or actual message delivery.
 
 ## Next target
 
-Reconstruct SHA-authenticated dynamic stat name-keyed record lookup
-around **0x241FFCD0** and the mutation lifecycle for its contained
-value object. Only then introduce a bounded independent dynamic
-collection, without borrowing original engine memory or guessing
-whether absent names cause creation, reuse or error.
+Now that the original named lookup key and creation branch are
+recovered, the remaining targets are the **original tree comparator**
+and exact dynamic-wrapper ownership, copying and reset behavior.
+Then connect the independent stat-value state to a separately
+verified BFRead ABI bridge and the real engine's networking/HUD
+lifecycle, without enabling slot33 prematurely.
