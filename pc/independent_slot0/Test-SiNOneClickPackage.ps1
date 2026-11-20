@@ -42,6 +42,15 @@ if(-not (($cvarPlan -join '|').Contains(
     'SOUNDSCAPE CVAR LOOKUP: opt-in read-only VEngineCvar002 slot3 FindVar for two names, no writes or game Init'))) {
     throw 'Soundscape original ICvar lookup must be explicit opt-in and no-game dry run'
 }
+$physicsPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup)
+if(-not (($physicsPlan -join '|').Contains(
+    'PHYSICS FACTORY LOOKUP: opt-in read-only 2006 VPhysics030/VPhysicsSurfaceProps001/VPhysicsCollision007; no coupling or game Init'))) {
+    throw '2006 original physics three-query stage must be explicit and read-only'
+}
+if(($soundscapePlan -join '|').Contains('PHYSICS FACTORY LOOKUP:') -or
+   ($cvarPlan -join '|').Contains('PHYSICS FACTORY LOOKUP:')) {
+    throw 'Physics Factory probe unexpectedly enabled without explicit flag'
+}
 if(($soundscapePlan -join '|').Contains('SOUNDSCAPE CVAR LOOKUP:')) {
     throw 'Default soundscape diagnostic accidentally enabled original ICvar calls'
 }
@@ -68,7 +77,10 @@ foreach($must in @(
     'RESTORATION: NOT VERIFIED',
     'SoundscapeCvarLookup',
     'ReadOnlySoundscapeCvarLookup',
+    'PhysicsFactoryLookup',
+    'ReadOnlyPhysicsFactoryProbe',
     'Original soundscape ConVar lookup (read-only):',
+    'Original physics Factory triple (read-only):',
     'Compress-Archive',
     'Remove-Item -LiteralPath $temporary -Recurse -Force'
 )) {
