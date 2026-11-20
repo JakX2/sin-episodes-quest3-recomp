@@ -108,6 +108,10 @@ if(Python3_Interpreter_FOUND)
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stats_registry.py"
       --self-test)
+  add_test(NAME independent_original_stats_message_hooks_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stats_message_hooks.py"
+      --self-test)
 endif()
 
 # Source SDK 2004-compatible ServerGameEnts001 is now represented as a
@@ -355,6 +359,15 @@ add_executable(sin_client_stats_original_id_map_test
 target_compile_features(sin_client_stats_original_id_map_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_original_id_map_native
   COMMAND sin_client_stats_original_id_map_test)
+# Owner-original 2006 CUserMessages::HookMessage registrations for
+# StaticStat (27), DynamicStat (28), ResetHUD (5), and bf_read 16-bit IDs.
+# Synthetic MSVC x86 only: no raw game packets or original handlers.
+add_executable(sin_client_stats_user_message_hooks_test
+  test_client_stats_user_message_hooks.cpp)
+target_compile_features(sin_client_stats_user_message_hooks_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_user_message_hooks_native
+  COMMAND sin_client_stats_user_message_hooks_test)
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)

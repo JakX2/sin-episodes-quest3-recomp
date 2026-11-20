@@ -9,6 +9,7 @@
 #include "client_known_gamesystem_init.h"
 #include "client_stats_asset_loader.h"
 #include "client_stats_coordinator.h"
+#include "client_stats_user_message_hooks.h"
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -241,13 +242,12 @@ inline const char* StagedName(StagedStatus s) noexcept {
 struct StagedCounts {
     std::size_t catalog=0,definitions=0,refs=0,pairs=0,dividers=0;
     std::size_t completed=0,attempted=0;
+    std::size_t owned_user_message_hooks=0;
 };
-inline bool StandInForUnreconstructedStatsCallbacks(
-    void*,const stats_system::Step&) noexcept {
-    // Intentionally INERT: game-engine callbacks remain unknown. The
-    // purpose here is resource loading and independent owner binding.
-    return true;
-}
+// Stage-four UI layout attachment is still a safe no-op, but the last
+// THREE original CUserMessages::HookMessage steps now perform genuine
+// independently owned metadata registrations, not inert placeholders.
+// This is NOT the game's native CUserMessages instance or dispatch.
 inline StagedStatus ReadBindAndValidateStaged(
     void* engineFileSystem,StagedCounts* observed=nullptr) noexcept {
     if(observed)*observed={};
@@ -256,18 +256,20 @@ inline StagedStatus ReadBindAndValidateStaged(
         return StagedStatus::InvalidEngineAbi;
     try {
         stats_coordinator::State state;
+        stats_messages::OwnedRegistry messageHooks;
         stats_coordinator::Hooks hooks{};
         hooks.context=&state;
         hooks.stats_resource_context=engineFileSystem;
         hooks.read_stats_resource=&ReadForStagedStats;
         hooks.run_unreconstructed_step=
-            &StandInForUnreconstructedStatsCallbacks;
+            &stats_messages::RegisterKnownStatsStep;
         // Only independent C++ owner objects are passed here.
         const auto result=stats_coordinator::Initialize(
-            state,&state,&state,hooks);
+            state,&state,&messageHooks,hooks);
         StagedCounts report{};
         report.completed=result.completed;
         report.attempted=result.attempted;
+        report.owned_user_message_hooks=messageHooks.count();
         if(result.outcome==stats_coordinator::Outcome::ResourceLoaderRefused) {
             if(observed)*observed=report;
             return StagedStatus::DefinitionsRefused;
@@ -290,6 +292,7 @@ inline StagedStatus ReadBindAndValidateStaged(
         }
         if(observed)*observed=report;
         if(report.catalog!=66 || state.catalog_text.count()!=62 ||
+           !messageHooks.Complete() || report.owned_user_message_hooks!=3 ||
            report.definitions!=62 || report.refs!=8 ||
            report.pairs!=156 || report.dividers!=66 ||
            report.completed!=7 || report.attempted!=7 ||

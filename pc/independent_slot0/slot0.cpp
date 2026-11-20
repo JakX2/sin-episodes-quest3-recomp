@@ -760,7 +760,19 @@ public:
     SIN_GUARD_SLOT(30, "VClient011")
     SIN_GUARD_SLOT(31, "VClient011")
     SIN_GUARD_SLOT(32, "VClient011")
-    SIN_GUARD_SLOT(33, "VClient011")
+    // Original 2006 VClient011 vtable starts at 0x24296C6C: entry 33
+    // is 0x240FDCD0 and forwards to CUserMessages::DispatchUserMessage
+    // (0x241D0000). It takes (messageIndex,bf_read*) and returns bool,
+    // with thiscall ret 8. The full handler graph is not rebuilt yet.
+    virtual bool __thiscall DispatchUserMessage(
+        int messageIndex, void* bitReader) noexcept {
+        const bool known=messageIndex>=0 &&
+            messageIndex<static_cast<int>(sin_independent::kUserMessageCount);
+        diagnostic("client-user-message-dispatch-refused",
+                   known && bitReader?"known-message-unbound":
+                   "invalid-message-or-reader");
+        return false; // No fabricated network message delivery.
+    }
     SIN_GUARD_SLOT(34, "VClient011")
     SIN_GUARD_SLOT(35, "VClient011")
     SIN_GUARD_SLOT(36, "VClient011")
