@@ -640,6 +640,22 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Three SHA-verified 2006 C_SoundscapeSystem child-array teardown
+# functions, identical 83-byte method bodies except allocator
+# free CALL rel32 at two positions. Native owned field-policy
+# regression and synthetic whole-method-normalization audit.
+add_executable(sin_client_soundscape_original_child_array_owned_test
+  test_client_soundscape_original_child_array_owned.cpp)
+target_compile_features(sin_client_soundscape_original_child_array_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_original_child_array_owned_native
+  COMMAND sin_client_soundscape_original_child_array_owned_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_child_cleanup_trio_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_child_cleanup_trio.py"
+      --self-test)
+endif()
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
