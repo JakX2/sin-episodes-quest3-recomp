@@ -69,9 +69,6 @@ def check_original(data: bytes) -> dict:
     # The target bf_read helper unconditionally requests 16 bits.
     if data[off(0x240A5600):off(0x240A5602)]!=b"\x6a\x10":
         raise ValueError("bf_read stat identifier is not 16-bit")
-    if data[off(0x241CFFB1)-1:off(0x241CFFB1)] not in (b"\xe4",b"\xff"):
-        # Retain SHA pin above; this is a conservative, secondary guard.
-        pass
     if data[off(0x241CFFF4):off(0x241CFFF7)]!=b"\xc2\x08\x00":
         raise ValueError("HookMessage does not pop exactly two x86 arguments")
     if cstring(data,0x242A89E0) != (
