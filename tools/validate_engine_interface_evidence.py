@@ -85,6 +85,9 @@ def validate(rows):
 
 def report(rows):
     errors, reviewed = validate(rows)
+    # Never publish a partially accepted queue: one invalid row invalidates the batch.
+    if errors:
+        reviewed = []
     counts = {anchor: {tier: 0 for tier in TIERS} for anchor in ANCHORS}
     for row in reviewed:
         counts[row["interface"]][row["tier"]] += 1
@@ -107,6 +110,11 @@ def self_test():
     except ValueError:
         pass
     assert report([good, good])["valid"] is False
+    mixed = report([good, dict(good, rva=-1)])
+    assert not mixed["valid"] and mixed["entries"] == []
+    assert mixed["reviewed_count"] == 0
+    assert all(sum(v.values()) == 0 for v in mixed["counts"].values())
+    assert mixed["reviewed_sha256"] == report([])["reviewed_sha256"]
     assert not report([dict(good, module="server")])["valid"]
     assert not report([dict(good, interface="ServerGameDLL003")])["valid"]
     assert not report([dict(good, original_engine_tested=True)])["valid"]
