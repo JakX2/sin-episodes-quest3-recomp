@@ -23,6 +23,11 @@ inline constexpr std::uint32_t kOriginalSubobjectVtableVA=0x2428A9B0u;
 inline constexpr std::uint32_t kOriginalSlot7VA=0x240F3CA0u;
 inline constexpr std::uint32_t kOriginalSlot7Bytes=12u;
 inline constexpr std::uint32_t kOriginalSlot7GlobalVA=0x242FA458u;
+// Original per-frame virtual slot10 enters its expensive update only
+// when object BYTE +0xD0 !=0 and global DWORD 0x24338CF0 !=0.
+inline constexpr std::uint32_t kOriginalSlot10VA=0x240F4D30u;
+inline constexpr std::uint32_t kOriginalSlot10FlagOffset=0xD0u;
+inline constexpr std::uint32_t kOriginalSlot10GlobalVA=0x24338CF0u;
 inline constexpr std::size_t kOwnedKnownStorageBytes=0xC8u;
 inline constexpr std::size_t kOwnedKnownDwords=kOwnedKnownStorageBytes/4u;
 inline constexpr std::uint32_t kUninitializedSentinel=0xFFFFFFFFu;
@@ -94,6 +99,20 @@ inline void ApplyOriginalSlot7GlobalPlus4(KnownDwordModel& owner,
     owner.words[0x04u/4u]=original_value;
     ++owner.slot7_invocations;
     ++owner.revision;
+}
+enum class Slot10EarlyGate {
+    SkippedObjectFlagZero,
+    SkippedGlobalMissing,
+    EnterUnreconstructedUpdate
+};
+// Mirrors only the two original early branches. No claim about what
+// happens after entry. The caller supplies non-pointer independent
+// booleans, never genuine original engine memory.
+constexpr Slot10EarlyGate CheckOriginalSlot10EarlyGate(
+    bool byte_d0_nonzero,bool global_pointer_nonnull) noexcept {
+    if(!byte_d0_nonzero)return Slot10EarlyGate::SkippedObjectFlagZero;
+    if(!global_pointer_nonnull)return Slot10EarlyGate::SkippedGlobalMissing;
+    return Slot10EarlyGate::EnterUnreconstructedUpdate;
 }
 inline bool OriginalVtableSlotIsSingleRet(std::size_t slot) noexcept {
     return slot==4 || slot==6 || slot==8 || slot==9;
