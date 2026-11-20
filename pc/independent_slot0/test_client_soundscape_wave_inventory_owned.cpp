@@ -189,7 +189,7 @@ int main(){
                 "wave","*ambient/rand"+std::to_string(made++)+".mp3",
                 {},false});
         }
-        large.definitions[i%284].children.push_back({
+        large.definitions[(i+281)%284].children.push_back({
             "playrandom","",{randomBlock},true});
     }
     if(made!=943)return Fail(15);
