@@ -398,6 +398,40 @@ int main() {
        staged.scripts.display().size()!=priorLayoutCount ||
        !staged.last_script_error.empty())
         return Fail(33);
+    // The new owner retail gate is distinct from the previous combined
+    // read probe: exact rb/GAME and rt/null, independently owned 66-ID
+    // catalog, and 62/8/156/66 parsed counts, no original KeyValues.
+    fs::StagedCounts stagedObserved{};
+    const int stagedStartOpen=openCalls;
+    const int stagedStartClose=closeCalls;
+    if(fs::ReadBindAndValidateStaged(&owner,&stagedObserved)!=
+            fs::StagedStatus::OwnedStagedVerified ||
+       stagedObserved.catalog!=66 || stagedObserved.definitions!=62 ||
+       stagedObserved.refs!=8 || stagedObserved.pairs!=156 ||
+       stagedObserved.dividers!=66 || stagedObserved.completed!=7 ||
+       stagedObserved.attempted!=7 ||
+       openCalls!=stagedStartOpen+2 ||
+       closeCalls!=stagedStartClose+2)return Fail(51);
+    shortRead=true;
+    if(fs::ReadBindAndValidateStaged(&owner,&stagedObserved)!=
+            fs::StagedStatus::DefinitionsRefused ||
+       stagedObserved.completed!=2 || stagedObserved.attempted!=3)
+        return Fail(52);
+    shortRead=false;
+    rejectLayoutOpen=true;
+    if(fs::ReadBindAndValidateStaged(&owner,&stagedObserved)!=
+            fs::StagedStatus::LayoutRefused ||
+       stagedObserved.completed!=3 || stagedObserved.attempted!=4)
+        return Fail(53);
+    rejectLayoutOpen=false;
+    if(fs::ReadBindAndValidateStaged(&owner,&stagedObserved)!=
+            fs::StagedStatus::OwnedStagedVerified ||
+       stagedObserved.catalog!=66 || stagedObserved.definitions!=62 ||
+       stagedObserved.completed!=7 || stagedObserved.attempted!=7)
+        return Fail(54);
+    if(fs::ReadBindAndValidateStaged(nullptr,&stagedObserved)!=
+            fs::StagedStatus::InvalidEngineAbi ||
+       stagedObserved.catalog!=0)return Fail(55);
     if(fixtureAbiViolations) {
         std::fprintf(stderr,"fixture ABI violations=%d last=%s\n",fixtureAbiViolations,
                      fixtureAbiReason?fixtureAbiReason:"unknown");
