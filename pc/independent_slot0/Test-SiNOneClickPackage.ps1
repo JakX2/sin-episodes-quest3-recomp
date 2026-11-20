@@ -29,6 +29,11 @@ foreach($expected in @(
         throw ('Missing standalone runner invariant: '+$expected)
     }
 }
+$stagedPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats)
+if (-not (($stagedPlan -join '|').Contains(
+    'THIRD TEST: rb/GAME definitions and rt/null layout, independent 66-ID binding'))) {
+    throw 'Staged stats one-click plan must be distinct from previous default'
+}
 $text=[IO.File]::ReadAllText($Runner)
 foreach($must in @(
     'Authenticate-Source',
@@ -52,6 +57,31 @@ foreach($must in @(
         }
         throw ('Missing one-click security or behavior clause: '+$must)
     }
+}
+foreach($required in @(
+    "Phase='Staged'",
+    'PriorReadTranscript',
+    'ONECLICK_RECOVERED_STAGED_DIAGNOSTIC: ORIGINAL_MODES_AND_INDEPENDENT_CATALOG_VERIFIED',
+    'Original-mode staged 66-stat binding'
+)) {
+    if (-not $text.Contains($required)) {
+        throw ('Missing one-click original staged resource milestone: '+$required)
+    }
+}
+$stagedBatch=Join-Path (Split-Path -Parent $Runner) 'RUN_STAGED_STATS_TEST.bat'
+if (-not (Test-Path -LiteralPath $stagedBatch -PathType Leaf)) {
+    throw 'Missing staged stats double-click BAT'
+}
+$batText=[IO.File]::ReadAllText($stagedBatch)
+if (-not $batText.Contains('Start-SiNFileSystemTest.ps1') -or
+    -not $batText.Contains('-StagedStats') -or
+    -not $batText.Contains('-STA') -or
+    -not $batText.Contains('pause')) {
+    throw 'Staged stats must launch a self-contained three-phase test'
+}
+$ownerDoc=Join-Path (Split-Path -Parent $Runner) 'OWNER_ORIGINAL_STAGED_STATS_RETAIL_GATE_20261120.md'
+if (-not (Test-Path -LiteralPath $ownerDoc -PathType Leaf)) {
+    throw 'Missing explanation of original staged modes and experimental limit'
 }
 # The runner must attempt to restore a locked TEMP copy after the
 # first real owner 0x53494E6B diagnostic and before a cleanup decision.
