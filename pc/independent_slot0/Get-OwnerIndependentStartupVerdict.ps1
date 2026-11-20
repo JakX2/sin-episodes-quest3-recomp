@@ -41,6 +41,7 @@ $engineFsHooksLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSoundscapeLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSoundscapeDetailLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSoundscapeCvarLogs = New-Object System.Collections.Generic.List[string]
+$engineFsPhysicsFactoryLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -133,6 +134,9 @@ foreach ($log in $logs) {
     $soundscapeCvarStage=0
     $soundscapeCvarEvents=0
     $soundscapeCvarResult=$null
+    $physicsStage=0
+    $physicsEventCount=0
+    $physicsResult=$null
     $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
@@ -622,6 +626,32 @@ foreach ($log in $logs) {
                     $soundscapeCvarStage=3
                 }
             } elseif ($soundscapeStage -eq 3 -and
+                $phase -clike 'engine-fs-physics-*') {
+                # Physics is a strictly LATER, optional query of the
+                # original VClient011 second (physics) Factory. Require
+                # a COMPLETE prior CVar event sequence in this SAME
+                # client session; no premature or duplicated result can
+                # become trusted owner proof.
+                $physicsEventCount++
+                if($soundscapeCvarStage -eq 3 -and
+                   $soundscapeCvarEvents -eq 3 -and
+                   $null -ne $soundscapeCvarResult) {
+                    if($physicsStage -eq 0 -and
+                       $phase -eq 'engine-fs-physics-entered' -and
+                       $version -eq 'physics-factory:three-original:read-only') {
+                        $physicsStage=1
+                    } elseif($physicsStage -eq 1 -and
+                        $phase -eq 'engine-fs-physics-result' -and
+                        $version -cmatch '^(original-physics-three-available:3:3:1|original-physics-missing-first:1:0:0|original-physics-missing-second:2:1:0|original-physics-missing-third:3:2:0|original-physics-no-factory:0:0:0)$') {
+                        $physicsResult=$version
+                        $physicsStage=2
+                    } elseif($physicsStage -eq 2 -and
+                        $phase -eq 'engine-fs-physics-terminal-stop' -and
+                        $version -eq 'no-physics-coupling-no-game-init') {
+                        $physicsStage=3
+                    }
+                }
+            } elseif ($soundscapeStage -eq 3 -and
                 $phase -eq 'engine-fs-soundscape-terminal-stop' -and
                 $version -eq 'owner-original-files-no-game-init') {
                 $engineFsSoundscapeLogs.Add(('{0}:client:{1}:{2}' -f
@@ -639,6 +669,15 @@ foreach ($log in $logs) {
                    $null -ne $soundscapeCvarResult) {
                     $engineFsSoundscapeCvarLogs.Add(('{0}:client:{1}' -f
                         $log.Name,$soundscapeCvarResult))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $soundscapeCvarEvents -eq 3 -and
+                   $soundscapeCvarStage -eq 3 -and
+                   $physicsEventCount -eq 3 -and
+                   $physicsStage -eq 3 -and
+                   $null -ne $physicsResult) {
+                    $engineFsPhysicsFactoryLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$physicsResult))
                 }
                 $soundscapeStage=4
             }
@@ -777,6 +816,9 @@ if ($engineFsSoundscapeDetailLogs.Count -gt 0) {
 }
 if ($engineFsSoundscapeCvarLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_RESULTS: {0}" -f ($engineFsSoundscapeCvarLogs -join ','))
+}
+if ($engineFsPhysicsFactoryLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_PHYSICS_FACTORY_RESULTS: {0}" -f ($engineFsPhysicsFactoryLogs -join ','))
 }
 if ($matSurfaceLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))

@@ -237,3 +237,45 @@ NOT_RECORDED, not a successful lookup. Send the small ZIP as usual;
 do not modify the installed original game or stage DLLs manually.
 This is diagnostics, NOT normal game boot. The last owner-observed
 retail checkpoint before this package was 0x53494E74.
+
+PHASE 513: NEXT ORIGINAL ENGINE CLIENT PHYSICS FACTORY DIAGNOSTIC
+---------------------------------------------------------------
+Your previous owner-run soundscape test passed! The real engine exited
+0x53494E76, and both snd_soundmixer and dsp_volume were found using
+the original CVar ABI. You do not need to repeat the older test.
+
+For the NEXT read-only experiment on an updated, CI-verified package,
+open Windows cmd in the extracted package directory and run:
+
+  RUN_SOUNDSCAPE_CATALOG_TEST.bat -SoundscapeCvarLookup -PhysicsFactoryLookup
+
+The new -PhysicsFactoryLookup flag tests the original 2006 client.dll
+97-byte mandatory helper's THREE engine physics interface name queries
+through VClient011::Init's SECOND factory argument (physicsFactory):
+  1. VPhysics030
+  2. VPhysicsSurfaceProps001
+  3. VPhysicsCollision007
+
+The independent DLL does not copy, dereference or retain any returned
+engine interface pointer. It does not call the subsequent original
+physics coupling helper, does not set CVar values, does not return
+successful VClient011 Init and does not run any map.
+
+The one-click launcher still checks the untouched SHA-matched original
+client/server pair, creates an isolated disposable game copy, runs
+presence/read/staged-stat/owned-hook/soundscape/CVar prerequisites
+and restores the verified originals. No manual DLL replacement.
+
+In the generated small text-only results ZIP, SUMMARY.txt now includes:
+
+  Original physics Factory triple (read-only):
+    original-physics-three-available:3:3:1
+    or a specific original-physics-missing-... status,
+    or NOT_RECORDED when earlier gates did not complete.
+
+The normal soundscape 0x53494E76/77 exit codes remain unchanged.
+A valid new physics result must also be in the same ordered client
+session after the completed original read-only CVar lookup.
+Please send the small SiN_FileSystem_Test_Results_*.zip as before.
+No game files, commercial DLL bytes or private machine paths need to
+be uploaded. This still does not prove a playable Windows or VR boot.

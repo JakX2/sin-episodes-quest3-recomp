@@ -12,6 +12,7 @@ param(
     [Parameter(Mandatory=$true)][string]$IndependentBin,
     [ValidateSet('Presence','Read','Staged','Hooks','Soundscape')][string]$Phase='Presence',
     [switch]$ReadOnlySoundscapeCvarLookup,
+    [switch]$ReadOnlyPhysicsFactoryProbe,
     [string]$PriorPresenceTranscript,
     [string]$PriorReadTranscript,
     [string]$TranscriptPath,
@@ -23,6 +24,10 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 if ($ReadOnlySoundscapeCvarLookup -and $Phase -ne 'Soundscape') {
     throw 'ReadOnlySoundscapeCvarLookup requires Soundscape phase and previous read/hook proof'
+}
+if ($ReadOnlyPhysicsFactoryProbe -and
+    ($Phase -ne 'Soundscape' -or -not $ReadOnlySoundscapeCvarLookup)) {
+    throw 'ReadOnlyPhysicsFactoryProbe requires Soundscape phase and ReadOnlySoundscapeCvarLookup'
 }
 
 function Full-Absolute([string]$Path,[string]$Label) {
@@ -208,6 +213,9 @@ if ($Phase -eq 'Soundscape') {
     $settings.EnableClientSoundscapeCatalogProbe=$true
     if ($ReadOnlySoundscapeCvarLookup) {
         $settings.EnableClientSoundscapeCvarLookupProbe=$true
+    }
+    if ($ReadOnlyPhysicsFactoryProbe) {
+        $settings.EnableClientPhysicsFactoryProbe=$true
     }
 }
 if ($PlanOnly) {

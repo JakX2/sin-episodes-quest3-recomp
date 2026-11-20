@@ -235,6 +235,33 @@ try {
             throw ('Missing opt-in original CVar gate: '+$required)
         }
     }
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Hooks';ReadOnlyPhysicsFactoryProbe=$true;
+              PlanOnly=$true;PriorReadTranscript=$priorRead}) 'requires Soundscape phase'
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Soundscape';ReadOnlyPhysicsFactoryProbe=$true;
+              PlanOnly=$true;PriorReadTranscript=$priorRead}) 'requires Soundscape phase and ReadOnlySoundscapeCvarLookup'
+    $triple=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+        Phase='Soundscape';ReadOnlySoundscapeCvarLookup=$true;
+        ReadOnlyPhysicsFactoryProbe=$true;
+        PlanOnly=$true;PriorReadTranscript=$priorRead}
+    $physicsGateText=@(& $Gate @triple) -join [Environment]::NewLine
+    foreach($required in @(
+        'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED',
+        'OWNER_ENGINE_FS_GATE_PHASE: Soundscape',
+        'EnableClientSoundscapeCatalogProbe',
+        'EnableClientSoundscapeCvarLookupProbe',
+        'EnableClientPhysicsFactoryProbe',
+        ('OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: '+$session)
+    )) {
+        if(-not $physicsGateText.Contains($required)) {
+            throw ('Missing owner triple physics Factory prerequisite: '+$required)
+        }
+    }
+    if($soundscapeText.Contains('EnableClientPhysicsFactoryProbe') -or
+       $withCvarText.Contains('EnableClientPhysicsFactoryProbe')) {
+        throw 'Original physics Factory calls enabled by default or CVar-only test'
+    }
     if($hookText.Contains('EnableClientSoundscapeCvarLookupProbe') -or
        $stagedText.Contains('EnableClientSoundscapeCvarLookupProbe')) {
         throw 'Early filesystem gates accidentally enabled original ICvar lookup'

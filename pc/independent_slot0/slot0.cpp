@@ -28,6 +28,7 @@
 #include "client_engine_filesystem_read.h"
 #include "client_soundscape_retail_gate.h"
 #include "client_soundscape_original_convar_cache.h"
+#include "client_original_physics_factory_probe.h"
 #include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
@@ -332,6 +333,10 @@ static void* g_clientFileSystem=nullptr;
 // Acquired as original fourth app-system interface; retained only while
 // the opt-in diagnostic is running, never dereferenced by normal Init.
 static void* g_clientCvar=nullptr;
+// The original VClient011 Init argument #2 is the PHYSICS factory.
+// Retained only for the short, opt-in terminal diagnostic while
+// Init is still on its original engine-invoked call stack.
+static Factory g_clientPhysicsFactory=nullptr;
 #if !defined(SIN_SYNTHETIC_SOUND_CONNECT)
 static bool clientSoundProbeEnabled() noexcept {
     char enabled[2]={};
@@ -449,6 +454,16 @@ static bool clientSoundscapeCvarLookupProbeEnabled() noexcept {
             "SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE",
             enabled,2)==1 && enabled[0]=='1';
 }
+// Independent source-authenticated 2006 CClientDLL physics triple:
+ // only after the previously proven 7-resource and CVar diagnostic,
+ // only with an additional explicit process opt-in.
+static bool clientPhysicsFactoryProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientSoundscapeCvarLookupProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_PHYSICS_FACTORY_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
 [[noreturn]] static void stopAfterClientSoundscapeCatalogProbe() noexcept {
     using namespace sin_independent::soundscape_retail_gate;
     diagnostic("engine-fs-soundscape-entered","rb-GAME:read-only");
@@ -486,6 +501,29 @@ static bool clientSoundscapeCvarLookupProbeEnabled() noexcept {
         diagnostic("engine-fs-soundscape-cvar-result",summary);
         diagnostic("engine-fs-soundscape-cvar-terminal-stop",
                    "no-convar-writes-no-game-init");
+    }
+    if(clientPhysicsFactoryProbeEnabled()) {
+        // Original 0x24182C60 makes three cdecl Factory queries from
+        // the VClient011::Init *second* factory argument. It would
+        // publish returned pointers to 3 globals and call a separate
+        // coupling helper after success. This stage ONLY queries and
+        // logs bounded result counts, never publishes pointer values
+        // or calls the unreconstructed coupling function 0x241927A0.
+        diagnostic("engine-fs-physics-entered",
+                   "physics-factory:three-original:read-only");
+        const auto report=
+            sin_independent::physics_factory_probe::ReadOnlyQueryThree(
+                g_clientPhysicsFactory);
+        char resultLine[128]={};
+        std::snprintf(resultLine,sizeof(resultLine),"%s:%u:%u:%u",
+            sin_independent::physics_factory_probe::Name(report.outcome),
+            report.attempted,report.found,
+            static_cast<unsigned>(report.would_pass_original_three_query_gate));
+        diagnostic("engine-fs-physics-result",
+                   sin_independent::physics_factory_probe::Consistent(report)?
+                   resultLine:"original-physics-inconsistent:0:0:0");
+        diagnostic("engine-fs-physics-terminal-stop",
+                   "no-physics-coupling-no-game-init");
     }
     diagnostic("engine-fs-soundscape-terminal-stop",
                "owner-original-files-no-game-init");
@@ -808,6 +846,7 @@ public:
         g_clientSoundEmitter=nullptr;
         g_clientFileSystem=nullptr;
         g_clientCvar=nullptr;
+        g_clientPhysicsFactory=physicsFactory;
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
@@ -842,6 +881,7 @@ public:
     }
     virtual void __thiscall Shutdown() noexcept {
         seen_ = false;
+        g_clientPhysicsFactory=nullptr;
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
         g_slot33Ready=false;
         g_slot33Reader={};
