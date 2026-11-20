@@ -61,11 +61,23 @@ int main(){
        !model.float27_described ||
        !model.float28_described ||
        !model.callback_registration_described ||
-       model.optional_refresh_described)
+       model.optional_refresh_described ||
+       model.vector_x_bits_at_04!=0x3DCCCCCDu ||
+       model.vector_y_bits_at_08!=0x3DCCCCCDu ||
+       model.vector_z_bits_at_0c!=0xBF800000u ||
+       model.setting_bits_at_d0!=0x42480000u ||
+       model.setting_bits_at_d4!=0x3BA3D70Au ||
+       model.expected_refresh_requests!=1u)
         return Fail(4);
+    // The authentic slot24 has another conditional branch on the
+    // *different* object byte +0xCC. This one is NOT reset by Init.
+    model.preexisting_flag_cc=1u;
     if(s::ApplyPlanToOwnedModel(enabled,model)!=
            s::Result::AppliedOwnedModel ||
-       !model.optional_refresh_described)return Fail(5);
+       !model.optional_refresh_described ||
+       model.preexisting_flag_cc!=1u ||
+       model.expected_refresh_requests!=2u)
+        return Fail(5);
 
     // A caller must not turn a *guessed* alternative configuration
     // into a successful owned Init merely by retaining valid counts.
