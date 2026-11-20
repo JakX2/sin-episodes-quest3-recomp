@@ -118,9 +118,11 @@ def inventory(named_scripts):
                             raise ValueError("empty random waves")
                         counts["maximum_random_candidates"]=max(
                             counts["maximum_random_candidates"],candidates)
-                        counts["minimum_random_candidates"]=min(
-                            counts["minimum_random_candidates"],candidates)
-                            if counts["random_groups"]>1 else candidates
+                        if counts["random_groups"]==1:
+                            counts["minimum_random_candidates"]=candidates
+                        else:
+                            counts["minimum_random_candidates"]=min(
+                                counts["minimum_random_candidates"],candidates)
                         counts["random_group_size_"+str(candidates)]+=1
                     elif name=="wave" and isinstance(value,str):
                         raise ValueError("unattached wave property")
