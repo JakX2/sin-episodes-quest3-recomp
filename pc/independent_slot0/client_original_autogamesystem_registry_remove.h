@@ -50,6 +50,7 @@ class OwnedRegistry final {
 public:
     std::size_t size() const noexcept{return count_;}
     std::uint64_t revision() const noexcept{return revision_;}
+    bool mirror_points_to_owned_array() const noexcept{return mirror_synced_;}
     std::uint32_t At(std::size_t pos) const noexcept {
         return pos<count_?data_[pos]:0u;
     }
@@ -64,6 +65,7 @@ public:
             return SeedResult::TooLarge;
         for(std::size_t i=0;i<count;++i)data_[i]=values[i];
         count_=count;
+        mirror_synced_=false; // fixture initialization, not source insert
         ++revision_;
         return SeedResult::Accepted;
     }
@@ -90,6 +92,10 @@ public:
             data_[j]=data_[j-1u];
         data_[index]=identity;
         ++count_;
+        // Original 0x24156672 writes registry +0x10 =
+        // currently allocated data pointer even when insertion
+        // is at the end and no elements are shifted.
+        mirror_synced_=true;
         out.count_after=count_;
         ++revision_;
         return out;
@@ -124,6 +130,7 @@ private:
     std::array<std::uint32_t,kOwnedRegistryMax> data_{};
     std::size_t count_=0u;
     std::uint64_t revision_=0u;
+    bool mirror_synced_=false;
 };
 struct BaseObject final {
     std::uint32_t owned_identity=0u;
