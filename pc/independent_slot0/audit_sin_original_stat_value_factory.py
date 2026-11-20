@@ -156,8 +156,8 @@ def check_original(data: bytes) -> dict:
         raise ValueError("live CStatReader RTTI vtable head differs")
     if u32(data,STAT_BUFFER_READER_VTABLE-4)!=0x242EB7AC:
         raise ValueError("file CStatBufferReader RTTI vtable head differs")
-    if raw(data,READ_INT32_BITS,2)!=b"\x6a\x20" or
-       raw(data,READ_FLOAT_BITS,3)!=b"\x51\x6a\x20":
+    if (raw(data,READ_INT32_BITS,2)!=b"\x6a\x20" or
+        raw(data,READ_FLOAT_BITS,3)!=b"\x51\x6a\x20"):
         raise ValueError("source bf_read primitive width differs from 32 bits")
     for slot,method,end,primitive,count in LIVE_READER_SLOTS:
         if u32(data,STAT_READER_VTABLE+slot)!=method:
