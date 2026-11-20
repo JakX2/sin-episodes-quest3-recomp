@@ -106,6 +106,16 @@ int main(){
     if(owned.CommitCleared(corrupt)!=s::Result::PlanRejected ||
        owned.value().loaded_keyvalues_owners.size()!=3)
         return Fail(11);
+    // A forged plan with the RIGHT count/revision but swapped stop
+    // routes or corrupted resource identity must also be refused.
+    corrupt=plan;
+    corrupt.actions[0].kind=s::ActionKind::StopLegacyHelper;
+    if(owned.CommitCleared(corrupt)!=s::Result::PlanRejected ||
+       owned.value().active_sounds.size()!=4)return Fail(18);
+    corrupt=plan;
+    corrupt.actions.back().resource_name="scripts/forged.txt";
+    if(owned.CommitCleared(corrupt)!=s::Result::PlanRejected ||
+       owned.value().loaded_keyvalues_owners.size()!=3)return Fail(19);
     if(owned.CommitCleared(plan)!=s::Result::Ready ||
        !owned.value().active_sounds.empty() ||
        !owned.value().loaded_keyvalues_owners.empty() ||
