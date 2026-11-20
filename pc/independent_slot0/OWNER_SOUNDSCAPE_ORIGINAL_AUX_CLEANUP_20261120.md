@@ -37,13 +37,16 @@ any copyrighted original DLL.
    generation-table check appears at this callsite.
 3. Clear count this+0xAC unconditionally.
 4. If vector flag this+0xA8 != -1: free buffer +0xA0 when
-   non-null through helper 0x2416F940, then clear pointer
-   +0xA0 and count +0xA4. Always copy resulting +0xA0
+   non-null through helper 0x2416F940, and **only in this
+   non-null branch** explicitly zero the pointer at +0xA0.
+   Clear count +0xA4 regardless of buffer nullness when
+   the flag is non-sentinel. Always copy resulting +0xA0
    into mirror field +0xB0.
 5. Clear count this+0xC0 unconditionally.
 6. If vector flag this+0xBC != -1: free buffer +0xB4
    when non-null through the same 0x2416F940 helper,
-   then clear pointer +0xB4 and count +0xB8.
+   explicitly zero +0xB4 only after a non-null free,
+   and always clear count +0xB8 on this branch.
    Always copy resulting +0xB4 into mirror +0xC4.
    Return via one of two original RET paths.
 
