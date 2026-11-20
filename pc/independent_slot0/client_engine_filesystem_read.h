@@ -8,6 +8,7 @@
 #endif
 #include "client_known_gamesystem_init.h"
 #include "client_stats_asset_loader.h"
+#include "client_stats_coordinator.h"
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -192,6 +193,96 @@ inline Status ReadAndValidate(void* fileSystem,Counts* counts=nullptr) noexcept 
         return Status::ParsedAndVerified;
     } catch(...) {
         return Status::ReadRefused;
+    }
+}
+// Next retail milestone after the original 0x53494E6B combined-read probe.
+// The original source trace showed TWO different reads during Init:
+// definitions "rb"/"GAME", then layout "rt"/nullptr. This adapter calls
+// those exact SDK2004 VFileSystem012 methods through ReadForStagedStats,
+// binds 62 names into independent 66-slot owners, and parses layout.
+// It does NOT invoke original KeyValues, native Stats owner callbacks,
+// register HUD methods or return success from original VClient011::Init.
+enum class StagedStatus {
+    OwnedStagedVerified, InvalidEngineAbi, DefinitionsRefused,
+    LayoutRefused, UnexpectedCounts
+};
+inline const char* StagedName(StagedStatus s) noexcept {
+    switch(s) {
+        case StagedStatus::OwnedStagedVerified:
+            return "owned-staged-verified-not-engine-init";
+        case StagedStatus::InvalidEngineAbi:return "invalid-engine-abi";
+        case StagedStatus::DefinitionsRefused:return "definitions-stage-refused";
+        case StagedStatus::LayoutRefused:return "layout-stage-refused";
+        case StagedStatus::UnexpectedCounts:return "unexpected-staged-counts";
+    }
+    return "unknown";
+}
+struct StagedCounts {
+    std::size_t catalog=0,definitions=0,refs=0,pairs=0,dividers=0;
+    std::size_t completed=0,attempted=0;
+};
+inline bool StandInForUnreconstructedStatsCallbacks(
+    void*,const stats_system::Step&) noexcept {
+    // Intentionally INERT: game-engine callbacks remain unknown. The
+    // purpose here is resource loading and independent owner binding.
+    return true;
+}
+inline StagedStatus ReadBindAndValidateStaged(
+    void* engineFileSystem,StagedCounts* observed=nullptr) noexcept {
+    if(observed)*observed={};
+    Methods methods{};
+    if(!Resolve(engineFileSystem,methods,true))
+        return StagedStatus::InvalidEngineAbi;
+    try {
+        stats_coordinator::State state;
+        stats_coordinator::Hooks hooks{};
+        hooks.context=&state;
+        hooks.stats_resource_context=engineFileSystem;
+        hooks.read_stats_resource=&ReadForStagedStats;
+        hooks.run_unreconstructed_step=
+            &StandInForUnreconstructedStatsCallbacks;
+        // Only independent C++ owner objects are passed here.
+        const auto result=stats_coordinator::Initialize(
+            state,&state,&state,hooks);
+        StagedCounts report{};
+        report.completed=result.completed;
+        report.attempted=result.attempted;
+        if(result.outcome==stats_coordinator::Outcome::ResourceLoaderRefused) {
+            if(observed)*observed=report;
+            return StagedStatus::DefinitionsRefused;
+        }
+        if(result.outcome==stats_coordinator::Outcome::AssetLoadRefused) {
+            if(observed)*observed=report;
+            return StagedStatus::LayoutRefused;
+        }
+        if(!result.succeeded()) {
+            if(observed)*observed=report;
+            return StagedStatus::UnexpectedCounts;
+        }
+        report.catalog=state.catalog.size();
+        report.definitions=state.scripts.definitions().size();
+        for(const auto& definition:state.scripts.definitions())
+            if(!definition.percentage_of.empty())++report.refs;
+        for(const auto& display:state.scripts.display()) {
+            if(display.divider)++report.dividers;
+            else ++report.pairs;
+        }
+        if(observed)*observed=report;
+        if(report.catalog!=66 || state.catalog_text.count()!=62 ||
+           report.definitions!=62 || report.refs!=8 ||
+           report.pairs!=156 || report.dividers!=66 ||
+           report.completed!=7 || report.attempted!=7 ||
+           !state.catalog.at(0) ||
+           !state.catalog_text.at(0) ||
+           state.catalog_text.at(51) ||
+           state.catalog_text.at(52) ||
+           state.catalog_text.at(53) ||
+           state.catalog_text.at(54)) {
+            return StagedStatus::UnexpectedCounts;
+        }
+        return StagedStatus::OwnedStagedVerified;
+    } catch(...) {
+        return StagedStatus::UnexpectedCounts;
     }
 }
 } // namespace sin_independent::engine_fs
