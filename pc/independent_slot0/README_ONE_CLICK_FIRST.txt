@@ -279,3 +279,36 @@ session after the completed original read-only CVar lookup.
 Please send the small SiN_FileSystem_Test_Results_*.zip as before.
 No game files, commercial DLL bytes or private machine paths need to
 be uploaded. This still does not prove a playable Windows or VR boot.
+
+PHASE 514: ORIGINAL PHYSICS SURFACEPROPERTIES FILE READ (READ-ONLY)
+------------------------------------------------------------------
+The owner already completed our original source soundscape/CVar
+diagnostic successfully (Windows 0x53494E76; both ConVars found).
+The next combined original Source2006 physics and resource check is:
+
+  RUN_SOUNDSCAPE_CATALOG_TEST.bat -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead
+
+The new -SurfacePropsRead opt-in requires the exact three original
+physics Factory interfaces to have been found:
+  VPhysics030, VPhysicsSurfaceProps001, VPhysicsCollision007.
+After that, it uses the already owner-verified VFileSystem012
+interface to read:
+  scripts/surfaceproperties_manifest.txt ("rb" / "GAME")
+  scripts/surfaceproperties.txt          ("rb" / null pathID)
+  scripts/surfaceproperties_hl2.txt      ("rb" / null pathID)
+
+The independent parser requires source-original retail shape:
+two script files, 93 unique material surface names, 71 "base" keys.
+It never calls original VPhysicsSurfaceProps001::ParseSurfaceData
+or touches sound/audio, collision objects, materials or gameplay.
+
+The original soundscape terminal codes 0x53494E76/77 still apply.
+A new summary line independently shows whether all three physics
+interfaces were found and if the subsequent surfaceproperties
+resource shape was valid. The test does NOT claim real game boot.
+
+As with prior diagnostics, extract all files outside the installed
+game, launch from that extracted folder, select the genuine installed
+game root, and upload the generated small text-only results ZIP.
+No manual DLL copying or retail file changes. The disposable-copy
+launcher verifies original SHA256 fingerprints and restoration.
