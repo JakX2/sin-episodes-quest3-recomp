@@ -16,7 +16,8 @@ Derived original asset inventory:
 | Soundscape script files | 7 |
 | Named top-level soundscapes | 301 |
 | Unique names (case-insensitive) | 301 |
-| Nested KeyValues property nodes | 4,874 |
+| Nested KeyValues property entries (excluding root definitions) | 4,573 |
+| All KeyValues nodes including the 301 named roots | 4,874 |
 | playlooping blocks | 281 |
 | playrandom blocks | 150 |
 | rndwave blocks | 150 |
