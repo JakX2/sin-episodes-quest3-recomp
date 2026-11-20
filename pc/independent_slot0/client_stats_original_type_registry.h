@@ -127,7 +127,7 @@ static_assert(VerifyKnownValues(),
 // This FNV-1a64 value was independently calculated from the private
 // SHA-pinned original DLL. SHA-256 is verified by the owner-only audit.
 constexpr std::uint64_t RegistryFNV1a64() noexcept {
-    std::uint64_t h=UINT64_C(0xcbf29ce484222325);
+    std::uint64_t h=0xcbf29ce484222325ULL;
     for(const auto& record:kByStatId) {
         const std::uint32_t columns[3]={
             record.factory_type,record.raw_meta_1,record.raw_meta_2
@@ -135,13 +135,13 @@ constexpr std::uint64_t RegistryFNV1a64() noexcept {
         for(const std::uint32_t value:columns) {
             for(unsigned shift=0;shift<32u;shift+=8u) {
                 h^=static_cast<std::uint8_t>(value>>shift);
-                h*=UINT64_C(0x100000001b3);
+                h*=0x100000001b3ULL;
             }
         }
     }
     return h;
 }
-static_assert(RegistryFNV1a64()==UINT64_C(0xfb1f4af74099b337),
+static_assert(RegistryFNV1a64()==0xfb1f4af74099b337ULL,
               "66 original metadata records differ from SHA-pinned image");
 
 } // namespace sin_independent::stats_original_types
