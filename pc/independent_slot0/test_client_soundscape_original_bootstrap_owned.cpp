@@ -249,6 +249,23 @@ int main(){
        owned.value().manifest_root!="soundscaples_manifest")
         return Fail(12);
 
+    // Valid manifest with only unknown scalar/block keys still
+    // returns true and reports both ignored keys. Even this path
+    // must not silently change the original root spelling.
+    input.files["scripts/soundscapes_manifest.txt"]=
+        "\"soundscaples_manifest\" { "
+        "\"unknown_scalar\" \"note\" "
+        "\"unknown_block\" { \"inside\" \"yes\" } }";
+    result=owned.Initialize(read,exists,{});
+    if(result.status!=s::Status::LoadedAllAvailable ||
+       !result.original_return_value_true ||
+       result.files_declared!=0 ||
+       result.manifest_unknown_keys!=2 ||
+       result.file_reads_attempted!=0 ||
+       owned.value().manifest_root!="soundscaples_manifest" ||
+       !owned.value().catalog.definitions.empty())
+        return Fail(14);
+
     owned.Clear();
     if(owned.value().manifest_loaded ||
        !owned.value().catalog.definitions.empty() ||
