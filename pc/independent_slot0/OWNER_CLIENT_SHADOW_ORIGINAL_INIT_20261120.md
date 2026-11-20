@@ -46,6 +46,36 @@ effects have **not** yet been fully verified. Therefore this
 report deliberately does not invent those names or use Source
 2013 APIs to fill missing behavior.
 
+## Newly authenticated virtual setter implementations
+
+The original Init calls methods on *its own* CClientShadowMgr
+vtable, not necessarily external renderer methods. All three
+actual method bodies are now SHA-pinned and directly inspected:
+
+| Original this-vtable slot | Implementation VA | Length | Observed field effects |
+| --- | --- | ---: | --- |
+| 24 | 0x24115F00 | 54 bytes | Copy raw vector components to this+0x04, +0x08, +0x0C; invoke imported time query; call 0x24115E80 conditionally if byte this+0xCC !=0 |
+| 27 | 0x24115F40 | 18 bytes | Write raw float32 to this+0xD0 and call 0x24115E80 unconditionally |
+| 28 | 0x2410E920 | 13 bytes | Write raw float32 to this+0xD4 and return |
+
+Their SHA256 complete method hashes are:
+
+- Slot 24: `d843f3f42283e772d95a44f0d310e89cfa177e936ded0820e060b8874bcf2a16`
+- Slot 27: `6beb8971bc1c4f229641ed97e6ec9780d54f377e65b0d77e351e7f3fd7e9c6d5`
+- Slot 28: `fbbb3f432970bf064811f3006c2e47883d3e60a9ea7bc1953e4e22ce941f9b3a`
+
+The callback helper at 0x24115E80 still requires its own
+side-effect analysis. Do not confuse byte +0xCC (controls optional
+slot24 refresh) with byte +0xCD (cleared by Init); they are distinct.
+The owned model now records the *actual* five field writes and
+expected 1 or 2 refresh-helper requests based on the preexisting
++0xCC flag. Those requests are **not executed on the real renderer**.
+
+The private auditor verifies each of these three full method
+hashes, its actual original vtable slot pointer, selected
+instruction offsets and direct relative CALL to refresh helper.
+Public CI simulates the same contracts on invented method bytes.
+
 ## New independent code and native tests
 
 \`client_shadow_original_init_owned.h\` implements a deterministic
