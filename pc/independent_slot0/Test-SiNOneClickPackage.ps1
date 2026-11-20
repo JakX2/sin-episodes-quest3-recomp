@@ -64,7 +64,7 @@ foreach($must in @(
     }
 }
 foreach($required in @(
-    "Phase='Staged'",
+    'Phase=$(if($HookProof){''Hooks''}else{''Staged''})',
     'PriorReadTranscript',
     'ONECLICK_RECOVERED_STAGED_DIAGNOSTIC: ORIGINAL_MODES_AND_INDEPENDENT_CATALOG_VERIFIED',
     'Original-mode staged 66-stat binding'
