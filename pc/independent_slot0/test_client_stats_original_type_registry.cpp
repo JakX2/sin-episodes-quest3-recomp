@@ -40,7 +40,7 @@ int main(){
            !d::RuleForType(rec->factory_type) ||
            rec->raw_meta_1>3 || rec->raw_meta_2<1 ||
            rec->raw_meta_2>2 ||
-           !n::stat_name_ids::NameForId(id))
+           n::stat_name_ids::NameForId(id).empty())
             return Fail(2);
         ++typeCounts[rec->factory_type];
     }
