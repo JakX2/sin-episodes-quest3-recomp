@@ -624,6 +624,22 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# SHA-authenticated original 2006 SoundscapeSystem virtual slot2
+# shutdown-init-tail call ordering and slot11 deleting-destructor
+# child/base lifetime with optional flag-bit0 allocator call.
+# Owned synthetic events ONLY, never invoke real Source function pointers.
+add_executable(sin_client_soundscape_original_vtable_lifecycle_owned_test
+  test_client_soundscape_original_vtable_lifecycle_owned.cpp)
+target_compile_features(sin_client_soundscape_original_vtable_lifecycle_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_original_vtable_lifecycle_owned_native
+  COMMAND sin_client_soundscape_original_vtable_lifecycle_owned_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_vtable_lifecycle_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_vtable_lifecycle.py"
+      --self-test)
+endif()
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
