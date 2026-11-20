@@ -572,6 +572,15 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Optional owner-retail phase after Stats 27:28:5 proof: read original
+# soundscape scripts through Source2004 VFileSystem012, validate 7/301/242/3.
+# Public CI uses synthetic native engine/vtable and synthetic documents.
+add_executable(sin_client_soundscape_retail_gate_test
+  test_client_soundscape_retail_gate.cpp)
+target_compile_features(sin_client_soundscape_retail_gate_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_retail_gate_native
+  COMMAND sin_client_soundscape_retail_gate_test)
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
