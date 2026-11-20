@@ -214,6 +214,31 @@ try {
             throw ('Missing explicit owner soundscape gate prerequisite: '+$required)
         }
     }
+    if($soundscapeText.Contains('EnableClientSoundscapeCvarLookupProbe')) {
+        throw 'Ordinary soundscape catalog test unexpectedly enabled read-only CVar lookup'
+    }
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Hooks';ReadOnlySoundscapeCvarLookup=$true;
+              PlanOnly=$true;PriorReadTranscript=$priorRead}) 'requires Soundscape phase'
+    $soundscapeWithCvar=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+        Phase='Soundscape';ReadOnlySoundscapeCvarLookup=$true;
+        PlanOnly=$true;PriorReadTranscript=$priorRead}
+    $withCvarText=@(& $Gate @soundscapeWithCvar) -join [Environment]::NewLine
+    foreach($required in @(
+        'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED',
+        'OWNER_ENGINE_FS_GATE_PHASE: Soundscape',
+        'EnableClientSoundscapeCatalogProbe',
+        'EnableClientSoundscapeCvarLookupProbe',
+        ('OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: '+$session)
+    )) {
+        if(-not $withCvarText.Contains($required)){
+            throw ('Missing opt-in original CVar gate: '+$required)
+        }
+    }
+    if($hookText.Contains('EnableClientSoundscapeCvarLookupProbe') -or
+       $stagedText.Contains('EnableClientSoundscapeCvarLookupProbe')) {
+        throw 'Early filesystem gates accidentally enabled original ICvar lookup'
+    }
     if($hookText.Contains('EnableClientSoundscapeCatalogProbe') -or
        $stagedText.Contains('EnableClientSoundscapeCatalogProbe')){
         throw 'Ordinary hook or staged tests accidentally enabled soundscape reading'
