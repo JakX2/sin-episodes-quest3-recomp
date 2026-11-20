@@ -108,6 +108,10 @@ if(Python3_Interpreter_FOUND)
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stats_registry.py"
       --self-test)
+  add_test(NAME independent_original_stats_message_hooks_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stats_message_hooks.py"
+      --self-test)
 endif()
 
 # Source SDK 2004-compatible ServerGameEnts001 is now represented as a
