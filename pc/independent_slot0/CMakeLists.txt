@@ -442,6 +442,15 @@ target_compile_features(sin_client_stats_owned_message_runtime_test PRIVATE cxx_
 add_test(NAME independent_client_stats_owned_message_runtime_native
   COMMAND sin_client_stats_owned_message_runtime_test)
 
+# Owned-only delivery boundary: the original dispatcher gives each hook a
+# separate 24-byte bf_read copy. This fixture uses independent Cursor
+# copies, NEVER the 2006 bf_read object or live VClient011 slot33.
+add_executable(sin_client_stats_owned_dispatcher_test
+  test_client_stats_owned_dispatcher.cpp)
+target_compile_features(sin_client_stats_owned_dispatcher_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_owned_dispatcher_native
+  COMMAND sin_client_stats_owned_dispatcher_test)
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
