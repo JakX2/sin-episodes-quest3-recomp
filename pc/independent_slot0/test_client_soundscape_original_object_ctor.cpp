@@ -66,6 +66,21 @@ int main(){
        state.At(4)!=0xFFFFFFFFu ||
        state.slot7_invocations!=0 ||
        state.revision!=4)return Fail(9);
+    // Original slot10's first instructions refuse expensive work
+    // when +0xD0 BYTE==0; only then read the required global pointer.
+    // This test intentionally does NOT call the remaining update body.
+    if(o::CheckOriginalSlot10EarlyGate(
+           false,false)!=o::Slot10EarlyGate::SkippedObjectFlagZero ||
+       o::CheckOriginalSlot10EarlyGate(
+           false,true)!=o::Slot10EarlyGate::SkippedObjectFlagZero ||
+       o::CheckOriginalSlot10EarlyGate(
+           true,false)!=o::Slot10EarlyGate::SkippedGlobalMissing ||
+       o::CheckOriginalSlot10EarlyGate(
+           true,true)!=o::Slot10EarlyGate::EnterUnreconstructedUpdate)
+        return Fail(10);
+    static_assert(o::kOriginalSlot10VA==0x240F4D30u);
+    static_assert(o::kOriginalSlot10FlagOffset==0xD0u);
+    static_assert(o::kOriginalSlot10GlobalVA==0x24338CF0u);
     std::puts("PASS 2006 original C_SoundscapeSystem 120-byte constructor: 12-source slots, exactly 20 zeroed DWORDs, original -1 fields, nested vtable, raw slot7 global+4 copy, opaque fields preserved");
     return 0;
 }
