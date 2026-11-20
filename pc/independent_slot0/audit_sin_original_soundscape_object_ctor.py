@@ -34,6 +34,18 @@ ORIGINAL_VIRTUAL_SLOTS=(
     0x240F3CB0,0x240F3CC0,0x240F4D30,0x240F3E20,
 )
 DIRECT_RET_SLOTS=(4,6,8,9)
+# Verified first two early branch guards of a much larger original
+# virtual slot10. The remainder of the update is NOT reconstructed.
+UPDATE_START=0x240F4D30
+UPDATE_SCAN_SIZE=0x24
+UPDATE_GUARD_WITNESSES=(
+    (0x240F4D30,"83ec3c568bf1"),
+    (0x240F4D36,"80bed000000000"), # original this+0xD0 BYTE
+    (0x240F4D3D,"0f8474030000"), # zero: skip to 0x240F50B7
+    (0x240F4D43,"8b0df08c3324"), # original global pointer
+    (0x240F4D49,"85c9"),
+    (0x240F4D4B,"0f8466030000"), # null: skip to 0x240F50B7
+)
 CTOR_WITNESSES=(
     (0x240F3BC0,"8bc1c700343c2924"),
     (0x240F3BC8,"33c9"),
@@ -66,6 +78,14 @@ def verify(method,start,size,sha,witnesses,whole):
         if method[va-start:va-start+len(pattern)]!=pattern:
             raise ValueError("original source opcode mismatch at %#x"%va)
     return len(witnesses)
+def verify_early_update_guards(instructions):
+    if len(instructions)!=UPDATE_SCAN_SIZE:
+        raise ValueError("original soundscape slot10 guard extent differs")
+    for va,raw in UPDATE_GUARD_WITNESSES:
+        token=bytes.fromhex(raw)
+        if instructions[va-UPDATE_START:va-UPDATE_START+len(token)]!=token:
+            raise ValueError("original slot10 entry guard changed at %#x"%va)
+    return len(UPDATE_GUARD_WITNESSES)
 def verify_vtable(vtable,whole):
     if len(vtable)!=VTABLE_BYTES:
         raise ValueError("original soundscape vtable table size differs")
@@ -101,6 +121,9 @@ def audit(ctor,slot7,vtable,full):
         "source_instruction_witnesses":c+g,
         "original_virtual_methods_authenticated":n,
         "original_object_size_known":False,
+        "original_slot10_early_flag_byte_offset":"0xD0",
+        "original_slot10_early_required_global_va":"0x24338CF0",
+        "original_slot10_remaining_update_body_reconstructed":False,
         "actual_engine_constructor_executed":False,
     }
 def private(client):
@@ -114,6 +137,9 @@ def private(client):
         region_at_va(client,pe,ORIGINAL_SLOT7,SLOT7_BYTES),
         region_at_va(client,pe,ORIGINAL_VTABLE,VTABLE_BYTES),
         True)
+    out["original_slot10_early_guard_windows_verified"]=(
+        verify_early_update_guards(region_at_va(
+            client,pe,UPDATE_START,UPDATE_SCAN_SIZE)))
     for idx in DIRECT_RET_SLOTS:
         if region_at_va(client,pe,ORIGINAL_VIRTUAL_SLOTS[idx],1)!=b"\xc3":
             raise ValueError("original single RET method differs at slot %d"%idx)
@@ -152,11 +178,23 @@ def synthetic():
     try:audit(fake_ctor,fake_slot7,corrupt_vtable,False)
     except ValueError:pass
     else:raise ValueError("fabricated swapped soundscape slot accepted")
+    fake_update=bytearray(bytes([0xCC])*UPDATE_SCAN_SIZE)
+    for va,raw in UPDATE_GUARD_WITNESSES:
+        token=bytes.fromhex(raw)
+        fake_update[va-UPDATE_START:va-UPDATE_START+len(token)]=token
+    assert verify_early_update_guards(fake_update)==len(UPDATE_GUARD_WITNESSES)
+    for va,_ in UPDATE_GUARD_WITNESSES:
+        changed=bytearray(fake_update)
+        changed[va-UPDATE_START]^=1
+        try:verify_early_update_guards(changed)
+        except ValueError:pass
+        else:raise ValueError("fabricated invalid slot10 entry guard accepted")
     return {
         "source_free_soundscape_constructor_vtable_audit":"PASS",
         "original_free_constructor_selected_opcode_witnesses":len(CTOR_WITNESSES),
         "original_free_slot7_selected_opcode_witnesses":len(SLOT7_INSTRUCTIONS),
         "source_virtual_slot_count":len(ORIGINAL_VIRTUAL_SLOTS),
+        "source_slot10_early_guard_witnesses":len(UPDATE_GUARD_WITNESSES),
         "no_original_binary_or_audio_assets_loaded":True,
     }
 def main():
