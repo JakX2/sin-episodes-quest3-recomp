@@ -113,6 +113,64 @@ try {
         Reject $bad 'Presence evidence lacks'
         Remove-Item -LiteralPath $wrong -Force
     }
+    # The THIRD owner-only phase must be unlocked only by a previously
+    # completed, SHA-restored real read transcript, never by a presence
+    # transcript or an unrelated session / malformed terminal status.
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Staged';PlanOnly=$true}) 'previous verified owner read transcript'
+    $priorRead=Join-Path $dir 'read.txt'
+    $readLines=[string[]]@(
+        'OWNER_INDEPENDENT_PROBE_ROLE: CLIENT'
+        'OWNER_CLIENT_ENGINE_FS_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
+        'OWNER_CLIENT_ENGINE_FS_READ_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
+        'OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: DISABLED'
+        ('OWNER_INDEPENDENT_SESSION: '+$session)
+        'OWNER_ENGINE_EXIT_CODE: 1397313131'
+        'OWNER_ENGINE_EXIT_HEX: 0x53494E6B'
+        'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE'
+        ('OWNER_CLIENT_ENGINE_FS_READ_RESULTS: sin-independent-'+$session+
+         '-3333.log:client:both-present:parsed-and-verified:62:8:156:66')
+        'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    )
+    [IO.File]::WriteAllLines($priorRead,$readLines)
+    $staged=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Staged';PlanOnly=$true;PriorReadTranscript=$priorRead}
+    $stagedText=@(& $Gate @staged) -join [Environment]::NewLine
+    foreach($required in @(
+        'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED'
+        'OWNER_ENGINE_FS_GATE_PHASE: Staged'
+        ('OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: '+$session)
+        'EnableClientEngineFsProbe'
+        'EnableClientEngineFsReadProbe'
+        'EnableClientEngineFsStagedProbe'
+    )) {
+        if (-not $stagedText.Contains($required)) {
+            throw ('Missing original-mode staged gate prerequisite: '+$required)
+        }
+    }
+    foreach($mutation in @(
+        [pscustomobject]@{Before='VERIFIED_COMPLETE';After='INCOMPLETE_MANUAL_RECOVERY_REQUIRED'}
+        [pscustomobject]@{Before='0x53494E6B';After='0x53494E6C'}
+        [pscustomobject]@{Before='1397313131';After='1397313132'}
+        [pscustomobject]@{Before=':62:8:156:66';After=':61:8:156:66'}
+        [pscustomobject]@{Before=('sin-independent-'+$session+'-3333.log');After='sin-independent-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-3333.log'}
+        [pscustomobject]@{Before='OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: DISABLED';After='OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'}
+        [pscustomobject]@{Before='CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF';After='CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'}
+    )) {
+        $wrongRead=Join-Path $dir 'mutated-read.txt'
+        [IO.File]::WriteAllText($wrongRead,(
+            [IO.File]::ReadAllText($priorRead).Replace(
+                [string]$mutation.Before,[string]$mutation.After)))
+        $bad=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+               Phase='Staged';PlanOnly=$true;PriorReadTranscript=$wrongRead}
+        Reject $bad 'Read evidence lacks'
+        Remove-Item -LiteralPath $wrongRead -Force
+    }
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Read';PlanOnly=$true;PriorReadTranscript=$priorRead;
+              PriorPresenceTranscript=$presence}) 'valid only for Staged'
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Staged';PlanOnly=$true;PriorReadTranscript=$presence}) 'Read evidence lacks'
     # Duplicate session IDs are not allowed, nor is stale earlier evidence
     # that belongs to an unrelated process.
     $duplicate=Join-Path $dir 'duplicate.txt'
