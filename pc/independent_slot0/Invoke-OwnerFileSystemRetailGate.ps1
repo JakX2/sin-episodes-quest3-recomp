@@ -295,9 +295,7 @@ if ($Phase -eq 'Presence') {
         # all three Stats hooks must have read and parsed seven original
         # soundscape scripts through VFileSystem012 with rb/GAME.
         $pattern=('^OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS: sin-independent-'+
-            $session+'-[0-9]+\.log:client:owned-soundscape-catalog-verified-original-files:7:301:242:3
-    $Phase.ToUpperInvariant())
-)
+            $session+'-[0-9]+\.log:client:owned-soundscape-catalog-verified-original-files:7:301:242:3$')
         if (-not (ExactLine $report 'OWNER_CLIENT_SOUNDSCAPE_CATALOG_PROBE: ENABLED_TERMINAL_DIAGNOSTIC') -or
             @($report | Where-Object {
                 $_ -cmatch '^OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS: '
