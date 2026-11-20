@@ -94,6 +94,67 @@ original bf_read bridge and stat value decoder are genuinely rebuilt.
 This bitcursor is SDK-grounded and tested against synthetic bitstreams,
 not against original network traffic or retail game packet dispatch.
 
+## Original 16-case stat value-type factory (additional SHA-grounded recovery)
+
+A further **read-only audit** of the exact original client.dll reveals
+the stat-value allocation factory at **0x24205BC0** and its dispatch
+jump table at **0x24205DF0**. It checks a type discriminator against
+15, jumps through exactly **16** concrete case labels for types 0..15,
+and returns a null result for values outside that switch. Thus the
+network stat ID (0..65) and the **factory value-type discriminator**
+(0..15) are **different** dimensions. There is no basis yet to assign
+descriptive semantic names to the 16 factory codes.
+
+Each case constructs a virtual value object and its vtable entry at
+offset **+0x4C** contains a small thunk that invokes another virtual
+method on a supplied reader. The recovered byte offsets on the reader
+vtable (NOT bit widths and NOT yet named decoding functions) are:
+
+| Factory types | Reader virtual byte offset | Original allocation size |
+|---|---:|---:|
+| 0 | 0x24 | 16 bytes |
+| 1 | 0x20 | 16 bytes |
+| 2 | 0x14 | 20 bytes |
+| 3 | 0x10 | 20 bytes |
+| 4, 5 | 0x0C | 20 bytes |
+| 6 | 0x08 | 20 bytes |
+| 7 | 0x1C | 20 bytes |
+| 8, 9, 10 | 0x18 | 28 bytes |
+| 11 | 0x04 | 32 bytes |
+| 12, 13 | 0x20 | 16 bytes |
+| 14, 15 | 0x20 | 20 bytes |
+
+Types **8, 9, 10** share the same constructor, virtual table and
+reading method but pass different literal 32-bit initialization values:
+**0x3F800000, 0x3C888889, 0x3991A2B4** respectively. Type **11**
+passes 0x3F800000 to a different constructor. These are *observed
+configuration argument bits*, not an assertion that the corresponding
+wire payloads are ordinary float32 values.
+
+Another original dynamic-record wrapper constructor at 0x24206280
+installs vtable 0x242AF854. Its own +0x4C method at 0x242063C0
+forwards to the wrapped value object's +0x4C entry. This explains
+the two levels of indirect dispatch visible in the original callback.
+
+New independent files:
+- client_stats_value_factory_contract.h: safe, bounded original
+  factory metadata, with NO original pointer execution.
+- audit_sin_original_stat_value_factory.py: SHA-authenticated private
+  owner audit of all 16 jump-table targets, allocation sizes,
+  constructor-vtable assignments, +0x4C method pointers and actual
+  reader-slot forwarding thunks. Public CI uses only its synthetic
+  self-test and never reads commercial binaries.
+- test_client_stats_value_factory_contract.cpp: native Win32 fixture
+  that verifies each type, allocation size, reader slot and rejection
+  of unknown type discriminants.
+
+**Local original-binary audit:** all **16/16** factory cases passed
+exact pointer/constructor/thunk verification against the private
+SHA-authenticated retail client.dll, with **zero mismatches**. This
+proves type-dispatch metadata, not the meaning of each reader vtable
+method. Those target methods and exact value mutation rules must be
+reconstructed and tested before they are enabled in runtime.
+
 ## Next tasks
 
 1. Reverse engineer the original type-specific +0x4c stat update
