@@ -61,8 +61,9 @@ public:
         if(statId<kMinDynamicStatId || statId>kMaxDynamicStatId ||
            !name || length>kMaxDynamicNameLength)
             return false;
-        if(std::memchr(name,'\0',length)!=nullptr ||
-           name[length]!='\0')return false;
+        // Never dereference name[length]: Find's input may be a
+        // non-NUL-terminated buffer with exactly length readable bytes.
+        if(std::memchr(name,'\0',length)!=nullptr)return false;
         out.assign(name,length);
         out+=std::to_string(statId);
         return out.size()+1u<=kOriginalFormattedKeyBufferBytes;
@@ -81,6 +82,8 @@ public:
             return Status::BadOriginalType;
         if(frame.dynamic_text_bytes>kMaxDynamicNameLength ||
            frame.dynamic_text_bytes>=frame.dynamic_text.size())
+            return Status::NameTooLongOrMalformed;
+        if(frame.dynamic_text[frame.dynamic_text_bytes]!='\0')
             return Status::NameTooLongOrMalformed;
         try {
             std::string key;
