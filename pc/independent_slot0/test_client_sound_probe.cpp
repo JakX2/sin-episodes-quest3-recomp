@@ -543,9 +543,16 @@ int main(int argc,char** argv) {
     for(int i=0;i<51;++i)if(!Run(argv[1],i)){
         std::fprintf(stderr,"FAIL client sound case %d\n",i);return 2;
     }
-    for(int i=102;i<=147;++i)if(!Run(argv[1],i)){
-        std::fprintf(stderr,"FAIL client terminal guard %d\n",i-100);return 3;
+    // Original VClient011 slot33 is now recovered as a typed fail-closed
+    // DispatchUserMessage(int,bf_read*) method. It MUST NOT be invoked
+    // using the old void() guard ABI. test_slot0.cpp separately calls
+    // slot33 with its real x86 thiscall arguments and stack check.
+    for(int i=102;i<=147;++i) {
+        if(i==133)continue;
+        if(!Run(argv[1],i)) {
+            std::fprintf(stderr,"FAIL client terminal guard %d\n",i-100);return 3;
+        }
     }
-    std::puts("PASS client native 48-slot table, 46 terminal guards, sound/material/screen query cases");
+    std::puts("PASS client native 48-slot table, 45 terminal guards plus typed slot33, sound/material/screen query cases");
     return 0;
 }
