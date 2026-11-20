@@ -97,11 +97,32 @@ inline bool ReadOne(void* fileSystem,const Methods& f,const char* path,
     std::string buffer(length,'\0');
     std::size_t consumed=0;
     while(consumed<length) {
-        // Read exactly remaining bytes, stopping on zero/negative or
-        // impossible overlong responses to prevent nonprogress loops.
+        // Binary resources must return precisely Size(handle) bytes. The
+        // original 2006 stats LAYOUT is instead opened with "rt". On a CRT
+        // backed filesystem this can translate each CRLF to LF, even when
+        // Size(handle) still reports the physical size. Owner-original
+        // layout evidence: 8666 on-disk bytes, 262 CRLF line endings.
         const int requested=static_cast<int>(length-consumed);
         const int returned=f.read(fileSystem,&buffer[consumed],requested,handle);
-        if(returned<=0 || returned>requested)return false;
+        if(returned<0 || returned>requested)return false;
+        if(returned==0) {
+            // Do not accept an arbitrary truncated document or nonprogress.
+            // The ONLY short-EOF allowance is precisely one removed CR per
+            // resulting LF, with no remaining CR octets. This establishes
+            // a self-consistent CRLF-to-LF translation; the independent
+            // Stats layout parser still verifies all required entries.
+            const bool textMode=mode && std::strcmp(mode,"rt")==0;
+            if(!textMode || consumed==0)return false;
+            std::size_t newlines=0;
+            for(std::size_t i=0;i<consumed;++i) {
+                if(buffer[i]=='\r')return false;
+                if(buffer[i]=='\n')++newlines;
+            }
+            if(newlines==0 || length-consumed!=newlines)return false;
+            buffer.resize(consumed);
+            output.swap(buffer);
+            return true;
+        }
         consumed+=static_cast<std::size_t>(returned);
     }
     output.swap(buffer);
