@@ -577,6 +577,21 @@ target_compile_features(sin_client_soundscape_original_bootstrap_owned_test PRIV
 add_test(NAME independent_client_soundscape_original_bootstrap_owned_native
   COMMAND sin_client_soundscape_original_bootstrap_owned_test)
 
+# Phase 496: source-authenticated original C_SoundscapeSystem vtable
+# slot3 caches snd_soundmixer and dsp_volume through original
+# VEngineCvar002 FindVar virtual slot3. Fixture uses a fake engine.
+add_executable(sin_client_soundscape_original_convar_cache_test
+  test_client_soundscape_original_convar_cache.cpp)
+target_compile_features(sin_client_soundscape_original_convar_cache_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_original_convar_cache_native
+  COMMAND sin_client_soundscape_original_convar_cache_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_cvar_slot3_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_cvar_slot3.py"
+      --self-test)
+endif()
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
