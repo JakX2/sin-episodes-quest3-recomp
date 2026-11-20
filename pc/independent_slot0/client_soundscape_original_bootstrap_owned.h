@@ -106,6 +106,26 @@ inline bool ParsePermissiveEmptyManifest(std::string_view text,
            root.text.empty())return false;
         manifest::Manifest pending{};
         pending.root=root.text; // full grammar was checked by Parse
+        if(lexer.Next().kind!=manifest::detail::Kind::Open)
+            return false;
+        // No "file" keys: the original still logs each unknown
+        // manifest key and considers a per-map fallback. Preserve the
+        // unknown count, including nested unknown blocks, instead
+        // of silently discarding warnings on this source branch.
+        while(true) {
+            const auto key=lexer.Next();
+            if(key.kind==manifest::detail::Kind::Close)break;
+            if(key.kind!=manifest::detail::Kind::Word)return false;
+            const auto value=lexer.Next();
+            if(value.kind==manifest::detail::Kind::Open) {
+                if(!manifest::detail::SkipObject(lexer,1))
+                    return false;
+            }else if(value.kind!=manifest::detail::Kind::Word)
+                return false;
+            ++pending.unknown_keys;
+        }
+        if(lexer.Next().kind!=manifest::detail::Kind::End)
+            return false;
         out=std::move(pending);
         return true;
     }catch(...){return false;}
