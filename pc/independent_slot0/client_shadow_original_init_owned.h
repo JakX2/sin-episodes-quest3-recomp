@@ -13,6 +13,12 @@ namespace sin_independent::shadow_original_init {
 inline constexpr std::uint32_t kOriginalInitVA=0x24118880u;
 inline constexpr std::size_t kOriginalInitBytes=146u;
 inline constexpr std::uint32_t kOriginalVtableVA=0x24297C4Cu;
+// Full SHA-verified source bodies behind the three Init vtable calls:
+inline constexpr std::uint32_t kOriginalSlot24VA=0x24115F00u; // 54B
+inline constexpr std::uint32_t kOriginalSlot27VA=0x24115F40u; // 18B
+inline constexpr std::uint32_t kOriginalSlot28VA=0x2410E920u; // 13B
+inline constexpr std::uint32_t kOriginalRefreshHelperVA=0x24115E80u;
+inline constexpr std::uint32_t kOriginalSlot24ConditionalFlagOffset=0xCCu;
 inline constexpr std::uint32_t kMaterialInitHelperVA=0x24167810u;
 inline constexpr std::uint32_t kConditionalHelperVA=0x24118610u;
 inline constexpr std::uint32_t kCallbackVA=0x24115E70u;
@@ -122,6 +128,19 @@ struct OwnedModel final {
     bool float28_described=false;
     bool callback_registration_described=false;
     bool optional_refresh_described=false;
+    // Source-authenticated virtual method writes, not guesses:
+    // slot24 copies all three 32-bit words to this+0x04/+0x08/+0x0C;
+    // slot27 writes this+0xD0; slot28 writes this+0xD4.
+    std::uint32_t vector_x_bits_at_04=0;
+    std::uint32_t vector_y_bits_at_08=0;
+    std::uint32_t vector_z_bits_at_0c=0;
+    std::uint32_t setting_bits_at_d0=0;
+    std::uint32_t setting_bits_at_d4=0;
+    // Slot24 conditionally calls helper 0x24115E80 when BYTE +0xCC
+    // is nonzero. Slot27 always calls that helper after its field
+    // update. This is the *expected count*, not actual invocation.
+    std::uint8_t preexisting_flag_cc=0;
+    std::uint32_t expected_refresh_requests=0;
 };
 enum class Result {AppliedOwnedModel,PlanRefused};
 inline Result ApplyPlanToOwnedModel(const Plan& plan,
@@ -139,7 +158,7 @@ inline Result ApplyPlanToOwnedModel(const Plan& plan,
            a.text0!=b.text0 ||a.text1!=b.text1)
             return Result::PlanRefused;
     }
-    OwnedModel next{};
+    OwnedModel next=output; // preserve external flag at this+0xCC
     next.flag_cd=0;
     next.value_d8=kFieldD8Value;
     next.material_reference_described=true;
@@ -148,6 +167,13 @@ inline Result ApplyPlanToOwnedModel(const Plan& plan,
     next.float28_described=true;
     next.optional_refresh_described=plan.optional_refresh_requested;
     next.callback_registration_described=true;
+    next.vector_x_bits_at_04=kVectorXBits;
+    next.vector_y_bits_at_08=kVectorYBits;
+    next.vector_z_bits_at_0c=kVectorZBits;
+    next.setting_bits_at_d0=kSlot27FloatBits;
+    next.setting_bits_at_d4=kSlot28FloatBits;
+    next.expected_refresh_requests=1u+
+        static_cast<std::uint32_t>(next.preexisting_flag_cc!=0);
     output=next;
     return Result::AppliedOwnedModel;
 }
