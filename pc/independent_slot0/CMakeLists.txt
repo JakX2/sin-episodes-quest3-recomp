@@ -533,6 +533,21 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Owned soundscape definition trees + playsoundscape cross-file graph:
+# native synthetic test plus private SHA-original inventory's public
+# --self-test (no retail scripts or game DLLs in CI).
+add_executable(sin_client_soundscape_catalog_owned_test
+  test_client_soundscape_catalog_owned.cpp)
+target_compile_features(sin_client_soundscape_catalog_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_catalog_owned_native
+  COMMAND sin_client_soundscape_catalog_owned_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_catalog_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_catalog.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
