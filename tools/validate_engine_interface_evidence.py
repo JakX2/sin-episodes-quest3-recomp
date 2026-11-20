@@ -15,6 +15,7 @@ ANCHORS = (
     "VClient011", "ServerGameDLL003", "ServerGameClients003",
     "ServerGameEnts001", "VClientPrediction001", "VClientEntityList003",
 )
+MODULE_FOR_ANCHOR = {name: ("client" if name.startswith("VClient") else "server") for name in ANCHORS}
 TIERS = ("candidate", "sha_reviewed", "native_synthetic", "owner_retail")
 REQUIRED = ("interface", "module", "rva", "tier", "body_sha256",
             "boundary_verified", "native_engine_tested")
@@ -38,6 +39,13 @@ def validate(rows):
                                          ("interface", "module", "rva", "tier"))
         if interface not in ANCHORS or module not in ("client", "server"):
             errors.append(tag + ": unknown interface or module")
+            continue
+        if module != MODULE_FOR_ANCHOR[interface]:
+            errors.append(tag + ": interface registered in wrong DLL module")
+            continue
+        unknown = sorted(set(row) - set(REQUIRED))
+        if unknown:
+            errors.append(tag + ": unknown evidence fields " + ",".join(unknown))
             continue
         if type(rva) is not int or not 0 <= rva < 0x100000000:
             errors.append(tag + ": invalid PE32 RVA")
@@ -93,6 +101,10 @@ def self_test():
             "boundary_verified": False, "native_engine_tested": False}
     assert report([good])["valid"]
     assert report([good, good])["valid"] is False
+    assert not report([dict(good, module="server")])["valid"]
+    assert not report([dict(good, interface="ServerGameDLL003")])["valid"]
+    assert not report([dict(good, original_engine_tested=True)])["valid"]
+    assert not report([dict(good, native_engine_tested=1)])["valid"]
     assert report([dict(good, tier="sha_reviewed")])["valid"] is False
     reviewed = dict(good, tier="sha_reviewed", body_sha256="a" * 64,
                     boundary_verified=True)
