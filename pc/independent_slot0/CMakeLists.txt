@@ -38,6 +38,14 @@ add_test(NAME independent_owner_oneclick_package_synthetic
     -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-SiNOneClickPackage.ps1"
     -Runner "${CMAKE_CURRENT_SOURCE_DIR}/Start-SiNFileSystemTest.ps1")
 
+# The owner observed 0x53494E6B from real retail IFileSystem; only the
+# disposable-copy cleanup was refused. Synthetic WIN32 tests of all recovery
+# paths use fabricated client/server bytes with replacement SHA constants.
+add_test(NAME independent_owner_disposable_recovery_synthetic
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-SiNRetainedCopyRecovery.ps1"
+    -RecoveryScript "${CMAKE_CURRENT_SOURCE_DIR}/Recover-SiNRetainedTestCopy.ps1")
+
 # Session-isolated owner-engine failure classification; synthetic logs only.
 add_test(NAME independent_owner_startup_verdict
   COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
