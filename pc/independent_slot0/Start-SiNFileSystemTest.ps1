@@ -8,6 +8,7 @@ launcher, then emits text reports as a ZIP. Normal game boot is not claimed.
 param(
     [Parameter(Position=0)][string]$GameRoot,
     [switch]$PlanOnly,
+    [switch]$StagedStats,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
 $ErrorActionPreference='Stop'
@@ -140,6 +141,9 @@ if ($PlanOnly) {
     Write-Output 'COPY: fresh disposable entire game copy under Windows Temp'
     Write-Output 'BINARIES: independent client/server DLLs shipped in package bin'
     Write-Output 'TEST: presence first, then read only on success and confirmed restoration'
+    if ($StagedStats) {
+        Write-Output 'THIRD TEST: rb/GAME definitions and rt/null layout, independent 66-ID binding'
+    }
     Write-Output 'RESULTS: new text-only ZIP in extracted package folder'
     Write-Output 'CLEANUP: keep disposable copy if restoration is uncertain'
     return
@@ -152,6 +156,8 @@ $disposable=$null
 $launchStarted=$false
 $presenceOk=$false
 $readOk=$false
+$stagedOk=$false
+$stagedStarted=$false
 $problems=New-Object 'System.Collections.Generic.List[string]'
 $copyStatus='NOT_STARTED'
 $cleanup='NOT_STARTED'
@@ -238,7 +244,32 @@ try {
     } else {
         Write-Output 'File presence was not confirmed. The read phase is skipped.'
     }
-    $exitCode=if($readOk){0}else{2}
+    if ($StagedStats -and $readOk) {
+        $stagedStarted=$true
+        $staged=Join-Path $reports 'staged.txt'
+        $stagedRun=Join-Path $reports 'staged-run.txt'
+        Write-Output 'Checking original rb/GAME and rt/null modes and independent 66-stat catalog.'
+        try {
+            $options=@{DisposableGameRoot=$disposable;IndependentBin=$bin;
+                Phase='Staged';PriorReadTranscript=$read;TranscriptPath=$staged;
+                TimeoutSeconds=$TimeoutSeconds;DisposableTestCopyConfirmed=$true}
+            & $gate @options *>&1 | Tee-Object -FilePath $stagedRun | Out-Host
+        } catch {
+            $problems.Add('staged: '+$_.Exception.Message)
+        }
+        if (Test-Path -LiteralPath $stagedRun -PathType Leaf) {
+            $stagedOk=([IO.File]::ReadAllText($stagedRun)).Contains(
+                'OWNER_ENGINE_FS_GATE_RESULT: STAGED_DIAGNOSTIC_ONLY_NO_GAME_BOOT')
+        }
+        Preserve-SessionLogs $staged $reports
+    } elseif ($StagedStats) {
+        Write-Output 'Prior read was not verified; original-mode staged phase skipped.'
+    }
+    $exitCode=if($StagedStats){
+        if($stagedOk){0}else{2}
+    }else{
+        if($readOk){0}else{2}
+    }
 } catch {
     $problems.Add('setup: '+$_.Exception.Message)
     Write-Output ('Test blocked: '+$_.Exception.Message)
@@ -249,7 +280,7 @@ try {
         $restored=$true
         if ($launchStarted) {
             $restored=$false
-            $last=if($presenceOk){'read.txt'}else{'presence.txt'}
+            $last=if($stagedStarted){'staged.txt'}elseif($presenceOk){'read.txt'}else{'presence.txt'}
             if ($null -ne $reports) {
                 $transcript=Join-Path $reports $last
                 if (Test-Path -LiteralPath $transcript -PathType Leaf) {
@@ -275,7 +306,7 @@ try {
                     # Preserve the real filesystem read milestone when
                     # its initial gate result was masked by an exclusively
                     # post-exit restoration refusal.
-                    if (-not $readOk -and $presenceOk) {
+                    if (-not $readOk -and $presenceOk -and -not $stagedStarted) {
                         $sourceTranscript=Join-Path $reports 'read.txt'
                         if (Test-Path -LiteralPath $sourceTranscript -PathType Leaf) {
                             $evidence=@([IO.File]::ReadAllLines($sourceTranscript))
@@ -295,6 +326,39 @@ try {
                 }
             } catch {
                 $problems.Add('automatic restoration retry: '+$_.Exception.Message)
+            }
+        }
+        # Staged test may have completed in the original Windows engine but
+        # a post-exit file lock prevented the gate from confirming cleanup.
+        # Do NOT claim success unless the exact new-phase session and terminal
+        # evidence match, and both original retail DLLs are now restored.
+        if ($StagedStats -and $stagedStarted -and -not $stagedOk -and $restored) {
+            $stagedTranscript=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedTranscript -PathType Leaf) {
+                $evidence=@([IO.File]::ReadAllLines($stagedTranscript))
+                $sessions=@($evidence | Where-Object {
+                    $_ -cmatch '^OWNER_INDEPENDENT_SESSION: [0-9a-f]{32}$'
+                })
+                if ($sessions.Count -eq 1) {
+                    $match=[regex]::Match($sessions[0],
+                        '^OWNER_INDEPENDENT_SESSION: ([0-9a-f]{32})$')
+                    $sid=$match.Groups[1].Value
+                    $pattern=('^OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS: sin-independent-'+
+                        $sid+'-[0-9]+\.log:client:owned-staged-verified-not-engine-init:66:62:8:156:66:7:7$')
+                    if (@($evidence | Where-Object {
+                            $_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E70'
+                        }).Count -eq 1 -and
+                        @($evidence | Where-Object {
+                            $_ -cmatch $pattern
+                        }).Count -eq 1 -and
+                        @($evidence | Where-Object {
+                            $_ -ceq 'OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
+                        }).Count -eq 1) {
+                        $stagedOk=$true
+                        $exitCode=0
+                        Write-Output 'ONECLICK_RECOVERED_STAGED_DIAGNOSTIC: ORIGINAL_MODES_AND_INDEPENDENT_CATALOG_VERIFIED'
+                    }
+                }
             }
         }
         $backup1=Join-Path $disposable 'SE1\bin\sin_independent_saved_client.dll'
@@ -322,6 +386,7 @@ try {
             'SiN Episodes 2006 independent filesystem diagnostic'
             ('Presence: '+$(if($presenceOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED'}))
             ('Read: '+$(if($readOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED_OR_SKIPPED'}))
+            ('Original-mode staged 66-stat binding: '+$(if($stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($StagedStats){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Copied original files: '+$copyStatus)
             ('Temporary game cleanup: '+$cleanup)
             'No complete normal VClient011::Init or playable map boot is claimed.'
@@ -338,8 +403,10 @@ try {
         Write-Output ('RESULTS_FOLDER: '+$reports)
     }
 }
-if ($readOk) {
-    Write-Output 'FINISHED: both retail diagnostics passed, NOT a playable game boot.'
+if ($StagedStats -and $stagedOk) {
+    Write-Output 'FINISHED: original-mode staged stats and owned 66-ID binding verified. NOT an engine Init or playable game boot.'
+} elseif (-not $StagedStats -and $readOk) {
+    Write-Output 'FINISHED: both retail filesystem diagnostics passed, NOT a playable game boot.'
 } else {
     Write-Output 'FINISHED: test incomplete or refused. Share RESULTS_ZIP for analysis.'
 }

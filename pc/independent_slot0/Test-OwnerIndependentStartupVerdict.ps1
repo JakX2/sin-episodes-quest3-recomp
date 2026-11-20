@@ -850,6 +850,46 @@ try {
             throw ('Engine filesystem read not classified: '+$case.State)
         }
     }
+    # Proposed original-mode staged Stats diagnostic (synthetic ONLY).
+    # A standalone staged result must follow a valid SAME-SESSION
+    # original sound Init, filesystem presence and combined engine read.
+    $stagedReadPrefix=[string[]](@($engineFsPrefix)+@(
+        $engineFsStart
+        '[SiN independent] role=client phase=engine-fs-presence-result version=both-present'
+        $engineFsReadStart
+        '[SiN independent] role=client phase=engine-fs-read-counts version=62:8:156:66'
+        '[SiN independent] role=client phase=engine-fs-read-result version=parsed-and-verified'
+    ))
+    $stagedSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-staged-entered version=rb-GAME:rt-null:owned-only'
+        '[SiN independent] role=client phase=engine-fs-staged-counts version=66:62:8:156:66'
+        '[SiN independent] role=client phase=engine-fs-staged-stage version=7:7'
+        '[SiN independent] role=client phase=engine-fs-staged-result version=owned-staged-verified-not-engine-init'
+        '[SiN independent] role=client phase=engine-fs-staged-terminal-stop version=original-modes-owned-only'
+    )
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($stagedReadPrefix)+@($stagedSteps)))
+    $out=Verify 'CLIENT_ENGINE_FS_STAGED_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedLine=('OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'owned-staged-verified-not-engine-init:66:62:8:156:66:7:7')
+    if (-not ($out -ccontains $expectedLine)) {
+        throw ('Original staged mode not attributed to its own session: '+($out -join '|'))
+    }
+    # Reject impossible "success" if counts were forged/mismatched.
+    $badStages=@($stagedSteps)
+    $badStages[1]=$badStages[1].Replace('66:62:8:156:66','66:61:8:156:66')
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($stagedReadPrefix)+@($badStages)))
+    $out=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($out -join '|').Contains('OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS:')) {
+        throw 'Forged original-mode staged result promoted despite wrong counts'
+    }
+    # No same-log combined read means no staged milestone, even if its own
+    # tail claims original resource modes and all nominal source counts.
+    [IO.File]::WriteAllLines($retailReplay,[string[]](@($engineFsPrefix)+@($stagedSteps)))
+    $out=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($out -join '|').Contains('OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS:')) {
+        throw 'Original-mode staged result promoted without filesystem prerequisites'
+    }
     # Do not claim an engine-filesystem milestone after a false sound Init.
     [IO.File]::WriteAllLines($retailReplay,[string[]](@($soundInitPrefix)+@(
         $soundInitEntry,

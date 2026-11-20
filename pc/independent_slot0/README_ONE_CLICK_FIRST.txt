@@ -85,3 +85,30 @@ is invalid, the utility refuses deletion and prints its recovery error.
 You do NOT have to manually move any DLLs, even when a previous run
 left behind a temporary test copy. The old ZIP results remain valid
 research data; do not delete the reports ZIP.
+
+NEXT TEST: ORIGINAL TWO-STAGE STATISTICS LOADING
+-----------------------------------------------
+The previous owner retail engine confirmed VFileSystem012 access and
+the combined 62:8:156:66 Stats parse (0x53494E6B). The new diagnostic
+tests the ORIGINAL per-file Open arguments and a clean-room 66-ID
+catalog, and does not claim full game startup.
+
+Double-click RUN_STAGED_STATS_TEST.bat instead of RUN_SIN_TEST.bat.
+Choose your original game folder once. The package automatically
+copies the game to a temporary folder, runs the two verified safety
+stages, then tests:
+  Stage 3: definitions Open("rb", "GAME")
+  Stage 4: display layout Open("rt", null pathID)
+  Independent: 66 original stat names, 62 bound definitions,
+               8 percentage references, 156 layout pairs,
+               66 divider lines.
+
+It saves staged.txt and staged-run.txt in the final results ZIP.
+SUCCESS: 0x53494E70, original-mode staged owned binding verified.
+FAIL:    0x53494E71 (definitions), 0x53494E72 (layout),
+         0x53494E73 (ABI or source counts).
+
+No original KeyValues object, unknown game callback or complete
+VClient011 Init is executed. Existing RUN_SIN_TEST.bat still runs
+only the previous two filesystem phases, and all DLLs are included
+in the package. There is NO manual DLL copying.
