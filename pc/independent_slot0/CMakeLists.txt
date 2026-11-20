@@ -665,6 +665,22 @@ target_compile_features(sin_client_soundscape_original_array_overlap_owned_test 
 add_test(NAME independent_client_soundscape_original_array_overlap_owned_native
   COMMAND sin_client_soundscape_original_array_overlap_owned_test)
 
+# Original 2006 AutoGameSystem base destructor writes its base
+# vptr and removes FIRST matching pointer from global registry.
+# Authenticated 26-byte dtor and 90-byte erase method; synthetic
+# owned registry only, no real game pointer calls or allocations.
+add_executable(sin_client_original_autogamesystem_registry_remove_test
+  test_client_original_autogamesystem_registry_remove.cpp)
+target_compile_features(sin_client_original_autogamesystem_registry_remove_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_original_autogamesystem_registry_remove_native
+  COMMAND sin_client_original_autogamesystem_registry_remove_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_autogamesystem_registry_remove_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_autogamesystem_registry_remove.py"
+      --self-test)
+endif()
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
