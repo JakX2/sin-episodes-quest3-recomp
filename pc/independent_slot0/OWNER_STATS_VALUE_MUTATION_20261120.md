@@ -107,6 +107,60 @@ malformed frames, atomic failure and capacity exhaustion.
 A new read-only auditor SHA-pins the exact original formatter,
 dynamic factory, wrapper and name lookup call edges.
 
+## ResetHUD original destruction/rebuild sequence
+
+The original SHA-matched callback at **0x241FCA60** does not read
+the one-byte message payload. Instead, the original shared message
+catalog declares a one-byte ResetHUD envelope, and the callback
+immediately invokes these five original methods in this order:
+
+| Original callback action | Function VA | Evidence |
+|---|---|---|
+| Tear down previously allocated static values | 0x241FBEC0 | Original 55-value owner cleanup |
+| Tear down separate secondary stats collection | 0x241FC740 | **Purpose not fully reconstructed** |
+| Clear dynamic names / value tree | 0x241FF990 | Clears the tree/container |
+| Rebuild static stat value objects | 0x241FF420 | Loops **55** entries |
+| Rebuild dynamic-type buckets | 0x241FF8E0 | Loops **11** entries |
+
+Finally, the callback writes `1` to the original owner reset
+flag at `0x24378E94`. The related class instance method at
+`0x241FC9E0` invokes the identical five functions and writes
+the flag at instance offset `+0xAC`. The original per-method
+body SHA256 fingerprints and every call edge were authenticated
+in a **private read-only audit** of the original DLL.
+
+New `audit_sin_original_stats_reset.py` verifies seven original
+method-body fingerprints, all ten callback/instance call edges,
+both 55/11 loop constants and both original reset flag writes.
+Its public CI self-test is synthetic, with no retail binary.
+
+The independently authored `client_stats_owned_message_runtime.h`
+now combines **55 owned static values**, **independently named
+dynamic values**, and the original three stat message IDs:
+`StaticStat=27`, `DynamicStat=28`, `ResetHUD=5`. It accepts
+a bounded logical bit-cursor copy, decodes and applies static or
+dynamic packets, and on ResetHUD recreates all 55 static value
+objects, drops dynamically named records, increments its own reset
+counter and sets its separate independent reset flag. Invalid or
+truncated packets leave both state and the caller cursor unchanged.
+Importantly, the original callback does NOT interpret the one-byte
+envelope, so the port treats it as opaque too.
+
+A new native original-free regression exercises a **realistic owned
+sequence**: update static ID2, create/reuse dynamic ID55 by name,
+create dynamic ID65, receive ResetHUD, verify all dynamic names are
+gone and all 55 static objects restored to factory defaults, then
+send valid static/dynamic messages again. It also checks repeated
+resets, invalid envelope size, unknown IDs, incomplete values and
+overlong name refusal.
+
+**Important evidence limit:** The secondary stats container
+destroyed by `0x241FC740` remains unmodeled, as does the original
+dynamic tree comparator, the engine's actual user-message
+dispatcher, and normal `VClient011::Init`. This is a source-grounded
+independent C++ value-state lifecycle **simulation**, not a
+real original-engine game packet test or playable Windows boot.
+
 ## Validation and exact boundaries
 
 The owner-original read-only audit locally verified:
