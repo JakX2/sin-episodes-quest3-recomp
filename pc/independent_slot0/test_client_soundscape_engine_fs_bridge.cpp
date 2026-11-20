@@ -108,7 +108,12 @@ int main(){
     };
 
     b::Bridge bridge;
-    if(bridge.Load(&originalFree)!=b::Status::OwnedCatalogReady ||
+    b::Trace trace{};
+    if(bridge.Load(&originalFree,&trace)!=b::Status::OwnedCatalogReady ||
+       trace.stage!=b::Stage::Complete ||
+       trace.script_reads_attempted!=2 ||trace.script_reads_succeeded!=2 ||
+       trace.manifest_status!=sin_independent::soundscape_manifest::Status::Ready ||
+       trace.catalog_status!=sin_independent::soundscape_catalog::Status::Ready ||
        bridge.scripts().files.size()!=2 ||
        bridge.catalog().counts.definitions!=2 ||
        bridge.catalog().counts.nested_soundscape_blocks!=1 ||
@@ -119,12 +124,19 @@ int main(){
 
     // Null ABI pointer is refused before a virtual call and never
     // resets a previously completed owned catalog.
-    if(bridge.Load(nullptr)!=b::Status::InvalidEngineAbi ||
+    if(bridge.Load(nullptr,&trace)!=b::Status::InvalidEngineAbi ||
+       trace.stage!=b::Stage::ResolveAbi ||
+       trace.script_reads_attempted!=0 ||
+       trace.script_reads_succeeded!=0 ||
        bridge.catalog().counts.definitions!=2)return Fail(2);
 
     originalFree.missing_path="scripts/soundscapes_intro.txt";
     const int closeBefore=originalFree.close_count;
-    if(bridge.Load(&originalFree)!=b::Status::ManifestOrDependencyRefused ||
+    if(bridge.Load(&originalFree,&trace)!=b::Status::ManifestOrDependencyRefused ||
+       trace.stage!=b::Stage::ReadScript ||
+       trace.script_reads_attempted!=2 ||
+       trace.script_reads_succeeded!=1 ||
+       trace.manifest_status!=sin_independent::soundscape_manifest::Status::MissingFile ||
        originalFree.close_count!=closeBefore+2 ||
        bridge.catalog().counts.definitions!=2 ||
        bridge.scripts().files.size()!=2)return Fail(3);
@@ -134,32 +146,46 @@ int main(){
     // synthetic partial state.
     originalFree.resources["scripts/soundscapes_manifest.txt"]=
         "soundscaples_manifest { \"file\" \"../escape.txt\" }";
-    if(bridge.Load(&originalFree)!=b::Status::ManifestOrDependencyRefused ||
+    if(bridge.Load(&originalFree,&trace)!=b::Status::ManifestOrDependencyRefused ||
+       trace.stage!=b::Stage::ValidateManifest ||
+       trace.script_reads_attempted!=0 ||
+       trace.script_reads_succeeded!=0 ||
+       trace.manifest_status!=sin_independent::soundscape_manifest::Status::UnsafeFilePath ||
        bridge.catalog().counts.definitions!=2)return Fail(4);
     originalFree.resources["scripts/soundscapes_manifest.txt"]=manifest;
 
     // Resource opened and read successfully but contains broken KV.
     originalFree.resources["scripts/soundscapes_intro.txt"]=
         "\"B\" { \"playrandom\" {";
-    if(bridge.Load(&originalFree)!=b::Status::CatalogParseRefused ||
+    if(bridge.Load(&originalFree,&trace)!=b::Status::CatalogParseRefused ||
+       trace.stage!=b::Stage::BuildCatalog ||
+       trace.script_reads_attempted!=2 ||
+       trace.script_reads_succeeded!=2 ||
+       trace.catalog_status!=sin_independent::soundscape_catalog::Status::MalformedDefinition ||
        bridge.catalog().counts.definitions!=2)return Fail(5);
     originalFree.resources["scripts/soundscapes_intro.txt"]=second;
 
     // The lower-level engine ABI fixture reads in bounded chunks.
     // A non-progress read is refused and the acquired handle closed.
     originalFree.short_read=true;
-    if(bridge.Load(&originalFree)!=b::Status::ManifestReadRefused ||
+    if(bridge.Load(&originalFree,&trace)!=b::Status::ManifestReadRefused ||
+       trace.stage!=b::Stage::ReadManifest ||
+       trace.script_reads_attempted!=0 ||
        bridge.catalog().counts.definitions!=2)return Fail(6);
     originalFree.short_read=false;
 
     // A malicious length above existing lower-level 256KiB reader
     // cap also refuses before reading a partial payload.
     originalFree.huge_size=true;
-    if(bridge.Load(&originalFree)!=b::Status::ManifestReadRefused ||
+    if(bridge.Load(&originalFree,&trace)!=b::Status::ManifestReadRefused ||
+       trace.stage!=b::Stage::ReadManifest ||
+       trace.script_reads_attempted!=0 ||
        bridge.catalog().counts.definitions!=2)return Fail(7);
     originalFree.huge_size=false;
 
-    if(bridge.Load(&originalFree)!=b::Status::OwnedCatalogReady ||
+    if(bridge.Load(&originalFree,&trace)!=b::Status::OwnedCatalogReady ||
+       trace.stage!=b::Stage::Complete ||
+       trace.script_reads_attempted!=2 ||trace.script_reads_succeeded!=2 ||
        bridge.catalog().counts.definitions!=2 ||
        bridge.scripts().manifest.root!="soundscaples_manifest" ||
        originalFree.abi_errors!=0)return Fail(8);
@@ -167,6 +193,6 @@ int main(){
     bridge.Clear();
     if(!bridge.scripts().files.empty() ||
        !bridge.catalog().definitions.empty())return Fail(9);
-    std::puts("PASS Win32 synthetic VFileSystem012 rb/GAME soundscape resources: exact slots, chunk reads, 2-file graph and transactional rollback");
+    std::puts("PASS Win32 synthetic VFileSystem012 rb/GAME soundscape resources: exact slots, chunk reads, detailed stage telemetry and atomic rollback");
     return 0;
 }
