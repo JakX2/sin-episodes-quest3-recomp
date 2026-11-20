@@ -38,6 +38,35 @@ inline const char* StatusName(Status status) noexcept {
     }
     return "unknown";
 }
+// Owner-retail diagnostic evidence: coarse failure boundaries, no paths,
+// original text, pointers or resource data leaked into the trace.
+enum class Stage {
+    ResolveAbi, ReadManifest, ValidateManifest, ReadScript,
+    ScriptBudget, BuildCatalog, Complete
+};
+inline const char* StageName(Stage stage) noexcept {
+    switch(stage) {
+        case Stage::ResolveAbi:return "resolve-abi";
+        case Stage::ReadManifest:return "read-manifest";
+        case Stage::ValidateManifest:return "validate-manifest";
+        case Stage::ReadScript:return "read-script";
+        case Stage::ScriptBudget:return "script-budget";
+        case Stage::BuildCatalog:return "build-catalog";
+        case Stage::Complete:return "complete";
+    }
+    return "unknown";
+}
+struct Trace final {
+    Stage stage=Stage::ResolveAbi;
+    soundscape_manifest::Status manifest_status=
+        soundscape_manifest::Status::Ready;
+    soundscape_catalog::Status catalog_status=
+        soundscape_catalog::Status::Ready;
+    std::size_t script_reads_attempted=0;
+    std::size_t script_reads_succeeded=0;
+};
+static_assert(std::is_nothrow_copy_assignable<Trace>::value,
+              "trace publishing must never throw");
 class Bridge final {
 public:
     const soundscape_manifest::Snapshot& scripts() const noexcept {
@@ -50,38 +79,55 @@ public:
         catalog_.Clear();
         scripts_.Clear();
     }
-    Status Load(void* fileSystem) noexcept {
+    Status Load(void* fileSystem,Trace* observed=nullptr) noexcept {
+        Trace trace{};
+        const auto finish=[&](Status status) noexcept {
+            if(observed)*observed=trace;
+            return status;
+        };
         engine_fs::Methods methods{};
         if(!engine_fs::Resolve(fileSystem,methods,true))
-            return Status::InvalidEngineAbi;
+            return finish(Status::InvalidEngineAbi);
         try {
+            trace.stage=Stage::ReadManifest;
             std::string manifestText;
             const std::string path(soundscape_manifest::kManifestPath);
             if(!engine_fs::ReadOne(fileSystem,methods,path.c_str(),
                                    manifestText,"rb","GAME"))
-                return Status::ManifestReadRefused;
+                return finish(Status::ManifestReadRefused);
+            trace.stage=Stage::ValidateManifest;
             soundscape_manifest::OwnedSnapshot stagedScripts{};
             const auto readOne=[&](std::string_view relativePath,
                                    std::string& output)->bool {
+                trace.stage=Stage::ReadScript;
+                ++trace.script_reads_attempted;
                 std::string name(relativePath);
-                return engine_fs::ReadOne(
+                const bool ok=engine_fs::ReadOne(
                     fileSystem,methods,name.c_str(),output,"rb","GAME");
+                if(ok)++trace.script_reads_succeeded;
+                return ok;
             };
-            if(stagedScripts.Load(manifestText,readOne)!=
-                   soundscape_manifest::Status::Ready)
-                return Status::ManifestOrDependencyRefused;
+            trace.manifest_status=stagedScripts.Load(manifestText,readOne);
+            if(trace.manifest_status!=soundscape_manifest::Status::Ready) {
+                if(trace.manifest_status==soundscape_manifest::Status::FileTooLarge ||
+                   trace.manifest_status==soundscape_manifest::Status::TotalSizeExceeded)
+                    trace.stage=Stage::ScriptBudget;
+                else if(trace.manifest_status!=soundscape_manifest::Status::MissingFile)
+                    trace.stage=Stage::ValidateManifest;
+                return finish(Status::ManifestOrDependencyRefused);
+            }
+            trace.stage=Stage::BuildCatalog;
             soundscape_catalog::OwnedCatalog stagedCatalog{};
-            if(stagedCatalog.Build(stagedScripts.value())!=
-                   soundscape_catalog::Status::Ready)
-                return Status::CatalogParseRefused;
-            // Complete publication only after every resource has been
-            // read, parsed and cross-file indexed. Original partial
-            // KeyValues mutation on failure is not replicated.
+            trace.catalog_status=stagedCatalog.Build(stagedScripts.value());
+            if(trace.catalog_status!=soundscape_catalog::Status::Ready)
+                return finish(Status::CatalogParseRefused);
+            // Publish BOTH complete snapshots only after every read/parse.
             scripts_=std::move(stagedScripts);
             catalog_=std::move(stagedCatalog);
-            return Status::OwnedCatalogReady;
+            trace.stage=Stage::Complete;
+            return finish(Status::OwnedCatalogReady);
         }catch(...){
-            return Status::AllocationRefused;
+            return finish(Status::AllocationRefused);
         }
     }
 private:

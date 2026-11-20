@@ -27,6 +27,7 @@
 #include "client_stats_live_asset_probe.h"
 #include "client_engine_filesystem_read.h"
 #include "client_soundscape_retail_gate.h"
+#include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
 #endif
@@ -446,6 +447,14 @@ static bool clientSoundscapeCatalogProbeEnabled() noexcept {
         static_cast<unsigned>(result.counts.unresolved_references));
     diagnostic("engine-fs-soundscape-counts",totals);
     diagnostic("engine-fs-soundscape-result",StatusName(result.status));
+    // Format is fixed-size, path-free and carries only source-neutral
+    // refusal categories, not the user's original scripts or binary data.
+    char detail[256]={};
+    const bool formatted=
+        sin_independent::soundscape_diagnostic::Format(
+            result,detail,sizeof(detail));
+    diagnostic("engine-fs-soundscape-detail",
+               formatted?detail:"diagnostic-format-refused");
     diagnostic("engine-fs-soundscape-terminal-stop",
                "owner-original-files-no-game-init");
     TerminateProcess(GetCurrentProcess(),

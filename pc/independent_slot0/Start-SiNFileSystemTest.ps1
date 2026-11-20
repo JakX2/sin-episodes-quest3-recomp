@@ -410,6 +410,25 @@ try {
         $cleanup='NO_TEMPORARY_COPY'
     }
     if ($null -ne $reports) {
+        # The classifier already requires the same-session Stats hook
+        # prefix and the soundscape terminal trace. Only its bounded
+        # fixed-format summary may enter the user-facing SUMMARY.txt.
+        $soundscapeDetail='NOT_REQUESTED'
+        if ($SoundscapeCatalog) {
+            $soundscapeDetail='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                $detailPattern='^OWNER_CLIENT_SOUNDSCAPE_DETAILS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:resolve-abi|read-manifest|validate-manifest|read-script|script-budget|build-catalog|complete):[a-z0-9-]{1,64}:[a-z0-9-]{1,64}:[a-z0-9-]{1,64}:[0-9]{1,2}:[0-9]{1,2})$'
+                $detailHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $detailPattern})
+                if ($detailHits.Count -eq 1) {
+                    $detailMatch=[regex]::Match($detailHits[0],$detailPattern)
+                    if ($detailMatch.Success) {
+                        $soundscapeDetail=$detailMatch.Groups[1].Value
+                    }
+                }
+            }
+        }
         $summary=Join-Path $reports 'SUMMARY.txt'
         $rows=@(
             'SiN Episodes 2006 independent filesystem diagnostic'
@@ -418,6 +437,7 @@ try {
             ('Original-mode staged 66-stat binding: '+$(if($stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($StagedStats){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Independent Stats CUserMessages hooks 27:28:5: '+$(if($HookProof -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($HookProof){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Original soundscape manifest and owned 7:301:242:3 catalog: '+$(if($SoundscapeCatalog -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($SoundscapeCatalog){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
+            ('Soundscape read/parse stage: '+$soundscapeDetail)
             ('Copied original files: '+$copyStatus)
             ('Temporary game cleanup: '+$cleanup)
             'No complete normal VClient011::Init or playable map boot is claimed.'

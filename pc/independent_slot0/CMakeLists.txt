@@ -656,6 +656,14 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Owner-retail 0x53494E76/77 soundscape refusal reason reporting:
+# compiled exact formatter has no path/resource/pointer string inputs.
+add_executable(sin_client_soundscape_diagnostic_formatter_test
+  test_client_soundscape_diagnostic_formatter.cpp)
+target_compile_features(sin_client_soundscape_diagnostic_formatter_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_diagnostic_formatter_native
+  COMMAND sin_client_soundscape_diagnostic_formatter_test)
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)

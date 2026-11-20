@@ -115,6 +115,9 @@ int main(){
     auto r1=r::Verify(&engine);
     if(!r1.verified() || r1.status!=r::Status::CatalogVerified ||
        r1.bridge_result!=fs::Status::OwnedCatalogReady ||
+       r1.diagnostic.stage!=fs::Stage::Complete ||
+       r1.diagnostic.script_reads_attempted!=7 ||
+       r1.diagnostic.script_reads_succeeded!=7 ||
        r1.counts.files!=7 || r1.counts.definitions!=301 ||
        r1.counts.nested_references!=242 ||
        r1.counts.unresolved_references!=3 ||
@@ -127,6 +130,8 @@ int main(){
     engine.files[paths[1]]="\"single\" { \"playlooping\" { \"wave\" \"x.wav\" } }";
     auto less=r::Verify(&engine);
     if(less.status!=r::Status::OriginalCountsMismatch ||
+       less.diagnostic.stage!=fs::Stage::Complete ||
+       less.diagnostic.script_reads_succeeded!=7 ||
        less.counts.definitions!=259 || less.verified() ||
        engine.abi_failures!=0)return Fail(3);
     engine.files[paths[1]]=prior;
@@ -139,6 +144,11 @@ int main(){
     auto noFile=r::Verify(&engine);
     if(noFile.status!=r::Status::FilesystemOrParseRefused ||
        noFile.bridge_result!=fs::Status::ManifestOrDependencyRefused ||
+       noFile.diagnostic.stage!=fs::Stage::ReadScript ||
+       noFile.diagnostic.script_reads_attempted!=7 ||
+       noFile.diagnostic.script_reads_succeeded!=6 ||
+       noFile.diagnostic.manifest_status!=
+           sin_independent::soundscape_manifest::Status::MissingFile ||
        noFile.verified() ||
        engine.open_count-beforeOpen!=8 ||
        engine.close_count-beforeClose!=7)return Fail(4);
@@ -147,6 +157,8 @@ int main(){
     auto noEngine=r::Verify(nullptr);
     if(noEngine.status!=r::Status::FilesystemOrParseRefused ||
        noEngine.bridge_result!=fs::Status::InvalidEngineAbi ||
+       noEngine.diagnostic.stage!=fs::Stage::ResolveAbi ||
+       noEngine.diagnostic.script_reads_attempted!=0 ||
        noEngine.counts.files!=0)return Fail(5);
 
     if(!r::ValidateExpectedRetail({7,301,242,3},"soundscaples_manifest") ||
@@ -155,9 +167,40 @@ int main(){
        r::ValidateExpectedRetail({7,301,242,3},"soundscapes_manifest"))
         return Fail(6);
 
+    // The manifest parser rejects traversal before opening any
+    // referenced file, but the owner trace still identifies this
+    // separately from a real engine file-open failure.
+    const std::string baselineManifest=
+        engine.files["scripts/soundscapes_manifest.txt"];
+    engine.files["scripts/soundscapes_manifest.txt"]=
+        "soundscaples_manifest { \"file\" \"scripts/../invalid.txt\" }";
+    auto badManifest=r::Verify(&engine);
+    if(badManifest.status!=r::Status::FilesystemOrParseRefused ||
+       badManifest.diagnostic.stage!=fs::Stage::ValidateManifest ||
+       badManifest.diagnostic.manifest_status!=
+           sin_independent::soundscape_manifest::Status::UnsafeFilePath ||
+       badManifest.diagnostic.script_reads_attempted!=0 ||
+       badManifest.counts.files!=0)return Fail(8);
+    engine.files["scripts/soundscapes_manifest.txt"]=baselineManifest;
+
+    // All files may read successfully but a later nested KeyValues
+    // syntax error must appear as a catalog parse failure, not a
+    // filesystem missing-file error or an apparent verified catalog.
+    const std::string baselineFinal=engine.files[paths[6]];
+    engine.files[paths[6]]="\"damaged\" { \"playlooping\" {";
+    auto badCatalog=r::Verify(&engine);
+    if(badCatalog.status!=r::Status::FilesystemOrParseRefused ||
+       badCatalog.diagnostic.stage!=fs::Stage::BuildCatalog ||
+       badCatalog.diagnostic.script_reads_attempted!=7 ||
+       badCatalog.diagnostic.script_reads_succeeded!=7 ||
+       badCatalog.diagnostic.catalog_status!=
+           sin_independent::soundscape_catalog::Status::MalformedDefinition)
+        return Fail(9);
+    engine.files[paths[6]]=baselineFinal;
+
     // A fully restored synthetic fixture can retry deterministically.
     auto again=r::Verify(&engine);
     if(!again.verified()||engine.abi_failures!=0)return Fail(7);
-    std::puts("PASS synthetic native Source2004 VFileSystem012 -> 7 files, 301 defs, 242 refs, 3 unresolved; fail-closed count/path checks and 8 handled file closures");
+    std::puts("PASS synthetic native Source2004 VFileSystem012: exact 7/301/242/3 counts and independent ABI/read/manifest/catalog refusal telemetry");
     return 0;
 }

@@ -899,6 +899,7 @@ try {
         '[SiN independent] role=client phase=engine-fs-soundscape-entered version=rb-GAME:read-only'
         '[SiN independent] role=client phase=engine-fs-soundscape-counts version=7:301:242:3'
         '[SiN independent] role=client phase=engine-fs-soundscape-result version=owned-soundscape-catalog-verified-original-files'
+        '[SiN independent] role=client phase=engine-fs-soundscape-detail version=complete:owned-engine-soundscape-catalog-ready-no-game-init:owned-soundscape-manifest-ready:independent-soundscape-catalog-ready:7:7'
         '[SiN independent] role=client phase=engine-fs-soundscape-terminal-stop version=owner-original-files-no-game-init'
     )
     [IO.File]::WriteAllLines($retailReplay,
@@ -907,9 +908,36 @@ try {
     $expectedSoundscape=('OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS: '+
         'sin-independent-'+$session+'-13124.log:client:'+
         'owned-soundscape-catalog-verified-original-files:7:301:242:3')
+    $expectedDetail=('OWNER_CLIENT_SOUNDSCAPE_DETAILS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'complete:owned-engine-soundscape-catalog-ready-no-game-init:'+
+        'owned-soundscape-manifest-ready:independent-soundscape-catalog-ready:7:7')
     if (-not ($soundscapeOut -ccontains $expectedSoundscape) -or
-        -not ($soundscapeOut -ccontains $expectedHooks)) {
+        -not ($soundscapeOut -ccontains $expectedHooks) -or
+        -not ($soundscapeOut -ccontains $expectedDetail)) {
         throw ('Soundscape did not follow same-session owned Stats hooks: '+($soundscapeOut -join '|'))
+    }
+    # Diagnostic fields are strictly advisory. An invalid encoded
+    # value or duplicate detail must not appear in the trusted verdict
+    # even if the preceding soundscape count/result prefix was valid.
+    $unsafeDetail=@($soundscapeSteps)
+    $unsafeDetail[3]=$unsafeDetail[3].Replace(
+        'complete:owned-engine-soundscape-catalog-ready-no-game-init:',
+        'scripts/retail-secret.txt:'
+    )
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($unsafeDetail)))
+    $unsafeOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($unsafeOut -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_DETAILS:')) {
+        throw 'Path-containing diagnostic was accepted into text-only summary'
+    }
+    $duplicateDetail=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeSteps[3])+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($duplicateDetail)))
+    $duplicateOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($duplicateOut -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_DETAILS:')) {
+        throw 'Duplicate soundscape diagnosis accepted'
     }
     $wrongSoundscape=@($soundscapeSteps)
     $wrongSoundscape[1]=$wrongSoundscape[1].Replace('7:301:242:3','7:300:242:3')
