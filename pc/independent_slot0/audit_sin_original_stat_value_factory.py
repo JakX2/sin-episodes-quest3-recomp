@@ -47,6 +47,29 @@ CONSTRUCTOR_BOUNDARY = {
     0x24205A30:0x24205A70,0x24205AE0:0x24205B20
 }
 OPCODE_TO_READER_METHOD = bytes.fromhex("8b c1 8b 4c 24 04 8b 11 89 44 24 04 ff 62")
+# The original CStatReader (NOT the separate CStatBufferReader used
+# in persistence) is passed the live bf_read from StaticStat/DynamicStat.
+# It has nine used reader virtual entries at VA 0x242AE06C + slot.
+# Each requests one or two 32-bit bitfields through the game's
+# bf_read helper (float32 at 0x240A5630, integer at 0x240A5620).
+STAT_READER_VTABLE = 0x242AE06C
+STAT_BUFFER_READER_VTABLE = 0x242AF06C
+READ_FLOAT_BITS = 0x240A5630
+READ_INT32_BITS = 0x240A5620
+# reader slot byte offset, method start VA, next boundary,
+# selected 32-bit primitive helper, number of calls.
+LIVE_READER_SLOTS = (
+    (0x04,0x24203C30,0x24203C4E,READ_FLOAT_BITS,1),
+    (0x08,0x24203C10,0x24203C2E,READ_FLOAT_BITS,1),
+    (0x0C,0x24203BF0,0x24203C0E,READ_FLOAT_BITS,1),
+    (0x10,0x24203BB0,0x24203BE5,READ_FLOAT_BITS,2),
+    (0x14,0x24203B60,0x24203BA5,READ_INT32_BITS,2),
+    (0x18,0x24203B40,0x24203B5E,READ_FLOAT_BITS,1),
+    (0x1C,0x24203B10,0x24203B35,READ_FLOAT_BITS,1),
+    (0x20,0x24203AF0,0x24203B0E,READ_FLOAT_BITS,1),
+    (0x24,0x24203AC0,0x24203AE6,READ_INT32_BITS,1),
+)
+
 
 def offset(va: int, length: int, image_length: int) -> int:
     begin=va-BASE
@@ -72,6 +95,10 @@ def check_immutable_metadata() -> None:
         0x3F800000,0x3C888889,0x3991A2B4,0x3F800000]
     assert all(item[5] % 4 == 0 for item in CASES)
     assert len(CONSTRUCTOR_BOUNDARY)==12
+    assert [item[0] for item in LIVE_READER_SLOTS]==list(range(4,0x25,4))
+    assert [item[4] for item in LIVE_READER_SLOTS]==[1,1,1,2,2,1,1,1,1]
+    assert all(item[3] in (READ_FLOAT_BITS,READ_INT32_BITS)
+               for item in LIVE_READER_SLOTS)
 
 def check_original(data: bytes) -> dict:
     if hashlib.sha256(data).hexdigest()!=SHA256:
@@ -122,6 +149,30 @@ def check_original(data: bytes) -> dict:
         if raw(data,method,len(OPCODE_TO_READER_METHOD)+1)!=(
                 OPCODE_TO_READER_METHOD+bytes([slot])):
             raise ValueError("wrong reader operation thunk for type "+str(index))
+    # CStatReader and CStatBufferReader are separate MSVC RTTI types
+    # with separate virtual tables. Never conflate the live wire bits
+    # with persistence-oriented file buffer methods.
+    if u32(data,STAT_READER_VTABLE-4)!=0x242EB6D4:
+        raise ValueError("live CStatReader RTTI vtable head differs")
+    if u32(data,STAT_BUFFER_READER_VTABLE-4)!=0x242EB7AC:
+        raise ValueError("file CStatBufferReader RTTI vtable head differs")
+    if raw(data,READ_INT32_BITS,2)!=b"\x6a\x20" or
+       raw(data,READ_FLOAT_BITS,3)!=b"\x51\x6a\x20":
+        raise ValueError("source bf_read primitive width differs from 32 bits")
+    for slot,method,end,primitive,count in LIVE_READER_SLOTS:
+        if u32(data,STAT_READER_VTABLE+slot)!=method:
+            raise ValueError("live stat Reader virtual entry changed "+hex(slot))
+        code=raw(data,method,end-method)
+        calls=[]
+        for at in range(len(code)-4):
+            if code[at]!=0xE8:
+                continue
+            rel=struct.unpack_from("<i",code,at+1)[0]
+            target=method+at+5+rel
+            if target in (READ_FLOAT_BITS,READ_INT32_BITS):
+                calls.append(target)
+        if calls!=[primitive]*count:
+            raise ValueError("live stat Reader primitive count changed "+hex(slot))
     # Original factory dispatch itself must bound type codes to 0..15.
     if raw(data,0x24205BC9,3)!=b"\x83\xf9\x0f":
         raise ValueError("factory did not bound type code to 0..15")
@@ -142,7 +193,12 @@ def check_original(data: bytes) -> dict:
         "reader_slot_offsets_by_type":[entry[5] for entry in CASES],
         "case_allocations_by_type":[entry[6] for entry in CASES],
         "config_literal_bits_by_type":[hex(entry[7]) for entry in CASES],
-        "status":"SHA-authenticated metadata only; no value type names or runtime dispatch"
+        "live_reader_vtable_va":hex(STAT_READER_VTABLE),
+        "live_reader_32bit_primitives":[
+            {"slot":hex(item[0]),"method":hex(item[1]),
+             "primitive":"float32" if item[3]==READ_FLOAT_BITS else "int32_as_float",
+             "field_count":item[4]} for item in LIVE_READER_SLOTS],
+        "status":"SHA-authenticated ID/type/raw field metadata only; no stat mutations"
     }
 
 def self_test() -> None:
@@ -161,7 +217,9 @@ def self_test() -> None:
     assert OPCODE_TO_READER_METHOD==bytes.fromhex(
         "8b c1 8b 4c 24 04 8b 11 89 44 24 04 ff 62")
     assert len(CASES)==16
-    print("PASS original-free 16-type SiN Stats factory metadata fixtures")
+    assert all(item[0] in tuple(x[5] for x in CASES)
+               for item in LIVE_READER_SLOTS)
+    print("PASS original-free 16-type SiN Stats factory and CStatReader wire primitive fixtures")
 
 def main() -> None:
     p=argparse.ArgumentParser(description=__doc__)
