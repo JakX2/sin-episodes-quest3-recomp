@@ -979,6 +979,86 @@ try {
             throw ('Missing original physics Factory classification not reported accurately: '+$status)
         }
     }
+    # Original surfaceproperties::Init 0x241927A0 downstream
+    # resource read. It is only accepted after the same client has
+    # actually reported all three physics interface Factory results.
+    # This is an owned resource SHAPE, not real Source parsing
+    # into the physics object's virtual slot1.
+    $surfacePropsSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-surfaceprops-entered version=VFileSystem012:surfaceproperties:rb-dual-scope'
+        '[SiN independent] role=client phase=engine-fs-surfaceprops-result version=original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0'
+        '[SiN independent] role=client phase=engine-fs-surfaceprops-terminal-stop version=no-physics-surface-registration-no-game-init'
+    )
+    $fullTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($fullTrace)))
+    $propsOut=Verify 'CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedProps=('OWNER_CLIENT_SURFACEPROPS_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0')
+    if(-not ($propsOut -ccontains $expectedProps) -or
+       -not ($propsOut -ccontains $expectedPhysics) -or
+       -not ($propsOut -ccontains $expectedCvar)) {
+        throw ('Original surfaceprops manifest and 2-source shape not accepted after true physics 3/3: '+($propsOut -join '|'))
+    }
+    $refusedProps=@($surfacePropsSteps)
+    $refusedProps[1]=$refusedProps[1].Replace(
+        'original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0',
+        'original-surfaceprops-retail-resource-refused:2:1:0:0:0')
+    $refusedTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($refusedProps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($refusedTrace)))
+    $refusedPropsOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(-not (($refusedPropsOut -join '|').Contains(
+        'OWNER_CLIENT_SURFACEPROPS_RESULTS: ')) -or
+       (($refusedPropsOut -join '|').Contains($expectedProps))) {
+        throw 'Original surfaceprops source read refusal not classified separately'
+    }
+    $forgedProps=@($surfacePropsSteps)
+    $forgedProps[1]=$forgedProps[1].Replace(
+        'original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0',
+        'original-surfaceprops-retail-resource-shape-verified:2:2:93:70:0')
+    $forgedTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($forgedProps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($forgedTrace)))
+    $forgedPropsOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($forgedPropsOut -join '|').Contains(
+        'OWNER_CLIENT_SURFACEPROPS_RESULTS:')) {
+        throw 'Fabricated 93/70 surfaceprops was accepted as retail 93/71'
+    }
+    $duplicateProps=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($surfacePropsSteps[1])+
+        @($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($duplicateProps)))
+    $duplicatePropsOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($duplicatePropsOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_RESULTS:')) {
+        throw 'Duplicate original surfaceprops result was promoted as proof'
+    }
+    $earlyProps=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($surfacePropsSteps)+
+        @($physicsSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($earlyProps)))
+    $earlyPropsOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($earlyPropsOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_RESULTS:')) {
+        throw 'Surfaceprops result was accepted before the three physics names'
+    }
+    $missingPhysics=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($surfacePropsSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($missingPhysics)))
+    $noPhysicsOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($noPhysicsOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_RESULTS:')) {
+        throw 'Surfaceprops result accepted without original physics Factory'
+    }
     $forgedPhysics=@($physicsSteps)
     $forgedPhysics[1]=$forgedPhysics[1].Replace(
         'original-physics-three-available:3:3:1',
