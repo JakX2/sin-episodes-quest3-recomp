@@ -10,7 +10,7 @@ THIS IS TERMINAL DIAGNOSTIC, NEVER GAME BOOT PROOF.
 param(
     [Parameter(Mandatory=$true)][string]$DisposableGameRoot,
     [Parameter(Mandatory=$true)][string]$IndependentBin,
-    [ValidateSet('Presence','Read','Staged')][string]$Phase='Presence',
+    [ValidateSet('Presence','Read','Staged','Hooks')][string]$Phase='Presence',
     [string]$PriorPresenceTranscript,
     [string]$PriorReadTranscript,
     [string]$TranscriptPath,
@@ -136,13 +136,13 @@ if ($Phase -eq 'Read') {
 } elseif (-not [string]::IsNullOrWhiteSpace($PriorPresenceTranscript)) {
     throw 'PriorPresenceTranscript is valid only for Read phase'
 }
-if ($Phase -eq 'Staged') {
+if ($Phase -in @('Staged','Hooks')) {
     if ([string]::IsNullOrWhiteSpace($PriorReadTranscript)) {
         throw 'Staged phase requires a previous verified owner read transcript'
     }
     $previousReadSession=Check-ReadEvidence $PriorReadTranscript
 } elseif (-not [string]::IsNullOrWhiteSpace($PriorReadTranscript)) {
-    throw 'PriorReadTranscript is valid only for Staged phase'
+    throw 'PriorReadTranscript is valid only for Staged or Hooks phase'
 }
 if (-not $PlanOnly -and -not $DisposableTestCopyConfirmed) {
     throw 'Real owner launch requires -DisposableTestCopyConfirmed'
@@ -191,11 +191,14 @@ $settings=@{
     EnableClientSoundSystemInitProbe=$true
     EnableClientEngineFsProbe=$true
 }
-if ($Phase -eq 'Read' -or $Phase -eq 'Staged') {
+if ($Phase -in @('Read','Staged','Hooks')) {
     $settings.EnableClientEngineFsReadProbe=$true
 }
-if ($Phase -eq 'Staged') {
+if ($Phase -in @('Staged','Hooks')) {
     $settings.EnableClientEngineFsStagedProbe=$true
+}
+if ($Phase -eq 'Hooks') {
+    $settings.EnableClientEngineFsHookProbe=$true
 }
 if ($PlanOnly) {
     Write-Output 'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED'
@@ -206,7 +209,7 @@ if ($PlanOnly) {
     if ($Phase -eq 'Read') {
         Write-Output ("OWNER_ENGINE_FS_GATE_PREVIOUS_PRESENCE_SESSION: {0}" -f $previousSession)
     }
-    if ($Phase -eq 'Staged') {
+    if ($Phase -in @('Staged','Hooks')) {
         Write-Output ("OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: {0}" -f $previousReadSession)
     }
     return
@@ -227,13 +230,15 @@ $report=[System.IO.File]::ReadAllLines($out)
 if (-not (ExactLine $report 'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE')) {
     throw 'Owner restoration not verified: do not repeat or re-stage until recovered'
 }
-$expected=if($Phase -eq 'Presence'){'0x53494E68'}elseif($Phase -eq 'Read'){'0x53494E6B'}else{'0x53494E70'}
+$expected=if($Phase -eq 'Presence'){'0x53494E68'}elseif($Phase -eq 'Read'){'0x53494E6B'}elseif($Phase -eq 'Staged'){'0x53494E70'}else{'0x53494E74'}
 $verdict=if($Phase -eq 'Presence'){
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
 } elseif ($Phase -eq 'Read') {
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
-} else {
+} elseif ($Phase -eq 'Staged') {
     'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_STAGED_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+} else {
+    'OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_HOOKS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
 }
 if (-not (ExactLine $report ("OWNER_ENGINE_EXIT_HEX: "+$expected)) -or
     -not (ExactLine $report $verdict)) {
@@ -264,6 +269,21 @@ if ($Phase -eq 'Presence') {
         }).Count -ne 1 -or
         @($report | Where-Object {$_ -cmatch $strict}).Count -ne 1) {
         throw 'Staged diagnostic exit lacks same-session original-mode 66:62:8:156:66 owned-binding proof'
+    }
+    if ($Phase -eq 'Hooks') {
+        $hookPattern=('^OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS: sin-independent-'+
+            $session+'-[0-9]+\.log:client:three-owned-hooks-bound-not-dispatched:27:28:5:3$')
+        if (-not (ExactLine $report 'OWNER_CLIENT_ENGINE_FS_HOOK_PROBE: ENABLED_TERMINAL_DIAGNOSTIC') -or
+            @($report | Where-Object {
+                $_ -cmatch '^OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS: '
+            }).Count -ne 1 -or
+            @($report | Where-Object {$_ -cmatch $hookPattern}).Count -ne 1) {
+            throw 'Hook proof lacks same-session owned 27:28:5 message-hook binding'
+        }
+    } else {
+        if (-not (ExactLine $report 'OWNER_CLIENT_ENGINE_FS_HOOK_PROBE: DISABLED')) {
+            throw 'Original staged gate unexpectedly enabled the new hook proof'
+        }
     }
 }
 Write-Output ("OWNER_ENGINE_FS_GATE_RESULT: {0}_DIAGNOSTIC_ONLY_NO_GAME_BOOT" -f
