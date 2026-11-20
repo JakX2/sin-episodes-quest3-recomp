@@ -37,8 +37,7 @@ if (-not (($soundscapePlan -join '|').Contains(
     throw 'Soundscape opt-in one-click must be dry-run only'
 }
 
-$cvarPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly
-    -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup)
+$cvarPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup)
 if(-not (($cvarPlan -join '|').Contains(
     'SOUNDSCAPE CVAR LOOKUP: opt-in read-only VEngineCvar002 slot3 FindVar for two names, no writes or game Init'))) {
     throw 'Soundscape original ICvar lookup must be explicit opt-in and no-game dry run'
