@@ -117,8 +117,11 @@ public:
             if(state_.buffer_a0_present){
                 add({EventKind::FreeBufferA0Via0x2416F940,0,true});
                 ++plan.buffer_releases;
+                // Original 0x240F3D8A writes +A0 only when its
+                // prior pointer was non-null. A null pointer branches
+                // straight to +A4 count clearing at 0x240F3D90.
+                add({EventKind::ClearBufferA0,0,true});
             }
-            add({EventKind::ClearBufferA0,0,state_.buffer_a0_present});
             add({EventKind::ClearCountA4});
         }
         add({EventKind::MirrorB0FromA0,0,
@@ -128,8 +131,11 @@ public:
             if(state_.buffer_b4_present){
                 add({EventKind::FreeBufferB4Via0x2416F940,0,true});
                 ++plan.buffer_releases;
+                // Original 0x240F3DC3 writes +B4 only when its
+                // pointer was non-null. The 0x240F3DC9 zero-pointer
+                // branch goes directly to count +B8 clearing.
+                add({EventKind::ClearBufferB4,0,true});
             }
-            add({EventKind::ClearBufferB4,0,state_.buffer_b4_present});
             add({EventKind::ClearCountB8});
         }
         add({EventKind::MirrorC4FromB4,0,
