@@ -581,6 +581,14 @@ target_compile_features(sin_client_soundscape_retail_gate_test PRIVATE cxx_std_1
 add_test(NAME independent_client_soundscape_retail_gate_native
   COMMAND sin_client_soundscape_retail_gate_test)
 
+# SHA-derived original 301-node acyclic soundscape reference graph.
+# Win32 fixture is fully invented, preserving no original audio bytes.
+add_executable(sin_client_soundscape_graph_owned_test
+  test_client_soundscape_graph_owned.cpp)
+target_compile_features(sin_client_soundscape_graph_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_graph_owned_native
+  COMMAND sin_client_soundscape_graph_owned_test)
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
