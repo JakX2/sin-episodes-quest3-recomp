@@ -377,6 +377,17 @@ target_compile_features(sin_client_stats_bitbuf_cursor_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_bitbuf_cursor_native
   COMMAND sin_client_stats_bitbuf_cursor_test)
 
+# Original SHA-grounded CStat value-type factory contains 16 cases
+# with different +0x4c virtual-method to reader-slot forwarding
+# routes. Native synthetic test rejects unknown type discriminants.
+add_executable(sin_client_stats_value_factory_test
+  test_client_stats_value_factory_contract.cpp)
+target_compile_features(sin_client_stats_value_factory_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_value_factory_native
+  COMMAND sin_client_stats_value_factory_test)
+
+
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
