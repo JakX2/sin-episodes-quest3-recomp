@@ -938,6 +938,84 @@ try {
        -not ($withCvarOut -ccontains $expectedDetail)) {
         throw ('Same-session optional original ICvar lookup was not reported: '+($withCvarOut -join '|'))
     }
+    # Opt-in original CClientDLL physics Factory: three interface
+    # queries after the COMPLETE original same-session CVar trace.
+    # This is read-only, no 0x241927A0 coupling and NO VClient011
+    # Init success, even when all three interface names exist.
+    $physicsSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-physics-entered version=physics-factory:three-original:read-only'
+        '[SiN independent] role=client phase=engine-fs-physics-result version=original-physics-three-available:3:3:1'
+        '[SiN independent] role=client phase=engine-fs-physics-terminal-stop version=no-physics-coupling-no-game-init'
+    )
+    $withPhysics=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($withPhysics)))
+    $physicsOut=Verify 'CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedPhysics=('OWNER_CLIENT_PHYSICS_FACTORY_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'original-physics-three-available:3:3:1')
+    if(-not ($physicsOut -ccontains $expectedPhysics) -or
+       -not ($physicsOut -ccontains $expectedCvar) -or
+       -not ($physicsOut -ccontains $expectedSoundscape)) {
+        throw ('Opt-in original triple physics Factory was not recorded after verified CVar/session: '+($physicsOut -join '|'))
+    }
+    foreach($status in @(
+        'original-physics-missing-first:1:0:0',
+        'original-physics-missing-second:2:1:0',
+        'original-physics-missing-third:3:2:0',
+        'original-physics-no-factory:0:0:0')) {
+        $missingPhysics=@($physicsSteps)
+        $missingPhysics[1]=$missingPhysics[1].Replace(
+            'original-physics-three-available:3:3:1',$status)
+        $missingTrace=[string[]](@($soundscapeSteps[0..3])+
+            @($soundscapeCvarSteps)+@($missingPhysics)+@($soundscapeSteps[4]))
+        [IO.File]::WriteAllLines($retailReplay,
+            [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($missingTrace)))
+        $missingOut=@(& $Classifier -Session $session -LogDirectory $dir)
+        if(-not (($missingOut -join '|').Contains(
+            'OWNER_CLIENT_PHYSICS_FACTORY_RESULTS: ')) -or
+           (($missingOut -join '|').Contains($expectedPhysics))) {
+            throw ('Missing original physics Factory classification not reported accurately: '+$status)
+        }
+    }
+    $forgedPhysics=@($physicsSteps)
+    $forgedPhysics[1]=$forgedPhysics[1].Replace(
+        'original-physics-three-available:3:3:1',
+        'original-physics-three-available:3:2:1')
+    $forgedTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($forgedPhysics)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($forgedTrace)))
+    $forgedOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($forgedOut -join '|').Contains('OWNER_CLIENT_PHYSICS_FACTORY_RESULTS:')) {
+        throw 'Forged original physics success with only 2/3 sources accepted'
+    }
+    $duplicatePhysics=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+@($physicsSteps[1])+
+        @($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($duplicatePhysics)))
+    $duplicateOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($duplicateOut -join '|').Contains('OWNER_CLIENT_PHYSICS_FACTORY_RESULTS:')) {
+        throw 'Duplicate original physics factory result promoted to owner evidence'
+    }
+    $earlyPhysics=[string[]](@($soundscapeSteps[0..3])+
+        @($physicsSteps)+@($soundscapeCvarSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($earlyPhysics)))
+    $earlyOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($earlyOut -join '|').Contains('OWNER_CLIENT_PHYSICS_FACTORY_RESULTS:')) {
+        throw 'Physics Factory was accepted before the required owner ConVar stage'
+    }
+    $missingPriorCvar=[string[]](@($soundscapeSteps[0..3])+
+        @($physicsSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($missingPriorCvar)))
+    $missingPriorOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($missingPriorOut -join '|').Contains('OWNER_CLIENT_PHYSICS_FACTORY_RESULTS:')) {
+        throw 'Physics Factory was accepted without original ConVar evidence'
+    }
     $duplicatedCvar=[string[]](@($soundscapeSteps[0..3])+
         @($soundscapeCvarSteps)+@($soundscapeCvarSteps[1])+
         @($soundscapeSteps[4]))
