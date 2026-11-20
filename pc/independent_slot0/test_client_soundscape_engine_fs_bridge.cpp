@@ -24,6 +24,7 @@ struct SyntheticFileSystemBase {
     std::map<std::string,std::string> resources;
     Handle current{};
     int open_count=0,read_count=0,close_count=0,abi_errors=0;
+    int manifest_game_opens=0,script_null_opens=0;
     bool short_read=false,huge_size=false;
     std::string missing_path{};
     virtual int Read(void* target,int requested,void* raw) {
@@ -44,9 +45,24 @@ struct SyntheticFileSystemBase {
     virtual int Write(const void*,int,void*){++abi_errors;return -1;}
     virtual void* Open(const char* file,const char* mode,const char* pathId) {
         ++open_count;
-        if(!file||!mode||std::strcmp(mode,"rb")!=0 ||
-           !pathId||std::strcmp(pathId,"GAME")!=0){
+        // Original soundscape Init and its per-resource helper use
+        // different KeyValues pathIDs. Be ABI-strict: catch a wrong
+        // search scope even if both fixture paths happen to exist.
+        if(!file||!mode||std::strcmp(mode,"rb")!=0){
             ++abi_errors;return nullptr;
+        }
+        const bool manifest=std::strcmp(
+            file,"scripts/soundscapes_manifest.txt")==0;
+        if(manifest) {
+            if(!pathId||std::strcmp(pathId,"GAME")!=0) {
+                ++abi_errors;return nullptr;
+            }
+            ++manifest_game_opens;
+        } else {
+            if(pathId!=nullptr) {
+                ++abi_errors;return nullptr;
+            }
+            ++script_null_opens;
         }
         if(missing_path==file)return nullptr;
         const auto found=resources.find(file);
@@ -119,6 +135,8 @@ int main(){
        bridge.catalog().counts.nested_soundscape_blocks!=1 ||
        bridge.catalog().counts.unresolved_references!=0 ||
        originalFree.open_count!=3||originalFree.close_count!=3||
+       originalFree.manifest_game_opens!=1 ||
+       originalFree.script_null_opens!=2 ||
        originalFree.abi_errors!=0 || originalFree.read_count<=3)
         return Fail(1);
 
@@ -193,6 +211,6 @@ int main(){
     bridge.Clear();
     if(!bridge.scripts().files.empty() ||
        !bridge.catalog().definitions.empty())return Fail(9);
-    std::puts("PASS Win32 synthetic VFileSystem012 rb/GAME soundscape resources: exact slots, chunk reads, detailed stage telemetry and atomic rollback");
+    std::puts("PASS original 2006 VFileSystem012 dual soundscape pathID: manifest rb/GAME, sources rb/nullptr; chunk reads, stage diagnosis and atomic rollback");
     return 0;
 }
