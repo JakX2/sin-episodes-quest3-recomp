@@ -626,6 +626,21 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Phase 490: exact original CClientShadowMgr::Init 146-byte method:
+# decals/simpleshadow resource, 3 virtual settings and callback slot116.
+# Public CI never calls the renderer or original game DLL.
+add_executable(sin_client_shadow_original_init_owned_test
+  test_client_shadow_original_init_owned.cpp)
+target_compile_features(sin_client_shadow_original_init_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_shadow_original_init_owned_native
+  COMMAND sin_client_shadow_original_init_owned_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_shadow_init_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_client_shadow_init.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
