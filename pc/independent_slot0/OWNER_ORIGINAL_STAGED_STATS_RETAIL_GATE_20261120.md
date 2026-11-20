@@ -75,12 +75,26 @@ registration, map load, server startup, playable PC build or VR port.
 ### Important potential text-mode issue
 
 Open("rt") may alter line endings or Size(handle) semantics on some
-original filesystem providers. The reader keeps its strict 256 KiB
-limit and complete-read checks, including close-on-refusal. If the
-layout stage fails with read-refused, the private trace should be
-examined to identify whether the engine actually changes byte counts
-or whether the old assumptions about the original resource mode differ.
-Do not relax bounds or claim game boot on an unverified result.
+original filesystem providers. The authenticated original layout file
+is **8666 bytes with 262 CRLF pairs** (SHA256
+850dd06942b459843236dd8c6770b40a5b28e6b6a0fcab7bf4e60dec55322dbe).
+A CRT-backed text Read could return 8404 LF-normalized bytes even
+when the physical Size(handle) remains 8666.
+
+The independent reader keeps its strict 256 KiB limit and
+close-on-refusal checks. It accepts either (a) a complete exact-size
+read or (b) in **rt mode only**, a bounded EOF after positive progress
+with no remaining CR octets and a physical-to-returned byte deficit
+equal to the number of LF octets. The full original Stats parser
+still requires all 156 layout pairs and 66 dividers. Any other
+short read, including binary-mode early EOF, remains refused.
+Native synthetic tests cover successful CRLF translation, an
+additional unexplained byte of shortfall, and a successful retry.
+
+If the layout stage still fails, the private trace should be
+examined for deviations in the actual original filesystem provider.
+This compatibility guard does NOT imply original KeyValues or game
+initialization was successfully run.
 
 ## Evidence status
 
