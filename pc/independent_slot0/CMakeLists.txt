@@ -596,6 +596,21 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Independently owned soundscape wave declarations: original SHA-derived
+# 281 loop blocks, 150 random groups, 1224 WAV/MP3 path occurrences.
+# Native fixture uses invented audio names only. No mixer is called.
+add_executable(sin_client_soundscape_wave_inventory_owned_test
+  test_client_soundscape_wave_inventory_owned.cpp)
+target_compile_features(sin_client_soundscape_wave_inventory_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_wave_inventory_owned_native
+  COMMAND sin_client_soundscape_wave_inventory_owned_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_waves_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_waves.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
