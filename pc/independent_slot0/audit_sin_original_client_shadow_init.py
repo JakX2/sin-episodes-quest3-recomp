@@ -55,6 +55,47 @@ CALLS=(
     (0x2411889A,MATERIAL_HELPER_VA),
     (0x241188F3,CONDITIONAL_HELPER_VA),
 )
+SETTERS=(
+    (24,0x24115F00,54,
+     "d843f3f42283e772d95a44f0d310e89cfa177e936ded0820e060b8874bcf2a16",
+     ((0x24115F04,"8b10"),(0x24115F0C,"8911"),
+      (0x24115F11,"895104"),(0x24115F17,"894108"),
+      (0x24115F1A,"ff1598c42f24"),
+      (0x24115F22,"80becc00000000"),
+      (0x24115F2D,"e84effffff"))),
+    (27,0x24115F40,18,
+     "6beb8971bc1c4f229641ed97e6ec9780d54f377e65b0d77e351e7f3fd7e9c6d5",
+     ((0x24115F40,"8b442404"),(0x24115F44,"8981d0000000"),
+      (0x24115F4A,"e831ffffff"),(0x24115F4F,"c20400"))),
+    (28,0x2410E920,13,
+     "fbbb3f432970bf064811f3006c2e47883d3e60a9ea7bc1953e4e22ce941f9b3a",
+     ((0x2410E920,"8b442404"),(0x2410E924,"8981d4000000"),
+      (0x2410E92A,"c20400"))),
+)
+SETTER_REFRESH_VA=0x24115E80
+def audit_setter(slot,va,size,sha,witnesses,method,check_hash=True):
+    if len(method)!=size:
+        raise ValueError("original ShadowMgr setter method length mismatch")
+    if check_hash and hashlib.sha256(method).hexdigest()!=sha:
+        raise ValueError("original ShadowMgr setter full SHA mismatch: %d"%slot)
+    for at,raw in witnesses:
+        op=bytes.fromhex(raw)
+        if method[at-va:at-va+len(op)]!=op:
+            raise ValueError("original setter instruction mismatch at %#x"%at)
+    if slot in (24,27):
+        callsite=0x24115F2D if slot==24 else 0x24115F4A
+        off=callsite-va
+        rel=SETTER_REFRESH_VA-callsite-5
+        if method[off:off+5]!=b"\xe8"+struct.pack("<i",rel):
+            raise ValueError("original shadow refresh helper call mismatch")
+    return {
+        "slot":slot,
+        "full_original_method_SHA_verified":bool(check_hash),
+        "virtual_method_va":hex(va),
+        "method_bytes":size,
+        "source_instruction_witnesses":len(witnesses)
+    }
+
 def audit_method(method,verify_hash=True):
     if len(method)!=INIT_SIZE:
         raise ValueError("original shadow Init byte length differs")
@@ -100,6 +141,16 @@ def private_audit(client):
         if data!=raw.encode("ascii")+b"\0":
             raise ValueError("original ShadowMgr string constant mismatch")
     result=audit_method(region_at_va(client,pe,INIT_VA,INIT_SIZE))
+    result["verified_init_virtual_setters"]=[]
+    for slot,va,size,sha,witnesses in SETTERS:
+        pointer=struct.unpack("<I",region_at_va(client,pe,
+                                               VTABLE+4*slot,4))[0]
+        if pointer!=va:
+            raise ValueError("original ShadowMgr virtual slot pointer changed")
+        result["verified_init_virtual_setters"].append(
+            audit_setter(slot,va,size,sha,witnesses,
+                         region_at_va(client,pe,va,size)))
+    result["original_refresh_helper"]=hex(SETTER_REFRESH_VA)
     result["original_client_sha_verified"]=True
     result["original_vtable_and_string_refs_verified"]=True
     return result
@@ -119,10 +170,23 @@ def self_test():
         try:audit_method(changed,False)
         except ValueError:pass
         else:raise ValueError("corrupt synthetic ShadowMgr original evidence accepted")
+    for slot,va,size,sha,witnesses in SETTERS:
+        fake=bytearray(b"Ì"*size)
+        for where,raw in witnesses:
+            op=bytes.fromhex(raw)
+            fake[where-va:where-va+len(op)]=op
+        check=audit_setter(slot,va,size,sha,witnesses,fake,False)
+        assert check["slot"]==slot
+        changed=bytearray(fake)
+        changed[witnesses[0][0]-va]^=1
+        try:audit_setter(slot,va,size,sha,witnesses,changed,False)
+        except ValueError:pass
+        else:raise ValueError("corrupt fabricated ShadowMgr virtual method accepted")
     return {
         "original_free_shadow_init_audit":"PASS",
         "selected_source_instruction_witnesses":len(MARKERS),
         "two_direct_original_rel32_calls_checked":True,
+        "three_original_free_virtual_setter_bodies_checked":True,
         "no_retail_dll_or_game_assets_used":True
     }
 def main():
