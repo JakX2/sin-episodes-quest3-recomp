@@ -116,6 +116,10 @@ if(Python3_Interpreter_FOUND)
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stat_value_factory.py"
       --self-test)
+  add_test(NAME independent_original_stat_value_mutators_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stat_value_mutators.py"
+      --self-test)
 endif()
 
 # Source SDK 2004-compatible ServerGameEnts001 is now represented as a
@@ -404,6 +408,13 @@ add_executable(sin_client_stats_original_type_registry_test
 target_compile_features(sin_client_stats_original_type_registry_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_original_type_registry_native
   COMMAND sin_client_stats_original_type_registry_test)
+# Full independent original-data-driven stat value mutation test.
+add_executable(sin_client_stats_owned_value_mutation_test
+  test_client_stats_owned_value_mutation.cpp)
+target_compile_features(sin_client_stats_owned_value_mutation_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_owned_value_mutation_native
+  COMMAND sin_client_stats_owned_value_mutation_test)
+
 # SHA-pinned 16 original value-object setters and their data-field
 # mutation semantics, implemented ONLY in independent owned state.
 # The native test exercises 55 static stat records with x87 narrowing,
