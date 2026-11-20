@@ -917,6 +917,55 @@ try {
         -not ($soundscapeOut -ccontains $expectedDetail)) {
         throw ('Soundscape did not follow same-session owned Stats hooks: '+($soundscapeOut -join '|'))
     }
+    # Phase 497: strictly opt-in read-only original C_SoundscapeSystem
+    # ICvar::FindVar snapshot. It must occur IN THE SAME LOG, after
+    # the successful hook + catalog prefix and before terminal stop.
+    # It is advisory and NEVER makes this a game-boot verdict.
+    $soundscapeCvarSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-soundscape-cvar-entered version=VEngineCvar002:slot3:read-only'
+        '[SiN independent] role=client phase=engine-fs-soundscape-cvar-result version=original-soundscape-both-vars-cached:2:2:1:1'
+        '[SiN independent] role=client phase=engine-fs-soundscape-cvar-terminal-stop version=no-convar-writes-no-game-init'
+    )
+    $withCvar=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($withCvar)))
+    $withCvarOut=Verify 'CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedCvar=('OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'original-soundscape-both-vars-cached:2:2:1:1')
+    if(-not ($withCvarOut -ccontains $expectedCvar) -or
+       -not ($withCvarOut -ccontains $expectedDetail)) {
+        throw ('Same-session optional original ICvar lookup was not reported: '+($withCvarOut -join '|'))
+    }
+    $duplicatedCvar=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($soundscapeCvarSteps[1])+
+        @($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($duplicatedCvar)))
+    $dupCvarOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($dupCvarOut -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_RESULTS:')) {
+        throw 'Duplicated original CVar lookup event accepted'
+    }
+    $forgedCvar=@($soundscapeCvarSteps)
+    $forgedCvar[1]=$forgedCvar[1].Replace(
+        'original-soundscape-both-vars-cached:2:2:1:1',
+        'original-soundscape-both-vars-cached:2:2:0:1')
+    $forgedTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($forgedCvar)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($forgedTrace)))
+    $forgedCvarOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($forgedCvarOut -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_RESULTS:')) {
+        throw 'Inconsistent original soundscape ConVar cached status accepted'
+    }
+    $wrongOrder=[string[]](@($soundscapeCvarSteps)+@($soundscapeSteps))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($wrongOrder)))
+    $earlyCvarOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($earlyCvarOut -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_RESULTS:')) {
+        throw 'Premature ConVar lookup was promoted to same-session soundscape proof'
+    }
     # Diagnostic fields are strictly advisory. An invalid encoded
     # value or duplicate detail must not appear in the trusted verdict
     # even if the preceding soundscape count/result prefix was valid.
