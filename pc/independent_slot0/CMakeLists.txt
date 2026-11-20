@@ -611,6 +611,21 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Phase 489: SHA-authenticated original 2006 soundscape Shutdown
+# (40-byte entries, reverse stop loop, dual engine routes, KeyValues cleanup).
+# No engine sound methods are called. All native fixture state is invented.
+add_executable(sin_client_soundscape_original_shutdown_owned_test
+  test_client_soundscape_original_shutdown_owned.cpp)
+target_compile_features(sin_client_soundscape_original_shutdown_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_original_shutdown_owned_native
+  COMMAND sin_client_soundscape_original_shutdown_owned_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_shutdown_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_shutdown.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
