@@ -149,6 +149,31 @@ static bool invokeInit(void* object, void* function, bool validGlobals) {
 #endif
     return before == after && result == 0;
 }
+#if defined(SIN_ROLE_client)
+// VClient011 original slot 33 is bool __thiscall
+// DispatchUserMessage(int type, bf_read* reader). Its 2006 thunk lives
+// at 0x240FDCD0 and forwards into CUserMessages::DispatchUserMessage.
+// The independent slot currently refuses all payloads intentionally.
+static bool invokeUnboundMessage(void* object,void* method,
+                                 int messageId,void* reader) {
+    std::uintptr_t before=0,after=0;
+    unsigned result=0xff;
+    __asm {
+        mov eax, esp
+        mov before, eax
+        push reader
+        push messageId
+        mov ecx, object
+        mov eax, method
+        call eax
+        movzx eax, al
+        mov result, eax
+        mov eax, esp
+        mov after, eax
+    }
+    return before==after && result==0;
+}
+#endif
 static bool invokeSecond(void* object, void* function) {
     std::uintptr_t before = 0, after = 0;
 #if defined(SIN_ROLE_client)
@@ -264,6 +289,20 @@ int main(int argc, char** argv) {
         !owned(dll, slots[1]) || slots[0] == slots[1])
         return fail(7, "two DLL-owned native virtual methods");
 
+#if defined(SIN_ROLE_client)
+    // Exercise the exact actual vtable entry, not a separately invoked
+    // helper. An uninitialized network callback must never be forwarded
+    // to original DLL code or claim that a message was delivered.
+    char syntheticBitReader[24]={};
+    if (!owned(dll, slots[33]) ||
+        !invokeUnboundMessage(object,slots[33],27,syntheticBitReader) ||
+        !invokeUnboundMessage(object,slots[33],28,syntheticBitReader) ||
+        !invokeUnboundMessage(object,slots[33],5,syntheticBitReader) ||
+        !invokeUnboundMessage(object,slots[33],-1,syntheticBitReader) ||
+        !invokeUnboundMessage(object,slots[33],27,nullptr)) {
+        return fail(58,"VClient011 slot33 CUserMessages x86 ABI or refuse boundary");
+    }
+#endif
     // Strict off-by-default: diagnostic log is never produced by ordinary
     // native factory tests, avoiding side effects in normal host sessions.
     char path[MAX_PATH] = {};
