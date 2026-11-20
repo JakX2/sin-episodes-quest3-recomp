@@ -106,11 +106,14 @@ int main(){
        value->fieldBits(0)!=0x40000000u)return Fail(6);
     b::Cursor bad(nullptr,1,8);
     if(owned.Dispatch(27,bad).status!=d::Status::InvalidCursor ||
-       owned.Dispatch(3,input).status!=d::Status::UnboundMessage ||
-       owned.Dispatch(27,input).observer_calls!=2)return Fail(7);
+       owned.Dispatch(3,input).status!=d::Status::UnboundMessage)
+        return Fail(7);
     // Each additional dispatch has a fresh per-listener cursor.
-    if(input.position()!=5 || sequence!=4 ||
-       first.calls!=2 || second.calls!=2)return Fail(8);
+    sequence=0;
+    if(owned.Dispatch(27,input).observer_calls!=2 ||
+       input.position()!=5 || sequence!=2 ||
+       first.calls!=2 || second.calls!=2 ||
+       !first.good || !second.good)return Fail(8);
     sequence=0;
 
     // DynamicStat ID55, its original name field and one 32-bit value.
