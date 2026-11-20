@@ -403,6 +403,12 @@ static bool clientEngineFsStagedProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_FS_STAGED_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientEngineFsHookProofEnabled() noexcept {
+    char enabled[2]={};
+    return clientEngineFsStagedProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_FS_HOOK_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
 [[noreturn]] static void stopAfterClientEngineFsProbe() noexcept {
     using namespace sin_independent::engine_fs;
     diagnostic("engine-fs-presence-entered","VFileSystem012:source2004");
@@ -448,6 +454,30 @@ static bool clientEngineFsStagedProbeEnabled() noexcept {
                  outcome==StagedStatus::LayoutRefused?0x53494E72u:
                  0x53494E73u;
             diagnostic("engine-fs-staged-terminal-stop","original-modes-owned-only");
+            if(clientEngineFsHookProofEnabled()) {
+                // This independent-only probe cannot call original hooks
+                // or claim network message delivery. It verifies the
+                // identities installed in OUR rebuilt Stats owner after
+                // actual retail engine staged file reads.
+                diagnostic("engine-fs-hooks-entered","CUserMessages:owned-only");
+                char hookIds[48]={};
+                std::snprintf(hookIds,sizeof(hookIds),"%d:%d:%d",
+                    staged.hook_ids[0],staged.hook_ids[1],staged.hook_ids[2]);
+                diagnostic("engine-fs-hooks-ids",hookIds);
+                char count[24]={};
+                std::snprintf(count,sizeof(count),"%u",
+                    static_cast<unsigned>(staged.owned_user_message_hooks));
+                diagnostic("engine-fs-hooks-count",count);
+                const bool verified=outcome==StagedStatus::OwnedStagedVerified &&
+                    staged.owned_user_message_hooks==3 &&
+                    staged.hook_ids[0]==27 && staged.hook_ids[1]==28 &&
+                    staged.hook_ids[2]==5 && staged.completed==7 &&
+                    staged.attempted==7;
+                diagnostic("engine-fs-hooks-result",
+                    verified?"three-owned-hooks-bound-not-dispatched":"refused");
+                code=verified?0x53494E74u:0x53494E75u;
+                diagnostic("engine-fs-hooks-terminal-stop","independent-only");
+            }
             TerminateProcess(GetCurrentProcess(),code);
             __fastfail(7);
         }
