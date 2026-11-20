@@ -171,7 +171,7 @@ def self_test():
         except ValueError:pass
         else:raise ValueError("corrupt synthetic ShadowMgr original evidence accepted")
     for slot,va,size,sha,witnesses in SETTERS:
-        fake=bytearray(b"Ì"*size)
+        fake=bytearray(bytes([0xCC])*size)
         for where,raw in witnesses:
             op=bytes.fromhex(raw)
             fake[where-va:where-va+len(op)]=op
