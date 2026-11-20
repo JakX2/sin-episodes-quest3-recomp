@@ -42,17 +42,17 @@ struct CandidateOriginalEntry40 final {
     unsigned char unknown_before_id[0x0C]{};
     std::uint32_t sound_id=0;
     unsigned char unknown_between_id_and_flag[0x14]{};
-    unsigned char use_engine_mixer_stop=0;
+    unsigned char use_engine_interface_stop=0;
     unsigned char unknown_after_flag[3]{};
 };
 static_assert(sizeof(CandidateOriginalEntry40)==40,"original sound slot stride");
 static_assert(offsetof(CandidateOriginalEntry40,sound_id)==0x0C,
               "original sound ID field offset");
-static_assert(offsetof(CandidateOriginalEntry40,use_engine_mixer_stop)==0x24,
+static_assert(offsetof(CandidateOriginalEntry40,use_engine_interface_stop)==0x24,
               "original sound stop path flag offset");
 struct Sound final {
     std::uint32_t id=0;
-    bool mixer_route=false;
+    bool engine_interface_route=false;
 };
 struct State final {
     std::vector<Sound> active_sounds;
@@ -62,11 +62,11 @@ struct State final {
     std::int32_t handle_94=-1;
 };
 enum class ActionKind {
-    StopMixerVirtual11, // source uses sound interface vtable byte +0x2C
-    StopLegacyHelper, // source direct CALL at 0x241BD680
+    StopViaEngineInterfaceSlot11, // source uses sound interface vtable byte +0x2C
+    StopViaOriginalHelper, // source direct CALL at 0x241BD680
     ClearActiveCount0xAC,
     ClearAuxiliaryCount0xC0,
-    ClearLoadedPointerCount0x28,
+    ClearSoundscapeTreeCount0x28,
     ReleaseHandle0x9C,
     ReleaseHandle0x94,
     DeleteKeyValuesFirst
@@ -77,8 +77,8 @@ struct Action final {
     std::size_t source_index=0; // preserved original position
     std::int32_t candidate_handle=-1;
     std::string resource_name; // owned synthetic audit label only
-    // Original mixer argument tuple after sound id is (0,0,4,0).
-    // Original legacy helper argument tuple is (0,6,sound id).
+    // Original virtual-call argument tuple after sound id is (0,0,4,0).
+    // Original direct-helper argument tuple is (0,6,sound id).
     // No playback or pointer invocation occurs.
 };
 struct Plan final {
@@ -134,14 +134,14 @@ public:
             for(std::size_t i=state_.active_sounds.size();i>0;--i){
                 const auto& sound=state_.active_sounds[i-1];
                 pending.actions.push_back({
-                    sound.mixer_route?ActionKind::StopMixerVirtual11:
-                                      ActionKind::StopLegacyHelper,
+                    sound.engine_interface_route?ActionKind::StopViaEngineInterfaceSlot11:
+                                      ActionKind::StopViaOriginalHelper,
                     sound.id,i-1,-1,{}});
                 ++pending.sound_stop_count;
             }
             pending.actions.push_back({ActionKind::ClearActiveCount0xAC});
             pending.actions.push_back({ActionKind::ClearAuxiliaryCount0xC0});
-            pending.actions.push_back({ActionKind::ClearLoadedPointerCount0x28});
+            pending.actions.push_back({ActionKind::ClearSoundscapeTreeCount0x28});
             if(state_.handle_9c!=-1)
                 pending.actions.push_back({ActionKind::ReleaseHandle0x9C,
                                            0,0,state_.handle_9c,{}});
@@ -180,16 +180,16 @@ public:
         for(std::size_t i=state_.active_sounds.size();i>0;--i){
             const auto& source=state_.active_sounds[i-1];
             const auto& action=plan.actions[event++];
-            if(action.kind!=(source.mixer_route?
-                              ActionKind::StopMixerVirtual11:
-                              ActionKind::StopLegacyHelper) ||
+            if(action.kind!=(source.engine_interface_route?
+                              ActionKind::StopViaEngineInterfaceSlot11:
+                              ActionKind::StopViaOriginalHelper) ||
                action.source_index!=i-1 ||
                action.sound_id!=source.id)
                 return Result::PlanRejected;
         }
         if(plan.actions[event++].kind!=ActionKind::ClearActiveCount0xAC ||
            plan.actions[event++].kind!=ActionKind::ClearAuxiliaryCount0xC0 ||
-           plan.actions[event++].kind!=ActionKind::ClearLoadedPointerCount0x28)
+           plan.actions[event++].kind!=ActionKind::ClearSoundscapeTreeCount0x28)
             return Result::PlanRejected;
         if(state_.handle_9c!=-1){
             const auto& action=plan.actions[event++];
