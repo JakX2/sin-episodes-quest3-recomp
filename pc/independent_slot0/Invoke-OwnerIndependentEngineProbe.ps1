@@ -40,6 +40,7 @@ param(
     [switch]$EnableClientSoundscapeCatalogProbe,
     [switch]$EnableClientSoundscapeCvarLookupProbe,
     [switch]$EnableClientPhysicsFactoryProbe,
+    [switch]$EnableClientSurfacePropsReadProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -121,6 +122,10 @@ function Require-NoReparseAncestors([string]$Path) {
 # BEFORE the first Move-Item, to keep expected failures non-destructive.
 if (-not $DisposableTestCopyConfirmed) {
     throw "Refusing without -DisposableTestCopyConfirmed (NEVER test your live Steam install)."
+}
+if ($EnableClientSurfacePropsReadProbe -and
+    -not $EnableClientPhysicsFactoryProbe) {
+    throw 'EnableClientSurfacePropsReadProbe requires the original physics three-interface probe'
 }
 if ($EnableClientPhysicsFactoryProbe -and
     -not $EnableClientSoundscapeCvarLookupProbe) {
@@ -341,6 +346,7 @@ try {
     $previousSoundscapeProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CATALOG_PROBE','Process')
     $previousSoundscapeCvarProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE','Process')
     $previousPhysicsFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PHYSICS_FACTORY_PROBE','Process')
+    $previousSurfacePropsReadProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE','Process')
     try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_FILE','1','Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$session,'Process')
@@ -398,6 +404,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CATALOG_PROBE',$(if ($EnableClientSoundscapeCatalogProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE',$(if ($EnableClientSoundscapeCvarLookupProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PHYSICS_FACTORY_PROBE',$(if ($EnableClientPhysicsFactoryProbe) { '1' } else { '0' }),'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE',$(if ($EnableClientSurfacePropsReadProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_ENGINE_FS_PROBE: {0}" -f $(if ($EnableClientEngineFsProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_ENGINE_FS_READ_PROBE: {0}" -f $(if ($EnableClientEngineFsReadProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: {0}" -f $(if ($EnableClientEngineFsStagedProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
@@ -405,6 +412,7 @@ try {
         Write-Output ("OWNER_CLIENT_SOUNDSCAPE_CATALOG_PROBE: {0}" -f $(if ($EnableClientSoundscapeCatalogProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE: {0}" -f $(if ($EnableClientSoundscapeCvarLookupProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_PHYSICS_FACTORY_PROBE: {0}" -f $(if ($EnableClientPhysicsFactoryProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
+        Write-Output ("OWNER_CLIENT_SURFACEPROPS_READ_PROBE: {0}" -f $(if ($EnableClientSurfacePropsReadProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_OWNED_STARTUP_PROBE: {0}" -f $(if ($EnableClientOwnedStartupProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_INDEPENDENT_SESSION: {0}" -f $session)
         $options = @{
@@ -510,6 +518,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CATALOG_PROBE',$previousSoundscapeProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE',$previousSoundscapeCvarProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PHYSICS_FACTORY_PROBE',$previousPhysicsFactoryProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE',$previousSurfacePropsReadProbe,'Process')
     }
 } finally {
     # Do not replace DLLs from under a still-running game process.
