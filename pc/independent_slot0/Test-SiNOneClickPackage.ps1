@@ -30,6 +30,11 @@ foreach($expected in @(
     }
 }
 $stagedPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats)
+$hooksPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof)
+if (-not (($hooksPlan -join '|').Contains(
+    'HOOK PROOF: three independently owned CUserMessages hook IDs 27:28:5, not dispatch'))) {
+    throw 'Owned hook proof one-click plan must be distinct and have no game'
+}
 if (-not (($stagedPlan -join '|').Contains(
     'THIRD TEST: rb/GAME definitions and rt/null layout, independent 66-ID binding'))) {
     throw 'Staged stats one-click plan must be distinct from previous default'
@@ -67,6 +72,31 @@ foreach($required in @(
     if (-not $text.Contains($required)) {
         throw ('Missing one-click original staged resource milestone: '+$required)
     }
+}
+foreach($required in @(
+    'HookProof',
+    "Phase=$(if($HookProof){'Hooks'}else{'Staged'})",
+    'ONECLICK_RECOVERED_HOOK_DIAGNOSTIC: OWNED_27_28_5_VERIFIED',
+    'Independent Stats CUserMessages hooks 27:28:5'
+)) {
+    if (-not $text.Contains($required)) {
+        throw ('Missing hook proof gate or recovery invariant: '+$required)
+    }
+}
+$hookBatch=Join-Path (Split-Path -Parent $Runner) 'RUN_STATS_HOOK_PROOF.bat'
+if (-not (Test-Path -LiteralPath $hookBatch -PathType Leaf)) {
+    throw 'Missing separate double-click hook proof BAT'
+}
+$hookText=[IO.File]::ReadAllText($hookBatch)
+if (-not $hookText.Contains('Start-SiNFileSystemTest.ps1') -or
+    -not $hookText.Contains('-StagedStats -HookProof') -or
+    -not $hookText.Contains('-STA') -or
+    -not $hookText.Contains('pause')) {
+    throw 'Hook proof must be double-click, three-phase, independently packaged'
+}
+$hookDoc=Join-Path (Split-Path -Parent $Runner) 'OWNER_STATS_HOOK_PROOF_20261120.md'
+if (-not (Test-Path -LiteralPath $hookDoc -PathType Leaf)) {
+    throw 'Missing authentic hook-proof documentation'
 }
 $stagedBatch=Join-Path (Split-Path -Parent $Runner) 'RUN_STAGED_STATS_TEST.bat'
 if (-not (Test-Path -LiteralPath $stagedBatch -PathType Leaf)) {
