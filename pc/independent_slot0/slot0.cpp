@@ -446,6 +446,21 @@ static bool clientSoundscapeCatalogProbeEnabled() noexcept {
         static_cast<unsigned>(result.counts.unresolved_references));
     diagnostic("engine-fs-soundscape-counts",totals);
     diagnostic("engine-fs-soundscape-result",StatusName(result.status));
+    // Format is fixed-size, path-free and carries only source-neutral
+    // refusal categories, not the user's original scripts or binary data.
+    char detail[256]={};
+    std::snprintf(detail,sizeof(detail),"%s:%s:%s:%s:%u:%u",
+        sin_independent::soundscape_engine_fs::StageName(
+            result.diagnostic.stage),
+        sin_independent::soundscape_engine_fs::StatusName(
+            result.bridge_result),
+        sin_independent::soundscape_manifest::StatusName(
+            result.diagnostic.manifest_status),
+        sin_independent::soundscape_catalog::StatusName(
+            result.diagnostic.catalog_status),
+        static_cast<unsigned>(result.diagnostic.script_reads_attempted),
+        static_cast<unsigned>(result.diagnostic.script_reads_succeeded));
+    diagnostic("engine-fs-soundscape-detail",detail);
     diagnostic("engine-fs-soundscape-terminal-stop",
                "owner-original-files-no-game-init");
     TerminateProcess(GetCurrentProcess(),
