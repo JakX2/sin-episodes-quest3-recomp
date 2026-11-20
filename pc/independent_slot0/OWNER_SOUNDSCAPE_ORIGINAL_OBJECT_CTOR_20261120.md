@@ -71,6 +71,26 @@ Likewise, slots 4/6/8/9 have complete bodies consisting
 of RET; their canonical Source SDK lifecycle names are
 not inferred from apparent no-op behavior.
 
+## Proven early guards for original per-frame vtable slot10
+
+This phase also verified the *entry guard only* of the much larger
+method at original 0x240F4D30, vtable slot10:
+
+- At 0x240F4D36 it compares **BYTE this+0xD0** with zero;
+  if zero it jumps directly to 0x240F50B7, skipping update work.
+- Otherwise at 0x240F4D43 it loads the **DWORD pointer global**
+  at 0x24338CF0; if null it jumps to the same return path.
+- Only when both conditions permit entry does the method
+  proceed into its much larger vector/query/update logic.
+
+The owned CheckOriginalSlot10EarlyGate helper reproduces
+ONLY these two ordered conditions with caller-supplied independent
+booleans. It cannot call the original method, does not dereference
+the retail global, and does not claim the remaining update has
+been reconstructed. Its private original-opcode audit verifies
+six instruction windows and the exact branch destinations;
+its fabricated public self-test rejects corrupted guards.
+
 ## Independently authored code
 
 client_soundscape_original_object_ctor.h defines:
