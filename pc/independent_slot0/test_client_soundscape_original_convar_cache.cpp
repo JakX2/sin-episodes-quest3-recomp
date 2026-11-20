@@ -130,6 +130,25 @@ int main(){
        recovered.requested!=1 ||recovered.found_this_call!=1 ||
        cache.dsp()!=&engine2.dsp_value)return Fail(10);
 
+    // A different engine throwing on its first lookup must not leave
+    // stale pointers or an association to the previous engine.
+    FakeCvar throwingEngine{};
+    throwingEngine.throw_on_find=true;
+    const auto switchRefused=cache.Resolve(&throwingEngine);
+    if(switchRefused.result!=s::Result::CallbackRefused ||
+       !switchRefused.different_engine_instance ||
+       switchRefused.requested!=1 ||
+       switchRefused.mixer_cached || switchRefused.dsp_cached ||
+       cache.associated_engine() || cache.mixer() || cache.dsp())
+        return Fail(11);
+    throwingEngine.throw_on_find=false;
+    const auto afterSwitch=cache.Resolve(&throwingEngine);
+    if(afterSwitch.result!=s::Result::BothCached ||
+       afterSwitch.requested!=2 ||
+       cache.associated_engine()!=&throwingEngine ||
+       cache.mixer()!=&throwingEngine.mixer_value ||
+       cache.dsp()!=&throwingEngine.dsp_value)return Fail(12);
+
     cache.Reset();
     if(cache.associated_engine()||cache.mixer()||cache.dsp())
         return Fail(11);
