@@ -56,6 +56,15 @@ STAT_READER_VTABLE = 0x242AE06C
 STAT_BUFFER_READER_VTABLE = 0x242AF06C
 READ_FLOAT_BITS = 0x240A5630
 READ_INT32_BITS = 0x240A5620
+# Original SHA-authenticated 66 x 12-byte compiled stat records.
+ORIGINAL_STAT_REGISTRY_VA = 0x2431E660
+ORIGINAL_STAT_COUNT = 66
+ORIGINAL_STAT_RECORD_BYTES = 12
+ORIGINAL_STAT_REGISTRY_SHA = (
+    "63c1ee30f9b2a021115150b8b98a298530f4f2e0ebd621fca3ff7132d7b80ffb")
+ORIGINAL_STAT_TYPE_COUNTS = {
+    0:38,1:3,2:3,5:4,6:1,7:5,8:3,9:3,10:1,11:3,14:2
+}
 # reader slot byte offset, method start VA, next boundary,
 # selected 32-bit primitive helper, number of calls.
 LIVE_READER_SLOTS = (
@@ -173,6 +182,30 @@ def check_original(data: bytes) -> dict:
                 calls.append(target)
         if calls!=[primitive]*count:
             raise ValueError("live stat Reader primitive count changed "+hex(slot))
+    # The original type accessor indexes [0x2431E660+statId*12].
+    # Only the first 32-bit field is currently interpreted as type.
+    records=raw(data,ORIGINAL_STAT_REGISTRY_VA,
+                ORIGINAL_STAT_COUNT*ORIGINAL_STAT_RECORD_BYTES)
+    if hashlib.sha256(records).hexdigest()!=ORIGINAL_STAT_REGISTRY_SHA:
+        raise ValueError("compiled 66-record stat registry SHA mismatch")
+    type_counts={}
+    for stat_id in range(ORIGINAL_STAT_COUNT):
+        stat_type,unknown_col1,unknown_col2=struct.unpack_from(
+            "<III",records,stat_id*ORIGINAL_STAT_RECORD_BYTES)
+        if stat_type>=len(CASES) or unknown_col1>3 or unknown_col2 not in (1,2):
+            raise ValueError("stat registry has unexpected type or raw flags")
+        type_counts[stat_type]=type_counts.get(stat_type,0)+1
+    if type_counts!=ORIGINAL_STAT_TYPE_COUNTS:
+        raise ValueError("original stat type distribution mismatch")
+    if raw(data,0x241FD220,15)!=bytes.fromhex(
+            "8b 44 24 04 8d 04 40 8b 04 85 60 e6 31 24 c3"):
+        raise ValueError("original per-stat type lookup helper changed")
+    if raw(data,0x241FD230,15)!=bytes.fromhex(
+            "8b 44 24 04 8d 04 40 8b 04 85 64 e6 31 24 c3"):
+        raise ValueError("original first extra metadata column accessor changed")
+    if raw(data,0x241FD240,16)!=bytes.fromhex(
+            "8b 44 24 04 8d 04 40 33 c9 39 0c 85 68 e6 31 24"):
+        raise ValueError("original second extra metadata column accessor changed")
     # Original factory dispatch itself must bound type codes to 0..15.
     if raw(data,0x24205BC9,3)!=b"\x83\xf9\x0f":
         raise ValueError("factory did not bound type code to 0..15")
@@ -192,6 +225,10 @@ def check_original(data: bytes) -> dict:
         "dynamic_wrapper_value_virtual_va":"0x242063c0",
         "reader_slot_offsets_by_type":[entry[5] for entry in CASES],
         "case_allocations_by_type":[entry[6] for entry in CASES],
+        "compiled_stat_registry_count":ORIGINAL_STAT_COUNT,
+        "compiled_stat_registry_record_bytes":ORIGINAL_STAT_RECORD_BYTES,
+        "compiled_stat_registry_sha256":ORIGINAL_STAT_REGISTRY_SHA,
+        "compiled_stat_type_distribution":type_counts,
         "config_literal_bits_by_type":[hex(entry[7]) for entry in CASES],
         "live_reader_vtable_va":hex(STAT_READER_VTABLE),
         "live_reader_32bit_primitives":[
@@ -217,6 +254,9 @@ def self_test() -> None:
     assert OPCODE_TO_READER_METHOD==bytes.fromhex(
         "8b c1 8b 4c 24 04 8b 11 89 44 24 04 ff 62")
     assert len(CASES)==16
+    assert ORIGINAL_STAT_COUNT==66
+    assert ORIGINAL_STAT_RECORD_BYTES==12
+    assert sum(ORIGINAL_STAT_TYPE_COUNTS.values())==66
     assert all(item[0] in tuple(x[5] for x in CASES)
                for item in LIVE_READER_SLOTS)
     print("PASS original-free 16-type SiN Stats factory and CStatReader wire primitive fixtures")
