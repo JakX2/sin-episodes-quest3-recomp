@@ -656,6 +656,15 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Source-original SoundscapeSystem shared field alias contract:
+# auxiliary cleanup 0x240F3D10 and child helper 83B at +A0/+B4
+# must never independently free the same owned resource twice.
+add_executable(sin_client_soundscape_original_array_overlap_owned_test
+  test_client_soundscape_original_array_overlap_owned.cpp)
+target_compile_features(sin_client_soundscape_original_array_overlap_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_original_array_overlap_owned_native
+  COMMAND sin_client_soundscape_original_array_overlap_owned_test)
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
