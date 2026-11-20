@@ -200,3 +200,40 @@ catalog, NOT successful game startup or actual audio playback.
 At the time this package was authored, that new code had not yet
 been observed in a real owner-run retail process. Original complete
 VClient011::Init remains incomplete.
+
+PHASE 497: OPTIONAL REAL-ENGINE READ-ONLY CONVAR LOOKUP
+------------------------------------------------------
+Use the updated Phase 497 standalone Windows artifact. Run the normal
+RUN_SOUNDSCAPE_CATALOG_TEST.bat to perform ONLY the existing 7:301:242:3
+catalog diagnostic. Phase 497 adds an OPTIONAL additional test:
+
+  RUN_SOUNDSCAPE_CATALOG_TEST.bat -SoundscapeCvarLookup
+
+This retains the entire existing chain of SHA-pinned original game
+validation, disposable TEMP copy, presence/read/Stats/hook proof,
+automatic restoration and small text-only ZIP output.
+
+The extra opt-in step is executed only after the soundscape catalog
+diagnostic returns and before its existing terminal exit code:
+  - Original 2006 C_SoundscapeSystem virtual slot3, method 0x240F3C40.
+  - ICvar::FindVar("snd_soundmixer") via VEngineCvar002 virtual slot3.
+  - ICvar::FindVar("dsp_volume") via the same virtual slot.
+  - Cache references but NEVER dereference or modify ConVar values.
+  - Never register console variables, change sound settings, play
+    audio or continue normal VClient011::Init.
+
+The optional report line in SUMMARY.txt is:
+  Original soundscape ConVar lookup (read-only): <status>:<requested>:<found>:<mixer-present>:<dsp-present>
+
+Valid statuses identify both found, one found, none found or an
+ABI/callback refusal. Missing ConVars are a NORMAL source-permitted
+outcome and do not indicate game init failure. The primary soundscape
+0x53494E76/77 exit code and original 7:301:242:3 catalog verdict
+remain identical with this extra lookup. No pointer address, variable
+value or proprietary original file text is printed.
+
+If the process exits before the last stage, the extra summary is
+NOT_RECORDED, not a successful lookup. Send the small ZIP as usual;
+do not modify the installed original game or stage DLLs manually.
+This is diagnostics, NOT normal game boot. The last owner-observed
+retail checkpoint before this package was 0x53494E74.
