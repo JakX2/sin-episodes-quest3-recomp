@@ -36,7 +36,7 @@ The 26 calls divide into three original control-flow windows:
 |---|---|---|
 | Before game-system gate | 0x240FE491..0x240FE4B0, four calls | Return values not checked here |
 | AutoGameSystem Init | 0x240FE4B3 -> 0x24156860 | Return false branches to 0x240FE59E |
-| Between gates | 0x240FE4C8..0x240FE538, fourteen calls | Return values not checked here |
+| Between gates | 0x240FE4C8..0x240FE538, thirteen calls | Return values not checked here |
 | Mandatory physics triple | 0x240FE540 -> 0x24182C60 | Return false branches to 0x240FE59E |
 | Final callbacks | 0x240FE554..0x240FE590, seven calls | Return values not checked here |
 | Normal-success exit | 0x240FE595 | Returns 1 only after all preceding calls |
