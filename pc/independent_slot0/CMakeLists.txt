@@ -567,6 +567,16 @@ target_compile_features(sin_client_soundscape_engine_fs_bridge_test PRIVATE cxx_
 add_test(NAME independent_client_soundscape_engine_fs_bridge_native
   COMMAND sin_client_soundscape_engine_fs_bridge_test)
 
+# Phase 495: independent source-equivalent original C_SoundscapeSystem
+# Init policy. Returns true on missing manifest or partial resource
+# loads, handles optional per-map soundscape and suppresses duplicated
+# fallback, WITHOUT changing the strict owner diagnostic gate.
+add_executable(sin_client_soundscape_original_bootstrap_owned_test
+  test_client_soundscape_original_bootstrap_owned.cpp)
+target_compile_features(sin_client_soundscape_original_bootstrap_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_original_bootstrap_owned_native
+  COMMAND sin_client_soundscape_original_bootstrap_owned_test)
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.
