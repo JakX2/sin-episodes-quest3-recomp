@@ -75,7 +75,7 @@ foreach($required in @(
 }
 foreach($required in @(
     'HookProof',
-    "Phase=$(if($HookProof){'Hooks'}else{'Staged'})",
+    'Phase=$(if($HookProof){''Hooks''}else{''Staged''})',
     'ONECLICK_RECOVERED_HOOK_DIAGNOSTIC: OWNED_27_28_5_VERIFIED',
     'Independent Stats CUserMessages hooks 27:28:5'
 )) {
