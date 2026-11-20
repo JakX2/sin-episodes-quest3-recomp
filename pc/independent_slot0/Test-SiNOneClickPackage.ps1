@@ -33,10 +33,19 @@ $stagedPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats)
 $hooksPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof)
 $soundscapePlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog)
 if (-not (($soundscapePlan -join '|').Contains(
-    'SOUNDSCAPE PROOF: optional rb/GAME seven-file 301-definition catalog; no audio or game Init'))) {
+    'SOUNDSCAPE PROOF: original rb/GAME manifest and rb/null script catalog; no audio or game Init'))) {
     throw 'Soundscape opt-in one-click must be dry-run only'
 }
 
+$cvarPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly
+    -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup)
+if(-not (($cvarPlan -join '|').Contains(
+    'SOUNDSCAPE CVAR LOOKUP: opt-in read-only VEngineCvar002 slot3 FindVar for two names, no writes or game Init'))) {
+    throw 'Soundscape original ICvar lookup must be explicit opt-in and no-game dry run'
+}
+if(($soundscapePlan -join '|').Contains('SOUNDSCAPE CVAR LOOKUP:')) {
+    throw 'Default soundscape diagnostic accidentally enabled original ICvar calls'
+}
 if (-not (($hooksPlan -join '|').Contains(
     'HOOK PROOF: three independently owned CUserMessages hook IDs 27:28:5, not dispatch'))) {
     throw 'Owned hook proof one-click plan must be distinct and have no game'
@@ -58,6 +67,9 @@ foreach($must in @(
     'PriorPresenceTranscript',
     'Verify-OriginalPair',
     'RESTORATION: NOT VERIFIED',
+    'SoundscapeCvarLookup',
+    'ReadOnlySoundscapeCvarLookup',
+    'Original soundscape ConVar lookup (read-only):',
     'Compress-Archive',
     'Remove-Item -LiteralPath $temporary -Recurse -Force'
 )) {
