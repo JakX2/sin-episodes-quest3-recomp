@@ -88,7 +88,13 @@ inline constexpr Event EventFor(Kind kind) noexcept {
 class OwnedLifecycle final {
 public:
     const KnownState& value() const noexcept {return state_;}
-    void Reset() noexcept {state_={};}
+    void Reset() noexcept {
+        // New owned object lifetime must not accidentally accept a
+        // plan from a previous lifetime with the same initial revision.
+        const std::uint64_t next=state_.revision+1u;
+        state_={};
+        state_.revision=next;
+    }
     Plan PrepareSlot2() const noexcept {
         Plan plan{};
         plan.operation=Operation::Slot2OrderedChain;
@@ -117,6 +123,12 @@ public:
     Result SimulateComplete(const Plan& incoming) noexcept {
         if(incoming.revision!=state_.revision)return Result::Stale;
         if(state_.destroyed)return Result::AlreadyDestroyed;
+        if(incoming.operation!=Operation::Slot2OrderedChain &&
+           incoming.operation!=Operation::Slot11DeletingDestructor)
+            return Result::Invalid;
+        if(incoming.operation==Operation::Slot2OrderedChain &&
+           incoming.source_delete_flag_bit0)
+            return Result::Invalid;
         const auto expected=incoming.operation==Operation::Slot2OrderedChain?
             PrepareSlot2():
             PrepareSlot11(incoming.source_delete_flag_bit0?1u:0u);
