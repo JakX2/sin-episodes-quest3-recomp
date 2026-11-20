@@ -31,6 +31,12 @@ foreach($expected in @(
 }
 $stagedPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats)
 $hooksPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof)
+$soundscapePlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog)
+if (-not (($soundscapePlan -join '|').Contains(
+    'SOUNDSCAPE PROOF: optional rb/GAME seven-file 301-definition catalog; no audio or game Init'))) {
+    throw 'Soundscape opt-in one-click must be dry-run only'
+}
+
 if (-not (($hooksPlan -join '|').Contains(
     'HOOK PROOF: three independently owned CUserMessages hook IDs 27:28:5, not dispatch'))) {
     throw 'Owned hook proof one-click plan must be distinct and have no game'
@@ -64,7 +70,7 @@ foreach($must in @(
     }
 }
 foreach($required in @(
-    'Phase=$(if($HookProof){''Hooks''}else{''Staged''})',
+    'Phase=$(if($SoundscapeCatalog){''Soundscape''}elseif($HookProof){''Hooks''}else{''Staged''})',
     'PriorReadTranscript',
     'ONECLICK_RECOVERED_STAGED_DIAGNOSTIC: ORIGINAL_MODES_AND_INDEPENDENT_CATALOG_VERIFIED',
     'Original-mode staged 66-stat binding'
@@ -75,7 +81,7 @@ foreach($required in @(
 }
 foreach($required in @(
     'HookProof',
-    'Phase=$(if($HookProof){''Hooks''}else{''Staged''})',
+    'Phase=$(if($SoundscapeCatalog){''Soundscape''}elseif($HookProof){''Hooks''}else{''Staged''})',
     'ONECLICK_RECOVERED_HOOK_DIAGNOSTIC: OWNED_27_28_5_VERIFIED',
     'Independent Stats CUserMessages hooks 27:28:5'
 )) {
@@ -93,6 +99,30 @@ if (-not $hookText.Contains('Start-SiNFileSystemTest.ps1') -or
     -not $hookText.Contains('-STA') -or
     -not $hookText.Contains('pause')) {
     throw 'Hook proof must be double-click, three-phase, independently packaged'
+}
+$soundscapeBatch=Join-Path (Split-Path -Parent $Runner) 'RUN_SOUNDSCAPE_CATALOG_TEST.bat'
+$soundscapeDoc=Join-Path (Split-Path -Parent $Runner) 'OWNER_SOUNDSCAPE_RETAIL_GATE_20261120.md'
+if (-not (Test-Path -LiteralPath $soundscapeBatch -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $soundscapeDoc -PathType Leaf)) {
+    throw 'Missing separately packaged soundscape milestone and safety guide'
+}
+$soundscapeBatchText=[IO.File]::ReadAllText($soundscapeBatch)
+if (-not $soundscapeBatchText.Contains('Start-SiNFileSystemTest.ps1') -or
+    -not $soundscapeBatchText.Contains('-StagedStats -HookProof -SoundscapeCatalog') -or
+    -not $soundscapeBatchText.Contains('-STA') -or
+    -not $soundscapeBatchText.Contains('pause')) {
+    throw 'Soundscape four-stage owner diagnostic must be opt-in and interactive'
+}
+foreach($marker in @(
+    'SoundscapeCatalog requires -StagedStats -HookProof',
+    'OWNER_ENGINE_FS_GATE_RESULT: SOUNDSCAPE_DIAGNOSTIC_ONLY_NO_GAME_BOOT',
+    'ONECLICK_RECOVERED_SOUNDSCAPE_DIAGNOSTIC: ORIGINAL_7_301_242_3_VERIFIED',
+    'OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS:',
+    'OWNER_ENGINE_EXIT_HEX: 0x53494E76'
+)){
+    if (-not ([IO.File]::ReadAllText($Runner)).Contains($marker)) {
+        throw ('Missing four-stage source/test evidence gate: '+$marker)
+    }
 }
 $hookDoc=Join-Path (Split-Path -Parent $Runner) 'OWNER_STATS_HOOK_PROOF_20261120.md'
 if (-not (Test-Path -LiteralPath $hookDoc -PathType Leaf)) {
