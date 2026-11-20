@@ -397,6 +397,12 @@ static bool clientEngineFsReadProbeEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_FS_READ_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+static bool clientEngineFsStagedProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientEngineFsReadProbeEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_FS_STAGED_PROBE",enabled,2)==1 &&
+        enabled[0]=='1';
+}
 [[noreturn]] static void stopAfterClientEngineFsProbe() noexcept {
     using namespace sin_independent::engine_fs;
     diagnostic("engine-fs-presence-entered","VFileSystem012:source2004");
@@ -418,6 +424,33 @@ static bool clientEngineFsReadProbeEnabled() noexcept {
         diagnostic("engine-fs-read-result",Name(status));
         code=status==Status::ParsedAndVerified?0x53494E6Bu:
              status==Status::UnexpectedCounts?0x53494E6Du:0x53494E6Cu;
+        if(status==Status::ParsedAndVerified &&
+           clientEngineFsStagedProbeEnabled()) {
+            diagnostic("engine-fs-staged-entered","rb-GAME:rt-null:owned-only");
+            StagedCounts staged{};
+            const auto outcome=ReadBindAndValidateStaged(g_clientFileSystem,&staged);
+            char stagedCounts[96]={};
+            std::snprintf(stagedCounts,sizeof(stagedCounts),"%u:%u:%u:%u:%u",
+                static_cast<unsigned>(staged.catalog),
+                static_cast<unsigned>(staged.definitions),
+                static_cast<unsigned>(staged.refs),
+                static_cast<unsigned>(staged.pairs),
+                static_cast<unsigned>(staged.dividers));
+            diagnostic("engine-fs-staged-counts",stagedCounts);
+            char stages[48]={};
+            std::snprintf(stages,sizeof(stages),"%u:%u",
+                static_cast<unsigned>(staged.completed),
+                static_cast<unsigned>(staged.attempted));
+            diagnostic("engine-fs-staged-stage",stages);
+            diagnostic("engine-fs-staged-result",StagedName(outcome));
+            code=outcome==StagedStatus::OwnedStagedVerified?0x53494E70u:
+                 outcome==StagedStatus::DefinitionsRefused?0x53494E71u:
+                 outcome==StagedStatus::LayoutRefused?0x53494E72u:
+                 0x53494E73u;
+            diagnostic("engine-fs-staged-terminal-stop","original-modes-owned-only");
+            TerminateProcess(GetCurrentProcess(),code);
+            __fastfail(7);
+        }
     }
     diagnostic("engine-fs-terminal-stop","read-only-diagnostic");
     TerminateProcess(GetCurrentProcess(),code);
