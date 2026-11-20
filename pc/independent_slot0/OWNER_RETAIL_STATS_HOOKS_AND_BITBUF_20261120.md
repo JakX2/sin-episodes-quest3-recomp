@@ -49,8 +49,40 @@ bf_read object or an engine dispatcher.
 
 The new inspector recognizes original user message IDs StaticStat=27
 (static stat indices 0..54), DynamicStat=28 (dynamic 55..65) and
-ResetHUD=5 (one-byte envelope). Remaining payload bits are opaque;
-there is no guessed type-specific numeric/statistics decoding.
+ResetHUD=5 (one-byte envelope).
+
+### New independent owner-original value-field discovery
+
+The connected Drive bin.zip was examined **read-only**. Its client.dll
+and server.dll SHA256 exactly match the two authenticated owner-retail
+hashes already present in the repository. The original DynamicStat
+entrypoint (0x241FB7E0) delegates to 0x241FB370, which first invokes
+ReadUBitLong(16) at 0x240A5600, then an allocated string reader at
+0x240A5740. That string helper calls core ReadString at 0x240A5670
+through a **0x800-byte (2048) stack buffer**, then the dynamic record
+update reaches virtual method **+0x4c**. StaticStat delegates through
+0x241FE590 to the same vtable offset after its 16-bit ID.
+
+The stronger SHA-bound auditor now hashes and authenticates the
+four new helper bodies and the exact callsite/virtual-call edges. The
+public repository contains the auditor and *derived metadata only*,
+never an extracted original executable, disassembly, decompiled body,
+or raw commercial assets.
+
+The new InspectDynamicText method independently consumes the recovered
+16-bit ID plus a **NUL-terminated 8-bit bit-buffer string**, with
+strict <=2047 data bytes + terminal NUL and transactional failure. It
+does not guess the later per-type stat mutation semantics. The native
+fixture covers unaligned messages, empty strings, exactly 2047 payload
+bytes plus NUL, missing/oversized strings, invalid IDs and independent
+cursor copies.
+
+The original functions have unusually broad ID conditions: StaticStat
+skips IDs 55..65 while the dynamic helper ignores valid nonnegative
+IDs below 55; the original callbacks do not visibly reject all IDs
+>=66. Our independent parser **deliberately refuses IDs >=66** until
+those error cases are completely understood, rather than risking a
+bad pointer dereference.
 
 The native original-free synthetic MSVC x86 test covers bit offsets
 0..8 including word boundaries, 32-bit reads, 16-bit ID bounds,
@@ -64,8 +96,9 @@ not against original network traffic or retail game packet dispatch.
 
 ## Next tasks
 
-1. Reverse engineer original StaticStat virtual per-type value handlers
-   (record method +0x4c) and dynamic helper 0x241FB370.
+1. Reverse engineer the original type-specific +0x4c stat update
+   vtables and the post-string dynamic record update helper at
+   0x241FFCD0. The ID+string format is now recovered.
 2. Recover original 24-byte bf_read ABI from SHA-grounded original
    CUserMessages::DispatchUserMessage and Source SDK evidence; build
    a verified, side-effect-safe adapter before enabling real engine calls.
