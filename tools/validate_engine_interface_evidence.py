@@ -37,7 +37,7 @@ def validate(rows):
             continue
         interface, module, rva, tier = (row[k] for k in
                                          ("interface", "module", "rva", "tier"))
-        if interface not in ANCHORS or module not in ("client", "server"):
+        if type(interface) is not str or type(module) is not str or interface not in ANCHORS or module not in ("client", "server"):
             errors.append(tag + ": unknown interface or module")
             continue
         if module != MODULE_FOR_ANCHOR[interface]:
@@ -50,7 +50,7 @@ def validate(rows):
         if type(rva) is not int or not 0 <= rva < 0x100000000:
             errors.append(tag + ": invalid PE32 RVA")
             continue
-        if tier not in TIERS:
+        if type(tier) is not str or tier not in TIERS:
             errors.append(tag + ": unknown evidence tier")
             continue
         if type(row["boundary_verified"]) is not bool or type(row["native_engine_tested"]) is not bool:
@@ -100,11 +100,20 @@ def self_test():
             "tier": "candidate", "body_sha256": None,
             "boundary_verified": False, "native_engine_tested": False}
     assert report([good])["valid"]
+    try:
+        json.loads('{"tier":"candidate","tier":"owner_retail"}',
+                   object_pairs_hook=reject_duplicate_keys)
+        raise AssertionError("duplicate JSON keys accepted")
+    except ValueError:
+        pass
     assert report([good, good])["valid"] is False
     assert not report([dict(good, module="server")])["valid"]
     assert not report([dict(good, interface="ServerGameDLL003")])["valid"]
     assert not report([dict(good, original_engine_tested=True)])["valid"]
     assert not report([dict(good, native_engine_tested=1)])["valid"]
+    for field in ("interface", "module", "tier"):
+        for malformed in ([], {}, 0, None):
+            assert not report([dict(good, **{field: malformed})])["valid"]
     assert report([dict(good, tier="sha_reviewed")])["valid"] is False
     reviewed = dict(good, tier="sha_reviewed", body_sha256="a" * 64,
                     boundary_verified=True)
@@ -117,6 +126,16 @@ def self_test():
     assert report([dict(good, boundary_verified="false")])["valid"] is False
     second = dict(good, interface=ANCHORS[1], module="server")
     assert report([good, second])["reviewed_sha256"] == report([second, good])["reviewed_sha256"]
+
+
+def reject_duplicate_keys(pairs):
+    """Reject ambiguous JSON objects rather than silently keeping the last key."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key: " + key)
+        result[key] = value
+    return result
 
 
 def main():
@@ -132,7 +151,8 @@ def main():
     if args.input is None:
         parser.error("input JSON required unless --self-test")
     try:
-        data = json.loads(args.input.read_text(encoding="utf-8"))
+        data = json.loads(args.input.read_text(encoding="utf-8"),
+                          object_pairs_hook=reject_duplicate_keys)
         result = report(data)
     except (OSError, ValueError, TypeError) as exc:
         print("interface evidence gate: " + str(exc), file=sys.stderr)
