@@ -141,3 +141,29 @@ The launcher automatically creates and cleans a disposable game copy,
 restoring original SHA-pinned client/server DLLs before deletion.
 Send the results ZIP to continue decompilation. The ZIP contains
 diagnostic text only, never the original retail game binaries.
+
+NEW OPTIONAL SOUNDSCAPE CATALOG READ TEST (2026-11-20)
+-----------------------------------------------------
+The package now contains RUN_SOUNDSCAPE_CATALOG_TEST.bat.
+This runs the SAME protected presence/read/staged-stats/hook path,
+then uses the original 2006 engine VFileSystem012 with rb/GAME
+to load the game's soundscape manifest and all seven referenced
+scripts into independently owned bounded parser objects.
+
+Choose your original installed game directory through the folder
+picker. This does NOT replace or edit any DLL in your installed game.
+A separate SHA-verified TEMP game copy is used and restored.
+
+EXPECTED NEW RETAIL CODE (not yet owner-verified): 0x53494E76.
+Its independent catalog must contain 7 original text files,
+301 soundscapes, 242 playsoundscape references and 3 unresolved
+references within those files. Refusal uses 0x53494E77.
+
+This is NOT normal VClient011::Init, real soundscape playback,
+playable Windows build, Android/Quest 3 runtime or game level load.
+Only the old 0x53494E74 checkpoint has been observed in retail so far.
+The user-facing results ZIP contains TEXT ONLY. For detailed scope,
+see OWNER_SOUNDSCAPE_RETAIL_GATE_20261120.md.
+
+Dry run, without touching any installed game:
+powershell -NoProfile -STA -ExecutionPolicy Bypass -File .\Start-SiNFileSystemTest.ps1 -GameRoot "C:\synthetic-no-game" -StagedStats -HookProof -SoundscapeCatalog -PlanOnly

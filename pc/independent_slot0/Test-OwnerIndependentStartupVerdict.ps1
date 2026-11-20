@@ -893,6 +893,69 @@ try {
     if (-not ($hookOut -ccontains $expectedHooks)) {
         throw ('Independent client Stats owned-hook trace not bound: '+($hookOut -join '|'))
     }
+    # Phase 486 must be a *distinct* fourth diagnostic, accepted only
+    # after the same-session previous 27:28:5 owned hook milestone.
+    $soundscapeSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-soundscape-entered version=rb-GAME:read-only'
+        '[SiN independent] role=client phase=engine-fs-soundscape-counts version=7:301:242:3'
+        '[SiN independent] role=client phase=engine-fs-soundscape-result version=owned-soundscape-catalog-verified-original-files'
+        '[SiN independent] role=client phase=engine-fs-soundscape-terminal-stop version=owner-original-files-no-game-init'
+    )
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($soundscapeSteps)))
+    $soundscapeOut=Verify 'CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedSoundscape=('OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'owned-soundscape-catalog-verified-original-files:7:301:242:3')
+    if (-not ($soundscapeOut -ccontains $expectedSoundscape) -or
+        -not ($soundscapeOut -ccontains $expectedHooks)) {
+        throw ('Soundscape did not follow same-session owned Stats hooks: '+($soundscapeOut -join '|'))
+    }
+    $wrongSoundscape=@($soundscapeSteps)
+    $wrongSoundscape[1]=$wrongSoundscape[1].Replace('7:301:242:3','7:300:242:3')
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($wrongSoundscape)))
+    $refused=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($refused -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS:')) {
+        throw 'Invalid original soundscape counts passed strict trace classifier'
+    }
+    $wrongSoundscape=@($soundscapeSteps)
+    $wrongSoundscape[2]=$wrongSoundscape[2].Replace(
+        'owned-soundscape-catalog-verified-original-files',
+        'unknown-success')
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($wrongSoundscape)))
+    $refused=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($refused -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS:')) {
+        throw 'Unknown soundscape report accepted by session classifier'
+    }
+    # No prior hook proof is never a valid soundscape milestone.
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($soundscapeSteps)))
+    $refused=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($refused -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS:')) {
+        throw 'Soundscape catalog result promoted without owned Stats hooks'
+    }
+    $wrongIdsForSoundscape=@($hookSteps)
+    $wrongIdsForSoundscape[1]=$wrongIdsForSoundscape[1].Replace('27:28:5','27:5:28')
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($wrongIdsForSoundscape)+@($soundscapeSteps)))
+    $refused=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($refused -join '|').Contains('OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS:')) {
+        throw 'Swapped prior hook ID trace improperly unlocked soundscape milestone'
+    }
+    # Refusal is distinct from success. The outcome is not promoted
+    # to the verified 7/301/242/3 line by the gate.
+    $refusedSoundscape=@($soundscapeSteps)
+    $refusedSoundscape[2]=$refusedSoundscape[2].Replace(
+        'owned-soundscape-catalog-verified-original-files',
+        'owned-soundscape-original-counts-refused')
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($refusedSoundscape)))
+    $refused=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($refused -join '|').Contains($expectedSoundscape)) {
+        throw 'Refused soundscape state classified as verified retail milestone'
+    }
     $wrongIds=@($hookSteps)
     $wrongIds[1]=$wrongIds[1].Replace('27:28:5','27:5:28')
     [IO.File]::WriteAllLines($retailReplay,

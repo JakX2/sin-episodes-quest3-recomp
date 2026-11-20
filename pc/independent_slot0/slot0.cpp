@@ -26,6 +26,7 @@
 #include "client_known_gamesystem_init.h"
 #include "client_stats_live_asset_probe.h"
 #include "client_engine_filesystem_read.h"
+#include "client_soundscape_retail_gate.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
 #endif
@@ -423,6 +424,34 @@ static bool clientEngineFsHookProofEnabled() noexcept {
         GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_ENGINE_FS_HOOK_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
 }
+// Fourth optional read-only retail milestone. Requires ALL earlier
+// session-bound 21-factory/VGUI/sound/Stats hook gates to have succeeded.
+// Default independent client behavior remains unchanged.
+static bool clientSoundscapeCatalogProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientEngineFsHookProofEnabled() &&
+        GetEnvironmentVariableA("SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CATALOG_PROBE",
+                                enabled,2)==1 &&
+        enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterClientSoundscapeCatalogProbe() noexcept {
+    using namespace sin_independent::soundscape_retail_gate;
+    diagnostic("engine-fs-soundscape-entered","rb-GAME:read-only");
+    const Report result=Verify(g_clientFileSystem);
+    char totals[96]={};
+    std::snprintf(totals,sizeof(totals),"%u:%u:%u:%u",
+        static_cast<unsigned>(result.counts.files),
+        static_cast<unsigned>(result.counts.definitions),
+        static_cast<unsigned>(result.counts.nested_references),
+        static_cast<unsigned>(result.counts.unresolved_references));
+    diagnostic("engine-fs-soundscape-counts",totals);
+    diagnostic("engine-fs-soundscape-result",StatusName(result.status));
+    diagnostic("engine-fs-soundscape-terminal-stop",
+               "owner-original-files-no-game-init");
+    TerminateProcess(GetCurrentProcess(),
+        result.verified()?0x53494E76u:0x53494E77u);
+    __fastfail(7);
+}
 [[noreturn]] static void stopAfterClientEngineFsProbe() noexcept {
     using namespace sin_independent::engine_fs;
     diagnostic("engine-fs-presence-entered","VFileSystem012:source2004");
@@ -491,6 +520,8 @@ static bool clientEngineFsHookProofEnabled() noexcept {
                     verified?"three-owned-hooks-bound-not-dispatched":"refused");
                 code=verified?0x53494E74u:0x53494E75u;
                 diagnostic("engine-fs-hooks-terminal-stop","independent-only");
+                if(verified && clientSoundscapeCatalogProbeEnabled())
+                    stopAfterClientSoundscapeCatalogProbe();
             }
             TerminateProcess(GetCurrentProcess(),code);
             __fastfail(7);

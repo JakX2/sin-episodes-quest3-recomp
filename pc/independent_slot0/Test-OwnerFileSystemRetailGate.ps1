@@ -194,13 +194,37 @@ try {
     if($stagedText.Contains('EnableClientEngineFsHookProbe')) {
         throw 'Ordinary staged phase accidentally enabled owned-hook proof'
     }
+    # Fourth-stage read-only soundscape test is explicitly opt-in,
+    # requires a prior fully restored read, and includes hook proof.
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Soundscape';PlanOnly=$true}) 'previous verified owner read transcript'
+    $soundscape=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+                  Phase='Soundscape';PlanOnly=$true;PriorReadTranscript=$priorRead}
+    $soundscapeText=@(& $Gate @soundscape) -join [Environment]::NewLine
+    foreach($required in @(
+        'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED',
+        'OWNER_ENGINE_FS_GATE_PHASE: Soundscape',
+        ('OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: '+$session),
+        'EnableClientEngineFsReadProbe',
+        'EnableClientEngineFsStagedProbe',
+        'EnableClientEngineFsHookProbe',
+        'EnableClientSoundscapeCatalogProbe'
+    )){
+        if(-not $soundscapeText.Contains($required)){
+            throw ('Missing explicit owner soundscape gate prerequisite: '+$required)
+        }
+    }
+    if($hookText.Contains('EnableClientSoundscapeCatalogProbe') -or
+       $stagedText.Contains('EnableClientSoundscapeCatalogProbe')){
+        throw 'Ordinary hook or staged tests accidentally enabled soundscape reading'
+    }
     $mutatedHookPrior=Join-Path $dir 'hook-invalid-read.txt'
     [IO.File]::WriteAllText($mutatedHookPrior,
         [IO.File]::ReadAllText($priorRead).Replace('VERIFIED_COMPLETE','INCOMPLETE'))
     Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
               Phase='Hooks';PlanOnly=$true;PriorReadTranscript=$mutatedHookPrior}) 'Read evidence lacks'
     Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
-              Phase='Presence';PlanOnly=$true;PriorReadTranscript=$priorRead}) 'valid only for Staged or Hooks'
+              Phase='Presence';PlanOnly=$true;PriorReadTranscript=$priorRead}) 'valid only for Staged, Hooks or Soundscape'
     # Duplicate session IDs are not allowed, nor is stale earlier evidence
     # that belongs to an unrelated process.
     $duplicate=Join-Path $dir 'duplicate.txt'
