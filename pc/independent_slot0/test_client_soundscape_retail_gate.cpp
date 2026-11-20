@@ -20,6 +20,7 @@ struct IFileSystemFixture {
     std::map<std::string,std::string> files{};
     Handle file{};
     int open_count=0,close_count=0,read_count=0,abi_failures=0;
+    int manifest_game_count=0,script_null_count=0;
     std::string missing{};
     virtual int Read(void* output,int size,void* handle) {
         ++read_count;
@@ -37,8 +38,20 @@ struct IFileSystemFixture {
     virtual int Write(const void*,int,void*){++abi_failures;return 0;}
     virtual void* Open(const char* path,const char* mode,const char* id) {
         ++open_count;
-        if(!path||!mode||!id||std::strcmp(mode,"rb")!=0 ||
-           std::strcmp(id,"GAME")!=0){++abi_failures;return nullptr;}
+        if(!path||!mode||std::strcmp(mode,"rb")!=0){
+            ++abi_failures;return nullptr;
+        }
+        if(std::strcmp(path,"scripts/soundscapes_manifest.txt")==0) {
+            if(!id||std::strcmp(id,"GAME")!=0){
+                ++abi_failures;return nullptr;
+            }
+            ++manifest_game_count;
+        } else {
+            if(id!=nullptr){
+                ++abi_failures;return nullptr;
+            }
+            ++script_null_count;
+        }
         if(path==missing)return nullptr;
         const auto it=files.find(path);
         if(it==files.end())return nullptr;
@@ -122,6 +135,7 @@ int main(){
        r1.counts.nested_references!=242 ||
        r1.counts.unresolved_references!=3 ||
        engine.open_count!=8 || engine.close_count!=8 ||
+       engine.manifest_game_count!=1 || engine.script_null_count!=7 ||
        engine.abi_failures!=0)return Fail(2);
 
     // A changed yet well-formed catalog must produce a distinct
@@ -201,6 +215,6 @@ int main(){
     // A fully restored synthetic fixture can retry deterministically.
     auto again=r::Verify(&engine);
     if(!again.verified()||engine.abi_failures!=0)return Fail(7);
-    std::puts("PASS synthetic native Source2004 VFileSystem012: exact 7/301/242/3 counts and independent ABI/read/manifest/catalog refusal telemetry");
+    std::puts("PASS original 2006 soundscape pathID ABI: manifest rb/GAME, seven sources rb/nullptr, 7/301/242/3 shape and detailed refusal trace");
     return 0;
 }
