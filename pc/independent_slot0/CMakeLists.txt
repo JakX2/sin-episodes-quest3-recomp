@@ -548,6 +548,15 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Original KeyValues::LoadFromFile rb/GAME soundscape path through
+# SDK2004 VFileSystem012 slots, tested ONLY with fabricated Win32 objects.
+# Never wire into production VClient011::Init without live ABI validation.
+add_executable(sin_client_soundscape_engine_fs_bridge_test
+  test_client_soundscape_engine_fs_bridge.cpp)
+target_compile_features(sin_client_soundscape_engine_fs_bridge_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_soundscape_engine_fs_bridge_native
+  COMMAND sin_client_soundscape_engine_fs_bridge_test)
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
