@@ -59,6 +59,35 @@ static_assert(kOriginalVtableSlots[3]==0x240F3C40u);
 static_assert(kOriginalVtableSlots[7]==kOriginalSlot7VA);
 static_assert(kOriginalEarlyZeroOffsets.size()==10);
 static_assert(kOriginalLaterZeroOffsets.size()==10);
+
+// Compile-time ownership contract: no duplicated, overlapping, unaligned
+// or out-of-range writes may silently enter the authenticated write model.
+// This is a synthetic invariant, not an additional original-method claim.
+constexpr bool ConstructorOffsetContract() noexcept {
+    std::array<bool,kOwnedKnownDwords> occupied{};
+    const auto claim=[&](std::uint32_t offset) constexpr -> bool {
+        if(offset%4u || offset>=kOwnedKnownStorageBytes)return false;
+        const auto index=offset/4u;
+        if(occupied[index])return false;
+        occupied[index]=true;
+        return true;
+    };
+    if(!claim(0u) || !claim(4u) || !claim(0x30u) ||
+       !claim(0x9Cu))return false;
+    for(const auto offset:kOriginalEarlyZeroOffsets)
+        if(!claim(offset))return false;
+    for(const auto offset:kOriginalLaterZeroOffsets)
+        if(!claim(offset))return false;
+    std::size_t count=0;
+    for(const bool is_written:occupied)
+        if(is_written)++count;
+    return count==24u && !occupied[0x34u/4u] &&
+           !occupied[0x94u/4u] && !occupied[0x98u/4u];
+}
+static_assert(ConstructorOffsetContract(),
+              "original soundscape constructor offsets must remain disjoint and bounded");
+static_assert(kOriginalSlot10FlagOffset>=kOwnedKnownStorageBytes,
+              "slot10 guard is outside the authenticated owned model");
 struct KnownDwordModel final {
     // An independently owned DWORD array. It is NOT the original
     // class layout, only an exact-offset model for known DWORD writes.
