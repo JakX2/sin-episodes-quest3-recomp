@@ -59,3 +59,29 @@ BUILD PROVENANCE
 The package is produced by the repository's Windows GitHub Actions
 and contains a SHA256 manifest.json recording every included file
 and the exact source commit. No retail original DLLs are distributed.
+
+VERIFIED RETAIL MILESTONE FROM OWNER TEST ON 2026-11-20
+------------------------------------------------------
+A live original Windows engine returned 0x53494E68 (both files found)
+and later 0x53494E6B (actual VFileSystem012 read/parsed counts
+62:8:156:66). This is real engine read-method evidence, not boot.
+
+The second attempt showed a Windows UnauthorizedAccessException when
+the launcher attempted to restore the original DLL inside its TEMP
+test copy. The installed game was NOT modified. New versions retry
+the post-exit file lock and attempt SHA-checked restoration before
+deciding to retain the temporary folder.
+
+RECOVER AN OLDER RETAINED TEST COPY (NO MANUAL DLL HANDLING)
+----------------------------------------------------------
+Extract this updated package anywhere outside the game folder, then
+double-click RECOVER_PREVIOUS_TEST.bat. It searches only the precise
+sin-independent-fs-<10 hex> directories directly under Windows TEMP,
+checks the disposable-test marker and original 2006 SHA256 DLL hashes,
+and attempts bounded restoration. If both originals are verified, it
+removes that disposable copy. If the copy is still in use or the backup
+is invalid, the utility refuses deletion and prints its recovery error.
+
+You do NOT have to manually move any DLLs, even when a previous run
+left behind a temporary test copy. The old ZIP results remain valid
+research data; do not delete the reports ZIP.
