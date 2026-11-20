@@ -258,6 +258,35 @@ try {
             throw ('Missing owner triple physics Factory prerequisite: '+$required)
         }
     }
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Hooks';ReadOnlySurfacePropsReadProbe=$true;
+              PlanOnly=$true;PriorReadTranscript=$priorRead}) 'requires Soundscape phase'
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Soundscape';ReadOnlySurfacePropsReadProbe=$true;
+              PlanOnly=$true;PriorReadTranscript=$priorRead}) 'requires Soundscape phase and ReadOnlyPhysicsFactoryProbe'
+    $fullSurfacePropsGate=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+        Phase='Soundscape';ReadOnlySoundscapeCvarLookup=$true;
+        ReadOnlyPhysicsFactoryProbe=$true;ReadOnlySurfacePropsReadProbe=$true;
+        PlanOnly=$true;PriorReadTranscript=$priorRead}
+    $surfacePropsText=@(& $Gate @fullSurfacePropsGate) -join [Environment]::NewLine
+    foreach($required in @(
+        'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED',
+        'OWNER_ENGINE_FS_GATE_PHASE: Soundscape',
+        'EnableClientSoundscapeCatalogProbe',
+        'EnableClientSoundscapeCvarLookupProbe',
+        'EnableClientPhysicsFactoryProbe',
+        'EnableClientSurfacePropsReadProbe',
+        ('OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: '+$session)
+    )) {
+        if(-not $surfacePropsText.Contains($required)) {
+            throw ('Missing owner surfaceproperties read prerequisite: '+$required)
+        }
+    }
+    if($soundscapeText.Contains('EnableClientSurfacePropsReadProbe') -or
+       $withCvarText.Contains('EnableClientSurfacePropsReadProbe') -or
+       $physicsGateText.Contains('EnableClientSurfacePropsReadProbe')) {
+        throw 'Surfaceproperties resource test enabled before explicit opt-in'
+    }
     if($soundscapeText.Contains('EnableClientPhysicsFactoryProbe') -or
        $withCvarText.Contains('EnableClientPhysicsFactoryProbe')) {
         throw 'Original physics Factory calls enabled by default or CVar-only test'
