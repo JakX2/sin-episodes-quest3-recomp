@@ -19,14 +19,14 @@ static bool Is(const s::Action& a,s::ActionKind kind,
 int main(){
     static_assert(sizeof(s::CandidateOriginalEntry40)==40,"original 40B");
     static_assert(offsetof(s::CandidateOriginalEntry40,sound_id)==12,"id +0x0C");
-    static_assert(offsetof(s::CandidateOriginalEntry40,use_engine_mixer_stop)==36,"flag +0x24");
+    static_assert(offsetof(s::CandidateOriginalEntry40,use_engine_interface_stop)==36,"flag +0x24");
     s::OwnedLifecycle owned{};
     s::Plan plan{};
     if(owned.Prepare(plan)!=s::Result::Ready ||
        plan.actions.size()!=3 ||
        !Is(plan.actions[0],s::ActionKind::ClearActiveCount0xAC) ||
        !Is(plan.actions[1],s::ActionKind::ClearAuxiliaryCount0xC0) ||
-       !Is(plan.actions[2],s::ActionKind::ClearLoadedPointerCount0x28))
+       !Is(plan.actions[2],s::ActionKind::ClearSoundscapeTreeCount0x28))
         return Fail(1);
 
     s::State prepared{};
@@ -53,19 +53,19 @@ int main(){
     // Original destroys active sounds LAST-IN FIRST-OUT in 40-byte
     // strides. Alternate flag decides between virtual slot11 and
     // legacy helper 0x241BD680, without changing source id.
-    if(!Is(plan.actions[0],s::ActionKind::StopMixerVirtual11,10) ||
+    if(!Is(plan.actions[0],s::ActionKind::StopViaEngineInterfaceSlot11,10) ||
        plan.actions[0].source_index!=3 ||
-       !Is(plan.actions[1],s::ActionKind::StopLegacyHelper,9) ||
+       !Is(plan.actions[1],s::ActionKind::StopViaOriginalHelper,9) ||
        plan.actions[1].source_index!=2 ||
-       !Is(plan.actions[2],s::ActionKind::StopMixerVirtual11,8) ||
+       !Is(plan.actions[2],s::ActionKind::StopViaEngineInterfaceSlot11,8) ||
        plan.actions[2].source_index!=1 ||
-       !Is(plan.actions[3],s::ActionKind::StopLegacyHelper,7) ||
+       !Is(plan.actions[3],s::ActionKind::StopViaOriginalHelper,7) ||
        plan.actions[3].source_index!=0)
         return Fail(4);
     // The +0xAC/+0xC0/+0x28 resets precede handle+resource frees.
     if(!Is(plan.actions[4],s::ActionKind::ClearActiveCount0xAC) ||
        !Is(plan.actions[5],s::ActionKind::ClearAuxiliaryCount0xC0) ||
-       !Is(plan.actions[6],s::ActionKind::ClearLoadedPointerCount0x28) ||
+       !Is(plan.actions[6],s::ActionKind::ClearSoundscapeTreeCount0x28) ||
        plan.actions[7].kind!=s::ActionKind::ReleaseHandle0x9C ||
        plan.actions[7].candidate_handle!=prepared.handle_9c ||
        plan.actions[8].kind!=s::ActionKind::ReleaseHandle0x94 ||
@@ -109,7 +109,7 @@ int main(){
     // A forged plan with the RIGHT count/revision but swapped stop
     // routes or corrupted resource identity must also be refused.
     corrupt=plan;
-    corrupt.actions[0].kind=s::ActionKind::StopLegacyHelper;
+    corrupt.actions[0].kind=s::ActionKind::StopViaOriginalHelper;
     if(owned.CommitCleared(corrupt)!=s::Result::PlanRejected ||
        owned.value().active_sounds.size()!=4)return Fail(18);
     corrupt=plan;
