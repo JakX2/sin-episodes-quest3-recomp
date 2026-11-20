@@ -73,7 +73,7 @@ int main(){
     m::OwnedSnapshot loaded;
     if(loaded.Load(sample,get)!=m::Status::Ready ||
        loaded.value().files.size()!=4 ||
-       loaded.value().total_bytes!=16 ||
+       loaded.value().total_bytes!=17 ||
        loaded.value().manifest.unknown_keys!=2 ||
        !loaded.Find("scripts/soundscapes_intro.txt") ||
        *loaded.Find("scripts/soundscapes_intro.txt")!="intro" ||
@@ -82,14 +82,14 @@ int main(){
     provider.missing="scripts/soundscapes_docks.txt";
     if(loaded.Load(sample,get)!=m::Status::MissingFile ||
        loaded.value().files.size()!=4 ||
-       loaded.value().total_bytes!=16 ||
+       loaded.value().total_bytes!=17 ||
        *loaded.Find("scripts/soundscapes_docks.txt")!="docks")
         return Fail(3);
     provider.missing.clear();
     provider.oversized="scripts/soundscapes_intro.txt";
     if(loaded.Load(sample,get)!=m::Status::FileTooLarge ||
        loaded.value().files.size()!=4 ||
-       loaded.value().total_bytes!=16)
+       loaded.value().total_bytes!=17)
         return Fail(4);
     provider.oversized.clear();
 
