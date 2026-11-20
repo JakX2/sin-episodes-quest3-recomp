@@ -389,6 +389,15 @@ add_executable(sin_client_stats_value_factory_test
 target_compile_features(sin_client_stats_value_factory_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_value_factory_native
   COMMAND sin_client_stats_value_factory_test)
+# Original CStatReader virtual slots each request one or two known
+# Source bf_read 32-bit primitive fields. The test extracts bounded raw
+# frames and does NOT call the original vtables or change game stats.
+add_executable(sin_client_stats_wire_value_decoder_test
+  test_client_stats_wire_value_decoder.cpp)
+target_compile_features(sin_client_stats_wire_value_decoder_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_wire_value_decoder_native
+  COMMAND sin_client_stats_wire_value_decoder_test)
+
 
 
 
