@@ -8,6 +8,8 @@
 #include "client_stats_user_message_hooks.h"
 #include <cstddef>
 #include <cstdint>
+#include <array>
+#include <cstring>
 
 namespace sin_independent::stats_bitbuf {
 inline constexpr std::size_t kMaxMessageBytes=256u*1024u;
@@ -126,5 +128,71 @@ inline stats_messages::HeaderStatus InspectBitHeader(
     }
     stream=pending; // commit only verified header consumption
     return HeaderStatus::KnownHeaderOnly;
+}
+
+// Original private 2006 client.dll SHA-pinned function 0x241FB370 reads
+// UBitLong(16) and then calls helper 0x240A5740 to read a NUL-terminated
+// string through a 0x800 (2048) byte temporary buffer. The helper is
+// the engine's ReadString path, not a fixed-length float or integer.
+// This is an independently authored *bounded* parser of those TWO
+// recovered fields; the later per-type dynamic stat action is opaque.
+inline constexpr std::size_t kDynamicTextBufferBytes=0x800;
+enum class DynamicTextStatus {
+    DecodedHeaderAndStringOnly, InvalidHeader, TruncatedText,
+    MissingTerminatorWithinLimit
+};
+inline const char* DynamicTextName(DynamicTextStatus status) noexcept {
+    switch(status){
+        case DynamicTextStatus::DecodedHeaderAndStringOnly:
+            return "dynamic-id-and-null-string-only";
+        case DynamicTextStatus::InvalidHeader:return "invalid-dynamic-header";
+        case DynamicTextStatus::TruncatedText:return "truncated-dynamic-text";
+        case DynamicTextStatus::MissingTerminatorWithinLimit:
+            return "unterminated-dynamic-text";
+    }
+    return "unknown";
+}
+struct DynamicText final {
+    int stat_id=-1;
+    std::array<char,kDynamicTextBufferBytes> text{};
+    std::size_t text_bytes=0;
+    std::size_t opaque_start_bit=0;
+    std::size_t opaque_bits=0;
+};
+
+// Only commit cursor+output if both the 16-bit ID and bounded
+// NUL-terminated text are valid. Do not accept an incomplete message
+// or silently truncate a string, which may differ from the original
+// engine behavior but is safer for a stand-alone port.
+inline DynamicTextStatus InspectDynamicText(
+    const stats_messages::OwnedRegistry& registry,
+    Cursor& source,DynamicText* output=nullptr) noexcept {
+    if(output)*output={};
+    Cursor pending=source;
+    ParsedHeader header{};
+    if(InspectBitHeader(registry,28,pending,&header)!=
+            stats_messages::HeaderStatus::KnownHeaderOnly)
+        return DynamicTextStatus::InvalidHeader;
+    std::array<char,kDynamicTextBufferBytes> scratch{};
+    for(std::size_t i=0;i<scratch.size();++i){
+        if(pending.remaining()<8u)
+            return DynamicTextStatus::TruncatedText;
+        std::uint32_t letter=0;
+        if(!pending.ReadUBits(8u,letter))
+            return DynamicTextStatus::TruncatedText;
+        scratch[i]=static_cast<char>(letter);
+        if(letter==0){
+            if(output){
+                output->stat_id=header.stat_id;
+                output->text=scratch;
+                output->text_bytes=i;
+                output->opaque_start_bit=pending.position();
+                output->opaque_bits=pending.remaining();
+            }
+            source=pending;
+            return DynamicTextStatus::DecodedHeaderAndStringOnly;
+        }
+    }
+    return DynamicTextStatus::MissingTerminatorWithinLimit;
 }
 } // namespace sin_independent::stats_bitbuf
