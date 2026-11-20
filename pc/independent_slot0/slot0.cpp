@@ -29,6 +29,7 @@
 #include "client_soundscape_retail_gate.h"
 #include "client_soundscape_original_convar_cache.h"
 #include "client_original_physics_factory_probe.h"
+#include "client_original_surfaceprops_engine_fs_bridge.h"
 #include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
@@ -464,6 +465,13 @@ static bool clientPhysicsFactoryProbeEnabled() noexcept {
             "SIN_INDEPENDENT_CLIENT_PHYSICS_FACTORY_PROBE",
             enabled,2)==1 && enabled[0]=='1';
 }
+static bool clientSurfacePropsReadProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientPhysicsFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
 [[noreturn]] static void stopAfterClientSoundscapeCatalogProbe() noexcept {
     using namespace sin_independent::soundscape_retail_gate;
     diagnostic("engine-fs-soundscape-entered","rb-GAME:read-only");
@@ -484,6 +492,7 @@ static bool clientPhysicsFactoryProbeEnabled() noexcept {
             result,detail,sizeof(detail));
     diagnostic("engine-fs-soundscape-detail",
                formatted?detail:"diagnostic-format-refused");
+    bool cvarBothFound=false;
     if(clientSoundscapeCvarLookupProbeEnabled()) {
         // Source vtable slot3 0x240F3C40 resolves only two ConVar
         // pointers. We log only bounded name-free status/count fields,
@@ -492,6 +501,7 @@ static bool clientPhysicsFactoryProbeEnabled() noexcept {
                    "VEngineCvar002:slot3:read-only");
         static sin_independent::soundscape_original_cvars::OwnedCache cache{};
         const auto outcome=cache.Resolve(g_clientCvar);
+        cvarBothFound=outcome.mixer_cached&&outcome.dsp_cached;
         char summary[128]={};
         std::snprintf(summary,sizeof(summary),"%s:%u:%u:%u:%u",
             sin_independent::soundscape_original_cvars::Name(outcome.result),
@@ -524,6 +534,32 @@ static bool clientPhysicsFactoryProbeEnabled() noexcept {
                    resultLine:"original-physics-inconsistent:0:0:0");
         diagnostic("engine-fs-physics-terminal-stop",
                    "no-physics-coupling-no-game-init");
+        if(clientSurfacePropsReadProbeEnabled() &&
+           report.would_pass_original_three_query_gate &&
+           cvarBothFound && result.verified()) {
+            // Original post-physics helper 0x241927A0 reads the
+            // surfaceproperties manifest rb/GAME; helper 0x24191EC0
+            // opens each individual surface script rb/nullptr then
+            // invokes VPhysicsSurfaceProps001 slot1. This stage
+            // does ONLY the independent read/shape validation,
+            // never the native registration virtual method.
+            diagnostic("engine-fs-surfaceprops-entered",
+                       "VFileSystem012:surfaceproperties:rb-dual-scope");
+            sin_independent::surfaceprops_engine_fs::Bridge bridge{};
+            const auto resources=bridge.ReadOnly(g_clientFileSystem);
+            char shape[192]={};
+            std::snprintf(shape,sizeof(shape),"%s:%u:%u:%u:%u:%u",
+                sin_independent::surfaceprops_engine_fs::Name(
+                    resources.status),
+                resources.owned_result.attempted,
+                resources.owned_result.read,
+                resources.owned_result.definitions,
+                resources.owned_result.base_keys,
+                resources.owned_result.repeated_names);
+            diagnostic("engine-fs-surfaceprops-result",shape);
+            diagnostic("engine-fs-surfaceprops-terminal-stop",
+                       "no-physics-surface-registration-no-game-init");
+        }
     }
     diagnostic("engine-fs-soundscape-terminal-stop",
                "owner-original-files-no-game-init");
