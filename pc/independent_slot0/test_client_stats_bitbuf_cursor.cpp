@@ -165,6 +165,92 @@ int main(){
     if(bb::InspectBitHeader(registered,38,unbound)!=Status::InvalidMessage ||
        bb::InspectBitHeader(registered,-1,unbound)!=Status::InvalidMessage ||
        unbound.position()!=1)return Fail(19);
+    // The pinned ORIGINAL DynamicStat helper 0x241FB370 decodes a
+    // ReadUBitLong(16) followed by ReadString with 0x800-byte buffer.
+    // Recover that actual header-plus-string path, not guessed floats.
+    for(std::size_t start=0;start<=8;++start) {
+        std::array<std::uint8_t,12> textData{};
+        WriteBits(textData,start,16,55);
+        for(std::size_t i=0;i<4;++i){
+            const std::uint32_t ch=i==0?'S':i==1?'i':i==2?'N':0;
+            WriteBits(textData,start+16+i*8,8,ch);
+        }
+        WriteBits(textData,start+16+32,5,0x13);
+        bb::Cursor stream(textData.data(),textData.size(),start+16+37,start);
+        bb::DynamicText text{};
+        if(bb::InspectDynamicText(registered,stream,&text)!=
+               bb::DynamicTextStatus::DecodedHeaderAndStringOnly ||
+           text.stat_id!=55 || text.text_bytes!=3 ||
+           text.text[0]!='S' || text.text[1]!='i' || text.text[2]!='N' ||
+           text.text[3]!=0 || text.opaque_start_bit!=start+48 ||
+           text.opaque_bits!=5 || stream.position()!=start+48)
+            return Fail(20);
+        std::uint32_t tail=0;
+        if(!stream.ReadUBits(5,tail)||tail!=0x13)return Fail(21);
+    }
+    std::array<std::uint8_t,8> simpleText{};
+    WriteBits(simpleText,6,16,65);
+    // An empty original C string is legal, and a later opaque byte is
+    // NOT part of that string.
+    WriteBits(simpleText,22,8,0);
+    WriteBits(simpleText,30,8,0xe9);
+    bb::Cursor empty(simpleText.data(),simpleText.size(),38,6);
+    bb::DynamicText emptyResult{};
+    if(bb::InspectDynamicText(registered,empty,&emptyResult)!=
+           bb::DynamicTextStatus::DecodedHeaderAndStringOnly ||
+       emptyResult.stat_id!=65 || emptyResult.text_bytes!=0 ||
+       empty.position()!=30 || emptyResult.opaque_bits!=8)
+        return Fail(22);
+    std::uint32_t rest=0;
+    if(!empty.ReadUBits(8,rest)||rest!=0xe9)return Fail(23);
+
+    // Missing terminator/packet truncation must not consume the source
+    // cursor or publish a partially decoded dynamic value.
+    std::array<std::uint8_t,8> truncatedText{};
+    WriteBits(truncatedText,4,16,60);
+    WriteBits(truncatedText,20,8,'X');
+    WriteBits(truncatedText,28,8,'Y');
+    bb::Cursor truncText(truncatedText.data(),truncatedText.size(),36,4);
+    bb::DynamicText badText{};
+    badText.stat_id=999;
+    if(bb::InspectDynamicText(registered,truncText,&badText)!=
+           bb::DynamicTextStatus::TruncatedText ||
+       truncText.position()!=4 || badText.stat_id!=-1)return Fail(24);
+
+    // Exactly 2047 payload bytes plus 0 are valid, 2048 nonzero bytes
+    // (no NUL) are refused. The original engine used a 0x800 buffer.
+    std::array<std::uint8_t,2054> fullText{};
+    WriteBits(fullText,3,16,55);
+    for(std::size_t i=0;i<bb::kDynamicTextBufferBytes-1;++i)
+        WriteBits(fullText,19+i*8,8,'a');
+    WriteBits(fullText,19+(bb::kDynamicTextBufferBytes-1)*8,8,0);
+    bb::Cursor maxText(fullText.data(),fullText.size(),
+                       19+bb::kDynamicTextBufferBytes*8,3);
+    bb::DynamicText maxValue{};
+    if(bb::InspectDynamicText(registered,maxText,&maxValue)!=
+           bb::DynamicTextStatus::DecodedHeaderAndStringOnly ||
+       maxValue.text_bytes!=2047 || maxValue.text[2046]!='a' ||
+       maxValue.text[2047]!=0 ||
+       maxText.remaining()!=0)return Fail(25);
+    WriteBits(fullText,19+(bb::kDynamicTextBufferBytes-1)*8,8,'a');
+    bb::Cursor overText(fullText.data(),fullText.size(),
+                        19+bb::kDynamicTextBufferBytes*8,3);
+    if(bb::InspectDynamicText(registered,overText)!=
+           bb::DynamicTextStatus::MissingTerminatorWithinLimit ||
+       overText.position()!=3)return Fail(26);
+    // A 16-bit ID outside the owned dynamic 55..65 range is refused
+    // *before* attempting to interpret a string.
+    WriteBits(fullText,3,16,66);
+    bb::Cursor wrongType(fullText.data(),fullText.size(),
+                         19+bb::kDynamicTextBufferBytes*8,3);
+    if(bb::InspectDynamicText(registered,wrongType)!=
+           bb::DynamicTextStatus::InvalidHeader ||
+       wrongType.position()!=3)return Fail(27);
+    registered.Clear();
+    bb::Cursor noHook(fullText.data(),fullText.size(),59,3);
+    if(bb::InspectDynamicText(registered,noHook)!=
+           bb::DynamicTextStatus::InvalidHeader ||
+       noHook.position()!=3)return Fail(28);
     std::puts("PASS LSB Source bf_read owned cursor: unaligned IDs, 32-bit crossing, bounds, rollback, isolated listeners");
     return 0;
 }
