@@ -12,8 +12,10 @@ invokes the independently authored Phase 484 VFileSystem012 read-only
 soundscape bridge with the game engine's already-acquired
 VFileSystem012 pointer. It reads the real game's
 scripts/soundscapes_manifest.txt and its seven referenced text files
-using the original KeyValues LoadFromFile mode **rb** and pathID
-**GAME**. It parses the manifest and nested soundscapes into owned
+using original KeyValues LoadFromFile mode **rb** with distinct
+path identifiers: **"GAME" for the manifest**, and **nullptr for each
+individual script**. Earlier revisions incorrectly passed "GAME"
+for both; Phase 494 corrected this from SHA-verified original x86 calls. It parses the manifest and nested soundscapes into owned
 C++ objects, with no use of proprietary KeyValues runtime functions.
 
 A source-derived exact count gate requires:
