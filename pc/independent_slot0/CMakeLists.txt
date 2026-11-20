@@ -368,6 +368,15 @@ target_compile_features(sin_client_stats_user_message_hooks_test PRIVATE cxx_std
 add_test(NAME independent_client_stats_user_message_hooks_native
   COMMAND sin_client_stats_user_message_hooks_test)
 
+# No proprietary bitbuf object is cast/invoked. An independent bounded,
+# Source LSB-first cursor inspects recovered 16-bit Stats user-message IDs
+# even when the initial packet cursor is not byte-aligned.
+add_executable(sin_client_stats_bitbuf_cursor_test
+  test_client_stats_bitbuf_cursor.cpp)
+target_compile_features(sin_client_stats_bitbuf_cursor_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_bitbuf_cursor_native
+  COMMAND sin_client_stats_bitbuf_cursor_test)
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
