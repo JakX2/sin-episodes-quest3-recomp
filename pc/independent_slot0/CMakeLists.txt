@@ -589,6 +589,13 @@ target_compile_features(sin_client_soundscape_graph_owned_test PRIVATE cxx_std_1
 add_test(NAME independent_client_soundscape_graph_owned_native
   COMMAND sin_client_soundscape_graph_owned_test)
 
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_soundscape_graph_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_soundscape_graph.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
