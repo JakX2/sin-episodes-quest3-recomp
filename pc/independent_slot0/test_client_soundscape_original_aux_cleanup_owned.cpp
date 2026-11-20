@@ -129,17 +129,41 @@ int main(){
     noData.buffer_b4_present=false;
     owner.Set(noData);
     const auto noFree=owner.Prepare();
-    if(noFree.count!=8 ||noFree.buffer_releases!=0 ||
+    // The actual source skips BOTH pointer-zero stores for
+    // originally null buffers: only counts and mirrors execute.
+    if(noFree.count!=6 ||noFree.buffer_releases!=0 ||
        noFree.handle_releases!=0 ||
        !Is(noFree,0,s::EventKind::ClearCountAc) ||
-       !Is(noFree,1,s::EventKind::ClearBufferA0) ||
-       !Is(noFree,2,s::EventKind::ClearCountA4) ||
-       !Is(noFree,3,s::EventKind::MirrorB0FromA0) ||
-       !Is(noFree,4,s::EventKind::ClearCountC0) ||
-       !Is(noFree,5,s::EventKind::ClearBufferB4) ||
-       !Is(noFree,6,s::EventKind::ClearCountB8) ||
-       !Is(noFree,7,s::EventKind::MirrorC4FromB4))
+       !Is(noFree,1,s::EventKind::ClearCountA4) ||
+       !Is(noFree,2,s::EventKind::MirrorB0FromA0) ||
+       !Is(noFree,3,s::EventKind::ClearCountC0) ||
+       !Is(noFree,4,s::EventKind::ClearCountB8) ||
+       !Is(noFree,5,s::EventKind::MirrorC4FromB4))
         return Fail(10);
+
+    // Asymmetric conditional array paths: the first pointer exists
+    // and the second does not. The source must emit +A0 free/store
+    // but NOT a +B4 free/store.
+    s::State oneBuffer=noData;
+    oneBuffer.buffer_a0_present=true;
+    oneBuffer.buffer_b4_present=false;
+    owner.Set(oneBuffer);
+    const auto oneFree=owner.Prepare();
+    if(oneFree.count!=8 ||oneFree.buffer_releases!=1 ||
+       !Is(oneFree,0,s::EventKind::ClearCountAc) ||
+       !Is(oneFree,1,s::EventKind::FreeBufferA0Via0x2416F940) ||
+       !Is(oneFree,2,s::EventKind::ClearBufferA0) ||
+       !Is(oneFree,3,s::EventKind::ClearCountA4) ||
+       !Is(oneFree,4,s::EventKind::MirrorB0FromA0) ||
+       !Is(oneFree,5,s::EventKind::ClearCountC0) ||
+       !Is(oneFree,6,s::EventKind::ClearCountB8) ||
+       !Is(oneFree,7,s::EventKind::MirrorC4FromB4))
+        return Fail(12);
+    if(owner.SimulateComplete(oneFree)!=s::Result::Ready ||
+       owner.value().buffer_a0_present ||
+       owner.value().buffer_b4_present ||
+       owner.value().count_a4 ||owner.value().count_b8)
+        return Fail(13);
 
     owner.Clear();
     if(owner.value().handle_9c!=s::kInvalid ||
