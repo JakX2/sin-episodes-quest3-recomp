@@ -10,6 +10,7 @@ param(
     [switch]$PlanOnly,
     [switch]$StagedStats,
     [switch]$HookProof,
+    [switch]$SoundscapeCatalog,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
 $ErrorActionPreference='Stop'
@@ -19,6 +20,9 @@ $serverHash='568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650'
 $gate=Join-Path $PSScriptRoot 'Invoke-OwnerFileSystemRetailGate.ps1'
 if ($HookProof -and -not $StagedStats) {
     throw 'HookProof requires StagedStats; do not skip original staged resource prerequisites'
+}
+if ($SoundscapeCatalog -and (-not $HookProof -or -not $StagedStats)) {
+    throw 'SoundscapeCatalog requires -StagedStats -HookProof and the same restored owner read prerequisite'
 }
 $bin=Join-Path $PSScriptRoot 'bin'
 
@@ -149,6 +153,9 @@ if ($PlanOnly) {
         Write-Output 'THIRD TEST: rb/GAME definitions and rt/null layout, independent 66-ID binding'
         if ($HookProof) {
             Write-Output 'HOOK PROOF: three independently owned CUserMessages hook IDs 27:28:5, not dispatch'
+            if ($SoundscapeCatalog) {
+                Write-Output 'SOUNDSCAPE PROOF: optional rb/GAME seven-file 301-definition catalog; no audio or game Init'
+            }
         }
     }
     Write-Output 'RESULTS: new text-only ZIP in extracted package folder'
@@ -255,10 +262,10 @@ try {
         $stagedStarted=$true
         $staged=Join-Path $reports 'staged.txt'
         $stagedRun=Join-Path $reports 'staged-run.txt'
-        Write-Output 'Checking original rb/GAME and rt/null modes, independent 66-stat catalog and optional hook proof.'
+        Write-Output 'Checking original rb/GAME and rt/null modes, independent 66-stat catalog and optional hook/soundscape proof.'
         try {
             $options=@{DisposableGameRoot=$disposable;IndependentBin=$bin;
-                Phase=$(if($HookProof){'Hooks'}else{'Staged'});PriorReadTranscript=$read;TranscriptPath=$staged;
+                Phase=$(if($SoundscapeCatalog){'Soundscape'}elseif($HookProof){'Hooks'}else{'Staged'});PriorReadTranscript=$read;TranscriptPath=$staged;
                 TimeoutSeconds=$TimeoutSeconds;DisposableTestCopyConfirmed=$true}
             & $gate @options *>&1 | Tee-Object -FilePath $stagedRun | Out-Host
         } catch {
@@ -266,7 +273,7 @@ try {
         }
         if (Test-Path -LiteralPath $stagedRun -PathType Leaf) {
             $stagedOk=([IO.File]::ReadAllText($stagedRun)).Contains(
-                $(if($HookProof){'OWNER_ENGINE_FS_GATE_RESULT: HOOKS_DIAGNOSTIC_ONLY_NO_GAME_BOOT'}else{'OWNER_ENGINE_FS_GATE_RESULT: STAGED_DIAGNOSTIC_ONLY_NO_GAME_BOOT'}))
+                $(if($SoundscapeCatalog){'OWNER_ENGINE_FS_GATE_RESULT: SOUNDSCAPE_DIAGNOSTIC_ONLY_NO_GAME_BOOT'}elseif($HookProof){'OWNER_ENGINE_FS_GATE_RESULT: HOOKS_DIAGNOSTIC_ONLY_NO_GAME_BOOT'}else{'OWNER_ENGINE_FS_GATE_RESULT: STAGED_DIAGNOSTIC_ONLY_NO_GAME_BOOT'}))
         }
         Preserve-SessionLogs $staged $reports
     } elseif ($StagedStats) {
@@ -352,7 +359,7 @@ try {
                     $sid=$match.Groups[1].Value
                     $pattern=('^OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS: sin-independent-'+
                         $sid+'-[0-9]+\.log:client:owned-staged-verified-not-engine-init:66:62:8:156:66:7:7$')
-                    $expectedExit=if($HookProof){'OWNER_ENGINE_EXIT_HEX: 0x53494E74'}else{'OWNER_ENGINE_EXIT_HEX: 0x53494E70'}
+                    $expectedExit=if($SoundscapeCatalog){'OWNER_ENGINE_EXIT_HEX: 0x53494E76'}elseif($HookProof){'OWNER_ENGINE_EXIT_HEX: 0x53494E74'}else{'OWNER_ENGINE_EXIT_HEX: 0x53494E70'}
                     $hooksEvidence= (-not $HookProof) -or (
                         @($evidence | Where-Object {
                             $_ -ceq 'OWNER_CLIENT_ENGINE_FS_HOOK_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
@@ -360,9 +367,86 @@ try {
                         @($evidence | Where-Object {
                             $_ -cmatch ('^OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS: sin-independent-'+$sid+'-[0-9]+\.log:client:three-owned-hooks-bound-not-dispatched:27:28:5:3$')
                         }).Count -eq 1)
+                    $soundscapeEvidence=(-not $SoundscapeCatalog) -or (
+                        @($evidence | Where-Object {
+                            $_ -ceq 'OWNER_CLIENT_SOUNDSCAPE_CATALOG_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
+                        }).Count -eq 1 -and
+                        @($evidence | Where-Object {
+                            $_ -cmatch ('^OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS: sin-independent-'+$sid+'-[0-9]+\.log:client:owned-soundscape-catalog-verified-original-files:7:301:242:3
+                        @($evidence | Where-Object {
+                            $_ -cmatch $pattern
+                        }).Count -eq 1 -and
+                        @($evidence | Where-Object {
+                            $_ -ceq 'OWNER_CLIENT_ENGINE_FS_STAGED_PROBE: ENABLED_TERMINAL_DIAGNOSTIC'
+                        }).Count -eq 1) {
+                        $stagedOk=$true
+                        $exitCode=0
+                        Write-Output $(if($SoundscapeCatalog){'ONECLICK_RECOVERED_SOUNDSCAPE_DIAGNOSTIC: ORIGINAL_7_301_242_3_VERIFIED'}elseif($HookProof){'ONECLICK_RECOVERED_HOOK_DIAGNOSTIC: OWNED_27_28_5_VERIFIED'}else{'ONECLICK_RECOVERED_STAGED_DIAGNOSTIC: ORIGINAL_MODES_AND_INDEPENDENT_CATALOG_VERIFIED'})
+                    }
+                }
+            }
+        }
+        $backup1=Join-Path $disposable 'SE1\bin\sin_independent_saved_client.dll'
+        $backup2=Join-Path $disposable 'SE1\bin\sin_independent_saved_server.dll'
+        if (-not $restored -or (Test-Path -LiteralPath $backup1) -or
+            (Test-Path -LiteralPath $backup2) -or
+            -not (Verify-OriginalPair $disposable)) {
+            $cleanup='RETAINED_FOR_MANUAL_RECOVERY: '+$temporary
+            $problems.Add('Temporary copy retained because DLL restoration is not verified')
+        } else {
+            try {
+                Remove-Item -LiteralPath $temporary -Recurse -Force
+                $cleanup='VERIFIED_AND_REMOVED_DISPOSABLE_COPY'
+            } catch {
+                $cleanup='TEMPORARY_COPY_CLEANUP_REFUSED: '+$temporary
+                $problems.Add('Temporary copy cleanup failed: '+$_.Exception.Message)
+            }
+        }
+    } else {
+        $cleanup='NO_TEMPORARY_COPY'
+    }
+    if ($null -ne $reports) {
+        $summary=Join-Path $reports 'SUMMARY.txt'
+        $rows=@(
+            'SiN Episodes 2006 independent filesystem diagnostic'
+            ('Presence: '+$(if($presenceOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED'}))
+            ('Read: '+$(if($readOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED_OR_SKIPPED'}))
+            ('Original-mode staged 66-stat binding: '+$(if($stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($StagedStats){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
+            ('Independent Stats CUserMessages hooks 27:28:5: '+$(if($HookProof -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($HookProof){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
+            ('Original soundscape manifest and owned 7:301:242:3 catalog: '+$(if($SoundscapeCatalog -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($SoundscapeCatalog){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
+            ('Copied original files: '+$copyStatus)
+            ('Temporary game cleanup: '+$cleanup)
+            'No complete normal VClient011::Init or playable map boot is claimed.'
+        )
+        foreach($problem in $problems) {$rows+=('Problem: '+$problem)}
+        [IO.File]::WriteAllLines($summary,[string[]]$rows)
+        $zip=Join-Path $PSScriptRoot ('SiN_FileSystem_Test_Results_'+$stamp+'-'+$id+'.zip')
+        try {
+            Compress-Archive -LiteralPath $reports -DestinationPath $zip -CompressionLevel Optimal
+            Write-Output ('RESULTS_ZIP: '+$zip)
+        } catch {
+            Write-Output ('Unable to create results ZIP. Results folder: '+$reports)
+        }
+        Write-Output ('RESULTS_FOLDER: '+$reports)
+    }
+}
+if ($SoundscapeCatalog -and $stagedOk) {
+    Write-Output 'FINISHED: real-engine read-only soundscape catalog 7:301:242:3 verified. NO audio, real C_SoundscapeSystem Init or game boot.'
+} elseif ($HookProof -and $stagedOk) {
+    Write-Output 'FINISHED: original-mode staged Stats plus three owned user-message hooks verified. NO actual dispatch or game boot.'
+} elseif ($StagedStats -and $stagedOk) {
+    Write-Output 'FINISHED: original-mode staged stats and owned 66-ID binding verified. NOT an engine Init or playable game boot.'
+} elseif (-not $StagedStats -and $readOk) {
+    Write-Output 'FINISHED: both retail filesystem diagnostics passed, NOT a playable game boot.'
+} else {
+    Write-Output 'FINISHED: test incomplete or refused. Share RESULTS_ZIP for analysis.'
+}
+exit $exitCode
+)
+                        }).Count -eq 1)
                     if (@($evidence | Where-Object {
                             $_ -ceq $expectedExit
-                        }).Count -eq 1 -and $hooksEvidence -and
+                        }).Count -eq 1 -and $hooksEvidence -and $soundscapeEvidence -and
                         @($evidence | Where-Object {
                             $_ -cmatch $pattern
                         }).Count -eq 1 -and
