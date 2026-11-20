@@ -124,6 +124,10 @@ if(Python3_Interpreter_FOUND)
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stats_dynamic_lookup.py"
       --self-test)
+  add_test(NAME independent_original_stats_reset_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stats_reset.py"
+      --self-test)
 endif()
 
 # Source SDK 2004-compatible ServerGameEnts001 is now represented as a
@@ -428,6 +432,15 @@ add_executable(sin_client_stats_owned_dynamic_values_test
 target_compile_features(sin_client_stats_owned_dynamic_values_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_owned_dynamic_values_native
   COMMAND sin_client_stats_owned_dynamic_values_test)
+
+# Original SHA-pinned ResetHUD cleanup/rebuild sequence. Pure owned
+# StaticStat/DynamicStat->ResetHUD->update simulation, never original
+# game message dispatch or raw bf_read native pointer ABI.
+add_executable(sin_client_stats_owned_message_runtime_test
+  test_client_stats_owned_message_runtime.cpp)
+target_compile_features(sin_client_stats_owned_message_runtime_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_owned_message_runtime_native
+  COMMAND sin_client_stats_owned_message_runtime_test)
 
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
