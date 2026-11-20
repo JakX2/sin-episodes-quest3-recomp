@@ -503,6 +503,21 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# SHA-authenticated original VClient011 post-AutoGameSystem registration
+# tail callsites: 14 direct + 12 virtual, with 2 explicit failure gates.
+# Only independently injected callbacks; never original pointers.
+add_executable(sin_client_original_init_tail_gates_test
+  test_client_original_init_tail_gates.cpp)
+target_compile_features(sin_client_original_init_tail_gates_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_original_init_tail_gates_native
+  COMMAND sin_client_original_init_tail_gates_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_init_tail_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_client_init_tail_gates.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
