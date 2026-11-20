@@ -30,6 +30,14 @@ BODIES = {
                 "5c79bcb146e65e86d97bd3ff5ec8e6e233fa2394ece7969746fc50838b7e4dc7"),
     "HookMessage":(0x241CFF70,0x241CFFF7,
                    "45f4353a22f774025319241dfd9cdf9b7bf576593c49ea7c4910b304c173a21d"),
+    "DynamicStatInner":(0x241FB370,0x241FB3DD,
+        "1be6f476b75de9316e283a981f74c19aad769a6eb71f66b502cb1f8db9b81d05"),
+    "StaticStatVirtualDispatch":(0x241FE590,0x241FE5AA,
+        "2762b1393e00b1bdd605445065df30ce235659659b10c43b2c7d4cf4610a7add"),
+    "ReadAllocatedString2048":(0x240A5740,0x240A57A4,
+        "98572f529bec42676044be133cf785af654cf5ca310e4c92c2c109b25618189d"),
+    "ReadStringCore":(0x240A5670,0x240A5732,
+        "c1595766fa4c8ec5385662850f068a593df9480b41a3d4301ee2bab4a62ae184"),
 }
 
 def off(va: int) -> int:
@@ -66,6 +74,29 @@ def check_original(data: bytes) -> dict:
         raise ValueError("StaticStat is no longer using 16-bit bf_read entrypoint")
     if rel32_target(data,0x241FB38A)!=0x240A5600:
         raise ValueError("DynamicStat is no longer using 16-bit bf_read entrypoint")
+    # Original DynamicStat message body is NOT merely the 16-bit ID:
+    # its 0x241FB370 helper reads a heap-copy of a NUL-terminated
+    # Source bitbuf string via a bounded 2048-byte stack array, then
+    # routes through the dynamic record's polymorphic method at +0x4c.
+    if rel32_target(data,0x241FB39E)!=0x240A5740:
+        raise ValueError("DynamicStat original string-reader edge changed")
+    if rel32_target(data,0x240A5756)!=0x240A5670:
+        raise ValueError("Original allocated-string helper changed")
+    if data[off(0x240A574C):off(0x240A5751)]!=b"\x68\x00\x08\x00\x00":
+        raise ValueError("Original dynamic text stack input not 2048")
+    if rel32_target(data,0x241FB3B1)!=0x241FFCD0:
+        raise ValueError("DynamicStat record lookup/update helper changed")
+    if data[off(0x241FB3CA):off(0x241FB3CD)]!=b"\xff\x52\x4c":
+        raise ValueError("DynamicStat final type-specific virtual method changed")
+    if rel32_target(data,0x241FB7CC)!=0x241FE590:
+        raise ValueError("StaticStat definition virtual-dispatch helper changed")
+    if data[off(0x241FE5A6):off(0x241FE5A9)]!=b"\xff\x52\x4c":
+        raise ValueError("StaticStat final type-specific virtual method changed")
+    if (data[off(0x241FB7B7):off(0x241FB7BA)]!=b"\x83\xf8\x37" or
+        data[off(0x241FB7BC):off(0x241FB7BF)]!=b"\x83\xf8\x42"):
+        raise ValueError("StaticStat original ID skip band changed")
+    if data[off(0x241FB395):off(0x241FB398)]!=b"\x83\xfb\x37":
+        raise ValueError("DynamicStat original ID class split changed")
     # The target bf_read helper unconditionally requests 16 bits.
     if data[off(0x240A5600):off(0x240A5602)]!=b"\x6a\x10":
         raise ValueError("bf_read stat identifier is not 16-bit")
@@ -102,7 +133,12 @@ def check_original(data: bytes) -> dict:
         "message_hooks":records,
         "first_field":"bf_read ReadUBitLong(16), StaticStat/DynamicStat",
         "reset_hud":"original reinitializes stats-related storage",
-        "payload_values":"not yet decoded/implemented",
+        "payload_values":"per-stat virtual value updates remain unknown",
+        "dynamic_wire_shape":"ReadUBitLong(16) ID then NUL-terminated bitstream string, original buffer 2048",
+        "dynamic_string_helper_va":hex(0x240A5740),
+        "static_virtual_dispatch_va":hex(0x241FE590),
+        "dynamic_virtual_slot_offset":"0x4c",
+        "independent_id_safety":"forbid >=66 although original callbacks allow wider indices",
     }
 
 def self_test() -> None:
@@ -125,6 +161,9 @@ def self_test() -> None:
     assert [(name,idx) for name,_,_,_,_,idx,_ in ENTRIES]==[
         ("StaticStat",27),("DynamicStat",28),("ResetHUD",5)]
     assert len(set(n for n,*_ in ENTRIES))==3
+    assert BODIES["DynamicStatInner"][0]==0x241FB370
+    assert BODIES["ReadAllocatedString2048"][1]==0x240A57A4
+    assert BODIES["ReadStringCore"][0]==0x240A5670
     print("PASS original-free Stats user-message hook audit fixtures")
 
 def main() -> None:

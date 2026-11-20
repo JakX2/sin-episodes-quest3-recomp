@@ -112,6 +112,10 @@ if(Python3_Interpreter_FOUND)
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stats_message_hooks.py"
       --self-test)
+  add_test(NAME independent_original_stat_value_factory_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_stat_value_factory.py"
+      --self-test)
 endif()
 
 # Source SDK 2004-compatible ServerGameEnts001 is now represented as a
@@ -367,6 +371,43 @@ add_executable(sin_client_stats_user_message_hooks_test
 target_compile_features(sin_client_stats_user_message_hooks_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_stats_user_message_hooks_native
   COMMAND sin_client_stats_user_message_hooks_test)
+
+# No proprietary bitbuf object is cast/invoked. An independent bounded,
+# Source LSB-first cursor inspects recovered 16-bit Stats user-message IDs
+# even when the initial packet cursor is not byte-aligned.
+add_executable(sin_client_stats_bitbuf_cursor_test
+  test_client_stats_bitbuf_cursor.cpp)
+target_compile_features(sin_client_stats_bitbuf_cursor_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_bitbuf_cursor_native
+  COMMAND sin_client_stats_bitbuf_cursor_test)
+
+# Original SHA-grounded CStat value-type factory contains 16 cases
+# with different +0x4c virtual-method to reader-slot forwarding
+# routes. Native synthetic test rejects unknown type discriminants.
+add_executable(sin_client_stats_value_factory_test
+  test_client_stats_value_factory_contract.cpp)
+target_compile_features(sin_client_stats_value_factory_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_value_factory_native
+  COMMAND sin_client_stats_value_factory_test)
+# Original CStatReader virtual slots each request one or two known
+# Source bf_read 32-bit primitive fields. The test extracts bounded raw
+# frames and does NOT call the original vtables or change game stats.
+add_executable(sin_client_stats_wire_value_decoder_test
+  test_client_stats_wire_value_decoder.cpp)
+target_compile_features(sin_client_stats_wire_value_decoder_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_wire_value_decoder_native
+  COMMAND sin_client_stats_wire_value_decoder_test)
+# Verify all 66 ID/type associations recovered from the original
+# compiled 12-byte stat registry, plus end-to-end bounded wire reads.
+add_executable(sin_client_stats_original_type_registry_test
+  test_client_stats_original_type_registry.cpp)
+target_compile_features(sin_client_stats_original_type_registry_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_stats_original_type_registry_native
+  COMMAND sin_client_stats_original_type_registry_test)
+
+
+
+
 
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
