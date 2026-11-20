@@ -707,6 +707,22 @@ target_compile_features(sin_client_original_physics_factory_probe_test PRIVATE c
 add_test(NAME independent_client_original_physics_factory_probe_native
   COMMAND sin_client_original_physics_factory_probe_test)
 
+# Original 2006 physics surfaceprops::Init at 0x241927A0,
+# 247-byte SHA-pinned source manifest rb/GAME, then two source
+# scripts rb/nullptr via 0x24191EC0. Native source-free parser
+# and real-call-capable fake-engine VFileSystem012 tests. NEVER
+# invoke original VPhysicsSurfaceProps001 registration slot1.
+add_executable(sin_client_original_surfaceprops_manifest_owned_test
+  test_client_original_surfaceprops_manifest_owned.cpp)
+target_compile_features(sin_client_original_surfaceprops_manifest_owned_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_original_surfaceprops_manifest_owned_native
+  COMMAND sin_client_original_surfaceprops_manifest_owned_test)
+add_executable(sin_client_original_surfaceprops_engine_fs_bridge_test
+  test_client_original_surfaceprops_engine_fs_bridge.cpp)
+target_compile_features(sin_client_original_surfaceprops_engine_fs_bridge_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_original_surfaceprops_engine_fs_bridge_native
+  COMMAND sin_client_original_surfaceprops_engine_fs_bridge_test)
+
 # Original SHA-verified CPerfVisualBenchmark::Init: 22 ordered
 # descriptors inserted through a six-DWORD x86 vector helper.
 # Entirely independently owned, no real engine ConVars or graphics.

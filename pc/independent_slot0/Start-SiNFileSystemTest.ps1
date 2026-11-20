@@ -13,6 +13,7 @@ param(
     [switch]$SoundscapeCatalog,
     [switch]$SoundscapeCvarLookup,
     [switch]$PhysicsFactoryLookup,
+    [switch]$SurfacePropsRead,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
 $ErrorActionPreference='Stop'
@@ -31,6 +32,9 @@ if ($SoundscapeCvarLookup -and -not $SoundscapeCatalog) {
 }
 if ($PhysicsFactoryLookup -and -not $SoundscapeCvarLookup) {
     throw 'PhysicsFactoryLookup requires -SoundscapeCvarLookup and the existing Soundscape, Hooks and StagedStats gates'
+}
+if ($SurfacePropsRead -and -not $PhysicsFactoryLookup) {
+    throw 'SurfacePropsRead requires -PhysicsFactoryLookup and all previous soundscape/CVar stages'
 }
 $bin=Join-Path $PSScriptRoot 'bin'
 
@@ -169,6 +173,9 @@ if ($PlanOnly) {
                 if ($PhysicsFactoryLookup) {
                     Write-Output 'PHYSICS FACTORY LOOKUP: opt-in read-only 2006 VPhysics030/VPhysicsSurfaceProps001/VPhysicsCollision007; no coupling or game Init'
                 }
+                if ($SurfacePropsRead) {
+                    Write-Output 'SURFACEPROPS READ: opt-in read-only original rb/GAME manifest and two rb/nullptr scripts, 93 definitions, no physics registration'
+                }
             }
         }
     }
@@ -286,6 +293,9 @@ try {
             }
             if ($PhysicsFactoryLookup) {
                 $options.ReadOnlyPhysicsFactoryProbe=$true
+            }
+            if ($SurfacePropsRead) {
+                $options.ReadOnlySurfacePropsReadProbe=$true
             }
             & $gate @options *>&1 | Tee-Object -FilePath $stagedRun | Out-Host
         } catch {
@@ -484,6 +494,22 @@ try {
                 }
             }
         }
+        $surfacePropsSummary='NOT_REQUESTED'
+        if ($SurfacePropsRead) {
+            $surfacePropsSummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                $propsPattern='^OWNER_CLIENT_SURFACEPROPS_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:original-surfaceprops-retail-resource-shape-verified|original-surfaceprops-retail-resource-refused|original-surfaceprops-engine-filesystem-invalid):[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3})$'
+                $propsHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $propsPattern})
+                if ($propsHits.Count -eq 1) {
+                    $hit=[regex]::Match($propsHits[0],$propsPattern)
+                    if ($hit.Success) {
+                        $surfacePropsSummary=$hit.Groups[1].Value
+                    }
+                }
+            }
+        }
         $summary=Join-Path $reports 'SUMMARY.txt'
         $rows=@(
             'SiN Episodes 2006 independent filesystem diagnostic'
@@ -495,6 +521,7 @@ try {
             ('Soundscape read/parse stage: '+$soundscapeDetail)
             ('Original soundscape ConVar lookup (read-only): '+$soundscapeCvarSummary)
             ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
+            ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
             ('Copied original files: '+$copyStatus)
             ('Temporary game cleanup: '+$cleanup)
             'No complete normal VClient011::Init or playable map boot is claimed.'

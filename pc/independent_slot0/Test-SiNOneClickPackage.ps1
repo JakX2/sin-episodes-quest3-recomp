@@ -47,6 +47,16 @@ if(-not (($physicsPlan -join '|').Contains(
     'PHYSICS FACTORY LOOKUP: opt-in read-only 2006 VPhysics030/VPhysicsSurfaceProps001/VPhysicsCollision007; no coupling or game Init'))) {
     throw '2006 original physics three-query stage must be explicit and read-only'
 }
+$surfacePropsPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead)
+if(-not (($surfacePropsPlan -join '|').Contains(
+    'SURFACEPROPS READ: opt-in read-only original rb/GAME manifest and two rb/nullptr scripts, 93 definitions, no physics registration'))) {
+    throw 'Original Source 2006 surfaceprops resource stage must be explicit and read-only'
+}
+if(($soundscapePlan -join '|').Contains('SURFACEPROPS READ:') -or
+   ($cvarPlan -join '|').Contains('SURFACEPROPS READ:') -or
+   ($physicsPlan -join '|').Contains('SURFACEPROPS READ:')) {
+    throw 'Physics surfaceprops resource reader accidentally enabled before opt-in'
+}
 if(($soundscapePlan -join '|').Contains('PHYSICS FACTORY LOOKUP:') -or
    ($cvarPlan -join '|').Contains('PHYSICS FACTORY LOOKUP:')) {
     throw 'Physics Factory probe unexpectedly enabled without explicit flag'
@@ -79,6 +89,9 @@ foreach($must in @(
     'ReadOnlySoundscapeCvarLookup',
     'PhysicsFactoryLookup',
     'ReadOnlyPhysicsFactoryProbe',
+    'SurfacePropsRead',
+    'ReadOnlySurfacePropsReadProbe',
+    'Original surfaceprops manifest and scripts (read-only):',
     'Original soundscape ConVar lookup (read-only):',
     'Original physics Factory triple (read-only):',
     'Compress-Archive',
