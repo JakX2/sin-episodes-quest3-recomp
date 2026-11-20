@@ -34,6 +34,14 @@ int main(){
        owner.value().slot2_completed!=0)
         return Fail(2);
     wrong=slot2;
+    wrong.operation=static_cast<v::Operation>(31);
+    if(owner.SimulateComplete(wrong)!=v::Result::Invalid)
+        return Fail(18);
+    wrong=slot2;
+    wrong.source_delete_flag_bit0=true;
+    if(owner.SimulateComplete(wrong)!=v::Result::Invalid)
+        return Fail(19);
+    wrong=slot2;
     wrong.actions[2].original_target^=4;
     if(owner.SimulateComplete(wrong)!=v::Result::Invalid)
         return Fail(3);
@@ -91,7 +99,12 @@ int main(){
     // Delete flag bit0 controls the only source branch where the
     // separately verified helper 0x2416FD60 is entered. Other flag
     // bits do not permit a deallocation.
+    // Reset is a new owned lifetime. An old plan must fail,
+    // even when it had previously shared an initial zero revision.
     owner.Reset();
+    if(owner.value().revision!=4 ||
+       owner.SimulateComplete(slot2)!=v::Result::Stale)
+        return Fail(17);
     destructor=owner.PrepareSlot11(0x100u);
     if(destructor.source_delete_flag_bit0 ||
        destructor.count!=7)return Fail(12);
@@ -109,7 +122,7 @@ int main(){
     if(owner.SimulateComplete(wrong)!=v::Result::Invalid)return Fail(15);
     if(owner.SimulateComplete(destructor)!=v::Result::Applied ||
        !owner.value().storage_deallocated ||
-       owner.value().revision!=1 ||
+       owner.value().revision!=5 ||
        !owner.value().destroyed ||
        owner.value().slot2_completed!=0)return Fail(16);
     std::puts("PASS original 2006 SoundscapeSystem virtual slot2 ordered shutdown-init-tail and slot11 reverse subobject+base deleting dtor with optional bit0 deallocation, stale/forged/duplicate refusing owned model");
