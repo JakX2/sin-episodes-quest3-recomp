@@ -251,6 +251,45 @@ try {
                 }
             }
         }
+        # The 2026-11-20 real owner read proved VFileSystem012 Read but
+        # immediate rollback hit UnauthorizedAccessException on the TEMP
+        # copy's client.dll. Attempt bounded SHA-authenticated recovery
+        # before preserving the clone and asking the owner to do cleanup.
+        if (-not $restored -and $launchStarted) {
+            $repair=Join-Path $PSScriptRoot 'Recover-SiNRetainedTestCopy.ps1'
+            try {
+                $recoveryOutput=@(& $repair -CopyRoot $temporary)
+                foreach($line in $recoveryOutput) {Write-Output $line}
+                $restored=@($recoveryOutput | Where-Object {
+                    $_ -like 'RECOVERY_VERIFIED_ORIGINAL_DLLS:*'
+                }).Count -eq 1
+                if ($restored) {
+                    Write-Output 'ONECLICK_AUTO_RECOVERY: VERIFIED_ORIGINALS'
+                    # Preserve the real filesystem read milestone when
+                    # its initial gate result was masked by an exclusively
+                    # post-exit restoration refusal.
+                    if (-not $readOk -and $presenceOk) {
+                        $sourceTranscript=Join-Path $reports 'read.txt'
+                        if (Test-Path -LiteralPath $sourceTranscript -PathType Leaf) {
+                            $evidence=@([IO.File]::ReadAllLines($sourceTranscript))
+                            $exitSeen=@($evidence | Where-Object {
+                                $_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E6B'
+                            }).Count -eq 1
+                            $readSeen=@($evidence | Where-Object {
+                                $_ -cmatch '^OWNER_CLIENT_ENGINE_FS_READ_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:both-present:parsed-and-verified:62:8:156:66$'
+                            }).Count -eq 1
+                            if ($exitSeen -and $readSeen) {
+                                $readOk=$true
+                                $exitCode=0
+                                Write-Output 'ONECLICK_RECOVERED_READ_DIAGNOSTIC: ORIGINAL_ENGINE_FS_COUNTS_VERIFIED'
+                            }
+                        }
+                    }
+                }
+            } catch {
+                $problems.Add('automatic restoration retry: '+$_.Exception.Message)
+            }
+        }
         $backup1=Join-Path $disposable 'SE1\bin\sin_independent_saved_client.dll'
         $backup2=Join-Path $disposable 'SE1\bin\sin_independent_saved_server.dll'
         if (-not $restored -or (Test-Path -LiteralPath $backup1) -or
