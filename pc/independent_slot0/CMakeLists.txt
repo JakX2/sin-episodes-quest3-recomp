@@ -451,6 +451,24 @@ target_compile_features(sin_client_stats_owned_dispatcher_test PRIVATE cxx_std_1
 add_test(NAME independent_client_stats_owned_dispatcher_native
   COMMAND sin_client_stats_owned_dispatcher_test)
 
+# Original SHA-grounded 24-byte Win32 bf_read candidate and owned-only
+# trusted-storage snapshot boundary. No actual game bf_read* is cast,
+# dereferenced or passed to VClient011::DispatchUserMessage.
+add_executable(sin_client_bf_read_candidate_layout_test
+  test_client_bf_read_candidate_layout.cpp)
+target_compile_features(sin_client_bf_read_candidate_layout_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_bf_read_candidate_layout_native
+  COMMAND sin_client_bf_read_candidate_layout_test)
+
+# Public CI cannot access commercial game DLLs: only synthetic PE-section
+# mapping tests run here. The SHA-pinned full original audit is private.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_bf_read_candidate_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_bf_read_candidate_layout.py"
+      --self-test)
+endif()
+
 add_executable(sin_client_stats_two_stage_test
   test_client_stats_two_stage_init.cpp)
 target_compile_features(sin_client_stats_two_stage_test PRIVATE cxx_std_17)
