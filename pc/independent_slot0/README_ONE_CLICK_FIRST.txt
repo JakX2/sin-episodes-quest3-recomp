@@ -167,3 +167,36 @@ see OWNER_SOUNDSCAPE_RETAIL_GATE_20261120.md.
 
 Dry run, without touching any installed game:
 powershell -NoProfile -STA -ExecutionPolicy Bypass -File .\Start-SiNFileSystemTest.ps1 -GameRoot "C:\synthetic-no-game" -StagedStats -HookProof -SoundscapeCatalog -PlanOnly
+
+PHASE 493: IF THE SOUNDSCAPE STAGE REFUSES (2026-11-20)
+-------------------------------------------------------
+Run RUN_SOUNDSCAPE_CATALOG_TEST.bat from the complete extracted
+Windows GitHub Actions diagnostic artifact, OUTSIDE the installed
+SiN Episodes game. Select your SHA-authenticated original game
+folder when prompted. The tool uses a disposable TEMP copy.
+
+The new Phase 493 diagnostic writes a single bounded failure stage
+to SUMMARY.txt in the generated SiN_FileSystem_Test_Results_*.zip
+when the owner engine reaches the optional soundscape probe:
+
+  Soundscape read/parse stage: resolve-abi / read-manifest /
+  validate-manifest / read-script / script-budget / build-catalog /
+  complete
+
+It also records how many of the seven source script reads were
+attempted and succeeded. Details are available as
+OWNER_CLIENT_SOUNDSCAPE_DETAILS in staged.txt and the raw
+same-session sin-independent-*.log files.
+
+If you see 0x53494E77, send the small results ZIP. There is no
+need to guess which script failed or manually change the original
+installation. If it stops at 0x53494E74 or an earlier code, the new
+soundscape stage was not reached; send the ZIP to identify the
+earlier gate. Do not delete a retained TEMP copy while the
+restoration guard reports uncertainty.
+
+0x53494E76 is a diagnostic success for file reading and the owned
+catalog, NOT successful game startup or actual audio playback.
+At the time this package was authored, that new code had not yet
+been observed in a real owner-run retail process. Original complete
+VClient011::Init remains incomplete.
