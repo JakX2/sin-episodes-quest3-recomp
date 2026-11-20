@@ -20,6 +20,7 @@
 // never invokes the proprietary Source surface-registration interface.
 #include "client_soundscape_manifest_owned.h"
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
