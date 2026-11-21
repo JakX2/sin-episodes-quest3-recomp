@@ -688,6 +688,22 @@ try {
                 }
             }
         }
+        $serverPhysicsSummary='NOT_REQUESTED'
+        if ($ServerPhysicsReadOnly) {
+            $serverPhysicsSummary='NOT_RECORDED'
+            $serverTranscript=Join-Path $reports 'server.txt'
+            if (Test-Path -LiteralPath $serverTranscript -PathType Leaf) {
+                $resourceRegex='^OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:server:(original-server-surfaceprops-(?:two-sources-verified|invalid-filesystem|resource-refused):[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3})$'
+                $hits=@([IO.File]::ReadAllLines($serverTranscript) |
+                    Where-Object {$_ -cmatch $resourceRegex})
+                if($hits.Count -eq 1){
+                    $match=[regex]::Match($hits[0],$resourceRegex)
+                    if($match.Success){
+                        $serverPhysicsSummary=$match.Groups[1].Value
+                    }
+                }
+            }
+        }
         $summary=Join-Path $reports 'SUMMARY.txt'
         $rows=@(
             'SiN Episodes 2006 independent filesystem diagnostic'
@@ -701,6 +717,7 @@ try {
             ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
             ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
             ('Original physics material five-float samples (read-only, no parse): '+$materialSummary)
+            ('Original server physics source resources (read-only): '+$serverPhysicsSummary)
             ('Original physics pre-Parse table snapshot (read-only): '+$preparseSummary)
             ('Original surfaceprops ParseSurfaceData (explicit engine mutation): '+$surfacePropsRegistrationSummary)
             ('Original physics surface count/index readback (SDK2004, opt-in): '+$surfacePropsReadbackSummary)
@@ -720,7 +737,13 @@ try {
         Write-Output ('RESULTS_FOLDER: '+$reports)
     }
 }
-if ($SoundscapeCatalog -and $stagedOk) {
+if ($ServerPhysicsReadOnly) {
+    Write-Output $(if($serverOk){
+        'FINISHED: original server physics Factory and two original surface source files verified, read-only. NOT a game or map boot.'
+    }else{
+        'FINISHED: server physics diagnostics incomplete. Send the text-only ZIP for analysis.'
+    })
+} elseif ($SoundscapeCatalog -and $stagedOk) {
     Write-Output 'FINISHED: real-engine read-only soundscape catalog 7:301:242:3 verified. NO audio, real C_SoundscapeSystem Init or game boot.'
 } elseif ($HookProof -and $stagedOk) {
     Write-Output 'FINISHED: original-mode staged Stats plus three owned user-message hooks verified. NO actual dispatch or game boot.'
