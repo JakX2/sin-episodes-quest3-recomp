@@ -4079,3 +4079,23 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase563: authenticate original 2006 group inline member-handle array,
+# serial identity search, forced eviction and flags broadcast. No binaries in CI.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_handle_array_phase563_tests
+    tests/test_original_grunt_handle_array_phase563.cpp)
+  target_include_directories(sin_original_grunt_handle_array_phase563_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_handle_array_phase563_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_handle_array_phase563_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_handle_array_phase563_tests
+    COMMAND sin_original_grunt_handle_array_phase563_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_handle_array_phase563_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_handle_array_phase563.py"
+        --self-test)
+  endif()
+endif()
