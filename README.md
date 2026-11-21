@@ -10,11 +10,14 @@
 > the later registered-game-system lifecycle, with remaining virtual calls
 > still unresolved. Phase540 additionally verifies four VGUI/HUD bootstrap
 > helper methods (239 bytes) and two mandatory VGUI interface queries.
+> Phase541 newly authenticates 586 bytes in the original VGUI factory-array
+> resolver, with eight independently recovered interface lookups.
 > See [decompilation proof and priority](docs/DECOMPILATION_FIRST_PRIORITY_20261121.md),
 > [server fallback decompilation](research/phases/2026-11-21-original-mobgrunt-combat-fallback-844-decomp.md)
 > [original client Init decompilation](research/phases/2026-11-21-original-client-vclient011-init-interface-decomp.md)
 > [client Init tail decompilation](research/phases/2026-11-21-original-client-init-tail-and-game-system-lifecycle.md)
-> and [client VGUI/HUD bootstrap](research/phases/2026-11-21-original-client-vgui-hud-bootstrap-decomp.md).
+> [client VGUI/HUD bootstrap](research/phases/2026-11-21-original-client-vgui-hud-bootstrap-decomp.md)
+> and [VGUI factory-array resolver](research/phases/2026-11-21-original-client-vgui-factory-array-resolver-decomp.md).
 > These are reverse-engineering artifacts, **not playable replacement DLLs**.
 > The legacy Phase 56 text below describes the starting scaffold.
 

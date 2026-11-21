@@ -79,3 +79,14 @@ The second factory's interface queries are recorded solely as ABI dependencies. 
 The original `VClient011::Init` calls `0x241EDFB0`, which SHA-authenticated original instructions show is a required VGUI startup helper. It requires two original interfaces `VGUI_InputInternal001` and `VGUI_System010` after a `CLIENT`-labeled prerequisite, executes a once-only `CHudTextureHandle` registration path, calls an actual one-instruction `ret` function, then returns the truthiness of a distinct native virtual `+0x04` call with argument `2`. Four complete additional method bodies total **239 original bytes**, separate from the 525 bytes in Phase539. See `research/phases/2026-11-21-original-client-vgui-hud-bootstrap-decomp.md` and its SHA-pinned self-testing verifier.
 
 This decompiles program flow only; it does not implement a VGUI/HUD renderer, physics system, Android runtime or Quest port.
+
+## Phase 541: original client VGUI interface resolver
+The 586-byte 2006 `client.dll` function `0x240010D0` is SHA-authenticated
+against both unchanged original DLL hashes. It independently scans a pointer
+array of `CreateInterface` providers for eight original interface names,
+stores eight native client globals, dispatches a virtual +0x04 on the primary
+VGUI object with original provider array and count, then explicitly requires
+all eight resulting globals. The virtual return is *not* a Boolean success
+gate. Readable C-like decompilation and source-level proofs:
+`research/phases/2026-11-21-original-client-vgui-factory-array-resolver-decomp.md`.
+Full intro-prologue semantics remain unresolved; no new port/runtime work.

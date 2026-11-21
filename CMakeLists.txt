@@ -3645,3 +3645,15 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase541: 2006 original client factory-array VGUI interface resolver.
+# Only synthetic verifier in hosted CTest. Original DLL checks owner-local.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_vgui_factory_resolver_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_vgui_factory_resolver.py"
+        --self-test)
+  endif()
+endif()
