@@ -240,12 +240,12 @@ Phase538 at virtual +0x00 `Init`, has four newly verified complete methods:
 27-byte `0x240FC900` owned-resource cleanup is also verified.
 **Five new complete native methods, 646 unique bytes, 26 direct calls,
 41 instruction witnesses and two original 32-bit conditional jumps**
-pass the strict original owner SHA-pinned verifier.
+pass the strict original owner SHA-pinned verifier. The vtable's native MSVC RTTI identifies its source class as **`CHLClient`**.
 
 The original `0x2433F680` single-byte map-active state is set to one
 during +0x08 and reset to zero at the start of +0x10. Both whole-client
 shutdown and level shutdown reverse-walk a game-system array at object
-`+0x04` of size `+0x10`, call each system's **native virtual +0x34**,
+`+0x04` of size `+0x10`, call each entry's **native virtual +0x34**,
 and clear the logical count. The pre-entity method conditionally issues
 literal `cl_predict 0` if original engine-global +0x14 <=1 OR engine
 virtual +0x148 is nonzero; it issues **`cl_predict 1` only if
