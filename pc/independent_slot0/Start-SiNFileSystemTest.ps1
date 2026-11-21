@@ -530,6 +530,44 @@ try {
                 }
             }
         }
+        # Phase519: cross-check the pre-Parse table snapshot against the
+        # SAME active client-session trace already accepted for the post-Parse
+        # result. Do not trust a freestanding file or another session.
+        $preparseSummary='NOT_REQUESTED'
+        if ($SurfacePropsReadback) {
+            $preparseSummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                $sessionPattern='^OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS: (sin-independent-[0-9a-f]{32}-[0-9]+\.log):client:original-physics-surface-readback-[^\s]+$'
+                $sessionHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $sessionPattern})
+                if ($sessionHits.Count -eq 1) {
+                    $sessionName=[regex]::Match($sessionHits[0],$sessionPattern).Groups[1].Value
+                    $sessionLog=Join-Path $reports $sessionName
+                    if (Test-Path -LiteralPath $sessionLog -PathType Leaf) {
+                        $allTrace=@([IO.File]::ReadAllLines($sessionLog))
+                        $beforeTrace=@($allTrace | Where-Object {
+                            $_ -cmatch '^\[SiN independent\] role=client phase=engine-fs-preparse-'
+                        })
+                        if ($beforeTrace.Count -eq 3 -and
+                            $beforeTrace[0] -ceq '[SiN independent] role=client phase=engine-fs-preparse-entered version=VPhysicsSurfaceProps001:slots2-3:before-parse' -and
+                            $beforeTrace[2] -ceq '[SiN independent] role=client phase=engine-fs-preparse-terminal-stop version=read-only-before-original-surface-parse') {
+                            $baselinePattern='^\[SiN independent\] role=client phase=engine-fs-preparse-result version=(original-physics-surface-readback-(?:invalid-object|missing-count-slot|missing-index-slot|count-invalid|index-invalid|some-unavailable|three-in-range):-?[0-9]{1,6}:-?[0-9]{1,6}:-?[0-9]{1,6}:-?[0-9]{1,6})$'
+                            $baselineMatch=[regex]::Match($beforeTrace[1],$baselinePattern)
+                            $beforeStop=[Array]::IndexOf($allTrace,$beforeTrace[2])
+                            $afterStart=[Array]::FindIndex($allTrace,[Predicate[string]]{
+                                param($line)
+                                $line -cmatch '^\[SiN independent\] role=client phase=engine-fs-registration-result version='
+                            })
+                            if ($baselineMatch.Success -and $beforeStop -ge 0 -and
+                                $afterStart -gt $beforeStop) {
+                                $preparseSummary=$baselineMatch.Groups[1].Value
+                            }
+                        }
+                    }
+                }
+            }
+        }
         $surfacePropsRegistrationSummary='NOT_REQUESTED'
         if ($SurfacePropsRegister) {
             $surfacePropsRegistrationSummary='NOT_RECORDED'
@@ -577,6 +615,7 @@ try {
             ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
             ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
             ('Original surfaceprops ParseSurfaceData (explicit engine mutation): '+$surfacePropsRegistrationSummary)
+            ('Original physics pre-Parse table snapshot (read-only): '+$preparseSummary)
             ('Original physics surface count/index readback (SDK2004, opt-in): '+$surfacePropsReadbackSummary)
             ('Copied original files: '+$copyStatus)
             ('Temporary game cleanup: '+$cleanup)
