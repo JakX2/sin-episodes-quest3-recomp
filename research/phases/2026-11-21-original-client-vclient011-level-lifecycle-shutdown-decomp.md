@@ -15,10 +15,10 @@ These descriptive role labels follow their original vtable order, argument patte
 
 | Vtable byte offset | Complete original client method | Length | Whole-method SHA-256 | Recovered role |
 |---|---|---:|---|---|
-| `+0x04` | `0x240FF3D0` | 204 | `4cab24e5b8920392fdcf69020e709da740e06f2963f01ca2b374a6c3755f92d1` | Whole-client shutdown and reverse game-system callback sequence |
+| `+0x04` | `0x240FF3D0` | 204 | `4cab24e5b8920392fdcf69020e709da740e06f2963f01ca2b374a6c3755f92d1` | Whole-client shutdown and reverse client-owned callback sequence |
 | `+0x08` | `0x240FDB40` | 192 | `28a4824a1a03c8b393e0551448dc062856eeff486cd11391de282e4f09a55511` | Level pre-entity startup, original map state and `cl_predict` command |
 | `+0x0C` | `0x240FDC00` | 21 | `dce3dcce7372b6a641fe7c1bb20a17c1982b3c922ec798c6bcad85b3b4fd34b2` | Level post-entity tail-forwarded initialization |
-| `+0x10` | `0x240FF4A0` | 202 | `e33da70aa7dd66188da6a46dbca45f6cb80ec06afeaea5005a88d714ee43672a` | Guarded level shutdown and reverse system callback sequence |
+| `+0x10` | `0x240FF4A0` | 202 | `e33da70aa7dd66188da6a46dbca45f6cb80ec06afeaea5005a88d714ee43672a` | Guarded level shutdown and reverse client-owned callback sequence |
 | N/A, direct call from +0x04 | `0x240FC900` | 27 | `71721cdd2db6d9210f6b335faca52209973d792a0aa0b802c0c7306241303e88` | Destroy an optional client global via native vptr+0 and clear its pointer |
 
 Important binary boundary: the 192-byte pre-entity method ends exactly at `0x240FDC00`, where the next 21-byte post-entity method starts. **There is no `INT3` padding between them**. The audit checks the exact vtable successor rather than claiming a padded boundary. The 204-byte whole-shutdown method contains `0xCC` as one byte of an embedded **rel32 CALL displacement**; a naive first-`0xCC`-byte scanner falsely truncates that method. The full digest and executable vtable pointers are used instead.
@@ -91,7 +91,7 @@ The **21-byte** native function at `0x240FDC00` is unusually compact:
 
 The last operation is a tail jump, **not** a call followed by a local `ret`; the forwarded virtual's return behavior belongs to the callee. This function has no separate function epilogue.
 
-## `+0x10`: level shutdown order and registered system callbacks
+## `+0x10`: level shutdown order and client-owned callback array
 
 When the shared active-state byte is set, the **202-byte** method performs:
 
@@ -99,9 +99,9 @@ When the shared active-state byte is set, the **202-byte** method performs:
 2. Calls global object `0x24320BB4` virtual `+0x0C`, and original `0x241061E0` on object `0x242FA738`.
 3. Traverses a **global singly linked list** rooted at `0x2433F6F8`. Each node's vtable slot zero is called using that node as `this`, then the next pointer at node `+0x04` is read. The head may be null and terminates the loop. The exact object interface is not established.
 4. Calls helper `0x24156750`, global `0x242F588C` virtual `+0x0C`, global `0x24301268` virtual `+0x08`, helper `0x2417F750` on `0x24373E30`, helper `0x241432C0` on `0x243623D0`, global `0x2431DBEC` virtual `+0x14`, and global `0x2431DE3C` virtual `+0x20`.
-5. Reads the registered game-system count at **`this+0x10`**. For indices `count-1` down to zero, obtains `this+0x04` array element and invokes each original object's virtual **byte `+0x34`**, then writes **`this+0x10 = 0`**. This is the same reverse-registered-game-system callback pattern seen in the whole-client shutdown method.
+5. Reads a client-owned callback-array count at **`this+0x10`**. For indices `count-1` down to zero, obtains `this+0x04` array element and invokes each original object's virtual **byte `+0x34`**, then writes **`this+0x10 = 0`**. This is the same reverse-registered-game-system callback pattern seen in the whole-client shutdown method.
 
-Notably, the original code doesn't free the system-array allocation here; it clears the **logical count**, not the data pointer at `this+0x04`. The exact meaning of virtual +0x34 (e.g., map shutdown versus generic system shutdown) is unproven and must be inferred only after inspecting the registered implementations.
+Notably, the original code does not free the callback-array allocation here; it clears the **logical count**, not the data pointer at `this+0x04`. **This must not be silently equated to Phase539's separate AutoGameSystem array rooted at global `0x242FBFA8`**. The original CHLClient object's runtime address and the full callback-element types are not established. The exact meaning of virtual +0x34 is unresolved.
 
 ## `+0x04`: whole-client shutdown and directly called owned-global destruction
 
@@ -113,19 +113,19 @@ The **204-byte** client vtable +0x04 method at `0x240FF3D0` immediately calls `0
 
 The parent then performs three separate getter calls (`0x241DAB30`, `0x2418D1C0`, `0x241ACF50`) and passes each resulting pointer through **the same global object's native virtual `+0x28`** (global at `0x242FF470`) in their original call order. It follows these with helper calls and distinct virtual dispatches on other globals.
 
-Later, it loops registered systems from `this+0x10` down to zero, calls virtual `+0x34` on each, and sets the system count to 0. Its final ordered native helper calls are `0x241566C0`, `0x24143E80`, `0x241EE0C0`, `0x240FC100`; it zeros original pointer global `0x2433F6D0` and returns.
+Later, it loops this object's callback array from `this+0x10` down to zero, calls virtual `+0x34` on each, and sets the system count to 0. Its final ordered native helper calls are `0x241566C0`, `0x24143E80`, `0x241EE0C0`, `0x240FC100`; it zeros original pointer global `0x2433F6D0` and returns.
 
-**Do not conflate the two reverse system loops:** the whole-client shutdown and level shutdown both call virtual +0x34 but are separately reachable and can invoke the same callback if callers restart the system array between transitions. Neither loop is individually proof of fully registered native game-system shutdown correctness.
+**Do not conflate the reverse callback loops with Phase539's AutoGameSystem registry.** These two CHLClient methods both dispatch virtual +0x34 through their own `this+0x04` array; the separate global game-system list uses a different hardcoded address. Source/alias equivalence has **not** been demonstrated. These callbacks are separately reachable, so they may be executed during both full-client and map shutdown based on caller state. Their concrete meaning remains unresolved.
 
 ## Original-free C++17 reference and verification
 
-`include/sin_compat/original_client_level_lifecycle.hpp` captures only authenticated branch decisions: the shared active-state byte gate, exact `cl_predict` string choice, and reverse-index game-system dispatch order with count reset. The reference never tries to call original 2006 vtable addresses or instantiate original client objects. `tests/test_original_client_level_lifecycle.cpp` covers inactive/active map transitions, all three branch conditions for the original prediction command, zero and nonzero system counts and reversed dispatch order.
+`include/sin_compat/original_client_level_lifecycle.hpp` captures only authenticated branch decisions: the shared active-state byte gate, exact `cl_predict` string choice, and reverse-index CHLClient-owned callback dispatch order with count reset. The reference never tries to call original 2006 vtable addresses or instantiate original client objects. `tests/test_original_client_level_lifecycle.cpp` covers inactive/active map transitions, all three branch conditions for the original prediction command, zero and nonzero system counts and reversed dispatch order.
 
-`research/tools/audit_sin_original_client_level_lifecycle.py --bin-zip /owner/original/bin.zip` checks both original full-DLL SHA identities, **five complete original function SHA256s (646 code bytes), four original vtable pointers, 26 rel32 CALLs, two native near conditional jumps, 41 opcode witnesses and both literal command strings**. `--self-test` mutates synthetic rel32 instruction bytes and rejects incorrect source hashes. The tool prints no proprietary original binary bytes.
+`research/tools/audit_sin_original_client_level_lifecycle.py --bin-zip /owner/original/bin.zip` checks both original full-DLL SHA identities, **five complete original function SHA256s (646 code bytes), four original vtable pointers, original `CHLClient` RTTI, 26 rel32 CALLs, two native near conditional jumps, 41 opcode witnesses and both literal command strings**. `--self-test` mutates synthetic rel32 instruction bytes and rejects incorrect source hashes. The tool prints no proprietary original binary bytes.
 
 ### Next original decompilation dependencies
 
-- The actual registered game-system implementations receiving virtual `+0x34`: this would establish what the callback *means* in both teardown phases.
+- The actual owner and element objects of the `CHLClient+0x04` callback array, especially the targets of virtual `+0x34`; do not equate them to the twelve registered AutoGameSystems without proof.
 - The engine client `+0x148` virtual result and original global `0x242FA458+0x14` source (not implemented, just documented) to understand the unusual `cl_predict` branch.
 - The linked objects under global `0x2433F6F8` and the owner of `0x2433F3F4`.
 - Real client server lifecycle integration remains out of scope until game-specific source-level decompilation is more complete. All Phase549 proof is static original PE32 evidence, not retail-engine test confirmation.
