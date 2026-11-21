@@ -938,6 +938,21 @@ if(Python3_Interpreter_FOUND)
 endif()
 
 
+# Phase523: privately SHA-authenticated original SERVER sound-reference
+# iteration helper 0x2220D9B0. Strictly invented ten-index surface data;
+# no original sound helper, no engine GetString calls or game data.
+add_executable(sin_server_surface_soundrefs_core_test
+  test_server_original_surface_soundrefs_core.cpp)
+target_compile_features(sin_server_surface_soundrefs_core_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_surface_soundrefs_core_native
+  COMMAND sin_server_surface_soundrefs_core_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_server_surface_soundrefs_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_server_surface_soundrefs.py"
+      --self-test)
+endif()
+
 # Phase 521: SHA-backed original SERVER manifest resource read only.
 # Combine the exact original server physics factory name/order with the
 # independently owned VFileSystem012 surface resource bridge. No engine
