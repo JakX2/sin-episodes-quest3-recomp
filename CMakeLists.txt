@@ -3610,3 +3610,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+# Phase538: original 2006 VClient011::Init interface request-order audit.
+# Synthetic-only CTest; SHA-pinned owner-local original PE32 audit is opt-in.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_init_manifest_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_init_interface_manifest.py"
+        --self-test)
+  endif()
+endif()
