@@ -4199,3 +4199,23 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase569: original Grunt navigator +0x28 candidate -> +0x24 active route
+# promotion. Host tests do not include game DLLs or original executable code.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_route_promotion_phase569_tests
+    tests/test_original_grunt_route_promotion_phase569.cpp)
+  target_include_directories(sin_original_grunt_route_promotion_phase569_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_route_promotion_phase569_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_route_promotion_phase569_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_route_promotion_phase569_tests
+    COMMAND sin_original_grunt_route_promotion_phase569_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_route_promotion_phase569_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_route_promotion_phase569.py"
+        --self-test)
+  endif()
+endif()
