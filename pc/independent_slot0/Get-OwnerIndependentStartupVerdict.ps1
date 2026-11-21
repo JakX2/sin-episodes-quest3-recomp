@@ -43,6 +43,7 @@ $engineFsSoundscapeDetailLogs = New-Object System.Collections.Generic.List[strin
 $engineFsSoundscapeCvarLogs = New-Object System.Collections.Generic.List[string]
 $engineFsPhysicsFactoryLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSurfacePropsLogs = New-Object System.Collections.Generic.List[string]
+$engineFsRegistrationLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -141,6 +142,9 @@ foreach ($log in $logs) {
     $surfacePropsStage=0
     $surfacePropsEventCount=0
     $surfacePropsResult=$null
+    $registrationStage=0
+    $registrationEventCount=0
+    $registrationResult=$null
     $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
@@ -685,6 +689,342 @@ foreach ($log in $logs) {
                         $phase -eq 'engine-fs-surfaceprops-terminal-stop' -and
                         $version -eq 'no-physics-surface-registration-no-game-init') {
                         $surfacePropsStage=3
+                    }
+                }
+            } elseif ($soundscapeStage -eq 3 -and
+                $phase -clike 'engine-fs-registration-*') {
+                # Only same-session ordered entry/result/terminal records
+                # after VERIFIED source reads attest parser invocations.
+                $registrationEventCount++
+                if($surfacePropsStage -eq 3 -and
+                   $surfacePropsEventCount -eq 3 -and
+                   $surfacePropsResult -ceq 'original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0' -and
+                   $physicsStage -eq 3 -and
+                   $physicsResult -ceq 'original-physics-three-available:3:3:1') {
+                    if($registrationStage -eq 0 -and
+                       $phase -eq 'engine-fs-registration-entered' -and
+                       $version -eq 'VPhysicsSurfaceProps001:slot1:explicit-opt-in') {
+                        $registrationStage=1
+                    } elseif($registrationStage -eq 1 -and
+                       $phase -eq 'engine-fs-registration-result' -and
+                       $version -cmatch '^(original-surfaceprops-register-(?:no-interface|invalid-filesystem|resources-refused|raw-shape-refused|method-refused|two-calls-returned)):([0-2]):([0-2]):(-?[0-9]{1,11}):(-?[0-9]{1,11})
+                $engineFsSoundscapeLogs.Add(('{0}:client:{1}:{2}' -f
+                    $log.Name,$soundscapeResult,$soundscapeCounts))
+                # Detail is optional for compatibility with old saved
+                # owner traces. Accept it ONLY after this same-session
+                # terminal sequence and exactly one bounded field.
+                if($soundscapeDetailCount -eq 1 -and $null -ne $soundscapeDetail) {
+                    $engineFsSoundscapeDetailLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$soundscapeDetail))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $soundscapeCvarEvents -eq 3 -and
+                   $soundscapeCvarStage -eq 3 -and
+                   $null -ne $soundscapeCvarResult) {
+                    $engineFsSoundscapeCvarLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$soundscapeCvarResult))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $soundscapeCvarEvents -eq 3 -and
+                   $soundscapeCvarStage -eq 3 -and
+                   $physicsEventCount -eq 3 -and
+                   $physicsStage -eq 3 -and
+                   $null -ne $physicsResult) {
+                    $engineFsPhysicsFactoryLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$physicsResult))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $physicsEventCount -eq 3 -and
+                   $physicsStage -eq 3 -and
+                   $surfacePropsEventCount -eq 3 -and
+                   $surfacePropsStage -eq 3 -and
+                   $null -ne $surfacePropsResult) {
+                    $engineFsSurfacePropsLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$surfacePropsResult))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $surfacePropsStage -eq 3 -and
+                   $surfacePropsEventCount -eq 3 -and
+                   $registrationEventCount -eq 3 -and
+                   $registrationStage -eq 3 -and
+                   $null -ne $registrationResult) {
+                    $engineFsRegistrationLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$registrationResult))
+                }
+                $soundscapeStage=4
+            }
+        }
+        if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
+            if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
+            if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
+                $soundResult = $phase
+                $soundCallbacks.Add(("{0}:{1}:{2}" -f $log.Name,$role,$phase))
+            }
+            if ($soundEntered -and $null -ne $soundResult -and $phase -eq 'sound-probe-terminal-stop') {
+                $soundTerminalLogs.Add(("{0}:{1}" -f $log.Name,$soundResult))
+            }
+        }
+        if ($role -eq 'server' -and $soundResult -eq 'sound-connect-succeeded') {
+            if ($phase -eq 'math-tables-initialized' -and $version -eq 'server-scalar') {
+                $eventStage = 1
+                $eventResult = $null
+            } elseif ($eventStage -eq 1 -and $phase -eq 'factory-state-cached' -and $version -eq 'server') {
+                $eventStage = 2
+            } elseif ($eventStage -eq 2 -and $phase -eq 'event-load-entered' -and $version -eq 'resource/gameevents.res') {
+                $eventStage = 3
+            } elseif ($eventStage -eq 3 -and $phase -eq 'event-load-returned' -and
+                $version -cmatch '^resource/gameevents\.res:(-?[0-9]+)$') {
+                $count = 0
+                if ([int]::TryParse($Matches[1],[ref]$count)) {
+                    $eventResult = $count
+                    $eventStage = 4
+                }
+            } elseif ($eventStage -eq 4 -and $phase -eq 'event-probe-terminal-stop' -and $version -eq 'resource/gameevents.res') {
+                $eventTerminalLogs.Add(("{0}:{1}" -f $log.Name,$eventResult))
+                $eventStage = 5
+            }
+        }
+        if ($role -eq 'server' -and $eventStage -eq 4 -and $eventResult -gt 0) {
+            if ($cvarStage -eq 0 -and $phase -eq 'cvar-name-available' -and $version -eq 'dd_log_events') {
+                $cvarStage = 1
+            } elseif ($cvarStage -eq 1 -and $phase -eq 'cvar-register-entered' -and $version -eq 'dd_log_events') {
+                $cvarStage = 2
+            } elseif ($cvarStage -eq 2 -and $phase -eq 'cvar-register-returned' -and $version -eq 'dd_log_events') {
+                $cvarStage = 3
+            } elseif ($cvarStage -eq 3 -and $phase -eq 'cvar-registration-verified' -and $version -eq 'dd_log_events') {
+                $cvarStage = 4
+            } elseif ($phase -eq 'cvar-probe-result') {
+                if (($version -eq 'verified' -and $cvarStage -eq 4) -or
+                    ($version -cin @('invalid-interface','existing-name','invalid-list') -and $cvarStage -eq 0) -or
+                    ($version -eq 'bad-owned-object' -and $cvarStage -in @(1,3)) -or
+                    ($version -cin @('lookup-mismatch','unexpected-relink','override-present') -and $cvarStage -eq 3)) {
+                    $cvarResult = $version
+                    $cvarStage = 5
+                }
+            } elseif ($cvarStage -eq 5 -and $phase -eq 'cvar-probe-terminal-stop' -and $version -eq 'dd_log_events') {
+                $cvarTerminalLogs.Add(("{0}:{1}" -f $log.Name,$cvarResult))
+                $cvarStage = 6
+            }
+        }
+        if ($role -eq 'server' -and $eventStage -eq 4 -and $eventResult -gt 0) {
+            if ($phase -eq 'cvar-batch-preflight-complete' -and $version -eq '24' -and $batchStage -eq 0) {
+                $batchStage = 1
+            } elseif ($batchVerified -lt $batchNames.Count -and $version -ceq $batchNames[$batchVerified]) {
+                if ($phase -eq 'cvar-batch-register-entered' -and $batchStage -eq 1) { $batchStage = 2 }
+                elseif ($phase -eq 'cvar-batch-register-returned' -and $batchStage -eq 2) { $batchStage = 3 }
+                elseif ($phase -eq 'cvar-batch-registration-verified' -and $batchStage -eq 3) {
+                    $batchVerified++
+                    $batchStage = 1
+                }
+            } elseif ($phase -eq 'cvar-batch-result' -and $version -cmatch '^(verified|invalid-interface|existing-name|invalid-list|bad-owned-object|lookup-mismatch|unexpected-relink|override-present):([0-9]+)/24$') {
+                $status = $Matches[1]
+                $count = [int]$Matches[2]
+                if ($count -eq $batchVerified -and ($status -ne 'verified' -or
+                    ($batchStage -eq 1 -and $batchVerified -eq $batchNames.Count))) {
+                    $batchResult = $version
+                    $batchStage = 4
+                }
+            } elseif ($phase -eq 'cvar-batch-terminal-stop' -and $version -eq '24' -and $batchStage -eq 4) {
+                $batchTerminalLogs.Add(("{0}:{1}" -f $log.Name,$batchResult))
+                $batchStage = 5
+            }
+        }
+        if ($phase -eq 'init-entered') { $explicitInitRoles[$role] = $true }
+        # Backward-compatible classification of old traces. Only an actual
+        # Init/DLLInit body can emit these, unlike Shutdown or factory probes.
+        if ($phase -eq 'request' -or $phase -eq 'missing-interface' -or
+            $phase -eq 'missing-factory' -or $phase -eq 'invalid-init-arguments' -or
+            $phase -eq 'sdk2004-preflight-only') { $legacyInitEvents++ }
+        if ($phase -eq 'request') { $requests.Add(("{0}:{1}" -f $role,$version)) }
+        if ($phase -eq 'missing-interface' -or
+            $phase -eq 'missing-factory' -or
+            $phase -eq 'invalid-init-arguments') {
+            $blocker = ("{0}:{1}:{2}" -f $role,$phase,$version)
+            $issues.Add($blocker)
+            if ($null -eq $logFirstBlocker) { $logFirstBlocker = $blocker }
+        }
+    }
+    if ($null -ne $logFirstBlocker) {
+        $blockersByLog.Add(("{0}={1}" -f $log.Name,$logFirstBlocker))
+    }
+}
+Write-Output ("OWNER_INDEPENDENT_TRACE_FILES: {0}" -f $logs.Count)
+Write-Output ("OWNER_INDEPENDENT_ROLES_OBSERVED: {0}" -f ((@('client','server') | Where-Object { $seen.ContainsKey($_) }) -join ','))
+Write-Output ("OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: {0}" -f ((@('client','server') | Where-Object { $explicitInitRoles.ContainsKey($_) }) -join ','))
+Write-Output ("OWNER_INDEPENDENT_FACTORY_REQUESTS: {0}" -f ($requests -join ','))
+Write-Output ("OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: {0}" -f ($factoryResults -join ','))
+if ($unsupportedCallbacks.Count -gt 0) {
+    Write-Output ("OWNER_INDEPENDENT_UNSUPPORTED_CALLBACKS: {0}" -f ($unsupportedCallbacks -join ','))
+}
+if ($soundCallbacks.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
+}
+if($env:SIN_INDEPENDENT_VERDICT_DEBUG -eq '1') {
+    Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_DEBUG: {0}" -f ($soundInitSeenEvents -join ' | '))
+}
+if ($soundSystemInitLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_INIT_RESULTS: {0}" -f ($soundSystemInitLogs -join ','))
+}
+if ($statsAssetProbeLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_STATS_ASSET_PROBE_RESULTS: {0}" -f ($statsAssetProbeLogs -join ','))
+}
+if ($engineFsPresenceLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_ENGINE_FS_PRESENCE_RESULTS: {0}" -f ($engineFsPresenceLogs -join ','))
+}
+if ($engineFsReadLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_ENGINE_FS_READ_RESULTS: {0}" -f ($engineFsReadLogs -join ','))
+}
+if ($engineFsStagedLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_ENGINE_FS_STAGED_RESULTS: {0}" -f ($engineFsStagedLogs -join ','))
+}
+if ($engineFsHooksLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_ENGINE_FS_HOOK_RESULTS: {0}" -f ($engineFsHooksLogs -join ','))
+}
+if ($engineFsSoundscapeLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SOUNDSCAPE_CATALOG_RESULTS: {0}" -f ($engineFsSoundscapeLogs -join ','))
+}
+if ($engineFsSoundscapeDetailLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SOUNDSCAPE_DETAILS: {0}" -f ($engineFsSoundscapeDetailLogs -join ','))
+}
+if ($engineFsSoundscapeCvarLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_RESULTS: {0}" -f ($engineFsSoundscapeCvarLogs -join ','))
+}
+if ($engineFsPhysicsFactoryLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_PHYSICS_FACTORY_RESULTS: {0}" -f ($engineFsPhysicsFactoryLogs -join ','))
+}
+if ($engineFsSurfacePropsLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SURFACEPROPS_RESULTS: {0}" -f ($engineFsSurfacePropsLogs -join ','))
+}
+if ($engineFsRegistrationLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: {0}" -f ($engineFsRegistrationLogs -join ','))
+}
+if ($matSurfaceLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))
+}
+if ($vguiControlsLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_VGUI_CONTROLS_BOOTSTRAP_RESULTS: {0}" -f ($vguiControlsLogs -join ','))
+}
+if ($engineVGuiSlot1Logs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_ENGINE_VGUI_SLOT1_RESULTS: {0}" -f ($engineVGuiSlot1Logs -join ','))
+}
+if ($vguiLayoutLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_VGUI_VTABLE_RESULTS: {0}" -f ($vguiLayoutLogs -join ','))
+}
+if ($vguiLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_VGUI_RESULTS: {0}" -f ($vguiLogs -join ','))
+}
+if ($ownedStartupLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_OWNED_STARTUP_RESULTS: {0}" -f ($ownedStartupLogs -join ','))
+}
+if ($clientCvarTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_CVAR_PROBE_RESULTS: {0}" -f ($clientCvarTerminalLogs -join ','))
+}
+if ($gaussianTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_GAUSSIAN_PROBE_RESULTS: {0}" -f ($gaussianTerminalLogs -join ','))
+}
+if ($clientScreenTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SCREEN_PROBE_RESULTS: {0}" -f ($clientScreenTerminalLogs -join ','))
+}
+if ($clientMaterialTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_MATERIAL_PROBE_RESULTS: {0}" -f ($clientMaterialTerminalLogs -join ','))
+}
+if ($clientSoundTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SOUND_CONNECT_RESULTS: {0}" -f ($clientSoundTerminalLogs -join ','))
+}
+if ($eventTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_EVENT_LOAD_RESULTS: {0}" -f ($eventTerminalLogs -join ','))
+}
+if ($cvarTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_CVAR_PROBE_RESULTS: {0}" -f ($cvarTerminalLogs -join ','))
+}
+if ($batchTerminalLogs.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_CVAR_BATCH_RESULTS: {0}" -f ($batchTerminalLogs -join ','))
+}
+if ($issues.Count -gt 0) {
+    Write-Output ("OWNER_INDEPENDENT_BLOCKERS_BY_LOG: {0}" -f ($blockersByLog -join ','))
+    if ($blockersByLog.Count -eq 1) {
+        Write-Output ("OWNER_INDEPENDENT_FIRST_RECORDED_BLOCKER: {0}" -f $issues[0])
+    } else {
+        Write-Output "OWNER_INDEPENDENT_FIRST_RECORDED_BLOCKER: AMBIGUOUS_ACROSS_PROCESSES"
+    }
+    Write-Output "OWNER_INDEPENDENT_VERDICT: ENGINE_ENTERED_INDEPENDENT_INIT_BUT_REJECTED"
+} elseif ($unsupportedCallbacks.Count -gt 0) {
+    # A terminal callback can occur before the first Init call. It proves
+    # virtual entry and diagnostic termination, not that Init was entered.
+    Write-Output "OWNER_INDEPENDENT_VERDICT: UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF"
+} elseif ($batchTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_BATCH_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($cvarTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($eventTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineFsSoundscapeLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineFsHooksLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_HOOKS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineFsStagedLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_STAGED_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineFsReadLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_READ_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineFsPresenceLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_FS_PRESENCE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($statsAssetProbeLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_STATS_ASSET_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($soundSystemInitLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUND_SYSTEM_INIT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($matSurfaceLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_MAT_SURFACE_QUERY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($vguiControlsLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_VGUI_CONTROLS_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($engineVGuiSlot1Logs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_ENGINE_VGUI_SLOT1_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($vguiLayoutLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_VGUI_VTABLE_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($vguiLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_VGUI_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($ownedStartupLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_OWNED_STARTUP_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($clientCvarTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($gaussianTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_GAUSSIAN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($clientScreenTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SCREEN_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($clientMaterialTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_MATERIAL_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($clientSoundTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($soundTerminalLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: SOUND_CONNECT_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+} elseif ($explicitInitRoles.Count -eq 0 -and $legacyInitEvents -eq 0 -and $factoryResults.Count -gt 0) {
+    # The engine reached CreateInterface, but may have probed optional
+    # names. No claim that a rejection is the fatal retail startup cause.
+    Write-Output "OWNER_INDEPENDENT_VERDICT: GAME_MODULE_FACTORY_ONLY_NO_INIT_EVIDENCE"
+} elseif ($explicitInitRoles.Count -eq 0 -and $legacyInitEvents -eq 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: NO_INDEPENDENT_INIT_EVIDENCE"
+} else {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF"
+}
+# Factory-only observations cannot establish retail Init or boot success.
+# PID-sorted files cannot establish cross-process event chronology.
+# Intentionally no SUCCESS verdict: the current independent DLLs always
+# return failure and do not implement a playable retail engine contract.
+) {
+                        $kind=$Matches[1]
+                        $sourceCount=[int]$Matches[2]
+                        $callCount=[int]$Matches[3]
+                        $valid=($kind -ceq 'original-surfaceprops-register-two-calls-returned' -and
+                                $sourceCount -eq 2 -and $callCount -eq 2) -or
+                               ($kind -cne 'original-surfaceprops-register-two-calls-returned' -and
+                                $callCount -eq 0)
+                        if($valid) {
+                            $registrationResult=$version
+                            $registrationStage=2
+                        }
+                    } elseif($registrationStage -eq 2 -and
+                       $phase -eq 'engine-fs-registration-terminal-stop' -and
+                       $version -eq 'two-engine-call-returns-not-game-init') {
+                        $registrationStage=3
                     }
                 }
             } elseif ($soundscapeStage -eq 3 -and
