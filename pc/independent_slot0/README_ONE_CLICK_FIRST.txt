@@ -4,6 +4,29 @@ SiN EPISODES: EMERGENCE - STANDALONE WINDOWS FILESYSTEM TEST
 THIS ZIP ALREADY INCLUDES THE INDEPENDENT client.dll AND server.dll.
 You do NOT need to copy, replace, extract or configure any DLL yourself.
 
+PHASE 518: CHOOSE THE NEW PHYSICS SHORTCUT, NOT THE OLD BASELINE
+----------------------------------------------------------------
+If ChatGPT asks you to test the original 2006 engine's physics support,
+double-click RUN_PHYSICS_READONLY_TEST.bat to verify the original 3/3
+physics Factory interfaces and both surface-properties resource files.
+This is the safer, READ-ONLY diagnostic.
+
+Only after that passes, double-click RUN_PHYSICS_READBACK_TEST.bat
+to invoke the original physics engine ParseSurfaceData method and
+then read SurfacePropCount / GetSurfaceIndex. You MUST type REGISTER
+to acknowledge that this second experiment MUTATES the engine state
+inside the disposable game copy and might crash.
+
+Both new shortcuts supply all prerequisites automatically, unlike
+RUN_SIN_TEST.bat and RUN_SOUNDSCAPE_CATALOG_TEST.bat without options.
+Choose your original game's directory in the dialog. The launcher
+never replaces DLLs in the installed game. Send the text-only
+SiN_FileSystem_Test_Results_*.zip afterwards.
+
+The 2026-11-21 owner archive with SHA256 starting 92e95539e3f3
+repeated the older baseline, showing NOT_REQUESTED for physics.
+That is NOT a failure of the physics method: it was never invoked.
+
 QUICK START
 -----------
 1. Extract the ENTIRE ZIP to a regular folder such as your Desktop.
