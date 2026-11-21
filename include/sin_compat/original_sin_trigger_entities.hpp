@@ -22,7 +22,7 @@ namespace sin_compat::map_entities {
 enum class TriggerKind : std::uint8_t { DynamicDifficulty, Secret };
 enum class TriggerCode : std::uint8_t {
     Handled, NonPlayer, AlreadyConsumed, UnknownEntity, InvalidActor,
-    InvalidConfig, HostNotLive, HostRefused, EventUnavailable,
+    InvalidConfig, UnknownKey, HostNotLive, HostRefused, EventUnavailable,
     ManagerRefused, RemovalPending, Reentrant
 };
 struct TriggerVec3 { float x=0, y=0, z=0; };
