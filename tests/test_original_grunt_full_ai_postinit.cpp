@@ -38,6 +38,9 @@ struct Host final : ai::IHost, be::IHost {
     bool set_owner_subobject_reference(be::Spec,std::uint32_t,std::uint32_t) override {
         ++behavior_calls;return true;
     }
+    bool bind_sentence_owner(std::uint32_t,std::uint32_t) override {
+        ++behavior_calls;return true;
+    }
     bool initialize_sentence_parameters(std::uint32_t,std::string_view) override {
         ++behavior_calls;return true;
     }
@@ -50,7 +53,7 @@ int main() {
         const auto r=pipeline.initialize();
         assert(r.ok() && r.core.created_count==7);
         assert(r.behavior.registered_count==8);
-        assert(h.ai_calls==13 && h.behavior_calls==25);
+        assert(h.ai_calls==13 && h.behavior_calls==26);
     }
     {
         Host h;h.fail_core=true;
