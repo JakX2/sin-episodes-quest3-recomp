@@ -1976,6 +1976,20 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
   endif()
 endif()
 
+# Phase527 integrated synthetic Source BSP -> independent SourceMapRuntime
+# -> legitimate host-registered SiN trigger behavior -> Spawn descriptor11
+# -> Touch descriptor12. Neither original retail map nor engine is loaded.
+if(BUILD_TESTING)
+  add_executable(sin_original_sin_trigger_bsp_integration_tests
+    tests/test_original_sin_trigger_bsp_integration.cpp)
+  target_link_libraries(sin_original_sin_trigger_bsp_integration_tests PRIVATE
+    sin_source_map_runtime sin_original_gameplay_triggers)
+  target_compile_options(sin_original_sin_trigger_bsp_integration_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_sin_trigger_bsp_integration_tests
+    COMMAND sin_original_sin_trigger_bsp_integration_tests)
+endif()
+
 # Phase 148: exact original CStatAdvisor virtual-slot evaluation recovery.
 # Uses Phase 76 client/server advisor wire contract; no engine ABI.
 if(BUILD_TESTING)
