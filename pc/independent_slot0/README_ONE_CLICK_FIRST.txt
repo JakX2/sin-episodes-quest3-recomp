@@ -312,3 +312,32 @@ game, launch from that extracted folder, select the genuine installed
 game root, and upload the generated small text-only results ZIP.
 No manual DLL copying or retail file changes. The disposable-copy
 launcher verifies original SHA256 fingerprints and restoration.
+
+PHASE 515: PHYSICS SURFACE REGISTRATION (EXPLICIT ENGINE MUTATION)
+-----------------------------------------------------------------
+Owner Windows retail evidence as of 2026-11-21:
+  Original physics Factory 3/3: VERIFIED
+  Original surfaceproperties resource list/shape 2:2:93:71:0: VERIFIED
+  Original ParseSurfaceData virtual method invoked: NOT YET OBSERVED
+  Full original VClient011/ServerGameDLL003 Init: NOT COMPLETED
+
+After the Phase 515 Windows CI and package are verified, a NEW,
+separately opt-in experiment (never implicitly enabled by a read-only
+test) can exercise VPhysicsSurfaceProps001 virtual slot1:
+
+  RUN_SOUNDSCAPE_CATALOG_TEST.bat -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePropsRegister
+
+This EXPERIMENT writes to original engine physics-surface state inside
+the disposable test process, unlike Phases 513 and 514. The original
+engine might reject an ABI assumption or crash. Do not attempt it
+against an installed game directory. The one-click launcher still
+authenticates original DLL SHA256, copies to an isolated temporary
+folder and verifies restore/cleanup before reporting results.
+
+The expected read-only 93/71 resource stage must pass before any native
+parse method is called. Two returned ParseSurfaceData calls mean only
+that both virtual invocations returned, not that physics data is
+registered or a game map can be loaded. The standard diagnostic
+termination status 0x53494E76 is not changed. See
+OWNER_SURFACEPROPS_REGISTRATION_20261121.md for full provenance and
+remaining engine ABI limitations.

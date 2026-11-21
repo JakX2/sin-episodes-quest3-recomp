@@ -14,6 +14,7 @@ param(
     [switch]$SoundscapeCvarLookup,
     [switch]$PhysicsFactoryLookup,
     [switch]$SurfacePropsRead,
+    [switch]$SurfacePropsRegister,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
 $ErrorActionPreference='Stop'
@@ -35,6 +36,9 @@ if ($PhysicsFactoryLookup -and -not $SoundscapeCvarLookup) {
 }
 if ($SurfacePropsRead -and -not $PhysicsFactoryLookup) {
     throw 'SurfacePropsRead requires -PhysicsFactoryLookup and all previous soundscape/CVar stages'
+}
+if ($SurfacePropsRegister -and -not $SurfacePropsRead) {
+    throw 'SurfacePropsRegister requires -SurfacePropsRead and all prior same-session owner gates'
 }
 $bin=Join-Path $PSScriptRoot 'bin'
 
@@ -176,6 +180,9 @@ if ($PlanOnly) {
                 if ($SurfacePropsRead) {
                     Write-Output 'SURFACEPROPS READ: opt-in read-only original rb/GAME manifest and two rb/nullptr scripts, 93 definitions, no physics registration'
                 }
+                if ($SurfacePropsRegister) {
+                    Write-Output 'SURFACEPROPS REGISTER: EXPLICIT ENGINE MUTATION. Calls original VPhysicsSurfaceProps001 slot1 with both resources in disposable copy; still NO game boot.'
+                }
             }
         }
     }
@@ -296,6 +303,9 @@ try {
             }
             if ($SurfacePropsRead) {
                 $options.ReadOnlySurfacePropsReadProbe=$true
+            }
+            if ($SurfacePropsRegister) {
+                $options.ExplicitSurfacePropsRegisterProbe=$true
             }
             & $gate @options *>&1 | Tee-Object -FilePath $stagedRun | Out-Host
         } catch {
@@ -494,6 +504,24 @@ try {
                 }
             }
         }
+        $surfacePropsRegistrationSummary='NOT_REQUESTED'
+        if ($SurfacePropsRegister) {
+            $surfacePropsRegistrationSummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                # Require the session-bound classifier, not a standalone
+                # raw trace, to authenticate prior physics/resource gates.
+                $registrationPattern='^OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:original-surfaceprops-register-no-interface|original-surfaceprops-register-invalid-filesystem|original-surfaceprops-register-resources-refused|original-surfaceprops-register-raw-shape-refused|original-surfaceprops-register-method-refused|original-surfaceprops-register-two-calls-returned):[0-2]:[0-2]:-?[0-9]{1,11}:-?[0-9]{1,11})$'
+                $registrationHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $registrationPattern})
+                if ($registrationHits.Count -eq 1) {
+                    $match=[regex]::Match($registrationHits[0],$registrationPattern)
+                    if ($match.Success) {
+                        $surfacePropsRegistrationSummary=$match.Groups[1].Value
+                    }
+                }
+            }
+        }
         $surfacePropsSummary='NOT_REQUESTED'
         if ($SurfacePropsRead) {
             $surfacePropsSummary='NOT_RECORDED'
@@ -522,6 +550,7 @@ try {
             ('Original soundscape ConVar lookup (read-only): '+$soundscapeCvarSummary)
             ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
             ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
+            ('Original surfaceprops ParseSurfaceData (explicit engine mutation): '+$surfacePropsRegistrationSummary)
             ('Copied original files: '+$copyStatus)
             ('Temporary game cleanup: '+$cleanup)
             'No complete normal VClient011::Init or playable map boot is claimed.'

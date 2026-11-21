@@ -907,3 +907,13 @@ add_executable(sin_client_post_console_pool_test test_client_post_console_pool.c
 target_compile_features(sin_client_post_console_pool_test PRIVATE cxx_std_17)
 target_include_directories(sin_client_post_console_pool_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
 add_test(NAME independent_client_post_console_pool_native COMMAND sin_client_post_console_pool_test)
+
+
+# Phase 515: real MSVC x86 vtable-slot1 surface data handoff ABI.
+# Runs only invented FileSystem and PhysicsSurfaceProps objects in CI;
+# original engine mutation remains an explicit owner-side opt-in.
+add_executable(sin_client_surfaceprops_registration_test
+  test_client_original_surfaceprops_registration.cpp)
+target_compile_features(sin_client_surfaceprops_registration_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_surfaceprops_registration_native
+  COMMAND sin_client_surfaceprops_registration_test)

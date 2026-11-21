@@ -43,6 +43,7 @@ $engineFsSoundscapeDetailLogs = New-Object System.Collections.Generic.List[strin
 $engineFsSoundscapeCvarLogs = New-Object System.Collections.Generic.List[string]
 $engineFsPhysicsFactoryLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSurfacePropsLogs = New-Object System.Collections.Generic.List[string]
+$engineFsRegistrationLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -141,6 +142,9 @@ foreach ($log in $logs) {
     $surfacePropsStage=0
     $surfacePropsEventCount=0
     $surfacePropsResult=$null
+    $registrationStage=0
+    $registrationEventCount=0
+    $registrationResult=$null
     $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
@@ -688,6 +692,40 @@ foreach ($log in $logs) {
                     }
                 }
             } elseif ($soundscapeStage -eq 3 -and
+                $phase -clike 'engine-fs-registration-*') {
+                # Only same-session ordered entry/result/terminal records
+                # after VERIFIED source reads attest parser invocations.
+                $registrationEventCount++
+                if($surfacePropsStage -eq 3 -and
+                   $surfacePropsEventCount -eq 3 -and
+                   $surfacePropsResult -ceq 'original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0' -and
+                   $physicsStage -eq 3 -and
+                   $physicsResult -ceq 'original-physics-three-available:3:3:1') {
+                    if($registrationStage -eq 0 -and
+                       $phase -eq 'engine-fs-registration-entered' -and
+                       $version -eq 'VPhysicsSurfaceProps001:slot1:explicit-opt-in') {
+                        $registrationStage=1
+                    } elseif($registrationStage -eq 1 -and
+                       $phase -eq 'engine-fs-registration-result' -and
+                       $version -cmatch '^(original-surfaceprops-register-(?:no-interface|invalid-filesystem|resources-refused|raw-shape-refused|method-refused|two-calls-returned)):([0-2]):([0-2]):(-?[0-9]{1,11}):(-?[0-9]{1,11})$') {
+                        $kind=$Matches[1]
+                        $sourceCount=[int]$Matches[2]
+                        $callCount=[int]$Matches[3]
+                        $valid=($kind -ceq 'original-surfaceprops-register-two-calls-returned' -and
+                                $sourceCount -eq 2 -and $callCount -eq 2) -or
+                               ($kind -cne 'original-surfaceprops-register-two-calls-returned' -and
+                                $callCount -eq 0)
+                        if($valid) {
+                            $registrationResult=$version
+                            $registrationStage=2
+                        }
+                    } elseif($registrationStage -eq 2 -and
+                       $phase -eq 'engine-fs-registration-terminal-stop' -and
+                       $version -eq 'two-engine-call-returns-not-game-init') {
+                        $registrationStage=3
+                    }
+                }
+            } elseif ($soundscapeStage -eq 3 -and
                 $phase -eq 'engine-fs-soundscape-terminal-stop' -and
                 $version -eq 'owner-original-files-no-game-init') {
                 $engineFsSoundscapeLogs.Add(('{0}:client:{1}:{2}' -f
@@ -723,6 +761,15 @@ foreach ($log in $logs) {
                    $null -ne $surfacePropsResult) {
                     $engineFsSurfacePropsLogs.Add(('{0}:client:{1}' -f
                         $log.Name,$surfacePropsResult))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $surfacePropsStage -eq 3 -and
+                   $surfacePropsEventCount -eq 3 -and
+                   $registrationEventCount -eq 3 -and
+                   $registrationStage -eq 3 -and
+                   $null -ne $registrationResult) {
+                    $engineFsRegistrationLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$registrationResult))
                 }
                 $soundscapeStage=4
             }
@@ -867,6 +914,9 @@ if ($engineFsPhysicsFactoryLogs.Count -gt 0) {
 }
 if ($engineFsSurfacePropsLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SURFACEPROPS_RESULTS: {0}" -f ($engineFsSurfacePropsLogs -join ','))
+}
+if ($engineFsRegistrationLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: {0}" -f ($engineFsRegistrationLogs -join ','))
 }
 if ($matSurfaceLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))
