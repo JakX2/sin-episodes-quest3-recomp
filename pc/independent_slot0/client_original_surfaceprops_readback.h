@@ -7,12 +7,17 @@
 // vslot2 SurfacePropCount, vslot3 GetSurfaceIndex.
 // Original SiN client x86 additionally confirms vslot3 calls through
 // global 0x243743A8: 0x240B7EC5, 0x24191E3C and 0x241A7389.
-// Audit: audit_sin_original_surfaceprops_index_calls.py. Slot2 Count
-// remains SDK-guided only, not directly authenticated in original DLL.
-// Both slot2 and slot3 independent calls are still unobserved on owner
-// retail engine; don't claim actual startup success on synthetic proof.
-// This never modifies physics state, never retains interface pointers, and
-// is opt-in ONLY AFTER the mutating ParseSurfaceData experiment.
+// Audit: audit_sin_original_surfaceprops_index_calls.py.
+// Phase517 additionally confirms original server +0x08 slot2 Count at
+// 0x2220D9BB and original server +0x14 slot5 at 0x2220D9CF.
+// Owner Windows ZIP SHA256 d05b7ca2db2ed6f9e3f1b9d34a65ac94c60eee4d11bb55537c0d4a56fd1e7b81:
+// original physics Count=94 and three indices 0,1,85, all in range.
+// Calls to virtual slots2/3 are now owner-observed, NOT just synthetic.
+// However the initial count before ParseSurfaceData was NOT recorded;
+// phase519 deliberately queries BEFORE and AFTER parse to determine whether
+// engine physics was already populated. This read-only Query never mutates
+// physics state and is usable only when readback has explicit opt-in.
+// No normal game Init or playable map boot is established.
 #if !defined(_MSC_VER) || !defined(_M_IX86)
 #error Source 2004 physics surfaceprops ABI is Win32 MSVC x86
 #endif
