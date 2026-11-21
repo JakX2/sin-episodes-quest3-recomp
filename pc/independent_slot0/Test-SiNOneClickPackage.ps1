@@ -295,6 +295,59 @@ foreach($marker in @(
         throw ('Phase520 owner launcher missing SHA-gated server evidence: '+$marker)
     }
 }
+# Phase521: the original-server manifest reader is READ ONLY and cannot
+# become active without the separate Server-only physics Factory prefix.
+$resourcePlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -ServerPhysicsFactory -ServerSurfacePropsRead)
+foreach($marker in @(
+    'SERVER PHYSICS: 2006 original engine ServerGameDLL003 DLLInit factory order',
+    'SERVER SURFACEPROPS READ: after authentic server physics 3/3',
+    'SERVER SURFACEPROPS EXIT: 0x53494E7A verified / 0x53494E7B refused'
+)) {
+    if(-not (($resourcePlan -join '|').Contains($marker))) {
+        throw ('Phase521 server resource dry-run missing opt-in: '+$marker)
+    }
+}
+$withoutServerPhysics=$false
+try {
+    & $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -ServerSurfacePropsRead *>$null
+} catch {
+    $withoutServerPhysics=$true
+}
+if(-not $withoutServerPhysics) {
+    throw 'Phase521 accepted a server surface resource opt-in without physics'
+}
+$serverResourceBat=Join-Path (Split-Path -Parent $Runner) 'RUN_SERVER_SURFACEPROPS_READONLY_TEST.bat'
+if(-not (Test-Path -LiteralPath $serverResourceBat -PathType Leaf)) {
+    throw 'Phase521 Windows package omitted new read-only server script shortcut'
+}
+$serverResourceBatText=[IO.File]::ReadAllText($serverResourceBat)
+foreach($marker in @(
+    'Start-SiNFileSystemTest.ps1',
+    '-ServerPhysicsFactory -ServerSurfacePropsRead',
+    '-NoProfile -STA -ExecutionPolicy Bypass',
+    'pause',
+    'exit /b %RESULT%'
+)){
+    if(-not $serverResourceBatText.Contains($marker)){
+        throw ('Phase521 resource shortcut missing an entrypoint or guard: '+$marker)
+    }
+}
+if($serverResourceBatText.Contains('-SurfacePropsRegister') -or
+   $serverResourceBatText.Contains('ParseSurfaceData -')){
+    throw 'Server read-only resource shortcut may not request native physics engine mutation'
+}
+$readerText=[IO.File]::ReadAllText($Runner)
+foreach($marker in @(
+    'EnableServerSurfacePropsReadProbe=[bool]$ServerSurfacePropsRead',
+    'original-server-surfaceprops-read-verified:2:2:93:71:0',
+    'OWNER_SERVER_ORIGINAL_SURFACEPROPS_RESULTS:',
+    'Original server surfaceprops manifest and scripts (read-only): ',
+    'OWNER_ENGINE_EXIT_HEX: 0x53494E7A'
+)){
+    if(-not $readerText.Contains($marker)){
+        throw ('Phase521 owner runner missing same-session resource read proof: '+$marker)
+    }
+}
 $soundscapeBatch=Join-Path (Split-Path -Parent $Runner) 'RUN_SOUNDSCAPE_CATALOG_TEST.bat'
 $soundscapeDoc=Join-Path (Split-Path -Parent $Runner) 'OWNER_SOUNDSCAPE_RETAIL_GATE_20261120.md'
 if (-not (Test-Path -LiteralPath $soundscapeBatch -PathType Leaf) -or
