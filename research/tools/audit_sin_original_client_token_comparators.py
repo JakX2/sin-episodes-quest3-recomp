@@ -13,7 +13,9 @@ from audit_sin_original_client_init_interface_manifest import PE32, CLIENT_SHA, 
 METHODS = (
  (0x241D3BF0, 157, '8285c595abf524eb7a9878b5d83e7712974bda42b8662529e22e44e330dacf76', 'bytewise_case_sensitive_less'),
  (0x241D3C90, 113, '91e93b8190e900c957b63eae158d119fefb8bbb56ca07ddfb2cb34231c011087', 'folded_less_wrapper'),
+ (0x241D3D90,  90, '1aad5d8188d4fc85d89d7675e90e73e82d8a9446a75a275931c7fd21325e49e8', 'base_token_table_constructor'),
  (0x241D4640,  81, 'c6166577600eeb70647f1a4266e862e922e7e43f7469b36be2430a9df9568200', 'token_comparator_selector_constructor'),
+ (0x24262410,  28, '6489460c70dc6b55bb8f80c6932e6d70a3b6fc196e45c35b74647475b06027d7', 'static_hud_converter_token_table_initializer'),
  (0x2425F81B,  67, '0905847aa7a5fa843447c965b7ed17f401401ad60bf6be835038df5637559806', 'case_insensitive_locale_dispatch'),
  (0x24261C60,  78, '9208efe7b20ebf707490aa3334dabf576a42bfabcb93356dfd2505c20dd6d658', 'case_insensitive_ascii_fallback'),
  (0x2424C373, 213, '3fe51247dd4b30901765155d0d9057674a228f00e8384ef010a40040d6fa7838', 'char_casefold_provider'),
@@ -22,6 +24,10 @@ METHODS = (
 CALLS = (
  (0x241D3CEE, 0x2425F81B),
  (0x241D4653, 0x241D3D90),
+ (0x241D3DBA, 0x2416F8F0),
+ (0x2426241B, 0x241D4640),
+ (0x24262425, 0x24248788),
+ (0x2400935A, 0x241D4A80),
  (0x2425F838, 0x2424C373),
  (0x2425F844, 0x2424C373),
 )
@@ -43,6 +49,11 @@ ANCHORS = (
  (0x241D3CF8, '85c0', 'folded comparator sign test'),
  (0x241D3CFA, '0f9cc1', 'folded result less than zero'),
  (0x241D4658, '385c2414', 'constructor flag byte test'),
+ (0x241D3D9B, '8906', 'base constructor initializes callback from original first argument'),
+ (0x241D3DC5, 'b8ffff0000', 'base constructor initial sentinel'),
+ (0x24262410, '6a016a006a00', 'HUD token static initializer pushes flag one and two zero arguments'),
+ (0x24262416, 'b99c283224', 'HUD token static initializer owner pointer'),
+ (0x2400934E, 'b99c283224', 'original CHudTextureHandle registration uses same token table'),
  (0x241D4671, '740f', 'zero flag selects ordinal comparator'),
  (0x241D4673, '391e', 'nonzero existing callback guard'),
  (0x241D4677, 'c706903c1d24', 'nonzero flag chooses folded comparator'),
@@ -64,7 +75,9 @@ ANCHORS = (
 BOUNDARY = {
  0x241D3BF0: b'\xcc',
  0x241D3C90: b'\xcc',
+ 0x241D3D90: b'\xcc',
  0x241D4640: b'\xcc',
+ 0x24262410: b'\xcc',
  0x2425F81B: b'\x83\x7c',
  0x24261C60: b'\x56\x8b',
  0x2424C373: b'\x55\x8b',
@@ -107,12 +120,15 @@ def verify(server:bytes, client:bytes):
                       'existing_callback_nonzero':'preserved'},
   'folded_provider':{'locale_ready':'native case-fold helper 0x2424C373',
                      'locale_unavailable':'native ASCII fallback 0x24261C60'},
-  'scope':'Two original compare variants and constructor gating decompiled; dynamic locale settings and real active callback are unverified.'
+  'original_hud_type_converter_token_table':'0x2432289C',
+  'static_initializer':'0x24262410 flag=1, args 0 and 0',
+  'initial_default_hud_token_callback':'0x241D3C90 case-folded',
+  'scope':'Two original modes and HUD converter static default decompiled; runtime overrides, locale settings and full startup execution unverified.'
  }
 
 def selftest():
- assert len(METHODS)==6 and sum(n for _,n,_,_ in METHODS)==709
- assert len(CALLS)==4 and len(JUMPS)==1 and len(ANCHORS)>=25
+ assert len(METHODS)==8 and sum(n for _,n,_,_ in METHODS)==827
+ assert len(CALLS)==8 and len(JUMPS)==1 and len(ANCHORS)>=34
  for opcode in (0xE8,0xE9):
   a,b=0x24001400,0x24006891
   original=bytes([opcode])+struct.pack('<i',b-a-5)
@@ -125,7 +141,7 @@ def selftest():
  try:verify(b'invalid server',b'invalid client')
  except EvidenceError:pass
  else:raise AssertionError('invalid original binary accepted')
- print('PASS 6 authenticated method specifications; corrupted CALL/JMP refusal; SHA gating')
+ print('PASS 8 authenticated method specifications, HUD casefolded static init; corrupted CALL/JMP refusal; SHA gating')
 
 def main():
  ap=argparse.ArgumentParser(description=__doc__)
