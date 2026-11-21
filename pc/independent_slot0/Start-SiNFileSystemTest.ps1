@@ -15,6 +15,7 @@ param(
     [switch]$PhysicsFactoryLookup,
     [switch]$SurfacePropsRead,
     [switch]$SurfacePhysicsDataRead,
+    [switch]$ServerPhysicsReadOnly,
     [switch]$SurfacePropsRegister,
     [switch]$SurfacePropsReadback,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
@@ -47,6 +48,14 @@ if ($SurfacePropsRegister -and -not $SurfacePropsRead) {
 }
 if ($SurfacePropsReadback -and -not $SurfacePropsRegister) {
     throw 'SurfacePropsReadback requires -SurfacePropsRegister and all prior original physics prerequisites'
+}
+# Server-only mode cannot inherit any client-only engine calls.
+if ($ServerPhysicsReadOnly -and ($StagedStats -or $HookProof -or
+    $SoundscapeCatalog -or $SoundscapeCvarLookup -or
+    $PhysicsFactoryLookup -or $SurfacePropsRead -or
+    $SurfacePhysicsDataRead -or $SurfacePropsRegister -or
+    $SurfacePropsReadback)) {
+    throw 'ServerPhysicsReadOnly must be the only selected diagnostic mode'
 }
 $bin=Join-Path $PSScriptRoot 'bin'
 
@@ -200,6 +209,9 @@ if ($PlanOnly) {
             }
         }
     }
+    if ($ServerPhysicsReadOnly) {
+        Write-Output 'SERVER PHYSICS READ: original server VPhysics030/Collision007/SurfaceProps001 and rb/GAME source scripts. READ ONLY. No ParseSurfaceData or DLLInit success.'
+    }
     Write-Output 'RESULTS: new text-only ZIP in extracted package folder'
     Write-Output 'CLEANUP: keep disposable copy if restoration is uncertain'
     return
@@ -214,6 +226,8 @@ $presenceOk=$false
 $readOk=$false
 $stagedOk=$false
 $stagedStarted=$false
+$serverOk=$false
+$serverStarted=$false
 $problems=New-Object 'System.Collections.Generic.List[string]'
 $copyStatus='NOT_STARTED'
 $cleanup='NOT_STARTED'
