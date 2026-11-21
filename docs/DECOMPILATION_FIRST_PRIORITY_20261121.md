@@ -428,3 +428,36 @@ Owner-local verifier:
 `research/tools/audit_sin_original_voice_mask_wire.py`.
 No server message producer or complete multiplayer network protocol
 has been decompiled, and no port integration is implied.
+
+## Phase 555: server-side VoiceMask producer and 9-byte protocol confirmation
+
+The original 2006 `server.dll` user-message table registers
+`VoiceMask` with **exact length 9 bytes** at native
+`0x222CFD10..0x222CFD17`, and `RequestState` with
+**exact length 0 bytes** at native `0x222CFD22..0x222CFD29`.
+Both pass the same registration helper `0x220229A0`. Original voice
+manager update `0x22293CF0` constructs RequestState without a payload,
+clears the pending bit, and emits VoiceMask when tracked recipient
+state changes, writing **two 32-bit masks then one 8-bit Boolean**.
+This matches the independently authenticated client consumer in
+Phase554 **byte-for-byte in field ordering and width**.
+
+Eight new complete original server method SHA checks total **855
+distinct original bytes**, including native begin/finish wrappers,
+8-/32-bit write paths and the 619-byte voice update. The original
+server timer helper adds elapsed native double time and compares
+against an authenticated **0.3-second** threshold before updating.
+Both original DLL SHA fingerprints, twenty selected original
+direct CALL edges, 49 opcode witnesses, and exact user-message literals
+are verified. Previously counted client handler/read wrappers are
+rechecked but **not added to the new byte count**.
+
+Read
+`research/phases/2026-11-21-original-server-voicegame-voicemask-requeststate-producer.md`
+and
+`research/tools/audit_sin_original_server_voice_mask_producer.py`.
+Original-free C++17 test constructs the server message, decodes it
+with the independently authored client Phase554 decoder and verifies
+the registration lengths and request-first ordering. Recipient policy,
+server VoiceGameMgr RTTI, original message transport ABI and any live
+game/Quest boot remain unresolved.
