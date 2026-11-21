@@ -10,7 +10,7 @@ echo Five physical float fields each: friction, elasticity, density,
 echo thickness, dampening. DOES NOT CALL ParseSurfaceData.
 echo Uses authenticated originals in a disposable copy only.
 echo.
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0Start-SiNFileSystemTest.ps1" -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePhysicsDataRead %*
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0Start-SiNFileSystemTest.ps1" -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePhysicsDataRead
 set "RESULT=%ERRORLEVEL%"
 echo.
 if not "%RESULT%"=="0" echo Physics material probe incomplete or refused. Share the text-only ZIP.
