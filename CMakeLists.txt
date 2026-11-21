@@ -176,6 +176,25 @@ if(BUILD_TESTING)
   endif()
 endif()
 
+# Phase531 original SHA-authenticated 3-alias Druglab Grunt constructor.
+# Host-neutral model only: no invented Source native allocations, weapons
+# or AI; MSVC x86/Android code cannot use retail PE32 vtable addresses.
+add_library(sin_original_druglab_grunt_factory STATIC
+  src/original_druglab_grunt_factory.cpp)
+target_include_directories(sin_original_druglab_grunt_factory PUBLIC include)
+target_compile_options(sin_original_druglab_grunt_factory PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_druglab_grunt_factory_tests
+    tests/test_original_druglab_grunt_factory.cpp)
+  target_link_libraries(sin_original_druglab_grunt_factory_tests PRIVATE
+    sin_original_druglab_grunt_factory)
+  target_compile_options(sin_original_druglab_grunt_factory_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_druglab_grunt_factory_tests
+    COMMAND sin_original_druglab_grunt_factory_tests)
+endif()
+
 # Source-derived SiN assault-rifle settings consumed by the existing
 # engine-neutral weapon state machine (not a native Source game entity).
 if(BUILD_TESTING)
