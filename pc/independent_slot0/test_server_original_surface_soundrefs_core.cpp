@@ -40,8 +40,8 @@ int main(){
            order[i].field!=expected[i].field||
            order[i].value!=expected[i].value)return Fail(2);
     }
-    if(s::kSlotsPerSurface!=10 ||
-       s::kFieldNames[0]!=nullptr && std::strcmp(s::kFieldNames[0],"stepleft")!=0)
+    if(s::kSlotsPerSurface!=10 || !s::kFieldNames[0] ||
+       std::strcmp(s::kFieldNames[0],"stepleft")!=0)
        return Fail(3);
     order.clear();
     const auto shortStop=s::Scan(2u,get,[&](unsigned,unsigned,std::uint16_t){
