@@ -1545,6 +1545,54 @@ try {
     if(($missingInitOut -join '|').Contains('OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS:')) {
         throw 'Server physics stage accepted without earlier same-log DLLInit'
     }
+    # Phase520: role-specific server manifest/2-script evidence is
+    # accepted only after the complete 3/3 original server physics
+    # Factory sequence, never from a standalone or forged resource line.
+    $serverResourceSteps=[string[]]@(
+        '[SiN independent] role=server phase=server-surfaceprops-entered version=VFileSystem012:server-original:rb-dual-scope',
+        '[SiN independent] role=server phase=server-surfaceprops-result version=original-server-surfaceprops-two-sources-verified:2:2:93:71:0',
+        '[SiN independent] role=server phase=server-surfaceprops-terminal-stop version=read-only-manifest-no-server-init'
+    )
+    $fullServerRead=[string[]](@($serverPhysicsPrefix)+
+        @($serverPhysicsSteps)+@($serverResourceSteps))
+    [IO.File]::WriteAllLines($server,$fullServerRead)
+    $resourceOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    $expectedServerResource='OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS: '+
+        'sin-independent-'+$session+'-303.log:server:original-server-surfaceprops-two-sources-verified:2:2:93:71:0'
+    if(-not ($resourceOut -ccontains $expectedServerResource) -or
+       -not ($resourceOut -ccontains $expectedServerPhysics)) {
+        throw 'Authenticated original server 2-source read denied after complete Factory 3/3'
+    }
+    # Duplicate result, wrong counts or missing Factory must never
+    # produce the trusted owner surface read classification.
+    foreach($bad in @(
+        [string[]](@($serverPhysicsPrefix)+@($serverResourceSteps)),
+        [string[]](@($serverPhysicsPrefix)+@($serverPhysicsSteps)+@($serverResourceSteps)+@($serverResourceSteps[1])),
+        [string[]](@($serverPhysicsPrefix)+@($serverResourceSteps)+@($serverPhysicsSteps))
+    )) {
+        [IO.File]::WriteAllLines($server,[string[]]$bad)
+        $negative=@(& $Classifier -Session $session -LogDirectory $dir)
+        if(($negative -join '|').Contains('OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS:')) {
+            throw 'Forged/missing/out-of-order server surface read elevated to original proof'
+        }
+    }
+    $badResource=@($serverResourceSteps)
+    $badResource[1]=$badResource[1].Replace('2:2:93:71:0','2:2:93:72:0')
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+
+        @($serverPhysicsSteps)+@($badResource)))
+    $wrongCount=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($wrongCount -join '|').Contains('OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS:')) {
+        throw 'Inconsistent server surface properties count was trusted'
+    }
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+
+        @($serverPhysicsSteps)+@(
+            $serverResourceSteps[0],
+            '[SiN independent] role=server phase=server-surfaceprops-result version=original-server-surfaceprops-resource-refused:2:1:80:62:0',
+            $serverResourceSteps[2])))
+    $refused=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(-not (($refused -join '|').Contains('original-server-surfaceprops-resource-refused:2:1:80:62:0'))) {
+        throw 'Explicit original server resource refusal was not retained'
+    }
     Write-Output "PASS owner session classifier: cross-session, game-module factory entry, native Init blocker, two roles, no false retail boot"
 } finally {
     Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
