@@ -3485,3 +3485,37 @@ if(BUILD_TESTING)
   target_compile_options(sin_independent_particle_pool_tests PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
   add_test(NAME sin_independent_particle_pool_tests COMMAND sin_independent_particle_pool_tests)
 endif()
+
+# Phase534: original MobGrunt native CAI_* factories and post-constructor
+# wiring after Phase533 entity/edict initialization. Metadata-only ABI
+# reference, not a substitute for real engine-owned Source AI classes.
+add_library(sin_original_grunt_ai_subsystems STATIC
+  src/original_grunt_ai_subsystems.cpp)
+target_include_directories(sin_original_grunt_ai_subsystems PUBLIC include)
+target_compile_features(sin_original_grunt_ai_subsystems PUBLIC cxx_std_17)
+target_compile_options(sin_original_grunt_ai_subsystems PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_ai_subsystems_tests
+    tests/test_original_grunt_ai_subsystems.cpp)
+  target_link_libraries(sin_original_grunt_ai_subsystems_tests PRIVATE
+    sin_original_grunt_ai_subsystems)
+  target_compile_options(sin_original_grunt_ai_subsystems_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_ai_subsystems_tests
+    COMMAND sin_original_grunt_ai_subsystems_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_ai_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_ai_subsystems.py"
+        --self-test)
+  endif()
+endif()
+
+# Phase534 integration: exercise original NPC CAI setup inside the existing
+# Phase533 factory -> edict -> postinit -> Spawn synthetic-host contract.
+if(BUILD_TESTING)
+  target_link_libraries(sin_original_druglab_grunt_full_lifecycle_tests PRIVATE
+    sin_original_grunt_ai_subsystems)
+endif()
