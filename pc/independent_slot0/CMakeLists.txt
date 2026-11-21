@@ -926,3 +926,13 @@ add_executable(sin_client_surfaceprops_readback_test
 target_compile_features(sin_client_surfaceprops_readback_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_surfaceprops_readback_native
   COMMAND sin_client_surfaceprops_readback_test)
+
+
+# SHA-witness audit of owner-authenticated 2006 client vslot3 callsites.
+# Public CI exercises only invented bytecode witnesses and mutations.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_surfaceprops_index_calls_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_surfaceprops_index_calls.py"
+      --self-test)
+endif()
