@@ -55,10 +55,15 @@ struct Host final:IOriginalTriggerHost {
     TriggerTouchReport reentry_result{};
     std::vector<std::string> order;
     std::vector<Captured> events;
+    std::vector<std::string> warnings;
     bool is_live(EntityRef e) const override {
         return e==dynamic||e==secret||e==player||e==npc;
     }
     bool is_player(EntityRef e) const override{return e==player;}
+    void report_original_warning(std::string_view msg) override {
+        warnings.emplace_back(msg);
+        order.emplace_back("warn");
+    }
     bool initialize_native_base_trigger(EntityRef e) override {
         assert(e==secret);
         ++base_calls;order.emplace_back("base-spawn");
@@ -324,6 +329,68 @@ int main(){
         assert(f.run_secret_spawn(h.dynamic,{false,0x08u}).code==
                TriggerCode::WrongClass);
         assert(h.base_calls==0&&h.event_calls==0);
+    }
+    // Phase528: the ORIGINAL CTriggerDynamicDifficulty::Spawn never
+    // publishes a dynamic_difficulty event. It first runs CBaseTrigger
+    // Spawn and logs a warning if native field this+0xB4 has bit10.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_dynamic_difficulty",h.dynamic}).ok());
+        auto out=f.run_dynamic_spawn(h.dynamic,{false,0,0x400u});
+        assert(out.handled()&&out.base_initialized&&out.warning_emitted);
+        assert(h.base_calls==1&&h.event_calls==0&&h.remove_calls==0);
+        assert(h.warnings==std::vector<std::string>{
+            "DD Trigger with don't destroy set\n"
+        });
+        assert((h.order==std::vector<std::string>{"base-spawn","warn"}));
+        assert(f.run_dynamic_spawn(h.dynamic,{false,0,0x400u}).code==
+               TriggerCode::AlreadyConsumed);
+        // Dynamic event still happens once, later, ONLY on player Touch.
+        assert(f.touch(h.dynamic,h.player).handled());
+        assert(h.events[0].event==TriggerEventName::DynamicDifficulty);
+        assert(h.remove_calls==1&&h.event_calls==1);
+    }
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_dynamic_difficulty",h.dynamic}).ok());
+        assert(f.run_dynamic_spawn(h.dynamic,{false,0,0x800u}).handled());
+        assert(h.warnings.empty()&&h.base_calls==1);
+    }
+    // Global +0x88 veto requests removal BEFORE base Spawn and warning.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_dynamic_difficulty",h.dynamic}).ok());
+        auto out=f.run_dynamic_spawn(h.dynamic,{true,0,0x400u});
+        assert(out.handled()&&out.removal_queued);
+        assert(h.base_calls==0&&h.warnings.empty()&&h.remove_calls==1);
+        assert(f.touch(h.dynamic,h.player).code==TriggerCode::AlreadyConsumed);
+    }
+    // Conservative failure handling: base initialization rejected;
+    // after host repair, retry original base method once and latch.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_dynamic_difficulty",h.dynamic}).ok());
+        h.base_ok=false;
+        assert(f.run_dynamic_spawn(h.dynamic,{false,0,0x400u}).code==
+               TriggerCode::HostRefused);
+        assert(h.warnings.empty()&&h.base_calls==1);
+        h.base_ok=true;
+        assert(f.run_dynamic_spawn(h.dynamic,{false,0,0x400u}).handled());
+        assert(h.warnings.size()==1&&h.base_calls==2);
+        assert(f.run_secret_spawn(h.dynamic,{false,0,0}).code==
+               TriggerCode::WrongClass);
+    }
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_secret",h.secret}).ok());
+        assert(f.run_dynamic_spawn(h.secret,{false,0,0x400u}).code==
+               TriggerCode::WrongClass);
+        assert(h.warnings.empty()&&h.base_calls==0);
     }
     // Event-manager failure did not stop original trigger removal.
     {
