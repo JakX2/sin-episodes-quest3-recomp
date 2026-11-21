@@ -459,5 +459,46 @@ and
 Original-free C++17 test constructs the server message, decodes it
 with the independently authored client Phase554 decoder and verifies
 the registration lengths and request-first ordering. Recipient policy,
-server VoiceGameMgr RTTI, original message transport ABI and any live
+original message transport ABI and any live
 game/Quest boot remain unresolved.
+
+## Phase 556: original server CVoiceGameMgr command dispatcher and bit state
+
+Original server MSVC RTTI confirms **`CVoiceGameMgr`**, type descriptor
+`0x2251CC9C`, COL `0x224C9A6C`, original vtable `0x22456AD0`
+and deleting destructor `0x22293A50`. The original
+`CVoiceGameMgr::ClientCommand` body at `0x22293B10` (473
+complete bytes) recognizes **`vban`** and **`VModEnable`** with an
+original locale-aware character-folding compare (ASCII fallback).
+The sender index is returned one-based by an engine service virtual
+`+0x48`, then reduced by one and checked against `this+0x0C`.
+
+The `vban` command requires at least one argument, parses the first
+argument with the authentic `%x` format and stores its 32-bit result at
+`0x22590408 + 4*recipient`; further argv words merely print an
+invalid-index diagnostic. The original ignores scan conversion failure.
+`VModEnable` requires one argument, normalizes a numeric string to a
+Boolean, assigns its player's bit in `0x22590400`, and clears the
+same player's pending request bit in `0x22590588`. A separate
+`0x22293AC0` function sets a `RequestState` request bit and zeros
+the recipient's cached audible and banned words, connecting this path
+directly to the prior original server nine-byte VoiceMask sender.
+An invalid sender index is diagnosed and (counterintuitively) returns
+**handled/true**.
+
+Nine new complete original server method SHA checks authenticate
+**890 distinct native instruction bytes**, **15 rel32 CALLs**, one
+tail JMP into the ASCII folded comparator, **50 exact opcode
+witnesses** and seven original literal strings. Two native CRT compare
+methods are directly adjacent to following functions without INT3
+padding. The earlier Phase555 619-byte sender is reauthenticated but
+not counted again.
+
+Auditor: `research/tools/audit_sin_original_server_voice_commands.py`.
+Detailed bounded C-like source with unknown interfaces documented:
+`research/phases/2026-11-21-original-server-voicegame-clientcommand-and-bits.md`.
+Independently authored C++17 tests model original 0-based sender,
+1-based refresh, 32-bit bit masks, first-argument vban and both
+recognized command branches, while explicitly keeping native
+formatting/network ABI and locale settings unresolved. No native
+game boot or Android/Quest port is asserted.
