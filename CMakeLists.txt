@@ -3753,3 +3753,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase547: owner-authenticated client string-token sentinel, capacity and
+# page-space search. Native original PE32 methods are verified only by the
+# opt-in owner-local --bin-zip script. Hosted regression is synthetic-only.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_token_storage_tests
+    tests/test_original_client_token_storage.cpp)
+  target_include_directories(sin_original_client_token_storage_tests PRIVATE include)
+  target_compile_features(sin_original_client_token_storage_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_token_storage_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_token_storage_tests
+    COMMAND sin_original_client_token_storage_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_token_storage_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_token_storage.py"
+        --self-test)
+  endif()
+endif()
