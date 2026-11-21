@@ -4,6 +4,7 @@
 #include "sin_compat/original_druglab_grunt_factory.hpp"
 #include "sin_compat/original_druglab_grunt_entity_init.hpp"
 #include "sin_compat/original_druglab_grunt_spawn.hpp"
+#include "sin_compat/original_grunt_ai_subsystems.hpp"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -16,8 +17,9 @@
 namespace factory=sin_compat::original_druglab_grunt;
 namespace link=sin_compat::original_druglab_grunt::entity_init;
 namespace spawn=sin_compat::original_druglab_grunt::spawn;
+namespace ai=sin_compat::original_druglab_grunt::ai_init;
 
-struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost {
+struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost,ai::IHost {
     std::vector<std::string> steps{};
     std::string_view classname{};
     std::string weapon{};
@@ -25,9 +27,12 @@ struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost {
     std::uintptr_t native_allocation=0x200000;
     bool live_edict=false,ctx_cleared=false;
     bool refuse_edict_attach=false;
+    ai::Stage refuse_ai_stage=ai::Stage::None;
+    std::size_t ai_created=0;
     bool postinit_complete=false;
     bool original_spawn_called=false;
     link::EntityInitializer entity_initializer{*this};
+    ai::Initializer ai_initializer{*this};
 
     std::uintptr_t allocate_native_object(std::size_t bytes) override {
         assert(bytes==0xFD8);steps.emplace_back("allocate");
@@ -93,7 +98,42 @@ struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost {
     bool invoke_real_grunt_postinit_slot3F8() override {
         assert(live_edict&&ctx_cleared);
         steps.emplace_back("npc-postinit3f8");
+        const auto result=ai_initializer.initialize();
+        if(!result.ok())return false;
+        // Phase533 host still stubs original +0x76C/+0x7AC/+0xCC0 stages.
+        steps.emplace_back("npc-other-postinit-synthetic");
         postinit_complete=true;return true;
+    }
+    bool accept_ai(ai::Stage stage,std::string name) {
+        steps.emplace_back(name);
+        return refuse_ai_stage!=stage;
+    }
+    bool construct_and_store(ai::ComponentSpec spec) override {
+        assert(ai_created<ai::kOriginalComponents.size());
+        assert(spec.kind==ai::kOriginalComponents[ai_created].kind);
+        const auto stage=static_cast<ai::Stage>(
+            static_cast<unsigned>(ai::Stage::Senses)+
+            static_cast<unsigned>(ai_created));
+        if(!accept_ai(stage,"ai-"+std::string(spec.rtti_name)))return false;
+        ++ai_created;return true;
+    }
+    bool wire_embedded_owner_relay() override {
+        return accept_ai(ai::Stage::OwnerRelay,"ai-owner-relay");
+    }
+    bool wire_motor_to_local_navigator() override {
+        return accept_ai(ai::Stage::MotorToLocalNavigator,"ai-motor-localnav");
+    }
+    bool wire_local_navigator_to_navigator() override {
+        return accept_ai(ai::Stage::LocalNavigatorToNavigator,"ai-localnav-nav");
+    }
+    bool wire_navigator_shared_context() override {
+        return accept_ai(ai::Stage::NavigatorContext,"ai-nav-context");
+    }
+    bool wire_pathfinder_shared_context() override {
+        return accept_ai(ai::Stage::PathfinderContext,"ai-path-context");
+    }
+    bool wire_tactical_services_shared_context() override {
+        return accept_ai(ai::Stage::TacticalServicesContext,"ai-tact-context");
     }
     bool assign_original_weapon_symbol(std::string_view w) override {
         assert(postinit_complete);
@@ -138,7 +178,7 @@ int main() {
         spawn::SpawnReference spawner(h);
         const auto created=allocator.create(v.classname,0x1234);
         assert(created.ok()&&created.factory_return_view==0x200160);
-        assert(h.postinit_complete&&h.ctx_cleared&&h.live_edict);
+        assert(h.postinit_complete&&h.ctx_cleared&&h.live_edict&&h.ai_created==7);
         const auto spawned=spawner.apply({
             v.classname,"nonmatching_weapon",99,-1,-1,
             false,true,5.9f
@@ -146,15 +186,23 @@ int main() {
         assert(spawned.ok()&&h.original_spawn_called);
         assert(h.weapon==v.expected_weapon&&h.mode==v.mode);
         assert(h.value98==5&&h.value9c==5);
-        assert((h.steps==std::vector<std::string>{
+        std::vector<std::string> expected{
             "allocate","base-constructor","install-vtable",
             "install-vtable","install-vtable","virtual70",
             "intern-classname","attach-networkable-160",
             "clear-global-context","backpointer-edict8",
-            "base-BF30","base-B280","npc-postinit3f8",
+            "base-BF30","base-B280","npc-postinit3f8"
+        };
+        for(const auto& component:ai::kOriginalComponents)
+            expected.emplace_back("ai-"+std::string(component.rtti_name));
+        expected.insert(expected.end(),{
+            "ai-owner-relay","ai-motor-localnav","ai-localnav-nav",
+            "ai-nav-context","ai-path-context","ai-tact-context",
+            "npc-other-postinit-synthetic",
             "weapon","field3b0","spawn-v68","spawn-v1c-v6c",
             "inherited-spawn","field98","field9c"
-        }));
+        });
+        assert(h.steps==expected);
     }
     // Host cannot publish a fake NPC after failed real networkable bind.
     {
@@ -168,5 +216,17 @@ int main() {
         assert(h.steps.back()=="reclaim");
         assert(!h.original_spawn_called&&h.weapon.empty());
     }
-    std::puts("PASS original Grunt factory->base entity edict/owner link->NPC postinit->3 exact weapon Spawn variants, fail-closed (synthetic host)");
+    // A failed original CAI_MoveProbe factory cannot publish a Grunt or spawn its weapon.
+    {
+        SimulatedNativeSource h;
+        h.classname="npc_druglab_grunt_pistol";
+        h.refuse_ai_stage=ai::Stage::MoveProbe;
+        factory::GruntFactoryReference allocator(h);
+        const auto created=allocator.create(h.classname,0x1234);
+        assert(created.code==factory::Code::HostRejected);
+        assert(h.ai_created==3&&!h.postinit_complete);
+        assert(h.steps.back()=="reclaim");
+        assert(!h.original_spawn_called&&h.weapon.empty());
+    }
+    std::puts("PASS original Grunt factory->edict->seven CAI subsystem init->NPC postinit->3 weapon Spawn variants (synthetic host)");
 }
