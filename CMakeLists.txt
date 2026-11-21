@@ -163,6 +163,19 @@ if(BUILD_TESTING)
     COMMAND sin_original_trigger_map_bridge_tests)
 endif()
 
+# Phase530: original retail NPC factory metadata SHA audit. CI uses ONLY
+# original-free synthetic PE-shaped opcodes and SHA refusal; owner's actual
+# unmodified DLL verification is private and never part of public Actions.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_npc_factory_17_registration_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_sin_original_npc_factories.py
+        --self-test)
+  endif()
+endif()
+
 # Source-derived SiN assault-rifle settings consumed by the existing
 # engine-neutral weapon state machine (not a native Source game entity).
 if(BUILD_TESTING)
