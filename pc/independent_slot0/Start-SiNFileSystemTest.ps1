@@ -16,6 +16,8 @@ param(
     [switch]$SurfacePropsRead,
     [switch]$SurfacePropsRegister,
     [switch]$SurfacePropsReadback,
+    [switch]$ServerPhysicsFactory,
+    [string]$ServerMap,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
 $ErrorActionPreference='Stop'
@@ -23,6 +25,23 @@ Set-StrictMode -Version Latest
 $clientHash='6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d'
 $serverHash='568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650'
 $gate=Join-Path $PSScriptRoot 'Invoke-OwnerFileSystemRetailGate.ps1'
+# The server is a separate ORIGINAL 2006 physics Factory diagnostic.
+# It must not inherit client surface-register/readback opt-ins.
+if ($ServerPhysicsFactory -and
+    ($StagedStats -or $HookProof -or $SoundscapeCatalog -or
+     $SoundscapeCvarLookup -or $PhysicsFactoryLookup -or
+     $SurfacePropsRead -or $SurfacePropsRegister -or
+     $SurfacePropsReadback)) {
+    throw 'ServerPhysicsFactory is a separate Server-only test and cannot be combined with client staged/physics options'
+}
+if (-not $ServerPhysicsFactory -and
+    -not [string]::IsNullOrWhiteSpace($ServerMap)) {
+    throw 'ServerMap requires -ServerPhysicsFactory'
+}
+if (-not [string]::IsNullOrWhiteSpace($ServerMap) -and
+    $ServerMap -cnotmatch '^[A-Za-z0-9_]{1,64}$') {
+    throw 'ServerMap must be a plain basename of a retail BSP'
+}
 if ($HookProof -and -not $StagedStats) {
     throw 'HookProof requires StagedStats; do not skip original staged resource prerequisites'
 }
@@ -193,6 +212,11 @@ if ($PlanOnly) {
             }
         }
     }
+    if ($ServerPhysicsFactory) {
+        Write-Output 'SERVER PHYSICS: 2006 original engine ServerGameDLL003 DLLInit factory order VPhysics030/VPhysicsCollision007/VPhysicsSurfaceProps001'
+        Write-Output 'SERVER PHYSICS MAP: validates an existing original SE1/maps/*.bsp; opt-in explicit map basename or first available retail BSP'
+        Write-Output 'SERVER PHYSICS EXIT: 0x53494E78 success / 0x53494E79 missing; read-only, no physics ParseSurfaceData or normal game boot'
+    }
     Write-Output 'RESULTS: new text-only ZIP in extracted package folder'
     Write-Output 'CLEANUP: keep disposable copy if restoration is uncertain'
     return
@@ -207,6 +231,10 @@ $presenceOk=$false
 $readOk=$false
 $stagedOk=$false
 $stagedStarted=$false
+$serverStarted=$false
+$serverOk=$false
+$serverSummary='NOT_REQUESTED'
+$selectedServerMap='NOT_REQUESTED'
 $problems=New-Object 'System.Collections.Generic.List[string]'
 $copyStatus='NOT_STARTED'
 $cleanup='NOT_STARTED'
@@ -218,6 +246,24 @@ try {
         $GameRoot=Select-Game
     }
     $source=Authenticate-Source $GameRoot
+    if ($ServerPhysicsFactory) {
+        # Derive command-line arguments ONLY from a verified retail
+        # basename. Never allow spaces, quotes, semicolons or map paths.
+        $retailMaps=Join-Path $source 'SE1\maps'
+        Require-Plain $retailMaps $true
+        if ([string]::IsNullOrWhiteSpace($ServerMap)) {
+            $candidates=@(Get-ChildItem -LiteralPath $retailMaps -Filter '*.bsp' -File |
+                Where-Object { $_.BaseName -cmatch '^[A-Za-z0-9_]{1,64}$' -and
+                               ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 } |
+                Sort-Object Name)
+            if ($candidates.Count -eq 0) {
+                throw 'No plain retail BSP available to trigger server DLLInit'
+            }
+            $ServerMap=$candidates[0].BaseName
+        }
+        Require-Plain (Join-Path $retailMaps ($ServerMap+'.bsp')) $false
+        $selectedServerMap=$ServerMap
+    }
     Require-Plain $bin $true
     Require-Plain (Join-Path $bin 'client.dll') $false
     Require-Plain (Join-Path $bin 'server.dll') $false
@@ -329,7 +375,60 @@ try {
     } elseif ($StagedStats) {
         Write-Output 'Prior read was not verified; original-mode staged phase skipped.'
     }
-    $exitCode=if($StagedStats){
+    if ($ServerPhysicsFactory -and $readOk) {
+        $serverStarted=$true
+        $server=Join-Path $reports 'server.txt'
+        Write-Output ('Testing original server 2006 physics Factory order in disposable copy, using retail map '+$selectedServerMap)
+        try {
+            # Existing owner launcher authenticates both original DLL SHA,
+            # replaces ONLY the server role inside the disposable clone,
+            # restores and hashes originals, and emits session-bounded ABI
+            # diagnostics. The original client remains unchanged.
+            $serverArgs=@{
+                GameBin=(Join-Path $disposable 'SE1\bin')
+                GameExecutable=(Join-Path $disposable 'SinEpisodes.exe')
+                IndependentBin=$bin
+                ProbeRole='Server'
+                GameArguments=('-console -game SE1 +map '+$selectedServerMap)
+                EnableServerFactoryProbe=$true
+                EnableServerPhysicsFactoryProbe=$true
+                TimeoutSeconds=$TimeoutSeconds
+                DisposableTestCopyConfirmed=$true
+            }
+            & (Join-Path $PSScriptRoot 'Invoke-OwnerIndependentEngineProbe.ps1') @serverArgs *>&1 |
+                Tee-Object -FilePath $server | Out-Host
+        } catch {
+            $problems.Add('server: '+$_.Exception.Message)
+        }
+        if (Test-Path -LiteralPath $server -PathType Leaf) {
+            $serverLines=@([IO.File]::ReadAllLines($server))
+            $sessionHits=@($serverLines | Where-Object {
+                $_ -cmatch '^OWNER_INDEPENDENT_SESSION: [0-9a-f]{32}$'
+            })
+            $serverResults=@($serverLines | Where-Object {
+                $_ -cmatch '^OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:server:original-server-physics-(three-available:3:3:1|missing-(first:1:0:0|second:2:1:0|third:3:2:0|factory:0:0:0))$'
+            })
+            if ($serverResults.Count -eq 1 -and $sessionHits.Count -eq 1) {
+                $idFound=[regex]::Match($sessionHits[0],
+                    '^OWNER_INDEPENDENT_SESSION: ([0-9a-f]{32})$').Groups[1].Value
+                $expectedPrefix=('OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS: sin-independent-'+$idFound+'-')
+                if ($serverResults[0].StartsWith($expectedPrefix,[StringComparison]::Ordinal)) {
+                    $serverSummary=($serverResults[0] -split ':server:',2)[1]
+                }
+            }
+            $serverOk=($serverSummary -ceq 'original-server-physics-three-available:3:3:1' -and
+                @($serverLines | Where-Object {$_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E78'}).Count -eq 1 -and
+                @($serverLines | Where-Object {$_ -ceq 'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE'}).Count -eq 1 -and
+                @($serverLines | Where-Object {$_ -ceq 'OWNER_INDEPENDENT_VERDICT: SERVER_PHYSICS_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'}).Count -eq 1)
+        }
+        Preserve-SessionLogs $server $reports
+    } elseif($ServerPhysicsFactory) {
+        $serverSummary='NOT_RECORDED_PRIOR_READ_FAILED'
+        Write-Output 'Skipping server Factory test because original client filesystem read gate failed.'
+    }
+    $exitCode=if($ServerPhysicsFactory){
+        if($serverOk){0}else{2}
+    }elseif($StagedStats){
         if($stagedOk){0}else{2}
     }else{
         if($readOk){0}else{2}
@@ -344,7 +443,7 @@ try {
         $restored=$true
         if ($launchStarted) {
             $restored=$false
-            $last=if($stagedStarted){'staged.txt'}elseif($presenceOk){'read.txt'}else{'presence.txt'}
+            $last=if($serverStarted){'server.txt'}elseif($stagedStarted){'staged.txt'}elseif($presenceOk){'read.txt'}else{'presence.txt'}
             if ($null -ne $reports) {
                 $transcript=Join-Path $reports $last
                 if (Test-Path -LiteralPath $transcript -PathType Leaf) {
@@ -616,6 +715,8 @@ try {
             ('Soundscape read/parse stage: '+$soundscapeDetail)
             ('Original soundscape ConVar lookup (read-only): '+$soundscapeCvarSummary)
             ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
+            ('Original server physics Factory triple (read-only): '+$serverSummary)
+            ('Original server physics chosen retail map: '+$selectedServerMap)
             ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
             ('Original physics pre-Parse table snapshot (read-only): '+$preparseSummary)
             ('Original surfaceprops ParseSurfaceData (explicit engine mutation): '+$surfacePropsRegistrationSummary)
@@ -636,7 +737,11 @@ try {
         Write-Output ('RESULTS_FOLDER: '+$reports)
     }
 }
-if ($SoundscapeCatalog -and $stagedOk) {
+if ($ServerPhysicsFactory -and $serverOk) {
+    Write-Output 'FINISHED: actual server Factory 3/3 diagnostic observed after same-session DLLInit. NO server game Init or map boot.'
+} elseif ($ServerPhysicsFactory) {
+    Write-Output 'FINISHED: server physics diagnostic incomplete or refused; upload text-only ZIP.'
+} elseif ($SoundscapeCatalog -and $stagedOk) {
     Write-Output 'FINISHED: real-engine read-only soundscape catalog 7:301:242:3 verified. NO audio, real C_SoundscapeSystem Init or game boot.'
 } elseif ($HookProof -and $stagedOk) {
     Write-Output 'FINISHED: original-mode staged Stats plus three owned user-message hooks verified. NO actual dispatch or game boot.'

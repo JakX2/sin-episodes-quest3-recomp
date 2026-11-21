@@ -424,3 +424,28 @@ same guarded, SHA-authenticated disposable-copy workflow. No test is
 required merely to accept the previous 94/0/1/85 observation. Another
 owner test is useful ONLY for resolving whether registration made a
 table change. The app does NOT return VClient011 Init success or boot a map.
+
+PHASE 520: SEPARATE SERVER-SIDE ORIGINAL PHYSICS FACTORY EXPERIMENT
+------------------------------------------------------------------
+The independent original-client Windows ABI can now call physics slots
+1/2/3, and Phase519 adds the pre-Parse snapshot. The *server* 2006
+physics Factory query order is DIFFERENT: VPhysics030,
+VPhysicsCollision007, then VPhysicsSurfaceProps001.
+
+To test the server's original Source engine Factory arguments on an
+updated standalone Windows package, double-click:
+
+  RUN_SERVER_PHYSICS_FACTORY_TEST.bat
+
+The test first checks the familiar original client filesystem gates,
+then uses Server-only staging in a SHA-authenticated disposable copy.
+It keeps the original retail client.dll and replaces ONLY the server.dll
+in that copy. The launcher picks the first valid retail BSP to trigger
+server initialization, or use -ServerMap MAP_NAME to choose a known one.
+No arbitrary map path, shell arguments or non-original BSP is allowed.
+
+It aims for diagnostic 0x53494E78 and the same-session authoritative
+original-server-physics-three-available:3:3:1 report. If absent, the
+summary says NOT_RECORDED, never success. There are no engine mutations
+or full ServerGameDLL003 DLLInit or gameplay claims.
+See OWNER_SERVER_PHYSICS_ONECLICK_20261121.md for detailed safety notes.
