@@ -56,6 +56,7 @@ void test_vtable_and_offsets() {
     static_assert(kNativeGateVirtualOffset==0x848);
     static_assert(kNativeFallbackVirtualOffset==0x844);
     static_assert(kOriginalPositiveScheduleId==0x55);
+    static_assert(kOriginalPositiveScheduleName=="SCHED_GRUNT_MOBILITY_SIDESTEP");
     static_assert(kInPlayerSightsCondition==0x4D);
 }
 void test_all_early_rejections() {
