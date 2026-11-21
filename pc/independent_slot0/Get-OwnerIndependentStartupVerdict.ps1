@@ -1082,8 +1082,7 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
-}
-elseif ($serverPhysicsLogs.Count -gt 0) {
+} elseif ($serverPhysicsLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: SERVER_PHYSICS_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($engineFsSoundscapeLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
