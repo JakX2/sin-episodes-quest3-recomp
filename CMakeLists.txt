@@ -3512,3 +3512,10 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase534 integration: exercise original NPC CAI setup inside the existing
+# Phase533 factory -> edict -> postinit -> Spawn synthetic-host contract.
+if(BUILD_TESTING)
+  target_link_libraries(sin_original_druglab_grunt_full_lifecycle_tests PRIVATE
+    sin_original_grunt_ai_subsystems)
+endif()
