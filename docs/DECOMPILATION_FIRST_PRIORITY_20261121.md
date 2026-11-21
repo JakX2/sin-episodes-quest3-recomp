@@ -62,3 +62,8 @@ and the readable decompilation is in
 **The ports remain later milestones.** Retain the existing Windows/Android
 compile/test work as regression infrastructure, but direct new investigative
 effort toward recovering the original DLL logic and its dependencies first.
+## Phase 538: original client.dll startup decompilation
+
+A second track now authenticates the **complete 1,220-byte original VClient011::Init method** at client VA `0x240FE0E0` and decompiles the first ordered engine-interface acquisition phase. Its **21 required original factory queries** all jump to the same failure return when null. A separate optional-style material stub query and two additional derived interface pointers have distinct null semantics. See `research/phases/2026-11-21-original-client-vclient011-init-interface-decomp.md` and `research/tools/audit_sin_original_client_init_interface_manifest.py`.
+
+As with the server Phase537 report, authenticated whole-method bytes must **not** be misread as a fully decompiled 1,220-byte source function; the post-interface initialization tail remains unresolved. Research priority is now parallel **server gameplay decompilation and original client lifecycle decompilation**, ahead of new port shims.
