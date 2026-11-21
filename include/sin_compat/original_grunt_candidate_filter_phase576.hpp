@@ -160,5 +160,35 @@ inline bool complete_selected_candidate(Output& report,
     return false;  // Actual native candidate-selected return at 0x220718B7.
 }
 
+// The **original caller** 0x22071A20 ignores 0x22071040's AL return.
+// From 0x22071B7D onward it tests an independent candidate entity, possibly
+// resolves a related entity, and compares the result with report+0x1C.
+// This is a source-bounded *caller* decision, not additional new-method bytes.
+struct ICallerAssociationHost {
+    virtual ~ICallerAssociationHost() = default;
+    virtual bool virtual_120(std::uintptr_t candidate) = 0;
+    virtual bool native_22035100(std::uintptr_t candidate) = 0;
+    virtual std::uintptr_t native_22035090_virtual_28(std::uintptr_t candidate) = 0;
+};
+
+inline bool original_caller_clear_matching_association(
+    Output& report, std::uintptr_t candidate,
+    const Vec3& runtime_global_default, ICallerAssociationHost& host) {
+    if (!candidate) return false;  // Original 0x22071B85 branch.
+    bool linked_match = false;
+    // Observe native side effects/call ordering *before* testing direct
+    // equality: 0x22071B8D -> 0x22071B99 -> 0x22071BA4/+0x28.
+    if (host.virtual_120(candidate) && host.native_22035100(candidate)) {
+        linked_match = host.native_22035090_virtual_28(candidate)
+            == report.entity_key;
+    }
+    if (candidate != report.entity_key && !linked_match) return false;
+    report.distance_delta = 0.0f;  // Original report +0x24.
+    report.entity_key = 0;         // Original report +0x1C.
+    report.default_vector = runtime_global_default; // +0x10..+0x18.
+    report.status = 0;             // Original report +0x00.
+    return true;
+}
+
 }  // namespace sin_compat::phase576
 #endif
