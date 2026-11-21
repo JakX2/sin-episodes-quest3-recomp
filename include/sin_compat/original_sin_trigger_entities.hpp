@@ -23,7 +23,7 @@ enum class TriggerKind : std::uint8_t { DynamicDifficulty, Secret };
 enum class TriggerCode : std::uint8_t {
     Handled, NonPlayer, AlreadyConsumed, UnknownEntity, InvalidActor,
     InvalidConfig, UnknownKey, HostNotLive, HostRefused, EventUnavailable,
-    ManagerRefused, RemovalPending, Reentrant
+    ManagerRefused, RemovalPending, WrongClass, Reentrant
 };
 struct TriggerVec3 { float x=0, y=0, z=0; };
 
@@ -52,15 +52,20 @@ struct TriggerEvent {
     std::int32_t decision=0;
     float value=0;
     TriggerVec3 origin{};
-    // The real dynamic event contains descriptor, owner, advisor, name,
-    // decision, value, x/y/z. The secret "game" event contains only
-    // descriptor=12, owner=-1, name.
+    // The dynamic event contains descriptor, owner, advisor, name,
+    // decision, value, x/y/z. Secret touch emits game descriptor=12,
+    // secret Spawn emits game descriptor=11 if native flags+0x120 & 0x08.
+    // Both secret event variants carry owner=-1 and name.
 };
 
 class IOriginalTriggerHost {
 public:
     virtual ~IOriginalTriggerHost()=default;
     virtual bool is_live(EntityRef entity) const=0;
+    // The original CTriggerSecret Spawn invokes CBaseTrigger::Spawn at
+    // 0x221CFCF0 before sending its optional descriptor=11 event.
+    // The portable adapter cannot manufacture this engine lifecycle.
+    virtual bool initialize_native_base_trigger(EntityRef entity)=0;
     // Original touched entity's virtual +0x120 predicate.
     virtual bool is_player(EntityRef entity) const=0;
     // Original 0x22288A40: owner index for the dynamic event, or -1.
@@ -77,6 +82,22 @@ public:
     // Must enqueue a real entity deletion, NOT free an engine allocation
     // synchronously while a Source callback is on the stack.
     virtual bool queue_remove(EntityRef entity)=0;
+};
+
+// Inputs observed by the native host from the original source/global
+// state. Original CTriggerSecret::Spawn 0x221D0790 checks engine-global
+// virtual +0x88 first, then calls base Spawn, and tests this+0x120
+// spawnflags BIT 3 before publishing game event descriptor=11.
+struct TriggerSpawnInput {
+    bool engine_requests_removal=false;
+    std::uint32_t native_flags_0x120=0;
+};
+struct TriggerSpawnReport {
+    TriggerCode code=TriggerCode::UnknownEntity;
+    bool base_initialized=false;
+    bool event_published=false;
+    bool removal_queued=false;
+    bool handled() const noexcept {return code==TriggerCode::Handled;}
 };
 
 struct TriggerTouchReport {
@@ -110,6 +131,11 @@ public:
     // than guessing other SiN properties. This strict parser is NEW code.
     TriggerCode apply_map_keyvalue(EntityRef trigger,std::string_view key,
                                    std::string_view text_value) noexcept;
+    // Distinct native engine Spawn callback, NOT the host entity factory
+    // allocation above. Source-backed CTriggerSecret path ONLY. The
+    // CTriggerDynamicDifficulty Spawn path has additional behaviors.
+    TriggerSpawnReport run_secret_spawn(
+        EntityRef trigger,TriggerSpawnInput input) noexcept;
     TriggerTouchReport touch(EntityRef trigger,EntityRef actor) noexcept;
     TriggerCode retry_pending_remove(EntityRef trigger) noexcept;
     TriggerCode release(EntityRef trigger) noexcept;
@@ -120,6 +146,7 @@ private:
         TriggerConfig config{};
         bool consumed=false;
         bool pending_remove=false;
+        bool native_spawn_completed=false;
     };
     static SpawnResult callback(void* userdata,
                                 const SpawnRequest& request) noexcept;
