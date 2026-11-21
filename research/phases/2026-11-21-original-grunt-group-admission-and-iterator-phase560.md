@@ -31,29 +31,26 @@ The full 64-byte method at `0x22054D40` has an exact native `ret 4` ending just 
 
 ## 1. What `CNPC_MobGrunt` condition helper `0x22054D40` does
 
-The original checks Grunt owner `+0x9C4` for a null linked-group pointer. If absent, **it immediately returns `EAX=1`**. When present, it forwards the input condition selector twice to Grunt virtual vtable byte offset `+0x154`, also presenting context address `owner+0x9CC`. It then gives the virtual result to the original linked-group method `0x220AAEB0`. A zero `AL` from that method produces `EAX=0`; otherwise original `EAX=1`.
+The original checks Grunt owner `+0x9C4` for a null linked-group pointer. If absent, **it immediately returns `EAX=1`**. When present, it places the selector twice and the context address `owner+0x9CC` on the stack, then calls Grunt virtual `+0x154`. Phase564 authenticates that virtual as `0x22044840`, a **no-argument handle-to-entity-pointer resolver** reading owner `+0x8A0`. The resulting **entity pointer** is then passed as a fourth argument to original linked-group method `0x220AAEB0`, whose `ret 16` consumes the entire pending four-argument stack sequence. A zero `AL` from that method produces `EAX=0`; otherwise original `EAX=1`.
 
 In source-bounded pseudocode (virtual prototype and direct stack-argument cleanup require more ABI analysis):
 
 ```cpp
 bool Grunt_condition_22054D40(Grunt* grunt, int condition) {
     if (!grunt->raw_ptr_0x9C4) return true;
-    auto index = grunt->raw_dword_0x9CC; // mutated by native downstream operation
-    int category = original_grunt_virtual_0x154(grunt,
-                                                condition, condition,
-                                                &index);
+    auto* entity_key = original_grunt_virtual_0x154(grunt); // owner handle +0x8A0
     bool allowed = original_group_range_admission_220AAEB0(
-        grunt->raw_ptr_0x9C4, category, condition, condition, &index);
-    // The actual code passes address owner+0x9CC, so writes persist.
+        grunt->raw_ptr_0x9C4, entity_key, condition, condition,
+        &grunt->raw_dword_0x9CC); // native writes persist on the owner
     return allowed;
 }
 ```
 
-This is a **source-style sketch** of the *observed values*, not evidence that the virtual returns the particular semantic type named `category`. It does prove the group gate can reject an otherwise valid NPC condition. The following original Grunt callsites are cross-checked (without counting their bytes again): `0x2235A5B0`, `0x2235A760`, `0x2235A79D`, `0x2235A97C`, `0x2235AA6B`, each targeting `0x22054D40`. The previously authenticated caller arguments include `0x0E` and `0x0C`, but their exact original human-readable condition names remain unresolved.
+**Phase564 correction:** the original virtual returns a serial-checked **entity pointer**, not an integer bitmap category. This is a source-style sketch of the observed native values; method names remain editorial, not recovered declarations. It does prove the group gate can reject an otherwise valid NPC condition. The following original Grunt callsites are cross-checked (without counting their bytes again): `0x2235A5B0`, `0x2235A760`, `0x2235A79D`, `0x2235A97C`, `0x2235AA6B`, each targeting `0x22054D40`. The previously authenticated caller arguments include `0x0E` and `0x0C`, but their exact original human-readable condition names remain unresolved.
 
 ## 2. Original `0x220AAEB0`: the group gate is a reservation algorithm
 
-A separate complete 240-byte native method explains what the above call actually controls. Native method arguments provide a bitmap category, a **signed inclusive index range**, and a pointer to a previously selected index. `0x220AA920` retrieves a category-specific bitmap repeatedly. Its time-dependent cache handling is outside this phase and deliberately not simulated.
+A separate complete 240-byte native method explains what the above call actually controls. Native method arguments include the returned entity pointer as an opaque **bitmap cache key**, a **signed inclusive index range**, and a pointer to a previously selected index. `0x220AA920` retrieves a bitmap for that entity key repeatedly. Its time-dependent cache handling is outside this phase and deliberately not simulated.
 
 The actual successful/failed paths are:
 
@@ -67,17 +64,17 @@ The actual successful/failed paths are:
 A rough readable approximation (the native `0x220AA920` callback/cache, signed-overflow behavior, and error diagnostics are not implemented in this sketch):
 
 ```cpp
-bool ReserveGroupRange(Group* group, int bucket,
+bool ReserveGroupRange(Group* group, Entity* entity_key,
                        int begin, int end, int* chosen) {
     if (*chosen >= begin && *chosen <= end) return true;
     for (int i = begin; i <= end; ++i) {
-        if (!group->bitset(bucket).test(i)) {
+        if (!group->bitset_for_entity(entity_key).test(i)) {
             if (*chosen != -1) {
-                if (!group->bitset(bucket).test(*chosen))
+                if (!group->bitset_for_entity(entity_key).test(*chosen))
                     original_diagnostic();
-                group->bitset(bucket).clear(*chosen);
+                group->bitset_for_entity(entity_key).clear(*chosen);
             }
-            group->bitset(bucket).set(i);
+            group->bitset_for_entity(entity_key).set(i);
             *chosen = i;
             return true;
         }
