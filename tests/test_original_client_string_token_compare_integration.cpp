@@ -33,5 +33,6 @@ int main() {
     // The original's constructor-mode flag is independent of this test data;
     // the test proves callback choice has observable lookup semantics.
     assert(cmp::constructor_selection(true)==cmp::ComparatorKind::CaseFolded);
+    assert(cmp::kOriginalHudConverterInitialComparator==cmp::ComparatorKind::CaseFolded);
     std::puts("PASS original-free token tree callback modes and case-sensitive/folded lookup distinction");
 }
