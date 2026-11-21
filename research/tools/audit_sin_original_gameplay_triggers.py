@@ -118,6 +118,26 @@ def verify_secret_spawn_control(at):
         raise EvidenceRefused("CTriggerSecret::Spawn descriptor11 changed")
     return len(edges)
 
+def verify_dynamic_spawn_control(at,read_text):
+    """Fully SHA-pinned dynamic Spawn, then separate original flag warnings."""
+    edges=((0x221D0756,0x22286BF0),
+           (0x221D0762,0x221CFCF0))
+    for site,target in edges:
+        code=at(site,5)
+        if len(code)!=5 or code[0]!=0xE8 or (
+            site+5+struct.unpack_from("<i",code,1)[0])!=target:
+            raise EvidenceRefused("CTriggerDynamicDifficulty Spawn edge changed")
+    if (at(0x221D0767,2)!=bytes((0x8B,0x8E)) or
+        struct.unpack("<I",at(0x221D0769,4))[0]!=0xB4 or
+        at(0x221D076D,3)!=bytes((0xC1,0xE9,0x0A)) or
+        at(0x221D0770,3)!=bytes((0xF6,0xC1,0x01))):
+        raise EvidenceRefused("original this+0xB4 bit10 gate changed")
+    if (at(0x221D0775,1)!=bytes((0x68,)) or
+        struct.unpack("<I",at(0x221D0776,4))[0]!=0x22438650 or
+        not read_text(0x22438650,"DD Trigger with don't destroy set\\n")):
+        raise EvidenceRefused("original dynamic Spawn warning string changed")
+    return len(edges)
+
 def verify_raw(client:bytes,server:bytes)->dict:
     if hashlib.sha256(client).hexdigest()!=CLIENT_SHA:
         raise EvidenceRefused("original client SHA-256 mismatch")
@@ -146,6 +166,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
         if pe.u32(vtable+89*4)!=touch or pe.u32(vtable+25*4)!=spawn:
             raise EvidenceRefused(name+" virtual touch/spawn slot mismatch")
     spawn_edges=verify_secret_spawn_control(pe.at)
+    dynamic_spawn_edges=verify_dynamic_spawn_control(pe.at,pe.text)
     count=verify_datadesc(pe.u32,pe.text)
     # Cross-check the exact event names/types/field labels the two
     # complete original event helpers use.
@@ -170,6 +191,8 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "secret_spawn_descriptor":11,
         "secret_spawn_game_event_bitmask":8,
         "secret_spawn_ordered_direct_calls":spawn_edges,
+        "dynamic_spawn_ordered_direct_calls":dynamic_spawn_edges,
+        "dynamic_spawn_warning_flag_mask":1024,
         "original_event_names":["dynamic_difficulty","game"],
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
         "limitations":"No real game entity creation, map load, AI or playable DLL Init."
@@ -219,10 +242,35 @@ def self_test()->None:
             lambda va,n:altered.get(va,b"")[:n])
         except EvidenceRefused:pass
         else:raise AssertionError("mutated secret Spawn gate accepted")
+    dynamic_chunks={}
+    for site,target in ((0x221D0756,0x22286BF0),
+                        (0x221D0762,0x221CFCF0)):
+        dynamic_chunks[site]=bytes((0xE8,))+struct.pack("<i",target-site-5)
+    dynamic_chunks.update({
+        0x221D0767:bytes((0x8B,0x8E)),
+        0x221D0769:struct.pack("<I",0xB4),
+        0x221D076D:bytes((0xC1,0xE9,0x0A)),
+        0x221D0770:bytes((0xF6,0xC1,0x01)),
+        0x221D0775:bytes((0x68,)),
+        0x221D0776:struct.pack("<I",0x22438650)
+    })
+    read_dynamic=lambda va,n:dynamic_chunks.get(va,b"")[:n]
+    warning=lambda va,value:va==0x22438650 and value=="DD Trigger with don't destroy set\\n"
+    assert verify_dynamic_spawn_control(read_dynamic,warning)==2
+    for site in dynamic_chunks:
+        altered=dict(dynamic_chunks)
+        altered[site]=bytes((dynamic_chunks[site][0]^1,))+dynamic_chunks[site][1:]
+        try:verify_dynamic_spawn_control(
+            lambda va,n:altered.get(va,b"")[:n],warning)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated original dynamic Spawn flag accepted")
+    try:verify_dynamic_spawn_control(read_dynamic,lambda va,value:False)
+    except EvidenceRefused:pass
+    else:raise AssertionError("forged original dynamic warning text accepted")
     try:verify_raw(b"synthetic",b"synthetic")
     except EvidenceRefused:pass
     else:raise AssertionError("synthetic DLL accepted as original")
-    print("PASS original-free 3 DATADESC fields, 3 original secret Spawn CALL rel32 edges, source bit3/descriptor11 witnesses and SHA refusal")
+    print("PASS original-free 3 DATADESC fields, 3 original secret Spawn CALL rel32 edges, source bit3/descriptor11 witnesses, dynamic bit10 original warning and SHA refusal")
 
 def main()->int:
     ap=argparse.ArgumentParser(description=__doc__)
