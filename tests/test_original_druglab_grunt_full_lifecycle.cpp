@@ -5,6 +5,8 @@
 #include "sin_compat/original_druglab_grunt_entity_init.hpp"
 #include "sin_compat/original_druglab_grunt_spawn.hpp"
 #include "sin_compat/original_grunt_ai_subsystems.hpp"
+#include "sin_compat/original_grunt_behavior_postinit.hpp"
+#include "sin_compat/original_grunt_full_ai_postinit.hpp"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -18,8 +20,10 @@ namespace factory=sin_compat::original_druglab_grunt;
 namespace link=sin_compat::original_druglab_grunt::entity_init;
 namespace spawn=sin_compat::original_druglab_grunt::spawn;
 namespace ai=sin_compat::original_druglab_grunt::ai_init;
+namespace behavior=sin_compat::original_druglab_grunt::behavior_postinit;
+namespace full_ai=sin_compat::original_druglab_grunt::full_ai_postinit;
 
-struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost,ai::IHost {
+struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost,ai::IHost,behavior::IHost {
     std::vector<std::string> steps{};
     std::string_view classname{};
     std::string weapon{};
@@ -29,10 +33,16 @@ struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost,ai::
     bool refuse_edict_attach=false;
     ai::Stage refuse_ai_stage=ai::Stage::None;
     std::size_t ai_created=0;
+    std::size_t behavior_appended=0;
+    std::size_t behavior_completed=0;
+    bool sentence_owner_bound=false, sentence_parameters_loaded=false;
+    behavior::Operation refuse_behavior_stage=behavior::Operation::None;
     bool postinit_complete=false;
     bool original_spawn_called=false;
     link::EntityInitializer entity_initializer{*this};
     ai::Initializer ai_initializer{*this};
+    behavior::Registrar behavior_registrar{*this};
+    full_ai::Initializer complete_ai_initializer{ai_initializer,behavior_registrar};
 
     std::uintptr_t allocate_native_object(std::size_t bytes) override {
         assert(bytes==0xFD8);steps.emplace_back("allocate");
@@ -98,10 +108,11 @@ struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost,ai::
     bool invoke_real_grunt_postinit_slot3F8() override {
         assert(live_edict&&ctx_cleared);
         steps.emplace_back("npc-postinit3f8");
-        const auto result=ai_initializer.initialize();
+        const auto result=complete_ai_initializer.initialize();
         if(!result.ok())return false;
-        // Phase533 host still stubs original +0x76C/+0x7AC/+0xCC0 stages.
-        steps.emplace_back("npc-other-postinit-synthetic");
+        assert(result.core.created_count==7);
+        assert(result.behavior.registered_count==8);
+        assert(sentence_owner_bound&&sentence_parameters_loaded);
         postinit_complete=true;return true;
     }
     bool accept_ai(ai::Stage stage,std::string name) {
@@ -134,6 +145,55 @@ struct SimulatedNativeSource final :factory::IHost,link::IHost,spawn::IHost,ai::
     }
     bool wire_tactical_services_shared_context() override {
         return accept_ai(ai::Stage::TacticalServicesContext,"ai-tact-context");
+    }
+    bool accept_behavior(behavior::Operation operation,std::string name) {
+        steps.emplace_back(name);
+        return refuse_behavior_stage!=operation;
+    }
+    bool append_to_collection(behavior::Spec spec,
+                              std::uint32_t list_offset,
+                              std::uint32_t count_field) override {
+        assert(list_offset==behavior::kBehaviorArrayOffset);
+        assert(count_field==behavior::kBehaviorArrayCountField);
+        assert(behavior_appended<behavior::kOriginalBehaviors.size());
+        assert(spec.kind==behavior::kOriginalBehaviors[behavior_appended].kind);
+        if(!accept_behavior(behavior::Operation::AppendToCollection,
+                            "behavior-append-"+std::string(spec.exact_rtti_name)))
+            return false;
+        ++behavior_appended;return true;
+    }
+    bool bind_to_npc(behavior::Spec spec) override {
+        assert(behavior_appended>0);
+        assert(spec.kind==behavior::kOriginalBehaviors[behavior_appended-1].kind);
+        return accept_behavior(behavior::Operation::BindNPC,
+                               "behavior-bind-"+std::string(spec.exact_rtti_name));
+    }
+    bool set_owner_subobject_reference(behavior::Spec spec,
+                                      std::uint32_t npc_offset,
+                                      std::uint32_t field_offset) override {
+        assert(npc_offset==0xC14 && field_offset==0x0C);
+        assert(behavior_appended>0);
+        assert(spec.kind==behavior::kOriginalBehaviors[behavior_appended-1].kind);
+        if(!accept_behavior(behavior::Operation::StoreOwnerSubobject,
+                            "behavior-link-"+std::string(spec.exact_rtti_name)))
+            return false;
+        ++behavior_completed;return true;
+    }
+    bool bind_sentence_owner(std::uint32_t embedded_offset,
+                             std::uint32_t owner_field) override {
+        assert(behavior_completed==behavior::kOriginalBehaviors.size());
+        assert(embedded_offset==0xCC0 && owner_field==0x04);
+        if(!accept_behavior(behavior::Operation::BindSentenceOwner,
+                            "sentence-bind-owner"))return false;
+        sentence_owner_bound=true;return true;
+    }
+    bool initialize_sentence_parameters(std::uint32_t embedded_offset,
+                                        std::string_view key) override {
+        assert(sentence_owner_bound&&embedded_offset==0xCC0);
+        assert(key=="NPC_Grunt.SentenceParameters");
+        if(!accept_behavior(behavior::Operation::InitializeSentenceParameters,
+                            "sentence-load-parameters"))return false;
+        sentence_parameters_loaded=true;return true;
     }
     bool assign_original_weapon_symbol(std::string_view w) override {
         assert(postinit_complete);
@@ -179,6 +239,8 @@ int main() {
         const auto created=allocator.create(v.classname,0x1234);
         assert(created.ok()&&created.factory_return_view==0x200160);
         assert(h.postinit_complete&&h.ctx_cleared&&h.live_edict&&h.ai_created==7);
+        assert(h.behavior_appended==8 && h.behavior_completed==8);
+        assert(h.sentence_owner_bound && h.sentence_parameters_loaded);
         const auto spawned=spawner.apply({
             v.classname,"nonmatching_weapon",99,-1,-1,
             false,true,5.9f
@@ -197,8 +259,15 @@ int main() {
             expected.emplace_back("ai-"+std::string(component.rtti_name));
         expected.insert(expected.end(),{
             "ai-owner-relay","ai-motor-localnav","ai-localnav-nav",
-            "ai-nav-context","ai-path-context","ai-tact-context",
-            "npc-other-postinit-synthetic",
+            "ai-nav-context","ai-path-context","ai-tact-context"
+        });
+        for(const auto& spec:behavior::kOriginalBehaviors) {
+            expected.emplace_back("behavior-append-"+std::string(spec.exact_rtti_name));
+            expected.emplace_back("behavior-bind-"+std::string(spec.exact_rtti_name));
+            expected.emplace_back("behavior-link-"+std::string(spec.exact_rtti_name));
+        }
+        expected.insert(expected.end(),{
+            "sentence-bind-owner","sentence-load-parameters",
             "weapon","field3b0","spawn-v68","spawn-v1c-v6c",
             "inherited-spawn","field98","field9c"
         });
@@ -228,5 +297,19 @@ int main() {
         assert(h.steps.back()=="reclaim");
         assert(!h.original_spawn_called&&h.weapon.empty());
     }
-    std::puts("PASS original Grunt factory->edict->seven CAI subsystem init->NPC postinit->3 weapon Spawn variants (synthetic host)");
+    // Grunt must not publish its entity or spawn a weapon if final sentence
+    // configuration fails after all eight behaviors are registered.
+    {
+        SimulatedNativeSource h;
+        h.classname="npc_druglab_grunt_assault_rifle";
+        h.refuse_behavior_stage=behavior::Operation::InitializeSentenceParameters;
+        factory::GruntFactoryReference allocator(h);
+        const auto created=allocator.create(h.classname,0x1234);
+        assert(created.code==factory::Code::HostRejected);
+        assert(h.ai_created==7 && h.behavior_completed==8);
+        assert(h.sentence_owner_bound && !h.sentence_parameters_loaded);
+        assert(!h.postinit_complete && !h.original_spawn_called);
+        assert(h.weapon.empty() && h.steps.back()=="reclaim");
+    }
+    std::puts("PASS original Grunt factory->edict->7 CAI systems->8 behaviors->sentence->3 weapon Spawn variants (synthetic host)");
 }
