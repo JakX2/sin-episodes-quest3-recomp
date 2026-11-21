@@ -44,6 +44,7 @@ $engineFsSoundscapeCvarLogs = New-Object System.Collections.Generic.List[string]
 $engineFsPhysicsFactoryLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSurfacePropsLogs = New-Object System.Collections.Generic.List[string]
 $engineFsRegistrationLogs = New-Object System.Collections.Generic.List[string]
+$engineFsReadbackLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -145,6 +146,9 @@ foreach ($log in $logs) {
     $registrationStage=0
     $registrationEventCount=0
     $registrationResult=$null
+    $readbackStage=0
+    $readbackEventCount=0
+    $readbackResult=$null
     $soundInitSeenEvents=New-Object System.Collections.Generic.List[string]
     $soundResult = $null
     $eventStage = 0
@@ -726,6 +730,63 @@ foreach ($log in $logs) {
                     }
                 }
             } elseif ($soundscapeStage -eq 3 -and
+                $phase -clike 'engine-fs-readback-*') {
+                # SDK2004-guided slots2/3 are separate opt-in calls after
+                # exactly two ParseSurfaceData methods returned this session.
+                $readbackEventCount++
+                if($registrationStage -eq 3 -and
+                   $registrationEventCount -eq 3 -and
+                   $registrationResult -cmatch '^original-surfaceprops-register-two-calls-returned:2:2:-?[0-9]{1,11}:-?[0-9]{1,11}$' -and
+                   $surfacePropsStage -eq 3 -and
+                   $surfacePropsResult -ceq 'original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0') {
+                    if($readbackStage -eq 0 -and
+                       $phase -eq 'engine-fs-readback-entered' -and
+                       $version -eq 'VPhysicsSurfaceProps001:slots2-3:read-only') {
+                        $readbackStage=1
+                    } elseif($readbackStage -eq 1 -and
+                       $phase -eq 'engine-fs-readback-result') {
+                        $match=[regex]::Match($version,
+                            '^(original-physics-surface-readback-(?:invalid-object|missing-count-slot|missing-index-slot|count-invalid|index-invalid|some-unavailable|three-in-range)):(-?[0-9]{1,6}):(-?[0-9]{1,6}):(-?[0-9]{1,6}):(-?[0-9]{1,6})$')
+                        if($match.Success) {
+                            $kind=$match.Groups[1].Value
+                            $count=[int]$match.Groups[2].Value
+                            $indices=@([int]$match.Groups[3].Value,
+                                       [int]$match.Groups[4].Value,
+                                       [int]$match.Groups[5].Value)
+                            $allInRange=($count -ge 1 -and $count -le 16384)
+                            $anyAbsent=$false
+                            $anyInvalid=$false
+                            foreach($id in $indices) {
+                                if($id -eq -1) {$anyAbsent=$true}
+                                elseif($id -lt -1 -or $id -ge $count) {
+                                    $anyInvalid=$true
+                                }
+                            }
+                            $valid=$false
+                            if($kind -ceq 'original-physics-surface-readback-three-in-range') {
+                                $valid=($allInRange -and -not $anyAbsent -and -not $anyInvalid)
+                            } elseif($kind -ceq 'original-physics-surface-readback-some-unavailable') {
+                                $valid=($count -ge 0 -and $count -le 16384 -and $anyAbsent -and -not $anyInvalid)
+                            } elseif($kind -ceq 'original-physics-surface-readback-index-invalid') {
+                                $valid=($count -ge 0 -and $count -le 16384 -and $anyInvalid)
+                            } elseif($kind -ceq 'original-physics-surface-readback-count-invalid') {
+                                $valid=(($count -lt 0 -or $count -gt 16384) -and
+                                    ($indices -join ',') -ceq '-1,-1,-1')
+                            } else {
+                                $valid=($count -eq -1 -and ($indices -join ',') -ceq '-1,-1,-1')
+                            }
+                            if($valid){
+                                $readbackResult=$version
+                                $readbackStage=2
+                            }
+                        }
+                    } elseif($readbackStage -eq 2 -and
+                       $phase -eq 'engine-fs-readback-terminal-stop' -and
+                       $version -eq 'SDK2004-count-and-indices-not-game-init') {
+                        $readbackStage=3
+                    }
+                }
+            } elseif ($soundscapeStage -eq 3 -and
                 $phase -eq 'engine-fs-soundscape-terminal-stop' -and
                 $version -eq 'owner-original-files-no-game-init') {
                 $engineFsSoundscapeLogs.Add(('{0}:client:{1}:{2}' -f
@@ -770,6 +831,15 @@ foreach ($log in $logs) {
                    $null -ne $registrationResult) {
                     $engineFsRegistrationLogs.Add(('{0}:client:{1}' -f
                         $log.Name,$registrationResult))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $registrationStage -eq 3 -and
+                   $registrationEventCount -eq 3 -and
+                   $readbackStage -eq 3 -and
+                   $readbackEventCount -eq 3 -and
+                   $null -ne $readbackResult) {
+                    $engineFsReadbackLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$readbackResult))
                 }
                 $soundscapeStage=4
             }
@@ -917,6 +987,9 @@ if ($engineFsSurfacePropsLogs.Count -gt 0) {
 }
 if ($engineFsRegistrationLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: {0}" -f ($engineFsRegistrationLogs -join ','))
+}
+if ($engineFsReadbackLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS: {0}" -f ($engineFsReadbackLogs -join ','))
 }
 if ($matSurfaceLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_MAT_SURFACE_RESULTS: {0}" -f ($matSurfaceLogs -join ','))

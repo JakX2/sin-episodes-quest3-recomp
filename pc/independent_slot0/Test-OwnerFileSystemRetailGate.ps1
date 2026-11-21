@@ -301,6 +301,30 @@ try {
             throw ('Missing explicit surface registration safety gate: '+$required)
         }
     }
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Soundscape';ExplicitSurfacePropsReadbackProbe=$true;
+              PlanOnly=$true;PriorReadTranscript=$priorRead}) 'requires explicit mutating surface registration prerequisite'
+    $readbackGate=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+        Phase='Soundscape';ReadOnlySoundscapeCvarLookup=$true;
+        ReadOnlyPhysicsFactoryProbe=$true;ReadOnlySurfacePropsReadProbe=$true;
+        ExplicitSurfacePropsRegisterProbe=$true;ExplicitSurfacePropsReadbackProbe=$true;
+        PlanOnly=$true;PriorReadTranscript=$priorRead}
+    $readbackText=@(& $Gate @readbackGate) -join [Environment]::NewLine
+    foreach($required in @(
+        'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED',
+        'EnableClientSurfacePropsRegisterProbe',
+        'EnableClientSurfacePropsReadbackProbe',
+        ('OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: '+$session)
+    )) {
+        if(-not $readbackText.Contains($required)) {
+            throw ('Missing optional physics surface readback prerequisite: '+$required)
+        }
+    }
+    if($registerText.Contains('EnableClientSurfacePropsReadbackProbe') -or
+       $surfacePropsText.Contains('EnableClientSurfacePropsReadbackProbe') -or
+       $physicsGateText.Contains('EnableClientSurfacePropsReadbackProbe')) {
+        throw 'Source 2004 SDK vslot2/3 readback implicitly enabled before opt-in'
+    }
     if($surfacePropsText.Contains('EnableClientSurfacePropsRegisterProbe') -or
        $physicsGateText.Contains('EnableClientSurfacePropsRegisterProbe') -or
        $withCvarText.Contains('EnableClientSurfacePropsRegisterProbe') -or

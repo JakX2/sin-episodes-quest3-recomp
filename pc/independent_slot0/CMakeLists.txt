@@ -917,3 +917,22 @@ add_executable(sin_client_surfaceprops_registration_test
 target_compile_features(sin_client_surfaceprops_registration_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_surfaceprops_registration_native
   COMMAND sin_client_surfaceprops_registration_test)
+
+
+# Phase 516: test-only SDK2004 VPhysicsSurfaceProps001 vslot2/vslot3
+# readback with independently invented data, no retail engine calls.
+add_executable(sin_client_surfaceprops_readback_test
+  test_client_original_surfaceprops_readback.cpp)
+target_compile_features(sin_client_surfaceprops_readback_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_surfaceprops_readback_native
+  COMMAND sin_client_surfaceprops_readback_test)
+
+
+# SHA-witness audit of owner-authenticated 2006 client vslot3 callsites.
+# Public CI exercises only invented bytecode witnesses and mutations.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_surfaceprops_index_calls_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_surfaceprops_index_calls.py"
+      --self-test)
+endif()
