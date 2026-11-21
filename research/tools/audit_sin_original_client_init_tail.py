@@ -115,6 +115,10 @@ def check_original(server:bytes,client:bytes)->dict:
     verify_rel_call(pe.at,0x2416414D,0x241640F0)
     require(pe.at(0x24164149,2)==b'\xb0\x01', 'interface resolver success changed')
     require(pe.at(0x24164152,2)==b'\x32\xc0', 'interface resolver failure changed')
+    # Original Init passes the stack-sourced second factory to 0x24182C60
+    # exactly as an argument. Its higher-level type is not asserted.
+    require(pe.at(0x240FE53B,5)==b'\x8b\x44\x24\x0c\x50',
+            'Init secondary factory stack argument changed')
     # Distinct boolean gates in the Init suffix. All end at same native fail.
     for site,target,branch in INIT_GATES:
         verify_rel_call(pe.at,site,target)
