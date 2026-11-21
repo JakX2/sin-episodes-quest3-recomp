@@ -179,3 +179,27 @@ The independently authenticated base constructor `0x241D3D90` first sets the
 callback to zero, therefore the original HUD converter string-token table
 **initializes to the folded callback** `0x241D3C90`. Later runtime callback
 overrides, active locale settings and string storage ownership remain unverified. This is decompilation-first research, not a new port.
+
+## Phase 547: native client token storage, missing-node singleton and string pages
+
+The original token-tree accessor `0x241D33E0` lazily initializes shared
+sentinel address `0x2437704C` and resolves non-sentinel 16-bit indices via
+`array + index*12`. Two array capacity methods are now directly decompiled:
+`0x241D34E0` handles **12-byte tree nodes, starting at capacity 3**;
+`0x241D3560` handles **4-byte page pointers, starting at capacity 8**.
+Both use original `-1` no-allocation guard and additive/doubling growth.
+The original `0x241D3D10` searches string pages with two 32-bit header fields,
+and original `0x241D4060` inserts a page pointer into a growable array.
+
+Nine SHA-authenticated complete original client functions, **615 unique code
+bytes**, **15 original CALL rel32 edges** and **43 instruction witnesses**.
+The exact **112-byte** `0x241D3560` method ends immediately before the
+separate **17-byte** accessor at `0x241D35D0` without INT3 padding;
+neither is double counted.
+
+Detailed source-level reconstruction, evidence table, C-like algorithms and
+owner-local auditor: `research/phases/2026-11-21-original-client-token-storage-sentinel-capacity-pages-decomp.md`.
+Independent strict C++17 host regression: `include/sin_compat/original_client_token_storage.hpp`
+and `tests/test_original_client_token_storage.cpp`.
+Host overflow and bounds guards are **not assertions about original x86
+allocation failure behavior**. Port work remains deferred.
