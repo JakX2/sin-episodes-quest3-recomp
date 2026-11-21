@@ -117,6 +117,23 @@ def verify_raw(client:bytes,server:bytes)->dict:
             raise EvidenceRefused(name+" RTTI class string mismatch")
         if pe.u32(vtable+89*4)!=touch or pe.u32(vtable+25*4)!=spawn:
             raise EvidenceRefused(name+" virtual touch/spawn slot mismatch")
+    # CTriggerSecret::Spawn slot25:
+    # +0x88 original engine-global probe, then deferred deletion if true;
+    # otherwise CBaseTrigger::Spawn, then secret game event descriptor 11
+    # ONLY when field this+0x120 has the original bit 0x08.
+    original_secret_spawn_calls=(
+        (0x221D07A6,0x22286BF0), # deferred entity removal
+        (0x221D07D2,0x221CFCF0), # original CBaseTrigger Spawn
+        (0x221D07E8,0x222B63B0), # game event writer
+    )
+    for site,target in original_secret_spawn_calls:
+        raw=pe.at(site,5)
+        if raw[0]!=0xE8 or site+5+struct.unpack_from("<i",raw,1)[0]!=target:
+            raise EvidenceRefused("CTriggerSecret::Spawn call order/callee changed")
+    if pe.at(0x221D07D7,14)!=bytes.fromhex("8a8e20010000c0e903f6c101740b"):
+        raise EvidenceRefused("CTriggerSecret::Spawn low-byte bit3 gate changed")
+    if pe.at(0x221D07E6,2)!=bytes.fromhex("6a0b"):
+        raise EvidenceRefused("CTriggerSecret::Spawn descriptor 11 changed")
     count=verify_datadesc(pe.u32,pe.text)
     # Cross-check the exact event names/types/field labels the two
     # complete original event helpers use.
@@ -138,6 +155,9 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "original_datadesc_keyvalues":[row[6] for row in FIELDS],
         "dynamic_touch_virtual_slot":89,
         "secret_touch_virtual_slot":89,
+        "secret_spawn_descriptor":11,
+        "secret_spawn_game_event_bitmask":8,
+        "secret_spawn_ordered_direct_calls":3,
         "original_event_names":["dynamic_difficulty","game"],
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
         "limitations":"No real game entity creation, map load, AI or playable DLL Init."
