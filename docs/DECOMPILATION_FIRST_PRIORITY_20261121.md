@@ -502,3 +502,35 @@ Independently authored C++17 tests model original 0-based sender,
 recognized command branches, while explicitly keeping native
 formatting/network ABI and locale settings unresolved. No native
 game boot or Android/Quest port is asserted.
+
+## Phase 557: original CRecipientFilter voice-recipient routing
+
+The original Phase555 `VoiceMask` server sender directly calls
+`0x222701C0` to construct its temporary recipient filter,
+`0x222706B0` to add the target server player, and `0x222701F0`
+to tear down the filter after message transmission. Original native
+MSVC RTTI positively identifies the object as `CRecipientFilter`
+(vtable `0x224546B0`, COL `0x224C8B8C`, descriptor `0x224D87DC`)
+with original `IRecipientFilter` base RTTI (vtable
+`0x224321D0`, COL `0x224C2138`, descriptor `0x224D87BC`).
+Destructor virtual slot 0 is exact native `0x222702A0`.
+
+Five fully authenticated original server methods cover **318 new,
+non-overlapping code bytes**, **8 direct rel32 CALL edges** and
+**29 original opcode witnesses**. The real `CRecipientFilter` list
+at object +0x08 and count +0x14 holds player numbers; native
+`0x222706B0` avoids duplicates and appends on the normal path.
+Its special byte +0x1C and global pointers `0x2251BA48/0x2251BA4C`
+form a separate **unresolved** eligibility branch. The independent
+player resolver `0x22286C70` checks a 1-based index against the
+original global count, gets an edict via native engine virtual +0x4C,
+rejects original edict flag 0x02, then calls owner virtual +0x14.
+No source name is invented for that virtual.
+
+Original-free C++17 tests model the normal list deduplication
+and supported active-player checks with explicit host bounds guards,
+not the unknown flag-path or real engine virtual dispatch.
+Research: `research/phases/2026-11-21-original-server-voice-recipient-filter-and-player-resolution.md`.
+Owner-only verifier:
+`research/tools/audit_sin_original_server_voice_recipients.py`.
+The previous Phase555 sender bytes are reverified without recounting.
