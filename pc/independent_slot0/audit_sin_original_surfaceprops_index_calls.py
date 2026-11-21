@@ -50,7 +50,7 @@ class PE32:
         if len(data) < 0x100 or data[:2] != b"MZ":
             raise AuditError("missing DOS PE header")
         nt = u32(data, 0x3c)
-        if nt+24 > len(data) or data[nt:nt+4] != b"PE\\0\\0":
+        if nt+24 > len(data) or data[nt:nt+4] != b"PE\0\0":
             raise AuditError("missing PE signature")
         nsections = u16(data, nt+6)
         opt_len = u16(data, nt+20)
@@ -68,7 +68,7 @@ class PE32:
             p=section_start+i*40
             if p+40 > len(data):
                 raise AuditError("truncated PE section")
-            name=data[p:p+8].rstrip(b"\\0")
+            name=data[p:p+8].rstrip(b"\0")
             virtual_size=u32(data,p+8)
             rva=u32(data,p+12)
             raw_size=u32(data,p+16)
@@ -125,7 +125,7 @@ def self_test():
         else:
             raise AssertionError("mutated x86 witness not rejected")
     try:
-        verify_original(b"MZ"+b"\\0"*500)
+        verify_original(b"MZ"+b"\0"*500)
     except AuditError:
         pass
     else:
