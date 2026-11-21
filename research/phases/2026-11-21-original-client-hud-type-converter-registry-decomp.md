@@ -1,4 +1,4 @@
-# Phase 542: original SiN client `CHudTextureHandle` type-converter registry, three complete methods
+# Phase 542: original SiN client `CHudTextureHandle` type-converter registry and 16-bit ordered tree
 
 ## Context and exact original evidence
 
@@ -8,15 +8,18 @@ Source identity: `client.dll` SHA256 `6535f13e3c5d8f0205b5d198a3124d3b99971404de
 
 | Full native method | Verified bytes | SHA-256 | Directly observed responsibility |
 |---|---:|---|---|
+| `0x2400A3C0` | 19 | `b0521eacdb9687665838d9a4df7374f3b2665f842939aea4d2d4c550dc97d413` | Original unsigned 16-bit token strict less-than comparator |
 | `0x241D4A80` | 261 | `dc80847fa08da6c33e75659031da2d0bb955f5713e28319e50e1c5659e39c1cc` | String-token lookup and insertion, with 16-bit output |
-| `0x2400A4D0` | 230 | `29e7ec79122a4b663661351234688ec42ada95894cad4006fbea930171f69f52` | Traverse 24-byte records, use caller-provided comparison callback, return existing index or sentinel |
+| `0x2400A4D0` | 230 | `29e7ec79122a4b663661351234688ec42ada95894cad4006fbea930171f69f52` | Search an ordered tree of 24-byte records using token comparator and return matching index or sentinel |
 | `0x24009F40` | 128 | `c6a10d23962af7f91b8debedb98e7ae661cf044d54fe55d4dd812a58a945f41c` | Intern token, allocate/find record through helper routines, write token and converter pointer |
 
-**619 distinct original complete method bytes** are authenticated. The previously authenticated caller `0x24009340` is checked but not counted again (101 bytes in Phase 540). The first two methods end immediately before INT3 padding. The third finishes with `ret 4` at `0x24009FBD` and is directly followed by the next function's prologue at `0x24009FC0` **without any INT3 padding**. The auditor verifies that actual boundary rather than assuming all methods are padded.
+**638 distinct original complete method bytes** are authenticated (619 from the three originally targeted methods plus a newly recovered 19-byte comparator). The previously authenticated caller `0x24009340` is checked but not counted again (101 bytes in Phase 540). The 19-byte comparator and the first two other methods end immediately before INT3 padding. The fourth finishes with `ret 4` at `0x24009FBD` and is directly followed by the next function's prologue at `0x24009FC0` **without any INT3 padding**. The auditor verifies that actual boundary rather than assuming all methods are padded.
 
 ## Caller `0x24009340`: duplicate registrations explicitly rejected
 
-The original 101-byte function:
+The original 101-byte function uses a descriptor at original client `0x24322878`. Its first pointer is `0x2400A3C0`, the exact original comparator whose semantics are now recovered.
+
+The original 101-byte caller:
 
 1. Loads its passed type name, which is `CHudTextureHandle` for this caller.
 2. Invokes original string-token interning `0x241D4A80` with a short sentinel value initialized to `0xFFFF`.
@@ -38,13 +41,40 @@ The diagnostic is embedded in the exact original `client.dll`, at original strin
 
 The precise allocator and token-table formats behind `0x241D3E20`, `0x241D3D10`, `0x241D4060`, and `0x241D49F0` are still dependencies. The observed `0x800` is a local pool-growth minimum, not a universal Source SDK string limit.
 
-## Existing converter search `0x2400A4D0`
+## Ordered converter tree search `0x2400A4D0` and exact comparator `0x2400A3C0`
 
-The search receives a descriptor with an initial signed **index at descriptor+`0x10`**. `0xFFFFFFFF` is its end-of-list sentinel. For each non-sentinel index, original x86 computes `index * 24` using shifts and LEA, then addresses the record at `base + 24*index + 0x10`.
+The original caller passes the native converter descriptor at **`0x24322878`** into the lookup. Its first 32-bit word is the original callback address **`0x2400A3C0`**, not an arbitrary predicate. The 19-byte complete original comparator reads two **unsigned 16-bit words** from its two pointer arguments, compares them with native `cmp`, and returns **1 precisely when the first token is below the second token** (unsigned), otherwise 0. The `sbb eax,eax; neg eax` instruction pair converts the unsigned carry flag into a Boolean.
 
-It invokes a caller-supplied function pointer stored at descriptor+`0x00`. Different branches pass the candidate record address and search argument in different orders. The function follows next-index fields until an eligible match or sentinel, and returns an integer index. It uses a separate fallback/sentinel storage at global `0x2438AFA0` when a branch requires it; the original also lazily initializes a bit flag at global `0x2438D130`.
+The converter registry is therefore an **ordered binary-search tree**, not a linear linked list. The descriptor has a signed root index at `descriptor+0x10`. The root and child-index sentinel is `0xFFFFFFFF`. The original computes `index * 24` and addresses records using `base + 24*index`. Within each record, `+0x00` and `+0x04` are followed as the two tree-child indices, and the 16-bit token compared by the callback is at `+0x10`.
 
-Do **not** reduce this to a simple map lookup with invented equality behavior. The original comparator's name, its exact ordering semantics and the registry's memory-ownership invariants remain unresolved. What is proven is the original 24-byte record stride, linked traversal and integer not-found sentinel.
+At each node, the original `0x2400A4D0` method performs precisely:
+
+1. Invoke callback as `less_than(query_token, entry_token)`; on true follow the child index at **record +0x00**.
+2. Otherwise invoke callback as `less_than(entry_token, query_token)`; on true follow the child index at **record +0x04**.
+3. Otherwise both comparisons are false and the tokens are equal, so **return the current node index**.
+4. On encountering `0xFFFFFFFF`, return not-found.
+
+The routine contains a lazily initialized fallback/sentinel storage at global `0x2438AFA0` and flag at `0x2438D130`; exact object ownership and reentrancy semantics remain unresolved. The word `left`/`right` is descriptive: the actual comparison direction is proven by the original callback, while any stable engine C++ member names remain unrecovered.
+
+```cpp
+// Source-level reconstruction of the verified search core only.
+// Descriptor layout and pointer validity are prerequisites of the native caller.
+int original_find_converter(const Descriptor& d, uint16_t sought_token) {
+    int node_index = d.root_index_at_0x10;
+    while (node_index != -1) {
+        auto& node = d.nodes[node_index]; // original stride is exactly 24 bytes
+        if (sought_token < node.token_at_0x10)
+            node_index = node.child_index_at_0x00;
+        else if (node.token_at_0x10 < sought_token)
+            node_index = node.child_index_at_0x04;
+        else
+            return node_index;
+    }
+    return -1;
+}
+```
+
+The original traversal also includes a fallback/sentinel branch; the sketch compresses that native path. This is an independently authored bounded decompilation, **not** a copy of the original C++ declarations.
 
 ## Converter record insertion `0x24009F40`
 
@@ -62,7 +92,7 @@ The original instructions include another preceding write to `record+0x14` which
 void OriginalRegisterConverter_24009340(const char* type_name,
                                         OriginalConverterPointer converter) {
     uint16_t type_token = OriginalIntern16_241D4A80(type_name);
-    int existing = OriginalConverterFind_2400A4D0(type_token, /* native comparator */);
+    int existing = OriginalConverterFind_2400A4D0(type_token, /* verified unsigned-16 tree comparator */);
     if (existing != -1) {
         NativeDiagnostic("Already have converter for type %s, ignoring...", type_name);
         return;
@@ -80,7 +110,8 @@ uint16_t OriginalIntern16_241D4A80(const char* name) {
 }
 
 // Original converter records addressed by: base + index * 24 + 0x10.
-// List-traversal and comparison callback semantics remain partially unknown.
+// Original search uses the verified 16-bit unsigned less-than callback,
+// deciding between the two children of each 24-byte tree node.
 ```
 
 The `if` branch above summarizes the original caller's `-1` test; `OriginalConverterFind` is **not** asserted to implement ordinary string equality. The helper names and C++ argument types are placeholders for native meanings which require further decompilation.
@@ -91,6 +122,6 @@ Run against independent test data: `python3 research/tools/audit_sin_original_cl
 
 Run against owner-private original pair: `python3 research/tools/audit_sin_original_client_converter_registry.py --bin-zip /private/bin.zip`.
 
-The auditor authenticates all 619 distinct function bytes by complete-method SHA256, the previous caller by separate SHA, **eleven direct CALL edges**, original type name and duplicate diagnostic, 16-bit intern token and sentinel, 24-byte record indexing, exact pointer and token stores, and both kinds of function boundary. It rejects whole-DLL SHA mismatch and synthetic mutated call targets.
+The auditor authenticates all 638 distinct function bytes by complete-method SHA256, the previous caller by separate SHA, **eleven direct CALL edges**, the original comparator function pointer and its complete 19-byte body, original type name and duplicate diagnostic, 16-bit intern token and sentinel, 24-byte record indexing, exact pointer and token stores, and both kinds of function boundary. It rejects whole-DLL SHA mismatch and synthetic mutated call targets.
 
-Next useful native methods to understand converter semantics: `0x2400ABA0` and `0x2400AB30` record-management helpers, `0x241D3E20` string lookup, `0x241D49F0` token publication, and the original comparator supplied to `0x2400A4D0`. These are source-level decompilation dependencies only. No renderer, asset importer, physics/surface/model port or actual replacement Windows client has been added.
+Next useful native methods to understand converter allocation and owner semantics: `0x2400ABA0` and `0x2400AB30` record-management helpers, `0x241D3E20` string lookup, `0x241D49F0` token publication, and the record allocator/tree insertion helpers that maintain child pointers. These are source-level decompilation dependencies only. No renderer, asset importer, physics/surface/model port or actual replacement Windows client has been added.
