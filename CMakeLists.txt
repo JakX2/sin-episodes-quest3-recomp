@@ -3570,3 +3570,30 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase536 original Grunt mobility-sidestep (+0x848) eligibility gate,
+# native +0x850=3 selector branch and exact original schedule 0x55 return.
+# Independent, source-authenticated host model. No retail DLL executable ABI.
+add_library(sin_original_grunt_sidestep_gate STATIC
+  src/original_grunt_sidestep_gate.cpp)
+target_include_directories(sin_original_grunt_sidestep_gate PUBLIC include)
+target_compile_features(sin_original_grunt_sidestep_gate PUBLIC cxx_std_17)
+target_compile_options(sin_original_grunt_sidestep_gate PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_sidestep_gate_tests
+    tests/test_original_grunt_sidestep_gate.cpp)
+  target_link_libraries(sin_original_grunt_sidestep_gate_tests PRIVATE
+    sin_original_grunt_sidestep_gate)
+  target_compile_options(sin_original_grunt_sidestep_gate_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_sidestep_gate_tests
+    COMMAND sin_original_grunt_sidestep_gate_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_sidestep_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_sidestep_gate.py"
+        --self-test)
+  endif()
+endif()
