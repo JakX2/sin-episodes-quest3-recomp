@@ -61,11 +61,17 @@ struct Filesystem {
     }
     virtual void Seek(void*,int,int){++bad;}
     virtual unsigned Tell(void*){++bad;return 0;}
+    // Real VFileSystem012 slot 6 is the PATH overload; slot 7 is
+    // Size(handle). This exact overload order is original-owner tested
+    // and crucial to the MSVC Win32 fake-engine vtable fixture.
+    virtual unsigned Size(const char*,const char*){++bad;return 0;}
     virtual unsigned Size(void* h){
         if(h!=&handle||!handle.value){++bad;return 0;}
         return static_cast<unsigned>(handle.value->size());
     }
-    virtual unsigned Size(const char*,const char*){++bad;return 0;}
+    virtual void Flush(void*){++bad;}
+    virtual bool Precache(const char*,const char*){++bad;return false;}
+    virtual bool FileExists(const char*,const char*){++bad;return false;}
 };
 static int requests=0;
 static int unavailable=-1;
