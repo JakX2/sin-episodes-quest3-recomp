@@ -17,6 +17,13 @@ surfaceprops read, ParseSurfaceData and physics readback stages all show
 `NOT_REQUESTED`**. This new result is a repeated baseline, not an
 engine-side physics registration observation.
 
+The report also lacks the Phase516-only physics surface count/index
+readback summary line entirely, whereas the Phase516 launcher always
+prints it (including `NOT_REQUESTED`). That provides additional
+version evidence that the owner invoked an older extracted package,
+not merely omitted the Phase516-specific option. A fresh extracted
+package is required for meaningful readback testing.
+
 ## Corrective packaging
 
 A new, separate `RUN_PHYSICS_READONLY_TEST.bat` passes the existing
