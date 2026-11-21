@@ -142,11 +142,11 @@ def self_test()->None:
     # Fake native-vtable addresses; no original compiled method bytes.
     fake_vtable={
         0x71001000:0x71005000,
-        0x71001388:0x71006000,
+        0x710013F8:0x71006000,
     }
     def synthetic_vtable_ok(values,first,second):
         return values.get(0x71001000)==first and (
-            values.get(0x71001388)==second)
+            values.get(0x710013F8)==second)
     assert synthetic_vtable_ok(fake_vtable,0x71005000,0x71006000)
     for key in fake_vtable:
         bad=dict(fake_vtable);bad[key]^=1
