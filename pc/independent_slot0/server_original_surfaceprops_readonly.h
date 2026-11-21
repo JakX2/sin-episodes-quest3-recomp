@@ -50,9 +50,10 @@ struct Report final {
 // Includes the exact original server physics Factory ordering first.
 // Once physics 3/3 has been proven, read the original manifest/scripts
 // through bounded VFileSystem012 without calling ParseSurfaceData.
-inline Report Inspect(fac::Factory physicsFactory,void* filesystem) noexcept {
+inline Report ReadAfterFactory(fac::Result verifiedPhysics,
+                               void* filesystem) noexcept {
     Report r{};
-    r.physics=fac::ReadOnlyThree(physicsFactory);
+    r.physics=verifiedPhysics;
     if(!r.physics.successful())return r;
     fs::Bridge bridge{};
     r.resources=bridge.ReadOnly(filesystem);
@@ -61,5 +62,12 @@ inline Report Inspect(fac::Factory physicsFactory,void* filesystem) noexcept {
     else if(r.resources.verified())r.outcome=Outcome::Verified;
     else r.outcome=Outcome::InvalidSources;
     return r;
+}
+// Native fake-engine tests may exercise the full Factory->Filesystem
+// sequence in one call. The production engine probe logs the Factory
+// terminal BEFORE invoking ReadAfterFactory, so early filesystem crashes
+// cannot silently appear as a missing physics Factory trace.
+inline Report Inspect(fac::Factory factory,void* filesystem) noexcept {
+    return ReadAfterFactory(fac::ReadOnlyThree(factory),filesystem);
 }
 } // namespace sin_independent::server_original_surfaceprops_readonly
