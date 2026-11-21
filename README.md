@@ -21,7 +21,8 @@
 > [client VGUI/HUD bootstrap](research/phases/2026-11-21-original-client-vgui-hud-bootstrap-decomp.md)
 > [VGUI factory-array resolver](research/phases/2026-11-21-original-client-vgui-factory-array-resolver-decomp.md)
 > [HUD type-converter registry](research/phases/2026-11-21-original-client-hud-type-converter-registry-decomp.md)
-> and [red-black tree insertion/fixup](research/phases/2026-11-21-original-client-converter-red-black-insertion-decomp.md).
+> [red-black tree insertion/fixup](research/phases/2026-11-21-original-client-converter-red-black-insertion-decomp.md)
+> and [12-byte string-token red-black tree](research/phases/2026-11-21-original-client-string-token-red-black-tree-decomp.md).
 > These are reverse-engineering artifacts, **not playable replacement DLLs**.
 > The legacy Phase 56 text below describes the starting scaffold.
 

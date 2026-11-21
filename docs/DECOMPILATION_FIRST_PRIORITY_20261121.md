@@ -125,3 +125,25 @@ port**. See
 `research/phases/2026-11-21-original-client-converter-red-black-insertion-decomp.md`
 and independent strict original PE32 verifier
 `research/tools/audit_sin_original_client_converter_insertion.py`.
+
+## Phase 545: 16-bit string-token red-black tree
+
+Following the previous 24-byte converter registry, the original client
+contains a **second, distinct, 12-byte per-node ordered red-black tree**
+for interned string tokens. Eight newly authenticated complete original
+methods, totaling **2,678 instruction bytes**, describe the two-comparator
+existing-token lookup, one-comparator insertion-position search,
+16-bit free/head allocation, token publication, node linking, 1,387-byte
+red-black fixup, and two mirrored rotations. All methods are verified
+against the exact original 2006 pair, including 36 direct CALL edges and
+the original root color byte/word writes. Original record offsets are
+0/+2 children, +4 parent, +6 color, +8 stored string payload pointer.
+The token array indexes and root are 16-bit; 0xFFFF is the absent token.
+
+See `research/phases/2026-11-21-original-client-string-token-red-black-tree-decomp.md`
+and owner-local SHA auditor
+`research/tools/audit_sin_original_client_string_token_tree.py`.
+The host-only C++17 reference implements two verified search decisions
+and a 12-byte record layout, not the entire original engine allocator
+or tree balancer. Both string comparator variants remain for future
+semantic recovery. No native port is claimed.
