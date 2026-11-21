@@ -69,6 +69,74 @@ def verify_registration_shape(
     ):
         raise VerificationError("native NPC registrar target/factory pointer mismatch")
 
+def verify_shared_druglab_grunt_factory(pe)->dict:
+    """Authenticate three class aliases and their *shared* original constructor."""
+    factory_addresses=(0x22536840,0x22536844,0x22536848)
+    vtable=0x2249A9F8
+    creator=0x2236A320
+    delegate=0x22369E30
+    constructor=0x2236A340
+    for ptr in factory_addresses:
+        if pe.section_of(ptr)!='.data' or pe.u32(ptr)!=vtable:
+            raise VerificationError("druglab grunt native factory vptr mismatch")
+    if (pe.section_of(vtable)!='.rdata' or
+        pe.u32(vtable-4)!=0x224D23F4 or
+        pe.u32(vtable)!=creator or pe.u32(vtable+4)!=delegate):
+        raise VerificationError("druglab grunt shared two-method vtable mismatch")
+    methods=(
+        ('factory creator wrapper',creator,23,
+         '6eecf5ca8aa241b73c4f1557c98667941ac865d58014926bdfdd055381792de9'),
+        ('factory delegate',delegate,16,
+         'ed8abac6973adb2766ebee7d4e8a19d917263843bcec4e4a25f52cc4c4203a21'),
+        ('underlying allocation ctor',constructor,87,
+         '4df0df1f66082cfa848b96edff3977f7c6cb35e4ff31d2a7918dd244028d7ad6'),
+    )
+    for label,va,size,expected in methods:
+        if hashlib.sha256(pe.at(va,size)).hexdigest()!=expected:
+            raise VerificationError("changed complete original "+label)
+    for site,target in (
+        (0x2236A327,constructor),
+        (0x2236A346,0x22138940),
+        (0x2236A356,0x22360D80),
+    ):
+        code=pe.at(site,5)
+        if code[0]!=0xE8 or (
+            site+5+struct.unpack_from('<i',code,1)[0])!=target:
+            raise VerificationError("shared grunt call-edge changed")
+    if (pe.at(0x2236A32F,5)!=bytes((0x05,0x60,0x01,0,0)) or
+        pe.at(0x2236A341,5)!=bytes((0x68,0xD8,0x0F,0,0)) or
+        pe.at(0x2236A37E,3)!=bytes((0xFF,0x50,0x70)) or
+        pe.at(0x22369E3A,3)!=bytes((0xFF,0x50,0x18))):
+        raise VerificationError("shared grunt allocation and return shape changed")
+    if (pe.at(0x2236A35F,2)!=bytes((0xC7,0x06)) or
+        pe.u32(0x2236A361)!=0x2249AAA4 or
+        pe.at(0x2236A365,2)!=bytes((0xC7,0x86)) or
+        pe.u32(0x2236A367)!=0x790 or
+        pe.u32(0x2236A36B)!=0x2249AA7C or
+        pe.at(0x2236A36F,2)!=bytes((0xC7,0x86)) or
+        pe.u32(0x2236A371)!=0xC14 or
+        pe.u32(0x2236A375)!=0x2249AA40):
+        raise VerificationError("shared grunt source vptr writes changed")
+    return {
+        'class_aliases':[
+            'npc_druglab_grunt_pistol',
+            'npc_druglab_grunt_scattergun',
+            'npc_druglab_grunt_assault_rifle'
+        ],
+        'shared_factory_vtable_va':hex(vtable),
+        'factory_entry_va':hex(creator),
+        'factory_delegate_va':hex(delegate),
+        'allocation_constructor_va':hex(constructor),
+        'original_allocation_bytes':0xFD8,
+        'returned_subobject_offset':0x160,
+        'observed_native_vptr_writes':[
+            {'object_offset':hex(off),'original_vtable_va':hex(va)}
+            for off,va in ((0,0x2249AAA4),(0x790,0x2249AA7C),
+                           (0xC14,0x2249AA40))
+        ],
+        'note':'Not a recovered NPC AI or weapon-selection implementation.'
+    }
+
 def verify_npc_registry(server:bytes,client:bytes)->dict:
     if hashlib.sha256(server).hexdigest()!=SERVER_SHA256:
         raise VerificationError("original retail server.dll SHA256 differs")
@@ -102,6 +170,7 @@ def verify_npc_registry(server:bytes,client:bytes)->dict:
             'factory_object_va':hex(factory_va),
             'registration_full_sha256':complete_sha,
         })
+    shared=verify_shared_druglab_grunt_factory(pe)
     if len(output)!=17:
         raise VerificationError("not all 17 missing NPC names checked")
     return {
@@ -112,6 +181,7 @@ def verify_npc_registry(server:bytes,client:bytes)->dict:
         'original_server_sha256':SERVER_SHA256,
         'original_client_sha256':CLIENT_SHA256,
         'entries':output,
+        'verified_original_shared_grunt_factory':shared,
         'limits':(
           'Registration metadata only. Neither a constructor ABI nor '
           'an NPC AI, spawn, animation, navigation, map-host entity, '
