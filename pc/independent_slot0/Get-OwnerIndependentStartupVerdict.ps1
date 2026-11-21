@@ -20,6 +20,7 @@ $factoryResults = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
+$serverPhysicsLogs = New-Object System.Collections.Generic.List[string]
 $soundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientSoundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientMaterialTerminalLogs = New-Object System.Collections.Generic.List[string]
@@ -84,6 +85,9 @@ $blockersByLog = New-Object System.Collections.Generic.List[string]
 foreach ($log in $logs) {
     $logFirstBlocker = $null
     $soundEntered = $false
+    $serverPhysicsStage=0
+    $serverPhysicsEvents=0
+    $serverPhysicsResult=$null
     $clientSoundEntered = $false
     $clientSoundResult = $null
     $clientMaterialStage = 0
@@ -844,6 +848,25 @@ foreach ($log in $logs) {
                 $soundscapeStage=4
             }
         }
+        if ($role -eq 'server' -and $phase -clike 'server-physics-*') {
+            # The actual 2006 server physics triple is a separate, later
+            # opt-in stage; accept only a single ordered 3-event sequence.
+            $serverPhysicsEvents++
+            if ($serverPhysicsStage -eq 0 -and
+                $phase -eq 'server-physics-entered' -and
+                $version -eq 'original-server-second-factory:read-only') {
+                $serverPhysicsStage=1
+            } elseif ($serverPhysicsStage -eq 1 -and
+                $phase -eq 'server-physics-result' -and
+                $version -cmatch '^(original-server-physics-three-available:3:3:1|original-server-physics-missing-first:1:0:0|original-server-physics-missing-second:2:1:0|original-server-physics-missing-third:3:2:0|original-server-physics-missing-factory:0:0:0)$') {
+                $serverPhysicsResult=$version
+                $serverPhysicsStage=2
+            } elseif ($serverPhysicsStage -eq 2 -and
+                $phase -eq 'server-physics-terminal-stop' -and
+                $version -eq 'no-manifest-coupling-no-server-init') {
+                $serverPhysicsStage=3
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -934,6 +957,11 @@ foreach ($log in $logs) {
             if ($null -eq $logFirstBlocker) { $logFirstBlocker = $blocker }
         }
     }
+    if ($serverPhysicsStage -eq 3 -and $serverPhysicsEvents -eq 3 -and
+        $null -ne $serverPhysicsResult) {
+        $serverPhysicsLogs.Add(('{0}:server:{1}' -f
+            $log.Name,$serverPhysicsResult))
+    }
     if ($null -ne $logFirstBlocker) {
         $blockersByLog.Add(("{0}={1}" -f $log.Name,$logFirstBlocker))
     }
@@ -948,6 +976,9 @@ if ($unsupportedCallbacks.Count -gt 0) {
 }
 if ($soundCallbacks.Count -gt 0) {
     Write-Output ("OWNER_SERVER_SOUND_CONNECT_RESULTS: {0}" -f ($soundCallbacks -join ','))
+}
+if ($serverPhysicsLogs.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS: {0}" -f ($serverPhysicsLogs -join ','))
 }
 if($env:SIN_INDEPENDENT_VERDICT_DEBUG -eq '1') {
     Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_DEBUG: {0}" -f ($soundInitSeenEvents -join ' | '))
@@ -1051,6 +1082,9 @@ if ($issues.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CVAR_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($eventTerminalLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: EVENT_LOAD_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
+}
+elseif ($serverPhysicsLogs.Count -gt 0) {
+    Write-Output "OWNER_INDEPENDENT_VERDICT: SERVER_PHYSICS_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($engineFsSoundscapeLogs.Count -gt 0) {
     Write-Output "OWNER_INDEPENDENT_VERDICT: CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF"
 } elseif ($engineFsHooksLogs.Count -gt 0) {
