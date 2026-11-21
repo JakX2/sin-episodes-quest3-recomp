@@ -1,6 +1,9 @@
 #include "sin_compat/original_sin_trigger_entities.hpp"
 
+#include <cerrno>
+#include <charconv>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <new>
 #include <utility>
@@ -141,6 +144,51 @@ TriggerCode OriginalTriggerEntityFactory::configure(
         // overwrite the previous configuration.
         TriggerConfig owned=config;
         r->config=std::move(owned);
+        return TriggerCode::Handled;
+    } catch (...) {return TriggerCode::HostRefused;}
+}
+TriggerCode OriginalTriggerEntityFactory::apply_map_keyvalue(
+    EntityRef trigger,std::string_view key,
+    std::string_view text_value) noexcept {
+    Guard guard(busy_);
+    if(!guard)return TriggerCode::Reentrant;
+    Record* r=find(trigger);
+    if(!r)return TriggerCode::UnknownEntity;
+    if(r->consumed)return TriggerCode::AlreadyConsumed;
+    if(key!="targetname" && (r->kind!=TriggerKind::DynamicDifficulty ||
+       (key!="EstimatedTime" && key!="EstimatedDifficulty" &&
+        key!="EndOfGame")))
+        return TriggerCode::UnknownKey;
+    // 256-byte scalar/targetname limit is a new input-safety policy,
+    // not an assertion about Ritual's native KeyValues size limits.
+    if(text_value.size()>256)return TriggerCode::InvalidConfig;
+    try {
+        if(!host_.is_live(trigger))return TriggerCode::HostNotLive;
+        TriggerConfig next=r->config;
+        if(key=="targetname") {
+            next.targetname.assign(text_value.data(),text_value.size());
+        } else if(key=="EstimatedTime") {
+            std::string text(text_value);
+            if(text.empty())return TriggerCode::InvalidConfig;
+            char* end=nullptr;
+            errno=0;
+            const float v=std::strtof(text.c_str(),&end);
+            if(errno==ERANGE || end!=text.c_str()+text.size() ||
+               !std::isfinite(v))return TriggerCode::InvalidConfig;
+            next.estimated_time=v;
+        } else {
+            std::int32_t value=0;
+            const char* first=text_value.data();
+            const char* last=first+text_value.size();
+            if(first==last)return TriggerCode::InvalidConfig;
+            const auto parsed=std::from_chars(first,last,value,10);
+            if(parsed.ec!=std::errc{} || parsed.ptr!=last)
+                return TriggerCode::InvalidConfig;
+            if(key=="EstimatedDifficulty")
+                next.estimated_difficulty=value;
+            else next.end_of_game=value;
+        }
+        r->config=std::move(next);
         return TriggerCode::Handled;
     } catch (...) {return TriggerCode::HostRefused;}
 }
