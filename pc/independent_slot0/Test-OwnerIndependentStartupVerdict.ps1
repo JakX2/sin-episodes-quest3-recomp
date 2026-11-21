@@ -1496,6 +1496,55 @@ try {
     [IO.File]::WriteAllText($server,
         "[SiN independent] role=server phase=sdk2004-preflight-only version=<none>" + [Environment]::NewLine)
     [void](Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF')
+    # Phase 517: the server's source-authenticated three physics names
+    # are a separate real-engine factory stage, not a playable DLLInit.
+    Remove-Item -LiteralPath $client -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $retailReplay -Force -ErrorAction SilentlyContinue
+    $serverPhysicsPrefix=[string[]]@(
+        '[SiN independent] role=server phase=factory-accepted version=ServerGameDLL003',
+        '[SiN independent] role=server phase=init-entered version=<none>'
+    )
+    $serverPhysicsSteps=[string[]]@(
+        '[SiN independent] role=server phase=server-physics-entered version=original-server-second-factory:read-only',
+        '[SiN independent] role=server phase=server-physics-result version=original-server-physics-three-available:3:3:1',
+        '[SiN independent] role=server phase=server-physics-terminal-stop version=no-manifest-coupling-no-server-init'
+    )
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+@($serverPhysicsSteps)))
+    $serverPhysicsOut=Verify 'SERVER_PHYSICS_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedServerPhysics=('OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS: '+
+        'sin-independent-'+$session+'-303.log:server:original-server-physics-three-available:3:3:1')
+    if(-not ($serverPhysicsOut -ccontains $expectedServerPhysics)) {
+        throw 'Original server physics 3/3 was not classified after correct DLLInit'
+    }
+    foreach($failure in @('missing-first:1:0:0','missing-second:2:1:0','missing-third:3:2:0','missing-factory:0:0:0')) {
+        $missing=@($serverPhysicsSteps)
+        $missing[1]=$missing[1].Replace('three-available:3:3:1',$failure)
+        [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+@($missing)))
+        $failedOut=Verify 'SERVER_PHYSICS_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+        if(($failedOut -join '|').Contains($expectedServerPhysics) -or
+           -not (($failedOut -join '|').Contains("original-server-physics-$failure"))) {
+            throw ('Original server factory failure not distinctly recorded: '+$failure)
+        }
+    }
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+
+        @($serverPhysicsSteps)+@($serverPhysicsSteps[1])))
+    $duplicateServerOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($duplicateServerOut -join '|').Contains('OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS:')) {
+        throw 'Duplicate server physics result elevated to owner evidence'
+    }
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+
+        @($serverPhysicsSteps[0])+
+        @('[SiN independent] role=server phase=server-physics-result version=original-server-physics-three-available:3:2:1')+
+        @($serverPhysicsSteps[2])))
+    $forgedServerOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($forgedServerOut -join '|').Contains('OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS:')) {
+        throw 'Inconsistent 2/3 server physics success was accepted'
+    }
+    [IO.File]::WriteAllLines($server,[string[]]@($serverPhysicsSteps))
+    $missingInitOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($missingInitOut -join '|').Contains('OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS:')) {
+        throw 'Server physics stage accepted without earlier same-log DLLInit'
+    }
     Write-Output "PASS owner session classifier: cross-session, game-module factory entry, native Init blocker, two roles, no false retail boot"
 } finally {
     Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
