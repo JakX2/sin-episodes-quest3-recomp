@@ -62,6 +62,16 @@ foreach($unrequested in @($plan,$soundscapePlan,$cvarPlan,$physicsPlan,$surfaceP
         throw 'Original physics engine mutation was enabled without explicit -SurfacePropsRegister'
     }
 }
+$readbackPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePropsRegister -SurfacePropsReadback)
+if(-not (($readbackPlan -join '|').Contains(
+    'SURFACEPROPS READBACK: opt-in SDK2004 slots2/3 count and default/solidmetal/metalvehicle indices after original physics parsing returns; no game boot.'))) {
+    throw 'Source 2004 physics surface count/index readback must require explicit opt-in'
+}
+foreach($early in @($plan,$soundscapePlan,$cvarPlan,$physicsPlan,$surfacePropsPlan,$registerPlan)) {
+    if(($early -join '|').Contains('SURFACEPROPS READBACK:')) {
+        throw 'SDK-guided surface readback enabled before separate explicit opt-in'
+    }
+}
 if(($soundscapePlan -join '|').Contains('SURFACEPROPS READ:') -or
    ($cvarPlan -join '|').Contains('SURFACEPROPS READ:') -or
    ($physicsPlan -join '|').Contains('SURFACEPROPS READ:')) {
@@ -104,6 +114,9 @@ foreach($must in @(
     'SurfacePropsRegister',
     'ExplicitSurfacePropsRegisterProbe',
     'Original surfaceprops ParseSurfaceData (explicit engine mutation):',
+    'SurfacePropsReadback',
+    'ExplicitSurfacePropsReadbackProbe',
+    'Original physics surface count/index readback (SDK2004, opt-in):',
     'Original surfaceprops manifest and scripts (read-only):',
     'Original soundscape ConVar lookup (read-only):',
     'Original physics Factory triple (read-only):',
