@@ -23,6 +23,24 @@ contains:
 Original function-region bytes are analyzed privately only. The public
 repo contains no complete original instructions or proprietary scripts.
 
+## Latest owner Windows evidence before this server stage
+
+The independent CLIENT-side Phase519 test archive
+`SiN_FileSystem_Test_Results_20261121-024749-5e189ae384.zip`
+SHA256 `56c9163dea74bb72ec17534fc66e24d56333fe0db4620f2fd060115dc33ffe37`
+has **the same real original engine** VPhysicsSurfaceProps001 count
+`94` and surface indices `default=0,solidmetal=1,metalvehicle=85`
+**before** the two ParseSurfaceData calls and **after** the two
+calls returned `0,0`. Installed original file restoration was verified.
+
+Therefore engine-side surface materials were already populated before
+this optional native parser call, and claiming 94 independent new
+registrations would be wrong. A count/index equality does NOT
+prove identical full material fields, nor normal game Init. This is
+the reason to shift new diagnostics toward the independently rebuilt
+server's Factory and manifest path. The SERVER part is NOT yet
+observed on retail Windows.
+
 ## New independent code
 
 `server_original_surfaceprops_readonly.h` combines an exact
