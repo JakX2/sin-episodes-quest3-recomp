@@ -20,7 +20,8 @@
 > [client Init tail decompilation](research/phases/2026-11-21-original-client-init-tail-and-game-system-lifecycle.md)
 > [client VGUI/HUD bootstrap](research/phases/2026-11-21-original-client-vgui-hud-bootstrap-decomp.md)
 > [VGUI factory-array resolver](research/phases/2026-11-21-original-client-vgui-factory-array-resolver-decomp.md)
-> and [HUD type-converter registry](research/phases/2026-11-21-original-client-hud-type-converter-registry-decomp.md).
+> [HUD type-converter registry](research/phases/2026-11-21-original-client-hud-type-converter-registry-decomp.md)
+> and [red-black tree insertion/fixup](research/phases/2026-11-21-original-client-converter-red-black-insertion-decomp.md).
 > These are reverse-engineering artifacts, **not playable replacement DLLs**.
 > The legacy Phase 56 text below describes the starting scaffold.
 
