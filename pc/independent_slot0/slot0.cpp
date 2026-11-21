@@ -30,6 +30,7 @@
 #include "client_soundscape_original_convar_cache.h"
 #include "client_original_physics_factory_probe.h"
 #include "client_original_surfaceprops_engine_fs_bridge.h"
+#include "client_original_surfaceprops_registration.h"
 #include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
@@ -472,6 +473,15 @@ static bool clientSurfacePropsReadProbeEnabled() noexcept {
             "SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE",
             enabled,2)==1 && enabled[0]=='1';
 }
+// Phase 515: actual engine mutation requires an independent, separate opt-in.
+// No old filesystem/physics/soundscape diagnostic can enable this implicitly.
+static bool clientSurfacePropsRegisterProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientSurfacePropsReadProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_SURFACEPROPS_REGISTER_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
 [[noreturn]] static void stopAfterClientSoundscapeCatalogProbe() noexcept {
     using namespace sin_independent::soundscape_retail_gate;
     diagnostic("engine-fs-soundscape-entered","rb-GAME:read-only");
@@ -559,6 +569,30 @@ static bool clientSurfacePropsReadProbeEnabled() noexcept {
             diagnostic("engine-fs-surfaceprops-result",shape);
             diagnostic("engine-fs-surfaceprops-terminal-stop",
                        "no-physics-surface-registration-no-game-init");
+            if(resources.verified() &&
+               clientSurfacePropsRegisterProbeEnabled()) {
+                // Original 0x24191EC0 closes both source files before
+                // calling VPhysicsSurfaceProps001 virtual slot1. Re-query
+                // this interface ONLY inside the explicit opt-in stage.
+                diagnostic("engine-fs-registration-entered",
+                           "VPhysicsSurfaceProps001:slot1:explicit-opt-in");
+                void* surfaceProps=g_clientPhysicsFactory?
+                    g_clientPhysicsFactory("VPhysicsSurfaceProps001",nullptr):
+                    nullptr;
+                const auto registration=
+                    sin_independent::original_surfaceprops_registration::Attempt(
+                        g_clientFileSystem,surfaceProps);
+                char registered[192]={};
+                std::snprintf(registered,sizeof(registered),
+                    "%s:%u:%u:%d:%d",
+                    sin_independent::original_surfaceprops_registration::Name(
+                        registration.outcome),
+                    registration.source_reads,registration.calls_returned,
+                    registration.first_return,registration.second_return);
+                diagnostic("engine-fs-registration-result",registered);
+                diagnostic("engine-fs-registration-terminal-stop",
+                           "two-engine-call-returns-not-game-init");
+            }
         }
     }
     diagnostic("engine-fs-soundscape-terminal-stop",
