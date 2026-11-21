@@ -162,6 +162,39 @@ if (-not $hookText.Contains('Start-SiNFileSystemTest.ps1') -or
     -not $hookText.Contains('pause')) {
     throw 'Hook proof must be double-click, three-phase, independently packaged'
 }
+# Phase 518: the owner has two explicit, nonconfusable physics shortcuts.
+# The read-only script must not be able to invoke the native mutating path.
+$physicsReadOnly=Join-Path (Split-Path -Parent $Runner) 'RUN_PHYSICS_READONLY_TEST.bat'
+$physicsReadback=Join-Path (Split-Path -Parent $Runner) 'RUN_PHYSICS_READBACK_TEST.bat'
+foreach($entry in @($physicsReadOnly,$physicsReadback)) {
+    if(-not (Test-Path -LiteralPath $entry -PathType Leaf)) {
+        throw ('Missing owner physics one-click choice: '+$entry)
+    }
+}
+$readonlyText=[IO.File]::ReadAllText($physicsReadOnly)
+$readbackText=[IO.File]::ReadAllText($physicsReadback)
+$requiredReadOnly='-StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead'
+$requiredReadback=$requiredReadOnly+' -SurfacePropsRegister -SurfacePropsReadback'
+if(-not $readonlyText.Contains($requiredReadOnly) -or
+   $readonlyText.Contains('-SurfacePropsRegister') -or
+   $readonlyText.Contains('-SurfacePropsReadback') -or
+   -not $readonlyText.Contains('Start-SiNFileSystemTest.ps1')) {
+    throw 'Read-only physics batch must include original prerequisites but never original engine mutation'
+}
+if(-not $readbackText.Contains($requiredReadback) -or
+   -not $readbackText.Contains('set /p "CONSENT=Type REGISTER') -or
+   -not $readbackText.Contains('if not "%CONSENT%"=="REGISTER"') -or
+   -not $readbackText.Contains('exit /b 2') -or
+   -not $readbackText.Contains('Start-SiNFileSystemTest.ps1')) {
+    throw 'Physics readback batch must gate the native mutation behind explicit REGISTER consent'
+}
+foreach($entry in @($readonlyText,$readbackText)) {
+    if(-not $entry.Contains('-NoProfile -STA -ExecutionPolicy Bypass') -or
+       -not $entry.Contains('pause') -or
+       -not $entry.Contains('exit /b %RESULT%')) {
+        throw 'Physics BAT wrappers must preserve existing guarded PowerShell owner launcher'
+    }
+}
 $soundscapeBatch=Join-Path (Split-Path -Parent $Runner) 'RUN_SOUNDSCAPE_CATALOG_TEST.bat'
 $soundscapeDoc=Join-Path (Split-Path -Parent $Runner) 'OWNER_SOUNDSCAPE_RETAIL_GATE_20261120.md'
 if (-not (Test-Path -LiteralPath $soundscapeBatch -PathType Leaf) -or
