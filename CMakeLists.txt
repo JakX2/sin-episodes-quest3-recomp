@@ -3774,3 +3774,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase548: original 2006 global client token singleton, distinct comparator
+# default, source-verified free-list reset and string page ownership.
+# Original DLLs required only for optional owner-local --bin-zip auditing.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_token_lifecycle_tests
+    tests/test_original_client_token_lifecycle.cpp)
+  target_include_directories(sin_original_client_token_lifecycle_tests PRIVATE include)
+  target_compile_features(sin_original_client_token_lifecycle_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_token_lifecycle_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_token_lifecycle_tests
+    COMMAND sin_original_client_token_lifecycle_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_token_lifecycle_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_token_lifecycle.py"
+        --self-test)
+  endif()
+endif()
