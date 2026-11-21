@@ -97,6 +97,10 @@ def verify(server,client):
  need(pe.base==0x24000000,'unrecognized client PE32 base')
  need(pe.u32(VTABLE)==0x240FE0E0 and pe.section(VTABLE)=='.rdata',
       'original VClient011 vtable base changed')
+ # Original MSVC RTTI is .?AVCHLClient@@, not guessed from Source SDK.
+ need(pe.u32(VTABLE-4)==0x242E5818, 'CHLClient RTTI COL pointer changed')
+ need(pe.u32(0x242E5818+12)==0x242FA618, 'CHLClient RTTI type descriptor changed')
+ need(pe.at(0x242FA618+8,len(b'.?AVCHLClient@@'))==b'.?AVCHLClient@@', 'CHLClient RTTI name changed')
  # +0 original Init; +4/+8/+12/+16 native lifecycle entries.
  for i,(name,va,n,sha) in enumerate(METHODS):
   need(pe.section(va)=='.text',name+' not in original .text')
@@ -118,7 +122,7 @@ def verify(server,client):
   'original_client_sha256':CLIENT_SHA,'new_verified_methods':len(METHODS),
   'new_native_bytes':sum(x[2] for x in METHODS),
   'original_direct_calls':len(CALLS),'opcode_witnesses':len(WITNESSES),
-  'vtable':hex(VTABLE),'slots':[{'byte_offset':hex(4*(i+1)),'VA':hex(x[1]),'role':x[0]} for i,x in enumerate(METHODS[:4])],
+  'original_msvc_type_descriptor':'CHLClient','vtable':hex(VTABLE),'slots':[{'byte_offset':hex(4*(i+1)),'VA':hex(x[1]),'role':x[0]} for i,x in enumerate(METHODS[:4])],
   'same_state_flag':hex(0x2433F680),'native_prediction_commands':['cl_predict 0','cl_predict 1'],
   'limitation':'Exact original machine-code evidence and bounded C-like flow; not full translated game DLL.'}
 def self_test():
