@@ -100,6 +100,13 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
   add_test(NAME sin_original_gameplay_triggers_tests
     COMMAND sin_original_gameplay_triggers_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_gameplay_triggers_binary_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_sin_original_gameplay_triggers.py
+        --self-test)
+  endif()
 endif()
 
 # Original 2006 rifle secondary-fire to CGrenadeAR gameplay integration:
