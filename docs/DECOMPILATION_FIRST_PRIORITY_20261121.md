@@ -161,10 +161,10 @@ nonzero flag, unless `this+0` already stores a comparator callback.
 Three additional original native functions authenticate the folded-string
 implementation: a runtime locale-state dispatcher with direct tail-JMP
 to its ASCII fallback, the ASCII A..Z folding implementation, and a
-separately called locale-aware character-fold provider. Six **complete
-non-overlapping** methods account for **709 new original instruction bytes**.
-The owner SHA-gated auditor checks four original direct CALLs, one original
-JMP to the ASCII fallback, and 29 individual instruction witnesses. C++17
+separately called locale-aware character-fold provider. Eight **complete
+non-overlapping** methods account for **827 new original instruction bytes**.
+The owner SHA-gated auditor checks eight original direct CALLs, one original
+JMP to the ASCII fallback, and 34 individual instruction witnesses. C++17
 tests exercise unsigned byte ordering, ASCII fallback, native callback
 selection and source-backed integration with the already recovered 12-byte
 token-tree lookup.
@@ -173,5 +173,9 @@ Detailed proof and remaining locale/active-mode limitations:
 `research/phases/2026-11-21-original-client-token-comparator-variants-decomp.md`.
 Reproducible opt-in owner-local verifier:
 `research/tools/audit_sin_original_client_token_comparators.py`.
-Actual runtime selection, locale settings and storage ownership remain
-unverified. This is decompilation-first research, not a new port.
+In particular the static HUD type-converter token table initializer at
+`0x24262410` passes `1,0,0` to the constructor for global `0x2432289C`.
+The independently authenticated base constructor `0x241D3D90` first sets the
+callback to zero, therefore the original HUD converter string-token table
+**initializes to the folded callback** `0x241D3C90`. Later runtime callback
+overrides, active locale settings and string storage ownership remain unverified. This is decompilation-first research, not a new port.
