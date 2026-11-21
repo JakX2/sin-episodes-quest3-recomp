@@ -65,7 +65,7 @@ struct Host final:IOriginalTriggerHost {
         order.emplace_back("warn");
     }
     bool initialize_native_base_trigger(EntityRef e) override {
-        assert(e==secret);
+        assert(e==secret||e==dynamic);
         ++base_calls;order.emplace_back("base-spawn");
         return base_ok;
     }
