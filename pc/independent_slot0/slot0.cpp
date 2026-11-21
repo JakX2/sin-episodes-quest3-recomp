@@ -31,6 +31,7 @@
 #include "client_original_physics_factory_probe.h"
 #include "client_original_surfaceprops_engine_fs_bridge.h"
 #include "client_original_surfaceprops_registration.h"
+#include "client_original_surfaceprops_readback.h"
 #include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
@@ -482,6 +483,15 @@ static bool clientSurfacePropsRegisterProbeEnabled() noexcept {
             "SIN_INDEPENDENT_CLIENT_SURFACEPROPS_REGISTER_PROBE",
             enabled,2)==1 && enabled[0]=='1';
 }
+// SDK2004-guided slots 2/3 are distinct and unproven on this retail
+// engine. Extra explicit opt-in only AFTER actual registration returns.
+static bool clientSurfacePropsReadbackProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientSurfacePropsRegisterProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READBACK_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
 [[noreturn]] static void stopAfterClientSoundscapeCatalogProbe() noexcept {
     using namespace sin_independent::soundscape_retail_gate;
     diagnostic("engine-fs-soundscape-entered","rb-GAME:read-only");
@@ -592,6 +602,23 @@ static bool clientSurfacePropsRegisterProbeEnabled() noexcept {
                 diagnostic("engine-fs-registration-result",registered);
                 diagnostic("engine-fs-registration-terminal-stop",
                            "two-engine-call-returns-not-game-init");
+                if(registration.completed_calls() &&
+                   clientSurfacePropsReadbackProbeEnabled()) {
+                    diagnostic("engine-fs-readback-entered",
+                               "VPhysicsSurfaceProps001:slots2-3:read-only");
+                    const auto state=
+                        sin_independent::original_surfaceprops_readback::Query(
+                            surfaceProps);
+                    char status[192]={};
+                    std::snprintf(status,sizeof(status),"%s:%d:%d:%d:%d",
+                        sin_independent::original_surfaceprops_readback::Name(
+                            state.outcome),
+                        state.count,state.indices[0],
+                        state.indices[1],state.indices[2]);
+                    diagnostic("engine-fs-readback-result",status);
+                    diagnostic("engine-fs-readback-terminal-stop",
+                               "SDK2004-count-and-indices-not-game-init");
+                }
             }
         }
     }
