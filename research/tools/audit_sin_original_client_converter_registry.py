@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """SHA-pinned read-only original SiN client type-converter registry audit.
 
-Checks 2006 original client 16-bit token intern, linked 24-byte entry scan,
-and converter registration. Emits only metadata, no DLL bytes.
+Checks 2006 original client 16-bit token intern, ordered binary-tree
+24-byte entry lookup via an authenticated token comparator, and registration. Emits only metadata, no DLL bytes.
 """
 from __future__ import annotations
 import argparse, hashlib, json, struct, zipfile
@@ -10,6 +10,7 @@ from pathlib import Path
 from audit_sin_original_client_init_interface_manifest import PE32, SERVER_SHA, CLIENT_SHA
 
 METHODS=(
+ (0x2400A3C0,19,'b0521eacdb9687665838d9a4df7374f3b2665f842939aea4d2d4c550dc97d413','unsigned_16bit_token_less_than'),
  (0x241D4A80,261,'dc80847fa08da6c33e75659031da2d0bb955f5713e28319e50e1c5659e39c1cc','string_token_intern'),
  (0x2400A4D0,230,'29e7ec79122a4b663661351234688ec42ada95894cad4006fbea930171f69f52','converter_list_find'),
  (0x24009F40,128,'c6a10d23962af7f91b8debedb98e7ae661cf044d54fe55d4dd812a58a945f41c','converter_record_insert'),
@@ -72,6 +73,12 @@ def verify(server,client):
       'minimum 0x800-byte string pool allocation changed')
  need(pe.at(0x241D4B3F,3)==b'\xc1\xe9\x02',
       'original intern-copy DWORD stride changed')
+ need(pe.u32(0x24322878)==0x2400A3C0,
+      'converter descriptor does not own original 16-bit comparator')
+ need(pe.at(0x2400A3C4,10)==b'\x66\x8b\x08\x8b\x54\x24\x08\x66\x3b\x0a',
+      'original callback uint16 load and compare changed')
+ need(pe.at(0x2400A3CE,5)==b'\x1b\xc0\xf7\xd8\xc3',
+      'original unsigned-less-than Boolean conversion changed')
  need(pe.at(0x2400A4D7,4)==b'\x8b\x7d\x10\x83',
       'converter lookup head at record +0x10 changed')
  need(pe.at(0x2400A4ED,11)==b'\x8d\x34\x7f\x03\xf6\x03\xf6\x03\xf6\x8d\x44',
@@ -96,6 +103,9 @@ def verify(server,client):
   'status':'ORIGINAL_CLIENT_CONVERTER_REGISTRY_AUTHENTICATED',
   'new_complete_method_count':len(METHODS),
   'new_complete_method_bytes':sum(m[1] for m in METHODS),
+  'original_comparison_callback':'0x2400a3c0',
+  'comparison':'uint16_t(query) < uint16_t(candidate)',
+  'registry_topology':'ordered binary search tree',
   'original_client_sha256':CLIENT_SHA,
   'prior_authenticated_caller':'0x24009340',
   'original_converter_label':'CHudTextureHandle',
@@ -104,7 +114,7 @@ def verify(server,client):
   'original_missing_token_sentinel':'0xFFFF',
   'original_missing_converter_sentinel':'0xFFFFFFFF',
   'direct_call_edges_checked':len(CALLS),
-  'limitations':'No full container class, predicate semantics, runtime client.dll or HUD rendering proved.'
+  'limitations':'No full container allocation/ownership, runtime client.dll or HUD rendering proved.'
  }
 
 def self_test():
@@ -119,8 +129,8 @@ def self_test():
  try:verify(b'wrong',b'wrong')
  except Refusal:pass
  else:raise AssertionError('bad original hashes passed')
- assert len(METHODS)==3 and sum(x[1] for x in METHODS)==619
- print('PASS original converter registry synthetic call corruption checks, SHA refusal and metadata contract')
+ assert len(METHODS)==4 and sum(x[1] for x in METHODS)==638
+ print('PASS original token comparator and ordered tree, synthetic call corruption checks and SHA refusal')
 
 def main():
  p=argparse.ArgumentParser(description=__doc__)
