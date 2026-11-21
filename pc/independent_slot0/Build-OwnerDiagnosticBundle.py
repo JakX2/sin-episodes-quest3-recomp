@@ -35,6 +35,8 @@ ONE_CLICK_SCRIPTS = FS_SCRIPTS + (
     "RUN_SOUNDSCAPE_CATALOG_TEST.bat",
     "RUN_PHYSICS_READONLY_TEST.bat",
     "RUN_PHYSICS_MATERIALS_READONLY.bat",
+    "RUN_SERVER_PHYSICS_READONLY.bat",
+    "OWNER_SERVER_PHYSICS_ONECLICK_PHASE524.md",
     "OWNER_SURFACEPHYSICS_DATA_READONLY_PHASE522.md",
     "RUN_PHYSICS_READBACK_TEST.bat",
     "OWNER_PHYSICS_ONCE_CLICK_OWNER_RESULT_20261121.md",
@@ -135,6 +137,7 @@ class TestStage(unittest.TestCase):
             self.assertTrue((destination/"RUN_SOUNDSCAPE_CATALOG_TEST.bat").is_file())
             self.assertTrue((destination/"RUN_PHYSICS_READONLY_TEST.bat").is_file())
             self.assertTrue((destination/"RUN_PHYSICS_MATERIALS_READONLY.bat").is_file())
+            self.assertTrue((destination/"RUN_SERVER_PHYSICS_READONLY.bat").is_file())
             self.assertTrue((destination/"RUN_PHYSICS_READBACK_TEST.bat").is_file())
             self.assertTrue((destination/"OWNER_PHYSICS_READBACK_ACTUAL_WINDOWS_20261121.md").is_file())
             self.assertTrue((destination/"Start-SiNFileSystemTest.ps1").is_file())

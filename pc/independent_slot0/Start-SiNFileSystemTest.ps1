@@ -15,6 +15,7 @@ param(
     [switch]$PhysicsFactoryLookup,
     [switch]$SurfacePropsRead,
     [switch]$SurfacePhysicsDataRead,
+    [switch]$ServerPhysicsReadOnly,
     [switch]$SurfacePropsRegister,
     [switch]$SurfacePropsReadback,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
@@ -47,6 +48,14 @@ if ($SurfacePropsRegister -and -not $SurfacePropsRead) {
 }
 if ($SurfacePropsReadback -and -not $SurfacePropsRegister) {
     throw 'SurfacePropsReadback requires -SurfacePropsRegister and all prior original physics prerequisites'
+}
+# Server-only mode cannot inherit any client-only engine calls.
+if ($ServerPhysicsReadOnly -and ($StagedStats -or $HookProof -or
+    $SoundscapeCatalog -or $SoundscapeCvarLookup -or
+    $PhysicsFactoryLookup -or $SurfacePropsRead -or
+    $SurfacePhysicsDataRead -or $SurfacePropsRegister -or
+    $SurfacePropsReadback)) {
+    throw 'ServerPhysicsReadOnly must be the only selected diagnostic mode'
 }
 $bin=Join-Path $PSScriptRoot 'bin'
 
@@ -172,7 +181,11 @@ if ($PlanOnly) {
     Write-Output 'SELECT: original installed game folder'
     Write-Output 'COPY: fresh disposable entire game copy under Windows Temp'
     Write-Output 'BINARIES: independent client/server DLLs shipped in package bin'
-    Write-Output 'TEST: presence first, then read only on success and confirmed restoration'
+    if ($ServerPhysicsReadOnly) {
+        Write-Output 'TEST: original server DLLInit physics Factory triple then bounded read-only 2-script resource validation'
+    } else {
+        Write-Output 'TEST: presence first, then read only on success and confirmed restoration'
+    }
     if ($StagedStats) {
         Write-Output 'THIRD TEST: rb/GAME definitions and rt/null layout, independent 66-ID binding'
         if ($HookProof) {
@@ -200,6 +213,9 @@ if ($PlanOnly) {
             }
         }
     }
+    if ($ServerPhysicsReadOnly) {
+        Write-Output 'SERVER PHYSICS READ: original server VPhysics030/Collision007/SurfaceProps001 and rb/GAME source scripts. READ ONLY. No ParseSurfaceData or DLLInit success.'
+    }
     Write-Output 'RESULTS: new text-only ZIP in extracted package folder'
     Write-Output 'CLEANUP: keep disposable copy if restoration is uncertain'
     return
@@ -214,6 +230,8 @@ $presenceOk=$false
 $readOk=$false
 $stagedOk=$false
 $stagedStarted=$false
+$serverOk=$false
+$serverStarted=$false
 $problems=New-Object 'System.Collections.Generic.List[string]'
 $copyStatus='NOT_STARTED'
 $cleanup='NOT_STARTED'
@@ -262,6 +280,46 @@ try {
     [IO.File]::WriteAllText(
         (Join-Path $disposable 'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY.txt'),
         'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1'+[Environment]::NewLine)
+    if ($ServerPhysicsReadOnly) {
+        # Original server.dll only, in a clean authenticated game copy.
+        $serverStarted=$true
+        $launchStarted=$true
+        $serverTranscript=Join-Path $reports 'server.txt'
+        $serverRun=Join-Path $reports 'server-run.txt'
+        try {
+            $probe=Join-Path $PSScriptRoot 'Invoke-OwnerIndependentEngineProbe.ps1'
+            $serverArgs=@{
+                GameBin=(Join-Path $disposable 'SE1\bin')
+                GameExecutable=(Join-Path $disposable 'SinEpisodes.exe')
+                IndependentBin=$bin
+                ProbeRole='Server'
+                EnableServerFactoryProbe=$true
+                EnableServerPhysicsFactoryProbe=$true
+                EnableServerPhysicsResourceProbe=$true
+                TimeoutSeconds=$TimeoutSeconds
+                DisposableTestCopyConfirmed=$true
+            }
+            & $probe @serverArgs *>&1 | Tee-Object -FilePath $serverRun | Out-Host
+        } catch {
+            $problems.Add('server physics: '+$_.Exception.Message)
+        }
+        if (Test-Path -LiteralPath $serverRun -PathType Leaf) {
+            Copy-Item -LiteralPath $serverRun -Destination $serverTranscript
+            Preserve-SessionLogs $serverTranscript $reports
+            $serverLines=@([IO.File]::ReadAllLines($serverTranscript))
+            $exitWitness=@($serverLines | Where-Object {
+                $_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E7A'
+            }).Count -eq 1
+            $resourceWitness=@($serverLines | Where-Object {
+                $_ -cmatch '^OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:server:original-server-surfaceprops-two-sources-verified:2:2:93:71:0$'
+            }).Count -eq 1
+            $restoredWitness=@($serverLines | Where-Object {
+                $_ -ceq 'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE'
+            }).Count -eq 1
+            $serverOk=$exitWitness -and $resourceWitness -and $restoredWitness
+        }
+        $exitCode=if($serverOk){0}else{2}
+    } else {
     $presence=Join-Path $reports 'presence.txt'
     $presenceRun=Join-Path $reports 'presence-run.txt'
     $launchStarted=$true
@@ -344,6 +402,7 @@ try {
     }else{
         if($readOk){0}else{2}
     }
+    }
 } catch {
     $problems.Add('setup: '+$_.Exception.Message)
     Write-Output ('Test blocked: '+$_.Exception.Message)
@@ -354,7 +413,7 @@ try {
         $restored=$true
         if ($launchStarted) {
             $restored=$false
-            $last=if($stagedStarted){'staged.txt'}elseif($presenceOk){'read.txt'}else{'presence.txt'}
+            $last=if($serverStarted){'server.txt'}elseif($stagedStarted){'staged.txt'}elseif($presenceOk){'read.txt'}else{'presence.txt'}
             if ($null -ne $reports) {
                 $transcript=Join-Path $reports $last
                 if (Test-Path -LiteralPath $transcript -PathType Leaf) {
@@ -447,6 +506,27 @@ try {
                         $exitCode=0
                         Write-Output $(if($SoundscapeCatalog){'ONECLICK_RECOVERED_SOUNDSCAPE_DIAGNOSTIC: ORIGINAL_7_301_242_3_VERIFIED'}elseif($HookProof){'ONECLICK_RECOVERED_HOOK_DIAGNOSTIC: OWNED_27_28_5_VERIFIED'}else{'ONECLICK_RECOVERED_STAGED_DIAGNOSTIC: ORIGINAL_MODES_AND_INDEPENDENT_CATALOG_VERIFIED'})
                     }
+                }
+            }
+        }
+        # A server-only diagnostic can complete its original engine probe
+        # and lose its first restoration proof due to Windows file locks.
+        # Recognize completion only after guarded SHA-authenticated recovery.
+        if ($ServerPhysicsReadOnly -and $serverStarted -and
+            -not $serverOk -and $restored) {
+            $serverEvidence=Join-Path $reports 'server.txt'
+            if(Test-Path -LiteralPath $serverEvidence -PathType Leaf) {
+                $lines=@([IO.File]::ReadAllLines($serverEvidence))
+                $exitSeen=@($lines | Where-Object {
+                    $_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E7A'
+                }).Count -eq 1
+                $resourceSeen=@($lines | Where-Object {
+                    $_ -cmatch '^OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:server:original-server-surfaceprops-two-sources-verified:2:2:93:71:0$'
+                }).Count -eq 1
+                if($exitSeen -and $resourceSeen) {
+                    $serverOk=$true
+                    $exitCode=0
+                    Write-Output 'ONECLICK_RECOVERED_SERVER_PHYSICS_DIAGNOSTIC: ORIGINAL_2_2_93_71_VERIFIED'
                 }
             }
         }
@@ -633,11 +713,27 @@ try {
                 }
             }
         }
+        $serverPhysicsSummary='NOT_REQUESTED'
+        if ($ServerPhysicsReadOnly) {
+            $serverPhysicsSummary='NOT_RECORDED'
+            $serverTranscript=Join-Path $reports 'server.txt'
+            if (Test-Path -LiteralPath $serverTranscript -PathType Leaf) {
+                $resourceRegex='^OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:server:(original-server-surfaceprops-(?:two-sources-verified|invalid-filesystem|resource-refused):[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3})$'
+                $hits=@([IO.File]::ReadAllLines($serverTranscript) |
+                    Where-Object {$_ -cmatch $resourceRegex})
+                if($hits.Count -eq 1){
+                    $match=[regex]::Match($hits[0],$resourceRegex)
+                    if($match.Success){
+                        $serverPhysicsSummary=$match.Groups[1].Value
+                    }
+                }
+            }
+        }
         $summary=Join-Path $reports 'SUMMARY.txt'
         $rows=@(
             'SiN Episodes 2006 independent filesystem diagnostic'
-            ('Presence: '+$(if($presenceOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED'}))
-            ('Read: '+$(if($readOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED_OR_SKIPPED'}))
+            ('Presence: '+$(if($ServerPhysicsReadOnly){'NOT_REQUESTED'}elseif($presenceOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED'}))
+            ('Read: '+$(if($ServerPhysicsReadOnly){'NOT_REQUESTED'}elseif($readOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED_OR_SKIPPED'}))
             ('Original-mode staged 66-stat binding: '+$(if($stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($StagedStats){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Independent Stats CUserMessages hooks 27:28:5: '+$(if($HookProof -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($HookProof){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Original soundscape manifest and owned 7:301:242:3 catalog: '+$(if($SoundscapeCatalog -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($SoundscapeCatalog){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
@@ -646,6 +742,7 @@ try {
             ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
             ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
             ('Original physics material five-float samples (read-only, no parse): '+$materialSummary)
+            ('Original server physics source resources (read-only): '+$serverPhysicsSummary)
             ('Original physics pre-Parse table snapshot (read-only): '+$preparseSummary)
             ('Original surfaceprops ParseSurfaceData (explicit engine mutation): '+$surfacePropsRegistrationSummary)
             ('Original physics surface count/index readback (SDK2004, opt-in): '+$surfacePropsReadbackSummary)
@@ -665,7 +762,13 @@ try {
         Write-Output ('RESULTS_FOLDER: '+$reports)
     }
 }
-if ($SoundscapeCatalog -and $stagedOk) {
+if ($ServerPhysicsReadOnly) {
+    Write-Output $(if($serverOk){
+        'FINISHED: original server physics Factory and two original surface source files verified, read-only. NOT a game or map boot.'
+    }else{
+        'FINISHED: server physics diagnostics incomplete. Send the text-only ZIP for analysis.'
+    })
+} elseif ($SoundscapeCatalog -and $stagedOk) {
     Write-Output 'FINISHED: real-engine read-only soundscape catalog 7:301:242:3 verified. NO audio, real C_SoundscapeSystem Init or game boot.'
 } elseif ($HookProof -and $stagedOk) {
     Write-Output 'FINISHED: original-mode staged Stats plus three owned user-message hooks verified. NO actual dispatch or game boot.'
