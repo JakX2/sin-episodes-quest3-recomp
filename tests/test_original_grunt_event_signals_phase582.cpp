@@ -14,12 +14,21 @@ struct Signals : SignalHooks {
 };
 struct Events : EventHooks {
     std::vector<std::string> calls;
-    float outFloat=7.0f;
+    float out5to10=6.5f;
+    float out0toHalf=0.3f;
+    float out2to5=3.0f;
     int32_t outInt=45;
     float lastAngle=-1.0f;
     float lastShaping=-1.0f;
     int32_t randomInt(int32_t lo,int32_t hi) override { calls.push_back("int:"+std::to_string(lo)+":"+std::to_string(hi)); return outInt; }
-    float randomFloat(float lo,float hi) override { calls.push_back("float:"+std::to_string(lo)+":"+std::to_string(hi));return outFloat; }
+    float randomFloat(float lo,float hi) override {
+        calls.push_back("float:"+std::to_string(lo)+":"+std::to_string(hi));
+        if (lo==0.1f && hi==0.5f) return out0toHalf;
+        if (lo==2.0f && hi==5.0f) return out2to5;
+        if (lo==5.0f && hi==10.0f) return out5to10;
+        assert(false && "unexpected original RNG bounds");
+        return 0.0f;
+    }
     void eventCall(uint32_t va,int32_t first,int32_t second) override {
         calls.push_back("call:"+std::to_string(va)+":"+std::to_string(first)+":"+std::to_string(second));
     }
@@ -61,7 +70,7 @@ int main() {
         catch(const std::out_of_range&){threw=true;}assert(threw);
     }
     {
-        State s;Events e;e.outFloat=6.5f;
+        State s;Events e;
         onEvent92(s,15.0f,e);
         assert(s.raw_0xC20==21.5f);
         assert((e.calls==std::vector<std::string>{
@@ -70,11 +79,11 @@ int main() {
             "call:571749904:3:0","float:5.000000:10.000000"}));
     }
     {
-        State s;Events e;Signals h;e.outFloat=3.0f;e.outInt=45;
+        State s;Events e;Signals h;e.outInt=45;
         onEvent8D(s,20.0f,e,h,false);
         assert(s.raw_0x880==0x19 && s.raw_0xC3C==0);
         assert(s.raw_0xC38==23.0f);
-        assert(std::fabs(e.lastAngle-45.0f)<0.01f && e.lastShaping==3.0f);
+        assert(std::fabs(e.lastAngle-45.0f)<0.01f && e.lastShaping==0.3f);
         assert((h.calls==std::vector<std::string>{"query","route:25"}));
         assert((e.calls==std::vector<std::string>{"int:-180:180","float:0.100000:0.500000","vector","float:2.000000:5.000000"}));
     }
