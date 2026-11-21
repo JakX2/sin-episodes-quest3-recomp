@@ -88,7 +88,7 @@ endif()
 # Missing in the owner's HL2 map-port unknown-class logs (88 + 44 reports).
 add_library(sin_original_gameplay_triggers STATIC
   src/original_sin_trigger_entities.cpp)
-target_include_directories(sin_original_gameplay_triggers PUBLIC include)
+target_include_directories(sin_original_gameplay_triggers PUBLIC include third_party/research)
 target_compile_options(sin_original_gameplay_triggers PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
 if(BUILD_TESTING)
