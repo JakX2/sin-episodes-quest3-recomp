@@ -455,3 +455,31 @@ SiN_FileSystem_Test_Results_*.zip. Do not install the independent DLLs.
 The original SERVER path is separately implemented in PR #521 as
 an explicitly opted-in, read-only surface-properties source reader,
 but has not yet received any real Windows owner-side server trace.
+
+PHASE 524: ORIGINAL SERVER-ONLY PHYSICS TEST, NO MUTATING PARSER
+-----------------------------------------------------------------
+We also reconstructed a separate source-authenticated SERVER physics
+bootstrap using the original server.dll's DIFFERENT interface order:
+  VPhysics030 > VPhysicsCollision007 > VPhysicsSurfaceProps001
+
+The server-side phase is NOT part of the existing client-only physics
+test, so the newest one-click ZIP provides this separate batch:
+
+  RUN_SERVER_PHYSICS_READONLY.bat
+
+Double-click to run the original server-only physics Factory triple
+and a read-only 2-source surfaceproperties manifest parser, in the
+fresh SHA-authenticated disposable entire game copy. The launcher
+installs only the independent server.dll inside TEMP, leaving the
+original client.dll untouched, and verifies/restores originals.
+
+On successful real server execution, the trace should end with
+  OWNER_ENGINE_EXIT_HEX: 0x53494E7A
+  OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS:
+  ...original-server-surfaceprops-two-sources-verified:2:2:93:71:0
+
+Previous owner Windows ZIPs proved client physics material COUNT=94
+before parser calls. They did NOT prove the independently compiled
+server.dll physics probe was reached by the original engine.
+The next ZIP can test that separately. No server surface registration
+takes place, no complete ServerGameDLL003::DLLInit or game boot.
