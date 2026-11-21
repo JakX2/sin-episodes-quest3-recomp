@@ -52,6 +52,16 @@ if(-not (($surfacePropsPlan -join '|').Contains(
     'SURFACEPROPS READ: opt-in read-only original rb/GAME manifest and two rb/nullptr scripts, 93 definitions, no physics registration'))) {
     throw 'Original Source 2006 surfaceprops resource stage must be explicit and read-only'
 }
+$registerPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePropsRegister)
+if(-not (($registerPlan -join '|').Contains(
+    'SURFACEPROPS REGISTER: EXPLICIT ENGINE MUTATION. Calls original VPhysicsSurfaceProps001 slot1 with both resources in disposable copy; still NO game boot.'))) {
+    throw 'Phase 515 engine-mutating ParseSurfaceData test must be opt-in even in PlanOnly'
+}
+foreach($unrequested in @($plan,$soundscapePlan,$cvarPlan,$physicsPlan,$surfacePropsPlan)) {
+    if(($unrequested -join '|').Contains('SURFACEPROPS REGISTER:')) {
+        throw 'Original physics engine mutation was enabled without explicit -SurfacePropsRegister'
+    }
+}
 if(($soundscapePlan -join '|').Contains('SURFACEPROPS READ:') -or
    ($cvarPlan -join '|').Contains('SURFACEPROPS READ:') -or
    ($physicsPlan -join '|').Contains('SURFACEPROPS READ:')) {
@@ -91,6 +101,9 @@ foreach($must in @(
     'ReadOnlyPhysicsFactoryProbe',
     'SurfacePropsRead',
     'ReadOnlySurfacePropsReadProbe',
+    'SurfacePropsRegister',
+    'ExplicitSurfacePropsRegisterProbe',
+    'Original surfaceprops ParseSurfaceData (explicit engine mutation):',
     'Original surfaceprops manifest and scripts (read-only):',
     'Original soundscape ConVar lookup (read-only):',
     'Original physics Factory triple (read-only):',
