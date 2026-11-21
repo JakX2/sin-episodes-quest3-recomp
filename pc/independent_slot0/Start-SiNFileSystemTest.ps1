@@ -511,7 +511,7 @@ try {
             if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
                 # Do not trust an isolated raw trace: require the session-bound
                 # classifier to have authenticated entry/result/stop ordering.
-                $registrationPattern='^OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\\.log:client:((?:original-surfaceprops-register-no-interface|original-surfaceprops-register-invalid-filesystem|original-surfaceprops-register-resources-refused|original-surfaceprops-register-raw-shape-refused|original-surfaceprops-register-method-refused|original-surfaceprops-register-two-calls-returned):[0-2]:[0-2]:-?[0-9]{1,11}:-?[0-9]{1,11})
+                $registrationPattern='^OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:original-surfaceprops-register-no-interface|original-surfaceprops-register-invalid-filesystem|original-surfaceprops-register-resources-refused|original-surfaceprops-register-raw-shape-refused|original-surfaceprops-register-method-refused|original-surfaceprops-register-two-calls-returned):[0-2]:[0-2]:-?[0-9]{1,11}:-?[0-9]{1,11})
         if ($SurfacePropsRead) {
             $surfacePropsSummary='NOT_RECORDED'
             $stagedEvidence=Join-Path $reports 'staged.txt'
