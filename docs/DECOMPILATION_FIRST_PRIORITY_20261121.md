@@ -103,3 +103,25 @@ and `0xFFFFFFFF` absent-converter index. The original diagnostic is
 Detailed source-level documentation and owner-local verifier:
 `research/phases/2026-11-21-original-client-hud-type-converter-registry-decomp.md`.
 The 16-bit comparison callback is verified at original VA `0x2400A3C0`; the string pool's ownership remains unresolved.
+
+## Phase 544: converter tree insertion and native red-black maintenance
+
+The original client type-converter registry is **red-black**, not just a
+basic ordered tree. Eight distinct whole-method original SHA fingerprints
+authenticate **2,528 additional original client instruction bytes**, plus
+an independently SHA-checked **89-byte shared-tail entry region** that
+jumps to the 1,112-byte red-black fixup routine (not counted as an
+independent full function). The binary establishes node fields at
++0,+4 (children), +8 (parent), +12 (color: new node 0, black root 1),
++16 (uint16 token), +20 (converter pointer), with 24-byte stride.
+
+Source-level analysis now covers insertion-parent selection, free-list
+reuse versus high-water growth, initial two-slot growth and resizing,
+new-node linking, seven fixup call sites and mirrored rotations. Exact
+source equivalence for every nested sentinel/fixup path remains to be
+proved. New original-free C++17 reference covers only the fully supported
+insertion-position branch and native layout; it is **not a full RB tree
+port**. See
+`research/phases/2026-11-21-original-client-converter-red-black-insertion-decomp.md`
+and independent strict original PE32 verifier
+`research/tools/audit_sin_original_client_converter_insertion.py`.

@@ -15,7 +15,8 @@ namespace sin_compat::original_client_converter {
 struct NodeRecord final {
     std::int32_t smaller_child = -1;          // original +0x00
     std::int32_t larger_child = -1;           // original +0x04
-    std::array<std::uint8_t, 8> unknown_08{};
+    std::int32_t parent_index = -1;          // original +0x08, Phase544
+    std::uint32_t color = 0;                // original +0x0C; 0=red, 1=black
     std::uint16_t token = 0;                  // original +0x10
     std::array<std::uint8_t, 2> unknown_12{};
     std::uint32_t converter_native32 = 0;    // original +0x14: DO NOT dereference on new hosts
@@ -23,6 +24,8 @@ struct NodeRecord final {
 static_assert(sizeof(NodeRecord) == 24, "2006 client converter record stride");
 static_assert(offsetof(NodeRecord, smaller_child) == 0x00);
 static_assert(offsetof(NodeRecord, larger_child) == 0x04);
+static_assert(offsetof(NodeRecord, parent_index) == 0x08);
+static_assert(offsetof(NodeRecord, color) == 0x0C);
 static_assert(offsetof(NodeRecord, token) == 0x10);
 static_assert(offsetof(NodeRecord, converter_native32) == 0x14);
 
@@ -55,5 +58,35 @@ inline LookupResult find_original_token_tree(
         else return {LookupStatus::Found, index};
     }
     return {LookupStatus::InvalidHostTree, -1};
+}
+
+// The original 0x2400ABA0 insertion-position search differs from exact
+// lookup 0x2400A4D0: it calls comparator(query,node) only, so equal
+// tokens follow the larger-child branch. The original caller normally
+// performed a duplicate lookup first. No C++ type names are inferred.
+// InvalidHostTree/cycle refusal is strictly independent port safety.
+enum class InsertSlotStatus : std::uint8_t { Position, InvalidHostTree };
+struct InsertSlotResult final {
+    InsertSlotStatus status = InsertSlotStatus::InvalidHostTree;
+    std::int32_t parent_index = -1; // -1 means caller must set the root
+    bool smaller_child = false;     // false on the empty-tree path
+};
+inline InsertSlotResult locate_original_converter_insert_slot(
+    const std::vector<NodeRecord>& nodes,
+    std::int32_t root_index,
+    std::uint16_t token) noexcept {
+    std::int32_t parent=-1;
+    std::int32_t index=root_index;
+    bool choose_smaller=false;
+    for (std::size_t step=0;step<=nodes.size();++step) {
+        if (index==-1) return {InsertSlotStatus::Position,parent,choose_smaller};
+        if (index<0 || static_cast<std::size_t>(index)>=nodes.size())
+            return {InsertSlotStatus::InvalidHostTree,-1,false};
+        parent=index;
+        const auto& node=nodes[static_cast<std::size_t>(index)];
+        choose_smaller=less_than_16(token,node.token);
+        index=choose_smaller?node.smaller_child:node.larger_child;
+    }
+    return {InsertSlotStatus::InvalidHostTree,-1,false};
 }
 } // namespace sin_compat::original_client_converter
