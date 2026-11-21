@@ -114,13 +114,13 @@ int main(){
     TriggerConfig c{};
     c.targetname="arena_balance_trigger";
     c.origin={32.0f,64.0f,96.0f};
-    c.value=0.75f;
-    c.decision=5;
-    c.notify_difficulty_manager=true;
+    c.estimated_time=0.75f;
+    c.estimated_difficulty=5;
+    c.end_of_game=1;
     c.base_special_flag_0x800=true;
     assert(game.configure(host.dynamic,c)==TriggerCode::Handled);
     TriggerConfig bad=c;
-    bad.value=std::numeric_limits<float>::quiet_NaN();
+    bad.estimated_time=std::numeric_limits<float>::quiet_NaN();
     assert(game.configure(host.dynamic,bad)==TriggerCode::InvalidConfig);
     assert(game.touch(host.dynamic,host.npc).code==TriggerCode::NonPlayer);
     assert(game.touch(host.dynamic,{0xffffffffu,0xffffffffu}).code==
@@ -200,7 +200,7 @@ int main(){
         Host h{};
         OriginalTriggerEntityFactory f(h);
         assert(f.spawn({"trigger_dynamic_difficulty",h.dynamic}).ok());
-        TriggerConfig c{};c.notify_difficulty_manager=true;
+        TriggerConfig c{};c.end_of_game=1;
         assert(f.configure(h.dynamic,c)==TriggerCode::Handled);
         h.manager_ok=false;
         const auto result=f.touch(h.dynamic,h.player);
