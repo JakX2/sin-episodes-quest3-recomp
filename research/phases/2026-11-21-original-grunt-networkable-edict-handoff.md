@@ -151,3 +151,30 @@ stages into the genuine game server. Android/Quest 3 follows
 successful Windows x86 map/entity execution.
 
 No physics, surface-property or model/prop loaders added.
+
+## Integration: three real C++ modules, one synthetic engine
+
+The new `tests/test_original_druglab_grunt_full_lifecycle.cpp`
+links the **actual independent implementations** of:
+
+- `GruntFactoryReference`: original 0xFD8-byte allocation
+  request, +0/+0x790/+0xC14 vptr roles and virtual +0x70;
+- `EntityInitializer`: native classname symbol, +0x160
+  networkable/edict attachment, engine backpointer, native
+  NPC postinit at +0x3F8;
+- `SpawnReference`: three source-authenticated
+  class/weapon names, +0x3B0 mode, inherited NPC Spawn
+  and per-class +0x98/+0x9C scalar updates.
+
+The synthetic engine-host asserts the **complete cross-module
+order** and proper state handoff. All three Grunt classname
+variants pass through constructor → edict linkage → NPC postinit →
+class weapon Spawn without replacing the native edict with a dummy
+value. An independent failure case intentionally rejects native
+networkable binding; the test verifies the host clears its
+temporary context, the unpublished allocation is reclaimed and
+weapon Spawn is never called.
+
+This test still uses a fabricated host memory model; it is
+NOT evidence that original Windows engine code has loaded the
+new independent server.dll or that game-side NPC AI is playable.
