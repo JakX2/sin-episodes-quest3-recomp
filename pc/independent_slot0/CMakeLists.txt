@@ -938,6 +938,16 @@ if(Python3_Interpreter_FOUND)
 endif()
 
 
+# Phase 521: SHA-backed original SERVER manifest resource read only.
+# Combine the exact original server physics factory name/order with the
+# independently owned VFileSystem012 surface resource bridge. No engine
+# ParseSurfaceData, no original binaries or proprietary source data.
+add_executable(sin_server_original_surfaceprops_readonly_test
+  test_server_original_surfaceprops_readonly.cpp)
+target_compile_features(sin_server_original_surfaceprops_readonly_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_original_surfaceprops_readonly_native
+  COMMAND sin_server_original_surfaceprops_readonly_test)
+
 # Phase 517: exact original 2006 server physics factory order differs from
 # client. Native fake factory only; no real engine or vphysics mutation in CI.
 add_executable(sin_server_original_physics_factory_test
