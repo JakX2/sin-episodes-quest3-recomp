@@ -58,6 +58,10 @@ struct Host final : IHost {
         if(ok)++completed;
         return ok;
     }
+    bool bind_sentence_owner(std::uint32_t off,std::uint32_t field) override {
+        assert(off==0xCC0 && field==0x04);
+        return hit(Operation::BindSentenceOwner,8);
+    }
     bool initialize_sentence_parameters(std::uint32_t off,std::string_view key) override {
         assert(off==0xCC0 && key=="NPC_Grunt.SentenceParameters");
         return hit(Operation::InitializeSentenceParameters,8);
@@ -70,6 +74,7 @@ std::vector<Call> expected_calls() {
         out.push_back({Operation::BindNPC,i});
         out.push_back({Operation::StoreOwnerSubobject,i});
     }
+    out.push_back({Operation::BindSentenceOwner,8});
     out.push_back({Operation::InitializeSentenceParameters,8});
     return out;
 }
@@ -84,6 +89,10 @@ void test_exact_metadata_and_order() {
     assert(kOriginalBehaviors[5].exact_rtti_name=="CAI_AssaultBehavior");
     assert(kOriginalBehaviors[3].exact_rtti_name=="CAI_BeserkBehavior");
     assert(kOriginalBehaviors[4].owner_offset==0xF88);
+    assert(kOriginalBehaviors[6].exact_rtti_name=="CGruntStandoffBehavior");
+    assert(kOriginalBehaviors[6].original_vtable_va==0x22495344);
+    assert(kStandoffBaseConstructorVtable==0x223FA1B4);
+    assert(kSentenceObjectClass=="CAI_Sentence<CNPC_GruntBase>");
     Host host;Registrar x(host);
     const auto r=x.initialize();
     assert(r.ok() && r.registered_count==8 && r.behavior_index==8);
@@ -126,5 +135,5 @@ int main() {
     test_exact_metadata_and_order();
     test_every_rejection_path();
     test_reentrant_exception_retry();
-    std::puts("PASS Grunt eight RTTI behavior insertions, owner binding, sentence config, 25 failure points");
+    std::puts("PASS Grunt eight RTTI behavior insertions, owner binding, sentence config, 26 failure points");
 }
