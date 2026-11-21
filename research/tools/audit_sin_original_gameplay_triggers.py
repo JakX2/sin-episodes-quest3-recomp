@@ -90,6 +90,34 @@ def verify_datadesc(read_u32,read_text):
             raise EvidenceRefused("original trigger DATADESC field key mismatch")
     return len(FIELDS)
 
+def verify_secret_spawn_control(at):
+    """Validate only three original call edges and tiny opcode witnesses.
+
+    The whole 99-byte method is separately SHA-pinned before this helper;
+    this function's synthetic tests never need or materialize original DLLs.
+    """
+    edges=(
+        (0x221D07A6,0x22286BF0), # deferred remove
+        (0x221D07D2,0x221CFCF0), # base Trigger::Spawn
+        (0x221D07E8,0x222B63B0), # game event writer
+    )
+    for site,target in edges:
+        raw=at(site,5)
+        if len(raw)!=5 or raw[0]!=0xE8 or (
+                site+5+struct.unpack_from("<i",raw,1)[0])!=target:
+            raise EvidenceRefused("CTriggerSecret::Spawn callee changed")
+    # Read the original field displacement and a few independent
+    # opcode/predicate witnesses instead of storing entire code runs.
+    if (at(0x221D07D7,2)!=bytes((0x8A,0x8E)) or
+        struct.unpack("<I",at(0x221D07D9,4))[0]!=0x120 or
+        at(0x221D07DD,3)!=bytes((0xC0,0xE9,0x03)) or
+        at(0x221D07E0,3)!=bytes((0xF6,0xC1,0x01)) or
+        at(0x221D07E3,2)!=bytes((0x74,0x0B))):
+        raise EvidenceRefused("CTriggerSecret::Spawn bit3 field gate changed")
+    if at(0x221D07E6,2)!=bytes((0x6A,0x0B)):
+        raise EvidenceRefused("CTriggerSecret::Spawn descriptor11 changed")
+    return len(edges)
+
 def verify_raw(client:bytes,server:bytes)->dict:
     if hashlib.sha256(client).hexdigest()!=CLIENT_SHA:
         raise EvidenceRefused("original client SHA-256 mismatch")
@@ -117,6 +145,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
             raise EvidenceRefused(name+" RTTI class string mismatch")
         if pe.u32(vtable+89*4)!=touch or pe.u32(vtable+25*4)!=spawn:
             raise EvidenceRefused(name+" virtual touch/spawn slot mismatch")
+    spawn_edges=verify_secret_spawn_control(pe.at)
     count=verify_datadesc(pe.u32,pe.text)
     # Cross-check the exact event names/types/field labels the two
     # complete original event helpers use.
@@ -138,6 +167,9 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "original_datadesc_keyvalues":[row[6] for row in FIELDS],
         "dynamic_touch_virtual_slot":89,
         "secret_touch_virtual_slot":89,
+        "secret_spawn_descriptor":11,
+        "secret_spawn_game_event_bitmask":8,
+        "secret_spawn_ordered_direct_calls":spawn_edges,
         "original_event_names":["dynamic_difficulty","game"],
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
         "limitations":"No real game entity creation, map load, AI or playable DLL Init."
@@ -163,10 +195,34 @@ def self_test()->None:
                             lambda va,s:bad.get(va)==s)
         except EvidenceRefused:pass
         else:raise AssertionError("forged original map key accepted")
+    # Three synthetic CALL rel32 edges and disjoint branch/opcode
+    # witnesses, with each mutated independently.
+    chunks={}
+    for site,target in ((0x221D07A6,0x22286BF0),
+                        (0x221D07D2,0x221CFCF0),
+                        (0x221D07E8,0x222B63B0)):
+        chunks[site]=bytes((0xE8,))+struct.pack("<i",target-site-5)
+    chunks.update({
+        0x221D07D7:bytes((0x8A,0x8E)),
+        0x221D07D9:struct.pack("<I",0x120),
+        0x221D07DD:bytes((0xC0,0xE9,0x03)),
+        0x221D07E0:bytes((0xF6,0xC1,0x01)),
+        0x221D07E3:bytes((0x74,0x0B)),
+        0x221D07E6:bytes((0x6A,0x0B))
+    })
+    get=lambda va,n:chunks.get(va,b"")[:n]
+    assert verify_secret_spawn_control(get)==3
+    for site in chunks:
+        altered=dict(chunks)
+        altered[site]=bytes((chunks[site][0]^1,))+chunks[site][1:]
+        try:verify_secret_spawn_control(
+            lambda va,n:altered.get(va,b"")[:n])
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated secret Spawn gate accepted")
     try:verify_raw(b"synthetic",b"synthetic")
     except EvidenceRefused:pass
     else:raise AssertionError("synthetic DLL accepted as original")
-    print("PASS original-free 3 DATADESC field/offset/name mutations and original SHA refusal")
+    print("PASS original-free 3 DATADESC fields, 3 original secret Spawn CALL rel32 edges, source bit3/descriptor11 witnesses and SHA refusal")
 
 def main()->int:
     ap=argparse.ArgumentParser(description=__doc__)
