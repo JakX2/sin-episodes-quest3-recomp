@@ -4320,3 +4320,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase575: original Grunt 0x2206EF20 two-trace clearance, native x87
+# parity-bit decisions and source-vs-trace XYZ return. Host-only tests;
+# original game binaries and physics are not executed or emulated here.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_clearance_phase575_tests
+    tests/test_original_grunt_clearance_phase575.cpp)
+  target_include_directories(sin_original_grunt_clearance_phase575_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_clearance_phase575_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_clearance_phase575_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_clearance_phase575_tests
+    COMMAND sin_original_grunt_clearance_phase575_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_clearance_phase575_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_clearance_phase575.py"
+        --self-test)
+  endif()
+endif()
