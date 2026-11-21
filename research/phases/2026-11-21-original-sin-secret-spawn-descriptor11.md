@@ -87,3 +87,34 @@ reader is rebuilt, and the original PE32 DLLs/assets are never
 published. The independently compiled `server.dll` still fails closed
 before normal `ServerGameDLL003::DLLInit`, and this adapter has not
 executed inside a real SiN map or on Quest 3.
+
+## New multi-module integration regression
+
+`tests/test_original_sin_trigger_bsp_integration.cpp` now links three
+ACTUAL project components in one native CTest, rather than treating
+the trigger as a standalone reference model:
+
+1. `sin_source_bsp_entities` parses a fabricated Source v20 BSP
+   entity lump preserving the original `classname`, `targetname` and
+   `spawnflags=8` map keys. This file is synthetic, not extracted
+   from an original SiN map or any Valve copyrighted BSP.
+2. `SourceMapRuntime` calls a real host registry to allocate a
+   generation-safe entity identity, forwards ordered map KeyValues,
+   dispatches the host's Spawn callback, then activates it.
+3. `OriginalTriggerEntityFactory` attaches the two source-recognized
+   trigger behaviors, and the host forwards Spawn to
+   `run_secret_spawn`. The test observes descriptor11 after Spawn,
+   descriptor12 after fake player Touch, and the queued deferred
+   entity removal, including correct repeated-call refusal.
+
+Two independent failure tests prove malformed secret KeyValues are
+rejected with full map-loader rollback and that a missing native
+base-trigger Spawn callback causes the map loader to refuse and clean
+up the allocated synthetic entity. No placeholder classname aliases,
+original game script byte arrays, material/model/physics reconstruction,
+or claim of actual Source engine load has been added.
+
+The real missing milestone is still a source-compatible native Windows
+`server.dll` with complete `DLLInit`, genuine engine-owned
+`CTriggerSecret` allocations, registered networkable entities,
+original map I/O, Save/Restore and actual map execution.
