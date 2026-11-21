@@ -13,7 +13,7 @@ This is the safer, READ-ONLY diagnostic.
 
 Only after that passes, double-click RUN_PHYSICS_READBACK_TEST.bat
 to invoke the original physics engine ParseSurfaceData method and
-then read SurfacePropCount / GetSurfaceIndex. You MUST type REGISTER
+then read SurfacePropCount / GetSurfaceIndex. You MUST press Y
 to acknowledge that this second experiment MUTATES the engine state
 inside the disposable game copy and might crash.
 
