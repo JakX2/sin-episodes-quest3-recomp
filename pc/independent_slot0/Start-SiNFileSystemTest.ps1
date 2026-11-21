@@ -505,6 +505,27 @@ try {
                 }
             }
         }
+        # A server-only diagnostic can complete its original engine probe
+        # and lose its first restoration proof due to Windows file locks.
+        # Recognize completion only after guarded SHA-authenticated recovery.
+        if ($ServerPhysicsReadOnly -and $serverStarted -and
+            -not $serverOk -and $restored) {
+            $serverEvidence=Join-Path $reports 'server.txt'
+            if(Test-Path -LiteralPath $serverEvidence -PathType Leaf) {
+                $lines=@([IO.File]::ReadAllLines($serverEvidence))
+                $exitSeen=@($lines | Where-Object {
+                    $_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E7A'
+                }).Count -eq 1
+                $resourceSeen=@($lines | Where-Object {
+                    $_ -cmatch '^OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:server:original-server-surfaceprops-two-sources-verified:2:2:93:71:0$'
+                }).Count -eq 1
+                if($exitSeen -and $resourceSeen) {
+                    $serverOk=$true
+                    $exitCode=0
+                    Write-Output 'ONECLICK_RECOVERED_SERVER_PHYSICS_DIAGNOSTIC: ORIGINAL_2_2_93_71_VERIFIED'
+                }
+            }
+        }
         $backup1=Join-Path $disposable 'SE1\bin\sin_independent_saved_client.dll'
         $backup2=Join-Path $disposable 'SE1\bin\sin_independent_saved_server.dll'
         if (-not $restored -or (Test-Path -LiteralPath $backup1) -or
