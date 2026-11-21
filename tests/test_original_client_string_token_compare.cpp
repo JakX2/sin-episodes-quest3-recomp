@@ -15,6 +15,9 @@ int main() {
     assert(!constructor_installs_callback(true));
     assert(constructor_selection(false)==ComparatorKind::BytewiseCaseSensitive);
     assert(constructor_selection(true)==ComparatorKind::CaseFolded);
+    assert(kHudConverterTokenTableVA==0x2432289C);
+    assert(kHudConverterTokenTableInitializerVA==0x24262410);
+    assert(kOriginalHudConverterInitialComparator==ComparatorKind::CaseFolded);
     assert(!less_unsigned_c_string("", ""));
     assert(less_unsigned_c_string("", "A"));
     assert(!less_unsigned_c_string("A", ""));
