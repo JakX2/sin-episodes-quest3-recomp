@@ -126,3 +126,59 @@ access the user's proprietary originals.
 
 **This PR is a verified original factory inventory, not 17
 implemented NPCs, normal original DLLInit, or playable gameplay.**
+
+## New original construction lead: three Druglab Grunt variants share one factory vtable
+
+Original private binary inspection established a further, more
+actionable observation **beyond the 17 registration calls**:
+
+| Native original factory object | Registered classname |
+|---|---|
+| `0x22536840` | `npc_druglab_grunt_pistol` |
+| `0x22536844` | `npc_druglab_grunt_scattergun` |
+| `0x22536848` | `npc_druglab_grunt_assault_rifle` |
+
+Each of the three distinct objects stores EXACTLY the same original
+virtual-table pointer `0x2249A9F8`. That native factory table
+has RTTI object locator `0x224D23F4`, first method
+`0x2236A320`, second method `0x22369E30`.
+
+All **three entire original compiled function bodies** have been
+SHA256-pinned:
+- Factory creator `0x2236A320`: 23 bytes,
+  digest `6eecf5ca8aa241b73c4f1557c98667941ac865d58014926bdfdd055381792de9`.
+- Factory delegated destruction `0x22369E30`: 16 bytes,
+  digest `ed8abac6973adb2766ebee7d4e8a19d917263843bcec4e4a25f52cc4c4203a21`.
+- Shared allocator/constructor `0x2236A340`: 87 bytes,
+  digest `4df0df1f66082cfa848b96edff3977f7c6cb35e4ff31d2a7918dd244028d7ad6`.
+
+In the factory method, the game calls `0x2236A340` and adds
+**`0x160` bytes** to the object pointer before returning a
+subobject view. The shared allocator requests **`0xFD8` bytes**
+from original `0x22138940`, calls original base constructor
+`0x22360D80`, installs three native vtable pointers at object
+offsets **+0x0, +0x790, +0xC14**, and then dispatches the
+new object's virtual byte offset `+0x70` with the forwarded
+factory argument. The second factory method invokes virtual
+byte offset `+0x18` on its non-null argument.
+
+These observations are independently anchored by three exact
+native relative CALL edges, source-byte field/return witnesses
+and full-function hashes in the expanded original-only verifier.
+Private local verification passed all recorded checks. The
+original null-allocation branch is unsafe to re-create verbatim
+as a modern error-handling strategy; the port must fail closed.
+
+**Do not infer from one factory vtable that the three actors
+use identical initial weapons, AI schedules, model selections
+or spawn KeyValues.** They remain separate original classnames;
+the registered names or native entity fields may determine
+their behavior later. The elite variant's original factory
+object is *different* (`0x225346A0`), so it is not part
+of this proven three-object alias set.
+
+Next highest-value native decompilation targets are the
+factory's `0x22360D80` base-constructor class identity and
+the observed virtual `+0x70` initialization dispatch,
+followed by class-specific weapon selection and the first
+real engine-owned NPC creation in Windows x86.
