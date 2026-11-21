@@ -275,13 +275,10 @@ static bool retailServerSurfacePropsReadProbeEnabled() noexcept {
     diagnostic("server-physics-entered",
                "original-server-second-factory:read-only");
     const bool readManifest=retailServerSurfacePropsReadProbeEnabled();
-    const auto combined=readManifest?
-        sin_independent::server_original_surfaceprops_readonly::Inspect(
-            physicsFactory,fileSystem):
-        sin_independent::server_original_surfaceprops_readonly::Report{};
-    const auto r=readManifest?combined.physics:
-        sin_independent::server_original_physics_factory::ReadOnlyThree(
-            physicsFactory);
+    // Query the original 2006 SERVER Factory in original order and emit
+    // the authenticated physics terminal before any filesystem calls.
+    const auto r=sin_independent::server_original_physics_factory::
+        ReadOnlyThree(physicsFactory);
     char bounded[128]={};
     std::snprintf(bounded,sizeof(bounded),"%s:%u:%u:%u",
         sin_independent::server_original_physics_factory::Name(r.outcome),
@@ -297,6 +294,9 @@ static bool retailServerSurfacePropsReadProbeEnabled() noexcept {
         // 0x22233FD0). Never call the original slot1 ParseSurfaceData.
         diagnostic("server-surfaceprops-entered",
                    "VFileSystem012:server-surfaceproperties:rb-dual-scope");
+        const auto combined=
+            sin_independent::server_original_surfaceprops_readonly::
+                ReadAfterFactory(r,fileSystem);
         const auto& resources=combined.resources.owned_result;
         char shape[192]={};
         std::snprintf(shape,sizeof(shape),"%s:%u:%u:%u:%u:%u",
