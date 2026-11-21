@@ -104,7 +104,7 @@ def fake_region():
 def self_test():
     sample=fake_region()
     inspect_region(sample,False)
-    for at in (0,16,44,32+9*29+3,32+8*29+8,350):
+    for at in (0,16,44,32+9*29+3,32+8*29+8,351):
         mutated=bytearray(sample)
         mutated[at]^=1
         try:inspect_region(mutated,False)
