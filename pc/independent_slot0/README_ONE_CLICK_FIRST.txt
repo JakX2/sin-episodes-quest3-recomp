@@ -379,9 +379,15 @@ The owner's authentic shipped surface scripts include: default,
 solidmetal (first source file), and metalvehicle (second source file).
 The Phase516 readback asks the original engine for SurfacePropCount
 (virtual slot2) and GetSurfaceIndex of those three names (slot3).
-These extra slots are Source SDK 2004-guided, NOT yet real-engine-
-authenticated by owner-side testing. They query engine state, but the
-previous ParseSurfaceData step DOES modify the disposable process.
+Those slots are now also owner-observed on authentic Windows engine:
+the 2026-11-21 Phase516 physics-readback archive reports 94 total
+surfaces and index witnesses default=0, solidmetal=1, metalvehicle=85.
+The TWO native ParseSurfaceData calls returned (0,0), but the initial
+table size was NOT recorded, so this does not yet prove that the
+independent calls inserted all 94 entries. They could have been loaded
+before our probe. This still does NOT constitute normal game startup.
+The methods query engine state, but the preceding ParseSurfaceData stage
+does modify state inside the disposable copy.
 
 After successful Windows CI, the new combined owner command is:
 
@@ -393,3 +399,28 @@ not constitute a real client/server Init or level boot. The engine
 may crash if the SDK guidance is incompatible with this 2006 build.
 Do not replace DLLs in the installed game; use the packaged launcher.
 See OWNER_SURFACEPROPS_READBACK_20261121.md.
+
+PHASE 519: PRE-PARSE PHYSICS-TABLE SNAPSHOT (CAUSALITY CHECK)
+-------------------------------------------------------------
+The owner-side result archive
+  SiN_FileSystem_Test_Results_20261121-022233-7689a6508b.zip
+  SHA256 d05b7ca2db2ed6f9e3f1b9d34a65ac94c60eee4d11bb55537c0d4a56fd1e7b81
+now confirms the engine's original surface table COUNT=94 and
+GetSurfaceIndex(default/solidmetal/metalvehicle)=0/1/85.
+The 2 ParseSurfaceData calls returned 0/0. The original sources had
+93 definitions and 71 base references, but before/after table counts
+were NOT part of the previous owner's ZIP.
+
+This updated independent DLL retains the separate required opt-ins and,
+when -SurfacePropsReadback is selected, adds a NEW read-only
+engine-fs-preparse-entered/result/terminal-stop sequence BEFORE it
+calls the native ParseSurfaceData method. The existing
+engine-fs-readback-result still occurs AFTER both calls. Comparing
+the two count/index snapshots distinguishes a table already loaded
+by the original engine from materials added or changed by the probe.
+
+The dedicated RUN_PHYSICS_READBACK_TEST.bat (press Y) provides the
+same guarded, SHA-authenticated disposable-copy workflow. No test is
+required merely to accept the previous 94/0/1/85 observation. Another
+owner test is useful ONLY for resolving whether registration made a
+table change. The app does NOT return VClient011 Init success or boot a map.
