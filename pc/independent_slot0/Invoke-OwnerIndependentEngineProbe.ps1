@@ -223,7 +223,8 @@ if ($EnableServerEventProbe -and -not $EnableServerSoundProbe) {
     throw 'EnableServerEventProbe requires EnableServerSoundProbe (and its server-only prerequisites)'
 }
 if ($EnableServerSurfacePropsReadProbe -and
-    (-not $EnableServerPhysicsFactoryProbe -or $ProbeRole -ne 'Server')) {
+    (-not $EnableServerPhysicsFactoryProbe -or $ProbeRole -ne 'Server' -or
+     -not $EnableServerFactoryProbe)) {
     throw 'EnableServerSurfacePropsReadProbe requires Server-only role and the original physics factory probe'
 }
 if ($EnableServerPhysicsFactoryProbe -and
