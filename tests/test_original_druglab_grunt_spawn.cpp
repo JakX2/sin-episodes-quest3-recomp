@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-using namespace sin_compat::original_druglab_grunt;
+using sin_compat::original_druglab_grunt::Variant;
 using namespace sin_compat::original_druglab_grunt::spawn;
 
 struct FakeNativeGrunt final:IHost {
