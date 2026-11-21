@@ -294,3 +294,41 @@ and `research/tools/audit_sin_original_client_voice_status.py`.
 Native string-formatting helper ownership and actual voice network
 safety are not yet reconstructed. C++17 reference tests are strictly
 source-bounded and do not send engine commands.
+
+## Phase 551: CVoiceStatus player-blocking and original 32-byte key hash
+
+Phase550's original `UpdateServerState` referenced an unresolved
+per-identity predicate `0x241E4F00`. The SHA-pinned original 2006
+client now verifies **eight complete separate native methods totaling
+657 unique original code bytes**: `0x241E5B20` SetPlayerBlockedState,
+`0x241E4F00` membership, `0x241E4F20` add/remove,
+`0x241E4DD0` exact key lookup, `0x241E4E30` allocation/insert,
+`0x241E4D90` 256-bucket initialization, `0x241E4EC0` cleanup,
+and `0x241E4EB0` table constructor.
+
+This is a **256-bucket hash table**, not the other client red-black
+trees: the index is the 8-bit wrapping sum of all **32 opaque key
+bytes**, each native record is **0x28 (40) bytes** (32-byte key,
+4-byte prev and next pointers) and the whole table spans **0x2800**
+bytes at the CVoiceStatus object offset **+0x28**. Native
+`SetPlayerBlockedState` first gets 1-based player data via original
+engine virtual +0x20, checks the player mask at `this+0x14`,
+then **toggles key membership**, and finally calls
+`UpdateServerState(0)`. The real second `ret 8` stack argument
+is not read by the inspected native function, and the identity's
+actual meaning remains unknown. Source-like pseudocode documents
+the control flow; it does not claim to recover exact Ritual C++.
+
+Original DLL audit: eight SHA256 method digests, 12 native rel32 CALL
+edges, 1 tail JMP, 44 instruction witnesses and 3 exact class/diagnostic
+strings. Tested on private original bin.zip. Independent C++17 test
+covers 256-bucket collision handling, exact 32-byte equality, bitmask
+gate, key toggle, and unforced refresh; its input bounds are host-side
+safety, **not original native behavior**.
+
+Research:
+`research/phases/2026-11-21-original-client-voice-block-identity-hash-and-toggle.md`.
+Audit:
+`research/tools/audit_sin_original_voice_block_hash.py`.
+No engine network, native boot, physics/props, or Android/VR
+implementation is added.
