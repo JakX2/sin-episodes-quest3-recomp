@@ -37,11 +37,20 @@ define *the same* `VPhysicsSurfaceProps001` interface as:
 | 2 | SurfacePropCount | `int()` (read-only, SDK-guided Phase 516) |
 | 3 | GetSurfaceIndex | `int(const char*)` (read-only, SDK-guided Phase 516) |
 
-**Critical distinction:** Slots 2/3 have not yet been directly observed
-running against the owner's original vphysics.dll. They are justified by
-the matching legacy SDK interface and virtual-slot layout, not by an
-independently SHA-authenticated native callsite within SiN's original
-`client.dll`. If either call crashes, it is a failed ABI hypothesis.
+**Critical distinction:** A new private original-client x86 audit now
+confirms native **slot3** indirect calls on the exact surface interface
+global 0x243743A8, including direct callsites 0x240B7EC5,
+0x24191E3C and 0x241A7389 (vtable byte +0x0C). Another original
+client callsite 0x24184F62 uses byte +0x14, consistent with SDK slot5
+GetSurfaceData. The 2006 client whole-file SHA and five sparse byte
+witnesses are checked by `audit_sin_original_surfaceprops_index_calls.py`,
+with public original-free mutation self-tests. Only a few short native
+instruction witnesses are published, never full executable bodies.
+
+**Slot2 SurfacePropCount is still SDK-guided only**, not a direct
+source-authenticated original SiN callsite. Neither slot2 nor slot3
+has yet been *run* in our independent DLL against the owner's retail
+engine. A crash is a failed experimental ABI hypothesis.
 
 ## Authentic name witnesses
 
@@ -65,6 +74,9 @@ retail resource body or original proprietary function is committed.
   vtable pointer verifier, virtual slot2 Count and virtual slot3 Index
   invocation, bounded count 0..16384 and signed index validation. It
   retains no engine objects or pointers after the call.
+- `audit_sin_original_surfaceprops_index_calls.py` adds SHA-checked
+  native original slot3 callsite evidence and a separate original-free
+  opcode mutation/refusal self-test.
 - `test_client_original_surfaceprops_readback.cpp` uses a completely
   synthetic 32-bit IPhysicsSurfaceProps object with a virtual destructor
   and the original expected slots, plus invalid-count, missing-index and
