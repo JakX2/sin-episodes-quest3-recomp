@@ -51,7 +51,7 @@ calls), `0x2204C980`, `0x2206E870`, `0x2206FC20`, `0x2206FB70`, native
 `0x2225C0F0` diagnostics, and record cleanup `0x2226E3E0`. The original
 spatial/engine methods remain external, **not** replaced by guessed
 Source SDK calls. `research/tools/audit_sin_original_candidate_filter_phase576.py`
-checks all 21 E8 targets, one earlier caller, 56 opcode/field witnesses,
+checks all 21 E8 targets, one earlier caller, 65 opcode/field witnesses,
 seven original numeric constants and the original sqrt-function pointer.
 
 ## Native prefix: zeroing, normalization, and early success
@@ -141,13 +141,50 @@ list, entity identity, trace contents and some x87 status interpretation
 Native code is fully authenticated but executable source equivalence
 requires further original helper decompilation.
 
+## Verified original caller post-filter: `0x22071A20` ignores AL
+
+A further cross-method source check resolves an important interpretation
+error: after the **actual** original CALL at `0x22071B78`, its owner
+method `0x22071A20` does **not** branch on `AL` at all. Instead it loads an
+independent candidate entity at `0x22071B7D` and applies these checks:
+
+1. A null independent candidate skips this entire post-filter.
+2. Otherwise it calls **candidate virtual `+0x120`**, whether or not a
+   direct report-pointer equality check could have succeeded.
+3. Only if that succeeds, it calls original `0x22035100`; only on success
+   does it call original `0x22035090`, then the returned object's
+   virtual `+0x28`, and compare the resulting identity with the report's
+   raw pointer at `+0x1C`.
+4. **After** that optional linked-identity computation, it separately
+   compares the original candidate entity pointer directly with report
+   `+0x1C`. Either direct equality or successful linked identity match
+   clears the report's `+0x24` delta, `+0x1C` association, restores its
+   runtime-global default vector at `+0x10..+0x18`, and resets its
+   signed status at `+0x00` to zero.
+5. The original reports' source coordinates at `+0x04..+0x0C` are not
+   overwritten by this branch. A candidate that fails both identity
+   comparisons leaves the report unchanged.
+
+This is a **post-filter of result data, not a test of the selector's
+Boolean return**. The original callsites `0x22071B99 -> 0x22035100` and
+`0x22071BA4 -> 0x22035090`, plus nine branch/field instruction witnesses,
+are now checked by the auditor. This parent routine was already
+whole-body authenticated in Phase574; these checks add **zero new native
+function bytes** to the Phase576 count.
+
+The host's additional `original_caller_clear_matching_association()`
+models the exact optional probe call order and report-field reset for
+safe synthetic entity IDs. The real entity types and virtual contracts
+remain unresolved. Tests cover null, direct and indirect matches,
+short-circuiting, nonmatch, and original callback evaluation ordering.
+
 ## Bounded C++17 reference and tests
 
 - `include/sin_compat/original_grunt_candidate_filter_phase576.hpp`
   implements safe, finite-input XY length/normalization; raw byte-
   independent entity virtual filter; the exact prefix budget/flag gates
   with an abstract `0x2206F500` callback; source-output initialization;
-  the three selected-candidate status outcomes; and the native 16-pass
+  the three selected-candidate status outcomes, and the parent-caller identity reset; and the native 16-pass
   upper-bound witness.
 - It reports distinct **`ImmediateTrue`**, **`NeedsNativeCandidateSearch`**
   and **`UnsupportedInput`** results. `NeedsNativeCandidateSearch` is not
