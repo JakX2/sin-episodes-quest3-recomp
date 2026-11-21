@@ -181,7 +181,11 @@ if ($PlanOnly) {
     Write-Output 'SELECT: original installed game folder'
     Write-Output 'COPY: fresh disposable entire game copy under Windows Temp'
     Write-Output 'BINARIES: independent client/server DLLs shipped in package bin'
-    Write-Output 'TEST: presence first, then read only on success and confirmed restoration'
+    if ($ServerPhysicsReadOnly) {
+        Write-Output 'TEST: original server DLLInit physics Factory triple then bounded read-only 2-script resource validation'
+    } else {
+        Write-Output 'TEST: presence first, then read only on success and confirmed restoration'
+    }
     if ($StagedStats) {
         Write-Output 'THIRD TEST: rb/GAME definitions and rt/null layout, independent 66-ID binding'
         if ($HookProof) {
@@ -728,8 +732,8 @@ try {
         $summary=Join-Path $reports 'SUMMARY.txt'
         $rows=@(
             'SiN Episodes 2006 independent filesystem diagnostic'
-            ('Presence: '+$(if($presenceOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED'}))
-            ('Read: '+$(if($readOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED_OR_SKIPPED'}))
+            ('Presence: '+$(if($ServerPhysicsReadOnly){'NOT_REQUESTED'}elseif($presenceOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED'}))
+            ('Read: '+$(if($ServerPhysicsReadOnly){'NOT_REQUESTED'}elseif($readOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED_OR_SKIPPED'}))
             ('Original-mode staged 66-stat binding: '+$(if($stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($StagedStats){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Independent Stats CUserMessages hooks 27:28:5: '+$(if($HookProof -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($HookProof){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
             ('Original soundscape manifest and owned 7:301:242:3 catalog: '+$(if($SoundscapeCatalog -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($SoundscapeCatalog){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
