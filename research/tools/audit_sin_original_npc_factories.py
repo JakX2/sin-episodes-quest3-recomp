@@ -71,17 +71,18 @@ def verify_registration_shape(
 
 def verify_shared_druglab_grunt_factory(pe)->dict:
     """Authenticate three class aliases and their *shared* original constructor."""
+    u32=lambda va:struct.unpack('<I',pe.at(va,4))[0]
     factory_addresses=(0x22536840,0x22536844,0x22536848)
     vtable=0x2249A9F8
     creator=0x2236A320
     delegate=0x22369E30
     constructor=0x2236A340
     for ptr in factory_addresses:
-        if pe.section_of(ptr)!='.data' or pe.u32(ptr)!=vtable:
+        if pe.section_of(ptr)!='.data' or u32(ptr)!=vtable:
             raise VerificationError("druglab grunt native factory vptr mismatch")
     if (pe.section_of(vtable)!='.rdata' or
-        pe.u32(vtable-4)!=0x224D23F4 or
-        pe.u32(vtable)!=creator or pe.u32(vtable+4)!=delegate):
+        u32(vtable-4)!=0x224D23F4 or
+        u32(vtable)!=creator or u32(vtable+4)!=delegate):
         raise VerificationError("druglab grunt shared two-method vtable mismatch")
     methods=(
         ('factory creator wrapper',creator,23,
@@ -109,13 +110,13 @@ def verify_shared_druglab_grunt_factory(pe)->dict:
         pe.at(0x22369E3A,3)!=bytes((0xFF,0x50,0x18))):
         raise VerificationError("shared grunt allocation and return shape changed")
     if (pe.at(0x2236A35F,2)!=bytes((0xC7,0x06)) or
-        pe.u32(0x2236A361)!=0x2249AAA4 or
+        u32(0x2236A361)!=0x2249AAA4 or
         pe.at(0x2236A365,2)!=bytes((0xC7,0x86)) or
-        pe.u32(0x2236A367)!=0x790 or
-        pe.u32(0x2236A36B)!=0x2249AA7C or
+        u32(0x2236A367)!=0x790 or
+        u32(0x2236A36B)!=0x2249AA7C or
         pe.at(0x2236A36F,2)!=bytes((0xC7,0x86)) or
-        pe.u32(0x2236A371)!=0xC14 or
-        pe.u32(0x2236A375)!=0x2249AA40):
+        u32(0x2236A371)!=0xC14 or
+        u32(0x2236A375)!=0x2249AA40):
         raise VerificationError("shared grunt source vptr writes changed")
     return {
         'class_aliases':[
