@@ -48,9 +48,9 @@ struct Captured {
 };
 struct Host final:IOriginalTriggerHost {
     EntityRef dynamic{40,2},secret{41,3},player{7,2},npc{9,1};
-    bool event_ok=true,remove_ok=true,manager_ok=true,special_ok=true;
+    bool event_ok=true,remove_ok=true,manager_ok=true,special_ok=true,base_ok=true;
     bool throw_owner=false;
-    int event_calls=0,remove_calls=0,manager_calls=0,special_calls=0;
+    int event_calls=0,remove_calls=0,manager_calls=0,special_calls=0,base_calls=0;
     OriginalTriggerEntityFactory* reentry=nullptr;
     TriggerTouchReport reentry_result{};
     std::vector<std::string> order;
@@ -59,6 +59,11 @@ struct Host final:IOriginalTriggerHost {
         return e==dynamic||e==secret||e==player||e==npc;
     }
     bool is_player(EntityRef e) const override{return e==player;}
+    bool initialize_native_base_trigger(EntityRef e) override {
+        assert(e==secret);
+        ++base_calls;order.emplace_back("base-spawn");
+        return base_ok;
+    }
     int current_difficulty_owner_index() const override {
         if(throw_owner)throw std::runtime_error("owner getter failure");
         return 42;
@@ -220,6 +225,105 @@ int main(){
                TriggerCode::Handled);
         assert(f.touch(h.secret,h.player).handled());
         assert(h.events[0].name=="secret_01"&&h.events[0].descriptor==12);
+    }
+    // Phase527: Original CTriggerSecret::Spawn (slot25) is a SEPARATE
+    // engine callback from our host factory allocation. It sends the
+    // SAME 'game' event but descriptor=11 on +0x120 spawnflags bit3.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_secret",h.secret}).ok());
+        assert(f.apply_map_keyvalue(h.secret,"targetname","first_secret")==
+               TriggerCode::Handled);
+        auto spawned=f.run_secret_spawn(h.secret,{false,0x08u});
+        assert(spawned.handled()&&spawned.base_initialized&&
+               spawned.event_published&&!spawned.removal_queued);
+        assert(h.base_calls==1&&h.event_calls==1&&h.remove_calls==0);
+        assert((h.order==std::vector<std::string>{"base-spawn","publish"}));
+        assert(h.events[0].event==TriggerEventName::Game &&
+               h.events[0].descriptor==11&&h.events[0].owner==-1 &&
+               h.events[0].name=="first_secret");
+        assert(f.run_secret_spawn(h.secret,{false,0x08u}).code==
+               TriggerCode::AlreadyConsumed);
+        assert(h.event_calls==1);
+        // A later player Touch produces distinct original descriptor12
+        // exactly once, followed by deferred entity removal.
+        assert(f.touch(h.secret,h.npc).code==TriggerCode::NonPlayer);
+        assert(f.touch(h.secret,h.player).handled());
+        assert(h.events.size()==2&&h.events[1].descriptor==12&&
+               h.remove_calls==1);
+        assert(f.touch(h.secret,h.player).code==TriggerCode::AlreadyConsumed);
+    }
+    // Original BIT3 predicate, not any nonzero spawnflags.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_secret",h.secret}).ok());
+        auto no_event=f.run_secret_spawn(h.secret,{false,0x100u});
+        assert(no_event.handled()&&no_event.base_initialized&&
+               !no_event.event_published&&!no_event.removal_queued);
+        assert(h.base_calls==1&&h.event_calls==0);
+    }
+    // Original global vslot +0x88 returns true: immediate queued
+    // deletion request, skipping CBaseTrigger::Spawn and event11.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_secret",h.secret}).ok());
+        auto removed=f.run_secret_spawn(h.secret,{true,0x08u});
+        assert(removed.handled()&&removed.removal_queued);
+        assert(h.base_calls==0&&h.event_calls==0&&h.remove_calls==1);
+        assert(f.touch(h.secret,h.player).code==TriggerCode::AlreadyConsumed);
+    }
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_secret",h.secret}).ok());
+        h.remove_ok=false;
+        auto first=f.run_secret_spawn(h.secret,{true,0x08u});
+        assert(first.code==TriggerCode::RemovalPending);
+        assert(h.event_calls==0&&h.base_calls==0&&h.remove_calls==1);
+        h.remove_ok=true;
+        assert(f.retry_pending_remove(h.secret)==TriggerCode::Handled);
+        assert(h.event_calls==0&&h.remove_calls==2);
+    }
+    // If genuine native CBaseTrigger Spawn cannot run, do not fabricate
+    // event11 or latch a completed spawn; host may retry later.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_secret",h.secret}).ok());
+        h.base_ok=false;
+        assert(f.run_secret_spawn(h.secret,{false,0x08u}).code==
+               TriggerCode::HostRefused);
+        assert(h.base_calls==1&&h.event_calls==0);
+        h.base_ok=true;
+        assert(f.run_secret_spawn(h.secret,{false,0x08u}).handled());
+        assert(h.base_calls==2&&h.event_calls==1);
+        assert(f.run_secret_spawn(h.secret,{false,0}).code==
+               TriggerCode::AlreadyConsumed);
+    }
+    // Event creator may reject original descriptor11 while the native
+    // base Spawn still completes. It is not re-emitted on retries.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_secret",h.secret}).ok());
+        h.event_ok=false;
+        const auto out=f.run_secret_spawn(h.secret,{false,0x08u});
+        assert(out.code==TriggerCode::EventUnavailable&&
+               out.base_initialized&&!out.event_published);
+        assert(f.run_secret_spawn(h.secret,{false,0x08u}).code==
+               TriggerCode::AlreadyConsumed);
+        assert(h.event_calls==1&&h.base_calls==1);
+    }
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_dynamic_difficulty",h.dynamic}).ok());
+        assert(f.run_secret_spawn(h.dynamic,{false,0x08u}).code==
+               TriggerCode::WrongClass);
+        assert(h.base_calls==0&&h.event_calls==0);
     }
     // Event-manager failure did not stop original trigger removal.
     {
