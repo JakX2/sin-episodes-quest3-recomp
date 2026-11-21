@@ -1003,6 +1003,74 @@ try {
        -not ($propsOut -ccontains $expectedCvar)) {
         throw ('Original surfaceprops manifest and 2-source shape not accepted after true physics 3/3: '+($propsOut -join '|'))
     }
+    # Phase 515: mutating ParseSurfaceData is accepted only after
+    # all prior owner-gated soundscape, physics and resource results.
+    $registrationSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-registration-entered version=VPhysicsSurfaceProps001:slot1:explicit-opt-in'
+        '[SiN independent] role=client phase=engine-fs-registration-result version=original-surfaceprops-register-two-calls-returned:2:2:11:22'
+        '[SiN independent] role=client phase=engine-fs-registration-terminal-stop version=two-engine-call-returns-not-game-init'
+    )
+    $registeredTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($registrationSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($registeredTrace)))
+    $registrationOut=Verify 'CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedRegistered=('OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'original-surfaceprops-register-two-calls-returned:2:2:11:22')
+    if(-not ($registrationOut -ccontains $expectedRegistered) -or
+       -not ($registrationOut -ccontains $expectedProps) -or
+       -not ($registrationOut -ccontains $expectedPhysics)) {
+        throw 'Properly ordered opt-in surface registration return was not classified'
+    }
+    $duplicateRegistration=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($registrationSteps)+
+        @($registrationSteps[1])+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($duplicateRegistration)))
+    $duplicateRegistrationOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($duplicateRegistrationOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS:')) {
+        throw 'Duplicate surface registration result was elevated to owner evidence'
+    }
+    $forgedRegistration=@($registrationSteps)
+    $forgedRegistration[1]=$forgedRegistration[1].Replace(
+        'two-calls-returned:2:2:11:22','two-calls-returned:2:1:11:22')
+    $forgedRegistrationTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($forgedRegistration)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($forgedRegistrationTrace)))
+    $forgedRegistrationOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($forgedRegistrationOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS:')) {
+        throw 'Two physics parse returns were forged with only one call'
+    }
+    $prematureRegistration=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($registrationSteps)+@($surfacePropsSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($prematureRegistration)))
+    $prematureRegistrationOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($prematureRegistrationOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS:')) {
+        throw 'Registration accepted before validated physics surface resource reads'
+    }
+    $missingResources=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($registrationSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($missingResources)))
+    $withoutResources=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($withoutResources -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS:')) {
+        throw 'Registration accepted without original surface resource shape proof'
+    }
+    # Restoring the read-only fixture shows zero registration evidence.
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($fullTrace)))
+    $readOnlyOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($readOnlyOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS:')) {
+        throw 'The original read-only experiment was classified as a mutating surface registration'
+    }
     $refusedProps=@($surfacePropsSteps)
     $refusedProps[1]=$refusedProps[1].Replace(
         'original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0',
