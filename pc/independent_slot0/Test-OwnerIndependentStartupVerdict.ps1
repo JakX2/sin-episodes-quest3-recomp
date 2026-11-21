@@ -1024,6 +1024,71 @@ try {
        -not ($registrationOut -ccontains $expectedPhysics)) {
         throw 'Properly ordered opt-in surface registration return was not classified'
     }
+    # Phase 516: Source SDK 2004 surface count + name index lookup
+    # is a distinct downstream, read-only ENGINE call after two actual
+    # ParseSurfaceData invocations. Values are invented fixture data.
+    $readbackSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-readback-entered version=VPhysicsSurfaceProps001:slots2-3:read-only'
+        '[SiN independent] role=client phase=engine-fs-readback-result version=original-physics-surface-readback-three-in-range:93:0:1:84'
+        '[SiN independent] role=client phase=engine-fs-readback-terminal-stop version=SDK2004-count-and-indices-not-game-init'
+    )
+    $fullReadbackTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($registrationSteps)+
+        @($readbackSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($fullReadbackTrace)))
+    $readbackOut=Verify 'CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedReadback=('OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'original-physics-surface-readback-three-in-range:93:0:1:84')
+    if(-not ($readbackOut -ccontains $expectedReadback) -or
+       -not ($readbackOut -ccontains $expectedRegistered)) {
+        throw 'Valid SDK2004 count/index data not classified after authentic synthetic registration sequence'
+    }
+    $duplicateReadback=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($registrationSteps)+
+        @($readbackSteps)+@($readbackSteps[1])+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($duplicateReadback)))
+    $duplicateReadbackOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($duplicateReadbackOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS:')) {
+        throw 'Duplicate SDK2004 count/index result was trusted'
+    }
+    $forgedReadback=@($readbackSteps)
+    $forgedReadback[1]=$forgedReadback[1].Replace(
+        'three-in-range:93:0:1:84','three-in-range:93:0:1:93')
+    $badReadbackTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($registrationSteps)+
+        @($forgedReadback)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($badReadbackTrace)))
+    $forgedReadbackOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($forgedReadbackOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS:')) {
+        throw 'Surface index outside returned count accepted'
+    }
+    $earlyReadbackTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($readbackSteps)+
+        @($registrationSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($earlyReadbackTrace)))
+    $earlyReadbackOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($earlyReadbackOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS:')) {
+        throw 'SDK2004 readback accepted before registration method returned'
+    }
+    $registerOnlyTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($registrationSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($registerOnlyTrace)))
+    $registerOnlyOut=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($registerOnlyOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS:') -or
+       -not ($registerOnlyOut -ccontains $expectedRegistered)) {
+        throw 'Registration-only diagnostic was confused with optional SDK2004 readback'
+    }
     $duplicateRegistration=[string[]](@($soundscapeSteps[0..3])+
         @($soundscapeCvarSteps)+@($physicsSteps)+
         @($surfacePropsSteps)+@($registrationSteps)+
