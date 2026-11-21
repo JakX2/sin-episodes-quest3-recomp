@@ -282,6 +282,31 @@ try {
             throw ('Missing owner surfaceproperties read prerequisite: '+$required)
         }
     }
+    Reject (@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+              Phase='Soundscape';ExplicitSurfacePropsRegisterProbe=$true;
+              PlanOnly=$true;PriorReadTranscript=$priorRead}) 'requires Soundscape, physics and read-only surface prerequisites'
+    $registerGate=@{DisposableGameRoot=$fakeGame;IndependentBin=$fakeBuild;
+        Phase='Soundscape';ReadOnlySoundscapeCvarLookup=$true;
+        ReadOnlyPhysicsFactoryProbe=$true;ReadOnlySurfacePropsReadProbe=$true;
+        ExplicitSurfacePropsRegisterProbe=$true;
+        PlanOnly=$true;PriorReadTranscript=$priorRead}
+    $registerText=@(& $Gate @registerGate) -join [Environment]::NewLine
+    foreach($required in @(
+        'OWNER_ENGINE_FS_GATE: PLAN_ONLY_NO_GAME_LAUNCHED',
+        'EnableClientSurfacePropsRegisterProbe',
+        'EnableClientSurfacePropsReadProbe',
+        ('OWNER_ENGINE_FS_GATE_PREVIOUS_READ_SESSION: '+$session)
+    )) {
+        if(-not $registerText.Contains($required)) {
+            throw ('Missing explicit surface registration safety gate: '+$required)
+        }
+    }
+    if($surfacePropsText.Contains('EnableClientSurfacePropsRegisterProbe') -or
+       $physicsGateText.Contains('EnableClientSurfacePropsRegisterProbe') -or
+       $withCvarText.Contains('EnableClientSurfacePropsRegisterProbe') -or
+       $soundscapeText.Contains('EnableClientSurfacePropsRegisterProbe')) {
+        throw 'Actual ParseSurfaceData engine mutation enabled by an earlier read-only probe'
+    }
     if($soundscapeText.Contains('EnableClientSurfacePropsReadProbe') -or
        $withCvarText.Contains('EnableClientSurfacePropsReadProbe') -or
        $physicsGateText.Contains('EnableClientSurfacePropsReadProbe')) {
