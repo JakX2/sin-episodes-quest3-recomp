@@ -32,6 +32,7 @@
 #include "client_original_surfaceprops_engine_fs_bridge.h"
 #include "client_original_surfaceprops_registration.h"
 #include "client_original_surfaceprops_readback.h"
+#include "server_original_surfaceprops_readonly.h"
 #include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
@@ -260,11 +261,27 @@ static bool retailServerPhysicsFactoryProbeEnabled() noexcept {
             "SIN_INDEPENDENT_SERVER_PHYSICS_FACTORY_PROBE",
             enabled,2)==1 && enabled[0]=='1';
 }
-[[noreturn]] static void stopAfterServerPhysicsFactoryProbe(Factory physicsFactory) noexcept {
+// Extra owner-only stage, requiring the already separate read-only server
+// physics factory opt-in. Never triggered by default DLLInit or sound probe.
+static bool retailServerSurfacePropsReadProbeEnabled() noexcept {
+    char enabled[2]={};
+    return retailServerPhysicsFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_SERVER_SURFACEPROPS_READ_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterServerPhysicsFactoryProbe(
+    Factory physicsFactory,void* fileSystem) noexcept {
     diagnostic("server-physics-entered",
                "original-server-second-factory:read-only");
-    const auto r=sin_independent::server_original_physics_factory::
-        ReadOnlyThree(physicsFactory);
+    const bool readManifest=retailServerSurfacePropsReadProbeEnabled();
+    const auto combined=readManifest?
+        sin_independent::server_original_surfaceprops_readonly::Inspect(
+            physicsFactory,fileSystem):
+        sin_independent::server_original_surfaceprops_readonly::Report{};
+    const auto r=readManifest?combined.physics:
+        sin_independent::server_original_physics_factory::ReadOnlyThree(
+            physicsFactory);
     char bounded[128]={};
     std::snprintf(bounded,sizeof(bounded),"%s:%u:%u:%u",
         sin_independent::server_original_physics_factory::Name(r.outcome),
@@ -274,6 +291,26 @@ static bool retailServerPhysicsFactoryProbeEnabled() noexcept {
             bounded:"original-server-physics-inconsistent:0:0:0");
     diagnostic("server-physics-terminal-stop",
                "no-manifest-coupling-no-server-init");
+    if (readManifest && r.successful()) {
+        // Proven original call graph: physics 3/3 then rb/GAME manifest
+        // and rb/null script reads (0x2220D910 -> 0x22234060 ->
+        // 0x22233FD0). Never call the original slot1 ParseSurfaceData.
+        diagnostic("server-surfaceprops-entered",
+                   "VFileSystem012:server-surfaceproperties:rb-dual-scope");
+        const auto& resources=combined.resources.owned_result;
+        char shape[192]={};
+        std::snprintf(shape,sizeof(shape),"%s:%u:%u:%u:%u:%u",
+            sin_independent::server_original_surfaceprops_readonly::Name(
+                combined.outcome),
+            resources.attempted,resources.read,resources.definitions,
+            resources.base_keys,resources.repeated_names);
+        diagnostic("server-surfaceprops-result",shape);
+        diagnostic("server-surfaceprops-terminal-stop",
+                   "no-original-engine-parse-no-server-init");
+        TerminateProcess(GetCurrentProcess(),
+            combined.verified()?0x53494E7Au:0x53494E7Bu);
+        __fastfail(7);
+    }
     TerminateProcess(GetCurrentProcess(),
         r.successful()?0x53494E78u:0x53494E79u);
     __fastfail(7);
@@ -1137,6 +1174,7 @@ public:
         void* sound=nullptr;
         void* events=nullptr;
         void* cvar=nullptr;
+        void* fileSystem=nullptr;
         if (!require(engineFactory, kFirstEngineVersion) ||
             !require(engineFactory, kSecondEngineVersion) ||
             !require(engineFactory, kThirdEngineVersion, &cvar) ||
@@ -1147,7 +1185,7 @@ public:
             !require(engineFactory, kEighthEngineVersion) ||
             !require(engineFactory, kNinthEngineVersion) ||
             !require(engineFactory, kTenthEngineVersion) ||
-            !require(fileSystemFactory, kFileSystemVersion) ||
+            !require(fileSystemFactory, kFileSystemVersion, &fileSystem) ||
             !require(engineFactory, kEleventhEngineVersion, &events) ||
             !require(engineFactory, kTwelfthEngineVersion) ||
             !require(engineFactory, kThirteenthEngineVersion, &sound) ||
@@ -1157,7 +1195,7 @@ public:
         if (!connectSound(sound,engineFactory)) return false;
 #else
         if (retailServerPhysicsFactoryProbeEnabled())
-            stopAfterServerPhysicsFactoryProbe(physicsFactory);
+            stopAfterServerPhysicsFactoryProbe(physicsFactory,fileSystem);
         if (retailSoundProbeEnabled()) {
             const bool connected=connectSound(sound,engineFactory);
             if(connected && retailEventProbeEnabled())
