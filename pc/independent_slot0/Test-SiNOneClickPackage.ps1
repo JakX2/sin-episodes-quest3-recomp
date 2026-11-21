@@ -182,8 +182,9 @@ if(-not $readonlyText.Contains($requiredReadOnly) -or
     throw 'Read-only physics batch must include original prerequisites but never original engine mutation'
 }
 if(-not $readbackText.Contains($requiredReadback) -or
-   -not $readbackText.Contains('set /p "CONSENT=Type REGISTER') -or
-   -not $readbackText.Contains('if not "%CONSENT%"=="REGISTER"') -or
+   -not $readbackText.Contains('choice /C YN /N /M') -or
+   -not $readbackText.Contains('if errorlevel 2') -or
+   $readbackText.Contains('set /p') -or
    -not $readbackText.Contains('exit /b 2') -or
    -not $readbackText.Contains('Start-SiNFileSystemTest.ps1')) {
     throw 'Physics readback batch must gate the native mutation behind explicit REGISTER consent'
