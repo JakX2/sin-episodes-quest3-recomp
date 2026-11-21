@@ -6,6 +6,11 @@ You do NOT need to copy, replace, extract or configure any DLL yourself.
 
 PHASE 518: CHOOSE THE NEW PHYSICS SHORTCUT, NOT THE OLD BASELINE
 ----------------------------------------------------------------
+IMPORTANT: Extract this NEW archive into a NEW, EMPTY directory. Do
+not reuse an older extracted test folder or an old START script. The
+2026-11-21 02:18 owner report lacks the Phase516 readback summary
+field completely, implying an older extracted launcher was invoked.
+
 If ChatGPT asks you to test the original 2006 engine's physics support,
 double-click RUN_PHYSICS_READONLY_TEST.bat to verify the original 3/3
 physics Factory interfaces and both surface-properties resource files.
