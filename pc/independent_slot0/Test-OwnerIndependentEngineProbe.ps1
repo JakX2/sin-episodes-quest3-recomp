@@ -135,6 +135,32 @@ try {
     Reject 'marker content mismatch' $true
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
+    # Phase 517: only an explicitly selected Server-only diagnostic may
+    # touch the second factory's 2006 physics names.
+    foreach ($case in @(
+        @{Role='Both'; Factory=$true},
+        @{Role='Client'; Factory=$true},
+        @{Role='Server'; Factory=$false}
+    )) {
+        $args=@{GameBin=$bin; GameExecutable=$exe;
+            IndependentBin=$IndependentBin; ProbeRole=$case.Role;
+            EnableServerPhysicsFactoryProbe=$true;
+            DisposableTestCopyConfirmed=$true}
+        if ($case.Factory) { $args.EnableServerFactoryProbe=$true }
+        $blocked=$false
+        try { & $Launcher @args | Out-Null } catch {
+            if ($_.Exception.Message -notlike '*EnableServerPhysicsFactoryProbe requires Server-only role and EnableServerFactoryProbe*') {
+                throw ('Unexpected server physics role guard failure: '+$_.Exception.Message)
+            }
+            $blocked=$true
+        }
+        if(-not $blocked) {throw 'Server physics stage accepted without explicit role and factory opt-in'}
+        if((Sha256 $server) -ne $beforeServer -or
+           (Sha256 $client) -ne $beforeClient) {
+            throw 'Server physics invalid role test modified original fake DLLs'
+        }
+    }
+
 
     # Retail install layout: root/SinEpisodes.exe, root/bin/engine.dll,
     # root/SE1/GameInfo.txt and original gameplay DLLs in root/SE1/bin/.

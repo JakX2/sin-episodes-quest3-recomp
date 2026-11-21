@@ -936,3 +936,18 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_surfaceprops_index_calls.py"
       --self-test)
 endif()
+
+
+# Phase 517: exact original 2006 server physics factory order differs from
+# client. Native fake factory only; no real engine or vphysics mutation in CI.
+add_executable(sin_server_original_physics_factory_test
+  test_server_original_physics_factory_probe.cpp)
+target_compile_features(sin_server_original_physics_factory_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_original_physics_factory_native
+  COMMAND sin_server_original_physics_factory_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_server_physics_bootstrap_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_server_physics_bootstrap.py"
+      --self-test)
+endif()

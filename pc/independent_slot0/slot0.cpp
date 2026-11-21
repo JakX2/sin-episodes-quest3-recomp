@@ -39,6 +39,7 @@
 #endif
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
+#include "server_original_physics_factory_probe.h"
 #include "server_tick_interval_core.h"
 #include "sin_user_message_catalog.h"
 #include "server_post_connect_core.h"
@@ -249,6 +250,33 @@ static bool retailSoundProbeEnabled() noexcept {
     return extraFactoriesEnabled() &&
         GetEnvironmentVariableA("SIN_INDEPENDENT_SERVER_SOUND_PROBE",enabled,2)==1 &&
         enabled[0]=='1';
+}
+static bool retailServerPhysicsFactoryProbeEnabled() noexcept {
+    char enabled[2]={};
+    // A distinct owner terminal diagnostic, never enabled by normal
+    // ServerGameDLL003::DLLInit, client probe, or server sound probe.
+    return extraFactoriesEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_SERVER_PHYSICS_FACTORY_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterServerPhysicsFactoryProbe(Factory physicsFactory) noexcept {
+    diagnostic("server-physics-entered",
+               "original-server-second-factory:read-only");
+    const auto r=sin_independent::server_original_physics_factory::
+        ReadOnlyThree(physicsFactory);
+    char bounded[128]={};
+    std::snprintf(bounded,sizeof(bounded),"%s:%u:%u:%u",
+        sin_independent::server_original_physics_factory::Name(r.outcome),
+        r.attempted,r.found,static_cast<unsigned>(r.original_query_gate));
+    diagnostic("server-physics-result",
+        sin_independent::server_original_physics_factory::Consistent(r)?
+            bounded:"original-server-physics-inconsistent:0:0:0");
+    diagnostic("server-physics-terminal-stop",
+               "no-manifest-coupling-no-server-init");
+    TerminateProcess(GetCurrentProcess(),
+        r.successful()?0x53494E78u:0x53494E79u);
+    __fastfail(7);
 }
 static bool retailEventProbeEnabled() noexcept {
     char enabled[2]={};
@@ -1106,6 +1134,8 @@ public:
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
         if (!connectSound(sound,engineFactory)) return false;
 #else
+        if (retailServerPhysicsFactoryProbeEnabled())
+            stopAfterServerPhysicsFactoryProbe(physicsFactory);
         if (retailSoundProbeEnabled()) {
             const bool connected=connectSound(sound,engineFactory);
             if(connected && retailEventProbeEnabled())
