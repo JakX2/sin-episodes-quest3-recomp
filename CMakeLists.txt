@@ -195,6 +195,28 @@ if(BUILD_TESTING)
     COMMAND sin_original_druglab_grunt_factory_tests)
 endif()
 
+# Phase532: authentic CDruglabGrunt::Spawn original virtual slot25
+# selects variant weapon names, network field+0x3B0 and per-class
+# x87-float-to-int fields+0x98/+0x9C, after inherited NPC calls.
+# A true native engine NPC host remains required for live gameplay.
+add_library(sin_original_druglab_grunt_spawn STATIC
+  src/original_druglab_grunt_spawn.cpp)
+target_include_directories(sin_original_druglab_grunt_spawn PUBLIC include)
+target_link_libraries(sin_original_druglab_grunt_spawn PUBLIC
+  sin_original_druglab_grunt_factory)
+target_compile_options(sin_original_druglab_grunt_spawn PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_druglab_grunt_spawn_tests
+    tests/test_original_druglab_grunt_spawn.cpp)
+  target_link_libraries(sin_original_druglab_grunt_spawn_tests PRIVATE
+    sin_original_druglab_grunt_spawn)
+  target_compile_options(sin_original_druglab_grunt_spawn_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_druglab_grunt_spawn_tests
+    COMMAND sin_original_druglab_grunt_spawn_tests)
+endif()
+
 # Source-derived SiN assault-rifle settings consumed by the existing
 # engine-neutral weapon state machine (not a native Source game entity).
 if(BUILD_TESTING)
