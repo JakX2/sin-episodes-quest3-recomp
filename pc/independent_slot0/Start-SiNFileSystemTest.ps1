@@ -17,6 +17,7 @@ param(
     [switch]$SurfacePropsRegister,
     [switch]$SurfacePropsReadback,
     [switch]$ServerPhysicsFactory,
+    [switch]$ServerSurfacePropsRead,
     [string]$ServerMap,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
@@ -27,6 +28,9 @@ $serverHash='568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650'
 $gate=Join-Path $PSScriptRoot 'Invoke-OwnerFileSystemRetailGate.ps1'
 # The server is a separate ORIGINAL 2006 physics Factory diagnostic.
 # It must not inherit client surface-register/readback opt-ins.
+if ($ServerSurfacePropsRead -and -not $ServerPhysicsFactory) {
+    throw 'ServerSurfacePropsRead requires separate read-only ServerPhysicsFactory prerequisite'
+}
 if ($ServerPhysicsFactory -and
     ($StagedStats -or $HookProof -or $SoundscapeCatalog -or
      $SoundscapeCvarLookup -or $PhysicsFactoryLookup -or
@@ -216,6 +220,10 @@ if ($PlanOnly) {
         Write-Output 'SERVER PHYSICS: 2006 original engine ServerGameDLL003 DLLInit factory order VPhysics030/VPhysicsCollision007/VPhysicsSurfaceProps001'
         Write-Output 'SERVER PHYSICS MAP: validates an existing original SE1/maps/*.bsp; opt-in explicit map basename or first available retail BSP'
         Write-Output 'SERVER PHYSICS EXIT: 0x53494E78 success / 0x53494E79 missing; read-only, no physics ParseSurfaceData or normal game boot'
+        if($ServerSurfacePropsRead) {
+            Write-Output 'SERVER SURFACEPROPS READ: after authentic server physics 3/3, read original rb/GAME manifest and two rb/nullptr resources without ParseSurfaceData'
+            Write-Output 'SERVER SURFACEPROPS EXIT: 0x53494E7A verified / 0x53494E7B refused; no server DLLInit success'
+        }
     }
     Write-Output 'RESULTS: new text-only ZIP in extracted package folder'
     Write-Output 'CLEANUP: keep disposable copy if restoration is uncertain'
@@ -234,6 +242,7 @@ $stagedStarted=$false
 $serverStarted=$false
 $serverOk=$false
 $serverSummary='NOT_REQUESTED'
+$serverSurfaceSummary='NOT_REQUESTED'
 $selectedServerMap='NOT_REQUESTED'
 $problems=New-Object 'System.Collections.Generic.List[string]'
 $copyStatus='NOT_STARTED'
@@ -392,6 +401,7 @@ try {
                 GameArguments=('-console -game SE1 +map '+$selectedServerMap)
                 EnableServerFactoryProbe=$true
                 EnableServerPhysicsFactoryProbe=$true
+                EnableServerSurfacePropsReadProbe=[bool]$ServerSurfacePropsRead
                 TimeoutSeconds=$TimeoutSeconds
                 DisposableTestCopyConfirmed=$true
             }
@@ -416,10 +426,30 @@ try {
                     $serverSummary=($serverResults[0] -split ':server:',2)[1]
                 }
             }
+            if($ServerSurfacePropsRead) {
+                $surfaceHits=@($serverLines | Where-Object {
+                    $_ -cmatch '^OWNER_SERVER_ORIGINAL_SURFACEPROPS_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:server:original-server-surfaceprops-(read-verified|filesystem-refused|resources-refused):[0-2]:[0-2]:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}$'
+                })
+                $serverSurfaceSummary='NOT_RECORDED'
+                if($surfaceHits.Count -eq 1 -and $sessionHits.Count -eq 1) {
+                    $prefix=('OWNER_SERVER_ORIGINAL_SURFACEPROPS_RESULTS: sin-independent-'+$idFound+'-')
+                    if($surfaceHits[0].StartsWith($prefix,[StringComparison]::Ordinal)) {
+                        $serverSurfaceSummary=($surfaceHits[0] -split ':server:',2)[1]
+                    }
+                }
+            }
             $serverOk=($serverSummary -ceq 'original-server-physics-three-available:3:3:1' -and
-                @($serverLines | Where-Object {$_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E78'}).Count -eq 1 -and
-                @($serverLines | Where-Object {$_ -ceq 'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE'}).Count -eq 1 -and
-                @($serverLines | Where-Object {$_ -ceq 'OWNER_INDEPENDENT_VERDICT: SERVER_PHYSICS_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'}).Count -eq 1)
+                @($serverLines | Where-Object {$_ -ceq 'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE'}).Count -eq 1)
+            if ($ServerSurfacePropsRead) {
+                $serverOk=($serverOk -and
+                    $serverSurfaceSummary -ceq 'original-server-surfaceprops-read-verified:2:2:93:71:0' -and
+                    @($serverLines | Where-Object {$_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E7A'}).Count -eq 1 -and
+                    @($serverLines | Where-Object {$_ -ceq 'OWNER_INDEPENDENT_VERDICT: SERVER_SURFACEPROPS_READ_ONLY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'}).Count -eq 1)
+            } else {
+                $serverOk=($serverOk -and
+                    @($serverLines | Where-Object {$_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E78'}).Count -eq 1 -and
+                    @($serverLines | Where-Object {$_ -ceq 'OWNER_INDEPENDENT_VERDICT: SERVER_PHYSICS_FACTORY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'}).Count -eq 1)
+            }
         }
         Preserve-SessionLogs $server $reports
     } elseif($ServerPhysicsFactory) {
@@ -716,6 +746,7 @@ try {
             ('Original soundscape ConVar lookup (read-only): '+$soundscapeCvarSummary)
             ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
             ('Original server physics Factory triple (read-only): '+$serverSummary)
+            ('Original server surfaceprops manifest and scripts (read-only): '+$serverSurfaceSummary)
             ('Original server physics chosen retail map: '+$selectedServerMap)
             ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
             ('Original physics pre-Parse table snapshot (read-only): '+$preparseSummary)
@@ -738,7 +769,11 @@ try {
     }
 }
 if ($ServerPhysicsFactory -and $serverOk) {
-    Write-Output 'FINISHED: actual server Factory 3/3 diagnostic observed after same-session DLLInit. NO server game Init or map boot.'
+    if($ServerSurfacePropsRead) {
+        Write-Output 'FINISHED: original server Factory 3/3 and read-only 2:2:93:71:0 surface resources verified. NO ParseSurfaceData or game Init.'
+    } else {
+        Write-Output 'FINISHED: actual server Factory 3/3 diagnostic observed after same-session DLLInit. NO server game Init or map boot.'
+    }
 } elseif ($ServerPhysicsFactory) {
     Write-Output 'FINISHED: server physics diagnostic incomplete or refused; upload text-only ZIP.'
 } elseif ($SoundscapeCatalog -and $stagedOk) {
