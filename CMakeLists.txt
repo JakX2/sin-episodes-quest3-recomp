@@ -4506,3 +4506,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase587: authenticated original Grunt ACT activity vtable slots,
+# kneeling/crouching/aim activity conversions, and serial-handle delegates.
+# Original-free C++17 models and synthetic mutation regressions only.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_activity_phase587_tests
+    tests/test_original_grunt_activity_phase587.cpp)
+  target_include_directories(sin_original_grunt_activity_phase587_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_activity_phase587_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_activity_phase587_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_activity_phase587_tests
+    COMMAND sin_original_grunt_activity_phase587_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_activity_phase587_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_activity_phase587.py"
+        --self-test)
+  endif()
+endif()
