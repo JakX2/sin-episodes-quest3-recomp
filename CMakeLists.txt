@@ -3633,3 +3633,15 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase540: authenticate owner-original 2006 client VGUI/HUD init helper.
+# Offline synthetic test requires no copyrighted game DLL binaries.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_vgui_hud_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_vgui_hud_startup.py"
+        --self-test)
+  endif()
+endif()
