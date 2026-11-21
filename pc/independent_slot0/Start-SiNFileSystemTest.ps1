@@ -555,10 +555,13 @@ try {
                             $baselinePattern='^\[SiN independent\] role=client phase=engine-fs-preparse-result version=(original-physics-surface-readback-(?:invalid-object|missing-count-slot|missing-index-slot|count-invalid|index-invalid|some-unavailable|three-in-range):-?[0-9]{1,6}:-?[0-9]{1,6}:-?[0-9]{1,6}:-?[0-9]{1,6})$'
                             $baselineMatch=[regex]::Match($beforeTrace[1],$baselinePattern)
                             $beforeStop=[Array]::IndexOf($allTrace,$beforeTrace[2])
-                            $afterStart=[Array]::FindIndex($allTrace,[Predicate[string]]{
-                                param($line)
-                                $line -cmatch '^\[SiN independent\] role=client phase=engine-fs-registration-result version='
+                            $afterStart=-1
+                            $registrationResults=@($allTrace | Where-Object {
+                                $_ -cmatch '^\[SiN independent\] role=client phase=engine-fs-registration-result version='
                             })
+                            if ($registrationResults.Count -eq 1) {
+                                $afterStart=[Array]::IndexOf($allTrace,$registrationResults[0])
+                            }
                             if ($baselineMatch.Success -and $beforeStop -ge 0 -and
                                 $afterStart -gt $beforeStop) {
                                 $preparseSummary=$baselineMatch.Groups[1].Value
