@@ -66,6 +66,9 @@ public:
     // 0x221CFCF0 before sending its optional descriptor=11 event.
     // The portable adapter cannot manufacture this engine lifecycle.
     virtual bool initialize_native_base_trigger(EntityRef entity)=0;
+    // Original CTriggerDynamicDifficulty::Spawn logs the exact warning
+    // when the native this+0xB4 flag mask 0x400 is set.
+    virtual void report_original_warning(std::string_view text)=0;
     // Original touched entity's virtual +0x120 predicate.
     virtual bool is_player(EntityRef entity) const=0;
     // Original 0x22288A40: owner index for the dynamic event, or -1.
@@ -91,10 +94,12 @@ public:
 struct TriggerSpawnInput {
     bool engine_requests_removal=false;
     std::uint32_t native_flags_0x120=0;
+    std::uint32_t native_spawnflags_0xB4=0;
 };
 struct TriggerSpawnReport {
     TriggerCode code=TriggerCode::UnknownEntity;
     bool base_initialized=false;
+    bool warning_emitted=false;
     bool event_published=false;
     bool removal_queued=false;
     bool handled() const noexcept {return code==TriggerCode::Handled;}
@@ -135,6 +140,8 @@ public:
     // allocation above. Source-backed CTriggerSecret path ONLY. The
     // CTriggerDynamicDifficulty Spawn path has additional behaviors.
     TriggerSpawnReport run_secret_spawn(
+        EntityRef trigger,TriggerSpawnInput input) noexcept;
+    TriggerSpawnReport run_dynamic_spawn(
         EntityRef trigger,TriggerSpawnInput input) noexcept;
     TriggerTouchReport touch(EntityRef trigger,EntityRef actor) noexcept;
     TriggerCode retry_pending_remove(EntityRef trigger) noexcept;
