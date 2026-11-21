@@ -3621,3 +3621,15 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase539: original 2006 client Init tail and native game-system helper
+# authentication. Offline CTest only; owner original DLL inputs are private.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_init_tail_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_init_tail.py"
+        --self-test)
+  endif()
+endif()

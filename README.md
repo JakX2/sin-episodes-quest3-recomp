@@ -5,11 +5,14 @@
 > integration. Server PR #537 authenticates and annotates two original
 > Grunt methods (944 bytes). Client PR #538 authenticates the original
 > 1,220-byte VClient011::Init method and decompiles its engine interface
-> request prefix (21 immediate mandatory queries). Its later initialization
-> semantics are not yet fully decompiled.
+> request prefix (21 immediate mandatory queries). Phase539 separately
+> authenticates five original helper functions (525 more bytes) and decompiles
+> the later registered-game-system lifecycle, with remaining virtual calls
+> still unresolved.
 > See [decompilation proof and priority](docs/DECOMPILATION_FIRST_PRIORITY_20261121.md),
 > [server fallback decompilation](research/phases/2026-11-21-original-mobgrunt-combat-fallback-844-decomp.md)
-> and [original client Init decompilation](research/phases/2026-11-21-original-client-vclient011-init-interface-decomp.md).
+> [original client Init decompilation](research/phases/2026-11-21-original-client-vclient011-init-interface-decomp.md)
+> and [client Init tail decompilation](research/phases/2026-11-21-original-client-init-tail-and-game-system-lifecycle.md).
 > These are reverse-engineering artifacts, **not playable replacement DLLs**.
 > The legacy Phase 56 text below describes the starting scaffold.
 
