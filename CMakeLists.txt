@@ -4341,3 +4341,23 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase576: authentic 2006 SiN Grunt post-clearance candidate selector,
+# planar-normalization and virtual+0xF4 entity gate. Original-free tests.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_candidate_filter_phase576_tests
+    tests/test_original_grunt_candidate_filter_phase576.cpp)
+  target_include_directories(sin_original_grunt_candidate_filter_phase576_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_candidate_filter_phase576_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_candidate_filter_phase576_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_candidate_filter_phase576_tests
+    COMMAND sin_original_grunt_candidate_filter_phase576_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_candidate_filter_phase576_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_candidate_filter_phase576.py"
+        --self-test)
+  endif()
+endif()
