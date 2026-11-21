@@ -193,6 +193,57 @@ TriggerCode OriginalTriggerEntityFactory::apply_map_keyvalue(
         return TriggerCode::Handled;
     } catch (...) {return TriggerCode::HostRefused;}
 }
+TriggerSpawnReport OriginalTriggerEntityFactory::run_dynamic_spawn(
+    EntityRef trigger,TriggerSpawnInput input) noexcept {
+    Guard guard(busy_);
+    if(!guard)return {TriggerCode::Reentrant};
+    Record* r=find(trigger);
+    if(!r)return {TriggerCode::UnknownEntity};
+    if(r->kind!=TriggerKind::DynamicDifficulty)
+        return {TriggerCode::WrongClass};
+    if(r->native_spawn_completed || r->consumed)
+        return {TriggerCode::AlreadyConsumed};
+    try {
+        if(!host_.is_live(trigger))return {TriggerCode::HostNotLive};
+    } catch (...) {return {TriggerCode::HostRefused};}
+    TriggerSpawnReport report{};
+    // CTriggerDynamicDifficulty::Spawn 0x221D0740 and secret Spawn
+    // 0x221D0790 share the same original global virtual +0x88
+    // removal check before their base CBaseTrigger::Spawn calls.
+    if(input.engine_requests_removal) {
+        r->consumed=true;
+        r->native_spawn_completed=true;
+        r->pending_remove=true;
+        try {report.removal_queued=host_.queue_remove(trigger);}
+        catch (...) {report.removal_queued=false;}
+        if(report.removal_queued)r->pending_remove=false;
+        report.code=report.removal_queued?
+            TriggerCode::Handled:TriggerCode::RemovalPending;
+        return report;
+    }
+    try {
+        if(!host_.initialize_native_base_trigger(trigger))
+            return {TriggerCode::HostRefused};
+    } catch (...) {return {TriggerCode::HostRefused};}
+    report.base_initialized=true;
+    r->native_spawn_completed=true;
+
+    // Original 0x221D0767 loads DWORD this+0xB4 and tests bit10.
+    // The original imported warning receives this exact string and
+    // its return is ignored. No dynamic_difficulty event fires here.
+    if((input.native_spawnflags_0xB4 & 0x400u)!=0u) {
+        try {
+            host_.report_original_warning(
+                "DD Trigger with don't destroy set\n");
+            report.warning_emitted=true;
+        } catch (...) {
+            report.code=TriggerCode::HostRefused;
+            return report;
+        }
+    }
+    report.code=TriggerCode::Handled;
+    return report;
+}
 TriggerSpawnReport OriginalTriggerEntityFactory::run_secret_spawn(
     EntityRef trigger,TriggerSpawnInput input) noexcept {
     Guard guard(busy_);
