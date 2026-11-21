@@ -15,9 +15,9 @@ inline constexpr std::uintptr_t kPostEntity = 0x240FDC00u;
 inline constexpr std::uintptr_t kLevelShutdown = 0x240FF4A0u;
 inline constexpr std::uintptr_t kMapActiveOriginalAddress = 0x2433F680u;
 inline constexpr std::uintptr_t kCommandInterfaceOriginalAddress = 0x2433F684u;
-inline constexpr std::size_t kSystemArrayOffset = 4u;
-inline constexpr std::size_t kSystemCountOffset = 16u;
-inline constexpr std::size_t kSystemReverseCallbackVtableByteOffset = 0x34u;
+inline constexpr std::size_t kClientCallbackArrayOffset = 4u;
+inline constexpr std::size_t kClientCallbackCountOffset = 16u;
+inline constexpr std::size_t kClientCallbackVtableByteOffset = 0x34u;
 
 // Original client virtual slot +8 @ 0x240FDB40:
 //   if (engineGlobal+0x14 > 1) {
@@ -46,12 +46,14 @@ inline bool exit_level_once(bool& native_active_flag) noexcept {
     return true;
 }
 
-// Original whole shutdown and level shutdown both walk the game-system list
+// Original whole shutdown and level shutdown both walk CHLClient-owned callbacks
 // in reverse, using count owner+0x10 and data pointer owner+0x04, dispatch
-// native virtual byte+0x34 per element, then clear count. Deliberately no
+// native virtual byte+0x34 per element, then clear count. These must NOT
+// be assumed to be identical to the separate global AutoGameSystem list at
+// 0x242FBFA8. Deliberately no
 // native calling convention or object pointer casts in this portable model.
 template<class Callback>
-void for_each_shutdown_system_reverse(std::size_t& active_count, Callback&& callback) {
+void for_each_client_callback_reverse(std::size_t& active_count, Callback&& callback) {
     while (active_count) {
         --active_count;
         std::forward<Callback>(callback)(active_count);
