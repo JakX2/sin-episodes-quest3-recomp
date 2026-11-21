@@ -12,7 +12,7 @@ namespace sin_compat::map_entities {
 namespace {
 constexpr std::string_view kDynamic="trigger_dynamic_difficulty";
 constexpr std::string_view kSecret="trigger_secret";
-constexpr std::string_view kEmpty{};
+
 }
 
 OriginalTriggerEntityFactory::OriginalTriggerEntityFactory(
@@ -166,7 +166,8 @@ TriggerCode OriginalTriggerEntityFactory::apply_map_keyvalue(
         if(!host_.is_live(trigger))return TriggerCode::HostNotLive;
         TriggerConfig next=r->config;
         if(key=="targetname") {
-            next.targetname.assign(text_value.data(),text_value.size());
+            if(text_value.empty())next.targetname.clear();
+            else next.targetname.assign(text_value.data(),text_value.size());
         } else if(key=="EstimatedTime") {
             std::string text(text_value);
             if(text.empty())return TriggerCode::InvalidConfig;
@@ -178,9 +179,9 @@ TriggerCode OriginalTriggerEntityFactory::apply_map_keyvalue(
             next.estimated_time=v;
         } else {
             std::int32_t value=0;
+            if(text_value.empty())return TriggerCode::InvalidConfig;
             const char* first=text_value.data();
             const char* last=first+text_value.size();
-            if(first==last)return TriggerCode::InvalidConfig;
             const auto parsed=std::from_chars(first,last,value,10);
             if(parsed.ec!=std::errc{} || parsed.ptr!=last)
                 return TriggerCode::InvalidConfig;
