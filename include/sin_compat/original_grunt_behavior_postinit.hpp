@@ -27,7 +27,7 @@ inline constexpr std::array<Spec, 8> kOriginalBehaviors{{
     {Behavior::Beserk,   "CAI_BeserkBehavior",    0xDA0, 0x223925C0, 0x224AB88C},
     {Behavior::ActBusy,  "CAI_ActBusyBehavior",   0xF88, 0x22391BB0, 0x224AB494},
     {Behavior::Assault,  "CAI_AssaultBehavior",   0xDB8, 0x220D0C80, 0x223F5544},
-    {Behavior::Standoff, "CAI_StandoffBehavior",  0xDE8, 0x220E2850, 0x223FA1B4},
+    {Behavior::Standoff, "CGruntStandoffBehavior",0xDE8, 0x220E2850, 0x22495344},
     {Behavior::Follow,   "CAI_FollowBehavior",    0xEB8, 0x220D6690, 0x223F6B7C},
 }};
 inline constexpr std::uint32_t kGruntPrimaryVtable = 0x2249AAA4;
@@ -37,14 +37,21 @@ inline constexpr std::uint32_t kBehaviorArrayOffset = 0xC1C;
 inline constexpr std::uint32_t kBehaviorArrayCountField = 0xC28;
 inline constexpr std::uint32_t kBehaviorLinkOwnerSubobject = 0xC14;
 inline constexpr std::uint32_t kBehaviorLinkFieldWithinBehavior = 0x0C;
+inline constexpr std::uint32_t kStandoffBaseConstructorVtable = 0x223FA1B4;
+inline constexpr std::uint32_t kStandoffDerivedVtable = 0x22495344;
 inline constexpr std::uint32_t kSentenceKeyVslot = 0x7AC;
 inline constexpr std::uint32_t kSentenceKeyMethodVA = 0x22353F80;
 inline constexpr std::uint32_t kSentenceInitVA = 0x22358FA0;
 inline constexpr std::uint32_t kEmbeddedSentenceStateOffset = 0xCC0;
+inline constexpr std::uint32_t kSentenceObjectVtable = 0x22490BB0;
+inline constexpr std::uint32_t kSentenceBindOwnerMethodVA = 0x2202E0F0;
+inline constexpr std::uint32_t kSentenceOwnerPointerField = 0x04;
+inline constexpr std::string_view kSentenceObjectClass = "CAI_Sentence<CNPC_GruntBase>";
 inline constexpr std::string_view kOriginalSentenceKey = "NPC_Grunt.SentenceParameters";
 
 enum class Operation : std::uint8_t {
-    None, AppendToCollection, BindNPC, StoreOwnerSubobject, InitializeSentenceParameters
+    None, AppendToCollection, BindNPC, StoreOwnerSubobject,
+    BindSentenceOwner, InitializeSentenceParameters
 };
 enum class Code : std::uint8_t { Success, HostRefused, Reentrant };
 struct Result {
@@ -69,6 +76,10 @@ public:
     virtual bool set_owner_subobject_reference(Spec behavior,
                                               std::uint32_t npc_subobject_offset,
                                               std::uint32_t behavior_field_offset)=0;
+    // Original 0x22358FA0 calls embedded CAI_Sentence virtual +0x04,
+    // setting member+0x04 to the owner before any configuration read.
+    virtual bool bind_sentence_owner(std::uint32_t embedded_offset,
+                                     std::uint32_t sentence_owner_field)=0;
     // Original 0x22358FA0 runs configuration code with the vslot+0x7AC key.
     // Host, not this reference, interprets parameters/environment globals.
     virtual bool initialize_sentence_parameters(std::uint32_t embedded_offset,
