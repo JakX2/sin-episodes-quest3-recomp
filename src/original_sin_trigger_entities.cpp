@@ -130,7 +130,7 @@ TriggerCode OriginalTriggerEntityFactory::configure(
     Record* r=find(trigger);
     if(!r)return TriggerCode::UnknownEntity;
     if(r->consumed)return TriggerCode::AlreadyConsumed;
-    if(!std::isfinite(config.value) ||
+    if(!std::isfinite(config.estimated_time) ||
        !std::isfinite(config.origin.x) ||
        !std::isfinite(config.origin.y) ||
        !std::isfinite(config.origin.z))
@@ -179,14 +179,14 @@ TriggerTouchReport OriginalTriggerEntityFactory::touch(
         try {event.owner=host_.current_difficulty_owner_index();}
         catch (...) {event.owner=-1;}
         event.advisor=-1;
-        event.decision=c.decision;event.value=c.value;event.origin=c.origin;
+        event.decision=c.estimated_difficulty;event.value=c.estimated_time;event.origin=c.origin;
     }
     TriggerTouchReport report{};
     try {report.event_published=host_.publish(event);}
     catch (...) {report.event_published=false;}
 
     if(r->kind==TriggerKind::DynamicDifficulty &&
-       c.notify_difficulty_manager) {
+       ((static_cast<std::uint32_t>(c.end_of_game)&0xffu)!=0u)) {
         try {report.manager_signaled=host_.mark_difficulty_manager();}
         catch (...) {report.manager_signaled=false;}
     }
