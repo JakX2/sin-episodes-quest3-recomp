@@ -29,6 +29,20 @@ foreach($expected in @(
         throw ('Missing standalone runner invariant: '+$expected)
     }
 }
+# Phase524 server role-isolated original 2006 physics manifest read only.
+$serverPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -ServerPhysicsReadOnly)
+if(-not (($serverPlan -join '|').Contains(
+    'SERVER PHYSICS READ: original server VPhysics030/Collision007/SurfaceProps001 and rb/GAME source scripts. READ ONLY. No ParseSurfaceData or DLLInit success.'))) {
+    throw 'Server physics one-click PlanOnly must be a separate no-game mode'
+}
+$badRoleMix=$false
+try {
+    & $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -ServerPhysicsReadOnly -SoundscapeCatalog -StagedStats -HookProof | Out-Null
+} catch {
+    $badRoleMix=$_.Exception.Message.Contains(
+        'ServerPhysicsReadOnly must be the only selected diagnostic mode')
+}
+if(-not $badRoleMix){throw 'Server one-click accepted a mixed client/server engine test'}
 $stagedPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats)
 $hooksPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof)
 $soundscapePlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog)
@@ -133,6 +147,7 @@ foreach($must in @(
     'Original surfaceprops manifest and scripts (read-only):',
     'Original soundscape ConVar lookup (read-only):',
     'Original physics Factory triple (read-only):',
+    'Original server physics source resources (read-only):',
     'Compress-Archive',
     'Remove-Item -LiteralPath $temporary -Recurse -Force'
 )) {
@@ -193,6 +208,20 @@ if(-not $materialBat.Contains($materialArgs) -or
    -not $materialBat.Contains('pause') -or
    -not $materialBat.Contains('exit /b %RESULT%')) {
     throw 'Phase522 material read-only BAT must specify only the authenticated nonmutating stage'
+}
+$serverBat=Join-Path (Split-Path -Parent $Runner) 'RUN_SERVER_PHYSICS_READONLY.bat'
+if(-not (Test-Path -LiteralPath $serverBat -PathType Leaf)) {
+    throw 'Missing SHA-bundled Server-only physics oneclick BAT'
+}
+$serverBatText=[IO.File]::ReadAllText($serverBat)
+if(-not $serverBatText.Contains('Start-SiNFileSystemTest.ps1') -or
+   -not $serverBatText.Contains('-ServerPhysicsReadOnly') -or
+   $serverBatText.Contains('-SurfacePropsRegister') -or
+   $serverBatText.Contains('%*') -or
+   -not $serverBatText.Contains('-NoProfile -STA -ExecutionPolicy Bypass') -or
+   -not $serverBatText.Contains('pause') -or
+   -not $serverBatText.Contains('exit /b %RESULT%')) {
+    throw 'Server-only BAT must not forward mutating flags or bypass SHA clone launcher'
 }
 $physicsReadOnly=Join-Path (Split-Path -Parent $Runner) 'RUN_PHYSICS_READONLY_TEST.bat'
 $physicsReadback=Join-Path (Split-Path -Parent $Runner) 'RUN_PHYSICS_READBACK_TEST.bat'
