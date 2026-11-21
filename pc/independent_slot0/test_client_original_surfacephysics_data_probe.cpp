@@ -26,7 +26,8 @@ struct OriginalFreeProps {
         const auto it=known.find(name?name:"");
         return it==known.end()?-1:it->second;
     }
-    virtual const char* GetPropName(int){return "fixture";}
+    // Exact Source2004 slot4 signature, preceding slot5 data pointer.
+    virtual void GetPhysicsProperties(int,float*,float*,float*,float*){}
     virtual const p::Physics* GetSurfaceData(int n) {
         ++dataCalls;
         if(nullData)return nullptr;
