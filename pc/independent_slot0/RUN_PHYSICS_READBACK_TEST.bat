@@ -11,10 +11,14 @@ echo The physics engine may reject the ABI or crash. No normal game boot.
 echo Your original Steam DLLs are never replaced by this launcher.
 echo The launcher verifies retail SHA256 and restores the disposable copy.
 echo.
-set "CONSENT="
-set /p "CONSENT=Type REGISTER to enable the mutating physics test (anything else cancels): "
-if not "%CONSENT%"=="REGISTER" (
+choice /C YN /N /M "Start the MUTATING physics test? Press Y to opt in or N to cancel: "
+if errorlevel 2 (
   echo Physics registration NOT requested. No game was launched.
+  pause
+  exit /b 2
+)
+if not errorlevel 1 (
+  echo Physics confirmation unavailable. No game was launched.
   pause
   exit /b 2
 )
