@@ -1,0 +1,64 @@
+# Decompilation-first checkpoint (owner priority, 2026-11-21)
+
+## Immediate project objective
+
+**Recover clear, source-level behavior for the exact original 2006
+`server.dll` and `client.dll` before prioritizing playable Windows/Android/VR
+ports.** Preserve already working HL2 map, model, prop and physics coverage;
+do not spend cycles reimplementing those systems unless new SiN-specific
+evidence makes a particular difference necessary.
+
+This is a **priority order**, not a claim that currently written C++
+compiles into the retail game. Continue investigating both game DLLs, not
+only the Grunt; the `client.dll` initialization and HUD, player interfaces,
+server entity/network tables, player weapons, AI, game rules, dialogue,
+scripted encounters, save/restore and SiN-specific objects all matter.
+
+## Rules for recording real decompilation progress
+
+1. **Original identity:** verify entire file SHA-256 and original image base,
+   record function VA (and RVA where appropriate), instruction extent,
+   complete-method SHA-256, vtable or call-site identity, and RTTI when found.
+2. **Real control flow:** reconstruct the original branches, return values,
+   side effects, calling convention and concrete field offsets. Verify
+   original jumps, calls and constants, not merely strings or plausible code.
+3. **Separate proof levels:** *exact authenticated machine code* vs *readable
+   pseudocode with unknown dependencies* vs *independent host C++ model* vs
+   *original-engine validated runtime*. Neither a synthetic CTest nor a
+   retailer run with original DLLs is proof that a replacement DLL works.
+4. **Preserve unknowns:** label original numeric condition/schedule IDs with
+   names only when binary registration or comparable direct evidence proves
+   the mapping. Do not graft familiar Half-Life 2 implementations into SiN
+   just to fill gaps.
+5. **Evidence and reproducibility:** source-readable report + original
+   function SHA, an offline auditor with synthetic corruption tests, and an
+   xref/dependency list. Never commit original proprietary PE32 DLL bytes,
+   assets or raw full disassembly.
+6. **Measure coverage honestly:** count independently authenticated original
+   function boundaries and bytes, group by `client.dll` vs `server.dll`, and
+   report unresolved helper calls/branches. Don't count research phase numbers
+   as percent complete, and don't add new functions twice if re-audited.
+
+## Decompilation tracks (parallel when possible)
+
+| Track | Immediate scope | Main completion gate |
+| --- | --- | --- |
+| Server: gameplay entities | NPC factories, spawn, think, ownership, save/restore, entity inputs | Readable original methods and native field contracts linked |
+| Server: AI and weapons | Grunt, SinTEK/other NPCs, schedule/tasks, weapons, difficulty | Decompile meaningful whole call trees, not isolated return constants |
+| Client: startup and gameplay | Original `VClient011` Init and follow-up lifecycle, HUD, user messages, recv tables, player state | Complete recovered call-order and state mutation, with original ABI metadata |
+| Cross-DLL engine boundary | `ServerGameDLL003`, `ServerGameEnts001`, `VClient011`, network send/recv classes | Exact interface methods and data contracts documented |
+| Source-level assembly | Merge verified pseudocode into coherently named source modules | Every required dependency either decompiled or explicitly unresolved |
+
+## Current checkpoint
+
+Phase 537 demonstrates the intended method: from a known original vtable
+entry through a 738-byte SHA-authenticated combat fallback (26 direct calls),
+plus its 206-byte side-effect helper, their original-condition branches,
+schedule return IDs, position tests and proven registry names.
+A reproducer is `research/tools/audit_sin_original_grunt_fallback_844.py`,
+and the readable decompilation is in
+`research/phases/2026-11-21-original-mobgrunt-combat-fallback-844-decomp.md`.
+
+**The ports remain later milestones.** Retain the existing Windows/Android
+compile/test work as regression infrastructure, but direct new investigative
+effort toward recovering the original DLL logic and its dependencies first.
