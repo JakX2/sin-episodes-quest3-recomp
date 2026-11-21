@@ -126,6 +126,32 @@ SpawnResult OriginalTriggerEntityFactory::spawn(
         return {SpawnCode::HostRejected,kind};
     }
 }
+bool OriginalTriggerEntityFactory::kind_for(
+    EntityRef trigger,TriggerKind& out) const noexcept {
+    if(!valid(trigger))return false;
+    const auto it=records_.find(trigger.index);
+    if(it==records_.end()||it->second.ref!=trigger)return false;
+    out=it->second.kind;
+    return true;
+}
+TriggerCode OriginalTriggerEntityFactory::refresh_native_fields(
+    EntityRef trigger,TriggerVec3 origin,
+    std::uint32_t native_flags_0xB8) noexcept {
+    Guard guard(busy_);
+    if(!guard)return TriggerCode::Reentrant;
+    Record* r=find(trigger);
+    if(!r)return TriggerCode::UnknownEntity;
+    if(r->consumed)return TriggerCode::AlreadyConsumed;
+    if(!std::isfinite(origin.x)||!std::isfinite(origin.y)||
+       !std::isfinite(origin.z))return TriggerCode::InvalidConfig;
+    try {
+        if(!host_.is_live(trigger))return TriggerCode::HostNotLive;
+        r->config.origin=origin;
+        r->config.base_special_flag_0x800=
+            (native_flags_0xB8&0x800u)!=0u;
+        return TriggerCode::Handled;
+    } catch (...) {return TriggerCode::HostRefused;}
+}
 TriggerCode OriginalTriggerEntityFactory::configure(
     EntityRef trigger,const TriggerConfig& config) noexcept {
     Guard guard(busy_);
