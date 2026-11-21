@@ -12,7 +12,7 @@ This phase continues Phase534's seven verified `CAI_*` factories in the user's S
 - `+0x7AC` sentence-key virtual `0x22353F80`, **6 complete bytes**.
 - Member initializer at `0x22358FA0`, **238 complete bytes**.
 
-The new verifier additionally SHA-authenticates original base Grunt constructor `0x22360D80` (338 bytes), dynamic-array insertion method `0x22055670` (98 bytes), and common behavior-owner binding method `0x220CDBD0` (10 bytes). Total **7 complete methods, 1,185 original bytes**. Eight separate base-constructor CALL instructions are checked as well as eight registered embedded offsets and each corresponding 2006 x86 RTTI descriptor.
+The new verifier additionally SHA-authenticates original base Grunt constructor `0x22360D80` (338 bytes), dynamic-array insertion method `0x22055670` (98 bytes), and common behavior-owner binding method `0x220CDBD0` (10 bytes), plus sentence-owner binding method `0x2202E0F0` (10 bytes). Total **8 complete methods, 1,195 original bytes**. Eight separate base-constructor CALL instructions are checked as well as eight registered embedded offsets and each corresponding 2006 x86 RTTI descriptor.
 
 ## What `+0x76C` actually does
 
@@ -28,8 +28,10 @@ Original iteration order, **not numerical order by member address**, with indepe
 | 4 | `0xDA0` | `CAI_BeserkBehavior` | `0x223925C0` | `0x224AB88C` |
 | 5 | `0xF88` | `CAI_ActBusyBehavior` | `0x22391BB0` | `0x224AB494` |
 | 6 | `0xDB8` | `CAI_AssaultBehavior` | `0x220D0C80` | `0x223F5544` |
-| 7 | `0xDE8` | `CAI_StandoffBehavior` | `0x220E2850` | `0x223FA1B4` |
+| 7 | `0xDE8` | `CGruntStandoffBehavior` | `0x220E2850` (base) | `0x22495344` (derived) |
 | 8 | `0xEB8` | `CAI_FollowBehavior` | `0x220D6690` | `0x223F6B7C` |
+
+**Derived vtable override:** `0x220E2850` first constructs a `CAI_StandoffBehavior` base with vtable `0x223FA1B4`, but the Grunt constructor then **overwrites** that vptr at `0x22360E62` with `0x22495344`, whose independently verified final RTTI is `CGruntStandoffBehavior@CNPC_GruntBase`. Recording only the base constructor vtable would be wrong for virtual dispatch.
 
 The original constructor `0x22360D80` constructs all eight embedded members, **in a different order**: FuncTank, Rappel, Takecover, Beserk, Assault, Standoff, Follow, ActBusy. `CAI_BeserkBehavior` is spelled *Beserk* in the original RTTI. These behaviors are not eight `new` allocations by the registration function: they were **embedded in the already-created `0xFD8`-byte NPC object**. A port adapter must not allocate them as unrelated standalone entities just because registration iterates eight times.
 
@@ -42,7 +44,7 @@ Original `+0x3F8` wrapper does the following in strict order:
 1. Call `0x22031D50` for the seven AI factories and six subsequent wiring operations. Abort on `AL=0`.
 2. Call Grunt virtual `+0x76C`, which maps to `0x2235F6E0` and registers the eight embedded behaviors. Abort on `AL=0` (though the exact concrete method returns one).
 3. Call Grunt virtual `+0x7AC`, which maps to `0x22353F80`. It returns a **constant string pointer** at `0x2248CD64` to `NPC_Grunt.SentenceParameters`.
-4. Call `0x22358FA0` with `this=owner+0xCC0`, the owner pointer and the returned key. Then return `AL=1`.
+4. Call `0x22358FA0` with `this=owner+0xCC0`, the owner pointer and the returned key. The object at `+0xCC0` is RTTI-confirmed **`CAI_Sentence<CNPC_GruntBase>`** (vtable `0x22490BB0`); it first dispatches virtual +0x04 (`0x2202E0F0`) to bind its NPC owner, then processes the sentence configuration key. The wrapper then returns `AL=1`.
 
 The 238-byte `0x22358FA0` additionally performs global parameter availability checks and optional parsing via `0x221B4EA0`. We have not assigned speculative public meanings to the global fields at `0x2259C6C0`, `0x2259C6BC`, `0x22534E20`, `0x22534E1C` or `0x225721B0`; the independent host must supply a valid sentence-parameter initialization operation, not memcpy a 2006 object into a Quest process.
 
@@ -52,12 +54,12 @@ The additions are:
 
 - `include/sin_compat/original_grunt_behavior_postinit.hpp` and `src/original_grunt_behavior_postinit.cpp`: exact 8-element registration metadata, explicit array/owner slots, non-overlapping callback stages and non-reentrant fail-closed host model.
 - `include/sin_compat/original_grunt_full_ai_postinit.hpp` and `src/original_grunt_full_ai_postinit.cpp`: a pipeline that executes the existing Phase534 core initializer before Phase535 behavior registration/sentence binding, matching the original `0x22359210` gates.
-- `tests/test_original_grunt_behavior_postinit.cpp`: ordered 25 host actions (8×3 registration operations + sentence stage), failure at each, exception capture, retry and reentrancy checks.
-- `tests/test_original_grunt_full_ai_postinit.cpp`: 13 Phase534 calls followed by 25 Phase535 calls, and prevents later stages when an earlier stage fails; checks a reentrancy refusal.
-- `research/tools/audit_sin_original_grunt_behavior_postinit.py`: exact SHA256 PE32 provenance; seven complete method hashes totaling **1,185 bytes**; original vtable entry checks; 8 constructor edges, 8 append edges, 8 member-offset references, 8 virtual owner dispatches and 8 final pointer stores; 8 RTTI names; sentence string and member offset; synthetic mutation/self-test.
+- `tests/test_original_grunt_behavior_postinit.cpp`: ordered 26 host actions (8×3 registration operations + sentence owner binding + configuration stage), failure at each, exception capture, retry and reentrancy checks.
+- `tests/test_original_grunt_full_ai_postinit.cpp`: 13 Phase534 calls followed by 26 Phase535 calls, and prevents later stages when an earlier stage fails; checks a reentrancy refusal.
+- `research/tools/audit_sin_original_grunt_behavior_postinit.py`: exact SHA256 PE32 provenance; eight complete method hashes totaling **1,195 bytes**; original vtable entry checks; 8 constructor edges, 8 append edges, 8 member-offset references, 8 virtual owner dispatches and 8 final pointer stores; 9 RTTI identities including the derived Standoff override, plus typed sentence RTTI and key; synthetic mutation/self-test.
 - Root `CMakeLists.txt` adds both libraries and three new CTest cases.
 
-Local original-Pe32 audit against the owner's supplied `bin.zip` succeeded. Local C++17 GCC and Clang strict `-Wall -Wextra -Wpedantic -Werror` tests succeeded. Local CMake/CTest: **3/3 pass**. Synthetic CI may confirm build but **does not contain commercial game DLLs**.
+Local original-Pe32 audit against the owner's supplied `bin.zip` succeeded. Local C++17 GCC and Clang strict `-Wall -Wextra -Wpedantic -Werror` tests succeeded. Local CMake/CTest after the derived-vtable correction: **3/3 pass**. Synthetic CI may confirm build but **does not contain commercial game DLLs**.
 
 ## Relationship to owner's retail Grunt experiments
 
