@@ -3657,3 +3657,15 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase542: original client CHudTextureHandle type converter intern and
+# linked-list registry decompilation (synthetic-only hosted regression).
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_converter_registry_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_converter_registry.py"
+        --self-test)
+  endif()
+endif()
