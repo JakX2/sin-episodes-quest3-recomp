@@ -945,6 +945,13 @@ add_executable(sin_server_original_physics_factory_test
 target_compile_features(sin_server_original_physics_factory_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_original_physics_factory_native
   COMMAND sin_server_original_physics_factory_test)
+# Original server 2006 rb/GAME surface manifest and two rb/null scripts
+# via the independent, role-neutral, bounded VFileSystem012 parser.
+add_executable(sin_server_original_surfaceprops_readonly_test
+  test_server_original_surfaceprops_readonly.cpp)
+target_compile_features(sin_server_original_surfaceprops_readonly_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_original_surfaceprops_readonly_native
+  COMMAND sin_server_original_surfaceprops_readonly_test)
 if(Python3_Interpreter_FOUND)
   add_test(NAME independent_original_server_physics_bootstrap_audit_synthetic
     COMMAND "${Python3_EXECUTABLE}"

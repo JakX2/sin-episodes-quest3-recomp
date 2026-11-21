@@ -162,6 +162,35 @@ try {
     }
 
 
+    # Phase520: server-side resource stage must NEVER be enabled as
+    # a client/both-role probe or without all original physics factory gates.
+    foreach ($case in @(
+        @{Role='Both'; Factory=$true; Physics=$true},
+        @{Role='Client'; Factory=$true; Physics=$true},
+        @{Role='Server'; Factory=$false; Physics=$true},
+        @{Role='Server'; Factory=$true; Physics=$false}
+    )) {
+        $args=@{GameBin=$bin; GameExecutable=$exe;
+            IndependentBin=$IndependentBin; ProbeRole=$case.Role;
+            EnableServerPhysicsResourceProbe=$true;
+            DisposableTestCopyConfirmed=$true}
+        if ($case.Factory) { $args.EnableServerFactoryProbe=$true }
+        if ($case.Physics) { $args.EnableServerPhysicsFactoryProbe=$true }
+        $blocked=$false
+        try { & $Launcher @args | Out-Null } catch {
+            if ($_.Exception.Message -notlike
+                '*EnableServerPhysicsResourceProbe requires Server-only, EnableServerFactoryProbe, and EnableServerPhysicsFactoryProbe*') {
+                throw ('Unexpected server resource opt-in guard: '+$_.Exception.Message)
+            }
+            $blocked=$true
+        }
+        if (-not $blocked) { throw 'Server resource probe accepted missing prerequisites' }
+        if ((Sha256 $server) -ne $beforeServer -or
+            (Sha256 $client) -ne $beforeClient) {
+            throw 'Invalid server resource probe modified original fake DLLs'
+        }
+    }
+
     # Retail install layout: root/SinEpisodes.exe, root/bin/engine.dll,
     # root/SE1/GameInfo.txt and original gameplay DLLs in root/SE1/bin/.
     # The outer game root, NOT SE1/, must own the disposable marker.

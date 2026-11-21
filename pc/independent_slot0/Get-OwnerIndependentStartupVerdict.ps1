@@ -21,6 +21,7 @@ $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
 $serverPhysicsLogs = New-Object System.Collections.Generic.List[string]
+$serverSurfacePropsLogs = New-Object System.Collections.Generic.List[string]
 $soundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientSoundTerminalLogs = New-Object System.Collections.Generic.List[string]
 $clientMaterialTerminalLogs = New-Object System.Collections.Generic.List[string]
@@ -89,6 +90,9 @@ foreach ($log in $logs) {
     $serverPhysicsStage=0
     $serverPhysicsEvents=0
     $serverPhysicsResult=$null
+    $serverSurfacePropsStage=0
+    $serverSurfacePropsEvents=0
+    $serverSurfacePropsResult=$null
     $clientSoundEntered = $false
     $clientSoundResult = $null
     $clientMaterialStage = 0
@@ -871,6 +875,49 @@ foreach ($log in $logs) {
                 $serverPhysicsStage=3
             }
         }
+        if ($role -eq 'server' -and $phase -clike 'server-surfaceprops-*') {
+            # A separate ordered three-event read-only check, only after
+            # a COMPLETE original-server physics triple in this very log.
+            $serverSurfacePropsEvents++
+            if ($serverInitEnteredInLog -and
+                $serverPhysicsStage -eq 3 -and $serverPhysicsEvents -eq 3 -and
+                $serverPhysicsResult -ceq 'original-server-physics-three-available:3:3:1') {
+                if ($serverSurfacePropsStage -eq 0 -and
+                    $phase -eq 'server-surfaceprops-entered' -and
+                    $version -eq 'VFileSystem012:server-original:rb-dual-scope') {
+                    $serverSurfacePropsStage=1
+                } elseif ($serverSurfacePropsStage -eq 1 -and
+                    $phase -eq 'server-surfaceprops-result' -and
+                    $version -cmatch '^(original-server-surfaceprops-(two-sources-verified|invalid-filesystem|resource-refused)):(\d{1,3}):(\d{1,3}):(\d{1,3}):(\d{1,3}):(\d{1,3})$') {
+                    $type=$Matches[2]
+                    $attempted=[int]$Matches[3];$read=[int]$Matches[4]
+                    $definitions=[int]$Matches[5];$bases=[int]$Matches[6]
+                    $repeated=[int]$Matches[7]
+                    $valid=$false
+                    if ($type -ceq 'two-sources-verified') {
+                        $valid=$attempted -eq 2 -and $read -eq 2 -and
+                            $definitions -eq 93 -and $bases -eq 71 -and
+                            $repeated -eq 0
+                    } elseif ($type -ceq 'invalid-filesystem') {
+                        $valid=$attempted -eq 0 -and $read -eq 0 -and
+                            $definitions -eq 0 -and $bases -eq 0 -and
+                            $repeated -eq 0
+                    } else {
+                        $valid=$attempted -le 2 -and $read -le $attempted -and
+                            $definitions -le 93 -and $bases -le 71 -and
+                            $repeated -le 93
+                    }
+                    if ($valid) {
+                        $serverSurfacePropsResult=$version
+                        $serverSurfacePropsStage=2
+                    }
+                } elseif ($serverSurfacePropsStage -eq 2 -and
+                    $phase -eq 'server-surfaceprops-terminal-stop' -and
+                    $version -eq 'read-only-manifest-no-server-init') {
+                    $serverSurfacePropsStage=3
+                }
+            }
+        }
         if ($role -eq 'server' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') { $soundEntered = $true; $soundResult = $null }
             if ($soundEntered -and ($phase -eq 'sound-connect-succeeded' -or $phase -eq 'sound-connect-rejected')) {
@@ -966,6 +1013,13 @@ foreach ($log in $logs) {
         $serverPhysicsLogs.Add(('{0}:server:{1}' -f
             $log.Name,$serverPhysicsResult))
     }
+    if ($serverSurfacePropsStage -eq 3 -and
+        $serverSurfacePropsEvents -eq 3 -and
+        $serverPhysicsStage -eq 3 -and $serverPhysicsEvents -eq 3 -and
+        $null -ne $serverSurfacePropsResult) {
+        $serverSurfacePropsLogs.Add(('{0}:server:{1}' -f
+            $log.Name,$serverSurfacePropsResult))
+    }
     if ($null -ne $logFirstBlocker) {
         $blockersByLog.Add(("{0}={1}" -f $log.Name,$logFirstBlocker))
     }
@@ -983,6 +1037,10 @@ if ($soundCallbacks.Count -gt 0) {
 }
 if ($serverPhysicsLogs.Count -gt 0) {
     Write-Output ("OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS: {0}" -f ($serverPhysicsLogs -join ','))
+}
+if ($serverSurfacePropsLogs.Count -gt 0) {
+    Write-Output ("OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS: {0}" -f
+        ($serverSurfacePropsLogs -join ','))
 }
 if($env:SIN_INDEPENDENT_VERDICT_DEBUG -eq '1') {
     Write-Output ("OWNER_CLIENT_SOUND_SYSTEM_DEBUG: {0}" -f ($soundInitSeenEvents -join ' | '))

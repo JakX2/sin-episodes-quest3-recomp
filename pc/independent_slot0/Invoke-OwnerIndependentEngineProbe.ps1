@@ -16,6 +16,7 @@ param(
     [ValidateSet('Both','Server','Client')][string]$ProbeRole = 'Both',
     [switch]$EnableServerFactoryProbe,
     [switch]$EnableServerPhysicsFactoryProbe,
+    [switch]$EnableServerPhysicsResourceProbe,
     [switch]$EnableServerSoundProbe,
     [switch]$EnableServerEventProbe,
     [switch]$EnableServerCvarProbe,
@@ -221,6 +222,11 @@ if ($EnableServerCvarProbe -and -not $EnableServerEventProbe) {
 if ($EnableServerEventProbe -and -not $EnableServerSoundProbe) {
     throw 'EnableServerEventProbe requires EnableServerSoundProbe (and its server-only prerequisites)'
 }
+if ($EnableServerPhysicsResourceProbe -and
+    ($ProbeRole -ne 'Server' -or -not $EnableServerFactoryProbe -or
+     -not $EnableServerPhysicsFactoryProbe)) {
+    throw 'EnableServerPhysicsResourceProbe requires Server-only, EnableServerFactoryProbe, and EnableServerPhysicsFactoryProbe'
+}
 if ($EnableServerPhysicsFactoryProbe -and
     ($ProbeRole -ne 'Server' -or -not $EnableServerFactoryProbe)) {
     throw 'EnableServerPhysicsFactoryProbe requires Server-only role and EnableServerFactoryProbe'
@@ -337,6 +343,7 @@ try {
     $previousSession = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION','Process')
     $previousFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_FACTORY_PROBE','Process')
     $previousServerPhysicsProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_PHYSICS_FACTORY_PROBE','Process')
+    $previousServerResourcesProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_PHYSICS_RESOURCES_PROBE','Process')
     $previousSoundProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_SOUND_PROBE','Process')
     $previousEventProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_EVENT_PROBE','Process')
     $previousCvarProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_SERVER_CVAR_PROBE','Process')
@@ -375,6 +382,9 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_PHYSICS_FACTORY_PROBE',
             $(if ($EnableServerPhysicsFactoryProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_SERVER_PHYSICS_FACTORY_PROBE: {0}" -f $(if ($EnableServerPhysicsFactoryProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_PHYSICS_RESOURCES_PROBE',
+            $(if ($EnableServerPhysicsResourceProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_SERVER_PHYSICS_RESOURCE_PROBE: {0}" -f $(if ($EnableServerPhysicsResourceProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_SOUND_PROBE',
             $(if ($EnableServerSoundProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_SERVER_SOUND_PROBE: {0}" -f $(if ($EnableServerSoundProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
@@ -519,6 +529,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_TRACE_SESSION',$previousSession,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_FACTORY_PROBE',$previousFactoryProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_PHYSICS_FACTORY_PROBE',$previousServerPhysicsProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_PHYSICS_RESOURCES_PROBE',$previousServerResourcesProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_SOUND_PROBE',$previousSoundProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_EVENT_PROBE',$previousEventProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_SERVER_CVAR_PROBE',$previousCvarProbe,'Process')

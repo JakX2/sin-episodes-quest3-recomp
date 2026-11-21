@@ -40,6 +40,7 @@
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
 #include "server_original_physics_factory_probe.h"
+#include "server_original_surfaceprops_readonly.h"
 #include "server_tick_interval_core.h"
 #include "sin_user_message_catalog.h"
 #include "server_post_connect_core.h"
@@ -260,7 +261,15 @@ static bool retailServerPhysicsFactoryProbeEnabled() noexcept {
             "SIN_INDEPENDENT_SERVER_PHYSICS_FACTORY_PROBE",
             enabled,2)==1 && enabled[0]=='1';
 }
-[[noreturn]] static void stopAfterServerPhysicsFactoryProbe(Factory physicsFactory) noexcept {
+static bool retailServerPhysicsResourcesEnabled() noexcept {
+    char enabled[2]={};
+    return retailServerPhysicsFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_SERVER_PHYSICS_RESOURCES_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
+[[noreturn]] static void stopAfterServerPhysicsFactoryProbe(
+    Factory physicsFactory,void* filesystem) noexcept {
     diagnostic("server-physics-entered",
                "original-server-second-factory:read-only");
     const auto r=sin_independent::server_original_physics_factory::
@@ -274,6 +283,27 @@ static bool retailServerPhysicsFactoryProbeEnabled() noexcept {
             bounded:"original-server-physics-inconsistent:0:0:0");
     diagnostic("server-physics-terminal-stop",
                "no-manifest-coupling-no-server-init");
+    if(r.successful() && retailServerPhysicsResourcesEnabled()) {
+        // The server original at 0x22234060 reads the SAME surface
+        // manifest rb/GAME and its two per-file sources rb/null scope.
+        // Do not perform the server's original slot1 mutating parse yet.
+        diagnostic("server-surfaceprops-entered",
+                   "VFileSystem012:server-original:rb-dual-scope");
+        const auto resources=
+            sin_independent::server_original_surfaceprops::ReadOnlyAfterFactory(
+                r,filesystem);
+        char status[192]={};
+        std::snprintf(status,sizeof(status),"%s:%u:%u:%u:%u:%u",
+            sin_independent::server_original_surfaceprops::Name(resources.outcome),
+            resources.attempted,resources.read,resources.definitions,
+            resources.base_keys,resources.repeated_names);
+        diagnostic("server-surfaceprops-result",status);
+        diagnostic("server-surfaceprops-terminal-stop",
+                   "read-only-manifest-no-server-init");
+        TerminateProcess(GetCurrentProcess(),
+            resources.verified()?0x53494E7Au:0x53494E7Bu);
+        __fastfail(7);
+    }
     TerminateProcess(GetCurrentProcess(),
         r.successful()?0x53494E78u:0x53494E79u);
     __fastfail(7);
@@ -1137,6 +1167,7 @@ public:
         void* sound=nullptr;
         void* events=nullptr;
         void* cvar=nullptr;
+        void* filesystem=nullptr;
         if (!require(engineFactory, kFirstEngineVersion) ||
             !require(engineFactory, kSecondEngineVersion) ||
             !require(engineFactory, kThirdEngineVersion, &cvar) ||
@@ -1147,7 +1178,7 @@ public:
             !require(engineFactory, kEighthEngineVersion) ||
             !require(engineFactory, kNinthEngineVersion) ||
             !require(engineFactory, kTenthEngineVersion) ||
-            !require(fileSystemFactory, kFileSystemVersion) ||
+            !require(fileSystemFactory, kFileSystemVersion, &filesystem) ||
             !require(engineFactory, kEleventhEngineVersion, &events) ||
             !require(engineFactory, kTwelfthEngineVersion) ||
             !require(engineFactory, kThirteenthEngineVersion, &sound) ||
@@ -1157,7 +1188,7 @@ public:
         if (!connectSound(sound,engineFactory)) return false;
 #else
         if (retailServerPhysicsFactoryProbeEnabled())
-            stopAfterServerPhysicsFactoryProbe(physicsFactory);
+            stopAfterServerPhysicsFactoryProbe(physicsFactory,filesystem);
         if (retailSoundProbeEnabled()) {
             const bool connected=connectSound(sound,engineFactory);
             if(connected && retailEventProbeEnabled())
