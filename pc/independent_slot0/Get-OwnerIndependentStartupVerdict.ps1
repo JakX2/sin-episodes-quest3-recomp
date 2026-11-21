@@ -85,6 +85,7 @@ $blockersByLog = New-Object System.Collections.Generic.List[string]
 foreach ($log in $logs) {
     $logFirstBlocker = $null
     $soundEntered = $false
+    $serverInitEnteredInLog=$false
     $serverPhysicsStage=0
     $serverPhysicsEvents=0
     $serverPhysicsResult=$null
@@ -848,11 +849,14 @@ foreach ($log in $logs) {
                 $soundscapeStage=4
             }
         }
+        if ($role -eq 'server' -and $phase -eq 'init-entered') {
+            $serverInitEnteredInLog=$true
+        }
         if ($role -eq 'server' -and $phase -clike 'server-physics-*') {
             # The actual 2006 server physics triple is a separate, later
             # opt-in stage; accept only a single ordered 3-event sequence.
             $serverPhysicsEvents++
-            if ($serverPhysicsStage -eq 0 -and
+            if ($serverInitEnteredInLog -and $serverPhysicsStage -eq 0 -and
                 $phase -eq 'server-physics-entered' -and
                 $version -eq 'original-server-second-factory:read-only') {
                 $serverPhysicsStage=1
