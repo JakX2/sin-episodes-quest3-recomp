@@ -341,3 +341,27 @@ registered or a game map can be loaded. The standard diagnostic
 termination status 0x53494E76 is not changed. See
 OWNER_SURFACEPROPS_REGISTRATION_20261121.md for full provenance and
 remaining engine ABI limitations.
+
+PHASE 516: SOURCE SDK 2004 PHYSICS SURFACE INDEX READBACK
+--------------------------------------------------------
+This stage is an OPTIONAL diagnostic only after the separate Phase515
+mutating ParseSurfaceData call RETURNS twice.
+
+The owner's authentic shipped surface scripts include: default,
+solidmetal (first source file), and metalvehicle (second source file).
+The Phase516 readback asks the original engine for SurfacePropCount
+(virtual slot2) and GetSurfaceIndex of those three names (slot3).
+These extra slots are Source SDK 2004-guided, NOT yet real-engine-
+authenticated by owner-side testing. They query engine state, but the
+previous ParseSurfaceData step DOES modify the disposable process.
+
+After successful Windows CI, the new combined owner command is:
+
+  RUN_SOUNDSCAPE_CATALOG_TEST.bat -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePropsRegister -SurfacePropsReadback
+
+A coherent readback must report a nonnegative table count and indices
+in range. It does not prove what registered each entry, and it does
+not constitute a real client/server Init or level boot. The engine
+may crash if the SDK guidance is incompatible with this 2006 build.
+Do not replace DLLs in the installed game; use the packaged launcher.
+See OWNER_SURFACEPROPS_READBACK_20261121.md.
