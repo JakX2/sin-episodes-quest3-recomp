@@ -18,7 +18,7 @@ def inspect(path):
         return struct.unpack_from("<I", data, o)[0]
     if len(data) < 64 or data[:2] != b"MZ": raise PEError("missing DOS header")
     pe = u32(0x3c)
-    if pe + 24 > len(data) or data[pe:pe+4] != b"PE\\0\\0": raise PEError("missing NT header")
+    if pe + 24 > len(data) or data[pe:pe+4] != bytes((80,69,0,0)): raise PEError("missing NT header")
     machine = u16(pe+4)
     count = u16(pe+6)
     opt_size = u16(pe+20)
@@ -47,7 +47,7 @@ def inspect(path):
     for i in range(names):
         rva=u32(offset(name_table+i*4,4))
         start=offset(rva)
-        end=data.find(b"\\0",start,min(len(data),start+512))
+        end=data.find(bytes((0,)),start,min(len(data),start+512))
         if end < 0: raise PEError("unterminated export name")
         try: name=data[start:end].decode("ascii")
         except UnicodeDecodeError: raise PEError("non-ASCII export name")
