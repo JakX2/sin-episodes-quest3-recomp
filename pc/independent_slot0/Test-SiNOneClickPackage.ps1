@@ -196,6 +196,41 @@ foreach($entry in @($readonlyText,$readbackText)) {
         throw 'Physics BAT wrappers must preserve existing guarded PowerShell owner launcher'
     }
 }
+# Phase519: the next owner ZIP must carry a same-session read-only
+# baseline BEFORE the engine-mutating ParseSurfaceData calls. No preparse
+# call may be enabled without separate explicit registration+readback flags.
+foreach($marker in @(
+    'Original physics pre-Parse table snapshot (read-only): ',
+    'if ($SurfacePropsReadback) {',
+    'engine-fs-preparse-entered',
+    'engine-fs-preparse-result',
+    'engine-fs-preparse-terminal-stop',
+    'engine-fs-registration-result',
+    'if ($registrationResults.Count -eq 1)'
+)) {
+    if(-not $text.Contains($marker)) {
+        throw ('Phase519 missing baseline summary or same-session ordering gate: '+$marker)
+    }
+}
+$cppPath=Join-Path $PSScriptRoot 'slot0.cpp'
+$cppText=[IO.File]::ReadAllText($cppPath)
+foreach($marker in @(
+    'if(clientSurfacePropsReadbackProbeEnabled()) {',
+    '"engine-fs-preparse-entered"',
+    '"engine-fs-preparse-result"',
+    '"engine-fs-preparse-terminal-stop"',
+    'original_surfaceprops_readback::Query(',
+    'original_surfaceprops_registration::Attempt('
+)) {
+    if(-not $cppText.Contains($marker)) {
+        throw ('Phase519 missing native read-only preparse probe: '+$marker)
+    }
+}
+$preparsePos=$cppText.IndexOf('"engine-fs-preparse-result"')
+$parsePos=$cppText.IndexOf('original_surfaceprops_registration::Attempt(')
+if($preparsePos -lt 0 -or $parsePos -le $preparsePos) {
+    throw 'Phase519 MUST snapshot original physics before ParseSurfaceData'
+}
 $soundscapeBatch=Join-Path (Split-Path -Parent $Runner) 'RUN_SOUNDSCAPE_CATALOG_TEST.bat'
 $soundscapeDoc=Join-Path (Split-Path -Parent $Runner) 'OWNER_SOUNDSCAPE_RETAIL_GATE_20261120.md'
 if (-not (Test-Path -LiteralPath $soundscapeBatch -PathType Leaf) -or

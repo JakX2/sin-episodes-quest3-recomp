@@ -617,6 +617,28 @@ static bool clientSurfacePropsReadbackProbeEnabled() noexcept {
                 void* surfaceProps=g_clientPhysicsFactory?
                     g_clientPhysicsFactory("VPhysicsSurfaceProps001",nullptr):
                     nullptr;
+                // PHASE 519: the real owner-side engine returned 94
+                // surface entries and 0:1:85 indices after two Parse calls,
+                // but the initial table size was not observed. Capture it
+                // BEFORE any mutation so later results can establish whether
+                // this attempt changed the engine's surface table at all.
+                // Readback is already separately explicitly opted in.
+                if(clientSurfacePropsReadbackProbeEnabled()) {
+                    diagnostic("engine-fs-preparse-entered",
+                               "VPhysicsSurfaceProps001:slots2-3:before-parse");
+                    const auto before=
+                        sin_independent::original_surfaceprops_readback::Query(
+                            surfaceProps);
+                    char baseline[192]={};
+                    std::snprintf(baseline,sizeof(baseline),"%s:%d:%d:%d:%d",
+                        sin_independent::original_surfaceprops_readback::Name(
+                            before.outcome),
+                        before.count,before.indices[0],
+                        before.indices[1],before.indices[2]);
+                    diagnostic("engine-fs-preparse-result",baseline);
+                    diagnostic("engine-fs-preparse-terminal-stop",
+                               "read-only-before-original-surface-parse");
+                }
                 const auto registration=
                     sin_independent::original_surfaceprops_registration::Attempt(
                         g_clientFileSystem,surfaceProps);
