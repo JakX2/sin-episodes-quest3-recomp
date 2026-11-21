@@ -44,6 +44,16 @@ DIRECT_CALLS = {
     0x22071A04: 0x2226E3E0,
 }
 INCOMING_CALLS = {0x22071B78: 0x22071040}
+# Same preexisting original Phase574 0x22071A20 caller, after 0x22071040:
+# its AL return is not consulted; these follow-up identity helpers run instead.
+CALLER_POST_EDGES = {0x22071B99: 0x22035100, 0x22071BA4: 0x22035090}
+CALLER_POST_WITNESSES = {
+    0x22071B7D:'8b7c2438', 0x22071B85:'3bfd',
+    0x22071B8D:'ff9220010000', 0x22071BAD:'ff5228',
+    0x22071BB0:'3b461c', 0x22071BB7:'3b7e1c',
+    0x22071BC0:'896e24', 0x22071BC3:'896e1c',
+    0x22071BE0:'892e'
+}
 WITNESSES = {
     0x22071040:'81ecf0000000', 0x22071054:'3bd8',
     0x22071056:'b90e000000', 0x22071062:'f3ab',
@@ -127,9 +137,9 @@ def audit(client: bytes, server: bytes):
                    for name, begin, size, _ in sections)
         assert hashlib.sha256(read(start, length)).hexdigest() == digest, f'Changed method {start:#x}'
         assert read(start+length,1) == b'\xCC', f'Function boundary changed {start:#x}'
-    for site, target in {**DIRECT_CALLS, **INCOMING_CALLS}.items():
+    for site, target in {**DIRECT_CALLS, **INCOMING_CALLS, **CALLER_POST_EDGES}.items():
         call_target(read,site,target)
-    for addr, hex_data in WITNESSES.items():
+    for addr, hex_data in {**WITNESSES, **CALLER_POST_WITNESSES}.items():
         expected = bytes.fromhex(hex_data)
         assert read(addr,len(expected)) == expected, f'Opcode witness changed {addr:#x}'
     for addr, (fmt, value) in LITERALS.items():
@@ -141,7 +151,9 @@ def audit(client: bytes, server: bytes):
     assert read(0x22139F80,3) == bytes.fromhex('568bf1'), 'Entity gate neighbor changed'
     return dict(methods=len(METHODS),native_bytes=sum(x[0] for x in METHODS.values()),
                 direct_calls=len(DIRECT_CALLS),incoming_calls=len(INCOMING_CALLS),
-                opcode_witnesses=len(WITNESSES),literal_constants=len(LITERALS),
+                original_caller_post_edges=len(CALLER_POST_EDGES),
+                opcode_witnesses=len(WITNESSES)+len(CALLER_POST_WITNESSES),
+                literal_constants=len(LITERALS),
                 sqrt_pointer='0x222680E0', candidate_loop_upper_bound=16)
 
 
@@ -152,7 +164,7 @@ def selftest():
         def __call__(self, addr, size):
             assert addr == self.addr and size == 5
             return self.contents
-    for site, target in {**DIRECT_CALLS, **INCOMING_CALLS}.items():
+    for site, target in {**DIRECT_CALLS, **INCOMING_CALLS, **CALLER_POST_EDGES}.items():
         code = b'\xe8'+struct.pack('<i', target-(site+5))
         call_target(Stub(site,code),site,target)
         for pos in range(5):
