@@ -206,7 +206,7 @@ foreach($marker in @(
     'engine-fs-preparse-result',
     'engine-fs-preparse-terminal-stop',
     'engine-fs-registration-result',
-    "if ($registrationResults.Count -eq 1)"
+    'if ($registrationResults.Count -eq 1)'
 )) {
     if(-not $text.Contains($marker)) {
         throw ('Phase519 missing baseline summary or same-session ordering gate: '+$marker)
