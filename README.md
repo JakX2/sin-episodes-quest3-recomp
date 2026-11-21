@@ -12,7 +12,7 @@
 > Phase542 four token-converter registry methods (638 bytes),
 > Phase544 eight converter red-black insertion/rotation functions (2,528 bytes),
 > Phase545 eight distinct 12-byte string-token tree methods (2,678 bytes),
-> and Phase546 eight original string-comparator, constructor and casefold helpers (827 bytes), including the HUD converter's static casefolded default. Phase547 adds nine distinct original node/index, array-growth, and string-page methods (615 bytes). Phase548 authenticates another six original global token-table lifecycle and symbol/string resolver methods (553 bytes). Phase549 authenticates five VClient011 level startup/shutdown and owned-global cleanup methods (646 bytes). Phase550 separately authenticates four CVoiceStatus update/bitfield methods (635 bytes). Phase551 adds eight distinct CVoiceStatus 32-byte-key hash and blocking-toggle functions (657 bytes). Phase552 adds 13 more native CVoiceStatus vtable, singleton, callback and timer methods (749 bytes), including its authenticated MSVC RTTI.
+> and Phase546 eight original string-comparator, constructor and casefold helpers (827 bytes), including the HUD converter's static casefolded default. Phase547 adds nine distinct original node/index, array-growth, and string-page methods (615 bytes). Phase548 authenticates another six original global token-table lifecycle and symbol/string resolver methods (553 bytes). Phase549 authenticates five VClient011 level startup/shutdown and owned-global cleanup methods (646 bytes). Phase550 separately authenticates four CVoiceStatus update/bitfield methods (635 bytes). Phase551 adds eight distinct CVoiceStatus 32-byte-key hash and blocking-toggle functions (657 bytes). Phase552 adds 13 more native CVoiceStatus vtable, singleton, callback and timer methods (749 bytes), including its authenticated MSVC RTTI. Phase553 verifies the exact voice_ban.dt V1 binary persistence methods (3 more methods, 322 bytes).
 > These method counts are distinct where noted; whole-function hash
 > authentication is **not** equivalent to complete source translation.
 >
@@ -32,6 +32,7 @@
 > | [Original CVoiceStatus player bitfields and server commands](research/phases/2026-11-21-original-client-voice-status-players-and-server-commands-decomp.md)
 > | [Original voice blocked-key hash and toggle](research/phases/2026-11-21-original-client-voice-block-identity-hash-and-toggle.md)
 > | [Original CVoiceStatus RTTI and lifecycle](research/phases/2026-11-21-original-client-cvoice-status-vtable-construction-messages-and-periodic-tick.md)
+> | [Native voice_ban.dt V1 persistence format](research/phases/2026-11-21-original-cvoice-status-voice-ban-dt-persistence.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
