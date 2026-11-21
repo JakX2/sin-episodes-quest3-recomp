@@ -118,3 +118,9 @@ The real missing milestone is still a source-compatible native Windows
 `server.dll` with complete `DLLInit`, genuine engine-owned
 `CTriggerSecret` allocations, registered networkable entities,
 original map I/O, Save/Restore and actual map execution.
+
+**Source field distinction (2026-11-21):** The original method reads
+\`this+0x120\` at spawn. Its exact game DATADESC name and the mapping from
+map \`spawnflags\` to that particular byte have NOT been established.
+The integration test intentionally supplies a fabricated native-host
+snapshot for this field and does not derive it from BSP KeyValues.
