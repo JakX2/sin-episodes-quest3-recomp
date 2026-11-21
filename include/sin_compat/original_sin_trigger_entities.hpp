@@ -105,6 +105,11 @@ public:
     // original game behavior to the host's live, generation-safe identity.
     SpawnResult spawn(const SpawnRequest& request) noexcept;
     TriggerCode configure(EntityRef trigger,const TriggerConfig& config) noexcept;
+    // Strict map-side adapter for the three original DATADESC external
+    // KeyValues plus generic targetname. Reject unknown/invalid keys rather
+    // than guessing other SiN properties. This strict parser is NEW code.
+    TriggerCode apply_map_keyvalue(EntityRef trigger,std::string_view key,
+                                   std::string_view text_value) noexcept;
     TriggerTouchReport touch(EntityRef trigger,EntityRef actor) noexcept;
     TriggerCode retry_pending_remove(EntityRef trigger) noexcept;
     TriggerCode release(EntityRef trigger) noexcept;
