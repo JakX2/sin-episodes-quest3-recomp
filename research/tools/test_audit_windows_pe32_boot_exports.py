@@ -12,11 +12,11 @@ audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
 
-def make_pe(*, ordinal=0, target=0x1200, name=b"CreateInterface\\x00"):
+def make_pe(*, ordinal=0, target=0x1200, name=b"CreateInterface\x00"):
     data = bytearray(0x800)
     data[:2] = b"MZ"
     struct.pack_into("<I", data, 0x3c, 0x80)
-    data[0x80:0x84] = b"PE\\x00\\x00"
+    data[0x80:0x84] = b"PE\x00\x00"
     struct.pack_into("<HH", data, 0x84, 0x14c, 1)
     struct.pack_into("<H", data, 0x94, 224)
     opt = 0x98
@@ -58,7 +58,7 @@ class PE32PreflightTests(unittest.TestCase):
             self.check(make_pe(target=0x9000))
 
     def test_missing_name(self):
-        self.assertFalse(self.check(make_pe(name=b"OtherFactory\\x00"))["create_interface_export"])
+        self.assertFalse(self.check(make_pe(name=b"OtherFactory\x00"))["create_interface_export"])
 
     def test_truncated_section_table(self):
         with self.assertRaises(audit.PEError):
