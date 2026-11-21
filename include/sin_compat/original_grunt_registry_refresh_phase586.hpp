@@ -10,6 +10,15 @@
 
 namespace sin_compat::phase586 {
 constexpr std::size_t direct_record_stride = 0xD4; // original x86 0x2211BD00
+// IDs witnessed as shared original SiN ACT_* registrations in 0x220E7040.
+// These are shared activity labels, not proof of private NPC sequence choice.
+struct VerifiedSharedActivity { int32_t value; const char* literal_name; };
+inline constexpr VerifiedSharedActivity verified_shared_activities[] = {
+    {0,"ACT_RESET"}, {1,"ACT_IDLE"}, {6,"ACT_WALK"}, {10,"ACT_RUN"},
+    {15,"ACT_SCRIPT_CUSTOM_MOVE"}, {25,"ACT_FLY"}, {30,"ACT_HOP"},
+    {154,"ACT_DO_NOT_DISTURB"}
+};
+
 struct Entry {
     std::string original_name;
     uint8_t flags=0;
