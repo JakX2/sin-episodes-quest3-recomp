@@ -131,6 +131,13 @@ public:
     // original game behavior to the host's live, generation-safe identity.
     SpawnResult spawn(const SpawnRequest& request) noexcept;
     TriggerCode configure(EntityRef trigger,const TriggerConfig& config) noexcept;
+    // Read-only lookup for bridge dispatch after a real engine-side entity
+    // has been created. Host calls are always made outside this lookup.
+    bool kind_for(EntityRef trigger,TriggerKind& out) const noexcept;
+    // Called only with observed *native* fields after engine KeyValues.
+    // Never treats a raw BSP spawnflags key as a known original offset.
+    TriggerCode refresh_native_fields(EntityRef trigger,TriggerVec3 origin,
+                                      std::uint32_t native_flags_0xB8) noexcept;
     // Strict map-side adapter for the three original DATADESC external
     // KeyValues plus generic targetname. Reject unknown/invalid keys rather
     // than guessing other SiN properties. This strict parser is NEW code.
