@@ -3724,3 +3724,32 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase546: 2006 client string-token compare variants, selected constructor
+# callback and CRT/ASCII fallback proof. Hosted regressions use synthetic
+# data only; the owner-only SHA-pinned original DLL audit is opt-in.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_token_comparator_tests
+    tests/test_original_client_string_token_compare.cpp)
+  target_include_directories(sin_original_client_token_comparator_tests PRIVATE include)
+  target_compile_features(sin_original_client_token_comparator_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_token_comparator_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_token_comparator_tests
+    COMMAND sin_original_client_token_comparator_tests)
+  add_executable(sin_original_client_token_comparator_tree_integration_tests
+    tests/test_original_client_string_token_compare_integration.cpp)
+  target_include_directories(sin_original_client_token_comparator_tree_integration_tests PRIVATE include)
+  target_compile_features(sin_original_client_token_comparator_tree_integration_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_token_comparator_tree_integration_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_token_comparator_tree_integration_tests
+    COMMAND sin_original_client_token_comparator_tree_integration_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_token_comparator_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_token_comparators.py"
+        --self-test)
+  endif()
+endif()

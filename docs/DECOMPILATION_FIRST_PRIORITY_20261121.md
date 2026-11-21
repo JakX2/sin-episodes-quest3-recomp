@@ -147,3 +147,35 @@ The host-only C++17 reference implements two verified search decisions
 and a 12-byte record layout, not the entire original engine allocator
 or tree balancer. Both string comparator variants remain for future
 semantic recovery. No native port is claimed.
+
+## Phase 546: original token comparators and case-folding branches
+
+Two source-authenticated native token comparator methods at `0x241D3BF0`
+and `0x241D3C90` use different original byte-ordering semantics. The
+first is a direct unsigned-byte case-sensitive C-string ordering; the
+second resolves the same 4-byte string token descriptors, then calls a
+folded-string comparer returning a signed result. The original constructor
+at `0x241D4640` picks `0x241D3BF0` for zero flag and `0x241D3C90` for
+nonzero flag, unless `this+0` already stores a comparator callback.
+
+Three additional original native functions authenticate the folded-string
+implementation: a runtime locale-state dispatcher with direct tail-JMP
+to its ASCII fallback, the ASCII A..Z folding implementation, and a
+separately called locale-aware character-fold provider. Eight **complete
+non-overlapping** methods account for **827 new original instruction bytes**.
+The owner SHA-gated auditor checks eight original direct CALLs, one original
+JMP to the ASCII fallback, and 34 individual instruction witnesses. C++17
+tests exercise unsigned byte ordering, ASCII fallback, native callback
+selection and source-backed integration with the already recovered 12-byte
+token-tree lookup.
+
+Detailed proof and remaining locale/active-mode limitations:
+`research/phases/2026-11-21-original-client-token-comparator-variants-decomp.md`.
+Reproducible opt-in owner-local verifier:
+`research/tools/audit_sin_original_client_token_comparators.py`.
+In particular the static HUD type-converter token table initializer at
+`0x24262410` passes `1,0,0` to the constructor for global `0x2432289C`.
+The independently authenticated base constructor `0x241D3D90` first sets the
+callback to zero, therefore the original HUD converter string-token table
+**initializes to the folded callback** `0x241D3C90`. Later runtime callback
+overrides, active locale settings and string storage ownership remain unverified. This is decompilation-first research, not a new port.

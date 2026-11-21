@@ -1,30 +1,34 @@
 # SiN Episodes: Emergence | public reverse-engineering research
 
-> **Current stacked research checkpoint, 21 November 2026:** original
-> game decompilation takes priority over any new Windows/Android/Quest port
-> integration. Server PR #537 authenticates and annotates two original
-> Grunt methods (944 bytes). Client PR #538 authenticates the original
-> 1,220-byte VClient011::Init method and decompiles its engine interface
-> request prefix (21 immediate mandatory queries). Phase539 separately
-> authenticates five original helper functions (525 more bytes) and decompiles
-> the later registered-game-system lifecycle, with remaining virtual calls
-> still unresolved. Phase540 additionally verifies four VGUI/HUD bootstrap
-> helper methods (239 bytes) and two mandatory VGUI interface queries.
-> Phase541 newly authenticates 586 bytes in the original VGUI factory-array
-> resolver, with eight independently recovered interface lookups.
-> Phase542 independently verifies three complete HUD type-converter
-> registry routines (619 bytes), including 16-bit tokens and 24-byte entries.
-> See [decompilation proof and priority](docs/DECOMPILATION_FIRST_PRIORITY_20261121.md),
-> [server fallback decompilation](research/phases/2026-11-21-original-mobgrunt-combat-fallback-844-decomp.md)
-> [original client Init decompilation](research/phases/2026-11-21-original-client-vclient011-init-interface-decomp.md)
-> [client Init tail decompilation](research/phases/2026-11-21-original-client-init-tail-and-game-system-lifecycle.md)
-> [client VGUI/HUD bootstrap](research/phases/2026-11-21-original-client-vgui-hud-bootstrap-decomp.md)
-> [VGUI factory-array resolver](research/phases/2026-11-21-original-client-vgui-factory-array-resolver-decomp.md)
-> [HUD type-converter registry](research/phases/2026-11-21-original-client-hud-type-converter-registry-decomp.md)
-> [red-black tree insertion/fixup](research/phases/2026-11-21-original-client-converter-red-black-insertion-decomp.md)
-> and [12-byte string-token red-black tree](research/phases/2026-11-21-original-client-string-token-red-black-tree-decomp.md).
-> These are reverse-engineering artifacts, **not playable replacement DLLs**.
-> The legacy Phase 56 text below describes the starting scaffold.
+> **Current decompilation-first research (21 November 2026):** recover
+> original 2006 `server.dll` and `client.dll` behavior before implementing
+> native Windows, Android or Quest gameplay. Server Phase537 authenticates
+> 944 bytes of original Grunt fallback and assault helper logic.
+> The client sequence includes:
+> Phase538 original 1,220-byte VClient011::Init (interface prefix mapped),
+> Phase539 five additional game-system helpers (525 bytes),
+> Phase540 four original VGUI/HUD bootstrap helpers (239 bytes),
+> Phase541 complete VGUI factory resolver (586 bytes),
+> Phase542 four token-converter registry methods (638 bytes),
+> Phase544 eight converter red-black insertion/rotation functions (2,528 bytes),
+> Phase545 eight distinct 12-byte string-token tree methods (2,678 bytes),
+> and Phase546 eight original string-comparator, constructor and casefold helpers (827 bytes), including the HUD converter's static casefolded default.
+> These method counts are distinct where noted; whole-function hash
+> authentication is **not** equivalent to complete source translation.
+>
+> [Decompilation evidence and priorities](docs/DECOMPILATION_FIRST_PRIORITY_20261121.md)
+> | [Original Grunt fallback](research/phases/2026-11-21-original-mobgrunt-combat-fallback-844-decomp.md)
+> | [Client Init prefix](research/phases/2026-11-21-original-client-vclient011-init-interface-decomp.md)
+> | [Client Init tail](research/phases/2026-11-21-original-client-init-tail-and-game-system-lifecycle.md)
+> | [VGUI/HUD bootstrap](research/phases/2026-11-21-original-client-vgui-hud-bootstrap-decomp.md)
+> | [VGUI factory resolver](research/phases/2026-11-21-original-client-vgui-factory-array-resolver-decomp.md)
+> | [Type-converter registry](research/phases/2026-11-21-original-client-hud-type-converter-registry-decomp.md)
+> | [Converter red-black insertion](research/phases/2026-11-21-original-client-converter-red-black-insertion-decomp.md)
+> | [String-token tree](research/phases/2026-11-21-original-client-string-token-red-black-tree-decomp.md)
+> | [Native string comparator modes](research/phases/2026-11-21-original-client-token-comparator-variants-decomp.md)
+>
+> These are original-binary-authenticated research artifacts, **not playable
+> replacement DLLs**. Historical Phase56 scaffold sections below are retained.
 
 
 **Status:** Phase 56 starting scaffold. Builds and runs as a **standalone native C++17 test library**. **Not a playable game, Source engine DLL, Android APK, or functional Quest 3 port.**
