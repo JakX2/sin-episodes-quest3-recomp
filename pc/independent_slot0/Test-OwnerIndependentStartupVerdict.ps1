@@ -1545,6 +1545,47 @@ try {
     if(($missingInitOut -join '|').Contains('OWNER_SERVER_ORIGINAL_PHYSICS_FACTORY_RESULTS:')) {
         throw 'Server physics stage accepted without earlier same-log DLLInit'
     }
+    # Phase521: original SERVER source-authenticated physics 3/3 must
+    # strictly precede the rb/GAME and two rb/null script resource stage.
+    $serverSurfaceSteps=[string[]]@(
+        '[SiN independent] role=server phase=server-surfaceprops-entered version=VFileSystem012:server-surfaceproperties:rb-dual-scope',
+        '[SiN independent] role=server phase=server-surfaceprops-result version=original-server-surfaceprops-read-verified:2:2:93:71:0',
+        '[SiN independent] role=server phase=server-surfaceprops-terminal-stop version=no-original-engine-parse-no-server-init'
+    )
+    $completeServer=[string[]](@($serverPhysicsPrefix)+@($serverPhysicsSteps)+@($serverSurfaceSteps))
+    [IO.File]::WriteAllLines($server,$completeServer)
+    $surfaceOut=Verify 'SERVER_SURFACEPROPS_READ_ONLY_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedSurface=('OWNER_SERVER_ORIGINAL_SURFACEPROPS_RESULTS: '+
+        'sin-independent-'+$session+'-303.log:server:original-server-surfaceprops-read-verified:2:2:93:71:0')
+    if(-not ($surfaceOut -ccontains $expectedSurface) -or
+       -not ($surfaceOut -ccontains $expectedServerPhysics)) {
+        throw 'Original server surface script two-file resource proof lost its same-session Factory 3/3 prefix'
+    }
+    $partial=@($serverSurfaceSteps)
+    $partial[1]=$partial[1].Replace('2:2:93:71:0','1:1:50:30:0')
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+
+        @($serverPhysicsSteps)+@($partial)))
+    $forgedSurface=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($forgedSurface -join '|').Contains($expectedSurface)) {
+        throw 'Forged 1/1/50/30 source count was accepted as original 2/2/93/71'
+    }
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+
+        @($serverPhysicsSteps)+@($serverSurfaceSteps)+@($serverSurfaceSteps[1])))
+    $duplicateSurface=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($duplicateSurface -join '|').Contains('OWNER_SERVER_ORIGINAL_SURFACEPROPS_RESULTS:')) {
+        throw 'Duplicate native server surface resource result elevated to owner proof'
+    }
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsPrefix)+
+        @($serverSurfaceSteps)+@($serverPhysicsSteps)))
+    $earlySurface=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($earlySurface -join '|').Contains('OWNER_SERVER_ORIGINAL_SURFACEPROPS_RESULTS:')) {
+        throw 'Out-of-order server surface file read before physics Factory accepted'
+    }
+    [IO.File]::WriteAllLines($server,[string[]](@($serverPhysicsSteps)+@($serverSurfaceSteps)))
+    $withoutInit=@(& $Classifier -Session $session -LogDirectory $dir)
+    if(($withoutInit -join '|').Contains('OWNER_SERVER_ORIGINAL_SURFACEPROPS_RESULTS:')) {
+        throw 'Server resource proof accepted without an actual same-session DLLInit call'
+    }
     Write-Output "PASS owner session classifier: cross-session, game-module factory entry, native Init blocker, two roles, no false retail boot"
 } finally {
     Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
