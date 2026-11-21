@@ -228,3 +228,38 @@ All methods and algorithms are documented in
 `research/phases/2026-11-21-original-client-token-lifecycle-global-table-reset-and-string-ownership.md`.
 Host-only reference and tests model safe reset and descriptor lookup;
 they are **not** a full game or port.
+
+## Phase 549: original VClient011 level startup and shutdown behavior
+
+Original client vtable `0x24296C6C`, independently identified by
+Phase538 at virtual +0x00 `Init`, has four newly verified complete methods:
+`+0x04` whole-client shutdown at `0x240FF3D0` (204 bytes);
+`+0x08` map pre-entity entry `0x240FDB40` (192 bytes);
+`+0x0C` compact post-entity dispatch `0x240FDC00` (21 bytes);
+`+0x10` level teardown `0x240FF4A0` (202 bytes). Original
+27-byte `0x240FC900` owned-resource cleanup is also verified.
+**Five new complete native methods, 646 unique bytes, 26 direct calls,
+41 instruction witnesses and two original 32-bit conditional jumps**
+pass the strict original owner SHA-pinned verifier. The vtable's native MSVC RTTI identifies its source class as **`CHLClient`**.
+
+The original `0x2433F680` single-byte map-active state is set to one
+during +0x08 and reset to zero at the start of +0x10. Both whole-client
+shutdown and level shutdown reverse-walk a game-system array at object
+`+0x04` of size `+0x10`, call each entry's **native virtual +0x34**,
+and clear the logical count. The pre-entity method conditionally issues
+literal `cl_predict 0` if original engine-global +0x14 <=1 OR engine
+virtual +0x148 is nonzero; it issues **`cl_predict 1` only if
++0x14 >1 AND the virtual result is zero**. The underlying field meaning
+is not yet recovered. No original game engine runtime calls were made.
+
+Important byte-boundary correction: native pre-entity and post-entity
+methods are adjacent **without INT3 padding**. Additionally, the
+whole-client shutdown method's internal rel32 CALL displacement contains
+a literal 0xCC byte, so first-INT3 scanning cannot locate its end.
+The full original 204-byte SHA and complete vtable pointer authenticate
+the correct boundary.
+
+See `research/phases/2026-11-21-original-client-vclient011-level-lifecycle-shutdown-decomp.md`
+and `research/tools/audit_sin_original_client_level_lifecycle.py`.
+Independently authored C++17 tests cover the authentic short-circuit
+branch and reverse callback order, not full engine startup/shutdown.
