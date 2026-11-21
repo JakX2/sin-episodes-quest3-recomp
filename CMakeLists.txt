@@ -4403,3 +4403,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase582: original SiN NPC numeric signal 0x22049C20,
+# 16-bit x87 angle wrap 0x22028200, Grunt events 0x8D and 0x92.
+# Host-only authored tests, no generic HL2 physics nor original DLLs.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_event_signals_phase582_tests
+    tests/test_original_grunt_event_signals_phase582.cpp)
+  target_include_directories(sin_original_grunt_event_signals_phase582_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_event_signals_phase582_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_event_signals_phase582_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_event_signals_phase582_tests
+    COMMAND sin_original_grunt_event_signals_phase582_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_event_signals_phase582_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_event_signals_phase582.py"
+        --self-test)
+  endif()
+endif()
