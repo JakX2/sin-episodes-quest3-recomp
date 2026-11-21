@@ -15,6 +15,7 @@ param(
     [switch]$PhysicsFactoryLookup,
     [switch]$SurfacePropsRead,
     [switch]$SurfacePropsRegister,
+    [switch]$SurfacePropsReadback,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
 )
 $ErrorActionPreference='Stop'
@@ -39,6 +40,9 @@ if ($SurfacePropsRead -and -not $PhysicsFactoryLookup) {
 }
 if ($SurfacePropsRegister -and -not $SurfacePropsRead) {
     throw 'SurfacePropsRegister requires -SurfacePropsRead and all prior same-session owner gates'
+}
+if ($SurfacePropsReadback -and -not $SurfacePropsRegister) {
+    throw 'SurfacePropsReadback requires -SurfacePropsRegister and all prior original physics prerequisites'
 }
 $bin=Join-Path $PSScriptRoot 'bin'
 
@@ -183,6 +187,9 @@ if ($PlanOnly) {
                 if ($SurfacePropsRegister) {
                     Write-Output 'SURFACEPROPS REGISTER: EXPLICIT ENGINE MUTATION. Calls original VPhysicsSurfaceProps001 slot1 with both resources in disposable copy; still NO game boot.'
                 }
+                if ($SurfacePropsReadback) {
+                    Write-Output 'SURFACEPROPS READBACK: opt-in SDK2004 slots2/3 count and default/solidmetal/metalvehicle indices after original physics parsing returns; no game boot.'
+                }
             }
         }
     }
@@ -306,6 +313,9 @@ try {
             }
             if ($SurfacePropsRegister) {
                 $options.ExplicitSurfacePropsRegisterProbe=$true
+            }
+            if ($SurfacePropsReadback) {
+                $options.ExplicitSurfacePropsReadbackProbe=$true
             }
             & $gate @options *>&1 | Tee-Object -FilePath $stagedRun | Out-Host
         } catch {
@@ -500,6 +510,100 @@ try {
                     $match=[regex]::Match($physicsHits[0],$physicsPattern)
                     if ($match.Success) {
                         $physicsFactorySummary=$match.Groups[1].Value
+                    }
+                }
+            }
+        }
+        $surfacePropsReadbackSummary='NOT_REQUESTED'
+        if ($SurfacePropsReadback) {
+            $surfacePropsReadbackSummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                # Staged evidence is the same-session classifier's output,
+                # not arbitrary untrusted raw independent tracing.
+                $readbackPattern='^OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:original-physics-surface-readback-(?:invalid-object|missing-count-slot|missing-index-slot|count-invalid|index-invalid|some-unavailable|three-in-range)):-?[0-9]{1,6}:-?[0-9]{1,6}:-?[0-9]{1,6}:-?[0-9]{1,6})
+        if ($SurfacePropsRegister) {
+            $surfacePropsRegistrationSummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                # Require the session-bound classifier, not a standalone
+                # raw trace, to authenticate prior physics/resource gates.
+                $registrationPattern='^OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:original-surfaceprops-register-no-interface|original-surfaceprops-register-invalid-filesystem|original-surfaceprops-register-resources-refused|original-surfaceprops-register-raw-shape-refused|original-surfaceprops-register-method-refused|original-surfaceprops-register-two-calls-returned):[0-2]:[0-2]:-?[0-9]{1,11}:-?[0-9]{1,11})$'
+                $registrationHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $registrationPattern})
+                if ($registrationHits.Count -eq 1) {
+                    $match=[regex]::Match($registrationHits[0],$registrationPattern)
+                    if ($match.Success) {
+                        $surfacePropsRegistrationSummary=$match.Groups[1].Value
+                    }
+                }
+            }
+        }
+        $surfacePropsSummary='NOT_REQUESTED'
+        if ($SurfacePropsRead) {
+            $surfacePropsSummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                $propsPattern='^OWNER_CLIENT_SURFACEPROPS_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:((?:original-surfaceprops-retail-resource-shape-verified|original-surfaceprops-retail-resource-refused|original-surfaceprops-engine-filesystem-invalid):[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3}:[0-9]{1,3})$'
+                $propsHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $propsPattern})
+                if ($propsHits.Count -eq 1) {
+                    $hit=[regex]::Match($propsHits[0],$propsPattern)
+                    if ($hit.Success) {
+                        $surfacePropsSummary=$hit.Groups[1].Value
+                    }
+                }
+            }
+        }
+        $summary=Join-Path $reports 'SUMMARY.txt'
+        $rows=@(
+            'SiN Episodes 2006 independent filesystem diagnostic'
+            ('Presence: '+$(if($presenceOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED'}))
+            ('Read: '+$(if($readOk){'VERIFIED_DIAGNOSTIC'}else{'NOT_VERIFIED_OR_SKIPPED'}))
+            ('Original-mode staged 66-stat binding: '+$(if($stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($StagedStats){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
+            ('Independent Stats CUserMessages hooks 27:28:5: '+$(if($HookProof -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($HookProof){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
+            ('Original soundscape manifest and owned 7:301:242:3 catalog: '+$(if($SoundscapeCatalog -and $stagedOk){'VERIFIED_DIAGNOSTIC'}elseif($SoundscapeCatalog){'NOT_VERIFIED_OR_SKIPPED'}else{'NOT_REQUESTED'}))
+            ('Soundscape read/parse stage: '+$soundscapeDetail)
+            ('Original soundscape ConVar lookup (read-only): '+$soundscapeCvarSummary)
+            ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
+            ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
+            ('Original surfaceprops ParseSurfaceData (explicit engine mutation): '+$surfacePropsRegistrationSummary)
+            ('Original physics surface count/index readback (SDK2004, opt-in): '+$surfacePropsReadbackSummary)
+            ('Copied original files: '+$copyStatus)
+            ('Temporary game cleanup: '+$cleanup)
+            'No complete normal VClient011::Init or playable map boot is claimed.'
+        )
+        foreach($problem in $problems) {$rows+=('Problem: '+$problem)}
+        [IO.File]::WriteAllLines($summary,[string[]]$rows)
+        $zip=Join-Path $PSScriptRoot ('SiN_FileSystem_Test_Results_'+$stamp+'-'+$id+'.zip')
+        try {
+            Compress-Archive -LiteralPath $reports -DestinationPath $zip -CompressionLevel Optimal
+            Write-Output ('RESULTS_ZIP: '+$zip)
+        } catch {
+            Write-Output ('Unable to create results ZIP. Results folder: '+$reports)
+        }
+        Write-Output ('RESULTS_FOLDER: '+$reports)
+    }
+}
+if ($SoundscapeCatalog -and $stagedOk) {
+    Write-Output 'FINISHED: real-engine read-only soundscape catalog 7:301:242:3 verified. NO audio, real C_SoundscapeSystem Init or game boot.'
+} elseif ($HookProof -and $stagedOk) {
+    Write-Output 'FINISHED: original-mode staged Stats plus three owned user-message hooks verified. NO actual dispatch or game boot.'
+} elseif ($StagedStats -and $stagedOk) {
+    Write-Output 'FINISHED: original-mode staged stats and owned 66-ID binding verified. NOT an engine Init or playable game boot.'
+} elseif (-not $StagedStats -and $readOk) {
+    Write-Output 'FINISHED: both retail filesystem diagnostics passed, NOT a playable game boot.'
+} else {
+    Write-Output 'FINISHED: test incomplete or refused. Share RESULTS_ZIP for analysis.'
+}
+exit $exitCode
+
+                $readbackHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $readbackPattern})
+                if ($readbackHits.Count -eq 1) {
+                    $match=[regex]::Match($readbackHits[0],$readbackPattern)
+                    if ($match.Success) {
+                        $surfacePropsReadbackSummary=$match.Groups[1].Value
                     }
                 }
             }
