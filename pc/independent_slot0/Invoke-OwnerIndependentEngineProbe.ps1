@@ -43,6 +43,7 @@ param(
     [switch]$EnableClientSoundscapeCvarLookupProbe,
     [switch]$EnableClientPhysicsFactoryProbe,
     [switch]$EnableClientSurfacePropsReadProbe,
+    [switch]$EnableClientSurfacePhysicsDataProbe,
     [switch]$EnableClientSurfacePropsRegisterProbe,
     [switch]$EnableClientSurfacePropsReadbackProbe,
     [ValidateRange(10,300)][int]$TimeoutSeconds = 90,
@@ -130,6 +131,10 @@ if (-not $DisposableTestCopyConfirmed) {
 if ($EnableClientSurfacePropsReadbackProbe -and
     -not $EnableClientSurfacePropsRegisterProbe) {
     throw 'EnableClientSurfacePropsReadbackProbe requires successful attempted registration prerequisite'
+}
+if ($EnableClientSurfacePhysicsDataProbe -and
+    ($ProbeRole -ne 'Client' -or -not $EnableClientSurfacePropsReadProbe)) {
+    throw 'EnableClientSurfacePhysicsDataProbe requires Client-only mode and EnableClientSurfacePropsReadProbe'
 }
 if ($EnableClientSurfacePropsRegisterProbe -and
     -not $EnableClientSurfacePropsReadProbe) {
@@ -370,6 +375,7 @@ try {
     $previousSoundscapeCvarProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE','Process')
     $previousPhysicsFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PHYSICS_FACTORY_PROBE','Process')
     $previousSurfacePropsReadProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE','Process')
+    $previousSurfacePhysicsDataProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPHYSICS_DATA_PROBE','Process')
     $previousSurfacePropsRegisterProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_REGISTER_PROBE','Process')
     $previousSurfacePropsReadbackProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READBACK_PROBE','Process')
     try {
@@ -436,6 +442,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE',$(if ($EnableClientSoundscapeCvarLookupProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PHYSICS_FACTORY_PROBE',$(if ($EnableClientPhysicsFactoryProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE',$(if ($EnableClientSurfacePropsReadProbe) { '1' } else { '0' }),'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPHYSICS_DATA_PROBE',$(if ($EnableClientSurfacePhysicsDataProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_REGISTER_PROBE',$(if ($EnableClientSurfacePropsRegisterProbe) { '1' } else { '0' }),'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READBACK_PROBE',$(if ($EnableClientSurfacePropsReadbackProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_ENGINE_FS_PROBE: {0}" -f $(if ($EnableClientEngineFsProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
@@ -446,6 +453,7 @@ try {
         Write-Output ("OWNER_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE: {0}" -f $(if ($EnableClientSoundscapeCvarLookupProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_PHYSICS_FACTORY_PROBE: {0}" -f $(if ($EnableClientPhysicsFactoryProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_SURFACEPROPS_READ_PROBE: {0}" -f $(if ($EnableClientSurfacePropsReadProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
+        Write-Output ("OWNER_CLIENT_SURFACEPHYSICS_DATA_PROBE: {0}" -f $(if ($EnableClientSurfacePhysicsDataProbe) { 'ENABLED_READ_ONLY_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_SURFACEPROPS_REGISTER_PROBE: {0}" -f $(if ($EnableClientSurfacePropsRegisterProbe) { 'ENABLED_ENGINE_MUTATION_DIAGNOSTIC' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_SURFACEPROPS_READBACK_PROBE: {0}" -f $(if ($EnableClientSurfacePropsReadbackProbe) { 'ENABLED_SDK2004_GUIDED_READBACK' } else { 'DISABLED' }))
         Write-Output ("OWNER_CLIENT_OWNED_STARTUP_PROBE: {0}" -f $(if ($EnableClientOwnedStartupProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
@@ -556,6 +564,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUNDSCAPE_CVAR_LOOKUP_PROBE',$previousSoundscapeCvarProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PHYSICS_FACTORY_PROBE',$previousPhysicsFactoryProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE',$previousSurfacePropsReadProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPHYSICS_DATA_PROBE',$previousSurfacePhysicsDataProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_REGISTER_PROBE',$previousSurfacePropsRegisterProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READBACK_PROBE',$previousSurfacePropsReadbackProbe,'Process')
     }
