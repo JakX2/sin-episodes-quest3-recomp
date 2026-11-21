@@ -162,6 +162,33 @@ try {
     }
 
 
+    # Phase521 server source script reader needs BOTH Server-only physics
+    # and factory gates. Test rejection before any DLL could be staged.
+    foreach($case in @(
+        @{ Role='Server'; Physics=$false; Factory=$true },
+        @{ Role='Server'; Physics=$true; Factory=$false },
+        @{ Role='Client'; Physics=$true; Factory=$true }
+    )) {
+        $args=@{GameBin=$bin; GameExecutable=$exe;
+            IndependentBin=$IndependentBin; ProbeRole=$case.Role;
+            EnableServerSurfacePropsReadProbe=$true;
+            DisposableTestCopyConfirmed=$true}
+        if($case.Physics){$args.EnableServerPhysicsFactoryProbe=$true}
+        if($case.Factory){$args.EnableServerFactoryProbe=$true}
+        $blocked=$false
+        try {& $Launcher @args | Out-Null} catch {
+            if($_.Exception.Message -notlike '*EnableServerSurfacePropsReadProbe requires Server-only role and the original physics factory probe*'){
+                throw ('Unexpected server surface reader permission failure: '+$_.Exception.Message)
+            }
+            $blocked=$true
+        }
+        if(-not $blocked){throw 'Server source reader accepted incomplete physics opt-ins'}
+        if((Sha256 $server) -ne $beforeServer -or
+           (Sha256 $client) -ne $beforeClient){
+            throw 'Server surface reader invalid opt-in modified fake original DLLs'
+        }
+    }
+
     # Retail install layout: root/SinEpisodes.exe, root/bin/engine.dll,
     # root/SE1/GameInfo.txt and original gameplay DLLs in root/SE1/bin/.
     # The outer game root, NOT SE1/, must own the disposable marker.

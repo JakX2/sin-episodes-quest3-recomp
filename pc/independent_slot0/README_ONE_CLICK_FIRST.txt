@@ -449,3 +449,26 @@ original-server-physics-three-available:3:3:1 report. If absent, the
 summary says NOT_RECORDED, never success. There are no engine mutations
 or full ServerGameDLL003 DLLInit or gameplay claims.
 See OWNER_SERVER_PHYSICS_ONECLICK_20261121.md for detailed safety notes.
+
+PHASE 521: ORIGINAL 2006 SERVER SURFACEPROPS READ-ONLY MANIFEST
+------------------------------------------------------------
+A fresh owner experiment, available only after all CI checks pass:
+
+  RUN_SERVER_SURFACEPROPS_READONLY_TEST.bat
+
+This chooses an EXISTING original SE1/maps/*.bsp name, leaves your
+installed game and original client DLL untouched, and stages ONLY
+independent server.dll into a guarded disposable game copy.
+
+After the server's ORIGINAL 2006 physics Factory three-interface order
+succeeds, the independent server reads the original GAME manifest and
+two surfaceproperties script files with rb/nullptr, independently
+checking the 2 files, 93 material definitions and 71 base references.
+It does not call original engine ParseSurfaceData, create physics
+objects, finish ServerGameDLL003::DLLInit or boot a level.
+
+Real original engine resource success must exit 0x53494E7A and produce
+an owner session classifier status of
+original-server-surfaceprops-read-verified:2:2:93:71:0.
+The test is NOT verified on owner's engine until a fresh ZIP is uploaded.
+See OWNER_SERVER_SURFACEPROPS_READONLY_20261121.md.
