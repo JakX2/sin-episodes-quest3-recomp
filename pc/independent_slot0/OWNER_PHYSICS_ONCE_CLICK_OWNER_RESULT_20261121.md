@@ -24,7 +24,7 @@ opt-in chain through `-SurfacePropsRead`. It does not call original
 physics methods that mutate surface state.
 
 The separately named `RUN_PHYSICS_READBACK_TEST.bat` requires the
-owner to type `REGISTER` and only then passes the full chain including
+owner to type `Y` when prompted by Windows `choice` and only then passes the full chain including
 `-SurfacePropsRegister -SurfacePropsReadback`. The underlying SHA-gated
 `Start-SiNFileSystemTest.ps1` still authenticates originals,
 creates a disposable copy, and refuses unverified restoration.
