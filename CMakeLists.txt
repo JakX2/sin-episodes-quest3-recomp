@@ -4382,3 +4382,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase581: original 1330-byte Grunt animation event override,
+# 9 dedicated event IDs, 113 delegated IDs and native 0x8C alert odds.
+# Synthetic C++17 model and original-free PE mutation tests only.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_event_switch_phase581_tests
+    tests/test_original_grunt_event_switch_phase581.cpp)
+  target_include_directories(sin_original_grunt_event_switch_phase581_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_event_switch_phase581_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_event_switch_phase581_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_event_switch_phase581_tests
+    COMMAND sin_original_grunt_event_switch_phase581_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_event_switch_phase581_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_event_switch_phase581.py"
+        --self-test)
+  endif()
+endif()
