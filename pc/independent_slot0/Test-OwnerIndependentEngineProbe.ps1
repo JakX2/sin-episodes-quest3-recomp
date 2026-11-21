@@ -191,6 +191,34 @@ try {
         }
     }
 
+    # Phase522 client read-only field probe must never accept Server/Both
+    # or bypass the earlier original surface resource read gates. The
+    # generated test uses fake originals and must leave them untouched.
+    foreach($case in @(
+        @{Role='Both'; Surface=$true},
+        @{Role='Server'; Surface=$true},
+        @{Role='Client'; Surface=$false}
+    )) {
+        $args=@{
+            GameBin=$bin;GameExecutable=$exe;IndependentBin=$IndependentBin;
+            ProbeRole=$case.Role;EnableClientSurfacePhysicsDataProbe=$true;
+            DisposableTestCopyConfirmed=$true
+        }
+        if($case.Surface){$args.EnableClientSurfacePropsReadProbe=$true}
+        $blocked=$false
+        try {& $Launcher @args | Out-Null} catch {
+            if($_.Exception.Message -notlike '*EnableClientSurfacePhysicsDataProbe requires Client-only mode and EnableClientSurfacePropsReadProbe*') {
+                throw ('Unexpected material read-only role guard: '+$_.Exception.Message)
+            }
+            $blocked=$true
+        }
+        if(-not $blocked){throw 'Original physics material probe accepted invalid role/opt-in'}
+        if((Sha256 $server) -ne $beforeServer -or
+           (Sha256 $client) -ne $beforeClient) {
+            throw 'Invalid material read-only role modified fake retail DLLs'
+        }
+    }
+
     # Retail install layout: root/SinEpisodes.exe, root/bin/engine.dll,
     # root/SE1/GameInfo.txt and original gameplay DLLs in root/SE1/bin/.
     # The outer game root, NOT SE1/, must own the disposable marker.

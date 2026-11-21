@@ -14,6 +14,7 @@ param(
     [switch]$ReadOnlySoundscapeCvarLookup,
     [switch]$ReadOnlyPhysicsFactoryProbe,
     [switch]$ReadOnlySurfacePropsReadProbe,
+    [switch]$ReadOnlySurfacePhysicsDataProbe,
     [switch]$ExplicitSurfacePropsRegisterProbe,
     [switch]$ExplicitSurfacePropsReadbackProbe,
     [string]$PriorPresenceTranscript,
@@ -31,6 +32,10 @@ if ($ReadOnlySoundscapeCvarLookup -and $Phase -ne 'Soundscape') {
 if ($ReadOnlyPhysicsFactoryProbe -and
     ($Phase -ne 'Soundscape' -or -not $ReadOnlySoundscapeCvarLookup)) {
     throw 'ReadOnlyPhysicsFactoryProbe requires Soundscape phase and ReadOnlySoundscapeCvarLookup'
+}
+if ($ReadOnlySurfacePhysicsDataProbe -and
+    ($Phase -ne 'Soundscape' -or -not $ReadOnlySurfacePropsReadProbe)) {
+    throw 'ReadOnlySurfacePhysicsDataProbe requires read-only original surface resource proof'
 }
 if ($ExplicitSurfacePropsReadbackProbe -and
     ($Phase -ne 'Soundscape' -or -not $ExplicitSurfacePropsRegisterProbe)) {
@@ -234,6 +239,9 @@ if ($Phase -eq 'Soundscape') {
     }
     if ($ReadOnlySurfacePropsReadProbe) {
         $settings.EnableClientSurfacePropsReadProbe=$true
+    }
+    if ($ReadOnlySurfacePhysicsDataProbe) {
+        $settings.EnableClientSurfacePhysicsDataProbe=$true
     }
     if ($ExplicitSurfacePropsRegisterProbe) {
         $settings.EnableClientSurfacePropsRegisterProbe=$true

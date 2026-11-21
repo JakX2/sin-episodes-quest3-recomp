@@ -47,6 +47,7 @@ $engineFsPhysicsFactoryLogs = New-Object System.Collections.Generic.List[string]
 $engineFsSurfacePropsLogs = New-Object System.Collections.Generic.List[string]
 $engineFsRegistrationLogs = New-Object System.Collections.Generic.List[string]
 $engineFsReadbackLogs = New-Object System.Collections.Generic.List[string]
+$engineFsMaterialLogs = New-Object System.Collections.Generic.List[string]
 $vguiControlsNames=@('VGUI_ivgui006','VGUI_Panel009','VGUI_Surface028','VGUI_Scheme010','VGUI_System010','VGUI_Input005','VGUI_Localize003','VFileSystem012')
 $vguiEvents=@('vgui-probe-entered:vgui2.dll','vgui-provider-found:vgui2.dll','vgui-query-entered:VGUI_InputInternal001','vgui-query-found:VGUI_InputInternal001','vgui-query-entered:VGUI_System010','vgui-query-found:VGUI_System010')
 $ownedStartupEvents = @('owned-startup-entered:independent-only','owned-startup-objects-ready:1','owned-startup-pool-ready:2048x96','owned-startup-pool-verified:allocate-reuse-release','owned-startup-cleanup-verified:pool-objects')
@@ -152,6 +153,11 @@ foreach ($log in $logs) {
     $surfacePropsStage=0
     $surfacePropsEventCount=0
     $surfacePropsResult=$null
+    $materialStage=0
+    $materialEventCount=0
+    $materialResult=$null
+    $materialSampleCount=0
+    $materialCount=-1
     $registrationStage=0
     $registrationEventCount=0
     $registrationResult=$null
@@ -705,6 +711,70 @@ foreach ($log in $logs) {
                     }
                 }
             } elseif ($soundscapeStage -eq 3 -and
+                $phase -clike 'engine-fs-material-*') {
+                # Phase522: material field reads are strictly opt-in, may
+                # occur BEFORE registration, and must never create phantom
+                # owner proof from duplicate or cross-session float lines.
+                $materialEventCount++
+                if($surfacePropsStage -eq 3 -and
+                   $surfacePropsEventCount -eq 3 -and
+                   $surfacePropsResult -ceq 'original-surfaceprops-retail-resource-shape-verified:2:2:93:71:0' -and
+                   $physicsStage -eq 3 -and $physicsEventCount -eq 3 -and
+                   $physicsResult -ceq 'original-physics-three-available:3:3:1') {
+                    if($materialStage -eq 0 -and
+                       $phase -eq 'engine-fs-material-entered' -and
+                       $version -eq 'VPhysicsSurfaceProps001:slots2-3-5:read-only') {
+                        $materialStage=1
+                    } elseif($materialStage -eq 1 -and
+                        $phase -eq 'engine-fs-material-result' -and
+                        $version -cmatch '^original-physics-material-(invalid-object|index-refused|no-data-slot|null-data|unreadable-data|nonfinite-data|three-samples):(-?[0-9]{1,6}):([0-3])$') {
+                        $kind=$Matches[1]
+                        $n=[int]$Matches[2]
+                        $sample=[int]$Matches[3]
+                        $success=($kind -ceq 'three-samples' -and
+                            $n -ge 3 -and $n -le 16384 -and $sample -eq 3)
+                        $failed=($kind -cne 'three-samples' -and
+                            $n -ge -1 -and $n -le 16384 -and $sample -le 2)
+                        if($success -or $failed) {
+                            $materialCount=$n
+                            $materialResult=$version
+                            $materialStage=2
+                        }
+                    } elseif($materialStage -eq 2 -and
+                        $phase -eq 'engine-fs-material-sample' -and
+                        $materialResult -cmatch '^original-physics-material-three-samples:' -and
+                        $materialSampleCount -lt 3) {
+                        $target=@('default','solidmetal','metalvehicle')[$materialSampleCount]
+                        $pattern='^'+[regex]::Escape($target)+':([0-9]{1,5}):([-+0-9.eE]+):([-+0-9.eE]+):([-+0-9.eE]+):([-+0-9.eE]+):([-+0-9.eE]+)$'
+                        $m=[regex]::Match($version,$pattern)
+                        if($m.Success -and [int]$m.Groups[1].Value -lt $materialCount) {
+                            $numericOk=$true
+                            for($j=2;$j -le 6;$j++){
+                                $v=0.0
+                                if(-not [double]::TryParse(
+                                    $m.Groups[$j].Value,
+                                    [System.Globalization.NumberStyles]::Float,
+                                    [System.Globalization.CultureInfo]::InvariantCulture,
+                                    [ref]$v) -or
+                                   [double]::IsInfinity($v) -or
+                                   [double]::IsNaN($v) -or
+                                   [math]::Abs($v) -gt 1000000000.0) {
+                                    $numericOk=$false
+                                }
+                            }
+                            if($numericOk){$materialSampleCount++}
+                        }
+                    } elseif($materialStage -eq 2 -and
+                        $phase -eq 'engine-fs-material-terminal-stop' -and
+                        $version -eq 'read-only-physics-fields-no-game-init') {
+                        $success=($materialResult -cmatch '^original-physics-material-three-samples:' -and
+                            $materialSampleCount -eq 3 -and $materialEventCount -eq 6)
+                        $failed=($materialResult -cnotmatch '^original-physics-material-three-samples:' -and
+                            $materialSampleCount -eq 0 -and $materialEventCount -eq 3)
+                        if($success -or $failed){$materialStage=3}
+                    }
+                }
+            } elseif ($soundscapeStage -eq 3 -and
                 $phase -clike 'engine-fs-registration-*') {
                 # Only same-session ordered entry/result/terminal records
                 # after VERIFIED source reads attest parser invocations.
@@ -840,6 +910,12 @@ foreach ($log in $logs) {
                    $null -ne $registrationResult) {
                     $engineFsRegistrationLogs.Add(('{0}:client:{1}' -f
                         $log.Name,$registrationResult))
+                }
+                if($soundscapeDetailCount -eq 1 -and
+                   $materialStage -eq 3 -and
+                   $null -ne $materialResult) {
+                    $engineFsMaterialLogs.Add(('{0}:client:{1}' -f
+                        $log.Name,$materialResult))
                 }
                 if($soundscapeDetailCount -eq 1 -and
                    $registrationStage -eq 3 -and
@@ -1080,6 +1156,10 @@ if ($engineFsSurfacePropsLogs.Count -gt 0) {
 }
 if ($engineFsRegistrationLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS: {0}" -f ($engineFsRegistrationLogs -join ','))
+}
+if ($engineFsMaterialLogs.Count -gt 0) {
+    Write-Output ("OWNER_CLIENT_SURFACEPHYSICS_MATERIAL_RESULTS: {0}" -f
+        ($engineFsMaterialLogs -join ','))
 }
 if ($engineFsReadbackLogs.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_SURFACEPROPS_READBACK_RESULTS: {0}" -f ($engineFsReadbackLogs -join ','))

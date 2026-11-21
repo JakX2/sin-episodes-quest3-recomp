@@ -424,3 +424,34 @@ same guarded, SHA-authenticated disposable-copy workflow. No test is
 required merely to accept the previous 94/0/1/85 observation. Another
 owner test is useful ONLY for resolving whether registration made a
 table change. The app does NOT return VClient011 Init success or boot a map.
+
+PHASE 522: ORIGINAL MATERIAL PARAMETERS WITHOUT RE-REGISTERING
+-------------------------------------------------------------
+The latest owner ZIP 20261121-024749 confirms the original 2006
+physics engine had 94 surface entries BEFORE independent parse calls.
+The three named index witnesses already existed before and after.
+That establishes no reason to mutate physics just to inspect the
+current state. The native original also exposes slot5 GetSurfaceData.
+
+The NEW recommended read-only experiment is simply:
+
+  RUN_PHYSICS_MATERIALS_READONLY.bat
+
+This shortcut supplies all required prior soundscape, CVar, physics
+Factory and surface script read gates. It does NOT enable
+-SurfacePropsRegister or -SurfacePropsReadback and cannot pass through
+extra batch arguments. It calls original engine surfaceprops virtual
+slot5 for default/solidmetal/metalvehicle, then reads only the five
+Source 2004 surface physics float fields per material: friction,
+elasticity, density, thickness, dampening. All values are bounded
+and only three short numeric tuples enter the text-only result ZIP.
+
+It still uses the safe exact-SHA owner launcher and its fresh disposable
+game copy; it is NOT normal VClient011 Init or playable game startup.
+An untested method pointer or unexpected struct layout could still
+cause this isolated game process to terminate. Send back the generated
+SiN_FileSystem_Test_Results_*.zip. Do not install the independent DLLs.
+
+The original SERVER path is separately implemented in PR #521 as
+an explicitly opted-in, read-only surface-properties source reader,
+but has not yet received any real Windows owner-side server trace.

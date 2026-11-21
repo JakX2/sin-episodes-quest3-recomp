@@ -14,6 +14,7 @@ param(
     [switch]$SoundscapeCvarLookup,
     [switch]$PhysicsFactoryLookup,
     [switch]$SurfacePropsRead,
+    [switch]$SurfacePhysicsDataRead,
     [switch]$SurfacePropsRegister,
     [switch]$SurfacePropsReadback,
     [ValidateRange(10,300)][int]$TimeoutSeconds=90
@@ -37,6 +38,9 @@ if ($PhysicsFactoryLookup -and -not $SoundscapeCvarLookup) {
 }
 if ($SurfacePropsRead -and -not $PhysicsFactoryLookup) {
     throw 'SurfacePropsRead requires -PhysicsFactoryLookup and all previous soundscape/CVar stages'
+}
+if ($SurfacePhysicsDataRead -and -not $SurfacePropsRead) {
+    throw 'SurfacePhysicsDataRead requires -SurfacePropsRead and the read-only original physics resource stage'
 }
 if ($SurfacePropsRegister -and -not $SurfacePropsRead) {
     throw 'SurfacePropsRegister requires -SurfacePropsRead and all prior same-session owner gates'
@@ -184,6 +188,9 @@ if ($PlanOnly) {
                 if ($SurfacePropsRead) {
                     Write-Output 'SURFACEPROPS READ: opt-in read-only original rb/GAME manifest and two rb/nullptr scripts, 93 definitions, no physics registration'
                 }
+                if ($SurfacePhysicsDataRead) {
+                    Write-Output 'SURFACEPHYSICS DATA READ: opt-in READ ONLY actual 2006 engine vslot5 for default/solidmetal/metalvehicle; no ParseSurfaceData and no game Init.'
+                }
                 if ($SurfacePropsRegister) {
                     Write-Output 'SURFACEPROPS REGISTER: EXPLICIT ENGINE MUTATION. Calls original VPhysicsSurfaceProps001 slot1 with both resources in disposable copy; still NO game boot.'
                 }
@@ -310,6 +317,9 @@ try {
             }
             if ($SurfacePropsRead) {
                 $options.ReadOnlySurfacePropsReadProbe=$true
+            }
+            if ($SurfacePhysicsDataRead) {
+                $options.ReadOnlySurfacePhysicsDataProbe=$true
             }
             if ($SurfacePropsRegister) {
                 $options.ExplicitSurfacePropsRegisterProbe=$true
@@ -514,6 +524,24 @@ try {
                 }
             }
         }
+        # Phase522 read-only physics fields can be queried WITHOUT asking
+        # the original engine to parse scripts or mutate its surface table.
+        $materialSummary='NOT_REQUESTED'
+        if ($SurfacePhysicsDataRead) {
+            $materialSummary='NOT_RECORDED'
+            $stagedEvidence=Join-Path $reports 'staged.txt'
+            if (Test-Path -LiteralPath $stagedEvidence -PathType Leaf) {
+                $materialPattern='^OWNER_CLIENT_SURFACEPHYSICS_MATERIAL_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:client:(original-physics-material-(?:invalid-object|index-refused|no-data-slot|null-data|unreadable-data|nonfinite-data|three-samples):-?[0-9]{1,6}:[0-3])$'
+                $materialHits=@([IO.File]::ReadAllLines($stagedEvidence) |
+                    Where-Object {$_ -cmatch $materialPattern})
+                if ($materialHits.Count -eq 1) {
+                    $match=[regex]::Match($materialHits[0],$materialPattern)
+                    if ($match.Success) {
+                        $materialSummary=$match.Groups[1].Value
+                    }
+                }
+            }
+        }
         $surfacePropsReadbackSummary='NOT_REQUESTED'
         if ($SurfacePropsReadback) {
             $surfacePropsReadbackSummary='NOT_RECORDED'
@@ -617,6 +645,7 @@ try {
             ('Original soundscape ConVar lookup (read-only): '+$soundscapeCvarSummary)
             ('Original physics Factory triple (read-only): '+$physicsFactorySummary)
             ('Original surfaceprops manifest and scripts (read-only): '+$surfacePropsSummary)
+            ('Original physics material five-float samples (read-only, no parse): '+$materialSummary)
             ('Original physics pre-Parse table snapshot (read-only): '+$preparseSummary)
             ('Original surfaceprops ParseSurfaceData (explicit engine mutation): '+$surfacePropsRegistrationSummary)
             ('Original physics surface count/index readback (SDK2004, opt-in): '+$surfacePropsReadbackSummary)

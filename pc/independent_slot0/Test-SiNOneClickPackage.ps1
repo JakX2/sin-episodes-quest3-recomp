@@ -52,6 +52,19 @@ if(-not (($surfacePropsPlan -join '|').Contains(
     'SURFACEPROPS READ: opt-in read-only original rb/GAME manifest and two rb/nullptr scripts, 93 definitions, no physics registration'))) {
     throw 'Original Source 2006 surfaceprops resource stage must be explicit and read-only'
 }
+# Phase522: material read must be independently selected, entirely
+# read-only, and must not accidentally invoke ParseSurfaceData.
+$materialPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePhysicsDataRead)
+if(-not (($materialPlan -join '|').Contains(
+    'SURFACEPHYSICS DATA READ: opt-in READ ONLY actual 2006 engine vslot5 for default/solidmetal/metalvehicle; no ParseSurfaceData and no game Init.')) -or
+   ($materialPlan -join '|').Contains('SURFACEPROPS REGISTER:')) {
+    throw 'Phase522 physics fields must be separately opt-in and never imply parser mutation'
+}
+foreach($early in @($plan,$soundscapePlan,$cvarPlan,$physicsPlan,$surfacePropsPlan)) {
+    if(($early -join '|').Contains('SURFACEPHYSICS DATA READ:')) {
+        throw 'Phase522 read-only material query implicitly enabled without opt-in'
+    }
+}
 $registerPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePropsRegister)
 if(-not (($registerPlan -join '|').Contains(
     'SURFACEPROPS REGISTER: EXPLICIT ENGINE MUTATION. Calls original VPhysicsSurfaceProps001 slot1 with both resources in disposable copy; still NO game boot.'))) {
@@ -164,6 +177,23 @@ if (-not $hookText.Contains('Start-SiNFileSystemTest.ps1') -or
 }
 # Phase 518: the owner has two explicit, nonconfusable physics shortcuts.
 # The read-only script must not be able to invoke the native mutating path.
+# Phase522 material batch contains NO user-supplied extra argument pass-through:
+# a supposed read-only shortcut must never turn into -SurfacePropsRegister.
+$materialsReadOnly=Join-Path (Split-Path -Parent $Runner) 'RUN_PHYSICS_MATERIALS_READONLY.bat'
+if(-not (Test-Path -LiteralPath $materialsReadOnly -PathType Leaf)) {
+    throw 'Phase522 standalone material read-only BAT absent'
+}
+$materialBat=[IO.File]::ReadAllText($materialsReadOnly)
+$materialArgs='-StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead -SurfacePhysicsDataRead'
+if(-not $materialBat.Contains($materialArgs) -or
+   $materialBat.Contains('-SurfacePropsRegister') -or
+   $materialBat.Contains('-SurfacePropsReadback') -or
+   $materialBat.Contains('%*') -or
+   -not $materialBat.Contains('Start-SiNFileSystemTest.ps1') -or
+   -not $materialBat.Contains('pause') -or
+   -not $materialBat.Contains('exit /b %RESULT%')) {
+    throw 'Phase522 material read-only BAT must specify only the authenticated nonmutating stage'
+}
 $physicsReadOnly=Join-Path (Split-Path -Parent $Runner) 'RUN_PHYSICS_READONLY_TEST.bat'
 $physicsReadback=Join-Path (Split-Path -Parent $Runner) 'RUN_PHYSICS_READBACK_TEST.bat'
 foreach($entry in @($physicsReadOnly,$physicsReadback)) {
@@ -176,6 +206,7 @@ $readbackText=[IO.File]::ReadAllText($physicsReadback)
 $requiredReadOnly='-StagedStats -HookProof -SoundscapeCatalog -SoundscapeCvarLookup -PhysicsFactoryLookup -SurfacePropsRead'
 $requiredReadback=$requiredReadOnly+' -SurfacePropsRegister -SurfacePropsReadback'
 if(-not $readonlyText.Contains($requiredReadOnly) -or
+   $readonlyText.Contains('%*') -or
    $readonlyText.Contains('-SurfacePropsRegister') -or
    $readonlyText.Contains('-SurfacePropsReadback') -or
    -not $readonlyText.Contains('Start-SiNFileSystemTest.ps1')) {

@@ -32,6 +32,7 @@
 #include "client_original_surfaceprops_engine_fs_bridge.h"
 #include "client_original_surfaceprops_registration.h"
 #include "client_original_surfaceprops_readback.h"
+#include "client_original_surfacephysics_data_probe.h"
 #include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
@@ -532,6 +533,15 @@ static bool clientSurfacePropsReadProbeEnabled() noexcept {
             "SIN_INDEPENDENT_CLIENT_SURFACEPROPS_READ_PROBE",
             enabled,2)==1 && enabled[0]=='1';
 }
+// Phase522: vslot5 GetSurfaceData, actual 2006 engine read-only material
+// snapshot. Unlike Phase515, does NOT require or call ParseSurfaceData.
+static bool clientSurfacePhysicsDataProbeEnabled() noexcept {
+    char enabled[2]={};
+    return clientSurfacePropsReadProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_SURFACEPHYSICS_DATA_PROBE",
+            enabled,2)==1 && enabled[0]=='1';
+}
 // Phase 515: actual engine mutation requires an independent, separate opt-in.
 // No old filesystem/physics/soundscape diagnostic can enable this implicitly.
 static bool clientSurfacePropsRegisterProbeEnabled() noexcept {
@@ -637,6 +647,38 @@ static bool clientSurfacePropsReadbackProbeEnabled() noexcept {
             diagnostic("engine-fs-surfaceprops-result",shape);
             diagnostic("engine-fs-surfaceprops-terminal-stop",
                        "no-physics-surface-registration-no-game-init");
+            if(resources.verified() &&
+               clientSurfacePhysicsDataProbeEnabled()) {
+                diagnostic("engine-fs-material-entered",
+                           "VPhysicsSurfaceProps001:slots2-3-5:read-only");
+                void* props=g_clientPhysicsFactory?
+                    g_clientPhysicsFactory("VPhysicsSurfaceProps001",nullptr):
+                    nullptr;
+                const auto materials=
+                    sin_independent::original_surfacephysics_data::ReadOnly(props);
+                char report[144]={};
+                std::snprintf(report,sizeof(report),"%s:%d:%u",
+                    sin_independent::original_surfacephysics_data::Name(materials.outcome),
+                    materials.count,materials.sampled);
+                diagnostic("engine-fs-material-result",report);
+                if(materials.verified()){
+                    for(unsigned i=0;i<3;++i){
+                        const auto p=materials.values[i];
+                        char line[174]={};
+                        std::snprintf(line,sizeof(line),"%s:%d:%.4g:%.4g:%.6g:%.4g:%.4g",
+                            sin_independent::original_surfaceprops_readback::kNames[i],
+                            materials.indices[i],
+                            static_cast<double>(p.friction),
+                            static_cast<double>(p.elasticity),
+                            static_cast<double>(p.density),
+                            static_cast<double>(p.thickness),
+                            static_cast<double>(p.dampening));
+                        diagnostic("engine-fs-material-sample",line);
+                    }
+                }
+                diagnostic("engine-fs-material-terminal-stop",
+                           "read-only-physics-fields-no-game-init");
+            }
             if(resources.verified() &&
                clientSurfacePropsRegisterProbeEnabled()) {
                 // Original 0x24191EC0 closes both source files before

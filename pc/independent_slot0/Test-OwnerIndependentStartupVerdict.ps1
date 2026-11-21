@@ -1003,6 +1003,58 @@ try {
        -not ($propsOut -ccontains $expectedCvar)) {
         throw ('Original surfaceprops manifest and 2-source shape not accepted after true physics 3/3: '+($propsOut -join '|'))
     }
+    # Phase522: the initial engine table is PREPOPULATED. Verify that
+    # three Source2004 vslot5 material samples classify even when NO
+    # ParseSurfaceData call has been requested in this client session.
+    $materialSteps=[string[]]@(
+        '[SiN independent] role=client phase=engine-fs-material-entered version=VPhysicsSurfaceProps001:slots2-3-5:read-only',
+        '[SiN independent] role=client phase=engine-fs-material-result version=original-physics-material-three-samples:94:3',
+        '[SiN independent] role=client phase=engine-fs-material-sample version=default:0:0.8:0.2:1000:0:0',
+        '[SiN independent] role=client phase=engine-fs-material-sample version=solidmetal:1:0.3:0.1:7800:0.2:0',
+        '[SiN independent] role=client phase=engine-fs-material-sample version=metalvehicle:85:0.4:0.4:3900:0.3:0',
+        '[SiN independent] role=client phase=engine-fs-material-terminal-stop version=read-only-physics-fields-no-game-init'
+    )
+    $materialTrace=[string[]](@($soundscapeSteps[0..3])+
+        @($soundscapeCvarSteps)+@($physicsSteps)+
+        @($surfacePropsSteps)+@($materialSteps)+@($soundscapeSteps[4]))
+    [IO.File]::WriteAllLines($retailReplay,
+        [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($materialTrace)))
+    $materialOut=Verify 'CLIENT_SOUNDSCAPE_CATALOG_TERMINAL_DIAGNOSTIC_NO_BOOT_PROOF'
+    $expectedMaterial=('OWNER_CLIENT_SURFACEPHYSICS_MATERIAL_RESULTS: '+
+        'sin-independent-'+$session+'-13124.log:client:'+
+        'original-physics-material-three-samples:94:3')
+    if(-not ($materialOut -ccontains $expectedMaterial) -or
+       -not ($materialOut -ccontains $expectedProps) -or
+       ($materialOut -join '|').Contains('OWNER_CLIENT_SURFACEPROPS_REGISTRATION_RESULTS:')) {
+        throw 'Pure read-only physics surface tuples incorrectly depend on native parser mutation'
+    }
+    foreach($mutation in @('missing-sample','duplicate-sample','bad-float','bad-index','missing-resources')) {
+        $bad=@($materialSteps)
+        $badResources=@($surfacePropsSteps)
+        if($mutation -eq 'missing-sample') {
+            $bad=@($materialSteps[0],$materialSteps[1],
+                $materialSteps[2],$materialSteps[3],$materialSteps[5])
+        } elseif($mutation -eq 'duplicate-sample') {
+            $bad=@($materialSteps[0],$materialSteps[1],
+                $materialSteps[2],$materialSteps[3],$materialSteps[4],
+                $materialSteps[4],$materialSteps[5])
+        } elseif($mutation -eq 'bad-float') {
+            $bad[3]=$bad[3].Replace('0.3:0.1:7800','NaN:0.1:7800')
+        } elseif($mutation -eq 'bad-index') {
+            $bad[4]=$bad[4].Replace('metalvehicle:85:','metalvehicle:99:')
+        } elseif($mutation -eq 'missing-resources') {
+            $badResources=@()
+        }
+        $trace=[string[]](@($soundscapeSteps[0..3])+
+            @($soundscapeCvarSteps)+@($physicsSteps)+
+            @($badResources)+@($bad)+@($soundscapeSteps[4]))
+        [IO.File]::WriteAllLines($retailReplay,
+            [string[]](@($stagedReadPrefix)+@($stagedSteps)+@($hookSteps)+@($trace)))
+        $badOut=@(& $Classifier -Session $session -LogDirectory $dir)
+        if(($badOut -join '|').Contains('OWNER_CLIENT_SURFACEPHYSICS_MATERIAL_RESULTS:')) {
+            throw ('Forged physics material sample elevated to owner evidence: '+$mutation)
+        }
+    }
     # Phase 515: mutating ParseSurfaceData is accepted only after
     # all prior owner-gated soundscape, physics and resource results.
     $registrationSteps=[string[]]@(
