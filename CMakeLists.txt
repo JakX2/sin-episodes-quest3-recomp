@@ -140,6 +140,29 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
   endif()
 endif()
 
+# Phase529 native-host adapter: a real Source engine must allocate a
+# CBaseTrigger first, then route authored SiN trigger game code through
+# native origin/flag snapshots and genuine map KeyValues callbacks.
+# Does NOT add physics/model/prop reading or claim playable game DLL boot.
+add_library(sin_original_trigger_map_bridge STATIC
+  src/original_sin_trigger_map_bridge.cpp)
+target_include_directories(sin_original_trigger_map_bridge PUBLIC
+  include third_party/research)
+target_link_libraries(sin_original_trigger_map_bridge PUBLIC
+  sin_original_gameplay_triggers sin_source_map_runtime)
+target_compile_options(sin_original_trigger_map_bridge PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_trigger_map_bridge_tests
+    tests/test_original_sin_trigger_map_bridge.cpp)
+  target_link_libraries(sin_original_trigger_map_bridge_tests PRIVATE
+    sin_original_trigger_map_bridge)
+  target_compile_options(sin_original_trigger_map_bridge_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_trigger_map_bridge_tests
+    COMMAND sin_original_trigger_map_bridge_tests)
+endif()
+
 # Source-derived SiN assault-rifle settings consumed by the existing
 # engine-neutral weapon state machine (not a native Source game entity).
 if(BUILD_TESTING)
