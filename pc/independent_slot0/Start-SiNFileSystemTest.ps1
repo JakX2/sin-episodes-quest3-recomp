@@ -276,6 +276,46 @@ try {
     [IO.File]::WriteAllText(
         (Join-Path $disposable 'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY.txt'),
         'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1'+[Environment]::NewLine)
+    if ($ServerPhysicsReadOnly) {
+        # Original server.dll only, in a clean authenticated game copy.
+        $serverStarted=$true
+        $launchStarted=$true
+        $serverTranscript=Join-Path $reports 'server.txt'
+        $serverRun=Join-Path $reports 'server-run.txt'
+        try {
+            $probe=Join-Path $PSScriptRoot 'Invoke-OwnerIndependentEngineProbe.ps1'
+            $serverArgs=@{
+                GameBin=(Join-Path $disposable 'SE1\bin')
+                GameExecutable=(Join-Path $disposable 'SinEpisodes.exe')
+                IndependentBin=$bin
+                ProbeRole='Server'
+                EnableServerFactoryProbe=$true
+                EnableServerPhysicsFactoryProbe=$true
+                EnableServerPhysicsResourceProbe=$true
+                TimeoutSeconds=$TimeoutSeconds
+                DisposableTestCopyConfirmed=$true
+            }
+            & $probe @serverArgs *>&1 | Tee-Object -FilePath $serverRun | Out-Host
+        } catch {
+            $problems.Add('server physics: '+$_.Exception.Message)
+        }
+        if (Test-Path -LiteralPath $serverRun -PathType Leaf) {
+            Copy-Item -LiteralPath $serverRun -Destination $serverTranscript
+            Preserve-SessionLogs $serverTranscript $reports
+            $serverLines=@([IO.File]::ReadAllLines($serverTranscript))
+            $exitWitness=@($serverLines | Where-Object {
+                $_ -ceq 'OWNER_ENGINE_EXIT_HEX: 0x53494E7A'
+            }).Count -eq 1
+            $resourceWitness=@($serverLines | Where-Object {
+                $_ -cmatch '^OWNER_SERVER_ORIGINAL_SURFACEPROPS_READ_RESULTS: sin-independent-[0-9a-f]{32}-[0-9]+\.log:server:original-server-surfaceprops-two-sources-verified:2:2:93:71:0$'
+            }).Count -eq 1
+            $restoredWitness=@($serverLines | Where-Object {
+                $_ -ceq 'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE'
+            }).Count -eq 1
+            $serverOk=$exitWitness -and $resourceWitness -and $restoredWitness
+        }
+        $exitCode=if($serverOk){0}else{2}
+    } else {
     $presence=Join-Path $reports 'presence.txt'
     $presenceRun=Join-Path $reports 'presence-run.txt'
     $launchStarted=$true
@@ -358,6 +398,7 @@ try {
     }else{
         if($readOk){0}else{2}
     }
+    }
 } catch {
     $problems.Add('setup: '+$_.Exception.Message)
     Write-Output ('Test blocked: '+$_.Exception.Message)
@@ -368,7 +409,7 @@ try {
         $restored=$true
         if ($launchStarted) {
             $restored=$false
-            $last=if($stagedStarted){'staged.txt'}elseif($presenceOk){'read.txt'}else{'presence.txt'}
+            $last=if($serverStarted){'server.txt'}elseif($stagedStarted){'staged.txt'}elseif($presenceOk){'read.txt'}else{'presence.txt'}
             if ($null -ne $reports) {
                 $transcript=Join-Path $reports $last
                 if (Test-Path -LiteralPath $transcript -PathType Leaf) {
