@@ -26,7 +26,7 @@ def inspect(path):
     if len(data) < 64 or data[:2] != b"MZ":
         raise PEError("missing DOS header")
     pe = u32(0x3c)
-    if pe + 24 > len(data) or data[pe:pe+4] != b"PE\\x00\\x00":
+    if pe + 24 > len(data) or data[pe:pe+4] != b"PE\x00\x00":
         raise PEError("missing NT header")
     machine, count, opt_size = u16(pe+4), u16(pe+6), u16(pe+20)
     opt = pe+24
@@ -68,7 +68,7 @@ def inspect(path):
     for i in range(names):
         rva = u32(offset(name_table+i*4, 4))
         start = offset(rva)
-        end = data.find(b"\\x00", start, min(len(data), start+512))
+        end = data.find(b"\x00", start, min(len(data), start+512))
         if end < 0:
             raise PEError("unterminated export name")
         try:
@@ -84,7 +84,7 @@ def inspect(path):
         forwarded = export_rva <= target_rva < export_rva+export_size
         if forwarded:
             start_forwarder = offset(target_rva)
-            if data.find(b"\\x00", start_forwarder, min(len(data), start_forwarder+512)) < 0:
+            if data.find(b"\x00", start_forwarder, min(len(data), start_forwarder+512)) < 0:
                 raise PEError("unterminated export forwarder")
         else:
             offset(target_rva)
