@@ -14,6 +14,14 @@ enum class ComparatorKind : std::uint8_t {
     CaseFolded             // native callback 0x241D3C90
 };
 
+// Direct 2006 static initialization at original 0x24262410 initializes
+// the token subobject at global converter registry +0x24 with flag=1.
+// Base constructor 0x241D3D90 clears its callback first; the resulting
+// default pointer is the original folded comparator, unless replaced later.
+inline constexpr std::uint32_t kHudConverterTokenTableVA=0x2432289C;
+inline constexpr std::uint32_t kHudConverterTokenTableInitializerVA=0x24262410;
+inline constexpr ComparatorKind kOriginalHudConverterInitialComparator=ComparatorKind::CaseFolded;
+
 // Exact original selection at constructor 0x241D4640. When an earlier
 // initializer already set callback this+0x0, do not overwrite it.
 constexpr bool constructor_installs_callback(bool previously_set) noexcept {
