@@ -26,7 +26,7 @@ def inspect_pe(path):
     if len(data) < 0x40 or data[:2] != b"MZ":
         raise ValueError("not an MZ executable")
     pe = struct.unpack_from("<I", data, 0x3c)[0]
-    if pe + 26 > len(data) or data[pe:pe + 4] != b"PE\\0\\0":
+    if pe + 26 > len(data) or data[pe:pe + 4] != bytes((80, 69, 0, 0)):
         raise ValueError("invalid PE signature")
     machine, sections, _, _, _, optional_size, _ = struct.unpack_from("<HHIIIHH", data, pe + 4)
     if machine != 0x14c or sections == 0 or optional_size < 2:
