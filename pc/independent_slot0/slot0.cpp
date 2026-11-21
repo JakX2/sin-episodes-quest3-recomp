@@ -32,7 +32,6 @@
 #include "client_original_surfaceprops_engine_fs_bridge.h"
 #include "client_original_surfaceprops_registration.h"
 #include "client_original_surfaceprops_readback.h"
-#include "server_original_surfaceprops_readonly.h"
 #include "client_soundscape_diagnostic_formatter.h"
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
 #include "client_bf_read_candidate_layout.h"
@@ -41,6 +40,7 @@
 #if defined(SIN_ROLE_server)
 #include "server_gameents_abi.h"
 #include "server_original_physics_factory_probe.h"
+#include "server_original_surfaceprops_readonly.h"
 #include "server_tick_interval_core.h"
 #include "sin_user_message_catalog.h"
 #include "server_post_connect_core.h"
