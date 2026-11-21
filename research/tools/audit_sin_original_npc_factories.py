@@ -69,6 +69,18 @@ def verify_registration_shape(
     ):
         raise VerificationError("native NPC registrar target/factory pointer mismatch")
 
+def verify_three_aliases(u32,objects,vtable,creator,delegate,col)->None:
+    # The factory object addresses are different but the vptr they store
+    # and its two method pointers are IDENTICAL. This is factory metadata
+    # only; class AI behavior or initial weapons are not inferred.
+    if len(objects)!=3 or len(set(objects))!=3:
+        raise VerificationError("distinct three-variant registrar objects required")
+    if any(u32(ptr)!=vtable for ptr in objects):
+        raise VerificationError("nonidentical grunt factory virtual tables")
+    if (u32(vtable-4),u32(vtable),u32(vtable+4))!=(
+        col,creator,delegate):
+        raise VerificationError("shared original grunt factory methods changed")
+
 def verify_shared_druglab_grunt_factory(pe)->dict:
     """Authenticate three class aliases and their *shared* original constructor."""
     u32=lambda va:struct.unpack('<I',pe.at(va,4))[0]
@@ -77,13 +89,10 @@ def verify_shared_druglab_grunt_factory(pe)->dict:
     creator=0x2236A320
     delegate=0x22369E30
     constructor=0x2236A340
-    for ptr in factory_addresses:
-        if pe.section_of(ptr)!='.data' or u32(ptr)!=vtable:
-            raise VerificationError("druglab grunt native factory vptr mismatch")
-    if (pe.section_of(vtable)!='.rdata' or
-        u32(vtable-4)!=0x224D23F4 or
-        u32(vtable)!=creator or u32(vtable+4)!=delegate):
-        raise VerificationError("druglab grunt shared two-method vtable mismatch")
+    if (any(pe.section_of(ptr)!='.data' for ptr in factory_addresses)
+        or pe.section_of(vtable)!='.rdata'):
+        raise VerificationError("druglab grunt shared factory sections mismatch")
+    verify_three_aliases(u32,factory_addresses,vtable,creator,delegate,0x224D23F4)
     methods=(
         ('factory creator wrapper',creator,23,
          '6eecf5ca8aa241b73c4f1557c98667941ac865d58014926bdfdd055381792de9'),
@@ -223,10 +232,28 @@ def self_test()->None:
             else:raise AssertionError("forged native NPC ABI address accepted")
     if len(NPC_FACTORIES)!=17 or len({x[0] for x in NPC_FACTORIES})!=17:
         raise AssertionError("wrong original NPC inventory count")
+    # No original code or original vtables in CI. Use invented
+    # addresses and a fake 5-DWORD pointer lookup.
+    objects=(0x71001000,0x71001004,0x71001008)
+    vtable=0x72002000
+    creator=0x73003000
+    delegate=0x73003100
+    col=0x74004000
+    words={**{p:vtable for p in objects},
+           vtable-4:col,vtable:creator,vtable+4:delegate}
+    verify_three_aliases(lambda va:words.get(va,0),
+                         objects,vtable,creator,delegate,col)
+    for key in words:
+        mutated=dict(words);mutated[key]^=1
+        try:
+            verify_three_aliases(lambda va:mutated.get(va,0),
+                                 objects,vtable,creator,delegate,col)
+        except VerificationError:pass
+        else:raise AssertionError("forged shared factory alias accepted")
     try:verify_npc_registry(b'synthetic',b'synthetic')
     except VerificationError:pass
     else:raise AssertionError("untrusted original game DLLs accepted")
-    print("PASS 17 NPC metadata entries, all 22 synthetic registrar-byte mutations, 8 offset/target mutations and original SHA refusal")
+    print("PASS 17 NPC metadata entries, all 22 synthetic registrar-byte mutations, 8 offset/target mutations and 6 shared-grunt factory pointer/RTTI mutations with original SHA refusal")
 
 def main()->int:
     p=argparse.ArgumentParser(description=__doc__)
