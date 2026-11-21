@@ -57,3 +57,22 @@ The original-free SHA auditor `research/tools/audit_sin_original_registry_refres
 The independent C++17 model `include/sin_compat/original_grunt_registry_refresh_phase586.hpp` and tests check the direct 212-byte stride, out-of-bounds index clamping when records exist, revision minimum across paged partitions, record flag writes before name lookup, primary/fallback name resolution, unchanged numeric key for empty names, null-registry no-op, per-record follow-up and revision stamp order. Strict GCC and Clang with warnings-as-errors, GCC AddressSanitizer/UBSan, standalone CMake/CTest **2/2 PASS**.
 
 **What is still unresolved:** the names of individual registrations in the private game assets, original text-table loading, paged allocator implementation, full source/ABI of registry `0x2211D460` / `0x2211D470` and validation `0x220EA730`, low-level numeric name converters, and the eventual behavior of a complete replacement `client.dll`/`server.dll`. Original copyrighted DLLs, raw native disassembly dumps and commercial assets are deliberately excluded from all Git commits.
+
+## Source-verified shared activity names (supplemental evidence)
+
+A targeted native provenance check follows the two original name-resolution APIs called above. Their original whole-function SHA256 digests are pinned in the Phase586 auditor as **supplemental shared-engine evidence** (not added to the 472-byte gameplay-accessor count): `0x220E6CB0` (39 bytes), `0x220E6FE0` (84 bytes), and shared named-registration helper `0x220E6F60` (128 bytes). The large registration initializer at `0x220E7040` is 13,780 bytes, with SHA256 `be2d64d38bfffb9d6285fbb36268bc308a5d3d03100caf75dd6081dcb4b82206`; it contains **921** consecutively registered shared `ACT_*` names. This initializer is authenticated as a whole, but its 13,780 bytes are deliberately **not claimed as new reconstructed Grunt gameplay code**.
+
+The auditor cross-checks each selected native `push id`, `push literal-address`, `call 0x220E6F60` triplet, along with the original NUL-terminated `.rdata` string. Verified examples:
+
+| Original shared ID | Original 2006 name | Registration E8 callsite |
+|---:|---|---|
+| 0 | `ACT_RESET` | `0x220E7047` |
+| 1 | `ACT_IDLE` | `0x220E7053` |
+| 6 | **`ACT_WALK`** | `0x220E708F` |
+| 10 | **`ACT_RUN`** | `0x220E70C2` |
+| 15 | **`ACT_SCRIPT_CUSTOM_MOVE`** | `0x220E70FE` |
+| 25 | `ACT_FLY` | `0x220E717C` |
+| 30 | `ACT_HOP` | `0x220E71B8` |
+| 154 | `ACT_DO_NOT_DISTURB` | `0x220E7809` |
+
+This identifies the **shared animation-activity names** for several raw values seen upstream in Phases 583–584, particularly the literal 10-to-6 fallback. It is stronger evidence for an activity translation than a hypothetical generic schedule mapping. It is **not** proof that a Grunt's private `+0x338/+0x33C` transformations or sequence weights cannot remap these values, nor does it establish the emitted animation/sequence or its gameplay meaning. Grunt-specific schedule symbols remain separate research targets.
