@@ -201,7 +201,7 @@ foreach($entry in @($readonlyText,$readbackText)) {
 # call may be enabled without separate explicit registration+readback flags.
 foreach($marker in @(
     'Original physics pre-Parse table snapshot (read-only): ',
-    "if ($SurfacePropsReadback) {",
+    'if ($SurfacePropsReadback) {',
     'engine-fs-preparse-entered',
     'engine-fs-preparse-result',
     'engine-fs-preparse-terminal-stop',
