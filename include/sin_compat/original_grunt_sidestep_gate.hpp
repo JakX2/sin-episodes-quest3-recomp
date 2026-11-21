@@ -2,6 +2,7 @@
 // Phase536. Native 2006 CNPC_MobGrunt virtual +0x848 and selector state=3.
 // Independent host-driven behavioral reference, not an engine CBaseNPC.
 #include <cstdint>
+#include <string_view>
 
 namespace sin_compat::original_grunt_sidestep {
 
@@ -11,6 +12,9 @@ inline constexpr std::uint32_t kOriginalSelectorVA = 0x2235E4E0;
 inline constexpr std::uint32_t kNativeGateVirtualOffset = 0x848;
 inline constexpr std::uint32_t kNativeFallbackVirtualOffset = 0x844;
 inline constexpr std::uint32_t kOriginalPositiveScheduleId = 0x55;
+// Verified as one name/ID registration pair in original 0x223600C1..0x223600DC.
+inline constexpr std::string_view kOriginalPositiveScheduleName =
+    "SCHED_GRUNT_MOBILITY_SIDESTEP";
 inline constexpr std::uint8_t kInPlayerSightsCondition = 0x4D;
 
 // Source offsets are recovered; member names are purely descriptive.
