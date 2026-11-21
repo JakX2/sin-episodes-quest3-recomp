@@ -4159,3 +4159,23 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase567: original Grunt NPC+0x8F8 navigation-component constructor,
+# native waypoint route ownership, and original-free synthetic model tests.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_nav_phase567_tests
+    tests/test_original_grunt_nav_phase567.cpp)
+  target_include_directories(sin_original_grunt_nav_phase567_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_nav_phase567_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_nav_phase567_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_nav_phase567_tests
+    COMMAND sin_original_grunt_nav_phase567_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_nav_phase567_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_nav_phase567.py"
+        --self-test)
+  endif()
+endif()
