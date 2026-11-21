@@ -332,3 +332,36 @@ Audit:
 `research/tools/audit_sin_original_voice_block_hash.py`.
 No engine network, native boot, physics/props, or Android/VR
 implementation is added.
+
+## Phase 552: original CVoiceStatus class vtable and lifecycle
+
+**Original MSVC RTTI now positively identifies `CVoiceStatus`** via
+type descriptor `0x2431D244` and CompleteObjectLocator `0x242EA63C`.
+Native vtable `0x242A9EF8` entries: +0 deleting destructor
+`0x241E5290`, +4 two-argument initializer `0x241E5C60`,
++8 literal one-byte `ret` `0x241E50F0`.
+
+Thirteen **additional complete, non-overlapping original client methods**
+total **749 authenticated instruction bytes**, with **16 original rel32
+CALLs, one native tail JMP, 53 opcode/field witnesses**, and five native
+strings including `voice/icntlk_pl`, `VoiceMask`,
+`RequestState`, and `VGUI textures`. Original 32-bit singleton
+pointer `0x24378658` allocates exactly **0x2834 bytes** and initializes
+the 256-bucket table at +0x28. Distinct original active-instance global
+`0x2437865C` is set during initialization and cleared by the
+destructor. Initializer registers `VoiceMask` callback `0x241E5370`
+then `RequestState` callback `0x241E5C30`, which sends the forced
+`UpdateServerState(1)`. Periodic helper `0x241E5D00` calls
+`UpdateServerState(0)` when elapsed native client float time is at
+least exactly **1.0f**.
+
+Original function `0x241E5C30` ends directly at the start of
+`0x241E5C60` without any INT3, a distinct native boundary checked by
+the owner SHA-pinned auditor. The destructor also calls the old hash
+cleanup chain; owner resource/class semantic gaps are documented.
+
+See
+`research/phases/2026-11-21-original-client-cvoice-status-vtable-construction-messages-and-periodic-tick.md`,
+auditor `research/tools/audit_sin_original_voice_lifecycle.py`,
+and original-free C++17 reference/tests. No Windows/Quest game boot or
+physics/prop/rendering work is claimed.
