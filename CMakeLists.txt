@@ -215,6 +215,13 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
   add_test(NAME sin_original_druglab_grunt_spawn_tests
     COMMAND sin_original_druglab_grunt_spawn_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_druglab_grunt_spawn_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_sin_original_druglab_grunt_spawn.py
+        --self-test)
+  endif()
 endif()
 
 # Source-derived SiN assault-rifle settings consumed by the existing
