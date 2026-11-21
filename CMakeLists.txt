@@ -3519,3 +3519,50 @@ if(BUILD_TESTING)
   target_link_libraries(sin_original_druglab_grunt_full_lifecycle_tests PRIVATE
     sin_original_grunt_ai_subsystems)
 endif()
+
+# Phase535: RTTI-authenticated CNPC_MobGrunt embedded AI behavior collection,
+# owner links and original NPC sentence-parameter key; host-only implementation.
+add_library(sin_original_grunt_behavior_postinit STATIC
+  src/original_grunt_behavior_postinit.cpp)
+target_include_directories(sin_original_grunt_behavior_postinit PUBLIC include)
+target_compile_features(sin_original_grunt_behavior_postinit PUBLIC cxx_std_17)
+target_compile_options(sin_original_grunt_behavior_postinit PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+
+# The original Grunt +0x3F8 calls the seven core factories before it
+# registers the eight embedded behaviors, then configures sentence state.
+add_library(sin_original_grunt_full_ai_postinit STATIC
+  src/original_grunt_full_ai_postinit.cpp)
+target_include_directories(sin_original_grunt_full_ai_postinit PUBLIC include)
+target_link_libraries(sin_original_grunt_full_ai_postinit PUBLIC
+  sin_original_grunt_ai_subsystems sin_original_grunt_behavior_postinit)
+target_compile_features(sin_original_grunt_full_ai_postinit PUBLIC cxx_std_17)
+target_compile_options(sin_original_grunt_full_ai_postinit PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_behavior_postinit_tests
+    tests/test_original_grunt_behavior_postinit.cpp)
+  target_link_libraries(sin_original_grunt_behavior_postinit_tests PRIVATE
+    sin_original_grunt_behavior_postinit)
+  target_compile_options(sin_original_grunt_behavior_postinit_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_behavior_postinit_tests
+    COMMAND sin_original_grunt_behavior_postinit_tests)
+
+  add_executable(sin_original_grunt_full_ai_postinit_tests
+    tests/test_original_grunt_full_ai_postinit.cpp)
+  target_link_libraries(sin_original_grunt_full_ai_postinit_tests PRIVATE
+    sin_original_grunt_full_ai_postinit)
+  target_compile_options(sin_original_grunt_full_ai_postinit_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_full_ai_postinit_tests
+    COMMAND sin_original_grunt_full_ai_postinit_tests)
+
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_behavior_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_behavior_postinit.py"
+        --self-test)
+  endif()
+endif()
