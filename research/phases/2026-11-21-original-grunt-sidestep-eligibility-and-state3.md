@@ -7,7 +7,7 @@ This phase rechecks the original 2006 SiN Episodes `server.dll` / `client.dll`, 
 - `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`
 - `6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d`
 
-The immediate motivation is the owner's two genuine 2006 Windows console logs on `SE1_U4Lab05`. The Assault Rifle Grunt in `condump001.txt` runs `SCHED_GRUNT_MOBILITY_SIDESTEP`, later fails `TASK_GRUNT_SIDESTEP_GOAL` with `Don't have a route`, enters `SCHED_GRUNT_COMBAT_FAIL`, and resumes ranged attack after `COND_CAN_RANGE_ATTACK1`. The earlier Pistol and Scattergun logs contain different behaviors and assault-navigation failures. These reports are retained in Phase 534 research notes. They do not establish which low-level return code maps to a visible schedule name.
+The immediate motivation is the owner's two genuine 2006 Windows console logs on `SE1_U4Lab05`. The Assault Rifle Grunt in `condump001.txt` runs `SCHED_GRUNT_MOBILITY_SIDESTEP`, later fails `TASK_GRUNT_SIDESTEP_GOAL` with `Don't have a route`, enters `SCHED_GRUNT_COMBAT_FAIL`, and resumes ranged attack after `COND_CAN_RANGE_ATTACK1`. The earlier Pistol and Scattergun logs contain different behaviors and assault-navigation failures. These reports are retained in Phase 534 research notes. The code-to-name mapping is now independently corroborated by original registration instructions, as shown below.
 
 The original Grunt vtable at `0x2249AAA4` contains virtual byte `+0x848` = `0x22359620`, the `GruntVtable530` call site previously covered by Phase 131. The entire method is now independently verified as **164 bytes**, SHA-256 `4eab1c761ef9d125b01708a37c919bec1b4042f3d99a834a16243a8f23364f3f`.
 
@@ -35,7 +35,9 @@ After higher-priority conditions, original `0x2235E4E0` checks Grunt dword `+0x8
 - When that gate returns nonzero, **returns the native numeric schedule ID `0x55`**, witness `0x2235E7C8`.
 - When the gate returns zero, calls Grunt virtual `+0x844`; if that virtual returns a nonzero schedule ID, returns it immediately. Otherwise it continues to later selector code.
 
-**Critical evidence boundary:** this report authenticates native ID **0x55** and the distinct retail string `SCHED_GRUNT_MOBILITY_SIDESTEP`, but **does not independently prove their string/number registration is the same**. It is a plausible mapping requiring direct original schedule-registry corroboration. The portable code therefore returns raw original ID `0x55` rather than giving it an unverified enum label.
+**Original registration connection now proven:** original instruction `0x223600C1` writes the string pointer `0x2249356C` into the schedule-registration argument; the original string there is `SCHED_GRUNT_MOBILITY_SIDESTEP`. Instruction `0x223600C9` sets the paired numeric ID to `0x55`. The following original direct CALL at `0x223600D7` invokes `0x2208C590` with the two values. Thus the numeric ID **0x55** is the registered schedule **`SCHED_GRUNT_MOBILITY_SIDESTEP`**, independently confirming the identity behind the retail log's sidestep schedule.
+
+The portable model includes both the verified name and the numeric return ID, but never passes the 2006 integer as a modern SourceVR/HL2 schedule enum.
 
 Other `+0x850` states (1, 2, 4, 6/7) and higher-priority branches are outside the isolated helper; Phase 132's partial selector continues to own those gaps. State 3 is not a global always-on sidestep condition.
 
@@ -44,10 +46,10 @@ Other `+0x850` states (1, 2, 4, 6/7) and higher-priority branches are outside th
 - `include/sin_compat/original_grunt_sidestep_gate.hpp` and `src/original_grunt_sidestep_gate.cpp` model the exact short-circuit order without copying or calling 2006 x86 method pointers. The `IHost` gives access to the real shared-condition queries, source virtual +0x304, manager virtual +0x300 and global rules +0x1A0. Host-native flags are supplied through explicit offset-labelled boolean facts.
 - The verified state-3 selector fragment is a separately named helper: it returns raw ID `0x55` on successful gate, invokes native virtual +0x844 on a clean rejection, and returns no schedule if the fallback yields zero. It must only be invoked when the original full selector has reached this precise branch.
 - `tests/test_original_grunt_sidestep_gate.cpp` covers native offsets and identities, every early rejection, strict callback ordering, factor 1 and factor 4, successful schedule 0x55, unsuccessful fallback (0), nonzero fallback return, other state (no calls), exceptions and reentrant callbacks. Exceptional host errors fail closed and intentionally do not attempt a fallback; this is independent adapter safety, **not an assertion about the original x86 exception model**.
-- `research/tools/audit_sin_original_grunt_sidestep_gate.py` requires both exact original whole-DLL hashes, verifies two complete method SHA-256s (**1,155 complete original bytes**), original vtable entry, 17 instruction/field witnesses and six rel32 direct calls. Includes a synthetic mutation self-test.
+- `research/tools/audit_sin_original_grunt_sidestep_gate.py` requires both exact original whole-DLL hashes, verifies two complete method SHA-256s (**1,155 complete original bytes**), original vtable entry, 19 instruction/field witnesses, seven rel32 direct calls, and the original schedule-name string. Includes a synthetic mutation self-test.
 
 Local strict GCC and Clang C++17 compilation and host tests passed. AddressSanitizer/UndefinedBehaviorSanitizer passed. A standalone CMake/CTest run passed 2/2 tests. The auditor was also executed against the exact original owner's `bin.zip` and returned `ORIGINAL_GRUNT_SIDESTEP_GATE_AUTHENTICATED`.
 
 ## What this does not prove
 
-This phase does not provide native entity AI navigation, map pathing, schedule registry names, game-engine `ServerGameDLL003::DLLInit`, a runnable Windows game module, or an Android/VR port. The actual retail Grunt's `Don't have a route` is a **movement scheduling failure**, not proof that the binary eligibility gate is incorrect. Source/HL2 physics, surfaces, models and props are deliberately excluded per owner priority.
+This phase does not provide native entity AI navigation, map pathing, a complete schedule registry, game-engine `ServerGameDLL003::DLLInit`, a runnable Windows game module, or an Android/VR port. The actual retail Grunt's `Don't have a route` is a **movement scheduling failure**, not proof that the binary eligibility gate is incorrect. Source/HL2 physics, surfaces, models and props are deliberately excluded per owner priority.
