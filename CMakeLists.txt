@@ -215,6 +215,14 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
   add_test(NAME sin_original_druglab_grunt_spawn_tests
     COMMAND sin_original_druglab_grunt_spawn_tests)
+  add_executable(sin_original_druglab_grunt_factory_spawn_integration_tests
+    tests/test_original_druglab_grunt_factory_spawn_integration.cpp)
+  target_link_libraries(sin_original_druglab_grunt_factory_spawn_integration_tests PRIVATE
+    sin_original_druglab_grunt_spawn sin_original_druglab_grunt_factory)
+  target_compile_options(sin_original_druglab_grunt_factory_spawn_integration_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_druglab_grunt_factory_spawn_integration_tests
+    COMMAND sin_original_druglab_grunt_factory_spawn_integration_tests)
   find_package(Python3 COMPONENTS Interpreter QUIET)
   if(Python3_Interpreter_FOUND)
     add_test(NAME sin_original_druglab_grunt_spawn_audit_synthetic
