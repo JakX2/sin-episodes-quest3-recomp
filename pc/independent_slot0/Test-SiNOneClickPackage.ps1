@@ -231,6 +231,70 @@ $parsePos=$cppText.IndexOf('original_surfaceprops_registration::Attempt(')
 if($preparsePos -lt 0 -or $parsePos -le $preparsePos) {
     throw 'Phase519 MUST snapshot original physics before ParseSurfaceData'
 }
+# Phase520: explicitly separate original 2006 server physics Factory
+# probing from client mutating ParseSurfaceData, with a retail-only BSP.
+$serverPhysicsPlan=@(& $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly -ServerPhysicsFactory)
+$serverPhysicsPlanText=$serverPhysicsPlan -join '|'
+foreach($marker in @(
+    'SERVER PHYSICS: 2006 original engine ServerGameDLL003 DLLInit factory order',
+    'SERVER PHYSICS MAP: validates an existing original SE1/maps/*.bsp',
+    'SERVER PHYSICS EXIT: 0x53494E78 success / 0x53494E79 missing'
+)) {
+    if(-not $serverPhysicsPlanText.Contains($marker)) {
+        throw ('Phase520 server physics PlanOnly is incomplete: '+$marker)
+    }
+}
+foreach($invalid in @(
+    @('-ServerPhysicsFactory','-StagedStats'),
+    @('-ServerPhysicsFactory','-SurfacePropsRegister'),
+    @('-ServerPhysicsFactory','-ServerMap','bad;map'),
+    @('-ServerMap','fake')
+)) {
+    $rejected=$false
+    try {
+        & $Runner -GameRoot 'C:\synthetic-no-game' -PlanOnly @invalid *>$null
+    } catch {
+        $rejected=$true
+    }
+    if(-not $rejected) {
+        throw ('Phase520 accepted invalid server/client or map argument combination: '+($invalid -join ' '))
+    }
+}
+$serverBat=Join-Path (Split-Path -Parent $Runner) 'RUN_SERVER_PHYSICS_FACTORY_TEST.bat'
+if(-not (Test-Path -LiteralPath $serverBat -PathType Leaf)) {
+    throw 'Phase520 standalone package missing Server-only original physics shortcut'
+}
+$serverBatText=[IO.File]::ReadAllText($serverBat)
+foreach($marker in @(
+    'Start-SiNFileSystemTest.ps1',
+    '-ServerPhysicsFactory %*',
+    '-NoProfile -STA -ExecutionPolicy Bypass',
+    'pause',
+    'exit /b %RESULT%'
+)) {
+    if(-not $serverBatText.Contains($marker)) {
+        throw ('Phase520 Server physics shortcut missing entry or safety clause: '+$marker)
+    }
+}
+if($serverBatText.Contains('-SurfacePropsRegister') -or
+   $serverBatText.Contains('-SurfacePropsReadback')) {
+    throw 'Server physics shortcut must NEVER mutate the original surface engine'
+}
+$runnerText=[IO.File]::ReadAllText($Runner)
+foreach($marker in @(
+    "ProbeRole='Server'",
+    'EnableServerFactoryProbe=$true',
+    'EnableServerPhysicsFactoryProbe=$true',
+    'original-server-physics-three-available:3:3:1',
+    'OWNER_INDEPENDENT_RESTORATION: VERIFIED_COMPLETE',
+    'Original server physics Factory triple (read-only): ',
+    'Require-Plain (Join-Path $retailMaps ($ServerMap+',
+    'SE1\maps'
+)) {
+    if(-not $runnerText.Contains($marker)) {
+        throw ('Phase520 owner launcher missing SHA-gated server evidence: '+$marker)
+    }
+}
 $soundscapeBatch=Join-Path (Split-Path -Parent $Runner) 'RUN_SOUNDSCAPE_CATALOG_TEST.bat'
 $soundscapeDoc=Join-Path (Split-Path -Parent $Runner) 'OWNER_SOUNDSCAPE_RETAIL_GATE_20261120.md'
 if (-not (Test-Path -LiteralPath $soundscapeBatch -PathType Leaf) -or
