@@ -24,6 +24,9 @@ Result Registrar::initialize() noexcept {
             ++result.registered_count;
         }
         result.behavior_index=static_cast<std::uint8_t>(kOriginalBehaviors.size());
+        result.failed_operation=Operation::BindSentenceOwner;
+        if (!host_.bind_sentence_owner(kEmbeddedSentenceStateOffset,
+                                       kSentenceOwnerPointerField)) return result;
         result.failed_operation=Operation::InitializeSentenceParameters;
         if (!host_.initialize_sentence_parameters(kEmbeddedSentenceStateOffset,
                                                    kOriginalSentenceKey)) return result;
