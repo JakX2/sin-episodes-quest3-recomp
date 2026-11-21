@@ -365,3 +365,31 @@ See
 auditor `research/tools/audit_sin_original_voice_lifecycle.py`,
 and original-free C++17 reference/tests. No Windows/Quest game boot or
 physics/prop/rendering work is claimed.
+
+## Phase 553: original CVoiceStatus persistent voice-ban database
+
+The original VGUI-client voice manager uses actual persistent file
+`voice_ban.dt`. Its SHA-authenticated export at `0x241E4D00`
+opens mode `wb`, writes **little-endian uint32 version 1**, then
+visits each of **256 hash buckets**, writing exactly the first **32 bytes**
+of every opaque identity key. The independent import at
+`0x241E4F90` starts by clearing the table, opens mode `rb`, checks the
+4-byte version equals 1, determines record count as
+`(nativeFileTell - 4) >> 5`, then attempts to read each record and
+inserts it through already-authenticated `0x241E4E30`.
+The native seek virtual is used with raw (offset, mode) pairs (0,2)
+and (4,1); **the exact native seek-mode enumeration has not been
+recovered**. Malformed-file short-read/overflow protections are absent
+or incomplete in the native code, so the original-free C++17 reference
+adds explicit bounds checks without pretending those are Ritual's code.
+
+Three new whole-method SHA digests authenticate **322 distinct original
+client bytes** including the 5-byte reset-forwarding entry, plus four
+direct CALL links (two in previously verified Phase552 owners), one
+direct tail JMP and forty original instruction witnesses. String
+literals include `voice_ban.dt`, `rb` and `wb`. Owner-local auditor:
+`research/tools/audit_sin_original_voice_ban_persistence.py`.
+Full evidence and bounded source-level logic:
+`research/phases/2026-11-21-original-cvoice-status-voice-ban-dt-persistence.md`.
+No file I/O was performed on a running original SiN game and this
+does not complete a playable independent client.
