@@ -393,3 +393,38 @@ Full evidence and bounded source-level logic:
 `research/phases/2026-11-21-original-cvoice-status-voice-ban-dt-persistence.md`.
 No file I/O was performed on a running original SiN game and this
 does not complete a playable independent client.
+
+## Phase 554: original VoiceMask wire payload and source-level bit readers
+
+The original 98-byte `CVoiceStatus::HandleVoiceMaskMsg` native handler
+was already counted in Phase552. Its *three* direct original calls are now
+traced to exactly two native bit-reader wrappers and their two separate
+low-level functions: `0x240A5620` is literal **signed 32-bit**,
+`0x240A55F0` is literal **unsigned 8-bit**; underlying readers
+`0x240A5080` and `0x240A4760` handle sign extension and
+little-endian bit indexing respectively. Their four complete original
+functions total **232 newly SHA-authenticated client bytes**.
+
+The registered `VoiceMask` handler consumes **32 + 32 + 8 = 72 bits**
+from the existing message reader, in order: native
+`CVoiceStatus+0x14` audible player mask (32 bits),
+`+0x1C` server-banned player mask (32 bits),
+and `+0x08` one opaque 8-bit status field saved as dword.
+Its original debug names explicitly label the first two masks. This
+proves **72 consumed payload bits**, not a standalone nine-byte message
+framing or a server packet. Bit-reader overflow and signed extension
+semantics are described without rewriting the original message layer.
+
+Authenticated against both original DLL SHA256 identities: four complete
+method digests, **six original direct CALL edges** including three
+previously counted original handler callsites, **41 instruction
+witnesses** and four original literal strings. Original-free C++17
+LSB-first bit-reader reference and tests cover unaligned payload offsets
+and high-bit values, with extra rejection of incomplete inputs.
+
+Detailed annotated decompilation:
+`research/phases/2026-11-21-original-client-voicemask-72-bit-message-layout.md`.
+Owner-local verifier:
+`research/tools/audit_sin_original_voice_mask_wire.py`.
+No server message producer or complete multiplayer network protocol
+has been decompiled, and no port integration is implied.
