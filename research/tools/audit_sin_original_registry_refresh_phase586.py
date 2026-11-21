@@ -94,6 +94,26 @@ WITNESSES={
   0x2211c165: '3b5e5c',
   0x2211c170: 'c3',
 }
+# Supplemental original common activity registry evidence. These are shared
+# Source activity entries, not *new* Grunt-specific recovered gameplay bytes.
+ACTIVITY_INIT = (0x220e7040,13780,
+ 'be2d64d38bfffb9d6285fbb36268bc308a5d3d03100caf75dd6081dcb4b82206')
+NAME_RESOLVER_SHA = {
+ 0x220e6cb0:(39,'07adc89f4d9269a0260cddaf8fe0dede4c5be738a908970d0c2bc6325e93c1d4'),
+ 0x220e6f60:(128,'ad946464aa6abbd65033fd6032b2e8b92f78ec826a1a643162bb392fc06e883e'),
+ 0x220e6fe0:(84,'d8d0db4165c0a693f97199ba46df339651e8b7a7f75dbc2cef6222b113d4b4c0'),
+}
+ACTIVITY_SAMPLES = {
+ # original literal id -> (registration E8 site, original string address, name)
+ 0:(0x220e7047,0x223d8dc4,'ACT_RESET'),
+ 1:(0x220e7053,0x223d8db8,'ACT_IDLE'),
+ 6:(0x220e708f,0x223d8d70,'ACT_WALK'),
+ 10:(0x220e70c2,0x223d8d34,'ACT_RUN'),
+ 15:(0x220e70fe,0x223d8cd8,'ACT_SCRIPT_CUSTOM_MOVE'),
+ 25:(0x220e717c,0x223d8c28,'ACT_FLY'),
+ 30:(0x220e71b8,0x223d8bf0,'ACT_HOP'),
+ 154:(0x220e7809,0x223d8228,'ACT_DO_NOT_DISTURB'),
+}
 class PE:
     def __init__(self,data):
         assert data[:2]==b'MZ'; p=struct.unpack_from('<I',data,0x3c)[0]
@@ -130,8 +150,21 @@ def audit(client,server):
         else:
             assert pe.read(va+n,1)==b'\xcc', 'original INT3 boundary'
     for site,dest in {**CALLS,**INBOUND}.items():direct(pe,site,dest)
+    start,n,digest=ACTIVITY_INIT
+    assert hashlib.sha256(pe.read(start,n)).hexdigest()==digest
+    assert pe.read(start+n,1)==b'\xcc'
+    for va,(num,digest) in NAME_RESOLVER_SHA.items():
+        assert hashlib.sha256(pe.read(va,num)).hexdigest()==digest
+    for original_id,(site,string_va,label) in ACTIVITY_SAMPLES.items():
+        direct(pe,site,0x220e6f60)
+        assert pe.read(site-5,5)==b'\x68'+struct.pack('<I',string_va)
+        before=(b'\x6a'+bytes([original_id]) if original_id<128
+                else b'\x68'+struct.pack('<I',original_id))
+        assert pe.read(site-5-len(before),len(before))==before
+        assert pe.read(string_va,len(label)+1)==label.encode('ascii')+b'\0'
+
     for va,hx in WITNESSES.items():assert pe.read(va,len(bytes.fromhex(hx)))==bytes.fromhex(hx),f'witness drift {va:#x}'
-    return dict(complete_native_methods=len(METHODS),native_bytes=sum(x[0] for x in METHODS.values()),original_e8_calls=len(CALLS),phase585_crosscalls=len(INBOUND),opcode_witnesses=len(WITNESSES))
+    return dict(complete_native_methods=len(METHODS),native_bytes=sum(x[0] for x in METHODS.values()),original_e8_calls=len(CALLS),phase585_crosscalls=len(INBOUND),opcode_witnesses=len(WITNESSES),original_shared_activity_samples=len(ACTIVITY_SAMPLES),shared_activity_initializer_sha_only=True)
 def self_test():
     class Fake:
         def __init__(self,site,data):self.site,self.data=site,data
