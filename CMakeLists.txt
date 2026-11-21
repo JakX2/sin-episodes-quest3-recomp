@@ -4466,3 +4466,23 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase585: original 2006 SiN weighted action-registration
+# lookup, signed weight key selection and registry refresh; host-only C++17.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_weighted_lookup_phase585_tests
+    tests/test_original_grunt_weighted_lookup_phase585.cpp)
+  target_include_directories(sin_original_grunt_weighted_lookup_phase585_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_weighted_lookup_phase585_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_weighted_lookup_phase585_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_weighted_lookup_phase585_tests
+    COMMAND sin_original_grunt_weighted_lookup_phase585_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_weighted_lookup_phase585_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_weighted_lookup_phase585.py"
+        --self-test)
+  endif()
+endif()
