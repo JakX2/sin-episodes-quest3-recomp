@@ -3540,6 +3540,10 @@ target_compile_features(sin_original_grunt_full_ai_postinit PUBLIC cxx_std_17)
 target_compile_options(sin_original_grunt_full_ai_postinit PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
 if(BUILD_TESTING)
+  # Extend Phase533 factory -> edict -> NPC postinit -> weapon Spawn test
+  # with actual Phase535 behavior stages instead of the previous placeholder.
+  target_link_libraries(sin_original_druglab_grunt_full_lifecycle_tests PRIVATE
+    sin_original_grunt_full_ai_postinit)
   add_executable(sin_original_grunt_behavior_postinit_tests
     tests/test_original_grunt_behavior_postinit.cpp)
   target_link_libraries(sin_original_grunt_behavior_postinit_tests PRIVATE
