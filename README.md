@@ -12,7 +12,7 @@
 > Phase542 four token-converter registry methods (638 bytes),
 > Phase544 eight converter red-black insertion/rotation functions (2,528 bytes),
 > Phase545 eight distinct 12-byte string-token tree methods (2,678 bytes),
-> and Phase546 eight original string-comparator, constructor and casefold helpers (827 bytes), including the HUD converter's static casefolded default. Phase547 adds nine distinct original node/index, array-growth, and string-page methods (615 bytes).
+> and Phase546 eight original string-comparator, constructor and casefold helpers (827 bytes), including the HUD converter's static casefolded default. Phase547 adds nine distinct original node/index, array-growth, and string-page methods (615 bytes). Phase548 authenticates another six original global token-table lifecycle and symbol/string resolver methods (553 bytes).
 > These method counts are distinct where noted; whole-function hash
 > authentication is **not** equivalent to complete source translation.
 >
@@ -27,6 +27,7 @@
 > | [String-token tree](research/phases/2026-11-21-original-client-string-token-red-black-tree-decomp.md)
 > | [Native string comparator modes](research/phases/2026-11-21-original-client-token-comparator-variants-decomp.md)
 > | [Native token storage and string pages](research/phases/2026-11-21-original-client-token-storage-sentinel-capacity-pages-decomp.md)
+> | [Global symbol token lifecycle and string ownership](research/phases/2026-11-21-original-client-token-lifecycle-global-table-reset-and-string-ownership.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
