@@ -246,7 +246,8 @@ TriggerTouchReport OriginalTriggerEntityFactory::touch(
     catch (...) {report.removal_queued=false;}
     if(report.removal_queued)r->pending_remove=false;
     report.code=!report.removal_queued?TriggerCode::RemovalPending:
-        (c.notify_difficulty_manager && r->kind==TriggerKind::DynamicDifficulty &&
+        (r->kind==TriggerKind::DynamicDifficulty &&
+         (static_cast<std::uint32_t>(c.end_of_game)&0xffu)!=0u &&
          !report.manager_signaled)?TriggerCode::ManagerRefused:
         !report.event_published?TriggerCode::EventUnavailable:
         TriggerCode::Handled;
