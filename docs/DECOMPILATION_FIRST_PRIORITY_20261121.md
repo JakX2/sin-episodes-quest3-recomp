@@ -263,3 +263,34 @@ See `research/phases/2026-11-21-original-client-vclient011-level-lifecycle-shutd
 and `research/tools/audit_sin_original_client_level_lifecycle.py`.
 Independently authored C++17 tests cover the authentic short-circuit
 branch and reverse callback order, not full engine startup/shutdown.
+
+## Phase 550: original client CVoiceStatus and map-gated voice commands
+
+Four whole-method 2006 client SHA digests authenticate **635 new distinct
+native bytes**: `0x241E5880` (516-byte UpdateServerState),
+`0x241E5A90` (41-byte HandleReqStateMsg), `0x241E5AC0`
+and `0x241E5AF0` (39-byte mask getters). Original diagnostics identify
+the `CVoiceStatus` subsystem; no independent CVoiceStatus RTTI mapping
+is claimed. The update reads the same map-active byte `0x2433F680`
+as Phase549: when inactive, ordinary server-state updates are skipped
+(with an optional diagnostic). When active, an original Boolean and
+force argument decide whether to format and send the original
+`VModEnable %d` command through the original EngineClient interface
+virtual `+0x18`.
+
+A separate `vban` path scans at most **32 player slots**, invoking an
+engine virtual `+0x20` before testing masks. Two original getter
+functions independently prove **one-based player indexes**, `(n-1)&31`
+bit positions and `(n-1)>>5` dword indices, with different native
+starting offsets `this+0x14` and `this+0x10`. The original 41-byte
+request handler invokes the 516-byte update with a literal forced
+flag 1. **Seven original literal messages, 40 instruction witnesses,
+2 native E8 CALL edges, and all four full method SHA digests** were
+checked against the exact original client/server pair.
+
+This research is original-free except for owner-local SHA proof:
+`research/phases/2026-11-21-original-client-voice-status-players-and-server-commands-decomp.md`
+and `research/tools/audit_sin_original_client_voice_status.py`.
+Native string-formatting helper ownership and actual voice network
+safety are not yet reconstructed. C++17 reference tests are strictly
+source-bounded and do not send engine commands.
