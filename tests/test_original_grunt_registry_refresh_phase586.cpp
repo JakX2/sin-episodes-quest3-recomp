@@ -5,6 +5,15 @@
 using namespace sin_compat::phase586;
 int main(){
     assert(direct_record_stride==212u);
+    static_assert(sizeof(verified_shared_activities)/sizeof(verified_shared_activities[0])==8);
+    assert(verified_shared_activities[2].value==6);
+    assert(std::string(verified_shared_activities[2].literal_name)=="ACT_WALK");
+    assert(verified_shared_activities[3].value==10);
+    assert(std::string(verified_shared_activities[3].literal_name)=="ACT_RUN");
+    assert(verified_shared_activities[4].value==15);
+    assert(std::string(verified_shared_activities[4].literal_name)=="ACT_SCRIPT_CUSTOM_MOVE");
+    assert(verified_shared_activities[7].value==154);
+    assert(std::string(verified_shared_activities[7].literal_name)=="ACT_DO_NOT_DISTURB");
     assert(!IndexWithOriginalDirectClamp(0,0u));
     assert(IndexWithOriginalDirectClamp(-1,3u)==0u);
     assert(IndexWithOriginalDirectClamp(99,3u)==0u);
