@@ -203,3 +203,28 @@ Independent strict C++17 host regression: `include/sin_compat/original_client_to
 and `tests/test_original_client_token_storage.cpp`.
 Host overflow and bounds guards are **not assertions about original x86
 allocation failure behavior**. Port work remains deferred.
+
+## Phase 548: original client global token lifecycle and string resolution
+
+Six distinct whole-method original DLL SHA-256 digests authenticate **553
+new client code bytes** across singleton allocation at `0x241D47B0`,
+global symbol wrapper at `0x241D4B90`, token->page C-string getter
+at `0x241D3D50`, free-list reset at `0x241D3F30`, string-page array
+release `0x241D4000` and multi-layer destructor `0x241D4940`.
+The original 261-byte `0x241D4A80` intern method is rechecked and
+annotated into a complete normal-memory control-flow chain but not counted
+again. 15 native CALL edges and 36 exact opcode/layout witnesses pass.
+
+**Two original table defaults differ:** global `0x24377044` is
+case-sensitive with 32 initial 12-byte nodes (384 bytes); the separate
+HUD type-converter `0x2432289C` initializes case-folded (Phase546).
+Free-list reset writes node +0=current index and +2=next free index,
+without clearing parent/color/payload; missing token string getter
+returns original empty-string literal, not null. Original page allocation
+uses maximum of requested string bytes or 0x800, then adds 11 bytes.
+Native allocation failure and oversize 16-bit offsets remain unresolved.
+
+All methods and algorithms are documented in
+`research/phases/2026-11-21-original-client-token-lifecycle-global-table-reset-and-string-ownership.md`.
+Host-only reference and tests model safe reset and descriptor lookup;
+they are **not** a full game or port.
