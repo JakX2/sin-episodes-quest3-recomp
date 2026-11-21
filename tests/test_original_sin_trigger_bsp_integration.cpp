@@ -13,7 +13,6 @@
 #endif
 #include <array>
 #include <cassert>
-#include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -52,7 +51,7 @@ struct EventSnapshot {
 struct FixtureHost final:
     ISourceMapEntityHost,IOriginalTriggerHost,IGameEntityRegistrar {
     struct Callback {SpawnCallback call=nullptr;void* context=nullptr;};
-    struct Entity {EntityRef ref{};std::string classname;std::uint32_t flags=0;};
+    struct Entity {EntityRef ref{};std::string classname;};
     std::map<std::string,Callback> registry{};
     std::unordered_map<std::uint32_t,Entity> live{};
     std::vector<EntityRef> removal_queue{};
@@ -62,6 +61,8 @@ struct FixtureHost final:
     OriginalTriggerEntityFactory* game=nullptr;
     std::uint32_t next_index=1;
     bool base_ok=true;
+    // This is a SYNTHETIC engine-owned field snapshot, not a map KV.
+    std::uint32_t simulated_native_flags_0x120=0x08u;
     int base_calls=0;
     int activated=0;
     bool is_live(EntityRef e) const override {
@@ -105,7 +106,7 @@ struct FixtureHost final:
         const auto entry=registry.find(std::string(classname));
         if(entry==registry.end())return false;
         EntityRef ref{next_index++,1u};
-        live.emplace(ref.index,Entity{ref,std::string(classname),0u});
+        live.emplace(ref.index,Entity{ref,std::string(classname)});
         const auto s=entry->second.call(entry->second.context,
                                          {classname,ref});
         if(!s.ok()){
@@ -120,17 +121,6 @@ struct FixtureHost final:
                    std::string_view value) override {
         auto it=live.find(e.index);
         if(it==live.end() || it->second.ref!=e)return false;
-        if(key=="spawnflags") {
-            unsigned flags=0u;
-            if(value.empty())return false;
-            const char* first=value.data();
-            auto parsed=std::from_chars(first,first+value.size(),flags,10);
-            if(parsed.ec!=std::errc{} || parsed.ptr!=first+value.size())
-                return false;
-            it->second.flags=flags;
-            steps.emplace_back("flags");
-            return true;
-        }
         if(key=="targetname")steps.emplace_back("targetname");
         return game && game->apply_map_keyvalue(e,key,value)==
             TriggerCode::Handled;
@@ -140,7 +130,7 @@ struct FixtureHost final:
         if(it==live.end() || it->second.ref!=e||!game)return false;
         if(it->second.classname!="trigger_secret")return false;
         const auto result=game->run_secret_spawn(e,
-            {false,it->second.flags});
+            {false,simulated_native_flags_0x120});
         return result.handled();
     }
     bool activate(EntityRef e) override {
@@ -169,11 +159,10 @@ void test_loaded_bsp_triggers_secret_spawn_and_touch() {
     SourceMapRuntime runtime(h,16u);
     const auto bsp=fake_bsp(
         "{\"classname\" \"trigger_secret\" "
-        "\"targetname\" \"secret_intro_01\" "
-        "\"spawnflags\" \"8\" }");
+        "\"targetname\" \"secret_intro_01\" }");
     const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
     assert(loaded.ok() && loaded.entities_created==1 &&
-           loaded.key_values_applied==2 &&
+           loaded.key_values_applied==1 &&
            loaded.entities_spawned==1 && loaded.entities_activated==1);
     assert(h.base_calls==1&&h.activated==1&&h.events.size()==1&&
            h.events[0].descriptor==11&&
@@ -206,10 +195,10 @@ void test_rejected_invalid_map_key_rolls_back_native_entity() {
     assert(h.live.empty()&&adapter.instance_count()==0);
     assert(h.events.empty()&&h.base_calls==0);
     // A rejected map must never poison the following valid load.
+    h.simulated_native_flags_0x120=0;
     bsp=fake_bsp(
         "{\"classname\" \"trigger_secret\" "
-        "\"targetname\" \"valid_again\" "
-        "\"spawnflags\" \"0\" }");
+        "\"targetname\" \"valid_again\" }");
     assert(runtime.load_bsp(bsp.data(),bsp.size()).ok());
     assert(h.base_calls==1&&h.events.empty());
     assert(runtime.unload().code==SourceMapLoadCode::Unloaded);
@@ -224,8 +213,7 @@ void test_native_base_spawn_refusal_rolls_back_map() {
     h.base_ok=false;
     const auto bsp=fake_bsp(
         "{\"classname\" \"trigger_secret\" "
-        "\"targetname\" \"secret_intro_03\" "
-        "\"spawnflags\" \"8\" }");
+        "\"targetname\" \"secret_intro_03\" }");
     const auto failure=runtime.load_bsp(bsp.data(),bsp.size());
     assert(failure.code==SourceMapLoadCode::HostSpawnFailed &&
            failure.entities_removed==1);
