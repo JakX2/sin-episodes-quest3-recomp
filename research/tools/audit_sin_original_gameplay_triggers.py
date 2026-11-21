@@ -134,7 +134,7 @@ def verify_dynamic_spawn_control(at,read_text):
         raise EvidenceRefused("original this+0xB4 bit10 gate changed")
     if (at(0x221D0775,1)!=bytes((0x68,)) or
         struct.unpack("<I",at(0x221D0776,4))[0]!=0x22438650 or
-        not read_text(0x22438650,"DD Trigger with don't destroy set\\n")):
+        not read_text(0x22438650,"DD Trigger with don't destroy set\n")):
         raise EvidenceRefused("original dynamic Spawn warning string changed")
     return len(edges)
 
@@ -255,7 +255,7 @@ def self_test()->None:
         0x221D0776:struct.pack("<I",0x22438650)
     })
     read_dynamic=lambda va,n:dynamic_chunks.get(va,b"")[:n]
-    warning=lambda va,value:va==0x22438650 and value=="DD Trigger with don't destroy set\\n"
+    warning=lambda va,value:va==0x22438650 and value=="DD Trigger with don't destroy set\n"
     assert verify_dynamic_spawn_control(read_dynamic,warning)==2
     for site in dynamic_chunks:
         altered=dict(dynamic_chunks)
