@@ -21,7 +21,7 @@
 namespace sin_compat::map_entities {
 
 enum class Kind : std::uint8_t {
-    AssaultRifle, ARGrenade
+    AssaultRifle, ARGrenade, DynamicDifficultyTrigger, SecretTrigger
 };
 
 enum class SpawnCode : std::uint8_t {

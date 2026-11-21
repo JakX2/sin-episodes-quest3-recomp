@@ -82,6 +82,33 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
   endif()
 endif()
 
+# Source-authenticated SiN-only campaign trigger behavior. Registered only
+# when the chosen native engine host provides genuine CBaseTrigger objects,
+# entity lifetime, an event manager and queued removal callbacks.
+# Missing in the owner's HL2 map-port unknown-class logs (88 + 44 reports).
+add_library(sin_original_gameplay_triggers STATIC
+  src/original_sin_trigger_entities.cpp)
+target_include_directories(sin_original_gameplay_triggers PUBLIC include third_party/research)
+target_compile_options(sin_original_gameplay_triggers PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_gameplay_triggers_tests
+    tests/test_original_sin_trigger_entities.cpp)
+  target_link_libraries(sin_original_gameplay_triggers_tests PRIVATE
+    sin_original_gameplay_triggers)
+  target_compile_options(sin_original_gameplay_triggers_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_gameplay_triggers_tests
+    COMMAND sin_original_gameplay_triggers_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_gameplay_triggers_binary_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_sin_original_gameplay_triggers.py
+        --self-test)
+  endif()
+endif()
+
 # Original 2006 rifle secondary-fire to CGrenadeAR gameplay integration:
 # authoritative player secondary ammo, source-backed player/NPC velocity
 # multipliers, generation-safe weapon selection and atomic host publication.
