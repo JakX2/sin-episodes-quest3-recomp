@@ -167,6 +167,60 @@ int main(){
     assert(game.instance_count()==0);
     assert(game.uninstall()==RegistrationCode::Uninstalled&&reg.entries.empty());
 
+    // The actual 2006 DATADESC map keys are parsed by the independent
+    // host adapter. No fabricated "Difficulty" or "Value" KeyValues.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_dynamic_difficulty",h.dynamic}).ok());
+        assert(f.apply_map_keyvalue(h.dynamic,"EstimatedTime","12.5")==
+               TriggerCode::Handled);
+        assert(f.apply_map_keyvalue(h.dynamic,"EstimatedDifficulty","7")==
+               TriggerCode::Handled);
+        assert(f.apply_map_keyvalue(h.dynamic,"EndOfGame","1")==
+               TriggerCode::Handled);
+        assert(f.apply_map_keyvalue(h.dynamic,"targetname","change_phase_01")==
+               TriggerCode::Handled);
+        assert(f.apply_map_keyvalue(h.dynamic,"EstimatedDifficulty","7oops")==
+               TriggerCode::InvalidConfig);
+        assert(f.apply_map_keyvalue(h.dynamic,"EstimatedTime","nan")==
+               TriggerCode::InvalidConfig);
+        assert(f.apply_map_keyvalue(h.dynamic,"EstimatedTime","1e200")==
+               TriggerCode::InvalidConfig);
+        assert(f.apply_map_keyvalue(h.dynamic,"EstimatedDifficulty","2147483648")==
+               TriggerCode::InvalidConfig);
+        assert(f.apply_map_keyvalue(h.dynamic,"MissingKey","5")==
+               TriggerCode::UnknownKey);
+        assert(f.touch(h.dynamic,h.player).handled());
+        assert(h.events.size()==1);
+        assert(h.events[0].value==12.5f&&h.events[0].decision==7&&
+               h.events[0].name=="change_phase_01");
+        assert(h.manager_calls==1);
+        assert(f.apply_map_keyvalue(h.dynamic,"EndOfGame","0")==
+               TriggerCode::AlreadyConsumed);
+    }
+    // Original x86 CMP BYTE [this+0x478],0 specifically tests only
+    // the LOW BYTE of the 32-bit DATADESC EndOfGame integer.
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_dynamic_difficulty",h.dynamic}).ok());
+        assert(f.apply_map_keyvalue(h.dynamic,"EndOfGame","256")==
+               TriggerCode::Handled);
+        assert(f.touch(h.dynamic,h.player).handled());
+        assert(h.manager_calls==0&&h.remove_calls==1);
+    }
+    {
+        Host h{};
+        OriginalTriggerEntityFactory f(h);
+        assert(f.spawn({"trigger_secret",h.secret}).ok());
+        assert(f.apply_map_keyvalue(h.secret,"EstimatedTime","5")==
+               TriggerCode::UnknownKey);
+        assert(f.apply_map_keyvalue(h.secret,"targetname","secret_01")==
+               TriggerCode::Handled);
+        assert(f.touch(h.secret,h.player).handled());
+        assert(h.events[0].name=="secret_01"&&h.events[0].descriptor==12);
+    }
     // Event-manager failure did not stop original trigger removal.
     {
         Host h{};
