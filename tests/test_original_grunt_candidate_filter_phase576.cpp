@@ -18,6 +18,22 @@ struct Host final : IProbeHost {
     void original_debug_marker() override { events.push_back(99); }
 };
 
+struct AssociationHost final : ICallerAssociationHost {
+    bool accepted_type = false;
+    bool recognized = false;
+    std::uintptr_t linked_key = 0;
+    std::vector<int> events;
+    bool virtual_120(std::uintptr_t) override {
+        events.push_back(120);return accepted_type;
+    }
+    bool native_22035100(std::uintptr_t) override {
+        events.push_back(35100);return recognized;
+    }
+    std::uintptr_t native_22035090_virtual_28(std::uintptr_t) override {
+        events.push_back(35090);return linked_key;
+    }
+};
+
 static void approx(float got,float expected,float tolerance=0.00001f) {
     assert(std::fabs(got-expected) <= tolerance);
 }
@@ -123,6 +139,44 @@ int main() {
         in.budget=4; in.source.x=std::numeric_limits<float>::quiet_NaN();
         r=begin_candidate_filter(in,out,host);
         assert(r.state==ResultState::UnsupportedInput && host.events.empty());
+    }
+    {
+        Output out;out.status=-3;out.entity_key=0x1234u;
+        out.distance_delta=9;out.default_vector={3,4,5};out.source={8,9,10};
+        AssociationHost host;
+        // Source pointer null => original caller does not inspect anything.
+        assert(!original_caller_clear_matching_association(out,0,{11,12,13},host));
+        assert(host.events.empty() && out.status==-3 && out.entity_key==0x1234u);
+        // Direct equality must still evaluate +0x120 before equality branch.
+        assert(original_caller_clear_matching_association(out,0x1234u,{11,12,13},host));
+        assert((host.events==std::vector<int>{120}));
+        assert(out.status==0 && out.entity_key==0 && out.distance_delta==0);
+        assert(out.default_vector.x==11 && out.default_vector.y==12 && out.default_vector.z==13);
+        assert(out.source.x==8 && out.source.y==9 && out.source.z==10);
+    }
+    {
+        Output out;out.status=-1;out.entity_key=0xABCD;out.distance_delta=10;
+        AssociationHost host;host.accepted_type=true;host.recognized=true;
+        host.linked_key=0xABCD;
+        assert(original_caller_clear_matching_association(out,0x1234u,{0,0,0},host));
+        assert((host.events==std::vector<int>{120,35100,35090}));
+        assert(out.status==0 && out.entity_key==0 && out.distance_delta==0);
+    }
+    {
+        Output out;out.status=-2;out.entity_key=0x1234;out.distance_delta=4;
+        AssociationHost host;host.accepted_type=true;host.recognized=true;
+        host.linked_key=0x5678;
+        assert(!original_caller_clear_matching_association(out,0x9ABC,{9,9,9},host));
+        assert((host.events==std::vector<int>{120,35100,35090}));
+        assert(out.status==-2 && out.entity_key==0x1234 && out.distance_delta==4);
+        host.events.clear();host.recognized=false;
+        assert(!original_caller_clear_matching_association(out,0x9ABC,{9,9,9},host));
+        assert((host.events==std::vector<int>{120,35100}));
+        // Even a failed intermediate association predicate does not prevent
+        // direct pointer-match invalidation in the native caller.
+        host.events.clear();
+        assert(original_caller_clear_matching_association(out,0x1234,{1,2,3},host));
+        assert((host.events==std::vector<int>{120,35100}));
     }
     std::cout << "PHASE576_HOST_PASS\n";
 }
