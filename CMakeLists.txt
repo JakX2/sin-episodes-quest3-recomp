@@ -3657,3 +3657,28 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase542: original client CHudTextureHandle type converter intern and
+# linked-list registry decompilation (synthetic-only hosted regression).
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_converter_registry_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_client_converter_registry.py"
+        --self-test)
+  endif()
+endif()
+
+# Original 2006 converter tree: exact 16-bit token ordering and 24-byte
+# entry layout; tests never link or execute original proprietary DLLs.
+if(BUILD_TESTING)
+  add_executable(sin_original_client_converter_tree_tests
+    tests/test_original_client_converter_tree.cpp)
+  target_include_directories(sin_original_client_converter_tree_tests PRIVATE include)
+  target_compile_features(sin_original_client_converter_tree_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_converter_tree_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_converter_tree_tests
+    COMMAND sin_original_client_converter_tree_tests)
+endif()

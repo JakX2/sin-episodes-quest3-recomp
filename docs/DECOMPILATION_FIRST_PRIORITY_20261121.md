@@ -90,3 +90,16 @@ all eight resulting globals. The virtual return is *not* a Boolean success
 gate. Readable C-like decompilation and source-level proofs:
 `research/phases/2026-11-21-original-client-vgui-factory-array-resolver-decomp.md`.
 Full intro-prologue semantics remain unresolved; no new port/runtime work.
+
+## Phase 542: original client type converter registry
+The original HUD bootstrap's label `CHudTextureHandle` refers to a **type
+converter registration** (not a drawn HUD panel). New SHA-verified native
+methods: 261-byte string-token lookup/intern `0x241D4A80`, 230-byte
+converter-linked-record query `0x2400A4D0`, and 128-byte record insertion
+`0x24009F40` (total **638 new distinct complete bytes**). The method uses
+a 16-bit token, `0xFFFF` missing-token sentinel, 24-byte record stride
+and `0xFFFFFFFF` absent-converter index. The original diagnostic is
+`Already have converter for type %s, ignoring...`.
+Detailed source-level documentation and owner-local verifier:
+`research/phases/2026-11-21-original-client-hud-type-converter-registry-decomp.md`.
+The 16-bit comparison callback is verified at original VA `0x2400A3C0`; the string pool's ownership remains unresolved.
