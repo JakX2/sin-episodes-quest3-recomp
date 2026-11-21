@@ -193,6 +193,56 @@ TriggerCode OriginalTriggerEntityFactory::apply_map_keyvalue(
         return TriggerCode::Handled;
     } catch (...) {return TriggerCode::HostRefused;}
 }
+TriggerSpawnReport OriginalTriggerEntityFactory::run_secret_spawn(
+    EntityRef trigger,TriggerSpawnInput input) noexcept {
+    Guard guard(busy_);
+    if(!guard)return {TriggerCode::Reentrant};
+    Record* r=find(trigger);
+    if(!r)return {TriggerCode::UnknownEntity};
+    if(r->kind!=TriggerKind::Secret)return {TriggerCode::WrongClass};
+    if(r->native_spawn_completed || r->consumed)
+        return {TriggerCode::AlreadyConsumed};
+    try {
+        if(!host_.is_live(trigger))return {TriggerCode::HostNotLive};
+    } catch (...) {return {TriggerCode::HostRefused};}
+    TriggerSpawnReport report{};
+    if(input.engine_requests_removal) {
+        // The original engine-global +0x88 check precedes base Spawn
+        // and the optional secret discovered event. No fake CBaseTrigger.
+        r->consumed=true;
+        r->native_spawn_completed=true;
+        r->pending_remove=true;
+        try {report.removal_queued=host_.queue_remove(trigger);}
+        catch (...) {report.removal_queued=false;}
+        if(report.removal_queued)r->pending_remove=false;
+        report.code=report.removal_queued?
+            TriggerCode::Handled:TriggerCode::RemovalPending;
+        return report;
+    }
+    try {
+        if(!host_.initialize_native_base_trigger(trigger))
+            return {TriggerCode::HostRefused};
+    } catch (...) {return {TriggerCode::HostRefused};}
+    report.base_initialized=true;
+    r->native_spawn_completed=true;
+    if((input.native_flags_0x120 & 0x08u)!=0u) {
+        // CTriggerSecret::Spawn calls original 0x222B63B0
+        // with descriptor=11 when this+0x120 contains bit3.
+        TriggerEvent event{};
+        event.event=TriggerEventName::Game;
+        event.descriptor=11;
+        event.owner=-1;
+        event.name=r->config.targetname.empty()?
+            kSecret:std::string_view(r->config.targetname);
+        try {report.event_published=host_.publish(event);}
+        catch (...) {report.event_published=false;}
+        report.code=report.event_published?
+            TriggerCode::Handled:TriggerCode::EventUnavailable;
+    } else {
+        report.code=TriggerCode::Handled;
+    }
+    return report;
+}
 TriggerTouchReport OriginalTriggerEntityFactory::touch(
     EntityRef trigger,EntityRef actor) noexcept {
     Guard guard(busy_);
