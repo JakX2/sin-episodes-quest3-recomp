@@ -5,8 +5,12 @@
 // SDK 2004 and 2006 legacy VPhysics030 headers agree on the derived slots:
 // vslot0 virtual destructor, vslot1 ParseSurfaceData,
 // vslot2 SurfacePropCount, vslot3 GetSurfaceIndex.
-// HOWEVER: only vslot1 has a direct SiN 2006 method-call witness.
-// vslot2/3 are SDK-guided experiments, not yet observed on retail engine.
+// Original SiN client x86 additionally confirms vslot3 calls through
+// global 0x243743A8: 0x240B7EC5, 0x24191E3C and 0x241A7389.
+// Audit: audit_sin_original_surfaceprops_index_calls.py. Slot2 Count
+// remains SDK-guided only, not directly authenticated in original DLL.
+// Both slot2 and slot3 independent calls are still unobserved on owner
+// retail engine; don't claim actual startup success on synthetic proof.
 // This never modifies physics state, never retains interface pointers, and
 // is opt-in ONLY AFTER the mutating ParseSurfaceData experiment.
 #if !defined(_MSC_VER) || !defined(_M_IX86)
