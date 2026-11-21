@@ -27,15 +27,18 @@ enum class TriggerCode : std::uint8_t {
 };
 struct TriggerVec3 { float x=0, y=0, z=0; };
 
-// Typed values from original CTriggerDynamicDifficulty +0x470/+0x474/+0x478
-// and shared CBaseEntity origin +0x2BC; field KeyValues aliases still need
-// an exact original DATADESC audit. A host supplies decoded values explicitly.
+// Original CTriggerDynamicDifficulty DATADESC at 0x2250CCFC has three
+// authentic map KeyValues: EstimatedTime FLOAT +0x470,
+// EstimatedDifficulty INTEGER +0x474 and EndOfGame INTEGER +0x478.
+// The event maps these to 'value' (f32), 'decision' (i32), then the
+// manager flag on a nonzero LOW BYTE of EndOfGame. The actor origin is
+// CBaseEntity +0x2BC. Host must still instantiate a real native entity.
 struct TriggerConfig {
     std::string targetname{};
     TriggerVec3 origin{};
-    float value=0;
-    std::int32_t decision=0;
-    bool notify_difficulty_manager=false; // original field +0x478
+    float estimated_time=0;             // map key EstimatedTime, +0x470
+    std::int32_t estimated_difficulty=0; // map key EstimatedDifficulty, +0x474
+    std::int32_t end_of_game=0;          // map key EndOfGame, +0x478; low byte tested
     bool base_special_flag_0x800=false;    // original base field +0xB8
 };
 
