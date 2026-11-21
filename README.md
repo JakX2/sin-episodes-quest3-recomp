@@ -1,5 +1,15 @@
 # SiN Episodes: Emergence | public reverse-engineering research
 
+> **Current stacked research checkpoint, 21 November 2026:** the active
+> decompilation-first work is continuing on PR #537 above Phase 536.
+> Two complete original Grunt methods (944 bytes) have been newly verified
+> and annotated at a source-level control-flow granularity. Read
+> [the decompilation priority and proof rules](docs/DECOMPILATION_FIRST_PRIORITY_20261121.md)
+> and [the full original fallback analysis](research/phases/2026-11-21-original-mobgrunt-combat-fallback-844-decomp.md).
+> All these are reverse-engineering artifacts, **not a playable replacement
+> Windows DLL or an Android/Quest 3 port.** The legacy Phase 56 README
+> sections below describe the starting scaffold, not current branch coverage.
+
 **Status:** Phase 56 starting scaffold. Builds and runs as a **standalone native C++17 test library**. **Not a playable game, Source engine DLL, Android APK, or functional Quest 3 port.**
 
 This repository begins turning the project's earlier assembly-driven research into one accumulative implementation with a host boundary. The original 2006 `server.dll` and `client.dll` are **not** included, nor are Half-Life 2 DLLs, proprietary models, maps, scripts or game assets.
