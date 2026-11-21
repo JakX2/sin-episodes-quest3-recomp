@@ -24,6 +24,7 @@ METHODS=(
  (0x22353F80, 6,   '3457d8872b6b7b3e4cda7708e95e121a47a6676e7e1d7303d6fa1d5c0824df3a'),
  (0x22055670, 98,  'c1c733febe7e5b2ebb04d647a0e6174cf86c3dd041505dd87c0240cf31e8d296'),
  (0x220CDBD0, 10,  '01caaa228fe4f4c7fe4269994a79702b290762107c5e6b67c17e8d8525fc7585'),
+ (0x2202E0F0, 10,  '01caaa228fe4f4c7fe4269994a79702b290762107c5e6b67c17e8d8525fc7585'),
 )
 # Behavior-append order: subobject field, exact constructor, RTTI vptr,
 # constructor witness VA of `mov dword ptr [this], vptr`, type string.
@@ -34,7 +35,7 @@ SPECS=(
  (0xDA0,0x223925C0,0x224AB88C,0x223925D1,'.?AVCAI_BeserkBehavior@@'),
  (0xF88,0x22391BB0,0x224AB494,0x22391BBC,'.?AVCAI_ActBusyBehavior@@'),
  (0xDB8,0x220D0C80,0x223F5544,0x220D0C91,'.?AVCAI_AssaultBehavior@@'),
- (0xDE8,0x220E2850,0x223FA1B4,0x220E289C,'.?AVCAI_StandoffBehavior@@'),
+ (0xDE8,0x220E2850,0x22495344,0x22360E62,'.?AVCGruntStandoffBehavior@CNPC_GruntBase@@'),
  (0xEB8,0x220D6690,0x223F6B7C,0x220D669C,'.?AVCAI_FollowBehavior@@'),
 )
 # Constructor dispatches are not in registration order, verify separately.
@@ -139,6 +140,23 @@ def verify_original(server,client):
         # different address after popping edi.
         require(pe.at(OWNER_STORES[i],3)==b'\x89\x43\x0c',
                 'behavior link+0x0C store missing')
+    # Base Standoff constructor installs CAI_StandoffBehavior first. The
+    # Grunt constructor *overwrites* that vptr with the final derived
+    # CGruntStandoffBehavior vtable at +0xDE8 before registration.
+    verify_rtti(pe,0x223FA1B4,'.?AVCAI_StandoffBehavior@@')
+    require(pe.at(0x220E289C,7)==b'\xc7\x45\x00'+struct.pack('<I',0x223FA1B4),
+            'base Standoff ctor vptr witness changed')
+    require(pe.at(0x22360E62,6)==b'\xc7\x07'+struct.pack('<I',0x22495344),
+            'derived Grunt Standoff override vptr missing')
+    # Sentence object is a typed CAI_Sentence<CNPC_GruntBase>, not an
+    # anonymous byte array at owner+0xCC0.
+    verify_rtti(pe,0x22490BB0,'.?AV?$CAI_Sentence@VCNPC_GruntBase@@@@')
+    require(pe.at(0x22360E11,6)==b'\xc7\x07'+struct.pack('<I',0x22490BB0),
+            'typed CAI_Sentence constructor vptr missing')
+    require(pe.u32(0x22490BB0+4)==0x2202E0F0,
+            'sentence owner binding virtual +0x04 mismatch')
+    require(pe.at(0x22358FB7,3)==b'\xff\x50\x04',
+            'sentence initializer did not call bind-owner virtual')
     require(pe.at(0x2235F6E5,6)==b'\x8b\x8e\x28\x0c\x00\x00',
             'collection size field +0xC28 changed')
     require(pe.at(0x2235F6EC,6)==b'\x8d\xbe\x1c\x0c\x00\x00',
@@ -159,6 +177,8 @@ def verify_original(server,client):
         'behavior_array_count_field':'0xC28',
         'owner_reference_subobject':'0xC14',
         'sentence_key':'NPC_Grunt.SentenceParameters',
+        'sentence_rtti':'CAI_Sentence<CNPC_GruntBase>',
+        'standoff_rtti':'CGruntStandoffBehavior (derived from CAI_StandoffBehavior)',
         'behaviors':[{'rtti':rtti,'owner_offset':hex(field),
                      'constructor':hex(ctor),'original_vtable':hex(vt)}
                      for field,ctor,vt,_,rtti in SPECS],
