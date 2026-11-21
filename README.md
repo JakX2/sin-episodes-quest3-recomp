@@ -12,7 +12,7 @@
 > Phase542 four token-converter registry methods (638 bytes),
 > Phase544 eight converter red-black insertion/rotation functions (2,528 bytes),
 > Phase545 eight distinct 12-byte string-token tree methods (2,678 bytes),
-> and Phase546 six original string-comparator and casefold helpers (709 bytes).
+> and Phase546 eight original string-comparator, constructor and casefold helpers (827 bytes), including the HUD converter's static casefolded default.
 > These method counts are distinct where noted; whole-function hash
 > authentication is **not** equivalent to complete source translation.
 >
