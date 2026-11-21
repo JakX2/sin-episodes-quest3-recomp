@@ -95,13 +95,21 @@ def verify_original(server,client):
         (0x2235E7BB,b'\xff\x92\x48\x08\x00\x00','selector +0x848 call'),
         (0x2235E7C8,b'\xb8\x55\x00\x00\x00','selector raw return schedule 0x55'),
         (0x2235E7D3,b'\xff\x90\x44\x08\x00\x00','selector +0x844 fallback'),
+        (0x223600C1,b'\xc7\x44\x24\x10'+struct.pack('<I',0x2249356C),
+         'native sidestep schedule registration string pointer'),
+        (0x223600C9,b'\xc7\x44\x24\x14'+struct.pack('<I',0x55),
+         'native sidestep schedule registration numeric ID'),
     )
     for va,expected,label in checks:
         require(pe.at(va,len(expected))==expected,'witness changed: '+label)
     calls=((0x2235963F,0x220397C0),(0x2235964C,0x220397C0),
            (0x22359661,0x2202E310),(0x22359668,0x220092D0),
-           (0x2235967B,0x2202E310),(0x22359693,0x220397C0))
+           (0x2235967B,0x2202E310),(0x22359693,0x220397C0),
+           (0x223600D7,0x2208C590))
     for site,destination in calls:verify_call(pe.at,site,destination)
+    registered_name=b'SCHED_GRUNT_MOBILITY_SIDESTEP\0'
+    require(pe.at(0x2249356C,len(registered_name))==registered_name,
+            'registered schedule name does not match original retail ID 0x55')
     return {
         'status':'ORIGINAL_GRUNT_SIDESTEP_GATE_AUTHENTICATED',
         'original_server_sha256':SERVER_SHA,
@@ -110,12 +118,13 @@ def verify_original(server,client):
         'gate_virtual_offset':'0x848',
         'state_three_field':'0x850',
         'successful_state_three_raw_schedule_id':'0x55',
+        'verified_registered_schedule_name':'SCHED_GRUNT_MOBILITY_SIDESTEP',
         'fallback_grunt_virtual_offset':'0x844',
         'original_direct_calls_verified':len(calls),
         'exact_instruction_witnesses_verified':len(checks),
         'sight_condition':'0x4D (COND_GRUNT_IN_PLAYER_SIGHTS)',
         'original_rules_mobility_factors':[4.0,1.0],
-        'limit':'Raw schedule ID has not been independently registered to a name by this verifier; no independent engine boot.'
+        'limit':'Original schedule name/ID registration authenticated; no independent engine boot.'
     }
 
 def self_test():
