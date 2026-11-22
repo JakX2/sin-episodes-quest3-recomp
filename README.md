@@ -93,6 +93,7 @@
 > | [Phase 614: attach loadable Grunt behavior sessions only to confirmed existing engine-owned NPCs; generation-safe detach/reuse, Win32 x86 regression](research/phases/2026-11-22-original-grunt-native-npc-attachment-phase614.md)
 > | [Phase 615: opt-in Win32 original server proxy loads Grunt C ABI bridge while preserving original CreateInterface, four real x86 loader regressions](research/phases/2026-11-22-windows-proxy-optional-grunt-bridge-probe-phase615.md)
 > | [Phase 616: owner-only retail process Grunt bridge preflight with x86 PE32 gate, inherited opt-in flag and PID-specific trace verdict](research/phases/2026-11-22-owner-only-grunt-bridge-retail-preflight-phase616.md)
+> | [Phase 617: authenticate original Assault +0x1C RET/+0x24 behavior bridge virtual0/+0x28 RET, fix live Grunt C ABI no-op activation (3 methods, 9 bytes)](research/phases/2026-11-22-original-assault-lifecycle-activation-vslots-phase617.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
