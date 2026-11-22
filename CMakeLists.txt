@@ -4815,3 +4815,22 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase608: original Follow +0xE4 handle/serial/bit15 native body and host parity.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_follow_eligibility_phase608_tests
+    tests/test_original_grunt_follow_eligibility_phase608.cpp)
+  target_include_directories(sin_original_grunt_follow_eligibility_phase608_tests
+    PRIVATE include)
+  target_compile_options(sin_original_grunt_follow_eligibility_phase608_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_follow_eligibility_phase608_tests
+    COMMAND sin_original_grunt_follow_eligibility_phase608_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_follow_eligibility_phase608_native_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_follow_handle_predicate_phase608.py"
+        --self-test)
+  endif()
+endif()
