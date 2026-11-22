@@ -1393,3 +1393,22 @@ add_dependencies(sin_pc_elite_native_host_dynload_phase626_tests
 add_test(NAME sin_pc_elite_native_host_dynload_phase626
   COMMAND $<TARGET_FILE:sin_pc_elite_native_host_dynload_phase626_tests>
           $<TARGET_FILE:sin_pc_elite_native_host_c_abi_phase626>)
+
+# Phase627: owner-only debugger for AUTHENTIC retail Elite NPC callbacks,
+# using per-thread x86 hardware execute breakpoints (DR0..DR3).
+# It never writes original .text, vtables, game state, or CreateInterface.
+# CI executes --self-test only; no commercial game DLLs are shipped.
+add_executable(sin_pc_owner_elite_hwtrace_phase627
+  tools/owner_elite_hwtrace_phase627.cpp)
+set_target_properties(sin_pc_owner_elite_hwtrace_phase627 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_link_libraries(sin_pc_owner_elite_hwtrace_phase627 PRIVATE bcrypt)
+sin_pc_configure(sin_pc_owner_elite_hwtrace_phase627
+  sin_pc_owner_elite_hwtrace_phase627)
+add_test(NAME sin_pc_owner_elite_hwtrace_phase627_selftest
+  COMMAND $<TARGET_FILE:sin_pc_owner_elite_hwtrace_phase627> --self-test)
+
+add_test(NAME sin_pc_owner_elite_hwtrace_phase627_script_syntax
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/Test-OwnerEliteHardwareTracePhase627.ps1"
+    -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerEliteHardwareTrace.ps1")
