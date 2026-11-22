@@ -1,0 +1,9 @@
+LIBRARY sin_grunt_native_host_c_abi
+EXPORTS
+    sin_grunt_native_abi_version_v1
+    sin_grunt_native_create_v1
+    sin_grunt_native_destroy_v1
+    sin_grunt_native_attach_v1
+    sin_grunt_native_step_v1
+    sin_grunt_native_snapshot_v1
+    sin_grunt_native_detach_v1
