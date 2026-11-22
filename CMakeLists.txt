@@ -4740,3 +4740,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase602: original-free SHA-pinned Grunt AI behavior activity method audit.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_behavior_activity_phase602_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_behavior_activities_phase602.py"
+        --self-test)
+  endif()
+endif()
