@@ -114,7 +114,11 @@ typedef struct sin_elite_native_spawn_result_v1 {
 
 typedef struct sin_elite_native_event43_callbacks_v1 {
   uint32_t version,struct_size;
-  /* Called only if original Spawn saved a non-INVALID +0xFDC handle.
+  /* Re-read the authoritative native NPC +0xFDC immediately at event time.
+   * The field may change after Spawn. 1=read, 0/-1=host failure.
+   * Never trust a previously cached handle as the live actor's value. */
+  int32_t (*read_current_serial_handle_fdc)(void*,uint32_t*);
+  /* Called only if the CURRENT +0xFDC handle is non-INVALID.
    * Return 1=resolved native entity token, 0=not found, -1=error. */
   int32_t (*resolve_serial_handle)(void*,uint32_t,uint64_t*);
   /* Called EVEN with zero token, exactly as original event 0x43.
@@ -156,6 +160,7 @@ sin_elite_native_spawn_v1(sin_elite_native_registry_v1*,
                            sin_elite_native_spawn_result_v1*);
 /* Only authenticated 0x43 event path is supported, NOT events 0x03/0x47.
  * Requires completed original Spawn on the exact live generation.
+ * Re-reads the native handle each time; cached state is diagnostic only.
  * Return 1=blocked, 2=forwarded, negative=status error.
  * If publishing succeeded but forwarding fails, native byte +0xFD9 may
  * already have changed; no unverified rollback is attempted.
