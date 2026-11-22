@@ -4974,3 +4974,24 @@ if(BUILD_TESTING)
   add_test(NAME sin_grunt_npc_session_registry_phase614_tests
     COMMAND sin_grunt_npc_session_registry_phase614_tests)
 endif()
+
+# Phase617: real 2006 Assault lifecycle +0x1C RET, +0x24 bridge
+# virtual0, +0x28 RET: independent host parity and SHA-locked source audit.
+if(BUILD_TESTING)
+  add_executable(sin_original_assault_activation_phase617_tests
+    tests/test_original_grunt_assault_activation_phase617.cpp)
+  target_include_directories(sin_original_assault_activation_phase617_tests
+    PRIVATE include)
+  set_target_properties(sin_original_assault_activation_phase617_tests PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+  target_compile_options(sin_original_assault_activation_phase617_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_original_assault_activation_phase617_tests
+    COMMAND sin_original_assault_activation_phase617_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_assault_activation_phase617_native_selftest
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_assault_activation_phase617.py" --self-test)
+  endif()
+endif()
