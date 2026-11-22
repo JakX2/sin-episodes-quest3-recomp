@@ -77,6 +77,36 @@ class StartupEvidenceTests(unittest.TestCase):
         items[0]["origin"] = "synthetic"
         self.assertFalse(check(items)["valid"])
 
+    def test_duplicate_successful_module_load_rejected(self):
+        items = trace()
+        original = next(x for x in items if x["event"] == "module_load")
+        duplicate = dict(original)
+        duplicate["seq"] = max(x["seq"] for x in items) + 1
+        items.append(duplicate)
+        self.assertFalse(check(items)["valid"])
+
+    def test_spawn_before_client_init_rejected(self):
+        items = trace()
+        spawn = next(x for x in items if x["event"] == "entity_spawned")
+        client_return = next(x for x in items if x["event"] == "lifecycle_return" and x.get("method") == "Init")
+        spawn["seq"], client_return["seq"] = client_return["seq"], spawn["seq"]
+        items.sort(key=lambda x: x["seq"])
+        self.assertFalse(check(items)["valid"])
+
+    def test_map_activation_without_spawn_rejected(self):
+        items = [x for x in trace() if x["event"] != "entity_spawned"]
+        self.assertFalse(check(items)["valid"])
+
+    def test_missing_map_activation_rejected(self):
+        self.assertFalse(check([x for x in trace() if x["event"] != "map_active"])["valid"])
+
+    def test_repeated_map_activation_rejected(self):
+        items = trace()
+        duplicate = dict(items[-1])
+        duplicate["seq"] += 1
+        items.append(duplicate)
+        self.assertFalse(check(items)["valid"])
+
     def test_malformed_input_is_rejected(self):
         self.assertFalse(gate.validate(["{broken"])["valid"])
 
