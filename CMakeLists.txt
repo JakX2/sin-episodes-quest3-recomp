@@ -4569,3 +4569,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase590: original Jetpack NPC virtual+0x444 142-case animation
+# event override, original SHA-pinned two-level tables and 26 call edges.
+# Host-only C++17 partial model, no physics or game binary execution.
+if(BUILD_TESTING)
+  add_executable(sin_original_jetpack_events_phase590_tests
+    tests/test_original_jetpack_events_phase590.cpp)
+  target_include_directories(sin_original_jetpack_events_phase590_tests PRIVATE include)
+  target_compile_features(sin_original_jetpack_events_phase590_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_jetpack_events_phase590_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_jetpack_events_phase590_tests
+    COMMAND sin_original_jetpack_events_phase590_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_jetpack_events_phase590_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_jetpack_events_phase590.py"
+        --self-test)
+  endif()
+endif()
