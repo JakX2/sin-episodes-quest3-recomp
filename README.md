@@ -73,6 +73,7 @@
 > | [Phase 594: cross-class Grunt/Elite/Jetpack event 0x54 handoff regressions and optional-component consumption](research/phases/2026-11-22-original-grunt-family-event-integration-phase594.md)
 > | [Phase 595: SHA-gated original Grunt +0xC18 component assignment/callsite probe, synthetic-only test](research/phases/2026-11-22-original-grunt-c18-component-probe-phase595.md)
 > | [Phase 596: original retail Grunt +0xC18 candidate-address triage and Ghidra provenance handoff](research/phases/2026-11-22-original-grunt-c18-candidate-triage-phase596.md)
+> | [Phase 597: Grunt current AI behavior pointer and override-marker structural correlation (hypothesis, no new native bytes)](research/phases/2026-11-22-original-grunt-active-behavior-host-correlation-phase597.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
