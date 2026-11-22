@@ -135,7 +135,7 @@ static bool is_original_name(HANDLE hfile) {
   return _wcsicmp(name,L"sin_original_server.dll")==0 ||
          _wcsicmp(name,L"server.dll")==0;
 }
-static bool file_sha256_is_retail(HANDLE file) {
+static bool sha256_file_handle(HANDLE file) {
   if(file==nullptr || file==INVALID_HANDLE_VALUE)return false;
   LARGE_INTEGER size{};
   if(!GetFileSizeEx(file,&size) ||
@@ -191,6 +191,23 @@ static bool file_sha256_is_retail(HANDLE file) {
   if(hash)BCryptDestroyHash(hash);
   if(alg)BCryptCloseAlgorithmProvider(alg,0);
   return good;
+}
+static bool file_sha256_is_retail(HANDLE event_file) {
+  // Windows LOAD_DLL_DEBUG_EVENT hFile is not guaranteed to grant
+  // FILE_READ_DATA. Resolve the exact handle-backed path and reopen only
+  // that file read-only, with no game/process memory modification.
+  if(!event_file || event_file==INVALID_HANDLE_VALUE)return false;
+  wchar_t path[4096]={};
+  const DWORD n=GetFinalPathNameByHandleW(
+      event_file,path,4096u,FILE_NAME_NORMALIZED);
+  if(n==0 || n>=4096u)return false;
+  HANDLE file=CreateFileW(path,GENERIC_READ,
+      FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+      nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+  if(file==INVALID_HANDLE_VALUE)return false;
+  const bool matched=sha256_file_handle(file);
+  CloseHandle(file);
+  return matched;
 }
 static bool set_watch_for_thread(DWORD tid,DWORD base,bool enable) {
   HANDLE thread=OpenThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT|
