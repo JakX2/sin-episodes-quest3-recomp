@@ -1,0 +1,36 @@
+#requires -Version 5.1
+[CmdletBinding()]
+param([Parameter(Mandatory=$true)][string]$Launcher)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$tokens=$null
+$parseErrors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile(
+    $Launcher,[ref]$tokens,[ref]$parseErrors)
+if ($null -eq $ast -or @($parseErrors).Count -ne 0) {
+    throw 'Owner-only Elite callback tracing script contains PowerShell syntax errors.'
+}
+$source=[IO.File]::ReadAllText($Launcher)
+$required=@(
+    'DisposableTestCopyConfirmed',
+    'Get-FileHash',
+    'SHA256',
+    'Get-Pe32',
+    'sin_original_server.dll',
+    '--disposable-confirmed',
+    'Get-Content',
+    'ConvertFrom-Json',
+    'elite_hardware_watch_armed',
+    'retail_server_sha256_verified',
+    'ORIGINAL_ENGINE_SPAWN_ENTRY_NOT_OBSERVED',
+    'ORIGINAL_ENGINE_CALLBACK_EVIDENCE_NOT_PROVEN'
+)
+foreach($needle in $required) {
+    if(-not $source.Contains($needle)) {
+        throw "Phase627 owner runner omitted mandatory validation: $needle"
+    }
+}
+if($source -match 'Start-Process') {
+    throw 'Owner runner must use the synchronous, evidence-returning tracer directly.'
+}
+Write-Output 'PASS Phase627 owner-only PowerShell syntax, original SHA gate and no-bogus-proof witness'
