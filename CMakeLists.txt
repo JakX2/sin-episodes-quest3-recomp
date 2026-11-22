@@ -4872,3 +4872,22 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase611: authentic Assault vtable+0x20 deactivation and link cleanup.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_assault_deactivation_phase611_tests
+    tests/test_original_grunt_assault_deactivate_phase611.cpp)
+  target_include_directories(sin_original_grunt_assault_deactivation_phase611_tests
+    PRIVATE include)
+  target_compile_options(sin_original_grunt_assault_deactivation_phase611_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_assault_deactivation_phase611_tests
+    COMMAND sin_original_grunt_assault_deactivation_phase611_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_assault_deactivation_phase611_native_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_assault_deactivate_unlink_phase611.py"
+        --self-test)
+  endif()
+endif()
