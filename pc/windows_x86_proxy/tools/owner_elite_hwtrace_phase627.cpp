@@ -1,0 +1,432 @@
+// Phase627: owner-only, read-only hardware execution trace of actual 2006
+// SiN Episodes original native Elite factory / Spawn / animation-event calls.
+// It launches a DISPOSABLE owner-provided game copy under Win32 DEBUG API.
+// No code patches, Source vtable writes, memory injection, imported engine
+// guesses, CreateInterface substitution or simulated gameplay callbacks.
+// Only the SHA256-authenticated original 2006 server module may be armed.
+//
+// IMPORTANT: Hardware breakpoints consume DR0..DR3 of each game thread.
+// Run OFFLINE, only on a disposable test copy, not a production install.
+// This is observational evidence, NOT implementation of gameplay callbacks.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <tlhelp32.h>
+#include <bcrypt.h>
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdio>
+#include <cwchar>
+#include <map>
+#include <string>
+#include <vector>
+#pragma comment(lib, "bcrypt.lib")
+
+#if !defined(_M_IX86)
+#error This owner-original hardware debugger must be built as 32-bit Win32
+#endif
+
+namespace {
+constexpr DWORD kRetailImageBase=0x22000000u;
+constexpr DWORD kOriginalServerSize=6049792u;
+constexpr const char* kRetailHash=
+  "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650";
+struct Watch {
+  const char* name;
+  DWORD original_va;
+  DWORD original_rva;
+};
+// The first four original instruction addresses are authenticated elsewhere:
+// Phase530 Elite factory, Phase622 factory delegate, Phase623 Spawn,
+// Phase593 360-byte animation-event override.
+constexpr std::array<Watch,4> kWatch{{
+  {"elite_factory_create",0x22355c70u,0x355c70u},
+  {"elite_spawn",0x22355820u,0x355820u},
+  {"elite_animation_event",0x22355480u,0x355480u},
+  {"elite_factory_release",0x223552c0u,0x3552c0u}
+}};
+constexpr DWORD kDr7LocalExecWatch=0x55u;
+constexpr DWORD kResumeFlag=0x10000u;
+constexpr DWORD kMaxHits=30000u;
+
+struct Options {
+  std::wstring game,cwd,log;
+  std::vector<std::wstring> extra;
+  DWORD timeout_ms=180000u;
+  bool disposable=false;
+  bool selftest=false;
+};
+struct Counts {
+  unsigned hits[4]={0u,0u,0u,0u};
+  std::map<DWORD,unsigned> object_ordinals;
+  unsigned next_ordinal=1u;
+  unsigned total=0u;
+};
+static void log_json(FILE* file,DWORD pid,DWORD tid,
+                     const char* phase,unsigned detail,unsigned ordinal) {
+  if(!file)return;
+  std::fprintf(file,
+    "{\"phase\":\"%s\",\"pid\":%lu,\"tid\":%lu,\"detail\":%u,\"actor_ordinal\":%u}\n",
+    phase,static_cast<unsigned long>(pid),
+    static_cast<unsigned long>(tid),detail,ordinal);
+  std::fflush(file);
+}
+static std::wstring quote_win_arg(const std::wstring& arg) {
+  std::wstring out=L"\"";
+  unsigned slashes=0;
+  for(wchar_t c:arg) {
+    if(c==L'\\'){++slashes;continue;}
+    if(c==L'"'){
+      out.append(slashes*2u+1u,L'\\');
+      out+=L'"';slashes=0;continue;
+    }
+    out.append(slashes,L'\\');slashes=0;
+    out+=c;
+  }
+  out.append(slashes*2u,L'\\');
+  out+=L'"';
+  return out;
+}
+static bool parse_positive_ms(const wchar_t* s,DWORD& v) {
+  if(!s||!*s)return false;
+  unsigned long long n=0;
+  for(const wchar_t* p=s;*p;++p) {
+    if(*p<L'0'||*p>L'9')return false;
+    n=n*10u+static_cast<unsigned>(*p-L'0');
+    if(n>900000u)return false;
+  }
+  if(n<1000u)return false;
+  v=static_cast<DWORD>(n);
+  return true;
+}
+static bool parse(int argc,wchar_t** argv,Options& o) {
+  if(argc==2 && std::wcscmp(argv[1],L"--self-test")==0) {
+    o.selftest=true;return true;
+  }
+  bool extras=false;
+  for(int i=1;i<argc;++i) {
+    if(extras) {o.extra.emplace_back(argv[i]);continue;}
+    if(std::wcscmp(argv[i],L"--")==0){extras=true;continue;}
+    if(std::wcscmp(argv[i],L"--disposable-confirmed")==0){
+      o.disposable=true;continue;
+    }
+    if(i+1>=argc)return false;
+    if(std::wcscmp(argv[i],L"--game")==0)o.game=argv[++i];
+    else if(std::wcscmp(argv[i],L"--cwd")==0)o.cwd=argv[++i];
+    else if(std::wcscmp(argv[i],L"--log")==0)o.log=argv[++i];
+    else if(std::wcscmp(argv[i],L"--timeout-ms")==0) {
+      if(!parse_positive_ms(argv[++i],o.timeout_ms))return false;
+    } else return false;
+  }
+  return o.disposable && !o.game.empty() && !o.log.empty();
+}
+static std::wstring dirname(const std::wstring& path) {
+  const size_t pos=path.find_last_of(L"\\/");
+  return pos==std::wstring::npos?L".":path.substr(0,pos);
+}
+static bool is_original_name(HANDLE hfile) {
+  if(hfile==nullptr || hfile==INVALID_HANDLE_VALUE)return false;
+  wchar_t buf[4096]={};
+  DWORD n=GetFinalPathNameByHandleW(hfile,buf,4096u,FILE_NAME_NORMALIZED);
+  if(n==0 || n>=4096u)return false;
+  const wchar_t* slash=std::wcsrchr(buf,L'\\');
+  const wchar_t* name=slash?slash+1:buf;
+  return _wcsicmp(name,L"sin_original_server.dll")==0 ||
+         _wcsicmp(name,L"server.dll")==0;
+}
+static bool file_sha256_is_retail(HANDLE file) {
+  if(file==nullptr || file==INVALID_HANDLE_VALUE)return false;
+  LARGE_INTEGER size{};
+  if(!GetFileSizeEx(file,&size) ||
+     size.QuadPart!=static_cast<LONGLONG>(kOriginalServerSize))
+    return false;
+  LARGE_INTEGER beginning{};
+  if(!SetFilePointerEx(file,beginning,nullptr,FILE_BEGIN))return false;
+
+  BCRYPT_ALG_HANDLE alg=nullptr;
+  BCRYPT_HASH_HANDLE hash=nullptr;
+  bool good=false;
+  do {
+    if(BCryptOpenAlgorithmProvider(&alg,BCRYPT_SHA256_ALGORITHM,nullptr,0)<0)
+      break;
+    DWORD obj_size=0,digest_size=0,received=0;
+    if(BCryptGetProperty(alg,BCRYPT_OBJECT_LENGTH,
+        reinterpret_cast<PUCHAR>(&obj_size),sizeof(obj_size),&received,0)<0 ||
+       obj_size==0u || obj_size>4096u)break;
+    if(BCryptGetProperty(alg,BCRYPT_HASH_LENGTH,
+        reinterpret_cast<PUCHAR>(&digest_size),sizeof(digest_size),&received,0)<0 ||
+       digest_size!=32u)break;
+    std::vector<UCHAR> object(obj_size,0u);
+    if(BCryptCreateHash(alg,&hash,object.data(),obj_size,nullptr,0,0)<0)
+      break;
+    std::array<UCHAR,65536> chunk{};
+    DWORD read=0,total=0;
+    bool io_ok=true;
+    while(ReadFile(file,chunk.data(),
+          static_cast<DWORD>(chunk.size()),&read,nullptr) && read>0) {
+      if(BCryptHashData(hash,chunk.data(),read,0)<0) {
+        io_ok=false;break;
+      }
+      total+=read;
+    }
+    if(!io_ok || total!=kOriginalServerSize)break;
+    std::array<UCHAR,32> digest{};
+    if(BCryptFinishHash(hash,digest.data(),
+                       static_cast<ULONG>(digest.size()),0)<0)break;
+    char hex[65]={};
+    for(size_t i=0;i<digest.size();++i) {
+      static const char alphabet[]="0123456789abcdef";
+      hex[i*2u]=alphabet[digest[i]>>4u];
+      hex[i*2u+1u]=alphabet[digest[i]&0x0fu];
+    }
+    good=std::string(hex)==kRetailHash;
+  } while(false);
+  if(hash)BCryptDestroyHash(hash);
+  if(alg)BCryptCloseAlgorithmProvider(alg,0);
+  return good;
+}
+static bool set_watch_for_thread(DWORD tid,DWORD base,bool enable) {
+  HANDLE thread=OpenThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT|
+                          THREAD_SUSPEND_RESUME,FALSE,tid);
+  if(!thread)return false;
+  // Debug events normally suspend all threads, but on detach/timeout
+  // the target might be executing, so explicitly suspend as well.
+  if(SuspendThread(thread)==static_cast<DWORD>(-1)) {
+    CloseHandle(thread);return false;
+  }
+  CONTEXT ctx{};
+  ctx.ContextFlags=CONTEXT_DEBUG_REGISTERS;
+  bool ok=GetThreadContext(thread,&ctx)!=FALSE;
+  if(ok) {
+    if(enable && (ctx.Dr7&0xffu)!=0u)ok=false;
+    else {
+      if(enable) {
+        ctx.Dr0=base+kWatch[0].original_rva;
+        ctx.Dr1=base+kWatch[1].original_rva;
+        ctx.Dr2=base+kWatch[2].original_rva;
+        ctx.Dr3=base+kWatch[3].original_rva;
+        ctx.Dr7=kDr7LocalExecWatch;
+      } else {
+        ctx.Dr7=0;ctx.Dr0=ctx.Dr1=ctx.Dr2=ctx.Dr3=0;
+      }
+      ctx.Dr6=0;
+      ok=SetThreadContext(thread,&ctx)!=FALSE;
+    }
+  }
+  (void)ResumeThread(thread);
+  CloseHandle(thread);
+  return ok;
+}
+static bool apply_all_threads(DWORD pid,DWORD base,bool enable) {
+  HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,0);
+  if(snapshot==INVALID_HANDLE_VALUE)return false;
+  THREADENTRY32 entry{};
+  entry.dwSize=sizeof(entry);
+  bool ok=Thread32First(snapshot,&entry)!=FALSE;
+  if(ok) {
+    do {
+      if(entry.th32OwnerProcessID==pid &&
+         !set_watch_for_thread(entry.th32ThreadID,base,enable)) {
+        ok=false;break;
+      }
+    } while(Thread32Next(snapshot,&entry));
+  }
+  CloseHandle(snapshot);
+  return ok;
+}
+static int test_helpers() {
+  if(kWatch[0].original_va-kRetailImageBase!=kWatch[0].original_rva ||
+     kWatch[1].original_va-kRetailImageBase!=kWatch[1].original_rva ||
+     kWatch[2].original_va-kRetailImageBase!=kWatch[2].original_rva ||
+     kWatch[3].original_va-kRetailImageBase!=kWatch[3].original_rva)
+    return 1;
+  if(quote_win_arg(L"C:\\Demo Game\\test.exe")!=
+      L"\"C:\\Demo Game\\test.exe\"")return 2;
+  if(quote_win_arg(L"x\\\"y")!=L"\"x\\\\\\\"y\"")return 3;
+  DWORD ms=0;
+  if(!parse_positive_ms(L"120000",ms)||ms!=120000u)return 4;
+  if(parse_positive_ms(L"0",ms)||parse_positive_ms(L"-1",ms)||
+     parse_positive_ms(L"9999999999",ms))return 5;
+  std::puts("PASS Phase627 original-only Elite RVA pins, Win32 argument quoting and CLI self-tests");
+  return 0;
+}
+static int trace_original(Options options) {
+  if(options.cwd.empty())options.cwd=dirname(options.game);
+  FILE* out=nullptr;
+  if(_wfopen_s(&out,options.log.c_str(),L"wb")!=0 || !out) {
+    std::fwprintf(stderr,L"Cannot open trace file: %ls\n",options.log.c_str());
+    return 2;
+  }
+  std::wstring command=quote_win_arg(options.game);
+  for(const auto& a:options.extra)command+=L" "+quote_win_arg(a);
+  std::vector<wchar_t> mutable_command(command.begin(),command.end());
+  mutable_command.push_back(L'\0');
+  STARTUPINFOW startup{};
+  startup.cb=sizeof(startup);
+  PROCESS_INFORMATION process{};
+  if(!CreateProcessW(options.game.c_str(),mutable_command.data(),
+      nullptr,nullptr,FALSE,DEBUG_ONLY_THIS_PROCESS,
+      nullptr,options.cwd.c_str(),&startup,&process)) {
+    std::fprintf(stderr,"CreateProcessW failed, Win32 error=%lu\n",
+                 static_cast<unsigned long>(GetLastError()));
+    std::fclose(out);return 3;
+  }
+  const DWORD pid=process.dwProcessId;
+  std::printf("Original SiN Elite hardware callback trace: PID %lu\n",
+              static_cast<unsigned long>(pid));
+  log_json(out,pid,0,"trace_process_started",0,0);
+
+  DWORD base=0;
+  bool verified=false,armed=false,missed_thread=false;
+  Counts counts;
+  const ULONGLONG deadline=GetTickCount64()+options.timeout_ms;
+  bool exited=false;
+  while(GetTickCount64()<deadline && counts.total<kMaxHits && !exited) {
+    DEBUG_EVENT event{};
+    if(!WaitForDebugEvent(&event,350))continue;
+    DWORD response=DBG_CONTINUE;
+    if(event.dwDebugEventCode==LOAD_DLL_DEBUG_EVENT) {
+      HANDLE file=event.u.LoadDll.hFile;
+      if(!verified && is_original_name(file) &&
+         file_sha256_is_retail(file)) {
+        base=static_cast<DWORD>(
+              reinterpret_cast<std::uintptr_t>(event.u.LoadDll.lpBaseOfDll));
+        verified=true;
+        log_json(out,pid,event.dwThreadId,"retail_server_sha256_verified",
+                 base,0);
+        armed=apply_all_threads(pid,base,true);
+        log_json(out,pid,event.dwThreadId,
+                 armed?"elite_hardware_watch_armed":"elite_watch_arm_failed",
+                 armed?4u:0u,0);
+      }
+      if(file && file!=INVALID_HANDLE_VALUE)CloseHandle(file);
+    } else if(event.dwDebugEventCode==CREATE_THREAD_DEBUG_EVENT) {
+      if(armed && !set_watch_for_thread(event.dwThreadId,base,true)) {
+        missed_thread=true;
+        log_json(out,pid,event.dwThreadId,"elite_thread_watch_failed",0,0);
+      }
+      // The CREATE_THREAD event handle belongs to the debugger.
+      if(event.u.CreateThread.hThread)CloseHandle(event.u.CreateThread.hThread);
+    } else if(event.dwDebugEventCode==CREATE_PROCESS_DEBUG_EVENT) {
+      if(event.u.CreateProcessInfo.hFile)
+        CloseHandle(event.u.CreateProcessInfo.hFile);
+      if(event.u.CreateProcessInfo.hThread)
+        CloseHandle(event.u.CreateProcessInfo.hThread);
+      if(event.u.CreateProcessInfo.hProcess)
+        CloseHandle(event.u.CreateProcessInfo.hProcess);
+    } else if(event.dwDebugEventCode==EXCEPTION_DEBUG_EVENT) {
+      const auto& info=event.u.Exception.ExceptionRecord;
+      if(info.ExceptionCode==EXCEPTION_BREAKPOINT) {
+        // Windows loader initial debug break. Do not suppress application
+        // breakpoints beyond the startup breakpoint where possible.
+        response=DBG_CONTINUE;
+      } else if(info.ExceptionCode==EXCEPTION_SINGLE_STEP && armed) {
+        HANDLE thread=OpenThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT,
+                                FALSE,event.dwThreadId);
+        if(!thread) {
+          response=DBG_EXCEPTION_NOT_HANDLED;
+          missed_thread=true;
+        } else {
+          CONTEXT c{};c.ContextFlags=CONTEXT_CONTROL|CONTEXT_INTEGER|
+                                     CONTEXT_DEBUG_REGISTERS;
+          if(!GetThreadContext(thread,&c)) {
+            response=DBG_EXCEPTION_NOT_HANDLED;
+            missed_thread=true;
+          } else {
+            DWORD hit=static_cast<DWORD>(c.Dr6)&0x0fu;
+            int match=-1;
+            for(unsigned i=0;i<kWatch.size();++i) {
+              const DWORD expected=base+kWatch[i].original_rva;
+              if((hit&(1u<<i)) && c.Eip==expected) {
+                match=static_cast<int>(i);
+                break;
+              }
+            }
+            if(match>=0) {
+              unsigned ordinal=0;
+              if(match==1 || match==2) {
+                const DWORD object=c.Ecx;
+                if(object!=0) {
+                  auto it=counts.object_ordinals.find(object);
+                  if(it==counts.object_ordinals.end())
+                    it=counts.object_ordinals.emplace(
+                         object,counts.next_ordinal++).first;
+                  ordinal=it->second;
+                }
+              }
+              ++counts.hits[match];
+              ++counts.total;
+              log_json(out,pid,event.dwThreadId,kWatch[match].name,
+                       counts.hits[match],ordinal);
+              // RF prevents the *same* execute breakpoint retriggering
+              // before the current original instruction executes once.
+              c.EFlags|=kResumeFlag;
+              c.Dr6=0;
+              if(!SetThreadContext(thread,&c)) {
+                missed_thread=true;
+                response=DBG_EXCEPTION_NOT_HANDLED;
+              } else response=DBG_CONTINUE;
+            } else response=DBG_EXCEPTION_NOT_HANDLED;
+          }
+          CloseHandle(thread);
+        }
+      } else {
+        response=DBG_EXCEPTION_NOT_HANDLED;
+      }
+    } else if(event.dwDebugEventCode==EXIT_PROCESS_DEBUG_EVENT) {
+      log_json(out,pid,event.dwThreadId,"process_exited",
+               event.u.ExitProcess.dwExitCode,0);
+      exited=true;
+    }
+    if(!ContinueDebugEvent(event.dwProcessId,event.dwThreadId,response)) {
+      log_json(out,pid,event.dwThreadId,"continue_debug_failed",
+               GetLastError(),0);
+      missed_thread=true;break;
+    }
+  }
+  if(!exited) {
+    if(armed) {
+      // A detached game must not retain hardware breakpoint registers.
+      if(!apply_all_threads(pid,base,false)) {
+        log_json(out,pid,0,"watch_disarm_failed_detach_unsafe",0,0);
+        std::fprintf(stderr,
+          "Hardware watch disarm failed. Do not reuse this test session.\n");
+      }
+    }
+    if(!DebugActiveProcessStop(pid)) {
+      log_json(out,pid,0,"debugger_detach_failed",GetLastError(),0);
+    } else {
+      log_json(out,pid,0,"debugger_detached_game_continues",counts.total,0);
+    }
+  }
+  if(!verified)log_json(out,pid,0,"retail_server_not_authenticated",0,0);
+  if(missed_thread)log_json(out,pid,0,"watch_completeness_unproven",0,0);
+  for(unsigned i=0;i<kWatch.size();++i) {
+    log_json(out,pid,0,kWatch[i].name,counts.hits[i],0);
+  }
+  log_json(out,pid,0,"trace_finished",counts.total,0);
+  std::fclose(out);
+  CloseHandle(process.hThread);
+  CloseHandle(process.hProcess);
+  std::printf("Authenticated retail server=%d; armed=%d; misses=%d; "
+              "native hit count=%u (create=%u spawn=%u event=%u release=%u)\n",
+              verified?1:0,armed?1:0,missed_thread?1:0,counts.total,
+              counts.hits[0],counts.hits[1],counts.hits[2],counts.hits[3]);
+  // No original callbacks observed is not a probe success.
+  return verified&&armed&&!missed_thread ? 0:4;
+}
+} // namespace
+int wmain(int argc,wchar_t** argv) {
+  Options options;
+  if(!parse(argc,argv,options)) {
+    std::fwprintf(stderr,
+      L"Usage: sin_pc_owner_elite_hwtrace_phase627 "
+      L"--disposable-confirmed --game <disposable-exe> "
+      L"--log <fresh-jsonl> [--cwd <game-dir>] "
+      L"[--timeout-ms 120000] [-- <game arguments>]\n"
+      L"CI: --self-test (no executable launched).\n");
+    return 1;
+  }
+  return options.selftest ? test_helpers() : trace_original(options);
+}
