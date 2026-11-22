@@ -1309,3 +1309,33 @@ foreach(sin_native_host_probe_mode IN ITEMS
     PROPERTIES WORKING_DIRECTORY
       "$<TARGET_FILE_DIR:sin_pc_grunt_native_host_proxy_phase620_tests>")
 endforeach()
+
+# Phase623: actually compile and execute the source-authenticated 2006
+# EliteGrunt::Spawn clean-room reference on MSVC x86, not only Linux.
+# It never allocates a Source NPC or calls the original retail DLL.
+add_library(sin_pc_original_elite_grunt_spawn_phase623 STATIC
+  ../../src/original_elite_grunt_spawn_phase623.cpp)
+target_include_directories(sin_pc_original_elite_grunt_spawn_phase623
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_elite_grunt_spawn_phase623 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_grunt_spawn_phase623
+  sin_pc_original_elite_grunt_spawn_phase623)
+
+add_executable(sin_pc_original_elite_grunt_spawn_phase623_tests
+  ../../tests/test_original_elite_grunt_spawn_phase623.cpp)
+target_link_libraries(sin_pc_original_elite_grunt_spawn_phase623_tests
+  PRIVATE sin_pc_original_elite_grunt_spawn_phase623)
+set_target_properties(sin_pc_original_elite_grunt_spawn_phase623_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_grunt_spawn_phase623_tests
+  sin_pc_original_elite_grunt_spawn_phase623_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_grunt_spawn_phase623_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_grunt_spawn_phase623_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_grunt_spawn_phase623_native_x86
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_grunt_spawn_phase623_tests>)
