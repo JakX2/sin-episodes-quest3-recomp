@@ -8,6 +8,14 @@ Code plan_spawn(const Snapshot& current,Plan& output) noexcept {
     Plan candidate{};
     candidate.variant=GruntFactoryReference::classify(current.classname);
     switch(candidate.variant) {
+    case Variant::Base:
+        // Retail 0x22369E40: a classname that matches none of the three
+        // weapon variants branches straight to the common inherited Spawn
+        // sequence at 0x2236A0D4, then skips all per-weapon numeric fields.
+        // The exact default classname is factory-authenticated separately.
+        candidate.desired_field_3B0=current.original_field_3B0;
+        output=candidate;
+        return Code::Applied;
     case Variant::Pistol:
         candidate.desired_weapon="weapon_npc_pistol";
         candidate.desired_field_3B0=1;

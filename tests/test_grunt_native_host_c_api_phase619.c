@@ -8,6 +8,7 @@ struct Mock {
     sin_grunt_native_registry_v1 *registry;
     uint32_t index, generation;
     uint64_t owner;
+    const char *classname;
     int allow, live, candidate, reenter, fail;
     int confirmations, lifecycle_calls, reentry_destroy, reentry_step;
 };
@@ -25,7 +26,7 @@ static int32_t confirm(void *u, const char *class_name,
     if(m->fail)return -1;
     return m->allow && actor.index==m->index &&
            actor.generation==m->generation && owner==m->owner &&
-           strcmp(class_name,"npc_druglab_grunt_scattergun")==0;
+           strcmp(class_name,m->classname)==0;
 }
 static int32_t actor_live(void *u,sin_grunt_actor_v1 a) {
     struct Mock *m=(struct Mock*)u;
@@ -99,6 +100,7 @@ int main(void) {
     assert(registry!=0);
     m.registry=registry;m.index=33u;m.generation=9u;m.owner=1007u;
     m.allow=1;m.live=1;m.candidate=1;
+    m.classname="npc_druglab_grunt_scattergun";
     a.version=SIN_GRUNT_NATIVE_ABI_V1;
     a.struct_size=sizeof(a);
     a.original_classname="npc_druglab_grunt_scattergun";
@@ -162,6 +164,9 @@ int main(void) {
     assert(sin_grunt_native_detach_v1(registry,actor)==SIN_GRUNT_NATIVE_OK);
     assert(sin_grunt_native_detach_v1(registry,actor)==SIN_GRUNT_NATIVE_NOT_FOUND);
     m.generation=10u;m.live=1;a.actor.generation=10u;
+    /* Phase621: a fourth retail registered CNPC_MobGrunt classname. */
+    m.classname="npc_druglab_grunt";
+    a.original_classname="npc_druglab_grunt";
     assert(sin_grunt_native_attach_v1(registry,&a)==SIN_GRUNT_NATIVE_OK);
     assert(sin_grunt_native_detach_v1(registry,actor)==
            SIN_GRUNT_NATIVE_STALE_GENERATION);

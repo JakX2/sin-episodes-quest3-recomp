@@ -3,6 +3,7 @@
 
 namespace sin_compat::original_druglab_grunt {
 Variant GruntFactoryReference::classify(std::string_view name) noexcept {
+    if(name=="npc_druglab_grunt")return Variant::Base;
     if(name=="npc_druglab_grunt_pistol")return Variant::Pistol;
     if(name=="npc_druglab_grunt_scattergun")return Variant::Scattergun;
     if(name=="npc_druglab_grunt_assault_rifle")return Variant::AssaultRifle;

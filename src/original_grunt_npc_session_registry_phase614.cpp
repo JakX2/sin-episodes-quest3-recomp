@@ -6,6 +6,7 @@ namespace sin_compat::grunt_npc_session_registry_phase614 {
 namespace {
 std::string_view canonical_class(std::string_view name) noexcept {
   // Literal-backed names keep their lifetime after the caller's buffer dies.
+  if(name=="npc_druglab_grunt")return "npc_druglab_grunt";
   if(name=="npc_druglab_grunt_pistol")return "npc_druglab_grunt_pistol";
   if(name=="npc_druglab_grunt_scattergun")return "npc_druglab_grunt_scattergun";
   if(name=="npc_druglab_grunt_assault_rifle")return "npc_druglab_grunt_assault_rifle";

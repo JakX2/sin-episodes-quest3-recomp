@@ -10,6 +10,9 @@
 // calls original inherited Spawn hooks. The numeric fields' semantic
 // property names are NOT yet proven, so keep original offsets explicit.
 //
+// The default npc_druglab_grunt factory is source-authenticated too:
+// it takes the common inherited Spawn branch with NO weapon/mode or
+// per-variant +0x98/+0x9C edits. Never guess a default weapon.
 // An INDEPENDENT host must supply real engine-owned NPC operations.
 // This adapter does not instantiate CBaseNPC, use original x86 pointers,
 // run Source AI/nav/schedules, or read physics/models/props.

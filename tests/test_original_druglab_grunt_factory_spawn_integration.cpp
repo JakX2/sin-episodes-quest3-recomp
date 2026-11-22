@@ -105,6 +105,27 @@ int main(){
         }));
     }
     {
+        // The factory accepts the real default classname, but the
+        // Spawn method does not assign any variant weapon or mode.
+        EngineStub h;
+        grunt::GruntFactoryReference factory(h);
+        spawn::SpawnReference spawn_runtime(h);
+        const auto ctor=factory.create("npc_druglab_grunt",0x42);
+        assert(ctor.ok()&&ctor.variant==grunt::Variant::Base);
+        assert(ctor.factory_return_view==h.object+0x160);
+        const auto result=spawn_runtime.apply({
+            "npc_druglab_grunt","existing_weapon",99,-1,-1,
+            false,true,4.9f});
+        assert(result.ok() && result.plan.variant==grunt::Variant::Base);
+        assert(h.selected_weapon.empty()&&h.selected_mode==-1);
+        assert(h.field98==-1&&h.field9c==-1);
+        assert((h.observed==std::vector<std::string>{
+            "alloc","ctor","vtable","vtable","vtable",
+            "factory-virtual70","spawn-v68","spawn-v1c-v6c",
+            "spawn-inherited"
+        }));
+    }
+    {
         EngineStub h;
         h.base_ctor_ok=false;
         grunt::GruntFactoryReference factory(h);
@@ -116,5 +137,5 @@ int main(){
         // Native game adapter MUST NOT invoke Spawn on a rejected factory.
         assert(h.selected_weapon.empty()&&h.selected_mode==-1);
     }
-    std::puts("PASS independent original Grunt 3 class factories initialize native object first, then class-based weapon Spawn and per-global fields (synthetic engine)");
+    std::puts("PASS independent original Grunt 4 factory classnames initialize native object first, then class-based weapon Spawn and per-global fields (synthetic engine)");
 }

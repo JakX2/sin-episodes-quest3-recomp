@@ -97,6 +97,35 @@ void test_original_three_classnames_and_weapons() {
         }));
     }
 }
+void test_retail_default_grunt_has_only_inherited_spawn() {
+    FakeNativeGrunt host;
+    SpawnReference runtime(host);
+    Snapshot in{};
+    in.classname="npc_druglab_grunt";
+    in.weapon_name="weapon_existing";
+    in.original_field_3B0=77;
+    in.original_field_98=19;
+    in.original_field_9C=23;
+    in.original_flag_1F0=true;
+    in.original_edict_16C_present=true;
+    // Unused for the base classname: the original Spawn does not touch
+    // per-variant ConVar +0x28 or numeric fields on this branch.
+    in.variant_float_28=std::numeric_limits<float>::quiet_NaN();
+    const auto r=runtime.apply(in);
+    assert(r.ok() && r.plan.variant==Variant::Base);
+    assert(r.plan.desired_weapon.empty());
+    assert(r.plan.desired_field_3B0==77);
+    assert(!r.plan.overwrite_weapon && !r.plan.update_field_3B0 &&
+           !r.plan.update_field_98 && !r.plan.update_field_9C);
+    assert(host.new_weapon.empty());
+    assert(host.mode==999 && host.field98==999 && host.field9c==999);
+    assert((host.events==std::vector<std::string>{
+        "virtual68","virtual1c-virtual6c","inherited-spawn"
+    }));
+    // Case-sensitive, literal-alias safe: do not admit a lookalike classname.
+    assert(runtime.apply({"npc_druglab_grunt_extra","",0,0,0,
+                          false,false,0.f}).code==Code::UnsupportedClass);
+}
 void test_original_existing_weapon_and_matching_fields() {
     FakeNativeGrunt host;
     SpawnReference runtime(host);
@@ -248,6 +277,7 @@ void test_reentrant_spawn_is_refused_before_host_mutations() {
 }
 int main() {
     test_original_three_classnames_and_weapons();
+    test_retail_default_grunt_has_only_inherited_spawn();
     test_original_existing_weapon_and_matching_fields();
     test_original_dirty_flag_conditions();
     test_strict_source_int32_conversion_boundaries();

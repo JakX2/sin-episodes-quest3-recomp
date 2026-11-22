@@ -5053,3 +5053,17 @@ if(BUILD_TESTING)
     COMMAND sin_grunt_native_host_dynload_phase619_tests
       $<TARGET_FILE:sin_grunt_native_host_c_abi>)
 endif()
+
+# Phase621: the default npc_druglab_grunt is a FOURTH original
+# CEntityFactory<CNPC_MobGrunt> alias, with no weapon-specific Spawn edits.
+# CI runs synthetic x86 control-flow regressions; owner PE32 hashes/bytes
+# are checked locally and never checked into the public repository.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_default_mobgrunt_factory_spawn_audit_phase621_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_base_grunt_factory_phase621.py
+        --self-test)
+  endif()
+endif()
