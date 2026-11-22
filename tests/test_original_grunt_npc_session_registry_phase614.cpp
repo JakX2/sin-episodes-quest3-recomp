@@ -74,6 +74,7 @@ static reg::Attachment attachment(Mock& m,sin_grunt_actor_v1 actor,
   return a;
 }
 static void test_exact_original_names(){
+  assert(reg::Registry::supports_original_class("npc_druglab_grunt"));
   assert(reg::Registry::supports_original_class("npc_druglab_grunt_pistol"));
   assert(reg::Registry::supports_original_class("npc_druglab_grunt_scattergun"));
   assert(reg::Registry::supports_original_class("npc_druglab_grunt_assault_rifle"));
@@ -128,7 +129,7 @@ static void test_attach_step_snapshot_detach_generation(){
   assert(registry.detach({17u,5u})==reg::Status::StaleGeneration);
   assert(registry.detach({17u,6u})==reg::Status::Detached);
 }
-static void test_three_native_classes_and_reentrant_host(){
+static void test_four_native_classes_and_reentrant_host(){
   Engine engine;reg::Registry registry(engine);Mock m;
   engine.registry=&registry;
   assert(registry.attach_existing_native(attachment(m,{1u,1u}))==reg::Status::Attached);
@@ -138,7 +139,10 @@ static void test_three_native_classes_and_reentrant_host(){
       "npc_druglab_grunt_scattergun"))==reg::Status::Attached);
   assert(registry.attach_existing_native(attachment(m,{3u,1u},
       "npc_druglab_grunt_assault_rifle"))==reg::Status::Attached);
-  assert(registry.count()==3);
+  assert(registry.attach_existing_native(attachment(m,{4u,1u},
+      "npc_druglab_grunt"))==reg::Status::Attached);
+  assert(registry.count()==4);
+  assert(registry.detach({4u,1u})==reg::Status::Detached);
   assert(registry.detach({2u,1u})==reg::Status::Detached);
   assert(registry.detach({1u,1u})==reg::Status::Detached);
   assert(registry.detach({3u,1u})==reg::Status::Detached);
@@ -177,5 +181,5 @@ int main(){
   test_exact_original_names();
   test_host_denied_or_dead_never_attaches();
   test_attach_step_snapshot_detach_generation();
-  test_three_native_classes_and_reentrant_host();
+  test_four_native_classes_and_reentrant_host();
 }
