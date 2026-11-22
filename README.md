@@ -88,6 +88,7 @@
 > | [Phase 609: four original Assault handle resolver/missing-target helper methods (204 bytes), dual guard state reset](research/phases/2026-11-22-original-assault-serial-handle-guards-phase609.md)
 > | [Phase 610: original Assault x87 timing, zero/four-second threshold and marker +0x26 finite-state host parity (no duplicate native body count)](research/phases/2026-11-22-original-assault-timer-eligibility-phase610.md)
 > | [Phase 611: original Assault +0x20 shutdown and entity relationship unlink (two complete methods, 220 native bytes), safe host tests](research/phases/2026-11-22-original-assault-deactivate-link-phase611.md)
+> | [Phase 612: end-to-end host regression for Grunt priority, Assault timer eligibility, same-pointer lifecycle and owner-safe shutdown](research/phases/2026-11-22-original-grunt-assault-lifecycle-integration-phase612.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
