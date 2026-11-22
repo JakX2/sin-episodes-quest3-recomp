@@ -290,6 +290,20 @@ static void test_no_valid_chaingun_and_partial_event(void) {
   assert(sin_elite_native_event43_v1(m.reg,m.actor,1.f,&events,&m)==
          SIN_ELITE_NATIVE_EVENT_FORWARDED);
   assert(strcmp(m.calls,"qgpf")==0 && m.gate_entity==0);
+  /* The original NPC field +0xFDC may change after Spawn, e.g. when
+   * equipment ownership changes. Re-read the authoritative live field. */
+  m.fdc=0x1250000bu;
+  m.used=0;m.calls[0]=0;
+  assert(sin_elite_native_event43_v1(m.reg,m.actor,1.f,&events,&m)==
+         SIN_ELITE_NATIVE_EVENT_FORWARDED);
+  assert(strcmp(m.calls,"qrgpf")==0);
+  assert(sin_elite_native_snapshot_v1(m.reg,m.actor,&state)==SIN_ELITE_NATIVE_OK);
+  assert(state.serial_handle_fdc==0x1250000bu);
+  m.fail_stage=15;
+  m.used=0;m.calls[0]=0;
+  assert(sin_elite_native_event43_v1(m.reg,m.actor,1.f,&events,&m)==
+         SIN_ELITE_NATIVE_HOST_REJECTED);
+  assert(strcmp(m.calls,"q")==0);
   m.fail_stage=13;
   assert(sin_elite_native_event43_v1(m.reg,m.actor,1.f,&events,&m)==
          SIN_ELITE_NATIVE_HOST_REJECTED);
