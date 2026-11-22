@@ -4804,3 +4804,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase607: authentic 2006 Grunt eight behavior eligibility method boundaries.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_eligibility_phase607_native_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_eligibility_phase607.py"
+        --self-test)
+  endif()
+endif()
