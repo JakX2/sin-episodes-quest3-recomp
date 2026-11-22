@@ -4668,3 +4668,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_grunt_event_chain_phase594_tests
     COMMAND sin_original_grunt_event_chain_phase594_tests)
 endif()
+
+# Gameplay Phase595: SHA-gated read-only Grunt +0xC18 provenance probe.
+# The hosted test uses ONLY a synthetic x86 PE. No original retail binaries.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_c18_component_phase595_probe_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/probe_sin_original_grunt_component_c18_phase595.py"
+        --self-test)
+  endif()
+endif()
