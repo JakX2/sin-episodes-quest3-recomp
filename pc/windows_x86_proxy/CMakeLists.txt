@@ -1172,3 +1172,28 @@ else()
 endif()
 add_test(NAME sin_pc_grunt_native_NPC_session_registry_phase614
   COMMAND $<TARGET_FILE:sin_pc_grunt_npc_session_registry_phase614_tests>)
+
+# Phase615: genuine Win32 server proxy optionally loads the independent Grunt
+# gameplay C ABI from its FIXED sibling path after original factory startup.
+# In all cases it continues to return the original SiN CreateInterface object.
+add_library(sin_pc_bad_grunt_abi_phase615 SHARED
+  tests/fake_grunt_bad_version_phase615.c
+  tests/fake_grunt_bad_version_phase615.def)
+target_include_directories(sin_pc_bad_grunt_abi_phase615 PRIVATE ../../include)
+sin_pc_configure(sin_pc_bad_grunt_abi_phase615 sin_grunt_bad_version_phase615)
+
+add_executable(sin_pc_grunt_proxy_bridge_phase615_tests
+  tests/test_grunt_proxy_bridge_phase615.c)
+sin_pc_configure(sin_pc_grunt_proxy_bridge_phase615_tests
+  sin_pc_grunt_proxy_bridge_phase615_tests)
+add_dependencies(sin_pc_grunt_proxy_bridge_phase615_tests
+  sin_pc_server sin_pc_fake_server sin_pc_grunt_behavior_c_abi
+  sin_pc_bad_grunt_abi_phase615)
+foreach(sin_grunt_probe_mode IN ITEMS disabled valid missing wrong-version)
+  add_test(NAME sin_pc_grunt_proxy_bridge_phase615_${sin_grunt_probe_mode}
+    COMMAND $<TARGET_FILE:sin_pc_grunt_proxy_bridge_phase615_tests>
+      ${sin_grunt_probe_mode})
+  set_tests_properties(sin_pc_grunt_proxy_bridge_phase615_${sin_grunt_probe_mode}
+    PROPERTIES
+      WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_grunt_proxy_bridge_phase615_tests>")
+endforeach()
