@@ -21,6 +21,7 @@ struct Fake final:spawn::IHost {
   std::vector<spawn::DirtyPath> dirty;
   std::string weapon;
   std::uint32_t flags=0,fdc=0;
+  std::uint8_t fd9=0xff,cb2=0xff;
   std::int32_t field_9c=0,field_98=0;
   std::uint32_t weapon_handle=0x13200005u;
   int lookup_result=1,scalar_calls=0;
@@ -52,10 +53,12 @@ struct Fake final:spawn::IHost {
     return mark(Stage::InheritedSpawn,"inherited");
   }
   bool clear_byte_fd9()override {
-    return mark(Stage::ClearFD9,"clear-fd9");
+    if(!mark(Stage::ClearFD9,"clear-fd9"))return false;
+    fd9=0;return true;
   }
   bool clear_byte_cb2_zero()override {
-    return mark(Stage::ClearCB2,"clear-cb2");
+    if(!mark(Stage::ClearCB2,"clear-cb2"))return false;
+    cb2=0;return true;
   }
   bool read_original_convar_float_28(float& out)override {
     const Stage stage=scalar_calls==0?Stage::ReadScalar9C:Stage::ReadScalar98;
@@ -106,6 +109,7 @@ void test_full_source_order_independent_scalar_reads() {
   assert(host.flags==(spawn::kPrimaryFlags|spawn::kSecondaryFlags));
   assert(r.flags_after==host.flags);
   assert(host.scalar_calls==2);
+  assert(host.fd9==0u && host.cb2==0u);
   assert(host.dirty==std::vector<spawn::DirtyPath>({
     spawn::DirtyPath::EdictStateBit0,
     spawn::DirtyPath::EdictStateBit0}));
@@ -127,6 +131,7 @@ void test_cached_weapon_and_already_set_fields() {
   const auto r=runtime.apply(current);
   assert(r.ok()&&r.flags_after==current.original_flags_b4);
   assert(host.weapon.empty()&&host.dirty.empty());
+  assert(host.fd9==0u && host.cb2==0u);
   assert((host.calls==std::vector<std::string>{
     "virtual68","virtual1c+6c","inherited",
     "clear-fd9","clear-cb2",
@@ -180,6 +185,7 @@ void test_refusal_at_every_stage_and_partial_mutations() {
     assert(!r.wrote_handle);
     assert(!host.calls.empty());
     assert(host.fdc==0u);
+    if(stage==Stage::ClearCB2)assert(host.fd9==0u&&host.cb2==0xffu);
     if(stage==Stage::FlagsSecondary) {
       assert(r.flags_after==spawn::kPrimaryFlags);
       assert(host.flags==spawn::kPrimaryFlags);
