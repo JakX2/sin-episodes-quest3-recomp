@@ -76,7 +76,7 @@ struct Fake final:spawn::IHost {
     const Stage stage=(value&spawn::kSecondaryFlags)!=0?
       Stage::FlagsSecondary:Stage::FlagsPrimary;
     if(!mark(stage,(stage==Stage::FlagsPrimary)?
-                    "flags+100000":"flags+200000"))return false;
+                    "flags+100000":"flags+2000"))return false;
     flags=value;
     dirty.push_back(marker);return true;
   }
@@ -113,7 +113,7 @@ void test_full_source_order_independent_scalar_reads() {
     "weapon","virtual68","virtual1c+6c","inherited",
     "clear-fd9","virtual798(0)",
     "read9c","v1b4+field9c","read98","v1b0+field98",
-    "flags+100000","flags+200000","lookup-rtti","field-fdc"
+    "flags+100000","flags+2000","lookup-rtti","field-fdc"
   }));
 }
 void test_cached_weapon_and_already_set_fields() {
