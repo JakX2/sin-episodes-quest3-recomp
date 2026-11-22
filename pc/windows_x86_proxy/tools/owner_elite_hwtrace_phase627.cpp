@@ -17,6 +17,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <cwchar>
 #include <map>
 #include <string>
@@ -209,6 +210,29 @@ static bool file_sha256_is_retail(HANDLE event_file) {
   CloseHandle(file);
   return matched;
 }
+static bool original_live_entry_prefixes_match(HANDLE process,DWORD base) {
+  // These tiny non-relocated instruction prefixes come from the owner's
+  // SHA-pinned retail server.dll. Check actual loaded process memory too
+  // before claiming original instructions can be observed.
+  struct Prefix {DWORD rva; UCHAR bytes[4]; SIZE_T len;};
+  const Prefix prefixes[]={
+    {0x355c70u,{0x8bu,0x44u,0x24u,0x04u},4u}, // factory
+    {0x355820u,{0x83u,0xecu,0x18u,0u},3u},   // Spawn
+    {0x355480u,{0x51u,0x56u,0x57u,0u},3u},   // event
+    {0x3552c0u,{0x8bu,0x4cu,0x24u,0x04u},4u} // release
+  };
+  for(const auto& prefix:prefixes) {
+    UCHAR live[4]={};
+    SIZE_T received=0;
+    const auto address=reinterpret_cast<LPCVOID>(
+        static_cast<std::uintptr_t>(base)+prefix.rva);
+    if(!ReadProcessMemory(process,address,live,prefix.len,&received) ||
+       received!=prefix.len ||
+       std::memcmp(live,prefix.bytes,prefix.len)!=0)
+      return false;
+  }
+  return true;
+}
 static bool set_watch_for_thread(DWORD tid,DWORD base,bool enable) {
   HANDLE thread=OpenThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT|
                           THREAD_SUSPEND_RESUME,FALSE,tid);
@@ -330,13 +354,18 @@ static int trace_original(Options options) {
          file_sha256_is_retail(file)) {
         base=static_cast<DWORD>(
               reinterpret_cast<std::uintptr_t>(event.u.LoadDll.lpBaseOfDll));
-        verified=true;
-        log_json(out,pid,event.dwThreadId,"retail_server_sha256_verified",
-                 base,0);
-        armed=apply_all_threads(pid,base,true);
-        log_json(out,pid,event.dwThreadId,
-                 armed?"elite_hardware_watch_armed":"elite_watch_arm_failed",
-                 armed?4u:0u,0);
+        if(!original_live_entry_prefixes_match(process.hProcess,base)) {
+          log_json(out,pid,event.dwThreadId,
+                   "original_live_code_prefix_mismatch",0,0);
+        } else {
+          verified=true;
+          log_json(out,pid,event.dwThreadId,"retail_server_sha256_verified",
+                   base,0);
+          armed=apply_all_threads(pid,base,true);
+          log_json(out,pid,event.dwThreadId,
+                   armed?"elite_hardware_watch_armed":"elite_watch_arm_failed",
+                   armed?4u:0u,0);
+        }
       }
       if(file && file!=INVALID_HANDLE_VALUE)CloseHandle(file);
     } else if(event.dwDebugEventCode==CREATE_THREAD_DEBUG_EVENT) {
