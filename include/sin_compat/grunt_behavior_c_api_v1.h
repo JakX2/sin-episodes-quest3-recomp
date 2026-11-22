@@ -59,9 +59,12 @@ typedef struct sin_grunt_behavior_host_v1 {
     int32_t (*resolve_entity)(void *, uint32_t encoded, uint64_t *out_token);
     int32_t (*read_entity_link)(void *, uint64_t entity_token, uint32_t *out_encoded);
     int32_t (*write_entity_link)(void *, uint64_t entity_token, uint32_t encoded);
-    /* stage 0: new behavior v+0x1C; stage 1: new v+0x24;
+    /* stage 0: new behavior v+0x1C for other registered classes.
+     * The authentic Assault +0x1C is a single RET and needs NO callback.
+     * stage 1: new v+0x24; for Assault this is the native 7-byte
+     * behavior+0x0C -> pointed object's vtable[0] tail dispatch.
      * stage 2: old behavior v+0x20, ONLY for non-Assault classes.
-     * Assault stage-2 callback is implemented by the Phase611 model.
+     * Assault stage-2 cleanup is implemented by the Phase611 model.
      */
     int32_t (*behavior_lifecycle)(void *, sin_grunt_actor_v1, uint32_t index,
                                   uint32_t stage);
