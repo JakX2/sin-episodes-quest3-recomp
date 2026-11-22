@@ -4632,3 +4632,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase593: original CNPC_EliteGrunt virtual+0x444 event 0x03,
+# 0x43, 0x47, and inheritance of event 0x54 to Grunt Phase592.
+# C++17 host-only source model, original-free native PE mutation audit.
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_grunt_event_phase593_tests
+    tests/test_original_elite_grunt_event_phase593.cpp)
+  target_include_directories(sin_original_elite_grunt_event_phase593_tests PRIVATE include)
+  target_compile_features(sin_original_elite_grunt_event_phase593_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_elite_grunt_event_phase593_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_grunt_event_phase593_tests
+    COMMAND sin_original_elite_grunt_event_phase593_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_grunt_event_phase593_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_elite_grunt_event_phase593.py"
+        --self-test)
+  endif()
+endif()
