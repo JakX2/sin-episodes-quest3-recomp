@@ -160,7 +160,7 @@ def verify_original(client,server):
              "virtual+0x68","virtual+0x1c to +0x6c","inherited Spawn",
              "clear byte+0xfd9","virtual+0x798 with zero",
              "field+0x9c via virtual+0x1b4","field+0x98 via virtual+0x1b0",
-             "set bit 0x00100000","set bit 0x00200000",
+             "set bit 0x00100000","set bit 0x00002000",
              "native active weapon lookup and CWeaponChaingun RTTI cast",
              "virtual+0x08 return word0 -> field+0xfdc or 0xffffffff"],
         "native_flags_offset":"0xb4",
