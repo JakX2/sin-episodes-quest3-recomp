@@ -45,11 +45,12 @@ Result SpawnReference::apply(const Snapshot& current) noexcept {
     stage=Stage::InheritedSpawn;
     if(!host_.inherited_npc_spawn_2235F2A0())goto refusal;
 
-    // The source clears +0xFD9 before invoking virtual +0x798(0).
+    // The source clears +0xFD9, then original virtual +0x798(0)
+    // dispatches to the verified 13-byte field+0xCB2 setter.
     stage=Stage::ClearFD9;
     if(!host_.clear_byte_fd9())goto refusal;
-    stage=Stage::Virtual798;
-    if(!host_.native_virtual_798_with_zero())goto refusal;
+    stage=Stage::ClearCB2;
+    if(!host_.clear_byte_cb2_zero())goto refusal;
 
     // The original reads the same source ConVar twice. Respect order:
     // +0x9C with virtual +0x1B4, then +0x98 with virtual +0x1B0.
