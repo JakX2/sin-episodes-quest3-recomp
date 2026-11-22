@@ -4680,3 +4680,15 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase596: original-free Grunt component C18 candidate report triage.
+# The input is synthetic in CI; no retail binary or Ghidra runtime required.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_c18_phase596_triage_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/triage_sin_original_grunt_c18_phase596.py"
+        --self-test)
+  endif()
+endif()
