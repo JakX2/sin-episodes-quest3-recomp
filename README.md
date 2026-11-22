@@ -82,6 +82,7 @@
 > | [Phase 603: native RTTI proves CAI_BehaviorHost<CAI_BaseNPC>, 86-byte constructor initializes +0xC18 null and vector zero](research/phases/2026-11-22-original-grunt-behavior-host-rtti-ctor-phase603.md)
 > | [Phase 604: four complete original Grunt behavior selection/transition methods (331 bytes), current +0xC18 pointer proven](research/phases/2026-11-22-original-grunt-active-behavior-selector-phase604.md)
 > | [Phase 605: original Grunt +0xA4 corrected to Savegame Restore; AI_Behaviors version 2, three whole methods (652 bytes)](research/phases/2026-11-22-original-grunt-ai-behaviors-save-restore-phase605.md)
+> | [Phase 606: actual MobGrunt runtime first-eligible behavior priority, three whole methods (240 bytes), C++ host parity test](research/phases/2026-11-22-original-mobgrunt-runtime-behavior-priority-phase606.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
