@@ -65,14 +65,15 @@ struct Host final : IHost {
         return delegate_ok;
     }
 };
-void test_shared_three_variant_constructor_path() {
+void test_shared_four_alias_constructor_path() {
     constexpr const char* classes[]{
+        "npc_druglab_grunt",
         "npc_druglab_grunt_pistol",
         "npc_druglab_grunt_scattergun",
         "npc_druglab_grunt_assault_rifle"};
     constexpr Variant variants[]{
-        Variant::Pistol,Variant::Scattergun,Variant::AssaultRifle};
-    for(int i=0;i<3;++i){
+        Variant::Base,Variant::Pistol,Variant::Scattergun,Variant::AssaultRifle};
+    for(int i=0;i<4;++i){
         Host h;
         GruntFactoryReference factory(h);
         const auto r=factory.create(classes[i],0xCAFED00Du);
@@ -156,10 +157,10 @@ void test_creator_is_nonreentrant_and_delegate_safely_dispatches() {
     assert(!factory.delegate_release(0x100160u));
 }
 int main() {
-    test_shared_three_variant_constructor_path();
+    test_shared_four_alias_constructor_path();
     test_no_fabricated_grunt_alias();
     test_fail_closed_by_original_constructor_stage();
     test_original_subobject_adjustment_safety();
     test_creator_is_nonreentrant_and_delegate_safely_dispatches();
-    std::puts("PASS original Druglab Grunt 3-alias factory: size 0xFD8, vptr+0/790/C14, base ctor, virtual70, returned+0x160, delegate virtual18 and safe rollback (synthetic host)");
+    std::puts("PASS original Druglab Grunt 4-alias factory: size 0xFD8, vptr+0/790/C14, base ctor, virtual70, returned+0x160, delegate virtual18 and safe rollback (synthetic host)");
 }
