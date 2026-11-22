@@ -399,15 +399,14 @@ static int trace_original(Options options) {
         missed_thread=true;
         log_json(out,pid,event.dwThreadId,"elite_thread_watch_failed",0,0);
       }
-      // The CREATE_THREAD event handle belongs to the debugger.
-      if(event.u.CreateThread.hThread)CloseHandle(event.u.CreateThread.hThread);
+      // Windows itself closes this DEBUG_EVENT hThread when the
+      // matching EXIT_THREAD_DEBUG_EVENT is continued. Do not close early.
     } else if(event.dwDebugEventCode==CREATE_PROCESS_DEBUG_EVENT) {
       if(event.u.CreateProcessInfo.hFile)
         CloseHandle(event.u.CreateProcessInfo.hFile);
-      if(event.u.CreateProcessInfo.hThread)
-        CloseHandle(event.u.CreateProcessInfo.hThread);
-      if(event.u.CreateProcessInfo.hProcess)
-        CloseHandle(event.u.CreateProcessInfo.hProcess);
+      // The DEBUG_EVENT hProcess/hThread are owned by the debug subsystem
+      // until the matching exit event is continued. The independent
+      // PROCESS_INFORMATION handles are closed by this tracer on exit.
     } else if(event.dwDebugEventCode==EXCEPTION_DEBUG_EVENT) {
       const auto& info=event.u.Exception.ExceptionRecord;
       if(info.ExceptionCode==EXCEPTION_BREAKPOINT) {
