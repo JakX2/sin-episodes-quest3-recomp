@@ -36,7 +36,10 @@ enum {
     SIN_GRUNT_NATIVE_INVALID_ARGUMENT = -18
 };
 
-/* The host must verify the classname, native factory ownership, full
+/* Only the four retail CNPC_MobGrunt factory names are supported: the
+ * default npc_druglab_grunt and three explicit weapon variants. The elite
+ * classname is a different original CEntityFactory/CNPC_EliteGrunt type.
+ * The host must verify the classname, native factory ownership, full
  * (entity index, generation) AND original opaque owner token against its
  * current engine-owned entity. Returns 1 = confirmed, 0 = not current,
  * -1 = host error. The callback must not throw across this C boundary.
