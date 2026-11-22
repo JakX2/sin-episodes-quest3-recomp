@@ -5094,3 +5094,29 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase623: authentic original EliteGrunt::Spawn 505-byte control flow.
+# Engine-neutral original-source reference, not a Source CBaseNPC or
+# replacement game DLL. No physics, surfaces, models or prop work.
+add_library(sin_original_elite_grunt_spawn_phase623 STATIC
+  src/original_elite_grunt_spawn_phase623.cpp)
+target_include_directories(sin_original_elite_grunt_spawn_phase623 PUBLIC include)
+target_compile_options(sin_original_elite_grunt_spawn_phase623 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_grunt_spawn_phase623_tests
+    tests/test_original_elite_grunt_spawn_phase623.cpp)
+  target_link_libraries(sin_original_elite_grunt_spawn_phase623_tests PRIVATE
+    sin_original_elite_grunt_spawn_phase623)
+  target_compile_options(sin_original_elite_grunt_spawn_phase623_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_grunt_spawn_phase623_tests
+    COMMAND sin_original_elite_grunt_spawn_phase623_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_grunt_spawn_phase623_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_grunt_spawn_phase623.py
+        --self-test)
+  endif()
+endif()
