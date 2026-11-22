@@ -1139,3 +1139,36 @@ else()
 endif()
 add_test(NAME sin_pc_grunt_behavior_win32_host_phase613
   COMMAND $<TARGET_FILE:sin_pc_grunt_behavior_c_abi_phase613_tests>)
+
+# Phase614: attach only to a verified existing native Druglab Grunt NPC.
+# Independent per-NPC behavior sessions; no fake original Source factories.
+add_library(sin_pc_grunt_npc_session_registry_phase614 STATIC
+  ../../src/original_grunt_npc_session_registry_phase614.cpp)
+target_include_directories(sin_pc_grunt_npc_session_registry_phase614
+  PUBLIC ../../include)
+target_link_libraries(sin_pc_grunt_npc_session_registry_phase614
+  PUBLIC sin_pc_grunt_behavior_c_abi)
+set_target_properties(sin_pc_grunt_npc_session_registry_phase614 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_grunt_npc_session_registry_phase614
+  sin_pc_grunt_npc_session_registry_phase614)
+
+add_executable(sin_pc_grunt_npc_session_registry_phase614_tests
+  ../../tests/test_original_grunt_npc_session_registry_phase614.cpp)
+target_include_directories(sin_pc_grunt_npc_session_registry_phase614_tests
+  PRIVATE ../../include)
+target_link_libraries(sin_pc_grunt_npc_session_registry_phase614_tests
+  PRIVATE sin_pc_grunt_npc_session_registry_phase614)
+set_target_properties(sin_pc_grunt_npc_session_registry_phase614_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_grunt_npc_session_registry_phase614_tests
+  sin_pc_grunt_npc_session_registry_phase614_tests)
+if(MSVC)
+  target_compile_options(sin_pc_grunt_npc_session_registry_phase614_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_grunt_npc_session_registry_phase614_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_grunt_native_NPC_session_registry_phase614
+  COMMAND $<TARGET_FILE:sin_pc_grunt_npc_session_registry_phase614_tests>)

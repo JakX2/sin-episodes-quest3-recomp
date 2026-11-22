@@ -4948,3 +4948,29 @@ if(BUILD_TESTING)
     COMMAND sin_grunt_behavior_dynload_phase613_tests
       $<TARGET_FILE:sin_grunt_behavior_c_abi>)
 endif()
+
+# Phase614: attach the loadable Grunt C ABI only to host-confirmed native NPCs.
+# This registry owns sessions, never Source/SiN entity objects or factories.
+add_library(sin_grunt_npc_session_registry STATIC
+  src/original_grunt_npc_session_registry_phase614.cpp)
+target_include_directories(sin_grunt_npc_session_registry PUBLIC include)
+target_link_libraries(sin_grunt_npc_session_registry PUBLIC
+  sin_grunt_behavior_c_abi)
+set_target_properties(sin_grunt_npc_session_registry PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_compile_options(sin_grunt_npc_session_registry PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_grunt_npc_session_registry_phase614_tests
+    tests/test_original_grunt_npc_session_registry_phase614.cpp)
+  target_include_directories(sin_grunt_npc_session_registry_phase614_tests PRIVATE include)
+  target_link_libraries(sin_grunt_npc_session_registry_phase614_tests
+    PRIVATE sin_grunt_npc_session_registry)
+  set_target_properties(sin_grunt_npc_session_registry_phase614_tests PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+  target_compile_options(sin_grunt_npc_session_registry_phase614_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_grunt_npc_session_registry_phase614_tests
+    COMMAND sin_grunt_npc_session_registry_phase614_tests)
+endif()
