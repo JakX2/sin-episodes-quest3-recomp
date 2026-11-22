@@ -4729,3 +4729,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase601: original-free 8-event-native-method and marker-clear audit mutation test.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_behavior_event54_phase601_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_behavior_event54_phase601.py"
+        --self-test)
+  endif()
+endif()
