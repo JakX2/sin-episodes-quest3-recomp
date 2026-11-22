@@ -76,8 +76,10 @@ $gameDir = $game.Directory.FullName
 $binExpected = Join-Path $gameDir 'SE1\bin'
 # Do not require identical path spelling or case; Windows Resolve-Path
 # normalizes the expected location where the Source engine loads it.
-if ((Test-Path -LiteralPath $binExpected -PathType Container) -and
-    ((Resolve-Path -LiteralPath $binExpected).Path -ine $bin.FullName)) {
+if (-not (Test-Path -LiteralPath $binExpected -PathType Container)) {
+    throw 'The disposable game executable does not have its SE1\bin directory.'
+}
+if ((Resolve-Path -LiteralPath $binExpected).Path -ine $bin.FullName) {
     throw 'GameBin is not this disposable game executable’s SE1\bin.'
 }
 $out = [IO.Path]::GetFullPath($OutputTrace)
@@ -106,6 +108,16 @@ if (-not [IO.File]::Exists($out)) {
 }
 $events = @(Get-Content -LiteralPath $out | Where-Object { $_.Trim() } |
   ForEach-Object { $_ | ConvertFrom-Json -ErrorAction Stop })
+$starts = @($events | Where-Object { $_.phase -eq 'trace_process_started' })
+$finished = @($events | Where-Object { $_.phase -eq 'trace_finished' })
+$singlePid = $starts.Count -eq 1 -and $finished.Count -eq 1
+if ($singlePid) {
+    $expectedPid = [int64]$starts[0].pid
+    if ($expectedPid -le 0 -or
+        @($events | Where-Object { [int64]$_.pid -ne $expectedPid }).Count -gt 0) {
+        $singlePid = $false
+    }
+}
 $authenticated = @($events | Where-Object {
   $_.phase -eq 'retail_server_sha256_verified'
 }).Count -eq 1
@@ -124,7 +136,8 @@ $animation = @($events | Where-Object {
   $_.phase -eq 'elite_animation_event' -and [int]$_.detail -gt 0 -and
   [int]$_.tid -gt 0
 }).Count
-if ($exitCode -eq 0 -and $authenticated -and $armed -and -not $incomplete) {
+if ($exitCode -eq 0 -and $singlePid -and $authenticated -and $armed -and
+    -not $incomplete) {
     if ($spawns -gt 0) {
         Write-Host "OWNER_ELITE_TRACE: ORIGINAL_ENGINE_SPAWN_ENTRY_OBSERVED=$spawns"
     } else {
