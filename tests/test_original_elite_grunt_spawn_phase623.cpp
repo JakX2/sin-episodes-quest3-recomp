@@ -54,8 +54,8 @@ struct Fake final:spawn::IHost {
   bool clear_byte_fd9()override {
     return mark(Stage::ClearFD9,"clear-fd9");
   }
-  bool native_virtual_798_with_zero()override {
-    return mark(Stage::Virtual798,"virtual798(0)");
+  bool clear_byte_cb2_zero()override {
+    return mark(Stage::ClearCB2,"clear-cb2");
   }
   bool read_original_convar_float_28(float& out)override {
     const Stage stage=scalar_calls==0?Stage::ReadScalar9C:Stage::ReadScalar98;
@@ -111,7 +111,7 @@ void test_full_source_order_independent_scalar_reads() {
     spawn::DirtyPath::EdictStateBit0}));
   assert((host.calls==std::vector<std::string>{
     "weapon","virtual68","virtual1c+6c","inherited",
-    "clear-fd9","virtual798(0)",
+    "clear-fd9","clear-cb2",
     "read9c","v1b4+field9c","read98","v1b0+field98",
     "flags+100000","flags+2000","lookup-rtti","field-fdc"
   }));
@@ -129,7 +129,7 @@ void test_cached_weapon_and_already_set_fields() {
   assert(host.weapon.empty()&&host.dirty.empty());
   assert((host.calls==std::vector<std::string>{
     "virtual68","virtual1c+6c","inherited",
-    "clear-fd9","virtual798(0)",
+    "clear-fd9","clear-cb2",
     "read9c","read98","lookup-rtti","field-fdc"
   }));
 }
@@ -166,7 +166,7 @@ void test_all_network_dirty_paths() {
 void test_refusal_at_every_stage_and_partial_mutations() {
   constexpr Stage stages[]{
     Stage::WeaponSymbol,Stage::Virtual68,Stage::Virtual1CThen6C,
-    Stage::InheritedSpawn,Stage::ClearFD9,Stage::Virtual798,
+    Stage::InheritedSpawn,Stage::ClearFD9,Stage::ClearCB2,
     Stage::ReadScalar9C,Stage::UpdateField9C,Stage::ReadScalar98,
     Stage::UpdateField98,Stage::FlagsPrimary,Stage::FlagsSecondary,
     Stage::ResolveActiveChaingun,Stage::WriteHandleFDC
@@ -186,11 +186,11 @@ void test_refusal_at_every_stage_and_partial_mutations() {
     }
   }
   {
-    Fake host;host.throw_at=Stage::Virtual798;
+    Fake host;host.throw_at=Stage::ClearCB2;
     spawn::SpawnReference runtime(host);
     auto result=runtime.apply(base());
     assert(result.code==spawn::Code::HostRejected &&
-           result.failed_stage==Stage::Virtual798);
+           result.failed_stage==Stage::ClearCB2);
   }
   {
     Fake host;host.lookup_result=-1;
