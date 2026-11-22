@@ -56,7 +56,17 @@ class Registry final {
   Status detach(sin_grunt_actor_v1 actor) noexcept;
   std::size_t count() const noexcept{return slots_.size();}
  private:
-  struct Slot {std::uint32_t generation;sin_grunt_behavior_session_v1* session;};
+  // Canonical class spelling is stored in repository-owned static memory,
+  // never as a view into the caller's transient classname buffer.
+  struct Slot {
+    std::uint32_t generation;
+    sin_grunt_behavior_session_v1* session;
+    std::uint64_t owner_entity_token;
+    std::string_view original_classname;
+  };
+  // Must run under Guard before each step/snapshot. 1 = same live host
+  // identity; 0 = expired/replaced; -1 = host callback error/exception.
+  int reattest(const Slot& slot,sin_grunt_actor_v1 actor) noexcept;
   class Guard final {
    public:
     explicit Guard(bool& flag) noexcept:flag_(flag),entered_(!flag) {
