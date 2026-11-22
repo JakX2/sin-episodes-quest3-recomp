@@ -66,6 +66,8 @@ def validate(lines):
         if kind == "module_load":
             if module not in INTERFACES or e.get("pe32") is not True or e.get("result") != "ok":
                 errors.append(f"seq {e['seq']}: invalid PE32 module load")
+            elif module in loaded:
+                errors.append(f"seq {e['seq']}: duplicate module load")
             else:
                 loaded.add(module)
         elif kind == "factory":
@@ -94,15 +96,19 @@ def validate(lines):
                 registered.add(classname)
         elif kind == "entity_spawned":
             classname = e.get("classname")
-            if classname not in registered or e.get("result") != "ok":
+            if classname not in registered or not all(k in returned for k in LIFECYCLE) or e.get("result") != "ok":
                 errors.append(f"seq {e['seq']}: ungrounded entity spawn")
             else:
                 spawned.add(classname)
         elif kind == "map_active":
-            if not all(k in returned for k in LIFECYCLE) or e.get("result") != "ok" or not isinstance(e.get("map"), str) or not e["map"]:
+            if not all(k in returned for k in LIFECYCLE) or not spawned or active or e.get("result") != "ok" or not isinstance(e.get("map"), str) or not e["map"]:
                 errors.append(f"seq {e['seq']}: ungrounded map activation")
             else:
                 active = True
+    if not spawned:
+        errors.append("no NPC spawn observed")
+    if not active:
+        errors.append("no map activation observed")
     if pending:
         errors.append("unfinished lifecycle calls")
     missing = [f"{m}:{i}" for m, interfaces in INTERFACES.items()
