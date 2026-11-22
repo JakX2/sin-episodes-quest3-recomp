@@ -4762,3 +4762,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase604 original-free Grunt behavior selection/transition source audit.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_behavior_selection_phase604_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_behavior_selection_phase604.py"
+        --self-test)
+  endif()
+endif()
