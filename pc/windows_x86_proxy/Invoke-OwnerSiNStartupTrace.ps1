@@ -11,7 +11,8 @@ param(
   [Parameter(Mandatory=$true)][string]$GameExecutable,
   [string]$GameArguments = '',
   [switch]$DisposableTestCopyConfirmed,
-  [switch]$GruntBridgeProbe
+  [switch]$GruntBridgeProbe,
+  [switch]$GruntNativeHostProbe
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -94,14 +95,62 @@ if ($GruntBridgeProbe) {
   Write-Output "OWNER_GRUNT_BRIDGE_PE32: verified x86 DLL in disposable game-copy bin"
 }
 
+
+# Phase620: the optional native-host DLL imports the Phase613 behavior DLL.
+# Never probe it when the core behavior bridge was not explicitly requested.
+if ($GruntNativeHostProbe) {
+  if (-not $GruntBridgeProbe) {
+    throw "Use -GruntBridgeProbe together with -GruntNativeHostProbe; the native host depends on the original-free behavior DLL"
+  }
+  $nativeHost = Join-Path $bin 'sin_grunt_native_host_c_abi.dll'
+  if (-not (Test-Path -LiteralPath $nativeHost -PathType Leaf)) {
+    throw "Missing native-host C ABI DLL in the disposable game-copy bin: $nativeHost"
+  }
+  $item = Get-Item -LiteralPath $nativeHost -Force
+  if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw "Native-host bridge must be a real file, not a symlink/reparse point"
+  }
+  $stream = [System.IO.File]::OpenRead($nativeHost)
+  $reader = New-Object System.IO.BinaryReader($stream)
+  try {
+    if ($stream.Length -lt 0x100 -or $reader.ReadUInt16() -ne 0x5a4d) {
+      throw "Native-host bridge is not an MZ Windows module"
+    }
+    [void]$stream.Seek(0x3c, [System.IO.SeekOrigin]::Begin)
+    $pe = $reader.ReadUInt32()
+    if ($pe -lt 0x40 -or $pe -gt ($stream.Length - 32)) {
+      throw "Native-host bridge PE header position invalid"
+    }
+    [void]$stream.Seek($pe, [System.IO.SeekOrigin]::Begin)
+    if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne 0x014c) {
+      throw "Native-host bridge must be an Intel x86 PE32"
+    }
+    [void]$stream.Seek($pe + 22, [System.IO.SeekOrigin]::Begin)
+    if (($reader.ReadUInt16() -band 0x2000) -eq 0) {
+      throw "Native-host bridge lacks Windows DLL characteristics"
+    }
+    if ($reader.ReadUInt16() -ne 0x010b) {
+      throw "Native-host bridge optional header is not PE32"
+    }
+  } finally {
+    $reader.Dispose()
+    $stream.Dispose()
+  }
+  Write-Output "OWNER_GRUNT_NATIVE_HOST_PE32: verified x86 DLL in disposable game-copy bin"
+}
+
 $launchedAfter = [DateTime]::UtcNow.AddSeconds(-2)
 $previous = [Environment]::GetEnvironmentVariable('SIN_PC_PROXY_TRACE_FILE', 'Process')
 $previousGrunt = [Environment]::GetEnvironmentVariable('SIN_PC_GRUNT_BRIDGE_PROBE', 'Process')
+$previousNativeHost = [Environment]::GetEnvironmentVariable('SIN_PC_GRUNT_NATIVE_HOST_PROBE', 'Process')
 $bridgeSetting = '0'
 if ($GruntBridgeProbe) { $bridgeSetting = '1' }
+$nativeHostSetting = '0'
+if ($GruntNativeHostProbe) { $nativeHostSetting = '1' }
 try {
   [Environment]::SetEnvironmentVariable('SIN_PC_PROXY_TRACE_FILE', '1', 'Process')
   [Environment]::SetEnvironmentVariable('SIN_PC_GRUNT_BRIDGE_PROBE', $bridgeSetting, 'Process')
+  [Environment]::SetEnvironmentVariable('SIN_PC_GRUNT_NATIVE_HOST_PROBE', $nativeHostSetting, 'Process')
   $options = @{
     FilePath = $exe
     WorkingDirectory = [System.IO.Path]::GetDirectoryName($exe)
@@ -118,6 +167,7 @@ try {
 } finally {
   [Environment]::SetEnvironmentVariable('SIN_PC_PROXY_TRACE_FILE', $previous, 'Process')
   [Environment]::SetEnvironmentVariable('SIN_PC_GRUNT_BRIDGE_PROBE', $previousGrunt, 'Process')
+  [Environment]::SetEnvironmentVariable('SIN_PC_GRUNT_NATIVE_HOST_PROBE', $previousNativeHost, 'Process')
 }
 
 $folder = [System.IO.Path]::GetTempPath()
@@ -151,6 +201,31 @@ if ($GruntBridgeProbe) {
     Write-Output "OWNER_GRUNT_BRIDGE: ABI_V1_LOADED_IN_LAUNCHED_PROCESS"
   } else {
     Write-Warning "OWNER_GRUNT_BRIDGE: NOT_PROVEN for the exact launched PID. Inspect the trace file and any child-process logs; do not infer a successful engine load."
+  }
+}
+
+if ($GruntNativeHostProbe) {
+  # Only the exact launched PID qualifies, and only with a fresh server log.
+  # This is a DLL + ABI check, NEVER evidence of a native engine NPC.
+  $specific = Join-Path $folder ("sin-pc-proxy-{0}.log" -f $game.Id)
+  $observedNativeHost = $false
+  if (Test-Path -LiteralPath $specific -PathType Leaf) {
+    $info = Get-Item -LiteralPath $specific
+    if ($info.LastWriteTimeUtc -ge $launchedAfter) {
+      $events = @(Get-Content -LiteralPath $specific |
+        Where-Object { $_.Contains('role=server phase=grunt-native-host-') })
+      foreach ($event in $events) {
+        Write-Output ("OWNER_GRUNT_NATIVE_HOST_EVENT: {0}" -f $event)
+        if ($event.Contains('role=server phase=grunt-native-host-ready')) {
+          $observedNativeHost = $true
+        }
+      }
+    }
+  }
+  if ($observedNativeHost) {
+    Write-Output "OWNER_GRUNT_NATIVE_HOST: ABI_V1_LOADED_IN_LAUNCHED_PROCESS"
+  } else {
+    Write-Warning "OWNER_GRUNT_NATIVE_HOST: NOT_PROVEN for exact launched PID. Inspect genuine process logs; no native NPC attachment is implied."
   }
 }
 Write-Output "The logs stay on this PC. No original DLLs or pseudocode were uploaded."

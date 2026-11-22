@@ -31,3 +31,23 @@ foreach ($witness in $required) {
   }
 }
 Write-Output "PASS: Phase616 owner-only Grunt bridge flag, PE32 gate and PID-specific verdict are present"
+# Phase620 native-host probing must be independent, opt-in and PID-specific.
+$nativeHostRequired = @(
+  '[switch]$GruntNativeHostProbe',
+  '-GruntBridgeProbe',
+  'SIN_PC_GRUNT_NATIVE_HOST_PROBE',
+  'OWNER_GRUNT_NATIVE_HOST_PE32',
+  'OWNER_GRUNT_NATIVE_HOST: ABI_V1_LOADED_IN_LAUNCHED_PROCESS',
+  'OWNER_GRUNT_NATIVE_HOST: NOT_PROVEN',
+  'sin_grunt_native_host_c_abi.dll',
+  'role=server phase=grunt-native-host-ready',
+  '$previousNativeHost',
+  '$nativeHostSetting'
+)
+foreach ($witness in $nativeHostRequired) {
+  if (-not $source.Contains($witness)) {
+    throw ("Missing Phase620 owner-only native host preflight witness: " + $witness)
+  }
+}
+Write-Output "PASS: Phase620 owner-only native host PE32, opt-in dependency and exact-PID gate"
+
