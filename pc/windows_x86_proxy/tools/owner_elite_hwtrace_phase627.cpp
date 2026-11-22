@@ -147,6 +147,9 @@ static bool file_sha256_is_retail(HANDLE file) {
   BCRYPT_ALG_HANDLE alg=nullptr;
   BCRYPT_HASH_HANDLE hash=nullptr;
   bool good=false;
+  // BCrypt uses this caller-owned hash-object buffer until the handle
+  // is destroyed. Keep its storage alive beyond the scoped hash work.
+  std::vector<UCHAR> object;
   do {
     if(BCryptOpenAlgorithmProvider(&alg,BCRYPT_SHA256_ALGORITHM,nullptr,0)<0)
       break;
@@ -157,18 +160,21 @@ static bool file_sha256_is_retail(HANDLE file) {
     if(BCryptGetProperty(alg,BCRYPT_HASH_LENGTH,
         reinterpret_cast<PUCHAR>(&digest_size),sizeof(digest_size),&received,0)<0 ||
        digest_size!=32u)break;
-    std::vector<UCHAR> object(obj_size,0u);
+    object.assign(obj_size,0u);
     if(BCryptCreateHash(alg,&hash,object.data(),obj_size,nullptr,0,0)<0)
       break;
     std::array<UCHAR,65536> chunk{};
     DWORD read=0,total=0;
     bool io_ok=true;
-    while(ReadFile(file,chunk.data(),
-          static_cast<DWORD>(chunk.size()),&read,nullptr) && read>0) {
+    for(;;) {
+      if(!ReadFile(file,chunk.data(),static_cast<DWORD>(chunk.size()),
+                   &read,nullptr)){io_ok=false;break;}
+      if(read==0)break;
       if(BCryptHashData(hash,chunk.data(),read,0)<0) {
         io_ok=false;break;
       }
       total+=read;
+      if(total>kOriginalServerSize){io_ok=false;break;}
     }
     if(!io_ok || total!=kOriginalServerSize)break;
     std::array<UCHAR,32> digest{};
@@ -279,6 +285,7 @@ static int trace_original(Options options) {
 
   DWORD base=0;
   bool verified=false,armed=false,missed_thread=false;
+  bool loader_break_handled=false;
   Counts counts;
   const ULONGLONG deadline=GetTickCount64()+options.timeout_ms;
   bool exited=false;
@@ -318,9 +325,12 @@ static int trace_original(Options options) {
     } else if(event.dwDebugEventCode==EXCEPTION_DEBUG_EVENT) {
       const auto& info=event.u.Exception.ExceptionRecord;
       if(info.ExceptionCode==EXCEPTION_BREAKPOINT) {
-        // Windows loader initial debug break. Do not suppress application
-        // breakpoints beyond the startup breakpoint where possible.
-        response=DBG_CONTINUE;
+        // Only the process loader's initial breakpoint is ours.
+        // Other application breakpoints remain with the debuggee.
+        if(!loader_break_handled) {
+          loader_break_handled=true;
+          response=DBG_CONTINUE;
+        } else response=DBG_EXCEPTION_NOT_HANDLED;
       } else if(info.ExceptionCode==EXCEPTION_SINGLE_STEP && armed) {
         HANDLE thread=OpenThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT,
                                 FALSE,event.dwThreadId);
