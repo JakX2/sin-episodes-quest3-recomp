@@ -21,8 +21,9 @@ DirtyPath dirty(const Snapshot& s) noexcept {
 } // namespace
 Result SpawnReference::apply(const Snapshot& current) noexcept {
   if(current.original_classname!=kOriginalClassname)
-    return {Code::UnsupportedClass};
-  if(busy_)return {Code::Reentrant};
+    return {Code::UnsupportedClass,Stage::None,0u,kInvalidHandle,false};
+  if(busy_)
+    return {Code::Reentrant,Stage::None,0u,kInvalidHandle,false};
   struct Guard final {
     bool& flag;
     explicit Guard(bool& b)noexcept:flag(b){flag=true;}
