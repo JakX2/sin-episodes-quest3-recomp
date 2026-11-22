@@ -125,13 +125,13 @@ typedef struct sin_elite_native_event43_callbacks_v1 {
   int32_t (*forward_inherited_event43)(void*,float);
 } sin_elite_native_event43_callbacks_v1;
 
-typedef struct sin_elite_native_snapshot_v1 {
+typedef struct sin_elite_native_state_v1 {
   uint32_t version,struct_size;
   int32_t spawn_attempted,spawn_completed;
   uint32_t serial_handle_fdc;
   uint8_t predicate_fd9;
   uint8_t reserved[3];
-} sin_elite_native_snapshot_v1;
+} sin_elite_native_state_v1;
 
 typedef struct sin_elite_native_registry_v1 sin_elite_native_registry_v1;
 SIN_ELITE_NATIVE_API uint32_t sin_elite_native_abi_version_v1(void);
@@ -169,7 +169,7 @@ sin_elite_native_event43_v1(sin_elite_native_registry_v1*,
 SIN_ELITE_NATIVE_API int32_t
 sin_elite_native_snapshot_v1(sin_elite_native_registry_v1*,
                               sin_elite_actor_v1,
-                              sin_elite_native_snapshot_v1*);
+                              sin_elite_native_state_v1*);
 /* Exact-generation detach remains valid after engine object death. */
 SIN_ELITE_NATIVE_API int32_t
 sin_elite_native_detach_v1(sin_elite_native_registry_v1*,
