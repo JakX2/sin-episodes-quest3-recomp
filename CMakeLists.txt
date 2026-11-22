@@ -4891,3 +4891,15 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase612: integrated source-backed Grunt priority/Assault eligibility/shutdown.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_assault_lifecycle_phase612_tests
+    tests/test_original_grunt_assault_priority_lifecycle_phase612.cpp)
+  target_include_directories(sin_original_grunt_assault_lifecycle_phase612_tests
+    PRIVATE include)
+  target_compile_options(sin_original_grunt_assault_lifecycle_phase612_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_assault_lifecycle_phase612_tests
+    COMMAND sin_original_grunt_assault_lifecycle_phase612_tests)
+endif()
