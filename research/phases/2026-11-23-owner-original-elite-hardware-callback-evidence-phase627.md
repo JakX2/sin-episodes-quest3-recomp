@@ -27,7 +27,9 @@ Before arming, the debugger resolves the exact `LOAD_DLL_DEBUG_EVENT` file handl
 
 `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`
 
-If the module cannot be independently authenticated, the tool refuses to arm. A similarly named non-retail DLL does not pass.
+If the module cannot be independently authenticated, the tool refuses to arm. A similarly named non-retail DLL does not pass. The implementation additionally reads the **live game process's first 3–4 instruction bytes at each of the four exact original entrypoints** via Win32 `ReadProcessMemory` and checks their SHA-pinned, relocation-independent instruction prefixes; if any differs the watch is not armed. The Win32 self-test allocates a wholly fabricated mapped module and checks both success and one-byte mutation rejection with the real Win32 reader.
+
+For safer detach behavior, it requires `DebugSetProcessKillOnExit(FALSE)` after starting the debuggee and fails closed if that Windows API cannot be configured. The debugger still affects process timing while active; only code/data pages are left unmodified.
 
 It applies hardware breakpoints to all existing threads and each subsequently created thread. The execution trap is checked against both the DR6 hit mask and the exact expected `EIP`; the debugger sets x86 Resume Flag to allow the original instruction to execute and retains the observation watch. An ambiguous hit does not count. On timeout the tool tries to clear DR0–DR3 on all threads before detaching so the game can continue without a debugger.
 
