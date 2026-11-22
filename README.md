@@ -84,6 +84,7 @@
 > | [Phase 605: original Grunt +0xA4 corrected to Savegame Restore; AI_Behaviors version 2, three whole methods (652 bytes)](research/phases/2026-11-22-original-grunt-ai-behaviors-save-restore-phase605.md)
 > | [Phase 606: actual MobGrunt runtime first-eligible behavior priority, three whole methods (240 bytes), C++ host parity test](research/phases/2026-11-22-original-mobgrunt-runtime-behavior-priority-phase606.md)
 > | [Phase 607: all eight original Grunt behavior eligibility +0x18 methods (659 bytes), one-INT3 Assault and Follow boundary corrections](research/phases/2026-11-22-original-grunt-eight-eligibility-methods-phase607.md)
+> | [Phase 608: source-authenticated Follow +0xE4 serial-handle/bit15 eligibility continuation (115 bytes), safe host tests](research/phases/2026-11-22-original-grunt-follow-eligibility-handle-phase608.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
