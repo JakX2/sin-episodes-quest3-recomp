@@ -1,4 +1,6 @@
-# Gameplay Phase604: actual original Grunt active AI behavior pointer selection
+# Gameplay Phase604: original Grunt behavior pointer restoration and transition
+
+> **Phase605 correction using the retail original:** Phase604 function 0x2216DE40, Grunt vtable +0xA4, is the original **SAVEGAME RESTORE** wrapper. It restores the current behavior pointer from serialized AI_Behaviors version-2 records rather than choosing it from live combat AI conditions. Its actual owner+0xC18 pointer assignment, original method hash, and Grunt vtable attribution are still correct. The transition/reset methods remain authentic. See [Phase605 Save/Restore verification](2026-11-22-original-grunt-ai-behaviors-save-restore-phase605.md). Ordinary runtime policy selection is still unresolved.
 
 ## Retail source provenance
 
