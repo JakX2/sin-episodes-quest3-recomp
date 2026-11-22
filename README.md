@@ -87,6 +87,7 @@
 > | [Phase 608: source-authenticated Follow +0xE4 serial-handle/bit15 eligibility continuation (115 bytes), safe host tests](research/phases/2026-11-22-original-grunt-follow-eligibility-handle-phase608.md)
 > | [Phase 609: four original Assault handle resolver/missing-target helper methods (204 bytes), dual guard state reset](research/phases/2026-11-22-original-assault-serial-handle-guards-phase609.md)
 > | [Phase 610: original Assault x87 timing, zero/four-second threshold and marker +0x26 finite-state host parity (no duplicate native body count)](research/phases/2026-11-22-original-assault-timer-eligibility-phase610.md)
+> | [Phase 611: original Assault +0x20 shutdown and entity relationship unlink (two complete methods, 220 native bytes), safe host tests](research/phases/2026-11-22-original-assault-deactivate-link-phase611.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
