@@ -216,7 +216,7 @@ def self_test():
     for at in opcode_memory:
         for i in range(len(opcode_memory[at])):
             copy=dict(opcode_memory)
-            corrupted=bytearray(copy[at]);corrupted[i]^1
+            corrupted=bytearray(copy[at]);corrupted[i]^=1
             copy[at]=bytes(corrupted)
             try:verify_opcodes(lambda at,n:copy[at][:n],opcodes)
             except VerificationError:pass
