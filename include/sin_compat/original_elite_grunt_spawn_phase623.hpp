@@ -17,7 +17,7 @@ enum class DirtyPath:std::uint8_t {
 };
 enum class Stage:std::uint8_t {
   None,WeaponSymbol,Virtual68,Virtual1CThen6C,InheritedSpawn,
-  ClearFD9,Virtual798,ReadScalar9C,UpdateField9C,ReadScalar98,
+  ClearFD9,ClearCB2,ReadScalar9C,UpdateField9C,ReadScalar98,
   UpdateField98,FlagsPrimary,FlagsSecondary,ResolveActiveChaingun,
   WriteHandleFDC
 };
@@ -50,7 +50,9 @@ public:
   virtual bool native_virtual_1c_then_6c()=0;
   virtual bool inherited_npc_spawn_2235F2A0()=0;
   virtual bool clear_byte_fd9()=0;
-  virtual bool native_virtual_798_with_zero()=0;
+  // Retail Elite vtable+0x798 targets full 13-byte 0x22353F40:
+  // set byte this+0xCB2 from low byte of arg; Spawn passes zero.
+  virtual bool clear_byte_cb2_zero()=0;
   // Read original ConVar at global +0x2259C208, pointer +0x28.
   // Retail code reads this scalar TWICE, once for each numeric field.
   // Host must not assume both reads have the same value.
