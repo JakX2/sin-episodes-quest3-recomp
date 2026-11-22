@@ -4714,3 +4714,18 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase600: no-retail-binary synthetic headless Ghidra launcher and provenance audit.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_ghidra_headless_phase600_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/launch_sin_original_grunt_ghidra_phase600.py"
+        --self-test)
+    add_test(NAME sin_original_grunt_ghidra_triage_phase600_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/triage_sin_original_grunt_ghidra_phase600.py"
+        --self-test)
+  endif()
+endif()
