@@ -1,7 +1,7 @@
 #pragma once
 // Phase531: independent CONTROL-FLOW reference for the original 2006
 // Druglab Grunt factory, not an engine ABI or an actual Source CBaseNPC.
-// Four registered classnames, including unarmed/default npc_druglab_grunt,
+// Four registered classnames, including the default npc_druglab_grunt,
 // share factory vtable at original server VA
 // 0x2249A9F8: creator 0x2236A320, delegated release 0x22369E30.
 // The verified wrapper calls constructor 0x2236A340, allocates 0xFD8
