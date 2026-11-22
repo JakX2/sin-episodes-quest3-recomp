@@ -4751,3 +4751,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase603: original-free Grunt CAI_BehaviorHost ctor and 2006 RTTI self-test.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_behavior_host_phase603_ctor_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_behavior_host_ctor_phase603.py"
+        --self-test)
+  endif()
+endif()
