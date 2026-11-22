@@ -72,6 +72,7 @@
 > | [Original Elite Grunt event 0x03/0x43/0x47, 3-second voice gate and inherited 0x54 forwarding](research/phases/2026-11-22-original-elite-grunt-animation-event-phase593.md)
 > | [Phase 594: cross-class Grunt/Elite/Jetpack event 0x54 handoff regressions and optional-component consumption](research/phases/2026-11-22-original-grunt-family-event-integration-phase594.md)
 > | [Phase 595: SHA-gated original Grunt +0xC18 component assignment/callsite probe, synthetic-only test](research/phases/2026-11-22-original-grunt-c18-component-probe-phase595.md)
+> | [Phase 596: original retail Grunt +0xC18 candidate-address triage and Ghidra provenance handoff](research/phases/2026-11-22-original-grunt-c18-candidate-triage-phase596.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
