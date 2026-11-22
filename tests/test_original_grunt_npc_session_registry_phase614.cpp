@@ -39,6 +39,10 @@ static sin_grunt_behavior_host_v1 callbacks(){
 }
 struct Engine final:reg::NativeHost {
   bool confirmed=true;
+  bool enforce_identity=false;
+  std::string_view expected_class;
+  std::uint64_t expected_owner=0;
+  bool throw_on_confirmation=false;
   int confirms=0;
   reg::Registry* registry=nullptr;
   reg::Status reentry=reg::Status::NotFound;
@@ -52,7 +56,9 @@ struct Engine final:reg::NativeHost {
       attempt.actor=actor;attempt.owner_entity_token=owner;
       reentry=registry->attach_existing_native(attempt);
     }
-    return confirmed;
+    if(throw_on_confirmation)throw 1;
+    return confirmed && (!enforce_identity ||
+           (name==expected_class && owner==expected_owner));
   }
 };
 static reg::Attachment attachment(Mock& m,sin_grunt_actor_v1 actor,
@@ -137,7 +143,37 @@ static void test_three_native_classes_and_reentrant_host(){
   assert(registry.detach({1u,1u})==reg::Status::Detached);
   assert(registry.detach({3u,1u})==reg::Status::Detached);
 }
+static void test_per_call_native_identity_reattest(){
+  Engine engine;reg::Registry registry(engine);Mock m;
+  auto a=attachment(m,{25u,7u},"npc_druglab_grunt_scattergun");
+  engine.enforce_identity=true;
+  engine.expected_class=a.original_classname;
+  engine.expected_owner=a.owner_entity_token;
+  assert(registry.attach_existing_native(a)==reg::Status::Attached);
+  assert(engine.confirms==1);
+  engine.expected_owner++;
+  auto denied=registry.step(a.actor,3.f);
+  assert(denied.status==reg::Status::HostRejected);
+  assert(denied.underlying_abi_status==SIN_GRUNT_BEHAVIOR_ACTOR_EXPIRED);
+  assert(m.callback_count==0);
+  sin_grunt_snapshot_v1 snap{};snap.current_index=123;
+  assert(registry.snapshot(a.actor,snap)==reg::Status::HostRejected);
+  assert(snap.current_index==123); // Not a stale snapshot from a new NPC.
+  engine.expected_owner=a.owner_entity_token;
+  engine.expected_class="npc_druglab_grunt_pistol";
+  assert(registry.step(a.actor,3.f).status==reg::Status::HostRejected);
+  engine.expected_class=a.original_classname;
+  engine.throw_on_confirmation=true;
+  auto errored=registry.step(a.actor,3.f);
+  assert(errored.status==reg::Status::HostRejected);
+  assert(errored.underlying_abi_status==SIN_GRUNT_BEHAVIOR_HOST_FAILED);
+  engine.throw_on_confirmation=false;
+  assert(registry.step(a.actor,3.f).status==reg::Status::Advanced);
+  assert(engine.confirms>=6);
+  assert(registry.detach(a.actor)==reg::Status::Detached);
+}
 int main(){
+  test_per_call_native_identity_reattest();
   test_exact_original_names();
   test_host_denied_or_dead_never_attaches();
   test_attach_step_snapshot_detach_generation();
