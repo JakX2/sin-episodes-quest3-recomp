@@ -1216,3 +1216,60 @@ else()
 endif()
 add_test(NAME sin_pc_original_assault_activation_phase617
   COMMAND $<TARGET_FILE:sin_pc_original_assault_activation_phase617_tests>)
+
+# Phase619: callable C host adapter (seven undecorated exports) for an
+# ALREADY engine-created native Grunt. Phase613's five-export behavior DLL
+# stays binary-identical; original server.dll still owns CreateInterface.
+add_library(sin_pc_grunt_native_host_c_abi_phase619 SHARED
+  ../../src/grunt_native_host_c_api_v1.cpp)
+target_include_directories(sin_pc_grunt_native_host_c_abi_phase619
+  PRIVATE ../../include)
+target_link_libraries(sin_pc_grunt_native_host_c_abi_phase619
+  PRIVATE sin_pc_grunt_npc_session_registry_phase614)
+set_target_properties(sin_pc_grunt_native_host_c_abi_phase619 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+if(MSVC)
+  target_sources(sin_pc_grunt_native_host_c_abi_phase619 PRIVATE
+    ../../src/grunt_native_host_win32.def)
+endif()
+sin_pc_configure(sin_pc_grunt_native_host_c_abi_phase619
+  sin_grunt_native_host_c_abi)
+
+add_executable(sin_pc_grunt_native_host_c_api_phase619_tests
+  ../../tests/test_grunt_native_host_c_api_phase619.c)
+target_include_directories(sin_pc_grunt_native_host_c_api_phase619_tests
+  PRIVATE ../../include)
+target_link_libraries(sin_pc_grunt_native_host_c_api_phase619_tests
+  PRIVATE sin_pc_grunt_native_host_c_abi_phase619)
+sin_pc_configure(sin_pc_grunt_native_host_c_api_phase619_tests
+  sin_pc_grunt_native_host_c_api_phase619_tests)
+if(MSVC)
+  target_compile_options(sin_pc_grunt_native_host_c_api_phase619_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_grunt_native_host_c_api_phase619_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_grunt_native_host_c_api_phase619
+  COMMAND $<TARGET_FILE:sin_pc_grunt_native_host_c_api_phase619_tests>)
+
+add_executable(sin_pc_grunt_native_host_dynload_phase619_tests
+  ../../tests/test_grunt_native_host_dynload_phase619.cpp)
+target_include_directories(sin_pc_grunt_native_host_dynload_phase619_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_grunt_native_host_dynload_phase619_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_grunt_native_host_dynload_phase619_tests
+  sin_pc_grunt_native_host_dynload_phase619_tests)
+if(MSVC)
+  target_compile_options(sin_pc_grunt_native_host_dynload_phase619_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_grunt_native_host_dynload_phase619_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_dependencies(sin_pc_grunt_native_host_dynload_phase619_tests
+  sin_pc_grunt_native_host_c_abi_phase619)
+add_test(NAME sin_pc_grunt_native_host_dynload_phase619
+  COMMAND $<TARGET_FILE:sin_pc_grunt_native_host_dynload_phase619_tests>
+    $<TARGET_FILE:sin_pc_grunt_native_host_c_abi_phase619>)
