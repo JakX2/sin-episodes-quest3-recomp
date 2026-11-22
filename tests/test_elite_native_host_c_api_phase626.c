@@ -96,6 +96,11 @@ static int32_t writefdc(void* u,uint32_t handle) {
   Mock*m=(Mock*)u;mark(m,'H');if(m->fail_stage==12)return 0;
   m->fdc=handle;return 1;
 }
+static int32_t read_handle(void* u,uint32_t*handle) {
+  Mock*m=(Mock*)u;mark(m,'q');
+  if(m->fail_stage==15)return -1;
+  *handle=m->fdc;return 1;
+}
 static int32_t resolve(void* u,uint32_t h,uint64_t*token) {
   Mock*m=(Mock*)u;mark(m,'r');++m->callback_count;
   assert(h==m->fdc);
@@ -127,7 +132,7 @@ static const sin_elite_native_spawn_callbacks_v1 spawns={
 };
 static const sin_elite_native_event43_callbacks_v1 events={
   SIN_ELITE_NATIVE_ABI_V1,sizeof(sin_elite_native_event43_callbacks_v1),
-  resolve,gate,publish,forward
+  read_handle,resolve,gate,publish,forward
 };
 static sin_elite_native_spawn_snapshot_v1 spawn_state(void) {
   sin_elite_native_spawn_snapshot_v1 s={
@@ -194,7 +199,7 @@ static void test_full_spawn_and_event43(void) {
   m.used=0;m.calls[0]=0;
   assert(sin_elite_native_event43_v1(m.reg,m.actor,1.5f,&events,&m)==
          SIN_ELITE_NATIVE_EVENT_FORWARDED);
-  assert(strcmp(m.calls,"rgpf")==0);
+  assert(strcmp(m.calls,"qrgpf")==0);
   assert(m.gate_entity==m.entity_token&&m.fd9==1);
   assert(m.forward_calls==1&&m.forwarded_parameter==1.5f);
   assert(sin_elite_native_snapshot_v1(m.reg,m.actor,&state)==SIN_ELITE_NATIVE_OK);
@@ -203,7 +208,7 @@ static void test_full_spawn_and_event43(void) {
   m.used=0;m.calls[0]=0;
   assert(sin_elite_native_event43_v1(m.reg,m.actor,2.f,&events,&m)==
          SIN_ELITE_NATIVE_EVENT_BLOCKED);
-  assert(strcmp(m.calls,"rgp")==0&&m.fd9==0&&m.forward_calls==1);
+  assert(strcmp(m.calls,"qrgp")==0&&m.fd9==0&&m.forward_calls==1);
   assert(sin_elite_native_detach_v1(m.reg,m.actor)==SIN_ELITE_NATIVE_OK);
   assert(sin_elite_native_destroy_v1(m.reg)==SIN_ELITE_NATIVE_OK);
 }
@@ -284,7 +289,7 @@ static void test_no_valid_chaingun_and_partial_event(void) {
   m.used=0;m.calls[0]=0;
   assert(sin_elite_native_event43_v1(m.reg,m.actor,1.f,&events,&m)==
          SIN_ELITE_NATIVE_EVENT_FORWARDED);
-  assert(strcmp(m.calls,"gpf")==0 && m.gate_entity==0);
+  assert(strcmp(m.calls,"qgpf")==0 && m.gate_entity==0);
   m.fail_stage=13;
   assert(sin_elite_native_event43_v1(m.reg,m.actor,1.f,&events,&m)==
          SIN_ELITE_NATIVE_HOST_REJECTED);
