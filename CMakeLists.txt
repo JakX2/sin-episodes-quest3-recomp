@@ -5120,3 +5120,53 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase626: independent native Elite C ABI for already engine-owned
+# npc_druglab_grunt_elite. Links original-source Spawn logic and bridges
+# its +0xFDC serial handle to the authenticated event 0x43 path.
+# No native Source factory/object, vtable injection or game callbacks.
+set_target_properties(sin_original_elite_grunt_spawn_phase623
+  PROPERTIES POSITION_INDEPENDENT_CODE ON)
+add_library(sin_elite_native_host_c_abi SHARED
+  src/elite_native_host_c_api_v1.cpp)
+target_include_directories(sin_elite_native_host_c_abi PUBLIC include)
+target_link_libraries(sin_elite_native_host_c_abi PRIVATE
+  sin_original_elite_grunt_spawn_phase623)
+target_compile_options(sin_elite_native_host_c_abi PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_elite_native_host_c_abi PROPERTIES
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+if(UNIX AND NOT APPLE)
+  target_link_options(sin_elite_native_host_c_abi PRIVATE
+    "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/elite_native_host_exports.map")
+endif()
+if(WIN32 AND MSVC)
+  target_sources(sin_elite_native_host_c_abi PRIVATE
+    src/elite_native_host_win32.def)
+endif()
+if(BUILD_TESTING)
+  add_executable(sin_elite_native_host_c_api_phase626_tests
+    tests/test_elite_native_host_c_api_phase626.c)
+  target_include_directories(sin_elite_native_host_c_api_phase626_tests
+    PRIVATE include)
+  target_link_libraries(sin_elite_native_host_c_api_phase626_tests
+    PRIVATE sin_elite_native_host_c_abi)
+  target_compile_options(sin_elite_native_host_c_api_phase626_tests
+    PRIVATE $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_elite_native_host_c_api_phase626_tests
+    COMMAND sin_elite_native_host_c_api_phase626_tests)
+
+  add_executable(sin_elite_native_host_dynload_phase626_tests
+    tests/test_elite_native_host_dynload_phase626.cpp)
+  target_include_directories(sin_elite_native_host_dynload_phase626_tests
+    PRIVATE include)
+  target_link_libraries(sin_elite_native_host_dynload_phase626_tests
+    PRIVATE ${CMAKE_DL_LIBS})
+  target_compile_options(sin_elite_native_host_dynload_phase626_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_dependencies(sin_elite_native_host_dynload_phase626_tests
+    sin_elite_native_host_c_abi)
+  add_test(NAME sin_elite_native_host_dynload_phase626_tests
+    COMMAND sin_elite_native_host_dynload_phase626_tests
+      $<TARGET_FILE:sin_elite_native_host_c_abi>)
+endif()
