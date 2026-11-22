@@ -70,6 +70,7 @@
 > | [Original flying-attachment 52-ID event filter, six special cases and confirmed Grunt 0x54 forwarding](research/phases/2026-11-22-original-flying-attachment-event-filter-phase591.md)
 > | [Original inherited Grunt event switch, 156 cases, optional component consumption and precise GRUNT_FLANK event route](research/phases/2026-11-22-original-grunt-inherited-animation-parent-phase592.md)
 > | [Original Elite Grunt event 0x03/0x43/0x47, 3-second voice gate and inherited 0x54 forwarding](research/phases/2026-11-22-original-elite-grunt-animation-event-phase593.md)
+> | [Phase 594: cross-class Grunt/Elite/Jetpack event 0x54 handoff regressions and optional-component consumption](research/phases/2026-11-22-original-grunt-family-event-integration-phase594.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.

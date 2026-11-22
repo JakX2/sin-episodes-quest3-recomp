@@ -4653,3 +4653,18 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+
+# Gameplay Phase594: regression composition across authenticated Jetpack
+# phase590, flying event filter phase591, Grunt phase592, Elite phase593.
+# This is NOT a new native DLL byte audit or a playable engine integration.
+if(BUILD_TESTING)
+  add_executable(sin_original_grunt_event_chain_phase594_tests
+    tests/test_original_grunt_event_chain_phase594.cpp)
+  target_include_directories(sin_original_grunt_event_chain_phase594_tests PRIVATE include)
+  target_compile_features(sin_original_grunt_event_chain_phase594_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_grunt_event_chain_phase594_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_grunt_event_chain_phase594_tests
+    COMMAND sin_original_grunt_event_chain_phase594_tests)
+endif()
