@@ -4773,3 +4773,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase605: retail-source Grunt AI_Behaviors Save/Restore method SHA and callsite self-test.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_save_restore_phase605_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_grunt_behavior_save_restore_phase605.py"
+        --self-test)
+  endif()
+endif()
