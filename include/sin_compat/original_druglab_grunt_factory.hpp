@@ -1,7 +1,8 @@
 #pragma once
 // Phase531: independent CONTROL-FLOW reference for the original 2006
 // Druglab Grunt factory, not an engine ABI or an actual Source CBaseNPC.
-// Three registered classnames share factory vtable at original server VA
+// Four registered classnames, including unarmed/default npc_druglab_grunt,
+// share factory vtable at original server VA
 // 0x2249A9F8: creator 0x2236A320, delegated release 0x22369E30.
 // The verified wrapper calls constructor 0x2236A340, allocates 0xFD8
 // bytes, sets three vptr fields and returns native object+0x160.
@@ -25,7 +26,7 @@ inline constexpr std::uint32_t kOriginalDelegateVA=0x22369E30u;
 inline constexpr std::uint32_t kOriginalConstructorVA=0x2236A340u;
 
 enum class Variant : std::uint8_t {
-    Pistol, Scattergun, AssaultRifle, Unsupported
+    Base, Pistol, Scattergun, AssaultRifle, Unsupported
 };
 enum class VptrRole : std::uint8_t {
     Primary, Secondary790, TertiaryC14
