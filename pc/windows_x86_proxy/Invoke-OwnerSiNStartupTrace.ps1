@@ -28,11 +28,22 @@ if (-not (Test-Path -LiteralPath $GameExecutable -PathType Leaf)) {
 
 $bin = (Resolve-Path -LiteralPath $GameBin).ProviderPath.TrimEnd('\')
 $exe = (Resolve-Path -LiteralPath $GameExecutable).ProviderPath
-$root = [System.IO.Path]::GetFullPath((Join-Path $bin '..')).TrimEnd('\')
+# Original SiN layout can put the executable at the game-copy root
+# while its game DLLs are inside SE1\bin. The old one-parent rule
+# incorrectly rejected that legitimate layout. Retain strict containment:
+# only the exact SE1\bin pattern authorizes widening by one parent.
+$parent = [System.IO.Path]::GetFullPath((Join-Path $bin '..')).TrimEnd('\')
+$root = $parent
+$binLeaf = [System.IO.Path]::GetFileName($bin)
+$parentLeaf = [System.IO.Path]::GetFileName($parent)
+if ([string]::Equals($binLeaf, 'bin', [System.StringComparison]::OrdinalIgnoreCase) -and
+    [string]::Equals($parentLeaf, 'SE1', [System.StringComparison]::OrdinalIgnoreCase)) {
+  $root = [System.IO.Path]::GetFullPath((Join-Path $parent '..')).TrimEnd('\')
+}
 $prefix = $root + [System.IO.Path]::DirectorySeparatorChar
 if (-not $exe.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase) -or
     -not $exe.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-  throw "The executable must be a .exe within the same disposable game-copy root as GameBin"
+  throw "The executable must be a .exe within the selected disposable game-copy root (including SE1\bin layouts)"
 }
 
 $stager = Join-Path $PSScriptRoot 'Prepare-SiNWin32ProxyTest.ps1'
