@@ -14,7 +14,7 @@ The synthetic test does not prove the owner's actual Windows game process loads 
 
 ## Safeguards before any process launch
 
-The launcher still requires `-DisposableTestCopyConfirmed`, an existing `.exe` **within the same disposable game-copy root**, and the earlier `Prepare-SiNWin32ProxyTest.ps1 -Action Check` confirmation that both original commercial DLLs are present as SHA256-authenticated renamed siblings of the built Win32 proxies. It never stages the proxies or modifies the game folder itself.
+The launcher still requires `-DisposableTestCopyConfirmed`, an existing `.exe` **within the same disposable game-copy root**, and the earlier `Prepare-SiNWin32ProxyTest.ps1 -Action Check` confirmation that both original commercial DLLs are present as SHA256-authenticated renamed siblings of the built Win32 proxies. It never stages the proxies or modifies the game folder itself. The launcher also recognizes the conventional `GameRoot\\SE1\\bin` layout and permits `GameRoot\\SinEpisodes.exe`, instead of falsely rejecting the actual executable due to an overly narrow `SE1`-only path check. It does not widen containment for unrelated directory names.
 
 For `-GruntBridgeProbe` it additionally requires the independently built `sin_grunt_behavior_c_abi.dll` to exist in the *same game-copy bin directory* as the server proxy. It rejects symlink/reparse-point bridge files. Its read-only PE audit checks MZ signature, valid PE header position, `IMAGE_FILE_MACHINE_I386 = 0x014C`, `IMAGE_FILE_DLL` characteristic and `IMAGE_NT_OPTIONAL_HDR32_MAGIC = 0x010B`. It does not claim the DLL is ABI v1 from static PE metadata; the original server proxy's actual `GetProcAddress` checks do that during runtime.
 
@@ -38,7 +38,7 @@ From PowerShell:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\pc\windows_x86_proxy\Invoke-OwnerSiNStartupTrace.ps1 -GameBin "D:\SiN-DisposableTest\SE1\bin" -GameExecutable "D:\SiN-DisposableTest\SinEpisodes.exe" -DisposableTestCopyConfirmed -GruntBridgeProbe
 
-The executable path must satisfy the existing launcher policy: within the parent game-copy root of `GameBin`. The exact path depends on the user's disposable installation layout, not on an assumed default install path. If the user cannot meet the staging, SHA, PE32, and executable-boundary guards, the launch fails before modifying or starting the game. The user can report **only the text log** to continue research.
+The executable path must satisfy the launcher's strict disposable-copy containment policy. When the game DLL directory is exactly the conventional `SE1\\bin` subtree, the launcher recognizes its parent **game-copy root** and permits a top-level `SinEpisodes.exe`. For other layouts the executable must stay beneath the immediate parent of `GameBin`. The path still must exist and be inside the selected disposable copy. If the user cannot meet the staging, SHA, PE32, and executable-boundary guards, the launch fails before modifying or starting the game. The user can report **only the text log** to continue research.
 
 ### Technical and privacy boundaries
 
