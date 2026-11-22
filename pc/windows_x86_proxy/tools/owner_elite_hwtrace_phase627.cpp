@@ -295,7 +295,33 @@ static int test_helpers() {
   if(!parse_positive_ms(L"120000",ms)||ms!=120000u)return 4;
   if(parse_positive_ms(L"0",ms)||parse_positive_ms(L"-1",ms)||
      parse_positive_ms(L"9999999999",ms))return 5;
-  std::puts("PASS Phase627 original-only Elite RVA pins, Win32 argument quoting and CLI self-tests");
+  // Allocate a wholly fabricated fake module in this test process to
+  // exercise the REAL Win32 ReadProcessMemory source-prefix gate.
+  void* fake=VirtualAlloc(nullptr,0x360000u,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+  if(!fake)return 6;
+  const DWORD base=static_cast<DWORD>(reinterpret_cast<std::uintptr_t>(fake));
+  const std::array<std::array<UCHAR,4>,4> words{{
+    {{0x8bu,0x44u,0x24u,0x04u}},
+    {{0x83u,0xecu,0x18u,0x00u}},
+    {{0x51u,0x56u,0x57u,0x00u}},
+    {{0x8bu,0x4cu,0x24u,0x04u}}
+  }};
+  for(size_t i=0;i<words.size();++i) {
+    UCHAR* dest=static_cast<UCHAR*>(fake)+kWatch[i].original_rva;
+    std::memcpy(dest,words[i].data(),i==1u||i==2u?3u:4u);
+  }
+  if(!original_live_entry_prefixes_match(GetCurrentProcess(),base)) {
+    VirtualFree(fake,0,MEM_RELEASE);
+    return 7;
+  }
+  UCHAR* changed=static_cast<UCHAR*>(fake)+kWatch[1].original_rva;
+  changed[0]^=1u;
+  if(original_live_entry_prefixes_match(GetCurrentProcess(),base)) {
+    VirtualFree(fake,0,MEM_RELEASE);
+    return 8;
+  }
+  VirtualFree(fake,0,MEM_RELEASE);
+  std::puts("PASS Phase627 original-only Elite RVA pins, Win32 source-prefix negative mutation and CLI self-tests");
   return 0;
 }
 static int trace_original(Options options) {
