@@ -296,6 +296,20 @@ static int trace_original(Options options) {
     std::fclose(out);return 3;
   }
   const DWORD pid=process.dwProcessId;
+  // Explicitly choose detach-on-debugger-exit behavior so a debugger
+  // failure does not automatically terminate the user's test game.
+  // Win32 requires a debug connection before this API can succeed.
+  if(!DebugSetProcessKillOnExit(FALSE)) {
+    const DWORD err=GetLastError();
+    std::fprintf(stderr,
+       "Could not set safe debug-exit behavior (Win32=%lu).\n",
+       static_cast<unsigned long>(err));
+    (void)DebugActiveProcessStop(pid);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    std::fclose(out);
+    return 5;
+  }
   std::printf("Original SiN Elite hardware callback trace: PID %lu\n",
               static_cast<unsigned long>(pid));
   log_json(out,pid,0,"trace_process_started",0,0);
