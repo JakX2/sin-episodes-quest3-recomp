@@ -1339,3 +1339,57 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_grunt_spawn_phase623_native_x86
   COMMAND $<TARGET_FILE:sin_pc_original_elite_grunt_spawn_phase623_tests>)
+
+# Phase626: true MSVC Win32 x86 shared-library implementation of the
+# separate eight-export Elite native host C ABI. It binds original-source
+# Elite Spawn to event 0x43 for already engine-owned NPCs only.
+# No Source factory CreateInterface replacement or vtable guesses.
+add_library(sin_pc_elite_native_host_c_abi_phase626 SHARED
+  ../../src/elite_native_host_c_api_v1.cpp
+  ../../src/original_elite_grunt_spawn_phase623.cpp
+  ../../src/elite_native_host_win32.def)
+target_include_directories(sin_pc_elite_native_host_c_abi_phase626
+  PUBLIC ../../include)
+set_target_properties(sin_pc_elite_native_host_c_abi_phase626 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_elite_native_host_c_abi_phase626
+  sin_elite_native_host_c_abi)
+
+add_executable(sin_pc_elite_native_host_c_api_phase626_tests
+  ../../tests/test_elite_native_host_c_api_phase626.c)
+target_include_directories(sin_pc_elite_native_host_c_api_phase626_tests
+  PRIVATE ../../include)
+target_link_libraries(sin_pc_elite_native_host_c_api_phase626_tests
+  PRIVATE sin_pc_elite_native_host_c_abi_phase626)
+sin_pc_configure(sin_pc_elite_native_host_c_api_phase626_tests
+  sin_pc_elite_native_host_c_api_phase626_tests)
+if(MSVC)
+  target_compile_options(sin_pc_elite_native_host_c_api_phase626_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_elite_native_host_c_api_phase626_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_elite_native_host_c_api_phase626
+  COMMAND $<TARGET_FILE:sin_pc_elite_native_host_c_api_phase626_tests>)
+
+add_executable(sin_pc_elite_native_host_dynload_phase626_tests
+  ../../tests/test_elite_native_host_dynload_phase626.cpp)
+target_include_directories(sin_pc_elite_native_host_dynload_phase626_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_elite_native_host_dynload_phase626_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_elite_native_host_dynload_phase626_tests
+  sin_pc_elite_native_host_dynload_phase626_tests)
+if(MSVC)
+  target_compile_options(sin_pc_elite_native_host_dynload_phase626_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_elite_native_host_dynload_phase626_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_dependencies(sin_pc_elite_native_host_dynload_phase626_tests
+  sin_pc_elite_native_host_c_abi_phase626)
+add_test(NAME sin_pc_elite_native_host_dynload_phase626
+  COMMAND $<TARGET_FILE:sin_pc_elite_native_host_dynload_phase626_tests>
+          $<TARGET_FILE:sin_pc_elite_native_host_c_abi_phase626>)
