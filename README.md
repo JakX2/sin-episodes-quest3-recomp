@@ -75,6 +75,7 @@
 > | [Phase 596: original retail Grunt +0xC18 candidate-address triage and Ghidra provenance handoff](research/phases/2026-11-22-original-grunt-c18-candidate-triage-phase596.md)
 > | [Phase 597: Grunt current AI behavior pointer and override-marker structural correlation (hypothesis, no new native bytes)](research/phases/2026-11-22-original-grunt-active-behavior-host-correlation-phase597.md)
 > | [Phase 598: SHA-gated retail Grunt eight AI behavior vtable +0x60/+0x7C native target probe](research/phases/2026-11-22-original-grunt-eight-behavior-vtable-target-probe-phase598.md)
+> | [Phase 599: authenticated eight original Grunt event handler targets and Ghidra function-boundary handoff](research/phases/2026-11-22-original-grunt-eight-behavior-event-targets-phase599.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
