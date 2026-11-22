@@ -234,6 +234,82 @@ static BOOL CALLBACK sin_probe_grunt_bridge(PINIT_ONCE once, PVOID parameter,
     sin_trace_event("grunt-bridge-ready", NULL, (DWORD)version);
     return TRUE;
 }
+/* Phase620: optional SEPARATE native-host C ABI validation in the same
+ * original-game factory process. No session is created here: the original
+ * game does not delegate NPC ownership to this probe.
+ */
+#define SIN_GRUNT_NATIVE_HOST_DLL L"sin_grunt_native_host_c_abi.dll"
+typedef unsigned int (__cdecl *SinGruntNativeHostVersionFn)(void);
+static INIT_ONCE sin_grunt_native_probe_once = INIT_ONCE_STATIC_INIT;
+static HMODULE sin_grunt_native_host_bridge = NULL;
+
+static BOOL CALLBACK sin_probe_grunt_native_host(PINIT_ONCE once,
+                                                 PVOID parameter,
+                                                 PVOID *context) {
+    static const char *const required[] = {
+        "sin_grunt_native_abi_version_v1",
+        "sin_grunt_native_create_v1",
+        "sin_grunt_native_destroy_v1",
+        "sin_grunt_native_attach_v1",
+        "sin_grunt_native_step_v1",
+        "sin_grunt_native_snapshot_v1",
+        "sin_grunt_native_detach_v1"
+    };
+    wchar_t dll_path[4096];
+    wchar_t *slash;
+    size_t available, name_length, i;
+    DWORD length;
+    HMODULE candidate;
+    FARPROC version_export;
+    unsigned int version;
+
+    (void)once; (void)parameter; (void)context;
+    length = GetModuleFileNameW(sin_self, dll_path,
+                  (DWORD)(sizeof(dll_path) / sizeof(dll_path[0])));
+    if (length == 0 ||
+        length >= (DWORD)(sizeof(dll_path) / sizeof(dll_path[0]))) {
+        sin_trace_event("grunt-native-host-path-failed", NULL, GetLastError());
+        return TRUE;
+    }
+    slash = wcsrchr(dll_path, L'\\');
+    if (slash == NULL) {
+        sin_trace_event("grunt-native-host-path-failed", NULL, 0U);
+        return TRUE;
+    }
+    available = (size_t)((dll_path + sizeof(dll_path)/sizeof(dll_path[0]))
+                         - (slash + 1));
+    name_length = wcslen(SIN_GRUNT_NATIVE_HOST_DLL);
+    if (available <= name_length) {
+        sin_trace_event("grunt-native-host-path-too-long", NULL, 0U);
+        return TRUE;
+    }
+    memcpy(slash + 1, SIN_GRUNT_NATIVE_HOST_DLL,
+           (name_length + 1U) * sizeof(wchar_t));
+
+    candidate = LoadLibraryExW(dll_path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (candidate == NULL) {
+        sin_trace_event("grunt-native-host-load-failed", NULL, GetLastError());
+        return TRUE;
+    }
+    for (i=0; i<sizeof(required)/sizeof(required[0]); ++i) {
+        if (GetProcAddress(candidate, required[i]) == NULL) {
+            sin_trace_event("grunt-native-host-export-missing", NULL, (DWORD)i);
+            (void)FreeLibrary(candidate);
+            return TRUE;
+        }
+    }
+    version_export = GetProcAddress(candidate, required[0]);
+    version = ((SinGruntNativeHostVersionFn)version_export)();
+    if (version != 1U) {
+        sin_trace_event("grunt-native-host-version-rejected", NULL,
+                        (DWORD)version);
+        (void)FreeLibrary(candidate);
+        return TRUE;
+    }
+    sin_grunt_native_host_bridge = candidate;
+    sin_trace_event("grunt-native-host-ready", NULL, (DWORD)version);
+    return TRUE;
+}
 #endif
 
 /* Exported with the undecorated name CreateInterface via the .def file.
@@ -264,6 +340,17 @@ void *__cdecl CreateInterface(const char *name, int *return_code) {
         if (!InitOnceExecuteOnce(&sin_grunt_probe_once,
                                  sin_probe_grunt_bridge, NULL, NULL))
             sin_trace_event("grunt-bridge-initonce-failed", NULL, GetLastError());
+    }
+#endif
+#if defined(SIN_PC_PROXY_SERVER)
+    /* Separate opt-in: loading a host ABI never calls its attach/step.
+     * It is not evidence that the game has engine-owned Grunt callbacks.
+     */
+    if (sin_trace_enabled("SIN_PC_GRUNT_NATIVE_HOST_PROBE")) {
+        if (!InitOnceExecuteOnce(&sin_grunt_native_probe_once,
+                                 sin_probe_grunt_native_host, NULL, NULL))
+            sin_trace_event("grunt-native-host-initonce-failed",
+                            NULL, GetLastError());
     }
 #endif
     instance = sin_original_factory(name, return_code);
