@@ -1197,3 +1197,22 @@ foreach(sin_grunt_probe_mode IN ITEMS disabled valid missing wrong-version)
     PROPERTIES
       WORKING_DIRECTORY "$<TARGET_FILE_DIR:sin_pc_grunt_proxy_bridge_phase615_tests>")
 endforeach()
+
+# Phase617: original native Assault enter +0x1C/+0x28 RET, +0x24 bridge.
+add_executable(sin_pc_original_assault_activation_phase617_tests
+  ../../tests/test_original_grunt_assault_activation_phase617.cpp)
+target_include_directories(sin_pc_original_assault_activation_phase617_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_original_assault_activation_phase617_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_assault_activation_phase617_tests
+  sin_pc_original_assault_activation_phase617_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_assault_activation_phase617_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_assault_activation_phase617_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_assault_activation_phase617
+  COMMAND $<TARGET_FILE:sin_pc_original_assault_activation_phase617_tests>)

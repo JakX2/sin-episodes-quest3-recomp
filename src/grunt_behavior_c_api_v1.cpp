@@ -3,6 +3,7 @@
 #include "sin_compat/original_grunt_behavior_priority_phase606.hpp"
 #include "sin_compat/original_grunt_assault_eligibility_phase610.hpp"
 #include "sin_compat/original_grunt_assault_deactivate_phase611.hpp"
+#include "sin_compat/original_grunt_assault_activation_phase617.hpp"
 #include <cmath>
 #include <cstdint>
 #include <new>
@@ -10,6 +11,7 @@
 namespace selection=sin_compat::grunt_behavior_priority_phase606;
 namespace assault=sin_compat::grunt_assault_eligibility_phase610;
 namespace shutdown=sin_compat::grunt_assault_deactivate_phase611;
+namespace activation=sin_compat::grunt_assault_activation_phase617;
 
 struct sin_grunt_behavior_session_v1 {
   sin_grunt_behavior_host_v1 host{};
@@ -75,7 +77,7 @@ static sin_grunt_assault_state_v1 to_c(const assault::State& s) {
           s.time_plus_0x28,s.deadline_plus_0x2c};
 }
 class Adapter final: public selection::Host, public assault::Host,
-                     public shutdown::Host {
+                     public shutdown::Host, public activation::Host {
   sin_grunt_behavior_session_v1& s;
   float now;
   void old_behavior(int old) {
@@ -113,11 +115,21 @@ public:
     const int old=s.current;
     if(old==new_index)return;
     s.current=new_index;
-    success(s.host.behavior_lifecycle(s.user,s.actor,
-            static_cast<std::uint32_t>(index),0));
+    if(index==SIN_GRUNT_ASSAULT_INDEX_V1) {
+      // Exact 2006 vtable+0x1C is one-byte RET, no host side effect.
+      activation::enter_1c_noop();
+    } else {
+      success(s.host.behavior_lifecycle(s.user,s.actor,
+              static_cast<std::uint32_t>(index),0));
+    }
     live(s);
-    success(s.host.behavior_lifecycle(s.user,s.actor,
-            static_cast<std::uint32_t>(index),1));
+    if(index==SIN_GRUNT_ASSAULT_INDEX_V1) {
+      // Exact 2006 +0x24 tail-dispatches behavior+0x0C vtable[0].
+      activation::enter_24_bridge(*this);
+    } else {
+      success(s.host.behavior_lifecycle(s.user,s.actor,
+              static_cast<std::uint32_t>(index),1));
+    }
     old_behavior(old);
     live(s);
     success(s.host.owner_transition(s.user,s.actor,old,new_index));
@@ -130,6 +142,11 @@ public:
     old_behavior(old);
     live(s);
     success(s.host.owner_transition(s.user,s.actor,old,-1));
+  }
+  void invoke_behavior_bridge_plus_0c_virtual_0() override {
+    // Host owns actual bridge object: no retail 2006 C++ pointers passed.
+    success(s.host.behavior_lifecycle(s.user,s.actor,
+           SIN_GRUNT_ASSAULT_INDEX_V1,1));
   }
   bool owner_gate_0x450() override {
     return truth(s.host.owner_gate(s.user,s.actor));
