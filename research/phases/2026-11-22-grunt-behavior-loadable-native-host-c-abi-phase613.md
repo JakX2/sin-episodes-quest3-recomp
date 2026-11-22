@@ -35,7 +35,7 @@ Critical original-vs-port boundary:
 
 The top-level CMake now builds **sin_grunt_behavior_c_abi** as a real SHARED library, with ELF version script src/grunt_behavior_exports.map restricting visibility to exactly five exported functions. A separate dynamic smoke executable uses dlsym on ELF and GetProcAddress on Win32.
 
-The independent Windows x86 native factory/proxy CMake project also builds this library as **sin_pc_grunt_behavior_c_abi**, *without replacing the original game's server.dll*. For MSVC x86, src/grunt_behavior_win32.def explicitly aliases decorated internal cdecl entries to predictable undecorated GetProcAddress names. Windows CTest tests actual DLL LoadLibrary/GetProcAddress/create/step/snapshot/destroy and the full C ABI host regression using synthetic callbacks.
+The independent Windows x86 native factory/proxy CMake project also builds this library as **sin_pc_grunt_behavior_c_abi**, *without replacing the original game's server.dll*. For MSVC x86, src/grunt_behavior_win32.def lists the desired undecorated GetProcAddress exports directly. Initial manually underscored aliases caused a real MSVC LNK2001 failure and were corrected after CI showed that the actual C linkage already resolves the public entry names. Windows CTest tests actual DLL LoadLibrary/GetProcAddress/create/step/snapshot/destroy and the full C ABI host regression using synthetic callbacks.
 
 The host regression tests:
 - exact ABI table size, version, actor lifetime and condition ID validation;
