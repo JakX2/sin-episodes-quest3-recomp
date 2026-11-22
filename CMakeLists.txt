@@ -4903,3 +4903,48 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_grunt_assault_lifecycle_phase612_tests
     COMMAND sin_original_grunt_assault_lifecycle_phase612_tests)
 endif()
+
+# Phase613: genuinely loadable versioned Grunt behavior gameplay C ABI.
+# Uses only original-free portable C++ (Phases606/610/611), NOT retail DLLs.
+add_library(sin_grunt_behavior_c_abi SHARED src/grunt_behavior_c_api_v1.cpp)
+target_include_directories(sin_grunt_behavior_c_abi PUBLIC include)
+set_target_properties(sin_grunt_behavior_c_abi PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_compile_options(sin_grunt_behavior_c_abi PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-fvisibility=hidden>)
+if(UNIX AND NOT APPLE)
+  target_link_options(sin_grunt_behavior_c_abi PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/grunt_behavior_exports.map")
+  set_property(TARGET sin_grunt_behavior_c_abi APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/grunt_behavior_exports.map")
+endif()
+if(BUILD_TESTING)
+  add_executable(sin_grunt_behavior_c_abi_phase613_tests
+    tests/test_grunt_behavior_c_api_v1.cpp)
+  target_include_directories(sin_grunt_behavior_c_abi_phase613_tests PRIVATE include)
+  target_link_libraries(sin_grunt_behavior_c_abi_phase613_tests
+    PRIVATE sin_grunt_behavior_c_abi)
+  set_target_properties(sin_grunt_behavior_c_abi_phase613_tests PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+  target_compile_options(sin_grunt_behavior_c_abi_phase613_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_grunt_behavior_c_abi_phase613_tests
+    COMMAND sin_grunt_behavior_c_abi_phase613_tests)
+
+  add_executable(sin_grunt_behavior_dynload_phase613_tests
+    tests/test_grunt_behavior_dynload_phase613.cpp)
+  target_include_directories(sin_grunt_behavior_dynload_phase613_tests PRIVATE include)
+  target_link_libraries(sin_grunt_behavior_dynload_phase613_tests
+    PRIVATE ${CMAKE_DL_LIBS})
+  set_target_properties(sin_grunt_behavior_dynload_phase613_tests PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+  target_compile_options(sin_grunt_behavior_dynload_phase613_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_dependencies(sin_grunt_behavior_dynload_phase613_tests
+    sin_grunt_behavior_c_abi)
+  add_test(NAME sin_grunt_behavior_dynload_phase613_tests
+    COMMAND sin_grunt_behavior_dynload_phase613_tests
+      $<TARGET_FILE:sin_grunt_behavior_c_abi>)
+endif()

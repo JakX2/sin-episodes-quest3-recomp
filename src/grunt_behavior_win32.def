@@ -1,0 +1,7 @@
+LIBRARY sin_grunt_behavior_c_abi
+EXPORTS
+    sin_grunt_behavior_abi_version_v1
+    sin_grunt_behavior_create_v1
+    sin_grunt_behavior_destroy_v1
+    sin_grunt_behavior_step_v1
+    sin_grunt_behavior_snapshot_v1

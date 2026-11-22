@@ -1084,3 +1084,58 @@ add_test(NAME sin_pc_owner_vptr_rejects_fake_original_by_sha256
     -Probe "$<TARGET_FILE:sin_pc_owner_vptr_probe>"
     -FakeDll "$<TARGET_FILE:sin_pc_fake_server>" -Role server)
 
+
+# Phase613: compile the ORIGINAL-FREE Grunt gameplay bridge as real Win32 PE32
+# and verify its exported undecorated C ABI through LoadLibrary/GetProcAddress.
+# Not the original game's CreateInterface server.dll and no retail code.
+add_library(sin_pc_grunt_behavior_c_abi SHARED
+  ../../src/grunt_behavior_c_api_v1.cpp)
+target_include_directories(sin_pc_grunt_behavior_c_abi PRIVATE ../../include)
+set_target_properties(sin_pc_grunt_behavior_c_abi PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+if(MSVC)
+  target_sources(sin_pc_grunt_behavior_c_abi PRIVATE
+    ../../src/grunt_behavior_win32.def)
+endif()
+sin_pc_configure(sin_pc_grunt_behavior_c_abi sin_grunt_behavior_c_abi)
+
+add_executable(sin_pc_grunt_behavior_dynload_phase613
+  ../../tests/test_grunt_behavior_dynload_phase613.cpp)
+target_include_directories(sin_pc_grunt_behavior_dynload_phase613 PRIVATE
+  ../../include)
+set_target_properties(sin_pc_grunt_behavior_dynload_phase613 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_grunt_behavior_dynload_phase613
+  sin_pc_grunt_behavior_dynload_phase613)
+if(MSVC)
+  target_compile_options(sin_pc_grunt_behavior_dynload_phase613 PRIVATE
+    /UNDEBUG)
+else()
+  target_compile_options(sin_pc_grunt_behavior_dynload_phase613 PRIVATE
+    -UNDEBUG)
+endif()
+add_dependencies(sin_pc_grunt_behavior_dynload_phase613
+  sin_pc_grunt_behavior_c_abi)
+add_test(NAME sin_pc_grunt_behavior_win32_dynload_phase613
+  COMMAND $<TARGET_FILE:sin_pc_grunt_behavior_dynload_phase613>
+    $<TARGET_FILE:sin_pc_grunt_behavior_c_abi>)
+
+add_executable(sin_pc_grunt_behavior_c_abi_phase613_tests
+  ../../tests/test_grunt_behavior_c_api_v1.cpp)
+target_include_directories(sin_pc_grunt_behavior_c_abi_phase613_tests
+  PRIVATE ../../include)
+target_link_libraries(sin_pc_grunt_behavior_c_abi_phase613_tests
+  PRIVATE sin_pc_grunt_behavior_c_abi)
+set_target_properties(sin_pc_grunt_behavior_c_abi_phase613_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_grunt_behavior_c_abi_phase613_tests
+  sin_pc_grunt_behavior_c_abi_phase613_tests)
+if(MSVC)
+  target_compile_options(sin_pc_grunt_behavior_c_abi_phase613_tests PRIVATE
+    /UNDEBUG)
+else()
+  target_compile_options(sin_pc_grunt_behavior_c_abi_phase613_tests PRIVATE
+    -UNDEBUG)
+endif()
+add_test(NAME sin_pc_grunt_behavior_win32_host_phase613
+  COMMAND $<TARGET_FILE:sin_pc_grunt_behavior_c_abi_phase613_tests>)
