@@ -10,7 +10,7 @@ namespace sin_compat::original_elite_grunt_spawn_phase623 {
 inline constexpr const char* kOriginalClassname="npc_druglab_grunt_elite";
 inline constexpr const char* kOriginalWeapon="weapon_chaingun";
 inline constexpr std::uint32_t kPrimaryFlags=0x00100000u;
-inline constexpr std::uint32_t kSecondaryFlags=0x00200000u;
+inline constexpr std::uint32_t kSecondaryFlags=0x00002000u;
 inline constexpr std::uint32_t kInvalidHandle=0xffffffffu;
 enum class DirtyPath:std::uint8_t {
   NoMarker,NativeField200,EdictStateBit0
