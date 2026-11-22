@@ -22,7 +22,9 @@ struct sin_grunt_native_registry_v1 final: native::NativeHost {
       std::uint64_t owner_token) override {
     // The host receives an immutable, literal-backed NUL terminated name.
     const char* literal=nullptr;
-    if(name=="npc_druglab_grunt_pistol")
+    if(name=="npc_druglab_grunt")
+      literal="npc_druglab_grunt";
+    else if(name=="npc_druglab_grunt_pistol")
       literal="npc_druglab_grunt_pistol";
     else if(name=="npc_druglab_grunt_scattergun")
       literal="npc_druglab_grunt_scattergun";
