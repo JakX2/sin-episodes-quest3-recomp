@@ -90,6 +90,7 @@
 > | [Phase 611: original Assault +0x20 shutdown and entity relationship unlink (two complete methods, 220 native bytes), safe host tests](research/phases/2026-11-22-original-assault-deactivate-link-phase611.md)
 > | [Phase 612: end-to-end host regression for Grunt priority, Assault timer eligibility, same-pointer lifecycle and owner-safe shutdown](research/phases/2026-11-22-original-grunt-assault-lifecycle-integration-phase612.md)
 > | [Phase 613: loadable, versioned Grunt behavior C ABI with real Linux shared-library and Win32 x86 LoadLibrary host tests](research/phases/2026-11-22-grunt-behavior-loadable-native-host-c-abi-phase613.md)
+> | [Phase 614: attach loadable Grunt behavior sessions only to confirmed existing engine-owned NPCs; generation-safe detach/reuse, Win32 x86 regression](research/phases/2026-11-22-original-grunt-native-npc-attachment-phase614.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
