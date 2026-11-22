@@ -48,10 +48,10 @@ enum {
   SIN_ELITE_DIRTY_NATIVE_200_V1=1u,
   SIN_ELITE_DIRTY_EDICT_BIT0_V1=2u
 };
-enum {
-  SIN_ELITE_EVENT_43_V1=0x43u,
-  SIN_ELITE_HANDLE_INVALID_V1=0xffffffffu
-};
+enum { SIN_ELITE_EVENT_43_V1=0x43u };
+/* Do not put UINT32_MAX in a C enum. MSVC treats the enum as a signed
+ * integer and /W4 /WX rejects implicit assignments to uint32_t. */
+#define SIN_ELITE_HANDLE_INVALID_V1 ((uint32_t)0xffffffffu)
 
 typedef struct sin_elite_actor_v1 {
   uint32_t index,generation;
