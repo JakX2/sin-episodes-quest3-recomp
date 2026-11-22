@@ -52,6 +52,7 @@ bool valid_event_callbacks(const sin_elite_native_event43_callbacks_v1* c)
     noexcept {
   return c && c->version==SIN_ELITE_NATIVE_ABI_V1 &&
     c->struct_size==sizeof(*c) &&
+    c->read_current_serial_handle_fdc &&
     c->resolve_serial_handle && c->original_gate43 &&
     c->publish_byte_fd9 && c->forward_inherited_event43;
 }
@@ -257,9 +258,14 @@ int32_t sin_elite_native_event43_v1(
     // gate even on null entity, publish +0xFD9, then optional inheritance.
     // No other original Elite animation events are implemented by this ABI.
     std::uint64_t resolved=0;
-    if(slot->handle_fdc!=SIN_ELITE_HANDLE_INVALID_V1) {
+    std::uint32_t current_handle=SIN_ELITE_HANDLE_INVALID_V1;
+    if(callbacks->read_current_serial_handle_fdc(
+          userdata,&current_handle)!=1)
+      return SIN_ELITE_NATIVE_HOST_REJECTED;
+    slot->handle_fdc=current_handle;
+    if(current_handle!=SIN_ELITE_HANDLE_INVALID_V1) {
       const auto lookup=callbacks->resolve_serial_handle(
-          userdata,slot->handle_fdc,&resolved);
+          userdata,current_handle,&resolved);
       if(lookup!=0 && lookup!=1)return SIN_ELITE_NATIVE_HOST_REJECTED;
       if(lookup==0)resolved=0;
     }
