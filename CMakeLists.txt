@@ -4548,3 +4548,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase589: original Jetpack Grunt +0x1024 flying attachment,
+# ai_base_physics_flying native name/registration, reciprocal owner handle
+# and safe serial-generation lifecycle reference. No general physics work.
+if(BUILD_TESTING)
+  add_executable(sin_original_jetpack_attachment_phase589_tests
+    tests/test_original_jetpack_attachment_phase589.cpp)
+  target_include_directories(sin_original_jetpack_attachment_phase589_tests PRIVATE include)
+  target_compile_features(sin_original_jetpack_attachment_phase589_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_jetpack_attachment_phase589_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_jetpack_attachment_phase589_tests
+    COMMAND sin_original_jetpack_attachment_phase589_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_jetpack_attachment_phase589_audit_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_jetpack_attachment_phase589.py"
+        --self-test)
+  endif()
+endif()
