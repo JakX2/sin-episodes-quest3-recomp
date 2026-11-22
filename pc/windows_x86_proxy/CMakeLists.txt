@@ -1273,3 +1273,39 @@ add_dependencies(sin_pc_grunt_native_host_dynload_phase619_tests
 add_test(NAME sin_pc_grunt_native_host_dynload_phase619
   COMMAND $<TARGET_FILE:sin_pc_grunt_native_host_dynload_phase619_tests>
     $<TARGET_FILE:sin_pc_grunt_native_host_c_abi_phase619>)
+
+# Phase620: original server factory forwards identically while an OPTIONAL
+# seven-export native-host DLL probe loads or safely rejects a sibling module.
+# NO NPC constructor, factory hook, session attach, or Source vtable calls.
+add_library(sin_pc_grunt_native_bad_version_phase620 SHARED
+  tests/fake_grunt_native_host_phase620.c
+  tests/fake_grunt_native_bad_version_phase620.def)
+sin_pc_configure(sin_pc_grunt_native_bad_version_phase620
+  sin_grunt_native_bad_version_phase620)
+add_library(sin_pc_grunt_native_missing_export_phase620 SHARED
+  tests/fake_grunt_native_host_phase620.c
+  tests/fake_grunt_native_missing_export_phase620.def)
+target_compile_definitions(sin_pc_grunt_native_missing_export_phase620
+  PRIVATE SIN_NATIVE_FAKE_MISSING_EXPORT=1)
+sin_pc_configure(sin_pc_grunt_native_missing_export_phase620
+  sin_grunt_native_missing_export_phase620)
+
+add_executable(sin_pc_grunt_native_host_proxy_phase620_tests
+  tests/test_grunt_native_host_proxy_phase620.c)
+sin_pc_configure(sin_pc_grunt_native_host_proxy_phase620_tests
+  sin_pc_grunt_native_host_proxy_phase620_tests)
+add_dependencies(sin_pc_grunt_native_host_proxy_phase620_tests
+  sin_pc_server sin_pc_fake_server sin_pc_grunt_behavior_c_abi
+  sin_pc_grunt_native_host_c_abi_phase619
+  sin_pc_grunt_native_bad_version_phase620
+  sin_pc_grunt_native_missing_export_phase620)
+foreach(sin_native_host_probe_mode IN ITEMS
+    disabled valid missing wrong-version missing-export)
+  add_test(NAME sin_pc_grunt_native_host_proxy_phase620_${sin_native_host_probe_mode}
+    COMMAND $<TARGET_FILE:sin_pc_grunt_native_host_proxy_phase620_tests>
+      ${sin_native_host_probe_mode})
+  set_tests_properties(
+    sin_pc_grunt_native_host_proxy_phase620_${sin_native_host_probe_mode}
+    PROPERTIES WORKING_DIRECTORY
+      "$<TARGET_FILE_DIR:sin_pc_grunt_native_host_proxy_phase620_tests>")
+endforeach()
