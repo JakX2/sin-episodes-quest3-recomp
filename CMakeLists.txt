@@ -4703,3 +4703,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase599: binary-free exact-source Grunt behavior handler target metadata audit.
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_grunt_behavior_dispatch_phase599_triage_selftest
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/research/tools/triage_sin_original_grunt_behavior_vtables_phase599.py"
+        --self-test)
+  endif()
+endif()
