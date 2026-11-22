@@ -39,8 +39,9 @@ static int32_t host_confirm(void* u,const char* name,
   ++m->confirmations;
   assert(strcmp(name,"npc_druglab_grunt_elite")==0);
   if(m->reentrant&&m->reg) {
-    sin_elite_native_state_v1 out={SIN_ELITE_NATIVE_ABI_V1,
-                                   sizeof(sin_elite_native_state_v1),0};
+    sin_elite_native_state_v1 out={0};
+    out.version=SIN_ELITE_NATIVE_ABI_V1;
+    out.struct_size=sizeof(out);
     assert(sin_elite_native_snapshot_v1(m->reg,a,&out)==
            SIN_ELITE_NATIVE_REENTRANT);
     assert(sin_elite_native_destroy_v1(m->reg)==SIN_ELITE_NATIVE_REENTRANT);
