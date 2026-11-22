@@ -1,0 +1,10 @@
+LIBRARY sin_elite_native_host_c_abi
+EXPORTS
+    sin_elite_native_abi_version_v1
+    sin_elite_native_create_v1
+    sin_elite_native_destroy_v1
+    sin_elite_native_attach_v1
+    sin_elite_native_spawn_v1
+    sin_elite_native_event43_v1
+    sin_elite_native_snapshot_v1
+    sin_elite_native_detach_v1
