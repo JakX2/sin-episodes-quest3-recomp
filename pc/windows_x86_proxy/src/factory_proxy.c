@@ -158,6 +158,84 @@ static void sin_trace_event(const char *phase, const char *name, DWORD detail) {
         sin_trace_file(line);
 }
 
+
+#if defined(SIN_PC_PROXY_SERVER)
+/* Phase615: optional, read-only Grunt bridge load probe.
+ * This does NOT hook IServerGameDLL, call NPC methods, change game factories,
+ * or execute from DllMain. The engine continues to use the original DLL.
+ * The only accepted library path is a fixed DLL beside this proxy, never a
+ * user-supplied search path. Missing/invalid bridge must not block the game.
+ */
+#define SIN_GRUNT_BRIDGE_DLL L"sin_grunt_behavior_c_abi.dll"
+typedef unsigned int (__cdecl *SinGruntVersionFn)(void);
+static INIT_ONCE sin_grunt_probe_once = INIT_ONCE_STATIC_INIT;
+static HMODULE sin_grunt_bridge = NULL;
+
+static BOOL CALLBACK sin_probe_grunt_bridge(PINIT_ONCE once, PVOID parameter,
+                                            PVOID *context) {
+    static const char *const required[] = {
+        "sin_grunt_behavior_abi_version_v1",
+        "sin_grunt_behavior_create_v1",
+        "sin_grunt_behavior_destroy_v1",
+        "sin_grunt_behavior_step_v1",
+        "sin_grunt_behavior_snapshot_v1"
+    };
+    wchar_t dll_path[4096];
+    wchar_t *slash;
+    size_t available, name_length, i;
+    DWORD length;
+    HMODULE candidate;
+    FARPROC version_export;
+    unsigned int version;
+
+    (void)once; (void)parameter; (void)context;
+    length = GetModuleFileNameW(sin_self, dll_path,
+                   (DWORD)(sizeof(dll_path) / sizeof(dll_path[0])));
+    if (length == 0 ||
+        length >= (DWORD)(sizeof(dll_path) / sizeof(dll_path[0]))) {
+        sin_trace_event("grunt-bridge-path-failed", NULL, GetLastError());
+        return TRUE;
+    }
+    slash = wcsrchr(dll_path, L'\\');
+    if (slash == NULL) {
+        sin_trace_event("grunt-bridge-path-failed", NULL, 0U);
+        return TRUE;
+    }
+    available = (size_t)((dll_path + sizeof(dll_path)/sizeof(dll_path[0]))
+                         - (slash + 1));
+    name_length = wcslen(SIN_GRUNT_BRIDGE_DLL);
+    if (available <= name_length) {
+        sin_trace_event("grunt-bridge-path-too-long", NULL, 0U);
+        return TRUE;
+    }
+    memcpy(slash + 1, SIN_GRUNT_BRIDGE_DLL,
+           (name_length + 1U) * sizeof(wchar_t));
+
+    candidate = LoadLibraryExW(dll_path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (candidate == NULL) {
+        sin_trace_event("grunt-bridge-load-failed", NULL, GetLastError());
+        return TRUE;
+    }
+    for (i=0; i<sizeof(required)/sizeof(required[0]); ++i) {
+        if (GetProcAddress(candidate, required[i]) == NULL) {
+            sin_trace_event("grunt-bridge-export-missing", NULL, (DWORD)i);
+            (void)FreeLibrary(candidate);
+            return TRUE;
+        }
+    }
+    version_export = GetProcAddress(candidate, required[0]);
+    version = ((SinGruntVersionFn)version_export)();
+    if (version != 1U) {
+        sin_trace_event("grunt-bridge-version-rejected", NULL, (DWORD)version);
+        (void)FreeLibrary(candidate);
+        return TRUE;
+    }
+    sin_grunt_bridge = candidate;
+    sin_trace_event("grunt-bridge-ready", NULL, (DWORD)version);
+    return TRUE;
+}
+#endif
+
 /* Exported with the undecorated name CreateInterface via the .def file.
  * Return values and success/failure codes belong to the actual original.
  */
@@ -179,6 +257,15 @@ void *__cdecl CreateInterface(const char *name, int *return_code) {
         sin_trace_event("original-factory-unavailable", name, 1U);
         return NULL;
     }
+#if defined(SIN_PC_PROXY_SERVER)
+    /* Exact opt-in, once per server proxy instance; even a failed probe must
+     * leave original CreateInterface forwarding fully unchanged. */
+    if (sin_trace_enabled("SIN_PC_GRUNT_BRIDGE_PROBE")) {
+        if (!InitOnceExecuteOnce(&sin_grunt_probe_once,
+                                 sin_probe_grunt_bridge, NULL, NULL))
+            sin_trace_event("grunt-bridge-initonce-failed", NULL, GetLastError());
+    }
+#endif
     instance = sin_original_factory(name, return_code);
     sin_trace_event(instance != NULL ? "result-object" : "result-null",
                     name, return_code != NULL ? (DWORD)(*return_code) : 0xffffffffU);
