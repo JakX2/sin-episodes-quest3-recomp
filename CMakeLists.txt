@@ -5067,3 +5067,30 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase622: source-authenticated original 2006 CNPC_EliteGrunt factory.
+# It uses an independently modeled host callback sequence and a different
+# native object size/constructor from the original CNPC_MobGrunt family.
+# No live Source entities, native vtable cloning, physics or rendering.
+add_library(sin_original_elite_grunt_factory_phase622 STATIC
+  src/original_elite_grunt_factory_phase622.cpp)
+target_include_directories(sin_original_elite_grunt_factory_phase622 PUBLIC include)
+target_compile_options(sin_original_elite_grunt_factory_phase622 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_grunt_factory_phase622_tests
+    tests/test_original_elite_grunt_factory_phase622.cpp)
+  target_link_libraries(sin_original_elite_grunt_factory_phase622_tests PRIVATE
+    sin_original_elite_grunt_factory_phase622)
+  target_compile_options(sin_original_elite_grunt_factory_phase622_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_grunt_factory_phase622_tests
+    COMMAND sin_original_elite_grunt_factory_phase622_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_grunt_factory_phase622_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_grunt_factory_phase622.py
+        --self-test)
+  endif()
+endif()
