@@ -1407,3 +1407,8 @@ sin_pc_configure(sin_pc_owner_elite_hwtrace_phase627
   sin_pc_owner_elite_hwtrace_phase627)
 add_test(NAME sin_pc_owner_elite_hwtrace_phase627_selftest
   COMMAND $<TARGET_FILE:sin_pc_owner_elite_hwtrace_phase627> --self-test)
+
+add_test(NAME sin_pc_owner_elite_hwtrace_phase627_script_syntax
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/Test-OwnerEliteHardwareTracePhase627.ps1"
+    -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerEliteHardwareTrace.ps1")
