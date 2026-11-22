@@ -4995,3 +4995,61 @@ if(BUILD_TESTING)
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/research/tools/audit_sin_original_assault_activation_phase617.py" --self-test)
   endif()
 endif()
+
+# Phase619: a SEPARATE C ABI for attaching reconstructed behavior sessions
+# to a native Source host's already existing Grunt NPC. No CreateInterface
+# replacement, Source object allocation, or engine callback interception.
+set_target_properties(sin_grunt_npc_session_registry PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+add_library(sin_grunt_native_host_c_abi SHARED
+  src/grunt_native_host_c_api_v1.cpp)
+target_include_directories(sin_grunt_native_host_c_abi PUBLIC include)
+target_link_libraries(sin_grunt_native_host_c_abi PRIVATE
+  sin_grunt_npc_session_registry)
+set_target_properties(sin_grunt_native_host_c_abi PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+target_compile_options(sin_grunt_native_host_c_abi PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(MSVC)
+  target_sources(sin_grunt_native_host_c_abi PRIVATE
+    src/grunt_native_host_win32.def)
+endif()
+if(UNIX AND NOT APPLE)
+  target_link_options(sin_grunt_native_host_c_abi PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/grunt_native_host_exports.map")
+  set_property(TARGET sin_grunt_native_host_c_abi APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/grunt_native_host_exports.map")
+endif()
+if(BUILD_TESTING)
+  add_executable(sin_grunt_native_host_c_api_phase619_tests
+    tests/test_grunt_native_host_c_api_phase619.c)
+  target_include_directories(sin_grunt_native_host_c_api_phase619_tests
+    PRIVATE include)
+  target_link_libraries(sin_grunt_native_host_c_api_phase619_tests
+    PRIVATE sin_grunt_native_host_c_abi)
+  set_target_properties(sin_grunt_native_host_c_api_phase619_tests PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_compile_options(sin_grunt_native_host_c_api_phase619_tests PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<C_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_grunt_native_host_c_api_phase619_tests
+    COMMAND sin_grunt_native_host_c_api_phase619_tests)
+
+  add_executable(sin_grunt_native_host_dynload_phase619_tests
+    tests/test_grunt_native_host_dynload_phase619.cpp)
+  target_include_directories(sin_grunt_native_host_dynload_phase619_tests
+    PRIVATE include)
+  target_link_libraries(sin_grunt_native_host_dynload_phase619_tests
+    PRIVATE ${CMAKE_DL_LIBS})
+  set_target_properties(sin_grunt_native_host_dynload_phase619_tests PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+  target_compile_options(sin_grunt_native_host_dynload_phase619_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_dependencies(sin_grunt_native_host_dynload_phase619_tests
+    sin_grunt_native_host_c_abi)
+  add_test(NAME sin_grunt_native_host_dynload_phase619_tests
+    COMMAND sin_grunt_native_host_dynload_phase619_tests
+      $<TARGET_FILE:sin_grunt_native_host_c_abi>)
+endif()
