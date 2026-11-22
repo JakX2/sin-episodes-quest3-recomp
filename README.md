@@ -78,6 +78,7 @@
 > | [Phase 599: authenticated eight original Grunt event handler targets and Ghidra function-boundary handoff](research/phases/2026-11-22-original-grunt-eight-behavior-event-targets-phase599.md)
 > | [Phase 600: self-validating Ghidra headless runner for 13 original Grunt behavior targets (no new native method claims)](research/phases/2026-11-22-original-grunt-ghidra-headless-original-provenance-phase600.md)
 > | [Phase 601: nine authenticated original Grunt event methods (7,925 native bytes), event 0x54 clears active behavior marker](research/phases/2026-11-22-original-grunt-behavior-event54-native-phase601.md)
+> | [Phase 602: five authentic original Grunt behavior activity methods (792 bytes), Takecover remaps and precise Standoff boundary](research/phases/2026-11-22-original-grunt-behavior-activity-virtuals-phase602.md)
 >
 > These are original-binary-authenticated research artifacts, **not playable
 > replacement DLLs**. Historical Phase56 scaffold sections below are retained.
