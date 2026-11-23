@@ -206,12 +206,12 @@ struct Host final:t::IHost,m::IHost,g::IHost,p::IHost,e::IHost,l::IHost,r::IHost
    pointer=ret.result_pointer;
    return true;
  }
- bool initialize_original_2228f360(std::uint32_t nested,
+ bool initialize_original_2228f360(std::uint32_t nested_va,
                          std::uint32_t a,std::uint32_t b,std::uint32_t c)override {
    ++subobject_callbacks;
    assert(a==0u&&b==0u&&c==1u);
-   assert(nested>=0x1cu && nested!=0u);
-   if(table_init_reenter && table_init)construct_nested=table_init->construct(nested-0x1cu).code;
+   assert(nested_va>=0x1cu && nested_va!=0u);
+   if(table_init_reenter && table_init)construct_nested=table_init->construct(nested_va-0x1cu).code;
    if(table_nested_failure)return false;
    // Underlying 0x2228F360 remains a *separate unrecovered callback*.
    // This synthetic host marks it as invoked, without inventing internals.
