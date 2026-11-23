@@ -5728,3 +5728,46 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase648: two complete original 2006 SiN string comparators (270 x86 B).
+# Keep original 0x223A5574 call host-supplied; no invented CRT behavior.
+add_library(sin_original_nested_comparators_phase648 STATIC
+  src/original_nested_comparators_phase648.cpp)
+target_include_directories(sin_original_nested_comparators_phase648 PUBLIC include)
+target_compile_options(sin_original_nested_comparators_phase648 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_nested_comparators_phase648_tests
+    tests/test_original_nested_comparators_phase648.cpp)
+  target_link_libraries(sin_original_nested_comparators_phase648_tests PRIVATE
+    sin_original_nested_comparators_phase648 sin_original_nested_map_phase647)
+  target_compile_options(sin_original_nested_comparators_phase648_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_comparators_phase648_tests
+    COMMAND sin_original_nested_comparators_phase648_tests)
+  add_executable(sin_original_nested_comparator_chain_phase648_tests
+    tests/test_original_nested_comparator_chain_phase648.cpp)
+  target_link_libraries(sin_original_nested_comparator_chain_phase648_tests PRIVATE
+    sin_original_nested_comparators_phase648
+    sin_original_nested_map_phase647
+    sin_original_symbol_comparator_phase646
+    sin_original_memory_wrappers_phase645
+    sin_original_symbol_growth_phase644
+    sin_original_symbol_enumeration_phase643
+    sin_original_symbol_slot_allocation_phase639
+    sin_original_symbol_tree_link_phase640
+    sin_original_symbol_rebalance_phase642
+    sin_original_symbol_rotations_phase641
+    sin_original_symbol_forward_phase638
+    sin_original_elite_range_registration_phase637)
+  target_compile_options(sin_original_nested_comparator_chain_phase648_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_comparator_chain_phase648_tests
+    COMMAND sin_original_nested_comparator_chain_phase648_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_nested_comparators_phase648_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_nested_comparators_phase648.py
+        --self-test)
+  endif()
+endif()
