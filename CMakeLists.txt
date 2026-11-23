@@ -5532,3 +5532,31 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase642 original SiN red-black symbol tree rebalance, complete retail
+# 1482-byte method source reference, links into original Phase641 rotations.
+add_library(sin_original_symbol_rebalance_phase642 STATIC
+  src/original_symbol_rebalance_phase642.cpp)
+target_include_directories(sin_original_symbol_rebalance_phase642 PUBLIC include)
+target_link_libraries(sin_original_symbol_rebalance_phase642 PUBLIC
+  sin_original_symbol_rotations_phase641)
+target_compile_options(sin_original_symbol_rebalance_phase642 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_symbol_rebalance_phase642_tests
+    tests/test_original_symbol_rebalance_phase642.cpp)
+  target_link_libraries(sin_original_symbol_rebalance_phase642_tests PRIVATE
+    sin_original_symbol_rebalance_phase642
+    sin_original_symbol_rotations_phase641
+    sin_original_symbol_tree_link_phase640)
+  target_compile_options(sin_original_symbol_rebalance_phase642_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_symbol_rebalance_phase642_tests
+    COMMAND sin_original_symbol_rebalance_phase642_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_symbol_rebalance_phase642_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_symbol_rebalance_phase642.py
+        --self-test)
+  endif()
+endif()
