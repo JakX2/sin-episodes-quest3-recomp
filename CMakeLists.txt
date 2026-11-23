@@ -5878,3 +5878,36 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase652 original 2006 SiN nested tree search, 12B slot acquire and link.
+# 456 original bytes; rebalance 0x2228EDF0 stays host supplied.
+add_library(sin_original_nested_tree_core_phase652 STATIC
+  src/original_nested_tree_core_phase652.cpp)
+target_include_directories(sin_original_nested_tree_core_phase652 PUBLIC include)
+target_compile_options(sin_original_nested_tree_core_phase652 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_nested_tree_core_phase652_tests
+    tests/test_original_nested_tree_core_phase652.cpp)
+  target_link_libraries(sin_original_nested_tree_core_phase652_tests PRIVATE
+    sin_original_nested_tree_core_phase652)
+  target_compile_options(sin_original_nested_tree_core_phase652_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_tree_core_phase652_tests
+    COMMAND sin_original_nested_tree_core_phase652_tests)
+  add_executable(sin_original_nested_tree_chain_phase652_tests
+    tests/test_original_nested_tree_chain_phase652.cpp)
+  target_link_libraries(sin_original_nested_tree_chain_phase652_tests PRIVATE
+    sin_original_nested_tree_core_phase652
+    sin_original_nested_insertion_phase651)
+  target_compile_options(sin_original_nested_tree_chain_phase652_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_tree_chain_phase652_tests
+    COMMAND sin_original_nested_tree_chain_phase652_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_nested_tree_core_phase652_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_nested_tree_core_phase652.py
+        --self-test)
+  endif()
+endif()
