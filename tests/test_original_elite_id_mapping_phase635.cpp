@@ -363,5 +363,13 @@ int main(){
   test_no_invented_retail_mapping_data();
   assert(m::kOriginalVA==0x22073700u);
   assert(m::kCompleteOriginalByteCount==58u);
+  assert(m::kOriginalEliteVtableBaseVA+
+         m::kOriginalEliteVirtual760Offset==0x2248e664u);
+  assert(m::kOriginalVirtual760ThunkVA==0x22355d40u);
+  assert(m::kOriginalVirtual760ThunkBytes==6u);
+  assert(m::kOriginalMappingOwnerVA==0x2259c2f8u);
+  assert(m::kOriginalMappingOwnerVA+
+         m::kVirtualContextMemberOffset==m::kOriginalMappingFirstNodeVA);
+  assert(m::kOriginalMappingFirstNodeVA==0x2259c32cu);
   std::puts("PASS Phase635 original 58-byte range converter, sentinel, signed bounds, cycles, and full 632-635 Elite event chain");
 }
