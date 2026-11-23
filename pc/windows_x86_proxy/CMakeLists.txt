@@ -1523,3 +1523,31 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_weapon_tick_phase631
   COMMAND $<TARGET_FILE:sin_pc_original_elite_weapon_tick_phase631_tests>)
+
+# Phase632 authentic 2006 Elite +0x44C event43/47 model under native
+# MSVC Win32 x86. Source host callbacks use no original engine classes.
+add_library(sin_pc_original_elite_secondary_event_phase632 STATIC
+  ../../src/original_elite_secondary_event_phase632.cpp)
+target_include_directories(sin_pc_original_elite_secondary_event_phase632
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_elite_secondary_event_phase632 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_secondary_event_phase632
+  sin_pc_original_elite_secondary_event_phase632)
+add_executable(sin_pc_original_elite_secondary_event_phase632_tests
+  ../../tests/test_original_elite_secondary_event_phase632.cpp)
+target_link_libraries(sin_pc_original_elite_secondary_event_phase632_tests
+  PRIVATE sin_pc_original_elite_secondary_event_phase632)
+set_target_properties(sin_pc_original_elite_secondary_event_phase632_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_secondary_event_phase632_tests
+  sin_pc_original_elite_secondary_event_phase632_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_secondary_event_phase632_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_secondary_event_phase632_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_secondary_event_phase632
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_secondary_event_phase632_tests>)
