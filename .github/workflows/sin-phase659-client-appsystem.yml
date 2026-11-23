@@ -1,0 +1,41 @@
+name: SiN Phase659 original client app-system lifecycle
+
+on:
+  push:
+    branches:
+      - feature/sin-original-client-appsystem-chain-phase659-chat-20261123
+  pull_request:
+    paths:
+      - 'research/tools/audit_original_client_appsystem_phase659.py'
+      - 'src/original_client_appsystem_phase659.cpp'
+      - 'include/sin_compat/original_client_appsystem_phase659.hpp'
+      - 'tests/test_original_client_appsystem_phase659.cpp'
+      - '.github/workflows/sin-phase659-client-appsystem.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  phase659-sanitized:
+    name: Original client AppSystem cleanup under ASan and UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate public invented-byte native lifecycle audit
+        run: |
+          python3 -m py_compile research/tools/audit_original_client_appsystem_phase659.py
+          python3 research/tools/audit_original_client_appsystem_phase659.py --self-test
+      - name: Compile linked-list, provider failure and rollback under sanitizers
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude \
+            src/original_client_appsystem_phase659.cpp \
+            tests/test_original_client_appsystem_phase659.cpp \
+            -o /tmp/sin_phase659_sanitized
+      - name: Execute original app-system regression with ASan/UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: /tmp/sin_phase659_sanitized
