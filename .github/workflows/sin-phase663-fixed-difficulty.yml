@@ -1,0 +1,33 @@
+name: SiN Phase663 fixed skill difficulty profiles
+on:
+  push:
+    branches:
+      - feature/sin-fixed-difficulty-phase663-chat-20261124
+  pull_request:
+    paths:
+      - 'include/sin_compat/fixed_difficulty_phase663.hpp'
+      - 'src/fixed_difficulty_phase663.cpp'
+      - 'tests/test_fixed_difficulty_phase663.cpp'
+      - '.github/workflows/sin-phase663-fixed-difficulty.yml'
+permissions:
+  contents: read
+jobs:
+  phase663-sanitized:
+    name: Original-metric fixed skill profiles Clang ASan and UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile fixed difficulty and original metric consumers
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude \
+            src/fixed_difficulty_phase663.cpp \
+            tests/test_fixed_difficulty_phase663.cpp \
+            -o /tmp/sin_fixed_difficulty_phase663
+      - name: Exercise all three profiles, legacy skill, triggers and archive isolation
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: /tmp/sin_fixed_difficulty_phase663
