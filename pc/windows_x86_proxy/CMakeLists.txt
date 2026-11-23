@@ -2385,3 +2385,14 @@ else()
 endif()
 add_test(NAME sin_pc_original_full_name_registry_chain_phase656
   COMMAND $<TARGET_FILE:sin_pc_original_full_name_registry_chain_phase656_tests>)
+
+# Phase657 owner-side trusted retail Win32 x86 CreateInterface ABI probe.
+# Built in public Windows CI, but only run by the owner with SHA256-pinned
+# original client.dll/server.dll. Never invoke unknown vtable methods.
+add_executable(sin_pc_original_factory_abi_probe_phase657
+  ../../research/tools/sin_win32_factory_probe_phase657.cpp)
+set_target_properties(sin_pc_original_factory_abi_probe_phase657 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_link_libraries(sin_pc_original_factory_abi_probe_phase657 PRIVATE bcrypt)
+sin_pc_configure(sin_pc_original_factory_abi_probe_phase657
+  sin_pc_original_factory_abi_probe_phase657)
