@@ -5432,3 +5432,27 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase638 complete original 2006 SiN condition wrapper and symbol slot writer.
+add_library(sin_original_symbol_forward_phase638 STATIC
+  src/original_symbol_forward_phase638.cpp)
+target_include_directories(sin_original_symbol_forward_phase638 PUBLIC include)
+target_compile_options(sin_original_symbol_forward_phase638 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_symbol_forward_phase638_tests
+    tests/test_original_symbol_forward_phase638.cpp)
+  target_link_libraries(sin_original_symbol_forward_phase638_tests PRIVATE
+    sin_original_symbol_forward_phase638
+    sin_original_elite_range_registration_phase637)
+  target_compile_options(sin_original_symbol_forward_phase638_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_symbol_forward_phase638_tests
+    COMMAND sin_original_symbol_forward_phase638_tests)
+  if(${Python3_Interpreter_FOUND})
+    add_test(NAME sin_original_symbol_forward_phase638_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_symbol_forward_phase638.py
+        --self-test)
+  endif()
+endif()
