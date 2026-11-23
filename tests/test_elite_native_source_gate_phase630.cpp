@@ -24,6 +24,9 @@ struct Mock {
   int fail_at=0;
   bool reenter=false;
   int reenter_result=0;
+  bool source_reenter=false;
+  int source_reenter_code=0;
+  const sin_elite_source_gate_callbacks_v1* source_callbacks=nullptr;
   std::uint32_t weapon_handle=0x13500005u;
   std::uint32_t fdc=SIN_ELITE_HANDLE_INVALID_V1;
   std::uint32_t phase=0u;
@@ -93,6 +96,16 @@ int32_t read_state(void* u,std::uint64_t t,std::uint32_t* phase,
     snap.version=1u;snap.struct_size=sizeof(snap);
     m.reenter_result=sin_elite_native_snapshot_v1(
        m.registry,m.actor,&snap);
+  }
+  if(m.source_reenter) {
+    m.source_reenter=false;
+    sin_elite_source_gate_result_v1 nested{};
+    nested.version=SIN_ELITE_SOURCE_GATE_ABI_V1;
+    nested.struct_size=sizeof(nested);
+    assert(m.source_callbacks!=nullptr);
+    m.source_reenter_code=sin_elite_source_gate_update_v1(
+      m.registry,m.actor,m.source_callbacks,&m,&nested);
+    m.source_reenter=true;
   }
   if(m.fail_at==3)return -1;
   *phase=m.phase;*a=m.t590;*b=m.t58c;return 1;
@@ -304,6 +317,13 @@ void test_failures_and_native_partial_writes() {
     &kCallbacks,&m,&out)==SIN_ELITE_NATIVE_EVENT_FORWARDED);
   assert(m.reenter_result==SIN_ELITE_NATIVE_REENTRANT);
   m.reenter=false;
+  m.source_callbacks=&kCallbacks;
+  m.source_reenter=true;
+  m.phase=2u;m.calls.clear();
+  assert(sin_elite_source_gate_event43_v1(m.registry,m.actor,0.75f,
+    &kCallbacks,&m,&out)==SIN_ELITE_NATIVE_EVENT_FORWARDED);
+  assert(m.source_reenter_code==SIN_ELITE_NATIVE_REENTRANT);
+  m.source_reenter=false;
   m.fail_at=10;m.phase=2u;m.calls.clear();
   assert(sin_elite_source_gate_event43_v1(m.registry,m.actor,0.75f,
     &kCallbacks,&m,&out)==SIN_ELITE_NATIVE_HOST_REJECTED);
