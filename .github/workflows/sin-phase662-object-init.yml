@@ -1,0 +1,39 @@
+name: SiN Phase662 original six-object server init
+on:
+  push:
+    branches:
+      - feature/sin-original-server-object-init-phase662-chat-20261123
+  pull_request:
+    paths:
+      - 'src/original_server_object_init_phase662.cpp'
+      - 'include/sin_compat/original_server_object_init_phase662.hpp'
+      - 'tests/test_original_server_object_init_phase662.cpp'
+      - 'research/tools/audit_original_server_object_init_phase662.py'
+      - '.github/workflows/sin-phase662-object-init.yml'
+permissions:
+  contents: read
+jobs:
+  phase662-sanitizers:
+    name: Six 40-byte original game objects and Phase660 Init ASan UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate invented-byte original ctor ABI fixture
+        run: |
+          python3 -m py_compile research/tools/audit_original_server_object_init_phase662.py
+          python3 research/tools/audit_original_server_object_init_phase662.py --self-test
+      - name: Build full compiled original server Phase660-to-662 chain under sanitizers
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude \
+            src/original_server_autogamesystem_phase660.cpp \
+            src/original_server_object_init_phase662.cpp \
+            tests/test_original_server_object_init_phase662.cpp \
+            -o /tmp/sin_phase662_sanitized
+      - name: Execute full allocation success, NULL and prepopulated-field tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: /tmp/sin_phase662_sanitized
