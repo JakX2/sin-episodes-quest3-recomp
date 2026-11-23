@@ -19,6 +19,13 @@ from verify_gameplay_entity_registry import (
 VA=0x22073700
 SIZE=58
 SHA256="5927384b29bc8c8ce0525ca759560659f83a87d2095bc051d0a1763c97df95c9"
+THUNK_VA=0x22355D40
+THUNK_SIZE=6
+THUNK_SHA256="e80e4e201bee1506627b153171f783c06f9433cfee905f62d08a2dc048dbcc62"
+ELITE_VTABLE=0x2248DF04
+VIRTUAL760_OFFSET=0x760
+MAP_OWNER_VA=0x2259C2F8
+FIRST_NODE_VA=MAP_OWNER_VA+0x34
 CALL_EDGES=(
     (0x220398C3,VA,"Elite original flag-clear source-ID conversion"),
     (0x2203D2EE,VA,"Elite original state0 ID 0x21 conversion")
@@ -66,6 +73,14 @@ def check_call(read,site,target):
         raise VerificationError(f"original Elite range translator caller changed {site:#x}")
 def verify(read):
     whole_hash(read)
+    whole_hash(read,THUNK_VA,THUNK_SIZE,THUNK_SHA256)
+    if read(THUNK_VA,1)!=b"\xb8" or read(THUNK_VA+5,1)!=b"\xc3":
+        raise VerificationError("original Elite vtable +0x760 thunk is not MOV imm32 / RET")
+    if struct.unpack("<I",read(THUNK_VA+1,4))[0]!=MAP_OWNER_VA:
+        raise VerificationError("original Elite static mapping owner identity changed")
+    vslot=ELITE_VTABLE+VIRTUAL760_OFFSET
+    if struct.unpack("<I",read(vslot,4))[0]!=THUNK_VA:
+        raise VerificationError("original Elite vtable +0x760 entry changed")
     for site,target,_ in CALL_EDGES:
         check_call(read,site,target)
     for site,hexcode in WITNESSES+CALLER_WITNESSES:
@@ -75,10 +90,21 @@ def verify_original(server,client):
         hashlib.sha256(client).hexdigest()!=CLIENT_SHA256):
         raise VerificationError("both exact original SiN 2006 client/server DLL hashes required")
     pe=PEImage(server)
-    if pe.base!=0x22000000 or pe.section_of(VA)!=".text" or any(
+    if pe.base!=0x22000000 or pe.section_of(VA)!=".text" or (
+        pe.section_of(THUNK_VA)!=".text") or (
+        pe.section_of(ELITE_VTABLE+VIRTUAL760_OFFSET)!=".rdata") or any(
         pe.section_of(site)!=".text" for site,_,_ in CALL_EDGES
     ):
         raise VerificationError("original SiN PE32 x86 image/section identity mismatch")
+    data_section=next((section for section in pe.sections
+                       if section[0]==".data"),None)
+    if data_section is None:
+        raise VerificationError("original PE .data section missing")
+    _,data_rva,virtual_size,_,raw_size=data_section
+    owner_offset=MAP_OWNER_VA-pe.base-data_rva
+    first_node_offset=FIRST_NODE_VA-pe.base-data_rva
+    if not (raw_size<=owner_offset<first_node_offset<virtual_size):
+        raise VerificationError("original mapping owner must be in .data virtual uninitialized tail")
     verify(pe.at)
     return {
         "status":"ORIGINAL_2006_ELITE_ID_MAPPING_PHASE635_VERIFIED",
@@ -87,6 +113,20 @@ def verify_original(server,client):
         "original_converter_va":hex(VA),
         "entire_method_bytes":SIZE,
         "entire_method_sha256":SHA256,
+        "second_complete_original_method":{
+            "role":"Elite primary virtual slot +0x760 static mapping owner getter",
+            "vtable_slot_va":hex(ELITE_VTABLE+VIRTUAL760_OFFSET),
+            "native_thunk_va":hex(THUNK_VA),
+            "full_method_bytes":THUNK_SIZE,
+            "full_method_sha256":THUNK_SHA256,
+            "static_mapping_owner_va":hex(MAP_OWNER_VA),
+            "first_embedded_range_node_va":hex(FIRST_NODE_VA)
+        },
+        "new_complete_original_functions":2,
+        "new_complete_original_executable_bytes":SIZE+THUNK_SIZE,
+        "mapping_owner_file_section":".data",
+        "mapping_owner_has_raw_file_bytes":False,
+        "mapping_owner_proven_uninitialized_virtual_tail":True,
         "verified_original_direct_calls":[
             {"site":hex(site),"target":hex(target),"role":role}
             for site,target,role in CALL_EDGES
@@ -112,6 +152,17 @@ def self_test():
     fabricated=bytes(((i*47+11)&255) for i in range(131))
     sha=hashlib.sha256(fabricated).hexdigest()
     whole_hash(lambda _va,n:fabricated[:n],0x71001000,len(fabricated),sha)
+    invented_thunk=b"\xb8"+struct.pack("<I",0x71234000)+b"\xc3"
+    invented_sha=hashlib.sha256(invented_thunk).hexdigest()
+    whole_hash(lambda _va,n:invented_thunk[:n],
+               0x71001100,len(invented_thunk),invented_sha)
+    for byte_index in range(len(invented_thunk)):
+        changed=bytearray(invented_thunk)
+        changed[byte_index]^=1
+        try:whole_hash(lambda _va,n:bytes(changed[:n]),
+                       0x71001100,len(invented_thunk),invented_sha)
+        except VerificationError:pass
+        else:raise AssertionError("accepted mutated invented original mapping owner thunk")
     for i in range(len(fabricated)):
         changed=bytearray(fabricated);changed[i]^=1
         try:
@@ -137,7 +188,7 @@ def self_test():
     try:verify_original(b"wrong server",b"wrong client")
     except VerificationError:pass
     else:raise AssertionError("accepted unverified original binaries")
-    print("PASS Phase635 original-free complete hash/sentinel/direct-call mutation rejection")
+    print("PASS Phase635 original-free two complete method hashes, mapping-owner thunk, sentinel and direct-call mutation refusal")
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test",action="store_true")
