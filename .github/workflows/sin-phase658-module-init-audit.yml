@@ -1,0 +1,43 @@
+name: SiN Phase658 original module initialization ABI
+
+on:
+  push:
+    branches:
+      - feature/sin-original-module-init-phase658-chat-20261123
+  pull_request:
+    paths:
+      - 'research/data/original_module_init_phase658.json'
+      - 'research/tools/audit_original_module_init_phase658.py'
+      - 'src/original_module_init_phase658.cpp'
+      - 'include/sin_compat/original_module_init_phase658.hpp'
+      - 'tests/test_original_module_init_phase658.cpp'
+      - '.github/workflows/sin-phase658-module-init-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  phase658-sanitized:
+    name: Original interface acquisition ASan/UBSan and invented-byte audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate invented-byte PE32 mutation audit
+        run: |
+          python3 -m py_compile research/tools/audit_original_module_init_phase658.py
+          python3 research/tools/audit_original_module_init_phase658.py --self-test
+      - name: Build recovered original interface acquisition prefix with Clang sanitizers
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG \
+            -Iinclude \
+            src/original_module_init_phase658.cpp \
+            tests/test_original_module_init_phase658.cpp \
+            -o /tmp/sin_phase658_sanitized
+      - name: Execute required-version failure matrix under ASan and UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: /tmp/sin_phase658_sanitized

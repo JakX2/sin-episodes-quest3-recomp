@@ -1,0 +1,355 @@
+{
+  "phase": 658,
+  "source": "unmodified SiN Episodes Emergence 2006 retail PE32 image, owner-private",
+  "warning": "This manifests only verified acquisition prefix and select post-prefix gates, not a full GameDLLInit/ClientDLL Init reconstruction",
+  "retail_sha256": {
+    "server": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
+    "client": "6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d"
+  },
+  "functions": {
+    "server": {
+      "entry_va": "0x221e7640",
+      "bytes": 875,
+      "sha256": "abb6eb2fc523fc0cb6301630e7ba9f0b61e70e48f15d5809145171250898b680",
+      "last_instruction": "ret 0x10",
+      "fail_exit_va": "0x221e79a1",
+      "queries": [
+        {
+          "site_va": "0x221e7649",
+          "name_string_va": "0x22442a48",
+          "storage_va": "0x22572198",
+          "version": "VEngineServer021",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e7662",
+          "name_string_va": "0x22442a38",
+          "storage_va": "0x2257219c",
+          "version": "VoiceServer001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e767b",
+          "name_string_va": "0x22442a28",
+          "storage_va": "0x225721a0",
+          "version": "VEngineCvar002",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e7694",
+          "name_string_va": "0x22442a0c",
+          "storage_va": "0x225721a8",
+          "version": "VEngineServerStringTable001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e76ad",
+          "name_string_va": "0x224429f4",
+          "storage_va": "0x225721ac",
+          "version": "StaticPropMgrServer002",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e76c6",
+          "name_string_va": "0x224429e0",
+          "storage_va": "0x225721b0",
+          "version": "VEngineRandom001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e76df",
+          "name_string_va": "0x224429c8",
+          "storage_va": "0x225721b4",
+          "version": "IEngineSoundServer003",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e76f8",
+          "name_string_va": "0x224429b4",
+          "storage_va": "0x225721b8",
+          "version": "SpatialPartition001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e7711",
+          "name_string_va": "0x224429a0",
+          "storage_va": "0x225721bc",
+          "version": "VModelInfoServer001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e772a",
+          "name_string_va": "0x22442988",
+          "storage_va": "0x225721c0",
+          "version": "EngineTraceServer003",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e7747",
+          "name_string_va": "0x22442978",
+          "storage_va": "0x225721a4",
+          "version": "VFileSystem012",
+          "factory": "filesystem",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e7760",
+          "name_string_va": "0x22442960",
+          "storage_va": "0x225721c4",
+          "version": "GAMEEVENTSMANAGER002",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e7779",
+          "name_string_va": "0x22442950",
+          "storage_va": "0x225721c8",
+          "version": "VEngineCache001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e7792",
+          "name_string_va": "0x2244293c",
+          "storage_va": "0x225721d0",
+          "version": "VSoundEmitter001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e77ab",
+          "name_string_va": "0x22442920",
+          "storage_va": "0x22572194",
+          "version": "ServerUploadGameStats001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x221e77c4",
+          "name_string_va": "0x22442908",
+          "storage_va": "0x225721d4",
+          "version": "ISERVERPLUGINHELPERS001",
+          "factory": "engine",
+          "first_client_special": false
+        }
+      ],
+      "emitter_object_va": "0x225721d0",
+      "emitter_slot0_call_va": "0x221e77e6",
+      "emitter_fail_branch_va": "0x221e77e8",
+      "globals_store_va": "0x22572190",
+      "deferred_optional_debug_overlay": {
+        "site_va": "0x221e7942",
+        "string_va": "0x224428b8",
+        "storage_va": "0x225721cc",
+        "version": "VDebugOverlay003",
+        "abort_on_null": false
+      }
+    },
+    "client": {
+      "entry_va": "0x240fe0e0",
+      "bytes": 1220,
+      "sha256": "14d81449866220aaef1f5f906b577179ea107df78a424a364c715261adbb35db",
+      "last_instruction": "ret 0x0c",
+      "fail_exit_va": "0x240fe59e",
+      "queries": [
+        {
+          "site_va": "0x240fe109",
+          "name_string_va": "0x24296aec",
+          "storage_va": "0x2433f684",
+          "version": "VEngineClient012",
+          "factory": "engine",
+          "first_client_special": true
+        },
+        {
+          "site_va": "0x240fe127",
+          "name_string_va": "0x24296adc",
+          "storage_va": "0x2433f688",
+          "version": "VEngineModel012",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe140",
+          "name_string_va": "0x24296ac8",
+          "storage_va": "0x2433f68c",
+          "version": "VEngineEffects001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe159",
+          "name_string_va": "0x24296ab8",
+          "storage_va": "0x2433f690",
+          "version": "VEngineCvar002",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe172",
+          "name_string_va": "0x24296aa0",
+          "storage_va": "0x2433f6d8",
+          "version": "EngineTraceClient003",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe18b",
+          "name_string_va": "0x24296a88",
+          "storage_va": "0x2433f694",
+          "version": "VEngineRenderView011",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe1a4",
+          "name_string_va": "0x24296a74",
+          "storage_va": "0x2433f698",
+          "version": "VDebugOverlay003",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe1bd",
+          "name_string_va": "0x24296a60",
+          "storage_va": "0x2433f69c",
+          "version": "VMaterialSystem076",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe1d6",
+          "name_string_va": "0x24296a50",
+          "storage_va": "0x2433f6a8",
+          "version": "VEngineCache001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe1ef",
+          "name_string_va": "0x24296a3c",
+          "storage_va": "0x2433f6ac",
+          "version": "VModelInfoClient003",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe208",
+          "name_string_va": "0x24296a2c",
+          "storage_va": "0x2433f6b0",
+          "version": "VEngineVGui001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe221",
+          "name_string_va": "0x24296a10",
+          "storage_va": "0x2433f6b4",
+          "version": "VEngineClientStringTable001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe23a",
+          "name_string_va": "0x242969fc",
+          "storage_va": "0x2433f6b8",
+          "version": "SpatialPartition001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe253",
+          "name_string_va": "0x242969e8",
+          "storage_va": "0x2433f6c0",
+          "version": "VEngineShadowMgr002",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe26c",
+          "name_string_va": "0x242969d0",
+          "storage_va": "0x2433f6c4",
+          "version": "StaticPropMgrClient004",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe285",
+          "name_string_va": "0x242969b8",
+          "storage_va": "0x2433f6c8",
+          "version": "IEngineSoundClient003",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe29e",
+          "name_string_va": "0x242d328c",
+          "storage_va": "0x2433f6bc",
+          "version": "VFileSystem012",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe2b7",
+          "name_string_va": "0x242969a4",
+          "storage_va": "0x2433f6cc",
+          "version": "VEngineRandom001",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe2d0",
+          "name_string_va": "0x24296984",
+          "storage_va": "0x2433f6dc",
+          "version": "VENGINE_GAMEUIFUNCS_VERSION004",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe2e9",
+          "name_string_va": "0x2429696c",
+          "storage_va": "0x2433f6e0",
+          "version": "GAMEEVENTSMANAGER002",
+          "factory": "engine",
+          "first_client_special": false
+        },
+        {
+          "site_va": "0x240fe302",
+          "name_string_va": "0x24296958",
+          "storage_va": "0x2433f6e4",
+          "version": "VSoundEmitter001",
+          "factory": "engine",
+          "first_client_special": false
+        }
+      ],
+      "emitter_object_va": "0x2433f6e4",
+      "emitter_slot0_call_va": "0x240fe320",
+      "emitter_fail_branch_va": "0x240fe322",
+      "globals_store_va": "0x242fa458",
+      "optional_material_stub": {
+        "site_va": "0x240fe347",
+        "string_va": "0x24296934",
+        "storage_va": "0x2433f6a0",
+        "version": "VMaterialSystemStub001",
+        "abort_on_null": false
+      },
+      "required_hardware_config": {
+        "call_va": "0x240fe367",
+        "string_va": "0x24296914",
+        "storage_va": "0x2433f6a4",
+        "version": "MaterialSystemHardwareConfig012",
+        "material_system_va": "0x2433f69c",
+        "vtable_offset_bytes": 32
+      }
+    }
+  }
+}

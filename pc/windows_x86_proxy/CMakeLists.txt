@@ -2396,3 +2396,27 @@ set_target_properties(sin_pc_original_factory_abi_probe_phase657 PROPERTIES
 target_link_libraries(sin_pc_original_factory_abi_probe_phase657 PRIVATE bcrypt)
 sin_pc_configure(sin_pc_original_factory_abi_probe_phase657
   sin_pc_original_factory_abi_probe_phase657)
+
+# Phase658: native MSVC x86 original game-module acquisition prefix model.
+add_library(sin_pc_original_module_init_phase658 STATIC
+  ../../src/original_module_init_phase658.cpp)
+target_include_directories(sin_pc_original_module_init_phase658 PUBLIC ../../include)
+set_target_properties(sin_pc_original_module_init_phase658 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_module_init_phase658
+  sin_pc_original_module_init_phase658)
+add_executable(sin_pc_original_module_init_phase658_tests
+  ../../tests/test_original_module_init_phase658.cpp)
+target_link_libraries(sin_pc_original_module_init_phase658_tests PRIVATE
+  sin_pc_original_module_init_phase658)
+set_target_properties(sin_pc_original_module_init_phase658_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_module_init_phase658_tests
+  sin_pc_original_module_init_phase658_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_module_init_phase658_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_module_init_phase658_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_module_init_phase658
+  COMMAND $<TARGET_FILE:sin_pc_original_module_init_phase658_tests>)
