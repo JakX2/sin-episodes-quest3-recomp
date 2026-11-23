@@ -94,6 +94,60 @@ bool retail_sha256(const char* path,const char* expected) noexcept {
  return ok;
 }
 
+// Phase659 read-only owner runtime witness for the original client app-system
+// registration list at RVA 0x369374. No unknown native methods are invoked.
+// Reads only DWORDs; does not print process ASLR addresses or interface pointers.
+bool read_current_process_dword(std::uintptr_t address,std::uint32_t& value) noexcept {
+ SIZE_T got=0;
+ return ReadProcessMemory(GetCurrentProcess(),
+    reinterpret_cast<LPCVOID>(address),&value,sizeof(value),&got)!=0 &&
+    got==sizeof(value);
+}
+bool inspect_client_registration_list(HMODULE original_client) noexcept {
+ constexpr std::uint32_t kHeadRva=0x369374u;
+ const auto base=reinterpret_cast<std::uintptr_t>(original_client);
+ std::uint32_t cursor=0u;
+ if(!read_current_process_dword(base+kHeadRva,cursor)) {
+  std::printf("{\"module\":\"client\",\"event\":\"phase659_registry_snapshot\","
+              "\"status\":\"head_unreadable\"}\n");
+  return false;
+ }
+ const bool populated=cursor!=0u;
+ std::array<std::uint32_t,64> visited{};
+ std::size_t count=0u,required=0u,optional=0u,callbacks_nonzero=0u;
+ const char* status="read_ok";
+ while(cursor!=0u) {
+  if(count==visited.size()){status="list_truncated";break;}
+  bool repeated=false;
+  for(std::size_t i=0u;i<count;++i)
+   if(visited[i]==cursor){repeated=true;break;}
+  if(repeated){status="cycle_detected";break;}
+  if(cursor>0xfffffff3u){status="invalid_entry_address";break;}
+  visited[count++]=cursor;
+  std::uint32_t target=0u,resolve=0u,release=0u,next=0u;
+  if(!read_current_process_dword(cursor,target) ||
+     !read_current_process_dword(cursor+4u,resolve) ||
+     !read_current_process_dword(cursor+8u,release) ||
+     !read_current_process_dword(cursor+12u,next)) {
+   status="entry_unreadable";break;
+  }
+  if(target)++required;else ++optional;
+  if(resolve && release)++callbacks_nonzero;
+  cursor=next;
+ }
+ const bool ok=std::strcmp(status,"read_ok")==0;
+ std::printf("{\"module\":\"client\",\"event\":\"phase659_registry_snapshot\","
+             "\"status\":\"%s\",\"head_populated\":%s,\"entries\":%u,"
+             "\"required_entries\":%u,\"optional_entries\":%u,"
+             "\"paired_callbacks_nonnull\":%u}\n",
+             status,populated?"true":"false",
+             static_cast<unsigned int>(count),
+             static_cast<unsigned int>(required),
+             static_cast<unsigned int>(optional),
+             static_cast<unsigned int>(callbacks_nonzero));
+ return ok;
+}
+
 bool inspect(const char* path,const ModuleExpected& spec) noexcept {
  // Resolve paths before LOAD_WITH_ALTERED_SEARCH_PATH.
  std::array<char,32768> absolute{};
@@ -150,6 +204,8 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
    if(!miss_ok)ok=false;
   }
  }
+ if(std::strcmp(spec.side,"client")==0 && !inspect_client_registration_list(module))
+  ok=false;
  FreeLibrary(module);
  return ok;
 }
