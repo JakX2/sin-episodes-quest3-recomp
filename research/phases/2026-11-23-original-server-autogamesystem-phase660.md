@@ -63,45 +63,57 @@ static initialization and may be deduplicated by the original
 initializer. The owner-run Windows snapshot is the next source
 for actual post-DllMain registration count.
 
-### 27 derived vtables, only eight non-default initializers
+### 27 actual AutoGameSystem subobject vtables, six substantive Init targets
 
-The independent instruction-aligned original constructor census also
-identifies the **derived vtable pointer written after each base
-constructor call**. The corresponding original file-backed `.rdata`
-DWORD at vtable byte offset zero identifies its initializer function.
+The original constructor census contains **48 direct native calls** to
+the base AutoGameSystem constructor, but several enclosing C++ classes
+use **multiple inheritance**. Correct attribution requires tracking
+the exact `ECX` pointer *passed into* `0x221F5820`, not merely
+choosing the first derived vtable store following the call.
 
-A complete auditable table is in
+This is now pinned with exact original instruction bytes for:
+
+- `0x2209A2F1`: `ECX = enclosing_object + 0x630`;
+  registered subobject vtable `0x223EC6E4`, virtual Init `0x2209CE50`.
+  The nearby primary vtable `0x223EC71C` is **not** the registered one.
+- `0x22121C40`: `ECX = enclosing_object + 4`;
+  registered subobject vtable `0x22401C0C`, virtual Init `0x22122540`,
+  **not** primary vtable `0x22401C00`.
+- `0x221BBC0F`: `ECX = enclosing_object + 4`;
+  registered subobject vtable `0x224324E4`, virtual Init
+  `0x2205F0F0`, **not** primary vtable `0x2243251C`.
+- `0x223BD8F5`: the static instance similarly uses `ECX=0x22507AB4`,
+  with its own `0x224324E4` vtable at that address; the enclosing
+  primary vtable is stored separately at `0x22507AB0`.
+
+These four exact constructor instances/paths and native vtable writes
+are included as independent instruction-aligned witnesses in the
+owner-retail auditor. The complete corrected mapping is in
 `research/data/original_server_autogamesystem_vtables_phase660.json`.
-It pairs all 48 callsites with **27 unique derived vtables**:
 
-- **19 vtables** inherit common virtual slot zero
-  `0x2205F0F0`, a complete **3-byte** original function
-  `MOV AL,1; RET` with whole-body SHA256
+The corrected **27 unique registered subobject vtables** divide as:
+
+- **20 vtables** point to common virtual slot zero
+  `0x2205F0F0`, an authenticated 3-byte
+  `MOV AL,1; RET`, original whole-method SHA256
   `e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619`.
-  These initializers return success immediately.
-- The other **eight distinct initializer addresses** are:
-  `0x2209B170`, `0x220FBED0`, `0x22121DC0`,
-  `0x221AB1E0`, `0x221BB640`, `0x221BF980`,
-  `0x221FF7D0`, `0x22223490`.
-- Crucially, `0x221AB1E0` is **another independently located
-  3-byte `MOV AL,1; RET` implementation**. Thus **20/27 vtables
-  provably return success without other work** and the remaining
-  **seven** initializers contain nontrivial instructions. The full
-  pinned audit checks the second three-byte body matches the first.
+- **One more vtable** points to `0x221AB1E0`, a *different
+  address containing the same original 3-byte* `MOV AL,1; RET`.
+- The remaining **six substantive virtual Init targets** are
+  `0x2209CE50`, `0x220FBED0`, `0x22122540`,
+  `0x221BF980`, `0x221FF7D0`, and `0x22223490`.
 
-The private audit checks that all 27 vtables still reside in
-the original `.rdata`, each slot-zero function still points into
-executable original `.text`, all 48 callsites target the base
-constructor, the expected 19/8 classification remains unchanged,
-and the complete three-byte default success implementation matches
-the original method hash.
+The private audit checks the complete original `.rdata` mapping,
+all 48 rel32 constructor call edges, the exact 20/7 entry address
+split, both immediate-success method bodies, the 21/6
+behavioral classification, and the critical multiple-inheritance
+subobject pointer/value instructions.
 
-This significantly narrows **where a real SiN-specific startup
-failure could arise**, but 27 distinct vtables do not guarantee 27
-runtime objects or seven nontrivial initializers can run at all. The actual
-registration and initialization order must still be observed
-inside the Windows engine. Do not treat the default success function
-as proof that the full server startup succeeds.
+A vtable census does **not** guarantee which systems exist in the
+runtime registry or which initializers execute in the actual original
+game process. The owner-side Windows diagnostic remains necessary
+to establish that independently. A passing immediate-success
+initializer is not a full game-DLL startup.
 
 ## Original global memory layout
 
