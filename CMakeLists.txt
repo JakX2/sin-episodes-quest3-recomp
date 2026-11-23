@@ -6172,3 +6172,52 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase663: opt-in fixed skill 1/2/3 compatibility policy over the 14
+# original SiN gameplay metrics. Not a Source ConVar binding or an original
+# game DLL startup claim.
+add_library(sin_fixed_difficulty_phase663 STATIC src/fixed_difficulty_phase663.cpp)
+target_include_directories(sin_fixed_difficulty_phase663 PUBLIC include)
+target_compile_features(sin_fixed_difficulty_phase663 PUBLIC cxx_std_17)
+target_compile_options(sin_fixed_difficulty_phase663 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_fixed_difficulty_phase663_tests
+    tests/test_fixed_difficulty_phase663.cpp)
+  target_link_libraries(sin_fixed_difficulty_phase663_tests PRIVATE
+    sin_fixed_difficulty_phase663)
+  target_compile_options(sin_fixed_difficulty_phase663_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_fixed_difficulty_phase663_tests
+    COMMAND sin_fixed_difficulty_phase663_tests)
+endif()
+
+# Phase663: retain compiled original SiN campaign dynamic/secret trigger
+# semantics while replacing only the adaptive difficulty manager callback.
+add_library(sin_fixed_difficulty_trigger_phase663 STATIC
+  src/fixed_difficulty_trigger_phase663.cpp)
+target_include_directories(sin_fixed_difficulty_trigger_phase663 PUBLIC include)
+target_link_libraries(sin_fixed_difficulty_trigger_phase663 PUBLIC
+  sin_fixed_difficulty_phase663 sin_original_gameplay_triggers)
+target_compile_features(sin_fixed_difficulty_trigger_phase663 PUBLIC cxx_std_17)
+target_compile_options(sin_fixed_difficulty_trigger_phase663 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_fixed_difficulty_trigger_phase663_tests
+    tests/test_fixed_difficulty_trigger_phase663.cpp)
+  target_link_libraries(sin_fixed_difficulty_trigger_phase663_tests PRIVATE
+    sin_fixed_difficulty_trigger_phase663)
+  target_compile_options(sin_fixed_difficulty_trigger_phase663_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_fixed_difficulty_trigger_phase663_tests
+    COMMAND sin_fixed_difficulty_trigger_phase663_tests)
+endif()
+
+# Owner-retail dd_enabled ConVar and guarded adaptive-call evidence.
+# Public CTest only uses synthetic invented instruction witnesses.
+if(BUILD_TESTING AND Python3_Interpreter_FOUND)
+  add_test(NAME sin_fixed_difficulty_phase663_original_gate_synthetic
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_sin_fixed_difficulty_gate_phase663.py
+      --self-test)
+endif()
