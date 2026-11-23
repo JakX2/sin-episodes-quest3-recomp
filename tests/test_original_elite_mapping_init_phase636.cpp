@@ -197,6 +197,16 @@ void test_owner_null_linked_source_and_failure_provenance() {
   assert(mid.links_completed==1u);
   assert(mid.last_node==owner+0x1cu);
   h.fail_write=0u;
+  // Native registration stores the classname, then its first original
+  // linker writes successor/source fields before reading source+4.
+  // A null source must leave those partial side effects observable.
+  const auto null_source=reg.register_owner(owner,0x3333u,0u,0u);
+  assert(null_source.code==i::Code::OriginalNullPointerHazard);
+  assert(null_source.stage==i::Stage::LinkFirst);
+  assert(null_source.links_completed==0u);
+  assert(null_source.writes_committed==3u);
+  assert(h.get(owner+4u+0x10u)==0u);
+  assert(h.get(owner+4u+0x14u)==0u);
   const auto overflow=reg.register_owner(0xfffffff0u,0x3333u,source,0u);
   assert(overflow.code==i::Code::OriginalAddressOverflow);
   assert(overflow.links_completed==0u);
