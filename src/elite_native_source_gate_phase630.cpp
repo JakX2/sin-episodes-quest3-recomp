@@ -2,8 +2,25 @@
 #include "sin_compat/elite_native_source_gate_phase630.h"
 #include "sin_compat/original_elite_event43_chaingun_gate_phase629.hpp"
 #include <cstdint>
+#include <atomic>
 namespace source=sin_compat::original_elite_event43_chaingun_gate_phase629;
 namespace {
+// Native host contract is synchronous and single-threaded. The source
+// wrapper must independently block recursion: Phase626's busy guard covers
+// event43, but its public snapshot validation does not hold a lock across
+// the subsequent timed updater callbacks. This atomic gate serializes BOTH
+// API paths, including a callback attempting to enter the opposite path.
+std::atomic_flag g_source_gate_busy=ATOMIC_FLAG_INIT;
+struct SourceGuard final {
+  bool acquired;
+  SourceGuard()noexcept
+    :acquired(!g_source_gate_busy.test_and_set(std::memory_order_acquire)){}
+  ~SourceGuard()noexcept {
+    if(acquired)g_source_gate_busy.clear(std::memory_order_release);
+  }
+  SourceGuard(const SourceGuard&)=delete;
+  SourceGuard& operator=(const SourceGuard&)=delete;
+};
 bool valid(const sin_elite_source_gate_callbacks_v1* c,
            const sin_elite_source_gate_result_v1* out)noexcept {
   return c && out && c->version==SIN_ELITE_SOURCE_GATE_ABI_V1 &&
@@ -162,6 +179,8 @@ std::int32_t sin_elite_source_gate_event43_v1(
     void* userdata,sin_elite_source_gate_result_v1* out) {
   if(!registry || !valid(cb,out))return SIN_ELITE_NATIVE_INVALID_ARGUMENT;
   reset(out);
+  SourceGuard guard;
+  if(!guard.acquired)return SIN_ELITE_NATIVE_REENTRANT;
   try {
     Context ctx(*cb,userdata,*out);
     const sin_elite_native_event43_callbacks_v1 native{
@@ -182,6 +201,8 @@ std::int32_t sin_elite_source_gate_update_v1(
     void* userdata,sin_elite_source_gate_result_v1* out) {
   if(!registry || !valid(cb,out))return SIN_ELITE_NATIVE_INVALID_ARGUMENT;
   reset(out);
+  SourceGuard guard;
+  if(!guard.acquired)return SIN_ELITE_NATIVE_REENTRANT;
   try {
     // Use the same Phase626 ownership and exact-generation validation,
     // including its spawn-completed guard. No private C++ registry access.
