@@ -80,6 +80,10 @@ public:
     // records completion with the original low-byte EndOfGame test but
     // explicitly NEVER mutates combat metrics or selected difficulty.
     void observe_dynamic_trigger(const TriggerObservation& event) noexcept;
+    // The original trigger host separately calls its manager-completion
+    // setter after publishing a dynamic_difficulty event. This method is
+    // used by an opt-in fixed host adapter, without double-counting events.
+    void mark_playthrough_complete() noexcept {completed_=true;}
 
     // Reapply a user-selected skill after the ORIGINAL manager's archive
     // has read 14 mutable metric floats. This deliberately ignores those
