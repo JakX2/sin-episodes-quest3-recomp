@@ -6212,3 +6212,12 @@ if(BUILD_TESTING)
   add_test(NAME sin_fixed_difficulty_trigger_phase663_tests
     COMMAND sin_fixed_difficulty_trigger_phase663_tests)
 endif()
+
+# Owner-retail dd_enabled ConVar and guarded adaptive-call evidence.
+# Public CTest only uses synthetic invented instruction witnesses.
+if(BUILD_TESTING AND Python3_Interpreter_FOUND)
+  add_test(NAME sin_fixed_difficulty_phase663_original_gate_synthetic
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_sin_fixed_difficulty_gate_phase663.py
+      --self-test)
+endif()
