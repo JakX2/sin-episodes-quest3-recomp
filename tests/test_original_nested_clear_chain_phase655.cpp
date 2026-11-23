@@ -250,7 +250,7 @@ void test_phase655_real_search_clear_release_recycle_chain(){
  // Original cleanup: first rebuild all node slots as an ascending free list
  // via descending writes, then release each name block, but do not free the
  // block pointer array or the twelve-byte slot allocation themselves.
- constexpr std::uint32_t kBlocks=0xb000u;
+ constexpr std::uint32_t kBlocks=0xe000u;
  h.put32(kMap+0x1cu,kBlocks);h.put32(kMap+0x28u,2u);
  h.put32(kBlocks,0xc000u);h.put32(kBlocks+4u,0xd000u);
  const auto before_array=h.dword(kMap+4u);
