@@ -5481,3 +5481,30 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase640: authenticated original 106B symbol tree linker and 14B accessor.
+# The 0x22281840 rebalancer remains an explicit mandatory host callback.
+add_library(sin_original_symbol_tree_link_phase640 STATIC
+  src/original_symbol_tree_link_phase640.cpp)
+target_include_directories(sin_original_symbol_tree_link_phase640 PUBLIC include)
+target_compile_options(sin_original_symbol_tree_link_phase640 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_symbol_tree_link_phase640_tests
+    tests/test_original_symbol_tree_link_phase640.cpp)
+  target_link_libraries(sin_original_symbol_tree_link_phase640_tests PRIVATE
+    sin_original_symbol_tree_link_phase640
+    sin_original_symbol_slot_allocation_phase639
+    sin_original_symbol_forward_phase638
+    sin_original_elite_range_registration_phase637)
+  target_compile_options(sin_original_symbol_tree_link_phase640_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_symbol_tree_link_phase640_tests
+    COMMAND sin_original_symbol_tree_link_phase640_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_symbol_tree_link_phase640_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_symbol_tree_link_phase640.py
+        --self-test)
+  endif()
+endif()
