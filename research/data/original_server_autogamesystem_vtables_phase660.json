@@ -6,8 +6,8 @@
   "default_init_va": "0x2205f0f0",
   "expected_constructors": 48,
   "expected_vtables": 27,
-  "expected_default_vtables": 19,
-  "expected_nondefault_vtables": 8,
+  "expected_default_vtables": 20,
+  "expected_nondefault_vtables": 7,
   "entries": [
     {
       "derived_vtable_va": "0x223e66fc",
@@ -19,8 +19,8 @@
       ]
     },
     {
-      "derived_vtable_va": "0x223ec71c",
-      "slot_zero_init_va": "0x2209b170",
+      "derived_vtable_va": "0x223ec6e4",
+      "slot_zero_init_va": "0x2209ce50",
       "default_inherited": false,
       "direct_constructor_call_sites": [
         "0x2209a2f1"
@@ -36,8 +36,8 @@
       ]
     },
     {
-      "derived_vtable_va": "0x22401c00",
-      "slot_zero_init_va": "0x22121dc0",
+      "derived_vtable_va": "0x22401c0c",
+      "slot_zero_init_va": "0x22122540",
       "default_inherited": false,
       "direct_constructor_call_sites": [
         "0x22121c40"
@@ -106,9 +106,9 @@
       ]
     },
     {
-      "derived_vtable_va": "0x2243251c",
-      "slot_zero_init_va": "0x221bb640",
-      "default_inherited": false,
+      "derived_vtable_va": "0x224324e4",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
       "direct_constructor_call_sites": [
         "0x221bbc0f",
         "0x223bd8f5"
@@ -245,6 +245,35 @@
         "0x2238fe33",
         "0x223c7bd5"
       ]
+    }
+  ],
+  "expected_trivial_success_vtables": 21,
+  "expected_substantive_init_vtables": 6,
+  "provenance_correction": "For multiple inheritance, the genuine AutoGameSystem subobject is the ECX address passed to 0x221F5820. Do not confuse its [ECX] vtable with enclosing object's distinct primary [ESI] vtable.",
+  "verified_subobject_cases": [
+    {
+      "constructor_call_va": "0x2209a2f1",
+      "subobject_offset_bytes": 1584,
+      "vtable_write_va": "0x2209a2fc",
+      "vtable": "0x223ec6e4"
+    },
+    {
+      "constructor_call_va": "0x22121c40",
+      "subobject_offset_bytes": 4,
+      "vtable_write_va": "0x22121c45",
+      "vtable": "0x22401c0c"
+    },
+    {
+      "constructor_call_va": "0x221bbc0f",
+      "subobject_offset_bytes": 4,
+      "vtable_write_va": "0x221bbc1c",
+      "vtable": "0x224324e4"
+    },
+    {
+      "constructor_call_va": "0x223bd8f5",
+      "subobject_offset_bytes": 0,
+      "vtable_write_va": "0x223bd90b",
+      "vtable": "0x224324e4"
     }
   ]
 }
