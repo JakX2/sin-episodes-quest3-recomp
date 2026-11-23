@@ -63,6 +63,41 @@ static initialization and may be deduplicated by the original
 initializer. The owner-run Windows snapshot is the next source
 for actual post-DllMain registration count.
 
+### 27 derived vtables, only eight non-default initializers
+
+The independent instruction-aligned original constructor census also
+identifies the **derived vtable pointer written after each base
+constructor call**. The corresponding original file-backed `.rdata`
+DWORD at vtable byte offset zero identifies its initializer function.
+
+A complete auditable table is in
+`research/data/original_server_autogamesystem_vtables_phase660.json`.
+It pairs all 48 callsites with **27 unique derived vtables**:
+
+- **19 vtables** inherit common virtual slot zero
+  `0x2205F0F0`, a complete **3-byte** original function
+  `MOV AL,1; RET` with whole-body SHA256
+  `e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619`.
+  These initializers return success immediately.
+- The other **eight distinct initializers** are:
+  `0x2209B170`, `0x220FBED0`, `0x22121DC0`,
+  `0x221AB1E0`, `0x221BB640`, `0x221BF980`,
+  `0x221FF7D0`, `0x22223490`.
+
+The private audit checks that all 27 vtables still reside in
+the original `.rdata`, each slot-zero function still points into
+executable original `.text`, all 48 callsites target the base
+constructor, the expected 19/8 classification remains unchanged,
+and the complete three-byte default success implementation matches
+the original method hash.
+
+This significantly narrows **where a real SiN-specific startup
+failure could arise**, but 27 distinct vtables do not guarantee 27
+runtime objects or eight distinct active overrides. The actual
+registration and initialization order must still be observed
+inside the Windows engine. Do not treat the default success function
+as proof that the full server startup succeeds.
+
 ## Original global memory layout
 
 | Original VA | Type | Role |
