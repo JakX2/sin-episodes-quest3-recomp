@@ -41,10 +41,17 @@ Original complete wrapper `0x22088FA0` takes `this=owner` and **three** paramete
 
 Before the call, it computes **`ECX=owner+0x1C`** and then returns with `RET 0x0C`. This is the **second** node in Phase636's three embedded list nodes. The original Phase634 Elite animation-event/flag functions instead translate using **`owner+0x34`**, the third node. They may share the registrar algorithm, but this exact wrapper does **not** prove that task registration populates the animation-event mapping. Treating source `"task"` IDs as Elite animation-event IDs would be an unsupported claim.
 
+### Additional confirmed Elite startup call: `"schedule"`, owner+0x04
+
+The original retail Elite startup handler has a **separate, direct** call to this very same registrar, `0x22355B3A → 0x22073760`. Its predecessor instructions at `0x22355B2D..0x22355B35` supply the raw 8-byte-per-row symbol and LOCALID entries, diagnostic display-name pointer from `[0x22534698]`, exact ASCII source label `"schedule"` at `0x223E5F78`, and **`ECX=0x2259C2FC`**, which is original Elite mapping owner `0x2259C2F8 + 0x04`. The next instruction tests `AL` and takes an error branch if the registrar returns false.
+
+This is **the first embedded schedule mapping node**, distinct from the exact original task wrapper at owner `+0x1C` and the Elite animation-event/flag mapper at owner `+0x34`. It is verified as a *native caller edge and original argument witnesses*, **not** counted as an additional complete method, since the larger containing Elite startup method is not reconstructed here. A separate Phase637 test sends an invented schedule row through the same already authenticated registrar and the real compiled Phase635 mapper; its inputs are explicitly synthetic, not extracted retail records.
+
 ### Remaining original executable dependencies
 
 The registrar's source-authenticated direct calls are:
 - `0x22088FB7 → 0x22073760`: task wrapper.
+- `0x22355B3A → 0x22073760`: original Elite startup schedule registration with `ECX=owner+0x04`.
 - `0x2207380E → 0x22073700`: already recovered 58-byte ID converter.
 - `0x22073822 → 0x22282370`: original engine symbol registration side effect, still an explicit host dependency.
 
@@ -55,7 +62,7 @@ The native three-error reporting indirect calls through `[0x223D214C]` are also 
 - `include/sin_compat/original_elite_range_registration_phase637.hpp`: exact method and wrapper VAs, task/animation node offsets, original source arguments, diagnostic categories, typed host memory/mapping/forward interface and results with write provenance.
 - `src/original_elite_range_registration_phase637.cpp`: source-ordered sentinel handling, ordering diagnostics, signed bounds, source/mapped high writes, exact Phase635 callback sequence, original symbol-forwarding callback, signed post-forward count update and safe wrapper address calculation.
 - `tests/test_original_elite_range_registration_phase637.cpp`: construct a real source-referenced node through Phase636's `NodeInitializer` and `NodeLinker`, then use the **actual independently compiled Phase635 `Reference` mapping algorithm** on the mutated node. Verify first ID transition `9999→3`, upper-bound extension `3→4`, repeated registered ID, mapped high, resource max, diagnostic contents and absence of error-side rollback. Exercise null source records, successor ordering with an irreversible first low write, source below low, unmapped ID `-1`, 32-bit wrap, symbol-forward refusals, partial writes from invalid source pointer/host exceptions and reentrancy.
-- `research/tools/audit_original_elite_range_registration_phase637.py`: owner-only exact original DLL SHA256 identity, SHA256 of **both complete** method bodies, three rel32 edges, separately pinned source x86 instruction witnesses, original `"task"` label and all three original diagnostics in `.rdata`. Original-free `--self-test` mutates invented full bodies/calls and probes instruction/literal mutation refusals.
+- `research/tools/audit_original_elite_range_registration_phase637.py`: owner-only exact original DLL SHA256 identity, SHA256 of **both complete** method bodies, three rel32 edges, separately pinned source x86 instruction witnesses, original `"task"` label and all three original diagnostics plus `"task"` and `"schedule"` in `.rdata`. Original-free `--self-test` mutates invented full bodies/calls and probes instruction/literal mutation refusals.
 
 The test's source-record pointer and symbol values are **fabricated**, deliberately. Only the control flow and original field addresses are source proven. This is not an original in-game test, nor proof that the retail game fills the specific artificial nodes from the tests.
 
