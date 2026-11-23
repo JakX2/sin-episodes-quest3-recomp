@@ -20,7 +20,7 @@ def inspect_pe(path):
     if len(data) < 0x40 or data[:2] != b"MZ":
         raise ValueError("not an MZ executable")
     offset = struct.unpack_from("<I", data, 0x3c)[0]
-    if offset > len(data) - 24 or data[offset:offset + 4] != b"PE\\0\\0":
+    if offset > len(data) - 24 or data[offset:offset + 4] != bytes((80, 69, 0, 0)):
         raise ValueError("invalid PE signature/offset")
     machine, sections, _, _, _, optional_size, characteristics = struct.unpack_from(
         "<HHIIIHH", data, offset + 4)
@@ -61,7 +61,7 @@ def self_test():
             data = bytearray(512)
             data[:2] = b"MZ"
             struct.pack_into("<I", data, 0x3c, 0x80)
-            data[0x80:0x84] = b"PE\\0\\0"
+            data[0x80:0x84] = bytes((80, 69, 0, 0))
             struct.pack_into("<HHIIIHH", data, 0x84, 0x14c, 1, 0, 0, 0,
                              0xe0, 0x2000 if dll else 0x0002)
             struct.pack_into("<H", data, 0x98, 0x10b)
