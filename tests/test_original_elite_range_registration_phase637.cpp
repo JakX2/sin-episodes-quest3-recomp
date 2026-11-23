@@ -278,6 +278,30 @@ void test_source_order_partial_faults_and_callbacks() {
   assert(exception.code==r::Code::HostRejected);
   assert(exception.stage==r::Stage::ReadSourceRecord14);
 }
+void test_original_elite_schedule_direct_callsite_owner_plus_four() {
+  Host h;
+  constexpr std::uint32_t schedule_node=kOwner+r::kOriginalScheduleNodeOffset;
+  constexpr std::uint32_t schedule_record=kRecord+0x100u;
+  configure(h,schedule_node,schedule_record);
+  r::RegisterRange source_registrar(h);
+  // Original 0x22355B2D..3A passes category "schedule" and
+  // ECX=0x2259C2FC (owner+4); this is not the TASK wrapper+0x1C
+  // and not the Elite animation/flag node+0x34.
+  const auto original_schedule=source_registrar.add(
+      schedule_node,0x2020u,3,r::kOriginalScheduleLabelVA,0x4040u);
+  assert(original_schedule.code==r::Code::Registered);
+  assert(original_schedule.node_va==schedule_node);
+  assert(original_schedule.mapping_found&&original_schedule.forwarded);
+  assert(h.get(schedule_node+4u)==3u);
+  assert(h.get(schedule_node+8u)==3u);
+  assert(h.get(schedule_record+4u)==kLocalBase+1u);
+  assert(h.forwarded.size()==1u);
+  assert(h.forwarded[0]==std::make_pair(
+      0x2020u,static_cast<std::int32_t>(kLocalBase)));
+  assert(schedule_node!=kNode);
+  assert(schedule_node!=kOwner+r::kOriginalAnimationNodeOffset);
+  assert(r::kOriginalEliteScheduleCallVA==0x22355b3au);
+}
 void test_null_target_and_wrapper_node_checks() {
   Host h;configure(h);
   h.memory[kRecord]=0u;
@@ -300,6 +324,7 @@ int main() {
   test_below_start_and_unmapped_returns_success();
   test_range_extension_publishes_source_order_and_wrap();
   test_source_order_partial_faults_and_callbacks();
+  test_original_elite_schedule_direct_callsite_owner_plus_four();
   test_null_target_and_wrapper_node_checks();
   assert(r::kOriginalRegisterVA==0x22073760u);
   assert(r::kOriginalRegisterBytes==217u);
