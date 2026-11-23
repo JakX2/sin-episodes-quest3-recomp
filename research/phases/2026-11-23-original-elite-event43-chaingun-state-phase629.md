@@ -22,7 +22,7 @@ The two functions contribute **255 new authenticated original executable bytes i
 
 ## Exact x86 state mechanism
 
-The original resolved weapon uses these fields:
+The **entity resolved from the Elite's weapon-linked serial handle** uses these fields. The DLL does not prove this referent's exact runtime class:
 
 - `this+0x594`: unsigned 32-bit state, with native branches for 0–3.
 - `this+0x590`: first float clock snapshot.
@@ -48,7 +48,7 @@ The original resolved weapon uses these fields:
 - State 3: invoke original virtual `+0x3C8(13)`, then virtual `+0x3C4(14, 0)`, then set **state 0**.
 - Both native methods use the resolved entity's actual vtable. We identify the original virtual slot **offsets and argument values** only; their underlying engine semantic names are not invented.
 
-This yields the verified cycle **0 → 1 → 2 → 3 → 0**, and the Elite event43 gate returns true only in state 2. The original event43 subsequently writes its returned value into Elite field `+0xFD9` and conditionally invokes inherited Grunt animation-event behavior.
+This yields the verified cycle **0 → 1 → 2 → 3 → 0**, and the Elite event43 gate returns true only in state 2. The original Elite event43 handler subsequently writes the gate result into Elite field `+0xFD9` and conditionally invokes inherited Grunt animation-event behavior.
 
 ### Original null-target behavior
 
