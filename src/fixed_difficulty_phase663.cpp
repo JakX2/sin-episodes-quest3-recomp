@@ -82,6 +82,26 @@ bool FixedDifficultyRuntime::lookup(std::string_view name,float& out) const noex
     out=metrics_[static_cast<std::size_t>(index)];
     return true;
 }
+PublishResult FixedDifficultyRuntime::publish_to_host(
+        IOriginalMetricSink& host) const noexcept {
+    PublishResult result{};
+    try {
+        for(std::size_t i=0u;i<original_metric_count;++i) {
+            ++result.attempted;
+            if(!host.write_original_metric(i,metrics_[i]))
+                return result;
+            ++result.committed;
+        }
+        result.complete=true;
+    }catch(...) {
+        // External host may have committed an earlier prefix of writes.
+        // The caller must treat incomplete publication as non-bootable
+        // rather than claiming an atomic update or proceeding with a
+        // partially mixed difficulty profile.
+    }
+    return result;
+}
+
 void FixedDifficultyRuntime::observe_dynamic_trigger(
         const TriggerObservation& trigger) noexcept {
     ++trigger_count_;
