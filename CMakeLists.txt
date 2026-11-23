@@ -5816,3 +5816,29 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase650 original SiN 2006 nested-string bidirectional search, block fit
+# and C-string lookup-or-insert: 578 complete original x86 method bytes.
+add_library(sin_original_string_lookup_phase650 STATIC
+  src/original_string_lookup_phase650.cpp)
+target_include_directories(sin_original_string_lookup_phase650 PUBLIC include)
+target_compile_options(sin_original_string_lookup_phase650 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_string_lookup_phase650_tests
+    tests/test_original_string_lookup_phase650.cpp)
+  target_link_libraries(sin_original_string_lookup_phase650_tests PRIVATE
+    sin_original_string_lookup_phase650
+    sin_original_nested_comparators_phase648
+    sin_original_string_casefold_phase649)
+  target_compile_options(sin_original_string_lookup_phase650_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_string_lookup_phase650_tests
+    COMMAND sin_original_string_lookup_phase650_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_string_lookup_phase650_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_string_lookup_phase650.py
+        --self-test)
+  endif()
+endif()
