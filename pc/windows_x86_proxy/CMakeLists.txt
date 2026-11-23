@@ -2470,3 +2470,29 @@ else()
 endif()
 add_test(NAME sin_pc_original_server_autogamesystem_phase660
   COMMAND $<TARGET_FILE:sin_pc_original_server_autogamesystem_phase660_tests>)
+
+# Phase661: Windows native x86 test links actual Phase660 registration and
+# Phase661 original system virtual initializer models, not synthetic Init true.
+add_library(sin_pc_original_server_system_init_phase661 STATIC
+  ../../src/original_server_system_init_phase661.cpp)
+target_include_directories(sin_pc_original_server_system_init_phase661 PUBLIC ../../include)
+set_target_properties(sin_pc_original_server_system_init_phase661 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_system_init_phase661
+  sin_pc_original_server_system_init_phase661)
+add_executable(sin_pc_original_server_system_init_phase661_tests
+  ../../tests/test_original_server_system_init_phase661.cpp)
+target_link_libraries(sin_pc_original_server_system_init_phase661_tests PRIVATE
+  sin_pc_original_server_system_init_phase661
+  sin_pc_original_server_autogamesystem_phase660)
+set_target_properties(sin_pc_original_server_system_init_phase661_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_system_init_phase661_tests
+  sin_pc_original_server_system_init_phase661_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_server_system_init_phase661_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_server_system_init_phase661_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_server_system_init_phase661
+  COMMAND $<TARGET_FILE:sin_pc_original_server_system_init_phase661_tests>)
