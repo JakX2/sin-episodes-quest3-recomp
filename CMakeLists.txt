@@ -6046,3 +6046,28 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
       ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_createinterface_phase657.py
       --self-test)
 endif()
+
+# Phase658: recovered original server/client engine-interface acquisition prefix.
+# The full original startup tails remain intentionally unmodeled.
+add_library(sin_original_module_init_phase658 STATIC
+  src/original_module_init_phase658.cpp)
+target_include_directories(sin_original_module_init_phase658 PUBLIC include)
+target_compile_features(sin_original_module_init_phase658 PUBLIC cxx_std_17)
+target_compile_options(sin_original_module_init_phase658 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_module_init_phase658_tests
+    tests/test_original_module_init_phase658.cpp)
+  target_link_libraries(sin_original_module_init_phase658_tests PRIVATE
+    sin_original_module_init_phase658)
+  target_compile_options(sin_original_module_init_phase658_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_module_init_phase658_tests
+    COMMAND sin_original_module_init_phase658_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_module_init_phase658_synthetic_audit
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_module_init_phase658.py
+        --self-test)
+  endif()
+endif()
