@@ -2496,3 +2496,29 @@ else()
 endif()
 add_test(NAME sin_pc_original_server_system_init_phase661
   COMMAND $<TARGET_FILE:sin_pc_original_server_system_init_phase661_tests>)
+
+# Phase662: native x86 tests compile original-derived auxiliary constructor
+# chain through the previously reconstructed Phase660 AutoGameSystem model.
+add_library(sin_pc_original_server_object_init_phase662 STATIC
+  ../../src/original_server_object_init_phase662.cpp)
+target_include_directories(sin_pc_original_server_object_init_phase662 PUBLIC ../../include)
+set_target_properties(sin_pc_original_server_object_init_phase662 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_object_init_phase662
+  sin_pc_original_server_object_init_phase662)
+add_executable(sin_pc_original_server_object_init_phase662_tests
+  ../../tests/test_original_server_object_init_phase662.cpp)
+target_link_libraries(sin_pc_original_server_object_init_phase662_tests PRIVATE
+  sin_pc_original_server_object_init_phase662
+  sin_pc_original_server_autogamesystem_phase660)
+set_target_properties(sin_pc_original_server_object_init_phase662_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_object_init_phase662_tests
+  sin_pc_original_server_object_init_phase662_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_server_object_init_phase662_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_server_object_init_phase662_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_server_object_init_phase662
+  COMMAND $<TARGET_FILE:sin_pc_original_server_object_init_phase662_tests>)
