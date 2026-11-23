@@ -14,6 +14,11 @@ inline constexpr std::uint32_t kOriginalTaskWrapperBytes=31u;
 inline constexpr std::uint32_t kOriginalMappingConverterVA=0x22073700u;
 inline constexpr std::uint32_t kOriginalForwardSymbolVA=0x22282370u;
 inline constexpr std::uint32_t kOriginalTaskLabelVA=0x223eb17cu;
+// Independent original Elite startup callsite 0x22355B3A passes
+// ECX=0x2259C2FC (owner+4) and literal category "schedule".
+inline constexpr std::uint32_t kOriginalEliteScheduleCallVA=0x22355b3au;
+inline constexpr std::uint32_t kOriginalScheduleLabelVA=0x223e5f78u;
+inline constexpr std::uint32_t kOriginalScheduleNodeOffset=0x04u;
 inline constexpr std::uint32_t kOriginalTaskNodeOffset=0x1cu;
 inline constexpr std::uint32_t kOriginalAnimationNodeOffset=0x34u;
 inline constexpr std::uint32_t kOriginalLowSentinel=9999u;
