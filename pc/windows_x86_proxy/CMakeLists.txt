@@ -1442,3 +1442,56 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_event43_chaingun_gate_phase629
   COMMAND $<TARGET_FILE:sin_pc_original_elite_event43_chaingun_gate_phase629_tests>)
+
+# Phase630: independent native x86 DLL links to the existing original
+# Phase626 Elite actor host (8 exports unchanged), while exporting exactly
+# three source-backed gate/tick functions. No retail binaries or Source
+# engine game objects exist in these CI tests.
+add_library(sin_pc_elite_source_gate_phase630 SHARED
+  ../../src/elite_native_source_gate_phase630.cpp
+  ../../src/original_elite_event43_chaingun_gate_phase629.cpp
+  ../../src/elite_native_source_gate_phase630.win32.def)
+target_include_directories(sin_pc_elite_source_gate_phase630 PUBLIC ../../include)
+target_link_libraries(sin_pc_elite_source_gate_phase630 PRIVATE
+  sin_pc_elite_native_host_c_abi_phase626)
+set_target_properties(sin_pc_elite_source_gate_phase630 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_elite_source_gate_phase630
+  sin_elite_source_gate_phase630)
+
+add_executable(sin_pc_elite_source_gate_phase630_tests
+  ../../tests/test_elite_native_source_gate_phase630.cpp)
+target_include_directories(sin_pc_elite_source_gate_phase630_tests
+  PRIVATE ../../include)
+target_link_libraries(sin_pc_elite_source_gate_phase630_tests PRIVATE
+  sin_pc_elite_source_gate_phase630 sin_pc_elite_native_host_c_abi_phase626)
+set_target_properties(sin_pc_elite_source_gate_phase630_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_elite_source_gate_phase630_tests
+  sin_pc_elite_source_gate_phase630_tests)
+if(MSVC)
+  target_compile_options(sin_pc_elite_source_gate_phase630_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_elite_source_gate_phase630_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_elite_source_gate_phase630
+  COMMAND $<TARGET_FILE:sin_pc_elite_source_gate_phase630_tests>)
+
+add_executable(sin_pc_elite_source_gate_phase630_dynload_tests
+  ../../tests/test_elite_native_source_gate_dynload_phase630.cpp)
+target_include_directories(sin_pc_elite_source_gate_phase630_dynload_tests
+  PRIVATE ../../include)
+set_target_properties(sin_pc_elite_source_gate_phase630_dynload_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_elite_source_gate_phase630_dynload_tests
+  sin_pc_elite_source_gate_phase630_dynload_tests)
+if(MSVC)
+  target_compile_options(sin_pc_elite_source_gate_phase630_dynload_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_elite_source_gate_phase630_dynload_tests PRIVATE -UNDEBUG)
+endif()
+add_dependencies(sin_pc_elite_source_gate_phase630_dynload_tests
+  sin_pc_elite_source_gate_phase630)
+add_test(NAME sin_pc_elite_source_gate_phase630_dynload
+  COMMAND $<TARGET_FILE:sin_pc_elite_source_gate_phase630_dynload_tests>
+          $<TARGET_FILE:sin_pc_elite_source_gate_phase630>)
