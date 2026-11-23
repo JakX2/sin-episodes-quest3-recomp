@@ -49,8 +49,8 @@ DUPLICATE_MESSAGE=0x22443e38
 VTABLE_MANIFEST=Path(__file__).resolve().parents[1] / "data" / "original_server_autogamesystem_vtables_phase660.json"
 DEFAULT_VIRTUAL_INIT=0x2205f0f0
 OVERRIDE_INIT_TARGETS={
- 0x2209b170,0x220fbed0,0x22121dc0,0x221ab1e0,
- 0x221bb640,0x221bf980,0x221ff7d0,0x22223490,
+ 0x2209ce50,0x220fbed0,0x22122540,0x221ab1e0,
+ 0x221bf980,0x221ff7d0,0x22223490,
 }
 DEFAULT_INIT_SHA="e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619"
 SECOND_TRIVIAL_TRUE_INIT=0x221ab1e0
@@ -101,9 +101,39 @@ def audit(original_server:bytes,original_client:bytes,manifest:dict)->dict:
  for global_va in (HEAD,INITIALIZED_FLAG,ARRAY,CAPACITY,COUNT,CACHE):
   pe.belongs(global_va,".data")
  pe.belongs(VTABLE,".rdata")
+ # Three original constructors use a genuine AutoGameSystem subobject
+ # at ECX=owner+offset. A class's primary [ESI] vtable is NOT that
+ # registered subobject's virtual-Init table. The fourth native site
+ # is a direct BSS static instance of the same +4 subobject.
+ correct_subobject_stores=(
+  (0x2209a2f1,0x2209a2e9,b"\x8d\xbe\x30\x06\x00\x00\x8b\xcf",
+   0x2209a2fc,b"\xc7\x07\xe4\xc6\x3e\x22",0x223ec6e4,0x630),
+  (0x22121c40,0x22121c35,b"\x8d\x7e\x04\x8b\xcf",
+   0x22121c45,b"\xc7\x07\x0c\x1c\x40\x22",0x22401c0c,4),
+  (0x221bbc0f,0x221bbc04,b"\x8d\x7e\x04\x8b\xcf",
+   0x221bbc1c,b"\xc7\x07\xe4\x24\x43\x22",0x224324e4,4),
+  (0x223bd8f5,0x223bd8f0,b"\xb9\xb4\x7a\x50\x22",
+   0x223bd90b,b"\xc7\x05\xb4\x7a\x50\x22\xe4\x24\x43\x22",
+   0x224324e4,0),
+ )
+ manifests={(int(t["constructor_call_va"],16),
+             int(t["vtable_write_va"],16),
+             int(t["vtable"],16),
+             int(t["subobject_offset_bytes"]))
+            for t in manifest["verified_subobject_cases"]}
+ expected={(call,write,table,off) for call,_,_,write,_,table,off in correct_subobject_stores}
+ if manifests!=expected:
+  raise ValueError("original multiple-inheritance subobject offsets and vtable stores changed")
+ for site,setup_va,setup_bytes,write_va,write_bytes,table,offset in correct_subobject_stores:
+  if pe.code(setup_va,len(setup_bytes))!=setup_bytes or pe.code(write_va,len(write_bytes))!=write_bytes:
+   raise ValueError(f"original AutoGameSystem subobject/register setup changed at {site:#x}")
+  if rel32_target(pe,site)!=0x221f5820:
+   raise ValueError("subobject base constructor call changed")
+ if manifest["expected_trivial_success_vtables"]!=21 or manifest["expected_substantive_init_vtables"]!=6:
+  raise ValueError("AutoGameSystem trivial/nontrivial Init classification changed")
  if len(manifest["entries"])!=27 or manifest["expected_constructors"]!=48:
   raise ValueError("unexpected original constructor/vtable census count")
- if manifest["expected_default_vtables"]!=19 or manifest["expected_nondefault_vtables"]!=8:
+ if manifest["expected_default_vtables"]!=20 or manifest["expected_nondefault_vtables"]!=7:
   raise ValueError("original default/override vtable census count mismatch")
  if manifest["default_init_va"]!=hex(DEFAULT_VIRTUAL_INIT):
   raise ValueError("original default system-init address changed")
@@ -134,8 +164,10 @@ def audit(original_server:bytes,original_client:bytes,manifest:dict)->dict:
    observed_sites.append(site)
  if len(set(observed_sites))!=48 or set(observed_sites)!=set(AUTO_CONSTRUCTOR_CALL_SITES):
   raise ValueError("complete original 48 constructor-to-vtable callsite census mismatch")
- if default_count!=19 or init_overrides!=OVERRIDE_INIT_TARGETS:
-  raise ValueError("original eight non-default virtual initialization targets changed")
+ if default_count!=20 or init_overrides!=OVERRIDE_INIT_TARGETS:
+  raise ValueError("original seven non-default virtual initialization targets changed")
+ if default_count+(1 if SECOND_TRIVIAL_TRUE_INIT in init_overrides else 0)!=21:
+  raise ValueError("original 21 immediate-success init vtables changed")
  return {
   "complete_original_executable_bytes":sum(f[2] for f in FUNCTIONS),
   "original_method_count":len(FUNCTIONS),
