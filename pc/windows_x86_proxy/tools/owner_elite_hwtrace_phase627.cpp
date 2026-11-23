@@ -306,7 +306,10 @@ static bool disarm_all_threads(DWORD pid,DWORD base) {
     if(entry.th32OwnerProcessID==pid &&
        !set_watch_for_thread(entry.th32ThreadID,base,false))
       all_clean=false; // still attempt every other thread
-    if(!Thread32Next(snapshot,&entry))break;
+    if(!Thread32Next(snapshot,&entry)) {
+      if(GetLastError()!=ERROR_NO_MORE_FILES)all_clean=false;
+      break;
+    }
   }
   CloseHandle(snapshot);
   return all_clean;
@@ -342,7 +345,12 @@ static ArmResult arm_all_threads(DWORD pid,DWORD base) {
   do {
     if(entry.th32OwnerProcessID==pid)tids.push_back(entry.th32ThreadID);
   } while(Thread32Next(snapshot,&entry));
+  const DWORD enumeration_end=GetLastError();
   CloseHandle(snapshot);
+  // No thread register has been modified yet. Reject an incomplete
+  // ToolHelp enumeration instead of arming only a subset of the process.
+  if(enumeration_end!=ERROR_NO_MORE_FILES)
+    return ArmResult::RejectedClean;
   return arm_transaction(tids,[base](DWORD tid,bool enable) {
     return set_watch_for_thread(tid,base,enable);
   });
