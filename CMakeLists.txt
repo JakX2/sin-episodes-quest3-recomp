@@ -5842,3 +5842,39 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase651 original 2006 SiN nested block pointer array growth (112B),
+# indexed insertion (100B), and nested 12B-node tree insertion (94B).
+# Original deeper node-parent search/link/memmove are mandatory host calls.
+add_library(sin_original_nested_insertion_phase651 STATIC
+  src/original_nested_insertion_phase651.cpp)
+target_include_directories(sin_original_nested_insertion_phase651 PUBLIC include)
+target_compile_options(sin_original_nested_insertion_phase651 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_nested_insertion_phase651_tests
+    tests/test_original_nested_insertion_phase651.cpp)
+  target_link_libraries(sin_original_nested_insertion_phase651_tests PRIVATE
+    sin_original_nested_insertion_phase651)
+  target_compile_options(sin_original_nested_insertion_phase651_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_insertion_phase651_tests
+    COMMAND sin_original_nested_insertion_phase651_tests)
+  add_executable(sin_original_nested_insertion_chain_phase651_tests
+    tests/test_original_nested_insertion_chain_phase651.cpp)
+  target_link_libraries(sin_original_nested_insertion_chain_phase651_tests PRIVATE
+    sin_original_nested_insertion_phase651
+    sin_original_string_lookup_phase650
+    sin_original_nested_comparators_phase648
+    sin_original_string_casefold_phase649)
+  target_compile_options(sin_original_nested_insertion_chain_phase651_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_insertion_chain_phase651_tests
+    COMMAND sin_original_nested_insertion_chain_phase651_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_nested_insertion_phase651_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_nested_insertion_phase651.py
+        --self-test)
+  endif()
+endif()
