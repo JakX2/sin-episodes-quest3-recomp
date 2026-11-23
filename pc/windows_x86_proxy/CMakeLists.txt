@@ -2126,3 +2126,30 @@ else()
 endif()
 add_test(NAME sin_pc_original_string_casefold_chain_phase649
   COMMAND $<TARGET_FILE:sin_pc_original_string_casefold_chain_phase649_tests>)
+
+# Phase650 Win32 x86 original SiN nested lookup, tree comparator and
+# original 12B-node block string allocation/reference regression tests.
+add_library(sin_pc_original_string_lookup_phase650 STATIC
+  ../../src/original_string_lookup_phase650.cpp)
+target_include_directories(sin_pc_original_string_lookup_phase650 PUBLIC ../../include)
+set_target_properties(sin_pc_original_string_lookup_phase650 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_string_lookup_phase650
+  sin_pc_original_string_lookup_phase650)
+add_executable(sin_pc_original_string_lookup_phase650_tests
+  ../../tests/test_original_string_lookup_phase650.cpp)
+target_link_libraries(sin_pc_original_string_lookup_phase650_tests PRIVATE
+  sin_pc_original_string_lookup_phase650
+  sin_pc_original_nested_comparators_phase648
+  sin_pc_original_string_casefold_phase649)
+set_target_properties(sin_pc_original_string_lookup_phase650_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_string_lookup_phase650_tests
+  sin_pc_original_string_lookup_phase650_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_string_lookup_phase650_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_string_lookup_phase650_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_string_lookup_phase650
+  COMMAND $<TARGET_FILE:sin_pc_original_string_lookup_phase650_tests>)
