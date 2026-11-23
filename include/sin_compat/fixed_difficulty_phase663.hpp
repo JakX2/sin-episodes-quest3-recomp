@@ -12,6 +12,7 @@
 
 namespace sin_compat::difficulty::fixed_phase663 {
 inline constexpr std::string_view kEngineSkillConVar="skill";
+inline constexpr std::string_view kOriginalAdaptiveGateConVar="dd_enabled";
 inline constexpr int kEasySkill=1;
 inline constexpr int kNormalSkill=2;
 inline constexpr int kHardSkill=3;
@@ -61,6 +62,9 @@ public:
     // Use console/menu skill 1/2/3. A rejected value changes no state.
     Selection set_skill(int new_skill) noexcept;
     int skill() const noexcept {return static_cast<int>(level_);}
+    // Original adaptive-update gate at 0x222BC47F is intentionally disabled
+    // in this new policy, while gameplay-variable consumers remain active.
+    bool adaptive_updates_enabled() const noexcept {return false;}
     Level level() const noexcept {return level_;}
     std::string_view name() const noexcept {return profile_name(level_);}
     const RuntimeMetrics& metrics() const noexcept {return metrics_;}
