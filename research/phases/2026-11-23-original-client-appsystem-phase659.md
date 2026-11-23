@@ -133,6 +133,24 @@ python research/tools/audit_original_client_appsystem_phase659.py \
 
 The exact run results are added to the PR after CI finishes.
 
+## Registration-list population: currently unproven
+
+The owner's original PE32 image contains four direct absolute references
+to the list-head address `0x24369374`, all within the constructor,
+connector and disconnector documented above. No direct rel32 call to
+`0x241640C0` was found in the original client's executable `.text`,
+and `0x24369374` itself falls in **unbacked virtual `.data`**
+(BSS), not a file-backed initialized static pointer.
+
+Therefore a crucial distinction remains: the original `VClient011::Init`
+**does call** the connector, but the evidence does *not* prove any
+registered entries exist at that moment. A runtime-empty list would
+make the connector immediately succeed. Runtime indirect registrations
+are possible, so neither an empty nor a populated list should be
+asserted without actual Windows process evidence. Do **not** divert
+future research cycles into inventing registered provider callbacks
+without first finding evidence that the original list is populated.
+
 ## Next runtime boundary
 
 The native client Init has now revealed and modeled its required
