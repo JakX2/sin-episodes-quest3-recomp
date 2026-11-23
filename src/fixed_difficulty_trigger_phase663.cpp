@@ -1,25 +1,25 @@
 #include "sin_compat/fixed_difficulty_trigger_phase663.hpp"
 
 namespace sin_compat::difficulty::fixed_phase663 {
-bool FixedDifficultyTriggerHost::is_live(map_entities::EntityRef entity) const {
+bool FixedDifficultyTriggerHost::is_live(sin_compat::EntityRef entity) const {
     return real_.is_live(entity);
 }
 bool FixedDifficultyTriggerHost::initialize_native_base_trigger(
-        map_entities::EntityRef entity) {
+        sin_compat::EntityRef entity) {
     return real_.initialize_native_base_trigger(entity);
 }
 void FixedDifficultyTriggerHost::report_original_warning(
         std::string_view text) {
     real_.report_original_warning(text);
 }
-bool FixedDifficultyTriggerHost::is_player(map_entities::EntityRef entity) const {
+bool FixedDifficultyTriggerHost::is_player(sin_compat::EntityRef entity) const {
     return real_.is_player(entity);
 }
 int FixedDifficultyTriggerHost::current_difficulty_owner_index() const {
     return real_.current_difficulty_owner_index();
 }
 bool FixedDifficultyTriggerHost::perform_special_trigger_base_action(
-        map_entities::EntityRef trigger) {
+        sin_compat::EntityRef trigger) {
     return real_.perform_special_trigger_base_action(trigger);
 }
 bool FixedDifficultyTriggerHost::publish(const map_entities::TriggerEvent& event) {
@@ -39,7 +39,7 @@ bool FixedDifficultyTriggerHost::mark_difficulty_manager() {
     fixed_.mark_playthrough_complete();
     return true;
 }
-bool FixedDifficultyTriggerHost::queue_remove(map_entities::EntityRef entity) {
+bool FixedDifficultyTriggerHost::queue_remove(sin_compat::EntityRef entity) {
     return real_.queue_remove(entity);
 }
 } // namespace sin_compat::difficulty::fixed_phase663
