@@ -22,7 +22,8 @@ struct State {
 enum class Stage:std::uint8_t {
   None,GateVirtual3C4Command13,GateTime590,GateTime58C,
   UpdateReadTime,UpdateTime590,UpdateTime58C,
-  UpdateVirtual3C8Command13,UpdateVirtual3C4Command14
+  UpdateVirtual3C8Command13,UpdateVirtual3C4Command14,
+  WritePhase594,WriteTime590,WriteTime58C
 };
 enum class Code:std::uint8_t {
   Blocked,Allowed,Advanced,Unchanged,RejectedNullTarget,
@@ -50,6 +51,12 @@ public:
   // Original global pointer at 0x22572190 and float field +0x0C.
   // Every call is an independent source load; do not coalesce reads.
   virtual bool read_original_engine_time(float& value)=0;
+  // Phase630: optional engine-host native field publication callbacks.
+  // Default local reference models keep the in-memory State only; an
+  // engine adapter MUST override all three for source-order native writes.
+  virtual bool write_original_phase_594(std::uint32_t) {return true;}
+  virtual bool write_original_time_590(float) {return true;}
+  virtual bool write_original_time_58c(float) {return true;}
 };
 class Reference final {
 public:
