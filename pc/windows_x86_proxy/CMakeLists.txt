@@ -1580,3 +1580,33 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_event47_helpers_phase633
   COMMAND $<TARGET_FILE:sin_pc_original_elite_event47_helpers_phase633_tests>)
+
+# Phase634 native MSVC Win32 x86 authentic 2006 Elite event47 flag clear,
+# state-zero condition and fully composed 632+633+634 handler tests.
+add_library(sin_pc_original_elite_event47_terminal_phase634 STATIC
+  ../../src/original_elite_event47_terminal_phase634.cpp)
+target_include_directories(sin_pc_original_elite_event47_terminal_phase634
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_elite_event47_terminal_phase634 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_event47_terminal_phase634
+  sin_pc_original_elite_event47_terminal_phase634)
+add_executable(sin_pc_original_elite_event47_terminal_phase634_tests
+  ../../tests/test_original_elite_event47_terminal_phase634.cpp)
+target_link_libraries(sin_pc_original_elite_event47_terminal_phase634_tests PRIVATE
+  sin_pc_original_elite_event47_terminal_phase634
+  sin_pc_original_elite_event47_helpers_phase633
+  sin_pc_original_elite_secondary_event_phase632)
+set_target_properties(sin_pc_original_elite_event47_terminal_phase634_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_event47_terminal_phase634_tests
+  sin_pc_original_elite_event47_terminal_phase634_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_event47_terminal_phase634_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_event47_terminal_phase634_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_event47_terminal_phase634
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_event47_terminal_phase634_tests>)
