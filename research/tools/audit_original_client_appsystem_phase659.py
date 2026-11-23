@@ -44,14 +44,15 @@ def audit(client:bytes,server:bytes)->dict:
  for site,expected in CALLS:
   if rel32_target(pe,site)!=expected:
    raise ValueError(f"original native call edge mismatch at {site:#x}")
- for site in (0x241640d8,0x241640df,0x241640f3,0x24164123):
-  # Global list head is always the one installed by original constructor.
-  code=pe.code(site,5 if site==0x241640df else 4)
-  if site==0x241640df:
-   if code!=b"\xa3\x74\x93\x36\x24":raise ValueError("bad original head store")
-  else:
-   # Other accesses are covered by entire original method SHA.
-   if not code:raise ValueError("missing list-head instruction")
+ # All four actual instruction-aligned references to the shared
+ # original global head, not arbitrary bytes inside an instruction.
+ if pe.code(0x241640d6,6)!=b"\x8b\x15\x74\x93\x36\x24":
+  raise ValueError("constructor reads wrong list head")
+ if pe.code(0x241640df,5)!=b"\xa3\x74\x93\x36\x24":
+  raise ValueError("constructor writes wrong list head")
+ for head_read in (0x241640f1,0x24164121):
+  if pe.code(head_read,6)!=b"\x8b\x35\x74\x93\x36\x24":
+   raise ValueError(f"disconnect/connect head read wrong at {head_read:#x}")
  pe.belongs(HEAD,".data")
  if pe.code(0x241640dc,3)!=b"\x89\x50\x0c":
   raise ValueError("original registration next-pointer layout mismatch")
