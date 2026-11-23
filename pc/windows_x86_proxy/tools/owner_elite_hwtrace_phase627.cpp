@@ -386,7 +386,60 @@ static int test_helpers() {
     return 8;
   }
   VirtualFree(fake,0,MEM_RELEASE);
-  std::puts("PASS Phase627 original-only Elite RVA pins, Win32 source-prefix negative mutation and CLI self-tests");
+
+  // The exact DR policy is tested with C++ synthetic CONTEXT values,
+  // never by writing the debugger's own live hardware registers.
+  CONTEXT virgin{};virgin.Dr7=0x400u; // Windows DR7 reserved bit
+  CONTEXT watch=virgin;
+  if(!update_owned_watch_registers(watch,0x40000000u,true))return 9;
+  if((watch.Dr7&0xffu)!=0x55u || (watch.Dr7&0x400u)==0u ||
+     watch.Dr0!=0x40000000u+kWatch[0].original_rva ||
+     watch.Dr3!=0x40000000u+kWatch[3].original_rva)return 10;
+  if(!update_owned_watch_registers(watch,0x40000000u,false))return 11;
+  if(watch.Dr7!=virgin.Dr7 ||
+     watch.Dr0!=0 || watch.Dr1!=0 ||
+     watch.Dr2!=0 || watch.Dr3!=0)return 12;
+  CONTEXT foreign=virgin;foreign.Dr7|=1u;
+  if(update_owned_watch_registers(foreign,0x40000000u,true) ||
+     update_owned_watch_registers(foreign,0x40000000u,false))return 13;
+  foreign=virgin;foreign.Dr0=0xC0FFEEu;
+  if(update_owned_watch_registers(foreign,0x40000000u,true))return 14;
+  foreign=virgin;foreign.Dr7|=0x00010000u;
+  if(update_owned_watch_registers(foreign,0x40000000u,true))return 15;
+  foreign=virgin;
+  if(!update_owned_watch_registers(foreign,0x40000000u,true))return 16;
+  foreign.Dr2^=1u;
+  if(update_owned_watch_registers(foreign,0x40000000u,false))return 17;
+
+  const std::vector<DWORD> tids{101u,102u,103u};
+  std::map<DWORD,bool> simulated;
+  const auto complete=arm_transaction(tids,[&](DWORD tid,bool enable){
+    simulated[tid]=enable;return true;
+  });
+  if(complete!=ArmResult::Armed ||
+     !simulated[101u] || !simulated[102u] || !simulated[103u])
+    return 18;
+  simulated.clear();
+  // A failed call could partially install the watch on its own thread.
+  // Rollback therefore MUST include all previously attempted threads.
+  const auto recovered=arm_transaction(tids,[&](DWORD tid,bool enable){
+    simulated[tid]=enable;
+    return !enable || tid!=102u;
+  });
+  if(recovered!=ArmResult::RejectedClean ||
+     simulated[101u] || simulated[102u] ||
+     simulated.find(103u)!=simulated.end())return 19;
+  simulated.clear();
+  const auto unsafe=arm_transaction(tids,[&](DWORD tid,bool enable){
+    if(!enable && tid==101u)return false;
+    simulated[tid]=enable;
+    return !enable || tid!=102u;
+  });
+  if(unsafe!=ArmResult::FailedUnclean || !simulated[101u])return 20;
+  if(arm_transaction(std::vector<DWORD>{},
+       [](DWORD,bool){return true;})!=ArmResult::RejectedClean)
+    return 21;
+  std::puts("PASS Phase628 synthetic DR ownership, corrupt-lease refusal, all-thread rollback and unsafe partial-watch detection");
   return 0;
 }
 static int trace_original(Options options) {
