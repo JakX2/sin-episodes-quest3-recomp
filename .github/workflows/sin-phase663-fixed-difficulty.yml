@@ -7,6 +7,9 @@ on:
     paths:
       - 'include/sin_compat/fixed_difficulty_phase663.hpp'
       - 'src/fixed_difficulty_phase663.cpp'
+      - 'src/fixed_difficulty_trigger_phase663.cpp'
+      - 'include/sin_compat/fixed_difficulty_trigger_phase663.hpp'
+      - 'tests/test_fixed_difficulty_trigger_phase663.cpp'
       - 'tests/test_fixed_difficulty_phase663.cpp'
       - '.github/workflows/sin-phase663-fixed-difficulty.yml'
 permissions:
@@ -31,3 +34,25 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: /tmp/sin_fixed_difficulty_phase663
+
+  phase663-trigger-sanitized:
+    name: Compiled original SiN triggers with nonadaptive host under ASan/UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile original trigger entity code and fixed difficulty replacement
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude \
+            src/original_sin_trigger_entities.cpp \
+            src/fixed_difficulty_phase663.cpp \
+            src/fixed_difficulty_trigger_phase663.cpp \
+            tests/test_fixed_difficulty_trigger_phase663.cpp \
+            -o /tmp/sin_fixed_difficulty_trigger_phase663
+      - name: Preserve original event/removal/completion under fixed selected skill
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: /tmp/sin_fixed_difficulty_trigger_phase663
