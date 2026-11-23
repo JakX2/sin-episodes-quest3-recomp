@@ -1670,3 +1670,33 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_mapping_init_phase636
   COMMAND $<TARGET_FILE:sin_pc_original_elite_mapping_init_phase636_tests>)
+
+# Phase637 native Win32 x86 MSVC original range LOCALID registration and
+# task-wrapper source references; not an original game DLL load.
+add_library(sin_pc_original_elite_range_registration_phase637 STATIC
+  ../../src/original_elite_range_registration_phase637.cpp)
+target_include_directories(sin_pc_original_elite_range_registration_phase637
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_elite_range_registration_phase637
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_range_registration_phase637
+  sin_pc_original_elite_range_registration_phase637)
+add_executable(sin_pc_original_elite_range_registration_phase637_tests
+  ../../tests/test_original_elite_range_registration_phase637.cpp)
+target_link_libraries(sin_pc_original_elite_range_registration_phase637_tests
+  PRIVATE sin_pc_original_elite_range_registration_phase637
+  sin_pc_original_elite_mapping_init_phase636
+  sin_pc_original_elite_id_mapping_phase635)
+set_target_properties(sin_pc_original_elite_range_registration_phase637_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_range_registration_phase637_tests
+  sin_pc_original_elite_range_registration_phase637_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_range_registration_phase637_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_range_registration_phase637_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_range_registration_phase637
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_range_registration_phase637_tests>)

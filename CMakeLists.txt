@@ -5404,3 +5404,31 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase637: original 2006 SiN 217-byte LOCALID registrar and 31-byte
+# task (owner+0x1C) wrapper. Native source behavior composes with the
+# Phase636 constructor/linker and Phase635 true range converter.
+add_library(sin_original_elite_range_registration_phase637 STATIC
+  src/original_elite_range_registration_phase637.cpp)
+target_include_directories(sin_original_elite_range_registration_phase637
+  PUBLIC include)
+target_compile_options(sin_original_elite_range_registration_phase637 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_range_registration_phase637_tests
+    tests/test_original_elite_range_registration_phase637.cpp)
+  target_link_libraries(sin_original_elite_range_registration_phase637_tests PRIVATE
+    sin_original_elite_range_registration_phase637
+    sin_original_elite_mapping_init_phase636
+    sin_original_elite_id_mapping_phase635)
+  target_compile_options(sin_original_elite_range_registration_phase637_tests
+    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_range_registration_phase637_tests
+    COMMAND sin_original_elite_range_registration_phase637_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_range_registration_phase637_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_range_registration_phase637.py
+        --self-test)
+  endif()
+endif()
