@@ -2153,3 +2153,46 @@ else()
 endif()
 add_test(NAME sin_pc_original_string_lookup_phase650
   COMMAND $<TARGET_FILE:sin_pc_original_string_lookup_phase650_tests>)
+
+# Phase651 native Win32 original SiN block-pointer insertion and
+# nested string reference tree-insert chain with Phase648-650 C++ sources.
+add_library(sin_pc_original_nested_insertion_phase651 STATIC
+  ../../src/original_nested_insertion_phase651.cpp)
+target_include_directories(sin_pc_original_nested_insertion_phase651 PUBLIC ../../include)
+set_target_properties(sin_pc_original_nested_insertion_phase651 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_insertion_phase651
+  sin_pc_original_nested_insertion_phase651)
+add_executable(sin_pc_original_nested_insertion_phase651_tests
+  ../../tests/test_original_nested_insertion_phase651.cpp)
+target_link_libraries(sin_pc_original_nested_insertion_phase651_tests PRIVATE
+  sin_pc_original_nested_insertion_phase651)
+set_target_properties(sin_pc_original_nested_insertion_phase651_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_insertion_phase651_tests
+  sin_pc_original_nested_insertion_phase651_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_nested_insertion_phase651_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_nested_insertion_phase651_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_nested_insertion_phase651
+  COMMAND $<TARGET_FILE:sin_pc_original_nested_insertion_phase651_tests>)
+add_executable(sin_pc_original_nested_insertion_chain_phase651_tests
+  ../../tests/test_original_nested_insertion_chain_phase651.cpp)
+target_link_libraries(sin_pc_original_nested_insertion_chain_phase651_tests PRIVATE
+  sin_pc_original_nested_insertion_phase651
+  sin_pc_original_string_lookup_phase650
+  sin_pc_original_nested_comparators_phase648
+  sin_pc_original_string_casefold_phase649)
+set_target_properties(sin_pc_original_nested_insertion_chain_phase651_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_insertion_chain_phase651_tests
+  sin_pc_original_nested_insertion_chain_phase651_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_nested_insertion_chain_phase651_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_nested_insertion_chain_phase651_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_nested_insertion_chain_phase651
+  COMMAND $<TARGET_FILE:sin_pc_original_nested_insertion_chain_phase651_tests>)
