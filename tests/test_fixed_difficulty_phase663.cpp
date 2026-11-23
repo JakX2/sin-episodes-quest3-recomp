@@ -128,6 +128,53 @@ void original_damage_rules_remain_compatible(){
  assert(eq(impact.damage,140.f));
  assert(eq(npc_random_wait_before_shoot(0.25f,mode.metrics()),0.15f));
 }
+struct MetricSink final:f::IOriginalMetricSink {
+ RuntimeMetrics slots{};
+ std::vector<std::size_t> order;
+ std::size_t fail_at=original_metric_count;
+ bool throw_on_failure=false;
+ bool write_original_metric(std::size_t index,float value)override{
+  order.push_back(index);
+  if(index==fail_at) {
+   if(throw_on_failure)throw 42;
+   return false;
+  }
+  slots[index]=value;
+  return true;
+ }
+};
+void original_metric_host_publication(){
+ f::FixedDifficultyRuntime mode;
+ MetricSink original;
+ const auto a=mode.publish_to_host(original);
+ assert(a.complete&&a.attempted==14u&&a.committed==14u);
+ assert(same(original.slots,original_initial_metric_values()));
+ assert(original.order.size()==14u);
+ for(std::size_t i=0u;i<14u;++i)assert(original.order[i]==i);
+ assert(mode.set_skill(3)==f::Selection::Applied);
+ original.order.clear();original.fail_at=7u;
+ const auto failure=mode.publish_to_host(original);
+ assert(!failure.complete&&failure.attempted==8u&&failure.committed==7u);
+ assert(original.order.size()==8u&&original.order.back()==7u);
+ const auto hard=f::make_profile(f::Level::Hard).metrics;
+ for(std::size_t i=0u;i<7u;++i)assert(original.slots[i]==hard[i]);
+ // Field 8 is deliberately still the normal profile: host publication
+ // is not atomically rolled back and the host MUST abort normal Init.
+ assert(original.slots[8]!=hard[8]);
+ original.order.clear();original.throw_on_failure=true;
+ const auto thrown=mode.publish_to_host(original);
+ assert(!thrown.complete&&thrown.committed==7u&&thrown.attempted==8u);
+ original.order.clear();original.fail_at=original_metric_count;
+ const auto success=mode.publish_to_host(original);
+ assert(success.complete&&success.committed==14u);
+ assert(same(original.slots,hard));
+ // Save restore example: after importing unknown adaptive values,
+ // reapply the selected skill and republish it in the exact same order.
+ assert(mode.reapply_after_archive(1)==f::Selection::Applied);
+ assert(mode.publish_to_host(original).complete);
+ assert(same(original.slots,f::make_profile(f::Level::Easy).metrics));
+}
+
 void archive_policy_reapplies_current_skill(){
  f::FixedDifficultyRuntime mode;
  const auto easy=f::make_profile(f::Level::Easy).metrics;
@@ -156,4 +203,5 @@ int main(){
  no_adaptation_on_trigger_or_performance();
  original_damage_rules_remain_compatible();
  archive_policy_reapplies_current_skill();
+ original_metric_host_publication();
 }
