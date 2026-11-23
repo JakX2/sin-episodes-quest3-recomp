@@ -24,6 +24,7 @@ bool same(const RuntimeMetrics& a,const RuntimeMetrics& b) {
 void profile_invariants(){
  static_assert(original_metric_count==14,"original 14 GamePlayVarValue names");
  assert(f::kEngineSkillConVar=="skill");
+ assert(f::kOriginalAdaptiveGateConVar=="dd_enabled");
  assert(f::valid_skill(1)&&f::valid_skill(2)&&f::valid_skill(3));
  for(const int bad:{-1,0,4,999,std::numeric_limits<int>::max()})
   assert(!f::valid_skill(bad));
@@ -66,6 +67,7 @@ void profile_invariants(){
 void stable_skill_changes_and_lookup(){
  f::FixedDifficultyRuntime mode;
  assert(mode.skill()==2&&mode.name()=="Normal");
+ assert(!mode.adaptive_updates_enabled());
  assert(mode.revision()==0u);
  assert(same(mode.metrics(),original_initial_metric_values()));
  float value=55.f;
