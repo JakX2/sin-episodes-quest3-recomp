@@ -133,7 +133,6 @@ def verify_original(server,client):
         "limitations":"Reference-only host callbacks; no actual Source entity, native game boot or Android gameplay proven."
     }
 def self_test():
-    import itertools
     source=bytes((x*19+7)%256 for x in range(90))
     digest=hashlib.sha256(source).hexdigest()
     verify_hash(lambda at,n:source[:n],0x71010000,len(source),digest)
