@@ -5170,3 +5170,29 @@ if(BUILD_TESTING)
     COMMAND sin_elite_native_host_dynload_phase626_tests
       $<TARGET_FILE:sin_elite_native_host_c_abi>)
 endif()
+
+# Phase629: authentic original 2006 event43 weapon gate and paired
+# 1-second state progression from whole source SHA-verified x86 methods.
+# Pure host-owned model; never a native Source vtable or game executable.
+add_library(sin_original_elite_event43_chaingun_gate_phase629 STATIC
+  src/original_elite_event43_chaingun_gate_phase629.cpp)
+target_include_directories(sin_original_elite_event43_chaingun_gate_phase629 PUBLIC include)
+target_compile_options(sin_original_elite_event43_chaingun_gate_phase629 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_event43_chaingun_gate_phase629_tests
+    tests/test_original_elite_event43_chaingun_gate_phase629.cpp)
+  target_link_libraries(sin_original_elite_event43_chaingun_gate_phase629_tests
+    PRIVATE sin_original_elite_event43_chaingun_gate_phase629)
+  target_compile_options(sin_original_elite_event43_chaingun_gate_phase629_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_event43_chaingun_gate_phase629_tests
+    COMMAND sin_original_elite_event43_chaingun_gate_phase629_tests)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_event43_chaingun_gate_phase629_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_event43_chaingun_gate_phase629.py
+        --self-test)
+  endif()
+endif()
