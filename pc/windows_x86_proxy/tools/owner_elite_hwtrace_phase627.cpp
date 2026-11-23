@@ -481,7 +481,75 @@ static int test_helpers() {
   if(arm_transaction(std::vector<DWORD>{},
        [](DWORD,bool){return true;})!=ArmResult::RejectedClean)
     return 21;
-  std::puts("PASS Phase628 synthetic DR ownership, corrupt-lease refusal, all-thread rollback and unsafe partial-watch detection");
+
+  // Exercise BOTH original-only watch profiles against an invented Win32
+  // in-process allocation. The actual ReadProcessMemory check must reject
+  // any one-byte prefix change. No retail DLLs are mapped in these tests.
+  for(int profile=0;profile<2;++profile) {
+    g_weapon_profile=(profile==1);
+    const auto& pins=active_prefixes();
+    const auto& selected=active_watches();
+    void* sample=VirtualAlloc(nullptr,0x360000u,
+         MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+    if(!sample)return 22;
+    const DWORD sample_base=static_cast<DWORD>(
+         reinterpret_cast<std::uintptr_t>(sample));
+    bool good=true;
+    for(size_t i=0;i<selected.size();++i) {
+      if(selected[i].original_va-kRetailImageBase!=
+           selected[i].original_rva ||
+         pins[i].rva!=selected[i].original_rva)
+        good=false;
+      UCHAR* dst=static_cast<UCHAR*>(sample)+pins[i].rva;
+      std::memcpy(dst,pins[i].bytes,pins[i].len);
+    }
+    if(!original_live_entry_prefixes_match(GetCurrentProcess(),sample_base))
+      good=false;
+    for(size_t i=0;i<selected.size();++i) {
+      UCHAR* dst=static_cast<UCHAR*>(sample)+pins[i].rva;
+      dst[0]^=1u;
+      if(original_live_entry_prefixes_match(GetCurrentProcess(),sample_base))
+        good=false;
+      dst[0]^=1u;
+    }
+    CONTEXT lease{};lease.Dr7=0x400u;
+    if(!update_owned_watch_registers(lease,sample_base,true))
+      good=false;
+    else {
+      if(lease.Dr0!=sample_base+selected[0].original_rva ||
+         lease.Dr1!=sample_base+selected[1].original_rva ||
+         lease.Dr2!=sample_base+selected[2].original_rva ||
+         lease.Dr3!=sample_base+selected[3].original_rva)
+        good=false;
+      if(!update_owned_watch_registers(lease,sample_base,false))
+        good=false;
+      if(lease.Dr7!=0x400u || lease.Dr0!=0u||lease.Dr3!=0u)
+        good=false;
+    }
+    VirtualFree(sample,0,MEM_RELEASE);
+    if(!good)return 23+profile;
+  }
+  g_weapon_profile=false;
+  wchar_t arg0[]=L"trace";
+  wchar_t arg1[]=L"--disposable-confirmed";
+  wchar_t arg2[]=L"--game";
+  wchar_t arg3[]=L"test.exe";
+  wchar_t arg4[]=L"--log";
+  wchar_t arg5[]=L"test.jsonl";
+  wchar_t arg6[]=L"--watch-profile";
+  wchar_t weapon[]=L"weapon";
+  wchar_t elite[]=L"elite";
+  wchar_t bogus[]=L"bogus";
+  wchar_t* argv[]={arg0,arg1,arg2,arg3,arg4,arg5,arg6,weapon};
+  Options options{};
+  if(!parse(8,argv,options)||!options.weapon_watch)return 25;
+  argv[7]=elite;
+  options=Options{};
+  if(!parse(8,argv,options)||options.weapon_watch)return 26;
+  argv[7]=bogus;
+  options=Options{};
+  if(parse(8,argv,options))return 27;
+  std::puts("PASS Phase631 both SHA-pinned original Elite/weapon watch profiles, Win32 DR lease, read-only live-prefix mutation and CLI rejection");
   return 0;
 }
 static int trace_original(Options options) {
