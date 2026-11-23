@@ -2522,3 +2522,27 @@ else()
 endif()
 add_test(NAME sin_pc_original_server_object_init_phase662
   COMMAND $<TARGET_FILE:sin_pc_original_server_object_init_phase662_tests>)
+
+# Phase663: native 32-bit MSVC verification of fixed difficulty and the
+# original named combat-metric consumers. The original retail game is not run.
+add_library(sin_pc_fixed_difficulty_phase663 STATIC
+  ../../src/fixed_difficulty_phase663.cpp)
+target_include_directories(sin_pc_fixed_difficulty_phase663 PUBLIC ../../include)
+set_target_properties(sin_pc_fixed_difficulty_phase663 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_fixed_difficulty_phase663 sin_pc_fixed_difficulty_phase663)
+add_executable(sin_pc_fixed_difficulty_phase663_tests
+  ../../tests/test_fixed_difficulty_phase663.cpp)
+target_link_libraries(sin_pc_fixed_difficulty_phase663_tests PRIVATE
+  sin_pc_fixed_difficulty_phase663)
+set_target_properties(sin_pc_fixed_difficulty_phase663_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_fixed_difficulty_phase663_tests
+  sin_pc_fixed_difficulty_phase663_tests)
+if(MSVC)
+  target_compile_options(sin_pc_fixed_difficulty_phase663_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_fixed_difficulty_phase663_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_fixed_difficulty_phase663
+  COMMAND $<TARGET_FILE:sin_pc_fixed_difficulty_phase663_tests>)
