@@ -1700,3 +1700,32 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_range_registration_phase637
   COMMAND $<TARGET_FILE:sin_pc_original_elite_range_registration_phase637_tests>)
+
+# Phase638 original 2006 SiN condition mapper and forwarding helper
+# source reference, compiled natively under MSVC Win32 x86.
+add_library(sin_pc_original_symbol_forward_phase638 STATIC
+  ../../src/original_symbol_forward_phase638.cpp)
+target_include_directories(sin_pc_original_symbol_forward_phase638
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_symbol_forward_phase638 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_symbol_forward_phase638
+  sin_pc_original_symbol_forward_phase638)
+add_executable(sin_pc_original_symbol_forward_phase638_tests
+  ../../tests/test_original_symbol_forward_phase638.cpp)
+target_link_libraries(sin_pc_original_symbol_forward_phase638_tests PRIVATE
+  sin_pc_original_symbol_forward_phase638
+  sin_pc_original_elite_range_registration_phase637)
+set_target_properties(sin_pc_original_symbol_forward_phase638_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_symbol_forward_phase638_tests
+  sin_pc_original_symbol_forward_phase638_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_symbol_forward_phase638_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_symbol_forward_phase638_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_symbol_forward_phase638
+  COMMAND $<TARGET_FILE:sin_pc_original_symbol_forward_phase638_tests>)
