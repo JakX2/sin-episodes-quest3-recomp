@@ -12,6 +12,17 @@
 namespace sin_compat::original_elite_id_mapping_phase635 {
 inline constexpr std::uint32_t kOriginalVA=0x22073700u;
 inline constexpr std::uint32_t kCompleteOriginalByteCount=58u;
+// Exact Elite primary vtable +0x760 = a separately original-authenticated
+// six-byte thunk at 0x22355D40: mov EAX,0x2259C2F8; ret.
+// That object's embedded first range node is +0x34. On the retail DLL
+// FILE these addresses lie beyond the raw .data bytes, inside its
+// uninitialized virtual tail. The populated list must come from runtime.
+inline constexpr std::uint32_t kOriginalEliteVtableBaseVA=0x2248df04u;
+inline constexpr std::uint32_t kOriginalEliteVirtual760Offset=0x760u;
+inline constexpr std::uint32_t kOriginalVirtual760ThunkVA=0x22355d40u;
+inline constexpr std::uint32_t kOriginalVirtual760ThunkBytes=6u;
+inline constexpr std::uint32_t kOriginalMappingOwnerVA=0x2259c2f8u;
+inline constexpr std::uint32_t kOriginalMappingFirstNodeVA=0x2259c32cu;
 inline constexpr std::uint32_t kOriginalSentinelStart=9999u; // 0x270F
 inline constexpr std::uint32_t kVirtualContextMemberOffset=0x34u;
 inline constexpr std::uint32_t kOriginalRangeDestStartOffset=0u;
