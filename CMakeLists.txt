@@ -6191,3 +6191,24 @@ if(BUILD_TESTING)
   add_test(NAME sin_fixed_difficulty_phase663_tests
     COMMAND sin_fixed_difficulty_phase663_tests)
 endif()
+
+# Phase663: retain compiled original SiN campaign dynamic/secret trigger
+# semantics while replacing only the adaptive difficulty manager callback.
+add_library(sin_fixed_difficulty_trigger_phase663 STATIC
+  src/fixed_difficulty_trigger_phase663.cpp)
+target_include_directories(sin_fixed_difficulty_trigger_phase663 PUBLIC include)
+target_link_libraries(sin_fixed_difficulty_trigger_phase663 PUBLIC
+  sin_fixed_difficulty_phase663 sin_original_gameplay_triggers)
+target_compile_features(sin_fixed_difficulty_trigger_phase663 PUBLIC cxx_std_17)
+target_compile_options(sin_fixed_difficulty_trigger_phase663 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_fixed_difficulty_trigger_phase663_tests
+    tests/test_fixed_difficulty_trigger_phase663.cpp)
+  target_link_libraries(sin_fixed_difficulty_trigger_phase663_tests PRIVATE
+    sin_fixed_difficulty_trigger_phase663)
+  target_compile_options(sin_fixed_difficulty_trigger_phase663_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_fixed_difficulty_trigger_phase663_tests
+    COMMAND sin_fixed_difficulty_trigger_phase663_tests)
+endif()
