@@ -1495,3 +1495,31 @@ add_dependencies(sin_pc_elite_source_gate_phase630_dynload_tests
 add_test(NAME sin_pc_elite_source_gate_phase630_dynload
   COMMAND $<TARGET_FILE:sin_pc_elite_source_gate_phase630_dynload_tests>
           $<TARGET_FILE:sin_pc_elite_source_gate_phase630>)
+
+# Phase631: compile real Win32 x86 C++17 original Elite tick reference
+# and its second-handle/null-hazard regressions under MSVC.
+add_library(sin_pc_original_elite_weapon_tick_phase631 STATIC
+  ../../src/original_elite_weapon_tick_phase631.cpp)
+target_include_directories(sin_pc_original_elite_weapon_tick_phase631 PUBLIC
+  ../../include)
+set_target_properties(sin_pc_original_elite_weapon_tick_phase631 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_weapon_tick_phase631
+  sin_pc_original_elite_weapon_tick_phase631)
+add_executable(sin_pc_original_elite_weapon_tick_phase631_tests
+  ../../tests/test_original_elite_weapon_tick_phase631.cpp)
+target_link_libraries(sin_pc_original_elite_weapon_tick_phase631_tests PRIVATE
+  sin_pc_original_elite_weapon_tick_phase631)
+set_target_properties(sin_pc_original_elite_weapon_tick_phase631_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_weapon_tick_phase631_tests
+  sin_pc_original_elite_weapon_tick_phase631_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_weapon_tick_phase631_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_weapon_tick_phase631_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_weapon_tick_phase631
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_weapon_tick_phase631_tests>)

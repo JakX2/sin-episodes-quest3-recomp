@@ -22,6 +22,12 @@ $required=@(
     'ConvertFrom-Json',
     'elite_hardware_watch_armed',
     'retail_server_sha256_verified',
+    'WatchProfile',
+    'watch_profile_weapon',
+    'watch_profile_elite',
+    'ORIGINAL_ENGINE_ELITE_TICK_NOT_OBSERVED',
+    'ORIGINAL_WEAPON_GATE_ENTRY_NOT_OBSERVED',
+    'ORIGINAL_WEAPON_TIMED_UPDATE_NOT_OBSERVED',
     'ORIGINAL_ENGINE_SPAWN_ENTRY_NOT_OBSERVED',
     'ORIGINAL_ENGINE_CALLBACK_EVIDENCE_NOT_PROVEN'
 )

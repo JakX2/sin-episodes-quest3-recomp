@@ -5245,3 +5245,28 @@ if(BUILD_TESTING)
     COMMAND sin_elite_source_gate_phase630_dynload_tests
       $<TARGET_FILE:sin_elite_source_gate_phase630>)
 endif()
+
+# Gameplay Phase631: complete source-authenticated original Elite virtual
+# slot +0x424 invokes the weapon state updater with double serial resolution
+# and then inherited Grunt tick. Pure host callback model, not a game vtable.
+add_library(sin_original_elite_weapon_tick_phase631 STATIC
+  src/original_elite_weapon_tick_phase631.cpp)
+target_include_directories(sin_original_elite_weapon_tick_phase631 PUBLIC include)
+target_compile_options(sin_original_elite_weapon_tick_phase631 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_weapon_tick_phase631_tests
+    tests/test_original_elite_weapon_tick_phase631.cpp)
+  target_link_libraries(sin_original_elite_weapon_tick_phase631_tests PRIVATE
+    sin_original_elite_weapon_tick_phase631)
+  target_compile_options(sin_original_elite_weapon_tick_phase631_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_weapon_tick_phase631_tests
+    COMMAND sin_original_elite_weapon_tick_phase631_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_weapon_tick_phase631_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_weapon_tick_phase631.py
+        --self-test)
+  endif()
+endif()

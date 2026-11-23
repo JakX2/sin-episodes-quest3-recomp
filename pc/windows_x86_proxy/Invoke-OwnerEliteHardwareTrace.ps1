@@ -15,6 +15,7 @@ param(
     [Parameter(Mandatory = $true)][string]$OutputTrace,
     [Parameter(Mandatory = $true)][switch]$DisposableTestCopyConfirmed,
     [ValidateRange(5,900)][int]$TimeoutSeconds = 120,
+    [ValidateSet('Elite','Weapon')][string]$WatchProfile = 'Elite',
     [string[]]$GameArguments = @()
 )
 Set-StrictMode -Version Latest
@@ -91,12 +92,14 @@ if (-not [IO.Directory]::Exists($outDir)) {
     throw "OutputTrace directory does not exist: $outDir"
 }
 Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_DLL_SHA256_AUTHENTICATED'
+Write-Host "OWNER_ELITE_TRACE: REQUESTED_PROFILE=$WatchProfile"
 Write-Host 'OWNER_ELITE_TRACE: No original code or runtime NPC data will be modified.'
 $command = @('--disposable-confirmed',
              '--game', $game.FullName,
              '--cwd', $gameDir,
              '--log', $out,
-             '--timeout-ms', [string]($TimeoutSeconds * 1000))
+             '--timeout-ms', [string]($TimeoutSeconds * 1000),
+             '--watch-profile', $WatchProfile.ToLowerInvariant())
 if ($GameArguments.Count -gt 0) { $command += '--'; $command += $GameArguments }
 & $tracer.FullName @command
 $exitCode = $LASTEXITCODE
@@ -124,9 +127,32 @@ $authenticated = @($events | Where-Object {
 $armed = @($events | Where-Object {
   $_.phase -eq 'elite_hardware_watch_armed'
 }).Count -eq 1
+$profileTag = if ($WatchProfile -eq 'Weapon') {
+    'watch_profile_weapon'
+} else {
+    'watch_profile_elite'
+}
+$profileVerified = @($events | Where-Object {
+  $_.phase -eq $profileTag
+}).Count -eq 1
+$otherTag = if ($WatchProfile -eq 'Weapon') {
+    'watch_profile_elite'
+} else {
+    'watch_profile_weapon'
+}
+if (@($events | Where-Object { $_.phase -eq $otherTag }).Count -gt 0) {
+    $profileVerified = $false
+}
 $incomplete = @($events | Where-Object {
   $_.phase -in @('elite_thread_watch_failed','watch_completeness_unproven',
-                'continue_debug_failed','watch_disarm_failed_detach_unsafe')
+                'continue_debug_failed','watch_disarm_failed_detach_unsafe',
+                'elite_watch_partial_rollback_failed',
+                'elite_watch_arm_rejected_clean',
+                'elite_original_unload_disarm_failed',
+                'unsafe_watch_disposable_process_terminated',
+                'unsafe_watch_process_termination_failed',
+                'debugger_detach_failed',
+                'original_live_code_prefix_mismatch')
 }).Count -gt 0
 $spawns = @($events | Where-Object {
   $_.phase -eq 'elite_spawn' -and [int]$_.detail -gt 0 -and
@@ -136,17 +162,47 @@ $animation = @($events | Where-Object {
   $_.phase -eq 'elite_animation_event' -and [int]$_.detail -gt 0 -and
   [int]$_.tid -gt 0
 }).Count
+$ticks = @($events | Where-Object {
+  $_.phase -eq 'elite_virtual_tick' -and [int]$_.detail -gt 0 -and
+  [int]$_.tid -gt 0
+}).Count
+$gates = @($events | Where-Object {
+  $_.phase -eq 'weapon_gate43' -and [int]$_.detail -gt 0 -and
+  [int]$_.tid -gt 0
+}).Count
+$updates = @($events | Where-Object {
+  $_.phase -eq 'weapon_state_update' -and [int]$_.detail -gt 0 -and
+  [int]$_.tid -gt 0
+}).Count
 if ($exitCode -eq 0 -and $singlePid -and $authenticated -and $armed -and
-    -not $incomplete) {
+    $profileVerified -and -not $incomplete) {
     if ($spawns -gt 0) {
         Write-Host "OWNER_ELITE_TRACE: ORIGINAL_ENGINE_SPAWN_ENTRY_OBSERVED=$spawns"
     } else {
         Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_ENGINE_SPAWN_ENTRY_NOT_OBSERVED'
     }
-    if ($animation -gt 0) {
-        Write-Host "OWNER_ELITE_TRACE: ORIGINAL_ENGINE_EVENT_ENTRY_OBSERVED=$animation"
+    if ($WatchProfile -eq 'Weapon') {
+        if ($ticks -gt 0) {
+            Write-Host "OWNER_ELITE_TRACE: ORIGINAL_ENGINE_ELITE_TICK_OBSERVED=$ticks"
+        } else {
+            Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_ENGINE_ELITE_TICK_NOT_OBSERVED'
+        }
+        if ($gates -gt 0) {
+            Write-Host "OWNER_ELITE_TRACE: ORIGINAL_WEAPON_GATE_ENTRY_OBSERVED=$gates"
+        } else {
+            Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_WEAPON_GATE_ENTRY_NOT_OBSERVED'
+        }
+        if ($updates -gt 0) {
+            Write-Host "OWNER_ELITE_TRACE: ORIGINAL_WEAPON_TIMED_UPDATE_OBSERVED=$updates"
+        } else {
+            Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_WEAPON_TIMED_UPDATE_NOT_OBSERVED'
+        }
     } else {
-        Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_ENGINE_EVENT_ENTRY_NOT_OBSERVED'
+        if ($animation -gt 0) {
+            Write-Host "OWNER_ELITE_TRACE: ORIGINAL_ENGINE_EVENT_ENTRY_OBSERVED=$animation"
+        } else {
+            Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_ENGINE_EVENT_ENTRY_NOT_OBSERVED'
+        }
     }
 } else {
     Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_ENGINE_CALLBACK_EVIDENCE_NOT_PROVEN'

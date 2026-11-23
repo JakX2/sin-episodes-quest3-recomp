@@ -47,6 +47,19 @@ constexpr std::array<Watch,4> kWatch{{
   {"elite_animation_event",0x22355480u,0x355480u},
   {"elite_factory_release",0x223552c0u,0x3552c0u}
 }};
+// Phase631: independently source-authenticated complete 113-byte Elite
+// vtable +0x424 callback and complete weapon-linked gate/updater bodies.
+// DR0-DR3 hold exactly one of these two nonoverlapping watch sets.
+constexpr std::array<Watch,4> kWeaponWatch{{
+  {"elite_spawn",0x22355820u,0x355820u},
+  {"elite_virtual_tick",0x223555f0u,0x3555f0u},
+  {"weapon_gate43",0x22315320u,0x315320u},
+  {"weapon_state_update",0x22315390u,0x315390u}
+}};
+static bool g_weapon_profile=false;
+static const std::array<Watch,4>& active_watches()noexcept {
+  return g_weapon_profile?kWeaponWatch:kWatch;
+}
 constexpr DWORD kDr7LocalExecWatch=0x55u;
 constexpr DWORD kResumeFlag=0x10000u;
 constexpr DWORD kMaxHits=30000u;
@@ -57,20 +70,24 @@ struct Options {
   DWORD timeout_ms=180000u;
   bool disposable=false;
   bool selftest=false;
+  bool weapon_watch=false;
 };
 struct Counts {
   unsigned hits[4]={0u,0u,0u,0u};
   std::map<DWORD,unsigned> object_ordinals;
+  std::map<DWORD,unsigned> target_ordinals;
   unsigned next_ordinal=1u;
+  unsigned next_target_ordinal=1u;
   unsigned total=0u;
 };
 static void log_json(FILE* file,DWORD pid,DWORD tid,
-                     const char* phase,unsigned detail,unsigned ordinal) {
+                     const char* phase,unsigned detail,unsigned ordinal,
+                     unsigned target_ordinal=0u) {
   if(!file)return;
   std::fprintf(file,
-    "{\"phase\":\"%s\",\"pid\":%lu,\"tid\":%lu,\"detail\":%u,\"actor_ordinal\":%u}\n",
+    "{\"phase\":\"%s\",\"pid\":%lu,\"tid\":%lu,\"detail\":%u,\"actor_ordinal\":%u,\"target_ordinal\":%u}\n",
     phase,static_cast<unsigned long>(pid),
-    static_cast<unsigned long>(tid),detail,ordinal);
+    static_cast<unsigned long>(tid),detail,ordinal,target_ordinal);
   std::fflush(file);
 }
 static std::wstring quote_win_arg(const std::wstring& arg) {
@@ -118,6 +135,11 @@ static bool parse(int argc,wchar_t** argv,Options& o) {
     else if(std::wcscmp(argv[i],L"--log")==0)o.log=argv[++i];
     else if(std::wcscmp(argv[i],L"--timeout-ms")==0) {
       if(!parse_positive_ms(argv[++i],o.timeout_ms))return false;
+    } else if(std::wcscmp(argv[i],L"--watch-profile")==0) {
+      const wchar_t* profile=argv[++i];
+      if(std::wcscmp(profile,L"weapon")==0)o.weapon_watch=true;
+      else if(std::wcscmp(profile,L"elite")==0)o.weapon_watch=false;
+      else return false;
     } else return false;
   }
   return o.disposable && !o.game.empty() && !o.log.empty();
@@ -210,18 +232,30 @@ static bool file_sha256_is_retail(HANDLE event_file) {
   CloseHandle(file);
   return matched;
 }
+struct PrefixPin {DWORD rva; UCHAR bytes[4]; SIZE_T len;};
+static const std::array<PrefixPin,4>& active_prefixes()noexcept {
+  // Literal, relocation-independent first instruction bytes, independently
+  // checked against the SHA-authenticated original 2006 server.dll.
+  static const std::array<PrefixPin,4> elite{{
+    {0x355c70u,{0x8bu,0x44u,0x24u,0x04u},4u},
+    {0x355820u,{0x83u,0xecu,0x18u,0u},3u},
+    {0x355480u,{0x51u,0x56u,0x57u,0u},3u},
+    {0x3552c0u,{0x8bu,0x4cu,0x24u,0x04u},4u}
+  }};
+  static const std::array<PrefixPin,4> weapon{{
+    {0x355820u,{0x83u,0xecu,0x18u,0u},3u}, // Spawn
+    {0x3555f0u,{0x56u,0x8bu,0xf1u,0u},3u}, // Elite tick
+    {0x315320u,{0x56u,0x8bu,0xf1u,0u},3u}, // 0x43 gate
+    {0x315390u,{0x56u,0x8bu,0xf1u,0u},3u}  // timed update
+  }};
+  return g_weapon_profile?weapon:elite;
+}
 static bool original_live_entry_prefixes_match(HANDLE process,DWORD base) {
-  // These tiny non-relocated instruction prefixes come from the owner's
-  // SHA-pinned retail server.dll. Check actual loaded process memory too
-  // before claiming original instructions can be observed.
-  struct Prefix {DWORD rva; UCHAR bytes[4]; SIZE_T len;};
-  const Prefix prefixes[]={
-    {0x355c70u,{0x8bu,0x44u,0x24u,0x04u},4u}, // factory
-    {0x355820u,{0x83u,0xecu,0x18u,0u},3u},   // Spawn
-    {0x355480u,{0x51u,0x56u,0x57u,0u},3u},   // event
-    {0x3552c0u,{0x8bu,0x4cu,0x24u,0x04u},4u} // release
-  };
-  for(const auto& prefix:prefixes) {
+  const auto& watch=active_watches();
+  const auto& pins=active_prefixes();
+  for(size_t i=0;i<pins.size();++i) {
+    const PrefixPin& prefix=pins[i];
+    if(prefix.rva!=watch[i].original_rva) return false;
     UCHAR live[4]={};
     SIZE_T received=0;
     const auto address=reinterpret_cast<LPCVOID>(
@@ -245,10 +279,10 @@ static bool update_owned_watch_registers(CONTEXT& ctx,DWORD base,bool enable) {
        ctx.Dr0!=0u || ctx.Dr1!=0u ||
        ctx.Dr2!=0u || ctx.Dr3!=0u)
       return false;
-    ctx.Dr0=base+kWatch[0].original_rva;
-    ctx.Dr1=base+kWatch[1].original_rva;
-    ctx.Dr2=base+kWatch[2].original_rva;
-    ctx.Dr3=base+kWatch[3].original_rva;
+    ctx.Dr0=base+active_watches()[0].original_rva;
+    ctx.Dr1=base+active_watches()[1].original_rva;
+    ctx.Dr2=base+active_watches()[2].original_rva;
+    ctx.Dr3=base+active_watches()[3].original_rva;
     ctx.Dr7=(ctx.Dr7&~kEnableMask)|kOwnershipMask;
     ctx.Dr6=0u;
     return true;
@@ -257,10 +291,10 @@ static bool update_owned_watch_registers(CONTEXT& ctx,DWORD base,bool enable) {
   if(enabled==0u)return true; // unarmed thread; no change
   // Stop rather than wiping debugging state that isn't demonstrably ours.
   if(enabled!=kOwnershipMask || (ctx.Dr7&kConditionMask)!=0u ||
-     ctx.Dr0!=base+kWatch[0].original_rva ||
-     ctx.Dr1!=base+kWatch[1].original_rva ||
-     ctx.Dr2!=base+kWatch[2].original_rva ||
-     ctx.Dr3!=base+kWatch[3].original_rva)
+     ctx.Dr0!=base+active_watches()[0].original_rva ||
+     ctx.Dr1!=base+active_watches()[1].original_rva ||
+     ctx.Dr2!=base+active_watches()[2].original_rva ||
+     ctx.Dr3!=base+active_watches()[3].original_rva)
     return false;
   ctx.Dr7&=~kEnableMask;
   ctx.Dr0=ctx.Dr1=ctx.Dr2=ctx.Dr3=0u;
@@ -356,10 +390,10 @@ static ArmResult arm_all_threads(DWORD pid,DWORD base) {
   });
 }
 static int test_helpers() {
-  if(kWatch[0].original_va-kRetailImageBase!=kWatch[0].original_rva ||
-     kWatch[1].original_va-kRetailImageBase!=kWatch[1].original_rva ||
-     kWatch[2].original_va-kRetailImageBase!=kWatch[2].original_rva ||
-     kWatch[3].original_va-kRetailImageBase!=kWatch[3].original_rva)
+  if(active_watches()[0].original_va-kRetailImageBase!=active_watches()[0].original_rva ||
+     active_watches()[1].original_va-kRetailImageBase!=active_watches()[1].original_rva ||
+     active_watches()[2].original_va-kRetailImageBase!=active_watches()[2].original_rva ||
+     active_watches()[3].original_va-kRetailImageBase!=active_watches()[3].original_rva)
     return 1;
   if(quote_win_arg(L"C:\\Demo Game\\test.exe")!=
       L"\"C:\\Demo Game\\test.exe\"")return 2;
@@ -380,14 +414,14 @@ static int test_helpers() {
     {{0x8bu,0x4cu,0x24u,0x04u}}
   }};
   for(size_t i=0;i<words.size();++i) {
-    UCHAR* dest=static_cast<UCHAR*>(fake)+kWatch[i].original_rva;
+    UCHAR* dest=static_cast<UCHAR*>(fake)+active_watches()[i].original_rva;
     std::memcpy(dest,words[i].data(),i==1u||i==2u?3u:4u);
   }
   if(!original_live_entry_prefixes_match(GetCurrentProcess(),base)) {
     VirtualFree(fake,0,MEM_RELEASE);
     return 7;
   }
-  UCHAR* changed=static_cast<UCHAR*>(fake)+kWatch[1].original_rva;
+  UCHAR* changed=static_cast<UCHAR*>(fake)+active_watches()[1].original_rva;
   changed[0]^=1u;
   if(original_live_entry_prefixes_match(GetCurrentProcess(),base)) {
     VirtualFree(fake,0,MEM_RELEASE);
@@ -401,8 +435,8 @@ static int test_helpers() {
   CONTEXT watch=virgin;
   if(!update_owned_watch_registers(watch,0x40000000u,true))return 9;
   if((watch.Dr7&0xffu)!=0x55u || (watch.Dr7&0x400u)==0u ||
-     watch.Dr0!=0x40000000u+kWatch[0].original_rva ||
-     watch.Dr3!=0x40000000u+kWatch[3].original_rva)return 10;
+     watch.Dr0!=0x40000000u+active_watches()[0].original_rva ||
+     watch.Dr3!=0x40000000u+active_watches()[3].original_rva)return 10;
   if(!update_owned_watch_registers(watch,0x40000000u,false))return 11;
   if(watch.Dr7!=virgin.Dr7 ||
      watch.Dr0!=0 || watch.Dr1!=0 ||
@@ -447,10 +481,79 @@ static int test_helpers() {
   if(arm_transaction(std::vector<DWORD>{},
        [](DWORD,bool){return true;})!=ArmResult::RejectedClean)
     return 21;
-  std::puts("PASS Phase628 synthetic DR ownership, corrupt-lease refusal, all-thread rollback and unsafe partial-watch detection");
+
+  // Exercise BOTH original-only watch profiles against an invented Win32
+  // in-process allocation. The actual ReadProcessMemory check must reject
+  // any one-byte prefix change. No retail DLLs are mapped in these tests.
+  for(int profile=0;profile<2;++profile) {
+    g_weapon_profile=(profile==1);
+    const auto& pins=active_prefixes();
+    const auto& selected=active_watches();
+    void* sample=VirtualAlloc(nullptr,0x360000u,
+         MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+    if(!sample)return 22;
+    const DWORD sample_base=static_cast<DWORD>(
+         reinterpret_cast<std::uintptr_t>(sample));
+    bool good=true;
+    for(size_t i=0;i<selected.size();++i) {
+      if(selected[i].original_va-kRetailImageBase!=
+           selected[i].original_rva ||
+         pins[i].rva!=selected[i].original_rva)
+        good=false;
+      UCHAR* dst=static_cast<UCHAR*>(sample)+pins[i].rva;
+      std::memcpy(dst,pins[i].bytes,pins[i].len);
+    }
+    if(!original_live_entry_prefixes_match(GetCurrentProcess(),sample_base))
+      good=false;
+    for(size_t i=0;i<selected.size();++i) {
+      UCHAR* dst=static_cast<UCHAR*>(sample)+pins[i].rva;
+      dst[0]^=1u;
+      if(original_live_entry_prefixes_match(GetCurrentProcess(),sample_base))
+        good=false;
+      dst[0]^=1u;
+    }
+    CONTEXT lease{};lease.Dr7=0x400u;
+    if(!update_owned_watch_registers(lease,sample_base,true))
+      good=false;
+    else {
+      if(lease.Dr0!=sample_base+selected[0].original_rva ||
+         lease.Dr1!=sample_base+selected[1].original_rva ||
+         lease.Dr2!=sample_base+selected[2].original_rva ||
+         lease.Dr3!=sample_base+selected[3].original_rva)
+        good=false;
+      if(!update_owned_watch_registers(lease,sample_base,false))
+        good=false;
+      if(lease.Dr7!=0x400u || lease.Dr0!=0u||lease.Dr3!=0u)
+        good=false;
+    }
+    VirtualFree(sample,0,MEM_RELEASE);
+    if(!good)return 23+profile;
+  }
+  g_weapon_profile=false;
+  wchar_t arg0[]=L"trace";
+  wchar_t arg1[]=L"--disposable-confirmed";
+  wchar_t arg2[]=L"--game";
+  wchar_t arg3[]=L"test.exe";
+  wchar_t arg4[]=L"--log";
+  wchar_t arg5[]=L"test.jsonl";
+  wchar_t arg6[]=L"--watch-profile";
+  wchar_t weapon[]=L"weapon";
+  wchar_t elite[]=L"elite";
+  wchar_t bogus[]=L"bogus";
+  wchar_t* argv[]={arg0,arg1,arg2,arg3,arg4,arg5,arg6,weapon};
+  Options options{};
+  if(!parse(8,argv,options)||!options.weapon_watch)return 25;
+  argv[7]=elite;
+  options=Options{};
+  if(!parse(8,argv,options)||options.weapon_watch)return 26;
+  argv[7]=bogus;
+  options=Options{};
+  if(parse(8,argv,options))return 27;
+  std::puts("PASS Phase631 both SHA-pinned original Elite/weapon watch profiles, Win32 DR lease, read-only live-prefix mutation and CLI rejection");
   return 0;
 }
 static int trace_original(Options options) {
+  g_weapon_profile=options.weapon_watch;
   if(options.cwd.empty())options.cwd=dirname(options.game);
   FILE* out=nullptr;
   if(_wfopen_s(&out,options.log.c_str(),L"wb")!=0 || !out) {
@@ -489,6 +592,8 @@ static int trace_original(Options options) {
   std::printf("Original SiN Elite hardware callback trace: PID %lu\n",
               static_cast<unsigned long>(pid));
   log_json(out,pid,0,"trace_process_started",0,0);
+  log_json(out,pid,0,g_weapon_profile?
+           "watch_profile_weapon":"watch_profile_elite",4u,0);
 
   DWORD base=0;
   bool verified=false,armed=false,missed_thread=false;
@@ -585,29 +690,37 @@ static int trace_original(Options options) {
           } else {
             DWORD hit=static_cast<DWORD>(c.Dr6)&0x0fu;
             int match=-1;
-            for(unsigned i=0;i<kWatch.size();++i) {
-              const DWORD expected=base+kWatch[i].original_rva;
+            for(unsigned i=0;i<active_watches().size();++i) {
+              const DWORD expected=base+active_watches()[i].original_rva;
               if((hit&(1u<<i)) && c.Eip==expected) {
                 match=static_cast<int>(i);
                 break;
               }
             }
             if(match>=0) {
-              unsigned ordinal=0;
-              if(match==1 || match==2) {
-                const DWORD object=c.Ecx;
-                if(object!=0) {
-                  auto it=counts.object_ordinals.find(object);
-                  if(it==counts.object_ordinals.end())
-                    it=counts.object_ordinals.emplace(
-                         object,counts.next_ordinal++).first;
-                  ordinal=it->second;
-                }
+              unsigned ordinal=0,target_ordinal=0;
+              const DWORD object=c.Ecx;
+              // Original ECX in the weapon profile refers to two DIFFERENT
+              // native owner types: NPC for Spawn/tick, resolved target for
+              // gate/updater. Never mix their opaque numeric identities.
+              const bool npc_site=g_weapon_profile?
+                match<=1:(match==1 || match==2);
+              const bool target_site=g_weapon_profile && match>=2;
+              if(object!=0u && (npc_site||target_site)) {
+                auto& bucket=target_site?
+                  counts.target_ordinals:counts.object_ordinals;
+                unsigned& next=target_site?
+                  counts.next_target_ordinal:counts.next_ordinal;
+                auto it=bucket.find(object);
+                if(it==bucket.end())
+                  it=bucket.emplace(object,next++).first;
+                if(target_site)target_ordinal=it->second;
+                else ordinal=it->second;
               }
               ++counts.hits[match];
               ++counts.total;
-              log_json(out,pid,event.dwThreadId,kWatch[match].name,
-                       counts.hits[match],ordinal);
+              log_json(out,pid,event.dwThreadId,active_watches()[match].name,
+                       counts.hits[match],ordinal,target_ordinal);
               // RF prevents the *same* execute breakpoint retriggering
               // before the current original instruction executes once.
               c.EFlags|=kResumeFlag;
@@ -667,17 +780,21 @@ static int trace_original(Options options) {
   }
   if(!verified)log_json(out,pid,0,"retail_server_not_authenticated",0,0);
   if(missed_thread)log_json(out,pid,0,"watch_completeness_unproven",0,0);
-  for(unsigned i=0;i<kWatch.size();++i) {
-    log_json(out,pid,0,kWatch[i].name,counts.hits[i],0);
+  for(unsigned i=0;i<active_watches().size();++i) {
+    log_json(out,pid,0,active_watches()[i].name,counts.hits[i],0);
   }
   log_json(out,pid,0,"trace_finished",counts.total,0);
   std::fclose(out);
   CloseHandle(process.hThread);
   CloseHandle(process.hProcess);
   std::printf("Authenticated retail server=%d; armed=%d; misses=%d; "
-              "native hit count=%u (create=%u spawn=%u event=%u release=%u)\n",
-              verified?1:0,armed?1:0,missed_thread?1:0,counts.total,
-              counts.hits[0],counts.hits[1],counts.hits[2],counts.hits[3]);
+              "profile=%s native hits=%u (%s=%u %s=%u %s=%u %s=%u)\n",
+              verified?1:0,armed?1:0,missed_thread?1:0,
+              g_weapon_profile?"weapon":"elite",counts.total,
+              active_watches()[0].name,counts.hits[0],
+              active_watches()[1].name,counts.hits[1],
+              active_watches()[2].name,counts.hits[2],
+              active_watches()[3].name,counts.hits[3]);
   // No original callbacks observed is not a probe success.
   // A valid negative sample may contain ZERO Elite hits: that is a
   // complete observation window, not a proof the NPC never spawns.
@@ -692,7 +809,8 @@ int wmain(int argc,wchar_t** argv) {
       L"Usage: sin_pc_owner_elite_hwtrace_phase627 "
       L"--disposable-confirmed --game <disposable-exe> "
       L"--log <fresh-jsonl> [--cwd <game-dir>] "
-      L"[--timeout-ms 120000] [-- <game arguments>]\n"
+      L"[--timeout-ms 120000] [--watch-profile elite|weapon] "
+      L"[-- <game arguments>]\n"
       L"CI: --self-test (no executable launched).\n");
     return 1;
   }
