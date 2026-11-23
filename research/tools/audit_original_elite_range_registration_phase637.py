@@ -39,7 +39,7 @@ WITNESSES=(
     (0x22073764,"85ff"),
     (0x22073766,"7519"),
     (0x22073768,"8b442414"), # uninitialized log passes display name
-    (0x2207376E,"68a8913e22"),
+    (0x2207376D,"68a8913e22"),
     (0x22073772,"ff154c213d22"), # imported diagnostic
     (0x2207377E,"c21000"), # 4 native stack arguments
     (0x22073781,"8179040f270000"), # low==9999 sentinel
