@@ -16,7 +16,8 @@ bool elapsed_one_second(float now,float since)noexcept {
 } // namespace
 Result Reference::gate(State& state,bool valid_native_target)noexcept {
   // The original x86 function directly reads [ECX+0x594] with NO null
-  // protection. Fail closed on an absent resolved weapon/entity rather
+  // protection. The exact class of the weapon-linked handle's resolved
+  // referent is unproven. Fail closed on an absent resolved entity rather
   // than dereference null or fabricate a Source object.
   if(!valid_native_target)return {Code::RejectedNullTarget,Stage::None};
   if(busy_)return {Code::Reentrant,Stage::None};
