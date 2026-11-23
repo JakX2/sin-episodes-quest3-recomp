@@ -1551,3 +1551,32 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_secondary_event_phase632
   COMMAND $<TARGET_FILE:sin_pc_original_elite_secondary_event_phase632_tests>)
+
+# Phase633: original Elite event47 2006 helper functions plus a native MSVC
+# Win32 x86 integration test through the recovered Phase632 event dispatcher.
+add_library(sin_pc_original_elite_event47_helpers_phase633 STATIC
+  ../../src/original_elite_event47_helpers_phase633.cpp)
+target_include_directories(sin_pc_original_elite_event47_helpers_phase633
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_elite_event47_helpers_phase633 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_event47_helpers_phase633
+  sin_pc_original_elite_event47_helpers_phase633)
+add_executable(sin_pc_original_elite_event47_helpers_phase633_tests
+  ../../tests/test_original_elite_event47_helpers_phase633.cpp)
+target_link_libraries(sin_pc_original_elite_event47_helpers_phase633_tests
+  PRIVATE sin_pc_original_elite_event47_helpers_phase633
+  sin_pc_original_elite_secondary_event_phase632)
+set_target_properties(sin_pc_original_elite_event47_helpers_phase633_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_event47_helpers_phase633_tests
+  sin_pc_original_elite_event47_helpers_phase633_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_event47_helpers_phase633_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_event47_helpers_phase633_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_event47_helpers_phase633
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_event47_helpers_phase633_tests>)
