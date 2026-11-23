@@ -131,6 +131,42 @@ Original-free public synthetic test:
 python research/tools/audit_original_server_object_init_phase662.py --self-test
 ```
 
+## Remaining sixth initializer identified as soundscape-manifest setup
+
+The original remaining `0x221BF980` routine has now been examined
+directly in the unchanged retail `server.dll` disassembly:
+
+- **330 complete original x86 bytes**, full-body SHA256
+  `8af434e893f80f38ed7ff0a4686e802921297376f4a663e7e0ff5f8a242052fa`,
+  `RET` at `0x221BFAC9`, followed by `INT3`.
+- Its native string constants explicitly identify
+  `scripts/soundscapes_manifest.txt` at `0x22433AB8`,
+  `scripts/soundscapes_%s.txt` at `0x22433ADC`,
+  `GAME` at `0x223EA728` and expected manifest token
+  `file` at `0x22433AB0`.
+- It uses the previously recovered game DLL filesystem interface
+  pointer global `0x225721A4` and game-global pointer
+  `0x22572190`. It traverses entries in the soundscape manifest,
+  logs unexpected entry types or missing manifests, and invokes
+  engine/filesystem callbacks before storing `0xFFFFFFFF` at
+  `[this+0x24]`. It returns `AL=1` on its observed normal
+  completion path.
+
+**This identifies it as soundscape-manifest initialization**, not an
+unknown SiN-specific NPC/weapon/AI system. The method remains
+**unmodeled in derived C++**. Its entire hash establishes the native
+body's identity, but does not prove its filesystem helper semantics.
+Because the owner's HL2 map port already uses working Source engine
+services, it is lower priority than actual missing SiN game logic
+unless genuine Windows engine boot evidence shows this particular
+startup gate must be implemented.
+
+Accordingly, after Phase662 the next best use of reconstruction work
+is to gather owner-side Windows original-game startup evidence and
+return to **SiN-specific entity factories, AI/NPC scheduling, weapon
+callbacks, damage, and dynamic difficulty**, rather than duplicating
+generic Source soundscape behavior without a proven need.
+
 ## Proof limits and next phase
 
 This recovers **363 additional complete original executable bytes**,
