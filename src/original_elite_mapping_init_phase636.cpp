@@ -160,14 +160,19 @@ Result OwnerRegistration::register_owner(
     for(unsigned i=0;i<3u;++i) {
       r.stage=stages[i];
       std::uint32_t node=0u,source=0u,next=0u;
+      // A missing source pointer is NOT rejected by the original
+      // registration function before it invokes 0x22073650. Pass the
+      // first null source through so the source helper can perform its
+      // original preceding node writes, then refuse the unsafe load.
       if(!at(owner_va,node_offsets[i],node) ||
-         !at(source_va,source_offsets[i],source) ||
+         (source_va!=0u &&
+          !at(source_va,source_offsets[i],source)) ||
          (linked_owner_va!=0u &&
           !at(linked_owner_va,node_offsets[i],next))) {
-        r.code=(source_va==0u)?Code::OriginalNullPointerHazard:
-                                 Code::OriginalAddressOverflow;
+        r.code=Code::OriginalAddressOverflow;
         return r;
       }
+      if(source_va==0u && i==0u)source=0u;
       const Result linked=linker_.link(node,source,next);
       r.last_node=node;
       r.writes_committed+=linked.writes_committed;
