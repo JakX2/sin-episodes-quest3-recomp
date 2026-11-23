@@ -35,6 +35,20 @@ bool valid_skill(int raw) noexcept;
 Level level_for_skill(int raw) noexcept;
 const char* profile_name(Level level) noexcept;
 
+// A real server host can implement this with the original 14 indexed
+// GamePlayVarValue float storage locations, recovered in Phase78.
+// Never assume the static test array is an actual live engine allocation.
+class IOriginalMetricSink {
+public:
+    virtual ~IOriginalMetricSink()=default;
+    virtual bool write_original_metric(std::size_t index,float value)=0;
+};
+struct PublishResult {
+    std::size_t attempted=0u;
+    std::size_t committed=0u;
+    bool complete=false;
+};
+
 struct TriggerObservation {
     std::int32_t estimated_difficulty=0; // original EstimatedDifficulty key
     float estimated_time=0.f;             // original EstimatedTime key
@@ -53,6 +67,10 @@ public:
     float metric_at(std::size_t index) const noexcept;
     // Unknown, differently cased and truncated original names are rejected.
     bool lookup(std::string_view original_name,float& out) const noexcept;
+    // Publish every metric in its original 0..13 index order. A failure
+    // leaves earlier host writes intact and reports exact progress; no
+    // fabricated rollback or engine-specific pointer layout.
+    PublishResult publish_to_host(IOriginalMetricSink& host) const noexcept;
     std::uint32_t revision() const noexcept {return revision_;}
     std::uint32_t trigger_count() const noexcept {return trigger_count_;}
     bool playthrough_completed() const noexcept {return completed_;}
