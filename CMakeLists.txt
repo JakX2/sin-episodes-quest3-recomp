@@ -5590,3 +5590,34 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase644 original retail symbol-slot growth (110B) and release (39B).
+# Tests compose the compiled Phase638-644 symbol tree with dynamic allocation.
+add_library(sin_original_symbol_growth_phase644 STATIC
+  src/original_symbol_growth_phase644.cpp)
+target_include_directories(sin_original_symbol_growth_phase644 PUBLIC include)
+target_compile_options(sin_original_symbol_growth_phase644 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_symbol_growth_phase644_tests
+    tests/test_original_symbol_growth_phase644.cpp)
+  target_link_libraries(sin_original_symbol_growth_phase644_tests PRIVATE
+    sin_original_symbol_growth_phase644
+    sin_original_symbol_enumeration_phase643
+    sin_original_symbol_slot_allocation_phase639
+    sin_original_symbol_tree_link_phase640
+    sin_original_symbol_rebalance_phase642
+    sin_original_symbol_rotations_phase641
+    sin_original_symbol_forward_phase638
+    sin_original_elite_range_registration_phase637)
+  target_compile_options(sin_original_symbol_growth_phase644_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_symbol_growth_phase644_tests
+    COMMAND sin_original_symbol_growth_phase644_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_symbol_growth_phase644_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_symbol_growth_phase644.py
+        --self-test)
+  endif()
+endif()
