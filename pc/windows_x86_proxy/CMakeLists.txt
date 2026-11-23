@@ -1412,3 +1412,33 @@ add_test(NAME sin_pc_owner_elite_hwtrace_phase627_script_syntax
   COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
     -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/Test-OwnerEliteHardwareTracePhase627.ps1"
     -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerEliteHardwareTrace.ps1")
+
+# Phase629: run independent original-source Elite event43 weapon-gate
+# state machine under ACTUAL MSVC x86. No guessed native weapon vtable
+# or original executable is used in CI.
+add_library(sin_pc_original_elite_event43_chaingun_gate_phase629 STATIC
+  ../../src/original_elite_event43_chaingun_gate_phase629.cpp)
+target_include_directories(sin_pc_original_elite_event43_chaingun_gate_phase629
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_elite_event43_chaingun_gate_phase629
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_event43_chaingun_gate_phase629
+  sin_pc_original_elite_event43_chaingun_gate_phase629)
+
+add_executable(sin_pc_original_elite_event43_chaingun_gate_phase629_tests
+  ../../tests/test_original_elite_event43_chaingun_gate_phase629.cpp)
+target_link_libraries(sin_pc_original_elite_event43_chaingun_gate_phase629_tests
+  PRIVATE sin_pc_original_elite_event43_chaingun_gate_phase629)
+set_target_properties(sin_pc_original_elite_event43_chaingun_gate_phase629_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_event43_chaingun_gate_phase629_tests
+  sin_pc_original_elite_event43_chaingun_gate_phase629_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_event43_chaingun_gate_phase629_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_event43_chaingun_gate_phase629_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_event43_chaingun_gate_phase629
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_event43_chaingun_gate_phase629_tests>)
