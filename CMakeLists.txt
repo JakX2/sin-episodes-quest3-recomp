@@ -6120,3 +6120,29 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase661: compile four original server AutoGameSystem virtual Init routines
+# with an integration regression through Phase660's compiled registration list.
+add_library(sin_original_server_system_init_phase661 STATIC
+  src/original_server_system_init_phase661.cpp)
+target_include_directories(sin_original_server_system_init_phase661 PUBLIC include)
+target_compile_features(sin_original_server_system_init_phase661 PUBLIC cxx_std_17)
+target_compile_options(sin_original_server_system_init_phase661 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_server_system_init_phase661_tests
+    tests/test_original_server_system_init_phase661.cpp)
+  target_link_libraries(sin_original_server_system_init_phase661_tests PRIVATE
+    sin_original_server_system_init_phase661
+    sin_original_server_autogamesystem_phase660)
+  target_compile_options(sin_original_server_system_init_phase661_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_server_system_init_phase661_tests
+    COMMAND sin_original_server_system_init_phase661_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_server_system_init_phase661_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_server_system_init_phase661.py
+        --self-test)
+  endif()
+endif()
