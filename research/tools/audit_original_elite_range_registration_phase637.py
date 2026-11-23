@@ -25,13 +25,15 @@ METHODS=(
 DIRECT_EDGES=(
     (0x2207380E,0x22073700,"register_local_id_via_original_58_byte_converter"),
     (0x22073822,0x22282370,"forward_mapped_symbol_to_original_engine"),
-    (0x22088FB7,0x22073760,"original_task_registration_wrapper")
+    (0x22088FB7,0x22073760,"original_task_registration_wrapper"),
+    (0x22355B3A,0x22073760,"original_Elite_schedule_registration")
 )
 ORIGINAL_ERROR_STRINGS=(
     (0x223E91A8,b"ERROR: Adding symbol to uninitialized table %s\n\x00"),
     (0x223E9188,b"ERROR: Bad %s LOCALID for %s\n\x00"),
     (0x223E9154,b"ERROR: %s First added %s must be first LOCALID!\n\x00"),
-    (0x223EB17C,b"task\x00")
+    (0x223EB17C,b"task\x00"),
+    (0x223E5F78,b"schedule\x00")
 )
 WITNESSES=(
     (0x22073760,"57"), # push EDI
@@ -86,6 +88,12 @@ WITNESSES=(
     (0x22088FAD,"687cb13e22"), # "task" category, NOT animation
     (0x22088FB4,"83c11c"), # wrapper adds owner+0x1C
     (0x22088FBC,"c20c00"), # wrapper ret12
+    (0x22355B2D,"52"), # original schedule loop display-name
+    (0x22355B2E,"68785f3e22"), # category literal "schedule"
+    (0x22355B33,"50"), # original LOCALID
+    (0x22355B34,"51"), # original symbol pointer
+    (0x22355B35,"b9fcc25922"), # Elite owner+4 first node
+    (0x22355B3F,"84c0"), # original AL failure check
 )
 
 def check_full(read,va,size,expected):
@@ -141,6 +149,8 @@ def check_original_originals(server,client):
        "verified_original_error_and_category_literals":len(ORIGINAL_ERROR_STRINGS),
        "wrapper_proves_category":"task",
        "wrapper_node_offset":"0x1C",
+       "Elite_startup_direct_registrar_category":"schedule",
+       "Elite_startup_schedule_node_offset":"0x04",
        "animation_node_offset":"0x34",
        "not_claimed":"Original animation event-ID registration callsite unknown",
        "original_engine_process_tested":False,
