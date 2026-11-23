@@ -79,10 +79,15 @@ It pairs all 48 callsites with **27 unique derived vtables**:
   `MOV AL,1; RET` with whole-body SHA256
   `e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619`.
   These initializers return success immediately.
-- The other **eight distinct initializers** are:
+- The other **eight distinct initializer addresses** are:
   `0x2209B170`, `0x220FBED0`, `0x22121DC0`,
   `0x221AB1E0`, `0x221BB640`, `0x221BF980`,
   `0x221FF7D0`, `0x22223490`.
+- Crucially, `0x221AB1E0` is **another independently located
+  3-byte `MOV AL,1; RET` implementation**. Thus **20/27 vtables
+  provably return success without other work** and the remaining
+  **seven** initializers contain nontrivial instructions. The full
+  pinned audit checks the second three-byte body matches the first.
 
 The private audit checks that all 27 vtables still reside in
 the original `.rdata`, each slot-zero function still points into
@@ -93,7 +98,7 @@ the original method hash.
 
 This significantly narrows **where a real SiN-specific startup
 failure could arise**, but 27 distinct vtables do not guarantee 27
-runtime objects or eight distinct active overrides. The actual
+runtime objects or seven nontrivial initializers can run at all. The actual
 registration and initialization order must still be observed
 inside the Windows engine. Do not treat the default success function
 as proof that the full server startup succeeds.
