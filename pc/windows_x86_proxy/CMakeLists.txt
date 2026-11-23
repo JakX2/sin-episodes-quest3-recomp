@@ -2553,7 +2553,7 @@ add_test(NAME sin_pc_fixed_difficulty_phase663
 add_library(sin_pc_fixed_difficulty_trigger_phase663 STATIC
   ../../src/fixed_difficulty_trigger_phase663.cpp
   ../../src/original_sin_trigger_entities.cpp)
-target_include_directories(sin_pc_fixed_difficulty_trigger_phase663 PUBLIC ../../include)
+target_include_directories(sin_pc_fixed_difficulty_trigger_phase663 PUBLIC ../../include ../../third_party/research)
 target_link_libraries(sin_pc_fixed_difficulty_trigger_phase663 PUBLIC
   sin_pc_fixed_difficulty_phase663)
 set_target_properties(sin_pc_fixed_difficulty_trigger_phase663 PROPERTIES
