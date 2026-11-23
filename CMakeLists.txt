@@ -6016,3 +6016,24 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase656: end-to-end recovered nested symbol registration and deletion
+# through original SiN name comparators, string storage, red-black tree,
+# capacity growth, lookup, teardown and free-list recycling.
+if(BUILD_TESTING)
+  add_executable(sin_original_full_name_registry_chain_phase656_tests
+    tests/test_original_full_name_registry_chain_phase656.cpp)
+  target_link_libraries(sin_original_full_name_registry_chain_phase656_tests PRIVATE
+    sin_original_nested_clear_phase655
+    sin_original_nested_rebalance_phase654
+    sin_original_nested_slot_growth_phase653
+    sin_original_nested_tree_core_phase652
+    sin_original_nested_insertion_phase651
+    sin_original_string_lookup_phase650
+    sin_original_nested_comparators_phase648
+    sin_original_string_casefold_phase649)
+  target_compile_options(sin_original_full_name_registry_chain_phase656_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_full_name_registry_chain_phase656_tests
+    COMMAND sin_original_full_name_registry_chain_phase656_tests)
+endif()

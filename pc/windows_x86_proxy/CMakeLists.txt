@@ -2361,3 +2361,27 @@ else()
 endif()
 add_test(NAME sin_pc_original_nested_clear_chain_phase655
   COMMAND $<TARGET_FILE:sin_pc_original_nested_clear_chain_phase655_tests>)
+
+# Phase656: MSVC x86 compiled end-to-end genuine recovered SiN string registry chain.
+add_executable(sin_pc_original_full_name_registry_chain_phase656_tests
+  ../../tests/test_original_full_name_registry_chain_phase656.cpp)
+target_link_libraries(sin_pc_original_full_name_registry_chain_phase656_tests PRIVATE
+  sin_pc_original_nested_clear_phase655
+  sin_pc_original_nested_rebalance_phase654
+  sin_pc_original_nested_slot_growth_phase653
+  sin_pc_original_nested_tree_core_phase652
+  sin_pc_original_nested_insertion_phase651
+  sin_pc_original_string_lookup_phase650
+  sin_pc_original_nested_comparators_phase648
+  sin_pc_original_string_casefold_phase649)
+set_target_properties(sin_pc_original_full_name_registry_chain_phase656_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_full_name_registry_chain_phase656_tests
+  sin_pc_original_full_name_registry_chain_phase656_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_full_name_registry_chain_phase656_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_full_name_registry_chain_phase656_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_full_name_registry_chain_phase656
+  COMMAND $<TARGET_FILE:sin_pc_original_full_name_registry_chain_phase656_tests>)
