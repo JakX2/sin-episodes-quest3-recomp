@@ -6172,3 +6172,22 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase663: opt-in fixed skill 1/2/3 compatibility policy over the 14
+# original SiN gameplay metrics. Not a Source ConVar binding or an original
+# game DLL startup claim.
+add_library(sin_fixed_difficulty_phase663 STATIC src/fixed_difficulty_phase663.cpp)
+target_include_directories(sin_fixed_difficulty_phase663 PUBLIC include)
+target_compile_features(sin_fixed_difficulty_phase663 PUBLIC cxx_std_17)
+target_compile_options(sin_fixed_difficulty_phase663 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_fixed_difficulty_phase663_tests
+    tests/test_fixed_difficulty_phase663.cpp)
+  target_link_libraries(sin_fixed_difficulty_phase663_tests PRIVATE
+    sin_fixed_difficulty_phase663)
+  target_compile_options(sin_fixed_difficulty_phase663_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_fixed_difficulty_phase663_tests
+    COMMAND sin_fixed_difficulty_phase663_tests)
+endif()
