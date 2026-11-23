@@ -5944,3 +5944,38 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase654 recovered original 2006 SiN RB-tree insertion fixup (1387B)
+# and its exact rotate-left (235B) / rotate-right (238B) helpers.
+add_library(sin_original_nested_rebalance_phase654 STATIC
+  src/original_nested_rebalance_phase654.cpp)
+target_include_directories(sin_original_nested_rebalance_phase654 PUBLIC include)
+target_compile_features(sin_original_nested_rebalance_phase654 PUBLIC cxx_std_17)
+target_compile_options(sin_original_nested_rebalance_phase654 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_nested_rebalance_phase654_tests
+    tests/test_original_nested_rebalance_phase654.cpp)
+  target_link_libraries(sin_original_nested_rebalance_phase654_tests PRIVATE
+    sin_original_nested_rebalance_phase654)
+  target_compile_options(sin_original_nested_rebalance_phase654_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_rebalance_phase654_tests
+    COMMAND sin_original_nested_rebalance_phase654_tests)
+  add_executable(sin_original_nested_rebalance_chain_phase654_tests
+    tests/test_original_nested_rebalance_chain_phase654.cpp)
+  target_link_libraries(sin_original_nested_rebalance_chain_phase654_tests PRIVATE
+    sin_original_nested_rebalance_phase654
+    sin_original_nested_slot_growth_phase653
+    sin_original_nested_tree_core_phase652)
+  target_compile_options(sin_original_nested_rebalance_chain_phase654_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_rebalance_chain_phase654_tests
+    COMMAND sin_original_nested_rebalance_chain_phase654_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_nested_rebalance_phase654_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_nested_rebalance_phase654.py
+        --self-test)
+  endif()
+endif()
