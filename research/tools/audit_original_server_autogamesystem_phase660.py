@@ -7,6 +7,7 @@ regressions use invented bytes, never embedded proprietary executable code.
 from __future__ import annotations
 import argparse
 import hashlib
+import json
 from pathlib import Path
 import struct
 from audit_original_createinterface_phase657 import PE,u32
@@ -45,13 +46,20 @@ COUNT=0x22510a64
 CACHE=0x22510a68
 VTABLE=0x22443e74
 DUPLICATE_MESSAGE=0x22443e38
+VTABLE_MANIFEST=Path(__file__).resolve().parents[1] / "data" / "original_server_autogamesystem_vtables_phase660.json"
+DEFAULT_VIRTUAL_INIT=0x2205f0f0
+OVERRIDE_INIT_TARGETS={
+ 0x2209b170,0x220fbed0,0x22121dc0,0x221ab1e0,
+ 0x221bb640,0x221bf980,0x221ff7d0,0x22223490,
+}
+DEFAULT_INIT_SHA="e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619"
 
 def rel32_target(pe:PE,va:int)->int:
  code=pe.code(va,5)
  if code[0]!=0xe8:raise ValueError(f"not rel32 E8 at {va:#x}")
  return (va+5+struct.unpack_from("<i",code,1)[0])&0xffffffff
 
-def audit(original_server:bytes,original_client:bytes)->dict:
+def audit(original_server:bytes,original_client:bytes,manifest:dict)->dict:
  if hashlib.sha256(original_server).hexdigest()!=SERVER:
   raise ValueError("mismatched owner original server.dll SHA256")
  if hashlib.sha256(original_client).hexdigest()!=CLIENT:
@@ -92,6 +100,39 @@ def audit(original_server:bytes,original_client:bytes)->dict:
  for global_va in (HEAD,INITIALIZED_FLAG,ARRAY,CAPACITY,COUNT,CACHE):
   pe.belongs(global_va,".data")
  pe.belongs(VTABLE,".rdata")
+ if len(manifest["entries"])!=27 or manifest["expected_constructors"]!=48:
+  raise ValueError("unexpected original constructor/vtable census count")
+ if manifest["expected_default_vtables"]!=19 or manifest["expected_nondefault_vtables"]!=8:
+  raise ValueError("original default/override vtable census count mismatch")
+ if manifest["default_init_va"]!=hex(DEFAULT_VIRTUAL_INIT):
+  raise ValueError("original default system-init address changed")
+ body=pe.code(DEFAULT_VIRTUAL_INIT,3)
+ if hashlib.sha256(body).hexdigest()!=DEFAULT_INIT_SHA or body!=b"\xb0\x01\xc3":
+  raise ValueError("original shared default true-return method hash mismatch")
+ observed_sites=[];vtable_addrs=set();init_overrides=set();default_count=0
+ for item in manifest["entries"]:
+  derived=int(item["derived_vtable_va"],16)
+  initializer=int(item["slot_zero_init_va"],16)
+  if derived in vtable_addrs:raise ValueError("duplicate original derived vtable")
+  vtable_addrs.add(derived)
+  pe.belongs(derived,".rdata")
+  if u32(pe.read(derived,4))!=initializer:
+   raise ValueError(f"original derived vtable Init pointer mismatch at {derived:#x}")
+  pe.code(initializer,1)
+  default=initializer==DEFAULT_VIRTUAL_INIT
+  if bool(item["default_inherited"])!=default:
+   raise ValueError(f"wrong inherited/default Init classification at {derived:#x}")
+  if default:default_count+=1
+  else:init_overrides.add(initializer)
+  for site_str in item["direct_constructor_call_sites"]:
+   site=int(site_str,16)
+   if rel32_target(pe,site)!=0x221f5820:
+    raise ValueError(f"original derived AutoGameSystem caller mismatch at {site:#x}")
+   observed_sites.append(site)
+ if len(set(observed_sites))!=48 or set(observed_sites)!=set(AUTO_CONSTRUCTOR_CALL_SITES):
+  raise ValueError("complete original 48 constructor-to-vtable callsite census mismatch")
+ if default_count!=19 or init_overrides!=OVERRIDE_INIT_TARGETS:
+  raise ValueError("original eight non-default virtual initialization targets changed")
  return {
   "complete_original_executable_bytes":sum(f[2] for f in FUNCTIONS),
   "original_method_count":len(FUNCTIONS),
@@ -101,6 +142,9 @@ def audit(original_server:bytes,original_client:bytes)->dict:
   "pending_head":hex(HEAD),
   "system_pointer_array":hex(ARRAY),
   "record_stride":4,
+  "unique_derived_vtables":len(vtable_addrs),
+  "inherited_trivial_true_init_vtables":default_count,
+  "nondefault_virtual_init_methods":len(init_overrides),
   "provenance":"original static PE32; host runtime not executed"
  }
 
@@ -127,11 +171,13 @@ def main()->None:
  parser.add_argument("--server",type=Path)
  parser.add_argument("--client",type=Path)
  parser.add_argument("--self-test",action="store_true")
+ parser.add_argument("--manifest",type=Path,default=VTABLE_MANIFEST)
  args=parser.parse_args()
  if args.self_test:self_test();return
  if args.server is None or args.client is None:
   parser.error("provide original server/client DLLs, or --self-test")
  import json
- print(json.dumps(audit(args.server.read_bytes(),args.client.read_bytes()),indent=2))
+ manifest=json.loads(args.manifest.read_text(encoding="utf-8"))
+ print(json.dumps(audit(args.server.read_bytes(),args.client.read_bytes(),manifest),indent=2))
 
 if __name__=="__main__":main()
