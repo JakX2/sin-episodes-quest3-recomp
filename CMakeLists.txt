@@ -5979,3 +5979,40 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase655: original SiN node free-list reset (132B), nested name-block
+# teardown (49B), and original name-view lookup adapter (61B).
+add_library(sin_original_nested_clear_phase655 STATIC
+  src/original_nested_clear_phase655.cpp)
+target_include_directories(sin_original_nested_clear_phase655 PUBLIC include)
+target_compile_features(sin_original_nested_clear_phase655 PUBLIC cxx_std_17)
+target_compile_options(sin_original_nested_clear_phase655 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_nested_clear_phase655_tests
+    tests/test_original_nested_clear_phase655.cpp)
+  target_link_libraries(sin_original_nested_clear_phase655_tests PRIVATE
+    sin_original_nested_clear_phase655)
+  target_compile_options(sin_original_nested_clear_phase655_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_clear_phase655_tests
+    COMMAND sin_original_nested_clear_phase655_tests)
+  add_executable(sin_original_nested_clear_chain_phase655_tests
+    tests/test_original_nested_clear_chain_phase655.cpp)
+  target_link_libraries(sin_original_nested_clear_chain_phase655_tests PRIVATE
+    sin_original_nested_clear_phase655
+    sin_original_nested_rebalance_phase654
+    sin_original_nested_slot_growth_phase653
+    sin_original_nested_tree_core_phase652
+    sin_original_string_lookup_phase650)
+  target_compile_options(sin_original_nested_clear_chain_phase655_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_clear_chain_phase655_tests
+    COMMAND sin_original_nested_clear_chain_phase655_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_nested_clear_phase655_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_nested_clear_phase655.py
+        --self-test)
+  endif()
+endif()
