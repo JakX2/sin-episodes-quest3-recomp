@@ -145,6 +145,42 @@ AddressSanitizer/UndefinedBehaviorSanitizer workflow are added. CI
 results are recorded against the exact tested commit in the PR body
 when complete.
 
+## Trusted owner-side Windows runtime snapshot
+
+The existing Phase657/659 Windows factory diagnostic is extended in
+Phase660 to print a **read-only** `phase660_autogame_snapshot`
+JSONL observation of the genuine `server.dll` after its static
+initializers / DllMain have run.
+
+Once both exact 2006 retail DLL SHA256 checks pass and the trusted
+modules load, it safely reads the following offsets relative to the
+original server PE32 module base:
+
+- pending head RVA `0x572CC0`;
+- initialized byte RVA `0x572CB8`;
+- live count RVA `0x510A64`;
+- current capacity RVA `0x510A5C`.
+
+The diagnostic follows at most **64** `object+4` pending links
+using bounded `ReadProcessMemory` calls with cycle and address
+overflow protection. It emits only count/capacity/flag and presence,
+**never prints addresses or calls any virtual method or pending
+system callback**.
+
+Download the latest compiled
+`sin-pc-win32-original-factory-probe-phase657` artifact from a
+passing Phase660 Win32 Actions run, then run locally:
+
+```powershell
+.\sin_pc_original_factory_abi_probe_phase657.exe "C:\SiN\bin\client.dll" "C:\SiN\bin\server.dll"
+```
+
+It will emit both prior `phase659_registry_snapshot` (client) and
+new `phase660_autogame_snapshot` (server) records. The exact
+owner-side runtime traces have **not** been collected in CI. A
+post-DllMain observation is not equivalent to the later state during
+the original engine's `GameDLLInit` or to an in-level SiN game boot.
+
 ## Proof boundaries and next work
 
 The **entire two original x86 method bodies are authenticated**, but
