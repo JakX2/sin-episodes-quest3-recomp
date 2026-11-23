@@ -1,0 +1,45 @@
+name: SiN Phase656 string registry ASan and UBSan
+
+on:
+  push:
+    branches:
+      - feature/sin-original-name-registry-chain-phase656-chat-20261123
+  pull_request:
+    paths:
+      - 'tests/test_original_full_name_registry_chain_phase656.cpp'
+      - 'src/original_*'
+      - 'include/sin_compat/original_*'
+      - '.github/workflows/sin-phase656-string-registry-sanitizers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  phase656-sanitizers:
+    name: Original SiN registry full-chain Clang ASan+UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile full reconstructed original-function chain
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined \
+            -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG \
+            -Iinclude \
+            src/original_nested_comparators_phase648.cpp \
+            src/original_string_casefold_phase649.cpp \
+            src/original_string_lookup_phase650.cpp \
+            src/original_nested_insertion_phase651.cpp \
+            src/original_nested_tree_core_phase652.cpp \
+            src/original_nested_slot_growth_phase653.cpp \
+            src/original_nested_rebalance_phase654.cpp \
+            src/original_nested_clear_phase655.cpp \
+            tests/test_original_full_name_registry_chain_phase656.cpp \
+            -o /tmp/sin_phase656_sanitized
+      - name: Execute original-function chain under sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: /tmp/sin_phase656_sanitized
