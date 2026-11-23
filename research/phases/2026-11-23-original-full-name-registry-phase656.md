@@ -78,6 +78,26 @@ The test retains the earlier Phase651 duplicate-search and block
 growth/relocation cases and error-path tests, now using the recovered
 insertion path rather than artificial link callbacks.
 
+## Additional stress and sanitizer coverage
+
+The Phase656 integration was extended to **32 independently shuffled but
+deterministic nine-name insertion orders**, using the real Phase648/649
+case-insensitive comparator and the compiled Phase650-655 C++ models.
+After **each inserted name**, the test traverses the complete red-black
+tree, checks parent backlinks, red/black correctness, equal black height,
+and verifies all currently allocated indices remain reachable after
+`0→3→6→12` slot allocation and relocation. Each order then tests
+case-insensitive `aLpHa` lookup, release of all name blocks,
+9-node free-list generation, and a fresh insertion that reuses node 0
+without new slot-array reallocation.
+
+A dedicated
+`.github/workflows/sin-phase656-string-registry-sanitizers.yml`
+compiles all eight source-reference libraries and the complete test
+using **Clang C++17 AddressSanitizer + UndefinedBehaviorSanitizer** on
+Linux, without any original retail executable bytes. This is independent
+of the main GCC/Windows CTest matrix.
+
 ## Build and limitations
 
 The CMake test
