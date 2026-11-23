@@ -25,6 +25,18 @@ DIRECT_CALLS=(
  (0x221f5794,0x223a5d10,"original_overlapping_pointer_move"),
  (0x221f5848,0x221f54f0,"late_registration_original_array_insert"),
 )
+
+AUTO_CONSTRUCTOR_CALL_SITES=(
+ 0x2205f073, 0x2209a2f1, 0x220f9733, 0x22121c40, 0x221622c3, 0x221854e3,
+ 0x22188a03, 0x22193a53, 0x2219b443, 0x2219d1e3, 0x221ab184, 0x221bbc0f,
+ 0x221c00e3, 0x221c3413, 0x221f2fa3, 0x221f4c44, 0x22201614, 0x2220c053,
+ 0x2221ef64, 0x22255fe5, 0x22287f93, 0x22289163, 0x222a6243, 0x222abac3,
+ 0x2234a3e3, 0x22377fb3, 0x2238fe33, 0x223b72a5, 0x223b9a45, 0x223bb905,
+ 0x223bc8e5, 0x223bc9a5, 0x223bce25, 0x223bd085, 0x223bd1b5, 0x223bd8f5,
+ 0x223bda55, 0x223bdd55, 0x223bf7b6, 0x223c02e5, 0x223c09c6, 0x223c1ff5,
+ 0x223c2025, 0x223c28e5, 0x223c2aa5, 0x223c6325, 0x223c74a5, 0x223c7bd5,
+)
+
 HEAD=0x22572cc0
 INITIALIZED_FLAG=0x22572cb8
 ARRAY=0x22510a58
@@ -55,6 +67,9 @@ def audit(original_server:bytes,original_client:bytes)->dict:
  for source,destination,label in DIRECT_CALLS:
   if rel32_target(pe,source)!=destination:
    raise ValueError(f"original direct CALL mismatch: {label}")
+ for site in AUTO_CONSTRUCTOR_CALL_SITES:
+  if rel32_target(pe,site)!=0x221f5820:
+   raise ValueError(f"game-specific AutoGameSystem constructor caller mismatch at {site:#x}")
  if pe.code(0x221f5700,5)!=b"\xa1\xc0\x2c\x57\x22":
   raise ValueError("pending-head pointer no longer read at init entry")
  if pe.code(0x221f57d5,11)!=(
@@ -80,7 +95,8 @@ def audit(original_server:bytes,original_client:bytes)->dict:
  return {
   "complete_original_executable_bytes":sum(f[2] for f in FUNCTIONS),
   "original_method_count":len(FUNCTIONS),
-  "direct_call_edges":len(DIRECT_CALLS),
+  "direct_call_edges":len(DIRECT_CALLS)+len(AUTO_CONSTRUCTOR_CALL_SITES),
+  "original_game_system_constructor_callers":len(AUTO_CONSTRUCTOR_CALL_SITES),
   "initialized_flag":hex(INITIALIZED_FLAG),
   "pending_head":hex(HEAD),
   "system_pointer_array":hex(ARRAY),
