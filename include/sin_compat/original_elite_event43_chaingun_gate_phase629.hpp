@@ -1,6 +1,8 @@
 #pragma once
-// Phase629: independently authored, bounded 2006 SiN x86 CWeaponChaingun
-// event-43 gate state machine, verified from original server.dll:
+// Phase629: independently authored 2006 SiN x86 Elite event43 gate on
+// a weapon-linked RESOLVED entity. Spawn obtains its handle through
+// CWeaponChaingun RTTI, but the returned handle target class is unproven.
+// Verified from original server.dll:
 // 0x22315320 (82 bytes) and paired update 0x22315390 (173 bytes).
 // Called by original Elite event override 0x22355480 via 0x22355503.
 // Does NOT construct game weapons, claim a callable Source vtable, or
