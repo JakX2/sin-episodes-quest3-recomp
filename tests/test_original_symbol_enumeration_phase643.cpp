@@ -311,7 +311,7 @@ void test_full_original_registration_chain(){
  // Dedicated three-node chain forces mirrored double rotation to verify
  // adapter ABI and original 16-bit/8-bit argument writes end-to-end.
  h.reset();
- for(std::uint16_t key:{10u,20u,15u}){
+ for(const std::uint16_t key : {std::uint16_t{10},std::uint16_t{20},std::uint16_t{15}}){
    const auto out=forward.write(kContext,key,1000+key);
    assert(out.code==f::Code::Written);
    h.expected_tokens.push_back(key);h.verifyall();
