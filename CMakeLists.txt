@@ -5196,3 +5196,52 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase630: preserve the exact eight-export Elite native v1 ABI.
+# A separate THREE-export C shared library binds original 2006 Phase629
+# source-state gate to Phase626's actor-verified original event43 path.
+set_target_properties(sin_original_elite_event43_chaingun_gate_phase629
+  PROPERTIES POSITION_INDEPENDENT_CODE ON)
+add_library(sin_elite_source_gate_phase630 SHARED
+  src/elite_native_source_gate_phase630.cpp)
+target_include_directories(sin_elite_source_gate_phase630 PUBLIC include)
+target_link_libraries(sin_elite_source_gate_phase630 PRIVATE
+  sin_elite_native_host_c_abi
+  sin_original_elite_event43_chaingun_gate_phase629)
+target_compile_options(sin_elite_source_gate_phase630 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+set_target_properties(sin_elite_source_gate_phase630 PROPERTIES
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+if(UNIX AND NOT APPLE)
+  target_link_options(sin_elite_source_gate_phase630 PRIVATE
+    "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/elite_native_source_gate_phase630.exports.map")
+endif()
+if(WIN32 AND MSVC)
+  target_sources(sin_elite_source_gate_phase630 PRIVATE
+    src/elite_native_source_gate_phase630.win32.def)
+endif()
+if(BUILD_TESTING)
+  add_executable(sin_elite_source_gate_phase630_tests
+    tests/test_elite_native_source_gate_phase630.cpp)
+  target_include_directories(sin_elite_source_gate_phase630_tests
+    PRIVATE include)
+  target_link_libraries(sin_elite_source_gate_phase630_tests PRIVATE
+    sin_elite_source_gate_phase630 sin_elite_native_host_c_abi)
+  target_compile_options(sin_elite_source_gate_phase630_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_elite_source_gate_phase630_tests
+    COMMAND sin_elite_source_gate_phase630_tests)
+  add_executable(sin_elite_source_gate_phase630_dynload_tests
+    tests/test_elite_native_source_gate_dynload_phase630.cpp)
+  target_include_directories(sin_elite_source_gate_phase630_dynload_tests
+    PRIVATE include)
+  target_link_libraries(sin_elite_source_gate_phase630_dynload_tests PRIVATE
+    ${CMAKE_DL_LIBS})
+  target_compile_options(sin_elite_source_gate_phase630_dynload_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_dependencies(sin_elite_source_gate_phase630_dynload_tests
+    sin_elite_source_gate_phase630)
+  add_test(NAME sin_elite_source_gate_phase630_dynload_tests
+    COMMAND sin_elite_source_gate_phase630_dynload_tests
+      $<TARGET_FILE:sin_elite_source_gate_phase630>)
+endif()

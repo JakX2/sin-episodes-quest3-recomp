@@ -1,0 +1,7 @@
+SIN_ELITE_SOURCE_GATE_1 {
+  global:
+    sin_elite_source_gate_abi_version_v1;
+    sin_elite_source_gate_event43_v1;
+    sin_elite_source_gate_update_v1;
+  local: *;
+};

@@ -29,15 +29,28 @@ Result Reference::gate(State& state,bool valid_native_target)noexcept {
         stage=Stage::GateVirtual3C4Command13;
         if(!host_.native_virtual_3c4(13u,0u))
           return {Code::HostRejected,stage};
+        stage=Stage::WritePhase594;
+        if(!host_.write_original_phase_594(1u))
+          return {Code::HostRejected,stage};
         state.original_phase_594=1u;
         // Retail method reads the engine-global clock twice and stores
         // two independent floats. It does not reuse the first value.
         stage=Stage::GateTime590;
-        if(!host_.read_original_engine_time(state.original_time_590))
+        float first=0.f;
+        if(!host_.read_original_engine_time(first))
           return {Code::HostRejected,stage};
+        stage=Stage::WriteTime590;
+        if(!host_.write_original_time_590(first))
+          return {Code::HostRejected,stage};
+        state.original_time_590=first;
         stage=Stage::GateTime58C;
-        if(!host_.read_original_engine_time(state.original_time_58c))
+        float second=0.f;
+        if(!host_.read_original_engine_time(second))
           return {Code::HostRejected,stage};
+        stage=Stage::WriteTime58C;
+        if(!host_.write_original_time_58c(second))
+          return {Code::HostRejected,stage};
+        state.original_time_58c=second;
         return {Code::Blocked,Stage::None};
       }
       case 2u: return {Code::Allowed,Stage::None};
@@ -63,15 +76,28 @@ Result Reference::update(State& state,bool valid_native_target)noexcept {
           return {Code::HostRejected,stage};
         if(!elapsed_one_second(now,state.original_time_590))
           return {Code::Unchanged,Stage::None};
+        stage=Stage::WritePhase594;
+        if(!host_.write_original_phase_594(2u))
+          return {Code::HostRejected,stage};
         state.original_phase_594=2u;
         // The native code performs another pair of independent clock
         // reads, NOT a reuse of the comparison's 'now' value.
         stage=Stage::UpdateTime590;
-        if(!host_.read_original_engine_time(state.original_time_590))
+        float first=0.f;
+        if(!host_.read_original_engine_time(first))
           return {Code::HostRejected,stage};
+        stage=Stage::WriteTime590;
+        if(!host_.write_original_time_590(first))
+          return {Code::HostRejected,stage};
+        state.original_time_590=first;
         stage=Stage::UpdateTime58C;
-        if(!host_.read_original_engine_time(state.original_time_58c))
+        float second=0.f;
+        if(!host_.read_original_engine_time(second))
           return {Code::HostRejected,stage};
+        stage=Stage::WriteTime58C;
+        if(!host_.write_original_time_58c(second))
+          return {Code::HostRejected,stage};
+        state.original_time_58c=second;
         return {Code::Advanced,Stage::None};
       }
       case 2u: {
@@ -81,6 +107,9 @@ Result Reference::update(State& state,bool valid_native_target)noexcept {
           return {Code::HostRejected,stage};
         if(!elapsed_one_second(now,state.original_time_58c))
           return {Code::Unchanged,Stage::None};
+        stage=Stage::WritePhase594;
+        if(!host_.write_original_phase_594(3u))
+          return {Code::HostRejected,stage};
         state.original_phase_594=3u;
         return {Code::Advanced,Stage::None};
       }
@@ -90,6 +119,9 @@ Result Reference::update(State& state,bool valid_native_target)noexcept {
           return {Code::HostRejected,stage};
         stage=Stage::UpdateVirtual3C4Command14;
         if(!host_.native_virtual_3c4(14u,0u))
+          return {Code::HostRejected,stage};
+        stage=Stage::WritePhase594;
+        if(!host_.write_original_phase_594(0u))
           return {Code::HostRejected,stage};
         state.original_phase_594=0u;
         return {Code::Advanced,Stage::None};
