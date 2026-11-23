@@ -1610,3 +1610,34 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_event47_terminal_phase634
   COMMAND $<TARGET_FILE:sin_pc_original_elite_event47_terminal_phase634_tests>)
+
+# Phase635 native MSVC Win32 x86 2006 Elite 58-byte ID-range converter.
+# In-process tests link complete source reference chain Phase632-635.
+add_library(sin_pc_original_elite_id_mapping_phase635 STATIC
+  ../../src/original_elite_id_mapping_phase635.cpp)
+target_include_directories(sin_pc_original_elite_id_mapping_phase635
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_elite_id_mapping_phase635 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_id_mapping_phase635
+  sin_pc_original_elite_id_mapping_phase635)
+add_executable(sin_pc_original_elite_id_mapping_phase635_tests
+  ../../tests/test_original_elite_id_mapping_phase635.cpp)
+target_link_libraries(sin_pc_original_elite_id_mapping_phase635_tests PRIVATE
+  sin_pc_original_elite_id_mapping_phase635
+  sin_pc_original_elite_event47_terminal_phase634
+  sin_pc_original_elite_event47_helpers_phase633
+  sin_pc_original_elite_secondary_event_phase632)
+set_target_properties(sin_pc_original_elite_id_mapping_phase635_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_id_mapping_phase635_tests
+  sin_pc_original_elite_id_mapping_phase635_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_id_mapping_phase635_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_id_mapping_phase635_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_id_mapping_phase635
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_id_mapping_phase635_tests>)
