@@ -1,0 +1,26 @@
+name: SiN original CreateInterface PE32 ABI evidence
+
+on:
+  push:
+    branches:
+      - feature/sin-original-createinterface-abi-phase657-chat-20261123
+  pull_request:
+    paths:
+      - research/tools/audit_original_createinterface_phase657.py
+      - research/tools/sin_win32_factory_probe_phase657.cpp
+      - .github/workflows/sin-phase657-createinterface-pe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-pe-audit:
+    name: InterfaceReg PE32 invented-byte mutation audit (no retail DLL)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax and dependency-free synthetic audit
+        run: |
+          python3 -m py_compile research/tools/audit_original_createinterface_phase657.py
+          python3 research/tools/audit_original_createinterface_phase657.py --self-test
