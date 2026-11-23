@@ -1,0 +1,5 @@
+LIBRARY sin_elite_source_gate_phase630
+EXPORTS
+    sin_elite_source_gate_abi_version_v1
+    sin_elite_source_gate_event43_v1
+    sin_elite_source_gate_update_v1
