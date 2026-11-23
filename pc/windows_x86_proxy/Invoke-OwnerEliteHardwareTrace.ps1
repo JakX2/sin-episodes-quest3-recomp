@@ -15,7 +15,7 @@ param(
     [Parameter(Mandatory = $true)][string]$OutputTrace,
     [Parameter(Mandatory = $true)][switch]$DisposableTestCopyConfirmed,
     [ValidateRange(5,900)][int]$TimeoutSeconds = 120,
-    [ValidateSet('Elite','Weapon')][string]$WatchProfile = 'Elite',
+    [ValidateSet('Elite','Weapon','Event')][string]$WatchProfile = 'Elite',
     [string[]]$GameArguments = @()
 )
 Set-StrictMode -Version Latest
@@ -127,20 +127,19 @@ $authenticated = @($events | Where-Object {
 $armed = @($events | Where-Object {
   $_.phase -eq 'elite_hardware_watch_armed'
 }).Count -eq 1
-$profileTag = if ($WatchProfile -eq 'Weapon') {
-    'watch_profile_weapon'
-} else {
-    'watch_profile_elite'
+$profileTag = switch ($WatchProfile) {
+  'Elite' { 'watch_profile_elite' }
+  'Weapon' { 'watch_profile_weapon' }
+  'Event' { 'watch_profile_event' }
 }
+$allProfileTags = @('watch_profile_elite','watch_profile_weapon',
+                    'watch_profile_event')
 $profileVerified = @($events | Where-Object {
   $_.phase -eq $profileTag
 }).Count -eq 1
-$otherTag = if ($WatchProfile -eq 'Weapon') {
-    'watch_profile_elite'
-} else {
-    'watch_profile_weapon'
-}
-if (@($events | Where-Object { $_.phase -eq $otherTag }).Count -gt 0) {
+if (@($events | Where-Object {
+  $_.phase -in $allProfileTags -and $_.phase -ne $profileTag
+}).Count -gt 0) {
     $profileVerified = $false
 }
 $incomplete = @($events | Where-Object {
@@ -174,6 +173,27 @@ $updates = @($events | Where-Object {
   $_.phase -eq 'weapon_state_update' -and [int]$_.detail -gt 0 -and
   [int]$_.tid -gt 0
 }).Count
+$secondary = @($events | Where-Object {
+  $_.phase -eq 'elite_secondary_event' -and [int]$_.detail -gt 0 -and
+  [int]$_.tid -gt 0
+})
+$secondary43 = @($secondary | Where-Object {
+  [int]$_.event_id_readable -eq 1 -and [int64]$_.event_id -eq 0x43
+}).Count
+$secondary47 = @($secondary | Where-Object {
+  [int]$_.event_id_readable -eq 1 -and [int64]$_.event_id -eq 0x47
+}).Count
+$secondaryUnknown = @($secondary | Where-Object {
+  [int]$_.event_id_readable -ne 1
+}).Count
+$firstEvent43 = @($events | Where-Object {
+  $_.phase -eq 'elite_animation_event' -and
+  [int]$_.event_id_readable -eq 1 -and [int64]$_.event_id -eq 0x43
+}).Count
+$firstEvent47 = @($events | Where-Object {
+  $_.phase -eq 'elite_animation_event' -and
+  [int]$_.event_id_readable -eq 1 -and [int64]$_.event_id -eq 0x47
+}).Count
 if ($exitCode -eq 0 -and $singlePid -and $authenticated -and $armed -and
     $profileVerified -and -not $incomplete) {
     if ($spawns -gt 0) {
@@ -196,6 +216,22 @@ if ($exitCode -eq 0 -and $singlePid -and $authenticated -and $armed -and
             Write-Host "OWNER_ELITE_TRACE: ORIGINAL_WEAPON_TIMED_UPDATE_OBSERVED=$updates"
         } else {
             Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_WEAPON_TIMED_UPDATE_NOT_OBSERVED'
+        }
+    } elseif ($WatchProfile -eq 'Event') {
+        if ($secondary.Count -gt 0) {
+            Write-Host "OWNER_ELITE_TRACE: ORIGINAL_SECONDARY_EVENT_ENTRY_OBSERVED=$($secondary.Count)"
+        } else {
+            Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_SECONDARY_EVENT_ENTRY_NOT_OBSERVED'
+        }
+        Write-Host "OWNER_ELITE_TRACE: ORIGINAL_SECONDARY_EVENT43_CLASSIFIED=$secondary43"
+        Write-Host "OWNER_ELITE_TRACE: ORIGINAL_SECONDARY_EVENT47_CLASSIFIED=$secondary47"
+        Write-Host "OWNER_ELITE_TRACE: ORIGINAL_SECONDARY_EVENT_ID_UNREADABLE=$secondaryUnknown"
+        Write-Host "OWNER_ELITE_TRACE: ORIGINAL_FIRST_EVENT43_CLASSIFIED=$firstEvent43"
+        Write-Host "OWNER_ELITE_TRACE: ORIGINAL_FIRST_EVENT47_CLASSIFIED=$firstEvent47"
+        if ($gates -gt 0) {
+            Write-Host "OWNER_ELITE_TRACE: ORIGINAL_WEAPON_GATE_ENTRY_OBSERVED=$gates"
+        } else {
+            Write-Host 'OWNER_ELITE_TRACE: ORIGINAL_WEAPON_GATE_ENTRY_NOT_OBSERVED'
         }
     } else {
         if ($animation -gt 0) {

@@ -49,16 +49,25 @@ constexpr std::array<Watch,4> kWatch{{
 }};
 // Phase631: independently source-authenticated complete 113-byte Elite
 // vtable +0x424 callback and complete weapon-linked gate/updater bodies.
-// DR0-DR3 hold exactly one of these two nonoverlapping watch sets.
+// DR0-DR3 hold exactly one of the independently pinned watch sets.
 constexpr std::array<Watch,4> kWeaponWatch{{
   {"elite_spawn",0x22355820u,0x355820u},
   {"elite_virtual_tick",0x223555f0u,0x3555f0u},
   {"weapon_gate43",0x22315320u,0x315320u},
   {"weapon_state_update",0x22315390u,0x315390u}
 }};
+// Phase632's third original-only profile observes both native Elite
+// animation handlers and their shared +0x43 weapon gate in ONE run.
+constexpr std::array<Watch,4> kEventWatch{{
+  {"elite_spawn",0x22355820u,0x355820u},
+  {"elite_animation_event",0x22355480u,0x355480u},
+  {"elite_secondary_event",0x223556a0u,0x3556a0u},
+  {"weapon_gate43",0x22315320u,0x315320u}
+}};
 static bool g_weapon_profile=false;
+static bool g_event_profile=false;
 static const std::array<Watch,4>& active_watches()noexcept {
-  return g_weapon_profile?kWeaponWatch:kWatch;
+  return g_event_profile?kEventWatch:(g_weapon_profile?kWeaponWatch:kWatch);
 }
 constexpr DWORD kDr7LocalExecWatch=0x55u;
 constexpr DWORD kResumeFlag=0x10000u;
@@ -71,6 +80,7 @@ struct Options {
   bool disposable=false;
   bool selftest=false;
   bool weapon_watch=false;
+  bool event_watch=false;
 };
 struct Counts {
   unsigned hits[4]={0u,0u,0u,0u};
@@ -82,12 +92,15 @@ struct Counts {
 };
 static void log_json(FILE* file,DWORD pid,DWORD tid,
                      const char* phase,unsigned detail,unsigned ordinal,
-                     unsigned target_ordinal=0u) {
+                     unsigned target_ordinal=0u,
+                     unsigned original_event_id=0u,
+                     bool event_id_readable=false) {
   if(!file)return;
   std::fprintf(file,
-    "{\"phase\":\"%s\",\"pid\":%lu,\"tid\":%lu,\"detail\":%u,\"actor_ordinal\":%u,\"target_ordinal\":%u}\n",
+    "{\"phase\":\"%s\",\"pid\":%lu,\"tid\":%lu,\"detail\":%u,\"actor_ordinal\":%u,\"target_ordinal\":%u,\"event_id\":%u,\"event_id_readable\":%u}\n",
     phase,static_cast<unsigned long>(pid),
-    static_cast<unsigned long>(tid),detail,ordinal,target_ordinal);
+    static_cast<unsigned long>(tid),detail,ordinal,target_ordinal,
+    original_event_id,event_id_readable?1u:0u);
   std::fflush(file);
 }
 static std::wstring quote_win_arg(const std::wstring& arg) {
@@ -137,9 +150,13 @@ static bool parse(int argc,wchar_t** argv,Options& o) {
       if(!parse_positive_ms(argv[++i],o.timeout_ms))return false;
     } else if(std::wcscmp(argv[i],L"--watch-profile")==0) {
       const wchar_t* profile=argv[++i];
-      if(std::wcscmp(profile,L"weapon")==0)o.weapon_watch=true;
-      else if(std::wcscmp(profile,L"elite")==0)o.weapon_watch=false;
-      else return false;
+      if(std::wcscmp(profile,L"weapon")==0) {
+        o.weapon_watch=true;o.event_watch=false;
+      } else if(std::wcscmp(profile,L"event")==0) {
+        o.weapon_watch=false;o.event_watch=true;
+      } else if(std::wcscmp(profile,L"elite")==0) {
+        o.weapon_watch=false;o.event_watch=false;
+      } else return false;
     } else return false;
   }
   return o.disposable && !o.game.empty() && !o.log.empty();
@@ -248,7 +265,13 @@ static const std::array<PrefixPin,4>& active_prefixes()noexcept {
     {0x315320u,{0x56u,0x8bu,0xf1u,0u},3u}, // 0x43 gate
     {0x315390u,{0x56u,0x8bu,0xf1u,0u},3u}  // timed update
   }};
-  return g_weapon_profile?weapon:elite;
+  static const std::array<PrefixPin,4> event{{
+    {0x355820u,{0x83u,0xecu,0x18u,0u},3u}, // Spawn
+    {0x355480u,{0x51u,0x56u,0x57u,0u},3u}, // animation handler
+    {0x3556a0u,{0x56u,0x8bu,0xf1u,0u},3u}, // secondary handler
+    {0x315320u,{0x56u,0x8bu,0xf1u,0u},3u}  // weapon gate
+  }};
+  return g_event_profile?event:(g_weapon_profile?weapon:elite);
 }
 static bool original_live_entry_prefixes_match(HANDLE process,DWORD base) {
   const auto& watch=active_watches();
@@ -265,6 +288,26 @@ static bool original_live_entry_prefixes_match(HANDLE process,DWORD base) {
        std::memcmp(live,prefix.bytes,prefix.len)!=0)
       return false;
   }
+  return true;
+}
+// Phase632: original entrypoint [ESP+4] is a pointer to an event struct
+// whose first DWORD is event ID. All accesses are read-only and bounded.
+// A failed read yields UNCLASSIFIED, never an invented event 0x43/0x47.
+static bool read_original_event_id(HANDLE process,DWORD entry_esp,
+                                   DWORD& event_id) {
+  if(entry_esp==0u || entry_esp>0xfffffffbu)return false;
+  DWORD pointer=0u;
+  SIZE_T received=0u;
+  const LPCVOID stack_arg=reinterpret_cast<LPCVOID>(
+      static_cast<std::uintptr_t>(entry_esp)+4u);
+  if(!ReadProcessMemory(process,stack_arg,&pointer,sizeof(pointer),
+                        &received) || received!=sizeof(pointer) ||
+     pointer==0u)return false;
+  received=0u;
+  if(!ReadProcessMemory(process,
+       reinterpret_cast<LPCVOID>(static_cast<std::uintptr_t>(pointer)),
+       &event_id,sizeof(event_id),&received) ||
+     received!=sizeof(event_id))return false;
   return true;
 }
 // Phase628 watch-lease policy: never overwrite another debugger's DR slots.
@@ -482,11 +525,12 @@ static int test_helpers() {
        [](DWORD,bool){return true;})!=ArmResult::RejectedClean)
     return 21;
 
-  // Exercise BOTH original-only watch profiles against an invented Win32
+  // Exercise ALL THREE original-only watch profiles against invented Win32
   // in-process allocation. The actual ReadProcessMemory check must reject
   // any one-byte prefix change. No retail DLLs are mapped in these tests.
-  for(int profile=0;profile<2;++profile) {
+  for(int profile=0;profile<3;++profile) {
     g_weapon_profile=(profile==1);
+    g_event_profile=(profile==2);
     const auto& pins=active_prefixes();
     const auto& selected=active_watches();
     void* sample=VirtualAlloc(nullptr,0x360000u,
@@ -530,6 +574,46 @@ static int test_helpers() {
     if(!good)return 23+profile;
   }
   g_weapon_profile=false;
+  g_event_profile=false;
+  // Use a wholly invented in-process event argument and header. The
+  // original's ABI places event pointer at entry ESP+4. Verify read-only
+  // event IDs and fail-closed invalid pointer/stack cases.
+  void* argument=VirtualAlloc(nullptr,0x1000u,
+    MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+  void* event_header=VirtualAlloc(nullptr,0x1000u,
+    MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+  if(!argument||!event_header) {
+    if(argument)VirtualFree(argument,0,MEM_RELEASE);
+    if(event_header)VirtualFree(event_header,0,MEM_RELEASE);
+    return 29;
+  }
+  const DWORD stack=static_cast<DWORD>(
+      reinterpret_cast<std::uintptr_t>(argument));
+  const DWORD event_pointer=static_cast<DWORD>(
+      reinterpret_cast<std::uintptr_t>(event_header));
+  std::memcpy(static_cast<UCHAR*>(argument)+4u,
+              &event_pointer,sizeof(event_pointer));
+  DWORD id=0x43u,observed=0u;
+  std::memcpy(event_header,&id,sizeof(id));
+  bool verified_event=read_original_event_id(
+      GetCurrentProcess(),stack,observed)&&observed==id;
+  id=0x47u;
+  std::memcpy(event_header,&id,sizeof(id));
+  verified_event=verified_event&&read_original_event_id(
+      GetCurrentProcess(),stack,observed)&&observed==id;
+  const DWORD null_pointer=0u;
+  std::memcpy(static_cast<UCHAR*>(argument)+4u,
+              &null_pointer,sizeof(null_pointer));
+  verified_event=verified_event&&!read_original_event_id(
+      GetCurrentProcess(),stack,observed);
+  verified_event=verified_event&&!read_original_event_id(
+      GetCurrentProcess(),0u,observed);
+  verified_event=verified_event&&!read_original_event_id(
+      GetCurrentProcess(),0xffffffffu,observed);
+  VirtualFree(event_header,0,MEM_RELEASE);
+  VirtualFree(argument,0,MEM_RELEASE);
+  if(!verified_event)return 30;
+
   wchar_t arg0[]=L"trace";
   wchar_t arg1[]=L"--disposable-confirmed";
   wchar_t arg2[]=L"--game";
@@ -539,21 +623,29 @@ static int test_helpers() {
   wchar_t arg6[]=L"--watch-profile";
   wchar_t weapon[]=L"weapon";
   wchar_t elite[]=L"elite";
+  wchar_t event[]=L"event";
   wchar_t bogus[]=L"bogus";
   wchar_t* argv[]={arg0,arg1,arg2,arg3,arg4,arg5,arg6,weapon};
   Options options{};
-  if(!parse(8,argv,options)||!options.weapon_watch)return 25;
+  if(!parse(8,argv,options)||!options.weapon_watch||
+     options.event_watch)return 31;
   argv[7]=elite;
   options=Options{};
-  if(!parse(8,argv,options)||options.weapon_watch)return 26;
+  if(!parse(8,argv,options)||options.weapon_watch||
+     options.event_watch)return 32;
+  argv[7]=event;
+  options=Options{};
+  if(!parse(8,argv,options)||options.weapon_watch||
+     !options.event_watch)return 33;
   argv[7]=bogus;
   options=Options{};
-  if(parse(8,argv,options))return 27;
-  std::puts("PASS Phase631 both SHA-pinned original Elite/weapon watch profiles, Win32 DR lease, read-only live-prefix mutation and CLI rejection");
+  if(parse(8,argv,options))return 34;
+  std::puts("PASS Phase632 all 3 SHA-pinned original Elite/Weapon/Event watch profiles, Win32 DR leases, event ID read-only provenance, mutation and CLI refusal");
   return 0;
 }
 static int trace_original(Options options) {
   g_weapon_profile=options.weapon_watch;
+  g_event_profile=options.event_watch;
   if(options.cwd.empty())options.cwd=dirname(options.game);
   FILE* out=nullptr;
   if(_wfopen_s(&out,options.log.c_str(),L"wb")!=0 || !out) {
@@ -592,8 +684,9 @@ static int trace_original(Options options) {
   std::printf("Original SiN Elite hardware callback trace: PID %lu\n",
               static_cast<unsigned long>(pid));
   log_json(out,pid,0,"trace_process_started",0,0);
-  log_json(out,pid,0,g_weapon_profile?
-           "watch_profile_weapon":"watch_profile_elite",4u,0);
+  log_json(out,pid,0,g_event_profile?"watch_profile_event":
+           (g_weapon_profile?"watch_profile_weapon":"watch_profile_elite"),
+           4u,0);
 
   DWORD base=0;
   bool verified=false,armed=false,missed_thread=false;
@@ -703,9 +796,11 @@ static int trace_original(Options options) {
               // Original ECX in the weapon profile refers to two DIFFERENT
               // native owner types: NPC for Spawn/tick, resolved target for
               // gate/updater. Never mix their opaque numeric identities.
-              const bool npc_site=g_weapon_profile?
-                match<=1:(match==1 || match==2);
-              const bool target_site=g_weapon_profile && match>=2;
+              const bool npc_site=g_event_profile?
+                (match<=2):(g_weapon_profile?
+                match<=1:(match==1 || match==2));
+              const bool target_site=g_event_profile?
+                (match==3):(g_weapon_profile && match>=2);
               if(object!=0u && (npc_site||target_site)) {
                 auto& bucket=target_site?
                   counts.target_ordinals:counts.object_ordinals;
@@ -717,10 +812,20 @@ static int trace_original(Options options) {
                 if(target_site)target_ordinal=it->second;
                 else ordinal=it->second;
               }
+              // At verified native event entry (both 0x22355480 and
+              // 0x223556A0), original argument pointer is [ESP+4].
+              // Read only its FIRST DWORD for event 0x43/0x47 provenance.
+              // No argument pointer, call stack or entity addresses logged.
+              DWORD original_event_id=0u;
+              bool event_id_readable=false;
+              if(g_event_profile && (match==1 || match==2))
+                event_id_readable=read_original_event_id(
+                    process.hProcess,c.Esp,original_event_id);
               ++counts.hits[match];
               ++counts.total;
               log_json(out,pid,event.dwThreadId,active_watches()[match].name,
-                       counts.hits[match],ordinal,target_ordinal);
+                       counts.hits[match],ordinal,target_ordinal,
+                       original_event_id,event_id_readable);
               // RF prevents the *same* execute breakpoint retriggering
               // before the current original instruction executes once.
               c.EFlags|=kResumeFlag;
@@ -790,7 +895,8 @@ static int trace_original(Options options) {
   std::printf("Authenticated retail server=%d; armed=%d; misses=%d; "
               "profile=%s native hits=%u (%s=%u %s=%u %s=%u %s=%u)\n",
               verified?1:0,armed?1:0,missed_thread?1:0,
-              g_weapon_profile?"weapon":"elite",counts.total,
+              g_event_profile?"event":(g_weapon_profile?"weapon":"elite"),
+              counts.total,
               active_watches()[0].name,counts.hits[0],
               active_watches()[1].name,counts.hits[1],
               active_watches()[2].name,counts.hits[2],
@@ -809,7 +915,7 @@ int wmain(int argc,wchar_t** argv) {
       L"Usage: sin_pc_owner_elite_hwtrace_phase627 "
       L"--disposable-confirmed --game <disposable-exe> "
       L"--log <fresh-jsonl> [--cwd <game-dir>] "
-      L"[--timeout-ms 120000] [--watch-profile elite|weapon] "
+      L"[--timeout-ms 120000] [--watch-profile elite|weapon|event] "
       L"[-- <game arguments>]\n"
       L"CI: --self-test (no executable launched).\n");
     return 1;

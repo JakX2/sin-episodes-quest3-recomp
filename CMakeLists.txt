@@ -5270,3 +5270,28 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase632: independently SHA256-authenticated 232-byte original
+# Elite vtable +0x44C event handler with separate 0x43 and 0x47 branches.
+# Host callback model only: NO guessed Source object ABI or engine calls.
+add_library(sin_original_elite_secondary_event_phase632 STATIC
+  src/original_elite_secondary_event_phase632.cpp)
+target_include_directories(sin_original_elite_secondary_event_phase632 PUBLIC include)
+target_compile_options(sin_original_elite_secondary_event_phase632 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_secondary_event_phase632_tests
+    tests/test_original_elite_secondary_event_phase632.cpp)
+  target_link_libraries(sin_original_elite_secondary_event_phase632_tests PRIVATE
+    sin_original_elite_secondary_event_phase632)
+  target_compile_options(sin_original_elite_secondary_event_phase632_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_secondary_event_phase632_tests
+    COMMAND sin_original_elite_secondary_event_phase632_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_secondary_event_phase632_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_secondary_event_phase632.py
+        --self-test)
+  endif()
+endif()
