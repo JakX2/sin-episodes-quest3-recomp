@@ -79,7 +79,10 @@ void test_constructor_both_mode_values_and_byte_truncation() {
   assert(init.initialize(0u,0u).code==i::Code::OriginalNullPointerHazard);
   const auto over=init.initialize(0xfffffffeu,0u);
   assert(over.code==i::Code::OriginalAddressOverflow);
-  assert(over.writes_committed==0u);
+  // Original constructor writes node+0 before attempting +4. The
+  // checked reference preserves that first successful guest write.
+  assert(over.writes_committed==1u);
+  assert(h.get(0xfffffffeu)==0xffffffffu);
 }
 void test_conditional_link_source_order_and_sentinel() {
   Host h;i::NodeLinker link(h);
