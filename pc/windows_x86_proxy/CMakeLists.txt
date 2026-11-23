@@ -1788,3 +1788,29 @@ else()
 endif()
 add_test(NAME sin_pc_original_symbol_tree_link_phase640
   COMMAND $<TARGET_FILE:sin_pc_original_symbol_tree_link_phase640_tests>)
+
+# Phase641 authenticated retail SiN left/right rotations + sentinel accessor.
+add_library(sin_pc_original_symbol_rotations_phase641 STATIC
+  ../../src/original_symbol_rotations_phase641.cpp)
+target_include_directories(sin_pc_original_symbol_rotations_phase641 PUBLIC ../../include)
+set_target_properties(sin_pc_original_symbol_rotations_phase641 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_symbol_rotations_phase641
+  sin_pc_original_symbol_rotations_phase641)
+add_executable(sin_pc_original_symbol_rotations_phase641_tests
+  ../../tests/test_original_symbol_rotations_phase641.cpp)
+target_link_libraries(sin_pc_original_symbol_rotations_phase641_tests PRIVATE
+  sin_pc_original_symbol_rotations_phase641)
+set_target_properties(sin_pc_original_symbol_rotations_phase641_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_symbol_rotations_phase641_tests
+  sin_pc_original_symbol_rotations_phase641_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_symbol_rotations_phase641_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_symbol_rotations_phase641_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_symbol_rotations_phase641
+  COMMAND $<TARGET_FILE:sin_pc_original_symbol_rotations_phase641_tests>)

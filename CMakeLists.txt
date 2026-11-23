@@ -5508,3 +5508,27 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase641 original retail SiN tree rotation source references:
+# two complete rotations (231+234 bytes) plus 81B sentinel-aware accessor.
+add_library(sin_original_symbol_rotations_phase641 STATIC
+  src/original_symbol_rotations_phase641.cpp)
+target_include_directories(sin_original_symbol_rotations_phase641 PUBLIC include)
+target_compile_options(sin_original_symbol_rotations_phase641 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_symbol_rotations_phase641_tests
+    tests/test_original_symbol_rotations_phase641.cpp)
+  target_link_libraries(sin_original_symbol_rotations_phase641_tests PRIVATE
+    sin_original_symbol_rotations_phase641)
+  target_compile_options(sin_original_symbol_rotations_phase641_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_symbol_rotations_phase641_tests
+    COMMAND sin_original_symbol_rotations_phase641_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_symbol_rotations_phase641_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_symbol_rotations_phase641.py
+        --self-test)
+  endif()
+endif()
