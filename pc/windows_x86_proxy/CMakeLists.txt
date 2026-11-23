@@ -1973,3 +1973,53 @@ else()
 endif()
 add_test(NAME sin_pc_original_symbol_comparator_phase646
   COMMAND $<TARGET_FILE:sin_pc_original_symbol_comparator_phase646_tests>)
+
+# Phase647 original SiN nested map (81B), slot initialization (90B),
+# release (41B), plus full native MSVC Win32 Phase638-647 chain tests.
+add_library(sin_pc_original_nested_map_phase647 STATIC
+  ../../src/original_nested_map_phase647.cpp)
+target_include_directories(sin_pc_original_nested_map_phase647 PUBLIC ../../include)
+set_target_properties(sin_pc_original_nested_map_phase647 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_map_phase647
+  sin_pc_original_nested_map_phase647)
+add_executable(sin_pc_original_nested_map_phase647_tests
+  ../../tests/test_original_nested_map_phase647.cpp)
+target_link_libraries(sin_pc_original_nested_map_phase647_tests PRIVATE
+  sin_pc_original_nested_map_phase647)
+set_target_properties(sin_pc_original_nested_map_phase647_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_map_phase647_tests
+  sin_pc_original_nested_map_phase647_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_nested_map_phase647_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_nested_map_phase647_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_nested_map_phase647
+  COMMAND $<TARGET_FILE:sin_pc_original_nested_map_phase647_tests>)
+add_executable(sin_pc_original_nested_map_chain_phase647_tests
+  ../../tests/test_original_nested_map_chain_phase647.cpp)
+target_link_libraries(sin_pc_original_nested_map_chain_phase647_tests PRIVATE
+  sin_pc_original_nested_map_phase647
+  sin_pc_original_symbol_comparator_phase646
+  sin_pc_original_memory_wrappers_phase645
+  sin_pc_original_symbol_growth_phase644
+  sin_pc_original_symbol_enumeration_phase643
+  sin_pc_original_symbol_slot_allocation_phase639
+  sin_pc_original_symbol_tree_link_phase640
+  sin_pc_original_symbol_rebalance_phase642
+  sin_pc_original_symbol_rotations_phase641
+  sin_pc_original_symbol_forward_phase638
+  sin_pc_original_elite_range_registration_phase637)
+set_target_properties(sin_pc_original_nested_map_chain_phase647_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_map_chain_phase647_tests
+  sin_pc_original_nested_map_chain_phase647_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_nested_map_chain_phase647_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_nested_map_chain_phase647_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_nested_map_chain_phase647
+  COMMAND $<TARGET_FILE:sin_pc_original_nested_map_chain_phase647_tests>)
