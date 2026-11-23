@@ -258,7 +258,6 @@ struct Integrated final:TableHost,t::IHost,e::IHost,
   bool read_elite_serial_handle_fdc(std::uint32_t& out)override {
     calls.emplace_back("fdc");out=0x4001u;return true;
   }
-  bool open_original_serial_table()override; // defined above for both APIs
   int resolve_original_serial(
       std::uint32_t handle,std::uint64_t& out)override {
     calls.emplace_back("serial-fdc");
