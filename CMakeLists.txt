@@ -5911,3 +5911,36 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase653 original retail 2006 SiN 12-byte slot capacity grower (115B)
+# and free-node resolver (84B), replacing two Phase652 host dependencies.
+add_library(sin_original_nested_slot_growth_phase653 STATIC
+  src/original_nested_slot_growth_phase653.cpp)
+target_include_directories(sin_original_nested_slot_growth_phase653 PUBLIC include)
+target_compile_options(sin_original_nested_slot_growth_phase653 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_nested_slot_growth_phase653_tests
+    tests/test_original_nested_slot_growth_phase653.cpp)
+  target_link_libraries(sin_original_nested_slot_growth_phase653_tests PRIVATE
+    sin_original_nested_slot_growth_phase653)
+  target_compile_options(sin_original_nested_slot_growth_phase653_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_slot_growth_phase653_tests
+    COMMAND sin_original_nested_slot_growth_phase653_tests)
+  add_executable(sin_original_nested_slot_growth_chain_phase653_tests
+    tests/test_original_nested_slot_growth_chain_phase653.cpp)
+  target_link_libraries(sin_original_nested_slot_growth_chain_phase653_tests PRIVATE
+    sin_original_nested_slot_growth_phase653
+    sin_original_nested_tree_core_phase652)
+  target_compile_options(sin_original_nested_slot_growth_chain_phase653_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_nested_slot_growth_chain_phase653_tests
+    COMMAND sin_original_nested_slot_growth_chain_phase653_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_nested_slot_growth_phase653_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_nested_slot_growth_phase653.py
+        --self-test)
+  endif()
+endif()

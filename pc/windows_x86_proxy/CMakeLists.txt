@@ -2237,3 +2237,43 @@ else()
 endif()
 add_test(NAME sin_pc_original_nested_tree_chain_phase652
   COMMAND $<TARGET_FILE:sin_pc_original_nested_tree_chain_phase652_tests>)
+
+# Phase653 native Win32 original 12B-node growth and static sentinel resolver.
+add_library(sin_pc_original_nested_slot_growth_phase653 STATIC
+  ../../src/original_nested_slot_growth_phase653.cpp)
+target_include_directories(sin_pc_original_nested_slot_growth_phase653 PUBLIC ../../include)
+set_target_properties(sin_pc_original_nested_slot_growth_phase653 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_slot_growth_phase653
+  sin_pc_original_nested_slot_growth_phase653)
+add_executable(sin_pc_original_nested_slot_growth_phase653_tests
+  ../../tests/test_original_nested_slot_growth_phase653.cpp)
+target_link_libraries(sin_pc_original_nested_slot_growth_phase653_tests PRIVATE
+  sin_pc_original_nested_slot_growth_phase653)
+set_target_properties(sin_pc_original_nested_slot_growth_phase653_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_slot_growth_phase653_tests
+  sin_pc_original_nested_slot_growth_phase653_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_nested_slot_growth_phase653_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_nested_slot_growth_phase653_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_nested_slot_growth_phase653
+  COMMAND $<TARGET_FILE:sin_pc_original_nested_slot_growth_phase653_tests>)
+add_executable(sin_pc_original_nested_slot_growth_chain_phase653_tests
+  ../../tests/test_original_nested_slot_growth_chain_phase653.cpp)
+target_link_libraries(sin_pc_original_nested_slot_growth_chain_phase653_tests PRIVATE
+  sin_pc_original_nested_slot_growth_phase653
+  sin_pc_original_nested_tree_core_phase652)
+set_target_properties(sin_pc_original_nested_slot_growth_chain_phase653_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_slot_growth_chain_phase653_tests
+  sin_pc_original_nested_slot_growth_chain_phase653_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_nested_slot_growth_chain_phase653_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_nested_slot_growth_chain_phase653_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_nested_slot_growth_chain_phase653
+  COMMAND $<TARGET_FILE:sin_pc_original_nested_slot_growth_chain_phase653_tests>)
