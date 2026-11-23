@@ -5377,3 +5377,30 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase636 source-verified original 2006 SiN Elite mapping node constructor,
+# conditional successor linker and three-node owner registration. This
+# unit verifies that Phase635 map conversion still skips constructed
+# sentinel nodes until actual original runtime ID ranges are populated.
+add_library(sin_original_elite_mapping_init_phase636 STATIC
+  src/original_elite_mapping_init_phase636.cpp)
+target_include_directories(sin_original_elite_mapping_init_phase636 PUBLIC include)
+target_compile_options(sin_original_elite_mapping_init_phase636 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_mapping_init_phase636_tests
+    tests/test_original_elite_mapping_init_phase636.cpp)
+  target_link_libraries(sin_original_elite_mapping_init_phase636_tests PRIVATE
+    sin_original_elite_mapping_init_phase636
+    sin_original_elite_id_mapping_phase635)
+  target_compile_options(sin_original_elite_mapping_init_phase636_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_mapping_init_phase636_tests
+    COMMAND sin_original_elite_mapping_init_phase636_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_mapping_init_phase636_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_mapping_init_phase636.py
+        --self-test)
+  endif()
+endif()
