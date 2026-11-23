@@ -117,9 +117,12 @@ never loads or transmits original DLL data.
 
 ## Limitations and next priority
 
-`0x2228EDF0` original 1367-byte rebalance and related native rotations are
-**not** reconstructed in Phase653, nor is the actual underlying memory
-manager or in-game SiN runtime. Source-level CTests, synthetic Win32 PE32
+`0x2228EDF0` original **1,387-byte** rebalance and related native rotations are
+**not** reconstructed in Phase653. Its complete 1,387-byte original retail body
+SHA256 is `69086eef8636a0041aa364549620a2c406af077bb3c451e5f3e0fd97e419ac8c`;
+the original last `RET 4` ends at `0x2228F35A` and is followed by `INT3` at
+`0x2228F35B`. This corrects earlier estimates of 1,367 bytes. The actual underlying memory
+manager and in-game SiN runtime are also unreconstructed. Source-level CTests, synthetic Win32 PE32
 compatibility DLLs, Android NDK compilation, and real Android Bionic `dlopen`
 smoke do not show playable Windows retail-game execution, Android levels or
 Quest 3 VR. Follow the original rebalance CFG and confirm rotations before
