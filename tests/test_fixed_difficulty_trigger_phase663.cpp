@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 using namespace sin_compat::map_entities;
+using sin_compat::EntityRef;
 namespace f=sin_compat::difficulty::fixed_phase663;
 namespace {
 struct Captured {
