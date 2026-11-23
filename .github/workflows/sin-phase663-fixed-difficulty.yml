@@ -45,7 +45,7 @@ jobs:
         run: |
           clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
             -fsanitize=address,undefined -fno-sanitize-recover=all \
-            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude -Ithird_party/research \
             src/original_sin_trigger_entities.cpp \
             src/fixed_difficulty_phase663.cpp \
             src/fixed_difficulty_trigger_phase663.cpp \
