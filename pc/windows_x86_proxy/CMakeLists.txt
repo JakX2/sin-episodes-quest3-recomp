@@ -2420,3 +2420,28 @@ else()
 endif()
 add_test(NAME sin_pc_original_module_init_phase658
   COMMAND $<TARGET_FILE:sin_pc_original_module_init_phase658_tests>)
+
+# Phase659: native MSVC x86 test of original client startup app-system
+# link/resolve/disconnect failure-rollback chain, not a DLL runtime boot.
+add_library(sin_pc_original_client_appsystem_phase659 STATIC
+  ../../src/original_client_appsystem_phase659.cpp)
+target_include_directories(sin_pc_original_client_appsystem_phase659 PUBLIC ../../include)
+set_target_properties(sin_pc_original_client_appsystem_phase659 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_appsystem_phase659
+  sin_pc_original_client_appsystem_phase659)
+add_executable(sin_pc_original_client_appsystem_phase659_tests
+  ../../tests/test_original_client_appsystem_phase659.cpp)
+target_link_libraries(sin_pc_original_client_appsystem_phase659_tests PRIVATE
+  sin_pc_original_client_appsystem_phase659)
+set_target_properties(sin_pc_original_client_appsystem_phase659_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_client_appsystem_phase659_tests
+  sin_pc_original_client_appsystem_phase659_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_client_appsystem_phase659_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_client_appsystem_phase659_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_client_appsystem_phase659
+  COMMAND $<TARGET_FILE:sin_pc_original_client_appsystem_phase659_tests>)
