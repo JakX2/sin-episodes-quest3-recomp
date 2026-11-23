@@ -53,6 +53,7 @@ OVERRIDE_INIT_TARGETS={
  0x221bb640,0x221bf980,0x221ff7d0,0x22223490,
 }
 DEFAULT_INIT_SHA="e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619"
+SECOND_TRIVIAL_TRUE_INIT=0x221ab1e0
 
 def rel32_target(pe:PE,va:int)->int:
  code=pe.code(va,5)
@@ -109,6 +110,8 @@ def audit(original_server:bytes,original_client:bytes,manifest:dict)->dict:
  body=pe.code(DEFAULT_VIRTUAL_INIT,3)
  if hashlib.sha256(body).hexdigest()!=DEFAULT_INIT_SHA or body!=b"\xb0\x01\xc3":
   raise ValueError("original shared default true-return method hash mismatch")
+ if pe.code(SECOND_TRIVIAL_TRUE_INIT,3)!=body:
+  raise ValueError("original second three-byte true-return initializer changed")
  observed_sites=[];vtable_addrs=set();init_overrides=set();default_count=0
  for item in manifest["entries"]:
   derived=int(item["derived_vtable_va"],16)
@@ -145,6 +148,8 @@ def audit(original_server:bytes,original_client:bytes,manifest:dict)->dict:
   "unique_derived_vtables":len(vtable_addrs),
   "inherited_trivial_true_init_vtables":default_count,
   "nondefault_virtual_init_methods":len(init_overrides),
+  "proven_trivial_true_initializers":default_count+(1 if SECOND_TRIVIAL_TRUE_INIT in init_overrides else 0),
+  "nontrivial_init_targets":len(init_overrides)-(1 if SECOND_TRIVIAL_TRUE_INIT in init_overrides else 0),
   "provenance":"original static PE32; host runtime not executed"
  }
 
