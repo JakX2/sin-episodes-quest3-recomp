@@ -45,13 +45,19 @@ struct Guest final:q::IHost,c::IHost,f::IHost {
   v=0;for(unsigned i=0;i<4u;++i){std::uint8_t b=0;if(!read_u8(va+i,b))return false;v|=static_cast<std::uint32_t>(b)<<(8u*i);}return true;
  }
  bool write_u8(std::uint32_t va,std::uint8_t v)override{
-  if(fail_address==va)return false;put8(va,v);return true;
+  if(fail_address==va)return false;
+  put8(va,v);
+  return true;
  }
  bool write_u16(std::uint32_t va,std::uint16_t v)override{
-  if(fail_address==va)return false;put16(va,v);return true;
+  if(fail_address==va)return false;
+  put16(va,v);
+  return true;
  }
  bool write_u32(std::uint32_t va,std::uint32_t v)override{
-  if(fail_address==va)return false;put32(va,v);return true;
+  if(fail_address==va)return false;
+  put32(va,v);
+  return true;
  }
  bool compare_original_223a5574(std::uint32_t left,std::uint32_t right,std::int32_t& eax)override{
   ++casefold_calls;assert(casefold);
