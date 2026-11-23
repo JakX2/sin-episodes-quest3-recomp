@@ -1729,3 +1729,32 @@ else()
 endif()
 add_test(NAME sin_pc_original_symbol_forward_phase638
   COMMAND $<TARGET_FILE:sin_pc_original_symbol_forward_phase638_tests>)
+
+# Phase639 original native Win32 x86 slot registration + Phase638 composed test.
+add_library(sin_pc_original_symbol_slot_allocation_phase639 STATIC
+  ../../src/original_symbol_slot_allocation_phase639.cpp)
+target_include_directories(sin_pc_original_symbol_slot_allocation_phase639
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_symbol_slot_allocation_phase639 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_symbol_slot_allocation_phase639
+  sin_pc_original_symbol_slot_allocation_phase639)
+add_executable(sin_pc_original_symbol_slot_allocation_phase639_tests
+  ../../tests/test_original_symbol_slot_allocation_phase639.cpp)
+target_link_libraries(sin_pc_original_symbol_slot_allocation_phase639_tests PRIVATE
+  sin_pc_original_symbol_slot_allocation_phase639
+  sin_pc_original_symbol_forward_phase638
+  sin_pc_original_elite_range_registration_phase637)
+set_target_properties(sin_pc_original_symbol_slot_allocation_phase639_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_symbol_slot_allocation_phase639_tests
+  sin_pc_original_symbol_slot_allocation_phase639_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_symbol_slot_allocation_phase639_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_symbol_slot_allocation_phase639_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_symbol_slot_allocation_phase639
+  COMMAND $<TARGET_FILE:sin_pc_original_symbol_slot_allocation_phase639_tests>)

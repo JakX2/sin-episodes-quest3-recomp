@@ -5456,3 +5456,28 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase639 native-source symbol-slot registrar 102B and acquire 98B.
+add_library(sin_original_symbol_slot_allocation_phase639 STATIC
+  src/original_symbol_slot_allocation_phase639.cpp)
+target_include_directories(sin_original_symbol_slot_allocation_phase639 PUBLIC include)
+target_compile_options(sin_original_symbol_slot_allocation_phase639 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_symbol_slot_allocation_phase639_tests
+    tests/test_original_symbol_slot_allocation_phase639.cpp)
+  target_link_libraries(sin_original_symbol_slot_allocation_phase639_tests PRIVATE
+    sin_original_symbol_slot_allocation_phase639
+    sin_original_symbol_forward_phase638
+    sin_original_elite_range_registration_phase637)
+  target_compile_options(sin_original_symbol_slot_allocation_phase639_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_symbol_slot_allocation_phase639_tests
+    COMMAND sin_original_symbol_slot_allocation_phase639_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_symbol_slot_allocation_phase639_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_symbol_slot_allocation_phase639.py
+        --self-test)
+  endif()
+endif()
