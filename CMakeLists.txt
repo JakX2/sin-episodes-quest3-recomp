@@ -5295,3 +5295,30 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase633: three authenticated whole original Elite event47
+# methods (clock +0x9DC predicate, actor +0x78C serial-handle getter,
+# resolved-target DWORD +0x4EC dirty-state setter). Test against the
+# actual independently compiled Phase632 event handler, not dummy booleans.
+add_library(sin_original_elite_event47_helpers_phase633 STATIC
+  src/original_elite_event47_helpers_phase633.cpp)
+target_include_directories(sin_original_elite_event47_helpers_phase633 PUBLIC include)
+target_compile_options(sin_original_elite_event47_helpers_phase633 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_event47_helpers_phase633_tests
+    tests/test_original_elite_event47_helpers_phase633.cpp)
+  target_link_libraries(sin_original_elite_event47_helpers_phase633_tests PRIVATE
+    sin_original_elite_event47_helpers_phase633
+    sin_original_elite_secondary_event_phase632)
+  target_compile_options(sin_original_elite_event47_helpers_phase633_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_event47_helpers_phase633_tests
+    COMMAND sin_original_elite_event47_helpers_phase633_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_event47_helpers_phase633_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_event47_helpers_phase633.py
+        --self-test)
+  endif()
+endif()
