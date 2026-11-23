@@ -2318,3 +2318,46 @@ else()
 endif()
 add_test(NAME sin_pc_original_nested_rebalance_chain_phase654
   COMMAND $<TARGET_FILE:sin_pc_original_nested_rebalance_chain_phase654_tests>)
+
+# Phase655: original SiN nested slot free-list / block teardown / name view.
+add_library(sin_pc_original_nested_clear_phase655 STATIC
+  ../../src/original_nested_clear_phase655.cpp)
+target_include_directories(sin_pc_original_nested_clear_phase655 PUBLIC ../../include)
+set_target_properties(sin_pc_original_nested_clear_phase655 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_clear_phase655
+  sin_pc_original_nested_clear_phase655)
+add_executable(sin_pc_original_nested_clear_phase655_tests
+  ../../tests/test_original_nested_clear_phase655.cpp)
+target_link_libraries(sin_pc_original_nested_clear_phase655_tests PRIVATE
+  sin_pc_original_nested_clear_phase655)
+set_target_properties(sin_pc_original_nested_clear_phase655_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_clear_phase655_tests
+  sin_pc_original_nested_clear_phase655_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_nested_clear_phase655_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_nested_clear_phase655_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_nested_clear_phase655
+  COMMAND $<TARGET_FILE:sin_pc_original_nested_clear_phase655_tests>)
+add_executable(sin_pc_original_nested_clear_chain_phase655_tests
+  ../../tests/test_original_nested_clear_chain_phase655.cpp)
+target_link_libraries(sin_pc_original_nested_clear_chain_phase655_tests PRIVATE
+  sin_pc_original_nested_clear_phase655
+  sin_pc_original_nested_rebalance_phase654
+  sin_pc_original_nested_slot_growth_phase653
+  sin_pc_original_nested_tree_core_phase652
+  sin_pc_original_string_lookup_phase650)
+set_target_properties(sin_pc_original_nested_clear_chain_phase655_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_nested_clear_chain_phase655_tests
+  sin_pc_original_nested_clear_chain_phase655_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_nested_clear_chain_phase655_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_nested_clear_chain_phase655_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_nested_clear_chain_phase655
+  COMMAND $<TARGET_FILE:sin_pc_original_nested_clear_chain_phase655_tests>)
