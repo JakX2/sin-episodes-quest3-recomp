@@ -1641,3 +1641,32 @@ else()
 endif()
 add_test(NAME sin_pc_original_elite_id_mapping_phase635
   COMMAND $<TARGET_FILE:sin_pc_original_elite_id_mapping_phase635_tests>)
+
+# Phase636 exact original Elite mapping node/owner source registration
+# semantics, independently built and tested in native MSVC Win32 x86.
+add_library(sin_pc_original_elite_mapping_init_phase636 STATIC
+  ../../src/original_elite_mapping_init_phase636.cpp)
+target_include_directories(sin_pc_original_elite_mapping_init_phase636
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_elite_mapping_init_phase636 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_mapping_init_phase636
+  sin_pc_original_elite_mapping_init_phase636)
+add_executable(sin_pc_original_elite_mapping_init_phase636_tests
+  ../../tests/test_original_elite_mapping_init_phase636.cpp)
+target_link_libraries(sin_pc_original_elite_mapping_init_phase636_tests
+  PRIVATE sin_pc_original_elite_mapping_init_phase636
+  sin_pc_original_elite_id_mapping_phase635)
+set_target_properties(sin_pc_original_elite_mapping_init_phase636_tests
+  PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_elite_mapping_init_phase636_tests
+  sin_pc_original_elite_mapping_init_phase636_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_elite_mapping_init_phase636_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_elite_mapping_init_phase636_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_elite_mapping_init_phase636
+  COMMAND $<TARGET_FILE:sin_pc_original_elite_mapping_init_phase636_tests>)
