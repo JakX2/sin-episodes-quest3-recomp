@@ -160,6 +160,16 @@ client/server DLL paths, preferably from an environment with all original
 Source runtime dependencies available. A missing dependency yields
 a load failure; **it does not prove an interface mismatch**.
 
+
+### CI artifact for owner Windows testing
+
+The native Win32 CI job also uploads **only the derived probe executable** as
+`sin-pc-win32-original-factory-probe-phase657` (14-day retention). It
+contains **no retail DLLs or assets**. Download it from the Actions
+artifacts of the successful Phase657 Windows workflow, then run it locally
+with two exact retail DLL paths. It checks their SHA256 before loading.
+It is not a launcher and must not be mistaken for a working game port.
+
 ## Proof boundary and next milestone
 
 We now have exact **static binary evidence for which two game-module
