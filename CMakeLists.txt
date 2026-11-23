@@ -5349,3 +5349,31 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase635: original full 58-byte 2006 SiN Elite linked-range event-ID
+# mapping algorithm, separately SHA256-pinned in the original server.dll.
+# The synthetic integration CTest links REAL phase632->633->634->635 models.
+add_library(sin_original_elite_id_mapping_phase635 STATIC
+  src/original_elite_id_mapping_phase635.cpp)
+target_include_directories(sin_original_elite_id_mapping_phase635 PUBLIC include)
+target_compile_options(sin_original_elite_id_mapping_phase635 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_id_mapping_phase635_tests
+    tests/test_original_elite_id_mapping_phase635.cpp)
+  target_link_libraries(sin_original_elite_id_mapping_phase635_tests PRIVATE
+    sin_original_elite_id_mapping_phase635
+    sin_original_elite_event47_terminal_phase634
+    sin_original_elite_event47_helpers_phase633
+    sin_original_elite_secondary_event_phase632)
+  target_compile_options(sin_original_elite_id_mapping_phase635_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_id_mapping_phase635_tests
+    COMMAND sin_original_elite_id_mapping_phase635_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_id_mapping_phase635_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_id_mapping_phase635.py
+        --self-test)
+  endif()
+endif()
