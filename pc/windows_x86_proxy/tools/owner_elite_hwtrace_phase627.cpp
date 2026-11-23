@@ -279,7 +279,7 @@ static bool set_watch_for_thread(DWORD tid,DWORD base,bool enable) {
   }
   CONTEXT ctx{};
   ctx.ContextFlags=CONTEXT_DEBUG_REGISTERS;
-  bool ok=GetThreadContext(thread)!=FALSE;
+  bool ok=GetThreadContext(thread,&ctx)!=FALSE;
   if(ok) {
     const CONTEXT original=ctx;
     ok=update_owned_watch_registers(ctx,base,enable);
