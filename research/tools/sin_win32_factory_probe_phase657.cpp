@@ -148,6 +148,59 @@ bool inspect_client_registration_list(HMODULE original_client) noexcept {
  return ok;
 }
 
+// Phase660: read-only post-DllMain observation of original server's
+// AutoGameSystem pending registrations and live array. This is explicitly
+// NOT an in-engine GameDLLInit call and no system virtual method is invoked.
+bool read_current_process_byte(std::uintptr_t address,std::uint8_t& value) noexcept {
+ SIZE_T got=0;
+ return ReadProcessMemory(GetCurrentProcess(),
+     reinterpret_cast<LPCVOID>(address),&value,sizeof(value),&got)!=0 &&
+     got==sizeof(value);
+}
+bool inspect_server_autogame_systems(HMODULE original_server) noexcept {
+ const auto base=reinterpret_cast<std::uintptr_t>(original_server);
+ constexpr std::uintptr_t head_rva=0x572cc0u,flag_rva=0x572cb8u;
+ constexpr std::uintptr_t count_rva=0x510a64u,cap_rva=0x510a5cu;
+ std::uint32_t cursor=0u,count=0u,cap=0u;
+ std::uint8_t initialized=0u;
+ if(!read_current_process_dword(base+head_rva,cursor) ||
+    !read_current_process_byte(base+flag_rva,initialized) ||
+    !read_current_process_dword(base+count_rva,count) ||
+    !read_current_process_dword(base+cap_rva,cap)) {
+  std::printf("{\"module\":\"server\",\"event\":\"phase660_autogame_snapshot\","
+              "\"status\":\"globals_unreadable\"}\n");
+  return false;
+ }
+ const bool head_populated=cursor!=0u;
+ std::array<std::uint32_t,64> visited{};
+ std::size_t pending_count=0u;
+ const char* status="read_ok";
+ while(cursor) {
+  if(pending_count==visited.size()){status="list_truncated";break;}
+  bool repeated=false;
+  for(std::size_t i=0u;i<pending_count;++i)
+   if(visited[i]==cursor){repeated=true;break;}
+  if(repeated){status="cycle_detected";break;}
+  if(cursor>0xfffffffbu){status="invalid_entry_address";break;}
+  visited[pending_count++]=cursor;
+  std::uint32_t next=0u;
+  if(!read_current_process_dword(cursor+4u,next)) {
+   status="entry_unreadable";break;
+  }
+  cursor=next;
+ }
+ std::printf("{\"module\":\"server\",\"event\":\"phase660_autogame_snapshot\","
+             "\"status\":\"%s\",\"pending_head_populated\":%s,"
+             "\"pending_entries\":%u,\"live_count\":%u,\"live_capacity\":%u,"
+             "\"initialized_flag\":%u}\n",
+             status,head_populated?"true":"false",
+             static_cast<unsigned int>(pending_count),
+             static_cast<unsigned int>(count),
+             static_cast<unsigned int>(cap),
+             static_cast<unsigned int>(initialized));
+ return std::strcmp(status,"read_ok")==0;
+}
+
 bool inspect(const char* path,const ModuleExpected& spec) noexcept {
  // Resolve paths before LOAD_WITH_ALTERED_SEARCH_PATH.
  std::array<char,32768> absolute{};
@@ -205,6 +258,8 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
   }
  }
  if(std::strcmp(spec.side,"client")==0 && !inspect_client_registration_list(module))
+  ok=false;
+ if(std::strcmp(spec.side,"server")==0 && !inspect_server_autogame_systems(module))
   ok=false;
  FreeLibrary(module);
  return ok;
