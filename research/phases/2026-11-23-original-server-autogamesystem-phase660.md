@@ -29,7 +29,8 @@ The original unchanged owner-provided files are:
 Both original methods end in a native `RET` and the next original
 byte is `INT3`. The owner-retail read-only audit verifies whole-method
 hashes, executable section, the native `server.dll` and `client.dll`
-full SHA256s and four exact original relative `CALL` edges:
+full SHA256s and four exact original startup/helper relative `CALL` edges,
+plus 48 additional original constructor callers:
 
 1. Server `Init` site `0x221E7927` calls `0x221F5700`.
 2. Init routine `0x221F575C` calls original array grower `0x221F51A0`.
@@ -37,6 +38,30 @@ full SHA256s and four exact original relative `CALL` edges:
 4. Late registration `0x221F5848` calls original array insert `0x221F54F0`.
 
 No original proprietary machine-code blobs or retail DLLs are committed.
+
+## Genuine original game-system registration callers
+
+Independent full-code `objdump` traversal of the owner's original
+server PE32 `.text` identifies **48 distinct, instruction-aligned
+direct `CALL rel32` sites** to `0x221F5820`, spanning original
+game code between **`0x2205F073` and `0x223C7BD5`**.
+This refutes a hypothesis that the original server has no
+registered AutoGameSystems. The exact site VAs are pinned in
+`AUTO_CONSTRUCTOR_CALL_SITES` in the Phase660 private auditor.
+
+For example, the original direct callers include
+`0x2205F073`, `0x2209A2F1`, `0x22121C40`,
+`0x2219B443`, `0x221F2FA3`, `0x2221EF64`,
+`0x22287F93`, `0x2234A3E3`, `0x223B72A5`,
+and `0x223C7BD5`. The independent audit now verifies these
+**48 full direct E8 call edges**, plus the four startup and helper
+edges identified above, for **52 exact original direct calls total**.
+
+A static callsite count is *not* a runtime object count:
+some registrations can execute conditionally, may be part of
+static initialization and may be deduplicated by the original
+initializer. The owner-run Windows snapshot is the next source
+for actual post-DllMain registration count.
 
 ## Original global memory layout
 
