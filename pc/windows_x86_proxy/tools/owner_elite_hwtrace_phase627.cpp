@@ -525,11 +525,12 @@ static int test_helpers() {
        [](DWORD,bool){return true;})!=ArmResult::RejectedClean)
     return 21;
 
-  // Exercise BOTH original-only watch profiles against an invented Win32
+  // Exercise ALL THREE original-only watch profiles against invented Win32
   // in-process allocation. The actual ReadProcessMemory check must reject
   // any one-byte prefix change. No retail DLLs are mapped in these tests.
-  for(int profile=0;profile<2;++profile) {
+  for(int profile=0;profile<3;++profile) {
     g_weapon_profile=(profile==1);
+    g_event_profile=(profile==2);
     const auto& pins=active_prefixes();
     const auto& selected=active_watches();
     void* sample=VirtualAlloc(nullptr,0x360000u,
@@ -573,6 +574,46 @@ static int test_helpers() {
     if(!good)return 23+profile;
   }
   g_weapon_profile=false;
+  g_event_profile=false;
+  // Use a wholly invented in-process event argument and header. The
+  // original's ABI places event pointer at entry ESP+4. Verify read-only
+  // event IDs and fail-closed invalid pointer/stack cases.
+  void* argument=VirtualAlloc(nullptr,0x1000u,
+    MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+  void* event_header=VirtualAlloc(nullptr,0x1000u,
+    MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+  if(!argument||!event_header) {
+    if(argument)VirtualFree(argument,0,MEM_RELEASE);
+    if(event_header)VirtualFree(event_header,0,MEM_RELEASE);
+    return 29;
+  }
+  const DWORD stack=static_cast<DWORD>(
+      reinterpret_cast<std::uintptr_t>(argument));
+  const DWORD event_pointer=static_cast<DWORD>(
+      reinterpret_cast<std::uintptr_t>(event_header));
+  std::memcpy(static_cast<UCHAR*>(argument)+4u,
+              &event_pointer,sizeof(event_pointer));
+  DWORD id=0x43u,observed=0u;
+  std::memcpy(event_header,&id,sizeof(id));
+  bool verified_event=read_original_event_id(
+      GetCurrentProcess(),stack,observed)&&observed==id;
+  id=0x47u;
+  std::memcpy(event_header,&id,sizeof(id));
+  verified_event=verified_event&&read_original_event_id(
+      GetCurrentProcess(),stack,observed)&&observed==id;
+  const DWORD null_pointer=0u;
+  std::memcpy(static_cast<UCHAR*>(argument)+4u,
+              &null_pointer,sizeof(null_pointer));
+  verified_event=verified_event&&!read_original_event_id(
+      GetCurrentProcess(),stack,observed);
+  verified_event=verified_event&&!read_original_event_id(
+      GetCurrentProcess(),0u,observed);
+  verified_event=verified_event&&!read_original_event_id(
+      GetCurrentProcess(),0xffffffffu,observed);
+  VirtualFree(event_header,0,MEM_RELEASE);
+  VirtualFree(argument,0,MEM_RELEASE);
+  if(!verified_event)return 30;
+
   wchar_t arg0[]=L"trace";
   wchar_t arg1[]=L"--disposable-confirmed";
   wchar_t arg2[]=L"--game";
@@ -582,17 +623,24 @@ static int test_helpers() {
   wchar_t arg6[]=L"--watch-profile";
   wchar_t weapon[]=L"weapon";
   wchar_t elite[]=L"elite";
+  wchar_t event[]=L"event";
   wchar_t bogus[]=L"bogus";
   wchar_t* argv[]={arg0,arg1,arg2,arg3,arg4,arg5,arg6,weapon};
   Options options{};
-  if(!parse(8,argv,options)||!options.weapon_watch)return 25;
+  if(!parse(8,argv,options)||!options.weapon_watch||
+     options.event_watch)return 31;
   argv[7]=elite;
   options=Options{};
-  if(!parse(8,argv,options)||options.weapon_watch)return 26;
+  if(!parse(8,argv,options)||options.weapon_watch||
+     options.event_watch)return 32;
+  argv[7]=event;
+  options=Options{};
+  if(!parse(8,argv,options)||options.weapon_watch||
+     !options.event_watch)return 33;
   argv[7]=bogus;
   options=Options{};
-  if(parse(8,argv,options))return 27;
-  std::puts("PASS Phase631 both SHA-pinned original Elite/weapon watch profiles, Win32 DR lease, read-only live-prefix mutation and CLI rejection");
+  if(parse(8,argv,options))return 34;
+  std::puts("PASS Phase632 all 3 SHA-pinned original Elite/Weapon/Event watch profiles, Win32 DR leases, event ID read-only provenance, mutation and CLI refusal");
   return 0;
 }
 static int trace_original(Options options) {
