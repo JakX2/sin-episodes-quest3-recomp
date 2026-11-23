@@ -134,6 +134,53 @@ rolls or scripted spawn placement completely deterministic.
    Hiding/de-emphasizing the now-redundant DD HUD can be a
    separate UI step.
 
+## Compiled campaign-trigger integration, without adaptive manager callbacks
+
+The opt-in `FixedDifficultyTriggerHost`
+(`include/sin_compat/fixed_difficulty_trigger_phase663.hpp` and
+`src/fixed_difficulty_trigger_phase663.cpp`) wraps an existing
+`map_entities::IOriginalTriggerHost` instead of deleting or
+reimplementing the original source-derived trigger class.
+
+The **actual compiled**
+`OriginalTriggerEntityFactory` from
+`src/original_sin_trigger_entities.cpp` is linked to this adapter
+in the new `test_fixed_difficulty_trigger_phase663.cpp` regression.
+It preserves original engine-host calls for actor lifetime, native
+base trigger Spawn, player gating, special flag behavior,
+event publication, and queued entity removal.
+
+Only two hooks change behavior in fixed mode:
+
+1. On a `dynamic_difficulty` Source event, the fixed host observes
+   `EstimatedDifficulty` and `EstimatedTime` from the original
+   event payload **without modifying any selected skill or metric**.
+   It then delegates the full event to the original Source host.
+   The observer is updated before delegation so a failed/throwing
+   game-event publisher still records that a map trigger fired,
+   but never counts it twice on remove retries.
+2. When the original map trigger explicitly calls
+   `mark_difficulty_manager` due to a nonzero low byte of
+   `EndOfGame`, the wrapper marks
+   `FixedDifficultyRuntime::playthrough_completed` **instead of
+   calling the adaptive difficulty manager**. No event/removal
+   callback is skipped or duplicated.
+
+`trigger_secret` remains completely unaffected, including its
+`game` event descriptor. Synthetic-host integration tests cover
+real compiled dynamic trigger Touch and secret Touch, player/nonplayer
+filtering, `EndOfGame=256` versus `257`, event-publish failures,
+deferred removal retry, and no mutation of the selected Hard/Easy
+metric arrays.
+
+**Unresolved runtime dependency:** Other code asking the original
+dynamic manager for its playthrough-complete byte must be routed
+to `FixedDifficultyRuntime` when this opt-in adapter is installed.
+The wrapper deliberately does **not** call the old manager as a
+fallback, because that could re-enable the adaptive update path.
+This remains a typed Source game host task, not a verified original
+engine process integration.
+
 ## New cross-platform implementation
 
 Files:
@@ -192,8 +239,9 @@ before mutating genuine process memory.
   observable partial writes, and correct republish after restore.
 
 Linux strict-warning C++17 / Win32 MSVC x86 CTest targets plus
-an independent Clang AddressSanitizer/UndefinedBehaviorSanitizer
-workflow exercise the same code.
+independent Clang AddressSanitizer/UndefinedBehaviorSanitizer
+jobs exercise both the fixed-metric source model and the compiled
+original SiN trigger entity adapter.
 
 ## Required steps for a playable fixed-difficulty SiN port
 
