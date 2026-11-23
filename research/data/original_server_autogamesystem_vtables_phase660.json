@@ -1,0 +1,279 @@
+{
+  "phase": 660,
+  "original_binary": "2006 SiN Episodes Emergence retail server.dll",
+  "original_sha256": "568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650",
+  "source": "original x86 instruction-aligned calls to 0x221F5820, subsequent original constructor vtable stores, and vtable DWORDs in .rdata",
+  "default_init_va": "0x2205f0f0",
+  "expected_constructors": 48,
+  "expected_vtables": 27,
+  "expected_default_vtables": 20,
+  "expected_nondefault_vtables": 7,
+  "entries": [
+    {
+      "derived_vtable_va": "0x223e66fc",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x2205f073",
+        "0x223b72a5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x223ec6e4",
+      "slot_zero_init_va": "0x2209ce50",
+      "default_inherited": false,
+      "direct_constructor_call_sites": [
+        "0x2209a2f1"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x223ff514",
+      "slot_zero_init_va": "0x220fbed0",
+      "default_inherited": false,
+      "direct_constructor_call_sites": [
+        "0x220f9733",
+        "0x223b9a45"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22401c0c",
+      "slot_zero_init_va": "0x22122540",
+      "default_inherited": false,
+      "direct_constructor_call_sites": [
+        "0x22121c40"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x224122dc",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x221622c3",
+        "0x223bb905"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22425c80",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x221854e3",
+        "0x223bc8e5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22426978",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x22188a03",
+        "0x223bc9a5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x224293a0",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x22193a53",
+        "0x223bce25"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x2242ca04",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x2219b443",
+        "0x223bd085"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x2242cf64",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x2219d1e3",
+        "0x223bd1b5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x2242e0d4",
+      "slot_zero_init_va": "0x221ab1e0",
+      "default_inherited": false,
+      "direct_constructor_call_sites": [
+        "0x221ab184"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x224324e4",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x221bbc0f",
+        "0x223bd8f5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22433b48",
+      "slot_zero_init_va": "0x221bf980",
+      "default_inherited": false,
+      "direct_constructor_call_sites": [
+        "0x221c00e3",
+        "0x223bda55"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22435438",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x221c3413",
+        "0x223bdd55"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x2244395c",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x221f2fa3"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22443db8",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x221f4c44",
+        "0x223bf7b6"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22446a28",
+      "slot_zero_init_va": "0x221ff7d0",
+      "default_inherited": false,
+      "direct_constructor_call_sites": [
+        "0x22201614"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x2244839c",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x2220c053",
+        "0x223c02e5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x2244aecc",
+      "slot_zero_init_va": "0x22223490",
+      "default_inherited": false,
+      "direct_constructor_call_sites": [
+        "0x2221ef64",
+        "0x223c09c6"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22452a34",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x22255fe5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x224561e0",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x22287f93",
+        "0x223c2025"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22456278",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x22289163",
+        "0x223c1ff5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22459cc8",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x222a6243",
+        "0x223c28e5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x2245a4b4",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x222abac3",
+        "0x223c2aa5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x22484b44",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x2234a3e3",
+        "0x223c6325"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x224a0034",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x22377fb3",
+        "0x223c74a5"
+      ]
+    },
+    {
+      "derived_vtable_va": "0x224aa27c",
+      "slot_zero_init_va": "0x2205f0f0",
+      "default_inherited": true,
+      "direct_constructor_call_sites": [
+        "0x2238fe33",
+        "0x223c7bd5"
+      ]
+    }
+  ],
+  "expected_trivial_success_vtables": 21,
+  "expected_substantive_init_vtables": 6,
+  "provenance_correction": "For multiple inheritance, the genuine AutoGameSystem subobject is the ECX address passed to 0x221F5820. Do not confuse its [ECX] vtable with enclosing object's distinct primary [ESI] vtable.",
+  "verified_subobject_cases": [
+    {
+      "constructor_call_va": "0x2209a2f1",
+      "subobject_offset_bytes": 1584,
+      "vtable_write_va": "0x2209a2fc",
+      "vtable": "0x223ec6e4"
+    },
+    {
+      "constructor_call_va": "0x22121c40",
+      "subobject_offset_bytes": 4,
+      "vtable_write_va": "0x22121c45",
+      "vtable": "0x22401c0c"
+    },
+    {
+      "constructor_call_va": "0x221bbc0f",
+      "subobject_offset_bytes": 4,
+      "vtable_write_va": "0x221bbc1c",
+      "vtable": "0x224324e4"
+    },
+    {
+      "constructor_call_va": "0x223bd8f5",
+      "subobject_offset_bytes": 0,
+      "vtable_write_va": "0x223bd90b",
+      "vtable": "0x224324e4"
+    }
+  ]
+}

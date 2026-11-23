@@ -1,0 +1,41 @@
+name: SiN Phase660 original server AutoGameSystem lifecycle
+
+on:
+  push:
+    branches:
+      - feature/sin-original-server-autogamesystem-phase660-chat-20261123
+  pull_request:
+    paths:
+      - 'src/original_server_autogamesystem_phase660.cpp'
+      - 'include/sin_compat/original_server_autogamesystem_phase660.hpp'
+      - 'tests/test_original_server_autogamesystem_phase660.cpp'
+      - 'research/tools/audit_original_server_autogamesystem_phase660.py'
+      - '.github/workflows/sin-phase660-server-autogame.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  phase660-sanitized:
+    name: Original server AutoGameSystem lifecycle ASan and UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate invented-byte original PE audit
+        run: |
+          python3 -m py_compile research/tools/audit_original_server_autogamesystem_phase660.py
+          python3 research/tools/audit_original_server_autogamesystem_phase660.py --self-test
+      - name: Compile original AutoGameSystem constructor and init with Clang sanitizers
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude \
+            src/original_server_autogamesystem_phase660.cpp \
+            tests/test_original_server_autogamesystem_phase660.cpp \
+            -o /tmp/sin_phase660_sanitized
+      - name: Exercise original system initialization and failure cases
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: /tmp/sin_phase660_sanitized
