@@ -151,6 +151,38 @@ asserted without actual Windows process evidence. Do **not** divert
 future research cycles into inventing registered provider callbacks
 without first finding evidence that the original list is populated.
 
+## Owner-side read-only Windows runtime observation
+
+The SHA256-gated Windows retail factory probe from Phase657 is now
+extended in this branch to read the actual 32-bit registration-head
+DWORD at **client DLL module base + RVA `0x369374`** (corresponding
+to original VA `0x24369374`) after the original trusted DLL has
+loaded. It follows up to 64 registration entries using bounded
+`ReadProcessMemory` calls, stopping on inaccessible memory, cycles,
+overflow, or the cap. It reports only the head-populated flag,
+entry counts, required/optional target counts and whether each entry
+contains two nonnull callback pointers. It **never calls a resolver,
+release function, or any unknown vtable slot**, and it does not print
+process addresses or original code bytes.
+
+In the successful Phase659 Windows Actions run, download artifact
+`sin-pc-win32-original-factory-probe-phase657`, extract its executable,
+and run it against **the exact unchanged original** `client.dll`
+and `server.dll` under Windows x86 with the game's runtime
+dependencies available:
+
+```powershell
+.\sin_pc_original_factory_abi_probe_phase657.exe "C:\SiN\bin\client.dll" "C:\SiN\bin\server.dll"
+```
+
+The `phase659_registry_snapshot` JSONL record provides an actual
+owner-side *post-DllMain* observation of whether this list is populated
+at load time. This does **not** capture the list state later during
+`VClient011::Init`: dynamic registration after `DllMain` remains
+possible. The probe's SHA256 check must be satisfied *before*
+`LoadLibraryEx`. Its executable is compiled in public CI, but the
+retail binaries are not uploaded or executed by GitHub Actions.
+
 ## Next runtime boundary
 
 The native client Init has now revealed and modeled its required
