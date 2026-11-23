@@ -1842,3 +1842,37 @@ else()
 endif()
 add_test(NAME sin_pc_original_symbol_rebalance_phase642
   COMMAND $<TARGET_FILE:sin_pc_original_symbol_rebalance_phase642_tests>)
+
+# Phase643 native MSVC Win32 x86 original SiN symbol enumeration and
+# full Phase638..643 synthetic registration tree integration.
+add_library(sin_pc_original_symbol_enumeration_phase643 STATIC
+  ../../src/original_symbol_enumeration_phase643.cpp)
+target_include_directories(sin_pc_original_symbol_enumeration_phase643
+  PUBLIC ../../include)
+set_target_properties(sin_pc_original_symbol_enumeration_phase643 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_symbol_enumeration_phase643
+  sin_pc_original_symbol_enumeration_phase643)
+add_executable(sin_pc_original_symbol_enumeration_phase643_tests
+  ../../tests/test_original_symbol_enumeration_phase643.cpp)
+target_link_libraries(sin_pc_original_symbol_enumeration_phase643_tests PRIVATE
+  sin_pc_original_symbol_enumeration_phase643
+  sin_pc_original_symbol_slot_allocation_phase639
+  sin_pc_original_symbol_tree_link_phase640
+  sin_pc_original_symbol_rebalance_phase642
+  sin_pc_original_symbol_rotations_phase641
+  sin_pc_original_symbol_forward_phase638
+  sin_pc_original_elite_range_registration_phase637)
+set_target_properties(sin_pc_original_symbol_enumeration_phase643_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_symbol_enumeration_phase643_tests
+  sin_pc_original_symbol_enumeration_phase643_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_symbol_enumeration_phase643_tests
+    PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_symbol_enumeration_phase643_tests
+    PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_symbol_enumeration_phase643
+  COMMAND $<TARGET_FILE:sin_pc_original_symbol_enumeration_phase643_tests>)

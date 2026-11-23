@@ -5560,3 +5560,33 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase643: complete original 255-byte 2006 SiN symbol search/parent-side
+# enumerator, with typed original comparator callback and real full-chain tests.
+add_library(sin_original_symbol_enumeration_phase643 STATIC
+  src/original_symbol_enumeration_phase643.cpp)
+target_include_directories(sin_original_symbol_enumeration_phase643 PUBLIC include)
+target_compile_options(sin_original_symbol_enumeration_phase643 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_symbol_enumeration_phase643_tests
+    tests/test_original_symbol_enumeration_phase643.cpp)
+  target_link_libraries(sin_original_symbol_enumeration_phase643_tests PRIVATE
+    sin_original_symbol_enumeration_phase643
+    sin_original_symbol_slot_allocation_phase639
+    sin_original_symbol_tree_link_phase640
+    sin_original_symbol_rebalance_phase642
+    sin_original_symbol_rotations_phase641
+    sin_original_symbol_forward_phase638
+    sin_original_elite_range_registration_phase637)
+  target_compile_options(sin_original_symbol_enumeration_phase643_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_symbol_enumeration_phase643_tests
+    COMMAND sin_original_symbol_enumeration_phase643_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_symbol_enumeration_phase643_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_symbol_enumeration_phase643.py
+        --self-test)
+  endif()
+endif()
