@@ -5322,3 +5322,30 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Gameplay Phase634: two COMPLETE SHA256-authenticated original Elite terminal
+# event helper methods. The integration test links actual compiled source
+# references for Phase632->633->634, including 3/4/5 flag bit writes.
+add_library(sin_original_elite_event47_terminal_phase634 STATIC
+  src/original_elite_event47_terminal_phase634.cpp)
+target_include_directories(sin_original_elite_event47_terminal_phase634 PUBLIC include)
+target_compile_options(sin_original_elite_event47_terminal_phase634 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_elite_event47_terminal_phase634_tests
+    tests/test_original_elite_event47_terminal_phase634.cpp)
+  target_link_libraries(sin_original_elite_event47_terminal_phase634_tests PRIVATE
+    sin_original_elite_event47_terminal_phase634
+    sin_original_elite_event47_helpers_phase633
+    sin_original_elite_secondary_event_phase632)
+  target_compile_options(sin_original_elite_event47_terminal_phase634_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_elite_event47_terminal_phase634_tests
+    COMMAND sin_original_elite_event47_terminal_phase634_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_elite_event47_terminal_phase634_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_elite_event47_terminal_phase634.py
+        --self-test)
+  endif()
+endif()
