@@ -11,6 +11,7 @@ on:
       - 'include/sin_compat/fixed_difficulty_trigger_phase663.hpp'
       - 'tests/test_fixed_difficulty_trigger_phase663.cpp'
       - 'tests/test_fixed_difficulty_phase663.cpp'
+      - 'research/tools/audit_sin_fixed_difficulty_gate_phase663.py'
       - '.github/workflows/sin-phase663-fixed-difficulty.yml'
 permissions:
   contents: read
@@ -21,6 +22,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Audit original-free dd_enabled gate and mutation witnesses
+        run: |
+          python3 -m py_compile research/tools/audit_sin_fixed_difficulty_gate_phase663.py
+          python3 research/tools/audit_sin_fixed_difficulty_gate_phase663.py --self-test
       - name: Compile fixed difficulty and original metric consumers
         run: |
           clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
