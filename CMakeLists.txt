@@ -6071,3 +6071,27 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase659: original SiN client app-system 16-byte linked-list lifecycle.
+add_library(sin_original_client_appsystem_phase659 STATIC
+  src/original_client_appsystem_phase659.cpp)
+target_include_directories(sin_original_client_appsystem_phase659 PUBLIC include)
+target_compile_features(sin_original_client_appsystem_phase659 PUBLIC cxx_std_17)
+target_compile_options(sin_original_client_appsystem_phase659 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_original_client_appsystem_phase659_tests
+    tests/test_original_client_appsystem_phase659.cpp)
+  target_link_libraries(sin_original_client_appsystem_phase659_tests PRIVATE
+    sin_original_client_appsystem_phase659)
+  target_compile_options(sin_original_client_appsystem_phase659_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_original_client_appsystem_phase659_tests
+    COMMAND sin_original_client_appsystem_phase659_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_original_client_appsystem_phase659_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_client_appsystem_phase659.py
+        --self-test)
+  endif()
+endif()
