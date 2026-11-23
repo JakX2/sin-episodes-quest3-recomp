@@ -2445,3 +2445,28 @@ else()
 endif()
 add_test(NAME sin_pc_original_client_appsystem_phase659
   COMMAND $<TARGET_FILE:sin_pc_original_client_appsystem_phase659_tests>)
+
+# Phase660: Windows MSVC native x86 original server AutoGameSystem
+# pending-registration / initialization gate compatibility source model.
+add_library(sin_pc_original_server_autogamesystem_phase660 STATIC
+  ../../src/original_server_autogamesystem_phase660.cpp)
+target_include_directories(sin_pc_original_server_autogamesystem_phase660 PUBLIC ../../include)
+set_target_properties(sin_pc_original_server_autogamesystem_phase660 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_autogamesystem_phase660
+  sin_pc_original_server_autogamesystem_phase660)
+add_executable(sin_pc_original_server_autogamesystem_phase660_tests
+  ../../tests/test_original_server_autogamesystem_phase660.cpp)
+target_link_libraries(sin_pc_original_server_autogamesystem_phase660_tests PRIVATE
+  sin_pc_original_server_autogamesystem_phase660)
+set_target_properties(sin_pc_original_server_autogamesystem_phase660_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_original_server_autogamesystem_phase660_tests
+  sin_pc_original_server_autogamesystem_phase660_tests)
+if(MSVC)
+  target_compile_options(sin_pc_original_server_autogamesystem_phase660_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_original_server_autogamesystem_phase660_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_original_server_autogamesystem_phase660
+  COMMAND $<TARGET_FILE:sin_pc_original_server_autogamesystem_phase660_tests>)
