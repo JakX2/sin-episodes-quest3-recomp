@@ -6037,3 +6037,12 @@ if(BUILD_TESTING)
   add_test(NAME sin_original_full_name_registry_chain_phase656_tests
     COMMAND sin_original_full_name_registry_chain_phase656_tests)
 endif()
+
+# Phase657 public invented-byte PE32 interface registry/ABI mutation test.
+# Owner's original 2006 client.dll/server.dll are NOT required by public CI.
+if(BUILD_TESTING AND Python3_Interpreter_FOUND)
+  add_test(NAME sin_original_createinterface_abi_phase657_audit_synthetic
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_createinterface_phase657.py
+      --self-test)
+endif()
