@@ -53,3 +53,11 @@ jobs:
             build-pc-win32/bin/Release/client.dll
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload retail SHA-gated factory ABI probe (NO original DLLs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sin-pc-win32-original-factory-probe-phase657
+          path: build-pc-win32/bin/Release/sin_pc_original_factory_abi_probe_phase657.exe
+          if-no-files-found: error
+          retention-days: 14
