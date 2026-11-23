@@ -32,6 +32,58 @@ original f32 values/endpoints for a conservative first playable
 prototype. No in-game balance or original-engine runtime test has
 yet been performed.
 
+## New retail finding: the original `dd_enabled` branch is real
+
+The original 2006 `server.dll` contains a genuine ConVar constructor
+at `0x223C2F50` (**37 complete original executable bytes**, full
+SHA256 `24701d080911d0d676f8243b6b4006b69a5cece74c47ebdc5ffb3f14d38b7963`).
+It registers exact name `dd_enabled` (literal `0x2245CF0C`),
+default string **`1`** (literal `0x223DC2C0`), flags
+`0x4000`, and ConVar object `0x22592390`. Its parent
+pointer is at `0x225923A8`, using the original parent-pointer
+contract of Phase80.
+
+More importantly, original **20 complete executable bytes** at
+`0x222BC47F` (whole-region SHA256
+`4aa756cc66c476fb23302fad1e2baeb1c6acc6e8946d96bf919cc21842490cf8`)
+verify the following actual native control flow:
+
+```text
+MOV EDX, [0x225923A8]       ; original dd_enabled parent pointer
+CMP DWORD [EDX+0x2C], 0     ; effective original enabled value
+JE  0x222BC493              ; zero skips update, rejoins epilogue
+PUSH EBP
+MOV ECX, ESI                ; difficulty manager this
+CALL 0x222BC0E0             ; original downstream update routine
+0x222BC493: ... RET 0x0C
+```
+
+Thus setting the **original `dd_enabled=0` demonstrably suppresses
+one real, nontrivial manager-update call** while preserving the
+surrounding routine and its normal exit. The original `0x222BC0E0`
+calls several other manager/advisor helpers; its complete downstream
+effects have not been reconstructed. An independent original `.text`
+disassembly identified the above direct callsite as its only
+instruction-aligned **direct** `CALL rel32` to that address.
+This does not exclude possible indirect calls or other unguarded
+manager behavior.
+
+This strongly supports a minimally invasive port strategy:
+**retain original manager-facing interfaces, set `dd_enabled=0`
+at startup, and explicitly publish the fixed 14-variable profile
+for the selected skill**. That last publication is essential:
+disabling one update step is *not* evidence that initialization
+or archive restoration automatically produces the desired fixed
+profile. All source and test code remains opt-in until a genuine
+Windows runtime experiment verifies this.
+
+`research/tools/audit_sin_fixed_difficulty_gate_phase663.py`
+authenticates both complete original DLL SHA256s, the 37-byte
+ConVar registration and 20-byte manager-call gate, exact literal
+addresses, native branch target and downstream call target.
+It ships no original bytes. Public `--self-test` uses an invented
+address/code fixture and mutates every meaningful gate component.
+
 ## Why not just freeze `dd_challenge` to three values?
 
 The original 14-variable blend computes
