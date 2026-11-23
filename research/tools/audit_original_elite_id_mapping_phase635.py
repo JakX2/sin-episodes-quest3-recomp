@@ -30,6 +30,17 @@ CALL_EDGES=(
     (0x220398C3,VA,"Elite original flag-clear source-ID conversion"),
     (0x2203D2EE,VA,"Elite original state0 ID 0x21 conversion")
 )
+# Prove original static mapping-node setup and owner registration, without
+# pretending that the uninitialized .data tail contains runtime entries.
+INITIALIZATION_EDGES=(
+    (0x223C6A6F,0x22073610,"initialize original embedded mapping list head"),
+    (0x22355AD9,0x22088F10,"register original mapping owner and range lists")
+)
+INITIALIZATION_WITNESSES=(
+    (0x223C6A68,"6a00"), # original static initializer argument zero
+    (0x223C6A6A,"b92cc35922"), # ECX = original node VA
+    (0x22355AD4,"b9f8c25922") # ECX = owner VA
+)
 WITNESSES=(
     (0x22073700,"8b542404"), # original [ESP+4] source ID
     (0x22073704,"83faff"), # source ID == -1 early return
@@ -81,9 +92,9 @@ def verify(read):
     vslot=ELITE_VTABLE+VIRTUAL760_OFFSET
     if struct.unpack("<I",read(vslot,4))[0]!=THUNK_VA:
         raise VerificationError("original Elite vtable +0x760 entry changed")
-    for site,target,_ in CALL_EDGES:
+    for site,target,_ in CALL_EDGES+INITIALIZATION_EDGES:
         check_call(read,site,target)
-    for site,hexcode in WITNESSES+CALLER_WITNESSES:
+    for site,hexcode in WITNESSES+CALLER_WITNESSES+INITIALIZATION_WITNESSES:
         check_opcode(read,site,hexcode)
 def verify_original(server,client):
     if hashlib.sha256(server).hexdigest()!=SERVER_SHA256 or (
@@ -93,7 +104,8 @@ def verify_original(server,client):
     if pe.base!=0x22000000 or pe.section_of(VA)!=".text" or (
         pe.section_of(THUNK_VA)!=".text") or (
         pe.section_of(ELITE_VTABLE+VIRTUAL760_OFFSET)!=".rdata") or any(
-        pe.section_of(site)!=".text" for site,_,_ in CALL_EDGES
+        pe.section_of(site)!=".text" for site,_,_ in
+        CALL_EDGES+INITIALIZATION_EDGES
     ):
         raise VerificationError("original SiN PE32 x86 image/section identity mismatch")
     data_section=next((section for section in pe.sections
@@ -131,8 +143,13 @@ def verify_original(server,client):
             {"site":hex(site),"target":hex(target),"role":role}
             for site,target,role in CALL_EDGES
         ],
+        "verified_original_mapping_initialization_calls":[
+            {"site":hex(site),"target":hex(target),"role":role}
+            for site,target,role in INITIALIZATION_EDGES
+        ],
         "source_opcode_witnesses":len(WITNESSES),
         "caller_opcode_witnesses":len(CALLER_WITNESSES),
+        "initializer_opcode_witnesses":len(INITIALIZATION_WITNESSES),
         "source_range_layout":{
             "destination_first_offset":"0x0",
             "source_low_offset":"0x4",
