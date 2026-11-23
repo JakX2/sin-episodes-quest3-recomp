@@ -233,12 +233,47 @@ static bool original_live_entry_prefixes_match(HANDLE process,DWORD base) {
   }
   return true;
 }
+// Phase628 watch-lease policy: never overwrite another debugger's DR slots.
+// Windows may set a fixed/reserved DR7 control bit (for example 0x400).
+// Preserve that control, and change only our four local-enable bits.
+static bool update_owned_watch_registers(CONTEXT& ctx,DWORD base,bool enable) {
+  constexpr DWORD kEnableMask=0xffu;
+  constexpr DWORD kConditionMask=0xffff0000u;
+  constexpr DWORD kOwnershipMask=kDr7LocalExecWatch;
+  if(enable) {
+    if((ctx.Dr7 & (kEnableMask|kConditionMask))!=0u ||
+       ctx.Dr0!=0u || ctx.Dr1!=0u ||
+       ctx.Dr2!=0u || ctx.Dr3!=0u)
+      return false;
+    ctx.Dr0=base+kWatch[0].original_rva;
+    ctx.Dr1=base+kWatch[1].original_rva;
+    ctx.Dr2=base+kWatch[2].original_rva;
+    ctx.Dr3=base+kWatch[3].original_rva;
+    ctx.Dr7=(ctx.Dr7&~kEnableMask)|kOwnershipMask;
+    ctx.Dr6=0u;
+    return true;
+  }
+  const DWORD enabled=ctx.Dr7&kEnableMask;
+  if(enabled==0u)return true; // unarmed thread; no change
+  // Stop rather than wiping debugging state that isn't demonstrably ours.
+  if(enabled!=kOwnershipMask || (ctx.Dr7&kConditionMask)!=0u ||
+     ctx.Dr0!=base+kWatch[0].original_rva ||
+     ctx.Dr1!=base+kWatch[1].original_rva ||
+     ctx.Dr2!=base+kWatch[2].original_rva ||
+     ctx.Dr3!=base+kWatch[3].original_rva)
+    return false;
+  ctx.Dr7&=~kEnableMask;
+  ctx.Dr0=ctx.Dr1=ctx.Dr2=ctx.Dr3=0u;
+  ctx.Dr6=0u;
+  return true;
+}
 static bool set_watch_for_thread(DWORD tid,DWORD base,bool enable) {
   HANDLE thread=OpenThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT|
                           THREAD_SUSPEND_RESUME,FALSE,tid);
   if(!thread)return false;
-  // Debug events normally suspend all threads, but on detach/timeout
-  // the target might be executing, so explicitly suspend as well.
+  // This tool only examines game threads, never its own thread. Windows
+  // suspends the debuggee for each DEBUG_EVENT; this additionally freezes
+  // a thread during the timeout/detach path.
   if(SuspendThread(thread)==static_cast<DWORD>(-1)) {
     CloseHandle(thread);return false;
   }
@@ -246,41 +281,79 @@ static bool set_watch_for_thread(DWORD tid,DWORD base,bool enable) {
   ctx.ContextFlags=CONTEXT_DEBUG_REGISTERS;
   bool ok=GetThreadContext(thread,&ctx)!=FALSE;
   if(ok) {
-    if(enable && (ctx.Dr7&0xffu)!=0u)ok=false;
-    else {
-      if(enable) {
-        ctx.Dr0=base+kWatch[0].original_rva;
-        ctx.Dr1=base+kWatch[1].original_rva;
-        ctx.Dr2=base+kWatch[2].original_rva;
-        ctx.Dr3=base+kWatch[3].original_rva;
-        ctx.Dr7=kDr7LocalExecWatch;
-      } else {
-        ctx.Dr7=0;ctx.Dr0=ctx.Dr1=ctx.Dr2=ctx.Dr3=0;
-      }
-      ctx.Dr6=0;
-      ok=SetThreadContext(thread,&ctx)!=FALSE;
+    const CONTEXT original=ctx;
+    ok=update_owned_watch_registers(ctx,base,enable);
+    if(ok) {
+      if(ctx.Dr0!=original.Dr0 || ctx.Dr1!=original.Dr1 ||
+         ctx.Dr2!=original.Dr2 || ctx.Dr3!=original.Dr3 ||
+         ctx.Dr6!=original.Dr6 || ctx.Dr7!=original.Dr7)
+        ok=SetThreadContext(thread,&ctx)!=FALSE;
     }
   }
-  (void)ResumeThread(thread);
+  if(ResumeThread(thread)==static_cast<DWORD>(-1))ok=false;
   CloseHandle(thread);
   return ok;
 }
-static bool apply_all_threads(DWORD pid,DWORD base,bool enable) {
+enum class ArmResult {Armed,RejectedClean,FailedUnclean};
+static bool disarm_all_threads(DWORD pid,DWORD base) {
   HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,0);
   if(snapshot==INVALID_HANDLE_VALUE)return false;
   THREADENTRY32 entry{};
   entry.dwSize=sizeof(entry);
-  bool ok=Thread32First(snapshot,&entry)!=FALSE;
-  if(ok) {
-    do {
-      if(entry.th32OwnerProcessID==pid &&
-         !set_watch_for_thread(entry.th32ThreadID,base,enable)) {
-        ok=false;break;
-      }
-    } while(Thread32Next(snapshot,&entry));
+  bool first=Thread32First(snapshot,&entry)!=FALSE;
+  bool all_clean=first;
+  while(first) {
+    if(entry.th32OwnerProcessID==pid &&
+       !set_watch_for_thread(entry.th32ThreadID,base,false))
+      all_clean=false; // still attempt every other thread
+    if(!Thread32Next(snapshot,&entry)) {
+      if(GetLastError()!=ERROR_NO_MORE_FILES)all_clean=false;
+      break;
+    }
   }
   CloseHandle(snapshot);
-  return ok;
+  return all_clean;
+}
+// Keep the same rollback semantics in runtime AND deterministic CI.
+// Every attempted thread (including the failing one) is reverted.
+template<class Setter>
+static ArmResult arm_transaction(const std::vector<DWORD>& ids,Setter set) {
+  if(ids.empty())return ArmResult::RejectedClean;
+  std::vector<DWORD> attempted;
+  for(DWORD tid:ids) {
+    attempted.push_back(tid);
+    if(!set(tid,true)) {
+      bool clean=true;
+      for(DWORD previous:attempted) {
+        if(!set(previous,false))clean=false; // attempt all rollback steps
+      }
+      return clean?ArmResult::RejectedClean:ArmResult::FailedUnclean;
+    }
+  }
+  return ArmResult::Armed;
+}
+static ArmResult arm_all_threads(DWORD pid,DWORD base) {
+  HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,0);
+  if(snapshot==INVALID_HANDLE_VALUE)return ArmResult::RejectedClean;
+  THREADENTRY32 entry{};
+  entry.dwSize=sizeof(entry);
+  if(!Thread32First(snapshot,&entry)) {
+    CloseHandle(snapshot);
+    return ArmResult::RejectedClean;
+  }
+  std::vector<DWORD> tids;
+  do {
+    if(entry.th32OwnerProcessID==pid)tids.push_back(entry.th32ThreadID);
+  } while(Thread32Next(snapshot,&entry));
+  const DWORD enumeration_end=GetLastError();
+  CloseHandle(snapshot);
+  // No thread register has been modified yet. Reject an incomplete
+  // ToolHelp enumeration instead of arming only a subset of the process.
+  if(enumeration_end!=ERROR_NO_MORE_FILES)
+    return ArmResult::RejectedClean;
+  return arm_transaction(tids,[base](DWORD tid,bool enable) {
+    return set_watch_for_thread(tid,base,enable);
+  });
 }
 static int test_helpers() {
   if(kWatch[0].original_va-kRetailImageBase!=kWatch[0].original_rva ||
@@ -321,7 +394,60 @@ static int test_helpers() {
     return 8;
   }
   VirtualFree(fake,0,MEM_RELEASE);
-  std::puts("PASS Phase627 original-only Elite RVA pins, Win32 source-prefix negative mutation and CLI self-tests");
+
+  // The exact DR policy is tested with C++ synthetic CONTEXT values,
+  // never by writing the debugger's own live hardware registers.
+  CONTEXT virgin{};virgin.Dr7=0x400u; // Windows DR7 reserved bit
+  CONTEXT watch=virgin;
+  if(!update_owned_watch_registers(watch,0x40000000u,true))return 9;
+  if((watch.Dr7&0xffu)!=0x55u || (watch.Dr7&0x400u)==0u ||
+     watch.Dr0!=0x40000000u+kWatch[0].original_rva ||
+     watch.Dr3!=0x40000000u+kWatch[3].original_rva)return 10;
+  if(!update_owned_watch_registers(watch,0x40000000u,false))return 11;
+  if(watch.Dr7!=virgin.Dr7 ||
+     watch.Dr0!=0 || watch.Dr1!=0 ||
+     watch.Dr2!=0 || watch.Dr3!=0)return 12;
+  CONTEXT foreign=virgin;foreign.Dr7|=1u;
+  if(update_owned_watch_registers(foreign,0x40000000u,true) ||
+     update_owned_watch_registers(foreign,0x40000000u,false))return 13;
+  foreign=virgin;foreign.Dr0=0xC0FFEEu;
+  if(update_owned_watch_registers(foreign,0x40000000u,true))return 14;
+  foreign=virgin;foreign.Dr7|=0x00010000u;
+  if(update_owned_watch_registers(foreign,0x40000000u,true))return 15;
+  foreign=virgin;
+  if(!update_owned_watch_registers(foreign,0x40000000u,true))return 16;
+  foreign.Dr2^=1u;
+  if(update_owned_watch_registers(foreign,0x40000000u,false))return 17;
+
+  const std::vector<DWORD> tids{101u,102u,103u};
+  std::map<DWORD,bool> simulated;
+  const auto complete=arm_transaction(tids,[&](DWORD tid,bool enable){
+    simulated[tid]=enable;return true;
+  });
+  if(complete!=ArmResult::Armed ||
+     !simulated[101u] || !simulated[102u] || !simulated[103u])
+    return 18;
+  simulated.clear();
+  // A failed call could partially install the watch on its own thread.
+  // Rollback therefore MUST include all previously attempted threads.
+  const auto recovered=arm_transaction(tids,[&](DWORD tid,bool enable){
+    simulated[tid]=enable;
+    return !enable || tid!=102u;
+  });
+  if(recovered!=ArmResult::RejectedClean ||
+     simulated[101u] || simulated[102u] ||
+     simulated.find(103u)!=simulated.end())return 19;
+  simulated.clear();
+  const auto unsafe=arm_transaction(tids,[&](DWORD tid,bool enable){
+    if(!enable && tid==101u)return false;
+    simulated[tid]=enable;
+    return !enable || tid!=102u;
+  });
+  if(unsafe!=ArmResult::FailedUnclean || !simulated[101u])return 20;
+  if(arm_transaction(std::vector<DWORD>{},
+       [](DWORD,bool){return true;})!=ArmResult::RejectedClean)
+    return 21;
+  std::puts("PASS Phase628 synthetic DR ownership, corrupt-lease refusal, all-thread rollback and unsafe partial-watch detection");
   return 0;
 }
 static int trace_original(Options options) {
@@ -366,11 +492,14 @@ static int trace_original(Options options) {
 
   DWORD base=0;
   bool verified=false,armed=false,missed_thread=false;
+  bool watch_armed_once=false,watch_abort=false,original_unloaded=false;
+  bool detach_ok=false;
   bool loader_break_handled=false;
   Counts counts;
   const ULONGLONG deadline=GetTickCount64()+options.timeout_ms;
   bool exited=false;
-  while(GetTickCount64()<deadline && counts.total<kMaxHits && !exited) {
+  while(GetTickCount64()<deadline && counts.total<kMaxHits &&
+        !exited && !original_unloaded) {
     DEBUG_EVENT event{};
     if(!WaitForDebugEvent(&event,350))continue;
     DWORD response=DBG_CONTINUE;
@@ -387,20 +516,43 @@ static int trace_original(Options options) {
           verified=true;
           log_json(out,pid,event.dwThreadId,"retail_server_sha256_verified",
                    base,0);
-          armed=apply_all_threads(pid,base,true);
+          const ArmResult arm=arm_all_threads(pid,base);
+          armed=arm==ArmResult::Armed;
+          watch_armed_once=armed;
+          if(!armed)missed_thread=true;
+          if(arm==ArmResult::FailedUnclean)watch_abort=true;
           log_json(out,pid,event.dwThreadId,
-                   armed?"elite_hardware_watch_armed":"elite_watch_arm_failed",
-                   armed?4u:0u,0);
+              armed?"elite_hardware_watch_armed":
+              (watch_abort?"elite_watch_partial_rollback_failed":
+                           "elite_watch_arm_rejected_clean"),
+              armed?4u:0u,0);
         }
       }
       if(file && file!=INVALID_HANDLE_VALUE)CloseHandle(file);
     } else if(event.dwDebugEventCode==CREATE_THREAD_DEBUG_EVENT) {
       if(armed && !set_watch_for_thread(event.dwThreadId,base,true)) {
         missed_thread=true;
+        watch_abort=true;
         log_json(out,pid,event.dwThreadId,"elite_thread_watch_failed",0,0);
       }
       // Windows itself closes this DEBUG_EVENT hThread when the
       // matching EXIT_THREAD_DEBUG_EVENT is continued. Do not close early.
+    } else if(event.dwDebugEventCode==UNLOAD_DLL_DEBUG_EVENT) {
+      const DWORD unloaded=static_cast<DWORD>(
+          reinterpret_cast<std::uintptr_t>(event.u.UnloadDll.lpBaseOfDll));
+      if(armed && unloaded==base) {
+        if(!disarm_all_threads(pid,base)) {
+          missed_thread=true;
+          watch_abort=true;
+          log_json(out,pid,event.dwThreadId,
+                   "elite_original_unload_disarm_failed",0,0);
+        } else {
+          armed=false;
+          original_unloaded=true;
+          log_json(out,pid,event.dwThreadId,
+                   "elite_original_server_unloaded",0,0);
+        }
+      }
     } else if(event.dwDebugEventCode==CREATE_PROCESS_DEBUG_EVENT) {
       if(event.u.CreateProcessInfo.hFile)
         CloseHandle(event.u.CreateProcessInfo.hFile);
@@ -422,12 +574,14 @@ static int trace_original(Options options) {
         if(!thread) {
           response=DBG_EXCEPTION_NOT_HANDLED;
           missed_thread=true;
+          watch_abort=true;
         } else {
           CONTEXT c{};c.ContextFlags=CONTEXT_CONTROL|CONTEXT_INTEGER|
                                      CONTEXT_DEBUG_REGISTERS;
           if(!GetThreadContext(thread,&c)) {
             response=DBG_EXCEPTION_NOT_HANDLED;
             missed_thread=true;
+            watch_abort=true;
           } else {
             DWORD hit=static_cast<DWORD>(c.Dr6)&0x0fu;
             int match=-1;
@@ -460,6 +614,7 @@ static int trace_original(Options options) {
               c.Dr6=0;
               if(!SetThreadContext(thread,&c)) {
                 missed_thread=true;
+                watch_abort=true;
                 response=DBG_EXCEPTION_NOT_HANDLED;
               } else response=DBG_CONTINUE;
             } else response=DBG_EXCEPTION_NOT_HANDLED;
@@ -477,21 +632,36 @@ static int trace_original(Options options) {
     if(!ContinueDebugEvent(event.dwProcessId,event.dwThreadId,response)) {
       log_json(out,pid,event.dwThreadId,"continue_debug_failed",
                GetLastError(),0);
-      missed_thread=true;break;
+      missed_thread=true;watch_abort=true;break;
     }
+    if(watch_abort)break;
   }
   if(!exited) {
-    if(armed) {
-      // A detached game must not retain hardware breakpoint registers.
-      if(!apply_all_threads(pid,base,false)) {
+    bool cleaned=true;
+    if((armed||watch_abort) && base!=0u) {
+      // A detach must NEVER leave an original thread with DR0..DR3 enabled.
+      cleaned=disarm_all_threads(pid,base);
+      if(cleaned)armed=false;
+      else {
+        missed_thread=true;
         log_json(out,pid,0,"watch_disarm_failed_detach_unsafe",0,0);
-        std::fprintf(stderr,
-          "Hardware watch disarm failed. Do not reuse this test session.\n");
       }
     }
-    if(!DebugActiveProcessStop(pid)) {
+    if(!cleaned) {
+      // Explicitly limited to an owner-confirmed disposable test process.
+      // Termination is preferable to releasing an uninspectable live game
+      // with hardware execute breakpoints possibly still installed.
+      const BOOL terminated=TerminateProcess(process.hProcess,0xE1628u);
+      log_json(out,pid,0,
+            terminated?"unsafe_watch_disposable_process_terminated":
+                       "unsafe_watch_process_termination_failed",
+            terminated?1u:GetLastError(),0);
+      (void)DebugActiveProcessStop(pid);
+    } else if(!DebugActiveProcessStop(pid)) {
       log_json(out,pid,0,"debugger_detach_failed",GetLastError(),0);
+      missed_thread=true;
     } else {
+      detach_ok=true;
       log_json(out,pid,0,"debugger_detached_game_continues",counts.total,0);
     }
   }
@@ -509,7 +679,10 @@ static int trace_original(Options options) {
               verified?1:0,armed?1:0,missed_thread?1:0,counts.total,
               counts.hits[0],counts.hits[1],counts.hits[2],counts.hits[3]);
   // No original callbacks observed is not a probe success.
-  return verified&&armed&&!missed_thread ? 0:4;
+  // A valid negative sample may contain ZERO Elite hits: that is a
+  // complete observation window, not a proof the NPC never spawns.
+  return verified&&watch_armed_once&&!missed_thread&&!watch_abort&&
+         (exited||detach_ok) ? 0:4;
 }
 } // namespace
 int wmain(int argc,wchar_t** argv) {
