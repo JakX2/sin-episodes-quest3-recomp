@@ -525,6 +525,83 @@ void test_complete_real_string_storage_growth_clear_and_reuse(){
  assert(missing.code==z::Code::Completed&&missing.handle==0xffffu);
  assert(h.get16(kViewOut)==0xffffu);
 }
+
+void test_deterministic_original_name_registry_stress(){
+ const std::vector<std::string> keys={
+   "Alpha","Bravo","Charlie","Delta","Echo",
+   "Foxtrot","Golf","Hotel","India"};
+ for(std::uint32_t seed=1u;seed<=32u;++seed){
+  Guest h;h.init();h.put32(m+4u,0u);h.put32(m+8u,0u);
+  q::TreeSearch search(h);q::BlockFit fit(h);q::LookupOrInsert lookup(h,search,fit);
+  c::Comparators cmp(h);f::Casefold casefold(h);
+  n::ArrayGrowth arrgrow(h);n::BlockArrayInsert append(h,arrgrow);
+  n::TreeInsert insert(h);
+  p::FindParent parent(h);p::AcquireSlot acquire(h);p::LinkNode link(h);
+  g::GrowSlots grow(h);g::ResolveSlot resolve(h);r::Rebalance balance(h);
+  z::ClearSlots clear(h);z::ReleaseBlocks release(h,clear);
+  z::FindNameView view(h);
+  h.comparator=&cmp;h.casefold=&casefold;h.lookup=&lookup;
+  h.native_growth=&arrgrow;h.native_append=&append;h.native_insertion=&insert;
+  h.native_parent=&parent;h.native_acquire=&acquire;h.native_link=&link;
+  h.native_slot_grow=&grow;h.native_slot_resolve=&resolve;
+  h.native_rebalance=&balance;h.native_search=&search;
+  std::vector<std::uint32_t> order;
+  for(std::uint32_t i=0u;i<keys.size();++i)order.push_back(i);
+  std::uint32_t state=0x9e3779b9u^seed;
+  for(std::size_t i=order.size()-1u;i>0u;--i){
+   state^=state<<13u;state^=state>>17u;state^=state<<5u;
+   std::swap(order[i],order[state%(i+1u)]);
+  }
+  for(std::uint32_t index:order){
+   const auto name_va=0x7000u+index*0x80u;
+   h.string(name_va,keys[index]);
+   const auto added=lookup.run(m,output,name_va,ref);
+   assert(added.code==q::Code::Completed&&added.inserted);
+   const auto array=h.get32(m+4u);
+   const auto root=h.get16(m+0x10u);
+   assert(root!=0xffffu && h.get16(array+root*12u+6u)==1u);
+   std::vector<bool> seen(h.get16(m+0x16u),false);
+   const auto walk=[&](auto&& self,std::uint16_t id,std::uint16_t father)->unsigned{
+    if(id==0xffffu)return 1u;
+    assert(id<seen.size()&&!seen.at(id));seen[id]=true;
+    const auto p=array+id*12u;
+    assert(h.get16(p+4u)==father);
+    const auto left=h.get16(p),right=h.get16(p+2u),color=h.get16(p+6u);
+    assert(color<=1u);
+    if(color==0u){
+     if(left!=0xffffu)assert(h.get16(array+left*12u+6u)==1u);
+     if(right!=0xffffu)assert(h.get16(array+right*12u+6u)==1u);
+    }
+    const auto a=self(self,left,id),b=self(self,right,id);
+    assert(a==b);
+    return a+(color==1u?1u:0u);
+   };
+   assert(walk(walk,root,0xffffu)>=2u);
+   for(bool visited:seen)assert(visited);
+  }
+  assert(h.get16(m+0x16u)==9u&&h.get32(m+8u)==12u);
+  assert(h.slot_allocations==1u&&h.slot_reallocations==2u);
+  h.string(0x7a00u,"aLpHa");h.put32(0x7f00u,0u);
+  const auto found=view.run(m,0x7f10u,0x7a00u,0x7f00u);
+  assert(found.code==z::Code::Completed);
+  std::uint16_t alpha_slot=0xffffu;
+  for(std::uint32_t i=0u;i<order.size();++i)
+   if(order[i]==0u)alpha_slot=static_cast<std::uint16_t>(i);
+  assert(found.handle==alpha_slot&&h.get16(0x7f10u)==alpha_slot);
+  const auto storage=h.get32(m+4u),before=h.slot_reallocations;
+  const auto wiped=release.run(m);
+  assert(wiped.code==z::Code::Completed&&wiped.slots_recycled==9u);
+  assert(wiped.block_free_calls==1u&&h.freed_blocks.size()==1u);
+  assert(h.get16(m+0x14u)==0u&&h.get16(m+0x16u)==9u);
+  assert(h.get32(m+4u)==storage);
+  h.string(0x7b00u,"Reborn");
+  const auto returned=lookup.run(m,output,0x7b00u,ref);
+  assert(returned.code==q::Code::Completed&&returned.handle==0u&&returned.inserted);
+  assert(h.slot_reallocations==before);
+  assert(h.get16(m+0x14u)==1u && h.get16(m+0x16u)==9u);
+ }
+}
 } // namespace
 int main(){test_complete_original_nested_registration_and_search();
- test_block_fit_and_error_edges();test_complete_real_string_storage_growth_clear_and_reuse();return 0;}
+ test_block_fit_and_error_edges();test_complete_real_string_storage_growth_clear_and_reuse();
+ test_deterministic_original_name_registry_stress();return 0;}
