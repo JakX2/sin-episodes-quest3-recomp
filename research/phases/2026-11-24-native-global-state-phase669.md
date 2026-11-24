@@ -1,0 +1,11 @@
+# Phase 669: CGlobalState native service and original GameInit clear
+
+Authenticated original server SHA256 568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650, from owner Drive SE1/bin.zip. Both original DLL hashes matched. Direct objdump inspection established:
+
+- 0x22572c30 CGlobalState singleton, strings globalentity_t, CGlobalState, GLOBAL, m_list, state, levelName; dump_globals prints names, level and state.
+- 0x221f4980 (69 bytes, prior Phase88 hash) zeroes record count at +0x4c, conditionally frees 8-byte record vector unless growth mode -1, updates cached pointer then tail-calls symbol clear 0x2228f400.
+- 0x2228f400 clears tree via 0x2228ec50 then frees string-pool blocks through 0x2226e3e0 (imported g_pMemAlloc virtual +0x14), clears block count. Tree allocation and external vector storage behavior are not represented as native original C++ memory here.
+- 0x221f4820 add interns name and level, checks existing name, returns existing index unchanged or appends 8-byte record. 0x221f45c0 lookup; 0x221f4610 state setter blocked by byte +0x3c; 0x221f4640 level setter independent of disable, null means empty string. 0x221f4690/46b0/46e0 getters. 0x221f4c80/4c90 set/clear disable. Case-sensitive comparison from symbol comparator 0x2228e910.
+- Reset does not change the disable byte. Original slot1 calls reset before exec game.cfg; slot7 also calls reset.
+
+New versioned native SiN_GetGlobalStateApi uses owned strings and vector, preserving record semantics, not retail binary layout, allocator, symbol IDs, save format or entity wiring. Explicit port safeguards include bounded strings/record count, valid output buffers, no partial outputs on refusal, reentrant mutation refusal. Existing Phase668 configured start now clears the module-owned globals after preflight and before queueing game.cfg. No automatic level-transition clear, preserving registry until explicit reset. Tests exercise case, duplicates, state gate, level changes, invalid inputs, reset gate persistence, and configured start clear ordering. Both native Win32 and Linux loaded-module tests are covered. Original DLLInit/GameInit and map entity callbacks remain unimplemented; no playable claim.
