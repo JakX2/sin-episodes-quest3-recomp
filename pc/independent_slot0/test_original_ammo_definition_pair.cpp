@@ -57,6 +57,11 @@ int main(int argc,char** argv){
     assert(sa&&ra);
     tables::test::check(*sa,*ra,*serverNet,wn::test::example());
     std::puts("PASS native PE32 weapon SendTable/RecvTable graphs and scalar proxy dispatch (9 tables, 13 scalar fields)");
+    const auto getResolved=reinterpret_cast<tables::GetResolvedSendApi>(GetProcAddress(server,tables::resolved_send_export));
+    assert(getResolved&&!GetProcAddress(client,tables::resolved_send_export)&&!getResolved(0,sizeof(tables::ResolvedSendApi)));
+    const auto* resolved=getResolved(1,sizeof(tables::ResolvedSendApi));assert(resolved);
+    tables::test::check_resolved(*resolved);
+    std::puts("PASS native resolved weapon owner/recipient callbacks and stale handle rejection");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

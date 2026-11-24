@@ -5,6 +5,7 @@
 // live owner/recipient callbacks. Original absolute addresses are evidence.
 #include "server_send_datatable_core.h"
 #include "weapon_network_contract.h"
+#include "server_entity_handle_core.h"
 #include <cstddef>
 #include <cstdint>
 
@@ -67,6 +68,7 @@ inline constexpr int table_counts[TableCount]={5,4,7,1,1,1,1,1,1};
 inline constexpr std::uint32_t version=1;
 inline constexpr char send_export[]="SiN_GetWeaponSendGraphApi";
 inline constexpr char recv_export[]="SiN_GetWeaponRecvGraphApi";
+inline constexpr char resolved_send_export[]="SiN_GetResolvedWeaponSendGraphApi";
 struct SendBindings {
     s::SendTable* base_animating;
     // Real host must implement the original eligibility and live handle
@@ -77,6 +79,18 @@ struct SendBindings {
     s::VarProxy owner_handle;
 };
 struct RecvBindings {RecvTable* base_animating;};
+// Borrowed live native dependencies; the host guarantees the registry
+// entry points at the original handle-interface subobject, and keeps
+// all objects/edict storage stable for the synchronous engine callbacks.
+// No original fixed address or engine-wide global is accessed.
+struct ResolvedSendBindings {
+    s::SendTable* base_animating;
+    void* engine_server; // original VEngineServer021
+    const sin_independent::EntityHandleEntry* entries;
+    std::uint32_t entry_count;
+    const void* edict_base; // original 20-byte edict array, including world
+    std::uint32_t max_clients;
+};
 template<class Table> struct View {void* handle;Table* tables[TableCount];};
 using SendView=View<s::SendTable>;
 using RecvView=View<RecvTable>;
@@ -92,4 +106,6 @@ using SendApi=GraphApi<SendBindings,SendView>;
 using RecvApi=GraphApi<RecvBindings,RecvView>;
 using GetSendApi=const SendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetRecvApi=const RecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using ResolvedSendApi=GraphApi<ResolvedSendBindings,SendView>;
+using GetResolvedSendApi=const ResolvedSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
