@@ -249,6 +249,12 @@ int main(int argc,char** argv){
     assert(dispScreen&&!getDispScreen(0,sizeof(tables::DispenserScreenApi))&&!getDispScreen(1,0));
     tables::test::check_dispenser_screen(*dispenser,*dispScreen);
     std::puts("PASS native dispenser VGUI screen placement/lifecycle and original restore decisions");
+    const auto getPlayerHeal=reinterpret_cast<tables::GetPlayerHealApi>(GetProcAddress(server,tables::player_heal_export));
+    assert(getPlayerHeal&&!GetProcAddress(client,tables::player_heal_export));
+    const auto* playerHeal=getPlayerHeal(1,sizeof(tables::PlayerHealApi));
+    assert(playerHeal&&!getPlayerHeal(0,sizeof(tables::PlayerHealApi))&&!getPlayerHeal(1,0));
+    tables::test::check_player_heal(*playerHeal,*pickup);
+    std::puts("PASS native player slot57 heal, overhealth reset, preclamp health event and integrated MegaHealth pickup");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

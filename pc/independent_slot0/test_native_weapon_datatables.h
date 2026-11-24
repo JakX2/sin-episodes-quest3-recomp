@@ -2470,4 +2470,64 @@ inline void check_dispenser_screen(const DispenserApi& disp,const DispenserScree
     assert(idle()==0&&disp.acknowledge(&ctrl));expect({});
 }
 
+struct PlayerHealFixture {
+    HologramControl* ctrl=nullptr;
+    unsigned events[16]{},count=0,fail=0;
+    int event_health=0,event_delta=0;
+    unsigned event_flags=0;
+    bool push(unsigned e){assert(ctrl->busy&&count<16);events[count++]=e;return e!=fail;}
+};
+inline int __cdecl ph_max(void* ctx,void* object) noexcept {
+    auto& f=*static_cast<PlayerHealFixture*>(ctx);assert(f.ctrl->object==object);return f.push(1);
+}
+inline int __cdecl ph_health(void* ctx,void* object) noexcept {
+    auto& f=*static_cast<PlayerHealFixture*>(ctx);assert(f.ctrl->object==object);return f.push(2);
+}
+inline int __cdecl ph_player(void* ctx,void* object,unsigned* out) noexcept {
+    auto& f=*static_cast<PlayerHealFixture*>(ctx);assert(f.ctrl->object==object);*out=1;return f.push(3);
+}
+inline int __cdecl ph_event(void* ctx,void* object,int health,int delta,unsigned flags) noexcept {
+    auto& f=*static_cast<PlayerHealFixture*>(ctx);assert(f.ctrl->object==object);
+    f.event_health=health;f.event_delta=delta;f.event_flags=flags;return f.push(4);
+}
+inline int __cdecl ph_fade(void* ctx,void* object,const unsigned char rgba[4],float duration,float hold,unsigned flags) noexcept {
+    auto& f=*static_cast<PlayerHealFixture*>(ctx);assert(f.ctrl->object==object);
+    assert(rgba[0]==0&&rgba[1]==0&&rgba[2]==128&&rgba[3]==64&&duration==1&&hold==0.5f&&flags==1);
+    return f.push(5);
+}
+inline void check_player_heal(const PlayerHealApi& api,const HealthPickupApi& pickup_api){
+    alignas(4) unsigned char player[0x151c]{},item[0x4cc]{};
+    HologramControl pc{player,sizeof(player)},ic{item,sizeof(item)};
+    PlayerHealFixture f{&pc};PlayerHealBindings b{&f,&ph_max,&ph_health,&ph_player,&ph_event,&ph_fade};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto set=[&](unsigned off,std::uint32_t value){std::memcpy(player+off,&value,4);};
+    const auto get=[&](unsigned off){std::uint32_t value=0;std::memcpy(&value,player+off,4);return value;};
+    int accepted=9;const auto take=[&](float v,unsigned flags=0){return api.take(&pc,&b,v,flags,&accepted);};
+    set(0x98,100);set(0x9c,90);set(0x9d0,0xffffffffu);
+    assert(take(25.5f,0x400001)==1&&!accepted&&get(0x9d0)==0xffffffffu);expect({});
+    set(0x94,1);assert(take(25.5f,0x400001)==1&&!accepted&&get(0x9d0)==0xffbffffeu);expect({});
+    set(0x94,2);set(0x16c,1);set(0x9d0,0xffffffffu);
+    assert(take(25.5f,0x400001)==1&&accepted==1&&get(0x9c)==100&&get(0x9d0)==0xffbffffeu);
+    assert(f.event_health==115&&f.event_delta==25&&f.event_flags==0x400001);expect({2,3,4,2,5});
+    assert(take(3)==1&&!accepted);expect({});
+    set(0x9c,99);assert(take(0.75f)==1&&!accepted&&get(0x9c)==99&&f.event_delta==0);expect({3,4});
+    set(0x98,150);player[0x12a1]=1;set(0x9c,100);
+    assert(take(10)==1&&accepted==1&&get(0x9c)==110&&get(0x98)==150&&!player[0x12a1]);expect({2,3,4,5});
+    assert(take(10)==1&&!accepted&&get(0x9c)==110&&get(0x98)==100);expect({1});
+    set(0x9c,90);f.fail=5;assert(take(5)==-1&&pc.blocked&&get(0x9c)==95);expect({2,3,4,5});
+    assert(take(5)==0&&pickup_api.acknowledge(&pc));expect({});f.fail=0;
+    // Integrated MegaHealth: pickup uses the native slot57 while both
+    // object controls remain busy, with no host heal callback.
+    HealthPickupFixture pf{&ic,&pc};pf.kind=HealthPickupKind::Mega;pf.skill=50.75f;
+    pf.expected_class="item_healthmega";const char* name=pf.expected_class;std::memcpy(item+0xc,&name,4);
+    HealthPickupBindings pb{&pf,&pickup_skill_test,&pickup_dirty_test,nullptr,&pickup_message_test,
+        &pickup_sound_test,&pickup_respawn_query,&pickup_respawn_test,&pickup_remove_test};
+    unsigned consumed=0;
+    assert(api.pickup(&ic,&pc,&pb,&b,HealthPickupKind::Mega,&consumed)==1&&consumed&&get(0x98)==150&&get(0x9c)==145&&!player[0x12a1]);
+    expect({2,3,4,5});
+    constexpr unsigned pickup_events[]={1,2,4,5,6,8};
+    assert(pf.count==6&&!std::memcmp(pf.events,pickup_events,sizeof(pickup_events)));
+    assert(api.take(&pc,&b,1,0,&accepted)==1&&!accepted&&get(0x98)==100&&get(0x9c)==145);expect({1});
+}
+
 }

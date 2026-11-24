@@ -1954,10 +1954,67 @@ int __cdecl health_set_api(HologramControl* player,const HealthPickupBindings* h
     player->busy=1;
     return disp_finish(player,health_set_max(player->object,*host,maximum));
 }
-int __cdecl health_pickup(HologramControl* item,HologramControl* player,const HealthPickupBindings* b,
-        HealthPickupKind kind,unsigned* accepted) noexcept {
+
+bool heal_bindings(const PlayerHealBindings* b) noexcept {
+    return b&&b->dirty_max&&b->dirty_health&&b->is_player&&b->health_event&&b->fade;
+}
+int health_int_sum(int a,int b) noexcept {
+    const auto raw=static_cast<std::uint32_t>(a)+static_cast<std::uint32_t>(b);
+    int result=0;std::memcpy(&result,&raw,4);return result;
+}
+int health_int_delta(int a,int b) noexcept {
+    const auto raw=static_cast<std::uint32_t>(a)-static_cast<std::uint32_t>(b);
+    int result=0;std::memcpy(&result,&raw,4);return result;
+}
+bool tracked_health(void* player,const PlayerHealBindings& b,int value) noexcept {
+    if(hologram_read<int>(player,0x9c)==value)return true;
+    if(!b.dirty_health(b.context,player))return false;
+    hologram_write(player,0x9c,value);return true;
+}
+bool native_take_health(void* player,const PlayerHealBindings& b,float amount,unsigned flags,int& accepted) noexcept {
+    accepted=0;
+    const double trunc=std::trunc(static_cast<double>(amount));
+    if(!std::isfinite(amount)||trunc<(std::numeric_limits<int>::min)()||trunc>(std::numeric_limits<int>::max)())return false;
+    // CBasePlayer::TakeHealth 22246860 clears the eligible damage bits
+    // even if the later base health addition refuses the request.
+    if(hologram_read<int>(player,0x94)!=0)
+        hologram_write(player,0x9d0,hologram_read<std::uint32_t>(player,0x9d0)&~(flags&0xffc07fffu));
+    if(!hologram_read<unsigned char>(player,health_over)&&hologram_read<int>(player,health_max)>100){
+        HealthPickupBindings max_binding{};max_binding.context=b.context;max_binding.dirty_player=b.dirty_max;
+        if(!health_set_max(player,max_binding,100))return false;
+    }
+    // Combat-character gate followed by CBaseEntity::TakeHealth.
+    if(!hologram_read<std::uint32_t>(player,0x16c)||hologram_read<int>(player,0x94)<2)return true;
+    const int previous=hologram_read<int>(player,0x9c);
+    if(previous>=hologram_read<int>(player,health_max))return true;
+    if(!tracked_health(player,b,health_int_sum(previous,static_cast<int>(trunc))))return false;
+    unsigned is_player=0;
+    if(!b.is_player(b.context,player,&is_player)||is_player>1)return false;
+    if(is_player){
+        const int current=hologram_read<int>(player,0x9c);
+        if(!b.health_event(b.context,player,current,health_int_delta(current,previous),flags))return false;
+    }
+    const int maximum=hologram_read<int>(player,health_max);
+    if(hologram_read<int>(player,0x9c)>maximum&&!tracked_health(player,b,maximum))return false;
+    if(health_int_delta(hologram_read<int>(player,0x9c),previous)==0)return true;
+    constexpr unsigned char rgba[]={0,0,128,64};
+    if(!b.fade(b.context,player,rgba,1.0f,0.5f,1))return false;
+    if(hologram_read<int>(player,0x9c)>100)
+        hologram_write(player,health_over,static_cast<unsigned char>(0));
+    accepted=1;return true;
+}
+int __cdecl player_take(HologramControl* player,const PlayerHealBindings* b,float amount,unsigned flags,int* accepted) noexcept {
+    const double trunc=std::trunc(static_cast<double>(amount));
+    if(!health_control(player,0x12a4)||!heal_bindings(b)||!accepted||!std::isfinite(amount)||
+       trunc<(std::numeric_limits<int>::min)()||trunc>(std::numeric_limits<int>::max)())return 0;
+    player->busy=1;const auto host=*b;int result=0;
+    const bool ok=native_take_health(player->object,host,amount,flags,result);
+    *accepted=result;return disp_finish(player,ok);
+}
+int health_pickup_impl(HologramControl* item,HologramControl* player,const HealthPickupBindings* b,
+        const PlayerHealBindings* native,HealthPickupKind kind,unsigned* accepted) noexcept {
     if(!health_control(item,0x4cc)||!health_control(player,0x12a4)||item==player||item->object==player->object||
-        !b||!b->skill_amount||!b->dirty_player||!b->heal||!b->pickup_message||!b->pickup_sound||
+        !b||!b->skill_amount||!b->dirty_player||(!native&&!b->heal)||(native&&!heal_bindings(native))||!b->pickup_message||!b->pickup_sound||
         !b->should_respawn||!b->respawn||!b->remove||!accepted||static_cast<unsigned>(kind)>2)return 0;
     item->busy=player->busy=1;
     const auto host=*b;
@@ -1981,7 +2038,8 @@ int __cdecl health_pickup(HologramControl* item,HologramControl* player,const He
         amount=static_cast<float>(increase);
     }
     int healed=0;
-    if(!host.heal(host.context,player->object,amount,0,&healed))return finish(false,0);
+    if(native){const auto services=*native;if(!native_take_health(player->object,services,amount,0,healed))return finish(false,0);}
+    else if(!host.heal(host.context,player->object,amount,0,&healed))return finish(false,0);
     // Mega's max change is NOT rolled back if heal returns zero.
     if(!healed)return finish(true,0);
     const char* classname=hologram_read<const char*>(item->object,0xc);
@@ -1994,6 +2052,16 @@ int __cdecl health_pickup(HologramControl* item,HologramControl* player,const He
     if(!host.should_respawn(host.context,item->object,&respawn)||respawn>1)return finish(false,1);
     return finish(respawn?host.respawn(host.context,item->object)!=0:host.remove(host.context,item->object)!=0,1);
 }
+int __cdecl health_pickup(HologramControl* item,HologramControl* player,const HealthPickupBindings* b,
+        HealthPickupKind kind,unsigned* accepted) noexcept {
+    return health_pickup_impl(item,player,b,nullptr,kind,accepted);
+}
+int __cdecl player_pickup(HologramControl* item,HologramControl* player,const HealthPickupBindings* b,
+        const PlayerHealBindings* native,HealthPickupKind kind,unsigned* accepted) noexcept {
+    if(!heal_bindings(native))return 0;
+    return health_pickup_impl(item,player,b,native,kind,accepted);
+}
+const PlayerHealApi player_heal_api{version,sizeof(PlayerHealApi),&player_take,&player_pickup};
 int __cdecl health_ack(HologramControl* ctrl) noexcept {
     if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x4cc||!hologram_writable(ctrl->object,ctrl->bytes>=0x12a4?0x12a4:0x4cc))return 0;
     ctrl->blocked=0;return 1;
@@ -3628,6 +3696,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Dispenser
 SiN_GetDispenserScreenApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(DispenserScreenApi)?&dispenser_screen_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPlayerHealApi=_SiN_GetPlayerHealApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerHealApi* __cdecl
+SiN_GetPlayerHealApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerHealApi)?&player_heal_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

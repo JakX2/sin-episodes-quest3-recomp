@@ -825,6 +825,8 @@ struct DispenserBindings {
     // Host updates normal absolute transforms and returns positions.
     int (__cdecl *position)(void*,void* entity,float xyz[3]) noexcept;
     int (__cdecl *clock)(void*,float*) noexcept;
+    // Semantic integer dose. The original vslot57 accepts a FLOAT;
+    // host adapters must convert amount numerically, never pass its bits.
     int (__cdecl *heal)(void*,void* user,int amount,unsigned flags,int* accepted) noexcept;
     int (__cdecl *sound)(void*,void* dispenser,DispenserSound) noexcept;
     // Host performs the original env_steam creation/attachment setup
@@ -964,4 +966,28 @@ struct DispenserScreenApi {
     int (__cdecl *restore)(HologramControl*,const DispenserScreenBindings*) noexcept;
 };
 using GetDispenserScreenApi=const DispenserScreenApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase724: original player slot57 and underlying health addition.
+// Host retains network dirty notification and event/fade delivery.
+inline constexpr char player_heal_export[]="SiN_GetPlayerHealApi";
+struct PlayerHealBindings {
+    void* context;
+    int (__cdecl *dirty_max)(void*,void* player) noexcept;
+    int (__cdecl *dirty_health)(void*,void* player) noexcept;
+    int (__cdecl *is_player)(void*,void* player,unsigned*) noexcept;
+    // Original 222b5ec0/222b6260 event boundary, before final max clamp.
+    int (__cdecl *health_event)(void*,void* player,int health,int delta,unsigned flags) noexcept;
+    int (__cdecl *fade)(void*,void* player,const unsigned char rgba[4],float duration,float hold,unsigned flags) noexcept;
+};
+struct PlayerHealApi {
+    std::uint32_t version,size;
+    // 1 completed, accepted=original boolean return; 0 preflight refusal;
+    // -1 partial failure. Reconcile with HealthPickupApi::acknowledge.
+    int (__cdecl *take)(HologramControl*,const PlayerHealBindings*,float amount,unsigned flags,int* accepted) noexcept;
+    // Integrated pickup: native slot57 runs inside the same busy scope,
+    // instead of the older opaque heal callback. No recursive entry.
+    int (__cdecl *pickup)(HologramControl* item,HologramControl* player,const HealthPickupBindings*,
+        const PlayerHealBindings*,HealthPickupKind,unsigned* accepted) noexcept;
+};
+using GetPlayerHealApi=const PlayerHealApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
