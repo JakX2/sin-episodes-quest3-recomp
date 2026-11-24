@@ -1147,7 +1147,7 @@ struct AggregateSendGraph {
     DerivedPlayerSendGraph derived;
     SendGraph weapons;
     ServerClassGraph classes;
-    bool extra_bound=false;
+    bool extra_bound=false,keypad_bound=false;
     Table* tables[aggregate_table_count]{};
     bool build(const AggregateSendBindings& b) noexcept {
         const auto* entries=b.entity.entries;const auto count=b.entity.entry_count;
@@ -1190,7 +1190,7 @@ int __cdecl create_aggregate(const AggregateSendBindings* b,AggregateSendView* o
 int __cdecl destroy_aggregate(AggregateSendView* v) noexcept {
     if(!v||!v->handle)return 0;
     auto* g=static_cast<AggregateSendGraph*>(v->handle);
-    if(g->extra_bound||!aggregate_matches(*g,*v))return 0;
+    if(g->extra_bound||g->keypad_bound||!aggregate_matches(*g,*v))return 0;
     // Preflight every owned object, including nested-only tables. No
     // partial teardown if an engine marker is still set anywhere.
     for(const auto* tab:g->tables)if(!tab||tab->precalc||tab->initialized||tab->written)return 0;
@@ -1353,6 +1353,106 @@ int __cdecl hologram_ack(HologramControl* ctrl) noexcept {
     ctrl->blocked=0;return 1;
 }
 const HologramServerApi hologram_api{version,sizeof(HologramServerApi),&hologram_dispatch,&hologram_ack};
+
+void __cdecl keypad_combination_send(const s::SendProp*,const void*,const void* data,s::DVariant* out,int,int){
+    if(!out)return;
+    const char* value=nullptr;
+    if(data)std::memcpy(&value,data,4);
+    if(!value)value="";
+    std::memcpy(out->words,&value,4);
+}
+struct KeypadSendGraph {
+    AggregateSendGraph* base=nullptr;
+    s::SendTable tables[KeyTableCount];
+    s::SendProp props[KeyTableCount][7];
+    ServerClassRecord records[KeyTableCount]{};
+    ServerClassRecord* head=nullptr;
+    bool build(AggregateSendGraph& core,const KeypadSendBindings&) noexcept {
+        for(unsigned i=0;i<KeyTableCount;++i)
+            if(!tables[i].Construct(props[i],keypad_counts[i],keypad_tables[i]))return false;
+        for(unsigned i=0;i<KeyTableCount;++i){
+            if(!s::MakeDataTableProp(props[i][0],"baseclass",0,i==KeyScreen?&core.entity.entity:&tables[KeyScreen],&s::DirectTable))return false;
+            auto& rec=records[i];rec.name=keypad_classes[i];rec.table=&tables[i];
+            auto** link=&head;
+            while(*link&&ascii_class_compare((*link)->name,rec.name)<=0)link=&(*link)->next;
+            rec.next=*link;*link=&rec;
+        }
+        auto* sc=props[KeyScreen];
+        anim_float(sc[1],"m_flWidth",0x39c,0,4,0,0,0);
+        anim_float(sc[2],"m_flHeight",0x3a0,0,4,0,0,0);
+        anim_int(sc[3],"m_nAttachmentIndex",0x3a8,5,1);
+        anim_int(sc[4],"m_nPanelName",0x3a4,8,1);
+        anim_int(sc[5],"m_fScreenFlags",0x3b0,3,1);
+        anim_int(sc[6],"m_nOverlayMaterial",0x3ac,10,1);
+        for(unsigned i:{KeyCode,KeyProp})anim_int(props[i][1],"m_bDisabled",0x3c8,1,1,true);
+        auto& combo=props[KeyCode][2];
+        combo.name="m_combination";combo.type=3;combo.offset=0x3cc;combo.flags=0x200;combo.scalarProxy=&keypad_combination_send;
+        auto& input=props[KeyProp][2];
+        input.name="m_sInput";input.type=3;input.offset=0x3c9;input.scalarProxy=&player_place_send;
+        return true;
+    }
+};
+
+int __cdecl create_keypad(const KeypadSendBindings* b,KeypadSendView* out) noexcept {
+    if(!b||!b->base||!b->base->handle||!out||out->handle||out->head||out->records)return 0;
+    for(auto* tab:out->tables)if(tab)return 0;
+    auto* base=static_cast<AggregateSendGraph*>(b->base->handle);
+    if(base->keypad_bound||!aggregate_matches(*base,*b->base))return 0;
+    auto* g=new(std::nothrow) KeypadSendGraph;
+    if(!g)return 0;
+    if(!g->build(*base,*b)){delete g;return 0;}
+    g->base=base;base->keypad_bound=true;
+    out->handle=g;out->head=g->head;out->records=g->records;
+    for(unsigned i=0;i<KeyTableCount;++i)out->tables[i]=&g->tables[i];
+    return 1;
+}
+int __cdecl destroy_keypad(KeypadSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<KeypadSendGraph*>(v->handle);
+    if(v->head!=g->head||v->records!=g->records)return 0;
+    for(unsigned i=0;i<KeyTableCount;++i){
+        const auto& tab=g->tables[i];const auto& rec=g->records[i];
+        if(v->tables[i]!=&tab||rec.class_id!=0||rec.instance_baseline!=0xffff||tab.precalc||tab.initialized||tab.written)return 0;
+    }
+    g->base->keypad_bound=false;delete g;*v={};return 1;
+}
+const KeypadSendApi keypad_api{version,sizeof(KeypadSendApi),&create_keypad,&destroy_keypad};
+
+int __cdecl keypad_enable(HologramControl* ctrl,const KeypadServerBindings* b,unsigned enabled) noexcept {
+    if(!ctrl||!b||!b->dirty||ctrl->busy||ctrl->blocked||enabled>1||ctrl->bytes<0x400||
+       !hologram_writable(ctrl->object,0x400))return 0;
+    const unsigned char old=hologram_read<unsigned char>(ctrl->object,0x3c8);
+    if((old==0)==(enabled!=0))return 1;
+    ctrl->busy=1;
+    if(!b->dirty(b->context,ctrl->object,0x3c8)){
+        ctrl->busy=0;ctrl->blocked=1;return -1;
+    }
+    hologram_write(ctrl->object,0x3c8,static_cast<unsigned char>(1-enabled));
+    ctrl->busy=0;return 1;
+}
+int __cdecl keypad_event(HologramControl* ctrl,const KeypadServerBindings* b,const char* event) noexcept {
+    if(!ctrl||!b||!b->output||ctrl->busy||ctrl->blocked||ctrl->bytes<0x400||
+       !hologram_writable(ctrl->object,0x400)||!event)return 0;
+    // Bounded C string, do not read a corrupt caller's arbitrary span.
+    char name[64]{};unsigned i=0;
+    for(;i<sizeof(name);++i){
+        if(!sin_independent::vgui_layout::Readable(event+i,1))return 0;
+        if(!(name[i]=event[i]))break;
+    }
+    if(i==sizeof(name))return 0;
+    unsigned offset=0;
+    if(!std::strcmp(name,"keypad_combo_entered"))offset=0x3d0;
+    else if(!std::strcmp(name,"bad_keypad_combo_entered"))offset=0x3e8;
+    else return 1;
+    ctrl->busy=1;
+    const int ok=b->output(b->context,ctrl->object,offset,ctrl->object,ctrl->object,0.0f);
+    ctrl->busy=0;if(!ok){ctrl->blocked=1;return -1;}return 1;
+}
+int __cdecl keypad_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x400||!hologram_writable(ctrl->object,0x400))return 0;
+    ctrl->blocked=0;return 1;
+}
+const KeypadServerApi keypad_behavior{version,sizeof(KeypadServerApi),&keypad_enable,&keypad_event,&keypad_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -2025,7 +2125,7 @@ struct AggregateRecvGraph {
     DerivedPlayerRecvGraph derived;
     RecvGraph weapons;
     ClientClassGraph classes;
-    bool spawn_bound=false,extra_bound=false;
+    bool spawn_bound=false,extra_bound=false,keypad_bound=false;
     Table* tables[aggregate_table_count]{};
     bool build(const AggregateRecvBindings& b) noexcept {
         if(!entity.build(b.entity)||!anim.build({&entity.entity})||
@@ -2068,7 +2168,7 @@ int __cdecl create_aggregate(const AggregateRecvBindings* b,AggregateRecvView* o
 int __cdecl destroy_aggregate(AggregateRecvView* v) noexcept {
     if(!v||!v->handle)return 0;
     auto* g=static_cast<AggregateRecvGraph*>(v->handle);
-    if(g->spawn_bound||g->extra_bound||!aggregate_matches(*g,*v))return 0;
+    if(g->spawn_bound||g->extra_bound||g->keypad_bound||!aggregate_matches(*g,*v))return 0;
     // Preflight every owned object, including nested-only tables. No
     // partial teardown if an engine marker is still set anywhere.
     for(const auto* tab:g->tables)if(!tab||tab->decoder||tab->initialized||tab->in_main_list)return 0;
@@ -2585,6 +2685,95 @@ int __cdecl grunt_death_ack(HologramControl* ctrl) noexcept {
     ctrl->blocked=0;return 1;
 }
 const GruntDeathApi grunt_death_api{version,sizeof(GruntDeathApi),&grunt_death,&grunt_death_ack};
+
+void __cdecl keypad_string_recv(const RecvData* d,void*,void* out){
+    if(!d||!d->property||!out)return;
+    const int size=d->property->string_size;
+    if(size!=255&&size!=32)return;
+    const char* src=nullptr;std::memcpy(&src,d->value.words,4);
+    if(!src)return;
+    char buffer[255]{};unsigned n=0;
+    for(;n<static_cast<unsigned>(size);++n){
+        if(!sin_independent::vgui_layout::Readable(src+n,1))return;
+        buffer[n]=src[n];if(!buffer[n]){++n;break;}
+    }
+    std::memcpy(out,buffer,n);static_cast<char*>(out)[size-1]=0;
+}
+struct KeypadRecvGraph {
+    AggregateRecvGraph* base=nullptr;
+    RecvTable tables[KeyTableCount];
+    RecvProp props[KeyTableCount][7];
+    ClientClassRecord records[KeyTableCount]{};
+    ClientClassRecord* head=nullptr;
+    bool build(AggregateRecvGraph& core,const KeypadRecvBindings& b) noexcept {
+        for(auto creator:b.creators)if(!creator)return false;
+        for(unsigned i=0;i<KeyTableCount;++i){
+            tables[i]={props[i],keypad_counts[i],nullptr,keypad_tables[i]};
+            nested(props[i][0],"baseclass",i==KeyScreen?&core.entity.entity:&tables[KeyScreen]);
+            auto& rec=records[i];rec.name=keypad_classes[i];rec.table=&tables[i];rec.create=b.creators[i];
+            rec.next=head;head=&rec;
+        }
+        auto* sc=props[KeyScreen];
+        anim_recv(sc[1],"m_flWidth",0x48c,1);anim_recv(sc[2],"m_flHeight",0x490,1);
+        anim_recv(sc[3],"m_nAttachmentIndex",0x4ac);anim_recv(sc[4],"m_nPanelName",0x494);
+        anim_recv(sc[5],"m_fScreenFlags",0x4b4);anim_recv(sc[6],"m_nOverlayMaterial",0x4b0);
+        for(unsigned i:{KeyCode,KeyProp})anim_recv(props[i][1],"m_bDisabled",0x510,0,&byte_recv);
+        anim_recv(props[KeyCode][2],"m_combination",0x511,3,&keypad_string_recv);
+        props[KeyCode][2].string_size=255;
+        anim_recv(props[KeyProp][2],"m_sInput",0x511,3,&keypad_string_recv);
+        props[KeyProp][2].string_size=32;
+        return true;
+    }
+};
+
+int __cdecl create_keypad(const KeypadRecvBindings* b,KeypadRecvView* out) noexcept {
+    if(!b||!b->base||!b->base->handle||!out||out->handle||out->head||out->records)return 0;
+    for(auto* tab:out->tables)if(tab)return 0;
+    auto* base=static_cast<AggregateRecvGraph*>(b->base->handle);
+    if(base->keypad_bound||!aggregate_matches(*base,*b->base))return 0;
+    auto* g=new(std::nothrow) KeypadRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*base,*b)){delete g;return 0;}
+    g->base=base;base->keypad_bound=true;
+    out->handle=g;out->head=g->head;out->records=g->records;
+    for(unsigned i=0;i<KeyTableCount;++i)out->tables[i]=&g->tables[i];
+    return 1;
+}
+int __cdecl destroy_keypad(KeypadRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<KeypadRecvGraph*>(v->handle);
+    if(v->head!=g->head||v->records!=g->records)return 0;
+    for(unsigned i=0;i<KeyTableCount;++i){
+        const auto& tab=g->tables[i];const auto& rec=g->records[i];
+        if(v->tables[i]!=&tab||rec.class_id!=0||tab.decoder||tab.initialized||tab.in_main_list)return 0;
+    }
+    g->base->keypad_bound=false;delete g;*v={};return 1;
+}
+const KeypadRecvApi keypad_api{version,sizeof(KeypadRecvApi),&create_keypad,&destroy_keypad};
+
+int __cdecl keypad_command(void* object,unsigned bytes,const KeypadClientBindings* b,int command) noexcept {
+    if(!b||!b->append_command||!b->read_text||!b->create_event||!b->fire_event||!b->clear_text||!b->base_command)return 0;
+    const auto host=*b;
+    if(!object)return host.base_command(host.context,command)?1:-1;
+    if(bytes<0x610||!sin_independent::vgui_layout::Readable(object,0x610))return 0;
+    if(hologram_read<unsigned char>(object,0x510))return host.base_command(host.context,command)?1:-1;
+    if(!host.append_command(host.context,command))return -1;
+    char text[255]{};
+    if(!host.read_text(host.context,text,sizeof(text)))return -1;
+    const auto* combo=static_cast<const char*>(object)+0x511;
+    const auto* text_end=static_cast<const char*>(std::memchr(text,0,sizeof(text)));
+    const auto* combo_end=static_cast<const char*>(std::memchr(combo,0,255));
+    if(!text_end||!combo_end)return -1;
+    const bool equal=std::strcmp(text,combo)==0;
+    if(equal||text_end-text>=combo_end-combo){
+        void* event=nullptr;
+        if(!host.create_event(host.context,equal?"keypad_combo_entered":"bad_keypad_combo_entered",1,&event))return -1;
+        if(event&&!host.fire_event(host.context,event,0))return -1;
+        if(!host.clear_text(host.context))return -1;
+    }
+    return host.base_command(host.context,command)?1:-1;
+}
+const KeypadClientApi keypad_behavior{version,sizeof(KeypadClientApi),&keypad_command};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2680,6 +2869,18 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::HologramS
 SiN_GetHologramServerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(HologramServerApi)?&hologram_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetKeypadSendApi=_SiN_GetKeypadSendApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::KeypadSendApi* __cdecl
+SiN_GetKeypadSendApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(KeypadSendApi)?&keypad_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetKeypadServerApi=_SiN_GetKeypadServerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::KeypadServerApi* __cdecl
+SiN_GetKeypadServerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(KeypadServerApi)?&keypad_behavior:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
@@ -2795,5 +2996,17 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::GruntDeat
 SiN_GetGruntDeathApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(GruntDeathApi)?&grunt_death_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetKeypadRecvApi=_SiN_GetKeypadRecvApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::KeypadRecvApi* __cdecl
+SiN_GetKeypadRecvApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(KeypadRecvApi)?&keypad_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetKeypadClientApi=_SiN_GetKeypadClientApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::KeypadClientApi* __cdecl
+SiN_GetKeypadClientApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(KeypadClientApi)?&keypad_behavior:nullptr;
 }
 #endif
