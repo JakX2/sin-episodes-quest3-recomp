@@ -889,11 +889,13 @@ struct ChoreographyEventParserBindings {
     int (__cdecl *same_line)(void*,unsigned*) noexcept;
     // Original CRT float conversion (223a5c8b) and timing-tag refresh.
     int (__cdecl *number)(void*,const char*,float*) noexcept;
+    // Optional in native flex/finalized grammar: native 221105a0 refresh.
     int (__cdecl *end_changed)(void*,void*) noexcept;
     int (__cdecl *append_event)(void*,void* channel,void* event) noexcept;
     // Complex subgrammar leaves consume their nested tokens.
     int (__cdecl *block)(void*,void*,ChoreographyEventBlock) noexcept;
     // Original legacy ramp conversion (22110770/221107b0) after linking.
+    // Optional in native curve/flex/finalized grammar.
     int (__cdecl *legacy_ramp)(void*,void*,float,float,float) noexcept;
 };
 struct ChoreographyEventParserApi {

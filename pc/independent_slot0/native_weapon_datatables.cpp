@@ -6379,6 +6379,18 @@ int __cdecl portable_vcd_clear(void* p) noexcept {
 const PortableVcdTokenizerApi portable_vcd_tokenizer_api{version,sizeof(PortableVcdTokenizerApi),&portable_vcd_begin,&portable_vcd_next,&portable_vcd_token,&portable_vcd_same_line,&portable_vcd_clear};
 // Per-invocation adapter: all native subparsers share one bounded cursor.
 // Preserve original engine allocation/finalization callback contexts.
+// Original 221178f2..221179b0 converts legacy ramp tokens into three
+// equal-valued samples at duration*(1-a), their midpoint, duration*c.
+// 2210b710 returns extended duration; round the two endpoints to float.
+bool choreography_legacy_ramp(void* event,float a,float value,float c,const ChoreographyTimingTagBindings& tags) noexcept {
+    const double duration=gesture_span(event);
+    const float first=static_cast<float>(duration*(1.0-a));
+    const float last=static_cast<float>(duration*c);
+    const float middle=static_cast<float>((static_cast<double>(first)+last)*0.5);
+    for(const auto time:{first,middle,last})
+        if(choreography_ramp_append(event,0x3c0,ChoreographyRampKind::Event,time,value,0,&tags)!=1)return false;
+    return choreography_ramp_finish(event,0x3c0,ChoreographyRampKind::Event,&tags)==1;
+}
 struct PortableGrammarState {
     PortableTokenizer cursor{};
     PortableVcdGrammarBindings source{};
@@ -6409,11 +6421,18 @@ struct PortableGrammarState {
         events.number=[](void* p,const char* token,float* out) noexcept -> int{
             const auto& h=self(p).source.events;return h.number(h.context,token,out);};
         events.end_changed=[](void* p,void* event) noexcept -> int{
-            const auto& h=self(p).source.events;return h.end_changed(h.context,event);};
+            auto& s=self(p);const auto& h=s.source.events;
+            if(h.end_changed)return h.end_changed(h.context,event);
+            if(!s.native_flex)return 0;
+            ChoreographyFinalizeBindings storage{};
+            storage.context=s.flex.samples.context;storage.storage=s.flex.samples.storage;
+            return gesture_refresh(event,storage);};
         events.append_event=[](void* p,void* channel,void* event) noexcept -> int{
             const auto& h=self(p).source.events;return h.append_event(h.context,channel,event);};
         events.legacy_ramp=[](void* p,void* event,float a,float b,float c) noexcept -> int{
-            const auto& h=self(p).source.events;return h.legacy_ramp(h.context,event,a,b,c);};
+            auto& s=self(p);const auto& h=s.source.events;
+            if(h.legacy_ramp)return h.legacy_ramp(h.context,event,a,b,c);
+            return s.native_curves&&choreography_legacy_ramp(event,a,b,c,s.tags);};
         events.block=[](void* p,void* event,ChoreographyEventBlock block) noexcept -> int{
             auto& s=self(p);
             if(block==ChoreographyEventBlock::Tags||block==ChoreographyEventBlock::AbsoluteTags||block==ChoreographyEventBlock::FlexTimingTags)
@@ -6441,7 +6460,7 @@ struct PortableGrammarState {
 bool portable_grammar_ready(const PortableVcdGrammarBindings* b,bool native_curves=false,bool native_flex=false,bool native_finalize=false) noexcept {
     if(!b||(!native_curves&&!b->root_block)||(!native_flex&&!b->event_block)||!choreography_tags_ready(&b->tags))return false;
     const auto& h=b->events;const auto& text=h.actors.text;
-    return text.tokenizer_word&&text.unexpected&&(native_finalize||text.finalize)&&h.number&&h.end_changed&&h.append_event&&h.legacy_ramp;
+    return text.tokenizer_word&&text.unexpected&&(native_finalize||text.finalize)&&h.number&&(native_flex||h.end_changed)&&h.append_event&&(native_curves||h.legacy_ramp);
 }
 int __cdecl portable_grammar_parse(void* parsed,unsigned extent,const char* name,const char* data,unsigned bytes,const PortableVcdGrammarBindings* b) noexcept {
     if(!portable_grammar_ready(b))return 0;

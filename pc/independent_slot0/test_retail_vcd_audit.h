@@ -36,7 +36,7 @@ struct VcdAuditArena {
     ChoreographyFlexOwnershipBindings ownership{};
     PortableVcdFinalizedGrammarBindings bindings{};
     ChoreographyDestructionBindings retire{};
-    unsigned missing=0,unexpected=0,unsupported=0;
+    unsigned missing=0,unexpected=0;
     char last_token[128]{};
     static VcdAuditArena& self(void* p) noexcept {return *static_cast<VcdAuditArena*>(p);}
     ~VcdAuditArena(){for(const auto& x:live)std::free(reinterpret_cast<void*>(static_cast<std::uintptr_t>(x.first)));}
@@ -116,10 +116,9 @@ struct VcdAuditArena {
             return append(p,static_cast<unsigned char*>(channel)+0x84,event);
         };
         events.number=&number;
-        // These leaves are not silently simulated. Reordered time after
-        // flex creation and legacy ramps require separate original recovery.
-        events.end_changed=[](void* p,void*) noexcept -> int{++self(p).unsupported;return 0;};
-        events.legacy_ramp=[](void* p,void*,float,float,float) noexcept -> int{++self(p).unsupported;return 0;};
+        // Null overrides select original-derived native flex refresh and
+        // legacy three-sample ramp conversion in the finalized grammar.
+        events.end_changed=nullptr;events.legacy_ramp=nullptr;
         alloc.parsed.context=this;alloc.parsed.compare_word=0x22112550;
         alloc.parsed.symbol_construct=[](void* p,void* table,int grow,int initial,unsigned insensitive) noexcept -> int{
             return initial==0&&insensitive==1&&self(p).symbol_api.construct_empty(table,0x34,grow,0x2228e9b0)==1;
@@ -228,8 +227,8 @@ struct VcdAuditArena {
         const bool inspected=status==1&&inspect(root,out);
         const int destroyed=destruction.parsed(root,extent,&retire);
         if(!inspected||destroyed!=1||!live.empty()){
-            std::fprintf(stderr,"VCD FAIL %s parse=%d inspect=%d destroy=%d live=%u unexpected=%u token=%s unsupported=%u\n",
-                name,status,inspected?1:0,destroyed,static_cast<unsigned>(live.size()),unexpected,last_token,unsupported);
+            std::fprintf(stderr,"VCD FAIL %s parse=%d inspect=%d destroy=%d live=%u unexpected=%u token=%s\n",
+                name,status,inspected?1:0,destroyed,static_cast<unsigned>(live.size()),unexpected,last_token);
             return false;
         }
         return true;
