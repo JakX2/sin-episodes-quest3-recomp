@@ -4319,6 +4319,105 @@ int __cdecl choreography_event_construct(void* object,unsigned bytes,void* parse
     return 1;
 }
 const ChoreographyConstructApi choreography_construct_api{version,sizeof(ChoreographyConstructApi),&choreography_parsed_construct,&choreography_actor_construct,&choreography_channel_construct,&choreography_event_construct};
+// Original CUtlVector purge: count first, free only owned memory, update
+// mirror, and repeat the allocator purge (normally now a no-op).
+bool choreography_purge(void* obj,unsigned off,const ChoreographyDestructionBindings& h) noexcept {
+    hologram_write(obj,off+0xc,0u);
+    for(unsigned pass=0;pass<2;++pass){
+        const auto word=hologram_read<std::uint32_t>(obj,off);
+        if(pass)hologram_write(obj,off+0x10,word);
+        if(hologram_read<int>(obj,off+8)==-1)continue;
+        const bool ok=!word||h.release(h.context,word,ChoreographyRelease::Vector);
+        hologram_write(obj,off,0u);hologram_write(obj,off+4,0u);
+        if(!ok){hologram_write(obj,off+0x10,0u);return false;}
+    }
+    return true;
+}
+bool choreography_destroy_ready(const ChoreographyDestructionBindings* h) noexcept {
+    return h&&h->storage&&h->release&&h->symbol_destroy&&h->delete_aux;
+}
+struct ChoreographyDestroyFrame {const ChoreographyDestroyFrame* parent;std::uint32_t word;unsigned depth;};
+bool choreography_destroy_enter(const ChoreographyDestroyFrame* parent,std::uint32_t word) noexcept {
+    if(!word||(parent&&parent->depth>=64))return false;
+    for(auto* p=parent;p;p=p->parent)if(p->word==word)return false;
+    return true;
+}
+bool choreography_storage(const ChoreographyDestructionBindings& h,std::uint32_t word,unsigned need,void*& ptr) noexcept {
+    unsigned extent=0;ptr=nullptr;
+    return word&&h.storage(h.context,word,&ptr,&extent)&&extent>=need&&hologram_writable(ptr,need);
+}
+bool choreography_destroy_parsed(void*,std::uint32_t,const ChoreographyDestructionBindings&,const ChoreographyDestroyFrame*) noexcept;
+bool choreography_destroy_event(void* event,std::uint32_t word,const ChoreographyDestructionBindings& h,const ChoreographyDestroyFrame* parent) noexcept {
+    if(!choreography_destroy_enter(parent,word))return false;
+    const ChoreographyDestroyFrame frame{parent,word,parent?parent->depth+1:1};
+    // 2210e040 repeatedly removes the first auxiliary pointer before
+    // invoking its virtual deleting destructor. Null first is malformed.
+    for(unsigned iteration=0;;++iteration){
+        const auto count=hologram_read<int>(event,0x318);
+        if(count<=0)break;
+        if(count>0x100000||iteration>=0x100000)return false;
+        void* rows=nullptr;
+        if(!choreography_storage(h,hologram_read<std::uint32_t>(event,0x30c),static_cast<unsigned>(count)*4,rows))return false;
+        const auto aux=hologram_read<std::uint32_t>(rows,0);
+        if(!aux)return false;
+        if(count>1)std::memmove(rows,static_cast<unsigned char*>(rows)+4,static_cast<unsigned>(count-1)*4);
+        hologram_write(event,0x318,count-1);
+        if(!h.delete_aux(h.context,aux,1))return false;
+    }
+    hologram_write(event,0x3b0,0u);
+    const auto nested=hologram_read<std::uint32_t>(event,0x324);
+    if(nested){
+        void* p=nullptr;
+        if(!choreography_storage(h,nested,0x220,p)||!choreography_destroy_parsed(p,nested,h,&frame))return false;
+    }
+    // Original destructor order, including vectors without active entries.
+    for(unsigned off:{0x3a4u,0x30cu,0x2f8u,0x2e4u,0x2d0u,0x2bcu,0x19cu})
+        if(!choreography_purge(event,off,h))return false;
+    return h.release(h.context,word,ChoreographyRelease::Event)!=0;
+}
+bool choreography_destroy_parsed(void* parsed,std::uint32_t word,const ChoreographyDestructionBindings& h,const ChoreographyDestroyFrame* parent) noexcept {
+    if(!choreography_destroy_enter(parent,word))return false;
+    const ChoreographyDestroyFrame frame{parent,word,parent?parent->depth+1:1};
+    const unsigned offs[]={0x14,0,0x28},extents[]={0x118,0x3c0,0x9c};
+    const ChoreographyRelease kinds[]={ChoreographyRelease::Actor,ChoreographyRelease::Event,ChoreographyRelease::Channel};
+    for(unsigned k=0;k<3;++k){
+        const auto off=offs[k];
+        for(unsigned i=0;;++i){
+            const auto count=hologram_read<int>(parsed,off+0xc);
+            if(count<=0||i>=static_cast<unsigned>(count))break;
+            if(count>0x100000)return false;
+            void* rows=nullptr;
+            if(!choreography_storage(h,hologram_read<std::uint32_t>(parsed,off),(i+1)*4,rows))return false;
+            const auto child=hologram_read<std::uint32_t>(rows,i*4);
+            if(!child)continue;
+            void* object=nullptr;
+            if(!choreography_destroy_enter(&frame,child)||!choreography_storage(h,child,extents[k],object))return false;
+            if(k==1){if(!choreography_destroy_event(object,child,h,&frame))return false;}
+            else if(!choreography_purge(object,k==0?0x100:0x84,h)||!h.release(h.context,child,kinds[k]))return false;
+        }
+        hologram_write(parsed,off+0xc,0u);
+    }
+    if(!h.symbol_destroy(h.context,static_cast<unsigned char*>(parsed)+0x164))return false;
+    // +144 is CUtlMemory (no count or mirror); remaining are vectors.
+    if(hologram_read<int>(parsed,0x14c)!=-1){
+        const auto buffer=hologram_read<std::uint32_t>(parsed,0x144);
+        const bool ok=!buffer||h.release(h.context,buffer,ChoreographyRelease::Vector);
+        hologram_write(parsed,0x144,0u);hologram_write(parsed,0x148,0u);
+        if(!ok)return false;
+    }
+    for(unsigned off:{0x12cu,0x64u,0x50u,0x3cu,0x28u,0x14u,0u})
+        if(!choreography_purge(parsed,off,h))return false;
+    return h.release(h.context,word,ChoreographyRelease::Parsed)!=0;
+}
+int __cdecl choreography_delete_parsed(void* parsed,unsigned bytes,const ChoreographyDestructionBindings* h) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_destroy_ready(h))return 0;
+    const auto b=*h;return choreography_destroy_parsed(parsed,scene_word(parsed),b,nullptr)?1:-1;
+}
+int __cdecl choreography_delete_event(void* event,unsigned bytes,const ChoreographyDestructionBindings* h) noexcept {
+    if(bytes<0x3c0||!hologram_writable(event,0x3c0)||!choreography_destroy_ready(h))return 0;
+    const auto b=*h;return choreography_destroy_event(event,scene_word(event),b,nullptr)?1:-1;
+}
+const ChoreographyDestructionApi choreography_destruction_api{version,sizeof(ChoreographyDestructionApi),&choreography_delete_parsed,&choreography_delete_event};
 // 221a3c30 and its fresh-object setters. Engine allocations, vector
 // growth and the original-compatible constructors/destructors remain hosted.
 bool generated_scene_text(const char* source,char (&dest)[128]) noexcept {
@@ -10284,6 +10383,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyDestructionApi=_SiN_GetChoreographyDestructionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyDestructionApi* __cdecl
+SiN_GetChoreographyDestructionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyDestructionApi)?&choreography_destruction_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetNativeGeneratedResponseApi=_SiN_GetNativeGeneratedResponseApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeGeneratedResponseApi* __cdecl
 SiN_GetNativeGeneratedResponseApi(std::uint32_t version,std::uint32_t size) noexcept {

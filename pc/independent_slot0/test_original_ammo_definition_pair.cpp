@@ -653,6 +653,12 @@ int main(int argc,char** argv){
     assert(nativeGeneratedMapDialogue&&!getNativeGeneratedMapDialogue(0,sizeof(tables::NativeGeneratedMapDialogueApi))&&!getNativeGeneratedMapDialogue(1,0));
     tables::test::check_native_generated_map_dialogue(*nativeGeneratedMapDialogue,*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*responseTimingUpdate,*responseRecord);
     std::puts("PASS native map Count and Jessica response speech lifecycles, shared semaphore and gated/no-match observation");
+    const auto getChoreographyDestruction=reinterpret_cast<tables::GetChoreographyDestructionApi>(GetProcAddress(server,tables::choreography_destruction_export));
+    assert(getChoreographyDestruction&&!GetProcAddress(client,tables::choreography_destruction_export));
+    const auto* choreographyDestruction=getChoreographyDestruction(1,sizeof(tables::ChoreographyDestructionApi));
+    assert(choreographyDestruction&&!getChoreographyDestruction(0,sizeof(tables::ChoreographyDestructionApi))&&!getChoreographyDestruction(1,0));
+    tables::test::check_choreography_destruction(*choreographyDestruction);
+    std::puts("PASS original parsed and event choreography destruction, borrowed storage, nested scene and failure guards");
 
 
 

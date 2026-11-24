@@ -720,6 +720,27 @@ struct NativeGeneratedResponseApi {
     int (__cdecl *speak)(void*,unsigned,const ResponseSpeakBindings*,const NativeGeneratedResponseBindings*,const char*,const char*,unsigned*) noexcept;
 };
 using GetNativeGeneratedResponseApi=const NativeGeneratedResponseApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_destruction_export[]="SiN_GetChoreographyDestructionApi";
+enum class ChoreographyRelease:unsigned {Vector,Actor,Event,Channel,Parsed};
+struct ChoreographyDestructionBindings {
+    void* context;
+    // Resolve a live original PE32 word; reject previously freed allocations.
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Consume on invocation. Caller must not retry after partial failure.
+    int (__cdecl *release)(void*,std::uint32_t,ChoreographyRelease) noexcept;
+    int (__cdecl *symbol_destroy)(void*,void*) noexcept;
+    // Original auxiliary virtual scalar deleting destructor (argument 1).
+    int (__cdecl *delete_aux)(void*,std::uint32_t,unsigned) noexcept;
+};
+struct ChoreographyDestructionApi {
+    std::uint32_t version,size;
+    // 22116310 + 2226e800: destroy children, vectors and root.
+    // Storage must be uniquely owned (except explicitly borrowed vectors).
+    int (__cdecl *parsed)(void*,unsigned,const ChoreographyDestructionBindings*) noexcept;
+    // 2210ff10 + 2226e800: delete a standalone event including nested scene.
+    int (__cdecl *event)(void*,unsigned,const ChoreographyDestructionBindings*) noexcept;
+};
+using GetChoreographyDestructionApi=const ChoreographyDestructionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
