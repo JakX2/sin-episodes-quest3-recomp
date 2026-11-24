@@ -5595,6 +5595,79 @@ int __cdecl native_named_playback(void* npc,const char* name,float delay,const N
     return npc_scene_play(npc,name,delay,&h.playback,out,false,&h.lifecycle,nullptr,nullptr,&h.startup,&h.stop,nullptr,&h);
 }
 const NativeNamedPlaybackApi native_named_playback_api{version,sizeof(NativeNamedPlaybackApi),&native_named_playback};
+bool choreography_tags_ready(const ChoreographyTimingTagBindings* b) noexcept {
+    return b&&b->storage&&b->grow;
+}
+int __cdecl choreography_tag_append(void* event,unsigned bytes,ChoreographyTagKind kind,const char* name,float time,unsigned locked,const ChoreographyTimingTagBindings* b) noexcept {
+    const unsigned k=static_cast<unsigned>(kind);
+    if(bytes<0x3c0||!hologram_writable(event,0x3c0)||k>3||!name||!choreography_tags_ready(b))return 0;
+    const auto h=*b;const unsigned off=0x2bc+k*0x14,stride=k?0x8c:0x88;
+    auto* v=static_cast<unsigned char*>(event)+off;
+    const int count=hologram_read<int>(v,0xc),capacity=hologram_read<int>(v,4);
+    // Original performs a quadratic selection-style exchange after every
+    // absolute/flex insertion. Bound malformed hostile counts defensively.
+    if(count<0||capacity<0||count>capacity||count>=4096)return -1;
+    char label[128]{};
+    if(!choreography_text_copy(label,sizeof(label),name))return 0;
+    if(count==capacity&&(!h.grow(h.context,v,1,stride)||hologram_read<int>(v,0xc)!=count||hologram_read<int>(v,4)<=count))return -1;
+    const auto word=hologram_read<std::uint32_t>(v,0);
+    void* data=nullptr;unsigned extent=0;
+    const unsigned need=(static_cast<unsigned>(count)+1)*stride;
+    if(!word||!h.storage(h.context,word,&data,&extent)||extent<need||!hologram_writable(data,need))return -1;
+    auto* rows=static_cast<unsigned char*>(data);
+    auto* row=rows+static_cast<unsigned>(count)*stride;
+    std::memcpy(row,label,128);hologram_write(row,0x80,time);
+    if(k>=2){
+        // Original temporary high nibble is indeterminate; choose zero for
+        // deterministic reconstructed storage. Low nibble is cleared.
+        hologram_write(row,0x84,static_cast<unsigned char>(0));hologram_write(row,0x88,scene_word(event));
+    }else{
+        hologram_write(row,0x84,scene_word(event));
+        if(k==1)hologram_write(row,0x88,static_cast<unsigned char>(locked!=0));
+    }
+    hologram_write(v,0xc,count+1);hologram_write(v,0x10,word);
+    if(k){
+        // Exact nested exchange order from 22110440 / 221105e0, not
+        // std::sort (ties and unordered floats must retain original behavior).
+        unsigned char scratch[0x8c];
+        for(int i=0;i<=count;++i)for(int j=i+1;j<=count;++j){
+            auto* left=rows+i*stride;auto* right=rows+j*stride;
+            if(hologram_read<float>(left,0x80)>hologram_read<float>(right,0x80)){
+                std::memcpy(scratch,left,stride);std::memcpy(left,right,stride);std::memcpy(right,scratch,stride);
+            }
+        }
+    }
+    return 1;
+}
+int __cdecl choreography_tag_block(void* event,unsigned bytes,ChoreographyEventBlock block,const ChoreographyTimingTagBindings* b) noexcept {
+    if(bytes<0x3c0||!hologram_writable(event,0x3c0)||!choreography_tags_ready(b)||!b->number||
+       !b->text.next||!b->text.token||!b->text.unexpected)return 0;
+    if(block!=ChoreographyEventBlock::Tags&&block!=ChoreographyEventBlock::AbsoluteTags&&block!=ChoreographyEventBlock::FlexTimingTags)return 0;
+    const auto h=*b;char token[1024]{};
+    auto next=[&](unsigned cross){return choreography_actor_next(h.text,cross,token);};
+    ChoreographyTagKind kind=ChoreographyTagKind::Relative;
+    if(block==ChoreographyEventBlock::FlexTimingTags)kind=ChoreographyTagKind::FlexTiming;
+    else if(block==ChoreographyEventBlock::AbsoluteTags){
+        if(!next(1))return -1;
+        if(choreography_text_equal(token,"playback_time"))kind=ChoreographyTagKind::Playback;
+        else if(choreography_text_equal(token,"shifted_time"))kind=ChoreographyTagKind::Shifted;
+        else{(void)h.text.unexpected(h.text.context,token);return -1;}
+    }
+    if(!next(1))return -1;
+    if(!choreography_text_equal(token,"{")&&!h.text.unexpected(h.text.context,token))return -1;
+    for(unsigned i=0;i<4096;++i){
+        if(!next(1)||!*token)return -1;
+        if(choreography_text_equal(token,"}"))return 1;
+        char name[128]{};
+        if(!choreography_text_copy(name,sizeof(name),token)||!next(0))return -1;
+        float time=0;unsigned locked=0;
+        if(!h.number(h.context,token,&time))return -1;
+        if(kind==ChoreographyTagKind::FlexTiming){if(!next(0))return -1;locked=choreography_text_integer(token)!=0;}
+        if(choreography_tag_append(event,bytes,kind,name,time,locked,&h)!=1)return -1;
+    }
+    return -1;
+}
+const ChoreographyTimingTagsApi choreography_timing_tags_api{version,sizeof(ChoreographyTimingTagsApi),&choreography_tag_append,&choreography_tag_block};
 const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
@@ -10936,6 +11009,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyTimingTagsApi=_SiN_GetChoreographyTimingTagsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyTimingTagsApi* __cdecl
+SiN_GetChoreographyTimingTagsApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyTimingTagsApi)?&choreography_timing_tags_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetNativeNamedPlaybackApi=_SiN_GetNativeNamedPlaybackApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeNamedPlaybackApi* __cdecl
 SiN_GetNativeNamedPlaybackApi(std::uint32_t version,std::uint32_t size) noexcept {
