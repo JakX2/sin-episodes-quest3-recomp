@@ -806,4 +806,46 @@ struct PhoneServerApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetPhoneServerApi=const PhoneServerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase719: CAntigenDispenser's original healing and use controller.
+// Host owns base entity services, serial validation, ordinary health
+// changes, pose lookup, sound and steam entity creation/removal.
+inline constexpr char dispenser_export[]="SiN_GetAntigenDispenserApi";
+enum class DispenserSound:unsigned {UseLoop,StopLoop,Stop,Empty};
+struct DispenserUseObservation {
+    unsigned is_player;
+    int health,max_health;
+    unsigned within_use_predicate;
+    std::uint32_t handle;
+};
+struct DispenserBindings {
+    void* context;
+    int (__cdecl *observe_use)(void*,void* dispenser,void* activator,DispenserUseObservation*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t handle,void** entity) noexcept;
+    // Host updates normal absolute transforms and returns positions.
+    int (__cdecl *position)(void*,void* entity,float xyz[3]) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *heal)(void*,void* user,int amount,unsigned flags,int* accepted) noexcept;
+    int (__cdecl *sound)(void*,void* dispenser,DispenserSound) noexcept;
+    // Host performs the original env_steam creation/attachment setup
+    // and publishes handle through this output; null allocation is OK.
+    int (__cdecl *create_steam)(void*,void* dispenser,std::uint32_t*) noexcept;
+    int (__cdecl *remove)(void*,void* entity) noexcept;
+    int (__cdecl *install_use_think)(void*,void* dispenser) noexcept;
+    int (__cdecl *schedule)(void*,void* dispenser,float time) noexcept;
+    int (__cdecl *pose)(void*,void* dispenser,const char* name,float value) noexcept;
+    int (__cdecl *advance_animation)(void*,void* dispenser) noexcept;
+};
+struct DispenserApi {
+    std::uint32_t version,size;
+    // Only verified leaf fields, after base constructor; no vtable or
+    // output-object construction. Host owns complete entity lifetime.
+    int (__cdecl *defaults)(void*,unsigned bytes) noexcept;
+    int (__cdecl *use)(HologramControl*,const DispenserBindings*,void* activator) noexcept;
+    int (__cdecl *think_use)(HologramControl*,const DispenserBindings*) noexcept;
+    int (__cdecl *stop_spray)(HologramControl*,const DispenserBindings*) noexcept;
+    int (__cdecl *update_pose)(HologramControl*,const DispenserBindings*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetDispenserApi=const DispenserApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
