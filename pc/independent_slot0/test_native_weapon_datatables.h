@@ -1311,9 +1311,104 @@ inline int __cdecl key_clear(void* context) noexcept {return static_cast<KeypadF
 inline int __cdecl key_base(void* context,int command) noexcept {
     assert(command==7);return static_cast<KeypadFixture*>(context)->push(7);
 }
+
+struct PropKeyFixture {
+    void* server=nullptr;
+    void* client=nullptr;
+    unsigned events[32]{},count=0,fail=0;
+    int token=0,index=17,received=17;
+    bool missing=false;
+    char command[256]{},output[32]{},sound[266]{},display[32]{};
+    bool null_output=false;
+    bool push(unsigned n){assert(count<32);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl pk_dirty(void* context,void* obj,unsigned off) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(obj==f.server&&(off==0x3c8||off==0x3c9));return f.push(1);
+}
+inline int __cdecl pk_index(void* context,void* obj,int* index) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(obj==f.server||obj==f.client);*index=f.index;return f.push(2);
+}
+inline int __cdecl pk_event_index(void* context,void* event,int* index) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(event==&f.token);*index=f.received;return f.push(3);
+}
+inline int __cdecl pk_event_command(void* context,void* event,char* text,unsigned size) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(event==&f.token&&size==256);
+    std::memcpy(text,f.command,std::strlen(f.command)+1);return f.push(4);
+}
+inline int __cdecl pk_output(void* context,void* obj,unsigned off,const char* text,void* activator,void* caller,float delay) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(obj==f.server&&off==0x3ec&&activator==obj&&caller==obj&&delay==0);
+    f.null_output=!text;std::memcpy(f.output,text?text:"",text?std::strlen(text)+1:1);return f.push(5);
+}
+inline int __cdecl pk_sound(void* context,void* obj,const char* sound) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(obj==f.server);
+    std::memcpy(f.sound,sound,std::strlen(sound)+1);return f.push(6);
+}
+inline int __cdecl pk_base_event(void* context,void* obj,void* event) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(obj==f.server&&event==&f.token);return f.push(7);
+}
+inline int __cdecl pk_create(void* context,const char* name,unsigned force,void** event) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(!std::strcmp(name,"prop_keypad_input")&&force==1);
+    *event=f.missing?nullptr:&f.token;return f.push(8);
+}
+inline int __cdecl pk_set_index(void* context,void* event,const char* key,int value) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(event==&f.token&&!std::strcmp(key,"entindex"));
+    f.received=value;return f.push(9);
+}
+inline int __cdecl pk_set_command(void* context,void* event,const char* key,const char* value) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(event==&f.token&&!std::strcmp(key,"Command"));
+    std::memcpy(f.command,value,std::strlen(value)+1);return f.push(10);
+}
+inline int __cdecl pk_fire(void* context,void* event,unsigned local) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);assert(event==&f.token&&local==0);return f.push(11);
+}
+inline int __cdecl pk_base_command(void* context,const char*) noexcept {return static_cast<PropKeyFixture*>(context)->push(12);}
+inline int __cdecl pk_display(void* context,const char* text) noexcept {
+    auto& f=*static_cast<PropKeyFixture*>(context);std::memcpy(f.display,text,std::strlen(text)+1);return f.push(13);
+}
+inline int __cdecl pk_base_tick(void* context) noexcept {return static_cast<PropKeyFixture*>(context)->push(14);}
+inline void check_prop_keypad(const PropKeypadServerApi& sa,const PropKeypadClientApi& ca,const KeypadSendView& sv,const KeypadRecvView& rv){
+    alignas(4) unsigned char server[0x41c]{},client[0x538]{};
+    HologramControl ctrl{server,sizeof(server)};PropKeyFixture f{server,client};
+    PropKeypadServerBindings sb{&f,&pk_dirty,&pk_index,&pk_event_index,&pk_event_command,&pk_output,&pk_sound,&pk_base_event};
+    PropKeypadClientBindings cb{&f,&pk_create,&pk_index,&pk_set_index,&pk_set_command,&pk_fire,&pk_base_command,&pk_display,&pk_base_tick};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto transfer=[&](){
+        for(unsigned i=1;i<3;++i){
+            auto& a=sv.tables[KeyProp]->props[i];auto& b=rv.tables[KeyProp]->props[i];
+            s::DVariant v{};a.scalarProxy(&a,server,server+a.offset,&v,0,1);
+            RecvData d{&b,v,0,17};b.proxy(&d,client,client+b.offset);
+        }
+    };
+    const auto event=[&](){return sa.event(&ctrl,&sb,"prop_keypad_input",&f.token);};
+    assert(sa.set_input(&ctrl,&sb,"12")==1&&!std::strcmp(f.output,"12"));expect({1,5});
+    transfer();assert(ca.tick(client,sizeof(client),&cb)==1&&!std::strcmp(f.display,"12"));expect({13,14});
+    assert(ca.command(client,sizeof(client),&cb,"3")==1);expect({8,2,9,10,11,12});
+    assert(event()==1&&!std::strcmp(f.output,"123")&&!std::strcmp(f.sound,"telephone.3"));expect({2,3,4,1,5,6});
+    transfer();assert(ca.tick(client,sizeof(client),&cb)==1&&!std::strcmp(f.display,"123"));expect({13,14});
+    f.received=18;assert(event()==1&&!std::strcmp(f.output,"123"));expect({2,3});
+    assert(sa.event(&ctrl,&sb,"another_event",&f.token)==1);expect({7});
+    assert(sa.enable(&ctrl,&sb,0)==1);expect({1});assert(sa.enable(&ctrl,&sb,0)==1);expect({});
+    transfer();assert(ca.command(client,sizeof(client),&cb,"9")==1);expect({12});
+    assert(ca.tick(client,sizeof(client),&cb)==1);expect({14});
+    f.received=17;std::memcpy(f.command,"45",3);
+    assert(event()==1&&!std::strcmp(f.output,"1234")&&!std::strcmp(f.sound,"telephone.45"));expect({2,3,4,1,5,6});
+    assert(sa.enable(&ctrl,&sb,1)==1);expect({1});transfer();
+    f.missing=true;assert(ca.command(client,sizeof(client),&cb,"5")==1);expect({8,12});f.missing=false;
+    assert(ca.command(nullptr,0,&cb,"5")==1);expect({12});assert(ca.tick(nullptr,0,&cb)==1);expect({14});
+    char long_text[40];std::memset(long_text,'8',39);long_text[39]=0;
+    server[0x3c9+31]=0xa5;
+    assert(sa.set_input(&ctrl,&sb,long_text)==1&&std::strlen(f.output)==30&&server[0x3c9+30]==0&&server[0x3c9+31]==0xa5);expect({1,5});
+    std::memcpy(f.command,"7",2);assert(event()==1&&std::strlen(f.output)==31&&f.output[30]=='7');expect({2,3,4,1,5,6});
+    assert(event()==1&&std::strlen(f.output)==31);expect({2,3,4,1,5,6});
+    assert(sa.set_input(&ctrl,&sb,nullptr)==1&&f.null_output&&server[0x3c9]==0);expect({1,5});
+    f.command[0]=0;assert(event()==1&&f.null_output&&!std::strcmp(f.sound,"telephone."));expect({2,3,4,1,5,6});
+    f.fail=6;assert(event()==-1&&ctrl.blocked);expect({2,3,4,1,5,6});
+    assert(sa.set_input(&ctrl,&sb,"0")==0&&sa.acknowledge(&ctrl));expect({});
+    f.fail=0;assert(sa.set_input(&ctrl,&sb,"0")==1);expect({1,5});
+}
 inline void check_keypad(const KeypadSendApi& sa,const KeypadRecvApi& ra,const KeypadServerApi& server_api,
         const KeypadClientApi& client_api,const AggregateSendApi& asa,const AggregateRecvApi& ara,
-        AggregateSendView& base_s,AggregateRecvView& base_r){
+        AggregateSendView& base_s,AggregateRecvView& base_r,const PropKeypadServerApi& pks,const PropKeypadClientApi& pkc){
     KeypadSendBindings sb{&base_s};KeypadRecvBindings rb{&base_r,{}};
     KeypadSendView sv{};KeypadRecvView rv{};
     assert(!ra.create(&rb,&rv));for(auto& creator:rb.creators)creator=&fixture_class_creator;
@@ -1364,12 +1459,14 @@ inline void check_keypad(const KeypadSendApi& sa,const KeypadRecvApi& ra,const K
     std::memset(server+0x3c9,'X',32);std::memset(client+0x511,0xa5,33);
     transfer(sv.tables[KeyProp]->props[2],rv.tables[KeyProp]->props[2]);
     assert(client[0x511+30]=='X'&&client[0x511+31]==0&&client[0x511+32]==0xa5);
+    check_prop_keypad(pks,pkc,sv,rv);
     sv.tables[KeyScreen]->written=true;rv.tables[KeyProp]->initialized=true;
     assert(!sa.destroy(&sv)&&!ra.destroy(&rv));sv.tables[KeyScreen]->written=false;rv.tables[KeyProp]->initialized=false;
     assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
 inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era,const HologramServerApi& hsa,const HologramClientApi& hra,const GruntDeathApi& gda,
-        const KeypadSendApi& ksa,const KeypadRecvApi& kra,const KeypadServerApi& ks,const KeypadClientApi& kc){
+        const KeypadSendApi& ksa,const KeypadRecvApi& kra,const KeypadServerApi& ks,const KeypadClientApi& kc,
+        const PropKeypadServerApi& pks,const PropKeypadClientApi& pkc){
     s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
     RecvProp rp[8];RecvTable rc{rp,8,nullptr,"DT_CollisionProperty"};
     NativeOwner owner;sin_independent::EntityHandleEntry entries[64]{};
@@ -1391,7 +1488,7 @@ inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& r
     assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
     assert(sv.class_count==15&&rv.class_count==15&&!sa.create(&sb,&sv)&&!ra.create(&rb,&rv));
     check_extra_entities(esa,era,sa,ra,sv,rv,hsa,hra,gda);
-    check_keypad(ksa,kra,ks,kc,sa,ra,sv,rv);
+    check_keypad(ksa,kra,ks,kc,sa,ra,sv,rv,pks,pkc);
     for(unsigned i=0;i<aggregate_table_count;++i){
         assert(sv.tables[i]&&rv.tables[i]&&std::strcmp(sv.tables[i]->name,rv.tables[i]->name)==0);
         for(unsigned j=0;j<i;++j)assert(sv.tables[i]!=sv.tables[j]&&rv.tables[i]!=rv.tables[j]);

@@ -173,7 +173,14 @@ int main(int argc,char** argv){
     const auto* keyServer=getKeyServer(1,sizeof(tables::KeypadServerApi));
     const auto* keyClient=getKeyClient(1,sizeof(tables::KeypadClientApi));
     assert(keySend&&keyRecv&&keyServer&&keyClient&&!getKeySend(0,sizeof(tables::KeypadSendApi))&&!getKeyClient(1,0));
-    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath,*keySend,*keyRecv,*keyServer,*keyClient);
+    const auto getPropKeyServer=reinterpret_cast<tables::GetPropKeypadServerApi>(GetProcAddress(server,tables::prop_keypad_server_export));
+    const auto getPropKeyClient=reinterpret_cast<tables::GetPropKeypadClientApi>(GetProcAddress(client,tables::prop_keypad_client_export));
+    assert(getPropKeyServer&&getPropKeyClient&&!GetProcAddress(client,tables::prop_keypad_server_export)&&!GetProcAddress(server,tables::prop_keypad_client_export));
+    const auto* propKeyServer=getPropKeyServer(1,sizeof(tables::PropKeypadServerApi));
+    const auto* propKeyClient=getPropKeyClient(1,sizeof(tables::PropKeypadClientApi));
+    assert(propKeyServer&&propKeyClient&&!getPropKeyServer(0,sizeof(tables::PropKeypadServerApi))&&!getPropKeyClient(1,0));
+    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath,*keySend,*keyRecv,*keyServer,*keyClient,*propKeyServer,*propKeyClient);
+    std::puts("PASS native paired prop keypad event, OnInput, sound and display updates");
     std::puts("PASS native paired SiN keypad network graph and game event path");
     std::puts("PASS native paired SiN grunt death effect and original branch ordering");
     std::puts("PASS native paired SiN hologram five-state controller, sound order and client flicker");
