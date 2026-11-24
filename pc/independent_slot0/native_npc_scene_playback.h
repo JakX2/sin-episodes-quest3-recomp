@@ -180,6 +180,36 @@ struct SceneRegistrationApi {
     int (__cdecl *remove)(void*,unsigned,const SceneRegistrationBindings*,void* scene,unsigned* changed) noexcept;
 };
 using GetSceneRegistrationApi=const SceneRegistrationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_entity_lifecycle_export[]="SiN_GetSceneEntityLifecycleApi";
+struct SceneEntityLifecycleBindings {
+    void* context;
+    int (__cdecl *resolve_actor)(void*,std::uint32_t,void**) noexcept;
+    int (__cdecl *sound_name)(void*,std::uint32_t,const char**) noexcept;
+    // Original 221a3c30 creates parsed choreography. Null is a normal result.
+    int (__cdecl *generate)(void*,void* scene,void* actor,const char*,std::uint32_t*) noexcept;
+    int (__cdecl *base_activate)(void*,void*) noexcept;
+    // Original 221a2c90(scene,parsed,0) before actor cleanup.
+    int (__cdecl *stop_events)(void*,void*,std::uint32_t,int) noexcept;
+    int (__cdecl *parsed)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *actor)(void*,void*,unsigned,void**) noexcept;
+    int (__cdecl *detach)(void*,void* actor,std::uint32_t parsed) noexcept;
+    // Consumes parsed allocation on invocation, even on transport error.
+    int (__cdecl *destroy_parsed)(void*,std::uint32_t) noexcept;
+    int (__cdecl *base_remove)(void*,void*) noexcept;
+    SceneManagerSession* manager;
+    SceneManagerRuntimeBindings runtime;
+    SceneRegistrationBindings registration;
+};
+struct SceneEntityLifecycleApi {
+    std::uint32_t version,size;
+    // Full object is kept live by host across callbacks. The base removal
+    // must not free scene storage before unregistering.
+    int (__cdecl *activate)(void*,unsigned,const SceneEntityLifecycleBindings*) noexcept;
+    int (__cdecl *cleanup)(void*,unsigned,const SceneEntityLifecycleBindings*) noexcept;
+    int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*) noexcept;
+};
+using GetSceneEntityLifecycleApi=const SceneEntityLifecycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

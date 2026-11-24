@@ -393,4 +393,59 @@ inline void check_scene_registration(const SceneRegistrationApi& api){
     assert(remove(&f.scenes[2])==1&&out&&!F::word(f.manager,0x3a0)&&F::word(f.manager,0x398)==8);
 }
 
+
+struct SceneEntityFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char scene[0x5e9]{},parsed[0x24]{},manager[scene_manager_bytes]{};
+    int actor=0;std::uint32_t handles[4]{};
+    SceneManagerSession session{};SceneEntityLifecycleBindings b{};
+    unsigned events[32]{},count=0,creates=0,spawns=0,manager_resolves=0,fail=0;
+    bool absent=false,generated_missing=false,expected_actor=true;
+    static SceneEntityFixture& get(void* p){return *static_cast<SceneEntityFixture*>(p);}
+    bool step(unsigned e){assert(count<32);events[count++]=e;return e!=fail;}
+    void expect(std::initializer_list<unsigned> l){assert(count==l.size()&&!std::memcmp(events,l.begin(),count*4));count=0;}
+    SceneEntityFixture(){
+        b.context=this;b.manager=&session;b.runtime.context=this;b.registration.context=this;
+        scene[0x549]=1;F::put(scene,0x54c,0x1111);F::put(scene,0x550,0x1001);F::put(parsed,0x20,3);
+        b.resolve_actor=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);assert(h==0x1001||h==0x2001);*out=h==0x1001?&f.actor:nullptr;return f.step(1);};
+        b.sound_name=[](void* p,std::uint32_t h,const char** out) noexcept -> int{auto& f=get(p);assert(h==0x1111);*out="sound.test";return f.step(2);};
+        b.generate=[](void* p,void* s,void* a,const char* n,std::uint32_t* out) noexcept -> int{
+            auto& f=get(p);assert(s==f.scene&&a==(f.expected_actor?&f.actor:nullptr)&&!std::strcmp(n,F::word(s,0x54c)?"sound.test":""));
+            *out=f.generated_missing?0:0x2222;return f.step(3);
+        };
+        b.base_activate=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene);return f.step(4);};
+        b.stop_events=[](void* p,void* s,std::uint32_t word,int a) noexcept -> int{auto& f=get(p);assert(s==f.scene&&word==0x2222&&!a);return f.step(5);};
+        b.parsed=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(word==0x2222);*out=f.parsed;*n=sizeof(f.parsed);return 1;};
+        b.actor=[](void* p,void* s,unsigned i,void** out) noexcept -> int{auto& f=get(p);assert(s==f.scene&&i<3);*out=i==1?nullptr:&f.actor;return f.step(6+i);};
+        b.detach=[](void* p,void* a,std::uint32_t word) noexcept -> int{auto& f=get(p);assert(a==&f.actor&&word==0x2222);return f.step(9);};
+        b.destroy_parsed=[](void* p,std::uint32_t word) noexcept -> int{auto& f=get(p);assert(word==0x2222&&F::word(f.scene,0x40c)==word);return f.step(10);};
+        b.base_remove=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!F::word(s,0x40c));return f.step(11);};
+        b.runtime.resolve=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(h==0x3001);++f.manager_resolves;*out=f.manager;*n=sizeof(f.manager);return 1;};
+        b.runtime.create=[](void* p,const char* n,int i,void** out) noexcept -> int{auto& f=get(p);assert(!std::strcmp(n,"scene_manager")&&i==-1);++f.creates;*out=f.absent?nullptr:f.manager;return 1;};
+        b.runtime.packed_handle=[](void* p,void* m,std::uint32_t* out) noexcept -> int{auto& f=get(p);assert(m==f.manager);*out=0x3001;return 1;};
+        b.runtime.spawn=[](void* p,void* m) noexcept -> int{auto& f=get(p);assert(m==f.manager);++f.spawns;return 1;};
+        b.registration.packed_handle=[](void* p,void* s,std::uint32_t* out) noexcept -> int{auto& f=get(p);assert(s==f.scene);*out=0x4001;return f.step(12);};
+        b.registration.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);assert(h==0x4001);*out=f.scene;return 1;};
+        b.registration.storage=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(h==0x5555);*out=f.handles;*n=sizeof(f.handles);return 1;};
+        b.registration.grow=[](void* p,void* m,unsigned n) noexcept -> int{auto& f=get(p);assert(m==f.manager&&n==1);F::put(m,0x394,0x5555);F::put(m,0x398,4);return 1;};
+    }
+};
+inline void check_scene_entity_lifecycle(const SceneEntityLifecycleApi& api){
+    using F=ScenePlaybackFixture;SceneEntityFixture f;
+    auto activate=[&](){return api.activate(f.scene,sizeof(f.scene),&f.b);};
+    auto remove=[&](){return api.remove(f.scene,sizeof(f.scene),&f.b);};
+    assert(activate()==1&&F::word(f.scene,0x40c)==0x2222&&f.creates==1&&f.spawns==1&&f.manager_resolves==4&&F::word(f.manager,0x3a0)==1);
+    f.expect({2,1,3,4,12});
+    assert(activate()==1&&F::word(f.manager,0x3a0)==1&&f.manager_resolves==8);f.expect({4,12});
+    assert(remove()==1&&!F::word(f.scene,0x40c)&&!F::word(f.manager,0x3a0));f.expect({5,6,9,7,8,9,10,11,12});
+    f.expected_actor=false;F::put(f.scene,0x54c,0);F::put(f.scene,0x550,0xffffffffu);f.generated_missing=true;
+    assert(activate()==1&&!F::word(f.scene,0x40c)&&F::word(f.manager,0x3a0)==1);f.expect({3,4,12});
+    assert(remove()==1&&!F::word(f.manager,0x3a0));f.expect({11,12});
+    f.scene[0x549]=0;assert(activate()==1);f.expect({4,12});
+    F::put(f.scene,0x40c,0x2222);f.fail=10;
+    assert(remove()==-1&&!F::word(f.scene,0x40c)&&F::word(f.manager,0x3a0)==1);f.expect({5,6,9,7,8,9,10});
+    SceneEntityFixture missing;missing.absent=true;missing.scene[0x549]=0;
+    assert(api.activate(missing.scene,sizeof(missing.scene),&missing.b)==1&&missing.creates==1&&!missing.spawns);missing.expect({4});
+}
+
 }

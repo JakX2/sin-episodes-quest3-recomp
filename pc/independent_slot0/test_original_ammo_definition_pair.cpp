@@ -489,6 +489,13 @@ int main(int argc,char** argv){
     assert(sceneRegistration&&!getSceneRegistration(0,sizeof(tables::SceneRegistrationApi))&&!getSceneRegistration(1,0));
     tables::test::check_scene_registration(*sceneRegistration);
     std::puts("PASS native scene registration, resolved identity and ordered removal");
+    const auto getSceneEntityLifecycle=reinterpret_cast<tables::GetSceneEntityLifecycleApi>(GetProcAddress(server,tables::scene_entity_lifecycle_export));
+    assert(getSceneEntityLifecycle&&!GetProcAddress(client,tables::scene_entity_lifecycle_export));
+    const auto* sceneEntityLifecycle=getSceneEntityLifecycle(1,sizeof(tables::SceneEntityLifecycleApi));
+    assert(sceneEntityLifecycle&&!getSceneEntityLifecycle(0,sizeof(tables::SceneEntityLifecycleApi))&&!getSceneEntityLifecycle(1,0));
+    tables::test::check_scene_entity_lifecycle(*sceneEntityLifecycle);
+    std::puts("PASS native scene entity activation, parsed cleanup and registration lifecycle");
+
 
 
 
