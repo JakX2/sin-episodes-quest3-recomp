@@ -952,6 +952,27 @@ struct PortableVcdTokenizerApi {
     int (__cdecl *clear)(void*) noexcept;
 };
 using GetPortableVcdTokenizerApi=const PortableVcdTokenizerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char portable_vcd_grammar_export[]="SiN_GetPortableVcdGrammarApi";
+struct PortableVcdGrammarBindings {
+    // Old tokenizer, event block, root block and same_line callbacks are
+    // unused. tokenizer_word still represents stable host parser identity.
+    ChoreographyEventParserBindings events;
+    ChoreographyTimingTagBindings tags;
+    void* context;
+    // Remaining complex blocks must consume the shared native token cursor.
+    // Do not retain it or recursively enter the parser.
+    int (__cdecl *root_block)(void*,void*,ChoreographyTextBlock,sin_port::vcd::Tokenizer*) noexcept;
+    int (__cdecl *event_block)(void*,void*,ChoreographyEventBlock,sin_port::vcd::Tokenizer*) noexcept;
+};
+struct PortableVcdGrammarApi {
+    std::uint32_t version,size;
+    int (__cdecl *parse)(void*,unsigned,const char* filename,const char* data,unsigned bytes,const PortableVcdGrammarBindings*) noexcept;
+    int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const PortableVcdGrammarBindings*,std::uint32_t*) noexcept;
+    // Composes the native named playback bridge and portable grammar for
+    // root and nested scene files, without hosted tokenization.
+    int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdGrammarBindings*,float*) noexcept;
+};
+using GetPortableVcdGrammarApi=const PortableVcdGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

@@ -5693,6 +5693,68 @@ int __cdecl portable_vcd_clear(void* p) noexcept {
     *static_cast<PortableTokenizer*>(p)=PortableTokenizer{};return 1;
 }
 const PortableVcdTokenizerApi portable_vcd_tokenizer_api{version,sizeof(PortableVcdTokenizerApi),&portable_vcd_begin,&portable_vcd_next,&portable_vcd_token,&portable_vcd_same_line,&portable_vcd_clear};
+// Per-invocation adapter: all native subparsers share one bounded cursor.
+// Preserve original engine allocation/finalization callback contexts.
+struct PortableGrammarState {
+    PortableTokenizer cursor{};
+    PortableVcdGrammarBindings source{};
+    ChoreographyEventParserBindings events{};
+    ChoreographyTimingTagBindings tags{};
+    explicit PortableGrammarState(const PortableVcdGrammarBindings& b) noexcept:source(b),events(b.events),tags(b.tags){
+        auto& text=events.actors.text;text.context=this;events.context=this;
+        text.begin=[](void* p,const char* data,unsigned n) noexcept -> int{return portable_vcd_begin(&self(p).cursor,data,n);};
+        text.next=[](void* p,unsigned cross,unsigned* more) noexcept -> int{return portable_vcd_next(&self(p).cursor,cross,more);};
+        text.token=[](void* p,const char** token) noexcept -> int{return portable_vcd_token(&self(p).cursor,token);};
+        text.block=[](void* p,void* parsed,ChoreographyTextBlock block) noexcept -> int{
+            auto& s=self(p);return s.source.root_block(s.source.context,parsed,block,&s.cursor);};
+        text.unexpected=[](void* p,const char* token) noexcept -> int{
+            auto& s=self(p);const auto& h=s.source.events.actors.text;return h.unexpected(h.context,token);};
+        text.finalize=[](void* p,void* parsed,ChoreographyTextFinalize stage) noexcept -> int{
+            auto& s=self(p);const auto& h=s.source.events.actors.text;return h.finalize(h.context,parsed,stage);};
+        events.same_line=[](void* p,unsigned* more) noexcept -> int{return portable_vcd_same_line(&self(p).cursor,more);};
+        events.number=[](void* p,const char* token,float* out) noexcept -> int{
+            const auto& h=self(p).source.events;return h.number(h.context,token,out);};
+        events.end_changed=[](void* p,void* event) noexcept -> int{
+            const auto& h=self(p).source.events;return h.end_changed(h.context,event);};
+        events.append_event=[](void* p,void* channel,void* event) noexcept -> int{
+            const auto& h=self(p).source.events;return h.append_event(h.context,channel,event);};
+        events.legacy_ramp=[](void* p,void* event,float a,float b,float c) noexcept -> int{
+            const auto& h=self(p).source.events;return h.legacy_ramp(h.context,event,a,b,c);};
+        events.block=[](void* p,void* event,ChoreographyEventBlock block) noexcept -> int{
+            auto& s=self(p);
+            if(block==ChoreographyEventBlock::Tags||block==ChoreographyEventBlock::AbsoluteTags||block==ChoreographyEventBlock::FlexTimingTags)
+                return choreography_tag_block(event,0x3c0,block,&s.tags)==1;
+            return s.source.event_block(s.source.context,event,block,&s.cursor);};
+        tags.context=this;tags.text=text;tags.number=events.number;
+        tags.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+            const auto& h=self(p).source.tags;return h.storage(h.context,word,out,bytes);};
+        tags.grow=[](void* p,void* v,unsigned additional,unsigned stride) noexcept -> int{
+            const auto& h=self(p).source.tags;return h.grow(h.context,v,additional,stride);};
+    }
+    static PortableGrammarState& self(void* p) noexcept{return *static_cast<PortableGrammarState*>(p);}
+};
+bool portable_grammar_ready(const PortableVcdGrammarBindings* b) noexcept {
+    if(!b||!b->root_block||!b->event_block||!choreography_tags_ready(&b->tags))return false;
+    const auto& h=b->events;const auto& text=h.actors.text;
+    return text.tokenizer_word&&text.unexpected&&text.finalize&&h.number&&h.end_changed&&h.append_event&&h.legacy_ramp;
+}
+int __cdecl portable_grammar_parse(void* parsed,unsigned extent,const char* name,const char* data,unsigned bytes,const PortableVcdGrammarBindings* b) noexcept {
+    if(!portable_grammar_ready(b))return 0;
+    PortableGrammarState s(*b);
+    if(!choreography_event_parser_ready(&s.events)||!portable_vcd_begin(&s.cursor,data,bytes))return 0;
+    return choreography_text_parse_impl(parsed,extent,name,&s.events.actors.text,&s.events.actors,&s.events);
+}
+int __cdecl portable_grammar_load(void* scene,unsigned extent,const char* name,const NamedSceneLoadBindings* load,const PortableVcdGrammarBindings* b,std::uint32_t* out) noexcept {
+    if(!portable_grammar_ready(b))return 0;
+    PortableGrammarState s(*b);
+    return choreography_event_load(scene,extent,name,load,&s.events,out);
+}
+int __cdecl portable_grammar_scene(void* npc,const char* name,float delay,const NativeNamedPlaybackBindings* playback,const PortableVcdGrammarBindings* b,float* out) noexcept {
+    if(!playback||!portable_grammar_ready(b))return 0;
+    PortableGrammarState s(*b);auto h=*playback;h.events=&s.events;
+    return native_named_playback(npc,name,delay,&h,out);
+}
+const PortableVcdGrammarApi portable_vcd_grammar_api{version,sizeof(PortableVcdGrammarApi),&portable_grammar_parse,&portable_grammar_load,&portable_grammar_scene};
 const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
@@ -11034,6 +11096,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetPortableVcdGrammarApi=_SiN_GetPortableVcdGrammarApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableVcdGrammarApi* __cdecl
+SiN_GetPortableVcdGrammarApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PortableVcdGrammarApi)?&portable_vcd_grammar_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetPortableVcdTokenizerApi=_SiN_GetPortableVcdTokenizerApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableVcdTokenizerApi* __cdecl
 SiN_GetPortableVcdTokenizerApi(std::uint32_t version,std::uint32_t size) noexcept {
