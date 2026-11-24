@@ -1008,7 +1008,13 @@ int main(int argc,char** argv){
     const auto* auditIntensity=getAuditIntensity(1,sizeof(tables::ServerEventIntensityApi));
     const auto* auditSpline=getAuditSpline(1,sizeof(tables::ServerFlexSplineApi));
     assert(auditIntensity&&auditSpline);
-    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section,*gate,*execution,*auditIntensity,*auditSpline);
+    const auto getAdmission=reinterpret_cast<tables::GetServerFacialRecordApi>(GetProcAddress(server,tables::server_facial_records_export));
+    const auto getThink=reinterpret_cast<tables::GetServerComposedFacialThinkApi>(GetProcAddress(server,tables::server_composed_facial_think_export));
+    assert(getAdmission&&getThink);
+    const auto* admission=getAdmission(1,sizeof(tables::ServerFacialRecordApi));
+    const auto* think=getThink(1,sizeof(tables::ServerComposedFacialThinkApi));
+    assert(admission&&think);
+    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section,*gate,*execution,*auditIntensity,*auditSpline,*admission,*think);
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }
