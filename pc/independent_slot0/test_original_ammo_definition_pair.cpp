@@ -21,6 +21,7 @@
 #include "test_native_companion_reactions.h"
 #include "test_native_count_scheduler.h"
 #include "test_native_use_observation.h"
+#include "test_native_vehicle_use.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -439,6 +440,12 @@ int main(int argc,char** argv){
     assert(useObservation&&!getUseObservation(0,sizeof(tables::UseObservationApi))&&!getUseObservation(1,0));
     tables::test::check_use_observation(*useObservation,*actionMonitor,*lookEvent,*jessicaAttention);
     std::puts("PASS native use observation capture and NPC think gate through Jessica criteria");
+    const auto getVehicleUse=reinterpret_cast<tables::GetVehicleUseApi>(GetProcAddress(server,tables::vehicle_use_export));
+    assert(getVehicleUse&&!GetProcAddress(client,tables::vehicle_use_export));
+    const auto* vehicleUse=getVehicleUse(1,sizeof(tables::VehicleUseApi));
+    assert(vehicleUse&&!getVehicleUse(0,sizeof(tables::VehicleUseApi))&&!getVehicleUse(1,0));
+    tables::test::check_vehicle_use(*vehicleUse,*useObservation,*actionMonitor);
+    std::puts("PASS native SiN vehicle interaction admission and case-sensitive action labels");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
