@@ -1,4 +1,5 @@
 #include "server_fixed_difficulty_service.h"
+#include "server_attack_spread_rules.h"
 #include "sin_compat/fixed_difficulty_phase663.hpp"
 #include "sin_compat/info_challenge_phase665.hpp"
 #include "sin_compat/fixed_difficulty_trigger_phase663.hpp"
@@ -348,6 +349,31 @@ int SIN_FIXED_CALL npc_spread(float base,abi::NpcSpread* out) noexcept {
 }
 const abi::NpcRulesApi npc_api{abi::npc_rules_version,sizeof(abi::NpcRulesApi),&npc_decide,&npc_spread};
 
+sin_independent::attack_spread::Rules spread_rules;
+int SIN_FIXED_CALL load_spread_rules(const char* text,std::uint32_t size) noexcept {
+    if(reading_engine_skill||!text||!size||size>sin_independent::attack_spread::max_bytes)return 0;
+    try {return spread_rules.load(std::string_view(text,size))?1:0;}catch(...){return 0;}
+}
+int SIN_FIXED_CALL clear_spread_rules() noexcept {
+    if(reading_engine_skill)return 0;
+    spread_rules.clear();return 1;
+}
+int SIN_FIXED_CALL query_spread_rules(const char* npc,const char* weapon,const char* target,
+    abi::AttackSpreadResult* out) noexcept {
+    if(reading_engine_skill||!campaign||!out||(npc&&!bounded_string(npc))||
+       (weapon&&!bounded_string(weapon))||(target&&!bounded_string(target)))return 0;
+    float base=0.f;
+    const bool found=spread_rules.resolve(npc?npc:"*",weapon?weapon:"*",target?target:"*",base);
+    abi::NpcSpread scaled{};
+    if(!npc_spread(base,&scaled))return 0;
+    // Recompute on query rather than retaining stale scaled cache entries
+    // when this port changes skill at runtime.
+    *out={base,scaled.x,scaled.y,scaled.z,found?0u:1u};
+    return 1;
+}
+const abi::AttackSpreadApi attack_spread_api{abi::attack_spread_version,
+    sizeof(abi::AttackSpreadApi),&load_spread_rules,&clear_spread_rules,&query_spread_rules};
+
 static_assert(diff::original_metric_count==abi::metric_count);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Initial)==abi::Initial);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Current)==abi::Current);
@@ -362,6 +388,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetFixedDifficultyApi=_SiN_GetFixedDifficultyApi")
 #pragma comment(linker,"/EXPORT:SiN_GetCombatDamageApi=_SiN_GetCombatDamageApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcRulesApi=_SiN_GetNpcRulesApi")
+#pragma comment(linker,"/EXPORT:SiN_GetAttackSpreadApi=_SiN_GetAttackSpreadApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -375,6 +402,11 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 extern "C" SIN_FIXED_EXPORT const abi::Api* SIN_FIXED_CALL
 SiN_GetFixedDifficultyApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::abi_version&&bytes==sizeof(abi::Api)?&api:nullptr;
+}
+
+extern "C" SIN_FIXED_EXPORT const abi::AttackSpreadApi* SIN_FIXED_CALL
+SiN_GetAttackSpreadApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::attack_spread_version&&bytes==sizeof(abi::AttackSpreadApi)?&attack_spread_api:nullptr;
 }
 
 extern "C" SIN_FIXED_EXPORT const abi::NpcRulesApi* SIN_FIXED_CALL

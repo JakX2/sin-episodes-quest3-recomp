@@ -253,6 +253,23 @@ struct NpcRulesApi {
 using GetNpcRulesApi=const NpcRulesApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 // Win32 only: live VEngineRandom001 pointer, original slot 1 RandomFloat.
 using DecideNpcWithEngineRandom=int (SIN_FIXED_CALL *)(void*,std::uint32_t,float,NpcDecisionOutput*) noexcept;
+// Port-owned parsed combat configuration, not a native KeyValues object.
+// Exact mapping precedes wildcard at each level. A missing match uses the
+// original default spread. Configuration persists until clear/reload.
+inline constexpr char attack_spread_export_name[]="SiN_GetAttackSpreadApi";
+inline constexpr std::uint32_t attack_spread_version=1;
+struct AttackSpreadResult {
+    float base,x,y,z;
+    std::uint32_t used_fallback;
+};
+struct AttackSpreadApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *load_text)(const char*,std::uint32_t) noexcept;
+    int (SIN_FIXED_CALL *clear)() noexcept;
+    int (SIN_FIXED_CALL *query)(const char*,const char*,const char*,AttackSpreadResult*) noexcept;
+};
+using GetAttackSpreadApi=const AttackSpreadApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(AttackSpreadResult)==20);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);
