@@ -689,6 +689,12 @@ int main(int argc,char** argv){
     assert(choreographyTextParser&&!getChoreographyTextParser(0,sizeof(tables::ChoreographyTextParserApi))&&!getChoreographyTextParser(1,0));
     tables::test::check_choreography_text_parser(*choreographyTextParser);
     std::puts("PASS original top-level VCD parser and native named load integration");
+    const auto getNamedScenePrecache=reinterpret_cast<tables::GetNamedScenePrecacheApi>(GetProcAddress(server,tables::named_scene_precache_export));
+    assert(getNamedScenePrecache&&!GetProcAddress(client,tables::named_scene_precache_export));
+    const auto* namedScenePrecache=getNamedScenePrecache(1,sizeof(tables::NamedScenePrecacheApi));
+    assert(namedScenePrecache&&!getNamedScenePrecache(0,sizeof(tables::NamedScenePrecacheApi))&&!getNamedScenePrecache(1,0));
+    tables::test::check_named_scene_precache(*namedScenePrecache);
+    std::puts("PASS original named scene spawn and speech/subscene precache");
 
 
 

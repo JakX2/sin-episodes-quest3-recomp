@@ -841,6 +841,23 @@ struct ChoreographyTextParserApi {
     int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const ChoreographyTextParserBindings*,std::uint32_t*) noexcept;
 };
 using GetChoreographyTextParserApi=const ChoreographyTextParserApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char named_scene_precache_export[]="SiN_GetNamedScenePrecacheApi";
+struct NamedScenePrecacheBindings {
+    void* context;
+    NamedSceneLoadBindings load;
+    // Optional native top-level parser; otherwise the existing parser body.
+    const ChoreographyTextParserBindings* parser;
+    int (__cdecl *text)(void*,std::uint32_t,const char**) noexcept;
+    int (__cdecl *precache_sound)(void*,const char*) noexcept;
+};
+struct NamedScenePrecacheApi {
+    std::uint32_t version,size;
+    // 221ad950: process type 5 sound/caption precache and type 11 subscenes.
+    int (__cdecl *events)(void*,unsigned,void*,unsigned,const NamedScenePrecacheBindings*) noexcept;
+    // 221ada50: generated scene no-op; otherwise cleanup, load, precache.
+    int (__cdecl *spawn)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*,const NamedScenePrecacheBindings*) noexcept;
+};
+using GetNamedScenePrecacheApi=const NamedScenePrecacheApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

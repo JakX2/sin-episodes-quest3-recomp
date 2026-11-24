@@ -1814,7 +1814,7 @@ inline void check_owned_choreography(const OwnedChoreographyApi& api,const Nativ
 }
 struct NamedSceneLoadFixture {
     using F=ScenePlaybackFixture;
-    alignas(4) unsigned char scene[0x414]{},parsed[0x220]{};
+    alignas(4) unsigned char scene[0x5ec]{},parsed[0x220]{};
     alignas(4) char copy[32]{};
     const char original[8]={'a','c','t','o','r','\0','X','Y'};
     NamedSceneLoadBindings b{};ChoreographySymbolSentinel sentinel{};
@@ -1911,6 +1911,65 @@ inline void check_choreography_text_parser(const ChoreographyTextParserApi& api)
     assert(api.load(file.scene,sizeof(file.scene),"Scenes/Jessica.TXT",&file.b,&parser.b,&out)==1&&out==F::ptr(file.parsed));
     assert(parser.begins==1&&parser.finalized==3&&parser.blocks==4&&F::word(file.parsed,0x98)==0x4321&&F::word(file.parsed,0x128)==24);
     file.expect({1,2,3,4,6,7,8,10});
+}
+
+struct NamedScenePrecacheFixture:NamedSceneLoadFixture {
+    alignas(4) unsigned char root[0x220]{},events[5][0x3c0]{},child_event[0x3c0]{};
+    alignas(4) std::uint32_t event_words[6]{},child_word=0;
+    const char* sounds[8]{};unsigned sound_count=0;
+    NamedScenePrecacheBindings pre{};
+    SceneEntityLifecycleBindings life{};SceneStopBindings stop{};
+    static NamedScenePrecacheFixture& get(void* p){return *static_cast<NamedScenePrecacheFixture*>(p);}
+    NamedScenePrecacheFixture(){
+        pre.context=this;pre.load=b;pre.load.owned.destruction.context=this;
+        pre.load.owned.destruction.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);
+            if(w==F::ptr(f.parsed)){*out=f.parsed;*n=sizeof(f.parsed);return 1;}
+            if(w==F::ptr(f.event_words)){*out=f.event_words;*n=sizeof(f.event_words);return 1;}
+            if(w==F::ptr(&f.child_word)){*out=&f.child_word;*n=4;return 1;}
+            if(w==F::ptr(f.child_event)){*out=f.child_event;*n=sizeof(f.child_event);return 1;}
+            for(auto& event:f.events)if(w==F::ptr(event)){*out=event;*n=sizeof(event);return 1;}return 0;};
+        pre.load.parse=[](void* p,void* parsed,const char* path,const char* data,unsigned n) noexcept -> int{
+            auto& f=get(p);assert(parsed==f.parsed&&data==f.copy&&n==8);f.step(9);
+            assert(!std::strcmp(path,"Scenes\\Jessica.vcd"));
+            F::put(parsed,0,F::ptr(&f.child_word));F::put(parsed,4,1);F::put(parsed,0xc,1);return 1;};
+        pre.precache_sound=[](void* p,const char* sound) noexcept -> int{
+            auto& f=get(p);const char* expected[]={"primary","caption","child","child","alternate"};
+            assert(f.sound_count<5&&!std::strcmp(sound,expected[f.sound_count]));++f.sound_count;return 1;};
+        pre.text=[](void* p,std::uint32_t w,const char** out) noexcept -> int{
+            auto& f=get(p);assert(w==0x1234);*out="Scenes/Jessica.TXT";return 1;};
+        F::put(root,0,F::ptr(event_words));F::put(root,0xc,6);
+        for(unsigned i=0;i<5;++i)event_words[i]=F::ptr(events[i]);
+        F::put(events[0],0,5);std::strcpy(reinterpret_cast<char*>(events[0]+0x84),"primary");std::strcpy(reinterpret_cast<char*>(events[0]+0x350),"caption");F::put(events[0],0x398,1);
+        F::put(events[1],0,11);std::strcpy(reinterpret_cast<char*>(events[1]+0x84),"Scenes/Jessica.TXT");
+        F::put(events[2],0,11);F::put(events[2],0x324,0x1234); // existing child skipped
+        F::put(events[3],0,5);std::strcpy(reinterpret_cast<char*>(events[3]+0x84),"alternate");F::put(events[3],0x34c,1);F::put(events[3],0x398,2);
+        F::put(events[4],0,12);
+        F::put(child_event,0,5);std::strcpy(reinterpret_cast<char*>(child_event+0x84),"child");F::put(child_event,0x398,1);child_word=F::ptr(child_event);
+        life.parsed=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        stop.parsed=life.parsed;stop.actor=[](void*,void*,unsigned,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        stop.events.event=[](void*,void*,unsigned,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        stop.records.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        stop.records.stop_record=[](void*,void*,void*,int,int) noexcept -> int{assert(false);return 0;};
+    }
+};
+inline void check_named_scene_precache(const NamedScenePrecacheApi& api){
+    using F=ScenePlaybackFixture;NamedScenePrecacheFixture f;
+    assert(api.events(f.scene,sizeof(f.scene),f.root,sizeof(f.root),&f.pre)==1&&f.sound_count==5);
+    assert(F::word(f.events[1],0x324)==F::ptr(f.parsed)&&f.parsed[0x124]==1&&F::word(f.events[2],0x324)==0x1234);
+    f.expect({1,2,3,4,6,7,8,9,10});
+    NamedScenePrecacheFixture generated;generated.scene[0x549]=1;
+    assert(api.spawn(generated.scene,sizeof(generated.scene),nullptr,nullptr,nullptr)==1&&!generated.steps);
+    NamedScenePrecacheFixture loaded;
+    // Empty parsed scene from the existing load fixture; verifies native
+    // spawn writes +40c after cleanup and leaves generated branch alone.
+    loaded.pre.load.parse=loaded.b.parse;
+    F::put(loaded.scene,0x394,0x1234);
+    assert(api.spawn(loaded.scene,sizeof(loaded.scene),&loaded.life,&loaded.stop,&loaded.pre)==1&&F::word(loaded.scene,0x40c)==F::ptr(loaded.parsed)&&!loaded.sound_count);
+    loaded.expect({1,2,3,4,6,7,8,9,10});
+    NamedScenePrecacheFixture absent;absent.absent=true;F::put(absent.scene,0x394,0x1234);
+    assert(api.spawn(absent.scene,sizeof(absent.scene),&absent.life,&absent.stop,&absent.pre)==1&&!F::word(absent.scene,0x40c));
+    absent.expect({1,2,3,12});
 }
 
 struct SceneActorCacheFixture {
