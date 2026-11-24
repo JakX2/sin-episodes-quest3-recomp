@@ -1019,6 +1019,35 @@ struct PortableVcdCurveGrammarApi {
     int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdCurveGrammarBindings*,float*) noexcept;
 };
 using GetPortableVcdCurveGrammarApi=const PortableVcdCurveGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_flex_export[]="SiN_GetChoreographyFlexApi";
+struct ChoreographyFlexBindings {
+    ChoreographyTimingTagBindings samples;
+    void* context;
+    // 22110ff0: allocate, construct, own name and publish track in event+30c.
+    // Returned extent >= 0x50; both sample vectors initially empty.
+    int (__cdecl *create)(void*,void*,const char*,void**,unsigned*) noexcept;
+    // 2210e040: consumes old track via original virtual deleting destructor.
+    int (__cdecl *delete_aux)(void*,std::uint32_t,unsigned) noexcept;
+};
+struct ChoreographyFlexApi {
+    std::uint32_t version,size;
+    int (__cdecl *block)(void*,unsigned,const ChoreographyFlexBindings*) noexcept;
+};
+using GetChoreographyFlexApi=const ChoreographyFlexApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char portable_vcd_flex_grammar_export[]="SiN_GetPortableVcdFlexGrammarApi";
+struct PortableVcdFlexGrammarBindings {
+    PortableVcdCurveGrammarBindings curves;
+    ChoreographyFlexBindings flex;
+};
+struct PortableVcdFlexGrammarApi {
+    std::uint32_t version,size;
+    // All original root/event block dispatch native. Allocation, symbol
+    // insertion, track creation and finalization services still hosted.
+    int (__cdecl *parse)(void*,unsigned,const char*,const char*,unsigned,const PortableVcdFlexGrammarBindings*) noexcept;
+    int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const PortableVcdFlexGrammarBindings*,std::uint32_t*) noexcept;
+    int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdFlexGrammarBindings*,float*) noexcept;
+};
+using GetPortableVcdFlexGrammarApi=const PortableVcdFlexGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

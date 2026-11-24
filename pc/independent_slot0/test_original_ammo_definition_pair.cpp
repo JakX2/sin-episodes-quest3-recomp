@@ -759,6 +759,14 @@ int main(int argc,char** argv){
     assert(choreographyScale&&portableVcdCurveGrammar&&!getChoreographyScale(0,sizeof(tables::ChoreographyScaleApi))&&!getPortableVcdCurveGrammar(1,0));
     tables::test::check_portable_curve_grammar(*portableVcdCurveGrammar,*choreographyScale);
     std::puts("PASS integrated native event/scene ramps and scale grammar");
+    const auto getChoreographyFlex=reinterpret_cast<tables::GetChoreographyFlexApi>(GetProcAddress(server,tables::choreography_flex_export));
+    const auto getPortableVcdFlexGrammar=reinterpret_cast<tables::GetPortableVcdFlexGrammarApi>(GetProcAddress(server,tables::portable_vcd_flex_grammar_export));
+    assert(getChoreographyFlex&&getPortableVcdFlexGrammar&&!GetProcAddress(client,tables::choreography_flex_export)&&!GetProcAddress(client,tables::portable_vcd_flex_grammar_export));
+    const auto* choreographyFlex=getChoreographyFlex(1,sizeof(tables::ChoreographyFlexApi));
+    const auto* portableVcdFlexGrammar=getPortableVcdFlexGrammar(1,sizeof(tables::PortableVcdFlexGrammarApi));
+    assert(choreographyFlex&&portableVcdFlexGrammar&&!getChoreographyFlex(0,sizeof(tables::ChoreographyFlexApi))&&!getPortableVcdFlexGrammar(1,0));
+    tables::test::check_portable_flex_grammar(*portableVcdFlexGrammar,*choreographyFlex);
+    std::puts("PASS native flex animation block and integrated portable grammar");
 
 
 
