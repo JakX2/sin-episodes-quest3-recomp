@@ -505,4 +505,55 @@ inline void check_response_speak(const ResponseSpeakApi& api,const ResponseTimin
     assert(ResponseSpeakFixture::destroy(&f,f.pool[0])&&!f.live[0]&&!f.live[1]);
 }
 
+
+struct ResponseRepeatFixture {
+    alignas(4) unsigned char exp[0x7c]{},row[0x1c]{},response[0x124]{};
+    ResponseRepeatBindings b{};SpeechGateBindings gate{};SpeechSemaphorePair sem{};
+    unsigned events[32]{},count=0,fail=0,uses=1,classified=1;
+    int index=7,npc=0,other=0;
+    float now=10,offset=1;
+    void rec(unsigned n){assert(count<32);events[count++]=n;}
+    void expect(std::initializer_list<unsigned> l){assert(count==l.size()&&!std::memcmp(events,l.begin(),count*4));count=0;}
+    void put(void* p,unsigned off,unsigned v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,4);}
+    void fl(void* p,unsigned off,float v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,4);}
+    static ResponseRepeatFixture& get(void* p){return *static_cast<ResponseRepeatFixture*>(p);}
+    ResponseRepeatFixture(){
+        b.context=this;b.interval.context=this;gate.context=this;
+        put(row,0x18,0x1234);fl(row,0x14,8);put(response,0x88,8);fl(response,0x98,1);fl(response,0x9c,2);
+        b.lookup=[](void* p,void* e,const char* n,int* out) noexcept -> int{auto& f=get(p);assert(e==f.exp&&!std::strcmp(n,"TLK_IDLE"));f.rec(1);*out=f.index;return f.fail!=1;};
+        b.entry=[](void* p,void* e,int i,void** row,unsigned* extent) noexcept -> int{auto& f=get(p);assert(e==f.exp&&i==7);f.rec(2);*row=f.row;*extent=sizeof(f.row);return f.fail!=2;};
+        b.resolve=[](void* p,std::uint32_t address,void** response,unsigned* extent) noexcept -> int{auto& f=get(p);assert(address==0x1234);f.rec(3);*response=f.response;*extent=sizeof(f.response);return f.fail!=3;};
+        b.interval.random=[](void* p,float lo,float hi,float* out) noexcept -> int{auto& f=get(p);assert(lo==0&&hi==2);f.rec(4);*out=f.offset;return f.fail!=4;};
+        b.clock=[](void* p,float* out) noexcept -> int{auto& f=get(p);f.rec(5);*out=f.now;return f.fail!=5;};
+        gate.uses=[](void* p,void* e,unsigned* out) noexcept -> int{auto& f=get(p);assert(e==f.exp);f.rec(6);*out=f.uses;return f.fail!=6;};
+        gate.classify=[](void* p,void* n,int a,unsigned* out) noexcept -> int{auto& f=get(p);assert(n==&f.npc&&!a);f.rec(7);*out=f.classified;return f.fail!=7;};
+        gate.clock=b.clock;
+        gate.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);f.rec(8);*out=h==1?&f.npc:h==2?&f.other:nullptr;return f.fail!=8;};
+    }
+};
+inline void check_response_repeat(const ResponseRepeatApi& api){
+    ResponseRepeatFixture f;unsigned out=99;float last=99;
+    auto repeat=[&](){out=99;return api.can_repeat(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",&out);};
+    auto gate=[&](){out=99;return api.semaphore_available(f.exp,sizeof(f.exp),&f.npc,&f.sem,&f.gate,&out);};
+    f.index=-1;assert(repeat()==1&&out);f.expect({1});
+    assert(api.last_time(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",&last)==1&&last==-1);f.expect({1});
+    f.index=7;assert(api.last_time(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",&last)==1&&last==8);f.expect({1,2});
+    f.put(f.row,0x18,0);assert(repeat()==1&&out);f.expect({1,2});f.put(f.row,0x18,0x1234);
+    f.put(f.response,0x88,10);assert(repeat()==1&&!out);f.expect({1,2,3});
+    f.put(f.response,0x88,0);assert(repeat()==1&&out);f.expect({1,2,3});
+    f.put(f.response,0x88,8);assert(repeat()==1&&out);f.expect({1,2,3,4,5});
+    f.now=9.99f;assert(repeat()==1&&!out);f.expect({1,2,3,4,5});
+    f.fl(f.row,0x14,-1);assert(repeat()==1&&out);f.expect({1,2,3,4});
+    f.fail=4;assert(repeat()==-1&&out==99);f.expect({1,2,3,4});f.fail=0;
+    f.fl(f.row,0x14,8);f.fl(f.response,0x98,0);f.offset=0;assert(repeat()==1&&out);f.expect({1,2,3,4});
+    f.now=10;f.sem.classified.release=10;f.sem.classified.owner=2;f.sem.other.release=20;f.sem.other.owner=1;
+    f.uses=0;assert(gate()==1&&out);f.expect({6});f.uses=1;
+    assert(gate()==1&&!out);f.expect({6,7,5,8});
+    f.now=10.01f;assert(gate()==1&&out);f.expect({6,7,5});
+    f.classified=0;assert(gate()==1&&out);f.expect({6,7,5,8});
+    f.sem.other.owner=3;assert(gate()==1&&!out);f.expect({6,7,5,8});
+    f.sem.other.owner=0xffffffffu;assert(gate()==1&&!out);f.expect({6,7,5});
+    f.sem.other.owner=2;f.fail=8;assert(gate()==-1&&out==99);f.expect({6,7,5,8});
+}
+
 }
