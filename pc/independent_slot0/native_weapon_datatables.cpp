@@ -9,6 +9,7 @@
 #include "native_client_vfe.h"
 #include "native_client_vfe_phoneme.h"
 #include "native_client_flex_rule.h"
+#include "native_client_composed_facial.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11363,6 +11364,44 @@ int __cdecl client_flex_rule_evaluate(bool enabled,const ClientFlexRule* rules,u
     return flex_rule_detail::evaluate(rules,rule_count,map,map_count,global,out,output_count);
 }
 const ClientFlexRuleApi client_flex_rule_api{version,sizeof(ClientFlexRuleApi),&client_flex_rule_evaluate};
+int __cdecl client_composed_facial_run(void* entity,unsigned bytes,const ClientComposedFacialInput* in,
+    ClientComposedFacialOutput* out) noexcept {
+    if(!in||!sin_independent::vgui_layout::Readable(in,sizeof(*in)))return 0;
+    if(!in->studio_present)return 2;
+    if(bytes<client_facial_object_bytes||!hologram_writable(entity,client_facial_object_bytes)||
+       !hologram_writable(out,sizeof(*out))||in->controller_count>64||in->descriptor_count>128)return 0;
+    ClientComposedFacialOutput result{};
+    // Studio header with no controllers clears the global scratch but
+    // returns before speech, flex rules, eye target or smoothing.
+    if(!in->controller_count){*out=result;return 1;}
+    if(!in->controllers||!sin_independent::vgui_layout::Readable(in->controllers,in->controller_count*sizeof(*in->controllers))||
+       (in->blink&&!sin_independent::vgui_layout::Readable(in->blink,sizeof(*in->blink))))return 0;
+    alignas(4) unsigned char snapshot[client_facial_object_bytes];
+    std::memcpy(snapshot,entity,sizeof(snapshot));
+    if(!client_facial_project(snapshot,sizeof(snapshot),in->controllers,in->controller_count,
+        in->now,in->blink_duration,in->blink,result.global))return 0;
+    if(!client_vfe_phoneme_apply(snapshot,sizeof(snapshot),in->delay,in->window,in->adaptive,in->speech,result.global))return 0;
+    if(in->rules_enabled){
+        int map[64]{};
+        for(unsigned i=0;i<in->controller_count;++i)map[i]=in->controllers[i].global;
+        if(!client_flex_rule_evaluate(true,in->rules,in->rule_count,map,in->controller_count,
+            result.global,result.current,in->descriptor_count))return 0;
+        result.descriptor_count=in->descriptor_count;result.descriptors_valid=true;
+        if(in->smoothing_enabled&&in->previous){
+            if(!std::isfinite(in->dt)||!sin_independent::vgui_layout::Readable(in->previous,in->descriptor_count*sizeof(float)))return 0;
+            std::memcpy(result.smoothed,in->previous,in->descriptor_count*sizeof(float));
+            if(!client_facial_smooth(result.smoothed,result.current,in->descriptor_count,in->dt))return 0;
+            result.smoothed_valid=true;
+        }
+    }
+    // Only the three blink fields changed by projection are committed;
+    // audio and controller registry callback side effects are not rolled back.
+    auto* raw=static_cast<unsigned char*>(entity);
+    for(unsigned off:{0xac4u,0xac8u,0xaccu})std::memcpy(raw+off,snapshot+off,4);
+    *out=result;return 1;
+}
+const ClientComposedFacialApi client_composed_facial_api{version,sizeof(ClientComposedFacialApi),&client_composed_facial_run};
+
 
 
 
@@ -13789,6 +13828,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientComposedFacialApi=_SiN_GetClientComposedFacialApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientComposedFacialApi* __cdecl
+SiN_GetClientComposedFacialApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientComposedFacialApi)?&client_composed_facial_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetClientFlexRuleApi=_SiN_GetClientFlexRuleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientFlexRuleApi* __cdecl

@@ -17,6 +17,7 @@
 #include "test_native_client_vfe.h"
 #include "test_native_client_vfe_phoneme.h"
 #include "test_native_client_flex_rule.h"
+#include "test_native_client_composed_facial.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -117,6 +118,15 @@ int main(int argc,char** argv){
         assert(api&&!get(0,sizeof(ft::ClientFlexRuleApi))&&!get(1,0));
         ft::test::check_client_flex_rule(*api);
         std::puts("PASS client facial descriptor stack interpreter");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetClientComposedFacialApi>(GetProcAddress(client,ft::client_composed_facial_export));
+        assert(get&&!GetProcAddress(server,ft::client_composed_facial_export));
+        const auto* api=get(1,sizeof(ft::ClientComposedFacialApi));
+        assert(api&&!get(0,sizeof(ft::ClientComposedFacialApi))&&!get(1,0));
+        ft::test::check_client_composed_facial(*api);
+        std::puts("PASS client composed numerical facial frame");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));
