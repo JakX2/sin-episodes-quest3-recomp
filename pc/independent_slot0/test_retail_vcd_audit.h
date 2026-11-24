@@ -1014,7 +1014,11 @@ inline void check_parsed_facial_lifecycle(VcdAuditArena& arena,const NativeVcdRu
     assert(simulate(1.5f)==1&&F::word(f.actor,0x5c4)==1);
     assert(think.run(f.actor,sizeof(f.actor),11,&facial)&&f.maps==1);
     assert(std::fabs(VcdAuditArena::read_float(f.actor,0x4a8)-.4f)<.00001f);
-    assert(simulate(2.5f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
+    // Original classifier uses the lower bound (previous time when forward),
+    // not the new target. Crossing the end is still an update; the following
+    // step retires the record.
+    assert(simulate(2.5f)==1&&!f.stops&&F::word(f.actor,0x5c4)==1);
+    assert(simulate(2.75f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
     assert(think.run(f.actor,sizeof(f.actor),12,&facial));
     assert(std::fabs(VcdAuditArena::read_float(f.actor,0x4a8)-.38f)<.00001f);
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
