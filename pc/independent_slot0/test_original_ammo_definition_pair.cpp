@@ -713,6 +713,12 @@ int main(int argc,char** argv){
     assert(nativeNamedPlayback&&!getNativeNamedPlayback(0,sizeof(tables::NativeNamedPlaybackApi))&&!getNativeNamedPlayback(1,0));
     tables::test::check_native_named_playback(*nativeNamedPlayback);
     std::puts("PASS native named playback registration Spawn activation and startup");
+    const auto getChoreographyTimingTags=reinterpret_cast<tables::GetChoreographyTimingTagsApi>(GetProcAddress(server,tables::choreography_timing_tags_export));
+    assert(getChoreographyTimingTags&&!GetProcAddress(client,tables::choreography_timing_tags_export));
+    const auto* choreographyTimingTags=getChoreographyTimingTags(1,sizeof(tables::ChoreographyTimingTagsApi));
+    assert(choreographyTimingTags&&!getChoreographyTimingTags(0,sizeof(tables::ChoreographyTimingTagsApi))&&!getChoreographyTimingTags(1,0));
+    tables::test::check_choreography_timing_tags(*choreographyTimingTags);
+    std::puts("PASS original relative absolute and flex timing tag grammar and ordering");
 
 
 

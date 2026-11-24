@@ -920,6 +920,25 @@ struct NativeNamedPlaybackApi {
     int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,float*) noexcept;
 };
 using GetNativeNamedPlaybackApi=const NativeNamedPlaybackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_timing_tags_export[]="SiN_GetChoreographyTimingTagsApi";
+enum class ChoreographyTagKind:unsigned {Relative,FlexTiming,Playback,Shifted};
+struct ChoreographyTimingTagBindings {
+    void* context;
+    // Same tokenizer and CRT numeric conversion as the enclosing event.
+    ChoreographyTextParserBindings text;
+    int (__cdecl *number)(void*,const char*,float*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Grow backing capacity only, leaving logical count unchanged.
+    int (__cdecl *grow)(void*,void* vector,unsigned additional,unsigned stride) noexcept;
+};
+struct ChoreographyTimingTagsApi {
+    std::uint32_t version,size;
+    // Original 221103e0/22110440/221105e0 and vector append/sort.
+    int (__cdecl *append)(void*,unsigned,ChoreographyTagKind,const char*,float,unsigned,const ChoreographyTimingTagBindings*) noexcept;
+    // Called at current tags/absolutetags/flextimingtags keyword.
+    int (__cdecl *block)(void*,unsigned,ChoreographyEventBlock,const ChoreographyTimingTagBindings*) noexcept;
+};
+using GetChoreographyTimingTagsApi=const ChoreographyTimingTagsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
