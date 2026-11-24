@@ -1973,6 +1973,80 @@ inline void check_named_scene_precache(const NamedScenePrecacheApi& api){
     absent.expect({1,2,3,12});
 }
 
+struct NativeNamedPlaybackFixture:NamedScenePrecacheFixture {
+    NativeNamedPlaybackBindings n{};SceneManagerSession session{};
+    int npc=0;unsigned phase=0,activations=0,missing_calls=0,spawn_calls=0,mode=0,finalizes=0;
+    static NativeNamedPlaybackFixture& self(void* p){return *static_cast<NativeNamedPlaybackFixture*>(p);}
+    NativeNamedPlaybackFixture(){
+        n.context=this;n.precache=pre;n.stop=stop;n.lifecycle=life;
+        n.precache.text=[](void* p,std::uint32_t w,const char** out) noexcept -> int{
+            auto& f=self(p);assert(w==F::ptr(f.scene+0x568));*out=reinterpret_cast<char*>(f.scene+0x568);return 1;};
+        n.precache.precache_sound=[](void* p,const char* text) noexcept -> int{
+            auto& f=self(p);assert(f.phase==2&&!std::strcmp(text,"child"));++f.sound_count;return 1;};
+        n.precache.load.parse=[](void* p,void* parsed,const char*,const char*,unsigned) noexcept -> int{
+            auto& f=self(p);assert(f.phase==2&&parsed==f.parsed);f.step(9);
+            F::put(parsed,0,F::ptr(&f.child_word));F::put(parsed,4,1);F::put(parsed,0xc,1);
+            f.parsed[0x218]=1;return 1;};
+        F::fl(child_event,0x188,.25f);
+        auto& q=n.playback;q.context=this;
+        q.create=[](void* p,const char* cls,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(!f.phase&&!std::strcmp(cls,"instanced_scripted_scene"));*out=f.scene;*bytes=sizeof(f.scene);f.scene[0x5e8]=1;return 1;};
+        q.resolve_name=[](void* p,void* npc,const char* name,char* dest,unsigned cap) noexcept -> int{
+            auto& f=self(p);assert(npc==&f.npc&&!std::strcmp(name,"Jessica")&&cap==128);std::strcpy(dest,"Scenes/Jessica.TXT");return 1;};
+        q.actor_handle=[](void* p,void* npc,std::uint32_t* out) noexcept -> int{assert(npc==&self(p).npc);*out=0x321;return 1;};
+        q.set_delay=[](void* p,void* scene,float delay) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&!f.phase&&delay==.5f&&F::word(scene,0x55c)==0x321&&f.scene[0x560]);f.phase=1;return 1;};
+        n.register_with_spawn=[](void* p,void* scene,void* context,NamedSpawnCallback spawn) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&f.phase==1);f.phase=2;
+            if(f.mode==1)return 1;
+            ++f.spawn_calls;if(!spawn(context,scene))return 0;
+            if(f.mode==2){++f.spawn_calls;assert(!spawn(context,scene));}
+            f.phase=3;return 1;};
+        q.missing=[](void* p,const char* name,unsigned generated) noexcept -> int{
+            auto& f=self(p);assert(f.phase==4&&!generated&&!std::strcmp(name,"Scenes/Jessica.TXT"));++f.missing_calls;return 1;};
+        q.resolve_parsed=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(w==F::ptr(f.parsed));*out=f.parsed;*bytes=sizeof(f.parsed);return 1;};
+        q.duration.context=this;
+        q.duration.event=[](void* p,void* parsed,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(parsed==f.parsed&&!i);*out=f.child_event;*bytes=sizeof(f.child_event);return 1;};
+        n.lifecycle.context=this;n.lifecycle.parsed=q.resolve_parsed;n.lifecycle.manager=&session;
+        n.lifecycle.base_activate=[](void* p,void* scene) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&f.phase==3&&f.scene[0x5e8]&&(!F::word(scene,0x40c)||f.parsed[0x218]));
+            ++f.activations;f.phase=4;return 1;};
+        auto& runtime=n.lifecycle.runtime;runtime.context=this;
+        runtime.resolve=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        runtime.create=[](void*,const char* cls,int idx,void** out) noexcept -> int{assert(!std::strcmp(cls,"scene_manager")&&idx==-1);*out=nullptr;return 1;};
+        runtime.packed_handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+        runtime.spawn=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        n.stop.context=this;n.stop.parsed=q.resolve_parsed;n.stop.events=q.duration;
+        n.stop.records.grow=[](void*,void*,unsigned) noexcept -> int{assert(false);return 0;};
+        auto& s=n.startup;s.context=this;s.parsed=q.resolve_parsed;s.actor=n.stop.actor;
+        s.is_npc=[](void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+        s.speaking=s.is_npc;
+        s.refresh=[](void* p,void* scene) noexcept -> int{
+            auto& f=self(p);assert(f.phase==4&&scene==f.scene&&f.scene[0x3d8]&&!f.scene[0x5e8]&&!f.parsed[0x218]);f.phase=5;return 1;};
+        s.output=[](void* p,void* output,void* a,void* c,float delay) noexcept -> int{
+            auto& f=self(p);assert(f.phase==5&&output==f.scene+0x41c&&a==f.scene&&c==f.scene&&!delay);f.phase=6;return 1;};
+        s.startup_events=[](void* p,void* scene,std::uint32_t parsed) noexcept -> int{
+            auto& f=self(p);assert(f.phase==6&&scene==f.scene&&parsed==F::ptr(f.parsed));f.phase=7;return 1;};
+        s.reset.context=this;s.reset.events=q.duration;s.reset.storage=n.stop.records.storage;
+        s.reset.grow=n.stop.records.grow;
+    }
+};
+inline void check_native_named_playback(const NativeNamedPlaybackApi& api){
+    NativeNamedPlaybackFixture f;float duration=-1;
+    assert(api.scene(&f.npc,"Jessica",.5f,&f.n,&duration)==1&&duration==.25f&&f.phase==7&&f.spawn_calls==1&&f.activations==1&&f.sound_count==2);
+    assert(f.scene[0x3d8]&&!f.scene[0x5e8]&&!f.parsed[0x218]);
+    f.expect({1,2,3,4,6,7,8,9,10});
+    NativeNamedPlaybackFixture absent;absent.absent=true;
+    assert(api.scene(&absent.npc,"Jessica",.5f,&absent.n,&duration)==1&&!duration&&absent.phase==4&&absent.missing_calls==1&&!absent.scene[0x3d8]);
+    NativeNamedPlaybackFixture skipped;skipped.mode=1;duration=-1;
+    assert(api.scene(&skipped.npc,"Jessica",.5f,&skipped.n,&duration)==-1&&duration==-1&&!skipped.activations&&!skipped.steps);
+    NativeNamedPlaybackFixture duplicate;duplicate.mode=2;
+    assert(api.scene(&duplicate.npc,"Jessica",.5f,&duplicate.n,&duration)==-1&&!duplicate.activations&&duplicate.spawn_calls==2&&duplicate.sound_count==2);
+    duplicate.expect({1,2,3,4,6,7,8,9,10});
+}
+
 struct ChoreographyActorParserFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char parsed[0x220]{},actor[0x118]{},channels[2][0x9c]{};
