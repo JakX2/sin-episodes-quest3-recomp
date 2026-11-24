@@ -858,6 +858,25 @@ struct NamedScenePrecacheApi {
     int (__cdecl *spawn)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*,const NamedScenePrecacheBindings*) noexcept;
 };
 using GetNamedScenePrecacheApi=const NamedScenePrecacheApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_actor_parser_export[]="SiN_GetChoreographyActorParserApi";
+struct ChoreographyActorParserBindings {
+    ChoreographyTextParserBindings text;
+    GeneratedSceneAllocationBindings allocation;
+    void* context;
+    // Append channel to actor, after the entire channel body is parsed.
+    int (__cdecl *append_channel)(void*,void* actor,void* channel) noexcept;
+    // 22116dc0 event parser, with current token "event".
+    int (__cdecl *event)(void*,void* parsed,void* actor,void* channel) noexcept;
+};
+struct ChoreographyActorParserApi {
+    std::uint32_t version,size;
+    // Original 22118660 / 221179c0. Published partial objects remain
+    // owned by parsed scene on any failure, never retry a partial block.
+    int (__cdecl *actor)(void*,unsigned,const ChoreographyActorParserBindings*) noexcept;
+    int (__cdecl *parse)(void*,unsigned,const char*,const ChoreographyActorParserBindings*) noexcept;
+    int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const ChoreographyActorParserBindings*,std::uint32_t*) noexcept;
+};
+using GetChoreographyActorParserApi=const ChoreographyActorParserApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
