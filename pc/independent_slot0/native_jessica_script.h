@@ -324,6 +324,39 @@ struct ExpeditorLifecycleApi {
     int (__cdecl *destroy)(ExpeditorControl*,void* npc,const ExpeditorTables*,SpeechSemaphorePair*,const ExpeditorLifecycleBindings*) noexcept;
 };
 using GetExpeditorLifecycleApi=const ExpeditorLifecycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char talk_catalog_export[]="SiN_GetTalkCatalogApi";
+struct TalkConceptDescriptor {
+    const char* name;
+    unsigned priority;
+    float global_min,global_max,npc_min,npc_max,concept_min,concept_max;
+    unsigned flags;
+};
+struct TalkCooldownState {float global[3]{};};
+struct TalkCooldownBindings {
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *random)(void*,float low,float high,float*) noexcept;
+    // Original per-concept tree row lookup; missing returns null.
+    // The returned float points to the row's +8 deadline.
+    int (__cdecl *concept_deadline)(void*,const char*,float**) noexcept;
+    // Original 2208f000 flag2 neighbor scan and seed propagation. Engine
+    // handles live entity enumeration, geometry and actual expeditors.
+    int (__cdecl *propagate)(void*,void* npc,const char*) noexcept;
+    int (__cdecl *cooldown_disabled)(void*,unsigned*) noexcept;
+};
+struct TalkCatalogApi {
+    std::uint32_t version,size,count;
+    const TalkConceptDescriptor* (__cdecl *at)(unsigned) noexcept;
+    const TalkConceptDescriptor* (__cdecl *lookup)(const char*) noexcept;
+    int (__cdecl *group_ready)(const void* npc,unsigned bytes,const TalkCooldownState*,const TalkCooldownBindings*,unsigned priority,unsigned*) noexcept;
+    int (__cdecl *concept_ready)(const TalkCooldownBindings*,const char*,unsigned*) noexcept;
+    // Original 2208f000 post-response manager updates (host propagates flag2).
+    int (__cdecl *note)(void* npc,unsigned bytes,TalkCooldownState*,const TalkCooldownBindings*,const char*) noexcept;
+    // Fixed 22089480(-1,0) interaction reset.
+    int (__cdecl *reset_interaction)(TalkCooldownState*,const TalkCooldownBindings*) noexcept;
+};
+using GetTalkCatalogApi=const TalkCatalogApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

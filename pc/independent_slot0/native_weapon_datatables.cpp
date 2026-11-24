@@ -3332,6 +3332,132 @@ int __cdecl expeditor_destroy(ExpeditorControl* c,void* npc,const ExpeditorTable
     return expeditor_finish(c,true,ExpeditorStage::Retired);
 }
 const ExpeditorLifecycleApi expeditor_lifecycle_api{version,sizeof(ExpeditorLifecycleApi),&expeditor_construct,&expeditor_clear,&expeditor_destroy};
+constexpr TalkConceptDescriptor talk_concepts[]={
+    {"TLK_ANSWER",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_QUESTION",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_IDLE",0,-1,-1,-1,-1,-1,-1,4},
+    {"TLK_STARE",0,-1,-1,-1,-1,180,0,4},
+    {"TLK_HELLO",0,5,10,-1,-1,-1,-1,7},
+    {"TLK_PHELLO",0,-1,-1,-1,-1,-1,-1,7},
+    {"TLK_PIDLE",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_PQUESTION",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_SMELL",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_QUESTION_VORT",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_QUESTION_CIT",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_ANSWER_VORT",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_ANSWER_CIT",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_PLLOOKING",0,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_ENEMY_DEAD",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_USE",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_STARTFOLLOW",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_STOPFOLLOW",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_JOINPLAYER",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_STOP",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_NOSHOOT",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_COWER",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_PLHURT1",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_PLHURT2",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_PLHURT3",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_PLPUSH",1,-1,-1,-1,-1,15,30,0},
+    {"TLK_PLRELOAD",1,-1,-1,-1,-1,60,0,0},
+    {"TLK_SHOT",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_WOUND",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_INPOISONCLOUD",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_MORTAL",1,-1,-1,-1,-1,-1,-1,1},
+    {"TLK_SEE_COMBINE",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_ENEMY_DEAD",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_SELECTED",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_COMMANDED",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_COMMAND_FAILED",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_BETRAYED",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_ALLY_KILLED",1,-1,-1,-1,-1,15,30,0},
+    {"TLK_ATTACKING",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_HEAL",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_GIVEAMMO",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_PLYR_PHYSATK",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_NEWWEAPON",1,-1,-1,-1,-1,-1,-1,0},
+    {"TLK_STARTCOMBAT",1,-1,-1,-1,-1,30,0,0},
+    {"TLK_WATCHOUT",1,-1,-1,-1,-1,30,45,0},
+    {"TLK_DANGER",2,-1,-1,-1,-1,5,7,0},
+    {"TLK_PLDEAD",2,-1,-1,-1,-1,100,0,0},
+    {"TLK_HIDEANDRELOAD",2,-1,-1,-1,-1,45,60,0},
+};
+static_assert(sizeof(talk_concepts)/sizeof(talk_concepts[0])==48);
+const TalkConceptDescriptor* __cdecl talk_at(unsigned index) noexcept{return index<48?&talk_concepts[index]:nullptr;}
+unsigned char talk_fold(unsigned char c) noexcept{return c>='A'&&c<='Z'?static_cast<unsigned char>(c+32):c;}
+const TalkConceptDescriptor* __cdecl talk_lookup(const char* name) noexcept {
+    char bounded[128]{};
+    if(!prop_key_read(name,bounded))return nullptr;
+    for(const auto& d:talk_concepts){
+        const char* a=bounded;const char* b=d.name;
+        while(*a&&*b&&talk_fold(static_cast<unsigned char>(*a))==talk_fold(static_cast<unsigned char>(*b))){++a;++b;}
+        if(!*a&&!*b)return &d;
+    }
+    return nullptr;
+}
+bool talk_cooldown_elapsed(float now,float deadline) noexcept {
+    return static_cast<double>(now)-deadline>-.001;
+}
+int __cdecl talk_group_ready(const void* npc,unsigned bytes,const TalkCooldownState* state,const TalkCooldownBindings* b,unsigned priority,unsigned* result) noexcept {
+    if(!npc||bytes<0x115c||!sin_independent::vgui_layout::Readable(npc,0x115c)||
+       !state||!sin_independent::vgui_layout::Readable(state,sizeof(*state))||!b||!b->clock||priority>2||
+       !result||!hologram_writable(result,sizeof(*result)))return 0;
+    const auto h=*b;float now=0;
+    if(priority!=2){
+        if(!h.clock(h.context,&now))return -1;
+        if(!talk_cooldown_elapsed(now,state->global[priority])){*result=0;return 1;}
+    }
+    if(!h.clock(h.context,&now))return -1;
+    *result=talk_cooldown_elapsed(now,hologram_read<float>(npc,0x1150+priority*4));return 1;
+}
+int __cdecl talk_concept_ready(const TalkCooldownBindings* b,const char* name,unsigned* result) noexcept {
+    if(!b||!b->concept_deadline||!b->clock||!name||!result||!hologram_writable(result,sizeof(*result)))return 0;
+    const auto h=*b;float* deadline=nullptr;
+    if(!h.concept_deadline(h.context,*name?name:nullptr,&deadline))return -1;
+    if(!deadline){*result=1;return 1;}
+    if(!sin_independent::vgui_layout::Readable(deadline,4))return -1;
+    float now=0;if(!h.clock(h.context,&now))return -1;
+    *result=talk_cooldown_elapsed(now,*deadline);return 1;
+}
+bool talk_set_deadline(float& deadline,const TalkCooldownBindings& h,float low,float high) noexcept {
+    float delta=low,now=0;
+    if(high>0&&!h.random(h.context,low,high,&delta))return false;
+    if(!h.clock(h.context,&now))return false;
+    deadline=static_cast<float>(static_cast<double>(delta)+now);return true;
+}
+int __cdecl talk_note(void* npc,unsigned bytes,TalkCooldownState* state,const TalkCooldownBindings* b,const char* name) noexcept {
+    if(!npc||bytes<0x115c||!hologram_writable(npc,0x115c)||!state||!hologram_writable(state,sizeof(*state))||
+       !b||!b->clock||!b->random||!b->concept_deadline||!b->propagate||!b->cooldown_disabled||!name)return 0;
+    const auto h=*b;const auto* d=talk_lookup(name);const unsigned priority=d?d->priority:0;
+    if(d&&(d->flags&2)&&!h.propagate(h.context,npc,name))return -1;
+    unsigned disabled=0;if(!h.cooldown_disabled(h.context,&disabled))return -1;
+    if(disabled)return 1;
+    // Original group default row 224e1288: (10,20,0,0),
+    // remaining two groups are all zeros.
+    if(priority!=2){
+        if(d&&d->global_min!=-1){
+            if(!talk_set_deadline(state->global[priority],h,d->global_min,d->global_max))return -1;
+        }else if(priority==0&&!talk_set_deadline(state->global[0],h,10,20))return -1;
+    }
+    if(d&&d->npc_min!=-1){
+        float deadline=0;
+        if(!talk_set_deadline(deadline,h,d->npc_min,d->npc_max))return -1;
+        hologram_write(npc,0x1150+priority*4,deadline);
+    }
+    if(d&&d->concept_min!=-1){
+        float* deadline=nullptr;
+        if(!h.concept_deadline(h.context,name,&deadline))return -1;
+        // Original uses +18 twice, even when +1c differs.
+        if(deadline&&(!hologram_writable(deadline,4)||!talk_set_deadline(*deadline,h,d->concept_min,d->concept_min)))return -1;
+    }
+    return 1;
+}
+int __cdecl talk_reset_interaction(TalkCooldownState* state,const TalkCooldownBindings* b) noexcept {
+    if(!state||!hologram_writable(state,sizeof(*state))||!b||!b->clock||!b->random)return 0;
+    const auto h=*b;return talk_set_deadline(state->global[0],h,10,20)?1:-1;
+}
+const TalkCatalogApi talk_catalog_api{version,sizeof(TalkCatalogApi),48,&talk_at,&talk_lookup,&talk_group_ready,&talk_concept_ready,&talk_note,&talk_reset_interaction};
+
 
 
 
@@ -7709,6 +7835,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Expeditor
 SiN_GetExpeditorLifecycleApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ExpeditorLifecycleApi)?&expeditor_lifecycle_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetTalkCatalogApi=_SiN_GetTalkCatalogApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkCatalogApi* __cdecl
+SiN_GetTalkCatalogApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkCatalogApi)?&talk_catalog_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")
