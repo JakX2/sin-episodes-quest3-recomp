@@ -3,6 +3,7 @@
 #include "native_character_response.h"
 #include "native_action_monitor.h"
 #include <cstdio>
+#include "native_radio_message.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3057,6 +3058,124 @@ int __cdecl action_criteria(const void* record,unsigned bytes,float now,ActionCr
 int __cdecl action_look_criteria(const void* r,unsigned bytes,float now,ActionCriteria* out) noexcept {return action_criteria(r,bytes,now,out,true);}
 int __cdecl action_use_criteria(const void* r,unsigned bytes,ActionCriteria* out) noexcept {return action_criteria(r,bytes,0,out,false);}
 const ActionMonitorApi action_monitor_api{version,sizeof(ActionMonitorApi),&action_update_look,&action_look_criteria,&action_use_criteria,&health_ack};
+
+constexpr unsigned radio_size=0x3d4;
+bool radio_resolve(const RadioBindings& b,std::uint32_t h,void*& entity) noexcept {
+    entity=nullptr;if(h==0xffffffffu)return true;
+    unsigned bytes=0;
+    return b.resolve(b.context,h,&entity,&bytes)&&(!entity||(bytes>=radio_size&&sin_independent::vgui_layout::Readable(entity,radio_size)));
+}
+bool radio_text(const RadioBindings& b,std::uint32_t word,const char*& out) noexcept {
+    out="";if(!word)return true;
+    const char* value=nullptr;
+    if(!b.string(b.context,word,&value)||!value)return false;
+    out=value;return true;
+}
+bool radio_set_message(void* object,const RadioBindings& b,std::uint32_t word) noexcept {
+    const char* name=nullptr;
+    if(!radio_text(b,word,name))return false;
+    if(!*name)word=0;
+    hologram_write(object,0x3c8,word);
+    return b.precache(b.context,name)!=0;
+}
+bool radio_output(void* object,const RadioBindings& b,unsigned off) noexcept {
+    int clients=0;if(!b.max_clients(b.context,&clients))return false;
+    if(clients>1)return true;
+    void* player=nullptr;
+    if(!b.single_player(b.context,&player))return false;
+    return !player||b.output(b.context,object,player,off)!=0;
+}
+int __cdecl radio_initialize(HologramControl* ctrl) noexcept {
+    if(!health_control(ctrl,radio_size))return 0;
+    for(unsigned off:{0x394u,0x3a4u,0x3acu,0x3bcu,0x3c4u,0x3c8u,0x3ccu})hologram_write(ctrl->object,off,0u);
+    for(unsigned off:{0x3a0u,0x3b8u})hologram_write(ctrl->object,off,0xffffffffu);
+    for(unsigned off:{0x3d0u,0x3d1u,0x3d2u})hologram_write(ctrl->object,off,static_cast<unsigned char>(0));
+    return 1;
+}
+int __cdecl radio_input(HologramControl* ctrl,RadioDispatcher* state,const RadioBindings* b,RadioInput op,const RadioValue* val) noexcept {
+    if(!health_control(ctrl,radio_size)||!b)return 0;
+    if(op!=RadioInput::Remove&&(!val||!sin_independent::vgui_layout::Readable(val,sizeof(*val))))return 0;
+    if(op==RadioInput::Speaker){hologram_write(ctrl->object,0x3cc,val->type==2?val->word:0u);return 1;}
+    if(op==RadioInput::Priority){hologram_write(ctrl->object,0x3c4,val->type==5&&val->word==1?1u:0u);return 1;}
+    if(op!=RadioInput::Message&&op!=RadioInput::Dispatch&&op!=RadioInput::Remove)return 0;
+    if((op==RadioInput::Message||op==RadioInput::Dispatch)&&(!b->string||!b->precache))return 0;
+    if(op==RadioInput::Message&&val->type!=2&&!b->convert_variant)return 0;
+    if(op!=RadioInput::Message&&(!state||!hologram_writable(state,sizeof(*state))||!b->resolve))return 0;
+    if(op==RadioInput::Dispatch&&(!b->handle||!b->max_clients||!b->single_player||!b->output))return 0;
+    if(op==RadioInput::Remove&&!b->clear_delivery)return 0;
+    ctrl->busy=1;auto* object=ctrl->object;const auto host=*b;
+    auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    if(op==RadioInput::Message){
+        std::uint32_t word=val->word;
+        if(val->type!=2&&!host.convert_variant(host.context,val,&word))return finish(false);
+        return finish(radio_set_message(object,host,word));
+    }
+    if(op==RadioInput::Dispatch){
+        if(val->type==2&&val->word&&!radio_set_message(object,host,val->word))return finish(false);
+        hologram_write(object,0x3d1,static_cast<unsigned char>(0));
+        const auto priority=hologram_read<unsigned>(object,0x3c4);
+        void* previous=nullptr;
+        if(!radio_resolve(host,state->pending,previous))return finish(false);
+        // Only reject a nonzero priority when a live objective is pending.
+        if(!previous||!priority||hologram_read<unsigned>(previous,0x3c4)!=0){
+            std::uint32_t handle=0xffffffffu;
+            if(!host.handle(host.context,object,&handle))return finish(false);
+            state->pending=handle;state->kind=priority?2:1;
+        }
+        // Map output fires even when priority prevented replacement.
+        return finish(radio_output(object,host,0x394));
+    }
+    hologram_write(object,0x3d1,static_cast<unsigned char>(1));
+    for(auto* slot:{&state->pending,&state->current,&state->other}){
+        void* entity=nullptr;
+        if(!radio_resolve(host,*slot,entity))return finish(false);
+        if(entity==object){*slot=0xffffffffu;return finish(slot==&state->other||host.clear_delivery(host.context)!=0);}
+    }
+    return finish(true);
+}
+int __cdecl radio_heard(HologramControl* ctrl,const RadioBindings* b,unsigned value) noexcept {
+    if(!health_control(ctrl,radio_size)||!b||!b->max_clients||!b->single_player||!b->output||value>255)return 0;
+    ctrl->busy=1;
+    hologram_write(ctrl->object,0x3d0,static_cast<unsigned char>(value));
+    return disp_finish(ctrl,radio_output(ctrl->object,*b,0x3ac));
+}
+int __cdecl radio_promote(RadioDispatcher* s,const RadioBindings* b) noexcept {
+    if(!s||!hologram_writable(s,sizeof(*s))||!b||!b->resolve)return 0;
+    void* entity=nullptr;
+    if(!radio_resolve(*b,s->pending,entity))return -1;
+    s->current=entity?s->pending:s->other;s->pending=0xffffffffu;
+    if(!radio_resolve(*b,s->current,entity))return -1;
+    s->stage=6;
+    if(entity){
+        if(s->kind==1)s->stage=4;
+        else if(s->kind==3&&hologram_read<unsigned>(entity,0x3c4)==1)s->stage=3;
+    }
+    return 1;
+}
+int __cdecl radio_sound(const RadioDispatcher* s,const RadioBindings* b,unsigned stage,RadioSound* out) noexcept {
+    if(!s||!b||!b->resolve||!b->string||!out)return 0;
+    *out={};if(stage>4)return 1;
+    if(stage==2){std::memcpy(out->text,"..",3);out->present=1;return 1;}
+    void* entity=nullptr;
+    if(!radio_resolve(*b,stage<3?s->pending:s->current,entity))return -1;
+    if(!entity)return 1;
+    const auto priority=hologram_read<unsigned>(entity,0x3c4)?"Extraneous":"Objective";
+    const auto speaker=hologram_read<std::uint32_t>(entity,0x3cc);
+    const char* name="";
+    if(stage==0)std::snprintf(out->text,255,"policeradio.Alert.%s",priority);
+    else if(stage==1){
+        if(!radio_text(*b,speaker,name))return -1;
+        std::snprintf(out->text,255,"%s.Notification.%s",name,priority);
+    }else if(stage==3){
+        if(!radio_text(*b,speaker,name))return -1;
+        std::snprintf(out->text,255,"npc_Blade.Acknowledgement.%s%s%s",priority,*name?".":"",name);
+    }else{
+        if(!radio_text(*b,hologram_read<std::uint32_t>(entity,0x3c8),name))return -1;
+        out->speaker_word=speaker;std::snprintf(out->text,255,"%s",name);
+    }
+    out->present=1;return 1;
+}
+const RadioMessageApi radio_message_api{version,sizeof(RadioMessageApi),&radio_initialize,&radio_input,&radio_heard,&radio_promote,&radio_sound,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4800,6 +4919,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ActionMon
 SiN_GetActionMonitorApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ActionMonitorApi)?&action_monitor_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetRadioMessageApi=_SiN_GetRadioMessageApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioMessageApi* __cdecl
+SiN_GetRadioMessageApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioMessageApi)?&radio_message_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

@@ -11,6 +11,7 @@
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
+#include "test_native_radio_message.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -353,6 +354,12 @@ int main(int argc,char** argv){
     assert(actionMonitor&&!getActionMonitor(0,sizeof(tables::ActionMonitorApi))&&!getActionMonitor(1,0));
     tables::test::check_action_monitor(*actionMonitor,*jessicaAttention);
     std::puts("PASS native action monitor look duration and Jessica criteria producer/consumer");
+    const auto getRadioMessage=reinterpret_cast<tables::GetRadioMessageApi>(GetProcAddress(server,tables::radio_message_export));
+    assert(getRadioMessage&&!GetProcAddress(client,tables::radio_message_export));
+    const auto* radioMessage=getRadioMessage(1,sizeof(tables::RadioMessageApi));
+    assert(radioMessage&&!getRadioMessage(0,sizeof(tables::RadioMessageApi))&&!getRadioMessage(1,0));
+    tables::test::check_radio_message(*radioMessage);
+    std::puts("PASS native radio message dispatch priority and original sound-name selection");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
