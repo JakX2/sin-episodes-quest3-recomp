@@ -1164,6 +1164,80 @@ static void test_magnum(const a::MagnumApi* magnum,const a::MapEntityApi* map,co
     assert(magnum->acknowledge(gun)&&map->remove(gun)&&!magnum->acknowledge(gun));
     assert(map->end_level(epoch)&&api->end_campaign());
 }
+struct AmmoFixture {
+    const a::CombatAmmoApi* ammo=nullptr;
+    const a::MapEntityApi* map=nullptr;
+    a::MapEntityRef owner{};
+    std::int32_t counts[32]{};
+    std::int32_t maxima[32]{};
+    std::vector<int> log;
+    int fail_store=-1;
+    static AmmoFixture& get(void* c){return *static_cast<AmmoFixture*>(c);}
+    void check(a::MapEntityRef ref){
+        assert(ref.epoch==owner.epoch&&ref.index==owner.index&&ref.generation==owner.generation);
+        assert(!map->end_level(owner.epoch));
+    }
+    static int SIN_FIXED_CALL live(void* c,a::MapEntityRef ref){
+        auto& f=get(c);f.check(ref);f.log.push_back(1);return 1;
+    }
+    static int SIN_FIXED_CALL max_count(void* c,std::int32_t i,std::int32_t* out){
+        auto& f=get(c);assert(i>=0&&i<32);f.log.push_back(100+i);*out=f.maxima[i];return 1;
+    }
+    static int SIN_FIXED_CALL read(void* c,a::MapEntityRef ref,std::int32_t i,std::int32_t* out){
+        auto& f=get(c);f.check(ref);assert(i>=0&&i<32);f.log.push_back(200+i);
+        const a::AmmoRequest nested{a::AmmoGetCount,-1,0};a::AmmoReport r{};
+        assert(f.ammo->apply(ref,&nested,nullptr,nullptr,&r)&&r.code==a::AmmoRejected);
+        *out=f.counts[i];return 1;
+    }
+    static int SIN_FIXED_CALL notify(void* c,a::MapEntityRef ref){
+        auto& f=get(c);f.check(ref);f.log.push_back(2);return 1;
+    }
+    static int SIN_FIXED_CALL store(void* c,a::MapEntityRef ref,std::int32_t i,std::int32_t value){
+        auto& f=get(c);f.check(ref);assert(i>=0&&i<32);f.log.push_back(300+i);
+        if(i==f.fail_store)return 0;
+        f.counts[i]=value;return 1;
+    }
+    a::AmmoHost host(){return {1,sizeof(a::AmmoHost),&live,&max_count,&read,&notify,&store};}
+    a::AmmoReport apply(std::uint32_t op,int index,int amount=0){
+        const a::AmmoRequest req{op,index,amount};const auto cb=host();a::AmmoReport r{};
+        assert(ammo->apply(owner,&req,&cb,this,&r));return r;
+    }
+};
+static void test_shared_ammo(const a::CombatAmmoApi* ammo,const a::MapEntityApi* map,const a::Api* api){
+    assert(ammo&&ammo->version==1&&ammo->size==sizeof(*ammo)&&api->begin_campaign(2));
+    const auto epoch=map->begin_level("ammo");assert(epoch);
+    AmmoFixture f;f.ammo=ammo;f.map=map;f.owner={epoch,100,1};
+    f.counts[2]=7;f.maxima[2]=40;
+    auto r=f.apply(a::AmmoGetCount,-1);
+    assert(r.code==a::AmmoRead&&r.value==0&&f.log.empty());
+    r=f.apply(a::AmmoGetCount,32);assert(r.code==a::AmmoRejected&&f.log.empty());
+    r=f.apply(a::AmmoRemove,-1,0);assert(r.code==a::AmmoUnchanged&&f.log.empty());
+    r=f.apply(a::AmmoGetCount,2);
+    assert(r.code==a::AmmoRead&&r.value==7&&(f.log==std::vector<int>{1,102,202}));
+    f.log.clear();r=f.apply(a::AmmoRemove,2,3);
+    assert(r.code==a::AmmoChanged&&r.value==4&&f.counts[2]==4&&r.changed_slots==1);
+    assert((f.log==std::vector<int>{1,102,202,2,302}));
+    f.log.clear();r=f.apply(a::AmmoRemove,2,9);
+    assert(r.code==a::AmmoChanged&&r.value==0&&f.counts[2]==0);
+    f.log.clear();r=f.apply(a::AmmoRemove,2,9);
+    assert(r.code==a::AmmoUnchanged&&(f.log==std::vector<int>{1,102,202}));
+    f.maxima[2]=-2;f.counts[2]=123;f.log.clear();
+    r=f.apply(a::AmmoGetCount,2);assert(r.code==a::AmmoRead&&r.infinite&&r.value==999&&(f.log==std::vector<int>{1,102}));
+    f.log.clear();r=f.apply(a::AmmoRemove,2,1);
+    assert(r.code==a::AmmoUnchanged&&r.infinite&&f.counts[2]==123&&(f.log==std::vector<int>{1,102}));
+    f.log.clear();r=f.apply(a::AmmoSet,2,-5);
+    assert(r.code==a::AmmoChanged&&f.counts[2]==-5&&(f.log==std::vector<int>{1,202,2,302}));
+    f.maxima[2]=40;f.counts[2]=(std::numeric_limits<std::int32_t>::min)();f.log.clear();
+    r=f.apply(a::AmmoRemove,2,1);assert(r.code==a::AmmoChanged&&r.value==(std::numeric_limits<std::int32_t>::max)());
+    f.counts[0]=1;f.counts[31]=2;f.log.clear();f.fail_store=2;
+    r=f.apply(a::AmmoClear,0);
+    assert(r.code==a::AmmoUncertain&&r.changed_slots==1&&f.counts[0]==0&&f.counts[2]!=0&&f.counts[31]==2);
+    f.fail_store=-1;f.log.clear();r=f.apply(a::AmmoClear,0);
+    assert(r.code==a::AmmoChanged&&r.changed_slots==2&&f.counts[31]==0&&f.counts[2]==0);
+    assert(map->end_level(epoch));
+    r=f.apply(a::AmmoGetCount,2);assert(r.code==a::AmmoRejected);
+    assert(api->end_campaign());
+}
 struct MagnumSecondaryFixture {
     const a::MapEntityApi* map;
     const a::MagnumApi* magnum;
@@ -1171,6 +1245,7 @@ struct MagnumSecondaryFixture {
     std::vector<unsigned> log;
     bool direct=true,uses_clip=true,zoom=false,fail_fire=false;
     int clip=3,reserve=4,clock=0,random=0,fire_calls=0,impact_calls=0;
+    AmmoFixture* shared=nullptr;
     static MagnumSecondaryFixture& get(void* c){return *static_cast<MagnumSecondaryFixture*>(c);}
     void check(a::MapEntityRef ref){
         assert(ref.epoch==gun.epoch&&ref.index==gun.index&&ref.generation==gun.generation);
@@ -1190,8 +1265,22 @@ struct MagnumSecondaryFixture {
         case a::MagSecondaryOrigin:v->vector={1.f,2.f,3.f};break;
         case a::MagSecondaryDirectVector:assert(arg==0x3db27eb6u);v->vector={1.f,0.f,0.f};break;
         case a::MagSecondaryFallbackVector:v->vector={0.f,1.f,0.f};break;
-        case a::MagSecondaryAmmoType:v->integer=92;break;
-        case a::MagSecondaryReserveCount:assert(arg==92);v->integer=f.reserve;break;
+        case a::MagSecondaryAmmoType:v->integer=f.shared?2:92;break;
+        case a::MagSecondaryReserveCount:
+            if(f.shared){
+                assert(arg==2);
+                const auto result=f.shared->apply(a::AmmoGetCount,2);
+                assert(result.code==a::AmmoRead);
+                // Wrong operation and wrong actor are refused even inside a
+                // permitted owner query.
+                const auto cb=f.shared->host();a::AmmoReport blocked{};
+                const a::AmmoRequest remove{a::AmmoRemove,2,1},get{a::AmmoGetCount,2,0};
+                assert(f.shared->ammo->apply(f.owner,&remove,&cb,f.shared,&blocked)&&blocked.code==a::AmmoRejected);
+                auto other=f.owner;++other.generation;
+                assert(f.shared->ammo->apply(other,&get,&cb,f.shared,&blocked)&&blocked.code==a::AmmoRejected);
+                v->integer=result.value;
+            }else{assert(arg==92);v->integer=f.reserve;}
+            break;
         case a::MagSecondarySpread:v->vector={0.1f,0.1f,0.1f};break;
         case a::MagSecondaryZoomed:v->integer=f.zoom;break;
         case a::MagSecondaryOwnerFlags:v->integer=0x800;break;
@@ -1213,7 +1302,10 @@ struct MagnumSecondaryFixture {
         case a::MagSecondarySecondaryTimer:assert(v->real==14.f);break;
         case a::MagSecondaryOwnerAnimation:assert(v->integer==5);break;
         case a::MagSecondaryDebitClip:f.clip-=v->integer;break;
-        case a::MagSecondaryDebitReserve:assert(extra==92);f.reserve-=v->integer;break;
+        case a::MagSecondaryDebitReserve:
+            if(f.shared){assert(extra==2);assert(f.shared->apply(a::AmmoRemove,2,v->integer).code==a::AmmoChanged);}
+            else{assert(extra==92);f.reserve-=v->integer;}
+            break;
         case a::MagSecondaryFeedback:assert(v->integer==6);break;
         case a::MagSecondaryAngleHelper:assert(v->vector.x==11.f&&v->vector.y==19.f&&v->vector.z==0.f);break;
         case a::MagSecondaryPunch:assert(v->vector.x==-8.f&&v->vector.y==0.5f&&v->vector.z==0.f);break;
@@ -1233,7 +1325,7 @@ struct MagnumSecondaryFixture {
     static int SIN_FIXED_CALL fire(void* c,a::MapEntityRef owner,const a::MagnumFireRecord* record){
         auto& f=get(c);f.check(record->weapon);assert(owner.index==f.owner.index);
         ++f.fire_calls;f.log.push_back(300);
-        assert(record->distance==56755.83984375f&&record->ammo_type==92&&record->tracer_frequency==1&&
+        assert(record->distance==56755.83984375f&&record->ammo_type==(f.shared?2:92)&&record->tracer_frequency==1&&
             record->force_scale==1.f&&record->origin.x==1.f&&record->spread.x==0.1f);
         a::MagnumImpactReport report{};
         const a::MagnumImpactHost host{1,sizeof(a::MagnumImpactHost),&base_impact,nullptr,nullptr,nullptr};
@@ -1244,7 +1336,7 @@ struct MagnumSecondaryFixture {
     }
 };
 static void test_magnum_secondary(const a::MagnumSecondaryApi* secondary,const a::MagnumApi* magnum,
-        const a::MapEntityApi* map,const a::Api* api){
+        const a::MapEntityApi* map,const a::Api* api,const a::CombatAmmoApi* ammo){
     assert(secondary&&secondary->version==1&&secondary->size==sizeof(*secondary)&&api->begin_campaign(2));
     const auto epoch=map->begin_level("magnum_secondary");assert(epoch);
     const a::MapEntityRef gun{epoch,1,1},owner{epoch,100,1},other{epoch,2,1};
@@ -1281,6 +1373,13 @@ static void test_magnum_secondary(const a::MagnumSecondaryApi* secondary,const a
     f.reset();f.uses_clip=false;f.reserve=1;
     assert(run()&&report.code==a::MagSecondaryCompleted&&f.reserve==0&&report.record.shots==1);
     assert(std::count(f.log.begin(),f.log.end(),100+a::MagSecondaryReserveCount)==2);
+    // Real cross-export composition: the original reserve query and
+    // debit invoke the shared loaded-DLL ammo implementation.
+    AmmoFixture shared;shared.ammo=ammo;shared.map=map;shared.owner=owner;
+    shared.counts[2]=3;shared.maxima[2]=40;f.shared=&shared;f.reset();
+    assert(run()&&report.code==a::MagSecondaryCompleted&&shared.counts[2]==2&&report.record.ammo_type==2);
+    assert((shared.log==std::vector<int>{1,102,202,1,102,202,2,302}));
+    f.shared=nullptr;
     f.reset();f.direct=false;
     assert(run()&&report.code==a::MagSecondaryCompleted&&report.record.direction.y==1.f&&f.reserve==0);
     assert(std::find(f.log.begin(),f.log.end(),200+a::MagSecondaryOwnerFire)==f.log.end()&&
@@ -2160,7 +2259,15 @@ int main(int argc,char** argv){
     auto getMagSecondary=reinterpret_cast<a::GetMagnumSecondaryApi>(dlsym(lib,a::magnum_secondary_export_name));
 #endif
     assert(getMagSecondary&&!getMagSecondary(0,sizeof(a::MagnumSecondaryApi))&&!getMagSecondary(1,0));
-    test_magnum_secondary(getMagSecondary(a::magnum_secondary_version,sizeof(a::MagnumSecondaryApi)),magnum,map,api);
+#ifdef _WIN32
+    auto getAmmo=reinterpret_cast<a::GetCombatAmmoApi>(GetProcAddress(lib,a::ammo_export_name));
+#else
+    auto getAmmo=reinterpret_cast<a::GetCombatAmmoApi>(dlsym(lib,a::ammo_export_name));
+#endif
+    assert(getAmmo&&!getAmmo(0,sizeof(a::CombatAmmoApi))&&!getAmmo(1,0));
+    const auto* ammo=getAmmo(a::ammo_version,sizeof(a::CombatAmmoApi));
+    test_shared_ammo(ammo,map,api);
+    test_magnum_secondary(getMagSecondary(a::magnum_secondary_version,sizeof(a::MagnumSecondaryApi)),magnum,map,api,ammo);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
 #else

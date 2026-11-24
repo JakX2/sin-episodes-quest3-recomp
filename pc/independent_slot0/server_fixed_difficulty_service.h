@@ -710,6 +710,35 @@ struct MagnumSecondaryApi {
         void*,MagnumSecondaryReport*) noexcept;
 };
 using GetMagnumSecondaryApi=const MagnumSecondaryApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+// Original shared CBaseCombatCharacter ammo methods, game host-owned
+// 32-entry inventory. Index -1 is accepted only by GetCount. No native
+// object pointer or copy of the authoritative inventory is retained.
+inline constexpr char ammo_export_name[]="SiN_GetCombatAmmoApi";
+inline constexpr std::uint32_t ammo_version=1,ammo_slots=32;
+enum AmmoOperation : std::uint32_t {AmmoGetCount=0,AmmoRemove,AmmoSet,AmmoClear};
+enum AmmoCode : std::uint32_t {AmmoRejected=0,AmmoRead,AmmoUnchanged,AmmoChanged,AmmoUncertain};
+struct AmmoRequest {std::uint32_t operation;std::int32_t index,amount;};
+struct AmmoReport {
+    std::uint32_t code,attempted,delivered,changed_slots,infinite;
+    std::int32_t value;
+};
+struct AmmoHost {
+    std::uint32_t version,size;
+    // Host resolves the live owner and verified original ammo definition.
+    // max_count == -2 is infinite. It can come from an original ConVar.
+    int (SIN_FIXED_CALL *live)(void*,MapEntityRef);
+    int (SIN_FIXED_CALL *max_count)(void*,std::int32_t,std::int32_t*);
+    int (SIN_FIXED_CALL *read)(void*,MapEntityRef,std::int32_t,std::int32_t*);
+    // Original +0x3e4 virtual notification before each changed store.
+    int (SIN_FIXED_CALL *notify)(void*,MapEntityRef);
+    int (SIN_FIXED_CALL *store)(void*,MapEntityRef,std::int32_t,std::int32_t);
+};
+struct CombatAmmoApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *apply)(MapEntityRef,const AmmoRequest*,const AmmoHost*,void*,AmmoReport*) noexcept;
+};
+using GetCombatAmmoApi=const CombatAmmoApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(AmmoReport)==24);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

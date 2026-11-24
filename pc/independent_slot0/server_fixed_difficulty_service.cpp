@@ -579,6 +579,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetRifleGrenadeApi=_SiN_GetRifleGrenadeApi")
 #pragma comment(linker,"/EXPORT:SiN_GetMagnumApi=_SiN_GetMagnumApi")
 #pragma comment(linker,"/EXPORT:SiN_GetMagnumSecondaryApi=_SiN_GetMagnumSecondaryApi")
+#pragma comment(linker,"/EXPORT:SiN_GetCombatAmmoApi=_SiN_GetCombatAmmoApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -1182,6 +1183,88 @@ int SIN_FIXED_CALL scattergun_after_base(abi::MapEntityRef ref,const abi::Scatte
 const abi::ScattergunPumpApi scattergun_api{abi::scattergun_version,sizeof(abi::ScattergunPumpApi),
     &scattergun_state,&scattergun_reconcile,&scattergun_before_deploy,&scattergun_after_base};
 
+// Restricted nested ammo service access during the specific original
+// owner query or debit callback. All other callbacks remain guarded.
+struct AmmoAccess {abi::MapEntityRef owner{};std::uint32_t operation=0xffffffffu;};
+AmmoAccess ammo_access{};
+bool ammo_active=false;
+struct AmmoWindow {
+    AmmoAccess prior=ammo_access;
+    AmmoWindow(abi::MapEntityRef owner,std::uint32_t op) noexcept {ammo_access={owner,op};}
+    ~AmmoWindow(){ammo_access=prior;}
+};
+struct AmmoScope {
+    AmmoScope() noexcept {ammo_active=true;}
+    ~AmmoScope(){ammo_active=false;}
+};
+bool same_ammo_owner(abi::MapEntityRef a,abi::MapEntityRef b) noexcept {
+    return a.epoch==b.epoch&&a.index==b.index&&a.generation==b.generation;
+}
+int SIN_FIXED_CALL combat_ammo(abi::MapEntityRef owner,const abi::AmmoRequest* input,
+        const abi::AmmoHost* host,void* context,abi::AmmoReport* out) noexcept {
+    if(!out)return 0;
+    abi::AmmoReport report{};
+    const auto finish=[&](std::uint32_t code) noexcept {report.code=code;*out=report;return 1;};
+    if(!input||ammo_active||!active_level(owner.epoch)||
+       owner.index==(std::numeric_limits<std::uint32_t>::max)()||
+       owner.generation==(std::numeric_limits<std::uint32_t>::max)()||
+       (reading_engine_skill&&(!same_ammo_owner(owner,ammo_access.owner)||
+         input->operation!=ammo_access.operation)))return finish(abi::AmmoRejected);
+    const auto in=*input;
+    if(in.operation>abi::AmmoClear)return finish(abi::AmmoRejected);
+    if(in.operation==abi::AmmoGetCount&&in.index==-1)return finish(abi::AmmoRead);
+    if(in.operation==abi::AmmoRemove&&in.amount<=0)return finish(abi::AmmoUnchanged);
+    if(in.operation!=abi::AmmoClear&&(in.index<0||in.index>=static_cast<std::int32_t>(abi::ammo_slots)))
+        return finish(abi::AmmoRejected);
+    if(!host||host->version!=abi::ammo_version||host->size!=sizeof(*host)||!host->live||
+       !host->read||((in.operation==abi::AmmoGetCount||in.operation==abi::AmmoRemove)&&!host->max_count)||
+       (in.operation!=abi::AmmoGetCount&&(!host->notify||!host->store)))return finish(abi::AmmoRejected);
+    const auto cb=*host;
+    OutputScope scope;
+    AmmoScope ammo_scope;
+    const auto call=[&](auto fn,auto... args){
+        ++report.attempted;
+        if(!fn(context,args...))throw 1;
+        ++report.delivered;
+    };
+    const auto read=[&](std::int32_t index){
+        std::int32_t v=0;call(cb.read,owner,index,&v);return v;
+    };
+    const auto set=[&](std::int32_t index,std::int32_t old,std::int32_t value){
+        report.value=value;
+        if(old==value)return;
+        call(cb.notify,owner);
+        call(cb.store,owner,index,value);
+        ++report.changed_slots;
+    };
+    try {
+        ++report.attempted;
+        if(!cb.live(context,owner))return finish(abi::AmmoRejected);
+        ++report.delivered;
+        if(in.operation==abi::AmmoGetCount||in.operation==abi::AmmoRemove){
+            std::int32_t max=0;call(cb.max_count,in.index,&max);
+            if(max==-2){
+                report.infinite=1;
+                if(in.operation==abi::AmmoGetCount){report.value=999;return finish(abi::AmmoRead);}
+                return finish(abi::AmmoUnchanged);
+            }
+            const auto old=read(in.index);
+            if(in.operation==abi::AmmoGetCount){report.value=old;return finish(abi::AmmoRead);}
+            // Native subtract wraps as a DWORD, then clamps using signed
+            // JLE. Explicit unsigned arithmetic avoids C++ signed UB.
+            const auto raw=static_cast<std::uint32_t>(old)-static_cast<std::uint32_t>(in.amount);
+            const auto value=(raw&0x80000000u)?0:static_cast<std::int32_t>(raw);
+            set(in.index,old,value);
+        }else if(in.operation==abi::AmmoSet){
+            set(in.index,read(in.index),in.amount);
+        }else{
+            for(std::int32_t i=0;i<static_cast<std::int32_t>(abi::ammo_slots);++i)set(i,read(i),0);
+        }
+    }catch(...){return finish(abi::AmmoUncertain);}
+    return finish(report.changed_slots?abi::AmmoChanged:abi::AmmoUnchanged);
+}
+const abi::CombatAmmoApi ammo_api{abi::ammo_version,sizeof(abi::CombatAmmoApi),&combat_ammo};
+
 // Phase167 original secondary-fire ordering, with authoritative host
 // writes at the actual call boundaries instead of copying live ammo/timers.
 int SIN_FIXED_CALL scattergun_secondary_fire(abi::MapEntityRef ref,
@@ -1208,6 +1291,7 @@ int SIN_FIXED_CALL scattergun_secondary_fire(abi::MapEntityRef ref,
     const auto query=[&](std::uint32_t op,std::uint32_t arg=0u){
         abi::ScattergunFireValue value{};
         ++report.queries_attempted;
+        AmmoWindow window(in.owner,op==abi::FireOwnerAmmoCount?abi::AmmoGetCount:0xffffffffu);
         if(!callbacks.query(context,ref,in.owner,op,arg,&value))throw 1;
         ++report.queries_delivered;
         return value;
@@ -1221,6 +1305,7 @@ int SIN_FIXED_CALL scattergun_secondary_fire(abi::MapEntityRef ref,
                            float x=0.f,float y=0.f){
         const abi::ScattergunFireValue value{a,b,x,y};
         ++report.effects_attempted;
+        AmmoWindow window(in.owner,op==abi::FireConsumeReserve?abi::AmmoRemove:0xffffffffu);
         if(!callbacks.effect(context,ref,in.owner,op,&value))throw 1;
         ++report.effects_delivered;
     };
@@ -1479,6 +1564,7 @@ int SIN_FIXED_CALL rifle_launch(abi::MapEntityRef ref,const abi::RifleLaunchInpu
     };
     abi::RifleLaunchObservation auth{};
     try {
+        AmmoWindow window(in.owner,abi::AmmoGetCount);
         if(!cb.authorize(context,ref,in.owner,&auth))return finish(abi::RifleUnauthorized);
     }catch(...){return uncertain();}
     if(auth.live_owner_and_weapon!=1||auth.correct_owner!=1||auth.selected>1||
@@ -1720,6 +1806,7 @@ int SIN_FIXED_CALL magnum_secondary(abi::MapEntityRef ref,const abi::MagnumSecon
     const auto q=[&](std::uint32_t op,std::uint32_t arg=0u){
         abi::MagnumSecondaryValue v{};
         ++report.queries_attempted;
+        AmmoWindow window(in.owner,op==abi::MagSecondaryReserveCount?abi::AmmoGetCount:0xffffffffu);
         if(!cb.query(context,ref,in.owner,op,arg,&v))throw 1;
         ++report.queries_delivered;return v;
     };
@@ -1742,6 +1829,7 @@ int SIN_FIXED_CALL magnum_secondary(abi::MapEntityRef ref,const abi::MagnumSecon
                           abi::NpcSpread v={},std::int32_t extra=0){
         const abi::MagnumSecondaryValue value{word,f,v};
         ++report.effects_attempted;
+        AmmoWindow window(in.owner,op==abi::MagSecondaryDebitReserve?abi::AmmoRemove:0xffffffffu);
         if(!cb.effect(context,ref,in.owner,op,&value,extra))throw 1;
         ++report.effects_delivered;
     };
@@ -1836,6 +1924,11 @@ const abi::MagnumSecondaryApi magnum_secondary_api{abi::magnum_secondary_version
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::CombatAmmoApi* SIN_FIXED_CALL
+SiN_GetCombatAmmoApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::ammo_version&&bytes==sizeof(abi::CombatAmmoApi)?&ammo_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::MagnumSecondaryApi* SIN_FIXED_CALL
 SiN_GetMagnumSecondaryApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::magnum_secondary_version&&bytes==sizeof(abi::MagnumSecondaryApi)?
