@@ -1464,9 +1464,103 @@ inline void check_keypad(const KeypadSendApi& sa,const KeypadRecvApi& ra,const K
     assert(!sa.destroy(&sv)&&!ra.destroy(&rv));sv.tables[KeyScreen]->written=false;rv.tables[KeyProp]->initialized=false;
     assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
+
+struct PhoneFixture {
+    void* phone=nullptr;HologramControl* screen=nullptr;
+    unsigned events[32]{},count=0,fail=0;
+    bool create_missing=false,stale=false;
+    unsigned found=0;const char* result=nullptr;float now=10,scheduled=0;
+    std::uint32_t handle=0x123009;
+    int book=0;
+    char sound[256]{},digits[32]{};
+    bool push(unsigned n){assert(count<32);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl phone_clock_test(void* context,float* now) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);*now=f.now;return f.push(1);
+}
+inline int __cdecl phone_schedule_test(void* context,void* phone,float when) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);assert(phone==f.phone);f.scheduled=when;return f.push(2);
+}
+inline int __cdecl phone_create_test(void* context,void* phone,const char* name,std::uint32_t* handle) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);assert(phone==f.phone&&!std::strcmp(name,"prop_keypad"));
+    *handle=f.create_missing?0xffffffffu:f.handle;return f.push(3);
+}
+inline int __cdecl phone_resolve_test(void* context,std::uint32_t handle,HologramControl** screen) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);assert(handle==f.handle);
+    *screen=f.stale?nullptr:f.screen;return f.push(4);
+}
+inline int __cdecl phone_configure_test(void* context,void* phone,void* screen,const char* attachment,const char* panel,float w,float h) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);
+    assert(phone==f.phone&&screen==f.screen->object&&!std::strcmp(attachment,"keypad")&&!std::strcmp(panel,"prop_keypad")&&w==16&&h==16);
+    return f.push(5);
+}
+inline int __cdecl phone_remove_test(void* context,std::uint32_t handle,void* screen) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);
+    assert(handle==f.handle&&screen==(f.stale?nullptr:f.screen->object));return f.push(6);
+}
+inline int __cdecl phone_lookup_test(void* context,const void* book,const char* digits,unsigned* found,const char** sound) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);assert(book==&f.book);
+    std::memcpy(f.digits,digits,std::strlen(digits)+1);*found=f.found;*sound=f.result;return f.push(7);
+}
+inline int __cdecl phone_sound_test(void* context,void* phone,const char* sample) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);assert(phone==f.phone);
+    std::memcpy(f.sound,sample,std::strlen(sample)+1);return f.push(8);
+}
+inline int __cdecl phone_dirty_test(void* context,void* screen,unsigned offset) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);assert(screen==f.screen->object&&offset==0x3c9);return f.push(9);
+}
+inline int __cdecl phone_output_test(void* context,void* screen,unsigned offset,const char* text,void* activator,void* caller,float delay) noexcept {
+    auto& f=*static_cast<PhoneFixture*>(context);assert(screen==f.screen->object&&offset==0x3ec&&activator==screen&&caller==screen&&delay==0);
+    assert(text==nullptr||text==static_cast<char*>(screen)+0x3c9);return f.push(10);
+}
+inline void check_phone(const PhoneSendApi& sa,const PhoneRecvApi& ra,const PhoneServerApi& api,
+    const AggregateSendApi& asa,const AggregateRecvApi& ara,AggregateSendView& base_s,AggregateRecvView& base_r){
+    PhoneSendBindings sb{&base_s};PhoneRecvBindings rb{&base_r,nullptr};PhoneSendView sv{};PhoneRecvView rv{};
+    assert(!ra.create(&rb,&rv));rb.creator=&fixture_class_creator;
+    assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv)&&!asa.destroy(&base_s)&&!ara.destroy(&base_r));
+    assert(sv.table->count==1&&rv.table->count==1&&!std::strcmp(sv.table->name,"DT_CPropPhone")&&
+        !std::strcmp(rv.table->name,"DT_CPropPhone")&&!std::strcmp(sv.record->name,"CPropPhone")&&
+        sv.table->props[0].table==base_s.class_records[ClAnimating].table&&rv.table->props[0].table==base_r.class_records[ClAnimating].table);
+    alignas(4) unsigned char phone[0x4b4]{},screen[0x41c]{};
+    HologramControl ctrl{phone,sizeof(phone)},key{screen,sizeof(screen)};
+    PhoneFixture f{phone,&key};
+    PhoneBindings b{&f,&phone_clock_test,&phone_schedule_test,&phone_create_test,&phone_resolve_test,
+        &phone_configure_test,&phone_remove_test,&phone_lookup_test,&phone_sound_test,
+        {&f,&phone_dirty_test,nullptr,nullptr,nullptr,&phone_output_test,nullptr,nullptr}};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto word=[&](unsigned offset){std::uint32_t w=0;std::memcpy(&w,phone+offset,4);return w;};
+    const auto think=[&](){return api.think(&ctrl,&b);};
+    const auto dial=[&](const char* v){return api.dial(&ctrl,&b,v);};
+    assert(api.defaults(phone,sizeof(phone))&&word(0x4a8)==0xffffffffu);
+    assert(think()==1);expect({});assert(dial("1234")==1);expect({});
+    void* book=&f.book;std::memcpy(phone+0x4b0,&book,4);
+    f.create_missing=true;assert(think()==1&&word(0x4a8)==0xffffffffu);expect({3});
+    f.create_missing=false;assert(think()==1&&word(0x4a8)==f.handle&&f.scheduled==10.25f);expect({3,4,5,4,1,2});
+    assert(dial("123")==1);expect({4,9,10});assert(think()==1);expect({4,1,2});
+    assert(dial("1234")==1);expect({4,9,10});f.found=1;f.result="*Phone.Prefix";
+    assert(think()==1&&word(0x4a4)==4&&!std::strcmp(f.sound,"Phone.Prefix")&&!std::strcmp(f.digits,"1234"));expect({4,7,8,1,2});
+    assert(think()==1);expect({4,1,2});
+    assert(dial("12345")==1);expect({4,9,10});f.result="Phone.Message";
+    assert(think()==1&&word(0x4a4)==0&&screen[0x3c9]==0&&!std::strcmp(f.sound,"Phone.Message"));expect({4,7,8,4,9,10,1,2});
+    assert(dial("9999")==1);expect({4,9,10});f.found=0;f.result=nullptr;
+    const char* fallback="Phone.Fail";std::memcpy(phone+0x498,&fallback,4);
+    assert(think()==1&&!std::strcmp(f.sound,"Phone.Fail")&&screen[0x3c9]==0);expect({4,7,8,4,9,10,1,2});
+    assert(dial("7777")==1);expect({4,9,10});fallback=nullptr;std::memcpy(phone+0x498,&fallback,4);
+    assert(think()==1&&screen[0x3c9]==0);expect({4,7,4,9,10,1,2});
+    assert(api.enable(&ctrl,&b,0)==1&&phone[0x494]==1);expect({});
+    assert(think()==1&&word(0x4a8)==0xffffffffu);expect({4,6});
+    assert(api.enable(&ctrl,&b,1)==1&&phone[0x494]==0);expect({1,2});
+    assert(think()==1);expect({3,4,5,4,1,2});
+    f.stale=true;assert(think()==-1&&ctrl.blocked);expect({4});
+    assert(think()==0&&api.acknowledge(&ctrl));expect({});
+    assert(api.enable(&ctrl,&b,0)==1&&think()==1);expect({4,6});
+    sv.table->written=true;rv.record->class_id=1;assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
+    sv.table->written=false;rv.record->class_id=0;assert(sa.destroy(&sv)&&ra.destroy(&rv));
+}
 inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era,const HologramServerApi& hsa,const HologramClientApi& hra,const GruntDeathApi& gda,
         const KeypadSendApi& ksa,const KeypadRecvApi& kra,const KeypadServerApi& ks,const KeypadClientApi& kc,
-        const PropKeypadServerApi& pks,const PropKeypadClientApi& pkc){
+        const PropKeypadServerApi& pks,const PropKeypadClientApi& pkc,
+        const PhoneSendApi& phs,const PhoneRecvApi& phr,const PhoneServerApi& ph){
     s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
     RecvProp rp[8];RecvTable rc{rp,8,nullptr,"DT_CollisionProperty"};
     NativeOwner owner;sin_independent::EntityHandleEntry entries[64]{};
@@ -1489,6 +1583,7 @@ inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& r
     assert(sv.class_count==15&&rv.class_count==15&&!sa.create(&sb,&sv)&&!ra.create(&rb,&rv));
     check_extra_entities(esa,era,sa,ra,sv,rv,hsa,hra,gda);
     check_keypad(ksa,kra,ks,kc,sa,ra,sv,rv,pks,pkc);
+    check_phone(phs,phr,ph,sa,ra,sv,rv);
     for(unsigned i=0;i<aggregate_table_count;++i){
         assert(sv.tables[i]&&rv.tables[i]&&std::strcmp(sv.tables[i]->name,rv.tables[i]->name)==0);
         for(unsigned j=0;j<i;++j)assert(sv.tables[i]!=sv.tables[j]&&rv.tables[i]!=rv.tables[j]);

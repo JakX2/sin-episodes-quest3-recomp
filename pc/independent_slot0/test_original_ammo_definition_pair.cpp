@@ -179,7 +179,16 @@ int main(int argc,char** argv){
     const auto* propKeyServer=getPropKeyServer(1,sizeof(tables::PropKeypadServerApi));
     const auto* propKeyClient=getPropKeyClient(1,sizeof(tables::PropKeypadClientApi));
     assert(propKeyServer&&propKeyClient&&!getPropKeyServer(0,sizeof(tables::PropKeypadServerApi))&&!getPropKeyClient(1,0));
-    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath,*keySend,*keyRecv,*keyServer,*keyClient,*propKeyServer,*propKeyClient);
+    const auto getPhoneSend=reinterpret_cast<tables::GetPhoneSendApi>(GetProcAddress(server,tables::phone_send_export));
+    const auto getPhoneRecv=reinterpret_cast<tables::GetPhoneRecvApi>(GetProcAddress(client,tables::phone_recv_export));
+    const auto getPhoneServer=reinterpret_cast<tables::GetPhoneServerApi>(GetProcAddress(server,tables::phone_server_export));
+    assert(getPhoneSend&&getPhoneRecv&&getPhoneServer&&!GetProcAddress(client,tables::phone_server_export));
+    const auto* phoneSend=getPhoneSend(1,sizeof(tables::PhoneSendApi));
+    const auto* phoneRecv=getPhoneRecv(1,sizeof(tables::PhoneRecvApi));
+    const auto* phoneServer=getPhoneServer(1,sizeof(tables::PhoneServerApi));
+    assert(phoneSend&&phoneRecv&&phoneServer&&!getPhoneSend(0,sizeof(tables::PhoneSendApi))&&!getPhoneServer(1,0));
+    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath,*keySend,*keyRecv,*keyServer,*keyClient,*propKeyServer,*propKeyClient,*phoneSend,*phoneRecv,*phoneServer);
+    std::puts("PASS native SiN prop phone poll, prefix/terminal sound, native keypad clear and lifecycle");
     std::puts("PASS native paired prop keypad event, OnInput, sound and display updates");
     std::puts("PASS native paired SiN keypad network graph and game event path");
     std::puts("PASS native paired SiN grunt death effect and original branch ordering");
