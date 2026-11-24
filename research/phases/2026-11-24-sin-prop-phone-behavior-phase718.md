@@ -9,13 +9,14 @@ one-record graph pins the existing aggregate and preserves prior ABIs.
 
 Original constructor 223029e0 after base 220f15e0 zeros byte +494 and
 DWORDs +498/49c/4a0/4a4/4ac/4b0; invalidates handle +4a8.
-Datamap 2252a7b4: Disabled +494, FailSound +498, KeypadName +49c,
-PhoneBook +4a0 (verify pointer roles below), m_fLastUse, m_nDigitsMatched
-+4a4, m_hKeypad +4a8, DialNumber 22302d80, Enable 22302740,
-Disable 22302730. The runtime pointer +4b0 holds loaded KeyValues
-phonebook; +4ac is the actual panelname string in Think, default
-prop_keypad if null. Note raw +4a0/4ac roles are kept distinct; no
-full KeyValues loading, variant decoding or datamap registration.
+Datamap 2252a7b4, 52-byte descriptors: Disabled +494, FailSound
++498, KeypadName +4ac, PhoneBook +49c, m_fLastUse +4a0,
+m_nDigitsMatched +4a4, m_hKeypad +4a8, DialNumber 22302d80,
+Enable 22302740, Disable 22302730. Runtime pointer +4b0 holds the
+loaded KeyValues phonebook. KeypadName is used as panelname in Think,
+default prop_keypad if null. Precache 223027c0 loads PhoneBook +49c
+with root PhoneBook; no full KeyValues loading, variant decoding or
+datamap registration claimed.
 
 Original polling 22302ac0:
 - Disabled or null loaded book: remove existing keypad if handle not
