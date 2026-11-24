@@ -4556,8 +4556,9 @@ int __cdecl allocated_sound(void* npc,const char* name,const NpcScenePlaybackBin
     return npc_scene_play(npc,name,0,b,out,true,&l,&g,&a);
 }
 const AllocatedGeneratedSceneApi allocated_generated_scene_api{version,sizeof(AllocatedGeneratedSceneApi),&allocated_generate,&allocated_activate,&allocated_sound};
-int scene_entity_cleanup_impl(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop) noexcept {
-    if(bytes<0x410||!hologram_writable(scene,0x410)||!b||!b->parsed||!b->destroy_parsed||
+int scene_entity_cleanup_impl(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop,const ChoreographyDestructionBindings* destruction=nullptr) noexcept {
+    if(bytes<0x410||!hologram_writable(scene,0x410)||!b||!b->parsed||
+       (destruction?!choreography_destroy_ready(destruction):!b->destroy_parsed)||
        (stop?!scene_stop_ready(stop):(!b->stop_events||!b->actor||!b->detach)))return 0;
     const auto h=*b;auto parsed=hologram_read<std::uint32_t>(scene,0x40c);
     if(parsed){
@@ -4580,7 +4581,14 @@ int scene_entity_cleanup_impl(void* scene,unsigned bytes,const SceneEntityLifecy
     }
     parsed=hologram_read<std::uint32_t>(scene,0x40c);
     if(parsed){
-        const bool ok=h.destroy_parsed(h.context,parsed)!=0;
+        bool ok=false;
+        if(destruction){
+            void* object=nullptr;unsigned extent=0;
+            if(!h.parsed(h.context,parsed,&object,&extent)||extent<0x220||!hologram_writable(object,0x220))return -1;
+            const auto d=*destruction;
+            ok=choreography_destroy_parsed(object,parsed,d,nullptr);
+        }else ok=h.destroy_parsed(h.context,parsed)!=0;
+        // Ownership is consumed on destruction attempt, not on lookup failure.
         hologram_write(scene,0x40c,0u);
         if(!ok)return -1;
     }else hologram_write(scene,0x40c,0u);
@@ -4589,9 +4597,9 @@ int scene_entity_cleanup_impl(void* scene,unsigned bytes,const SceneEntityLifecy
 int __cdecl scene_entity_cleanup(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
     return scene_entity_cleanup_impl(scene,bytes,b,nullptr);
 }
-int scene_entity_remove_impl(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop) noexcept {
+int scene_entity_remove_impl(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop,const ChoreographyDestructionBindings* destruction=nullptr) noexcept {
     if(!b||!b->base_remove||!b->manager)return 0;
-    const auto h=*b;const auto clean=scene_entity_cleanup_impl(scene,bytes,&h,stop);
+    const auto h=*b;const auto clean=scene_entity_cleanup_impl(scene,bytes,&h,stop,destruction);
     if(clean!=1)return clean;
     if(!h.base_remove(h.context,scene))return -1;
     return scene_entity_registration(scene,h,false);
@@ -5043,6 +5051,17 @@ int __cdecl native_generated_remove(void* scene,unsigned bytes,const SceneEntity
     return scene_entity_remove_impl(scene,bytes,b,&h);
 }
 const NativeGeneratedLifecycleApi native_generated_lifecycle_api{version,sizeof(NativeGeneratedLifecycleApi),&native_generated_sound,&native_generated_start,&native_generated_remove};
+int __cdecl native_scene_cleanup_owned(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop,const ChoreographyDestructionBindings* destruction) noexcept {
+    if(!scene_stop_ready(stop)||!choreography_destroy_ready(destruction))return 0;
+    const auto s=*stop;const auto d=*destruction;
+    return scene_entity_cleanup_impl(scene,bytes,b,&s,&d);
+}
+int __cdecl native_scene_remove_owned(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop,const ChoreographyDestructionBindings* destruction) noexcept {
+    if(!scene_stop_ready(stop)||!choreography_destroy_ready(destruction))return 0;
+    const auto s=*stop;const auto d=*destruction;
+    return scene_entity_remove_impl(scene,bytes,b,&s,&d);
+}
+const NativeSceneRetirementApi native_scene_retirement_api{version,sizeof(NativeSceneRetirementApi),&native_scene_cleanup_owned,&native_scene_remove_owned};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
         b->reset.storage&&b->reset.grow&&scene_stop_ready(&b->stop);
@@ -10383,6 +10402,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetNativeSceneRetirementApi=_SiN_GetNativeSceneRetirementApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeSceneRetirementApi* __cdecl
+SiN_GetNativeSceneRetirementApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeSceneRetirementApi)?&native_scene_retirement_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyDestructionApi=_SiN_GetChoreographyDestructionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyDestructionApi* __cdecl
 SiN_GetChoreographyDestructionApi(std::uint32_t version,std::uint32_t size) noexcept {

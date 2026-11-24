@@ -1149,6 +1149,8 @@ struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
     NativeGeneratedLifecycleBindings full{};
     const NativeGeneratedLifecycleApi& api;
     const SceneFinishApi* finish_api=nullptr;SceneFinishBindings finish{};
+    const NativeSceneRetirementApi* retirement_api=nullptr;ChoreographyDestructionBindings destruction{};
+    unsigned destruction_steps=0;std::uint32_t freed_words[9]{};
     unsigned actor_grows=0,record_stops=0,outputs=0,refreshes=0,startup_calls=0;
     static NativeGeneratedLifecycleFixture& get_full(void* p){
         return static_cast<NativeGeneratedLifecycleFixture&>(IntegratedSceneFixture::get(p));
@@ -1204,9 +1206,34 @@ struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
             if((f.finish_api?f.finish_api->advance(s,sizeof(f.scene),dt,&f.advance,&f.finish,1):
                 f.tick.instanced(s,sizeof(f.scene),dt,&f.advance))!=1)return 0;
             if(f.remove_pending){
-                if(f.api.remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop)!=1)return 0;
+                if((f.retirement_api?f.retirement_api->remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop,&f.destruction):
+                    f.api.remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop))!=1)return 0;
                 f.scene_live=false;f.remove_pending=false;
             }return 1;};
+    }
+    void bind_retirement(const NativeSceneRetirementApi& r){
+        retirement_api=&r;full.lifecycle.destroy_parsed=nullptr;
+        destruction.context=static_cast<IntegratedSceneFixture*>(this);
+        destruction.storage=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get_full(p);
+            for(auto freed:f.freed_words)if(w==freed)return 0;
+            void* objects[]={f.parsed,f.choreo_actor,f.channel,f.event};
+            unsigned sizes[]={sizeof(f.parsed),sizeof(f.choreo_actor),sizeof(f.channel),sizeof(f.event)};
+            for(unsigned i=0;i<4;++i)if(w==F::ptr(objects[i])){*out=objects[i];*bytes=sizes[i];return 1;}
+            for(unsigned i=0;i<5;++i)if(w==F::ptr(f.words+i)){*out=f.words+i;*bytes=4;return 1;}
+            return 0;};
+        destruction.release=[](void* p,std::uint32_t w,ChoreographyRelease kind) noexcept -> int{
+            auto& f=get_full(p);
+            const std::uint32_t expected[]={F::ptr(f.words+3),F::ptr(f.choreo_actor),F::ptr(f.event),F::ptr(f.words+4),F::ptr(f.channel),F::ptr(f.words+1),F::ptr(f.words),F::ptr(f.words+2),F::ptr(f.parsed)};
+            const ChoreographyRelease kinds[]={ChoreographyRelease::Vector,ChoreographyRelease::Actor,ChoreographyRelease::Event,ChoreographyRelease::Vector,ChoreographyRelease::Channel,ChoreographyRelease::Vector,ChoreographyRelease::Vector,ChoreographyRelease::Vector,ChoreographyRelease::Parsed};
+            assert(f.destruction_steps<9&&w==expected[f.destruction_steps]&&kind==kinds[f.destruction_steps]);
+            assert(f.parsed_live&&f.scene_live&&!F::word(f.npc_memory,0x5f8)&&F::word(f.manager,0x3a0)==1);
+            f.freed_words[f.destruction_steps++]=w;
+            if(kind==ChoreographyRelease::Parsed){f.parsed_live=false;++f.destroyed;}
+            return 1;};
+        destruction.symbol_destroy=[](void* p,void* symbol) noexcept -> int{
+            auto& f=get_full(p);assert(symbol==f.parsed+0x164&&f.destruction_steps==5);return 1;};
+        destruction.delete_aux=[](void*,std::uint32_t,unsigned) noexcept -> int{assert(false);return 0;};
     }
 };
 inline void check_native_generated_lifecycle(const NativeGeneratedLifecycleApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity,const SceneFinishApi* finish=nullptr){
@@ -1548,9 +1575,10 @@ inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const Native
 inline void check_native_generated_map_dialogue(const NativeGeneratedMapDialogueApi& map_api,const SceneSpeechCallbackApi& cb,
     const NativeGeneratedLifecycleApi& n,const SceneFinishApi& finish,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,
     const SceneEntityLifecycleApi& entity,const ResolvedSceneActorApi& resolver,const SceneSpeechPreparationApi& preparation,
-    const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record){
+    const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record,const NativeSceneRetirementApi* retirement=nullptr){
     using F=ScenePlaybackFixture;
     SpeechLifecycleFixture f(cb,n,finish,manager,tick,entity);f.bind_resolver(resolver);f.bind_preparation(preparation);
+    if(retirement)f.bind_retirement(*retirement);
     CountDialogueFixture count(timing,record);
     count.ctrl={f.npc_memory,sizeof(f.npc_memory)};
     F::put(f.npc_memory,0xc18,F::ptr(f.npc_memory+0x1000));
@@ -1572,6 +1600,7 @@ inline void check_native_generated_map_dialogue(const NativeGeneratedMapDialogue
     std::strcpy(reinterpret_cast<char*>(f.event+0x104),"72");
     for(unsigned i=0;i<4;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
     assert(f.emitted==1&&f.captions==1&&f.ended==1&&f.finished==1&&f.destroyed==1&&!f.scene_live&&!F::word(f.manager,0x3a0));
+    if(retirement)assert(f.destruction_steps==9);
     assert(ResponseSpeakFixture::destroy(&count.pipeline,count.pipeline.pool[0]));
     assert(manager.destroy(&f.control,&f.manager_life)==1);
     // Jessica's original cooldown and no-match path must not create scenes.
@@ -1591,6 +1620,7 @@ inline void check_native_generated_map_dialogue(const NativeGeneratedMapDialogue
     // Positive Jessica selection, with the same NPC storage used by the
     // companion gate, generated scene actor and event callbacks.
     SpeechLifecycleFixture jf(cb,n,finish,manager,tick,entity);jf.bind_resolver(resolver);jf.bind_preparation(preparation);
+    if(retirement)jf.bind_retirement(*retirement);
     CompanionTalkFixture speaker(timing,record);
     F::put(jf.npc_memory,0x850,1);F::put(jf.npc_memory,0x16c,0x123004);F::put(jf.npc_memory,0x115c,0x1001);
     HologramControl active{jf.npc_memory,sizeof(jf.npc_memory)};
@@ -1628,6 +1658,7 @@ inline void check_native_generated_map_dialogue(const NativeGeneratedMapDialogue
     assert(speaker.pipeline.sem.classified.release==10.6f&&speaker.pipeline.sem.classified.owner==0x1001);
     for(unsigned i=0;i<3;++i)assert(manager.tick(&jf.control,&jf.manager_tick)==1);
     assert(jf.ended==1&&jf.finished==1&&jf.destroyed==1&&!jf.scene_live&&!F::word(jf.npc_memory,0x5f8)&&!F::word(jf.manager,0x3a0));
+    if(retirement)assert(jf.destruction_steps==9);
     assert(ResponseSpeakFixture::destroy(&speaker.pipeline,speaker.pipeline.pool[0]));
     assert(manager.destroy(&jf.control,&jf.manager_life)==1);
 }
