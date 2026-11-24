@@ -759,6 +759,31 @@ struct NativeChoreographyDispatchApi {
     int (__cdecl *other_event)(void*,std::uint32_t,unsigned,float,void*,void*) noexcept;
 };
 using GetNativeChoreographyDispatchApi=const NativeChoreographyDispatchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_choreography_scene_leaf_export[]="SiN_GetNativeChoreographySceneLeafApi";
+// Original scripted/instanced scene vtables 2242dd3c/2242e89c.
+// The normalized invoke entry is compatible with dispatch.virtual_event;
+// its context points to this binding (or a host adapter).
+struct NativeChoreographySceneLeafBindings {
+    void* context;
+    unsigned scene_bytes;
+    unsigned instanced;
+    const ActorEventRecordBindings* records;
+    const NativeChoreographyClockBindings* clock;
+    int (__cdecl *actor_extent)(void*,void*,unsigned*) noexcept;
+    // Original instanced movement/face capability gate 221a7430.
+    int (__cdecl *admit_instanced)(void*,void* actor,unsigned*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *load_subscene)(void*,void* scene,const char*,std::uint32_t*) noexcept;
+    int (__cdecl *now)(void*,float*) noexcept;
+    int (__cdecl *output)(void*,void*,void*,void*,float) noexcept;
+    // Scripted section/pause policy remains an explicit engine leaf.
+    int (__cdecl *section)(void*,void*,void*,void*,const char*) noexcept;
+};
+struct NativeChoreographySceneLeafApi {
+    std::uint32_t version,size;
+    int (__cdecl *invoke)(void*,void*,unsigned,void*,void*,void*,void*,const char*) noexcept;
+};
+using GetNativeChoreographySceneLeafApi=const NativeChoreographySceneLeafApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char scene_speech_drain_export[]="SiN_GetSceneSpeechDrainApi";
 struct SceneSpeechDrainBindings {
     void* context;

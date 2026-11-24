@@ -645,9 +645,59 @@ inline void check_native_choreography_dispatch(const NativeChoreographyDispatchA
     F::put(f.scene,0x414,0);assert(!call(2,0)&&f.ignored==1);
     std::puts("PASS native non-speech event dispatch table, target and trigger policy");
 }
+inline void check_native_scene_leaves(const NativeChoreographySceneLeafApi& api){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char scene[0x5ec]{},root[0x220]{},event[0x3c0]{},actor[0x604]{},rows[0x100]{};
+        int target=0;
+        unsigned begins=0,stops=0,arg=0,outputs=0,admit=0;
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+    } f;
+    ActorEventRecordBindings records{};records.context=&f;
+    records.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);if(w!=F::ptr(f.rows))return 0;*out=f.rows;*n=sizeof(f.rows);return 1;};
+    records.grow=[](void*,void*,unsigned) noexcept -> int{return 0;};
+    records.handle=[](void* p,void* target,std::uint32_t* w) noexcept -> int{assert(target==&Fixture::self(p).target);*w=123;return 1;};
+    records.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{return 1;};
+    records.begin=[](void* p,void* a,void* row,std::uint32_t root,void* e,std::uint32_t ca,void* target,unsigned* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(a==f.actor&&e==f.event&&root==F::ptr(f.root)&&ca==1);
+        assert(F::word(row,0x24)==(target?123u:0xffffffffu));++f.begins;*out=1;return 1;};
+    records.stop=[](void* p,void*,void*,int arg,int zero,unsigned* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(!zero);++f.stops;f.arg=static_cast<unsigned>(arg);*out=1;return 1;};
+    NativeChoreographySceneLeafBindings b{};b.context=&f;b.scene_bytes=sizeof(f.scene);b.records=&records;
+    b.actor_extent=[](void* p,void* a,unsigned* n) noexcept -> int{auto& f=Fixture::self(p);assert(a==f.actor);*n=sizeof(f.actor);return 1;};
+    b.admit_instanced=[](void* p,void*,unsigned* out) noexcept -> int{*out=Fixture::self(p).admit;return 1;};
+    b.now=[](void*,float* n) noexcept -> int{*n=10.f;return 1;};
+    b.output=[](void* p,void* o,void* a,void* c,float d) noexcept -> int{
+        auto& f=Fixture::self(p);assert(o==f.scene+0x434&&a==f.scene&&c==f.scene&&!d);++f.outputs;return 1;};
+    F::put(f.actor,0x5b8,F::ptr(f.rows));F::put(f.actor,0x5bc,4);F::put(f.event,0x2b4,1);
+    std::strcpy(reinterpret_cast<char*>(f.event+4),"gesture");
+    std::strcpy(reinterpret_cast<char*>(f.event+0x84),"2.5");
+    auto call=[&](unsigned offset,void* target=nullptr){return api.invoke(&b,f.scene,offset,f.root,f.event,f.actor,target,reinterpret_cast<const char*>(f.event+0x84));};
+    assert(call(0x2cc)&&f.begins==1&&F::word(f.actor,0x5c4)==1);
+    f.scene[0x548]=3;assert(call(0x2d0)&&f.stops==1&&!f.arg&&!F::word(f.actor,0x5c4));
+    assert(call(0x2dc)&&call(0x2e0)&&f.begins==2&&f.stops==2&&f.arg==3);
+    assert(call(0x2e4,&f.target)&&F::word(f.rows,0x24)==123&&call(0x2e8));
+    b.instanced=1;assert(call(0x304)&&call(0x308)&&f.begins==3&&f.stops==3);
+    assert(call(0x2ec,&f.target)&&f.begins==3);f.admit=1;
+    assert(call(0x2ec,&f.target)&&call(0x2f0)&&f.begins==4&&f.stops==4);
+    assert(call(0x310)&&!F::word(f.scene,0x524));f.scene[0x548]=0;
+    assert(call(0x310)&&call(0x310)&&F::word(f.scene,0x524)==2);
+    assert(call(0x314)&&call(0x314)&&call(0x314)&&!F::word(f.scene,0x524));
+    F::put(f.event,0x190,2);F::put(f.event,0x194,1);
+    assert(call(0x328)&&F::word(f.event,0x194)==0&&F::word(f.scene,0x3dc)==0x40200000&&F::word(f.root,0x78)==0x40200000);
+    F::put(f.scene,0x3dc,0);assert(call(0x328)&&!F::word(f.scene,0x3dc));
+    F::put(f.event,0x190,0xffffffffu);assert(call(0x328)&&F::word(f.scene,0x3dc)==0x40200000);
+    F::put(f.event,0x184,0x3f800000);F::put(f.event,0x188,0x40400000);
+    assert(call(0x320)&&F::word(f.actor,0x5e8)==0x41400000&&call(0x324)&&!F::word(f.actor,0x5e8));
+    assert(call(0x330)&&f.scene[0x530]&&f.outputs==1);
+    assert(call(0x32c)); // instanced section is a no-op
+    std::strcpy(reinterpret_cast<char*>(f.event+4),"NULL");
+    assert(call(0x2dc)&&call(0x2e0)&&f.begins==4&&f.stops==4);
+}
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch){
-    check_native_choreography_dispatch(dispatch);
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves){
+    check_native_choreography_dispatch(dispatch);check_native_scene_leaves(leaves);
     // Native CUtlMemory capacities and indexed word insertion, including
     // null words, borrowed storage and failure-atomic raw allocator.
     {
