@@ -2378,12 +2378,12 @@ inline int __cdecl ds_origin(void* ctx,void* obj,float xyz[3]) noexcept {
     auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);
     xyz[0]=10;xyz[1]=20;xyz[2]=30;return f.push(4);
 }
-inline int __cdecl ds_angles(void* ctx,void* obj,float xyz[3]) noexcept {
+inline int __cdecl ds_angles(void* ctx,void* obj,float xyz[3],float basis[3]) noexcept {
     auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);
-    xyz[0]=1;xyz[1]=2;xyz[2]=3;return f.push(5);
+    xyz[0]=1;xyz[1]=2;xyz[2]=3;basis[0]=4;basis[1]=5;basis[2]=6;return f.push(5);
 }
 inline int __cdecl ds_vectors(void* ctx,const float a[3],float fwd[3],float right[3],float up[3]) noexcept {
-    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(a[0]==1&&a[1]==2&&a[2]==3);
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(a[0]==4&&a[1]==5&&a[2]==6);
     fwd[0]=2;fwd[1]=fwd[2]=0;right[0]=right[2]=0;right[1]=1;up[0]=up[1]=0;up[2]=1;
     return f.push(6);
 }

@@ -2029,11 +2029,11 @@ bool screen_build(void* object,const DispenserScreenBindings& b) noexcept {
     if(!b.create_screen(d.context,"vgui_screen",&handle))return false;
     hologram_write(object,disp_screen,handle);
     if(handle==disp_invalid)return true; // original still updates pose and schedules
-    float origin[3]{},angles[3]{},forward[3]{},right[3]{},up[3]{},position[3]{};
-    if(!b.sample_origin(d.context,object,origin)||!b.sample_angles(d.context,object,angles)||
-       !b.angle_vectors(d.context,angles,forward,right,up)||!b.normalize(d.context,forward))return false;
+    float origin[3]{},angles[3]{},basis[3]{},forward[3]{},right[3]{},up[3]{},position[3]{};
+    if(!b.sample_origin(d.context,object,origin)||!b.sample_angles(d.context,object,angles,basis)||
+       !b.angle_vectors(d.context,basis,forward,right,up)||!b.normalize(d.context,forward))return false;
     for(unsigned i=0;i<3;++i){
-        if(!std::isfinite(origin[i])||!std::isfinite(angles[i])||!std::isfinite(forward[i])||
+        if(!std::isfinite(origin[i])||!std::isfinite(angles[i])||!std::isfinite(basis[i])||!std::isfinite(forward[i])||
            !std::isfinite(right[i])||!std::isfinite(up[i]))return false;
         // Match observed rounded product and intermediate stores:
         // forward * -4, right * 16.5, up * 3.6.

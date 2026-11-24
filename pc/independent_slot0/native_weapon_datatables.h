@@ -941,7 +941,8 @@ struct DispenserScreenBindings {
     DispenserBindings dispenser;
     int (__cdecl *create_screen)(void*,const char* classname,std::uint32_t* handle) noexcept;
     int (__cdecl *sample_origin)(void*,void* object,float xyz[3]) noexcept;
-    int (__cdecl *sample_angles)(void*,void* object,float xyz[3]) noexcept;
+    // Original placement orientation +354 and angle-vector input +36c.
+    int (__cdecl *sample_angles)(void*,void* object,float placement[3],float basis[3]) noexcept;
     int (__cdecl *angle_vectors)(void*,const float angles[3],float forward[3],float right[3],float up[3]) noexcept;
     int (__cdecl *normalize)(void*,float vector[3]) noexcept;
     int (__cdecl *set_origin)(void*,void* screen,const float xyz[3]) noexcept;

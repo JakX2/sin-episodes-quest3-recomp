@@ -8,7 +8,8 @@ Original position from absolute origin +2bc, original angle vector
 helper 22269bc0 on +36c, forward normalized by 2251b1d0; position
 origin -4*forward +16.5*right +3.6*up (constants 2246ad60/5c/58).
 Angles from +354/+358/+35c with yaw and roll +90 (223f6e40).
-Host samples compatible transform and angle basis services. Original
+Host samples compatible transform services, preserving the separate
++354 placement angles and +36c basis input (tested with distinct values). Original
 x87 mixed stored products and intermediate rounding approximated
 with double and float stores; not claimed exact at extreme values.
 Resolve screen again for each effect: origin helper 221438a0,
