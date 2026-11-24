@@ -2761,4 +2761,85 @@ inline void check_prop_container(const PropContainerApi& api,const CanisterApi& 
     assert(stop()==0&&can.acknowledge(&ctrl));expect({});
 }
 
+struct GasFixture {
+    HologramControl* ctrl=nullptr;int child=0;
+    bool missing=false;
+    unsigned events[32]{},count=0,fail=0,flags=0;
+    float now=10,scheduled=0,amount=0,radius=0;
+    int kind=-1;
+    const char* last_sound=nullptr;
+    bool push(unsigned n){assert(ctrl->busy&&count<32);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl gas_clock_test(void* ctx,float* out) noexcept {
+    auto& f=*static_cast<GasFixture*>(ctx);*out=f.now;return f.push(1);
+}
+inline int __cdecl gas_rng_test(void* ctx,float lo,float hi,float* out) noexcept {
+    auto& f=*static_cast<GasFixture*>(ctx);assert(lo==0&&hi==0.5f);*out=0.125f;return f.push(2);
+}
+inline int __cdecl gas_install_test(void* ctx,void* obj,unsigned installed) noexcept {
+    auto& f=*static_cast<GasFixture*>(ctx);assert(obj==f.ctrl->object);return f.push(installed?3:4);
+}
+inline int __cdecl gas_schedule_test(void* ctx,void* obj,float when) noexcept {
+    auto& f=*static_cast<GasFixture*>(ctx);assert(obj==f.ctrl->object);f.scheduled=when;return f.push(5);
+}
+inline int __cdecl gas_visual_test(void* ctx,void* obj,const GasVariant* v,int kind,float radius,float duration,float rate,void** child) noexcept {
+    auto& f=*static_cast<GasFixture*>(ctx);assert(obj==f.ctrl->object&&v&&kind>=0&&kind<4&&radius==300&&duration>=0&&rate==15);
+    constexpr unsigned bits[]={0x10000,0x400000,2,3},colors[]={0xb43cea32,0xffe58619,0xff11a4ed,0xff808080};
+    assert(v->damage_flags==bits[kind]&&v->start_rgba==colors[kind]);f.kind=kind;
+    *child=f.missing?nullptr:&f.child;return f.push(6);
+}
+inline int __cdecl gas_remove_test(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<GasFixture*>(ctx);assert(obj==&f.child||obj==f.ctrl->object);return f.push(obj==&f.child?7:8);
+}
+inline int __cdecl gas_sound_test(void* ctx,void* obj,const char* name,unsigned stop) noexcept {
+    auto& f=*static_cast<GasFixture*>(ctx);assert(obj==f.ctrl->object&&name);f.last_sound=name;return f.push(stop?10:9);
+}
+inline int __cdecl gas_effect_test(void* ctx,void* obj,float amount,float radius,unsigned flags) noexcept {
+    auto& f=*static_cast<GasFixture*>(ctx);assert(obj==f.ctrl->object);
+    f.amount=amount;f.radius=radius;f.flags=flags;return f.push(11);
+}
+inline void check_poison_gas(const PoisonGasApi& api,const PropContainerApi& containers){
+    alignas(4) unsigned char gas[0x3bc]{},mutagen[0x6a0]{};
+    HologramControl ctrl{gas,sizeof(gas)},mc{mutagen,sizeof(mutagen)};GasFixture f{&ctrl};
+    GasBindings b{&f,&gas_clock_test,&gas_rng_test,&gas_install_test,&gas_schedule_test,&gas_visual_test,
+        &gas_remove_test,&gas_sound_test,&gas_effect_test};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto fl=[&](unsigned off){float v=0;std::memcpy(&v,gas+off,4);return v;};
+    const auto word=[&](unsigned off){unsigned v=0;std::memcpy(&v,gas+off,4);return v;};
+    const auto reset=[&](){assert(api.defaults(gas,sizeof(gas)));};
+    const auto think=[&](){return api.think(&ctrl,&b);};
+    const auto enable=[&](unsigned v){return api.enable(&ctrl,&b,v);};
+    assert(containers.defaults(&mc,nullptr,PropContainerKind::Mutagen)==1);
+    ContainerObservation o{};std::memcpy(&o.flags,mutagen+0x62c,4);std::memcpy(&o.amount,mutagen+0x628,4);
+    assert(o.flags==4&&o.amount==100);
+    const char* model=nullptr;std::memcpy(&model,mutagen+0x630,4);assert(!std::strcmp(model,"models/containers/mutagen_barrel.mdl"));
+    reset();assert(gas[0x394]==1&&gas[0x3b8]==1&&fl(0x39c)==5&&fl(0x3a0)==300&&fl(0x3a4)==20&&fl(0x3a8)==15);
+    assert(api.configure(&ctrl,8,-1,-1,-1,12)==1&&fl(0x39c)==12);
+    assert(api.spawn_state(&ctrl,&b)==1&&word(0x398)==0&&fl(0x39c)==5&&f.kind==0&&f.scheduled==10.125f);
+    expect({3,2,1,5,1,6,9});assert(!std::strcmp(f.last_sound,"gas.poison_spawn")&&fl(0x3b0)==11);
+    assert(enable(1)==1);expect({});
+    assert(think()==1&&fl(0x3ac)==10);expect({1,1,5});
+    f.now=10.25f;assert(think()==1&&fl(0x3a4)==20);expect({1,1,5});
+    f.now=10.5f;assert(think()==1&&f.amount==2.5f&&f.radius==300&&f.flags==0x10000&&fl(0x3a4)==19.5f);
+    expect({1,11,1,5});
+    assert(enable(0)==1&&word(0x3b4)==0&&gas[0x394]==0&&f.scheduled==-1);expect({7,4,5,10});
+    assert(enable(0)==1);expect({});
+    reset();assert(api.configure(&ctrl,1,1,300,15,5));f.now=20;
+    assert(api.spawn_state(&ctrl,&b)==1);expect({3,2,1,5,1,6,9});
+    assert(think()==1);expect({1,1,5});
+    f.now=20.5f;assert(think()==1&&f.flags==0x400000&&fl(0x3a4)==0.5f&&!word(0x3b4)&&f.scheduled==20.75f);
+    expect({1,11,7,4,5,10,3,2,1,5,1,5});assert(!std::strcmp(f.last_sound,"gas.antigen_loop"));
+    f.now=21;assert(think()==1&&fl(0x3a4)==0);expect({1,11,8});
+    reset();assert(api.configure(&ctrl,2,0,300,15,5));f.now=30;
+    assert(api.spawn_state(&ctrl,&b)==1);expect({3,2,1,5,1,6,9});assert(think()==1);expect({1,1,5});
+    f.now=31;assert(think()==1&&f.flags==2&&f.amount==5&&fl(0x3a4)==0);expect({1,11,9,1,5});
+    gas[0x3b8]=0;f.now=32;assert(think()==1);expect({1,11,1,5});
+    assert(api.kill(&ctrl,&b)==1);expect({7,4,5,10,8});
+    reset();assert(api.configure(&ctrl,3,0,300,15,5));assert(api.spawn_state(&ctrl,&b)==1);expect({3,2,1,5,1,6,9});
+    assert(think()==1);expect({});assert(api.kill(&ctrl,&b)==1);expect({7,4,5,10,8});
+    reset();f.missing=true;assert(api.spawn_state(&ctrl,&b)==1&&!word(0x3b4));expect({3,2,1,5,1,6,9});
+    assert(enable(0)==1);expect({});f.fail=6;assert(enable(1)==-1&&ctrl.blocked);expect({3,2,1,5,1,6});
+    assert(think()==0&&api.acknowledge(&ctrl));expect({});
+}
+
 }

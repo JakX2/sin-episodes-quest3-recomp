@@ -1053,7 +1053,7 @@ using GetDispenserInputApi=const DispenserInputApi* (__cdecl *)(std::uint32_t,st
 // Phase727: original shared CPropContainer state and leak termination.
 // All names, timings and flags describe in-game entities only.
 inline constexpr char prop_container_export[]="SiN_GetPropContainerApi";
-enum class PropContainerKind:unsigned {Generic,Antigen,OxygenLarge,OxygenSmall,Acetylene,Barrel};
+enum class PropContainerKind:unsigned {Generic,Antigen,OxygenLarge,OxygenSmall,Acetylene,Barrel,Mutagen};
 struct PropContainerBindings {
     void* context;
     int (__cdecl *random_float)(void*,float low,float high,float*) noexcept;
@@ -1071,4 +1071,38 @@ struct PropContainerApi {
     int (__cdecl *ai_radius)(const void*,unsigned bytes,float*) noexcept;
 };
 using GetPropContainerApi=const PropContainerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase728: original env_poison_gas gameplay lifecycle. Host supplies
+// the existing cloud visual, game radius-effect and scheduler services.
+inline constexpr char poison_gas_export[]="SiN_GetPoisonGasApi";
+struct GasVariant {
+    unsigned damage_flags,start_rgba,end_rgba;
+    const char* spawn_sound;const char* loop_sound;
+};
+struct GasBindings {
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *install_think)(void*,void* gas,unsigned installed) noexcept;
+    int (__cdecl *schedule)(void*,void* gas,float time) noexcept;
+    // Create/initialize an ordinary engine visual child. A successful
+    // allocation attempt may produce null. Own actual visual properties.
+    int (__cdecl *visual)(void*,void* gas,const GasVariant*,int kind,float radius,float duration,float spawn_rate,void** child) noexcept;
+    int (__cdecl *remove)(void*,void* object) noexcept;
+    int (__cdecl *sound)(void*,void* gas,const char* name,unsigned stop) noexcept;
+    int (__cdecl *radius_effect)(void*,void* gas,float amount,float radius,unsigned flags) noexcept;
+};
+struct PoisonGasApi {
+    std::uint32_t version,size;
+    int (__cdecl *defaults)(void*,unsigned bytes) noexcept;
+    // Original factory leaf inputs; negative arguments select defaults.
+    int (__cdecl *configure)(HologramControl*,int kind,float duration,float radius,float spawn_rate,float amount) noexcept;
+    // Called after existing base spawn, precache and setup.
+    int (__cdecl *spawn_state)(HologramControl*,const GasBindings*) noexcept;
+    int (__cdecl *enable)(HologramControl*,const GasBindings*,unsigned enabled) noexcept;
+    int (__cdecl *think)(HologramControl*,const GasBindings*) noexcept;
+    int (__cdecl *kill)(HologramControl*,const GasBindings*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetPoisonGasApi=const PoisonGasApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
