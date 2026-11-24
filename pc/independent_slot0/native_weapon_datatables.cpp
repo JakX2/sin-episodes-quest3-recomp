@@ -4,6 +4,7 @@
 #include "native_action_monitor.h"
 #include <cstdio>
 #include "native_radio_message.h"
+#include "native_action_listener.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3232,6 +3233,84 @@ int __cdecl look_event_tick(HologramControl* ctrl,LookEventState* shared,const L
     return finish(true);
 }
 const LookEventApi look_event_api{version,sizeof(LookEventApi),&look_trace_miss,&look_event_tick,&health_ack};
+
+int __cdecl action_listener_subscribe(void* listener,const ActionListenerBindings* b) noexcept {
+    if(!listener||!b||!b->prepare||!b->subscribe)return 0;
+    const auto host=*b;
+    if(!host.prepare(host.context))return -1;
+    for(const char* name:{"look","use","weapon","move","health","map","game","dynamic_difficulty","player_activate"})
+        if(!host.subscribe(host.context,listener,name,1))return -1;
+    return 1;
+}
+int __cdecl action_listener_unsubscribe(void* listener,const ActionListenerBindings* b) noexcept {
+    if(!listener||!b||!b->unsubscribe)return 0;
+    return b->unsubscribe(b->context,listener)?1:-1;
+}
+bool action_prefix(const char* name,const char* prefix) noexcept {
+    return std::strncmp(name,prefix,std::strlen(prefix))==0;
+}
+int action_listener_capture(const ActionListenerBindings& h,const void* event,ActionRoute route,int descriptor,void* owner,void* subject) noexcept {
+    alignas(4) unsigned char record[0x2e8]{};
+    float now=0,distance=0;
+    char part[32]{};
+    const bool looking=route==ActionRoute::Look;
+    if(looking){
+        const char* sub=nullptr;
+        if(!h.get_string(h.context,event,"subobject","",&sub)||!sub)return -1;
+        // The original copies 32 bytes with strncpy; a bounded prefix
+        // is sufficient here, retaining a terminator for safe consumers.
+        for(unsigned i=0;i<31;++i){
+            if(!sin_independent::vgui_layout::Readable(sub+i,1))return -1;
+            part[i]=sub[i];if(!part[i])break;
+        }
+        if(!h.get_float(h.context,event,"distance",0,&distance))return -1;
+    }
+    if(!h.clock(h.context,&now))return -1;
+    ActionEntitySample a{},s{};
+    const auto sample=[&](void* entity,ActionEntitySample& out){
+        return !entity||(h.sample(h.context,entity,&out)&&action_string(out.name,sizeof(out.name))&&action_string(out.classname,sizeof(out.classname)));
+    };
+    if(!sample(owner,a)||!sample(subject,s))return -1;
+    hologram_write(record,4,looking?0:1);
+    // The original use setter copies subject before owner; both source
+    // samples have already been taken in owner/subject order.
+    std::memcpy(record+8,&a,sizeof(a));std::memcpy(record+0x160,&s,sizeof(s));
+    hologram_write(record,0x2b8,descriptor);hologram_write(record,0x2bc,now);
+    if(looking){std::memcpy(record+0x2c0,part,sizeof(part));hologram_write(record,0x2e0,distance);}
+    return h.record(h.context,route,record,looking?0x2e8:0x2e0)?1:-1;
+}
+int __cdecl action_listener_dispatch(const ActionListenerBindings* b,const void* event) noexcept {
+    if(!event||!b||!b->get_int||!b->resolve||!b->participant||!b->name||!b->route||
+       !b->get_string||!b->get_float||!b->clock||!b->sample||!b->record)return 0;
+    const auto h=*b;
+    int descriptor=0,oh=0,sh=0;
+    if(!h.get_int(h.context,event,"descriptor",0,&descriptor)||!h.get_int(h.context,event,"owner",0,&oh))return -1;
+    void* owner=nullptr;void* subject=nullptr;
+    if(static_cast<unsigned>(oh)!=0xffffffffu&&!h.resolve(h.context,static_cast<unsigned>(oh),&owner))return -1;
+    if(!h.get_int(h.context,event,"subject",0,&sh))return -1;
+    if(static_cast<unsigned>(sh)!=0xffffffffu&&!h.resolve(h.context,static_cast<unsigned>(sh),&subject))return -1;
+    const char* raw=nullptr;
+    if(!h.name(h.context,event,&raw))return -1;
+    char name[128]{};
+    if(!prop_key_read(raw,name))return -1;
+    const auto route=[&](ActionRoute kind,void* a,void* s){return h.route(h.context,kind,event,descriptor,a,s)?1:-1;};
+    // Map/game/difficulty/activation bypass the participant gate.
+    if(action_prefix(name,"map"))return route(ActionRoute::Map,nullptr,nullptr);
+    if(action_prefix(name,"game"))return route(ActionRoute::Game,owner,nullptr);
+    if(action_prefix(name,"dynamic_difficulty"))return route(ActionRoute::Difficulty,nullptr,nullptr);
+    if(action_prefix(name,"player_activate"))return route(ActionRoute::Activate,nullptr,nullptr);
+    unsigned eligible=0;
+    if(owner&&!h.participant(h.context,owner,&eligible))return -1;
+    if(!eligible&&subject&&!h.participant(h.context,subject,&eligible))return -1;
+    if(!eligible)return 1;
+    if(action_prefix(name,"look"))return action_listener_capture(h,event,ActionRoute::Look,descriptor,owner,subject);
+    if(action_prefix(name,"use"))return action_listener_capture(h,event,ActionRoute::Use,descriptor,owner,subject);
+    if(action_prefix(name,"weapon"))return route(ActionRoute::Weapon,owner,subject);
+    if(action_prefix(name,"move"))return route(ActionRoute::Move,owner,subject);
+    if(action_prefix(name,"health"))return route(ActionRoute::Health,owner,subject);
+    return 1;
+}
+const ActionListenerApi action_listener_api{version,sizeof(ActionListenerApi),&action_listener_subscribe,&action_listener_unsubscribe,&action_listener_dispatch};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4989,6 +5068,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::LookEvent
 SiN_GetLookEventApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(LookEventApi)?&look_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetActionListenerApi=_SiN_GetActionListenerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ActionListenerApi* __cdecl
+SiN_GetActionListenerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ActionListenerApi)?&action_listener_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
