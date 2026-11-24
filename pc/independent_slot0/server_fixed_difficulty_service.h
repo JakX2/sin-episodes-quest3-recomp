@@ -451,6 +451,53 @@ struct ScattergunPumpApi {
 };
 using GetScattergunPumpApi=const ScattergunPumpApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(ScattergunPumpReport)==44);
+// Phase167 original secondary-fire control flow. This is a game host
+// protocol; operations are not original engine vtable slots.
+inline constexpr char scattergun_fire_export_name[]="SiN_GetScattergunSecondaryApi";
+inline constexpr std::uint32_t scattergun_fire_version=1;
+enum ScattergunFireQuery : std::uint32_t {
+    FireOwnerCapable=0,FireOwnerMode,FireAcquireVectors,FireUsesClip,FireReadClip,
+    FireSelectActivity,FireInterval,FireClock,FireAmmoType,FireOwnerAmmoCount
+};
+enum ScattergunFireEffect : std::uint32_t {
+    FireEmpty=0,FireStateEvent,FireActivity,FirePrimaryTimer,FireSecondaryTimer,
+    FireOwnerCallback,FireOwnerAnimation,FireConsumeClip,FireConsumeReserve,
+    FireStoreSecondary,FirePost,FireFeedback,FirePreparePellets,FirePellet
+};
+// Query word is the observed integer/boolean, real the float.
+// Effects use word0/word1 for IDs/counts, real0/real1 for float args.
+// FireConsumeClip performs the original live decrement/dirty notification;
+// FireConsumeReserve has word0=quantity, word1=ammo type. Timer effects
+// use the real0 deadline, and FirePellet has word0=iteration, real0=1,
+// real1=original game trace distance. The host resolves the original
+// scattergun pattern; no PE address is exposed as a callable pointer.
+struct ScattergunFireValue {std::uint32_t word0,word1;float real0,real1;};
+struct ScattergunFireObservation {
+    MapEntityRef owner;
+    std::uint32_t owner_present,timing_arg,alternate_ammo_type;
+};
+struct ScattergunFireHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *query)(void*,MapEntityRef,MapEntityRef,std::uint32_t,
+        std::uint32_t,ScattergunFireValue*);
+    int (SIN_FIXED_CALL *effect)(void*,MapEntityRef,MapEntityRef,std::uint32_t,
+        const ScattergunFireValue*);
+};
+enum ScattergunFireCode : std::uint32_t {
+    FireRejected=0,FireMissingOwner,FireModeCooldown,FireNoVectors,
+    FireEmptyClip,FireCompleted,FireUncertain
+};
+struct ScattergunFireReport {
+    std::uint32_t code,queries_attempted,queries_delivered,effects_attempted,
+        effects_delivered,pellets_delivered,needs_resync;
+};
+struct ScattergunSecondaryApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *fire)(MapEntityRef,const ScattergunFireObservation*,
+        const ScattergunFireHost*,void*,ScattergunFireReport*) noexcept;
+};
+using GetScattergunSecondaryApi=const ScattergunSecondaryApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(ScattergunFireReport)==28);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

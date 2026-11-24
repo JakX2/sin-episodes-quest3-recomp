@@ -805,6 +805,111 @@ static void test_scattergun_pump(const a::ScattergunPumpApi* pump,const a::Weapo
     assert(update()&&report.code==a::ScattergunNoPump&&fixture.calls.size()==3); // no replay
     assert(map->remove(gun)&&!pump->state(gun,&state)&&map->end_level(epoch)&&api->end_campaign());
 }
+struct FireFixture {
+    const a::MapEntityApi* map;
+    const a::ScattergunPumpApi* pump;
+    a::MapEntityRef gun,owner;
+    std::vector<unsigned> order;
+    unsigned clip=5,mode=0,clip_queries=0,clocks=0,pellets=0;
+    unsigned fail_pellet=99;
+    bool capable=true,vectors=true,uses_clip=true,flip=false;
+    static FireFixture& get(void* context){return *static_cast<FireFixture*>(context);}
+    void check(a::MapEntityRef g,a::MapEntityRef o){
+        assert(g.epoch==gun.epoch&&g.index==gun.index&&g.generation==gun.generation);
+        assert(o.epoch==owner.epoch&&o.index==owner.index&&o.generation==owner.generation);
+        assert(!map->remove(g)&&!pump->before_deploy(g,6));
+    }
+    void reset(){order.clear();clip_queries=clocks=pellets=0;}
+    static int SIN_FIXED_CALL query(void* c,a::MapEntityRef g,a::MapEntityRef o,
+            std::uint32_t op,std::uint32_t arg,a::ScattergunFireValue* out){
+        auto& f=get(c);f.check(g,o);f.order.push_back(100+op);
+        switch(op){
+        case a::FireOwnerCapable:out->word0=f.capable;break;
+        case a::FireOwnerMode:out->word0=f.mode;break;
+        case a::FireAcquireVectors:out->word0=f.vectors;break;
+        case a::FireUsesClip:out->word0=(++f.clip_queries==2&&f.flip)?!f.uses_clip:f.uses_clip;break;
+        case a::FireReadClip:out->word0=f.clip;break;
+        case a::FireSelectActivity:out->word0=0xc2;break;
+        case a::FireInterval:assert(arg==77);out->real0=2.f;break;
+        case a::FireClock:out->real0=f.clocks++==0?10.f:12.f;break;
+        case a::FireAmmoType:out->word0=92;break;
+        case a::FireOwnerAmmoCount:assert(arg==92);out->word0=19;break;
+        default:assert(false);return 0;
+        }
+        return 1;
+    }
+    static int SIN_FIXED_CALL effect(void* c,a::MapEntityRef g,a::MapEntityRef o,
+            std::uint32_t op,const a::ScattergunFireValue* in){
+        auto& f=get(c);f.check(g,o);f.order.push_back(200+op);
+        switch(op){
+        case a::FireStateEvent:assert(in->word0==(f.mode==3?0u:3u)&&in->word1==0);break;
+        case a::FireActivity:assert(in->word0==0xc2);break;
+        case a::FirePrimaryTimer:assert(in->real0==12.f);break;
+        case a::FireSecondaryTimer:assert(in->real0==(f.mode==3?10.2f:14.f));break;
+        case a::FireOwnerAnimation:assert(in->word0==5);break;
+        case a::FireConsumeClip:--f.clip;break;
+        case a::FireConsumeReserve:assert(in->word0==1&&in->word1==41);break;
+        case a::FireStoreSecondary:assert(in->word0==19);break;
+        case a::FireFeedback:assert(in->word0==6);break;
+        case a::FirePellet:
+            assert(in->word0==f.pellets&&in->real0==1.f&&in->real1==1500.f);
+            if(in->word0==f.fail_pellet)return 0;
+            ++f.pellets;break;
+        default:break;
+        }
+        return 1;
+    }
+};
+static void test_scattergun_secondary(const a::ScattergunSecondaryApi* fire,const a::ScattergunPumpApi* pump,
+        const a::MapEntityApi* map,const a::Api* api){
+    assert(fire&&fire->version==1&&fire->size==sizeof(*fire)&&api->begin_campaign(2));
+    const auto epoch=map->begin_level("secondary");assert(epoch);
+    const a::MapEntityRef gun{epoch,1,1},owner{epoch,100,1};
+    assert(map->create(gun,"weapon_scattergun")==a::MapApplied&&map->spawn(gun)==a::MapApplied);
+    FireFixture f{map,pump,gun,owner,{}};
+    const a::ScattergunFireHost host{1,sizeof(a::ScattergunFireHost),&FireFixture::query,&FireFixture::effect};
+    a::ScattergunFireObservation in{owner,0,77,41};
+    a::ScattergunFireReport out{};
+    auto run=[&](){return fire->fire(gun,&in,&host,&f,&out);};
+    assert(run()&&out.code==a::FireMissingOwner&&f.order.empty());
+    in.owner_present=1;f.mode=3;
+    assert(run()&&out.code==a::FireModeCooldown&&out.effects_delivered==2&&f.clocks==1);
+    assert((f.order==std::vector<unsigned>{100+a::FireOwnerCapable,100+a::FireOwnerMode,
+        200+a::FireStateEvent,100+a::FireClock,200+a::FireSecondaryTimer}));
+    f.reset();f.mode=0;f.vectors=false;
+    assert(run()&&out.code==a::FireNoVectors&&!out.effects_attempted);
+    f.reset();f.vectors=true;f.clip=0x80000000u;
+    assert(run()&&out.code==a::FireEmptyClip&&out.effects_delivered==1&&f.order.back()==200+a::FireEmpty);
+    f.reset();f.clip=5;
+    assert(run()&&out.code==a::FireCompleted&&out.pellets_delivered==8&&f.clip==4&&f.clocks==2&&f.clip_queries==2);
+    const std::vector<unsigned> expected={
+        100+a::FireOwnerCapable,100+a::FireOwnerMode,100+a::FireAcquireVectors,
+        100+a::FireUsesClip,100+a::FireReadClip,200+a::FireStateEvent,
+        100+a::FireSelectActivity,200+a::FireActivity,100+a::FireInterval,
+        100+a::FireClock,200+a::FirePrimaryTimer,100+a::FireClock,200+a::FireSecondaryTimer,
+        200+a::FireOwnerCallback,200+a::FireOwnerAnimation,100+a::FireUsesClip,
+        200+a::FireConsumeClip,100+a::FireAmmoType,100+a::FireOwnerAmmoCount,
+        200+a::FireStoreSecondary,200+a::FirePost,200+a::FireFeedback,200+a::FirePreparePellets};
+    assert(f.order.size()==expected.size()+8&&std::equal(expected.begin(),expected.end(),f.order.begin()));
+    for(unsigned i=0;i<8;++i)assert(f.order[expected.size()+i]==200+a::FirePellet);
+    f.reset();f.flip=true;
+    assert(run()&&out.code==a::FireCompleted&&f.clip==4&&f.clip_queries==2&&
+        std::find(f.order.begin(),f.order.end(),200+a::FireConsumeReserve)!=f.order.end());
+    f.reset();f.capable=false;f.flip=false;
+    assert(run()&&out.code==a::FireCompleted&&f.pellets==8&&f.clip_queries==1&&f.clip==4);
+    assert(std::find(f.order.begin(),f.order.end(),200+a::FireOwnerAnimation)==f.order.end());
+    f.reset();f.fail_pellet=3;
+    assert(run()&&out.code==a::FireUncertain&&out.pellets_delivered==3&&out.needs_resync);
+    const auto prior=f.order.size();
+    assert(run()&&out.code==a::FireRejected&&f.order.size()==prior);
+    a::ScattergunSnapshot state{};
+    assert(pump->state(gun,&state)&&state.needs_resync);
+    state.needs_resync=0;assert(pump->reconcile(gun,&state));
+    f.reset();f.fail_pellet=99;
+    assert(run()&&out.code==a::FireCompleted&&out.pellets_delivered==8);
+    assert(map->remove(gun)&&run()&&out.code==a::FireRejected);
+    assert(map->end_level(epoch)&&api->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -1632,7 +1737,15 @@ int main(int argc,char** argv){
     auto getPump=reinterpret_cast<a::GetScattergunPumpApi>(dlsym(lib,a::scattergun_export_name));
 #endif
     assert(getPump&&!getPump(0,sizeof(a::ScattergunPumpApi))&&!getPump(1,0));
-    test_scattergun_pump(getPump(a::scattergun_version,sizeof(a::ScattergunPumpApi)),weapons,map,api);
+    const auto* pump=getPump(a::scattergun_version,sizeof(a::ScattergunPumpApi));
+    test_scattergun_pump(pump,weapons,map,api);
+#ifdef _WIN32
+    auto getFire=reinterpret_cast<a::GetScattergunSecondaryApi>(GetProcAddress(lib,a::scattergun_fire_export_name));
+#else
+    auto getFire=reinterpret_cast<a::GetScattergunSecondaryApi>(dlsym(lib,a::scattergun_fire_export_name));
+#endif
+    assert(getFire&&!getFire(0,sizeof(a::ScattergunSecondaryApi))&&!getFire(1,0));
+    test_scattergun_secondary(getFire(a::scattergun_fire_version,sizeof(a::ScattergunSecondaryApi)),pump,map,api);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
 #else

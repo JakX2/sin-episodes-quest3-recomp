@@ -568,6 +568,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetNpcShotApi=_SiN_GetNpcShotApi")
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponBehaviorApi=_SiN_GetWeaponBehaviorApi")
 #pragma comment(linker,"/EXPORT:SiN_GetScattergunPumpApi=_SiN_GetScattergunPumpApi")
+#pragma comment(linker,"/EXPORT:SiN_GetScattergunSecondaryApi=_SiN_GetScattergunSecondaryApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -1169,9 +1170,117 @@ int SIN_FIXED_CALL scattergun_after_base(abi::MapEntityRef ref,const abi::Scatte
 const abi::ScattergunPumpApi scattergun_api{abi::scattergun_version,sizeof(abi::ScattergunPumpApi),
     &scattergun_state,&scattergun_reconcile,&scattergun_before_deploy,&scattergun_after_base};
 
+// Phase167 original secondary-fire ordering, with authoritative host
+// writes at the actual call boundaries instead of copying live ammo/timers.
+int SIN_FIXED_CALL scattergun_secondary_fire(abi::MapEntityRef ref,
+        const abi::ScattergunFireObservation* observed,const abi::ScattergunFireHost* host,
+        void* context,abi::ScattergunFireReport* out) noexcept {
+    if(!out)return 0;
+    abi::ScattergunFireReport report{};
+    auto* entity=find_scattergun(ref);
+    const auto finish=[&](std::uint32_t code) noexcept {
+        report.code=code;
+        report.needs_resync=entity&&entity->scattergun_resync?1u:0u;
+        *out=report;return 1;
+    };
+    if(reading_engine_skill||!entity||entity->weapon_resync||entity->scattergun_resync||
+       !observed||observed->owner_present>1)return finish(abi::FireRejected);
+    const auto in=*observed;
+    if(!in.owner_present)return finish(abi::FireMissingOwner);
+    if(in.owner.epoch!=ref.epoch||in.owner.index==(std::numeric_limits<std::uint32_t>::max)()||
+       in.owner.generation==(std::numeric_limits<std::uint32_t>::max)()||
+       !host||host->version!=abi::scattergun_fire_version||host->size!=sizeof(*host)||
+       !host->query||!host->effect)return finish(abi::FireRejected);
+    const auto callbacks=*host;
+    OutputScope scope;
+    const auto query=[&](std::uint32_t op,std::uint32_t arg=0u){
+        abi::ScattergunFireValue value{};
+        ++report.queries_attempted;
+        if(!callbacks.query(context,ref,in.owner,op,arg,&value))throw 1;
+        ++report.queries_delivered;
+        return value;
+    };
+    const auto boolean=[&](std::uint32_t op){
+        const auto value=query(op).word0;
+        if(value>1)throw 1;
+        return value!=0;
+    };
+    const auto effect=[&](std::uint32_t op,std::uint32_t a=0u,std::uint32_t b=0u,
+                           float x=0.f,float y=0.f){
+        const abi::ScattergunFireValue value{a,b,x,y};
+        ++report.effects_attempted;
+        if(!callbacks.effect(context,ref,in.owner,op,&value))throw 1;
+        ++report.effects_delivered;
+    };
+    const auto real=[&](std::uint32_t op,std::uint32_t arg=0u){
+        const float v=query(op,arg).real0;
+        if(!std::isfinite(v))throw 1;
+        return v;
+    };
+    const auto deadline=[&](float interval){
+        const float now=real(abi::FireClock);
+        const float value=static_cast<float>(static_cast<double>(interval)+now);
+        if(!std::isfinite(value))throw 1;
+        return value;
+    };
+    try {
+        const bool animate=boolean(abi::FireOwnerCapable);
+        if(query(abi::FireOwnerMode).word0==3u){
+            effect(abi::FireStateEvent,0,0);
+            const float when=static_cast<float>(static_cast<double>(real(abi::FireClock))+0.2);
+            if(!std::isfinite(when))throw 1;
+            effect(abi::FireSecondaryTimer,0,0,when);
+            return finish(abi::FireModeCooldown);
+        }
+        if(!boolean(abi::FireAcquireVectors))return finish(abi::FireNoVectors);
+        if(boolean(abi::FireUsesClip)){
+            const auto clip=query(abi::FireReadClip).word0;
+            if(clip==0u||(clip&0x80000000u)){
+                effect(abi::FireEmpty);return finish(abi::FireEmptyClip);
+            }
+        }
+        effect(abi::FireStateEvent,3,0);
+        effect(abi::FireActivity,query(abi::FireSelectActivity).word0);
+        const float interval=real(abi::FireInterval,in.timing_arg);
+        effect(abi::FirePrimaryTimer,0,0,deadline(interval));
+        effect(abi::FireSecondaryTimer,0,0,deadline(interval));
+        effect(abi::FireOwnerCallback);
+        if(animate){
+            effect(abi::FireOwnerAnimation,5);
+            // The second clip-mode test is an independent original call.
+            if(boolean(abi::FireUsesClip))effect(abi::FireConsumeClip);
+            else effect(abi::FireConsumeReserve,1,in.alternate_ammo_type);
+            const auto type=query(abi::FireAmmoType).word0;
+            const auto count=query(abi::FireOwnerAmmoCount,type).word0;
+            effect(abi::FireStoreSecondary,count);
+            effect(abi::FirePost);
+            effect(abi::FireFeedback,6);
+        }
+        effect(abi::FirePreparePellets);
+        for(unsigned i=0;i<8;++i){
+            effect(abi::FirePellet,i,0,1.f,1500.f);
+            ++report.pellets_delivered;
+        }
+    }catch(...){
+        // Calls already delivered cannot be undone. Even a failed query
+        // may have advanced engine state; require observed reconciliation.
+        entity->scattergun_resync=true;
+        return finish(abi::FireUncertain);
+    }
+    return finish(abi::FireCompleted);
+}
+const abi::ScattergunSecondaryApi scattergun_fire_api{abi::scattergun_fire_version,
+    sizeof(abi::ScattergunSecondaryApi),&scattergun_secondary_fire};
+
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::ScattergunSecondaryApi* SIN_FIXED_CALL
+SiN_GetScattergunSecondaryApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::scattergun_fire_version&&bytes==sizeof(abi::ScattergunSecondaryApi)?
+        &scattergun_fire_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::ScattergunPumpApi* SIN_FIXED_CALL
 SiN_GetScattergunPumpApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::scattergun_version&&bytes==sizeof(abi::ScattergunPumpApi)?&scattergun_api:nullptr;
