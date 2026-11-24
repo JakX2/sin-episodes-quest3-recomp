@@ -817,6 +817,30 @@ struct NamedSceneLoadApi {
     int (__cdecl *load)(void* scene,unsigned bytes,const char*,const NamedSceneLoadBindings*,std::uint32_t*) noexcept;
 };
 using GetNamedSceneLoadApi=const NamedSceneLoadApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_text_parser_export[]="SiN_GetChoreographyTextParserApi";
+enum class ChoreographyTextBlock:unsigned {Event,Actor,SceneRamp,ScaleSettings};
+enum class ChoreographyTextFinalize:unsigned {RelativeTags,CaptionGroups,GestureTimes};
+struct ChoreographyTextParserBindings {
+    void* context;
+    std::uint32_t tokenizer_word;
+    // Bind the private scene text to the original-compatible tokenizer.
+    int (__cdecl *begin)(void*,const char*,unsigned) noexcept;
+    // Advance with original argument 1; report normal EOF separately.
+    int (__cdecl *next)(void*,unsigned,unsigned*) noexcept;
+    int (__cdecl *token)(void*,const char**) noexcept;
+    // Each block consumes its own nested tokens, leaving the cursor at end.
+    int (__cdecl *block)(void*,void*,ChoreographyTextBlock) noexcept;
+    int (__cdecl *unexpected)(void*,const char*) noexcept;
+    int (__cdecl *finalize)(void*,void*,ChoreographyTextFinalize) noexcept;
+};
+struct ChoreographyTextParserApi {
+    std::uint32_t version,size;
+    // Original 22119900: caller has already initialized tokenizer cursor.
+    int (__cdecl *parse)(void*,unsigned,const char*,const ChoreographyTextParserBindings*) noexcept;
+    // Native load + top-level parse, old NamedSceneLoadBindings.parse unused.
+    int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const ChoreographyTextParserBindings*,std::uint32_t*) noexcept;
+};
+using GetChoreographyTextParserApi=const ChoreographyTextParserApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

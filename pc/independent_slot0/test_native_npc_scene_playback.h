@@ -1866,6 +1866,53 @@ inline void check_named_scene_load(const NamedSceneLoadApi& api){
     NamedSceneLoadFixture bad;bad.parse_fail=true;assert(run(bad)==-1&&out==99);bad.expect({1,2,3,4,6,7,8,9,10,11});
 }
 
+struct ChoreographyTextFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char parsed[0x220]{};
+    const char* tokens[24]={"EVENT","actor","mapname","test_map","fps","999","snap","ON","scene_ramp","scalesettings","fps","-4","fps","4294967320","snap","off","unrecognized","fps","60",nullptr};
+    const char* current="";unsigned index=0,blocks=0,finalized=0,unexpected=0,begins=0;
+    unsigned fail_block=99;bool fail_finalize=false;
+    void* expected=parsed;
+    ChoreographyTextParserBindings b{};
+    static ChoreographyTextFixture& self(void* p){return *static_cast<ChoreographyTextFixture*>(p);}
+    ChoreographyTextFixture(){
+        b.context=this;b.tokenizer_word=0x87654321;
+        b.begin=[](void* p,const char* data,unsigned n) noexcept -> int{
+            auto& f=self(p);assert(n==8&&!std::memcmp(data,"actor",5)&&!data[n]);++f.begins;return 1;};
+        b.next=[](void* p,unsigned flag,unsigned* more) noexcept -> int{
+            auto& f=self(p);assert(flag==1&&f.index<24);
+            f.current=f.tokens[f.index++];*more=f.current!=nullptr;if(!f.current)f.current="";return 1;};
+        b.token=[](void* p,const char** out) noexcept -> int{*out=self(p).current;return 1;};
+        b.block=[](void* p,void* parsed,ChoreographyTextBlock block) noexcept -> int{
+            auto& f=self(p);assert(parsed==f.expected&&F::word(parsed,0xa0)==f.b.tokenizer_word&&static_cast<unsigned>(block)==f.blocks);
+            return f.blocks++!=f.fail_block;};
+        b.unexpected=[](void* p,const char* token) noexcept -> int{auto& f=self(p);assert(!std::strcmp(token,"unrecognized"));++f.unexpected;return 1;};
+        b.finalize=[](void* p,void* parsed,ChoreographyTextFinalize stage) noexcept -> int{
+            auto& f=self(p);assert(parsed==f.expected&&static_cast<unsigned>(stage)==f.finalized);++f.finalized;return !f.fail_finalize;};
+    }
+};
+inline void check_choreography_text_parser(const ChoreographyTextParserApi& api){
+    using F=ScenePlaybackFixture;ChoreographyTextFixture f;
+    assert(api.parse(f.parsed,0x21f,"test.vcd",&f.b)==0&&!f.index);
+    assert(api.parse(f.parsed,sizeof(f.parsed),"test.vcd",&f.b)==1&&f.index==17&&f.blocks==4&&f.finalized==3&&f.unexpected==1);
+    assert(!std::strcmp(reinterpret_cast<char*>(f.parsed+0x198),"test.vcd")&&!std::strcmp(reinterpret_cast<char*>(f.parsed+0xa4),"test_map"));
+    assert(F::word(f.parsed,0x128)==24&&!f.parsed[0x125]);
+    ChoreographyTextFixture empty;empty.tokens[0]=nullptr;
+    assert(api.parse(empty.parsed,sizeof(empty.parsed),"empty",&empty.b)==1&&empty.index==1&&empty.finalized==3&&!empty.blocks);
+    ChoreographyTextFixture failed;failed.fail_block=1;
+    assert(api.parse(failed.parsed,sizeof(failed.parsed),"bad",&failed.b)==-1&&failed.blocks==2&&!failed.finalized);
+    ChoreographyTextFixture flags;flags.tokens[0]="fps";flags.tokens[1]="999";flags.tokens[2]="snap";flags.tokens[3]="oN";flags.tokens[4]=nullptr;
+    assert(api.parse(flags.parsed,sizeof(flags.parsed),"flags",&flags.b)==1&&F::word(flags.parsed,0x128)==240&&flags.parsed[0x125]);
+    ChoreographyTextFixture low;low.tokens[0]="fps";low.tokens[1]="-50";low.tokens[2]=nullptr;
+    assert(api.parse(low.parsed,sizeof(low.parsed),"low",&low.b)==1&&F::word(low.parsed,0x128)==10);
+    NamedSceneLoadFixture file;file.b.parse=nullptr;
+    ChoreographyTextFixture parser;parser.expected=file.parsed;
+    std::uint32_t out=99;
+    assert(api.load(file.scene,sizeof(file.scene),"Scenes/Jessica.TXT",&file.b,&parser.b,&out)==1&&out==F::ptr(file.parsed));
+    assert(parser.begins==1&&parser.finalized==3&&parser.blocks==4&&F::word(file.parsed,0x98)==0x4321&&F::word(file.parsed,0x128)==24);
+    file.expect({1,2,3,4,6,7,8,10});
+}
+
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};

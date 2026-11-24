@@ -683,6 +683,12 @@ int main(int argc,char** argv){
     assert(namedSceneLoad&&!getNamedSceneLoad(0,sizeof(tables::NamedSceneLoadApi))&&!getNamedSceneLoad(1,0));
     tables::test::check_named_scene_load(*namedSceneLoad);
     std::puts("PASS original named VCD cache copy and native parsed scene allocation");
+    const auto getChoreographyTextParser=reinterpret_cast<tables::GetChoreographyTextParserApi>(GetProcAddress(server,tables::choreography_text_parser_export));
+    assert(getChoreographyTextParser&&!GetProcAddress(client,tables::choreography_text_parser_export));
+    const auto* choreographyTextParser=getChoreographyTextParser(1,sizeof(tables::ChoreographyTextParserApi));
+    assert(choreographyTextParser&&!getChoreographyTextParser(0,sizeof(tables::ChoreographyTextParserApi))&&!getChoreographyTextParser(1,0));
+    tables::test::check_choreography_text_parser(*choreographyTextParser);
+    std::puts("PASS original top-level VCD parser and native named load integration");
 
 
 

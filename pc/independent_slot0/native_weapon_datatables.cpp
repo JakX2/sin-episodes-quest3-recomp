@@ -5172,12 +5172,17 @@ bool named_scene_copy(char* out,unsigned cap,const char* in,bool lower) noexcept
     }
     out[cap-1]=0;return true;
 }
-bool named_scene_ready(const NamedSceneLoadBindings* b) noexcept {
-    return b&&b->set_extension&&b->allocate&&b->release&&b->missing&&b->parse&&b->compare_word&&b->diagnostic_word&&
+bool choreography_text_ready(const ChoreographyTextParserBindings* p) noexcept {
+    return p&&p->tokenizer_word&&p->next&&p->token&&p->block&&p->unexpected&&p->finalize;
+}
+bool named_scene_ready(const NamedSceneLoadBindings* b,const ChoreographyTextParserBindings* parser=nullptr) noexcept {
+    return b&&b->set_extension&&b->allocate&&b->release&&b->missing&&
+        (parser?(choreography_text_ready(parser)&&parser->begin):b->parse!=nullptr)&&b->compare_word&&b->diagnostic_word&&
         b->cache.ensure&&b->cache.find&&b->cache.lock&&b->cache.reload&&b->cache.unlock&&owned_choreography_ready(&b->owned);
 }
-int __cdecl named_scene_load(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,std::uint32_t* out) noexcept {
-    if(!scene||bytes<0x414||!sin_independent::vgui_layout::Readable(scene,0x414)||!name||!hologram_writable(out,4)||!named_scene_ready(b))return 0;
+int __cdecl choreography_text_parse(void*,unsigned,const char*,const ChoreographyTextParserBindings*) noexcept;
+int named_scene_load_impl(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,std::uint32_t* out,const ChoreographyTextParserBindings* parser) noexcept {
+    if(!scene||bytes<0x414||!sin_independent::vgui_layout::Readable(scene,0x414)||!name||!hologram_writable(out,4)||!named_scene_ready(b,parser))return 0;
     const auto h=*b;const auto& cache=h.cache;
     char path[512]{},key[256]{};
     // Copy before Q_SetExtension; FixSlashes occurs after it in the original.
@@ -5216,7 +5221,8 @@ int __cdecl named_scene_load(void* scene,unsigned bytes,const char* name,const N
     if(!allocate_generated_parsed(a,static_cast<unsigned char*>(scene)+0x410,&parsed,&extent,&h.owned)||!parsed){
         (void)h.release(h.context,copy);return -1;
     }
-    const bool parsed_ok=h.parse(h.context,parsed,path,static_cast<const char*>(copy),n)!=0;
+    const bool parsed_ok=parser?(parser->begin(parser->context,static_cast<const char*>(copy),n)&&
+        choreography_text_parse(parsed,extent,path,parser)==1):h.parse(h.context,parsed,path,static_cast<const char*>(copy),n)!=0;
     // Original 22119b20 sets diagnostics after the parser returns.
     if(parsed_ok)hologram_write(parsed,0x98,h.diagnostic_word);
     const bool released=h.release(h.context,copy)!=0;
@@ -5225,7 +5231,81 @@ int __cdecl named_scene_load(void* scene,unsigned bytes,const char* name,const N
     }
     *out=scene_word(parsed);return 1;
 }
+int __cdecl named_scene_load(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,std::uint32_t* out) noexcept {
+    return named_scene_load_impl(scene,bytes,name,b,out,nullptr);
+}
 const NamedSceneLoadApi named_scene_load_api{version,sizeof(NamedSceneLoadApi),&named_scene_load};
+// Original 223a5673 uses 32-bit wraparound arithmetic, then signed clamp.
+int choreography_text_integer(const char* p) noexcept {
+    while(*p==' '||(*p>='\t'&&*p<='\r'))++p;
+    const bool negative=*p=='-';if(*p=='-'||*p=='+')++p;
+    std::uint32_t v=0;
+    while(*p>='0'&&*p<='9'){v=v*10+static_cast<unsigned>(*p-'0');++p;}
+    if(negative)v=0u-v;
+    int result=0;std::memcpy(&result,&v,4);return result;
+}
+bool choreography_text_equal(const char* a,const char* b) noexcept {
+    for(;;++a,++b){unsigned char c=static_cast<unsigned char>(*a),d=static_cast<unsigned char>(*b);
+        if(c>='A'&&c<='Z')c=static_cast<unsigned char>(c+32);
+        if(d>='A'&&d<='Z')d=static_cast<unsigned char>(d+32);
+        if(c!=d)return false;if(!c)return true;}
+}
+bool choreography_text_copy(char* dest,unsigned cap,const char* source) noexcept {
+    if(!source)return false;
+    for(unsigned i=0;i+1<cap;++i){
+        if(!sin_independent::vgui_layout::Readable(source+i,1))return false;
+        dest[i]=source[i];if(!dest[i]){std::memset(dest+i+1,0,cap-i-1);return true;}
+    }
+    dest[cap-1]=0;return true;
+}
+bool choreography_text_token(const ChoreographyTextParserBindings& h,char (&out)[1024]) noexcept {
+    const char* p=nullptr;if(!h.token(h.context,&p)||!p)return false;
+    for(unsigned i=0;i<sizeof(out);++i){
+        if(!sin_independent::vgui_layout::Readable(p+i,1))return false;
+        out[i]=p[i];if(!out[i])return true;
+    }
+    return false;
+}
+int __cdecl choreography_text_parse(void* parsed,unsigned bytes,const char* filename,const ChoreographyTextParserBindings* b) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!filename||!choreography_text_ready(b))return 0;
+    const auto h=*b;
+    char path[128]{};
+    if(!choreography_text_copy(path,sizeof(path),filename))return 0;
+    std::memcpy(static_cast<unsigned char*>(parsed)+0x198,path,sizeof(path));
+    hologram_write(parsed,0xa0,h.tokenizer_word);
+    for(unsigned iteration=0;;++iteration){
+        if(iteration>=0x100000)return -1;
+        unsigned more=0;if(!h.next(h.context,1,&more))return -1;
+        if(!more)break;
+        char token[1024]{};
+        if(!choreography_text_token(h,token))return -1;
+        if(!*token)break;
+        ChoreographyTextBlock block{};
+        bool nested=true;
+        if(choreography_text_equal(token,"event"))block=ChoreographyTextBlock::Event;
+        else if(choreography_text_equal(token,"actor"))block=ChoreographyTextBlock::Actor;
+        else if(choreography_text_equal(token,"scene_ramp"))block=ChoreographyTextBlock::SceneRamp;
+        else if(choreography_text_equal(token,"scalesettings"))block=ChoreographyTextBlock::ScaleSettings;
+        else nested=false;
+        if(nested){if(!h.block(h.context,parsed,block))return -1;continue;}
+        const bool map=choreography_text_equal(token,"mapname"),fps=choreography_text_equal(token,"fps"),snap=choreography_text_equal(token,"snap");
+        if(!map&&!fps&&!snap){if(!h.unexpected(h.context,token))return -1;break;}
+        // Original scalar handlers ignore next's boolean, but still read
+        // the current token. Transport failure remains fatal.
+        if(!h.next(h.context,1,&more)||!choreography_text_token(h,token))return -1;
+        if(map){if(!choreography_text_copy(reinterpret_cast<char*>(static_cast<unsigned char*>(parsed)+0xa4),128,token))return -1;}
+        else if(fps){const int v=choreography_text_integer(token);hologram_write(parsed,0x128,v>240?240:v<10?10:v);}
+        else hologram_write(parsed,0x125,static_cast<unsigned char>(choreography_text_equal(token,"on")));
+    }
+    for(auto stage:{ChoreographyTextFinalize::RelativeTags,ChoreographyTextFinalize::CaptionGroups,ChoreographyTextFinalize::GestureTimes})
+        if(!h.finalize(h.context,parsed,stage))return -1;
+    return 1;
+}
+int __cdecl choreography_text_load(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,const ChoreographyTextParserBindings* parser,std::uint32_t* out) noexcept {
+    if(!choreography_text_ready(parser)||!parser->begin)return 0;
+    const auto p=*parser;return named_scene_load_impl(scene,bytes,name,b,out,&p);
+}
+const ChoreographyTextParserApi choreography_text_parser_api{version,sizeof(ChoreographyTextParserApi),&choreography_text_parse,&choreography_text_load};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
         b->reset.storage&&b->reset.grow&&scene_stop_ready(&b->stop);
@@ -10566,6 +10646,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyTextParserApi=_SiN_GetChoreographyTextParserApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyTextParserApi* __cdecl
+SiN_GetChoreographyTextParserApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyTextParserApi)?&choreography_text_parser_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetNamedSceneLoadApi=_SiN_GetNamedSceneLoadApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NamedSceneLoadApi* __cdecl
 SiN_GetNamedSceneLoadApi(std::uint32_t version,std::uint32_t size) noexcept {
