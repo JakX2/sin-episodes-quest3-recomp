@@ -21,6 +21,7 @@
 #include "native_vehicle_hint.h"
 #include "native_vehicle_views.h"
 #include "native_vehicle_config.h"
+#include "native_vehicle_passengers.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4517,6 +4518,86 @@ int __cdecl config_damage(HologramControl* c,const VehicleConfigBindings* b) noe
     return disp_finish(c,false);
 }
 const VehicleConfigApi vehicle_config_api{version,sizeof(VehicleConfigApi),&config_views,&config_damage,&health_ack};
+
+constexpr unsigned vehicle_passenger_extent=0x890;
+int __cdecl passenger_defaults(HologramControl* c) noexcept {
+    if(!health_control(c,vehicle_passenger_extent))return 0;
+    for(unsigned off:{0x864u,0x868u,0x86cu})hologram_write(c->object,off,1.f);
+    hologram_write(c->object,0x74c,static_cast<unsigned char>(1));
+    hologram_write(c->object,0x88c,0.f);
+    return 1;
+}
+int __cdecl passenger_damage_factor(HologramControl* c,const VehiclePassengerBindings* b,int seat,unsigned flags,float* out) noexcept {
+    if(!health_control(c,vehicle_passenger_extent)||!b||!b->occupant||!b->global_damage_scale||!b->participant||!b->view_index||!out)return 0;
+    c->busy=1;const auto h=*b;auto* v=c->object;
+    void* occupant=nullptr;
+    if(!h.occupant(h.context,v,seat,&occupant))return disp_finish(c,false);
+    if(!occupant){*out=0;return disp_finish(c,true);}
+    // Original x87 multiplies the category factors and global scale
+    // before one float store, then conditionally multiplies by view.
+    double factor=(flags&0x40u)?hologram_read<float>(v,0x864):1.;
+    if(flags&1u)factor*=hologram_read<float>(v,0x868);
+    if(flags&2u)factor*=hologram_read<float>(v,0x86c);
+    float global=0;
+    if(!h.global_damage_scale(h.context,&global))return disp_finish(c,false);
+    const float scaled=static_cast<float>(factor*global);
+    unsigned player=0;
+    if(!h.participant(h.context,occupant,&player))return disp_finish(c,false);
+    if(!player){*out=scaled;return disp_finish(c,true);}
+    int view=-1;
+    if(!h.view_index(h.context,occupant,&view))return disp_finish(c,false);
+    const auto* r=view_record(v,view);
+    if(!r)return disp_finish(c,false);
+    *out=scaled*hologram_read<float>(r,0x60);
+    return disp_finish(c,true);
+}
+int __cdecl passenger_enable_ammo(HologramControl* c,unsigned type,std::uint32_t word) noexcept {
+    if(!health_control(c,vehicle_passenger_extent))return 0;
+    hologram_write(c->object,0x74c,static_cast<unsigned char>(type==5&&word!=0));
+    return 1;
+}
+bool passenger_refill_one(const VehiclePassengerBindings& h,void* combat,const char* name) noexcept {
+    int index=-1;
+    if(!h.ammo_index(h.context,name,&index))return false;
+    if(index<0)return true;
+    unsigned allowed=0;
+    if(!h.ammo_allowed(h.context,combat,index,&allowed))return false;
+    if(!allowed)return true;
+    int count=0;
+    if(!h.ammo_count(h.context,combat,index,&count))return false;
+    if(count>0)return true;
+    int max=0;
+    if(!h.ammo_max(h.context,index,&max))return false;
+    return h.give_ammo(h.context,combat,max,index,0)!=0;
+}
+int __cdecl passenger_refill(HologramControl* c,const VehiclePassengerBindings* b) noexcept {
+    if(!health_control(c,vehicle_passenger_extent)||!b||!b->clock||!b->occupant||!b->combat_character||
+       !b->base_player_cast||!b->view_index||!b->ammo_index||!b->ammo_allowed||!b->ammo_count||!b->ammo_max||!b->give_ammo)return 0;
+    c->busy=1;const auto h=*b;auto* v=c->object;
+    if(!hologram_read<unsigned char>(v,0x74c))return disp_finish(c,true);
+    float now=0;
+    if(!h.clock(h.context,&now))return disp_finish(c,false);
+    if(!(static_cast<double>(now)-hologram_read<float>(v,0x88c)>1.))return disp_finish(c,true);
+    hologram_write(v,0x88c,now);
+    for(int seat=0;seat<3;++seat){
+        void* occupant=nullptr;void* combat=nullptr;
+        if(!h.occupant(h.context,v,seat,&occupant))return disp_finish(c,false);
+        if(!occupant)continue;
+        if(!h.combat_character(h.context,occupant,&combat))return disp_finish(c,false);
+        if(!combat)continue;
+        unsigned player=0;
+        if(!h.base_player_cast(h.context,combat,&player))return disp_finish(c,false);
+        if(player){
+            int view=-1;
+            if(!h.view_index(h.context,combat,&view))return disp_finish(c,false);
+            if(view!=1&&view!=3&&view!=4)continue;
+        }
+        constexpr const char* names[]={"MAG","AR","BUCK","ARNADE","FLAK","GRENADE"};
+        for(const char* name:names)if(!passenger_refill_one(h,combat,name))return disp_finish(c,false);
+    }
+    return disp_finish(c,true);
+}
+const VehiclePassengersApi vehicle_passengers_api{version,sizeof(VehiclePassengersApi),&passenger_defaults,&passenger_damage_factor,&passenger_enable_ammo,&passenger_refill,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -6528,6 +6609,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleCo
 SiN_GetVehicleConfigApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleConfigApi)?&vehicle_config_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehiclePassengersApi=_SiN_GetVehiclePassengersApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehiclePassengersApi* __cdecl
+SiN_GetVehiclePassengersApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehiclePassengersApi)?&vehicle_passengers_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
