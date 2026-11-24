@@ -1,4 +1,5 @@
 #include "native_jessica_script.h"
+#include "native_count_interrogation.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -2864,6 +2865,71 @@ int __cdecl jessica_attention(HologramControl* ctrl,JessicaAttentionState* state
     return disp_finish(ctrl,true);
 }
 const JessicaAttentionApi jessica_attention_api{version,sizeof(JessicaAttentionApi),&jessica_attention,&health_ack};
+
+constexpr unsigned count_size=0x1038;
+int __cdecl count_initialize(HologramControl* ctrl) noexcept {
+    if(!health_control(ctrl,count_size))return 0;
+    hologram_write(ctrl->object,0x1010,static_cast<unsigned char>(0));
+    hologram_write(ctrl->object,0x1014,0);
+    hologram_write(ctrl->object,0x1018,static_cast<unsigned char>(0));
+    return 1;
+}
+int __cdecl count_input(HologramControl* ctrl,unsigned start) noexcept {
+    if(!health_control(ctrl,count_size)||start>1)return 0;
+    hologram_write(ctrl->object,0x1010,static_cast<unsigned char>(start));
+    return 1;
+}
+int __cdecl count_enabled(HologramControl* ctrl,unsigned* result) noexcept {
+    if(!health_control(ctrl,count_size)||!result)return 0;
+    *result=hologram_read<unsigned char>(ctrl->object,0x1010);
+    return 1;
+}
+int __cdecl count_observe(HologramControl* ctrl,const CountBindings* b,const void* obs,unsigned bytes) noexcept {
+    if(!health_control(ctrl,count_size)||!b||!b->resolve||!b->clock||!b->expeditor||!b->speaking||!b->criteria||!b->speak||
+       !obs||bytes<0x2f8||!sin_independent::vgui_layout::Readable(obs,0x2f8))return 0;
+    ctrl->busy=1;auto* npc=ctrl->object;const auto host=*b;
+    const auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    void* target=nullptr;const auto handle=hologram_read<std::uint32_t>(obs,0x14);
+    if(handle!=0xffffffffu&&!host.resolve(host.context,handle,&target))return finish(false);
+    if(target!=npc)return finish(true);
+    float now=0;if(!host.clock(host.context,&now))return finish(false);
+    if(!(static_cast<double>(now)-hologram_read<float>(obs,0x2d4)>1.0))return finish(true);
+    void* expeditor=nullptr;
+    if(!host.expeditor(host.context,npc,&expeditor))return finish(false);
+    if(!expeditor)return finish(true);
+    if(!host.expeditor(host.context,npc,&expeditor)||!expeditor)return finish(false);
+    unsigned busy=0;if(!host.speaking(host.context,expeditor,&busy))return finish(false);
+    if(busy)return finish(true);
+    const auto* part=static_cast<const char*>(obs)+0x2d8;
+    auto* prior=static_cast<char*>(npc)+0x1018;
+    // Original strcmp/strncpy assume terminated strings. Refuse malformed
+    // host observations instead of reading outside the supplied record.
+    if(!std::memchr(part,0,32)||!std::memchr(prior,0,32))return finish(false);
+    if(!std::strcmp(prior,part))return finish(true);
+    std::strncpy(prior,part,32);
+    CountCriteria criteria{};
+    if(!host.clock(host.context,&now)||!host.criteria(host.context,static_cast<const char*>(obs)+0x18,now,&criteria))return finish(false);
+    const int state=hologram_read<int>(npc,0x1014);
+    constexpr const char* concepts[]={"TLK_INTERROGATE_COCKY","TLK_INTERROGATE_NERVOUS","TLK_INTERROGATE_TALKING"};
+    if(state<0||state>2)return finish(true);
+    if(!host.expeditor(host.context,npc,&expeditor)||!expeditor)return finish(false);
+    unsigned played=0;
+    if(!host.speak(host.context,expeditor,concepts[state],&criteria,&played))return finish(false);
+    // Original advances regardless of whether a response matched/played.
+    if(state==2){*prior=0;hologram_write(npc,0x1014,0);}
+    else hologram_write(npc,0x1014,state+1);
+    return finish(true);
+}
+int __cdecl count_damage(HologramControl* ctrl,const CountBindings* b,const PlayerDamageInfo* info,int* result) noexcept {
+    if(!health_control(ctrl,count_size)||!b||!b->behavior_damage||!b->base_damage||!info||!result||
+       !sin_independent::vgui_layout::Readable(info,sizeof(*info)))return 0;
+    ctrl->busy=1;const auto host=*b;auto* npc=ctrl->object;PlayerDamageInfo copy=*info;
+    hologram_write(&copy,0x2c,0.0f);
+    const auto behavior=hologram_read<std::uint32_t>(npc,0xc18);
+    if(behavior)return disp_finish(ctrl,host.behavior_damage(host.context,behavior,&copy,result)!=0);
+    return disp_finish(ctrl,host.base_damage(host.context,npc,&copy,result)!=0);
+}
+const CountInterrogationApi count_api{version,sizeof(CountInterrogationApi),&count_initialize,&count_input,&count_enabled,&count_observe,&count_damage,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4586,6 +4652,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::JessicaAt
 SiN_GetJessicaAttentionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(JessicaAttentionApi)?&jessica_attention_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CountInterrogationApi* __cdecl
+SiN_GetCountInterrogationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(CountInterrogationApi)?&count_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
