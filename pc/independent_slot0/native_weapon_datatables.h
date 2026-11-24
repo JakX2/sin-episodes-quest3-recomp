@@ -1135,4 +1135,33 @@ struct PlayerPoisonApi {
     int (__cdecl *acknowledge)(HologramControl*,PoisonTiming*) noexcept;
 };
 using GetPlayerPoisonApi=const PlayerPoisonApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase730: original CHudPoisonTimer complete-object layout.
+// All offsets here include the secondary panel's +0x14 adjustment.
+inline constexpr char poison_hud_export[]="SiN_GetPoisonHudApi";
+struct PoisonHudDraw {
+    void* foreground;void* background;
+    float fraction;
+    unsigned char rgba[4];
+    float design_width,design_height;
+    int x,y,mode;
+};
+struct PoisonHudBindings {
+    void* context;
+    int (__cdecl *resource)(void*,const char* name,void**) noexcept;
+    int (__cdecl *sound)(void*,const char* name) noexcept;
+    int (__cdecl *base_paint)(void*,void* panel) noexcept;
+    // Host owns the existing engine HUD draw helper 24154d50 contract.
+    int (__cdecl *draw)(void*,const PoisonHudDraw*) noexcept;
+};
+struct PoisonHudApi {
+    std::uint32_t version,size;
+    int (__cdecl *reset)(HologramControl*) noexcept;
+    // Names and color are supplied by actual scheme animation variables.
+    int (__cdecl *bind)(HologramControl*,const PoisonHudBindings*) noexcept;
+    int (__cdecl *tick)(HologramControl*,const PoisonHudBindings*,const void* player,unsigned bytes) noexcept;
+    int (__cdecl *paint)(HologramControl*,const PoisonHudBindings*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetPoisonHudApi=const PoisonHudApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -191,7 +191,12 @@ int main(int argc,char** argv){
     assert(getPlayerPoison&&!GetProcAddress(client,tables::player_poison_export));
     const auto* playerPoison=getPlayerPoison(1,sizeof(tables::PlayerPoisonApi));
     assert(playerPoison&&!getPlayerPoison(0,sizeof(tables::PlayerPoisonApi))&&!getPlayerPoison(1,0));
-    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath,*keySend,*keyRecv,*keyServer,*keyClient,*propKeyServer,*propKeyClient,*phoneSend,*phoneRecv,*phoneServer,*playerPoison);
+    const auto getPoisonHud=reinterpret_cast<tables::GetPoisonHudApi>(GetProcAddress(client,tables::poison_hud_export));
+    assert(getPoisonHud&&!GetProcAddress(server,tables::poison_hud_export));
+    const auto* poisonHud=getPoisonHud(1,sizeof(tables::PoisonHudApi));
+    assert(poisonHud&&!getPoisonHud(0,sizeof(tables::PoisonHudApi))&&!getPoisonHud(1,0));
+    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath,*keySend,*keyRecv,*keyServer,*keyClient,*propKeyServer,*propKeyClient,*phoneSend,*phoneRecv,*phoneServer,*playerPoison,*poisonHud);
+    std::puts("PASS native poison HUD complete-object layout, received timer, resource and fade decisions");
     std::puts("PASS native SiN player poison accumulation, damage cadence, effect and paired network timer");
     std::puts("PASS native SiN prop phone poll, prefix/terminal sound, native keypad clear and lifecycle");
     std::puts("PASS native paired prop keypad event, OnInput, sound and display updates");
