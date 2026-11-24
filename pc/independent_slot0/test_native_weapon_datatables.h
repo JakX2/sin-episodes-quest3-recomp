@@ -1370,4 +1370,74 @@ inline void check_client_init(const ClientRegistryApi& registry,const ClientInit
     assert(registry.remove(&view,handle)&&registry.destroy(&view));
 }
 
+struct SpawnFixture {
+    InitFixture init;
+    unsigned allocations=0,constructions=0,cleanups=0;
+    bool allocated=false;
+    CreatorCleanup stage=CreatorCleanup::Raw;
+};
+inline void* __cdecl spawn_allocate(void* context,unsigned,unsigned bytes) noexcept {
+    auto& f=*static_cast<SpawnFixture*>(context);assert(!f.allocated&&bytes<=sizeof(f.init.object));
+    ++f.allocations;f.allocated=true;std::memset(f.init.object,0xa5,sizeof(f.init.object));return f.init.object;
+}
+inline int __cdecl spawn_construct(void* context,unsigned,void* object,unsigned bytes) noexcept {
+    auto& f=*static_cast<SpawnFixture*>(context);++f.constructions;
+    auto* raw=static_cast<unsigned char*>(object);
+    for(unsigned i=0;i<bytes;++i)assert(raw[i]==0);
+    init_primary_table[1]=reinterpret_cast<void*>(&init_set_handle);
+    init_primary_table[17]=reinterpret_cast<void*>(&init_map);
+    void** primary=init_primary_table;void** secondary=init_secondary_table;void** networkable=fixture_networkable_table;
+    fixture_networkable_table[0]=reinterpret_cast<void*>(&fixture_networkable_method);
+    std::memcpy(raw,&primary,4);std::memcpy(raw+4,&secondary,4);std::memcpy(raw+8,&networkable,4);
+    InitFixture* fp=&f.init;std::memcpy(raw+0x10,&fp,4);
+    return 1;
+}
+inline void __cdecl spawn_cleanup(void* context,unsigned,void* object,unsigned,CreatorCleanup stage) noexcept {
+    auto& f=*static_cast<SpawnFixture*>(context);assert(f.allocated&&object==f.init.object);
+    assert(!f.init.registry->resolve(f.init.view,f.init.handle));
+    ++f.cleanups;f.allocated=false;f.stage=stage;
+}
+inline void check_spawn_session(const AggregateRecvApi& aggregate,const ClientRegistryApi& registry,const ClientSpawnApi& api){
+    RecvProp cp[8];RecvTable collision{cp,8,nullptr,"DT_CollisionProperty"};
+    EntityNetworkFixture ef;OverlayFixture cf;FovFixture ff;VelocityFixture vf;
+    AggregateRecvBindings ab{{&collision,&ef,&sample_clock,&effects_changed,&interpolation_changed},
+        {&cf,&reserve_layers,&resize_layers},{&ff,&sample_fov},&vf,&invalidate_velocity,{}};
+    for(auto& creator:ab.creators)creator=&fixture_class_creator;
+    AggregateRecvView av{};assert(aggregate.create(&ab,&av));
+    SpawnFixture f;ClientRegistryView rv{};f.init.registry=&registry;f.init.view=&rv;
+    std::uint16_t seeds[client_network_limit]{};
+    ClientRegistryBindings rb{seeds,&f.init,&init_added,&init_removed};
+    assert(registry.create(&rb,&rv));
+    ClientSpawnBindings sb{&av,{&f,&spawn_allocate,&spawn_construct,&spawn_cleanup},
+        {&rv,&f.init,&init_collision,&init_duration,&init_rollback}};
+    ClientSpawnView session{},second{};
+    av.tables[19]->initialized=true;assert(!api.bind(&sb,&session));av.tables[19]->initialized=false;
+    assert(api.bind(&sb,&session)&&!api.bind(&sb,&second));
+    assert(!aggregate.destroy(&av)&&!registry.destroy(&rv));
+    constexpr unsigned slots[]={ClPlayer,ClHand,ClMagnum,ClAssault,ClScatter};
+    assert(av.class_records[ClEntity].create==&fixture_class_creator);
+    ClientSpawnRecord record{};
+    for(unsigned i=0;i<5;++i){
+        f.init.event_count=0;
+        const auto creator=av.class_records[slots[i]].create;
+        assert(creator!=&fixture_class_creator&&!creator(-1,1));
+        auto* networkable=creator(9,static_cast<int>(10+i));
+        assert(networkable==f.init.object+8&&api.record(&session,9,&record)&&
+            record.primary==f.init.object&&record.networkable==networkable&&record.slot==slots[i]&&record.initialized==1&&
+            record.handle==((10+i)<<12|9u));
+        assert(f.init.event_count==4&&registry.resolve(&rv,record.handle)==record.primary);
+        assert(!creator(9,10)&&!api.unbind(&session)&&!api.release(&session,record.handle^0x1000u));
+        assert(api.release(&session,record.handle)&&!api.record(&session,9,&record)&&f.stage==CreatorCleanup::InitAttempted);
+    }
+    assert(f.allocations==5&&f.constructions==5&&f.cleanups==5);
+    f.init.event_count=0;f.init.fail=1;
+    assert(!av.class_records[ClPlayer].create(9,55)&&!f.allocated&&!api.record(&session,9,&record)&&
+        f.stage==CreatorCleanup::Constructed&&f.cleanups==6);
+    av.tables[19]->in_main_list=true;assert(!api.unbind(&session));av.tables[19]->in_main_list=false;
+    const auto stale=av.class_records[ClPlayer].create;
+    assert(api.unbind(&session)&&!session.handle&&!stale(9,55));
+    for(unsigned slot:slots)assert(av.class_records[slot].create==&fixture_class_creator);
+    assert(aggregate.destroy(&av)&&registry.destroy(&rv));
+}
+
 }

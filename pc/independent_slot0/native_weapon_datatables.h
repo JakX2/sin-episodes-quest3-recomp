@@ -547,4 +547,35 @@ struct ClientInitApi {
         int index,int serial,std::uint32_t* handle) noexcept;
 };
 using GetClientInitApi=const ClientInitApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase711: explicit single-threaded class creator binding. The original
+// cdecl class ABI has no context argument, so only one session is active
+// per client DLL. Do not retain thunk pointers after unbind. Retail
+// getters remain disabled; this is the reconstructed 15-class subset.
+inline constexpr char spawn_session_export[]="SiN_GetClientSpawnSessionApi";
+struct ClientSpawnBindings {
+    AggregateRecvView* aggregate;
+    ClientCreatorBindings creator;
+    ClientInitBindings init;
+};
+struct ClientSpawnView {void* handle;};
+struct ClientSpawnRecord {
+    void* primary;
+    void* networkable;
+    std::uint32_t handle;
+    unsigned slot;
+    // 1: initialized, 0: retained after incomplete rollback.
+    unsigned initialized;
+};
+struct ClientSpawnApi {
+    std::uint32_t version,size;
+    int (__cdecl *bind)(const ClientSpawnBindings*,ClientSpawnView*) noexcept;
+    // Only a live matching generation may be released. Removes registry
+    // entry first, then host cleanup. Successful initialized objects use
+    // InitAttempted cleanup; host owns remaining service teardown.
+    int (__cdecl *release)(ClientSpawnView*,std::uint32_t handle) noexcept;
+    int (__cdecl *record)(const ClientSpawnView*,unsigned index,ClientSpawnRecord*) noexcept;
+    int (__cdecl *unbind)(ClientSpawnView*) noexcept;
+};
+using GetClientSpawnApi=const ClientSpawnApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

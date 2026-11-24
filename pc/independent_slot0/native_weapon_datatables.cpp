@@ -1853,6 +1853,7 @@ struct AggregateRecvGraph {
     DerivedPlayerRecvGraph derived;
     RecvGraph weapons;
     ClientClassGraph classes;
+    bool spawn_bound=false;
     Table* tables[aggregate_table_count]{};
     bool build(const AggregateRecvBindings& b) noexcept {
         if(!entity.build(b.entity)||!anim.build({&entity.entity})||
@@ -1895,7 +1896,7 @@ int __cdecl create_aggregate(const AggregateRecvBindings* b,AggregateRecvView* o
 int __cdecl destroy_aggregate(AggregateRecvView* v) noexcept {
     if(!v||!v->handle)return 0;
     auto* g=static_cast<AggregateRecvGraph*>(v->handle);
-    if(!aggregate_matches(*g,*v))return 0;
+    if(g->spawn_bound||!aggregate_matches(*g,*v))return 0;
     // Preflight every owned object, including nested-only tables. No
     // partial teardown if an engine marker is still set anywhere.
     for(const auto* tab:g->tables)if(!tab||tab->decoder||tab->initialized||tab->in_main_list)return 0;
@@ -1991,7 +1992,7 @@ struct ClientRegistry {
     ClientRegistryEntry* head=nullptr;
     ClientRegistryEntry* tail=nullptr;
     unsigned count=0;
-    bool busy=false;
+    bool busy=false,spawn_bound=false;
     void* context=nullptr;
     RegistryNotify added=nullptr,removed=nullptr;
 };
@@ -2014,7 +2015,7 @@ int __cdecl registry_create(const ClientRegistryBindings* b,ClientRegistryView* 
 }
 int __cdecl registry_destroy(ClientRegistryView* v) noexcept {
     auto* g=registry_get(v);
-    if(!g||g->busy||g->count||g->head||g->tail)return 0;
+    if(!g||g->busy||g->spawn_bound||g->count||g->head||g->tail)return 0;
     delete g;*v={};return 1;
 }
 ClientRegistryEntry* registry_entry(ClientRegistry* g,std::uint32_t handle) noexcept {
@@ -2158,6 +2159,114 @@ int __cdecl initialize_client(const ClientInitBindings* b,unsigned slot,void* ob
     *handle=packed;g->busy=false;return 1;
 }
 const ClientInitApi client_init_api{version,sizeof(ClientInitApi),&initialize_client};
+
+constexpr unsigned spawn_slots[]={ClPlayer,ClHand,ClMagnum,ClAssault,ClScatter};
+struct ClientSpawnSession {
+    AggregateRecvGraph* graph=nullptr;
+    ClientRegistryView registry{};
+    ClientCreatorBindings creator{};
+    ClientInitBindings init{};
+    CreateClientEntity prior[5]{};
+    ClientSpawnRecord records[client_network_limit]{};
+    unsigned count=0;
+    bool busy=false;
+};
+ClientSpawnSession* active_spawn=nullptr;
+bool aggregate_detached(const AggregateRecvGraph& g) noexcept {
+    for(const auto* tab:g.tables)if(!tab||tab->decoder||tab->initialized||tab->in_main_list)return false;
+    for(const auto& rec:g.classes.records)if(rec.class_id!=0)return false;
+    return true;
+}
+ClientSpawnSession* spawn_get(const ClientSpawnView* v) noexcept {
+    return v&&v->handle&&v->handle==active_spawn?active_spawn:nullptr;
+}
+void* spawn_entity(unsigned slot,int index,int serial) noexcept {
+    auto* session=active_spawn;
+    const unsigned bytes=creator_size(slot);
+    if(!session||session->busy||!bytes||index<0||index>=static_cast<int>(client_network_limit)||
+       serial< -1||serial>0x7fff)return nullptr;
+    auto* g=registry_get(&session->registry);
+    auto& record=session->records[index];
+    if(!g||g->busy||g->entries[index].entity||record.primary)return nullptr;
+    session->busy=true;
+    const auto& host=session->creator;
+    void* object=host.allocate(host.context,slot,bytes);
+    if(!object){session->busy=false;return nullptr;}
+    const auto fail=[&](CreatorCleanup stage)->void* {
+        host.cleanup(host.context,slot,object,bytes,stage);
+        session->busy=false;return nullptr;
+    };
+    if(!creator_writable(object,bytes))return fail(CreatorCleanup::Raw);
+    std::memset(object,0,bytes);
+    if(!host.construct(host.context,slot,object,bytes))return fail(CreatorCleanup::Raw);
+    auto* networkable=static_cast<unsigned char*>(object)+8;
+    auto refused=registry_methods::CallResult::InvalidObject;
+    if(!registry_methods::VerifiedMethod(networkable,0,refused))return fail(CreatorCleanup::Constructed);
+    std::uint32_t packed=0;
+    // Execute our recovered initializer, not a synthetic slot37 stub.
+    const int result=initialize_client(&session->init,slot,object,index,serial,&packed);
+    if(result==0)return fail(CreatorCleanup::Constructed);
+    record={object,networkable,packed,slot,result==1?1u:0u};
+    ++session->count;session->busy=false;
+    // Retained rollback failures are accessible through record/release,
+    // but never published as successfully initialized networkables.
+    return result==1?networkable:nullptr;
+}
+template<unsigned Slot> void* __cdecl spawn_thunk(int index,int serial){
+    return spawn_entity(Slot,index,serial);
+}
+constexpr CreateClientEntity spawn_creators[]={
+    &spawn_thunk<ClPlayer>,&spawn_thunk<ClHand>,&spawn_thunk<ClMagnum>,&spawn_thunk<ClAssault>,&spawn_thunk<ClScatter>
+};
+int __cdecl spawn_bind(const ClientSpawnBindings* b,ClientSpawnView* out) noexcept {
+    if(!b||!out||out->handle||active_spawn||!b->aggregate||!b->aggregate->handle||
+       !b->creator.allocate||!b->creator.construct||!b->creator.cleanup||
+       !b->init.attach_collision||!b->init.duration||!b->init.rollback)return 0;
+    auto* graph=static_cast<AggregateRecvGraph*>(b->aggregate->handle);
+    auto* registry=registry_get(b->init.registry);
+    if(!aggregate_matches(*graph,*b->aggregate)||graph->spawn_bound||!aggregate_detached(*graph)||
+       !registry||registry->busy||registry->spawn_bound)return 0;
+    auto* session=new(std::nothrow) ClientSpawnSession;
+    if(!session)return 0;
+    session->graph=graph;session->registry=*b->init.registry;session->creator=b->creator;
+    session->init=b->init;session->init.registry=&session->registry;
+    for(unsigned i=0;i<5;++i){
+        auto& rec=graph->classes.records[spawn_slots[i]];
+        session->prior[i]=rec.create;rec.create=spawn_creators[i];
+    }
+    graph->spawn_bound=true;registry->spawn_bound=true;
+    active_spawn=session;out->handle=session;return 1;
+}
+int __cdecl spawn_record(const ClientSpawnView* v,unsigned index,ClientSpawnRecord* out) noexcept {
+    const auto* session=spawn_get(v);
+    if(!session||!out||index>=client_network_limit||!session->records[index].primary)return 0;
+    *out=session->records[index];return 1;
+}
+int __cdecl spawn_release(ClientSpawnView* v,std::uint32_t handle) noexcept {
+    auto* session=spawn_get(v);
+    const unsigned index=handle&0xfffu;
+    if(!session||session->busy||index>=client_network_limit)return 0;
+    auto& record=session->records[index];
+    if(!record.primary||record.handle!=handle||
+       registry_resolve(&session->registry,handle)!=record.primary)return 0;
+    session->busy=true;
+    if(!registry_remove(&session->registry,handle)){session->busy=false;return 0;}
+    session->creator.cleanup(session->creator.context,record.slot,record.primary,creator_size(record.slot),
+        record.initialized?CreatorCleanup::InitAttempted:CreatorCleanup::Constructed);
+    record={};--session->count;session->busy=false;return 1;
+}
+int __cdecl spawn_unbind(ClientSpawnView* v) noexcept {
+    auto* session=spawn_get(v);
+    if(!session||session->busy||session->count||!aggregate_detached(*session->graph))return 0;
+    auto* registry=registry_get(&session->registry);
+    if(!registry||registry->busy)return 0;
+    for(unsigned i=0;i<5;++i)
+        if(session->graph->classes.records[spawn_slots[i]].create!=spawn_creators[i])return 0;
+    for(unsigned i=0;i<5;++i)session->graph->classes.records[spawn_slots[i]].create=session->prior[i];
+    session->graph->spawn_bound=false;registry->spawn_bound=false;
+    active_spawn=nullptr;delete session;*v={};return 1;
+}
+const ClientSpawnApi spawn_api{version,sizeof(ClientSpawnApi),&spawn_bind,&spawn_release,&spawn_record,&spawn_unbind};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2332,5 +2441,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientIni
 SiN_GetClientEntityInitApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientInitApi)?&client_init_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientSpawnSessionApi=_SiN_GetClientSpawnSessionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientSpawnApi* __cdecl
+SiN_GetClientSpawnSessionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientSpawnApi)?&spawn_api:nullptr;
 }
 #endif
