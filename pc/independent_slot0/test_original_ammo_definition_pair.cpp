@@ -140,6 +140,14 @@ int main(int argc,char** argv){
         *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv,*dataSend,*dataRecv,*entitySend,*entityRecv,*derivedSend,*derivedRecv,*resolved,*ra,*serverClass,*clientClass);
     std::puts("PASS native paired BasePlayer, HL2_Player, HL2Local, PlayerHand and PlayerState graph composition");
     std::puts("PASS native paired 15-class registration subset, ordered lists and real creator ABI");
+    const auto getAggregateSend=reinterpret_cast<tables::GetAggregateSendApi>(GetProcAddress(server,tables::aggregate_send_export));
+    const auto getAggregateRecv=reinterpret_cast<tables::GetAggregateRecvApi>(GetProcAddress(client,tables::aggregate_recv_export));
+    assert(getAggregateSend&&getAggregateRecv&&!GetProcAddress(client,tables::aggregate_send_export)&&!GetProcAddress(server,tables::aggregate_recv_export));
+    const auto* aggregateSend=getAggregateSend(1,sizeof(tables::AggregateSendApi));
+    const auto* aggregateRecv=getAggregateRecv(1,sizeof(tables::AggregateRecvApi));
+    assert(aggregateSend&&aggregateRecv&&!getAggregateSend(0,sizeof(tables::AggregateSendApi))&&!getAggregateRecv(1,0));
+    tables::test::check_aggregate(*aggregateSend,*aggregateRecv);
+    std::puts("PASS native paired network aggregate (35 owned tables, 15 class records, transactional construction)");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

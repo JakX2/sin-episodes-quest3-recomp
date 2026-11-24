@@ -8,6 +8,16 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+template<class V> bool aggregate_empty(const V& v) noexcept {
+    if(v.handle||v.class_head||v.class_records||v.class_count)return false;
+    for(const auto* tab:v.tables)if(tab)return false;
+    return true;
+}
+template<class G,class V> bool aggregate_matches(const G& g,const V& v) noexcept {
+    if(v.class_head!=g.classes.head||v.class_records!=g.classes.records||v.class_count!=ClassSubsetCount)return false;
+    for(unsigned i=0;i<aggregate_table_count;++i)if(v.tables[i]!=g.tables[i])return false;
+    return true;
+}
 // Class table identity is stricter than matching a display name: all
 // reconstructed baseclass links must reference the very same instances.
 template<class B> bool class_tables_valid(const B& b) noexcept {
@@ -395,21 +405,28 @@ int __cdecl destroy(SendView* v) noexcept {
     for(const auto& t:g->tables)if(t.precalc||t.initialized||t.written)return 0;
     delete g;*v={};return 1;
 }
-int __cdecl create_resolved(const ResolvedSendBindings* b,SendView* out) noexcept {
-    if(!b||!out||!empty(*out)||!b->entries||!b->entry_count||
-       b->entry_count>sin_independent::kEntityHandleCapacity||
-       !b->edict_base||!b->max_clients||b->max_clients>256||
-       !mem::Readable(b->entries,sizeof(*b->entries))||
-       !mem::Readable(b->edict_base,edict_stride*(b->max_clients+1u)))return 0;
+bool build_resolved_graph(SendGraph& graph,const ResolvedSendBindings& b) noexcept {
+    if(!b.entries||!b.entry_count||b.entry_count>sin_independent::kEntityHandleCapacity||
+       !b.edict_base||!b.max_clients||b.max_clients>256||
+       !mem::Readable(b.entries,sizeof(*b.entries))||
+       !mem::Readable(b.edict_base,edict_stride*(b.max_clients+1u)))return false;
     methods::CallResult refused=methods::CallResult::InvalidObject;
-    if(!methods::VerifiedMethod(b->engine_server,18,refused))return 0;
-    const SendBindings native{b->base_animating,&resolved_local,&resolved_local,&resolved_handle};
-    if(!create(&native,out))return 0;
-    auto* graph=static_cast<SendGraph*>(out->handle);
-    graph->context={b->engine_server,b->entries,b->entry_count,b->edict_base,b->max_clients};
-    graph->props[BaseCombat][1].extra=&graph->context;
-    graph->props[BaseCombat][2].extra=&graph->context;
-    graph->props[BaseCombat][6].extra=&graph->context;
+    if(!methods::VerifiedMethod(b.engine_server,18,refused))return false;
+    const SendBindings native{b.base_animating,&resolved_local,&resolved_local,&resolved_handle};
+    if(!graph.build(native))return false;
+    graph.context={b.engine_server,b.entries,b.entry_count,b.edict_base,b.max_clients};
+    graph.props[BaseCombat][1].extra=&graph.context;
+    graph.props[BaseCombat][2].extra=&graph.context;
+    graph.props[BaseCombat][6].extra=&graph.context;
+    return true;
+}
+int __cdecl create_resolved(const ResolvedSendBindings* b,SendView* out) noexcept {
+    if(!b||!out||!empty(*out))return 0;
+    auto* graph=new(std::nothrow) SendGraph;
+    if(!graph)return 0;
+    if(!build_resolved_graph(*graph,*b)){delete graph;return 0;}
+    out->handle=graph;
+    for(unsigned i=0;i<TableCount;++i)out->tables[i]=&graph->tables[i];
     return 1;
 }
 const SendApi api{version,sizeof(SendApi),&create,&destroy};
@@ -1100,6 +1117,70 @@ int __cdecl destroy_class_subset(ServerClassView* v) noexcept {
     delete g;*v={};return 1;
 }
 const ServerClassApi class_api{version,sizeof(ServerClassApi),&create_class_subset,&destroy_class_subset};
+
+struct AggregateSendGraph {
+    using Table=s::SendTable;
+    BaseEntitySendGraph entity;
+    AnimSendGraph anim;
+    OverlaySendGraph overlay;
+    FlexSendGraph flex;
+    InventorySendGraph inventory;
+    LocalDataSendGraph local;
+    PlayerLocalSendGraph private_player;
+    BasePlayerSendGraph player;
+    DerivedPlayerSendGraph derived;
+    SendGraph weapons;
+    ServerClassGraph classes;
+    Table* tables[aggregate_table_count]{};
+    bool build(const AggregateSendBindings& b) noexcept {
+        const auto* entries=b.entity.entries;const auto count=b.entity.entry_count;
+        if(!entity.build(b.entity)||!anim.build({&entity.entity,entries,count})||
+           !overlay.build(b.overlay)||!flex.build({&anim.base,&overlay.overlay})||
+           !inventory.build({&flex.flex,b.engine_server,entries,count,b.edict_base,b.max_clients})||
+           !local.build({entries,count})||
+           !private_player.build({&local.table,&inventory.ammo_property,entries,count})||
+           !player.build({&inventory.combat_base,&private_player.table,entries,count})||
+           !derived.build({&player.player,&entity.entity,entries,count})||
+           !build_resolved_graph(weapons,{&anim.base,b.engine_server,entries,count,b.edict_base,b.max_clients}))return false;
+        if(!classes.build({{&weapons.tables[BaseCombat],&anim.base,&flex.overlay,&inventory.combat_base,
+            &entity.entity,&flex.flex,&player.player,&weapons.tables[BaseHL],
+            &weapons.tables[MachineGun],&weapons.tables[SelectFire],&derived.hand,&derived.player,
+            &weapons.tables[Magnum],&weapons.tables[AssaultRifle],&weapons.tables[Scattergun]}}))return false;
+        Table* fixed[]={&entity.entity,&entity.anim_time,&entity.predictable,
+            &anim.base,&anim.cycle,&anim.pose,&anim.controllers,
+            &overlay.overlay,&overlay.vector,&overlay.length,&overlay.layer,
+            &flex.overlay,&flex.flex,&flex.weights,
+            &inventory.ammo_table,&inventory.weapons_table,&inventory.combat_local,&inventory.combat_base,
+            &local.table,&local.area,&private_player.table,&player.player,&player.state,
+            &derived.player,&derived.local,&derived.hand};
+        static_assert(sizeof(fixed)/sizeof(fixed[0])+TableCount==aggregate_table_count);
+        unsigned i=0;for(auto* tab:fixed)tables[i++]=tab;
+        for(auto& tab:weapons.tables)tables[i++]=&tab;
+        return true;
+    }
+};
+
+int __cdecl create_aggregate(const AggregateSendBindings* b,AggregateSendView* out) noexcept {
+    if(!b||!out||!aggregate_empty(*out))return 0;
+    auto* g=new(std::nothrow) AggregateSendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    out->handle=g;out->class_head=g->classes.head;out->class_records=g->classes.records;
+    out->class_count=ClassSubsetCount;
+    for(unsigned i=0;i<aggregate_table_count;++i)out->tables[i]=g->tables[i];
+    return 1;
+}
+int __cdecl destroy_aggregate(AggregateSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<AggregateSendGraph*>(v->handle);
+    if(!aggregate_matches(*g,*v))return 0;
+    // Preflight every owned object, including nested-only tables. No
+    // partial teardown if an engine marker is still set anywhere.
+    for(const auto* tab:g->tables)if(!tab||tab->precalc||tab->initialized||tab->written)return 0;
+    for(const auto& rec:g->classes.records)if(rec.class_id!=0||rec.instance_baseline!=0xffff)return 0;
+    delete g;*v={};return 1;
+}
+const AggregateSendApi aggregate_api{version,sizeof(AggregateSendApi),&create_aggregate,&destroy_aggregate};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -1758,6 +1839,70 @@ int __cdecl destroy_class_subset(ClientClassView* v) noexcept {
     delete g;*v={};return 1;
 }
 const ClientClassApi class_api{version,sizeof(ClientClassApi),&create_class_subset,&destroy_class_subset};
+
+struct AggregateRecvGraph {
+    using Table=RecvTable;
+    BaseEntityRecvGraph entity;
+    AnimRecvGraph anim;
+    OverlayRecvGraph overlay;
+    FlexRecvGraph flex;
+    InventoryRecvGraph inventory;
+    LocalDataRecvGraph local;
+    PlayerLocalRecvGraph private_player;
+    BasePlayerRecvGraph player;
+    DerivedPlayerRecvGraph derived;
+    RecvGraph weapons;
+    ClientClassGraph classes;
+    Table* tables[aggregate_table_count]{};
+    bool build(const AggregateRecvBindings& b) noexcept {
+        if(!entity.build(b.entity)||!anim.build({&entity.entity})||
+           !overlay.build(b.overlay)||!flex.build({&anim.base,&overlay.overlay})||
+           !inventory.build({&flex.flex})||!local.build(b.local)||
+           !private_player.build({&local.table,&inventory.ammo_property,b.velocity_context,b.invalidate_velocity})||
+           !player.build({&inventory.combat_base,&private_player.table})||
+           !derived.build({&player.player,&entity.entity})||
+           !weapons.build({&anim.base}))return false;
+        ClientClassBindings cb{{&weapons.tables[BaseCombat],&anim.base,&flex.overlay,&inventory.combat_base,
+            &entity.entity,&flex.flex,&player.player,&weapons.tables[BaseHL],
+            &weapons.tables[MachineGun],&weapons.tables[SelectFire],&derived.hand,&derived.player,
+            &weapons.tables[Magnum],&weapons.tables[AssaultRifle],&weapons.tables[Scattergun]},{}};
+        for(unsigned i=0;i<ClassSubsetCount;++i)cb.creators[i]=b.creators[i];
+        if(!classes.build(cb))return false;
+        Table* fixed[]={&entity.entity,&entity.anim_time,&entity.predictable,
+            &anim.base,&anim.cycle,&anim.pose,&anim.controllers,
+            &overlay.overlay,&overlay.vector,&overlay.length,&overlay.layer,
+            &flex.overlay,&flex.flex,&flex.weights,
+            &inventory.ammo_table,&inventory.weapons_table,&inventory.combat_local,&inventory.combat_base,
+            &local.table,&local.area,&private_player.table,&player.player,&player.state,
+            &derived.player,&derived.local,&derived.hand};
+        static_assert(sizeof(fixed)/sizeof(fixed[0])+TableCount==aggregate_table_count);
+        unsigned i=0;for(auto* tab:fixed)tables[i++]=tab;
+        for(auto& tab:weapons.tables)tables[i++]=&tab;
+        return true;
+    }
+};
+
+int __cdecl create_aggregate(const AggregateRecvBindings* b,AggregateRecvView* out) noexcept {
+    if(!b||!out||!aggregate_empty(*out))return 0;
+    auto* g=new(std::nothrow) AggregateRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    out->handle=g;out->class_head=g->classes.head;out->class_records=g->classes.records;
+    out->class_count=ClassSubsetCount;
+    for(unsigned i=0;i<aggregate_table_count;++i)out->tables[i]=g->tables[i];
+    return 1;
+}
+int __cdecl destroy_aggregate(AggregateRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<AggregateRecvGraph*>(v->handle);
+    if(!aggregate_matches(*g,*v))return 0;
+    // Preflight every owned object, including nested-only tables. No
+    // partial teardown if an engine marker is still set anywhere.
+    for(const auto* tab:g->tables)if(!tab||tab->decoder||tab->initialized||tab->in_main_list)return 0;
+    for(const auto& rec:g->classes.records)if(rec.class_id!=0)return 0;
+    delete g;*v={};return 1;
+}
+const AggregateRecvApi aggregate_api{version,sizeof(AggregateRecvApi),&create_aggregate,&destroy_aggregate};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -1836,6 +1981,12 @@ SiN_GetServerClassSubsetApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerClassApi)?&class_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetNetworkSendAggregateApi=_SiN_GetNetworkSendAggregateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AggregateSendApi* __cdecl
+SiN_GetNetworkSendAggregateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(AggregateSendApi)?&aggregate_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -1902,5 +2053,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientCla
 SiN_GetClientClassSubsetApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientClassApi)?&class_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNetworkRecvAggregateApi=_SiN_GetNetworkRecvAggregateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AggregateRecvApi* __cdecl
+SiN_GetNetworkRecvAggregateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(AggregateRecvApi)?&aggregate_api:nullptr;
 }
 #endif
