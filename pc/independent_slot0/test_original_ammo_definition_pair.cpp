@@ -12,6 +12,7 @@
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
 #include "test_native_radio_message.h"
+#include "test_native_action_listener.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -366,6 +367,12 @@ int main(int argc,char** argv){
     assert(lookEvent&&!getLookEvent(0,sizeof(tables::LookEventApi))&&!getLookEvent(1,0));
     tables::test::check_look_events(*lookEvent,*actionMonitor);
     std::puts("PASS native looking eligibility window, trace-miss reset and original look event");
+    const auto getActionListener=reinterpret_cast<tables::GetActionListenerApi>(GetProcAddress(server,tables::action_listener_export));
+    assert(getActionListener&&!GetProcAddress(client,tables::action_listener_export));
+    const auto* actionListener=getActionListener(1,sizeof(tables::ActionListenerApi));
+    assert(actionListener&&!getActionListener(0,sizeof(tables::ActionListenerApi))&&!getActionListener(1,0));
+    tables::test::check_action_listener(*actionListener);
+    std::puts("PASS native original action event registration, participant gate and look/use records");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
