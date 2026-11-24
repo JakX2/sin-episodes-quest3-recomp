@@ -739,6 +739,12 @@ int main(int argc,char** argv){
         assert(portableVcdTokenizer->clear(&tokenizer)&&!tokenizer.data);
     }
     std::puts("PASS portable VCD lexer server API and original-compatible line boundary");
+    const auto getPortableVcdGrammar=reinterpret_cast<tables::GetPortableVcdGrammarApi>(GetProcAddress(server,tables::portable_vcd_grammar_export));
+    assert(getPortableVcdGrammar&&!GetProcAddress(client,tables::portable_vcd_grammar_export));
+    const auto* portableVcdGrammar=getPortableVcdGrammar(1,sizeof(tables::PortableVcdGrammarApi));
+    assert(portableVcdGrammar&&!getPortableVcdGrammar(0,sizeof(tables::PortableVcdGrammarApi))&&!getPortableVcdGrammar(1,0));
+    tables::test::check_portable_vcd_grammar(*portableVcdGrammar);
+    std::puts("PASS portable VCD text through native actor channel event and tag grammar");
 
 
 

@@ -2198,6 +2198,73 @@ inline void check_choreography_timing_tags(const ChoreographyTimingTagsApi& api)
     f.set({"invalid"});assert(api.block(f.event,sizeof(f.event),ChoreographyEventBlock::AbsoluteTags,&f.b)==-1&&f.diagnostics==1);
     f.set({"{","truncated"});assert(api.block(f.event,sizeof(f.event),ChoreographyEventBlock::Tags,&f.b)==-1&&f.count(0)==2);
 }
+struct PortableVcdGrammarFixture:ChoreographyEventParserFixture {
+    alignas(4) unsigned char tag_rows[4][4*0x8c]{};
+    PortableVcdGrammarBindings grammar{};
+    unsigned root_blocks=0,event_blocks=0,tag_grows=0;
+    static PortableVcdGrammarFixture& get(void* p){return *static_cast<PortableVcdGrammarFixture*>(p);}
+    static int empty_block(sin_port::vcd::Tokenizer* t) noexcept {
+        unsigned more=0;
+        return t->next(1,more)&&more&&!std::strcmp(t->current,"{")&&
+            t->next(1,more)&&more&&!std::strcmp(t->current,"}");
+    }
+    PortableVcdGrammarFixture(){
+        grammar.events=b;grammar.context=grammar.tags.context=this;
+        auto& text=grammar.events.actors.text;
+        text.begin=nullptr;text.next=nullptr;text.token=nullptr;text.block=nullptr;
+        grammar.events.same_line=nullptr;grammar.events.block=nullptr;grammar.events.actors.event=nullptr;
+        grammar.root_block=[](void* p,void* parsed,ChoreographyTextBlock kind,sin_port::vcd::Tokenizer* t) noexcept -> int{
+            auto& f=get(p);assert(parsed==f.parsed&&kind==ChoreographyTextBlock::ScaleSettings&&!std::strcmp(t->current,"scalesettings"));
+            ++f.root_blocks;return empty_block(t);};
+        grammar.event_block=[](void* p,void* event,ChoreographyEventBlock kind,sin_port::vcd::Tokenizer* t) noexcept -> int{
+            auto& f=get(p);assert(event==f.event&&kind==ChoreographyEventBlock::EventRamp&&!std::strcmp(t->current,"event_ramp"));
+            ++f.event_blocks;return empty_block(t);};
+        grammar.tags.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);for(auto& row:f.tag_rows)if(word==F::ptr(row)){*out=row;*n=sizeof(row);return 1;}return 0;};
+        grammar.tags.grow=[](void* p,void* v,unsigned n,unsigned stride) noexcept -> int{
+            auto& f=get(p);assert(n==1);
+            const auto offset=static_cast<unsigned>(static_cast<unsigned char*>(v)-f.event);
+            assert(offset>=0x2bc&&(offset-0x2bc)%0x14==0);
+            const auto kind=(offset-0x2bc)/0x14;assert(kind<4&&stride==(kind?0x8c:0x88));
+            ++f.tag_grows;F::put(v,0,F::ptr(f.tag_rows[kind]));F::put(v,4,4);return 1;};
+    }
+};
+inline void check_portable_vcd_grammar(const PortableVcdGrammarApi& api){
+    using F=ScenePlaybackFixture;PortableVcdGrammarFixture f;
+    const char data[]=R"VCD(// synthetic scene
+actor "Jessica"
+{
+ channel "Voice"
+ {
+  event speak "dialogue"
+  {
+   time 2 1
+   param "Jessica.Test"
+   param2 "72 "
+   tags { "mark" 0.25 }
+   absolutetags playback_time { "end" 0.8 "in" 0.1 }
+   absolutetags shifted_time { "in" 0.2 }
+   flextimingtags { "1" 0.05 1 }
+   event_ramp { }
+  }
+ }
+}
+fps 30
+scalesettings { }
+)VCD";
+    assert(api.parse(f.parsed,sizeof(f.parsed),"test.vcd",data,sizeof(data)-1,&f.grammar)==1);
+    assert(f.allocs==3&&f.events==1&&f.channels==1&&f.finalized==3&&!f.index&&f.root_blocks==1&&f.event_blocks==1&&f.tag_grows==4);
+    assert(F::word(f.event,0)==5&&F::word(f.event,0x184)==0x40000000&&F::word(f.event,0x188)==0x40000000);
+    assert(!std::strcmp(reinterpret_cast<char*>(f.event+0x104),"72")&&F::word(f.parsed,0x128)==30);
+    assert(F::word(f.event,0x2c8)==1&&F::word(f.event,0x2dc)==1&&F::word(f.event,0x2f0)==2&&F::word(f.event,0x304)==1);
+    assert(!std::strcmp(reinterpret_cast<char*>(f.tag_rows[2]),"in")&&F::word(f.tag_rows[2],0x88)==F::ptr(f.event));
+    assert(f.tag_rows[1][0x88]==1);
+    PortableVcdGrammarFixture bad;
+    const char truncated[]="actor Jessica { channel Voice { event speak x { tags { mark";
+    assert(api.parse(bad.parsed,sizeof(bad.parsed),"bad.vcd",truncated,sizeof(truncated)-1,&bad.grammar)==-1);
+    assert(bad.allocs==3&&!bad.events&&!bad.channels&&!bad.finalized);
+}
+
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};
