@@ -23,6 +23,7 @@
 #if defined(_MSC_VER) && defined(_M_IX86)
 #include "server_native_cvar_registration.h"
 #include "test_native_vehicle_bsp_host.h"
+#include "test_native_npc_bsp_host.h"
 #include "test_native_radio_bsp_host.h"
 #endif
 #else
@@ -2602,6 +2603,32 @@ int main(int argc,char** argv){
 )KV");
         sin_port::map_host::test::check_vehicle_bsp(*m,*l,*r,*p,bsp);
         std::puts("PASS loaded native vehicle and music radio BSP lifecycle");
+    }
+#endif
+#if defined(_MSC_VER) && defined(_M_IX86)
+    {
+        namespace n=sin_port::native_weapon_tables;
+        const auto gm=reinterpret_cast<n::GetNpcMapApi>(GetProcAddress(lib,n::npc_map_export));
+        const auto gj=reinterpret_cast<n::GetJessicaApi>(GetProcAddress(lib,n::jessica_export));
+        const auto gc=reinterpret_cast<n::GetCountInterrogationApi>(GetProcAddress(lib,n::count_export));
+        const auto gs=reinterpret_cast<n::GetCountSchedulerApi>(GetProcAddress(lib,n::count_scheduler_export));
+        const auto ga=reinterpret_cast<n::GetGenericActorApi>(GetProcAddress(lib,n::generic_actor_export));
+        const auto gu=reinterpret_cast<n::GetUseObservationApi>(GetProcAddress(lib,n::use_observation_export));
+        assert(gm&&gj&&gc&&gs&&ga&&gu&&!gm(0,sizeof(n::NpcMapApi))&&!gm(1,0));
+        const auto* m=gm(1,sizeof(n::NpcMapApi));const auto* j=gj(1,sizeof(n::JessicaApi));
+        const auto* c=gc(1,sizeof(n::CountInterrogationApi));const auto* s=gs(1,sizeof(n::CountSchedulerApi));
+        const auto* a=ga(1,sizeof(n::GenericActorApi));const auto* u=gu(1,sizeof(n::UseObservationApi));
+        assert(m&&j&&c&&s&&a&&u);
+        const auto bsp=make_native_bsp(R"KV(
+{"classname" "worldspawn"}
+{"classname" "logic_relay" "targetname" "relay" "OnTrigger" "count,InterrogationStart,,0,-1" "OnTrigger" "jessica,ThrowItemAtPlayer,weapon_magnum,0,-1"}
+{"classname" "npc_jessica" "targetname" "jessica"}
+{"classname" "npc_count" "targetname" "count"}
+{"classname" "npc_generic_actor" "targetname" "actor" "model" "fixture.mdl" "initialhealth" "12" "bloodColor" "247"}
+{"classname" "npc_jc" "targetname" "jc"}
+)KV");
+        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,bsp);
+        std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
     }
 #endif
     assert(FreeLibrary(lib));
