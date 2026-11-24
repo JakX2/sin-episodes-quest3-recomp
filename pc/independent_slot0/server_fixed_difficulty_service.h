@@ -407,6 +407,50 @@ struct WeaponBehaviorApi {
 using GetWeaponBehaviorApi=const WeaponBehaviorApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(NativeWeaponProfile)==24);
 static_assert(sizeof(NativeWeaponReport)==40);
+// Original ScatterGun ammo-change/pump path after the base frame update.
+// Live ammo and timers belong to the host, not duplicate DLL-owned stores.
+inline constexpr char scattergun_export_name[]="SiN_GetScattergunPumpApi";
+inline constexpr std::uint32_t scattergun_version=1;
+struct ScattergunSnapshot {
+    std::uint32_t prior_primary,prior_secondary,pending,needs_resync;
+};
+struct ScattergunPumpObservation {
+    MapEntityRef owner;
+    std::int32_t primary_clip;
+    std::uint32_t secondary_state,reload_active,owner_present;
+    float primary_deadline,curtime;
+};
+enum ScattergunTimer : std::uint32_t {ScattergunOwnerDeadline=0,ScattergunPrimaryDeadline,ScattergunSecondaryDeadline};
+struct ScattergunPumpHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *sound)(void*,MapEntityRef,std::int32_t,float);
+    int (SIN_FIXED_CALL *lookup_activity)(void*,MapEntityRef,const char*,std::int32_t*);
+    int (SIN_FIXED_CALL *activity)(void*,MapEntityRef,std::int32_t);
+    int (SIN_FIXED_CALL *sequence_duration)(void*,MapEntityRef,float*);
+    int (SIN_FIXED_CALL *clock)(void*,float*);
+    int (SIN_FIXED_CALL *write_deadline)(void*,MapEntityRef,std::uint32_t,float);
+    int (SIN_FIXED_CALL *read_owner_deadline)(void*,MapEntityRef,float*);
+};
+enum ScattergunPumpCode : std::uint32_t {ScattergunRejected=0,ScattergunNoPump,ScattergunWaiting,ScattergunPumped,ScattergunUncertain};
+struct ScattergunPumpReport {
+    std::uint32_t code,primary_changed,secondary_changed,callbacks_attempted,callbacks_delivered;
+    std::int32_t activity;
+    float requested_deadline;
+    ScattergunSnapshot state;
+};
+struct ScattergunPumpApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *state)(MapEntityRef,ScattergunSnapshot*) noexcept;
+    int (SIN_FIXED_CALL *reconcile)(MapEntityRef,const ScattergunSnapshot*) noexcept;
+    // Original slot209 records primary clip before its base tail-call.
+    int (SIN_FIXED_CALL *before_deploy)(MapEntityRef,std::int32_t) noexcept;
+    // Call after the original base frame behavior has executed. No host
+    // callback is retained. Uncertain effects require observed resync.
+    int (SIN_FIXED_CALL *after_base_update)(MapEntityRef,const ScattergunPumpObservation*,
+        const ScattergunPumpHost*,void*,ScattergunPumpReport*) noexcept;
+};
+using GetScattergunPumpApi=const ScattergunPumpApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(ScattergunPumpReport)==44);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

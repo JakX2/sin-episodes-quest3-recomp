@@ -710,6 +710,101 @@ static void test_native_weapon_behavior(const a::WeaponBehaviorApi* weapons,cons
     assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded&&host.attached_count()==0);
     assert(!weapons->state(rifle,&state)&&map->end_level(epoch)&&api->end_campaign());
 }
+struct PumpFixture {
+    const a::ScattergunPumpApi* pump;
+    const a::MapEntityApi* map;
+    a::MapEntityRef weapon,owner;
+    std::vector<int> calls;
+    float owner_deadline=0.f;
+    int fail_at=0;
+    bool step(int id){
+        calls.push_back(id);
+        a::ScattergunSnapshot s{};
+        assert(pump->state(weapon,&s)&&!s.pending);
+        assert(!pump->before_deploy(weapon,3)&&!map->remove(weapon));
+        return fail_at!=static_cast<int>(calls.size());
+    }
+    static PumpFixture& get(void* c){return *static_cast<PumpFixture*>(c);}
+    static int SIN_FIXED_CALL sound(void* c,a::MapEntityRef ref,std::int32_t id,float delay){
+        auto& f=get(c);assert(ref.index==f.weapon.index&&id==13&&delay==0.f);return f.step(1);
+    }
+    static int SIN_FIXED_CALL lookup(void* c,a::MapEntityRef ref,const char* name,std::int32_t* activity){
+        auto& f=get(c);assert(ref.index==f.weapon.index&&std::strcmp(name,"ACT_VM_ZOOMED_PUMP")==0);
+        *activity=-1;return f.step(2); // original forwards negative lookup too
+    }
+    static int SIN_FIXED_CALL activity(void* c,a::MapEntityRef ref,std::int32_t id){
+        auto& f=get(c);assert(ref.index==f.weapon.index&&(id==0x126||id==-1));return f.step(3);
+    }
+    static int SIN_FIXED_CALL duration(void* c,a::MapEntityRef ref,float* value){
+        auto& f=get(c);assert(ref.index==f.weapon.index);*value=0.5f;return f.step(4);
+    }
+    static int SIN_FIXED_CALL clock(void* c,float* value){
+        *value=10.f;return get(c).step(5);
+    }
+    static int SIN_FIXED_CALL write(void* c,a::MapEntityRef ref,std::uint32_t kind,float value){
+        auto& f=get(c);
+        if(kind==a::ScattergunOwnerDeadline){
+            assert(ref.index==f.owner.index&&value==10.5f);f.owner_deadline=10.75f;
+            return f.step(6);
+        }
+        assert(ref.index==f.weapon.index);
+        if(kind==a::ScattergunPrimaryDeadline){
+            assert(value==10.75f);f.owner_deadline=11.f;return f.step(8);
+        }
+        assert(kind==a::ScattergunSecondaryDeadline&&value==11.f);return f.step(10);
+    }
+    static int SIN_FIXED_CALL read(void* c,a::MapEntityRef ref,float* value){
+        auto& f=get(c);assert(ref.index==f.owner.index);
+        *value=f.owner_deadline;return f.step(*value==10.75f?7:9);
+    }
+};
+static void test_scattergun_pump(const a::ScattergunPumpApi* pump,const a::WeaponBehaviorApi* weapons,
+        const a::MapEntityApi* map,const a::Api* api){
+    assert(pump&&pump->version==1&&pump->size==sizeof(*pump)&&api->begin_campaign(2));
+    const auto epoch=map->begin_level("pump");assert(epoch);
+    const a::MapEntityRef gun{epoch,1,1},owner{epoch,100,1},mag{epoch,2,1};
+    assert(map->create(gun,"weapon_scattergun")==a::MapApplied);
+    assert(!pump->before_deploy(gun,6));
+    assert(map->spawn(gun)==a::MapApplied&&map->create(mag,"weapon_magnum")==a::MapApplied&&map->spawn(mag)==a::MapApplied);
+    a::ScattergunSnapshot state{};
+    assert(!pump->state(mag,&state)&&pump->state(gun,&state)&&state.prior_primary==0xffffffffu&&state.prior_secondary==0xffffffffu&&!state.pending);
+    PumpFixture fixture{pump,map,gun,owner,{}};
+    const a::ScattergunPumpHost host{1,sizeof(a::ScattergunPumpHost),&PumpFixture::sound,&PumpFixture::lookup,
+        &PumpFixture::activity,&PumpFixture::duration,&PumpFixture::clock,&PumpFixture::write,&PumpFixture::read};
+    a::ScattergunPumpObservation input{owner,6,0,0,1,10.f,10.f};
+    a::ScattergunPumpReport report{};
+    auto update=[&](){return pump->after_base_update(gun,&input,&host,&fixture,&report);};
+    assert(update()&&report.code==a::ScattergunNoPump&&report.primary_changed&&!report.state.pending);
+    input.primary_clip=5;input.primary_deadline=11.f;
+    assert(update()&&report.code==a::ScattergunWaiting&&report.state.pending&&report.primary_changed);
+    input.primary_deadline=10.f;input.reload_active=1;
+    assert(update()&&report.code==a::ScattergunWaiting&&!report.primary_changed);
+    input.reload_active=0;input.owner_present=0;
+    assert(update()&&report.code==a::ScattergunWaiting);
+    input.owner_present=1;input.primary_clip=0;
+    assert(update()&&report.code==a::ScattergunWaiting&&report.state.pending);
+    input.primary_clip=4;
+    assert(update()&&report.code==a::ScattergunPumped&&report.activity==0x126&&!report.state.pending);
+    assert((fixture.calls==std::vector<int>{1,3,4,5,6,7,8,9,10}));
+    assert(report.callbacks_attempted==9&&report.callbacks_delivered==9&&report.requested_deadline==10.5f);
+    fixture.calls.clear();input.secondary_state=2;
+    assert(update()&&report.code==a::ScattergunNoPump&&!report.secondary_changed&&report.state.prior_secondary==0xffffffffu);
+    assert(weapons->reconcile(gun,1,0));
+    assert(update()&&report.code==a::ScattergunNoPump&&report.secondary_changed&&!report.state.pending);
+    input.secondary_state=1;
+    assert(update()&&report.code==a::ScattergunPumped&&report.activity==-1&&report.secondary_changed);
+    assert((fixture.calls==std::vector<int>{1,2,3,4,5,6,7,8,9,10}));
+    fixture.calls.clear();
+    assert(pump->before_deploy(gun,6));input.primary_clip=6;
+    assert(update()&&report.code==a::ScattergunNoPump&&!report.primary_changed);
+    input.primary_clip=5;fixture.fail_at=3;
+    assert(update()&&report.code==a::ScattergunUncertain&&report.callbacks_attempted==3&&report.callbacks_delivered==2&&report.state.needs_resync&&!report.state.pending);
+    assert(update()&&report.code==a::ScattergunRejected&&fixture.calls.size()==3);
+    state=report.state;state.needs_resync=0;
+    assert(pump->reconcile(gun,&state));fixture.fail_at=0;
+    assert(update()&&report.code==a::ScattergunNoPump&&fixture.calls.size()==3); // no replay
+    assert(map->remove(gun)&&!pump->state(gun,&state)&&map->end_level(epoch)&&api->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -1529,7 +1624,15 @@ int main(int argc,char** argv){
     auto getWeapon=reinterpret_cast<a::GetWeaponBehaviorApi>(dlsym(lib,a::weapon_export_name));
 #endif
     assert(getWeapon&&!getWeapon(0,sizeof(a::WeaponBehaviorApi))&&!getWeapon(1,0));
-    test_native_weapon_behavior(getWeapon(a::weapon_version,sizeof(a::WeaponBehaviorApi)),map,api);
+    const auto* weapons=getWeapon(a::weapon_version,sizeof(a::WeaponBehaviorApi));
+    test_native_weapon_behavior(weapons,map,api);
+#ifdef _WIN32
+    auto getPump=reinterpret_cast<a::GetScattergunPumpApi>(GetProcAddress(lib,a::scattergun_export_name));
+#else
+    auto getPump=reinterpret_cast<a::GetScattergunPumpApi>(dlsym(lib,a::scattergun_export_name));
+#endif
+    assert(getPump&&!getPump(0,sizeof(a::ScattergunPumpApi))&&!getPump(1,0));
+    test_scattergun_pump(getPump(a::scattergun_version,sizeof(a::ScattergunPumpApi)),weapons,map,api);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
 #else
