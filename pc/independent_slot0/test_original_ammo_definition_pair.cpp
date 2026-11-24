@@ -26,6 +26,7 @@
 #include "test_native_server_event_intensity.h"
 #include "test_native_server_npc_random_expression.h"
 #include "test_native_server_facial_records.h"
+#include "test_native_server_vfe_remap.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -217,6 +218,15 @@ int main(int argc,char** argv){
         assert(api&&records&&!get(0,sizeof(ft::ServerFacialRecordApi))&&!get(1,0));
         ft::test::check_server_facial_records(*api,*records);
         std::puts("PASS native facial event record admission and lifecycle");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetServerVfeRemapApi>(GetProcAddress(server,ft::server_vfe_remap_export));
+        assert(get&&!GetProcAddress(client,ft::server_vfe_remap_export));
+        const auto* api=get(1,sizeof(ft::ServerVfeRemapApi));
+        assert(api&&!get(0,sizeof(ft::ServerVfeRemapApi))&&!get(1,0));
+        ft::test::check_server_vfe_remap(*api);
+        std::puts("PASS native server VFE bank identity remap and controller-zero fallback");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));

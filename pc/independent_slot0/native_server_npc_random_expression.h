@@ -9,6 +9,7 @@ struct ServerNpcRandomExpressionBindings {
     const ServerFlexRange* ranges;unsigned count;
     ServerFlexWeightBindings dirty;
     int (__cdecl *load)(void*,void*,const char*,ServerExpressionBank*) noexcept;
+    // -1 missing maps to controller zero; -2 transport failure.
     int (__cdecl *controller)(void*,void*,const char*) noexcept;
     int (__cdecl *random_int)(void*,int,int,int*) noexcept;
     int (__cdecl *random_float)(void*,float,float,float*) noexcept;
