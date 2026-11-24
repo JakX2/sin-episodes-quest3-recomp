@@ -900,6 +900,26 @@ struct ChoreographyEventParserApi {
     int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const ChoreographyEventParserBindings*,std::uint32_t*) noexcept;
 };
 using GetChoreographyEventParserApi=const ChoreographyEventParserApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_named_playback_export[]="SiN_GetNativeNamedPlaybackApi";
+using NamedSpawnCallback=int (__cdecl *)(void*,void*) noexcept;
+struct NativeNamedPlaybackBindings {
+    NpcScenePlaybackBindings playback;
+    SceneEntityLifecycleBindings lifecycle;
+    SceneStartBindings startup;
+    SceneStopBindings stop;
+    NamedScenePrecacheBindings precache;
+    const ChoreographyEventParserBindings* events;
+    void* context;
+    // Original 22287d80: invoke spawn synchronously exactly once, inside
+    // engine registration's lock. Do not retain the callback/context.
+    // This replaces register_scene, not an additional Spawn invocation.
+    int (__cdecl *register_with_spawn)(void*,void*,void*,NamedSpawnCallback) noexcept;
+};
+struct NativeNamedPlaybackApi {
+    std::uint32_t version,size;
+    int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,float*) noexcept;
+};
+using GetNativeNamedPlaybackApi=const NativeNamedPlaybackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

@@ -707,6 +707,12 @@ int main(int argc,char** argv){
     assert(choreographyEventParser&&!getChoreographyEventParser(0,sizeof(tables::ChoreographyEventParserApi))&&!getChoreographyEventParser(1,0));
     tables::test::check_choreography_event_parser(*choreographyEventParser);
     std::puts("PASS native VCD event grammar, original fields and nested ownership");
+    const auto getNativeNamedPlayback=reinterpret_cast<tables::GetNativeNamedPlaybackApi>(GetProcAddress(server,tables::native_named_playback_export));
+    assert(getNativeNamedPlayback&&!GetProcAddress(client,tables::native_named_playback_export));
+    const auto* nativeNamedPlayback=getNativeNamedPlayback(1,sizeof(tables::NativeNamedPlaybackApi));
+    assert(nativeNamedPlayback&&!getNativeNamedPlayback(0,sizeof(tables::NativeNamedPlaybackApi))&&!getNativeNamedPlayback(1,0));
+    tables::test::check_native_named_playback(*nativeNamedPlayback);
+    std::puts("PASS native named playback registration Spawn activation and startup");
 
 
 
