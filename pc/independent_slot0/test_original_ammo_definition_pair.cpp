@@ -1055,6 +1055,19 @@ int main(int argc,char** argv){
     tables::test::ParsedFacialClientPair paired(*flexSend,*flexRecv,*animSend,*animRecv,*frame);
     tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section,*gate,*execution,*auditIntensity,*auditSpline,*admission,*think,paired);
     }
+    {
+        const auto getCached=reinterpret_cast<tables::GetServerCachedFacialThinkApi>(GetProcAddress(server,tables::server_cached_facial_think_export));
+        const auto getBank=reinterpret_cast<tables::GetServerVfeCacheApi>(GetProcAddress(server,tables::server_vfe_cache_export));
+        const auto getRemap=reinterpret_cast<tables::GetServerVfeRemapApi>(GetProcAddress(server,tables::server_vfe_remap_export));
+        assert(getCached&&getBank&&getRemap);
+        const auto* cached=getCached(1,sizeof(tables::ServerCachedFacialThinkApi));
+        const auto* bank=getBank(1,sizeof(tables::ServerVfeCacheApi));
+        const auto* remap=getRemap(1,sizeof(tables::ServerVfeRemapApi));
+        assert(cached&&bank&&remap);
+        tables::test::VcdAuditArena arena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::ParsedFacialClientPair paired(*flexSend,*flexRecv,*animSend,*animRecv,*frame);
+        tables::test::check_parsed_cached_expression(arena,*nativeVcdRuntime,*execution,*admission,*cached,*bank,*remap,paired);
+    }
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }
