@@ -1,0 +1,39 @@
+name: SiN Phase664 original metric memory and fixed skill bridge
+on:
+  push:
+    branches:
+      - feature/sin-fixed-metric-bridge-phase664-chat-20261124
+  pull_request:
+    paths:
+      - 'include/sin_compat/fixed_metric_bridge_phase664.hpp'
+      - 'src/fixed_metric_bridge_phase664.cpp'
+      - 'tests/test_fixed_metric_bridge_phase664.cpp'
+      - 'research/tools/audit_original_fixed_metric_bridge_phase664.py'
+      - '.github/workflows/sin-phase664-fixed-metric-bridge.yml'
+permissions:
+  contents: read
+jobs:
+  phase664-sanitized:
+    name: Verified original 14-slot metric memory, CVar and rollback ASan UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Original-free PE32 indexed accessor and metric data fixture audit
+        run: |
+          python3 -m py_compile research/tools/audit_original_fixed_metric_bridge_phase664.py
+          python3 research/tools/audit_original_fixed_metric_bridge_phase664.py --self-test
+      - name: Compile reconstructed fixed metric host bridge with sanitizers
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude \
+            src/fixed_difficulty_phase663.cpp \
+            src/fixed_metric_bridge_phase664.cpp \
+            tests/test_fixed_metric_bridge_phase664.cpp \
+            -o /tmp/sin_phase664_fixed_bridge
+      - name: Run module rebasing, native names, ConVars and rollback regressions
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: /tmp/sin_phase664_fixed_bridge
