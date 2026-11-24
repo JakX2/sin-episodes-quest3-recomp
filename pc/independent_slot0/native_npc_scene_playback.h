@@ -286,6 +286,16 @@ struct SceneAdvanceApi {
     int (__cdecl *instanced)(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings*) noexcept;
 };
 using GetSceneAdvanceApi=const SceneAdvanceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char integrated_scene_playback_export[]="SiN_GetIntegratedScenePlaybackApi";
+struct IntegratedScenePlaybackApi {
+    std::uint32_t version,size;
+    // Substitute recovered activation/registration for the legacy activate
+    // callback. Entity allocation, start, and engine removal remain hosted.
+    int (__cdecl *scene)(void* npc,const char*,float,const NpcScenePlaybackBindings*,const SceneEntityLifecycleBindings*,float*) noexcept;
+    int (__cdecl *sound)(void* npc,const char*,const NpcScenePlaybackBindings*,const SceneEntityLifecycleBindings*,float*) noexcept;
+};
+using GetIntegratedScenePlaybackApi=const IntegratedScenePlaybackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

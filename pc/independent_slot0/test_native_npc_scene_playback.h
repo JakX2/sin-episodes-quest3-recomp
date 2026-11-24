@@ -653,4 +653,105 @@ inline void check_scene_advance(const SceneAdvanceApi& api){
     F::put(p,0x78,0x7fc00000);assert(api.finished(p,sizeof(inst.simulation.parsed),&out)==1&&!out);
 }
 
+
+struct IntegratedSceneFixture {
+    using F=ScenePlaybackFixture;using S=ParsedSimulationFixture;
+    alignas(4) unsigned char scene[0x5ec]{},manager[scene_manager_bytes]{},parsed[0x220]{},event[0x3b4]{};
+    std::uint32_t handles[4]{};
+    int npc=0;char sound[32]="fixture.sound";
+    SceneManagerSession session{};SceneManagerControl control{manager,sizeof(manager)};
+    NpcScenePlaybackBindings play{};SceneEntityLifecycleBindings life{};SceneAdvanceBindings advance{};
+    SceneManagerLifecycleBindings manager_life{};SceneManagerTickBindings manager_tick{};
+    const SceneManagerTickApi& mgr;const SceneAdvanceApi& tick;const SceneEntityLifecycleApi& entity;
+    unsigned creates=0,spawns=0,generated=0,activated=0,started=0,scheduled=0,steps=0,finished=0,retired=0,detached=0,destroyed=0,freed=0;
+    unsigned order[8]{};
+    bool parsed_live=false,scene_live=false,remove_pending=false;
+    static IntegratedSceneFixture& get(void* p){return *static_cast<IntegratedSceneFixture*>(p);}
+    IntegratedSceneFixture(const SceneManagerTickApi& m,const SceneAdvanceApi& a,const SceneEntityLifecycleApi& e):mgr(m),tick(a),entity(e){
+        play.context=this;play.duration.context=this;life.context=this;advance.context=this;
+        manager_life.context=this;manager_tick.context=this;life.runtime.context=this;life.registration.context=this;life.manager=&session;
+        play.create=[](void* p,const char* name,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(!f.scene_live&&!std::strcmp(name,"instanced_scripted_scene"));f.scene_live=true;++f.creates;*out=f.scene;*n=sizeof(f.scene);return 1;};
+        play.actor_handle=[](void* p,void* n,std::uint32_t* out) noexcept -> int{auto& f=get(p);assert(n==&f.npc);*out=0x1001;return 1;};
+        play.spawn_sound=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&f.scene[0x549]);++f.spawns;return 1;};
+        play.start=[](void* p,void* s) noexcept -> int{
+            auto& f=get(p);assert(s==f.scene&&f.parsed_live&&F::word(f.manager,0x3a0)==1);f.scene[0x3d8]=1;++f.started;return 1;};
+        play.missing=[](void*,const char*,unsigned) noexcept -> int{assert(false);return 0;};
+        play.resolve_parsed=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(h==0x2222&&f.parsed_live);*out=f.parsed;*n=sizeof(f.parsed);return 1;};
+        play.duration.event=[](void* p,void* s,unsigned i,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(s==f.parsed&&f.parsed_live&&!i);*out=f.event;*n=sizeof(f.event);return 1;};
+        life.resolve_actor=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);assert(h==0x1001);*out=&f.npc;return 1;};
+        life.sound_name=[](void* p,std::uint32_t w,const char** out) noexcept -> int{auto& f=get(p);assert(w==F::ptr(f.sound));*out=f.sound;return 1;};
+        life.generate=[](void* p,void* s,void* a,const char* name,std::uint32_t* out) noexcept -> int{
+            auto& f=get(p);assert(s==f.scene&&a==&f.npc&&name==f.sound&&!f.parsed_live);++f.generated;f.parsed_live=true;
+            F::put(f.parsed,0xc,1);F::put(f.parsed,0x20,1);F::put(f.parsed,0x9c,0x1234);
+            F::fl(f.parsed,0x88,.1f);F::put(f.event,0,5);F::fl(f.event,0x188,.1f);
+            *out=0x2222;return 1;};
+        life.base_activate=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&f.parsed_live);++f.activated;return 1;};
+        life.stop_events=[](void* p,void* s,std::uint32_t w,int arg) noexcept -> int{auto& f=get(p);assert(s==f.scene&&w==0x2222&&!arg&&!f.event[0x328]);return 1;};
+        life.parsed=play.resolve_parsed;
+        life.actor=[](void* p,void* s,unsigned i,void** out) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!i);*out=&f.npc;return 1;};
+        life.detach=[](void* p,void* a,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(a==&f.npc&&h==0x2222&&f.parsed_live);++f.detached;return 1;};
+        life.destroy_parsed=[](void* p,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(h==0x2222&&f.parsed_live);++f.destroyed;f.parsed_live=false;return 1;};
+        life.base_remove=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!f.parsed_live);++f.retired;return 1;};
+        manager_life.base_construct=[](void* p,void* m,int arg) noexcept -> int{auto& f=get(p);return m==f.manager&&arg==1;};
+        manager_life.base_spawn=[](void* p,void* m) noexcept -> int{return m==get(p).manager;};
+        manager_life.clock=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+        manager_life.schedule=[](void* p,void* m,float,int arg) noexcept -> int{auto& f=get(p);assert(m==f.manager&&!arg);++f.scheduled;return 1;};
+        manager_life.free_vector=[](void* p,std::uint32_t w) noexcept -> int{auto& f=get(p);assert(w==0x5555);++f.freed;return 1;};
+        manager_life.base_destroy=[](void* p,void* m) noexcept -> int{return m==get(p).manager;};
+        life.runtime.create=[](void* p,const char* n,int i,void** out) noexcept -> int{
+            auto& f=get(p);assert(!std::strcmp(n,"scene_manager")&&i==-1);*out=f.manager;return f.mgr.construct(&f.control,0x1111,&f.manager_life)==1;};
+        life.runtime.resolve=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(h==0x3001);*out=f.manager;*n=sizeof(f.manager);return 1;};
+        life.runtime.packed_handle=[](void* p,void* m,std::uint32_t* out) noexcept -> int{assert(m==get(p).manager);*out=0x3001;return 1;};
+        life.runtime.spawn=[](void* p,void* m) noexcept -> int{auto& f=get(p);assert(m==f.manager);return f.mgr.spawn(&f.control,&f.manager_life)==1;};
+        life.registration.packed_handle=[](void* p,void* s,std::uint32_t* out) noexcept -> int{assert(s==get(p).scene);*out=0x4001;return 1;};
+        life.registration.resolve=[](void* p,std::uint32_t w,void** out) noexcept -> int{auto& f=get(p);assert(w==0x4001);*out=f.scene_live?f.scene:nullptr;return 1;};
+        life.registration.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(w==0x5555);*out=f.handles;*n=sizeof(f.handles);return 1;};
+        life.registration.grow=[](void* p,void* m,unsigned n) noexcept -> int{auto& f=get(p);assert(m==f.manager&&n==1);F::put(m,0x394,0x5555);F::put(m,0x398,4);return 1;};
+        advance.pre_tick=[](void*,void*) noexcept -> int{return 1;};
+        advance.paused_tick=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        advance.resolve_actor=life.resolve_actor;advance.parsed=play.resolve_parsed;
+        advance.latency=[](void*,std::uint32_t,float*) noexcept -> int{assert(false);return 0;};
+        advance.finish=[](void* p,void* s,int x,int y) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!x&&!y);++f.finished;f.scene[0x3d8]=0;return 1;};
+        advance.remove=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!f.remove_pending);f.remove_pending=true;return 1;};
+        advance.simulation.context=this;advance.simulation.events=play.duration;
+        advance.simulation.classifier.context=this;
+        advance.simulation.classifier.pending=[](void*,void*,unsigned,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        advance.simulation.classifier.attach=[](void*,void*,void*) noexcept -> int{assert(false);return 0;};
+        advance.simulation.channel_index=[](void*,std::uint32_t,std::uint32_t,int*) noexcept -> int{assert(false);return 0;};
+        advance.simulation.track=[](void*,void*,void*) noexcept -> int{assert(false);return 0;};
+        advance.simulation.callback=[](void* p,std::uint32_t word,unsigned slot,float,void* parsed,void* event) noexcept -> int{
+            auto& f=get(p);assert(word==0x1234&&parsed==f.parsed&&event==f.event&&f.event[0x328]&&f.steps<8);f.order[f.steps++]=slot;return 1;};
+        manager_tick.clock=manager_life.clock;manager_tick.schedule=manager_life.schedule;
+        manager_tick.last_think=[](void*,void*,int,float* out) noexcept -> int{*out=9;return 1;};
+        manager_tick.disabled=[](void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+        manager_tick.entry=[](void* p,void* m,unsigned i,std::uint32_t* out) noexcept -> int{auto& f=get(p);assert(m==f.manager&&!i);*out=f.handles[i];return 1;};
+        manager_tick.resolve=life.registration.resolve;
+        manager_tick.advance=[](void* p,void* s,float dt) noexcept -> int{
+            auto& f=get(p);assert(s==f.scene&&dt==.1f&&f.control.ticking);
+            if(f.tick.instanced(s,sizeof(f.scene),dt,&f.advance)!=1)return 0;
+            // Simulate engine flushing the queued removal after virtual
+            // advance returns; object remains live until unregister.
+            if(f.remove_pending){
+                if(f.entity.remove(s,sizeof(f.scene),&f.life)!=1)return 0;
+                f.scene_live=false;f.remove_pending=false;
+            }
+            return 1;};
+        manager_tick.shift=[](void*,void*,unsigned,unsigned) noexcept -> int{assert(false);return 0;};
+    }
+};
+inline void check_integrated_scene(const IntegratedScenePlaybackApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity){
+    using F=ScenePlaybackFixture;IntegratedSceneFixture f(manager,tick,entity);float duration=99;
+    assert(!f.play.activate&&api.sound(&f.npc,f.sound,&f.play,&f.life,&duration)==1&&duration==.1f);
+    assert(f.creates==1&&f.spawns==1&&f.generated==1&&f.activated==1&&f.started==1&&f.scheduled==1&&F::word(f.manager,0x3a0)==1);
+    for(unsigned i=0;i<4;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
+    assert(f.steps==4&&f.order[0]==0&&f.order[1]==8&&f.order[2]==8&&f.order[3]==4);
+    assert(f.finished==1&&f.retired==1&&f.detached==1&&f.destroyed==1&&!f.parsed_live&&!f.scene_live&&!F::word(f.scene,0x40c)&&!F::word(f.manager,0x3a0));
+    assert(manager.tick(&f.control,&f.manager_tick)==1&&f.steps==4&&f.scheduled==6);
+    assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
+}
+
 }
