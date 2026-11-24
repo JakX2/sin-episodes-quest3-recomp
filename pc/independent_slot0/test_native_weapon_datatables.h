@@ -2530,4 +2530,82 @@ inline void check_player_heal(const PlayerHealApi& api,const HealthPickupApi& pi
     assert(api.take(&pc,&b,1,0,&accepted)==1&&!accepted&&get(0x98)==100&&get(0x9c)==145);expect({1});
 }
 
+struct CanisterFixture {
+    HologramControl* ctrl=nullptr;
+    int activator=0,payload=3;
+    unsigned events[16]{},count=0,fail=0,player=1,eligible=1,fragment_count=0;
+    float now=10,sample=0.75f,scheduled=0,pose=0;
+    bool push(unsigned n){assert(ctrl->busy&&count<16);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl can_pose_test(void* ctx,void* obj,const char* name,float v) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object&&!std::strcmp(name,"percentFull"));f.pose=v;return f.push(1);
+}
+inline int __cdecl can_base_test(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object);return f.push(2);
+}
+inline int __cdecl can_install_test(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object);return f.push(3);
+}
+inline int __cdecl can_clock_test(void* ctx,float* out) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);*out=f.now;return f.push(4);
+}
+inline int __cdecl can_anim_test(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object);return f.push(5);
+}
+inline int __cdecl can_rng_test(void* ctx,float lo,float hi,float* out) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(lo==0.5f&&hi==1.5f);*out=f.sample;return f.push(6);
+}
+inline int __cdecl can_schedule_test(void* ctx,void* obj,float when) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object);f.scheduled=when;return f.push(7);
+}
+inline int __cdecl can_base_caps_test(void* ctx,void* obj,unsigned* out) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object);*out=2;return f.push(8);
+}
+inline int __cdecl can_eligible_test(void* ctx,void* obj,unsigned* out) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object);*out=f.eligible;return f.push(9);
+}
+inline int __cdecl can_player_test(void* ctx,void* actor,unsigned* out) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(actor==&f.activator);*out=f.player;return f.push(10);
+}
+inline int __cdecl can_carry_test(void* ctx,void* actor,void* obj,const void* payload) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(actor==&f.activator&&obj==f.ctrl->object&&payload==&f.payload);return f.push(11);
+}
+inline int __cdecl can_break_test(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object);f.fragment_count=0;return f.push(12);
+}
+inline int __cdecl can_fragment_test(void* ctx,void* obj,unsigned count,const char* model,float a,float b,float c) noexcept {
+    auto& f=*static_cast<CanisterFixture*>(ctx);assert(obj==f.ctrl->object&&count==1&&a==200&&b==-200&&c==25&&f.fragment_count<4);
+    constexpr const char* names[]={"models/items/antigen/antigen_break01.mdl","models/items/antigen/antigen_break02.mdl",
+        "models/items/antigen/antigen_break03.mdl","models/items/antigen/antigen_break04.mdl"};
+    assert(!std::strcmp(model,names[f.fragment_count++]));return f.push(13);
+}
+inline void check_canister(const CanisterApi& api){
+    alignas(4) unsigned char object[0x6a0]{};
+    HologramControl ctrl{object,sizeof(object)};CanisterFixture f{&ctrl};
+    CanisterBindings b{&f,&can_pose_test,&can_base_test,&can_install_test,&can_clock_test,&can_anim_test,
+        &can_rng_test,&can_schedule_test,&can_base_caps_test,&can_eligible_test,&can_player_test,&can_carry_test,
+        &can_break_test,&can_fragment_test};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto word=[&](unsigned off){std::uint32_t v=0;std::memcpy(&v,object+off,4);return v;};
+    ContainerObservation o{};
+    assert(api.defaults(object,sizeof(object))&&api.describe(object,sizeof(object),&o)&&o.container==object&&o.flags==9&&o.amount==100);
+    assert(word(0x638)==1&&word(0x648)==0&&word(0x668)==0xffffffffu&&word(0x69c)==0xffffffffu);
+    const char* model=nullptr;std::memcpy(&model,object+0x630,4);assert(!std::strcmp(model,"models/items/antigen/antigentank.mdl"));
+    assert(api.set_amount(&ctrl,&b,125)==1&&f.pose==1.25f);expect({1});
+    assert(api.describe(object,sizeof(object),&o)&&o.amount==125);
+    assert(api.set_amount(&ctrl,&b,-20)==1&&std::abs(f.pose+0.2f)<0.00001f);expect({1});
+    assert(api.set_amount(&ctrl,&b,50)==1&&f.pose==0.5f);expect({1});
+    assert(api.spawn(&ctrl,&b)==1&&f.scheduled==10.25f);expect({2,1,3,4,7});
+    assert(api.idle(&ctrl,&b)==1&&f.scheduled==11.75f);expect({5,6,4,7});
+    unsigned caps=0;assert(api.capabilities(&ctrl,&b,&caps)==1&&caps==0x40000012u);expect({8,9});
+    f.eligible=0;assert(api.capabilities(&ctrl,&b,&caps)==1&&caps==0x40000002u);expect({8,9});
+    assert(api.use(&ctrl,&b,nullptr,3,&f.payload)==1);expect({});
+    f.player=0;assert(api.use(&ctrl,&b,&f.activator,3,&f.payload)==1);expect({10});
+    f.player=1;assert(api.use(&ctrl,&b,&f.activator,2,&f.payload)==1);expect({10});
+    assert(api.use(&ctrl,&b,&f.activator,3,&f.payload)==1);expect({10,11});
+    assert(api.break_container(&ctrl,&b)==1&&f.fragment_count==4);expect({12,13,13,13,13});
+    f.fail=13;assert(api.break_container(&ctrl,&b)==-1&&ctrl.blocked&&f.fragment_count==1);expect({12,13});
+    assert(api.idle(&ctrl,&b)==0&&api.acknowledge(&ctrl));expect({});
+}
+
 }

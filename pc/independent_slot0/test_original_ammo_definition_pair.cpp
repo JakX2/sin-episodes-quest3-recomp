@@ -255,6 +255,12 @@ int main(int argc,char** argv){
     assert(playerHeal&&!getPlayerHeal(0,sizeof(tables::PlayerHealApi))&&!getPlayerHeal(1,0));
     tables::test::check_player_heal(*playerHeal,*pickup);
     std::puts("PASS native player slot57 heal, overhealth reset, preclamp health event and integrated MegaHealth pickup");
+    const auto getCanister=reinterpret_cast<tables::GetCanisterApi>(GetProcAddress(server,tables::canister_export));
+    assert(getCanister&&!GetProcAddress(client,tables::canister_export));
+    const auto* canister=getCanister(1,sizeof(tables::CanisterApi));
+    assert(canister&&!getCanister(0,sizeof(tables::CanisterApi))&&!getCanister(1,0));
+    tables::test::check_canister(*canister);
+    std::puts("PASS native antigen canister constructor leaves, fill pose, idle and game-specific break effects");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

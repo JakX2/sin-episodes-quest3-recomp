@@ -990,4 +990,42 @@ struct PlayerHealApi {
         const PlayerHealBindings*,HealthPickupKind,unsigned* accepted) noexcept;
 };
 using GetPlayerHealApi=const PlayerHealApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase725: original CAntigenCanister shared factory leaves and
+// gameplay methods. The host retains existing Source base prop,
+// animation, carry and debris services (no new physics).
+inline constexpr char canister_export[]="SiN_GetAntigenCanisterApi";
+struct CanisterBindings {
+    void* context;
+    int (__cdecl *pose)(void*,void* object,const char* name,float value) noexcept;
+    int (__cdecl *base_spawn)(void*,void* object) noexcept;
+    int (__cdecl *install_idle)(void*,void* object) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *advance_animation)(void*,void* object) noexcept;
+    int (__cdecl *random_float)(void*,float low,float high,float*) noexcept;
+    int (__cdecl *schedule)(void*,void* object,float time) noexcept;
+    int (__cdecl *base_capabilities)(void*,void* object,unsigned*) noexcept;
+    // Borrow the standard carry predicate and its live skill settings.
+    int (__cdecl *carry_eligible)(void*,void* object,unsigned*) noexcept;
+    int (__cdecl *is_player)(void*,void* activator,unsigned*) noexcept;
+    int (__cdecl *carry)(void*,void* activator,void* object,const void* variant_payload) noexcept;
+    // Base container break may enqueue deferred removal. Keep object
+    // live for all four following original fragment callbacks.
+    int (__cdecl *base_break)(void*,void* object) noexcept;
+    int (__cdecl *fragment)(void*,void* object,unsigned count,const char* model,float arg_a,float arg_b,float arg_c) noexcept;
+};
+struct CanisterApi {
+    std::uint32_t version,size;
+    int (__cdecl *defaults)(void*,unsigned bytes) noexcept;
+    // A compatible CPropContainer observation for dispenser refill.
+    int (__cdecl *describe)(void*,unsigned bytes,ContainerObservation*) noexcept;
+    int (__cdecl *set_amount)(HologramControl*,const CanisterBindings*,float amount) noexcept;
+    int (__cdecl *spawn)(HologramControl*,const CanisterBindings*) noexcept;
+    int (__cdecl *idle)(HologramControl*,const CanisterBindings*) noexcept;
+    int (__cdecl *capabilities)(HologramControl*,const CanisterBindings*,unsigned*) noexcept;
+    int (__cdecl *use)(HologramControl*,const CanisterBindings*,void* activator,unsigned variant_type,const void* variant_payload) noexcept;
+    int (__cdecl *break_container)(HologramControl*,const CanisterBindings*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetCanisterApi=const CanisterApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

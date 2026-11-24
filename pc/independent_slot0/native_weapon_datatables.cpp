@@ -2156,6 +2156,91 @@ int __cdecl screen_restore(HologramControl* ctrl,const DispenserScreenBindings* 
     return disp_finish(ctrl,true);
 }
 const DispenserScreenApi dispenser_screen_api{version,sizeof(DispenserScreenApi),&screen_idle,&screen_restore};
+
+constexpr unsigned can_amount=0x628,can_flags=0x62c,can_bytes=0x6a0;
+constexpr char can_model[]="models/items/antigen/antigentank.mdl";
+bool can_valid(const HologramControl* ctrl) noexcept {
+    return health_control(ctrl,can_bytes);
+}
+int __cdecl can_defaults(void* object,unsigned bytes) noexcept {
+    if(bytes<can_bytes||!hologram_writable(object,can_bytes))return 0;
+    // Original CAntigenCanister constructor after base CPropContainer
+    // initialization; leave output objects and vtables host-owned.
+    hologram_write(object,can_amount,100.0f);
+    hologram_write(object,can_flags,9u);
+    hologram_write(object,0x630,static_cast<const char*>(can_model));
+    hologram_write(object,0x634,0.0f);hologram_write(object,0x638,1u);
+    for(unsigned off:{0x63cu,0x640u,0x644u,0x648u,0x64cu})hologram_write(object,off,0u);
+    hologram_write(object,0x668,disp_invalid);hologram_write(object,0x69c,disp_invalid);
+    return 1;
+}
+int __cdecl can_describe(void* object,unsigned bytes,ContainerObservation* out) noexcept {
+    if(!out||bytes<can_bytes||!sin_independent::vgui_layout::Readable(object,can_bytes))return 0;
+    *out={object,hologram_read<std::uint32_t>(object,can_flags),hologram_read<float>(object,can_amount)};
+    return 1;
+}
+bool can_pose(void* object,const CanisterBindings& b) noexcept {
+    const float amount=hologram_read<float>(object,can_amount);
+    if(!std::isfinite(amount))return false;
+    return b.pose(b.context,object,"percentFull",static_cast<float>(static_cast<double>(amount)*0.01f))!=0;
+}
+int __cdecl can_set(HologramControl* ctrl,const CanisterBindings* b,float amount) noexcept {
+    if(!can_valid(ctrl)||!b||!b->pose||!std::isfinite(amount))return 0;
+    ctrl->busy=1;
+    hologram_write(ctrl->object,can_amount,amount);
+    return disp_finish(ctrl,can_pose(ctrl->object,*b));
+}
+bool can_schedule(void* object,const CanisterBindings& b,double delay) noexcept {
+    float now=0;
+    if(!b.clock(b.context,&now)||!std::isfinite(now))return false;
+    const float when=static_cast<float>(static_cast<double>(now)+delay);
+    return std::isfinite(when)&&b.schedule(b.context,object,when)!=0;
+}
+int __cdecl can_spawn(HologramControl* ctrl,const CanisterBindings* b) noexcept {
+    if(!can_valid(ctrl)||!b||!b->base_spawn||!b->pose||!b->install_idle||!b->clock||!b->schedule)return 0;
+    ctrl->busy=1;const auto host=*b;auto* object=ctrl->object;
+    return disp_finish(ctrl,host.base_spawn(host.context,object)&&can_pose(object,host)&&
+        host.install_idle(host.context,object)&&can_schedule(object,host,0.25));
+}
+int __cdecl can_idle(HologramControl* ctrl,const CanisterBindings* b) noexcept {
+    if(!can_valid(ctrl)||!b||!b->advance_animation||!b->random_float||!b->clock||!b->schedule)return 0;
+    ctrl->busy=1;const auto host=*b;float sample=0;
+    if(!host.advance_animation(host.context,ctrl->object)||!host.random_float(host.context,0.5f,1.5f,&sample)||
+        !std::isfinite(sample)||sample<0.5f||sample>1.5f)return disp_finish(ctrl,false);
+    return disp_finish(ctrl,can_schedule(ctrl->object,host,static_cast<double>(sample)+1.0));
+}
+int __cdecl can_caps(HologramControl* ctrl,const CanisterBindings* b,unsigned* out) noexcept {
+    if(!can_valid(ctrl)||!b||!b->base_capabilities||!b->carry_eligible||!out)return 0;
+    ctrl->busy=1;const auto host=*b;unsigned base=0,carry=0;
+    if(!host.base_capabilities(host.context,ctrl->object,&base)||
+        !host.carry_eligible(host.context,ctrl->object,&carry)||carry>1)return disp_finish(ctrl,false);
+    *out=base|0x40000000u|(carry?0x10u:0u);return disp_finish(ctrl,true);
+}
+int __cdecl can_use(HologramControl* ctrl,const CanisterBindings* b,void* activator,unsigned type,const void* payload) noexcept {
+    if(!can_valid(ctrl)||!b||!b->is_player||!b->carry)return 0;
+    if(!activator)return 1;
+    ctrl->busy=1;const auto host=*b;unsigned player=0;
+    if(!host.is_player(host.context,activator,&player)||player>1)return disp_finish(ctrl,false);
+    if(!player||type!=3)return disp_finish(ctrl,true);
+    return disp_finish(ctrl,payload&&host.carry(host.context,activator,ctrl->object,payload));
+}
+int __cdecl can_break(HologramControl* ctrl,const CanisterBindings* b) noexcept {
+    if(!can_valid(ctrl)||!b||!b->base_break||!b->fragment)return 0;
+    ctrl->busy=1;const auto host=*b;
+    if(!host.base_break(host.context,ctrl->object))return disp_finish(ctrl,false);
+    constexpr const char* models[]={"models/items/antigen/antigen_break01.mdl",
+        "models/items/antigen/antigen_break02.mdl","models/items/antigen/antigen_break03.mdl",
+        "models/items/antigen/antigen_break04.mdl"};
+    for(auto name:models)
+        if(!host.fragment(host.context,ctrl->object,1,name,200.0f,-200.0f,25.0f))return disp_finish(ctrl,false);
+    return disp_finish(ctrl,true);
+}
+int __cdecl can_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<can_bytes||!hologram_writable(ctrl->object,can_bytes))return 0;
+    ctrl->blocked=0;return 1;
+}
+const CanisterApi canister_api{version,sizeof(CanisterApi),&can_defaults,&can_describe,&can_set,&can_spawn,
+    &can_idle,&can_caps,&can_use,&can_break,&can_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3702,6 +3787,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerHea
 SiN_GetPlayerHealApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerHealApi)?&player_heal_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetAntigenCanisterApi=_SiN_GetAntigenCanisterApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CanisterApi* __cdecl
+SiN_GetAntigenCanisterApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(CanisterApi)?&canister_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
