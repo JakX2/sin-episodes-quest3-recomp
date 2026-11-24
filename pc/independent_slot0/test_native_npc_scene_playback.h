@@ -1,6 +1,7 @@
 #pragma once
 #include "native_npc_scene_playback.h"
 #include "test_native_jessica_script.h"
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
