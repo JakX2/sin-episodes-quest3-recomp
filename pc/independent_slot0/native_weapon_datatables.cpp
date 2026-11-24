@@ -5817,6 +5817,125 @@ int __cdecl choreography_scale_block(void* parsed,unsigned bytes,const Choreogra
     return -1;
 }
 const ChoreographyScaleApi choreography_scale_api{version,sizeof(ChoreographyScaleApi),&choreography_scale_find,&choreography_scale_block};
+bool choreography_flex_ready(const ChoreographyFlexBindings* b) noexcept {
+    return b&&b->create&&b->delete_aux&&choreography_tags_ready(&b->samples);
+}
+bool choreography_flex_clear(void* event,const ChoreographyFlexBindings& h) noexcept {
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(event,0x318);
+        if(!count)break;
+        if(count<0||count>4096||i>=4096)return false;
+        void* rows=nullptr;
+        if(!choreography_ramp_storage(h.samples,hologram_read<std::uint32_t>(event,0x30c),count*4,rows))return false;
+        const auto word=hologram_read<std::uint32_t>(rows,0);
+        if(!word)return false;
+        if(count>1)std::memmove(rows,static_cast<unsigned char*>(rows)+4,(count-1)*4);
+        hologram_write(event,0x318,count-1);
+        if(!h.delete_aux(h.context,word,1))return false;
+    }
+    hologram_write(event,0x320,static_cast<unsigned char>(0));return true;
+}
+bool choreography_flex_append(void* track,unsigned bank,float time,float value,const ChoreographyTimingTagBindings& h) noexcept {
+    auto* v=static_cast<unsigned char*>(track)+0x14+bank*0x14;
+    const int count=hologram_read<int>(v,0xc),cap=hologram_read<int>(v,4);
+    if(count<0||cap<count||count>=4096)return false;
+    if(count==cap&&(!h.grow(h.context,v,1,12)||hologram_read<int>(v,0xc)!=count||hologram_read<int>(v,4)<=count))return false;
+    const auto word=hologram_read<std::uint32_t>(v,0);void* data=nullptr;
+    if(!choreography_ramp_storage(h,word,(count+1)*12,data))return false;
+    auto* row=static_cast<unsigned char*>(data)+count*12;
+    hologram_write(row,0,value);hologram_write(row,4,time);hologram_write(row,8,0u);
+    hologram_write(v,0xc,count+1);hologram_write(v,0x10,word);return true;
+}
+bool choreography_flex_finish(void* track,float duration,const ChoreographyTimingTagBindings& h) noexcept {
+    // 2210fbb0 sorts requested bank, then 2210dbd0 trims BOTH banks.
+    // Original invokes it for bank 0 then 1, no ramp's +0.01 tolerance.
+    for(unsigned sort=0;sort<2;++sort){
+        for(unsigned bank=0;bank<2;++bank){
+            auto* v=static_cast<unsigned char*>(track)+0x14+bank*0x14;
+            int count=hologram_read<int>(v,0xc);
+            if(count<0||count>4096||hologram_read<int>(v,4)<count)return false;
+            void* data=nullptr;
+            if(count&&!choreography_ramp_storage(h,hologram_read<std::uint32_t>(v,0),count*12,data))return false;
+            auto* rows=static_cast<unsigned char*>(data);
+            if(bank==sort){
+                for(int i=0;i<count;++i)for(int j=i+1;j<count;++j){
+                    auto* l=rows+i*12;auto* r=rows+j*12;
+                    if(hologram_read<float>(l,4)>hologram_read<float>(r,4)){
+                        unsigned char tmp[12];std::memcpy(tmp,l,12);std::memcpy(l,r,12);std::memcpy(r,tmp,12);
+                    }
+                }
+            }
+            for(int i=count-1;i>=0;--i){
+                const auto time=hologram_read<float>(rows+i*12,4);
+                if(time<0||time>duration){
+                    if(i+1<count)std::memmove(rows+i*12,rows+(i+1)*12,(count-i-1)*12);
+                    hologram_write(v,0xc,--count);
+                }
+            }
+        }
+    }
+    return true;
+}
+int __cdecl choreography_flex_block(void* event,unsigned bytes,const ChoreographyFlexBindings* b) noexcept {
+    if(bytes<0x3c0||!hologram_writable(event,0x3c0)||!choreography_flex_ready(b)||!b->samples.number||
+       !b->samples.text.next||!b->samples.text.token||!b->samples.text.unexpected)return 0;
+    const auto h=*b;const auto& s=h.samples;char token[1024]{};
+    if(!choreography_flex_clear(event,h))return -1;
+    const float span=hologram_read<float>(event,0x188)-hologram_read<float>(event,0x184);
+    const float duration=hologram_read<std::uint32_t>(event,0x188)==0xbf800000u?0.f:span;
+    auto next=[&](unsigned cross){return choreography_actor_next(s.text,cross,token);};
+    auto brace=[&](){return choreography_text_equal(token,"{")||s.text.unexpected(s.text.context,token)!=0;};
+    if(!next(1))return -1;
+    const bool actual_time=choreography_text_equal(token,"samples_use_time");
+    if(actual_time&&!next(1))return -1;
+    if(!brace())return -1;
+    struct Sample {float time,value;};
+    Sample samples[2][4096];
+    for(unsigned iteration=0;iteration<4096;++iteration){
+        if(!next(1)||!*token)return -1;
+        if(choreography_text_equal(token,"}"))return 1;
+        char name[128]{};
+        if(!choreography_text_copy(name,sizeof(name),token)||!next(1))return -1;
+        bool active=true,combo=false;float minimum=0,maximum=1;
+        if(choreography_text_equal(token,"disabled")){active=false;if(!next(1))return -1;}
+        if(choreography_text_equal(token,"combo")){combo=true;if(!next(1))return -1;}
+        if(choreography_text_equal(token,"range")){
+            if(!next(0)||!s.number(s.context,token,&minimum)||!next(0)||!s.number(s.context,token,&maximum)||!next(1))return -1;
+        }
+        unsigned counts[2]{};
+        for(unsigned bank=0;bank<(combo?2u:1u);++bank){
+            if(bank&&!next(1))return -1;
+            if(!brace())return -1;
+            for(;;){
+                if(!next(1)||!*token)return -1;
+                if(choreography_text_equal(token,"}"))break;
+                if(counts[bank]>=4096)return -1;
+                float time=0,value=0;
+                if(!s.number(s.context,token,&time)||!next(0)||!s.number(s.context,token,&value))return -1;
+                samples[bank][counts[bank]++]={actual_time?time:time*span,value};
+            }
+        }
+        // Original omits disabled tracks with no primary samples, even
+        // if the combo's secondary vector is nonempty.
+        if(!active&&!counts[0])continue;
+        void* track=nullptr;unsigned extent=0;
+        const int old=hologram_read<int>(event,0x318);
+        if(old<0||old>=4096||!h.create(h.context,event,name,&track,&extent)||extent<0x50||!hologram_writable(track,0x50)||
+           hologram_read<int>(event,0x318)!=old+1||hologram_read<std::uint32_t>(track,0x4c)!=scene_word(event)||
+           hologram_read<int>(track,0x20)||hologram_read<int>(track,0x34))return -1;
+        void* rows=nullptr;
+        if(!choreography_ramp_storage(s,hologram_read<std::uint32_t>(event,0x30c),(old+1)*4,rows)||
+           hologram_read<std::uint32_t>(rows,old*4)!=scene_word(track))return -1;
+        hologram_write(track,8,static_cast<unsigned char>(active));hologram_write(track,9,static_cast<unsigned char>(combo));
+        hologram_write(track,0xc,minimum);hologram_write(track,0x10,maximum);
+        for(unsigned bank=0;bank<2;++bank)
+            for(unsigned j=0;j<counts[bank];++j)
+                if(!choreography_flex_append(track,bank,samples[bank][j].time,samples[bank][j].value,s))return -1;
+        if(!choreography_flex_finish(track,duration,s))return -1;
+    }
+    return -1;
+}
+const ChoreographyFlexApi choreography_flex_api{version,sizeof(ChoreographyFlexApi),&choreography_flex_block};
 using PortableTokenizer=sin_port::vcd::Tokenizer;
 int __cdecl portable_vcd_begin(void* p,const char* data,unsigned bytes) noexcept {
     if(!hologram_writable(p,sizeof(PortableTokenizer))||!data||
@@ -5849,8 +5968,8 @@ struct PortableGrammarState {
     PortableVcdGrammarBindings source{};
     ChoreographyEventParserBindings events{};
     ChoreographyTimingTagBindings tags{};
-    ChoreographyScaleBindings scales{};bool native_curves=false;
-    explicit PortableGrammarState(const PortableVcdGrammarBindings& b,const ChoreographyScaleBindings* s=nullptr) noexcept:source(b),events(b.events),tags(b.tags),scales(s?*s:ChoreographyScaleBindings{}),native_curves(s!=nullptr){
+    ChoreographyScaleBindings scales{};ChoreographyFlexBindings flex{};bool native_curves=false,native_flex=false;
+    explicit PortableGrammarState(const PortableVcdGrammarBindings& b,const ChoreographyScaleBindings* s=nullptr,const ChoreographyFlexBindings* f=nullptr) noexcept:source(b),events(b.events),tags(b.tags),scales(s?*s:ChoreographyScaleBindings{}),flex(f?*f:ChoreographyFlexBindings{}),native_curves(s!=nullptr),native_flex(f!=nullptr){
         auto& text=events.actors.text;text.context=this;events.context=this;
         text.begin=[](void* p,const char* data,unsigned n) noexcept -> int{return portable_vcd_begin(&self(p).cursor,data,n);};
         text.next=[](void* p,unsigned cross,unsigned* more) noexcept -> int{return portable_vcd_next(&self(p).cursor,cross,more);};
@@ -5882,9 +6001,17 @@ struct PortableGrammarState {
                 return choreography_tag_block(event,0x3c0,block,&s.tags)==1;
             if(s.native_curves&&block==ChoreographyEventBlock::EventRamp)
                 return choreography_ramp_block(event,0x3c0,ChoreographyRampKind::Event,&s.tags)==1;
+            if(s.native_flex&&block==ChoreographyEventBlock::FlexAnimations)
+                return choreography_flex_block(event,0x3c0,&s.flex)==1;
             return s.source.event_block(s.source.context,event,block,&s.cursor);};
         tags.context=this;tags.text=text;tags.number=events.number;
         if(native_curves)scales.text=text;
+        if(native_flex){
+            flex.samples.text=text;
+            // Forward numeric conversion through original event context, but
+            // flex storage/growth have their own preserved host context.
+            flex.samples.number=f->samples.number;
+        }
         tags.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
             const auto& h=self(p).source.tags;return h.storage(h.context,word,out,bytes);};
         tags.grow=[](void* p,void* v,unsigned additional,unsigned stride) noexcept -> int{
@@ -5892,8 +6019,8 @@ struct PortableGrammarState {
     }
     static PortableGrammarState& self(void* p) noexcept{return *static_cast<PortableGrammarState*>(p);}
 };
-bool portable_grammar_ready(const PortableVcdGrammarBindings* b,bool native_curves=false) noexcept {
-    if(!b||(!native_curves&&!b->root_block)||!b->event_block||!choreography_tags_ready(&b->tags))return false;
+bool portable_grammar_ready(const PortableVcdGrammarBindings* b,bool native_curves=false,bool native_flex=false) noexcept {
+    if(!b||(!native_curves&&!b->root_block)||(!native_flex&&!b->event_block)||!choreography_tags_ready(&b->tags))return false;
     const auto& h=b->events;const auto& text=h.actors.text;
     return text.tokenizer_word&&text.unexpected&&text.finalize&&h.number&&h.end_changed&&h.append_event&&h.legacy_ramp;
 }
@@ -5934,6 +6061,27 @@ int __cdecl portable_curve_scene(void* npc,const char* name,float delay,const Na
     return native_named_playback(npc,name,delay,&h,out);
 }
 const PortableVcdCurveGrammarApi portable_vcd_curve_grammar_api{version,sizeof(PortableVcdCurveGrammarApi),&portable_curve_parse,&portable_curve_load,&portable_curve_scene};
+bool portable_flex_grammar_ready(const PortableVcdFlexGrammarBindings* b) noexcept {
+    return b&&portable_grammar_ready(&b->curves.grammar,true,true)&&choreography_scale_ready(&b->curves.scales)&&
+        b->curves.scales.integer&&b->curves.scales.intern&&b->curves.scales.insert&&choreography_flex_ready(&b->flex)&&b->flex.samples.number;
+}
+int __cdecl portable_flex_parse(void* parsed,unsigned extent,const char* name,const char* data,unsigned bytes,const PortableVcdFlexGrammarBindings* b) noexcept {
+    if(!portable_flex_grammar_ready(b))return 0;
+    PortableGrammarState s(b->curves.grammar,&b->curves.scales,&b->flex);
+    if(!choreography_event_parser_ready(&s.events)||!portable_vcd_begin(&s.cursor,data,bytes))return 0;
+    return choreography_text_parse_impl(parsed,extent,name,&s.events.actors.text,&s.events.actors,&s.events);
+}
+int __cdecl portable_flex_load(void* scene,unsigned extent,const char* name,const NamedSceneLoadBindings* load,const PortableVcdFlexGrammarBindings* b,std::uint32_t* out) noexcept {
+    if(!portable_flex_grammar_ready(b))return 0;
+    PortableGrammarState s(b->curves.grammar,&b->curves.scales,&b->flex);
+    return choreography_event_load(scene,extent,name,load,&s.events,out);
+}
+int __cdecl portable_flex_scene(void* npc,const char* name,float delay,const NativeNamedPlaybackBindings* playback,const PortableVcdFlexGrammarBindings* b,float* out) noexcept {
+    if(!playback||!portable_flex_grammar_ready(b))return 0;
+    PortableGrammarState s(b->curves.grammar,&b->curves.scales,&b->flex);auto h=*playback;h.events=&s.events;
+    return native_named_playback(npc,name,delay,&h,out);
+}
+const PortableVcdFlexGrammarApi portable_vcd_flex_grammar_api{version,sizeof(PortableVcdFlexGrammarApi),&portable_flex_parse,&portable_flex_load,&portable_flex_scene};
 const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
@@ -11275,6 +11423,18 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyFlexApi=_SiN_GetChoreographyFlexApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyFlexApi* __cdecl
+SiN_GetChoreographyFlexApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyFlexApi)?&choreography_flex_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPortableVcdFlexGrammarApi=_SiN_GetPortableVcdFlexGrammarApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableVcdFlexGrammarApi* __cdecl
+SiN_GetPortableVcdFlexGrammarApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PortableVcdFlexGrammarApi)?&portable_vcd_flex_grammar_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyScaleApi=_SiN_GetChoreographyScaleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyScaleApi* __cdecl
 SiN_GetChoreographyScaleApi(std::uint32_t version,std::uint32_t size) noexcept {

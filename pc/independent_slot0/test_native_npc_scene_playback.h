@@ -2397,6 +2397,80 @@ scalesettings
     assert(scales.find(f.parsed,sizeof(f.parsed),15,&f.curves.scales,&index)==-1);
 }
 
+struct PortableFlexGrammarFixture:PortableCurveGrammarFixture {
+    alignas(4) unsigned char tracks[3][0x50]{},samples[3][2][12*8]{};
+    std::uint32_t track_words[3]{};
+    unsigned created=0,deletes=0,sample_grows=0;
+    char names[3][128]{};
+    sin_port::vcd::Tokenizer cursor;
+    PortableVcdFlexGrammarBindings full{};
+    static PortableFlexGrammarFixture& self_flex(void* p){return *static_cast<PortableFlexGrammarFixture*>(p);}
+    PortableFlexGrammarFixture(){
+        full.curves=curves;full.curves.grammar.event_block=nullptr;
+        auto& f=full.flex;auto& s=f.samples;
+        f.context=s.context=s.text.context=this;
+        s.text.next=[](void* p,unsigned cross,unsigned* more) noexcept -> int{return self_flex(p).cursor.next(cross,*more);};
+        s.text.token=[](void* p,const char** out) noexcept -> int{*out=self_flex(p).cursor.current;return 1;};
+        s.text.unexpected=[](void*,const char*) noexcept -> int{assert(false);return 0;};
+        s.number=[](void*,const char* token,float* out) noexcept -> int{*out=std::strtof(token,nullptr);return 1;};
+        s.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=self_flex(p);
+            if(w==F::ptr(f.track_words)){*out=f.track_words;*n=sizeof(f.track_words);return 1;}
+            for(auto& track:f.samples)for(auto& bank:track)if(w==F::ptr(bank)){*out=bank;*n=sizeof(bank);return 1;}
+            return 0;};
+        s.grow=[](void* p,void* v,unsigned n,unsigned stride) noexcept -> int{
+            auto& f=self_flex(p);assert(n==1&&stride==12);
+            for(unsigned i=0;i<3;++i)for(unsigned bank=0;bank<2;++bank)if(v==f.tracks[i]+0x14+bank*0x14){
+                F::put(v,0,F::ptr(f.samples[i][bank]));F::put(v,4,8);++f.sample_grows;return 1;}
+            assert(false);return 0;};
+        f.create=[](void* p,void* event,const char* name,void** out,unsigned* n) noexcept -> int{
+            auto& f=self_flex(p);assert(event==f.event&&f.created<3);
+            const unsigned i=f.created++,count=F::word(event,0x318);assert(count<3);
+            std::strcpy(f.names[i],name);F::put(f.tracks[i],0x4c,F::ptr(event));f.track_words[count]=F::ptr(f.tracks[i]);
+            F::put(event,0x30c,F::ptr(f.track_words));F::put(event,0x310,3);F::put(event,0x318,count+1);
+            *out=f.tracks[i];*n=sizeof(f.tracks[i]);return 1;};
+        f.delete_aux=[](void* p,std::uint32_t w,unsigned flag) noexcept -> int{
+            auto& f=self_flex(p);assert(flag==1&&w==F::ptr(f.tracks[f.deletes]));++f.deletes;return 1;};
+    }
+};
+inline void check_portable_flex_grammar(const PortableVcdFlexGrammarApi& api,const ChoreographyFlexApi& flex){
+    using F=ScenePlaybackFixture;PortableFlexGrammarFixture f;
+    const char text[]=R"VCD(actor Jessica
+{
+ channel Face
+ {
+  event flexanimation face
+  {
+   time 1 3
+   param ""
+   flexanimations samples_use_time
+   {
+    "inner_raiser" combo range -0.2 0.8
+    { 1.5 0.8 0.2 0.1 2.005 1 }
+    { 0.3 0.5 0.1 0.6 }
+    "empty" disabled combo { } { 0.1 1 }
+    "active_empty" { }
+   }
+  }
+ }
+}
+scalesettings { "RampTool" "100" }
+)VCD";
+    assert(api.parse(f.parsed,sizeof(f.parsed),"test.vcd",text,sizeof(text)-1,&f.full)==1);
+    assert(f.created==2&&f.sample_grows==2&&F::word(f.event,0x318)==2&&f.finalized==3&&!f.root_blocks&&!f.event_blocks);
+    assert(!std::strcmp(f.names[0],"inner_raiser")&&!std::strcmp(f.names[1],"active_empty"));
+    assert(f.tracks[0][8]&&f.tracks[0][9]&&F::word(f.tracks[0],0xc)==0xbe4ccccdu&&F::word(f.tracks[0],0x10)==0x3f4ccccdu);
+    assert(F::word(f.tracks[0],0x20)==2&&F::word(f.tracks[0],0x34)==2&&F::word(f.samples[0][0],4)==0x3e4ccccdu&&F::word(f.samples[0][1],4)==0x3dcccccdu);
+    assert(f.tracks[1][8]&&!f.tracks[1][9]&&!F::word(f.tracks[1],0x20));
+    const char old[]="{ legacy disabled { 0.5 0.75 } }";
+    assert(f.cursor.begin(old,sizeof(old)-1));f.event[0x320]=1;
+    assert(flex.block(f.event,sizeof(f.event),&f.full.flex)==1&&f.deletes==2&&f.created==3&&F::word(f.event,0x318)==1&&!f.event[0x320]);
+    assert(!f.tracks[2][8]&&!f.tracks[2][9]&&F::word(f.samples[2][0],4)==0x3f800000u&&F::word(f.samples[2][0],0)==0x3f400000u);
+    const char bad[]="{ broken { 0.2";
+    assert(f.cursor.begin(bad,sizeof(bad)-1));
+    assert(flex.block(f.event,sizeof(f.event),&f.full.flex)==-1&&f.deletes==3&&!F::word(f.event,0x318));
+}
+
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};
