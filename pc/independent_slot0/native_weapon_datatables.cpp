@@ -29,6 +29,7 @@
 #include "native_camera_link.h"
 #include "native_vehicle_part_events.h"
 #include "native_vehicle_nested.h"
+#include "native_npc_map.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -5232,6 +5233,70 @@ int __cdecl nested_part_events(HologramControl* c,const VehiclePartEventBindings
 }
 const VehicleNestedApi vehicle_nested_api{version,sizeof(VehicleNestedApi),&nested_seat_enter,&nested_seat_exit,&nested_part_events};
 const VehiclePartEventsApi vehicle_part_events_api{version,sizeof(VehiclePartEventsApi),&vehicle_part_events_tick,&health_ack};
+
+constexpr NpcMapField npc_jessica_fields[]={
+    {"ThrowItemAtPlayer",NpcMapFieldKind::Input,2,0x223622d0u},
+    {"SetPrimaryAmmoCountToThrow",NpcMapFieldKind::Input,5,0x22362320u},
+    {"SetSecondaryAmmoCountToThrow",NpcMapFieldKind::Input,5,0x22362350u},
+    {"HolsterWeapon",NpcMapFieldKind::Input,5,0x22362300u}
+};
+constexpr NpcMapField npc_count_fields[]={
+    {"InterrogationStart",NpcMapFieldKind::Input,0,0x2234e2a0u},
+    {"InterrogationStop",NpcMapFieldKind::Input,0,0x2234e2b0u}
+};
+constexpr NpcMapField npc_actor_fields[]={
+    {"bloodColor",NpcMapFieldKind::Key,5,0},
+    {"initialHealth",NpcMapFieldKind::Key,5,0},
+    {"heads",NpcMapFieldKind::Key,5,0},
+    {"dontHammerBBox",NpcMapFieldKind::Key,5,0},
+    {"PlayerCollide",NpcMapFieldKind::Input,6,0x22357950u}
+};
+constexpr NpcMapSchema npc_map_schemas[]={
+    {"npc_jessica",0x1458,0x223c6e10u,4,npc_jessica_fields},
+    {"npc_count",0x103c,0x223c66d0u,2,npc_count_fields},
+    {"npc_generic_actor",generic_actor_bytes,0x223c6b90u,5,npc_actor_fields},
+    {"npc_jc",jc_bytes,0x223c6df0u,0,nullptr}
+};
+const NpcMapSchema* __cdecl npc_map_schema(NpcMapKind kind) noexcept {
+    const auto i=static_cast<unsigned>(kind);return i<4?&npc_map_schemas[i]:nullptr;
+}
+bool npc_map_ready(NpcMapKind kind,HologramControl* c) noexcept {
+    const auto* schema=npc_map_schema(kind);return schema&&health_control(c,schema->bytes);
+}
+int __cdecl npc_map_key(NpcMapKind kind,HologramControl* c,const char* name,unsigned type,std::uint32_t word) noexcept {
+    if(kind!=NpcMapKind::GenericActor||!npc_map_ready(kind,c))return 0;
+    const ActorValue value{type,word};return generic_actor_key(c,name,&value);
+}
+int __cdecl npc_map_input(NpcMapKind kind,HologramControl* c,const NpcMapBindings* b,const char* name,unsigned type,std::uint32_t word) noexcept {
+    if(!npc_map_ready(kind,c)||!b)return 0;
+    char key[128]{};if(!prop_key_read(name,key))return 0;
+    const auto* s=npc_map_schema(kind);
+    for(unsigned i=0;i<s->count;++i){
+        const auto& field=s->fields[i];if(field.kind!=NpcMapFieldKind::Input||std::strcmp(field.name,key))continue;
+        if(kind==NpcMapKind::Jessica){
+            const JessicaValue v{type,word};return jessica_input(c,&b->jessica,static_cast<JessicaInput>(i),&v);
+        }
+        if(kind==NpcMapKind::Count)return count_input(c,i==0?1u:0u);
+        if(kind==NpcMapKind::GenericActor){
+            // 22357950 copies the actual byte, not normalized boolean.
+            hologram_write(c->object,0x100c,static_cast<unsigned char>(type==6?word:0u));return 1;
+        }
+    }
+    return 0;
+}
+int __cdecl npc_map_observe(NpcMapKind kind,HologramControl* c,NpcMapSession* state,const NpcMapBindings* b,const void* obs,unsigned bytes) noexcept {
+    if(!npc_map_ready(kind,c)||!b||!state||!obs||bytes<0x5e9||!sin_independent::vgui_layout::Readable(obs,0x5e9))return 0;
+    switch(kind){
+        case NpcMapKind::Jessica:return jessica_attention(c,&state->attention,&b->attention,obs,bytes);
+        case NpcMapKind::Count:return count_active_observe(c,&b->scheduler,&b->count,obs,bytes);
+        case NpcMapKind::GenericActor:return generic_actor_observe(c,&b->actor,obs);
+        default:return 0; // JC's inherited route stays with engine host
+    }
+}
+int __cdecl npc_map_select_count(HologramControl* c,NpcMapSession* state,const NpcMapBindings* b,int* result) noexcept {
+    return npc_map_ready(NpcMapKind::Count,c)&&state&&b?count_select(c,&state->scheduler,&b->scheduler,result):0;
+}
+const NpcMapApi npc_map_api{version,sizeof(NpcMapApi),&npc_map_schema,&npc_map_key,&npc_map_input,&npc_map_observe,&npc_map_select_count};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -7299,6 +7364,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleNe
 SiN_GetVehicleNestedApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleNestedApi)?&vehicle_nested_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetNpcMapApi=_SiN_GetNpcMapApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcMapApi* __cdecl
+SiN_GetNpcMapApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcMapApi)?&npc_map_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
