@@ -770,6 +770,20 @@ struct ChoreographySymbolApi {
     int (__cdecl *destroy)(void*,unsigned,const ChoreographySymbolBindings*) noexcept;
 };
 using GetChoreographySymbolApi=const ChoreographySymbolApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
+struct OwnedChoreographyBindings {
+    ChoreographyDestructionBindings destruction;
+    ChoreographySymbolBindings symbols;
+    std::uint32_t insensitive_comparator;
+};
+struct OwnedChoreographyApi {
+    std::uint32_t version,size;
+    // Native symbol construction and failure cleanup, legacy callbacks unused.
+    int (__cdecl *generate)(void*,unsigned,void*,const char*,const GeneratedSceneBindings*,const GeneratedSceneAllocationBindings*,const OwnedChoreographyBindings*,std::uint32_t*) noexcept;
+    int (__cdecl *sound)(void*,const char*,const NativeGeneratedLifecycleBindings*,const OwnedChoreographyBindings*,float*) noexcept;
+    int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*,const OwnedChoreographyBindings*) noexcept;
+};
+using GetOwnedChoreographyApi=const OwnedChoreographyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

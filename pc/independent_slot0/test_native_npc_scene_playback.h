@@ -1151,6 +1151,7 @@ struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
     const SceneFinishApi* finish_api=nullptr;SceneFinishBindings finish{};
     const NativeSceneRetirementApi* retirement_api=nullptr;ChoreographyDestructionBindings destruction{};
     unsigned destruction_steps=0;std::uint32_t freed_words[9]{};
+    const OwnedChoreographyApi* owned_api=nullptr;OwnedChoreographyBindings owned{};ChoreographySymbolSentinel symbol_sentinel{};
     unsigned actor_grows=0,record_stops=0,outputs=0,refreshes=0,startup_calls=0;
     static NativeGeneratedLifecycleFixture& get_full(void* p){
         return static_cast<NativeGeneratedLifecycleFixture&>(IntegratedSceneFixture::get(p));
@@ -1206,7 +1207,8 @@ struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
             if((f.finish_api?f.finish_api->advance(s,sizeof(f.scene),dt,&f.advance,&f.finish,1):
                 f.tick.instanced(s,sizeof(f.scene),dt,&f.advance))!=1)return 0;
             if(f.remove_pending){
-                if((f.retirement_api?f.retirement_api->remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop,&f.destruction):
+                if((f.owned_api?f.owned_api->remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop,&f.owned):
+                    f.retirement_api?f.retirement_api->remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop,&f.destruction):
                     f.api.remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop))!=1)return 0;
                 f.scene_live=false;f.remove_pending=false;
             }return 1;};
@@ -1234,6 +1236,13 @@ struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
         destruction.symbol_destroy=[](void* p,void* symbol) noexcept -> int{
             auto& f=get_full(p);assert(symbol==f.parsed+0x164&&f.destruction_steps==5);return 1;};
         destruction.delete_aux=[](void*,std::uint32_t,unsigned) noexcept -> int{assert(false);return 0;};
+    }
+    void bind_owned(const OwnedChoreographyApi& o,const NativeSceneRetirementApi& r){
+        bind_retirement(r);owned_api=&o;owned.destruction=destruction;owned.destruction.symbol_destroy=nullptr;
+        owned.insensitive_comparator=0x11223344;owned.symbols.context=this;owned.symbols.sentinel=&symbol_sentinel;
+        owned.symbols.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        owned.symbols.release=[](void*,std::uint32_t,ChoreographySymbolRelease) noexcept -> int{assert(false);return 0;};
+        full.generation.destroy=nullptr;full.allocation.parsed.symbol_construct=nullptr;
     }
 };
 inline void check_native_generated_lifecycle(const NativeGeneratedLifecycleApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity,const SceneFinishApi* finish=nullptr){
@@ -1774,6 +1783,34 @@ inline void check_choreography_symbol(const ChoreographySymbolApi& api){
     assert(api.construct_empty(external.table,sizeof(external.table),0,0x1234)==1);external.populate(true);external.sentinel.flags=1;external.sentinel.words[0]=7;
     assert(api.destroy(external.table,sizeof(external.table),&external.b)==1&&external.releases==2&&external.sentinel.words[0]==7);
     assert(F::word(external.table,4)==F::ptr(external.nodes)&&F::word(external.table,0x1c)==F::ptr(external.strings)&&F::word(external.table,0x2c)==F::ptr(external.strings)&&!F::word(external.table,0x28));
+}
+inline void check_owned_choreography(const OwnedChoreographyApi& api,const NativeSceneRetirementApi& retirement,const SceneSpeechCallbackApi& cb,
+    const NativeGeneratedLifecycleApi& native,const SceneFinishApi& finish,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,
+    const SceneEntityLifecycleApi& entity,const ResolvedSceneActorApi& resolver,const SceneSpeechPreparationApi& preparation){
+    using F=ScenePlaybackFixture;
+    SpeechLifecycleFixture f(cb,native,finish,manager,tick,entity);
+    f.bind_resolver(resolver);f.bind_preparation(preparation);f.bind_owned(api,retirement);
+    float duration=99;
+    assert(api.sound(f.actor,f.sound,&f.full,&f.owned,&duration)==1&&duration==.1f);
+    assert(!f.symbols&&F::word(f.parsed,0x164)==0x11223344&&F::word(f.parsed,0x174)==0xffff&&F::word(f.parsed,0x194)==0xa5a5a5a5);
+    std::strcpy(reinterpret_cast<char*>(f.event+0x104),"72");
+    for(unsigned i=0;i<4;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
+    assert(f.emitted==1&&f.captions==1&&f.destroyed==1&&f.destruction_steps==9&&!f.parsed_live&&!f.scene_live&&!f.symbol_sentinel.flags);
+    assert(manager.destroy(&f.control,&f.manager_life)==1);
+    // Partial allocation failure: all published objects and vector storage
+    // must be consumed even when the channel slot is null.
+    NativeGeneratedLifecycleFixture missing(native,manager,tick,entity);missing.bind_owned(api,retirement);
+    missing.fail_size=0x9c;
+    missing.owned.destruction.release=[](void* p,std::uint32_t w,ChoreographyRelease kind) noexcept -> int{
+        auto& x=NativeGeneratedLifecycleFixture::get_full(p);
+        const std::uint32_t expected[]={F::ptr(x.choreo_actor),F::ptr(x.event),F::ptr(x.words+1),F::ptr(x.words),F::ptr(x.words+2),F::ptr(x.parsed)};
+        const ChoreographyRelease kinds[]={ChoreographyRelease::Actor,ChoreographyRelease::Event,ChoreographyRelease::Vector,ChoreographyRelease::Vector,ChoreographyRelease::Vector,ChoreographyRelease::Parsed};
+        assert(x.destruction_steps<6&&w==expected[x.destruction_steps]&&kind==kinds[x.destruction_steps]);
+        x.freed_words[x.destruction_steps++]=w;
+        if(kind==ChoreographyRelease::Parsed){x.parsed_live=false;++x.destroyed;}return 1;};
+    std::uint32_t word=99;
+    assert(api.generate(missing.scene,sizeof(missing.scene),missing.actor,missing.sound,&missing.full.generation,&missing.full.allocation,&missing.owned,&word)==1&&!word);
+    assert(missing.allocations==4&&missing.appends==3&&missing.warnings==1&&!missing.links&&!missing.symbols&&!missing.releases&&missing.destroyed==1&&missing.destruction_steps==6&&!missing.parsed_live);
 }
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
