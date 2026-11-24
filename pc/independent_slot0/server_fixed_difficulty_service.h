@@ -317,6 +317,31 @@ using GetNpcAttackSpreadApi=const NpcAttackSpreadApi* (SIN_FIXED_CALL *)(std::ui
 using QueryNpcAttackSpreadFromEngine=int (SIN_FIXED_CALL *)(void*,const char*,const char*,const char*,
     const NpcFocusMemory*,NpcAttackSpreadResult*) noexcept;
 static_assert(sizeof(NpcAttackSpreadResult)==44);
+// Phase734: opt-in original spread cache, separate from live-query API.
+// One module cache for one original rules object's lifetime. Host
+// clears on destruction/replacement and supplies the exact 32-bit
+// interned classname identities, including the empty-string identity
+// for present entities with no classname. No pointers retained.
+inline constexpr char cached_spread_export_name[]="SiN_GetCachedAttackSpreadApi";
+inline constexpr std::uint32_t cached_spread_version=1;
+struct SpreadClassIdentity {
+    const char* name;
+    std::uint32_t identity,present;
+};
+struct CachedSpreadResult {
+    AttackSpreadResult rules;
+    std::uint32_t cache_hit,key_low,key_high;
+};
+struct CachedAttackSpreadApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *clear)() noexcept;
+    int (SIN_FIXED_CALL *query)(const SpreadClassIdentity* attacker,const SpreadClassIdentity* weapon,
+        const SpreadClassIdentity* target,CachedSpreadResult*) noexcept;
+    int (SIN_FIXED_CALL *focus)(const SpreadClassIdentity*,const SpreadClassIdentity*,const SpreadClassIdentity*,
+        const NpcFocusMemory*,const NpcFocusTuning*,NpcAttackSpreadResult*) noexcept;
+    std::uint32_t (SIN_FIXED_CALL *count)() noexcept;
+};
+using GetCachedAttackSpreadApi=const CachedAttackSpreadApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 // Original slot244 spread bias and the combined slot244 -> slot243
 // firing-parameter path. The host supplies a resolved enemy-memory snapshot.
 inline constexpr char npc_aim_export_name[]="SiN_GetNpcAimApi";

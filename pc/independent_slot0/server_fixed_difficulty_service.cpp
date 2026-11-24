@@ -441,6 +441,66 @@ int SIN_FIXED_CALL query_npc_attack_spread(const char* npc,const char* weapon,co
 const abi::NpcAttackSpreadApi npc_attack_spread_api{abi::npc_attack_spread_version,
     sizeof(abi::NpcAttackSpreadApi),&query_npc_attack_spread};
 
+// Original 222d7ee0 packs three folded pointer identities into a
+// 48-bit key. Collision aliasing is intentional original behavior.
+std::map<std::uint64_t,abi::AttackSpreadResult> original_spread_cache;
+constexpr std::size_t max_spread_cache=65536;
+bool valid_spread_identity(const abi::SpreadClassIdentity* id) noexcept {
+    return id&&id->present<=1&&
+        (id->present?(id->identity!=0&&(!id->name||bounded_string(id->name))):(!id->identity&&!id->name));
+}
+std::uint32_t fold_spread_identity(const abi::SpreadClassIdentity& id) noexcept {
+    return id.present?((id.identity^(id.identity>>16))&0xffffu):0u;
+}
+const char* spread_identity_name(const abi::SpreadClassIdentity& id) noexcept {
+    return !id.present?"*":id.name?id.name:"";
+}
+int SIN_FIXED_CALL clear_cached_spread() noexcept {
+    if(reading_engine_skill)return 0;
+    original_spread_cache.clear();return 1;
+}
+std::uint32_t SIN_FIXED_CALL cached_spread_count() noexcept {
+    return static_cast<std::uint32_t>(original_spread_cache.size());
+}
+int SIN_FIXED_CALL query_cached_spread(const abi::SpreadClassIdentity* attacker,
+        const abi::SpreadClassIdentity* weapon,const abi::SpreadClassIdentity* target,
+        abi::CachedSpreadResult* out) noexcept {
+    if(reading_engine_skill||!campaign||!out||!valid_spread_identity(attacker)||
+       !valid_spread_identity(weapon)||!valid_spread_identity(target))return 0;
+    const auto low=fold_spread_identity(*attacker)|(fold_spread_identity(*weapon)<<16);
+    const auto high=fold_spread_identity(*target);
+    const auto key=(static_cast<std::uint64_t>(high)<<32)|low;
+    const auto existing=original_spread_cache.find(key);
+    if(existing!=original_spread_cache.end()){
+        *out={existing->second,1,low,high};return 1;
+    }
+    if(original_spread_cache.size()>=max_spread_cache)return 0;
+    abi::AttackSpreadResult result{};
+    if(!query_spread_rules(spread_identity_name(*attacker),spread_identity_name(*weapon),
+            spread_identity_name(*target),&result))return 0;
+    try {original_spread_cache.emplace(key,result);}
+    catch(...){return 0;}
+    *out={result,0,low,high};return 1;
+}
+int SIN_FIXED_CALL query_cached_focus(const abi::SpreadClassIdentity* attacker,
+        const abi::SpreadClassIdentity* weapon,const abi::SpreadClassIdentity* target,
+        const abi::NpcFocusMemory* memory,const abi::NpcFocusTuning* tuning,
+        abi::NpcAttackSpreadResult* out) noexcept {
+    if(!out||!memory||memory->found>1)return 0;
+    abi::CachedSpreadResult base{};
+    if(!query_cached_spread(attacker,weapon,target,&base))return 0;
+    abi::NpcAttackSpreadResult result{};
+    result.rules=base.rules;result.result={base.rules.x,base.rules.y,base.rules.z};result.focus_multiplier=1.f;
+    if(memory->found){
+        bool needed=false;
+        if(!tuning||!focus_needs_multiplier(*memory,tuning->focus_time,result,needed))return 0;
+        if(needed&&!apply_focus_penalty(tuning->focus_time,tuning->defocused_multiplier,result))return 0;
+    }
+    *out=result;return 1;
+}
+const abi::CachedAttackSpreadApi cached_spread_api{abi::cached_spread_version,
+    sizeof(abi::CachedAttackSpreadApi),&clear_cached_spread,&query_cached_spread,&query_cached_focus,&cached_spread_count};
+
 // Original CAI_BaseNPC slot244 returns the shot bias. Its second
 // elapsed-time branch deliberately DOES NOT clamp negative reacquisition.
 bool npc_bias(const abi::NpcAimMemory& memory,float shot_bias,float focus,
@@ -570,6 +630,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetCombatDamageApi=_SiN_GetCombatDamageApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcRulesApi=_SiN_GetNpcRulesApi")
 #pragma comment(linker,"/EXPORT:SiN_GetAttackSpreadApi=_SiN_GetAttackSpreadApi")
+#pragma comment(linker,"/EXPORT:SiN_GetCachedAttackSpreadApi=_SiN_GetCachedAttackSpreadApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcAttackSpreadApi=_SiN_GetNpcAttackSpreadApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcAimApi=_SiN_GetNpcAimApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcShotApi=_SiN_GetNpcShotApi")
@@ -614,6 +675,10 @@ SiN_GetNpcAttackSpreadApi(std::uint32_t version,std::uint32_t bytes) noexcept {
         &npc_attack_spread_api:nullptr;
 }
 
+extern "C" SIN_FIXED_EXPORT const abi::CachedAttackSpreadApi* SIN_FIXED_CALL
+SiN_GetCachedAttackSpreadApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::cached_spread_version&&bytes==sizeof(abi::CachedAttackSpreadApi)?&cached_spread_api:nullptr;
+}
 extern "C" SIN_FIXED_EXPORT const abi::AttackSpreadApi* SIN_FIXED_CALL
 SiN_GetAttackSpreadApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::attack_spread_version&&bytes==sizeof(abi::AttackSpreadApi)?&attack_spread_api:nullptr;
