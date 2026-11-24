@@ -4316,7 +4316,7 @@ int generate_sound_scene_impl(void* scene,unsigned bytes,void* actor,const char*
     const GeneratedSceneAllocationBindings* allocation) noexcept {
     if(bytes<0x414||!scene||!sin_independent::vgui_layout::Readable(scene,0x414)||!sound||!out||!hologram_writable(out,4)||
        !generated_scene_ready(b,allocation))return 0;
-    const auto a=allocation?*allocation:GeneratedSceneAllocationBindings{};
+    const auto allocator=allocation?*allocation:GeneratedSceneAllocationBindings{};
     const auto h=*b;const char* model=nullptr;
     if(actor){if(!h.model_name(h.context,actor,&model))return -1;if(!model)model="";}
     float duration=0;
@@ -4328,7 +4328,7 @@ int generate_sound_scene_impl(void* scene,unsigned bytes,void* actor,const char*
     }
     void* parsed=nullptr;unsigned parsed_bytes=0;
     void* callback=static_cast<unsigned char*>(scene)+0x410;
-    if(!(allocation?allocate_generated_parsed(a,callback,&parsed,&parsed_bytes):
+    if(!(allocation?allocate_generated_parsed(allocator,callback,&parsed,&parsed_bytes):
         h.create_parsed(h.context,callback,&parsed,&parsed_bytes)!=0))return -1;
     if(!parsed){
         if(!h.warning(h.context,GeneratedSceneWarning::SceneAllocation,sound))return -1;
@@ -4342,7 +4342,7 @@ int generate_sound_scene_impl(void* scene,unsigned bytes,void* actor,const char*
     void* children[3]{};unsigned extents[3]{};
     constexpr unsigned sizes[]={0x118,0x9c,0x3c0};
     for(unsigned i=0;i<3;++i)
-        if(!(allocation?allocate_generated_child(a,parsed,static_cast<GeneratedSceneChild>(i),&children[i],&extents[i]):
+        if(!(allocation?allocate_generated_child(allocator,parsed,static_cast<GeneratedSceneChild>(i),&children[i],&extents[i]):
             h.create_child(h.context,parsed,static_cast<GeneratedSceneChild>(i),&children[i],&extents[i])!=0))return fail();
     if(!children[0]||!children[1]||!children[2]){
         const bool logged=h.warning(h.context,GeneratedSceneWarning::ChildAllocation,sound)!=0;
