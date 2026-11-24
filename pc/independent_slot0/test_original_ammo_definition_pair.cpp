@@ -543,6 +543,12 @@ int main(int argc,char** argv){
     assert(generatedScene&&!getGeneratedScene(0,sizeof(tables::GeneratedSceneApi))&&!getGeneratedScene(1,0));
     tables::test::check_generated_scene(*generatedScene);
     std::puts("PASS native original generated sound scene construction and allocation failure paths");
+    const auto getChoreographyConstruct=reinterpret_cast<tables::GetChoreographyConstructApi>(GetProcAddress(server,tables::choreography_construct_export));
+    assert(getChoreographyConstruct&&!GetProcAddress(client,tables::choreography_construct_export));
+    const auto* choreographyConstruct=getChoreographyConstruct(1,sizeof(tables::ChoreographyConstructApi));
+    assert(choreographyConstruct&&!getChoreographyConstruct(0,sizeof(tables::ChoreographyConstructApi))&&!getChoreographyConstruct(1,0));
+    tables::test::check_choreography_construct(*choreographyConstruct);
+    std::puts("PASS original native choreography parsed, actor, channel and event constructors");
 
 
 

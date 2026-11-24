@@ -908,4 +908,33 @@ inline void check_generated_scene(const GeneratedSceneApi& api){
     assert(api.generate(f.scene,0x413,&f.npc,"native_line",&f.b,&out)==0);f.expect({});
 }
 
+
+inline void check_choreography_construct(const ChoreographyConstructApi& api){
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char parsed[0x220],actor[0x118],channel[0x9c],event[0x3c0];
+    std::memset(parsed,0xa5,sizeof(parsed));std::memset(actor,0xa5,sizeof(actor));
+    std::memset(channel,0xa5,sizeof(channel));std::memset(event,0xa5,sizeof(event));
+    struct Context{unsigned char* parsed;unsigned calls=0;bool fail=false;};Context ctx{parsed};
+    ParsedConstructBindings b{};b.context=&ctx;b.compare_word=0x12345678;
+    b.symbol_construct=[](void* p,void* symbol,int a,int c,unsigned d) noexcept -> int{
+        auto& x=*static_cast<Context*>(p);assert(symbol==x.parsed+0x164&&!a&&!c&&d==1);
+        assert(F::word(x.parsed,0x74)==0&&F::word(x.parsed,0x140)==0x12345678&&F::word(x.parsed,0x150)==0xffffffffu);
+        assert(F::word(x.parsed,0x78)==0xa5a5a5a5u);++x.calls;
+        if(x.fail)return 0;F::put(symbol,0,0x11112222);return 1;};
+    assert(api.parsed(parsed,0x21f,&ctx,&b)==0&&!ctx.calls);
+    ctx.fail=true;assert(api.parsed(parsed,sizeof(parsed),&ctx,&b)==-1&&ctx.calls==1&&F::word(parsed,0x78)==0xa5a5a5a5u);
+    ctx.fail=false;assert(api.parsed(parsed,sizeof(parsed),&ctx,&b)==1&&ctx.calls==2);
+    assert(F::word(parsed,0x78)==0&&F::word(parsed,0x9c)==F::ptr(&ctx)&&F::word(parsed,0x164)==0x11112222);
+    assert(F::word(parsed,0x128)==60&&F::word(parsed,0x21c)==0xffffffffu&&parsed[0x125]==0&&parsed[0x126]==0xa5&&parsed[0x1a0]==0xa5);
+    assert(api.actor(actor,sizeof(actor))==1&&!actor[0]&&actor[1]==0xa5&&!actor[0x80]&&actor[0x81]==0xa5&&actor[0x114]==1&&actor[0x115]==0xa5&&!F::word(actor,0x10c));
+    assert(api.channel(channel,sizeof(channel))==1&&!F::word(channel,0)&&!channel[4]&&channel[5]==0xa5&&!F::word(channel,0x90)&&channel[0x98]==1&&channel[0x99]==0xa5);
+    std::uint32_t counter=0xffffffffu;
+    assert(api.event(event,sizeof(event),parsed,reinterpret_cast<std::uint32_t*>(event+0x348))==0);
+    assert(api.event(event,sizeof(event),parsed,&counter)==1&&counter==0&&F::word(event,0x348)==0xffffffffu);
+    assert(F::word(event,0x330)==F::ptr(parsed)&&F::word(event,0x184)==0&&F::word(event,0x188)==0xbf800000u&&F::word(event,0x190)==0xffffffffu);
+    assert(!F::word(event,0x318)&&!F::word(event,0x2b4)&&!F::word(event,0x2b8)&&!event[0x328]&&!event[0x3a2]);
+    assert(event[5]==0xa5&&event[0x85]==0xa5&&event[0x1b2]==0&&event[0x232]==0&&event[0x38f]==0&&event[0x391]==0xa5&&event[0x3b8]==0xa5);
+    std::memset(event,0xa5,sizeof(event));assert(api.event(event,sizeof(event),nullptr,&counter)==1&&counter==1&&!F::word(event,0x348)&&!F::word(event,0x330));
+}
+
 }

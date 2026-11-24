@@ -4231,6 +4231,52 @@ int scene_entity_registration(void* scene,const SceneEntityLifecycleBindings& h,
     unsigned changed=0;
     return scene_registration(manager,n,&h.registration,scene,&changed,add)==1?1:-1;
 }
+// Fresh choreography construction, verified original PE32 field writes.
+int __cdecl choreography_parsed_construct(void* object,unsigned bytes,void* callback,const ParsedConstructBindings* b) noexcept {
+    if(bytes<0x220||!hologram_writable(object,0x220)||!b||!b->symbol_construct||!b->compare_word)return 0;
+    const auto h=*b;
+    for(unsigned i=0;i<=0x74;i+=4)hologram_write(object,i,0u);
+    for(unsigned i=0x12c;i<=0x13c;i+=4)hologram_write(object,i,0u);
+    hologram_write(object,0x140,h.compare_word);
+    for(unsigned i=0x144;i<=0x160;i+=4)hologram_write(object,i,i==0x150||i==0x158?0xffffffffu:0u);
+    // Constructor invokes symbol table before resetting the simulation state.
+    if(!h.symbol_construct(h.context,static_cast<unsigned char*>(object)+0x164,0,0,1))return -1;
+    for(unsigned i=0x78;i<=0xa0;i+=4)hologram_write(object,i,i==0x9c?scene_word(callback):0u);
+    for(unsigned i:{0xa4u,0x124u,0x125u,0x198u,0x218u})hologram_write(object,i,static_cast<unsigned char>(0));
+    hologram_write(object,0x128,60u);hologram_write(object,0x21c,0xffffffffu);
+    return 1;
+}
+int __cdecl choreography_actor_construct(void* object,unsigned bytes) noexcept {
+    if(bytes<0x118||!hologram_writable(object,0x118))return 0;
+    for(unsigned i=0x100;i<=0x110;i+=4)hologram_write(object,i,0u);
+    hologram_write(object,0,static_cast<unsigned char>(0));hologram_write(object,0x80,static_cast<unsigned char>(0));
+    hologram_write(object,0x114,static_cast<unsigned char>(1));return 1;
+}
+int __cdecl choreography_channel_construct(void* object,unsigned bytes) noexcept {
+    if(bytes<0x9c||!hologram_writable(object,0x9c))return 0;
+    for(unsigned i=0x84;i<=0x94;i+=4)hologram_write(object,i,0u);
+    hologram_write(object,0,0u);hologram_write(object,4,static_cast<unsigned char>(0));
+    hologram_write(object,0x98,static_cast<unsigned char>(1));return 1;
+}
+int __cdecl choreography_event_construct(void* object,unsigned bytes,void* parsed,std::uint32_t* counter) noexcept {
+    if(bytes<0x3c0||!hologram_writable(object,0x3c0)||!counter||!hologram_writable(counter,4))return 0;
+    const auto address=reinterpret_cast<std::uintptr_t>(object),id_address=reinterpret_cast<std::uintptr_t>(counter);
+    if(id_address>=address&&id_address-address<0x3c0)return 0;
+    for(unsigned i=0x19c;i<=0x1ac;i+=4)hologram_write(object,i,0u);
+    for(unsigned i=0x2bc;i<=0x31c;i+=4)hologram_write(object,i,0u);
+    for(unsigned i=0x3a4;i<=0x3b4;i+=4)hologram_write(object,i,0u);
+    hologram_write(object,0x348,*counter);++*counter;
+    for(unsigned i:{0u,0x184u,0x18cu,0x194u,0x2b4u,0x2b8u,0x324u,0x32cu,0x334u,0x338u,0x340u,0x34cu,0x394u,0x398u,0x39cu})
+        hologram_write(object,i,0u);
+    hologram_write(object,0x188,0xbf800000u);hologram_write(object,0x190,0xffffffffu);
+    hologram_write(object,0x330,scene_word(parsed));
+    for(unsigned i:{4u,0x84u,0x104u,0x198u,0x1b0u,0x1b1u,0x320u,0x328u,0x33cu,0x390u,0x3a0u,0x3a1u,0x3a2u})
+        hologram_write(object,i,static_cast<unsigned char>(0));
+    auto* p=static_cast<unsigned char*>(object);
+    std::memset(p+0x1b2,0,128);std::memset(p+0x232,0,128);std::memset(p+0x350,0,64);
+    return 1;
+}
+const ChoreographyConstructApi choreography_construct_api{version,sizeof(ChoreographyConstructApi),&choreography_parsed_construct,&choreography_actor_construct,&choreography_channel_construct,&choreography_event_construct};
 // 221a3c30 and its fresh-object setters. Engine allocations, vector
 // growth and the original-compatible constructors/destructors remain hosted.
 bool generated_scene_text(const char* source,char (&dest)[128]) noexcept {
@@ -9200,6 +9246,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyConstructApi=_SiN_GetChoreographyConstructApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyConstructApi* __cdecl
+SiN_GetChoreographyConstructApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyConstructApi)?&choreography_construct_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetGeneratedSceneApi=_SiN_GetGeneratedSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::GeneratedSceneApi* __cdecl
 SiN_GetGeneratedSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
