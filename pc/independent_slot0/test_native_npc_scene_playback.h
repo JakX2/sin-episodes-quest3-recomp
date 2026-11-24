@@ -992,4 +992,52 @@ inline void check_allocated_generated_scene(const AllocatedGeneratedSceneApi& ap
     assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
 }
 
+
+struct SceneResetFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char parsed[0x220]{},events[5][0x3c0]{};
+    std::uint32_t pause[5]{},tracked[5]{};
+    ParsedSceneResetBindings b{};unsigned reads=0,grows=0,fail_read=99;bool fail_grow=false;
+    static SceneResetFixture& get(void* p){return *static_cast<SceneResetFixture*>(p);}
+    SceneResetFixture(){
+        F::put(parsed,0xc,5);F::fl(parsed,0x90,.5f);
+        for(auto& e:events){F::fl(e,0x188,-1);e[0x328]=1;e[0x1b0]=1;}
+        F::put(events[0],0,1);F::fl(events[0],0x184,1);
+        F::put(events[1],0,5);F::fl(events[1],0x184,-1);F::fl(events[1],0x188,4);
+        F::put(events[2],0,12);F::fl(events[2],0x184,2);F::put(events[2],0x190,7);F::put(events[2],0x194,2);
+        F::put(events[3],0,1);F::fl(events[3],0x184,3);
+        F::put(events[4],0,5);F::put(events[4],0x184,0x7fc00000);events[4][0x1b0]=0;
+        b.context=this;b.events.context=this;
+        b.events.event=[](void* p,void* parsed,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(parsed==f.parsed&&i<5);if(f.reads++==f.fail_read)return 0;*out=f.events[i];*bytes=sizeof(f.events[i]);return 1;};
+        b.grow=[](void* p,void* v,unsigned additional) noexcept -> int{
+            auto& f=get(p);assert(additional==1);++f.grows;if(f.fail_grow)return 0;
+            assert(v==f.parsed+0x64||v==f.parsed+0x3c);
+            F::put(v,0,F::ptr(v==f.parsed+0x64?f.pause:f.tracked));F::put(v,4,5);return 1;};
+        b.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(word==F::ptr(f.pause)||word==F::ptr(f.tracked));*out=word==F::ptr(f.pause)?f.pause:f.tracked;*bytes=sizeof(f.pause);return 1;};
+    }
+};
+inline void check_parsed_scene_reset(const ParsedSceneResetApi& api){
+    using F=ScenePlaybackFixture;SceneResetFixture f;float lo=99,hi=99;
+    assert(api.bounds(f.parsed,sizeof(f.parsed),&f.b.events,&lo,&hi)==1&&lo==-1.5f&&hi==4.5f&&f.reads==10);
+    F::put(f.parsed,0x5c,7);F::put(f.parsed,0x94,9);F::put(f.parsed,0x21c,3);
+    assert(api.reset(f.parsed,sizeof(f.parsed),1,0x1234,0x5678,&f.b)==1&&f.reads==25&&f.grows==2);
+    assert(F::word(f.parsed,0x70)==2&&F::word(f.parsed,0x48)==2&&!F::word(f.parsed,0x5c)&&!F::word(f.parsed,0x94));
+    assert(f.pause[0]==F::ptr(f.events[0])&&f.pause[1]==F::ptr(f.events[3])&&f.tracked[0]==F::ptr(f.events[1])&&f.tracked[1]==F::ptr(f.events[2]));
+    assert(F::word(f.parsed,0x74)==F::ptr(f.pause)&&F::word(f.parsed,0x4c)==F::ptr(f.tracked));
+    assert(F::word(f.parsed,0x78)==0xbfc00000&&F::word(f.parsed,0x88)==0x40900000&&F::word(f.parsed,0x8c)==5);
+    assert(F::word(f.parsed,0x7c)==0x1234&&F::word(f.parsed,0x80)==0x5678&&F::word(f.parsed,0x21c)==3);
+    for(auto& e:f.events)assert(!e[0x328]);
+    assert(F::word(f.events[2],0x194)==7);
+    assert(api.reset(f.parsed,sizeof(f.parsed),0x100,0,0,&f.b)==1&&f.grows==2&&F::word(f.parsed,0x78)==0x40900000);
+    F::put(f.parsed,0xc,0);
+    assert(api.reset(f.parsed,sizeof(f.parsed),0,0,0,&f.b)==1&&!F::word(f.parsed,0x84)&&!F::word(f.parsed,0x88)&&!F::word(f.parsed,0x70)&&!F::word(f.parsed,0x48));
+    SceneResetFixture bad;bad.fail_grow=true;
+    assert(api.reset(bad.parsed,sizeof(bad.parsed),1,0,0,&bad.b)==-1&&!bad.events[0][0x328]&&bad.events[1][0x328]&&bad.reads==1);
+    assert(api.event_reset(bad.events[2],0x328)==0&&bad.events[2][0x328]);
+    bad.fail_read=bad.reads;lo=99;hi=99;
+    assert(api.bounds(bad.parsed,sizeof(bad.parsed),&bad.b.events,&lo,&hi)==-1&&lo==99&&hi==99);
+}
+
 }
