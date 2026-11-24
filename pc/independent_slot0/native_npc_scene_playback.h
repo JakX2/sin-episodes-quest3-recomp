@@ -385,6 +385,27 @@ struct AllocatedGeneratedSceneApi {
     int (__cdecl *sound)(void*,const char*,const NpcScenePlaybackBindings*,const SceneEntityLifecycleBindings*,const GeneratedSceneBindings*,const GeneratedSceneAllocationBindings*,float*) noexcept;
 };
 using GetAllocatedGeneratedSceneApi=const AllocatedGeneratedSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char parsed_scene_reset_export[]="SiN_GetParsedSceneResetApi";
+struct ParsedSceneResetBindings {
+    SceneDurationBindings events;
+    void* context;
+    // Resolve vector allocation word to writable live storage.
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original 22107c90: grow vector at its base, update allocation
+    // and capacity, but not count. Additional capacity requested.
+    int (__cdecl *grow)(void*,void* vector,unsigned additional) noexcept;
+};
+struct ParsedSceneResetApi {
+    std::uint32_t version,size;
+    // 2210b8b0 resets active byte and loop count (type 12).
+    int (__cdecl *event_reset)(void*,unsigned) noexcept;
+    // 22113cd0/22113d40: zero-anchored bounds, speech latency included.
+    int (__cdecl *bounds)(void*,unsigned,const SceneDurationBindings*,float*,float*) noexcept;
+    // 22117c20: rebuild pause and tracked lists, then reset clock and
+    // preserve the two caller-supplied raw timing words at +7c/+80.
+    int (__cdecl *reset)(void*,unsigned,unsigned forward,std::uint32_t,std::uint32_t,const ParsedSceneResetBindings*) noexcept;
+};
+using GetParsedSceneResetApi=const ParsedSceneResetApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

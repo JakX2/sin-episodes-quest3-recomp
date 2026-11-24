@@ -4649,6 +4649,82 @@ int __cdecl parsed_scene_simulate(void* parsed,unsigned bytes,float target,const
     return 1;
 }
 const ParsedSceneSimulationApi parsed_scene_simulation_api{version,sizeof(ParsedSceneSimulationApi),&parsed_scene_simulate,&parsed_event_less};
+int __cdecl choreography_event_reset(void* event,unsigned bytes) noexcept {
+    if(bytes<0x329||!hologram_writable(event,0x329))return 0;
+    hologram_write(event,0x328,static_cast<unsigned char>(0));
+    if(hologram_read<int>(event,0)==12)hologram_write(event,0x194,hologram_read<std::uint32_t>(event,0x190));
+    return 1;
+}
+// Original timing scans are independent, zero-anchored and re-read count.
+// Compare extended intermediate before rounding to float; NaN is skipped.
+bool choreography_bound(void* parsed,const SceneDurationBindings& h,bool end,float& result) noexcept {
+    result=0;
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(parsed,0xc);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000)return false;
+        void* event=nullptr;unsigned bytes=0;
+        if(!h.event(h.context,parsed,i,&event,&bytes)||!event||bytes<0x18c||
+           !sin_independent::vgui_layout::Readable(event,0x18c))return false;
+        const unsigned off=end&&hologram_read<std::uint32_t>(event,0x188)!=0xbf800000u?0x188:0x184;
+        double time=hologram_read<float>(event,off);
+        if(hologram_read<int>(event,0)==5){
+            const double latency=hologram_read<float>(parsed,0x90);
+            time=end?time+latency:time-latency;
+        }
+        if(end?time>result:time<result)result=static_cast<float>(time);
+    }
+    return true;
+}
+int __cdecl choreography_bounds(void* parsed,unsigned bytes,const SceneDurationBindings* b,float* first,float* last) noexcept {
+    if(bytes<0x94||!parsed||!sin_independent::vgui_layout::Readable(parsed,0x94)||!b||!b->event||
+       !hologram_writable(first,4)||!hologram_writable(last,4)||first==last)return 0;
+    const auto h=*b;float start=0,end=0;
+    if(!choreography_bound(parsed,h,false,start)||!choreography_bound(parsed,h,true,end))return -1;
+    *first=start;*last=end;return 1;
+}
+bool choreography_reset_append(void* vector,const ParsedSceneResetBindings& h,void* event) noexcept {
+    const int count=hologram_read<int>(vector,0xc),capacity=hologram_read<int>(vector,4);
+    if(count<0||capacity<count||capacity>0x100000||count>=0x100000)return false;
+    if(count==capacity){
+        if(!h.grow(h.context,vector,1)||hologram_read<int>(vector,0xc)!=count||
+           hologram_read<int>(vector,4)<=count||hologram_read<int>(vector,4)>0x100000)return false;
+    }
+    const auto word=hologram_read<std::uint32_t>(vector,0);
+    void* storage=nullptr;unsigned extent=0;
+    if(!word||!h.storage(h.context,word,&storage,&extent)||extent<static_cast<unsigned>(count+1)*4||
+       !hologram_writable(storage,static_cast<unsigned>(count+1)*4))return false;
+    hologram_write(vector,0xc,count+1);
+    hologram_write(vector,0x10,word);
+    hologram_write(storage,static_cast<unsigned>(count)*4,scene_word(event));
+    return true;
+}
+int __cdecl choreography_reset(void* parsed,unsigned bytes,unsigned forward,std::uint32_t a,std::uint32_t z,const ParsedSceneResetBindings* b) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!b||!b->events.event||!b->storage||!b->grow)return 0;
+    const auto h=*b;auto* p=static_cast<unsigned char*>(parsed);
+    hologram_write(p,0x5c,0u);hologram_write(p,0x48,0u);hologram_write(p,0x70,0u);
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(p,0xc);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000)return -1;
+        void* e=nullptr;unsigned extent=0;
+        if(!h.events.event(h.events.context,p,i,&e,&extent)||choreography_event_reset(e,extent)!=1)return -1;
+        if(hologram_read<int>(e,0)==1){
+            if(!choreography_reset_append(p+0x64,h,e))return -1;
+        }else if(hologram_read<unsigned char>(e,0x1b0)){
+            if(!choreography_reset_append(p+0x3c,h,e))return -1;
+        }
+    }
+    float first=0,last=0;
+    if(!choreography_bound(p,h.events,false,first))return -1;
+    hologram_write(p,0x84,first);
+    if(!choreography_bound(p,h.events,true,last))return -1;
+    hologram_write(p,0x88,last);hologram_write(p,0x78,(forward&0xff)?first:last);
+    hologram_write(p,0x94,0u);hologram_write(p,0x8c,hologram_read<std::uint32_t>(p,0xc));
+    hologram_write(p,0x7c,a);hologram_write(p,0x80,z);
+    return 1;
+}
+const ParsedSceneResetApi parsed_scene_reset_api{version,sizeof(ParsedSceneResetApi),&choreography_event_reset,&choreography_bounds,&choreography_reset};
 int __cdecl parsed_scene_finished(const void* parsed,unsigned bytes,unsigned* out) noexcept {
     if(!parsed||bytes<0x90||!sin_independent::vgui_layout::Readable(parsed,0x90)||
        !out||!hologram_writable(out,sizeof(*out)))return 0;
@@ -9301,6 +9377,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetParsedSceneResetApi=_SiN_GetParsedSceneResetApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ParsedSceneResetApi* __cdecl
+SiN_GetParsedSceneResetApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ParsedSceneResetApi)?&parsed_scene_reset_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetAllocatedGeneratedSceneApi=_SiN_GetAllocatedGeneratedSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AllocatedGeneratedSceneApi* __cdecl
 SiN_GetAllocatedGeneratedSceneApi(std::uint32_t version,std::uint32_t size) noexcept {

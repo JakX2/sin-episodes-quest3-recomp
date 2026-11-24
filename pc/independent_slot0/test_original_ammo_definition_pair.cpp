@@ -555,6 +555,12 @@ int main(int argc,char** argv){
     assert(allocatedScene&&!getAllocatedScene(0,sizeof(tables::AllocatedGeneratedSceneApi))&&!getAllocatedScene(1,0));
     tables::test::check_allocated_generated_scene(*allocatedScene,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
     std::puts("PASS native allocated sound scene construction through activation, simulation and removal");
+    const auto getParsedSceneReset=reinterpret_cast<tables::GetParsedSceneResetApi>(GetProcAddress(server,tables::parsed_scene_reset_export));
+    assert(getParsedSceneReset&&!GetProcAddress(client,tables::parsed_scene_reset_export));
+    const auto* parsedSceneReset=getParsedSceneReset(1,sizeof(tables::ParsedSceneResetApi));
+    assert(parsedSceneReset&&!getParsedSceneReset(0,sizeof(tables::ParsedSceneResetApi))&&!getParsedSceneReset(1,0));
+    tables::test::check_parsed_scene_reset(*parsedSceneReset);
+    std::puts("PASS native original choreography reset, timing bounds and event vector reconstruction");
 
 
 
