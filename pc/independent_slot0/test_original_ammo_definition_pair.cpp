@@ -495,6 +495,13 @@ int main(int argc,char** argv){
     assert(sceneEntityLifecycle&&!getSceneEntityLifecycle(0,sizeof(tables::SceneEntityLifecycleApi))&&!getSceneEntityLifecycle(1,0));
     tables::test::check_scene_entity_lifecycle(*sceneEntityLifecycle);
     std::puts("PASS native scene entity activation, parsed cleanup and registration lifecycle");
+    const auto getParsedResume=reinterpret_cast<tables::GetParsedSceneResumeApi>(GetProcAddress(server,tables::parsed_scene_resume_export));
+    assert(getParsedResume&&!GetProcAddress(client,tables::parsed_scene_resume_export));
+    const auto* parsedResume=getParsedResume(1,sizeof(tables::ParsedSceneResumeApi));
+    assert(parsedResume&&!getParsedResume(0,sizeof(tables::ParsedSceneResumeApi))&&!getParsedResume(1,0));
+    tables::test::check_parsed_scene_resume(*parsedResume,*sceneState);
+    std::puts("PASS native parsed choreography resume and child event restart");
+
 
 
 
