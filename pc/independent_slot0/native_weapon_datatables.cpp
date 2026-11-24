@@ -18,6 +18,7 @@
 #include "native_music_radio_map.h"
 #include <algorithm>
 #include "native_vehicle_sound.h"
+#include "native_vehicle_hint.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4283,6 +4284,45 @@ int __cdecl vehicle_sequence_play(void* vehicle,unsigned bytes,const VehicleSoun
     return h.set_sequence(h.context,vehicle,index)&&h.reset_sequence(h.context,vehicle)?1:-1;
 }
 const VehicleSoundApi vehicle_sound_api{version,sizeof(VehicleSoundApi),&vehicle_sound_find,&vehicle_sound_play,&vehicle_sequence_play};
+
+int __cdecl vehicle_hint_enable(HologramControl* c,unsigned type,std::uint32_t word) noexcept {
+    if(!health_control(c,0x765))return 0;
+    hologram_write(c->object,0x764,static_cast<unsigned char>(type==5&&word!=0));return 1;
+}
+int __cdecl hint_encode(const char* text,const float* duration,unsigned char* out,unsigned capacity,unsigned* used) noexcept {
+    if(!out||!used)return 0;*used=0;
+    char token[2048]{};
+    if(!prop_key_read(text,token))return 0;
+    const auto length=static_cast<unsigned>(std::strlen(token))+1;
+    const unsigned total=1+length+(duration?4:0);
+    if(capacity<total)return 0;
+    out[0]=1;std::memcpy(out+1,token,length);
+    if(duration)std::memcpy(out+1+length,duration,4);
+    *used=total;return 1;
+}
+int __cdecl vehicle_hint_notify(void* v,unsigned bytes,const VehicleHintBindings* b,int seat,unsigned entering) noexcept {
+    if(!v||bytes<0x765||!sin_independent::vgui_layout::Readable(v,0x765)||!b||
+       !b->resolve||!b->participant||!b->send||seat<0||entering>1)return 0;
+    if(!hologram_read<unsigned char>(v,0x764))return 1;
+    const auto off=0x6a4ull+static_cast<unsigned long long>(seat)*4;
+    if(off+4>bytes||off+4>0x764)return 0;
+    const auto h=*b;void* player=nullptr;
+    const auto handle=hologram_read<std::uint32_t>(v,static_cast<unsigned>(off));
+    if(handle!=0xffffffffu&&!h.resolve(h.context,handle,&player))return -1;
+    if(!player)return 1;
+    unsigned eligible=0;
+    if(!h.participant(h.context,player,&eligible))return -1;
+    if(!eligible)return 1;
+    const char* token=!entering?"":seat==0?"#SE1_Hint_Driver":"#SE1_Hint_Vehicle";
+    unsigned char payload[64]{};unsigned count=0;
+    if(hint_encode(token,nullptr,payload,sizeof(payload),&count)!=1)return -1;
+    return h.send(h.context,player,1,hint_message_name,payload,count)?1:-1;
+}
+int __cdecl hint_server_register(const VehicleHintBindings* b) noexcept {
+    if(!b||!b->register_message)return 0;
+    return b->register_message(b->context,hint_message_name,-1)?1:-1;
+}
+const VehicleHintApi vehicle_hint_api{version,sizeof(VehicleHintApi),&vehicle_hint_enable,&vehicle_hint_notify,&hint_encode,&hint_server_register};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5817,6 +5857,63 @@ int __cdecl radio_client_route_receive(const RadioClientRouteBindings* b,const u
     return radio_hud_receive(ctrl,&h.hud,payload,bytes);
 }
 const RadioClientRouteApi radio_client_route_api{version,sizeof(RadioClientRouteApi),&radio_client_route_register,&radio_client_route_receive};
+
+constexpr unsigned hint_hud_bytes=0x178;
+int hint_finish(HologramControl* c,bool ok) noexcept {c->busy=0;if(!ok){c->blocked=1;return -1;}return 1;}
+bool hint_hud_ready(HologramControl* c,const HintHudBindings* b) noexcept {
+    return c&&!c->busy&&!c->blocked&&c->bytes>=hint_hud_bytes&&hologram_writable(c->object,hint_hud_bytes)&&b&&b->rebuild&&b->visible&&b->animation&&b->clock;
+}
+int __cdecl hint_hud_receive(HologramControl* c,const HintHudBindings* b,const unsigned char* data,unsigned bytes) noexcept {
+    if(!hint_hud_ready(c,b)||!data||!bytes||!sin_independent::vgui_layout::Readable(data,bytes))return 0;
+    // Original count mismatch logs and returns, without changing HUD.
+    if(data[0]!=1)return 1;
+    if(bytes<2)return 0;
+    const auto* text=reinterpret_cast<const char*>(data+1);
+    const auto* end=static_cast<const char*>(std::memchr(text,0,bytes-1));
+    if(!end||end-text>=128)return 0; // original raw token occupies d4..153
+    const unsigned remaining=bytes-static_cast<unsigned>(end-text)-2;
+    // Vehicle sender omits the duration; original bf_read returns 0 on
+    // the failed 32-bit read. Do not invent a persistent duration.
+    float duration=0;
+    if(remaining>=4)std::memcpy(&duration,end+1,4);
+    const auto h=*b;c->busy=1;
+    unsigned built=0;
+    // Rebuild owns clear/localization and the raw token write, before
+    // the visible/animation operations in the actual receiver.
+    if(!h.rebuild(h.context,c->object,text,&built))return hint_finish(c,false);
+    if(!built)return hint_finish(c,h.animation(h.context,"HintMessageHide")!=0);
+    if(!h.visible(h.context,c->object,1)||!h.animation(h.context,"HintMessageShow"))return hint_finish(c,false);
+    float now=0;if(!h.clock(h.context,&now))return hint_finish(c,false);
+    hologram_write(c->object,0x154,static_cast<float>(static_cast<double>(now)+duration));
+    return hint_finish(c,true);
+}
+int __cdecl hint_hud_tick(HologramControl* c,const HintHudBindings* b) noexcept {
+    if(!hint_hud_ready(c,b))return 0;
+    const float deadline=hologram_read<float>(c->object,0x154);
+    if(deadline==0)return 1;
+    const auto h=*b;c->busy=1;float now=0;
+    if(!h.clock(h.context,&now))return hint_finish(c,false);
+    if(deadline<now){
+        if(!h.animation(h.context,"HintMessageHide"))return hint_finish(c,false);
+        hologram_write(c->object,0x154,0.f);
+    }
+    return hint_finish(c,true);
+}
+int __cdecl hint_hud_register(const HintHudBindings* b) noexcept {
+    if(!b||!b->register_message)return 0;
+    return b->register_message(b->context,hint_message_name,-1)?1:-1;
+}
+int __cdecl hint_hud_route(const HintHudBindings* b,const unsigned char* data,unsigned bytes) noexcept {
+    if(!b||!b->find_hud)return 0;
+    const auto h=*b;HologramControl* c=nullptr;
+    if(!h.find_hud(h.context,"CHudHintDisplay",&c))return -1;
+    return c?hint_hud_receive(c,&h,data,bytes):1;
+}
+int __cdecl hint_hud_ack(HologramControl* c) noexcept {
+    if(!c||c->busy||!c->blocked||c->bytes<hint_hud_bytes||!hologram_writable(c->object,hint_hud_bytes))return 0;
+    c->blocked=0;return 1;
+}
+const HintHudApi hint_hud_api{version,sizeof(HintHudApi),&hint_hud_receive,&hint_hud_tick,&hint_hud_register,&hint_hud_route,&hint_hud_ack};
 bool screen_command_valid(const HologramControl* ctrl) noexcept {
     return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=0xdc&&
         sin_independent::vgui_layout::Readable(ctrl->object,0xdc);
@@ -6217,6 +6314,13 @@ SiN_GetVehicleSoundApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleSoundApi)?&vehicle_sound_api:nullptr;
 }
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleHintApi=_SiN_GetVehicleHintApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleHintApi* __cdecl
+SiN_GetVehicleHintApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleHintApi)?&vehicle_hint_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -6381,6 +6485,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioClie
 SiN_GetRadioClientRouteApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioClientRouteApi)?&radio_client_route_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetHintHudApi=_SiN_GetHintHudApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::HintHudApi* __cdecl
+SiN_GetHintHudApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(HintHudApi)?&hint_hud_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetPoisonHudAnimationApi=_SiN_GetPoisonHudAnimationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PoisonHudAnimationApi* __cdecl

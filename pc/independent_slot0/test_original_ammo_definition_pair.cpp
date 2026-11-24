@@ -26,6 +26,7 @@
 #include "test_native_music_radio.h"
 #include "test_native_music_radio_map.h"
 #include "test_native_vehicle_sound.h"
+#include "test_native_vehicle_hint.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -474,6 +475,14 @@ int main(int argc,char** argv){
     assert(vehicleSound&&!getVehicleSound(0,sizeof(tables::VehicleSoundApi))&&!getVehicleSound(1,0));
     tables::test::check_vehicle_sound(*vehicleSound,*vehicleActions);
     std::puts("PASS native vehicle sound record lookup and sequence routing");
+    const auto getVehicleHint=reinterpret_cast<tables::GetVehicleHintApi>(GetProcAddress(server,tables::vehicle_hint_export));
+    const auto getHintHud=reinterpret_cast<tables::GetHintHudApi>(GetProcAddress(client,tables::hint_hud_export));
+    assert(getVehicleHint&&getHintHud&&!GetProcAddress(client,tables::vehicle_hint_export)&&!GetProcAddress(server,tables::hint_hud_export));
+    const auto* vehicleHint=getVehicleHint(1,sizeof(tables::VehicleHintApi));
+    const auto* hintHud=getHintHud(1,sizeof(tables::HintHudApi));
+    assert(vehicleHint&&hintHud&&!getVehicleHint(0,sizeof(tables::VehicleHintApi))&&!getHintHud(1,0));
+    tables::test::check_vehicle_hint(*vehicleHint,*hintHud);
+    std::puts("PASS native vehicle hints and paired client HintText deadline");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
