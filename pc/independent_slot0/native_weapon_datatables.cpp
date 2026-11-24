@@ -3934,6 +3934,52 @@ int __cdecl scene_manager_query(void* manager,unsigned bytes,void* npc,SceneQuer
     *out=cancelled;return 1;
 }
 const SceneManagerQueryApi scene_manager_query_api{version,sizeof(SceneManagerQueryApi),&scene_contains_actor,&scene_future_speech,&scene_manager_query};
+bool scene_manager_resolve(const SceneManagerRuntimeBindings& h,std::uint32_t word,void*& p,unsigned& extent) noexcept {
+    p=nullptr;extent=0;
+    if(word==0xffffffffu)return true;
+    if(!h.resolve(h.context,word,&p,&extent))return false;
+    return !p||(extent>=0x3a4&&sin_independent::vgui_layout::Readable(p,0x3a4));
+}
+int __cdecl scene_manager_ensure(SceneManagerSession* s,const SceneManagerRuntimeBindings* b,void** result,unsigned* bytes) noexcept {
+    if(!s||!hologram_writable(s,sizeof(*s))||s->busy||s->blocked||!b||!b->resolve||!b->create||
+       !b->packed_handle||!b->spawn||!result||!hologram_writable(result,sizeof(*result))||
+       !bytes||!hologram_writable(bytes,sizeof(*bytes)))return 0;
+    const auto h=*b;s->busy=1;
+    const auto fail=[&](){s->busy=0;s->blocked=1;return -1;};
+    if(!(s->initialized&1)){s->initialized|=1;s->handle=0xffffffffu;}
+    void* manager=nullptr;unsigned extent=0;
+    if(!scene_manager_resolve(h,s->handle,manager,extent))return fail();
+    if(!manager){
+        void* created=nullptr;
+        if(!h.create(h.context,"scene_manager",-1,&created))return fail();
+        if(!created)s->handle=0xffffffffu;
+        else{
+            std::uint32_t word=0xffffffffu;
+            if(!h.packed_handle(h.context,created,&word))return fail();
+            s->handle=word;
+            if(!scene_manager_resolve(h,s->handle,manager,extent))return fail();
+            if(manager&&!h.spawn(h.context,manager))return fail();
+        }
+    }
+    // Original re-resolves the cached handle after possible spawn.
+    if(!scene_manager_resolve(h,s->handle,manager,extent))return fail();
+    *result=manager;*bytes=manager?extent:0;s->busy=0;return 1;
+}
+int __cdecl scene_manager_runtime_query(SceneManagerSession* s,const SceneManagerRuntimeBindings* b,void* npc,
+                                        SceneQueryKind kind,unsigned filter,unsigned* out) noexcept {
+    if(!npc||!b||static_cast<unsigned>(kind)>2||!out||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto h=*b;void* manager=nullptr;unsigned extent=0;
+    const auto status=scene_manager_ensure(s,&h,&manager,&extent);
+    if(status!=1)return status;
+    if(!manager)return -1; // original wrappers assume nonnull manager
+    s->busy=1;
+    const auto queried=scene_manager_query(manager,extent,npc,kind,filter,&h.query,out);
+    s->busy=0;
+    if(queried<0)s->blocked=1;
+    return queried;
+}
+const SceneManagerRuntimeApi scene_manager_runtime_api{version,sizeof(SceneManagerRuntimeApi),&scene_manager_ensure,&scene_manager_runtime_query};
+
 
 constexpr unsigned count_size=0x1038;
 int __cdecl count_initialize(HologramControl* ctrl) noexcept {
@@ -8462,6 +8508,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetSceneManagerRuntimeApi=_SiN_GetSceneManagerRuntimeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneManagerRuntimeApi* __cdecl
+SiN_GetSceneManagerRuntimeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneManagerRuntimeApi)?&scene_manager_runtime_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetSceneManagerQueryApi=_SiN_GetSceneManagerQueryApi")

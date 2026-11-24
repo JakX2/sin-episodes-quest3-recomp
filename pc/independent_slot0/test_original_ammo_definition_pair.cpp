@@ -459,6 +459,13 @@ int main(int argc,char** argv){
     assert(sceneQuery&&!getSceneQuery(0,sizeof(tables::SceneManagerQueryApi))&&!getSceneQuery(1,0));
     tables::test::check_scene_manager_query(*sceneQuery);
     std::puts("PASS native scene manager actor membership, cancellation and future speech");
+    const auto getSceneManagerRuntime=reinterpret_cast<tables::GetSceneManagerRuntimeApi>(GetProcAddress(server,tables::scene_manager_runtime_export));
+    assert(getSceneManagerRuntime&&!GetProcAddress(client,tables::scene_manager_runtime_export));
+    const auto* sceneManagerRuntime=getSceneManagerRuntime(1,sizeof(tables::SceneManagerRuntimeApi));
+    assert(sceneManagerRuntime&&!getSceneManagerRuntime(0,sizeof(tables::SceneManagerRuntimeApi))&&!getSceneManagerRuntime(1,0));
+    tables::test::check_scene_manager_runtime(*sceneManagerRuntime);
+    std::puts("PASS native scene manager lazy handle and query lifecycle");
+
 
 
 
