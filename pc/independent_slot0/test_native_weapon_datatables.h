@@ -2,6 +2,8 @@
 #include <cmath>
 #include <limits>
 #include "native_weapon_datatables.h"
+#include "native_server_flex_weight.h"
+#include "native_client_composed_facial.h"
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
@@ -415,7 +417,8 @@ inline void check_anim_graph(const AnimSendApi& sa,const AnimRecvApi& ra,const S
 }
 
 inline void check_flex_graph(const FlexSendApi& sa,const FlexRecvApi& ra,const AnimSendApi& asa,
-        const AnimRecvApi& ara,const InventorySendApi& isa,const InventoryRecvApi& ira){
+        const AnimRecvApi& ara,const InventorySendApi& isa,const InventoryRecvApi& ira,
+        const ServerFlexWeightApi& weight_api,const ClientComposedFacialApi& frame_api){
     s::SendProp ep[24],op;s::SendTable se,so;
     assert(se.Construct(ep,24,"DT_BaseEntity")&&so.Construct(&op,1,"DT_OverlayVars"));
     RecvProp cep[24],cop;RecvTable ce{cep,24,nullptr,"DT_BaseEntity"},co{&cop,1,nullptr,"DT_OverlayVars"};
@@ -463,6 +466,47 @@ inline void check_flex_graph(const FlexSendApi& sa,const FlexRecvApi& ra,const A
         s::DVariant v{};x.scalarProxy(&x,server,server+x.offset,&v,0,1);
         RecvData d{&y,v,0,1};y.proxy(&d,client,client+y.offset);
         assert(!std::memcmp(client+y.offset,values,width));
+    }
+    // Actual server mutation -> loaded send scalar proxy -> loaded client
+    // receive proxy -> composed facial frame. DVariant transfer is decoded
+    // payload transport, not the engine's bitstream or netchannel.
+    {
+        alignas(4) unsigned char actor[server_flex_extent]{},face[client_facial_object_bytes]{};
+        actor[0x1f0]=1;
+        ServerFlexRange ranges[]={{-1,1},{0,2}};
+        ClientFacialController controllers[]={{3,-1,1},{4,0,2}};
+        assert(weight_api.set(actor,sizeof(actor),ranges,2,0,.5f,nullptr));
+        assert(weight_api.set(actor,sizeof(actor),ranges,2,1,1.5f,nullptr)&&actor[0x200]==1);
+        for(int i=0;i<2;++i){
+            auto& x=sv.weights->props[i];auto& y=rv.weights->props[i];
+            s::DVariant v{};x.scalarProxy(&x,actor,actor+a.props[1].offset+x.offset,&v,i,1);
+            RecvData d{&y,v,i,1};y.proxy(&d,face,face+b.props[1].offset+y.offset);
+        }
+        const int unknown=-1;std::memcpy(face+0xacc,&unknown,4);
+        ClientFacialFrameBindings blink{};
+        blink.lookup=[](void*,const char*,int* out) noexcept -> int {*out=127;return 1;};
+        ClientVfePhonemeBindings speech{};
+        speech.resolve=[](void*,std::uint32_t,ClientPhonemeSentence*) noexcept -> int {return 0;};
+        speech.map=[](void*,const char*) noexcept -> int {return 3;};
+        ClientFlexOp ops[]={{2,0},{2,1},{4,0}};ClientFlexRule rule{0,3,ops};
+        float previous[]={0};
+        ClientComposedFacialInput in{};
+        in.studio_present=true;in.rules_enabled=true;in.smoothing_enabled=true;
+        in.now=10;in.blink_duration=.5f;in.window=.1f;in.dt=.033f;
+        in.controllers=controllers;in.controller_count=2;in.blink=&blink;in.speech=&speech;
+        in.rules=&rule;in.rule_count=1;in.descriptor_count=1;in.previous=previous;
+        ClientComposedFacialOutput out{};
+        assert(frame_api.run(face,sizeof(face),&in,&out)==1&&out.descriptors_valid&&out.smoothed_valid);
+        assert(out.global[3]==.5f&&out.global[4]==1.5f&&out.current[0]==2&&std::fabs(out.smoothed[0]-.4f)<.0001f);
+        // Second update, clamped by the server and seen by the client rule.
+        actor[0x200]=0;
+        assert(weight_api.set(actor,sizeof(actor),ranges,2,0,5,nullptr)&&actor[0x200]==1);
+        auto& x=sv.weights->props[0];auto& y=rv.weights->props[0];
+        s::DVariant v{};x.scalarProxy(&x,actor,actor+a.props[1].offset+x.offset,&v,0,1);
+        RecvData d{&y,v,0,1};y.proxy(&d,face,face+b.props[1].offset+y.offset);
+        assert(frame_api.run(face,sizeof(face),&in,&out)==1&&out.global[3]==1&&out.global[4]==1.5f&&out.current[0]==2.5f);
+        actor[0x200]=0;
+        assert(weight_api.set(actor,sizeof(actor),ranges,2,0,5,nullptr)&&actor[0x200]==0);
     }
     assert(isa.destroy(&iv)&&ira.destroy(&irv));
     sv.weights->written=true;rv.overlay->initialized=true;

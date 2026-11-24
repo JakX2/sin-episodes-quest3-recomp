@@ -207,8 +207,15 @@ int main(int argc,char** argv){
     const auto* flexSend=getFlexSend(1,sizeof(tables::FlexSendApi));
     const auto* flexRecv=getFlexRecv(1,sizeof(tables::FlexRecvApi));
     assert(flexSend&&flexRecv&&!getFlexSend(0,sizeof(tables::FlexSendApi))&&!getFlexRecv(1,0));
-    tables::test::check_flex_graph(*flexSend,*flexRecv,*animSend,*animRecv,*invSend,*invRecv);
+    const auto getWeight=reinterpret_cast<tables::GetServerFlexWeightApi>(GetProcAddress(server,tables::server_flex_weight_export));
+    const auto getFrame=reinterpret_cast<tables::GetClientComposedFacialApi>(GetProcAddress(client,tables::client_composed_facial_export));
+    assert(getWeight&&getFrame);
+    const auto* weight=getWeight(1,sizeof(tables::ServerFlexWeightApi));
+    const auto* frame=getFrame(1,sizeof(tables::ClientComposedFacialApi));
+    assert(weight&&frame);
+    tables::test::check_flex_graph(*flexSend,*flexRecv,*animSend,*animRecv,*invSend,*invRecv,*weight,*frame);
     std::puts("PASS native paired BaseFlex and BaseAnimatingOverlay graphs (64 numbered elements)");
+    std::puts("PASS server facial mutation -> loaded send/recv proxy -> client descriptor frame");
     const auto getOverlaySend=reinterpret_cast<tables::GetOverlaySendApi>(GetProcAddress(server,tables::overlay_send_export));
     const auto getOverlayRecv=reinterpret_cast<tables::GetOverlayRecvApi>(GetProcAddress(client,tables::overlay_recv_export));
     assert(getOverlaySend&&getOverlayRecv&&!GetProcAddress(client,tables::overlay_send_export)&&!GetProcAddress(server,tables::overlay_recv_export));
