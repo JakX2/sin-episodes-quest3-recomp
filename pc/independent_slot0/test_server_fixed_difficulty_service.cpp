@@ -1206,14 +1206,14 @@ static void test_npc_attack_spread(const a::NpcAttackSpreadApi* focus,const a::A
     })KV";
     assert(rules->load_text(text,sizeof(text)-1));
     const auto query=[&](){return focus->query("npc_custom","rifle","player",&memory,&tuning,&out);};
-    const auto near=[](float x,float y){return std::fabs(x-y)<0.000001f;};
+    const auto approximately_equal=[](float x,float y){return std::fabs(x-y)<0.000001f;};
     memory.curtime=std::numeric_limits<float>::quiet_NaN();
     assert(focus->query("npc_custom","rifle","player",&memory,nullptr,&out)&&out.result.x==0.2f&&!out.defocused);
     memory={1,0.f,0.f};
-    assert(query()&&out.defocused&&out.elapsed==0.f&&out.focus_multiplier==3.f&&near(out.result.x,0.6f));
+    assert(query()&&out.defocused&&out.elapsed==0.f&&out.focus_multiplier==3.f&&approximately_equal(out.result.x,0.6f));
     assert(out.rules.base==0.4f&&out.rules.x==0.2f&&out.result.x==out.result.y&&out.result.y==out.result.z);
-    memory.curtime=-0.25f;assert(query()&&out.defocused&&out.elapsed==0.f&&near(out.result.x,0.6f));
-    memory.curtime=0.3f;assert(query()&&out.defocused&&near(out.focus_multiplier,2.f)&&near(out.result.x,0.4f));
+    memory.curtime=-0.25f;assert(query()&&out.defocused&&out.elapsed==0.f&&approximately_equal(out.result.x,0.6f));
+    memory.curtime=0.3f;assert(query()&&out.defocused&&approximately_equal(out.focus_multiplier,2.f)&&approximately_equal(out.result.x,0.4f));
     memory.curtime=0.6f;assert(query()&&!out.defocused&&out.result.x==0.2f);
     memory.curtime=0.7f;tuning.defocused_multiplier=std::numeric_limits<float>::quiet_NaN();
     assert(query()&&!out.defocused); // skipped multiplier
@@ -1224,7 +1224,7 @@ static void test_npc_attack_spread(const a::NpcAttackSpreadApi* focus,const a::A
     assert(query()&&!out.defocused&&out.result.x==0.2f);
     tuning.defocused_multiplier=1.f;assert(query()&&!out.defocused);
     tuning={0.6f,3.f};assert(api->set_skill(1));
-    assert(query()&&out.defocused&&near(out.result.x,1.2f)); // not clamped to 1
+    assert(query()&&out.defocused&&approximately_equal(out.result.x,1.2f)); // not clamped to 1
     memory.found=2;assert(!query()&&out.defocused);
     assert(api->end_campaign()&&rules->clear());
 }
