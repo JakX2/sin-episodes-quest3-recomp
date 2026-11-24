@@ -434,6 +434,13 @@ int main(int argc,char** argv){
     assert(talkManager&&!getTalkManager(0,sizeof(tables::TalkManagerApi))&&!getTalkManager(1,0));
     tables::test::check_talk_manager(*talkManager,*talkCatalog);
     std::puts("PASS native ally speech manager factory, catalog and lifecycle");
+    const auto getManagedTalk=reinterpret_cast<tables::GetTalkManagerRuntimeApi>(GetProcAddress(server,tables::talk_manager_runtime_export));
+    assert(getManagedTalk&&!GetProcAddress(client,tables::talk_manager_runtime_export));
+    const auto* managedTalk=getManagedTalk(1,sizeof(tables::TalkManagerRuntimeApi));
+    assert(managedTalk&&!getManagedTalk(0,sizeof(tables::TalkManagerRuntimeApi))&&!getManagedTalk(1,0));
+    tables::test::check_managed_talk(*managedTalk,*talkManager,*talkCatalog);
+    std::puts("PASS native speech manager owner notification and live cooldown fields");
+
 
     const auto getNpcDialogue=reinterpret_cast<tables::GetNpcDialogueApi>(GetProcAddress(server,tables::npc_dialogue_export));
     assert(getNpcDialogue&&!GetProcAddress(client,tables::npc_dialogue_export));

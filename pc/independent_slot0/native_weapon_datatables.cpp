@@ -3405,17 +3405,20 @@ const TalkConceptDescriptor* __cdecl talk_lookup(const char* name) noexcept {
 bool talk_cooldown_elapsed(float now,float deadline) noexcept {
     return static_cast<double>(now)-deadline>-.001;
 }
-int __cdecl talk_group_ready(const void* npc,unsigned bytes,const TalkCooldownState* state,const TalkCooldownBindings* b,unsigned priority,unsigned* result) noexcept {
+int talk_group_ready_impl(const void* npc,unsigned bytes,const void* global,const TalkCooldownBindings* b,unsigned priority,unsigned* result) noexcept {
     if(!npc||bytes<0x115c||!sin_independent::vgui_layout::Readable(npc,0x115c)||
-       !state||!sin_independent::vgui_layout::Readable(state,sizeof(*state))||!b||!b->clock||priority>2||
+       !global||!sin_independent::vgui_layout::Readable(global,12)||!b||!b->clock||priority>2||
        !result||!hologram_writable(result,sizeof(*result)))return 0;
     const auto h=*b;float now=0;
     if(priority!=2){
         if(!h.clock(h.context,&now))return -1;
-        if(!talk_cooldown_elapsed(now,state->global[priority])){*result=0;return 1;}
+        if(!talk_cooldown_elapsed(now,hologram_read<float>(global,priority*4))){*result=0;return 1;}
     }
     if(!h.clock(h.context,&now))return -1;
     *result=talk_cooldown_elapsed(now,hologram_read<float>(npc,0x1150+priority*4));return 1;
+}
+int __cdecl talk_group_ready(const void* npc,unsigned bytes,const TalkCooldownState* state,const TalkCooldownBindings* b,unsigned priority,unsigned* result) noexcept {
+    return talk_group_ready_impl(npc,bytes,state?state->global:nullptr,b,priority,result);
 }
 int __cdecl talk_concept_ready(const TalkCooldownBindings* b,const char* name,unsigned* result) noexcept {
     if(!b||!b->concept_deadline||!b->clock||!name||!result||!hologram_writable(result,sizeof(*result)))return 0;
@@ -3432,8 +3435,8 @@ bool talk_set_deadline(float& deadline,const TalkCooldownBindings& h,float low,f
     if(!h.clock(h.context,&now))return false;
     deadline=static_cast<float>(static_cast<double>(delta)+now);return true;
 }
-int __cdecl talk_note(void* npc,unsigned bytes,TalkCooldownState* state,const TalkCooldownBindings* b,const char* name) noexcept {
-    if(!npc||bytes<0x115c||!hologram_writable(npc,0x115c)||!state||!hologram_writable(state,sizeof(*state))||
+int talk_note_impl(void* npc,unsigned bytes,void* global,const TalkCooldownBindings* b,const char* name) noexcept {
+    if(!npc||bytes<0x115c||!hologram_writable(npc,0x115c)||!global||!hologram_writable(global,12)||
        !b||!b->clock||!b->random||!b->concept_deadline||!b->propagate||!b->cooldown_disabled||!name)return 0;
     const auto h=*b;const auto* d=talk_lookup(name);const unsigned priority=d?d->priority:0;
     if(d&&(d->flags&2)&&!h.propagate(h.context,npc,name))return -1;
@@ -3442,9 +3445,14 @@ int __cdecl talk_note(void* npc,unsigned bytes,TalkCooldownState* state,const Ta
     // Original group default row 224e1288: (10,20,0,0),
     // remaining two groups are all zeros.
     if(priority!=2){
+        float deadline=0;
         if(d&&d->global_min!=-1){
-            if(!talk_set_deadline(state->global[priority],h,d->global_min,d->global_max))return -1;
-        }else if(priority==0&&!talk_set_deadline(state->global[0],h,10,20))return -1;
+            if(!talk_set_deadline(deadline,h,d->global_min,d->global_max))return -1;
+            hologram_write(global,priority*4,deadline);
+        }else if(priority==0){
+            if(!talk_set_deadline(deadline,h,10,20))return -1;
+            hologram_write(global,0,deadline);
+        }
     }
     if(d&&d->npc_min!=-1){
         float deadline=0;
@@ -3458,6 +3466,9 @@ int __cdecl talk_note(void* npc,unsigned bytes,TalkCooldownState* state,const Ta
         if(deadline&&(!hologram_writable(deadline,4)||!talk_set_deadline(*deadline,h,d->concept_min,d->concept_min)))return -1;
     }
     return 1;
+}
+int __cdecl talk_note(void* npc,unsigned bytes,TalkCooldownState* state,const TalkCooldownBindings* b,const char* name) noexcept {
+    return talk_note_impl(npc,bytes,state?state->global:nullptr,b,name);
 }
 int __cdecl talk_reset_interaction(TalkCooldownState* state,const TalkCooldownBindings* b) noexcept {
     if(!state||!hologram_writable(state,sizeof(*state))||!b||!b->clock||!b->random)return 0;
@@ -3685,6 +3696,41 @@ int __cdecl talk_manager_destroy(TalkManagerSession* s,TalkManagerControl* c,con
 }
 const TalkManagerApi talk_manager_api{version,sizeof(TalkManagerApi),&talk_manager_construct,&talk_manager_ensure,
     &talk_manager_populate,&talk_manager_read,&talk_manager_write,&talk_manager_destroy};
+void* managed_talk_globals(const TalkManagerRuntimeBindings& h) noexcept {
+    void* manager=nullptr;
+    if(talk_manager_ensure(h.session,&h.manager,&manager)!=1||!manager)return nullptr;
+    return static_cast<unsigned char*>(manager)+0x394;
+}
+int __cdecl managed_talk_notify(const TalkManagerRuntimeBindings* b,void* npc,unsigned bytes,
+                                 void* exp,unsigned exp_bytes,const char* name) noexcept {
+    if(!b||!name||!npc||bytes<0x115c||!hologram_writable(npc,0x115c)||!exp||
+       exp_bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||
+       !b->cooldown.clock||!b->cooldown.random||!b->cooldown.concept_deadline||
+       !b->cooldown.propagate||!b->cooldown.cooldown_disabled)return 0;
+    const auto owner=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(npc));
+    if(hologram_read<std::uint32_t>(exp,4)!=owner||hologram_read<std::uint32_t>(exp,0xc)!=owner+0xdfc||
+       hologram_read<std::uint32_t>(npc,0xffc)!=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(exp)))return 0;
+    const auto h=*b;void* globals=managed_talk_globals(h);
+    if(!globals)return -1;
+    // The host serializes manager lifetime and the NPC throughout callbacks.
+    // Commit each field at its original point, not as a final snapshot copy.
+    return talk_note_impl(npc,bytes,globals,&h.cooldown,name)==1?1:-1;
+}
+int __cdecl managed_talk_reset(const TalkManagerRuntimeBindings* b) noexcept {
+    if(!b||!b->cooldown.clock||!b->cooldown.random)return 0;
+    const auto h=*b;void* globals=managed_talk_globals(h);
+    if(!globals)return -1;
+    float deadline=0;if(!talk_set_deadline(deadline,h.cooldown,10,20))return -1;
+    hologram_write(globals,0,deadline);return 1;
+}
+int __cdecl managed_talk_group(const TalkManagerRuntimeBindings* b,const void* npc,unsigned bytes,unsigned priority,unsigned* out) noexcept {
+    if(!b||!b->cooldown.clock||!npc||bytes<0x115c||priority>2||!out||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto h=*b;void* globals=managed_talk_globals(h);
+    if(!globals)return -1;
+    return talk_group_ready_impl(npc,bytes,globals,&h.cooldown,priority,out);
+}
+const TalkManagerRuntimeApi talk_manager_runtime_api{version,sizeof(TalkManagerRuntimeApi),&managed_talk_notify,&managed_talk_reset,&managed_talk_group};
+
 
 
 
@@ -8195,6 +8241,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkManag
 SiN_GetTalkManagerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkManagerApi)?&talk_manager_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetTalkManagerRuntimeApi=_SiN_GetTalkManagerRuntimeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkManagerRuntimeApi* __cdecl
+SiN_GetTalkManagerRuntimeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkManagerRuntimeApi)?&talk_manager_runtime_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")
