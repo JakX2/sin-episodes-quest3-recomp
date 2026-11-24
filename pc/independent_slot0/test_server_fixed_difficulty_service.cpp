@@ -2152,6 +2152,52 @@ static void test_attack_spread(const a::AttackSpreadApi* rules,const a::Api* api
     }
     assert(api->end_campaign()&&rules->clear());
 }
+
+static void test_cached_attack_spread(const a::CachedAttackSpreadApi* cache,const a::AttackSpreadApi* rules,const a::Api* api,const char* owner_file){
+    assert(cache&&cache->version==1&&cache->size==sizeof(*cache)&&cache->clear()&&!cache->count());
+    const char fixture[]=R"KV(AttackSpreadRules {
+        class_names { npc_a a npc_b b }
+        a { weapon_class_names { "*" w } w { target_class_names { "*" t } t 0.2 } }
+        b { weapon_class_names { "*" w } w { target_class_names { "*" t } t 0.4 } }
+    })KV";
+    assert(rules->load_text(fixture,sizeof(fixture)-1));
+    a::SpreadClassIdentity npc{"npc_a",0x10002,1},weapon{"rifle",0x20004,1},target{"player",0x30008,1};
+    a::CachedSpreadResult out{};
+    assert(!cache->query(&npc,&weapon,&target,&out));
+    assert(api->begin_campaign(1));
+    assert(cache->query(&npc,&weapon,&target,&out)&&!out.cache_hit&&out.key_low==0x00060003u&&out.key_high==11&&out.rules.x==0.2f);
+    assert(cache->count()==1&&api->set_skill(3));
+    assert(cache->query(&npc,&weapon,&target,&out)&&out.cache_hit&&out.rules.x==0.2f);
+    a::AttackSpreadResult live{};assert(rules->query("npc_a","rifle","player",&live)&&live.x==0.1f);
+    a::SpreadClassIdentity colliding{"npc_b",3,1};
+    assert(cache->query(&colliding,&weapon,&target,&out)&&out.cache_hit&&out.rules.base==0.2f&&cache->count()==1);
+    a::SpreadClassIdentity distinct{"npc_b",4,1};
+    assert(cache->query(&distinct,&weapon,&target,&out)&&!out.cache_hit&&out.rules.base==0.4f&&out.rules.x==0.2f&&cache->count()==2);
+    a::NpcFocusMemory memory{1,0.f,0.f};a::NpcFocusTuning tuning{0.6f,3.f};a::NpcAttackSpreadResult focus{};
+    assert(cache->focus(&npc,&weapon,&target,&memory,&tuning,&focus)&&focus.rules.x==0.2f&&std::fabs(focus.result.x-0.6f)<0.000001f);
+    memory.curtime=0.6f;assert(cache->focus(&npc,&weapon,&target,&memory,&tuning,&focus)&&focus.result.x==0.2f&&!focus.defocused);
+    a::SpreadClassIdentity absent{nullptr,0,0},empty{nullptr,0x1234,1};
+    assert(cache->query(&absent,&absent,&absent,&out)&&!out.cache_hit&&!out.key_low&&!out.key_high&&out.rules.used_fallback);
+    assert(cache->query(&empty,&absent,&absent,&out)&&!out.cache_hit&&out.key_low==0x1234&&cache->count()==4);
+    a::SpreadClassIdentity malformed{nullptr,0,1};
+    assert(!cache->query(&malformed,&weapon,&target,&out)&&cache->count()==4);
+    assert(rules->clear()); // original cache has its own lifetime
+    assert(cache->query(&npc,&weapon,&target,&out)&&out.cache_hit&&out.rules.x==0.2f);
+    assert(cache->clear()&&!cache->count());
+    assert(cache->query(&npc,&weapon,&target,&out)&&!out.cache_hit&&out.rules.used_fallback&&out.rules.x==0.13053f*0.5f);
+    if(owner_file){
+        std::ifstream in(owner_file,std::ios::binary);assert(in);
+        std::string data(256*1024+1,'\0');in.read(&data[0],static_cast<std::streamsize>(data.size()));
+        assert(!in.bad()&&in.gcount()>0&&in.gcount()<=256*1024);
+        assert(rules->load_text(data.data(),static_cast<std::uint32_t>(in.gcount()))&&cache->clear());
+        npc={"npc_druglab_grunt_assault_rifle",0x10002,1};
+        weapon={"weapon_assault_rifle",0x20004,1};
+        assert(cache->query(&npc,&weapon,&target,&out)&&!out.cache_hit&&out.rules.base==0.08716f&&out.rules.x==0.08716f*0.5f);
+        assert(api->set_skill(1)&&cache->query(&npc,&weapon,&target,&out)&&out.cache_hit&&out.rules.x==0.08716f*0.5f);
+        std::puts("PASS owner SDK combat script with original cache semantics");
+    }
+    assert(api->end_campaign()&&rules->clear()&&cache->clear());
+}
 static void test_npc_attack_spread(const a::NpcAttackSpreadApi* focus,const a::AttackSpreadApi* rules,const a::Api* api){
     assert(focus&&focus->version==1&&focus->size==sizeof(*focus));
     a::NpcFocusMemory memory{0,0.f,0.f};a::NpcFocusTuning tuning{0.6f,3.f};
@@ -2434,6 +2480,13 @@ int main(int argc,char** argv){
     assert(getSpread&&!getSpread(0,sizeof(a::AttackSpreadApi))&&!getSpread(1,0));
     const auto* spread=getSpread(a::attack_spread_version,sizeof(a::AttackSpreadApi));
     test_attack_spread(spread,api,argc==3?argv[2]:nullptr);
+#ifdef _WIN32
+    auto getCachedSpread=reinterpret_cast<a::GetCachedAttackSpreadApi>(GetProcAddress(lib,a::cached_spread_export_name));
+#else
+    auto getCachedSpread=reinterpret_cast<a::GetCachedAttackSpreadApi>(dlsym(lib,a::cached_spread_export_name));
+#endif
+    assert(getCachedSpread&&!getCachedSpread(0,sizeof(a::CachedAttackSpreadApi))&&!getCachedSpread(1,0));
+    test_cached_attack_spread(getCachedSpread(a::cached_spread_version,sizeof(a::CachedAttackSpreadApi)),spread,api,argc==3?argv[2]:nullptr);
 #ifdef _WIN32
     auto getFocus=reinterpret_cast<a::GetNpcAttackSpreadApi>(GetProcAddress(lib,a::npc_attack_spread_export_name));
 #else
