@@ -335,6 +335,35 @@ using GetNpcAimApi=const NpcAimApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32
 using QueryNpcAimFromEngine=int (SIN_FIXED_CALL *)(void*,const char*,const char*,const char*,
     const NpcAimMemory*,NpcAimResult*) noexcept;
 static_assert(sizeof(NpcAimResult)==60);
+// Virtual in-game shot-direction consumer. Basis vectors are supplied
+// by the game host; no normalization, trace, or actual firing side effect.
+inline constexpr char npc_shot_export_name[]="SiN_GetNpcShotApi";
+inline constexpr char npc_shot_engine_export_name[]="SiN_QueryNpcShotFromEngine";
+inline constexpr std::uint32_t npc_shot_version=1;
+inline constexpr std::uint32_t npc_shot_attempt_limit=256;
+struct NpcShotBasis {NpcSpread forward,right,up;};
+struct NpcShotTuning {float bias_min,bias_max;};
+enum NpcShotCode : std::uint32_t {
+    NpcShotRejected=0,NpcShotAccepted,NpcShotRandomRefused,NpcShotInvalidSample,
+    NpcShotAttemptLimit,NpcShotOverflow
+};
+struct NpcShotReport {
+    std::uint32_t code,attempts,random_calls;
+    float effective_bias,flatness,x,y;
+    NpcSpread direction;
+};
+struct NpcShotApi {
+    std::uint32_t version,size;
+    // Reports attempted RNG calls even on failure. The direction is usable
+    // only when code==NpcShotAccepted. No RNG rollback is possible.
+    int (SIN_FIXED_CALL *sample)(const NpcShotBasis*,const NpcAimResult*,
+        const NpcShotTuning*,NpcRandomFloat,void*,NpcShotReport*) noexcept;
+};
+using GetNpcShotApi=const NpcShotApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+struct NpcShotFromEngineResult {NpcAimResult aim;NpcShotReport shot;};
+using QueryNpcShotFromEngine=int (SIN_FIXED_CALL *)(void*,void*,const char*,const char*,const char*,
+    const NpcAimMemory*,const NpcShotBasis*,NpcShotFromEngineResult*) noexcept;
+static_assert(sizeof(NpcShotReport)==40);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

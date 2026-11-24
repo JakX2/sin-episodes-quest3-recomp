@@ -467,6 +467,80 @@ int SIN_FIXED_CALL query_npc_aim(const char* npc,const char* weapon,const char* 
 }
 const abi::NpcAimApi npc_aim_api{abi::npc_aim_version,sizeof(abi::NpcAimApi),&query_npc_aim};
 
+bool finite_vector(const abi::NpcSpread& v) noexcept {
+    return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z);
+}
+int SIN_FIXED_CALL npc_sample_shot(const abi::NpcShotBasis* basis,const abi::NpcAimResult* aim,
+        const abi::NpcShotTuning* tuning,abi::NpcRandomFloat random,void* context,
+        abi::NpcShotReport* out) noexcept {
+    if(!out)return 0;
+    abi::NpcShotReport result{};
+    const auto finish=[&](std::uint32_t code) noexcept {
+        result.code=code;*out=result;return 1;
+    };
+    if(reading_engine_skill||!campaign||!basis||!aim||!tuning||!random)
+        return finish(abi::NpcShotRejected);
+    // Copy before foreign callbacks; no borrowed pointer is read afterwards.
+    const auto frame=*basis;
+    const auto spread=aim->spread.result;
+    const auto range=*tuning;
+    const float bias=aim->bias.bias;
+    if(!finite_vector(frame.forward)||!finite_vector(frame.right)||!finite_vector(frame.up)||
+       !finite_vector(spread)||!std::isfinite(bias)||!std::isfinite(range.bias_min)||
+       !std::isfinite(range.bias_max))return finish(abi::NpcShotRejected);
+    const float bounded=bias<0.f?0.f:(bias>1.f?1.f:bias);
+    result.effective_bias=static_cast<float>(static_cast<double>(range.bias_min)+
+        (static_cast<double>(range.bias_max)-range.bias_min)*bounded);
+    result.flatness=std::fabs(result.effective_bias)*0.5f;
+    const float complement=1.f-result.flatness;
+    if(!std::isfinite(result.effective_bias)||!std::isfinite(result.flatness)||!std::isfinite(complement))
+        return finish(abi::NpcShotOverflow);
+    NpcRandomScope scope;
+    const auto draw=[&](float& value) noexcept -> std::uint32_t {
+        ++result.random_calls;
+        try {if(!random(context,-1.f,1.f,&value))return abi::NpcShotRandomRefused;}
+        catch(...){return abi::NpcShotRandomRefused;}
+        return std::isfinite(value)&&value>=-1.f&&value<=1.f?
+            abi::NpcShotAccepted:abi::NpcShotInvalidSample;
+    };
+    for(unsigned attempt=0;attempt<abi::npc_shot_attempt_limit;++attempt){
+        ++result.attempts;
+        float v[4]{};
+        for(auto& value:v){
+            const auto code=draw(value);
+            if(code!=abi::NpcShotAccepted)return finish(code);
+        }
+        // Original x87 stores each first weighted sample as f32. X is
+        // stored before inversion; Y remains in the FPU until consumed.
+        float x=static_cast<float>(static_cast<double>(static_cast<float>(
+            static_cast<double>(v[0])*result.flatness))+static_cast<double>(v[1])*complement);
+        double y=static_cast<double>(static_cast<float>(static_cast<double>(v[2])*result.flatness))+
+            static_cast<double>(v[3])*complement;
+        if(result.effective_bias<0.f){
+            x=static_cast<float>(x>=0.f?1.0-x:-1.0-x);
+            y=y>=0.0?1.0-y:-1.0-y;
+        }
+        if(!std::isfinite(x)||!std::isfinite(y))return finish(abi::NpcShotOverflow);
+        if(static_cast<double>(x)*x+y*y>1.0)continue;
+        const double dx=static_cast<double>(x)*spread.x,dy=y*spread.y;
+        const auto component=[&](float forward,float right,float up) noexcept {
+            const float horizontal=static_cast<float>(dx*right);
+            const float vertical=static_cast<float>(dy*up);
+            const float intermediate=static_cast<float>(static_cast<double>(forward)+horizontal);
+            return static_cast<float>(static_cast<double>(intermediate)+vertical);
+        };
+        const abi::NpcSpread direction{component(frame.forward.x,frame.right.x,frame.up.x),
+            component(frame.forward.y,frame.right.y,frame.up.y),
+            component(frame.forward.z,frame.right.z,frame.up.z)};
+        if(!finite_vector(direction))return finish(abi::NpcShotOverflow);
+        result.x=x;result.y=static_cast<float>(y);result.direction=direction;
+        return finish(abi::NpcShotAccepted);
+    }
+    // Retail loops indefinitely. Bounded retry is explicitly port-only.
+    return finish(abi::NpcShotAttemptLimit);
+}
+const abi::NpcShotApi npc_shot_api{abi::npc_shot_version,sizeof(abi::NpcShotApi),&npc_sample_shot};
+
 static_assert(diff::original_metric_count==abi::metric_count);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Initial)==abi::Initial);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Current)==abi::Current);
@@ -484,6 +558,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetAttackSpreadApi=_SiN_GetAttackSpreadApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcAttackSpreadApi=_SiN_GetNpcAttackSpreadApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcAimApi=_SiN_GetNpcAimApi")
+#pragma comment(linker,"/EXPORT:SiN_GetNpcShotApi=_SiN_GetNpcShotApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -497,6 +572,11 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 extern "C" SIN_FIXED_EXPORT const abi::Api* SIN_FIXED_CALL
 SiN_GetFixedDifficultyApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::abi_version&&bytes==sizeof(abi::Api)?&api:nullptr;
+}
+
+extern "C" SIN_FIXED_EXPORT const abi::NpcShotApi* SIN_FIXED_CALL
+SiN_GetNpcShotApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::npc_shot_version&&bytes==sizeof(abi::NpcShotApi)?&npc_shot_api:nullptr;
 }
 
 extern "C" SIN_FIXED_EXPORT const abi::NpcAimApi* SIN_FIXED_CALL
@@ -1031,6 +1111,30 @@ int SIN_FIXED_CALL read_native_npc_random(void* engine,float lo,float hi,float* 
     return 1;
 }
 }
+// Original firing parameter calls, then CShotManipulator's min/max
+// reads, followed by the original RNG bounds and sample order.
+#pragma comment(linker,"/EXPORT:SiN_QueryNpcShotFromEngine=_SiN_QueryNpcShotFromEngine")
+extern "C" int SIN_FIXED_CALL SiN_QueryNpcShotFromEngine(void* cvar,void* random,
+        const char* npc,const char* weapon,const char* target,const abi::NpcAimMemory* memory,
+        const abi::NpcShotBasis* basis,abi::NpcShotFromEngineResult* out) noexcept {
+    if(!out)return 0;
+    abi::NpcShotFromEngineResult result{};
+    if(!basis||!finite_vector(basis->forward)||!finite_vector(basis->right)||!finite_vector(basis->up)||
+       !random||!SiN_QueryNpcAimFromEngine(cvar,npc,weapon,target,memory,&result.aim)){
+        *out=result;return 1;
+    }
+    abi::NpcShotTuning tuning{};
+    {
+        EngineReadScope scope;
+        if(!read_engine_cvar(cvar,"ai_shot_bias_min",real_offset,tuning.bias_min)||
+           !read_engine_cvar(cvar,"ai_shot_bias_max",real_offset,tuning.bias_max)){
+            *out=result;return 1;
+        }
+    }
+    (void)npc_sample_shot(basis,&result.aim,&tuning,&read_native_npc_random,random,&result.shot);
+    *out=result;return 1;
+}
+
 #pragma comment(linker,"/EXPORT:SiN_DecideNpcWithEngineRandom=_SiN_DecideNpcWithEngineRandom")
 extern "C" int SIN_FIXED_CALL SiN_DecideNpcWithEngineRandom(void* engine,
     std::uint32_t kind,float factor,abi::NpcDecisionOutput* out) noexcept {
