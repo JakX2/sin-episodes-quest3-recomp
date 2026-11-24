@@ -237,6 +237,170 @@ struct VcdAuditArena {
         return true;
     }
 };
+// Exercise the composed runtime through the named NPC engine boundary,
+// with real parsed graphs instead of manually populated parsed objects.
+struct VcdOwnedPlaybackFixture {
+    using F=ScenePlaybackFixture;
+    VcdAuditArena& arena;
+    NativeNamedPlaybackBindings n{};
+    SceneManagerSession manager{};
+    alignas(4) unsigned char scene[0x5ec]{},npc[0x604]{};
+    unsigned phase=0,locks=0,unlocks=0,sounds=0,stops=0;
+    unsigned locked=0,cache_index=0;
+    std::uint32_t root_word=0,child_word=0;
+    inline static constexpr char root_text[]=R"VCD(actor Jessica {
+ channel Voice {
+  event speak greeting {
+   time 0 2
+   param Jessica.Greeting
+  }
+  event subscene response {
+   time 2 4
+   param "Scenes/Child"
+  }
+ }
+}
+scalesettings { RampTool 75 }
+)VCD";
+    inline static constexpr char child_text[]=R"VCD(event speak reply {
+ time 0 1
+ param Jessica.Reply
+}
+)VCD";
+    static VcdOwnedPlaybackFixture& self(void* p) noexcept {return *static_cast<VcdOwnedPlaybackFixture*>(p);}
+    static int __cdecl resolve(void* p,std::uint32_t word,void** out,unsigned* extent) noexcept {
+        return self(p).arena.storage(&self(p).arena,word,out,extent);
+    }
+    static int __cdecl event(void* p,void* root,unsigned i,void** out,unsigned* extent) noexcept {
+        auto& f=self(p);void* rows=nullptr;unsigned bytes=0;
+        if(i>=F::word(root,0xc)||!resolve(p,F::word(root,0),&rows,&bytes)||bytes<(i+1)*4)return 0;
+        return resolve(p,F::word(rows,i*4),out,extent);
+    }
+    static int __cdecl actor(void* p,void* scene,unsigned i,void** out,unsigned* extent) noexcept {
+        auto& f=self(p);if(scene!=f.scene||i)return 0;
+        *out=f.npc;*extent=sizeof(f.npc);return 1;
+    }
+    static int __cdecl grow(void* p,void* vector,unsigned extra) noexcept {
+        auto& a=self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,vector,extra,4);
+    }
+    explicit VcdOwnedPlaybackFixture(VcdAuditArena& a):arena(a){
+        n.context=this;n.precache.context=this;
+        auto& load=n.precache.load;load.context=this;load.cache.context=this;
+        load.set_extension=[](void*,char* text,const char* ext,unsigned cap) noexcept -> int{
+            const auto len=std::strlen(text),n=std::strlen(ext);
+            if(len+n>=cap)return 0;std::memcpy(text+len,ext,n+1);return 1;
+        };
+        load.missing=[](void*,const char*) noexcept -> int{assert(false);return 0;};
+        load.cache.ensure=[](void* p,const char* key) noexcept -> int{
+            auto& f=self(p);
+            if(!std::strcmp(key,"scenes\\root.vcd"))f.cache_index=1;
+            else if(!std::strcmp(key,"scenes\\child.vcd"))f.cache_index=2;
+            else return 0;
+            return !f.locked;
+        };
+        load.cache.find=[](void* p,const char*,std::uint32_t* out) noexcept -> int{*out=self(p).cache_index;return 1;};
+        load.cache.lock=[](void* p,std::uint32_t idx,const void** out,unsigned* extent) noexcept -> int{
+            auto& f=self(p);if(f.locked||idx!=f.cache_index||idx<1||idx>2)return 0;
+            f.locked=idx;++f.locks;
+            *out=idx==1?root_text:child_text;*extent=idx==1?sizeof(root_text)-1:sizeof(child_text)-1;return 1;
+        };
+        load.cache.reload=[](void*,const char*,std::uint32_t,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+        load.cache.unlock=[](void* p,std::uint32_t idx) noexcept -> int{
+            auto& f=self(p);if(idx!=f.locked)return 0;f.locked=0;++f.unlocks;return 1;
+        };
+        n.precache.text=[](void* p,std::uint32_t w,const char** out) noexcept -> int{
+            auto& f=self(p);if(w!=F::ptr(f.scene+0x568))return 0;
+            *out=reinterpret_cast<char*>(f.scene+0x568);return 1;
+        };
+        n.precache.precache_sound=[](void* p,const char* sound) noexcept -> int{
+            auto& f=self(p);assert(f.phase==2&&!f.locked&&f.sounds<2);
+            assert(!std::strcmp(sound,f.sounds?"Jessica.Reply":"Jessica.Greeting"));++f.sounds;return 1;
+        };
+        auto& q=n.playback;q.context=this;
+        q.create=[](void* p,const char* cls,void** out,unsigned* extent) noexcept -> int{
+            auto& f=self(p);assert(!f.phase&&!std::strcmp(cls,"instanced_scripted_scene"));
+            f.scene[0x5e8]=1;*out=f.scene;*extent=sizeof(f.scene);return 1;
+        };
+        q.resolve_name=[](void* p,void* npc,const char* name,char* out,unsigned cap) noexcept -> int{
+            auto& f=self(p);assert(npc==f.npc&&!std::strcmp(name,"Jessica")&&cap>=12);
+            std::strcpy(out,"Scenes/Root");return 1;
+        };
+        q.actor_handle=[](void* p,void* npc,std::uint32_t* out) noexcept -> int{
+            assert(npc==self(p).npc);*out=0x321;return 1;
+        };
+        q.set_delay=[](void* p,void* scene,float delay) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&!f.phase&&delay==.5f&&F::word(scene,0x55c)==0x321);
+            f.phase=1;return 1;
+        };
+        n.register_with_spawn=[](void* p,void* scene,void* context,NamedSpawnCallback spawn) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&f.phase==1);f.phase=2;
+            if(!spawn(context,scene))return 0;f.phase=3;return 1;
+        };
+        q.missing=[](void*,const char*,unsigned) noexcept -> int{assert(false);return 0;};
+        q.resolve_parsed=&resolve;q.duration.context=this;q.duration.event=&event;
+        auto& life=n.lifecycle;life.context=this;life.parsed=&resolve;life.manager=&manager;
+        life.base_activate=[](void* p,void* scene) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&f.phase==3&&f.sounds==2&&f.locks==2&&f.unlocks==2);
+            f.root_word=F::word(scene,0x40c);void* root=nullptr;void* child_event=nullptr;unsigned extent=0;
+            assert(resolve(p,f.root_word,&root,&extent)&&F::word(root,0xc)==2&&F::word(root,0x20)==1);
+            assert(event(p,root,1,&child_event,&extent)&&F::word(child_event,0)==11);
+            f.child_word=F::word(child_event,0x324);void* child=nullptr;
+            assert(resolve(p,f.child_word,&child,&extent)&&static_cast<unsigned char*>(child)[0x124]&&F::word(child,0xc)==1);
+            f.phase=4;return 1;
+        };
+        life.base_remove=[](void* p,void* scene) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&f.phase==7&&!F::word(scene,0x40c));
+            assert(!F::word(f.npc,0x5f8)&&!F::word(f.npc,0x5c4)&&f.stops==2);
+            f.phase=8;return 1;
+        };
+        life.runtime.context=this;
+        life.runtime.resolve=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        life.runtime.create=[](void*,const char* cls,int edict,void** out) noexcept -> int{
+            assert(!std::strcmp(cls,"scene_manager")&&edict==-1);*out=nullptr;return 1;
+        };
+        life.runtime.packed_handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+        life.runtime.spawn=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        auto& stop=n.stop;stop.context=this;stop.parsed=&resolve;stop.actor=&actor;stop.events=q.duration;
+        stop.records.context=this;stop.records.storage=&resolve;stop.records.grow=&grow;
+        stop.records.stop_record=[](void* p,void* npc,void* record,int zero,int arg) noexcept -> int{
+            auto& f=self(p);assert(npc==f.npc&&f.phase==7&&!zero&&!arg&&f.stops<2);
+            assert(F::word(record,4)==(f.stops?f.child_word:f.root_word));++f.stops;return 1;
+        };
+        auto& start=n.startup;start.context=this;start.parsed=&resolve;start.actor=&actor;
+        start.is_npc=[](void* p,void* npc,unsigned* out) noexcept -> int{assert(npc==self(p).npc);*out=1;return 1;};
+        start.speaking=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+        start.refresh=[](void* p,void* scene) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&f.phase==4&&f.scene[0x3d8]&&F::word(f.npc,0x5f8)==1);
+            f.phase=5;return 1;
+        };
+        start.output=[](void* p,void* out,void* activator,void* caller,float delay) noexcept -> int{
+            auto& f=self(p);assert(f.phase==5&&out==f.scene+0x41c&&activator==f.scene&&caller==f.scene&&!delay);
+            f.phase=6;return 1;
+        };
+        start.startup_events=[](void* p,void* scene,std::uint32_t root) noexcept -> int{
+            auto& f=self(p);assert(f.phase==6&&scene==f.scene&&root==f.root_word);
+            // Simulate the still-hosted event dispatch leaf publishing two
+            // active actor records. Native removal must stop both graphs.
+            void* rows=nullptr;unsigned extent=0;
+            if(!f.arena.allocate(&f.arena,0x80,&rows,&extent))return 0;
+            F::put(rows,4,f.root_word);F::put(rows,0x44,f.child_word);
+            F::put(f.npc,0x5b8,F::ptr(rows));F::put(f.npc,0x5bc,2);
+            F::put(f.npc,0x5c4,2);F::put(f.npc,0x5c8,F::ptr(rows));
+            f.phase=7;return 1;
+        };
+        start.reset.context=this;start.reset.events=q.duration;start.reset.storage=&resolve;start.reset.grow=&grow;
+    }
+    void run(const NativeVcdRuntimeApi& api){
+        auto raw=arena.runtime();float duration=-1;
+        assert(api.scene(npc,"Jessica",.5f,&n,&raw,&duration)==1&&duration==4.f&&phase==7);
+        assert(F::word(scene,0x40c)==root_word&&root_word&&child_word&&F::word(npc,0x5f8)==1);
+        assert(api.remove(scene,sizeof(scene),&n.lifecycle,&n.stop,&raw)==1&&phase==8&&stops==2);
+        void* out=nullptr;unsigned bytes=0;
+        assert(!resolve(this,root_word,&out,&bytes)&&!resolve(this,child_word,&out,&bytes));
+        // Actor buffers remain engine-owned after removing a scene.
+        assert(arena.live.size()==2&&arena.release(&arena,F::word(npc,0x5b8))&&arena.release(&arena,F::word(npc,0x5ec))&&arena.live.empty());
+    }
+};
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
     const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime){
     // Native CUtlMemory capacities and indexed word insertion, including
@@ -374,6 +538,9 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     cache.n=0;cache.unlocked=false;rootword=99;
     assert(runtime.load(scene,sizeof(scene),"Scenes/Multi",&load,&lb,&rootword)==1&&!rootword&&cache.missing&&cache.unlocked&&loader.live.empty());
     std::puts("PASS multi-object VCD grammar, native track lifecycle, finalization, owned runtime and cache load retirement");
+    VcdAuditArena playback_arena(c,s,t,d,st,si,va);
+    VcdOwnedPlaybackFixture playback(playback_arena);playback.run(runtime);
+    std::puts("PASS owned VCD named NPC startup, nested precache, actor association and retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,
     const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime){
