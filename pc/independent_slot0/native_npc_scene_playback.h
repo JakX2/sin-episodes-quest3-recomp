@@ -362,6 +362,29 @@ struct ChoreographyConstructApi {
     int (__cdecl *event)(void*,unsigned,void* parsed,std::uint32_t* counter) noexcept;
 };
 using GetChoreographyConstructApi=const ChoreographyConstructApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char allocated_generated_scene_export[]="SiN_GetAllocatedGeneratedSceneApi";
+struct GeneratedSceneAllocationBindings {
+    void* context;
+    // Return fresh allocation, or successful null for ordinary OOM.
+    int (__cdecl *allocate)(void*,unsigned requested,void**,unsigned*) noexcept;
+    // Consumes an unpublished raw allocation; symbol constructor failure
+    // must clean its own partial resources before this callback.
+    int (__cdecl *release_unpublished)(void*,void*) noexcept;
+    // Append to parsed vector, including null, and assume ownership of
+    // child on success only. Parsed destruction owns published children.
+    int (__cdecl *append_parsed)(void*,void* parsed,GeneratedSceneChild,void* child) noexcept;
+    ParsedConstructBindings parsed;
+    std::uint32_t* event_counter;
+};
+struct AllocatedGeneratedSceneApi {
+    std::uint32_t version,size;
+    // Replaces create_parsed/create_child and lifecycle.generate callbacks
+    // with native constructors; raw allocation and vector insertion hosted.
+    int (__cdecl *generate)(void*,unsigned,void*,const char*,const GeneratedSceneBindings*,const GeneratedSceneAllocationBindings*,std::uint32_t*) noexcept;
+    int (__cdecl *activate)(void*,unsigned,const SceneEntityLifecycleBindings*,const GeneratedSceneBindings*,const GeneratedSceneAllocationBindings*) noexcept;
+    int (__cdecl *sound)(void*,const char*,const NpcScenePlaybackBindings*,const SceneEntityLifecycleBindings*,const GeneratedSceneBindings*,const GeneratedSceneAllocationBindings*,float*) noexcept;
+};
+using GetAllocatedGeneratedSceneApi=const AllocatedGeneratedSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
