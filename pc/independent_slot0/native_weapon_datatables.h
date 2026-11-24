@@ -289,4 +289,36 @@ using LocalDataSendApi=GraphApi<LocalDataSendBindings,LocalDataSendView>;
 using LocalDataRecvApi=GraphApi<LocalDataRecvBindings,LocalDataRecvView>;
 using GetLocalDataSendApi=const LocalDataSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetLocalDataRecvApi=const LocalDataRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase703: DT_BaseEntity, AnimTimeMustBeFirst and PredictableId.
+// CollisionProperty stays an explicitly borrowed engine/SDK dependency.
+// Clock and transform sampling reflect live host state; no new physics
+// or prop implementation. Entity-change notifications run after writes.
+inline constexpr char entity_send_export[]="SiN_GetBaseEntitySendGraphApi";
+inline constexpr char entity_recv_export[]="SiN_GetBaseEntityRecvGraphApi";
+struct NetworkClock {int tick;float interval;};
+using SampleClock=int (__cdecl *)(void* context,NetworkClock* out) noexcept;
+using SampleTransform=int (__cdecl *)(void* context,const void* entity,int angles,std::uint32_t* xyz) noexcept;
+using EntityNotify=void (__cdecl *)(void* context,void* entity) noexcept;
+struct BaseEntitySendBindings {
+    s::SendTable* collision;
+    const sin_independent::EntityHandleEntry* entries;
+    std::uint32_t entry_count;
+    void* context;
+    SampleClock clock;
+    SampleTransform transform;
+};
+struct BaseEntityRecvBindings {
+    RecvTable* collision;
+    void* context;
+    SampleClock clock;
+    EntityNotify effects_changed,interpolation_changed;
+};
+template<class Table> struct BaseEntityView {void* handle;Table* entity;Table* anim_time;Table* predictable;};
+using BaseEntitySendView=BaseEntityView<s::SendTable>;
+using BaseEntityRecvView=BaseEntityView<RecvTable>;
+using BaseEntitySendApi=GraphApi<BaseEntitySendBindings,BaseEntitySendView>;
+using BaseEntityRecvApi=GraphApi<BaseEntityRecvBindings,BaseEntityRecvView>;
+using GetBaseEntitySendApi=const BaseEntitySendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetBaseEntityRecvApi=const BaseEntityRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
