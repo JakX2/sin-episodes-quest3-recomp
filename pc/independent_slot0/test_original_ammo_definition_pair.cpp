@@ -410,6 +410,13 @@ int main(int argc,char** argv){
     assert(expeditorLifecycle&&!getExpeditorLifecycle(0,sizeof(tables::ExpeditorLifecycleApi))&&!getExpeditorLifecycle(1,0));
     tables::test::check_expeditor_lifecycle(*expeditorLifecycle);
     std::puts("PASS native expeditor construction, history clear and destruction");
+    const auto getTalkCatalog=reinterpret_cast<tables::GetTalkCatalogApi>(GetProcAddress(server,tables::talk_catalog_export));
+    assert(getTalkCatalog&&!GetProcAddress(client,tables::talk_catalog_export));
+    const auto* talkCatalog=getTalkCatalog(1,sizeof(tables::TalkCatalogApi));
+    assert(talkCatalog&&!getTalkCatalog(0,sizeof(tables::TalkCatalogApi))&&!getTalkCatalog(1,0));
+    tables::test::check_talk_catalog(*talkCatalog);
+    std::puts("PASS native 48-row talk catalog and shared/NPC concept cooldowns");
+
 
 
 

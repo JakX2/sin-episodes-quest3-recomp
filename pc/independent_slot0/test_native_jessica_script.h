@@ -578,7 +578,7 @@ struct ExpeditorLifecycleFixture {
             assert(word(f.exp,0)==f.tables.primary&&word(f.exp,8)==f.tables.filter&&word(f.exp,0x10)==f.tables.compare&&word(f.exp,0x20)==0xffffffffu&&word(f.exp,0x28)==0xffffffffu&&!word(f.exp,0x74));
             assert(f.api.clear(&f.ctrl,&f.b)==0);put(s,0,0xabcdef);return f.fail!=1;};
         b.row=[](void* p,void* e,unsigned i,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(e==f.exp&&i<3&&f.ctrl.stage==ExpeditorStage::Destroying);f.rec(10+i);*out=f.rows[i];*n=sizeof(f.rows[i]);return f.fail!=10+i;};
-        b.destroy_response=[](void* p,std::uint32_t v) noexcept -> int{auto& f=get(p);assert(v==0x100||v==0x300);f.rec(v==0x100?20:22);return f.fail!=20;};
+        b.destroy_response=[](void* p,std::uint32_t v) noexcept -> int{auto& f=get(p);assert(v==0x100||v==0x300);const unsigned event=v==0x100?20:22;f.rec(event);return f.fail!=event;};
         b.classify=[](void* p,void* n,int a,unsigned* out) noexcept -> int{auto& f=get(p);assert(n==&f.npc&&!a);f.rec(2);*out=f.class_calls++?f.second_class:f.classification;return f.fail!=2;};
         b.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);f.rec(3);*out=h==1?&f.npc:h==2?&f.other:nullptr;return f.fail!=3;};
         b.symbol_destroy=[](void* p,void* s) noexcept -> int{auto& f=get(p);f.rec(4);assert(s==f.exp+0x34);return f.fail!=4;};
@@ -612,6 +612,52 @@ inline void check_expeditor_lifecycle(const ExpeditorLifecycleApi& api){
     F failed(api);assert(failed.construct()==1);failed.expect({1});failed.populate();failed.fail=20;
     assert(api.clear(&failed.ctrl,&failed.b)==-1&&failed.ctrl.stage==ExpeditorStage::Failed&&!F::word(failed.rows[0],0x18));failed.expect({12,22,11,10,20});
     assert(api.clear(&failed.ctrl,&failed.b)==0);
+}
+
+
+struct TalkCatalogFixture {
+    alignas(4) unsigned char npc[0x1458]{};
+    TalkCooldownState state{};TalkCooldownBindings b{};
+    unsigned events[32]{},count=0,fail=0,disabled=0;
+    bool has_deadline=true;
+    float now=10,deadline=0,lo=10,hi=20,draw=15;
+    const char* concept_name="TLK_HELLO";
+    void rec(unsigned n){assert(count<32);events[count++]=n;}
+    void expect(std::initializer_list<unsigned> l){assert(count==l.size()&&!std::memcmp(events,l.begin(),count*4));count=0;}
+    static TalkCatalogFixture& get(void* p){return *static_cast<TalkCatalogFixture*>(p);}
+    TalkCatalogFixture(){
+        b.context=this;
+        b.clock=[](void* p,float* out) noexcept -> int{auto& f=get(p);f.rec(1);*out=f.now;return f.fail!=1;};
+        b.random=[](void* p,float low,float high,float* out) noexcept -> int{auto& f=get(p);f.rec(2);assert(low==f.lo&&high==f.hi);*out=f.draw;return f.fail!=2;};
+        b.concept_deadline=[](void* p,const char* n,float** out) noexcept -> int{auto& f=get(p);f.rec(3);assert(n&&!std::strcmp(n,f.concept_name));*out=f.has_deadline?&f.deadline:nullptr;return f.fail!=3;};
+        b.propagate=[](void* p,void* npc,const char* n) noexcept -> int{auto& f=get(p);f.rec(4);assert(npc==f.npc&&!std::strcmp(n,f.concept_name));return f.fail!=4;};
+        b.cooldown_disabled=[](void* p,unsigned* out) noexcept -> int{auto& f=get(p);f.rec(5);*out=f.disabled;return f.fail!=5;};
+    }
+};
+inline void check_talk_catalog(const TalkCatalogApi& api){
+    TalkCatalogFixture f;unsigned out=99;
+    assert(api.count==48&&!api.at(48)&&!api.lookup("unknown"));
+    for(unsigned i=0;i<48;++i){const auto* d=api.at(i);assert(d&&d->name&&api.lookup(d->name)&&d->priority==(i<14?0u:i<45?1u:2u));}
+    const auto* hello=api.lookup("tlk_hello");assert(hello==api.at(4)&&hello->flags==7&&hello->global_min==5&&hello->global_max==10);
+    assert(api.lookup("TLK_INPOISONCLOUD")==api.at(29)&&api.at(32)->priority==api.at(14)->priority);
+    assert(api.at(25)->concept_min==15&&api.at(25)->concept_max==30&&api.at(45)->concept_min==5&&api.at(45)->concept_max==7);
+    auto note=[&](){return api.note(f.npc,sizeof(f.npc),&f.state,&f.b,f.concept_name);};
+    f.lo=5;f.hi=10;f.draw=7;assert(note()==1&&f.state.global[0]==17);f.expect({4,5,2,1});
+    f.disabled=1;assert(note()==1&&f.state.global[0]==17);f.expect({4,5});f.disabled=0;
+    f.concept_name="TLK_IDLE";f.lo=10;f.hi=20;f.draw=15;assert(note()==1&&f.state.global[0]==25);f.expect({5,2,1});
+    f.concept_name="TLK_PLPUSH";f.lo=f.hi=f.draw=15;assert(note()==1&&f.deadline==25&&!f.state.global[1]);f.expect({5,3,2,1});
+    f.has_deadline=false;assert(note()==1);f.expect({5,3});f.has_deadline=true;
+    assert(api.concept_ready(&f.b,f.concept_name,&out)==1&&!out);f.expect({3,1});
+    f.now=24.9995f;assert(api.concept_ready(&f.b,f.concept_name,&out)==1&&out);f.expect({3,1});
+    f.now=24.998f;assert(api.concept_ready(&f.b,f.concept_name,&out)==1&&!out);f.expect({3,1});
+    auto ready=[&](unsigned p){return api.group_ready(f.npc,sizeof(f.npc),&f.state,&f.b,p,&out);};
+    assert(ready(0)==1&&!out);f.expect({1});
+    f.now=25;assert(ready(0)==1&&out);f.expect({1,1});
+    float future=30;std::memcpy(f.npc+0x1158,&future,4);
+    assert(ready(2)==1&&!out);f.expect({1});
+    assert(ready(3)==0);f.expect({});
+    f.lo=10;f.hi=20;f.draw=15;assert(api.reset_interaction(&f.state,&f.b)==1&&f.state.global[0]==40);f.expect({2,1});
+    f.fail=1;assert(api.reset_interaction(&f.state,&f.b)==-1&&f.state.global[0]==40);f.expect({2,1});
 }
 
 }
