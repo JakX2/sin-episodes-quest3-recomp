@@ -4026,6 +4026,45 @@ int __cdecl scene_manager_runtime_query(SceneManagerSession* s,const SceneManage
     return queried;
 }
 const SceneManagerRuntimeApi scene_manager_runtime_api{version,sizeof(SceneManagerRuntimeApi),&scene_manager_ensure,&scene_manager_runtime_query};
+int __cdecl scene_state_pause(void* scene,unsigned bytes) noexcept {
+    if(bytes<0x3da||!hologram_writable(scene,0x3da))return 0;
+    if(hologram_read<unsigned char>(scene,0x3d8)&&!hologram_read<unsigned char>(scene,0x3d9))
+        hologram_write(scene,0x3d9,static_cast<unsigned char>(1));
+    return 1;
+}
+int __cdecl scene_state_resume(void* scene,unsigned bytes,const SceneStateBindings* b) noexcept {
+    if(bytes<0x410||!hologram_writable(scene,0x410)||!b||!b->resume_parsed)return 0;
+    if(!hologram_read<unsigned char>(scene,0x3d8)||!hologram_read<unsigned char>(scene,0x3d9))return 1;
+    const auto parsed=hologram_read<std::uint32_t>(scene,0x40c);
+    if(!parsed||!b->resume_parsed(b->context,parsed))return -1;
+    hologram_write(scene,0x3d9,static_cast<unsigned char>(0));hologram_write(scene,0x3f4,static_cast<unsigned char>(0));
+    return 1;
+}
+int __cdecl scene_state_complete(void* scene,unsigned bytes,const SceneStateBindings* b) noexcept {
+    if(bytes<0x450||!hologram_writable(scene,0x450)||!b||!b->completion||!b->finish)return 0;
+    if(!hologram_read<unsigned char>(scene,0x3d8))return 1;
+    const auto h=*b;
+    hologram_write(scene,0x3d8,static_cast<unsigned char>(0));hologram_write(scene,0x3d9,static_cast<unsigned char>(0));
+    if(!h.completion(h.context,static_cast<unsigned char*>(scene)+0x44c,scene,scene,0.f))return -1;
+    return h.finish(h.context,scene,1,0)?1:-1;
+}
+int __cdecl scene_state_wait_tick(void* scene,unsigned bytes,const SceneStateBindings* b) noexcept {
+    if(bytes<0x532||!hologram_writable(scene,0x532)||!b||!b->resolve||!b->resume_wait)return 0;
+    if(!hologram_read<unsigned char>(scene,0x528))return 1;
+    const auto h=*b;const auto handle=hologram_read<std::uint32_t>(scene,0x52c);
+    void* target=nullptr;
+    if(handle!=0xffffffffu&&!h.resolve(h.context,handle,&target))return -1;
+    if(target&&!hologram_read<unsigned char>(scene,0x531))return 1;
+    hologram_write(scene,0x528,static_cast<unsigned char>(0));hologram_write(scene,0x52c,0xffffffffu);
+    return h.resume_wait(h.context,scene)?1:-1;
+}
+int __cdecl scene_state_reset_wait(void* scene,unsigned bytes) noexcept {
+    if(bytes<0x530||!hologram_writable(scene,0x530))return 0;
+    hologram_write(scene,0x524,0u);hologram_write(scene,0x528,static_cast<unsigned char>(0));
+    hologram_write(scene,0x52c,0xffffffffu);return 1;
+}
+const SceneStateApi scene_state_api{version,sizeof(SceneStateApi),&scene_state_pause,&scene_state_resume,&scene_state_complete,&scene_state_wait_tick,&scene_state_reset_wait};
+
 
 
 constexpr unsigned count_size=0x1038;
@@ -8555,6 +8594,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetSceneStateApi=_SiN_GetSceneStateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneStateApi* __cdecl
+SiN_GetSceneStateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneStateApi)?&scene_state_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetResponseChoreographyApi=_SiN_GetResponseChoreographyApi")

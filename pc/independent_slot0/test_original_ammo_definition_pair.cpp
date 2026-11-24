@@ -471,6 +471,13 @@ int main(int argc,char** argv){
     assert(responseChoreography&&!getResponseChoreography(0,sizeof(tables::ResponseChoreographyApi))&&!getResponseChoreography(1,0));
     tables::test::check_response_choreography(*responseChoreography,*sceneManagerRuntime);
     std::puts("PASS native response dispatch through choreography and interruption");
+    const auto getSceneState=reinterpret_cast<tables::GetSceneStateApi>(GetProcAddress(server,tables::scene_state_export));
+    assert(getSceneState&&!GetProcAddress(client,tables::scene_state_export));
+    const auto* sceneState=getSceneState(1,sizeof(tables::SceneStateApi));
+    assert(sceneState&&!getSceneState(0,sizeof(tables::SceneStateApi))&&!getSceneState(1,0));
+    tables::test::check_scene_state(*sceneState);
+    std::puts("PASS native choreography scene pause, resume, completion and wait state");
+
 
 
 

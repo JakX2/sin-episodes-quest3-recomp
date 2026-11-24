@@ -98,6 +98,28 @@ struct ResponseChoreographyApi {
     int (__cdecl *speak)(void* exp,unsigned bytes,const ResponseSpeakBindings*,const ResponseChoreographyBindings*,const char*,const char* modifiers,unsigned* played) noexcept;
 };
 using GetResponseChoreographyApi=const ResponseChoreographyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_state_export[]="SiN_GetSceneStateApi";
+struct SceneStateBindings {
+    void* context;
+    // Original parsed choreography resume 22115aa0.
+    int (__cdecl *resume_parsed)(void*,std::uint32_t parsed) noexcept;
+    // Original output +44c, activator and caller are the scene.
+    int (__cdecl *completion)(void*,void* output,void* activator,void* caller,float delay) noexcept;
+    int (__cdecl *finish)(void*,void* scene,int completed,int argument) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**) noexcept;
+    // Original scene virtual +2b0, after wait fields have been cleared.
+    int (__cdecl *resume_wait)(void*,void* scene) noexcept;
+};
+struct SceneStateApi {
+    std::uint32_t version,size;
+    int (__cdecl *pause)(void*,unsigned) noexcept;
+    int (__cdecl *resume)(void*,unsigned,const SceneStateBindings*) noexcept;
+    int (__cdecl *complete)(void*,unsigned,const SceneStateBindings*) noexcept;
+    int (__cdecl *wait_tick)(void*,unsigned,const SceneStateBindings*) noexcept;
+    int (__cdecl *reset_wait)(void*,unsigned) noexcept;
+};
+using GetSceneStateApi=const SceneStateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

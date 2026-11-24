@@ -237,4 +237,55 @@ inline void check_response_choreography(const ResponseChoreographyApi& api,const
     playback.expect({1,3,3,6,7,9,11,12,13,14,15});response.expect({1,2,3,5,12,16,17,19});
 }
 
+
+inline void check_scene_state(const SceneStateApi& api){
+    using F=ScenePlaybackFixture;
+    struct State {
+        alignas(4) unsigned char scene[0x5e9]{};
+        int target=0;unsigned resumed=0,outputs=0,finished=0,resolve_calls=0,waits=0,fail=0;
+    } f;
+    SceneStateBindings b{};b.context=&f;
+    b.resume_parsed=[](void* p,std::uint32_t parsed) noexcept -> int{
+        auto& f=*static_cast<State*>(p);assert(parsed==0x1234&&f.scene[0x3d8]&&f.scene[0x3d9]&&f.scene[0x3f4]);
+        ++f.resumed;return f.fail!=1;
+    };
+    b.completion=[](void* p,void* output,void* activator,void* caller,float delay) noexcept -> int{
+        auto& f=*static_cast<State*>(p);assert(output==f.scene+0x44c&&activator==f.scene&&caller==f.scene&&!delay&&!f.scene[0x3d8]&&!f.scene[0x3d9]);++f.outputs;return f.fail!=2;
+    };
+    b.finish=[](void* p,void* scene,int complete,int arg) noexcept -> int{
+        auto& f=*static_cast<State*>(p);assert(scene==f.scene&&complete==1&&!arg&&!f.scene[0x3d8]&&!f.scene[0x3d9]);++f.finished;return f.fail!=3;
+    };
+    b.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{
+        auto& f=*static_cast<State*>(p);++f.resolve_calls;*out=h==0x1001?&f.target:nullptr;return f.fail!=4;
+    };
+    b.resume_wait=[](void* p,void* scene) noexcept -> int{
+        auto& f=*static_cast<State*>(p);assert(scene==f.scene&&!f.scene[0x528]&&F::word(scene,0x52c)==0xffffffffu);++f.waits;return f.fail!=5;
+    };
+    auto pause=[&](){return api.pause(f.scene,sizeof(f.scene));};
+    auto resume=[&](){return api.resume(f.scene,sizeof(f.scene),&b);};
+    auto complete=[&](){return api.complete(f.scene,sizeof(f.scene),&b);};
+    auto tick=[&](){return api.wait_tick(f.scene,sizeof(f.scene),&b);};
+    assert(pause()==1&&!f.scene[0x3d9]&&resume()==1&&!f.resumed&&complete()==1&&!f.outputs);
+    f.scene[0x3d8]=1;f.scene[0x3f4]=1;F::put(f.scene,0x40c,0x1234);
+    assert(pause()==1&&f.scene[0x3d9]&&pause()==1);
+    f.fail=1;assert(resume()==-1&&f.scene[0x3d9]&&f.scene[0x3f4]);f.fail=0;
+    assert(resume()==1&&f.resumed==2&&!f.scene[0x3d9]&&!f.scene[0x3f4]);
+    assert(pause()==1&&complete()==1&&f.outputs==1&&f.finished==1);
+    assert(complete()==1&&f.outputs==1&&f.finished==1);
+    f.scene[0x3d8]=1;f.fail=2;assert(complete()==-1&&f.outputs==2&&f.finished==1&&!f.scene[0x3d8]);f.fail=0;
+    assert(tick()==1&&!f.resolve_calls&&!f.waits);
+    f.scene[0x528]=1;F::put(f.scene,0x52c,0x1001);
+    assert(tick()==1&&f.resolve_calls==1&&!f.waits&&f.scene[0x528]);
+    f.scene[0x531]=1;assert(tick()==1&&f.resolve_calls==2&&f.waits==1&&!f.scene[0x528]);
+    f.scene[0x531]=0;f.scene[0x528]=1;F::put(f.scene,0x52c,0x2001);
+    assert(tick()==1&&f.waits==2&&f.resolve_calls==3);
+    f.scene[0x528]=1;assert(tick()==1&&f.waits==3&&f.resolve_calls==3);
+    f.scene[0x528]=1;F::put(f.scene,0x52c,0x1001);f.fail=4;
+    assert(tick()==-1&&f.scene[0x528]&&F::word(f.scene,0x52c)==0x1001);
+    f.fail=5;f.scene[0x531]=1;assert(tick()==-1&&!f.scene[0x528]&&f.waits==4);
+    F::put(f.scene,0x524,123);f.scene[0x528]=1;F::put(f.scene,0x52c,0x1001);
+    assert(api.reset_wait(f.scene,sizeof(f.scene))==1&&!F::word(f.scene,0x524)&&!f.scene[0x528]&&F::word(f.scene,0x52c)==0xffffffffu&&f.scene[0x531]==1);
+    assert(api.wait_tick(f.scene,0x531,&b)==0);
+}
+
 }
