@@ -1,6 +1,7 @@
 #pragma once
 #include "native_server_facial_think.h"
 #include "native_server_composed_facial_think.h"
+#include "native_server_named_facial_think.h"
 #include "native_server_flex_spline.h"
 #include <cassert>
 #include <cstring>
@@ -55,7 +56,7 @@ inline void check_server_facial_think(const ServerFacialThinkApi& api){
     assert(api.run(actor,sizeof(actor),14,&b)&&!actor[0x600]);
 }
 
-inline void check_active_server_facial_records(const ServerFacialThinkApi& api,const ServerComposedFacialThinkApi* composed=nullptr){
+inline void check_active_server_facial_records(const ServerFacialThinkApi& api,const ServerComposedFacialThinkApi* composed=nullptr,const ServerNamedFacialThinkApi* named=nullptr){
     struct Fixture {
         alignas(4) unsigned char rows[0x80]{},scene[0x21c]{},events[2][0x3c0]{},track[0x50]{},vfe[256]{};
         std::uint32_t tracks[1]{6};
@@ -123,20 +124,24 @@ inline void check_active_server_facial_records(const ServerFacialThinkApi& api,c
     flex.intensity=expression.intensity; // no sample callback: native raw spline.
     b.expression=&expression;b.flex=&flex;
     ServerComposedFacialThinkBindings cb{};cb.base=b;cb.native_intensity=true;
-    if(composed){expression.intensity=nullptr;flex.intensity=nullptr;}
-    auto run=[&](float now){return composed?composed->run(actor,sizeof(actor),now,&cb):api.run(actor,sizeof(actor),now,&b);};
+    if(composed||named){expression.intensity=nullptr;flex.intensity=nullptr;}
+    const char* names[]={"JAW"};ServerVfeRemapEntry entries[2]{};ServerVfeRemapCache cache{entries,0,2};
+    ServerNamedFacialThinkBindings nb{cb,names,1,&cache};
+    if(named){expression.controller=nullptr;flex.controller=nullptr;}
+    auto run=[&](float now){return named?named->run(actor,sizeof(actor),now,&nb):composed?composed->run(actor,sizeof(actor),now,&cb):api.run(actor,sizeof(actor),now,&b);};
     auto value=[&](){float v=0;std::memcpy(&v,actor+0x4a8,4);return v;};
     // Decay .2 -> .19, expression adds .2, spline blends half way to .8.
     assert(run(10));
     assert(close(value(),.595f)&&f.rows[0xc]&&f.rows[0x4c]&&f.events[1][0x320]);
-    assert(f.loads==1&&f.expr_maps==2&&f.flex_maps==1&&f.intensity_calls==(composed?0u:2u)&&actor[0x200]&&!actor[0x600]);
+    assert(f.loads==1&&f.expr_maps==(named?0u:2u)&&f.flex_maps==(named?0u:1u)&&f.intensity_calls==((composed||named)?0u:2u)&&actor[0x200]&&!actor[0x600]);
     assert(run(11));
-    assert(close(value(),.782625f)&&f.loads==2&&f.expr_maps==4&&f.flex_maps==1&&f.intensity_calls==(composed?0u:4u));
+    assert(close(value(),.782625f)&&f.loads==2&&f.expr_maps==(named?0u:4u)&&f.flex_maps==(named?0u:1u)&&f.intensity_calls==((composed||named)?0u:4u));
     // Swap vector ordering: flex first, then expression, so result differs.
     unsigned char tmp[0x40];std::memcpy(tmp,f.rows,0x40);std::memcpy(f.rows,f.rows+0x40,0x40);
     std::memcpy(f.rows+0x40,tmp,0x40);put(actor,0x4a8,.2f);
     assert(run(12));
-    assert(close(value(),.695f)&&f.flex_maps==1&&f.intensity_calls==(composed?0u:6u));
+    assert(close(value(),.695f)&&f.flex_maps==(named?0u:1u)&&f.intensity_calls==((composed||named)?0u:6u));
+    if(named)assert(cache.count==1&&entries[0].bank==f.vfe&&entries[0].local[0]==0);
 }
 
 inline void check_composed_npc_random_record(const ServerComposedFacialThinkApi& api){

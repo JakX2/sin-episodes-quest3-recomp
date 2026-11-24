@@ -20,6 +20,7 @@
 #include "native_server_composed_facial_think.h"
 #include "native_server_facial_records.h"
 #include "native_server_vfe_remap.h"
+#include "native_server_named_facial_think.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11110,11 +11111,13 @@ int __cdecl server_event_intensity(const void* event,unsigned bytes,float time,v
 const ServerEventIntensityApi server_event_intensity_api{version,sizeof(ServerEventIntensityApi),&server_intensity_ramp,&server_event_intensity};
 
 struct ServerNativeIntensity {void* context;ServerIntensityStorage storage;};
+struct ServerNativeControllerMap {const char* const* names;unsigned count;ServerVfeRemapCache* cache;};
+int __cdecl server_flex_controller_find(const char* const*,unsigned,const char*,int*) noexcept;
 int server_flex_animation_apply_impl(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
-    float scene_time,float now,bool background,const ServerFlexAnimationBindings* b,const ServerNativeIntensity* native) noexcept {
+    float scene_time,float now,bool background,const ServerFlexAnimationBindings* b,const ServerNativeIntensity* native,const ServerNativeControllerMap* mapping=nullptr) noexcept {
     if(bytes<server_flex_scene_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_scene_extent)||
        !hologram_writable(record,0x40)||!hologram_writable(event,0x3c0)||!b||
-       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!b->controller||(!native&&!b->intensity)||
+       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||(!mapping&&!b->controller)||(!native&&!b->intensity)||(mapping&&mapping->count!=b->count)||
        !server_flex_ranges(b->ranges,b->count)||!std::isfinite(scene_time)||!std::isfinite(now))return 0;
     const auto h=*b;
     const float start=hologram_read<float>(event,0x184),end=hologram_read<float>(event,0x188);
@@ -11138,7 +11141,9 @@ int server_flex_animation_apply_impl(void* actor,unsigned bytes,void* record,uns
                     const char* prefix=side==0?"right_":"left_";
                     std::strcpy(prefixed,prefix);std::strcat(prefixed,name);query=prefixed;
                 }
-                int index=h.controller(h.context,query);
+                int index=0;
+                if(mapping){if(!server_flex_controller_find(mapping->names,mapping->count,query,&index))return 0;}
+                else index=h.controller(h.context,query);
                 if(index==-2||index<-2||index>=static_cast<int>(h.count))return 0;
                 if(index==-1)index=0;
                 hologram_write(track,0x3c+side*4,index);
@@ -11264,11 +11269,11 @@ int __cdecl server_vfe_remap_clear(ServerVfeRemapCache* cache) noexcept {
 const ServerVfeRemapApi server_vfe_remap_api{version,sizeof(ServerVfeRemapApi),&server_flex_controller_find,&server_vfe_remap_lookup,&server_vfe_remap_clear};
 
 int server_expression_apply_impl(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
-    float scene_time,const ServerExpressionBindings* b,const ServerNativeIntensity* native) noexcept {
+    float scene_time,const ServerExpressionBindings* b,const ServerNativeIntensity* native,const ServerNativeControllerMap* mapping=nullptr) noexcept {
     if(bytes<server_flex_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_extent)||
        !record||!sin_independent::vgui_layout::Readable(record,0x40)||!event||
        !sin_independent::vgui_layout::Readable(event,0x3c0)||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
-       !b->load||!b->controller||(!native&&!b->intensity)||!server_flex_ranges(b->ranges,b->count)||!std::isfinite(scene_time))return 0;
+       !b->load||(!mapping&&!b->controller)||(!native&&!b->intensity)||(mapping&&mapping->count!=b->count)||!server_flex_ranges(b->ranges,b->count)||!std::isfinite(scene_time))return 0;
     if(hologram_read<float>(event,0x188)==-1)return 1;
     const auto h=*b;
     const auto* name=static_cast<const char*>(event)+0x84;
@@ -11318,7 +11323,10 @@ int server_expression_apply_impl(void* actor,unsigned bytes,void* record,unsigne
         if(key<0||key>=selected->keys)return 0;
         const auto* controller=selected->name(selected->word(selected->names_off+4LL*key));
         if(!controller)return 0;
-        int local=h.controller(h.context,actor,controller);
+        int local=0;
+        if(mapping){
+            if(!server_vfe_remap_lookup(mapping->cache,selected==&base?generic:character,mapping->names,mapping->count,key,&local))return 0;
+        }else local=h.controller(h.context,actor,controller);
         if(local<-1)return 0;
         if(local==-1)local=0; // 220f5840 fallback, cached by 220fb5b0
         if(local>=static_cast<int>(h.count))continue;
@@ -11336,11 +11344,11 @@ int __cdecl server_expression_apply(void* actor,unsigned bytes,void* record,unsi
 }
 const ServerExpressionApi server_expression_api{version,sizeof(ServerExpressionApi),&server_expression_apply};
 int server_npc_random_expression_impl(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
-    float time,float now,bool background,const ServerNpcRandomExpressionBindings* b,unsigned* accepted,const ServerNativeIntensity* native) noexcept {
+    float time,float now,bool background,const ServerNpcRandomExpressionBindings* b,unsigned* accepted,const ServerNativeIntensity* native,const ServerNativeControllerMap* mapping=nullptr) noexcept {
     if(bytes<server_npc_random_expression_extent||rb<0x40||eb<0x3c0||
        !hologram_writable(actor,server_npc_random_expression_extent)||!hologram_writable(record,0x40)||
        !sin_independent::vgui_layout::Readable(event,0x3c0)||!hologram_writable(accepted,4)||
-       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->load||!b->controller||
+       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->load||(!mapping&&!b->controller)||(mapping&&mapping->count!=b->count)||
        !b->random_float||!b->random_int||!server_flex_ranges(b->ranges,b->count)||
        !std::isfinite(time)||!std::isfinite(now))return 0;
     const auto h=*b;
@@ -11369,7 +11377,10 @@ int server_npc_random_expression_impl(void* actor,unsigned bytes,void* record,un
             if(key<0||key>=reader.keys)return 0;
             const auto* name=reader.name(reader.word(reader.names_off+key*4LL));
             if(!name)return 0;
-            int local=h.controller(h.context,actor,name);
+            int local=0;
+            if(mapping){
+                if(!server_vfe_remap_lookup(mapping->cache,bank,mapping->names,mapping->count,key,&local))return 0;
+            }else local=h.controller(h.context,actor,name);
             if(local<-1)return 0;
             if(local==-1)local=0;
             if(local>=static_cast<int>(h.count))continue;
@@ -11410,7 +11421,7 @@ int __cdecl server_npc_random_expression_apply(void* actor,unsigned bytes,void* 
 const ServerNpcRandomExpressionApi server_npc_random_expression_api{version,sizeof(ServerNpcRandomExpressionApi),&server_npc_random_expression_apply};
 
 int server_facial_think_impl(void* actor,unsigned bytes,float now,const ServerFacialThinkBindings* b,
-    const ServerNpcRandomExpressionBindings* random,bool native_intensity) noexcept {
+    const ServerNpcRandomExpressionBindings* random,bool native_intensity,const ServerNativeControllerMap* mapping=nullptr) noexcept {
     if(bytes<server_flex_scene_extent||!hologram_writable(actor,server_flex_scene_extent)||!b||
        !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!std::isfinite(now))return 0;
     const ServerNativeIntensity source{b->context,b->storage};
@@ -11435,15 +11446,15 @@ int server_facial_think_impl(void* actor,unsigned bytes,float now,const ServerFa
         const float time=hologram_read<float>(scene,0x78);
         unsigned accepted=0;
         if(type==2&&h.base_expression){
-            if(!h.expression||!server_expression_apply_impl(actor,bytes,row,0x40,event,en,time,h.expression,native))return 0;
+            if(!h.expression||!server_expression_apply_impl(actor,bytes,row,0x40,event,en,time,h.expression,native,mapping))return 0;
             accepted=1;
         }else if(type==10&&h.base_flex){
             if(!h.flex||!server_flex_animation_apply_impl(actor,bytes,row,0x40,event,en,time,now,
-                hologram_read<unsigned char>(scene,0x218)!=0,h.flex,native))return 0;
+                hologram_read<unsigned char>(scene,0x218)!=0,h.flex,native,mapping))return 0;
             accepted=1;
         }else if(type==16&&random&&hologram_read<unsigned>(row,0x38)==6){
             if(!server_npc_random_expression_impl(actor,bytes,row,0x40,event,en,time,now,
-                hologram_read<unsigned char>(scene,0x218)!=0,random,&accepted,native))return 0;
+                hologram_read<unsigned char>(scene,0x218)!=0,random,&accepted,native,mapping))return 0;
         }else if(type==5&&h.base_speech)accepted=1;
         else if(!h.other||!h.other(h.context,actor,row,scene,event,&accepted))return 0;
         // Original retains the raw row pointer across virtual dispatch.
@@ -11462,6 +11473,15 @@ int __cdecl server_composed_facial_think(void* actor,unsigned bytes,float now,co
     return server_facial_think_impl(actor,bytes,now,&b->base,b->random_expression,b->native_intensity);
 }
 const ServerComposedFacialThinkApi server_composed_facial_think_api{version,sizeof(ServerComposedFacialThinkApi),&server_composed_facial_think};
+int __cdecl server_named_facial_think(void* actor,unsigned bytes,float now,const ServerNamedFacialThinkBindings* b) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||b->controller_count!=b->composed.base.count||
+       b->controller_count>64||!server_remap_ready(b->remap)||
+       (b->controller_count&&(!b->controller_names||!sin_independent::vgui_layout::Readable(b->controller_names,b->controller_count*sizeof(*b->controller_names)))))return 0;
+    const ServerNativeControllerMap mapping{b->controller_names,b->controller_count,b->remap};
+    return server_facial_think_impl(actor,bytes,now,&b->composed.base,b->composed.random_expression,b->composed.native_intensity,&mapping);
+}
+const ServerNamedFacialThinkApi server_named_facial_think_api{version,sizeof(ServerNamedFacialThinkApi),&server_named_facial_think};
+
 const ServerFacialRecordBindings& facial_record_config(void* p) noexcept {
     return *static_cast<const ServerFacialRecordBindings*>(p);
 }
@@ -13464,6 +13484,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEve
 SiN_GetServerEventIntensityApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerEventIntensityApi)?&server_event_intensity_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNamedFacialThinkApi=_SiN_GetServerNamedFacialThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNamedFacialThinkApi* __cdecl
+SiN_GetServerNamedFacialThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNamedFacialThinkApi)?&server_named_facial_think_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerVfeRemapApi=_SiN_GetServerVfeRemapApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfeRemapApi* __cdecl
