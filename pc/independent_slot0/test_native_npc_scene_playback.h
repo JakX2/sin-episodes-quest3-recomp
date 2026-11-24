@@ -1632,6 +1632,71 @@ inline void check_native_generated_map_dialogue(const NativeGeneratedMapDialogue
     assert(manager.destroy(&jf.control,&jf.manager_life)==1);
 }
 
+struct ChoreographyDestructionFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char root[0x220]{},nested[0x220]{},actor[0x118]{},event[0x3c0]{},channel[0x9c]{};
+    alignas(4) std::uint32_t actors[2]{},events[1]{},channels[1]{},links[1]{},aux[2]{},borrowed[1]{};
+    alignas(4) std::uint32_t extra[7]{};
+    struct Allocation {void* ptr;unsigned bytes;bool freed;};
+    Allocation allocs[16]{};
+    unsigned total=0,order[24]{},steps=0,fail=0;
+    ChoreographyDestructionBindings b{};
+    static ChoreographyDestructionFixture& self(void* p){return *static_cast<ChoreographyDestructionFixture*>(p);}
+    unsigned add(void* p,unsigned n){allocs[total]={p,n,false};return ++total;}
+    unsigned index(std::uint32_t w){for(unsigned i=0;i<total;++i)if(F::ptr(allocs[i].ptr)==w)return i+1;return 0;}
+    void step(unsigned n){assert(steps<24);order[steps++]=n;}
+    static void vec(void* p,unsigned off,void* data,unsigned capacity,unsigned count,bool external=false){
+        F::put(p,off,F::ptr(data));F::put(p,off+4,capacity);F::put(p,off+8,external?0xffffffffu:0u);
+        F::put(p,off+0xc,count);F::put(p,off+0x10,F::ptr(data));
+    }
+    ChoreographyDestructionFixture(){
+        add(root,sizeof(root));add(nested,sizeof(nested));add(actor,sizeof(actor));add(event,sizeof(event));add(channel,sizeof(channel));
+        add(actors,sizeof(actors));add(events,sizeof(events));add(channels,sizeof(channels));add(links,sizeof(links));add(aux,sizeof(aux));add(borrowed,sizeof(borrowed));
+        for(unsigned i=0;i<5;++i)add(extra+i,4);
+        actors[0]=F::ptr(actor);actors[1]=0;events[0]=F::ptr(event);channels[0]=F::ptr(channel);links[0]=F::ptr(channel);
+        aux[0]=0x11111111;aux[1]=0x22222222;borrowed[0]=F::ptr(event);
+        vec(root,0x14,actors,2,2);vec(root,0,events,1,1);vec(root,0x28,channels,1,1);
+        vec(actor,0x100,links,1,1);vec(channel,0x84,borrowed,1,1,true);
+        vec(event,0x30c,aux,2,2);F::put(event,0x324,F::ptr(nested));
+        vec(event,0x3a4,extra,1,1);vec(event,0x2f8,extra+1,1,1);
+        vec(root,0x12c,extra+2,1,1);vec(root,0x64,extra+3,1,1);
+        F::put(root,0x144,F::ptr(extra+4));F::put(root,0x148,1);
+        b.context=this;
+        b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);const auto i=f.index(w);if(!i||f.allocs[i-1].freed)return 0;
+            *out=f.allocs[i-1].ptr;*n=f.allocs[i-1].bytes;return 1;};
+        b.release=[](void* p,std::uint32_t w,ChoreographyRelease kind) noexcept -> int{
+            auto& f=self(p);const auto i=f.index(w);assert(i&&!f.allocs[i-1].freed&&i!=11);
+            const ChoreographyRelease kinds[]={ChoreographyRelease::Parsed,ChoreographyRelease::Parsed,ChoreographyRelease::Actor,ChoreographyRelease::Event,ChoreographyRelease::Channel};
+            assert(kind==(i<=5?kinds[i-1]:ChoreographyRelease::Vector));
+            if(i==3)assert(!F::word(f.actor,0x100)&&!F::word(f.actor,0x10c)&&!F::word(f.actor,0x110));
+            if(i==5)assert(F::word(f.channel,0x84)==F::ptr(f.borrowed)&&F::word(f.channel,0x88)==1&&!F::word(f.channel,0x90)&&F::word(f.channel,0x94)==F::ptr(f.borrowed));
+            if(i==10)assert(!F::word(f.event,0x318));
+            f.step(i);f.allocs[i-1].freed=true;return i!=f.fail;};
+        b.symbol_destroy=[](void* p,void* symbol) noexcept -> int{
+            auto& f=self(p);assert(symbol==f.nested+0x164||symbol==f.root+0x164);f.step(symbol==f.nested+0x164?20:21);return 1;};
+        b.delete_aux=[](void* p,std::uint32_t w,unsigned flag) noexcept -> int{
+            auto& f=self(p);assert(flag==1);
+            if(w==0x11111111){assert(F::word(f.event,0x318)==1&&f.aux[0]==0x22222222);f.step(22);}
+            else {assert(w==0x22222222&&!F::word(f.event,0x318));f.step(23);}return 1;};
+    }
+};
+inline void check_choreography_destruction(const ChoreographyDestructionApi& api){
+    using F=ScenePlaybackFixture;ChoreographyDestructionFixture f;
+    assert(api.parsed(f.root,0x21f,&f.b)==0&&!f.steps);
+    assert(api.parsed(f.root,sizeof(f.root),&f.b)==1);
+    const unsigned expected[]={9,3,22,23,20,2,12,10,13,4,5,21,16,14,15,8,6,7,1};
+    assert(f.steps==sizeof(expected)/sizeof(*expected)&&!std::memcmp(f.order,expected,sizeof(expected)));
+    for(unsigned i=0;i<f.total;++i)assert(f.allocs[i].freed==(i!=10));
+    assert(!F::word(f.root,0x20)&&!F::word(f.root,0xc)&&!F::word(f.root,0x34)&&!F::word(f.root,0x148));
+    ChoreographyDestructionFixture failed;failed.fail=9;
+    assert(api.parsed(failed.root,sizeof(failed.root),&failed.b)==-1&&failed.steps==1&&!F::word(failed.actor,0x100));
+    ChoreographyDestructionFixture cycle;F::put(cycle.event,0x324,F::ptr(cycle.root));
+    assert(api.parsed(cycle.root,sizeof(cycle.root),&cycle.b)==-1&&!cycle.allocs[0].freed&&!cycle.allocs[3].freed);
+    ChoreographyDestructionFixture standalone;
+    assert(api.event(standalone.event,sizeof(standalone.event),&standalone.b)==1&&standalone.allocs[3].freed&&standalone.allocs[1].freed&&!standalone.allocs[0].freed);
+}
+
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};
