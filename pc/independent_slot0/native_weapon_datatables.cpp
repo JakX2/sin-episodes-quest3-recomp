@@ -4117,23 +4117,39 @@ int __cdecl phud_bind(HologramControl* ctrl,const PoisonHudBindings* b) noexcept
     }
     return phud_finish(ctrl,true);
 }
-int __cdecl phud_tick(HologramControl* ctrl,const PoisonHudBindings* b,const void* player,unsigned bytes) noexcept {
-    if(!phud_valid(ctrl)||!b||!b->sound)return 0;
+template<class Dispatch>
+int phud_tick_body(HologramControl* ctrl,const void* player,unsigned bytes,Dispatch dispatch) noexcept {
     if(!player)return 1;
     if(bytes<0x11f0||!sin_independent::vgui_layout::Readable(player,0x11f0))return 0;
-    ctrl->busy=1;const auto host=*b;auto* obj=ctrl->object;
+    ctrl->busy=1;auto* obj=ctrl->object;
     const float incoming=hologram_read<float>(player,0x11ec);
     if(incoming==hologram_read<float>(obj,phud_fraction))return phud_finish(ctrl,true);
     const auto alpha=hologram_read<unsigned char>(obj,phud_color+3);
-    const char* sound=nullptr;
-    if(incoming<1.0f&&alpha==0)sound="PoisonTimeFadeIn";
-    else if(incoming>=1.0f&&alpha==255)sound="PoisonTimeFadeOut";
-    if(sound&&!host.sound(host.context,sound))return phud_finish(ctrl,false);
-    // Unlike a pure projection model, original re-reads player after
-    // sound dispatch (the host may synchronously update its value).
+    const char* event=nullptr;
+    if(incoming<1.0f&&alpha==0)event="PoisonTimeFadeIn";
+    else if(incoming>=1.0f&&alpha==255)event="PoisonTimeFadeOut";
+    if(event&&!dispatch(event))return phud_finish(ctrl,false);
+    // The original re-reads player after animation-controller dispatch.
+    // Scheme animation owns color; this method never writes alpha.
     hologram_write(obj,phud_fraction,static_cast<float>(1.0-static_cast<double>(hologram_read<float>(player,0x11ec))));
     return phud_finish(ctrl,true);
 }
+int __cdecl phud_tick(HologramControl* ctrl,const PoisonHudBindings* b,const void* player,unsigned bytes) noexcept {
+    if(!phud_valid(ctrl)||!b||!b->sound)return 0;
+    const auto host=*b;
+    return phud_tick_body(ctrl,player,bytes,[&](const char* event){return host.sound(host.context,event)!=0;});
+}
+int __cdecl phud_tick_animation(HologramControl* ctrl,const PoisonHudAnimationBindings* b,const void* player,unsigned bytes) noexcept {
+    if(!phud_valid(ctrl)||!b||!b->controller||!b->start_sequence)return 0;
+    const auto host=*b;
+    return phud_tick_body(ctrl,player,bytes,[&](const char* event){
+        void* controller=nullptr;unsigned started=0;
+        if(!host.controller(host.context,&controller)||!controller)return false;
+        // The original HUD ignores the sequence-start return boolean.
+        return host.start_sequence(host.context,controller,event,&started)!=0;
+    });
+}
+const PoisonHudAnimationApi poison_hud_animation_api{version,sizeof(PoisonHudAnimationApi),&phud_tick_animation};
 int __cdecl phud_paint(HologramControl* ctrl,const PoisonHudBindings* b) noexcept {
     if(!phud_valid(ctrl)||!b||!b->base_paint||!b->draw)return 0;
     ctrl->busy=1;const auto host=*b;auto* obj=ctrl->object;
@@ -4542,5 +4558,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScreenCom
 SiN_GetScreenCommandApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ScreenCommandApi)?&screen_command_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPoisonHudAnimationApi=_SiN_GetPoisonHudAnimationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PoisonHudAnimationApi* __cdecl
+SiN_GetPoisonHudAnimationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PoisonHudAnimationApi)?&poison_hud_animation_api:nullptr;
 }
 #endif

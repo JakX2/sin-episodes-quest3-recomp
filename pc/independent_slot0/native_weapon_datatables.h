@@ -1149,6 +1149,8 @@ struct PoisonHudDraw {
 struct PoisonHudBindings {
     void* context;
     int (__cdecl *resource)(void*,const char* name,void**) noexcept;
+    // Historical field name retained for ABI/source compatibility.
+    // Dispatch a HUD animation sequence, NOT an audio sound.
     int (__cdecl *sound)(void*,const char* name) noexcept;
     int (__cdecl *base_paint)(void*,void* panel) noexcept;
     // Host owns the existing engine HUD draw helper 24154d50 contract.
@@ -1164,6 +1166,23 @@ struct PoisonHudApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetPoisonHudApi=const PoisonHudApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase735: actual SDK HUD-animation controller dispatch boundary.
+// Controller lookup is original client mode slot9; sequence start
+// is original 240104b0. Host supplies the compatible engine services.
+inline constexpr char poison_hud_animation_export[]="SiN_GetPoisonHudAnimationApi";
+struct PoisonHudAnimationBindings {
+    void* context;
+    int (__cdecl *controller)(void*,void**) noexcept;
+    // Transport status is return value; started is original AL result,
+    // which the HUD caller ignores (including a missing sequence).
+    int (__cdecl *start_sequence)(void*,void* controller,const char* event,unsigned* started) noexcept;
+};
+struct PoisonHudAnimationApi {
+    std::uint32_t version,size;
+    int (__cdecl *tick)(HologramControl*,const PoisonHudAnimationBindings*,const void* player,unsigned bytes) noexcept;
+};
+using GetPoisonHudAnimationApi=const PoisonHudAnimationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 // Phase731: shared SDK-defined CVGuiScreenPanel command dispatch.
 inline constexpr char screen_command_export[]="SiN_GetScreenCommandApi";

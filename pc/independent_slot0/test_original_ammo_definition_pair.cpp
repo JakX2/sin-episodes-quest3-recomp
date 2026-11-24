@@ -307,6 +307,12 @@ int main(int argc,char** argv){
     assert(playerDamage&&!getPlayerDamage(0,sizeof(tables::PlayerDamageApi))&&!getPlayerDamage(1,0));
     tables::test::check_player_damage(*playerDamage,*playerPoison,*pickup);
     std::puts("PASS native player damage dispatch, poison handle attachment and base damage forwarding");
+    const auto getPoisonAnimation=reinterpret_cast<tables::GetPoisonHudAnimationApi>(GetProcAddress(client,tables::poison_hud_animation_export));
+    assert(getPoisonAnimation&&!GetProcAddress(server,tables::poison_hud_animation_export));
+    const auto* poisonAnimation=getPoisonAnimation(1,sizeof(tables::PoisonHudAnimationApi));
+    assert(poisonAnimation&&!getPoisonAnimation(0,sizeof(tables::PoisonHudAnimationApi))&&!getPoisonAnimation(1,0));
+    tables::test::check_poison_animation(*poisonAnimation,*poisonHud);
+    std::puts("PASS SDK poison HUD animation controller dispatch and ignored sequence-start result");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
