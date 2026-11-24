@@ -77,6 +77,7 @@ struct MapEntity {
     sin_compat::ar_grenade::Runtime grenade{};
     bool grenade_contact=false,grenade_uncertain=false;
     bool rifle_launch_uncertain=false;
+    bool magnum_uncertain=false;
 };
 struct MapLevel {
     std::uint32_t epoch=0;
@@ -576,6 +577,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetScattergunSecondaryApi=_SiN_GetScattergunSecondaryApi")
 #pragma comment(linker,"/EXPORT:SiN_GetARGrenadeApi=_SiN_GetARGrenadeApi")
 #pragma comment(linker,"/EXPORT:SiN_GetRifleGrenadeApi=_SiN_GetRifleGrenadeApi")
+#pragma comment(linker,"/EXPORT:SiN_GetMagnumApi=_SiN_GetMagnumApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -1549,9 +1551,138 @@ int SIN_FIXED_CALL rifle_launch(abi::MapEntityRef ref,const abi::RifleLaunchInpu
 const abi::RifleGrenadeApi rifle_launch_api{abi::rifle_launch_version,sizeof(abi::RifleGrenadeApi),
     &rifle_launch,&rifle_launch_status};
 
+MapEntity* find_magnum(abi::MapEntityRef ref) noexcept {
+    auto* e=find_weapon(ref);
+    return e&&e->spawned&&e->kind==EntityKind::Magnum?e:nullptr;
+}
+int SIN_FIXED_CALL magnum_acknowledge(abi::MapEntityRef ref) noexcept {
+    auto* e=find_magnum(ref);
+    if(reading_engine_skill||!e)return 0;
+    e->magnum_uncertain=false;return 1;
+}
+// Original slot216 0x22316b30. This is the before-base deferred
+// primary path, not a reconstruction of primary attack itself.
+int SIN_FIXED_CALL magnum_frame(abi::MapEntityRef ref,const abi::MagnumFrameObservation* input,
+        const abi::MagnumFrameHost* host,void* context,abi::MagnumFrameReport* out) noexcept {
+    if(!out)return 0;
+    abi::MagnumFrameReport report{};
+    auto* e=find_magnum(ref);
+    const auto finish=[&](std::uint32_t code) noexcept {
+        report.code=code;report.needs_resync=e&&e->magnum_uncertain?1u:0u;
+        *out=report;return 1;
+    };
+    if(reading_engine_skill||!e||e->weapon_resync||e->magnum_uncertain||!input||
+       !host||host->version!=abi::magnum_version||host->size!=sizeof(*host)||!host->base_update)
+        return finish(abi::MagnumFrameRejected);
+    const auto in=*input;
+    const auto cb=*host;
+    report.pending_after=in.pending_count;
+    if(in.pending_count>0&&(!cb.clock||!cb.read_primary_deadline||!cb.write_primary_deadline||
+       !cb.write_pending_count||!cb.primary_attack||!cb.read_pending_count||!cb.write_pending_deadline))
+        return finish(abi::MagnumFrameRejected);
+    OutputScope scope;
+    const auto call=[&](auto fn,auto... args){
+        ++report.attempted;
+        if(!fn(context,args...))throw 1;
+        ++report.delivered;
+    };
+    const auto clock=[&](){
+        float now=0.f;call(cb.clock,&now);
+        if(!std::isfinite(now))throw 1;
+        return now;
+    };
+    try {
+        bool fired=false;
+        if(in.pending_count>0){
+            const float now=clock();
+            // Original x87 unordered comparison does not enter the due
+            // branch. Keep NaN in the skip path rather than firing.
+            if(in.pending_deadline<=now){
+                float saved=0.f;
+                call(cb.read_primary_deadline,ref,&saved);
+                if(!std::isfinite(saved))throw 1;
+                // The original setter reads gpGlobals+0xc again.
+                call(cb.write_primary_deadline,ref,clock());
+                call(cb.write_pending_count,ref,in.pending_count-1);
+                report.pending_after=in.pending_count-1;
+                call(cb.primary_attack,ref);
+                report.primary_delivered=1;
+                call(cb.write_primary_deadline,ref,saved);
+                report.restored_deadline=saved;
+                call(cb.read_pending_count,ref,&report.pending_after);
+                if(report.pending_after>0){
+                    const float next=static_cast<float>(static_cast<double>(clock())+static_cast<double>(0.05f));
+                    if(!std::isfinite(next))throw 1;
+                    call(cb.write_pending_deadline,ref,next);
+                    report.next_pending_deadline=next;
+                }
+                fired=true;
+            }
+        }
+        call(cb.base_update,ref);report.base_delivered=1;
+        return finish(fired?abi::MagnumDeferredPrimary:abi::MagnumBaseOnly);
+    }catch(...){e->magnum_uncertain=true;return finish(abi::MagnumFrameUncertain);}
+}
+// Original slot102 0x22316910: base first, DUAG bit, trace gate,
+// CPVSFilter + CTESmoke, then two original decal virtual calls.
+int SIN_FIXED_CALL magnum_impact(abi::MapEntityRef ref,std::uint32_t damage_type,
+        const abi::MagnumImpactHost* host,void* context,abi::MagnumImpactReport* out) noexcept {
+    if(!out)return 0;
+    abi::MagnumImpactReport report{};
+    auto* e=find_magnum(ref);
+    const auto finish=[&](std::uint32_t code) noexcept {
+        report.code=code;report.needs_resync=e&&e->magnum_uncertain?1u:0u;
+        *out=report;return 1;
+    };
+    const bool special=(damage_type&0x00400000u)!=0;
+    if(reading_engine_skill||!e||e->magnum_uncertain||!host||host->version!=abi::magnum_version||
+       host->size!=sizeof(*host)||!host->base||(special&&(!host->trace||!host->smoke||!host->decal)))
+        return finish(abi::MagnumImpactRejected);
+    const auto cb=*host;
+    OutputScope scope;
+    const auto call=[&](auto fn,auto... args){
+        ++report.attempted;
+        if(!fn(context,args...))throw 1;
+        ++report.delivered;
+    };
+    try {
+        call(cb.base,ref,damage_type);report.base_delivered=1;
+        if(!special)return finish(abi::MagnumImpactBaseOnly);
+        abi::MagnumTraceObservation trace{};
+        call(cb.trace,ref,&trace);
+        if(trace.flags_42>255u)throw 1;
+        if(trace.flags_42&4u)return finish(abi::MagnumImpactTraceBlocked);
+        if(!finite_vector(trace.start)||!finite_vector(trace.end))throw 1;
+        // Original subtracts three components with f32 stores, then
+        // calls its normalize dispatch. Reproduce the authenticated
+        // default 0x22268100 epsilon path for normal finite inputs.
+        const abi::NpcSpread delta{trace.end.x-trace.start.x,trace.end.y-trace.start.y,trace.end.z-trace.start.z};
+        if(!finite_vector(delta))throw 1;
+        const double length=std::sqrt(static_cast<double>(delta.x)*delta.x+
+            static_cast<double>(delta.y)*delta.y+static_cast<double>(delta.z)*delta.z);
+        const double inv=1.0/(length+static_cast<double>(std::numeric_limits<float>::epsilon()));
+        const abi::NpcSpread pos{static_cast<float>(delta.x*inv),static_cast<float>(delta.y*inv),
+            static_cast<float>(delta.z*inv)};
+        // The original builds the recipient filter at trace.end,
+        // but passes the normalized difference to the temp entity.
+        const abi::MagnumSmoke smoke{trace.end,pos,0.25f,2.5f,10,"sprites/blueglow1.vmt"};
+        call(cb.smoke,ref,&smoke);report.smoke_delivered=1;
+        call(cb.decal,ref,"DUAGDecal1");++report.decals_delivered;
+        call(cb.decal,ref,"DUAGDecal2");++report.decals_delivered;
+        return finish(abi::MagnumImpactDUAG);
+    }catch(...){e->magnum_uncertain=true;return finish(abi::MagnumImpactUncertain);}
+}
+const abi::MagnumApi magnum_api{abi::magnum_version,sizeof(abi::MagnumApi),
+    &magnum_frame,&magnum_impact,&magnum_acknowledge};
+
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::MagnumApi* SIN_FIXED_CALL
+SiN_GetMagnumApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::magnum_version&&bytes==sizeof(abi::MagnumApi)?&magnum_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::RifleGrenadeApi* SIN_FIXED_CALL
 SiN_GetRifleGrenadeApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::rifle_launch_version&&bytes==sizeof(abi::RifleGrenadeApi)?&rifle_launch_api:nullptr;
