@@ -340,4 +340,62 @@ using DerivedPlayerSendApi=GraphApi<DerivedPlayerSendBindings,DerivedPlayerSendV
 using DerivedPlayerRecvApi=GraphApi<DerivedPlayerRecvBindings,DerivedPlayerRecvView>;
 using GetDerivedPlayerSendApi=const DerivedPlayerSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetDerivedPlayerRecvApi=const DerivedPlayerRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase705: exact PE32 class record layouts, independently owned subset.
+// Input order is the original client registration order for these 15
+// classes. Caller supplies real entity creation functions, not metadata.
+// This is intentionally NOT a complete retail class-list publication.
+inline constexpr char server_class_export[]="SiN_GetServerClassSubsetApi";
+inline constexpr char client_class_export[]="SiN_GetClientClassSubsetApi";
+enum ClassSlot : unsigned {
+    ClCombatWeapon,ClAnimating,ClOverlay,ClCombatCharacter,ClEntity,ClFlex,
+    ClBasePlayer,ClHLCombatWeapon,ClMachineGun,ClSelectFire,ClHand,ClPlayer,
+    ClMagnum,ClAssault,ClScatter,ClassSubsetCount
+};
+inline constexpr const char* class_names[ClassSubsetCount]={
+    "CBaseCombatWeapon","CBaseAnimating","CBaseAnimatingOverlay","CBaseCombatCharacter",
+    "CBaseEntity","CBaseFlex","CBasePlayer","CBaseHLCombatWeapon","CHLMachineGun",
+    "CHLSelectFireMachineGun","CPlayerHand","CHL2_Player","CWeaponMagnum",
+    "CWeaponAssaultRifle","CWeaponScatterGun"
+};
+inline constexpr const char* class_table_names[ClassSubsetCount]={
+    "DT_BaseCombatWeapon","DT_BaseAnimating","DT_BaseAnimatingOverlay","DT_BaseCombatCharacter",
+    "DT_BaseEntity","DT_BaseFlex","DT_BasePlayer","DT_BaseHLCombatWeapon","DT_HLMachineGun",
+    "DT_HLSelectFireMachineGun","DT_PlayerHand","DT_HL2_Player","DT_WeaponMagnum",
+    "DT_WeaponAssaultRifle","DT_WeaponScatterGun"
+};
+inline constexpr int class_table_counts[ClassSubsetCount]={7,18,2,3,24,7,15,1,1,1,1,6,1,1,1};
+struct ServerClassRecord {
+    const char* name=nullptr;
+    s::SendTable* table=nullptr;
+    ServerClassRecord* next=nullptr;
+    int class_id=0;
+    int instance_baseline=0xffff;
+};
+// Opaque IClientNetworkable pointer; creation ABI is two cdecl ints.
+using CreateClientEntity=void* (__cdecl *)(int entity_number,int serial_number);
+using CreateClientEvent=void* (__cdecl *)();
+struct ClientClassRecord {
+    CreateClientEntity create=nullptr;
+    CreateClientEvent create_event=nullptr;
+    const char* name=nullptr;
+    RecvTable* table=nullptr;
+    ClientClassRecord* next=nullptr;
+    int class_id=0;
+};
+static_assert(sizeof(ServerClassRecord)==20&&offsetof(ServerClassRecord,table)==4&&
+    offsetof(ServerClassRecord,next)==8&&offsetof(ServerClassRecord,class_id)==12&&
+    offsetof(ServerClassRecord,instance_baseline)==16);
+static_assert(sizeof(ClientClassRecord)==24&&offsetof(ClientClassRecord,name)==8&&
+    offsetof(ClientClassRecord,table)==12&&offsetof(ClientClassRecord,next)==16&&
+    offsetof(ClientClassRecord,class_id)==20);
+struct ServerClassBindings {s::SendTable* tables[ClassSubsetCount];};
+struct ClientClassBindings {RecvTable* tables[ClassSubsetCount];CreateClientEntity creators[ClassSubsetCount];};
+template<class Record> struct ClassView {void* handle;Record* head;Record* records;unsigned count;};
+using ServerClassView=ClassView<ServerClassRecord>;
+using ClientClassView=ClassView<ClientClassRecord>;
+using ServerClassApi=GraphApi<ServerClassBindings,ServerClassView>;
+using ClientClassApi=GraphApi<ClientClassBindings,ClientClassView>;
+using GetServerClassApi=const ServerClassApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetClientClassApi=const ClientClassApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

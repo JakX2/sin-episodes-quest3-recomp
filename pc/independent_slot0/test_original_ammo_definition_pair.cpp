@@ -130,9 +130,16 @@ int main(int argc,char** argv){
     const auto* derivedSend=getDerivedSend(1,sizeof(tables::DerivedPlayerSendApi));
     const auto* derivedRecv=getDerivedRecv(1,sizeof(tables::DerivedPlayerRecvApi));
     assert(derivedSend&&derivedRecv&&!getDerivedSend(0,sizeof(tables::DerivedPlayerSendApi))&&!getDerivedRecv(1,0));
+    const auto getServerClass=reinterpret_cast<tables::GetServerClassApi>(GetProcAddress(server,tables::server_class_export));
+    const auto getClientClass=reinterpret_cast<tables::GetClientClassApi>(GetProcAddress(client,tables::client_class_export));
+    assert(getServerClass&&getClientClass&&!GetProcAddress(client,tables::server_class_export)&&!GetProcAddress(server,tables::client_class_export));
+    const auto* serverClass=getServerClass(1,sizeof(tables::ServerClassApi));
+    const auto* clientClass=getClientClass(1,sizeof(tables::ClientClassApi));
+    assert(serverClass&&clientClass&&!getServerClass(0,sizeof(tables::ServerClassApi))&&!getClientClass(1,0));
     tables::test::check_base_player_graph(*basePlayerSend,*basePlayerRecv,*animSend,*animRecv,*overlaySend,*overlayRecv,
-        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv,*dataSend,*dataRecv,*entitySend,*entityRecv,*derivedSend,*derivedRecv);
+        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv,*dataSend,*dataRecv,*entitySend,*entityRecv,*derivedSend,*derivedRecv,*resolved,*ra,*serverClass,*clientClass);
     std::puts("PASS native paired BasePlayer, HL2_Player, HL2Local, PlayerHand and PlayerState graph composition");
+    std::puts("PASS native paired 15-class registration subset, ordered lists and real creator ABI");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

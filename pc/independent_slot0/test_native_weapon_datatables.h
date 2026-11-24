@@ -717,13 +717,65 @@ inline void check_derived_player_graph(const DerivedPlayerSendApi& sa,const Deri
     sv.local->precalc=&mask;rv.hand->initialized=true;assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
     sv.local->precalc=nullptr;rv.hand->initialized=false;assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
+
+inline unsigned class_creator_calls=0;
+inline int class_creator_index=0,class_creator_serial=0;
+inline int class_creator_object=0;
+inline void* __cdecl fixture_class_creator(int index,int serial){
+    ++class_creator_calls;class_creator_index=index;class_creator_serial=serial;
+    return &class_creator_object;
+}
+inline void check_class_subset(const ServerClassApi& sa,const ClientClassApi& ra,
+        const ServerClassBindings& sb,const ClientClassBindings& cb){
+    ServerClassView sv{};ClientClassView cv{};
+    auto bad=cb;bad.creators[ClPlayer]=nullptr;assert(!ra.create(&bad,&cv)&&!cv.handle);
+    auto sbad=sb;sbad.tables[ClPlayer]=sb.tables[ClBasePlayer];assert(!sa.create(&sbad,&sv)&&!sv.handle);
+    auto old=sb.tables[ClPlayer]->props[0].table;
+    sb.tables[ClPlayer]->props[0].table=sb.tables[ClEntity];
+    assert(!sa.create(&sb,&sv)&&!sv.handle);
+    sb.tables[ClPlayer]->props[0].table=old;
+    assert(sa.create(&sb,&sv)&&ra.create(&cb,&cv));
+    assert(sv.count==ClassSubsetCount&&cv.count==ClassSubsetCount&&
+        !sa.create(&sb,&sv)&&!ra.create(&cb,&cv));
+    constexpr unsigned sorted[ClassSubsetCount]={ClAnimating,ClOverlay,ClCombatCharacter,ClCombatWeapon,
+        ClEntity,ClFlex,ClHLCombatWeapon,ClBasePlayer,ClPlayer,ClMachineGun,ClSelectFire,ClHand,
+        ClAssault,ClMagnum,ClScatter};
+    auto* sc=sv.head;
+    for(unsigned i=0;i<ClassSubsetCount;++i){
+        const unsigned j=sorted[i];
+        assert(sc==&sv.records[j]&&std::strcmp(sc->name,class_names[j])==0&&
+            sc->table==sb.tables[j]&&sc->class_id==0&&sc->instance_baseline==0xffff);
+        sc=sc->next;
+    }
+    assert(!sc);
+    auto* cc=cv.head;
+    for(unsigned i=ClassSubsetCount;i>0;--i){
+        const unsigned j=i-1;
+        assert(cc==&cv.records[j]&&std::strcmp(cc->name,class_names[j])==0&&
+            cc->table==cb.tables[j]&&cc->class_id==0&&cc->create==cb.creators[j]&&!cc->create_event);
+        cc=cc->next;
+    }
+    assert(!cc);
+    class_creator_calls=0;
+    assert(cv.records[ClPlayer].create(12,345)==&class_creator_object&&class_creator_calls==1&&
+        class_creator_index==12&&class_creator_serial==345);
+    // The registry does not invent engine-assigned IDs or free tables.
+    sv.records[ClPlayer].instance_baseline=7;cv.records[ClPlayer].class_id=9;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&cv));
+    sv.records[ClPlayer].instance_baseline=0xffff;cv.records[ClPlayer].class_id=0;
+    sb.tables[ClPlayer]->written=true;cb.tables[ClPlayer]->initialized=true;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&cv));
+    sb.tables[ClPlayer]->written=false;cb.tables[ClPlayer]->initialized=false;
+    assert(sa.destroy(&sv)&&ra.destroy(&cv)&&!sv.head&&!cv.head);
+}
 inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayerRecvApi& ra,
         const AnimSendApi& asa,const AnimRecvApi& ara,const OverlaySendApi& osa,const OverlayRecvApi& ora,
         const FlexSendApi& fsa,const FlexRecvApi& fra,const InventorySendApi& isa,const InventoryRecvApi& ira,
         const PlayerLocalSendApi& lsa,const PlayerLocalRecvApi& lra,
         const LocalDataSendApi& dsa,const LocalDataRecvApi& dra,
         const BaseEntitySendApi& esa,const BaseEntityRecvApi& era,
-        const DerivedPlayerSendApi& psa,const DerivedPlayerRecvApi& pra){
+        const DerivedPlayerSendApi& psa,const DerivedPlayerRecvApi& pra,
+        const ResolvedSendApi& wsa,const RecvApi& wra,const ServerClassApi& csa,const ClientClassApi& cra){
     s::SendProp collision_props[8];s::SendTable collision;
     assert(collision.Construct(collision_props,8,"DT_CollisionProperty"));
     RecvProp collision_recv_props[8];RecvTable collision_recv{collision_recv_props,8,nullptr,"DT_CollisionProperty"};
@@ -754,6 +806,22 @@ inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayer
     auto invalid=pb;invalid.private_player=nullptr;assert(!sa.create(&invalid,&pv)&&!pv.handle);
     assert(sa.create(&pb,&pv)&&ra.create(&prb,&prv));
     check_derived_player_graph(psa,pra,pv.player,prv.player,ev.entity,erv.entity,entries);
+    DerivedPlayerSendBindings dsb{pv.player,ev.entity,entries,64};
+    DerivedPlayerRecvBindings drb2{prv.player,erv.entity};
+    DerivedPlayerSendView dsv{};DerivedPlayerRecvView drv2{};
+    assert(psa.create(&dsb,&dsv)&&pra.create(&drb2,&drv2));
+    ResolvedSendBindings wb{av.base_animating,&engine,entries,64,edicts,1};
+    RecvBindings wrb{arv.base_animating};
+    SendView wsv{};RecvView wrv{};assert(wsa.create(&wb,&wsv)&&wra.create(&wrb,&wrv));
+    ServerClassBindings csb{{wsv.tables[BaseCombat],av.base_animating,fv.overlay,iv.combat_base,
+        ev.entity,fv.flex,pv.player,wsv.tables[BaseHL],wsv.tables[MachineGun],wsv.tables[SelectFire],
+        dsv.hand,dsv.player,wsv.tables[Magnum],wsv.tables[AssaultRifle],wsv.tables[Scattergun]}};
+    ClientClassBindings crb{{wrv.tables[BaseCombat],arv.base_animating,frv.overlay,irv.combat_base,
+        erv.entity,frv.flex,prv.player,wrv.tables[BaseHL],wrv.tables[MachineGun],wrv.tables[SelectFire],
+        drv2.hand,drv2.player,wrv.tables[Magnum],wrv.tables[AssaultRifle],wrv.tables[Scattergun]},{}};
+    for(auto& creator:crb.creators)creator=&fixture_class_creator;
+    check_class_subset(csa,cra,csb,crb);
+    assert(wsa.destroy(&wsv)&&wra.destroy(&wrv)&&psa.destroy(&dsv)&&pra.destroy(&drv2));
     auto* s=pv.player->props;auto* c=prv.player->props;
     assert(pv.player->count==15&&prv.player->count==15&&pv.state->count==1&&prv.state->count==1);
     assert(s[0].table==iv.combat_base&&c[0].table==irv.combat_base);

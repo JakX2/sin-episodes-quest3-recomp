@@ -8,6 +8,31 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+// Class table identity is stricter than matching a display name: all
+// reconstructed baseclass links must reference the very same instances.
+template<class B> bool class_tables_valid(const B& b) noexcept {
+    constexpr int parents[ClassSubsetCount]={ClAnimating,ClEntity,ClAnimating,ClFlex,-1,
+        ClOverlay,ClCombatCharacter,ClCombatWeapon,ClHLCombatWeapon,ClMachineGun,
+        ClEntity,ClBasePlayer,ClHLCombatWeapon,ClSelectFire,ClHLCombatWeapon};
+    for(unsigned i=0;i<ClassSubsetCount;++i){
+        const auto* t=b.tables[i];
+        if(!t||!t->name||std::strcmp(t->name,class_table_names[i])||
+            t->count!=class_table_counts[i]||!t->props)return false;
+        if(parents[i]>=0){
+            const auto& prop=t->props[0];
+            if(!prop.name||std::strcmp(prop.name,"baseclass")||prop.type!=5||prop.offset!=0||
+                prop.table!=b.tables[parents[i]])return false;
+        }
+        for(unsigned j=0;j<i;++j)if(t==b.tables[j])return false;
+    }
+    return true;
+}
+template<class V> bool class_empty(const V& v) noexcept {
+    return !v.handle&&!v.head&&!v.records&&!v.count;
+}
+template<class G,class V> bool class_matches(const G& g,const V& v) noexcept {
+    return v.head==g.head&&v.records==g.records&&v.count==ClassSubsetCount;
+}
 template<class V> bool derived_empty(const V& v) noexcept {
     return !v.handle&&!v.player&&!v.local&&!v.hand;
 }
@@ -1034,6 +1059,47 @@ int __cdecl destroy_derived_player(DerivedPlayerSendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const DerivedPlayerSendApi derived_api{version,sizeof(DerivedPlayerSendApi),&create_derived_player,&destroy_derived_player};
+
+int ascii_class_compare(const char* a,const char* b) noexcept {
+    const auto fold=[](unsigned char ch){return ch>='A'&&ch<='Z'?ch+('a'-'A'):ch;};
+    while(*a&&fold(static_cast<unsigned char>(*a))==fold(static_cast<unsigned char>(*b))){++a;++b;}
+    return fold(static_cast<unsigned char>(*a))-fold(static_cast<unsigned char>(*b));
+}
+struct ServerClassGraph {
+    ServerClassRecord records[ClassSubsetCount]{};
+    ServerClassRecord* head=nullptr;
+    bool build(const ServerClassBindings& b) noexcept {
+        if(!class_tables_valid(b))return false;
+        for(unsigned i=0;i<ClassSubsetCount;++i){
+            auto& rec=records[i];rec.name=class_names[i];rec.table=b.tables[i];
+            // Original constructor inserts after equal names. Our fixed
+            // subset has unique names and uses ASCII-only originals.
+            auto** link=&head;
+            while(*link&&ascii_class_compare((*link)->name,rec.name)<=0)link=&(*link)->next;
+            rec.next=*link;*link=&rec;
+        }
+        return true;
+    }
+};
+
+int __cdecl create_class_subset(const ServerClassBindings* b,ServerClassView* out) noexcept {
+    if(!b||!out||!class_empty(*out))return 0;
+    auto* g=new(std::nothrow) ServerClassGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,g->head,g->records,ClassSubsetCount};return 1;
+}
+int __cdecl destroy_class_subset(ServerClassView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<ServerClassGraph*>(v->handle);
+    if(!class_matches(*g,*v))return 0;
+    for(const auto& rec:g->records){
+        const auto* tab=rec.table;
+        if(!tab||rec.class_id!=0||rec.instance_baseline!=0xffff||tab->precalc||tab->initialized||tab->written)return 0;
+    }
+    delete g;*v={};return 1;
+}
+const ServerClassApi class_api{version,sizeof(ServerClassApi),&create_class_subset,&destroy_class_subset};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -1659,6 +1725,39 @@ int __cdecl destroy_derived_player(DerivedPlayerRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const DerivedPlayerRecvApi derived_api{version,sizeof(DerivedPlayerRecvApi),&create_derived_player,&destroy_derived_player};
+
+struct ClientClassGraph {
+    ClientClassRecord records[ClassSubsetCount]{};
+    ClientClassRecord* head=nullptr;
+    bool build(const ClientClassBindings& b) noexcept {
+        if(!class_tables_valid(b))return false;
+        for(unsigned i=0;i<ClassSubsetCount;++i)if(!b.creators[i])return false;
+        for(unsigned i=0;i<ClassSubsetCount;++i){
+            auto& rec=records[i];rec.name=class_names[i];rec.table=b.tables[i];
+            rec.create=b.creators[i];rec.next=head;head=&rec;
+        }
+        return true;
+    }
+};
+
+int __cdecl create_class_subset(const ClientClassBindings* b,ClientClassView* out) noexcept {
+    if(!b||!out||!class_empty(*out))return 0;
+    auto* g=new(std::nothrow) ClientClassGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,g->head,g->records,ClassSubsetCount};return 1;
+}
+int __cdecl destroy_class_subset(ClientClassView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<ClientClassGraph*>(v->handle);
+    if(!class_matches(*g,*v))return 0;
+    for(const auto& rec:g->records){
+        const auto* tab=rec.table;
+        if(!tab||rec.class_id!=0||tab->decoder||tab->initialized||tab->in_main_list)return 0;
+    }
+    delete g;*v={};return 1;
+}
+const ClientClassApi class_api{version,sizeof(ClientClassApi),&create_class_subset,&destroy_class_subset};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -1731,6 +1830,12 @@ SiN_GetDerivedPlayerSendGraphApi(std::uint32_t version,std::uint32_t size) noexc
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(DerivedPlayerSendApi)?&derived_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetServerClassSubsetApi=_SiN_GetServerClassSubsetApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerClassApi* __cdecl
+SiN_GetServerClassSubsetApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerClassApi)?&class_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -1791,5 +1896,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::DerivedPl
 SiN_GetDerivedPlayerRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(DerivedPlayerRecvApi)?&derived_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientClassSubsetApi=_SiN_GetClientClassSubsetApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientClassApi* __cdecl
+SiN_GetClientClassSubsetApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientClassApi)?&class_api:nullptr;
 }
 #endif
