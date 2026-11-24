@@ -537,6 +537,12 @@ int main(int argc,char** argv){
     assert(integratedNpcDialogue&&!getIntegratedNpcDialogue(0,sizeof(tables::IntegratedNpcDialogueApi))&&!getIntegratedNpcDialogue(1,0));
     tables::test::check_integrated_npc_dialogue(*integratedNpcDialogue,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*responseTimingUpdate,*responseRecord);
     std::puts("PASS native Jessica and Count observation through integrated scene playback");
+    const auto getGeneratedScene=reinterpret_cast<tables::GetGeneratedSceneApi>(GetProcAddress(server,tables::generated_scene_export));
+    assert(getGeneratedScene&&!GetProcAddress(client,tables::generated_scene_export));
+    const auto* generatedScene=getGeneratedScene(1,sizeof(tables::GeneratedSceneApi));
+    assert(generatedScene&&!getGeneratedScene(0,sizeof(tables::GeneratedSceneApi))&&!getGeneratedScene(1,0));
+    tables::test::check_generated_scene(*generatedScene);
+    std::puts("PASS native original generated sound scene construction and allocation failure paths");
 
 
 

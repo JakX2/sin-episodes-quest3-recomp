@@ -4231,6 +4231,74 @@ int scene_entity_registration(void* scene,const SceneEntityLifecycleBindings& h,
     unsigned changed=0;
     return scene_registration(manager,n,&h.registration,scene,&changed,add)==1?1:-1;
 }
+// 221a3c30 and its fresh-object setters. Engine allocations, vector
+// growth and the original-compatible constructors/destructors remain hosted.
+bool generated_scene_text(const char* source,char (&dest)[128]) noexcept {
+    if(!source)return false;
+    for(unsigned i=0;i<127;++i){
+        if(!sin_independent::vgui_layout::Readable(source+i,1))return false;
+        dest[i]=source[i];if(!dest[i])return true;
+    }
+    dest[127]=0;return true;
+}
+int __cdecl generate_sound_scene(void* scene,unsigned bytes,void* actor,const char* sound,const GeneratedSceneBindings* b,std::uint32_t* out) noexcept {
+    if(bytes<0x414||!scene||!sin_independent::vgui_layout::Readable(scene,0x414)||!sound||!out||!hologram_writable(out,4)||
+       !b||!b->model_name||!b->duration||!b->warning||!b->create_parsed||!b->create_child||!b->scene_name||!b->append||!b->destroy||!b->diagnostic_word)return 0;
+    const auto h=*b;const char* model=nullptr;
+    if(actor){if(!h.model_name(h.context,actor,&model))return -1;if(!model)model="";}
+    float duration=0;
+    if(!h.duration(h.context,sound,model,&duration))return -1;
+    // Original x87 parity test rejects ordered <=0, but admits unordered.
+    if(duration<=0){
+        if(!h.warning(h.context,GeneratedSceneWarning::Duration,sound))return -1;
+        *out=0;return 1;
+    }
+    void* parsed=nullptr;unsigned parsed_bytes=0;
+    if(!h.create_parsed(h.context,static_cast<unsigned char*>(scene)+0x410,&parsed,&parsed_bytes))return -1;
+    if(!parsed){
+        if(!h.warning(h.context,GeneratedSceneWarning::SceneAllocation,sound))return -1;
+        *out=0;return 1;
+    }
+    const auto fail=[&](){(void)h.destroy(h.context,parsed);return -1;};
+    if(parsed_bytes<0x220||!hologram_writable(parsed,0x220)||
+       hologram_read<std::uint32_t>(parsed,0x9c)!=scene_word(static_cast<unsigned char*>(scene)+0x410)||
+       hologram_read<unsigned char>(parsed,0x125))return fail();
+    hologram_write(parsed,0x98,h.diagnostic_word);
+    void* children[3]{};unsigned extents[3]{};
+    constexpr unsigned sizes[]={0x118,0x9c,0x3c0};
+    for(unsigned i=0;i<3;++i)
+        if(!h.create_child(h.context,parsed,static_cast<GeneratedSceneChild>(i),&children[i],&extents[i]))return fail();
+    if(!children[0]||!children[1]||!children[2]){
+        const bool logged=h.warning(h.context,GeneratedSceneWarning::ChildAllocation,sound)!=0;
+        const bool destroyed=h.destroy(h.context,parsed)!=0;
+        if(!logged||!destroyed)return -1;
+        *out=0;return 1;
+    }
+    for(unsigned i=0;i<3;++i)
+        if(extents[i]<sizes[i]||!hologram_writable(children[i],sizes[i]))return fail();
+    auto* a=static_cast<unsigned char*>(children[0]);auto* c=static_cast<unsigned char*>(children[1]);auto* e=static_cast<unsigned char*>(children[2]);
+    // Fresh event constructor binds owning scene, start=0/end=-1, no tags.
+    if(hologram_read<std::uint32_t>(e,0x330)!=scene_word(parsed)||hologram_read<std::uint32_t>(e,0x184)||
+       hologram_read<std::uint32_t>(e,0x188)!=0xbf800000u||hologram_read<unsigned>(e,0x318))return fail();
+    char actor_name[128]="!self",channel_name[128]{},event_name[128]{};
+    const auto word=hologram_read<std::uint32_t>(scene,0x394);const char* name="";
+    if(word&&(!h.scene_name(h.context,word,&name)||!name))return fail();
+    if(!generated_scene_text(name,channel_name)||!generated_scene_text(sound,event_name))return fail();
+    std::memcpy(a,actor_name,128);hologram_write(a,0x114,static_cast<unsigned char>(1));
+    std::memcpy(c+4,channel_name,128);hologram_write(c,0,scene_word(a));
+    if(!h.append(h.context,GeneratedSceneChild::Channel,a,c))return fail();
+    hologram_write(e,0,5u);hologram_write(e,0x198,static_cast<unsigned char>(1));
+    std::memcpy(e+4,event_name,128);std::memcpy(e+0x84,event_name,128);
+    hologram_write(e,0x184,0.f);hologram_write(e,0x1b1,static_cast<unsigned char>(0));
+    std::memset(e+0x1b2,0,128);std::memset(e+0x232,0,128);
+    // 22110f20 sets duration; 2210cfe0 snaps to frame only when parsed+125
+    // is set, which the original fresh scene constructor clears.
+    hologram_write(e,0x188,duration);
+    if(!h.append(h.context,GeneratedSceneChild::Event,c,e))return fail();
+    hologram_write(e,0x2b8,scene_word(c));hologram_write(e,0x2b4,scene_word(a));
+    *out=scene_word(parsed);return 1;
+}
+const GeneratedSceneApi generated_scene_api{version,sizeof(GeneratedSceneApi),&generate_sound_scene};
 int __cdecl scene_entity_activate(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
     if(bytes<0x554||!hologram_writable(scene,0x554)||!b||!b->resolve_actor||!b->sound_name||
        !b->generate||!b->base_activate||!b->manager)return 0;
@@ -9132,6 +9200,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetGeneratedSceneApi=_SiN_GetGeneratedSceneApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::GeneratedSceneApi* __cdecl
+SiN_GetGeneratedSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(GeneratedSceneApi)?&generated_scene_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetIntegratedNpcMapDialogueApi=_SiN_GetIntegratedNpcMapDialogueApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::IntegratedNpcMapDialogueApi* __cdecl
 SiN_GetIntegratedNpcMapDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
