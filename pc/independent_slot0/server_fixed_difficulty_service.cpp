@@ -41,6 +41,19 @@ struct Campaign {
 std::optional<Campaign> campaign;
 // Refuse lifecycle/skill mutations reentered by a synchronous engine lookup.
 bool reading_engine_skill=false;
+#if defined(_MSC_VER) && defined(_M_IX86)
+bool trigger_publish_active=false;
+bool native_event_active=false;
+struct TriggerPublishScope {
+    TriggerPublishScope() noexcept {trigger_publish_active=true;}
+    ~TriggerPublishScope(){trigger_publish_active=false;}
+};
+struct NativeEventScope {
+    bool prior=reading_engine_skill;
+    NativeEventScope() noexcept {reading_engine_skill=true;native_event_active=true;}
+    ~NativeEventScope(){native_event_active=false;reading_engine_skill=prior;}
+};
+#endif
 // Map-local behavior objects, not actual CBaseEntity allocations.
 enum class EntityKind { EnvGlobal, InfoChallenge, DynamicTrigger, SecretTrigger };
 struct MapEntity {
@@ -330,6 +343,9 @@ public:
         const abi::NativeTriggerEvent event{
             e.event==triggers::TriggerEventName::DynamicDifficulty?abi::TriggerDynamicEvent:abi::TriggerGameEvent,
             e.descriptor,e.owner,e.advisor,e.decision,e.value,e.origin.x,e.origin.y,e.origin.z,name.c_str()};
+#if defined(_MSC_VER) && defined(_M_IX86)
+        TriggerPublishScope scope;
+#endif
         return callbacks&&callbacks->publish(context,active,&event)!=0;
     }
     bool mark_difficulty_manager() override {return false;} // fixed wrapper owns this
@@ -632,6 +648,75 @@ struct EngineReadScope {
     ~EngineReadScope(){reading_engine_skill=false;}
 };
 }
+// Phase675: original engine manager and event slots authenticated against
+// the owner engine.dll RTTI-backed CGameEventManager/CGameEvent vtables.
+// All pointers are borrowed on the game thread. No addresses from the
+// original executable are called by absolute VA.
+#pragma comment(linker,"/EXPORT:SiN_PublishCampaignTriggerEvent=_SiN_PublishCampaignTriggerEvent")
+extern "C" int SIN_FIXED_CALL SiN_PublishCampaignTriggerEvent(void* manager,
+    const abi::NativeTriggerEvent* input) noexcept {
+    if(native_event_active||(reading_engine_skill&&!trigger_publish_active)||
+       !manager||!input||!bounded_string(input->name))return abi::EventRejected;
+    const auto event=*input;
+    const bool dynamic=event.kind==abi::TriggerDynamicEvent;
+    if(!dynamic&&event.kind!=abi::TriggerGameEvent)return abi::EventRejected;
+    if(event.advisor!=-1||
+       (dynamic&&(event.descriptor!=0||!std::isfinite(event.value)||!std::isfinite(event.x)||
+                  !std::isfinite(event.y)||!std::isfinite(event.z)))||
+       (!dynamic&&(event.owner!=-1||(event.descriptor!=11&&event.descriptor!=12))))
+        return abi::EventRejected;
+    std::string name;
+    try {name=event.name;}catch(...){return abi::EventRejected;}
+    NativeEventScope scope;
+    methods::CallResult refused=methods::CallResult::InvalidObject;
+    const auto create=methods::VerifiedMethod(manager,6,refused);
+    const auto fire=methods::VerifiedMethod(manager,7,refused);
+    const auto release=methods::VerifiedMethod(manager,10,refused);
+    if(!create||!fire||!release)return abi::EventRejected;
+    using Create=void* (__thiscall *)(void*,const char*,bool);
+    using Fire=bool (__thiscall *)(void*,void*,bool);
+    using Release=void (__thiscall *)(void*,void*);
+    using SetInt=void (__thiscall *)(void*,const char*,int);
+    using SetFloat=void (__thiscall *)(void*,const char*,float);
+    using SetString=void (__thiscall *)(void*,const char*,const char*);
+    void* object=nullptr;
+    try {object=reinterpret_cast<Create>(create)(manager,dynamic?"dynamic_difficulty":"game",false);}
+    catch(...){return abi::EventCreateUncertain;}
+    if(!object)return abi::EventUnavailable;
+    // FreeEvent itself dispatches the event's slot 0 deleting destructor.
+    // If that is unverified, ownership is uncertain; do not call into it.
+    if(!methods::VerifiedMethod(object,0,refused))return abi::EventObjectUnverified;
+    const auto integer=methods::VerifiedMethod(object,10,refused);
+    const auto real=dynamic?methods::VerifiedMethod(object,11,refused):nullptr;
+    const auto string=methods::VerifiedMethod(object,12,refused);
+    const auto discard=[&]() noexcept {
+        try {reinterpret_cast<Release>(release)(manager,object);return abi::EventDiscarded;}
+        catch(...){return abi::EventCleanupUncertain;}
+    };
+    if(!integer||!string||(dynamic&&!real))return discard();
+    const auto set_int=reinterpret_cast<SetInt>(integer);
+    const auto set_string=reinterpret_cast<SetString>(string);
+    const auto set_float=reinterpret_cast<SetFloat>(real);
+    try {
+        set_int(object,"descriptor",event.descriptor);
+        set_int(object,"owner",event.owner);
+        set_int(object,"subject",event.advisor);
+        set_string(object,"name",name.c_str());
+        if(dynamic){
+            set_int(object,"decision",event.decision);
+            set_float(object,"value",event.value);
+            set_float(object,"x",event.x);
+            set_float(object,"y",event.y);
+            set_float(object,"z",event.z);
+        }
+    }catch(...){return discard();}
+    // Original engine FireEvent frees on both ordinary true/false paths.
+    // No cleanup or retry after entering FireEvent, including exceptions.
+    try {return reinterpret_cast<Fire>(fire)(manager,object,false)?
+        abi::EventFired:abi::EventFireReturnedFalse;}
+    catch(...){return abi::EventFireUncertain;}
+}
+
 #pragma comment(linker,"/EXPORT:SiN_ApplyEngineSkill=_SiN_ApplyEngineSkill")
 extern "C" int SIN_FIXED_CALL SiN_ApplyEngineSkill(void* engine,std::uint32_t op) noexcept {
     if(reading_engine_skill || !engine ||

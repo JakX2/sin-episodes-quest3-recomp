@@ -221,6 +221,8 @@ struct NativeTriggerFixture {
     int expected_descriptor=0,expected_decision=900,expected_owner=5;
     float expected_value=88.5f;
     const char* expected_name="gate";
+    a::PublishCampaignEvent native_publish=nullptr;
+    void* native_manager=nullptr;
     static NativeTriggerFixture& self(void* c){return *static_cast<NativeTriggerFixture*>(c);}
     static bool same(a::MapEntityRef x,a::MapEntityRef y){
         return x.epoch==y.epoch&&x.index==y.index&&x.generation==y.generation;
@@ -249,6 +251,7 @@ struct NativeTriggerFixture {
             assert(event->x==1.f&&event->y==2.f&&event->z==3.f);
         }
         assert(!f.map->remove(e)&&!f.api->end_campaign()&&!f.api->set_skill(1));
+        if(f.native_publish)return f.native_publish(f.native_manager,event)==a::EventFired;
         return f.event_ok;
     }
     static int SIN_FIXED_CALL queue(void* c,a::MapEntityRef e){
@@ -697,6 +700,122 @@ static void test_configured_campaign(HMODULE lib,const a::Api* api,const a::Glob
     assert(api->get_state(&state)&&state.skill==2&&state.initial_skill==3);
     assert(api->end_campaign());
 }
+
+// Exact MSVC x86 virtual slots, independent synthetic objects. The
+// manager models original ownership without deleting its fixture storage.
+struct NativeEventFixture {
+    virtual ~NativeEventFixture()=default;
+    virtual void slot1(){assert(false);}
+    virtual void slot2(){assert(false);}
+    virtual void slot3(){assert(false);}
+    virtual void slot4(){assert(false);}
+    virtual void slot5(){assert(false);}
+    virtual void slot6(){assert(false);}
+    virtual void slot7(){assert(false);}
+    virtual void slot8(){assert(false);}
+    virtual void slot9(){assert(false);}
+    virtual void integer(const char* key,int v){
+        keys.emplace_back(key);ints.push_back(v);if(fail_set)throw 1;
+    }
+    virtual void real(const char* key,float v){keys.emplace_back(key);floats.push_back(v);}
+    virtual void string(const char* key,const char* v){keys.emplace_back(key);name=v;}
+    std::vector<std::string> keys;
+    std::vector<int> ints;
+    std::vector<float> floats;
+    std::string name;
+    bool fail_set=false;
+    void reset(){keys.clear();ints.clear();floats.clear();name.clear();}
+};
+struct NativeEventManagerFixture {
+    virtual ~NativeEventManagerFixture()=default;
+    virtual void slot1(){assert(false);}
+    virtual void slot2(){assert(false);}
+    virtual void slot3(){assert(false);}
+    virtual void slot4(){assert(false);}
+    virtual void slot5(){assert(false);}
+    virtual void* create(const char* name,bool force){
+        assert(!force&&!live);
+        ++creates;event_name=name;
+        assert(!api->begin_campaign(1)&&!api->end_campaign()&&!api->set_skill(1));
+        if(nested)assert(publish(this,nested)==a::EventRejected);
+        if(throw_create)throw 2;
+        if(unavailable)return nullptr;
+        live=true;event.reset();return &event;
+    }
+    virtual bool fire(void* e,bool no_broadcast){
+        assert(e==&event&&live&&!no_broadcast);
+        ++fires;live=false;
+        if(throw_fire)throw 3;
+        return fire_ok;
+    }
+    virtual void slot8(){assert(false);}
+    virtual void slot9(){assert(false);}
+    virtual void release(void* e){
+        assert(e==&event&&live);
+        ++frees;live=false;if(throw_free)throw 4;
+    }
+    NativeEventFixture event;
+    const a::Api* api=nullptr;
+    a::PublishCampaignEvent publish=nullptr;
+    const a::NativeTriggerEvent* nested=nullptr;
+    std::string event_name;
+    int creates=0,fires=0,frees=0;
+    bool live=false,unavailable=false,fire_ok=true,throw_create=false,throw_fire=false,throw_free=false;
+};
+static void test_native_engine_event(HMODULE lib,const a::Api* api,const a::MapEntityApi* map,
+                                     const a::CampaignTriggerApi* tr){
+    auto publish=reinterpret_cast<a::PublishCampaignEvent>(GetProcAddress(lib,a::event_publish_export_name));
+    assert(publish);
+    NativeEventManagerFixture manager;manager.api=api;manager.publish=publish;
+    a::NativeTriggerEvent event{a::TriggerDynamicEvent,0,5,-1,17,12.5f,1.f,2.f,3.f,"gate"};
+    manager.nested=&event;
+    assert(!publish(nullptr,&event)&&!publish(&manager,nullptr));
+    assert(!publish(reinterpret_cast<void*>(1),&event));
+    event.advisor=0;
+    assert(publish(&manager,&event)==a::EventRejected&&manager.creates==0);
+    event.advisor=-1;
+    assert(api->begin_campaign(3));
+    assert(publish(&manager,&event)==a::EventFired);
+    assert(manager.event_name=="dynamic_difficulty"&&manager.fires==1&&!manager.frees&&!manager.live);
+    assert((manager.event.keys==std::vector<std::string>{"descriptor","owner","subject","name","decision","value","x","y","z"}));
+    assert((manager.event.ints==std::vector<int>{0,5,-1,17}));
+    assert((manager.event.floats==std::vector<float>{12.5f,1.f,2.f,3.f}));
+    assert(manager.event.name=="gate");
+    manager.fire_ok=false;
+    assert(publish(&manager,&event)==a::EventFireReturnedFalse&&manager.fires==2&&!manager.frees);
+    manager.fire_ok=true;manager.unavailable=true;
+    assert(publish(&manager,&event)==a::EventUnavailable&&manager.fires==2&&!manager.frees);
+    manager.unavailable=false;manager.throw_create=true;
+    assert(publish(&manager,&event)==a::EventCreateUncertain&&!manager.live);
+    manager.throw_create=false;manager.event.fail_set=true;
+    assert(publish(&manager,&event)==a::EventDiscarded&&manager.frees==1&&!manager.live);
+    manager.throw_free=true;
+    assert(publish(&manager,&event)==a::EventCleanupUncertain&&manager.frees==2&&!manager.live);
+    manager.throw_free=false;manager.event.fail_set=false;manager.throw_fire=true;
+    assert(publish(&manager,&event)==a::EventFireUncertain&&manager.fires==3&&manager.frees==2);
+    manager.throw_fire=false;
+    // Exercise publication through the real DLL-owned trigger callback.
+    const auto epoch=map->begin_level("native_event");
+    assert(epoch);
+    a::MapEntityRef secret{epoch,21,1};
+    NativeTriggerFixture f{map,api,tr,secret,{epoch,5,2},{epoch,7,2}};
+    f.native_publish=publish;f.native_manager=&manager;
+    f.expected_kind=a::TriggerGameEvent;f.expected_descriptor=11;f.expected_owner=-1;f.expected_name="trigger_secret";
+    a::NativeTriggerHost host{1,sizeof(host),&NativeTriggerFixture::live,&NativeTriggerFixture::is_player,
+        &NativeTriggerFixture::base,&NativeTriggerFixture::warn,&NativeTriggerFixture::owner,
+        &NativeTriggerFixture::special,&NativeTriggerFixture::publish,&NativeTriggerFixture::queue};
+    assert(map->create(secret,"trigger_secret")==a::MapApplied);
+    a::NativeTriggerSpawn spawn{0,8,0};a::NativeTriggerReport report{};
+    assert(tr->spawn(secret,&spawn,&host,&f,&report)&&report.event_published&&report.code==a::TriggerHandled);
+    assert(manager.event_name=="game"&&manager.fires==4&&manager.frees==2);
+    assert((manager.event.keys==std::vector<std::string>{"descriptor","owner","subject","name"}));
+    assert((manager.event.ints==std::vector<int>{11,-1,-1})&&manager.event.floats.empty());
+    f.expected_descriptor=12;
+    a::NativeTriggerTouch touch{0.f,0.f,0.f,0};
+    assert(tr->touch(secret,f.player,&touch,&host,&f,&report)&&report.event_published&&report.removal_queued);
+    assert(manager.event.ints[0]==12&&manager.fires==5&&manager.frees==2);
+    assert(map->end_level(epoch)&&api->end_campaign());
+}
 #endif
 int main(int argc,char** argv){
     assert(argc==2);
@@ -797,6 +916,7 @@ int main(int argc,char** argv){
     assert(api->end_campaign());
 #ifdef _WIN32
 #if defined(_MSC_VER) && defined(_M_IX86)
+    test_native_engine_event(lib,api,map,triggers);
     test_engine_skill(lib,api);
     test_configured_campaign(lib,api,globals);
 #endif

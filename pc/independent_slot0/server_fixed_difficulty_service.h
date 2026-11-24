@@ -164,6 +164,17 @@ struct CampaignTriggerApi {
 };
 using GetCampaignTriggerApi=const CampaignTriggerApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(NativeTriggerReport)==24);
+// Original engine GAMEEVENTSMANAGER002 writer, Win32 x86 only.
+// The legacy port payload's advisor field serializes as "subject".
+// FireEvent takes ownership even on a normal false return. Uncertain
+// outcomes must never be blindly retried or freed again.
+inline constexpr char event_publish_export_name[]="SiN_PublishCampaignTriggerEvent";
+enum NativeEventResult : int {
+    EventRejected=0,EventFired=1,EventUnavailable=2,EventFireReturnedFalse=3,
+    EventDiscarded=4,EventCreateUncertain=5,EventObjectUnverified=6,
+    EventCleanupUncertain=7,EventFireUncertain=8
+};
+using PublishCampaignEvent=int (SIN_FIXED_CALL *)(void*,const NativeTriggerEvent*) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);
