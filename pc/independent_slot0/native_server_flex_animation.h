@@ -12,6 +12,7 @@ struct ServerFlexAnimationBindings {
     // that fallback itself. -1 means no match, -2 means transport failure.
     int (__cdecl *controller)(void*,const char*) noexcept;
     // Original 2210d970: normalized sample at event-relative time.
+    // Optional override; null uses native 2210d970 raw sample evaluator.
     // Range conversion and stereo balance are implemented natively.
     int (__cdecl *sample)(void*,void*,unsigned,float,float*) noexcept;
     // Original 22110f80 event intensity (scene time).

@@ -20,6 +20,7 @@
 #include "test_native_client_composed_facial.h"
 #include "test_native_server_flex_weight.h"
 #include "test_native_server_flex_animation.h"
+#include "test_native_server_flex_spline.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -147,6 +148,15 @@ int main(int argc,char** argv){
         assert(api&&!get(0,sizeof(ft::ServerFlexAnimationApi))&&!get(1,0));
         ft::test::check_server_flex_animation(*api);
         std::puts("PASS server flex animation track binding, stereo blend, fade and decay");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetServerFlexSplineApi>(GetProcAddress(server,ft::server_flex_spline_export));
+        assert(get&&!GetProcAddress(client,ft::server_flex_spline_export));
+        const auto* api=get(1,sizeof(ft::ServerFlexSplineApi));
+        assert(api&&!get(0,sizeof(ft::ServerFlexSplineApi))&&!get(1,0));
+        ft::test::check_server_flex_spline(*api);
+        std::puts("PASS native nonuniform server flex track spline");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));

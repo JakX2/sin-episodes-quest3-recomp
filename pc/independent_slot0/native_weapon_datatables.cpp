@@ -12,6 +12,7 @@
 #include "native_client_composed_facial.h"
 #include "native_server_flex_weight.h"
 #include "native_server_flex_animation.h"
+#include "native_server_flex_spline.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11005,6 +11006,18 @@ bool server_flex_track_name(const ServerFlexAnimationBindings& h,void* track,cha
     }
     return false;
 }
+int __cdecl server_flex_spline_sample(const ServerFlexSample* rows,unsigned count,float low,float high,
+    float duration,float time,unsigned bank,float* out) noexcept {
+    if(!hologram_writable(out,4)||bank>1||count>4096||!std::isfinite(low)||!std::isfinite(high)||
+       !std::isfinite(duration)||duration<0||!std::isfinite(time)||
+       (count&&(!rows||!sin_independent::vgui_layout::Readable(rows,count*sizeof(*rows)))))return 0;
+    for(unsigned i=0;i<count;++i)
+        if(!std::isfinite(rows[i].time)||!std::isfinite(rows[i].value)||rows[i].time<0||
+           rows[i].time>duration||(i&&rows[i].time<rows[i-1].time))return 0;
+    *out=server_flex_spline_detail::evaluate(rows,count,low,high,duration,time,bank);return 1;
+}
+const ServerFlexSplineApi server_flex_spline_api{version,sizeof(ServerFlexSplineApi),&server_flex_spline_sample};
+
 bool server_flex_track_value(const ServerFlexAnimationBindings& h,void* track,unsigned bank,float time,float start,float end,float& out) noexcept {
     const float low=hologram_read<float>(track,0xc),high=hologram_read<float>(track,0x10);
     if(end==-1||time<start||time>end){
@@ -11012,14 +11025,25 @@ bool server_flex_track_value(const ServerFlexAnimationBindings& h,void* track,un
         return true;
     }
     float v=0;
-    if(!h.sample(h.context,track,bank,static_cast<float>(static_cast<double>(time)-start),&v))return false;
+    const float relative=static_cast<float>(static_cast<double>(time)-start);
+    if(h.sample){
+        if(!h.sample(h.context,track,bank,relative,&v))return false;
+    }else{
+        const unsigned base=0x14+bank*0x14;
+        const int count=hologram_read<int>(track,base+0xc);
+        if(count<0||count>4096)return false;
+        void* rows=nullptr;unsigned extent=0;
+        if(count&&!server_flex_storage(h,hologram_read<std::uint32_t>(track,base),count*sizeof(ServerFlexSample),rows,extent))return false;
+        if(!server_flex_spline_sample(static_cast<const ServerFlexSample*>(rows),count,low,high,
+            static_cast<float>(static_cast<double>(end)-start),relative,bank,&v))return false;
+    }
     out=low==high?v:static_cast<float>((static_cast<double>(high)-low)*v+low);return true;
 }
 int __cdecl server_flex_animation_apply(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
     float scene_time,float now,bool background,const ServerFlexAnimationBindings* b) noexcept {
     if(bytes<server_flex_scene_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_scene_extent)||
        !hologram_writable(record,0x40)||!hologram_writable(event,0x3c0)||!b||
-       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!b->controller||!b->sample||!b->intensity||
+       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!b->controller||!b->intensity||
        !server_flex_ranges(b->ranges,b->count)||!std::isfinite(scene_time)||!std::isfinite(now))return 0;
     const auto h=*b;
     const float start=hologram_read<float>(event,0x184),end=hologram_read<float>(event,0x188);
@@ -13001,6 +13025,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimSendA
 SiN_GetAnimatingSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimSendApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerFlexSplineApi=_SiN_GetServerFlexSplineApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFlexSplineApi* __cdecl
+SiN_GetServerFlexSplineApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFlexSplineApi)?&server_flex_spline_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerFlexAnimationApi=_SiN_GetServerFlexAnimationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFlexAnimationApi* __cdecl
