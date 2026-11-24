@@ -368,6 +368,13 @@ int main(int argc,char** argv){
     assert(jessicaInteraction&&!getJessicaInteraction(0,sizeof(tables::JessicaInteractionApi))&&!getJessicaInteraction(1,0));
     tables::test::check_jessica_interaction(*jessicaInteraction);
     std::puts("PASS native Jessica interaction gate, use and greeting response dispatch");
+    const auto getResponseSelect=reinterpret_cast<tables::GetResponseSelectApi>(GetProcAddress(server,tables::response_select_export));
+    assert(getResponseSelect&&!GetProcAddress(client,tables::response_select_export));
+    const auto* responseSelect=getResponseSelect(1,sizeof(tables::ResponseSelectApi));
+    assert(responseSelect&&!getResponseSelect(0,sizeof(tables::ResponseSelectApi))&&!getResponseSelect(1,0));
+    tables::test::check_response_select(*responseSelect);
+    std::puts("PASS native response selection criteria, chance and ownership");
+
 
     const auto getCount=reinterpret_cast<tables::GetCountInterrogationApi>(GetProcAddress(server,tables::count_export));
     assert(getCount&&!GetProcAddress(client,tables::count_export));

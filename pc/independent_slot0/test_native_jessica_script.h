@@ -220,4 +220,50 @@ inline void check_jessica_interaction(const JessicaInteractionApi& api){
     assert(f.run()==-1&&f.result==99);x.expect({1,2,3,4,3,5,6,8,9,11});assert(api.acknowledge(&x.ctrl));
 }
 
+
+struct ResponseSelectionFixture {
+    alignas(4) unsigned char exp[0x7c]{},response[0x124]{};
+    int system=0,criteria=0,draw=50,chance=50;
+    unsigned events[32]{},count=0,fail=0,destroys=0,ends=0;
+    bool no_system=false,no_match=false,empty=false,flag=true,mutate=false;
+    ResponseSelectionBindings b{};
+    void record(unsigned n){assert(count<32);events[count++]=n;}
+    void expect(std::initializer_list<unsigned> list){assert(count==list.size()&&!std::memcmp(events,list.begin(),count*4));count=0;}
+    void put(unsigned off,unsigned w){std::memcpy(response+off,&w,4);}
+    unsigned word(unsigned off){unsigned w=0;std::memcpy(&w,response+off,4);return w;}
+    ResponseSelectionFixture(){
+        b.context=this;
+        b.system=[](void* p,void* e,void** out) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(1);assert(e==f.exp);*out=f.no_system?nullptr:&f.system;return f.fail!=1;};
+        b.begin_criteria=[](void* p,void** out) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(2);*out=&f.criteria;return f.fail!=2;};
+        b.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(3);assert(c==&f.criteria&&!std::strcmp(k,"concept")&&!std::strcmp(v,"TLK_IDLE")&&w==5.f);return f.fail!=3;};
+        b.modifiers=[](void* p,void* c,const char* m,float w) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(4);assert(c==&f.criteria&&!std::strcmp(m,"fixture:yes")&&w==5.f);return f.fail!=4;};
+        b.npc_criteria=[](void* p,void* e,void* c) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(5);assert(e==f.exp&&c==&f.criteria);return f.fail!=5;};
+        b.player_criteria=[](void* p,void* c,int i) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(6);assert(c==&f.criteria&&i==1);return f.fail!=6;};
+        b.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(7);assert(n==0x124);std::memset(f.response,0xa5,sizeof(f.response));*out=f.response;*bytes=sizeof(f.response);return f.fail!=7;};
+        b.find=[](void* p,void* s,void* c,void* r,void* e,unsigned* out) noexcept -> int{
+            auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(8);assert(s==&f.system&&c==&f.criteria&&r==f.response&&e==f.exp);
+            assert(!f.word(0)&&!f.response[4]&&!f.word(0x88)&&f.word(0x8c)==100&&!f.word(0x98)&&!f.response[0xa4]&&f.response[0xa5]==0xa5);
+            f.response[4]=f.empty?0:'x';f.response[5]=0;f.put(0x88,f.flag?4:0);f.put(0x8c,f.chance);*out=!f.no_match;return f.fail!=8;
+        };
+        b.draw=[](void* p,int l,int h,int* out) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(9);assert(l==1&&h==100);*out=f.draw;if(f.mutate)f.put(0x8c,f.draw);return f.fail!=9;};
+        b.destroy=[](void* p,void* r) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(10);assert(r==f.response);++f.destroys;return f.fail!=10;};
+        b.end_criteria=[](void* p,void* c) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(11);assert(c==&f.criteria);++f.ends;return f.fail!=11;};
+    }
+};
+inline void check_response_select(const ResponseSelectApi& api){
+    ResponseSelectionFixture f;void* out=&f;unsigned n=99;
+    auto run=[&](const char* mods=nullptr){out=&f;n=99;return api.select(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",mods,&out,&n);};
+    f.no_system=true;assert(run()==1&&!out&&!n);f.expect({1});f.no_system=false;
+    f.no_match=true;assert(run()==1&&!out&&!n&&!f.destroys);f.expect({1,2,3,5,6,7,8,11});f.no_match=false;
+    f.empty=true;assert(run()==1&&!out&&!n&&f.destroys==1);f.expect({1,2,3,5,6,7,8,10,11});f.empty=false;
+    assert(run("fixture:yes")==1&&!out&&!n);f.expect({1,2,3,4,5,6,7,8,9,10,11});
+    f.draw=51;assert(run()==1&&out==f.response&&n==0x124);f.expect({1,2,3,5,6,7,8,9,11});
+    f.mutate=true;assert(run()==1&&!out);f.expect({1,2,3,5,6,7,8,9,10,11});f.mutate=false;
+    f.chance=100;assert(run()==1&&out==f.response);f.expect({1,2,3,5,6,7,8,11});
+    f.flag=false;f.chance=-1;assert(run()==1&&out==f.response);f.expect({1,2,3,5,6,7,8,11});
+    f.fail=3;assert(run()==-1&&out==&f&&n==99);f.expect({1,2,3,11});
+    f.fail=8;assert(run()==-1&&out==&f&&n==99);f.expect({1,2,3,5,6,7,8,10,11});
+    f.fail=11;assert(run()==-1&&out==&f&&n==99);f.expect({1,2,3,5,6,7,8,11,10});
+}
+
 }
