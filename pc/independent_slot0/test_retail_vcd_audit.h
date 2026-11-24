@@ -1,6 +1,8 @@
 #pragma once
 #include "test_native_npc_scene_playback.h"
 #include "native_server_event_intensity.h"
+#include "native_server_facial_records.h"
+#include "native_server_composed_facial_think.h"
 #include "native_server_flex_spline.h"
 #include <cmath>
 #include <cstdio>
@@ -932,8 +934,96 @@ event section pause
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
 }
+// Parsed VCD -> scene clock -> scene virtual leaf -> native facial
+// record admission -> native actor think -> removal and graph retirement.
+inline void check_parsed_facial_lifecycle(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
+    const NativeSceneExecutionApi& execution,const ServerFacialRecordApi& admission,const ServerComposedFacialThinkApi& think){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Face
+ {
+  event flexanimation smile
+  {
+   time 0 2
+   flexanimations samples_use_time
+   {
+    "jaw" { 0.5 0.8 1.5 0.4 }
+   }
+  }
+ }
+}
+)VCD";
+    struct Fixture {
+        VcdAuditArena& arena;
+        alignas(4) unsigned char scene[0x5ec]{},actor[server_npc_random_expression_extent]{};
+        unsigned maps{},starts{},stops{};float now=10;
+        std::uint32_t root=0;
+        explicit Fixture(VcdAuditArena& a):arena(a){}
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+        static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept{
+            auto& a=self(p).arena;return a.storage(&a,w,out,n);
+        }
+    } f(arena);
+    F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;f.actor[0x1f0]=1;
+    auto raw=arena.runtime();
+    assert(runtime.parse(f.scene+0x410,"face.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    ServerFacialRecordBindings cfg{};cfg.base_flex=true;cfg.host.context=&f;
+    cfg.host.storage=&Fixture::storage;
+    cfg.host.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);
+    };
+    cfg.host.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+    cfg.host.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    cfg.extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;
+    };
+    cfg.now=[](void* p,float* out) noexcept -> int{*out=Fixture::self(p).now;return 1;};
+    ActorEventRecordBindings records{};assert(admission.adapt(&cfg,&records));
+    NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
+    b.dispatch.context=&f;b.dispatch.records=&records;
+    b.dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word);*out=f.actor;*n=sizeof(f.actor);return 1;
+    };
+    b.dispatch.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace kind) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&F::word(event,0)==10);
+        if(kind==ChoreographyDispatchTrace::Start)++f.starts;
+        else if(kind==ChoreographyDispatchTrace::Stop)++f.stops;
+        return 1;
+    };
+    b.leaves.context=&f;b.leaves.actor_extent=cfg.extent;
+    ServerFlexRange range{0,1};
+    ServerFlexAnimationBindings flex{};flex.context=&f;flex.ranges=&range;flex.count=1;flex.storage=&Fixture::storage;
+    flex.controller=[](void* p,const char* name) noexcept -> int{
+        ++Fixture::self(p).maps;return std::strcmp(name,"jaw")?-1:0;
+    };
+    ServerComposedFacialThinkBindings facial{};facial.native_intensity=true;
+    facial.base.context=&f;facial.base.ranges=&range;facial.base.count=1;
+    facial.base.storage=&Fixture::storage;facial.base.flex=&flex;facial.base.base_flex=1;
+    assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
+    auto simulate=[&](float time){
+        F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);
+    };
+    assert(simulate(.5f)==1&&f.starts==1&&F::word(f.actor,0x5c4)==1);
+    void* rows=nullptr;unsigned n=0;
+    assert(Fixture::storage(&f,F::word(f.actor,0x5b8),&rows,&n)&&n>=0x40);
+    assert(VcdAuditArena::read_float(rows,0x20)==1);
+    assert(think.run(f.actor,sizeof(f.actor),10,&facial)&&f.maps==1);
+    assert(std::fabs(VcdAuditArena::read_float(f.actor,0x4a8)-.8f)<.00001f&&f.actor[0x200]);
+    assert(simulate(1.5f)==1&&F::word(f.actor,0x5c4)==1);
+    assert(think.run(f.actor,sizeof(f.actor),11,&facial)&&f.maps==1);
+    assert(std::fabs(VcdAuditArena::read_float(f.actor,0x4a8)-.4f)<.00001f);
+    assert(simulate(2.5f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
+    assert(think.run(f.actor,sizeof(f.actor),12,&facial));
+    assert(std::fabs(VcdAuditArena::read_float(f.actor,0x4a8)-.38f)<.00001f);
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
+    std::puts("PASS parsed VCD facial admission, native spline, actor think and retirement");
+}
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate,const NativeSceneExecutionApi& execution,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate,const NativeSceneExecutionApi& execution,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline,const ServerFacialRecordApi& admission,const ServerComposedFacialThinkApi& think){
+    VcdAuditArena facial_arena(c,s,t,d,st,si,va);check_parsed_facial_lifecycle(facial_arena,runtime,execution,admission,think);
     VcdAuditArena execution_arena(c,s,t,d,st,si,va);check_composed_scene_execution(execution_arena,runtime,execution);
     check_native_movement_gate(gate);
     check_native_choreography_dispatch(dispatch);check_native_scene_leaves(leaves);
