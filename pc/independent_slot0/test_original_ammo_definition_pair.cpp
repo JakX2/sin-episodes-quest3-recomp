@@ -124,9 +124,15 @@ int main(int argc,char** argv){
     assert(entitySend&&entityRecv&&!getEntitySend(0,sizeof(tables::BaseEntitySendApi))&&!getEntityRecv(1,0));
     tables::test::check_entity_graph(*entitySend,*entityRecv);
     std::puts("PASS native paired BaseEntity time, prediction and notification network graph");
+    const auto getDerivedSend=reinterpret_cast<tables::GetDerivedPlayerSendApi>(GetProcAddress(server,tables::derived_player_send_export));
+    const auto getDerivedRecv=reinterpret_cast<tables::GetDerivedPlayerRecvApi>(GetProcAddress(client,tables::derived_player_recv_export));
+    assert(getDerivedSend&&getDerivedRecv&&!GetProcAddress(client,tables::derived_player_send_export)&&!GetProcAddress(server,tables::derived_player_recv_export));
+    const auto* derivedSend=getDerivedSend(1,sizeof(tables::DerivedPlayerSendApi));
+    const auto* derivedRecv=getDerivedRecv(1,sizeof(tables::DerivedPlayerRecvApi));
+    assert(derivedSend&&derivedRecv&&!getDerivedSend(0,sizeof(tables::DerivedPlayerSendApi))&&!getDerivedRecv(1,0));
     tables::test::check_base_player_graph(*basePlayerSend,*basePlayerRecv,*animSend,*animRecv,*overlaySend,*overlayRecv,
-        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv,*dataSend,*dataRecv,*entitySend,*entityRecv);
-    std::puts("PASS native paired BasePlayer and PlayerState graph composition");
+        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv,*dataSend,*dataRecv,*entitySend,*entityRecv,*derivedSend,*derivedRecv);
+    std::puts("PASS native paired BasePlayer, HL2_Player, HL2Local, PlayerHand and PlayerState graph composition");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

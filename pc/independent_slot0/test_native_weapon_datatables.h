@@ -670,12 +670,60 @@ inline void __cdecl effects_changed(void* context,void* entity) noexcept {
 inline void __cdecl interpolation_changed(void* context,void*) noexcept {
     ++static_cast<EntityNetworkFixture*>(context)->interpolation;
 }
+
+inline void check_derived_player_graph(const DerivedPlayerSendApi& sa,const DerivedPlayerRecvApi& ra,
+        s::SendTable* sb,RecvTable* rb,s::SendTable* se,RecvTable* re,
+        const sin_independent::EntityHandleEntry* entries){
+    DerivedPlayerSendBindings bs{sb,se,entries,64};DerivedPlayerRecvBindings br{rb,re};
+    DerivedPlayerSendView sv{};DerivedPlayerRecvView rv{};
+    auto bad=bs;bad.entity=nullptr;assert(!sa.create(&bad,&sv));
+    assert(sa.create(&bs,&sv)&&ra.create(&br,&rv));
+    assert(sv.player->count==6&&rv.player->count==6&&sv.local->count==13&&rv.local->count==13&&sv.hand->count==1&&rv.hand->count==1);
+    auto* s=sv.player->props;auto* c=rv.player->props;
+    assert(s[0].table==sb&&c[0].table==rb&&sv.hand->props[0].table==se&&rv.hand->props[0].table==re);
+    assert(s[1].table==sv.local&&c[1].table==rv.local&&s[1].offset==0x137c&&c[1].offset==0x11c8&&s[1].flags==0);
+    alignas(4) unsigned char server[0x151c]{},client[0x1248]{};
+    s::Recipients mask{};mask.words[0]=0xffffffffu;
+    auto* sl=static_cast<unsigned char*>(s[1].tableProxy(&s[1],server,server+s[1].offset,&mask,7));
+    assert(sl==server+0x137c&&mask.words[0]==64);
+    void* dst=nullptr;c[1].table_proxy(&c[1],&dst,client+c[1].offset,7);
+    assert(dst==client+0x11c8);auto* cl=static_cast<unsigned char*>(dst);
+    const unsigned widths[]={4,4,4,1,1,4,4,4,1,1,4,4,4};
+    const int offsets[]={4,8,0xc,0x10,0x11,0x14,0x18,0x1c,0x20,0x21,0x24,0x28,0x2c};
+    const std::uint32_t input[]={0x42480000u,0x41c80000u,0x3f400000u,1,1,5,4,2,1,1,0x41200000u,0x41a00000u,(0x12345u<<12)|37u};
+    for(unsigned i=0;i<13;++i){
+        auto& a=sv.local->props[i];auto& b=rv.local->props[i];
+        assert(a.offset==offsets[i]&&b.offset==offsets[i]&&std::strcmp(a.name,b.name)==0);
+        std::memcpy(sl+a.offset,&input[i],widths[i]);
+        s::DVariant v{};a.scalarProxy(&a,sl,sl+a.offset,&v,0,7);
+        RecvData d{&b,v,0,7};b.proxy(&d,cl,cl+b.offset);
+        const auto expected=i==12?((0x345u<<12)|37u):input[i];
+        assert(!std::memcmp(cl+b.offset,&expected,widths[i]));
+    }
+    assert(sv.local->props[0].bits==10&&sv.local->props[0].flags==0x11&&sv.local->props[0].low==100.0f/1024);
+    assert(sv.local->props[10].flags==4&&sv.local->props[11].flags==4);
+    for(unsigned i=2;i<6;++i){
+        auto& a=s[i];auto& b=c[i];
+        const unsigned width=i==2?1:4;
+        const std::uint32_t input_word=i==2?1u:0x3f000000u;
+        std::memcpy(server+a.offset,&input_word,width);
+        s::DVariant v{};a.scalarProxy(&a,server,server+a.offset,&v,0,7);
+        RecvData d{&b,v,0,7};b.proxy(&d,client,client+b.offset);
+        assert(std::strcmp(a.name,b.name)==0&&!std::memcmp(client+b.offset,&input_word,width));
+    }
+    // Owner-only routing is preserved when the local subobject is nested
+    // at nonzero original offsets.
+    assert(s[1].tableProxy(&s[1],server,sl,&mask,0)==sl&&mask.words[0]==0);
+    sv.local->precalc=&mask;rv.hand->initialized=true;assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
+    sv.local->precalc=nullptr;rv.hand->initialized=false;assert(sa.destroy(&sv)&&ra.destroy(&rv));
+}
 inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayerRecvApi& ra,
         const AnimSendApi& asa,const AnimRecvApi& ara,const OverlaySendApi& osa,const OverlayRecvApi& ora,
         const FlexSendApi& fsa,const FlexRecvApi& fra,const InventorySendApi& isa,const InventoryRecvApi& ira,
         const PlayerLocalSendApi& lsa,const PlayerLocalRecvApi& lra,
         const LocalDataSendApi& dsa,const LocalDataRecvApi& dra,
-        const BaseEntitySendApi& esa,const BaseEntityRecvApi& era){
+        const BaseEntitySendApi& esa,const BaseEntityRecvApi& era,
+        const DerivedPlayerSendApi& psa,const DerivedPlayerRecvApi& pra){
     s::SendProp collision_props[8];s::SendTable collision;
     assert(collision.Construct(collision_props,8,"DT_CollisionProperty"));
     RecvProp collision_recv_props[8];RecvTable collision_recv{collision_recv_props,8,nullptr,"DT_CollisionProperty"};
@@ -705,6 +753,7 @@ inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayer
     BasePlayerSendView pv{};BasePlayerRecvView prv{};
     auto invalid=pb;invalid.private_player=nullptr;assert(!sa.create(&invalid,&pv)&&!pv.handle);
     assert(sa.create(&pb,&pv)&&ra.create(&prb,&prv));
+    check_derived_player_graph(psa,pra,pv.player,prv.player,ev.entity,erv.entity,entries);
     auto* s=pv.player->props;auto* c=prv.player->props;
     assert(pv.player->count==15&&prv.player->count==15&&pv.state->count==1&&prv.state->count==1);
     assert(s[0].table==iv.combat_base&&c[0].table==irv.combat_base);
