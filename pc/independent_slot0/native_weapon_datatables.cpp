@@ -2487,6 +2487,106 @@ int __cdecl gas_ack(HologramControl* ctrl) noexcept {
 }
 const PoisonGasApi poison_gas_api{version,sizeof(PoisonGasApi),&gas_defaults,&gas_configure,&gas_spawn,
     &gas_enable,&gas_think,&gas_kill,&gas_ack};
+
+constexpr unsigned poison_value=0x14d4,poison_source=0x14d8,poison_onset=0x14dc,poison_intensity=0x14e0,poison_wire=0x13a0;
+bool poison_valid(const HologramControl* ctrl) noexcept {return health_control(ctrl,0x14e4);}
+bool poison_resolve(void* player,const PlayerPoisonBindings& b,void*& gas) noexcept {
+    gas=nullptr;unsigned bytes=0;
+    const auto handle=hologram_read<std::uint32_t>(player,poison_source);
+    if(handle==disp_invalid)return true;
+    if(!b.resolve(b.context,handle,&gas,&bytes))return false;
+    return !gas||(bytes>=gas_bytes&&sin_independent::vgui_layout::Readable(gas,gas_bytes));
+}
+bool poison_inside_body(void* player,const PlayerPoisonBindings& b,unsigned& inside) noexcept {
+    inside=0;void* gas=nullptr;
+    if(!poison_resolve(player,b,gas))return false;
+    if(!gas)return true; // stale/invalid and disabled leave handle untouched
+    if(!poison_resolve(player,b,gas)||!gas)return false;
+    if(!hologram_read<unsigned char>(gas,gas_on))return true;
+    if(!poison_resolve(player,b,gas)||!gas)return false;
+    float origin[3]{},pos[3]{};
+    if(!b.position(b.context,gas,origin)||!b.position(b.context,player,pos))return false;
+    float delta[3]{};
+    for(unsigned i=0;i<3;++i)delta[i]=pos[i]-origin[i];
+    const float d2=static_cast<float>(static_cast<double>(delta[2])*delta[2]+
+        static_cast<double>(delta[1])*delta[1]+static_cast<double>(delta[0])*delta[0]);
+    const float distance=std::sqrt(d2);
+    if(!poison_resolve(player,b,gas)||!gas)return false;
+    if(static_cast<double>(distance)<static_cast<double>(hologram_read<float>(gas,gas_radius))+10.0){
+        inside=1;return true;
+    }
+    hologram_write(player,poison_source,disp_invalid);return true;
+}
+int __cdecl poison_spawn(HologramControl* ctrl) noexcept {
+    if(!poison_valid(ctrl))return 0;
+    hologram_write(ctrl->object,poison_value,1.0f);
+    hologram_write(ctrl->object,poison_source,disp_invalid);
+    hologram_write(ctrl->object,poison_onset,0.0f);return 1;
+}
+int __cdecl poison_attach(HologramControl* ctrl,std::uint32_t handle) noexcept {
+    if(!poison_valid(ctrl))return 0;
+    hologram_write(ctrl->object,poison_source,handle);return 1;
+}
+int __cdecl poison_inside(HologramControl* ctrl,const PlayerPoisonBindings* b,unsigned* out) noexcept {
+    if(!poison_valid(ctrl)||!b||!b->resolve||!b->position||!out)return 0;
+    ctrl->busy=1;unsigned result=0;
+    const bool ok=poison_inside_body(ctrl->object,*b,result);if(ok)*out=result;
+    return disp_finish(ctrl,ok);
+}
+int __cdecl poison_tick(HologramControl* ctrl,PoisonTiming* timing,const PlayerPoisonBindings* b) noexcept {
+    if(!poison_valid(ctrl)||!timing||timing->busy||timing->blocked||!b||!b->resolve||!b->position||
+       !b->clock||!b->damage||!b->effect||!b->intensity||!b->dirty)return 0;
+    ctrl->busy=timing->busy=1;const auto host=*b;auto* player=ctrl->object;
+    const auto finish=[&](bool ok){
+        timing->busy=0;if(!ok)timing->blocked=1;
+        return disp_finish(ctrl,ok);
+    };
+    const auto clock=[&](float& now){return host.clock(host.context,&now)&&std::isfinite(now);};
+    unsigned inside=0;float now=0;
+    if(!poison_inside_body(player,host,inside)||!clock(now))return finish(false);
+    if(timing->last>now)timing->last=now;
+    if(static_cast<double>(now)+0.6f<timing->next_damage)timing->next_damage=now;
+    const double delta=(static_cast<double>(now)-timing->last)*0.15;
+    timing->last=now;
+    const double value=static_cast<double>(hologram_read<float>(player,poison_value))+(inside?-delta:delta);
+    hologram_write(player,poison_value,static_cast<float>(value));
+    if(value>1.0)hologram_write(player,poison_value,1.0f);
+    else if(value<=0){
+        hologram_write(player,poison_value,0.0f);
+        if(inside&&timing->next_damage<now){
+            void* gas=nullptr;
+            if(!poison_resolve(player,host,gas)||!host.damage(host.context,player,gas,10.0f,0x40000u)||!clock(now))
+                return finish(false);
+            timing->next_damage=static_cast<float>(static_cast<double>(now)+0.6f);
+        }
+    }
+    const float stored=hologram_read<float>(player,poison_value);
+    if(stored<1.0f){
+        if(hologram_read<float>(player,poison_onset)==0){
+            if(!clock(now))return finish(false);
+            hologram_write(player,poison_onset,now);
+        }
+        const unsigned id=stored>0.75f?26u:stored>0.5f?27u:stored>0.25f?28u:29u;
+        float intensity=0;
+        if(!host.effect(host.context,player,id)||!host.intensity(host.context,stored,&intensity))return finish(false);
+        hologram_write(player,poison_intensity,intensity);
+    }else if(hologram_read<float>(player,poison_onset)>0){
+        if(!host.effect(host.context,player,0))return finish(false);
+        hologram_write(player,poison_onset,0.0f);hologram_write(player,poison_intensity,1.0f);
+    }
+    // Original reads current value again after dirty callback.
+    if(hologram_read<float>(player,poison_value)!=hologram_read<float>(player,poison_wire)){
+        if(!host.dirty(host.context,player,0x137c))return finish(false);
+        hologram_write(player,poison_wire,hologram_read<float>(player,poison_value));
+    }
+    return finish(true);
+}
+int __cdecl poison_ack(HologramControl* ctrl,PoisonTiming* timing) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x14e4||!hologram_writable(ctrl->object,0x14e4)||
+       (timing&&timing->busy))return 0;
+    ctrl->blocked=0;if(timing)timing->blocked=0;return 1;
+}
+const PlayerPoisonApi player_poison_api{version,sizeof(PlayerPoisonApi),&poison_spawn,&poison_attach,&poison_inside,&poison_tick,&poison_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4057,6 +4157,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PoisonGas
 SiN_GetPoisonGasApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PoisonGasApi)?&poison_gas_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPlayerPoisonApi=_SiN_GetPlayerPoisonApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerPoisonApi* __cdecl
+SiN_GetPlayerPoisonApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerPoisonApi)?&player_poison_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
