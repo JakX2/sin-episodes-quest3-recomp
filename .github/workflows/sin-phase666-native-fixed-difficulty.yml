@@ -15,6 +15,10 @@ on:
       - 'src/fixed_difficulty_phase663.cpp'
       - 'src/original_sin_trigger_entities.cpp'
       - 'src/fixed_difficulty_trigger_phase663.cpp'
+      - 'src/original_ar_grenade_runtime.cpp'
+      - 'src/original_ar_grenade_touch.cpp'
+      - 'include/sin_compat/original_ar_grenade_runtime.hpp'
+      - 'include/sin_compat/original_ar_grenade_touch.hpp'
       - 'include/sin_compat/original_sin_trigger_entities.hpp'
       - 'include/sin_compat/*difficulty*'
       - 'include/sin_compat/info_challenge_phase665.hpp'
@@ -49,6 +53,6 @@ jobs:
       - name: Build shared service and separate dlopen consumer under sanitizers
         run: |
           flags="-std=c++17 -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra -Wpedantic -Werror -Iinclude -Ithird_party/research"
-          clang++ $flags -fPIC -shared pc/independent_slot0/server_fixed_difficulty_service.cpp src/fixed_difficulty_phase663.cpp src/original_sin_trigger_entities.cpp src/fixed_difficulty_trigger_phase663.cpp -o /tmp/libsin-fixed-service.so
+          clang++ $flags -fPIC -shared pc/independent_slot0/server_fixed_difficulty_service.cpp src/fixed_difficulty_phase663.cpp src/original_sin_trigger_entities.cpp src/fixed_difficulty_trigger_phase663.cpp src/original_ar_grenade_runtime.cpp src/original_ar_grenade_touch.cpp -o /tmp/libsin-fixed-service.so
           clang++ $flags pc/independent_slot0/test_server_fixed_difficulty_service.cpp src/source_bsp_entities.cpp src/source_map_runtime.cpp -ldl -o /tmp/sin-native-service-test
           /tmp/sin-native-service-test /tmp/libsin-fixed-service.so

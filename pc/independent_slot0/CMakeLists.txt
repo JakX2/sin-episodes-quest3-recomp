@@ -972,7 +972,9 @@ target_sources(sin_slot0_server PRIVATE
   server_fixed_difficulty_service.cpp
   ../../src/fixed_difficulty_phase663.cpp
   ../../src/original_sin_trigger_entities.cpp
-  ../../src/fixed_difficulty_trigger_phase663.cpp)
+  ../../src/fixed_difficulty_trigger_phase663.cpp
+  ../../src/original_ar_grenade_runtime.cpp
+  ../../src/original_ar_grenade_touch.cpp)
 target_include_directories(sin_slot0_server PRIVATE ../../include ../../third_party/research)
 add_executable(sin_native_fixed_difficulty_service_test
   test_server_fixed_difficulty_service.cpp

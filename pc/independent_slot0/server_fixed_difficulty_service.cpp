@@ -2,6 +2,8 @@
 #include "phase45_zoom_transition.hpp"
 #include "phase47_ads_activity.hpp"
 #include "sin_compat/original_server_scattergun_ammo.hpp"
+#include "sin_compat/original_ar_grenade_runtime.hpp"
+#include "sin_compat/original_ar_grenade_touch.hpp"
 #include "server_attack_spread_rules.h"
 #include "sin_compat/fixed_difficulty_phase663.hpp"
 #include "sin_compat/info_challenge_phase665.hpp"
@@ -59,7 +61,7 @@ struct NativeEventScope {
 };
 #endif
 // Map-local behavior objects, not actual CBaseEntity allocations.
-enum class EntityKind { EnvGlobal, InfoChallenge, DynamicTrigger, SecretTrigger, Magnum, AssaultRifle, Scattergun };
+enum class EntityKind { EnvGlobal, InfoChallenge, DynamicTrigger, SecretTrigger, Magnum, AssaultRifle, Scattergun, ARGrenade };
 struct MapEntity {
     std::uint32_t generation=0;
     EntityKind kind=EntityKind::EnvGlobal;
@@ -72,6 +74,8 @@ struct MapEntity {
     bool weapon_resync=false;
     sin_compat::original_server_scattergun_ammo::ObservedAmmoState scattergun{};
     bool scattergun_resync=false;
+    sin_compat::ar_grenade::Runtime grenade{};
+    bool grenade_contact=false,grenade_uncertain=false;
 };
 struct MapLevel {
     std::uint32_t epoch=0;
@@ -569,6 +573,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponBehaviorApi=_SiN_GetWeaponBehaviorApi")
 #pragma comment(linker,"/EXPORT:SiN_GetScattergunPumpApi=_SiN_GetScattergunPumpApi")
 #pragma comment(linker,"/EXPORT:SiN_GetScattergunSecondaryApi=_SiN_GetScattergunSecondaryApi")
+#pragma comment(linker,"/EXPORT:SiN_GetARGrenadeApi=_SiN_GetARGrenadeApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -848,6 +853,7 @@ int SIN_FIXED_CALL map_create(abi::MapEntityRef ref,const char* classname) noexc
     else if(std::strcmp(classname,"weapon_magnum")==0)kind=EntityKind::Magnum;
     else if(std::strcmp(classname,"weapon_assault_rifle")==0)kind=EntityKind::AssaultRifle;
     else if(std::strcmp(classname,"weapon_scattergun")==0)kind=EntityKind::Scattergun;
+    else if(std::strcmp(classname,"grenade_ar")==0)kind=EntityKind::ARGrenade;
     else return abi::MapUnknownClass;
     auto it=level->entities.find(ref.index);
     if(it!=level->entities.end()&&(it->second.alive||ref.generation<=it->second.generation))
@@ -902,7 +908,7 @@ int SIN_FIXED_CALL map_spawn(abi::MapEntityRef ref) noexcept {
     auto* entity=map_find(ref);
     if(reading_engine_skill||!entity||entity->spawned||entity->remove_requested)return abi::MapRejected;
     // Trigger spawn needs the explicit native base/flags callbacks.
-    if(is_trigger(entity->kind))return abi::MapRejected;
+    if(is_trigger(entity->kind)||entity->kind==EntityKind::ARGrenade)return abi::MapRejected;
     if(entity->kind==EntityKind::EnvGlobal){
         const int result=SiN_EnvGlobalDispatch(abi::EnvSpawn,
             entity->global_name?entity->global_name->c_str():nullptr,
@@ -939,7 +945,7 @@ int SIN_FIXED_CALL map_input(abi::MapEntityRef ref,const char* name,
         default:return abi::MapRejected;
         }
     }
-    if(is_trigger(entity->kind)||is_weapon(entity->kind))return abi::MapUnhandledInput;
+    if(is_trigger(entity->kind)||is_weapon(entity->kind)||entity->kind==EntityKind::ARGrenade)return abi::MapUnhandledInput;
     challenge::Input input;
     if(std::strcmp(name,"GetInitialChallenge")==0)input=challenge::Input::Initial;
     else if(std::strcmp(name,"GetCurrentChallenge")==0)input=challenge::Input::Current;
@@ -1272,9 +1278,173 @@ int SIN_FIXED_CALL scattergun_secondary_fire(abi::MapEntityRef ref,
 const abi::ScattergunSecondaryApi scattergun_fire_api{abi::scattergun_fire_version,
     sizeof(abi::ScattergunSecondaryApi),&scattergun_secondary_fire};
 
+namespace grenade=sin_compat::ar_grenade;
+namespace grenade_touch=sin_compat::ar_grenade_touch;
+MapEntity* find_grenade(abi::MapEntityRef ref) noexcept {
+    auto* entity=map_find(ref);
+    return entity&&entity->kind==EntityKind::ARGrenade?entity:nullptr;
+}
+grenade::Vec3 grenade_vector(const abi::NpcSpread& v) noexcept {return {v.x,v.y,v.z};}
+abi::NpcSpread grenade_vector(const grenade::Vec3& v) noexcept {return {v.x,v.y,v.z};}
+abi::GrenadeSnapshot grenade_snapshot(const MapEntity& e) noexcept {
+    return {e.grenade.armed()?1u:0u,e.grenade_contact?1u:0u,e.grenade_uncertain?1u:0u,
+        e.remove_requested?1u:0u,e.grenade.danger_radius(),e.grenade.next_think_seconds(),
+        e.grenade.damage(),e.grenade.blast_radius(),grenade_vector(e.grenade.origin()),
+        grenade_vector(e.grenade.velocity())};
+}
+bool grenade_ready(const MapEntity* e) noexcept {return e&&e->spawned&&!e->grenade_uncertain;}
+int SIN_FIXED_CALL grenade_spawn(abi::MapEntityRef ref,const abi::GrenadeSpawn* input) noexcept {
+    auto* e=find_grenade(ref);
+    if(reading_engine_skill||!e||e->spawned||!input)return 0;
+    if(!e->grenade.spawn(grenade_vector(input->origin),grenade_vector(input->velocity),input->time))return 0;
+    e->spawned=true;
+    return 1;
+}
+int SIN_FIXED_CALL grenade_state(abi::MapEntityRef ref,abi::GrenadeSnapshot* out) noexcept {
+    const auto* e=find_grenade(ref);
+    if(!e||!e->spawned||!out)return 0;
+    *out=grenade_snapshot(*e);return 1;
+}
+int SIN_FIXED_CALL grenade_kinematics(abi::MapEntityRef ref,const abi::NpcSpread* origin,
+        const abi::NpcSpread* velocity) noexcept {
+    auto* e=find_grenade(ref);
+    return !reading_engine_skill&&grenade_ready(e)&&origin&&velocity&&
+        e->grenade.update_kinematics(grenade_vector(*origin),grenade_vector(*velocity))?1:0;
+}
+int SIN_FIXED_CALL grenade_observe_contact(abi::MapEntityRef ref,std::uint32_t value) noexcept {
+    auto* e=find_grenade(ref);
+    if(reading_engine_skill||!grenade_ready(e)||!e->grenade.armed()||value>1)return 0;
+    e->grenade_contact=value!=0;return 1;
+}
+bool valid_grenade_host(const abi::GrenadeHost* host) noexcept {
+    return host&&host->version==abi::grenade_version&&host->size==sizeof(*host)&&host->emit;
+}
+class GrenadeBridge final:public grenade::IHost {
+public:
+    GrenadeBridge(MapEntity& entity,abi::MapEntityRef ref,const abi::GrenadeHost* host,
+        void* context,abi::GrenadeReport& report):entity_(entity),ref_(ref),
+        emit_(host?host->emit:nullptr),context_(context),report_(report){}
+    void emit(abi::GrenadeEffect effect){
+        ++report_.effects_attempted;
+        if(!emit_||!emit_(context_,ref_,&effect))throw 1;
+        ++report_.effects_delivered;
+    }
+    void on_flight_ai_sound(const grenade::AiSoundEvent& e) override {sound(abi::GrenadeFlightSound,e);}
+    void on_original_trace_effect(grenade::Decal decal) override {
+        abi::GrenadeEffect e{};e.kind=abi::GrenadeTraceEffect;
+        e.decal=static_cast<std::uint32_t>(decal);e.origin=grenade_vector(entity_.grenade.origin());emit(e);
+    }
+    void on_screen_shake_feedback(const grenade::ScreenShakeEvent& v) override {
+        abi::GrenadeEffect e{};e.kind=abi::GrenadeShake;e.origin=grenade_vector(v.origin);
+        e.radius=v.radius;e.duration=v.duration_seconds;e.requested_amplitude=v.requested_amplitude;
+        e.clamped_amplitude=v.engine_clamped_amplitude;e.frequency=v.frequency;emit(e);
+    }
+    void on_radius_damage(const grenade::BlastDamageEvent& v) override {
+        abi::GrenadeEffect e{};e.kind=abi::GrenadeRadiusDamage;e.origin=grenade_vector(v.origin);
+        e.type=v.damage_type;e.damage=v.damage;e.radius=v.radius;emit(e);
+    }
+    void on_explosion_ai_sound(const grenade::AiSoundEvent& e) override {sound(abi::GrenadeExplosionSound,e);}
+    void on_remove_projectile() override {
+        abi::GrenadeEffect e{};e.kind=abi::GrenadeQueueRemove;emit(e);entity_.remove_requested=true;
+    }
+    void flag(bool set){
+        abi::GrenadeEffect e{};e.kind=set?abi::GrenadeSetContact:abi::GrenadeClearContact;
+        emit(e);entity_.grenade_contact=set;
+    }
+private:
+    void sound(std::uint32_t kind,const grenade::AiSoundEvent& v){
+        abi::GrenadeEffect e{};e.kind=kind;e.type=v.type;e.channel=static_cast<std::uint32_t>(v.channel);
+        e.origin=grenade_vector(v.origin);e.radius=v.radius;e.duration=v.duration_seconds;emit(e);
+    }
+    MapEntity& entity_;
+    abi::MapEntityRef ref_;
+    decltype(abi::GrenadeHost::emit) emit_;
+    void* context_;
+    abi::GrenadeReport& report_;
+};
+std::uint32_t grenade_result(grenade::StepResult code) noexcept {
+    switch(code){
+    case grenade::StepResult::Applied:return abi::GrenadeApplied;
+    case grenade::StepResult::NotDue:return abi::GrenadeNotDue;
+    case grenade::StepResult::Disarmed:return abi::GrenadeDisarmed;
+    case grenade::StepResult::TriggerRejected:return abi::GrenadeBlocked;
+    default:return abi::GrenadeRejected;
+    }
+}
+int grenade_finish(const MapEntity* e,abi::GrenadeReport& report,
+        std::uint32_t code,abi::GrenadeReport* out) noexcept {
+    report.code=code;
+    if(e&&e->spawned)report.state=grenade_snapshot(*e);
+    *out=report;return 1;
+}
+int SIN_FIXED_CALL grenade_think(abi::MapEntityRef ref,float time,std::uint32_t ai,std::uint32_t increment,
+        const abi::GrenadeHost* host,void* context,abi::GrenadeReport* out) noexcept {
+    if(!out)return 0;
+    abi::GrenadeReport report{};report.touch_gate=0xffffffffu;
+    auto* e=find_grenade(ref);
+    if(reading_engine_skill||!grenade_ready(e)||ai>1||increment>1||
+       (ai&&!valid_grenade_host(host))||(host&&!valid_grenade_host(host)))
+        return grenade_finish(e,report,abi::GrenadeRejected,out);
+    OutputScope scope;
+    GrenadeBridge bridge(*e,ref,host,context,report);
+    try {
+        return grenade_finish(e,report,grenade_result(e->grenade.think(time,ai!=0,increment!=0,bridge)),out);
+    }catch(...){e->grenade_uncertain=true;return grenade_finish(e,report,abi::GrenadeUncertain,out);}
+}
+int grenade_detonate_impl(MapEntity& e,abi::MapEntityRef ref,std::uint32_t decal,bool set,
+        const abi::GrenadeHost* host,void* context,abi::GrenadeReport& report,abi::GrenadeReport* out) noexcept {
+    if(!e.grenade.armed())return grenade_finish(&e,report,abi::GrenadeDisarmed,out);
+    if(!set&&!e.grenade_contact)return grenade_finish(&e,report,abi::GrenadeBlocked,out);
+    if(decal>static_cast<std::uint32_t>(grenade::Decal::SmallScorch)||!valid_grenade_host(host))
+        return grenade_finish(&e,report,abi::GrenadeRejected,out);
+    OutputScope scope;
+    GrenadeBridge bridge(e,ref,host,context,report);
+    try {
+        if(set)bridge.flag(true);
+        // Original detonation clears +0x795 before its effect path.
+        bridge.flag(false);
+        return grenade_finish(&e,report,grenade_result(e.grenade.detonate(true,
+            static_cast<grenade::Decal>(decal),bridge)),out);
+    }catch(...){e.grenade_uncertain=true;return grenade_finish(&e,report,abi::GrenadeUncertain,out);}
+}
+int SIN_FIXED_CALL grenade_detonate(abi::MapEntityRef ref,std::uint32_t decal,const abi::GrenadeHost* host,
+        void* context,abi::GrenadeReport* out) noexcept {
+    if(!out)return 0;
+    abi::GrenadeReport report{};report.touch_gate=0xffffffffu;
+    auto* e=find_grenade(ref);
+    if(reading_engine_skill||!grenade_ready(e))return grenade_finish(e,report,abi::GrenadeRejected,out);
+    return grenade_detonate_impl(*e,ref,decal,false,host,context,report,out);
+}
+int SIN_FIXED_CALL grenade_touch_dispatch(abi::MapEntityRef ref,const abi::GrenadeTouch* input,
+        const abi::GrenadeHost* host,void* context,abi::GrenadeReport* out) noexcept {
+    if(!out)return 0;
+    abi::GrenadeReport report{};report.touch_gate=0xffffffffu;
+    auto* e=find_grenade(ref);
+    if(reading_engine_skill||!grenade_ready(e)||!input||input->other_present>1||
+       input->other_flags_120>255||input->virtual_fc_nonnull>1||input->virtual_fc_matches>1)
+        return grenade_finish(e,report,abi::GrenadeRejected,out);
+    if(!e->grenade.armed())return grenade_finish(e,report,abi::GrenadeDisarmed,out);
+    const grenade_touch::OriginalTouchObservation observation{input->other_present!=0,
+        input->other_field_11c,static_cast<std::uint8_t>(input->other_flags_120),
+        input->virtual_fc_nonnull!=0,input->virtual_fc_matches!=0,e->grenade_contact};
+    const auto decision=grenade_touch::evaluate(observation);
+    report.touch_gate=static_cast<std::uint32_t>(decision.gate);
+    if(!decision.should_dispatch_detonation())return grenade_finish(e,report,abi::GrenadeBlocked,out);
+    return grenade_detonate_impl(*e,ref,input->decal,decision.original_flag_795_set_requested,
+        host,context,report,out);
+}
+const abi::ARGrenadeApi grenade_api{abi::grenade_version,sizeof(abi::ARGrenadeApi),
+    &grenade_spawn,&grenade_state,&grenade_kinematics,&grenade_observe_contact,
+    &grenade_think,&grenade_touch_dispatch,&grenade_detonate};
+
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::ARGrenadeApi* SIN_FIXED_CALL
+SiN_GetARGrenadeApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::grenade_version&&bytes==sizeof(abi::ARGrenadeApi)?&grenade_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::ScattergunSecondaryApi* SIN_FIXED_CALL
 SiN_GetScattergunSecondaryApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::scattergun_fire_version&&bytes==sizeof(abi::ScattergunSecondaryApi)?
