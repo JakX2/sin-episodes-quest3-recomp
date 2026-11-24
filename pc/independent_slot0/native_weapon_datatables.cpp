@@ -1653,6 +1653,159 @@ int __cdecl phone_ack(HologramControl* ctrl) noexcept {
     ctrl->blocked=0;return 1;
 }
 const PhoneServerApi phone_behavior{version,sizeof(PhoneServerApi),&phone_defaults,&phone_enable,&phone_think,&phone_dial,&phone_ack};
+
+constexpr unsigned disp_loaded=0x498,disp_antigen=0x49c,disp_last=0x4a0,disp_fraction=0x4a4,
+    disp_reject=0x4a8,disp_user=0x4ac,disp_steam=0x4b0,disp_screen=0x4b4;
+constexpr std::uint32_t disp_invalid=0xffffffffu;
+bool disp_valid(const HologramControl* ctrl) noexcept {
+    return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=0x4e8&&hologram_writable(ctrl->object,0x4e8);
+}
+int disp_finish(HologramControl* ctrl,bool ok) noexcept {
+    ctrl->busy=0;if(!ok){ctrl->blocked=1;return -1;}return 1;
+}
+int __cdecl disp_defaults(void* object,unsigned bytes) noexcept {
+    if(bytes<0x4e8||!hologram_writable(object,0x4e8))return 0;
+    hologram_write(object,disp_loaded,static_cast<unsigned char>(1));
+    hologram_write(object,disp_antigen,100.0f);
+    for(unsigned off:{disp_last,disp_fraction,disp_reject})hologram_write(object,off,0.0f);
+    for(unsigned off:{disp_user,disp_steam,disp_screen})hologram_write(object,off,disp_invalid);
+    return 1;
+}
+bool disp_clock(const DispenserBindings& b,float& now) noexcept {
+    return b.clock(b.context,&now)&&std::isfinite(now);
+}
+bool disp_pose(void* object,const DispenserBindings& b) noexcept {
+    const float amount=hologram_read<float>(object,disp_antigen);
+    if(!std::isfinite(amount))return false;
+    const float fraction=static_cast<float>(static_cast<double>(amount)*0.01f);
+    const float value=fraction>1?1.0f:fraction<0?0.0f:fraction;
+    return b.pose(b.context,object,"percentFull",value)&&b.advance_animation(b.context,object);
+}
+bool disp_start(void* object,const DispenserBindings& b) noexcept {
+    if(!b.sound(b.context,object,DispenserSound::UseLoop))return false;
+    auto handle=hologram_read<std::uint32_t>(object,disp_steam);
+    void* steam=nullptr;
+    if(handle!=disp_invalid&&!b.resolve(b.context,handle,&steam))return false;
+    if(steam)return true;
+    handle=disp_invalid;
+    if(!b.create_steam(b.context,object,&handle))return false;
+    hologram_write(object,disp_steam,handle);return true;
+}
+bool disp_stop(void* object,const DispenserBindings& b) noexcept {
+    auto handle=hologram_read<std::uint32_t>(object,disp_steam);
+    if(handle==disp_invalid)return true;
+    void* steam=nullptr;
+    if(!b.resolve(b.context,handle,&steam))return false;
+    if(!steam)return true; // original leaves a stale handle unchanged
+    // Original resolves twice; never pass a stale object to removal.
+    handle=hologram_read<std::uint32_t>(object,disp_steam);
+    steam=nullptr;
+    if(handle!=disp_invalid&&!b.resolve(b.context,handle,&steam))return false;
+    if(!b.remove(b.context,steam))return false;
+    hologram_write(object,disp_steam,disp_invalid);
+    return b.sound(b.context,object,DispenserSound::StopLoop)&&b.sound(b.context,object,DispenserSound::Stop);
+}
+int __cdecl disp_use(HologramControl* ctrl,const DispenserBindings* b,void* activator) noexcept {
+    if(!disp_valid(ctrl)||!b||!b->observe_use||!b->clock||!b->resolve||!b->sound||
+       !b->create_steam||!b->install_use_think||!b->schedule)return 0;
+    auto* object=ctrl->object;
+    if(!hologram_read<unsigned char>(object,disp_loaded)||!activator)return 1;
+    ctrl->busy=1;const auto host=*b;
+    DispenserUseObservation o{};
+    if(!host.observe_use(host.context,object,activator,&o)||o.is_player>1||o.within_use_predicate>1)
+        return disp_finish(ctrl,false);
+    if(!o.is_player||o.health>=o.max_health||!o.within_use_predicate)return disp_finish(ctrl,true);
+    const float amount=hologram_read<float>(object,disp_antigen);
+    if(!std::isfinite(amount))return disp_finish(ctrl,false);
+    if(amount<=0)return disp_finish(ctrl,host.sound(host.context,object,DispenserSound::Empty)!=0);
+    float now=0;
+    if(o.handle==disp_invalid||!disp_clock(host,now))return disp_finish(ctrl,false);
+    hologram_write(object,disp_last,now);hologram_write(object,disp_user,o.handle);
+    if(!disp_start(object,host)||!host.install_use_think(host.context,object)||!disp_clock(host,now))
+        return disp_finish(ctrl,false);
+    return disp_finish(ctrl,host.schedule(host.context,object,now)!=0);
+}
+int __cdecl disp_think(HologramControl* ctrl,const DispenserBindings* b) noexcept {
+    if(!disp_valid(ctrl)||!b||!b->resolve||!b->position||!b->clock||!b->heal||!b->remove||
+       !b->sound||!b->schedule||!b->pose||!b->advance_animation)return 0;
+    ctrl->busy=1;const auto host=*b;auto* object=ctrl->object;
+    const auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    const auto stop=[&](){
+        if(!disp_stop(object,host))return finish(false);
+        hologram_write(object,disp_last,0.0f);hologram_write(object,disp_user,disp_invalid);
+        return finish(disp_pose(object,host));
+    };
+    auto handle=hologram_read<std::uint32_t>(object,disp_user);
+    if(handle==disp_invalid)return stop();
+    void* user=nullptr;
+    if(!host.resolve(host.context,handle,&user))return finish(false);
+    if(!user)return stop();
+    float origin[3]{},position[3]{};
+    if(!host.position(host.context,object,origin))return finish(false);
+    handle=hologram_read<std::uint32_t>(object,disp_user);user=nullptr;
+    if(handle==disp_invalid)return stop();
+    if(!host.resolve(host.context,handle,&user))return finish(false);
+    if(!user)return stop();
+    if(!host.position(host.context,user,position))return finish(false);
+    double d2=0;
+    for(unsigned i=0;i<3;++i){
+        const float delta=position[i]-origin[i];
+        d2+=static_cast<double>(delta)*delta;
+    }
+    if(!(d2<6400.0))return stop();
+    float now=0;
+    const auto last=hologram_read<float>(object,disp_last);
+    const auto amount=hologram_read<float>(object,disp_antigen);
+    const auto fraction=hologram_read<float>(object,disp_fraction);
+    if(!disp_clock(host,now)||!std::isfinite(last)||!std::isfinite(amount)||!std::isfinite(fraction))
+        return finish(false);
+    // Original caps positive elapsed time at .1f; it does not clamp
+    // negative elapsed time. Subtract dose even if healing is refused.
+    double elapsed=static_cast<double>(now)-last;
+    if(elapsed>0.1f)elapsed=0.1f;
+    const double dose=elapsed*7.0;
+    const double remaining=static_cast<double>(amount)-dose;
+    const double accumulated=static_cast<double>(fraction)+dose;
+    constexpr auto max_float=(std::numeric_limits<float>::max)();
+    if(std::abs(remaining)>max_float||std::abs(accumulated)>max_float)return finish(false);
+    hologram_write(object,disp_last,now);
+    hologram_write(object,disp_antigen,remaining<0?0.0f:static_cast<float>(remaining));
+    const auto stored=static_cast<float>(accumulated);
+    hologram_write(object,disp_fraction,stored);
+    if(accumulated>=1.0){
+        const float whole=static_cast<float>(std::floor(accumulated));
+        if(static_cast<double>(whole)>(std::numeric_limits<int>::max)())return finish(false);
+        hologram_write(object,disp_fraction,static_cast<float>(static_cast<double>(stored)-whole));
+        if(hologram_read<float>(object,disp_antigen)<=0)return stop();
+        handle=hologram_read<std::uint32_t>(object,disp_user);user=nullptr;
+        if(handle==disp_invalid)return stop();
+        if(!host.resolve(host.context,handle,&user))return finish(false);
+        if(!user)return stop();
+        int accepted=0;
+        if(!host.heal(host.context,user,static_cast<int>(whole),0x00400000u,&accepted))return finish(false);
+        if(!accepted)return stop();
+    }
+    // A fractional final dose with zero remaining still schedules until
+    // the next integer threshold, matching the original branch.
+    if(!disp_clock(host,now))return finish(false);
+    const float when=static_cast<float>(static_cast<double>(now)+0.1f);
+    if(!std::isfinite(when)||!host.schedule(host.context,object,when))return finish(false);
+    return finish(disp_pose(object,host));
+}
+int __cdecl disp_stop_api(HologramControl* ctrl,const DispenserBindings* b) noexcept {
+    if(!disp_valid(ctrl)||!b||!b->resolve||!b->remove||!b->sound)return 0;
+    ctrl->busy=1;return disp_finish(ctrl,disp_stop(ctrl->object,*b));
+}
+int __cdecl disp_pose_api(HologramControl* ctrl,const DispenserBindings* b) noexcept {
+    if(!disp_valid(ctrl)||!b||!b->pose||!b->advance_animation)return 0;
+    ctrl->busy=1;return disp_finish(ctrl,disp_pose(ctrl->object,*b));
+}
+int __cdecl disp_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x4e8||!hologram_writable(ctrl->object,0x4e8))return 0;
+    ctrl->blocked=0;return 1;
+}
+const DispenserApi dispenser_api{version,sizeof(DispenserApi),&disp_defaults,&disp_use,&disp_think,
+    &disp_stop_api,&disp_pose_api,&disp_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3163,6 +3316,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PhoneServ
 SiN_GetPropPhoneServerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PhoneServerApi)?&phone_behavior:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetAntigenDispenserApi=_SiN_GetAntigenDispenserApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::DispenserApi* __cdecl
+SiN_GetAntigenDispenserApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(DispenserApi)?&dispenser_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

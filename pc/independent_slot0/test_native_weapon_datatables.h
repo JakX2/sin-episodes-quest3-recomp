@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include "native_weapon_datatables.h"
 #include <cassert>
 #include <cstring>
@@ -2039,6 +2040,98 @@ inline void check_spawn_session(const AggregateSendApi& server_api,const Aggrega
     assert(api.unbind(&session)&&!session.handle&&!stale(9,55));
     for(unsigned slot:slots)assert(av.class_records[slot].create==&fixture_class_creator);
     assert(aggregate.destroy(&av)&&registry.destroy(&rv)&&server_api.destroy(&server_view));
+}
+
+struct DispenserFixture {
+    void* object=nullptr;
+    int user=0,steam=0;
+    std::uint32_t user_handle=0x123004,steam_handle=0x234005;
+    DispenserUseObservation observation{1,10,100,1,0x123004};
+    bool steam_live=false,user_live=true,accepted=true;
+    unsigned events[64]{},count=0,fail=0;
+    float now=10,distance=40,scheduled=0,pose=0;
+    int amount=0;
+    bool push(unsigned e){assert(count<64);events[count++]=e;return fail!=e;}
+};
+inline int __cdecl disp_observe_test(void* context,void* obj,void* user,DispenserUseObservation* out) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==f.object&&user==&f.user);*out=f.observation;return f.push(1);
+}
+inline int __cdecl disp_resolve_test(void* context,std::uint32_t handle,void** out) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);
+    assert(handle==f.user_handle||handle==f.steam_handle);
+    if(handle==f.user_handle){*out=f.user_live?&f.user:nullptr;return f.push(2);}
+    *out=f.steam_live?&f.steam:nullptr;return f.push(3);
+}
+inline int __cdecl disp_pos_test(void* context,void* obj,float xyz[3]) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==f.object||obj==&f.user);
+    xyz[0]=obj==f.object?0.0f:f.distance;xyz[1]=xyz[2]=0;return f.push(obj==f.object?4:5);
+}
+inline int __cdecl disp_clock_test(void* context,float* now) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);*now=f.now;return f.push(6);
+}
+inline int __cdecl disp_heal_test(void* context,void* user,int amount,unsigned flags,int* accepted) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(user==&f.user&&flags==0x400000u);
+    f.amount=amount;*accepted=f.accepted?1:0;return f.push(7);
+}
+inline int __cdecl disp_sound_test(void* context,void* obj,DispenserSound sound) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==f.object);return f.push(8+static_cast<unsigned>(sound));
+}
+inline int __cdecl disp_create_test(void* context,void* obj,std::uint32_t* handle) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==f.object);*handle=f.steam_handle;f.steam_live=true;return f.push(12);
+}
+inline int __cdecl disp_remove_test(void* context,void* obj) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==&f.steam&&f.steam_live);f.steam_live=false;return f.push(13);
+}
+inline int __cdecl disp_install_test(void* context,void* obj) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==f.object);return f.push(14);
+}
+inline int __cdecl disp_schedule_test(void* context,void* obj,float when) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==f.object);f.scheduled=when;return f.push(15);
+}
+inline int __cdecl disp_pose_test(void* context,void* obj,const char* name,float value) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==f.object&&!std::strcmp(name,"percentFull"));f.pose=value;return f.push(16);
+}
+inline int __cdecl disp_anim_test(void* context,void* obj) noexcept {
+    auto& f=*static_cast<DispenserFixture*>(context);assert(obj==f.object);return f.push(17);
+}
+inline void check_dispenser(const DispenserApi& api){
+    alignas(4) unsigned char object[0x4e8]{};
+    HologramControl ctrl{object,sizeof(object)};DispenserFixture f{object};
+    DispenserBindings b{&f,&disp_observe_test,&disp_resolve_test,&disp_pos_test,&disp_clock_test,&disp_heal_test,
+        &disp_sound_test,&disp_create_test,&disp_remove_test,&disp_install_test,&disp_schedule_test,&disp_pose_test,&disp_anim_test};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto get=[&](unsigned off){float v=0;std::memcpy(&v,object+off,4);return v;};
+    const auto word=[&](unsigned off){std::uint32_t v=0;std::memcpy(&v,object+off,4);return v;};
+    const auto set=[&](unsigned off,float v){std::memcpy(object+off,&v,4);};
+    const auto dose_close=[](float a,float b){return std::abs(a-b)<0.0001f;};
+    const auto use=[&](){return api.use(&ctrl,&b,&f.user);};
+    const auto think=[&](){return api.think_use(&ctrl,&b);};
+    assert(api.defaults(object,sizeof(object))&&object[0x498]==1&&get(0x49c)==100&&word(0x4ac)==0xffffffffu);
+    object[0x498]=0;assert(use()==1);expect({});object[0x498]=1;
+    f.observation.health=100;assert(use()==1);expect({1});f.observation.health=10;
+    f.observation.within_use_predicate=0;assert(use()==1);expect({1});f.observation.within_use_predicate=1;
+    set(0x49c,0);assert(use()==1);expect({1,11});set(0x49c,100);
+    assert(use()==1&&f.steam_live&&word(0x4ac)==f.user_handle&&get(0x4a0)==10&&f.scheduled==10);
+    expect({1,6,8,12,14,6,15});
+    f.now=11;assert(think()==1&&dose_close(get(0x49c),99.3f)&&dose_close(get(0x4a4),0.7f)&&dose_close(f.scheduled,11.1f));
+    expect({2,4,2,5,6,6,15,16,17});assert(dose_close(f.pose,0.993f));
+    f.now=12;assert(think()==1&&f.amount==1&&dose_close(get(0x4a4),0.4f)&&dose_close(get(0x49c),98.6f));
+    expect({2,4,2,5,6,2,7,6,15,16,17});
+    f.distance=80;assert(think()==1&&!f.steam_live&&word(0x4ac)==0xffffffffu&&get(0x4a0)==0);
+    expect({2,4,2,5,3,3,13,9,10,16,17});
+    assert(think()==1);expect({16,17});
+    f.distance=20;set(0x49c,0.2f);set(0x4a4,0);assert(use()==1);expect({1,6,8,12,14,6,15});
+    f.now=13;assert(think()==1&&get(0x49c)==0&&f.steam_live);expect({2,4,2,5,6,6,15,16,17});
+    f.now=14;assert(think()==1&&!f.steam_live&&dose_close(get(0x4a4),0.4f));
+    expect({2,4,2,5,6,3,3,13,9,10,16,17});
+    set(0x49c,5);set(0x4a4,0.5f);assert(use()==1);expect({1,6,8,12,14,6,15});
+    f.accepted=false;f.now=15;assert(think()==1&&!f.steam_live&&dose_close(get(0x49c),4.3f));
+    expect({2,4,2,5,6,2,7,3,3,13,9,10,16,17});
+    f.accepted=true;f.fail=14;assert(use()==-1&&ctrl.blocked);expect({1,6,8,12,14});
+    assert(think()==0&&api.acknowledge(&ctrl));expect({});f.fail=0;
+    assert(api.stop_spray(&ctrl,&b)==1);expect({3,3,13,9,10});
+    set(0x49c,150);assert(api.update_pose(&ctrl,&b)==1&&f.pose==1);expect({16,17});
+    set(0x49c,-1);assert(api.update_pose(&ctrl,&b)==1&&f.pose==0);expect({16,17});
 }
 
 }

@@ -219,6 +219,12 @@ int main(int argc,char** argv){
     assert(spawn&&!getSpawn(0,sizeof(tables::ClientSpawnApi))&&!getSpawn(1,0));
     tables::test::check_spawn_session(*aggregateSend,*aggregateRecv,*registry,*spawn);
     std::puts("PASS native client class creators -> registry -> shared initializer -> paired property callbacks -> release");
+    const auto getDispenser=reinterpret_cast<tables::GetDispenserApi>(GetProcAddress(server,tables::dispenser_export));
+    assert(getDispenser&&!GetProcAddress(client,tables::dispenser_export));
+    const auto* dispenser=getDispenser(1,sizeof(tables::DispenserApi));
+    assert(dispenser&&!getDispenser(0,sizeof(tables::DispenserApi))&&!getDispenser(1,0));
+    tables::test::check_dispenser(*dispenser);
+    std::puts("PASS native SiN antigen dispenser use, healing accumulator, depletion and spray lifecycle");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
