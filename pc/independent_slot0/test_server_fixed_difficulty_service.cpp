@@ -1075,17 +1075,19 @@ static void test_native_combat_filesystem(HMODULE lib,const a::Api* api,const a:
 }
 class FocusEngine final:public console::EngineCvar {
 public:
-    console::Variable focus,focusAlias,cone,coneAlias;
+    console::Variable focus,focusAlias,cone,coneAlias,shotBias,patternFocus;
     const a::Api* api=nullptr;
     const a::AttackSpreadApi* rules=nullptr;
     mutable std::vector<std::string> lookups;
-    bool missingFocus=false,missingCone=false;
+    bool missingFocus=false,missingCone=false,missingBias=false,missingPattern=false;
     FocusEngine(){
         focus.CreateVariable("ai_spread_cone_focus_time","0.6",0,"",false,0,false,0,nullptr);
         focusAlias.CreateVariable("ai_spread_cone_focus_time","0",0,"",false,0,false,0,nullptr);
         cone.CreateVariable("ai_spread_defocused_cone_multiplier","3.0",0,"",false,0,false,0,nullptr);
         coneAlias.CreateVariable("ai_spread_defocused_cone_multiplier","1.0",0,"",false,0,false,0,nullptr);
         focusAlias.parent=&focus;coneAlias.parent=&cone;
+        shotBias.CreateVariable("ai_shot_bias","1.0",0,"",false,0,false,0,nullptr);
+        patternFocus.CreateVariable("ai_spread_pattern_focus_time","0.8",0,"",false,0,false,0,nullptr);
     }
     void __thiscall RegisterConCommandBase(console::CommandBase*) noexcept override{assert(false);}
     const char* __thiscall GetCommandLineValue(const char*) noexcept override{assert(false);return nullptr;}
@@ -1094,6 +1096,8 @@ public:
         assert(!api->set_skill(1)&&!rules->clear());
         lookups.emplace_back(name);
         if(std::strcmp(name,"ai_spread_cone_focus_time")==0)return missingFocus?nullptr:&focusAlias;
+        if(std::strcmp(name,"ai_shot_bias")==0)return missingBias?nullptr:&shotBias;
+        if(std::strcmp(name,"ai_spread_pattern_focus_time")==0)return missingPattern?nullptr:&patternFocus;
         assert(std::strcmp(name,"ai_spread_defocused_cone_multiplier")==0);
         return missingCone?nullptr:&coneAlias;
     }
@@ -1123,6 +1127,32 @@ static void test_native_focus(HMODULE lib,const a::Api* api,const a::AttackSprea
     assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)); // cyclic parent
     cvar.focus.parent=&cvar.focus;cvar.missingFocus=true;
     assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out));
+    assert(api->end_campaign());
+}
+static void test_native_aim(HMODULE lib,const a::Api* api,const a::AttackSpreadApi* rules){
+    const auto get=reinterpret_cast<a::QueryNpcAimFromEngine>(GetProcAddress(lib,a::npc_aim_engine_export_name));
+    assert(get&&api->begin_campaign(3)&&rules->clear());
+    FocusEngine cvar;cvar.api=api;cvar.rules=rules;
+    a::NpcAimMemory memory{{0,0.f,0.f},0.f};a::NpcAimResult out{};
+    assert(!get(nullptr,"npc_custom",nullptr,nullptr,&memory,&out));
+    assert(get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&out.bias.bias==1.f&&!out.spread.defocused);
+    assert(cvar.lookups==std::vector<std::string>{"ai_shot_bias"});
+    memory.focus.found=1;cvar.lookups.clear();
+    assert(get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out));
+    assert(out.bias.path==a::NpcBiasNewEnemy&&out.bias.bias==0.f&&out.spread.defocused);
+    assert((cvar.lookups==std::vector<std::string>{"ai_shot_bias","ai_spread_pattern_focus_time",
+        "ai_spread_cone_focus_time","ai_spread_defocused_cone_multiplier"}));
+    memory={{1,2.f,0.f},1.6f};cvar.lookups.clear();cvar.shotBias.SetFloat(0.5f);
+    assert(get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out));
+    assert(out.bias.path==a::NpcBiasReacquired&&std::fabs(out.bias.bias-0.25f)<0.000001f&&!out.spread.defocused);
+    assert(cvar.lookups.size()==3);
+    cvar.missingPattern=true;cvar.lookups.clear();
+    assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&out.bias.path==a::NpcBiasReacquired);
+    assert(cvar.lookups.size()==2);
+    cvar.missingPattern=false;cvar.missingBias=true;cvar.lookups.clear();
+    assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&cvar.lookups.size()==1);
+    cvar.missingBias=false;cvar.missingFocus=true;cvar.lookups.clear();
+    assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&cvar.lookups.size()==3);
     assert(api->end_campaign());
 }
 static void test_native_npc_rng(HMODULE lib,const a::Api* api){
@@ -1228,6 +1258,37 @@ static void test_npc_attack_spread(const a::NpcAttackSpreadApi* focus,const a::A
     memory.found=2;assert(!query()&&out.defocused);
     assert(api->end_campaign()&&rules->clear());
 }
+static void test_npc_aim(const a::NpcAimApi* aim,const a::Api* api,const a::AttackSpreadApi* rules){
+    assert(aim&&aim->version==1&&aim->size==sizeof(*aim));
+    a::NpcAimMemory memory{{0,0.f,0.f},0.f};
+    a::NpcAimTuning tuning{{0.6f,3.f},1.f,0.8f};
+    a::NpcAimResult out{};
+    const auto query=[&](){return aim->query("npc_custom","rifle","player",&memory,&tuning,&out);};
+    assert(!query()&&api->begin_campaign(3)&&rules->clear());
+    assert(query()&&out.bias.bias==1.f&&out.bias.path==a::NpcBiasUnfocused&&!out.spread.defocused);
+    tuning.shot_bias=0.5f;assert(query()&&out.bias.bias==0.5f);
+    memory.focus.found=1;
+    assert(query()&&out.bias.path==a::NpcBiasNewEnemy&&out.bias.bias==0.f&&out.spread.defocused);
+    memory.focus.curtime=0.4f;
+    assert(query()&&out.bias.path==a::NpcBiasNewEnemy&&out.bias.scale==0.5f&&out.bias.bias==0.25f);
+    memory.focus.curtime=0.8f;memory.time_last_reacquired=0.f;
+    assert(query()&&out.bias.path==a::NpcBiasUnfocused&&out.bias.bias==0.5f&&!out.spread.defocused);
+    memory={{1,2.f,0.f},1.6f};
+    assert(query()&&out.bias.path==a::NpcBiasReacquired&&std::fabs(out.bias.bias-0.25f)<0.000001f);
+    memory.time_last_reacquired=2.4f;
+    assert(query()&&out.bias.path==a::NpcBiasReacquired&&out.bias.bias<0.f); // original does not clamp reacquire
+    memory={{1,-0.1f,0.f},1.f};
+    assert(query()&&out.bias.path==a::NpcBiasNewEnemy&&out.bias.bias==0.f&&out.spread.defocused);
+    tuning.pattern_focus_time=0.f;
+    assert(query()&&out.bias.path==a::NpcBiasUnfocused&&out.bias.bias==0.5f&&out.spread.defocused);
+    tuning.pattern_focus_time=std::numeric_limits<float>::quiet_NaN();
+    assert(!query()&&out.bias.path==a::NpcBiasUnfocused);
+    memory.focus.found=0;
+    assert(query()&&out.bias.bias==0.5f&&!out.spread.defocused);
+    tuning.shot_bias=std::numeric_limits<float>::infinity();
+    assert(!query()&&out.bias.bias==0.5f);
+    assert(api->end_campaign());
+}
 int main(int argc,char** argv){
     assert(argc==2||argc==3);
 #ifdef _WIN32
@@ -1306,6 +1367,13 @@ int main(int argc,char** argv){
 #endif
     assert(getFocus&&!getFocus(0,sizeof(a::NpcAttackSpreadApi))&&!getFocus(1,0));
     test_npc_attack_spread(getFocus(a::npc_attack_spread_version,sizeof(a::NpcAttackSpreadApi)),spread,api);
+#ifdef _WIN32
+    auto getAim=reinterpret_cast<a::GetNpcAimApi>(GetProcAddress(lib,a::npc_aim_export_name));
+#else
+    auto getAim=reinterpret_cast<a::GetNpcAimApi>(dlsym(lib,a::npc_aim_export_name));
+#endif
+    assert(getAim&&!getAim(0,sizeof(a::NpcAimApi))&&!getAim(1,0));
+    test_npc_aim(getAim(a::npc_aim_version,sizeof(a::NpcAimApi)),api,spread);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);
@@ -1358,6 +1426,7 @@ int main(int argc,char** argv){
 #if defined(_MSC_VER) && defined(_M_IX86)
     test_native_combat_filesystem(lib,api,getSpread(a::attack_spread_version,sizeof(a::AttackSpreadApi)));
     test_native_focus(lib,api,spread);
+    test_native_aim(lib,api,spread);
     test_native_npc_rng(lib,api);
     test_native_engine_event(lib,api,map,triggers);
     test_engine_skill(lib,api);

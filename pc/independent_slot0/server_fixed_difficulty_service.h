@@ -316,6 +316,25 @@ using GetNpcAttackSpreadApi=const NpcAttackSpreadApi* (SIN_FIXED_CALL *)(std::ui
 using QueryNpcAttackSpreadFromEngine=int (SIN_FIXED_CALL *)(void*,const char*,const char*,const char*,
     const NpcFocusMemory*,NpcAttackSpreadResult*) noexcept;
 static_assert(sizeof(NpcAttackSpreadResult)==44);
+// Original slot244 spread bias and the combined slot244 -> slot243
+// firing-parameter path. The host supplies a resolved enemy-memory snapshot.
+inline constexpr char npc_aim_export_name[]="SiN_GetNpcAimApi";
+inline constexpr char npc_aim_engine_export_name[]="SiN_QueryNpcAimFromEngine";
+inline constexpr std::uint32_t npc_aim_version=1;
+struct NpcAimMemory {NpcFocusMemory focus;float time_last_reacquired;};
+struct NpcAimTuning {NpcFocusTuning spread;float shot_bias,pattern_focus_time;};
+enum NpcBiasPath : std::uint32_t {NpcBiasUnfocused=0,NpcBiasNewEnemy,NpcBiasReacquired};
+struct NpcBiasResult {float initial,bias,scale;std::uint32_t path;};
+struct NpcAimResult {NpcBiasResult bias;NpcAttackSpreadResult spread;};
+struct NpcAimApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *query)(const char*,const char*,const char*,
+        const NpcAimMemory*,const NpcAimTuning*,NpcAimResult*) noexcept;
+};
+using GetNpcAimApi=const NpcAimApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+using QueryNpcAimFromEngine=int (SIN_FIXED_CALL *)(void*,const char*,const char*,const char*,
+    const NpcAimMemory*,NpcAimResult*) noexcept;
+static_assert(sizeof(NpcAimResult)==60);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

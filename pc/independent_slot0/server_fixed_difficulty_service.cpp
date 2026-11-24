@@ -427,6 +427,46 @@ int SIN_FIXED_CALL query_npc_attack_spread(const char* npc,const char* weapon,co
 const abi::NpcAttackSpreadApi npc_attack_spread_api{abi::npc_attack_spread_version,
     sizeof(abi::NpcAttackSpreadApi),&query_npc_attack_spread};
 
+// Original CAI_BaseNPC slot244 returns the shot bias. Its second
+// elapsed-time branch deliberately DOES NOT clamp negative reacquisition.
+bool npc_bias(const abi::NpcAimMemory& memory,float shot_bias,float focus,
+        abi::NpcBiasResult& result) noexcept {
+    if(memory.focus.found>1||!std::isfinite(shot_bias))return false;
+    result={shot_bias,shot_bias,1.f,abi::NpcBiasUnfocused};
+    if(!memory.focus.found)return true;
+    if(!std::isfinite(focus))return false;
+    if(focus<=0.f)return true;
+    if(!std::isfinite(memory.focus.curtime)||!std::isfinite(memory.focus.time_valid_enemy)||
+       !std::isfinite(memory.time_last_reacquired))return false;
+    // x87 keeps valid-enemy elapsed in the FPU; reacquired elapsed is
+    // explicitly stored as f32 in the original before the branch.
+    const double elapsed=static_cast<double>(memory.focus.curtime)-memory.focus.time_valid_enemy;
+    const double valid_elapsed=elapsed<0.0?0.0:elapsed;
+    const float reacquired=memory.focus.curtime-memory.time_last_reacquired;
+    if(!std::isfinite(reacquired))return false;
+    double ratio=1.0;
+    if(valid_elapsed<focus){
+        ratio=valid_elapsed/focus;result.path=abi::NpcBiasNewEnemy;
+    }else if(reacquired<focus){
+        ratio=static_cast<double>(reacquired)/focus;result.path=abi::NpcBiasReacquired;
+    }
+    const float scale=static_cast<float>(ratio);
+    const float bias=static_cast<float>(static_cast<double>(shot_bias)*ratio);
+    if(!std::isfinite(scale)||!std::isfinite(bias))return false;
+    result.scale=scale;result.bias=bias;
+    return true;
+}
+int SIN_FIXED_CALL query_npc_aim(const char* npc,const char* weapon,const char* target,
+        const abi::NpcAimMemory* memory,const abi::NpcAimTuning* tuning,abi::NpcAimResult* out) noexcept {
+    if(reading_engine_skill||!campaign||!memory||!tuning||!out)return 0;
+    abi::NpcAimResult result{};
+    // Original firing sites call bias slot244 before spread slot243.
+    if(!npc_bias(*memory,tuning->shot_bias,tuning->pattern_focus_time,result.bias)||
+       !query_npc_attack_spread(npc,weapon,target,&memory->focus,&tuning->spread,&result.spread))return 0;
+    *out=result;return 1;
+}
+const abi::NpcAimApi npc_aim_api{abi::npc_aim_version,sizeof(abi::NpcAimApi),&query_npc_aim};
+
 static_assert(diff::original_metric_count==abi::metric_count);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Initial)==abi::Initial);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Current)==abi::Current);
@@ -443,6 +483,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetNpcRulesApi=_SiN_GetNpcRulesApi")
 #pragma comment(linker,"/EXPORT:SiN_GetAttackSpreadApi=_SiN_GetAttackSpreadApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcAttackSpreadApi=_SiN_GetNpcAttackSpreadApi")
+#pragma comment(linker,"/EXPORT:SiN_GetNpcAimApi=_SiN_GetNpcAimApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -456,6 +497,11 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 extern "C" SIN_FIXED_EXPORT const abi::Api* SIN_FIXED_CALL
 SiN_GetFixedDifficultyApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::abi_version&&bytes==sizeof(abi::Api)?&api:nullptr;
+}
+
+extern "C" SIN_FIXED_EXPORT const abi::NpcAimApi* SIN_FIXED_CALL
+SiN_GetNpcAimApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::npc_aim_version&&bytes==sizeof(abi::NpcAimApi)?&npc_aim_api:nullptr;
 }
 
 extern "C" SIN_FIXED_EXPORT const abi::NpcAttackSpreadApi* SIN_FIXED_CALL
@@ -895,6 +941,25 @@ extern "C" int SIN_FIXED_CALL SiN_QueryNpcAttackSpreadFromEngine(void* cvar,
         if(needed&&(!read_engine_cvar(cvar,"ai_spread_defocused_cone_multiplier",real_offset,cone)||
             !apply_focus_penalty(focus,cone,result)))return 0;
     }
+    *out=result;return 1;
+}
+
+// The original firing sites call bias first, then spread. Read the
+// exact original ConVar names in that order, with no write/registration.
+#pragma comment(linker,"/EXPORT:SiN_QueryNpcAimFromEngine=_SiN_QueryNpcAimFromEngine")
+extern "C" int SIN_FIXED_CALL SiN_QueryNpcAimFromEngine(void* cvar,
+        const char* npc,const char* weapon,const char* target,
+        const abi::NpcAimMemory* memory,abi::NpcAimResult* out) noexcept {
+    if(reading_engine_skill||!campaign||!memory||memory->focus.found>1||!out)return 0;
+    abi::NpcAimResult result{};
+    {
+        EngineReadScope scope;
+        float shot_bias=0.f,focus=0.f;
+        if(!read_engine_cvar(cvar,"ai_shot_bias",real_offset,shot_bias)||
+           (memory->focus.found&&!read_engine_cvar(cvar,"ai_spread_pattern_focus_time",real_offset,focus))||
+           !npc_bias(*memory,shot_bias,focus,result.bias))return 0;
+    }
+    if(!SiN_QueryNpcAttackSpreadFromEngine(cvar,npc,weapon,target,&memory->focus,&result.spread))return 0;
     *out=result;return 1;
 }
 
