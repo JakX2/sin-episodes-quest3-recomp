@@ -356,6 +356,33 @@ struct TalkCatalogApi {
     int (__cdecl *reset_interaction)(TalkCooldownState*,const TalkCooldownBindings*) noexcept;
 };
 using GetTalkCatalogApi=const TalkCatalogApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char companion_talk_export[]="SiN_GetCompanionTalkApi";
+struct CompanionTalkBindings {
+    void* context;
+    int (__cdecl *manager)(void*) noexcept;
+    // Host serial-validates handles and reports the live object's extent.
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *expeditor)(void*,void* npc,void**,unsigned*) noexcept;
+    int (__cdecl *player)(void*,void**) noexcept;
+    int (__cdecl *within_range)(void*,void* npc,void* player,unsigned*) noexcept;
+    // Original urgent: 221a7870(npc,0); normal: 221a7850(npc,1).
+    int (__cdecl *suppressed)(void*,void* npc,int argument,unsigned*) noexcept;
+    TalkCooldownBindings cooldown;
+    SpeechGateBindings semaphore;
+    ResponseRepeatBindings repeat;
+    ResponseSpeakBindings speak;
+};
+struct CompanionTalkApi {
+    std::uint32_t version,size;
+    // Companion-sized objects only. Caller serializes the NPC. The
+    // result separates original false from a rejected/failed operation.
+    int (__cdecl *group_gate)(void* npc,unsigned bytes,const TalkCooldownState*,const SpeechSemaphorePair*,const CompanionTalkBindings*,unsigned priority,unsigned urgent,unsigned*) noexcept;
+    int (__cdecl *concept_gate)(void* npc,unsigned bytes,const TalkCooldownState*,const SpeechSemaphorePair*,const CompanionTalkBindings*,const char*,unsigned urgent,unsigned*) noexcept;
+    // 2208f500: gate, then NPC +78c wrapper, then 220a7570.
+    int (__cdecl *request)(void* npc,unsigned bytes,const TalkCooldownState*,const SpeechSemaphorePair*,const CompanionTalkBindings*,const char*,const char* modifiers,unsigned urgent,unsigned*) noexcept;
+};
+using GetCompanionTalkApi=const CompanionTalkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

@@ -3457,6 +3457,104 @@ int __cdecl talk_reset_interaction(TalkCooldownState* state,const TalkCooldownBi
     const auto h=*b;return talk_set_deadline(state->global[0],h,10,20)?1:-1;
 }
 const TalkCatalogApi talk_catalog_api{version,sizeof(TalkCatalogApi),48,&talk_at,&talk_lookup,&talk_group_ready,&talk_concept_ready,&talk_note,&talk_reset_interaction};
+bool companion_talk_preflight(void* npc,unsigned bytes,const CompanionTalkBindings* b,unsigned* out) noexcept {
+    return npc&&bytes>=0x1160&&sin_independent::vgui_layout::Readable(npc,0x1160)&&b&&
+        b->manager&&b->resolve&&b->expeditor&&b->player&&b->within_range&&b->suppressed&&
+        out&&hologram_writable(out,sizeof(*out));
+}
+bool companion_resolve(const CompanionTalkBindings& h,std::uint32_t packed,void*& p,unsigned& extent) noexcept {
+    p=nullptr;extent=0;
+    return packed==0xffffffffu||h.resolve(h.context,packed,&p,&extent)!=0;
+}
+bool companion_expeditor(const CompanionTalkBindings& h,void* npc,void*& exp,unsigned& extent) noexcept {
+    exp=nullptr;extent=0;
+    return h.expeditor(h.context,npc,&exp,&extent)&&exp&&extent>=0x7c&&sin_independent::vgui_layout::Readable(exp,0x7c);
+}
+int __cdecl companion_group_gate(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+                                const CompanionTalkBindings* b,unsigned priority,unsigned urgent,unsigned* out) noexcept {
+    if(!companion_talk_preflight(npc,bytes,b,out)||priority>2||!state||!sem||!b->cooldown.clock)return 0;
+    const auto h=*b;const bool fast=(urgent&0xff)!=0;
+    const auto complete=[&](unsigned allowed){*out=allowed!=0;return 1;};
+    if(!h.manager(h.context))return -1;
+    if(hologram_read<unsigned>(npc,0x8c)||(hologram_read<unsigned char>(npc,0xb4)&2))return complete(0);
+    const auto state_id=hologram_read<int>(npc,0x850);
+    if(state_id==4||(hologram_read<unsigned>(npc,0xb8)&0x100000)||hologram_read<unsigned char>(npc,0x968))return complete(0);
+    unsigned value=0;
+    if(!fast){
+        if(talk_group_ready(npc,bytes,state,&h.cooldown,priority,&value)!=1)return -1;
+        if(!value)return complete(0);
+    }
+    void* associated=nullptr;unsigned extent=0;
+    if(!priority){
+        if(state_id!=1&&state_id!=2)return complete(0);
+        if(!companion_resolve(h,hologram_read<std::uint32_t>(npc,0x115c),associated,extent))return -1;
+        if(associated){
+            // Original calls 2208abd0 again for the live field read.
+            if(!companion_resolve(h,hologram_read<std::uint32_t>(npc,0x115c),associated,extent)||!associated||
+               extent<0x3a0||!sin_independent::vgui_layout::Readable(associated,0x3a0))return -1;
+            if(hologram_read<float>(associated,0x39c)<-.001)return complete(0);
+        }
+    }
+    if(!companion_resolve(h,hologram_read<std::uint32_t>(npc,0x16c),associated,extent))return -1;
+    if(!associated)return complete(0);
+    if(priority!=2){
+        void* exp=nullptr;unsigned n=0;
+        if(!companion_expeditor(h,npc,exp,n)||response_semaphore_available(exp,n,npc,sem,&h.semaphore,&value)!=1)return -1;
+        if(!value)return complete(0);
+        if(!companion_expeditor(h,npc,exp,n))return -1;
+        float now=0;if(!h.cooldown.clock(h.cooldown.context,&now)||
+            response_timing(exp,n,fast?ResponseTiming::Urgent:ResponseTiming::Normal,now,&value)!=1)return -1;
+        if(!value)return complete(0);
+        void* player=nullptr;
+        if(!h.player(h.context,&player))return -1;
+        if(player){if(!h.within_range(h.context,npc,player,&value))return -1;if(!value)return complete(0);}
+    }
+    if(!h.suppressed(h.context,npc,fast?0:1,&value))return -1;
+    return complete(!value);
+}
+int __cdecl companion_concept_gate(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+                                  const CompanionTalkBindings* b,const char* name,unsigned urgent,unsigned* out) noexcept {
+    if(!companion_talk_preflight(npc,bytes,b,out)||!name)return 0;
+    const auto h=*b;
+    if(!h.manager(h.context))return -1;
+    const auto* d=talk_lookup(name);unsigned allowed=0;
+    const auto grouped=companion_group_gate(npc,bytes,state,sem,&h,d?d->priority:0,urgent,&allowed);
+    if(grouped!=1)return grouped;
+    if(!allowed){*out=0;return 1;}
+    // Original resolves +115c before checking TLK_HELLO, then re-resolves
+    // to read +3a0 only when the concept matches case-insensitively.
+    void* associated=nullptr;unsigned extent=0;
+    if(!companion_resolve(h,hologram_read<std::uint32_t>(npc,0x115c),associated,extent))return -1;
+    if(associated&&d==&talk_concepts[4]){
+        if(!companion_resolve(h,hologram_read<std::uint32_t>(npc,0x115c),associated,extent)||!associated||
+           extent<0x3a1||!sin_independent::vgui_layout::Readable(associated,0x3a1))return -1;
+        if(hologram_read<unsigned char>(associated,0x3a0)){*out=0;return 1;}
+    }
+    if(talk_concept_ready(&h.cooldown,name,&allowed)!=1)return -1;
+    if(!allowed){*out=0;return 1;}
+    void* exp=nullptr;unsigned n=0;
+    if(d&&(d->flags&1)){
+        if(!companion_expeditor(h,npc,exp,n))return -1;
+        float last=0;if(response_last_time(exp,n,&h.repeat,name,&last)!=1)return -1;
+        if(last!=-1.f){*out=0;return 1;}
+    }
+    if(!companion_expeditor(h,npc,exp,n)||response_can_repeat(exp,n,&h.repeat,name,&allowed)!=1)return -1;
+    *out=allowed!=0;return 1;
+}
+int __cdecl companion_request(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+                              const CompanionTalkBindings* b,const char* name,const char* mods,unsigned urgent,unsigned* out) noexcept {
+    if(!companion_talk_preflight(npc,bytes,b,out)||!name)return 0;
+    const auto h=*b;unsigned allowed=0;
+    const auto gate=companion_concept_gate(npc,bytes,state,sem,&h,name,urgent,&allowed);
+    if(gate!=1)return gate;
+    if(!allowed){*out=0;return 1;}
+    void* exp=nullptr;unsigned n=0;
+    if(!companion_expeditor(h,npc,exp,n))return -1;
+    const auto status=response_speak(exp,n,&h.speak,name,mods,out);
+    return status==0?-1:status;
+}
+const CompanionTalkApi companion_talk_api{version,sizeof(CompanionTalkApi),&companion_group_gate,&companion_concept_gate,&companion_request};
+
 
 
 
@@ -7842,6 +7940,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkCatal
 SiN_GetTalkCatalogApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkCatalogApi)?&talk_catalog_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetCompanionTalkApi=_SiN_GetCompanionTalkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CompanionTalkApi* __cdecl
+SiN_GetCompanionTalkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(CompanionTalkApi)?&companion_talk_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

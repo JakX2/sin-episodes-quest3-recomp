@@ -660,4 +660,73 @@ inline void check_talk_catalog(const TalkCatalogApi& api){
     f.fail=1;assert(api.reset_interaction(&f.state,&f.b)==-1&&f.state.global[0]==40);f.expect({2,1});
 }
 
+
+struct CompanionTalkFixture {
+    alignas(4) unsigned char npc[0x1458]{},associated[0x3a4]{},row[0x1c]{};
+    ResponseSpeakFixture pipeline;
+    CompanionTalkBindings b{};
+    TalkCooldownState state{};
+    int player=0,entity=0;
+    unsigned managers=0,resolves=0,accessors=0,ranges=0,suppressions=0;
+    bool live_associated=false,has_player=true,in_range=true,suppressed=false,history=false,fail=false;
+    int suppress_argument=-1;
+    float deadline=0;
+    static CompanionTalkFixture& get(void* p){return *static_cast<CompanionTalkFixture*>(p);}
+    void put(unsigned off,unsigned word){std::memcpy(npc+off,&word,4);}
+    explicit CompanionTalkFixture(const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record):pipeline(timing,record){
+        put(0x850,1);put(0x16c,0x123004);put(0x115c,0x1001);
+        b.context=this;b.cooldown.context=this;b.semaphore.context=this;b.repeat.context=this;
+        b.manager=[](void* p) noexcept -> int{auto& f=get(p);++f.managers;return !f.fail;};
+        b.resolve=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);++f.resolves;assert(h==0x123004||h==0x1001);
+            if(h==0x1001){*out=f.live_associated?f.associated:nullptr;*n=sizeof(f.associated);}
+            else {*out=&f.entity;*n=sizeof(f.entity);}return 1;};
+        b.expeditor=[](void* p,void* npc,void** out,unsigned* extent) noexcept -> int{
+            auto& f=get(p);assert(npc==f.npc);++f.accessors;*out=f.pipeline.exp;*extent=sizeof(f.pipeline.exp);return 1;};
+        b.player=[](void* p,void** out) noexcept -> int{auto& f=get(p);*out=f.has_player?&f.player:nullptr;return 1;};
+        b.within_range=[](void* p,void* n,void* pl,unsigned* out) noexcept -> int{
+            auto& f=get(p);assert(n==f.npc&&pl==&f.player);++f.ranges;*out=f.in_range;return 1;};
+        b.suppressed=[](void* p,void* n,int a,unsigned* out) noexcept -> int{
+            auto& f=get(p);assert(n==f.npc);++f.suppressions;f.suppress_argument=a;*out=f.suppressed;return 1;};
+        b.cooldown.clock=[](void* p,float* out) noexcept -> int{*out=get(p).pipeline.now;return 1;};
+        b.cooldown.concept_deadline=[](void* p,const char*,float** out) noexcept -> int{*out=&get(p).deadline;return 1;};
+        b.semaphore.uses=[](void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+        b.semaphore.classify=[](void* p,void* n,int a,unsigned* out) noexcept -> int{auto& f=get(p);assert(n==f.npc&&!a);*out=1;return 1;};
+        b.semaphore.clock=b.cooldown.clock;
+        b.semaphore.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);*out=h==0x123004?f.npc:nullptr;return 1;};
+        b.repeat.lookup=[](void* p,void* e,const char*,int* out) noexcept -> int{auto& f=get(p);assert(e==f.pipeline.exp);*out=f.history?0:-1;return 1;};
+        b.repeat.entry=[](void* p,void*,int i,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(i==0);*out=f.row;*n=sizeof(f.row);return 1;};
+        b.repeat.resolve=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        b.repeat.clock=b.cooldown.clock;b.repeat.interval.random=[](void*,float,float,float*) noexcept -> int{assert(false);return 0;};
+        b.speak=pipeline.b;
+    }
+};
+inline void check_companion_talk(const CompanionTalkApi& api,const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record){
+    CompanionTalkFixture f(timing,record);unsigned out=99;
+    auto group=[&](unsigned priority,unsigned urgent){return api.group_gate(f.npc,sizeof(f.npc),&f.state,&f.pipeline.sem,&f.b,priority,urgent,&out);};
+    auto concept=[&](const char* name,unsigned urgent=0){return api.concept_gate(f.npc,sizeof(f.npc),&f.state,&f.pipeline.sem,&f.b,name,urgent,&out);};
+    f.state.global[0]=20;assert(group(0,0)==1&&!out&&!f.accessors);
+    assert(group(0,1)==1&&out&&f.accessors==2&&f.suppress_argument==0);
+    f.state.global[0]=0;f.put(0x850,3);assert(group(0,1)==1&&!out);
+    f.put(0x850,1);f.live_associated=true;float neg=-1;std::memcpy(f.associated+0x39c,&neg,4);
+    assert(group(0,1)==1&&!out);float zero=0;std::memcpy(f.associated+0x39c,&zero,4);
+    assert(group(0,0)==1&&out&&f.suppress_argument==1);
+    f.in_range=false;assert(group(1,0)==1&&!out);
+    const unsigned accesses=f.accessors,ranges=f.ranges;
+    assert(group(2,0)==1&&out&&f.accessors==accesses&&f.ranges==ranges);
+    f.in_range=true;f.associated[0x3a0]=1;assert(concept("tlk_hello",1)==1&&!out);
+    f.associated[0x3a0]=0;f.history=true;assert(concept("TLK_HELLO",1)==1&&!out);
+    float sentinel=-1;std::memcpy(f.row+0x14,&sentinel,4);assert(concept("TLK_HELLO",1)==1&&out);
+    f.deadline=20;assert(concept("TLK_IDLE",1)==1&&!out);f.deadline=0;f.history=false;
+    f.pipeline.sem.classified={30,0x123004};assert(concept("TLK_IDLE",1)==1&&out);
+    f.pipeline.sem.classified={30,0x1004};assert(concept("TLK_IDLE",1)==1&&!out);
+    f.pipeline.sem.classified={0,0xffffffffu};
+    f.fail=true;out=99;assert(concept("TLK_IDLE")==-1&&out==99);f.fail=false;
+    const auto request=[&](){return api.request(f.npc,sizeof(f.npc),&f.state,&f.pipeline.sem,&f.b,"TLK_IDLE",nullptr,0,&out);};
+    assert(request()==1&&out&&f.pipeline.sounds==1&&f.pipeline.notifications==1&&f.pipeline.live[0]);
+    assert(request()==1&&!out&&f.pipeline.sounds==1); // same-frame timing gate
+    f.pipeline.now=13;assert(request()==1&&out&&f.pipeline.sounds==2&&f.pipeline.destroys==1&&f.pipeline.live[1]);
+    assert(ResponseSpeakFixture::destroy(&f.pipeline,f.pipeline.pool[1]));
+}
+
 }
