@@ -16,6 +16,7 @@
 #include "test_native_player_look_frame.h"
 #include "test_native_radio_hud.h"
 #include "test_native_radio_entity.h"
+#include "test_native_radio_transport.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -402,6 +403,14 @@ int main(int argc,char** argv){
     assert(radioEntity&&!getRadioEntity(0,sizeof(tables::RadioEntityApi))&&!getRadioEntity(1,0));
     tables::test::check_radio_entity(*radioEntity,*radioMessage);
     std::puts("PASS native env_radio_message datamap and entity lifecycle");
+    const auto getRadioDelivery=reinterpret_cast<tables::GetRadioDeliveryApi>(GetProcAddress(server,tables::radio_delivery_export));
+    const auto getRadioRoute=reinterpret_cast<tables::GetRadioClientRouteApi>(GetProcAddress(client,tables::radio_route_export));
+    assert(getRadioDelivery&&getRadioRoute&&!GetProcAddress(client,tables::radio_delivery_export)&&!GetProcAddress(server,tables::radio_route_export));
+    const auto* radioDelivery=getRadioDelivery(1,sizeof(tables::RadioDeliveryApi));
+    const auto* radioRoute=getRadioRoute(1,sizeof(tables::RadioClientRouteApi));
+    assert(radioDelivery&&radioRoute&&!getRadioDelivery(0,sizeof(tables::RadioDeliveryApi))&&!getRadioRoute(1,0));
+    tables::test::check_radio_transport(*radioMessage,*radioEntity,*radioPlayback,*radioDelivery,*radioHud,*radioRoute);
+    std::puts("PASS composed env_radio_message through scheduler, original recipient gate, wire and native client HUD");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
