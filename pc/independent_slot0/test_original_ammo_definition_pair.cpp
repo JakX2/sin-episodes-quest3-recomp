@@ -677,6 +677,12 @@ int main(int argc,char** argv){
     assert(ownedChoreography&&!getOwnedChoreography(0,sizeof(tables::OwnedChoreographyApi))&&!getOwnedChoreography(1,0));
     tables::test::check_owned_choreography(*ownedChoreography,*nativeSceneRetirement,*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation);
     std::puts("PASS owned choreography symbol lifecycle and partial allocation cleanup");
+    const auto getNamedSceneLoad=reinterpret_cast<tables::GetNamedSceneLoadApi>(GetProcAddress(server,tables::named_scene_load_export));
+    assert(getNamedSceneLoad&&!GetProcAddress(client,tables::named_scene_load_export));
+    const auto* namedSceneLoad=getNamedSceneLoad(1,sizeof(tables::NamedSceneLoadApi));
+    assert(namedSceneLoad&&!getNamedSceneLoad(0,sizeof(tables::NamedSceneLoadApi))&&!getNamedSceneLoad(1,0));
+    tables::test::check_named_scene_load(*namedSceneLoad);
+    std::puts("PASS original named VCD cache copy and native parsed scene allocation");
 
 
 

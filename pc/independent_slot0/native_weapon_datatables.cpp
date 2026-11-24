@@ -5159,6 +5159,73 @@ int __cdecl owned_choreography_remove(void* scene,unsigned bytes,const SceneEnti
     return scene_entity_remove_impl(scene,bytes,b,&s,&o.destruction,&o.symbols);
 }
 const OwnedChoreographyApi owned_choreography_api{version,sizeof(OwnedChoreographyApi),&owned_choreography_generate,&owned_choreography_sound,&owned_choreography_remove};
+// 221ad670: extension replacement on 512-byte path; 221ad1b0 uses a
+// separate 256-byte slash-fixed lowercase cache key. ASCII game paths.
+bool named_scene_copy(char* out,unsigned cap,const char* in,bool lower) noexcept {
+    if(!out||!cap||!in)return false;
+    for(unsigned i=0;i+1<cap;++i){
+        if(!sin_independent::vgui_layout::Readable(in+i,1))return false;
+        unsigned char ch=static_cast<unsigned char>(in[i]);
+        if(ch=='/')ch='\\';
+        if(lower&&ch>='A'&&ch<='Z')ch=static_cast<unsigned char>(ch+32);
+        out[i]=static_cast<char>(ch);if(!ch)return true;
+    }
+    out[cap-1]=0;return true;
+}
+bool named_scene_ready(const NamedSceneLoadBindings* b) noexcept {
+    return b&&b->set_extension&&b->allocate&&b->release&&b->missing&&b->parse&&b->compare_word&&b->diagnostic_word&&
+        b->cache.ensure&&b->cache.find&&b->cache.lock&&b->cache.reload&&b->cache.unlock&&owned_choreography_ready(&b->owned);
+}
+int __cdecl named_scene_load(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,std::uint32_t* out) noexcept {
+    if(!scene||bytes<0x414||!sin_independent::vgui_layout::Readable(scene,0x414)||!name||!hologram_writable(out,4)||!named_scene_ready(b))return 0;
+    const auto h=*b;const auto& cache=h.cache;
+    char path[512]{},key[256]{};
+    // Copy before Q_SetExtension; FixSlashes occurs after it in the original.
+    for(unsigned i=0;i<sizeof(path)-1;++i){
+        if(!sin_independent::vgui_layout::Readable(name+i,1))return 0;
+        if(!(path[i]=name[i]))break;
+    }
+    if(!h.set_extension(h.context,path,".vcd",sizeof(path))||!std::memchr(path,0,sizeof(path)))return -1;
+    for(auto* p=path;*p;++p)if(*p=='/')*p='\\';
+    if(!named_scene_copy(key,sizeof(key),path,true))return -1;
+    auto missing=[&](){if(!h.missing(h.context,path))return -1;*out=0;return 1;};
+    std::uint32_t index=0xffffffffu;
+    if(!cache.ensure(cache.context,key)||!cache.find(cache.context,key,&index))return -1;
+    if(index==0xffffffffu)return missing();
+    const void* data=nullptr;unsigned n=0;
+    if(!cache.lock(cache.context,index,&data,&n))return -1;
+    if(!data){
+        if(n)return -1;
+        if(!cache.reload(cache.context,key,index,&index))return -1;
+        if(index==0xffffffffu)return missing();
+        if(!cache.lock(cache.context,index,&data,&n))return -1;
+        if(!data)return n?-1:missing();
+    }
+    if(!n){if(!cache.unlock(cache.context,index))return -1;return missing();}
+    // Original copies size+1, appends NUL, then unlocks before parsing.
+    // Reject overflow and malformed cache regions, never pass borrowed data.
+    void* copy=nullptr;unsigned copy_bytes=0;
+    bool copied=n<0x7fffffffu&&sin_independent::vgui_layout::Readable(data,n)&&
+        h.allocate(h.context,n+1,&copy,&copy_bytes)&&copy&&copy_bytes>=n+1&&hologram_writable(copy,n+1);
+    if(copied){std::memcpy(copy,data,n);static_cast<char*>(copy)[n]=0;}
+    const bool unlocked=cache.unlock(cache.context,index)!=0;
+    if(!copied||!unlocked){if(copy)(void)h.release(h.context,copy);return -1;}
+    GeneratedSceneAllocationBindings a{};
+    a.context=h.context;a.allocate=h.allocate;a.release_unpublished=h.release;a.parsed.compare_word=h.compare_word;
+    void* parsed=nullptr;unsigned extent=0;
+    if(!allocate_generated_parsed(a,static_cast<unsigned char*>(scene)+0x410,&parsed,&extent,&h.owned)||!parsed){
+        (void)h.release(h.context,copy);return -1;
+    }
+    const bool parsed_ok=h.parse(h.context,parsed,path,static_cast<const char*>(copy),n)!=0;
+    // Original 22119b20 sets diagnostics after the parser returns.
+    if(parsed_ok)hologram_write(parsed,0x98,h.diagnostic_word);
+    const bool released=h.release(h.context,copy)!=0;
+    if(!parsed_ok||!released){
+        (void)choreography_destroy_parsed(parsed,scene_word(parsed),h.owned.destruction,nullptr,&h.owned.symbols);return -1;
+    }
+    *out=scene_word(parsed);return 1;
+}
+const NamedSceneLoadApi named_scene_load_api{version,sizeof(NamedSceneLoadApi),&named_scene_load};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
         b->reset.storage&&b->reset.grow&&scene_stop_ready(&b->stop);
@@ -10499,6 +10566,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetNamedSceneLoadApi=_SiN_GetNamedSceneLoadApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NamedSceneLoadApi* __cdecl
+SiN_GetNamedSceneLoadApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NamedSceneLoadApi)?&named_scene_load_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetOwnedChoreographyApi=_SiN_GetOwnedChoreographyApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::OwnedChoreographyApi* __cdecl
 SiN_GetOwnedChoreographyApi(std::uint32_t version,std::uint32_t size) noexcept {
