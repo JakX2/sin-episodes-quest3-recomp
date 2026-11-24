@@ -2074,6 +2074,90 @@ int __cdecl registry_remove(ClientRegistryView* v,std::uint32_t handle) noexcept
 }
 const ClientRegistryApi registry_api{version,sizeof(ClientRegistryApi),&registry_create,&registry_destroy,
     &registry_insert,&registry_remove,&registry_resolve,&registry_state};
+
+using GetPrimaryEntity=void* (__thiscall *)(void*);
+using GetInterpMap=const ClientInterpMap* (__thiscall *)(void*);
+using InterpSetup=void (__thiscall *)(void*,void*,int);
+using InterpFlags=int (__thiscall *)(void*);
+using InterpSetDuration=void (__thiscall *)(void*,float);
+struct WatcherInit {
+    ClientInterpEntry entry;
+    InterpSetup setup;
+    InterpFlags flags;
+    InterpSetDuration set_duration;
+};
+// The original walks a derived-to-base linked chain of maps. Bound the
+// independent path and preflight it before invoking any watcher methods.
+// The supplied maps and watcher vtables must stay live until completion.
+bool prepare_watchers(const ClientInterpMap* map,WatcherInit (&work)[256],unsigned& count) noexcept {
+    const ClientInterpMap* seen[32]{};
+    unsigned maps=0;
+    namespace memory=sin_independent::vgui_layout;
+    while(map){
+        if(maps==32||!memory::Readable(map,sizeof(*map)))return false;
+        for(unsigned i=0;i<maps;++i)if(seen[i]==map)return false;
+        seen[maps++]=map;
+        ClientInterpMap value{};std::memcpy(&value,map,sizeof(value));
+        if(value.count<0||value.capacity<value.count||
+           static_cast<unsigned>(value.count)>256-count)return false;
+        if(value.count&&!memory::Readable(value.entries,sizeof(ClientInterpEntry)*static_cast<unsigned>(value.count)))return false;
+        for(int i=0;i<value.count;++i){
+            auto& w=work[count++];
+            std::memcpy(&w.entry,&value.entries[i],sizeof(w.entry));
+            if(!memory::Readable(w.entry.data,1))return false;
+            auto refused=registry_methods::CallResult::InvalidObject;
+            w.setup=reinterpret_cast<InterpSetup>(registry_methods::VerifiedMethod(w.entry.watcher,0,refused));
+            w.flags=reinterpret_cast<InterpFlags>(registry_methods::VerifiedMethod(w.entry.watcher,5,refused));
+            w.set_duration=reinterpret_cast<InterpSetDuration>(registry_methods::VerifiedMethod(w.entry.watcher,1,refused));
+            if(!w.setup||!w.flags||!w.set_duration)return false;
+        }
+        map=value.parent;
+    }
+    return true;
+}
+int __cdecl initialize_client(const ClientInitBindings* b,unsigned slot,void* object,
+        int index,int serial,std::uint32_t* handle) noexcept {
+    const auto bytes=creator_size(slot);
+    if(!b||!bytes||!handle||!b->attach_collision||!b->duration||!b->rollback||
+       !creator_writable(object,bytes))return 0;
+    const auto host=*b;
+    auto* g=registry_get(host.registry);
+    if(!g||g->busy)return 0;
+    auto* raw=static_cast<unsigned char*>(object);
+    auto refused=registry_methods::CallResult::InvalidObject;
+    auto primary=reinterpret_cast<GetPrimaryEntity>(registry_methods::VerifiedMethod(raw+4,0,refused));
+    auto map_method=reinterpret_cast<GetInterpMap>(registry_methods::VerifiedMethod(object,17,refused));
+    if(!primary||!map_method||primary(raw+4)!=object)return 0;
+    std::uint32_t packed=0;
+    if(!registry_insert(host.registry,object,index,serial,&packed))return 0;
+    // Registry lookup is allowed during the remaining host operations,
+    // but mutation/reentrant initialization is not.
+    g->busy=true;
+    const auto fail=[&](ClientInitStage stage){
+        host.rollback(host.context,object,stage);
+        g->busy=false;
+        if(!registry_remove(host.registry,packed)){*handle=packed;return -1;}
+        return 0;
+    };
+    if(!host.attach_collision(host.context,raw+0x16c))
+        return fail(ClientInitStage::CollisionAttempted);
+    // Original vslot17 is evaluated only after registration + collision.
+    WatcherInit work[256]{};unsigned count=0;
+    if(!prepare_watchers(map_method(object),work,count))
+        return fail(ClientInitStage::InterpolationAttempted);
+    for(unsigned i=0;i<count;++i){
+        auto& w=work[i];
+        w.setup(w.entry.watcher,w.entry.data,static_cast<int>(w.entry.kind));
+        const int flags=w.flags(w.entry.watcher);
+        float duration=0;
+        if(!host.duration(host.context,object,flags,&duration)||!std::isfinite(duration)||duration<0)
+            return fail(ClientInitStage::InterpolationAttempted);
+        w.set_duration(w.entry.watcher,duration);
+    }
+    std::memcpy(raw+0x50,&index,4);
+    *handle=packed;g->busy=false;return 1;
+}
+const ClientInitApi client_init_api{version,sizeof(ClientInitApi),&initialize_client};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2242,5 +2326,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientReg
 SiN_GetClientEntityRegistryApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientRegistryApi)?&registry_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientEntityInitApi=_SiN_GetClientEntityInitApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientInitApi* __cdecl
+SiN_GetClientEntityInitApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientInitApi)?&client_init_api:nullptr;
 }
 #endif
