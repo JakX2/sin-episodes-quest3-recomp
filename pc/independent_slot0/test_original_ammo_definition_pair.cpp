@@ -483,6 +483,13 @@ int main(int argc,char** argv){
     assert(sceneManagerTick&&!getSceneManagerTick(0,sizeof(tables::SceneManagerTickApi))&&!getSceneManagerTick(1,0));
     tables::test::check_scene_manager_tick(*sceneManagerTick);
     std::puts("PASS native scene manager construction, mutation-aware tick and destruction");
+    const auto getSceneRegistration=reinterpret_cast<tables::GetSceneRegistrationApi>(GetProcAddress(server,tables::scene_registration_export));
+    assert(getSceneRegistration&&!GetProcAddress(client,tables::scene_registration_export));
+    const auto* sceneRegistration=getSceneRegistration(1,sizeof(tables::SceneRegistrationApi));
+    assert(sceneRegistration&&!getSceneRegistration(0,sizeof(tables::SceneRegistrationApi))&&!getSceneRegistration(1,0));
+    tables::test::check_scene_registration(*sceneRegistration);
+    std::puts("PASS native scene registration, resolved identity and ordered removal");
+
 
 
 
