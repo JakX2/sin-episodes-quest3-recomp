@@ -4346,6 +4346,115 @@ int __cdecl parsed_event_classify(void* parsed,unsigned bytes,void* event,unsign
     *out={A::None,0};return 1;
 }
 const ParsedEventClassifyApi parsed_event_classify_api{version,sizeof(ParsedEventClassifyApi),&parsed_event_classify};
+int __cdecl parsed_event_less(const void* a,unsigned na,const void* b,unsigned nb,const ParsedSimulationBindings* h,unsigned* out) noexcept {
+    if(!a||!b||na<0x2bc||nb<0x2bc||!sin_independent::vgui_layout::Readable(a,0x2bc)||
+       !sin_independent::vgui_layout::Readable(b,0x2bc)||!h||!h->channel_index||
+       !out||!hologram_writable(out,sizeof(*out)))return 0;
+    const float x=hologram_read<float>(a,0x184),y=hologram_read<float>(b,0x184);
+    if(x<y){*out=1;return 1;}if(x>y){*out=0;return 1;}
+    if(hologram_read<std::uint32_t>(a,0x188)!=0xbf800000u&&hologram_read<std::uint32_t>(b,0x188)!=0xbf800000u){
+        const float e=hologram_read<float>(a,0x188),f=hologram_read<float>(b,0x188);
+        if(e>f){*out=1;return 1;}if(e<f){*out=0;return 1;}
+    }
+    const auto actor=hologram_read<std::uint32_t>(a,0x2b4),other=hologram_read<std::uint32_t>(b,0x2b4);
+    const auto c=hologram_read<std::uint32_t>(a,0x2b8),d=hologram_read<std::uint32_t>(b,0x2b8);
+    if(actor&&actor==other&&c&&d&&c!=d){
+        int i=0,j=0;
+        if(!h->channel_index(h->context,actor,c,&i)||!h->channel_index(h->context,actor,d,&j))return -1;
+        *out=i<j;return 1;
+    }
+    const auto* lhs=static_cast<const char*>(a)+4;const auto* rhs=static_cast<const char*>(b)+4;
+    if(!std::memchr(lhs,0,128)||!std::memchr(rhs,0,128))return -1;
+    *out=std::strcmp(lhs,rhs)<0;return 1;
+}
+struct ParsedQueueRow {void* event;unsigned extent;ParsedEventAction action;};
+struct ParsedQueue {
+    ParsedQueueRow* rows=nullptr;unsigned count=0,capacity=0;
+    ~ParsedQueue(){delete[] rows;}
+    bool insert(ParsedQueueRow value,const ParsedSimulationBindings& h) noexcept {
+        if(count==capacity){
+            const unsigned next=capacity?capacity*2:16;
+            if(next>0x100000)return false;
+            auto* p=new(std::nothrow) ParsedQueueRow[next];if(!p)return false;
+            if(count)std::memcpy(p,rows,count*sizeof(*rows));delete[] rows;rows=p;capacity=next;
+        }
+        // Equivalent keys insert after existing keys, as the original
+        // tree descends right when less() is false. Valid ordered data only.
+        unsigned lo=0,hi=count;
+        while(lo<hi){
+            const unsigned mid=lo+(hi-lo)/2;unsigned less=0;
+            if(parsed_event_less(value.event,value.extent,rows[mid].event,rows[mid].extent,&h,&less)!=1)return false;
+            if(less)hi=mid;else lo=mid+1;
+        }
+        if(lo<count)std::memmove(rows+lo+1,rows+lo,(count-lo)*sizeof(*rows));
+        rows[lo]=value;++count;return true;
+    }
+};
+bool parsed_sim_pending(const ParsedSimulationBindings& h,void* parsed,unsigned i,void*& e,unsigned& n) noexcept {
+    e=nullptr;n=0;return h.classifier.pending(h.classifier.context,parsed,i,&e,&n)!=0;
+}
+int __cdecl parsed_scene_simulate(void* parsed,unsigned bytes,float target,const ParsedSimulationBindings* b) noexcept {
+    if(!parsed||bytes<0x220||!hologram_writable(parsed,0x220)||!b||!b->classifier.pending||!b->classifier.attach||
+       !b->events.event||!b->channel_index||!b->track||!b->callback)return 0;
+    const auto h=*b;ParsedQueue queue;
+    const double delta=static_cast<double>(target)-hologram_read<float>(parsed,0x78);
+    const unsigned forward=delta>=0; // x87 unordered is reverse
+    hologram_write(parsed,0x8c,0u);
+    const int pending=hologram_read<int>(parsed,0x70);
+    if(pending>0x100000)return -1;
+    for(int i=0;i<pending;++i){
+        void* e=nullptr;unsigned n=0;
+        if(!parsed_sim_pending(h,parsed,static_cast<unsigned>(i),e,n)||!e||n<0x3b4||!hologram_writable(e,0x3b4))return -1;
+        hologram_write(e,0x3b0,0u);
+    }
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(parsed,0xc);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000)return -1;
+        void* e=nullptr;unsigned n=0;
+        if(!h.events.event(h.events.context,parsed,i,&e,&n))return -1;
+        if(!e)continue;
+        ParsedEventDecision decision{};
+        if(parsed_event_classify(parsed,bytes,e,n,hologram_read<float>(parsed,0x78),target,forward,&h.classifier,&decision)!=1)return -1;
+        hologram_write(parsed,0x8c,hologram_read<unsigned>(parsed,0x8c)+decision.active_count);
+        if(decision.action!=ParsedEventAction::None&&!queue.insert({e,n,decision.action},h))return -1;
+    }
+    for(unsigned i=0;i<queue.count;++i){
+        const auto row=queue.rows[i];
+        if(row.extent<0x329||!hologram_writable(row.event,0x329))return -1;
+        const auto cb=hologram_read<std::uint32_t>(parsed,0x9c);
+        const auto time=hologram_read<float>(parsed,0x78);
+        using A=ParsedEventAction;
+        switch(row.action){
+        case A::Start:case A::StartTracked:{
+            hologram_write(row.event,0x328,static_cast<unsigned char>(1));
+            if(cb&&!h.callback(h.context,cb,0,time,parsed,row.event))return -1;
+            if(row.action==A::StartTracked&&!h.track(h.context,parsed,row.event))return -1;
+            if(hologram_read<int>(row.event,0)==1){
+                int index=-1;const int n=hologram_read<int>(parsed,0x70);
+                if(n>0x100000)return -1;
+                for(int j=0;j<n;++j){
+                    void* e=nullptr;unsigned extent=0;
+                    if(!parsed_sim_pending(h,parsed,static_cast<unsigned>(j),e,extent))return -1;
+                    if(e==row.event){index=j;break;}
+                }
+                hologram_write(parsed,0x21c,index);
+            }
+            break;
+        }
+        case A::Update:if(cb&&!h.callback(h.context,cb,8,time,parsed,row.event))return -1;break;
+        case A::Stop:
+            if(cb&&!h.callback(h.context,cb,4,time,parsed,row.event))return -1;
+            hologram_write(row.event,0x328,static_cast<unsigned char>(0));break;
+        default:break;
+        }
+    }
+    hologram_write(parsed,0x78,target);
+    if(hologram_read<unsigned>(parsed,0x8c))hologram_write(parsed,0x94,target);
+    return 1;
+}
+const ParsedSceneSimulationApi parsed_scene_simulation_api{version,sizeof(ParsedSceneSimulationApi),&parsed_scene_simulate,&parsed_event_less};
+
 
 
 
@@ -8881,6 +8990,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetParsedSceneSimulationApi=_SiN_GetParsedSceneSimulationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ParsedSceneSimulationApi* __cdecl
+SiN_GetParsedSceneSimulationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ParsedSceneSimulationApi)?&parsed_scene_simulation_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetParsedEventClassifyApi=_SiN_GetParsedEventClassifyApi")

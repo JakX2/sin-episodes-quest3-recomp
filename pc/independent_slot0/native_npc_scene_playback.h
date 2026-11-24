@@ -245,6 +245,25 @@ struct ParsedEventClassifyApi {
     int (__cdecl *classify)(void* parsed,unsigned bytes,void* event,unsigned extent,float previous,float target,unsigned forward,const ParsedEventClassifyBindings*,ParsedEventDecision*) noexcept;
 };
 using GetParsedEventClassifyApi=const ParsedEventClassifyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char parsed_scene_simulation_export[]="SiN_GetParsedSceneSimulationApi";
+struct ParsedSimulationBindings {
+    void* context;
+    ParsedEventClassifyBindings classifier;
+    SceneDurationBindings events;
+    // Original 22107170 channel index for a shared actor.
+    int (__cdecl *channel_index)(void*,std::uint32_t actor,std::uint32_t channel,int*) noexcept;
+    // Original tracked vector +50: append event after start callback.
+    int (__cdecl *track)(void*,void* parsed,void* event) noexcept;
+    // Original callback interface slots 0, 8, 4 (start, update, stop).
+    int (__cdecl *callback)(void*,std::uint32_t interface_word,unsigned slot,float,void* parsed,void* event) noexcept;
+};
+struct ParsedSceneSimulationApi {
+    std::uint32_t version,size;
+    int (__cdecl *simulate)(void* parsed,unsigned bytes,float target,const ParsedSimulationBindings*) noexcept;
+    int (__cdecl *less)(const void* a,unsigned a_bytes,const void* b,unsigned b_bytes,const ParsedSimulationBindings*,unsigned*) noexcept;
+};
+using GetParsedSceneSimulationApi=const ParsedSceneSimulationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 
