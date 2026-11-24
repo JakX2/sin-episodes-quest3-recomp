@@ -5,7 +5,7 @@ if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
 endif()
 enable_testing()
 foreach(role IN ITEMS client server)
-  add_library(sin_slot0_${role} SHARED slot0.cpp)
+  add_library(sin_slot0_${role} SHARED slot0.cpp original_ammo_definitions.cpp)
   target_compile_features(sin_slot0_${role} PRIVATE cxx_std_17)
   target_compile_definitions(sin_slot0_${role} PRIVATE SIN_ROLE_${role}=1)
   set_target_properties(sin_slot0_${role} PROPERTIES OUTPUT_NAME "${role}" PREFIX "" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
@@ -985,3 +985,11 @@ target_compile_features(sin_native_fixed_difficulty_service_test PRIVATE cxx_std
 add_dependencies(sin_native_fixed_difficulty_service_test sin_slot0_server)
 add_test(NAME independent_native_fixed_difficulty_service
   COMMAND sin_native_fixed_difficulty_service_test "$<TARGET_FILE:sin_slot0_server>")
+
+# Phase691: compare both actual loaded PE32 DLLs' shared ammo metadata.
+add_executable(sin_native_ammo_definition_pair_test test_original_ammo_definition_pair.cpp)
+target_compile_features(sin_native_ammo_definition_pair_test PRIVATE cxx_std_17)
+add_dependencies(sin_native_ammo_definition_pair_test sin_slot0_client sin_slot0_server)
+add_dependencies(sin_native_fixed_difficulty_service_test sin_native_ammo_definition_pair_test)
+add_test(NAME independent_native_ammo_definition_pair
+  COMMAND sin_native_ammo_definition_pair_test "$<TARGET_FILE:sin_slot0_client>" "$<TARGET_FILE:sin_slot0_server>")

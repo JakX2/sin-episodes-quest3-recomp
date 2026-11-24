@@ -1,5 +1,6 @@
 // Load the actual built module. No linking against its implementation.
 #include "server_fixed_difficulty_service.h"
+#include "original_ammo_definitions.h"
 #include "server_native_map_host.h"
 #include <vector>
 #include <utility>
@@ -1234,6 +1235,12 @@ static void test_shared_ammo(const a::CombatAmmoApi* ammo,const a::MapEntityApi*
     assert(r.code==a::AmmoUncertain&&r.changed_slots==1&&f.counts[0]==0&&f.counts[2]!=0&&f.counts[31]==2);
     f.fail_store=-1;f.log.clear();r=f.apply(a::AmmoClear,0);
     assert(r.code==a::AmmoChanged&&r.changed_slots==2&&f.counts[31]==0&&f.counts[2]==0);
+    // Real original default: omitted max callback uses the shared
+    // definition table, with no synthetic max lookup.
+    f.log.clear();f.counts[2]=7;auto cb=f.host();cb.max_count=nullptr;
+    const a::AmmoRequest request{a::AmmoRemove,2,2};
+    assert(ammo->apply(f.owner,&request,&cb,&f,&r)&&r.code==a::AmmoChanged&&r.value==5);
+    assert((f.log==std::vector<int>{1,202,2,302}));
     assert(map->end_level(epoch));
     r=f.apply(a::AmmoGetCount,2);assert(r.code==a::AmmoRejected);
     assert(api->end_campaign());
@@ -2267,6 +2274,18 @@ int main(int argc,char** argv){
     assert(getAmmo&&!getAmmo(0,sizeof(a::CombatAmmoApi))&&!getAmmo(1,0));
     const auto* ammo=getAmmo(a::ammo_version,sizeof(a::CombatAmmoApi));
     test_shared_ammo(ammo,map,api);
+    namespace defs=sin_port::original_ammo;
+#ifdef _WIN32
+    auto getDefs=reinterpret_cast<defs::GetApi>(GetProcAddress(lib,defs::export_name));
+#else
+    auto getDefs=reinterpret_cast<defs::GetApi>(dlsym(lib,defs::export_name));
+#endif
+    assert(getDefs&&!getDefs(0,sizeof(defs::Api))&&!getDefs(1,0));
+    const auto* definitions=getDefs(defs::version,sizeof(defs::Api));
+    assert(definitions&&definitions->definition_count()==17&&definitions->index("arnaDe")==6);
+    defs::Definition duag{};
+    assert(definitions->definition(9,&duag)&&duag.damage_type==0x00400002u&&duag.max_carry==8);
+    assert(definitions->index("unknown")==-1&&definitions->max_carry(-1)==0);
     test_magnum_secondary(getMagSecondary(a::magnum_secondary_version,sizeof(a::MagnumSecondaryApi)),magnum,map,api,ammo);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
