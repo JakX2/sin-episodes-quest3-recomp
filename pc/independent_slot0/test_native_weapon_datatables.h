@@ -2705,4 +2705,60 @@ inline void check_dispenser_inputs(const DispenserApi& disp,const DispenserInput
     f.fail=3;set(0x4ac,0x123001);assert(use(0)==-1&&ctrl.blocked&&word(0x4ac)==0x123001);expect({3});
 }
 
+struct PropContainerFixture {
+    HologramControl* ctrl=nullptr;int steam=0;
+    unsigned events[16]{},count=0,fail=0;bool live=true;
+    bool push(unsigned n){assert(ctrl->busy&&count<16);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl pct_random(void* ctx,float lo,float hi,float* out) noexcept {
+    auto& f=*static_cast<PropContainerFixture*>(ctx);assert(hi-lo==1&&(lo==1||lo==3));
+    *out=lo+0.5f;return f.push(1);
+}
+inline int __cdecl pct_sound(void* ctx,void* obj,const char* sound) noexcept {
+    auto& f=*static_cast<PropContainerFixture*>(ctx);assert(obj==f.ctrl->object&&!std::strcmp(sound,"container.leak_pressurized_loop"));return f.push(2);
+}
+inline int __cdecl pct_resolve(void* ctx,std::uint32_t handle,void** out) noexcept {
+    auto& f=*static_cast<PropContainerFixture*>(ctx);assert(handle==0x123004);*out=f.live?&f.steam:nullptr;return f.push(3);
+}
+inline int __cdecl pct_remove(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<PropContainerFixture*>(ctx);assert(obj==&f.steam&&f.live);f.live=false;return f.push(4);
+}
+inline int __cdecl pct_break(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<PropContainerFixture*>(ctx);assert(obj==f.ctrl->object);return f.push(5);
+}
+inline void check_prop_container(const PropContainerApi& api,const CanisterApi& can){
+    alignas(4) unsigned char object[0x6a0]{};
+    HologramControl ctrl{object,sizeof(object)};PropContainerFixture f{&ctrl};
+    PropContainerBindings b{&f,&pct_random,&pct_sound,&pct_resolve,&pct_remove,&pct_break};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto word=[&](unsigned off){std::uint32_t v=0;std::memcpy(&v,object+off,4);return v;};
+    const auto fl=[&](unsigned off){float v=0;std::memcpy(&v,object+off,4);return v;};
+    const auto set=[&](unsigned off,std::uint32_t value){std::memcpy(object+off,&value,4);};
+    const auto defaults=[&](PropContainerKind kind){return api.defaults(&ctrl,&b,kind);};
+    const auto stop=[&](){return api.stop_leak(&ctrl,&b);};
+    constexpr unsigned flags[]={3,9,0x92,0x92,0xa2,0xe0};
+    constexpr float duration[]={10,0,10,20,3.5f,1.5f},param[]={0,0,1000,3000,3000,0};
+    constexpr float radius[]={0,125,0,0,256,256};
+    for(unsigned i=0;i<6;++i){
+        assert(defaults(static_cast<PropContainerKind>(i))==1);
+        assert(word(0x62c)==flags[i]&&fl(0x628)==100&&fl(0x634)==duration[i]&&fl(0x63c)==param[i]);
+        assert(word(0x638)==(i>=4?0u:1u)&&word(0x648)==(i==1?0u:100u)&&word(0x668)==0xffffffffu);
+        float result=-1;assert(api.ai_radius(object,sizeof(object),&result)&&result==radius[i]);
+        if(i>=4)expect({1});else expect({});
+    }
+    assert(defaults(PropContainerKind::OxygenLarge)==1);expect({});
+    assert(stop()==1&&word(0x638)==1);expect({});
+    set(0x62c,0x192);set(0x668,0x123004);f.live=true;
+    assert(stop()==1&&word(0x62c)==0x90&&word(0x638)==0&&fl(0x628)==0&&fl(0x63c)==0&&word(0x668)==0xffffffffu);
+    expect({2,3,3,4});assert(stop()==1);expect({});
+    assert(defaults(PropContainerKind::OxygenSmall)==1);expect({});
+    set(0x62c,0x192);set(0x638,2);set(0x668,0x123004);f.live=false;
+    assert(stop()==1&&word(0x638)==1&&fl(0x628)==100&&fl(0x63c)==3000&&word(0x668)==0x123004);expect({2,3});
+    assert(defaults(PropContainerKind::Acetylene)==1);expect({1});set(0x62c,0x1a2);
+    assert(stop()==1&&word(0x62c)==0xa0&&word(0x638)==0xffffffffu&&fl(0x628)==0);expect({2,5});
+    assert(defaults(PropContainerKind::OxygenLarge)==1);expect({});set(0x62c,0x192);
+    f.fail=2;assert(stop()==-1&&ctrl.blocked&&word(0x62c)==0x90&&word(0x638)==1);expect({2});
+    assert(stop()==0&&can.acknowledge(&ctrl));expect({});
+}
+
 }

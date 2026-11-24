@@ -267,6 +267,12 @@ int main(int argc,char** argv){
     assert(dispInput&&!getDispInput(0,sizeof(tables::DispenserInputApi))&&!getDispInput(1,0));
     tables::test::check_dispenser_inputs(*dispenser,*dispInput);
     std::puts("PASS native dispenser use press/release and deferred eject event routing");
+    const auto getPropContainer=reinterpret_cast<tables::GetPropContainerApi>(GetProcAddress(server,tables::prop_container_export));
+    assert(getPropContainer&&!GetProcAddress(client,tables::prop_container_export));
+    const auto* propContainer=getPropContainer(1,sizeof(tables::PropContainerApi));
+    assert(propContainer&&!getPropContainer(0,sizeof(tables::PropContainerApi))&&!getPropContainer(1,0));
+    tables::test::check_prop_container(*propContainer,*canister);
+    std::puts("PASS native shared SiN container constructor leaves, leak stop and AI radius");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
