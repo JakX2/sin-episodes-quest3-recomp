@@ -225,6 +225,12 @@ int main(int argc,char** argv){
     assert(dispenser&&!getDispenser(0,sizeof(tables::DispenserApi))&&!getDispenser(1,0));
     tables::test::check_dispenser(*dispenser);
     std::puts("PASS native SiN antigen dispenser use, healing accumulator, depletion and spray lifecycle");
+    const auto getContainer=reinterpret_cast<tables::GetContainerApi>(GetProcAddress(server,tables::dispenser_container_export));
+    assert(getContainer&&!GetProcAddress(client,tables::dispenser_container_export));
+    const auto* container=getContainer(1,sizeof(tables::ContainerApi));
+    assert(container&&!getContainer(0,sizeof(tables::ContainerApi))&&!getContainer(1,0));
+    tables::test::check_container(*dispenser,*container);
+    std::puts("PASS native antigen container insert/eject, dose transfer and map outputs");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

@@ -1806,6 +1806,77 @@ int __cdecl disp_ack(HologramControl* ctrl) noexcept {
 }
 const DispenserApi dispenser_api{version,sizeof(DispenserApi),&disp_defaults,&disp_use,&disp_think,
     &disp_stop_api,&disp_pose_api,&disp_ack};
+
+int __cdecl container_spawn_state(HologramControl* ctrl,const ContainerBindings* b) noexcept {
+    if(!disp_valid(ctrl)||!b||!b->bodygroup)return 0;
+    const float amount=hologram_read<float>(ctrl->object,disp_antigen);
+    if(!std::isfinite(amount))return 0;
+    ctrl->busy=1;
+    const float clamped=amount>100?100.0f:amount<0?0.0f:amount;
+    const auto loaded=static_cast<unsigned char>(clamped>0);
+    hologram_write(ctrl->object,disp_antigen,clamped);
+    hologram_write(ctrl->object,disp_loaded,loaded);
+    return disp_finish(ctrl,b->bodygroup(b->dispenser.context,ctrl->object,1,loaded)!=0);
+}
+int __cdecl container_touch(HologramControl* ctrl,const ContainerBindings* b,void* entity) noexcept {
+    if(!disp_valid(ctrl)||!b||!b->cast_container||!b->bodygroup||!b->notice||!b->sound||
+       !b->output||!b->dispenser.clock||!b->dispenser.pose||
+       !b->dispenser.advance_animation||!b->dispenser.remove)return 0;
+    if(!entity)return 1;
+    ctrl->busy=1;const auto host=*b;const auto& d=host.dispenser;auto* object=ctrl->object;
+    ContainerObservation o{};
+    if(!host.cast_container(d.context,entity,&o))return disp_finish(ctrl,false);
+    if(!o.container||!(o.flags&8u)||hologram_read<unsigned char>(object,disp_loaded))
+        return disp_finish(ctrl,true);
+    float now=0;
+    const float reject=hologram_read<float>(object,disp_reject);
+    if(!disp_clock(d,now)||!std::isfinite(reject)||!std::isfinite(o.amount))return disp_finish(ctrl,false);
+    // Original rejected touch refreshes the rejection timestamp.
+    // A continuous contact therefore cannot expire this window.
+    if(!(static_cast<double>(reject)+0.5<now)){
+        hologram_write(object,disp_reject,now);return disp_finish(ctrl,true);
+    }
+    // Preserve both original multiplications, not a direct copy.
+    const auto amount=static_cast<float>(static_cast<double>(o.amount)*100.0f*0.01f);
+    hologram_write(object,disp_antigen,amount);
+    if(!host.bodygroup(d.context,object,1,1)||!disp_pose(object,d))return disp_finish(ctrl,false);
+    // Original marks loaded after pose, even if inserted amount is zero.
+    hologram_write(object,disp_loaded,static_cast<unsigned char>(1));
+    if(!host.notice(d.context,object,o.container,ContainerNotice::Inserted)||
+       !d.remove(d.context,o.container)||!host.sound(d.context,object,ContainerSound::Load))
+        return disp_finish(ctrl,false);
+    return disp_finish(ctrl,host.output(d.context,object,0x4b8,o.container,object,0.0f)!=0);
+}
+int __cdecl container_eject(HologramControl* ctrl,const ContainerBindings* b) noexcept {
+    if(!disp_valid(ctrl)||!b||!b->create_ejected||!b->container_amount||!b->notice||!b->bodygroup||
+       !b->eject_message||!b->sound||!b->clear_think||!b->output||
+       !b->dispenser.clock||!b->dispenser.resolve||!b->dispenser.remove||!b->dispenser.sound)return 0;
+    auto* object=ctrl->object;
+    if(!hologram_read<unsigned char>(object,disp_loaded))return 1;
+    ctrl->busy=1;const auto host=*b;const auto& d=host.dispenser;
+    void* container=nullptr;
+    if(!host.create_ejected(d.context,object,"prop_antigen_explosive_barrel",&container)||!container)
+        return disp_finish(ctrl,false);
+    const float original=hologram_read<float>(object,disp_antigen);
+    if(!std::isfinite(original))return disp_finish(ctrl,false);
+    const float amount=static_cast<float>(static_cast<double>(original)*100.0f*0.01f);
+    const float pose=static_cast<float>(static_cast<double>(amount)*0.01f);
+    if(!host.container_amount(d.context,container,amount,pose)||
+       !host.notice(d.context,object,container,ContainerNotice::Ejected))return disp_finish(ctrl,false);
+    float now=0;
+    if(!disp_clock(d,now))return disp_finish(ctrl,false);
+    hologram_write(object,disp_last,now);
+    hologram_write(object,disp_loaded,static_cast<unsigned char>(0));
+    hologram_write(object,disp_antigen,0.0f);
+    if(!disp_stop(object,d)||!host.eject_message(d.context,object,1)||
+       !host.bodygroup(d.context,object,1,0)||!host.sound(d.context,object,ContainerSound::Eject)||
+       !host.clear_think(d.context,object)||!host.output(d.context,object,0x4d0,container,object,0.0f)||
+       !disp_clock(d,now))return disp_finish(ctrl,false);
+    hologram_write(object,disp_reject,now);
+    // Original does not reset user handle or fractional health here.
+    return disp_finish(ctrl,true);
+}
+const ContainerApi container_api{version,sizeof(ContainerApi),&container_spawn_state,&container_touch,&container_eject};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3322,6 +3393,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Dispenser
 SiN_GetAntigenDispenserApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(DispenserApi)?&dispenser_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetAntigenContainerApi=_SiN_GetAntigenContainerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ContainerApi* __cdecl
+SiN_GetAntigenContainerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ContainerApi)?&container_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
