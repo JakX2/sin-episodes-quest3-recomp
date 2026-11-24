@@ -4033,6 +4033,42 @@ int __cdecl phud_ack(HologramControl* ctrl) noexcept {
     ctrl->blocked=0;return 1;
 }
 const PoisonHudApi poison_hud_api{version,sizeof(PoisonHudApi),&phud_reset,&phud_bind,&phud_tick,&phud_paint,&phud_ack};
+
+bool screen_command_valid(const HologramControl* ctrl) noexcept {
+    return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=0xdc&&
+        sin_independent::vgui_layout::Readable(ctrl->object,0xdc);
+}
+int __cdecl generic_screen_command(HologramControl* ctrl,const ScreenCommandBindings* b,const char* command) noexcept {
+    if(!screen_command_valid(ctrl)||!b||!b->create_event||!b->resolve||!b->entity_index||
+       !b->set_int||!b->set_string||!b->fire||!b->discard||!b->base_command)return 0;
+    char text[256]{};
+    if(!prop_key_read(command,text))return 0;
+    ctrl->busy=1;const auto host=*b;
+    const auto finish=[&](bool ok){ctrl->busy=0;if(!ok){ctrl->blocked=1;return -1;}return 1;};
+    void* event=nullptr;
+    if(!host.create_event(host.context,"button_press",1,&event)){
+        if(event)host.discard(host.context,event);
+        return finish(false);
+    }
+    if(event){
+        const auto handle=hologram_read<std::uint32_t>(ctrl->object,0xd8);
+        void* screen=nullptr;int index=0;
+        if(handle==0xffffffffu||!host.resolve(host.context,handle,&screen)||!screen||
+           !host.entity_index(host.context,screen,&index)||
+           !host.set_int(host.context,event,"entindex",index)||
+           !host.set_string(host.context,event,"command",text)){
+            host.discard(host.context,event);return finish(false);
+        }
+        if(!host.fire(host.context,event,0))return finish(false);
+    }
+    return finish(host.base_command(host.context,ctrl->object,text)!=0);
+}
+int __cdecl generic_screen_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0xdc||
+       !sin_independent::vgui_layout::Readable(ctrl->object,0xdc))return 0;
+    ctrl->blocked=0;return 1;
+}
+const ScreenCommandApi screen_command_api{version,sizeof(ScreenCommandApi),&generic_screen_command,&generic_screen_ack};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -4369,5 +4405,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PoisonHud
 SiN_GetPoisonHudApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PoisonHudApi)?&poison_hud_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetScreenCommandApi=_SiN_GetScreenCommandApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScreenCommandApi* __cdecl
+SiN_GetScreenCommandApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ScreenCommandApi)?&screen_command_api:nullptr;
 }
 #endif
