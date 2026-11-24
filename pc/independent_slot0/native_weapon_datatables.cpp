@@ -11,6 +11,7 @@
 #include "native_client_flex_rule.h"
 #include "native_client_composed_facial.h"
 #include "native_server_flex_weight.h"
+#include "native_server_flex_animation.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -10970,6 +10971,125 @@ int __cdecl server_flex_weight_get(const void* entity,unsigned bytes,const Serve
     return 1;
 }
 const ServerFlexWeightApi server_flex_weight_api{version,sizeof(ServerFlexWeightApi),&server_flex_weight_set,&server_flex_weight_get};
+int __cdecl server_flex_fade(void* actor,unsigned bytes,void* record,unsigned rb,bool background,float now,bool initial,float* out) noexcept {
+    if(bytes<server_flex_scene_extent||rb<0x40||!hologram_writable(actor,server_flex_scene_extent)||
+       !hologram_writable(record,0x40)||!hologram_writable(out,4)||!std::isfinite(now))return 0;
+    bool suppressed=false;
+    if(background){
+        const float next=hologram_read<float>(actor,0x2c),previous=hologram_read<float>(actor,0x28);
+        double step=next<now?static_cast<double>(now)-next:static_cast<double>(next)-previous;
+        if(step>.20000000298023224)step=.20000000298023224;
+        if(step<0)step=0;
+        suppressed=static_cast<double>(now)-1.5*step<hologram_read<float>(actor,0x604);
+    }else hologram_write(actor,0x604,now);
+    float value=0;
+    if(initial)value=suppressed?0.f:1.f;
+    else{
+        const double old=hologram_read<float>(record,0x20);
+        const double adjusted=suppressed?old-.2:old+.1;
+        value=static_cast<float>(suppressed?(adjusted>0?adjusted:0):(adjusted<1?adjusted:1));
+    }
+    hologram_write(record,0x20,value);*out=value;return 1;
+}
+bool server_flex_storage(const ServerFlexAnimationBindings& h,std::uint32_t token,unsigned need,void*& p,unsigned& extent) noexcept {
+    p=nullptr;extent=0;return token&&h.storage(h.context,token,&p,&extent)&&extent>=need&&hologram_writable(p,need);
+}
+bool server_flex_track_name(const ServerFlexAnimationBindings& h,void* track,char* name,unsigned capacity) noexcept {
+    const auto word=hologram_read<std::uint32_t>(track,4);
+    if(!word){name[0]=0;return true;}
+    void* text=nullptr;unsigned n=0;
+    if(!h.storage(h.context,word,&text,&n)||!text||!n)return false;
+    for(unsigned i=0;i<n&&i<capacity;++i){
+        if(!sin_independent::vgui_layout::Readable(static_cast<const char*>(text)+i,1))return false;
+        if(!(name[i]=static_cast<const char*>(text)[i]))return true;
+    }
+    return false;
+}
+bool server_flex_track_value(const ServerFlexAnimationBindings& h,void* track,unsigned bank,float time,float start,float end,float& out) noexcept {
+    const float low=hologram_read<float>(track,0xc),high=hologram_read<float>(track,0x10);
+    if(end==-1||time<start||time>end){
+        out=bank==1?.5f:low==high?0.f:static_cast<float>(-static_cast<double>(low)/(static_cast<double>(high)-low));
+        return true;
+    }
+    float v=0;
+    if(!h.sample(h.context,track,bank,static_cast<float>(static_cast<double>(time)-start),&v))return false;
+    out=low==high?v:static_cast<float>((static_cast<double>(high)-low)*v+low);return true;
+}
+int __cdecl server_flex_animation_apply(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
+    float scene_time,float now,bool background,const ServerFlexAnimationBindings* b) noexcept {
+    if(bytes<server_flex_scene_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_scene_extent)||
+       !hologram_writable(record,0x40)||!hologram_writable(event,0x3c0)||!b||
+       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!b->controller||!b->sample||!b->intensity||
+       !server_flex_ranges(b->ranges,b->count)||!std::isfinite(scene_time)||!std::isfinite(now))return 0;
+    const auto h=*b;
+    const float start=hologram_read<float>(event,0x184),end=hologram_read<float>(event,0x188);
+    if(end==-1)return 1; // 220f84e0 end sentinel
+    const int count=hologram_read<int>(event,0x318);
+    if(count<0||count>4096)return 0;
+    void* words=nullptr;unsigned extent=0;
+    if(count&&!server_flex_storage(h,hologram_read<std::uint32_t>(event,0x30c),count*4,words,extent))return 0;
+    if(!hologram_read<unsigned char>(event,0x320)){
+        for(int i=0;i<count;++i){
+            const auto token=hologram_read<std::uint32_t>(words,i*4);
+            if(!token)continue;
+            void* track=nullptr;
+            if(!server_flex_storage(h,token,0x50,track,extent))return 0;
+            const bool stereo=hologram_read<unsigned char>(track,9)!=0;
+            char name[506]{},prefixed[512]{};
+            if(!server_flex_track_name(h,track,name,sizeof(name)))return 0;
+            for(unsigned side=0;side<(stereo?2u:1u);++side){
+                const char* query=name;
+                if(stereo){
+                    const char* prefix=side==0?"right_":"left_";
+                    std::strcpy(prefixed,prefix);std::strcat(prefixed,name);query=prefixed;
+                }
+                int index=h.controller(h.context,query);
+                if(index==-2||index<-2||index>=static_cast<int>(h.count))return 0;
+                if(index==-1)index=0;
+                hologram_write(track,0x3c+side*4,index);
+                hologram_write(track,0x44+side*4,0u);
+            }
+        }
+        hologram_write(event,0x320,static_cast<unsigned char>(1));
+    }
+    float intensity=0,fade=0;
+    if(!h.intensity(h.context,event,scene_time,&intensity)||
+       !server_flex_fade(actor,bytes,record,rb,background,now,false,&fade))return 0;
+    const float weight=static_cast<float>(static_cast<double>(intensity)*fade);
+    for(int i=0;i<count;++i){
+        const auto token=hologram_read<std::uint32_t>(words,i*4);
+        if(!token)continue;
+        void* track=nullptr;
+        if(!server_flex_storage(h,token,0x50,track,extent))return 0;
+        if(!hologram_read<unsigned char>(track,8))continue;
+        const bool stereo=hologram_read<unsigned char>(track,9)!=0;
+        float main=0,balance=.5f;
+        if(!server_flex_track_value(h,track,0,scene_time,start,end,main)||
+           (stereo&&!server_flex_track_value(h,track,1,scene_time,start,end,balance)))return 0;
+        for(unsigned side=0;side<(stereo?2u:1u);++side){
+            const int index=hologram_read<int>(track,0x3c+side*4);
+            if(index<0)continue;
+            const float target=static_cast<float>(static_cast<double>(main)*(stereo?
+                (side==0&&balance>.5f?2*(1.0-balance):side==1&&balance<.5f?2.0*balance:1.0):1.0));
+            float old=0;
+            if(!server_flex_weight_get(actor,bytes,h.ranges,h.count,index,&old))return 0;
+            const float mixed=static_cast<float>(static_cast<double>(old)*(1.0-weight)+static_cast<double>(target)*weight);
+            if(!server_flex_weight_set(actor,bytes,h.ranges,h.count,index,mixed,&h.dirty))return 0;
+        }
+    }
+    hologram_write(record,0xc,static_cast<unsigned char>(1));return 1;
+}
+int __cdecl server_flex_decay(void* actor,unsigned bytes,const ServerFlexRange* ranges,unsigned count,const ServerFlexWeightBindings* b) noexcept {
+    if(!server_flex_ranges(ranges,count)||bytes<server_flex_extent||!hologram_writable(actor,server_flex_extent))return 0;
+    for(unsigned i=0;i<count;++i){
+        float value=0;
+        if(!server_flex_weight_get(actor,bytes,ranges,count,i,&value)||
+           !server_flex_weight_set(actor,bytes,ranges,count,i,static_cast<float>(static_cast<double>(value)*.95),b))return 0;
+    }
+    return 1;
+}
+const ServerFlexAnimationApi server_flex_animation_api{version,sizeof(ServerFlexAnimationApi),&server_flex_fade,&server_flex_animation_apply,&server_flex_decay};
+
 
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
@@ -12881,6 +13001,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimSendA
 SiN_GetAnimatingSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimSendApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerFlexAnimationApi=_SiN_GetServerFlexAnimationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFlexAnimationApi* __cdecl
+SiN_GetServerFlexAnimationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFlexAnimationApi)?&server_flex_animation_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerFlexWeightApi=_SiN_GetServerFlexWeightApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFlexWeightApi* __cdecl
