@@ -263,6 +263,30 @@ struct ParsedSceneSimulationApi {
     int (__cdecl *less)(const void* a,unsigned a_bytes,const void* b,unsigned b_bytes,const ParsedSimulationBindings*,unsigned*) noexcept;
 };
 using GetParsedSceneSimulationApi=const ParsedSceneSimulationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_advance_export[]="SiN_GetSceneAdvanceApi";
+struct SceneAdvanceBindings {
+    void* context;
+    // Original scene virtual +29c, then optional +2a8 and +294.
+    int (__cdecl *pre_tick)(void*,void*) noexcept;
+    int (__cdecl *start)(void*,void*) noexcept;
+    int (__cdecl *paused_tick)(void*,void*) noexcept;
+    int (__cdecl *resolve_actor)(void*,std::uint32_t,void**) noexcept;
+    int (__cdecl *parsed)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original nested +418 -> +18 -> +28 interval, host bounds checked.
+    int (__cdecl *latency)(void*,std::uint32_t,float*) noexcept;
+    int (__cdecl *finish)(void*,void* scene,int completed,int cleanup) noexcept;
+    int (__cdecl *release_actors)(void*,void* scene,std::uint32_t parsed) noexcept;
+    int (__cdecl *remove)(void*,void* scene) noexcept;
+    ParsedSimulationBindings simulation;
+};
+struct SceneAdvanceApi {
+    std::uint32_t version,size;
+    int (__cdecl *finished)(const void* parsed,unsigned bytes,unsigned*) noexcept;
+    int (__cdecl *scripted)(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings*) noexcept;
+    int (__cdecl *instanced)(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings*) noexcept;
+};
+using GetSceneAdvanceApi=const SceneAdvanceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

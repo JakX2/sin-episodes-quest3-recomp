@@ -513,6 +513,13 @@ int main(int argc,char** argv){
     assert(parsedSimulation&&!getParsedSimulation(0,sizeof(tables::ParsedSceneSimulationApi))&&!getParsedSimulation(1,0));
     tables::test::check_parsed_simulation(*parsedSimulation);
     std::puts("PASS native parsed choreography ordered event simulation");
+    const auto getSceneAdvance=reinterpret_cast<tables::GetSceneAdvanceApi>(GetProcAddress(server,tables::scene_advance_export));
+    assert(getSceneAdvance&&!GetProcAddress(client,tables::scene_advance_export));
+    const auto* sceneAdvance=getSceneAdvance(1,sizeof(tables::SceneAdvanceApi));
+    assert(sceneAdvance&&!getSceneAdvance(0,sizeof(tables::SceneAdvanceApi))&&!getSceneAdvance(1,0));
+    tables::test::check_scene_advance(*sceneAdvance);
+    std::puts("PASS native scripted and instanced scene advance through parsed simulation");
+
 
 
 
