@@ -1397,6 +1397,7 @@ inline void check_scene_speech_execution(const SceneSpeechExecutionApi& api){
 struct SpeechLifecycleFixture:NativeGeneratedLifecycleFixture {
     const SceneSpeechCallbackApi& callback_api;
     const ResolvedSceneActorApi* resolver=nullptr;ResolvedSceneActorBindings resolved{};
+    const SceneSpeechPreparationApi* preparation_api=nullptr;SceneSpeechPreparationBindings preparation{};SpeechSemaphorePair semaphores{};
     std::uint32_t actor_cache_slot=0;
     unsigned cache_grows=0,cache_resolves=0,name_resolves=0,choreo_reads=0;
     SceneSpeechCallbackBindings callbacks{};
@@ -1444,10 +1445,22 @@ struct SpeechLifecycleFixture:NativeGeneratedLifecycleFixture {
             f.order[f.steps++]=slot;unsigned result=0;return f.dispatch(slot,time,result)==1&&result==1;};
     }
     int dispatch(unsigned slot,float time,unsigned& result){
+        if(preparation_api)return preparation_api->callback(scene+0x410,8,scene,sizeof(scene),slot,time,parsed,sizeof(parsed),event,sizeof(event),&callbacks,resolver?&resolved:nullptr,&preparation,&result);
         return resolver?resolver->speech(scene+0x410,8,scene,sizeof(scene),slot,time,parsed,sizeof(parsed),event,sizeof(event),&callbacks,&resolved,&result):
             callback_api.invoke(scene+0x410,8,scene,sizeof(scene),slot,time,parsed,sizeof(parsed),event,sizeof(event),&callbacks,&result);
     }
     int invoke(unsigned slot,unsigned& result){return dispatch(slot,0,result);}
+    void bind_preparation(const SceneSpeechPreparationApi& api){
+        preparation_api=&api;callbacks.speech.prepare_actor=nullptr;
+        preparation.context=callbacks.context;preparation.state=&semaphores;preparation.instanced=1;
+        F::fl(scene,0x564,.5f);
+        preparation.cast_base_actor=[](void* p,void* a,void** out) noexcept -> int{assert(a==self(p).npc_memory);*out=nullptr;return 1;};
+        preparation.actor_notify=[](void*,void*,float,float) noexcept -> int{assert(false);return 0;};
+        preparation.is_npc=full.startup.is_npc;
+        preparation.classify=[](void* p,void* a,int arg,unsigned* out) noexcept -> int{assert(a==self(p).npc_memory&&!arg);*out=1;return 1;};
+        preparation.clock=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+        preparation.handle=play.actor_handle;
+    }
     void bind_resolver(const ResolvedSceneActorApi& api){
         resolver=&api;callbacks.actor=nullptr;
         auto& c=resolved.cache;auto& n=resolved.names;
@@ -1482,9 +1495,10 @@ struct SpeechLifecycleFixture:NativeGeneratedLifecycleFixture {
     }
 };
 inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const NativeGeneratedLifecycleApi& n,const SceneFinishApi& finish,
-    const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity,const ResolvedSceneActorApi* resolver=nullptr){
+    const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity,const ResolvedSceneActorApi* resolver=nullptr,const SceneSpeechPreparationApi* preparation=nullptr){
     using F=ScenePlaybackFixture;SpeechLifecycleFixture f(cb,n,finish,manager,tick,entity);float duration=99;
     if(resolver)f.bind_resolver(*resolver);
+    if(preparation)f.bind_preparation(*preparation);
     assert(n.sound(f.actor,f.sound,&f.full,&duration)==1&&duration==.1f);
     std::strcpy(reinterpret_cast<char*>(f.event+0x104),"72");
     unsigned result=99;
@@ -1498,6 +1512,7 @@ inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const Native
     f.missing=false;
     assert(manager.tick(&f.control,&f.manager_tick)==1&&f.emitted==1&&f.begun==1&&f.captions==1&&f.opened==1&&f.closed==1);
     assert(F::word(f.npc_memory,0x5c4)==2&&F::word(f.event_records[1],4)==f.parsed_word);
+    if(preparation)assert(f.semaphores.classified.release==10.6f&&f.semaphores.classified.owner==0x1001&&f.semaphores.other.owner==0xffffffffu);
     assert(f.invoke(12,result)==1&&!result&&f.checked==1);
     for(unsigned i=0;i<3;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
     assert(f.steps==4&&f.ended==1&&f.finished==1&&f.destroyed==1&&!f.parsed_live&&!f.scene_live&&F::word(f.npc_memory,0x5c4)==1);
@@ -1593,6 +1608,30 @@ inline void check_scene_actor_names(const SceneActorNamesApi& api){
     F::put(f.scene,0x55c,0x2002);
     assert(api.actor(f.scene,sizeof(f.scene),"missing",1,&b,&out,&n)==1&&!out&&!n&&f.finds==5);
     assert(entity("!target2")==1&&!out&&F::word(f.scene,0x3bc)==0xffffffffu);
+}
+
+
+inline void check_scene_speech_preparation(const SceneSpeechPreparationApi& api){
+    using F=ScenePlaybackFixture;
+    struct Fixture {alignas(4) unsigned char scene[0x5ec]{},npc[4]{},base[4]{};SpeechSemaphorePair pair{};
+        unsigned casts=0,notifies=0,npcs=0,classes=0,clocks=0,handles=0;bool cast=false,is_npc=true,classified=true,fail_handle=false;
+        float margin=0,remaining=0;
+    } f;
+    F::fl(f.scene,0x564,.25f);
+    SceneSpeechPreparationBindings b{};b.context=&f;b.state=&f.pair;
+    b.cast_base_actor=[](void* p,void* a,void** out) noexcept -> int{auto& x=*static_cast<Fixture*>(p);assert(a==x.npc);++x.casts;*out=x.cast?x.base:nullptr;return 1;};
+    b.actor_notify=[](void* p,void* a,float remaining,float margin) noexcept -> int{auto& x=*static_cast<Fixture*>(p);assert(a==x.base);++x.notifies;x.margin=margin;x.remaining=remaining;return 1;};
+    b.is_npc=[](void* p,void* a,unsigned* out) noexcept -> int{auto& x=*static_cast<Fixture*>(p);assert(a==x.npc);++x.npcs;*out=x.is_npc?1:0;return 1;};
+    b.classify=[](void* p,void* a,int arg,unsigned* out) noexcept -> int{auto& x=*static_cast<Fixture*>(p);assert(a==x.npc&&!arg);++x.classes;*out=x.classified?1:0;return 1;};
+    b.clock=[](void* p,float* out) noexcept -> int{auto& x=*static_cast<Fixture*>(p);++x.clocks;*out=10;return 1;};
+    b.handle=[](void* p,void* a,std::uint32_t* out) noexcept -> int{auto& x=*static_cast<Fixture*>(p);assert(a==x.npc);++x.handles;*out=0x4001;return !x.fail_handle;};
+    auto prep=[&](float remaining){return api.prepare(f.scene,sizeof(f.scene),f.npc,remaining,&b);};
+    f.cast=true;assert(prep(2)==1&&f.margin==1&&f.remaining==2&&f.notifies==1&&!f.npcs&&!f.clocks);
+    b.instanced=1;assert(prep(-1)==1&&f.margin==.25f&&f.remaining==-1&&f.notifies==2);
+    f.cast=false;f.is_npc=false;assert(prep(3)==1&&f.npcs==1&&!f.classes);
+    f.is_npc=true;assert(prep(3)==1&&f.npcs==3&&f.classes==1&&f.pair.classified.release==13.25f&&f.pair.classified.owner==0x4001);
+    f.classified=false;b.instanced=0;assert(prep(-2)==1&&f.pair.other.release==9&&f.pair.other.owner==0x4001);
+    f.fail_handle=true;f.pair.other.owner=0x1111;assert(prep(5)==-1&&f.pair.other.release==16&&f.pair.other.owner==0x1111);
 }
 
 }

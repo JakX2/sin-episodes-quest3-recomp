@@ -628,6 +628,13 @@ int main(int argc,char** argv){
     assert(resolvedSceneActor&&!getResolvedSceneActor(0,sizeof(tables::ResolvedSceneActorApi))&&!getResolvedSceneActor(1,0));
     tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,resolvedSceneActor);
     std::puts("PASS generated speech lifecycle through native actor index cache and name fallback");
+    const auto getSceneSpeechPreparation=reinterpret_cast<tables::GetSceneSpeechPreparationApi>(GetProcAddress(server,tables::scene_speech_preparation_export));
+    assert(getSceneSpeechPreparation&&!GetProcAddress(client,tables::scene_speech_preparation_export));
+    const auto* sceneSpeechPreparation=getSceneSpeechPreparation(1,sizeof(tables::SceneSpeechPreparationApi));
+    assert(sceneSpeechPreparation&&!getSceneSpeechPreparation(0,sizeof(tables::SceneSpeechPreparationApi))&&!getSceneSpeechPreparation(1,0));
+    tables::test::check_scene_speech_preparation(*sceneSpeechPreparation);
+    tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,resolvedSceneActor,sceneSpeechPreparation);
+    std::puts("PASS native speech preparation, shared semaphore and cached speech lifecycle");
 
 
 
