@@ -639,13 +639,25 @@ inline void check_player_local_graph(const PlayerLocalSendApi& sa,const PlayerLo
     assert(sa.destroy(&sv)&&ra.destroy(&rv)&&isa.destroy(&iv)&&ira.destroy(&irv));
 }
 
+
+struct FovFixture {
+    FovSample sample{0x41200000u,73,90,1};
+    unsigned calls=0;
+    bool fail=false;
+};
+inline int __cdecl sample_fov(void* context,FovSample* out) noexcept {
+    auto& f=*static_cast<FovFixture*>(context);++f.calls;
+    if(f.fail)return 0;
+    *out=f.sample;return 1;
+}
 inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayerRecvApi& ra,
         const AnimSendApi& asa,const AnimRecvApi& ara,const OverlaySendApi& osa,const OverlayRecvApi& ora,
         const FlexSendApi& fsa,const FlexRecvApi& fra,const InventorySendApi& isa,const InventoryRecvApi& ira,
-        const PlayerLocalSendApi& lsa,const PlayerLocalRecvApi& lra){
-    s::SendProp seprops[24],slprops[48];s::SendTable se,sl;
-    assert(se.Construct(seprops,24,"DT_BaseEntity")&&sl.Construct(slprops,48,"DT_Local"));
-    RecvProp ceprops[24],clprops[49];RecvTable ce{ceprops,24,nullptr,"DT_BaseEntity"},cl{clprops,49,nullptr,"DT_Local"};
+        const PlayerLocalSendApi& lsa,const PlayerLocalRecvApi& lra,
+        const LocalDataSendApi& dsa,const LocalDataRecvApi& dra){
+    s::SendProp seprops[24];s::SendTable se;
+    assert(se.Construct(seprops,24,"DT_BaseEntity"));
+    RecvProp ceprops[24];RecvTable ce{ceprops,24,nullptr,"DT_BaseEntity"};
     NativeOwner ownerObj;
     sin_independent::EntityHandleEntry entries[64]{};
     entries[37].entity=reinterpret_cast<CBaseEntity*>(&ownerObj);entries[37].serial=0x12345;
@@ -658,8 +670,10 @@ inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayer
     alignas(4) unsigned char edicts[2*20]{};NativeEngine engine;engine.expected=edicts+20;engine.result=1;
     InventorySendBindings ib{fv.flex,&engine,entries,64,edicts,1};InventoryRecvBindings irb{frv.flex};
     InventorySendView iv{};InventoryRecvView irv{};assert(isa.create(&ib,&iv)&&ira.create(&irb,&irv));
-    VelocityFixture vf;PlayerLocalSendBindings lb{&sl,iv.ammo_property,entries,64};
-    PlayerLocalRecvBindings lrb{&cl,irv.ammo_property,&vf,&invalidate_velocity};
+    FovFixture ff;LocalDataSendBindings db{entries,64};LocalDataRecvBindings drb{&ff,&sample_fov};
+    LocalDataSendView dv{};LocalDataRecvView drv{};assert(dsa.create(&db,&dv)&&dra.create(&drb,&drv));
+    VelocityFixture vf;PlayerLocalSendBindings lb{dv.table,iv.ammo_property,entries,64};
+    PlayerLocalRecvBindings lrb{drv.table,irv.ammo_property,&vf,&invalidate_velocity};
     PlayerLocalSendView lv{};PlayerLocalRecvView lrv{};assert(lsa.create(&lb,&lv)&&lra.create(&lrb,&lrv));
     BasePlayerSendBindings pb{iv.combat_base,lv.table,entries,64};
     BasePlayerRecvBindings prb{irv.combat_base,lrv.table};
@@ -708,7 +722,109 @@ inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayer
     pv.state->written=false;prv.player->initialized=false;
     assert(sa.destroy(&pv)&&ra.destroy(&prv)&&lsa.destroy(&lv)&&lra.destroy(&lrv)&&
         isa.destroy(&iv)&&ira.destroy(&irv)&&fsa.destroy(&fv)&&fra.destroy(&frv)&&
-        osa.destroy(&ov)&&ora.destroy(&orv)&&asa.destroy(&av)&&ara.destroy(&arv));
+        osa.destroy(&ov)&&ora.destroy(&orv)&&asa.destroy(&av)&&ara.destroy(&arv)&&dsa.destroy(&dv)&&dra.destroy(&drv));
+}
+
+inline void check_local_data_graph(const LocalDataSendApi& sa,const LocalDataRecvApi& ra){
+    NativeOwner entity;
+    sin_independent::EntityHandleEntry entries[64]{};
+    entries[37].entity=reinterpret_cast<CBaseEntity*>(&entity);entries[37].serial=0x12345;
+    FovFixture f;
+    LocalDataSendBindings sb{entries,64};LocalDataRecvBindings rb{&f,&sample_fov};
+    LocalDataSendView sv{};LocalDataRecvView rv{};
+    auto bad=rb;bad.sample_fov=nullptr;assert(!ra.create(&bad,&rv));
+    assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
+    assert(sv.table->count==48&&rv.table->count==49&&sv.area_bits->count==32&&rv.area_bits->count==32);
+    auto* sp=sv.table->props;auto* rp=rv.table->props;
+    assert(sp[0].offset==4&&rp[0].offset==4&&sp[0].table==sv.area_bits&&rp[0].table==rv.area_bits&&sp[0].arrayProp&&!rp[0].array_prop);
+    assert(std::strcmp(rp[12].name,"m_vecClientBaseVelocity")==0&&rp[12].offset==0x58);
+    alignas(4) unsigned char server[0x158]{},client[0x190]{};
+    for(int i=0;i<32;++i){
+        auto& a=sv.area_bits->props[i];auto& b=rv.area_bits->props[i];
+        assert(a.offset==i&&b.offset==i&&a.bits==8&&a.flags==1&&std::strcmp(a.name,b.name)==0);
+        server[4+i]=static_cast<unsigned char>(i+128);
+        s::DVariant v{};a.scalarProxy(&a,server,server+4+i,&v,i,1);
+        RecvData d{&b,v,i,1};b.proxy(&d,client,client+4+i);
+        assert(client[4+i]==server[4+i]);
+    }
+    assert(client[3]==0&&client[0x24]==0);
+    const int offsets[47][2]={
+        {0x24,0x24},
+        {0x28,0x28},
+        {0x2c,0x2c},
+        {0x30,0x38},
+        {0x40,0x3c},
+        {0x41,0x3d},
+        {0x42,0x3e},
+        {0x44,0x40},
+        {0x48,0x44},
+        {0x4c,0x48},
+        {0x54,0x50},
+        {0x5c,0x64},
+        {0x68,0xa0},
+        {0x74,0xac},
+        {0x75,0xad},
+        {0x76,0xae},
+        {0x78,0xb0},
+        {0x7c,0xb4},
+        {0x84,0xbc},
+        {0x88,0xc0},
+        {0x94,0xcc},
+        {0x9c,0xd4},
+        {0x9d,0xd5},
+        {0xa0,0xd8},
+        {0xac,0xe4},
+        {0xb0,0xe8},
+        {0xb4,0xec},
+        {0xb8,0xf0},
+        {0xc4,0xfc},
+        {0xc5,0xfd},
+        {0xc8,0x100},
+        {0xd4,0x10c},
+        {0xd8,0x110},
+        {0xdc,0x114},
+        {0xe0,0x118},
+        {0xe4,0x11c},
+        {0xec,0x124},
+        {0xf8,0x130},
+        {0x104,0x13c},
+        {0x110,0x148},
+        {0x11c,0x154},
+        {0x128,0x160},
+        {0x134,0x16c},
+        {0x140,0x178},
+        {0x14c,0x184},
+        {0x150,0x188},
+        {0x154,0x18c},
+    };
+    const unsigned widths[47]={4,4,4,4,1,1,1,4,4,4,4,12,12,1,1,1,4,1,4,12,4,1,1,12,4,4,4,4,1,1,12,4,4,4,4,4,12,12,12,12,12,12,12,12,4,4,4};
+    for(int i=1;i<48;++i){
+        auto& a=sp[i];auto& b=rp[i<12?i:i+1];
+        assert(a.offset==offsets[i-1][0]&&b.offset==offsets[i-1][1]&&std::strcmp(a.name,b.name)==0);
+        if(i==2||i==4)continue;
+        const unsigned width=widths[i-1];
+        const std::uint32_t value[3]={i==47?((0x12345u<<12)|37u):width==1?0xa5u:0x3f000000u,0x80000000u,0x7fc12345u};
+        std::memcpy(server+a.offset,value,width);
+        s::DVariant v{};a.scalarProxy(&a,server,server+a.offset,&v,0,1);
+        RecvData d{&b,v,0,1};b.proxy(&d,client,client+b.offset);
+        const std::uint32_t expected=(0x345u<<12)|37u;
+        assert(!std::memcmp(client+b.offset,i==47?&expected:value,width));
+    }
+    const auto read=[&](unsigned offset){std::uint32_t v=0;std::memcpy(&v,client+offset,4);return v;};
+    const auto fov=[&](unsigned v){RecvData d{&rp[2],{},0,1};d.value.words[0]=v;rp[2].proxy(&d,client,nullptr);};
+    fov(65);assert(f.calls==1&&read(0x28)==65&&read(0x30)==73&&read(0x34)==f.sample.time_bits);
+    fov(65);assert(f.calls==1);
+    f.sample.has_displayed_fov=0;f.sample.time_bits=0x41a00000u;fov(0);
+    assert(f.calls==2&&read(0x30)==65&&read(0x34)==f.sample.time_bits);
+    fov(80);assert(f.calls==3&&read(0x30)==90&&read(0x28)==80);
+    f.fail=true;fov(81);assert(f.calls==4&&read(0x28)==80);
+    std::uint32_t rate=0x3f800000u;std::memcpy(client+0x2c,&rate,4);
+    RecvData d{&rp[4],{},0,1};d.value.words[0]=90;rp[4].proxy(&d,client,nullptr);
+    assert(read(0x38)==90&&read(0x2c)==0);
+    std::memcpy(client+0x2c,&rate,4);rp[4].proxy(&d,client,nullptr);assert(read(0x2c)==rate);
+    sv.area_bits->written=true;rv.table->decoder=&f;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));sv.area_bits->written=false;rv.table->decoder=nullptr;
+    assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
 
 }

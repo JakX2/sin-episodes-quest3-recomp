@@ -6,6 +6,64 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+// Directly observed DT_Local constructor arguments. Unused range
+// fields for coordinate/no-scale encodings are normalized as elsewhere.
+enum class LocalKind {I,B,F,V,H};
+struct LocalField {
+    const char* name;int server_offset,client_offset;LocalKind kind;
+    int bits,flags;float low,high,multiplier;
+};
+constexpr LocalField local_fields[]={
+    {"m_iHideHUD",0x24,0x24,LocalKind::I,11,0x1,0,0,0},
+    {"m_iFOV",0x28,0x28,LocalKind::I,9,0x0,0,0,0},
+    {"m_flFOVRate",0x2c,0x2c,LocalKind::F,0,0x4,0,0,0},
+    {"m_iDefaultFOV",0x30,0x38,LocalKind::I,9,0x0,0,0,0},
+    {"m_bDucked",0x40,0x3c,LocalKind::B,1,0x1,0,0,0},
+    {"m_bDucking",0x41,0x3d,LocalKind::B,1,0x1,0,0,0},
+    {"m_bInDuckJump",0x42,0x3e,LocalKind::B,1,0x1,0,0,0},
+    {"m_flDucktime",0x44,0x40,LocalKind::F,12,0x408,0,2047.5f,2},
+    {"m_flDuckJumpTime",0x48,0x44,LocalKind::F,12,0x8,0,2047.5f,2},
+    {"m_flJumpTime",0x4c,0x48,LocalKind::F,12,0x8,0,2047.5f,2},
+    {"m_flFallVelocity",0x54,0x50,LocalKind::F,17,0x400,-4096,4096,131071.0f/8192},
+    {"m_vecPunchAngle",0x5c,0x64,LocalKind::V,0,0x402,0,0,0},
+    {"m_vecPunchAngleVel",0x68,0xa0,LocalKind::V,0,0x2,0,0,0},
+    {"m_bDrawViewmodel",0x74,0xac,LocalKind::B,1,0x1,0,0,0},
+    {"m_bWearingSuit",0x75,0xad,LocalKind::B,1,0x1,0,0,0},
+    {"m_bPoisoned",0x76,0xae,LocalKind::B,1,0x1,0,0,0},
+    {"m_flStepSize",0x78,0xb0,LocalKind::F,16,0x10,128.0f/65536,128,512},
+    {"m_bAllowAutoMovement",0x7c,0xb4,LocalKind::B,1,0x1,0,0,0},
+    {"m_skybox3d.scale",0x84,0xbc,LocalKind::I,12,0x0,0,0,0},
+    {"m_skybox3d.origin",0x88,0xc0,LocalKind::V,0,0x2,0,0,0},
+    {"m_skybox3d.area",0x94,0xcc,LocalKind::I,8,0x1,0,0,0},
+    {"m_skybox3d.fog.enable",0x9c,0xd4,LocalKind::B,1,0x1,0,0,0},
+    {"m_skybox3d.fog.blend",0x9d,0xd5,LocalKind::B,1,0x1,0,0,0},
+    {"m_skybox3d.fog.dirPrimary",0xa0,0xd8,LocalKind::V,0,0x2,0,0,0},
+    {"m_skybox3d.fog.colorPrimary",0xac,0xe4,LocalKind::I,32,0x1,0,0,0},
+    {"m_skybox3d.fog.colorSecondary",0xb0,0xe8,LocalKind::I,32,0x1,0,0,0},
+    {"m_skybox3d.fog.start",0xb4,0xec,LocalKind::F,0,0x4,0,0,0},
+    {"m_skybox3d.fog.end",0xb8,0xf0,LocalKind::F,0,0x4,0,0,0},
+    {"m_fog.enable",0xc4,0xfc,LocalKind::B,1,0x1,0,0,0},
+    {"m_fog.blend",0xc5,0xfd,LocalKind::B,1,0x1,0,0,0},
+    {"m_fog.dirPrimary",0xc8,0x100,LocalKind::V,0,0x2,0,0,0},
+    {"m_fog.colorPrimary",0xd4,0x10c,LocalKind::I,32,0x1,0,0,0},
+    {"m_fog.colorSecondary",0xd8,0x110,LocalKind::I,32,0x1,0,0,0},
+    {"m_fog.start",0xdc,0x114,LocalKind::F,0,0x4,0,0,0},
+    {"m_fog.end",0xe0,0x118,LocalKind::F,0,0x4,0,0,0},
+    {"m_fog.farz",0xe4,0x11c,LocalKind::F,0,0x4,0,0,0},
+    {"m_audio.localSound[0]",0xec,0x124,LocalKind::V,0,0x2,0,0,0},
+    {"m_audio.localSound[1]",0xf8,0x130,LocalKind::V,0,0x2,0,0,0},
+    {"m_audio.localSound[2]",0x104,0x13c,LocalKind::V,0,0x2,0,0,0},
+    {"m_audio.localSound[3]",0x110,0x148,LocalKind::V,0,0x2,0,0,0},
+    {"m_audio.localSound[4]",0x11c,0x154,LocalKind::V,0,0x2,0,0,0},
+    {"m_audio.localSound[5]",0x128,0x160,LocalKind::V,0,0x2,0,0,0},
+    {"m_audio.localSound[6]",0x134,0x16c,LocalKind::V,0,0x2,0,0,0},
+    {"m_audio.localSound[7]",0x140,0x178,LocalKind::V,0,0x2,0,0,0},
+    {"m_audio.soundscapeIndex",0x14c,0x184,LocalKind::I,17,0x0,0,0,0},
+    {"m_audio.localBits",0x150,0x188,LocalKind::I,8,0x1,0,0,0},
+    {"m_audio.ent",0x154,0x18c,LocalKind::H,21,0x5,0,0,0},
+};
+static_assert(sizeof(local_fields)/sizeof(local_fields[0])==47);
+template<class V> bool local_data_empty(const V& v) noexcept {return !v.handle&&!v.table&&!v.area_bits;}
 template<class T> bool named_table(const T* t,const char* name,int count) noexcept {
     return t&&t->name&&std::strcmp(t->name,name)==0&&t->count==count&&t->props;
 }
@@ -726,6 +784,54 @@ int __cdecl destroy_base_player(BasePlayerSendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const BasePlayerSendApi base_player_api{version,sizeof(BasePlayerSendApi),&create_base_player,&destroy_base_player};
+
+struct LocalDataSendGraph {
+    ResolvedContext context{};
+    s::SendTable table,area;
+    s::SendProp props[48],area_props[32],area_template;
+    char names[32][4]{};
+    bool build(const LocalDataSendBindings& b) noexcept {
+        if(!b.entries||!b.entry_count||b.entry_count>sin_independent::kEntityHandleCapacity||
+            !mem::Readable(b.entries,sizeof(*b.entries)))return false;
+        context.entries=b.entries;context.count=b.entry_count;
+        element_names(names);
+        if(!table.Construct(props,48,"DT_Local")||!area.Construct(area_props,32,"m_chAreaBits")||
+           !s::MakeDataTableProp(props[0],"m_chAreaBits",4,&area,&s::DirectTable))return false;
+        anim_int(area_template,"m_chAreaBits",4,8,1,true);
+        props[0].arrayProp=&area_template;
+        for(int i=0;i<32;++i){
+            area_props[i]=area_template;area_props[i].name=names[i];area_props[i].offset=i;
+            area_props[i].excludeOrParent=area_template.name;
+        }
+        for(unsigned i=0;i<47;++i){
+            const auto& f=local_fields[i];auto& q=props[i+1];
+            if(f.kind==LocalKind::F||f.kind==LocalKind::V){
+                anim_float(q,f.name,f.server_offset,f.bits,f.flags,f.low,f.high,f.multiplier);
+                if(f.kind==LocalKind::V){q.type=2;q.scalarProxy=&vector_send;}
+            }else{
+                anim_int(q,f.name,f.server_offset,f.bits,f.flags,f.kind==LocalKind::B);
+                if(f.kind==LocalKind::H){q.scalarProxy=&resolved_handle;q.extra=&context;}
+            }
+        }
+        return true;
+    }
+};
+
+int __cdecl create_local_data(const LocalDataSendBindings* b,LocalDataSendView* out) noexcept {
+    if(!b||!out||!local_data_empty(*out))return 0;
+    auto* g=new(std::nothrow) LocalDataSendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->table,&g->area};return 1;
+}
+int __cdecl destroy_local_data(LocalDataSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<LocalDataSendGraph*>(v->handle);
+    if(v->table!=&g->table||v->area_bits!=&g->area)return 0;
+    for(const auto* tab:{&g->table,&g->area})if(tab->precalc||tab->initialized||tab->written)return 0;
+    delete g;*v={};return 1;
+}
+const LocalDataSendApi local_data_api{version,sizeof(LocalDataSendApi),&create_local_data,&destroy_local_data};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -1141,6 +1247,77 @@ int __cdecl destroy_base_player(BasePlayerRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const BasePlayerRecvApi base_player_api{version,sizeof(BasePlayerRecvApi),&create_base_player,&destroy_base_player};
+
+void __cdecl local_fov_recv(const RecvData* d,void* object,void*){
+    if(!d||!d->property||!d->property->extra||!object)return;
+    // Host owns writable original-layout subobject. Original callback
+    // ignores pOut and uses the struct base for four distinct fields.
+    auto* bytes=static_cast<unsigned char*>(object);
+    std::uint32_t old=0;std::memcpy(&old,bytes+0x28,4);
+    if(old==d->value.words[0])return;
+    const auto& b=*static_cast<const LocalDataRecvBindings*>(d->property->extra);
+    FovSample sample{};
+    if(!b.sample_fov(b.context,&sample)||sample.has_displayed_fov>1)return;
+    std::uint32_t start=old;
+    if(sample.has_displayed_fov)std::memcpy(&start,&sample.displayed_fov,4);
+    else if(!old)std::memcpy(&start,&sample.default_fov,4);
+    std::memcpy(bytes+0x30,&start,4);
+    std::memcpy(bytes+0x34,&sample.time_bits,4);
+    std::memcpy(bytes+0x28,&d->value.words[0],4);
+}
+void __cdecl local_default_fov_recv(const RecvData* d,void* object,void*){
+    if(!d||!object)return;
+    auto* bytes=static_cast<unsigned char*>(object);
+    std::uint32_t old=0;std::memcpy(&old,bytes+0x38,4);
+    if(old==d->value.words[0])return;
+    const std::uint32_t zero=0;
+    std::memcpy(bytes+0x2c,&zero,4);
+    std::memcpy(bytes+0x38,&d->value.words[0],4);
+}
+struct LocalDataRecvGraph {
+    LocalDataRecvBindings binding{};
+    RecvTable table,area;
+    RecvProp props[49],area_props[32];
+    char names[32][4]{};
+    bool build(const LocalDataRecvBindings& b) noexcept {
+        if(!b.sample_fov)return false;
+        binding=b;element_names(names);
+        table={props,49,nullptr,"DT_Local"};area={area_props,32,nullptr,"m_chAreaBits"};
+        nested(props[0],"m_chAreaBits",&area);props[0].offset=4;
+        for(int i=0;i<32;++i){
+            anim_recv(area_props[i],names[i],i,0,&byte_recv);
+            area_props[i].parent_array="m_chAreaBits";
+        }
+        // The client-only base velocity precedes the two punch-angle slots.
+        anim_recv(props[12],"m_vecClientBaseVelocity",0x58,2,&vector_recv);
+        for(unsigned i=0;i<47;++i){
+            const auto& f=local_fields[i];auto& q=props[i<11?i+1:i+2];
+            const int type=f.kind==LocalKind::F?1:f.kind==LocalKind::V?2:0;
+            const auto proxy=f.kind==LocalKind::B?&byte_recv:
+                f.kind==LocalKind::V?&vector_recv:f.kind==LocalKind::H?&handle_recv:&raw_recv;
+            anim_recv(q,f.name,f.client_offset,type,proxy);
+        }
+        props[2].proxy=&local_fov_recv;props[2].extra=&binding;
+        props[4].proxy=&local_default_fov_recv;
+        return true;
+    }
+};
+
+int __cdecl create_local_data(const LocalDataRecvBindings* b,LocalDataRecvView* out) noexcept {
+    if(!b||!out||!local_data_empty(*out))return 0;
+    auto* g=new(std::nothrow) LocalDataRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->table,&g->area};return 1;
+}
+int __cdecl destroy_local_data(LocalDataRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<LocalDataRecvGraph*>(v->handle);
+    if(v->table!=&g->table||v->area_bits!=&g->area)return 0;
+    for(const auto* tab:{&g->table,&g->area})if(tab->decoder||tab->initialized||tab->in_main_list)return 0;
+    delete g;*v={};return 1;
+}
+const LocalDataRecvApi local_data_api{version,sizeof(LocalDataRecvApi),&create_local_data,&destroy_local_data};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -1195,6 +1372,12 @@ SiN_GetBasePlayerSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(BasePlayerSendApi)?&base_player_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetLocalDataSendGraphApi=_SiN_GetLocalDataSendGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::LocalDataSendApi* __cdecl
+SiN_GetLocalDataSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(LocalDataSendApi)?&local_data_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -1237,5 +1420,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::BasePlaye
 SiN_GetBasePlayerRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(BasePlayerRecvApi)?&base_player_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetLocalDataRecvGraphApi=_SiN_GetLocalDataRecvGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::LocalDataRecvApi* __cdecl
+SiN_GetLocalDataRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(LocalDataRecvApi)?&local_data_api:nullptr;
 }
 #endif
