@@ -1073,6 +1073,58 @@ static void test_native_combat_filesystem(HMODULE lib,const a::Api* api,const a:
     assert(load(&f,&report)&&report.code==a::SpreadFileInvalidLength&&report.close_returned);
     assert(api->end_campaign()&&rules->clear());
 }
+class FocusEngine final:public console::EngineCvar {
+public:
+    console::Variable focus,focusAlias,cone,coneAlias;
+    const a::Api* api=nullptr;
+    const a::AttackSpreadApi* rules=nullptr;
+    mutable std::vector<std::string> lookups;
+    bool missingFocus=false,missingCone=false;
+    FocusEngine(){
+        focus.CreateVariable("ai_spread_cone_focus_time","0.6",0,"",false,0,false,0,nullptr);
+        focusAlias.CreateVariable("ai_spread_cone_focus_time","0",0,"",false,0,false,0,nullptr);
+        cone.CreateVariable("ai_spread_defocused_cone_multiplier","3.0",0,"",false,0,false,0,nullptr);
+        coneAlias.CreateVariable("ai_spread_defocused_cone_multiplier","1.0",0,"",false,0,false,0,nullptr);
+        focusAlias.parent=&focus;coneAlias.parent=&cone;
+    }
+    void __thiscall RegisterConCommandBase(console::CommandBase*) noexcept override{assert(false);}
+    const char* __thiscall GetCommandLineValue(const char*) noexcept override{assert(false);return nullptr;}
+    console::Variable* __thiscall FindMutableVar(const char*) noexcept override{assert(false);return nullptr;}
+    const console::Variable* __thiscall FindConstVar(const char* name) const noexcept override{
+        assert(!api->set_skill(1)&&!rules->clear());
+        lookups.emplace_back(name);
+        if(std::strcmp(name,"ai_spread_cone_focus_time")==0)return missingFocus?nullptr:&focusAlias;
+        assert(std::strcmp(name,"ai_spread_defocused_cone_multiplier")==0);
+        return missingCone?nullptr:&coneAlias;
+    }
+    console::CommandBase* __thiscall GetCommands() noexcept override{assert(false);return nullptr;}
+};
+static void test_native_focus(HMODULE lib,const a::Api* api,const a::AttackSpreadApi* rules){
+    const auto get=reinterpret_cast<a::QueryNpcAttackSpreadFromEngine>(GetProcAddress(lib,a::npc_attack_spread_engine_export_name));
+    assert(get&&api->begin_campaign(3)&&rules->clear());
+    FocusEngine cvar;cvar.api=api;cvar.rules=rules;
+    a::NpcFocusMemory memory{0,0.f,0.f};a::NpcAttackSpreadResult out{};
+    assert(get(nullptr,"npc_custom",nullptr,nullptr,&memory,&out)&&out.defocused==0&&cvar.lookups.empty());
+    memory={1,0.f,0.f};
+    assert(!get(reinterpret_cast<void*>(1),"npc_custom",nullptr,nullptr,&memory,&out));
+    assert(get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&out.defocused&&out.focus_multiplier==3.f);
+    assert(cvar.lookups.size()==2&&cvar.lookups[0]=="ai_spread_cone_focus_time"&&
+        cvar.lookups[1]=="ai_spread_defocused_cone_multiplier");
+    assert(std::fabs(out.result.x-0.13053f*0.5f*3.f)<0.000001f);
+    memory.curtime=0.6f;cvar.lookups.clear();cvar.missingCone=true;
+    assert(get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&!out.defocused&&cvar.lookups.size()==1);
+    memory.curtime=0.f;
+    assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&!out.defocused);
+    cvar.missingCone=false;cvar.focus.SetFloat(0.f);cvar.lookups.clear();
+    assert(get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&!out.defocused&&cvar.lookups.size()==1);
+    cvar.focus.SetFloat(0.6f);cvar.focusAlias.parent=&cvar.cone;
+    assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)); // wrong root name
+    cvar.focusAlias.parent=&cvar.focus;cvar.focus.parent=&cvar.focusAlias;
+    assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)); // cyclic parent
+    cvar.focus.parent=&cvar.focus;cvar.missingFocus=true;
+    assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out));
+    assert(api->end_campaign());
+}
 static void test_native_npc_rng(HMODULE lib,const a::Api* api){
     const auto decide=reinterpret_cast<a::DecideNpcWithEngineRandom>(GetProcAddress(lib,a::npc_engine_rng_export_name));
     assert(decide&&api->begin_campaign(1));
@@ -1140,6 +1192,40 @@ static void test_attack_spread(const a::AttackSpreadApi* rules,const a::Api* api
         check("unknown","weapon_magnum","player",0.13053f,0.5f,true);
         std::puts("PASS owner combat script spread lookup");
     }
+    assert(api->end_campaign()&&rules->clear());
+}
+static void test_npc_attack_spread(const a::NpcAttackSpreadApi* focus,const a::AttackSpreadApi* rules,const a::Api* api){
+    assert(focus&&focus->version==1&&focus->size==sizeof(*focus));
+    a::NpcFocusMemory memory{0,0.f,0.f};a::NpcFocusTuning tuning{0.6f,3.f};
+    a::NpcAttackSpreadResult out{};
+    assert(!focus->query("npc_custom",nullptr,nullptr,&memory,nullptr,&out));
+    assert(api->begin_campaign(3)&&rules->clear());
+    const char text[]=R"KV(AttackSpreadRules {
+        class_names { npc_custom rule }
+        rule { weapon_class_names { "*" generic } generic { target_class_names { "*" target } target 0.4 } }
+    })KV";
+    assert(rules->load_text(text,sizeof(text)-1));
+    const auto query=[&](){return focus->query("npc_custom","rifle","player",&memory,&tuning,&out);};
+    const auto near=[](float x,float y){return std::fabs(x-y)<0.000001f;};
+    memory.curtime=std::numeric_limits<float>::quiet_NaN();
+    assert(focus->query("npc_custom","rifle","player",&memory,nullptr,&out)&&out.result.x==0.2f&&!out.defocused);
+    memory={1,0.f,0.f};
+    assert(query()&&out.defocused&&out.elapsed==0.f&&out.focus_multiplier==3.f&&near(out.result.x,0.6f));
+    assert(out.rules.base==0.4f&&out.rules.x==0.2f&&out.result.x==out.result.y&&out.result.y==out.result.z);
+    memory.curtime=-0.25f;assert(query()&&out.defocused&&out.elapsed==0.f&&near(out.result.x,0.6f));
+    memory.curtime=0.3f;assert(query()&&out.defocused&&near(out.focus_multiplier,2.f)&&near(out.result.x,0.4f));
+    memory.curtime=0.6f;assert(query()&&!out.defocused&&out.result.x==0.2f);
+    memory.curtime=0.7f;tuning.defocused_multiplier=std::numeric_limits<float>::quiet_NaN();
+    assert(query()&&!out.defocused); // skipped multiplier
+    memory.curtime=0.f;assert(!query()&&!out.defocused&&out.result.x==0.2f);
+    tuning.focus_time=0.f;memory.curtime=std::numeric_limits<float>::quiet_NaN();
+    assert(query()&&!out.defocused); // skipped timing and multiplier
+    memory.curtime=0.f;tuning={0.6f,0.5f};
+    assert(query()&&!out.defocused&&out.result.x==0.2f);
+    tuning.defocused_multiplier=1.f;assert(query()&&!out.defocused);
+    tuning={0.6f,3.f};assert(api->set_skill(1));
+    assert(query()&&out.defocused&&near(out.result.x,1.2f)); // not clamped to 1
+    memory.found=2;assert(!query()&&out.defocused);
     assert(api->end_campaign()&&rules->clear());
 }
 int main(int argc,char** argv){
@@ -1211,7 +1297,15 @@ int main(int argc,char** argv){
     auto getSpread=reinterpret_cast<a::GetAttackSpreadApi>(dlsym(lib,a::attack_spread_export_name));
 #endif
     assert(getSpread&&!getSpread(0,sizeof(a::AttackSpreadApi))&&!getSpread(1,0));
-    test_attack_spread(getSpread(a::attack_spread_version,sizeof(a::AttackSpreadApi)),api,argc==3?argv[2]:nullptr);
+    const auto* spread=getSpread(a::attack_spread_version,sizeof(a::AttackSpreadApi));
+    test_attack_spread(spread,api,argc==3?argv[2]:nullptr);
+#ifdef _WIN32
+    auto getFocus=reinterpret_cast<a::GetNpcAttackSpreadApi>(GetProcAddress(lib,a::npc_attack_spread_export_name));
+#else
+    auto getFocus=reinterpret_cast<a::GetNpcAttackSpreadApi>(dlsym(lib,a::npc_attack_spread_export_name));
+#endif
+    assert(getFocus&&!getFocus(0,sizeof(a::NpcAttackSpreadApi))&&!getFocus(1,0));
+    test_npc_attack_spread(getFocus(a::npc_attack_spread_version,sizeof(a::NpcAttackSpreadApi)),spread,api);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);
@@ -1263,6 +1357,7 @@ int main(int argc,char** argv){
 #ifdef _WIN32
 #if defined(_MSC_VER) && defined(_M_IX86)
     test_native_combat_filesystem(lib,api,getSpread(a::attack_spread_version,sizeof(a::AttackSpreadApi)));
+    test_native_focus(lib,api,spread);
     test_native_npc_rng(lib,api);
     test_native_engine_event(lib,api,map,triggers);
     test_engine_skill(lib,api);
