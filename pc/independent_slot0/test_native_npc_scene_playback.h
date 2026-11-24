@@ -1396,6 +1396,9 @@ inline void check_scene_speech_execution(const SceneSpeechExecutionApi& api){
 
 struct SpeechLifecycleFixture:NativeGeneratedLifecycleFixture {
     const SceneSpeechCallbackApi& callback_api;
+    const ResolvedSceneActorApi* resolver=nullptr;ResolvedSceneActorBindings resolved{};
+    std::uint32_t actor_cache_slot=0;
+    unsigned cache_grows=0,cache_resolves=0,name_resolves=0,choreo_reads=0;
     SceneSpeechCallbackBindings callbacks{};
     int player=0,filter=0;unsigned emitted=0,begun=0,ended=0,checked=0,opened=0,closed=0,captions=0,registered=0;
     unsigned traces[4]{};
@@ -1438,16 +1441,50 @@ struct SpeechLifecycleFixture:NativeGeneratedLifecycleFixture {
             auto& f=self(p);assert(actor==f.npc_memory&&r==f.event_records[1]&&parsed==f.parsed_word&&e==f.event);++f.checked;*out=0;return 1;};
         advance.simulation.callback=[](void* p,std::uint32_t word,unsigned slot,float time,void* parsed,void* event) noexcept -> int{
             auto& f=self(p);assert(word==f.callback_word&&parsed==f.parsed&&event==f.event&&f.steps<8);
-            f.order[f.steps++]=slot;unsigned result=0;return f.callback_api.invoke(f.scene+0x410,8,f.scene,sizeof(f.scene),slot,time,
-                parsed,sizeof(f.parsed),event,sizeof(f.event),&f.callbacks,&result)==1&&result==1;};
+            f.order[f.steps++]=slot;unsigned result=0;return f.dispatch(slot,time,result)==1&&result==1;};
     }
-    int invoke(unsigned slot,unsigned& result){
-        return callback_api.invoke(scene+0x410,8,scene,sizeof(scene),slot,0,parsed,sizeof(parsed),event,sizeof(event),&callbacks,&result);
+    int dispatch(unsigned slot,float time,unsigned& result){
+        return resolver?resolver->speech(scene+0x410,8,scene,sizeof(scene),slot,time,parsed,sizeof(parsed),event,sizeof(event),&callbacks,&resolved,&result):
+            callback_api.invoke(scene+0x410,8,scene,sizeof(scene),slot,time,parsed,sizeof(parsed),event,sizeof(event),&callbacks,&result);
+    }
+    int invoke(unsigned slot,unsigned& result){return dispatch(slot,0,result);}
+    void bind_resolver(const ResolvedSceneActorApi& api){
+        resolver=&api;callbacks.actor=nullptr;
+        auto& c=resolved.cache;auto& n=resolved.names;
+        resolved.context=callbacks.context;c.context=callbacks.context;n.context=callbacks.context;resolved.instanced=1;
+        c.parsed=play.resolve_parsed;
+        c.storage=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);
+            if(w==F::ptr(f.words)){*out=f.words;*bytes=4;return 1;}
+            assert(w==F::ptr(&f.actor_cache_slot));*out=&f.actor_cache_slot;*bytes=4;return 1;};
+        c.grow=[](void* p,void* v,unsigned additional) noexcept -> int{
+            auto& f=self(p);assert(v==f.scene+0x3f8&&additional==1);++f.cache_grows;
+            F::put(v,0,F::ptr(&f.actor_cache_slot));F::put(v,4,1);return 1;};
+        c.resolve=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(w==0x1001);++f.cache_resolves;*out=f.missing?nullptr:f.npc_memory;*bytes=*out?sizeof(f.npc_memory):0;return 1;};
+        c.handle=play.actor_handle;
+        c.invalid_index=[](void*,void*,int,unsigned) noexcept -> int{assert(false);return 0;};
+        resolved.choreo_object=[](void* p,std::uint32_t w,const void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(w==F::ptr(f.choreo_actor));++f.choreo_reads;*out=f.choreo_actor;*bytes=sizeof(f.choreo_actor);return 1;};
+        n.resolve=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(w==0x1001);++f.name_resolves;*out=f.missing?nullptr:f.npc_memory;*bytes=*out?sizeof(f.npc_memory):0;return 1;};
+        n.handle=c.handle;n.is_npc=full.startup.is_npc;
+        n.text=[](void*,std::uint32_t,const char**) noexcept -> int{assert(false);return 0;};
+        n.max_clients=[](void*,int*) noexcept -> int{assert(false);return 0;};
+        n.local_player=[](void*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        n.find=[](void* p,const char* name,void* prev,void* context,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(f.missing&&!std::strcmp(name,"!self")&&!prev&&!context);*out=nullptr;*bytes=0;return 1;};
+        n.cast_actor=[](void*,void*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        n.npc_lookup=[](void*,void*,const char*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        full.startup.actor=[](void* p,void* scene,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);return f.resolver->index(scene,sizeof(f.scene),static_cast<int>(i),&f.resolved,out,bytes)==1;};
+        full.stop.actor=full.startup.actor;finish.stop.actor=full.startup.actor;
     }
 };
 inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const NativeGeneratedLifecycleApi& n,const SceneFinishApi& finish,
-    const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity){
+    const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity,const ResolvedSceneActorApi* resolver=nullptr){
     using F=ScenePlaybackFixture;SpeechLifecycleFixture f(cb,n,finish,manager,tick,entity);float duration=99;
+    if(resolver)f.bind_resolver(*resolver);
     assert(n.sound(f.actor,f.sound,&f.full,&duration)==1&&duration==.1f);
     std::strcpy(reinterpret_cast<char*>(f.event+0x104),"72");
     unsigned result=99;
@@ -1466,6 +1503,7 @@ inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const Native
     assert(f.steps==4&&f.ended==1&&f.finished==1&&f.destroyed==1&&!f.parsed_live&&!f.scene_live&&F::word(f.npc_memory,0x5c4)==1);
     assert(F::word(f.event_records[0],4)==0x9876&&!F::word(f.npc_memory,0x5f8)&&!F::word(f.manager,0x3a0));
     assert(f.traces[1]==1&&f.traces[2]==1&&f.emitted==1&&f.record_stops==1);
+    if(resolver)assert(f.cache_grows==1&&f.actor_cache_slot==0x1001&&f.choreo_reads==3&&f.name_resolves==4&&f.cache_resolves>=7);
     assert(manager.destroy(&f.control,&f.manager_life)==1);
     F::put(f.scene,0x414,0);result=99;
     assert(cb.invoke(f.scene+0x410,8,nullptr,0,12,0,nullptr,0,nullptr,0,nullptr,&result)==1&&result==1);

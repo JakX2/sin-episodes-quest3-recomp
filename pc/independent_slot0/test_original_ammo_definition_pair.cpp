@@ -622,6 +622,12 @@ int main(int argc,char** argv){
     assert(sceneActorNames&&!getSceneActorNames(0,sizeof(tables::SceneActorNamesApi))&&!getSceneActorNames(1,0));
     tables::test::check_scene_actor_names(*sceneActorNames);
     std::puts("PASS native scene actor names, target aliases, player and instanced NPC preference");
+    const auto getResolvedSceneActor=reinterpret_cast<tables::GetResolvedSceneActorApi>(GetProcAddress(server,tables::resolved_scene_actor_export));
+    assert(getResolvedSceneActor&&!GetProcAddress(client,tables::resolved_scene_actor_export));
+    const auto* resolvedSceneActor=getResolvedSceneActor(1,sizeof(tables::ResolvedSceneActorApi));
+    assert(resolvedSceneActor&&!getResolvedSceneActor(0,sizeof(tables::ResolvedSceneActorApi))&&!getResolvedSceneActor(1,0));
+    tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,resolvedSceneActor);
+    std::puts("PASS generated speech lifecycle through native actor index cache and name fallback");
 
 
 
