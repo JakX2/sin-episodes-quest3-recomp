@@ -371,4 +371,48 @@ inline void check_response_timing_update(const ResponseTimingUpdateApi& api){
     assert(api.sample(interval,7,&f.interval,&sample)==0);f.expect({});
 }
 
+
+struct ResponseRecordFixture {
+    alignas(4) unsigned char exp[0x7c]{},row[0x1c]{},first[0x124]{},second[0x124]{};
+    ResponseRecordBindings b{};
+    int index=-1;
+    unsigned events[32]{},count=0,clocks=0,fail=0;
+    float now=10;
+    void* next=first;
+    void record(unsigned n){assert(count<32);events[count++]=n;}
+    void expect(std::initializer_list<unsigned> l){assert(count==l.size()&&!std::memcmp(events,l.begin(),count*4));count=0;}
+    static std::uint32_t ptr(void* v){return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(v));}
+    unsigned word(unsigned off){unsigned v=0;std::memcpy(&v,row+off,4);return v;}
+    float timestamp(){float v=0;std::memcpy(&v,row+0x14,4);return v;}
+    static ResponseRecordFixture& get(void* p,void* e,const char* n){auto& f=*static_cast<ResponseRecordFixture*>(p);assert(e==f.exp&&!std::strcmp(n,"TLK_IDLE"));return f;}
+    ResponseRecordFixture(){
+        b.context=this;b.history.context=this;
+        b.history.lookup=[](void* p,void* e,const char* n,int* out) noexcept -> int{auto& f=get(p,e,n);f.record(1);*out=f.index;return f.fail!=1;};
+        b.history.clock=[](void* p,float* out) noexcept -> int{auto& f=*static_cast<ResponseRecordFixture*>(p);f.record(2);*out=f.now+f.clocks++;return f.fail!=2;};
+        b.history.insert=[](void* p,void* e,const char* n,float t,int* out) noexcept -> int{
+            auto& f=get(p,e,n);f.record(3);assert(f.index==-1&&t==f.now);f.index=*out=7;std::memcpy(f.row+0x14,&t,4);return f.fail!=3;};
+        b.history.entry=[](void* p,void* e,int i,void** out,unsigned* n) noexcept -> int{
+            auto& f=*static_cast<ResponseRecordFixture*>(p);f.record(4);assert(e==f.exp&&i==7);*out=f.row;*n=sizeof(f.row);return f.fail!=4;};
+        b.destroy=[](void* p,void* response) noexcept -> int{
+            auto& f=*static_cast<ResponseRecordFixture*>(p);f.record(response==f.next?6:5);assert(response==f.first||response==f.second);
+            if(response!=f.next)assert(f.timestamp()==f.now&&f.word(0x18)==ptr(response));
+            return f.fail!=5;
+        };
+        b.history.notify=[](void* p,void* e,const char* n) noexcept -> int{
+            auto& f=get(p,e,n);f.record(7);assert(f.word(0x18)==ptr(f.next)&&f.timestamp()==f.now+f.clocks-1);return f.fail!=7;};
+    }
+};
+inline void check_response_record(const ResponseRecordApi& api){
+    ResponseRecordFixture f;
+    auto run=[&](void* response,unsigned notify=1){f.next=response;f.clocks=0;return api.record(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",response,0x124,notify);};
+    assert(run(f.first)==1&&f.timestamp()==11&&f.word(0x18)==f.ptr(f.first));f.expect({1,2,3,4,2,7});
+    f.now=20;assert(run(f.second)==1&&f.timestamp()==20&&f.word(0x18)==f.ptr(f.second));f.expect({1,4,2,5,7});
+    f.now=21;assert(run(f.first,0x100)==1&&f.word(0x18)==f.ptr(f.first));f.expect({1,4,2,5});
+    f.now=22;assert(run(f.first)==-1&&f.timestamp()==21&&f.word(0x18)==f.ptr(f.first));f.expect({1,4,2});
+    f.fail=7;assert(run(f.second)==-1&&f.timestamp()==22&&f.word(0x18)==f.ptr(f.second));f.expect({1,4,2,5,7});
+    f.fail=5;f.now=23;assert(run(f.first)==-1&&f.timestamp()==23&&!f.word(0x18));f.expect({1,4,2,5,6});
+    f.fail=1;assert(run(f.first)==-1&&!f.word(0x18));f.expect({1,6});
+    assert(api.record(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",f.first,0x123,1)==0);f.expect({});
+}
+
 }
