@@ -1049,4 +1049,26 @@ struct DispenserInputApi {
     int (__cdecl *button_event)(HologramControl*,const DispenserInputBindings*,const char* name,void* event) noexcept;
 };
 using GetDispenserInputApi=const DispenserInputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase727: original shared CPropContainer state and leak termination.
+// All names, timings and flags describe in-game entities only.
+inline constexpr char prop_container_export[]="SiN_GetPropContainerApi";
+enum class PropContainerKind:unsigned {Generic,Antigen,OxygenLarge,OxygenSmall,Acetylene,Barrel};
+struct PropContainerBindings {
+    void* context;
+    int (__cdecl *random_float)(void*,float low,float high,float*) noexcept;
+    int (__cdecl *stop_sound)(void*,void* object,const char* name) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t handle,void**) noexcept;
+    int (__cdecl *remove)(void*,void* object) noexcept;
+    // Original virtual slot188; host dispatches the correct subclass.
+    int (__cdecl *break_container)(void*,void* object) noexcept;
+};
+struct PropContainerApi {
+    std::uint32_t version,size;
+    // Constructor leaves only. Caller supplies a typed base object.
+    int (__cdecl *defaults)(HologramControl*,const PropContainerBindings*,PropContainerKind) noexcept;
+    int (__cdecl *stop_leak)(HologramControl*,const PropContainerBindings*) noexcept;
+    int (__cdecl *ai_radius)(const void*,unsigned bytes,float*) noexcept;
+};
+using GetPropContainerApi=const PropContainerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

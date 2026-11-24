@@ -2285,6 +2285,82 @@ int __cdecl disp_button_event(HologramControl* ctrl,const DispenserInputBindings
     return disp_finish(ctrl,d.schedule(d.context,object,now)!=0);
 }
 const DispenserInputApi dispenser_input_api{version,sizeof(DispenserInputApi),&disp_use_variant,&disp_button_event};
+
+int __cdecl prop_container_defaults(HologramControl* ctrl,const PropContainerBindings* b,PropContainerKind kind) noexcept {
+    if(!can_valid(ctrl)||static_cast<unsigned>(kind)>5)return 0;
+    if((kind==PropContainerKind::Acetylene||kind==PropContainerKind::Barrel)&&(!b||!b->random_float))return 0;
+    ctrl->busy=1;
+    unsigned flags=3,raw=100;int count=1;float duration=10,parameter=0;
+    const char* model="models/containers/acetylene_tank.mdl";
+    const char* loop=nullptr;
+    switch(kind){
+    case PropContainerKind::Generic:break;
+    case PropContainerKind::Antigen:
+        flags=9;raw=0;duration=0;model=can_model;break;
+    case PropContainerKind::OxygenLarge:
+        flags=0x92;parameter=1000;model="models/containers/oxygen_tank_large.mdl";
+        loop="container.leak_pressurized_loop";break;
+    case PropContainerKind::OxygenSmall:
+        flags=0x92;duration=20;parameter=3000;model="models/containers/oxygen_tank_small.mdl";
+        loop="container.leak_pressurized_loop";break;
+    case PropContainerKind::Acetylene:
+    case PropContainerKind::Barrel:{
+        const bool barrel=kind==PropContainerKind::Barrel;
+        flags=barrel?0xe0u:0xa2u;count=0;parameter=barrel?0.0f:3000.0f;
+        model=barrel?"models/containers/exploding_barrel.mdl":"models/containers/acetyline_tank.mdl";
+        loop=barrel?nullptr:"container.leak_pressurized_loop";
+        const float low=barrel?1.0f:3.0f,high=barrel?2.0f:4.0f;
+        if(!b->random_float(b->context,low,high,&duration)||!std::isfinite(duration)||duration<low||duration>high)
+            return disp_finish(ctrl,false);
+        break;
+    }}
+    auto* object=ctrl->object;
+    hologram_write(object,can_amount,100.0f);hologram_write(object,can_flags,flags);
+    hologram_write(object,0x630,model);hologram_write(object,0x634,duration);
+    hologram_write(object,0x638,count);hologram_write(object,0x63c,parameter);
+    hologram_write(object,0x640,loop);hologram_write(object,0x644,static_cast<const char*>(nullptr));
+    hologram_write(object,0x648,raw);hologram_write(object,0x64c,0.0f);
+    hologram_write(object,0x668,disp_invalid);hologram_write(object,0x69c,disp_invalid);
+    return disp_finish(ctrl,true);
+}
+bool prop_container_stop_body(void* object,const PropContainerBindings& b) noexcept {
+    unsigned flags=hologram_read<unsigned>(object,can_flags);
+    if(!(flags&0x100u))return true;
+    hologram_write(object,can_flags,flags&~0x102u);
+    const char* loop=hologram_read<const char*>(object,0x640);
+    if(loop){
+        char text[128]{};
+        if(!prop_key_read(loop,text)||!b.stop_sound(b.context,object,text))return false;
+    }
+    auto handle=hologram_read<std::uint32_t>(object,0x668);
+    if(handle!=disp_invalid){
+        void* steam=nullptr;
+        if(!b.resolve(b.context,handle,&steam))return false;
+        if(steam){
+            handle=hologram_read<std::uint32_t>(object,0x668);steam=nullptr;
+            if(handle!=disp_invalid&&!b.resolve(b.context,handle,&steam))return false;
+            if(!b.remove(b.context,steam))return false;
+            hologram_write(object,0x668,disp_invalid);
+        }
+    }
+    const int count=health_int_delta(hologram_read<int>(object,0x638),1);
+    hologram_write(object,0x638,count);
+    if(count<=0){hologram_write(object,0x63c,0.0f);hologram_write(object,can_amount,0.0f);}
+    return !(hologram_read<unsigned>(object,can_flags)&0x20u)||b.break_container(b.context,object)!=0;
+}
+int __cdecl prop_container_stop(HologramControl* ctrl,const PropContainerBindings* b) noexcept {
+    if(!can_valid(ctrl)||!b||!b->stop_sound||!b->resolve||!b->remove||!b->break_container)return 0;
+    ctrl->busy=1;const auto host=*b;
+    return disp_finish(ctrl,prop_container_stop_body(ctrl->object,host));
+}
+int __cdecl prop_container_radius(const void* object,unsigned bytes,float* out) noexcept {
+    if(!out||bytes<can_bytes||!sin_independent::vgui_layout::Readable(object,can_bytes))return 0;
+    const auto flags=hologram_read<unsigned>(object,can_flags);
+    *out=(flags&0x60u)?256.0f:((flags&0x0cu)?125.0f:0.0f);
+    return 1;
+}
+const PropContainerApi prop_container_api{version,sizeof(PropContainerApi),&prop_container_defaults,
+    &prop_container_stop,&prop_container_radius};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3843,6 +3919,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Dispenser
 SiN_GetDispenserInputApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(DispenserInputApi)?&dispenser_input_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPropContainerApi=_SiN_GetPropContainerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PropContainerApi* __cdecl
+SiN_GetPropContainerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PropContainerApi)?&prop_container_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
