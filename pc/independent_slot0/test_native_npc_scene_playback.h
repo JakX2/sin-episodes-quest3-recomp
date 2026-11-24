@@ -1393,4 +1393,82 @@ inline void check_scene_speech_execution(const SceneSpeechExecutionApi& api){
     assert(api.start(f.scene,sizeof(f.scene),nullptr,0,0,nullptr,0,80,&f.exec)==1&&f.opened==1);
 }
 
+
+struct SpeechLifecycleFixture:NativeGeneratedLifecycleFixture {
+    const SceneSpeechCallbackApi& callback_api;
+    SceneSpeechCallbackBindings callbacks{};
+    int player=0,filter=0;unsigned emitted=0,begun=0,ended=0,checked=0,opened=0,closed=0,captions=0,registered=0;
+    unsigned traces[4]{};
+    bool missing=false;
+    static SpeechLifecycleFixture& self(void* p){return static_cast<SpeechLifecycleFixture&>(IntegratedSceneFixture::get(p));}
+    SpeechLifecycleFixture(const SceneSpeechCallbackApi& cb,const NativeGeneratedLifecycleApi& n,const SceneFinishApi& finish_api,
+        const SceneManagerTickApi& m,const SceneAdvanceApi& a,const SceneEntityLifecycleApi& e):NativeGeneratedLifecycleFixture(n,m,a,e),callback_api(cb){
+        this->finish_api=&finish_api;advance.finish=nullptr;
+        F::put(scene,0x414,F::ptr(scene));callbacks.context=static_cast<IntegratedSceneFixture*>(this);
+        callbacks.actor=[](void* p,void* s,std::uint32_t ca,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(s==f.scene&&ca==F::ptr(f.choreo_actor));*out=f.missing?nullptr:f.npc_memory;*bytes=sizeof(f.npc_memory);return 1;};
+        callbacks.trace=[](void* p,void* s,void* e,float,SceneSpeechTrace trace) noexcept -> int{
+            auto& f=self(p);assert(s==f.scene&&e==f.event);++f.traces[static_cast<unsigned>(trace)];return 1;};
+        auto& speech=callbacks.speech;speech.context=callbacks.context;
+        speech.open_filter=[](void* p,void* actor,float scale,void** out) noexcept -> int{auto& f=self(p);assert(actor==f.npc_memory&&scale==.8f);++f.opened;*out=&f.filter;return 1;};
+        speech.close_filter=[](void* p,void* filter) noexcept -> int{auto& f=self(p);assert(filter==&f.filter);++f.closed;return 1;};
+        speech.clock=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+        speech.prepare_actor=[](void* p,void* s,void* actor,float duration) noexcept -> int{auto& f=self(p);assert(s==f.scene&&actor==f.npc_memory&&duration==.1f);return 1;};
+        speech.recipient_count=[](void* p,void* filter,int* out) noexcept -> int{auto& f=self(p);assert(filter==&f.filter);*out=1;return 1;};
+        speech.recipient=[](void* p,void* filter,unsigned i,void** out) noexcept -> int{auto& f=self(p);assert(filter==&f.filter&&!i);*out=&f.player;return 1;};
+        speech.language=[](void* p,void* player,unsigned* present,int* english,unsigned* forced) noexcept -> int{auto& f=self(p);assert(player==&f.player);*present=1;*english=1;*forced=0;return 1;};
+        speech.emit=[](void* p,void* actor,void* player,const char* name,int channel,float volume,int level,float absolute) noexcept -> int{
+            auto& f=self(p);assert(actor==f.npc_memory&&player==&f.player&&!std::strcmp(name,f.sound)&&channel==2&&volume==1&&level==72&&absolute==10&&f.event[0x328]);++f.emitted;return 1;};
+        speech.caption_register=[](void* p,std::uint32_t,const char* token) noexcept -> int{auto& f=self(p);assert(!std::strcmp(token,f.sound)&&f.begun==1);++f.registered;return 1;};
+        speech.caption_preferences=[](void*,void*) noexcept -> int{return 1;};
+        speech.caption_far=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+        speech.remove_recipient=[](void*,void*,void*) noexcept -> int{assert(false);return 0;};
+        speech.caption_send=[](void* p,void* filter,std::uint32_t,unsigned ticks,unsigned flag) noexcept -> int{auto& f=self(p);assert(filter==&f.filter&&ticks==1&&flag==1);++f.captions;return 1;};
+        auto& record=speech.records;record.context=callbacks.context;record.storage=full.stop.records.storage;record.grow=full.stop.records.grow;
+        record.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+        record.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+        record.begin=[](void* p,void* actor,void* r,std::uint32_t parsed,void* e,std::uint32_t ca,void* target,unsigned* out) noexcept -> int{
+            auto& f=self(p);assert(actor==f.npc_memory&&parsed==f.parsed_word&&e==f.event&&ca==F::ptr(f.choreo_actor)&&!target&&f.emitted==1);
+            assert(F::word(r,0)==F::ptr(f.event)&&F::word(r,4)==parsed&&F::word(r,0x24)==0xffffffffu);
+            ++f.begun;static_cast<unsigned char*>(r)[0xc]=1;*out=1;return 1;};
+        record.stop=[](void* p,void* actor,void* r,int arg,int zero,unsigned* out) noexcept -> int{
+            auto& f=self(p);assert(actor==f.npc_memory&&r==f.event_records[1]&&!arg&&!zero&&f.event[0x328]);
+            ++f.ended;*out=1;return 1;};
+        record.check=[](void* p,void* actor,void* r,float,std::uint32_t parsed,void* e,unsigned* out) noexcept -> int{
+            auto& f=self(p);assert(actor==f.npc_memory&&r==f.event_records[1]&&parsed==f.parsed_word&&e==f.event);++f.checked;*out=0;return 1;};
+        advance.simulation.callback=[](void* p,std::uint32_t word,unsigned slot,float time,void* parsed,void* event) noexcept -> int{
+            auto& f=self(p);assert(word==f.callback_word&&parsed==f.parsed&&event==f.event&&f.steps<8);
+            f.order[f.steps++]=slot;unsigned result=0;return f.callback_api.invoke(f.scene+0x410,8,f.scene,sizeof(f.scene),slot,time,
+                parsed,sizeof(f.parsed),event,sizeof(f.event),&f.callbacks,&result)==1&&result==1;};
+    }
+    int invoke(unsigned slot,unsigned& result){
+        return callback_api.invoke(scene+0x410,8,scene,sizeof(scene),slot,0,parsed,sizeof(parsed),event,sizeof(event),&callbacks,&result);
+    }
+};
+inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const NativeGeneratedLifecycleApi& n,const SceneFinishApi& finish,
+    const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity){
+    using F=ScenePlaybackFixture;SpeechLifecycleFixture f(cb,n,finish,manager,tick,entity);float duration=99;
+    assert(n.sound(f.actor,f.sound,&f.full,&duration)==1&&duration==.1f);
+    std::strcpy(reinterpret_cast<char*>(f.event+0x104),"72");
+    unsigned result=99;
+    assert(f.invoke(12,result)==1&&result==1&&!f.checked);
+    std::strcpy(reinterpret_cast<char*>(f.event+4),"nUlL");
+    assert(f.invoke(0,result)==1&&result==1&&f.traces[0]==1&&!f.emitted);
+    assert(f.invoke(4,result)==1&&result==1&&!f.traces[2]);
+    std::strcpy(reinterpret_cast<char*>(f.event+4),f.sound);
+    f.missing=true;assert(f.invoke(0,result)==1&&result==1&&f.traces[3]==1&&!f.emitted);
+    assert(f.invoke(12,result)==1&&result==1&&f.traces[3]==2);
+    f.missing=false;
+    assert(manager.tick(&f.control,&f.manager_tick)==1&&f.emitted==1&&f.begun==1&&f.captions==1&&f.opened==1&&f.closed==1);
+    assert(F::word(f.npc_memory,0x5c4)==2&&F::word(f.event_records[1],4)==f.parsed_word);
+    assert(f.invoke(12,result)==1&&!result&&f.checked==1);
+    for(unsigned i=0;i<3;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
+    assert(f.steps==4&&f.ended==1&&f.finished==1&&f.destroyed==1&&!f.parsed_live&&!f.scene_live&&F::word(f.npc_memory,0x5c4)==1);
+    assert(F::word(f.event_records[0],4)==0x9876&&!F::word(f.npc_memory,0x5f8)&&!F::word(f.manager,0x3a0));
+    assert(f.traces[1]==1&&f.traces[2]==1&&f.emitted==1&&f.record_stops==1);
+    assert(manager.destroy(&f.control,&f.manager_life)==1);
+    F::put(f.scene,0x414,0);result=99;
+    assert(cb.invoke(f.scene+0x410,8,nullptr,0,12,0,nullptr,0,nullptr,0,nullptr,&result)==1&&result==1);
+}
+
 }

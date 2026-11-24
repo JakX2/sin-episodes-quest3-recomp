@@ -577,6 +577,25 @@ struct SceneSpeechExecutionApi {
     int (__cdecl *start)(void* scene,unsigned,void* actor,unsigned,std::uint32_t parsed,void* event,unsigned,int level,const SceneSpeechExecutionBindings*) noexcept;
 };
 using GetSceneSpeechExecutionApi=const SceneSpeechExecutionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_speech_callback_export[]="SiN_GetSceneSpeechCallbackApi";
+enum class SceneSpeechTrace:unsigned {Ignored,Start,Stop,MissingActor};
+struct SceneSpeechCallbackBindings {
+    void* context;
+    // Original scene +33c resolves a choreography actor, not entity handle.
+    int (__cdecl *actor)(void*,void* scene,std::uint32_t choreo_actor,void**,unsigned*) noexcept;
+    int (__cdecl *trace)(void*,void* scene,void* event,float,SceneSpeechTrace) noexcept;
+    SceneSpeechExecutionBindings speech;
+};
+struct SceneSpeechCallbackApi {
+    std::uint32_t version,size;
+    // 221a1850/70/90/b0 and type-5 branches of 221a2270/2830/2b60/2ba0.
+    // Interface is scene+410, owner word +4; zero owner is a no-op.
+    // Other event types are not implemented by this specialized route.
+    int (__cdecl *invoke)(const void* callback,unsigned callback_bytes,void* scene,unsigned scene_bytes,
+        unsigned slot,float time,void* parsed,unsigned parsed_bytes,void* event,unsigned event_bytes,
+        const SceneSpeechCallbackBindings*,unsigned* result) noexcept;
+};
+using GetSceneSpeechCallbackApi=const SceneSpeechCallbackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

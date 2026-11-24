@@ -604,6 +604,12 @@ int main(int argc,char** argv){
     assert(sceneSpeechExecution&&!getSceneSpeechExecution(0,sizeof(tables::SceneSpeechExecutionApi))&&!getSceneSpeechExecution(1,0));
     tables::test::check_scene_speech_execution(*sceneSpeechExecution);
     std::puts("PASS original native speech recipient routing, event registration and caption dispatch");
+    const auto getSceneSpeechCallback=reinterpret_cast<tables::GetSceneSpeechCallbackApi>(GetProcAddress(server,tables::scene_speech_callback_export));
+    assert(getSceneSpeechCallback&&!GetProcAddress(client,tables::scene_speech_callback_export));
+    const auto* sceneSpeechCallback=getSceneSpeechCallback(1,sizeof(tables::SceneSpeechCallbackApi));
+    assert(sceneSpeechCallback&&!getSceneSpeechCallback(0,sizeof(tables::SceneSpeechCallbackApi))&&!getSceneSpeechCallback(1,0));
+    tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
+    std::puts("PASS native generated scene speech callback through manager, records, caption and cleanup");
 
 
 
