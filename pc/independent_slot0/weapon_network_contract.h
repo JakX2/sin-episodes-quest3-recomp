@@ -41,5 +41,36 @@ struct Api {
 };
 using GetApi=const Api* (SIN_WNET_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 const Api& owned_api() noexcept;
+// Separate original inventory arrays and public active-weapon field.
+// Port scalar payload; never a Source flattened table or wire packet.
+inline constexpr char inventory_export_name[]="SiN_GetInventoryNetworkApi";
+inline constexpr std::uint32_t inventory_ammo_count=32,inventory_weapon_count=48;
+enum InventoryGroup : std::uint32_t {InventoryAmmo=1,InventoryCombat=2,InventoryPublic=4};
+struct InventoryInfo {
+    char name[32],table[40];
+    std::uint32_t group,slot,server_offset,client_offset,elements,stride,bits,flags;
+};
+struct InventoryValues {
+    std::uint32_t ammo[inventory_ammo_count],weapons[inventory_weapon_count],next_attack,active_weapon;
+};
+struct InventoryHandleObservations {
+    std::uint32_t weapons[inventory_weapon_count],active_weapon;
+};
+// Slots are host-observed one-based client IDs. Zero means no recipient.
+// Ammo is the player table's own object-ID recipient. Combat is the
+// character proxy's direct/indirect resolved eligible player recipient.
+struct InventoryRecipients {std::uint32_t ammo_slot,combat_slot;};
+struct InventoryPayload {std::uint32_t present;InventoryValues values;};
+struct InventoryApi {
+    std::uint32_t version,size;
+    int (SIN_WNET_CALL *field)(std::uint32_t,InventoryInfo*) noexcept;
+    std::uint32_t (SIN_WNET_CALL *groups)(const InventoryRecipients*,std::uint32_t) noexcept;
+    int (SIN_WNET_CALL *encode)(const InventoryValues*,const InventoryHandleObservations*,
+        const InventoryRecipients*,std::uint32_t,InventoryPayload*) noexcept;
+    int (SIN_WNET_CALL *decode)(const InventoryPayload*,std::uint32_t,InventoryValues*) noexcept;
+};
+using GetInventoryApi=const InventoryApi* (SIN_WNET_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+const InventoryApi& owned_inventory_api() noexcept;
+static_assert(sizeof(InventoryValues)==328&&sizeof(InventoryPayload)==332);
 static_assert(sizeof(Values)==52&&sizeof(Payload)==56&&sizeof(RecipientMask)==32);
 }
