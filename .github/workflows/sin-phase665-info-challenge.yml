@@ -1,0 +1,28 @@
+name: SiN Phase665 original info_challenge and fixed reporting
+on:
+  push:
+    branches: [feature/sin-info-challenge-phase665-chat-20261124]
+  pull_request:
+    paths:
+      - 'include/sin_compat/info_challenge_phase665.hpp'
+      - 'tests/test_info_challenge_phase665.cpp'
+      - 'research/tools/audit_original_info_challenge_phase665.py'
+      - '.github/workflows/sin-phase665-info-challenge.yml'
+permissions:
+  contents: read
+jobs:
+  info-challenge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check original-free input descriptor fixtures
+        run: python3 research/tools/audit_original_info_challenge_phase665.py --self-test
+      - name: Compile and run original challenge input model with fixed difficulty
+        run: |
+          clang++ -std=c++17 -O1 -g -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize-recover=all \
+            -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude \
+            src/fixed_difficulty_phase663.cpp tests/test_info_challenge_phase665.cpp \
+            -o /tmp/sin_phase665
+          /tmp/sin_phase665
