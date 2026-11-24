@@ -1,5 +1,6 @@
 #pragma once
 #include "native_jessica_script.h"
+#include "native_npc_dialogue.h"
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
@@ -428,6 +429,9 @@ struct ResponseSpeakFixture {
     int system=0,criteria=0,index=-1,allocated=-1;
     unsigned allocations=0,destroys=0,traces=0,sounds=0,notifications=0,criteria_ends=0;
     float now=10;
+    const char* expected_concept="TLK_IDLE";
+    const char* expected_modifiers=nullptr;
+    unsigned modifier_calls=0;
     static std::uint32_t ptr(void* p){return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(p));}
     float read(const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
     unsigned word(unsigned off){unsigned v=0;std::memcpy(&v,row+off,4);return v;}
@@ -440,8 +444,10 @@ struct ResponseSpeakFixture {
         b.context=this;b.selection.context=this;b.dispatch.context=this;
         b.selection.system=[](void* p,void* e,void** out) noexcept -> int{auto& f=get(p,e);*out=f.has_system?&f.system:nullptr;return 1;};
         b.selection.begin_criteria=[](void* p,void** out) noexcept -> int{*out=&static_cast<ResponseSpeakFixture*>(p)->criteria;return 1;};
-        b.selection.add=[](void* p,void* c,const char* k,const char* n,float w) noexcept -> int{auto& f=*static_cast<ResponseSpeakFixture*>(p);assert(c==&f.criteria&&!std::strcmp(k,"concept")&&!std::strcmp(n,"TLK_IDLE")&&w==5.f);return 1;};
-        b.selection.modifiers=[](void*,void*,const char*,float) noexcept -> int{return 1;};
+        b.selection.add=[](void* p,void* c,const char* k,const char* n,float w) noexcept -> int{auto& f=*static_cast<ResponseSpeakFixture*>(p);assert(c==&f.criteria&&!std::strcmp(k,"concept")&&!std::strcmp(n,f.expected_concept)&&w==5.f);return 1;};
+        b.selection.modifiers=[](void* p,void* c,const char* mods,float weight) noexcept -> int{
+            auto& f=*static_cast<ResponseSpeakFixture*>(p);assert(c==&f.criteria&&weight==5.f&&f.expected_modifiers&&!std::strcmp(mods,f.expected_modifiers));++f.modifier_calls;return 1;
+        };
         b.selection.npc_criteria=[](void*,void*,void*) noexcept -> int{return 1;};
         b.selection.player_criteria=[](void*,void*,int i) noexcept -> int{assert(i==1);return 1;};
         b.selection.allocate=[](void* p,unsigned n,void** out,unsigned* extent) noexcept -> int{
@@ -454,7 +460,7 @@ struct ResponseSpeakFixture {
         b.selection.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
         b.selection.destroy=destroy;
         b.selection.end_criteria=[](void* p,void* c) noexcept -> int{auto& f=*static_cast<ResponseSpeakFixture*>(p);assert(c==&f.criteria);++f.criteria_ends;return 1;};
-        b.trace_selected=[](void* p,void* e,const char* n) noexcept -> int{auto& f=get(p,e);assert(!std::strcmp(n,"TLK_IDLE")&&f.live[f.allocated]&&f.allocations==f.criteria_ends);++f.traces;return !f.fail_trace;};
+        b.trace_selected=[](void* p,void* e,const char* n) noexcept -> int{auto& f=get(p,e);assert(!std::strcmp(n,f.expected_concept)&&f.live[f.allocated]&&f.allocations==f.criteria_ends);++f.traces;return !f.fail_trace;};
         b.dispatch.sample=[](void*,const void*,float*) noexcept -> int{assert(false);return 0;};
         b.dispatch.speaking=[](void* p,void* e,unsigned* out) noexcept -> int{auto& f=get(p,e);return f.timing.speaking(e,sizeof(f.exp),f.now,out)==1;};
         b.dispatch.force_log=[](void*,void*,const char*) noexcept -> int{assert(false);return 0;};
@@ -481,7 +487,7 @@ struct ResponseSpeakFixture {
         note.classify=[](void*,void*,int a,unsigned* out) noexcept -> int{assert(!a);*out=1;return 1;};
         note.owner_handle=[](void*,void*,std::uint32_t* out) noexcept -> int{*out=0x123004;return 1;};
         history.context=this;history.destroy=destroy;history.history.context=this;
-        history.history.lookup=[](void* p,void* e,const char* n,int* out) noexcept -> int{auto& f=get(p,e);assert(!std::strcmp(n,"TLK_IDLE"));*out=f.index;return 1;};
+        history.history.lookup=[](void* p,void* e,const char* n,int* out) noexcept -> int{auto& f=get(p,e);assert(!std::strcmp(n,f.expected_concept));*out=f.index;return 1;};
         history.history.insert=[](void* p,void* e,const char*,float t,int* out) noexcept -> int{auto& f=get(p,e);assert(f.index==-1&&t==f.now);f.index=*out=7;return 1;};
         history.history.entry=[](void* p,void* e,int i,void** out,unsigned* extent) noexcept -> int{auto& f=get(p,e);assert(i==7);*out=f.row;*extent=sizeof(f.row);return 1;};
         history.history.clock=b.dispatch.clock;
@@ -777,6 +783,76 @@ inline void check_talk_propagation(const TalkPropagationApi& api){
     f.limit=2;assert(run()==1&&f.accesses==2);
     f.limit=6;f.fail_visibility=true;assert(run()==-1&&f.timestamp()==13&&f.accesses==2);
     assert(api.propagate(f.npc,0x2c7,&f.b,"TLK_HELLO")==0);
+}
+
+
+struct CountDialogueFixture {
+    alignas(4) unsigned char npc[0x103c]{},obs[0x5ec]{};
+    HologramControl ctrl{npc,sizeof(npc)};
+    ResponseSpeakFixture pipeline;
+    CountDialogueBindings b{};
+    unsigned accessors=0,criteria_calls=0;
+    bool malformed=false,absent=false;
+    static CountDialogueFixture& get(void* p){return *static_cast<CountDialogueFixture*>(p);}
+    unsigned phase(){unsigned n=0;std::memcpy(&n,npc+0x1014,4);return n;}
+    void part(const char* p){std::strcpy(reinterpret_cast<char*>(obs+0x2d8),p);}
+    CountDialogueFixture(const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record):pipeline(timing,record){
+        const std::uint32_t handle=0x1004;std::memcpy(obs+0x14,&handle,4);
+        part("head");pipeline.expected_modifiers="part:fixture";
+        b.context=this;b.speak=pipeline.b;
+        b.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);assert(h==0x1004&&f.ctrl.busy);*out=f.npc;return 1;};
+        b.clock=[](void* p,float* out) noexcept -> int{*out=get(p).pipeline.now;return 1;};
+        b.expeditor=[](void* p,void* n,void** out,unsigned* extent) noexcept -> int{
+            auto& f=get(p);assert(n==f.npc&&f.ctrl.busy);++f.accessors;*out=f.absent?nullptr:f.pipeline.exp;*extent=sizeof(f.pipeline.exp);return 1;};
+        b.criteria=[](void* p,const void* rec,float now,CountCriteria* out) noexcept -> int{
+            auto& f=get(p);assert(rec==f.obs+0x18&&now==f.pipeline.now&&f.ctrl.busy);++f.criteria_calls;
+            if(f.malformed)std::memset(out->bytes,'x',sizeof(out->bytes));
+            else std::strcpy(reinterpret_cast<char*>(out->bytes),"part:fixture");return 1;};
+    }
+};
+inline void check_npc_dialogue(const NpcDialogueApi& api,const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record){
+    // Count's original behavior uses direct response selection, not the
+    // companion group/once/cooldown gate, and advances on normal no-match.
+    CountDialogueFixture c(timing,record);
+    auto count=[&](){return api.count(&c.ctrl,&c.b,c.obs,sizeof(c.obs));};
+    c.pipeline.expected_concept="TLK_INTERROGATE_COCKY";
+    c.absent=true;assert(count()==1&&c.accessors==1&&!c.phase());c.absent=false;
+    assert(count()==1&&c.phase()==1&&c.pipeline.sounds==1&&c.pipeline.modifier_calls==1&&c.criteria_calls==1&&c.accessors==4);
+    c.part("torso");assert(count()==1&&c.phase()==1&&c.criteria_calls==1);
+    c.pipeline.now=13;c.pipeline.expected_concept="TLK_INTERROGATE_NERVOUS";c.pipeline.has_match=false;
+    assert(count()==1&&c.phase()==2&&c.pipeline.sounds==1&&c.pipeline.modifier_calls==2);
+    c.part("hand");c.pipeline.expected_concept="TLK_INTERROGATE_TALKING";
+    assert(count()==1&&!c.phase()&&!c.npc[0x1018]&&c.pipeline.modifier_calls==3&&c.pipeline.sounds==1);
+    c.part("arm");c.malformed=true;
+    assert(count()==-1&&c.ctrl.blocked&&!c.phase()&&!std::strcmp(reinterpret_cast<char*>(c.npc+0x1018),"arm"));
+    assert(count()==0&&c.pipeline.modifier_calls==3);
+    assert(ResponseSpeakFixture::destroy(&c.pipeline,c.pipeline.pool[0]));
+    // Jessica uses the same native response leaves, but retains her full
+    // companion gate and original normal-urgency request.
+    CompanionTalkFixture j(timing,record);HologramControl ctrl{j.npc,sizeof(j.npc)};
+    alignas(4) unsigned char obs[0x5ec]{};
+    JessicaAttentionState state{};JessicaDialogueBindings jb{};
+    struct Context {CompanionTalkFixture* f;HologramControl* ctrl;unsigned char* obs;unsigned calls=0;bool malformed=false;};
+    Context context{&j,&ctrl,obs};
+    jb.context=&context;jb.talk=j.b;jb.cooldown=&j.state;jb.semaphore=&j.pipeline.sem;
+    jb.clock=[](void* p,float* out) noexcept -> int{*out=static_cast<Context*>(p)->f->pipeline.now;return 1;};
+    jb.criteria=[](void* p,const void* rec,float now,CountCriteria* out) noexcept -> int{
+        auto& x=*static_cast<Context*>(p);assert(x.ctrl->busy&&(rec==x.obs+0x18||rec==x.obs+0x308)&&now==x.f->pipeline.now);++x.calls;
+        if(x.malformed)std::memset(out->bytes,'x',sizeof(out->bytes));
+        else std::strcpy(reinterpret_cast<char*>(out->bytes),"part:fixture");return 1;};
+    j.pipeline.expected_concept="TLK_PLLOOKING";j.pipeline.expected_modifiers="part:fixture";
+    obs[0x300]=1;obs[0x18+0x108]=1;
+    auto look=[&](){return api.jessica(&ctrl,&state,&jb,obs,sizeof(obs));};
+    assert(look()==1&&state.looking==10&&j.pipeline.sounds==1&&j.pipeline.modifier_calls==1&&context.calls==1&&j.suppress_argument==1);
+    j.pipeline.now=14;j.state.global[0]=20;
+    assert(look()==1&&state.looking==14&&j.pipeline.sounds==1&&context.calls==2); // gated, timer still committed
+    j.pipeline.now=18;j.state.global[0]=0;obs[0x300]=0;obs[0x5e8]=1;obs[0x308+0x260]=1;
+    j.pipeline.expected_concept="TLK_PLUSING";j.pipeline.has_match=false;
+    assert(look()==1&&state.looking==0&&state.using_part==18&&j.pipeline.modifier_calls==2&&j.pipeline.sounds==1&&context.calls==3);
+    j.pipeline.now=22;context.malformed=true;
+    assert(look()==-1&&ctrl.blocked&&state.using_part==22&&context.calls==4);
+    assert(look()==0&&j.pipeline.modifier_calls==2);
+    assert(ResponseSpeakFixture::destroy(&j.pipeline,j.pipeline.pool[0]));
 }
 
 }

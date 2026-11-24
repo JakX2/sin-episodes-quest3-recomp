@@ -1,5 +1,6 @@
 #include "native_jessica_script.h"
 #include "native_count_interrogation.h"
+#include "native_npc_dialogue.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
 #include <cstdio>
@@ -3673,6 +3674,71 @@ int __cdecl count_damage(HologramControl* ctrl,const CountBindings* b,const Play
     return disp_finish(ctrl,host.base_damage(host.context,npc,&copy,result)!=0);
 }
 const CountInterrogationApi count_api{version,sizeof(CountInterrogationApi),&count_initialize,&count_input,&count_enabled,&count_observe,&count_damage,&health_ack};
+struct JessicaDialogueCall {
+    HologramControl* ctrl;JessicaDialogueBindings host;
+};
+int __cdecl dialogue_jessica_clock(void* p,float* out) noexcept {
+    auto& x=*static_cast<JessicaDialogueCall*>(p);return x.host.clock(x.host.context,out);
+}
+int __cdecl dialogue_jessica_criteria(void* p,void* npc,const void* record,float now,const char* name) noexcept {
+    auto& x=*static_cast<JessicaDialogueCall*>(p);const auto& h=x.host;
+    if(!x.ctrl->busy||npc!=x.ctrl->object)return 0;
+    CountCriteria criteria{};
+    if(!h.criteria(h.context,record,now,&criteria)||!std::memchr(criteria.bytes,0,sizeof(criteria.bytes)))return 0;
+    unsigned played=0;
+    // 22362154 / 22362236 -> 2208f500(name,modifier,0).
+    // Original ignores whether it spoke; only transport failure is fatal.
+    return companion_request(npc,x.ctrl->bytes,h.cooldown,h.semaphore,&h.talk,name,
+        reinterpret_cast<const char*>(criteria.bytes),0,&played)==1;
+}
+int __cdecl dialogue_jessica(HologramControl* ctrl,JessicaAttentionState* state,const JessicaDialogueBindings* b,
+                             const void* obs,unsigned bytes) noexcept {
+    if(!b||!b->clock||!b->criteria||!b->cooldown||!b->semaphore)return 0;
+    JessicaDialogueCall call{ctrl,*b};
+    const JessicaAttentionBindings host{&call,&dialogue_jessica_clock,&dialogue_jessica_criteria};
+    return jessica_attention(ctrl,state,&host,obs,bytes);
+}
+struct CountDialogueCall {
+    HologramControl* ctrl;CountDialogueBindings host;
+    void* exp=nullptr;unsigned extent=0;
+};
+int __cdecl dialogue_count_resolve(void* p,std::uint32_t handle,void** out) noexcept {
+    auto& x=*static_cast<CountDialogueCall*>(p);return x.host.resolve(x.host.context,handle,out);
+}
+int __cdecl dialogue_count_clock(void* p,float* out) noexcept {
+    auto& x=*static_cast<CountDialogueCall*>(p);return x.host.clock(x.host.context,out);
+}
+int __cdecl dialogue_count_expeditor(void* p,void* npc,void** out) noexcept {
+    auto& x=*static_cast<CountDialogueCall*>(p);x.exp=nullptr;x.extent=0;
+    if(!x.host.expeditor(x.host.context,npc,&x.exp,&x.extent))return 0;
+    if(x.exp&&(x.extent<0x7c||!sin_independent::vgui_layout::Readable(x.exp,0x7c)))return 0;
+    *out=x.exp;return 1;
+}
+int __cdecl dialogue_count_speaking(void* p,void* exp,unsigned* out) noexcept {
+    auto& x=*static_cast<CountDialogueCall*>(p);float now=0;
+    return x.ctrl->busy&&exp==x.exp&&x.host.clock(x.host.context,&now)&&response_speaking(exp,x.extent,now,out)==1;
+}
+int __cdecl dialogue_count_criteria(void* p,const void* record,float now,CountCriteria* out) noexcept {
+    auto& x=*static_cast<CountDialogueCall*>(p);
+    return x.ctrl->busy&&x.host.criteria(x.host.context,record,now,out);
+}
+int __cdecl dialogue_count_speak(void* p,void* exp,const char* name,const CountCriteria* criteria,unsigned* played) noexcept {
+    auto& x=*static_cast<CountDialogueCall*>(p);
+    if(!x.ctrl->busy||exp!=x.exp||!std::memchr(criteria->bytes,0,sizeof(criteria->bytes)))return 0;
+    // 22394440 bypasses the companion gate. Its phase advances on normal
+    // no-match too, so return transport success, not the played boolean.
+    return response_speak(exp,x.extent,&x.host.speak,name,reinterpret_cast<const char*>(criteria->bytes),played)==1;
+}
+int __cdecl dialogue_count(HologramControl* ctrl,const CountDialogueBindings* b,const void* obs,unsigned bytes) noexcept {
+    if(!b||!b->resolve||!b->clock||!b->expeditor||!b->criteria)return 0;
+    CountDialogueCall call{ctrl,*b};CountBindings host{};
+    host.context=&call;host.resolve=&dialogue_count_resolve;host.clock=&dialogue_count_clock;
+    host.expeditor=&dialogue_count_expeditor;host.speaking=&dialogue_count_speaking;
+    host.criteria=&dialogue_count_criteria;host.speak=&dialogue_count_speak;
+    return count_observe(ctrl,&host,obs,bytes);
+}
+const NpcDialogueApi npc_dialogue_api{version,sizeof(NpcDialogueApi),&dialogue_jessica,&dialogue_count};
+
 
 int character_region_common(HologramControl* ctrl,const CountRegionBindings* b,const CountRegionQuery* query,const char** result,bool count) noexcept {
     if(!health_control(ctrl,count?count_size:jessica_size)||!b||!b->forward_xy||!b->hit_identity||!query||!result||
@@ -7997,6 +8063,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkPropa
 SiN_GetTalkPropagationApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkPropagationApi)?&talk_propagation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetNpcDialogueApi=_SiN_GetNpcDialogueApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcDialogueApi* __cdecl
+SiN_GetNpcDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcDialogueApi)?&npc_dialogue_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

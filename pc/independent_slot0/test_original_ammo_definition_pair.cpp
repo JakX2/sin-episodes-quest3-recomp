@@ -428,6 +428,13 @@ int main(int argc,char** argv){
     assert(talkPropagation&&!getTalkPropagation(0,sizeof(tables::TalkPropagationApi))&&!getTalkPropagation(1,0));
     tables::test::check_talk_propagation(*talkPropagation);
     std::puts("PASS native companion concept propagation and silent history seed");
+    const auto getNpcDialogue=reinterpret_cast<tables::GetNpcDialogueApi>(GetProcAddress(server,tables::npc_dialogue_export));
+    assert(getNpcDialogue&&!GetProcAddress(client,tables::npc_dialogue_export));
+    const auto* npcDialogue=getNpcDialogue(1,sizeof(tables::NpcDialogueApi));
+    assert(npcDialogue&&!getNpcDialogue(0,sizeof(tables::NpcDialogueApi))&&!getNpcDialogue(1,0));
+    tables::test::check_npc_dialogue(*npcDialogue,*responseTimingUpdate,*responseRecord);
+    std::puts("PASS native Jessica and Count observation through distinct original speech paths");
+
 
 
 
