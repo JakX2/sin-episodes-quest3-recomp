@@ -5306,6 +5306,75 @@ int __cdecl choreography_text_load(void* scene,unsigned bytes,const char* name,c
     const auto p=*parser;return named_scene_load_impl(scene,bytes,name,b,out,&p);
 }
 const ChoreographyTextParserApi choreography_text_parser_api{version,sizeof(ChoreographyTextParserApi),&choreography_text_parse,&choreography_text_load};
+bool named_scene_precache_ready(const NamedScenePrecacheBindings* b) noexcept {
+    return b&&b->precache_sound&&named_scene_ready(&b->load,b->parser);
+}
+// 221ad950 traverses the live event count, skips null events, and only
+// expands subscenes of a non-subscene root. Nested parsed +124 is set
+// before linking event +324 and visiting the child's speech events.
+int named_scene_precache_events_impl(void* scene,unsigned bytes,void* parsed,unsigned extent,const NamedScenePrecacheBindings& h,unsigned depth) noexcept {
+    if(depth>1||extent<0x220||!hologram_writable(parsed,0x220))return -1;
+    const auto& d=h.load.owned.destruction;
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(parsed,0xc);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000)return -1;
+        void* rows=nullptr;
+        if(!choreography_storage(d,hologram_read<std::uint32_t>(parsed,0),(i+1)*4,rows))return -1;
+        const auto word=hologram_read<std::uint32_t>(rows,i*4);
+        if(!word)continue;
+        void* event=nullptr;if(!choreography_storage(d,word,0x3c0,event))return -1;
+        const auto type=hologram_read<unsigned>(event,0);
+        const auto* parameter=reinterpret_cast<const char*>(static_cast<unsigned char*>(event)+0x84);
+        if(type==5){
+            if(!std::memchr(parameter,0,128)||!h.precache_sound(h.context,parameter))return -1;
+            if(hologram_read<unsigned>(event,0x34c)==0&&hologram_read<int>(event,0x398)>0){
+                const auto* token=reinterpret_cast<const char*>(static_cast<unsigned char*>(event)+0x350);
+                if(!std::memchr(token,0,64))return -1;
+                char caption[64]{};
+                if(!choreography_text_copy(caption,sizeof(caption),*token?token:parameter)||!h.precache_sound(h.context,caption))return -1;
+            }
+        }else if(type==11&&!hologram_read<unsigned char>(parsed,0x124)&&!hologram_read<unsigned>(event,0x324)){
+            if(!std::memchr(parameter,0,128)||depth)return -1;
+            std::uint32_t child=0;
+            if(named_scene_load_impl(scene,bytes,parameter,&h.load,&child,h.parser)!=1||!child)return -1;
+            // Failed resolution retains no safe writable pointer. Host owns
+            // diagnosis and reclamation; never continue on malformed words.
+            void* nested=nullptr;if(!choreography_storage(d,child,0x220,nested))return -1;
+            hologram_write(nested,0x124,static_cast<unsigned char>(1));
+            hologram_write(event,0x324,child);
+            if(named_scene_precache_events_impl(scene,bytes,nested,0x220,h,depth+1)!=1)return -1;
+        }
+    }
+    return 1;
+}
+int __cdecl named_scene_precache_events(void* scene,unsigned bytes,void* parsed,unsigned extent,const NamedScenePrecacheBindings* b) noexcept {
+    if(!scene||bytes<0x414||!sin_independent::vgui_layout::Readable(scene,0x414)||extent<0x220||
+       !hologram_writable(parsed,0x220)||!named_scene_precache_ready(b))return 0;
+    const auto h=*b;return named_scene_precache_events_impl(scene,bytes,parsed,extent,h,0);
+}
+int __cdecl named_scene_precache_spawn(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* life,const SceneStopBindings* stop,const NamedScenePrecacheBindings* b) noexcept {
+    if(bytes<0x54a||!hologram_writable(scene,0x54a))return 0;
+    if(hologram_read<unsigned char>(scene,0x549))return 1;
+    if(!life||!scene_stop_ready(stop)||!named_scene_precache_ready(b)||!b->text)return 0;
+    const auto h=*b;const auto l=*life;const auto s=*stop;
+    const auto word=hologram_read<std::uint32_t>(scene,0x394);
+    const char* name="";
+    if(word&&(!h.text(h.context,word,&name)||!name))return -1;
+    // Snapshot the name before cleanup so no borrowed string is invalidated.
+    char path[512]{};
+    if(!choreography_text_copy(path,sizeof(path),name))return -1;
+    const auto clean=scene_entity_cleanup_impl(scene,bytes,&l,&s,&h.load.owned.destruction,&h.load.owned.symbols);
+    if(clean!=1)return clean;
+    std::uint32_t parsed=0;
+    if(named_scene_load_impl(scene,bytes,path,&h.load,&parsed,h.parser)!=1)return -1;
+    hologram_write(scene,0x40c,parsed);
+    if(!parsed)return 1;
+    void* object=nullptr;
+    if(!choreography_storage(h.load.owned.destruction,parsed,0x220,object))return -1;
+    return named_scene_precache_events_impl(scene,bytes,object,0x220,h,0);
+}
+const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
         b->reset.storage&&b->reset.grow&&scene_stop_ready(&b->stop);
@@ -10646,6 +10715,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetNamedScenePrecacheApi=_SiN_GetNamedScenePrecacheApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NamedScenePrecacheApi* __cdecl
+SiN_GetNamedScenePrecacheApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NamedScenePrecacheApi)?&named_scene_precache_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyTextParserApi=_SiN_GetChoreographyTextParserApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyTextParserApi* __cdecl
 SiN_GetChoreographyTextParserApi(std::uint32_t version,std::uint32_t size) noexcept {
