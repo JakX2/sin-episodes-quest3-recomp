@@ -78,6 +78,27 @@ struct SceneManagerRuntimeApi {
     int (__cdecl *query)(SceneManagerSession*,const SceneManagerRuntimeBindings*,void* npc,SceneQueryKind,unsigned filter,unsigned*) noexcept;
 };
 using GetSceneManagerRuntimeApi=const SceneManagerRuntimeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_choreography_export[]="SiN_GetResponseChoreographyApi";
+struct ResponseChoreographyBindings {
+    void* context;
+    // Resolve exp+4 to the current, live NPC. Do not substitute another actor.
+    int (__cdecl *owner)(void*,void* exp,void**) noexcept;
+    // Intern/copy the generated sound name into storage valid for the
+    // engine scene lifetime, even if the originating response is destroyed.
+    int (__cdecl *retain_sound)(void*,const char*,const char**) noexcept;
+    NpcScenePlaybackBindings playback;
+    SceneManagerSession* manager;
+    SceneManagerRuntimeBindings scenes;
+};
+struct ResponseChoreographyApi {
+    std::uint32_t version,size;
+    // The four legacy callbacks sound/scene/stop_scene/scene_blocked are
+    // replaced by native choreography. Other engine services are unchanged.
+    int (__cdecl *dispatch)(void* exp,unsigned bytes,const ResponseDispatchBindings*,const ResponseChoreographyBindings*,const char*,void* response,unsigned extent,unsigned* played) noexcept;
+    int (__cdecl *speak)(void* exp,unsigned bytes,const ResponseSpeakBindings*,const ResponseChoreographyBindings*,const char*,const char* modifiers,unsigned* played) noexcept;
+};
+using GetResponseChoreographyApi=const ResponseChoreographyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 }

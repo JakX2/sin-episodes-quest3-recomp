@@ -465,6 +465,13 @@ int main(int argc,char** argv){
     assert(sceneManagerRuntime&&!getSceneManagerRuntime(0,sizeof(tables::SceneManagerRuntimeApi))&&!getSceneManagerRuntime(1,0));
     tables::test::check_scene_manager_runtime(*sceneManagerRuntime);
     std::puts("PASS native scene manager lazy handle and query lifecycle");
+    const auto getResponseChoreography=reinterpret_cast<tables::GetResponseChoreographyApi>(GetProcAddress(server,tables::response_choreography_export));
+    assert(getResponseChoreography&&!GetProcAddress(client,tables::response_choreography_export));
+    const auto* responseChoreography=getResponseChoreography(1,sizeof(tables::ResponseChoreographyApi));
+    assert(responseChoreography&&!getResponseChoreography(0,sizeof(tables::ResponseChoreographyApi))&&!getResponseChoreography(1,0));
+    tables::test::check_response_choreography(*responseChoreography,*sceneManagerRuntime);
+    std::puts("PASS native response dispatch through choreography and interruption");
+
 
 
 

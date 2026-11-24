@@ -3043,14 +3043,32 @@ int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBind
 }
 const ResponseSelectApi response_select_api{version,sizeof(ResponseSelectApi),&response_select};
 
-int __cdecl response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const char* name,
+int __cdecl npc_scene_play_scene(void*,const char*,float,const NpcScenePlaybackBindings*,float*) noexcept;
+int __cdecl npc_scene_play_sound(void*,const char*,const NpcScenePlaybackBindings*,float*) noexcept;
+int __cdecl scene_manager_runtime_query(SceneManagerSession*,const SceneManagerRuntimeBindings*,void*,SceneQueryKind,unsigned,unsigned*) noexcept;
+bool response_choreography_ready(const ResponseChoreographyBindings* c) noexcept {
+    return c&&c->owner&&c->retain_sound&&c->manager;
+}
+bool response_choreography_owner(const ResponseChoreographyBindings& c,void* exp,void*& owner) noexcept {
+    owner=nullptr;
+    return c.owner(c.context,exp,&owner)&&owner&&
+        static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(owner))==hologram_read<std::uint32_t>(exp,4);
+}
+int response_dispatch_impl(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const ResponseChoreographyBindings* c,const char* name,
                               void* response,unsigned extent,unsigned* played) noexcept {
     if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!name||!response||extent<0x124||
        !sin_independent::vgui_layout::Readable(response,0x124)||!played||!hologram_writable(played,sizeof(*played))||
-       !b||!b->sample||!b->speaking||!b->force_log||!b->stop_scene||!b->interrupt||!b->scene_blocked||
-       !b->refused_log||!b->sound||!b->scene||!b->sound_duration||!b->emit_raw||!b->note_duration||
+       !b||!b->sample||!b->speaking||!b->force_log||!b->interrupt||
+       (c?!response_choreography_ready(c):(!b->stop_scene||!b->scene_blocked||!b->sound||!b->scene))||
+       !b->refused_log||!b->sound_duration||!b->emit_raw||!b->note_duration||
        !b->sentence||!b->print_enabled||!b->print||!b->clock||!b->debug_success||!b->destroy||!b->record)return 0;
     const auto h=*b;const auto* text=static_cast<const char*>(response)+4;
+    const auto choreography=c?*c:ResponseChoreographyBindings{};
+    const auto query=[&](SceneQueryKind kind,unsigned* result){
+        void* npc=nullptr;
+        return response_choreography_owner(choreography,exp,npc)&&
+            scene_manager_runtime_query(choreography.manager,&choreography.scenes,npc,kind,1,result)==1;
+    };
     // Original inline char buffer ends at +84. Reject a malformed host
     // response without forwarding an unterminated string.
     const auto finish=[&](bool ok){if(!h.destroy(h.context,response)||!ok)return -1;*played=0;return 1;};
@@ -3062,9 +3080,11 @@ int __cdecl response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBin
     unsigned busy=0;
     if(!h.speaking(h.context,exp,&busy))return finish(false);
     if(busy&&*name){
-        unsigned blocked=0;
-        if(!h.force_log(h.context,exp,name)||!h.stop_scene(h.context,exp,1)||!h.interrupt(h.context,exp)||
-           !h.scene_blocked(h.context,exp,1,&blocked))return finish(false);
+        unsigned blocked=0,cancelled=0;
+        if(!h.force_log(h.context,exp,name)||
+           !(c?query(SceneQueryKind::Cancel,&cancelled):h.stop_scene(h.context,exp,1)!=0)||
+           !h.interrupt(h.context,exp)||
+           !(c?query(SceneQueryKind::Active,&blocked):h.scene_blocked(h.context,exp,1,&blocked)!=0))return finish(false);
         if(blocked){if(!h.refused_log(h.context,exp,name))return finish(false);return finish(true);}
     }
     const auto type=static_cast<ResponseKind>(hologram_read<unsigned>(response,0));
@@ -3076,7 +3096,12 @@ int __cdecl response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBin
                    !h.note_duration(h.context,exp,duration,delay))return finish(false);
                 success=true; // raw path does not test duration
             }else{
-                if(!h.sound(h.context,exp,text,&duration))return finish(false);
+                if(c){
+                    void* npc=nullptr;const char* retained=nullptr;
+                    if(!response_choreography_owner(choreography,exp,npc)||
+                       !choreography.retain_sound(choreography.context,text,&retained)||!retained||
+                       npc_scene_play_sound(npc,retained,&choreography.playback,&duration)!=1)return finish(false);
+                }else if(!h.sound(h.context,exp,text,&duration))return finish(false);
                 success=duration>0;
                 if(success&&!h.note_duration(h.context,exp,duration,delay))return finish(false);
             }
@@ -3088,7 +3113,11 @@ int __cdecl response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBin
             break;
         }
         case ResponseKind::Scene:
-            if(!h.scene(h.context,exp,text,delay,&duration))return finish(false);
+            if(c){
+                void* npc=nullptr;
+                if(!response_choreography_owner(choreography,exp,npc)||
+                   npc_scene_play_scene(npc,text,delay,&choreography.playback,&duration)!=1)return finish(false);
+            }else if(!h.scene(h.context,exp,text,delay,&duration))return finish(false);
             success=duration>0;
             if(success&&!h.note_duration(h.context,exp,duration,delay))return finish(false);
             break;
@@ -3108,6 +3137,15 @@ int __cdecl response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBin
     // Record callback now owns response. No duplicate free on failure.
     if(!h.record(h.context,exp,name,response))return -1;
     *played=1;return 1;
+}
+int __cdecl response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const char* name,
+                              void* response,unsigned extent,unsigned* played) noexcept {
+    return response_dispatch_impl(exp,bytes,b,nullptr,name,response,extent,played);
+}
+int __cdecl response_choreography_dispatch(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const ResponseChoreographyBindings* c,
+                                           const char* name,void* response,unsigned extent,unsigned* played) noexcept {
+    if(!response_choreography_ready(c))return 0;
+    return response_dispatch_impl(exp,bytes,b,c,name,response,extent,played);
 }
 const ResponseDispatchApi response_dispatch_api{version,sizeof(ResponseDispatchApi),&response_dispatch};
 int __cdecl response_speaking(const void* exp,unsigned bytes,float now,unsigned* result) noexcept {
@@ -3186,7 +3224,7 @@ int __cdecl response_record(void* exp,unsigned bytes,const ResponseRecordBinding
     return 1;
 }
 const ResponseRecordApi response_record_api{version,sizeof(ResponseRecordApi),&response_record};
-int __cdecl response_speak(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const char* name,const char* mods,unsigned* played) noexcept {
+int response_speak_impl(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const ResponseChoreographyBindings* c,const char* name,const char* mods,unsigned* played) noexcept {
     if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!b||!b->trace_selected||
        !name||!played||!hologram_writable(played,sizeof(*played)))return 0;
     const auto h=*b;void* response=nullptr;unsigned extent=0;
@@ -3195,11 +3233,20 @@ int __cdecl response_speak(void* exp,unsigned bytes,const ResponseSpeakBindings*
     if(!response){*played=0;return 1;}
     const auto drop=[&](){(void)h.selection.destroy(h.selection.context,response);return -1;};
     if(!h.trace_selected(h.context,exp,name))return drop();
-    const auto dispatched=response_dispatch(exp,bytes,&h.dispatch,name,response,extent,played);
+    const auto dispatched=response_dispatch_impl(exp,bytes,&h.dispatch,c,name,response,extent,played);
     // A rejected dispatch did not take ownership. Other statuses consumed it.
     return dispatched==0?drop():dispatched;
 }
+int __cdecl response_speak(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const char* name,const char* mods,unsigned* played) noexcept {
+    return response_speak_impl(exp,bytes,b,nullptr,name,mods,played);
+}
+int __cdecl response_choreography_speak(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const ResponseChoreographyBindings* c,
+                                       const char* name,const char* mods,unsigned* played) noexcept {
+    if(!response_choreography_ready(c))return 0;
+    return response_speak_impl(exp,bytes,b,c,name,mods,played);
+}
 const ResponseSpeakApi response_speak_api{version,sizeof(ResponseSpeakApi),&response_speak};
+const ResponseChoreographyApi response_choreography_api{version,sizeof(ResponseChoreographyApi),&response_choreography_dispatch,&response_choreography_speak};
 int response_repeat_row(void* exp,const ResponseRepeatBindings& b,const char* name,void*& row) noexcept {
     int index=-1;
     if(!b.lookup(b.context,exp,name,&index)||index<-1)return -1;
@@ -8508,6 +8555,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetResponseChoreographyApi=_SiN_GetResponseChoreographyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseChoreographyApi* __cdecl
+SiN_GetResponseChoreographyApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseChoreographyApi)?&response_choreography_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetSceneManagerRuntimeApi=_SiN_GetSceneManagerRuntimeApi")
