@@ -160,6 +160,12 @@ int main(int argc,char** argv){
     assert(registry&&!getRegistry(0,sizeof(tables::ClientRegistryApi))&&!getRegistry(1,0));
     tables::test::check_client_registry(*registry);
     std::puts("PASS native client entity registry, active list, handle serial and notifications");
+    const auto getInit=reinterpret_cast<tables::GetClientInitApi>(GetProcAddress(client,tables::client_init_export));
+    assert(getInit&&!GetProcAddress(server,tables::client_init_export));
+    const auto* init=getInit(1,sizeof(tables::ClientInitApi));
+    assert(init&&!getInit(0,sizeof(tables::ClientInitApi))&&!getInit(1,0));
+    tables::test::check_client_init(*registry,*init);
+    std::puts("PASS native client slot37 initialization, map traversal and rollback");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

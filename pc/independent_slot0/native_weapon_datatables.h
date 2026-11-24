@@ -506,4 +506,45 @@ struct ClientRegistryApi {
     int (__cdecl *state)(const ClientRegistryView*,ClientRegistryState*) noexcept;
 };
 using GetClientRegistryApi=const ClientRegistryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase710: recovered shared client slot37 initialization sequence.
+// Only the original networked classes with the Phase708 object sizes.
+// The host supplies collision registration and the live interpolation
+// duration policy; no HL2 physics or model implementation is included.
+inline constexpr char client_init_export[]="SiN_GetClientEntityInitApi";
+struct ClientInterpEntry {
+    std::uint32_t kind;
+    void* data;
+    void* watcher;
+};
+struct ClientInterpMap {
+    const ClientInterpEntry* entries;
+    int capacity,grow,count;
+    const ClientInterpEntry* elements;
+    std::uint32_t reserved;
+    const ClientInterpMap* parent;
+};
+static_assert(sizeof(ClientInterpEntry)==12&&sizeof(ClientInterpMap)==28&&
+    offsetof(ClientInterpMap,count)==12&&offsetof(ClientInterpMap,parent)==24);
+using AttachClientCollision=int (__cdecl *)(void* context,void* collision_subobject) noexcept;
+using SampleInterpDuration=int (__cdecl *)(void* context,void* object,int flags,float* duration) noexcept;
+enum class ClientInitStage:int {CollisionAttempted=1,InterpolationAttempted=2};
+using RollbackClientInit=void (__cdecl *)(void* context,void* object,ClientInitStage stage) noexcept;
+struct ClientInitBindings {
+    ClientRegistryView* registry;
+    void* context;
+    AttachClientCollision attach_collision;
+    SampleInterpDuration duration;
+    RollbackClientInit rollback;
+};
+struct ClientInitApi {
+    std::uint32_t version,size;
+    // 1 success, 0 rejected/rolled back, -1 rollback could not remove
+    // the registry entry (host must retain object and recover handle).
+    // On success or retained failure, writes packed handle to output.
+    // Host callbacks must not mutate registry or invalidate entity/vtables.
+    int (__cdecl *initialize)(const ClientInitBindings*,unsigned slot,void* object,
+        int index,int serial,std::uint32_t* handle) noexcept;
+};
+using GetClientInitApi=const ClientInitApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

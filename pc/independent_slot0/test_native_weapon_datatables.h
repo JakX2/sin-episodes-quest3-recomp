@@ -1257,4 +1257,117 @@ inline void check_client_registry(const ClientRegistryApi& api){
     assert(api.destroy(&view)&&!view.handle&&!view.entries);
 }
 
+struct InitFixture {
+    const ClientRegistryApi* registry=nullptr;
+    ClientRegistryView* view=nullptr;
+    alignas(4) unsigned char object[0x1250]{};
+    unsigned events[32]{},event_count=0;
+    std::uint32_t handle=0;
+    unsigned fail=0;
+    const ClientInterpMap* map=nullptr;
+    ClientInitStage rollback_stage=ClientInitStage::CollisionAttempted;
+    void event(unsigned e){assert(event_count<32);events[event_count++]=e;}
+};
+struct InitWatcher {
+    void** table;
+    InitFixture* fixture;
+    unsigned id;
+    void* data=nullptr;
+    int kind=0;
+    float duration=0;
+};
+inline InitFixture& init_fixture(void* object){
+    InitFixture* f=nullptr;std::memcpy(&f,static_cast<unsigned char*>(object)+0x10,4);return *f;
+}
+inline void __fastcall init_set_handle(void* object,void*,const std::uint32_t* handle){
+    auto& f=init_fixture(object);f.event(*handle==0xffffffffu?90u:1u);
+    std::memcpy(static_cast<unsigned char*>(object)+0xb4,handle,4);
+}
+inline void* __fastcall init_primary(void* secondary,void*){
+    return static_cast<unsigned char*>(secondary)-4;
+}
+inline const ClientInterpMap* __fastcall init_map(void* object,void*){
+    auto& f=init_fixture(object);f.event(4);return f.map;
+}
+inline void __fastcall init_watcher_setup(void* object,void*,void* data,int kind){
+    auto& w=*static_cast<InitWatcher*>(object);w.fixture->event(10+w.id);
+    w.data=data;w.kind=kind;
+}
+inline int __fastcall init_watcher_flags(void* object,void*){
+    auto& w=*static_cast<InitWatcher*>(object);w.fixture->event(20+w.id);
+    return static_cast<int>(w.id);
+}
+inline void __fastcall init_watcher_duration(void* object,void*,float duration){
+    auto& w=*static_cast<InitWatcher*>(object);w.fixture->event(40+w.id);w.duration=duration;
+}
+inline void* init_primary_table[18]{};
+inline void* init_secondary_table[1]{reinterpret_cast<void*>(&init_primary)};
+inline void* init_watcher_table[6]{reinterpret_cast<void*>(&init_watcher_setup),
+    reinterpret_cast<void*>(&init_watcher_duration),nullptr,nullptr,nullptr,reinterpret_cast<void*>(&init_watcher_flags)};
+inline void __cdecl init_added(void* context,void* object,std::uint32_t handle) noexcept {
+    auto& f=*static_cast<InitFixture*>(context);f.event(2);f.handle=handle;
+    assert(object==f.object&&f.registry->resolve(f.view,handle)==object);
+}
+inline void __cdecl init_removed(void* context,void* object,std::uint32_t handle) noexcept {
+    auto& f=*static_cast<InitFixture*>(context);f.event(91);
+    assert(object==f.object&&handle==f.handle&&f.registry->resolve(f.view,handle)==object);
+}
+inline int __cdecl init_collision(void* context,void* collision) noexcept {
+    auto& f=*static_cast<InitFixture*>(context);f.event(3);
+    assert(collision==f.object+0x16c&&f.registry->resolve(f.view,f.handle)==f.object);
+    assert(!f.registry->remove(f.view,f.handle));
+    return f.fail!=1;
+}
+inline int __cdecl init_duration(void* context,void* object,int flags,float* result) noexcept {
+    auto& f=*static_cast<InitFixture*>(context);f.event(30+static_cast<unsigned>(flags));
+    assert(object==f.object);
+    if(f.fail==2&&flags==2)return 0;
+    *result=static_cast<float>(flags)*0.125f;return 1;
+}
+inline void __cdecl init_rollback(void* context,void* object,ClientInitStage stage) noexcept {
+    auto& f=*static_cast<InitFixture*>(context);f.event(80);f.rollback_stage=stage;
+    assert(object==f.object&&f.registry->resolve(f.view,f.handle)==object);
+}
+inline void check_client_init(const ClientRegistryApi& registry,const ClientInitApi& api){
+    InitFixture f;ClientRegistryView view{};f.registry=&registry;f.view=&view;
+    std::uint16_t seeds[client_network_limit]{};
+    ClientRegistryBindings rb{seeds,&f,&init_added,&init_removed};
+    assert(registry.create(&rb,&view));
+    init_primary_table[1]=reinterpret_cast<void*>(&init_set_handle);
+    init_primary_table[17]=reinterpret_cast<void*>(&init_map);
+    void** pv=init_primary_table;void** sv=init_secondary_table;
+    std::memcpy(f.object,&pv,4);std::memcpy(f.object+4,&sv,4);
+    InitFixture* fp=&f;std::memcpy(f.object+0x10,&fp,4);
+    int data[2]={123,456};
+    InitWatcher first{init_watcher_table,&f,1},second{init_watcher_table,&f,2};
+    ClientInterpEntry a{7,&data[0],&first},b{9,&data[1],&second};
+    ClientInterpMap base{&b,1,0,1,&b,0,nullptr};
+    ClientInterpMap derived{&a,1,0,1,&a,0,&base};f.map=&derived;
+    ClientInitBindings ib{&view,&f,&init_collision,&init_duration,&init_rollback};
+    std::uint32_t handle=0;
+    assert(api.initialize(&ib,ClPlayer,f.object,5,17,&handle)==1&&handle==0x11005);
+    const unsigned expected[]={1,2,3,4,11,21,31,41,12,22,32,42};
+    assert(f.event_count==12&&!std::memcmp(f.events,expected,sizeof(expected)));
+    int index=0;std::memcpy(&index,f.object+0x50,4);
+    assert(index==5&&first.data==&data[0]&&second.data==&data[1]&&first.kind==7&&second.kind==9&&
+        first.duration==0.125f&&second.duration==0.25f);
+    assert(registry.remove(&view,handle)&&f.events[12]==90&&f.events[13]==91);
+    f.event_count=0;f.fail=1;handle=0xdeadbeefu;
+    assert(!api.initialize(&ib,ClPlayer,f.object,6,18,&handle)&&handle==0xdeadbeefu);
+    const unsigned failed[]={1,2,3,80,90,91};
+    assert(f.event_count==6&&!std::memcmp(f.events,failed,sizeof(failed))&&
+        f.rollback_stage==ClientInitStage::CollisionAttempted&&!registry.resolve(&view,f.handle));
+    f.event_count=0;f.fail=2;
+    assert(!api.initialize(&ib,ClPlayer,f.object,6,18,&handle)&&f.rollback_stage==ClientInitStage::InterpolationAttempted);
+    assert(f.event_count==14&&f.events[10]==32&&f.events[11]==80&&f.events[12]==90&&f.events[13]==91);
+    std::memcpy(&index,f.object+0x50,4);assert(index==5); // last successful index remains
+    f.fail=0;f.event_count=0;base.parent=&derived;
+    assert(!api.initialize(&ib,ClPlayer,f.object,6,18,&handle));
+    const unsigned malformed[]={1,2,3,4,80,90,91};
+    assert(f.event_count==7&&!std::memcmp(f.events,malformed,sizeof(malformed)));
+    base.parent=nullptr;f.event_count=0;f.map=nullptr;
+    assert(api.initialize(&ib,ClHand,f.object,7,19,&handle)==1&&f.event_count==4);
+    assert(registry.remove(&view,handle)&&registry.destroy(&view));
+}
+
 }
