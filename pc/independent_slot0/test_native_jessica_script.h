@@ -266,4 +266,62 @@ inline void check_response_select(const ResponseSelectApi& api){
     f.fail=11;assert(run()==-1&&out==&f&&n==99);f.expect({1,2,3,5,6,7,8,11,10});
 }
 
+
+struct ResponseDispatchFixture {
+    alignas(4) unsigned char exp[0x7c]{},response[0x124]{};
+    ResponseDispatchBindings b{};
+    unsigned events[32]{},count=0,fail=0,played=99,busy=0,blocked=0,enabled=1;
+    int sentence_index=0,level=80;
+    float duration=2,delay=0,now=10;
+    void record(unsigned v){assert(count<32);events[count++]=v;}
+    void expect(std::initializer_list<unsigned> l){assert(count==l.size()&&!std::memcmp(events,l.begin(),count*4));count=0;}
+    void put(unsigned off,unsigned v){std::memcpy(response+off,&v,4);}
+    float last(){float v=0;std::memcpy(&v,exp+0x78,4);return v;}
+    static ResponseDispatchFixture& get(void* p,void* e){auto& f=*static_cast<ResponseDispatchFixture*>(p);assert(e==f.exp);return f;}
+    static void text_ok(const char* t){assert(!std::strcmp(t,"test_response"));}
+    ResponseDispatchFixture(){
+        std::strcpy(reinterpret_cast<char*>(response+4),"test_response");b.context=this;
+        b.sample=[](void* p,const void* interval,float* out) noexcept -> int{auto& f=*static_cast<ResponseDispatchFixture*>(p);f.record(1);assert(interval==f.response+0x90);*out=f.delay;return f.fail!=1;};
+        b.speaking=[](void* p,void* e,unsigned* out) noexcept -> int{auto& f=get(p,e);f.record(2);*out=f.busy;return f.fail!=2;};
+        b.force_log=[](void* p,void* e,const char* n) noexcept -> int{auto& f=get(p,e);f.record(3);assert(!std::strcmp(n,"TLK_IDLE"));return f.fail!=3;};
+        b.stop_scene=[](void* p,void* e,int n) noexcept -> int{auto& f=get(p,e);f.record(4);assert(n==1);return f.fail!=4;};
+        b.interrupt=[](void* p,void* e) noexcept -> int{auto& f=get(p,e);f.record(5);return f.fail!=5;};
+        b.scene_blocked=[](void* p,void* e,int n,unsigned* out) noexcept -> int{auto& f=get(p,e);f.record(6);assert(n==1);*out=f.blocked;return f.fail!=6;};
+        b.refused_log=[](void* p,void* e,const char* n) noexcept -> int{auto& f=get(p,e);f.record(7);assert(!std::strcmp(n,"TLK_IDLE"));return f.fail!=7;};
+        b.sound=[](void* p,void* e,const char* t,float* out) noexcept -> int{auto& f=get(p,e);f.record(8);text_ok(t);*out=f.duration;return f.fail!=8;};
+        b.scene=[](void* p,void* e,const char* t,float d,float* out) noexcept -> int{auto& f=get(p,e);f.record(9);text_ok(t);assert(d==f.delay);*out=f.duration;return f.fail!=9;};
+        b.sound_duration=[](void* p,void* e,const char* t,float* out) noexcept -> int{auto& f=get(p,e);f.record(10);text_ok(t);*out=f.duration;return f.fail!=10;};
+        b.emit_raw=[](void* p,void* e,const char* t,int a,int z) noexcept -> int{auto& f=get(p,e);f.record(11);text_ok(t);assert(!a&&!z);return f.fail!=11;};
+        b.note_duration=[](void* p,void* e,float d,float delay) noexcept -> int{auto& f=get(p,e);f.record(12);assert(d==f.duration&&delay==f.delay);return f.fail!=12;};
+        b.sentence=[](void* p,void* e,const char* t,float d,float v,int level,int a,int* out) noexcept -> int{auto& f=get(p,e);f.record(13);text_ok(t);assert(d==f.delay&&v==1.f&&level==f.level&&!a);*out=f.sentence_index;return f.fail!=13;};
+        b.print_enabled=[](void* p,unsigned* out) noexcept -> int{auto& f=*static_cast<ResponseDispatchFixture*>(p);f.record(14);*out=f.enabled;return f.fail!=14;};
+        b.print=[](void* p,void* e,const char* t) noexcept -> int{auto& f=get(p,e);f.record(15);text_ok(t);return f.fail!=15;};
+        b.clock=[](void* p,float* out) noexcept -> int{auto& f=*static_cast<ResponseDispatchFixture*>(p);f.record(16);*out=f.now;return f.fail!=16;};
+        b.debug_success=[](void* p,void* e,const char* n,const char* t) noexcept -> int{auto& f=get(p,e);f.record(17);assert(n&&f.last()==f.now);text_ok(t);return f.fail!=17;};
+        b.destroy=[](void* p,void* r) noexcept -> int{auto& f=*static_cast<ResponseDispatchFixture*>(p);f.record(18);assert(r==f.response);return f.fail!=18;};
+        b.record=[](void* p,void* e,const char* n,void* r) noexcept -> int{auto& f=get(p,e);f.record(19);assert(n&&r==f.response&&f.last()==f.now);return f.fail!=19;};
+    }
+    int run(const ResponseDispatchApi& api,ResponseKind k,const char* name="TLK_IDLE"){put(0,static_cast<unsigned>(k));played=99;return api.dispatch(exp,sizeof(exp),&b,name,response,sizeof(response),&played);}
+};
+inline void check_response_dispatch(const ResponseDispatchApi& api){
+    ResponseDispatchFixture f;
+    auto run=[&](ResponseKind k){return f.run(api,k);};
+    assert(run(ResponseKind::Speak)==1&&f.played==1&&f.last()==10);f.expect({2,8,12,16,17,19});
+    f.duration=0;assert(run(ResponseKind::Speak)==1&&!f.played);f.expect({2,8,18});
+    f.put(0x88,0x20);assert(run(ResponseKind::Speak)==1&&f.played);f.expect({2,10,11,12,16,17,19});
+    f.put(0x88,0x11);f.put(0xa0,91);f.level=91;f.delay=.5f;
+    f.sentence_index=-1;assert(run(ResponseKind::Sentence)==1&&!f.played);f.expect({1,2,13,18});
+    f.sentence_index=0;assert(run(ResponseKind::Sentence)==1&&f.played);f.expect({1,2,13,16,17,19});
+    f.duration=2;assert(run(ResponseKind::Scene)==1&&f.played);f.expect({1,2,9,12,16,17,19});
+    f.duration=-1;assert(run(ResponseKind::Scene)==1&&!f.played);f.expect({1,2,9,18});
+    f.enabled=0;assert(run(ResponseKind::Print)==1&&!f.played);f.expect({1,2,14,18});
+    f.enabled=1;assert(run(ResponseKind::Print)==1&&f.played);f.expect({1,2,14,15,16,19});
+    assert(run(ResponseKind::Response)==1&&!f.played);f.expect({1,2,18});
+    f.busy=1;f.blocked=1;assert(run(ResponseKind::Speak)==1&&!f.played);f.expect({1,2,3,4,5,6,7,18});
+    f.blocked=0;f.duration=2;assert(run(ResponseKind::Speak)==1&&f.played);f.expect({1,2,3,4,5,6,8,12,16,17,19});
+    assert(f.run(api,ResponseKind::Speak,"")==1&&f.played);f.expect({1,2,8,12,16,17,19});
+    f.busy=0;f.fail=19;f.now=20;assert(run(ResponseKind::Speak)==-1&&f.played==99&&f.last()==20);f.expect({1,2,8,12,16,17,19});
+    f.fail=12;assert(run(ResponseKind::Speak)==-1&&f.played==99);f.expect({1,2,8,12,18});
+}
+
 }
