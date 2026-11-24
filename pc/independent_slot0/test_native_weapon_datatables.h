@@ -1049,8 +1049,96 @@ inline void check_entity_graph(const BaseEntitySendApi& sa,const BaseEntityRecvA
 }
 
 
+
+struct HologramFixture {
+    HologramControl* ctrl=nullptr;
+    float now=0;
+    unsigned events[32]{},count=0,fail=0;
+    bool push(unsigned event){
+        assert(count<32&&ctrl&&ctrl->busy);
+        events[count++]=event;return event!=fail;
+    }
+};
+inline int __cdecl holo_clock(void* context,float* now) noexcept {
+    auto& f=*static_cast<HologramFixture*>(context);*now=f.now;return f.push(0x2000);
+}
+inline int __cdecl holo_dirty(void* context,void* object,unsigned offset) noexcept {
+    auto& f=*static_cast<HologramFixture*>(context);assert(object==f.ctrl->object);return f.push(offset);
+}
+inline int __cdecl holo_audio(void* context,void* object,HologramSound s) noexcept {
+    auto& f=*static_cast<HologramFixture*>(context);assert(object==f.ctrl->object);return f.push(0x3000+static_cast<unsigned>(s));
+}
+inline int __cdecl holo_base(void* context,void* object,HologramBaseCall which) noexcept {
+    auto& f=*static_cast<HologramFixture*>(context);assert(object==f.ctrl->object);return f.push(0x4000+static_cast<unsigned>(which));
+}
+inline void check_hologram_behavior(const HologramServerApi& sa,const HologramClientApi& ca,
+        const ExtraSendView& sv,const ExtraRecvView& rv){
+    alignas(4) unsigned char server[0x101c]{},client[0xd88]{},second[0xd88]{};
+    HologramControl control{server,sizeof(server)};
+    HologramFixture f{&control,10.0f};
+    HologramServerBindings sb{&f,&holo_clock,&holo_dirty,&holo_audio,&holo_base};
+    const auto set=[](unsigned char* p,unsigned off,std::uint32_t val){std::memcpy(p+off,&val,4);};
+    const auto read=[](unsigned char* p,unsigned off){std::uint32_t val=0;std::memcpy(&val,p+off,4);return val;};
+    const auto timer=[&](){float v=0;std::memcpy(&v,server+0x1018,4);return v;};
+    const auto call=[&](HologramCommand cmd,float duration=0.0f){f.count=0;return sa.dispatch(&control,&sb,cmd,duration);};
+    const auto expect=[&](std::initializer_list<unsigned> seq){
+        assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*sizeof(unsigned)));
+    };
+    const auto update=[&](){
+        auto* st=sv.tables[ExHologram];auto* ct=rv.tables[ExHologram];
+        for(unsigned i=1;i<3;++i){
+            auto& a=st->props[i];auto& b=ct->props[i];s::DVariant v{};
+            a.scalarProxy(&a,server,server+a.offset,&v,0,1);
+            RecvData d{&b,v,0,1};b.proxy(&d,client,client+b.offset);
+        }
+    };
+    set(server,0x3b0,1);
+    assert(call(HologramCommand::On)==1&&read(server,0x1014)==1&&timer()==12&&read(server,0x3b0)==0);
+    expect({0x1014,0x2000,0x1018,0x3b0,0x3000,0x3003});
+    update();assert(read(client,0xd7c)==1&&read(client,0xd80)==read(server,0x1018));
+    HologramFlicker shared{};unsigned visible=9;
+    assert(ca.visibility(client,sizeof(client),10,&shared,&visible)&&visible==0&&read(client,0xd74)==0);
+    assert(ca.visibility(client,sizeof(client),10.3f,&shared,&visible)&&visible==1&&read(client,0xd74)==1);
+    set(second,0xd7c,1);set(second,0xd80,read(client,0xd80));
+    assert(ca.visibility(second,sizeof(second),10.3f,&shared,&visible)&&visible==0&&read(second,0xd74)==1);
+    assert(ca.visibility(client,sizeof(client),12,&shared,&visible)&&visible==1&&read(client,0xd74)==2);
+    // Large time jump consumes one threshold, not the rest of the table.
+    assert(ca.visibility(client,sizeof(client),20,&shared,&visible)&&read(client,0xd74)==3);
+    f.now=12;assert(call(HologramCommand::Think)==1&&read(server,0x1014)==1);expect({0x4000,0x2000});
+    f.now=12.125f;assert(call(HologramCommand::Think)==1&&read(server,0x1014)==2&&timer()==12);
+    expect({0x4000,0x2000,0x1014,0x3002});
+    update();assert(ca.visibility(client,sizeof(client),f.now,&shared,&visible)&&visible==1&&read(client,0xd74)==3);
+    assert(call(HologramCommand::Activate)==1);expect({0x4001,0x3002});
+    f.now=20;assert(call(HologramCommand::Pulse,0.5f)==1&&read(server,0x1014)==4&&timer()==20.5f&&
+        read(server,0x3b0)==1&&read(server,0x1c)==13);
+    expect({0x1014,0x2000,0x1018,0x3b0,0x1c});
+    assert(call(HologramCommand::Pulse,1)==1&&!f.count&&timer()==20.5f);
+    f.now=20.5f;assert(call(HologramCommand::Think)==1&&read(server,0x1014)==4);
+    f.now=21;assert(call(HologramCommand::Think)==1&&read(server,0x1014)==2&&timer()==21&&
+        read(server,0x3b0)==0&&read(server,0x1c)==0);
+    expect({0x4000,0x2000,0x1014,0x2000,0x1018,0x3b0,0x1c});
+    assert(call(HologramCommand::Off)==1&&read(server,0x1014)==3&&timer()==22);
+    expect({0x1014,0x2000,0x1018,0x3003,0x3001});
+    update();
+    // Shutdown uses a one-second progress scale and preserves cursor.
+    assert(ca.visibility(client,sizeof(client),21.1f,&shared,&visible)&&read(client,0xd74)==3);
+    assert(ca.visibility(client,sizeof(client),21.5f,&shared,&visible)&&read(client,0xd74)==4);
+    f.now=22.01f;assert(call(HologramCommand::Think)==1&&read(server,0x1014)==0&&timer()==22);
+    expect({0x4000,0x2000,0x1014});
+    update();assert(ca.visibility(client,sizeof(client),f.now,&shared,&visible)&&visible==0);
+    assert(call(HologramCommand::ResetAfterSpawn)==1&&timer()==0);expect({0x1018});
+    assert(call(HologramCommand::ResetAfterSpawn)==1&&!f.count);
+    f.fail=0x3000;assert(call(HologramCommand::On)==-1&&control.blocked&&read(server,0x1014)==1);
+    expect({0x1014,0x2000,0x1018,0x3000});
+    assert(call(HologramCommand::On)==0&&!f.count&&sa.acknowledge(&control)&&!control.blocked);
+    f.fail=0;assert(call(HologramCommand::On)==1);expect({0x2000,0x3000,0x3003});
+    set(client,0xd74,0xffffffffu);set(client,0xd7c,3);visible=9;
+    assert(!ca.visibility(client,sizeof(client),0,&shared,&visible)&&visible==9);
+    set(client,0xd74,19);assert(ca.visibility(client,sizeof(client),100,&shared,&visible)&&read(client,0xd74)==19);
+}
 inline void check_extra_entities(const ExtraSendApi& sa,const ExtraRecvApi& ra,
-        const AggregateSendApi& asa,const AggregateRecvApi& ara,AggregateSendView& sb,AggregateRecvView& rb){
+        const AggregateSendApi& asa,const AggregateRecvApi& ara,AggregateSendView& sb,AggregateRecvView& rb,
+        const HologramServerApi& hsa,const HologramClientApi& hra){
     ExtraSendBindings bs{&sb};ExtraRecvBindings br{&rb,{}};
     ExtraSendView sv{};ExtraRecvView rv{};
     assert(!ra.create(&br,&rv)&&!rv.handle);
@@ -1096,12 +1184,13 @@ inline void check_extra_entities(const ExtraSendApi& sa,const ExtraRecvApi& ra,
     assert(rv.tables[ExGrunt]->props[2].offset==0xd78);
     assert(sv.tables[ExHologram]->props[1].bits==32&&rv.tables[ExHologram]->props[1].offset==0xd7c);
     assert(sv.tables[ExShockwave]->props[1].flags==2&&rv.tables[ExShockwave]->props[1].offset==0xd64);
+    check_hologram_behavior(hsa,hra,sv,rv);
     sv.tables[ExAI]->written=true;rv.records[ExElite].class_id=7;
     assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
     sv.tables[ExAI]->written=false;rv.records[ExElite].class_id=0;
     assert(sa.destroy(&sv)&&ra.destroy(&rv)&&!sv.handle&&!rv.handle);
 }
-inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era){
+inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era,const HologramServerApi& hsa,const HologramClientApi& hra){
     s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
     RecvProp rp[8];RecvTable rc{rp,8,nullptr,"DT_CollisionProperty"};
     NativeOwner owner;sin_independent::EntityHandleEntry entries[64]{};
@@ -1122,7 +1211,7 @@ inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& r
     assert(!sa.create(&sbad,&sv)&&!sv.handle&&!sv.class_head&&!sv.tables[0]);
     assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
     assert(sv.class_count==15&&rv.class_count==15&&!sa.create(&sb,&sv)&&!ra.create(&rb,&rv));
-    check_extra_entities(esa,era,sa,ra,sv,rv);
+    check_extra_entities(esa,era,sa,ra,sv,rv,hsa,hra);
     for(unsigned i=0;i<aggregate_table_count;++i){
         assert(sv.tables[i]&&rv.tables[i]&&std::strcmp(sv.tables[i]->name,rv.tables[i]->name)==0);
         for(unsigned j=0;j<i;++j)assert(sv.tables[i]!=sv.tables[j]&&rv.tables[i]!=rv.tables[j]);
