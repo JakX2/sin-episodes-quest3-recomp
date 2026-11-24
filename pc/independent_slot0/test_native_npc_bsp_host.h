@@ -28,6 +28,13 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     const npc::NpcSpawnApi& spawn;
     npc::NpcMapBindings b{};
     npc::JessicaInteractionBindings ib{};
+    npc::NpcMapDialogueBindings dialogue{};
+    npc::TalkCooldownState cooldown{};
+    alignas(4) unsigned char selected_response[0x124]{};
+    const char* selected_concept=nullptr;
+    unsigned modifier_calls=0,criteria_ends=0,other_observes=0,dialogue_criteria=0;
+    bool dialogue_missing=false;
+    int response_system=0,criteria_storage=0;
     const npc::ResponsePolicyApi& response;
     npc::ResponseHistoryBindings history{};
     alignas(4) unsigned char greeting_row[0x1c]{};
@@ -92,6 +99,77 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
         b.count.speak=[](void* p,void*,const char* name,const npc::CountCriteria*,unsigned* played) noexcept -> int{
             auto& f=*static_cast<NpcBspShell*>(p);assert(!std::strcmp(name,"TLK_INTERROGATE_COCKY"));++f.speeches;*played=0;return 1;
         };
+        b.scheduler.observe_other=[](void* p,std::uint32_t active,const void* obs,unsigned bytes) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(active==0x12345678&&obs==f.player+0xc40&&bytes>=0x5e9&&f.slots[3].control.busy);
+            ++f.other_observes;return 1;
+        };
+        // Both real observation adapters run the selection wrapper using
+        // their actual constructed expeditors. Synthetic rule engine
+        // returns no match; Phase788 separately verifies playback.
+        npc::ResponseSpeakBindings speak{};
+        speak.context=this;speak.selection.context=this;
+        speak.selection.system=[](void* p,void* exp,void** out) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(exp==f.expeditor||exp==f.jessica_expeditor);*out=&f.response_system;return 1;
+        };
+        speak.selection.begin_criteria=[](void* p,void** out) noexcept -> int{*out=&static_cast<NpcBspShell*>(p)->criteria_storage;return 1;};
+        speak.selection.add=[](void* p,void* c,const char* key,const char* name,float w) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(c==&f.criteria_storage&&!std::strcmp(key,"concept")&&w==5.f);
+            f.selected_concept=name;return 1;
+        };
+        speak.selection.modifiers=[](void* p,void* c,const char* mods,float w) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(c==&f.criteria_storage&&!std::strcmp(mods,"region:head")&&w==5.f);++f.modifier_calls;return 1;
+        };
+        speak.selection.npc_criteria=[](void*,void*,void*) noexcept -> int{return 1;};
+        speak.selection.player_criteria=[](void*,void*,int index) noexcept -> int{return index==1;};
+        speak.selection.allocate=[](void* p,unsigned n,void** out,unsigned* extent) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(n==sizeof(f.selected_response));*out=f.selected_response;*extent=n;return 1;
+        };
+        speak.selection.find=[](void* p,void* system,void* c,void* response,void* exp,unsigned* found) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(system==&f.response_system&&c==&f.criteria_storage&&response==f.selected_response&&f.selected_concept);
+            if(exp==f.expeditor)assert(!std::strcmp(f.selected_concept,"TLK_INTERROGATE_COCKY")&&f.slots[3].control.busy);
+            else assert(exp==f.jessica_expeditor&&!std::strcmp(f.selected_concept,"TLK_PLLOOKING")&&f.slots[2].control.busy);
+            ++f.speeches;*found=0;return 1;
+        };
+        speak.selection.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
+        speak.selection.destroy=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        speak.selection.end_criteria=[](void* p,void* c) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(c==&f.criteria_storage);++f.criteria_ends;return 1;
+        };
+        speak.trace_selected=[](void*,void*,const char*) noexcept -> int{assert(false);return 0;};
+        dialogue.count.context=this;dialogue.count.resolve=b.count.resolve;dialogue.count.clock=b.count.clock;
+        dialogue.count.expeditor=[](void* p,void* n,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[3].storage&&f.count_exp.stage==npc::ExpeditorStage::Live);*out=f.expeditor;*bytes=sizeof(f.expeditor);return 1;
+        };
+        dialogue.count.criteria=[](void* p,const void* rec,float now,npc::CountCriteria* out) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(rec==f.player+0xc40+0x18&&now==5);++f.dialogue_criteria;
+            std::strcpy(reinterpret_cast<char*>(out->bytes),"region:head");return 1;
+        };
+        dialogue.count.speak=speak;
+        auto& jd=dialogue.jessica;
+        jd.context=this;jd.clock=b.count.clock;jd.criteria=dialogue.count.criteria;
+        jd.cooldown=&cooldown;jd.semaphore=&sem;jd.talk.context=this;
+        jd.talk.manager=[](void*) noexcept -> int{return 1;};
+        jd.talk.resolve=[](void* p,std::uint32_t h,void** out,unsigned* extent) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(h==0||h==0x123004);*out=h?f.player:nullptr;*extent=sizeof(f.player);return 1;
+        };
+        jd.talk.expeditor=[](void* p,void* n,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage&&f.jessica_exp.stage==npc::ExpeditorStage::Live);*out=f.jessica_expeditor;*bytes=sizeof(f.jessica_expeditor);return 1;
+        };
+        jd.talk.player=[](void* p,void** out) noexcept -> int{*out=static_cast<NpcBspShell*>(p)->player;return 1;};
+        jd.talk.within_range=[](void*,void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+        jd.talk.suppressed=[](void*,void*,int arg,unsigned* out) noexcept -> int{assert(arg==1);*out=0;return 1;};
+        jd.talk.cooldown.context=this;jd.talk.cooldown.clock=b.count.clock;
+        jd.talk.cooldown.concept_deadline=[](void*,const char*,float** out) noexcept -> int{*out=nullptr;return 1;};
+        jd.talk.semaphore.context=this;jd.talk.semaphore.uses=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+        jd.talk.semaphore.classify=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
+        jd.talk.semaphore.clock=b.count.clock;
+        jd.talk.semaphore.resolve=[](void*,std::uint32_t,void**) noexcept -> int{assert(false);return 0;};
+        jd.talk.repeat.context=this;
+        jd.talk.repeat.lookup=[](void*,void*,const char* name,int* out) noexcept -> int{assert(!std::strcmp(name,"TLK_PLLOOKING"));*out=-1;return 1;};
+        jd.talk.repeat.entry=[](void*,void*,int,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        jd.talk.repeat.resolve=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        jd.talk.repeat.interval.random=[](void*,float,float,float*) noexcept -> int{assert(false);return 0;};
+        jd.talk.repeat.clock=b.count.clock;jd.talk.speak=speak;
         b.attention.clock=b.count.clock;
         b.attention.speak_criteria=[](void* p,void* n,const void* rec,float now,const char* name) noexcept -> int{
             auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage&&rec==f.player+0xc40+0x18&&now==5&&!std::strcmp(name,"TLK_PLLOOKING"));++f.speeches;return 1;
@@ -206,15 +284,16 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     npc::HologramControl* control(EntityRef e)override{auto* s=get(e);return s?&s->control:nullptr;}
     const npc::NpcMapBindings* bindings(EntityRef e)override{return is_live(e)?&b:nullptr;}
     const npc::JessicaInteractionBindings* interaction_bindings(EntityRef e)override{return is_live(e)&&e.index==3?&ib:nullptr;}
+    const npc::NpcMapDialogueBindings* dialogue_bindings(EntityRef e)override{return !dialogue_missing&&is_live(e)&&(e.index==3||e.index==4)?&dialogue:nullptr;}
     bool parse_key(EntityRef e,unsigned type,std::string_view v,std::uint32_t& out)override{
         assert(e.index==5&&type==5);if(fail_parse)return false;
         if(v=="12")out=12;else if(v=="247")out=247;else return false;return true;
     }
 };
 inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,const npc::CountInterrogationApi& count,
-    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const npc::ResponsePolicyApi& response,const npc::ExpeditorLifecycleApi& lifecycle,const std::vector<std::uint8_t>& bsp){
+    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const npc::ResponsePolicyApi& response,const npc::ExpeditorLifecycleApi& lifecycle,const npc::NpcMapDialogueApi& dialogue,const std::vector<std::uint8_t>& bsp){
     NpcBspShell f(j,count,sched,actor,spawn,response,lifecycle);
-    NativeNpcMapHost host(f,f,api,f.session,&interaction);f.host=&host;sm::SourceMapRuntime runtime(host);
+    NativeNpcMapHost host(f,f,api,f.session,&interaction,&dialogue);f.host=&host;sm::SourceMapRuntime runtime(host);
     const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
     assert(loaded.ok()&&loaded.entities_created==6&&f.spawned==6&&f.activated==6&&host.attached_count()==4);
     const auto relay=runtime.entities()[1],je=runtime.entities()[2],co=runtime.entities()[3],ga=runtime.entities()[4],jc=runtime.entities()[5];
@@ -278,7 +357,14 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     };
     assert(use.npc_tick(C,&n)==1&&!gate.delivered);
     monitor[0x300]=1;assert(use.npc_tick(C,&n)==1&&gate.delivered==1&&f.speeches==1&&f.word(C,0x1014)==1);
+    f.put(J,0x850,1); // original priority-zero companion state prerequisite
+    f.dialogue_missing=true;assert(host.observe(je,monitor,0x5e9)==NpcMapResult::Rejected&&f.speeches==1);
+    f.dialogue_missing=false;
+    assert(host.observe(EntityRef{je.index,je.generation+1},monitor,0x5e9)==NpcMapResult::Rejected);
     gate.ref=je;assert(use.npc_tick(J,&n)==1&&f.speeches==2);
+    assert(f.modifier_calls==2&&f.criteria_ends==2&&f.dialogue_criteria==2);
+    f.put(C,0xc18,0x12345678);assert(host.observe(co,monitor,0x5e9)==NpcMapResult::Applied&&f.other_observes==1&&f.speeches==2);
+    f.put(C,0xc18,f.ptr(C+0x1000));
     gate.ref=ga;assert(use.npc_tick(G,&n)==1&&f.actor_observes==1);
     assert(host.observe(jc,monitor,0x5e9)==NpcMapResult::Unhandled);
     assert(host.input(co,"InterrogationStop",0,0)==NpcMapResult::Applied&&!C[0x1010]);
@@ -293,6 +379,7 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     f.fail_remove=false;assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded&&!host.attached_count());
     assert(f.count_exp.stage==npc::ExpeditorStage::Retired&&f.symbol_destroys==2&&f.history_destroys==1&&f.sem.other.owner==0xffffffffu);
     assert(host.input(co,"InterrogationStart",0,0)==NpcMapResult::Rejected);
+    assert(host.observe(je,monitor,0x5e9)==NpcMapResult::Rejected);
     interaction_result=99;assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Rejected&&interaction_result==99);
     NpcBspShell bad(j,count,sched,actor,spawn,response,lifecycle);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
     sm::SourceMapRuntime rollback(bh);assert(rollback.load_bsp(bsp.data(),bsp.size()).code==sm::SourceMapLoadCode::HostKeyValueFailed&&!rollback.loaded()&&!bh.attached_count());

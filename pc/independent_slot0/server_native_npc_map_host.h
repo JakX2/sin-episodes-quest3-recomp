@@ -1,5 +1,6 @@
 #pragma once
 #include "native_npc_map.h"
+#include "native_npc_dialogue.h"
 #include "sin_compat/source_map_runtime.hpp"
 #include <map>
 #include <cstring>
@@ -17,12 +18,13 @@ public:
     virtual const npc::NpcMapBindings* bindings(EntityRef)=0;
     virtual bool parse_key(EntityRef,unsigned type,std::string_view,std::uint32_t&)=0;
     virtual const npc::JessicaInteractionBindings* interaction_bindings(EntityRef){return nullptr;}
+    virtual const npc::NpcMapDialogueBindings* dialogue_bindings(EntityRef){return nullptr;}
 };
 class NativeNpcMapHost final:public sin_compat::map::ISourceMapEntityHost {
 public:
     explicit NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine):engine_(engine){}
-    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr):
-        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction){}
+    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr):
+        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue){}
     NativeNpcMapHost(const NativeNpcMapHost&)=delete;
     NativeNpcMapHost& operator=(const NativeNpcMapHost&)=delete;
     bool is_live(EntityRef e)const override{return engine_.is_live(e);}
@@ -70,7 +72,15 @@ public:
         auto* a=find(e);if(!a||a->kind==npc::NpcMapKind::Jc)return NpcMapResult::Unhandled;
         if(a->stage!=Stage::Active)return NpcMapResult::Rejected;
         const auto kind=a->kind;auto* c=control(e,kind);const auto* b=shells_->bindings(e);
-        return c&&b?status(api_->observe(kind,c,session_,b,record,bytes)):NpcMapResult::Rejected;
+        if(!c||!b)return NpcMapResult::Rejected;
+        if(dialogue_&&(kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)){
+            if(dialogue_->version!=npc::version||dialogue_->size!=sizeof(*dialogue_)||!dialogue_->observe)return NpcMapResult::Rejected;
+            const auto* d=shells_->dialogue_bindings(e);
+            a=find(e);
+            if(!d||!a||a->stage!=Stage::Active||!engine_.is_live(e))return NpcMapResult::Rejected;
+            return status(dialogue_->observe(kind,c,session_,b,d,record,bytes));
+        }
+        return status(api_->observe(kind,c,session_,b,record,bytes));
     }
     NpcMapResult select_count(EntityRef e,int* result){
         if(!engine_.is_live(e))return NpcMapResult::Rejected;
@@ -139,6 +149,7 @@ private:
     sin_compat::map::ISourceMapEntityHost& engine_;
     INpcMapShells* shells_=nullptr;const npc::NpcMapApi* api_=nullptr;npc::NpcMapSession* session_=nullptr;
     const npc::JessicaInteractionApi* interaction_=nullptr;
+    const npc::NpcMapDialogueApi* dialogue_=nullptr;
     std::map<std::uint32_t,Entry> entries_;
 };
 }

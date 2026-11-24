@@ -2628,6 +2628,9 @@ int main(int argc,char** argv){
         const auto gl=reinterpret_cast<n::GetExpeditorLifecycleApi>(GetProcAddress(lib,n::expeditor_lifecycle_export));
         assert(gl&&!gl(0,sizeof(n::ExpeditorLifecycleApi))&&!gl(1,0));
         const auto* lc=gl(1,sizeof(n::ExpeditorLifecycleApi));assert(lc);
+        const auto gd=reinterpret_cast<n::GetNpcMapDialogueApi>(GetProcAddress(lib,n::npc_map_dialogue_export));
+        assert(gd&&!gd(0,sizeof(n::NpcMapDialogueApi))&&!gd(1,0));
+        const auto* nd=gd(1,sizeof(n::NpcMapDialogueApi));assert(nd);
         assert(m&&j&&c&&s&&a&&u&&sp&&in);
         const auto bsp=make_native_bsp(R"KV(
 {"classname" "worldspawn"}
@@ -2637,7 +2640,7 @@ int main(int argc,char** argv){
 {"classname" "npc_generic_actor" "targetname" "actor" "model" "fixture.mdl" "initialhealth" "12" "bloodColor" "247"}
 {"classname" "npc_jc" "targetname" "jc"}
 )KV");
-        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,bsp);
+        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,*nd,bsp);
         std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
     }
 #endif
