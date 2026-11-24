@@ -28,6 +28,7 @@
 #include "test_native_vehicle_sound.h"
 #include "test_native_vehicle_hint.h"
 #include "test_native_vehicle_views.h"
+#include "test_native_vehicle_config.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -490,6 +491,12 @@ int main(int argc,char** argv){
     assert(vehicleViews&&!getVehicleViews(0,sizeof(tables::VehicleViewsApi))&&!getVehicleViews(1,0));
     tables::test::check_vehicle_views(*vehicleViews);
     std::puts("PASS native vehicle view selection, permission and ViewChanged ordering");
+    const auto getVehicleConfig=reinterpret_cast<tables::GetVehicleConfigApi>(GetProcAddress(server,tables::vehicle_config_export));
+    assert(getVehicleConfig&&!GetProcAddress(client,tables::vehicle_config_export));
+    const auto* vehicleConfig=getVehicleConfig(1,sizeof(tables::VehicleConfigApi));
+    assert(vehicleConfig&&!getVehicleConfig(0,sizeof(tables::VehicleConfigApi))&&!getVehicleConfig(1,0));
+    tables::test::check_vehicle_config(*vehicleConfig);
+    std::puts("PASS native vehicle view configuration and damage modifier keys");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
