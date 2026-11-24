@@ -1144,7 +1144,7 @@ inline void check_scene_actor_events(const SceneActorEventsApi& api){
 
 
 struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
-    alignas(4) unsigned char npc_memory[0x103c]{},event_records[2][0x40]{};
+    alignas(4) unsigned char npc_memory[0x1458]{},event_records[2][0x40]{};
     std::uint32_t scene_refs[2]{};
     NativeGeneratedLifecycleBindings full{};
     const NativeGeneratedLifecycleApi& api;
@@ -1587,6 +1587,49 @@ inline void check_native_generated_map_dialogue(const NativeGeneratedMapDialogue
     assert(look()==1&&session.attention.looking==10&&!j.pipeline.allocations);
     j.pipeline.now=14;j.state.global[0]=0;
     assert(look()==1&&session.attention.looking==14&&j.pipeline.allocations==1&&!j.pipeline.sounds&&f.creates==1);
+
+    // Positive Jessica selection, with the same NPC storage used by the
+    // companion gate, generated scene actor and event callbacks.
+    SpeechLifecycleFixture jf(cb,n,finish,manager,tick,entity);jf.bind_resolver(resolver);jf.bind_preparation(preparation);
+    CompanionTalkFixture speaker(timing,record);
+    F::put(jf.npc_memory,0x850,1);F::put(jf.npc_memory,0x16c,0x123004);F::put(jf.npc_memory,0x115c,0x1001);
+    HologramControl active{jf.npc_memory,sizeof(jf.npc_memory)};
+    speaker.pipeline.expected_concept="TLK_PLLOOKING";speaker.pipeline.expected_modifiers="part:fixture";
+    NativeGeneratedResponseBindings jr{};jr.generated=jf.full;
+    jr.response=integrated_npc_fixture_bindings(jf,speaker.pipeline,jf.npc_memory);
+    jr.response.playback={};
+    auto& talk=speaker.b;
+    // Use the expeditor owner word as the expected identity in these host leaves.
+    talk.expeditor=[](void* p,void* npc,void** out,unsigned* bytes) noexcept -> int{
+        auto& x=CompanionTalkFixture::get(p);assert(F::word(x.pipeline.exp,4)==F::ptr(npc));++x.accessors;*out=x.pipeline.exp;*bytes=sizeof(x.pipeline.exp);return 1;};
+    talk.within_range=[](void* p,void* npc,void* player,unsigned* out) noexcept -> int{
+        auto& x=CompanionTalkFixture::get(p);assert(F::word(x.pipeline.exp,4)==F::ptr(npc)&&player==&x.player);++x.ranges;*out=x.in_range;return 1;};
+    talk.suppressed=[](void* p,void* npc,int arg,unsigned* out) noexcept -> int{
+        auto& x=CompanionTalkFixture::get(p);assert(F::word(x.pipeline.exp,4)==F::ptr(npc));++x.suppressions;x.suppress_argument=arg;*out=x.suppressed;return 1;};
+    talk.semaphore.classify=[](void* p,void* npc,int arg,unsigned* out) noexcept -> int{
+        auto& x=CompanionTalkFixture::get(p);assert(F::word(x.pipeline.exp,4)==F::ptr(npc)&&!arg);*out=1;return 1;};
+    talk.semaphore.resolve=[](void* p,std::uint32_t word,void** out) noexcept -> int{
+        auto& x=CompanionTalkFixture::get(p);*out=word==0x1001?reinterpret_cast<void*>(static_cast<std::uintptr_t>(F::word(x.pipeline.exp,4))):nullptr;return 1;};
+    speaker.pipeline.note.owner_handle=[](void*,void*,std::uint32_t* out) noexcept -> int{*out=0x1001;return 1;};
+    talk.speak=speaker.pipeline.b;
+    jb.context=&speaker;jb.talk=talk;jb.cooldown=&speaker.state;jb.semaphore=&speaker.pipeline.sem;
+    jf.preparation.state=&speaker.pipeline.sem; // response note, gate and speech acquire share state
+    NpcMapSession js{};
+    auto speak=[&](){return map_api.observe(NpcMapKind::Jessica,&active,&js,&map,&dialogue,nullptr,&jr,obs,sizeof(obs));};
+    speaker.pipeline.sem.classified={20,0x2002};
+    assert(speak()==1&&js.attention.looking==10&&!speaker.pipeline.allocations&&!jf.creates);
+    // Use a fresh attention timer for the eligible observation at the same
+    // synthetic world time; the independent denied case above retains its timer.
+    js.attention={};speaker.pipeline.sem.classified={0,0xffffffffu};
+    assert(speak()==1&&js.attention.looking==10&&speaker.pipeline.notifications==1&&!speaker.pipeline.sounds);
+    assert(jf.creates==1&&jf.allocations==4&&jf.outputs==1&&speaker.pipeline.sem.classified.owner==0x1001);
+    std::strcpy(reinterpret_cast<char*>(jf.event+0x104),"72");
+    assert(manager.tick(&jf.control,&jf.manager_tick)==1&&jf.emitted==1&&jf.captions==1);
+    assert(speaker.pipeline.sem.classified.release==10.6f&&speaker.pipeline.sem.classified.owner==0x1001);
+    for(unsigned i=0;i<3;++i)assert(manager.tick(&jf.control,&jf.manager_tick)==1);
+    assert(jf.ended==1&&jf.finished==1&&jf.destroyed==1&&!jf.scene_live&&!F::word(jf.npc_memory,0x5f8)&&!F::word(jf.manager,0x3a0));
+    assert(ResponseSpeakFixture::destroy(&speaker.pipeline,speaker.pipeline.pool[0]));
+    assert(manager.destroy(&jf.control,&jf.manager_life)==1);
 }
 
 struct SceneActorCacheFixture {
