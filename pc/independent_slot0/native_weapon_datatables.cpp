@@ -2966,9 +2966,9 @@ int __cdecl response_has_concept(void* exp,unsigned bytes,const ResponseHistoryB
     *result=hologram_read<float>(row,0x14)!=-1.0f;
     return 1;
 }
-int __cdecl response_seed(void* exp,unsigned bytes,const ResponseHistoryBindings* b,const char* name) noexcept {
+int response_seed_impl(void* exp,unsigned bytes,const ResponseHistoryBindings* b,const char* name,bool notify) noexcept {
     if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||
-       !b||!b->lookup||!b->insert||!b->entry||!b->clock||!b->notify||!name)return 0;
+       !b||!b->lookup||!b->insert||!b->entry||!b->clock||(notify&&!b->notify)||!name)return 0;
     const auto h=*b;int index=-1;
     if(!h.lookup(h.context,exp,name,&index)||index<-1)return -1;
     if(index==-1){
@@ -2980,7 +2980,13 @@ int __cdecl response_seed(void* exp,unsigned bytes,const ResponseHistoryBindings
     hologram_write(row,0x14,now);
     // Fixed second argument zero: leave existing response pointer at +18.
     // Third argument one: invoke the owner notification after committing time.
-    return h.notify(h.context,exp,name)?1:-1;
+    return !notify||h.notify(h.context,exp,name)?1:-1;
+}
+int __cdecl response_seed(void* exp,unsigned bytes,const ResponseHistoryBindings* b,const char* name) noexcept {
+    return response_seed_impl(exp,bytes,b,name,true);
+}
+int __cdecl response_seed_silent(void* exp,unsigned bytes,const ResponseHistoryBindings* b,const char* name) noexcept {
+    return response_seed_impl(exp,bytes,b,name,false);
 }
 const ResponsePolicyApi response_policy_api{version,sizeof(ResponsePolicyApi),&response_timing,&response_has_concept,&response_seed};
 
@@ -3554,6 +3560,43 @@ int __cdecl companion_request(void* npc,unsigned bytes,const TalkCooldownState* 
     return status==0?-1:status;
 }
 const CompanionTalkApi companion_talk_api{version,sizeof(CompanionTalkApi),&companion_group_gate,&companion_concept_gate,&companion_request};
+int __cdecl talk_propagate(void* npc,unsigned bytes,const TalkPropagationBindings* b,const char* name) noexcept {
+    if(!npc||bytes<0x2c8||!sin_independent::vgui_layout::Readable(npc,0x2c8)||
+       !b||!b->list||!b->count||!b->candidate||!b->refresh||!b->visible||!b->expeditor||!name)return 0;
+    const auto h=*b;void* token=nullptr;int count=0;
+    if(!h.list(h.context,&token)||!h.count(h.context,&count))return -1;
+    // Bounded enumeration is a native-host safety adaptation. The original
+    // re-reads the list length after every candidate, including skipped ones.
+    for(unsigned i=0;count>0&&i<static_cast<unsigned>(count);++i){
+        if(!token||count>0x100000||i>=0x100000)return -1;
+        void* candidate=nullptr;unsigned extent=0;
+        if(!h.candidate(h.context,token,i,&candidate,&extent))return -1;
+        if(candidate&&candidate!=npc){
+            if(extent<0x2c8||!sin_independent::vgui_layout::Readable(candidate,0x2c8))return -1;
+            if((hologram_read<unsigned>(npc,0xb8)&0x800)&&!h.refresh(h.context,npc))return -1;
+            if((hologram_read<unsigned>(candidate,0xb8)&0x800)&&!h.refresh(h.context,candidate))return -1;
+            // 2208f0d0 stores each subtraction to float before the x87
+            // squared-distance comparison (z*z+y*y+x*x).
+            const float x=hologram_read<float>(candidate,0x2bc)-hologram_read<float>(npc,0x2bc);
+            const float y=hologram_read<float>(candidate,0x2c0)-hologram_read<float>(npc,0x2c0);
+            const float z=hologram_read<float>(candidate,0x2c4)-hologram_read<float>(npc,0x2c4);
+            const double distance=static_cast<double>(z)*z+static_cast<double>(y)*y+static_cast<double>(x)*x;
+            if(distance<1000000.0){
+                unsigned visible=0;
+                if(!h.visible(h.context,npc,candidate,0x4081,nullptr,&visible))return -1;
+                if(visible){
+                    void* exp=nullptr;unsigned n=0;const ResponseHistoryBindings* history=nullptr;
+                    if(!h.expeditor(h.context,candidate,&exp,&n,&history)||
+                       response_seed_impl(exp,n,history,name,false)!=1)return -1;
+                }
+            }
+        }
+        if(!h.count(h.context,&count))return -1;
+    }
+    return 1;
+}
+const TalkPropagationApi talk_propagation_api{version,sizeof(TalkPropagationApi),&talk_propagate,&response_seed_silent};
+
 
 
 
@@ -7947,6 +7990,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Companion
 SiN_GetCompanionTalkApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(CompanionTalkApi)?&companion_talk_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetTalkPropagationApi=_SiN_GetTalkPropagationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkPropagationApi* __cdecl
+SiN_GetTalkPropagationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkPropagationApi)?&talk_propagation_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

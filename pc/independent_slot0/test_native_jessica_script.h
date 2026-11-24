@@ -729,4 +729,54 @@ inline void check_companion_talk(const CompanionTalkApi& api,const ResponseTimin
     assert(ResponseSpeakFixture::destroy(&f.pipeline,f.pipeline.pool[1]));
 }
 
+
+struct TalkPropagationFixture {
+    alignas(4) unsigned char npc[0x2c8]{},neighbors[4][0x2c8]{},exp[0x7c]{},row[0x1c]{};
+    TalkPropagationBindings b{};ResponseHistoryBindings history{};
+    unsigned count_calls=0,candidates=0,refreshes=0,visibility=0,accesses=0,clocks=0,inserts=0;
+    int limit=6,index=-1;
+    bool fail_visibility=false;
+    static TalkPropagationFixture& get(void* p){return *static_cast<TalkPropagationFixture*>(p);}
+    static void put(void* p,unsigned off,unsigned v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,4);}
+    static void fl(void* p,unsigned off,float v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,4);}
+    static unsigned word(void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+off,4);return v;}
+    float timestamp(){float f=0;std::memcpy(&f,row+0x14,4);return f;}
+    TalkPropagationFixture(){
+        b.context=this;history.context=this;
+        put(npc,0xb8,0x800);put(neighbors[0],0xb8,0x800);
+        fl(neighbors[0],0x2bc,999);fl(neighbors[1],0x2bc,1000);
+        fl(neighbors[2],0x2bc,100);put(neighbors[3],0x2bc,0x7fc00000);
+        b.list=[](void* p,void** out) noexcept -> int{*out=p;return 1;};
+        b.count=[](void* p,int* out) noexcept -> int{auto& f=get(p);++f.count_calls;*out=f.limit;return 1;};
+        b.candidate=[](void* p,void* token,unsigned i,void** n,unsigned* extent) noexcept -> int{
+            auto& f=get(p);assert(token==p&&i<6);++f.candidates;
+            *n=i==0?nullptr:i==1?f.npc:f.neighbors[i-2];*extent=sizeof(f.npc);return 1;};
+        b.refresh=[](void* p,void* n) noexcept -> int{auto& f=get(p);assert(n==f.npc||n==f.neighbors[0]);++f.refreshes;put(n,0xb8,0);return 1;};
+        b.visible=[](void* p,void* src,void* dst,unsigned mask,void* blocker,unsigned* out) noexcept -> int{
+            auto& f=get(p);assert(src==f.npc&&(dst==f.neighbors[0]||dst==f.neighbors[2])&&mask==0x4081&&!blocker);
+            ++f.visibility;*out=dst==f.neighbors[0];return !f.fail_visibility;};
+        b.expeditor=[](void* p,void* n,void** out,unsigned* bytes,const ResponseHistoryBindings** h) noexcept -> int{
+            auto& f=get(p);assert(n==f.neighbors[0]);++f.accesses;*out=f.exp;*bytes=sizeof(f.exp);*h=&f.history;return 1;};
+        history.lookup=[](void* p,void* e,const char* n,int* out) noexcept -> int{auto& f=get(p);assert(e==f.exp&&!std::strcmp(n,"TLK_HELLO"));*out=f.index;return 1;};
+        history.insert=[](void* p,void* e,const char* n,float initial,int* out) noexcept -> int{
+            auto& f=get(p);assert(e==f.exp&&!std::strcmp(n,"TLK_HELLO")&&initial==10);++f.inserts;*out=f.index=0;return 1;};
+        history.entry=[](void* p,void* e,int i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(e==f.exp&&i==0);*out=f.row;*bytes=sizeof(f.row);return 1;};
+        history.clock=[](void* p,float* out) noexcept -> int{auto& f=get(p);*out=10.f+f.clocks++;return 1;};
+        // Deliberately absent: silent seed must not require or invoke notify.
+    }
+};
+inline void check_talk_propagation(const TalkPropagationApi& api){
+    TalkPropagationFixture f;
+    auto run=[&](){return api.propagate(f.npc,sizeof(f.npc),&f.b,"TLK_HELLO");};
+    assert(run()==1&&f.count_calls==7&&f.candidates==6&&f.refreshes==2&&f.visibility==2&&f.accesses==1);
+    assert(f.inserts==1&&f.clocks==2&&f.timestamp()==11);
+    f.put(f.row,0x18,0x12345678);
+    assert(run()==1&&f.timestamp()==12&&f.inserts==1&&f.word(f.row,0x18)==0x12345678&&f.refreshes==2);
+    assert(api.seed_silent(f.exp,sizeof(f.exp),&f.history,"TLK_HELLO")==1&&f.timestamp()==13&&f.word(f.row,0x18)==0x12345678);
+    f.limit=2;assert(run()==1&&f.accesses==2);
+    f.limit=6;f.fail_visibility=true;assert(run()==-1&&f.timestamp()==13&&f.accesses==2);
+    assert(api.propagate(f.npc,0x2c7,&f.b,"TLK_HELLO")==0);
+}
+
 }

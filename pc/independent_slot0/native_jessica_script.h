@@ -382,6 +382,31 @@ struct CompanionTalkApi {
     int (__cdecl *request)(void* npc,unsigned bytes,const TalkCooldownState*,const SpeechSemaphorePair*,const CompanionTalkBindings*,const char*,const char* modifiers,unsigned urgent,unsigned*) noexcept;
 };
 using GetCompanionTalkApi=const CompanionTalkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char talk_propagation_export[]="SiN_GetTalkPropagationApi";
+struct TalkPropagationBindings {
+    void* context;
+    // Original obtains the live list base once; count is queried again at
+    // each iteration. Host keeps the enumeration token valid during callbacks.
+    int (__cdecl *list)(void*,void** token) noexcept;
+    int (__cdecl *count)(void*,int*) noexcept;
+    // Includes the original RTTI adjustment to a companion NPC.
+    // A successful null result means the candidate does not cast.
+    int (__cdecl *candidate)(void*,void* token,unsigned index,void** npc,unsigned* bytes) noexcept;
+    // Refresh cached absolute position using the existing engine service.
+    int (__cdecl *refresh)(void*,void* npc) noexcept;
+    int (__cdecl *visible)(void*,void* source,void* candidate,unsigned mask,void* blocker,unsigned*) noexcept;
+    int (__cdecl *expeditor)(void*,void* npc,void** exp,unsigned* bytes,const ResponseHistoryBindings**) noexcept;
+};
+struct TalkPropagationApi {
+    std::uint32_t version,size;
+    // 2208f055..2208f18e: invoked only for a flag-2 concept. Does not
+    // take a second NPC lock or recursively notify the receiving manager.
+    int (__cdecl *propagate)(void* npc,unsigned bytes,const TalkPropagationBindings*,const char*) noexcept;
+    // 220a7190(name,null,0), exposed for host paths other than propagation.
+    int (__cdecl *seed_silent)(void* exp,unsigned bytes,const ResponseHistoryBindings*,const char*) noexcept;
+};
+using GetTalkPropagationApi=const TalkPropagationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 
