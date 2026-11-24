@@ -8,6 +8,19 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+template<class B> bool flex_deps(const B& b) noexcept {
+    return b.base_animating&&b.base_animating->name&&
+        std::strcmp(b.base_animating->name,"DT_BaseAnimating")==0&&
+        b.base_animating->count==18&&b.base_animating->props&&
+        b.overlay_vars&&b.overlay_vars->name&&std::strcmp(b.overlay_vars->name,"DT_OverlayVars")==0&&
+        b.overlay_vars->count==1&&b.overlay_vars->props;
+}
+template<class V> bool flex_empty(const V& v) noexcept {
+    return !v.handle&&!v.overlay&&!v.flex&&!v.weights;
+}
+template<class G,class V> bool flex_matches(const G& g,const V& v) noexcept {
+    return v.overlay==&g.overlay&&v.flex==&g.flex&&v.weights==&g.weights;
+}
 template<class T> bool anim_base_valid(const T* t) noexcept {
     return t&&t->name&&std::strcmp(t->name,"DT_BaseEntity")==0&&t->props&&t->count==24;
 }
@@ -18,8 +31,9 @@ template<class G,class V> bool anim_matches(const G& g,const V& v) noexcept {
     return v.base_animating==&g.base&&v.server_anim_data==&g.cycle&&v.pose==&g.pose&&v.controllers==&g.controllers;
 }
 constexpr unsigned ammo_elements=32,weapon_elements=48;
-void element_names(char (&names)[weapon_elements][4]) noexcept {
-    for(unsigned i=0;i<weapon_elements;++i){
+template<std::size_t N> void element_names(char (&names)[N][4]) noexcept {
+    static_assert(N<=1000);
+    for(unsigned i=0;i<N;++i){
         names[i][0]=static_cast<char>('0'+i/100);
         names[i][1]=static_cast<char>('0'+(i/10)%10);
         names[i][2]=static_cast<char>('0'+i%10);
@@ -415,6 +429,54 @@ int __cdecl destroy_anim(AnimSendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const AnimSendApi anim_api{version,sizeof(AnimSendApi),&create_anim,&destroy_anim};
+
+struct FlexSendGraph {
+    s::SendTable overlay,flex,weights;
+    s::SendProp overlay_props[2],flex_props[7],weight_props[64],weight_template;
+    char names[64][4]{};
+    bool build(const FlexSendBindings& b) noexcept {
+        if(!flex_deps(b))return false;
+        element_names(names);
+        if(!overlay.Construct(overlay_props,2,"DT_BaseAnimatingOverlay")||
+           !flex.Construct(flex_props,7,"DT_BaseFlex")||
+           !weights.Construct(weight_props,64,"m_flexWeight"))return false;
+        if(!s::MakeDataTableProp(overlay_props[0],"baseclass",0,b.base_animating,&s::DirectTable)||
+           !s::MakeDataTableProp(overlay_props[1],"overlay_vars",0,b.overlay_vars,&s::DirectTable)||
+           !s::MakeDataTableProp(flex_props[0],"baseclass",0,&overlay,&s::DirectTable)||
+           !s::MakeDataTableProp(flex_props[1],"m_flexWeight",0x4a8,&weights,&s::DirectTable))return false;
+        anim_float(weight_template,"m_flexWeight",0x4a8,12,8,0,1.0f-1.0f/4096,4096);
+        flex_props[1].arrayProp=&weight_template;
+        for(unsigned i=0;i<64;++i){
+            weight_props[i]=weight_template;weight_props[i].name=names[i];
+            weight_props[i].offset=static_cast<int>(i*4);weight_props[i].excludeOrParent=weight_template.name;
+        }
+        anim_int(flex_props[2],"m_blinktoggle",0x5b4,1,1);
+        flex_props[3].name="m_viewtarget";flex_props[3].offset=0x5a8;
+        flex_props[3].type=2;flex_props[3].flags=2;flex_props[3].scalarProxy=&vector_send;
+        // COORD/NOSCALE omit quantized range: unused fields normalized.
+        anim_float(flex_props[4],"m_vecViewOffset[0]",0x37c,0,4,0,0,0);
+        anim_float(flex_props[5],"m_vecViewOffset[1]",0x380,0,4,0,0,0);
+        anim_float(flex_props[6],"m_vecViewOffset[2]",0x384,0,4,0,0,0);
+        return true;
+    }
+};
+
+int __cdecl create_flex(const FlexSendBindings* b,FlexSendView* out) noexcept {
+    if(!b||!out||!flex_empty(*out))return 0;
+    auto* g=new(std::nothrow) FlexSendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->overlay,&g->flex,&g->weights};return 1;
+}
+int __cdecl destroy_flex(FlexSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<FlexSendGraph*>(v->handle);
+    if(!flex_matches(*g,*v))return 0;
+    for(const auto* t:{&g->overlay,&g->flex,&g->weights})
+        if(t->precalc||t->initialized||t->written)return 0;
+    delete g;*v={};return 1;
+}
+const FlexSendApi flex_api{version,sizeof(FlexSendApi),&create_flex,&destroy_flex};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -593,6 +655,49 @@ int __cdecl destroy_anim(AnimRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const AnimRecvApi anim_api{version,sizeof(AnimRecvApi),&create_anim,&destroy_anim};
+
+struct FlexRecvGraph {
+    RecvTable overlay,flex,weights;
+    RecvProp overlay_props[2],flex_props[7],weight_props[64];
+    char names[64][4]{};
+    bool build(const FlexRecvBindings& b) noexcept {
+        if(!flex_deps(b))return false;
+        element_names(names);
+        overlay={overlay_props,2,nullptr,"DT_BaseAnimatingOverlay"};
+        flex={flex_props,7,nullptr,"DT_BaseFlex"};weights={weight_props,64,nullptr,"m_flexWeight"};
+        nested(overlay_props[0],"baseclass",b.base_animating);
+        nested(overlay_props[1],"overlay_vars",b.overlay_vars);
+        nested(flex_props[0],"baseclass",&overlay);
+        nested(flex_props[1],"m_flexWeight",&weights);flex_props[1].offset=0x860;
+        for(unsigned i=0;i<64;++i){
+            anim_recv(weight_props[i],names[i],static_cast<int>(i*4),1);
+            weight_props[i].parent_array="m_flexWeight";
+        }
+        anim_recv(flex_props[2],"m_blinktoggle",0xac0);
+        anim_recv(flex_props[3],"m_viewtarget",0x824,2,&vector_recv);
+        anim_recv(flex_props[4],"m_vecViewOffset[0]",0xe0,1);
+        anim_recv(flex_props[5],"m_vecViewOffset[1]",0xe4,1);
+        anim_recv(flex_props[6],"m_vecViewOffset[2]",0xe8,1);
+        return true;
+    }
+};
+
+int __cdecl create_flex(const FlexRecvBindings* b,FlexRecvView* out) noexcept {
+    if(!b||!out||!flex_empty(*out))return 0;
+    auto* g=new(std::nothrow) FlexRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->overlay,&g->flex,&g->weights};return 1;
+}
+int __cdecl destroy_flex(FlexRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<FlexRecvGraph*>(v->handle);
+    if(!flex_matches(*g,*v))return 0;
+    for(const auto* t:{&g->overlay,&g->flex,&g->weights})
+        if(t->decoder||t->initialized||t->in_main_list)return 0;
+    delete g;*v={};return 1;
+}
+const FlexRecvApi flex_api{version,sizeof(FlexRecvApi),&create_flex,&destroy_flex};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -623,6 +728,12 @@ SiN_GetAnimatingSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept 
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimSendApi)?&anim_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetFlexSendGraphApi=_SiN_GetFlexSendGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::FlexSendApi* __cdecl
+SiN_GetFlexSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(FlexSendApi)?&flex_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -641,5 +752,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetFlexRecvGraphApi=_SiN_GetFlexRecvGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::FlexRecvApi* __cdecl
+SiN_GetFlexRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(FlexRecvApi)?&flex_api:nullptr;
 }
 #endif

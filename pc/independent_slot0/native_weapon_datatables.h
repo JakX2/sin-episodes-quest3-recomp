@@ -163,4 +163,28 @@ using AnimSendApi=GraphApi<AnimSendBindings,AnimSendView>;
 using AnimRecvApi=GraphApi<AnimRecvBindings,AnimRecvView>;
 using GetAnimSendApi=const AnimSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetAnimRecvApi=const AnimRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase698. DT_OverlayVars uses a dynamic UtlVector and is deliberately
+// borrowed, not represented by a fixed array. Both dependencies must outlive
+// this graph; detach dependent inventory graphs before destroying.
+inline constexpr char flex_send_export[]="SiN_GetFlexSendGraphApi";
+inline constexpr char flex_recv_export[]="SiN_GetFlexRecvGraphApi";
+template<class Table> struct FlexBindings {
+    Table* base_animating;
+    Table* overlay_vars;
+};
+using FlexSendBindings=FlexBindings<s::SendTable>;
+using FlexRecvBindings=FlexBindings<RecvTable>;
+template<class Table> struct FlexView {
+    void* handle;
+    Table* overlay;
+    Table* flex;
+    Table* weights;
+};
+using FlexSendView=FlexView<s::SendTable>;
+using FlexRecvView=FlexView<RecvTable>;
+using FlexSendApi=GraphApi<FlexSendBindings,FlexSendView>;
+using FlexRecvApi=GraphApi<FlexRecvBindings,FlexRecvView>;
+using GetFlexSendApi=const FlexSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetFlexRecvApi=const FlexRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

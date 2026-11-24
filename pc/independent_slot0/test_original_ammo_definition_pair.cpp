@@ -78,6 +78,14 @@ int main(int argc,char** argv){
     assert(animSend&&animRecv&&!getAnimSend(0,sizeof(tables::AnimSendApi))&&!getAnimRecv(1,0));
     tables::test::check_anim_graph(*animSend,*animRecv,*sa,*ra);
     std::puts("PASS native paired BaseAnimating and ServerAnimationData graphs (28 numbered elements)");
+    const auto getFlexSend=reinterpret_cast<tables::GetFlexSendApi>(GetProcAddress(server,tables::flex_send_export));
+    const auto getFlexRecv=reinterpret_cast<tables::GetFlexRecvApi>(GetProcAddress(client,tables::flex_recv_export));
+    assert(getFlexSend&&getFlexRecv&&!GetProcAddress(client,tables::flex_send_export)&&!GetProcAddress(server,tables::flex_recv_export));
+    const auto* flexSend=getFlexSend(1,sizeof(tables::FlexSendApi));
+    const auto* flexRecv=getFlexRecv(1,sizeof(tables::FlexRecvApi));
+    assert(flexSend&&flexRecv&&!getFlexSend(0,sizeof(tables::FlexSendApi))&&!getFlexRecv(1,0));
+    tables::test::check_flex_graph(*flexSend,*flexRecv,*animSend,*animRecv,*invSend,*invRecv);
+    std::puts("PASS native paired BaseFlex and BaseAnimatingOverlay graphs (64 numbered elements)");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
