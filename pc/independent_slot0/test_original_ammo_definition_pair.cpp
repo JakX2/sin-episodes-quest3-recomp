@@ -21,6 +21,7 @@
 #include "test_native_server_flex_weight.h"
 #include "test_native_server_flex_animation.h"
 #include "test_native_server_flex_spline.h"
+#include "test_original_flex_spline_differential.h"
 #include "test_native_server_expression.h"
 #include "test_native_server_facial_think.h"
 #include "test_native_server_event_intensity.h"
@@ -62,7 +63,7 @@
 #include <cstdio>
 namespace d=sin_port::original_ammo;
 int main(int argc,char** argv){
-    assert(argc==3||argc==4);
+    assert(argc==3||argc==4||(argc==5&&!std::strcmp(argv[3],"--original-spline")));
     const auto client=LoadLibraryA(argv[1]),server=LoadLibraryA(argv[2]);
     assert(client&&server);
     {
@@ -1024,6 +1025,9 @@ int main(int argc,char** argv){
     const auto* auditIntensity=getAuditIntensity(1,sizeof(tables::ServerEventIntensityApi));
     const auto* auditSpline=getAuditSpline(1,sizeof(tables::ServerFlexSplineApi));
     assert(auditIntensity&&auditSpline);
+    if(argc==5&&!tables::test::audit_original_flex_spline(argv[4],*auditSpline)){
+        FreeLibrary(server);FreeLibrary(client);return 3;
+    }
     const auto getAdmission=reinterpret_cast<tables::GetServerFacialRecordApi>(GetProcAddress(server,tables::server_facial_records_export));
     const auto getThink=reinterpret_cast<tables::GetServerComposedFacialThinkApi>(GetProcAddress(server,tables::server_composed_facial_think_export));
     assert(getAdmission&&getThink);
