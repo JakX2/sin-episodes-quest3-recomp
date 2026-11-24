@@ -179,6 +179,13 @@ int main(int argc,char** argv){
         assert(api&&!get(0,sizeof(ft::ServerFacialThinkApi))&&!get(1,0));
         ft::test::check_server_facial_think(*api);
         ft::test::check_active_server_facial_records(*api);
+        const auto composed_get=reinterpret_cast<ft::GetServerComposedFacialThinkApi>(GetProcAddress(server,ft::server_composed_facial_think_export));
+        assert(composed_get&&!GetProcAddress(client,ft::server_composed_facial_think_export));
+        const auto* composed=composed_get(1,sizeof(ft::ServerComposedFacialThinkApi));
+        assert(composed&&!composed_get(0,sizeof(ft::ServerComposedFacialThinkApi))&&!composed_get(1,0));
+        ft::test::check_active_server_facial_records(*api,composed);
+        ft::test::check_composed_npc_random_record(*composed);
+        std::puts("PASS composed native server intensity and NPC random dispatch");
         std::puts("PASS server facial think and actor event records");
     }
     {

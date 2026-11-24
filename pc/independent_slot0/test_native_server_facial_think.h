@@ -1,5 +1,6 @@
 #pragma once
 #include "native_server_facial_think.h"
+#include "native_server_composed_facial_think.h"
 #include "native_server_flex_spline.h"
 #include <cassert>
 #include <cstring>
@@ -54,12 +55,13 @@ inline void check_server_facial_think(const ServerFacialThinkApi& api){
     assert(api.run(actor,sizeof(actor),14,&b)&&!actor[0x600]);
 }
 
-inline void check_active_server_facial_records(const ServerFacialThinkApi& api){
+inline void check_active_server_facial_records(const ServerFacialThinkApi& api,const ServerComposedFacialThinkApi* composed=nullptr){
     struct Fixture {
         alignas(4) unsigned char rows[0x80]{},scene[0x21c]{},events[2][0x3c0]{},track[0x50]{},vfe[256]{};
         std::uint32_t tracks[1]{6};
         char name[4]="jaw";
         ServerFlexSample samples[1]{{.8f,.5f,0}};
+        ServerIntensitySample ramp[1]{{.5f,.5f,0}};
         unsigned loads{},expr_maps{},flex_maps{},intensity_calls{};
     } f;
     auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
@@ -75,6 +77,7 @@ inline void check_active_server_facial_records(const ServerFacialThinkApi& api){
     std::strcpy(reinterpret_cast<char*>(f.events[0]+0x104),"smile");
     put(f.events[1],0,10u);put(f.events[1],0x184,1.f);put(f.events[1],0x188,2.f);
     put(f.events[1],0x30c,5u);put(f.events[1],0x318,1);
+    for(auto& e:f.events){put(e,0x19c,9u);put(e,0x1a8,1);}
     put(f.track,4,7u);f.track[8]=1;put(f.track,0x10,1.f);
     put(f.track,0x14,8u);put(f.track,0x20,1);
     std::memcpy(f.vfe,"EFV",4);
@@ -97,6 +100,7 @@ inline void check_active_server_facial_records(const ServerFacialThinkApi& api){
         case 6:*out=f.track;*n=sizeof(f.track);break;
         case 7:*out=f.name;*n=sizeof(f.name);break;
         case 8:*out=f.samples;*n=sizeof(f.samples);break;
+        case 9:*out=f.ramp;*n=sizeof(f.ramp);break;
         default:return 0;
         }
         return 1;
@@ -118,17 +122,53 @@ inline void check_active_server_facial_records(const ServerFacialThinkApi& api){
     };
     flex.intensity=expression.intensity; // no sample callback: native raw spline.
     b.expression=&expression;b.flex=&flex;
+    ServerComposedFacialThinkBindings cb{};cb.base=b;cb.native_intensity=true;
+    if(composed){expression.intensity=nullptr;flex.intensity=nullptr;}
+    auto run=[&](float now){return composed?composed->run(actor,sizeof(actor),now,&cb):api.run(actor,sizeof(actor),now,&b);};
     auto value=[&](){float v=0;std::memcpy(&v,actor+0x4a8,4);return v;};
     // Decay .2 -> .19, expression adds .2, spline blends half way to .8.
-    assert(api.run(actor,sizeof(actor),10,&b));
+    assert(run(10));
     assert(close(value(),.595f)&&f.rows[0xc]&&f.rows[0x4c]&&f.events[1][0x320]);
-    assert(f.loads==1&&f.expr_maps==2&&f.flex_maps==1&&f.intensity_calls==2&&actor[0x200]&&!actor[0x600]);
-    assert(api.run(actor,sizeof(actor),11,&b));
-    assert(close(value(),.782625f)&&f.loads==2&&f.expr_maps==4&&f.flex_maps==1&&f.intensity_calls==4);
+    assert(f.loads==1&&f.expr_maps==2&&f.flex_maps==1&&f.intensity_calls==(composed?0u:2u)&&actor[0x200]&&!actor[0x600]);
+    assert(run(11));
+    assert(close(value(),.782625f)&&f.loads==2&&f.expr_maps==4&&f.flex_maps==1&&f.intensity_calls==(composed?0u:4u));
     // Swap vector ordering: flex first, then expression, so result differs.
     unsigned char tmp[0x40];std::memcpy(tmp,f.rows,0x40);std::memcpy(f.rows,f.rows+0x40,0x40);
     std::memcpy(f.rows+0x40,tmp,0x40);put(actor,0x4a8,.2f);
-    assert(api.run(actor,sizeof(actor),12,&b));
-    assert(close(value(),.695f)&&f.flex_maps==1&&f.intensity_calls==6);
+    assert(run(12));
+    assert(close(value(),.695f)&&f.flex_maps==1&&f.intensity_calls==(composed?0u:6u));
+}
+
+inline void check_composed_npc_random_record(const ServerComposedFacialThinkApi& api){
+    alignas(4) unsigned char actor[server_npc_random_expression_extent]{},row[0x40]{},scene[0x220]{},event[0x3c0]{};
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    put(actor,0x5b8,1u);put(actor,0x5c4,1);put(actor,0x4a8,.4f);put(actor,0xefc,.8f);actor[0x1f0]=1;
+    put(row,0,2u);put(row,4,3u);put(row,0x38,6u);put(row,0x3c,100.f);put(row,0x20,1.f);
+    put(event,0,16u);put(event,0x184,0.f);put(event,0x188,5.f);
+    put(scene,0x78,2.f);
+    struct Fixture {void* row;void* event;void* scene;unsigned other{},random{};} f{row,event,scene};
+    ServerFlexRange range{0,1};
+    ServerNpcRandomExpressionBindings random{};random.context=&f;random.ranges=&range;random.count=1;
+    random.load=[](void*,void*,const char*,ServerExpressionBank*) noexcept -> int {return 0;};
+    random.controller=[](void*,void*,const char*) noexcept -> int {return 0;};
+    random.random_int=[](void*,int,int,int*) noexcept -> int {return 0;};
+    random.random_float=[](void* p,float lo,float hi,float* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(lo==2&&hi==4);++f.random;*out=2;return 1;
+    };
+    ServerComposedFacialThinkBindings b{};b.native_intensity=true;b.random_expression=&random;
+    b.base.context=&f;b.base.ranges=&range;b.base.count=1;
+    b.base.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);
+        if(w==1){*out=f.row;*n=0x40;}else if(w==2){*out=f.event;*n=0x3c0;}
+        else if(w==3){*out=f.scene;*n=0x220;}else return 0;return 1;
+    };
+    b.base.other=[](void* p,void*,void*,void*,void*,unsigned* out) noexcept -> int{
+        ++static_cast<Fixture*>(p)->other;*out=0;return 1;
+    };
+    assert(api.run(actor,sizeof(actor),10,&b)&&row[0xc]&&f.random==1&&!f.other);
+    float value=0;std::memcpy(&value,actor+0x4a8,4);
+    assert(std::fabs(value-.59f)<.00001f);
+    put(row,0x38,7u);row[0xc]=0;
+    assert(api.run(actor,sizeof(actor),11,&b)&&!row[0xc]&&f.other==1&&f.random==1);
 }
 }
