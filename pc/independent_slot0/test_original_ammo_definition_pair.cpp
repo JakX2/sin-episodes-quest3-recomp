@@ -24,6 +24,7 @@
 #include "test_native_server_expression.h"
 #include "test_native_server_facial_think.h"
 #include "test_native_server_event_intensity.h"
+#include "test_native_server_npc_random_expression.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -188,6 +189,15 @@ int main(int argc,char** argv){
         assert(api&&!get(0,sizeof(ft::ServerEventIntensityApi))&&!get(1,0));
         ft::test::check_server_event_intensity(*api);
         std::puts("PASS native server scene and event intensity ramps");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetServerNpcRandomExpressionApi>(GetProcAddress(server,ft::server_npc_random_expression_export));
+        assert(get&&!GetProcAddress(client,ft::server_npc_random_expression_export));
+        const auto* api=get(1,sizeof(ft::ServerNpcRandomExpressionApi));
+        assert(api&&!get(0,sizeof(ft::ServerNpcRandomExpressionApi))&&!get(1,0));
+        ft::test::check_server_npc_random_expression(*api);
+        std::puts("PASS native NPC random expression refresh and target blend");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));
