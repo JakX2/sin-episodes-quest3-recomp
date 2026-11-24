@@ -206,6 +206,34 @@ struct ResponseDispatchApi {
     int (__cdecl *dispatch)(void* exp,unsigned bytes,const ResponseDispatchBindings*,const char* concept_name,void* response,unsigned extent,unsigned* played) noexcept;
 };
 using GetResponseDispatchApi=const ResponseDispatchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_timing_update_export[]="SiN_GetResponseTimingUpdateApi";
+// One pair per server session, shared by all expeditors. The original
+// globals are 224e2b34 and 224e2b3c, not per-NPC copies.
+struct SpeechSemaphore {float release=0;std::uint32_t owner=0xffffffffu;};
+struct SpeechSemaphorePair {SpeechSemaphore classified{},other{};};
+struct ResponseNoteBindings {
+    void* context;
+    int (__cdecl *owner_start)(void*,void* exp) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    // Diagnostic enable and log are host-owned. Called after both deadlines.
+    int (__cdecl *diagnostic)(void*,void* exp,float total,float delay,float normal_until) noexcept;
+    int (__cdecl *uses_semaphore)(void*,void* exp,unsigned*) noexcept;
+    int (__cdecl *classify)(void*,void* exp,int argument,unsigned*) noexcept;
+    int (__cdecl *owner_handle)(void*,void* exp,std::uint32_t*) noexcept;
+};
+struct ResponseIntervalBindings {
+    void* context;
+    int (__cdecl *random)(void*,float low,float high,float*) noexcept;
+};
+struct ResponseTimingUpdateApi {
+    std::uint32_t version,size;
+    // Stable clock snapshot; original debug-only warning omitted here.
+    int (__cdecl *speaking)(const void* exp,unsigned bytes,float now,unsigned*) noexcept;
+    int (__cdecl *note)(void* exp,unsigned bytes,SpeechSemaphorePair*,const ResponseNoteBindings*,float duration,float delay) noexcept;
+    int (__cdecl *sample)(const void* interval,unsigned bytes,const ResponseIntervalBindings*,float*) noexcept;
+};
+using GetResponseTimingUpdateApi=const ResponseTimingUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

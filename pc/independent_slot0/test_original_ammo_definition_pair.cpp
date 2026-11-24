@@ -380,6 +380,13 @@ int main(int argc,char** argv){
     assert(responseDispatch&&!getResponseDispatch(0,sizeof(tables::ResponseDispatchApi))&&!getResponseDispatch(1,0));
     tables::test::check_response_dispatch(*responseDispatch);
     std::puts("PASS native response dispatch, timing stamp and ownership transfer");
+    const auto getResponseTimingUpdate=reinterpret_cast<tables::GetResponseTimingUpdateApi>(GetProcAddress(server,tables::response_timing_update_export));
+    assert(getResponseTimingUpdate&&!GetProcAddress(client,tables::response_timing_update_export));
+    const auto* responseTimingUpdate=getResponseTimingUpdate(1,sizeof(tables::ResponseTimingUpdateApi));
+    assert(responseTimingUpdate&&!getResponseTimingUpdate(0,sizeof(tables::ResponseTimingUpdateApi))&&!getResponseTimingUpdate(1,0));
+    tables::test::check_response_timing_update(*responseTimingUpdate);
+    std::puts("PASS native response deadlines, shared semaphores and random interval");
+
 
 
 

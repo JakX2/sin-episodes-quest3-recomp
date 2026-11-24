@@ -324,4 +324,51 @@ inline void check_response_dispatch(const ResponseDispatchApi& api){
     f.fail=12;assert(run(ResponseKind::Speak)==-1&&f.played==99);f.expect({1,2,8,12,18});
 }
 
+
+struct ResponseTimingFixture {
+    alignas(4) unsigned char exp[0x7c]{};
+    SpeechSemaphorePair state{};
+    ResponseNoteBindings b{};
+    ResponseIntervalBindings interval{};
+    unsigned events[32]{},count=0,fail=0,uses=1,classified=1,clock_calls=0;
+    std::uint32_t owner=0x123004;
+    float now=10,expected_total=0,expected_delay=0,expected_until=0,offset=.5f,width=2;
+    void record(unsigned n){assert(count<32);events[count++]=n;}
+    void expect(std::initializer_list<unsigned> l){assert(count==l.size()&&!std::memcmp(events,l.begin(),count*4));count=0;}
+    float read(unsigned off){float v=0;std::memcpy(&v,exp+off,4);return v;}
+    void put(unsigned off,float v){std::memcpy(exp+off,&v,4);}
+    static ResponseTimingFixture& get(void* p,void* e){auto& f=*static_cast<ResponseTimingFixture*>(p);assert(e==f.exp);return f;}
+    ResponseTimingFixture(){
+        b.context=this;
+        b.owner_start=[](void* p,void* e) noexcept -> int{auto& f=get(p,e);f.record(1);return f.fail!=1;};
+        b.clock=[](void* p,float* out) noexcept -> int{auto& f=*static_cast<ResponseTimingFixture*>(p);f.record(2);*out=f.now+(f.clock_calls++?1:0);return f.fail!=2;};
+        b.diagnostic=[](void* p,void* e,float total,float delay,float until) noexcept -> int{
+            auto& f=get(p,e);f.record(3);assert(total==f.expected_total&&delay==f.expected_delay&&until==f.expected_until&&f.read(0x68)==until&&f.read(0x6c)==until-delay);return f.fail!=3;};
+        b.uses_semaphore=[](void* p,void* e,unsigned* out) noexcept -> int{auto& f=get(p,e);f.record(4);*out=f.uses;return f.fail!=4;};
+        b.classify=[](void* p,void* e,int a,unsigned* out) noexcept -> int{auto& f=get(p,e);f.record(5);assert(!a);*out=f.classified;return f.fail!=5;};
+        b.owner_handle=[](void* p,void* e,std::uint32_t* out) noexcept -> int{
+            auto& f=get(p,e);f.record(6);const auto& sem=f.classified?f.state.classified:f.state.other;
+            assert(sem.release==f.now+1+f.expected_delay);*out=f.owner;return f.fail!=6;};
+        interval.context=this;
+        interval.random=[](void* p,float low,float high,float* out) noexcept -> int{auto& f=*static_cast<ResponseTimingFixture*>(p);f.record(7);assert(low==0&&high==f.width);*out=f.offset;return f.fail!=7;};
+    }
+};
+inline void check_response_timing_update(const ResponseTimingUpdateApi& api){
+    ResponseTimingFixture f;unsigned result=99;
+    auto note=[&](float duration,float delay,float total,float until){f.clock_calls=0;f.expected_delay=delay;f.expected_total=total;f.expected_until=until;return api.note(f.exp,sizeof(f.exp),&f.state,&f.b,duration,delay);};
+    assert(note(2,.5f,2.5f,12.5f)==1&&f.state.classified.release==11.5f&&f.state.classified.owner==f.owner&&f.state.other.owner==0xffffffffu);f.expect({1,2,3,4,5,2,6});
+    assert(api.speaking(f.exp,sizeof(f.exp),12,&result)==1&&result);
+    assert(api.speaking(f.exp,sizeof(f.exp),12.5f,&result)==1&&!result);
+    f.put(0x78,12.5f);assert(api.speaking(f.exp,sizeof(f.exp),12.5f,&result)==1&&result);
+    f.classified=0;f.owner=0xffffffffu;
+    assert(note(-2,1,0,13)==1&&f.state.other.release==12&&f.state.other.owner==0xffffffffu&&f.state.classified.release==11.5f);f.expect({1,2,3,4,5,2,6});
+    f.uses=0;assert(note(1,0,1,11)==1&&f.state.other.release==12);f.expect({1,2,3,4});
+    f.uses=1;f.fail=6;f.now=20;assert(note(1,0,1,21)==-1&&f.state.other.release==21&&f.state.other.owner==0xffffffffu);f.expect({1,2,3,4,5,2,6});
+    float interval[]={3,0},sample=99;
+    assert(api.sample(interval,sizeof(interval),&f.interval,&sample)==1&&sample==3);f.expect({});
+    interval[1]=2;f.fail=0;assert(api.sample(interval,sizeof(interval),&f.interval,&sample)==1&&sample==3.5f);f.expect({7});
+    f.fail=7;sample=99;assert(api.sample(interval,sizeof(interval),&f.interval,&sample)==-1&&sample==99);f.expect({7});
+    assert(api.sample(interval,7,&f.interval,&sample)==0);f.expect({});
+}
+
 }
