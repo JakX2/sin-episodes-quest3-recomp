@@ -7984,6 +7984,102 @@ int __cdecl native_choreography_scene_leaf(void* p,void* scene,unsigned offset,v
     }
 }
 const NativeChoreographySceneLeafApi native_choreography_scene_leaf_api{version,sizeof(NativeChoreographySceneLeafApi),&native_choreography_scene_leaf};
+// 221a1bf0 delegates token parsing to engine ParseFile. For bounded event
+// parameter strings implement the ordinary whitespace/quoted-token subset.
+const char* section_token(const char* p,char (&token)[128]) noexcept {
+    token[0]=0;
+    while(*p&&static_cast<unsigned char>(*p)<=32)++p;
+    const bool quoted=*p=='"';if(quoted)++p;
+    unsigned n=0;
+    while(*p&&(quoted?*p!='"':static_cast<unsigned char>(*p)>32)){
+        if(n+1<sizeof(token))token[n++]=*p;
+        ++p;
+    }
+    token[n]=0;if(quoted&&*p=='"')++p;
+    return p;
+}
+void section_clear(void* scene) noexcept {
+    for(unsigned off:{0x3e8u,0x3ecu,0x3f0u})hologram_write(scene,off,0u);
+    hologram_write(scene,0x3e4,static_cast<unsigned char>(0));
+    hologram_write(scene,0x3f4,static_cast<unsigned char>(0));
+}
+int __cdecl native_choreography_section_enter(void* p,void* scene,void*,void* event,const char* param) noexcept {
+    const auto* b=static_cast<const NativeChoreographySectionBindings*>(p);
+    if(!b||b->scene_bytes<0x549||!hologram_writable(scene,0x549)||
+       !hologram_writable(event,0x3c0))return 0;
+    if(hologram_read<unsigned char>(scene,0x548))return 1;
+    // Parameter is the inline event string in the original caller.
+    if(param!=static_cast<const char*>(event)+0x84||!std::memchr(param,0,128))return 0;
+    if(scene_state_pause(scene,b->scene_bytes)!=1)return 0;
+    section_clear(scene);
+    char token[128]{};
+    auto* next=section_token(param,token);
+    if(!choreography_text_equal(token,"automate"))return 1;
+    next=section_token(next,token);
+    const unsigned mode=choreography_text_equal(token,"Cancel")?1u:choreography_text_equal(token,"Resume")?2u:0u;
+    hologram_write(scene,0x3e8,mode);
+    if(!mode)return 1;
+    section_token(next,token);
+    const double duration=std::atof(token);
+    hologram_write(scene,0x3ec,static_cast<float>(duration));
+    if(duration>0)hologram_write(scene,0x3e4,static_cast<unsigned char>(1));
+    return 1;
+}
+int __cdecl native_choreography_section_ready(void* parsed,unsigned bytes,const NativeChoreographySectionBindings* b,unsigned* out) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!b||!native_choreography_clock_ready(b->clock)||!hologram_writable(out,4))return 0;
+    NativeChoreographyClockState state(*b->clock);
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(parsed,0x5c);
+        if(count<0||count>4096)return -1;
+        if(i>=static_cast<unsigned>(count)){*out=1;return 1;}
+        void* event=nullptr;unsigned extent=0;
+        if(!NativeChoreographyClockState::indexed(&state,parsed,0x50,i,&event,&extent)||extent<0x3c0||
+           !hologram_writable(event,0x3c0))return -1;
+        const auto word=hologram_read<std::uint32_t>(parsed,0x9c);
+        if(!word)continue; // 2210b880 no callback => true
+        const float time=hologram_read<float>(parsed,0x78);unsigned ready=0;
+        const auto& tick=*b->clock;
+        if(hologram_read<int>(event,0)==5&&tick.speech){
+            if(!tick.scene||tick.scene_bytes<0x549||!hologram_writable(tick.scene,0x549))return -1;
+            auto* cb=static_cast<unsigned char*>(tick.scene)+0x410;
+            if(word!=scene_word(cb)||speech_callback_invoke_impl(cb,8,tick.scene,tick.scene_bytes,12,time,parsed,bytes,event,extent,
+                 tick.speech,tick.actors,&ready,tick.preparation)!=1)return -1;
+        }else if(!b->dispatch||native_choreography_dispatch(word,12,time,parsed,event,b->dispatch,&ready)!=1)return -1;
+        if(!(ready&0xff)){*out=0;return 1;} // original short circuits later callbacks
+    }
+}
+int __cdecl native_choreography_section_tick(void* p,void* scene) noexcept {
+    const auto* b=static_cast<const NativeChoreographySectionBindings*>(p);
+    if(!b||b->scene_bytes<0x549||!hologram_writable(scene,0x549)||!native_choreography_clock_ready(b->clock))return 0;
+    const auto h=*b;
+    const auto word=hologram_read<std::uint32_t>(scene,0x40c);
+    if(!word||hologram_read<unsigned char>(scene,0x528)||hologram_read<unsigned char>(scene,0x3f4))return 1;
+    NativeChoreographyClockState state(*h.clock);void* root=nullptr;unsigned extent=0,ready=0;
+    if(!NativeChoreographyClockState::storage(&state,word,&root,&extent)||
+       native_choreography_section_ready(root,extent,&h,&ready)!=1)return 0;
+    const int mode=hologram_read<int>(scene,0x3e8);
+    if(!ready){
+        if(!hologram_read<unsigned char>(scene,0x3e4))return 1;
+        float now=0,last=0;
+        if(!h.clock_now||!h.last_think||!h.clock_now(h.context,&now)||!h.last_think(h.context,scene,0,&last))return 0;
+        const double elapsed=static_cast<double>(now)-last+hologram_read<float>(scene,0x3f0);
+        hologram_write(scene,0x3f0,static_cast<float>(elapsed));
+        const float timeout=hologram_read<float>(scene,0x3ec);
+        if(timeout>0&&!(elapsed>=timeout))return 1;
+        if(h.timeout&&!h.timeout(h.context,scene,mode))return 0;
+    }
+    if(mode==1){
+        if(!h.output||!h.finish)return 0;
+        SceneStateBindings life{};life.context=h.context;life.completion=h.output;life.finish=h.finish;
+        if(scene_state_complete(scene,h.scene_bytes,&life)!=1)return 0;
+    }else if(hologram_read<unsigned char>(scene,0x3d8)&&hologram_read<unsigned char>(scene,0x3d9)){
+        if(native_choreography_clock_resume(root,extent,h.clock)!=1)return 0;
+        hologram_write(scene,0x3d9,static_cast<unsigned char>(0));
+    }
+    section_clear(scene);return 1;
+}
+const NativeChoreographySectionApi native_choreography_section_api{version,sizeof(NativeChoreographySectionApi),
+    &native_choreography_section_enter,&native_choreography_section_tick,&native_choreography_section_ready};
 bool speech_drain_ready(const SceneSpeechDrainBindings* b,unsigned* out) noexcept {
     return b&&b->storage&&b->resolve&&b->clock&&b->open_filter&&b->emit&&b->close_filter&&hologram_writable(out,4);
 }
@@ -12826,6 +12922,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographySceneLeafApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographySceneLeafApi)?&native_choreography_scene_leaf_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographySectionApi=_SiN_GetNativeChoreographySectionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeChoreographySectionApi* __cdecl
+SiN_GetNativeChoreographySectionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographySectionApi)?&native_choreography_section_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographySceneLeafApi=_SiN_GetNativeChoreographySceneLeafApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographyDispatchApi=_SiN_GetNativeChoreographyDispatchApi")

@@ -784,6 +784,30 @@ struct NativeChoreographySceneLeafApi {
     int (__cdecl *invoke)(void*,void*,unsigned,void*,void*,void*,void*,const char*) noexcept;
 };
 using GetNativeChoreographySceneLeafApi=const NativeChoreographySceneLeafApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_choreography_section_export[]="SiN_GetNativeChoreographySectionApi";
+struct NativeChoreographySectionBindings {
+    void* context;
+    unsigned scene_bytes;
+    const NativeChoreographyClockBindings* clock;
+    const NativeChoreographyDispatchBindings* dispatch;
+    int (__cdecl *clock_now)(void*,float*) noexcept;
+    int (__cdecl *last_think)(void*,void*,int,float*) noexcept;
+    int (__cdecl *output)(void*,void*,void*,void*,float) noexcept;
+    int (__cdecl *finish)(void*,void*,int,int) noexcept;
+    // Original debug warning on timeout only. Action 1 cancel, 2 resume,
+    // otherwise unknown. No warning on ordinary condition completion.
+    int (__cdecl *timeout)(void*,void*,int) noexcept;
+};
+struct NativeChoreographySectionApi {
+    std::uint32_t version,size;
+    // Adapter for scene leaf section callback; context = bindings.
+    int (__cdecl *enter)(void*,void*,void*,void*,const char*) noexcept;
+    // Adapter for scene advance paused_tick; context = bindings.
+    int (__cdecl *tick)(void*,void*) noexcept;
+    // Original 22113dc0 tracked condition scan, boolean in out.
+    int (__cdecl *ready)(void*,unsigned,const NativeChoreographySectionBindings*,unsigned*) noexcept;
+};
+using GetNativeChoreographySectionApi=const NativeChoreographySectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char scene_speech_drain_export[]="SiN_GetSceneSpeechDrainApi";
 struct SceneSpeechDrainBindings {
     void* context;
