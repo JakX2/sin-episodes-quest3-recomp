@@ -848,4 +848,35 @@ struct DispenserApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetDispenserApi=const DispenserApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase720: dispenser container insertion/ejection and spawn state.
+// Source handles entity construction, transform, bodygroup and game
+// rules callbacks; the port owns original scalar transitions and order.
+inline constexpr char dispenser_container_export[]="SiN_GetAntigenContainerApi";
+enum class ContainerNotice:unsigned {Inserted,Ejected};
+enum class ContainerSound:unsigned {Load,Eject};
+struct ContainerObservation {void* container;std::uint32_t flags;float amount;};
+struct ContainerBindings {
+    DispenserBindings dispenser;
+    int (__cdecl *cast_container)(void*,void* entity,ContainerObservation*) noexcept;
+    int (__cdecl *bodygroup)(void*,void* object,int group,int value) noexcept;
+    int (__cdecl *notice)(void*,void* object,void* container,ContainerNotice) noexcept;
+    int (__cdecl *sound)(void*,void* object,ContainerSound) noexcept;
+    int (__cdecl *output)(void*,void* object,unsigned offset,void* activator,void* caller,float delay) noexcept;
+    // Host creates prop_antigen_explosive_barrel at dispenser transform
+    // and invokes original spawn service. Reports compatible container.
+    int (__cdecl *create_ejected)(void*,void* object,const char* classname,void** container) noexcept;
+    // Original setter at 222ff6e0: amount and percentFull pose, unclamped.
+    int (__cdecl *container_amount)(void*,void* container,float amount,float pose) noexcept;
+    // Original ejection helper 22139c90, arg1 (entity message).
+    int (__cdecl *eject_message)(void*,void* object,int value) noexcept;
+    int (__cdecl *clear_think)(void*,void* object) noexcept;
+};
+struct ContainerApi {
+    std::uint32_t version,size;
+    int (__cdecl *spawn_state)(HologramControl*,const ContainerBindings*) noexcept;
+    int (__cdecl *touch)(HologramControl*,const ContainerBindings*,void* entity) noexcept;
+    int (__cdecl *eject)(HologramControl*,const ContainerBindings*) noexcept;
+};
+using GetContainerApi=const ContainerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

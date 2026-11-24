@@ -2134,4 +2134,105 @@ inline void check_dispenser(const DispenserApi& api){
     set(0x49c,-1);assert(api.update_pose(&ctrl,&b)==1&&f.pose==0);expect({16,17});
 }
 
+struct ContainerFixture {
+    void* object=nullptr;
+    int can=0,ejected=0,steam=0;
+    unsigned events[32]{},count=0,fail=0;
+    std::uint32_t flags=8;
+    bool cast_ok=true,steam_live=false;
+    float now=10,amount=50,transferred=0,pose=0;
+    bool push(unsigned e){assert(count<32);events[count++]=e;return fail!=e;}
+};
+inline int __cdecl cont_cast(void* ctx,void* entity,ContainerObservation* out) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(entity==&f.can);
+    *out={f.cast_ok?&f.can:nullptr,f.flags,f.amount};return f.push(1);
+}
+inline int __cdecl cont_clock(void* ctx,float* now) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);*now=f.now;return f.push(2);
+}
+inline int __cdecl cont_body(void* ctx,void* obj,int group,int value) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object&&group==1&&(value==0||value==1));
+    return f.push(value?3:4);
+}
+inline int __cdecl cont_pose(void* ctx,void* obj,const char* name,float value) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object&&!std::strcmp(name,"percentFull"));
+    f.pose=value;return f.push(5);
+}
+inline int __cdecl cont_anim(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object);return f.push(6);
+}
+inline int __cdecl cont_notice(void* ctx,void* obj,void* container,ContainerNotice n) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object&&container==(n==ContainerNotice::Inserted?&f.can:&f.ejected));
+    return f.push(n==ContainerNotice::Inserted?7:8);
+}
+inline int __cdecl cont_remove(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);
+    if(obj==&f.can)return f.push(9);
+    assert(obj==&f.steam&&f.steam_live);f.steam_live=false;return f.push(10);
+}
+inline int __cdecl cont_sound(void* ctx,void* obj,ContainerSound n) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object);return f.push(n==ContainerSound::Load?11:12);
+}
+inline int __cdecl cont_output(void* ctx,void* obj,unsigned off,void* activator,void* caller,float delay) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object&&caller==obj&&delay==0);
+    assert((off==0x4b8&&activator==&f.can)||(off==0x4d0&&activator==&f.ejected));
+    return f.push(off==0x4b8?13:14);
+}
+inline int __cdecl cont_create(void* ctx,void* obj,const char* name,void** out) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object&&!std::strcmp(name,"prop_antigen_explosive_barrel"));
+    *out=&f.ejected;return f.push(15);
+}
+inline int __cdecl cont_amount(void* ctx,void* obj,float value,float pose) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==&f.ejected&&std::abs(pose-value*0.01f)<0.00001f);
+    f.transferred=value;return f.push(16);
+}
+inline int __cdecl cont_message(void* ctx,void* obj,int value) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object&&value==1);return f.push(17);
+}
+inline int __cdecl cont_clear(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object);return f.push(18);
+}
+inline int __cdecl cont_resolve(void* ctx,std::uint32_t handle,void** out) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(handle==0x123001);
+    *out=f.steam_live?&f.steam:nullptr;return f.push(19);
+}
+inline int __cdecl cont_disp_sound(void* ctx,void* obj,DispenserSound n) noexcept {
+    auto& f=*static_cast<ContainerFixture*>(ctx);assert(obj==f.object);
+    assert(n==DispenserSound::StopLoop||n==DispenserSound::Stop);
+    return f.push(n==DispenserSound::StopLoop?20:21);
+}
+inline void check_container(const DispenserApi& dispenser,const ContainerApi& api){
+    alignas(4) unsigned char object[0x4e8]{};
+    HologramControl ctrl{object,sizeof(object)};ContainerFixture f{object};
+    DispenserBindings db{};db.context=&f;db.clock=&cont_clock;db.pose=&cont_pose;db.advance_animation=&cont_anim;
+    db.remove=&cont_remove;db.resolve=&cont_resolve;db.sound=&cont_disp_sound;
+    ContainerBindings b{db,&cont_cast,&cont_body,&cont_notice,&cont_sound,&cont_output,
+        &cont_create,&cont_amount,&cont_message,&cont_clear};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto get=[&](unsigned off){float v=0;std::memcpy(&v,object+off,4);return v;};
+    const auto set=[&](unsigned off,float v){std::memcpy(object+off,&v,4);};
+    const auto touch=[&](){return api.touch(&ctrl,&b,&f.can);};
+    const auto eject=[&](){return api.eject(&ctrl,&b);};
+    assert(dispenser.defaults(object,sizeof(object)));
+    set(0x49c,120);assert(api.spawn_state(&ctrl,&b)==1&&object[0x498]&&get(0x49c)==100);expect({3});
+    assert(touch()==1);expect({1});
+    set(0x49c,-3);assert(api.spawn_state(&ctrl,&b)==1&&!object[0x498]&&get(0x49c)==0);expect({4});
+    f.cast_ok=false;assert(touch()==1);expect({1});f.cast_ok=true;
+    f.flags=0;assert(touch()==1);expect({1});f.flags=8;
+    set(0x4a8,10);f.now=10.5f;assert(touch()==1&&!object[0x498]&&get(0x4a8)==10.5f);expect({1,2});
+    f.now=10.75f;assert(touch()==1&&!object[0x498]&&get(0x4a8)==10.75f);expect({1,2});
+    f.now=11.5f;assert(touch()==1&&object[0x498]&&std::abs(get(0x49c)-50)<0.00001f);
+    expect({1,2,3,5,6,7,9,11,13});assert(std::abs(f.pose-0.5f)<0.00001f);
+    f.steam_live=true;const std::uint32_t steam=0x123001;std::memcpy(object+0x4b0,&steam,4);
+    set(0x4a4,0.25f);f.now=12;
+    assert(eject()==1&&!object[0x498]&&get(0x49c)==0&&get(0x4a0)==12&&get(0x4a8)==12&&get(0x4a4)==0.25f);
+    assert(!f.steam_live&&std::abs(f.transferred-50)<0.00001f);
+    expect({15,16,8,2,19,19,10,20,21,17,4,12,18,14,2});
+    assert(eject()==1);expect({});
+    f.now=12.5f;assert(touch()==1&&!object[0x498]);expect({1,2});
+    f.now=13.25f;f.amount=0;assert(touch()==1&&object[0x498]&&get(0x49c)==0);expect({1,2,3,5,6,7,9,11,13});
+    f.fail=14;assert(eject()==-1&&ctrl.blocked&&!object[0x498]);expect({15,16,8,2,17,4,12,18,14});
+    assert(touch()==0&&dispenser.acknowledge(&ctrl));expect({});
+}
+
 }
