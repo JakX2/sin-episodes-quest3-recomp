@@ -362,6 +362,13 @@ int main(int argc,char** argv){
     assert(jessicaAttention&&!getJessicaAttention(0,sizeof(tables::JessicaAttentionApi))&&!getJessicaAttention(1,0));
     tables::test::check_jessica_attention(*jessicaAttention);
     std::puts("PASS native Jessica shared attention timers and response criteria");
+    const auto getJessicaInteraction=reinterpret_cast<tables::GetJessicaInteractionApi>(GetProcAddress(server,tables::jessica_interaction_export));
+    assert(getJessicaInteraction&&!GetProcAddress(client,tables::jessica_interaction_export));
+    const auto* jessicaInteraction=getJessicaInteraction(1,sizeof(tables::JessicaInteractionApi));
+    assert(jessicaInteraction&&!getJessicaInteraction(0,sizeof(tables::JessicaInteractionApi))&&!getJessicaInteraction(1,0));
+    tables::test::check_jessica_interaction(*jessicaInteraction);
+    std::puts("PASS native Jessica interaction gate, use and greeting response dispatch");
+
     const auto getCount=reinterpret_cast<tables::GetCountInterrogationApi>(GetProcAddress(server,tables::count_export));
     assert(getCount&&!GetProcAddress(client,tables::count_export));
     const auto* countApi=getCount(1,sizeof(tables::CountInterrogationApi));

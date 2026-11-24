@@ -2899,6 +2899,51 @@ int __cdecl jessica_attention(HologramControl* ctrl,JessicaAttentionState* state
 }
 const JessicaAttentionApi jessica_attention_api{version,sizeof(JessicaAttentionApi),&jessica_attention,&health_ack};
 
+int __cdecl jessica_interaction(HologramControl* ctrl,const JessicaInteractionBindings* b,unsigned* result) noexcept {
+    if(!health_control(ctrl,jessica_size)||!b||!result||!hologram_writable(result,sizeof(*result))||
+       !b->speech_manager||!b->resolve||!b->expeditor||!b->eligible||!b->timing||
+       !b->player||!b->within_range||!b->suppressed||!b->speak||!b->has_concept||!b->reset_manager)return 0;
+    ctrl->busy=1;auto* npc=ctrl->object;const auto h=*b;
+    const auto complete=[&](unsigned value){*result=value!=0;return disp_finish(ctrl,true);};
+    const auto fail=[&](){return disp_finish(ctrl,false);};
+    // 2208ae50(1,1): initialize the manager even if a scalar rejects speech.
+    if(!h.speech_manager(h.context))return fail();
+    if(hologram_read<unsigned>(npc,0x8c)||(hologram_read<unsigned char>(npc,0xb4)&2)||
+       hologram_read<unsigned>(npc,0x850)==4||(hologram_read<unsigned>(npc,0xb8)&0x100000u)||
+       hologram_read<unsigned char>(npc,0x968))return complete(0);
+    unsigned value=0;
+    if(!h.resolve(h.context,hologram_read<std::uint32_t>(npc,0x16c),&value))return fail();
+    if(!value)return complete(0);
+    void* exp=nullptr;
+    if(!h.expeditor(h.context,npc,&exp)||!exp||!h.eligible(h.context,exp,npc,&value))return fail();
+    if(!value)return complete(0);
+    exp=nullptr;
+    if(!h.expeditor(h.context,npc,&exp)||!exp||!h.timing(h.context,exp,&value))return fail();
+    if(!value)return complete(0);
+    void* player=nullptr;
+    if(!h.player(h.context,&player))return fail();
+    if(player){
+        if(!h.within_range(h.context,npc,player,&value))return fail();
+        if(!value)return complete(0);
+    }
+    if(!h.suppressed(h.context,npc,0,&value))return fail();
+    if(value)return complete(0);
+    // 2208bee0: successful TLK_USE resets the shared manager but still
+    // returns false. An unsuccessful attempt falls through to HELLO/IDLE.
+    if(!h.speak(h.context,npc,"TLK_USE",0,&value))return fail();
+    if(value){
+        if(!h.reset_manager(h.context,-1.0f,0))return fail();
+        return complete(0);
+    }
+    exp=nullptr;
+    if(!h.expeditor(h.context,npc,&exp)||!exp||!h.has_concept(h.context,exp,"TLK_HELLO",&value))return fail();
+    const char* concept_name=value?"TLK_IDLE":"TLK_HELLO";
+    if(!h.speak(h.context,npc,concept_name,0,&value))return fail();
+    return complete(value);
+}
+const JessicaInteractionApi jessica_interaction_api{version,sizeof(JessicaInteractionApi),&jessica_interaction,&health_ack};
+
+
 constexpr unsigned count_size=0x1038;
 int __cdecl count_initialize(HologramControl* ctrl) noexcept {
     if(!health_control(ctrl,count_size))return 0;
@@ -7203,6 +7248,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::JessicaAt
 SiN_GetJessicaAttentionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(JessicaAttentionApi)?&jessica_attention_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetJessicaInteractionApi=_SiN_GetJessicaInteractionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::JessicaInteractionApi* __cdecl
+SiN_GetJessicaInteractionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(JessicaInteractionApi)?&jessica_interaction_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")
