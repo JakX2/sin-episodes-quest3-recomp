@@ -1,5 +1,6 @@
 #include "native_jessica_script.h"
 #include "native_count_interrogation.h"
+#include "native_character_response.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -2930,6 +2931,45 @@ int __cdecl count_damage(HologramControl* ctrl,const CountBindings* b,const Play
     return disp_finish(ctrl,host.base_damage(host.context,npc,&copy,result)!=0);
 }
 const CountInterrogationApi count_api{version,sizeof(CountInterrogationApi),&count_initialize,&count_input,&count_enabled,&count_observe,&count_damage,&health_ack};
+
+int __cdecl count_region(HologramControl* ctrl,const CountRegionBindings* b,const CountRegionQuery* query,const char** result) noexcept {
+    if(!health_control(ctrl,count_size)||!b||!b->forward_xy||!b->hit_identity||!query||!result||
+       !sin_independent::vgui_layout::Readable(query,sizeof(*query)))return 0;
+    *result=nullptr;
+    // Original x87 ordered greater-than; exactly 180 is accepted.
+    if(query->distance>180.0f)return 1;
+    ctrl->busy=1;auto* npc=ctrl->object;const auto host=*b;const auto q=*query;
+    const auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    float xy[2]{};
+    if(!host.forward_xy(host.context,npc,xy))return finish(false);
+    const bool positive=static_cast<double>(q.direction[0])*xy[0]+static_cast<double>(q.direction[1])*xy[1]>0.0;
+    int group=0;const char* bone=nullptr;
+    if(!host.hit_identity(host.context,npc,q.hitbox,&group,&bone))return finish(false);
+    char name[128]{};
+    if(!prop_key_read(bone,name))return finish(false);
+    // These case-sensitive bone substrings precede the hitgroup table.
+    if(std::strstr(name,"Bip01_Pelvis"))*result=positive?"butt":"crotch";
+    else if(std::strstr(name,"Hand"))*result="hand";
+    else if(std::strstr(name,"Calf"))*result="knee";
+    else {
+        static constexpr const char* groups[]={"generic stuff","head","chest","stomach","left arm","right arm","left leg","right leg"};
+        if(group>=0&&group<8)*result=group==2&&positive?"back":groups[group];
+    }
+    return finish(true);
+}
+int __cdecl character_semaphore(HologramControl* ctrl,unsigned* uses) noexcept {
+    if(!health_control(ctrl,0xb8)||!uses)return 0;
+    *uses=(hologram_read<unsigned char>(ctrl->object,0xb6)&1u)?0u:1u;
+    return 1;
+}
+int __cdecl jessica_damage_filter(HologramControl* ctrl,const JessicaFilterBindings* b,const PlayerDamageInfo* info,unsigned* result) noexcept {
+    if(!health_control(ctrl,jessica_size)||!b||!b->base_filter||!info||!result||
+       !sin_independent::vgui_layout::Readable(info,sizeof(*info)))return 0;
+    if(hologram_read<unsigned>(info,0x38)&0x10000u){*result=1;return 1;}
+    ctrl->busy=1;const auto host=*b;
+    return disp_finish(ctrl,host.base_filter(host.context,ctrl->object,info,result)!=0);
+}
+const CharacterResponseApi character_response_api{version,sizeof(CharacterResponseApi),&count_region,&character_semaphore,&jessica_damage_filter,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4659,6 +4699,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CountInte
 SiN_GetCountInterrogationApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(CountInterrogationApi)?&count_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetCharacterResponseApi=_SiN_GetCharacterResponseApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CharacterResponseApi* __cdecl
+SiN_GetCharacterResponseApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(CharacterResponseApi)?&character_response_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
