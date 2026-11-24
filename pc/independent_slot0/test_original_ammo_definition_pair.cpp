@@ -243,6 +243,13 @@ int main(int argc,char** argv){
         const auto* api=get(1,sizeof(ft::ServerVfeCacheApi));
         assert(api&&!get(0,sizeof(ft::ServerVfeCacheApi))&&!get(1,0));
         ft::test::check_server_vfe_cache(*api);
+        const auto getCached=reinterpret_cast<ft::GetServerCachedFacialThinkApi>(GetProcAddress(server,ft::server_cached_facial_think_export));
+        const auto getRemap=reinterpret_cast<ft::GetServerVfeRemapApi>(GetProcAddress(server,ft::server_vfe_remap_export));
+        assert(getCached&&getRemap&&!GetProcAddress(client,ft::server_cached_facial_think_export));
+        const auto* cached=getCached(1,sizeof(ft::ServerCachedFacialThinkApi));
+        const auto* remap=getRemap(1,sizeof(ft::ServerVfeRemapApi));
+        assert(cached&&remap&&!getCached(0,sizeof(ft::ServerCachedFacialThinkApi))&&!getCached(1,0));
+        ft::test::check_cached_facial_think(*cached,*api,*remap);
         std::puts("PASS native server VFE successful-file cache and stable mutable bank identity");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
