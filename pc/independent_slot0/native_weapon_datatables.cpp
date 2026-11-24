@@ -5397,6 +5397,118 @@ int __cdecl scene_actor_cache_actor(void* scene,unsigned bytes,std::uint32_t cho
 }
 const SceneActorCacheApi scene_actor_cache_api{version,sizeof(SceneActorCacheApi),&scene_actor_cache_index,&scene_actor_cache_actor};
 
+bool scene_name_equal(const char* a,const char* b) noexcept {
+    for(;*a&&*b;++a,++b){
+        auto x=static_cast<unsigned char>(*a),y=static_cast<unsigned char>(*b);
+        if(x>='A'&&x<='Z')x=static_cast<unsigned char>(x+32);
+        if(y>='A'&&y<='Z')y=static_cast<unsigned char>(y+32);
+        if(x!=y)return false;
+    }
+    return *a==*b;
+}
+bool scene_names_ready(void* scene,unsigned bytes,const char* name,const SceneActorNameBindings* b,void** out,unsigned* n) noexcept {
+    if(bytes<0x558||!hologram_writable(scene,0x558)||!name||!b||!b->resolve||!b->handle||!b->text||
+       !b->max_clients||!b->local_player||!b->find||!b->is_npc||!b->cast_actor||!b->npc_lookup||
+       !hologram_writable(out,sizeof(*out))||!hologram_writable(n,4))return false;
+    for(unsigned i=0;i<4096;++i){
+        if(!sin_independent::vgui_layout::Readable(name+i,1))return false;
+        if(!name[i])return true;
+    }
+    return false;
+}
+bool scene_names_resolve(const SceneActorNameBindings& h,std::uint32_t word,void** out,unsigned* n) noexcept {
+    *out=nullptr;*n=0;
+    if(word==0xffffffffu)return true;
+    if(!h.resolve(h.context,word,out,n))return false;
+    if(!*out)*n=0;
+    return true;
+}
+// 221a3fe0: resolve a target alias's configured name.
+bool scene_target_name(void* scene,const char* name,unsigned require_actor,const SceneActorNameBindings& h,void** out,unsigned* n) noexcept {
+    if(!name)name="";
+    if(scene_name_equal(name,"!activator"))
+        return scene_names_resolve(h,hologram_read<std::uint32_t>(scene,0x554),out,n);
+    const bool wildcard=std::strchr(name,'*')!=nullptr;
+    void* previous=nullptr;
+    for(unsigned attempts=0;attempts<0x100000;++attempts){
+        void* candidate=nullptr;unsigned extent=0;
+        if(!h.find(h.context,name,previous,nullptr,&candidate,&extent))return false;
+        if(!candidate){*out=nullptr;*n=0;return true;}
+        if(!wildcard||!(require_actor&0xff)){*out=candidate;*n=extent;return true;}
+        void* cast=nullptr;unsigned cast_bytes=0;
+        if(!h.cast_actor(h.context,candidate,&cast,&cast_bytes))return false;
+        if(cast){*out=candidate;*n=extent;return true;}
+        if(candidate==previous)return false;
+        previous=candidate;
+    }
+    return false;
+}
+int __cdecl scene_name_entity(void* scene,unsigned bytes,const char* name,void* search_context,unsigned require_actor,
+    const SceneActorNameBindings* b,void** out,unsigned* n) noexcept {
+    if(!scene_names_ready(scene,bytes,name,b,out,n))return 0;
+    const auto h=*b;void* result=nullptr;unsigned extent=0;
+    if(scene_name_equal(name,"Player")||scene_name_equal(name,"!player")){
+        int clients=0;if(!h.max_clients(h.context,&clients))return -1;
+        if(clients==1&&!h.local_player(h.context,&result,&extent))return -1;
+    }else{
+        constexpr const char* targets[]={"!target1","!target2","!target3","!target4","!target5","!target6","!target7","!target8"};
+        int target=-1;for(int i=0;i<8;++i)if(scene_name_equal(name,targets[i])){target=i;break;}
+        if(target>=0){
+            const unsigned handle_off=0x3b8+4*static_cast<unsigned>(target);
+            const auto word=hologram_read<std::uint32_t>(scene,handle_off);
+            if(!scene_names_resolve(h,word,&result,&extent))return -1;
+            if(!result){
+                const auto str_word=hologram_read<std::uint32_t>(scene,0x398+4*static_cast<unsigned>(target));
+                const char* configured=nullptr;
+                if(str_word&&!h.text(h.context,str_word,&configured))return -1;
+                // Host text is borrowed; require bounded terminated storage.
+                if(configured){
+                    bool valid=false;for(unsigned i=0;i<4096;++i){
+                        if(!sin_independent::vgui_layout::Readable(configured+i,1))return -1;
+                        if(!configured[i]){valid=true;break;}
+                    }if(!valid)return -1;
+                }
+                if(!scene_target_name(scene,configured,require_actor,h,&result,&extent))return -1;
+                std::uint32_t packed=0xffffffffu;
+                if(result&&!h.handle(h.context,result,&packed))return -1;
+                hologram_write(scene,handle_off,packed);
+                // Original 22028fb0 resolves the newly stored handle.
+                if(!scene_names_resolve(h,packed,&result,&extent))return -1;
+            }
+        }else{
+            unsigned npc=0;
+            if(search_context&&!h.is_npc(h.context,search_context,&npc))return -1;
+            if(search_context&&(npc&0xff)){
+                if(!h.is_npc(h.context,search_context,&npc)||!(npc&0xff))return -1;
+                if(!h.npc_lookup(h.context,search_context,name,&result,&extent))return -1;
+            }else if(!h.find(h.context,name,nullptr,search_context,&result,&extent))return -1;
+        }
+    }
+    *out=result;*n=result?extent:0;return 1;
+}
+int __cdecl scene_name_actor(void* scene,unsigned bytes,const char* name,unsigned instanced,const SceneActorNameBindings* b,void** out,unsigned* n) noexcept {
+    if(instanced>1||!scene_names_ready(scene,bytes,name,b,out,n)||(instanced&&(bytes<0x560||!sin_independent::vgui_layout::Readable(scene,0x560))))return 0;
+    const auto h=*b;void* actor=nullptr;unsigned extent=0;
+    if(instanced){
+        if(!scene_names_resolve(h,hologram_read<std::uint32_t>(scene,0x55c),&actor,&extent))return -1;
+        if(actor){
+            unsigned npc=0;
+            if(!scene_names_resolve(h,hologram_read<std::uint32_t>(scene,0x55c),&actor,&extent)||!actor||
+               !h.is_npc(h.context,actor,&npc))return -1;
+            if(npc&0xff){*out=actor;*n=extent;return 1;}
+        }
+    }
+    if(scene_name_entity(scene,bytes,name,nullptr,1,&h,&actor,&extent)!=1)return -1;
+    if(actor){
+        void* cast=nullptr;unsigned cast_bytes=0;
+        if(!h.cast_actor(h.context,actor,&cast,&cast_bytes))return -1;
+        actor=cast;extent=cast_bytes;
+    }
+    *out=actor;*n=actor?extent:0;return 1;
+}
+const SceneActorNamesApi scene_actor_names_api{version,sizeof(SceneActorNamesApi),&scene_name_entity,&scene_name_actor};
+
+
 int __cdecl integrated_scene(void* npc,const char* name,float delay,const NpcScenePlaybackBindings* b,const SceneEntityLifecycleBindings* life,float* out) noexcept {
     if(!life)return 0;const auto h=*life;
     return npc_scene_play(npc,name,delay,b,out,false,&h);
@@ -9990,6 +10102,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetSceneActorNamesApi=_SiN_GetSceneActorNamesApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneActorNamesApi* __cdecl
+SiN_GetSceneActorNamesApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneActorNamesApi)?&scene_actor_names_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetSceneActorCacheApi=_SiN_GetSceneActorCacheApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneActorCacheApi* __cdecl
 SiN_GetSceneActorCacheApi(std::uint32_t version,std::uint32_t size) noexcept {

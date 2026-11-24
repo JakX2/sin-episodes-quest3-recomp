@@ -619,6 +619,32 @@ struct SceneActorCacheApi {
 };
 using GetSceneActorCacheApi=const SceneActorCacheApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char scene_actor_names_export[]="SiN_GetSceneActorNamesApi";
+struct SceneActorNameBindings {
+    void* context;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *handle)(void*,void*,std::uint32_t*) noexcept;
+    int (__cdecl *text)(void*,std::uint32_t,const char**) noexcept;
+    int (__cdecl *max_clients)(void*,int*) noexcept;
+    int (__cdecl *local_player)(void*,void**,unsigned*) noexcept;
+    // 221619e0 entity-list FindEntityByName; previous continues wildcard search.
+    int (__cdecl *find)(void*,const char*,void* previous,void* search_context,void**,unsigned*) noexcept;
+    // Original virtual +f4 returns NPC eligibility in AL.
+    int (__cdecl *is_npc)(void*,void*,unsigned*) noexcept;
+    // Original RTTI cast to CAI_BaseActor; may return null.
+    int (__cdecl *cast_actor)(void*,void*,void**,unsigned*) noexcept;
+    int (__cdecl *npc_lookup)(void*,void* npc,const char*,void**,unsigned*) noexcept;
+};
+struct SceneActorNamesApi {
+    std::uint32_t version,size;
+    // 221a40d0; resolve player aliases, target aliases and contextual names.
+    int (__cdecl *entity)(void*,unsigned,const char*,void* search_context,unsigned require_actor,const SceneActorNameBindings*,void**,unsigned*) noexcept;
+    // 221a2c50 / 221a5870; instanced scenes prefer the NPC at +55c.
+    int (__cdecl *actor)(void*,unsigned,const char*,unsigned instanced,const SceneActorNameBindings*,void**,unsigned*) noexcept;
+};
+using GetSceneActorNamesApi=const SceneActorNamesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+
 
 
 
