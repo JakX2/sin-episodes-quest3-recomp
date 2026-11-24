@@ -643,6 +643,25 @@ struct SceneActorNamesApi {
     int (__cdecl *actor)(void*,unsigned,const char*,unsigned instanced,const SceneActorNameBindings*,void**,unsigned*) noexcept;
 };
 using GetSceneActorNamesApi=const SceneActorNamesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char resolved_scene_actor_export[]="SiN_GetResolvedSceneActorApi";
+struct ResolvedSceneActorBindings {
+    SceneActorCacheBindings cache;
+    SceneActorNameBindings names;
+    unsigned instanced;
+    // Resolve parsed CChoreoActor pointer word to its actual object.
+    int (__cdecl *choreo_object)(void*,std::uint32_t,const void**,unsigned*) noexcept;
+    void* context;
+};
+struct ResolvedSceneActorApi {
+    std::uint32_t version,size;
+    int (__cdecl *index)(void*,unsigned,int,const ResolvedSceneActorBindings*,void**,unsigned*) noexcept;
+    int (__cdecl *actor)(void*,unsigned,std::uint32_t,const ResolvedSceneActorBindings*,void**,unsigned*) noexcept;
+    // Phase821 callback but actor resolution runs native cache + name path.
+    // Legacy SceneSpeechCallbackBindings.actor is unused.
+    int (__cdecl *speech)(const void*,unsigned,void*,unsigned,unsigned,float,void*,unsigned,void*,unsigned,
+        const SceneSpeechCallbackBindings*,const ResolvedSceneActorBindings*,unsigned*) noexcept;
+};
+using GetResolvedSceneActorApi=const ResolvedSceneActorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

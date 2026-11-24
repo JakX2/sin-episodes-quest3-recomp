@@ -5264,9 +5264,10 @@ bool scene_event_ignored(const char* name) noexcept {
     for(unsigned i=0;i<4;++i){auto c=name[i];if(c>='A'&&c<='Z')c=static_cast<char>(c+32);if(c!=ignored[i])return false;}
     return name[4]==0;
 }
-int __cdecl speech_callback_invoke(const void* callback,unsigned callback_bytes,void* scene,unsigned bytes,
+int __cdecl resolved_scene_actor(void*,unsigned,std::uint32_t,const ResolvedSceneActorBindings*,void**,unsigned*) noexcept;
+int speech_callback_invoke_impl(const void* callback,unsigned callback_bytes,void* scene,unsigned bytes,
     unsigned slot,float time,void* parsed,unsigned parsed_bytes,void* event,unsigned extent,
-    const SceneSpeechCallbackBindings* b,unsigned* out) noexcept {
+    const SceneSpeechCallbackBindings* b,const ResolvedSceneActorBindings* resolved,unsigned* out) noexcept {
     if(!callback||callback_bytes<8||!sin_independent::vgui_layout::Readable(callback,8)||!out||!hologram_writable(out,4)||
        (slot!=0&&slot!=4&&slot!=8&&slot!=12))return 0;
     const auto owner=hologram_read<std::uint32_t>(callback,4);
@@ -5275,7 +5276,7 @@ int __cdecl speech_callback_invoke(const void* callback,unsigned callback_bytes,
        owner!=scene_word(scene)||callback!=static_cast<unsigned char*>(scene)+0x410||
        !parsed||parsed_bytes<0xa0||!sin_independent::vgui_layout::Readable(parsed,0xa0)||
        !event||extent<0x2b8||!sin_independent::vgui_layout::Readable(event,0x2b8)||hologram_read<int>(event,0)!=5||
-       !b||!b->actor||!b->trace)return 0;
+       !b||(!resolved&&!b->actor)||!b->trace)return 0;
     if(slot==8){*out=1;return 1;} // only nested type11 updates in original
     const auto h=*b;
     const auto* name=static_cast<const char*>(event)+4;
@@ -5288,7 +5289,8 @@ int __cdecl speech_callback_invoke(const void* callback,unsigned callback_bytes,
     }
     const auto choreo_actor=hologram_read<std::uint32_t>(event,0x2b4);
     void* actor=nullptr;unsigned actor_bytes=0;
-    if(choreo_actor&&!h.actor(h.context,scene,choreo_actor,&actor,&actor_bytes))return -1;
+    if(choreo_actor&&!(resolved?resolved_scene_actor(scene,bytes,choreo_actor,resolved,&actor,&actor_bytes)==1:
+        h.actor(h.context,scene,choreo_actor,&actor,&actor_bytes)!=0))return -1;
     if(slot==0&&choreo_actor&&!actor){
         if(!h.trace(h.context,scene,event,time,SceneSpeechTrace::MissingActor))return -1;
         *out=1;return 1;
@@ -5313,11 +5315,16 @@ int __cdecl speech_callback_invoke(const void* callback,unsigned callback_bytes,
     }
     *out=1;return 1;
 }
+int __cdecl speech_callback_invoke(const void* callback,unsigned callback_bytes,void* scene,unsigned bytes,
+    unsigned slot,float time,void* parsed,unsigned parsed_bytes,void* event,unsigned extent,
+    const SceneSpeechCallbackBindings* b,unsigned* out) noexcept {
+    return speech_callback_invoke_impl(callback,callback_bytes,scene,bytes,slot,time,parsed,parsed_bytes,event,extent,b,nullptr,out);
+}
 const SceneSpeechCallbackApi scene_speech_callback_api{version,sizeof(SceneSpeechCallbackApi),&speech_callback_invoke};
 
-bool scene_actor_cache_ready(void* scene,unsigned bytes,const SceneActorCacheBindings* b,void** out,unsigned* extent) noexcept {
+bool scene_actor_cache_ready(void* scene,unsigned bytes,const SceneActorCacheBindings* b,void** out,unsigned* extent,bool native_names=false) noexcept {
     return scene&&bytes>=0x410&&hologram_writable(scene,0x410)&&b&&b->parsed&&b->storage&&b->grow&&b->resolve&&
-        b->lookup&&b->handle&&b->invalid_index&&out&&extent&&hologram_writable(out,sizeof(*out))&&hologram_writable(extent,4);
+        (native_names||b->lookup)&&b->handle&&b->invalid_index&&out&&extent&&hologram_writable(out,sizeof(*out))&&hologram_writable(extent,4);
 }
 bool scene_actor_cache_parsed(void* scene,const SceneActorCacheBindings& h,void** parsed,unsigned* count) noexcept {
     unsigned bytes=0;*parsed=nullptr;
@@ -5332,8 +5339,10 @@ bool scene_actor_cache_array(const SceneActorCacheBindings& h,std::uint32_t word
     return count&&word&&h.storage(h.context,word,p,&bytes)&&*p&&bytes>=count*4&&
         (write?hologram_writable(*p,count*4):sin_independent::vgui_layout::Readable(*p,count*4));
 }
-int __cdecl scene_actor_cache_index(void* scene,unsigned bytes,int index,const SceneActorCacheBindings* b,void** out,unsigned* extent) noexcept {
-    if(!scene_actor_cache_ready(scene,bytes,b,out,extent))return 0;
+int __cdecl scene_name_actor(void*,unsigned,const char*,unsigned,const SceneActorNameBindings*,void**,unsigned*) noexcept;
+int scene_actor_cache_index_impl(void* scene,unsigned bytes,int index,const SceneActorCacheBindings* b,void** out,unsigned* extent,
+    const ResolvedSceneActorBindings* native_names) noexcept {
+    if(!scene_actor_cache_ready(scene,bytes,b,out,extent,native_names!=nullptr))return 0;
     const auto h=*b;void* parsed=nullptr;unsigned count=0;
     if(!scene_actor_cache_parsed(scene,h,&parsed,&count))return -1;
     auto* vector=static_cast<unsigned char*>(scene)+0x3f8;
@@ -5373,7 +5382,12 @@ int __cdecl scene_actor_cache_index(void* scene,unsigned bytes,int index,const S
     const auto choreo=hologram_read<std::uint32_t>(actors,offset);
     if(!choreo)return 1;
     actor=nullptr;actor_bytes=0;
-    if(!h.lookup(h.context,scene,choreo,&actor,&actor_bytes))return -1;
+    if(native_names){
+        const auto& n=*native_names;const void* object=nullptr;unsigned object_bytes=0;
+        if(!n.choreo_object||!n.choreo_object(n.context,choreo,&object,&object_bytes)||!object||object_bytes<128||
+           !sin_independent::vgui_layout::Readable(object,128)||!std::memchr(object,0,128))return -1;
+        if(scene_name_actor(scene,bytes,static_cast<const char*>(object),n.instanced,&n.names,&actor,&actor_bytes)!=1)return -1;
+    }else if(!h.lookup(h.context,scene,choreo,&actor,&actor_bytes))return -1;
     if(!actor)return 1; // original does not clear stale cache on failed lookup
     std::uint32_t replacement=0xffffffffu;
     if(!h.handle(h.context,actor,&replacement))return -1;
@@ -5382,8 +5396,12 @@ int __cdecl scene_actor_cache_index(void* scene,unsigned bytes,int index,const S
        !scene_actor_cache_array(h,hologram_read<std::uint32_t>(vector,0),static_cast<unsigned>(cached),&slots,true))return -1;
     hologram_write(slots,offset,replacement);*out=actor;*extent=actor_bytes;return 1;
 }
-int __cdecl scene_actor_cache_actor(void* scene,unsigned bytes,std::uint32_t choreo,const SceneActorCacheBindings* b,void** out,unsigned* extent) noexcept {
-    if(!scene_actor_cache_ready(scene,bytes,b,out,extent))return 0;
+int __cdecl scene_actor_cache_index(void* scene,unsigned bytes,int index,const SceneActorCacheBindings* b,void** out,unsigned* extent) noexcept {
+    return scene_actor_cache_index_impl(scene,bytes,index,b,out,extent,nullptr);
+}
+int scene_actor_cache_actor_impl(void* scene,unsigned bytes,std::uint32_t choreo,const SceneActorCacheBindings* b,void** out,unsigned* extent,
+    const ResolvedSceneActorBindings* native_names) noexcept {
+    if(!scene_actor_cache_ready(scene,bytes,b,out,extent,native_names!=nullptr))return 0;
     const auto h=*b;void* parsed=nullptr;unsigned count=0;
     if(!scene_actor_cache_parsed(scene,h,&parsed,&count))return -1;
     if(count){
@@ -5391,9 +5409,12 @@ int __cdecl scene_actor_cache_actor(void* scene,unsigned bytes,std::uint32_t cho
         if(!scene_actor_cache_array(h,hologram_read<std::uint32_t>(parsed,0x14),count,&actors,false))return -1;
         for(unsigned i=0;i<count;++i)
             if(hologram_read<std::uint32_t>(actors,i*4)==choreo)
-                return scene_actor_cache_index(scene,bytes,static_cast<int>(i),&h,out,extent);
+                return scene_actor_cache_index_impl(scene,bytes,static_cast<int>(i),&h,out,extent,native_names);
     }
     *out=nullptr;*extent=0;return 1;
+}
+int __cdecl scene_actor_cache_actor(void* scene,unsigned bytes,std::uint32_t choreo,const SceneActorCacheBindings* b,void** out,unsigned* extent) noexcept {
+    return scene_actor_cache_actor_impl(scene,bytes,choreo,b,out,extent,nullptr);
 }
 const SceneActorCacheApi scene_actor_cache_api{version,sizeof(SceneActorCacheApi),&scene_actor_cache_index,&scene_actor_cache_actor};
 
@@ -5507,6 +5528,22 @@ int __cdecl scene_name_actor(void* scene,unsigned bytes,const char* name,unsigne
     *out=actor;*n=actor?extent:0;return 1;
 }
 const SceneActorNamesApi scene_actor_names_api{version,sizeof(SceneActorNamesApi),&scene_name_entity,&scene_name_actor};
+int __cdecl resolved_scene_index(void* scene,unsigned bytes,int index,const ResolvedSceneActorBindings* b,void** out,unsigned* n) noexcept {
+    if(!b||b->instanced>1||!b->choreo_object)return 0;
+    const auto h=*b;return scene_actor_cache_index_impl(scene,bytes,index,&h.cache,out,n,&h);
+}
+int __cdecl resolved_scene_actor(void* scene,unsigned bytes,std::uint32_t actor,const ResolvedSceneActorBindings* b,void** out,unsigned* n) noexcept {
+    if(!b||b->instanced>1||!b->choreo_object)return 0;
+    const auto h=*b;return scene_actor_cache_actor_impl(scene,bytes,actor,&h.cache,out,n,&h);
+}
+int __cdecl resolved_scene_speech(const void* callback,unsigned cb_bytes,void* scene,unsigned bytes,unsigned slot,float time,
+    void* parsed,unsigned parsed_bytes,void* event,unsigned extent,const SceneSpeechCallbackBindings* b,
+    const ResolvedSceneActorBindings* names,unsigned* out) noexcept {
+    if(!names)return 0;
+    const auto h=*names;
+    return speech_callback_invoke_impl(callback,cb_bytes,scene,bytes,slot,time,parsed,parsed_bytes,event,extent,b,&h,out);
+}
+const ResolvedSceneActorApi resolved_scene_actor_api{version,sizeof(ResolvedSceneActorApi),&resolved_scene_index,&resolved_scene_actor,&resolved_scene_speech};
 
 
 int __cdecl integrated_scene(void* npc,const char* name,float delay,const NpcScenePlaybackBindings* b,const SceneEntityLifecycleBindings* life,float* out) noexcept {
@@ -10102,6 +10139,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetResolvedSceneActorApi=_SiN_GetResolvedSceneActorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResolvedSceneActorApi* __cdecl
+SiN_GetResolvedSceneActorApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResolvedSceneActorApi)?&resolved_scene_actor_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetSceneActorNamesApi=_SiN_GetSceneActorNamesApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneActorNamesApi* __cdecl
 SiN_GetSceneActorNamesApi(std::uint32_t version,std::uint32_t size) noexcept {
