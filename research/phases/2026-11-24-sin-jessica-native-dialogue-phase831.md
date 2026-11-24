@@ -1,0 +1,3 @@
+# Phase 831: positive Jessica generated dialogue lifecycle
+
+Expands Phase829 regression to a live synthetic Jessica actor with full original 0x1458 extent. The same object feeds the companion gate, expeditor owner, generated scene actor, actor cache, and speech event callbacks. Response note and speech preparation share the exact semaphore pair; test denial by another owner, successful normal-urgency response after eligibility, native speech/caption tick, updated release/owner, stop and retirement. No new runtime code or original routine claims. CI pending; engine audio and real map still unverified.

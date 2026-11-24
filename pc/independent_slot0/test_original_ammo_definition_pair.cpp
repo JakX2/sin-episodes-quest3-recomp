@@ -652,7 +652,7 @@ int main(int argc,char** argv){
     const auto* nativeGeneratedMapDialogue=getNativeGeneratedMapDialogue(1,sizeof(tables::NativeGeneratedMapDialogueApi));
     assert(nativeGeneratedMapDialogue&&!getNativeGeneratedMapDialogue(0,sizeof(tables::NativeGeneratedMapDialogueApi))&&!getNativeGeneratedMapDialogue(1,0));
     tables::test::check_native_generated_map_dialogue(*nativeGeneratedMapDialogue,*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*responseTimingUpdate,*responseRecord);
-    std::puts("PASS native map Count response speech lifecycle and Jessica gated/no-match observation");
+    std::puts("PASS native map Count and Jessica response speech lifecycles, shared semaphore and gated/no-match observation");
 
 
 
