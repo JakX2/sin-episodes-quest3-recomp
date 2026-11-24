@@ -5,6 +5,7 @@
 #include "native_client_facial_frame.h"
 #include "native_client_phoneme_window.h"
 #include "native_client_phoneme_emphasis.h"
+#include "native_client_phoneme_source.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11246,6 +11247,53 @@ int __cdecl client_phoneme_accumulate(float overlap,const ClientPhonemeBankWeigh
     std::memcpy(out,result,sizeof(result));return 1;
 }
 const ClientPhonemeEmphasisApi client_phoneme_emphasis_api{version,sizeof(ClientPhonemeEmphasisApi),&client_phoneme_curve,&client_phoneme_blend,&client_phoneme_accumulate};
+struct ClientPhonemeSourceDispatch {
+    const ClientPhonemeSourceBindings* bindings;
+    float emphasis;
+    float* weights;
+    bool failed;
+};
+void __cdecl client_phoneme_source_emit(void* p,std::uint16_t code,float overlap) noexcept {
+    auto& s=*static_cast<ClientPhonemeSourceDispatch*>(p);
+    if(s.failed)return;
+    ClientPhonemeResolvedBanks bank{};
+    const int found=s.bindings->lookup(s.bindings->context,code,&bank);
+    if(found==0)return;
+    if(found!=1){s.failed=true;return;}
+    const auto blend=client_emphasis_blend(s.emphasis,bank.weak,bank.strong);
+    if(!client_phoneme_accumulate(overlap,&blend,bank.banks,s.weights))s.failed=true;
+}
+int __cdecl client_phoneme_source_apply(const void* entity,unsigned bytes,float delay,float window,bool adaptive,
+    const ClientPhonemeSourceBindings* bindings,float* out) noexcept {
+    if(bytes<client_facial_object_bytes||!entity||!sin_independent::vgui_layout::Readable(entity,client_facial_object_bytes)||
+       !bindings||!sin_independent::vgui_layout::Readable(bindings,sizeof(*bindings))||!bindings->resolve||!bindings->lookup||
+       !std::isfinite(delay)||!std::isfinite(window)||!(window>0)||!hologram_writable(out,128*sizeof(float)))return 0;
+    const auto* raw=static_cast<const unsigned char*>(entity);
+    std::int16_t count=0;std::memcpy(&count,raw+client_phoneme_source_count_offset,sizeof(count));
+    if(count<=0)return 1;
+    if(count>static_cast<int>(client_phoneme_max_sources))return 0;
+    float result[128];std::memcpy(result,out,sizeof(result));
+    for(int i=0;i<count;++i){
+        const auto* row=raw+client_phoneme_source_offset+i*8;
+        float elapsed=0;std::uint32_t handle=0;
+        std::memcpy(&elapsed,row,4);std::memcpy(&handle,row+4,4);
+        ClientPhonemeSentence sentence{};
+        const int found=bindings->resolve(bindings->context,handle,&sentence);
+        if(!found)continue;
+        if(found!=1||!std::isfinite(elapsed)||!std::isfinite(sentence.duration)||sentence.duration<0)return 0;
+        // Original pre-delay lifetime gate, strict elapsed < duration + 2.
+        if(!(static_cast<double>(elapsed)<static_cast<double>(sentence.duration)+2.0))continue;
+        const float time=static_cast<float>(static_cast<double>(elapsed)-delay);
+        float emphasis=0,source_window=window;
+        if(!client_phoneme_curve(sentence.emphasis,sentence.emphasis_count,time,sentence.duration,&emphasis))return 0;
+        ClientPhonemeSourceDispatch dispatch{bindings,emphasis,result,false};
+        if(!client_phoneme_sample(sentence.intervals,sentence.interval_count,time,&source_window,adaptive,&dispatch,&client_phoneme_source_emit)||
+           dispatch.failed)return 0;
+    }
+    std::memcpy(out,result,sizeof(result));return 1;
+}
+const ClientPhonemeSourceApi client_phoneme_source_api{version,sizeof(ClientPhonemeSourceApi),&client_phoneme_source_apply};
+
 
 
 
@@ -13668,6 +13716,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientPhonemeSourceApi=_SiN_GetClientPhonemeSourceApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientPhonemeSourceApi* __cdecl
+SiN_GetClientPhonemeSourceApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientPhonemeSourceApi)?&client_phoneme_source_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetClientPhonemeEmphasisApi=_SiN_GetClientPhonemeEmphasisApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientPhonemeEmphasisApi* __cdecl
