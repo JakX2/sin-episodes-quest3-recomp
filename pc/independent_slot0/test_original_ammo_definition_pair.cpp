@@ -404,6 +404,13 @@ int main(int argc,char** argv){
     assert(responseRepeat&&!getResponseRepeat(0,sizeof(tables::ResponseRepeatApi))&&!getResponseRepeat(1,0));
     tables::test::check_response_repeat(*responseRepeat);
     std::puts("PASS native concept repetition and shared semaphore eligibility");
+    const auto getExpeditorLifecycle=reinterpret_cast<tables::GetExpeditorLifecycleApi>(GetProcAddress(server,tables::expeditor_lifecycle_export));
+    assert(getExpeditorLifecycle&&!GetProcAddress(client,tables::expeditor_lifecycle_export));
+    const auto* expeditorLifecycle=getExpeditorLifecycle(1,sizeof(tables::ExpeditorLifecycleApi));
+    assert(expeditorLifecycle&&!getExpeditorLifecycle(0,sizeof(tables::ExpeditorLifecycleApi))&&!getExpeditorLifecycle(1,0));
+    tables::test::check_expeditor_lifecycle(*expeditorLifecycle);
+    std::puts("PASS native expeditor construction, history clear and destruction");
+
 
 
 

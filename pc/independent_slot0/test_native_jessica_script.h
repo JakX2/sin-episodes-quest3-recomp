@@ -556,4 +556,62 @@ inline void check_response_repeat(const ResponseRepeatApi& api){
     f.sem.other.owner=2;f.fail=8;assert(gate()==-1&&out==99);f.expect({6,7,5,8});
 }
 
+
+struct ExpeditorLifecycleFixture {
+    alignas(4) unsigned char exp[0x7c]{},rows[3][0x1c]{};
+    ExpeditorControl ctrl{exp,sizeof(exp)};
+    ExpeditorTables tables{0x11110000,0x22220000,0x33330000,0x44440000};
+    ExpeditorLifecycleBindings b{};SpeechSemaphorePair sem{};
+    int npc=0,other=0;
+    unsigned events[32]{},count=0,fail=0,class_calls=0,classification=1,second_class=1;
+    const ExpeditorLifecycleApi& api;
+    void rec(unsigned n){assert(count<32);events[count++]=n;}
+    void expect(std::initializer_list<unsigned> l){assert(count==l.size()&&!std::memcmp(events,l.begin(),count*4));count=0;}
+    static unsigned ptr(void* p){return static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(p));}
+    static void put(void* p,unsigned off,unsigned v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,4);}
+    static unsigned word(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+    static ExpeditorLifecycleFixture& get(void* p){return *static_cast<ExpeditorLifecycleFixture*>(p);}
+    explicit ExpeditorLifecycleFixture(const ExpeditorLifecycleApi& a):api(a){
+        b.context=this;
+        b.symbol_construct=[](void* p,void* s,int x,int y,unsigned z) noexcept -> int{
+            auto& f=get(p);f.rec(1);assert(s==f.exp+0x34&&!x&&!y&&z==1&&f.ctrl.stage==ExpeditorStage::Constructing);
+            assert(word(f.exp,0)==f.tables.primary&&word(f.exp,8)==f.tables.filter&&word(f.exp,0x10)==f.tables.compare&&word(f.exp,0x20)==0xffffffffu&&word(f.exp,0x28)==0xffffffffu&&!word(f.exp,0x74));
+            assert(f.api.clear(&f.ctrl,&f.b)==0);put(s,0,0xabcdef);return f.fail!=1;};
+        b.row=[](void* p,void* e,unsigned i,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(e==f.exp&&i<3&&f.ctrl.stage==ExpeditorStage::Destroying);f.rec(10+i);*out=f.rows[i];*n=sizeof(f.rows[i]);return f.fail!=10+i;};
+        b.destroy_response=[](void* p,std::uint32_t v) noexcept -> int{auto& f=get(p);assert(v==0x100||v==0x300);f.rec(v==0x100?20:22);return f.fail!=20;};
+        b.classify=[](void* p,void* n,int a,unsigned* out) noexcept -> int{auto& f=get(p);assert(n==&f.npc&&!a);f.rec(2);*out=f.class_calls++?f.second_class:f.classification;return f.fail!=2;};
+        b.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);f.rec(3);*out=h==1?&f.npc:h==2?&f.other:nullptr;return f.fail!=3;};
+        b.symbol_destroy=[](void* p,void* s) noexcept -> int{auto& f=get(p);f.rec(4);assert(s==f.exp+0x34);return f.fail!=4;};
+        b.free_rows=[](void* p,std::uint32_t a) noexcept -> int{auto& f=get(p);f.rec(5);assert(a==0x7777);return f.fail!=5;};
+    }
+    int construct(){std::memset(exp,0xa5,sizeof(exp));return api.construct(&ctrl,&npc,&tables,&b);}
+    void populate(){
+        put(exp,0x14,0x7777);put(exp,0x18,3);put(exp,0x2c,3);put(exp,0x20,0);put(exp,0x24,2);put(exp,0x28,1);
+        put(rows[0],0,0xffffffffu);put(rows[0],0x18,0x100);
+        put(rows[1],0,1);put(rows[1],0x18,0xdead); // free node: never destroy its stale word
+        put(rows[2],0,0xffffffffu);put(rows[2],0x18,0x300);
+    }
+};
+inline void check_expeditor_lifecycle(const ExpeditorLifecycleApi& api){
+    using F=ExpeditorLifecycleFixture;F f(api);
+    assert(f.construct()==1&&f.ctrl.stage==ExpeditorStage::Live&&F::word(f.exp,0x74)==100&&!F::word(f.exp,0x78)&&F::word(f.exp,4)==F::ptr(&f.npc));f.expect({1});
+    f.populate();assert(api.clear(&f.ctrl,&f.b)==1&&f.ctrl.stage==ExpeditorStage::Live);f.expect({12,22,11,10,20});
+    assert(F::word(f.exp,0x20)==0xffffffffu&&!F::word(f.exp,0x24)&&!F::word(f.exp,0x28)&&F::word(f.exp,0x2c)==3);
+    for(unsigned i=0;i<3;++i){assert(F::word(f.rows[i],0)==i&&F::word(f.rows[i],4)==(i==2?0xffffffffu:i+1));}
+    assert(F::word(f.rows[1],0x18)==0xdead&&!F::word(f.rows[0],0x18)&&!F::word(f.rows[2],0x18));
+    f.sem.classified={10,1};f.sem.other={20,2};
+    assert(api.destroy(&f.ctrl,&f.npc,&f.tables,&f.sem,&f.b)==1&&f.ctrl.stage==ExpeditorStage::Retired);f.expect({12,11,10,2,3,2,4,5});
+    assert(!f.sem.classified.release&&f.sem.classified.owner==0xffffffffu&&f.sem.other.owner==2&&F::word(f.exp,0)==f.tables.base&&!F::word(f.exp,0x14)&&!F::word(f.exp,0x18));
+    assert(api.destroy(&f.ctrl,&f.npc,&f.tables,&f.sem,&f.b)==0);
+    F stale(api);assert(stale.construct()==1);stale.expect({1});stale.sem.classified={10,3};
+    assert(api.destroy(&stale.ctrl,&stale.npc,&stale.tables,&stale.sem,&stale.b)==1&&stale.sem.classified.owner==3);stale.expect({2,3,4});
+    F external(api);assert(external.construct()==1);external.expect({1});external.populate();F::put(external.exp,0x1c,0xffffffffu);
+    external.sem.classified={10,1};external.sem.other={20,2};external.second_class=0;
+    assert(api.destroy(&external.ctrl,&external.npc,&external.tables,&external.sem,&external.b)==1);external.expect({12,22,11,10,20,2,3,2,4});
+    assert(external.sem.classified.owner==1&&external.sem.other.owner==0xffffffffu&&F::word(external.exp,0x14)==0x7777);
+    F failed(api);assert(failed.construct()==1);failed.expect({1});failed.populate();failed.fail=20;
+    assert(api.clear(&failed.ctrl,&failed.b)==-1&&failed.ctrl.stage==ExpeditorStage::Failed&&!F::word(failed.rows[0],0x18));failed.expect({12,22,11,10,20});
+    assert(api.clear(&failed.ctrl,&failed.b)==0);
+}
+
 }
