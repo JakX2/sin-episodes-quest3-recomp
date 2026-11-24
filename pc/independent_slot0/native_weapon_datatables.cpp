@@ -6,6 +6,7 @@
 #include "native_radio_message.h"
 #include "native_action_listener.h"
 #include "native_radio_hud.h"
+#include "native_radio_entity.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3471,6 +3472,99 @@ int __cdecl radio_wire_encode(unsigned active,int priority,const char* speaker,u
     std::memcpy(payload+4,name,count);*used=4+count;return 1;
 }
 const RadioWireApi radio_wire_api{version,sizeof(RadioWireApi),&radio_wire_encode};
+
+constexpr RadioField radio_fields[]={
+    {"message",RadioFieldKind::Key,0x13,0x3c8},
+    {"speaker",RadioFieldKind::Key,2,0x3cc},
+    {"priority",RadioFieldKind::Key,5,0x3c4},
+    {"SetMessage",RadioFieldKind::Input,2,0},
+    {"SetSpeaker",RadioFieldKind::Input,2,0},
+    {"SetPriority",RadioFieldKind::Input,5,0},
+    {"Dispatch",RadioFieldKind::Input,2,0},
+    {"Remove",RadioFieldKind::Input,0,0},
+    {"OnDispatch",RadioFieldKind::Output,0xb,0x394},
+    {"OnHeard",RadioFieldKind::Output,0xb,0x3ac}
+};
+const RadioEntitySchema radio_entity_schema{"env_radio_message","CRadioMessage",radio_entity_bytes,10,radio_fields};
+const RadioEntitySchema* __cdecl radio_schema() noexcept {return &radio_entity_schema;}
+bool radio_entity_valid(const HologramControl* c) noexcept {return health_control(c,radio_entity_bytes);}
+int __cdecl radio_construct(HologramControl* c,const RadioEntityBindings* b) noexcept {
+    if(!radio_entity_valid(c)||!b||!b->base_construct||!b->class_init)return 0;
+    c->busy=1;const auto h=*b;auto* entity=c->object;
+    if(!h.base_construct(h.message.context,entity,radio_entity_bytes))return disp_finish(c,false);
+    // Native leaf construction; no absolute original vtable installed.
+    for(unsigned off:{0x394u,0x3a4u,0x3acu,0x3bcu,0x3c4u,0x3c8u,0x3ccu})hologram_write(entity,off,0u);
+    for(unsigned off:{0x3a0u,0x3b8u})hologram_write(entity,off,0xffffffffu);
+    for(unsigned off:{0x3d0u,0x3d1u,0x3d2u})hologram_write(entity,off,static_cast<unsigned char>(0));
+    return disp_finish(c,h.class_init(h.message.context,entity,radio_entity_schema.classname)!=0);
+}
+int __cdecl radio_key(HologramControl* c,const char* name,const RadioValue* value) noexcept {
+    if(!radio_entity_valid(c)||!value||!sin_independent::vgui_layout::Readable(value,sizeof(*value)))return 0;
+    char key[64]{};
+    if(!prop_key_read(name,key))return 0;
+    // FIELD_SOUNDNAME (0x13) is the key descriptor. Host may supply
+    // the pooled string as FIELD_STRING (2), but not an integer.
+    for(unsigned i=0;i<3;++i){
+        const auto& field=radio_fields[i];
+        if(std::strcmp(key,field.name))continue;
+        if(value->type!=field.field_type&&!(i==0&&value->type==2))return 0;
+        hologram_write(c->object,field.offset,value->word);return 1;
+    }
+    return 0;
+}
+int __cdecl radio_named_input(HologramControl* c,RadioDispatcher* s,const RadioEntityBindings* b,const char* name,const RadioValue* value) noexcept {
+    if(!radio_entity_valid(c)||!b)return 0;
+    char key[64]{};if(!prop_key_read(name,key))return 0;
+    constexpr RadioInput operations[]={RadioInput::Message,RadioInput::Speaker,RadioInput::Priority,RadioInput::Dispatch,RadioInput::Remove};
+    for(unsigned i=0;i<5;++i)
+        if(!std::strcmp(key,radio_fields[i+3].name))return radio_input(c,s,&b->message,operations[i],value);
+    return 0;
+}
+bool radio_precache_leaves(void* entity,const RadioBindings& b) noexcept {
+    static constexpr const char* sounds[]={
+        "policeradio.Alert.Objective","policeradio.Alert.Extraneous",
+        "npc_jessica.Notification.Objective","npc_jessica.Notification.Extraneous",
+        "npc_jc.Notification.Objective","npc_jc.Notification.Extraneous",
+        "npc_Blade.Acknowledgement.Objective.npc_jessica",
+        "npc_Blade.Acknowledgement.Extraneous.npc_jessica",
+        "npc_Blade.Acknowledgement.Objective.npc_jc",
+        "npc_Blade.Acknowledgement.Extraneous.npc_jc"
+    };
+    for(const char* name:sounds)if(!b.precache(b.context,name))return false;
+    const auto word=hologram_read<std::uint32_t>(entity,0x3c8);
+    if(word){
+        const char* name=nullptr;
+        if(!radio_text(b,word,name)||!b.precache(b.context,name))return false;
+    }
+    return true;
+}
+int __cdecl radio_entity_precache(HologramControl* c,const RadioEntityBindings* b) noexcept {
+    if(!radio_entity_valid(c)||!b||!b->message.precache||!b->message.string)return 0;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,radio_precache_leaves(c->object,h.message));
+}
+int __cdecl radio_entity_spawn(HologramControl* c,const RadioEntityBindings* b) noexcept {
+    if(!radio_entity_valid(c)||!b||!b->message.precache||!b->message.string||!b->spawn_helper)return 0;
+    c->busy=1;const auto h=*b;auto* entity=c->object;
+    if(!radio_precache_leaves(entity,h.message))return disp_finish(c,false);
+    if(!h.spawn_helper(h.message.context,entity,0x22201ac0u,0,0))return disp_finish(c,false);
+    return disp_finish(c,h.spawn_helper(h.message.context,entity,0x22143610u,0,0)!=0);
+}
+int __cdecl radio_entity_activate(HologramControl* c,const RadioEntityBindings* b) noexcept {
+    if(!radio_entity_valid(c)||!b||!b->base_activate||!b->message.precache||!b->message.string)return 0;
+    c->busy=1;const auto h=*b;auto* entity=c->object;
+    if(!h.base_activate(h.message.context,entity))return disp_finish(c,false);
+    return disp_finish(c,radio_set_message(entity,h.message,hologram_read<std::uint32_t>(entity,0x3c8)));
+}
+int __cdecl radio_entity_destroy(HologramControl* c,const RadioEntityBindings* b) noexcept {
+    if(!radio_entity_valid(c)||!b||!b->destroy_outputs||!b->base_destroy)return 0;
+    c->busy=1;const auto h=*b;auto* entity=c->object;
+    if(!h.destroy_outputs(h.message.context,entity,0x3ac)||!h.destroy_outputs(h.message.context,entity,0x394))return disp_finish(c,false);
+    if(!h.base_destroy(h.message.context,entity))return disp_finish(c,false);
+    // No use of possibly destroyed memory after base destructor.
+    c->object=nullptr;c->bytes=0;c->busy=0;return 1;
+}
+const RadioEntityApi radio_entity_api{version,sizeof(RadioEntityApi),&radio_schema,&radio_construct,&radio_key,&radio_named_input,&radio_entity_precache,&radio_entity_spawn,&radio_entity_activate,&radio_entity_destroy};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5314,6 +5408,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioWire
 SiN_GetRadioWireApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioWireApi)?&radio_wire_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetRadioEntityApi=_SiN_GetRadioEntityApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioEntityApi* __cdecl
+SiN_GetRadioEntityApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioEntityApi)?&radio_entity_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

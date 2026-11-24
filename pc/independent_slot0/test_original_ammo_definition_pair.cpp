@@ -15,6 +15,7 @@
 #include "test_native_action_listener.h"
 #include "test_native_player_look_frame.h"
 #include "test_native_radio_hud.h"
+#include "test_native_radio_entity.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -395,6 +396,12 @@ int main(int argc,char** argv){
     assert(radioWire&&radioHud&&!getRadioWire(0,sizeof(tables::RadioWireApi))&&!getRadioHud(1,0));
     tables::test::check_radio_wire_hud(*radioWire,*radioHud);
     std::puts("PASS paired native PoliceRadioMessage payload and CHudPoliceRadio animation/icon selection");
+    const auto getRadioEntity=reinterpret_cast<tables::GetRadioEntityApi>(GetProcAddress(server,tables::radio_entity_export));
+    assert(getRadioEntity&&!GetProcAddress(client,tables::radio_entity_export));
+    const auto* radioEntity=getRadioEntity(1,sizeof(tables::RadioEntityApi));
+    assert(radioEntity&&!getRadioEntity(0,sizeof(tables::RadioEntityApi))&&!getRadioEntity(1,0));
+    tables::test::check_radio_entity(*radioEntity,*radioMessage);
+    std::puts("PASS native env_radio_message datamap and entity lifecycle");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
