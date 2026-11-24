@@ -1590,7 +1590,68 @@ inline int __cdecl pp_intensity(void* ctx,float timer,float* result) noexcept {
 inline int __cdecl pp_dirty(void* ctx,void* player,unsigned offset) noexcept {
     auto& f=*static_cast<PlayerPoisonFixture*>(ctx);assert(player==f.player&&offset==0x137c);return f.push(8);
 }
-inline void check_player_poison(const PlayerPoisonApi& api,const AggregateSendView& sv,const AggregateRecvView& rv){
+
+struct PoisonHudFixture {
+    void* hud=nullptr;void* player=nullptr;
+    int resources[3]{};
+    unsigned count=0,events[16]{},binds=0,fail=0;
+    bool mutate=false;
+    const char* sound=nullptr;
+    PoisonHudDraw draw{};
+    bool push(unsigned e){assert(count<16);events[count++]=e;return fail!=e;}
+};
+inline int __cdecl phud_resource_test(void* ctx,const char* name,void** resource) noexcept {
+    auto& f=*static_cast<PoisonHudFixture*>(ctx);
+    constexpr const char* names[]={"Mutagen_bar_foreground","Mutagen_bar_background","Mutagen_bar_inactive"};
+    assert(f.binds<3&&!std::strcmp(name,names[f.binds]));*resource=&f.resources[f.binds++];return f.push(1);
+}
+inline int __cdecl phud_sound_test(void* ctx,const char* sound) noexcept {
+    auto& f=*static_cast<PoisonHudFixture*>(ctx);f.sound=sound;
+    if(f.mutate){const float value=0.25f;std::memcpy(static_cast<unsigned char*>(f.player)+0x11ec,&value,4);}
+    return f.push(2);
+}
+inline int __cdecl phud_base_test(void* ctx,void* panel) noexcept {
+    auto& f=*static_cast<PoisonHudFixture*>(ctx);assert(panel==static_cast<unsigned char*>(f.hud)+0x14);return f.push(3);
+}
+inline int __cdecl phud_draw_test(void* ctx,const PoisonHudDraw* draw) noexcept {
+    auto& f=*static_cast<PoisonHudFixture*>(ctx);f.draw=*draw;
+    assert(draw->foreground==&f.resources[0]&&draw->design_width==1600&&draw->design_height==1200&&draw->x==0&&draw->y==0&&draw->mode==3);
+    return f.push(4);
+}
+inline void check_native_poison_hud(const PoisonHudApi& api,void* player,unsigned bytes){
+    alignas(4) unsigned char hud[0x130]{};
+    HologramControl ctrl{hud,sizeof(hud)};PoisonHudFixture f{hud,player};
+    PoisonHudBindings b{&f,&phud_resource_test,&phud_sound_test,&phud_base_test,&phud_draw_test};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto put=[&](float value){std::memcpy(static_cast<unsigned char*>(player)+0x11ec,&value,4);};
+    const auto fraction=[&](){float v=0;std::memcpy(&v,hud+0x120,4);return v;};
+    const auto tick=[&](){return api.tick(&ctrl,&b,player,bytes);};
+    const auto paint=[&](){return api.paint(&ctrl,&b);};
+    std::memcpy(hud+0xbc,"Mutagen_bar_foreground",23);
+    std::memcpy(hud+0xdd,"Mutagen_bar_background",23);
+    std::memcpy(hud+0xfe,"Mutagen_bar_inactive",21);
+    hud[0xb7]=255;hud[0xb8]=200;hud[0xb9]=100;hud[0xba]=0;
+    assert(api.reset(&ctrl)&&fraction()==0&&paint()==1);expect({3});
+    assert(api.bind(&ctrl,&b)==1);expect({1,1,1});
+    assert(paint()==1&&f.draw.background==&f.resources[2]);expect({3,4});
+    // Initial player value came through the real paired RecvProp,
+    // rather than a standalone mock of the HUD input field.
+    float incoming=0;std::memcpy(&incoming,static_cast<unsigned char*>(player)+0x11ec,4);
+    assert(tick()==1&&fraction()==static_cast<float>(1.0-incoming));expect(incoming<1?std::initializer_list<unsigned>{2}:std::initializer_list<unsigned>{});
+    put(0.75f);assert(tick()==1&&fraction()==0.25f&&!std::strcmp(f.sound,"PoisonTimeFadeIn"));expect({2});
+    assert(paint()==1&&f.draw.background==&f.resources[1]&&f.draw.fraction==0.25f&&f.draw.rgba[1]==200);expect({3,4});
+    put(0.25f);assert(tick()==1&&fraction()==0.25f);expect({}); // original equality early exit
+    put(0.5f);f.mutate=true;assert(tick()==1&&fraction()==0.75f);expect({2});f.mutate=false;
+    hud[0xba]=255;put(1);assert(tick()==1&&fraction()==0&&!std::strcmp(f.sound,"PoisonTimeFadeOut"));expect({2});
+    assert(paint()==1&&f.draw.background==&f.resources[2]&&f.draw.rgba[3]==255);expect({3,4});
+    put(std::numeric_limits<float>::quiet_NaN());assert(tick()==1&&std::isnan(fraction()));expect({});
+    assert(paint()==1&&f.draw.background==&f.resources[2]);expect({3,4});
+    assert(api.tick(&ctrl,&b,nullptr,0)==1);expect({});
+    f.fail=4;assert(paint()==-1&&ctrl.blocked);expect({3,4});
+    assert(api.reset(&ctrl)==0&&api.acknowledge(&ctrl));expect({});
+    put(incoming);
+}
+inline void check_player_poison(const PlayerPoisonApi& api,const AggregateSendView& sv,const AggregateRecvView& rv,const PoisonHudApi& hud){
     alignas(4) unsigned char player[0x151c]{},gas[0x3bc]{},client[0x1250]{};
     HologramControl ctrl{player,sizeof(player)};PlayerPoisonFixture f{player,gas};
     PoisonTiming timing{};PlayerPoisonBindings b{&f,&pp_resolve,&pp_position,&pp_clock,&pp_damage,&pp_effect,&pp_intensity,&pp_dirty};
@@ -1616,6 +1677,7 @@ inline void check_player_poison(const PlayerPoisonApi& api,const AggregateSendVi
     f.live=false;assert(api.inside(&ctrl,&b,&inside)==1&&!inside);expect({1});f.live=true;f.distance=0;
     f.now=11;assert(tick()==1&&std::abs(get(0x13a0)-0.85f)<0.00001f&&f.effect==26&&get(0x14dc)==11);
     expect({1,1,1,2,3,1,4,4,6,7,8});transfer();
+    check_native_poison_hud(hud,client,sizeof(client));
     f.now=14;assert(tick()==1&&std::abs(get(0x13a0)-0.4f)<0.00001f&&f.effect==28);
     expect({1,1,1,2,3,1,4,6,7,8});transfer();
     f.now=18;assert(tick()==1&&get(0x13a0)==0&&f.damage_count==1&&f.effect==29);
@@ -1636,7 +1698,7 @@ inline void check_player_poison(const PlayerPoisonApi& api,const AggregateSendVi
 inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era,const HologramServerApi& hsa,const HologramClientApi& hra,const GruntDeathApi& gda,
         const KeypadSendApi& ksa,const KeypadRecvApi& kra,const KeypadServerApi& ks,const KeypadClientApi& kc,
         const PropKeypadServerApi& pks,const PropKeypadClientApi& pkc,
-        const PhoneSendApi& phs,const PhoneRecvApi& phr,const PhoneServerApi& ph,const PlayerPoisonApi& poison){
+        const PhoneSendApi& phs,const PhoneRecvApi& phr,const PhoneServerApi& ph,const PlayerPoisonApi& poison,const PoisonHudApi& hud){
     s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
     RecvProp rp[8];RecvTable rc{rp,8,nullptr,"DT_CollisionProperty"};
     NativeOwner owner;sin_independent::EntityHandleEntry entries[64]{};
@@ -1660,7 +1722,7 @@ inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& r
     check_extra_entities(esa,era,sa,ra,sv,rv,hsa,hra,gda);
     check_keypad(ksa,kra,ks,kc,sa,ra,sv,rv,pks,pkc);
     check_phone(phs,phr,ph,sa,ra,sv,rv);
-    check_player_poison(poison,sv,rv);
+    check_player_poison(poison,sv,rv,hud);
     for(unsigned i=0;i<aggregate_table_count;++i){
         assert(sv.tables[i]&&rv.tables[i]&&std::strcmp(sv.tables[i]->name,rv.tables[i]->name)==0);
         for(unsigned j=0;j<i;++j)assert(sv.tables[i]!=sv.tables[j]&&rv.tables[i]!=rv.tables[j]);

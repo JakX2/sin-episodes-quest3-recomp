@@ -3972,6 +3972,67 @@ int __cdecl destroy_phone(PhoneRecvView* v) noexcept {
     g->base->phone_bound=false;delete g;*v={};return 1;
 }
 const PhoneRecvApi phone_api{version,sizeof(PhoneRecvApi),&create_phone,&destroy_phone};
+
+constexpr unsigned phud_bytes=0x130,phud_color=0xb7,phud_fraction=0x120,
+    phud_foreground=0x124,phud_background=0x128,phud_inactive=0x12c;
+bool phud_valid(const HologramControl* ctrl) noexcept {
+    return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=phud_bytes&&hologram_writable(ctrl->object,phud_bytes);
+}
+int phud_finish(HologramControl* ctrl,bool ok) noexcept {
+    ctrl->busy=0;if(!ok){ctrl->blocked=1;return -1;}return 1;
+}
+int __cdecl phud_reset(HologramControl* ctrl) noexcept {
+    if(!phud_valid(ctrl))return 0;
+    hologram_write(ctrl->object,phud_fraction,0.0f);return 1;
+}
+int __cdecl phud_bind(HologramControl* ctrl,const PoisonHudBindings* b) noexcept {
+    if(!phud_valid(ctrl)||!b||!b->resource)return 0;
+    ctrl->busy=1;const auto host=*b;
+    constexpr unsigned names[]={0xbc,0xdd,0xfe},slots[]={phud_foreground,phud_background,phud_inactive};
+    for(unsigned i=0;i<3;++i){
+        const auto* name=static_cast<const char*>(ctrl->object)+names[i];
+        if(!std::memchr(name,0,33))return phud_finish(ctrl,false);
+        void* resource=nullptr;
+        if(!host.resource(host.context,name,&resource))return phud_finish(ctrl,false);
+        hologram_write(ctrl->object,slots[i],resource);
+    }
+    return phud_finish(ctrl,true);
+}
+int __cdecl phud_tick(HologramControl* ctrl,const PoisonHudBindings* b,const void* player,unsigned bytes) noexcept {
+    if(!phud_valid(ctrl)||!b||!b->sound)return 0;
+    if(!player)return 1;
+    if(bytes<0x11f0||!sin_independent::vgui_layout::Readable(player,0x11f0))return 0;
+    ctrl->busy=1;const auto host=*b;auto* obj=ctrl->object;
+    const float incoming=hologram_read<float>(player,0x11ec);
+    if(incoming==hologram_read<float>(obj,phud_fraction))return phud_finish(ctrl,true);
+    const auto alpha=hologram_read<unsigned char>(obj,phud_color+3);
+    const char* sound=nullptr;
+    if(incoming<1.0f&&alpha==0)sound="PoisonTimeFadeIn";
+    else if(incoming>=1.0f&&alpha==255)sound="PoisonTimeFadeOut";
+    if(sound&&!host.sound(host.context,sound))return phud_finish(ctrl,false);
+    // Unlike a pure projection model, original re-reads player after
+    // sound dispatch (the host may synchronously update its value).
+    hologram_write(obj,phud_fraction,static_cast<float>(1.0-static_cast<double>(hologram_read<float>(player,0x11ec))));
+    return phud_finish(ctrl,true);
+}
+int __cdecl phud_paint(HologramControl* ctrl,const PoisonHudBindings* b) noexcept {
+    if(!phud_valid(ctrl)||!b||!b->base_paint||!b->draw)return 0;
+    ctrl->busy=1;const auto host=*b;auto* obj=ctrl->object;
+    if(!host.base_paint(host.context,static_cast<unsigned char*>(obj)+0x14))return phud_finish(ctrl,false);
+    PoisonHudDraw draw{};
+    draw.fraction=hologram_read<float>(obj,phud_fraction);
+    draw.foreground=hologram_read<void*>(obj,phud_foreground);
+    draw.background=hologram_read<void*>(obj,draw.fraction>0?phud_background:phud_inactive);
+    if(!draw.foreground||!draw.background)return phud_finish(ctrl,true);
+    std::memcpy(draw.rgba,static_cast<unsigned char*>(obj)+phud_color,4);
+    draw.design_width=1600;draw.design_height=1200;draw.x=draw.y=0;draw.mode=3;
+    return phud_finish(ctrl,host.draw(host.context,&draw)!=0);
+}
+int __cdecl phud_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<phud_bytes||!hologram_writable(ctrl->object,phud_bytes))return 0;
+    ctrl->blocked=0;return 1;
+}
+const PoisonHudApi poison_hud_api{version,sizeof(PoisonHudApi),&phud_reset,&phud_bind,&phud_tick,&phud_paint,&phud_ack};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -4302,5 +4363,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PhoneRecv
 SiN_GetPropPhoneRecvApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PhoneRecvApi)?&phone_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPoisonHudApi=_SiN_GetPoisonHudApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PoisonHudApi* __cdecl
+SiN_GetPoisonHudApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PoisonHudApi)?&poison_hud_api:nullptr;
 }
 #endif
