@@ -1079,8 +1079,72 @@ inline void check_parsed_facial_lifecycle(VcdAuditArena& arena,const NativeVcdRu
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
     std::puts("PASS parsed VCD facial lifecycle, native controller mapping and paired client descriptor smoothing");
 }
+// Retail-inspired edge cases: strict binary32 duration trim, duplicate
+// timestamps, reverse ranges and disabled tracks with/without samples.
+inline void check_retail_flex_edge_cases(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const ServerFlexSplineApi& spline){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Face
+ {
+  event flexanimation edge
+  {
+   time 0 2.973984
+   flexanimations samples_use_time
+   {
+    "jaw" combo range 15 -15
+    {
+     0.5 0.2
+     0.5 0.9
+     2.974 0.7
+     2.974 0.8
+    }
+    {
+     0.5 0.75
+     2.974 0.6
+    }
+    "empty_disabled" disabled
+    {
+    }
+    "retained_disabled" disabled range 0 1
+    {
+     0.5 0.4
+    }
+   }
+  }
+ }
+}
+)VCD";
+    auto raw=arena.runtime();std::uint32_t rootword=0;
+    assert(runtime.parse(nullptr,"facial_edge.vcd",data,sizeof(data)-1,&raw,&rootword)==1&&rootword);
+    void* root=nullptr;unsigned n=0;
+    assert(arena.storage(&arena,rootword,&root,&n)&&n>=0x220);
+    VcdAuditCounts stats;arena.spline=&spline;
+    assert(arena.inspect(root,stats)&&stats.flex_events==1&&stats.tracks==2&&stats.samples==4&&stats.spline_evals==9);
+    void *events=nullptr,*event=nullptr,*tracks=nullptr,*track=nullptr,*disabled=nullptr;
+    unsigned count=0;
+    assert(arena.rows(root,0,4,events,count)&&count==1&&arena.child(events,0,0x3c0,event));
+    assert(arena.rows(event,0x30c,4,tracks,count)&&count==2);
+    assert(arena.child(tracks,0,0x50,track)&&arena.child(tracks,1,0x50,disabled));
+    assert(static_cast<unsigned char*>(track)[8]&&static_cast<unsigned char*>(track)[9]&&!static_cast<unsigned char*>(disabled)[8]);
+    const float low=VcdAuditArena::read_float(track,0xc),high=VcdAuditArena::read_float(track,0x10);
+    const float duration=VcdAuditArena::read_float(event,0x188)-VcdAuditArena::read_float(event,0x184);
+    assert(low==15&&high==-15&&duration<2.974f);
+    void* samples=nullptr;
+    assert(arena.rows(track,0x14,12,samples,count)&&count==2);
+    auto* primary=static_cast<const ServerFlexSample*>(samples);
+    assert(primary[0].time==.5f&&primary[1].time==.5f&&primary[0].value==.2f&&primary[1].value==.9f);
+    float value=0;
+    assert(spline.sample(primary,count,low,high,duration,.5f,0,&value)&&std::fabs(value-.2f)<.00001f);
+    assert(spline.sample(primary,count,low,high,duration,duration,0,&value)&&std::fabs(value-.5f)<.00001f);
+    assert(arena.rows(track,0x28,12,samples,count)&&count==1);
+    assert(spline.sample(static_cast<const ServerFlexSample*>(samples),count,low,high,duration,.5f,1,&value)&&value==.75f);
+    assert(runtime.destroy(rootword,&raw)==1&&arena.live.empty());
+    std::puts("PASS retail-inspired flex duplicate timestamps, strict duration trim and reversed ranges");
+}
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
     const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate,const NativeSceneExecutionApi& execution,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline,const ServerFacialRecordApi& admission,const ServerNamedFacialThinkApi& think,ParsedFacialClientPair& paired){
+    VcdAuditArena edge_arena(c,s,t,d,st,si,va);check_retail_flex_edge_cases(edge_arena,runtime,spline);
     VcdAuditArena facial_arena(c,s,t,d,st,si,va);check_parsed_facial_lifecycle(facial_arena,runtime,execution,admission,think,paired);
     VcdAuditArena execution_arena(c,s,t,d,st,si,va);check_composed_scene_execution(execution_arena,runtime,execution);
     check_native_movement_gate(gate);
