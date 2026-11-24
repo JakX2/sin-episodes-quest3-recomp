@@ -6,6 +6,11 @@ on:
     paths:
       - 'pc/independent_slot0/server_fixed_difficulty_service.*'
       - 'pc/independent_slot0/test_server_fixed_difficulty_service.cpp'
+      - 'pc/independent_slot0/server_native_map_host.h'
+      - 'src/source_bsp_entities.cpp'
+      - 'src/source_map_runtime.cpp'
+      - 'include/sin_compat/source_bsp_entities.hpp'
+      - 'include/sin_compat/source_map_runtime.hpp'
       - 'pc/independent_slot0/CMakeLists.txt'
       - 'src/fixed_difficulty_phase663.cpp'
       - 'include/sin_compat/*difficulty*'
@@ -42,5 +47,5 @@ jobs:
         run: |
           flags="-std=c++17 -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra -Wpedantic -Werror -Iinclude"
           clang++ $flags -fPIC -shared pc/independent_slot0/server_fixed_difficulty_service.cpp src/fixed_difficulty_phase663.cpp -o /tmp/libsin-fixed-service.so
-          clang++ $flags pc/independent_slot0/test_server_fixed_difficulty_service.cpp -ldl -o /tmp/sin-native-service-test
+          clang++ $flags pc/independent_slot0/test_server_fixed_difficulty_service.cpp src/source_bsp_entities.cpp src/source_map_runtime.cpp -ldl -o /tmp/sin-native-service-test
           /tmp/sin-native-service-test /tmp/libsin-fixed-service.so

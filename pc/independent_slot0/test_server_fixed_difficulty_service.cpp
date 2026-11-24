@@ -1,5 +1,8 @@
 // Load the actual built module. No linking against its implementation.
 #include "server_fixed_difficulty_service.h"
+#include "server_native_map_host.h"
+#include <vector>
+#include <utility>
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -98,6 +101,110 @@ static void test_map_entities(const a::MapEntityApi* m,const a::Api* api,const a
     assert(g->read(0,name,32,map,32,&value)&&value==0&&std::strcmp(map,"map_a")==0);
     assert(m->input(next,"TurnOn",nullptr,nullptr)==a::MapApplied);
     assert(m->end_level(e2)&&api->end_campaign()&&g->clear());
+}
+
+
+namespace sm=sin_compat::map;
+using sin_compat::EntityRef;
+class BspShellHost final:public sm::ISourceMapEntityHost {
+public:
+    std::map<std::uint32_t,EntityRef> live;
+    std::vector<std::string> events;
+    std::vector<std::pair<std::string,std::string>> base_keys;
+    std::uint32_t next=1;
+    bool fail_remove=false;
+    bool is_live(EntityRef e) const override {
+        const auto it=live.find(e.index);
+        return it!=live.end()&&it->second==e;
+    }
+    bool create_entity(std::string_view classname,EntityRef& e) override {
+        if(classname!="worldspawn"&&classname!="env_global"&&classname!="info_challenge")return false;
+        e={next++,1};
+        live.emplace(e.index,e);
+        events.push_back("create:"+std::string(classname));
+        return true;
+    }
+    bool key_value(EntityRef e,std::string_view k,std::string_view v) override {
+        if(!is_live(e))return false;
+        base_keys.emplace_back(k,v);
+        return true;
+    }
+    bool dispatch_spawn(EntityRef e) override {
+        events.push_back("spawn:"+std::to_string(e.index));return is_live(e);
+    }
+    bool activate(EntityRef e) override {
+        events.push_back("activate:"+std::to_string(e.index));return is_live(e);
+    }
+    bool remove_entity(EntityRef e) override {
+        if(!is_live(e)||fail_remove)return false;
+        events.push_back("remove:"+std::to_string(e.index));
+        live.erase(e.index);return true;
+    }
+};
+static std::vector<std::uint8_t> make_native_bsp(std::string_view entity_text){
+    constexpr std::size_t header=1036;
+    std::vector<std::uint8_t> bytes(header+entity_text.size(),0);
+    std::memcpy(bytes.data(),"VBSP",4);
+    const auto put=[&](std::size_t offset,std::uint32_t value){
+        for(unsigned i=0;i<4;++i)bytes[offset+i]=static_cast<std::uint8_t>(value>>(8*i));
+    };
+    put(4,19);put(8,header);put(12,static_cast<std::uint32_t>(entity_text.size()));
+    std::memcpy(bytes.data()+header,entity_text.data(),entity_text.size());
+    return bytes;
+}
+static void test_native_bsp_host(const a::MapEntityApi* m,const a::Api* api,const a::GlobalStateApi* g){
+    assert(api->begin_campaign(2)&&g->clear());
+    const auto epoch=m->begin_level("native_bsp");
+    assert(epoch);
+    BspShellHost shell;
+    sin_port::map_host::NativeBehaviorHost host(shell,*m,epoch);
+    sm::SourceMapRuntime runtime(host);
+    const auto bsp=make_native_bsp(R"KV(
+{"classname" "worldspawn" "message" "fixture"}
+{"classname" "env_global" "targetname" "door_controller" "globalstate" "door"
+ "initialstate" "0" "initialstate" "1" "spawnflags" "1"}
+{"classname" "info_challenge" "targetname" "report"
+ "OnCurrentChallenge" "door_controller,TurnOff,,0,-1"}
+)KV");
+    const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
+    assert(loaded.ok()&&loaded.entities_created==3&&loaded.entities_spawned==3&&loaded.entities_activated==3);
+    assert(loaded.key_values_applied==8&&host.attached_count()==2&&m->count(epoch)==2);
+    assert(shell.base_keys.size()==4);
+    assert(shell.base_keys[0].first=="message"&&shell.base_keys[1].second=="door_controller");
+    assert(shell.base_keys[2].second=="report"&&shell.base_keys[3].first=="OnCurrentChallenge");
+    assert(shell.base_keys[3].second=="door_controller,TurnOff,,0,-1");
+    char name[32]{},map[32]{};
+    std::int32_t state=-1;
+    assert(g->read(0,name,32,map,32,&state)&&state==1&&std::strcmp(map,"native_bsp")==0);
+    const auto world=runtime.entities()[0],door=runtime.entities()[1],challenge=runtime.entities()[2];
+    assert(host.input(world,"TurnOn")==a::MapUnhandledInput);
+    assert(api->set_skill(3));
+    MapOutputFixture f{m,api,g,{epoch,challenge.index,challenge.generation},"OnCurrentChallenge",0x3ac,1.f};
+    assert(host.input(challenge,"GetCurrentChallenge",&MapOutputFixture::emit,&f)==a::MapApplied&&f.calls==1);
+    // Model the engine delivering a queued connection after callback return.
+    // This is an explicit fixture dispatch, not a reconstructed Source queue.
+    assert(host.input(door,"TurnOff")==a::MapApplied);
+    assert(g->read(0,name,32,map,32,&state)&&state==0);
+    shell.fail_remove=true;
+    assert(runtime.unload().code==sm::SourceMapLoadCode::PartialUnload&&host.attached_count()==2);
+    shell.fail_remove=false;
+    assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded&&host.attached_count()==0);
+    assert(m->count(epoch)==0&&host.input(door,"TurnOn")==a::MapRejected&&g->count()==1);
+    assert(m->end_level(epoch));
+    const auto epoch2=m->begin_level("invalid_bsp");
+    assert(epoch2);
+    sin_port::map_host::NativeBehaviorHost host2(shell,*m,epoch2);
+    sm::SourceMapRuntime runtime2(host2);
+    const auto bad=make_native_bsp(R"KV({"classname" "env_global" "globalstate" "bad" "initialstate" "junk"})KV");
+    assert(runtime2.load_bsp(bad.data(),bad.size()).code==sm::SourceMapLoadCode::HostKeyValueFailed);
+    assert(shell.live.empty()&&host2.attached_count()==0&&m->count(epoch2)==0&&g->count()==1);
+    const auto noName=make_native_bsp(R"KV({"classname" "env_global"})KV");
+    assert(runtime2.load_bsp(noName.data(),noName.size()).code==sm::SourceMapLoadCode::HostSpawnFailed);
+    assert(shell.live.empty()&&host2.attached_count()==0&&m->count(epoch2)==0);
+    const auto unknown=make_native_bsp(R"KV({"classname" "npc_unimplemented"})KV");
+    assert(runtime2.load_bsp(unknown.data(),unknown.size()).code==sm::SourceMapLoadCode::HostCreateFailed);
+    assert(shell.live.empty()&&m->count(epoch2)==0&&m->end_level(epoch2));
+    assert(api->end_campaign()&&g->clear());
 }
 
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
@@ -388,7 +495,9 @@ int main(int argc,char** argv){
     auto getMap=reinterpret_cast<a::GetMapEntityApi>(dlsym(lib,a::map_entity_export_name));
 #endif
     assert(getMap&&!getMap(0,sizeof(a::MapEntityApi))&&!getMap(1,0));
-    test_map_entities(getMap(a::map_entity_version,sizeof(a::MapEntityApi)),api,globals);
+    const auto* map=getMap(a::map_entity_version,sizeof(a::MapEntityApi));
+    test_map_entities(map,api,globals);
+    test_native_bsp_host(map,api,globals);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);

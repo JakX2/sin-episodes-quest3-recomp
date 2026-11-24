@@ -973,7 +973,10 @@ target_sources(sin_slot0_server PRIVATE
   ../../src/fixed_difficulty_phase663.cpp)
 target_include_directories(sin_slot0_server PRIVATE ../../include)
 add_executable(sin_native_fixed_difficulty_service_test
-  test_server_fixed_difficulty_service.cpp)
+  test_server_fixed_difficulty_service.cpp
+  ../../src/source_bsp_entities.cpp
+  ../../src/source_map_runtime.cpp)
+target_include_directories(sin_native_fixed_difficulty_service_test PRIVATE ../../include)
 target_compile_features(sin_native_fixed_difficulty_service_test PRIVATE cxx_std_17)
 add_dependencies(sin_native_fixed_difficulty_service_test sin_slot0_server)
 add_test(NAME independent_native_fixed_difficulty_service
