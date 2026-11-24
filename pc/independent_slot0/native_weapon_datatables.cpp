@@ -2984,6 +2984,58 @@ int __cdecl response_seed(void* exp,unsigned bytes,const ResponseHistoryBindings
 }
 const ResponsePolicyApi response_policy_api{version,sizeof(ResponsePolicyApi),&response_timing,&response_has_concept,&response_seed};
 
+int response_chance(const void* response) noexcept {
+    return (hologram_read<unsigned char>(response,0x88)&4)?hologram_read<int>(response,0x8c):100;
+}
+int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBindings* b,const char* name,const char* mods,void** result,unsigned* extent) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!name||
+       !result||!extent||!hologram_writable(result,sizeof(*result))||!hologram_writable(extent,sizeof(*extent))||
+       !b||!b->system||!b->begin_criteria||!b->add||!b->modifiers||!b->npc_criteria||
+       !b->player_criteria||!b->allocate||!b->find||!b->draw||!b->destroy||!b->end_criteria)return 0;
+    const auto h=*b;void* system=nullptr;
+    if(!h.system(h.context,exp,&system))return -1;
+    if(!system){*result=nullptr;*extent=0;return 1;}
+    void* criteria=nullptr;
+    if(!h.begin_criteria(h.context,&criteria)||!criteria)return -1;
+    void* response=nullptr;unsigned n=0;
+    // All acquired resources on transport failure belong to this call
+    // until successfully handed off. Cleanup callbacks are attempted once.
+    const auto finish=[&](bool ok,bool keep,bool dispose){
+        bool clean=true;
+        if(dispose&&response&&!h.destroy(h.context,response))clean=false;
+        if(!h.end_criteria(h.context,criteria))clean=false;
+        if(!ok||!clean){
+            if(keep&&response)(void)h.destroy(h.context,response);
+            return -1;
+        }
+        *result=keep?response:nullptr;*extent=keep?n:0;return 1;
+    };
+    if(!h.add(h.context,criteria,"concept",name,5.f)||
+       (mods&&!h.modifiers(h.context,criteria,mods,5.f))||
+       !h.npc_criteria(h.context,exp,criteria)||!h.player_criteria(h.context,criteria,1))
+        return finish(false,false,false);
+    if(!h.allocate(h.context,0x124,&response,&n)||!response||n<0x124||
+       !hologram_writable(response,0x124))return finish(false,false,response!=nullptr);
+    // 2205b3a0 constructor scalar fields; embedded opaque data is host-owned.
+    hologram_write(response,0,0u);hologram_write(response,4,static_cast<unsigned char>(0));
+    hologram_write(response,0x84,0u);hologram_write(response,0x88,0u);hologram_write(response,0x8c,100);
+    for(unsigned off=0x90;off<=0xa0;off+=4)hologram_write(response,off,0u);
+    hologram_write(response,0xa4,static_cast<unsigned char>(0));
+    unsigned found=0;
+    if(!h.find(h.context,system,criteria,response,exp,&found))return finish(false,false,true);
+    if(!found)return finish(true,false,false); // original finder-false branch
+    if(!hologram_read<unsigned char>(response,4))return finish(true,false,true);
+    if(response_chance(response)<100){
+        int draw=0;
+        if(!h.draw(h.context,1,100,&draw)||draw<1||draw>100)return finish(false,false,true);
+        // Original re-reads chance AFTER RNG, and rejects equality.
+        if(draw<=response_chance(response))return finish(true,false,true);
+    }
+    return finish(true,true,false);
+}
+const ResponseSelectApi response_select_api{version,sizeof(ResponseSelectApi),&response_select};
+
+
 
 
 constexpr unsigned count_size=0x1038;
@@ -7304,6 +7356,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseP
 SiN_GetResponsePolicyApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponsePolicyApi)?&response_policy_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetResponseSelectApi=_SiN_GetResponseSelectApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseSelectApi* __cdecl
+SiN_GetResponseSelectApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseSelectApi)?&response_select_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

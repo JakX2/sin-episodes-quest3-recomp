@@ -141,6 +141,37 @@ struct ResponsePolicyApi {
 };
 using GetResponsePolicyApi=const ResponsePolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Original 220a38d0, response selection before playback. Caller serializes
+// the expeditor. Criteria and response allocator/virtual methods are hosted.
+inline constexpr char response_select_export[]="SiN_GetResponseSelectApi";
+struct ResponseSelectionBindings {
+    void* context;
+    int (__cdecl *system)(void*,void* exp,void** system) noexcept;
+    int (__cdecl *begin_criteria)(void*,void** criteria) noexcept;
+    int (__cdecl *add)(void*,void* criteria,const char* key,const char* value,float weight) noexcept;
+    // Host owns original bounded modifier parser (255-byte source, 128-byte
+    // key and value buffers); add all parsed pairs at supplied weight.
+    int (__cdecl *modifiers)(void*,void* criteria,const char*,float weight) noexcept;
+    int (__cdecl *npc_criteria)(void*,void* exp,void* criteria) noexcept;
+    int (__cdecl *player_criteria)(void*,void* criteria,int player_index) noexcept;
+    int (__cdecl *allocate)(void*,unsigned bytes,void** response,unsigned* extent) noexcept;
+    // On transport success with found==0, original finder branch does not
+    // destroy response. Host must account for that allocation at its boundary.
+    int (__cdecl *find)(void*,void* system,void* criteria,void* response,void* exp,unsigned* found) noexcept;
+    int (__cdecl *draw)(void*,int low,int high,int*) noexcept;
+    int (__cdecl *destroy)(void*,void* response) noexcept;
+    int (__cdecl *end_criteria)(void*,void* criteria) noexcept;
+};
+struct ResponseSelectApi {
+    std::uint32_t version,size;
+    // 1 completed, including no matching response (null output);
+    // 0 rejected, -1 transport error. On successful selection ownership
+    // of response transfers to caller; outputs untouched on transport error.
+    int (__cdecl *select)(void* exp,unsigned bytes,const ResponseSelectionBindings*,const char* name,const char* modifiers,void** response,unsigned* extent) noexcept;
+};
+using GetResponseSelectApi=const ResponseSelectApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+
 
 
 }
