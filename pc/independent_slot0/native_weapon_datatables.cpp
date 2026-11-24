@@ -4500,6 +4500,129 @@ int __cdecl choreography_symbol_destroy(void* symbol,unsigned bytes,const Choreo
     return 1;
 }
 const ChoreographySymbolApi choreography_symbol_api{version,sizeof(ChoreographySymbolApi),&choreography_symbol_construct_empty,&choreography_symbol_destroy};
+// 2228f7a0: original first-fit pooled symbol strings and 16-bit tree.
+// Allocation and CUtlMemory resizing are external leaves.
+int __cdecl choreography_symbol_intern(void* p,void* object,const char* name,std::uint16_t* out) noexcept {
+    const auto* b=static_cast<const ChoreographySymbolInternBindings*>(p);
+    if(!out)return 0;
+    if(!name){*out=0xffff;return 1;}
+    if(!b||!b->storage||!b->grow_memory||!b->allocate||!b->release_unpublished||
+       !hologram_writable(object,0x34)||!hologram_writable(b->sentinel,sizeof(ChoreographySymbolSentinel)))return 0;
+    const auto h=*b;
+    using T=sin_port::choreography_index::Tree<std::uint16_t,12>;
+    using I=std::uint16_t;
+    constexpr unsigned limit=4096;
+    unsigned length=0;
+    for(;length<65535;++length){
+        if(!sin_independent::vgui_layout::Readable(name+length,1))return 0;
+        if(!name[length])break;
+    }
+    if(length==65535)return 0;
+    ++length;
+    const unsigned high=hologram_read<I>(object,0x16),live=hologram_read<I>(object,0x12);
+    const unsigned cap=hologram_read<unsigned>(object,8);
+    const unsigned pools=hologram_read<unsigned>(object,0x28),pool_cap=hologram_read<unsigned>(object,0x20);
+    if(high>cap||cap>limit||live>high||pools>pool_cap||pool_cap>limit)return 0;
+    auto resolve=[&](unsigned off,unsigned need,void*& data) noexcept {
+        data=nullptr;if(!need)return true;
+        const auto word=hologram_read<std::uint32_t>(object,off);unsigned extent=0;
+        return word&&h.storage(h.context,word,&data,&extent)&&extent>=need&&hologram_writable(data,need);
+    };
+    void *nodes=nullptr,*pool_rows=nullptr;
+    if(!resolve(4,high*12,nodes)||!resolve(0x1c,pools*4,pool_rows))return 0;
+    struct Pool {unsigned char* data;unsigned capacity,used;};
+    Pool blocks[limit];
+    unsigned chosen=limit;
+    for(unsigned i=0;i<pools;++i){
+        void* block=nullptr;unsigned extent=0;
+        const auto w=hologram_read<std::uint32_t>(pool_rows,i*4);
+        if(!w||!h.storage(h.context,w,&block,&extent)||extent<8||!hologram_writable(block,extent))return 0;
+        const auto size=hologram_read<unsigned>(block,0),used=hologram_read<unsigned>(block,4);
+        if(size>65535||used>size||extent-8<size)return 0;
+        blocks[i]={static_cast<unsigned char*>(block),size,used};
+        if(chosen==limit&&size-used>=length)chosen=i;
+    }
+    T t{static_cast<unsigned char*>(nodes),high,hologram_read<I>(object,0x10)};
+    const char* strings[limit]{};
+    unsigned occupied=0;
+    for(unsigned i=0;i<high;++i){
+        if(t.get(static_cast<I>(i),0)==i)continue;
+        const auto pool=hologram_read<I>(t.rows,i*12+8),offset=hologram_read<I>(t.rows,i*12+10);
+        if(pool>=pools||offset>=blocks[pool].used)return 0;
+        const auto* str=reinterpret_cast<const char*>(blocks[pool].data+8+offset);
+        if(!std::memchr(str,0,blocks[pool].used-offset))return 0;
+        strings[i]=str;++occupied;
+    }
+    if(occupied!=live)return 0;
+    auto compare=[&](const char* a,const char* z) noexcept {
+        for(;;++a,++z){
+            unsigned char x=static_cast<unsigned char>(*a),y=static_cast<unsigned char>(*z);
+            if(h.insensitive){if(x>='A'&&x<='Z')x+=32;if(y>='A'&&y<='Z')y+=32;}
+            if(x!=y)return x<y?-1:1;
+            if(!x)return 0;
+        }
+    };
+    if(!t.valid(live,[&](I a,I z) noexcept {return strings[a]&&strings[z]&&compare(strings[a],strings[z])<0;}))return 0;
+    const I free_head=hologram_read<I>(object,0x14);
+    unsigned free_count=0;
+    for(I f=free_head;f!=T::nil;f=t.get(f,1)){
+        if(!t.index(f)||t.get(f,0)!=f||++free_count>high-live)return 0;
+    }
+    if(free_count!=high-live)return 0;
+    I parent=T::nil;unsigned side=0;
+    for(I i=t.root;i!=T::nil;i=t.get(i,side)){
+        if(!strings[i])return 0;
+        const int cmp=compare(name,strings[i]);
+        if(!cmp){hologram_write(object,0x30,scene_word(name));*out=i;return 1;}
+        parent=i;side=cmp<0?0:1;
+    }
+    // Reserve tree and pool-pointer capacity before publishing new strings.
+    I slot=free_head;
+    if(slot==T::nil){
+        if(high>=limit)return 0;
+        if(high==cap&&(hologram_read<int>(object,0xc)==-1||
+           !h.grow_memory(h.context,static_cast<unsigned char*>(object)+4,1,12)||
+           hologram_read<unsigned>(object,8)<=high||hologram_read<unsigned>(object,8)>limit))return 0;
+        if(!resolve(4,(high+1)*12,nodes))return 0;
+        t.rows=static_cast<unsigned char*>(nodes);t.count=high+1;slot=static_cast<I>(high);
+    }
+    const bool new_pool=chosen==limit;
+    if(new_pool){
+        if(pools>=limit)return 0;
+        if(pools==pool_cap&&(hologram_read<int>(object,0x24)==-1||
+           !h.grow_memory(h.context,static_cast<unsigned char*>(object)+0x1c,1,4)||
+           hologram_read<unsigned>(object,0x20)<=pools||hologram_read<unsigned>(object,0x20)>limit))return 0;
+        if(!resolve(0x1c,(pools+1)*4,pool_rows))return 0;
+        const unsigned capacity=length>2048?length:2048;
+        void* block=nullptr;unsigned extent=0;
+        if(!h.allocate(h.context,capacity+11,&block,&extent)||!block)return 0;
+        if(extent<capacity+11||!hologram_writable(block,capacity+11)){
+            (void)h.release_unpublished(h.context,scene_word(block));return 0;
+        }
+        chosen=pools;blocks[chosen]={static_cast<unsigned char*>(block),capacity,0};
+        hologram_write(block,0,capacity);hologram_write(block,4,0u);
+        hologram_write(pool_rows,pools*4,scene_word(block));
+        hologram_write(object,0x28,pools+1);hologram_write(object,0x2c,hologram_read<std::uint32_t>(object,0x1c));
+    }
+    auto& block=blocks[chosen];
+    std::memcpy(block.data+8+block.used,name,length);
+    const auto offset=static_cast<I>(block.used);
+    hologram_write(block.data,4,block.used+length);
+    if(slot==free_head)hologram_write(object,0x14,t.get(slot,1));
+    else hologram_write(object,0x16,static_cast<I>(high+1));
+    if(parent!=T::nil||free_head!=T::nil){
+        if(!(h.sentinel->flags&1)){
+            h.sentinel->flags|=1;h.sentinel->words[0]=h.sentinel->words[1]=h.sentinel->words[2]=T::nil;h.sentinel->words[3]=1;
+        }
+    }
+    t.link(slot,parent,side);
+    hologram_write(object,0x10,t.root);hologram_write(object,0x12,static_cast<I>(live+1));
+    hologram_write(object,0x18,hologram_read<std::uint32_t>(object,4));
+    hologram_write(t.rows,slot*12+8,static_cast<I>(chosen));hologram_write(t.rows,slot*12+10,offset);
+    // Scratch pointer mirrors original +30; never dereferenced after call.
+    hologram_write(object,0x30,scene_word(name));*out=slot;return 1;
+}
+const ChoreographySymbolInternApi choreography_symbol_intern_api{version,sizeof(ChoreographySymbolInternApi),&choreography_symbol_intern};
 // 221a3c30 and its fresh-object setters. Engine allocations, vector
 // growth and the original-compatible constructors/destructors remain hosted.
 bool generated_scene_text(const char* source,char (&dest)[128]) noexcept {
@@ -12057,6 +12180,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::OwnedChor
 SiN_GetOwnedChoreographyApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(OwnedChoreographyApi)?&owned_choreography_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographySymbolInternApi=_SiN_GetChoreographySymbolInternApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographySymbolInternApi* __cdecl
+SiN_GetChoreographySymbolInternApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographySymbolInternApi)?&choreography_symbol_intern_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographySymbolApi=_SiN_GetChoreographySymbolApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographySymbolApi* __cdecl
