@@ -146,7 +146,14 @@ int main(int argc,char** argv){
     const auto* aggregateSend=getAggregateSend(1,sizeof(tables::AggregateSendApi));
     const auto* aggregateRecv=getAggregateRecv(1,sizeof(tables::AggregateRecvApi));
     assert(aggregateSend&&aggregateRecv&&!getAggregateSend(0,sizeof(tables::AggregateSendApi))&&!getAggregateRecv(1,0));
-    tables::test::check_aggregate(*aggregateSend,*aggregateRecv);
+    const auto getExtraSend=reinterpret_cast<tables::GetExtraSendApi>(GetProcAddress(server,tables::extra_send_export));
+    const auto getExtraRecv=reinterpret_cast<tables::GetExtraRecvApi>(GetProcAddress(client,tables::extra_recv_export));
+    assert(getExtraSend&&getExtraRecv&&!GetProcAddress(client,tables::extra_send_export)&&!GetProcAddress(server,tables::extra_recv_export));
+    const auto* extraSend=getExtraSend(1,sizeof(tables::ExtraSendApi));
+    const auto* extraRecv=getExtraRecv(1,sizeof(tables::ExtraRecvApi));
+    assert(extraSend&&extraRecv&&!getExtraSend(0,sizeof(tables::ExtraSendApi))&&!getExtraRecv(1,0));
+    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv);
+    std::puts("PASS native paired SiN enemy and additional weapon network class extension (11)");
     std::puts("PASS native paired network aggregate (35 owned tables, 15 class records, transactional construction)");
     const auto getCreator=reinterpret_cast<tables::GetClientCreatorApi>(GetProcAddress(client,tables::client_creator_export));
     assert(getCreator&&!GetProcAddress(server,tables::client_creator_export));

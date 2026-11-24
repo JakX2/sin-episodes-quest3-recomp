@@ -1131,6 +1131,7 @@ struct AggregateSendGraph {
     DerivedPlayerSendGraph derived;
     SendGraph weapons;
     ServerClassGraph classes;
+    bool extra_bound=false;
     Table* tables[aggregate_table_count]{};
     bool build(const AggregateSendBindings& b) noexcept {
         const auto* entries=b.entity.entries;const auto count=b.entity.entry_count;
@@ -1173,7 +1174,7 @@ int __cdecl create_aggregate(const AggregateSendBindings* b,AggregateSendView* o
 int __cdecl destroy_aggregate(AggregateSendView* v) noexcept {
     if(!v||!v->handle)return 0;
     auto* g=static_cast<AggregateSendGraph*>(v->handle);
-    if(!aggregate_matches(*g,*v))return 0;
+    if(g->extra_bound||!aggregate_matches(*g,*v))return 0;
     // Preflight every owned object, including nested-only tables. No
     // partial teardown if an engine marker is still set anywhere.
     for(const auto* tab:g->tables)if(!tab||tab->precalc||tab->initialized||tab->written)return 0;
@@ -1181,6 +1182,80 @@ int __cdecl destroy_aggregate(AggregateSendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const AggregateSendApi aggregate_api{version,sizeof(AggregateSendApi),&create_aggregate,&destroy_aggregate};
+
+struct ExtraSendGraph {
+    AggregateSendGraph* base=nullptr;
+    s::SendTable tables[ExtraEntityCount];
+    s::SendProp props[ExtraEntityCount][7];
+    ServerClassRecord records[ExtraEntityCount]{};
+    ServerClassRecord* head=nullptr;
+    bool build(AggregateSendGraph& core,const ExtraSendBindings&) noexcept {
+        s::SendTable* parents[]={&core.inventory.combat_base,
+            &core.weapons.tables[BaseHL],
+            &tables[ExGrunt],
+            &tables[ExAI],
+            &tables[ExAI],
+            &core.weapons.tables[SelectFire],
+            &core.inventory.combat_base,
+            &core.weapons.tables[BaseHL],
+            &core.weapons.tables[SelectFire],
+            &core.weapons.tables[BaseHL],
+            &tables[ExBludgeon]};
+        for(unsigned i=0;i<ExtraEntityCount;++i)
+            if(!tables[i].Construct(props[i],extra_table_counts[i],extra_table_names[i]))return false;
+        for(unsigned i=0;i<ExtraEntityCount;++i){
+            if(!s::MakeDataTableProp(props[i][0],"baseclass",0,parents[i],&s::DirectTable))return false;
+            auto& rec=records[i];rec.name=extra_class_names[i];rec.table=&tables[i];
+            auto** link=&head;
+            while(*link&&ascii_class_compare((*link)->name,rec.name)<=0)link=&(*link)->next;
+            rec.next=*link;*link=&rec;
+        }
+        auto* ai=props[ExAI];
+        anim_int(ai[1],"m_lifeState",0x8c,3,1);
+        anim_int(ai[2],"m_bPerformAvoidance",0xc10,1,1,true);
+        anim_int(ai[3],"m_bIsMoving",0xc11,1,1,true);
+        anim_int(ai[4],"m_bFadeCorpse",0xc12,1,1,true);
+        anim_int(ai[5],"m_iDeathPose",0x890,10,0);
+        anim_int(ai[6],"m_iDeathFrame",0x894,5,0);
+        auto* grunt=props[ExGrunt];
+        anim_int(grunt[1],"m_receivedDecapitatingBlow",0xc44,1,1,true);
+        anim_float(grunt[2],"m_decapitateVelocity",0xc48,0,4,0,0,0);
+        grunt[2].type=2;grunt[2].scalarProxy=&vector_send;
+        auto* holo=props[ExHologram];
+        anim_int(holo[1],"m_state",0x1014,32,0);
+        anim_float(holo[2],"m_timeEffectStops",0x1018,0,4,0,0,0);
+        auto& target=props[ExShockwave][1];
+        anim_float(target,"m_vecTargetPos",0x798,0,2,0,0,0);
+        target.type=2;target.scalarProxy=&vector_send;
+        return true;
+    }
+};
+
+int __cdecl create_extra(const ExtraSendBindings* b,ExtraSendView* out) noexcept {
+    if(!b||!b->base||!b->base->handle||!out||out->handle||out->head||out->records)return 0;
+    for(auto* table:out->tables)if(table)return 0;
+    auto* core=static_cast<AggregateSendGraph*>(b->base->handle);
+    if(core->extra_bound||!aggregate_matches(*core,*b->base))return 0;
+    auto* g=new(std::nothrow) ExtraSendGraph;
+    if(!g)return 0;
+    if(!g->build(*core,*b)){delete g;return 0;}
+    g->base=core;core->extra_bound=true;
+    out->handle=g;out->head=g->head;out->records=g->records;
+    for(unsigned i=0;i<ExtraEntityCount;++i)out->tables[i]=&g->tables[i];
+    return 1;
+}
+int __cdecl destroy_extra(ExtraSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<ExtraSendGraph*>(v->handle);
+    if(v->head!=g->head||v->records!=g->records)return 0;
+    for(unsigned i=0;i<ExtraEntityCount;++i){
+        const auto& tab=g->tables[i];const auto& rec=g->records[i];
+        if(v->tables[i]!=&tab||rec.class_id!=0||rec.instance_baseline!=0xffff||tab.precalc||tab.initialized||tab.written)return 0;
+    }
+    g->base->extra_bound=false;
+    delete g;*v={};return 1;
+}
+const ExtraSendApi extra_api{version,sizeof(ExtraSendApi),&create_extra,&destroy_extra};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -1853,7 +1928,7 @@ struct AggregateRecvGraph {
     DerivedPlayerRecvGraph derived;
     RecvGraph weapons;
     ClientClassGraph classes;
-    bool spawn_bound=false;
+    bool spawn_bound=false,extra_bound=false;
     Table* tables[aggregate_table_count]{};
     bool build(const AggregateRecvBindings& b) noexcept {
         if(!entity.build(b.entity)||!anim.build({&entity.entity})||
@@ -1896,7 +1971,7 @@ int __cdecl create_aggregate(const AggregateRecvBindings* b,AggregateRecvView* o
 int __cdecl destroy_aggregate(AggregateRecvView* v) noexcept {
     if(!v||!v->handle)return 0;
     auto* g=static_cast<AggregateRecvGraph*>(v->handle);
-    if(g->spawn_bound||!aggregate_matches(*g,*v))return 0;
+    if(g->spawn_bound||g->extra_bound||!aggregate_matches(*g,*v))return 0;
     // Preflight every owned object, including nested-only tables. No
     // partial teardown if an engine marker is still set anywhere.
     for(const auto* tab:g->tables)if(!tab||tab->decoder||tab->initialized||tab->in_main_list)return 0;
@@ -2267,6 +2342,75 @@ int __cdecl spawn_unbind(ClientSpawnView* v) noexcept {
     active_spawn=nullptr;delete session;*v={};return 1;
 }
 const ClientSpawnApi spawn_api{version,sizeof(ClientSpawnApi),&spawn_bind,&spawn_release,&spawn_record,&spawn_unbind};
+
+struct ExtraRecvGraph {
+    AggregateRecvGraph* base=nullptr;
+    RecvTable tables[ExtraEntityCount];
+    RecvProp props[ExtraEntityCount][7];
+    ClientClassRecord records[ExtraEntityCount]{};
+    ClientClassRecord* head=nullptr;
+    bool build(AggregateRecvGraph& core,const ExtraRecvBindings& b) noexcept {
+        for(auto creator:b.creators)if(!creator)return false;
+        RecvTable* parents[]={&core.inventory.combat_base,
+            &core.weapons.tables[BaseHL],
+            &tables[ExGrunt],
+            &tables[ExAI],
+            &tables[ExAI],
+            &core.weapons.tables[SelectFire],
+            &core.inventory.combat_base,
+            &core.weapons.tables[BaseHL],
+            &core.weapons.tables[SelectFire],
+            &core.weapons.tables[BaseHL],
+            &tables[ExBludgeon]};
+        for(unsigned i=0;i<ExtraEntityCount;++i){
+            tables[i]={props[i],extra_table_counts[i],nullptr,extra_table_names[i]};
+            nested(props[i][0],"baseclass",parents[i]);
+            auto& rec=records[i];rec.name=extra_class_names[i];rec.table=&tables[i];
+            rec.create=b.creators[i];rec.next=head;head=&rec;
+        }
+        auto* ai=props[ExAI];
+        anim_recv(ai[1],"m_lifeState",0x94);
+        anim_recv(ai[2],"m_bPerformAvoidance",0xd48,0,&byte_recv);
+        anim_recv(ai[3],"m_bIsMoving",0xd49,0,&byte_recv);
+        anim_recv(ai[4],"m_bFadeCorpse",0xd4a,0,&byte_recv);
+        anim_recv(ai[5],"m_iDeathPose",0xd4c);
+        anim_recv(ai[6],"m_iDeathFrame",0xd50);
+        auto* grunt=props[ExGrunt];
+        anim_recv(grunt[1],"m_receivedDecapitatingBlow",0xd74,0,&byte_recv);
+        anim_recv(grunt[2],"m_decapitateVelocity",0xd78,2,&vector_recv);
+        auto* holo=props[ExHologram];
+        anim_recv(holo[1],"m_state",0xd7c);
+        anim_recv(holo[2],"m_timeEffectStops",0xd80,1);
+        anim_recv(props[ExShockwave][1],"m_vecTargetPos",0xd64,2,&vector_recv);
+        return true;
+    }
+};
+
+int __cdecl create_extra(const ExtraRecvBindings* b,ExtraRecvView* out) noexcept {
+    if(!b||!b->base||!b->base->handle||!out||out->handle||out->head||out->records)return 0;
+    for(auto* table:out->tables)if(table)return 0;
+    auto* core=static_cast<AggregateRecvGraph*>(b->base->handle);
+    if(core->extra_bound||!aggregate_matches(*core,*b->base))return 0;
+    auto* g=new(std::nothrow) ExtraRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*core,*b)){delete g;return 0;}
+    g->base=core;core->extra_bound=true;
+    out->handle=g;out->head=g->head;out->records=g->records;
+    for(unsigned i=0;i<ExtraEntityCount;++i)out->tables[i]=&g->tables[i];
+    return 1;
+}
+int __cdecl destroy_extra(ExtraRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<ExtraRecvGraph*>(v->handle);
+    if(v->head!=g->head||v->records!=g->records)return 0;
+    for(unsigned i=0;i<ExtraEntityCount;++i){
+        const auto& tab=g->tables[i];const auto& rec=g->records[i];
+        if(v->tables[i]!=&tab||rec.class_id!=0||tab.decoder||tab.initialized||tab.in_main_list)return 0;
+    }
+    g->base->extra_bound=false;
+    delete g;*v={};return 1;
+}
+const ExtraRecvApi extra_api{version,sizeof(ExtraRecvApi),&create_extra,&destroy_extra};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2350,6 +2494,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Aggregate
 SiN_GetNetworkSendAggregateApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AggregateSendApi)?&aggregate_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetExtraEntitySendApi=_SiN_GetExtraEntitySendApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ExtraSendApi* __cdecl
+SiN_GetExtraEntitySendApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ExtraSendApi)?&extra_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
@@ -2447,5 +2597,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientSpa
 SiN_GetClientSpawnSessionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientSpawnApi)?&spawn_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetExtraEntityRecvApi=_SiN_GetExtraEntityRecvApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ExtraRecvApi* __cdecl
+SiN_GetExtraEntityRecvApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ExtraRecvApi)?&extra_api:nullptr;
 }
 #endif
