@@ -521,6 +521,27 @@ struct ActorEventRecordApi {
     int (__cdecl *check)(void*,unsigned,float,std::uint32_t,void* event,const ActorEventRecordBindings*,unsigned*) noexcept;
 };
 using GetActorEventRecordApi=const ActorEventRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_speech_policy_export[]="SiN_GetSceneSpeechPolicyApi";
+struct SceneSpeechTiming {float offset,absolute_start,remaining;};
+struct SceneSpeechQueueBindings {
+    void* context;
+    int (__cdecl *handle)(void*,void* actor,std::uint32_t*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *grow)(void*,void* vector,unsigned additional) noexcept;
+};
+struct SceneSpeechPolicyApi {
+    std::uint32_t version,size;
+    // 2210c880: output empty and available=0 for suppressed token.
+    int (__cdecl *token)(const void*,unsigned,char*,unsigned,unsigned*) noexcept;
+    // 221a3df0: client "english" Q_atoi value (absent means English);
+    // force_alternate is original global ConVar +2c. Output still contains
+    // primary sound if original branch returns available=0.
+    int (__cdecl *sound)(const void*,unsigned,unsigned has_language,int language,unsigned force_alternate,char*,unsigned,unsigned*) noexcept;
+    int (__cdecl *timing)(const void*,unsigned,const void*,unsigned,float now,SceneSpeechTiming*) noexcept;
+    // 221ab350/221a8260: 0x8c pending speech records at manager+3a8.
+    int (__cdecl *queue)(void*,unsigned,void* actor,const char*,int level,float offset,const SceneSpeechQueueBindings*) noexcept;
+};
+using GetSceneSpeechPolicyApi=const SceneSpeechPolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

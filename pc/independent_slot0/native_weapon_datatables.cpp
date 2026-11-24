@@ -5104,6 +5104,80 @@ int __cdecl actor_event_check_one(void* actor,unsigned bytes,float time,std::uin
     *out=1;return 1;
 }
 const ActorEventRecordApi actor_event_record_api{version,sizeof(ActorEventRecordApi),&actor_event_add,&actor_event_stop_one,&actor_event_check_one};
+bool speech_text_valid(const void* event,unsigned bytes) noexcept {
+    return event&&bytes>=0x391&&sin_independent::vgui_layout::Readable(event,0x391)&&
+        std::memchr(static_cast<const unsigned char*>(event)+0x84,0,128)&&
+        std::memchr(static_cast<const unsigned char*>(event)+0x350,0,64);
+}
+// Caller-provided destination is not required to be dword aligned.
+bool speech_output_ready(char* dest,unsigned capacity,unsigned* available) noexcept {
+    if(!dest||!capacity||capacity>0x100000||!available||!hologram_writable(available,4))return false;
+    if(!sin_independent::vgui_layout::Readable(dest,capacity))return false;
+    MEMORY_BASIC_INFORMATION region{};
+    if(VirtualQuery(dest,&region,sizeof(region))!=sizeof(region))return false;
+    const auto protection=region.Protect&0xffu;
+    return protection==PAGE_READWRITE||protection==PAGE_WRITECOPY||protection==PAGE_EXECUTE_READWRITE||protection==PAGE_EXECUTE_WRITECOPY;
+}
+void speech_copy(char* dest,unsigned capacity,const char* source) noexcept {
+    const auto count=std::strlen(source);
+    const auto n=count<capacity-1?count:capacity-1;
+    std::memmove(dest,source,n);dest[n]=0;
+}
+const char* speech_caption_token(const void* event) noexcept {
+    const int mode=hologram_read<int>(event,0x34c);
+    if(mode!=0&&(mode!=1||hologram_read<unsigned char>(event,0x390)))return nullptr;
+    const auto* p=static_cast<const char*>(event);
+    return p[0x350]?p+0x350:p+0x84;
+}
+int __cdecl speech_token(const void* event,unsigned bytes,char* dest,unsigned capacity,unsigned* available) noexcept {
+    if(!speech_text_valid(event,bytes)||!speech_output_ready(dest,capacity,available))return 0;
+    const auto* token=speech_caption_token(event);speech_copy(dest,capacity,token?token:"");*available=token!=nullptr;return 1;
+}
+int __cdecl speech_sound(const void* event,unsigned bytes,unsigned has_language,int language,unsigned force,char* dest,unsigned capacity,unsigned* available) noexcept {
+    if(!speech_text_valid(event,bytes)||!speech_output_ready(dest,capacity,available))return 0;
+    const int mode=hologram_read<int>(event,0x34c);
+    const auto* primary=static_cast<const char*>(event)+0x84;
+    const auto* selected=primary;unsigned accepted=1;
+    if(force||(has_language&&language!=1)){
+        if(mode==1||mode==2)accepted=0;
+        else{
+            // Original helper retrieves into a 64-byte local token.
+            char token[64]{};
+            const auto* alternate=speech_caption_token(event);
+            if(alternate){speech_copy(token,sizeof(token),alternate);speech_copy(dest,capacity,token);*available=1;return 1;}
+        }
+    }
+    speech_copy(dest,capacity,selected);*available=accepted;return 1;
+}
+int __cdecl speech_timing(const void* scene,unsigned bytes,const void* event,unsigned extent,float now,SceneSpeechTiming* out) noexcept {
+    if(!scene||bytes<0x3e0||!sin_independent::vgui_layout::Readable(scene,0x3e0)||!event||extent<0x18c||
+       !sin_independent::vgui_layout::Readable(event,0x18c)||!out||!hologram_writable(out,sizeof(*out)))return 0;
+    const double start=hologram_read<float>(event,0x184);
+    const float offset=static_cast<float>(static_cast<double>(hologram_read<float>(scene,0x3dc))-start);
+    const float absolute=static_cast<float>(static_cast<double>(now)-offset);
+    const double duration=hologram_read<std::uint32_t>(event,0x188)==0xbf800000u?0.0:
+        static_cast<double>(hologram_read<float>(event,0x188))-start;
+    *out={offset,absolute,static_cast<float>(duration-offset)};return 1;
+}
+int __cdecl speech_queue(void* manager,unsigned bytes,void* actor,const char* sound,int level,float offset,const SceneSpeechQueueBindings* b) noexcept {
+    if(bytes<0x3bc||!hologram_writable(manager,0x3bc)||!sound||!b||!b->handle||!b->storage||!b->grow)return 0;
+    const auto h=*b;alignas(4) unsigned char record[0x8c]{};
+    std::uint32_t handle=0xffffffffu;if(actor&&!h.handle(h.context,actor,&handle))return -1;
+    hologram_write(record,0,handle);
+    char text[128]{};if(!generated_scene_text(sound,text))return -1;
+    std::memcpy(record+4,text,128);hologram_write(record,0x84,level);hologram_write(record,0x88,offset);
+    auto* v=static_cast<unsigned char*>(manager)+0x3a8;
+    const int count=hologram_read<int>(v,0xc),capacity=hologram_read<int>(v,4);
+    if(count<0||count>=0x100000||capacity<count||capacity>0x100000)return -1;
+    if(count==capacity&&(!h.grow(h.context,v,1)||hologram_read<int>(v,0xc)!=count||
+       hologram_read<int>(v,4)<=count||hologram_read<int>(v,4)>0x100000))return -1;
+    const auto word=hologram_read<std::uint32_t>(v,0);void* rows=nullptr;unsigned n=0;
+    const auto needed=static_cast<unsigned>(count+1)*0x8c;
+    if(!word||!h.storage(h.context,word,&rows,&n)||n<needed||!hologram_writable(rows,needed))return -1;
+    hologram_write(v,0xc,count+1);hologram_write(v,0x10,word);
+    std::memcpy(static_cast<unsigned char*>(rows)+count*0x8c,record,sizeof(record));return 1;
+}
+const SceneSpeechPolicyApi scene_speech_policy_api{version,sizeof(SceneSpeechPolicyApi),&speech_token,&speech_sound,&speech_timing,&speech_queue};
 int __cdecl integrated_scene(void* npc,const char* name,float delay,const NpcScenePlaybackBindings* b,const SceneEntityLifecycleBindings* life,float* out) noexcept {
     if(!life)return 0;const auto h=*life;
     return npc_scene_play(npc,name,delay,b,out,false,&h);
@@ -9697,6 +9771,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechPolicyApi=_SiN_GetSceneSpeechPolicyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechPolicyApi* __cdecl
+SiN_GetSceneSpeechPolicyApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneSpeechPolicyApi)?&scene_speech_policy_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetActorEventRecordApi=_SiN_GetActorEventRecordApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ActorEventRecordApi* __cdecl
 SiN_GetActorEventRecordApi(std::uint32_t version,std::uint32_t size) noexcept {

@@ -592,6 +592,12 @@ int main(int argc,char** argv){
     assert(actorEventRecord&&!getActorEventRecord(0,sizeof(tables::ActorEventRecordApi))&&!getActorEventRecord(1,0));
     tables::test::check_actor_event_records(*actorEventRecord);
     std::puts("PASS original actor event record construction, conditional stop and check");
+    const auto getSceneSpeechPolicy=reinterpret_cast<tables::GetSceneSpeechPolicyApi>(GetProcAddress(server,tables::scene_speech_policy_export));
+    assert(getSceneSpeechPolicy&&!GetProcAddress(client,tables::scene_speech_policy_export));
+    const auto* sceneSpeechPolicy=getSceneSpeechPolicy(1,sizeof(tables::SceneSpeechPolicyApi));
+    assert(sceneSpeechPolicy&&!getSceneSpeechPolicy(0,sizeof(tables::SceneSpeechPolicyApi))&&!getSceneSpeechPolicy(1,0));
+    tables::test::check_scene_speech_policy(*sceneSpeechPolicy);
+    std::puts("PASS original native speech language policy, caption token, timing and queue");
 
 
 
