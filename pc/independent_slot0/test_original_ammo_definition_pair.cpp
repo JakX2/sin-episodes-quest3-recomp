@@ -453,6 +453,13 @@ int main(int argc,char** argv){
     assert(npcScene&&!getNpcScene(0,sizeof(tables::NpcScenePlaybackApi))&&!getNpcScene(1,0));
     tables::test::check_npc_scene_playback(*npcScene);
     std::puts("PASS native NPC instanced choreography scene and sound creation");
+    const auto getSceneQuery=reinterpret_cast<tables::GetSceneManagerQueryApi>(GetProcAddress(server,tables::scene_manager_query_export));
+    assert(getSceneQuery&&!GetProcAddress(client,tables::scene_manager_query_export));
+    const auto* sceneQuery=getSceneQuery(1,sizeof(tables::SceneManagerQueryApi));
+    assert(sceneQuery&&!getSceneQuery(0,sizeof(tables::SceneManagerQueryApi))&&!getSceneQuery(1,0));
+    tables::test::check_scene_manager_query(*sceneQuery);
+    std::puts("PASS native scene manager actor membership, cancellation and future speech");
+
 
 
 
