@@ -578,6 +578,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetARGrenadeApi=_SiN_GetARGrenadeApi")
 #pragma comment(linker,"/EXPORT:SiN_GetRifleGrenadeApi=_SiN_GetRifleGrenadeApi")
 #pragma comment(linker,"/EXPORT:SiN_GetMagnumApi=_SiN_GetMagnumApi")
+#pragma comment(linker,"/EXPORT:SiN_GetMagnumSecondaryApi=_SiN_GetMagnumSecondaryApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -924,8 +925,9 @@ int SIN_FIXED_CALL map_spawn(abi::MapEntityRef ref) noexcept {
     return abi::MapApplied;
 }
 struct OutputScope {
+    bool prior=reading_engine_skill;
     OutputScope() noexcept {reading_engine_skill=true;}
-    ~OutputScope(){reading_engine_skill=false;}
+    ~OutputScope(){reading_engine_skill=prior;}
 };
 int SIN_FIXED_CALL map_input(abi::MapEntityRef ref,const char* name,
         abi::MapFloatOutput sink,void* context) noexcept {
@@ -1555,6 +1557,20 @@ MapEntity* find_magnum(abi::MapEntityRef ref) noexcept {
     auto* e=find_weapon(ref);
     return e&&e->spawned&&e->kind==EntityKind::Magnum?e:nullptr;
 }
+// Narrow synchronous nesting: an actual game firing callback can
+// call this exact weapon's impact handler. No other mutation or
+// recursive impact is enabled, and the outer guard is restored.
+MapEntity* magnum_impact_target=nullptr;
+bool magnum_impact_active=false;
+struct MagnumImpactWindow {
+    MapEntity* prior=magnum_impact_target;
+    explicit MagnumImpactWindow(MapEntity* e) noexcept {magnum_impact_target=e;}
+    ~MagnumImpactWindow(){magnum_impact_target=prior;}
+};
+struct MagnumImpactScope {
+    MagnumImpactScope() noexcept {magnum_impact_active=true;}
+    ~MagnumImpactScope(){magnum_impact_active=false;}
+};
 int SIN_FIXED_CALL magnum_acknowledge(abi::MapEntityRef ref) noexcept {
     auto* e=find_magnum(ref);
     if(reading_engine_skill||!e)return 0;
@@ -1605,8 +1621,12 @@ int SIN_FIXED_CALL magnum_frame(abi::MapEntityRef ref,const abi::MagnumFrameObse
                 call(cb.write_primary_deadline,ref,clock());
                 call(cb.write_pending_count,ref,in.pending_count-1);
                 report.pending_after=in.pending_count-1;
-                call(cb.primary_attack,ref);
-                report.primary_delivered=1;
+                {
+                    MagnumImpactWindow window(e);
+                    call(cb.primary_attack,ref);
+                    report.primary_delivered=1;
+                    if(e->magnum_uncertain)throw 1;
+                }
                 call(cb.write_primary_deadline,ref,saved);
                 report.restored_deadline=saved;
                 call(cb.read_pending_count,ref,&report.pending_after);
@@ -1635,11 +1655,13 @@ int SIN_FIXED_CALL magnum_impact(abi::MapEntityRef ref,std::uint32_t damage_type
         *out=report;return 1;
     };
     const bool special=(damage_type&0x00400000u)!=0;
-    if(reading_engine_skill||!e||e->magnum_uncertain||!host||host->version!=abi::magnum_version||
+    if(!e||magnum_impact_active||(reading_engine_skill&&magnum_impact_target!=e)||
+       e->magnum_uncertain||!host||host->version!=abi::magnum_version||
        host->size!=sizeof(*host)||!host->base||(special&&(!host->trace||!host->smoke||!host->decal)))
         return finish(abi::MagnumImpactRejected);
     const auto cb=*host;
     OutputScope scope;
+    MagnumImpactScope impact_scope;
     const auto call=[&](auto fn,auto... args){
         ++report.attempted;
         if(!fn(context,args...))throw 1;
@@ -1675,9 +1697,151 @@ int SIN_FIXED_CALL magnum_impact(abi::MapEntityRef ref,std::uint32_t damage_type
 const abi::MagnumApi magnum_api{abi::magnum_version,sizeof(abi::MagnumApi),
     &magnum_frame,&magnum_impact,&magnum_acknowledge};
 
+// Original Magnum slot227 (0x22316cf0). Keep the original early
+// exact-zero clip check, live repeat queries and post-fire ordering.
+int SIN_FIXED_CALL magnum_secondary(abi::MapEntityRef ref,const abi::MagnumSecondaryObservation* input,
+        const abi::MagnumSecondaryHost* host,void* context,abi::MagnumSecondaryReport* out) noexcept {
+    if(!out)return 0;
+    abi::MagnumSecondaryReport report{};
+    auto* e=find_magnum(ref);
+    const auto finish=[&](std::uint32_t code) noexcept {
+        report.code=code;report.needs_resync=e&&e->magnum_uncertain?1u:0u;
+        *out=report;return 1;
+    };
+    if(reading_engine_skill||!e||e->weapon_resync||e->magnum_uncertain||!input||
+       input->owner_present>1||!host||host->version!=abi::magnum_secondary_version||
+       host->size!=sizeof(*host)||!host->query||!host->effect||!host->fire)
+        return finish(abi::MagSecondaryRejected);
+    const auto in=*input;
+    if(in.owner_present&&(!valid_launch_ref(in.owner,ref.epoch)||in.owner.index==ref.index))
+        return finish(abi::MagSecondaryRejected);
+    const auto cb=*host;
+    OutputScope scope;
+    const auto q=[&](std::uint32_t op,std::uint32_t arg=0u){
+        abi::MagnumSecondaryValue v{};
+        ++report.queries_attempted;
+        if(!cb.query(context,ref,in.owner,op,arg,&v))throw 1;
+        ++report.queries_delivered;return v;
+    };
+    const auto boolean=[&](std::uint32_t op){
+        const auto v=q(op).integer;
+        if(v!=0&&v!=1)throw 1;
+        return v!=0;
+    };
+    const auto real=[&](std::uint32_t op,std::uint32_t arg=0u){
+        const float v=q(op,arg).real;
+        if(!std::isfinite(v))throw 1;
+        return v;
+    };
+    const auto vector=[&](std::uint32_t op,std::uint32_t arg=0u){
+        const auto v=q(op,arg).vector;
+        if(!finite_vector(v))throw 1;
+        return v;
+    };
+    const auto effect=[&](std::uint32_t op,std::int32_t word=0,float f=0.f,
+                          abi::NpcSpread v={},std::int32_t extra=0){
+        const abi::MagnumSecondaryValue value{word,f,v};
+        ++report.effects_attempted;
+        if(!cb.effect(context,ref,in.owner,op,&value,extra))throw 1;
+        ++report.effects_delivered;
+    };
+    const auto deadline=[&](float interval){
+        const float value=static_cast<float>(static_cast<double>(interval)+real(abi::MagSecondaryClock));
+        if(!std::isfinite(value))throw 1;
+        return value;
+    };
+    try {
+        if(boolean(abi::MagSecondaryUsesClip)&&q(abi::MagSecondaryReadClip).integer==0){
+            effect(abi::MagSecondaryEmpty);return finish(abi::MagSecondaryEmptyClip);
+        }
+        // Retail dereferences the owner later even on the fallback
+        // branch. Refuse a missing live owner rather than emulate a crash.
+        if(!in.owner_present)return finish(abi::MagSecondaryRejected);
+        const bool direct=boolean(abi::MagSecondaryOwnerCapable);
+        effect(abi::MagSecondaryEvent,3,0.f,{},0);
+        effect(abi::MagSecondaryActivity,q(abi::MagSecondarySelection).integer);
+        const float interval=real(abi::MagSecondaryInterval,in.timing_arg);
+        effect(abi::MagSecondaryPrimaryTimer,0,deadline(interval));
+        effect(abi::MagSecondarySecondaryTimer,0,deadline(interval));
+        if(direct){
+            effect(abi::MagSecondaryOwnerFire);
+            effect(abi::MagSecondaryOwnerAnimation,5);
+        }
+        auto& record=report.record;
+        record.shots=1;record.weapon=ref;record.tracer_frequency=1;
+        record.distance=56755.83984375f;record.force_scale=1.f;
+        record.origin=vector(abi::MagSecondaryOrigin);
+        record.direction=direct?vector(abi::MagSecondaryDirectVector,0x3db27eb6u):
+            vector(abi::MagSecondaryFallbackVector);
+        if(direct){
+            if(boolean(abi::MagSecondaryUsesClip)){
+                const auto clip=q(abi::MagSecondaryReadClip).integer;
+                // Original signed minimum, even if the host reports
+                // negative values. The original subtract helper owns
+                // wrap/dirty notification, not this record.
+                record.shots=clip<1?clip:1;
+                effect(abi::MagSecondaryDebitClip,record.shots);
+            }else{
+                auto type=q(abi::MagSecondaryAmmoType).integer;
+                const auto count=q(abi::MagSecondaryReserveCount,static_cast<std::uint32_t>(type)).integer;
+                if(record.shots>=count){
+                    type=q(abi::MagSecondaryAmmoType).integer;
+                    record.shots=q(abi::MagSecondaryReserveCount,static_cast<std::uint32_t>(type)).integer;
+                }
+                type=q(abi::MagSecondaryAmmoType).integer;
+                effect(abi::MagSecondaryDebitReserve,record.shots,0.f,{},type);
+            }
+        }
+        record.ammo_type=q(abi::MagSecondaryAmmoType).integer;
+        record.spread=vector(abi::MagSecondarySpread);
+        if(direct&&!boolean(abi::MagSecondaryZoomed)){
+            if(static_cast<std::uint32_t>(q(abi::MagSecondaryOwnerFlags).integer)&0x800u)
+                effect(abi::MagSecondaryOwnerFlagHelper);
+            const auto v=vector(abi::MagSecondaryAuxVector);
+            // Exact f32 stores of the game's auxiliary point. This
+            // field is not assigned a guessed source-level name.
+            record.aux_position={
+                static_cast<float>(record.origin.x+static_cast<float>(v.x*4.f)),
+                static_cast<float>(record.origin.y+static_cast<float>(v.y*4.f)),
+                static_cast<float>(record.origin.z+static_cast<float>(v.z*4.f))};
+            if(!finite_vector(record.aux_position))throw 1;
+            record.aux_enabled=1;
+        }
+        {
+            MagnumImpactWindow window(e);
+            report.fire_attempted=1;
+            if(!cb.fire(context,in.owner,&record))throw 1;
+            report.fire_delivered=1;
+            if(e->magnum_uncertain)throw 1;
+        }
+        if(direct){
+            effect(abi::MagSecondaryFeedback,6);
+            auto angles=vector(abi::MagSecondaryOwnerAngles);
+            const auto r1=q(abi::MagSecondaryRandomInt).integer;
+            const auto r2=q(abi::MagSecondaryRandomInt).integer;
+            if(r1< -1||r1>1||r2< -1||r2>1)throw 1;
+            angles.x+=static_cast<float>(r1);angles.y+=static_cast<float>(r2);angles.z=0.f;
+            if(!finite_vector(angles))throw 1;
+            effect(abi::MagSecondaryAngleHelper,0,0.f,angles);
+            const auto punch=real(abi::MagSecondaryRandomFloat);
+            if(punch< -2.f||punch>2.f)throw 1;
+            effect(abi::MagSecondaryPunch,0,0.f,{-8.f,punch,0.f});
+        }
+    }catch(...){e->magnum_uncertain=true;return finish(abi::MagSecondaryUncertain);}
+    return finish(abi::MagSecondaryCompleted);
+}
+const abi::MagnumSecondaryApi magnum_secondary_api{abi::magnum_secondary_version,
+    sizeof(abi::MagnumSecondaryApi),&magnum_secondary};
+
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::MagnumSecondaryApi* SIN_FIXED_CALL
+SiN_GetMagnumSecondaryApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::magnum_secondary_version&&bytes==sizeof(abi::MagnumSecondaryApi)?
+        &magnum_secondary_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::MagnumApi* SIN_FIXED_CALL
 SiN_GetMagnumApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::magnum_version&&bytes==sizeof(abi::MagnumApi)?&magnum_api:nullptr;

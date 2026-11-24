@@ -1164,6 +1164,137 @@ static void test_magnum(const a::MagnumApi* magnum,const a::MapEntityApi* map,co
     assert(magnum->acknowledge(gun)&&map->remove(gun)&&!magnum->acknowledge(gun));
     assert(map->end_level(epoch)&&api->end_campaign());
 }
+struct MagnumSecondaryFixture {
+    const a::MapEntityApi* map;
+    const a::MagnumApi* magnum;
+    a::MapEntityRef gun,owner,other;
+    std::vector<unsigned> log;
+    bool direct=true,uses_clip=true,zoom=false,fail_fire=false;
+    int clip=3,reserve=4,clock=0,random=0,fire_calls=0,impact_calls=0;
+    static MagnumSecondaryFixture& get(void* c){return *static_cast<MagnumSecondaryFixture*>(c);}
+    void check(a::MapEntityRef ref){
+        assert(ref.epoch==gun.epoch&&ref.index==gun.index&&ref.generation==gun.generation);
+        assert(!map->remove(gun)&&!magnum->acknowledge(gun));
+    }
+    void reset(){log.clear();clock=random=0;}
+    static int SIN_FIXED_CALL query(void* c,a::MapEntityRef g,a::MapEntityRef,std::uint32_t op,
+            std::uint32_t arg,a::MagnumSecondaryValue* v){
+        auto& f=get(c);f.check(g);f.log.push_back(100+op);
+        switch(op){
+        case a::MagSecondaryUsesClip:v->integer=f.uses_clip;break;
+        case a::MagSecondaryReadClip:v->integer=f.clip;break;
+        case a::MagSecondaryOwnerCapable:v->integer=f.direct;break;
+        case a::MagSecondarySelection:v->integer=0xc2;break;
+        case a::MagSecondaryInterval:assert(arg==77);v->real=2.f;break;
+        case a::MagSecondaryClock:v->real=f.clock++==0?10.f:12.f;break;
+        case a::MagSecondaryOrigin:v->vector={1.f,2.f,3.f};break;
+        case a::MagSecondaryDirectVector:assert(arg==0x3db27eb6u);v->vector={1.f,0.f,0.f};break;
+        case a::MagSecondaryFallbackVector:v->vector={0.f,1.f,0.f};break;
+        case a::MagSecondaryAmmoType:v->integer=92;break;
+        case a::MagSecondaryReserveCount:assert(arg==92);v->integer=f.reserve;break;
+        case a::MagSecondarySpread:v->vector={0.1f,0.1f,0.1f};break;
+        case a::MagSecondaryZoomed:v->integer=f.zoom;break;
+        case a::MagSecondaryOwnerFlags:v->integer=0x800;break;
+        case a::MagSecondaryAuxVector:v->vector={0.f,1.f,0.f};break;
+        case a::MagSecondaryOwnerAngles:v->vector={10.f,20.f,30.f};break;
+        case a::MagSecondaryRandomInt:v->integer=f.random++==0?1:-1;break;
+        case a::MagSecondaryRandomFloat:v->real=0.5f;break;
+        default:assert(false);return 0;
+        }
+        return 1;
+    }
+    static int SIN_FIXED_CALL effect(void* c,a::MapEntityRef g,a::MapEntityRef,std::uint32_t op,
+            const a::MagnumSecondaryValue* v,std::int32_t extra){
+        auto& f=get(c);f.check(g);f.log.push_back(200+op);
+        switch(op){
+        case a::MagSecondaryEvent:assert(v->integer==3&&extra==0);break;
+        case a::MagSecondaryActivity:assert(v->integer==0xc2);break;
+        case a::MagSecondaryPrimaryTimer:assert(v->real==12.f);break;
+        case a::MagSecondarySecondaryTimer:assert(v->real==14.f);break;
+        case a::MagSecondaryOwnerAnimation:assert(v->integer==5);break;
+        case a::MagSecondaryDebitClip:f.clip-=v->integer;break;
+        case a::MagSecondaryDebitReserve:assert(extra==92);f.reserve-=v->integer;break;
+        case a::MagSecondaryFeedback:assert(v->integer==6);break;
+        case a::MagSecondaryAngleHelper:assert(v->vector.x==11.f&&v->vector.y==19.f&&v->vector.z==0.f);break;
+        case a::MagSecondaryPunch:assert(v->vector.x==-8.f&&v->vector.y==0.5f&&v->vector.z==0.f);break;
+        default:break;
+        }
+        return 1;
+    }
+    static int SIN_FIXED_CALL base_impact(void* c,a::MapEntityRef g,std::uint32_t damage){
+        auto& f=get(c);f.check(g);assert(damage==2);
+        ++f.impact_calls;
+        // Even a same-entity recursive impact must be rejected.
+        a::MagnumImpactReport report{};
+        const a::MagnumImpactHost host{1,sizeof(a::MagnumImpactHost),&base_impact,nullptr,nullptr,nullptr};
+        assert(f.magnum->impact(g,2,&host,c,&report)&&report.code==a::MagnumImpactRejected);
+        return 1;
+    }
+    static int SIN_FIXED_CALL fire(void* c,a::MapEntityRef owner,const a::MagnumFireRecord* record){
+        auto& f=get(c);f.check(record->weapon);assert(owner.index==f.owner.index);
+        ++f.fire_calls;f.log.push_back(300);
+        assert(record->distance==56755.83984375f&&record->ammo_type==92&&record->tracer_frequency==1&&
+            record->force_scale==1.f&&record->origin.x==1.f&&record->spread.x==0.1f);
+        a::MagnumImpactReport report{};
+        const a::MagnumImpactHost host{1,sizeof(a::MagnumImpactHost),&base_impact,nullptr,nullptr,nullptr};
+        assert(f.magnum->impact(f.other,2,&host,c,&report)&&report.code==a::MagnumImpactRejected);
+        assert(f.magnum->impact(f.gun,2,&host,c,&report)&&report.code==a::MagnumImpactBaseOnly);
+        f.check(f.gun); // nested guard must not release the outer guard
+        return !f.fail_fire;
+    }
+};
+static void test_magnum_secondary(const a::MagnumSecondaryApi* secondary,const a::MagnumApi* magnum,
+        const a::MapEntityApi* map,const a::Api* api){
+    assert(secondary&&secondary->version==1&&secondary->size==sizeof(*secondary)&&api->begin_campaign(2));
+    const auto epoch=map->begin_level("magnum_secondary");assert(epoch);
+    const a::MapEntityRef gun{epoch,1,1},owner{epoch,100,1},other{epoch,2,1};
+    assert(map->create(gun,"weapon_magnum")==a::MapApplied&&map->spawn(gun)==a::MapApplied);
+    assert(map->create(other,"weapon_magnum")==a::MapApplied&&map->spawn(other)==a::MapApplied);
+    MagnumSecondaryFixture f{map,magnum,gun,owner,other,{}};
+    const a::MagnumSecondaryHost host{1,sizeof(a::MagnumSecondaryHost),&MagnumSecondaryFixture::query,
+        &MagnumSecondaryFixture::effect,&MagnumSecondaryFixture::fire};
+    a::MagnumSecondaryObservation input{owner,0,77};
+    a::MagnumSecondaryReport report{};
+    const auto run=[&](){return secondary->attack(gun,&input,&host,&f,&report);};
+    f.clip=0;
+    assert(run()&&report.code==a::MagSecondaryEmptyClip&&report.effects_delivered==1&&!report.fire_attempted);
+    assert((f.log==std::vector<unsigned>{100+a::MagSecondaryUsesClip,100+a::MagSecondaryReadClip,200+a::MagSecondaryEmpty}));
+    f.reset();f.clip=3;
+    assert(run()&&report.code==a::MagSecondaryRejected&&!report.effects_attempted);
+    f.reset();input.owner_present=1;
+    assert(run()&&report.code==a::MagSecondaryCompleted&&f.clip==2&&f.impact_calls==1&&report.record.shots==1);
+    assert(report.record.aux_enabled&&report.record.aux_position.x==1.f&&report.record.aux_position.y==6.f);
+    const std::vector<unsigned> expected={
+        100+a::MagSecondaryUsesClip,100+a::MagSecondaryReadClip,100+a::MagSecondaryOwnerCapable,
+        200+a::MagSecondaryEvent,100+a::MagSecondarySelection,200+a::MagSecondaryActivity,
+        100+a::MagSecondaryInterval,100+a::MagSecondaryClock,200+a::MagSecondaryPrimaryTimer,
+        100+a::MagSecondaryClock,200+a::MagSecondarySecondaryTimer,200+a::MagSecondaryOwnerFire,
+        200+a::MagSecondaryOwnerAnimation,100+a::MagSecondaryOrigin,100+a::MagSecondaryDirectVector,
+        100+a::MagSecondaryUsesClip,100+a::MagSecondaryReadClip,200+a::MagSecondaryDebitClip,
+        100+a::MagSecondaryAmmoType,100+a::MagSecondarySpread,100+a::MagSecondaryZoomed,
+        100+a::MagSecondaryOwnerFlags,200+a::MagSecondaryOwnerFlagHelper,100+a::MagSecondaryAuxVector,
+        300,200+a::MagSecondaryFeedback,100+a::MagSecondaryOwnerAngles,100+a::MagSecondaryRandomInt,
+        100+a::MagSecondaryRandomInt,200+a::MagSecondaryAngleHelper,100+a::MagSecondaryRandomFloat,200+a::MagSecondaryPunch};
+    assert(f.log==expected);
+    f.reset();f.clip=-1;f.zoom=true;
+    assert(run()&&report.code==a::MagSecondaryCompleted&&report.record.shots==-1&&f.clip==0&&!report.record.aux_enabled);
+    f.reset();f.uses_clip=false;f.reserve=1;
+    assert(run()&&report.code==a::MagSecondaryCompleted&&f.reserve==0&&report.record.shots==1);
+    assert(std::count(f.log.begin(),f.log.end(),100+a::MagSecondaryReserveCount)==2);
+    f.reset();f.direct=false;
+    assert(run()&&report.code==a::MagSecondaryCompleted&&report.record.direction.y==1.f&&f.reserve==0);
+    assert(std::find(f.log.begin(),f.log.end(),200+a::MagSecondaryOwnerFire)==f.log.end()&&
+        std::find(f.log.begin(),f.log.end(),200+a::MagSecondaryFeedback)==f.log.end());
+    f.reset();f.fail_fire=true;
+    assert(run()&&report.code==a::MagSecondaryUncertain&&report.needs_resync&&report.fire_attempted&&!report.fire_delivered);
+    const auto before=f.log.size();
+    assert(run()&&report.code==a::MagSecondaryRejected&&f.log.size()==before);
+    assert(magnum->acknowledge(gun));
+    f.reset();f.fail_fire=false;
+    assert(run()&&report.code==a::MagSecondaryCompleted);
+    assert(map->remove(gun)&&run()&&report.code==a::MagSecondaryRejected);
+    assert(map->end_level(epoch)&&api->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -2021,7 +2152,15 @@ int main(int argc,char** argv){
     auto getMagnum=reinterpret_cast<a::GetMagnumApi>(dlsym(lib,a::magnum_export_name));
 #endif
     assert(getMagnum&&!getMagnum(0,sizeof(a::MagnumApi))&&!getMagnum(1,0));
-    test_magnum(getMagnum(a::magnum_version,sizeof(a::MagnumApi)),map,api);
+    const auto* magnum=getMagnum(a::magnum_version,sizeof(a::MagnumApi));
+    test_magnum(magnum,map,api);
+#ifdef _WIN32
+    auto getMagSecondary=reinterpret_cast<a::GetMagnumSecondaryApi>(GetProcAddress(lib,a::magnum_secondary_export_name));
+#else
+    auto getMagSecondary=reinterpret_cast<a::GetMagnumSecondaryApi>(dlsym(lib,a::magnum_secondary_export_name));
+#endif
+    assert(getMagSecondary&&!getMagSecondary(0,sizeof(a::MagnumSecondaryApi))&&!getMagSecondary(1,0));
+    test_magnum_secondary(getMagSecondary(a::magnum_secondary_version,sizeof(a::MagnumSecondaryApi)),magnum,map,api);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
 #else
