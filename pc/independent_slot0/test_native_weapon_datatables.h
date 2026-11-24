@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include "native_weapon_datatables.h"
 #include <cassert>
 #include <cstring>
