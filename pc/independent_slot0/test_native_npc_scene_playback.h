@@ -2,6 +2,8 @@
 #include "native_npc_scene_playback.h"
 #include "test_native_jessica_script.h"
 #include <cassert>
+#include <cmath>
+#include <limits>
 #include <cstring>
 #include <initializer_list>
 namespace sin_port::native_weapon_tables::test {
