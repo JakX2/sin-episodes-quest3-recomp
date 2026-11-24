@@ -820,7 +820,9 @@ struct NamedSceneLoadApi {
 using GetNamedSceneLoadApi=const NamedSceneLoadApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char choreography_text_parser_export[]="SiN_GetChoreographyTextParserApi";
 enum class ChoreographyTextBlock:unsigned {Event,Actor,SceneRamp,ScaleSettings};
-enum class ChoreographyTextFinalize:unsigned {RelativeTags,CaptionGroups,GestureTimes};
+// Historical enum labels CaptionGroups/GestureTimes were reversed in the
+// Phase837 evidence note. Keep numeric ABI, expose corrected aliases.
+enum class ChoreographyTextFinalize:unsigned {RelativeTags=0,CaptionGroups=1,GestureTimes=2,GestureReconcile=1,CaptionReconcile=2};
 struct ChoreographyTextParserBindings {
     void* context;
     std::uint32_t tokenizer_word;
@@ -1048,6 +1050,34 @@ struct PortableVcdFlexGrammarApi {
     int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdFlexGrammarBindings*,float*) noexcept;
 };
 using GetPortableVcdFlexGrammarApi=const PortableVcdFlexGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_finalize_export[]="SiN_GetChoreographyFinalizeApi";
+struct ChoreographyFinalizeBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original 221111b0 diagnostic for unresolved relative tag.
+    int (__cdecl *missing_tag)(void*,void* parsed,const char* event_name,const char* reference,const char* tag) noexcept;
+    // Recovered channel traversal; inner reconciliation algorithms remain hosted.
+    int (__cdecl *gesture_channel)(void*,void*) noexcept;
+    int (__cdecl *caption_channel)(void*,void*) noexcept;
+};
+struct ChoreographyFinalizeApi {
+    std::uint32_t version,size;
+    int (__cdecl *stage)(void*,unsigned,ChoreographyTextFinalize,const ChoreographyFinalizeBindings*) noexcept;
+    int (__cdecl *all)(void*,unsigned,const ChoreographyFinalizeBindings*) noexcept;
+};
+using GetChoreographyFinalizeApi=const ChoreographyFinalizeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char portable_vcd_finalized_grammar_export[]="SiN_GetPortableVcdFinalizedGrammarApi";
+struct PortableVcdFinalizedGrammarBindings {
+    PortableVcdFlexGrammarBindings grammar;
+    ChoreographyFinalizeBindings finalize;
+};
+struct PortableVcdFinalizedGrammarApi {
+    std::uint32_t version,size;
+    int (__cdecl *parse)(void*,unsigned,const char*,const char*,unsigned,const PortableVcdFinalizedGrammarBindings*) noexcept;
+    int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const PortableVcdFinalizedGrammarBindings*,std::uint32_t*) noexcept;
+    int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdFinalizedGrammarBindings*,float*) noexcept;
+};
+using GetPortableVcdFinalizedGrammarApi=const PortableVcdFinalizedGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
