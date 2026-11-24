@@ -21,6 +21,7 @@
 #include "native_server_facial_records.h"
 #include "native_server_vfe_remap.h"
 #include "native_server_named_facial_think.h"
+#include "native_server_vfe_cache.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11268,6 +11269,54 @@ int __cdecl server_vfe_remap_clear(ServerVfeRemapCache* cache) noexcept {
 }
 const ServerVfeRemapApi server_vfe_remap_api{version,sizeof(ServerVfeRemapApi),&server_flex_controller_find,&server_vfe_remap_lookup,&server_vfe_remap_clear};
 
+bool server_vfe_cache_ready(ServerVfeCache* c,const ServerVfeCacheBindings* b) noexcept {
+    return hologram_writable(c,sizeof(*c))&&c->capacity<=4096&&c->count<=c->capacity&&
+        (!c->capacity||hologram_writable(c->entries,c->capacity*sizeof(*c->entries)))&&
+        b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->read&&b->close&&b->allocate&&b->release;
+}
+int __cdecl server_vfe_cache_load(ServerVfeCache* c,const ServerVfeCacheBindings* b,const char* name,ServerExpressionBank* out) noexcept {
+    if(!server_vfe_cache_ready(c,b)||!hologram_writable(out,sizeof(*out)))return -1;
+    char key[128]{};
+    if(!prop_key_read(name,key))return -1;
+    for(unsigned i=0;i<c->count;++i){
+        const auto& row=c->entries[i];
+        if(!std::memchr(row.name,0,sizeof(row.name)))return -1;
+        if(vfe_detail::equal(row.name,key)){*out=row.bank;return 1;}
+    }
+    char path[sizeof(key)+sizeof("expressions/.vfe")]{};
+    std::strcpy(path,"expressions/");std::strcat(path,key);std::strcat(path,".vfe");
+    const unsigned char* data=nullptr;unsigned bytes=0;
+    const auto h=*b;
+    const int status=h.read(h.context,path,&data,&bytes);
+    if(status==0){*out={};return 0;}
+    if(status!=1)return -1;
+    void* copy=nullptr;
+    vfe_detail::Reader reader{{data,bytes}};
+    if(c->count==c->capacity||bytes>16*1024*1024||!data||
+       !sin_independent::vgui_layout::Readable(data,bytes)||!reader.init()||
+       !h.allocate(h.context,bytes,&copy)||!hologram_writable(copy,bytes)){
+        const bool closed=h.close(h.context,data)!=0;
+        if(copy)h.release(h.context,copy);
+        (void)closed;return -1;
+    }
+    std::memcpy(copy,data,bytes);
+    if(!h.close(h.context,data)){h.release(h.context,copy);return -1;}
+    ServerVfeCacheEntry entry{};std::memcpy(entry.name,key,sizeof(key));
+    entry.bank={static_cast<unsigned char*>(copy),bytes};
+    c->entries[c->count++]=entry;*out=entry.bank;return 1;
+}
+int __cdecl server_vfe_cache_clear(ServerVfeCache* c,const ServerVfeCacheBindings* b) noexcept {
+    if(!server_vfe_cache_ready(c,b))return 0;
+    // Reverse retirement keeps count describing the surviving entries.
+    while(c->count){
+        auto& row=c->entries[c->count-1];
+        if(!row.bank.data||!b->release(b->context,row.bank.data))return 0;
+        row={};--c->count;
+    }
+    return 1;
+}
+const ServerVfeCacheApi server_vfe_cache_api{version,sizeof(ServerVfeCacheApi),&server_vfe_cache_load,&server_vfe_cache_clear};
+
 int server_expression_apply_impl(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
     float scene_time,const ServerExpressionBindings* b,const ServerNativeIntensity* native,const ServerNativeControllerMap* mapping=nullptr) noexcept {
     if(bytes<server_flex_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_extent)||
@@ -13490,6 +13539,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNam
 SiN_GetServerNamedFacialThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNamedFacialThinkApi)?&server_named_facial_think_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerVfeCacheApi=_SiN_GetServerVfeCacheApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfeCacheApi* __cdecl
+SiN_GetServerVfeCacheApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeCacheApi)?&server_vfe_cache_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerVfeRemapApi=_SiN_GetServerVfeRemapApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfeRemapApi* __cdecl

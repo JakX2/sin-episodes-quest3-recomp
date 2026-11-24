@@ -28,6 +28,7 @@
 #include "test_native_server_npc_random_expression.h"
 #include "test_native_server_facial_records.h"
 #include "test_native_server_vfe_remap.h"
+#include "test_native_server_vfe_cache.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -234,6 +235,15 @@ int main(int argc,char** argv){
         assert(api&&!get(0,sizeof(ft::ServerVfeRemapApi))&&!get(1,0));
         ft::test::check_server_vfe_remap(*api);
         std::puts("PASS native server VFE bank identity remap and controller-zero fallback");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetServerVfeCacheApi>(GetProcAddress(server,ft::server_vfe_cache_export));
+        assert(get&&!GetProcAddress(client,ft::server_vfe_cache_export));
+        const auto* api=get(1,sizeof(ft::ServerVfeCacheApi));
+        assert(api&&!get(0,sizeof(ft::ServerVfeCacheApi))&&!get(1,0));
+        ft::test::check_server_vfe_cache(*api);
+        std::puts("PASS native server VFE successful-file cache and stable mutable bank identity");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));
