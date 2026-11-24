@@ -639,4 +639,76 @@ inline void check_player_local_graph(const PlayerLocalSendApi& sa,const PlayerLo
     assert(sa.destroy(&sv)&&ra.destroy(&rv)&&isa.destroy(&iv)&&ira.destroy(&irv));
 }
 
+inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayerRecvApi& ra,
+        const AnimSendApi& asa,const AnimRecvApi& ara,const OverlaySendApi& osa,const OverlayRecvApi& ora,
+        const FlexSendApi& fsa,const FlexRecvApi& fra,const InventorySendApi& isa,const InventoryRecvApi& ira,
+        const PlayerLocalSendApi& lsa,const PlayerLocalRecvApi& lra){
+    s::SendProp seprops[24],slprops[48];s::SendTable se,sl;
+    assert(se.Construct(seprops,24,"DT_BaseEntity")&&sl.Construct(slprops,48,"DT_Local"));
+    RecvProp ceprops[24],clprops[49];RecvTable ce{ceprops,24,nullptr,"DT_BaseEntity"},cl{clprops,49,nullptr,"DT_Local"};
+    NativeOwner ownerObj;
+    sin_independent::EntityHandleEntry entries[64]{};
+    entries[37].entity=reinterpret_cast<CBaseEntity*>(&ownerObj);entries[37].serial=0x12345;
+    AnimSendView av{};AnimRecvView arv{};AnimSendBindings ab{&se,entries,64};AnimRecvBindings arb{&ce};
+    assert(asa.create(&ab,&av)&&ara.create(&arb,&arv));
+    OverlayFixture sf,cf;OverlaySendBindings ob{&sf,&reserve_layers};OverlayRecvBindings orb{&cf,&reserve_layers,&resize_layers};
+    OverlaySendView ov{};OverlayRecvView orv{};assert(osa.create(&ob,&ov)&&ora.create(&orb,&orv));
+    FlexSendView fv{};FlexRecvView frv{};FlexSendBindings fb{av.base_animating,ov.overlay_vars};
+    FlexRecvBindings frb{arv.base_animating,orv.overlay_vars};assert(fsa.create(&fb,&fv)&&fra.create(&frb,&frv));
+    alignas(4) unsigned char edicts[2*20]{};NativeEngine engine;engine.expected=edicts+20;engine.result=1;
+    InventorySendBindings ib{fv.flex,&engine,entries,64,edicts,1};InventoryRecvBindings irb{frv.flex};
+    InventorySendView iv{};InventoryRecvView irv{};assert(isa.create(&ib,&iv)&&ira.create(&irb,&irv));
+    VelocityFixture vf;PlayerLocalSendBindings lb{&sl,iv.ammo_property,entries,64};
+    PlayerLocalRecvBindings lrb{&cl,irv.ammo_property,&vf,&invalidate_velocity};
+    PlayerLocalSendView lv{};PlayerLocalRecvView lrv{};assert(lsa.create(&lb,&lv)&&lra.create(&lrb,&lrv));
+    BasePlayerSendBindings pb{iv.combat_base,lv.table,entries,64};
+    BasePlayerRecvBindings prb{irv.combat_base,lrv.table};
+    BasePlayerSendView pv{};BasePlayerRecvView prv{};
+    auto invalid=pb;invalid.private_player=nullptr;assert(!sa.create(&invalid,&pv)&&!pv.handle);
+    assert(sa.create(&pb,&pv)&&ra.create(&prb,&prv));
+    auto* s=pv.player->props;auto* c=prv.player->props;
+    assert(pv.player->count==15&&prv.player->count==15&&pv.state->count==1&&prv.state->count==1);
+    assert(s[0].table==iv.combat_base&&c[0].table==irv.combat_base);
+    assert(s[14].table==lv.table&&c[1].table==lrv.table&&s[14].flags==0&&c[1].offset==0);
+    assert(s[1].table==pv.state&&c[2].table==prv.state&&s[1].offset==0x904&&c[2].offset==0xefc);
+    assert(s[12].type==4&&c[13].type==4&&s[12].elements==2&&c[13].elements==2&&
+        s[12].stride==4&&c[13].stride==4&&!s[12].arrayProp&&!c[13].array_prop);
+    alignas(4) unsigned char server[0x1300]{},client[0x11a0]{};
+    s::Recipients mask{};mask.words[0]=0xffffffffu;
+    assert(s[14].tableProxy(&s[14],server,server,&mask,256)==server&&mask.words[7]==0x80000000u&&mask.words[0]==0);
+    assert(s[14].tableProxy(&s[14],server,server,&mask,0)==server&&mask.words[7]==0);
+    void* cp=nullptr;c[1].table_proxy(&c[1],&cp,client,1);assert(cp==client);
+    const std::uint32_t raw=(0x12345u<<12)|37u;
+    for(int i=2;i<=11;++i){
+        auto& a=s[i];auto& b=c[i+1];
+        const bool handle=i==2||i==10||i==11;
+        assert(i==11||std::strcmp(a.name,b.name)==0);
+        const std::uint32_t value=handle?raw:i==8?0xffffffffu:i==7?0x42c80000u:i==5?100u:3u;
+        std::memcpy(server+a.offset,&value,4);
+        s::DVariant v{};a.scalarProxy(&a,server,server+a.offset,&v,0,1);
+        RecvData d{&b,v,0,1};b.proxy(&d,client,client+b.offset);
+        const std::uint32_t expected=handle?((0x345u<<12)|37u):i==8?0x1ffu:value;
+        assert(!std::memcmp(client+b.offset,&expected,4));
+    }
+    auto& ds=pv.state->props[0];auto& dc=prv.state->props[0];
+    server[s[1].offset+ds.offset]=1;client[c[2].offset+dc.offset+1]=0xa5;
+    s::DVariant v{};ds.scalarProxy(&ds,server+s[1].offset,server+s[1].offset+ds.offset,&v,0,1);
+    RecvData d{&dc,v,0,1};dc.proxy(&d,client+c[2].offset,client+c[2].offset+dc.offset);
+    assert(client[c[2].offset+dc.offset]==1&&client[c[2].offset+dc.offset+1]==0xa5);
+    assert(s[13].type==3&&c[14].type==3&&c[14].string_size==18);
+    std::memcpy(server+s[13].offset,"Subway",7);
+    auto* place=client+c[14].offset;std::memset(place,0xa5,19);
+    s[13].scalarProxy(&s[13],server,server+s[13].offset,&v,0,1);
+    d={&c[14],v,0,1};c[14].proxy(&d,client,place);
+    assert(std::strcmp(reinterpret_cast<const char*>(place),"Subway")==0&&place[7]==0xa5&&place[17]==0&&place[18]==0xa5);
+    const char longer[]="abcdefghijklmnopqrstuv";const char* src=longer;
+    std::memcpy(&d.value.words[0],&src,sizeof(src));c[14].proxy(&d,client,place);
+    assert(std::memcmp(place,longer,17)==0&&place[17]==0&&place[18]==0xa5);
+    pv.state->written=true;prv.player->initialized=true;assert(!sa.destroy(&pv)&&!ra.destroy(&prv));
+    pv.state->written=false;prv.player->initialized=false;
+    assert(sa.destroy(&pv)&&ra.destroy(&prv)&&lsa.destroy(&lv)&&lra.destroy(&lrv)&&
+        isa.destroy(&iv)&&ira.destroy(&irv)&&fsa.destroy(&fv)&&fra.destroy(&frv)&&
+        osa.destroy(&ov)&&ora.destroy(&orv)&&asa.destroy(&av)&&ara.destroy(&arv));
+}
+
 }

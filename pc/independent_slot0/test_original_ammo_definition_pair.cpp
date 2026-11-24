@@ -102,6 +102,15 @@ int main(int argc,char** argv){
     assert(localSend&&localRecv&&!getLocalSend(0,sizeof(tables::PlayerLocalSendApi))&&!getLocalRecv(1,0));
     tables::test::check_player_local_graph(*localSend,*localRecv,*invSend,*invRecv);
     std::puts("PASS native paired DT_LocalPlayerExclusive descriptors and velocity invalidation callbacks");
+    const auto getBasePlayerSend=reinterpret_cast<tables::GetBasePlayerSendApi>(GetProcAddress(server,tables::base_player_send_export));
+    const auto getBasePlayerRecv=reinterpret_cast<tables::GetBasePlayerRecvApi>(GetProcAddress(client,tables::base_player_recv_export));
+    assert(getBasePlayerSend&&getBasePlayerRecv&&!GetProcAddress(client,tables::base_player_send_export)&&!GetProcAddress(server,tables::base_player_recv_export));
+    const auto* basePlayerSend=getBasePlayerSend(1,sizeof(tables::BasePlayerSendApi));
+    const auto* basePlayerRecv=getBasePlayerRecv(1,sizeof(tables::BasePlayerRecvApi));
+    assert(basePlayerSend&&basePlayerRecv&&!getBasePlayerSend(0,sizeof(tables::BasePlayerSendApi))&&!getBasePlayerRecv(1,0));
+    tables::test::check_base_player_graph(*basePlayerSend,*basePlayerRecv,*animSend,*animRecv,*overlaySend,*overlayRecv,
+        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv);
+    std::puts("PASS native paired BasePlayer and PlayerState graph composition");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

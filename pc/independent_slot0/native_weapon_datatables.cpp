@@ -6,6 +6,19 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+template<class T> bool named_table(const T* t,const char* name,int count) noexcept {
+    return t&&t->name&&std::strcmp(t->name,name)==0&&t->count==count&&t->props;
+}
+template<class B> bool base_player_deps(const B& b) noexcept {
+    return named_table(b.combat,"DT_BaseCombatCharacter",3)&&
+           named_table(b.private_player,"DT_LocalPlayerExclusive",27);
+}
+template<class V> bool base_player_empty(const V& v) noexcept {
+    return !v.handle&&!v.player&&!v.state;
+}
+template<class G,class V> bool base_player_matches(const G& g,const V& v) noexcept {
+    return v.player==&g.player&&v.state==&g.state;
+}
 template<class B> bool player_local_deps(const B& b,int count,int ammo_offset) noexcept {
     return b.local&&b.local->name&&std::strcmp(b.local->name,"DT_Local")==0&&
         b.local->count==count&&b.local->props&&b.ammo&&b.ammo->name&&
@@ -653,6 +666,66 @@ int __cdecl destroy_player_local(PlayerLocalSendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const PlayerLocalSendApi player_local_api{version,sizeof(PlayerLocalSendApi),&create_player_local,&destroy_player_local};
+
+void __cdecl player_flags_send(const s::SendProp*,const void*,const void* data,s::DVariant* out,int,int){
+    if(!data||!out)return;
+    std::uint32_t v=0;std::memcpy(&v,data,4);out->words[0]=v&0x1ffu;
+}
+void __cdecl player_place_send(const s::SendProp*,const void*,const void* data,s::DVariant* out,int,int){
+    // Original 0x2225e580 forwards borrowed char pointer, not the text.
+    if(out)std::memcpy(&out->words[0],&data,sizeof(data));
+}
+struct BasePlayerSendGraph {
+    ResolvedContext context{};
+    s::SendTable player,state;
+    s::SendProp props[15],deadflag;
+    bool build(const BasePlayerSendBindings& b) noexcept {
+        if(!base_player_deps(b)||!b.entries||!b.entry_count||
+           b.entry_count>sin_independent::kEntityHandleCapacity||!mem::Readable(b.entries,sizeof(*b.entries)))return false;
+        context.entries=b.entries;context.count=b.entry_count;
+        if(!player.Construct(props,15,"DT_BasePlayer")||!state.Construct(&deadflag,1,"DT_PlayerState")||
+           !s::MakeDataTableProp(props[0],"baseclass",0,b.combat,&s::DirectTable)||
+           !s::MakeDataTableProp(props[1],"pl",0x904,&state,&s::DirectTable)||
+           !s::MakeDataTableProp(props[14],"localdata",0,b.private_player,&player_local_proxy))return false;
+        anim_int(deadflag,"deadflag",4,1,1,true);
+        const auto handle=[&](unsigned i,const char* name,int off){
+            anim_int(props[i],name,off,21,5);
+            props[i].scalarProxy=&resolved_handle;props[i].extra=&context;
+        };
+        handle(2,"m_hVehicle",0x9ac);
+        anim_int(props[3],"m_nVehicleView",0x9b0,32,0);
+        anim_int(props[4],"m_MoveType",0x204,4,1);
+        anim_int(props[5],"m_iHealth",0x9c,10,0);
+        anim_int(props[6],"m_lifeState",0x8c,3,1);
+        anim_float(props[7],"m_flMaxspeed",0x1234,12,8,0,2048.0f-2048.0f/4096,2);
+        anim_int(props[8],"m_fFlags",0xbc,9,0x401);
+        props[8].scalarProxy=&player_flags_send;
+        anim_int(props[9],"m_iObserverMode",0x9dc,3,1);
+        handle(10,"m_hObserverTarget",0x9e4);
+        handle(11,"m_hObserverViewModel",0xbd4);
+        props[12].name="m_hObserverViewModel";props[12].type=4;props[12].elements=2;
+        props[12].stride=4;props[12].tableProxy=&array_noop;
+        props[13].name="m_szLastPlaceName";props[13].type=3;
+        props[13].offset=0x12e8;props[13].scalarProxy=&player_place_send;
+        return true;
+    }
+};
+
+int __cdecl create_base_player(const BasePlayerSendBindings* b,BasePlayerSendView* out) noexcept {
+    if(!b||!out||!base_player_empty(*out))return 0;
+    auto* g=new(std::nothrow) BasePlayerSendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->player,&g->state};return 1;
+}
+int __cdecl destroy_base_player(BasePlayerSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<BasePlayerSendGraph*>(v->handle);
+    if(!base_player_matches(*g,*v))return 0;
+    for(const auto* tab:{&g->player,&g->state})if(tab->precalc||tab->initialized||tab->written)return 0;
+    delete g;*v={};return 1;
+}
+const BasePlayerSendApi base_player_api{version,sizeof(BasePlayerSendApi),&create_base_player,&destroy_base_player};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -1009,6 +1082,65 @@ int __cdecl destroy_player_local(PlayerLocalRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const PlayerLocalRecvApi player_local_api{version,sizeof(PlayerLocalRecvApi),&create_player_local,&destroy_player_local};
+
+void __cdecl player_place_recv(const RecvData* d,void*,void* out){
+    // Original 0x24126ca0 copies until NUL or string_size, and always
+    // terminates the last byte. Stage to avoid partial writes on bad source.
+    if(!d||!d->property||!out||d->property->string_size!=18)return;
+    const char* src=nullptr;std::memcpy(&src,&d->value.words[0],sizeof(src));
+    if(!src)return;
+    char staged[18]{};unsigned n=0;
+    for(;n<18;++n){
+        if(!sin_independent::vgui_layout::Readable(src+n,1))return;
+        staged[n]=src[n];
+        if(!staged[n]){++n;break;}
+    }
+    std::memcpy(out,staged,n);
+    static_cast<char*>(out)[17]=0;
+}
+struct BasePlayerRecvGraph {
+    RecvTable player,state;
+    RecvProp props[15],deadflag;
+    bool build(const BasePlayerRecvBindings& b) noexcept {
+        if(!base_player_deps(b))return false;
+        player={props,15,nullptr,"DT_BasePlayer"};
+        state={&deadflag,1,nullptr,"DT_PlayerState"};
+        nested(props[0],"baseclass",b.combat);
+        nested(props[1],"localdata",b.private_player);
+        nested(props[2],"pl",&state);props[2].offset=0xefc;
+        anim_recv(deadflag,"deadflag",4,0,&byte_recv);
+        anim_recv(props[3],"m_hVehicle",0xf7c,0,&handle_recv);
+        anim_recv(props[4],"m_nVehicleView",0xf84);
+        anim_recv(props[5],"m_MoveType",0x144);
+        anim_recv(props[6],"m_iHealth",0xfc0);
+        anim_recv(props[7],"m_lifeState",0x94);
+        anim_recv(props[8],"m_flMaxspeed",0xfbc,1);
+        anim_recv(props[9],"m_fFlags",0x2e0);
+        anim_recv(props[10],"m_iObserverMode",0xf68);
+        anim_recv(props[11],"m_hObserverTarget",0xf6c,0,&handle_recv);
+        anim_recv(props[12],"m_hObserverViewModel[0]",0x1060,0,&handle_recv);
+        props[13].name="m_hObserverViewModel";props[13].type=4;props[13].elements=2;props[13].stride=4;
+        anim_recv(props[14],"m_szLastPlaceName",0x1188,3,&player_place_recv);
+        props[14].string_size=18;
+        return true;
+    }
+};
+
+int __cdecl create_base_player(const BasePlayerRecvBindings* b,BasePlayerRecvView* out) noexcept {
+    if(!b||!out||!base_player_empty(*out))return 0;
+    auto* g=new(std::nothrow) BasePlayerRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->player,&g->state};return 1;
+}
+int __cdecl destroy_base_player(BasePlayerRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<BasePlayerRecvGraph*>(v->handle);
+    if(!base_player_matches(*g,*v))return 0;
+    for(const auto* tab:{&g->player,&g->state})if(tab->decoder||tab->initialized||tab->in_main_list)return 0;
+    delete g;*v={};return 1;
+}
+const BasePlayerRecvApi base_player_api{version,sizeof(BasePlayerRecvApi),&create_base_player,&destroy_base_player};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -1057,6 +1189,12 @@ SiN_GetPlayerLocalSendGraphApi(std::uint32_t version,std::uint32_t size) noexcep
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerLocalSendApi)?&player_local_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetBasePlayerSendGraphApi=_SiN_GetBasePlayerSendGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::BasePlayerSendApi* __cdecl
+SiN_GetBasePlayerSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(BasePlayerSendApi)?&base_player_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -1093,5 +1231,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerLoc
 SiN_GetPlayerLocalRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerLocalRecvApi)?&player_local_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetBasePlayerRecvGraphApi=_SiN_GetBasePlayerRecvGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::BasePlayerRecvApi* __cdecl
+SiN_GetBasePlayerRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(BasePlayerRecvApi)?&base_player_api:nullptr;
 }
 #endif
