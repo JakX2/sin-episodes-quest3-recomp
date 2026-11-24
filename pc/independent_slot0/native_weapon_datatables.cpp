@@ -1984,6 +1984,96 @@ void* __cdecl create_client_entity(const ClientCreatorBindings* b,unsigned slot,
 }
 const ClientCreatorApi creator_api{version,sizeof(ClientCreatorApi),&creator_size,&create_client_entity,
     &hl2local_defaults,&player_tail_defaults,&weapon_tail_defaults};
+
+namespace registry_methods=sin_independent::known_game_system;
+struct ClientRegistry {
+    ClientRegistryEntry entries[client_network_limit]{};
+    ClientRegistryEntry* head=nullptr;
+    ClientRegistryEntry* tail=nullptr;
+    unsigned count=0;
+    bool busy=false;
+    void* context=nullptr;
+    RegistryNotify added=nullptr,removed=nullptr;
+};
+ClientRegistry* registry_get(const ClientRegistryView* v) noexcept {
+    if(!v||!v->handle)return nullptr;
+    auto* g=static_cast<ClientRegistry*>(v->handle);
+    return v->entries==g->entries?g:nullptr;
+}
+int __cdecl registry_create(const ClientRegistryBindings* b,ClientRegistryView* out) noexcept {
+    if(!b||!out||out->handle||out->entries||!b->added||!b->removed||
+       !sin_independent::vgui_layout::Readable(b->initial_serials,client_network_limit*sizeof(std::uint16_t)))return 0;
+    auto* g=new(std::nothrow) ClientRegistry;
+    if(!g)return 0;
+    for(unsigned i=0;i<client_network_limit;++i){
+        if(b->initial_serials[i]>0x7fff){delete g;return 0;}
+        auto& e=g->entries[i];e.serial=b->initial_serials[i];e.prev=&e;e.next=&e;
+    }
+    g->context=b->context;g->added=b->added;g->removed=b->removed;
+    *out={g,g->entries};return 1;
+}
+int __cdecl registry_destroy(ClientRegistryView* v) noexcept {
+    auto* g=registry_get(v);
+    if(!g||g->busy||g->count||g->head||g->tail)return 0;
+    delete g;*v={};return 1;
+}
+ClientRegistryEntry* registry_entry(ClientRegistry* g,std::uint32_t handle) noexcept {
+    if(!g||handle==0xffffffffu)return nullptr;
+    const unsigned index=handle&0xfffu;
+    if(index>=client_network_limit)return nullptr;
+    auto& e=g->entries[index];
+    return e.entity&&e.serial==(handle>>12)?&e:nullptr;
+}
+void* __cdecl registry_resolve(const ClientRegistryView* v,std::uint32_t handle) noexcept {
+    const auto* e=registry_entry(registry_get(v),handle);return e?e->entity:nullptr;
+}
+int __cdecl registry_state(const ClientRegistryView* v,ClientRegistryState* out) noexcept {
+    const auto* g=registry_get(v);
+    if(!g||!out)return 0;
+    *out={g->head,g->tail,g->count};return 1;
+}
+using RegistrySetHandle=void (__thiscall *)(void*,const std::uint32_t*);
+RegistrySetHandle registry_setter(void* entity) noexcept {
+    auto refused=registry_methods::CallResult::InvalidObject;
+    return reinterpret_cast<RegistrySetHandle>(registry_methods::VerifiedMethod(entity,1,refused));
+}
+int __cdecl registry_insert(ClientRegistryView* v,void* entity,int index,int serial,std::uint32_t* handle) noexcept {
+    auto* g=registry_get(v);
+    if(!g||g->busy||!entity||!handle||index<0||index>=static_cast<int>(client_network_limit)||
+       serial< -1||serial>0x7fff)return 0;
+    auto& e=g->entries[index];
+    if(e.entity||e.prev!=&e||e.next!=&e)return 0;
+    // Original overwrites without guard. Native independent callers
+    // must not orphan a previously registered object or double-link it.
+    for(const auto& other:g->entries)if(other.entity==entity)return 0;
+    auto setter=registry_setter(entity);if(!setter)return 0;
+    g->busy=true;
+    e.entity=entity;if(serial!=-1)e.serial=static_cast<unsigned>(serial);
+    e.prev=g->tail;e.next=nullptr;
+    if(g->tail)g->tail->next=&e;else g->head=&e;
+    g->tail=&e;++g->count;
+    const std::uint32_t packed=(e.serial<<12)|static_cast<unsigned>(index);
+    setter(entity,&packed);
+    g->added(g->context,entity,packed);
+    *handle=packed;g->busy=false;return 1;
+}
+int __cdecl registry_remove(ClientRegistryView* v,std::uint32_t handle) noexcept {
+    auto* g=registry_get(v);
+    auto* e=registry_entry(g,handle);
+    if(!e||g->busy)return 0;
+    auto setter=registry_setter(e->entity);if(!setter)return 0;
+    g->busy=true;
+    const std::uint32_t invalid=0xffffffffu;
+    setter(e->entity,&invalid);
+    g->removed(g->context,e->entity,handle);
+    e->entity=nullptr;e->serial=(e->serial+1)&0x7fffu;
+    if(e->prev)e->prev->next=e->next;else g->head=e->next;
+    if(e->next)e->next->prev=e->prev;else g->tail=e->prev;
+    e->prev=e;e->next=e;--g->count;
+    g->busy=false;return 1;
+}
+const ClientRegistryApi registry_api{version,sizeof(ClientRegistryApi),&registry_create,&registry_destroy,
+    &registry_insert,&registry_remove,&registry_resolve,&registry_state};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2146,5 +2236,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientCre
 SiN_GetClientEntityCreatorApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientCreatorApi)?&creator_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientEntityRegistryApi=_SiN_GetClientEntityRegistryApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientRegistryApi* __cdecl
+SiN_GetClientEntityRegistryApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientRegistryApi)?&registry_api:nullptr;
 }
 #endif
