@@ -658,7 +658,7 @@ struct IntegratedSceneFixture {
     using F=ScenePlaybackFixture;using S=ParsedSimulationFixture;
     alignas(4) unsigned char scene[0x5ec]{},manager[scene_manager_bytes]{},parsed[0x220]{},event[0x3b4]{};
     std::uint32_t handles[4]{};
-    int npc=0;char sound[32]="fixture.sound";
+    int npc=0;void* actor=&npc;char sound[32]="fixture.sound";
     SceneManagerSession session{};SceneManagerControl control{manager,sizeof(manager)};
     NpcScenePlaybackBindings play{};SceneEntityLifecycleBindings life{};SceneAdvanceBindings advance{};
     SceneManagerLifecycleBindings manager_life{};SceneManagerTickBindings manager_tick{};
@@ -672,7 +672,7 @@ struct IntegratedSceneFixture {
         manager_life.context=this;manager_tick.context=this;life.runtime.context=this;life.registration.context=this;life.manager=&session;
         play.create=[](void* p,const char* name,void** out,unsigned* n) noexcept -> int{
             auto& f=get(p);assert(!f.scene_live&&!std::strcmp(name,"instanced_scripted_scene"));f.scene_live=true;++f.creates;*out=f.scene;*n=sizeof(f.scene);return 1;};
-        play.actor_handle=[](void* p,void* n,std::uint32_t* out) noexcept -> int{auto& f=get(p);assert(n==&f.npc);*out=0x1001;return 1;};
+        play.actor_handle=[](void* p,void* n,std::uint32_t* out) noexcept -> int{auto& f=get(p);assert(n==f.actor);*out=0x1001;return 1;};
         play.spawn_sound=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&f.scene[0x549]);++f.spawns;return 1;};
         play.start=[](void* p,void* s) noexcept -> int{
             auto& f=get(p);assert(s==f.scene&&f.parsed_live&&F::word(f.manager,0x3a0)==1);f.scene[0x3d8]=1;++f.started;return 1;};
@@ -681,18 +681,18 @@ struct IntegratedSceneFixture {
             auto& f=get(p);assert(h==0x2222&&f.parsed_live);*out=f.parsed;*n=sizeof(f.parsed);return 1;};
         play.duration.event=[](void* p,void* s,unsigned i,void** out,unsigned* n) noexcept -> int{
             auto& f=get(p);assert(s==f.parsed&&f.parsed_live&&!i);*out=f.event;*n=sizeof(f.event);return 1;};
-        life.resolve_actor=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);assert(h==0x1001);*out=&f.npc;return 1;};
+        life.resolve_actor=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);assert(h==0x1001);*out=f.actor;return 1;};
         life.sound_name=[](void* p,std::uint32_t w,const char** out) noexcept -> int{auto& f=get(p);assert(w==F::ptr(f.sound));*out=f.sound;return 1;};
         life.generate=[](void* p,void* s,void* a,const char* name,std::uint32_t* out) noexcept -> int{
-            auto& f=get(p);assert(s==f.scene&&a==&f.npc&&name==f.sound&&!f.parsed_live);++f.generated;f.parsed_live=true;
+            auto& f=get(p);assert(s==f.scene&&a==f.actor&&name==f.sound&&!f.parsed_live);++f.generated;f.parsed_live=true;
             F::put(f.parsed,0xc,1);F::put(f.parsed,0x20,1);F::put(f.parsed,0x9c,0x1234);
             F::fl(f.parsed,0x88,.1f);F::put(f.event,0,5);F::fl(f.event,0x188,.1f);
             *out=0x2222;return 1;};
         life.base_activate=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&f.parsed_live);++f.activated;return 1;};
         life.stop_events=[](void* p,void* s,std::uint32_t w,int arg) noexcept -> int{auto& f=get(p);assert(s==f.scene&&w==0x2222&&!arg&&!f.event[0x328]);return 1;};
         life.parsed=play.resolve_parsed;
-        life.actor=[](void* p,void* s,unsigned i,void** out) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!i);*out=&f.npc;return 1;};
-        life.detach=[](void* p,void* a,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(a==&f.npc&&h==0x2222&&f.parsed_live);++f.detached;return 1;};
+        life.actor=[](void* p,void* s,unsigned i,void** out) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!i);*out=f.actor;return 1;};
+        life.detach=[](void* p,void* a,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(a==f.actor&&h==0x2222&&f.parsed_live);++f.detached;return 1;};
         life.destroy_parsed=[](void* p,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(h==0x2222&&f.parsed_live);++f.destroyed;f.parsed_live=false;return 1;};
         life.base_remove=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!f.parsed_live);++f.retired;return 1;};
         manager_life.base_construct=[](void* p,void* m,int arg) noexcept -> int{auto& f=get(p);return m==f.manager&&arg==1;};
@@ -783,6 +783,61 @@ inline void check_integrated_response(const IntegratedResponseApi& api,const Sce
     assert(f.steps==4&&f.finished==1&&f.destroyed==1&&!f.scene_live&&!F::word(f.manager,0x3a0));
     assert(manager.tick(&f.control,&f.manager_tick)==1&&f.steps==4);
     assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
+}
+
+
+inline ResponseChoreographyBindings integrated_npc_fixture_bindings(IntegratedSceneFixture& f,ResponseSpeakFixture& pipeline,void* npc){
+    using F=ScenePlaybackFixture;
+    f.actor=npc;F::put(pipeline.exp,4,F::ptr(npc));
+    pipeline.b.dispatch.sound=nullptr;pipeline.b.dispatch.scene=nullptr;
+    pipeline.b.dispatch.stop_scene=nullptr;pipeline.b.dispatch.scene_blocked=nullptr;
+    pipeline.note.diagnostic=[](void* p,void* e,float total,float delay,float until) noexcept -> int{
+        auto& x=ResponseSpeakFixture::get(p,e);assert(total==.1f&&!delay&&until==x.now+.1f);return 1;};
+    pipeline.b.dispatch.debug_success=[](void* p,void* e,const char*,const char*) noexcept -> int{
+        auto& x=ResponseSpeakFixture::get(p,e);assert(x.read(e,0x78)==x.now&&x.read(e,0x68)==x.now+.1f);return 1;};
+    ResponseChoreographyBindings c{};c.context=&f;c.manager=&f.session;c.scenes=f.life.runtime;c.playback=f.play;
+    c.owner=[](void* p,void* exp,void** out) noexcept -> int{
+        auto& x=IntegratedSceneFixture::get(p);assert(F::word(exp,4)==F::ptr(x.actor));*out=x.actor;return 1;};
+    c.retain_sound=[](void* p,const char* name,const char** out) noexcept -> int{
+        auto& x=IntegratedSceneFixture::get(p);assert(!std::strcmp(name,"native_line"));std::strcpy(x.sound,name);*out=x.sound;return 1;};
+    return c;
+}
+inline void check_integrated_npc_dialogue(const IntegratedNpcDialogueApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,
+    const SceneEntityLifecycleApi& entity,const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record){
+    auto finish=[&](IntegratedSceneFixture& f){
+        assert(f.started==1&&f.generated==1&&f.scene_live&&ScenePlaybackFixture::word(f.manager,0x3a0)==1);
+        for(unsigned i=0;i<4;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
+        assert(f.finished==1&&f.steps==4&&f.detached==1&&f.destroyed==1&&!f.scene_live);
+        assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
+    };
+    {
+        CountDialogueFixture c(timing,record);IntegratedSceneFixture f(manager,tick,entity);
+        auto b=integrated_npc_fixture_bindings(f,c.pipeline,c.npc);c.b.speak=c.pipeline.b;
+        c.pipeline.expected_concept="TLK_INTERROGATE_COCKY";
+        assert(api.count(&c.ctrl,&c.b,&b,nullptr,c.obs,sizeof(c.obs))==0&&!c.phase()&&!c.accessors);
+        assert(api.count(&c.ctrl,&c.b,&b,&f.life,c.obs,sizeof(c.obs))==1&&c.phase()==1&&!c.pipeline.sounds&&c.pipeline.notifications==1);
+        finish(f);
+        assert(ResponseSpeakFixture::destroy(&c.pipeline,c.pipeline.pool[0]));
+    }
+    {
+        CompanionTalkFixture j(timing,record);IntegratedSceneFixture f(manager,tick,entity);
+        auto b=integrated_npc_fixture_bindings(f,j.pipeline,j.npc);j.b.speak=j.pipeline.b;
+        HologramControl ctrl{j.npc,sizeof(j.npc)};JessicaAttentionState state{};
+        alignas(4) unsigned char obs[0x5ec]{};
+        JessicaDialogueBindings jb{};jb.context=&j;jb.talk=j.b;jb.cooldown=&j.state;jb.semaphore=&j.pipeline.sem;
+        jb.clock=[](void* p,float* out) noexcept -> int{*out=CompanionTalkFixture::get(p).pipeline.now;return 1;};
+        jb.criteria=[](void*,const void*,float,CountCriteria* out) noexcept -> int{
+            std::strcpy(reinterpret_cast<char*>(out->bytes),"part:fixture");return 1;};
+        j.pipeline.expected_concept="TLK_PLLOOKING";j.pipeline.expected_modifiers="part:fixture";
+        obs[0x300]=1;obs[0x18+0x108]=1;
+        j.state.global[0]=20;
+        auto observe=[&](){return api.jessica(&ctrl,&state,&jb,nullptr,&b,&f.life,obs,sizeof(obs));};
+        assert(observe()==1&&state.looking==10&&!f.creates&&!j.pipeline.allocations);
+        j.pipeline.now=14;j.state.global[0]=0;
+        assert(observe()==1&&state.looking==14&&!j.pipeline.sounds&&j.pipeline.notifications==1);
+        finish(f);
+        assert(ResponseSpeakFixture::destroy(&j.pipeline,j.pipeline.pool[0]));
+    }
 }
 
 }
