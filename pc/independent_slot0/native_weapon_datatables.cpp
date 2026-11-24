@@ -13,6 +13,7 @@
 #include "native_count_scheduler.h"
 #include "native_use_observation.h"
 #include "native_vehicle_use.h"
+#include "native_vehicle_actions.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3900,6 +3901,91 @@ int __cdecl vehicle_use(HologramControl* c,const VehicleUseBindings* b,void* act
     *executed=1;return disp_finish(c,true);
 }
 const VehicleUseApi vehicle_use_api{version,sizeof(VehicleUseApi),&vehicle_part_name,&vehicle_can_use,&vehicle_use,&health_ack};
+
+constexpr unsigned vehicle_action_extent=0x834;
+bool vehicle_action_valid(void* v,unsigned bytes,const VehicleActionBindings* b,void* actor,unsigned actor_bytes) noexcept {
+    return bytes>=vehicle_action_extent&&hologram_writable(v,vehicle_action_extent)&&
+        actor&&actor_bytes>=0xec&&sin_independent::vgui_layout::Readable(actor,0xec)&&
+        b&&b->output&&b->resolve&&b->participant&&b->occupied_seat&&b->candidate_seat&&
+        b->seat_type&&b->passenger_enter&&b->passenger_exit&&b->sound&&b->sequence&&b->radio_next&&b->unimplemented;
+}
+bool vehicle_toggle_record(void* v,const VehicleActionBindings& h,bool window,int index) noexcept {
+    const unsigned vector_off=window?0x824:0x810,count_off=window?0x830:0x81c;
+    if(index<0||index>=hologram_read<int>(v,count_off))return true;
+    auto record=[&]() -> unsigned char* {
+        const auto base=hologram_read<std::uint32_t>(v,vector_off);
+        const auto offset=static_cast<unsigned>(index)*76u+0x44u;
+        if(!base||base>0xffffffffu-offset)return nullptr;
+        auto* p=reinterpret_cast<unsigned char*>(static_cast<std::uintptr_t>(base)+offset);
+        // Byte field at aligned +44 of a 76-byte record.
+        return hologram_writable(p,1)?p:nullptr;
+    };
+    auto* flag=record();if(!flag)return false;
+    if(!h.sound(h.context,v,window?"window":"door",*flag?"close":"open",index))return false;
+    flag=record();if(!flag)return false; // original reloads vector and byte
+    *flag=*flag?0:1;return true;
+}
+bool vehicle_action_leaf(void* v,const VehicleActionBindings& h,void* actor,int part) noexcept {
+    if(!h.output(h.context,v,actor,0x7cc,part))return false;
+    auto resolve=[&](unsigned off,void* obj,void*& out){
+        out=nullptr;const auto handle=hologram_read<std::uint32_t>(obj,off);
+        return handle==0xffffffffu||h.resolve(h.context,handle,&out)!=0;
+    };
+    switch(part){
+        case 4:{
+            void* current=nullptr;
+            if(!resolve(0xe8,actor,current))return false;
+            if(current==v)return vehicle_toggle_record(v,h,true,1);
+            // Otherwise falls through to passenger entry/exit.
+        } [[fallthrough]];
+        case 0:{
+            unsigned player=0;if(!h.participant(h.context,actor,&player))return false;
+            if(!player)return true;
+            int seat=-1;if(!h.occupied_seat(h.context,v,actor,&seat))return false;
+            if(seat>=0)return h.passenger_exit(h.context,v,actor,0)!=0;
+            if(!h.candidate_seat(h.context,v,actor,&seat))return false;
+            if(seat<0)return true;
+            int type=0;if(!h.seat_type(h.context,v,seat,&type))return false;
+            if(type==0&&hologram_read<unsigned char>(v,0x751))return true;
+            return h.passenger_enter(h.context,v,actor,-1)!=0;
+        }
+        case 1:case 7:case 9:return h.unimplemented(h.context,part)!=0;
+        case 2:{
+            void* radio=nullptr;
+            if(!resolve(0x768,v,radio))return false;
+            if(!radio)return true;
+            // Original existence check and separate resolved fetch.
+            if(!resolve(0x768,v,radio)||!radio)return false;
+            return h.radio_next(h.context,radio)!=0;
+        }
+        case 3:return vehicle_toggle_record(v,h,false,4);
+        case 5:return vehicle_toggle_record(v,h,true,3);
+        case 6:return vehicle_toggle_record(v,h,true,2);
+        case 8:{
+            const auto* action=hologram_read<unsigned char>(v,0x758)?"close":"open";
+            if(!h.sound(h.context,v,"monitor",action,0))return false;
+            hologram_write(v,0x758,static_cast<unsigned char>(!hologram_read<unsigned char>(v,0x758)));
+            return true;
+        }
+        case 10:hologram_write(v,0x74e,static_cast<unsigned char>(!hologram_read<unsigned char>(v,0x74e)));return true;
+        case 11:return h.sound(h.context,v,"gears","grind",0)&&h.sequence(h.context,v,"gear_shift");
+        case 12:return vehicle_toggle_record(v,h,true,4);
+        case 13:return h.sound(h.context,v,"mirror","adjust",0)&&h.sequence(h.context,v,"rear_view_mirror");
+        case 14:return vehicle_toggle_record(v,h,false,2);
+        case 15:return vehicle_toggle_record(v,h,false,3);
+        default:return true;
+    }
+}
+int __cdecl vehicle_apply_leaf(void* v,unsigned bytes,const VehicleActionBindings* b,void* actor,unsigned actor_bytes,int part) noexcept {
+    if(!vehicle_action_valid(v,bytes,b,actor,actor_bytes))return 0;
+    const auto h=*b;return vehicle_action_leaf(v,h,actor,part)?1:-1;
+}
+int __cdecl vehicle_apply_action(HologramControl* c,const VehicleActionBindings* b,void* actor,unsigned actor_bytes,int part) noexcept {
+    if(!health_control(c,vehicle_action_extent)||!vehicle_action_valid(c->object,c->bytes,b,actor,actor_bytes))return 0;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,vehicle_action_leaf(c->object,h,actor,part));
+}
+const VehicleActionsApi vehicle_actions_api{version,sizeof(VehicleActionsApi),&vehicle_apply_action,&vehicle_apply_leaf,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5805,6 +5891,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleUs
 SiN_GetVehicleUseApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleUseApi)?&vehicle_use_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleActionsApi=_SiN_GetVehicleActionsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleActionsApi* __cdecl
+SiN_GetVehicleActionsApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleActionsApi)?&vehicle_actions_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
