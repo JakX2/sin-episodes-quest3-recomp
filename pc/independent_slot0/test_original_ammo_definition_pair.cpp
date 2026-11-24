@@ -519,6 +519,13 @@ int main(int argc,char** argv){
     assert(sceneAdvance&&!getSceneAdvance(0,sizeof(tables::SceneAdvanceApi))&&!getSceneAdvance(1,0));
     tables::test::check_scene_advance(*sceneAdvance);
     std::puts("PASS native scripted and instanced scene advance through parsed simulation");
+    const auto getIntegratedScene=reinterpret_cast<tables::GetIntegratedScenePlaybackApi>(GetProcAddress(server,tables::integrated_scene_playback_export));
+    assert(getIntegratedScene&&!GetProcAddress(client,tables::integrated_scene_playback_export));
+    const auto* integratedScene=getIntegratedScene(1,sizeof(tables::IntegratedScenePlaybackApi));
+    assert(integratedScene&&!getIntegratedScene(0,sizeof(tables::IntegratedScenePlaybackApi))&&!getIntegratedScene(1,0));
+    tables::test::check_integrated_scene(*integratedScene,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
+    std::puts("PASS native generated scene from activation through manager tick and cleanup");
+
 
 
 
