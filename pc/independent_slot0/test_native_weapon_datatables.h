@@ -1397,13 +1397,98 @@ inline void __cdecl spawn_cleanup(void* context,unsigned,void* object,unsigned,C
     assert(!f.init.registry->resolve(f.init.view,f.init.handle));
     ++f.cleanups;f.allocated=false;f.stage=stage;
 }
-inline void check_spawn_session(const AggregateRecvApi& aggregate,const ClientRegistryApi& registry,const ClientSpawnApi& api){
+
+inline void check_spawned_network_transfer(const AggregateSendView& sv,const AggregateRecvView& rv,
+        const ClientSpawnRecord& record,sin_independent::EntityHandleEntry* entries){
+    assert(record.initialized&&record.primary&&record.networkable==static_cast<unsigned char*>(record.primary)+8);
+    alignas(4) unsigned char server[0x1520]{};
+    auto* client=static_cast<unsigned char*>(record.primary);
+    const auto transfer=[&](s::SendProp& a,RecvProp& b,unsigned char* sd,unsigned char* cd,
+                            std::uint32_t input,std::uint32_t expected,unsigned width){
+        assert(std::strcmp(a.name,b.name)==0&&a.scalarProxy&&b.proxy);
+        std::memcpy(sd+a.offset,&input,width);
+        s::DVariant v{};a.scalarProxy(&a,sd,sd+a.offset,&v,0,1);
+        RecvData d{&b,v,0,1};b.proxy(&d,cd,cd+b.offset);
+        assert(!std::memcmp(cd+b.offset,&expected,width));
+    };
+    const auto* sc=sv.class_records[record.slot].table;
+    const auto* cc=rv.class_records[record.slot].table;
+    assert(std::strcmp(sc->name,cc->name)==0);
+    if(record.slot==ClPlayer){
+        auto& sp=sc->props[1];auto& cp=cc->props[1];
+        s::Recipients mask{};void* out=nullptr;
+        auto* sd=static_cast<unsigned char*>(sp.tableProxy(&sp,server,server+sp.offset,&mask,1));
+        cp.table_proxy(&cp,&out,client+cp.offset,1);
+        assert(sd==server+0x137c&&out==client+0x11c8&&mask.words[0]==1);
+        auto* cd=static_cast<unsigned char*>(out);
+        transfer(sp.table->props[2],cp.table->props[2],sd,cd,0x3f400000u,0x3f400000u,4);
+        transfer(sp.table->props[4],cp.table->props[4],sd,cd,1,1,1);
+        transfer(sp.table->props[10],cp.table->props[10],sd,cd,0x41200000u,0x41200000u,4);
+        transfer(sp.table->props[11],cp.table->props[11],sd,cd,0x40a00000u,0x40a00000u,4);
+        transfer(sc->props[3],cc->props[3],server,client,0x42000000u,0x42000000u,4);
+        transfer(sc->props[5],cc->props[5],server,client,0x437f0000u,0x437f0000u,4);
+        auto* sb=sc->props[0].table;auto* cb=cc->props[0].table;
+        transfer(sb->props[5],cb->props[6],server,client,75,75,4);
+        auto& sl=sb->props[14];auto& cl=cb->props[1];
+        assert(sl.tableProxy(&sl,server,server,&mask,1)==server&&mask.words[0]==1);
+        cl.table_proxy(&cl,&out,client,1);assert(out==client);
+        auto& sam=sl.table->props[5];auto& cam=cl.table->props[5];
+        for(unsigned i=0;i<32;++i)
+            transfer(sam.table->props[i],cam.table->props[i],server+sam.offset,client+cam.offset,i+10,i+10,4);
+        // All callbacks operate on the creator-returned allocation;
+        // neither the registry handle nor the entity index is overwritten.
+    }else if(record.slot==ClHand){
+        assert(sc->props[0].table==sv.class_records[ClEntity].table&&cc->props[0].table==rv.class_records[ClEntity].table);
+        transfer(sc->props[0].table->props[9],cc->props[0].table->props[9],server,client,2,2,4);
+    }else{
+        // Descend the actual class inheritance, not an unrelated global
+        // table. All three SiN weapons share BaseCombatWeapon.
+        for(unsigned depth=0;depth<4&&std::strcmp(sc->name,"DT_BaseCombatWeapon")!=0;++depth){
+            assert(sc->props[0].table&&cc->props[0].table);
+            sc=sc->props[0].table;cc=cc->props[0].table;
+        }
+        assert(std::strcmp(sc->name,"DT_BaseCombatWeapon")==0&&std::strcmp(cc->name,sc->name)==0);
+        const std::uint32_t owner=(0x345u<<12)|37u;
+        std::memcpy(server+0x494,&owner,4);
+        s::Recipients mask{};
+        auto& sl=sc->props[1];auto& cl=cc->props[1];
+        auto& sa=sc->props[2];auto& ca=cc->props[2];
+        assert(sl.tableProxy(&sl,server,server,&mask,1)==server&&mask.words[0]==1);
+        assert(sa.tableProxy(&sa,server,server,&mask,1)==server&&mask.words[0]==1);
+        void* local=nullptr;void* active=nullptr;
+        cl.table_proxy(&cl,&local,client,1);ca.table_proxy(&ca,&active,client,1);
+        assert(local==client&&active==client);
+        transfer(sl.table->props[0],cl.table->props[0],server,client,7,7,4);
+        transfer(sl.table->props[1],cl.table->props[1],server,client,0xffffffffu,0xffffffffu,4);
+        transfer(sl.table->props[2],cl.table->props[2],server,client,3,3,4);
+        transfer(sa.table->props[0],ca.table->props[0],server,client,0x41200000u,0x41200000u,4);
+        transfer(sc->props[5],cc->props[5],server,client,2,2,4);
+        transfer(sc->props[6],cc->props[6],server,client,owner,owner,4);
+        ++entries[37].serial;
+        assert(!sl.tableProxy(&sl,server,server,&mask,1)&&mask.words[0]==0);
+        assert(!sa.tableProxy(&sa,server,server,&mask,1)&&mask.words[0]==0);
+        transfer(sc->props[6],cc->props[6],server,client,owner,0xffffffffu,4);
+        --entries[37].serial;
+    }
+    std::uint32_t handle=0,index=0;std::memcpy(&handle,client+0xb4,4);std::memcpy(&index,client+0x50,4);
+    assert(handle==record.handle&&index==(record.handle&0xfffu));
+}
+inline void check_spawn_session(const AggregateSendApi& server_api,const AggregateRecvApi& aggregate,const ClientRegistryApi& registry,const ClientSpawnApi& api){
     RecvProp cp[8];RecvTable collision{cp,8,nullptr,"DT_CollisionProperty"};
     EntityNetworkFixture ef;OverlayFixture cf;FovFixture ff;VelocityFixture vf;
     AggregateRecvBindings ab{{&collision,&ef,&sample_clock,&effects_changed,&interpolation_changed},
         {&cf,&reserve_layers,&resize_layers},{&ff,&sample_fov},&vf,&invalidate_velocity,{}};
     for(auto& creator:ab.creators)creator=&fixture_class_creator;
     AggregateRecvView av{};assert(aggregate.create(&ab,&av));
+    s::SendProp sp[8];s::SendTable sc;assert(sc.Construct(sp,8,"DT_CollisionProperty"));
+    NativeOwner owner,player;owner.resolved=&player;player.player=true;
+    sin_independent::EntityHandleEntry entries[64]{};
+    entries[37].entity=reinterpret_cast<CBaseEntity*>(&owner);entries[37].serial=0x345;
+    alignas(4) unsigned char edicts[2*20]{};NativeEngine engine;engine.expected=edicts+20;engine.result=1;
+    player.edict=engine.expected;OverlayFixture sf;
+    AggregateSendBindings sb2{{&sc,entries,64,&ef,&sample_clock,&sample_transform},
+        {&sf,&reserve_layers},&engine,edicts,1};
+    AggregateSendView server_view{};assert(server_api.create(&sb2,&server_view));
     SpawnFixture f;ClientRegistryView rv{};f.init.registry=&registry;f.init.view=&rv;
     std::uint16_t seeds[client_network_limit]{};
     ClientRegistryBindings rb{seeds,&f.init,&init_added,&init_removed};
@@ -1426,6 +1511,7 @@ inline void check_spawn_session(const AggregateRecvApi& aggregate,const ClientRe
             record.primary==f.init.object&&record.networkable==networkable&&record.slot==slots[i]&&record.initialized==1&&
             record.handle==((10+i)<<12|9u));
         assert(f.init.event_count==4&&registry.resolve(&rv,record.handle)==record.primary);
+        check_spawned_network_transfer(server_view,av,record,entries);
         assert(!creator(9,10)&&!api.unbind(&session)&&!api.release(&session,record.handle^0x1000u));
         assert(api.release(&session,record.handle)&&!api.record(&session,9,&record)&&f.stage==CreatorCleanup::InitAttempted);
     }
@@ -1437,7 +1523,7 @@ inline void check_spawn_session(const AggregateRecvApi& aggregate,const ClientRe
     const auto stale=av.class_records[ClPlayer].create;
     assert(api.unbind(&session)&&!session.handle&&!stale(9,55));
     for(unsigned slot:slots)assert(av.class_records[slot].create==&fixture_class_creator);
-    assert(aggregate.destroy(&av)&&registry.destroy(&rv));
+    assert(aggregate.destroy(&av)&&registry.destroy(&rv)&&server_api.destroy(&server_view));
 }
 
 }

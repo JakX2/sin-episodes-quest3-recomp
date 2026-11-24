@@ -170,8 +170,8 @@ int main(int argc,char** argv){
     assert(getSpawn&&!GetProcAddress(server,tables::spawn_session_export));
     const auto* spawn=getSpawn(1,sizeof(tables::ClientSpawnApi));
     assert(spawn&&!getSpawn(0,sizeof(tables::ClientSpawnApi))&&!getSpawn(1,0));
-    tables::test::check_spawn_session(*aggregateRecv,*registry,*spawn);
-    std::puts("PASS native client class creators -> registry -> shared initializer -> release");
+    tables::test::check_spawn_session(*aggregateSend,*aggregateRecv,*registry,*spawn);
+    std::puts("PASS native client class creators -> registry -> shared initializer -> paired property callbacks -> release");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
