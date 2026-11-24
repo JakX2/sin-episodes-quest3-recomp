@@ -1048,7 +1048,60 @@ inline void check_entity_graph(const BaseEntitySendApi& sa,const BaseEntityRecvA
     assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
 
-inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra){
+
+inline void check_extra_entities(const ExtraSendApi& sa,const ExtraRecvApi& ra,
+        const AggregateSendApi& asa,const AggregateRecvApi& ara,AggregateSendView& sb,AggregateRecvView& rb){
+    ExtraSendBindings bs{&sb};ExtraRecvBindings br{&rb,{}};
+    ExtraSendView sv{};ExtraRecvView rv{};
+    assert(!ra.create(&br,&rv)&&!rv.handle);
+    for(auto& creator:br.creators)creator=&fixture_class_creator;
+    assert(sa.create(&bs,&sv)&&ra.create(&br,&rv)&&!asa.destroy(&sb)&&!ara.destroy(&rb));
+    ExtraSendView other{};assert(!sa.create(&bs,&other)&&!other.handle);
+    constexpr unsigned order[]={ExAI,ExBludgeon,ExElite,ExGrunt,ExHologram,ExShockwave,ExChaingun,
+        ExGrenade,ExMelee,ExNPCPistol,ExSMG};
+    // Server case-insensitive sorting: CQuadShockwave follows CNPC_*.
+    auto* sr=sv.head;auto* cr=rv.head;
+    for(unsigned i=0;i<ExtraEntityCount;++i){
+        assert(sr==&sv.records[order[i]]&&cr==&rv.records[ExtraEntityCount-1-i]);
+        sr=sr->next;cr=cr->next;
+        assert(sv.tables[i]->count==extra_table_counts[i]&&rv.tables[i]->count==extra_table_counts[i]);
+        assert(std::strcmp(sv.tables[i]->name,extra_table_names[i])==0&&
+            std::strcmp(rv.tables[i]->name,extra_table_names[i])==0);
+    }
+    assert(!sr&&!cr);
+    assert(sv.tables[ExAI]->props[0].table==sb.class_records[ClCombatCharacter].table);
+    assert(rv.tables[ExAI]->props[0].table==rb.class_records[ClCombatCharacter].table);
+    assert(sv.tables[ExElite]->props[0].table==sv.tables[ExGrunt]&&rv.tables[ExElite]->props[0].table==rv.tables[ExGrunt]);
+    assert(sv.tables[ExHologram]->props[0].table==sv.tables[ExAI]&&rv.tables[ExHologram]->props[0].table==rv.tables[ExAI]);
+    assert(sv.tables[ExMelee]->props[0].table==sv.tables[ExBludgeon]&&rv.tables[ExMelee]->props[0].table==rv.tables[ExBludgeon]);
+    for(unsigned i:{ExSMG,ExChaingun}){
+        assert(sv.tables[i]->props[0].table==sb.class_records[ClSelectFire].table);
+        assert(rv.tables[i]->props[0].table==rb.class_records[ClSelectFire].table);
+    }
+    alignas(4) unsigned char server[0x101c]{},client[0xda8]{};
+    for(unsigned i=0;i<ExtraEntityCount;++i){
+        auto* a=sv.tables[i];auto* b=rv.tables[i];
+        for(int j=1;j<a->count;++j){
+            auto& x=a->props[j];auto& y=b->props[j];
+            assert(std::strcmp(x.name,y.name)==0);
+            const unsigned width=x.type==2?12u:x.bits==1?1u:4u;
+            const std::uint32_t payload[3]={width==1?1u:x.type?0x3f800000u:3u,0x80000000u,0x40000000u};
+            std::memcpy(server+x.offset,payload,width);
+            s::DVariant val{};x.scalarProxy(&x,server,server+x.offset,&val,0,1);
+            RecvData d{&y,val,0,1};y.proxy(&d,client,client+y.offset);
+            assert(!std::memcmp(client+y.offset,payload,width));
+        }
+    }
+    auto& g=sv.tables[ExGrunt]->props[2];assert(g.type==2&&g.bits==0&&g.flags==4&&g.offset==0xc48);
+    assert(rv.tables[ExGrunt]->props[2].offset==0xd78);
+    assert(sv.tables[ExHologram]->props[1].bits==32&&rv.tables[ExHologram]->props[1].offset==0xd7c);
+    assert(sv.tables[ExShockwave]->props[1].flags==2&&rv.tables[ExShockwave]->props[1].offset==0xd64);
+    sv.tables[ExAI]->written=true;rv.records[ExElite].class_id=7;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
+    sv.tables[ExAI]->written=false;rv.records[ExElite].class_id=0;
+    assert(sa.destroy(&sv)&&ra.destroy(&rv)&&!sv.handle&&!rv.handle);
+}
+inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era){
     s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
     RecvProp rp[8];RecvTable rc{rp,8,nullptr,"DT_CollisionProperty"};
     NativeOwner owner;sin_independent::EntityHandleEntry entries[64]{};
@@ -1069,6 +1122,7 @@ inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& r
     assert(!sa.create(&sbad,&sv)&&!sv.handle&&!sv.class_head&&!sv.tables[0]);
     assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
     assert(sv.class_count==15&&rv.class_count==15&&!sa.create(&sb,&sv)&&!ra.create(&rb,&rv));
+    check_extra_entities(esa,era,sa,ra,sv,rv);
     for(unsigned i=0;i<aggregate_table_count;++i){
         assert(sv.tables[i]&&rv.tables[i]&&std::strcmp(sv.tables[i]->name,rv.tables[i]->name)==0);
         for(unsigned j=0;j<i;++j)assert(sv.tables[i]!=sv.tables[j]&&rv.tables[i]!=rv.tables[j]);

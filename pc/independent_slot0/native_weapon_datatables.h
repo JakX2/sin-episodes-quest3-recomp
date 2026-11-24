@@ -578,4 +578,25 @@ struct ClientSpawnApi {
     int (__cdecl *unbind)(ClientSpawnView*) noexcept;
 };
 using GetClientSpawnApi=const ClientSpawnApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase713: extension for the remaining SiN weapons and enemy classes.
+// Separate from the version-1 15-class aggregate so its ABI stays stable.
+// The two lists are subsets, not a complete retail engine registry.
+inline constexpr char extra_send_export[]="SiN_GetExtraEntitySendApi";
+inline constexpr char extra_recv_export[]="SiN_GetExtraEntityRecvApi";
+enum ExtraEntitySlot : unsigned {ExAI,ExBludgeon,ExElite,ExGrunt,ExHologram,ExSMG,ExShockwave,ExGrenade,ExChaingun,ExNPCPistol,ExMelee,ExtraEntityCount};
+inline constexpr const char* extra_class_names[ExtraEntityCount]={"CAI_BaseNPC","CBaseHLBludgeonWeapon","CNPC_EliteGrunt","CNPC_GruntBase","CNPC_Hologram","CWeaponSMG","CQuadShockwave","CWeaponGrenade","CWeaponChaingun","CWeaponNPCPistol","CWeaponMelee"};
+inline constexpr const char* extra_table_names[ExtraEntityCount]={"DT_AI_BaseNPC","DT_BaseHLBludgeonWeapon","DT_NPC_EliteGrunt","DT_NPC_GruntBase","DT_NPC_Hologram","DT_WeaponSMG","DT_QuadShockwave","DT_WeaponGrenade","DT_WeaponChaingun","DT_WeaponNPCPistol","DT_WeaponMelee"};
+inline constexpr int extra_table_counts[ExtraEntityCount]={7,1,1,3,3,1,2,1,1,1,1};
+struct ExtraSendBindings {AggregateSendView* base;};
+struct ExtraRecvBindings {AggregateRecvView* base;CreateClientEntity creators[ExtraEntityCount];};
+template<class Table,class Record> struct ExtraEntityView {
+    void* handle;Record* head;Record* records;Table* tables[ExtraEntityCount];
+};
+using ExtraSendView=ExtraEntityView<s::SendTable,ServerClassRecord>;
+using ExtraRecvView=ExtraEntityView<RecvTable,ClientClassRecord>;
+using ExtraSendApi=GraphApi<ExtraSendBindings,ExtraSendView>;
+using ExtraRecvApi=GraphApi<ExtraRecvBindings,ExtraRecvView>;
+using GetExtraSendApi=const ExtraSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetExtraRecvApi=const ExtraRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
