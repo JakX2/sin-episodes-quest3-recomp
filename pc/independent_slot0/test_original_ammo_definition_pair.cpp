@@ -9,6 +9,7 @@
 #include "test_inventory_network_contract_core.h"
 #include "test_native_jessica_script.h"
 #include "test_native_npc_scene_playback.h"
+#include "test_retail_vcd_audit.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -44,7 +45,7 @@
 #include <cstdio>
 namespace d=sin_port::original_ammo;
 int main(int argc,char** argv){
-    assert(argc==3);
+    assert(argc==3||argc==4);
     const auto client=LoadLibraryA(argv[1]),server=LoadLibraryA(argv[2]);
     assert(client&&server);
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
@@ -779,6 +780,10 @@ int main(int argc,char** argv){
     const auto* portableVcdFinalizedGrammar=getPortableVcdFinalizedGrammar(1,sizeof(tables::PortableVcdFinalizedGrammarApi));
     assert(choreographyFinalize&&portableVcdFinalizedGrammar&&!getChoreographyFinalize(0,sizeof(tables::ChoreographyFinalizeApi))&&!getPortableVcdFinalizedGrammar(1,0));
     tables::test::check_choreography_finalize(*choreographyFinalize,*portableVcdFinalizedGrammar);
+    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction);
+    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction)){
+        FreeLibrary(server);FreeLibrary(client);return 2;
+    }
     std::puts("PASS original relative tag reconciliation and ordered channel finalization");
 
 
