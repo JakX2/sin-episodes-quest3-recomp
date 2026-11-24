@@ -408,8 +408,64 @@ scalesettings { RampTool 75 }
         assert(arena.live.size()==2&&arena.release(&arena,F::word(npc,0x5b8))&&arena.release(&arena,F::word(npc,0x5ec))&&arena.live.empty());
     }
 };
+// Real grammar-created pause, tracked condition and speech events. The
+// dispatch observer is deliberately not the audio engine.
+inline void check_native_choreography_clock_graph(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(event section pause
+{
+ time 1 -1
+}
+actor Jessica
+{
+ channel First
+ {
+  event gesture motion
+  {
+   time 0 4
+   resumecondition
+  }
+ }
+ channel Voice
+ {
+  event speak line
+  {
+   time 1.05 3
+   param Jessica.Line
+  }
+ }
+}
+)VCD";
+    alignas(4) unsigned char scene[0x5ec]{};
+    auto b=arena.runtime();std::uint32_t rootword=0;
+    assert(runtime.parse(scene+0x410,"clock.vcd",data,sizeof(data)-1,&b,&rootword)==1&&rootword);
+    void* root=nullptr;unsigned extent=0;
+    assert(arena.storage(&arena,rootword,&root,&extent)&&extent>=0x220);
+    struct Trace {void* root;unsigned count=0,slots[32]{},types[32]{};} trace{root};
+    NativeChoreographyClockBindings tick{};tick.vectors=arena.vector_bindings;tick.release_memory=&VcdAuditArena::release;
+    tick.context=&trace;tick.scene=scene;tick.scene_bytes=sizeof(scene);
+    tick.other_event=[](void* p,std::uint32_t cb,unsigned slot,float,void* root,void* event) noexcept -> int{
+        auto& t=*static_cast<Trace*>(p);assert(root==t.root&&cb&&t.count<32);
+        t.slots[t.count]=slot;t.types[t.count++]=F::word(event,0);return 1;
+    };
+    F::fl(root,0x90,.1f);
+    assert(clock.reset(root,extent,1,0,0,&tick)==1&&F::word(root,0x70)==1&&F::word(root,0x48)==1);
+    // At previous time -0.1, no duration starts; next call at 0.5
+    // starts tracked gesture and crosses point pause at 1.
+    assert(clock.simulate(root,extent,.5f,&tick)==1);
+    assert(clock.simulate(root,extent,1.f,&tick)==1);
+    assert(F::word(root,0x5c)==1&&F::word(root,0x21c)==0);
+    void *events=nullptr,*pause=nullptr;unsigned n=0;
+    assert(arena.storage(&arena,F::word(root,0),&events,&n)&&n>=12);
+    assert(arena.storage(&arena,F::word(events,0),&pause,&n)&&F::word(pause,0x3b0)==1);
+    // Resume consumes a native snapshot and replays the attached speech.
+    const auto before=trace.count;
+    assert(clock.resume(root,extent,&tick)==1&&trace.count==before+1&&trace.types[before]==5&&trace.slots[before]==0);
+    assert(F::word(root,0x21c)==0xffffffffu&&!F::word(root,0x5c));
+    assert(runtime.destroy(rootword,&b)==1&&arena.live.empty());
+}
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock){
     // Native CUtlMemory capacities and indexed word insertion, including
     // null words, borrowed storage and failure-atomic raw allocator.
     {
@@ -547,6 +603,7 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     std::puts("PASS multi-object VCD grammar, native track lifecycle, finalization, owned runtime and cache load retirement");
     VcdAuditArena playback_arena(c,s,t,d,st,si,va);
     VcdOwnedPlaybackFixture playback(playback_arena,startup_sound);playback.run(runtime);
+    VcdAuditArena clock_arena(c,s,t,d,st,si,va);check_native_choreography_clock_graph(clock_arena,runtime,clock);
     std::puts("PASS owned VCD named NPC startup, nested precache, actor association and retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,

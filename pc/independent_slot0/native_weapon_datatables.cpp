@@ -7703,6 +7703,114 @@ int __cdecl prepared_speech_callback(const void* cb,unsigned cb_bytes,void* scen
     const auto h=*prep;return speech_callback_invoke_impl(cb,cb_bytes,scene,bytes,slot,time,parsed,parsed_bytes,event,extent,b,names,out,&h);
 }
 const SceneSpeechPreparationApi scene_speech_preparation_api{version,sizeof(SceneSpeechPreparationApi),&scene_speech_prepare,&prepared_speech_start,&prepared_speech_callback};
+// 22113bb0 flat events, 22113e00 pending lookup, 22111080 unique
+// pause-child attachment, 22107170 channel index, 22118c99 tracked append.
+struct NativeChoreographyClockState {
+    NativeChoreographyClockBindings h;
+    ParsedSimulationBindings sim{};
+    ParsedSceneResetBindings reset{};
+    ParsedSceneResumeBindings resume{};
+    static NativeChoreographyClockState& self(void* p) noexcept{return *static_cast<NativeChoreographyClockState*>(p);}
+    static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept {
+        const auto& v=self(p).h.vectors;return v.storage(v.context,w,out,bytes);
+    }
+    static bool list(void* p,void* v,void*& rows,unsigned& count) noexcept {
+        if(!hologram_writable(v,20))return false;
+        const int n=hologram_read<int>(v,0xc),cap=hologram_read<int>(v,4);
+        rows=nullptr;count=0;
+        if(n<0||cap<n||cap>4096)return false;
+        count=static_cast<unsigned>(n);
+        if(!count)return true;
+        unsigned bytes=0;
+        return storage(p,hologram_read<std::uint32_t>(v,0),&rows,&bytes)&&bytes>=count*4&&hologram_writable(rows,count*4);
+    }
+    static int indexed(void* p,void* root,unsigned off,unsigned i,void** out,unsigned* bytes) noexcept {
+        *out=nullptr;*bytes=0;
+        if(!hologram_writable(root,0x220))return 0;
+        void* rows=nullptr;unsigned n=0;
+        if(!list(p,static_cast<unsigned char*>(root)+off,rows,n))return 0;
+        if(i>=n)return 1; // original indexed accessor returns null
+        const auto w=hologram_read<std::uint32_t>(rows,i*4);
+        return !w||storage(p,w,out,bytes);
+    }
+    static int __cdecl event(void* p,void* root,unsigned i,void** out,unsigned* bytes) noexcept {
+        return indexed(p,root,0,i,out,bytes);
+    }
+    static int __cdecl pending(void* p,void* root,unsigned i,void** out,unsigned* bytes) noexcept {
+        return indexed(p,root,0x64,i,out,bytes);
+    }
+    static int append(void* p,void* v,void* obj,bool unique) noexcept {
+        void* rows=nullptr;unsigned n=0;
+        if(!list(p,v,rows,n)||!obj)return 0;
+        const auto w=scene_word(obj);
+        if(unique)for(unsigned i=0;i<n;++i)if(hologram_read<std::uint32_t>(rows,i*4)==w)return 1;
+        return choreography_insert_word(&self(p).h.vectors,v,n,w);
+    }
+    static int __cdecl attach(void* p,void* parent,void* child) noexcept {
+        if(!hologram_writable(parent,0x3c0)||!hologram_writable(child,0x3c0))return 0;
+        return append(p,static_cast<unsigned char*>(parent)+0x3a4,child,true);
+    }
+    static int __cdecl track(void* p,void* root,void* event) noexcept {
+        if(!hologram_writable(root,0x220)||!hologram_writable(event,0x3c0))return 0;
+        return append(p,static_cast<unsigned char*>(root)+0x50,event,false);
+    }
+    static int __cdecl channel(void* p,std::uint32_t actor,std::uint32_t channel,int* out) noexcept {
+        void *a=nullptr,*rows=nullptr;unsigned bytes=0,n=0;
+        if(!storage(p,actor,&a,&bytes)||bytes<0x118||!hologram_writable(a,0x118)||
+           !list(p,static_cast<unsigned char*>(a)+0x100,rows,n))return 0;
+        *out=-1;for(unsigned i=0;i<n;++i)if(hologram_read<std::uint32_t>(rows,i*4)==channel){*out=static_cast<int>(i);break;}
+        return 1;
+    }
+    static int __cdecl callback(void* p,std::uint32_t word,unsigned slot,float time,void* root,void* event) noexcept {
+        const auto& h=self(p).h;
+        if(!hologram_writable(root,0x220)||!hologram_writable(event,0x3c0))return 0;
+        if(hologram_read<int>(event,0)==5&&h.speech){
+            if(!h.scene||h.scene_bytes<0x549||!sin_independent::vgui_layout::Readable(h.scene,0x549))return 0;
+            auto* cb=static_cast<unsigned char*>(h.scene)+0x410;
+            if(word!=scene_word(cb))return 0;
+            unsigned result=0;
+            return speech_callback_invoke_impl(cb,8,h.scene,h.scene_bytes,slot,time,root,0x220,event,0x3c0,
+                h.speech,h.actors,&result,h.preparation)==1;
+        }
+        return h.other_event&&h.other_event(h.context,word,slot,time,root,event);
+    }
+    explicit NativeChoreographyClockState(const NativeChoreographyClockBindings& b) noexcept:h(b){
+        sim.context=this;sim.classifier.context=this;sim.classifier.pending=&pending;sim.classifier.attach=&attach;
+        sim.events.context=this;sim.events.event=&event;sim.channel_index=&channel;sim.track=&track;sim.callback=&callback;
+        reset.context=this;reset.events=sim.events;reset.storage=&storage;
+        reset.grow=[](void* p,void* v,unsigned extra) noexcept -> int{return choreography_grow_vector(&self(p).h.vectors,v,extra,4);};
+        resume.context=this;resume.event=&storage;
+        resume.words=[](void* p,std::uint32_t w,const void** out,unsigned* bytes) noexcept -> int{
+            void* data=nullptr;const int status=storage(p,w,&data,bytes);*out=data;return status;
+        };
+        resume.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+            const auto& v=self(p).h.vectors;return v.resize(v.context,0,n,out,bytes);
+        };
+        resume.release=[](void* p,void* data) noexcept -> int{
+            const auto& h=self(p).h;return h.release_memory(h.vectors.context,scene_word(data));
+        };
+        resume.start=[](void* p,std::uint32_t w,float time,void* root,void* event) noexcept -> int{
+            return callback(p,w,0,time,root,event);
+        };
+    }
+};
+bool native_choreography_clock_ready(const NativeChoreographyClockBindings* b) noexcept {
+    return b&&choreography_vector_ready(&b->vectors)&&b->release_memory;
+}
+int __cdecl native_choreography_clock_reset(void* root,unsigned bytes,unsigned forward,std::uint32_t a,std::uint32_t z,const NativeChoreographyClockBindings* b) noexcept {
+    if(!native_choreography_clock_ready(b))return 0;
+    NativeChoreographyClockState s(*b);return choreography_reset(root,bytes,forward,a,z,&s.reset);
+}
+int __cdecl native_choreography_clock_simulate(void* root,unsigned bytes,float target,const NativeChoreographyClockBindings* b) noexcept {
+    if(!native_choreography_clock_ready(b))return 0;
+    NativeChoreographyClockState s(*b);return parsed_scene_simulate(root,bytes,target,&s.sim);
+}
+int __cdecl native_choreography_clock_resume(void* root,unsigned bytes,const NativeChoreographyClockBindings* b) noexcept {
+    if(!native_choreography_clock_ready(b))return 0;
+    NativeChoreographyClockState s(*b);return parsed_scene_resume(root,bytes,&s.resume);
+}
+const NativeChoreographyClockApi native_choreography_clock_api{version,sizeof(NativeChoreographyClockApi),
+    &native_choreography_clock_reset,&native_choreography_clock_simulate,&native_choreography_clock_resume};
 bool speech_drain_ready(const SceneSpeechDrainBindings* b,unsigned* out) noexcept {
     return b&&b->storage&&b->resolve&&b->clock&&b->open_filter&&b->emit&&b->close_filter&&hologram_writable(out,4);
 }
@@ -12540,6 +12648,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpee
 SiN_GetSceneSpeechDrainApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneSpeechDrainApi)?&scene_speech_drain_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographyClockApi=_SiN_GetNativeChoreographyClockApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeChoreographyClockApi* __cdecl
+SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechPreparationApi=_SiN_GetSceneSpeechPreparationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechPreparationApi* __cdecl
