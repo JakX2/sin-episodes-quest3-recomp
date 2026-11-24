@@ -27,6 +27,7 @@
 #include "native_vehicle_think.h"
 #include "native_vehicle_seat_events.h"
 #include "native_camera_link.h"
+#include "native_vehicle_part_events.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -5111,6 +5112,72 @@ int __cdecl camera_link_ack(HologramControl* c) noexcept {
     c->blocked=0;return 1;
 }
 const CameraLinkApi camera_link_api{version,sizeof(CameraLinkApi),&camera_link_get_schema,&camera_link_construct,&camera_link_destroy,&camera_link_key,&camera_link_input,&camera_link_resolve_names,&camera_link_ack};
+
+bool part_pose_read(void* v,unsigned char* rec,const VehiclePartEventBindings& h,float& value) noexcept {
+    return h.pose(h.context,v,hologram_read<int>(rec,0x40),&value)!=0;
+}
+bool part_pose_step(void* v,unsigned char* rec,const VehiclePartEventBindings& h,bool open,double& value) noexcept {
+    float pose=0,frame=0;
+    if(!part_pose_read(v,rec,h,pose)||!h.frame_time(h.context,&frame))return false;
+    value=static_cast<double>(pose)+(open?1.:-1.)*4.*static_cast<double>(frame);
+    return true;
+}
+bool part_events_one(void* v,const VehiclePartEventBindings& h,bool window,int index) noexcept {
+    auto* rec=vehicle_map_record(v,window,index);if(!rec)return false;
+    // The original tests the requested flag and the live pose before
+    // attempting a step. Already completed states do not refire outputs.
+    bool open=rec[0x44]!=0;float current=0;
+    if(open){
+        if(!part_pose_read(v,rec,h,current))return false;
+        if(!(current<1.f)){
+            if(rec[0x44])return true;
+            open=false; // original rechecks desired flag before close path
+        }
+    }
+    if(!open){
+        if(!part_pose_read(v,rec,h,current))return false;
+        if(!(current>0.f))return true;
+    }
+    double next=0;
+    float stored=0;
+    bool reached=false;
+    // The original re-reads the pose/frame pair for each comparison.
+    // Preserve the order; the host supplies the live engine values.
+    if(!part_pose_step(v,rec,h,open,next))return false;
+    if(next>1.){stored=1.f;reached=open;}
+    else{
+        if(!part_pose_step(v,rec,h,open,next))return false;
+        if(next<0.){stored=0.f;reached=!open;}
+        else{
+            if(!part_pose_step(v,rec,h,open,next))return false;
+            stored=static_cast<float>(next);
+            reached=open?next>=1.:next<=0.;
+        }
+    }
+    if(reached){
+        const unsigned off=window?(open?0x7b4:0x79c):(open?0x784:0x76c);
+        // Original holds this record across synchronous output. Host
+        // must not invalidate the object or record before return.
+        if(!h.output(h.context,v,off,index))return false;
+        if(!hologram_writable(rec,76))return false;
+        if(!window&&open&&rec[0x45]){
+            rec[0x44]=0;rec[0x45]=0;
+            if(!h.sound(h.context,v,"door","close",index))return false;
+        }
+    }
+    return h.set_pose(h.context,v,hologram_read<int>(rec,0x40),stored)!=0;
+}
+int __cdecl vehicle_part_events_tick(HologramControl* c,const VehiclePartEventBindings* b) noexcept {
+    if(!health_control(c,vehicle_object_bytes)||!b||!b->pose||!b->frame_time||!b->set_pose||!b->output||!b->sound)return 0;
+    c->busy=1;const auto h=*b;auto* v=c->object;
+    for(unsigned window=0;window<2;++window){
+        for(int i=0;i<hologram_read<int>(v,window?0x830:0x81c);++i){
+            if(i>=65536||!part_events_one(v,h,window!=0,i))return disp_finish(c,false);
+        }
+    }
+    return disp_finish(c,true);
+}
+const VehiclePartEventsApi vehicle_part_events_api{version,sizeof(VehiclePartEventsApi),&vehicle_part_events_tick,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -7164,6 +7231,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CameraLin
 SiN_GetCameraLinkApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(CameraLinkApi)?&camera_link_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehiclePartEventsApi=_SiN_GetVehiclePartEventsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehiclePartEventsApi* __cdecl
+SiN_GetVehiclePartEventsApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehiclePartEventsApi)?&vehicle_part_events_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
