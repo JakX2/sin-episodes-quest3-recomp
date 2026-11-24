@@ -465,4 +465,45 @@ struct ClientCreatorApi {
     int (__cdecl *weapon_tail_defaults)(void* weapon,unsigned bytes) noexcept;
 };
 using GetClientCreatorApi=const ClientCreatorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase709: network-index subset of the original client entity list.
+// Original has 4096 entries, 0..2047 reserved for networked entities;
+// client-only free-list allocation is deliberately not implemented here.
+inline constexpr char client_registry_export[]="SiN_GetClientEntityRegistryApi";
+inline constexpr unsigned client_network_limit=2048;
+struct ClientRegistryEntry {
+    void* entity;
+    std::uint32_t serial;
+    ClientRegistryEntry* prev;
+    ClientRegistryEntry* next;
+};
+static_assert(sizeof(ClientRegistryEntry)==16&&offsetof(ClientRegistryEntry,serial)==4&&
+              offsetof(ClientRegistryEntry,prev)==8&&offsetof(ClientRegistryEntry,next)==12);
+using RegistryNotify=void (__cdecl *)(void* context,void* entity,std::uint32_t handle) noexcept;
+struct ClientRegistryBindings {
+    const std::uint16_t* initial_serials; // 2048 seeds, copied during create
+    void* context;
+    RegistryNotify added,removed;
+};
+struct ClientRegistryView {
+    void* handle;
+    const ClientRegistryEntry* entries;
+};
+struct ClientRegistryState {
+    const ClientRegistryEntry* head;
+    const ClientRegistryEntry* tail;
+    unsigned count;
+};
+struct ClientRegistryApi {
+    std::uint32_t version,size;
+    int (__cdecl *create)(const ClientRegistryBindings*,ClientRegistryView*) noexcept;
+    int (__cdecl *destroy)(ClientRegistryView*) noexcept;
+    // Entity is the original primary handle interface, not +4 or +8.
+    // Calls its verified vslot1 setter with packed handle by reference.
+    int (__cdecl *insert)(ClientRegistryView*,void*,int index,int serial,std::uint32_t* handle) noexcept;
+    int (__cdecl *remove)(ClientRegistryView*,std::uint32_t handle) noexcept;
+    void* (__cdecl *resolve)(const ClientRegistryView*,std::uint32_t handle) noexcept;
+    int (__cdecl *state)(const ClientRegistryView*,ClientRegistryState*) noexcept;
+};
+using GetClientRegistryApi=const ClientRegistryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -1199,4 +1199,62 @@ inline void check_client_creator(const ClientCreatorApi& api){
         raw[0x7fc]==0&&raw[0x7fd]==0xa5);
 }
 
+struct RegistryFixture {
+    const ClientRegistryApi* api=nullptr;
+    ClientRegistryView* view=nullptr;
+    unsigned adds=0,removes=0;
+    std::uint32_t last=0;
+};
+struct RegistryObject {
+    void** table=nullptr;
+    unsigned char pad[0xb0]{};
+    std::uint32_t handle=0xffffffffu;
+};
+static_assert(offsetof(RegistryObject,handle)==0xb4);
+inline void __fastcall fixture_set_handle(void* object,void*,const std::uint32_t* value){
+    static_cast<RegistryObject*>(object)->handle=*value;
+}
+inline void* registry_object_table[2]{nullptr,reinterpret_cast<void*>(&fixture_set_handle)};
+inline void __cdecl registry_added(void* context,void* object,std::uint32_t handle) noexcept {
+    auto& f=*static_cast<RegistryFixture*>(context);++f.adds;f.last=handle;
+    assert(static_cast<RegistryObject*>(object)->handle==handle&&f.api->resolve(f.view,handle)==object);
+    assert(!f.api->remove(f.view,handle)&&!f.api->destroy(f.view));
+}
+inline void __cdecl registry_removed(void* context,void* object,std::uint32_t handle) noexcept {
+    auto& f=*static_cast<RegistryFixture*>(context);++f.removes;f.last=handle;
+    assert(static_cast<RegistryObject*>(object)->handle==0xffffffffu&&f.api->resolve(f.view,handle)==object);
+    assert(!f.api->remove(f.view,handle)&&!f.api->destroy(f.view));
+}
+inline void check_client_registry(const ClientRegistryApi& api){
+    std::uint16_t seeds[client_network_limit]{};seeds[7]=0x7fff;seeds[2047]=5;
+    ClientRegistryView view{};RegistryFixture f{&api,&view};
+    ClientRegistryBindings b{seeds,&f,&registry_added,&registry_removed};
+    seeds[8]=0x8000;assert(!api.create(&b,&view)&&!view.handle);seeds[8]=0;
+    assert(api.create(&b,&view)&&!api.create(&b,&view));
+    assert(view.entries[7].serial==0x7fff&&view.entries[7].prev==&view.entries[7]);
+    ClientRegistryState state{};
+    assert(api.state(&view,&state)&&!state.count&&!state.head&&!state.tail);
+    RegistryObject a{registry_object_table},bb{registry_object_table},cc{registry_object_table},bad{};
+    std::uint32_t ha=0,hb=0,hc=0,unchanged=0xdeadbeefu;
+    assert(!api.insert(&view,&a,-1,1,&unchanged)&&!api.insert(&view,&a,2048,1,&unchanged)&&
+           !api.insert(&view,&a,7,0x8000,&unchanged)&&!api.insert(&view,&bad,7,1,&unchanged)&&unchanged==0xdeadbeefu);
+    assert(api.insert(&view,&a,7,-1,&ha)&&ha==0x07fff007u);
+    assert(api.insert(&view,&bb,2047,-1,&hb)&&hb==0x57ffu);
+    assert(api.insert(&view,&cc,0,1234,&hc)&&hc==(1234u<<12));
+    assert(f.adds==3&&api.state(&view,&state)&&state.count==3&&state.head==&view.entries[7]&&state.tail==&view.entries[0]);
+    assert(state.head->next==&view.entries[2047]&&state.tail->prev==&view.entries[2047]);
+    assert(!api.insert(&view,&a,8,1,&unchanged)&&!api.insert(&view,&bad,7,1,&unchanged)&&!api.destroy(&view));
+    assert(api.resolve(&view,ha)==&a&&api.resolve(&view,ha^0x1000)==nullptr&&
+           api.resolve(&view,0xffffffffu)==nullptr&&api.resolve(&view,2048)==nullptr);
+    assert(api.remove(&view,hb)&&!api.remove(&view,hb)&&!api.resolve(&view,hb));
+    assert(view.entries[2047].serial==6&&view.entries[2047].next==&view.entries[2047]);
+    assert(state.head->next==state.tail&&state.tail->prev==state.head);
+    assert(api.remove(&view,ha)&&view.entries[7].serial==0);
+    assert(api.state(&view,&state)&&state.count==1&&state.head==state.tail&&state.head==&view.entries[0]);
+    assert(api.insert(&view,&a,7,-1,&ha)&&ha==7&&api.resolve(&view,ha)==&a);
+    assert(api.remove(&view,hc)&&api.remove(&view,ha));
+    assert(f.adds==4&&f.removes==4&&api.state(&view,&state)&&!state.count&&!state.head&&!state.tail);
+    assert(api.destroy(&view)&&!view.handle&&!view.entries);
+}
+
 }

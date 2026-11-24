@@ -154,6 +154,12 @@ int main(int argc,char** argv){
     assert(creator&&!getCreator(0,sizeof(tables::ClientCreatorApi))&&!getCreator(1,0));
     tables::test::check_client_creator(*creator);
     std::puts("PASS native client entity creator boundary, five object sizes and constructor defaults");
+    const auto getRegistry=reinterpret_cast<tables::GetClientRegistryApi>(GetProcAddress(client,tables::client_registry_export));
+    assert(getRegistry&&!GetProcAddress(server,tables::client_registry_export));
+    const auto* registry=getRegistry(1,sizeof(tables::ClientRegistryApi));
+    assert(registry&&!getRegistry(0,sizeof(tables::ClientRegistryApi))&&!getRegistry(1,0));
+    tables::test::check_client_registry(*registry);
+    std::puts("PASS native client entity registry, active list, handle serial and notifications");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
