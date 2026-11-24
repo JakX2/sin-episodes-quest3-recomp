@@ -641,6 +641,12 @@ int main(int argc,char** argv){
     assert(sceneSpeechDrain&&!getSceneSpeechDrain(0,sizeof(tables::SceneSpeechDrainApi))&&!getSceneSpeechDrain(1,0));
     tables::test::check_scene_speech_drain(*sceneSpeechDrain,*sceneSpeechPolicy);
     std::puts("PASS native pending speech queue drain, expiry, stale handles and flush wrapper");
+    const auto getNativeGeneratedResponse=reinterpret_cast<tables::GetNativeGeneratedResponseApi>(GetProcAddress(server,tables::native_generated_response_export));
+    assert(getNativeGeneratedResponse&&!GetProcAddress(client,tables::native_generated_response_export));
+    const auto* nativeGeneratedResponse=getNativeGeneratedResponse(1,sizeof(tables::NativeGeneratedResponseApi));
+    assert(nativeGeneratedResponse&&!getNativeGeneratedResponse(0,sizeof(tables::NativeGeneratedResponseApi))&&!getNativeGeneratedResponse(1,0));
+    tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,resolvedSceneActor,sceneSpeechPreparation,nativeGeneratedResponse);
+    std::puts("PASS native response dispatch through generated scene, cached actor, semaphore, speech and retirement");
 
 
 

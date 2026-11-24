@@ -1495,11 +1495,30 @@ struct SpeechLifecycleFixture:NativeGeneratedLifecycleFixture {
     }
 };
 inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const NativeGeneratedLifecycleApi& n,const SceneFinishApi& finish,
-    const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity,const ResolvedSceneActorApi* resolver=nullptr,const SceneSpeechPreparationApi* preparation=nullptr){
+    const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity,const ResolvedSceneActorApi* resolver=nullptr,const SceneSpeechPreparationApi* preparation=nullptr,
+    const NativeGeneratedResponseApi* response_api=nullptr){
     using F=ScenePlaybackFixture;SpeechLifecycleFixture f(cb,n,finish,manager,tick,entity);float duration=99;
     if(resolver)f.bind_resolver(*resolver);
     if(preparation)f.bind_preparation(*preparation);
-    assert(n.sound(f.actor,f.sound,&f.full,&duration)==1&&duration==.1f);
+    ResponseDispatchFixture response;
+    if(response_api){
+        NativeGeneratedResponseBindings generated{};generated.generated=f.full;
+        auto& route=generated.response;route.context=static_cast<IntegratedSceneFixture*>(&f);route.manager=&f.session;route.scenes=f.life.runtime;
+        // Deliberately leave the legacy playback table empty.
+        route.owner=[](void* p,void* exp,void** out) noexcept -> int{
+            auto& x=SpeechLifecycleFixture::self(p);assert(F::word(exp,4)==F::ptr(x.actor));*out=x.actor;return 1;};
+        route.retain_sound=[](void* p,const char* text,const char** out) noexcept -> int{
+            auto& x=SpeechLifecycleFixture::self(p);assert(!std::strcmp(text,"test_response"));std::strcpy(x.sound,text);*out=x.sound;return 1;};
+        F::put(response.exp,4,F::ptr(f.actor));response.duration=.1f;response.put(0,static_cast<unsigned>(ResponseKind::Speak));
+        response.b.sound=nullptr;response.b.scene=nullptr;response.b.stop_scene=nullptr;response.b.scene_blocked=nullptr;
+        auto run=[&](const NativeGeneratedResponseBindings* binding){
+            return response_api->dispatch(response.exp,sizeof(response.exp),&response.b,binding,"TLK_IDLE",response.response,sizeof(response.response),&response.played);};
+        SceneManagerSession wrong_session{};auto wrong=generated;wrong.generated.lifecycle.manager=&wrong_session;
+        assert(run(&wrong)==0&&response.played==99&&!f.creates);response.expect({});
+        assert(run(&generated)==1&&response.played==1&&f.creates==1&&f.generated==1&&f.allocations==4);
+        response.expect({2,12,16,17,19});
+        response.response[4]='X';assert(!std::strcmp(f.sound,"test_response")&&F::word(f.scene,0x54c)==F::ptr(f.sound));
+    }else assert(n.sound(f.actor,f.sound,&f.full,&duration)==1&&duration==.1f);
     std::strcpy(reinterpret_cast<char*>(f.event+0x104),"72");
     unsigned result=99;
     assert(f.invoke(12,result)==1&&result==1&&!f.checked);
