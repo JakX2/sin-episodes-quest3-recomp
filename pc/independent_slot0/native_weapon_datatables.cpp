@@ -17,6 +17,7 @@
 #include "native_music_radio.h"
 #include "native_music_radio_map.h"
 #include <algorithm>
+#include "native_vehicle_sound.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4236,6 +4237,52 @@ int __cdecl music_map_input(HologramControl* c,const MusicRadioMapBindings* b,co
     return 0;
 }
 const MusicRadioMapApi music_map_api{version,sizeof(MusicRadioMapApi),&music_map_schema,&music_map_key,&music_map_precache,&music_map_spawn,&music_map_activate,&music_map_input};
+
+constexpr unsigned vehicle_sound_extent=0x848;
+const unsigned char* vehicle_sound_record(const void* vehicle,int index) noexcept {
+    const auto base=hologram_read<std::uint32_t>(vehicle,0x838);
+    if(!base||index<0||index>=65536||base>0xffffffffu-static_cast<unsigned>(index)*128u)return nullptr;
+    auto* record=reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(base)+static_cast<unsigned>(index)*128u);
+    return sin_independent::vgui_layout::Readable(record,128)?record:nullptr;
+}
+int __cdecl vehicle_sound_find(const void* vehicle,unsigned bytes,const char* group,const char* action,int index,int* found) noexcept {
+    if(!vehicle||bytes<vehicle_sound_extent||!sin_independent::vgui_layout::Readable(vehicle,vehicle_sound_extent)||!found)return 0;
+    char g[1024]{},a[1024]{},key[128]{};
+    if(!prop_key_read(group,g)||!prop_key_read(action,a))return 0;
+    std::snprintf(key,sizeof(key),"%s:%s:%d",g,a,index);
+    *found=-1;
+    const int count=hologram_read<int>(vehicle,0x844);
+    if(count>65536)return -1;
+    for(int i=0;i<count;++i){
+        const auto* record=vehicle_sound_record(vehicle,i);
+        if(!record||!std::memchr(record,0,64))return -1;
+        if(music_equal(reinterpret_cast<const char*>(record),key)){*found=i;break;}
+    }
+    return 1;
+}
+int __cdecl vehicle_sound_play(void* vehicle,unsigned bytes,const VehicleSoundBindings* b,const char* group,const char* action,int index) noexcept {
+    if(!vehicle||bytes<vehicle_sound_extent||!sin_independent::vgui_layout::Readable(vehicle,vehicle_sound_extent)||!b||!b->controller_scalar||!b->emit)return 0;
+    const auto h=*b;float scalar=0;
+    if(!h.controller_scalar(h.context,vehicle,&scalar))return -1;
+    // Original x87 branch accepts <=0.5 AND unordered.
+    if(scalar>0.5f)return 1;
+    int found=-1;
+    const auto status=vehicle_sound_find(vehicle,bytes,group,action,index,&found);
+    if(status!=1||found<0)return status;
+    const auto* record=vehicle_sound_record(vehicle,found);
+    if(!record||!std::memchr(record+64,0,64))return -1;
+    return h.emit(h.context,vehicle,reinterpret_cast<const char*>(record+64),0,0)?1:-1;
+}
+int __cdecl vehicle_sequence_play(void* vehicle,unsigned bytes,const VehicleSoundBindings* b,const char* name) noexcept {
+    if(!vehicle||!bytes||!b||!b->lookup_sequence||!b->set_sequence||!b->reset_sequence)return 0;
+    char key[128]{};
+    if(!prop_key_read(name,key))return 0;
+    const auto h=*b;int index=-1;
+    if(!h.lookup_sequence(h.context,vehicle,key,&index))return -1;
+    if(index<0)return 1;
+    return h.set_sequence(h.context,vehicle,index)&&h.reset_sequence(h.context,vehicle)?1:-1;
+}
+const VehicleSoundApi vehicle_sound_api{version,sizeof(VehicleSoundApi),&vehicle_sound_find,&vehicle_sound_play,&vehicle_sequence_play};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -6162,6 +6209,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::MusicRadi
 SiN_GetMusicRadioMapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(MusicRadioMapApi)?&music_map_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleSoundApi=_SiN_GetVehicleSoundApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleSoundApi* __cdecl
+SiN_GetVehicleSoundApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleSoundApi)?&vehicle_sound_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
