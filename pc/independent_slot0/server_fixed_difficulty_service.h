@@ -551,6 +551,54 @@ struct ARGrenadeApi {
 };
 using GetARGrenadeApi=const ARGrenadeApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(GrenadeEffect)==52);
+// Original in-game rifle secondary projectile path, with the existing
+// project transaction policy. The engine owns its ammo and entity shell;
+// native registry publication follows successful host commit.
+inline constexpr char rifle_launch_export_name[]="SiN_GetRifleGrenadeApi";
+inline constexpr std::uint32_t rifle_launch_version=1;
+enum RifleOwnerKind : std::uint32_t {RifleOwnerUnknown=0,RifleOwnerPlayer,RifleOwnerGrunt};
+enum RifleAmmoKind : std::uint32_t {RifleAmmoInvalid=0,RifleAmmoFinite,RifleAmmoUnknown};
+struct RifleLaunchObservation {
+    std::uint32_t owner_kind,live_owner_and_weapon,correct_owner,selected,
+        reload_active,holstered,grunt_authorized,ammo_kind;
+    std::int32_t ammo_remaining;
+};
+struct RifleLaunchInput {
+    MapEntityRef owner;
+    NpcSpread origin,direction;
+    float time;
+};
+// prepare success returns a fresh generation-safe identity of an
+// UNPUBLISHED engine shell. False means no staged shell exists.
+// commit false promises no publication or ammo debit; abort then
+// removes only that staged shell. Exceptions mean ownership uncertain.
+struct RifleLaunchHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *authorize)(void*,MapEntityRef,MapEntityRef,RifleLaunchObservation*);
+    int (SIN_FIXED_CALL *prepare)(void*,MapEntityRef,const char*,const char*,const GrenadeSpawn*,MapEntityRef*);
+    int (SIN_FIXED_CALL *commit)(void*,MapEntityRef,MapEntityRef,std::int32_t);
+    int (SIN_FIXED_CALL *abort)(void*,MapEntityRef);
+};
+enum RifleLaunchCode : std::uint32_t {
+    RifleRejected=0,RifleUnauthorized,RifleAmmoUnverified,RifleNoAmmo,
+    RifleInvalidInput,RiflePrepareRefused,RifleCapacityRefused,RifleCommitRefused,
+    RifleLaunched,RifleLaunchUncertain
+};
+struct RifleLaunchReport {
+    std::uint32_t code,prepared,attached,commit_attempted,committed,abort_attempted,aborted,uncertain;
+    MapEntityRef projectile;
+    float multiplier;
+    std::int32_t planned_debit;
+};
+struct RifleGrenadeApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *launch)(MapEntityRef,const RifleLaunchInput*,const RifleLaunchHost*,void*,RifleLaunchReport*) noexcept;
+    // 0=clear, 1=uncertain, -1=not a live spawned rifle. Uncertain
+    // launches require external investigation, not automated replay.
+    int (SIN_FIXED_CALL *uncertain)(MapEntityRef) noexcept;
+};
+using GetRifleGrenadeApi=const RifleGrenadeApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(RifleLaunchReport)==52);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

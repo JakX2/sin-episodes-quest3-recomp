@@ -968,6 +968,95 @@ static void test_ar_grenade(const a::ARGrenadeApi* api,const a::MapEntityApi* ma
     assert(api->detonate(g2,2,&host,&f,&report)&&report.code==a::GrenadeRejected&&f.effects.size()==4);
     assert(!api->observe_contact(g2,1)&&map->remove(g2)&&map->end_level(epoch)&&campaign->end_campaign());
 }
+struct RifleLaunchFixture {
+    const a::RifleGrenadeApi* launcher;
+    const a::ARGrenadeApi* grenade;
+    const a::MapEntityApi* map;
+    a::MapEntityRef rifle,owner,next;
+    a::RifleLaunchObservation auth{a::RifleOwnerPlayer,1,1,1,0,0,0,a::RifleAmmoFinite,3};
+    int prepares=0,commits=0,aborts=0,mode=0;
+    float expected_scale=2000.f;
+    static RifleLaunchFixture& get(void* c){return *static_cast<RifleLaunchFixture*>(c);}
+    static bool same(a::MapEntityRef x,a::MapEntityRef y){
+        return x.epoch==y.epoch&&x.index==y.index&&x.generation==y.generation;
+    }
+    static int SIN_FIXED_CALL authorize(void* c,a::MapEntityRef rifle,a::MapEntityRef owner,a::RifleLaunchObservation* out){
+        auto& f=get(c);assert(same(rifle,f.rifle)&&same(owner,f.owner));
+        assert(!f.map->remove(rifle));
+        *out=f.auth;return 1;
+    }
+    static int SIN_FIXED_CALL prepare(void* c,a::MapEntityRef owner,const char* classname,const char* model,
+            const a::GrenadeSpawn* spawn,a::MapEntityRef* ref){
+        auto& f=get(c);assert(same(owner,f.owner));++f.prepares;
+        assert(std::strcmp(classname,"grenade_ar")==0&&std::strcmp(model,"models/weapons/grenades/ar_grenade.mdl")==0);
+        assert(spawn->origin.x==1.f&&spawn->velocity.x==f.expected_scale&&spawn->velocity.y==0.f&&
+            spawn->velocity.z==0.f&&spawn->time==2.f);
+        assert(f.map->create(f.next,"grenade_ar")==a::MapRejected);
+        if(f.mode==1)return 0;
+        *ref=f.next;return 1;
+    }
+    static int SIN_FIXED_CALL commit(void* c,a::MapEntityRef ref,a::MapEntityRef owner,std::int32_t debit){
+        auto& f=get(c);assert(same(ref,f.next)&&same(owner,f.owner));++f.commits;
+        a::GrenadeSnapshot s{};
+        assert(!f.grenade->state(ref,&s)&&!f.map->remove(ref));
+        assert(debit==(f.auth.owner_kind==a::RifleOwnerPlayer?1:0));
+        if(f.mode==3)throw 1;
+        if(f.mode==2||f.mode==4)return 0;
+        f.auth.ammo_remaining-=debit;return 1;
+    }
+    static int SIN_FIXED_CALL abort(void* c,a::MapEntityRef ref){
+        auto& f=get(c);assert(same(ref,f.next));++f.aborts;
+        return f.mode!=4;
+    }
+};
+static void test_rifle_grenade(const a::RifleGrenadeApi* rifle,const a::ARGrenadeApi* grenade,
+        const a::MapEntityApi* map,const a::Api* api){
+    assert(rifle&&rifle->version==1&&rifle->size==sizeof(*rifle)&&api->begin_campaign(2));
+    const auto epoch=map->begin_level("rifle_grenade");assert(epoch);
+    const a::MapEntityRef weapon{epoch,1,1},owner{epoch,100,1};
+    assert(map->create(weapon,"weapon_assault_rifle")==a::MapApplied&&map->spawn(weapon)==a::MapApplied);
+    RifleLaunchFixture f{rifle,grenade,map,weapon,owner,{epoch,2,1}};
+    const a::RifleLaunchHost host{1,sizeof(a::RifleLaunchHost),&RifleLaunchFixture::authorize,
+        &RifleLaunchFixture::prepare,&RifleLaunchFixture::commit,&RifleLaunchFixture::abort};
+    a::RifleLaunchInput input{owner,{1.f,2.f,3.f},{1.f,0.f,0.f},2.f};
+    a::RifleLaunchReport report{};
+    auto fire=[&](){return rifle->launch(weapon,&input,&host,&f,&report);};
+    assert(rifle->uncertain(weapon)==0);
+    f.auth.selected=0;
+    assert(fire()&&report.code==a::RifleUnauthorized&&!f.prepares);
+    f.auth.selected=1;f.auth.ammo_kind=a::RifleAmmoUnknown;
+    assert(fire()&&report.code==a::RifleAmmoUnverified&&!f.prepares);
+    f.auth.ammo_kind=a::RifleAmmoFinite;f.auth.ammo_remaining=0;
+    assert(fire()&&report.code==a::RifleNoAmmo&&!f.prepares);
+    f.auth.ammo_remaining=3;input.time=std::numeric_limits<float>::infinity();
+    assert(fire()&&report.code==a::RifleInvalidInput&&!f.prepares);
+    input.time=2.f;f.mode=1;
+    assert(fire()&&report.code==a::RiflePrepareRefused&&f.prepares==1&&!f.commits);
+    f.mode=2;
+    assert(fire()&&report.code==a::RifleCommitRefused&&report.prepared&&report.attached&&
+        report.commit_attempted&&!report.committed&&report.aborted&&f.auth.ammo_remaining==3);
+    assert(map->count(epoch)==1&&map->create(f.next,"grenade_ar")==a::MapRejected);
+    f.next.generation=2;f.mode=0;
+    assert(fire()&&report.code==a::RifleLaunched&&report.committed&&report.planned_debit==1&&
+        f.auth.ammo_remaining==2&&map->count(epoch)==2);
+    a::GrenadeSnapshot state{};
+    assert(grenade->state(f.next,&state)&&state.armed&&state.velocity.x==2000.f&&state.next_think==2.1f);
+    const auto first=f.next;
+    f.next={epoch,3,1};f.expected_scale=1000.f;f.auth.owner_kind=a::RifleOwnerGrunt;
+    f.auth.grunt_authorized=0;
+    assert(fire()&&report.code==a::RifleUnauthorized);
+    f.auth.grunt_authorized=1;
+    assert(fire()&&report.code==a::RifleLaunched&&!report.planned_debit&&f.auth.ammo_remaining==2);
+    assert(grenade->state(f.next,&state)&&state.armed&&state.velocity.x==1000.f);
+    const auto second=f.next;
+    f.next={epoch,4,1};f.mode=3;
+    assert(fire()&&report.code==a::RifleLaunchUncertain&&report.uncertain&&report.commit_attempted&&!report.committed);
+    assert(grenade->state(f.next,&state)&&state.uncertain&&rifle->uncertain(weapon)==1);
+    const int calls=f.prepares;
+    assert(fire()&&report.code==a::RifleRejected&&f.prepares==calls);
+    assert(map->remove(first)&&map->remove(second)&&map->remove(f.next)&&map->remove(weapon));
+    assert(rifle->uncertain(weapon)==-1&&map->end_level(epoch)&&api->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -1810,7 +1899,15 @@ int main(int argc,char** argv){
     auto getGrenade=reinterpret_cast<a::GetARGrenadeApi>(dlsym(lib,a::grenade_export_name));
 #endif
     assert(getGrenade&&!getGrenade(0,sizeof(a::ARGrenadeApi))&&!getGrenade(1,0));
-    test_ar_grenade(getGrenade(a::grenade_version,sizeof(a::ARGrenadeApi)),map,api);
+    const auto* grenade=getGrenade(a::grenade_version,sizeof(a::ARGrenadeApi));
+    test_ar_grenade(grenade,map,api);
+#ifdef _WIN32
+    auto getRifle=reinterpret_cast<a::GetRifleGrenadeApi>(GetProcAddress(lib,a::rifle_launch_export_name));
+#else
+    auto getRifle=reinterpret_cast<a::GetRifleGrenadeApi>(dlsym(lib,a::rifle_launch_export_name));
+#endif
+    assert(getRifle&&!getRifle(0,sizeof(a::RifleGrenadeApi))&&!getRifle(1,0));
+    test_rifle_grenade(getRifle(a::rifle_launch_version,sizeof(a::RifleGrenadeApi)),grenade,map,api);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
 #else
