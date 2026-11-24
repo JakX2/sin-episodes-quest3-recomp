@@ -5939,7 +5939,7 @@ int __cdecl choreography_flex_block(void* event,unsigned bytes,const Choreograph
 }
 const ChoreographyFlexApi choreography_flex_api{version,sizeof(ChoreographyFlexApi),&choreography_flex_block};
 bool choreography_finalize_ready(const ChoreographyFinalizeBindings* b) noexcept {
-    return b&&b->storage&&b->missing_tag&&b->gesture_channel&&b->caption_channel;
+    return b&&b->storage&&b->missing_tag&&b->caption_channel;
 }
 bool choreography_finalize_storage(const ChoreographyFinalizeBindings& h,std::uint32_t word,unsigned need,void*& object) noexcept {
     unsigned n=0;object=nullptr;
@@ -6010,12 +6010,152 @@ int choreography_find_relative(void* parsed,const char* reference,const char* ta
         return 1;
     });
 }
+// Original 2210a330 orders type-6 events by their pre-reconciliation
+// start times. Equal keys enter the right branch (22108200/22107650).
+// Bounded native storage: reject unordered start keys before mutation;
+// the original RB tree's NaN placement is not a strict weak ordering.
+constexpr unsigned gesture_limit=4096;
+double gesture_span(const void* event) noexcept {
+    return hologram_read<std::uint32_t>(event,0x188)==0xbf800000u?0.0:
+        static_cast<double>(hologram_read<float>(event,0x188))-hologram_read<float>(event,0x184);
+}
+bool gesture_rows(void* event,const ChoreographyFinalizeBindings& h,void*& rows,int& count) noexcept {
+    count=hologram_read<int>(event,0x2f0);rows=nullptr;
+    return count>=0&&count<=static_cast<int>(gesture_limit)&&
+        (!count||choreography_finalize_storage(h,hologram_read<std::uint32_t>(event,0x2e4),count*0x8c,rows));
+}
+void* gesture_tag(void* rows,int count,unsigned char flag) noexcept {
+    for(int i=0;i<count;++i){
+        auto* row=static_cast<unsigned char*>(rows)+i*0x8c;
+        if(hologram_read<unsigned char>(row,0x84)&flag)return row;
+    }
+    return nullptr;
+}
+bool gesture_tag_owner(void* tag,const ChoreographyFinalizeBindings& h,void*& owner) noexcept {
+    owner=nullptr;const auto w=hologram_read<std::uint32_t>(tag,0x88);
+    return !w||choreography_finalize_storage(h,w,0x18c,owner);
+}
+// 2210f000: walk backwards, constrain each fraction to the running
+// ceiling, shrink spacing only after a clamp (min(.01, ceiling/(i+1))).
+void gesture_normalize(void* rows,int count) noexcept {
+    double ceiling=1.0;float spacing=.01f;
+    for(int i=count-1;i>=0;--i){
+        auto* row=static_cast<unsigned char*>(rows)+i*0x8c;
+        double f=hologram_read<float>(row,0x80);
+        if(ceiling<f){
+            hologram_write(row,0x80,static_cast<float>(ceiling));f=ceiling;
+            const double next=ceiling/(i+1);spacing=static_cast<float>(next<.01?next:.01);
+        }
+        const double next=f-spacing;ceiling=next>0?next:0;
+    }
+}
+// 221105a0 calls 2210fbb0 for bank zero only; that routine trims
+// both banks. Ownerless tracks are sorted but not trimmed (2210dbd0).
+bool gesture_refresh(void* event,const ChoreographyFinalizeBindings& h) noexcept {
+    const int count=hologram_read<int>(event,0x318);void* list=nullptr;
+    if(count<0||count>static_cast<int>(gesture_limit)||
+       (count&&!choreography_finalize_storage(h,hologram_read<std::uint32_t>(event,0x30c),count*4,list)))return false;
+    for(int i=0;i<count;++i){
+        const auto w=hologram_read<std::uint32_t>(list,i*4);if(!w)continue;
+        void* track=nullptr;if(!choreography_finalize_storage(h,w,0x50,track))return false;
+        const auto ownerword=hologram_read<std::uint32_t>(track,0x4c);void* owner=nullptr;
+        if(ownerword&&!choreography_finalize_storage(h,ownerword,0x18c,owner))return false;
+        const float duration=owner?static_cast<float>(gesture_span(owner)):0;
+        for(unsigned bank=0;bank<2;++bank){
+            auto* v=static_cast<unsigned char*>(track)+0x14+bank*0x14;
+            int n=hologram_read<int>(v,0xc);void* data=nullptr;
+            if(n<0||n>static_cast<int>(gesture_limit)||hologram_read<int>(v,4)<n||
+               (n&&!choreography_finalize_storage(h,hologram_read<std::uint32_t>(v,0),n*12,data)))return false;
+            auto* rows=static_cast<unsigned char*>(data);
+            if(!bank)for(int a=0;a<n;++a)for(int b=a+1;b<n;++b){
+                auto* l=rows+a*12;auto* r=rows+b*12;
+                if(hologram_read<float>(l,4)>hologram_read<float>(r,4)){
+                    unsigned char tmp[12];std::memcpy(tmp,l,12);std::memcpy(l,r,12);std::memcpy(r,tmp,12);
+                }
+            }
+            if(owner)for(int j=n-1;j>=0;--j){
+                const auto t=hologram_read<float>(rows+j*12,4);
+                if(t<0||t>duration){
+                    if(j+1<n)std::memmove(rows+j*12,rows+(j+1)*12,(n-j-1)*12);
+                    hologram_write(v,0xc,--n);
+                }
+            }
+        }
+    }
+    return true;
+}
+bool choreography_gesture_channel(void* channel,const ChoreographyFinalizeBindings& h) noexcept {
+    const int count=hologram_read<int>(channel,0x90);
+    if(count<=0)return count==0;
+    if(count>static_cast<int>(gesture_limit))return false;
+    struct Entry {void* event;float start;unsigned ordinal;};
+    Entry entries[gesture_limit];unsigned used=0;
+    for(int i=0;i<count;++i){
+        void* event=nullptr;if(!choreography_finalize_child(h,channel,0x84,i,0x3c0,event))return false;
+        if(!event||hologram_read<unsigned>(event,0)!=6)continue;
+        const float start=hologram_read<float>(event,0x184);
+        if(std::isnan(start))return false;
+        entries[used++]={event,start,static_cast<unsigned>(i)};
+    }
+    std::sort(entries,entries+used,[](const Entry& a,const Entry& b) noexcept {
+        if(a.start<b.start)return true;
+        if(b.start<a.start)return false;
+        return a.ordinal<b.ordinal;
+    });
+    if(!used)return true;
+    // 2210b390: reset first gesture start, clamp an existing end only
+    // when it is below the new start; do not refresh flex tracks here.
+    auto* previous=entries[0].event;
+    hologram_write(previous,0x184,0.f);
+    if(hologram_read<std::uint32_t>(previous,0x188)!=0xbf800000u&&hologram_read<float>(previous,0x188)<0)
+        hologram_write(previous,0x188,0.f);
+    for(unsigned i=1;i<used;++i){
+        auto* current=entries[i].event;
+        void *inrows=nullptr,*outrows=nullptr;int in_count=0,out_count=0;
+        if(!gesture_rows(current,h,inrows,in_count)||!gesture_rows(previous,h,outrows,out_count))return false;
+        auto* entry=gesture_tag(inrows,in_count,4);auto* exit=gesture_tag(outrows,out_count,8);
+        if(entry&&exit){
+            void* owner=nullptr;if(!gesture_tag_owner(entry,h,owner))return false;
+            const float absolute=owner?static_cast<float>(hologram_read<float>(owner,0x184)+gesture_span(owner)*hologram_read<float>(entry,0x80)):0.f;
+            const float old_span=static_cast<float>(gesture_span(previous));
+            const float end=static_cast<float>(absolute+(1.0-hologram_read<float>(exit,0x80))*old_span);
+            const float old_start=hologram_read<float>(previous,0x184),old_end=hologram_read<float>(previous,0x188);
+            // 2210ecf0 remaps the old playback fractions before changing
+            // the end; finite values clamp to [0,1], unordered survives.
+            if(old_end!=end){
+                const float new_span=end-old_start;const double reciprocal=1.0/new_span;
+                for(int j=0;j<out_count;++j){
+                    auto* row=static_cast<unsigned char*>(outrows)+j*0x8c;
+                    double f=hologram_read<float>(row,0x80)*gesture_span(previous)*reciprocal;
+                    if(f>1)f=1;else if(f<0)f=0;
+                    hologram_write(row,0x80,static_cast<float>(f));
+                }
+            }
+            // 22110f20 stores end, clamps unless exact -1, refreshes
+            // flex samples if the original requested end differs.
+            hologram_write(previous,0x188,end);
+            if(end!=-1.f){
+                if(end<old_start)hologram_write(previous,0x188,old_start);
+                if(old_end!=end&&!gesture_refresh(previous,h))return false;
+            }
+            // 2210c550 recomputes the prior exit's fraction using its
+            // owner, even when the owner span is zero (IEEE division).
+            if(!gesture_tag_owner(exit,h,owner))return false;
+            if(owner)hologram_write(exit,0x80,static_cast<float>((static_cast<double>(absolute)-hologram_read<float>(owner,0x184))/gesture_span(owner)));
+            gesture_normalize(inrows,in_count);gesture_normalize(outrows,out_count);
+        }
+        previous=current;
+    }
+    return true;
+}
 int __cdecl choreography_finalize_stage(void* parsed,unsigned bytes,ChoreographyTextFinalize stage,const ChoreographyFinalizeBindings* b) noexcept {
     if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_finalize_ready(b)||static_cast<unsigned>(stage)>2)return 0;
     const auto h=*b;
     if(stage!=ChoreographyTextFinalize::RelativeTags){
         return choreography_visit_channels(parsed,h,[&](void* channel){
-            return (stage==ChoreographyTextFinalize::GestureReconcile?h.gesture_channel(h.context,channel):h.caption_channel(h.context,channel))?1:-1;
+            if(stage==ChoreographyTextFinalize::GestureReconcile)
+                return (h.gesture_channel?h.gesture_channel(h.context,channel)!=0:choreography_gesture_channel(channel,h))?1:-1;
+            return h.caption_channel(h.context,channel)?1:-1;
         });
     }
     return choreography_visit_linked_events(parsed,h,[&](void* event){

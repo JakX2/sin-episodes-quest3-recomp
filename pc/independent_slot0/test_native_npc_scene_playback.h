@@ -2475,6 +2475,8 @@ struct ChoreographyFinalizeFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char parsed[0x220]{},actor[0x118]{},channels[2][0x9c]{},events[4][0x3c0]{},tag[0x88]{};
     std::uint32_t actors[2]{},channel_words[3]{},event_words[2][3]{};
+    alignas(4) unsigned char gesture_tags[2][2][0x8c]{},gesture_track[0x50]{},gesture_samples[2][3][12]{};
+    std::uint32_t gesture_tracks[1]{};
     ChoreographyFinalizeBindings b{};unsigned missing=0,gestures=0,captions=0;
     static ChoreographyFinalizeFixture& self(void* p){return *static_cast<ChoreographyFinalizeFixture*>(p);}
     ChoreographyFinalizeFixture(){
@@ -2502,6 +2504,10 @@ struct ChoreographyFinalizeFixture {
             if(w==F::ptr(f.actor)){*out=f.actor;*n=sizeof(f.actor);return 1;}
             if(w==F::ptr(f.channel_words)){*out=f.channel_words;*n=sizeof(f.channel_words);return 1;}
             if(w==F::ptr(f.tag)){*out=f.tag;*n=sizeof(f.tag);return 1;}
+            if(w==F::ptr(f.gesture_track)){*out=f.gesture_track;*n=sizeof(f.gesture_track);return 1;}
+            if(w==F::ptr(f.gesture_tracks)){*out=f.gesture_tracks;*n=sizeof(f.gesture_tracks);return 1;}
+            for(auto& t:f.gesture_tags)if(w==F::ptr(t)){*out=t;*n=sizeof(t);return 1;}
+            for(auto& t:f.gesture_samples)if(w==F::ptr(t)){*out=t;*n=sizeof(t);return 1;}
             for(auto& c:f.channels)if(w==F::ptr(c)){*out=c;*n=sizeof(c);return 1;}
             for(auto& v:f.event_words)if(w==F::ptr(v)){*out=v;*n=sizeof(v);return 1;}
             for(auto& e:f.events)if(w==F::ptr(e)){*out=e;*n=sizeof(e);return 1;}
@@ -2520,6 +2526,43 @@ inline void check_choreography_finalize(const ChoreographyFinalizeApi& api,const
     assert(F::word(f.events[0],0x184)==0x41300000u&&F::word(f.events[0],0x188)==0x41500000u&&f.events[0][0x1b1]);
     assert(F::word(f.events[1],0x184)==0x41300000u&&F::word(f.events[1],0x188)==0xbf800000u);
     assert(!f.events[3][0x1b1]&&!f.events[3][0x1b2]&&!f.events[3][0x232]&&F::word(f.events[3],0x184)==0x40000000u);
+    // Native gesture fallback: channel order is reverse chronology; only
+    // playback rows change. Prior end grows to 6.5 and exit moves to 5/6.5.
+    ChoreographyFinalizeFixture native;
+    native.b.gesture_channel=nullptr;
+    auto* prior=native.events[1];auto* next=native.events[0];
+    F::fl(prior,0x184,2);F::fl(prior,0x188,6);
+    F::fl(next,0x184,4);F::fl(next,0x188,8);
+    for(unsigned i=0;i<2;++i){
+        auto* e=i?next:prior;auto* rows=native.gesture_tags[i];
+        F::put(e,0x2e4,F::ptr(rows));F::put(e,0x2f0,2);
+        for(auto& row:native.gesture_tags[i])F::put(row,0x88,F::ptr(e));
+    }
+    F::fl(native.gesture_tags[0][0],0x80,.5f);
+    F::fl(native.gesture_tags[0][1],0x80,.75f);native.gesture_tags[0][1][0x84]=8;
+    F::fl(native.gesture_tags[1][0],0x80,.25f);native.gesture_tags[1][0][0x84]=4;
+    F::fl(native.gesture_tags[1][1],0x80,.9f);
+    native.gesture_tracks[0]=F::ptr(native.gesture_track);
+    F::put(prior,0x30c,F::ptr(native.gesture_tracks));F::put(prior,0x318,1);
+    F::put(native.gesture_track,0x4c,F::ptr(prior));
+    for(unsigned bank=0;bank<2;++bank){
+        auto* v=native.gesture_track+0x14+bank*0x14;
+        F::put(v,0,F::ptr(native.gesture_samples[bank]));F::put(v,4,3);F::put(v,0xc,3);
+        F::fl(native.gesture_samples[bank][0],4,3);
+        F::fl(native.gesture_samples[bank][1],4,1);
+        F::fl(native.gesture_samples[bank][2],4,7);
+    }
+    assert(api.stage(native.parsed,sizeof(native.parsed),ChoreographyTextFinalize::GestureReconcile,&native.b)==1);
+    assert(F::word(prior,0x184)==0&&F::word(prior,0x188)==0x40d00000u);
+    assert(F::word(next,0x184)==0x40800000u&&F::word(next,0x188)==0x41000000u);
+    assert(F::word(native.gesture_tags[0][0],0x80)==0x3eec4ec5u);
+    assert(F::word(native.gesture_tags[0][1],0x80)==0x3f44ec4fu);
+    assert(F::word(native.gesture_track,0x20)==2&&F::word(native.gesture_track,0x34)==2);
+    assert(F::word(native.gesture_samples[0][0],4)==0x3f800000u&&F::word(native.gesture_samples[1][0],4)==0x40400000u);
+    // NaN start is rejected before any start reset.
+    F::put(prior,0x184,0x7fc00000u);
+    assert(api.stage(native.parsed,sizeof(native.parsed),ChoreographyTextFinalize::GestureReconcile,&native.b)==-1);
+    assert(F::word(prior,0x184)==0x7fc00000u);
     // Flat event vector intentionally empty, so success proves linked traversal.
     assert(!F::word(f.parsed,0xc));
     PortableFlexGrammarFixture g;PortableVcdFinalizedGrammarBindings b{};

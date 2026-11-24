@@ -1056,7 +1056,8 @@ struct ChoreographyFinalizeBindings {
     int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
     // Original 221111b0 diagnostic for unresolved relative tag.
     int (__cdecl *missing_tag)(void*,void* parsed,const char* event_name,const char* reference,const char* tag) noexcept;
-    // Recovered channel traversal; inner reconciliation algorithms remain hosted.
+    // Optional legacy gesture override. Null selects native 2210a330.
+    // Caption grouping remains hosted. Existing ABI layout unchanged.
     int (__cdecl *gesture_channel)(void*,void*) noexcept;
     int (__cdecl *caption_channel)(void*,void*) noexcept;
 };
