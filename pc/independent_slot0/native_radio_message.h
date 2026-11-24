@@ -34,4 +34,34 @@ struct RadioMessageApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetRadioMessageApi=const RadioMessageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char radio_playback_export[]="SiN_GetRadioPlaybackApi";
+struct RadioPlaybackBindings {
+    RadioBindings message;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *participant)(void*,void* player,unsigned*) noexcept;
+    // Existing recipient/audio service. Original channel 4, volume 1,
+    // recipient filter parameter .8; returns actual duration.
+    int (__cdecl *emit)(void*,void* player,const char* sound,int channel,float volume,float filter_parameter,float* duration) noexcept;
+    // Original 22288d70 delivery helper. Host handles exactly one
+    // connected player and PoliceRadioMessage transport.
+    int (__cdecl *notify)(void*,unsigned active,int priority,const char* speaker) noexcept;
+};
+struct RadioPlaybackControl {
+    RadioDispatcher* state;
+    unsigned busy=0,blocked=0;
+    unsigned input_latch=0; // shared per server, original 2259e7c8
+};
+struct RadioPlaybackApi {
+    std::uint32_t version,size;
+    // Request kind3 only when stage6 (original 222e4290).
+    int (__cdecl *request)(RadioPlaybackControl*) noexcept;
+    // Original player button words +938,+93c,+940; preserve latch
+    // before scheduler tick. Other player frame work remains host-owned.
+    int (__cdecl *player_input)(RadioPlaybackControl*,unsigned word938,unsigned word93c,unsigned word940) noexcept;
+    int (__cdecl *tick)(RadioPlaybackControl*,const RadioPlaybackBindings*) noexcept;
+    int (__cdecl *acknowledge)(RadioPlaybackControl*) noexcept;
+};
+using GetRadioPlaybackApi=const RadioPlaybackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
