@@ -525,6 +525,12 @@ int main(int argc,char** argv){
     assert(integratedScene&&!getIntegratedScene(0,sizeof(tables::IntegratedScenePlaybackApi))&&!getIntegratedScene(1,0));
     tables::test::check_integrated_scene(*integratedScene,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
     std::puts("PASS native generated scene from activation through manager tick and cleanup");
+    const auto getIntegratedResponse=reinterpret_cast<tables::GetIntegratedResponseApi>(GetProcAddress(server,tables::integrated_response_export));
+    assert(getIntegratedResponse&&!GetProcAddress(client,tables::integrated_response_export));
+    const auto* integratedResponse=getIntegratedResponse(1,sizeof(tables::IntegratedResponseApi));
+    assert(integratedResponse&&!getIntegratedResponse(0,sizeof(tables::IntegratedResponseApi))&&!getIntegratedResponse(1,0));
+    tables::test::check_integrated_response(*integratedResponse,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
+    std::puts("PASS native response through integrated scene activation and manager cleanup");
 
 
 
