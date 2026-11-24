@@ -1144,7 +1144,7 @@ inline void check_scene_actor_events(const SceneActorEventsApi& api){
 
 
 struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
-    alignas(4) unsigned char npc_memory[0x604]{},event_records[2][0x40]{};
+    alignas(4) unsigned char npc_memory[0x103c]{},event_records[2][0x40]{};
     std::uint32_t scene_refs[2]{};
     NativeGeneratedLifecycleBindings full{};
     const NativeGeneratedLifecycleApi& api;
@@ -1543,6 +1543,50 @@ inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const Native
     assert(manager.destroy(&f.control,&f.manager_life)==1);
     F::put(f.scene,0x414,0);result=99;
     assert(cb.invoke(f.scene+0x410,8,nullptr,0,12,0,nullptr,0,nullptr,0,nullptr,&result)==1&&result==1);
+}
+
+inline void check_native_generated_map_dialogue(const NativeGeneratedMapDialogueApi& map_api,const SceneSpeechCallbackApi& cb,
+    const NativeGeneratedLifecycleApi& n,const SceneFinishApi& finish,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,
+    const SceneEntityLifecycleApi& entity,const ResolvedSceneActorApi& resolver,const SceneSpeechPreparationApi& preparation,
+    const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record){
+    using F=ScenePlaybackFixture;
+    SpeechLifecycleFixture f(cb,n,finish,manager,tick,entity);f.bind_resolver(resolver);f.bind_preparation(preparation);
+    CountDialogueFixture count(timing,record);
+    count.ctrl={f.npc_memory,sizeof(f.npc_memory)};
+    F::put(f.npc_memory,0xc18,F::ptr(f.npc_memory+0x1000));
+    count.pipeline.expected_concept="TLK_INTERROGATE_COCKY";
+    NativeGeneratedResponseBindings route{};route.generated=f.full;
+    route.response=integrated_npc_fixture_bindings(f,count.pipeline,f.npc_memory);
+    route.response.playback={}; // no legacy generated-scene path
+    count.b.speak=count.pipeline.b;
+    count.b.resolve=[](void* p,std::uint32_t w,void** out) noexcept -> int{
+        auto& x=CountDialogueFixture::get(p);assert(w==0x1004&&x.ctrl.busy);*out=x.ctrl.object;return 1;};
+    count.b.expeditor=[](void* p,void* npc,void** out,unsigned* bytes) noexcept -> int{
+        auto& x=CountDialogueFixture::get(p);assert(npc==x.ctrl.object&&x.ctrl.busy);++x.accessors;*out=x.pipeline.exp;*bytes=sizeof(x.pipeline.exp);return 1;};
+    NpcMapSession session{};NpcMapBindings map{};NpcMapDialogueBindings dialogue{};dialogue.count=count.b;
+    auto observe=[&](const NativeGeneratedResponseBindings& b){return map_api.observe(NpcMapKind::Count,&count.ctrl,&session,&map,&dialogue,nullptr,&b,count.obs,sizeof(count.obs));};
+    SceneManagerSession other{};auto wrong=route;wrong.generated.lifecycle.manager=&other;
+    assert(observe(wrong)==0&&!count.accessors&&!f.creates);
+    assert(observe(route)==1&&F::word(f.npc_memory,0x1014)==1&&!count.pipeline.sounds&&count.pipeline.notifications==1);
+    assert(f.creates==1&&f.allocations==4&&f.outputs==1);
+    std::strcpy(reinterpret_cast<char*>(f.event+0x104),"72");
+    for(unsigned i=0;i<4;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
+    assert(f.emitted==1&&f.captions==1&&f.ended==1&&f.finished==1&&f.destroyed==1&&!f.scene_live&&!F::word(f.manager,0x3a0));
+    assert(ResponseSpeakFixture::destroy(&count.pipeline,count.pipeline.pool[0]));
+    assert(manager.destroy(&f.control,&f.manager_life)==1);
+    // Jessica's original cooldown and no-match path must not create scenes.
+    CompanionTalkFixture j(timing,record);HologramControl jc{j.npc,sizeof(j.npc)};
+    alignas(4) unsigned char obs[0x5ec]{};obs[0x300]=1;obs[0x18+0x108]=1;
+    auto& jb=dialogue.jessica;jb.context=&j;jb.talk=j.b;jb.cooldown=&j.state;jb.semaphore=&j.pipeline.sem;
+    jb.clock=[](void* p,float* out) noexcept -> int{*out=CompanionTalkFixture::get(p).pipeline.now;return 1;};
+    jb.criteria=[](void*,const void*,float,CountCriteria* out) noexcept -> int{
+        std::strcpy(reinterpret_cast<char*>(out->bytes),"part:fixture");return 1;};
+    j.pipeline.expected_concept="TLK_PLLOOKING";j.pipeline.expected_modifiers="part:fixture";j.pipeline.has_match=false;
+    F::put(j.pipeline.exp,4,F::ptr(j.npc));j.state.global[0]=20;
+    auto look=[&](){return map_api.observe(NpcMapKind::Jessica,&jc,&session,&map,&dialogue,nullptr,&route,obs,sizeof(obs));};
+    assert(look()==1&&session.attention.looking==10&&!j.pipeline.allocations);
+    j.pipeline.now=14;j.state.global[0]=0;
+    assert(look()==1&&session.attention.looking==14&&j.pipeline.allocations==1&&!j.pipeline.sounds&&f.creates==1);
 }
 
 struct SceneActorCacheFixture {

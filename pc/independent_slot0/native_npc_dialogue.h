@@ -60,6 +60,14 @@ struct IntegratedNpcMapDialogueApi {
         const TalkManagerRuntimeBindings*,const IntegratedNpcMapDialogueBindings*,const void*,unsigned) noexcept;
 };
 using GetIntegratedNpcMapDialogueApi=const IntegratedNpcMapDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_generated_map_dialogue_export[]="SiN_GetNativeGeneratedMapDialogueApi";
+struct NativeGeneratedMapDialogueApi {
+    std::uint32_t version,size;
+    // Non-raw Speak uses native generation; named VCD retains integrated playback.
+    int (__cdecl *observe)(NpcMapKind,HologramControl*,NpcMapSession*,const NpcMapBindings*,const NpcMapDialogueBindings*,
+        const TalkManagerRuntimeBindings*,const NativeGeneratedResponseBindings*,const void*,unsigned) noexcept;
+};
+using GetNativeGeneratedMapDialogueApi=const NativeGeneratedMapDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 }
