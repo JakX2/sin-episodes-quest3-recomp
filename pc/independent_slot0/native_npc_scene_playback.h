@@ -314,6 +314,35 @@ struct IntegratedNpcDialogueApi {
     int (__cdecl *count)(HologramControl*,const CountDialogueBindings*,const ResponseChoreographyBindings*,const SceneEntityLifecycleBindings*,const void*,unsigned) noexcept;
 };
 using GetIntegratedNpcDialogueApi=const IntegratedNpcDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char generated_scene_export[]="SiN_GetGeneratedSceneApi";
+enum class GeneratedSceneChild:unsigned {Actor,Channel,Event};
+enum class GeneratedSceneWarning:unsigned {Duration,SceneAllocation,ChildAllocation};
+struct GeneratedSceneBindings {
+    void* context;
+    // Actor virtual +1c returns a model name word; null result means "".
+    int (__cdecl *model_name)(void*,void* actor,const char**) noexcept;
+    int (__cdecl *duration)(void*,const char* sound,const char* model,float*) noexcept;
+    int (__cdecl *warning)(void*,GeneratedSceneWarning,const char* sound) noexcept;
+    // Fresh original-compatible constructors. Child callback allocates,
+    // constructs AND appends to the corresponding parsed vector even if null.
+    int (__cdecl *create_parsed)(void*,void* callback,void**,unsigned*) noexcept;
+    int (__cdecl *create_child)(void*,void* parsed,GeneratedSceneChild,void**,unsigned*) noexcept;
+    // Resolve scene+394 string word. A zero word bypasses the callback.
+    int (__cdecl *scene_name)(void*,std::uint32_t,const char**) noexcept;
+    // Append channel to actor or event to channel; parent owns the vector.
+    int (__cdecl *append)(void*,GeneratedSceneChild,void* parent,void* child) noexcept;
+    // Consumes parsed allocation and its child vectors on invocation.
+    int (__cdecl *destroy)(void*,void* parsed) noexcept;
+    // Live substitute for original 221a17b0 debug-print callback.
+    std::uint32_t diagnostic_word;
+};
+struct GeneratedSceneApi {
+    std::uint32_t version,size;
+    // Original 221a3c30. Normal missing duration/allocation returns 1
+    // with zero output. Transport failure returns -1, no output committed.
+    int (__cdecl *generate)(void* scene,unsigned bytes,void* actor,const char* sound,const GeneratedSceneBindings*,std::uint32_t*) noexcept;
+};
+using GetGeneratedSceneApi=const GeneratedSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
