@@ -295,6 +295,14 @@ struct IntegratedScenePlaybackApi {
     int (__cdecl *sound)(void* npc,const char*,const NpcScenePlaybackBindings*,const SceneEntityLifecycleBindings*,float*) noexcept;
 };
 using GetIntegratedScenePlaybackApi=const IntegratedScenePlaybackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char integrated_response_export[]="SiN_GetIntegratedResponseApi";
+struct IntegratedResponseApi {
+    std::uint32_t version,size;
+    // Interruption and activation must share one scene-manager session.
+    int (__cdecl *dispatch)(void*,unsigned,const ResponseDispatchBindings*,const ResponseChoreographyBindings*,const SceneEntityLifecycleBindings*,const char*,void*,unsigned,unsigned*) noexcept;
+    int (__cdecl *speak)(void*,unsigned,const ResponseSpeakBindings*,const ResponseChoreographyBindings*,const SceneEntityLifecycleBindings*,const char*,const char*,unsigned*) noexcept;
+};
+using GetIntegratedResponseApi=const IntegratedResponseApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

@@ -754,4 +754,35 @@ inline void check_integrated_scene(const IntegratedScenePlaybackApi& api,const S
     assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
 }
 
+
+inline void check_integrated_response(const IntegratedResponseApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity){
+    using F=ScenePlaybackFixture;
+    IntegratedSceneFixture f(manager,tick,entity);ResponseDispatchFixture response;
+    struct Context {IntegratedSceneFixture* scene;ResponseDispatchFixture* response;unsigned retained=0;};
+    Context ctx{&f,&response};
+    ResponseChoreographyBindings b{};b.context=&ctx;b.playback=f.play;b.manager=&f.session;b.scenes=f.life.runtime;
+    b.owner=[](void* p,void* exp,void** out) noexcept -> int{
+        auto& c=*static_cast<Context*>(p);assert(exp==c.response->exp);*out=&c.scene->npc;return 1;};
+    b.retain_sound=[](void* p,const char* name,const char** out) noexcept -> int{
+        auto& c=*static_cast<Context*>(p);assert(!std::strcmp(name,"test_response"));
+        std::strcpy(c.scene->sound,name);*out=c.scene->sound;++c.retained;return 1;};
+    F::put(response.exp,4,F::ptr(&f.npc));response.duration=.1f;
+    response.put(0,static_cast<unsigned>(ResponseKind::Speak));
+    response.b.sound=nullptr;response.b.scene=nullptr;response.b.stop_scene=nullptr;response.b.scene_blocked=nullptr;
+    auto run=[&](const SceneEntityLifecycleBindings* life){return api.dispatch(response.exp,sizeof(response.exp),&response.b,&b,life,
+        "TLK_IDLE",response.response,sizeof(response.response),&response.played);};
+    SceneManagerSession other{};auto wrong=f.life;wrong.manager=&other;
+    assert(run(&wrong)==0&&response.played==99&&!f.creates&&!ctx.retained);response.expect({});
+    assert(run(nullptr)==0&&response.played==99);response.expect({});
+    assert(run(&f.life)==1&&response.played==1&&ctx.retained==1);
+    response.expect({2,12,16,17,19});
+    assert(!b.playback.activate&&f.generated==1&&f.started==1&&F::word(f.manager,0x3a0)==1);
+    assert(F::word(f.scene,0x54c)==F::ptr(f.sound));
+    response.response[4]='X';assert(!std::strcmp(f.sound,"test_response"));
+    for(unsigned i=0;i<4;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
+    assert(f.steps==4&&f.finished==1&&f.destroyed==1&&!f.scene_live&&!F::word(f.manager,0x3a0));
+    assert(manager.tick(&f.control,&f.manager_tick)==1&&f.steps==4);
+    assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
+}
+
 }
