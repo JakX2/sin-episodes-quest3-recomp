@@ -2602,3 +2602,19 @@ else()
 endif()
 add_test(NAME sin_pc_fixed_metric_bridge_phase664
   COMMAND $<TARGET_FILE:sin_pc_fixed_metric_bridge_phase664_tests>)
+
+# Phase665: original CInfoChallenge source model under native Win32 x86.
+add_executable(sin_pc_info_challenge_phase665_tests
+  ../../tests/test_info_challenge_phase665.cpp)
+target_link_libraries(sin_pc_info_challenge_phase665_tests PRIVATE
+  sin_pc_fixed_difficulty_phase663)
+set_target_properties(sin_pc_info_challenge_phase665_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_info_challenge_phase665_tests sin_pc_info_challenge_phase665_tests)
+if(MSVC)
+  target_compile_options(sin_pc_info_challenge_phase665_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_info_challenge_phase665_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_info_challenge_phase665
+  COMMAND $<TARGET_FILE:sin_pc_info_challenge_phase665_tests>)
