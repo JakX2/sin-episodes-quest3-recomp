@@ -477,6 +477,13 @@ int main(int argc,char** argv){
     assert(sceneState&&!getSceneState(0,sizeof(tables::SceneStateApi))&&!getSceneState(1,0));
     tables::test::check_scene_state(*sceneState);
     std::puts("PASS native choreography scene pause, resume, completion and wait state");
+    const auto getSceneManagerTick=reinterpret_cast<tables::GetSceneManagerTickApi>(GetProcAddress(server,tables::scene_manager_tick_export));
+    assert(getSceneManagerTick&&!GetProcAddress(client,tables::scene_manager_tick_export));
+    const auto* sceneManagerTick=getSceneManagerTick(1,sizeof(tables::SceneManagerTickApi));
+    assert(sceneManagerTick&&!getSceneManagerTick(0,sizeof(tables::SceneManagerTickApi))&&!getSceneManagerTick(1,0));
+    tables::test::check_scene_manager_tick(*sceneManagerTick);
+    std::puts("PASS native scene manager construction, mutation-aware tick and destruction");
+
 
 
 
