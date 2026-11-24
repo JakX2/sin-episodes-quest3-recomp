@@ -1164,4 +1164,29 @@ struct PoisonHudApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetPoisonHudApi=const PoisonHudApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase731: shared SDK-defined CVGuiScreenPanel command dispatch.
+inline constexpr char screen_command_export[]="SiN_GetScreenCommandApi";
+struct ScreenCommandBindings {
+    void* context;
+    int (__cdecl *create_event)(void*,const char* name,unsigned force,void**) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t packed_handle,void**) noexcept;
+    int (__cdecl *entity_index)(void*,void* screen,int*) noexcept;
+    int (__cdecl *set_int)(void*,void* event,const char* key,int value) noexcept;
+    int (__cdecl *set_string)(void*,void* event,const char* key,const char* value) noexcept;
+    // Fire consumes the event even on reported failure. Before Fire,
+    // discard releases any created event on a failed setup path.
+    int (__cdecl *fire)(void*,void* event,unsigned local_only) noexcept;
+    void (__cdecl *discard)(void*,void* event) noexcept;
+    int (__cdecl *base_command)(void*,void* panel,const char* command) noexcept;
+};
+struct ScreenCommandApi {
+    std::uint32_t version,size;
+    // Uses actual panel handle +d8. Resolver must check index/serial
+    // and supply a live, typed screen throughout dispatch. Stale
+    // resolution is a guarded failure, not the original null deref.
+    int (__cdecl *command)(HologramControl*,const ScreenCommandBindings*,const char*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetScreenCommandApi=const ScreenCommandApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

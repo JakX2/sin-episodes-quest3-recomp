@@ -2979,4 +2979,83 @@ inline void check_poison_gas(const PoisonGasApi& api,const PropContainerApi& con
     assert(think()==0&&api.acknowledge(&ctrl));expect({});
 }
 
+struct GenericScreenFixture {
+    HologramControl* panel=nullptr;
+    HologramControl* dispenser=nullptr;
+    DispInputFixture* server=nullptr;
+    const DispenserInputApi* api=nullptr;
+    const DispenserInputBindings* bindings=nullptr;
+    unsigned events[16]{},count=0,fail=0;
+    bool missing=false,stale=false,owned=false,deliver=true;
+    int screen=0,token=0,index=19;
+    char command[256]{};
+    bool push(unsigned n){assert(panel->busy&&count<16);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl gs_create(void* ctx,const char* name,unsigned force,void** out) noexcept {
+    auto& f=*static_cast<GenericScreenFixture*>(ctx);assert(!std::strcmp(name,"button_press")&&force==1&&!f.owned);
+    f.owned=!f.missing;*out=f.owned?&f.token:nullptr;return f.push(1);
+}
+inline int __cdecl gs_resolve(void* ctx,std::uint32_t handle,void** out) noexcept {
+    auto& f=*static_cast<GenericScreenFixture*>(ctx);assert(handle==0x123003);
+    *out=f.stale?nullptr:&f.screen;return f.push(2);
+}
+inline int __cdecl gs_index(void* ctx,void* screen,int* out) noexcept {
+    auto& f=*static_cast<GenericScreenFixture*>(ctx);assert(screen==&f.screen);*out=f.index;return f.push(3);
+}
+inline int __cdecl gs_int(void* ctx,void* event,const char* key,int value) noexcept {
+    auto& f=*static_cast<GenericScreenFixture*>(ctx);assert(f.owned&&event==&f.token&&!std::strcmp(key,"entindex"));
+    f.server->received=value;return f.push(4);
+}
+inline int __cdecl gs_string(void* ctx,void* event,const char* key,const char* value) noexcept {
+    auto& f=*static_cast<GenericScreenFixture*>(ctx);assert(f.owned&&event==&f.token&&!std::strcmp(key,"command"));
+    std::memcpy(f.command,value,std::strlen(value)+1);return f.push(5);
+}
+inline int __cdecl gs_fire(void* ctx,void* event,unsigned local) noexcept {
+    auto& f=*static_cast<GenericScreenFixture*>(ctx);assert(f.owned&&event==&f.token&&local==0);f.owned=false;
+    if(!f.push(6))return 0;
+    f.server->command=f.command;
+    return !f.deliver||f.api->button_event(f.dispenser,f.bindings,"button_press",&f.server->event)==1;
+}
+inline void __cdecl gs_discard(void* ctx,void* event) noexcept {
+    auto& f=*static_cast<GenericScreenFixture*>(ctx);assert(f.owned&&event==&f.token);f.owned=false;f.push(7);
+}
+inline int __cdecl gs_base(void* ctx,void* panel,const char*) noexcept {
+    auto& f=*static_cast<GenericScreenFixture*>(ctx);assert(panel==f.panel->object&&!f.owned);return f.push(8);
+}
+inline void check_generic_screen(const ScreenCommandApi& cli,const DispenserApi& disp,const DispenserInputApi& srv){
+    alignas(4) unsigned char panel[0xdc]{},object[0x4e8]{};
+    HologramControl pc{panel,sizeof(panel)},dc{object,sizeof(object)};
+    DispInputFixture df{&dc};
+    DispenserBindings d{&df,&di_observe,&di_resolve,&di_position,&di_clock,&di_heal,&di_sound,
+        &di_create,&di_remove,&di_install_use,&di_schedule,&di_pose,&di_animate};
+    DispenserInputBindings db{d,&di_notice,&di_screen_index,&di_event_index,&di_command,&di_install_eject};
+    GenericScreenFixture f{&pc,&dc,&df,&srv,&db};
+    ScreenCommandBindings b{&f,&gs_create,&gs_resolve,&gs_index,&gs_int,&gs_string,&gs_fire,&gs_discard,&gs_base};
+    assert(disp.defaults(object,sizeof(object)));
+    const std::uint32_t handle=0x123003;std::memcpy(panel+0xd8,&handle,4);std::memcpy(object+0x4b4,&handle,4);
+    const auto expect=[&](std::initializer_list<unsigned> client,std::initializer_list<unsigned> server){
+        assert(f.count==client.size()&&!std::memcmp(f.events,client.begin(),client.size()*4));
+        assert(df.count==server.size()&&!std::memcmp(df.events,server.begin(),server.size()*4));f.count=df.count=0;
+    };
+    const auto run=[&](const char* command){return cli.command(&pc,&b,command);};
+    // SDK scripts/screens/vgui_dispenser_panel.res: MaterialButton command eject.
+    assert(run("eject")==1&&df.scheduled==df.now&&object[0x498]==1);
+    expect({1,2,3,4,5,6,8},{6,6,18,19,20,21,7,14});
+    // SDK generic screens also use arbitrary map-defined command strings.
+    // Those events must be emitted unchanged, but ignored by this dispenser.
+    assert(run("elevatorFloor03")==1&&!std::strcmp(f.command,"elevatorFloor03"));
+    expect({1,2,3,4,5,6,8},{6,6,18,19,20});
+    f.index=20;assert(run("eject")==1);expect({1,2,3,4,5,6,8},{6,6,18,19});f.index=19;
+    f.missing=true;assert(run("eject")==1);expect({1,8},{});f.missing=false;
+    f.stale=true;assert(run("eject")==-1&&pc.blocked&&!f.owned);expect({1,2,7},{});
+    assert(run("eject")==0&&cli.acknowledge(&pc));expect({},{});f.stale=false;
+    f.fail=5;assert(run("eject")==-1&&pc.blocked&&!f.owned);expect({1,2,3,4,5,7},{});
+    assert(cli.acknowledge(&pc));f.fail=6;
+    assert(run("eject")==-1&&pc.blocked&&!f.owned);expect({1,2,3,4,5,6},{});
+    assert(cli.acknowledge(&pc));f.fail=0;
+    const std::uint32_t invalid=0xffffffffu;std::memcpy(panel+0xd8,&invalid,4);
+    assert(run("eject")==-1&&pc.blocked&&!f.owned);expect({1,7},{});
+    assert(cli.acknowledge(&pc));
+}
+
 }
