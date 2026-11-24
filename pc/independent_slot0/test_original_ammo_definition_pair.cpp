@@ -719,6 +719,26 @@ int main(int argc,char** argv){
     assert(choreographyTimingTags&&!getChoreographyTimingTags(0,sizeof(tables::ChoreographyTimingTagsApi))&&!getChoreographyTimingTags(1,0));
     tables::test::check_choreography_timing_tags(*choreographyTimingTags);
     std::puts("PASS original relative absolute and flex timing tag grammar and ordering");
+    const auto getPortableVcdTokenizer=reinterpret_cast<tables::GetPortableVcdTokenizerApi>(GetProcAddress(server,tables::portable_vcd_tokenizer_export));
+    assert(getPortableVcdTokenizer&&!GetProcAddress(client,tables::portable_vcd_tokenizer_export));
+    const auto* portableVcdTokenizer=getPortableVcdTokenizer(1,sizeof(tables::PortableVcdTokenizerApi));
+    assert(portableVcdTokenizer&&!getPortableVcdTokenizer(0,sizeof(tables::PortableVcdTokenizerApi))&&!getPortableVcdTokenizer(1,0));
+    {
+        sin_port::vcd::Tokenizer tokenizer;
+        const char text[]="time 1 2\r\nparam \"\"\n// note\n}";
+        assert(portableVcdTokenizer->begin(&tokenizer,text,sizeof(text)-1));
+        const char* expected[]={"time","1","2","param","","}"};
+        const unsigned expected_line[]={1,1,0,1,0,0};
+        unsigned more=0,line=0;const char* token=nullptr;
+        for(unsigned i=0;i<6;++i){
+            assert(portableVcdTokenizer->next(&tokenizer,1,&more)&&more);
+            assert(portableVcdTokenizer->token(&tokenizer,&token)&&!std::strcmp(token,expected[i]));
+            assert(portableVcdTokenizer->same_line(&tokenizer,&line)&&line==expected_line[i]);
+        }
+        assert(portableVcdTokenizer->next(&tokenizer,0,&more)&&!more);
+        assert(portableVcdTokenizer->clear(&tokenizer)&&!tokenizer.data);
+    }
+    std::puts("PASS portable VCD lexer server API and original-compatible line boundary");
 
 
 

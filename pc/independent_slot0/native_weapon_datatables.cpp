@@ -5668,6 +5668,31 @@ int __cdecl choreography_tag_block(void* event,unsigned bytes,ChoreographyEventB
     return -1;
 }
 const ChoreographyTimingTagsApi choreography_timing_tags_api{version,sizeof(ChoreographyTimingTagsApi),&choreography_tag_append,&choreography_tag_block};
+using PortableTokenizer=sin_port::vcd::Tokenizer;
+int __cdecl portable_vcd_begin(void* p,const char* data,unsigned bytes) noexcept {
+    if(!hologram_writable(p,sizeof(PortableTokenizer))||!data||
+       (bytes&&!sin_independent::vgui_layout::Readable(data,bytes)))return 0;
+    return static_cast<PortableTokenizer*>(p)->begin(data,bytes);
+}
+int __cdecl portable_vcd_next(void* p,unsigned cross,unsigned* more) noexcept {
+    if(!hologram_writable(p,sizeof(PortableTokenizer))||!hologram_writable(more,4))return 0;
+    return static_cast<PortableTokenizer*>(p)->next(cross,*more);
+}
+int __cdecl portable_vcd_token(void* p,const char** out) noexcept {
+    if(!hologram_writable(p,sizeof(PortableTokenizer))||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto& t=*static_cast<PortableTokenizer*>(p);if(t.failed)return 0;
+    *out=t.current;return 1;
+}
+int __cdecl portable_vcd_same_line(void* p,unsigned* more) noexcept {
+    if(!hologram_writable(p,sizeof(PortableTokenizer))||!hologram_writable(more,4))return 0;
+    const auto& t=*static_cast<PortableTokenizer*>(p);if(t.failed)return 0;
+    *more=t.same_line();return 1;
+}
+int __cdecl portable_vcd_clear(void* p) noexcept {
+    if(!hologram_writable(p,sizeof(PortableTokenizer)))return 0;
+    *static_cast<PortableTokenizer*>(p)=PortableTokenizer{};return 1;
+}
+const PortableVcdTokenizerApi portable_vcd_tokenizer_api{version,sizeof(PortableVcdTokenizerApi),&portable_vcd_begin,&portable_vcd_next,&portable_vcd_token,&portable_vcd_same_line,&portable_vcd_clear};
 const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
@@ -11009,6 +11034,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetPortableVcdTokenizerApi=_SiN_GetPortableVcdTokenizerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableVcdTokenizerApi* __cdecl
+SiN_GetPortableVcdTokenizerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PortableVcdTokenizerApi)?&portable_vcd_tokenizer_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyTimingTagsApi=_SiN_GetChoreographyTimingTagsApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyTimingTagsApi* __cdecl
 SiN_GetChoreographyTimingTagsApi(std::uint32_t version,std::uint32_t size) noexcept {
