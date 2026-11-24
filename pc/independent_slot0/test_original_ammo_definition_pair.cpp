@@ -166,6 +166,12 @@ int main(int argc,char** argv){
     assert(init&&!getInit(0,sizeof(tables::ClientInitApi))&&!getInit(1,0));
     tables::test::check_client_init(*registry,*init);
     std::puts("PASS native client slot37 initialization, map traversal and rollback");
+    const auto getSpawn=reinterpret_cast<tables::GetClientSpawnApi>(GetProcAddress(client,tables::spawn_session_export));
+    assert(getSpawn&&!GetProcAddress(server,tables::spawn_session_export));
+    const auto* spawn=getSpawn(1,sizeof(tables::ClientSpawnApi));
+    assert(spawn&&!getSpawn(0,sizeof(tables::ClientSpawnApi))&&!getSpawn(1,0));
+    tables::test::check_spawn_session(*aggregateRecv,*registry,*spawn);
+    std::puts("PASS native client class creators -> registry -> shared initializer -> release");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
