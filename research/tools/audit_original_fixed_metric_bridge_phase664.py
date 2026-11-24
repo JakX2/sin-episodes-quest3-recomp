@@ -63,8 +63,8 @@ def verify_shape(code:bytes,kind:str)->None:
    raise ValueError("original 28-byte indexed record address code changed")
  elif kind=="indexed_name_va":
   if (code[:4]!=b"\x8b\x44\x24\x04" or
-      code[4:8]!=b"\x8b\x04\x85\x4c" or
-      struct.unpack_from("<I",code,8)[0]!=NAME_TABLE or
+      code[4:7]!=b"\x8b\x04\x85" or
+      struct.unpack_from("<I",code,7)[0]!=NAME_TABLE or
       code[-1]!=0xc3):
    raise ValueError("original name index method shape changed")
  elif kind=="indexed_float_read":
@@ -72,7 +72,7 @@ def verify_shape(code:bytes,kind:str)->None:
       code[4:11]!=b"\x8d\x0c\xc5\x00\x00\x00\x00" or
       code[11:13]!=b"\x2b\xc8" or
       code[13:17]!=b"\xd9\x04\x8d\x78" or
-      struct.unpack_from("<I",code,17)[0]!=TABLE or code[20]!=0xc3):
+      struct.unpack_from("<I",code,16)[0]!=TABLE or code[20]!=0xc3):
    raise ValueError("original float current-value reader changed")
  elif kind=="indexed_float_write":
   if (code[:4]!=b"\x8b\x44\x24\x04" or
@@ -80,7 +80,7 @@ def verify_shape(code:bytes,kind:str)->None:
       code[8:15]!=b"\x8d\x0c\xc5\x00\x00\x00\x00" or
       code[15:17]!=b"\x2b\xc8" or
       code[17:21]!=b"\xd9\x1c\x8d\x78" or
-      struct.unpack_from("<I",code,21)[0]!=TABLE or code[24]!=0xc3):
+      struct.unpack_from("<I",code,20)[0]!=TABLE or code[24]!=0xc3):
    raise ValueError("original float current-value writer changed")
  else:raise ValueError("unknown witness")
 def original_audit(server:bytes,client:bytes)->dict:
