@@ -4652,6 +4652,84 @@ bool allocate_generated_parsed(const GeneratedSceneAllocationBindings& a,void* c
     if(choreography_parsed_construct(*out,*bytes,callback,&construct)==1)return true;
     (void)a.release_unpublished(a.context,*out);*out=nullptr;return false;
 }
+// Original CUtlMemory growth policy and choreography pointer-vector insert.
+// 22107c90/22106f80/22112ae0/2210cf70: initial 8 words, fixed
+// growth step or doubling. 22107d00/2210c1d0: initial 3 samples.
+// 2210c260/2210c2f0/2210c380: initial 1 tag; 22112c60: 2 scale rows.
+bool choreography_vector_ready(const ChoreographyVectorBindings* h) noexcept {
+    return h&&h->storage&&h->resize;
+}
+int __cdecl choreography_grow_memory(void* p,void* mem,unsigned extra,unsigned stride) noexcept {
+    const auto* b=static_cast<const ChoreographyVectorBindings*>(p);
+    if(!choreography_vector_ready(b)||!hologram_writable(mem,12)||!extra||
+       (stride!=4&&stride!=12&&stride!=24&&stride!=0x88&&stride!=0x8c))return 0;
+    const auto h=*b;
+    const unsigned cap=hologram_read<unsigned>(mem,4);
+    const auto old=hologram_read<std::uint32_t>(mem,0);
+    const int step=hologram_read<int>(mem,8);
+    if(cap>4096||extra>4096-cap||step<0||step>4096||(!old&&cap))return 0;
+    if(old){
+        void* data=nullptr;unsigned extent=0;
+        if(!h.storage(h.context,old,&data,&extent)||extent<cap*stride||
+           !hologram_writable(data,cap?cap*stride:4))return 0;
+    }
+    unsigned next=cap;
+    while(next<cap+extra){
+        if(!next)next=(31+stride)/stride;
+        else{
+            const unsigned add=step?static_cast<unsigned>(step):next;
+            if(add>4096-next)return 0;
+            next+=add;
+        }
+    }
+    void* data=nullptr;unsigned extent=0;
+    if(!h.resize(h.context,old,next*stride,&data,&extent))return 0;
+    // The successful allocator owns the old block and guarantees a valid
+    // writable extent. Publish its new pointer even if that contract fails,
+    // so the owner can still retire it; never retain a freed old word.
+    hologram_write(mem,0,scene_word(data));hologram_write(mem,4,next);
+    return extent>=next*stride&&hologram_writable(data,next*stride);
+}
+int __cdecl choreography_grow_vector(void* p,void* v,unsigned extra,unsigned stride) noexcept {
+    if(!hologram_writable(v,20))return 0;
+    const int n=hologram_read<int>(v,0xc),cap=hologram_read<int>(v,4);
+    if(n<0||cap<n)return 0;
+    return choreography_grow_memory(p,v,extra,stride);
+}
+int __cdecl choreography_insert_word(void* p,void* v,unsigned index,std::uint32_t value) noexcept {
+    const auto* b=static_cast<const ChoreographyVectorBindings*>(p);
+    if(!choreography_vector_ready(b)||!hologram_writable(v,20))return 0;
+    const int n=hologram_read<int>(v,0xc),cap=hologram_read<int>(v,4);
+    if(n<0||cap<n||cap>4096||n>=4096||index>static_cast<unsigned>(n))return 0;
+    if(n==cap&&!choreography_grow_vector(p,v,1,4))return 0;
+    const auto h=*b;void* rows=nullptr;unsigned extent=0;
+    const auto word=hologram_read<std::uint32_t>(v,0);
+    if(!word||!h.storage(h.context,word,&rows,&extent)||extent<static_cast<unsigned>(n+1)*4||
+       !hologram_writable(rows,static_cast<unsigned>(n+1)*4))return 0;
+    auto* row=static_cast<unsigned char*>(rows)+index*4;
+    if(index<static_cast<unsigned>(n))std::memmove(row+4,row,(static_cast<unsigned>(n)-index)*4);
+    hologram_write(row,0,value);hologram_write(v,0x10,word);hologram_write(v,0xc,n+1);
+    return 1;
+}
+int choreography_append_word(void* p,void* obj,unsigned bytes,unsigned off,void* child) noexcept {
+    if(!hologram_writable(obj,bytes))return 0;
+    auto* v=static_cast<unsigned char*>(obj)+off;
+    return choreography_insert_word(p,v,hologram_read<unsigned>(v,0xc),scene_word(child));
+}
+int __cdecl choreography_append_parsed(void* p,void* parsed,GeneratedSceneChild kind,void* child) noexcept {
+    constexpr unsigned offsets[]={0x14,0x28,0};
+    const auto i=static_cast<unsigned>(kind);
+    return i<3&&choreography_append_word(p,parsed,0x220,offsets[i],child);
+}
+int __cdecl choreography_append_channel(void* p,void* actor,void* channel) noexcept {
+    return choreography_append_word(p,actor,0x118,0x100,channel);
+}
+int __cdecl choreography_append_event(void* p,void* channel,void* event) noexcept {
+    return choreography_append_word(p,channel,0x9c,0x84,event);
+}
+const ChoreographyVectorApi choreography_vector_api{version,sizeof(ChoreographyVectorApi),
+    &choreography_grow_memory,&choreography_grow_vector,&choreography_insert_word,
+    &choreography_append_parsed,&choreography_append_channel,&choreography_append_event};
 bool allocate_generated_child(const GeneratedSceneAllocationBindings& a,void* parsed,GeneratedSceneChild kind,void** out,unsigned* bytes) noexcept {
     const auto i=static_cast<unsigned>(kind);constexpr unsigned sizes[]={0x118,0x9c,0x3c0};
     if(i>=3||!a.allocate(a.context,sizes[i],out,bytes))return false;
@@ -12294,6 +12372,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ParsedSce
 SiN_GetParsedSceneResetApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ParsedSceneResetApi)?&parsed_scene_reset_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyVectorApi=_SiN_GetChoreographyVectorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyVectorApi* __cdecl
+SiN_GetChoreographyVectorApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyVectorApi)?&choreography_vector_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetAllocatedGeneratedSceneApi=_SiN_GetAllocatedGeneratedSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AllocatedGeneratedSceneApi* __cdecl
