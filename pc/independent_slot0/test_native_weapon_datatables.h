@@ -411,4 +411,62 @@ inline void check_anim_graph(const AnimSendApi& sa,const AnimRecvApi& ra,const S
     assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
 
+inline void check_flex_graph(const FlexSendApi& sa,const FlexRecvApi& ra,const AnimSendApi& asa,
+        const AnimRecvApi& ara,const InventorySendApi& isa,const InventoryRecvApi& ira){
+    s::SendProp ep[24],op;s::SendTable se,so;
+    assert(se.Construct(ep,24,"DT_BaseEntity")&&so.Construct(&op,1,"DT_OverlayVars"));
+    RecvProp cep[24],cop;RecvTable ce{cep,24,nullptr,"DT_BaseEntity"},co{&cop,1,nullptr,"DT_OverlayVars"};
+    sin_independent::EntityHandleEntry entries[1]{};
+    AnimSendBindings ab{&se,entries,1};AnimRecvBindings arb{&ce};
+    AnimSendView av{};AnimRecvView arv{};
+    assert(asa.create(&ab,&av)&&ara.create(&arb,&arv));
+    FlexSendBindings sb{av.base_animating,&so};FlexRecvBindings rb{arv.base_animating,&co};
+    FlexSendView sv{};FlexRecvView rv{};
+    auto bad=sb;bad.overlay_vars=nullptr;
+    assert(!sa.create(&bad,&sv)&&!sv.handle);
+    assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
+    assert(sv.overlay->count==2&&rv.overlay->count==2&&sv.flex->count==7&&rv.flex->count==7);
+    assert(sv.overlay->props[0].table==av.base_animating&&rv.overlay->props[0].table==arv.base_animating);
+    assert(sv.overlay->props[1].table==&so&&rv.overlay->props[1].table==&co);
+    assert(sv.flex->props[0].table==sv.overlay&&rv.flex->props[0].table==rv.overlay);
+    // New native inheritance chain connects directly to Phase696 inventory.
+    alignas(4) unsigned char edicts[2*20]{};
+    NativeEngine engine;engine.expected=edicts+20;engine.result=1;
+    InventorySendBindings ib{sv.flex,&engine,entries,1,edicts,1};InventoryRecvBindings irb{rv.flex};
+    InventorySendView iv{};InventoryRecvView irv{};
+    assert(isa.create(&ib,&iv)&&ira.create(&irb,&irv));
+    assert(iv.combat_base->props[0].table==sv.flex&&irv.combat_base->props[0].table==rv.flex);
+    alignas(4) unsigned char server[0x5b8]{},client[0xac4]{};
+    auto& a=*sv.flex;auto& b=*rv.flex;
+    assert(a.props[1].offset==0x4a8&&b.props[1].offset==0x860&&a.props[1].arrayProp&&!b.props[1].array_prop);
+    assert(sv.weights->count==64&&rv.weights->count==64&&a.props[1].table==sv.weights&&b.props[1].table==rv.weights);
+    for(int i=0;i<64;++i){
+        auto& x=sv.weights->props[i];auto& y=rv.weights->props[i];
+        assert(x.bits==12&&x.flags==8&&x.high==1.0f-1.0f/4096&&x.multiplier==4096);
+        assert(x.offset==i*4&&y.offset==i*4&&std::strcmp(x.name,y.name)==0&&
+            std::strcmp(x.excludeOrParent,"m_flexWeight")==0&&std::strcmp(y.parent_array,"m_flexWeight")==0);
+        const float value=static_cast<float>(i)/64;
+        std::memcpy(server+a.props[1].offset+x.offset,&value,4);
+        s::DVariant v{};x.scalarProxy(&x,server,server+a.props[1].offset+x.offset,&v,i,1);
+        RecvData d{&y,v,i,1};y.proxy(&d,client,client+b.props[1].offset+y.offset);
+        assert(!std::memcmp(client+b.props[1].offset+y.offset,&value,4));
+    }
+    for(unsigned i=2;i<7;++i){
+        auto& x=a.props[i];auto& y=b.props[i];
+        assert(std::strcmp(x.name,y.name)==0);
+        const std::uint32_t values[3]={i==2?1u:0x3f000000u,0x80000000u,0x7fc12345u};
+        const unsigned width=i==3?12:4;
+        std::memcpy(server+x.offset,values,width);
+        s::DVariant v{};x.scalarProxy(&x,server,server+x.offset,&v,0,1);
+        RecvData d{&y,v,0,1};y.proxy(&d,client,client+y.offset);
+        assert(!std::memcmp(client+y.offset,values,width));
+    }
+    assert(isa.destroy(&iv)&&ira.destroy(&irv));
+    sv.weights->written=true;rv.overlay->initialized=true;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
+    sv.weights->written=false;rv.overlay->initialized=false;
+    assert(sa.destroy(&sv)&&ra.destroy(&rv));
+    assert(asa.destroy(&av)&&ara.destroy(&arv));
+}
+
 }
