@@ -829,6 +829,29 @@ struct NativeSceneMovementGateApi {
     int (__cdecl *admit)(void*,void*,unsigned*) noexcept;
 };
 using GetNativeSceneMovementGateApi=const NativeSceneMovementGateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_scene_execution_export[]="SiN_GetNativeSceneExecutionApi";
+// Composed server execution boundary. Each template retains its own host
+// context; native operations replace graph dispatch, virtual scene leaves,
+// section parsing/paused ticks and optionally AI admission. No adapter is
+// stored in an entity or parsed scene. All callbacks are synchronous.
+struct NativeSceneExecutionBindings {
+    unsigned instanced;
+    NativeChoreographyClockBindings clock;
+    NativeChoreographyDispatchBindings dispatch;
+    NativeChoreographySceneLeafBindings leaves;
+    NativeChoreographySectionBindings section;
+    const NativeSceneMovementGateBindings* gate;
+    SceneAdvanceBindings advance;
+    const SceneFinishBindings* finish; // optional native finish, with graph reset replaced
+};
+struct NativeSceneExecutionApi {
+    std::uint32_t version,size;
+    int (__cdecl *reset)(void*,unsigned,unsigned,std::uint32_t,std::uint32_t,const NativeSceneExecutionBindings*) noexcept;
+    int (__cdecl *simulate)(void*,unsigned,float,const NativeSceneExecutionBindings*) noexcept;
+    int (__cdecl *resume)(void*,unsigned,const NativeSceneExecutionBindings*) noexcept;
+    int (__cdecl *advance)(void*,unsigned,float,const NativeSceneExecutionBindings*) noexcept;
+};
+using GetNativeSceneExecutionApi=const NativeSceneExecutionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char scene_speech_drain_export[]="SiN_GetSceneSpeechDrainApi";
 struct SceneSpeechDrainBindings {
     void* context;

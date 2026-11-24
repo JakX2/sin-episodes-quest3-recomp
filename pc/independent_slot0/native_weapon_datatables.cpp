@@ -7092,9 +7092,10 @@ bool scene_advance_parsed(void* scene,const SceneAdvanceBindings& h,void*& p,uns
     p=nullptr;bytes=0;const auto word=hologram_read<std::uint32_t>(scene,0x40c);
     return word&&h.parsed(h.context,word,&p,&bytes)&&p&&bytes>=0x220&&hologram_writable(p,0x220);
 }
-int scene_advance(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings* b,bool instanced,const SceneFinishBindings* finish=nullptr) noexcept {
+int scene_advance(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings* b,bool instanced,const SceneFinishBindings* finish=nullptr,
+    int (__cdecl *native_paused)(void*,void*) noexcept=nullptr,void* paused_context=nullptr) noexcept {
     const unsigned required=instanced?0x561:(finish?0x544:0x41c);
-    if(bytes<required||!hologram_writable(scene,required)||!b||!b->pre_tick||!b->paused_tick||
+    if(bytes<required||!hologram_writable(scene,required)||!b||!b->pre_tick||(!b->paused_tick&&!native_paused)||
        !b->parsed||!b->latency||(finish?!scene_finish_ready(finish):!b->finish)||
        (instanced?(!b->resolve_actor||!b->remove):(!b->start||!b->release_actors)))return 0;
     const auto h=*b;
@@ -7108,7 +7109,7 @@ int scene_advance(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings
         if(word!=0xffffffffu&&!h.resolve_actor(h.context,word,&actor))return -1;
         if(!actor)return retire();
     }
-    if(hologram_read<unsigned char>(scene,0x3d9))return h.paused_tick(h.context,scene)?1:-1;
+    if(hologram_read<unsigned char>(scene,0x3d9))return (native_paused?native_paused(paused_context,scene):h.paused_tick(h.context,scene))?1:-1;
     if(!instanced)hologram_write(scene,0x3e0,dt);
     void* parsed=nullptr;unsigned n=0;
     if(!scene_advance_parsed(scene,h,parsed,n))return -1;
@@ -8125,6 +8126,106 @@ int __cdecl native_scene_movement_admit(void* p,void* actor,unsigned* out) noexc
 }
 const NativeSceneMovementGateApi native_scene_movement_gate_api{version,sizeof(NativeSceneMovementGateApi),
     &native_scene_map_schedule,&native_scene_movement_admit};
+// Build synchronous adapters over the original-derived clock, dispatch,
+// scene-leaf, section and gate implementations. The independent engine
+// service contexts stay unchanged, including nested speech bindings.
+struct NativeSceneExecutionState {
+    NativeSceneExecutionBindings host;
+    NativeChoreographyClockBindings tick;
+    NativeChoreographyDispatchBindings dispatch;
+    NativeChoreographySceneLeafBindings leaves;
+    NativeChoreographySectionBindings section;
+    NativeSceneMovementGateBindings gate{};
+    static NativeSceneExecutionState& self(void* p) noexcept{return *static_cast<NativeSceneExecutionState*>(p);}
+    static int __cdecl storage(void* p,std::uint32_t word,void** out,unsigned* extent) noexcept {
+        const auto& v=self(p).tick.vectors;return v.storage(v.context,word,out,extent);
+    }
+    explicit NativeSceneExecutionState(void* scene,unsigned bytes,const NativeSceneExecutionBindings& b) noexcept
+      :host(b),tick(b.clock),dispatch(b.dispatch),leaves(b.leaves),section(b.section){
+        tick.context=this;tick.scene=scene;tick.scene_bytes=bytes;
+        tick.other_event=[](void* p,std::uint32_t word,unsigned slot,float time,void* root,void* event) noexcept -> int{
+            return native_choreography_other_event(&self(p).dispatch,word,slot,time,root,event);
+        };
+        dispatch.context=this;dispatch.scene=scene;dispatch.scene_bytes=bytes;dispatch.clock=&tick;dispatch.storage=&storage;
+        dispatch.records=b.dispatch.records?b.dispatch.records:b.leaves.records;
+        dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* extent) noexcept -> int{
+            const auto& h=self(p).host.dispatch;return h.actor&&h.actor(h.context,scene,word,out,extent);
+        };
+        dispatch.target=[](void* p,void* scene,const char* name,void* actor,unsigned flag,void** out) noexcept -> int{
+            const auto& h=self(p).host.dispatch;return h.target&&h.target(h.context,scene,name,actor,flag,out);
+        };
+        dispatch.trace=[](void* p,void* scene,void* event,float time,ChoreographyDispatchTrace kind) noexcept -> int{
+            const auto& h=self(p).host.dispatch;return h.trace&&h.trace(h.context,scene,event,time,kind);
+        };
+        dispatch.output=[](void* p,void* output,void* actor,void* caller,float delay) noexcept -> int{
+            const auto& h=self(p).host.dispatch;return h.output&&h.output(h.context,output,actor,caller,delay);
+        };
+        dispatch.debug_text=[](void* p,const char* s) noexcept -> int{
+            const auto& h=self(p).host.dispatch;return h.debug_text&&h.debug_text(h.context,s);
+        };
+        dispatch.virtual_event=[](void* p,void* scene,unsigned slot,void* root,void* event,void* actor,void* target,const char* param) noexcept -> int{
+            return native_choreography_scene_leaf(&self(p).leaves,scene,slot,root,event,actor,target,param);
+        };
+        leaves.context=this;leaves.scene_bytes=bytes;leaves.instanced=b.instanced;leaves.records=dispatch.records;
+        leaves.clock=&tick;leaves.storage=&storage;
+        leaves.actor_extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+            const auto& h=self(p).host.leaves;return h.actor_extent&&h.actor_extent(h.context,actor,n);
+        };
+        leaves.admit_instanced=[](void* p,void* actor,unsigned* out) noexcept -> int{
+            auto& s=self(p);const auto& h=s.host.leaves;
+            return s.host.gate?native_scene_movement_admit(&s.gate,actor,out):
+                h.admit_instanced&&h.admit_instanced(h.context,actor,out);
+        };
+        leaves.load_subscene=[](void* p,void* scene,const char* name,std::uint32_t* word) noexcept -> int{
+            const auto& h=self(p).host.leaves;return h.load_subscene&&h.load_subscene(h.context,scene,name,word);
+        };
+        leaves.now=[](void* p,float* out) noexcept -> int{
+            const auto& h=self(p).host.leaves;return h.now&&h.now(h.context,out);
+        };
+        leaves.output=[](void* p,void* output,void* actor,void* caller,float delay) noexcept -> int{
+            const auto& h=self(p).host.leaves;return h.output&&h.output(h.context,output,actor,caller,delay);
+        };
+        leaves.section=[](void* p,void* scene,void* root,void* event,const char* param) noexcept -> int{
+            return native_choreography_section_enter(&self(p).section,scene,root,event,param);
+        };
+        section.scene_bytes=bytes;section.clock=&tick;section.dispatch=&dispatch;
+        if(b.gate){gate=*b.gate;gate.scene=scene;}
+    }
+    NativeSceneExecutionState(const NativeSceneExecutionState&)=delete;
+    bool root(void* scene,void*& object,unsigned& bytes) noexcept {
+        const auto w=hologram_read<std::uint32_t>(scene,0x40c);
+        return w&&storage(this,w,&object,&bytes)&&bytes>=0x220&&hologram_writable(object,0x220);
+    }
+};
+bool native_scene_execution_ready(void* scene,unsigned bytes,const NativeSceneExecutionBindings* b) noexcept {
+    return b&&b->instanced<=1&&bytes>=(b->instanced?0x561u:0x549u)&&hologram_writable(scene,b->instanced?0x561u:0x549u)&&
+        native_choreography_clock_ready(&b->clock);
+}
+int __cdecl native_scene_execution_reset(void* scene,unsigned bytes,unsigned forward,std::uint32_t a,std::uint32_t z,const NativeSceneExecutionBindings* b) noexcept {
+    if(!native_scene_execution_ready(scene,bytes,b))return 0;
+    NativeSceneExecutionState s(scene,bytes,*b);void* root=nullptr;unsigned n=0;
+    return s.root(scene,root,n)?native_choreography_clock_reset(root,n,forward,a,z,&s.tick):0;
+}
+int __cdecl native_scene_execution_simulate(void* scene,unsigned bytes,float time,const NativeSceneExecutionBindings* b) noexcept {
+    if(!native_scene_execution_ready(scene,bytes,b))return 0;
+    NativeSceneExecutionState s(scene,bytes,*b);void* root=nullptr;unsigned n=0;
+    return s.root(scene,root,n)?native_choreography_clock_simulate(root,n,time,&s.tick):0;
+}
+int __cdecl native_scene_execution_resume(void* scene,unsigned bytes,const NativeSceneExecutionBindings* b) noexcept {
+    if(!native_scene_execution_ready(scene,bytes,b))return 0;
+    NativeSceneExecutionState s(scene,bytes,*b);void* root=nullptr;unsigned n=0;
+    return s.root(scene,root,n)?native_choreography_clock_resume(root,n,&s.tick):0;
+}
+int __cdecl native_scene_execution_advance(void* scene,unsigned bytes,float dt,const NativeSceneExecutionBindings* b) noexcept {
+    if(!native_scene_execution_ready(scene,bytes,b))return 0;
+    NativeSceneExecutionState s(scene,bytes,*b);NativeChoreographyClockState state(s.tick);
+    auto advance=b->advance;advance.simulation=state.sim;
+    SceneFinishBindings finish{};
+    if(b->finish){finish=*b->finish;finish.reset=state.reset;}
+    return scene_advance(scene,bytes,dt,&advance,b->instanced!=0,b->finish?&finish:nullptr,&native_choreography_section_tick,&s.section);
+}
+const NativeSceneExecutionApi native_scene_execution_api{version,sizeof(NativeSceneExecutionApi),
+    &native_scene_execution_reset,&native_scene_execution_simulate,&native_scene_execution_resume,&native_scene_execution_advance};
 bool speech_drain_ready(const SceneSpeechDrainBindings* b,unsigned* out) noexcept {
     return b&&b->storage&&b->resolve&&b->clock&&b->open_filter&&b->emit&&b->close_filter&&hologram_writable(out,4);
 }
@@ -12967,6 +13068,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographySceneLeafApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographySceneLeafApi)?&native_choreography_scene_leaf_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNativeSceneExecutionApi=_SiN_GetNativeSceneExecutionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeSceneExecutionApi* __cdecl
+SiN_GetNativeSceneExecutionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeSceneExecutionApi)?&native_scene_execution_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetNativeSceneMovementGateApi=_SiN_GetNativeSceneMovementGateApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeSceneMovementGateApi* __cdecl
