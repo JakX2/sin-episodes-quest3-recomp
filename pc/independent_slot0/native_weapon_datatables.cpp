@@ -15,6 +15,7 @@
 #include "native_server_flex_spline.h"
 #include "native_server_expression.h"
 #include "native_server_facial_think.h"
+#include "native_server_event_intensity.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11041,6 +11042,69 @@ bool server_flex_track_value(const ServerFlexAnimationBindings& h,void* track,un
     }
     out=low==high?v:static_cast<float>((static_cast<double>(high)-low)*v+low);return true;
 }
+int __cdecl server_intensity_ramp(const ServerIntensitySample* rows,unsigned count,float duration,float time,float* out) noexcept {
+    if(!hologram_writable(out,4)||count>4096||!std::isfinite(duration)||duration<0||!std::isfinite(time)||
+       (count&&(!rows||!sin_independent::vgui_layout::Readable(rows,count*sizeof(*rows)))))return 0;
+    for(unsigned i=0;i<count;++i)
+        if(!std::isfinite(rows[i].time)||!std::isfinite(rows[i].value)||(i&&rows[i].time<rows[i-1].time))return 0;
+    *out=server_intensity_detail::ramp(rows,count,duration,time);return 1;
+}
+bool server_intensity_view(const void* obj,unsigned off,void* context,ServerIntensityStorage storage,
+    const ServerIntensitySample*& rows,unsigned& count) noexcept {
+    const int n=hologram_read<int>(const_cast<void*>(obj),off+0xc);
+    if(n<0||n>4096)return false;
+    count=static_cast<unsigned>(n);rows=nullptr;
+    if(!count)return true;
+    void* p=nullptr;unsigned bytes=0;const auto token=hologram_read<std::uint32_t>(const_cast<void*>(obj),off);
+    if(!storage||!token||!storage(context,token,&p,&bytes)||bytes<count*sizeof(*rows)||
+       !sin_independent::vgui_layout::Readable(p,count*sizeof(*rows)))return false;
+    rows=static_cast<const ServerIntensitySample*>(p);return true;
+}
+int __cdecl server_event_intensity(const void* event,unsigned bytes,float time,void* context,ServerIntensityStorage storage,float* out) noexcept {
+    if(bytes<0x3c0||!event||!sin_independent::vgui_layout::Readable(event,0x3c0)||
+       !hologram_writable(out,4)||!std::isfinite(time))return 0;
+    auto* e=const_cast<void*>(event);
+    float scene_weight=1,event_weight=0;
+    const auto scene_token=hologram_read<std::uint32_t>(e,0x330);
+    if(scene_token){
+        void* scene=nullptr;unsigned sn=0;
+        if(!storage||!storage(context,scene_token,&scene,&sn)||sn<0x220||!sin_independent::vgui_layout::Readable(scene,0x220))return 0;
+        const ServerIntensitySample* rows=nullptr;unsigned count=0;
+        if(!server_intensity_view(scene,0x12c,context,storage,rows,count))return 0;
+        if(count){
+            const int events=hologram_read<int>(scene,0xc);
+            if(events<0||events>65535)return 0;
+            float duration=0;
+            if(events){
+                void* words=nullptr;unsigned wn=0;
+                const auto token=hologram_read<std::uint32_t>(scene,0);
+                if(!token||!storage(context,token,&words,&wn)||wn<static_cast<unsigned>(events)*4||
+                   !sin_independent::vgui_layout::Readable(words,events*4))return 0;
+                for(int i=0;i<events;++i){
+                    void* item=nullptr;unsigned in=0;
+                    const auto w=hologram_read<std::uint32_t>(words,i*4);
+                    if(!w||!storage(context,w,&item,&in)||in<0x18c||!sin_independent::vgui_layout::Readable(item,0x18c))return 0;
+                    float end=hologram_read<float>(item,0x188);
+                    if(end==-1)end=hologram_read<float>(item,0x184);
+                    if(!std::isfinite(end))return 0;
+                    if(end>duration)duration=end;
+                }
+            }
+            if(duration!=0&&!server_intensity_ramp(rows,count,duration,time,&scene_weight))return 0;
+        }
+    }
+    const float start=hologram_read<float>(e,0x184),end=hologram_read<float>(e,0x188);
+    if(!std::isfinite(start)||!std::isfinite(end))return 0;
+    if(end!=-1){
+        const ServerIntensitySample* rows=nullptr;unsigned count=0;
+        if(!server_intensity_view(e,0x19c,context,storage,rows,count)||
+           !server_intensity_ramp(rows,count,static_cast<float>(static_cast<double>(end)-start),
+               static_cast<float>(static_cast<double>(time)-start),&event_weight))return 0;
+    }
+    *out=static_cast<float>(static_cast<double>(scene_weight)*event_weight);return 1;
+}
+const ServerEventIntensityApi server_event_intensity_api{version,sizeof(ServerEventIntensityApi),&server_intensity_ramp,&server_event_intensity};
+
 int __cdecl server_flex_animation_apply(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
     float scene_time,float now,bool background,const ServerFlexAnimationBindings* b) noexcept {
     if(bytes<server_flex_scene_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_scene_extent)||
@@ -13173,6 +13237,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFle
 SiN_GetServerFlexSplineApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFlexSplineApi)?&server_flex_spline_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerEventIntensityApi=_SiN_GetServerEventIntensityApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEventIntensityApi* __cdecl
+SiN_GetServerEventIntensityApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerEventIntensityApi)?&server_event_intensity_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerFacialThinkApi=_SiN_GetServerFacialThinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFacialThinkApi* __cdecl
