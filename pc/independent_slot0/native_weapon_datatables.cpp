@@ -6804,6 +6804,168 @@ int __cdecl portable_finalized_scene(void* npc,const char* name,float delay,cons
     return native_named_playback(npc,name,delay,&h,out);
 }
 const PortableVcdFinalizedGrammarApi portable_vcd_finalized_grammar_api{version,sizeof(PortableVcdFinalizedGrammarApi),&portable_finalized_parse,&portable_finalized_load,&portable_finalized_scene};
+// Compose original-derived grammar, graph, vector, symbol, scale and flex
+// lifecycles with only engine-facing leaves. Adapters are synchronous and
+// never stored in parsed objects; only host-supplied ABI words are stored.
+bool native_vcd_runtime_ready(const NativeVcdRuntimeBindings* b) noexcept {
+    return b&&b->storage&&b->allocate_object&&b->resize_memory&&b->release_object&&b->release_memory&&
+        b->number&&b->integer&&b->unexpected&&b->missing_tag&&b->scale_comparator&&b->symbol_comparator&&
+        b->flex_vtable&&b->tokenizer_word&&b->diagnostic_word&&hologram_writable(b->event_counter,4)&&
+        hologram_writable(b->scale_sentinel,sizeof(ChoreographyScaleSentinel))&&
+        hologram_writable(b->symbol_sentinel,sizeof(ChoreographySymbolSentinel));
+}
+struct NativeVcdRuntimeState {
+    NativeVcdRuntimeBindings host;
+    ChoreographyVectorBindings vectors;
+    ChoreographyFlexOwnershipBindings tracks{};
+    ChoreographyScaleTreeBindings scale{};
+    ChoreographySymbolInternBindings intern{};
+    PortableVcdFinalizedGrammarBindings grammar{};
+    OwnedChoreographyBindings owned{};
+    static NativeVcdRuntimeState& self(void* p) noexcept {return *static_cast<NativeVcdRuntimeState*>(p);}
+    static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept {
+        auto& h=self(p).host;return h.storage(h.context,w,out,n);
+    }
+    static int __cdecl object_allocate(void* p,unsigned n,void** out,unsigned* extent) noexcept {
+        auto& h=self(p).host;return h.allocate_object(h.context,n,out,extent);
+    }
+    static int __cdecl object_release(void* p,void* obj) noexcept {
+        auto& h=self(p).host;return h.release_object(h.context,scene_word(obj));
+    }
+    static int __cdecl number(void* p,const char* s,float* out) noexcept {
+        auto& h=self(p).host;return h.number(h.context,s,out);
+    }
+    static int __cdecl grow_vector(void* p,void* v,unsigned n,unsigned stride) noexcept {
+        return choreography_grow_vector(&self(p).vectors,v,n,stride);
+    }
+    static int __cdecl grow_memory(void* p,void* v,unsigned n,unsigned stride) noexcept {
+        return choreography_grow_memory(&self(p).vectors,v,n,stride);
+    }
+    explicit NativeVcdRuntimeState(const NativeVcdRuntimeBindings& h) noexcept:host(h),vectors{h.context,h.storage,h.resize_memory}{
+        tracks.context=this;tracks.vtable=h.flex_vtable;
+        tracks.allocate=[](void* p,unsigned n,ChoreographyFlexAllocation k,void** out,unsigned* bytes) noexcept -> int{
+            auto& h=self(p).host;
+            return k==ChoreographyFlexAllocation::SampleVector?h.resize_memory(h.context,0,n,out,bytes):h.allocate_object(h.context,n,out,bytes);
+        };
+        tracks.release=[](void* p,std::uint32_t w,ChoreographyFlexAllocation k) noexcept -> int{
+            auto& h=self(p).host;return k==ChoreographyFlexAllocation::SampleVector?h.release_memory(h.context,w):h.release_object(h.context,w);
+        };
+        tracks.storage=&storage;tracks.grow=&grow_vector;
+        scale.context=this;scale.sentinel=h.scale_sentinel;scale.storage=&storage;scale.grow_memory=&grow_memory;
+        intern.context=this;intern.sentinel=h.symbol_sentinel;intern.insensitive=1;intern.storage=&storage;intern.grow_memory=&grow_memory;
+        intern.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+            auto& h=self(p).host;return h.resize_memory(h.context,0,n,out,bytes);
+        };
+        intern.release_unpublished=[](void* p,std::uint32_t w) noexcept -> int{
+            auto& h=self(p).host;return h.release_memory(h.context,w);
+        };
+        owned.insensitive_comparator=h.symbol_comparator;
+        auto& d=owned.destruction;d.context=this;d.storage=&storage;
+        d.release=[](void* p,std::uint32_t w,ChoreographyRelease k) noexcept -> int{
+            auto& h=self(p).host;return k==ChoreographyRelease::Vector?h.release_memory(h.context,w):h.release_object(h.context,w);
+        };
+        d.delete_aux=[](void* p,std::uint32_t w,unsigned flags) noexcept -> int{
+            return choreography_flex_owned_destroy(&self(p).tracks,w,flags);
+        };
+        auto& sy=owned.symbols;sy.context=this;sy.sentinel=h.symbol_sentinel;sy.storage=&storage;
+        sy.release=[](void* p,std::uint32_t w,ChoreographySymbolRelease) noexcept -> int{
+            auto& h=self(p).host;return h.release_memory(h.context,w);
+        };
+        auto& g=grammar.grammar.curves.grammar;auto& e=g.events;auto& a=e.actors;auto& t=a.text;
+        e.context=a.context=a.allocation.context=t.context=this;t.tokenizer_word=h.tokenizer_word;
+        t.unexpected=[](void* p,const char* token) noexcept -> int{
+            auto& h=self(p).host;return h.unexpected(h.context,token);
+        };
+        auto& al=a.allocation;al.allocate=&object_allocate;al.release_unpublished=&object_release;
+        al.event_counter=h.event_counter;al.parsed.compare_word=h.scale_comparator;
+        al.append_parsed=[](void* p,void* root,GeneratedSceneChild k,void* obj) noexcept -> int{
+            return choreography_append_parsed(&self(p).vectors,root,k,obj);
+        };
+        a.append_channel=[](void* p,void* actor,void* channel) noexcept -> int{
+            return choreography_append_channel(&self(p).vectors,actor,channel);
+        };
+        e.append_event=[](void* p,void* channel,void* event) noexcept -> int{
+            return choreography_append_event(&self(p).vectors,channel,event);
+        };
+        e.number=&number;
+        g.tags.context=this;g.tags.storage=&storage;g.tags.grow=&grow_vector;
+        auto& sc=grammar.grammar.curves.scales;sc.context=this;sc.sentinel=h.scale_sentinel;sc.storage=&storage;
+        sc.integer=[](void* p,const char* text,int* out) noexcept -> int{
+            auto& h=self(p).host;return h.integer(h.context,text,out);
+        };
+        sc.intern=[](void* p,void* table,const char* text,std::uint16_t* out) noexcept -> int{
+            return choreography_symbol_intern(&self(p).intern,table,text,out);
+        };
+        sc.insert=[](void* p,void* table,std::uint16_t sym,std::uint32_t* out) noexcept -> int{
+            return choreography_scale_insert(&self(p).scale,table,sym,out);
+        };
+        auto& f=grammar.grammar.flex;f.context=&tracks;f.create=&choreography_flex_owned_create;f.delete_aux=&choreography_flex_owned_destroy;
+        f.samples.context=this;f.samples.storage=&storage;f.samples.grow=&grow_vector;f.samples.number=&number;
+        grammar.finalize.context=this;grammar.finalize.storage=&storage;
+        grammar.finalize.missing_tag=[](void* p,void* root,const char* e,const char* ref,const char* tag) noexcept -> int{
+            auto& h=self(p).host;return h.missing_tag(h.context,root,e,ref,tag);
+        };
+    }
+    NativeVcdRuntimeState(const NativeVcdRuntimeState&)=delete;
+    NativeVcdRuntimeState& operator=(const NativeVcdRuntimeState&)=delete;
+    bool destroy(void* parsed,std::uint32_t word) noexcept {
+        return choreography_destroy_parsed(parsed,word,owned.destruction,nullptr,&owned.symbols);
+    }
+};
+struct NativeVcdLoadState {
+    NativeVcdRuntimeState& runtime;
+    NamedSceneLoadBindings source;
+    NamedSceneLoadBindings load;
+    explicit NativeVcdLoadState(NativeVcdRuntimeState& r,const NamedSceneLoadBindings& b) noexcept:runtime(r),source(b),load(b){
+        load.context=this;load.owned=r.owned;
+        load.compare_word=r.host.scale_comparator;load.diagnostic_word=r.host.diagnostic_word;load.parse=nullptr;
+        load.set_extension=[](void* p,char* path,const char* ext,unsigned n) noexcept -> int{
+            const auto& b=static_cast<NativeVcdLoadState*>(p)->source;return b.set_extension(b.context,path,ext,n);
+        };
+        load.missing=[](void* p,const char* path) noexcept -> int{
+            const auto& b=static_cast<NativeVcdLoadState*>(p)->source;return b.missing(b.context,path);
+        };
+        load.allocate=[](void* p,unsigned n,void** out,unsigned* extent) noexcept -> int{
+            auto& r=static_cast<NativeVcdLoadState*>(p)->runtime;return r.object_allocate(&r,n,out,extent);
+        };
+        load.release=[](void* p,void* object) noexcept -> int{
+            auto& r=static_cast<NativeVcdLoadState*>(p)->runtime;return r.object_release(&r,object);
+        };
+    }
+};
+int __cdecl native_vcd_runtime_parse(void* callback,const char* name,const char* text,unsigned n,const NativeVcdRuntimeBindings* b,std::uint32_t* out) noexcept {
+    if(!native_vcd_runtime_ready(b)||!name||!text||!hologram_writable(out,4))return 0;
+    *out=0;NativeVcdRuntimeState s(*b);void* root=nullptr;unsigned extent=0;
+    const auto& a=s.grammar.grammar.curves.grammar.events.actors.allocation;
+    if(!allocate_generated_parsed(a,callback,&root,&extent,&s.owned)||!root)return -1;
+    if(portable_finalized_parse(root,extent,name,text,n,&s.grammar)!=1){
+        (void)s.destroy(root,scene_word(root));return -1;
+    }
+    hologram_write(root,0x98,b->diagnostic_word);*out=scene_word(root);return 1;
+}
+int __cdecl native_vcd_runtime_load(void* scene,unsigned extent,const char* name,const NamedSceneLoadBindings* load,const NativeVcdRuntimeBindings* b,std::uint32_t* out) noexcept {
+    if(!native_vcd_runtime_ready(b)||!load||!load->set_extension||!load->missing)return 0;
+    NativeVcdRuntimeState s(*b);NativeVcdLoadState l(s,*load);
+    return portable_finalized_load(scene,extent,name,&l.load,&s.grammar,out);
+}
+int __cdecl native_vcd_runtime_scene(void* npc,const char* name,float delay,const NativeNamedPlaybackBindings* playback,const NativeVcdRuntimeBindings* b,float* out) noexcept {
+    if(!native_vcd_runtime_ready(b)||!playback||!playback->precache.load.set_extension||!playback->precache.load.missing)return 0;
+    NativeVcdRuntimeState s(*b);NativeVcdLoadState l(s,playback->precache.load);
+    auto h=*playback;h.precache.load=l.load;h.precache.parser=nullptr;
+    return portable_finalized_scene(npc,name,delay,&h,&s.grammar,out);
+}
+int __cdecl native_vcd_runtime_destroy(std::uint32_t word,const NativeVcdRuntimeBindings* b) noexcept {
+    if(!native_vcd_runtime_ready(b)||!word)return 0;
+    NativeVcdRuntimeState s(*b);void* parsed=nullptr;
+    if(!choreography_storage(s.owned.destruction,word,0x220,parsed))return 0;
+    return s.destroy(parsed,word)?1:-1;
+}
+int __cdecl native_vcd_runtime_remove(void* scene,unsigned extent,const SceneEntityLifecycleBindings* life,const SceneStopBindings* stop,const NativeVcdRuntimeBindings* b) noexcept {
+    if(!native_vcd_runtime_ready(b))return 0;
+    NativeVcdRuntimeState s(*b);return owned_choreography_remove(scene,extent,life,stop,&s.owned);
+}
+const NativeVcdRuntimeApi native_vcd_runtime_api{version,sizeof(NativeVcdRuntimeApi),
+    &native_vcd_runtime_parse,&native_vcd_runtime_load,&native_vcd_runtime_scene,&native_vcd_runtime_destroy,&native_vcd_runtime_remove};
 const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
@@ -12150,6 +12312,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Choreogra
 SiN_GetChoreographyFinalizeApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyFinalizeApi)?&choreography_finalize_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNativeVcdRuntimeApi=_SiN_GetNativeVcdRuntimeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeVcdRuntimeApi* __cdecl
+SiN_GetNativeVcdRuntimeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeVcdRuntimeApi)?&native_vcd_runtime_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetPortableVcdFinalizedGrammarApi=_SiN_GetPortableVcdFinalizedGrammarApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableVcdFinalizedGrammarApi* __cdecl
