@@ -7,6 +7,7 @@
 #include "native_action_listener.h"
 #include "native_radio_hud.h"
 #include "native_radio_entity.h"
+#include "native_radio_transport.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3565,6 +3566,27 @@ int __cdecl radio_entity_destroy(HologramControl* c,const RadioEntityBindings* b
     c->object=nullptr;c->bytes=0;c->busy=0;return 1;
 }
 const RadioEntityApi radio_entity_api{version,sizeof(RadioEntityApi),&radio_schema,&radio_construct,&radio_key,&radio_named_input,&radio_entity_precache,&radio_entity_spawn,&radio_entity_activate,&radio_entity_destroy};
+
+int __cdecl radio_delivery_register(const RadioDeliveryBindings* b) noexcept {
+    if(!b||!b->register_message)return 0;
+    return b->register_message(b->context,radio_message_name,-1)?1:-1;
+}
+int __cdecl radio_delivery_notify(const RadioDeliveryBindings* b,unsigned active,int priority,const char* speaker) noexcept {
+    if(!b||!b->max_clients||!b->edict||!b->player_from_unknown||!b->send)return 0;
+    const auto h=*b;int clients=0;
+    if(!h.max_clients(h.context,&clients))return -1;
+    if(clients!=1)return 1;
+    RadioEdictObservation edict{};
+    if(!h.edict(h.context,1,&edict))return -1;
+    if(!edict.present||(edict.flags&2u)||!edict.unknown)return 1;
+    void* player=nullptr;
+    if(!h.player_from_unknown(h.context,edict.unknown,&player))return -1;
+    if(!player)return 1;
+    unsigned char payload[2052]{};unsigned bytes=0;
+    if(!radio_wire_encode(active,priority,speaker,payload,sizeof(payload),&bytes))return -1;
+    return h.send(h.context,player,1,radio_message_name,payload,bytes)?1:-1;
+}
+const RadioDeliveryApi radio_delivery_api{version,sizeof(RadioDeliveryApi),&radio_delivery_register,&radio_delivery_notify};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5086,6 +5108,19 @@ int __cdecl radio_hud_ack(HologramControl* c) noexcept {
     c->blocked=0;return 1;
 }
 const RadioHudApi radio_hud_api{version,sizeof(RadioHudApi),&radio_hud_init,&radio_hud_reset,&radio_hud_receive,&radio_hud_icon,&radio_hud_ack};
+
+int __cdecl radio_client_route_register(const RadioClientRouteBindings* b) noexcept {
+    if(!b||!b->register_message)return 0;
+    return b->register_message(b->context,radio_message_name,-1)?1:-1;
+}
+int __cdecl radio_client_route_receive(const RadioClientRouteBindings* b,const unsigned char* payload,unsigned bytes) noexcept {
+    if(!b||!b->find_hud)return 0;
+    const auto h=*b;HologramControl* ctrl=nullptr;
+    if(!h.find_hud(h.context,"CHudPoliceRadio",&ctrl))return -1;
+    if(!ctrl)return 1;
+    return radio_hud_receive(ctrl,&h.hud,payload,bytes);
+}
+const RadioClientRouteApi radio_client_route_api{version,sizeof(RadioClientRouteApi),&radio_client_route_register,&radio_client_route_receive};
 bool screen_command_valid(const HologramControl* ctrl) noexcept {
     return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=0xdc&&
         sin_independent::vgui_layout::Readable(ctrl->object,0xdc);
@@ -5416,6 +5451,13 @@ SiN_GetRadioEntityApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioEntityApi)?&radio_entity_api:nullptr;
 }
+
+#pragma comment(linker,"/EXPORT:SiN_GetRadioDeliveryApi=_SiN_GetRadioDeliveryApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioDeliveryApi* __cdecl
+SiN_GetRadioDeliveryApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioDeliveryApi)?&radio_delivery_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -5573,6 +5615,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioHudA
 SiN_GetRadioHudApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioHudApi)?&radio_hud_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetRadioClientRouteApi=_SiN_GetRadioClientRouteApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioClientRouteApi* __cdecl
+SiN_GetRadioClientRouteApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioClientRouteApi)?&radio_client_route_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetPoisonHudAnimationApi=_SiN_GetPoisonHudAnimationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PoisonHudAnimationApi* __cdecl
