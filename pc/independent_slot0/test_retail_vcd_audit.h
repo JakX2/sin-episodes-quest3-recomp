@@ -3,6 +3,9 @@
 #include "native_server_event_intensity.h"
 #include "native_server_facial_records.h"
 #include "native_server_composed_facial_think.h"
+#include "native_server_named_facial_think.h"
+#include "native_weapon_datatables.h"
+#include "native_client_composed_facial.h"
 #include "native_server_flex_spline.h"
 #include <cmath>
 #include <cstdio>
@@ -936,8 +939,56 @@ event section pause
 }
 // Parsed VCD -> scene clock -> scene virtual leaf -> native facial
 // record admission -> native actor think -> removal and graph retirement.
+// Real replacement SendProp/RecvProp scalar functions; no packet codec.
+struct ParsedFacialClientPair {
+    const FlexSendApi& send;const FlexRecvApi& recv;const ClientComposedFacialApi& frame;
+    s::SendProp entity_props[24]{},overlay_prop{};
+    s::SendTable entity,overlay;
+    RecvProp client_props[24]{},client_overlay_prop{};
+    RecvTable client_entity{client_props,24,nullptr,"DT_BaseEntity"},client_overlay{&client_overlay_prop,1,nullptr,"DT_OverlayVars"};
+    const AnimSendApi& anim_send;const AnimRecvApi& anim_recv;
+    sin_independent::EntityHandleEntry entries[1]{};
+    AnimSendView av{};AnimRecvView arv{};FlexSendView sv{};FlexRecvView rv{};
+    alignas(4) unsigned char face[client_facial_object_bytes]{};
+    float previous=0;
+    ParsedFacialClientPair(const FlexSendApi& s_,const FlexRecvApi& r_,const AnimSendApi& as,const AnimRecvApi& ar,const ClientComposedFacialApi& f)
+        :send(s_),recv(r_),frame(f),anim_send(as),anim_recv(ar){
+        assert(entity.Construct(entity_props,24,"DT_BaseEntity")&&overlay.Construct(&overlay_prop,1,"DT_OverlayVars"));
+        AnimSendBindings ab{&entity,entries,1};AnimRecvBindings arb{&client_entity};
+        assert(anim_send.create(&ab,&av)&&anim_recv.create(&arb,&arv));
+        FlexSendBindings sb{av.base_animating,&overlay};FlexRecvBindings rb{arv.base_animating,&client_overlay};
+        assert(send.create(&sb,&sv)&&recv.create(&rb,&rv));
+        const int unknown=-1;std::memcpy(face+0xacc,&unknown,4);
+    }
+    ~ParsedFacialClientPair(){
+        assert(send.destroy(&sv)&&recv.destroy(&rv));
+        assert(anim_send.destroy(&av)&&anim_recv.destroy(&arv));
+    }
+    void check(unsigned char* actor,float expected,float expected_smooth,float now){
+        auto& x=sv.weights->props[0];auto& y=rv.weights->props[0];
+        s::DVariant value{};x.scalarProxy(&x,actor,actor+sv.flex->props[1].offset+x.offset,&value,0,1);
+        RecvData d{&y,value,0,1};y.proxy(&d,face,face+rv.flex->props[1].offset+y.offset);
+        ClientFacialController controller{3,0,1};
+        ClientFacialFrameBindings blink{};
+        blink.lookup=[](void*,const char*,int* out) noexcept -> int {*out=127;return 1;};
+        ClientVfePhonemeBindings speech{};
+        speech.resolve=[](void*,std::uint32_t,ClientPhonemeSentence*) noexcept -> int{return 0;};
+        speech.map=[](void*,const char*) noexcept -> int{return 3;};
+        ClientFlexOp ops[]={{2,0}};ClientFlexRule rule{0,1,ops};
+        ClientComposedFacialInput in{};
+        in.studio_present=in.rules_enabled=in.smoothing_enabled=true;
+        in.now=now;in.blink_duration=.5f;in.window=.1f;in.dt=.033f;
+        in.controllers=&controller;in.controller_count=1;in.blink=&blink;in.speech=&speech;
+        in.rules=&rule;in.rule_count=in.descriptor_count=1;in.previous=&previous;
+        ClientComposedFacialOutput out{};
+        assert(frame.run(face,sizeof(face),&in,&out)==1&&out.descriptors_valid&&out.smoothed_valid);
+        assert(std::fabs(out.global[3]-expected)<.00001f&&std::fabs(out.current[0]-expected)<.00001f);
+        assert(std::fabs(out.smoothed[0]-expected_smooth)<.0001f);
+        previous=out.smoothed[0];
+    }
+};
 inline void check_parsed_facial_lifecycle(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
-    const NativeSceneExecutionApi& execution,const ServerFacialRecordApi& admission,const ServerComposedFacialThinkApi& think){
+    const NativeSceneExecutionApi& execution,const ServerFacialRecordApi& admission,const ServerNamedFacialThinkApi& think,ParsedFacialClientPair& paired){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -995,12 +1046,12 @@ inline void check_parsed_facial_lifecycle(VcdAuditArena& arena,const NativeVcdRu
     b.leaves.context=&f;b.leaves.actor_extent=cfg.extent;
     ServerFlexRange range{0,1};
     ServerFlexAnimationBindings flex{};flex.context=&f;flex.ranges=&range;flex.count=1;flex.storage=&Fixture::storage;
-    flex.controller=[](void* p,const char* name) noexcept -> int{
-        ++Fixture::self(p).maps;return std::strcmp(name,"jaw")?-1:0;
-    };
+    // Controller lookup is now native; the host callback is intentionally null.
     ServerComposedFacialThinkBindings facial{};facial.native_intensity=true;
     facial.base.context=&f;facial.base.ranges=&range;facial.base.count=1;
     facial.base.storage=&Fixture::storage;facial.base.flex=&flex;facial.base.base_flex=1;
+    const char* names[]={"JAW"};ServerVfeRemapEntry entries[1]{};ServerVfeRemapCache cache{entries,0,1};
+    ServerNamedFacialThinkBindings named{facial,names,1,&cache};
     assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
     auto simulate=[&](float time){
         F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);
@@ -1009,25 +1060,28 @@ inline void check_parsed_facial_lifecycle(VcdAuditArena& arena,const NativeVcdRu
     void* rows=nullptr;unsigned n=0;
     assert(Fixture::storage(&f,F::word(f.actor,0x5b8),&rows,&n)&&n>=0x40);
     assert(VcdAuditArena::read_float(rows,0x20)==1);
-    assert(think.run(f.actor,sizeof(f.actor),10,&facial)&&f.maps==1);
+    assert(think.run(f.actor,sizeof(f.actor),10,&named)&&!f.maps);
     assert(std::fabs(VcdAuditArena::read_float(f.actor,0x4a8)-.8f)<.00001f&&f.actor[0x200]);
+    paired.check(f.actor,.8f,.16f,10);
     assert(simulate(1.5f)==1&&F::word(f.actor,0x5c4)==1);
-    assert(think.run(f.actor,sizeof(f.actor),11,&facial)&&f.maps==1);
+    assert(think.run(f.actor,sizeof(f.actor),11,&named)&&!f.maps);
     assert(std::fabs(VcdAuditArena::read_float(f.actor,0x4a8)-.4f)<.00001f);
+    paired.check(f.actor,.4f,.208f,11);
     // Original classifier uses the lower bound (previous time when forward),
     // not the new target. Crossing the end is still an update; the following
     // step retires the record.
     assert(simulate(2.5f)==1&&!f.stops&&F::word(f.actor,0x5c4)==1);
     assert(simulate(2.75f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
-    assert(think.run(f.actor,sizeof(f.actor),12,&facial));
+    assert(think.run(f.actor,sizeof(f.actor),12,&named));
     assert(std::fabs(VcdAuditArena::read_float(f.actor,0x4a8)-.38f)<.00001f);
+    paired.check(f.actor,.38f,.2424f,12);
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
-    std::puts("PASS parsed VCD facial admission, native spline, actor think and retirement");
+    std::puts("PASS parsed VCD facial lifecycle, native controller mapping and paired client descriptor smoothing");
 }
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate,const NativeSceneExecutionApi& execution,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline,const ServerFacialRecordApi& admission,const ServerComposedFacialThinkApi& think){
-    VcdAuditArena facial_arena(c,s,t,d,st,si,va);check_parsed_facial_lifecycle(facial_arena,runtime,execution,admission,think);
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate,const NativeSceneExecutionApi& execution,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline,const ServerFacialRecordApi& admission,const ServerNamedFacialThinkApi& think,ParsedFacialClientPair& paired){
+    VcdAuditArena facial_arena(c,s,t,d,st,si,va);check_parsed_facial_lifecycle(facial_arena,runtime,execution,admission,think,paired);
     VcdAuditArena execution_arena(c,s,t,d,st,si,va);check_composed_scene_execution(execution_arena,runtime,execution);
     check_native_movement_gate(gate);
     check_native_choreography_dispatch(dispatch);check_native_scene_leaves(leaves);
