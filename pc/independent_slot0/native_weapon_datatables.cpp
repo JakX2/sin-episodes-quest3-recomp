@@ -8,6 +8,7 @@
 #include "native_client_phoneme_source.h"
 #include "native_client_vfe.h"
 #include "native_client_vfe_phoneme.h"
+#include "native_client_flex_rule.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11348,6 +11349,21 @@ int __cdecl client_vfe_phoneme_apply(const void* entity,unsigned bytes,float del
     return client_phoneme_source_apply(entity,bytes,delay,window,adaptive,&adapted,out);
 }
 const ClientVfePhonemeApi client_vfe_phoneme_api{version,sizeof(ClientVfePhonemeApi),&client_vfe_phoneme_apply};
+int __cdecl client_flex_rule_evaluate(bool enabled,const ClientFlexRule* rules,unsigned rule_count,
+    const int* map,unsigned map_count,const float* global,float* out,unsigned output_count) noexcept {
+    if(!enabled)return 1; // original cvar returns without touching destination
+    if(output_count>128||map_count>64||rule_count>65535||
+       (output_count&&!hologram_writable(out,output_count*sizeof(float)))||
+       !global||!sin_independent::vgui_layout::Readable(global,128*sizeof(float))||
+       (map_count&&(!map||!sin_independent::vgui_layout::Readable(map,map_count*sizeof(*map))))||
+       (rule_count&&(!rules||!sin_independent::vgui_layout::Readable(rules,rule_count*sizeof(*rules)))))return 0;
+    for(unsigned i=0;i<rule_count;++i)
+        if(rules[i].count>65535||!rules[i].ops||
+           !sin_independent::vgui_layout::Readable(rules[i].ops,rules[i].count*sizeof(*rules[i].ops)))return 0;
+    return flex_rule_detail::evaluate(rules,rule_count,map,map_count,global,out,output_count);
+}
+const ClientFlexRuleApi client_flex_rule_api{version,sizeof(ClientFlexRuleApi),&client_flex_rule_evaluate};
+
 
 
 
@@ -13773,6 +13789,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientFlexRuleApi=_SiN_GetClientFlexRuleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientFlexRuleApi* __cdecl
+SiN_GetClientFlexRuleApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientFlexRuleApi)?&client_flex_rule_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetClientVfePhonemeApi=_SiN_GetClientVfePhonemeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientVfePhonemeApi* __cdecl
