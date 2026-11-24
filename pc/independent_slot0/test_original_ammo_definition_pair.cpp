@@ -507,6 +507,13 @@ int main(int argc,char** argv){
     assert(parsedClassify&&!getParsedClassify(0,sizeof(tables::ParsedEventClassifyApi))&&!getParsedClassify(1,0));
     tables::test::check_parsed_event_classify(*parsedClassify);
     std::puts("PASS native parsed choreography event classification");
+    const auto getParsedSimulation=reinterpret_cast<tables::GetParsedSceneSimulationApi>(GetProcAddress(server,tables::parsed_scene_simulation_export));
+    assert(getParsedSimulation&&!GetProcAddress(client,tables::parsed_scene_simulation_export));
+    const auto* parsedSimulation=getParsedSimulation(1,sizeof(tables::ParsedSceneSimulationApi));
+    assert(parsedSimulation&&!getParsedSimulation(0,sizeof(tables::ParsedSceneSimulationApi))&&!getParsedSimulation(1,0));
+    tables::test::check_parsed_simulation(*parsedSimulation);
+    std::puts("PASS native parsed choreography ordered event simulation");
+
 
 
 

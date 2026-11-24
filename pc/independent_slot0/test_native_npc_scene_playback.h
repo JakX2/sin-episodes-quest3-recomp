@@ -548,4 +548,53 @@ inline void check_parsed_event_classify(const ParsedEventClassifyApi& api){
     check(3,4,1,A::StartTracked,1);
 }
 
+
+struct ParsedSimulationFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char parsed[0x220]{},events[5][0x3b4]{};
+    ParsedSimulationBindings b{};
+    unsigned order[20]{},count=0,tracks=0,fail=0;
+    static ParsedSimulationFixture& get(void* p){return *static_cast<ParsedSimulationFixture*>(p);}
+    static float fl(const void* p,unsigned off){float x=0;std::memcpy(&x,static_cast<const unsigned char*>(p)+off,4);return x;}
+    ParsedSimulationFixture(){
+        F::put(parsed,0xc,5);F::put(parsed,0x70,1);F::put(parsed,0x9c,0x1234);F::fl(parsed,0x78,2);
+        F::put(parsed,0x21c,0xffffffffu);
+        for(unsigned i=0;i<5;++i){F::fl(events[i],0x184,1);F::fl(events[i],0x188,4);std::strcpy(reinterpret_cast<char*>(events[i]+4),"event");}
+        // Three start/update events at same start: longer end first,
+        // then shared actor/channel order. Last active event must stop.
+        F::fl(events[0],0x188,5);events[0][0x328]=1;
+        F::put(events[1],0,1);events[1][0x1b0]=1;F::put(events[1],0x3b0,2);
+        F::put(events[1],0x2b4,10);F::put(events[1],0x2b8,2);
+        F::put(events[2],0x2b4,10);F::put(events[2],0x2b8,1);
+        F::fl(events[3],0x184,1.5f);F::fl(events[3],0x188,-1);events[3][0x328]=1;
+        F::fl(events[4],0x184,8);
+        b.context=this;b.events.context=this;b.classifier.context=this;
+        b.events.event=[](void* p,void* s,unsigned i,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(s==f.parsed&&i<5);*out=f.events[i];*n=sizeof(f.events[i]);return 1;};
+        b.classifier.pending=[](void* p,void* s,unsigned i,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(s==f.parsed&&!i);*out=f.events[1];*n=sizeof(f.events[1]);return 1;};
+        b.classifier.attach=[](void*,void*,void*) noexcept -> int{assert(false);return 0;};
+        b.channel_index=[](void*,std::uint32_t a,std::uint32_t c,int* out) noexcept -> int{assert(a==10&&(c==1||c==2));*out=static_cast<int>(c);return 1;};
+        b.track=[](void* p,void* s,void* e) noexcept -> int{auto& f=get(p);assert(s==f.parsed&&e==f.events[1]&&f.events[1][0x328]);++f.tracks;return 1;};
+        b.callback=[](void* p,std::uint32_t cb,unsigned slot,float t,void* s,void* e) noexcept -> int{
+            auto& f=get(p);assert(cb==0x1234&&s==f.parsed&&t==fl(s,0x78));
+            unsigned i=0;while(i<5&&e!=f.events[i])++i;assert(i<5&&f.events[i][0x328]);
+            f.order[f.count++]=i*10+slot;return f.fail!=f.count;
+        };
+    }
+};
+inline void check_parsed_simulation(const ParsedSceneSimulationApi& api){
+    using F=ScenePlaybackFixture;using S=ParsedSimulationFixture;
+    S f;unsigned less=99;
+    assert(api.less(f.events[0],sizeof(f.events[0]),f.events[1],sizeof(f.events[1]),&f.b,&less)==1&&less);
+    assert(api.less(f.events[2],sizeof(f.events[2]),f.events[1],sizeof(f.events[1]),&f.b,&less)==1&&less);
+    assert(api.simulate(f.parsed,sizeof(f.parsed),3,&f.b)==1&&f.count==4&&f.order[0]==8&&f.order[1]==20&&f.order[2]==10&&f.order[3]==34);
+    assert(f.tracks==1&&F::word(f.parsed,0x21c)==0&&!F::word(f.events[1],0x3b0)&&!f.events[3][0x328]);
+    assert(F::word(f.parsed,0x8c)==3&&S::fl(f.parsed,0x78)==3&&S::fl(f.parsed,0x94)==3);
+    f.count=0;assert(api.simulate(f.parsed,sizeof(f.parsed),5,&f.b)==1&&f.count==3&&F::word(f.parsed,0x8c)==3);
+    f.count=0;assert(api.simulate(f.parsed,sizeof(f.parsed),6,&f.b)==1&&f.count==3&&f.order[0]==8&&f.order[1]==24&&f.order[2]==14);
+    assert(F::word(f.parsed,0x8c)==1&&S::fl(f.parsed,0x78)==6&&S::fl(f.parsed,0x94)==6);
+    S failed;failed.fail=2;
+    assert(api.simulate(failed.parsed,sizeof(failed.parsed),3,&failed.b)==-1&&failed.count==2&&failed.events[2][0x328]&&!failed.events[1][0x328]);
+    assert(S::fl(failed.parsed,0x78)==2&&!failed.tracks);
+}
+
 }
