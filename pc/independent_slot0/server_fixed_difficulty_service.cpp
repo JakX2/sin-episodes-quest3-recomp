@@ -1,6 +1,7 @@
 #include "server_fixed_difficulty_service.h"
 #include "phase45_zoom_transition.hpp"
 #include "phase47_ads_activity.hpp"
+#include "sin_compat/original_server_scattergun_ammo.hpp"
 #include "server_attack_spread_rules.h"
 #include "sin_compat/fixed_difficulty_phase663.hpp"
 #include "sin_compat/info_challenge_phase665.hpp"
@@ -69,6 +70,8 @@ struct MapEntity {
     float snapshot=0.f;
     sin_phase45::WeaponState weapon_zoom{};
     bool weapon_resync=false;
+    sin_compat::original_server_scattergun_ammo::ObservedAmmoState scattergun{};
+    bool scattergun_resync=false;
 };
 struct MapLevel {
     std::uint32_t epoch=0;
@@ -564,6 +567,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetNpcAimApi=_SiN_GetNpcAimApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcShotApi=_SiN_GetNpcShotApi")
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponBehaviorApi=_SiN_GetWeaponBehaviorApi")
+#pragma comment(linker,"/EXPORT:SiN_GetScattergunPumpApi=_SiN_GetScattergunPumpApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -1061,9 +1065,118 @@ int SIN_FIXED_CALL weapon_attack_activity(abi::MapEntityRef ref,std::uint32_t se
 const abi::WeaponBehaviorApi weapon_api{abi::weapon_version,sizeof(abi::WeaponBehaviorApi),
     &weapon_profile,&weapon_state,&weapon_reconcile,&weapon_frame,&weapon_attack_activity};
 
+MapEntity* find_scattergun(abi::MapEntityRef ref) noexcept {
+    auto* entity=find_weapon(ref);
+    return entity&&entity->spawned&&entity->kind==EntityKind::Scattergun?entity:nullptr;
+}
+abi::ScattergunSnapshot scattergun_snapshot(const MapEntity& entity) noexcept {
+    return {entity.scattergun.prior_clip_57c,entity.scattergun.prior_secondary_580,
+        entity.scattergun.change_pending_589?1u:0u,entity.scattergun_resync?1u:0u};
+}
+int SIN_FIXED_CALL scattergun_state(abi::MapEntityRef ref,abi::ScattergunSnapshot* out) noexcept {
+    const auto* entity=find_scattergun(ref);
+    if(!entity||!out)return 0;
+    *out=scattergun_snapshot(*entity);return 1;
+}
+int SIN_FIXED_CALL scattergun_reconcile(abi::MapEntityRef ref,const abi::ScattergunSnapshot* observed) noexcept {
+    auto* entity=find_scattergun(ref);
+    if(reading_engine_skill||!entity||!observed||observed->pending>1||observed->needs_resync)return 0;
+    entity->scattergun.prior_clip_57c=observed->prior_primary;
+    entity->scattergun.prior_secondary_580=observed->prior_secondary;
+    entity->scattergun.change_pending_589=static_cast<std::uint8_t>(observed->pending);
+    entity->scattergun_resync=false;
+    return 1;
+}
+int SIN_FIXED_CALL scattergun_before_deploy(abi::MapEntityRef ref,std::int32_t clip) noexcept {
+    auto* entity=find_scattergun(ref);
+    if(reading_engine_skill||!entity||entity->scattergun_resync)return 0;
+    entity->scattergun.prior_clip_57c=static_cast<std::uint32_t>(clip);
+    return 1;
+}
+int SIN_FIXED_CALL scattergun_after_base(abi::MapEntityRef ref,const abi::ScattergunPumpObservation* input,
+        const abi::ScattergunPumpHost* host,void* context,abi::ScattergunPumpReport* out) noexcept {
+    if(!out)return 0;
+    abi::ScattergunPumpReport report{};
+    report.activity=-1;
+    auto* entity=find_scattergun(ref);
+    const auto finish=[&](std::uint32_t code) noexcept {
+        report.code=code;
+        if(entity)report.state=scattergun_snapshot(*entity);
+        *out=report;return 1;
+    };
+    if(reading_engine_skill||!entity||entity->weapon_resync||entity->scattergun_resync||!input)
+        return finish(abi::ScattergunRejected);
+    const auto in=*input;
+    if(in.reload_active>1||in.owner_present>1||
+       (in.owner_present&&in.owner.epoch!=ref.epoch))return finish(abi::ScattergunRejected);
+    auto& s=entity->scattergun;
+    const auto prior=s.prior_clip_57c,secondary=s.prior_secondary_580;
+    s.clip_4ec=static_cast<std::uint32_t>(in.primary_clip);
+    s.secondary_tracking_578=entity->weapon_zoom.zoom_active_0x578?1u:0u;
+    s.secondary_584=in.secondary_state;
+    bool pending=false;
+    // Phase165 verified original snapshot logic. The caller has
+    // already completed the actual base callback 0x222cd050.
+    sin_compat::original_server_scattergun_ammo::original_scattergun_update_ammo(
+        s,[](){},[&](){pending=true;});
+    report.primary_changed=s.prior_clip_57c!=prior?1u:0u;
+    report.secondary_changed=s.prior_secondary_580!=secondary?1u:0u;
+    if(!pending)return finish(abi::ScattergunNoPump);
+    if(!std::isfinite(in.primary_deadline)||!std::isfinite(in.curtime))
+        return finish(abi::ScattergunRejected);
+    // Original waits only while primary deadline > curtime; equality
+    // is due. Signed primary clip must be positive, and not reloading.
+    if(in.primary_deadline>in.curtime||in.primary_clip<=0||in.reload_active||!in.owner_present)
+        return finish(abi::ScattergunWaiting);
+    const bool zoomed=entity->weapon_zoom.zoom_active_0x578;
+    if(!host||host->version!=abi::scattergun_version||host->size!=sizeof(*host)||
+       !host->sound||(zoomed&&!host->lookup_activity)||!host->activity||
+       !host->sequence_duration||!host->clock||!host->write_deadline||!host->read_owner_deadline)
+        return finish(abi::ScattergunRejected);
+    // Original clears +0x589 before sound/animation callbacks.
+    s.change_pending_589=0;
+    OutputScope scope;
+    const auto uncertain=[&]() noexcept {
+        entity->scattergun_resync=true;return finish(abi::ScattergunUncertain);
+    };
+    const auto call=[&](auto fn,auto... args)->bool {
+        ++report.callbacks_attempted;
+        if(!fn(context,args...))return false;
+        ++report.callbacks_delivered;return true;
+    };
+    try {
+        if(!call(host->sound,ref,13,0.f))return uncertain();
+        report.activity=0x126;
+        if(zoomed&&!call(host->lookup_activity,ref,"ACT_VM_ZOOMED_PUMP",&report.activity))return uncertain();
+        // Original forwards the returned activity even if lookup gives -1.
+        if(!call(host->activity,ref,report.activity))return uncertain();
+        float duration=0.f,now=0.f;
+        if(!call(host->sequence_duration,ref,&duration)||!std::isfinite(duration)||duration<0.f||
+           !call(host->clock,&now)||!std::isfinite(now))return uncertain();
+        report.requested_deadline=static_cast<float>(static_cast<double>(now)+duration);
+        if(!std::isfinite(report.requested_deadline)||
+           !call(host->write_deadline,in.owner,abi::ScattergunOwnerDeadline,report.requested_deadline))return uncertain();
+        // Original reads the actual owner field after its setter and
+        // again after the first weapon timer setter, not a cached guess.
+        float observed=0.f;
+        if(!call(host->read_owner_deadline,in.owner,&observed)||!std::isfinite(observed)||
+           !call(host->write_deadline,ref,abi::ScattergunPrimaryDeadline,observed)||
+           !call(host->read_owner_deadline,in.owner,&observed)||!std::isfinite(observed)||
+           !call(host->write_deadline,ref,abi::ScattergunSecondaryDeadline,observed))return uncertain();
+    }catch(...){return uncertain();}
+    return finish(abi::ScattergunPumped);
+}
+const abi::ScattergunPumpApi scattergun_api{abi::scattergun_version,sizeof(abi::ScattergunPumpApi),
+    &scattergun_state,&scattergun_reconcile,&scattergun_before_deploy,&scattergun_after_base};
+
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::ScattergunPumpApi* SIN_FIXED_CALL
+SiN_GetScattergunPumpApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::scattergun_version&&bytes==sizeof(abi::ScattergunPumpApi)?&scattergun_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::WeaponBehaviorApi* SIN_FIXED_CALL
 SiN_GetWeaponBehaviorApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::weapon_version&&bytes==sizeof(abi::WeaponBehaviorApi)?&weapon_api:nullptr;
