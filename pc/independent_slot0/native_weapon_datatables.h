@@ -1028,4 +1028,25 @@ struct CanisterApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetCanisterApi=const CanisterApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase726: original dispenser Use override and button_press listener.
+inline constexpr char dispenser_input_export[]="SiN_GetDispenserInputApi";
+struct DispenserInputBindings {
+    DispenserBindings dispenser;
+    // Original game event "use": descriptor 2 press / 3 release,
+    // owner=activator, subject=dispenser, subobject=0.
+    int (__cdecl *use_event)(void*,void* activator,void* dispenser,unsigned descriptor) noexcept;
+    int (__cdecl *screen_index)(void*,void* screen,int* index) noexcept;
+    int (__cdecl *event_index)(void*,void* event,const char* key,int default_value,int* index) noexcept;
+    int (__cdecl *event_command)(void*,void* event,const char* key,const char* default_value,const char** command) noexcept;
+    int (__cdecl *install_eject)(void*,void* dispenser) noexcept;
+};
+struct DispenserInputApi {
+    std::uint32_t version,size;
+    int (__cdecl *use_variant)(HologramControl*,const DispenserInputBindings*,void* activator,unsigned type) noexcept;
+    // Schedules native eject think; actual eject runs later via
+    // ContainerApi. No immediate mutation of antigen or loaded flag.
+    int (__cdecl *button_event)(HologramControl*,const DispenserInputBindings*,const char* name,void* event) noexcept;
+};
+using GetDispenserInputApi=const DispenserInputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

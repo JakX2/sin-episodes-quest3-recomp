@@ -2608,4 +2608,101 @@ inline void check_canister(const CanisterApi& api){
     assert(api.idle(&ctrl,&b)==0&&api.acknowledge(&ctrl));expect({});
 }
 
+struct DispInputFixture {
+    HologramControl* ctrl=nullptr;int actor=0,steam=0,screen=0,event=0;
+    bool steam_live=false,screen_live=true;
+    unsigned events[32]{},count=0,fail=0;
+    int screen_index=19,received=19;
+    const char* command="eject";
+    float now=20,scheduled=0;
+    bool push(unsigned n){assert(ctrl->busy&&count<32);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl di_notice(void* ctx,void* actor,void* object,unsigned descriptor) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(actor==&f.actor&&object==f.ctrl->object&&(descriptor==2||descriptor==3));
+    return f.push(descriptor);
+}
+inline int __cdecl di_observe(void* ctx,void* obj,void* actor,DispenserUseObservation* out) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==f.ctrl->object&&actor==&f.actor);
+    *out={1,30,100,1,0x123001};return f.push(4);
+}
+inline int __cdecl di_resolve(void* ctx,std::uint32_t handle,void** out) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);
+    if(handle==0x123002){*out=f.steam_live?&f.steam:nullptr;return f.push(5);}
+    assert(handle==0x123003);*out=f.screen_live?&f.screen:nullptr;return f.push(6);
+}
+inline int __cdecl di_clock(void* ctx,float* now) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);*now=f.now;return f.push(7);
+}
+inline int __cdecl di_sound(void* ctx,void* obj,DispenserSound which) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==f.ctrl->object);
+    return f.push(8+static_cast<unsigned>(which));
+}
+inline int __cdecl di_create(void* ctx,void* obj,std::uint32_t* handle) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==f.ctrl->object);
+    f.steam_live=true;*handle=0x123002;return f.push(12);
+}
+inline int __cdecl di_install_use(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==f.ctrl->object);return f.push(13);
+}
+inline int __cdecl di_schedule(void* ctx,void* obj,float when) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==f.ctrl->object);f.scheduled=when;return f.push(14);
+}
+inline int __cdecl di_remove(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==&f.steam&&f.steam_live);f.steam_live=false;return f.push(15);
+}
+inline int __cdecl di_pose(void* ctx,void* obj,const char* name,float value) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==f.ctrl->object&&!std::strcmp(name,"percentFull")&&value==1);return f.push(16);
+}
+inline int __cdecl di_animate(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==f.ctrl->object);return f.push(17);
+}
+inline int __cdecl di_position(void*,void*,float*) noexcept {assert(false);return 0;}
+inline int __cdecl di_heal(void*,void*,int,unsigned,int*) noexcept {assert(false);return 0;}
+inline int __cdecl di_screen_index(void* ctx,void* screen,int* index) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(screen==&f.screen);*index=f.screen_index;return f.push(18);
+}
+inline int __cdecl di_event_index(void* ctx,void* event,const char* key,int fallback,int* index) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(event==&f.event&&!std::strcmp(key,"entindex")&&fallback==0);
+    *index=f.received;return f.push(19);
+}
+inline int __cdecl di_command(void* ctx,void* event,const char* key,const char* fallback,const char** out) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(event==&f.event&&!std::strcmp(key,"command")&&!std::strcmp(fallback,""));
+    *out=f.command;return f.push(20);
+}
+inline int __cdecl di_install_eject(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<DispInputFixture*>(ctx);assert(obj==f.ctrl->object);return f.push(21);
+}
+inline void check_dispenser_inputs(const DispenserApi& disp,const DispenserInputApi& api){
+    alignas(4) unsigned char object[0x4e8]{};
+    HologramControl ctrl{object,sizeof(object)};DispInputFixture f{&ctrl};
+    DispenserBindings d{&f,&di_observe,&di_resolve,&di_position,&di_clock,&di_heal,&di_sound,
+        &di_create,&di_remove,&di_install_use,&di_schedule,&di_pose,&di_animate};
+    DispenserInputBindings b{d,&di_notice,&di_screen_index,&di_event_index,&di_command,&di_install_eject};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto word=[&](unsigned off){std::uint32_t v=0;std::memcpy(&v,object+off,4);return v;};
+    const auto set=[&](unsigned off,std::uint32_t value){std::memcpy(object+off,&value,4);};
+    const auto use=[&](unsigned type){return api.use_variant(&ctrl,&b,&f.actor,type);};
+    const auto event=[&](const char* name){return api.button_event(&ctrl,&b,name,&f.event);};
+    assert(disp.defaults(object,sizeof(object)));
+    assert(use(2)==1);expect({});
+    assert(use(1)==1&&word(0x4ac)==0x123001&&f.steam_live);expect({2,4,7,8,12,13,7,14});
+    assert(use(0)==1&&word(0x4ac)==0xffffffffu&&f.steam_live);expect({3});
+    assert(disp.think_use(&ctrl,&d)==1&&!f.steam_live&&word(0x4a0)==0);expect({5,5,15,9,10,16,17});
+    object[0x498]=0;assert(use(1)==1);expect({2});object[0x498]=1;
+    assert(event("other")==1);expect({});
+    assert(event("button_press")==1);expect({});
+    set(0x4b4,0x123003);f.screen_live=false;assert(event("button_press")==1);expect({6});
+    f.screen_live=true;f.received=20;assert(event("button_press")==1);expect({6,6,18,19});
+    f.received=19;f.command="other";assert(event("button_press")==1);expect({6,6,18,19,20});
+    f.command="EjEcT";
+    assert(event("BUTTON_PRESS")==1&&f.scheduled==f.now&&object[0x498]&&word(0x49c)==0x42c80000u);
+    expect({6,6,18,19,20,21,7,14});
+    // Original button event has no loaded-state gate. The eject think
+    // itself owns the check and must not be executed synchronously.
+    object[0x498]=0;assert(event("button_press")==1);expect({6,6,18,19,20,21,7,14});
+    f.fail=14;assert(event("button_press")==-1&&ctrl.blocked);expect({6,6,18,19,20,21,7,14});
+    assert(use(0)==0&&disp.acknowledge(&ctrl));expect({});
+    f.fail=3;set(0x4ac,0x123001);assert(use(0)==-1&&ctrl.blocked&&word(0x4ac)==0x123001);expect({3});
+}
+
 }
