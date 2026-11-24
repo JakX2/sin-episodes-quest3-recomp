@@ -992,6 +992,87 @@ struct NativeNpcRandomFixture {
     float sample=0.f;
     bool throws=false;
 };
+// Original VFileSystem012 primary vtable: 0 Read, 2 Open, 3 Close, 7 Size.
+// Owned fake storage exercises actual DLL dispatch, including short reads.
+struct CombatFileFixture {
+    virtual int read(void* out,int count,void* handle){
+        assert(live&&handle==this&&count>0);++reads;
+        assert(!api->set_skill(2)&&!api->end_campaign()&&!rules->clear());
+        if(mode==4)throw 1;
+        if(mode==5)return 0;
+        if(mode==6)return count+1;
+        const auto n=(std::min)(static_cast<std::size_t>(count),(std::min)(data.size()-position,std::size_t{17}));
+        std::memcpy(out,data.data()+position,n);position+=n;
+        return static_cast<int>(n);
+    }
+    virtual void slot1(){assert(false);}
+    virtual void* open(const char* path,const char* modeName,const char* pathID){
+        assert(!live&&std::strcmp(path,"scripts/rules_combat.txt")==0&&
+            std::strcmp(modeName,"rb")==0&&std::strcmp(pathID,"GAME")==0);
+        ++opens;position=0;
+        assert(!rules->clear()&&!api->set_skill(2));
+        a::SpreadFileReport nested{};
+        assert(load(this,&nested)&&nested.code==a::SpreadFileRejected);
+        if(mode==1)return nullptr;
+        if(mode==2)throw 1;
+        live=true;return this;
+    }
+    virtual void close(void* handle){
+        assert(live&&handle==this);++closes;live=false;
+        if(mode==7)throw 1;
+    }
+    virtual void slot4(){assert(false);}
+    virtual void slot5(){assert(false);}
+    virtual void slot6(){assert(false);}
+    virtual unsigned size(void* handle){
+        assert(live&&handle==this);
+        if(mode==3)return 262145u;
+        if(mode==8)throw 1;
+        return static_cast<unsigned>(data.size());
+    }
+    std::string data;
+    std::size_t position=0;
+    unsigned opens=0,reads=0,closes=0;
+    int mode=0;
+    bool live=false;
+    const a::Api* api=nullptr;
+    const a::AttackSpreadApi* rules=nullptr;
+    a::LoadAttackSpreadFromEngine load=nullptr;
+};
+static void test_native_combat_filesystem(HMODULE lib,const a::Api* api,const a::AttackSpreadApi* rules){
+    auto load=reinterpret_cast<a::LoadAttackSpreadFromEngine>(GetProcAddress(lib,a::spread_filesystem_export_name));
+    assert(load&&api->begin_campaign(3)&&rules->clear());
+    CombatFileFixture f;f.api=api;f.rules=rules;f.load=load;
+    f.data=R"KV(AttackSpreadRules {
+        class_names { npc_custom rule }
+        rule { weapon_class_names { "*" generic }
+        generic { target_class_names { "*" target } target 0.4 } }
+    })KV";
+    a::SpreadFileReport report{};
+    assert(!load(&f,nullptr)&&load(nullptr,&report)&&report.code==a::SpreadFileRejected);
+    assert(load(reinterpret_cast<void*>(1),&report)&&report.code==a::SpreadFileRejected&&!f.opens);
+    assert(load(&f,&report)&&report.code==a::SpreadFileLoaded&&report.read_bytes==f.data.size()&&
+        report.expected_bytes==f.data.size()&&report.close_attempted&&report.close_returned&&f.closes==1&&f.reads>1);
+    a::AttackSpreadResult out{};
+    assert(rules->query("npc_custom","rifle","player",&out)&&out.base==0.4f&&out.x==0.2f);
+    const int modes[]={1,2,3,4,5,6,7,8};
+    const std::uint32_t expected[]={a::SpreadFileMissing,a::SpreadFileOpenUncertain,a::SpreadFileInvalidLength,
+        a::SpreadFileReadFailed,a::SpreadFileReadFailed,a::SpreadFileReadFailed,a::SpreadFileCloseUncertain,a::SpreadFileReadFailed};
+    for(unsigned i=0;i<8;++i){
+        f.mode=modes[i];const unsigned oldClose=f.closes;
+        assert(load(&f,&report)&&report.code==expected[i]&&!f.live);
+        assert(f.closes==oldClose+(i>=2?1u:0u));
+        assert(report.close_attempted==(i>=2?1u:0u));
+        assert(report.close_returned==(i>=2&&f.mode!=7?1u:0u));
+        assert(rules->query("npc_custom","rifle","player",&out)&&out.base==0.4f&&out.x==0.2f);
+    }
+    f.mode=0;f.data="invalid rules";
+    assert(load(&f,&report)&&report.code==a::SpreadFileParseFailed&&report.close_returned);
+    assert(rules->query("npc_custom","rifle","player",&out)&&out.base==0.4f);
+    f.data.clear();
+    assert(load(&f,&report)&&report.code==a::SpreadFileInvalidLength&&report.close_returned);
+    assert(api->end_campaign()&&rules->clear());
+}
 static void test_native_npc_rng(HMODULE lib,const a::Api* api){
     const auto decide=reinterpret_cast<a::DecideNpcWithEngineRandom>(GetProcAddress(lib,a::npc_engine_rng_export_name));
     assert(decide&&api->begin_campaign(1));
@@ -1181,6 +1262,7 @@ int main(int argc,char** argv){
     assert(api->end_campaign());
 #ifdef _WIN32
 #if defined(_MSC_VER) && defined(_M_IX86)
+    test_native_combat_filesystem(lib,api,getSpread(a::attack_spread_version,sizeof(a::AttackSpreadApi)));
     test_native_npc_rng(lib,api);
     test_native_engine_event(lib,api,map,triggers);
     test_engine_skill(lib,api);
