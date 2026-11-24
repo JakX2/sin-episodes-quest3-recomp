@@ -13,6 +13,7 @@
 #include "test_native_client_facial_frame.h"
 #include "test_native_client_phoneme_window.h"
 #include "test_native_client_phoneme_emphasis.h"
+#include "test_native_client_phoneme_source.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -77,6 +78,15 @@ int main(int argc,char** argv){
         assert(api&&!get(0,sizeof(ft::ClientPhonemeEmphasisApi))&&!get(1,0));
         ft::test::check_client_phoneme_emphasis(*api);
         std::puts("PASS client sentence emphasis and resolved phoneme bank contributions");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetClientPhonemeSourceApi>(GetProcAddress(client,ft::client_phoneme_source_export));
+        assert(get&&!GetProcAddress(server,ft::client_phoneme_source_export));
+        const auto* api=get(1,sizeof(ft::ClientPhonemeSourceApi));
+        assert(api&&!get(0,sizeof(ft::ClientPhonemeSourceApi))&&!get(1,0));
+        ft::test::check_client_phoneme_source(*api);
+        std::puts("PASS client composed phoneme audio source timing and accumulation");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));
