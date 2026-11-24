@@ -877,6 +877,29 @@ struct ChoreographyActorParserApi {
     int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const ChoreographyActorParserBindings*,std::uint32_t*) noexcept;
 };
 using GetChoreographyActorParserApi=const ChoreographyActorParserApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_event_parser_export[]="SiN_GetChoreographyEventParserApi";
+enum class ChoreographyEventBlock:unsigned {Tags,AbsoluteTags,FlexTimingTags,FlexAnimations,EventRamp};
+struct ChoreographyEventParserBindings {
+    ChoreographyActorParserBindings actors;
+    void* context;
+    // Original tokenizer virtual +8: more tokens on current line.
+    int (__cdecl *same_line)(void*,unsigned*) noexcept;
+    // Original CRT float conversion (223a5c8b) and timing-tag refresh.
+    int (__cdecl *number)(void*,const char*,float*) noexcept;
+    int (__cdecl *end_changed)(void*,void*) noexcept;
+    int (__cdecl *append_event)(void*,void* channel,void* event) noexcept;
+    // Complex subgrammar leaves consume their nested tokens.
+    int (__cdecl *block)(void*,void*,ChoreographyEventBlock) noexcept;
+    // Original legacy ramp conversion (22110770/221107b0) after linking.
+    int (__cdecl *legacy_ramp)(void*,void*,float,float,float) noexcept;
+};
+struct ChoreographyEventParserApi {
+    std::uint32_t version,size;
+    int (__cdecl *event)(void*,unsigned,void* actor,void* channel,const ChoreographyEventParserBindings*) noexcept;
+    int (__cdecl *parse)(void*,unsigned,const char*,const ChoreographyEventParserBindings*) noexcept;
+    int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const ChoreographyEventParserBindings*,std::uint32_t*) noexcept;
+};
+using GetChoreographyEventParserApi=const ChoreographyEventParserApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

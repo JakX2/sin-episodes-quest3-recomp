@@ -5181,8 +5181,8 @@ bool named_scene_ready(const NamedSceneLoadBindings* b,const ChoreographyTextPar
         b->cache.ensure&&b->cache.find&&b->cache.lock&&b->cache.reload&&b->cache.unlock&&owned_choreography_ready(&b->owned);
 }
 int __cdecl choreography_text_parse(void*,unsigned,const char*,const ChoreographyTextParserBindings*) noexcept;
-int choreography_text_parse_impl(void*,unsigned,const char*,const ChoreographyTextParserBindings*,const ChoreographyActorParserBindings*) noexcept;
-int named_scene_load_impl(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,std::uint32_t* out,const ChoreographyTextParserBindings* parser,const ChoreographyActorParserBindings* actors=nullptr) noexcept {
+int choreography_text_parse_impl(void*,unsigned,const char*,const ChoreographyTextParserBindings*,const ChoreographyActorParserBindings*,const ChoreographyEventParserBindings* events=nullptr) noexcept;
+int named_scene_load_impl(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,std::uint32_t* out,const ChoreographyTextParserBindings* parser,const ChoreographyActorParserBindings* actors=nullptr,const ChoreographyEventParserBindings* events=nullptr) noexcept {
     if(!scene||bytes<0x414||!sin_independent::vgui_layout::Readable(scene,0x414)||!name||!hologram_writable(out,4)||!named_scene_ready(b,parser))return 0;
     const auto h=*b;const auto& cache=h.cache;
     char path[512]{},key[256]{};
@@ -5223,7 +5223,7 @@ int named_scene_load_impl(void* scene,unsigned bytes,const char* name,const Name
         (void)h.release(h.context,copy);return -1;
     }
     const bool parsed_ok=parser?(parser->begin(parser->context,static_cast<const char*>(copy),n)&&
-        choreography_text_parse_impl(parsed,extent,path,parser,actors)==1):h.parse(h.context,parsed,path,static_cast<const char*>(copy),n)!=0;
+        choreography_text_parse_impl(parsed,extent,path,parser,actors,events)==1):h.parse(h.context,parsed,path,static_cast<const char*>(copy),n)!=0;
     // Original 22119b20 sets diagnostics after the parser returns.
     if(parsed_ok)hologram_write(parsed,0x98,h.diagnostic_word);
     const bool released=h.release(h.context,copy)!=0;
@@ -5267,9 +5267,9 @@ bool choreography_text_token(const ChoreographyTextParserBindings& h,char (&out)
     }
     return false;
 }
-bool choreography_actor_parser_ready(const ChoreographyActorParserBindings* b) noexcept {
+bool choreography_actor_parser_ready(const ChoreographyActorParserBindings* b,bool native_event=false) noexcept {
     return b&&choreography_text_ready(&b->text)&&b->allocation.allocate&&b->allocation.release_unpublished&&
-        b->allocation.append_parsed&&b->append_channel&&b->event;
+        b->allocation.append_parsed&&b->append_channel&&(native_event||b->event);
 }
 // Original actor/channel grammar expects name on the same line (next(0)),
 // then braces and field values with next(1). EOF within a body is rejected
@@ -5277,7 +5277,13 @@ bool choreography_actor_parser_ready(const ChoreographyActorParserBindings* b) n
 bool choreography_actor_next(const ChoreographyTextParserBindings& h,unsigned crossline,char (&token)[1024]) noexcept {
     unsigned more=0;return h.next(h.context,crossline,&more)&&more&&choreography_text_token(h,token);
 }
-bool choreography_actor_body(void* parsed,void* actor,const ChoreographyActorParserBindings& h,bool channel) noexcept {
+int __cdecl choreography_event_parse(void*,unsigned,void*,void*,const ChoreographyEventParserBindings*) noexcept;
+bool choreography_event_parser_ready(const ChoreographyEventParserBindings* b) noexcept {
+    return b&&choreography_actor_parser_ready(&b->actors,true)&&b->actors.allocation.event_counter&&
+        hologram_writable(b->actors.allocation.event_counter,4)&&b->same_line&&b->number&&b->end_changed&&
+        b->append_event&&b->block&&b->legacy_ramp;
+}
+bool choreography_actor_body(void* parsed,void* actor,const ChoreographyActorParserBindings& h,bool channel,const ChoreographyEventParserBindings* events=nullptr) noexcept {
     void* object=actor;unsigned extent=0;
     if(channel){
         if(!allocate_generated_child(h.allocation,parsed,GeneratedSceneChild::Channel,&object,&extent)||!object)return false;
@@ -5302,20 +5308,23 @@ bool choreography_actor_body(void* parsed,void* actor,const ChoreographyActorPar
         }else if(!channel&&choreography_text_equal(token,"faceposermodel")){
             if(!choreography_actor_next(text,1,token)||!choreography_text_copy(static_cast<char*>(object)+0x80,128,token))return false;
         }else if(!channel&&choreography_text_equal(token,"channel")){
-            if(!choreography_actor_body(parsed,actor,h,true))return false;
+            if(!choreography_actor_body(parsed,actor,h,true,events))return false;
         }else if(channel&&choreography_text_equal(token,"event")){
-            if(!h.event(h.context,parsed,actor,object))return false;
+            if(!(events?choreography_event_parse(parsed,0x220,actor,object,events)==1:h.event(h.context,parsed,actor,object)!=0))return false;
         }else if(!text.unexpected(text.context,token))return false;
     }
     return false;
 }
-int __cdecl choreography_actor_parse(void* parsed,unsigned bytes,const ChoreographyActorParserBindings* b) noexcept {
-    if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_actor_parser_ready(b))return 0;
+int choreography_actor_parse_impl(void* parsed,unsigned bytes,const ChoreographyActorParserBindings* b,const ChoreographyEventParserBindings* events) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_actor_parser_ready(b,events!=nullptr))return 0;
     const auto h=*b;void* actor=nullptr;unsigned extent=0;
     if(!allocate_generated_child(h.allocation,parsed,GeneratedSceneChild::Actor,&actor,&extent)||!actor)return -1;
-    return choreography_actor_body(parsed,actor,h,false)?1:-1;
+    return choreography_actor_body(parsed,actor,h,false,events)?1:-1;
 }
-int choreography_text_parse_impl(void* parsed,unsigned bytes,const char* filename,const ChoreographyTextParserBindings* b,const ChoreographyActorParserBindings* actors) noexcept {
+int __cdecl choreography_actor_parse(void* parsed,unsigned bytes,const ChoreographyActorParserBindings* b) noexcept {
+    return choreography_actor_parse_impl(parsed,bytes,b,nullptr);
+}
+int choreography_text_parse_impl(void* parsed,unsigned bytes,const char* filename,const ChoreographyTextParserBindings* b,const ChoreographyActorParserBindings* actors,const ChoreographyEventParserBindings* events) noexcept {
     if(bytes<0x220||!hologram_writable(parsed,0x220)||!filename||!choreography_text_ready(b))return 0;
     const auto h=*b;
     char path[128]{};
@@ -5337,8 +5346,8 @@ int choreography_text_parse_impl(void* parsed,unsigned bytes,const char* filenam
         else if(choreography_text_equal(token,"scalesettings"))block=ChoreographyTextBlock::ScaleSettings;
         else nested=false;
         if(nested){
-            if(actors&&block==ChoreographyTextBlock::Actor){if(choreography_actor_parse(parsed,bytes,actors)!=1)return -1;}
-            else if(actors&&block==ChoreographyTextBlock::Event){if(!actors->event(actors->context,parsed,nullptr,nullptr))return -1;}
+            if(actors&&block==ChoreographyTextBlock::Actor){if(choreography_actor_parse_impl(parsed,bytes,actors,events)!=1)return -1;}
+            else if(actors&&block==ChoreographyTextBlock::Event){if(!(events?choreography_event_parse(parsed,bytes,nullptr,nullptr,events)==1:actors->event(actors->context,parsed,nullptr,nullptr)!=0))return -1;}
             else if(!h.block(h.context,parsed,block))return -1;
             continue;
         }
@@ -5367,6 +5376,102 @@ int __cdecl choreography_actor_load(void* scene,unsigned bytes,const char* name,
     const auto h=*actors;return named_scene_load_impl(scene,bytes,name,b,out,&h.text,&h);
 }
 const ChoreographyActorParserApi choreography_actor_parser_api{version,sizeof(ChoreographyActorParserApi),&choreography_actor_parse,&choreography_actor_parse_root,&choreography_actor_load};
+// Original type table at 224e9e50 (17 entries) and caption table at 224e9ed8.
+unsigned choreography_event_type(const char* token) noexcept {
+    constexpr const char* names[]={"unspecified","section","expression","lookat","moveto","speak","gesture","sequence","face","firetrigger","flexanimation","subscene","loop","interrupt","stoppoint","permitresponses","generic"};
+    for(unsigned i=0;i<17;++i)if(choreography_text_equal(token,names[i]))return i;
+    return 0;
+}
+int __cdecl choreography_event_parse(void* parsed,unsigned bytes,void* actor,void* channel,const ChoreographyEventParserBindings* b) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_event_parser_ready(b)||
+       (actor&&!hologram_writable(actor,0x118))||(channel&&!hologram_writable(channel,0x9c)))return 0;
+    const auto h=*b;const auto& text=h.actors.text;
+    void* event=nullptr;unsigned extent=0;
+    if(!allocate_generated_child(h.actors.allocation,parsed,GeneratedSceneChild::Event,&event,&extent)||!event)return -1;
+    char token[1024]{};
+    auto next=[&](unsigned cross){return choreography_actor_next(text,cross,token);};
+    auto number=[&](unsigned cross,float& out){return next(cross)&&h.number(h.context,token,&out);};
+    auto string=[&](unsigned cross,unsigned off,unsigned cap){return next(cross)&&choreography_text_copy(static_cast<char*>(event)+off,cap,token);};
+    if(!next(0))return -1;
+    const unsigned type=choreography_event_type(token);
+    hologram_write(event,0,type);hologram_write(event,0x198,static_cast<unsigned char>(type==5||type==11));
+    if(!string(0,4,128)||!next(1))return -1;
+    if(!choreography_text_equal(token,"{")&&!text.unexpected(text.context,token))return -1;
+    float ramp[3]{1,1,1};bool legacy=false;
+    for(unsigned i=0;i<0x100000;++i){
+        if(!next(1)||!*token)return -1;
+        if(choreography_text_equal(token,"}")){
+            if(channel&&!h.append_event(h.context,channel,event))return -1;
+            hologram_write(event,0x2b4,scene_word(actor));hologram_write(event,0x2b8,scene_word(channel));
+            // 221178f2..221179b0: only legacy nontrivial ramp with no samples.
+            if(legacy&&!hologram_read<unsigned>(event,0x1a8)&&(ramp[0]!=1||ramp[1]!=1||ramp[2]!=1)&&
+               !h.legacy_ramp(h.context,event,ramp[0],ramp[1],ramp[2]))return -1;
+            return 1;
+        }
+        if(choreography_text_equal(token,"time")){
+            float start=0,end=1;unsigned more=0;
+            if(!number(0,start)||!h.same_line(h.context,&more)||(more&&!number(0,end)))return -1;
+            const float old=hologram_read<float>(event,0x188);
+            hologram_write(event,0x184,start);
+            if(old!=-1&&old<start)hologram_write(event,0x188,start);
+            const bool changed=hologram_read<float>(event,0x188)!=end;
+            hologram_write(event,0x188,end);
+            if(end!=-1){
+                if(end<start)hologram_write(event,0x188,start);
+                if(changed&&hologram_read<int>(event,0x318)>0&&!h.end_changed(h.context,event))return -1;
+            }
+        }else if(choreography_text_equal(token,"ramp")){
+            legacy=true;if(!number(0,ramp[0]))return -1;
+            for(unsigned j=1;j<3;++j){unsigned more=0;if(!h.same_line(h.context,&more))return -1;if(more&&!number(0,ramp[j]))return -1;}
+        }else if(choreography_text_equal(token,"param")){if(!string(0,0x84,128))return -1;}
+        else if(choreography_text_equal(token,"param2")){
+            if(!string(0,0x104,128))return -1;
+            const auto len=std::strlen(token);
+            // Original trims one trailing space using source length.
+            // Bound the write to the destination for oversized/empty tokens.
+            if(len&&len<128&&token[len-1]==' ')static_cast<char*>(event)[0x104+len-1]=0;
+        }else if(choreography_text_equal(token,"pitch")||choreography_text_equal(token,"yaw")||choreography_text_equal(token,"loopcount")){
+            const unsigned off=choreography_text_equal(token,"pitch")?0x334:choreography_text_equal(token,"yaw")?0x338:0x190;
+            if(!next(0))return -1;int v=choreography_text_integer(token);
+            if(off==0x190&&v< -1)v=-1;hologram_write(event,off,v);
+        }else if(choreography_text_equal(token,"distancetotarget")||choreography_text_equal(token,"sequenceduration")){
+            const unsigned off=choreography_text_equal(token,"distancetotarget")?0x340:0x18c;
+            float v=0;if(!number(0,v))return -1;hologram_write(event,off,v);
+        }else if(choreography_text_equal(token,"resumecondition"))hologram_write(event,0x1b0,static_cast<unsigned char>(1));
+        else if(choreography_text_equal(token,"fixedlength"))hologram_write(event,0x198,static_cast<unsigned char>(1));
+        else if(choreography_text_equal(token,"lockbodyfacing"))hologram_write(event,0x33c,static_cast<unsigned char>(1));
+        else if(choreography_text_equal(token,"relativetag")){
+            if(!string(0,0x1b2,128)||!string(0,0x232,128))return -1;
+            hologram_write(event,0x1b1,static_cast<unsigned char>(1));
+        }else if(choreography_text_equal(token,"cctype")){
+            if(!next(0))return -1;
+            hologram_write(event,0x34c,choreography_text_equal(token,"cc_slave")?1u:choreography_text_equal(token,"cc_disabled")?2u:0u);
+        }else if(choreography_text_equal(token,"cctoken")){if(!string(0,0x350,64))return -1;}
+        else if(choreography_text_equal(token,"cc_usingcombinedfile"))hologram_write(event,0x390,static_cast<unsigned char>(1));
+        else if(choreography_text_equal(token,"cc_combinedusesgender"))hologram_write(event,0x3a1,static_cast<unsigned char>(1));
+        else if(choreography_text_equal(token,"cc_noattenuate"))hologram_write(event,0x3a2,static_cast<unsigned char>(1));
+        else{
+            ChoreographyEventBlock block{};
+            if(choreography_text_equal(token,"tags"))block=ChoreographyEventBlock::Tags;
+            else if(choreography_text_equal(token,"absolutetags"))block=ChoreographyEventBlock::AbsoluteTags;
+            else if(choreography_text_equal(token,"flextimingtags"))block=ChoreographyEventBlock::FlexTimingTags;
+            else if(choreography_text_equal(token,"flexanimations"))block=ChoreographyEventBlock::FlexAnimations;
+            else if(choreography_text_equal(token,"event_ramp"))block=ChoreographyEventBlock::EventRamp;
+            else continue; // original unrecognized event field is ignored
+            if(!h.block(h.context,event,block))return -1;
+        }
+    }
+    return -1;
+}
+int __cdecl choreography_event_parse_root(void* parsed,unsigned bytes,const char* name,const ChoreographyEventParserBindings* b) noexcept {
+    if(!choreography_event_parser_ready(b))return 0;
+    const auto h=*b;return choreography_text_parse_impl(parsed,bytes,name,&h.actors.text,&h.actors,&h);
+}
+int __cdecl choreography_event_load(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,const ChoreographyEventParserBindings* events,std::uint32_t* out) noexcept {
+    if(!choreography_event_parser_ready(events)||!events->actors.text.begin)return 0;
+    const auto h=*events;return named_scene_load_impl(scene,bytes,name,b,out,&h.actors.text,&h.actors,&h);
+}
+const ChoreographyEventParserApi choreography_event_parser_api{version,sizeof(ChoreographyEventParserApi),&choreography_event_parse,&choreography_event_parse_root,&choreography_event_load};
 int __cdecl choreography_text_load(void* scene,unsigned bytes,const char* name,const NamedSceneLoadBindings* b,const ChoreographyTextParserBindings* parser,std::uint32_t* out) noexcept {
     if(!choreography_text_ready(parser)||!parser->begin)return 0;
     const auto p=*parser;return named_scene_load_impl(scene,bytes,name,b,out,&p);
@@ -10781,6 +10886,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyEventParserApi=_SiN_GetChoreographyEventParserApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyEventParserApi* __cdecl
+SiN_GetChoreographyEventParserApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyEventParserApi)?&choreography_event_parser_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyActorParserApi=_SiN_GetChoreographyActorParserApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyActorParserApi* __cdecl
 SiN_GetChoreographyActorParserApi(std::uint32_t version,std::uint32_t size) noexcept {

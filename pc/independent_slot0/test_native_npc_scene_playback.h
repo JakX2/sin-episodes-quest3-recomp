@@ -3,6 +3,7 @@
 #include "test_native_jessica_script.h"
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <cstring>
 #include <initializer_list>
@@ -2026,6 +2027,57 @@ inline void check_choreography_actor_parser(const ChoreographyActorParserApi& ap
     assert(api.parse(eof.parsed,sizeof(eof.parsed),"test.vcd",&eof.b)==-1&&eof.appends==2&&!eof.linked&&!eof.finalizes);
 }
 
+struct ChoreographyEventParserFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char parsed[0x220]{},actor[0x118]{},channel[0x9c]{},event[0x3c0]{};
+    std::uint32_t counter=42,words[3]{},channel_link=0,event_link=0;
+    const char* tokens[64]={"actor","Jessica","{","channel","Voice","{","event","SPEAK","dialogue","{","time","2","1","param","Jessica.Test","param2","72 ","pitch","100","yaw","-2","loopcount","-9","distancetotarget","3.5","sequenceduration","4","resumecondition","fixedlength","lockbodyfacing","relativetag","marker","reference","cctype","CC_SLAVE","cctoken","caption","cc_usingcombinedfile","cc_combinedusesgender","cc_noattenuate","tags","event_ramp","unknown","}","}","}","fps","30",nullptr};
+    const char* current="";unsigned index=0,allocs=0,appends=0,events=0,channels=0,finalized=0,blocks=0;
+    ChoreographyEventParserBindings b{};
+    static ChoreographyEventParserFixture& self(void* p){return *static_cast<ChoreographyEventParserFixture*>(p);}
+    ChoreographyEventParserFixture(){
+        auto& a=b.actors;auto& t=a.text;
+        b.context=a.context=t.context=a.allocation.context=this;t.tokenizer_word=0x1234;a.allocation.event_counter=&counter;
+        t.next=[](void* p,unsigned flag,unsigned* more) noexcept -> int{
+            auto& f=self(p);assert(f.index<64);const unsigned i=f.index;
+            const bool same=i==1||i==4||i==7||i==8||i==11||i==12||i==14||i==16||i==18||i==20||i==22||i==24||i==26||i==31||i==32||i==34||i==36;
+            assert(flag==(same?0u:1u));f.current=f.tokens[f.index++];*more=f.current!=nullptr;if(!f.current)f.current="";return 1;};
+        t.token=[](void* p,const char** out) noexcept -> int{*out=self(p).current;return 1;};
+        t.block=[](void*,void*,ChoreographyTextBlock) noexcept -> int{assert(false);return 0;};
+        t.unexpected=[](void*,const char*) noexcept -> int{assert(false);return 0;};
+        t.finalize=[](void* p,void* parsed,ChoreographyTextFinalize stage) noexcept -> int{auto& f=self(p);assert(parsed==f.parsed&&static_cast<unsigned>(stage)==f.finalized);++f.finalized;return 1;};
+        a.allocation.allocate=[](void* p,unsigned size,void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);const unsigned sizes[]={0x118,0x9c,0x3c0};void* objects[]={f.actor,f.channel,f.event};
+            assert(f.allocs<3&&size==sizes[f.allocs]);*out=objects[f.allocs++];*n=size;std::memset(*out,0xa5,size);return 1;};
+        a.allocation.release_unpublished=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        a.allocation.append_parsed=[](void* p,void* parsed,GeneratedSceneChild kind,void* child) noexcept -> int{
+            auto& f=self(p);const unsigned i=static_cast<unsigned>(kind),off[]={0x14,0x28,0};
+            assert(parsed==f.parsed&&i==f.appends++);f.words[i]=F::ptr(child);F::put(parsed,off[i],F::ptr(f.words+i));F::put(parsed,off[i]+4,1);F::put(parsed,off[i]+12,1);return 1;};
+        a.append_channel=[](void* p,void* actor,void* channel) noexcept -> int{
+            auto& f=self(p);assert(actor==f.actor&&channel==f.channel&&f.events==1&&!F::word(channel,0));++f.channels;f.channel_link=F::ptr(channel);F::put(actor,0x100,F::ptr(&f.channel_link));F::put(actor,0x10c,1);return 1;};
+        b.append_event=[](void* p,void* channel,void* event) noexcept -> int{
+            auto& f=self(p);assert(channel==f.channel&&event==f.event&&!F::word(event,0x2b4)&&!F::word(event,0x2b8)&&!f.channels);
+            ++f.events;f.event_link=F::ptr(event);F::put(channel,0x84,F::ptr(&f.event_link));F::put(channel,0x90,1);return 1;};
+        b.same_line=[](void* p,unsigned* more) noexcept -> int{*more=self(p).index==12;return 1;};
+        b.number=[](void*,const char* token,float* out) noexcept -> int{*out=std::strtof(token,nullptr);return 1;};
+        b.end_changed=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        b.block=[](void* p,void* event,ChoreographyEventBlock block) noexcept -> int{
+            auto& f=self(p);assert(event==f.event&&block==(f.blocks?ChoreographyEventBlock::EventRamp:ChoreographyEventBlock::Tags));++f.blocks;return 1;};
+        b.legacy_ramp=[](void*,void*,float,float,float) noexcept -> int{assert(false);return 0;};
+    }
+};
+inline void check_choreography_event_parser(const ChoreographyEventParserApi& api){
+    using F=ScenePlaybackFixture;ChoreographyEventParserFixture f;
+    assert(api.parse(f.parsed,sizeof(f.parsed),"test.vcd",&f.b)==1&&f.allocs==3&&f.appends==3&&f.events==1&&f.channels==1&&f.blocks==2&&f.finalized==3&&f.counter==43);
+    assert(F::word(f.event,0)==5&&F::word(f.event,0x348)==42&&F::word(f.event,0x184)==0x40000000&&F::word(f.event,0x188)==0x40000000);
+    assert(F::word(f.event,0x330)==F::ptr(f.parsed)&&F::word(f.event,0x2b4)==F::ptr(f.actor)&&F::word(f.event,0x2b8)==F::ptr(f.channel));
+    assert(!std::strcmp(reinterpret_cast<char*>(f.event+4),"dialogue")&&!std::strcmp(reinterpret_cast<char*>(f.event+0x84),"Jessica.Test")&&!std::strcmp(reinterpret_cast<char*>(f.event+0x104),"72"));
+    assert(F::word(f.event,0x334)==100&&F::word(f.event,0x338)==0xfffffffeu&&F::word(f.event,0x190)==0xffffffffu&&F::word(f.event,0x340)==0x40600000&&F::word(f.event,0x18c)==0x40800000);
+    assert(f.event[0x198]&&f.event[0x1b0]&&f.event[0x33c]&&f.event[0x1b1]&&f.event[0x390]&&f.event[0x3a1]&&f.event[0x3a2]);
+    assert(!std::strcmp(reinterpret_cast<char*>(f.event+0x1b2),"marker")&&!std::strcmp(reinterpret_cast<char*>(f.event+0x232),"reference")&&F::word(f.event,0x34c)==1&&!std::strcmp(reinterpret_cast<char*>(f.event+0x350),"caption"));
+    ChoreographyEventParserFixture bad;bad.tokens[43]=nullptr;
+    assert(api.parse(bad.parsed,sizeof(bad.parsed),"bad.vcd",&bad.b)==-1&&bad.appends==3&&!bad.events&&!bad.channels&&!bad.finalized);
+}
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};
