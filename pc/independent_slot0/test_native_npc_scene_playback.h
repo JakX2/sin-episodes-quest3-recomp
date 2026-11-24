@@ -2393,6 +2393,27 @@ scalesettings
     std::uint32_t index=99;
     assert(scales.find(f.parsed,sizeof(f.parsed),30,&f.curves.scales,&index)==1&&index==2);
     assert(scales.find(f.parsed,sizeof(f.parsed),15,&f.curves.scales,&index)==1&&index==0xffffffffu);
+    // Legacy ramp native conversion: start=8*(1-.75)=2, end=8*.75=6.
+    PortableCurveGrammarFixture legacy;
+    legacy.curves.grammar.events.legacy_ramp=nullptr;
+    const char old[]=R"VCD(actor Jessica { channel Voice { event speak dialogue {
+time 0 8
+ramp 0.75 0.5 0.75
+} } })VCD";
+    assert(api.parse(legacy.parsed,sizeof(legacy.parsed),"legacy.vcd",old,sizeof(old)-1,&legacy.curves)==1);
+    assert(F::word(legacy.event,0x1a8)==3&&legacy.ramp_grows==1);
+    for(unsigned i=0;i<3;++i){
+        assert(F::word(legacy.ramp_rows[0],i*12)==0x3f000000u);
+        assert(F::word(legacy.ramp_rows[0],i*12+4)==(i==0?0x40000000u:i==1?0x40800000u:0x40c00000u));
+    }
+    PortableCurveGrammarFixture explicit_ramp;
+    explicit_ramp.curves.grammar.events.legacy_ramp=nullptr;
+    const char explicit_data[]=R"VCD(actor Jessica { channel Voice { event speak dialogue {
+time 0 8
+ramp 0.75 0.5 0.75
+event_ramp { 1 0.2 }
+} } })VCD";
+    assert(api.parse(explicit_ramp.parsed,sizeof(explicit_ramp.parsed),"explicit.vcd",explicit_data,sizeof(explicit_data)-1,&explicit_ramp.curves)==1&&F::word(explicit_ramp.event,0x1a8)==1);
     F::put(f.scale_rows[1],4,1); // malformed cycle
     assert(scales.find(f.parsed,sizeof(f.parsed),15,&f.curves.scales,&index)==-1);
 }
@@ -2478,6 +2499,8 @@ struct PortableFlexGrammarFixture:PortableCurveGrammarFixture {
         s.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
             auto& f=self_flex(p);
             if(w==F::ptr(f.track_words)){*out=f.track_words;*n=sizeof(f.track_words);return 1;}
+            if(w==F::ptr(f.event)){*out=f.event;*n=sizeof(f.event);return 1;}
+            for(auto& t:f.tracks)if(w==F::ptr(t)){*out=t;*n=sizeof(t);return 1;}
             for(auto& track:f.samples)for(auto& bank:track)if(w==F::ptr(bank)){*out=bank;*n=sizeof(bank);return 1;}
             return 0;};
         s.grow=[](void* p,void* v,unsigned n,unsigned stride) noexcept -> int{
@@ -2524,6 +2547,16 @@ scalesettings { "RampTool" "100" }
     assert(f.tracks[0][8]&&f.tracks[0][9]&&F::word(f.tracks[0],0xc)==0xbe4ccccdu&&F::word(f.tracks[0],0x10)==0x3f4ccccdu);
     assert(F::word(f.tracks[0],0x20)==2&&F::word(f.tracks[0],0x34)==2&&F::word(f.samples[0][0],4)==0x3e4ccccdu&&F::word(f.samples[0][1],4)==0x3dcccccdu);
     assert(f.tracks[1][8]&&!f.tracks[1][9]&&!F::word(f.tracks[1],0x20));
+    PortableFlexGrammarFixture shortened;
+    shortened.full.curves.grammar.events.end_changed=nullptr;
+    const char update[]=R"VCD(actor Jessica { channel Face { event flexanimation face {
+time 0 4
+flexanimations samples_use_time { "jaw" combo { 0.5 0.2 3 0.4 } { 1 0.3 3.5 0.8 } }
+time 0 2
+} } })VCD";
+    assert(api.parse(shortened.parsed,sizeof(shortened.parsed),"short.vcd",update,sizeof(update)-1,&shortened.full)==1);
+    assert(shortened.created==1&&F::word(shortened.tracks[0],0x20)==1&&F::word(shortened.tracks[0],0x34)==1);
+    assert(F::word(shortened.samples[0][0],4)==0x3f000000u&&F::word(shortened.samples[0][1],4)==0x3f800000u);
     const char old[]="{ legacy disabled { 0.5 0.75 } }";
     assert(f.cursor.begin(old,sizeof(old)-1));f.event[0x320]=1;
     assert(flex.block(f.event,sizeof(f.event),&f.full.flex)==1&&f.deletes==2&&f.created==3&&F::word(f.event,0x318)==1&&!f.event[0x320]);
