@@ -33,6 +33,7 @@
 #include "test_native_vehicle_map.h"
 #include "test_native_vehicle_lifecycle.h"
 #include "test_native_vehicle_think.h"
+#include "native_vehicle_nested.h"
 #include "test_native_vehicle_seat_events.h"
 #include "test_native_camera_link.h"
 #include "test_native_vehicle_part_events.h"
@@ -528,11 +529,15 @@ int main(int argc,char** argv){
     assert(vehicleThink&&!getVehicleThink(0,sizeof(tables::VehicleThinkApi))&&!getVehicleThink(1,0));
     tables::test::check_vehicle_think(*vehicleThink);
     std::puts("PASS native vehicle recurring update, ammo and info_camera_link lifecycle");
+    const auto getNested=reinterpret_cast<tables::GetVehicleNestedApi>(GetProcAddress(server,tables::vehicle_nested_export));
+    assert(getNested&&!GetProcAddress(client,tables::vehicle_nested_export));
+    const auto* nested=getNested(1,sizeof(tables::VehicleNestedApi));
+    assert(nested&&!getNested(0,sizeof(tables::VehicleNestedApi))&&!getNested(1,0));
     const auto getSeatEvents=reinterpret_cast<tables::GetVehicleSeatEventsApi>(GetProcAddress(server,tables::vehicle_seat_events_export));
     assert(getSeatEvents&&!GetProcAddress(client,tables::vehicle_seat_events_export));
     const auto* seatEvents=getSeatEvents(1,sizeof(tables::VehicleSeatEventsApi));
     assert(seatEvents&&!getSeatEvents(0,sizeof(tables::VehicleSeatEventsApi))&&!getSeatEvents(1,0));
-    tables::test::check_vehicle_seat_events(*seatEvents);
+    tables::test::check_vehicle_seat_events(*seatEvents,*vehicleMap,*nested);
     std::puts("PASS native vehicle passenger callbacks, seat doors, default views and hints");
     const auto getCameraLink=reinterpret_cast<tables::GetCameraLinkApi>(GetProcAddress(server,tables::camera_link_export));
     assert(getCameraLink&&!GetProcAddress(client,tables::camera_link_export));
@@ -544,7 +549,7 @@ int main(int argc,char** argv){
     assert(getPartEvents&&!GetProcAddress(client,tables::vehicle_part_events_export));
     const auto* partEvents=getPartEvents(1,sizeof(tables::VehiclePartEventsApi));
     assert(partEvents&&!getPartEvents(0,sizeof(tables::VehiclePartEventsApi))&&!getPartEvents(1,0));
-    tables::test::check_vehicle_part_events(*partEvents);
+    tables::test::check_vehicle_part_events(*partEvents,*vehicleThink,*nested);
     std::puts("PASS native vehicle door/window completion outputs and automatic close");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");

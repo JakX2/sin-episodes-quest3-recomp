@@ -1,5 +1,5 @@
 #pragma once
-#include "native_vehicle_part_events.h"
+#include "native_vehicle_nested.h"
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
@@ -16,7 +16,7 @@ struct PartEventsFixture {
     void put(void* p,unsigned off,unsigned word){std::memcpy(static_cast<unsigned char*>(p)+off,&word,4);}
     unsigned ptr(void* p){return static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(p));}
 };
-inline void check_vehicle_part_events(const VehiclePartEventsApi& api){
+inline void check_vehicle_part_events(const VehiclePartEventsApi& api,const VehicleThinkApi& think,const VehicleNestedApi& nested){
     PartEventsFixture f;
     f.put(f.vehicle,0x810,f.ptr(f.doors));f.put(f.vehicle,0x81c,2);
     f.put(f.vehicle,0x824,f.ptr(f.windows));f.put(f.vehicle,0x830,2);
@@ -64,5 +64,52 @@ inline void check_vehicle_part_events(const VehiclePartEventsApi& api){
     assert(tick()==-1&&f.c.blocked&&f.pose[0]==0&&f.doors[0x44]);f.expect({200});
     assert(api.acknowledge(&f.c)==1);f.fail_output=false;
     f.put(f.vehicle,0x810,0);assert(tick()==-1&&f.c.blocked);f.expect({});
+    assert(api.acknowledge(&f.c)==1);
+    f.put(f.vehicle,0x810,f.ptr(f.doors));f.put(f.vehicle,0x760,0xffffffffu);
+    f.pose[0]=0;f.doors[0x44]=1;f.doors[0x45]=0;
+    struct Bridge {PartEventsFixture* f;const VehiclePartEventsApi* api;const VehicleNestedApi* nested;const VehiclePartEventBindings* parts;};
+    Bridge bridge{&f,&api,&nested,&b};
+    VehicleThinkBindings t{};t.context=&bridge;
+    t.base_think=[](void* p,void*) noexcept -> int{static_cast<Bridge*>(p)->f->push(400);return 1;};
+    t.wiper_update=[](void* p,void*) noexcept -> int{
+        auto& x=*static_cast<Bridge*>(p);x.f->push(401);
+        assert(x.api->tick(&x.f->c,x.parts)==0);
+        assert(x.nested->exiting(&x.f->c,nullptr,0)==0);
+        const int status=x.nested->parts(&x.f->c,x.parts);
+        assert(status!=0&&x.f->c.busy==1&&x.nested->parts(&x.f->c,x.parts)==0);
+        return 1; // deliberately swallow failure; parent must still block
+    };
+    t.driver_update=[](void* p,void*) noexcept -> int{static_cast<Bridge*>(p)->f->push(402);return 1;};
+    t.clock=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+    t.dirty_edict=[](void*,void*,std::uint32_t) noexcept -> int{return 1;};
+    t.schedule=[](void*,void*,float,unsigned) noexcept -> int{return 1;};
+    t.startup=[](void*,void*,unsigned) noexcept -> int{return 1;};
+    t.active_predicate=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+    t.frame_time=t.clock;
+    t.tail=[](void* p,void*) noexcept -> int{static_cast<Bridge*>(p)->f->push(403);return 1;};
+    t.passengers.context=&bridge;t.passengers.clock=t.clock;
+    t.passengers.occupant=[](void*,void*,int,void**) noexcept -> int{return 0;};
+    t.passengers.combat_character=[](void*,void*,void**) noexcept -> int{return 0;};
+    t.passengers.base_player_cast=[](void*,void*,unsigned*) noexcept -> int{return 0;};
+    t.passengers.view_index=[](void*,void*,int*) noexcept -> int{return 0;};
+    t.passengers.ammo_index=[](void*,const char*,int*) noexcept -> int{return 0;};
+    t.passengers.ammo_allowed=[](void*,void*,int,unsigned*) noexcept -> int{return 0;};
+    t.passengers.ammo_count=[](void*,void*,int,int*) noexcept -> int{return 0;};
+    t.passengers.ammo_max=[](void*,int,int*) noexcept -> int{return 0;};
+    t.passengers.give_ammo=[](void*,void*,int,int,unsigned) noexcept -> int{return 0;};
+    t.camera.context=&bridge;
+    t.camera.resolve=[](void*,std::uint32_t,void**) noexcept -> int{return 0;};
+    t.camera.find_named=t.camera.resolve;
+    t.camera.is_point_camera=[](void*,void*,unsigned*) noexcept -> int{return 0;};
+    t.camera.create=[](void*,const char*,HologramControl**) noexcept -> int{return 0;};
+    t.camera.handle=[](void*,void*,std::uint32_t*) noexcept -> int{return 0;};
+    t.camera.spawn=[](void*,void*) noexcept -> int{return 0;};
+    t.camera.remove_link=t.camera.spawn;
+    t.camera.diagnostic=[](void*,std::uint32_t) noexcept -> int{return 0;};
+    assert(nested.parts(&f.c,&b)==0);
+    assert(think.think(&f.c,&t)==1&&f.pose[0]==1&&!f.c.busy);f.expect({400,401,200,100,402,403});
+    f.pose[0]=0;f.fail_output=true;
+    assert(think.think(&f.c,&t)==-1&&f.c.blocked&&!f.c.busy&&f.pose[0]==0);f.expect({400,401,200});
+    assert(api.acknowledge(&f.c)==1&&nested.parts(&f.c,&b)==0);
 }
 }
