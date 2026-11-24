@@ -92,6 +92,34 @@ enum EnvGlobalResult : int {
 };
 using EnvGlobalDispatch=int (SIN_FIXED_CALL *)(std::uint32_t,const char*,const char*,
     std::uint32_t,std::int32_t) noexcept;
+// Native port behavior registry, not Source edicts or a retail datamap.
+// A host assigns index/generation and routes only these class-specific
+// keys. Map epochs distinguish reused engine identities across levels.
+// All calls are synchronous; the output sink and its arguments are borrowed
+// only during input(). The output's activator and caller are both self.
+inline constexpr char map_entity_export_name[]="SiN_GetMapEntityApi";
+inline constexpr std::uint32_t map_entity_version=1;
+struct MapEntityRef {std::uint32_t epoch,index,generation;};
+enum MapEntityResult : int {
+    MapRejected=0, MapApplied=1, MapUnchanged=2, MapRemoveSelf=3,
+    MapBlocked=4, MapUnknownClass=5, MapUnhandledKey=6,
+    MapUnhandledInput=7, MapOutputFailed=8
+};
+using MapFloatOutput=int (SIN_FIXED_CALL *)(void*,const MapEntityRef*,
+    const char*,std::uint32_t,float);
+struct MapEntityApi {
+    std::uint32_t version,size;
+    std::uint32_t (SIN_FIXED_CALL *begin_level)(const char*) noexcept;
+    int (SIN_FIXED_CALL *end_level)(std::uint32_t) noexcept;
+    int (SIN_FIXED_CALL *create)(MapEntityRef,const char*) noexcept;
+    int (SIN_FIXED_CALL *keyvalue)(MapEntityRef,const char*,const char*) noexcept;
+    int (SIN_FIXED_CALL *spawn)(MapEntityRef) noexcept;
+    int (SIN_FIXED_CALL *input)(MapEntityRef,const char*,MapFloatOutput,void*) noexcept;
+    int (SIN_FIXED_CALL *remove)(MapEntityRef) noexcept;
+    int (SIN_FIXED_CALL *count)(std::uint32_t) noexcept;
+};
+using GetMapEntityApi=const MapEntityApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(MapEntityRef)==12);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);
