@@ -6248,3 +6248,21 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase665: original CInfoChallenge map inputs and fixed reporting adapter.
+if(BUILD_TESTING)
+  add_executable(sin_info_challenge_phase665_tests
+    tests/test_info_challenge_phase665.cpp)
+  target_link_libraries(sin_info_challenge_phase665_tests PRIVATE
+    sin_fixed_difficulty_phase663)
+  target_compile_options(sin_info_challenge_phase665_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_info_challenge_phase665_tests
+    COMMAND sin_info_challenge_phase665_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_info_challenge_phase665_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_info_challenge_phase665.py
+        --self-test)
+  endif()
+endif()
