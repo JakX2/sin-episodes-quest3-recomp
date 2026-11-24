@@ -2615,12 +2615,14 @@ int main(int argc,char** argv){
         const auto ga=reinterpret_cast<n::GetGenericActorApi>(GetProcAddress(lib,n::generic_actor_export));
         const auto gu=reinterpret_cast<n::GetUseObservationApi>(GetProcAddress(lib,n::use_observation_export));
         const auto gn=reinterpret_cast<n::GetNpcSpawnApi>(GetProcAddress(lib,n::npc_spawn_export));
-        assert(gm&&gj&&gc&&gs&&ga&&gu&&gn&&!gm(0,sizeof(n::NpcMapApi))&&!gm(1,0));
+        const auto gi=reinterpret_cast<n::GetJessicaInteractionApi>(GetProcAddress(lib,n::jessica_interaction_export));
+        assert(gm&&gj&&gc&&gs&&ga&&gu&&gn&&gi&&!gm(0,sizeof(n::NpcMapApi))&&!gm(1,0));
         const auto* m=gm(1,sizeof(n::NpcMapApi));const auto* j=gj(1,sizeof(n::JessicaApi));
         const auto* c=gc(1,sizeof(n::CountInterrogationApi));const auto* s=gs(1,sizeof(n::CountSchedulerApi));
         const auto* a=ga(1,sizeof(n::GenericActorApi));const auto* u=gu(1,sizeof(n::UseObservationApi));
         const auto* sp=gn(1,sizeof(n::NpcSpawnApi));
-        assert(m&&j&&c&&s&&a&&u&&sp);
+        const auto* in=gi(1,sizeof(n::JessicaInteractionApi));
+        assert(m&&j&&c&&s&&a&&u&&sp&&in);
         const auto bsp=make_native_bsp(R"KV(
 {"classname" "worldspawn"}
 {"classname" "logic_relay" "targetname" "relay" "OnTrigger" "count,InterrogationStart,,0,-1" "OnTrigger" "jessica,ThrowItemAtPlayer,weapon_magnum,0,-1"}
@@ -2629,7 +2631,7 @@ int main(int argc,char** argv){
 {"classname" "npc_generic_actor" "targetname" "actor" "model" "fixture.mdl" "initialhealth" "12" "bloodColor" "247"}
 {"classname" "npc_jc" "targetname" "jc"}
 )KV");
-        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,bsp);
+        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,bsp);
         std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
     }
 #endif

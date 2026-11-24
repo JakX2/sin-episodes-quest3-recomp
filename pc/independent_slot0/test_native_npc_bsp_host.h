@@ -20,6 +20,10 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     npc::CountClassInitBindings ci{};npc::JessicaSpawnBindings js{};npc::JcProfileBindings cp{};
     const npc::NpcSpawnApi& spawn;
     npc::NpcMapBindings b{};
+    npc::JessicaInteractionBindings ib{};
+    NpcMapResult (*interaction_thunk)(NativeNpcMapHost&,EntityRef,unsigned*)=nullptr;
+    unsigned interaction_calls=0,interaction_resets=0;
+    bool interaction_used=false,interaction_greeted=false,interaction_fail=false;
     npc::NpcMapSession session{};
     const npc::JessicaApi& j;
     const npc::CountInterrogationApi& count;
@@ -86,7 +90,31 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
         js.restore_unparented=[](void*,void*) noexcept -> int{return 1;};
         js.health_dirty=b.actor.health_dirty;
         js.npc_initialize=[](void* p,void* npc) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);return npc==f.slots[2].storage&&f.word(npc,0x9c)==80;};
-        js.install_interaction=[](void*,void*,unsigned off,unsigned thunk) noexcept -> int{return off==0x80&&thunk==0x22361e40;};
+        js.install_interaction=[](void* p,void* n,unsigned off,unsigned thunk) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);
+            if(n!=f.slots[2].storage||off!=0x80||thunk!=0x22361e40)return 0;
+            f.interaction_thunk=[](NativeNpcMapHost& h,EntityRef e,unsigned* out){return h.interaction(e,out);};
+            unsigned result=99;
+            assert(f.interaction_thunk(*f.host,f.slots[2].ref,&result)==NpcMapResult::Rejected&&result==99);
+            return 1;
+        };
+        ib.context=this;
+        ib.speech_manager=[](void*) noexcept -> int{return 1;};
+        ib.resolve=[](void*,std::uint32_t h,unsigned* out) noexcept -> int{*out=h==0x123004;return 1;};
+        ib.expeditor=[](void* p,void* n,void** out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage);*out=f.jessica_expeditor;return 1;};
+        ib.eligible=[](void*,void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+        ib.timing=[](void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+        ib.player=[](void* p,void** out) noexcept -> int{*out=static_cast<NpcBspShell*>(p)->player;return 1;};
+        ib.within_range=[](void* p,void* n,void* pl,unsigned* out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage&&pl==f.player);*out=1;return 1;};
+        ib.suppressed=[](void*,void*,int arg,unsigned* out) noexcept -> int{assert(!arg);*out=0;return 1;};
+        ib.speak=[](void* p,void* n,const char* name,int arg,unsigned* out) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage&&!arg);++f.interaction_calls;
+            if(!std::strcmp(name,"TLK_USE"))*out=f.interaction_used;
+            else {assert(!std::strcmp(name,f.interaction_greeted?"TLK_IDLE":"TLK_HELLO"));*out=1;}
+            return !f.interaction_fail;
+        };
+        ib.has_concept=[](void* p,void* exp,const char* name,unsigned* out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(exp==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO"));*out=f.interaction_greeted;return 1;};
+        ib.reset_manager=[](void* p,float delta,int arg) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(delta==-1.f&&!arg);++f.interaction_resets;return 1;};
         js.expeditor=[](void* p,void*,void** out) noexcept -> int{*out=static_cast<NpcBspShell*>(p)->jessica_expeditor;return 1;};
         js.seed_concept=[](void* p,void* exp,const char* name,unsigned a,unsigned b) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);return exp==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO")&&!a&&b==1;};
     }
@@ -119,15 +147,16 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     bool remove_entity(EntityRef e)override{auto* s=get(e);if(!s||(fail_remove&&e.index==4))return false;s->live=false;++removed;return true;}
     npc::HologramControl* control(EntityRef e)override{auto* s=get(e);return s?&s->control:nullptr;}
     const npc::NpcMapBindings* bindings(EntityRef e)override{return is_live(e)?&b:nullptr;}
+    const npc::JessicaInteractionBindings* interaction_bindings(EntityRef e)override{return is_live(e)&&e.index==3?&ib:nullptr;}
     bool parse_key(EntityRef e,unsigned type,std::string_view v,std::uint32_t& out)override{
         assert(e.index==5&&type==5);if(fail_parse)return false;
         if(v=="12")out=12;else if(v=="247")out=247;else return false;return true;
     }
 };
 inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,const npc::CountInterrogationApi& count,
-    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const std::vector<std::uint8_t>& bsp){
+    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const std::vector<std::uint8_t>& bsp){
     NpcBspShell f(j,count,sched,actor,spawn);
-    NativeNpcMapHost host(f,f,api,f.session);f.host=&host;sm::SourceMapRuntime runtime(host);
+    NativeNpcMapHost host(f,f,api,f.session,&interaction);f.host=&host;sm::SourceMapRuntime runtime(host);
     const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
     assert(loaded.ok()&&loaded.entities_created==6&&f.spawned==6&&f.activated==6&&host.attached_count()==4);
     const auto relay=runtime.entities()[1],je=runtime.entities()[2],co=runtime.entities()[3],ga=runtime.entities()[4],jc=runtime.entities()[5];
@@ -135,6 +164,20 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     assert(f.word(J,0x1450)==0xffffffffu&&f.word(J,0x1454)==0xffffffffu&&f.word(J,0x9c)==80&&f.word(C,0x9c)==8&&f.word(C,0xc28)==3&&f.word(f.expeditor,0xc)==f.ptr(C+0xdfc)&&f.word(G,0x9c)==12&&f.word(G,0x614)==247);
     assert(f.keys.size()==8&&f.keys[0]=="targetname=relay"&&f.keys[1]=="OnTrigger=count,InterrogationStart,,0,-1"&&f.keys[2]=="OnTrigger=jessica,ThrowItemAtPlayer,weapon_magnum,0,-1"&&f.keys[3]=="targetname=jessica"&&f.keys[4]=="targetname=count"&&f.keys[5]=="targetname=actor"&&f.keys[6]=="model=fixture.mdl"&&f.keys[7]=="targetname=jc");
     assert(host.input(relay,"InterrogationStart",0,0)==NpcMapResult::Unhandled&&host.input(jc,"HolsterWeapon",5,0)==NpcMapResult::Unhandled);
+    unsigned interaction_result=99;
+    assert(f.interaction_thunk&&host.interaction(co,&interaction_result)==NpcMapResult::Unhandled&&interaction_result==99);
+    assert(host.interaction(EntityRef{je.index,je.generation+1},&interaction_result)==NpcMapResult::Rejected);
+    f.put(J,0x16c,0x123004);
+    assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Applied&&interaction_result==1&&f.interaction_calls==2);
+    f.interaction_greeted=true;
+    assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Applied&&interaction_result==1&&f.interaction_calls==4);
+    f.interaction_used=true;
+    assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Applied&&!interaction_result&&f.interaction_calls==5&&f.interaction_resets==1);
+    f.interaction_fail=true;interaction_result=99;
+    assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Failed&&interaction_result==99&&f.slots[2].control.blocked);
+    assert(host.interaction(je,&interaction_result)==NpcMapResult::Rejected&&interaction.acknowledge(&f.slots[2].control));
+    f.interaction_fail=false;
+
     assert(host.input(je,"SetPrimaryAmmoCountToThrow",5,9)==NpcMapResult::Applied&&f.word(J,0x1450)==9);
     assert(host.input(je,"SetSecondaryAmmoCountToThrow",2,9)==NpcMapResult::Applied&&!f.word(J,0x1454));
     assert(host.input(je,"throwitematplayer",2,17)==NpcMapResult::Applied&&f.conditions==1&&f.word(J,0x144c)==17);
@@ -170,6 +213,7 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     f.fail_remove=true;assert(runtime.unload().code==sm::SourceMapLoadCode::PartialUnload&&host.attached_count()==1);
     f.fail_remove=false;assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded&&!host.attached_count());
     assert(host.input(co,"InterrogationStart",0,0)==NpcMapResult::Rejected);
+    interaction_result=99;assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Rejected&&interaction_result==99);
     NpcBspShell bad(j,count,sched,actor,spawn);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
     sm::SourceMapRuntime rollback(bh);assert(rollback.load_bsp(bsp.data(),bsp.size()).code==sm::SourceMapLoadCode::HostKeyValueFailed&&!rollback.loaded()&&!bh.attached_count());
 }
