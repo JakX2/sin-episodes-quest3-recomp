@@ -89,4 +89,34 @@ struct JessicaAttentionApi {
 };
 using GetJessicaAttentionApi=const JessicaAttentionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char jessica_interaction_export[]="SiN_GetJessicaInteractionApi";
+// Fixed (1,1) path of the inherited talk gate and Jessica's installed
+// interaction callback. Host callbacks report transport separately from AL.
+struct JessicaInteractionBindings {
+    void* context;
+    int (__cdecl *speech_manager)(void*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t,unsigned* present) noexcept;
+    int (__cdecl *expeditor)(void*,void* npc,void**) noexcept;
+    int (__cdecl *eligible)(void*,void* exp,void* npc,unsigned*) noexcept;
+    int (__cdecl *timing)(void*,void* exp,unsigned*) noexcept;
+    int (__cdecl *player)(void*,void**) noexcept;
+    // Original 2208afb3..2208b00d: read speech range then NPC and player
+    // positions, subtract with float stores and compare squared distances.
+    // Host retains the original range/global and position services.
+    int (__cdecl *within_range)(void*,void* npc,void* player,unsigned*) noexcept;
+    int (__cdecl *suppressed)(void*,void* npc,int,unsigned*) noexcept;
+    int (__cdecl *speak)(void*,void* npc,const char*,int,unsigned*) noexcept;
+    int (__cdecl *has_concept)(void*,void* exp,const char*,unsigned*) noexcept;
+    int (__cdecl *reset_manager)(void*,float,int) noexcept;
+};
+struct JessicaInteractionApi {
+    std::uint32_t version,size;
+    // Return status: 1 completed (including original false), 0 rejected,
+    // -1 transport failure. original_result receives original AL truth value.
+    int (__cdecl *invoke)(HologramControl*,const JessicaInteractionBindings*,unsigned* original_result) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetJessicaInteractionApi=const JessicaInteractionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+
 }

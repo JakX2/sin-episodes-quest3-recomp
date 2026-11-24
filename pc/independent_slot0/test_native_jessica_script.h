@@ -166,4 +166,58 @@ inline void check_jessica_attention(const JessicaAttentionApi& api){
     assert(tick()==1&&f.look==4); // committed timer, no automatic retry
 }
 
+
+struct JessicaInteractionFixture {
+    JessicaFixture j;
+    const JessicaInteractionApi& api;
+    JessicaInteractionBindings b{};
+    unsigned result=99, present=1, eligible=1, timing=1, in_range=1, suppressed=0, used=0, hello=0, fallback=1;
+    unsigned fail_at=0;
+    bool player=true, missing_exp=false;
+    char exp=0;
+    explicit JessicaInteractionFixture(const JessicaInteractionApi& a):api(a){
+        b.context=this;
+        b.speech_manager=[](void* p) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(1);assert(f.j.ctrl.busy);return f.fail_at!=1;};
+        b.resolve=[](void* p,std::uint32_t h,unsigned* v) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(2);assert(h==0x123004);*v=f.present;return f.fail_at!=2;};
+        b.expeditor=[](void* p,void* n,void** out) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(3);assert(n==f.j.npc);*out=f.missing_exp?nullptr:&f.exp;return f.fail_at!=3;};
+        b.eligible=[](void* p,void* e,void* n,unsigned* v) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(4);assert(e==&f.exp&&n==f.j.npc);*v=f.eligible;return f.fail_at!=4;};
+        b.timing=[](void* p,void* e,unsigned* v) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(5);assert(e==&f.exp);*v=f.timing;return f.fail_at!=5;};
+        b.player=[](void* p,void** out) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(6);*out=f.player?f.j.weapon:nullptr;return f.fail_at!=6;};
+        b.within_range=[](void* p,void* n,void* pl,unsigned* v) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(7);assert(n==f.j.npc&&pl==f.j.weapon);*v=f.in_range;return f.fail_at!=7;};
+        b.suppressed=[](void* p,void* n,int arg,unsigned* v) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(8);assert(n==f.j.npc&&!arg);*v=f.suppressed;return f.fail_at!=8;};
+        b.speak=[](void* p,void* n,const char* name,int arg,unsigned* v) noexcept -> int {
+            auto& f=*static_cast<JessicaInteractionFixture*>(p);assert(n==f.j.npc&&!arg);
+            const unsigned event=!std::strcmp(name,"TLK_USE")?9:!std::strcmp(name,"TLK_HELLO")?12:13;
+            assert(event!=13||!std::strcmp(name,"TLK_IDLE"));f.j.record(event);
+            unsigned nested=99;assert(f.api.invoke(&f.j.ctrl,&f.b,&nested)==0&&nested==99);
+            *v=event==9?f.used:f.fallback;return f.fail_at!=event;
+        };
+        b.has_concept=[](void* p,void* e,const char* name,unsigned* v) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(10);assert(e==&f.exp&&!std::strcmp(name,"TLK_HELLO"));*v=f.hello;return f.fail_at!=10;};
+        b.reset_manager=[](void* p,float v,int arg) noexcept -> int {auto& f=*static_cast<JessicaInteractionFixture*>(p);f.j.record(11);assert(v==-1.f&&!arg);return f.fail_at!=11;};
+        j.put(0x16c,0x123004);
+    }
+    int run(){result=99;return api.invoke(&j.ctrl,&b,&result);}
+};
+inline void check_jessica_interaction(const JessicaInteractionApi& api){
+    JessicaInteractionFixture f(api);auto& x=f.j;
+    for(const auto off:{0x8cu,0xb4u,0x850u,0xb8u,0x968u}){
+        x.put(off,off==0xb4?2:off==0x850?4:off==0xb8?0x100000:1);
+        assert(f.run()==1&&!f.result);x.expect({1});x.put(off,0);
+    }
+    f.present=0;assert(f.run()==1&&!f.result);x.expect({1,2});f.present=1;
+    f.eligible=0;assert(f.run()==1&&!f.result);x.expect({1,2,3,4});f.eligible=1;
+    f.timing=0;assert(f.run()==1&&!f.result);x.expect({1,2,3,4,3,5});f.timing=1;
+    f.in_range=0;assert(f.run()==1&&!f.result);x.expect({1,2,3,4,3,5,6,7});f.in_range=1;
+    f.suppressed=1;assert(f.run()==1&&!f.result);x.expect({1,2,3,4,3,5,6,7,8});f.suppressed=0;
+    f.used=1;assert(f.run()==1&&!f.result);x.expect({1,2,3,4,3,5,6,7,8,9,11});f.used=0;
+    assert(f.run()==1&&f.result==1);x.expect({1,2,3,4,3,5,6,7,8,9,3,10,12});
+    f.hello=1;f.fallback=0;assert(f.run()==1&&!f.result);x.expect({1,2,3,4,3,5,6,7,8,9,3,10,13});
+    f.player=false;assert(f.run()==1&&!f.result);x.expect({1,2,3,4,3,5,6,8,9,3,10,13});
+    f.fail_at=13;assert(f.run()==-1&&f.result==99&&x.ctrl.blocked);x.expect({1,2,3,4,3,5,6,8,9,3,10,13});
+    assert(f.run()==0&&f.result==99&&api.acknowledge(&x.ctrl));f.fail_at=0;
+    f.missing_exp=true;assert(f.run()==-1&&f.result==99);x.expect({1,2,3});assert(api.acknowledge(&x.ctrl));
+    f.missing_exp=false;f.used=1;f.fail_at=11;
+    assert(f.run()==-1&&f.result==99);x.expect({1,2,3,4,3,5,6,8,9,11});assert(api.acknowledge(&x.ctrl));
+}
+
 }
