@@ -3176,6 +3176,62 @@ int __cdecl radio_sound(const RadioDispatcher* s,const RadioBindings* b,unsigned
     out->present=1;return 1;
 }
 const RadioMessageApi radio_message_api{version,sizeof(RadioMessageApi),&radio_initialize,&radio_input,&radio_heard,&radio_promote,&radio_sound,&health_ack};
+
+int __cdecl look_trace_miss(HologramControl* ctrl) noexcept {
+    if(!health_control(ctrl,0x5e9))return 0;
+    auto* record=static_cast<unsigned char*>(ctrl->object)+0x18;
+    // 2215b540 -> 2215b0d0. Preserve padding, vtable, category.
+    for(unsigned off:{8u,0x108u,0x160u,0x260u,0x2c0u})record[off]=0;
+    for(unsigned off:{0x148u,0x14cu,0x150u,0x154u,0x158u,0x15cu,0x2a0u,0x2a4u,0x2a8u,0x2acu,0x2b0u,0x2b4u,0x2b8u,0x2bcu,0x2e0u,0x2e4u})hologram_write(record,off,0u);
+    hologram_write(ctrl->object,0x14,0xffffffffu);
+    return 1;
+}
+bool look_window(void* monitor,unsigned base,unsigned enable,float min,float max,const LookEventBindings& b,bool& changed) noexcept {
+    auto* record=static_cast<unsigned char*>(monitor)+base;
+    const auto prior=hologram_read<unsigned char>(monitor,enable);
+    unsigned char next=0;
+    if(record[0x108]||record[0x260]){
+        float now=0;if(!b.clock(b.context,&now))return false;
+        const double elapsed=static_cast<double>(now)-hologram_read<float>(record,0x2bc);
+        next=elapsed>=min&&elapsed<max?1:0;
+    }
+    changed=prior!=next;hologram_write(monitor,enable,next);
+    return true;
+}
+int __cdecl look_event_tick(HologramControl* ctrl,LookEventState* shared,const LookEventBindings* b) noexcept {
+    if(!health_control(ctrl,0x5e9)||!shared||!hologram_writable(shared,sizeof(*shared))||!b||!b->clock||!b->resolve||!b->look_event)return 0;
+    ctrl->busy=1;auto* monitor=ctrl->object;const auto host=*b;
+    auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    bool changed=false;
+    if(!look_window(monitor,0x18,0x300,1.5f,(std::numeric_limits<float>::max)(),host,changed))return finish(false);
+    const auto* part=static_cast<const char*>(monitor)+0x2d8;
+    bool emit=changed;
+    if(hologram_read<unsigned char>(monitor,0x300)){
+        if(*part){
+            const float start=hologram_read<float>(monitor,0x2fc);
+            if(changed||shared->last_part==0.0f)shared->last_part=start;
+            float now=0;if(!host.clock(host.context,&now))return finish(false);
+            if(static_cast<double>(now)-start>=1.5&&start>shared->last_part){
+                shared->last_part=start;emit=true;
+            }
+        }else shared->last_part=0.0f;
+    }
+    if(emit){
+        if(!std::memchr(part,0,32))return finish(false);
+        int descriptor=hologram_read<int>(monitor,0x2d0);if(!descriptor)descriptor=2;
+        const auto distance=hologram_read<float>(monitor,0x2f8);
+        void* target=nullptr;void* owner=nullptr;
+        const auto target_handle=hologram_read<std::uint32_t>(monitor,0x14);
+        const auto owner_handle=hologram_read<std::uint32_t>(monitor,4);
+        if(target_handle!=0xffffffffu&&!host.resolve(host.context,target_handle,&target))return finish(false);
+        if(owner_handle!=0xffffffffu&&!host.resolve(host.context,owner_handle,&owner))return finish(false);
+        if(!host.look_event(host.context,descriptor,owner,target,distance,part))return finish(false);
+        if(descriptor==2)hologram_write(monitor,0x14,0xffffffffu);
+    }
+    if(!look_window(monitor,0x308,0x5e8,0.0f,1.0f,host,changed))return finish(false);
+    return finish(true);
+}
+const LookEventApi look_event_api{version,sizeof(LookEventApi),&look_trace_miss,&look_event_tick,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4926,6 +4982,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioMess
 SiN_GetRadioMessageApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioMessageApi)?&radio_message_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetLookEventApi=_SiN_GetLookEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::LookEventApi* __cdecl
+SiN_GetLookEventApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(LookEventApi)?&look_event_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

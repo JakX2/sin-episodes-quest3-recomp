@@ -360,6 +360,12 @@ int main(int argc,char** argv){
     assert(radioMessage&&!getRadioMessage(0,sizeof(tables::RadioMessageApi))&&!getRadioMessage(1,0));
     tables::test::check_radio_message(*radioMessage);
     std::puts("PASS native radio message dispatch priority and original sound-name selection");
+    const auto getLookEvent=reinterpret_cast<tables::GetLookEventApi>(GetProcAddress(server,tables::look_event_export));
+    assert(getLookEvent&&!GetProcAddress(client,tables::look_event_export));
+    const auto* lookEvent=getLookEvent(1,sizeof(tables::LookEventApi));
+    assert(lookEvent&&!getLookEvent(0,sizeof(tables::LookEventApi))&&!getLookEvent(1,0));
+    tables::test::check_look_events(*lookEvent,*actionMonitor);
+    std::puts("PASS native looking eligibility window, trace-miss reset and original look event");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

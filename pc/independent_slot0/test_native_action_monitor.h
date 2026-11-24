@@ -63,4 +63,51 @@ inline void check_action_monitor(const ActionMonitorApi& api,const JessicaAttent
     action=13;std::memcpy(use+0x2b8,&action,4);assert(api.use_criteria(use,sizeof(use),&f.last)==0);
     use[0x108]=0;use[0x260]=0;assert(api.use_criteria(use,sizeof(use),&f.last)==1&&!f.last.text[0]);
 }
+
+struct LookEventFixture {
+    ActionFixture a;
+    LookEventState shared{};
+    unsigned emitted=0;
+    int descriptor=0;
+    void* target=nullptr;
+    float distance=0;
+    char part[32]{};
+    bool fail=false;
+    void stamp(unsigned off,float v){std::memcpy(a.monitor+off,&v,4);}
+};
+inline void check_look_events(const LookEventApi& api,const ActionMonitorApi& actions){
+    LookEventFixture f;auto& a=f.a;LookEventBindings b{};b.context=&f;
+    b.clock=[](void* p,float* out) noexcept -> int {auto& f=*static_cast<LookEventFixture*>(p);assert(f.a.ctrl.busy);*out=f.a.now;return 1;};
+    b.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int {auto& f=*static_cast<LookEventFixture*>(p);assert(f.a.ctrl.busy);*out=h==0x1001?static_cast<void*>(&f.a.owner):h==0x1002?static_cast<void*>(f.a.npc):nullptr;return 1;};
+    b.look_event=[](void* p,int descriptor,void* owner,void* target,float distance,const char* part) noexcept -> int {
+        auto& f=*static_cast<LookEventFixture*>(p);assert(f.a.ctrl.busy&&owner==&f.a.owner);
+        ++f.emitted;f.descriptor=descriptor;f.target=target;f.distance=distance;std::strcpy(f.part,part);return !f.fail;
+    };
+    a.put(4,0x1001);a.put(0x14,0x1002);a.put(0x2d0,1);
+    std::strcpy(reinterpret_cast<char*>(a.monitor+0x18+0x108),"player");
+    std::strcpy(reinterpret_cast<char*>(a.monitor+0x18+0x260),"npc_jessica");
+    std::strcpy(reinterpret_cast<char*>(a.monitor+0x2d8),"chest");
+    f.stamp(0x2d4,10);f.stamp(0x2fc,10);f.stamp(0x2f8,160);
+    auto tick=[&](){return api.tick(&a.ctrl,&f.shared,&b);};
+    a.now=11.49f;assert(tick()==1&&!a.monitor[0x300]&&!f.emitted);
+    a.now=11.5f;assert(tick()==1&&a.monitor[0x300]==1&&f.emitted==1&&f.descriptor==1&&f.target==a.npc&&f.distance==160&&!std::strcmp(f.part,"chest")&&f.shared.last_part==10);
+    a.now=12;assert(tick()==1&&f.emitted==1);
+    std::strcpy(reinterpret_cast<char*>(a.monitor+0x2d8),"head");f.stamp(0x2fc,12);
+    a.now=13.49f;assert(tick()==1&&f.emitted==1);
+    a.now=13.5f;assert(tick()==1&&f.emitted==2&&!std::strcmp(f.part,"head")&&f.shared.last_part==12);
+    assert(tick()==1&&f.emitted==2);
+    ActionCriteria criteria{};assert(actions.look_criteria(a.monitor+0x18,0x2e8,a.now,&criteria)==1&&std::strstr(criteria.text,"PlayerLookingAtPartForSeconds:1.50"));
+    a.monitor[0x18+9]=0x55;assert(api.trace_miss(&a.ctrl)==1&&a.word(0x14)==0xffffffffu&&a.monitor[0x300]==1&&a.monitor[0x18+9]==0x55);
+    assert(tick()==1&&a.monitor[0x300]==0&&f.emitted==3&&f.descriptor==2&&!f.target&&!f.part[0]&&f.distance==0);
+    assert(tick()==1&&f.emitted==3);
+    std::strcpy(reinterpret_cast<char*>(a.monitor+0x308+0x108),"player");f.stamp(0x5c4,20);
+    a.now=19.5f;assert(tick()==1&&!a.monitor[0x5e8]);
+    a.now=20;assert(tick()==1&&a.monitor[0x5e8]==1);
+    a.now=20.999f;assert(tick()==1&&a.monitor[0x5e8]==1);
+    a.now=21;assert(tick()==1&&!a.monitor[0x5e8]);
+    std::strcpy(reinterpret_cast<char*>(a.monitor+0x18+0x108),"player");a.put(0x2d0,1);f.stamp(0x2d4,20);
+    a.now=22;f.fail=true;assert(tick()==-1&&a.ctrl.blocked&&a.monitor[0x300]==1&&f.emitted==4);
+    assert(tick()==0&&api.acknowledge(&a.ctrl));f.fail=false;assert(tick()==1&&f.emitted==4);
+}
+
 }
