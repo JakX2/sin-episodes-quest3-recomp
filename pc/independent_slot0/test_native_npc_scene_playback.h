@@ -451,7 +451,7 @@ inline void check_scene_entity_lifecycle(const SceneEntityLifecycleApi& api){
 
 struct ParsedResumeFixture {
     using F=ScenePlaybackFixture;
-    alignas(4) unsigned char scene[0x410]{},parsed[0x220]{},parent[0x3b4]{},children[3][0x329]{};
+    alignas(4) unsigned char scene[0x410]{},parsed[0x220]{},parent[0x3b4]{},children[3][0x32c]{};
     std::uint32_t parent_words[1]{1},child_words[3]{2,3,4},snapshot[3]{};
     ParsedSceneResumeBindings b{};SceneStateBindings state{};
     const ParsedSceneResumeApi& api;
