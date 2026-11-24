@@ -549,6 +549,12 @@ int main(int argc,char** argv){
     assert(choreographyConstruct&&!getChoreographyConstruct(0,sizeof(tables::ChoreographyConstructApi))&&!getChoreographyConstruct(1,0));
     tables::test::check_choreography_construct(*choreographyConstruct);
     std::puts("PASS original native choreography parsed, actor, channel and event constructors");
+    const auto getAllocatedScene=reinterpret_cast<tables::GetAllocatedGeneratedSceneApi>(GetProcAddress(server,tables::allocated_generated_scene_export));
+    assert(getAllocatedScene&&!GetProcAddress(client,tables::allocated_generated_scene_export));
+    const auto* allocatedScene=getAllocatedScene(1,sizeof(tables::AllocatedGeneratedSceneApi));
+    assert(allocatedScene&&!getAllocatedScene(0,sizeof(tables::AllocatedGeneratedSceneApi))&&!getAllocatedScene(1,0));
+    tables::test::check_allocated_generated_scene(*allocatedScene,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
+    std::puts("PASS native allocated sound scene construction through activation, simulation and removal");
 
 
 

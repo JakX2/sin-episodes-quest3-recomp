@@ -656,8 +656,8 @@ inline void check_scene_advance(const SceneAdvanceApi& api){
 
 struct IntegratedSceneFixture {
     using F=ScenePlaybackFixture;using S=ParsedSimulationFixture;
-    alignas(4) unsigned char scene[0x5ec]{},manager[scene_manager_bytes]{},parsed[0x220]{},event[0x3b4]{};
-    std::uint32_t handles[4]{};
+    alignas(4) unsigned char scene[0x5ec]{},manager[scene_manager_bytes]{},parsed[0x220]{},event[0x3c0]{};
+    std::uint32_t handles[4]{},parsed_word=0x2222,callback_word=0x1234;
     int npc=0;void* actor=&npc;char sound[32]="fixture.sound";
     SceneManagerSession session{};SceneManagerControl control{manager,sizeof(manager)};
     NpcScenePlaybackBindings play{};SceneEntityLifecycleBindings life{};SceneAdvanceBindings advance{};
@@ -678,7 +678,7 @@ struct IntegratedSceneFixture {
             auto& f=get(p);assert(s==f.scene&&f.parsed_live&&F::word(f.manager,0x3a0)==1);f.scene[0x3d8]=1;++f.started;return 1;};
         play.missing=[](void*,const char*,unsigned) noexcept -> int{assert(false);return 0;};
         play.resolve_parsed=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{
-            auto& f=get(p);assert(h==0x2222&&f.parsed_live);*out=f.parsed;*n=sizeof(f.parsed);return 1;};
+            auto& f=get(p);assert(h==f.parsed_word&&f.parsed_live);*out=f.parsed;*n=sizeof(f.parsed);return 1;};
         play.duration.event=[](void* p,void* s,unsigned i,void** out,unsigned* n) noexcept -> int{
             auto& f=get(p);assert(s==f.parsed&&f.parsed_live&&!i);*out=f.event;*n=sizeof(f.event);return 1;};
         life.resolve_actor=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);assert(h==0x1001);*out=f.actor;return 1;};
@@ -689,11 +689,11 @@ struct IntegratedSceneFixture {
             F::fl(f.parsed,0x88,.1f);F::put(f.event,0,5);F::fl(f.event,0x188,.1f);
             *out=0x2222;return 1;};
         life.base_activate=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&f.parsed_live);++f.activated;return 1;};
-        life.stop_events=[](void* p,void* s,std::uint32_t w,int arg) noexcept -> int{auto& f=get(p);assert(s==f.scene&&w==0x2222&&!arg&&!f.event[0x328]);return 1;};
+        life.stop_events=[](void* p,void* s,std::uint32_t w,int arg) noexcept -> int{auto& f=get(p);assert(s==f.scene&&w==f.parsed_word&&!arg&&!f.event[0x328]);return 1;};
         life.parsed=play.resolve_parsed;
         life.actor=[](void* p,void* s,unsigned i,void** out) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!i);*out=f.actor;return 1;};
-        life.detach=[](void* p,void* a,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(a==f.actor&&h==0x2222&&f.parsed_live);++f.detached;return 1;};
-        life.destroy_parsed=[](void* p,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(h==0x2222&&f.parsed_live);++f.destroyed;f.parsed_live=false;return 1;};
+        life.detach=[](void* p,void* a,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(a==f.actor&&h==f.parsed_word&&f.parsed_live);++f.detached;return 1;};
+        life.destroy_parsed=[](void* p,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(h==f.parsed_word&&f.parsed_live);++f.destroyed;f.parsed_live=false;return 1;};
         life.base_remove=[](void* p,void* s) noexcept -> int{auto& f=get(p);assert(s==f.scene&&!f.parsed_live);++f.retired;return 1;};
         manager_life.base_construct=[](void* p,void* m,int arg) noexcept -> int{auto& f=get(p);return m==f.manager&&arg==1;};
         manager_life.base_spawn=[](void* p,void* m) noexcept -> int{return m==get(p).manager;};
@@ -724,7 +724,7 @@ struct IntegratedSceneFixture {
         advance.simulation.channel_index=[](void*,std::uint32_t,std::uint32_t,int*) noexcept -> int{assert(false);return 0;};
         advance.simulation.track=[](void*,void*,void*) noexcept -> int{assert(false);return 0;};
         advance.simulation.callback=[](void* p,std::uint32_t word,unsigned slot,float,void* parsed,void* event) noexcept -> int{
-            auto& f=get(p);assert(word==0x1234&&parsed==f.parsed&&event==f.event&&f.event[0x328]&&f.steps<8);f.order[f.steps++]=slot;return 1;};
+            auto& f=get(p);assert(word==f.callback_word&&parsed==f.parsed&&event==f.event&&f.event[0x328]&&f.steps<8);f.order[f.steps++]=slot;return 1;};
         manager_tick.clock=manager_life.clock;manager_tick.schedule=manager_life.schedule;
         manager_tick.last_think=[](void*,void*,int,float* out) noexcept -> int{*out=9;return 1;};
         manager_tick.disabled=[](void*,unsigned* out) noexcept -> int{*out=0;return 1;};
@@ -935,6 +935,61 @@ inline void check_choreography_construct(const ChoreographyConstructApi& api){
     assert(!F::word(event,0x318)&&!F::word(event,0x2b4)&&!F::word(event,0x2b8)&&!event[0x328]&&!event[0x3a2]);
     assert(event[5]==0xa5&&event[0x85]==0xa5&&event[0x1b2]==0&&event[0x232]==0&&event[0x38f]==0&&event[0x391]==0xa5&&event[0x3b8]==0xa5);
     std::memset(event,0xa5,sizeof(event));assert(api.event(event,sizeof(event),nullptr,&counter)==1&&counter==1&&!F::word(event,0x348)&&!F::word(event,0x330));
+}
+
+
+struct AllocatedSceneFixture:IntegratedSceneFixture {
+    alignas(4) unsigned char choreo_actor[0x118],channel[0x9c];
+    std::uint32_t counter=10,words[5]{};
+    GeneratedSceneBindings gen{};GeneratedSceneAllocationBindings allocation{};
+    unsigned allocations=0,appends=0,links=0,symbols=0,releases=0,warnings=0,fail_size=0;
+    static AllocatedSceneFixture& self(void* p){return *static_cast<AllocatedSceneFixture*>(p);}
+    AllocatedSceneFixture(const SceneManagerTickApi& m,const SceneAdvanceApi& a,const SceneEntityLifecycleApi& e):IntegratedSceneFixture(m,a,e){
+        parsed_word=F::ptr(parsed);callback_word=F::ptr(scene+0x410);life.generate=nullptr;
+        gen.context=this;gen.diagnostic_word=0x12345678;allocation.context=this;allocation.parsed.context=this;allocation.parsed.compare_word=0x87654321;allocation.event_counter=&counter;
+        gen.model_name=[](void* p,void* n,const char** out) noexcept -> int{auto& f=self(p);assert(n==f.actor);*out=nullptr;return 1;};
+        gen.duration=[](void* p,const char* sound,const char* model,float* out) noexcept -> int{auto& f=self(p);assert(sound==f.sound&&model&&!*model);*out=.1f;return 1;};
+        gen.warning=[](void* p,GeneratedSceneWarning w,const char*) noexcept -> int{auto& f=self(p);assert(w==GeneratedSceneWarning::ChildAllocation);++f.warnings;return 1;};
+        gen.scene_name=[](void* p,std::uint32_t w,const char** out) noexcept -> int{auto& f=self(p);assert(w==F::ptr(f.scene+0x568));*out=reinterpret_cast<char*>(f.scene+0x568);return 1;};
+        allocation.allocate=[](void* p,unsigned size,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);const unsigned sizes[]={0x220,0x118,0x9c,0x3c0};
+            void* objects[]={f.parsed,f.choreo_actor,f.channel,f.event};
+            assert(f.allocations<4&&size==sizes[f.allocations]);*out=size==f.fail_size?nullptr:objects[f.allocations++];if(!*out)++f.allocations;
+            *bytes=size;if(*out)std::memset(*out,0xa5,size);
+            if(size==0x220&&*out){f.parsed_live=true;++f.generated;}return 1;};
+        allocation.release_unpublished=[](void* p,void*) noexcept -> int{++self(p).releases;return 1;};
+        allocation.parsed.symbol_construct=[](void* p,void* symbol,int a,int b,unsigned c) noexcept -> int{auto& f=self(p);assert(symbol==f.parsed+0x164&&!a&&!b&&c==1);++f.symbols;return 1;};
+        allocation.append_parsed=[](void* p,void* parsed,GeneratedSceneChild kind,void* child) noexcept -> int{
+            auto& f=self(p);const auto i=static_cast<unsigned>(kind);assert(parsed==f.parsed&&i==f.appends++);
+            void* objects[]={f.choreo_actor,f.channel,f.event};const unsigned offs[]={0x14,0x28,0};
+            assert(!child||child==objects[i]);f.words[i]=F::ptr(child);F::put(parsed,offs[i],F::ptr(&f.words[i]));F::put(parsed,offs[i]+4,1);F::put(parsed,offs[i]+12,1);return 1;};
+        gen.append=[](void* p,GeneratedSceneChild kind,void* parent,void* child) noexcept -> int{
+            auto& f=self(p);assert(f.appends==3);
+            if(kind==GeneratedSceneChild::Channel){assert(!f.links&&parent==f.choreo_actor&&child==f.channel);f.words[3]=F::ptr(child);F::put(parent,0x100,F::ptr(f.words+3));F::put(parent,0x10c,1);}
+            else{assert(kind==GeneratedSceneChild::Event&&f.links==1&&parent==f.channel&&child==f.event);f.words[4]=F::ptr(child);F::put(parent,0x84,F::ptr(f.words+4));F::put(parent,0x90,1);}
+            ++f.links;return 1;};
+        gen.destroy=[](void* p,void* parsed) noexcept -> int{auto& f=self(p);assert(parsed==f.parsed&&f.parsed_live);f.parsed_live=false;++f.destroyed;return 1;};
+        // Engine start still computes simulation bounds; use fixture value
+        // from the newly constructed event rather than prefill parsed data.
+        play.start=[](void* p,void* scene) noexcept -> int{
+            auto& f=get(p);assert(scene==f.scene&&f.parsed_live&&F::word(f.manager,0x3a0)==1);
+            F::put(f.parsed,0x88,F::word(f.event,0x188));f.scene[0x3d8]=1;++f.started;return 1;};
+    }
+};
+inline void check_allocated_generated_scene(const AllocatedGeneratedSceneApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity){
+    using F=ScenePlaybackFixture;
+    AllocatedSceneFixture missing(manager,tick,entity);missing.fail_size=0x9c;std::uint32_t word=99;
+    assert(api.generate(missing.scene,sizeof(missing.scene),missing.actor,missing.sound,&missing.gen,&missing.allocation,&word)==1&&!word);
+    assert(missing.allocations==4&&missing.appends==3&&missing.counter==11&&missing.warnings==1&&missing.destroyed==1&&!missing.links&&!missing.releases);
+    AllocatedSceneFixture f(manager,tick,entity);float duration=99;
+    assert(!f.life.generate&&!f.gen.create_parsed&&!f.gen.create_child&&!f.play.activate);
+    assert(api.sound(f.actor,f.sound,&f.play,&f.life,&f.gen,&f.allocation,&duration)==1&&duration==.1f);
+    assert(f.allocations==4&&f.appends==3&&f.links==2&&f.symbols==1&&f.counter==11&&F::word(f.event,0x348)==10);
+    assert(F::word(f.scene,0x40c)==f.parsed_word&&F::word(f.parsed,0x9c)==f.callback_word&&F::word(f.event,0x330)==f.parsed_word);
+    assert(F::word(f.event,0x2b4)==F::ptr(f.choreo_actor)&&F::word(f.event,0x2b8)==F::ptr(f.channel)&&!f.releases);
+    for(unsigned i=0;i<4;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
+    assert(f.steps==4&&f.finished==1&&f.destroyed==1&&f.detached==1&&!f.parsed_live&&!f.scene_live&&!F::word(f.manager,0x3a0));
+    assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
 }
 
 }
