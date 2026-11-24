@@ -19,6 +19,7 @@
 #include "test_native_radio_transport.h"
 #include "test_native_generic_actor.h"
 #include "test_native_companion_reactions.h"
+#include "test_native_count_scheduler.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -425,6 +426,12 @@ int main(int argc,char** argv){
     assert(companionReactions&&!getCompanionReactions(0,sizeof(tables::CompanionReactionApi))&&!getCompanionReactions(1,0));
     tables::test::check_companion_reactions(*companionReactions);
     std::puts("PASS native JC spawn profile and Jessica reaction/schedule dispatch");
+    const auto getCountScheduler=reinterpret_cast<tables::GetCountSchedulerApi>(GetProcAddress(server,tables::count_scheduler_export));
+    assert(getCountScheduler&&!GetProcAddress(client,tables::count_scheduler_export));
+    const auto* countScheduler=getCountScheduler(1,sizeof(tables::CountSchedulerApi));
+    assert(countScheduler&&!getCountScheduler(0,sizeof(tables::CountSchedulerApi))&&!getCountScheduler(1,0));
+    tables::test::check_count_scheduler(*countScheduler,*countApi,*actionMonitor);
+    std::puts("PASS native Count behavior registration, selection, schedule mapping and active interrogation observation");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

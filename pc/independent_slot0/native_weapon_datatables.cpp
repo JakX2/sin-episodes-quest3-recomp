@@ -10,6 +10,7 @@
 #include "native_radio_transport.h"
 #include "native_generic_actor.h"
 #include "native_companion_reactions.h"
+#include "native_count_scheduler.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3701,6 +3702,92 @@ int __cdecl jessica_reaction_schedule(HologramControl* c,const JessicaReactionBi
     return disp_finish(c,true);
 }
 const CompanionReactionApi companion_reaction_api{version,sizeof(CompanionReactionApi),&jc_profile,&jessica_reaction_update,&jessica_reaction_event,&jessica_reaction_schedule,&health_ack};
+
+std::uint32_t count_pointer(const void* p) noexcept {
+    return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(p));
+}
+std::uint32_t count_embedded(void* npc) noexcept {
+    return count_pointer(static_cast<unsigned char*>(npc)+0x1000);
+}
+bool count_entry(void* npc,int index,std::uint32_t& entry) noexcept {
+    if(index<0||index>=4096)return false;
+    const auto vector=hologram_read<std::uint32_t>(npc,0xc1c);
+    if(!vector||vector>0xffffffffu-static_cast<unsigned>(index)*4u)return false;
+    const auto* address=reinterpret_cast<const void*>(static_cast<std::uintptr_t>(vector)+static_cast<unsigned>(index)*4u);
+    if(!sin_independent::vgui_layout::Readable(address,4))return false;
+    entry=hologram_read<std::uint32_t>(address,0);
+    return entry!=0;
+}
+int __cdecl count_register_interrogation(HologramControl* c,const CountSchedulerBindings* b) noexcept {
+    if(!health_control(c,count_size)||!b||!b->append||!b->register_base)return 0;
+    auto* npc=c->object;
+    const auto embedded=count_embedded(npc);
+    const int before=hologram_read<int>(npc,0xc28);
+    if(before<0||before>=4096)return 0;
+    c->busy=1;const auto h=*b;
+    if(!h.append(h.context,npc,embedded))return disp_finish(c,false);
+    std::uint32_t inserted=0;
+    if(hologram_read<int>(npc,0xc28)!=before+1||!count_entry(npc,before,inserted)||inserted!=embedded)return disp_finish(c,false);
+    // Embedded behavior vslot +4 is 220cdbd0, a plain owner write.
+    hologram_write(npc,0x1004,count_pointer(npc));
+    hologram_write(npc,0x100c,count_pointer(static_cast<unsigned char*>(npc)+0xc14));
+    return disp_finish(c,h.register_base(h.context,npc)!=0);
+}
+int __cdecl count_select(HologramControl* c,CountSchedulerState* state,const CountSchedulerBindings* b,int* result) noexcept {
+    if(!health_control(c,count_size)||!state||!hologram_writable(state,sizeof(*state))||state->busy||
+       !b||!b->eligible||!b->begin||!b->gather||!b->end||!b->reset||!b->changed||!b->schedule||
+       !b->is_local||!b->translate||!b->base_schedule||!result)return 0;
+    c->busy=1;state->busy=1;const auto h=*b;auto* npc=c->object;
+    auto finish=[&](bool ok){state->busy=0;return disp_finish(c,ok);};
+    const auto embedded=count_embedded(npc);
+    std::uint32_t selected=0;
+    for(int i=0;i<hologram_read<int>(npc,0xc28);++i){
+        std::uint32_t behavior=0;
+        if(!count_entry(npc,i,behavior))return finish(false);
+        unsigned eligible=0;
+        if(behavior==embedded)eligible=hologram_read<unsigned char>(npc,0x1010);
+        else if(!h.eligible(h.context,behavior,&eligible))return finish(false);
+        if(!eligible)continue;
+        // Concrete Count's approval virtual +77c (2216dde0) is true.
+        // The original reloads vector entries before approval and install.
+        if(!count_entry(npc,i,selected))return finish(false);
+        break;
+    }
+    const auto prior=hologram_read<std::uint32_t>(npc,0xc18);
+    hologram_write(npc,0xc18,selected);
+    if(prior!=selected){
+        if(selected){
+            if(!h.begin(h.context,selected))return finish(false);
+            state->gathering=1;
+            const auto active=hologram_read<std::uint32_t>(npc,0xc18);
+            const bool ok=active&&h.gather(h.context,active);
+            state->gathering=0;
+            if(!ok)return finish(false);
+        }
+        if(prior&&(!h.end(h.context,prior)||!h.reset(h.context,npc)))return finish(false);
+        if(!h.changed(h.context,npc,prior,selected))return finish(false);
+    }
+    const auto active=hologram_read<std::uint32_t>(npc,0xc18);
+    hologram_write(npc,0xc30,static_cast<unsigned char>(1));
+    if(!active)return finish(h.base_schedule(h.context,npc,result)!=0);
+    int raw=0;if(!h.schedule(h.context,active,&raw))return finish(false);
+    unsigned local=0;
+    // Embedded vslot +d4 is the range predicate at 220ce130.
+    if(active==embedded)local=raw>=100000&&raw<110000;
+    else if(!h.is_local(h.context,active,raw,&local))return finish(false);
+    if(local)return finish(h.translate(h.context,active,raw,result)!=0);
+    *result=raw;return finish(true);
+}
+int __cdecl count_active_observe(HologramControl* c,const CountSchedulerBindings* b,const CountBindings* cb,const void* obs,unsigned bytes) noexcept {
+    if(!health_control(c,count_size)||!b||!obs)return 0;
+    const auto active=hologram_read<std::uint32_t>(c->object,0xc18);
+    if(!active)return 1;
+    if(active==count_embedded(c->object))return count_observe(c,cb,obs,bytes);
+    if(!b->observe_other)return 0;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,h.observe_other(h.context,active,obs,bytes)!=0);
+}
+const CountSchedulerApi count_scheduler_api{version,sizeof(CountSchedulerApi),&count_register_interrogation,&count_select,&count_active_observe};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5585,6 +5672,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Companion
 SiN_GetCompanionReactionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(CompanionReactionApi)?&companion_reaction_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetCountSchedulerApi=_SiN_GetCountSchedulerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CountSchedulerApi* __cdecl
+SiN_GetCountSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(CountSchedulerApi)?&count_scheduler_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
