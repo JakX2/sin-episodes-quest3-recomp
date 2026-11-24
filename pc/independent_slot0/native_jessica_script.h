@@ -406,6 +406,49 @@ struct TalkPropagationApi {
     int (__cdecl *seed_silent)(void* exp,unsigned bytes,const ResponseHistoryBindings*,const char*) noexcept;
 };
 using GetTalkPropagationApi=const TalkPropagationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char talk_manager_export[]="SiN_GetTalkManagerApi";
+inline constexpr unsigned talk_manager_bytes=0x3bc;
+enum class TalkManagerStage:unsigned {Fresh,Constructing,Live,Populating,Destroying,Retired,Failed};
+struct TalkManagerControl {
+    void* object;
+    unsigned bytes;
+    TalkManagerStage stage=TalkManagerStage::Fresh;
+};
+struct TalkManagerSession {
+    TalkManagerControl* instance=nullptr; // original singleton at 225492a8
+    unsigned creating=0,blocked=0;
+};
+struct TalkManagerTables {
+    // Live replacement words supplied by host; original VAs are evidence only.
+    std::uint32_t entity,tree_thunk,compare;
+};
+struct TalkManagerBindings {
+    void* context;
+    int (__cdecl *base_construct)(void*,void* manager,int argument) noexcept;
+    // Factory creates a manager and publishes it through construct() on
+    // this session, as the original constructor publishes its singleton.
+    int (__cdecl *create)(void*,TalkManagerSession*,const char* classname,int edict_index) noexcept;
+    // Original 22287d80 receives the newly published object.
+    int (__cdecl *register_created)(void*,void* manager) noexcept;
+    // Original 2208ec80 inserts all 48 descriptors into its tree.
+    // Host owns symbol interning, tree allocation and duplicate handling.
+    int (__cdecl *insert_deadline)(void*,void* tree,const char*,float initial) noexcept;
+    int (__cdecl *free_tree)(void*,std::uint32_t allocation) noexcept;
+    int (__cdecl *base_destroy)(void*,void* manager) noexcept;
+};
+struct TalkManagerApi {
+    std::uint32_t version,size;
+    int (__cdecl *construct)(TalkManagerSession*,TalkManagerControl*,const TalkManagerTables*,const TalkManagerBindings*) noexcept;
+    int (__cdecl *ensure)(TalkManagerSession*,const TalkManagerBindings*,void** manager) noexcept;
+    int (__cdecl *populate)(TalkManagerSession*,TalkManagerControl*,const TalkManagerBindings*) noexcept;
+    // Copy the three original global deadline fields under the session lock.
+    int (__cdecl *read_cooldowns)(const TalkManagerSession*,TalkCooldownState*) noexcept;
+    int (__cdecl *write_cooldowns)(TalkManagerSession*,const TalkCooldownState*) noexcept;
+    // Nondeleting original destructor; host frees entity allocation.
+    int (__cdecl *destroy)(TalkManagerSession*,TalkManagerControl*,const TalkManagerTables*,const TalkManagerBindings*) noexcept;
+};
+using GetTalkManagerApi=const TalkManagerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

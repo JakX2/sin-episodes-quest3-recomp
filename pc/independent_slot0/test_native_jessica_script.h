@@ -855,4 +855,72 @@ inline void check_npc_dialogue(const NpcDialogueApi& api,const ResponseTimingUpd
     assert(ResponseSpeakFixture::destroy(&j.pipeline,j.pipeline.pool[0]));
 }
 
+
+struct TalkManagerFixture {
+    const TalkManagerApi& api;const TalkCatalogApi& catalog;
+    alignas(4) unsigned char object[talk_manager_bytes]{};
+    TalkManagerControl control{object,sizeof(object)};
+    TalkManagerSession session{};TalkManagerBindings b{};
+    TalkManagerTables tables{0x11110000,0x22220000,0x33330000};
+    unsigned creations=0,bases=0,registrations=0,inserts=0,frees=0,destroys=0;
+    bool absent=false,fail_register=false,fail_free=false;
+    static TalkManagerFixture& get(void* p){return *static_cast<TalkManagerFixture*>(p);}
+    unsigned word(unsigned off){unsigned x=0;std::memcpy(&x,object+off,4);return x;}
+    void put(unsigned off,unsigned x){std::memcpy(object+off,&x,4);}
+    TalkManagerFixture(const TalkManagerApi& a,const TalkCatalogApi& c):api(a),catalog(c){
+        std::memset(object,0xa5,sizeof(object));b.context=this;
+        b.base_construct=[](void* p,void* e,int arg) noexcept -> int{
+            auto& f=get(p);assert(e==f.object&&arg==1&&!f.session.instance&&f.control.stage==TalkManagerStage::Constructing);
+            ++f.bases;f.put(0x100,0x87654321);return 1;
+        };
+        b.create=[](void* p,TalkManagerSession* s,const char* name,int edict) noexcept -> int{
+            auto& f=get(p);assert(s==&f.session&&s->creating&&!s->instance&&!std::strcmp(name,"ai_ally_speech_manager")&&edict==-1);
+            ++f.creations;void* nested=&f;assert(f.api.ensure(s,&f.b,&nested)==0&&nested==&f);
+            return f.absent||f.api.construct(s,&f.control,&f.tables,&f.b)==1;
+        };
+        b.register_created=[](void* p,void* e) noexcept -> int{
+            auto& f=get(p);assert(e==f.object&&f.session.instance==&f.control&&f.control.stage==TalkManagerStage::Live);
+            ++f.registrations;if(f.fail_register)return 0;
+            return f.api.populate(&f.session,&f.control,&f.b)==1;
+        };
+        b.insert_deadline=[](void* p,void* tree,const char* n,float value) noexcept -> int{
+            auto& f=get(p);assert(tree==f.object+0x3a0&&value==-1.f&&f.control.stage==TalkManagerStage::Populating);
+            assert(f.inserts<48&&!std::strcmp(n,f.catalog.at(f.inserts)->name));++f.inserts;
+            // Actual tree storage and symbol intern are host-owned.
+            return 1;
+        };
+        b.free_tree=[](void* p,std::uint32_t v) noexcept -> int{
+            auto& f=get(p);assert(v==0x12340000&&!f.session.instance&&f.control.stage==TalkManagerStage::Destroying);
+            ++f.frees;return !f.fail_free;
+        };
+        b.base_destroy=[](void* p,void* e) noexcept -> int{
+            auto& f=get(p);assert(e==f.object&&!f.session.instance&&f.control.stage==TalkManagerStage::Destroying);++f.destroys;return 1;
+        };
+    }
+};
+inline void check_talk_manager(const TalkManagerApi& api,const TalkCatalogApi& catalog){
+    TalkManagerFixture f(api,catalog);void* out=&f;
+    f.absent=true;assert(api.ensure(&f.session,&f.b,&out)==1&&!out&&!f.bases&&f.creations==1);
+    f.absent=false;assert(api.ensure(&f.session,&f.b,&out)==1&&out==f.object&&f.creations==2&&f.bases==1&&f.registrations==1&&f.inserts==48);
+    assert(f.word(0)==f.tables.entity&&f.word(0x100)==0x87654321&&f.word(0x390)==0xa5a5a5a5);
+    assert(f.word(0x394)==0xbf800000&&f.word(0x398)==0xbf800000&&f.word(0x39c)==0xbf800000);
+    assert(f.word(0x3a0)==f.tables.tree_thunk&&!f.word(0x3a4)&&!f.word(0x3a8)&&!f.word(0x3ac)&&f.word(0x3b0)==0x00ff00ff&&!f.word(0x3b4)&&f.word(0x3b8)==f.tables.compare);
+    TalkCooldownState deadlines{};assert(api.read_cooldowns(&f.session,&deadlines)==1&&deadlines.global[0]==-1&&deadlines.global[2]==-1);
+    deadlines.global[0]=12;deadlines.global[1]=34;assert(api.write_cooldowns(&f.session,&deadlines)==1);
+    deadlines={};assert(api.read_cooldowns(&f.session,&deadlines)==1&&deadlines.global[0]==12&&deadlines.global[1]==34&&deadlines.global[2]==-1);
+    assert(api.ensure(&f.session,&f.b,&out)==1&&out==f.object&&f.creations==2&&f.registrations==1);
+    f.put(0x3a4,0x12340000);f.put(0x3a8,48);
+    assert(api.destroy(&f.session,&f.control,&f.tables,&f.b)==1&&!f.session.instance&&f.control.stage==TalkManagerStage::Retired&&f.frees==1&&f.destroys==1&&!f.word(0x3a4)&&!f.word(0x3a8));
+    assert(api.read_cooldowns(&f.session,&deadlines)==0&&api.destroy(&f.session,&f.control,&f.tables,&f.b)==0);
+    TalkManagerFixture external(api,catalog);assert(api.ensure(&external.session,&external.b,&out)==1);
+    external.put(0x3ac,0xffffffffu);external.put(0x3a4,0x12340000);external.put(0x3a8,48);
+    assert(api.destroy(&external.session,&external.control,&external.tables,&external.b)==1&&!external.frees&&external.destroys==1&&external.word(0x3a4)==0x12340000);
+    TalkManagerFixture failed(api,catalog);failed.fail_register=true;out=&failed;
+    assert(api.ensure(&failed.session,&failed.b,&out)==-1&&out==&failed&&failed.session.blocked&&failed.session.instance==&failed.control&&!failed.session.creating);
+    assert(api.ensure(&failed.session,&failed.b,&out)==0);
+    TalkManagerFixture broken(api,catalog);assert(api.ensure(&broken.session,&broken.b,&out)==1);
+    broken.put(0x3a4,0x12340000);broken.fail_free=true;
+    assert(api.destroy(&broken.session,&broken.control,&broken.tables,&broken.b)==-1&&!broken.session.instance&&broken.session.blocked&&broken.control.stage==TalkManagerStage::Failed&&!broken.word(0x3a4)&&!broken.destroys);
+}
+
 }

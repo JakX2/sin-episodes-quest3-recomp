@@ -428,6 +428,13 @@ int main(int argc,char** argv){
     assert(talkPropagation&&!getTalkPropagation(0,sizeof(tables::TalkPropagationApi))&&!getTalkPropagation(1,0));
     tables::test::check_talk_propagation(*talkPropagation);
     std::puts("PASS native companion concept propagation and silent history seed");
+    const auto getTalkManager=reinterpret_cast<tables::GetTalkManagerApi>(GetProcAddress(server,tables::talk_manager_export));
+    assert(getTalkManager&&!GetProcAddress(client,tables::talk_manager_export));
+    const auto* talkManager=getTalkManager(1,sizeof(tables::TalkManagerApi));
+    assert(talkManager&&!getTalkManager(0,sizeof(tables::TalkManagerApi))&&!getTalkManager(1,0));
+    tables::test::check_talk_manager(*talkManager,*talkCatalog);
+    std::puts("PASS native ally speech manager factory, catalog and lifecycle");
+
     const auto getNpcDialogue=reinterpret_cast<tables::GetNpcDialogueApi>(GetProcAddress(server,tables::npc_dialogue_export));
     assert(getNpcDialogue&&!GetProcAddress(client,tables::npc_dialogue_export));
     const auto* npcDialogue=getNpcDialogue(1,sizeof(tables::NpcDialogueApi));

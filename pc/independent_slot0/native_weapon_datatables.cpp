@@ -3597,6 +3597,95 @@ int __cdecl talk_propagate(void* npc,unsigned bytes,const TalkPropagationBinding
     return 1;
 }
 const TalkPropagationApi talk_propagation_api{version,sizeof(TalkPropagationApi),&talk_propagate,&response_seed_silent};
+bool talk_manager_control(const TalkManagerControl* c,TalkManagerStage stage) noexcept {
+    return c&&c->stage==stage&&c->bytes>=talk_manager_bytes&&hologram_writable(c->object,talk_manager_bytes);
+}
+bool talk_manager_tables(const TalkManagerTables* t) noexcept {
+    return t&&t->entity&&t->tree_thunk&&t->compare;
+}
+bool talk_manager_session(TalkManagerSession* s) noexcept {
+    return s&&hologram_writable(s,sizeof(*s));
+}
+int talk_manager_finish(TalkManagerSession* s,TalkManagerControl* c,bool ok,TalkManagerStage stage) noexcept {
+    c->stage=ok?stage:TalkManagerStage::Failed;
+    if(!ok)s->blocked=1;
+    return ok?1:-1;
+}
+int __cdecl talk_manager_construct(TalkManagerSession* s,TalkManagerControl* c,const TalkManagerTables* t,
+                                  const TalkManagerBindings* b) noexcept {
+    if(!talk_manager_session(s)||s->blocked||s->instance||!talk_manager_control(c,TalkManagerStage::Fresh)||
+       !talk_manager_tables(t)||!b||!b->base_construct)return 0;
+    const auto h=*b;const auto tables=*t;auto* e=c->object;
+    c->stage=TalkManagerStage::Constructing;
+    if(!h.base_construct(h.context,e,1))return talk_manager_finish(s,c,false,TalkManagerStage::Live);
+    // Host must not replace the original singleton during construction.
+    if(s->instance)return talk_manager_finish(s,c,false,TalkManagerStage::Live);
+    hologram_write(e,0,tables.entity);
+    for(unsigned off=0x394;off<=0x39c;off+=4)hologram_write(e,off,-1.f);
+    hologram_write(e,0x3a0,tables.tree_thunk);
+    for(unsigned off=0x3a4;off<=0x3ac;off+=4)hologram_write(e,off,0u);
+    hologram_write(e,0x3b0,0x00ff00ffu);hologram_write(e,0x3b4,0u);hologram_write(e,0x3b8,tables.compare);
+    c->stage=TalkManagerStage::Live;s->instance=c;
+    return 1;
+}
+int __cdecl talk_manager_ensure(TalkManagerSession* s,const TalkManagerBindings* b,void** out) noexcept {
+    if(!talk_manager_session(s)||s->blocked||s->creating||!b||!b->create||!b->register_created||
+       !out||!hologram_writable(out,sizeof(*out)))return 0;
+    if(s->instance){
+        if(!talk_manager_control(s->instance,TalkManagerStage::Live))return 0;
+        *out=s->instance->object;return 1;
+    }
+    const auto h=*b;s->creating=1;
+    const auto fail=[&](){s->creating=0;s->blocked=1;return -1;};
+    if(!h.create(h.context,s,"ai_ally_speech_manager",-1)||s->blocked)return fail();
+    // Re-read the published singleton, not an unrelated factory return value.
+    if(s->instance){
+        if(!talk_manager_control(s->instance,TalkManagerStage::Live)||
+           !h.register_created(h.context,s->instance->object)||s->blocked)return fail();
+    }
+    if(s->instance&&!talk_manager_control(s->instance,TalkManagerStage::Live))return fail();
+    *out=s->instance?s->instance->object:nullptr;
+    s->creating=0;return 1;
+}
+int __cdecl talk_manager_populate(TalkManagerSession* s,TalkManagerControl* c,const TalkManagerBindings* b) noexcept {
+    if(!talk_manager_session(s)||s->blocked||s->instance!=c||!talk_manager_control(c,TalkManagerStage::Live)||
+       !b||!b->insert_deadline)return 0;
+    const auto h=*b;c->stage=TalkManagerStage::Populating;
+    auto* tree=static_cast<unsigned char*>(c->object)+0x3a0;
+    for(const auto& d:talk_concepts)
+        if(!h.insert_deadline(h.context,tree,d.name,-1.f))return talk_manager_finish(s,c,false,TalkManagerStage::Live);
+    return talk_manager_finish(s,c,true,TalkManagerStage::Live);
+}
+int __cdecl talk_manager_read(const TalkManagerSession* s,TalkCooldownState* out) noexcept {
+    if(!s||!sin_independent::vgui_layout::Readable(s,sizeof(*s))||s->blocked||
+       !talk_manager_control(s->instance,TalkManagerStage::Live)||!out||!hologram_writable(out,sizeof(*out)))return 0;
+    std::memcpy(out->global,static_cast<const unsigned char*>(s->instance->object)+0x394,sizeof(out->global));return 1;
+}
+int __cdecl talk_manager_write(TalkManagerSession* s,const TalkCooldownState* in) noexcept {
+    if(!talk_manager_session(s)||s->blocked||!talk_manager_control(s->instance,TalkManagerStage::Live)||
+       !in||!sin_independent::vgui_layout::Readable(in,sizeof(*in)))return 0;
+    std::memcpy(static_cast<unsigned char*>(s->instance->object)+0x394,in->global,sizeof(in->global));return 1;
+}
+int __cdecl talk_manager_destroy(TalkManagerSession* s,TalkManagerControl* c,const TalkManagerTables* t,
+                               const TalkManagerBindings* b) noexcept {
+    if(!talk_manager_session(s)||s->blocked||s->instance!=c||!talk_manager_control(c,TalkManagerStage::Live)||
+       !talk_manager_tables(t)||!b||!b->free_tree||!b->base_destroy)return 0;
+    const auto h=*b;auto* e=c->object;
+    c->stage=TalkManagerStage::Destroying;hologram_write(e,0,t->entity);s->instance=nullptr;
+    if(hologram_read<std::uint32_t>(e,0x3ac)!=0xffffffffu){
+        const auto rows=hologram_read<std::uint32_t>(e,0x3a4);
+        if(rows){
+            const bool ok=h.free_tree(h.context,rows)!=0;
+            hologram_write(e,0x3a4,0u);
+            if(!ok)return talk_manager_finish(s,c,false,TalkManagerStage::Retired);
+        }
+        hologram_write(e,0x3a8,0u);
+    }
+    return talk_manager_finish(s,c,h.base_destroy(h.context,e)!=0,TalkManagerStage::Retired);
+}
+const TalkManagerApi talk_manager_api{version,sizeof(TalkManagerApi),&talk_manager_construct,&talk_manager_ensure,
+    &talk_manager_populate,&talk_manager_read,&talk_manager_write,&talk_manager_destroy};
+
 
 
 
@@ -8099,6 +8188,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcDialog
 SiN_GetNpcDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcDialogueApi)?&npc_dialogue_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetTalkManagerApi=_SiN_GetTalkManagerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkManagerApi* __cdecl
+SiN_GetTalkManagerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkManagerApi)?&talk_manager_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")
