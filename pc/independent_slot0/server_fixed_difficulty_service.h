@@ -52,6 +52,16 @@ struct Api {
 inline constexpr char engine_skill_export_name[]="SiN_ApplyEngineSkill";
 enum EngineSkillOperation : std::uint32_t { BeginFromEngine=0, SyncFromEngine=1 };
 using ApplyEngineSkill=int (SIN_FIXED_CALL *)(void*,std::uint32_t) noexcept;
+// Explicit host boundary for the recovered GameInit command-buffer tail.
+// Caller owns live VEngineServer021 and VEngineCvar002 interfaces, and
+// must have completed its own preceding startup/reset requirements.
+// Not a replacement for original GameInit. No pointers are retained.
+inline constexpr char configured_campaign_export_name[]="SiN_StartConfiguredCampaign";
+enum ConfiguredStartResult : int {
+    ConfigRejected=0, ConfigStarted=1, ConfigRanSkillUnavailable=2,
+    ConfigQueueUncertain=3, ConfigExecuteUncertain=4
+};
+using StartConfiguredCampaign=int (SIN_FIXED_CALL *)(void*,void*) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

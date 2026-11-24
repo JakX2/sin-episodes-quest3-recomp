@@ -91,6 +91,115 @@ static void test_engine_skill(HMODULE lib,const a::Api* api){
     assert(api->get_state(&state)&&state.initial_skill==1&&state.revision==1&&!state.trigger_count&&!state.completed);
     assert(api->end_campaign());
 }
+
+// The original IVEngineServer command slots are 36 and 37. A native
+// synthetic vtable with distinct preceding methods catches slot drift.
+class ConfigEngine {
+public:
+#define SIN_CFG_UNUSED(n) virtual void __thiscall Unused##n(){assert(false);}
+    SIN_CFG_UNUSED(0)
+    SIN_CFG_UNUSED(1)
+    SIN_CFG_UNUSED(2)
+    SIN_CFG_UNUSED(3)
+    SIN_CFG_UNUSED(4)
+    SIN_CFG_UNUSED(5)
+    SIN_CFG_UNUSED(6)
+    SIN_CFG_UNUSED(7)
+    SIN_CFG_UNUSED(8)
+    SIN_CFG_UNUSED(9)
+    SIN_CFG_UNUSED(10)
+    SIN_CFG_UNUSED(11)
+    SIN_CFG_UNUSED(12)
+    SIN_CFG_UNUSED(13)
+    SIN_CFG_UNUSED(14)
+    SIN_CFG_UNUSED(15)
+    SIN_CFG_UNUSED(16)
+    SIN_CFG_UNUSED(17)
+    SIN_CFG_UNUSED(18)
+    SIN_CFG_UNUSED(19)
+    SIN_CFG_UNUSED(20)
+    SIN_CFG_UNUSED(21)
+    SIN_CFG_UNUSED(22)
+    SIN_CFG_UNUSED(23)
+    SIN_CFG_UNUSED(24)
+    SIN_CFG_UNUSED(25)
+    SIN_CFG_UNUSED(26)
+    SIN_CFG_UNUSED(27)
+    SIN_CFG_UNUSED(28)
+    SIN_CFG_UNUSED(29)
+    SIN_CFG_UNUSED(30)
+    SIN_CFG_UNUSED(31)
+    SIN_CFG_UNUSED(32)
+    SIN_CFG_UNUSED(33)
+    SIN_CFG_UNUSED(34)
+    SIN_CFG_UNUSED(35)
+#undef SIN_CFG_UNUSED
+    virtual void __thiscall Queue(const char* text){
+        assert(text&&std::strcmp(text,"exec game.cfg\n")==0);
+        assert(stage==0&&skill->lookups==before);
+        assert(!api->begin_campaign(1)&&!api->end_campaign());
+        assert(start(this,skill)==a::ConfigRejected);
+        stage=1;
+        if(fail==1)throw 1;
+    }
+    virtual void __thiscall Execute(){
+        assert(stage==1&&skill->lookups==before);
+        assert(!api->begin_campaign(1)&&!api->set_skill(1));
+        stage=2;
+        skill->root.SetInt(configured);
+        if(fail==2)throw 2;
+    }
+    SkillEngine* skill=nullptr;
+    const a::Api* api=nullptr;
+    a::StartConfiguredCampaign start=nullptr;
+    unsigned stage=0,before=0,fail=0;
+    int configured=3;
+};
+static void test_configured_campaign(HMODULE lib,const a::Api* api){
+    auto start=reinterpret_cast<a::StartConfiguredCampaign>(
+        GetProcAddress(lib,a::configured_campaign_export_name));
+    auto apply=reinterpret_cast<a::ApplyEngineSkill>(
+        GetProcAddress(lib,a::engine_skill_export_name));
+    assert(start&&apply);
+    SkillEngine skill;
+    skill.api=api;skill.apply=apply;
+    ConfigEngine server;
+    server.skill=&skill;server.api=api;server.start=start;
+    a::State state{};
+    assert(start(nullptr,&skill)==a::ConfigRejected);
+    assert(start(&server,nullptr)==a::ConfigRejected);
+    assert(start(&server,reinterpret_cast<void*>(1))==a::ConfigRejected);
+    assert(start(reinterpret_cast<void*>(1),&skill)==a::ConfigRejected);
+    assert(!server.stage&&!skill.lookups);
+    assert(api->begin_campaign(1));
+    assert(start(&server,&skill)==a::ConfigRejected&&!server.stage);
+    assert(api->end_campaign());
+    server.fail=1;
+    assert(start(&server,&skill)==a::ConfigQueueUncertain);
+    assert(server.stage==1&&!skill.lookups&&!api->get_state(&state));
+    server.stage=0;server.fail=2;
+    assert(start(&server,&skill)==a::ConfigExecuteUncertain);
+    assert(server.stage==2&&!skill.lookups&&!api->get_state(&state));
+    server.stage=0;server.fail=0;server.configured=4;
+    assert(start(&server,&skill)==a::ConfigRanSkillUnavailable);
+    assert(server.stage==2&&skill.lookups==1&&!api->get_state(&state));
+    server.stage=0;server.before=skill.lookups;server.configured=2;skill.missing=true;
+    assert(start(&server,&skill)==a::ConfigRanSkillUnavailable);
+    assert(server.stage==2&&skill.lookups==2&&!api->get_state(&state));
+    server.stage=0;server.before=skill.lookups;server.configured=3;skill.missing=false;
+    skill.root.SetInt(1);
+    assert(start(&server,&skill)==a::ConfigStarted);
+    assert(server.stage==2&&skill.lookups==3);
+    assert(api->get_state(&state)&&state.skill==3&&state.initial_skill==3);
+    assert(!state.trigger_count&&!state.completed&&!state.adaptive_enabled);
+    float damage=0;
+    assert(api->scale_damage_taken(100.f,0,&damage)&&damage==140.f);
+    assert(start(&server,&skill)==a::ConfigRejected&&skill.lookups==3);
+    skill.root.SetInt(2);
+    assert(apply(&skill,a::SyncFromEngine));
+    assert(api->get_state(&state)&&state.skill==2&&state.initial_skill==3);
+    assert(api->end_campaign());
+}
 #endif
 int main(int argc,char** argv){
     assert(argc==2);
@@ -160,6 +269,7 @@ int main(int argc,char** argv){
 #ifdef _WIN32
 #if defined(_MSC_VER) && defined(_M_IX86)
     test_engine_skill(lib,api);
+    test_configured_campaign(lib,api);
 #endif
     assert(FreeLibrary(lib));
 #else
