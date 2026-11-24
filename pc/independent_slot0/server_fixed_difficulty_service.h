@@ -120,6 +120,50 @@ struct MapEntityApi {
 };
 using GetMapEntityApi=const MapEntityApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(MapEntityRef)==12);
+// Host callbacks for the already recovered SiN trigger subclasses.
+// No callbacks or context pointers are retained after spawn/touch/retry.
+// Host owns liveness, player predicate, native base trigger, game events,
+// and deferred entity deletion. The module owns fixed campaign accounting.
+inline constexpr char trigger_export_name[]="SiN_GetCampaignTriggerApi";
+inline constexpr std::uint32_t trigger_version=1;
+enum NativeTriggerCode : std::uint32_t {
+    TriggerHandled=0, TriggerNonPlayer, TriggerAlreadyConsumed, TriggerUnknownEntity,
+    TriggerInvalidActor, TriggerInvalidConfig, TriggerUnknownKey, TriggerHostNotLive,
+    TriggerHostRefused, TriggerEventUnavailable, TriggerManagerRefused,
+    TriggerRemovalPending, TriggerWrongClass, TriggerReentrant
+};
+enum NativeTriggerEventKind : std::uint32_t { TriggerDynamicEvent=0, TriggerGameEvent=1 };
+struct NativeTriggerEvent {
+    std::uint32_t kind;
+    std::int32_t descriptor,owner,advisor,decision;
+    float value,x,y,z;
+    const char* name; // borrowed until publish callback returns
+};
+struct NativeTriggerHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *is_live)(void*,MapEntityRef);
+    int (SIN_FIXED_CALL *is_player)(void*,MapEntityRef);
+    int (SIN_FIXED_CALL *base_spawn)(void*,MapEntityRef);
+    void (SIN_FIXED_CALL *warning)(void*,const char*);
+    int (SIN_FIXED_CALL *owner_index)(void*);
+    int (SIN_FIXED_CALL *special_action)(void*,MapEntityRef);
+    int (SIN_FIXED_CALL *publish)(void*,MapEntityRef,const NativeTriggerEvent*);
+    int (SIN_FIXED_CALL *queue_remove)(void*,MapEntityRef);
+};
+struct NativeTriggerSpawn {std::uint32_t engine_requests_removal,flags_120,spawnflags_b4;};
+struct NativeTriggerTouch {float x,y,z;std::uint32_t flags_b8;};
+struct NativeTriggerReport {
+    std::uint32_t code,base_initialized,warning_emitted,event_published,manager_signaled,removal_queued;
+};
+struct CampaignTriggerApi {
+    std::uint32_t version,size;
+    // Nonzero return means a report was produced, not necessarily success.
+    int (SIN_FIXED_CALL *spawn)(MapEntityRef,const NativeTriggerSpawn*,const NativeTriggerHost*,void*,NativeTriggerReport*) noexcept;
+    int (SIN_FIXED_CALL *touch)(MapEntityRef,MapEntityRef,const NativeTriggerTouch*,const NativeTriggerHost*,void*,NativeTriggerReport*) noexcept;
+    int (SIN_FIXED_CALL *retry_remove)(MapEntityRef,const NativeTriggerHost*,void*,NativeTriggerReport*) noexcept;
+};
+using GetCampaignTriggerApi=const CampaignTriggerApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(NativeTriggerReport)==24);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

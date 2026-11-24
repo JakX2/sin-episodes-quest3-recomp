@@ -1,6 +1,9 @@
 #include "server_fixed_difficulty_service.h"
 #include "sin_compat/fixed_difficulty_phase663.hpp"
 #include "sin_compat/info_challenge_phase665.hpp"
+#include "sin_compat/fixed_difficulty_trigger_phase663.hpp"
+#include <memory>
+#include <utility>
 #include <cmath>
 #include <optional>
 #include <vector>
@@ -18,6 +21,7 @@ namespace abi=sin_port::fixed_service;
 namespace diff=sin_compat::difficulty;
 namespace fixed=diff::fixed_phase663;
 namespace challenge=diff::info_challenge_phase665;
+namespace triggers=sin_compat::map_entities;
 namespace {
 fixed::FixedDifficultyRuntime make_policy(int skill) noexcept {
     fixed::FixedDifficultyRuntime policy;
@@ -38,7 +42,7 @@ std::optional<Campaign> campaign;
 // Refuse lifecycle/skill mutations reentered by a synchronous engine lookup.
 bool reading_engine_skill=false;
 // Map-local behavior objects, not actual CBaseEntity allocations.
-enum class EntityKind { EnvGlobal, InfoChallenge };
+enum class EntityKind { EnvGlobal, InfoChallenge, DynamicTrigger, SecretTrigger };
 struct MapEntity {
     std::uint32_t generation=0;
     EntityKind kind=EntityKind::EnvGlobal;
@@ -226,6 +230,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
+#pragma comment(linker,"/EXPORT:SiN_GetCampaignTriggerApi=_SiN_GetCampaignTriggerApi")
 #define SIN_FIXED_EXPORT
 #elif defined(_WIN32)
 #define SIN_FIXED_EXPORT __declspec(dllexport)
@@ -286,6 +291,149 @@ MapEntity* map_find(abi::MapEntityRef ref) noexcept {
     if(it==level->entities.end()||!it->second.alive||it->second.generation!=ref.generation)return nullptr;
     return &it->second;
 }
+
+bool is_trigger(EntityKind kind) noexcept {
+    return kind==EntityKind::DynamicTrigger||kind==EntityKind::SecretTrigger;
+}
+sin_compat::EntityRef trigger_ref(abi::MapEntityRef e) noexcept {return {e.index,e.generation};}
+class TriggerBridge final:public triggers::IOriginalTriggerHost {
+public:
+    const abi::NativeTriggerHost* callbacks=nullptr;
+    void* context=nullptr;
+    abi::MapEntityRef active{};
+    abi::MapEntityRef ref(sin_compat::EntityRef e) const noexcept {
+        return {level->epoch,e.index,e.generation};
+    }
+    bool is_live(sin_compat::EntityRef e) const override {
+        // Attach/configure use only the DLL registry. Runtime callbacks
+        // use the caller's actual host liveness predicate, including actors.
+        return callbacks?callbacks->is_live(context,ref(e))!=0:map_find(ref(e))!=nullptr;
+    }
+    bool initialize_native_base_trigger(sin_compat::EntityRef e) override {
+        return callbacks&&callbacks->base_spawn(context,ref(e))!=0;
+    }
+    void report_original_warning(std::string_view text) override {
+        const std::string owned(text);
+        callbacks->warning(context,owned.c_str());
+    }
+    bool is_player(sin_compat::EntityRef e) const override {
+        return callbacks&&callbacks->is_player(context,ref(e))!=0;
+    }
+    int current_difficulty_owner_index() const override {
+        return callbacks?callbacks->owner_index(context):-1;
+    }
+    bool perform_special_trigger_base_action(sin_compat::EntityRef e) override {
+        return callbacks&&callbacks->special_action(context,ref(e))!=0;
+    }
+    bool publish(const triggers::TriggerEvent& e) override {
+        const std::string name(e.name);
+        const abi::NativeTriggerEvent event{
+            e.event==triggers::TriggerEventName::DynamicDifficulty?abi::TriggerDynamicEvent:abi::TriggerGameEvent,
+            e.descriptor,e.owner,e.advisor,e.decision,e.value,e.origin.x,e.origin.y,e.origin.z,name.c_str()};
+        return callbacks&&callbacks->publish(context,active,&event)!=0;
+    }
+    bool mark_difficulty_manager() override {return false;} // fixed wrapper owns this
+    bool queue_remove(sin_compat::EntityRef e) override {
+        return callbacks&&callbacks->queue_remove(context,ref(e))!=0;
+    }
+};
+struct TriggerRuntime {
+    explicit TriggerRuntime(fixed::FixedDifficultyRuntime& policy) noexcept:
+        fixed_host(bridge,policy),factory(fixed_host){}
+    TriggerBridge bridge;
+    fixed::FixedDifficultyTriggerHost fixed_host;
+    triggers::OriginalTriggerEntityFactory factory;
+};
+std::unique_ptr<TriggerRuntime> trigger_runtime;
+bool attach_trigger(abi::MapEntityRef ref,const char* classname) noexcept {
+    try {
+        if(!trigger_runtime)trigger_runtime=std::make_unique<TriggerRuntime>(campaign->policy);
+        return trigger_runtime->factory.spawn({classname,trigger_ref(ref)}).ok();
+    }catch(...){return false;}
+}
+bool valid_trigger_host(const abi::NativeTriggerHost* host) noexcept {
+    return host&&host->version==abi::trigger_version&&host->size==sizeof(*host)&&
+        host->is_live&&host->is_player&&host->base_spawn&&host->warning&&host->owner_index&&
+        host->special_action&&host->publish&&host->queue_remove;
+}
+struct TriggerCallbackScope {
+    TriggerBridge& bridge;
+    TriggerCallbackScope(TriggerBridge& b,abi::MapEntityRef ref,
+                         const abi::NativeTriggerHost* cb,void* context) noexcept:bridge(b) {
+        reading_engine_skill=true;
+        b.active=ref;b.callbacks=cb;b.context=context;
+    }
+    ~TriggerCallbackScope(){bridge.callbacks=nullptr;bridge.context=nullptr;bridge.active={};reading_engine_skill=false;}
+};
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::Handled)==abi::TriggerHandled);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::NonPlayer)==abi::TriggerNonPlayer);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::AlreadyConsumed)==abi::TriggerAlreadyConsumed);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::UnknownEntity)==abi::TriggerUnknownEntity);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::InvalidActor)==abi::TriggerInvalidActor);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::InvalidConfig)==abi::TriggerInvalidConfig);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::UnknownKey)==abi::TriggerUnknownKey);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::HostNotLive)==abi::TriggerHostNotLive);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::HostRefused)==abi::TriggerHostRefused);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::EventUnavailable)==abi::TriggerEventUnavailable);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::ManagerRefused)==abi::TriggerManagerRefused);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::RemovalPending)==abi::TriggerRemovalPending);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::WrongClass)==abi::TriggerWrongClass);
+static_assert(static_cast<std::uint32_t>(triggers::TriggerCode::Reentrant)==abi::TriggerReentrant);
+std::uint32_t trigger_code(triggers::TriggerCode code) noexcept {return static_cast<std::uint32_t>(code);}
+int SIN_FIXED_CALL native_trigger_spawn(abi::MapEntityRef ref,const abi::NativeTriggerSpawn* input,
+        const abi::NativeTriggerHost* host,void* context,abi::NativeTriggerReport* out) noexcept {
+    auto* entity=map_find(ref);
+    if(reading_engine_skill||!entity||!is_trigger(entity->kind)||!trigger_runtime||
+       !input||input->engine_requests_removal>1||!out||!valid_trigger_host(host))return 0;
+    if(entity->spawned||entity->remove_requested){
+        *out={abi::TriggerAlreadyConsumed,0,0,0,0,0};return 1;
+    }
+    TriggerCallbackScope scope(trigger_runtime->bridge,ref,host,context);
+    const triggers::TriggerSpawnInput fields{input->engine_requests_removal!=0,input->flags_120,input->spawnflags_b4};
+    const auto report=entity->kind==EntityKind::DynamicTrigger?
+        trigger_runtime->factory.run_dynamic_spawn(trigger_ref(ref),fields):
+        trigger_runtime->factory.run_secret_spawn(trigger_ref(ref),fields);
+    if(report.base_initialized)entity->spawned=true;
+    if(fields.engine_requests_removal&&(report.code==triggers::TriggerCode::Handled||
+        report.code==triggers::TriggerCode::RemovalPending))entity->remove_requested=true;
+    *out={trigger_code(report.code),report.base_initialized?1u:0u,report.warning_emitted?1u:0u,
+        report.event_published?1u:0u,0,report.removal_queued?1u:0u};
+    return 1;
+}
+int SIN_FIXED_CALL native_trigger_touch(abi::MapEntityRef ref,abi::MapEntityRef actor,
+        const abi::NativeTriggerTouch* input,const abi::NativeTriggerHost* host,void* context,
+        abi::NativeTriggerReport* out) noexcept {
+    auto* entity=map_find(ref);
+    if(reading_engine_skill||!entity||!is_trigger(entity->kind)||!trigger_runtime||
+       !entity->spawned||entity->remove_requested||!input||!out||!valid_trigger_host(host))return 0;
+    if(actor.epoch!=ref.epoch){
+        *out={abi::TriggerInvalidActor,0,0,0,0,0};return 1;
+    }
+    TriggerCallbackScope scope(trigger_runtime->bridge,ref,host,context);
+    auto& factory=trigger_runtime->factory;
+    const auto refresh=factory.refresh_native_fields(trigger_ref(ref),
+        {input->x,input->y,input->z},input->flags_b8);
+    if(refresh!=triggers::TriggerCode::Handled){
+        *out={trigger_code(refresh),0,0,0,0,0};return 1;
+    }
+    const auto report=factory.touch(trigger_ref(ref),trigger_ref(actor));
+    *out={trigger_code(report.code),0,0,report.event_published?1u:0u,
+        report.manager_signaled?1u:0u,report.removal_queued?1u:0u};
+    return 1;
+}
+int SIN_FIXED_CALL native_trigger_retry(abi::MapEntityRef ref,const abi::NativeTriggerHost* host,
+        void* context,abi::NativeTriggerReport* out) noexcept {
+    auto* entity=map_find(ref);
+    if(reading_engine_skill||!entity||!is_trigger(entity->kind)||!trigger_runtime||!out||
+       !valid_trigger_host(host))return 0;
+    TriggerCallbackScope scope(trigger_runtime->bridge,ref,host,context);
+    const auto code=trigger_runtime->factory.retry_pending_remove(trigger_ref(ref));
+    *out={trigger_code(code),0,0,0,0,code==triggers::TriggerCode::Handled?1u:0u};
+    return 1;
+}
+const abi::CampaignTriggerApi trigger_api{abi::trigger_version,sizeof(abi::CampaignTriggerApi),
+    &native_trigger_spawn,&native_trigger_touch,&native_trigger_retry};
+
 std::uint32_t SIN_FIXED_CALL map_begin(const char* name) noexcept {
     if(reading_engine_skill||!campaign||level||!bounded_string(name)||!*name||
        last_epoch==(std::numeric_limits<std::uint32_t>::max)())return 0;
@@ -299,6 +447,7 @@ std::uint32_t SIN_FIXED_CALL map_begin(const char* name) noexcept {
 }
 int SIN_FIXED_CALL map_end(std::uint32_t epoch) noexcept {
     if(reading_engine_skill||!active_level(epoch))return 0;
+    trigger_runtime.reset();
     level.reset();
     return 1;
 }
@@ -315,6 +464,8 @@ int SIN_FIXED_CALL map_create(abi::MapEntityRef ref,const char* classname) noexc
     EntityKind kind;
     if(std::strcmp(classname,"env_global")==0)kind=EntityKind::EnvGlobal;
     else if(std::strcmp(classname,"info_challenge")==0)kind=EntityKind::InfoChallenge;
+    else if(std::strcmp(classname,"trigger_dynamic_difficulty")==0)kind=EntityKind::DynamicTrigger;
+    else if(std::strcmp(classname,"trigger_secret")==0)kind=EntityKind::SecretTrigger;
     else return abi::MapUnknownClass;
     auto it=level->entities.find(ref.index);
     if(it!=level->entities.end()&&(it->second.alive||ref.generation<=it->second.generation))
@@ -327,6 +478,11 @@ int SIN_FIXED_CALL map_create(abi::MapEntityRef ref,const char* classname) noexc
         if(it==level->entities.end())level->entities.emplace(ref.index,std::move(entity));
         else it->second=std::move(entity);
     }catch(...){return abi::MapRejected;}
+    if(is_trigger(kind)&&!attach_trigger(ref,classname)){
+        // No live behavior on failure; this generation is retired.
+        level->entities.find(ref.index)->second.alive=false;
+        return abi::MapRejected;
+    }
     return abi::MapApplied;
 }
 template<class Int>
@@ -344,6 +500,12 @@ int SIN_FIXED_CALL map_keyvalue(abi::MapEntityRef ref,const char* key,const char
     auto* entity=map_find(ref);
     if(reading_engine_skill||!entity||entity->spawned||entity->remove_requested||
        !bounded_string(key)||!bounded_string(value))return abi::MapRejected;
+    if(is_trigger(entity->kind)){
+        if(!trigger_runtime)return abi::MapRejected;
+        const auto result=trigger_runtime->factory.apply_map_keyvalue(trigger_ref(ref),key,value);
+        if(result==triggers::TriggerCode::Handled)return abi::MapApplied;
+        return result==triggers::TriggerCode::UnknownKey?abi::MapUnhandledKey:abi::MapRejected;
+    }
     if(entity->kind!=EntityKind::EnvGlobal)return abi::MapUnhandledKey;
     if(std::strcmp(key,"globalstate")==0){
         try {entity->global_name=std::string(value);}catch(...){return abi::MapRejected;}
@@ -357,6 +519,8 @@ int SIN_FIXED_CALL map_keyvalue(abi::MapEntityRef ref,const char* key,const char
 int SIN_FIXED_CALL map_spawn(abi::MapEntityRef ref) noexcept {
     auto* entity=map_find(ref);
     if(reading_engine_skill||!entity||entity->spawned||entity->remove_requested)return abi::MapRejected;
+    // Trigger spawn needs the explicit native base/flags callbacks.
+    if(is_trigger(entity->kind))return abi::MapRejected;
     if(entity->kind==EntityKind::EnvGlobal){
         const int result=SiN_EnvGlobalDispatch(abi::EnvSpawn,
             entity->global_name?entity->global_name->c_str():nullptr,
@@ -393,6 +557,7 @@ int SIN_FIXED_CALL map_input(abi::MapEntityRef ref,const char* name,
         default:return abi::MapRejected;
         }
     }
+    if(is_trigger(entity->kind))return abi::MapUnhandledInput;
     challenge::Input input;
     if(std::strcmp(name,"GetInitialChallenge")==0)input=challenge::Input::Initial;
     else if(std::strcmp(name,"GetCurrentChallenge")==0)input=challenge::Input::Current;
@@ -410,6 +575,8 @@ int SIN_FIXED_CALL map_input(abi::MapEntityRef ref,const char* name,
 int SIN_FIXED_CALL map_remove(abi::MapEntityRef ref) noexcept {
     auto* entity=map_find(ref);
     if(reading_engine_skill||!entity)return 0;
+    if(is_trigger(entity->kind)&&(!trigger_runtime||
+        trigger_runtime->factory.release(trigger_ref(ref))!=triggers::TriggerCode::Handled))return 0;
     entity->alive=false;
     entity->global_name.reset();
     return 1;
@@ -420,6 +587,11 @@ const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi
 extern "C" SIN_FIXED_EXPORT const abi::MapEntityApi* SIN_FIXED_CALL
 SiN_GetMapEntityApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::map_entity_version&&bytes==sizeof(abi::MapEntityApi)?&map_api:nullptr;
+}
+
+extern "C" SIN_FIXED_EXPORT const abi::CampaignTriggerApi* SIN_FIXED_CALL
+SiN_GetCampaignTriggerApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::trigger_version&&bytes==sizeof(abi::CampaignTriggerApi)?&trigger_api:nullptr;
 }
 
 #if defined(_MSC_VER) && defined(_M_IX86)
