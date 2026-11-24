@@ -230,6 +230,22 @@ struct ParsedSceneResumeApi {
     int (__cdecl *resume)(void* parsed,unsigned bytes,const ParsedSceneResumeBindings*) noexcept;
 };
 using GetParsedSceneResumeApi=const ParsedSceneResumeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char parsed_event_classify_export[]="SiN_GetParsedEventClassifyApi";
+enum class ParsedEventAction:unsigned {None,Start,StartTracked,Update,Stop};
+struct ParsedEventDecision {ParsedEventAction action;unsigned active_count;};
+struct ParsedEventClassifyBindings {
+    void* context;
+    // Resolves indexed pending/pause event from parsed+64 vector.
+    int (__cdecl *pending)(void*,void* parsed,unsigned index,void**,unsigned*) noexcept;
+    // Original 22111080 parent child-vector insertion.
+    int (__cdecl *attach)(void*,void* parent,void* child) noexcept;
+};
+struct ParsedEventClassifyApi {
+    std::uint32_t version,size;
+    int (__cdecl *classify)(void* parsed,unsigned bytes,void* event,unsigned extent,float previous,float target,unsigned forward,const ParsedEventClassifyBindings*,ParsedEventDecision*) noexcept;
+};
+using GetParsedEventClassifyApi=const ParsedEventClassifyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

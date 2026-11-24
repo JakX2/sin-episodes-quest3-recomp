@@ -501,6 +501,13 @@ int main(int argc,char** argv){
     assert(parsedResume&&!getParsedResume(0,sizeof(tables::ParsedSceneResumeApi))&&!getParsedResume(1,0));
     tables::test::check_parsed_scene_resume(*parsedResume,*sceneState);
     std::puts("PASS native parsed choreography resume and child event restart");
+    const auto getParsedClassify=reinterpret_cast<tables::GetParsedEventClassifyApi>(GetProcAddress(server,tables::parsed_event_classify_export));
+    assert(getParsedClassify&&!GetProcAddress(client,tables::parsed_event_classify_export));
+    const auto* parsedClassify=getParsedClassify(1,sizeof(tables::ParsedEventClassifyApi));
+    assert(parsedClassify&&!getParsedClassify(0,sizeof(tables::ParsedEventClassifyApi))&&!getParsedClassify(1,0));
+    tables::test::check_parsed_event_classify(*parsedClassify);
+    std::puts("PASS native parsed choreography event classification");
+
 
 
 
