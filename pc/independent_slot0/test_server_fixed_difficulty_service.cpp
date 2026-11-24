@@ -18,6 +18,88 @@
 #include <dlfcn.h>
 #endif
 namespace a=sin_port::fixed_service;
+
+struct MapOutputFixture {
+    const a::MapEntityApi* map;
+    const a::Api* api;
+    const a::GlobalStateApi* globals;
+    a::MapEntityRef expected;
+    const char* name;
+    std::uint32_t offset;
+    float value;
+    int calls=0,mode=0;
+    static int SIN_FIXED_CALL emit(void* context,const a::MapEntityRef* ref,
+                                  const char* name,std::uint32_t offset,float value){
+        auto& f=*static_cast<MapOutputFixture*>(context);
+        assert(ref&&ref->epoch==f.expected.epoch&&ref->index==f.expected.index&&ref->generation==f.expected.generation);
+        assert(std::strcmp(name,f.name)==0&&offset==f.offset&&value==f.value);
+        ++f.calls;
+        assert(!f.map->remove(*ref)&&!f.map->end_level(ref->epoch));
+        assert(!f.api->end_campaign()&&!f.api->set_skill(1)&&!f.globals->clear());
+        if(f.mode==2)throw 7;
+        return f.mode==0?1:0;
+    }
+};
+static void test_map_entities(const a::MapEntityApi* m,const a::Api* api,const a::GlobalStateApi* g){
+    assert(m&&m->version==1&&m->size==sizeof(*m));
+    assert(!m->begin_level("map_a")&&g->clear());
+    assert(api->begin_campaign(2));
+    assert(!m->begin_level("")&&!m->begin_level(nullptr));
+    const auto e=m->begin_level("map_a");
+    assert(e&&!m->begin_level("map_b")&&!api->end_campaign()&&m->count(e)==0);
+    a::MapEntityRef door{e,10,1}, challenge{e,11,1}, bad{e,12,1};
+    assert(m->create(door,"env_global")==a::MapApplied);
+    assert(m->create({e,10,2},"env_global")==a::MapRejected);
+    assert(m->create(bad,"npc_unknown")==a::MapUnknownClass);
+    assert(m->input(door,"TurnOn",nullptr,nullptr)==a::MapRejected);
+    assert(m->keyvalue(door,"targetname","door_controller")==a::MapUnhandledKey);
+    assert(m->keyvalue(door,"globalstate","door")==a::MapApplied);
+    assert(m->keyvalue(door,"initialstate","2")==a::MapApplied);
+    assert(m->keyvalue(door,"initialstate","1")==a::MapApplied);
+    assert(m->keyvalue(door,"initialstate","9x")==a::MapRejected);
+    assert(m->keyvalue(door,"spawnflags","4294967296")==a::MapRejected);
+    assert(m->keyvalue(door,"spawnflags","1")==a::MapApplied);
+    assert(m->spawn(door)==a::MapApplied&&m->spawn(door)==a::MapRejected);
+    assert(m->keyvalue(door,"globalstate","other")==a::MapRejected);
+    char name[32]{},map[32]{};
+    std::int32_t value=-1;
+    assert(g->read(0,name,32,map,32,&value)&&value==1&&std::strcmp(map,"map_a")==0);
+    assert(m->input(door,"Toggle",nullptr,nullptr)==a::MapApplied);
+    assert(g->read(0,name,32,map,32,&value)&&value==0);
+    assert(m->input(door,"GetCurrentChallenge",nullptr,nullptr)==a::MapUnhandledInput);
+    assert(m->create(bad,"env_global")==a::MapApplied);
+    assert(m->spawn(bad)==a::MapRemoveSelf&&m->spawn(bad)==a::MapRejected);
+    assert(m->input(bad,"TurnOn",nullptr,nullptr)==a::MapRejected);
+    assert(m->remove(bad)&&!m->remove(bad));
+    assert(m->create(bad,"env_global")==a::MapRejected);
+    assert(m->create({e,12,2},"env_global")==a::MapApplied);
+    assert(m->create(challenge,"info_challenge")==a::MapApplied);
+    assert(m->keyvalue(challenge,"OnCurrentChallenge","host output")==a::MapUnhandledKey);
+    assert(m->spawn(challenge)==a::MapApplied&&m->count(e)==3);
+    assert(api->set_skill(3));
+    MapOutputFixture f{m,api,g,challenge,"OnChallengeDifference",0x3c4,50.f};
+    assert(m->input(challenge,"GetChallengeDifference",nullptr,nullptr)==a::MapRejected);
+    assert(m->input(challenge,"GetChallengeDifference",&MapOutputFixture::emit,&f)==a::MapApplied&&f.calls==1);
+    f.mode=1;
+    assert(m->input(challenge,"GetChallengeDifference",&MapOutputFixture::emit,&f)==a::MapOutputFailed);
+    f.mode=2;
+    assert(m->input(challenge,"GetChallengeDifference",&MapOutputFixture::emit,&f)==a::MapOutputFailed);
+    f.mode=0;f.name="OnInitialChallenge";f.offset=0x394;f.value=0.5f;
+    assert(m->input(challenge,"GetInitialChallenge",&MapOutputFixture::emit,&f)==a::MapApplied&&f.calls==4);
+    assert(m->end_level(e)&&m->count(e)==-1&&g->count()==1);
+    const auto e2=m->begin_level("map_b");
+    assert(e2&&e2!=e&&!m->end_level(e));
+    assert(m->input(door,"TurnOn",nullptr,nullptr)==a::MapRejected);
+    a::MapEntityRef next{e2,10,1};
+    assert(m->create(next,"env_global")==a::MapApplied);
+    assert(m->keyvalue(next,"globalstate","door")==a::MapApplied);
+    assert(m->keyvalue(next,"spawnflags","1")==a::MapApplied);
+    assert(m->spawn(next)==a::MapApplied&&g->count()==1);
+    assert(g->read(0,name,32,map,32,&value)&&value==0&&std::strcmp(map,"map_a")==0);
+    assert(m->input(next,"TurnOn",nullptr,nullptr)==a::MapApplied);
+    assert(m->end_level(e2)&&api->end_campaign()&&g->clear());
+}
+
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -300,6 +382,13 @@ int main(int argc,char** argv){
     assert(!get(a::abi_version,0));
     const auto* api=get(a::abi_version,sizeof(a::Api));
     assert(api&&api->version==1&&api->size==sizeof(a::Api)&&api->metrics==14);
+#ifdef _WIN32
+    auto getMap=reinterpret_cast<a::GetMapEntityApi>(GetProcAddress(lib,a::map_entity_export_name));
+#else
+    auto getMap=reinterpret_cast<a::GetMapEntityApi>(dlsym(lib,a::map_entity_export_name));
+#endif
+    assert(getMap&&!getMap(0,sizeof(a::MapEntityApi))&&!getMap(1,0));
+    test_map_entities(getMap(a::map_entity_version,sizeof(a::MapEntityApi)),api,globals);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);

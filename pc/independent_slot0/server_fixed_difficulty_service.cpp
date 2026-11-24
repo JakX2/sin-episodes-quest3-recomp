@@ -6,6 +6,9 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <map>
+#include <charconv>
+#include <limits>
 #if defined(_MSC_VER) && defined(_M_IX86)
 #include "client_known_gamesystem_init.h"
 #include "server_single_cvar_probe.h"
@@ -34,6 +37,25 @@ struct Campaign {
 std::optional<Campaign> campaign;
 // Refuse lifecycle/skill mutations reentered by a synchronous engine lookup.
 bool reading_engine_skill=false;
+// Map-local behavior objects, not actual CBaseEntity allocations.
+enum class EntityKind { EnvGlobal, InfoChallenge };
+struct MapEntity {
+    std::uint32_t generation=0;
+    EntityKind kind=EntityKind::EnvGlobal;
+    bool alive=true,spawned=false,remove_requested=false;
+    std::optional<std::string> global_name;
+    std::uint32_t flags=0;
+    std::int32_t initial_state=0;
+    float snapshot=0.f;
+};
+struct MapLevel {
+    std::uint32_t epoch=0;
+    std::string name;
+    std::map<std::uint32_t,MapEntity> entities;
+};
+std::optional<MapLevel> level;
+std::uint32_t last_epoch=0;
+constexpr std::size_t max_map_entities=8192;
 // Original CGlobalState globalentity_t has two 16-bit symbol indices
 // and a 32-bit state. Preserve observable name/level/state semantics,
 // using native owned strings instead of original allocator/tree storage.
@@ -113,7 +135,7 @@ int SIN_FIXED_CALL begin(int skill) noexcept {
     return 1;
 }
 int SIN_FIXED_CALL end() noexcept {
-    if(reading_engine_skill || !campaign)return 0;
+    if(reading_engine_skill || !campaign || level)return 0;
     campaign.reset();
     return 1;
 }
@@ -203,6 +225,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetFixedDifficultyApi=_SiN_GetFixedDifficultyApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
+#pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
 #define SIN_FIXED_EXPORT
 #elif defined(_WIN32)
 #define SIN_FIXED_EXPORT __declspec(dllexport)
@@ -252,6 +275,151 @@ SiN_EnvGlobalDispatch(std::uint32_t op,const char* name,const char* level,
     if(index<0)return global_add(name,level,next)>=0?abi::EnvApplied:abi::EnvRejected;
     if(global_updates_disabled)return abi::EnvBlocked;
     return global_set_state(index,next)?abi::EnvApplied:abi::EnvRejected;
+}
+
+
+namespace {
+bool active_level(std::uint32_t epoch) noexcept {return level&&epoch&&level->epoch==epoch;}
+MapEntity* map_find(abi::MapEntityRef ref) noexcept {
+    if(!active_level(ref.epoch))return nullptr;
+    const auto it=level->entities.find(ref.index);
+    if(it==level->entities.end()||!it->second.alive||it->second.generation!=ref.generation)return nullptr;
+    return &it->second;
+}
+std::uint32_t SIN_FIXED_CALL map_begin(const char* name) noexcept {
+    if(reading_engine_skill||!campaign||level||!bounded_string(name)||!*name||
+       last_epoch==(std::numeric_limits<std::uint32_t>::max)())return 0;
+    try {
+        MapLevel next;
+        next.epoch=last_epoch+1;
+        next.name=name;
+        level.emplace(std::move(next));
+    }catch(...){return 0;}
+    return ++last_epoch;
+}
+int SIN_FIXED_CALL map_end(std::uint32_t epoch) noexcept {
+    if(reading_engine_skill||!active_level(epoch))return 0;
+    level.reset();
+    return 1;
+}
+int SIN_FIXED_CALL map_count(std::uint32_t epoch) noexcept {
+    if(!active_level(epoch))return -1;
+    int count=0;
+    for(const auto& item:level->entities)if(item.second.alive)++count;
+    return count;
+}
+int SIN_FIXED_CALL map_create(abi::MapEntityRef ref,const char* classname) noexcept {
+    if(reading_engine_skill||!active_level(ref.epoch)||!bounded_string(classname)||
+       ref.index==(std::numeric_limits<std::uint32_t>::max)()||
+       ref.generation==(std::numeric_limits<std::uint32_t>::max)())return abi::MapRejected;
+    EntityKind kind;
+    if(std::strcmp(classname,"env_global")==0)kind=EntityKind::EnvGlobal;
+    else if(std::strcmp(classname,"info_challenge")==0)kind=EntityKind::InfoChallenge;
+    else return abi::MapUnknownClass;
+    auto it=level->entities.find(ref.index);
+    if(it!=level->entities.end()&&(it->second.alive||ref.generation<=it->second.generation))
+        return abi::MapRejected;
+    if(it==level->entities.end()&&level->entities.size()>=max_map_entities)return abi::MapRejected;
+    try {
+        MapEntity entity;
+        entity.generation=ref.generation;
+        entity.kind=kind;
+        if(it==level->entities.end())level->entities.emplace(ref.index,std::move(entity));
+        else it->second=std::move(entity);
+    }catch(...){return abi::MapRejected;}
+    return abi::MapApplied;
+}
+template<class Int>
+bool parse_map_int(const char* s,Int& out) noexcept {
+    // Strict port-side conversion, not a claim of native atoi parity.
+    if(!bounded_string(s)||!*s)return false;
+    const auto* end=s+std::strlen(s);
+    Int parsed{};
+    const auto result=std::from_chars(s,end,parsed,10);
+    if(result.ec!=std::errc{}||result.ptr!=end)return false;
+    out=parsed;
+    return true;
+}
+int SIN_FIXED_CALL map_keyvalue(abi::MapEntityRef ref,const char* key,const char* value) noexcept {
+    auto* entity=map_find(ref);
+    if(reading_engine_skill||!entity||entity->spawned||entity->remove_requested||
+       !bounded_string(key)||!bounded_string(value))return abi::MapRejected;
+    if(entity->kind!=EntityKind::EnvGlobal)return abi::MapUnhandledKey;
+    if(std::strcmp(key,"globalstate")==0){
+        try {entity->global_name=std::string(value);}catch(...){return abi::MapRejected;}
+    }else if(std::strcmp(key,"initialstate")==0){
+        if(!parse_map_int(value,entity->initial_state))return abi::MapRejected;
+    }else if(std::strcmp(key,"spawnflags")==0){
+        if(!parse_map_int(value,entity->flags))return abi::MapRejected;
+    }else return abi::MapUnhandledKey;
+    return abi::MapApplied;
+}
+int SIN_FIXED_CALL map_spawn(abi::MapEntityRef ref) noexcept {
+    auto* entity=map_find(ref);
+    if(reading_engine_skill||!entity||entity->spawned||entity->remove_requested)return abi::MapRejected;
+    if(entity->kind==EntityKind::EnvGlobal){
+        const int result=SiN_EnvGlobalDispatch(abi::EnvSpawn,
+            entity->global_name?entity->global_name->c_str():nullptr,
+            level->name.c_str(),entity->flags,entity->initial_state);
+        if(result==abi::EnvRejected)return abi::MapRejected;
+        if(result==abi::EnvRemoveSelf){entity->remove_requested=true;return abi::MapRemoveSelf;}
+    }else if(!capture(&entity->snapshot))return abi::MapRejected;
+    entity->spawned=true;
+    return abi::MapApplied;
+}
+struct OutputScope {
+    OutputScope() noexcept {reading_engine_skill=true;}
+    ~OutputScope(){reading_engine_skill=false;}
+};
+int SIN_FIXED_CALL map_input(abi::MapEntityRef ref,const char* name,
+        abi::MapFloatOutput sink,void* context) noexcept {
+    auto* entity=map_find(ref);
+    if(reading_engine_skill||!entity||!entity->spawned||entity->remove_requested||
+       !bounded_string(name))return abi::MapRejected;
+    if(entity->kind==EntityKind::EnvGlobal){
+        std::uint32_t op=0;
+        if(std::strcmp(name,"TurnOn")==0)op=abi::EnvTurnOn;
+        else if(std::strcmp(name,"TurnOff")==0)op=abi::EnvTurnOff;
+        else if(std::strcmp(name,"Remove")==0)op=abi::EnvRemove;
+        else if(std::strcmp(name,"Toggle")==0)op=abi::EnvToggle;
+        else return abi::MapUnhandledInput;
+        const int result=SiN_EnvGlobalDispatch(op,
+            entity->global_name?entity->global_name->c_str():nullptr,
+            level->name.c_str(),entity->flags,entity->initial_state);
+        switch(result){
+        case abi::EnvApplied:return abi::MapApplied;
+        case abi::EnvUnchanged:return abi::MapUnchanged;
+        case abi::EnvBlocked:return abi::MapBlocked;
+        default:return abi::MapRejected;
+        }
+    }
+    challenge::Input input;
+    if(std::strcmp(name,"GetInitialChallenge")==0)input=challenge::Input::Initial;
+    else if(std::strcmp(name,"GetCurrentChallenge")==0)input=challenge::Input::Current;
+    else if(std::strcmp(name,"GetChallengeDifference")==0)input=challenge::Input::Difference;
+    else return abi::MapUnhandledInput;
+    if(!sink)return abi::MapRejected;
+    abi::ChallengeOutput out{};
+    if(!query(static_cast<std::uint32_t>(input),entity->snapshot,ref.index,&out))return abi::MapRejected;
+    OutputScope guard;
+    try {
+        return sink(context,&ref,challenge::output_name(input),out.original_field_offset,out.value)
+            ?abi::MapApplied:abi::MapOutputFailed;
+    }catch(...){return abi::MapOutputFailed;}
+}
+int SIN_FIXED_CALL map_remove(abi::MapEntityRef ref) noexcept {
+    auto* entity=map_find(ref);
+    if(reading_engine_skill||!entity)return 0;
+    entity->alive=false;
+    entity->global_name.reset();
+    return 1;
+}
+const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
+    &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
+}
+extern "C" SIN_FIXED_EXPORT const abi::MapEntityApi* SIN_FIXED_CALL
+SiN_GetMapEntityApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::map_entity_version&&bytes==sizeof(abi::MapEntityApi)?&map_api:nullptr;
 }
 
 #if defined(_MSC_VER) && defined(_M_IX86)
