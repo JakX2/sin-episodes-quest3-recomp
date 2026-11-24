@@ -22,6 +22,7 @@
 #include <windows.h>
 #if defined(_MSC_VER) && defined(_M_IX86)
 #include "server_native_cvar_registration.h"
+#include "test_native_radio_bsp_host.h"
 #endif
 #else
 #include <dlfcn.h>
@@ -2566,6 +2567,20 @@ int main(int argc,char** argv){
     test_native_engine_event(lib,api,map,triggers);
     test_engine_skill(lib,api);
     test_configured_campaign(lib,api,globals);
+    {
+        namespace radio=sin_port::native_weapon_tables;
+        const auto getRadio=reinterpret_cast<radio::GetRadioEntityApi>(GetProcAddress(lib,radio::radio_entity_export));
+        assert(getRadio);
+        const auto* radioApi=getRadio(radio::version,sizeof(radio::RadioEntityApi));
+        assert(radioApi);
+        const auto radioBsp=make_native_bsp(R"KV(
+{"classname" "worldspawn"}
+{"classname" "trigger_look" "targetname" "look_fixture" "OnTrigger" "radio_fixture,Dispatch,,0,-1"}
+{"classname" "env_radio_message" "targetname" "radio_fixture" "speaker" "npc_jc" "message" "fixture.Radio" "priority" "1" "OnHeard" "look_fixture,Disable,,0,-1"}
+)KV");
+        sin_port::map_host::test::check_radio_bsp(*radioApi,radioBsp);
+        std::puts("PASS loaded native radio BSP lifecycle and named input routing");
+    }
 #endif
     assert(FreeLibrary(lib));
 #else
