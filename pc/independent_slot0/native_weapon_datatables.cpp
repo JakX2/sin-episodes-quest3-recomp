@@ -26,6 +26,7 @@
 #include "native_vehicle_lifecycle.h"
 #include "native_vehicle_think.h"
 #include "native_vehicle_seat_events.h"
+#include "native_camera_link.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -5028,6 +5029,88 @@ int __cdecl seat_event_exit(HologramControl* c,const VehicleSeatEventBindings* b
     return disp_finish(c,h.base_exit(h.context,v,seat)!=0);
 }
 const VehicleSeatEventsApi vehicle_seat_events_api{version,sizeof(VehicleSeatEventsApi),&seat_event_enter,&seat_event_exit,&health_ack};
+
+constexpr CameraLinkField camera_link_fields[]={
+    {"PointCamera",CameraLinkFieldKind::Key,2,0x39c},
+    {"m_hCamera",CameraLinkFieldKind::Saved,0xd,0x394},
+    {"m_hTargetEntity",CameraLinkFieldKind::Saved,0xd,0x398},
+    {"SetCamera",CameraLinkFieldKind::Input,2,0}
+};
+const CameraLinkSchema camera_link_schema{"info_camera_link",camera_link_bytes,4,camera_link_fields};
+const CameraLinkSchema* __cdecl camera_link_get_schema() noexcept{return &camera_link_schema;}
+int __cdecl camera_link_construct(HologramControl* c,const CameraLinkBindings* b) noexcept {
+    if(!health_control(c,camera_link_bytes)||!b||!b->base_construct||!b->register_link)return 0;
+    c->busy=1;const auto h=*b;auto* o=c->object;
+    if(!h.base_construct(h.context,o,1))return disp_finish(c,false);
+    hologram_write(o,0x394,0xffffffffu);hologram_write(o,0x398,0xffffffffu);
+    return disp_finish(c,h.register_link(h.context,o)!=0);
+}
+int __cdecl camera_link_destroy(HologramControl* c,const CameraLinkBindings* b) noexcept {
+    // Destruction is also the reconciliation path for failed callbacks.
+    // Host owns final deallocation and must retain storage until return.
+    if(!c||c->busy||c->bytes<camera_link_bytes||!hologram_writable(c->object,camera_link_bytes)||!b||!b->unregister_link||!b->base_destroy)return 0;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,h.unregister_link(h.context,c->object)&&h.base_destroy(h.context,c->object));
+}
+int __cdecl camera_link_key(HologramControl* c,const char* name,unsigned type,std::uint32_t word) noexcept {
+    if(!health_control(c,camera_link_bytes)||type!=2)return 0;
+    char key[64]{};
+    if(!prop_key_read(name,key)||std::strcmp(key,"PointCamera"))return 0;
+    hologram_write(c->object,0x39c,word);return 1;
+}
+bool camera_link_resolve(void* o,unsigned off,const CameraLinkBindings& h,void*& entity) noexcept {
+    const auto word=hologram_read<std::uint32_t>(o,off);entity=nullptr;
+    return word==0xffffffffu||h.resolve(h.context,word,&entity)!=0;
+}
+bool camera_link_set(void* o,const CameraLinkBindings& h,std::uint32_t name) noexcept {
+    void* found=nullptr;
+    if(!h.find_named(h.context,name,&found))return false;
+    if(!found)return true; // original missing name preserves both fields
+    unsigned camera=0;
+    if(!h.is_point_camera(h.context,found,&camera))return false;
+    std::uint32_t word=0xffffffffu;
+    if(camera&&!h.handle(h.context,found,&word))return false;
+    hologram_write(o,0x394,word);
+    // A found entity with the wrong dynamic type invalidates the handle
+    // but does not replace the previously stored string.
+    void* resolved=nullptr;
+    if(!camera_link_resolve(o,0x394,h,resolved))return false;
+    if(resolved)hologram_write(o,0x39c,name);
+    return true;
+}
+bool camera_link_names_ready(const CameraLinkBindings* b) noexcept {
+    return b&&b->find_named&&b->is_point_camera&&b->handle&&b->resolve;
+}
+int __cdecl camera_link_input(HologramControl* c,const CameraLinkBindings* b,const char* name,unsigned type,std::uint32_t word) noexcept {
+    if(!health_control(c,camera_link_bytes)||!camera_link_names_ready(b))return 0;
+    char key[64]{};
+    if(!prop_key_read(name,key)||std::strcmp(key,"SetCamera")||(type!=2&&!b->convert))return 0;
+    c->busy=1;const auto h=*b;std::uint32_t value=word;
+    if(type!=2&&!h.convert(h.context,type,word,&value))return disp_finish(c,false);
+    return disp_finish(c,camera_link_set(c->object,h,value));
+}
+int __cdecl camera_link_resolve_names(HologramControl* c,const CameraLinkBindings* b) noexcept {
+    if(!health_control(c,camera_link_bytes)||!camera_link_names_ready(b)||!b->base_resolve_names)return 0;
+    c->busy=1;const auto h=*b;auto* o=c->object;
+    if(!h.base_resolve_names(h.context,o))return disp_finish(c,false);
+    void* resolved=nullptr;
+    if(!camera_link_resolve(o,0x394,h,resolved))return disp_finish(c,false);
+    if(!resolved&&!camera_link_set(o,h,hologram_read<std::uint32_t>(o,0x39c)))return disp_finish(c,false);
+    if(!camera_link_resolve(o,0x398,h,resolved))return disp_finish(c,false);
+    if(!resolved){
+        // Base target-name word +90, no camera cast for target entity.
+        void* target=nullptr;std::uint32_t word=0xffffffffu;
+        if(!h.find_named(h.context,hologram_read<std::uint32_t>(o,0x90),&target)||
+           (target&&!h.handle(h.context,target,&word)))return disp_finish(c,false);
+        hologram_write(o,0x398,word);
+    }
+    return disp_finish(c,true);
+}
+int __cdecl camera_link_ack(HologramControl* c) noexcept {
+    if(!c||c->busy||!c->blocked||c->bytes<camera_link_bytes||!hologram_writable(c->object,camera_link_bytes))return 0;
+    c->blocked=0;return 1;
+}
+const CameraLinkApi camera_link_api{version,sizeof(CameraLinkApi),&camera_link_get_schema,&camera_link_construct,&camera_link_destroy,&camera_link_key,&camera_link_input,&camera_link_resolve_names,&camera_link_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -7074,6 +7157,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleSe
 SiN_GetVehicleSeatEventsApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleSeatEventsApi)?&vehicle_seat_events_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetCameraLinkApi=_SiN_GetCameraLinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CameraLinkApi* __cdecl
+SiN_GetCameraLinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(CameraLinkApi)?&camera_link_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
