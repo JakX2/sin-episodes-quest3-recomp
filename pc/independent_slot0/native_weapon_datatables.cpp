@@ -4659,13 +4659,14 @@ bool allocate_generated_parsed(const GeneratedSceneAllocationBindings& a,void* c
 // 22107c90/22106f80/22112ae0/2210cf70: initial 8 words, fixed
 // growth step or doubling. 22107d00/2210c1d0: initial 3 samples.
 // 2210c260/2210c2f0/2210c380: initial 1 tag; 22112c60: 2 scale rows.
+// 220f6b20: initial 1 actor event record of stride 0x40.
 bool choreography_vector_ready(const ChoreographyVectorBindings* h) noexcept {
     return h&&h->storage&&h->resize;
 }
 int __cdecl choreography_grow_memory(void* p,void* mem,unsigned extra,unsigned stride) noexcept {
     const auto* b=static_cast<const ChoreographyVectorBindings*>(p);
     if(!choreography_vector_ready(b)||!hologram_writable(mem,12)||!extra||
-       (stride!=4&&stride!=12&&stride!=24&&stride!=0x88&&stride!=0x8c))return 0;
+       (stride!=4&&stride!=12&&stride!=24&&stride!=0x40&&stride!=0x88&&stride!=0x8c))return 0;
     const auto h=*b;
     const unsigned cap=hologram_read<unsigned>(mem,4);
     const auto old=hologram_read<std::uint32_t>(mem,0);

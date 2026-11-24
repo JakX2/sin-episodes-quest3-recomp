@@ -450,8 +450,8 @@ actor Jessica
     };
     F::fl(root,0x90,.1f);
     assert(clock.reset(root,extent,1,0,0,&tick)==1&&F::word(root,0x70)==1&&F::word(root,0x48)==1);
-    // At previous time -0.1, no duration starts; next call at 0.5
-    // starts tracked gesture and crosses point pause at 1.
+    // Zero-anchored reset; start the tracked gesture, then cross the
+    // point pause at 1. The pending speech child remains unique.
     assert(clock.simulate(root,extent,.5f,&tick)==1);
     assert(clock.simulate(root,extent,1.f,&tick)==1);
     assert(F::word(root,0x5c)==1&&F::word(root,0x21c)==0);
@@ -463,6 +463,134 @@ actor Jessica
     assert(clock.resume(root,extent,&tick)==1&&trace.count==before+1&&trace.types[before]==5&&trace.slots[before]==0);
     assert(F::word(root,0x21c)==0xffffffffu&&!F::word(root,0x5c));
     assert(runtime.destroy(rootword,&b)==1&&arena.live.empty());
+}
+// Exercise real parser -> clock -> native speech callback -> native
+// preparation, language, caption and actor record lifecycle. Only the
+// external engine effects are synthetic, not the callback dispatch.
+inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Voice
+ {
+  event speak greeting
+  {
+   time 0 2
+   param Jessica.Line
+   cctype cc_master
+   cctoken "123456789"
+   cc_noattenuate
+  }
+ }
+}
+)VCD";
+    struct Fixture {
+        VcdAuditArena& arena;
+        alignas(4) unsigned char scene[0x5ec]{},actor[0x604]{};
+        int player=0,filter=0;
+        unsigned opened=0,closed=0,notified=0,emitted=0,registered=0,preferences=0,sent=0,begun=0,stopped=0,starts=0,stops=0;
+        std::uint32_t root=0,actorword=0;
+        void* event=nullptr;
+        explicit Fixture(VcdAuditArena& a):arena(a){}
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+    } f(arena);
+    auto raw=arena.runtime();
+    F::put(f.scene,0x414,F::ptr(f.scene));F::fl(f.scene,0x564,.25f);
+    assert(runtime.parse(f.scene+0x410,"speech.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    void *root=nullptr,*rows=nullptr;unsigned extent=0,n=0;
+    assert(arena.storage(&arena,f.root,&root,&extent)&&extent>=0x220&&F::word(root,0xc)==1);
+    assert(arena.storage(&arena,F::word(root,0),&rows,&n)&&n>=4);
+    assert(arena.storage(&arena,F::word(rows,0),&f.event,&n)&&n>=0x3c0);
+    f.actorword=F::word(f.event,0x2b4);assert(f.actorword);
+    SceneSpeechCallbackBindings speech{};speech.context=&f;
+    speech.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word==f.actorword);*out=f.actor;*bytes=sizeof(f.actor);return 1;
+    };
+    speech.trace=[](void* p,void* scene,void* event,float,SceneSpeechTrace trace) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&event==f.event);
+        if(trace==SceneSpeechTrace::Start)++f.starts;
+        else if(trace==SceneSpeechTrace::Stop)++f.stops;
+        else assert(false);
+        return 1;
+    };
+    auto& e=speech.speech;e.context=&f;
+    e.open_filter=[](void* p,void* actor,float scale,void** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&scale==.8f);++f.opened;*out=&f.filter;return 1;
+    };
+    e.close_filter=[](void* p,void* filter) noexcept -> int{
+        auto& f=Fixture::self(p);assert(filter==&f.filter);++f.closed;return 1;
+    };
+    e.clock=[](void*,float* out) noexcept -> int{*out=10.f;return 1;};
+    e.recipient_count=[](void* p,void* filter,int* out) noexcept -> int{
+        assert(filter==&Fixture::self(p).filter);*out=1;return 1;
+    };
+    e.recipient=[](void* p,void* filter,unsigned index,void** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(filter==&f.filter&&!index);*out=&f.player;return 1;
+    };
+    e.language=[](void* p,void* player,unsigned* present,int* language,unsigned* forced) noexcept -> int{
+        assert(player==&Fixture::self(p).player);*present=1;*language=1;*forced=0;return 1;
+    };
+    e.emit=[](void* p,void* actor,void* player,const char* name,int channel,float volume,int level,float start) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&player==&f.player&&channel==2&&volume==1.f&&level==80&&start==9.5f);
+        assert(!std::strcmp(name,"Jessica.Line"));++f.emitted;return 1;
+    };
+    e.caption_register=[](void* p,std::uint32_t crc,const char* token) noexcept -> int{
+        auto& f=Fixture::self(p);assert(crc==0xcbf43926u&&!std::strcmp(token,"123456789")&&f.emitted==1);++f.registered;return 1;
+    };
+    e.caption_preferences=[](void* p,void* filter) noexcept -> int{
+        auto& f=Fixture::self(p);assert(filter==&f.filter);++f.preferences;return 1;
+    };
+    e.caption_far=[](void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+    e.remove_recipient=[](void*,void*,void*) noexcept -> int{assert(false);return 0;};
+    e.caption_send=[](void* p,void* filter,std::uint32_t crc,unsigned ticks,unsigned flag) noexcept -> int{
+        auto& f=Fixture::self(p);assert(filter==&f.filter&&crc==0xcbf43926u&&ticks==20&&flag==1);++f.sent;return 1;
+    };
+    auto& rec=e.records;rec.context=&f;
+    rec.storage=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.storage(&a,w,out,bytes);
+    };
+    rec.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);
+    };
+    rec.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+    rec.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    rec.begin=[](void* p,void* actor,void* record,std::uint32_t root,void* event,std::uint32_t choreo,void* target,unsigned* accepted) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&root==f.root&&event==f.event&&choreo==f.actorword&&!target);
+        assert(F::word(record,0)==F::ptr(event)&&F::word(record,4)==root&&F::word(record,0x24)==0xffffffffu);
+        ++f.begun;*accepted=1;return 1;
+    };
+    rec.stop=[](void* p,void* actor,void* record,int argument,int zero,unsigned* accepted) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&F::word(record,0)==F::ptr(f.event)&&F::word(record,4)==f.root&&!argument&&!zero);
+        ++f.stopped;*accepted=1;return 1;
+    };
+    SpeechSemaphorePair sem{};
+    SceneSpeechPreparationBindings prep{};prep.context=&f;prep.state=&sem;prep.instanced=1;
+    prep.cast_base_actor=[](void* p,void* actor,void** out) noexcept -> int{
+        assert(actor==Fixture::self(p).actor);*out=actor;return 1;
+    };
+    prep.actor_notify=[](void* p,void* actor,float remaining,float margin) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&remaining==1.5f&&margin==.25f);++f.notified;return 1;
+    };
+    prep.is_npc=[](void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+    prep.classify=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
+    prep.clock=e.clock;
+    prep.handle=rec.handle;
+    NativeChoreographyClockBindings tick{};tick.vectors=arena.vector_bindings;tick.release_memory=&VcdAuditArena::release;
+    tick.scene=f.scene;tick.scene_bytes=sizeof(f.scene);tick.speech=&speech;tick.preparation=&prep;
+    assert(clock.reset(root,extent,1,0,0,&tick)==1);
+    F::fl(f.scene,0x3dc,.5f);
+    assert(clock.simulate(root,extent,.5f,&tick)==1&&f.starts==1&&f.notified==1&&f.emitted==1&&f.begun==1);
+    assert(f.opened==1&&f.closed==1&&f.registered==1&&f.preferences==1&&f.sent==1&&F::word(f.actor,0x5c4)==1&&F::word(f.actor,0x5bc)==1);
+    assert(static_cast<unsigned char*>(f.event)[0x328]);
+    F::fl(f.scene,0x3dc,2.25f);
+    assert(clock.simulate(root,extent,2.25f,&tick)==1&&f.emitted==1&&!f.stopped);
+    F::fl(f.scene,0x3dc,2.5f);
+    assert(clock.simulate(root,extent,2.5f,&tick)==1&&f.stopped==1&&f.stops==1&&!F::word(f.actor,0x5c4));
+    assert(!static_cast<unsigned char*>(f.event)[0x328]);
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
+    std::puts("PASS parsed VCD clock -> native speech, caption and actor record lifecycle");
 }
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
     const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock){
@@ -484,7 +612,7 @@ inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,
         assert(!va.grow_vector(b,v,1,4)&&v[1]==16);
         assert(!va.insert_word(b,v,10,99));
         assert(arena.release(&arena,v[0]));
-        for(unsigned stride:{4u,12u,24u,0x88u,0x8cu}){
+        for(unsigned stride:{4u,12u,24u,0x40u,0x88u,0x8cu}){
             unsigned mem[3]{};
             assert(va.grow_memory(b,mem,1,stride)&&mem[1]==(31+stride)/stride);
             mem[2]=3;const unsigned cap=mem[1];
@@ -604,6 +732,7 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     VcdAuditArena playback_arena(c,s,t,d,st,si,va);
     VcdOwnedPlaybackFixture playback(playback_arena,startup_sound);playback.run(runtime);
     VcdAuditArena clock_arena(c,s,t,d,st,si,va);check_native_choreography_clock_graph(clock_arena,runtime,clock);
+    VcdAuditArena speech_arena(c,s,t,d,st,si,va);check_vcd_clock_speech(speech_arena,runtime,clock);
     std::puts("PASS owned VCD named NPC startup, nested precache, actor association and retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,
