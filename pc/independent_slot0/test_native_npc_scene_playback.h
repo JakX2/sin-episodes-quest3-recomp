@@ -1261,4 +1261,44 @@ inline void check_scene_finish(const SceneFinishApi& api){
     assert(api.finish(empty.scene,sizeof(empty.scene),7,1,&empty.finish)==1&&!empty.entries&&!empty.stops&&empty.scene[0x3d8]);
 }
 
+
+struct ActorEventRecordFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char actor[0x604]{},event[0x3c0]{},rows[4][0x40]{};
+    int target=0;ActorEventRecordBindings b{};unsigned begins=0,grows=0,stops=0,checks=0,diagnostics=0;
+    unsigned allow=1;bool fail_stop=false;ActorEventDiagnostic last{};
+    static ActorEventRecordFixture& get(void* p){return *static_cast<ActorEventRecordFixture*>(p);}
+    ActorEventRecordFixture(){
+        std::memset(rows,0xa5,sizeof(rows));F::put(event,0x2b4,0x1234);b.context=this;
+        b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(w==F::ptr(f.rows));*out=f.rows;*n=sizeof(f.rows);return 1;};
+        b.grow=[](void* p,void* v,unsigned n) noexcept -> int{auto& f=get(p);assert(v==f.actor+0x5b8&&n==1);++f.grows;F::put(v,0,F::ptr(f.rows));F::put(v,4,4);return 1;};
+        b.handle=[](void* p,void* target,std::uint32_t* out) noexcept -> int{assert(target==&get(p).target);*out=0x3001;return 1;};
+        b.diagnostic=[](void* p,ActorEventDiagnostic d,std::uint32_t) noexcept -> int{auto& f=get(p);f.last=d;++f.diagnostics;return 1;};
+        b.begin=[](void* p,void* a,void* record,std::uint32_t parsed,void* e,std::uint32_t ca,void* target,unsigned* out) noexcept -> int{
+            auto& f=get(p);assert(a==f.actor&&e==f.event&&parsed==0x2222&&ca==0x1234);
+            assert(F::word(record,0)==F::ptr(e)&&F::word(record,4)==parsed&&!F::word(record,8)&&F::word(record,0x24)==(target?0x3001:0xffffffffu));
+            ++f.begins;F::put(record,8,f.begins);static_cast<unsigned char*>(record)[0xc]=1;*out=f.allow;return 1;};
+        b.stop=[](void* p,void* a,void* r,int arg,int zero,unsigned* out) noexcept -> int{
+            auto& f=get(p);assert(a==f.actor&&arg==7&&!zero&&F::word(r,4)==0x2222);++f.stops;*out=F::word(r,8)!=2;return !f.fail_stop;};
+        b.check=[](void* p,void* a,void* r,float time,std::uint32_t parsed,void* e,unsigned* out) noexcept -> int{
+            auto& f=get(p);assert(a==f.actor&&r==f.rows[0]&&time==.5f&&parsed==0x2222&&e==f.event);++f.checks;*out=0;return 1;};
+    }
+};
+inline void check_actor_event_records(const ActorEventRecordApi& api){
+    using F=ScenePlaybackFixture;ActorEventRecordFixture f;unsigned out=99;
+    auto add=[&](void* target){return api.add(f.actor,sizeof(f.actor),0x2222,f.event,sizeof(f.event),target,&f.b,&out);};
+    assert(api.add(f.actor,sizeof(f.actor),0,nullptr,0,nullptr,&f.b,&out)==1&&!out&&f.last==ActorEventDiagnostic::NullSceneOrEvent);
+    F::put(f.event,0x2b4,0);assert(add(nullptr)==1&&!out&&f.last==ActorEventDiagnostic::NullChoreoActor);
+    F::put(f.event,0x2b4,0x1234);f.allow=0x100;
+    assert(add(nullptr)==1&&!out&&f.last==ActorEventDiagnostic::StartRejected&&!f.grows);
+    f.allow=1;assert(add(&f.target)==1&&out==1&&f.grows==1&&F::word(f.actor,0x5c8)==F::ptr(f.rows));
+    assert(F::word(f.rows[0],8)==2&&F::word(f.rows[0],0x24)==0x3001&&f.rows[0][0xc]==1&&f.rows[0][0xd]==0xa5&&f.rows[0][0x2a]==0xa5);
+    assert(add(nullptr)==1&&out==1&&F::word(f.rows[1],8)==3&&F::word(f.rows[1],0x24)==0xffffffffu);
+    assert(api.check(f.actor,sizeof(f.actor),.5f,0x2222,f.event,&f.b,&out)==1&&!out&&f.checks==1);
+    assert(api.check(f.actor,sizeof(f.actor),.5f,0x9999,f.event,&f.b,&out)==1&&out==1&&f.checks==1);
+    assert(api.stop(f.actor,sizeof(f.actor),0x2222,f.event,7,&f.b,&out)==1&&out==1&&f.stops==2&&F::word(f.actor,0x5c4)==1&&F::word(f.rows[0],8)==2);
+    f.fail_stop=true;out=99;assert(api.stop(f.actor,sizeof(f.actor),0x2222,f.event,7,&f.b,&out)==-1&&out==99&&F::word(f.actor,0x5c4)==1);
+    f.fail_stop=false;assert(api.stop(f.actor,sizeof(f.actor),0x2222,f.event,7,&f.b,&out)==1&&!out&&F::word(f.actor,0x5c4)==1);
+}
+
 }

@@ -498,6 +498,29 @@ struct SceneFinishApi {
     int (__cdecl *advance)(void*,unsigned,float,const SceneAdvanceBindings*,const SceneFinishBindings*,unsigned instanced) noexcept;
 };
 using GetSceneFinishApi=const SceneFinishApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char actor_event_record_export[]="SiN_GetActorEventRecordApi";
+enum class ActorEventDiagnostic:unsigned {NullSceneOrEvent,NullChoreoActor,StartRejected};
+struct ActorEventRecordBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *grow)(void*,void* vector,unsigned) noexcept;
+    int (__cdecl *handle)(void*,void* target,std::uint32_t*) noexcept;
+    int (__cdecl *diagnostic)(void*,ActorEventDiagnostic,std::uint32_t parsed) noexcept;
+    // Original +2e4/+2f0/+2f4. Transport success distinct from AL.
+    int (__cdecl *begin)(void*,void* actor,void* record,std::uint32_t parsed,void* event,std::uint32_t choreo_actor,void* target,unsigned*) noexcept;
+    int (__cdecl *stop)(void*,void* actor,void* record,int argument,int zero,unsigned*) noexcept;
+    int (__cdecl *check)(void*,void* actor,void* record,float,std::uint32_t parsed,void* event,unsigned*) noexcept;
+};
+struct ActorEventRecordApi {
+    std::uint32_t version,size;
+    // Original 220fb220: construct record, start via virtual, append on AL.
+    int (__cdecl *add)(void*,unsigned,std::uint32_t,void* event,unsigned,void* target,const ActorEventRecordBindings*,unsigned*) noexcept;
+    // 220f8340: forward scan, remove first accepted matching record.
+    int (__cdecl *stop)(void*,unsigned,std::uint32_t,void* event,int,const ActorEventRecordBindings*,unsigned*) noexcept;
+    // 220f83f0: first matching record check; absent record means true.
+    int (__cdecl *check)(void*,unsigned,float,std::uint32_t,void* event,const ActorEventRecordBindings*,unsigned*) noexcept;
+};
+using GetActorEventRecordApi=const ActorEventRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
