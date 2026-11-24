@@ -2265,6 +2265,52 @@ scalesettings { }
     assert(bad.allocs==3&&!bad.events&&!bad.channels&&!bad.finalized);
 }
 
+struct ChoreographyRampFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char event[0x3c0]{},parsed[0x220]{},rows[2][12*16]{};
+    std::uint32_t event_word=0;unsigned grows=0,diagnostics=0;
+    sin_port::vcd::Tokenizer cursor;
+    ChoreographyTimingTagBindings b{};
+    static ChoreographyRampFixture& self(void* p){return *static_cast<ChoreographyRampFixture*>(p);}
+    ChoreographyRampFixture(){
+        b.context=b.text.context=this;
+        b.text.next=[](void* p,unsigned cross,unsigned* more) noexcept -> int{return self(p).cursor.next(cross,*more);};
+        b.text.token=[](void* p,const char** token) noexcept -> int{*token=self(p).cursor.current;return 1;};
+        b.text.unexpected=[](void* p,const char*) noexcept -> int{++self(p).diagnostics;return 1;};
+        b.number=[](void*,const char* token,float* out) noexcept -> int{*out=std::strtof(token,nullptr);return 1;};
+        b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);
+            if(w==F::ptr(f.event)){*out=f.event;*n=sizeof(f.event);return 1;}
+            if(w==F::ptr(&f.event_word)){*out=&f.event_word;*n=4;return 1;}
+            for(auto& row:f.rows)if(w==F::ptr(row)){*out=row;*n=sizeof(row);return 1;}return 0;};
+        b.grow=[](void* p,void* v,unsigned n,unsigned stride) noexcept -> int{
+            auto& f=self(p);assert(n==1&&stride==12&&(v==f.event+0x19c||v==f.parsed+0x12c));
+            F::put(v,0,F::ptr(f.rows[v==f.event+0x19c?0:1]));F::put(v,4,16);++f.grows;return 1;};
+        F::fl(event,0x184,2);F::fl(event,0x188,3);
+        event_word=F::ptr(event);F::put(parsed,0,F::ptr(&event_word));F::put(parsed,0xc,1);
+    }
+    float read(unsigned k,unsigned i,unsigned off){float v;std::memcpy(&v,rows[k]+12*i+off,4);return v;}
+    void set(const char* s){assert(cursor.begin(s,std::strlen(s)));}
+};
+inline void check_choreography_ramp(const ChoreographyRampApi& api){
+    using F=ScenePlaybackFixture;ChoreographyRampFixture f;
+    f.set("{ 0.8 0.4 -0.1 0.9 0.1 0.2 1.005 0.7 1.02 0.8 0.1 0.3 }");
+    assert(api.block(f.event,sizeof(f.event),ChoreographyRampKind::Event,&f.b)==1&&F::word(f.event,0x1a8)==4&&f.grows==1);
+    assert(f.read(0,0,4)==.1f&&f.read(0,0,0)==.2f&&f.read(0,1,0)==.3f&&f.read(0,2,4)==.8f&&f.read(0,3,4)==1.005f);
+    assert(api.append(f.event,sizeof(f.event),ChoreographyRampKind::Event,std::numeric_limits<float>::quiet_NaN(),.5f,1,&f.b)==1);
+    assert(api.finish(f.event,sizeof(f.event),ChoreographyRampKind::Event,&f.b)==1&&F::word(f.event,0x1a8)==5&&std::isnan(f.read(0,4,4))&&F::word(f.rows[0],4*12+8)==1);
+    f.set("{ 3.005 0.8 4 1 0 0.1 }");
+    assert(api.block(f.parsed,sizeof(f.parsed),ChoreographyRampKind::Scene,&f.b)==1&&F::word(f.parsed,0x138)==2&&f.grows==2);
+    assert(f.read(1,0,4)==0&&f.read(1,1,4)==3.005f);
+    // -1 end sentinel yields zero event duration, but scene uses start.
+    F::fl(f.event,0x188,-1);
+    f.set("{ 0.005 1 0.1 0.2 }");
+    assert(api.block(f.event,sizeof(f.event),ChoreographyRampKind::Event,&f.b)==1&&F::word(f.event,0x1a8)==1&&f.read(0,0,4)==.005f);
+    f.set("{ 2.005 1 2.02 0.5 }");
+    assert(api.block(f.parsed,sizeof(f.parsed),ChoreographyRampKind::Scene,&f.b)==1&&F::word(f.parsed,0x138)==1&&f.read(1,0,4)==2.005f);
+    f.set("{ 0.1");assert(api.block(f.event,sizeof(f.event),ChoreographyRampKind::Event,&f.b)==-1&&!F::word(f.event,0x1a8));
+}
+
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};
