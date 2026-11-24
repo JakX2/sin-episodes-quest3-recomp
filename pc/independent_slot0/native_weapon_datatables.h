@@ -635,4 +635,40 @@ struct HologramClientApi {
 };
 using GetHologramServerApi=const HologramServerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetHologramClientApi=const HologramClientApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase715: SiN grunt's client death-effect override. Host implements
+// ordinary Source ragdoll, bodygroup and detached model services.
+inline constexpr char grunt_death_export[]="SiN_GetGruntDeathApi";
+enum class GruntHeadPath:unsigned {None,EffectRecord,TimedModel};
+struct GruntHeadEffect {
+    const char* model;
+    void* source;
+    float position[3],velocity[3],angles[3];
+    float lifetime; // 4.0 only on TimedModel path
+    float orientation[3]; // EffectRecord source vslot10
+    int group;
+    int entity_index; // -1 on EffectRecord path
+};
+struct GruntDeathBindings {
+    void* context;
+    int (__cdecl *base)(void*,void* source,int argument,void** ragdoll) noexcept;
+    int (__cdecl *suppressed)(void*,unsigned* value) noexcept;
+    int (__cdecl *find_group)(void*,void* ragdoll,const char*,int* group) noexcept;
+    int (__cdecl *group_count)(void*,void* ragdoll,int group,int* count) noexcept;
+    int (__cdecl *set_group)(void*,void* ragdoll,int group,int value) noexcept;
+    int (__cdecl *random_float)(void*,float low,float high,float* value) noexcept;
+    int (__cdecl *random_int)(void*,int low,int high,int* value) noexcept;
+    int (__cdecl *orientation)(void*,void* source,float* xyz) noexcept;
+    int (__cdecl *position)(void*,void* source,float* xyz) noexcept;
+    int (__cdecl *emit)(void*,GruntHeadPath,const GruntHeadEffect*) noexcept;
+};
+struct GruntDeathResult {void* ragdoll;GruntHeadPath path;};
+struct GruntDeathApi {
+    std::uint32_t version,size;
+    // Returns 1 on completed path, including all original skips;
+    // -1 uncertain callback failure; 0 rejected preflight.
+    int (__cdecl *run)(HologramControl*,const GruntDeathBindings*,int argument,GruntDeathResult*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetGruntDeathApi=const GruntDeathApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

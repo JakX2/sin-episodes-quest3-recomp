@@ -2526,6 +2526,65 @@ int __cdecl hologram_visibility(void* object,unsigned bytes,float now,HologramFl
     *visible=shared->visible;return 1;
 }
 const HologramClientApi hologram_api{version,sizeof(HologramClientApi),&hologram_visibility};
+
+int __cdecl grunt_death(HologramControl* ctrl,const GruntDeathBindings* b,int argument,GruntDeathResult* out) noexcept {
+    namespace memory=sin_independent::vgui_layout;
+    if(!ctrl||!b||!out||ctrl->busy||ctrl->blocked||ctrl->bytes<0xd88||
+       !memory::Readable(ctrl->object,0xd88)||!b->base||!b->suppressed||
+       !b->find_group||!b->group_count||!b->set_group||!b->random_float||!b->random_int||
+       !b->orientation||!b->position||!b->emit)return 0;
+    ctrl->busy=1;
+    const auto host=*b;
+    auto* source=ctrl->object;
+    GruntDeathResult result{};
+    const auto finish=[&](bool ok){
+        ctrl->busy=0;*out=result;
+        if(!ok){ctrl->blocked=1;return -1;}
+        return 1;
+    };
+    if(!host.base(host.context,source,argument,&result.ragdoll))return finish(false);
+    if(!result.ragdoll||!hologram_read<unsigned char>(source,0xd74))return finish(true);
+    unsigned suppressed=0;
+    if(!host.suppressed(host.context,&suppressed)||suppressed>1)return finish(false);
+    if(suppressed)return finish(true);
+    int group=0,count=0;
+    if(!host.find_group(host.context,result.ragdoll,"heads",&group)||
+       !host.group_count(host.context,result.ragdoll,group,&count))return finish(false);
+    // The original subtracts one unconditionally from the group count.
+    // Use modulo DWORD subtraction to avoid signed overflow.
+    const auto last=static_cast<std::uint32_t>(count)-1u;
+    int value=0;std::memcpy(&value,&last,4);
+    if(!host.set_group(host.context,result.ragdoll,group,value))return finish(false);
+    float sample=0;
+    if(!host.random_float(host.context,0,1,&sample)||!std::isfinite(sample)||sample<0||sample>1)return finish(false);
+    const auto path=sample>0.1f?GruntHeadPath::EffectRecord:GruntHeadPath::TimedModel;
+    GruntHeadEffect effect{};
+    effect.model="models/characters/mobgrunt/decaphead.mdl";effect.source=source;
+    for(auto& angle:effect.angles){
+        int random=0;
+        if(!host.random_int(host.context,0,32767,&random)||random<0||random>32767)return finish(false);
+        // Original vector helper: randomInt * float(1/32767) * 360 - 180.
+        angle=static_cast<float>(static_cast<double>(random)*0.000030518509447574615478515625*360.0-180.0);
+    }
+    if(path==GruntHeadPath::EffectRecord){
+        if(!host.orientation(host.context,source,effect.orientation))return finish(false);
+        effect.entity_index=-1;
+    }else effect.lifetime=4;
+    if(!host.position(host.context,source,effect.position))return finish(false);
+    std::memcpy(effect.velocity,static_cast<const unsigned char*>(source)+0xd78,12);
+    effect.group=0; // original effect record tail zeroes / timed model defaults
+    // The effect API is semantic; original opaque pointer record and
+    // model lookup are host work, not fabricated binary stack structures.
+    if(!host.emit(host.context,path,&effect))return finish(false);
+    result.path=path;
+    return finish(true);
+}
+int __cdecl grunt_death_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0xd88||
+       !sin_independent::vgui_layout::Readable(ctrl->object,0xd88))return 0;
+    ctrl->blocked=0;return 1;
+}
+const GruntDeathApi grunt_death_api{version,sizeof(GruntDeathApi),&grunt_death,&grunt_death_ack};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2730,5 +2789,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::HologramC
 SiN_GetHologramClientApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(HologramClientApi)?&hologram_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetGruntDeathApi=_SiN_GetGruntDeathApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::GruntDeathApi* __cdecl
+SiN_GetGruntDeathApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(GruntDeathApi)?&grunt_death_api:nullptr;
 }
 #endif
