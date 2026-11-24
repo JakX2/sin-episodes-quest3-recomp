@@ -8,6 +8,22 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+bool hologram_writable(void* object,unsigned bytes) noexcept {
+    if(!object||reinterpret_cast<std::uintptr_t>(object)%4||
+       !sin_independent::vgui_layout::Readable(object,bytes))return false;
+    MEMORY_BASIC_INFORMATION area{};
+    if(VirtualQuery(object,&area,sizeof(area))!=sizeof(area))return false;
+    const auto prot=area.Protect&0xffu;
+    return prot==PAGE_READWRITE||prot==PAGE_WRITECOPY||
+        prot==PAGE_EXECUTE_READWRITE||prot==PAGE_EXECUTE_WRITECOPY;
+}
+template<class T> T hologram_read(const void* object,unsigned offset) noexcept {
+    T value{};std::memcpy(&value,static_cast<const unsigned char*>(object)+offset,sizeof(value));
+    return value;
+}
+template<class T> void hologram_write(void* object,unsigned offset,T value) noexcept {
+    std::memcpy(static_cast<unsigned char*>(object)+offset,&value,sizeof(value));
+}
 template<class V> bool aggregate_empty(const V& v) noexcept {
     if(v.handle||v.class_head||v.class_records||v.class_count)return false;
     for(const auto* tab:v.tables)if(tab)return false;
@@ -1256,6 +1272,87 @@ int __cdecl destroy_extra(ExtraSendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const ExtraSendApi extra_api{version,sizeof(ExtraSendApi),&create_extra,&destroy_extra};
+
+constexpr unsigned holo_state=0x1014,holo_end=0x1018,holo_mode=0x3b0,holo_fx=0x1c;
+struct HologramServerRun {
+    HologramControl& control;
+    HologramServerBindings host;
+    void* object() const noexcept {return control.object;}
+    int state() const noexcept {return hologram_read<int>(object(),holo_state);}
+    bool integer(unsigned offset,int value) noexcept {
+        if(hologram_read<int>(object(),offset)==value)return true;
+        if(!host.dirty(host.context,object(),offset))return false;
+        hologram_write(object(),offset,value);return true;
+    }
+    bool timer(double value) noexcept {
+        if(!std::isfinite(value)||value>(std::numeric_limits<float>::max)()||
+           value<-(std::numeric_limits<float>::max)())return false;
+        // Original compares the old float against the extended-precision
+        // sum before storing the rounded DWORD. NaN compares unequal.
+        if(static_cast<double>(hologram_read<float>(object(),holo_end))==value)return true;
+        if(!host.dirty(host.context,object(),holo_end))return false;
+        hologram_write(object(),holo_end,static_cast<float>(value));return true;
+    }
+    bool time(float& now) noexcept {
+        return host.clock(host.context,&now)&&std::isfinite(now);
+    }
+    bool sound(HologramSound which) noexcept {return host.audio(host.context,object(),which)!=0;}
+    bool run(HologramCommand cmd,float duration) noexcept {
+        float now=0;
+        switch(cmd){
+        case HologramCommand::ResetAfterSpawn:
+            return integer(holo_state,0)&&timer(0);
+        case HologramCommand::On:
+            return integer(holo_state,1)&&time(now)&&timer(static_cast<double>(now)+2.0)&&
+                integer(holo_mode,0)&&sound(HologramSound::On)&&sound(HologramSound::StopLoop);
+        case HologramCommand::Off:
+            return integer(holo_state,3)&&time(now)&&timer(static_cast<double>(now)+1.0)&&
+                integer(holo_mode,0)&&sound(HologramSound::StopLoop)&&sound(HologramSound::Off);
+        case HologramCommand::Pulse:
+            if(state()!=2)return true;
+            return integer(holo_state,4)&&time(now)&&timer(static_cast<double>(now)+duration)&&
+                integer(holo_mode,1)&&integer(holo_fx,13);
+        case HologramCommand::Activate:
+            return host.base(host.context,object(),HologramBaseCall::Activate)&&
+                (state()!=2||sound(HologramSound::Loop));
+        case HologramCommand::StartLoop:
+            return integer(holo_state,2)&&sound(HologramSound::Loop);
+        case HologramCommand::Think: {
+            if(!host.base(host.context,object(),HologramBaseCall::Think))return false;
+            const int current=state();
+            if(current!=1&&current!=3&&current!=4)return true;
+            if(!time(now))return false;
+            // Strict original elapsed predicate: equality and unordered
+            // comparisons skip. State 1/3 keep their old deadline.
+            if(!(hologram_read<float>(object(),holo_end)<now))return true;
+            if(current==1)return integer(holo_state,2)&&sound(HologramSound::Loop);
+            if(current==3)return integer(holo_state,0);
+            // Original state-4 settling path samples clock again.
+            return integer(holo_state,2)&&time(now)&&timer(now)&&integer(holo_mode,0)&&integer(holo_fx,0);
+        }
+        default:return false;
+        }
+    }
+};
+int __cdecl hologram_dispatch(HologramControl* ctrl,const HologramServerBindings* b,
+        HologramCommand cmd,float duration) noexcept {
+    if(!ctrl||!b||ctrl->busy||ctrl->blocked||ctrl->bytes<0x101c||
+       !hologram_writable(ctrl->object,0x101c)||!b->clock||!b->dirty||!b->audio||!b->base||
+       static_cast<unsigned>(cmd)>static_cast<unsigned>(HologramCommand::StartLoop)||
+       (cmd==HologramCommand::Pulse&&!std::isfinite(duration)))return 0;
+    ctrl->busy=1;
+    HologramServerRun run{*ctrl,*b};
+    const bool ok=run.run(cmd,duration);
+    ctrl->busy=0;
+    if(!ok){ctrl->blocked=1;return -1;}
+    return 1;
+}
+int __cdecl hologram_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x101c||
+       !hologram_writable(ctrl->object,0x101c))return 0;
+    ctrl->blocked=0;return 1;
+}
+const HologramServerApi hologram_api{version,sizeof(HologramServerApi),&hologram_dispatch,&hologram_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -2411,6 +2508,24 @@ int __cdecl destroy_extra(ExtraRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const ExtraRecvApi extra_api{version,sizeof(ExtraRecvApi),&create_extra,&destroy_extra};
+
+int __cdecl hologram_visibility(void* object,unsigned bytes,float now,HologramFlicker* shared,unsigned* visible) noexcept {
+    if(bytes<0xd88||!hologram_writable(object,0xd88)||!shared||shared->visible>1||!visible||!std::isfinite(now))return 0;
+    const int state=hologram_read<int>(object,0xd7c);
+    if(state!=1&&state!=3){*visible=state!=0?1u:0u;return 1;}
+    const int cursor=hologram_read<int>(object,0xd74);
+    if(cursor<0)return 0;
+    constexpr float thresholds[]={0.1f,0.15f,0.25f,0.26f,0.27f,0.28f,0.3f,0.39f,0.4f,
+        0.45f,0.46f,0.5f,0.51f,0.6f,0.7f,0.85f,0.9f,0.95f,0.99f};
+    const double remaining=static_cast<double>(hologram_read<float>(object,0xd80))-now;
+    const double progress=1.0-remaining*(state==1?0.5:1.0);
+    if(cursor<19&&progress>=thresholds[cursor]){
+        hologram_write(object,0xd74,cursor+1);
+        shared->visible=1u-shared->visible;
+    }
+    *visible=shared->visible;return 1;
+}
+const HologramClientApi hologram_api{version,sizeof(HologramClientApi),&hologram_visibility};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2500,6 +2615,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ExtraSend
 SiN_GetExtraEntitySendApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ExtraSendApi)?&extra_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetHologramServerApi=_SiN_GetHologramServerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::HologramServerApi* __cdecl
+SiN_GetHologramServerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(HologramServerApi)?&hologram_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
@@ -2603,5 +2724,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ExtraRecv
 SiN_GetExtraEntityRecvApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ExtraRecvApi)?&extra_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetHologramClientApi=_SiN_GetHologramClientApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::HologramClientApi* __cdecl
+SiN_GetHologramClientApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(HologramClientApi)?&hologram_api:nullptr;
 }
 #endif

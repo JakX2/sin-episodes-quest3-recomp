@@ -152,7 +152,14 @@ int main(int argc,char** argv){
     const auto* extraSend=getExtraSend(1,sizeof(tables::ExtraSendApi));
     const auto* extraRecv=getExtraRecv(1,sizeof(tables::ExtraRecvApi));
     assert(extraSend&&extraRecv&&!getExtraSend(0,sizeof(tables::ExtraSendApi))&&!getExtraRecv(1,0));
-    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv);
+    const auto getHoloServer=reinterpret_cast<tables::GetHologramServerApi>(GetProcAddress(server,tables::hologram_server_export));
+    const auto getHoloClient=reinterpret_cast<tables::GetHologramClientApi>(GetProcAddress(client,tables::hologram_client_export));
+    assert(getHoloServer&&getHoloClient&&!GetProcAddress(client,tables::hologram_server_export)&&!GetProcAddress(server,tables::hologram_client_export));
+    const auto* holoServer=getHoloServer(1,sizeof(tables::HologramServerApi));
+    const auto* holoClient=getHoloClient(1,sizeof(tables::HologramClientApi));
+    assert(holoServer&&holoClient&&!getHoloServer(0,sizeof(tables::HologramServerApi))&&!getHoloClient(1,0));
+    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient);
+    std::puts("PASS native paired SiN hologram five-state controller, sound order and client flicker");
     std::puts("PASS native paired SiN enemy and additional weapon network class extension (11)");
     std::puts("PASS native paired network aggregate (35 owned tables, 15 class records, transactional construction)");
     const auto getCreator=reinterpret_cast<tables::GetClientCreatorApi>(GetProcAddress(client,tables::client_creator_export));

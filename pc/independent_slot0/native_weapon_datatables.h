@@ -599,4 +599,40 @@ using ExtraSendApi=GraphApi<ExtraSendBindings,ExtraSendView>;
 using ExtraRecvApi=GraphApi<ExtraRecvBindings,ExtraRecvView>;
 using GetExtraSendApi=const ExtraSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetExtraRecvApi=const ExtraRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase714: original npc_hologram behavior on host-owned PE32 objects.
+// No rendering, collision implementation or original fixed-address calls.
+inline constexpr char hologram_server_export[]="SiN_GetHologramServerApi";
+inline constexpr char hologram_client_export[]="SiN_GetHologramClientApi";
+enum class HologramCommand : unsigned {ResetAfterSpawn,On,Off,Pulse,Think,Activate,StartLoop};
+enum class HologramBaseCall : unsigned {Think,Activate};
+enum class HologramSound : unsigned {On,Off,Loop,StopLoop};
+using HologramClock=int (__cdecl *)(void* context,float* now) noexcept;
+using HologramDirty=int (__cdecl *)(void* context,void* object,unsigned offset) noexcept;
+using HologramAudio=int (__cdecl *)(void* context,void* object,HologramSound) noexcept;
+using HologramBase=int (__cdecl *)(void* context,void* object,HologramBaseCall) noexcept;
+// One control per live object. Calls must be serialized; callbacks may
+// inspect but must not destroy, relocate or reenter the same object.
+struct HologramControl {void* object;unsigned bytes;unsigned busy=0,blocked=0;};
+struct HologramServerBindings {
+    void* context;HologramClock clock;HologramDirty dirty;
+    HologramAudio audio;HologramBase base;
+};
+struct HologramServerApi {
+    std::uint32_t version,size;
+    // 1 completed (including inapplicable pulse); 0 preflight refusal;
+    // -1 callback failed, possibly after side effects. Block until host
+    // reconciles real state and explicitly acknowledges.
+    int (__cdecl *dispatch)(HologramControl*,const HologramServerBindings*,HologramCommand,float pulse_duration) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+struct HologramFlicker {unsigned visible=0;}; // one shared instance per client runtime
+struct HologramClientApi {
+    std::uint32_t version,size;
+    // Object fields are read from the actual RecvTable layout. Advances
+    // at most one threshold per call, as in the original.
+    int (__cdecl *visibility)(void* object,unsigned bytes,float now,HologramFlicker*,unsigned* visible) noexcept;
+};
+using GetHologramServerApi=const HologramServerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetHologramClientApi=const HologramClientApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
