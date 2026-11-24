@@ -3035,6 +3035,75 @@ int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBind
 }
 const ResponseSelectApi response_select_api{version,sizeof(ResponseSelectApi),&response_select};
 
+int __cdecl response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const char* name,
+                              void* response,unsigned extent,unsigned* played) noexcept {
+    if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!name||!response||extent<0x124||
+       !sin_independent::vgui_layout::Readable(response,0x124)||!played||!hologram_writable(played,sizeof(*played))||
+       !b||!b->sample||!b->speaking||!b->force_log||!b->stop_scene||!b->interrupt||!b->scene_blocked||
+       !b->refused_log||!b->sound||!b->scene||!b->sound_duration||!b->emit_raw||!b->note_duration||
+       !b->sentence||!b->print_enabled||!b->print||!b->clock||!b->debug_success||!b->destroy||!b->record)return 0;
+    const auto h=*b;const auto* text=static_cast<const char*>(response)+4;
+    // Original inline char buffer ends at +84. Reject a malformed host
+    // response without forwarding an unterminated string.
+    const auto finish=[&](bool ok){if(!h.destroy(h.context,response)||!ok)return -1;*played=0;return 1;};
+    if(!std::memchr(text,0,0x80))return finish(false);
+    float delay=0;
+    if((hologram_read<unsigned char>(response,0x88)&1)&&
+       !h.sample(h.context,static_cast<const unsigned char*>(response)+0x90,&delay))return finish(false);
+    const int level=(hologram_read<unsigned char>(response,0x88)&0x10)?hologram_read<int>(response,0xa0):80;
+    unsigned busy=0;
+    if(!h.speaking(h.context,exp,&busy))return finish(false);
+    if(busy&&*name){
+        unsigned blocked=0;
+        if(!h.force_log(h.context,exp,name)||!h.stop_scene(h.context,exp,1)||!h.interrupt(h.context,exp)||
+           !h.scene_blocked(h.context,exp,1,&blocked))return finish(false);
+        if(blocked){if(!h.refused_log(h.context,exp,name))return finish(false);return finish(true);}
+    }
+    const auto type=static_cast<ResponseKind>(hologram_read<unsigned>(response,0));
+    float duration=0;bool success=false;
+    switch(type){
+        case ResponseKind::Speak:
+            if(hologram_read<unsigned char>(response,0x88)&0x20){
+                if(!h.sound_duration(h.context,exp,text,&duration)||!h.emit_raw(h.context,exp,text,0,0)||
+                   !h.note_duration(h.context,exp,duration,delay))return finish(false);
+                success=true; // raw path does not test duration
+            }else{
+                if(!h.sound(h.context,exp,text,&duration))return finish(false);
+                success=duration>0;
+                if(success&&!h.note_duration(h.context,exp,duration,delay))return finish(false);
+            }
+            break;
+        case ResponseKind::Sentence:{
+            int index=-1;
+            if(!h.sentence(h.context,exp,text,delay,1.f,level,0,&index))return finish(false);
+            success=index!=-1;
+            break;
+        }
+        case ResponseKind::Scene:
+            if(!h.scene(h.context,exp,text,delay,&duration))return finish(false);
+            success=duration>0;
+            if(success&&!h.note_duration(h.context,exp,duration,delay))return finish(false);
+            break;
+        case ResponseKind::Print:{
+            unsigned enabled=0;
+            if(!h.print_enabled(h.context,&enabled))return finish(false);
+            if(enabled){if(!h.print(h.context,exp,text))return finish(false);success=true;}
+            break;
+        }
+        default:break; // None, nested Response and out-of-range
+    }
+    if(!success)return finish(true);
+    float now=0;
+    if(!h.clock(h.context,&now))return finish(false);
+    hologram_write(exp,0x78,now);
+    if(type!=ResponseKind::Print&&!h.debug_success(h.context,exp,name,text))return finish(false);
+    // Record callback now owns response. No duplicate free on failure.
+    if(!h.record(h.context,exp,name,response))return -1;
+    *played=1;return 1;
+}
+const ResponseDispatchApi response_dispatch_api{version,sizeof(ResponseDispatchApi),&response_dispatch};
+
+
 
 
 
@@ -7363,6 +7432,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseS
 SiN_GetResponseSelectApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseSelectApi)?&response_select_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetResponseDispatchApi=_SiN_GetResponseDispatchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseDispatchApi* __cdecl
+SiN_GetResponseDispatchApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseDispatchApi)?&response_dispatch_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

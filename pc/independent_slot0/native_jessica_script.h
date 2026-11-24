@@ -170,6 +170,43 @@ struct ResponseSelectApi {
     int (__cdecl *select)(void* exp,unsigned bytes,const ResponseSelectionBindings*,const char* name,const char* modifiers,void** response,unsigned* extent) noexcept;
 };
 using GetResponseSelectApi=const ResponseSelectApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_dispatch_export[]="SiN_GetResponseDispatchApi";
+enum class ResponseKind:unsigned {None,Speak,Sentence,Scene,Response,Print};
+struct ResponseDispatchBindings {
+    void* context;
+    int (__cdecl *sample)(void*,const void* interval,float*) noexcept;
+    int (__cdecl *speaking)(void*,void* exp,unsigned*) noexcept;
+    int (__cdecl *force_log)(void*,void* exp,const char* name) noexcept;
+    int (__cdecl *stop_scene)(void*,void* exp,int argument) noexcept;
+    int (__cdecl *interrupt)(void*,void* exp) noexcept;
+    int (__cdecl *scene_blocked)(void*,void* exp,int argument,unsigned*) noexcept;
+    int (__cdecl *refused_log)(void*,void* exp,const char* name) noexcept;
+    // NPC vslots +66c and +668, original floating return duration.
+    int (__cdecl *sound)(void*,void* exp,const char* text,float*) noexcept;
+    int (__cdecl *scene)(void*,void* exp,const char* text,float delay,float*) noexcept;
+    int (__cdecl *sound_duration)(void*,void* exp,const char* text,float*) noexcept;
+    int (__cdecl *emit_raw)(void*,void* exp,const char* text,int,int) noexcept;
+    int (__cdecl *note_duration)(void*,void* exp,float duration,float delay) noexcept;
+    int (__cdecl *sentence)(void*,void* exp,const char* text,float delay,float volume,int level,int argument,int*) noexcept;
+    int (__cdecl *print_enabled)(void*,unsigned*) noexcept;
+    int (__cdecl *print)(void*,void* exp,const char* text) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    // Owns original diagnostic-only enable gates and overlay; called only
+    // after success and +78 store. Type Print skips this overlay entirely.
+    int (__cdecl *debug_success)(void*,void* exp,const char* concept_name,const char* text) noexcept;
+    int (__cdecl *destroy)(void*,void* response) noexcept;
+    // Ownership transfers on invocation, even if callback reports failure.
+    // Original 220a7190(name,response,1).
+    int (__cdecl *record)(void*,void* exp,const char* concept_name,void* response) noexcept;
+};
+struct ResponseDispatchApi {
+    std::uint32_t version,size;
+    // Valid invocation consumes selected response; preflight rejection (0)
+    // leaves caller ownership. 1 completed, -1 transport error.
+    int (__cdecl *dispatch)(void* exp,unsigned bytes,const ResponseDispatchBindings*,const char* concept_name,void* response,unsigned extent,unsigned* played) noexcept;
+};
+using GetResponseDispatchApi=const ResponseDispatchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

@@ -374,6 +374,13 @@ int main(int argc,char** argv){
     assert(responseSelect&&!getResponseSelect(0,sizeof(tables::ResponseSelectApi))&&!getResponseSelect(1,0));
     tables::test::check_response_select(*responseSelect);
     std::puts("PASS native response selection criteria, chance and ownership");
+    const auto getResponseDispatch=reinterpret_cast<tables::GetResponseDispatchApi>(GetProcAddress(server,tables::response_dispatch_export));
+    assert(getResponseDispatch&&!GetProcAddress(client,tables::response_dispatch_export));
+    const auto* responseDispatch=getResponseDispatch(1,sizeof(tables::ResponseDispatchApi));
+    assert(responseDispatch&&!getResponseDispatch(0,sizeof(tables::ResponseDispatchApi))&&!getResponseDispatch(1,0));
+    tables::test::check_response_dispatch(*responseDispatch);
+    std::puts("PASS native response dispatch, timing stamp and ownership transfer");
+
 
 
     const auto getCount=reinterpret_cast<tables::GetCountInterrogationApi>(GetProcAddress(server,tables::count_export));
