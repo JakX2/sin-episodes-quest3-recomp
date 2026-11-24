@@ -923,4 +923,42 @@ inline void check_talk_manager(const TalkManagerApi& api,const TalkCatalogApi& c
     assert(api.destroy(&broken.session,&broken.control,&broken.tables,&broken.b)==-1&&!broken.session.instance&&broken.session.blocked&&broken.control.stage==TalkManagerStage::Failed&&!broken.word(0x3a4)&&!broken.destroys);
 }
 
+
+struct ManagedTalkFixture {
+    TalkManagerFixture manager;
+    TalkCatalogFixture policy;
+    alignas(4) unsigned char exp[0x7c]{};
+    TalkManagerRuntimeBindings b{};
+    explicit ManagedTalkFixture(const TalkManagerApi& m,const TalkCatalogApi& c):manager(m,c){
+        const auto owner=ResponseSpeakFixture::ptr(policy.npc);
+        const auto ptr=ResponseSpeakFixture::ptr(exp);
+        std::memcpy(exp+4,&owner,4);
+        const auto adjusted=owner+0xdfc;
+        std::memcpy(exp+0xc,&adjusted,4);std::memcpy(policy.npc+0xffc,&ptr,4);
+        b.session=&manager.session;b.manager=manager.b;b.cooldown=policy.b;
+    }
+};
+inline void check_managed_talk(const TalkManagerRuntimeApi& api,const TalkManagerApi& manager,const TalkCatalogApi& catalog){
+    ManagedTalkFixture f(manager,catalog);auto& p=f.policy;auto& m=f.manager;
+    auto notify=[&](){return api.notify(&f.b,p.npc,sizeof(p.npc),f.exp,sizeof(f.exp),p.concept_name);};
+    auto deadline=[&](){float d=0;std::memcpy(&d,m.object+0x394,4);return d;};
+    unsigned out=99;f.exp[0xc]^=1;
+    assert(notify()==0&&!m.creations);f.exp[0xc]^=1;
+    p.lo=5;p.hi=10;p.draw=7;
+    assert(notify()==1&&m.creations==1&&m.inserts==48&&deadline()==17);p.expect({4,5,2,1});
+    assert(api.group_ready(&f.b,p.npc,sizeof(p.npc),0,&out)==1&&!out);p.expect({1});
+    p.now=17;assert(api.group_ready(&f.b,p.npc,sizeof(p.npc),0,&out)==1&&out);p.expect({1,1});
+    p.concept_name="TLK_IDLE";p.lo=10;p.hi=20;p.draw=15;
+    assert(notify()==1&&deadline()==32&&m.creations==1);p.expect({5,2,1});
+    p.fail=1;assert(api.reset_interaction(&f.b)==-1&&deadline()==32);p.expect({2,1});p.fail=0;
+    p.now=20;assert(api.reset_interaction(&f.b)==1&&deadline()==35);p.expect({2,1});
+    p.concept_name="TLK_PLPUSH";p.lo=p.hi=p.draw=15;
+    assert(notify()==1&&p.deadline==35&&deadline()==35);p.expect({5,3,2,1});
+    // A detached legacy state has no effect on the managed live deadline.
+    p.state.global[0]=0;assert(api.group_ready(&f.b,p.npc,sizeof(p.npc),0,&out)==1&&!out);p.expect({1});
+    assert(manager.destroy(&m.session,&m.control,&m.tables,&m.b)==1);
+    ManagedTalkFixture missing(manager,catalog);missing.manager.absent=true;
+    assert(api.reset_interaction(&missing.b)==-1&&!missing.manager.session.instance);
+}
+
 }

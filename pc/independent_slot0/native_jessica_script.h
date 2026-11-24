@@ -448,6 +448,24 @@ struct TalkManagerApi {
     int (__cdecl *destroy)(TalkManagerSession*,TalkManagerControl*,const TalkManagerTables*,const TalkManagerBindings*) noexcept;
 };
 using GetTalkManagerApi=const TalkManagerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char talk_manager_runtime_export[]="SiN_GetTalkManagerRuntimeApi";
+struct TalkManagerRuntimeBindings {
+    TalkManagerSession* session;
+    TalkManagerBindings manager;
+    TalkCooldownBindings cooldown;
+};
+struct TalkManagerRuntimeApi {
+    std::uint32_t version,size;
+    // Original 2208f540 adjusted owner notification. Validate the paired
+    // expeditor owner words before accessing companion-only fields.
+    int (__cdecl *notify)(const TalkManagerRuntimeBindings*,void* npc,unsigned bytes,void* exp,unsigned exp_bytes,const char*) noexcept;
+    // Original 22089480(-1,0).
+    int (__cdecl *reset_interaction)(const TalkManagerRuntimeBindings*) noexcept;
+    // Group readiness uses live manager fields rather than a detached copy.
+    int (__cdecl *group_ready)(const TalkManagerRuntimeBindings*,const void* npc,unsigned bytes,unsigned priority,unsigned*) noexcept;
+};
+using GetTalkManagerRuntimeApi=const TalkManagerRuntimeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 
