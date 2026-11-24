@@ -671,4 +671,57 @@ struct GruntDeathApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetGruntDeathApi=const GruntDeathApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase716: map-specific keypad classes and VGuiScreen wire metadata.
+// Rendering, input widgets and game event delivery remain host services.
+inline constexpr char keypad_send_export[]="SiN_GetKeypadSendApi";
+inline constexpr char keypad_recv_export[]="SiN_GetKeypadRecvApi";
+inline constexpr char keypad_server_export[]="SiN_GetKeypadServerApi";
+inline constexpr char keypad_client_export[]="SiN_GetKeypadClientApi";
+enum KeypadTableSlot:unsigned {KeyScreen,KeyCode,KeyProp,KeyTableCount};
+inline constexpr const char* keypad_classes[]={"CVGuiScreen","CKeypad","CPropKeypad"};
+inline constexpr const char* keypad_tables[]={"DT_VGuiScreen","DTKeypad","DT_CPropKeypad"};
+inline constexpr int keypad_counts[]={7,3,3};
+struct KeypadSendBindings {AggregateSendView* base;};
+struct KeypadRecvBindings {AggregateRecvView* base;CreateClientEntity creators[KeyTableCount];};
+template<class Table,class Record> struct KeypadView {
+    void* handle;Record* head;Record* records;Table* tables[KeyTableCount];
+};
+using KeypadSendView=KeypadView<s::SendTable,ServerClassRecord>;
+using KeypadRecvView=KeypadView<RecvTable,ClientClassRecord>;
+using KeypadSendApi=GraphApi<KeypadSendBindings,KeypadSendView>;
+using KeypadRecvApi=GraphApi<KeypadRecvBindings,KeypadRecvView>;
+using GetKeypadSendApi=const KeypadSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetKeypadRecvApi=const KeypadRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+enum class KeypadEvent:unsigned {Correct,Incorrect};
+struct KeypadServerBindings {
+    void* context;
+    int (__cdecl *dirty)(void*,void*,unsigned) noexcept;
+    int (__cdecl *output)(void*,void*,unsigned offset,void* activator,void* caller,float delay) noexcept;
+};
+struct KeypadServerApi {
+    std::uint32_t version,size;
+    int (__cdecl *enable)(HologramControl*,const KeypadServerBindings*,unsigned enabled) noexcept;
+    // Event listener receives literal game-event names, not external
+    // authentication or security credentials. Original listener has
+    // no disabled gate. Unrelated names are ignored.
+    int (__cdecl *event)(HologramControl*,const KeypadServerBindings*,const char*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+struct KeypadClientBindings {
+    void* context;
+    int (__cdecl *append_command)(void*,int command) noexcept;
+    int (__cdecl *read_text)(void*,char* buffer,unsigned capacity) noexcept;
+    int (__cdecl *create_event)(void*,const char* name,unsigned force,void** event) noexcept;
+    int (__cdecl *fire_event)(void*,void* event,unsigned local_only) noexcept;
+    int (__cdecl *clear_text)(void*) noexcept;
+    int (__cdecl *base_command)(void*,int command) noexcept;
+};
+struct KeypadClientApi {
+    std::uint32_t version,size;
+    // Null object = unresolved keypad, base command still runs.
+    int (__cdecl *command)(void* object,unsigned bytes,const KeypadClientBindings*,int command) noexcept;
+};
+using GetKeypadServerApi=const KeypadServerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetKeypadClientApi=const KeypadClientApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
