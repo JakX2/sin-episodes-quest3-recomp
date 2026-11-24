@@ -18,6 +18,7 @@
 #include "native_server_event_intensity.h"
 #include "native_server_npc_random_expression.h"
 #include "native_server_composed_facial_think.h"
+#include "native_server_facial_records.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11416,6 +11417,76 @@ int __cdecl server_composed_facial_think(void* actor,unsigned bytes,float now,co
     return server_facial_think_impl(actor,bytes,now,&b->base,b->random_expression,b->native_intensity);
 }
 const ServerComposedFacialThinkApi server_composed_facial_think_api{version,sizeof(ServerComposedFacialThinkApi),&server_composed_facial_think};
+const ServerFacialRecordBindings& facial_record_config(void* p) noexcept {
+    return *static_cast<const ServerFacialRecordBindings*>(p);
+}
+int __cdecl facial_record_storage(void* p,std::uint32_t word,void** out,unsigned* n) noexcept {
+    const auto& h=facial_record_config(p).host;return h.storage&&h.storage(h.context,word,out,n);
+}
+int __cdecl facial_record_grow(void* p,void* vector,unsigned n) noexcept {
+    const auto& h=facial_record_config(p).host;return h.grow&&h.grow(h.context,vector,n);
+}
+int __cdecl facial_record_handle(void* p,void* target,std::uint32_t* out) noexcept {
+    const auto& h=facial_record_config(p).host;return h.handle&&h.handle(h.context,target,out);
+}
+int __cdecl facial_record_diagnostic(void* p,ActorEventDiagnostic d,std::uint32_t scene) noexcept {
+    const auto& h=facial_record_config(p).host;return h.diagnostic&&h.diagnostic(h.context,d,scene);
+}
+int __cdecl facial_record_begin(void* p,void* actor,void* record,std::uint32_t parsed,void* event,std::uint32_t ca,void* target,unsigned* out) noexcept {
+    const auto& cfg=facial_record_config(p);const auto& h=cfg.host;
+    if(!hologram_writable(record,0x40)||!sin_independent::vgui_layout::Readable(event,0x18c)||!hologram_writable(out,4))return 0;
+    const auto type=hologram_read<unsigned>(event,0);
+    bool random=false;
+    if(cfg.npc_random&&type==16){
+        const auto* name=static_cast<const char*>(event)+0x84;
+        if(!std::memchr(name,0,128))return 0;
+        random=vfe_detail::equal(name,"AI_RANDOMFACEFLEX");
+    }
+    if((cfg.base_flex&&type==10)||random){
+        unsigned extent=0;float now=0,fade=0;
+        if(!cfg.extent(h.context,actor,&extent)||!cfg.now(h.context,&now)||
+           extent<(random?server_npc_random_expression_extent:server_flex_scene_extent))return 0;
+        bool background=false;
+        if(parsed){
+            void* scene=nullptr;unsigned sn=0;
+            if(!h.storage(h.context,parsed,&scene,&sn)||sn<0x219||
+               !sin_independent::vgui_layout::Readable(scene,0x219))return 0;
+            background=hologram_read<unsigned char>(scene,0x218)!=0;
+        }
+        if(!server_flex_fade(actor,extent,record,0x40,background,now,true,&fade))return 0;
+        if(random){hologram_write(record,0x38,6u);hologram_write(record,0x3c,0.f);}
+        *out=1;return 1;
+    }
+    return h.begin&&h.begin(h.context,actor,record,parsed,event,ca,target,out);
+}
+bool facial_record_native(const ServerFacialRecordBindings& cfg,void* record,unsigned type) noexcept {
+    return (cfg.base_flex&&type==10)||(cfg.npc_random&&type==16&&hologram_read<unsigned>(record,0x38)==6);
+}
+int __cdecl facial_record_stop(void* p,void* actor,void* record,int arg,int zero,unsigned* out) noexcept {
+    const auto& cfg=facial_record_config(p);const auto& h=cfg.host;
+    if(!sin_independent::vgui_layout::Readable(record,0x40)||!hologram_writable(out,4))return 0;
+    const auto token=hologram_read<std::uint32_t>(record,0);
+    if(token&&(cfg.base_flex||cfg.npc_random)){
+        void* event=nullptr;unsigned n=0;
+        if(!h.storage(h.context,token,&event,&n)||n<4||!sin_independent::vgui_layout::Readable(event,4))return 0;
+        if(facial_record_native(cfg,record,hologram_read<unsigned>(event,0))){*out=1;return 1;}
+    }
+    return h.stop&&h.stop(h.context,actor,record,arg,zero,out);
+}
+int __cdecl facial_record_check(void* p,void* actor,void* record,float time,std::uint32_t parsed,void* event,unsigned* out) noexcept {
+    const auto& cfg=facial_record_config(p);const auto& h=cfg.host;
+    if(!sin_independent::vgui_layout::Readable(record,0x40)||!sin_independent::vgui_layout::Readable(event,4)||!hologram_writable(out,4))return 0;
+    if(facial_record_native(cfg,record,hologram_read<unsigned>(event,0))){*out=1;return 1;}
+    return h.check&&h.check(h.context,actor,record,time,parsed,event,out);
+}
+int __cdecl server_facial_record_adapt(const ServerFacialRecordBindings* cfg,ActorEventRecordBindings* out) noexcept {
+    if(!cfg||!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||!hologram_writable(out,sizeof(*out))||
+       !cfg->host.storage||!cfg->host.grow||!cfg->host.handle||!cfg->host.diagnostic||!cfg->extent||!cfg->now)return 0;
+    *out={const_cast<ServerFacialRecordBindings*>(cfg),&facial_record_storage,&facial_record_grow,&facial_record_handle,
+        &facial_record_diagnostic,&facial_record_begin,&facial_record_stop,&facial_record_check};return 1;
+}
+const ServerFacialRecordApi server_facial_record_api{version,sizeof(ServerFacialRecordApi),&server_facial_record_adapt};
+
 
 
 
@@ -13348,6 +13419,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEve
 SiN_GetServerEventIntensityApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerEventIntensityApi)?&server_event_intensity_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerFacialRecordApi=_SiN_GetServerFacialRecordApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFacialRecordApi* __cdecl
+SiN_GetServerFacialRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFacialRecordApi)?&server_facial_record_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerComposedFacialThinkApi=_SiN_GetServerComposedFacialThinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerComposedFacialThinkApi* __cdecl
