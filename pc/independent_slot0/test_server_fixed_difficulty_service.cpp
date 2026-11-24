@@ -88,7 +88,7 @@ static void test_engine_skill(HMODULE lib,const a::Api* api){
     engine.missing=false;
     engine.root.SetInt(1);
     assert(apply(&engine,a::BeginFromEngine));
-    assert(api->get_state(&state)&&state.initial_skill==1&&state.revision==0);
+    assert(api->get_state(&state)&&state.initial_skill==1&&state.revision==1&&!state.trigger_count&&!state.completed);
     assert(api->end_campaign());
 }
 #endif
