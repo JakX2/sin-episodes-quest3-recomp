@@ -8,6 +8,29 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+template<class V> bool derived_empty(const V& v) noexcept {
+    return !v.handle&&!v.player&&!v.local&&!v.hand;
+}
+template<class G,class V> bool derived_matches(const G& g,const V& v) noexcept {
+    return v.player==&g.player&&v.local==&g.local&&v.hand==&g.hand;
+}
+struct DerivedLocalField {const char* name;int offset;int type;int width;int bits;int flags;};
+constexpr DerivedLocalField derived_local_fields[]={
+    {"m_fFlashlightPower",4,1,4,10,0x11},
+    {"m_fSprintPower",8,1,4,10,0x11},
+    {"m_fAccuracy",0xc,1,4,0,4},
+    {"m_bZooming",0x10,0,1,1,1},
+    {"m_bZoomScope",0x11,0,1,1,1},
+    {"m_bitsActiveDevices",0x14,0,4,3,1},
+    {"m_iSquadMemberCount",0x18,0,4,32,0},
+    {"m_iSquadMedicCount",0x1c,0,4,32,0},
+    {"m_fSquadInFollowMode",0x20,0,1,1,1},
+    {"m_bWeaponLowered",0x21,0,1,1,1},
+    {"m_poisonTimer",0x24,1,4,0,4},
+    {"m_breathTimer",0x28,1,4,0,4},
+    {"m_hLadder",0x2c,0,4,21,5},
+};
+static_assert(sizeof(derived_local_fields)/sizeof(derived_local_fields[0])==13);
 template<class V> bool entity_empty(const V& v) noexcept {
     return !v.handle&&!v.entity&&!v.anim_time&&!v.predictable;
 }
@@ -965,6 +988,52 @@ int __cdecl destroy_entity(BaseEntitySendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const BaseEntitySendApi entity_api{version,sizeof(BaseEntitySendApi),&create_entity,&destroy_entity};
+
+struct DerivedPlayerSendGraph {
+    ResolvedContext context{};
+    s::SendTable player,local,hand;
+    s::SendProp props[6],local_props[13],hand_prop;
+    bool build(const DerivedPlayerSendBindings& b) noexcept {
+        if(!named_table(b.player,"DT_BasePlayer",15)||!named_table(b.entity,"DT_BaseEntity",24)||
+           !b.entries||!b.entry_count||b.entry_count>sin_independent::kEntityHandleCapacity||
+           !mem::Readable(b.entries,sizeof(*b.entries)))return false;
+        context.entries=b.entries;context.count=b.entry_count;
+        if(!player.Construct(props,6,"DT_HL2_Player")||!local.Construct(local_props,13,"DT_HL2Local")||
+           !hand.Construct(&hand_prop,1,"DT_PlayerHand")||
+           !s::MakeDataTableProp(props[0],"baseclass",0,b.player,&s::DirectTable)||
+           !s::MakeDataTableProp(props[1],"m_HL2Local",0x137c,&local,&player_local_proxy)||
+           !s::MakeDataTableProp(hand_prop,"baseclass",0,b.entity,&s::DirectTable))return false;
+        anim_int(props[2],"m_fIsSprinting",0x13d9,1,1,true);
+        anim_float(props[3],"m_flFlashTime",0x1510,0,4,0,0,0);
+        anim_float(props[4],"m_flFlashFadeTime",0x1514,0,4,0,0,0);
+        anim_float(props[5],"m_flFlashStartAlpha",0x1518,0,4,0,0,0);
+        for(unsigned i=0;i<13;++i){
+            const auto& f=derived_local_fields[i];auto& q=local_props[i];
+            if(f.type==1){
+                if(i<2)anim_float(q,f.name,f.offset,f.bits,f.flags,100.0f/1024,100,1024.0f/100);
+                else anim_float(q,f.name,f.offset,f.bits,f.flags,0,0,0);
+            }else anim_int(q,f.name,f.offset,f.bits,f.flags,f.width==1);
+            if(i==12){q.scalarProxy=&resolved_handle;q.extra=&context;}
+        }
+        return true;
+    }
+};
+
+int __cdecl create_derived_player(const DerivedPlayerSendBindings* b,DerivedPlayerSendView* out) noexcept {
+    if(!b||!out||!derived_empty(*out))return 0;
+    auto* g=new(std::nothrow) DerivedPlayerSendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->player,&g->local,&g->hand};return 1;
+}
+int __cdecl destroy_derived_player(DerivedPlayerSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<DerivedPlayerSendGraph*>(v->handle);
+    if(!derived_matches(*g,*v))return 0;
+    for(const auto* tab:{&g->player,&g->local,&g->hand})if(tab->precalc||tab->initialized||tab->written)return 0;
+    delete g;*v={};return 1;
+}
+const DerivedPlayerSendApi derived_api{version,sizeof(DerivedPlayerSendApi),&create_derived_player,&destroy_derived_player};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -1552,6 +1621,44 @@ int __cdecl destroy_entity(BaseEntityRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const BaseEntityRecvApi entity_api{version,sizeof(BaseEntityRecvApi),&create_entity,&destroy_entity};
+
+struct DerivedPlayerRecvGraph {
+    RecvTable player,local,hand;
+    RecvProp props[6],local_props[13],hand_prop;
+    bool build(const DerivedPlayerRecvBindings& b) noexcept {
+        if(!named_table(b.player,"DT_BasePlayer",15)||!named_table(b.entity,"DT_BaseEntity",24))return false;
+        player={props,6,nullptr,"DT_HL2_Player"};local={local_props,13,nullptr,"DT_HL2Local"};
+        hand={&hand_prop,1,nullptr,"DT_PlayerHand"};
+        nested(props[0],"baseclass",b.player);
+        nested(props[1],"m_HL2Local",&local);props[1].offset=0x11c8;
+        nested(hand_prop,"baseclass",b.entity);
+        anim_recv(props[2],"m_fIsSprinting",0x1224,0,&byte_recv);
+        anim_recv(props[3],"m_flFlashTime",0x123c,1);
+        anim_recv(props[4],"m_flFlashFadeTime",0x1240,1);
+        anim_recv(props[5],"m_flFlashStartAlpha",0x1244,1);
+        for(unsigned i=0;i<13;++i){
+            const auto& f=derived_local_fields[i];
+            anim_recv(local_props[i],f.name,f.offset,f.type,i==12?&handle_recv:f.width==1?&byte_recv:&raw_recv);
+        }
+        return true;
+    }
+};
+
+int __cdecl create_derived_player(const DerivedPlayerRecvBindings* b,DerivedPlayerRecvView* out) noexcept {
+    if(!b||!out||!derived_empty(*out))return 0;
+    auto* g=new(std::nothrow) DerivedPlayerRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->player,&g->local,&g->hand};return 1;
+}
+int __cdecl destroy_derived_player(DerivedPlayerRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<DerivedPlayerRecvGraph*>(v->handle);
+    if(!derived_matches(*g,*v))return 0;
+    for(const auto* tab:{&g->player,&g->local,&g->hand})if(tab->decoder||tab->initialized||tab->in_main_list)return 0;
+    delete g;*v={};return 1;
+}
+const DerivedPlayerRecvApi derived_api{version,sizeof(DerivedPlayerRecvApi),&create_derived_player,&destroy_derived_player};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -1618,6 +1725,12 @@ SiN_GetBaseEntitySendGraphApi(std::uint32_t version,std::uint32_t size) noexcept
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(BaseEntitySendApi)?&entity_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetDerivedPlayerSendGraphApi=_SiN_GetDerivedPlayerSendGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::DerivedPlayerSendApi* __cdecl
+SiN_GetDerivedPlayerSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(DerivedPlayerSendApi)?&derived_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -1672,5 +1785,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::BaseEntit
 SiN_GetBaseEntityRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(BaseEntityRecvApi)?&entity_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetDerivedPlayerRecvGraphApi=_SiN_GetDerivedPlayerRecvGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::DerivedPlayerRecvApi* __cdecl
+SiN_GetDerivedPlayerRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(DerivedPlayerRecvApi)?&derived_api:nullptr;
 }
 #endif

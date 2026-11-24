@@ -321,4 +321,23 @@ using BaseEntitySendApi=GraphApi<BaseEntitySendBindings,BaseEntitySendView>;
 using BaseEntityRecvApi=GraphApi<BaseEntityRecvBindings,BaseEntityRecvView>;
 using GetBaseEntitySendApi=const BaseEntitySendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetBaseEntityRecvApi=const BaseEntityRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase704: original SiN CHL2_Player, private HL2Local, and PlayerHand.
+// Names reflect retail network tables, not a modern HL2 SDK substitute.
+inline constexpr char derived_player_send_export[]="SiN_GetDerivedPlayerSendGraphApi";
+inline constexpr char derived_player_recv_export[]="SiN_GetDerivedPlayerRecvGraphApi";
+struct DerivedPlayerSendBindings {
+    s::SendTable* player;
+    s::SendTable* entity;
+    const sin_independent::EntityHandleEntry* entries;
+    std::uint32_t entry_count;
+};
+struct DerivedPlayerRecvBindings {RecvTable* player;RecvTable* entity;};
+template<class Table> struct DerivedPlayerView {void* handle;Table* player;Table* local;Table* hand;};
+using DerivedPlayerSendView=DerivedPlayerView<s::SendTable>;
+using DerivedPlayerRecvView=DerivedPlayerView<RecvTable>;
+using DerivedPlayerSendApi=GraphApi<DerivedPlayerSendBindings,DerivedPlayerSendView>;
+using DerivedPlayerRecvApi=GraphApi<DerivedPlayerRecvBindings,DerivedPlayerRecvView>;
+using GetDerivedPlayerSendApi=const DerivedPlayerSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetDerivedPlayerRecvApi=const DerivedPlayerRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
