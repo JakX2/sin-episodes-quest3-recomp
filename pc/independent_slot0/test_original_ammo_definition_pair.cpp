@@ -380,6 +380,12 @@ int main(int argc,char** argv){
     assert(playerLookFrame&&!getPlayerLookFrame(0,sizeof(tables::PlayerLookFrameApi))&&!getPlayerLookFrame(1,0));
     tables::test::check_player_look_frame(*playerLookFrame,*actionMonitor,*jessicaAttention);
     std::puts("PASS native player post-trace look frame through Jessica classification and response criteria");
+    const auto getRadioPlayback=reinterpret_cast<tables::GetRadioPlaybackApi>(GetProcAddress(server,tables::radio_playback_export));
+    assert(getRadioPlayback&&!GetProcAddress(client,tables::radio_playback_export));
+    const auto* radioPlayback=getRadioPlayback(1,sizeof(tables::RadioPlaybackApi));
+    assert(radioPlayback&&!getRadioPlayback(0,sizeof(tables::RadioPlaybackApi))&&!getRadioPlayback(1,0));
+    tables::test::check_radio_playback(*radioMessage,*radioPlayback);
+    std::puts("PASS native radio playback scheduler, acknowledgement and delivery completion");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

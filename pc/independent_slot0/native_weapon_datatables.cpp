@@ -3350,6 +3350,107 @@ int __cdecl player_look_frame(void* player,unsigned bytes,HologramControl* monit
     return look_event_tick(monitor,shared,&host.event);
 }
 const PlayerLookFrameApi player_look_frame_api{version,sizeof(PlayerLookFrameApi),&jessica_region,&player_look_frame};
+
+bool radio_playback_ready(const RadioPlaybackControl* c) noexcept {
+    return c&&!c->busy&&!c->blocked&&c->state&&hologram_writable(c->state,sizeof(*c->state));
+}
+int __cdecl radio_request(RadioPlaybackControl* c) noexcept {
+    if(!radio_playback_ready(c))return 0;
+    if(c->state->stage==6)c->state->kind=3;
+    return 1;
+}
+int __cdecl radio_player_input(RadioPlaybackControl* c,unsigned a,unsigned pressed,unsigned released) noexcept {
+    if(!radio_playback_ready(c))return 0;
+    constexpr unsigned mask=0x08000000;
+    if(!c->input_latch&&((a|pressed)&mask)){
+        c->input_latch=1;
+        if(c->state->stage==6)c->state->kind=3;
+    }else if((a|released)&mask)c->input_latch=0;
+    return 1;
+}
+bool radio_play(RadioDispatcher& s,const RadioPlaybackBindings& h,const char* sound) noexcept {
+    if(!sound||!*sound)return true; // original logs empty sound, no emit
+    const auto& b=h.message;int clients=0;
+    if(!b.max_clients(b.context,&clients))return false;
+    if(clients>1)return true;
+    void* player=nullptr;if(!b.single_player(b.context,&player))return false;
+    if(!player)return true;
+    unsigned eligible=0;if(!h.participant(b.context,player,&eligible))return false;
+    if(!eligible)return true;
+    float duration=0,now=0;
+    if(!h.emit(b.context,player,sound,4,1.0f,0.8f,&duration)||!h.clock(b.context,&now))return false;
+    s.deadline=static_cast<float>(static_cast<double>(now)+duration);
+    return true;
+}
+int __cdecl radio_playback_tick(RadioPlaybackControl* c,const RadioPlaybackBindings* b) noexcept {
+    if(!radio_playback_ready(c)||!b||!b->clock||!b->participant||!b->emit||!b->notify||
+       !b->message.resolve||!b->message.string||!b->message.max_clients||
+       !b->message.single_player||!b->message.output||!b->message.clear_delivery)return 0;
+    c->busy=1;auto& s=*c->state;const auto h=*b;const auto& m=h.message;
+    auto finish=[&](bool ok){c->busy=0;if(!ok){c->blocked=1;return -1;}return 1;};
+    float now=0;if(!h.clock(m.context,&now))return finish(false);
+    if(s.deadline>now)return finish(true); // unordered also enters original
+    s.deadline=-1.0f;
+    switch(s.stage){
+        case 6:
+            if(s.kind==1||s.kind==2)s.stage=0;else if(s.kind==3)s.stage=2;
+            return finish(true);
+        case 2:
+            return finish(radio_promote(&s,&m)==1);
+        case 5:
+            if(!h.clock(m.context,&now))return finish(false);
+            if(now>s.deadline){
+                if(!m.clear_delivery(m.context))return finish(false);
+                s.stage=6;
+            }
+            return finish(true);
+        case 0: case 1: case 3: case 4:break;
+        default:return finish(true);
+    }
+    const int stage=s.stage;
+    RadioSound sound{};
+    if(radio_sound(&s,&m,static_cast<unsigned>(stage),&sound)!=1)return finish(false);
+    if(!sound.present){s.stage=6;return finish(true);}
+    if(!radio_play(s,h,sound.text))return finish(false);
+    void* message=nullptr;
+    if(stage==0){
+        s.stage=s.kind==1?2:1;
+        if(!radio_resolve(m,s.pending,message)||!message)return finish(false);
+        const char* speaker=nullptr;
+        if(!radio_text(m,hologram_read<std::uint32_t>(message,0x3cc),speaker))return finish(false);
+        const int priority=static_cast<std::int16_t>(hologram_read<unsigned>(message,0x3c4)&0xffffu);
+        return finish(h.notify(m.context,1,priority,speaker)!=0);
+    }
+    if(stage==1){
+        s.stage=6;s.kind=0;
+        if(!radio_resolve(m,s.pending,message)||!message)return finish(false);
+        if(hologram_read<unsigned char>(message,0x3d1)){
+            s.pending=0xffffffffu;
+            return finish(m.clear_delivery(m.context)!=0);
+        }
+        return finish(true);
+    }
+    if(stage==3){s.stage=4;return finish(true);}
+    s.stage=6;
+    if(!radio_resolve(m,s.current,message))return finish(false);
+    if(message){
+        if(!radio_resolve(m,s.current,message)||!message||!hologram_writable(message,radio_size))return finish(false);
+        hologram_write(message,0x3d0,static_cast<unsigned char>(1));
+        if(!radio_output(message,m,0x3ac))return finish(false);
+        if(!radio_resolve(m,s.current,message)||!message)return finish(false);
+        if(hologram_read<unsigned>(message,0x3c4)==0)s.other=s.current;
+        void* other=nullptr;if(!radio_resolve(m,s.other,other))return finish(false);
+        if(other&&hologram_read<unsigned char>(other,0x3d1))s.other=0xffffffffu;
+        s.current=0xffffffffu;
+    }
+    s.stage=5;s.kind=0;
+    return finish(true);
+}
+int __cdecl radio_playback_ack(RadioPlaybackControl* c) noexcept {
+    if(!c||c->busy||!c->blocked)return 0;
+    c->blocked=0;return 1;
+}
+const RadioPlaybackApi radio_playback_api{version,sizeof(RadioPlaybackApi),&radio_request,&radio_player_input,&radio_playback_tick,&radio_playback_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5121,6 +5222,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerLoo
 SiN_GetPlayerLookFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerLookFrameApi)?&player_look_frame_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetRadioPlaybackApi=_SiN_GetRadioPlaybackApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioPlaybackApi* __cdecl
+SiN_GetRadioPlaybackApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioPlaybackApi)?&radio_playback_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
