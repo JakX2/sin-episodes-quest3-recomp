@@ -1146,6 +1146,7 @@ struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
     std::uint32_t scene_refs[2]{};
     NativeGeneratedLifecycleBindings full{};
     const NativeGeneratedLifecycleApi& api;
+    const SceneFinishApi* finish_api=nullptr;SceneFinishBindings finish{};
     unsigned actor_grows=0,record_stops=0,outputs=0,refreshes=0,startup_calls=0;
     static NativeGeneratedLifecycleFixture& get_full(void* p){
         return static_cast<NativeGeneratedLifecycleFixture&>(IntegratedSceneFixture::get(p));
@@ -1188,17 +1189,27 @@ struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
             auto& f=get_full(p);assert(out==f.scene+0x41c&&a==f.scene&&c==f.scene&&!d&&f.record_stops==1);++f.outputs;return 1;};
         start.startup_events=[](void* p,void* s,std::uint32_t w) noexcept -> int{
             auto& f=get_full(p);assert(s==f.scene&&w==f.parsed_word&&f.outputs==1);++f.startup_calls;return 1;};
+        finish.context=start.context;finish.reset=start.reset;finish.stop=stop;
+        finish.entry=[](void*,void*,unsigned,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+        finish.resolve=[](void*,std::uint32_t,void**) noexcept -> int{assert(false);return 0;};
+        finish.notify=[](void*,void*,void*) noexcept -> int{assert(false);return 0;};
+        finish.output=[](void*,void*,void*,void*,float) noexcept -> int{assert(false);return 0;};
+        finish.refresh=[](void* p,void* s) noexcept -> int{
+            auto& f=get_full(p);assert(s==f.scene&&!f.scene[0x3d8]&&!F::word(f.scene,0x3dc)&&F::word(f.npc_memory,0x5f8)==1);
+            ++f.finished;return 1;};
         manager_tick.advance=[](void* p,void* s,float dt) noexcept -> int{
             auto& f=get_full(p);assert(s==f.scene&&dt==.1f&&f.control.ticking);
-            if(f.tick.instanced(s,sizeof(f.scene),dt,&f.advance)!=1)return 0;
+            if((f.finish_api?f.finish_api->advance(s,sizeof(f.scene),dt,&f.advance,&f.finish,1):
+                f.tick.instanced(s,sizeof(f.scene),dt,&f.advance))!=1)return 0;
             if(f.remove_pending){
                 if(f.api.remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop)!=1)return 0;
                 f.scene_live=false;f.remove_pending=false;
             }return 1;};
     }
 };
-inline void check_native_generated_lifecycle(const NativeGeneratedLifecycleApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity){
+inline void check_native_generated_lifecycle(const NativeGeneratedLifecycleApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity,const SceneFinishApi* finish=nullptr){
     using F=ScenePlaybackFixture;NativeGeneratedLifecycleFixture f(api,manager,tick,entity);float duration=99;
+    f.finish_api=finish;if(finish)f.advance.finish=nullptr;
     assert(!f.full.playback.start&&!f.full.lifecycle.generate&&!f.full.lifecycle.detach&&!f.full.lifecycle.stop_events&&!f.full.startup.attach&&!f.full.startup.stop_events);
     assert(api.sound(f.actor,f.sound,&f.full,&duration)==1&&duration==.1f);
     assert(f.actor_grows==1&&f.record_stops==1&&f.outputs==1&&f.startup_calls==1&&f.refreshes==1);
@@ -1208,6 +1219,46 @@ inline void check_native_generated_lifecycle(const NativeGeneratedLifecycleApi& 
     assert(f.steps==4&&f.finished==1&&f.destroyed==1&&!f.scene_live&&!f.parsed_live&&!F::word(f.manager,0x3a0));
     assert(!F::word(f.npc_memory,0x5f8)&&f.npc_memory[0x600]&&F::word(f.npc_memory,0x5c4)==1&&f.record_stops==1);
     assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
+}
+
+
+struct SceneFinishFixture:SceneActorEventsFixture {
+    SceneFinishBindings finish{};
+    std::uint32_t handles[4]{0xffffffffu,1,2,3};
+    int waiter=0;unsigned entries=0,resolves=0,notified=0,refreshed=0,outputs=0;
+    static SceneFinishFixture& self(void* p){return *static_cast<SceneFinishFixture*>(p);}
+    SceneFinishFixture(){
+        F::put(scene,0x540,4);scene[0x3d8]=1;scene[0x3d9]=1;F::fl(scene,0x3dc,5);
+        F::put(actor,0x5ec,F::ptr(scenes));F::put(actor,0x5f0,5);F::put(actor,0x5f8,1);scenes[0]=F::ptr(root);
+        event[0x328]=1;F::fl(event,0x188,2);
+        finish.context=this;finish.stop=stop;finish.reset.events=stop.events;
+        finish.reset.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        finish.reset.grow=[](void*,void*,unsigned) noexcept -> int{assert(false);return 0;};
+        finish.entry=[](void* p,void* scene,unsigned i,std::uint32_t* out) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&i==f.entries&&i<4&&f.scene[0x3d8]);++f.entries;*out=f.handles[i];return 1;};
+        finish.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{
+            auto& f=self(p);++f.resolves;*out=h==1?nullptr:h==2?static_cast<void*>(f.scene):static_cast<void*>(&f.waiter);return 1;};
+        finish.notify=[](void* p,void* w,void* scene) noexcept -> int{
+            auto& f=self(p);assert(w==&f.waiter&&scene==f.scene&&f.scene[0x3d8]&&f.event[0x328]);++f.notified;return 1;};
+        finish.refresh=[](void* p,void* scene) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene&&!F::word(f.scene,0x540)&&!f.scene[0x3d8]&&!f.scene[0x3d9]&&!F::word(f.scene,0x3dc));
+            assert(!f.event[0x328]&&F::word(f.root,0x88)==0x40000000&&F::word(f.actor,0x5f8)==1&&!f.stops);
+            ++f.refreshed;return 1;};
+        finish.output=[](void* p,void* out,void* a,void* c,float d) noexcept -> int{
+            auto& f=self(p);assert(out==f.scene+0x434&&a==f.scene&&c==f.scene&&!d&&f.refreshed==1&&!f.stops);++f.outputs;return 1;};
+    }
+};
+inline void check_scene_finish(const SceneFinishApi& api){
+    using F=ScenePlaybackFixture;SceneFinishFixture f;
+    assert(api.finish(f.scene,sizeof(f.scene),7,1,&f.finish)==1);
+    assert(f.entries==4&&f.resolves==3&&f.notified==1&&f.refreshed==1&&f.outputs==1&&f.stops==4);
+    assert(!F::word(f.actor,0x5f8)&&f.actor[0x600]&&F::word(f.actor,0x5c4)==1);
+    assert(F::word(f.scene,0x40c)==F::ptr(f.root));
+    SceneFinishFixture suppressed;suppressed.scene[0x530]=1;
+    assert(api.finish(suppressed.scene,sizeof(suppressed.scene),7,1,&suppressed.finish)==1&&!suppressed.outputs&&suppressed.stops==4);
+    SceneFinishFixture low;assert(api.finish(low.scene,sizeof(low.scene),7,0x100,&low.finish)==1&&!low.outputs);
+    SceneFinishFixture empty;F::put(empty.scene,0x40c,0);
+    assert(api.finish(empty.scene,sizeof(empty.scene),7,1,&empty.finish)==1&&!empty.entries&&!empty.stops&&empty.scene[0x3d8]);
 }
 
 }
