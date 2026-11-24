@@ -19,6 +19,7 @@
 #include <algorithm>
 #include "native_vehicle_sound.h"
 #include "native_vehicle_hint.h"
+#include "native_vehicle_views.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4323,6 +4324,94 @@ int __cdecl hint_server_register(const VehicleHintBindings* b) noexcept {
     return b->register_message(b->context,hint_message_name,-1)?1:-1;
 }
 const VehicleHintApi vehicle_hint_api{version,sizeof(VehicleHintApi),&vehicle_hint_enable,&vehicle_hint_notify,&hint_encode,&hint_server_register};
+
+constexpr unsigned view_vehicle_extent=0x80c,view_player_extent=0x9b5;
+bool view_ready(const HologramControl* v,const VehicleViewBindings* b) noexcept {
+    return health_control(v,view_vehicle_extent)&&b&&b->dirty_edict&&b->output&&b->attachment&&b->set_position;
+}
+const unsigned char* view_record(void* vehicle,int index) noexcept {
+    const auto base=hologram_read<std::uint32_t>(vehicle,0x7fc);
+    const auto count=hologram_read<int>(vehicle,0x808);
+    if(!base||index<0||index>=count||index>=65536||base>0xffffffffu-static_cast<unsigned>(index)*100u)return nullptr;
+    auto* p=reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(base)+static_cast<unsigned>(index)*100u);
+    return sin_independent::vgui_layout::Readable(p,100)?p:nullptr;
+}
+bool view_player_set(void* player,const VehicleViewBindings& h,int index,unsigned char permission) noexcept {
+    if(hologram_read<int>(player,0x9b0)!=index){
+        if(hologram_read<unsigned char>(player,0x1f0))hologram_write(player,0x200,static_cast<unsigned char>(1));
+        else{
+            const auto edict=hologram_read<std::uint32_t>(player,0x16c);
+            if(edict&&!h.dirty_edict(h.context,player,edict))return false;
+        }
+        hologram_write(player,0x9b0,index);
+    }
+    hologram_write(player,0x9b4,permission);
+    return true;
+}
+int view_finish(HologramControl* v,HologramControl* p,bool ok) noexcept {
+    if(p)p->busy=0;
+    if(!ok&&p)p->blocked=1;
+    return disp_finish(v,ok);
+}
+int __cdecl vehicle_set_view(HologramControl* v,const VehicleViewBindings* b,void* activator,unsigned type,int value) noexcept {
+    if(!view_ready(v,b)||!b->cast_player)return 0;
+    v->busy=1;const auto h=*b;
+    HologramControl* p=nullptr;
+    if(!h.cast_player(h.context,activator,&p))return disp_finish(v,false);
+    if(!p)return disp_finish(v,true);
+    if(type!=5)value=0;
+    if(value<0||value>=hologram_read<int>(v->object,0x808))return disp_finish(v,true);
+    if(p==v||!health_control(p,view_player_extent))return disp_finish(v,false);
+    const auto* rec=view_record(v->object,value);
+    if(!rec)return disp_finish(v,false);
+    p->busy=1;
+    if(!view_player_set(p->object,h,value,rec[0x55])||!h.output(h.context,v->object,p->object,0x7e4,value))return view_finish(v,p,false);
+    // Original retains selected record across output. Engine must not
+    // destroy or relocate that table during the synchronous callback.
+    if(!sin_independent::vgui_layout::Readable(rec,100))return view_finish(v,p,false);
+    float pos[3]{};unsigned found=0;
+    if(!h.attachment(h.context,v->object,hologram_read<int>(rec,0x48),pos,&found))return view_finish(v,p,false);
+    return view_finish(v,p,!found||h.set_position(h.context,p->object,pos)!=0);
+}
+int __cdecl vehicle_seat_default(HologramControl* v,HologramControl* p,const VehicleViewBindings* b,int seat) noexcept {
+    if(!view_ready(v,b)||p==v||!health_control(p,view_player_extent)||seat<0)return 0;
+    v->busy=1;p->busy=1;const auto h=*b;
+    const int count=hologram_read<int>(v->object,0x808);
+    for(int i=0;i<count;++i){
+        const auto* rec=view_record(v->object,i);
+        if(!rec)return view_finish(v,p,false);
+        if(hologram_read<int>(rec,0x44)==seat&&hologram_read<int>(rec,0x40)<0)
+            return view_finish(v,p,view_player_set(p->object,h,i,rec[0x55]));
+    }
+    return view_finish(v,p,true);
+}
+int __cdecl vehicle_directional(HologramControl* v,HologramControl* p,const VehicleViewBindings* b,int candidate,const float pos[3]) noexcept {
+    if(!view_ready(v,b)||p==v||!health_control(p,view_player_extent)||!pos||!sin_independent::vgui_layout::Readable(pos,12))return 0;
+    v->busy=1;p->busy=1;const auto h=*b;
+    if(candidate<0||candidate==hologram_read<int>(p->object,0x9b0))return view_finish(v,p,true);
+    const auto* rec=view_record(v->object,candidate);
+    if(!rec)return view_finish(v,p,false);
+    return view_finish(v,p,view_player_set(p->object,h,candidate,rec[0x55])&&h.output(h.context,v->object,p->object,0x7e4,candidate)&&h.set_position(h.context,p->object,pos));
+}
+int __cdecl vehicle_return_view(HologramControl* v,HologramControl* p,const VehicleViewBindings* b) noexcept {
+    if(!view_ready(v,b)||p==v||!health_control(p,view_player_extent))return 0;
+    v->busy=1;p->busy=1;const auto h=*b;
+    const int current=hologram_read<int>(p->object,0x9b0),count=hologram_read<int>(v->object,0x808);
+    int index=current;const unsigned char* rec=nullptr;
+    // Valid original chains terminate. Bound malformed cyclic chains.
+    for(int traversed=0;index>=0;++traversed){
+        if(traversed>=count||traversed>=65536)return view_finish(v,p,false);
+        rec=view_record(v->object,index);if(!rec)return view_finish(v,p,false);
+        if(!rec[0x54])break;
+        index=hologram_read<int>(rec,0x40);
+    }
+    if(index<0||index==current)return view_finish(v,p,true);
+    float pos[3]{};unsigned found=0;
+    if(!h.attachment(h.context,v->object,hologram_read<int>(rec,0x48),pos,&found))return view_finish(v,p,false);
+    if(!found)return view_finish(v,p,true);
+    return view_finish(v,p,view_player_set(p->object,h,index,0)&&h.output(h.context,v->object,p->object,0x7e4,index)&&h.set_position(h.context,p->object,pos));
+}
+const VehicleViewsApi vehicle_views_api{version,sizeof(VehicleViewsApi),&vehicle_set_view,&vehicle_seat_default,&vehicle_directional,&vehicle_return_view};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -6320,6 +6409,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleHi
 SiN_GetVehicleHintApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleHintApi)?&vehicle_hint_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleViewsApi=_SiN_GetVehicleViewsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleViewsApi* __cdecl
+SiN_GetVehicleViewsApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleViewsApi)?&vehicle_views_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
