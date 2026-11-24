@@ -599,6 +599,59 @@ struct RifleGrenadeApi {
 };
 using GetRifleGrenadeApi=const RifleGrenadeApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(RifleLaunchReport)==52);
+// Original Magnum frame override and DUAG impact path. The caller
+// owns actual engine fields, traces, temp-entity delivery and ammo.
+inline constexpr char magnum_export_name[]="SiN_GetMagnumApi";
+inline constexpr std::uint32_t magnum_version=1;
+struct MagnumFrameObservation {std::int32_t pending_count;float pending_deadline;};
+struct MagnumFrameHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *clock)(void*,float*);
+    int (SIN_FIXED_CALL *read_primary_deadline)(void*,MapEntityRef,float*);
+    int (SIN_FIXED_CALL *write_primary_deadline)(void*,MapEntityRef,float);
+    int (SIN_FIXED_CALL *write_pending_count)(void*,MapEntityRef,std::int32_t);
+    int (SIN_FIXED_CALL *primary_attack)(void*,MapEntityRef);
+    int (SIN_FIXED_CALL *read_pending_count)(void*,MapEntityRef,std::int32_t*);
+    int (SIN_FIXED_CALL *write_pending_deadline)(void*,MapEntityRef,float);
+    int (SIN_FIXED_CALL *base_update)(void*,MapEntityRef);
+};
+enum MagnumFrameCode : std::uint32_t {MagnumFrameRejected=0,MagnumBaseOnly,MagnumDeferredPrimary,MagnumFrameUncertain};
+struct MagnumFrameReport {
+    std::uint32_t code,attempted,delivered,primary_delivered,base_delivered,needs_resync;
+    std::int32_t pending_after;
+    float restored_deadline,next_pending_deadline;
+};
+struct MagnumTraceObservation {std::uint32_t flags_42;NpcSpread start,end;};
+struct MagnumSmoke {
+    NpcSpread pvs_origin,position;
+    float delay,scale;
+    std::int32_t framerate;
+    const char* model; // borrowed literal valid only during callback
+};
+struct MagnumImpactHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *base)(void*,MapEntityRef,std::uint32_t);
+    // Read live trace after base impact; original accesses flags then.
+    int (SIN_FIXED_CALL *trace)(void*,MapEntityRef,MagnumTraceObservation*);
+    int (SIN_FIXED_CALL *smoke)(void*,MapEntityRef,const MagnumSmoke*);
+    int (SIN_FIXED_CALL *decal)(void*,MapEntityRef,const char*);
+};
+enum MagnumImpactCode : std::uint32_t {MagnumImpactRejected=0,MagnumImpactBaseOnly,
+    MagnumImpactTraceBlocked,MagnumImpactDUAG,MagnumImpactUncertain};
+struct MagnumImpactReport {
+    std::uint32_t code,attempted,delivered,base_delivered,smoke_delivered,decals_delivered,needs_resync;
+};
+struct MagnumApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *frame)(MapEntityRef,const MagnumFrameObservation*,const MagnumFrameHost*,void*,MagnumFrameReport*) noexcept;
+    int (SIN_FIXED_CALL *impact)(MapEntityRef,std::uint32_t,const MagnumImpactHost*,void*,MagnumImpactReport*) noexcept;
+    // Host explicitly acknowledges actual engine state/effect reconciliation.
+    // This does not undo or repeat callbacks. Only the uncertainty latch clears.
+    int (SIN_FIXED_CALL *acknowledge)(MapEntityRef) noexcept;
+};
+using GetMagnumApi=const MagnumApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(MagnumFrameReport)==36);
+static_assert(sizeof(MagnumImpactReport)==28);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

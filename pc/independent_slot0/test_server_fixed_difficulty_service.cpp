@@ -1057,6 +1057,113 @@ static void test_rifle_grenade(const a::RifleGrenadeApi* rifle,const a::ARGrenad
     assert(map->remove(first)&&map->remove(second)&&map->remove(f.next)&&map->remove(weapon));
     assert(rifle->uncertain(weapon)==-1&&map->end_level(epoch)&&api->end_campaign());
 }
+struct MagnumFixture {
+    const a::MagnumApi* magnum;
+    const a::MapEntityApi* map;
+    a::MapEntityRef gun;
+    std::vector<int> order;
+    float time=10.f,primary=20.f,pending_time=0.f;
+    int count=2,change_count=-1,fail_at=0;
+    unsigned clocks=0;
+    std::uint32_t damage=0x00400002u,trace_flags=0;
+    bool zero_delta=false;
+    static MagnumFixture& get(void* c){return *static_cast<MagnumFixture*>(c);}
+    bool step(int op){
+        order.push_back(op);
+        assert(!map->remove(gun)&&!magnum->acknowledge(gun));
+        return static_cast<int>(order.size())!=fail_at;
+    }
+    static int SIN_FIXED_CALL clock(void* c,float* out){
+        auto& f=get(c);*out=f.time+static_cast<float>(f.clocks++)*0.125f;return f.step(1);
+    }
+    static int SIN_FIXED_CALL read_primary(void* c,a::MapEntityRef,float* out){
+        auto& f=get(c);*out=f.primary;return f.step(2);
+    }
+    static int SIN_FIXED_CALL write_primary(void* c,a::MapEntityRef,float value){
+        auto& f=get(c);f.primary=value;return f.step(3);
+    }
+    static int SIN_FIXED_CALL write_count(void* c,a::MapEntityRef,int value){
+        auto& f=get(c);f.count=value;return f.step(4);
+    }
+    static int SIN_FIXED_CALL primary_attack(void* c,a::MapEntityRef){
+        auto& f=get(c);assert(f.primary==f.time+0.125f);
+        if(f.change_count>=0)f.count=f.change_count;
+        return f.step(5);
+    }
+    static int SIN_FIXED_CALL read_count(void* c,a::MapEntityRef,int* out){
+        auto& f=get(c);*out=f.count;return f.step(6);
+    }
+    static int SIN_FIXED_CALL write_pending(void* c,a::MapEntityRef,float value){
+        auto& f=get(c);f.pending_time=value;return f.step(7);
+    }
+    static int SIN_FIXED_CALL base_update(void* c,a::MapEntityRef){return get(c).step(8);}
+    static int SIN_FIXED_CALL base_impact(void* c,a::MapEntityRef,std::uint32_t damage){
+        auto& f=get(c);assert(damage==f.damage);return f.step(9);
+    }
+    static int SIN_FIXED_CALL trace(void* c,a::MapEntityRef,a::MagnumTraceObservation* out){
+        auto& f=get(c);*out={f.trace_flags,{1.f,2.f,3.f},f.zero_delta?a::NpcSpread{1.f,2.f,3.f}:a::NpcSpread{4.f,6.f,3.f}};
+        return f.step(10);
+    }
+    static int SIN_FIXED_CALL smoke(void* c,a::MapEntityRef,const a::MagnumSmoke* e){
+        auto& f=get(c);
+        assert(e->pvs_origin.z==3.f&&e->pvs_origin.x==(f.zero_delta?1.f:4.f));
+        assert(std::fabs(e->position.x-(f.zero_delta?0.f:0.6f))<0.000001f&&
+            std::fabs(e->position.y-(f.zero_delta?0.f:0.8f))<0.000001f&&e->position.z==0.f);
+        assert(e->delay==0.25f&&e->scale==2.5f&&e->framerate==10&&std::strcmp(e->model,"sprites/blueglow1.vmt")==0);
+        return f.step(11);
+    }
+    static int SIN_FIXED_CALL decal(void* c,a::MapEntityRef,const char* name){
+        auto& f=get(c);
+        if(std::strcmp(name,"DUAGDecal1")==0)return f.step(12);
+        assert(std::strcmp(name,"DUAGDecal2")==0);return f.step(13);
+    }
+};
+static void test_magnum(const a::MagnumApi* magnum,const a::MapEntityApi* map,const a::Api* api){
+    assert(magnum&&magnum->version==1&&magnum->size==sizeof(*magnum)&&api->begin_campaign(2));
+    const auto epoch=map->begin_level("magnum");assert(epoch);
+    const a::MapEntityRef gun{epoch,1,1};
+    assert(map->create(gun,"weapon_magnum")==a::MapApplied&&map->spawn(gun)==a::MapApplied);
+    MagnumFixture f{magnum,map,gun,{}};
+    const a::MagnumFrameHost frame_host{1,sizeof(a::MagnumFrameHost),&MagnumFixture::clock,
+        &MagnumFixture::read_primary,&MagnumFixture::write_primary,&MagnumFixture::write_count,
+        &MagnumFixture::primary_attack,&MagnumFixture::read_count,&MagnumFixture::write_pending,&MagnumFixture::base_update};
+    a::MagnumFrameObservation in{0,0.f};a::MagnumFrameReport report{};
+    auto step=[&](){return magnum->frame(gun,&in,&frame_host,&f,&report);};
+    assert(step()&&report.code==a::MagnumBaseOnly&&f.order==std::vector<int>{8}&&f.clocks==0);
+    in={2,11.f};f.order.clear();
+    assert(step()&&report.code==a::MagnumBaseOnly&&(f.order==std::vector<int>{1,8}));
+    in.pending_deadline=10.f;f.order.clear();f.clocks=0;
+    assert(step()&&report.code==a::MagnumDeferredPrimary&&report.primary_delivered&&report.base_delivered&&
+        report.pending_after==1&&f.primary==20.f&&f.pending_time==10.25f+0.05f);
+    assert((f.order==std::vector<int>{1,2,1,3,4,5,3,6,1,7,8}));
+    f.order.clear();f.clocks=0;in={1,10.f};
+    assert(step()&&report.code==a::MagnumDeferredPrimary&&report.pending_after==0&&f.clocks==2);
+    assert((f.order==std::vector<int>{1,2,1,3,4,5,3,6,8}));
+    f.order.clear();f.clocks=0;in={2,10.f};f.change_count=0;
+    assert(step()&&report.code==a::MagnumDeferredPrimary&&report.pending_after==0&&f.clocks==2);
+    f.order.clear();f.clocks=0;f.fail_at=6;
+    assert(step()&&report.code==a::MagnumFrameUncertain&&report.needs_resync&&!report.primary_delivered);
+    assert(step()&&report.code==a::MagnumFrameRejected&&f.order.size()==6);
+    assert(magnum->acknowledge(gun));f.primary=20.f;f.fail_at=0;f.order.clear();
+    const a::MagnumImpactHost impact_host{1,sizeof(a::MagnumImpactHost),&MagnumFixture::base_impact,
+        &MagnumFixture::trace,&MagnumFixture::smoke,&MagnumFixture::decal};
+    a::MagnumImpactReport impact{};
+    auto effect=[&](){return magnum->impact(gun,f.damage,&impact_host,&f,&impact);};
+    f.damage=2;
+    assert(effect()&&impact.code==a::MagnumImpactBaseOnly&&f.order==std::vector<int>{9});
+    f.damage=0x00400002u;f.trace_flags=4;f.order.clear();
+    assert(effect()&&impact.code==a::MagnumImpactTraceBlocked&&(f.order==std::vector<int>{9,10}));
+    f.trace_flags=2;f.order.clear();
+    assert(effect()&&impact.code==a::MagnumImpactDUAG&&impact.smoke_delivered&&impact.decals_delivered==2);
+    assert((f.order==std::vector<int>{9,10,11,12,13}));
+    f.zero_delta=true;f.order.clear();
+    assert(effect()&&impact.code==a::MagnumImpactDUAG);
+    f.order.clear();f.fail_at=5;
+    assert(effect()&&impact.code==a::MagnumImpactUncertain&&impact.needs_resync&&impact.decals_delivered==1);
+    assert(effect()&&impact.code==a::MagnumImpactRejected&&f.order.size()==5);
+    assert(magnum->acknowledge(gun)&&map->remove(gun)&&!magnum->acknowledge(gun));
+    assert(map->end_level(epoch)&&api->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -1908,6 +2015,13 @@ int main(int argc,char** argv){
 #endif
     assert(getRifle&&!getRifle(0,sizeof(a::RifleGrenadeApi))&&!getRifle(1,0));
     test_rifle_grenade(getRifle(a::rifle_launch_version,sizeof(a::RifleGrenadeApi)),grenade,map,api);
+#ifdef _WIN32
+    auto getMagnum=reinterpret_cast<a::GetMagnumApi>(GetProcAddress(lib,a::magnum_export_name));
+#else
+    auto getMagnum=reinterpret_cast<a::GetMagnumApi>(dlsym(lib,a::magnum_export_name));
+#endif
+    assert(getMagnum&&!getMagnum(0,sizeof(a::MagnumApi))&&!getMagnum(1,0));
+    test_magnum(getMagnum(a::magnum_version,sizeof(a::MagnumApi)),map,api);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
 #else
