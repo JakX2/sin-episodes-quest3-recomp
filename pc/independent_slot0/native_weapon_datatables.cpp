@@ -4774,6 +4774,106 @@ int __cdecl native_scene_start(void* scene,unsigned bytes,const SceneStartBindin
     return complete(SceneStartResult::Started);
 }
 const SceneStartApi scene_start_api{version,sizeof(SceneStartApi),&native_scene_start};
+bool scene_actor_storage(const SceneActorEventBindings& h,void* v,unsigned count,unsigned stride,void*& rows) noexcept {
+    rows=nullptr;unsigned bytes=0;const auto word=hologram_read<std::uint32_t>(v,0);
+    return word&&h.storage(h.context,word,&rows,&bytes)&&bytes>=count*stride&&hologram_writable(rows,count*stride);
+}
+int scene_actor_associate(void* actor,unsigned bytes,std::uint32_t parsed,const SceneActorEventBindings* b,bool add) noexcept {
+    if(bytes<0x601||!hologram_writable(actor,0x601)||!b||!b->storage||(add&&!b->grow))return 0;
+    const auto h=*b;auto* v=static_cast<unsigned char*>(actor)+0x5ec;
+    const int count=hologram_read<int>(v,0xc),capacity=hologram_read<int>(v,4);
+    if(count<0||count>0x100000||capacity<count||capacity>0x100000)return -1;
+    void* rows=nullptr;
+    if(count&&!scene_actor_storage(h,v,static_cast<unsigned>(count),4,rows))return -1;
+    int index=-1;
+    for(int i=0;i<count;++i)if(hologram_read<std::uint32_t>(rows,i*4)==parsed){index=i;break;}
+    if(add){
+        if(index>=0)return 1; // original does not dirty on duplicate
+        if(count>=0x100000)return -1;
+        if(count==capacity&&(!h.grow(h.context,v,1)||hologram_read<int>(v,0xc)!=count||
+            hologram_read<int>(v,4)<=count||hologram_read<int>(v,4)>0x100000))return -1;
+        if(!scene_actor_storage(h,v,static_cast<unsigned>(count+1),4,rows))return -1;
+        hologram_write(v,0xc,count+1);hologram_write(v,0x10,hologram_read<std::uint32_t>(v,0));
+        hologram_write(rows,count*4,parsed);
+    }else if(index>=0){
+        auto* p=static_cast<unsigned char*>(rows)+index*4;
+        if(index<count-1)std::memmove(p,p+4,static_cast<unsigned>(count-index-1)*4);
+        hologram_write(v,0xc,count-1);
+    }
+    hologram_write(actor,0x600,static_cast<unsigned char>(1));
+    return 1;
+}
+int __cdecl scene_actor_attach(void* actor,unsigned bytes,std::uint32_t parsed,const SceneActorEventBindings* b) noexcept {
+    return scene_actor_associate(actor,bytes,parsed,b,true);
+}
+int __cdecl scene_actor_detach(void* actor,unsigned bytes,std::uint32_t parsed,const SceneActorEventBindings* b) noexcept {
+    return scene_actor_associate(actor,bytes,parsed,b,false);
+}
+// 220f7d00 walks backward over 64-byte active actor event records.
+int __cdecl scene_actor_stop(void* actor,unsigned bytes,std::uint32_t parsed,int argument,const SceneActorEventBindings* b) noexcept {
+    if(bytes<0x5c8||!hologram_writable(actor,0x5c8)||!b||!b->storage||!b->stop_record)return 0;
+    if(!parsed){hologram_write(actor,0x5c4,0u);return 1;}
+    const auto h=*b;auto* v=static_cast<unsigned char*>(actor)+0x5b8;
+    int count=hologram_read<int>(v,0xc);
+    if(count<0||count>0x100000)return -1;
+    if(!count)return 1;
+    void* rows=nullptr;if(!scene_actor_storage(h,v,static_cast<unsigned>(count),0x40,rows))return -1;
+    for(int i=count-1;i>=0;--i){
+        auto* row=static_cast<unsigned char*>(rows)+i*0x40;
+        if(hologram_read<std::uint32_t>(row,4)!=parsed)continue;
+        const auto word=hologram_read<std::uint32_t>(v,0);
+        if(!h.stop_record(h.context,actor,row,0,argument)||hologram_read<int>(v,0xc)!=count||
+           hologram_read<std::uint32_t>(v,0)!=word)return -1;
+        hologram_write(row,0,0u);hologram_write(row,4,0u);hologram_write(row,0xc,static_cast<unsigned char>(0));
+        if(i<count-1)std::memmove(row,row+0x40,static_cast<unsigned>(count-i-1)*0x40);
+        hologram_write(v,0xc,--count);
+    }
+    return 1;
+}
+// 221a2c90 uses root scene actor count for each nested parsed argument.
+// Bound recursion and reject cycles as host safety adaptations.
+bool scene_stop_visit(void* scene,std::uint32_t word,int argument,const SceneStopBindings& h,
+    std::uint32_t (&path)[64],unsigned depth,unsigned& budget) noexcept {
+    if(!hologram_read<std::uint32_t>(scene,0x40c))return true;
+    if(!word||depth>=64||!budget)return false;
+    --budget;
+    for(unsigned i=0;i<depth;++i)if(path[i]==word)return false;
+    path[depth]=word;
+    for(unsigned i=0;;++i){
+        const auto root=hologram_read<std::uint32_t>(scene,0x40c);
+        void* p=nullptr;unsigned n=0;
+        if(!root||!h.parsed(h.context,root,&p,&n)||!p||n<0x24||!sin_independent::vgui_layout::Readable(p,0x24))return false;
+        const int count=hologram_read<int>(p,0x20);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000||!budget)return false;
+        --budget;void* actor=nullptr;unsigned extent=0;
+        if(!h.actor(h.context,scene,i,&actor,&extent)||
+           (actor&&scene_actor_stop(actor,extent,word,argument,&h.records)!=1))return false;
+    }
+    void* p=nullptr;unsigned n=0;
+    if(!h.parsed(h.context,word,&p,&n)||!p||n<0x125||!sin_independent::vgui_layout::Readable(p,0x125))return false;
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(p,0xc);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000||!budget)return false;
+        --budget;void* e=nullptr;unsigned extent=0;
+        if(!h.events.event(h.events.context,p,i,&e,&extent))return false;
+        if(!e)continue;
+        if(extent<4||!sin_independent::vgui_layout::Readable(e,4))return false;
+        if(hologram_read<int>(e,0)!=11||hologram_read<unsigned char>(p,0x124))continue;
+        if(extent<0x328||!sin_independent::vgui_layout::Readable(e,0x328))return false;
+        const auto nested=hologram_read<std::uint32_t>(e,0x324);
+        if(nested&&!scene_stop_visit(scene,nested,argument,h,path,depth+1,budget))return false;
+    }
+    return true;
+}
+int __cdecl scene_stop_events(void* scene,unsigned bytes,std::uint32_t parsed,int argument,const SceneStopBindings* b) noexcept {
+    if(bytes<0x410||!scene||!sin_independent::vgui_layout::Readable(scene,0x410)||!b||!b->parsed||!b->actor||
+       !b->events.event||!b->records.storage||!b->records.stop_record)return 0;
+    const auto h=*b;std::uint32_t path[64]{};unsigned budget=0x100000;
+    return scene_stop_visit(scene,parsed,argument,h,path,0,budget)?1:-1;
+}
+const SceneActorEventsApi scene_actor_events_api{version,sizeof(SceneActorEventsApi),&scene_actor_attach,&scene_actor_detach,&scene_actor_stop,&scene_stop_events};
 int __cdecl parsed_scene_finished(const void* parsed,unsigned bytes,unsigned* out) noexcept {
     if(!parsed||bytes<0x90||!sin_independent::vgui_layout::Readable(parsed,0x90)||
        !out||!hologram_writable(out,sizeof(*out)))return 0;
@@ -9426,6 +9526,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetSceneActorEventsApi=_SiN_GetSceneActorEventsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneActorEventsApi* __cdecl
+SiN_GetSceneActorEventsApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneActorEventsApi)?&scene_actor_events_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetSceneStartApi=_SiN_GetSceneStartApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneStartApi* __cdecl
 SiN_GetSceneStartApi(std::uint32_t version,std::uint32_t size) noexcept {
