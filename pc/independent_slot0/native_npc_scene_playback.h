@@ -36,4 +36,27 @@ struct NpcScenePlaybackApi {
     int (__cdecl *sound)(void* npc,const char* name,const NpcScenePlaybackBindings*,float*) noexcept;
 };
 using GetNpcScenePlaybackApi=const NpcScenePlaybackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_manager_query_export[]="SiN_GetSceneManagerQueryApi";
+enum class SceneQueryKind:unsigned {Cancel,Active,FutureSpeech};
+struct SceneManagerQueryBindings {
+    void* context;
+    // Host resolves vector entries and serial-validates scene EHANDLEs.
+    int (__cdecl *entry)(void*,void* manager,unsigned index,std::uint32_t*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *instanced)(void*,void* scene,unsigned*) noexcept;
+    int (__cdecl *parsed)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *actor)(void*,void* scene,unsigned index,void**) noexcept;
+    int (__cdecl *cancel)(void*,void* scene) noexcept;
+    SceneDurationBindings events;
+};
+struct SceneManagerQueryApi {
+    std::uint32_t version,size;
+    int (__cdecl *contains_actor)(void* scene,unsigned bytes,void* npc,const SceneManagerQueryBindings*,unsigned*) noexcept;
+    int (__cdecl *future_speech)(void* parsed,unsigned bytes,const SceneDurationBindings*,unsigned*) noexcept;
+    // Result for Cancel is the number of completed cancellation callbacks;
+    // Active/FutureSpeech return an original boolean. No output on error.
+    int (__cdecl *query)(void* manager,unsigned bytes,void* npc,SceneQueryKind,unsigned filter,const SceneManagerQueryBindings*,unsigned*) noexcept;
+};
+using GetSceneManagerQueryApi=const SceneManagerQueryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }

@@ -3857,6 +3857,84 @@ int __cdecl npc_scene_play_sound(void* npc,const char* name,const NpcScenePlayba
     return npc_scene_play(npc,name,0,b,out,true);
 }
 const NpcScenePlaybackApi npc_scene_playback_api{version,sizeof(NpcScenePlaybackApi),&npc_scene_duration,&npc_scene_play_scene,&npc_scene_play_sound};
+int __cdecl scene_future_speech(void* parsed,unsigned bytes,const SceneDurationBindings* b,unsigned* out) noexcept {
+    if(!parsed||bytes<0x7c||!sin_independent::vgui_layout::Readable(parsed,0x7c)||!b||!b->event||
+       !out||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto h=*b;
+    for(unsigned i=0;;++i){
+        const auto count=hologram_read<int>(parsed,0xc);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000)return -1;
+        void* e=nullptr;unsigned n=0;
+        if(!h.event(h.context,parsed,i,&e,&n)||!e||n<0x188||!sin_independent::vgui_layout::Readable(e,0x188))return -1;
+        if(hologram_read<int>(e,0)==5&&hologram_read<float>(e,0x184)>hologram_read<float>(parsed,0x78)){
+            *out=1;return 1;
+        }
+    }
+    *out=0;return 1;
+}
+int __cdecl scene_contains_actor(void* scene,unsigned bytes,void* npc,const SceneManagerQueryBindings* b,unsigned* out) noexcept {
+    if(!scene||bytes<0x410||!sin_independent::vgui_layout::Readable(scene,0x410)||!npc||
+       !b||!b->parsed||!b->actor||!out||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto h=*b;
+    for(unsigned i=0;;++i){
+        const auto word=hologram_read<std::uint32_t>(scene,0x40c);
+        if(!word){if(i)return -1;break;}
+        void* parsed=nullptr;unsigned n=0;
+        if(!h.parsed(h.context,word,&parsed,&n)||!parsed||n<0x24||
+           !sin_independent::vgui_layout::Readable(parsed,0x24))return -1;
+        const int count=hologram_read<int>(parsed,0x20);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000)return -1;
+        void* actor=nullptr;
+        if(!h.actor(h.context,scene,i,&actor))return -1;
+        if(actor==npc){*out=1;return 1;}
+    }
+    *out=0;return 1;
+}
+int __cdecl scene_manager_query(void* manager,unsigned bytes,void* npc,SceneQueryKind kind,unsigned filter,
+                                const SceneManagerQueryBindings* b,unsigned* out) noexcept {
+    if(!manager||bytes<0x3a4||!sin_independent::vgui_layout::Readable(manager,0x3a4)||!npc||
+       static_cast<unsigned>(kind)>2||!b||!b->entry||!b->resolve||!b->instanced||!b->parsed||!b->actor||
+       (kind==SceneQueryKind::Cancel&&!b->cancel)||(kind==SceneQueryKind::FutureSpeech&&!b->events.event)||
+       !out||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto h=*b;const int count=hologram_read<int>(manager,0x3a0);
+    if(count>0x100000)return -1;
+    unsigned cancelled=0;
+    // Original snapshots count, but reloads the vector base each iteration.
+    for(int i=0;i<count;++i){
+        std::uint32_t handle=0xffffffffu;
+        if(!h.entry(h.context,manager,static_cast<unsigned>(i),&handle))return -1;
+        if(handle==0xffffffffu)continue;
+        void* scene=nullptr;unsigned n=0;
+        if(!h.resolve(h.context,handle,&scene,&n))return -1;
+        if(!scene)continue;
+        if(n<0x410||!sin_independent::vgui_layout::Readable(scene,0x410))return -1;
+        if(kind!=SceneQueryKind::Cancel&&!hologram_read<unsigned char>(scene,0x3d8))continue;
+        if(filter&0xff){
+            unsigned instance=0;if(!h.instanced(h.context,scene,&instance))return -1;
+            if(kind==SceneQueryKind::Cancel?!instance:instance)continue;
+        }
+        unsigned match=0;
+        if(scene_contains_actor(scene,n,npc,&h,&match)!=1)return -1;
+        if(!match)continue;
+        if(kind==SceneQueryKind::Cancel){
+            if(!h.cancel(h.context,scene))return -1;
+            ++cancelled;continue;
+        }
+        if(kind==SceneQueryKind::FutureSpeech){
+            const auto word=hologram_read<std::uint32_t>(scene,0x40c);
+            if(!word)continue;
+            void* parsed=nullptr;unsigned extent=0;
+            if(!h.parsed(h.context,word,&parsed,&extent)||scene_future_speech(parsed,extent,&h.events,&match)!=1)return -1;
+            if(!match)continue;
+        }
+        *out=1;return 1;
+    }
+    *out=cancelled;return 1;
+}
+const SceneManagerQueryApi scene_manager_query_api{version,sizeof(SceneManagerQueryApi),&scene_contains_actor,&scene_future_speech,&scene_manager_query};
+
 constexpr unsigned count_size=0x1038;
 int __cdecl count_initialize(HologramControl* ctrl) noexcept {
     if(!health_control(ctrl,count_size))return 0;
@@ -8384,6 +8462,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetSceneManagerQueryApi=_SiN_GetSceneManagerQueryApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneManagerQueryApi* __cdecl
+SiN_GetSceneManagerQueryApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneManagerQueryApi)?&scene_manager_query_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetNpcScenePlaybackApi=_SiN_GetNpcScenePlaybackApi")

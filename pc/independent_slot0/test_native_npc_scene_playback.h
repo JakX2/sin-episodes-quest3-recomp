@@ -74,4 +74,67 @@ inline void check_npc_scene_playback(const NpcScenePlaybackApi& api){
     assert(api.scene(&f.npc,"test.vcd",.25f,&f.b,&out)==-1&&out==99);f.expect({1,2,3,4,5,7,8,9,11,12,13});
     assert(api.scene(nullptr,"test.vcd",.25f,&f.b,&out)==0&&out==99);f.expect({});
 }
+
+struct SceneQueryFixture {
+    alignas(4) unsigned char manager[0x3a4]{},scenes[3][0x410]{},parsed[3][0x7c]{},events[3][0x188]{};
+    int npc=0,other=0;SceneManagerQueryBindings b{};
+    unsigned entries=0,cancels=0,casts=0,actors=0;
+    bool fail=false;
+    static SceneQueryFixture& get(void* p){return *static_cast<SceneQueryFixture*>(p);}
+    SceneQueryFixture(){
+        using F=ScenePlaybackFixture;
+        F::put(manager,0x3a0,5);
+        for(unsigned i=0;i<3;++i){
+            F::put(scenes[i],0x40c,i+1);F::put(parsed[i],0x20,2);F::put(parsed[i],0xc,1);
+            F::put(events[i],0,5);F::fl(events[i],0x184,4);F::fl(parsed[i],0x78,4);
+        }
+        scenes[0][0x3d8]=1;scenes[1][0x3d8]=1; // third inactive, still cancellable
+        F::fl(events[0],0x184,5);
+        b.context=this;b.events.context=this;
+        b.entry=[](void* p,void* m,unsigned i,std::uint32_t* out) noexcept -> int{
+            auto& f=get(p);assert(m==f.manager&&i<5);++f.entries;
+            *out=i==0?0xffffffffu:i==1?99:i-1;return 1;
+        };
+        b.resolve=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);*out=h==99?nullptr:f.scenes[h-1];*n=sizeof(f.scenes[0]);return 1;
+        };
+        b.instanced=[](void* p,void* s,unsigned* out) noexcept -> int{auto& f=get(p);++f.casts;*out=s!=f.scenes[0];return 1;};
+        b.parsed=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(h>=1&&h<=3);*out=f.parsed[h-1];*n=sizeof(f.parsed[0]);return 1;
+        };
+        b.actor=[](void* p,void*,unsigned i,void** out) noexcept -> int{
+            auto& f=get(p);assert(i<2);++f.actors;*out=i?&f.npc:&f.other;return 1;
+        };
+        b.cancel=[](void* p,void* s) noexcept -> int{
+            auto& f=get(p);++f.cancels;assert(s==f.scenes[1]||s==f.scenes[2]);
+            // Count snapshot must remain 5 despite this mutation.
+            F::put(f.manager,0x3a0,0);return !f.fail;
+        };
+        b.events.event=[](void* p,void* scene,unsigned i,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(!i);
+            unsigned j=scene==f.parsed[0]?0:scene==f.parsed[1]?1:2;
+            assert(scene==f.parsed[j]);*out=f.events[j];*n=sizeof(f.events[j]);return 1;
+        };
+    }
+};
+inline void check_scene_manager_query(const SceneManagerQueryApi& api){
+    using F=ScenePlaybackFixture;SceneQueryFixture f;unsigned out=99;
+    auto run=[&](SceneQueryKind k,unsigned filter){return api.query(f.manager,sizeof(f.manager),&f.npc,k,filter,&f.b,&out);};
+    assert(api.contains_actor(f.scenes[0],sizeof(f.scenes[0]),&f.npc,&f.b,&out)==1&&out);
+    assert(api.future_speech(f.parsed[1],sizeof(f.parsed[1]),&f.b.events,&out)==1&&!out);
+    assert(run(SceneQueryKind::Active,1)==1&&out&&f.entries==3);
+    f.entries=0;assert(run(SceneQueryKind::FutureSpeech,0)==1&&out&&f.entries==3);
+    F::fl(f.events[0],0x184,4);
+    f.entries=0;assert(run(SceneQueryKind::FutureSpeech,0)==1&&!out&&f.entries==5);
+    F::fl(f.events[1],0x184,5);
+    assert(run(SceneQueryKind::FutureSpeech,1)==1&&!out);
+    assert(run(SceneQueryKind::FutureSpeech,0)==1&&out);
+    F::put(f.events[1],0,4);assert(run(SceneQueryKind::FutureSpeech,0)==1&&!out);
+    F::put(f.events[1],0,5);F::put(f.events[1],0x184,0x7fc00000);assert(run(SceneQueryKind::FutureSpeech,0)==1&&!out);
+    f.entries=0;assert(run(SceneQueryKind::Cancel,1)==1&&out==2&&f.cancels==2&&f.entries==5);
+    F::put(f.manager,0x3a0,5);f.fail=true;out=99;
+    assert(run(SceneQueryKind::Cancel,1)==-1&&out==99&&f.cancels==3);
+    assert(api.query(f.manager,sizeof(f.manager),&f.npc,static_cast<SceneQueryKind>(3),0,&f.b,&out)==0);
+}
+
 }
