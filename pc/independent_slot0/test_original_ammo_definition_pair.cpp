@@ -295,6 +295,12 @@ int main(int argc,char** argv){
     assert(screenCommand&&!getScreenCommand(0,sizeof(tables::ScreenCommandApi))&&!getScreenCommand(1,0));
     tables::test::check_generic_screen(*screenCommand,*dispenser,*dispInput);
     std::puts("PASS SDK generic VGUI command to native dispenser server event");
+    const auto getGasInput=reinterpret_cast<tables::GetGasInputApi>(GetProcAddress(server,tables::gas_input_export));
+    assert(getGasInput&&!GetProcAddress(client,tables::gas_input_export));
+    const auto* gasInput=getGasInput(1,sizeof(tables::GasInputApi));
+    assert(gasInput&&!getGasInput(0,sizeof(tables::GasInputApi))&&!getGasInput(1,0));
+    tables::test::check_gas_inputs(*gasInput,*poisonGas);
+    std::puts("PASS SDK gas map inputs and original live visual child property updates");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
