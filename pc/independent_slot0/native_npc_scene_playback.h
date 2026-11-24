@@ -771,6 +771,23 @@ struct ChoreographySymbolApi {
     int (__cdecl *destroy)(void*,unsigned,const ChoreographySymbolBindings*) noexcept;
 };
 using GetChoreographySymbolApi=const ChoreographySymbolApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_symbol_intern_export[]="SiN_GetChoreographySymbolInternApi";
+struct ChoreographySymbolInternBindings {
+    void* context;
+    ChoreographySymbolSentinel* sentinel;
+    unsigned insensitive; // original case-insensitive C-locale comparator
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *grow_memory)(void*,void*,unsigned,unsigned) noexcept;
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *release_unpublished)(void*,std::uint32_t) noexcept;
+};
+struct ChoreographySymbolInternApi {
+    std::uint32_t version,size;
+    // Compatible with ChoreographyScaleBindings.intern. Context points at
+    // a live ChoreographySymbolInternBindings; boolean success.
+    int (__cdecl *intern)(void*,void*,const char*,std::uint16_t*) noexcept;
+};
+using GetChoreographySymbolInternApi=const ChoreographySymbolInternApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;
