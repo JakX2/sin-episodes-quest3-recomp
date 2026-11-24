@@ -432,6 +432,8 @@ struct ResponseSpeakFixture {
     const char* expected_concept="TLK_IDLE";
     const char* expected_modifiers=nullptr;
     unsigned modifier_calls=0;
+    void* notify_context=nullptr;
+    int (__cdecl *after_notify)(void*,void*,const char*) noexcept=nullptr;
     static std::uint32_t ptr(void* p){return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(p));}
     float read(const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
     unsigned word(unsigned off){unsigned v=0;std::memcpy(&v,row+off,4);return v;}
@@ -491,8 +493,9 @@ struct ResponseSpeakFixture {
         history.history.insert=[](void* p,void* e,const char*,float t,int* out) noexcept -> int{auto& f=get(p,e);assert(f.index==-1&&t==f.now);f.index=*out=7;return 1;};
         history.history.entry=[](void* p,void* e,int i,void** out,unsigned* extent) noexcept -> int{auto& f=get(p,e);assert(i==7);*out=f.row;*extent=sizeof(f.row);return 1;};
         history.history.clock=b.dispatch.clock;
-        history.history.notify=[](void* p,void* e,const char*) noexcept -> int{
-            auto& f=get(p,e);assert(f.read(f.row,0x14)==f.now&&f.word(0x18)==ptr(f.pool[f.allocated])&&f.live[f.allocated]);++f.notifications;return !f.fail_notify;};
+        history.history.notify=[](void* p,void* e,const char* name) noexcept -> int{
+            auto& f=get(p,e);assert(f.read(f.row,0x14)==f.now&&f.word(0x18)==ptr(f.pool[f.allocated])&&f.live[f.allocated]);++f.notifications;
+            return !f.fail_notify&&(!f.after_notify||f.after_notify(f.notify_context,e,name));};
     }
 };
 inline void check_response_speak(const ResponseSpeakApi& api,const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record){
@@ -959,6 +962,51 @@ inline void check_managed_talk(const TalkManagerRuntimeApi& api,const TalkManage
     assert(manager.destroy(&m.session,&m.control,&m.tables,&m.b)==1);
     ManagedTalkFixture missing(manager,catalog);missing.manager.absent=true;
     assert(api.reset_interaction(&missing.b)==-1&&!missing.manager.session.instance);
+}
+
+
+struct ManagedCompanionFixture {
+    TalkManagerFixture manager;
+    CompanionTalkFixture companion;
+    const TalkManagerRuntimeApi& runtime;
+    TalkManagerRuntimeBindings b{};
+    unsigned updates=0,randoms=0;float draw=15;
+    ManagedCompanionFixture(const TalkManagerApi& m,const TalkCatalogApi& c,const TalkManagerRuntimeApi& rt,
+                            const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record)
+        :manager(m,c),companion(timing,record),runtime(rt){
+        auto& f=companion;auto& p=f.pipeline;
+        auto owner=ResponseSpeakFixture::ptr(f.npc),adjusted=owner+0xdfc,exp=ResponseSpeakFixture::ptr(p.exp);
+        std::memcpy(p.exp+4,&owner,4);std::memcpy(p.exp+0xc,&adjusted,4);f.put(0xffc,exp);
+        b.session=&manager.session;b.manager=manager.b;b.cooldown.context=this;
+        b.cooldown.clock=[](void* p,float* out) noexcept -> int{*out=static_cast<ManagedCompanionFixture*>(p)->companion.pipeline.now;return 1;};
+        b.cooldown.random=[](void* p,float lo,float hi,float* out) noexcept -> int{
+            auto& f=*static_cast<ManagedCompanionFixture*>(p);assert(lo==10&&hi==20);++f.randoms;*out=f.draw;return 1;};
+        b.cooldown.concept_deadline=[](void*,const char*,float** out) noexcept -> int{*out=nullptr;return 1;};
+        b.cooldown.propagate=[](void*,void*,const char*) noexcept -> int{assert(false);return 0;};
+        b.cooldown.cooldown_disabled=[](void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+        // The managed API must not consult detached manager or cooldown fields.
+        f.b.manager=nullptr;f.b.cooldown={};f.state.global[0]=1000;
+        p.notify_context=this;p.after_notify=[](void* ctx,void* e,const char* n) noexcept -> int{
+            auto& f=*static_cast<ManagedCompanionFixture*>(ctx);++f.updates;
+            return f.runtime.notify(&f.b,f.companion.npc,sizeof(f.companion.npc),e,sizeof(f.companion.pipeline.exp),n)==1;
+        };
+    }
+};
+inline void check_managed_companion(const ManagedCompanionApi& api,const TalkManagerApi& manager,const TalkCatalogApi& catalog,
+                                   const TalkManagerRuntimeApi& runtime,const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record){
+    ManagedCompanionFixture f(manager,catalog,runtime,timing,record);auto& c=f.companion;auto& p=c.pipeline;unsigned out=99;
+    auto request=[&](unsigned urgent=0){return api.request(c.npc,sizeof(c.npc),&f.b,&p.sem,&c.b,"TLK_IDLE",nullptr,urgent,&out);};
+    auto deadline=[&](){float v=0;std::memcpy(&v,f.manager.object+0x394,4);return v;};
+    assert(request()==1&&out&&p.sounds==1&&f.updates==1&&deadline()==25&&f.manager.creations==1);
+    p.now=13;assert(request()==1&&!out&&p.sounds==1&&deadline()==25);
+    assert(api.group_gate(c.npc,sizeof(c.npc),&f.b,&p.sem,&c.b,0,1,&out)==1&&out);
+    p.now=25;assert(request()==1&&out&&p.sounds==2&&p.destroys==1&&f.updates==2&&deadline()==40);
+    p.now=28;p.has_match=false;
+    assert(request(1)==1&&!out&&p.sounds==2&&f.updates==2&&deadline()==40);
+    p.has_match=true;assert(request(1)==1&&out&&p.sounds==3&&f.updates==3&&deadline()==43);
+    assert(f.randoms==3&&f.manager.creations==1&&c.state.global[0]==1000);
+    assert(ResponseSpeakFixture::destroy(&p,p.pool[0]));
+    assert(manager.destroy(&f.manager.session,&f.manager.control,&f.manager.tables,&f.manager.b)==1);
 }
 
 }
