@@ -273,6 +273,12 @@ int main(int argc,char** argv){
     assert(propContainer&&!getPropContainer(0,sizeof(tables::PropContainerApi))&&!getPropContainer(1,0));
     tables::test::check_prop_container(*propContainer,*canister);
     std::puts("PASS native shared SiN container constructor leaves, leak stop and AI radius");
+    const auto getGas=reinterpret_cast<tables::GetPoisonGasApi>(GetProcAddress(server,tables::poison_gas_export));
+    assert(getGas&&!GetProcAddress(client,tables::poison_gas_export));
+    const auto* poisonGas=getGas(1,sizeof(tables::PoisonGasApi));
+    assert(poisonGas&&!getGas(0,sizeof(tables::PoisonGasApi))&&!getGas(1,0));
+    tables::test::check_poison_gas(*poisonGas,*propContainer);
+    std::puts("PASS native SiN poison gas gameplay lifecycle, antigen variant and mutagen container");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

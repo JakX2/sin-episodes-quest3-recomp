@@ -2287,7 +2287,7 @@ int __cdecl disp_button_event(HologramControl* ctrl,const DispenserInputBindings
 const DispenserInputApi dispenser_input_api{version,sizeof(DispenserInputApi),&disp_use_variant,&disp_button_event};
 
 int __cdecl prop_container_defaults(HologramControl* ctrl,const PropContainerBindings* b,PropContainerKind kind) noexcept {
-    if(!can_valid(ctrl)||static_cast<unsigned>(kind)>5)return 0;
+    if(!can_valid(ctrl)||static_cast<unsigned>(kind)>6)return 0;
     if((kind==PropContainerKind::Acetylene||kind==PropContainerKind::Barrel)&&(!b||!b->random_float))return 0;
     ctrl->busy=1;
     unsigned flags=3,raw=100;int count=1;float duration=10,parameter=0;
@@ -2295,6 +2295,8 @@ int __cdecl prop_container_defaults(HologramControl* ctrl,const PropContainerBin
     const char* loop=nullptr;
     switch(kind){
     case PropContainerKind::Generic:break;
+    case PropContainerKind::Mutagen:
+        flags=4;duration=12;count=5;parameter=1;model="models/containers/mutagen_barrel.mdl";loop="gas.poison_loop";break;
     case PropContainerKind::Antigen:
         flags=9;raw=0;duration=0;model=can_model;break;
     case PropContainerKind::OxygenLarge:
@@ -2361,6 +2363,130 @@ int __cdecl prop_container_radius(const void* object,unsigned bytes,float* out) 
 }
 const PropContainerApi prop_container_api{version,sizeof(PropContainerApi),&prop_container_defaults,
     &prop_container_stop,&prop_container_radius};
+
+constexpr unsigned gas_bytes=0x3bc,gas_on=0x394,gas_kind=0x398,gas_amount=0x39c,
+    gas_radius=0x3a0,gas_duration=0x3a4,gas_rate=0x3a8,gas_last=0x3ac,
+    gas_time=0x3b0,gas_child=0x3b4,gas_audio=0x3b8;
+constexpr GasVariant gas_variants[]={
+    {0x10000,0xb43cea32,0xff00ff00,"gas.poison_spawn","gas.poison_loop"},
+    {0x400000,0xffe58619,0xffe54f19,"gas.antigen_spawn","gas.antigen_loop"},
+    {2,0xff11a4ed,0xff2864ef,"gas.poison_spawn","gas.poison_loop"},
+    {3,0xff808080,0xff808080,"gas.inert_spawn","gas.inert_loop"}
+};
+bool gas_valid(const HologramControl* ctrl) noexcept {return health_control(ctrl,gas_bytes);}
+bool gas_type_valid(int kind) noexcept {return kind>=0&&kind<4;}
+bool gas_bound(const GasBindings* b) noexcept {
+    return b&&b->clock&&b->random_float&&b->install_think&&b->schedule&&b->visual&&
+        b->remove&&b->sound&&b->radius_effect;
+}
+int __cdecl gas_defaults(void* object,unsigned bytes) noexcept {
+    if(bytes<gas_bytes||!hologram_writable(object,gas_bytes))return 0;
+    hologram_write(object,gas_on,static_cast<unsigned char>(1));
+    hologram_write(object,gas_audio,static_cast<unsigned char>(1));
+    for(unsigned off:{gas_kind,gas_last,gas_time,gas_child})hologram_write(object,off,0u);
+    hologram_write(object,gas_amount,5.0f);hologram_write(object,gas_radius,300.0f);
+    hologram_write(object,gas_duration,20.0f);hologram_write(object,gas_rate,15.0f);return 1;
+}
+int __cdecl gas_configure(HologramControl* ctrl,int kind,float duration,float radius,float rate,float amount) noexcept {
+    if(!gas_valid(ctrl)||!std::isfinite(duration)||!std::isfinite(radius)||!std::isfinite(rate)||!std::isfinite(amount))return 0;
+    auto* obj=ctrl->object;
+    if(hologram_read<void*>(obj,gas_child))return 0;
+    hologram_write(obj,gas_kind,kind);
+    hologram_write(obj,gas_duration,duration<0?20.0f:duration);
+    hologram_write(obj,gas_radius,radius<0?300.0f:radius);
+    hologram_write(obj,gas_rate,rate<0?15.0f:rate);
+    hologram_write(obj,gas_amount,amount<0?5.0f:amount);return 1;
+}
+bool gas_clock(const GasBindings& b,float& now) noexcept {return b.clock(b.context,&now)&&std::isfinite(now);}
+bool gas_schedule(void* obj,const GasBindings& b,double delta) noexcept {
+    float now=0;if(!gas_clock(b,now))return false;
+    const float when=static_cast<float>(static_cast<double>(now)+delta);
+    return std::isfinite(when)&&b.schedule(b.context,obj,when)!=0;
+}
+bool gas_install(void* obj,const GasBindings& b) noexcept {
+    float delay=0;
+    return b.install_think(b.context,obj,1)&&b.random_float(b.context,0,0.5f,&delay)&&
+        std::isfinite(delay)&&delay>=0&&delay<=0.5f&&gas_schedule(obj,b,delay);
+}
+bool gas_start_body(void* obj,const GasBindings& b) noexcept {
+    if(hologram_read<void*>(obj,gas_child))return true;
+    const int kind=hologram_read<int>(obj,gas_kind);
+    if(!gas_type_valid(kind))return false;
+    const float radius=hologram_read<float>(obj,gas_radius),duration=hologram_read<float>(obj,gas_duration),
+        rate=hologram_read<float>(obj,gas_rate);
+    if(!std::isfinite(radius)||!std::isfinite(duration)||!std::isfinite(rate))return false;
+    if(!gas_install(obj,b))return false;
+    float now=0;if(!gas_clock(b,now))return false;
+    hologram_write(obj,gas_time,static_cast<float>(static_cast<double>(now)+1.0));
+    void* child=nullptr;
+    if(!b.visual(b.context,obj,&gas_variants[kind],kind,radius,duration,rate,&child))return false;
+    hologram_write(obj,gas_child,child);
+    return !hologram_read<unsigned char>(obj,gas_audio)||b.sound(b.context,obj,gas_variants[kind].spawn_sound,0);
+}
+bool gas_stop_body(void* obj,const GasBindings& b) noexcept {
+    void* child=hologram_read<void*>(obj,gas_child);
+    if(!child)return true;
+    const int kind=hologram_read<int>(obj,gas_kind);
+    if(!gas_type_valid(kind)||!b.remove(b.context,child))return false;
+    hologram_write(obj,gas_child,static_cast<void*>(nullptr));
+    return b.install_think(b.context,obj,0)&&b.schedule(b.context,obj,-1.0f)&&
+        b.sound(b.context,obj,gas_variants[kind].loop_sound,1);
+}
+int __cdecl gas_spawn(HologramControl* ctrl,const GasBindings* b) noexcept {
+    if(!gas_valid(ctrl)||!gas_bound(b))return 0;
+    ctrl->busy=1;const auto host=*b;auto* obj=ctrl->object;
+    if(!gas_type_valid(hologram_read<int>(obj,gas_kind)))hologram_write(obj,gas_kind,0);
+    hologram_write(obj,gas_amount,5.0f);
+    return disp_finish(ctrl,!hologram_read<unsigned char>(obj,gas_on)||gas_start_body(obj,host));
+}
+int __cdecl gas_enable(HologramControl* ctrl,const GasBindings* b,unsigned enabled) noexcept {
+    if(!gas_valid(ctrl)||!gas_bound(b)||enabled>1)return 0;
+    auto* obj=ctrl->object;
+    if((hologram_read<unsigned char>(obj,gas_on)!=0)==(enabled!=0))return 1;
+    ctrl->busy=1;const auto host=*b;hologram_write(obj,gas_on,static_cast<unsigned char>(enabled));
+    return disp_finish(ctrl,enabled?gas_start_body(obj,host):gas_stop_body(obj,host));
+}
+int __cdecl gas_think(HologramControl* ctrl,const GasBindings* b) noexcept {
+    if(!gas_valid(ctrl)||!gas_bound(b))return 0;
+    auto* obj=ctrl->object;const int kind=hologram_read<int>(obj,gas_kind);
+    if(!gas_type_valid(kind))return 0;
+    if(kind==3)return 1;
+    ctrl->busy=1;const auto host=*b;float now=0;
+    if(!gas_clock(host,now))return disp_finish(ctrl,false);
+    float last=hologram_read<float>(obj,gas_last);
+    if(last==0){last=now;hologram_write(obj,gas_last,now);}
+    const double elapsed=static_cast<double>(now)-last;
+    if(elapsed>0.25){
+        const float delta=static_cast<float>(elapsed);
+        const float damage=static_cast<float>(static_cast<double>(delta)*hologram_read<float>(obj,gas_amount));
+        const float radius=hologram_read<float>(obj,gas_radius);
+        float duration=hologram_read<float>(obj,gas_duration);
+        if(!std::isfinite(damage)||!std::isfinite(radius)||!std::isfinite(duration)||
+           !host.radius_effect(host.context,obj,damage,radius,gas_variants[kind].damage_flags))return disp_finish(ctrl,false);
+        if(duration>0){
+            const double remaining=static_cast<double>(duration)-delta;
+            hologram_write(obj,gas_duration,static_cast<float>(remaining));
+            if(remaining<=0)return disp_finish(ctrl,gas_stop_body(obj,host)&&host.remove(host.context,obj));
+            if(kind==1&&hologram_read<void*>(obj,gas_child)){
+                if(!gas_stop_body(obj,host)||!gas_install(obj,host))return disp_finish(ctrl,false);
+            }
+        }else if(hologram_read<unsigned char>(obj,gas_audio)&&
+            !host.sound(host.context,obj,gas_variants[kind].loop_sound,0))return disp_finish(ctrl,false);
+        hologram_write(obj,gas_last,now);
+    }
+    return disp_finish(ctrl,gas_schedule(obj,host,0.25));
+}
+int __cdecl gas_kill(HologramControl* ctrl,const GasBindings* b) noexcept {
+    if(!gas_valid(ctrl)||!gas_bound(b))return 0;
+    ctrl->busy=1;const auto host=*b;
+    return disp_finish(ctrl,gas_stop_body(ctrl->object,host)&&host.remove(host.context,ctrl->object));
+}
+int __cdecl gas_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<gas_bytes||!hologram_writable(ctrl->object,gas_bytes))return 0;
+    ctrl->blocked=0;return 1;
+}
+const PoisonGasApi poison_gas_api{version,sizeof(PoisonGasApi),&gas_defaults,&gas_configure,&gas_spawn,
+    &gas_enable,&gas_think,&gas_kill,&gas_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3925,6 +4051,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PropConta
 SiN_GetPropContainerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PropContainerApi)?&prop_container_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPoisonGasApi=_SiN_GetPoisonGasApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PoisonGasApi* __cdecl
+SiN_GetPoisonGasApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PoisonGasApi)?&poison_gas_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
