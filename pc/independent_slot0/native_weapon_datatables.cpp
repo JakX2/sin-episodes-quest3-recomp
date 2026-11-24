@@ -13,6 +13,7 @@
 #include "native_server_flex_weight.h"
 #include "native_server_flex_animation.h"
 #include "native_server_flex_spline.h"
+#include "native_server_expression.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11113,6 +11114,106 @@ int __cdecl server_flex_decay(void* actor,unsigned bytes,const ServerFlexRange* 
     return 1;
 }
 const ServerFlexAnimationApi server_flex_animation_api{version,sizeof(ServerFlexAnimationApi),&server_flex_fade,&server_flex_animation_apply,&server_flex_decay};
+int server_expression_find(const vfe_detail::Reader& reader,const char* name,int& index) noexcept {
+    for(int i=0;i<reader.settings;++i){
+        const auto* n=reader.setting_name(i);if(!n)return -1;
+        if(vfe_detail::equal(n,name)){index=i;return 1;}
+    }
+    return 0;
+}
+bool server_expression_read(const ServerExpressionBank& bank,vfe_detail::Reader& reader) noexcept {
+    if(!bank.data||!bank.size||!sin_independent::vgui_layout::Readable(bank.data,bank.size))return false;
+    reader.v={bank.data,bank.size};return reader.init();
+}
+bool server_expression_choose(const ServerExpressionBindings& h,const ServerExpressionBank& bank,
+    const vfe_detail::Reader& reader,int index) noexcept {
+    const auto s=reader.setting(index);
+    if(reader.word(s+4)!=1)return true;
+    const int count=reader.word(s+8);
+    const auto rows=s+reader.word(s+20);
+    if(count<=0||count>4096||!reader.span(rows,8LL*count)||!hologram_writable(bank.data+s+16,4))return false;
+    int selected=0,total=0;
+    for(int i=0;i<count;++i){
+        const int weight=reader.word(rows+8LL*i+4);
+        if(weight<0||weight>0x7fffffff-total)return false;
+        total+=weight;
+        if(!total)selected=i;
+        else{
+            int draw=0;
+            if(!h.random||!h.random(h.context,total-1,&draw)||draw<0||draw>=total)return false;
+            if(draw<weight)selected=i;
+        }
+    }
+    std::memcpy(bank.data+s+16,&selected,4);return true;
+}
+int __cdecl server_expression_apply(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
+    float scene_time,const ServerExpressionBindings* b) noexcept {
+    if(bytes<server_flex_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_extent)||
+       !record||!sin_independent::vgui_layout::Readable(record,0x40)||!event||
+       !sin_independent::vgui_layout::Readable(event,0x3c0)||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+       !b->load||!b->controller||!b->intensity||!server_flex_ranges(b->ranges,b->count)||!std::isfinite(scene_time))return 0;
+    if(hologram_read<float>(event,0x188)==-1)return 1;
+    const auto h=*b;
+    const auto* name=static_cast<const char*>(event)+0x84;
+    const auto* setting=static_cast<const char*>(event)+0x104;
+    if(!std::memchr(name,0,128)||!std::memchr(setting,0,128))return 0;
+    ServerExpressionBank generic{};
+    const int loaded=h.load(h.context,actor,name,&generic);
+    if(loaded==0)return 1;
+    if(loaded!=1)return 0;
+    vfe_detail::Reader base{},over{};
+    if(!server_expression_read(generic,base))return 0;
+    ServerExpressionBank character{};
+    bool have_override=false;
+    if(h.character_stem){
+        char path[512]{};
+        unsigned n=0;
+        for(;n<383;++n){
+            if(!sin_independent::vgui_layout::Readable(h.character_stem+n,1))return 0;
+            if(!(path[n]=h.character_stem[n]))break;
+        }
+        if(n==383)return 0;
+        path[n++]='/';std::strcpy(path+n,name);
+        const int status=h.load(h.context,actor,path,&character);
+        if(status<0||status>1)return 0;
+        if(status==1){if(!server_expression_read(character,over))return 0;have_override=true;}
+    }
+    float intensity=0;
+    if(!h.intensity(h.context,event,scene_time,&intensity)||!std::isfinite(intensity))return 0;
+    int index=0;const int found=server_expression_find(base,setting,index);
+    if(found<=0)return found==0?1:0;
+    if(!hologram_read<unsigned char>(record,0xc)&&!server_expression_choose(h,generic,base,index))return 0;
+    if(base.terminal(index)!=1)return 0;
+    const auto* terminal_name=base.setting_name(index);if(!terminal_name)return 0;
+    const vfe_detail::Reader* selected=&base;
+    if(have_override){
+        int oi=0;const int status=server_expression_find(over,terminal_name,oi);
+        if(status<0)return 0;
+        if(status==1){if(over.terminal(oi)!=1)return 0;selected=&over;index=oi;}
+    }
+    const auto s=selected->setting(index);
+    if(selected->word(s+4)!=0)return 0;
+    const int count=selected->word(s+8);
+    const auto rows=s+selected->word(s+20);
+    if(count<0||count>4096||!selected->span(rows,12LL*count))return 0;
+    for(int i=0;i<count;++i){
+        const auto row=rows+12LL*i;const int key=selected->word(row);
+        if(key<0||key>=selected->keys)return 0;
+        const auto* controller=selected->name(selected->word(selected->names_off+4LL*key));
+        if(!controller)return 0;
+        const int local=h.controller(h.context,actor,controller);
+        if(local<-1)return 0;
+        if(local<0||local>=static_cast<int>(h.count))continue;
+        float target=0,old=0;std::memcpy(&target,selected->v.data+row+4,4);
+        if(!std::isfinite(target)||!server_flex_weight_get(actor,bytes,h.ranges,h.count,local,&old))return 0;
+        // Ordinary expression is additive, NOT flex-animation lerp.
+        const float mixed=static_cast<float>(static_cast<double>(old)+static_cast<double>(intensity)*target);
+        if(!server_flex_weight_set(actor,bytes,h.ranges,h.count,local,mixed,&h.dirty))return 0;
+    }
+    return 1;
+}
+const ServerExpressionApi server_expression_api{version,sizeof(ServerExpressionApi),&server_expression_apply};
+
 
 
 #elif defined(SIN_ROLE_client)
@@ -13031,6 +13132,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFle
 SiN_GetServerFlexSplineApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFlexSplineApi)?&server_flex_spline_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerExpressionApi=_SiN_GetServerExpressionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerExpressionApi* __cdecl
+SiN_GetServerExpressionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerExpressionApi)?&server_expression_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerFlexAnimationApi=_SiN_GetServerFlexAnimationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFlexAnimationApi* __cdecl
