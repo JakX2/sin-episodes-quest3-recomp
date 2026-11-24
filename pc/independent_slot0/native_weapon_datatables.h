@@ -398,4 +398,41 @@ using ServerClassApi=GraphApi<ServerClassBindings,ServerClassView>;
 using ClientClassApi=GraphApi<ClientClassBindings,ClientClassView>;
 using GetServerClassApi=const ServerClassApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetClientClassApi=const ClientClassApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase706: one allocation owns all reconstructed network descriptors
+// and class records. All host services and collision schema are borrowed;
+// caller keeps them alive and detaches every engine reference before
+// destruction. Never publish this incomplete subset as the retail list.
+inline constexpr char aggregate_send_export[]="SiN_GetNetworkSendAggregateApi";
+inline constexpr char aggregate_recv_export[]="SiN_GetNetworkRecvAggregateApi";
+inline constexpr unsigned aggregate_table_count=35;
+struct AggregateSendBindings {
+    BaseEntitySendBindings entity;
+    OverlaySendBindings overlay;
+    void* engine_server;
+    const void* edict_base;
+    std::uint32_t max_clients;
+};
+struct AggregateRecvBindings {
+    BaseEntityRecvBindings entity;
+    OverlayRecvBindings overlay;
+    LocalDataRecvBindings local;
+    void* velocity_context;
+    VelocityInvalidation invalidate_velocity;
+    CreateClientEntity creators[ClassSubsetCount];
+};
+template<class Table,class Record> struct AggregateView {
+    void* handle;
+    Record* class_head;
+    Record* class_records;
+    unsigned class_count;
+    // Stable inventory in shared role order, not flattened wire indices.
+    Table* tables[aggregate_table_count];
+};
+using AggregateSendView=AggregateView<s::SendTable,ServerClassRecord>;
+using AggregateRecvView=AggregateView<RecvTable,ClientClassRecord>;
+using AggregateSendApi=GraphApi<AggregateSendBindings,AggregateSendView>;
+using AggregateRecvApi=GraphApi<AggregateRecvBindings,AggregateRecvView>;
+using GetAggregateSendApi=const AggregateSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetAggregateRecvApi=const AggregateRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

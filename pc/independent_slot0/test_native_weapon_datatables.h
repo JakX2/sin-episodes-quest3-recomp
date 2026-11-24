@@ -1048,4 +1048,63 @@ inline void check_entity_graph(const BaseEntitySendApi& sa,const BaseEntityRecvA
     assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
 
+inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra){
+    s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
+    RecvProp rp[8];RecvTable rc{rp,8,nullptr,"DT_CollisionProperty"};
+    NativeOwner owner;sin_independent::EntityHandleEntry entries[64]{};
+    entries[37].entity=reinterpret_cast<CBaseEntity*>(&owner);entries[37].serial=0x12345;
+    alignas(4) unsigned char edicts[2*20]{};NativeEngine engine;engine.expected=edicts+20;engine.result=1;
+    EntityNetworkFixture ef;OverlayFixture sf,cf;FovFixture ff;VelocityFixture vf;
+    AggregateSendBindings sb{{&coll,entries,64,&ef,&sample_clock,&sample_transform},
+        {&sf,&reserve_layers},&engine,edicts,1};
+    AggregateRecvBindings rb{{&rc,&ef,&sample_clock,&effects_changed,&interpolation_changed},
+        {&cf,&reserve_layers,&resize_layers},{&ff,&sample_fov},&vf,&invalidate_velocity,{}};
+    for(auto& f:rb.creators)f=&fixture_class_creator;
+    AggregateSendView sv{};AggregateRecvView rv{};
+    // Fail late (last class creator absent), then construct with the same
+    // empty output. The graph was never published or partially returned.
+    auto bad=rb;bad.creators[ClScatter]=nullptr;
+    assert(!ra.create(&bad,&rv)&&!rv.handle&&!rv.class_head&&!rv.tables[0]);
+    auto sbad=sb;sbad.overlay.reserve=nullptr;
+    assert(!sa.create(&sbad,&sv)&&!sv.handle&&!sv.class_head&&!sv.tables[0]);
+    assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
+    assert(sv.class_count==15&&rv.class_count==15&&!sa.create(&sb,&sv)&&!ra.create(&rb,&rv));
+    for(unsigned i=0;i<aggregate_table_count;++i){
+        assert(sv.tables[i]&&rv.tables[i]&&std::strcmp(sv.tables[i]->name,rv.tables[i]->name)==0);
+        for(unsigned j=0;j<i;++j)assert(sv.tables[i]!=sv.tables[j]&&rv.tables[i]!=rv.tables[j]);
+    }
+    assert(sv.class_records[ClPlayer].table==sv.tables[23]&&rv.class_records[ClPlayer].table==rv.tables[23]);
+    assert(sv.class_records[ClEntity].table==sv.tables[0]&&rv.class_records[ClEntity].table==rv.tables[0]);
+    assert(sv.class_records[ClScatter].table==sv.tables[34]&&rv.class_records[ClScatter].table==rv.tables[34]);
+    assert(sv.tables[0]->props[4].table==&coll&&rv.tables[0]->props[19].table==&rc);
+    // Traverse from class record into the private SiN player subobject.
+    auto& sp=sv.class_records[ClPlayer].table->props[1];
+    auto& rp2=rv.class_records[ClPlayer].table->props[1];
+    assert(sp.table==sv.tables[24]&&rp2.table==rv.tables[24]);
+    alignas(4) unsigned char server[0x151c]{},client[0x1248]{};
+    s::Recipients mask{};auto* sd=static_cast<unsigned char*>(sp.tableProxy(&sp,server,server+sp.offset,&mask,1));
+    void* cd=nullptr;rp2.table_proxy(&rp2,&cd,client+rp2.offset,1);
+    assert(sd==server+sp.offset&&cd==client+rp2.offset&&mask.words[0]==1);
+    const std::uint32_t accuracy=0x3f400000u;
+    auto& a=sp.table->props[2];auto& b=rp2.table->props[2];
+    std::memcpy(sd+a.offset,&accuracy,4);s::DVariant v{};
+    a.scalarProxy(&a,sd,sd+a.offset,&v,0,1);
+    RecvData d{&b,v,0,1};b.proxy(&d,cd,static_cast<unsigned char*>(cd)+b.offset);
+    assert(!std::memcmp(static_cast<unsigned char*>(cd)+b.offset,&accuracy,4));
+    // Nested-only array table must block teardown even when all top-level
+    // class tables are clear. Refusal leaves both complete graphs intact.
+    sv.tables[19]->written=true;rv.tables[19]->decoder=&ff;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv)&&sv.class_head&&rv.class_head);
+    sv.tables[19]->written=false;rv.tables[19]->decoder=nullptr;
+    sv.class_records[ClPlayer].instance_baseline=2;rv.class_records[ClPlayer].class_id=2;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
+    sv.class_records[ClPlayer].instance_baseline=0xffff;rv.class_records[ClPlayer].class_id=0;
+    auto corrupted=sv;corrupted.tables[0]=sv.tables[1];assert(!sa.destroy(&corrupted));
+    assert(sa.destroy(&sv)&&ra.destroy(&rv)&&!sv.handle&&!rv.handle&&!sv.tables[34]&&!rv.tables[34]);
+    // Borrowed collision data is neither reset nor deleted.
+    assert(coll.props==cp&&rc.props==rp);
+    assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
+    assert(sa.destroy(&sv)&&ra.destroy(&rv));
+}
+
 }
