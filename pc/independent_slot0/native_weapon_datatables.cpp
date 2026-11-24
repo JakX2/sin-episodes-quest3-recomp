@@ -4418,6 +4418,72 @@ int __cdecl choreography_delete_event(void* event,unsigned bytes,const Choreogra
     const auto b=*h;return choreography_destroy_event(event,scene_word(event),b,nullptr)?1:-1;
 }
 const ChoreographyDestructionApi choreography_destruction_api{version,sizeof(ChoreographyDestructionApi),&choreography_delete_parsed,&choreography_delete_event};
+int __cdecl choreography_symbol_construct_empty(void* symbol,unsigned bytes,int grow,std::uint32_t comparator) noexcept {
+    if(bytes<0x34||!hologram_writable(symbol,0x34)||!comparator)return 0;
+    // Original 2228eab0 with initial=0; +30 is not initialized.
+    hologram_write(symbol,0,comparator);
+    hologram_write(symbol,4,0u);hologram_write(symbol,8,0u);hologram_write(symbol,0xc,grow);
+    hologram_write(symbol,0x10,static_cast<std::uint16_t>(0xffff));
+    hologram_write(symbol,0x12,static_cast<std::uint16_t>(0));
+    hologram_write(symbol,0x14,static_cast<std::uint16_t>(0xffff));
+    hologram_write(symbol,0x16,static_cast<std::uint16_t>(0));
+    hologram_write(symbol,0x18,0u);
+    for(unsigned off:{0x1cu,0x20u,0x28u,0x2cu})hologram_write(symbol,off,0u);
+    hologram_write(symbol,0x24,8u);
+    return 1;
+}
+int __cdecl choreography_symbol_destroy(void* symbol,unsigned bytes,const ChoreographySymbolBindings* b) noexcept {
+    if(bytes<0x34||!hologram_writable(symbol,0x34)||!b||!b->storage||!b->release||
+       !hologram_writable(b->sentinel,sizeof(ChoreographySymbolSentinel)))return 0;
+    const auto h=*b;
+    const auto high=hologram_read<std::uint16_t>(symbol,0x16);
+    if(high){
+        const auto word=hologram_read<std::uint32_t>(symbol,4);
+        void* nodes=nullptr;unsigned extent=0;const unsigned need=static_cast<unsigned>(high)*12;
+        if(!word||!h.storage(h.context,word,&nodes,&extent)||extent<need||!hologram_writable(nodes,need))return -1;
+        if(!(h.sentinel->flags&1)){
+            h.sentinel->flags|=1;
+            h.sentinel->words[0]=h.sentinel->words[1]=h.sentinel->words[2]=0xffff;
+            h.sentinel->words[3]=1;
+        }
+        // 2228ec50 traverses ALL high-water slots backwards, not live count.
+        std::uint16_t next=0xffff;
+        for(unsigned i=high;i;){
+            --i;hologram_write(nodes,i*12+2,next);hologram_write(nodes,i*12,static_cast<std::uint16_t>(i));next=static_cast<std::uint16_t>(i);
+        }
+    }
+    hologram_write(symbol,0x10,static_cast<std::uint16_t>(0xffff));
+    hologram_write(symbol,0x12,static_cast<std::uint16_t>(0));
+    hologram_write(symbol,0x14,static_cast<std::uint16_t>(high?0:0xffff));
+    // Destructor releases each string before purging its pointer vector.
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(symbol,0x28);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000)return -1;
+        const auto word=hologram_read<std::uint32_t>(symbol,0x1c);
+        void* data=nullptr;unsigned extent=0;const auto need=(i+1)*4;
+        if(!word||!h.storage(h.context,word,&data,&extent)||extent<need||!sin_independent::vgui_layout::Readable(data,need))return -1;
+        if(!h.release(h.context,hologram_read<std::uint32_t>(data,i*4),ChoreographySymbolRelease::String))return -1;
+    }
+    hologram_write(symbol,0x28,0u);
+    for(unsigned pass=0;pass<2;++pass){
+        const auto word=hologram_read<std::uint32_t>(symbol,0x1c);
+        if(pass)hologram_write(symbol,0x2c,word);
+        if(hologram_read<int>(symbol,0x24)==-1)continue;
+        const bool ok=!word||h.release(h.context,word,ChoreographySymbolRelease::StringVector);
+        hologram_write(symbol,0x1c,0u);hologram_write(symbol,0x20,0u);
+        if(!ok){hologram_write(symbol,0x2c,0u);return -1;}
+    }
+    if(hologram_read<int>(symbol,0xc)!=-1){
+        const auto word=hologram_read<std::uint32_t>(symbol,4);
+        const bool ok=!word||h.release(h.context,word,ChoreographySymbolRelease::Tree);
+        hologram_write(symbol,4,0u);hologram_write(symbol,8,0u);
+        if(!ok)return -1;
+    }
+    // Original leaves high-water and tree mirror intact in destructed object.
+    return 1;
+}
+const ChoreographySymbolApi choreography_symbol_api{version,sizeof(ChoreographySymbolApi),&choreography_symbol_construct_empty,&choreography_symbol_destroy};
 // 221a3c30 and its fresh-object setters. Engine allocations, vector
 // growth and the original-compatible constructors/destructors remain hosted.
 bool generated_scene_text(const char* source,char (&dest)[128]) noexcept {
@@ -10402,6 +10468,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographySymbolApi=_SiN_GetChoreographySymbolApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographySymbolApi* __cdecl
+SiN_GetChoreographySymbolApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographySymbolApi)?&choreography_symbol_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetNativeSceneRetirementApi=_SiN_GetNativeSceneRetirementApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeSceneRetirementApi* __cdecl
 SiN_GetNativeSceneRetirementApi(std::uint32_t version,std::uint32_t size) noexcept {

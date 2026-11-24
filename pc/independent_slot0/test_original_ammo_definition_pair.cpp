@@ -665,6 +665,12 @@ int main(int argc,char** argv){
     assert(nativeSceneRetirement&&!getNativeSceneRetirement(0,sizeof(tables::NativeSceneRetirementApi))&&!getNativeSceneRetirement(1,0));
     tables::test::check_native_generated_map_dialogue(*nativeGeneratedMapDialogue,*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*responseTimingUpdate,*responseRecord,nativeSceneRetirement);
     std::puts("PASS native Jessica and Count speech through original choreography retirement");
+    const auto getChoreographySymbol=reinterpret_cast<tables::GetChoreographySymbolApi>(GetProcAddress(server,tables::choreography_symbol_export));
+    assert(getChoreographySymbol&&!GetProcAddress(client,tables::choreography_symbol_export));
+    const auto* choreographySymbol=getChoreographySymbol(1,sizeof(tables::ChoreographySymbolApi));
+    assert(choreographySymbol&&!getChoreographySymbol(0,sizeof(tables::ChoreographySymbolApi))&&!getChoreographySymbol(1,0));
+    tables::test::check_choreography_symbol(*choreographySymbol);
+    std::puts("PASS original choreography symbol construction and destruction");
 
 
 
