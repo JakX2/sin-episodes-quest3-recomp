@@ -7,6 +7,7 @@
 #endif
 #include <cassert>
 #include "test_inventory_network_contract_core.h"
+#include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
 namespace d=sin_port::original_ammo;
@@ -47,6 +48,15 @@ int main(int argc,char** argv){
     const auto* ci=ic(wn::version,sizeof(wn::InventoryApi));const auto* si=is(wn::version,sizeof(wn::InventoryApi));
     assert(ci&&si);wn::test::check_inventory(*si,*ci);
     std::puts("PASS actual client/server inventory scalar contract (32 ammo + 48 handles + 2 scalar fields)");
+    namespace tables=sin_port::native_weapon_tables;
+    const auto sendApi=reinterpret_cast<tables::GetSendApi>(GetProcAddress(server,tables::send_export));
+    const auto recvApi=reinterpret_cast<tables::GetRecvApi>(GetProcAddress(client,tables::recv_export));
+    assert(sendApi&&recvApi&&!GetProcAddress(client,tables::send_export)&&!GetProcAddress(server,tables::recv_export));
+    assert(!sendApi(0,sizeof(tables::SendApi))&&!recvApi(1,0));
+    const auto* sa=sendApi(1,sizeof(tables::SendApi));const auto* ra=recvApi(1,sizeof(tables::RecvApi));
+    assert(sa&&ra);
+    tables::test::check(*sa,*ra,*serverNet,wn::test::example());
+    std::puts("PASS native PE32 weapon SendTable/RecvTable graphs and scalar proxy dispatch (9 tables, 13 scalar fields)");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

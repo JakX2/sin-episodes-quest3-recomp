@@ -9,6 +9,8 @@ on:
       - 'pc/independent_slot0/server_native_map_host.h'
       - 'pc/independent_slot0/original_ammo_definitions.*'
       - 'pc/independent_slot0/weapon_network_contract.*'
+      - 'pc/independent_slot0/native_weapon_datatables.*'
+      - 'pc/independent_slot0/test_native_weapon_datatables.h'
       - 'pc/independent_slot0/test_weapon_network_contract_core.h'
       - 'pc/independent_slot0/test_original_ammo_definition_pair.cpp'
       - 'src/source_bsp_entities.cpp'
