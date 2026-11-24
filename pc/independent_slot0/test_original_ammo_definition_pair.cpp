@@ -586,6 +586,12 @@ int main(int argc,char** argv){
     tables::test::check_scene_finish(*sceneFinish);
     tables::test::check_native_generated_lifecycle(*nativeGeneratedLifecycle,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,sceneFinish);
     std::puts("PASS original native scene finish, waiting notifications, output and manager completion");
+    const auto getActorEventRecord=reinterpret_cast<tables::GetActorEventRecordApi>(GetProcAddress(server,tables::actor_event_record_export));
+    assert(getActorEventRecord&&!GetProcAddress(client,tables::actor_event_record_export));
+    const auto* actorEventRecord=getActorEventRecord(1,sizeof(tables::ActorEventRecordApi));
+    assert(actorEventRecord&&!getActorEventRecord(0,sizeof(tables::ActorEventRecordApi))&&!getActorEventRecord(1,0));
+    tables::test::check_actor_event_records(*actorEventRecord);
+    std::puts("PASS original actor event record construction, conditional stop and check");
 
 
 

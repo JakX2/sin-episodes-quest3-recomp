@@ -5029,6 +5029,81 @@ int __cdecl native_finish_advance(void* scene,unsigned bytes,float dt,const Scen
     return scene_advance(scene,bytes,dt,b,instanced!=0,&h);
 }
 const SceneFinishApi scene_finish_api{version,sizeof(SceneFinishApi),&native_scene_finish,&native_finish_advance};
+// 220f6310 copies named members, not the six padding bytes.
+void copy_actor_event_record(void* dest,const void* source) noexcept {
+    for(unsigned off:{0u,4u,8u,0x10u,0x14u,0x18u,0x20u,0x24u,0x2cu,0x30u,0x34u,0x38u,0x3cu})
+        hologram_write(dest,off,hologram_read<std::uint32_t>(source,off));
+    for(unsigned off:{0xcu,0x1cu,0x28u,0x29u})hologram_write(dest,off,hologram_read<unsigned char>(source,off));
+}
+bool actor_event_rows(void* actor,const ActorEventRecordBindings& h,unsigned count,void*& rows) noexcept {
+    auto* v=static_cast<unsigned char*>(actor)+0x5b8;
+    unsigned extent=0;const auto word=hologram_read<std::uint32_t>(v,0);
+    rows=nullptr;return word&&h.storage(h.context,word,&rows,&extent)&&extent>=count*0x40&&hologram_writable(rows,count*0x40);
+}
+bool actor_event_ready(void* actor,unsigned bytes,const ActorEventRecordBindings* b,unsigned* out) noexcept {
+    return bytes>=0x5cc&&hologram_writable(actor,0x5cc)&&b&&b->storage&&out&&hologram_writable(out,4);
+}
+int __cdecl actor_event_add(void* actor,unsigned bytes,std::uint32_t parsed,void* event,unsigned extent,void* target,
+    const ActorEventRecordBindings* b,unsigned* out) noexcept {
+    if(!actor_event_ready(actor,bytes,b,out)||!b->grow||!b->handle||!b->diagnostic||!b->begin)return 0;
+    const auto h=*b;
+    const auto rejected=[&](ActorEventDiagnostic d){if(!h.diagnostic(h.context,d,parsed))return -1;*out=0;return 1;};
+    if(!parsed||!event)return rejected(ActorEventDiagnostic::NullSceneOrEvent);
+    if(extent<0x2b8||!sin_independent::vgui_layout::Readable(event,0x2b8))return 0;
+    const auto choreo_actor=hologram_read<std::uint32_t>(event,0x2b4);
+    if(!choreo_actor)return rejected(ActorEventDiagnostic::NullChoreoActor);
+    alignas(4) unsigned char record[0x40]{};
+    hologram_write(record,0,scene_word(event));hologram_write(record,4,parsed);
+    std::uint32_t handle=0xffffffffu;if(target&&!h.handle(h.context,target,&handle))return -1;
+    hologram_write(record,0x24,handle);
+    unsigned accepted=0;
+    if(!h.begin(h.context,actor,record,parsed,event,choreo_actor,target,&accepted))return -1;
+    if(!(accepted&0xff))return rejected(ActorEventDiagnostic::StartRejected);
+    auto* v=static_cast<unsigned char*>(actor)+0x5b8;
+    const int count=hologram_read<int>(v,0xc),capacity=hologram_read<int>(v,4);
+    if(count<0||count>=0x100000||capacity<count||capacity>0x100000)return -1;
+    if(count==capacity&&(!h.grow(h.context,v,1)||hologram_read<int>(v,0xc)!=count||
+        hologram_read<int>(v,4)<=count||hologram_read<int>(v,4)>0x100000))return -1;
+    void* rows=nullptr;if(!actor_event_rows(actor,h,static_cast<unsigned>(count+1),rows))return -1;
+    hologram_write(v,0xc,count+1);hologram_write(v,0x10,hologram_read<std::uint32_t>(v,0));
+    copy_actor_event_record(static_cast<unsigned char*>(rows)+count*0x40,record);
+    *out=1;return 1;
+}
+int __cdecl actor_event_stop_one(void* actor,unsigned bytes,std::uint32_t parsed,void* event,int arg,
+    const ActorEventRecordBindings* b,unsigned* out) noexcept {
+    if(!actor_event_ready(actor,bytes,b,out)||!b->stop)return 0;
+    const auto h=*b;auto* v=static_cast<unsigned char*>(actor)+0x5b8;
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(v,0xc);
+        if(count<0||count>0x100000)return -1;
+        if(i>=static_cast<unsigned>(count)){*out=0;return 1;}
+        void* rows=nullptr;if(!actor_event_rows(actor,h,static_cast<unsigned>(count),rows))return -1;
+        auto* row=static_cast<unsigned char*>(rows)+i*0x40;
+        if(hologram_read<std::uint32_t>(row,4)!=parsed||hologram_read<std::uint32_t>(row,0)!=scene_word(event))continue;
+        const auto word=hologram_read<std::uint32_t>(v,0);unsigned accepted=0;
+        if(!h.stop(h.context,actor,row,arg,0,&accepted)||hologram_read<int>(v,0xc)!=count||
+            hologram_read<std::uint32_t>(v,0)!=word)return -1;
+        if(!(accepted&0xff))continue;
+        hologram_write(row,0,0u);hologram_write(row,4,0u);hologram_write(row,0xc,static_cast<unsigned char>(0));
+        if(i+1<static_cast<unsigned>(count))std::memmove(row,row+0x40,(static_cast<unsigned>(count)-i-1)*0x40);
+        hologram_write(v,0xc,count-1);*out=1;return 1;
+    }
+}
+int __cdecl actor_event_check_one(void* actor,unsigned bytes,float time,std::uint32_t parsed,void* event,
+    const ActorEventRecordBindings* b,unsigned* out) noexcept {
+    if(!actor_event_ready(actor,bytes,b,out)||!b->check)return 0;
+    const auto h=*b;const int count=hologram_read<int>(actor,0x5c4);
+    if(count<0||count>0x100000)return -1;
+    void* rows=nullptr;if(count&&!actor_event_rows(actor,h,static_cast<unsigned>(count),rows))return -1;
+    for(int i=0;i<count;++i){
+        auto* row=static_cast<unsigned char*>(rows)+i*0x40;
+        if(hologram_read<std::uint32_t>(row,4)!=parsed||hologram_read<std::uint32_t>(row,0)!=scene_word(event))continue;
+        unsigned accepted=0;if(!h.check(h.context,actor,row,time,parsed,event,&accepted))return -1;
+        *out=(accepted&0xff)!=0;return 1;
+    }
+    *out=1;return 1;
+}
+const ActorEventRecordApi actor_event_record_api{version,sizeof(ActorEventRecordApi),&actor_event_add,&actor_event_stop_one,&actor_event_check_one};
 int __cdecl integrated_scene(void* npc,const char* name,float delay,const NpcScenePlaybackBindings* b,const SceneEntityLifecycleBindings* life,float* out) noexcept {
     if(!life)return 0;const auto h=*life;
     return npc_scene_play(npc,name,delay,b,out,false,&h);
@@ -9622,6 +9697,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetActorEventRecordApi=_SiN_GetActorEventRecordApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ActorEventRecordApi* __cdecl
+SiN_GetActorEventRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ActorEventRecordApi)?&actor_event_record_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetSceneFinishApi=_SiN_GetSceneFinishApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneFinishApi* __cdecl
 SiN_GetSceneFinishApi(std::uint32_t version,std::uint32_t size) noexcept {
