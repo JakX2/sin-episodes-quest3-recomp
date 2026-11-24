@@ -1301,4 +1301,39 @@ inline void check_actor_event_records(const ActorEventRecordApi& api){
     f.fail_stop=false;assert(api.stop(f.actor,sizeof(f.actor),0x2222,f.event,7,&f.b,&out)==1&&!out&&F::word(f.actor,0x5c4)==1);
 }
 
+
+inline void check_scene_speech_policy(const SceneSpeechPolicyApi& api){
+    using F=ScenePlaybackFixture;alignas(4) unsigned char event[0x3c0]{},scene[0x5ec]{};
+    char text[128]{};unsigned available=99;
+    std::strcpy(reinterpret_cast<char*>(event+0x84),"Jessica.Primary");
+    std::strcpy(reinterpret_cast<char*>(event+0x350),"Jessica.Caption");
+    assert(api.token(event,sizeof(event),text,sizeof(text),&available)==1&&available&&!std::strcmp(text,"Jessica.Caption"));
+    assert(api.sound(event,sizeof(event),0,0,0,text,sizeof(text),&available)==1&&available&&!std::strcmp(text,"Jessica.Primary"));
+    assert(api.sound(event,sizeof(event),1,1,0,text,sizeof(text),&available)==1&&available&&!std::strcmp(text,"Jessica.Primary"));
+    assert(api.sound(event,sizeof(event),1,0,0,text,sizeof(text),&available)==1&&available&&!std::strcmp(text,"Jessica.Caption"));
+    assert(api.sound(event,sizeof(event),1,1,1,text,8,&available)==1&&available&&!std::strcmp(text,"Jessica"));
+    F::put(event,0x34c,1);assert(api.token(event,sizeof(event),text,sizeof(text),&available)==1&&available);
+    event[0x390]=1;assert(api.token(event,sizeof(event),text,sizeof(text),&available)==1&&!available&&!*text);
+    assert(api.sound(event,sizeof(event),1,0,0,text,sizeof(text),&available)==1&&!available&&!std::strcmp(text,"Jessica.Primary"));
+    F::put(event,0x34c,2);assert(api.sound(event,sizeof(event),0,0,1,text,sizeof(text),&available)==1&&!available);
+    F::put(event,0x34c,3);assert(api.sound(event,sizeof(event),1,0,0,text,sizeof(text),&available)==1&&available&&!std::strcmp(text,"Jessica.Primary"));
+    F::put(event,0x34c,0);event[0x350]=0;
+    assert(api.token(event,sizeof(event),text,sizeof(text),&available)==1&&available&&!std::strcmp(text,"Jessica.Primary"));
+    F::fl(scene,0x3dc,3);F::fl(event,0x184,2);F::fl(event,0x188,5);SceneSpeechTiming timing{};
+    assert(api.timing(scene,sizeof(scene),event,sizeof(event),10,&timing)==1&&timing.offset==1&&timing.absolute_start==9&&timing.remaining==2);
+    F::fl(event,0x188,-1);assert(api.timing(scene,sizeof(scene),event,sizeof(event),10,&timing)==1&&timing.remaining==-1);
+    struct Queue {
+        alignas(4) unsigned char manager[scene_manager_bytes]{},rows[2][0x8c]{};
+        int actor=0;unsigned grows=0;
+    } q;
+    SceneSpeechQueueBindings b{};b.context=&q;
+    b.handle=[](void* p,void* a,std::uint32_t* out) noexcept -> int{auto& f=*static_cast<Queue*>(p);assert(a==&f.actor);*out=0x7001;return 1;};
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{auto& f=*static_cast<Queue*>(p);assert(w==F::ptr(f.rows));*out=f.rows;*bytes=sizeof(f.rows);return 1;};
+    b.grow=[](void* p,void* v,unsigned n) noexcept -> int{auto& f=*static_cast<Queue*>(p);assert(v==f.manager+0x3a8&&n==1);++f.grows;F::put(v,0,F::ptr(f.rows));F::put(v,4,2);return 1;};
+    assert(api.queue(q.manager,sizeof(q.manager),&q.actor,"Jessica.Primary",80,1.f,&b)==1&&q.grows==1);
+    assert(F::word(q.rows[0],0)==0x7001&&!std::strcmp(reinterpret_cast<char*>(q.rows[0]+4),"Jessica.Primary")&&F::word(q.rows[0],0x84)==80&&F::word(q.rows[0],0x88)==0x3f800000);
+    assert(api.queue(q.manager,sizeof(q.manager),nullptr,"Count.Line",75,-.5f,&b)==1&&q.grows==1&&F::word(q.manager,0x3b4)==2);
+    assert(F::word(q.rows[1],0)==0xffffffffu&&F::word(q.rows[1],0x88)==0xbf000000&&F::word(q.manager,0x3b8)==F::ptr(q.rows));
+}
+
 }
