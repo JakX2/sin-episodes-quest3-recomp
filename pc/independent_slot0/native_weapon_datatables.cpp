@@ -8,6 +8,7 @@
 #include "native_radio_hud.h"
 #include "native_radio_entity.h"
 #include "native_radio_transport.h"
+#include "native_generic_actor.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3587,6 +3588,62 @@ int __cdecl radio_delivery_notify(const RadioDeliveryBindings* b,unsigned active
     return h.send(h.context,player,1,radio_message_name,payload,bytes)?1:-1;
 }
 const RadioDeliveryApi radio_delivery_api{version,sizeof(RadioDeliveryApi),&radio_delivery_register,&radio_delivery_notify};
+
+constexpr ActorField generic_actor_fields[]={
+    {"bloodColor",ActorFieldKind::Key,5,0x1000},
+    {"initialHealth",ActorFieldKind::Key,5,0x1004},
+    {"heads",ActorFieldKind::Key,5,0x1008},
+    {"dontHammerBBox",ActorFieldKind::Key,5,0x1010},
+    {"m_shouldCollideWithPlayer",ActorFieldKind::Save,6,0x100c},
+    {"PlayerCollide",ActorFieldKind::Input,6,0x100c}
+};
+const ActorSchema generic_actor_schema{"npc_generic_actor",generic_actor_bytes,6,generic_actor_fields};
+const ActorSchema* __cdecl generic_actor_get_schema() noexcept{return &generic_actor_schema;}
+int __cdecl generic_actor_key(HologramControl* c,const char* name,const ActorValue* v) noexcept {
+    if(!health_control(c,generic_actor_bytes)||!v||!sin_independent::vgui_layout::Readable(v,sizeof(*v))||v->type!=5)return 0;
+    char key[64]{};if(!prop_key_read(name,key))return 0;
+    for(const auto& field:generic_actor_fields)if(field.kind==ActorFieldKind::Key&&!std::strcmp(field.name,key)){
+        hologram_write(c->object,field.offset,v->word);return 1;
+    }
+    return 0;
+}
+int __cdecl generic_actor_spawn_profile(HologramControl* c,const ActorBindings* b) noexcept {
+    if(!health_control(c,generic_actor_bytes)||!b||!b->health_dirty)return 0;
+    c->busy=1;auto* npc=c->object;const auto h=*b;
+    // 22357a2f..22357a9b; original blood setter is a single dword write.
+    hologram_write(npc,0x614,hologram_read<int>(npc,0x1000));
+    if(hologram_read<int>(npc,0x9c)!=hologram_read<int>(npc,0x1004)){
+        if(!h.health_dirty(h.context,npc))return disp_finish(c,false);
+        hologram_write(npc,0x9c,hologram_read<int>(npc,0x1004));
+    }
+    hologram_write(npc,0x618,0.5f);
+    hologram_write(npc,0x850,0);
+    hologram_write(npc,0x100c,static_cast<unsigned char>(1));
+    // 22030390 is a plain OR of capabilities at +8ec, twice in original.
+    hologram_write(npc,0x8ec,hologram_read<unsigned>(npc,0x8ec)|0x800801u);
+    hologram_write(npc,0x8ec,hologram_read<unsigned>(npc,0x8ec)|0x02000000u);
+    hologram_write(npc,0xbb,static_cast<unsigned char>(hologram_read<unsigned char>(npc,0xbb)|0x58u));
+    return disp_finish(c,true);
+}
+int __cdecl generic_actor_damage(HologramControl* c,const ActorBindings* b,PlayerDamageInfo* info,int* result) noexcept {
+    if(!health_control(c,generic_actor_bytes)||!b||!b->behavior_damage||!b->base_damage||!info||!result||
+       !hologram_writable(info,sizeof(*info)))return 0;
+    c->busy=1;const auto h=*b;
+    const auto behavior=hologram_read<std::uint32_t>(c->object,0xc18);
+    return disp_finish(c,behavior?h.behavior_damage(h.context,behavior,info,result)!=0:h.base_damage(h.context,c->object,info,result)!=0);
+}
+int __cdecl generic_actor_observe(HologramControl* c,const ActorBindings* b,const void* obs) noexcept {
+    if(!health_control(c,generic_actor_bytes)||!b||!b->behavior_observe||!obs)return 0;
+    const auto behavior=hologram_read<std::uint32_t>(c->object,0xc18);
+    if(!behavior)return 1;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,h.behavior_observe(h.context,behavior,obs)!=0);
+}
+int __cdecl generic_actor_semaphore(HologramControl* c,unsigned* uses) noexcept {
+    if(!health_control(c,generic_actor_bytes)||!uses)return 0;
+    return character_semaphore(c,uses);
+}
+const GenericActorApi generic_actor_api{version,sizeof(GenericActorApi),&generic_actor_get_schema,&generic_actor_key,&generic_actor_spawn_profile,&generic_actor_damage,&generic_actor_observe,&generic_actor_semaphore,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5457,6 +5514,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioDeli
 SiN_GetRadioDeliveryApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioDeliveryApi)?&radio_delivery_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetGenericActorApi=_SiN_GetGenericActorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::GenericActorApi* __cdecl
+SiN_GetGenericActorApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(GenericActorApi)?&generic_actor_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

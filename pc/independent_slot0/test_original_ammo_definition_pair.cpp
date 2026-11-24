@@ -17,6 +17,7 @@
 #include "test_native_radio_hud.h"
 #include "test_native_radio_entity.h"
 #include "test_native_radio_transport.h"
+#include "test_native_generic_actor.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -411,6 +412,12 @@ int main(int argc,char** argv){
     assert(radioDelivery&&radioRoute&&!getRadioDelivery(0,sizeof(tables::RadioDeliveryApi))&&!getRadioRoute(1,0));
     tables::test::check_radio_transport(*radioMessage,*radioEntity,*radioPlayback,*radioDelivery,*radioHud,*radioRoute);
     std::puts("PASS composed env_radio_message through scheduler, original recipient gate, wire and native client HUD");
+    const auto getGenericActor=reinterpret_cast<tables::GetGenericActorApi>(GetProcAddress(server,tables::generic_actor_export));
+    assert(getGenericActor&&!GetProcAddress(client,tables::generic_actor_export));
+    const auto* genericActor=getGenericActor(1,sizeof(tables::GenericActorApi));
+    assert(genericActor&&!getGenericActor(0,sizeof(tables::GenericActorApi))&&!getGenericActor(1,0));
+    tables::test::check_generic_actor(*genericActor);
+    std::puts("PASS native generic actor map fields, spawn profile and active behavior routing");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
