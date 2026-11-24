@@ -2575,3 +2575,30 @@ else()
 endif()
 add_test(NAME sin_pc_fixed_difficulty_trigger_phase663
   COMMAND $<TARGET_FILE:sin_pc_fixed_difficulty_trigger_phase663_tests>)
+
+# Phase664 native Win32 x86: exact original 14-metric address adapter and
+# Source ConVar host contract (tested with synthetic engine/guest memory).
+add_library(sin_pc_fixed_metric_bridge_phase664 STATIC
+  ../../src/fixed_metric_bridge_phase664.cpp)
+target_include_directories(sin_pc_fixed_metric_bridge_phase664 PUBLIC ../../include)
+target_link_libraries(sin_pc_fixed_metric_bridge_phase664 PUBLIC
+  sin_pc_fixed_difficulty_phase663)
+set_target_properties(sin_pc_fixed_metric_bridge_phase664 PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_fixed_metric_bridge_phase664
+  sin_pc_fixed_metric_bridge_phase664)
+add_executable(sin_pc_fixed_metric_bridge_phase664_tests
+  ../../tests/test_fixed_metric_bridge_phase664.cpp)
+target_link_libraries(sin_pc_fixed_metric_bridge_phase664_tests PRIVATE
+  sin_pc_fixed_metric_bridge_phase664)
+set_target_properties(sin_pc_fixed_metric_bridge_phase664_tests PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+sin_pc_configure(sin_pc_fixed_metric_bridge_phase664_tests
+  sin_pc_fixed_metric_bridge_phase664_tests)
+if(MSVC)
+  target_compile_options(sin_pc_fixed_metric_bridge_phase664_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(sin_pc_fixed_metric_bridge_phase664_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME sin_pc_fixed_metric_bridge_phase664
+  COMMAND $<TARGET_FILE:sin_pc_fixed_metric_bridge_phase664_tests>)
