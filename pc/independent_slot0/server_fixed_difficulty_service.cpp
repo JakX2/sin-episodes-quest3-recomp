@@ -1,4 +1,5 @@
 #include "server_fixed_difficulty_service.h"
+#include "original_ammo_definitions.h"
 #include "phase45_zoom_transition.hpp"
 #include "phase47_ads_activity.hpp"
 #include "sin_compat/original_server_scattergun_ammo.hpp"
@@ -1217,7 +1218,7 @@ int SIN_FIXED_CALL combat_ammo(abi::MapEntityRef owner,const abi::AmmoRequest* i
     if(in.operation!=abi::AmmoClear&&(in.index<0||in.index>=static_cast<std::int32_t>(abi::ammo_slots)))
         return finish(abi::AmmoRejected);
     if(!host||host->version!=abi::ammo_version||host->size!=sizeof(*host)||!host->live||
-       !host->read||((in.operation==abi::AmmoGetCount||in.operation==abi::AmmoRemove)&&!host->max_count)||
+       !host->read||
        (in.operation!=abi::AmmoGetCount&&(!host->notify||!host->store)))return finish(abi::AmmoRejected);
     const auto cb=*host;
     OutputScope scope;
@@ -1242,7 +1243,8 @@ int SIN_FIXED_CALL combat_ammo(abi::MapEntityRef owner,const abi::AmmoRequest* i
         if(!cb.live(context,owner))return finish(abi::AmmoRejected);
         ++report.delivered;
         if(in.operation==abi::AmmoGetCount||in.operation==abi::AmmoRemove){
-            std::int32_t max=0;call(cb.max_count,in.index,&max);
+            std::int32_t max=sin_port::original_ammo::original_max_carry(in.index);
+            if(cb.max_count)call(cb.max_count,in.index,&max);
             if(max==-2){
                 report.infinite=1;
                 if(in.operation==abi::AmmoGetCount){report.value=999;return finish(abi::AmmoRead);}

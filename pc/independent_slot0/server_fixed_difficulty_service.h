@@ -726,6 +726,7 @@ struct AmmoHost {
     std::uint32_t version,size;
     // Host resolves the live owner and verified original ammo definition.
     // max_count == -2 is infinite. It can come from an original ConVar.
+    // Null max_count uses the exact original shared 17-definition table.
     int (SIN_FIXED_CALL *live)(void*,MapEntityRef);
     int (SIN_FIXED_CALL *max_count)(void*,std::int32_t,std::int32_t*);
     int (SIN_FIXED_CALL *read)(void*,MapEntityRef,std::int32_t,std::int32_t*);
