@@ -1140,4 +1140,74 @@ inline void check_scene_actor_events(const SceneActorEventsApi& api){
     assert(api.stop_actor(failed.actor,sizeof(failed.actor),F::ptr(failed.root),7,&failed.b)==-1&&failed.stops==1&&F::word(failed.actor,0x5c4)==5&&F::word(failed.rows[4],0)==5);
 }
 
+
+struct NativeGeneratedLifecycleFixture:AllocatedSceneFixture {
+    alignas(4) unsigned char npc_memory[0x604]{},event_records[2][0x40]{};
+    std::uint32_t scene_refs[2]{};
+    NativeGeneratedLifecycleBindings full{};
+    const NativeGeneratedLifecycleApi& api;
+    unsigned actor_grows=0,record_stops=0,outputs=0,refreshes=0,startup_calls=0;
+    static NativeGeneratedLifecycleFixture& get_full(void* p){
+        return static_cast<NativeGeneratedLifecycleFixture&>(IntegratedSceneFixture::get(p));
+    }
+    NativeGeneratedLifecycleFixture(const NativeGeneratedLifecycleApi& n,const SceneManagerTickApi& m,const SceneAdvanceApi& a,const SceneEntityLifecycleApi& e)
+        :AllocatedSceneFixture(m,a,e),api(n){
+        actor=npc_memory;play.start=nullptr;life.stop_events=nullptr;life.detach=nullptr;life.actor=nullptr;
+        // Preexisting active actor event for the same parsed storage; native
+        // start must stop it after reset. Unrelated record must survive.
+        F::put(npc_memory,0x5b8,F::ptr(event_records));F::put(npc_memory,0x5bc,2);F::put(npc_memory,0x5c4,2);
+        F::put(event_records[0],0,1);F::put(event_records[0],4,parsed_word);event_records[0][0xc]=1;
+        F::put(event_records[1],0,2);F::put(event_records[1],4,0x9876);event_records[1][0xc]=1;
+        full.playback=play;full.lifecycle=life;full.generation=gen;full.allocation=allocation;
+        auto& start=full.startup;auto& stop=full.stop;
+        start.context=static_cast<IntegratedSceneFixture*>(this);stop.context=start.context;stop.records.context=start.context;
+        start.parsed=play.resolve_parsed;stop.parsed=start.parsed;
+        start.actor=[](void* p,void* s,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get_full(p);assert(s==f.scene&&!i);*out=f.npc_memory;*bytes=sizeof(f.npc_memory);return 1;};
+        stop.actor=start.actor;
+        start.is_npc=[](void* p,void* actor,unsigned* out) noexcept -> int{assert(actor==get_full(p).npc_memory);*out=1;return 1;};
+        start.speaking=[](void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+        start.reset.events=play.duration;start.reset.context=start.context;
+        start.reset.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        start.reset.grow=[](void*,void*,unsigned) noexcept -> int{assert(false);return 0;};
+        stop.events=play.duration;
+        stop.records.storage=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get_full(p);
+            if(w==F::ptr(f.event_records)){*out=f.event_records;*bytes=sizeof(f.event_records);return 1;}
+            assert(w==F::ptr(f.scene_refs));*out=f.scene_refs;*bytes=sizeof(f.scene_refs);return 1;};
+        stop.records.grow=[](void* p,void* v,unsigned n) noexcept -> int{
+            auto& f=get_full(p);assert(v==f.npc_memory+0x5ec&&n==1);++f.actor_grows;
+            F::put(v,0,F::ptr(f.scene_refs));F::put(v,4,2);return 1;};
+        stop.records.stop_record=[](void* p,void* a,void* r,int zero,int arg) noexcept -> int{
+            auto& f=get_full(p);assert(a==f.npc_memory&&r==f.event_records[0]&&!zero&&!arg&&F::word(r,4)==f.parsed_word);
+            ++f.record_stops;return 1;};
+        start.refresh=[](void* p,void* s) noexcept -> int{
+            auto& f=get_full(p);assert(s==f.scene&&f.scene[0x3d8]&&F::word(f.parsed,0x88)==F::word(f.event,0x188)&&F::word(f.npc_memory,0x5f8)==1);
+            ++f.refreshes;return 1;};
+        start.output=[](void* p,void* out,void* a,void* c,float d) noexcept -> int{
+            auto& f=get_full(p);assert(out==f.scene+0x41c&&a==f.scene&&c==f.scene&&!d&&f.record_stops==1);++f.outputs;return 1;};
+        start.startup_events=[](void* p,void* s,std::uint32_t w) noexcept -> int{
+            auto& f=get_full(p);assert(s==f.scene&&w==f.parsed_word&&f.outputs==1);++f.startup_calls;return 1;};
+        manager_tick.advance=[](void* p,void* s,float dt) noexcept -> int{
+            auto& f=get_full(p);assert(s==f.scene&&dt==.1f&&f.control.ticking);
+            if(f.tick.instanced(s,sizeof(f.scene),dt,&f.advance)!=1)return 0;
+            if(f.remove_pending){
+                if(f.api.remove(s,sizeof(f.scene),&f.full.lifecycle,&f.full.stop)!=1)return 0;
+                f.scene_live=false;f.remove_pending=false;
+            }return 1;};
+    }
+};
+inline void check_native_generated_lifecycle(const NativeGeneratedLifecycleApi& api,const SceneManagerTickApi& manager,const SceneAdvanceApi& tick,const SceneEntityLifecycleApi& entity){
+    using F=ScenePlaybackFixture;NativeGeneratedLifecycleFixture f(api,manager,tick,entity);float duration=99;
+    assert(!f.full.playback.start&&!f.full.lifecycle.generate&&!f.full.lifecycle.detach&&!f.full.lifecycle.stop_events&&!f.full.startup.attach&&!f.full.startup.stop_events);
+    assert(api.sound(f.actor,f.sound,&f.full,&duration)==1&&duration==.1f);
+    assert(f.actor_grows==1&&f.record_stops==1&&f.outputs==1&&f.startup_calls==1&&f.refreshes==1);
+    assert(F::word(f.npc_memory,0x5f8)==1&&f.scene_refs[0]==f.parsed_word&&F::word(f.npc_memory,0x5c4)==1&&F::word(f.event_records[0],4)==0x9876);
+    assert(!F::word(f.parsed,0x78)&&F::word(f.parsed,0x8c)==1);
+    for(unsigned i=0;i<4;++i)assert(manager.tick(&f.control,&f.manager_tick)==1);
+    assert(f.steps==4&&f.finished==1&&f.destroyed==1&&!f.scene_live&&!f.parsed_live&&!F::word(f.manager,0x3a0));
+    assert(!F::word(f.npc_memory,0x5f8)&&f.npc_memory[0x600]&&F::word(f.npc_memory,0x5c4)==1&&f.record_stops==1);
+    assert(manager.destroy(&f.control,&f.manager_life)==1&&f.freed==1);
+}
+
 }

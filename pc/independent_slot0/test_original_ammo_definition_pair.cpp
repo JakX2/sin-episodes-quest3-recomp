@@ -573,6 +573,12 @@ int main(int argc,char** argv){
     assert(sceneActorEvents&&!getSceneActorEvents(0,sizeof(tables::SceneActorEventsApi))&&!getSceneActorEvents(1,0));
     tables::test::check_scene_actor_events(*sceneActorEvents);
     std::puts("PASS original native actor scene association, record cleanup and recursive scene stop");
+    const auto getNativeGeneratedLifecycle=reinterpret_cast<tables::GetNativeGeneratedLifecycleApi>(GetProcAddress(server,tables::native_generated_lifecycle_export));
+    assert(getNativeGeneratedLifecycle&&!GetProcAddress(client,tables::native_generated_lifecycle_export));
+    const auto* nativeGeneratedLifecycle=getNativeGeneratedLifecycle(1,sizeof(tables::NativeGeneratedLifecycleApi));
+    assert(nativeGeneratedLifecycle&&!getNativeGeneratedLifecycle(0,sizeof(tables::NativeGeneratedLifecycleApi))&&!getNativeGeneratedLifecycle(1,0));
+    tables::test::check_native_generated_lifecycle(*nativeGeneratedLifecycle,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
+    std::puts("PASS native generated scene lifecycle with original start, association and stop");
 
 
 

@@ -3882,10 +3882,24 @@ std::uint32_t scene_word(const void* p) noexcept {
 }
 int __cdecl scene_entity_activate(void*,unsigned,const SceneEntityLifecycleBindings*) noexcept;
 int scene_entity_activate_impl(void*,unsigned,const SceneEntityLifecycleBindings*,const GeneratedSceneBindings*,const GeneratedSceneAllocationBindings*) noexcept;
+int native_scene_start_impl(void*,unsigned,const SceneStartBindings*,SceneStartResult*,const SceneStopBindings*) noexcept;
+int __cdecl scene_actor_attach(void*,unsigned,std::uint32_t,const SceneActorEventBindings*) noexcept;
+int __cdecl scene_actor_detach(void*,unsigned,std::uint32_t,const SceneActorEventBindings*) noexcept;
+int __cdecl scene_stop_events(void*,unsigned,std::uint32_t,int,const SceneStopBindings*) noexcept;
+bool scene_stop_ready(const SceneStopBindings* b) noexcept {
+    return b&&b->parsed&&b->actor&&b->events.event&&b->records.storage&&b->records.stop_record;
+}
+bool scene_start_ready(const SceneStartBindings* b,const SceneStopBindings* stop) noexcept {
+    return b&&b->parsed&&b->actor&&b->is_npc&&b->speaking&&b->refresh&&b->output&&b->startup_events&&
+        b->reset.events.event&&b->reset.storage&&b->reset.grow&&
+        (stop?(scene_stop_ready(stop)&&stop->records.grow):(b->attach&&b->stop_events));
+}
 int npc_scene_play(void* npc,const char* name,float delay,const NpcScenePlaybackBindings* b,float* out,bool generated,
                    const SceneEntityLifecycleBindings* lifecycle=nullptr,const GeneratedSceneBindings* generation=nullptr,
-                   const GeneratedSceneAllocationBindings* allocation=nullptr) noexcept {
-    if(!npc||!name||!b||!b->create||!b->actor_handle||(!lifecycle&&!b->activate)||!b->start||!b->missing||
+                   const GeneratedSceneAllocationBindings* allocation=nullptr,const SceneStartBindings* startup=nullptr,
+                   const SceneStopBindings* stop=nullptr) noexcept {
+    if(!npc||!name||!b||!b->create||!b->actor_handle||(!lifecycle&&!b->activate)||
+       (startup?!scene_start_ready(startup,stop):!b->start)||!b->missing||
        !b->resolve_parsed||!b->duration.event||!out||!hologram_writable(out,sizeof(*out))||
        (generated?!b->spawn_sound:(!b->resolve_name||!b->set_delay||!b->register_scene||!b->set_parsed_flag)))return 0;
     const auto h=*b;void* entity=nullptr;unsigned bytes=0;
@@ -3915,7 +3929,10 @@ int npc_scene_play(void* npc,const char* name,float delay,const NpcScenePlayback
         hologram_write(entity,0x5e8,static_cast<unsigned char>(0));
         if(parsed&&!h.set_parsed_flag(h.context,parsed,0))return -1;
     }
-    if(!h.start(h.context,entity))return -1;
+    if(startup){
+        SceneStartResult result{};
+        if(native_scene_start_impl(entity,bytes,startup,&result,stop)!=1)return -1;
+    }else if(!h.start(h.context,entity))return -1;
     const auto parsed=hologram_read<std::uint32_t>(entity,0x40c);
     if(!parsed){
         if(!h.missing(h.context,generated?name:buffer,generated?1u:0u))return -1;
@@ -4417,12 +4434,12 @@ int __cdecl allocated_sound(void* npc,const char* name,const NpcScenePlaybackBin
     return npc_scene_play(npc,name,0,b,out,true,&l,&g,&a);
 }
 const AllocatedGeneratedSceneApi allocated_generated_scene_api{version,sizeof(AllocatedGeneratedSceneApi),&allocated_generate,&allocated_activate,&allocated_sound};
-int __cdecl scene_entity_cleanup(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
-    if(bytes<0x410||!hologram_writable(scene,0x410)||!b||!b->stop_events||!b->parsed||
-       !b->actor||!b->detach||!b->destroy_parsed)return 0;
+int scene_entity_cleanup_impl(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop) noexcept {
+    if(bytes<0x410||!hologram_writable(scene,0x410)||!b||!b->parsed||!b->destroy_parsed||
+       (stop?!scene_stop_ready(stop):(!b->stop_events||!b->actor||!b->detach)))return 0;
     const auto h=*b;auto parsed=hologram_read<std::uint32_t>(scene,0x40c);
     if(parsed){
-        if(!h.stop_events(h.context,scene,parsed,0))return -1;
+        if(!(stop?scene_stop_events(scene,bytes,parsed,0,stop)==1:h.stop_events(h.context,scene,parsed,0)!=0))return -1;
         for(unsigned i=0;;++i){
             parsed=hologram_read<std::uint32_t>(scene,0x40c);
             if(!parsed)return -1;
@@ -4431,8 +4448,12 @@ int __cdecl scene_entity_cleanup(void* scene,unsigned bytes,const SceneEntityLif
             const int count=hologram_read<int>(p,0x20);
             if(count<=0||i>=static_cast<unsigned>(count))break;
             if(count>0x100000)return -1;
-            void* actor=nullptr;if(!h.actor(h.context,scene,i,&actor))return -1;
-            if(actor&&!h.detach(h.context,actor,hologram_read<std::uint32_t>(scene,0x40c)))return -1;
+            void* actor=nullptr;unsigned actor_bytes=0;
+            if(!(stop?stop->actor(stop->context,scene,i,&actor,&actor_bytes)!=0:h.actor(h.context,scene,i,&actor)!=0))return -1;
+            if(actor){
+                const auto word=hologram_read<std::uint32_t>(scene,0x40c);
+                if(!(stop?scene_actor_detach(actor,actor_bytes,word,&stop->records)==1:h.detach(h.context,actor,word)!=0))return -1;
+            }
         }
     }
     parsed=hologram_read<std::uint32_t>(scene,0x40c);
@@ -4443,12 +4464,18 @@ int __cdecl scene_entity_cleanup(void* scene,unsigned bytes,const SceneEntityLif
     }else hologram_write(scene,0x40c,0u);
     return 1;
 }
-int __cdecl scene_entity_remove(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
+int __cdecl scene_entity_cleanup(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
+    return scene_entity_cleanup_impl(scene,bytes,b,nullptr);
+}
+int scene_entity_remove_impl(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop) noexcept {
     if(!b||!b->base_remove||!b->manager)return 0;
-    const auto h=*b;const auto clean=scene_entity_cleanup(scene,bytes,&h);
+    const auto h=*b;const auto clean=scene_entity_cleanup_impl(scene,bytes,&h,stop);
     if(clean!=1)return clean;
     if(!h.base_remove(h.context,scene))return -1;
     return scene_entity_registration(scene,h,false);
+}
+int __cdecl scene_entity_remove(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
+    return scene_entity_remove_impl(scene,bytes,b,nullptr);
 }
 const SceneEntityLifecycleApi scene_entity_lifecycle_api{version,sizeof(SceneEntityLifecycleApi),&scene_entity_activate,&scene_entity_cleanup,&scene_entity_remove};
 int __cdecl parsed_scene_resume(void* parsed,unsigned bytes,const ParsedSceneResumeBindings* b) noexcept {
@@ -4727,10 +4754,9 @@ int __cdecl choreography_reset(void* parsed,unsigned bytes,unsigned forward,std:
 const ParsedSceneResetApi parsed_scene_reset_api{version,sizeof(ParsedSceneResetApi),&choreography_event_reset,&choreography_bounds,&choreography_reset};
 // 221adcd0. Virtual leaves remain hosted, but native code owns the
 // admission, deferred flag, mutation sequence and original reset.
-int __cdecl native_scene_start(void* scene,unsigned bytes,const SceneStartBindings* b,SceneStartResult* out) noexcept {
+int native_scene_start_impl(void* scene,unsigned bytes,const SceneStartBindings* b,SceneStartResult* out,const SceneStopBindings* stop) noexcept {
     if(bytes<0x55c||!hologram_writable(scene,0x55c)||!out||!hologram_writable(out,sizeof(*out))||
-       !b||!b->parsed||!b->actor||!b->is_npc||!b->speaking||!b->attach||!b->refresh||!b->stop_events||
-       !b->output||!b->startup_events||!b->reset.events.event||!b->reset.storage||!b->reset.grow)return 0;
+       !scene_start_ready(b,stop))return 0;
     const auto h=*b;
     const auto complete=[&](SceneStartResult r){*out=r;return 1;};
     if(!hologram_read<std::uint32_t>(scene,0x40c)||hologram_read<unsigned char>(scene,0x3d8))
@@ -4760,7 +4786,8 @@ int __cdecl native_scene_start(void* scene,unsigned bytes,const SceneStartBindin
                 if(speaking&0xff){hologram_write(scene,0x3f5,static_cast<unsigned char>(1));return complete(SceneStartResult::Deferred);}
             }
         }
-        if(!h.attach(h.context,actor,hologram_read<std::uint32_t>(scene,0x40c)))return -1;
+        const auto word=hologram_read<std::uint32_t>(scene,0x40c);
+        if(!(stop?scene_actor_attach(actor,n,word,&stop->records)==1:h.attach(h.context,actor,word)!=0))return -1;
     }
     hologram_write(scene,0x3f5,static_cast<unsigned char>(0));
     hologram_write(scene,0x3d8,static_cast<unsigned char>(1));
@@ -4768,10 +4795,14 @@ int __cdecl native_scene_start(void* scene,unsigned bytes,const SceneStartBindin
     hologram_write(scene,0x3dc,0u);
     if(choreography_reset(p,extent,1,0,0,&h.reset)!=1)return -1;
     if(!h.refresh(h.context,scene)||
-       !h.stop_events(h.context,scene,hologram_read<std::uint32_t>(scene,0x40c),0)||
+       !(stop?scene_stop_events(scene,bytes,hologram_read<std::uint32_t>(scene,0x40c),0,stop)==1:
+           h.stop_events(h.context,scene,hologram_read<std::uint32_t>(scene,0x40c),0)!=0)||
        !h.output(h.context,static_cast<unsigned char*>(scene)+0x41c,scene,scene,0.f)||
        !h.startup_events(h.context,scene,hologram_read<std::uint32_t>(scene,0x40c)))return -1;
     return complete(SceneStartResult::Started);
+}
+int __cdecl native_scene_start(void* scene,unsigned bytes,const SceneStartBindings* b,SceneStartResult* out) noexcept {
+    return native_scene_start_impl(scene,bytes,b,out,nullptr);
 }
 const SceneStartApi scene_start_api{version,sizeof(SceneStartApi),&native_scene_start};
 bool scene_actor_storage(const SceneActorEventBindings& h,void* v,unsigned count,unsigned stride,void*& rows) noexcept {
@@ -4874,6 +4905,22 @@ int __cdecl scene_stop_events(void* scene,unsigned bytes,std::uint32_t parsed,in
     return scene_stop_visit(scene,parsed,argument,h,path,0,budget)?1:-1;
 }
 const SceneActorEventsApi scene_actor_events_api{version,sizeof(SceneActorEventsApi),&scene_actor_attach,&scene_actor_detach,&scene_actor_stop,&scene_stop_events};
+int __cdecl native_generated_sound(void* npc,const char* name,const NativeGeneratedLifecycleBindings* b,float* out) noexcept {
+    if(!b||!generated_scene_ready(&b->generation,&b->allocation)||!scene_start_ready(&b->startup,&b->stop))return 0;
+    const auto h=*b;
+    return npc_scene_play(npc,name,0,&h.playback,out,true,&h.lifecycle,&h.generation,&h.allocation,&h.startup,&h.stop);
+}
+int __cdecl native_generated_start(void* scene,unsigned bytes,const SceneStartBindings* b,const SceneStopBindings* stop,SceneStartResult* out) noexcept {
+    if(!stop)return 0;
+    const auto h=*stop;
+    return native_scene_start_impl(scene,bytes,b,out,&h);
+}
+int __cdecl native_generated_remove(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b,const SceneStopBindings* stop) noexcept {
+    if(!stop)return 0;
+    const auto h=*stop;
+    return scene_entity_remove_impl(scene,bytes,b,&h);
+}
+const NativeGeneratedLifecycleApi native_generated_lifecycle_api{version,sizeof(NativeGeneratedLifecycleApi),&native_generated_sound,&native_generated_start,&native_generated_remove};
 int __cdecl parsed_scene_finished(const void* parsed,unsigned bytes,unsigned* out) noexcept {
     if(!parsed||bytes<0x90||!sin_independent::vgui_layout::Readable(parsed,0x90)||
        !out||!hologram_writable(out,sizeof(*out)))return 0;
@@ -9526,6 +9573,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetNativeGeneratedLifecycleApi=_SiN_GetNativeGeneratedLifecycleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeGeneratedLifecycleApi* __cdecl
+SiN_GetNativeGeneratedLifecycleApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeGeneratedLifecycleApi)?&native_generated_lifecycle_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetSceneActorEventsApi=_SiN_GetSceneActorEventsApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneActorEventsApi* __cdecl
 SiN_GetSceneActorEventsApi(std::uint32_t version,std::uint32_t size) noexcept {
