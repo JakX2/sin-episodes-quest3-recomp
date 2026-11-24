@@ -11,6 +11,7 @@
 #include "native_generic_actor.h"
 #include "native_companion_reactions.h"
 #include "native_count_scheduler.h"
+#include "native_use_observation.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3788,6 +3789,53 @@ int __cdecl count_active_observe(HologramControl* c,const CountSchedulerBindings
     return disp_finish(c,h.observe_other(h.context,active,obs,bytes)!=0);
 }
 const CountSchedulerApi count_scheduler_api{version,sizeof(CountSchedulerApi),&count_register_interrogation,&count_select,&count_active_observe};
+
+int __cdecl action_capture_use(HologramControl* c,const UseObservationBindings* b,int descriptor,void* subject) noexcept {
+    if(!health_control(c,0x5e9)||!b||!b->monitor.resolve||!b->monitor.clock||!b->monitor.packed_handle||
+       !b->monitor.sample||!b->event)return 0;
+    c->busy=1;const auto h=*b;const auto& m=h.monitor;auto* obj=static_cast<unsigned char*>(c->object);
+    auto finish=[&](bool ok){return disp_finish(c,ok);};
+    std::uint32_t handle=0xffffffffu;
+    if(subject&&!m.packed_handle(m.context,subject,&handle))return finish(false);
+    hologram_write(obj,0x304,handle);
+    float now=0;if(!m.clock(m.context,&now))return finish(false);
+    hologram_write(obj,0x5c4,now);
+    auto resolve_owner=[&](void*& out){
+        out=nullptr;const auto owner_handle=hologram_read<std::uint32_t>(obj,4);
+        return owner_handle==0xffffffffu||m.resolve(m.context,owner_handle,&out)!=0;
+    };
+    void* owner=nullptr;
+    if(!resolve_owner(owner))return finish(false);
+    ActionEntitySample owner_sample{},subject_sample{};
+    if(!action_snapshot(m,owner,owner_sample)||!action_snapshot(m,subject,subject_sample))return finish(false);
+    hologram_write(obj,0x5c0,descriptor);
+    // 2215c480 copies subject before owner and leaves subobject intact.
+    std::memcpy(obj+0x468,&subject_sample,sizeof(subject_sample));
+    std::memcpy(obj+0x310,&owner_sample,sizeof(owner_sample));
+    if(!hologram_read<int>(obj,0x5c0))return finish(true);
+    if(!resolve_owner(owner))return finish(false);
+    const auto* part=reinterpret_cast<const char*>(obj+0x5c8);
+    if(!std::memchr(part,0,32))return finish(false);
+    return finish(h.event(m.context,hologram_read<int>(obj,0x5c0),owner,subject,part)!=0);
+}
+int __cdecl npc_observation_tick(void* npc,const NpcObservationBindings* b) noexcept {
+    if(!npc||!b||!b->max_clients||!b->single_player||!b->observe)return 0;
+    const auto h=*b;int clients=0;
+    if(!h.max_clients(h.context,&clients))return -1;
+    // Original outer NPC gate accepts <=1; helper returns no player
+    // unless exactly one. Do not invoke the host lookup for zero.
+    if(clients!=1)return 1;
+    void* player=nullptr;unsigned bytes=0;
+    if(!h.single_player(h.context,&player,&bytes))return -1;
+    if(!player)return 1;
+    constexpr unsigned offset=0xc40,extent=0x5e9;
+    if(bytes<offset+extent)return -1;
+    const auto* monitor=static_cast<const unsigned char*>(player)+offset;
+    if(!sin_independent::vgui_layout::Readable(monitor,extent))return -1;
+    if(!monitor[0x300]&&!monitor[0x5e8])return 1;
+    return h.observe(h.context,npc,monitor,extent)?1:-1;
+}
+const UseObservationApi use_observation_api{version,sizeof(UseObservationApi),&action_capture_use,&npc_observation_tick,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5679,6 +5727,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CountSche
 SiN_GetCountSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(CountSchedulerApi)?&count_scheduler_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetUseObservationApi=_SiN_GetUseObservationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::UseObservationApi* __cdecl
+SiN_GetUseObservationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(UseObservationApi)?&use_observation_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
