@@ -12,6 +12,7 @@
 #include "native_companion_reactions.h"
 #include "native_count_scheduler.h"
 #include "native_use_observation.h"
+#include "native_vehicle_use.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3836,6 +3837,69 @@ int __cdecl npc_observation_tick(void* npc,const NpcObservationBindings* b) noex
     return h.observe(h.context,npc,monitor,extent)?1:-1;
 }
 const UseObservationApi use_observation_api{version,sizeof(UseObservationApi),&action_capture_use,&npc_observation_tick,&health_ack};
+
+const char* __cdecl vehicle_part_name(int part) noexcept {
+    constexpr const char* names[]={"Door","AirConditioning","Radio","GloveBox","RightFrontWindow","RearLeftWindow","RearRightWindow","DomeLight","GPS","EmergencyButton","Wipers","GearShift","Sunroof","RearViewMirror","Trunk","Hood"};
+    return part>=0&&part<16?names[part]:nullptr;
+}
+bool vehicle_use_valid(const HologramControl* c,const VehicleUseBindings* b,void* actor,unsigned bytes) noexcept {
+    return health_control(c,0x74c)&&b&&b->pick_part&&b->resolve&&b->participant&&b->outside_seat&&actor&&bytes>=0x9b5&&sin_independent::vgui_layout::Readable(actor,0x9b5);
+}
+bool vehicle_admission(void* vehicle,const VehicleUseBindings& h,void* actor,unsigned& allowed) noexcept {
+    allowed=0;
+    if(!hologram_read<unsigned char>(vehicle,0x74a))return true;
+    int part=-1;
+    if(!h.pick_part(h.context,vehicle,actor,&part))return false;
+    if(part<0)return true;
+    const auto handle=hologram_read<std::uint32_t>(actor,0xe8);
+    void* current=nullptr;
+    if(handle!=0xffffffffu&&!h.resolve(h.context,handle,&current))return false;
+    unsigned player=0;
+    if(!h.participant(h.context,actor,&player))return false;
+    // The original assumes the participant cast succeeds.
+    if(!player)return true;
+    if(current==vehicle){
+        if(hologram_read<unsigned char>(actor,0x9b4)||part>=16)return true;
+        allowed=part!=8&&part!=14&&part!=15;return true;
+    }
+    if(!(hologram_read<unsigned char>(actor,0xbc)&1)||part>=16)return true;
+    if(part==0){
+        int seat=-1;
+        if(!h.outside_seat(h.context,vehicle,actor,&seat))return false;
+        allowed=seat>=0;
+    }else allowed=part==4||part==14||part==15;
+    return true;
+}
+int __cdecl vehicle_can_use(HologramControl* c,const VehicleUseBindings* b,void* actor,unsigned bytes,unsigned* allowed) noexcept {
+    if(!allowed||!vehicle_use_valid(c,b,actor,bytes))return 0;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,vehicle_admission(c->object,h,actor,*allowed));
+}
+int __cdecl vehicle_use(HologramControl* c,const VehicleUseBindings* b,void* actor,unsigned bytes,int type,void* record,unsigned record_bytes,unsigned* executed) noexcept {
+    if(!executed||!vehicle_use_valid(c,b,actor,bytes)||!b->apply_part||!hologram_writable(actor,0x9b5)||
+       (record&&(record_bytes<0x2e0||!hologram_writable(record,0x2e0))))return 0;
+    c->busy=1;const auto h=*b;*executed=0;
+    unsigned allowed=0;
+    if(!vehicle_admission(c->object,h,actor,allowed))return disp_finish(c,false);
+    if(!allowed)return disp_finish(c,true);
+    unsigned player=0;
+    if(!h.participant(h.context,actor,&player))return disp_finish(c,false);
+    if(!player)return disp_finish(c,true);
+    hologram_write(actor,0x93c,hologram_read<std::uint32_t>(actor,0x93c)&~0x20u);
+    if(type!=3)return disp_finish(c,true);
+    int part=-1;
+    if(!h.pick_part(h.context,c->object,actor,&part))return disp_finish(c,false);
+    if(part<0)return disp_finish(c,true);
+    const char* name=vehicle_part_name(part);
+    if(!name)return disp_finish(c,false); // original table assumes valid index
+    if(record){
+        auto* dest=static_cast<char*>(record)+0x2c0;
+        std::memset(dest,0,32);std::memcpy(dest,name,std::strlen(name));
+    }
+    if(!h.apply_part(h.context,c->object,actor,part))return disp_finish(c,false);
+    *executed=1;return disp_finish(c,true);
+}
+const VehicleUseApi vehicle_use_api{version,sizeof(VehicleUseApi),&vehicle_part_name,&vehicle_can_use,&vehicle_use,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5734,6 +5798,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::UseObserv
 SiN_GetUseObservationApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(UseObservationApi)?&use_observation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleUseApi=_SiN_GetVehicleUseApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleUseApi* __cdecl
+SiN_GetVehicleUseApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleUseApi)?&vehicle_use_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
