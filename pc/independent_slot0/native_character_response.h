@@ -1,5 +1,5 @@
 #pragma once
-#include "native_weapon_datatables.h"
+#include "native_action_monitor.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char character_response_export[]="SiN_GetCharacterResponseApi";
 struct CountRegionQuery {float direction[3];int hitbox;float distance;};
@@ -26,4 +26,31 @@ struct CharacterResponseApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetCharacterResponseApi=const CharacterResponseApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char player_look_frame_export[]="SiN_GetPlayerLookFrameApi";
+struct PlayerLookObservation {
+    unsigned hit;
+    void* target;
+    float direction[3],start[3],end[3];
+    int hitbox;
+};
+struct PlayerLookFrameBindings {
+    void* context;
+    // Existing Source trace result supplied by host after original
+    // trace / player-side bookkeeping. No physics or trace implementation.
+    // Original hit entity vslot +44, for the observed entity type.
+    int (__cdecl *classify)(void*,void* target,const CountRegionQuery*,const char**) noexcept;
+    ActionMonitorBindings monitor;
+    LookEventBindings event;
+};
+struct PlayerLookFrameApi {
+    std::uint32_t version,size;
+    int (__cdecl *jessica_region)(HologramControl*,const CountRegionBindings*,const CountRegionQuery*,const char**) noexcept;
+    // Scope: post-trace portion of 2224b790 plus recovered eligibility
+    // portion of 22137aa0. The caller owns preceding engine side effects.
+    // Persistent monitor control must refer to player +0xc40.
+    int (__cdecl *update)(void* player,unsigned bytes,HologramControl*,LookEventState*,const PlayerLookFrameBindings*,const PlayerLookObservation*) noexcept;
+};
+using GetPlayerLookFrameApi=const PlayerLookFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }

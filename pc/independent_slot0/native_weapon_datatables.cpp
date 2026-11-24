@@ -2936,8 +2936,8 @@ int __cdecl count_damage(HologramControl* ctrl,const CountBindings* b,const Play
 }
 const CountInterrogationApi count_api{version,sizeof(CountInterrogationApi),&count_initialize,&count_input,&count_enabled,&count_observe,&count_damage,&health_ack};
 
-int __cdecl count_region(HologramControl* ctrl,const CountRegionBindings* b,const CountRegionQuery* query,const char** result) noexcept {
-    if(!health_control(ctrl,count_size)||!b||!b->forward_xy||!b->hit_identity||!query||!result||
+int character_region_common(HologramControl* ctrl,const CountRegionBindings* b,const CountRegionQuery* query,const char** result,bool count) noexcept {
+    if(!health_control(ctrl,count?count_size:jessica_size)||!b||!b->forward_xy||!b->hit_identity||!query||!result||
        !sin_independent::vgui_layout::Readable(query,sizeof(*query)))return 0;
     *result=nullptr;
     // Original x87 ordered greater-than; exactly 180 is accepted.
@@ -2953,13 +2953,16 @@ int __cdecl count_region(HologramControl* ctrl,const CountRegionBindings* b,cons
     if(!prop_key_read(bone,name))return finish(false);
     // These case-sensitive bone substrings precede the hitgroup table.
     if(std::strstr(name,"Bip01_Pelvis"))*result=positive?"butt":"crotch";
-    else if(std::strstr(name,"Hand"))*result="hand";
-    else if(std::strstr(name,"Calf"))*result="knee";
+    else if(count&&std::strstr(name,"Hand"))*result="hand";
+    else if(count&&std::strstr(name,"Calf"))*result="knee";
     else {
         static constexpr const char* groups[]={"generic stuff","head","chest","stomach","left arm","right arm","left leg","right leg"};
         if(group>=0&&group<8)*result=group==2&&positive?"back":groups[group];
     }
     return finish(true);
+}
+int __cdecl count_region(HologramControl* ctrl,const CountRegionBindings* b,const CountRegionQuery* query,const char** result) noexcept {
+    return character_region_common(ctrl,b,query,result,true);
 }
 int __cdecl character_semaphore(HologramControl* ctrl,unsigned* uses) noexcept {
     if(!health_control(ctrl,0xb8)||!uses)return 0;
@@ -3311,6 +3314,42 @@ int __cdecl action_listener_dispatch(const ActionListenerBindings* b,const void*
     return 1;
 }
 const ActionListenerApi action_listener_api{version,sizeof(ActionListenerApi),&action_listener_subscribe,&action_listener_unsubscribe,&action_listener_dispatch};
+
+int __cdecl jessica_region(HologramControl* ctrl,const CountRegionBindings* b,const CountRegionQuery* query,const char** result) noexcept {
+    return character_region_common(ctrl,b,query,result,false);
+}
+int __cdecl player_look_frame(void* player,unsigned bytes,HologramControl* monitor,LookEventState* shared,const PlayerLookFrameBindings* b,const PlayerLookObservation* observation) noexcept {
+    constexpr unsigned monitor_offset=0xc40,monitor_extent=0x5e9;
+    if(!player||bytes<monitor_offset+monitor_extent||!health_control(monitor,monitor_extent)||
+       monitor->object!=static_cast<unsigned char*>(player)+monitor_offset||
+       !b||!observation||!sin_independent::vgui_layout::Readable(observation,sizeof(*observation))||
+       !shared||!hologram_writable(shared,sizeof(*shared))||
+       !b->event.clock||!b->event.resolve||!b->event.look_event)return 0;
+    const auto host=*b;const auto hit=*observation;
+    if(hit.hit>1)return 0;
+    if(hit.hit&&(!hit.target||!host.classify||!host.monitor.resolve||!host.monitor.clock||!host.monitor.packed_handle||!host.monitor.sample))return 0;
+    int status=0;
+    if(hit.hit){
+        // Original subtracts endpoints into float locals then sums
+        // squares using x87 and rounds the sum before sqrt.
+        float delta[3]{};
+        for(unsigned i=0;i<3;++i)delta[i]=hit.end[i]-hit.start[i];
+        const double sum=static_cast<double>(delta[0])*delta[0]+static_cast<double>(delta[1])*delta[1]+static_cast<double>(delta[2])*delta[2];
+        const float distance=std::sqrt(static_cast<float>(sum));
+        CountRegionQuery query{{hit.direction[0],hit.direction[1],hit.direction[2]},hit.hitbox,distance};
+        const char* part=nullptr;
+        // Guard the persistent monitor against reentry from the classifier.
+        monitor->busy=1;
+        if(!host.classify(host.context,hit.target,&query,&part))return disp_finish(monitor,false);
+        monitor->busy=0;
+        ActionLookSample sample{hit.target,0,part};
+        std::memcpy(&sample.detail,&distance,4);
+        status=action_update_look(monitor,&host.monitor,&sample);
+    }else status=look_trace_miss(monitor);
+    if(status!=1)return status;
+    return look_event_tick(monitor,shared,&host.event);
+}
+const PlayerLookFrameApi player_look_frame_api{version,sizeof(PlayerLookFrameApi),&jessica_region,&player_look_frame};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5075,6 +5114,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ActionLis
 SiN_GetActionListenerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ActionListenerApi)?&action_listener_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetPlayerLookFrameApi=_SiN_GetPlayerLookFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerLookFrameApi* __cdecl
+SiN_GetPlayerLookFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerLookFrameApi)?&player_look_frame_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
