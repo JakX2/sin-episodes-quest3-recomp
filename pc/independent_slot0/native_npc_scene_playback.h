@@ -1157,6 +1157,24 @@ struct PortableVcdFinalizedGrammarApi {
     int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdFinalizedGrammarBindings*,float*) noexcept;
 };
 using GetPortableVcdFinalizedGrammarApi=const PortableVcdFinalizedGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_startup_sound_export[]="SiN_GetChoreographyStartupSoundApi";
+// Original 221adaa0/221a9ba0 collect and warm speech names, not actor dispatch.
+struct ChoreographyStartupSoundBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Return fresh owned valid parsed child; collector publishes it to parent.
+    int (__cdecl *load_subscene)(void*,void*,const char*,std::uint32_t*) noexcept;
+    // Optional gated local-player/language selection (221a3df0).
+    int (__cdecl *select_sound)(void*,void*,void*,char*,unsigned,unsigned*) noexcept;
+    int (__cdecl *warm_sound)(void*,const char*) noexcept;
+};
+struct ChoreographyStartupSoundApi {
+    std::uint32_t version,size;
+    // Context points to bindings. Boolean status. Linked children remain
+    // parent-owned on subsequent failure; no actor records are published.
+    int (__cdecl *warm)(void*,void*,std::uint32_t) noexcept;
+};
+using GetChoreographyStartupSoundApi=const ChoreographyStartupSoundApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char native_vcd_runtime_export[]="SiN_GetNativeVcdRuntimeApi";
 // Raw engine/allocator services only. Object and memory allocator families
 // are intentionally separate (2226e790/e800 vs 2226e390/e400/e3e0).

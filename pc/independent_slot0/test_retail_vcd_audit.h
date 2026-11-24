@@ -242,6 +242,8 @@ struct VcdAuditArena {
 struct VcdOwnedPlaybackFixture {
     using F=ScenePlaybackFixture;
     VcdAuditArena& arena;
+    const ChoreographyStartupSoundApi& startup_sound;
+    unsigned warmed=0;
     NativeNamedPlaybackBindings n{};
     SceneManagerSession manager{};
     alignas(4) unsigned char scene[0x5ec]{},npc[0x604]{};
@@ -283,7 +285,7 @@ scalesettings { RampTool 75 }
     static int __cdecl grow(void* p,void* vector,unsigned extra) noexcept {
         auto& a=self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,vector,extra,4);
     }
-    explicit VcdOwnedPlaybackFixture(VcdAuditArena& a):arena(a){
+    explicit VcdOwnedPlaybackFixture(VcdAuditArena& a,const ChoreographyStartupSoundApi& s):arena(a),startup_sound(s){
         n.context=this;n.precache.context=this;
         auto& load=n.precache.load;load.context=this;load.cache.context=this;
         load.set_extension=[](void*,char* text,const char* ext,unsigned cap) noexcept -> int{
@@ -379,8 +381,13 @@ scalesettings { RampTool 75 }
         };
         start.startup_events=[](void* p,void* scene,std::uint32_t root) noexcept -> int{
             auto& f=self(p);assert(f.phase==6&&scene==f.scene&&root==f.root_word);
-            // Simulate the still-hosted event dispatch leaf publishing two
-            // active actor records. Native removal must stop both graphs.
+            ChoreographyStartupSoundBindings sounds{};
+            sounds.context=&f;sounds.storage=&resolve;
+            sounds.warm_sound=[](void* p,const char* sound) noexcept -> int{
+                auto& f=self(p);assert(f.phase==6&&!std::strcmp(sound,"Jessica.Greeting"));++f.warmed;return 1;
+            };
+            assert(f.startup_sound.warm(&sounds,scene,root)==1&&f.warmed==1);
+            // Synthetic injection solely to test retirement, not real startup dispatch.
             void* rows=nullptr;unsigned extent=0;
             if(!f.arena.allocate(&f.arena,0x80,&rows,&extent))return 0;
             F::put(rows,4,f.root_word);F::put(rows,0x44,f.child_word);
@@ -402,7 +409,7 @@ scalesettings { RampTool 75 }
     }
 };
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound){
     // Native CUtlMemory capacities and indexed word insertion, including
     // null words, borrowed storage and failure-atomic raw allocator.
     {
@@ -539,7 +546,7 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     assert(runtime.load(scene,sizeof(scene),"Scenes/Multi",&load,&lb,&rootword)==1&&!rootword&&cache.missing&&cache.unlocked&&loader.live.empty());
     std::puts("PASS multi-object VCD grammar, native track lifecycle, finalization, owned runtime and cache load retirement");
     VcdAuditArena playback_arena(c,s,t,d,st,si,va);
-    VcdOwnedPlaybackFixture playback(playback_arena);playback.run(runtime);
+    VcdOwnedPlaybackFixture playback(playback_arena,startup_sound);playback.run(runtime);
     std::puts("PASS owned VCD named NPC startup, nested precache, actor association and retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,
