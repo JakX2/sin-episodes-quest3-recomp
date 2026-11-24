@@ -165,11 +165,16 @@ public:
     virtual void slot70(){assert(false);}
     virtual void slot71(){assert(false);}
     virtual bool is_player(){++player_calls;return player;}
+    virtual void slot73(){assert(false);}
+    virtual void slot74(){assert(false);}
+    virtual void slot75(){assert(false);}
+    virtual void* indirect(){++indirect_calls;return indirect_object;}
     unsigned char pad[0x168]{};
     const void* edict=nullptr;
     void* resolved=nullptr;
     bool player=false;
-    unsigned base_calls=0,player_calls=0;
+    unsigned base_calls=0,player_calls=0,indirect_calls=0;
+    void* indirect_object=nullptr;
 };
 class NativeEngine {
 public:
@@ -254,6 +259,89 @@ inline void check_resolved(const ResolvedSendApi& api){
     entries[37].entity=nullptr;
     assert(!invoke(local)&&packed()==n::wire_invalid_handle&&engine.calls==5);
     assert(api.destroy(&view));
+}
+
+class NativeIndirect {
+public:
+    virtual void slot0(){assert(false);}
+    virtual void slot1(){assert(false);}
+    virtual void* resolve(int n){assert(n==0);++calls;return target;}
+    void* target=nullptr;
+    unsigned calls=0;
+};
+inline void check_inventory_graph(const InventorySendApi& sa,const InventoryRecvApi& ra){
+    s::SendProp sdummy;s::SendTable sb;assert(sb.Construct(&sdummy,1,"DT_BaseFlex"));
+    RecvProp rdummy;RecvTable rb{&rdummy,1,nullptr,"DT_BaseFlex"};
+    alignas(4) unsigned char edicts[9*20]{};
+    NativeEngine engine;engine.expected=edicts+7*20;engine.result=7;
+    NativeOwner player,npc;player.player=true;player.edict=engine.expected;
+    NativeIndirect indirect;indirect.target=&player;npc.indirect_object=&indirect;
+    sin_independent::EntityHandleEntry entries[64]{};
+    entries[37].entity=reinterpret_cast<CBaseEntity*>(&npc);entries[37].serial=0x12345;
+    InventorySendBindings bindings{&sb,&engine,entries,64,edicts,8};
+    InventoryRecvBindings rec{&rb};
+    InventorySendView sv{};InventoryRecvView rv{};
+    assert(sa.create(&bindings,&sv)&&ra.create(&rec,&rv));
+    assert(sv.ammo_table->count==32&&rv.ammo_table->count==32&&
+        sv.weapons_table->count==48&&rv.weapons_table->count==48);
+    assert(sv.combat_local->count==2&&rv.combat_local->count==2&&sv.combat_base->count==3&&rv.combat_base->count==3);
+    assert(std::strcmp(sv.combat_base->name,"DT_BaseCombatCharacter")==0&&
+        std::strcmp(rv.combat_local->name,"DT_BCCLocalPlayerExclusive")==0);
+    assert(sv.combat_base->props[0].table==&sb&&rv.combat_base->props[0].table==&rb);
+    assert(sv.combat_base->props[1].table==sv.combat_local&&rv.combat_base->props[1].table==rv.combat_local);
+    assert(sv.ammo_property->arrayProp&&sv.ammo_property->arrayProp->offset==0x64c&&
+        sv.ammo_property->table==sv.ammo_table&&sv.ammo_property->flags==0x200);
+    assert(rv.ammo_property->array_prop==nullptr&&rv.ammo_property->table==rv.ammo_table&&rv.ammo_property->offset==0xc00);
+    auto& wp=sv.combat_local->props[1];auto& wr=rv.combat_local->props[1];
+    assert(wp.arrayProp&&wp.arrayProp->offset==0x6cc&&wp.table==sv.weapons_table&&
+        wr.table==rv.weapons_table&&!wr.array_prop&&wr.offset==0xc80);
+    alignas(4) unsigned char server[0x790]{},client[0xd44]{};
+    s::Recipients recipients{};
+    assert(sv.player_local_proxy(nullptr,nullptr,server,&recipients,8)==server&&recipients.words[0]==128u);
+    assert(sv.player_local_proxy(nullptr,nullptr,server,&recipients,0)==server&&recipients.words[0]==0);
+    auto& bcc=sv.combat_base->props[1];
+    assert(bcc.tableProxy(&bcc,&player,server,&recipients,0)==server&&recipients.words[0]==64u&&engine.calls==1);
+    assert(bcc.tableProxy(&bcc,&npc,server,&recipients,0)==server&&recipients.words[0]==64u&&engine.calls==2);
+    assert(npc.indirect_calls==1&&indirect.calls==1);
+    indirect.target=nullptr;
+    assert(bcc.tableProxy(&bcc,&npc,server,&recipients,0)==server&&recipients.words[0]==0&&engine.calls==2);
+    assert(bcc.tableProxy(&bcc,nullptr,server,&recipients,0)==server&&recipients.words[0]==0);
+    const auto compare_array=[&](s::SendProp& sp,RecvProp& rp,unsigned count,bool handles){
+        const auto* input=static_cast<const unsigned char*>(sp.tableProxy(&sp,server,server+sp.offset,&recipients,1));
+        void* dest=nullptr;rp.table_proxy(&rp,&dest,client+rp.offset,1);
+        assert(input==server+sp.offset&&dest==client+rp.offset);
+        for(unsigned i=0;i<count;++i){
+            auto& a=sp.table->props[i];auto& b=rp.table->props[i];
+            char expected[4]={'0',static_cast<char>('0'+i/10),static_cast<char>('0'+i%10),0};
+            assert(std::strcmp(a.name,expected)==0&&std::strcmp(b.name,expected)==0);
+            assert(std::strcmp(a.excludeOrParent,sp.name)==0&&std::strcmp(b.parent_array,rp.name)==0);
+            assert(a.offset==static_cast<int>(i*4)&&b.offset==a.offset&&a.bits==(handles?21:10)&&a.flags==1);
+            const std::uint32_t value=handles?(i==47?((0x12345u<<12)|37u):n::invalid_handle):i*17u;
+            std::memcpy(server+sp.offset+a.offset,&value,4);
+            s::DVariant v{};a.scalarProxy(&a,server,input+a.offset,&v,0,1);
+            RecvData d{&b,v,0,1};b.proxy(&d,dest,static_cast<unsigned char*>(dest)+b.offset);
+            std::uint32_t output=0;std::memcpy(&output,client+rp.offset+b.offset,4);
+            assert(output==(handles&&i==47?((0x345u<<12)|37u):value));
+        }
+    };
+    compare_array(*sv.ammo_property,*rv.ammo_property,32,false);
+    compare_array(wp,wr,48,true);
+    // Public active handle and private timer use the same scalar proxies.
+    auto& a=sv.combat_base->props[2];auto& b=rv.combat_base->props[2];
+    const std::uint32_t raw=(0x12345u<<12)|37u;std::memcpy(server+a.offset,&raw,4);
+    s::DVariant v{};a.scalarProxy(&a,server,server+a.offset,&v,0,1);
+    assert(v.words[0]==((0x345u<<11)|37u));
+    RecvData d{&b,v,0,1};b.proxy(&d,client,client+b.offset);
+    std::uint32_t active=0;std::memcpy(&active,client+b.offset,4);assert(active==((0x345u<<12)|37u));
+    auto& timer=sv.combat_local->props[0];auto& receiveTimer=rv.combat_local->props[0];
+    const float seconds=13.25f;std::memcpy(server+timer.offset,&seconds,4);
+    timer.scalarProxy(&timer,server,server+timer.offset,&v,0,1);
+    d={&receiveTimer,v,0,1};receiveTimer.proxy(&d,client,client+receiveTimer.offset);
+    float result=0;std::memcpy(&result,client+receiveTimer.offset,4);assert(result==seconds);
+    sv.weapons_table->written=true;rv.ammo_table->in_main_list=true;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
+    sv.weapons_table->written=false;rv.ammo_table->in_main_list=false;
+    assert(sa.destroy(&sv)&&ra.destroy(&rv)&&!sv.handle&&!rv.handle);
 }
 
 }
