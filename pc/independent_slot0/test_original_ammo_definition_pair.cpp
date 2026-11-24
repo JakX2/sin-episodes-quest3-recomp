@@ -8,6 +8,7 @@
 #include <cassert>
 #include "test_inventory_network_contract_core.h"
 #include "test_native_jessica_script.h"
+#include "test_native_npc_scene_playback.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -446,6 +447,13 @@ int main(int argc,char** argv){
     assert(managedCompanion&&!getManagedCompanion(0,sizeof(tables::ManagedCompanionApi))&&!getManagedCompanion(1,0));
     tables::test::check_managed_companion(*managedCompanion,*talkManager,*talkCatalog,*managedTalk,*responseTimingUpdate,*responseRecord);
     std::puts("PASS native managed companion response feedback and live cooldown gate");
+    const auto getNpcScene=reinterpret_cast<tables::GetNpcScenePlaybackApi>(GetProcAddress(server,tables::npc_scene_playback_export));
+    assert(getNpcScene&&!GetProcAddress(client,tables::npc_scene_playback_export));
+    const auto* npcScene=getNpcScene(1,sizeof(tables::NpcScenePlaybackApi));
+    assert(npcScene&&!getNpcScene(0,sizeof(tables::NpcScenePlaybackApi))&&!getNpcScene(1,0));
+    tables::test::check_npc_scene_playback(*npcScene);
+    std::puts("PASS native NPC instanced choreography scene and sound creation");
+
 
 
 
