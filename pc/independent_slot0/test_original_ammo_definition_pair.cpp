@@ -22,6 +22,7 @@
 #include "test_native_count_scheduler.h"
 #include "test_native_use_observation.h"
 #include "test_native_vehicle_use.h"
+#include "test_native_vehicle_actions.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -446,6 +447,12 @@ int main(int argc,char** argv){
     assert(vehicleUse&&!getVehicleUse(0,sizeof(tables::VehicleUseApi))&&!getVehicleUse(1,0));
     tables::test::check_vehicle_use(*vehicleUse,*useObservation,*actionMonitor);
     std::puts("PASS native SiN vehicle interaction admission and case-sensitive action labels");
+    const auto getVehicleActions=reinterpret_cast<tables::GetVehicleActionsApi>(GetProcAddress(server,tables::vehicle_actions_export));
+    assert(getVehicleActions&&!GetProcAddress(client,tables::vehicle_actions_export));
+    const auto* vehicleActions=getVehicleActions(1,sizeof(tables::VehicleActionsApi));
+    assert(vehicleActions&&!getVehicleActions(0,sizeof(tables::VehicleActionsApi))&&!getVehicleActions(1,0));
+    tables::test::check_vehicle_actions(*vehicleActions,*vehicleUse);
+    std::puts("PASS original SiN vehicle action jump table, output and dashboard state");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
