@@ -19,12 +19,13 @@ public:
     virtual bool parse_key(EntityRef,unsigned type,std::string_view,std::uint32_t&)=0;
     virtual const npc::JessicaInteractionBindings* interaction_bindings(EntityRef){return nullptr;}
     virtual const npc::NpcMapDialogueBindings* dialogue_bindings(EntityRef){return nullptr;}
+    virtual const npc::TalkManagerRuntimeBindings* manager_bindings(EntityRef){return nullptr;}
 };
 class NativeNpcMapHost final:public sin_compat::map::ISourceMapEntityHost {
 public:
     explicit NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine):engine_(engine){}
-    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr):
-        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue){}
+    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr,const npc::ManagedJessicaObservationApi* managed=nullptr):
+        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue),managed_(managed){}
     NativeNpcMapHost(const NativeNpcMapHost&)=delete;
     NativeNpcMapHost& operator=(const NativeNpcMapHost&)=delete;
     bool is_live(EntityRef e)const override{return engine_.is_live(e);}
@@ -73,6 +74,15 @@ public:
         if(a->stage!=Stage::Active)return NpcMapResult::Rejected;
         const auto kind=a->kind;auto* c=control(e,kind);const auto* b=shells_->bindings(e);
         if(!c||!b)return NpcMapResult::Rejected;
+        if(managed_&&kind==npc::NpcMapKind::Jessica){
+            if(managed_->version!=npc::version||managed_->size!=sizeof(*managed_)||!managed_->observe)return NpcMapResult::Rejected;
+            const auto* d=shells_->dialogue_bindings(e);
+            const auto* m=shells_->manager_bindings(e);
+            a=find(e);
+            if(!d||!m||!a||a->stage!=Stage::Active||!engine_.is_live(e))return NpcMapResult::Rejected;
+            // No legacy fallback after managed routing is configured.
+            return status(managed_->observe(c,&session_->attention,&d->jessica,m,record,bytes));
+        }
         if(dialogue_&&(kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)){
             if(dialogue_->version!=npc::version||dialogue_->size!=sizeof(*dialogue_)||!dialogue_->observe)return NpcMapResult::Rejected;
             const auto* d=shells_->dialogue_bindings(e);
@@ -150,6 +160,7 @@ private:
     INpcMapShells* shells_=nullptr;const npc::NpcMapApi* api_=nullptr;npc::NpcMapSession* session_=nullptr;
     const npc::JessicaInteractionApi* interaction_=nullptr;
     const npc::NpcMapDialogueApi* dialogue_=nullptr;
+    const npc::ManagedJessicaObservationApi* managed_=nullptr;
     std::map<std::uint32_t,Entry> entries_;
 };
 }

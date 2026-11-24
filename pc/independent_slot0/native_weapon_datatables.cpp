@@ -3854,6 +3854,7 @@ int __cdecl count_damage(HologramControl* ctrl,const CountBindings* b,const Play
 const CountInterrogationApi count_api{version,sizeof(CountInterrogationApi),&count_initialize,&count_input,&count_enabled,&count_observe,&count_damage,&health_ack};
 struct JessicaDialogueCall {
     HologramControl* ctrl;JessicaDialogueBindings host;
+    const TalkManagerRuntimeBindings* manager=nullptr;
 };
 int __cdecl dialogue_jessica_clock(void* p,float* out) noexcept {
     auto& x=*static_cast<JessicaDialogueCall*>(p);return x.host.clock(x.host.context,out);
@@ -3866,8 +3867,9 @@ int __cdecl dialogue_jessica_criteria(void* p,void* npc,const void* record,float
     unsigned played=0;
     // 22362154 / 22362236 -> 2208f500(name,modifier,0).
     // Original ignores whether it spoke; only transport failure is fatal.
-    return companion_request(npc,x.ctrl->bytes,h.cooldown,h.semaphore,&h.talk,name,
-        reinterpret_cast<const char*>(criteria.bytes),0,&played)==1;
+    const auto* mods=reinterpret_cast<const char*>(criteria.bytes);
+    return (x.manager?managed_companion_request(npc,x.ctrl->bytes,x.manager,h.semaphore,&h.talk,name,mods,0,&played):
+        companion_request(npc,x.ctrl->bytes,h.cooldown,h.semaphore,&h.talk,name,mods,0,&played))==1;
 }
 int __cdecl dialogue_jessica(HologramControl* ctrl,JessicaAttentionState* state,const JessicaDialogueBindings* b,
                              const void* obs,unsigned bytes) noexcept {
@@ -3876,6 +3878,14 @@ int __cdecl dialogue_jessica(HologramControl* ctrl,JessicaAttentionState* state,
     const JessicaAttentionBindings host{&call,&dialogue_jessica_clock,&dialogue_jessica_criteria};
     return jessica_attention(ctrl,state,&host,obs,bytes);
 }
+int __cdecl dialogue_jessica_managed(HologramControl* ctrl,JessicaAttentionState* state,const JessicaDialogueBindings* b,
+                                     const TalkManagerRuntimeBindings* manager,const void* obs,unsigned bytes) noexcept {
+    if(!b||!b->clock||!b->criteria||!b->semaphore||!manager)return 0;
+    JessicaDialogueCall call{ctrl,*b,manager};
+    const JessicaAttentionBindings host{&call,&dialogue_jessica_clock,&dialogue_jessica_criteria};
+    return jessica_attention(ctrl,state,&host,obs,bytes);
+}
+const ManagedJessicaObservationApi managed_jessica_observation_api{version,sizeof(ManagedJessicaObservationApi),&dialogue_jessica_managed};
 struct CountDialogueCall {
     HologramControl* ctrl;CountDialogueBindings host;
     void* exp=nullptr;unsigned extent=0;
@@ -8270,6 +8280,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcMapDia
 SiN_GetNpcMapDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcMapDialogueApi)?&npc_map_dialogue_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetManagedJessicaObservationApi=_SiN_GetManagedJessicaObservationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedJessicaObservationApi* __cdecl
+SiN_GetManagedJessicaObservationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedJessicaObservationApi)?&managed_jessica_observation_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetNpcDialogueApi=_SiN_GetNpcDialogueApi")

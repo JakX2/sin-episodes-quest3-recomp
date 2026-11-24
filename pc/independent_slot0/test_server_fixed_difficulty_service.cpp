@@ -2631,6 +2631,13 @@ int main(int argc,char** argv){
         const auto gd=reinterpret_cast<n::GetNpcMapDialogueApi>(GetProcAddress(lib,n::npc_map_dialogue_export));
         assert(gd&&!gd(0,sizeof(n::NpcMapDialogueApi))&&!gd(1,0));
         const auto* nd=gd(1,sizeof(n::NpcMapDialogueApi));assert(nd);
+        const auto go=reinterpret_cast<n::GetManagedJessicaObservationApi>(GetProcAddress(lib,n::managed_jessica_observation_export));
+        const auto gmgr=reinterpret_cast<n::GetTalkManagerApi>(GetProcAddress(lib,n::talk_manager_export));
+        const auto grt=reinterpret_cast<n::GetTalkManagerRuntimeApi>(GetProcAddress(lib,n::talk_manager_runtime_export));
+        const auto gcat=reinterpret_cast<n::GetTalkCatalogApi>(GetProcAddress(lib,n::talk_catalog_export));
+        assert(go&&gmgr&&grt&&gcat&&!go(0,sizeof(n::ManagedJessicaObservationApi))&&!go(1,0));
+        const auto* mo=go(1,sizeof(n::ManagedJessicaObservationApi));const auto* ma=gmgr(1,sizeof(n::TalkManagerApi));
+        const auto* mr=grt(1,sizeof(n::TalkManagerRuntimeApi));const auto* cat=gcat(1,sizeof(n::TalkCatalogApi));assert(mo&&ma&&mr&&cat);
         assert(m&&j&&c&&s&&a&&u&&sp&&in);
         const auto bsp=make_native_bsp(R"KV(
 {"classname" "worldspawn"}
@@ -2640,7 +2647,7 @@ int main(int argc,char** argv){
 {"classname" "npc_generic_actor" "targetname" "actor" "model" "fixture.mdl" "initialhealth" "12" "bloodColor" "247"}
 {"classname" "npc_jc" "targetname" "jc"}
 )KV");
-        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,*nd,bsp);
+        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp);
         std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
     }
 #endif

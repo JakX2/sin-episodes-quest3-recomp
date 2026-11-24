@@ -40,5 +40,14 @@ struct NpcMapDialogueApi {
     int (__cdecl *observe)(NpcMapKind,HologramControl*,NpcMapSession*,const NpcMapBindings*,const NpcMapDialogueBindings*,const void*,unsigned bytes) noexcept;
 };
 using GetNpcMapDialogueApi=const NpcMapDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char managed_jessica_observation_export[]="SiN_GetManagedJessicaObservationApi";
+struct ManagedJessicaObservationApi {
+    std::uint32_t version,size;
+    // Reuses the shared attention state and locked observation callback.
+    // The detached cooldown pointer in JessicaDialogueBindings is ignored.
+    int (__cdecl *observe)(HologramControl*,JessicaAttentionState*,const JessicaDialogueBindings*,const TalkManagerRuntimeBindings*,const void*,unsigned) noexcept;
+};
+using GetManagedJessicaObservationApi=const ManagedJessicaObservationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 }
