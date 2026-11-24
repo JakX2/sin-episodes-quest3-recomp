@@ -510,4 +510,42 @@ inline void check_parsed_scene_resume(const ParsedSceneResumeApi& api,const Scen
     assert(f.children[0][0x328]&&f.children[1][0x328]&&!f.children[2][0x328]&&!F::word(f.parsed,0x21c)&&F::word(f.parsed,0x5c)==7);
 }
 
+
+inline void check_parsed_event_classify(const ParsedEventClassifyApi& api){
+    using F=ScenePlaybackFixture;using A=ParsedEventAction;
+    struct Fixture{
+        alignas(4) unsigned char parsed[0x220]{},event[0x329]{},parents[2][0x188]{};
+        unsigned reads=0,attachments=0;bool fail=false;
+    } f;
+    ParsedEventClassifyBindings b{};b.context=&f;
+    b.pending=[](void* p,void* s,unsigned i,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(s==f.parsed&&i<2);++f.reads;*out=f.parents[i];*n=sizeof(f.parents[i]);return 1;
+    };
+    b.attach=[](void* p,void* parent,void* child) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(parent==f.parents[1]&&child==f.event);++f.attachments;return !f.fail;
+    };
+    F::fl(f.event,0x184,2);F::fl(f.event,0x188,4);
+    ParsedEventDecision out{};
+    auto check=[&](float prev,float next,unsigned forward,A action,unsigned active){
+        assert(api.classify(f.parsed,sizeof(f.parsed),f.event,sizeof(f.event),prev,next,forward,&b,&out)==1&&out.action==action&&out.active_count==active);
+    };
+    check(1,3,1,A::None,0);check(2,3,1,A::Start,1);
+    f.event[0x1b0]=1;check(4,5,1,A::StartTracked,1);
+    f.event[0x328]=1;check(4,5,1,A::Update,1);check(4.01f,5,1,A::Stop,0);check(1,2,1,A::Stop,0);
+    check(5,3,0,A::Update,1);check(3,1,0,A::Stop,0);
+    f.event[0x328]=0;F::fl(f.event,0x188,-1);
+    check(1,3,1,A::Start,1);check(3,1,0,A::Start,1);check(3,4,1,A::None,0);
+    check(2,2,1,A::StartTracked,1);
+    F::put(f.event,0,11);f.parsed[0x124]=1;check(2,3,1,A::None,0);
+    f.event[0x328]=1;check(2,3,1,A::Stop,0);
+    F::put(f.event,0,5);F::fl(f.parsed,0x90,.5f);F::put(f.parsed,0x70,2);
+    F::fl(f.parents[0],0x184,1);F::fl(f.parents[1],0x184,1.5f);
+    check(2,3,1,A::Stop,0);assert(f.reads==2&&f.attachments==1);
+    check(3,2,0,A::Update,1);assert(f.reads==2&&f.attachments==1);
+    f.fail=true;out={A::Update,99};
+    assert(api.classify(f.parsed,sizeof(f.parsed),f.event,sizeof(f.event),2,3,1,&b,&out)==-1&&out.active_count==99);
+    F::put(f.event,0,0);F::put(f.event,0x184,0x7fc00000);F::fl(f.event,0x188,4);f.event[0x328]=0;
+    check(3,4,1,A::StartTracked,1);
+}
+
 }

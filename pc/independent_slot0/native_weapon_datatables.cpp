@@ -4298,6 +4298,55 @@ int __cdecl parsed_scene_resume(void* parsed,unsigned bytes,const ParsedSceneRes
     return reset();
 }
 const ParsedSceneResumeApi parsed_scene_resume_api{version,sizeof(ParsedSceneResumeApi),&parsed_scene_resume};
+int __cdecl parsed_event_classify(void* parsed,unsigned bytes,void* event,unsigned extent,float previous,float target,unsigned forward,
+                                  const ParsedEventClassifyBindings* b,ParsedEventDecision* out) noexcept {
+    if(!parsed||bytes<0x125||!sin_independent::vgui_layout::Readable(parsed,0x125)||!event||extent<0x329||
+       !sin_independent::vgui_layout::Readable(event,0x329)||!b||!b->pending||!b->attach||
+       !out||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto h=*b;const bool ahead=(forward&0xff)!=0;
+    const float start=hologram_read<float>(event,0x184);
+    const bool has_end=hologram_read<std::uint32_t>(event,0x188)!=0xbf800000u;
+    const float end=has_end?hologram_read<float>(event,0x188):start;
+    const float lower=ahead?previous:target,upper=ahead?target:previous;
+    const auto type=hologram_read<int>(event,0);
+    bool suppressed=type==11&&hologram_read<unsigned char>(parsed,0x124);
+    if(type==5&&ahead){
+        const float latency=hologram_read<float>(parsed,0x90);
+        const double delta=static_cast<double>(start)-latency;
+        const float window_start=static_cast<float>(delta);
+        const float window_end=static_cast<float>(delta+latency);
+        for(unsigned i=0;;++i){
+            const int count=hologram_read<int>(parsed,0x70);
+            if(count<=0||i>=static_cast<unsigned>(count))break;
+            if(count>0x100000)return -1;
+            void* parent=nullptr;unsigned n=0;
+            if(!h.pending(h.context,parsed,i,&parent,&n))return -1;
+            if(!parent)continue;
+            if(n<0x188||!sin_independent::vgui_layout::Readable(parent,0x188))return -1;
+            const float time=hologram_read<float>(parent,0x184);
+            if(time>window_end||time<window_start)continue;
+            // 22113e00 returns first matching vector entry. Caller then
+            // independently compares its start against the window start.
+            if(time>=window_start){
+                if(!h.attach(h.context,parent,event))return -1;
+                suppressed=true;
+            }
+            break;
+        }
+    }
+    const bool active=hologram_read<unsigned char>(event,0x328)!=0;
+    using A=ParsedEventAction;
+    if(suppressed){*out={active?A::Stop:A::None,0};return 1;}
+    // Original x87 branches reject only ordered greater/less; unordered
+    // comparisons take the inclusive interval path.
+    const bool inside=!(lower>end)&&!(lower<start);
+    if(active){*out={inside?A::Update:A::Stop,inside?1u:0u};return 1;}
+    if(inside){*out={hologram_read<unsigned char>(event,0x1b0)?A::StartTracked:A::Start,1};return 1;}
+    if(!has_end&&!(start>upper)&&!(start<lower)){*out={A::Start,1};return 1;}
+    *out={A::None,0};return 1;
+}
+const ParsedEventClassifyApi parsed_event_classify_api{version,sizeof(ParsedEventClassifyApi),&parsed_event_classify};
+
 
 
 
@@ -8832,6 +8881,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetParsedEventClassifyApi=_SiN_GetParsedEventClassifyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ParsedEventClassifyApi* __cdecl
+SiN_GetParsedEventClassifyApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ParsedEventClassifyApi)?&parsed_event_classify_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetParsedSceneResumeApi=_SiN_GetParsedSceneResumeApi")
