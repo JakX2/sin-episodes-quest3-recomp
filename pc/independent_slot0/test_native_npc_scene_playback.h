@@ -1812,6 +1812,60 @@ inline void check_owned_choreography(const OwnedChoreographyApi& api,const Nativ
     assert(api.generate(missing.scene,sizeof(missing.scene),missing.actor,missing.sound,&missing.full.generation,&missing.full.allocation,&missing.owned,&word)==1&&!word);
     assert(missing.allocations==4&&missing.appends==3&&missing.warnings==1&&!missing.links&&!missing.symbols&&!missing.releases&&missing.destroyed==1&&missing.destruction_steps==6&&!missing.parsed_live);
 }
+struct NamedSceneLoadFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char scene[0x414]{},parsed[0x220]{};
+    alignas(4) char copy[32]{};
+    const char original[8]={'a','c','t','o','r','\0','X','Y'};
+    NamedSceneLoadBindings b{};ChoreographySymbolSentinel sentinel{};
+    unsigned trace[20]{},steps=0,locks=0;bool evicted=false,absent=false,empty=false,parse_fail=false,allocate_fail=false;
+    static NamedSceneLoadFixture& self(void* p){return *static_cast<NamedSceneLoadFixture*>(p);}
+    void step(unsigned v){assert(steps<20);trace[steps++]=v;}
+    void expect(std::initializer_list<unsigned> x){assert(x.size()==steps&&!std::memcmp(x.begin(),trace,steps*4));}
+    NamedSceneLoadFixture(){
+        b.context=this;b.cache.context=this;b.compare_word=0x1234;b.diagnostic_word=0x4321;
+        b.set_extension=[](void* p,char* path,const char* ext,unsigned bytes) noexcept -> int{
+            auto& f=self(p);assert(!std::strcmp(path,"Scenes/Jessica.TXT")&&!std::strcmp(ext,".vcd")&&bytes==512);
+            std::strcpy(path,"Scenes/Jessica.vcd");f.step(1);return 1;};
+        b.cache.ensure=[](void* p,const char* key) noexcept -> int{auto& f=self(p);assert(!std::strcmp(key,"scenes\\jessica.vcd"));f.step(2);return 1;};
+        b.cache.find=[](void* p,const char* key,std::uint32_t* out) noexcept -> int{auto& f=self(p);assert(!std::strcmp(key,"scenes\\jessica.vcd"));*out=f.absent?0xffffffffu:7;f.step(3);return 1;};
+        b.cache.lock=[](void* p,std::uint32_t id,const void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);assert(id==(f.locks?8u:7u));f.step(4);
+            if(!f.locks++&&f.evicted){*out=nullptr;*n=0;return 1;}
+            *out=f.original;*n=f.empty?0:sizeof(f.original);return 1;};
+        b.cache.reload=[](void* p,const char* key,std::uint32_t old,std::uint32_t* out) noexcept -> int{auto& f=self(p);assert(old==7&&!std::strcmp(key,"scenes\\jessica.vcd"));f.step(5);*out=8;return 1;};
+        b.cache.unlock=[](void* p,std::uint32_t id) noexcept -> int{auto& f=self(p);assert(id==(f.evicted?8u:7u));f.step(7);return 1;};
+        b.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);
+            if(n==sizeof(f.original)+1){f.step(6);*out=f.allocate_fail?nullptr:f.copy;*bytes=sizeof(f.copy);}
+            else{assert(n==sizeof(f.parsed));f.step(8);std::memset(f.parsed,0xa5,sizeof(f.parsed));*out=f.parsed;*bytes=sizeof(f.parsed);}return 1;};
+        b.release=[](void* p,void* data) noexcept -> int{auto& f=self(p);assert(data==f.copy);f.step(10);return 1;};
+        b.missing=[](void* p,const char* name) noexcept -> int{auto& f=self(p);assert(!std::strcmp(name,"Scenes\\Jessica.vcd"));f.step(12);return 1;};
+        b.parse=[](void* p,void* parsed,const char* path,const char* data,unsigned n) noexcept -> int{
+            auto& f=self(p);assert(parsed==f.parsed&&!std::strcmp(path,"Scenes\\Jessica.vcd")&&data==f.copy&&n==sizeof(f.original));
+            assert(!std::memcmp(data,f.original,n)&&!data[n]&&F::word(parsed,0x9c)==F::ptr(f.scene+0x410)&&F::word(parsed,0x164)==0x12345678&&!F::word(parsed,0x98));
+            f.step(9);return !f.parse_fail;};
+        b.owned.insensitive_comparator=0x12345678;b.owned.destruction.context=this;b.owned.symbols.context=this;b.owned.symbols.sentinel=&sentinel;
+        b.owned.destruction.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        b.owned.destruction.delete_aux=[](void*,std::uint32_t,unsigned) noexcept -> int{assert(false);return 0;};
+        b.owned.destruction.release=[](void* p,std::uint32_t word,ChoreographyRelease kind) noexcept -> int{
+            auto& f=self(p);assert(word==F::ptr(f.parsed)&&kind==ChoreographyRelease::Parsed);f.step(11);return 1;};
+        b.owned.symbols.storage=b.owned.destruction.storage;
+        b.owned.symbols.release=[](void*,std::uint32_t,ChoreographySymbolRelease) noexcept -> int{assert(false);return 0;};
+    }
+};
+inline void check_named_scene_load(const NamedSceneLoadApi& api){
+    using F=ScenePlaybackFixture;std::uint32_t out=99;
+    auto run=[&](NamedSceneLoadFixture& f){return api.load(f.scene,sizeof(f.scene),"Scenes/Jessica.TXT",&f.b,&out);};
+    NamedSceneLoadFixture f;assert(run(f)==1&&out==F::ptr(f.parsed)&&F::word(f.parsed,0x98)==0x4321);
+    f.expect({1,2,3,4,6,7,8,9,10});
+    NamedSceneLoadFixture evicted;evicted.evicted=true;assert(run(evicted)==1&&out==F::ptr(evicted.parsed));evicted.expect({1,2,3,4,5,4,6,7,8,9,10});
+    NamedSceneLoadFixture absent;absent.absent=true;assert(run(absent)==1&&!out);absent.expect({1,2,3,12});
+    NamedSceneLoadFixture empty;empty.empty=true;assert(run(empty)==1&&!out);empty.expect({1,2,3,4,7,12});
+    NamedSceneLoadFixture alloc;alloc.allocate_fail=true;out=99;assert(run(alloc)==-1&&out==99);alloc.expect({1,2,3,4,6,7});
+    NamedSceneLoadFixture bad;bad.parse_fail=true;assert(run(bad)==-1&&out==99);bad.expect({1,2,3,4,6,7,8,9,10,11});
+}
+
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};

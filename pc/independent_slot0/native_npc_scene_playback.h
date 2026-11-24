@@ -784,6 +784,39 @@ struct OwnedChoreographyApi {
     int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*,const OwnedChoreographyBindings*) noexcept;
 };
 using GetOwnedChoreographyApi=const OwnedChoreographyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char named_scene_load_export[]="SiN_GetNamedSceneLoadApi";
+struct NamedSceneCacheBindings {
+    void* context;
+    // Original 221ad090 prefetch, then symbol/tree lookup. FFFFFFFF is absent.
+    int (__cdecl *ensure)(void*,const char*) noexcept;
+    int (__cdecl *find)(void*,const char*,std::uint32_t*) noexcept;
+    // Null data with length zero means evicted; nonnull with zero is empty.
+    // A nonnull data result holds a lock until unlock, even for empty data.
+    int (__cdecl *lock)(void*,std::uint32_t,const void**,unsigned*) noexcept;
+    int (__cdecl *reload)(void*,const char*,std::uint32_t,std::uint32_t*) noexcept;
+    int (__cdecl *unlock)(void*,std::uint32_t) noexcept;
+};
+struct NamedSceneLoadBindings {
+    void* context;
+    NamedSceneCacheBindings cache;
+    // Exact original engine Q_SetExtension import; called on a bounded buffer.
+    int (__cdecl *set_extension)(void*,char*,const char*,unsigned) noexcept;
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    // Raw copy/unpublished root allocation release, consumes on invocation.
+    int (__cdecl *release)(void*,void*) noexcept;
+    int (__cdecl *missing)(void*,const char*) noexcept;
+    // Original 22119900 parser body, host binds token cursor to NUL-terminated
+    // private data. Native constructs and owns parsed object before call.
+    int (__cdecl *parse)(void*,void*,const char* path,const char* data,unsigned bytes) noexcept;
+    std::uint32_t compare_word,diagnostic_word;
+    OwnedChoreographyBindings owned;
+};
+struct NamedSceneLoadApi {
+    std::uint32_t version,size;
+    // 221ad670 + 221ad1b0 + 22119b20. Missing/empty returns 1 and zero word.
+    int (__cdecl *load)(void* scene,unsigned bytes,const char*,const NamedSceneLoadBindings*,std::uint32_t*) noexcept;
+};
+using GetNamedSceneLoadApi=const NamedSceneLoadApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
