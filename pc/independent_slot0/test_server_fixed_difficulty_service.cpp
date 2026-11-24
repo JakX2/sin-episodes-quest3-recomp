@@ -2648,6 +2648,11 @@ int main(int argc,char** argv){
 {"classname" "npc_jc" "targetname" "jc"}
 )KV");
         sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp);
+        const auto gIntegratedMap=reinterpret_cast<n::GetIntegratedNpcMapDialogueApi>(GetProcAddress(lib,n::integrated_npc_map_dialogue_export));
+        assert(gIntegratedMap&&!gIntegratedMap(0,sizeof(n::IntegratedNpcMapDialogueApi))&&!gIntegratedMap(1,0));
+        const auto* integratedMap=gIntegratedMap(1,sizeof(n::IntegratedNpcMapDialogueApi));assert(integratedMap);
+        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,integratedMap);
+        std::puts("PASS native integrated choreography NPC map observation routing and rejection");
         std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
     }
 #endif

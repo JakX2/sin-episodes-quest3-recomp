@@ -20,12 +20,13 @@ public:
     virtual const npc::JessicaInteractionBindings* interaction_bindings(EntityRef){return nullptr;}
     virtual const npc::NpcMapDialogueBindings* dialogue_bindings(EntityRef){return nullptr;}
     virtual const npc::TalkManagerRuntimeBindings* manager_bindings(EntityRef){return nullptr;}
+    virtual const npc::IntegratedNpcMapDialogueBindings* scene_bindings(EntityRef){return nullptr;}
 };
 class NativeNpcMapHost final:public sin_compat::map::ISourceMapEntityHost {
 public:
     explicit NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine):engine_(engine){}
-    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr,const npc::ManagedJessicaObservationApi* managed=nullptr):
-        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue),managed_(managed){}
+    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr,const npc::ManagedJessicaObservationApi* managed=nullptr,const npc::IntegratedNpcMapDialogueApi* integrated=nullptr):
+        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue),managed_(managed),integrated_(integrated){}
     NativeNpcMapHost(const NativeNpcMapHost&)=delete;
     NativeNpcMapHost& operator=(const NativeNpcMapHost&)=delete;
     bool is_live(EntityRef e)const override{return engine_.is_live(e);}
@@ -74,6 +75,17 @@ public:
         if(a->stage!=Stage::Active)return NpcMapResult::Rejected;
         const auto kind=a->kind;auto* c=control(e,kind);const auto* b=shells_->bindings(e);
         if(!c||!b)return NpcMapResult::Rejected;
+        if(integrated_&&(kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)){
+            if(integrated_->version!=npc::version||integrated_->size!=sizeof(*integrated_)||!integrated_->observe)return NpcMapResult::Rejected;
+            const auto* d=shells_->dialogue_bindings(e);
+            const auto* scene=shells_->scene_bindings(e);
+            const auto* manager=kind==npc::NpcMapKind::Jessica?shells_->manager_bindings(e):nullptr;
+            a=find(e);
+            if(!d||!scene||!a||a->stage!=Stage::Active||!engine_.is_live(e)||
+               (managed_&&kind==npc::NpcMapKind::Jessica&&!manager))return NpcMapResult::Rejected;
+            // Configured integrated route must not silently use legacy audio.
+            return status(integrated_->observe(kind,c,session_,b,d,manager,scene,record,bytes));
+        }
         if(managed_&&kind==npc::NpcMapKind::Jessica){
             if(managed_->version!=npc::version||managed_->size!=sizeof(*managed_)||!managed_->observe)return NpcMapResult::Rejected;
             const auto* d=shells_->dialogue_bindings(e);
@@ -161,6 +173,7 @@ private:
     const npc::JessicaInteractionApi* interaction_=nullptr;
     const npc::NpcMapDialogueApi* dialogue_=nullptr;
     const npc::ManagedJessicaObservationApi* managed_=nullptr;
+    const npc::IntegratedNpcMapDialogueApi* integrated_=nullptr;
     std::map<std::uint32_t,Entry> entries_;
 };
 }
