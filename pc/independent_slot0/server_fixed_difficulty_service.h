@@ -652,6 +652,64 @@ struct MagnumApi {
 using GetMagnumApi=const MagnumApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(MagnumFrameReport)==36);
 static_assert(sizeof(MagnumImpactReport)==28);
+// Original game-only Magnum secondary attack, 0x22316cf0.
+// Typed observations and effects; never a native engine object layout.
+// Owner ref must stay live and stable during the synchronous dispatch.
+// Query tags involving the owner require a fresh host-side resolution.
+inline constexpr char magnum_secondary_export_name[]="SiN_GetMagnumSecondaryApi";
+inline constexpr std::uint32_t magnum_secondary_version=1;
+enum MagnumSecondaryQuery : std::uint32_t {
+    MagSecondaryUsesClip=0,MagSecondaryReadClip,MagSecondaryOwnerCapable,
+    MagSecondarySelection,MagSecondaryInterval,MagSecondaryClock,
+    MagSecondaryOrigin,MagSecondaryDirectVector,MagSecondaryFallbackVector,
+    MagSecondaryAmmoType,MagSecondaryReserveCount,MagSecondarySpread,
+    MagSecondaryZoomed,MagSecondaryOwnerFlags,MagSecondaryAuxVector,
+    MagSecondaryOwnerAngles,MagSecondaryRandomInt,MagSecondaryRandomFloat
+};
+enum MagnumSecondaryEffect : std::uint32_t {
+    MagSecondaryEmpty=0,MagSecondaryEvent,MagSecondaryActivity,
+    MagSecondaryPrimaryTimer,MagSecondarySecondaryTimer,
+    MagSecondaryOwnerFire,MagSecondaryOwnerAnimation,MagSecondaryDebitClip,
+    MagSecondaryDebitReserve,MagSecondaryOwnerFlagHelper,MagSecondaryFeedback,
+    MagSecondaryAngleHelper,MagSecondaryPunch
+};
+struct MagnumSecondaryValue {std::int32_t integer;float real;NpcSpread vector;};
+struct MagnumSecondaryObservation {MapEntityRef owner;std::uint32_t owner_present,timing_arg;};
+// The original extended firing record has a weapon pointer and an
+// extra vector/byte. Preserve their known values semantically; no raw
+// foreign pointer or uninitialized stack bytes cross this ABI.
+struct MagnumFireRecord {
+    std::int32_t shots,ammo_type,tracer_frequency,damage,player_damage,flags;
+    float distance,force_scale;
+    NpcSpread origin,direction,spread,aux_position;
+    std::uint32_t aux_enabled;
+    MapEntityRef weapon;
+};
+struct MagnumSecondaryHost {
+    std::uint32_t version,size;
+    // arg is timing field, ammo index or raw 0x3db27eb6 vector argument
+    // as appropriate. RandomInt bounds are -1,1; RandomFloat -2,2.
+    int (SIN_FIXED_CALL *query)(void*,MapEntityRef,MapEntityRef,std::uint32_t,
+        std::uint32_t,MagnumSecondaryValue*);
+    int (SIN_FIXED_CALL *effect)(void*,MapEntityRef,MapEntityRef,std::uint32_t,
+        const MagnumSecondaryValue*,std::int32_t);
+    // Real game host implements the original owner firing virtual.
+    // May synchronously invoke the same Magnum's impact API.
+    int (SIN_FIXED_CALL *fire)(void*,MapEntityRef,const MagnumFireRecord*);
+};
+enum MagnumSecondaryCode : std::uint32_t {MagSecondaryRejected=0,MagSecondaryEmptyClip,
+    MagSecondaryCompleted,MagSecondaryUncertain};
+struct MagnumSecondaryReport {
+    std::uint32_t code,queries_attempted,queries_delivered,effects_attempted,
+        effects_delivered,fire_attempted,fire_delivered,needs_resync;
+    MagnumFireRecord record;
+};
+struct MagnumSecondaryApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *attack)(MapEntityRef,const MagnumSecondaryObservation*,const MagnumSecondaryHost*,
+        void*,MagnumSecondaryReport*) noexcept;
+};
+using GetMagnumSecondaryApi=const MagnumSecondaryApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);
