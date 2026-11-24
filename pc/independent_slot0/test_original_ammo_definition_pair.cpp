@@ -320,6 +320,12 @@ int main(int argc,char** argv){
     assert(jessica&&!getJessica(0,sizeof(tables::JessicaApi))&&!getJessica(1,0));
     tables::test::check_jessica(*jessica);
     std::puts("PASS native Jessica scripted item delivery, condition routing and target holster");
+    const auto getJessicaCombat=reinterpret_cast<tables::GetJessicaCombatApi>(GetProcAddress(server,tables::jessica_combat_export));
+    assert(getJessicaCombat&&!GetProcAddress(client,tables::jessica_combat_export));
+    const auto* jessicaCombat=getJessicaCombat(1,sizeof(tables::JessicaCombatApi));
+    assert(jessicaCombat&&!getJessicaCombat(0,sizeof(tables::JessicaCombatApi))&&!getJessicaCombat(1,0));
+    tables::test::check_jessica_combat(*jessicaCombat);
+    std::puts("PASS native Jessica invulnerable damage copy, poison speech and scene weapon dispatch");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
