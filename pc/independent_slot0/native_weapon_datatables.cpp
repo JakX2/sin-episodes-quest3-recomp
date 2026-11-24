@@ -9,6 +9,7 @@
 #include "native_radio_entity.h"
 #include "native_radio_transport.h"
 #include "native_generic_actor.h"
+#include "native_companion_reactions.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3644,6 +3645,62 @@ int __cdecl generic_actor_semaphore(HologramControl* c,unsigned* uses) noexcept 
     return character_semaphore(c,uses);
 }
 const GenericActorApi generic_actor_api{version,sizeof(GenericActorApi),&generic_actor_get_schema,&generic_actor_key,&generic_actor_spawn_profile,&generic_actor_damage,&generic_actor_observe,&generic_actor_semaphore,&health_ack};
+
+int __cdecl jc_profile(HologramControl* c,const JcProfileBindings* b) noexcept {
+    if(!health_control(c,jc_bytes)||!b||!b->health_dirty||!b->npc_initialize)return 0;
+    c->busy=1;const auto h=*b;auto* npc=c->object;
+    hologram_write(npc,0x614,247);
+    if(hologram_read<int>(npc,0x9c)!=8){
+        if(!h.health_dirty(h.context,npc))return disp_finish(c,false);
+        hologram_write(npc,0x9c,8);
+    }
+    hologram_write(npc,0x618,0.5f);
+    hologram_write(npc,0x850,0);
+    hologram_write(npc,0x8ec,hologram_read<unsigned>(npc,0x8ec)|0x801801u);
+    hologram_write(npc,0x8ec,hologram_read<unsigned>(npc,0x8ec)|0x02000000u);
+    hologram_write(npc,0xbb,static_cast<unsigned char>(hologram_read<unsigned char>(npc,0xbb)|0x58u));
+    return disp_finish(c,h.npc_initialize(h.context,npc)!=0);
+}
+int __cdecl jessica_reaction_update(HologramControl* c,const JessicaReactionBindings* b) noexcept {
+    if(!health_control(c,jessica_size)||!b||!b->base_update||!b->resolve||!b->restore_unparented||!b->post_restore||!b->condition||!b->speak)return 0;
+    c->busy=1;const auto h=*b;auto* npc=c->object;
+    if(!h.base_update(h.context,npc))return disp_finish(c,false);
+    if(hologram_read<int>(npc,0x204)==0){
+        const auto parent=hologram_read<std::uint32_t>(npc,0xf0);void* target=nullptr;
+        if(parent!=0xffffffffu&&!h.resolve(h.context,parent,&target))return disp_finish(c,false);
+        if(!target&&(!h.restore_unparented(h.context,npc)||!h.post_restore(h.context,npc)))return disp_finish(c,false);
+    }
+    unsigned active=0;
+    if(!h.condition(h.context,npc,0x43,&active))return disp_finish(c,false);
+    return disp_finish(c,!active||h.speak(h.context,npc,"TLK_PLDEAD",0,0)!=0);
+}
+int __cdecl jessica_reaction_event(HologramControl* c,const JessicaReactionBindings* b,int registered_id,int id,std::uint32_t arg1,std::uint32_t arg2,unsigned* handled) noexcept {
+    if(!health_control(c,jessica_size)||!b||!b->speech_ready||!b->speak||!b->base_event||!handled)return 0;
+    c->busy=1;const auto h=*b;auto* npc=c->object;
+    if(id!=registered_id)return disp_finish(c,h.base_event(h.context,npc,id,arg1,arg2,handled)!=0);
+    unsigned ready=0;
+    if(!h.speech_ready(h.context,npc,&ready))return disp_finish(c,false);
+    if(ready&&!h.speak(h.context,npc,"TLK_PLYR_PHYSATK",0,0))return disp_finish(c,false);
+    *handled=1;return disp_finish(c,true);
+}
+int __cdecl jessica_reaction_schedule(HologramControl* c,const JessicaReactionBindings* b,int requested,int* result) noexcept {
+    if(!health_control(c,jessica_size)||!b||!b->base_schedule||!b->clock||!b->secondary_timestamp||!result)return 0;
+    c->busy=1;const auto h=*b;auto* npc=c->object;
+    int selected=0;
+    if(!h.base_schedule(h.context,npc,requested,&selected))return disp_finish(c,false);
+    *result=selected;
+    const auto state=hologram_read<int>(npc,0x850);
+    if(selected!=1||(state!=2&&state!=3))return disp_finish(c,true);
+    float now=0;
+    if(!h.clock(h.context,&now))return disp_finish(c,false);
+    // x87 unordered comparisons do not take the less-than branch.
+    if(static_cast<double>(now)-hologram_read<float>(npc,0x99c)<3.0){*result=0x48;return disp_finish(c,true);}
+    float stamp=0;
+    if(!h.secondary_timestamp(h.context,npc,&stamp)||!h.clock(h.context,&now))return disp_finish(c,false);
+    if(static_cast<double>(now)-stamp<8.0)*result=0x48;
+    return disp_finish(c,true);
+}
+const CompanionReactionApi companion_reaction_api{version,sizeof(CompanionReactionApi),&jc_profile,&jessica_reaction_update,&jessica_reaction_event,&jessica_reaction_schedule,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5521,6 +5578,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::GenericAc
 SiN_GetGenericActorApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(GenericActorApi)?&generic_actor_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetCompanionReactionApi=_SiN_GetCompanionReactionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CompanionReactionApi* __cdecl
+SiN_GetCompanionReactionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(CompanionReactionApi)?&companion_reaction_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

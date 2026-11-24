@@ -18,6 +18,7 @@
 #include "test_native_radio_entity.h"
 #include "test_native_radio_transport.h"
 #include "test_native_generic_actor.h"
+#include "test_native_companion_reactions.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -418,6 +419,12 @@ int main(int argc,char** argv){
     assert(genericActor&&!getGenericActor(0,sizeof(tables::GenericActorApi))&&!getGenericActor(1,0));
     tables::test::check_generic_actor(*genericActor);
     std::puts("PASS native generic actor map fields, spawn profile and active behavior routing");
+    const auto getCompanionReactions=reinterpret_cast<tables::GetCompanionReactionApi>(GetProcAddress(server,tables::companion_reactions_export));
+    assert(getCompanionReactions&&!GetProcAddress(client,tables::companion_reactions_export));
+    const auto* companionReactions=getCompanionReactions(1,sizeof(tables::CompanionReactionApi));
+    assert(companionReactions&&!getCompanionReactions(0,sizeof(tables::CompanionReactionApi))&&!getCompanionReactions(1,0));
+    tables::test::check_companion_reactions(*companionReactions);
+    std::puts("PASS native JC spawn profile and Jessica reaction/schedule dispatch");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
