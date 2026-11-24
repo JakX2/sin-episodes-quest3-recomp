@@ -432,6 +432,31 @@ struct SceneStartApi {
     int (__cdecl *start)(void*,unsigned,const SceneStartBindings*,SceneStartResult*) noexcept;
 };
 using GetSceneStartApi=const SceneStartApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_actor_events_export[]="SiN_GetSceneActorEventsApi";
+struct SceneActorEventBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *grow)(void*,void* vector,unsigned additional) noexcept;
+    // Original actor virtual +2f0. Record remains allocated and vector
+    // identity/count must not change during the hosted callback.
+    int (__cdecl *stop_record)(void*,void* actor,void* record,int zero,int argument) noexcept;
+};
+struct SceneStopBindings {
+    void* context;
+    int (__cdecl *parsed)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *actor)(void*,void* scene,unsigned,void**,unsigned*) noexcept;
+    SceneDurationBindings events;
+    SceneActorEventBindings records;
+};
+struct SceneActorEventsApi {
+    std::uint32_t version,size;
+    int (__cdecl *attach)(void*,unsigned,std::uint32_t,const SceneActorEventBindings*) noexcept;
+    int (__cdecl *detach)(void*,unsigned,std::uint32_t,const SceneActorEventBindings*) noexcept;
+    int (__cdecl *stop_actor)(void*,unsigned,std::uint32_t,int,const SceneActorEventBindings*) noexcept;
+    // Original 221a2c90, including nested type 11 choreography.
+    int (__cdecl *stop_scene)(void*,unsigned,std::uint32_t,int,const SceneStopBindings*) noexcept;
+};
+using GetSceneActorEventsApi=const SceneActorEventsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

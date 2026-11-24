@@ -1089,4 +1089,55 @@ inline void check_scene_start(const SceneStartApi& api){
     bad.expect({1,2,1,6,6,6,7,8,9});
 }
 
+
+struct SceneActorEventsFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char actor[0x604]{},scene[0x5ec]{},root[0x220]{},nested[0x220]{},event[0x3c0]{},child[0x3c0]{},rows[5][0x40]{};
+    std::uint32_t scenes[5]{};
+    SceneActorEventBindings b{};SceneStopBindings stop{};
+    unsigned grows=0,stops=0,order[8]{},actor_reads=0;bool fail_stop=false;
+    static SceneActorEventsFixture& get(void* p){return *static_cast<SceneActorEventsFixture*>(p);}
+    SceneActorEventsFixture(){
+        F::put(scene,0x40c,F::ptr(root));F::put(root,0x20,1);F::put(root,0xc,1);F::put(nested,0xc,1);
+        F::put(event,0,11);F::put(event,0x324,F::ptr(nested));
+        F::put(actor,0x5b8,F::ptr(rows));F::put(actor,0x5bc,5);F::put(actor,0x5c4,5);
+        for(unsigned i=0;i<5;++i){F::put(rows[i],0,i+1);F::put(rows[i],4,i==1||i==3?F::ptr(nested):i==2?0x1234:F::ptr(root));rows[i][0xc]=1;rows[i][0x3f]=static_cast<unsigned char>(10+i);}
+        b.context=this;
+        b.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(word==F::ptr(f.rows)||word==F::ptr(f.scenes));
+            if(word==F::ptr(f.rows)){*out=f.rows;*bytes=sizeof(f.rows);}else{*out=f.scenes;*bytes=sizeof(f.scenes);}return 1;};
+        b.grow=[](void* p,void* v,unsigned count) noexcept -> int{
+            auto& f=get(p);assert(v==f.actor+0x5ec&&count==1);++f.grows;F::put(v,0,F::ptr(f.scenes));F::put(v,4,5);return 1;};
+        b.stop_record=[](void* p,void* a,void* r,int zero,int arg) noexcept -> int{
+            auto& f=get(p);assert(a==f.actor&&!zero&&arg==7&&f.stops<8);
+            auto* row=static_cast<unsigned char*>(r);assert(row[0xc]&&F::word(row,4));f.order[f.stops++]=F::word(row,0);return !f.fail_stop;};
+        stop.context=this;stop.events.context=this;stop.records=b;
+        stop.parsed=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(word==F::ptr(f.root)||word==F::ptr(f.nested));*out=word==F::ptr(f.root)?f.root:f.nested;*bytes=sizeof(f.root);return 1;};
+        stop.actor=[](void* p,void* s,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(s==f.scene&&!i);++f.actor_reads;*out=f.actor;*bytes=sizeof(f.actor);return 1;};
+        stop.events.event=[](void* p,void* parsed,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(!i&&(parsed==f.root||parsed==f.nested));*out=parsed==f.root?f.event:f.child;*bytes=sizeof(f.event);return 1;};
+    }
+};
+inline void check_scene_actor_events(const SceneActorEventsApi& api){
+    using F=ScenePlaybackFixture;SceneActorEventsFixture f;
+    const auto root=F::ptr(f.root),nested=F::ptr(f.nested);
+    assert(api.attach(f.actor,sizeof(f.actor),root,&f.b)==1&&f.grows==1&&f.scenes[0]==root&&f.actor[0x600]&&F::word(f.actor,0x5fc)==F::ptr(f.scenes));
+    f.actor[0x600]=0;assert(api.attach(f.actor,sizeof(f.actor),root,&f.b)==1&&!f.actor[0x600]&&F::word(f.actor,0x5f8)==1);
+    assert(api.attach(f.actor,sizeof(f.actor),nested,&f.b)==1&&f.scenes[1]==nested);
+    assert(api.detach(f.actor,sizeof(f.actor),root,&f.b)==1&&F::word(f.actor,0x5f8)==1&&f.scenes[0]==nested);
+    f.actor[0x600]=0;assert(api.detach(f.actor,sizeof(f.actor),root,&f.b)==1&&f.actor[0x600]);
+    assert(api.stop_scene(f.scene,sizeof(f.scene),root,7,&f.stop)==1&&f.actor_reads==2&&f.stops==4);
+    const unsigned want[]={5,1,4,2};assert(!std::memcmp(f.order,want,sizeof(want)));
+    assert(F::word(f.actor,0x5c4)==1&&F::word(f.rows[0],0)==3&&F::word(f.rows[0],4)==0x1234&&f.rows[0][0x3f]==12);
+    assert(api.stop_actor(f.actor,sizeof(f.actor),0,7,&f.b)==1&&!F::word(f.actor,0x5c4)&&f.stops==4);
+    SceneActorEventsFixture suppressed;suppressed.root[0x124]=1;
+    assert(api.stop_scene(suppressed.scene,sizeof(suppressed.scene),F::ptr(suppressed.root),7,&suppressed.stop)==1&&suppressed.stops==2&&suppressed.actor_reads==1);
+    SceneActorEventsFixture cyclic;F::put(cyclic.child,0,11);F::put(cyclic.child,0x324,F::ptr(cyclic.root));
+    assert(api.stop_scene(cyclic.scene,sizeof(cyclic.scene),F::ptr(cyclic.root),7,&cyclic.stop)==-1&&cyclic.stops==4);
+    SceneActorEventsFixture failed;failed.fail_stop=true;
+    assert(api.stop_actor(failed.actor,sizeof(failed.actor),F::ptr(failed.root),7,&failed.b)==-1&&failed.stops==1&&F::word(failed.actor,0x5c4)==5&&F::word(failed.rows[4],0)==5);
+}
+
 }
