@@ -406,6 +406,32 @@ struct ParsedSceneResetApi {
     int (__cdecl *reset)(void*,unsigned,unsigned forward,std::uint32_t,std::uint32_t,const ParsedSceneResetBindings*) noexcept;
 };
 using GetParsedSceneResetApi=const ParsedSceneResetApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_start_export[]="SiN_GetSceneStartApi";
+enum class SceneStartResult:unsigned {NoAction,Started,ActorBlocked,Deferred};
+struct SceneStartBindings {
+    void* context;
+    int (__cdecl *parsed)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original scene virtual +340: actor resolved by parsed index.
+    int (__cdecl *actor)(void*,void*,unsigned,void**,unsigned*) noexcept;
+    // Original 22139f60 calls actor virtual +f4 each time.
+    int (__cdecl *is_npc)(void*,void*,unsigned*) noexcept;
+    // Original +5bc expeditor virtual and 220a4680 speech predicate.
+    int (__cdecl *speaking)(void*,void*,unsigned*) noexcept;
+    // 220fb1d0 associates parsed scene with actor.
+    int (__cdecl *attach)(void*,void*,std::uint32_t) noexcept;
+    int (__cdecl *refresh)(void*,void*) noexcept;
+    int (__cdecl *stop_events)(void*,void*,std::uint32_t,int) noexcept;
+    int (__cdecl *output)(void*,void* output,void* activator,void* caller,float delay) noexcept;
+    // Original startup event collection/dispatch 221adaa0 + 221a9ba0;
+    // scratch symbol table/vector allocation is still hosted.
+    int (__cdecl *startup_events)(void*,void*,std::uint32_t) noexcept;
+    ParsedSceneResetBindings reset;
+};
+struct SceneStartApi {
+    std::uint32_t version,size;
+    int (__cdecl *start)(void*,unsigned,const SceneStartBindings*,SceneStartResult*) noexcept;
+};
+using GetSceneStartApi=const SceneStartApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

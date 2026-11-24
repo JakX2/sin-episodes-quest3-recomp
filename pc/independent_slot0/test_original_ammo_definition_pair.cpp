@@ -561,6 +561,12 @@ int main(int argc,char** argv){
     assert(parsedSceneReset&&!getParsedSceneReset(0,sizeof(tables::ParsedSceneResetApi))&&!getParsedSceneReset(1,0));
     tables::test::check_parsed_scene_reset(*parsedSceneReset);
     std::puts("PASS native original choreography reset, timing bounds and event vector reconstruction");
+    const auto getSceneStart=reinterpret_cast<tables::GetSceneStartApi>(GetProcAddress(server,tables::scene_start_export));
+    assert(getSceneStart&&!GetProcAddress(client,tables::scene_start_export));
+    const auto* sceneStart=getSceneStart(1,sizeof(tables::SceneStartApi));
+    assert(sceneStart&&!getSceneStart(0,sizeof(tables::SceneStartApi))&&!getSceneStart(1,0));
+    tables::test::check_scene_start(*sceneStart);
+    std::puts("PASS original native scene start, actor admission, deferral and start output");
 
 
 

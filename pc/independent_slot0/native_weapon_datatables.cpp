@@ -4725,6 +4725,55 @@ int __cdecl choreography_reset(void* parsed,unsigned bytes,unsigned forward,std:
     return 1;
 }
 const ParsedSceneResetApi parsed_scene_reset_api{version,sizeof(ParsedSceneResetApi),&choreography_event_reset,&choreography_bounds,&choreography_reset};
+// 221adcd0. Virtual leaves remain hosted, but native code owns the
+// admission, deferred flag, mutation sequence and original reset.
+int __cdecl native_scene_start(void* scene,unsigned bytes,const SceneStartBindings* b,SceneStartResult* out) noexcept {
+    if(bytes<0x55c||!hologram_writable(scene,0x55c)||!out||!hologram_writable(out,sizeof(*out))||
+       !b||!b->parsed||!b->actor||!b->is_npc||!b->speaking||!b->attach||!b->refresh||!b->stop_events||
+       !b->output||!b->startup_events||!b->reset.events.event||!b->reset.storage||!b->reset.grow)return 0;
+    const auto h=*b;
+    const auto complete=[&](SceneStartResult r){*out=r;return 1;};
+    if(!hologram_read<std::uint32_t>(scene,0x40c)||hologram_read<unsigned char>(scene,0x3d8))
+        return complete(SceneStartResult::NoAction);
+    auto parsed=[&](void*& p,unsigned& extent){
+        const auto word=hologram_read<std::uint32_t>(scene,0x40c);
+        p=nullptr;extent=0;return word&&h.parsed(h.context,word,&p,&extent)&&extent>=0x220&&hologram_writable(p,0x220);
+    };
+    void* p=nullptr;unsigned extent=0;
+    for(unsigned i=0;;++i){
+        if(!parsed(p,extent))return -1;
+        const int count=hologram_read<int>(p,0x20);
+        if(count<=0||i>=static_cast<unsigned>(count))break;
+        if(count>0x100000)return -1;
+        void* actor=nullptr;unsigned n=0,eligible=0;
+        if(!h.actor(h.context,scene,i,&actor,&n))return -1;
+        if(!actor)continue;
+        if(!h.is_npc(h.context,actor,&eligible))return -1;
+        if(!(eligible&0xff))continue;
+        if(!h.is_npc(h.context,actor,&eligible)||!(eligible&0xff)||n<0x90||
+           !sin_independent::vgui_layout::Readable(actor,0x90))return -1;
+        if(hologram_read<std::uint32_t>(actor,0x8c))return complete(SceneStartResult::ActorBlocked);
+        if(hologram_read<int>(scene,0x558)==1){
+            if(!h.is_npc(h.context,actor,&eligible))return -1;
+            if(eligible&0xff){
+                unsigned speaking=0;if(!h.speaking(h.context,actor,&speaking))return -1;
+                if(speaking&0xff){hologram_write(scene,0x3f5,static_cast<unsigned char>(1));return complete(SceneStartResult::Deferred);}
+            }
+        }
+        if(!h.attach(h.context,actor,hologram_read<std::uint32_t>(scene,0x40c)))return -1;
+    }
+    hologram_write(scene,0x3f5,static_cast<unsigned char>(0));
+    hologram_write(scene,0x3d8,static_cast<unsigned char>(1));
+    hologram_write(scene,0x3d9,static_cast<unsigned char>(0));
+    hologram_write(scene,0x3dc,0u);
+    if(choreography_reset(p,extent,1,0,0,&h.reset)!=1)return -1;
+    if(!h.refresh(h.context,scene)||
+       !h.stop_events(h.context,scene,hologram_read<std::uint32_t>(scene,0x40c),0)||
+       !h.output(h.context,static_cast<unsigned char*>(scene)+0x41c,scene,scene,0.f)||
+       !h.startup_events(h.context,scene,hologram_read<std::uint32_t>(scene,0x40c)))return -1;
+    return complete(SceneStartResult::Started);
+}
+const SceneStartApi scene_start_api{version,sizeof(SceneStartApi),&native_scene_start};
 int __cdecl parsed_scene_finished(const void* parsed,unsigned bytes,unsigned* out) noexcept {
     if(!parsed||bytes<0x90||!sin_independent::vgui_layout::Readable(parsed,0x90)||
        !out||!hologram_writable(out,sizeof(*out)))return 0;
@@ -9377,6 +9426,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetSceneStartApi=_SiN_GetSceneStartApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneStartApi* __cdecl
+SiN_GetSceneStartApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneStartApi)?&scene_start_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetParsedSceneResetApi=_SiN_GetParsedSceneResetApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ParsedSceneResetApi* __cdecl
 SiN_GetParsedSceneResetApi(std::uint32_t version,std::uint32_t size) noexcept {
