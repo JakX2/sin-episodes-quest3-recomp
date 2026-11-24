@@ -27,6 +27,7 @@
 #include "test_native_music_radio_map.h"
 #include "test_native_vehicle_sound.h"
 #include "test_native_vehicle_hint.h"
+#include "test_native_vehicle_views.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -483,6 +484,12 @@ int main(int argc,char** argv){
     assert(vehicleHint&&hintHud&&!getVehicleHint(0,sizeof(tables::VehicleHintApi))&&!getHintHud(1,0));
     tables::test::check_vehicle_hint(*vehicleHint,*hintHud);
     std::puts("PASS native vehicle hints and paired client HintText deadline");
+    const auto getVehicleViews=reinterpret_cast<tables::GetVehicleViewsApi>(GetProcAddress(server,tables::vehicle_views_export));
+    assert(getVehicleViews&&!GetProcAddress(client,tables::vehicle_views_export));
+    const auto* vehicleViews=getVehicleViews(1,sizeof(tables::VehicleViewsApi));
+    assert(vehicleViews&&!getVehicleViews(0,sizeof(tables::VehicleViewsApi))&&!getVehicleViews(1,0));
+    tables::test::check_vehicle_views(*vehicleViews);
+    std::puts("PASS native vehicle view selection, permission and ViewChanged ordering");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
