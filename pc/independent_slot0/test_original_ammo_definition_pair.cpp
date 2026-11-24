@@ -10,6 +10,7 @@
 #include "test_native_jessica_script.h"
 #include "test_native_npc_scene_playback.h"
 #include "test_retail_vcd_audit.h"
+#include "test_native_client_facial_frame.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -48,6 +49,15 @@ int main(int argc,char** argv){
     assert(argc==3||argc==4);
     const auto client=LoadLibraryA(argv[1]),server=LoadLibraryA(argv[2]);
     assert(client&&server);
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetClientFacialFrameApi>(GetProcAddress(client,ft::client_facial_frame_export));
+        assert(get&&!GetProcAddress(server,ft::client_facial_frame_export));
+        const auto* api=get(1,sizeof(ft::ClientFacialFrameApi));
+        assert(api&&!get(0,sizeof(ft::ClientFacialFrameApi))&&!get(1,0));
+        ft::test::check_client_facial_frame(*api);
+        std::puts("PASS client facial network controller projection, blink and smoothing");
+    }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));
     assert(gc&&gs&&!gc(0,sizeof(d::Api))&&!gs(1,0));

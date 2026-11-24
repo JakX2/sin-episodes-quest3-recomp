@@ -2,6 +2,7 @@
 #include "native_count_interrogation.h"
 #include "native_npc_dialogue.h"
 #include "native_npc_scene_playback.h"
+#include "native_client_facial_frame.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11145,6 +11146,56 @@ int __cdecl destroy_flex(FlexRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const FlexRecvApi flex_api{version,sizeof(FlexRecvApi),&create_flex,&destroy_flex};
+// Original C_BaseFlex secondary method 240d0a70 receives this+4.
+// Use full-object offsets here: network weights +860, blink toggle +ac0,
+// deadline +ac4, previous toggle +ac8, blink global index +acc.
+int __cdecl client_facial_project(void* entity,unsigned bytes,const ClientFacialController* rows,unsigned count,
+    float now,float blink_duration,const ClientFacialFrameBindings* b,float* out) noexcept {
+    constexpr auto globals=client_facial_global_count;
+    if(bytes<client_facial_object_bytes||!hologram_writable(entity,client_facial_object_bytes)||
+       !hologram_writable(out,globals*sizeof(float))||count>client_facial_network_count||
+       (count&&(!rows||!sin_independent::vgui_layout::Readable(rows,count*sizeof(*rows)))))return 0;
+    float result[globals]{};
+    if(!count){std::memcpy(out,result,sizeof(result));return 1;}
+    if(!(blink_duration>0)||!std::isfinite(blink_duration)||!std::isfinite(now))return 0;
+    for(unsigned i=0;i<count;++i){
+        const auto& row=rows[i];
+        if(row.global<0||row.global>=static_cast<int>(globals))return 0;
+        const double f=hologram_read<float>(entity,0x860+i*4);
+        result[row.global]=static_cast<float>((static_cast<double>(row.maximum)-row.minimum)*f+row.minimum);
+    }
+    const auto toggle=hologram_read<std::uint32_t>(entity,0xac0);
+    const auto previous=hologram_read<std::uint32_t>(entity,0xac8);
+    const bool changed=toggle!=previous;
+    const float deadline=changed?static_cast<float>(static_cast<double>(now)+blink_duration):hologram_read<float>(entity,0xac4);
+    int blink=hologram_read<int>(entity,0xacc);
+    if(blink==-1&&(!b||!b->lookup||!b->lookup(b->context,"blink",&blink)))return 0;
+    if(blink<0||blink>=static_cast<int>(globals))return 0;
+    result[blink]=0;
+    const double angle=(static_cast<double>(deadline)-now)/blink_duration*1.5707963267948966;
+    if(angle>0){
+        const double cosine=std::cos(angle);
+        if(cosine>0){
+            float weight=static_cast<float>(2*std::sqrt(cosine));
+            if(weight>1)weight=static_cast<float>(2.0-weight);
+            result[blink]=weight;
+        }
+    }
+    if(changed){hologram_write(entity,0xac8,toggle);hologram_write(entity,0xac4,deadline);}
+    hologram_write(entity,0xacc,blink);
+    std::memcpy(out,result,sizeof(result));return 1;
+}
+int __cdecl client_facial_smooth(float* previous,const float* current,unsigned count,float dt) noexcept {
+    if(count>128)return 0;
+    if(!count)return 1;
+    if(!hologram_writable(previous,count*sizeof(float))||!sin_independent::vgui_layout::Readable(current,count*sizeof(float)))return 0;
+    // Original x87 exponent: exp(log(float(.8))*dt*float(30.30303)).
+    const double factor=dt==0?1.0:std::pow(0.800000011920929,static_cast<double>(dt)*30.303030014038086);
+    float result[128];
+    for(unsigned i=0;i<count;++i)result[i]=static_cast<float>((1-factor)*current[i]+factor*previous[i]);
+    std::memcpy(previous,result,count*sizeof(float));return 1;
+}
+const ClientFacialFrameApi client_facial_frame_api{version,sizeof(ClientFacialFrameApi),&client_facial_project,&client_facial_smooth};
 
 constexpr int layer_offset=0x7a4,layer_stride=0x20;
 // Original 0x24127100 forwards length to entity-specific resize,
@@ -13565,6 +13616,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientFacialFrameApi=_SiN_GetClientFacialFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientFacialFrameApi* __cdecl
+SiN_GetClientFacialFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientFacialFrameApi)?&client_facial_frame_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetFlexRecvGraphApi=_SiN_GetFlexRecvGraphApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::FlexRecvApi* __cdecl
