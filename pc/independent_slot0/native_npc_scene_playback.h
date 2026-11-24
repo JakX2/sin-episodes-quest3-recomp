@@ -1,5 +1,6 @@
 #pragma once
 #include "native_jessica_script.h"
+#include "../../include/sin_compat/vcd_tokenizer.hpp"
 namespace sin_port::native_weapon_tables {
 inline constexpr char npc_scene_playback_export[]="SiN_GetNpcScenePlaybackApi";
 struct SceneDurationBindings {
@@ -939,6 +940,18 @@ struct ChoreographyTimingTagsApi {
     int (__cdecl *block)(void*,unsigned,ChoreographyEventBlock,const ChoreographyTimingTagBindings*) noexcept;
 };
 using GetChoreographyTimingTagsApi=const ChoreographyTimingTagsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char portable_vcd_tokenizer_export[]="SiN_GetPortableVcdTokenizerApi";
+struct PortableVcdTokenizerApi {
+    std::uint32_t version,size;
+    // Callback signatures match parser leaves. Context is a live, initialized
+    // sin_port::vcd::Tokenizer, borrowed input valid through final parse.
+    int (__cdecl *begin)(void*,const char*,unsigned) noexcept;
+    int (__cdecl *next)(void*,unsigned,unsigned*) noexcept;
+    int (__cdecl *token)(void*,const char**) noexcept;
+    int (__cdecl *same_line)(void*,unsigned*) noexcept;
+    int (__cdecl *clear)(void*) noexcept;
+};
+using GetPortableVcdTokenizerApi=const PortableVcdTokenizerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

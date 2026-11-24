@@ -6266,3 +6266,14 @@ if(BUILD_TESTING)
         --self-test)
   endif()
 endif()
+
+# Phase843: portable VCD lexer, synthetic CI and optional owner corpus audit.
+if(BUILD_TESTING)
+  add_executable(sin_vcd_tokenizer_tests tests/test_vcd_tokenizer.cpp)
+  target_include_directories(sin_vcd_tokenizer_tests PRIVATE include)
+  target_compile_features(sin_vcd_tokenizer_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_vcd_tokenizer_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_vcd_tokenizer_tests COMMAND sin_vcd_tokenizer_tests)
+endif()
