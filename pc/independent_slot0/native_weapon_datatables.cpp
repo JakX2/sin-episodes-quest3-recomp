@@ -2,6 +2,7 @@
 #include "native_count_interrogation.h"
 #include "native_npc_dialogue.h"
 #include "native_npc_scene_playback.h"
+#include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
 #include <cstdio>
@@ -5787,6 +5788,68 @@ int __cdecl choreography_scale_find(void* parsed,unsigned bytes,std::uint16_t sy
     }
     *out=index;return 1;
 }
+// Original scale tree (22119787..221198a2) and rebalance 22115310.
+// Preserve indices and the free-list/high-water ABI; allocator stays hosted.
+int __cdecl choreography_scale_insert(void* p,void* object,std::uint16_t symbol,std::uint32_t* out) noexcept {
+    const auto* b=static_cast<const ChoreographyScaleTreeBindings*>(p);
+    if(!b||!b->storage||!b->grow_memory||!hologram_writable(b->sentinel,sizeof(ChoreographyScaleSentinel))||
+       !hologram_writable(object,0x24)||!hologram_writable(out,4)||symbol==0xffff)return 0;
+    const auto h=*b;
+    using T=sin_port::choreography_index::Tree<std::uint32_t,24>;
+    const unsigned high=hologram_read<unsigned>(object,0x1c),live=hologram_read<unsigned>(object,0x14);
+    const unsigned cap=hologram_read<unsigned>(object,8);
+    if(high>cap||cap>4096||live>high)return 0;
+    auto resolve=[&](unsigned n,void*& rows) noexcept {
+        rows=nullptr;if(!n)return true;
+        unsigned extent=0;const auto w=hologram_read<std::uint32_t>(object,4);
+        return w&&h.storage(h.context,w,&rows,&extent)&&extent>=n*24&&hologram_writable(rows,n*24);
+    };
+    void* rows=nullptr;if(!resolve(high,rows))return 0;
+    T t{static_cast<unsigned char*>(rows),high,hologram_read<unsigned>(object,0x10)};
+    auto key=[&](unsigned i) noexcept {return hologram_read<std::uint16_t>(t.rows,i*24+0x10);};
+    if(!t.valid(live,[&](unsigned a,unsigned z) noexcept {return key(a)<key(z);}))return 0;
+    const auto free_head=hologram_read<unsigned>(object,0x18);
+    unsigned free_count=0;
+    for(auto f=free_head;f!=T::nil;f=t.get(f,1)){
+        if(!t.index(f)||t.get(f,0)!=f||++free_count>high-live)return 0;
+    }
+    if(free_count!=high-live)return 0;
+    unsigned parent=T::nil,side=0;
+    for(auto i=t.root;i!=T::nil;i=t.get(i,side)){
+        if(symbol==key(i)){*out=i;return 1;}
+        parent=i;side=symbol<key(i)?0:1;
+    }
+    unsigned slot=free_head;
+    if(slot==T::nil){
+        if(high>=4096)return 0;
+        if(high==cap){
+            if(hologram_read<int>(object,0xc)==-1||
+               !h.grow_memory(h.context,static_cast<unsigned char*>(object)+4,1,24)||
+               hologram_read<unsigned>(object,8)<=high||hologram_read<unsigned>(object,8)>4096||
+               hologram_read<unsigned>(object,0x1c)!=high||hologram_read<unsigned>(object,0x14)!=live)return 0;
+        }
+        if(!resolve(high+1,rows))return 0;
+        t.rows=static_cast<unsigned char*>(rows);t.count=high+1;slot=high;
+        hologram_write(object,0x1c,high+1);
+    }else{
+        hologram_write(object,0x18,t.get(slot,1));
+    }
+    if(parent!=T::nil||free_head!=T::nil){
+        if(!(h.sentinel->flags&1)){
+            h.sentinel->flags|=1;h.sentinel->left=h.sentinel->right=h.sentinel->parent=T::nil;h.sentinel->color=1;
+        }
+    }
+    // 22119821 writes invalid symbol before linking/rebalancing, then
+    // stores key and default scale 100 after the node is live.
+    auto* row=t.rows+slot*24;
+    hologram_write(row,0x10,static_cast<std::uint16_t>(0xffff));
+    t.link(slot,parent,side);
+    hologram_write(object,0x10,t.root);hologram_write(object,0x14,live+1);
+    hologram_write(object,0x20,hologram_read<std::uint32_t>(object,4));
+    hologram_write(row,0x10,symbol);hologram_write(row,0x14,100);
+    *out=slot;return 1;
+}
+const ChoreographyScaleTreeApi choreography_scale_tree_api{version,sizeof(ChoreographyScaleTreeApi),&choreography_scale_insert};
 int __cdecl choreography_scale_block(void* parsed,unsigned bytes,const ChoreographyScaleBindings* b) noexcept {
     if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_scale_ready(b)||!b->integer||!b->intern||!b->insert||
        !b->text.next||!b->text.token||!b->text.unexpected)return 0;
@@ -11910,6 +11973,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableV
 SiN_GetPortableVcdFlexGrammarApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PortableVcdFlexGrammarApi)?&portable_vcd_flex_grammar_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyScaleTreeApi=_SiN_GetChoreographyScaleTreeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyScaleTreeApi* __cdecl
+SiN_GetChoreographyScaleTreeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyScaleTreeApi)?&choreography_scale_tree_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyScaleApi=_SiN_GetChoreographyScaleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyScaleApi* __cdecl

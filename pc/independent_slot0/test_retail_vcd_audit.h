@@ -28,6 +28,8 @@ struct VcdAuditArena {
     const ChoreographySymbolApi& symbol_api;
     const ChoreographyFlexOwnershipApi& tracks;
     const ChoreographyDestructionApi& destruction;
+    const ChoreographyScaleTreeApi& scale_tree_api;
+    ChoreographyScaleTreeBindings scale_tree{};
     std::map<std::uint32_t,unsigned> live;
     std::vector<std::string> symbols;
     std::uint32_t counter=0;
@@ -92,8 +94,8 @@ struct VcdAuditArena {
         std::string k(s);for(char& c:k)if(c>='A'&&c<='Z')c=static_cast<char>(c+32);return k;
     }
     VcdAuditArena(const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,
-        const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d)
-        :constructors(c),symbol_api(s),tracks(t),destruction(d){
+        const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st)
+        :constructors(c),symbol_api(s),tracks(t),destruction(d),scale_tree_api(st){
         static_assert(sizeof(void*)==4,"VCD audit requires PE32 pointers");
         auto& grammar=bindings.grammar.curves.grammar;
         auto& events=grammar.events;auto& actors=events.actors;auto& text=actors.text;
@@ -138,20 +140,24 @@ struct VcdAuditArena {
                 *out=static_cast<std::uint16_t>(a.symbols.size());a.symbols.push_back(k);return 1;
             }catch(...){return 0;}
         };
+        scale_tree.context=this;scale_tree.sentinel=&scale_sentinel;scale_tree.storage=&storage;
+        scale_tree.grow_memory=[](void* p,void* mem,unsigned extra,unsigned stride) noexcept -> int{
+            const unsigned cap=F::word(mem,4),old=F::word(mem,0);
+            if(cap>4096||!extra||extra>4096-cap||stride!=24||F::word(mem,8)==0xffffffffu)return 0;
+            unsigned next=cap?cap:2;while(next<cap+extra)next*=2;
+            if(next>4096)return 0;
+            void* data=nullptr;unsigned extent=0;
+            if(!allocate(p,next*stride,&data,&extent))return 0;
+            if(old){
+                void* source=nullptr;unsigned bytes=0;
+                if(!storage(p,old,&source,&bytes)||bytes<cap*stride){release(p,F::ptr(data));return 0;}
+                std::memcpy(data,source,cap*stride);
+                if(!release(p,old)){release(p,F::ptr(data));return 0;}
+            }
+            F::put(mem,0,F::ptr(data));F::put(mem,4,next);return 1;
+        };
         scales.insert=[](void* p,void* tree,std::uint16_t symbol,std::uint32_t* out) noexcept -> int{
-            // Hosted audit-only insertion. IDs are monotonically interned;
-            // use an ascending chain, not a claim of retail RB-tree parity.
-            const unsigned n=F::word(tree,0x1c);if(n>=128||symbol!=n)return 0;
-            void* rows=nullptr;unsigned bytes=0;
-            if(!n){
-                if(!allocate(p,128*24,&rows,&bytes))return 0;
-                F::put(tree,4,F::ptr(rows));F::put(tree,8,128);F::put(tree,0x10,0);
-            }else if(!storage(p,F::word(tree,4),&rows,&bytes)||bytes<128*24)return 0;
-            auto* row=static_cast<unsigned char*>(rows)+24*n;
-            std::memset(row,0xff,24);std::memcpy(row+0x10,&symbol,2);
-            F::put(row,8,n?n-1:0xffffffffu);F::put(row,0xc,1);F::put(row,0x14,100);
-            if(n)F::put(rows,(n-1)*24+4,n);
-            F::put(tree,0x14,n+1);F::put(tree,0x1c,n+1);*out=n;return 1;
+            auto& a=self(p);return a.scale_tree_api.insert(&a.scale_tree,tree,symbol,out);
         };
         ownership.context=this;ownership.vtable=0x22400590; // stored, never invoked
         ownership.allocate=[](void* p,unsigned n,Kind,void** out,unsigned* extent) noexcept -> int{return allocate(p,n,out,extent);};
@@ -235,7 +241,7 @@ struct VcdAuditArena {
     }
 };
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st){
     const char input[]=R"VCD(event loop repeat
 {
  time 0 8
@@ -287,13 +293,13 @@ actor Blade
 }
 scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
 )VCD";
-    VcdAuditArena a(c,s,t,d);VcdAuditCounts out;
+    VcdAuditArena a(c,s,t,d,st);VcdAuditCounts out;
     assert(a.parse(grammar,"multi.vcd",input,sizeof(input)-1,out));
     assert(out.actors==2&&out.channels==3&&out.events==5&&out.tracks==2&&out.samples==3&&out.scales==2&&!out.missing);
     std::puts("PASS multi-object VCD grammar, native track lifecycle, finalization and scene retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,
-    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d){
+    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st){
     namespace fs=std::filesystem;std::error_code ec;
     const fs::path root(directory);
     unsigned files=0,passed=0;VcdAuditCounts sum;
@@ -310,7 +316,7 @@ inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFi
         if(!stream||bytes<=0||bytes>1024*1024){std::fprintf(stderr,"VCD unreadable/oversized %s\n",name.c_str());continue;}
         std::string data(static_cast<std::size_t>(bytes),'\0');stream.seekg(0);
         if(!stream.read(data.data(),static_cast<std::streamsize>(data.size())))continue;
-        VcdAuditArena arena(c,s,t,d);VcdAuditCounts stats;
+        VcdAuditArena arena(c,s,t,d,st);VcdAuditCounts stats;
         if(arena.parse(grammar,name.c_str(),data.data(),static_cast<unsigned>(data.size()),stats)){++passed;sum.add(stats);}
     }
     std::printf("VCD AUDIT files=%u passed=%u actors=%u channels=%u events=%u tracks=%u samples=%u scales=%u missing=%u\n",

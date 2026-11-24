@@ -1009,6 +1009,22 @@ struct ChoreographyScaleApi {
     int (__cdecl *block)(void*,unsigned,const ChoreographyScaleBindings*) noexcept;
 };
 using GetChoreographyScaleApi=const ChoreographyScaleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_scale_tree_export[]="SiN_GetChoreographyScaleTreeApi";
+struct ChoreographyScaleTreeBindings {
+    void* context;
+    ChoreographyScaleSentinel* sentinel;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // CUtlMemory at tree+4: update allocation and capacity only, retain
+    // existing slots. Additional capacity, not logical element count.
+    int (__cdecl *grow_memory)(void*,void*,unsigned,unsigned) noexcept;
+};
+struct ChoreographyScaleTreeApi {
+    std::uint32_t version,size;
+    // Callback-compatible with ChoreographyScaleBindings.insert; context
+    // points at a live ChoreographyScaleTreeBindings. Boolean return.
+    int (__cdecl *insert)(void*,void*,std::uint16_t,std::uint32_t*) noexcept;
+};
+using GetChoreographyScaleTreeApi=const ChoreographyScaleTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char portable_vcd_curve_grammar_export[]="SiN_GetPortableVcdCurveGrammarApi";
 struct PortableVcdCurveGrammarBindings {
     PortableVcdGrammarBindings grammar;
