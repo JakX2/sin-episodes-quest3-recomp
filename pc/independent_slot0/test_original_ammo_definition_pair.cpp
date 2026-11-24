@@ -9,6 +9,7 @@
 #include "test_inventory_network_contract_core.h"
 #include "test_native_jessica_script.h"
 #include "test_native_count_interrogation.h"
+#include "test_native_character_response.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -339,6 +340,12 @@ int main(int argc,char** argv){
     assert(countApi&&!getCount(0,sizeof(tables::CountInterrogationApi))&&!getCount(1,0));
     tables::test::check_count(*countApi);
     std::puts("PASS native Count interrogation inputs, response cycle and zero-damage forwarding");
+    const auto getCharacterResponse=reinterpret_cast<tables::GetCharacterResponseApi>(GetProcAddress(server,tables::character_response_export));
+    assert(getCharacterResponse&&!GetProcAddress(client,tables::character_response_export));
+    const auto* characterResponse=getCharacterResponse(1,sizeof(tables::CharacterResponseApi));
+    assert(characterResponse&&!getCharacterResponse(0,sizeof(tables::CharacterResponseApi))&&!getCharacterResponse(1,0));
+    tables::test::check_character_response(*characterResponse);
+    std::puts("PASS native Count response region classification, Count/JC speech semaphore and Jessica poison filter");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
