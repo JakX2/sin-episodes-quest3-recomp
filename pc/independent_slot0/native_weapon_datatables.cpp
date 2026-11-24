@@ -12822,8 +12822,10 @@ SiN_GetSceneSpeechDrainApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneSpeechDrainApi)?&scene_speech_drain_api:nullptr;
 }
-extern "C" __declspec(dllexport) const NativeChoreographySceneLeafApi* __cdecl SiN_GetNativeChoreographySceneLeafApi(std::uint32_t v,std::uint32_t n) noexcept {
-    return v==version&&n>=sizeof(NativeChoreographySceneLeafApi)?&native_choreography_scene_leaf_api:nullptr;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeChoreographySceneLeafApi* __cdecl
+SiN_GetNativeChoreographySceneLeafApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographySceneLeafApi)?&native_choreography_scene_leaf_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographySceneLeafApi=_SiN_GetNativeChoreographySceneLeafApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographyDispatchApi=_SiN_GetNativeChoreographyDispatchApi")
