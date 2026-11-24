@@ -284,6 +284,38 @@ struct SpreadFileReport {
 };
 using LoadAttackSpreadFromEngine=int (SIN_FIXED_CALL *)(void*,SpreadFileReport*) noexcept;
 static_assert(sizeof(SpreadFileReport)==20);
+// Original CBaseCombatCharacter / CAI_BaseNPC slot243 behavior. The
+// shell host resolves class names and the target's live enemy-memory
+// record. No foreign entity pointer or memory object is retained.
+inline constexpr char npc_attack_spread_export_name[]="SiN_GetNpcAttackSpreadApi";
+inline constexpr char npc_attack_spread_engine_export_name[]="SiN_QueryNpcAttackSpreadFromEngine";
+inline constexpr std::uint32_t npc_attack_spread_version=1;
+struct NpcFocusMemory {
+    std::uint32_t found;
+    float curtime,time_valid_enemy;
+};
+struct NpcFocusTuning {
+    float focus_time,defocused_multiplier;
+};
+struct NpcAttackSpreadResult {
+    AttackSpreadResult rules;
+    NpcSpread result;
+    float elapsed,focus_multiplier;
+    std::uint32_t defocused;
+};
+struct NpcAttackSpreadApi {
+    std::uint32_t version,size;
+    // Tuning is needed only when found is nonzero; fields from skipped
+    // branches are not read. On failure, the caller output is unchanged.
+    int (SIN_FIXED_CALL *query)(const char*,const char*,const char*,
+        const NpcFocusMemory*,const NpcFocusTuning*,NpcAttackSpreadResult*) noexcept;
+};
+using GetNpcAttackSpreadApi=const NpcAttackSpreadApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+// Win32 variant obtains live float values from original VEngineCvar002.
+// The multiplier is not looked up if no memory, focus <= 0, or expired.
+using QueryNpcAttackSpreadFromEngine=int (SIN_FIXED_CALL *)(void*,const char*,const char*,const char*,
+    const NpcFocusMemory*,NpcAttackSpreadResult*) noexcept;
+static_assert(sizeof(NpcAttackSpreadResult)==44);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

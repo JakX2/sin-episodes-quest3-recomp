@@ -374,6 +374,59 @@ int SIN_FIXED_CALL query_spread_rules(const char* npc,const char* weapon,const c
 const abi::AttackSpreadApi attack_spread_api{abi::attack_spread_version,
     sizeof(abi::AttackSpreadApi),&load_spread_rules,&clear_spread_rules,&query_spread_rules};
 
+// Original CAI_BaseNPC 0x22031120. The base spread is already scaled
+// by metric 12. Apply only the transient focus penalty afterwards.
+bool make_focus_base(const char* npc,const char* weapon,const char* target,
+        const abi::NpcFocusMemory* memory,abi::NpcAttackSpreadResult& result) noexcept {
+    if(!memory||memory->found>1)return false;
+    if(!query_spread_rules(npc,weapon,target,&result.rules))return false;
+    result.result={result.rules.x,result.rules.y,result.rules.z};
+    result.focus_multiplier=1.f;
+    return true;
+}
+bool focus_needs_multiplier(const abi::NpcFocusMemory& memory,float focus,
+        abi::NpcAttackSpreadResult& result,bool& needed) noexcept {
+    needed=false;
+    if(!std::isfinite(focus))return false;
+    if(focus<=0.f)return true;
+    if(!std::isfinite(memory.curtime)||!std::isfinite(memory.time_valid_enemy))return false;
+    // Native stores elapsed as float32 and clamps negative differences.
+    const float elapsed=memory.curtime-memory.time_valid_enemy;
+    if(!std::isfinite(elapsed))return false;
+    result.elapsed=elapsed<0.f?0.f:elapsed;
+    needed=result.elapsed<focus;
+    return true;
+}
+bool apply_focus_penalty(float focus,float cone,abi::NpcAttackSpreadResult& result) noexcept {
+    if(!std::isfinite(cone))return false;
+    if(cone<=1.f)return true;
+    const double multiplier=1.0+(static_cast<double>(cone)-1.0)*
+        (1.0-static_cast<double>(result.elapsed)/focus);
+    const float x=static_cast<float>(result.result.x*multiplier);
+    const float y=static_cast<float>(result.result.y*multiplier);
+    const float z=static_cast<float>(result.result.z*multiplier);
+    const float stored=static_cast<float>(multiplier);
+    if(!std::isfinite(stored)||!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(z))return false;
+    result.result={x,y,z};
+    result.focus_multiplier=stored;
+    result.defocused=1;
+    return true;
+}
+int SIN_FIXED_CALL query_npc_attack_spread(const char* npc,const char* weapon,const char* target,
+        const abi::NpcFocusMemory* memory,const abi::NpcFocusTuning* tuning,
+        abi::NpcAttackSpreadResult* out) noexcept {
+    abi::NpcAttackSpreadResult result{};
+    if(!out||!make_focus_base(npc,weapon,target,memory,result))return 0;
+    if(memory->found){
+        bool needed=false;
+        if(!tuning||!focus_needs_multiplier(*memory,tuning->focus_time,result,needed))return 0;
+        if(needed&&!apply_focus_penalty(tuning->focus_time,tuning->defocused_multiplier,result))return 0;
+    }
+    *out=result;return 1;
+}
+const abi::NpcAttackSpreadApi npc_attack_spread_api{abi::npc_attack_spread_version,
+    sizeof(abi::NpcAttackSpreadApi),&query_npc_attack_spread};
+
 static_assert(diff::original_metric_count==abi::metric_count);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Initial)==abi::Initial);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Current)==abi::Current);
@@ -389,6 +442,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetCombatDamageApi=_SiN_GetCombatDamageApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcRulesApi=_SiN_GetNpcRulesApi")
 #pragma comment(linker,"/EXPORT:SiN_GetAttackSpreadApi=_SiN_GetAttackSpreadApi")
+#pragma comment(linker,"/EXPORT:SiN_GetNpcAttackSpreadApi=_SiN_GetNpcAttackSpreadApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -402,6 +456,12 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 extern "C" SIN_FIXED_EXPORT const abi::Api* SIN_FIXED_CALL
 SiN_GetFixedDifficultyApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::abi_version&&bytes==sizeof(abi::Api)?&api:nullptr;
+}
+
+extern "C" SIN_FIXED_EXPORT const abi::NpcAttackSpreadApi* SIN_FIXED_CALL
+SiN_GetNpcAttackSpreadApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::npc_attack_spread_version&&bytes==sizeof(abi::NpcAttackSpreadApi)?
+        &npc_attack_spread_api:nullptr;
 }
 
 extern "C" SIN_FIXED_EXPORT const abi::AttackSpreadApi* SIN_FIXED_CALL
@@ -781,37 +841,63 @@ namespace methods=sin_independent::known_game_system;
 // Phase335: 24-byte ConCommandBase, 68-byte ConVar. Original getters
 // resolve a single parent link. Only byte reads of verified fields cross
 // the foreign object boundary; no cast to the reconstructed C++ class.
-constexpr std::size_t parent_offset=0x18, name_offset=0x0c, int_offset=0x2c;
-bool read_engine_skill(void* engine,int& value) noexcept {
+constexpr std::size_t parent_offset=0x18, name_offset=0x0c, real_offset=0x28, int_offset=0x2c;
+template<class T>
+bool read_engine_cvar(void* engine,const char* expected,std::size_t offset,T& value) noexcept {
     methods::CallResult refused=methods::CallResult::InvalidObject;
     const auto method=methods::VerifiedMethod(engine,3,refused);
     if(!method)return false;
     using Find=sin_independent::console_abi::FindSlot;
     const void* variable=nullptr;
-    try {variable=reinterpret_cast<Find>(method)(engine,"skill");}
+    try {variable=reinterpret_cast<Find>(method)(engine,expected);}
     catch(...) {return false;}
     if(!memory::Readable(variable,parent_offset+sizeof(void*)))return false;
     const auto* bytes=static_cast<const unsigned char*>(variable);
     const unsigned char* root=nullptr;
     std::memcpy(&root,bytes+parent_offset,sizeof(root));
-    if(!memory::Readable(root,int_offset+sizeof(int)))return false;
+    if(!memory::Readable(root,offset+sizeof(T)))return false;
     const unsigned char* root_parent=nullptr;
     std::memcpy(&root_parent,root+parent_offset,sizeof(root_parent));
     if(root_parent!=root)return false;
     const char* name=nullptr;
     std::memcpy(&name,root+name_offset,sizeof(name));
-    if(!memory::Readable(name,6)||std::memcmp(name,"skill",6)!=0)return false;
-    int observed=0;
-    std::memcpy(&observed,root+int_offset,sizeof(observed));
-    if(!fixed::valid_skill(observed))return false;
+    const auto length=std::strlen(expected)+1;
+    if(!memory::Readable(name,length)||std::memcmp(name,expected,length)!=0)return false;
+    T observed{};
+    std::memcpy(&observed,root+offset,sizeof(observed));
     value=observed;
     return true;
+}
+bool read_engine_skill(void* engine,int& value) noexcept {
+    int observed=0;
+    if(!read_engine_cvar(engine,"skill",int_offset,observed)||!fixed::valid_skill(observed))return false;
+    value=observed;return true;
 }
 struct EngineReadScope {
     EngineReadScope() noexcept {reading_engine_skill=true;}
     ~EngineReadScope(){reading_engine_skill=false;}
 };
 }
+// The original CAI_BaseNPC override queries enemy memory before reading
+// either ConVar. Mirror that branch order with host-resolved memory.
+#pragma comment(linker,"/EXPORT:SiN_QueryNpcAttackSpreadFromEngine=_SiN_QueryNpcAttackSpreadFromEngine")
+extern "C" int SIN_FIXED_CALL SiN_QueryNpcAttackSpreadFromEngine(void* cvar,
+        const char* npc,const char* weapon,const char* target,
+        const abi::NpcFocusMemory* memory,abi::NpcAttackSpreadResult* out) noexcept {
+    abi::NpcAttackSpreadResult result{};
+    if(!out||!make_focus_base(npc,weapon,target,memory,result))return 0;
+    if(memory->found){
+        EngineReadScope scope;
+        float focus=0.f,cone=0.f;
+        bool needed=false;
+        if(!read_engine_cvar(cvar,"ai_spread_cone_focus_time",real_offset,focus)||
+           !focus_needs_multiplier(*memory,focus,result,needed))return 0;
+        if(needed&&(!read_engine_cvar(cvar,"ai_spread_defocused_cone_multiplier",real_offset,cone)||
+            !apply_focus_penalty(focus,cone,result)))return 0;
+    }
+    *out=result;return 1;
+}
+
 // Original KeyValues file reader 0x22264200 calls primary VFileSystem012
 // slots 2/7/0/3. The CSE1Rules constructor at 0x222d7e30 supplies GAME.
 // This adapter reads exactly that resource and publishes only after a
