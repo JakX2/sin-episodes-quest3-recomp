@@ -243,6 +243,12 @@ int main(int argc,char** argv){
     assert(pickup&&!getPickup(0,sizeof(tables::HealthPickupApi))&&!getPickup(1,0));
     tables::test::check_health_pickups(*pickup);
     std::puts("PASS native health kit, vial and MegaHealth pickup, original tracked max-health cap");
+    const auto getDispScreen=reinterpret_cast<tables::GetDispenserScreenApi>(GetProcAddress(server,tables::dispenser_screen_export));
+    assert(getDispScreen&&!GetProcAddress(client,tables::dispenser_screen_export));
+    const auto* dispScreen=getDispScreen(1,sizeof(tables::DispenserScreenApi));
+    assert(dispScreen&&!getDispScreen(0,sizeof(tables::DispenserScreenApi))&&!getDispScreen(1,0));
+    tables::test::check_dispenser_screen(*dispenser,*dispScreen);
+    std::puts("PASS native dispenser VGUI screen placement/lifecycle and original restore decisions");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

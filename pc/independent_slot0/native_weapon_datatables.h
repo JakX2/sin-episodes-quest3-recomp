@@ -932,4 +932,36 @@ struct HealthPickupApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetHealthPickupApi=const HealthPickupApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase723: CAntigenDispenser idle screen setup and restore decisions.
+// Compatible transform, screen and event-manager services are borrowed.
+inline constexpr char dispenser_screen_export[]="SiN_GetDispenserScreenApi";
+enum class DispenserThinkKind:unsigned {Other,Use,Idle};
+struct DispenserScreenBindings {
+    DispenserBindings dispenser;
+    int (__cdecl *create_screen)(void*,const char* classname,std::uint32_t* handle) noexcept;
+    int (__cdecl *sample_origin)(void*,void* object,float xyz[3]) noexcept;
+    // Original placement orientation +354 and angle-vector input +36c.
+    int (__cdecl *sample_angles)(void*,void* object,float placement[3],float basis[3]) noexcept;
+    int (__cdecl *angle_vectors)(void*,const float angles[3],float forward[3],float right[3],float up[3]) noexcept;
+    int (__cdecl *normalize)(void*,float vector[3]) noexcept;
+    int (__cdecl *set_origin)(void*,void* screen,const float xyz[3]) noexcept;
+    int (__cdecl *set_angles)(void*,void* screen,const float xyz[3]) noexcept;
+    int (__cdecl *set_size)(void*,void* screen,float width,float height) noexcept;
+    int (__cdecl *keyvalue)(void*,void* screen,const char* key,const char* value) noexcept;
+    // Real typed CVGuiScreen storage, minimum readable/writable span.
+    int (__cdecl *screen_storage)(void*,void* screen,unsigned* bytes) noexcept;
+    int (__cdecl *spawn_screen)(void*,void* screen) noexcept;
+    int (__cdecl *install_idle)(void*,void* object) noexcept;
+    int (__cdecl *base_restore)(void*,void* object) noexcept;
+    int (__cdecl *listen)(void*,void* object,const char* event) noexcept;
+    int (__cdecl *think_kind)(void*,void* object,DispenserThinkKind*) noexcept;
+    int (__cdecl *next_think)(void*,void* object,float*) noexcept;
+};
+struct DispenserScreenApi {
+    std::uint32_t version,size;
+    int (__cdecl *idle)(HologramControl*,const DispenserScreenBindings*) noexcept;
+    int (__cdecl *restore)(HologramControl*,const DispenserScreenBindings*) noexcept;
+};
+using GetDispenserScreenApi=const DispenserScreenApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
