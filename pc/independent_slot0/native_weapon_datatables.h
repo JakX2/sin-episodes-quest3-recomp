@@ -879,4 +879,27 @@ struct ContainerApi {
     int (__cdecl *eject)(HologramControl*,const ContainerBindings*) noexcept;
 };
 using GetContainerApi=const ContainerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase721: item_dna_scanner. Host supplies base spawn/animation,
+// class-name and player queries, audio and ordinary Source map outputs.
+inline constexpr char dna_scanner_export[]="SiN_GetDnaScannerApi";
+struct DnaScannerBindings {
+    void* context;
+    int (__cdecl *classname)(void*,void* entity,const char** name) noexcept;
+    int (__cdecl *is_player)(void*,void* entity,unsigned*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *sound)(void*,void* scanner,const char* name) noexcept;
+    int (__cdecl *output)(void*,void* scanner,unsigned offset,void* activator,void* caller,float delay) noexcept;
+};
+struct DnaScannerApi {
+    std::uint32_t version,size;
+    // Original post-base spawn fields only. Does not create outputs
+    // or install a raw original callback address.
+    int (__cdecl *spawn_state)(HologramControl*) noexcept;
+    int (__cdecl *capabilities)(const void*,unsigned bytes,std::uint32_t base,std::uint32_t*) noexcept;
+    int (__cdecl *touch)(HologramControl*,const DnaScannerBindings*,void* other) noexcept;
+    int (__cdecl *use)(HologramControl*,const DnaScannerBindings*,void* activator) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetDnaScannerApi=const DnaScannerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

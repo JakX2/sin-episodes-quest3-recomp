@@ -231,6 +231,12 @@ int main(int argc,char** argv){
     assert(container&&!getContainer(0,sizeof(tables::ContainerApi))&&!getContainer(1,0));
     tables::test::check_container(*dispenser,*container);
     std::puts("PASS native antigen container insert/eject, dose transfer and map outputs");
+    const auto getDna=reinterpret_cast<tables::GetDnaScannerApi>(GetProcAddress(server,tables::dna_scanner_export));
+    assert(getDna&&!GetProcAddress(client,tables::dna_scanner_export));
+    const auto* dna=getDna(1,sizeof(tables::DnaScannerApi));
+    assert(dna&&!getDna(0,sizeof(tables::DnaScannerApi))&&!getDna(1,0));
+    tables::test::check_dna_scanner(*dna);
+    std::puts("PASS native SiN DNA scanner touch, scan output and shared deny cooldown");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

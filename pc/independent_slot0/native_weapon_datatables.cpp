@@ -1877,6 +1877,59 @@ int __cdecl container_eject(HologramControl* ctrl,const ContainerBindings* b) no
     return disp_finish(ctrl,true);
 }
 const ContainerApi container_api{version,sizeof(ContainerApi),&container_spawn_state,&container_touch,&container_eject};
+
+constexpr unsigned dna_raw=0x494,dna_caps=0x498,dna_deadline=0x49c,dna_output=0x4a0;
+bool dna_valid(const HologramControl* ctrl) noexcept {
+    return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=0x4b8&&hologram_writable(ctrl->object,0x4b8);
+}
+int __cdecl dna_spawn_state(HologramControl* ctrl) noexcept {
+    if(!dna_valid(ctrl))return 0;
+    hologram_write(ctrl->object,dna_raw,0u);hologram_write(ctrl->object,dna_caps,0x20u);
+    return 1;
+}
+int __cdecl dna_capabilities(const void* object,unsigned bytes,std::uint32_t base,std::uint32_t* out) noexcept {
+    if(!out||bytes<0x4b8||!sin_independent::vgui_layout::Readable(object,0x4b8))return 0;
+    *out=base|hologram_read<std::uint32_t>(object,dna_caps);return 1;
+}
+bool dna_deny(void* scanner,const DnaScannerBindings& b) noexcept {
+    float now=0;
+    if(!b.clock(b.context,&now)||!std::isfinite(now))return false;
+    // FCOM + TEST AH,41 / JP: ordered less-than OR equal.
+    // NaN deadline skips; do not turn equality into a strict gate.
+    if(!(hologram_read<float>(scanner,dna_deadline)<=now))return true;
+    const float deadline=static_cast<float>(static_cast<double>(now)+0.62);
+    if(!std::isfinite(deadline))return false;
+    hologram_write(scanner,dna_deadline,deadline);
+    return b.sound(b.context,scanner,"SuitRecharge.Deny")!=0;
+}
+int __cdecl dna_touch(HologramControl* ctrl,const DnaScannerBindings* b,void* other) noexcept {
+    if(!dna_valid(ctrl)||!b||!b->classname||!b->clock||!b->sound||!b->output)return 0;
+    if(!other)return 1;
+    ctrl->busy=1;const auto host=*b;const char* name=nullptr;
+    if(!host.classname(host.context,other,&name))return disp_finish(ctrl,false);
+    // Original reads entity classname and compares exact literals.
+    // Host supplies stable NUL-terminated classname for the call.
+    if(!name)return disp_finish(ctrl,true);
+    char text[128]{};
+    if(!prop_key_read(name,text))return disp_finish(ctrl,false);
+    if(!std::strcmp(text,"prop_ragdoll"))
+        return disp_finish(ctrl,host.output(host.context,ctrl->object,dna_output,ctrl->object,ctrl->object,0.0f)!=0);
+    if(!std::strcmp(text,"player"))return disp_finish(ctrl,dna_deny(ctrl->object,host));
+    return disp_finish(ctrl,true);
+}
+int __cdecl dna_use(HologramControl* ctrl,const DnaScannerBindings* b,void* activator) noexcept {
+    if(!dna_valid(ctrl)||!b||!b->is_player||!b->clock||!b->sound)return 0;
+    if(!activator)return 1;
+    ctrl->busy=1;const auto host=*b;unsigned player=0;
+    if(!host.is_player(host.context,activator,&player)||player>1)return disp_finish(ctrl,false);
+    return disp_finish(ctrl,!player||dna_deny(ctrl->object,host));
+}
+int __cdecl dna_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x4b8||!hologram_writable(ctrl->object,0x4b8))return 0;
+    ctrl->blocked=0;return 1;
+}
+const DnaScannerApi dna_api{version,sizeof(DnaScannerApi),&dna_spawn_state,&dna_capabilities,
+    &dna_touch,&dna_use,&dna_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3399,6 +3452,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Container
 SiN_GetAntigenContainerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ContainerApi)?&container_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetDnaScannerApi=_SiN_GetDnaScannerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::DnaScannerApi* __cdecl
+SiN_GetDnaScannerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(DnaScannerApi)?&dna_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

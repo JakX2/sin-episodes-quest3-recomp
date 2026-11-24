@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <limits>
 #include "native_weapon_datatables.h"
 #include <cassert>
 #include <cstring>
@@ -2233,6 +2234,60 @@ inline void check_container(const DispenserApi& dispenser,const ContainerApi& ap
     f.now=13.25f;f.amount=0;assert(touch()==1&&object[0x498]&&get(0x49c)==0);expect({1,2,3,5,6,7,9,11,13});
     f.fail=14;assert(eject()==-1&&ctrl.blocked&&!object[0x498]);expect({15,16,8,2,17,4,12,18,14});
     assert(touch()==0&&dispenser.acknowledge(&ctrl));expect({});
+}
+
+struct DnaFixture {
+    void* object=nullptr;
+    int other=0;
+    const char* name="prop_ragdoll";
+    unsigned player=1,events[8]{},count=0,fail=0;
+    float now=0;
+    bool push(unsigned e){assert(count<8);events[count++]=e;return fail!=e;}
+};
+inline int __cdecl dna_class_test(void* ctx,void* other,const char** out) noexcept {
+    auto& f=*static_cast<DnaFixture*>(ctx);assert(other==&f.other);*out=f.name;return f.push(1);
+}
+inline int __cdecl dna_player_test(void* ctx,void* other,unsigned* out) noexcept {
+    auto& f=*static_cast<DnaFixture*>(ctx);assert(other==&f.other);*out=f.player;return f.push(2);
+}
+inline int __cdecl dna_clock_test(void* ctx,float* now) noexcept {
+    auto& f=*static_cast<DnaFixture*>(ctx);*now=f.now;return f.push(3);
+}
+inline int __cdecl dna_sound_test(void* ctx,void* obj,const char* name) noexcept {
+    auto& f=*static_cast<DnaFixture*>(ctx);assert(obj==f.object&&!std::strcmp(name,"SuitRecharge.Deny"));return f.push(4);
+}
+inline int __cdecl dna_output_test(void* ctx,void* obj,unsigned off,void* activator,void* caller,float delay) noexcept {
+    auto& f=*static_cast<DnaFixture*>(ctx);assert(obj==f.object&&off==0x4a0&&activator==obj&&caller==obj&&delay==0);return f.push(5);
+}
+inline void check_dna_scanner(const DnaScannerApi& api){
+    alignas(4) unsigned char object[0x4b8]{};
+    HologramControl ctrl{object,sizeof(object)};DnaFixture f{object};
+    DnaScannerBindings b{&f,&dna_class_test,&dna_player_test,&dna_clock_test,&dna_sound_test,&dna_output_test};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto deadline=[&](){float v=0;std::memcpy(&v,object+0x49c,4);return v;};
+    const auto touch=[&](){return api.touch(&ctrl,&b,&f.other);};
+    const auto use=[&](){return api.use(&ctrl,&b,&f.other);};
+    std::memset(object+0x494,0xa5,8);assert(api.spawn_state(&ctrl)&&object[0x494]==0);
+    std::uint32_t caps=0;assert(api.capabilities(object,sizeof(object),0x4,&caps)&&caps==0x24);
+    assert(touch()==1);expect({1,5});
+    assert(touch()==1);expect({1,5}); // ragdoll outputs are not throttled
+    f.name="prop_ragdoll_extra";assert(touch()==1);expect({1});
+    f.name="Player";assert(touch()==1);expect({1});
+    f.name=nullptr;assert(touch()==1);expect({1});
+    f.name="player";
+    assert(touch()==1&&std::abs(deadline()-0.62f)<0.000001f);expect({1,3,4}); // equality
+    f.now=0.5f;assert(touch()==1);expect({1,3});
+    f.now=deadline();assert(use()==1);expect({2,3,4}); // shared deadline, equality
+    assert(deadline()>1.23f&&deadline()<1.25f);
+    f.player=0;assert(use()==1);expect({2});
+    f.player=1;assert(use()==1);expect({2,3});
+    assert(api.use(&ctrl,&b,nullptr)==1);expect({});
+    const float nan=std::numeric_limits<float>::quiet_NaN();std::memcpy(object+0x49c,&nan,4);
+    assert(use()==1);expect({2,3});
+    const float zero=0;std::memcpy(object+0x49c,&zero,4);
+    f.fail=4;f.now=10;assert(use()==-1&&ctrl.blocked&&deadline()>10.61f);expect({2,3,4});
+    assert(touch()==0&&api.acknowledge(&ctrl));expect({});
+    f.fail=0;assert(use()==1);expect({2,3});
 }
 
 }
