@@ -4196,6 +4196,67 @@ int __cdecl scene_registration_remove(void* m,unsigned bytes,const SceneRegistra
     return scene_registration(m,bytes,b,s,out,false);
 }
 const SceneRegistrationApi scene_registration_api{version,sizeof(SceneRegistrationApi),&scene_registration_add,&scene_registration_remove};
+int scene_entity_registration(void* scene,const SceneEntityLifecycleBindings& h,bool add) noexcept {
+    void* manager=nullptr;unsigned n=0;
+    if(scene_manager_ensure(h.manager,&h.runtime,&manager,&n)!=1)return -1;
+    if(!manager)return 1; // original skips the registration on factory absence
+    // Original obtains the singleton a second time after nonnull test.
+    if(scene_manager_ensure(h.manager,&h.runtime,&manager,&n)!=1||!manager)return -1;
+    unsigned changed=0;
+    return scene_registration(manager,n,&h.registration,scene,&changed,add)==1?1:-1;
+}
+int __cdecl scene_entity_activate(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
+    if(bytes<0x554||!hologram_writable(scene,0x554)||!b||!b->resolve_actor||!b->sound_name||
+       !b->generate||!b->base_activate||!b->manager)return 0;
+    const auto h=*b;
+    if(hologram_read<unsigned char>(scene,0x549)&&!hologram_read<std::uint32_t>(scene,0x40c)){
+        const auto word=hologram_read<std::uint32_t>(scene,0x54c);
+        const char* name="";
+        if(word&&(!h.sound_name(h.context,word,&name)||!name))return -1;
+        const auto handle=hologram_read<std::uint32_t>(scene,0x550);void* actor=nullptr;
+        if(handle!=0xffffffffu&&!h.resolve_actor(h.context,handle,&actor))return -1;
+        std::uint32_t parsed=0;
+        if(!h.generate(h.context,scene,actor,name,&parsed))return -1;
+        hologram_write(scene,0x40c,parsed);
+    }
+    if(!h.base_activate(h.context,scene))return -1;
+    return scene_entity_registration(scene,h,true);
+}
+int __cdecl scene_entity_cleanup(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
+    if(bytes<0x410||!hologram_writable(scene,0x410)||!b||!b->stop_events||!b->parsed||
+       !b->actor||!b->detach||!b->destroy_parsed)return 0;
+    const auto h=*b;auto parsed=hologram_read<std::uint32_t>(scene,0x40c);
+    if(parsed){
+        if(!h.stop_events(h.context,scene,parsed,0))return -1;
+        for(unsigned i=0;;++i){
+            parsed=hologram_read<std::uint32_t>(scene,0x40c);
+            if(!parsed)return -1;
+            void* p=nullptr;unsigned n=0;
+            if(!h.parsed(h.context,parsed,&p,&n)||!p||n<0x24||!sin_independent::vgui_layout::Readable(p,0x24))return -1;
+            const int count=hologram_read<int>(p,0x20);
+            if(count<=0||i>=static_cast<unsigned>(count))break;
+            if(count>0x100000)return -1;
+            void* actor=nullptr;if(!h.actor(h.context,scene,i,&actor))return -1;
+            if(actor&&!h.detach(h.context,actor,hologram_read<std::uint32_t>(scene,0x40c)))return -1;
+        }
+    }
+    parsed=hologram_read<std::uint32_t>(scene,0x40c);
+    if(parsed){
+        const bool ok=h.destroy_parsed(h.context,parsed)!=0;
+        hologram_write(scene,0x40c,0u);
+        if(!ok)return -1;
+    }else hologram_write(scene,0x40c,0u);
+    return 1;
+}
+int __cdecl scene_entity_remove(void* scene,unsigned bytes,const SceneEntityLifecycleBindings* b) noexcept {
+    if(!b||!b->base_remove||!b->manager)return 0;
+    const auto h=*b;const auto clean=scene_entity_cleanup(scene,bytes,&h);
+    if(clean!=1)return clean;
+    if(!h.base_remove(h.context,scene))return -1;
+    return scene_entity_registration(scene,h,false);
+}
+const SceneEntityLifecycleApi scene_entity_lifecycle_api{version,sizeof(SceneEntityLifecycleApi),&scene_entity_activate,&scene_entity_cleanup,&scene_entity_remove};
+
 
 
 
@@ -8728,6 +8789,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetSceneEntityLifecycleApi=_SiN_GetSceneEntityLifecycleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneEntityLifecycleApi* __cdecl
+SiN_GetSceneEntityLifecycleApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneEntityLifecycleApi)?&scene_entity_lifecycle_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetSceneRegistrationApi=_SiN_GetSceneRegistrationApi")
