@@ -18,6 +18,42 @@
 #include <dlfcn.h>
 #endif
 namespace a=sin_port::fixed_service;
+static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
+    assert(env&&g->clear()&&g->set_updates_disabled(0));
+    char name[64]{},level[64]{};
+    std::int32_t value=-1;
+    assert(env(99,"x","map_a",1,0)==a::EnvRejected);
+    assert(env(a::EnvSpawn,nullptr,"map_a",1,0)==a::EnvRemoveSelf);
+    assert(env(a::EnvSpawn,"door","map_a",0,1)==a::EnvUnchanged&&g->count()==0);
+    assert(env(a::EnvSpawn,"door","map_a",1,1)==a::EnvApplied);
+    assert(env(a::EnvSpawn,"door","map_b",1,0)==a::EnvUnchanged);
+    assert(g->count()==1&&g->read(0,name,64,level,64,&value)&&value==1);
+    assert(std::strcmp(level,"map_a")==0);
+    assert(env(a::EnvToggle,"door","map_b",0,0)==a::EnvApplied);
+    assert(g->read(0,name,64,level,64,&value)&&value==0);
+    assert(env(a::EnvTurnOn,"door","map_b",0,0)==a::EnvApplied);
+    assert(g->read(0,name,64,level,64,&value)&&value==1);
+    assert(env(a::EnvRemove,"door","map_b",0,0)==a::EnvApplied);
+    assert(env(a::EnvToggle,"door","map_b",0,0)==a::EnvUnchanged);
+    assert(g->count()==1&&g->read(0,name,64,level,64,&value)&&value==2);
+    assert(std::strcmp(level,"map_a")==0);
+    assert(env(a::EnvTurnOff,"door","map_b",0,0)==a::EnvApplied);
+    assert(g->read(0,name,64,level,64,&value)&&value==0);
+    assert(env(a::EnvToggle,"new","map_b",0,0)==a::EnvApplied);
+    assert(g->read(1,name,64,level,64,&value)&&value==1);
+    assert(std::strcmp(level,"map_b")==0);
+    assert(g->set_updates_disabled(1));
+    assert(env(a::EnvTurnOff,"new","map_b",0,0)==a::EnvBlocked);
+    assert(g->read(1,name,64,level,64,&value)&&value==1);
+    assert(env(a::EnvRemove,"missing","map_b",0,0)==a::EnvApplied);
+    assert(g->read(2,name,64,level,64,&value)&&value==2);
+    assert(env(a::EnvSpawn,"Door","map_c",1,7)==a::EnvApplied);
+    assert(env(a::EnvToggle,"Door","map_c",0,0)==a::EnvUnchanged);
+    assert(g->read(3,name,64,level,64,&value)&&value==7);
+    assert(env(a::EnvTurnOff,nullptr,nullptr,0,0)==a::EnvApplied);
+    assert(g->read(4,name,64,level,64,&value)&&!*name&&!*level&&value==0);
+    assert(g->set_updates_disabled(0)&&g->clear());
+}
 static void test_global_state(const a::GlobalStateApi* g){
     assert(g&&g->version==1&&g->size==sizeof(*g));
     assert(g->clear()&&g->count()==0&&g->find("door")==-1);
@@ -254,6 +290,12 @@ int main(int argc,char** argv){
     assert(getGlobals&&!getGlobals(0,sizeof(a::GlobalStateApi))&&!getGlobals(1,0));
     const auto* globals=getGlobals(a::global_state_version,sizeof(a::GlobalStateApi));
     test_global_state(globals);
+#ifdef _WIN32
+    auto env=reinterpret_cast<a::EnvGlobalDispatch>(GetProcAddress(lib,a::env_global_export_name));
+#else
+    auto env=reinterpret_cast<a::EnvGlobalDispatch>(dlsym(lib,a::env_global_export_name));
+#endif
+    test_env_global(globals,env);
     assert(!get(0,sizeof(a::Api)));
     assert(!get(a::abi_version,0));
     const auto* api=get(a::abi_version,sizeof(a::Api));

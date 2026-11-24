@@ -80,6 +80,18 @@ struct GlobalStateApi {
     int (SIN_FIXED_CALL *clear)() noexcept;
 };
 using GetGlobalStateApi=const GlobalStateApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+// Original-guided env_global behavior on the native CGlobalState owner.
+// Caller resolves Source string_t and current level, and handles RemoveSelf.
+// This is not a retail entity vtable, factory, or datamap.
+inline constexpr char env_global_export_name[]="SiN_EnvGlobalDispatch";
+enum EnvGlobalOperation : std::uint32_t {
+    EnvSpawn=0, EnvTurnOn=1, EnvTurnOff=2, EnvRemove=3, EnvToggle=4
+};
+enum EnvGlobalResult : int {
+    EnvRejected=0, EnvApplied=1, EnvUnchanged=2, EnvRemoveSelf=3, EnvBlocked=4
+};
+using EnvGlobalDispatch=int (SIN_FIXED_CALL *)(std::uint32_t,const char*,const char*,
+    std::uint32_t,std::int32_t) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);
