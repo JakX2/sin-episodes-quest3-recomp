@@ -3646,7 +3646,8 @@ int companion_concept_gate_impl(void* npc,unsigned bytes,const CompanionDeadline
     *out=allowed!=0;return 1;
 }
 int companion_request_impl(void* npc,unsigned bytes,const CompanionDeadlineSource& source,const SpeechSemaphorePair* sem,
-                              const CompanionTalkBindings* b,const char* name,const char* mods,unsigned urgent,unsigned* out) noexcept {
+                              const CompanionTalkBindings* b,const char* name,const char* mods,unsigned urgent,unsigned* out,
+                              const ResponseChoreographyBindings* choreography=nullptr,const SceneEntityLifecycleBindings* lifecycle=nullptr) noexcept {
     if(!companion_talk_preflight(npc,bytes,b,out)||!name)return 0;
     const auto h=*b;unsigned allowed=0;
     const auto gate=companion_concept_gate_impl(npc,bytes,source,sem,&h,name,urgent,&allowed);
@@ -3654,7 +3655,9 @@ int companion_request_impl(void* npc,unsigned bytes,const CompanionDeadlineSourc
     if(!allowed){*out=0;return 1;}
     void* exp=nullptr;unsigned n=0;
     if(!companion_expeditor(h,npc,exp,n))return -1;
-    const auto status=response_speak(exp,n,&h.speak,name,mods,out);
+    if(choreography&&hologram_read<std::uint32_t>(exp,4)!=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(npc)))return -1;
+    const auto status=choreography?integrated_response_speak(exp,n,&h.speak,choreography,lifecycle,name,mods,out):
+        response_speak(exp,n,&h.speak,name,mods,out);
     return status==0?-1:status;
 }
 int __cdecl companion_group_gate(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
@@ -4623,6 +4626,8 @@ const CountInterrogationApi count_api{version,sizeof(CountInterrogationApi),&cou
 struct JessicaDialogueCall {
     HologramControl* ctrl;JessicaDialogueBindings host;
     const TalkManagerRuntimeBindings* manager=nullptr;
+    const ResponseChoreographyBindings* choreography=nullptr;
+    const SceneEntityLifecycleBindings* lifecycle=nullptr;
 };
 int __cdecl dialogue_jessica_clock(void* p,float* out) noexcept {
     auto& x=*static_cast<JessicaDialogueCall*>(p);return x.host.clock(x.host.context,out);
@@ -4636,6 +4641,10 @@ int __cdecl dialogue_jessica_criteria(void* p,void* npc,const void* record,float
     // 22362154 / 22362236 -> 2208f500(name,modifier,0).
     // Original ignores whether it spoke; only transport failure is fatal.
     const auto* mods=reinterpret_cast<const char*>(criteria.bytes);
+    if(x.choreography){
+        const CompanionDeadlineSource source{x.manager?nullptr:h.cooldown->global,x.manager};
+        return companion_request_impl(npc,x.ctrl->bytes,source,h.semaphore,&h.talk,name,mods,0,&played,x.choreography,x.lifecycle)==1;
+    }
     return (x.manager?managed_companion_request(npc,x.ctrl->bytes,x.manager,h.semaphore,&h.talk,name,mods,0,&played):
         companion_request(npc,x.ctrl->bytes,h.cooldown,h.semaphore,&h.talk,name,mods,0,&played))==1;
 }
@@ -4657,6 +4666,8 @@ const ManagedJessicaObservationApi managed_jessica_observation_api{version,sizeo
 struct CountDialogueCall {
     HologramControl* ctrl;CountDialogueBindings host;
     void* exp=nullptr;unsigned extent=0;
+    const ResponseChoreographyBindings* choreography=nullptr;
+    const SceneEntityLifecycleBindings* lifecycle=nullptr;
 };
 int __cdecl dialogue_count_resolve(void* p,std::uint32_t handle,void** out) noexcept {
     auto& x=*static_cast<CountDialogueCall*>(p);return x.host.resolve(x.host.context,handle,out);
@@ -4683,7 +4694,12 @@ int __cdecl dialogue_count_speak(void* p,void* exp,const char* name,const CountC
     if(!x.ctrl->busy||exp!=x.exp||!std::memchr(criteria->bytes,0,sizeof(criteria->bytes)))return 0;
     // 22394440 bypasses the companion gate. Its phase advances on normal
     // no-match too, so return transport success, not the played boolean.
-    return response_speak(exp,x.extent,&x.host.speak,name,reinterpret_cast<const char*>(criteria->bytes),played)==1;
+    const auto* mods=reinterpret_cast<const char*>(criteria->bytes);
+    if(x.choreography){
+        if(hologram_read<std::uint32_t>(exp,4)!=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(x.ctrl->object)))return 0;
+        return integrated_response_speak(exp,x.extent,&x.host.speak,x.choreography,x.lifecycle,name,mods,played)==1;
+    }
+    return response_speak(exp,x.extent,&x.host.speak,name,mods,played)==1;
 }
 bool dialogue_count_ready(const CountDialogueBindings* b) noexcept {
     return b&&b->resolve&&b->clock&&b->expeditor&&b->criteria;
@@ -4700,6 +4716,22 @@ int __cdecl dialogue_count(HologramControl* ctrl,const CountDialogueBindings* b,
     return count_observe(ctrl,&host,obs,bytes);
 }
 const NpcDialogueApi npc_dialogue_api{version,sizeof(NpcDialogueApi),&dialogue_jessica,&dialogue_count};
+int __cdecl integrated_jessica_observe(HologramControl* ctrl,JessicaAttentionState* state,const JessicaDialogueBindings* b,
+    const TalkManagerRuntimeBindings* manager,const ResponseChoreographyBindings* c,const SceneEntityLifecycleBindings* life,const void* obs,unsigned bytes) noexcept {
+    if(!b||!b->clock||!b->criteria||!b->semaphore||(!manager&&!b->cooldown)||!integrated_response_ready(c,life))return 0;
+    const auto choreography=*c;const auto lifecycle=*life;
+    JessicaDialogueCall call{ctrl,*b,manager,&choreography,&lifecycle};
+    const JessicaAttentionBindings host{&call,&dialogue_jessica_clock,&dialogue_jessica_criteria};
+    return jessica_attention(ctrl,state,&host,obs,bytes);
+}
+int __cdecl integrated_count_observe(HologramControl* ctrl,const CountDialogueBindings* b,const ResponseChoreographyBindings* c,
+    const SceneEntityLifecycleBindings* life,const void* obs,unsigned bytes) noexcept {
+    if(!dialogue_count_ready(b)||!integrated_response_ready(c,life))return 0;
+    const auto choreography=*c;const auto lifecycle=*life;
+    CountDialogueCall call{ctrl,*b,nullptr,0,&choreography,&lifecycle};const auto host=dialogue_count_bindings(call);
+    return count_observe(ctrl,&host,obs,bytes);
+}
+const IntegratedNpcDialogueApi integrated_npc_dialogue_api{version,sizeof(IntegratedNpcDialogueApi),&integrated_jessica_observe,&integrated_count_observe};
 
 
 int character_region_common(HologramControl* ctrl,const CountRegionBindings* b,const CountRegionQuery* query,const char** result,bool count) noexcept {
@@ -9085,6 +9117,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetIntegratedNpcDialogueApi=_SiN_GetIntegratedNpcDialogueApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::IntegratedNpcDialogueApi* __cdecl
+SiN_GetIntegratedNpcDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(IntegratedNpcDialogueApi)?&integrated_npc_dialogue_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetIntegratedResponseApi=_SiN_GetIntegratedResponseApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::IntegratedResponseApi* __cdecl
 SiN_GetIntegratedResponseApi(std::uint32_t version,std::uint32_t size) noexcept {

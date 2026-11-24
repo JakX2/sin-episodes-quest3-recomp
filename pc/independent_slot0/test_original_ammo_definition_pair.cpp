@@ -531,6 +531,12 @@ int main(int argc,char** argv){
     assert(integratedResponse&&!getIntegratedResponse(0,sizeof(tables::IntegratedResponseApi))&&!getIntegratedResponse(1,0));
     tables::test::check_integrated_response(*integratedResponse,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
     std::puts("PASS native response through integrated scene activation and manager cleanup");
+    const auto getIntegratedNpcDialogue=reinterpret_cast<tables::GetIntegratedNpcDialogueApi>(GetProcAddress(server,tables::integrated_npc_dialogue_export));
+    assert(getIntegratedNpcDialogue&&!GetProcAddress(client,tables::integrated_npc_dialogue_export));
+    const auto* integratedNpcDialogue=getIntegratedNpcDialogue(1,sizeof(tables::IntegratedNpcDialogueApi));
+    assert(integratedNpcDialogue&&!getIntegratedNpcDialogue(0,sizeof(tables::IntegratedNpcDialogueApi))&&!getIntegratedNpcDialogue(1,0));
+    tables::test::check_integrated_npc_dialogue(*integratedNpcDialogue,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*responseTimingUpdate,*responseRecord);
+    std::puts("PASS native Jessica and Count observation through integrated scene playback");
 
 
 

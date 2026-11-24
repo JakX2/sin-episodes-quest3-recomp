@@ -303,6 +303,17 @@ struct IntegratedResponseApi {
     int (__cdecl *speak)(void*,unsigned,const ResponseSpeakBindings*,const ResponseChoreographyBindings*,const SceneEntityLifecycleBindings*,const char*,const char*,unsigned*) noexcept;
 };
 using GetIntegratedResponseApi=const IntegratedResponseApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct JessicaDialogueBindings;
+struct CountDialogueBindings;
+inline constexpr char integrated_npc_dialogue_export[]="SiN_GetIntegratedNpcDialogueApi";
+struct IntegratedNpcDialogueApi {
+    std::uint32_t version,size;
+    // Optional managed cooldown source; otherwise use the original detached
+    // cooldown binding. Both characters require the same scene session.
+    int (__cdecl *jessica)(HologramControl*,JessicaAttentionState*,const JessicaDialogueBindings*,const TalkManagerRuntimeBindings*,const ResponseChoreographyBindings*,const SceneEntityLifecycleBindings*,const void*,unsigned) noexcept;
+    int (__cdecl *count)(HologramControl*,const CountDialogueBindings*,const ResponseChoreographyBindings*,const SceneEntityLifecycleBindings*,const void*,unsigned) noexcept;
+};
+using GetIntegratedNpcDialogueApi=const IntegratedNpcDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
