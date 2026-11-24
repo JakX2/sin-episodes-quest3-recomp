@@ -15,6 +15,8 @@
 #include "native_vehicle_use.h"
 #include "native_vehicle_actions.h"
 #include "native_music_radio.h"
+#include "native_music_radio_map.h"
+#include <algorithm>
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4107,6 +4109,133 @@ int __cdecl music_radio_tick(HologramControl* c,const MusicRadioBindings* b) noe
     return disp_finish(c,true);
 }
 const MusicRadioApi music_radio_api{version,sizeof(MusicRadioApi),&music_radio_init,&music_radio_input,&music_radio_tick,&music_radio_ack};
+
+constexpr MusicRadioField music_fields[]={
+    {"m_hSpeaker",MusicFieldKind::Saved,0xd,0x394},
+    {"Volume",MusicFieldKind::Key,1,0x398},
+    {"ScriptFile",MusicFieldKind::Key,2,0x39c},
+    {"m_fSoundEnd",MusicFieldKind::Saved,0x10,0x3a0},
+    {"m_nStation",MusicFieldKind::Saved,5,0x3a4},
+    {"RadioThink",MusicFieldKind::Think,0,0},
+    {"TurnOn",MusicFieldKind::Input,0,0},
+    {"TurnOff",MusicFieldKind::Input,0,0},
+    {"NextStation",MusicFieldKind::Input,0,0},
+    {"PrevStation",MusicFieldKind::Input,0,0},
+    {"SetStation",MusicFieldKind::Input,5,0},
+    {"SetVolume",MusicFieldKind::Input,5,0}
+};
+const MusicRadioSchema music_schema{"env_radio",music_radio_bytes,12,music_fields};
+const MusicRadioSchema* __cdecl music_map_schema() noexcept{return &music_schema;}
+int __cdecl music_map_key(HologramControl* c,const char* name,unsigned type,std::uint32_t word) noexcept {
+    if(!health_control(c,music_radio_bytes))return 0;
+    char key[64]{};
+    if(!prop_key_read(name,key))return 0;
+    for(const auto& field:music_fields)if(field.kind==MusicFieldKind::Key&&!std::strcmp(key,field.name)){
+        if(field.type!=type)return 0;
+        hologram_write(c->object,field.offset,word);return 1;
+    }
+    return 0;
+}
+bool music_script_ready(const HologramControl* c,const MusicRadioMapBindings* b) noexcept {
+    return health_control(c,music_radio_bytes)&&b&&b->open_script&&b->entry&&b->close_script&&
+        b->append_station&&b->append_track&&b->precache;
+}
+unsigned char* music_station_record(void* radio,int index) noexcept {
+    return music_record(hologram_read<std::uint32_t>(radio,0x3a8),index,56,56);
+}
+unsigned char music_lower(unsigned char c) noexcept {
+    return c>='A'&&c<='Z'?static_cast<unsigned char>(c+('a'-'A')):c;
+}
+bool music_equal(const char* a,const char* b) noexcept {
+    for(;;++a,++b){
+        if(music_lower(static_cast<unsigned char>(*a))!=music_lower(static_cast<unsigned char>(*b)))return false;
+        if(!*a)return true;
+    }
+}
+bool music_load_entry(void* radio,const MusicRadioMapBindings& h,const char* station_name,const char* sound_name) noexcept {
+    const auto context=h.playback.context;
+    char name[1024]{},sound[1024]{};
+    if(!prop_key_read(station_name,name)||!prop_key_read(sound_name,sound))return false;
+    int count=hologram_read<int>(radio,0x3b4);
+    if(count<0||count>=65536)return false;
+    int station=0;
+    for(;station<count;++station){
+        auto* s=music_station_record(radio,station);
+        if(!s||!std::memchr(s,0,32))return false;
+        if(music_equal(reinterpret_cast<const char*>(s),name))break;
+    }
+    if(station==count){
+        if(!h.append_station(context,radio)||hologram_read<int>(radio,0x3b4)!=count+1)return false;
+        auto* s=music_station_record(radio,station);
+        if(!s)return false;
+        std::memset(s,0,32);
+        const auto length=(std::min)(std::strlen(name),static_cast<std::size_t>(31));
+        std::memcpy(s,name,length);
+        hologram_write(s,0x20,-1);
+        // Constructor 222e2b50 clears nested vector, not just its count.
+        for(unsigned off:{0x24u,0x28u,0x2cu,0x30u,0x34u})hologram_write(s,off,0u);
+    }
+    MusicRadioTrack track{};track.station=station;
+    const auto length=(std::min)(std::strlen(sound),static_cast<std::size_t>(63));
+    std::memcpy(track.sound,sound,length);
+    if(!h.precache(context,track.sound))return false;
+    auto* s=music_station_record(radio,station);
+    if(!s)return false;
+    const int before=hologram_read<int>(s,0x30);
+    if(before<0||before>=65536||!h.append_track(context,radio,station,&track))return false;
+    s=music_station_record(radio,station);
+    if(!s||hologram_read<int>(s,0x30)!=before+1)return false;
+    auto* t=music_record(hologram_read<std::uint32_t>(s,0x24),before,68,68);
+    return t&&hologram_read<int>(t,0)==station&&std::memchr(t+4,0,64)&&!std::strcmp(reinterpret_cast<const char*>(t+4),track.sound);
+}
+bool music_load_script(void* radio,const MusicRadioMapBindings& h) noexcept {
+    const auto context=h.playback.context;
+    void* token=nullptr;
+    if(!h.open_script(context,hologram_read<std::uint32_t>(radio,0x39c),&token))return false;
+    if(!token)return true;
+    bool ok=false;
+    // Bound the host-controlled enumeration; preserve partial mutation
+    // on failure, close the token exactly once.
+    for(unsigned i=0;i<=65536;++i){
+        unsigned present=0;const char* station=nullptr;const char* sound=nullptr;
+        if(!h.entry(context,token,i,&present,&station,&sound))break;
+        if(!present){ok=true;break;}
+        if(i==65536||!music_load_entry(radio,h,station,sound))break;
+    }
+    const bool closed=h.close_script(context,token)!=0;
+    return ok&&closed;
+}
+int __cdecl music_map_precache(HologramControl* c,const MusicRadioMapBindings* b) noexcept {
+    if(!music_script_ready(c,b))return 0;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,music_load_script(c->object,h));
+}
+int music_map_start(HologramControl* c,const MusicRadioMapBindings* b,bool activate) noexcept {
+    if(!music_script_ready(c,b)||!b->base_spawn||!b->base_activate||!b->install_think||
+       !b->playback.clock||!b->playback.schedule)return 0;
+    c->busy=1;const auto h=*b;const auto context=h.playback.context;auto* radio=c->object;
+    if(!(activate?h.base_activate(context,radio):h.base_spawn(context,radio)))return disp_finish(c,false);
+    if(!music_load_script(radio,h)||!h.install_think(context,radio,"RadioThink"))return disp_finish(c,false);
+    if(hologram_read<float>(radio,0x398)>0){
+        float now=0;if(!h.playback.clock(context,&now)||!h.playback.schedule(context,radio,static_cast<float>(static_cast<double>(now)+0.2f)))return disp_finish(c,false);
+        if(activate)hologram_write(radio,0x3a0,0.0f);
+    }
+    return disp_finish(c,true);
+}
+int __cdecl music_map_spawn(HologramControl* c,const MusicRadioMapBindings* b) noexcept{return music_map_start(c,b,false);}
+int __cdecl music_map_activate(HologramControl* c,const MusicRadioMapBindings* b) noexcept{return music_map_start(c,b,true);}
+int __cdecl music_map_input(HologramControl* c,const MusicRadioMapBindings* b,const char* name,unsigned type,std::uint32_t word) noexcept {
+    if(!b)return 0;
+    char key[64]{};if(!prop_key_read(name,key))return 0;
+    constexpr MusicRadioInput ops[]={MusicRadioInput::On,MusicRadioInput::Off,MusicRadioInput::Next,MusicRadioInput::Previous,MusicRadioInput::Station,MusicRadioInput::Volume};
+    for(unsigned i=0;i<6;++i)if(!std::strcmp(key,music_fields[i+6].name)){
+        // Original integer input handlers default to zero on wrong tag.
+        int value=0;if(type==5)std::memcpy(&value,&word,4);
+        return music_radio_input(c,&b->playback,ops[i],value);
+    }
+    return 0;
+}
+const MusicRadioMapApi music_map_api{version,sizeof(MusicRadioMapApi),&music_map_schema,&music_map_key,&music_map_precache,&music_map_spawn,&music_map_activate,&music_map_input};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -6026,6 +6155,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::MusicRadi
 SiN_GetMusicRadioApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(MusicRadioApi)?&music_radio_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetMusicRadioMapApi=_SiN_GetMusicRadioMapApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::MusicRadioMapApi* __cdecl
+SiN_GetMusicRadioMapApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(MusicRadioMapApi)?&music_map_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
