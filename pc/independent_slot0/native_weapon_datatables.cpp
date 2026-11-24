@@ -1999,6 +1999,95 @@ int __cdecl health_ack(HologramControl* ctrl) noexcept {
     ctrl->blocked=0;return 1;
 }
 const HealthPickupApi health_pickup_api{version,sizeof(HealthPickupApi),&health_set_api,&health_pickup,&health_ack};
+
+bool screen_schedule(void* object,const DispenserBindings& d) noexcept {
+    float now=0;if(!disp_clock(d,now))return false;
+    const float when=static_cast<float>(static_cast<double>(now)+0.1f);
+    return std::isfinite(when)&&d.schedule(d.context,object,when)!=0;
+}
+bool screen_resolve(void* object,const DispenserBindings& d,void*& screen) noexcept {
+    screen=nullptr;const auto handle=hologram_read<std::uint32_t>(object,disp_screen);
+    return handle==disp_invalid||d.resolve(d.context,handle,&screen)!=0;
+}
+bool screen_live(void* object,const DispenserBindings& d,void*& screen) noexcept {
+    return screen_resolve(object,d,screen)&&screen!=nullptr;
+}
+bool screen_flags(void* object,const DispenserScreenBindings& b,bool set_high) noexcept {
+    void* screen=nullptr;unsigned bytes=0;const auto& d=b.dispenser;
+    if(!screen_live(object,d,screen)||!b.screen_storage(d.context,screen,&bytes)||
+       bytes<0x3b8||!hologram_writable(screen,0x3b8))return false;
+    // Original raw flag writes, distinct from m_fScreenFlags at +3b0.
+    if(set_high)hologram_write(screen,0x3b7,static_cast<unsigned char>(hologram_read<unsigned char>(screen,0x3b7)|0x80u));
+    else hologram_write(screen,0x3b4,hologram_read<std::uint32_t>(screen,0x3b4)&~2u);
+    return true;
+}
+bool screen_build(void* object,const DispenserScreenBindings& b) noexcept {
+    const auto& d=b.dispenser;void* screen=nullptr;
+    if(!screen_resolve(object,d,screen))return false;
+    if(screen)return true; // existing screen is not reconfigured
+    auto handle=disp_invalid;
+    if(!b.create_screen(d.context,"vgui_screen",&handle))return false;
+    hologram_write(object,disp_screen,handle);
+    if(handle==disp_invalid)return true; // original still updates pose and schedules
+    float origin[3]{},angles[3]{},forward[3]{},right[3]{},up[3]{},position[3]{};
+    if(!b.sample_origin(d.context,object,origin)||!b.sample_angles(d.context,object,angles)||
+       !b.angle_vectors(d.context,angles,forward,right,up)||!b.normalize(d.context,forward))return false;
+    for(unsigned i=0;i<3;++i){
+        if(!std::isfinite(origin[i])||!std::isfinite(angles[i])||!std::isfinite(forward[i])||
+           !std::isfinite(right[i])||!std::isfinite(up[i]))return false;
+        // Match observed rounded product and intermediate stores:
+        // forward * -4, right * 16.5, up * 3.6.
+        const float f=static_cast<float>(static_cast<double>(forward[i])*-4.0);
+        const float r=static_cast<float>(static_cast<double>(right[i])*16.5);
+        const float u=static_cast<float>(static_cast<double>(up[i])*3.6f);
+        double partial=static_cast<double>(origin[i])+f;
+        if(i==2)partial=static_cast<float>(partial);
+        partial+=r;if(i!=1)partial=static_cast<float>(partial);
+        position[i]=static_cast<float>(partial+u);
+        if(!std::isfinite(position[i]))return false;
+    }
+    angles[1]=static_cast<float>(static_cast<double>(angles[1])+90);
+    angles[2]=static_cast<float>(static_cast<double>(angles[2])+90);
+    if(!std::isfinite(angles[1])||!std::isfinite(angles[2]))return false;
+    return screen_live(object,d,screen)&&b.set_origin(d.context,screen,position)&&
+        screen_live(object,d,screen)&&b.set_angles(d.context,screen,angles)&&
+        screen_live(object,d,screen)&&b.set_size(d.context,screen,7.1f,2.0f)&&
+        screen_live(object,d,screen)&&b.keyvalue(d.context,screen,"panelname","vgui_dispenser_panel")&&
+        screen_flags(object,b,true)&&screen_flags(object,b,false)&&
+        screen_live(object,d,screen)&&b.spawn_screen(d.context,screen);
+}
+int __cdecl screen_idle(HologramControl* ctrl,const DispenserScreenBindings* b) noexcept {
+    if(!disp_valid(ctrl)||!b)return 0;
+    const auto& d=b->dispenser;
+    if(!d.resolve||!d.clock||!d.schedule||!d.pose||!d.advance_animation||!b->create_screen||
+       !b->sample_origin||!b->sample_angles||!b->angle_vectors||!b->normalize||!b->set_origin||
+       !b->set_angles||!b->set_size||!b->keyvalue||!b->screen_storage||!b->spawn_screen)return 0;
+    ctrl->busy=1;const auto host=*b;auto* object=ctrl->object;
+    return disp_finish(ctrl,screen_build(object,host)&&disp_pose(object,host.dispenser)&&
+        screen_schedule(object,host.dispenser));
+}
+int __cdecl screen_restore(HologramControl* ctrl,const DispenserScreenBindings* b) noexcept {
+    if(!disp_valid(ctrl)||!b)return 0;
+    const auto& d=b->dispenser;
+    if(!d.resolve||!d.clock||!d.schedule||!d.pose||!d.advance_animation||!d.sound||!d.create_steam||
+       !d.remove||!b->base_restore||!b->listen||!b->think_kind||!b->next_think||!b->install_idle)return 0;
+    ctrl->busy=1;const auto host=*b;const auto& hd=host.dispenser;auto* object=ctrl->object;
+    const auto fail=[&](){return disp_finish(ctrl,false);};
+    if(!host.base_restore(hd.context,object)||!host.listen(hd.context,object,"button_press")||
+       !disp_pose(object,hd))return fail();
+    DispenserThinkKind kind=DispenserThinkKind::Other;
+    if(!host.think_kind(hd.context,object,&kind)||static_cast<unsigned>(kind)>2)return fail();
+    bool start=false;float next=0,now=0;
+    if(kind==DispenserThinkKind::Use){
+        if(!host.next_think(hd.context,object,&next)||!disp_clock(hd,now))return fail();
+        start=next>=now;
+    }
+    if(!(start?disp_start(object,hd):disp_stop(object,hd)))return fail();
+    if(!host.next_think(hd.context,object,&next)||!disp_clock(hd,now))return fail();
+    if(next<now&&(!host.install_idle(hd.context,object)||!screen_schedule(object,hd)))return fail();
+    return disp_finish(ctrl,true);
+}
+const DispenserScreenApi dispenser_screen_api{version,sizeof(DispenserScreenApi),&screen_idle,&screen_restore};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3533,6 +3622,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::HealthPic
 SiN_GetHealthPickupApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(HealthPickupApi)?&health_pickup_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetDispenserScreenApi=_SiN_GetDispenserScreenApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::DispenserScreenApi* __cdecl
+SiN_GetDispenserScreenApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(DispenserScreenApi)?&dispenser_screen_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

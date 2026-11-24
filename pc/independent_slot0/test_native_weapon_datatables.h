@@ -2334,10 +2334,10 @@ inline void check_health_pickups(const HealthPickupApi& api){
     HealthPickupBindings b{&f,&pickup_skill_test,&pickup_dirty_test,&pickup_heal_test,&pickup_message_test,
         &pickup_sound_test,&pickup_respawn_query,&pickup_respawn_test,&pickup_remove_test};
     const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;f.dirty_count=0;};
-    const auto max=[&](){int value=0;std::memcpy(&value,player+0x98,4);return value;};
+    const auto read_maximum=[&](){int value=0;std::memcpy(&value,player+0x98,4);return value;};
     const auto classname=[&](const char* name){std::memcpy(item+0xc,&name,4);f.expected_class=name?name:"";};
     unsigned accepted=9;const auto pickup=[&](){return api.pickup(&ic,&pc,&b,f.kind,&accepted);};
-    assert(api.set_max(&pc,&b,100)==1&&max()==100&&!player[0x12a1]);expect({2});
+    assert(api.set_max(&pc,&b,100)==1&&read_maximum()==100&&!player[0x12a1]);expect({2});
     assert(api.set_max(&pc,&b,100)==1);expect({});
     classname("item_healthkit");
     f.heal_accepted=0;assert(pickup()==1&&!accepted&&f.healed==25.5f);expect({1,3});
@@ -2345,14 +2345,129 @@ inline void check_health_pickups(const HealthPickupApi& api){
     f.kind=HealthPickupKind::Vial;f.skill=10.25f;f.respawn=1;classname("item_healthvial");
     assert(pickup()==1&&accepted&&f.healed==10.25f);expect({1,3,4,5,6,7});
     f.kind=HealthPickupKind::Mega;f.skill=125.75f;classname("item_healthmega");
-    f.heal_accepted=0;assert(pickup()==1&&!accepted&&max()==200&&player[0x12a1]&&f.healed==125);
+    f.heal_accepted=0;assert(pickup()==1&&!accepted&&read_maximum()==200&&player[0x12a1]&&f.healed==125);
     assert(f.old_max[0]==100&&f.old_max[1]==225);expect({1,2,2,3});
     f.skill=0.75f;f.heal_accepted=1;classname(nullptr);
-    assert(pickup()==1&&accepted&&max()==200&&f.healed==0);expect({1,3,4,5,6,7});
-    assert(api.set_max(&pc,&b,75)==1&&max()==75&&!player[0x12a1]);expect({2});
-    f.skill=20.9f;f.fail=5;assert(pickup()==-1&&accepted&&ic.blocked&&pc.blocked&&max()==95&&f.healed==20);
+    assert(pickup()==1&&accepted&&read_maximum()==200&&f.healed==0);expect({1,3,4,5,6,7});
+    assert(api.set_max(&pc,&b,75)==1&&read_maximum()==75&&!player[0x12a1]);expect({2});
+    f.skill=20.9f;f.fail=5;assert(pickup()==-1&&accepted&&ic.blocked&&pc.blocked&&read_maximum()==95&&f.healed==20);
     expect({1,2,3,4,5});
     assert(pickup()==0&&api.acknowledge(&ic)&&api.acknowledge(&pc));expect({});
+}
+
+struct DispScreenFixture {
+    void* object=nullptr;void* screen=nullptr;
+    int steam=0;
+    unsigned events[48]{},count=0,fail=0;
+    bool live=false,missing=false,steam_live=false;
+    float now=10,next=10,scheduled=0,pose=0;
+    DispenserThinkKind kind=DispenserThinkKind::Other;
+    float position[3]{},angles[3]{};
+    bool push(unsigned n){assert(count<48);events[count++]=n;return fail!=n;}
+};
+inline int __cdecl ds_resolve(void* ctx,std::uint32_t handle,void** out) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);
+    if(handle==0x123004){*out=f.live?f.screen:nullptr;return f.push(1);}
+    assert(handle==0x123005);*out=f.steam_live?&f.steam:nullptr;return f.push(2);
+}
+inline int __cdecl ds_create(void* ctx,const char* name,std::uint32_t* handle) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(!std::strcmp(name,"vgui_screen"));
+    *handle=f.missing?0xffffffffu:0x123004;f.live=!f.missing;return f.push(3);
+}
+inline int __cdecl ds_origin(void* ctx,void* obj,float xyz[3]) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);
+    xyz[0]=10;xyz[1]=20;xyz[2]=30;return f.push(4);
+}
+inline int __cdecl ds_angles(void* ctx,void* obj,float xyz[3]) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);
+    xyz[0]=1;xyz[1]=2;xyz[2]=3;return f.push(5);
+}
+inline int __cdecl ds_vectors(void* ctx,const float a[3],float fwd[3],float right[3],float up[3]) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(a[0]==1&&a[1]==2&&a[2]==3);
+    fwd[0]=2;fwd[1]=fwd[2]=0;right[0]=right[2]=0;right[1]=1;up[0]=up[1]=0;up[2]=1;
+    return f.push(6);
+}
+inline int __cdecl ds_normalize(void* ctx,float v[3]) noexcept {
+    assert(v[0]==2&&v[1]==0&&v[2]==0);v[0]=1;return static_cast<DispScreenFixture*>(ctx)->push(7);
+}
+inline int __cdecl ds_set_origin(void* ctx,void* screen,const float v[3]) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(screen==f.screen);std::memcpy(f.position,v,12);return f.push(8);
+}
+inline int __cdecl ds_set_angles(void* ctx,void* screen,const float v[3]) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(screen==f.screen);std::memcpy(f.angles,v,12);return f.push(9);
+}
+inline int __cdecl ds_size(void* ctx,void* screen,float w,float h) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(screen==f.screen&&w==7.1f&&h==2);return f.push(10);
+}
+inline int __cdecl ds_keyvalue(void* ctx,void* screen,const char* key,const char* value) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(screen==f.screen&&!std::strcmp(key,"panelname")&&!std::strcmp(value,"vgui_dispenser_panel"));
+    return f.push(11);
+}
+inline int __cdecl ds_storage(void* ctx,void* screen,unsigned* bytes) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(screen==f.screen);*bytes=0x3c8;return f.push(12);
+}
+inline int __cdecl ds_spawn(void* ctx,void* screen) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(screen==f.screen);
+    auto* p=static_cast<unsigned char*>(screen);assert(p[0x3b4]==0x05&&p[0x3b7]==0x80);return f.push(13);
+}
+inline int __cdecl ds_pose(void* ctx,void* obj,const char* name,float v) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object&&!std::strcmp(name,"percentFull"));f.pose=v;return f.push(14);
+}
+inline int __cdecl ds_animation(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);return f.push(15);
+}
+inline int __cdecl ds_clock(void* ctx,float* now) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);*now=f.now;return f.push(16);
+}
+inline int __cdecl ds_schedule(void* ctx,void* obj,float when) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);f.scheduled=when;return f.push(17);
+}
+inline int __cdecl ds_base_restore(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);return f.push(18);
+}
+inline int __cdecl ds_listen(void* ctx,void* obj,const char* event) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object&&!std::strcmp(event,"button_press"));return f.push(19);
+}
+inline int __cdecl ds_kind(void* ctx,void* obj,DispenserThinkKind* kind) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);*kind=f.kind;return f.push(20);
+}
+inline int __cdecl ds_next(void* ctx,void* obj,float* next) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);*next=f.next;return f.push(21);
+}
+inline int __cdecl ds_install(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);return f.push(22);
+}
+inline int __cdecl ds_sound(void* ctx,void* obj,DispenserSound which) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);return f.push(23+static_cast<unsigned>(which));
+}
+inline int __cdecl ds_steam(void* ctx,void* obj,std::uint32_t* handle) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==f.object);*handle=0x123005;f.steam_live=true;return f.push(27);
+}
+inline int __cdecl ds_remove(void* ctx,void* obj) noexcept {
+    auto& f=*static_cast<DispScreenFixture*>(ctx);assert(obj==&f.steam&&f.steam_live);f.steam_live=false;return f.push(28);
+}
+inline void check_dispenser_screen(const DispenserApi& disp,const DispenserScreenApi& api){
+    alignas(4) unsigned char object[0x4e8]{},screen[0x3c8]{};
+    HologramControl ctrl{object,sizeof(object)};DispScreenFixture f{object,screen};
+    DispenserBindings d{};d.context=&f;d.resolve=&ds_resolve;d.pose=&ds_pose;d.advance_animation=&ds_animation;
+    d.clock=&ds_clock;d.schedule=&ds_schedule;d.sound=&ds_sound;d.create_steam=&ds_steam;d.remove=&ds_remove;
+    DispenserScreenBindings b{d,&ds_create,&ds_origin,&ds_angles,&ds_vectors,&ds_normalize,&ds_set_origin,&ds_set_angles,
+        &ds_size,&ds_keyvalue,&ds_storage,&ds_spawn,&ds_install,&ds_base_restore,&ds_listen,&ds_kind,&ds_next};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto idle=[&](){return api.idle(&ctrl,&b);};const auto restore=[&](){return api.restore(&ctrl,&b);};
+    assert(disp.defaults(object,sizeof(object)));screen[0x3b4]=7;
+    f.missing=true;assert(idle()==1&&!f.live);expect({3,14,15,16,17});
+    f.missing=false;assert(idle()==1&&f.live);
+    expect({3,4,5,6,7,1,8,1,9,1,10,1,11,1,12,1,12,1,13,14,15,16,17});
+    assert(f.position[0]==6&&f.position[1]==36.5f&&std::abs(f.position[2]-33.6f)<0.00001f);
+    assert(f.angles[0]==1&&f.angles[1]==92&&f.angles[2]==93&&f.pose==1&&std::abs(f.scheduled-10.1f)<0.00001f);
+    assert(idle()==1);expect({1,14,15,16,17});
+    f.live=false;assert(idle()==1&&f.live);expect({1,3,4,5,6,7,1,8,1,9,1,10,1,11,1,12,1,12,1,13,14,15,16,17});
+    f.kind=DispenserThinkKind::Use;assert(restore()==1&&f.steam_live);expect({18,19,14,15,20,21,16,23,27,21,16});
+    f.next=9;assert(restore()==1&&!f.steam_live);expect({18,19,14,15,20,21,16,2,2,28,24,25,21,16,22,16,17});
+    f.kind=DispenserThinkKind::Other;f.next=10;assert(restore()==1);expect({18,19,14,15,20,21,16});
+    f.fail=19;assert(restore()==-1&&ctrl.blocked);expect({18,19});
+    assert(idle()==0&&disp.acknowledge(&ctrl));expect({});
 }
 
 }
