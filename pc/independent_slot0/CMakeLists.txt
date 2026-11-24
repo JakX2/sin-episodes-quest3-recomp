@@ -970,8 +970,10 @@ endif()
 # non-forwarding diagnostic server.dll. No original PE32 address binding.
 target_sources(sin_slot0_server PRIVATE
   server_fixed_difficulty_service.cpp
-  ../../src/fixed_difficulty_phase663.cpp)
-target_include_directories(sin_slot0_server PRIVATE ../../include)
+  ../../src/fixed_difficulty_phase663.cpp
+  ../../src/original_sin_trigger_entities.cpp
+  ../../src/fixed_difficulty_trigger_phase663.cpp)
+target_include_directories(sin_slot0_server PRIVATE ../../include ../../third_party/research)
 add_executable(sin_native_fixed_difficulty_service_test
   test_server_fixed_difficulty_service.cpp
   ../../src/source_bsp_entities.cpp

@@ -207,6 +207,113 @@ static void test_native_bsp_host(const a::MapEntityApi* m,const a::Api* api,cons
     assert(api->end_campaign()&&g->clear());
 }
 
+
+struct NativeTriggerFixture {
+    const a::MapEntityApi* map;
+    const a::Api* api;
+    const a::CampaignTriggerApi* triggers;
+    a::MapEntityRef current,player,grunt;
+    int bases=0,warnings=0,specials=0,events=0,removals=0;
+    bool event_ok=true,remove_ok=true,special_ok=true;
+    std::uint32_t expected_kind=a::TriggerDynamicEvent;
+    int expected_descriptor=0,expected_decision=900,expected_owner=5;
+    float expected_value=88.5f;
+    const char* expected_name="gate";
+    static NativeTriggerFixture& self(void* c){return *static_cast<NativeTriggerFixture*>(c);}
+    static bool same(a::MapEntityRef x,a::MapEntityRef y){
+        return x.epoch==y.epoch&&x.index==y.index&&x.generation==y.generation;
+    }
+    static int SIN_FIXED_CALL live(void* c,a::MapEntityRef e){
+        auto& f=self(c);return same(e,f.current)||same(e,f.player)||same(e,f.grunt);
+    }
+    static int SIN_FIXED_CALL is_player(void* c,a::MapEntityRef e){return same(e,self(c).player);}
+    static int SIN_FIXED_CALL base(void* c,a::MapEntityRef e){
+        auto& f=self(c);assert(same(e,f.current));++f.bases;return 1;
+    }
+    static void SIN_FIXED_CALL warn(void* c,const char* text){
+        auto& f=self(c);assert(std::strcmp(text,"DD Trigger with don't destroy set\n")==0);++f.warnings;
+    }
+    static int SIN_FIXED_CALL owner(void*){return 5;}
+    static int SIN_FIXED_CALL special(void* c,a::MapEntityRef e){
+        auto& f=self(c);assert(same(e,f.current));++f.specials;return f.special_ok;
+    }
+    static int SIN_FIXED_CALL publish(void* c,a::MapEntityRef e,const a::NativeTriggerEvent* event){
+        auto& f=self(c);assert(same(e,f.current)&&event);
+        ++f.events;
+        assert(event->kind==f.expected_kind&&event->descriptor==f.expected_descriptor&&event->owner==f.expected_owner);
+        assert(std::strcmp(event->name,f.expected_name)==0);
+        if(event->kind==a::TriggerDynamicEvent){
+            assert(event->advisor==-1&&event->decision==f.expected_decision&&event->value==f.expected_value);
+            assert(event->x==1.f&&event->y==2.f&&event->z==3.f);
+        }
+        assert(!f.map->remove(e)&&!f.api->end_campaign()&&!f.api->set_skill(1));
+        return f.event_ok;
+    }
+    static int SIN_FIXED_CALL queue(void* c,a::MapEntityRef e){
+        auto& f=self(c);assert(same(e,f.current));++f.removals;return f.remove_ok;
+    }
+};
+static void test_native_triggers(const a::MapEntityApi* m,const a::Api* api,const a::CampaignTriggerApi* tr){
+    assert(tr&&tr->version==1&&tr->size==sizeof(*tr)&&api->begin_campaign(3));
+    const auto epoch=m->begin_level("trigger_map");
+    assert(epoch);
+    a::MapEntityRef dynamic{epoch,20,1},secret{epoch,21,1},end{epoch,22,1};
+    NativeTriggerFixture f{m,api,tr,dynamic,{epoch,5,2},{epoch,7,2}};
+    a::NativeTriggerHost host{1,sizeof(host),&NativeTriggerFixture::live,&NativeTriggerFixture::is_player,
+        &NativeTriggerFixture::base,&NativeTriggerFixture::warn,&NativeTriggerFixture::owner,
+        &NativeTriggerFixture::special,&NativeTriggerFixture::publish,&NativeTriggerFixture::queue};
+    a::NativeTriggerSpawn spawn{0,0,0x400};
+    a::NativeTriggerTouch touch{1.f,2.f,3.f,0x800};
+    a::NativeTriggerReport report{};
+    assert(m->create(dynamic,"trigger_dynamic_difficulty")==a::MapApplied);
+    assert(m->keyvalue(dynamic,"EstimatedTime","88.5")==a::MapApplied);
+    assert(m->keyvalue(dynamic,"EstimatedDifficulty","900")==a::MapApplied);
+    assert(m->keyvalue(dynamic,"EndOfGame","256")==a::MapApplied);
+    assert(m->keyvalue(dynamic,"targetname","gate")==a::MapApplied);
+    assert(m->keyvalue(dynamic,"EstimatedTime","nan")==a::MapRejected);
+    assert(m->keyvalue(dynamic,"spawnflags","1")==a::MapUnhandledKey);
+    assert(m->spawn(dynamic)==a::MapRejected);
+    assert(!tr->touch(dynamic,f.player,&touch,&host,&f,&report));
+    assert(tr->spawn(dynamic,&spawn,&host,&f,&report)&&report.code==a::TriggerHandled);
+    assert(report.base_initialized&&report.warning_emitted&&f.bases==1&&f.warnings==1);
+    assert(tr->spawn(dynamic,&spawn,&host,&f,&report)&&report.code==a::TriggerAlreadyConsumed);
+    assert(tr->touch(dynamic,f.grunt,&touch,&host,&f,&report)&&report.code==a::TriggerNonPlayer);
+    assert(!f.events&&!f.specials&&!f.removals);
+    f.special_ok=false;
+    assert(tr->touch(dynamic,f.player,&touch,&host,&f,&report)&&report.code==a::TriggerHostRefused);
+    assert(f.specials==1&&!f.events);
+    f.special_ok=true;f.event_ok=false;f.remove_ok=false;
+    assert(tr->touch(dynamic,f.player,&touch,&host,&f,&report)&&report.code==a::TriggerRemovalPending);
+    assert(f.events==1&&f.removals==1&&!report.event_published&&!report.manager_signaled&&!report.removal_queued);
+    a::State state{};
+    assert(api->get_state(&state)&&state.trigger_count==1&&!state.completed&&state.skill==3);
+    f.remove_ok=true;
+    assert(tr->retry_remove(dynamic,&host,&f,&report)&&report.code==a::TriggerHandled&&report.removal_queued);
+    assert(f.events==1&&f.removals==2);
+    assert(tr->touch(dynamic,f.player,&touch,&host,&f,&report)&&report.code==a::TriggerAlreadyConsumed);
+    assert(m->remove(dynamic));
+    f.current=secret;f.event_ok=true;
+    f.expected_kind=a::TriggerGameEvent;f.expected_descriptor=11;f.expected_owner=-1;f.expected_name="trigger_secret";
+    assert(m->create(secret,"trigger_secret")==a::MapApplied);
+    spawn={0,8,0};
+    assert(tr->spawn(secret,&spawn,&host,&f,&report)&&report.code==a::TriggerHandled&&report.event_published);
+    f.expected_descriptor=12;
+    assert(tr->touch(secret,f.player,&touch,&host,&f,&report)&&report.code==a::TriggerHandled&&report.removal_queued);
+    assert(api->get_state(&state)&&state.trigger_count==1&&!state.completed);
+    assert(m->remove(secret));
+    f.current=end;f.expected_kind=a::TriggerDynamicEvent;f.expected_descriptor=0;f.expected_owner=5;
+    f.expected_decision=0;f.expected_value=0.f;f.expected_name="trigger_dynamic_difficulty";
+    assert(m->create(end,"trigger_dynamic_difficulty")==a::MapApplied);
+    assert(m->keyvalue(end,"EndOfGame","257")==a::MapApplied);
+    spawn={0,0,0};touch.flags_b8=0;
+    assert(tr->spawn(end,&spawn,&host,&f,&report)&&report.code==a::TriggerHandled);
+    assert(tr->touch(end,f.player,&touch,&host,&f,&report)&&report.code==a::TriggerHandled);
+    assert(report.manager_signaled&&report.event_published&&report.removal_queued);
+    assert(api->get_state(&state)&&state.trigger_count==2&&state.completed&&state.skill==3);
+    assert(m->end_level(epoch)&&api->end_campaign());
+    assert(!tr->touch(end,f.player,&touch,&host,&f,&report));
+}
+
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -498,6 +605,13 @@ int main(int argc,char** argv){
     const auto* map=getMap(a::map_entity_version,sizeof(a::MapEntityApi));
     test_map_entities(map,api,globals);
     test_native_bsp_host(map,api,globals);
+#ifdef _WIN32
+    auto getTriggers=reinterpret_cast<a::GetCampaignTriggerApi>(GetProcAddress(lib,a::trigger_export_name));
+#else
+    auto getTriggers=reinterpret_cast<a::GetCampaignTriggerApi>(dlsym(lib,a::trigger_export_name));
+#endif
+    assert(getTriggers&&!getTriggers(0,sizeof(a::CampaignTriggerApi))&&!getTriggers(1,0));
+    test_native_triggers(map,api,getTriggers(a::trigger_version,sizeof(a::CampaignTriggerApi)));
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);
