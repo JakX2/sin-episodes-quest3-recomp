@@ -2149,7 +2149,7 @@ inline void check_choreography_event_parser(const ChoreographyEventParserApi& ap
     assert(!std::strcmp(reinterpret_cast<char*>(f.event+4),"dialogue")&&!std::strcmp(reinterpret_cast<char*>(f.event+0x84),"Jessica.Test")&&!std::strcmp(reinterpret_cast<char*>(f.event+0x104),"72"));
     assert(F::word(f.event,0x334)==100&&F::word(f.event,0x338)==0xfffffffeu&&F::word(f.event,0x190)==0xffffffffu&&F::word(f.event,0x340)==0x40600000&&F::word(f.event,0x18c)==0x40800000);
     assert(f.event[0x198]&&f.event[0x1b0]&&f.event[0x33c]&&f.event[0x1b1]&&f.event[0x390]&&f.event[0x3a1]&&f.event[0x3a2]);
-    assert(!std::strcmp(reinterpret_cast<char*>(f.event+0x1b2),"marker")&&!std::strcmp(reinterpret_cast<char*>(f.event+0x232),"reference")&&F::word(f.event,0x34c)==1&&!std::strcmp(reinterpret_cast<char*>(f.event+0x350),"caption"));
+    assert(!std::strcmp(reinterpret_cast<char*>(f.event+0x1b2),"reference")&&!std::strcmp(reinterpret_cast<char*>(f.event+0x232),"marker")&&F::word(f.event,0x34c)==1&&!std::strcmp(reinterpret_cast<char*>(f.event+0x350),"caption"));
     ChoreographyEventParserFixture bad;bad.tokens[43]=nullptr;
     assert(api.parse(bad.parsed,sizeof(bad.parsed),"bad.vcd",&bad.b)==-1&&bad.appends==3&&!bad.events&&!bad.channels&&!bad.finalized);
 }
@@ -2469,6 +2469,74 @@ scalesettings { "RampTool" "100" }
     const char bad[]="{ broken { 0.2";
     assert(f.cursor.begin(bad,sizeof(bad)-1));
     assert(flex.block(f.event,sizeof(f.event),&f.full.flex)==-1&&f.deletes==3&&!F::word(f.event,0x318));
+}
+
+struct ChoreographyFinalizeFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char parsed[0x220]{},actor[0x118]{},channels[2][0x9c]{},events[4][0x3c0]{},tag[0x88]{};
+    std::uint32_t actors[2]{},channel_words[3]{},event_words[2][3]{};
+    ChoreographyFinalizeBindings b{};unsigned missing=0,gestures=0,captions=0;
+    static ChoreographyFinalizeFixture& self(void* p){return *static_cast<ChoreographyFinalizeFixture*>(p);}
+    ChoreographyFinalizeFixture(){
+        actors[1]=F::ptr(actor);F::put(parsed,0x14,F::ptr(actors));F::put(parsed,0x20,2);
+        channel_words[0]=F::ptr(channels[0]);channel_words[2]=F::ptr(channels[1]);
+        F::put(actor,0x100,F::ptr(channel_words));F::put(actor,0x10c,3);
+        event_words[0][0]=F::ptr(events[0]);event_words[0][1]=F::ptr(events[1]);
+        event_words[1][0]=F::ptr(events[2]);event_words[1][2]=F::ptr(events[3]);
+        for(unsigned c=0;c<2;++c){F::put(channels[c],0x84,F::ptr(event_words[c]));F::put(channels[c],0x90,3);}
+        // A linked speech anchor found across channels. Earlier nonmatching
+        // case-sensitive reference is ignored; tag comparison ignores case.
+        F::put(events[2],0,5);std::strcpy(reinterpret_cast<char*>(events[2]+0x84),"Jessica.Anchor.01");
+        F::fl(events[2],0x184,10);F::fl(events[2],0x188,14);
+        F::put(events[2],0x2bc,F::ptr(tag));F::put(events[2],0x2c8,1);
+        std::strcpy(reinterpret_cast<char*>(tag),"Marker");F::fl(tag,0x80,.25f);F::put(tag,0x84,F::ptr(events[2]));
+        for(unsigned i:{0u,1u,3u}){
+            F::put(events[i],0,6);events[i][0x1b1]=1;std::strcpy(reinterpret_cast<char*>(events[i]+0x1b2),"marker");
+            std::strcpy(reinterpret_cast<char*>(events[i]+0x232),i==3?"jessica":"Anchor");
+            F::fl(events[i],0x184,2);F::fl(events[i],0x188,i==1?-1.f:4.f);}
+        std::strcpy(reinterpret_cast<char*>(events[3]+4),"missing");
+        b.context=this;
+        b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);
+            if(w==F::ptr(f.actors)){*out=f.actors;*n=sizeof(f.actors);return 1;}
+            if(w==F::ptr(f.actor)){*out=f.actor;*n=sizeof(f.actor);return 1;}
+            if(w==F::ptr(f.channel_words)){*out=f.channel_words;*n=sizeof(f.channel_words);return 1;}
+            if(w==F::ptr(f.tag)){*out=f.tag;*n=sizeof(f.tag);return 1;}
+            for(auto& c:f.channels)if(w==F::ptr(c)){*out=c;*n=sizeof(c);return 1;}
+            for(auto& v:f.event_words)if(w==F::ptr(v)){*out=v;*n=sizeof(v);return 1;}
+            for(auto& e:f.events)if(w==F::ptr(e)){*out=e;*n=sizeof(e);return 1;}
+            return 0;};
+        b.missing_tag=[](void* p,void* parsed,const char* name,const char* ref,const char* tag) noexcept -> int{
+            auto& f=self(p);assert(parsed==f.parsed&&!std::strcmp(name,"missing")&&!std::strcmp(ref,"jessica")&&!std::strcmp(tag,"marker"));++f.missing;return 1;};
+        b.gesture_channel=[](void* p,void* channel) noexcept -> int{
+            auto& f=self(p);assert(f.missing==1&&!f.captions&&channel==f.channels[f.gestures++]);return 1;};
+        b.caption_channel=[](void* p,void* channel) noexcept -> int{
+            auto& f=self(p);assert(f.gestures==2&&channel==f.channels[f.captions++]);return 1;};
+    }
+};
+inline void check_choreography_finalize(const ChoreographyFinalizeApi& api,const PortableVcdFinalizedGrammarApi& grammar){
+    using F=ScenePlaybackFixture;ChoreographyFinalizeFixture f;
+    assert(api.all(f.parsed,sizeof(f.parsed),&f.b)==1&&f.missing==1&&f.gestures==2&&f.captions==2);
+    assert(F::word(f.events[0],0x184)==0x41300000u&&F::word(f.events[0],0x188)==0x41500000u&&f.events[0][0x1b1]);
+    assert(F::word(f.events[1],0x184)==0x41300000u&&F::word(f.events[1],0x188)==0xbf800000u);
+    assert(!f.events[3][0x1b1]&&!f.events[3][0x1b2]&&!f.events[3][0x232]&&F::word(f.events[3],0x184)==0x40000000u);
+    // Flat event vector intentionally empty, so success proves linked traversal.
+    assert(!F::word(f.parsed,0xc));
+    PortableFlexGrammarFixture g;PortableVcdFinalizedGrammarBindings b{};
+    b.grammar=g.full;b.grammar.curves.grammar.events.actors.text.finalize=nullptr;
+    b.finalize.context=&g;
+    b.finalize.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=*static_cast<PortableFlexGrammarFixture*>(p);
+        void* objects[]={f.actor,f.channel,f.event,f.words,&f.channel_link,&f.event_link};
+        const unsigned sizes[]={sizeof(f.actor),sizeof(f.channel),sizeof(f.event),sizeof(f.words),4,4};
+        for(unsigned i=0;i<6;++i)if(word==F::ptr(objects[i])){*out=objects[i];*bytes=sizes[i];return 1;}return 0;};
+    b.finalize.missing_tag=[](void*,void*,const char*,const char*,const char*) noexcept -> int{assert(false);return 0;};
+    b.finalize.gesture_channel=[](void* p,void* channel) noexcept -> int{
+        auto& f=*static_cast<PortableFlexGrammarFixture*>(p);assert(channel==f.channel&&!f.finalized);++f.finalized;return 1;};
+    b.finalize.caption_channel=[](void* p,void* channel) noexcept -> int{
+        auto& f=*static_cast<PortableFlexGrammarFixture*>(p);assert(channel==f.channel&&f.finalized==1);++f.finalized;return 1;};
+    const char text[]="actor Jessica { channel Voice { event speak dialogue { time 0 1\n param sound } } }";
+    assert(grammar.parse(g.parsed,sizeof(g.parsed),"test.vcd",text,sizeof(text)-1,&b)==1&&g.finalized==2);
 }
 
 struct SceneActorCacheFixture {

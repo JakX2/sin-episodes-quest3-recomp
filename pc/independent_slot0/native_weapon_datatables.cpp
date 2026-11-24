@@ -5369,7 +5369,7 @@ int choreography_text_parse_impl(void* parsed,unsigned bytes,const char* filenam
         else if(fps){const int v=choreography_text_integer(token);hologram_write(parsed,0x128,v>240?240:v<10?10:v);}
         else hologram_write(parsed,0x125,static_cast<unsigned char>(choreography_text_equal(token,"on")));
     }
-    for(auto stage:{ChoreographyTextFinalize::RelativeTags,ChoreographyTextFinalize::CaptionGroups,ChoreographyTextFinalize::GestureTimes})
+    for(auto stage:{ChoreographyTextFinalize::RelativeTags,ChoreographyTextFinalize::GestureReconcile,ChoreographyTextFinalize::CaptionReconcile})
         if(!h.finalize(h.context,parsed,stage))return -1;
     return 1;
 }
@@ -5450,7 +5450,9 @@ int __cdecl choreography_event_parse(void* parsed,unsigned bytes,void* actor,voi
         else if(choreography_text_equal(token,"fixedlength"))hologram_write(event,0x198,static_cast<unsigned char>(1));
         else if(choreography_text_equal(token,"lockbodyfacing"))hologram_write(event,0x33c,static_cast<unsigned char>(1));
         else if(choreography_text_equal(token,"relativetag")){
-            if(!string(0,0x1b2,128)||!string(0,0x232,128))return -1;
+            // Original 2210b740 copies first token (sound reference) to +232,
+            // second token (tag name) to +1b2.
+            if(!string(0,0x232,128)||!string(0,0x1b2,128))return -1;
             hologram_write(event,0x1b1,static_cast<unsigned char>(1));
         }else if(choreography_text_equal(token,"cctype")){
             if(!next(0))return -1;
@@ -5936,6 +5938,127 @@ int __cdecl choreography_flex_block(void* event,unsigned bytes,const Choreograph
     return -1;
 }
 const ChoreographyFlexApi choreography_flex_api{version,sizeof(ChoreographyFlexApi),&choreography_flex_block};
+bool choreography_finalize_ready(const ChoreographyFinalizeBindings* b) noexcept {
+    return b&&b->storage&&b->missing_tag&&b->gesture_channel&&b->caption_channel;
+}
+bool choreography_finalize_storage(const ChoreographyFinalizeBindings& h,std::uint32_t word,unsigned need,void*& object) noexcept {
+    unsigned n=0;object=nullptr;
+    return word&&h.storage(h.context,word,&object,&n)&&n>=need&&hologram_writable(object,need);
+}
+bool choreography_finalize_child(const ChoreographyFinalizeBindings& h,void* parent,unsigned offset,unsigned i,unsigned need,void*& object) noexcept {
+    void* list=nullptr;object=nullptr;
+    if(!choreography_finalize_storage(h,hologram_read<std::uint32_t>(parent,offset),(i+1)*4,list))return false;
+    const auto word=hologram_read<std::uint32_t>(list,i*4);
+    return !word||choreography_finalize_storage(h,word,need,object);
+}
+// Original 22115b80/22114230, 221145a0 and 22114600 all traverse
+// parsed actors -> actor channels, not the flat event/channel lists.
+template<class Visit>
+int choreography_visit_channels(void* parsed,const ChoreographyFinalizeBindings& h,Visit visit) noexcept {
+    unsigned budget=0x100000;
+    for(unsigned a=0;;++a){
+        const int count=hologram_read<int>(parsed,0x20);
+        if(count<=0||a>=static_cast<unsigned>(count))break;
+        if(count>0x100000||!budget--)return -1;
+        void* actor=nullptr;if(!choreography_finalize_child(h,parsed,0x14,a,0x118,actor))return -1;
+        if(!actor)continue;
+        for(unsigned c=0;;++c){
+            const int n=hologram_read<int>(actor,0x10c);
+            if(n<=0||c>=static_cast<unsigned>(n))break;
+            if(n>0x100000||!budget--)return -1;
+            void* channel=nullptr;if(!choreography_finalize_child(h,actor,0x100,c,0x9c,channel))return -1;
+            if(!channel)continue;
+            const int status=visit(channel);
+            if(status!=1)return status;
+        }
+    }
+    return 1;
+}
+template<class Visit>
+int choreography_visit_linked_events(void* parsed,const ChoreographyFinalizeBindings& h,Visit visit) noexcept {
+    unsigned budget=0x100000;
+    return choreography_visit_channels(parsed,h,[&](void* channel){
+        for(unsigned e=0;;++e){
+            const int count=hologram_read<int>(channel,0x90);
+            if(count<=0||e>=static_cast<unsigned>(count))break;
+            if(count>0x100000||!budget--)return -1;
+            void* event=nullptr;if(!choreography_finalize_child(h,channel,0x84,e,0x3c0,event))return -1;
+            if(!event)continue;
+            const int status=visit(event);if(status!=1)return status;
+        }
+        return 1;
+    });
+}
+int choreography_find_relative(void* parsed,const char* reference,const char* tag,const ChoreographyFinalizeBindings& h,void*& found) noexcept {
+    found=nullptr;
+    return choreography_visit_linked_events(parsed,h,[&](void* event){
+        if(hologram_read<unsigned>(event,0)!=5)return 1;
+        const auto* sound=static_cast<const char*>(event)+0x84;
+        if(!std::memchr(sound,0,128))return -1;
+        // 223a5750 is case-sensitive substring search, not equality.
+        if(!std::strstr(sound,reference))return 1;
+        for(unsigned i=0;;++i){
+            const int count=hologram_read<int>(event,0x2c8);
+            if(count<=0||i>=static_cast<unsigned>(count))break;
+            if(count>4096)return -1;
+            void* rows=nullptr;
+            if(!choreography_finalize_storage(h,hologram_read<std::uint32_t>(event,0x2bc),(i+1)*0x88,rows))return -1;
+            auto* row=static_cast<char*>(rows)+i*0x88;
+            if(!std::memchr(row,0,128))return -1;
+            if(choreography_text_equal(row,tag)){found=row;return 2;}
+        }
+        return 1;
+    });
+}
+int __cdecl choreography_finalize_stage(void* parsed,unsigned bytes,ChoreographyTextFinalize stage,const ChoreographyFinalizeBindings* b) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_finalize_ready(b)||static_cast<unsigned>(stage)>2)return 0;
+    const auto h=*b;
+    if(stage!=ChoreographyTextFinalize::RelativeTags){
+        return choreography_visit_channels(parsed,h,[&](void* channel){
+            return (stage==ChoreographyTextFinalize::GestureReconcile?h.gesture_channel(h.context,channel):h.caption_channel(h.context,channel))?1:-1;
+        });
+    }
+    return choreography_visit_linked_events(parsed,h,[&](void* event){
+        if(!hologram_read<unsigned char>(event,0x1b1))return 1;
+        const auto* tag=static_cast<const char*>(event)+0x1b2;
+        const auto* reference=static_cast<const char*>(event)+0x232;
+        const auto* name=static_cast<const char*>(event)+4;
+        if(!std::memchr(tag,0,128)||!std::memchr(reference,0,128)||!std::memchr(name,0,128))return -1;
+        void* row=nullptr;
+        const int status=choreography_find_relative(parsed,reference,tag,h,row);
+        if(status<0)return -1;
+        if(!row){
+            if(!h.missing_tag(h.context,parsed,name,reference,tag))return -1;
+            hologram_write(event,0x1b1,static_cast<unsigned char>(0));
+            std::memset(static_cast<char*>(event)+0x1b2,0,128);std::memset(static_cast<char*>(event)+0x232,0,128);
+            return 1;
+        }
+        float absolute=0;
+        const auto owner=hologram_read<std::uint32_t>(row,0x84);
+        if(owner){
+            void* source=nullptr;
+            if(!choreography_finalize_storage(h,owner,0x18c,source))return -1;
+            const double start=hologram_read<float>(source,0x184);
+            const double span=hologram_read<std::uint32_t>(source,0x188)==0xbf800000u?0.0:
+                static_cast<double>(hologram_read<float>(source,0x188))-start;
+            absolute=static_cast<float>(start+span*hologram_read<float>(row,0x80));
+        }
+        // 2210c420 returns absolute time; caller rounds, then rounds
+        // delta before 2210b4a0 shifts end (unless sentinel) and start.
+        const float delta=absolute-hologram_read<float>(event,0x184);
+        if(hologram_read<std::uint32_t>(event,0x188)!=0xbf800000u)
+            hologram_write(event,0x188,hologram_read<float>(event,0x188)+delta);
+        hologram_write(event,0x184,hologram_read<float>(event,0x184)+delta);
+        return 1;
+    });
+}
+int __cdecl choreography_finalize_all(void* parsed,unsigned bytes,const ChoreographyFinalizeBindings* b) noexcept {
+    for(auto stage:{ChoreographyTextFinalize::RelativeTags,ChoreographyTextFinalize::GestureReconcile,ChoreographyTextFinalize::CaptionReconcile}){
+        const int status=choreography_finalize_stage(parsed,bytes,stage,b);if(status!=1)return status;
+    }
+    return 1;
+}
+const ChoreographyFinalizeApi choreography_finalize_api{version,sizeof(ChoreographyFinalizeApi),&choreography_finalize_stage,&choreography_finalize_all};
 using PortableTokenizer=sin_port::vcd::Tokenizer;
 int __cdecl portable_vcd_begin(void* p,const char* data,unsigned bytes) noexcept {
     if(!hologram_writable(p,sizeof(PortableTokenizer))||!data||
@@ -5968,8 +6091,9 @@ struct PortableGrammarState {
     PortableVcdGrammarBindings source{};
     ChoreographyEventParserBindings events{};
     ChoreographyTimingTagBindings tags{};
-    ChoreographyScaleBindings scales{};ChoreographyFlexBindings flex{};bool native_curves=false,native_flex=false;
-    explicit PortableGrammarState(const PortableVcdGrammarBindings& b,const ChoreographyScaleBindings* s=nullptr,const ChoreographyFlexBindings* f=nullptr) noexcept:source(b),events(b.events),tags(b.tags),scales(s?*s:ChoreographyScaleBindings{}),flex(f?*f:ChoreographyFlexBindings{}),native_curves(s!=nullptr),native_flex(f!=nullptr){
+    ChoreographyScaleBindings scales{};ChoreographyFlexBindings flex{};ChoreographyFinalizeBindings finalize{};
+    bool native_curves=false,native_flex=false,native_finalize=false;
+    explicit PortableGrammarState(const PortableVcdGrammarBindings& b,const ChoreographyScaleBindings* s=nullptr,const ChoreographyFlexBindings* f=nullptr,const ChoreographyFinalizeBindings* z=nullptr) noexcept:source(b),events(b.events),tags(b.tags),scales(s?*s:ChoreographyScaleBindings{}),flex(f?*f:ChoreographyFlexBindings{}),finalize(z?*z:ChoreographyFinalizeBindings{}),native_curves(s!=nullptr),native_flex(f!=nullptr),native_finalize(z!=nullptr){
         auto& text=events.actors.text;text.context=this;events.context=this;
         text.begin=[](void* p,const char* data,unsigned n) noexcept -> int{return portable_vcd_begin(&self(p).cursor,data,n);};
         text.next=[](void* p,unsigned cross,unsigned* more) noexcept -> int{return portable_vcd_next(&self(p).cursor,cross,more);};
@@ -5985,7 +6109,9 @@ struct PortableGrammarState {
         text.unexpected=[](void* p,const char* token) noexcept -> int{
             auto& s=self(p);const auto& h=s.source.events.actors.text;return h.unexpected(h.context,token);};
         text.finalize=[](void* p,void* parsed,ChoreographyTextFinalize stage) noexcept -> int{
-            auto& s=self(p);const auto& h=s.source.events.actors.text;return h.finalize(h.context,parsed,stage);};
+            auto& s=self(p);
+            if(s.native_finalize)return choreography_finalize_stage(parsed,0x220,stage,&s.finalize)==1;
+            const auto& h=s.source.events.actors.text;return h.finalize(h.context,parsed,stage);};
         events.same_line=[](void* p,unsigned* more) noexcept -> int{return portable_vcd_same_line(&self(p).cursor,more);};
         events.number=[](void* p,const char* token,float* out) noexcept -> int{
             const auto& h=self(p).source.events;return h.number(h.context,token,out);};
@@ -6019,10 +6145,10 @@ struct PortableGrammarState {
     }
     static PortableGrammarState& self(void* p) noexcept{return *static_cast<PortableGrammarState*>(p);}
 };
-bool portable_grammar_ready(const PortableVcdGrammarBindings* b,bool native_curves=false,bool native_flex=false) noexcept {
+bool portable_grammar_ready(const PortableVcdGrammarBindings* b,bool native_curves=false,bool native_flex=false,bool native_finalize=false) noexcept {
     if(!b||(!native_curves&&!b->root_block)||(!native_flex&&!b->event_block)||!choreography_tags_ready(&b->tags))return false;
     const auto& h=b->events;const auto& text=h.actors.text;
-    return text.tokenizer_word&&text.unexpected&&text.finalize&&h.number&&h.end_changed&&h.append_event&&h.legacy_ramp;
+    return text.tokenizer_word&&text.unexpected&&(native_finalize||text.finalize)&&h.number&&h.end_changed&&h.append_event&&h.legacy_ramp;
 }
 int __cdecl portable_grammar_parse(void* parsed,unsigned extent,const char* name,const char* data,unsigned bytes,const PortableVcdGrammarBindings* b) noexcept {
     if(!portable_grammar_ready(b))return 0;
@@ -6061,8 +6187,8 @@ int __cdecl portable_curve_scene(void* npc,const char* name,float delay,const Na
     return native_named_playback(npc,name,delay,&h,out);
 }
 const PortableVcdCurveGrammarApi portable_vcd_curve_grammar_api{version,sizeof(PortableVcdCurveGrammarApi),&portable_curve_parse,&portable_curve_load,&portable_curve_scene};
-bool portable_flex_grammar_ready(const PortableVcdFlexGrammarBindings* b) noexcept {
-    return b&&portable_grammar_ready(&b->curves.grammar,true,true)&&choreography_scale_ready(&b->curves.scales)&&
+bool portable_flex_grammar_ready(const PortableVcdFlexGrammarBindings* b,bool native_finalize=false) noexcept {
+    return b&&portable_grammar_ready(&b->curves.grammar,true,true,native_finalize)&&choreography_scale_ready(&b->curves.scales)&&
         b->curves.scales.integer&&b->curves.scales.intern&&b->curves.scales.insert&&choreography_flex_ready(&b->flex)&&b->flex.samples.number;
 }
 int __cdecl portable_flex_parse(void* parsed,unsigned extent,const char* name,const char* data,unsigned bytes,const PortableVcdFlexGrammarBindings* b) noexcept {
@@ -6082,6 +6208,26 @@ int __cdecl portable_flex_scene(void* npc,const char* name,float delay,const Nat
     return native_named_playback(npc,name,delay,&h,out);
 }
 const PortableVcdFlexGrammarApi portable_vcd_flex_grammar_api{version,sizeof(PortableVcdFlexGrammarApi),&portable_flex_parse,&portable_flex_load,&portable_flex_scene};
+bool portable_finalized_ready(const PortableVcdFinalizedGrammarBindings* b) noexcept {
+    return b&&portable_flex_grammar_ready(&b->grammar,true)&&choreography_finalize_ready(&b->finalize);
+}
+int __cdecl portable_finalized_parse(void* parsed,unsigned extent,const char* name,const char* data,unsigned bytes,const PortableVcdFinalizedGrammarBindings* b) noexcept {
+    if(!portable_finalized_ready(b))return 0;
+    const auto& g=b->grammar;PortableGrammarState s(g.curves.grammar,&g.curves.scales,&g.flex,&b->finalize);
+    if(!choreography_event_parser_ready(&s.events)||!portable_vcd_begin(&s.cursor,data,bytes))return 0;
+    return choreography_text_parse_impl(parsed,extent,name,&s.events.actors.text,&s.events.actors,&s.events);
+}
+int __cdecl portable_finalized_load(void* scene,unsigned extent,const char* name,const NamedSceneLoadBindings* load,const PortableVcdFinalizedGrammarBindings* b,std::uint32_t* out) noexcept {
+    if(!portable_finalized_ready(b))return 0;
+    const auto& g=b->grammar;PortableGrammarState s(g.curves.grammar,&g.curves.scales,&g.flex,&b->finalize);
+    return choreography_event_load(scene,extent,name,load,&s.events,out);
+}
+int __cdecl portable_finalized_scene(void* npc,const char* name,float delay,const NativeNamedPlaybackBindings* playback,const PortableVcdFinalizedGrammarBindings* b,float* out) noexcept {
+    if(!playback||!portable_finalized_ready(b))return 0;
+    const auto& g=b->grammar;PortableGrammarState s(g.curves.grammar,&g.curves.scales,&g.flex,&b->finalize);auto h=*playback;h.events=&s.events;
+    return native_named_playback(npc,name,delay,&h,out);
+}
+const PortableVcdFinalizedGrammarApi portable_vcd_finalized_grammar_api{version,sizeof(PortableVcdFinalizedGrammarApi),&portable_finalized_parse,&portable_finalized_load,&portable_finalized_scene};
 const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
@@ -11423,6 +11569,18 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyFinalizeApi=_SiN_GetChoreographyFinalizeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyFinalizeApi* __cdecl
+SiN_GetChoreographyFinalizeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyFinalizeApi)?&choreography_finalize_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPortableVcdFinalizedGrammarApi=_SiN_GetPortableVcdFinalizedGrammarApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableVcdFinalizedGrammarApi* __cdecl
+SiN_GetPortableVcdFinalizedGrammarApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PortableVcdFinalizedGrammarApi)?&portable_vcd_finalized_grammar_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyFlexApi=_SiN_GetChoreographyFlexApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyFlexApi* __cdecl
 SiN_GetChoreographyFlexApi(std::uint32_t version,std::uint32_t size) noexcept {

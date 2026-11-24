@@ -767,6 +767,14 @@ int main(int argc,char** argv){
     assert(choreographyFlex&&portableVcdFlexGrammar&&!getChoreographyFlex(0,sizeof(tables::ChoreographyFlexApi))&&!getPortableVcdFlexGrammar(1,0));
     tables::test::check_portable_flex_grammar(*portableVcdFlexGrammar,*choreographyFlex);
     std::puts("PASS native flex animation block and integrated portable grammar");
+    const auto getChoreographyFinalize=reinterpret_cast<tables::GetChoreographyFinalizeApi>(GetProcAddress(server,tables::choreography_finalize_export));
+    const auto getPortableVcdFinalizedGrammar=reinterpret_cast<tables::GetPortableVcdFinalizedGrammarApi>(GetProcAddress(server,tables::portable_vcd_finalized_grammar_export));
+    assert(getChoreographyFinalize&&getPortableVcdFinalizedGrammar&&!GetProcAddress(client,tables::choreography_finalize_export)&&!GetProcAddress(client,tables::portable_vcd_finalized_grammar_export));
+    const auto* choreographyFinalize=getChoreographyFinalize(1,sizeof(tables::ChoreographyFinalizeApi));
+    const auto* portableVcdFinalizedGrammar=getPortableVcdFinalizedGrammar(1,sizeof(tables::PortableVcdFinalizedGrammarApi));
+    assert(choreographyFinalize&&portableVcdFinalizedGrammar&&!getChoreographyFinalize(0,sizeof(tables::ChoreographyFinalizeApi))&&!getPortableVcdFinalizedGrammar(1,0));
+    tables::test::check_choreography_finalize(*choreographyFinalize,*portableVcdFinalizedGrammar);
+    std::puts("PASS original relative tag reconciliation and ordered channel finalization");
 
 
 
