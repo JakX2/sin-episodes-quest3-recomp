@@ -4064,6 +4064,87 @@ int __cdecl scene_state_reset_wait(void* scene,unsigned bytes) noexcept {
     hologram_write(scene,0x52c,0xffffffffu);return 1;
 }
 const SceneStateApi scene_state_api{version,sizeof(SceneStateApi),&scene_state_pause,&scene_state_resume,&scene_state_complete,&scene_state_wait_tick,&scene_state_reset_wait};
+bool scene_manager_control_ready(const SceneManagerControl* c,SceneManagerStage stage) noexcept {
+    return c&&c->stage==stage&&!c->ticking&&c->bytes>=scene_manager_bytes&&hologram_writable(c->object,scene_manager_bytes);
+}
+int __cdecl scene_manager_construct(SceneManagerControl* c,std::uint32_t table,const SceneManagerLifecycleBindings* b) noexcept {
+    if(!scene_manager_control_ready(c,SceneManagerStage::Fresh)||!table||!b||!b->base_construct)return 0;
+    const auto h=*b;c->stage=SceneManagerStage::Constructing;
+    if(!h.base_construct(h.context,c->object,1)){c->stage=SceneManagerStage::Failed;return -1;}
+    hologram_write(c->object,0,table);
+    for(unsigned off=0x394;off<=0x3b8;off+=4)hologram_write(c->object,off,0u);
+    c->stage=SceneManagerStage::Live;return 1;
+}
+int __cdecl scene_manager_spawn(SceneManagerControl* c,const SceneManagerLifecycleBindings* b) noexcept {
+    if(!scene_manager_control_ready(c,SceneManagerStage::Live)||!b||!b->base_spawn||!b->clock||!b->schedule)return 0;
+    const auto h=*b;c->ticking=1;float now=0;
+    const bool ok=h.base_spawn(h.context,c->object)&&h.clock(h.context,&now)&&h.schedule(h.context,c->object,now,0);
+    c->ticking=0;if(!ok)c->stage=SceneManagerStage::Failed;return ok?1:-1;
+}
+int __cdecl scene_manager_tick(SceneManagerControl* c,const SceneManagerTickBindings* b) noexcept {
+    if(!scene_manager_control_ready(c,SceneManagerStage::Live)||!b||!b->clock||!b->schedule||!b->last_think||
+       !b->disabled||!b->entry||!b->resolve||!b->advance||!b->shift)return 0;
+    const auto h=*b;auto* manager=c->object;c->ticking=1;
+    const auto finish=[&](bool ok){c->ticking=0;if(!ok)c->stage=SceneManagerStage::Failed;return ok?1:-1;};
+    float now=0,last=0;
+    if(!h.clock(h.context,&now)||!h.schedule(h.context,manager,static_cast<float>(static_cast<double>(now)+.001),0)||
+       !h.last_think(h.context,manager,0,&last)||!h.clock(h.context,&now))return finish(false);
+    const double elapsed=static_cast<double>(now)-last;
+    const float dt=static_cast<float>(elapsed>.1?.1:elapsed);
+    unsigned disabled=0;if(!h.disabled(h.context,&disabled))return finish(false);
+    if(disabled&1)return finish(true);
+    int count=hologram_read<int>(manager,0x3a0);
+    if(count<0||count>0x100000)return finish(false);
+    bool stale=false;
+    const auto resolve_at=[&](unsigned i,void*& p){
+        std::uint32_t word=0xffffffffu;p=nullptr;
+        return h.entry(h.context,manager,i,&word)&&(word==0xffffffffu||h.resolve(h.context,word,&p));
+    };
+    for(int i=0;i<count;){
+        void* scene=nullptr;
+        if(!resolve_at(static_cast<unsigned>(i),scene))return finish(false);
+        if(!scene){stale=true;++i;continue;}
+        if(!h.advance(h.context,scene,dt))return finish(false);
+        const int live=hologram_read<int>(manager,0x3a0);
+        if(live<0||live>0x100000)return finish(false);
+        if(live<count)count=live; // original re-visits the same index
+        else ++i; // additions wait for next tick
+    }
+    if(stale)for(int i=count-1;i>=0;--i){
+        void* scene=nullptr;if(!resolve_at(static_cast<unsigned>(i),scene))return finish(false);
+        if(scene)continue;
+        const int live=hologram_read<int>(manager,0x3a0);
+        if(live<=i||live>0x100000)return finish(false);
+        const auto trailing=static_cast<unsigned>(live-i-1);
+        if(trailing&&!h.shift(h.context,manager,static_cast<unsigned>(i),trailing))return finish(false);
+        hologram_write(manager,0x3a0,live-1);
+    }
+    return finish(true);
+}
+int __cdecl scene_manager_clear(SceneManagerControl* c) noexcept {
+    if(!scene_manager_control_ready(c,SceneManagerStage::Live))return 0;
+    hologram_write(c->object,0x3a0,0u);return 1;
+}
+int __cdecl scene_manager_destroy(SceneManagerControl* c,const SceneManagerLifecycleBindings* b) noexcept {
+    if(!scene_manager_control_ready(c,SceneManagerStage::Live)||!b||!b->free_vector||!b->base_destroy)return 0;
+    const auto h=*b;auto* m=c->object;c->stage=SceneManagerStage::Destroying;
+    for(unsigned base:{0x3a8u,0x394u}){
+        hologram_write(m,base+0xc,0u);
+        if(hologram_read<std::uint32_t>(m,base+8)!=0xffffffffu){
+            const auto allocation=hologram_read<std::uint32_t>(m,base);
+            if(allocation){
+                const bool ok=h.free_vector(h.context,allocation)!=0;
+                hologram_write(m,base,0u);
+                if(!ok){c->stage=SceneManagerStage::Failed;return -1;}
+            }
+            hologram_write(m,base+4,0u);
+        }
+        hologram_write(m,base+0x10,hologram_read<std::uint32_t>(m,base));
+    }
+    const bool ok=h.base_destroy(h.context,m)!=0;c->stage=ok?SceneManagerStage::Retired:SceneManagerStage::Failed;return ok?1:-1;
+}
+const SceneManagerTickApi scene_manager_tick_api{version,sizeof(SceneManagerTickApi),&scene_manager_construct,&scene_manager_spawn,&scene_manager_tick,&scene_manager_clear,&scene_manager_destroy};
+
 
 
 
@@ -8594,6 +8675,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetSceneManagerTickApi=_SiN_GetSceneManagerTickApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneManagerTickApi* __cdecl
+SiN_GetSceneManagerTickApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneManagerTickApi)?&scene_manager_tick_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetSceneStateApi=_SiN_GetSceneStateApi")

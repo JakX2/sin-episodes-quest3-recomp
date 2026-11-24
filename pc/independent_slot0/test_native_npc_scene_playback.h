@@ -288,4 +288,60 @@ inline void check_scene_state(const SceneStateApi& api){
     assert(api.wait_tick(f.scene,0x531,&b)==0);
 }
 
+
+struct SceneManagerTickFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char manager[scene_manager_bytes]{};
+    SceneManagerControl ctrl{manager,sizeof(manager)};
+    SceneManagerLifecycleBindings life{};SceneManagerTickBindings tick{};
+    std::uint32_t handles[8]{1,2,99,3,0xffffffffu};
+    int scenes[3]{};
+    unsigned order[16]{},calls=0,clocks=0,schedules=0,shifts=0,disabled=0,frees=0,destructs=0;
+    float now=10,last=9,expected_dt=.1f,scheduled=0;
+    bool remove_first=true,fail_advance=false;
+    static SceneManagerTickFixture& get(void* p){return *static_cast<SceneManagerTickFixture*>(p);}
+    void count(unsigned n){F::put(manager,0x3a0,n);}
+    SceneManagerTickFixture(){
+        life.context=this;tick.context=this;std::memset(manager,0xa5,sizeof(manager));
+        life.base_construct=[](void* p,void* m,int a) noexcept -> int{auto& f=get(p);assert(m==f.manager&&a==1&&f.ctrl.stage==SceneManagerStage::Constructing);F::put(m,0x100,0x12345678);return 1;};
+        life.base_spawn=[](void* p,void* m) noexcept -> int{auto& f=get(p);assert(m==f.manager&&f.ctrl.ticking);return 1;};
+        life.clock=[](void* p,float* out) noexcept -> int{auto& f=get(p);++f.clocks;*out=f.now;return 1;};
+        life.schedule=[](void* p,void* m,float t,int a) noexcept -> int{auto& f=get(p);assert(m==f.manager&&!a&&f.ctrl.ticking);f.scheduled=t;++f.schedules;return 1;};
+        life.free_vector=[](void* p,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(h==0x2222&&f.ctrl.stage==SceneManagerStage::Destroying);++f.frees;return 1;};
+        life.base_destroy=[](void* p,void* m) noexcept -> int{auto& f=get(p);assert(m==f.manager&&!F::word(m,0x3b4)&&!F::word(m,0x3a0));++f.destructs;return 1;};
+        tick.clock=life.clock;tick.schedule=life.schedule;
+        tick.last_think=[](void* p,void* m,int a,float* out) noexcept -> int{auto& f=get(p);assert(m==f.manager&&!a);*out=f.last;return 1;};
+        tick.disabled=[](void* p,unsigned* out) noexcept -> int{*out=get(p).disabled;return 1;};
+        tick.entry=[](void* p,void* m,unsigned i,std::uint32_t* out) noexcept -> int{auto& f=get(p);assert(m==f.manager&&i<F::word(m,0x3a0));*out=f.handles[i];return 1;};
+        tick.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);*out=h>=1&&h<=3?&f.scenes[h-1]:nullptr;return 1;};
+        tick.advance=[](void* p,void* s,float dt) noexcept -> int{
+            auto& f=get(p);auto i=static_cast<unsigned>(static_cast<int*>(s)-f.scenes);assert(i<3&&dt==f.expected_dt&&f.ctrl.ticking);f.order[f.calls++]=i+1;
+            if(i==0&&f.remove_first){f.remove_first=false;std::memmove(f.handles,f.handles+1,4*sizeof(std::uint32_t));f.count(4);}
+            return !f.fail_advance;
+        };
+        tick.shift=[](void* p,void* m,unsigned i,unsigned trailing) noexcept -> int{
+            auto& f=get(p);assert(m==f.manager&&i+trailing+1==F::word(m,0x3a0));++f.shifts;std::memmove(f.handles+i,f.handles+i+1,trailing*4);return 1;
+        };
+    }
+};
+inline void check_scene_manager_tick(const SceneManagerTickApi& api){
+    using F=ScenePlaybackFixture;SceneManagerTickFixture f;
+    assert(api.construct(&f.ctrl,0x1111,&f.life)==1&&f.ctrl.stage==SceneManagerStage::Live&&F::word(f.manager,0)==0x1111&&F::word(f.manager,0x100)==0x12345678);
+    for(unsigned off=0x394;off<=0x3b8;off+=4)assert(!F::word(f.manager,off));
+    assert(api.spawn(&f.ctrl,&f.life)==1&&f.scheduled==10&&f.schedules==1);
+    f.count(5);assert(api.tick(&f.ctrl,&f.tick)==1&&f.scheduled==10.001f&&f.calls==3&&f.order[0]==1&&f.order[1]==2&&f.order[2]==3);
+    assert(F::word(f.manager,0x3a0)==2&&f.handles[0]==2&&f.handles[1]==3&&f.shifts==1&&f.clocks==3);
+    f.disabled=1;assert(api.tick(&f.ctrl,&f.tick)==1&&f.calls==3&&f.schedules==3);
+    f.disabled=0;f.last=10.25f;f.expected_dt=-.25f;
+    assert(api.tick(&f.ctrl,&f.tick)==1&&f.calls==5&&f.order[3]==2&&f.order[4]==3);
+    F::put(f.manager,0x394,0x1111);F::put(f.manager,0x398,8);F::put(f.manager,0x39c,0xffffffffu);
+    F::put(f.manager,0x3a8,0x2222);F::put(f.manager,0x3ac,8);F::put(f.manager,0x3b4,2);
+    assert(api.clear(&f.ctrl)==1&&!F::word(f.manager,0x3a0)&&F::word(f.manager,0x394)==0x1111&&F::word(f.manager,0x3b4)==2);
+    assert(api.destroy(&f.ctrl,&f.life)==1&&f.frees==1&&f.destructs==1&&f.ctrl.stage==SceneManagerStage::Retired);
+    assert(F::word(f.manager,0x394)==0x1111&&F::word(f.manager,0x3a4)==0x1111&&!F::word(f.manager,0x3a8)&&!F::word(f.manager,0x3b8));
+    assert(api.destroy(&f.ctrl,&f.life)==0);
+    SceneManagerTickFixture failed;assert(api.construct(&failed.ctrl,0x1111,&failed.life)==1);failed.count(5);failed.fail_advance=true;
+    assert(api.tick(&failed.ctrl,&failed.tick)==-1&&failed.ctrl.stage==SceneManagerStage::Failed&&!failed.ctrl.ticking&&failed.calls==1);
+}
+
 }

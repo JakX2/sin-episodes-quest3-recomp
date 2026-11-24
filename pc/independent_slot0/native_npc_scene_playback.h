@@ -119,6 +119,47 @@ struct SceneStateApi {
     int (__cdecl *reset_wait)(void*,unsigned) noexcept;
 };
 using GetSceneStateApi=const SceneStateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_manager_tick_export[]="SiN_GetSceneManagerTickApi";
+inline constexpr unsigned scene_manager_bytes=0x3bc;
+enum class SceneManagerStage:unsigned {Fresh,Constructing,Live,Destroying,Retired,Failed};
+struct SceneManagerControl {
+    void* object;
+    unsigned bytes;
+    SceneManagerStage stage=SceneManagerStage::Fresh;
+    unsigned ticking=0;
+};
+struct SceneManagerLifecycleBindings {
+    void* context;
+    int (__cdecl *base_construct)(void*,void*,int) noexcept;
+    int (__cdecl *base_spawn)(void*,void*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float,int) noexcept;
+    int (__cdecl *free_vector)(void*,std::uint32_t) noexcept;
+    int (__cdecl *base_destroy)(void*,void*) noexcept;
+};
+struct SceneManagerTickBindings {
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float,int) noexcept;
+    int (__cdecl *last_think)(void*,void*,int,float*) noexcept;
+    int (__cdecl *disabled)(void*,unsigned*) noexcept;
+    int (__cdecl *entry)(void*,void*,unsigned,std::uint32_t*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**) noexcept;
+    int (__cdecl *advance)(void*,void*,float) noexcept;
+    // Shift the remaining vector entries; native code decrements count.
+    // Host owns allocation and validates the requested span.
+    int (__cdecl *shift)(void*,void* manager,unsigned index,unsigned trailing) noexcept;
+};
+struct SceneManagerTickApi {
+    std::uint32_t version,size;
+    int (__cdecl *construct)(SceneManagerControl*,std::uint32_t live_table,const SceneManagerLifecycleBindings*) noexcept;
+    int (__cdecl *spawn)(SceneManagerControl*,const SceneManagerLifecycleBindings*) noexcept;
+    int (__cdecl *tick)(SceneManagerControl*,const SceneManagerTickBindings*) noexcept;
+    int (__cdecl *clear)(SceneManagerControl*) noexcept;
+    int (__cdecl *destroy)(SceneManagerControl*,const SceneManagerLifecycleBindings*) noexcept;
+};
+using GetSceneManagerTickApi=const SceneManagerTickApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 
