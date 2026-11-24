@@ -5819,6 +5819,95 @@ int __cdecl choreography_scale_block(void* parsed,unsigned bytes,const Choreogra
     return -1;
 }
 const ChoreographyScaleApi choreography_scale_api{version,sizeof(ChoreographyScaleApi),&choreography_scale_find,&choreography_scale_block};
+// Original 221108b0 / 22110ff0 / 2210f950 / 22110910.
+int __cdecl choreography_flex_construct(void* track,unsigned bytes,void* event,std::uint32_t vtable) noexcept {
+    if(bytes<0x50||!hologram_writable(track,0x50)||!vtable)return 0;
+    hologram_write(track,0,vtable);
+    hologram_write(track,4,0u);
+    hologram_write(track,8,static_cast<unsigned char>(0));
+    hologram_write(track,9,static_cast<unsigned char>(0));
+    for(unsigned off=0xc;off<0x3c;off+=4)hologram_write(track,off,0u);
+    for(unsigned off=0x3c;off<0x4c;off+=4)hologram_write(track,off,0xffffffffu);
+    hologram_write(track,0x4c,scene_word(event));
+    return 1;
+}
+bool choreography_flex_owner_ready(const ChoreographyFlexOwnershipBindings* b) noexcept {
+    return b&&b->vtable&&b->allocate&&b->release&&b->storage&&b->grow;
+}
+bool choreography_flex_owner_storage(const ChoreographyFlexOwnershipBindings& h,std::uint32_t word,unsigned need,void*& out) noexcept {
+    unsigned n=0;out=nullptr;
+    return word&&h.storage(h.context,word,&out,&n)&&n>=need&&hologram_writable(out,need);
+}
+int __cdecl choreography_flex_owned_create(void* p,void* event,const char* name,void** out,unsigned* bytes) noexcept {
+    const auto* b=static_cast<const ChoreographyFlexOwnershipBindings*>(p);
+    if(!choreography_flex_owner_ready(b)||!hologram_writable(event,0x3c0)||!name||!out||!bytes)return 0;
+    *out=nullptr;*bytes=0;
+    const auto h=*b;
+    char label[1024]{};
+    // Exact copy for supported input; reject overlong/nonterminated name.
+    unsigned length=0;
+    for(;length<sizeof(label);++length){
+        if(!sin_independent::vgui_layout::Readable(name+length,1))return 0;
+        if(!(label[length]=name[length]))break;
+    }
+    if(length==sizeof(label))return 0;
+    ++length;
+    auto* v=static_cast<unsigned char*>(event)+0x30c;
+    const int count=hologram_read<int>(v,0xc),capacity=hologram_read<int>(v,4);
+    if(count<0||capacity<count||count>=4096)return 0;
+    void *track=nullptr,*text=nullptr;unsigned extent=0,n=0;
+    // No publication until track, name and vector storage are valid.
+    if(!h.allocate(h.context,0x50,ChoreographyFlexAllocation::Track,&track,&extent)||!track)return 0;
+    auto fail=[&]() noexcept -> int {
+        bool ok=true;
+        if(text)ok=h.release(h.context,scene_word(text),ChoreographyFlexAllocation::Name)!=0;
+        if(!h.release(h.context,scene_word(track),ChoreographyFlexAllocation::Track))ok=false;
+        (void)ok;return 0;
+    };
+    if(choreography_flex_construct(track,extent,event,h.vtable)!=1)return fail();
+    if(!h.allocate(h.context,length,ChoreographyFlexAllocation::Name,&text,&n)||!text||
+       n<length||!sin_independent::vgui_layout::Readable(text,length))return fail();
+    // Original memcpy into allocator-returned writable bytes. Allocator
+    // contract guarantees writable name storage (which may be unaligned).
+    std::memcpy(text,label,length);hologram_write(track,4,scene_word(text));
+    if(count==capacity&&(!h.grow(h.context,v,1,4)||hologram_read<int>(v,0xc)!=count||
+        hologram_read<int>(v,4)<=count))return fail();
+    void* rows=nullptr;
+    const auto word=hologram_read<std::uint32_t>(v,0);
+    if(!choreography_flex_owner_storage(h,word,(count+1)*4,rows))return fail();
+    hologram_write(rows,count*4,scene_word(track));
+    hologram_write(v,0x10,word);hologram_write(v,0xc,count+1);
+    *out=track;*bytes=extent;return 1;
+}
+int __cdecl choreography_flex_owned_destroy(void* p,std::uint32_t word,unsigned flags) noexcept {
+    const auto* b=static_cast<const ChoreographyFlexOwnershipBindings*>(p);
+    if(!choreography_flex_owner_ready(b)||!word)return 0;
+    const auto h=*b;void* track=nullptr;
+    if(!choreography_flex_owner_storage(h,word,0x50,track)||hologram_read<std::uint32_t>(track,0)!=h.vtable)return 0;
+    // 2210f950 releases name, purges forward, then revisits banks in
+    // reverse. Clear consumed ownership after release; preserve borrowed
+    // buffers, capacity and mirrors exactly as the original does.
+    hologram_write(track,0,h.vtable);
+    const auto name=hologram_read<std::uint32_t>(track,4);
+    if(name){
+        hologram_write(track,4,0u); // defensive: consumed on failure too
+        if(!h.release(h.context,name,ChoreographyFlexAllocation::Name))return 0;
+    }
+    for(unsigned bank=0;bank<2;++bank){
+        auto* v=static_cast<unsigned char*>(track)+0x14+bank*0x14;
+        hologram_write(v,0xc,0u);
+        if(hologram_read<int>(v,8)!=-1){
+            const auto data=hologram_read<std::uint32_t>(v,0);
+            hologram_write(v,0,0u);hologram_write(v,4,0u);hologram_write(v,0x10,0u);
+            if(data&&!h.release(h.context,data,ChoreographyFlexAllocation::SampleVector))return 0;
+        }else hologram_write(v,0x10,hologram_read<std::uint32_t>(v,0));
+    }
+    // Reverse pass has no further releases after the successful forward pass.
+    if((flags&1)&&!h.release(h.context,word,ChoreographyFlexAllocation::Track))return 0;
+    return 1;
+}
+const ChoreographyFlexOwnershipApi choreography_flex_ownership_api{
+    version,sizeof(ChoreographyFlexOwnershipApi),&choreography_flex_construct,&choreography_flex_owned_create,&choreography_flex_owned_destroy};
 bool choreography_flex_ready(const ChoreographyFlexBindings* b) noexcept {
     return b&&b->create&&b->delete_aux&&choreography_tags_ready(&b->samples);
 }
@@ -11784,6 +11873,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableV
 SiN_GetPortableVcdFinalizedGrammarApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PortableVcdFinalizedGrammarApi)?&portable_vcd_finalized_grammar_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyFlexOwnershipApi=_SiN_GetChoreographyFlexOwnershipApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyFlexOwnershipApi* __cdecl
+SiN_GetChoreographyFlexOwnershipApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyFlexOwnershipApi)?&choreography_flex_ownership_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyFlexApi=_SiN_GetChoreographyFlexApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyFlexApi* __cdecl

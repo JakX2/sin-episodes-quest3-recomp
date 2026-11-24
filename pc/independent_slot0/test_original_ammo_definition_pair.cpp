@@ -765,6 +765,11 @@ int main(int argc,char** argv){
     const auto* choreographyFlex=getChoreographyFlex(1,sizeof(tables::ChoreographyFlexApi));
     const auto* portableVcdFlexGrammar=getPortableVcdFlexGrammar(1,sizeof(tables::PortableVcdFlexGrammarApi));
     assert(choreographyFlex&&portableVcdFlexGrammar&&!getChoreographyFlex(0,sizeof(tables::ChoreographyFlexApi))&&!getPortableVcdFlexGrammar(1,0));
+    const auto getFlexOwnership=reinterpret_cast<tables::GetChoreographyFlexOwnershipApi>(GetProcAddress(server,tables::choreography_flex_ownership_export));
+    assert(getFlexOwnership&&!GetProcAddress(client,tables::choreography_flex_ownership_export));
+    const auto* flexOwnership=getFlexOwnership(1,sizeof(tables::ChoreographyFlexOwnershipApi));
+    assert(flexOwnership&&!getFlexOwnership(0,sizeof(tables::ChoreographyFlexOwnershipApi))&&!getFlexOwnership(1,0));
+    tables::test::check_choreography_flex_ownership(*flexOwnership);
     tables::test::check_portable_flex_grammar(*portableVcdFlexGrammar,*choreographyFlex);
     std::puts("PASS native flex animation block and integrated portable grammar");
     const auto getChoreographyFinalize=reinterpret_cast<tables::GetChoreographyFinalizeApi>(GetProcAddress(server,tables::choreography_finalize_export));

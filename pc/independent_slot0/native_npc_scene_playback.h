@@ -1036,6 +1036,28 @@ struct ChoreographyFlexApi {
     int (__cdecl *block)(void*,unsigned,const ChoreographyFlexBindings*) noexcept;
 };
 using GetChoreographyFlexApi=const ChoreographyFlexApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_flex_ownership_export[]="SiN_GetChoreographyFlexOwnershipApi";
+enum class ChoreographyFlexAllocation:unsigned {Track,Name,SampleVector};
+struct ChoreographyFlexOwnershipBindings {
+    void* context;
+    // Relocated original vtable or compatible native deleting-destructor table.
+    std::uint32_t vtable;
+    int (__cdecl *allocate)(void*,unsigned,ChoreographyFlexAllocation,void**,unsigned*) noexcept;
+    // Consumes live allocation on invocation, including failure. Name/Track
+    // use the original object allocator; SampleVector uses vector allocator.
+    int (__cdecl *release)(void*,std::uint32_t,ChoreographyFlexAllocation) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *grow)(void*,void*,unsigned,unsigned) noexcept;
+};
+struct ChoreographyFlexOwnershipApi {
+    std::uint32_t version,size;
+    int (__cdecl *construct)(void*,unsigned,void*,std::uint32_t) noexcept;
+    // Directly compatible with ChoreographyFlexBindings.create and
+    // delete_aux. Context is a live ChoreographyFlexOwnershipBindings.
+    int (__cdecl *create)(void*,void*,const char*,void**,unsigned*) noexcept;
+    int (__cdecl *destroy)(void*,std::uint32_t,unsigned) noexcept;
+};
+using GetChoreographyFlexOwnershipApi=const ChoreographyFlexOwnershipApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char portable_vcd_flex_grammar_export[]="SiN_GetPortableVcdFlexGrammarApi";
 struct PortableVcdFlexGrammarBindings {
     PortableVcdCurveGrammarBindings curves;

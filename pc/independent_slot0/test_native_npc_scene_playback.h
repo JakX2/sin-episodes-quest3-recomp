@@ -2397,6 +2397,68 @@ scalesettings
     assert(scales.find(f.parsed,sizeof(f.parsed),15,&f.curves.scales,&index)==-1);
 }
 
+inline void check_choreography_flex_ownership(const ChoreographyFlexOwnershipApi& api){
+    using F=ScenePlaybackFixture;using Kind=ChoreographyFlexAllocation;
+    struct Fixture {
+        alignas(4) unsigned char event[0x3c0]{},track[0x50]{},name[32]{},bank[2][24]{};
+        std::uint32_t links[4]{};
+        bool track_live=false,name_live=false,bank_live=true,fail_name=false,fail_grow=false;
+        Kind releases[8]{};unsigned released=0;
+    } f;
+    ChoreographyFlexOwnershipBindings b{};b.context=&f;b.vtable=0x22400590u;
+    b.allocate=[](void* p,unsigned bytes,Kind k,void** out,unsigned* n) noexcept -> int {
+        auto& f=*static_cast<Fixture*>(p);*out=nullptr;*n=0;
+        if(k==Kind::Track){assert(bytes==0x50&&!f.track_live);f.track_live=true;*out=f.track;*n=sizeof(f.track);}
+        else if(k==Kind::Name){assert(!f.name_live&&bytes<=sizeof(f.name));if(f.fail_name)return 0;f.name_live=true;*out=f.name;*n=sizeof(f.name);}
+        else return 0;
+        return 1;
+    };
+    b.release=[](void* p,std::uint32_t w,Kind k) noexcept -> int {
+        auto& f=*static_cast<Fixture*>(p);assert(f.released<8);f.releases[f.released++]=k;
+        if(k==Kind::Track){assert(w==F::ptr(f.track)&&f.track_live);f.track_live=false;}
+        else if(k==Kind::Name){assert(w==F::ptr(f.name)&&f.name_live);f.name_live=false;}
+        else {assert(w==F::ptr(f.bank[0])&&f.bank_live);f.bank_live=false;}
+        return 1;
+    };
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int {
+        auto& f=*static_cast<Fixture*>(p);
+        if(w==F::ptr(f.track)&&f.track_live){*out=f.track;*n=sizeof(f.track);return 1;}
+        if(w==F::ptr(f.links)){*out=f.links;*n=sizeof(f.links);return 1;}
+        return 0;
+    };
+    b.grow=[](void* p,void* v,unsigned additional,unsigned stride) noexcept -> int {
+        auto& f=*static_cast<Fixture*>(p);assert(v==f.event+0x30c&&additional==1&&stride==4);
+        if(f.fail_grow)return 0;
+        F::put(v,0,F::ptr(f.links));F::put(v,4,4);return 1;
+    };
+    std::memset(f.track,0xa5,sizeof(f.track));
+    assert(api.construct(f.track,sizeof(f.track),f.event,b.vtable)==1);
+    assert(F::word(f.track,0)==b.vtable&&F::word(f.track,4)==0&&f.track[8]==0&&f.track[9]==0&&f.track[10]==0xa5);
+    for(unsigned off=0xc;off<0x3c;off+=4)assert(!F::word(f.track,off));
+    for(unsigned off=0x3c;off<0x4c;off+=4)assert(F::word(f.track,off)==0xffffffffu);
+    assert(F::word(f.track,0x4c)==F::ptr(f.event));
+    void* out=nullptr;unsigned n=0;
+    f.fail_name=true;
+    assert(!api.create(&b,f.event,"jaw",&out,&n)&&!out&&!n&&!f.track_live&&!f.name_live&&!F::word(f.event,0x318));
+    f.fail_name=false;f.fail_grow=true;
+    assert(!api.create(&b,f.event,"jaw",&out,&n)&&!f.track_live&&!f.name_live&&!F::word(f.event,0x318));
+    f.fail_grow=false;
+    assert(api.create(&b,f.event,"jaw",&out,&n)==1&&out==f.track&&n==0x50&&f.track_live&&f.name_live);
+    assert(!std::strcmp(reinterpret_cast<char*>(f.name),"jaw")&&F::word(f.track,4)==F::ptr(f.name));
+    assert(f.links[0]==F::ptr(f.track)&&F::word(f.event,0x318)==1&&F::word(f.event,0x31c)==F::ptr(f.links));
+    for(unsigned i=0;i<2;++i){
+        auto* v=f.track+0x14+i*0x14;F::put(v,0,F::ptr(f.bank[i]));F::put(v,4,2);F::put(v,0xc,2);
+    }
+    F::put(f.track,0x30,0xffffffffu); // second vector borrowed (+0x28+8)
+    // Remove from event first, just as the flex parser does.
+    F::put(f.event,0x318,0);
+    assert(api.destroy(&b,F::ptr(f.track),0)==1&&f.track_live&&!f.name_live&&!f.bank_live);
+    assert(!F::word(f.track,0x14)&&!F::word(f.track,0x18)&&!F::word(f.track,0x20)&&!F::word(f.track,0x24));
+    assert(F::word(f.track,0x28)==F::ptr(f.bank[1])&&F::word(f.track,0x2c)==2&&!F::word(f.track,0x34)&&F::word(f.track,0x38)==F::ptr(f.bank[1]));
+    assert(api.destroy(&b,F::ptr(f.track),1)==1&&!f.track_live);
+    assert(f.released==6&&f.releases[0]==Kind::Track&&f.releases[1]==Kind::Name&&f.releases[2]==Kind::Track&&f.releases[3]==Kind::Name&&f.releases[4]==Kind::SampleVector&&f.releases[5]==Kind::Track);
+    assert(!api.destroy(&b,F::ptr(f.track),1));
+}
 struct PortableFlexGrammarFixture:PortableCurveGrammarFixture {
     alignas(4) unsigned char tracks[3][0x50]{},samples[3][2][12*8]{};
     std::uint32_t track_words[3]{};
