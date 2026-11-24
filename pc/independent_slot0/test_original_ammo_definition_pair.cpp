@@ -422,6 +422,13 @@ int main(int argc,char** argv){
     assert(companionTalk&&!getCompanionTalk(0,sizeof(tables::CompanionTalkApi))&&!getCompanionTalk(1,0));
     tables::test::check_companion_talk(*companionTalk,*responseTimingUpdate,*responseRecord);
     std::puts("PASS native companion speech gate through original response pipeline");
+    const auto getTalkPropagation=reinterpret_cast<tables::GetTalkPropagationApi>(GetProcAddress(server,tables::talk_propagation_export));
+    assert(getTalkPropagation&&!GetProcAddress(client,tables::talk_propagation_export));
+    const auto* talkPropagation=getTalkPropagation(1,sizeof(tables::TalkPropagationApi));
+    assert(talkPropagation&&!getTalkPropagation(0,sizeof(tables::TalkPropagationApi))&&!getTalkPropagation(1,0));
+    tables::test::check_talk_propagation(*talkPropagation);
+    std::puts("PASS native companion concept propagation and silent history seed");
+
 
 
 
