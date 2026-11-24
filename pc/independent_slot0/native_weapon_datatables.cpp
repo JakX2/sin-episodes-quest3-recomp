@@ -5939,7 +5939,7 @@ int __cdecl choreography_flex_block(void* event,unsigned bytes,const Choreograph
 }
 const ChoreographyFlexApi choreography_flex_api{version,sizeof(ChoreographyFlexApi),&choreography_flex_block};
 bool choreography_finalize_ready(const ChoreographyFinalizeBindings* b) noexcept {
-    return b&&b->storage&&b->missing_tag&&b->caption_channel;
+    return b&&b->storage&&b->missing_tag;
 }
 bool choreography_finalize_storage(const ChoreographyFinalizeBindings& h,std::uint32_t word,unsigned need,void*& object) noexcept {
     unsigned n=0;object=nullptr;
@@ -6148,6 +6148,70 @@ bool choreography_gesture_channel(void* channel,const ChoreographyFinalizeBindin
     }
     return true;
 }
+// 2210bb20/70/90/b0/d0: reset type optionally; reset combined flag,
+// checksum, follower count and last follower end, without touching token.
+void choreography_caption_reset(void* event,bool master) noexcept {
+    if(master)hologram_write(event,0x34c,0u);
+    hologram_write(event,0x390,static_cast<unsigned char>(0));
+    hologram_write(event,0x394,0u);hologram_write(event,0x398,0u);hologram_write(event,0x39c,0.f);
+}
+bool choreography_caption_channel(void* channel,const ChoreographyFinalizeBindings& h) noexcept {
+    const int count=hologram_read<int>(channel,0x90);
+    if(count<=0)return count==0;
+    if(count>static_cast<int>(gesture_limit))return false;
+    // 2210aa90 creates a private case-insensitive symbol table and per-
+    // token start-time RB trees. Use first-seen group IDs and stable finite
+    // ordering, avoiding a temporary PE32 allocator and symbol callback.
+    struct Entry {void* event;float start;unsigned group,ordinal;};
+    Entry entries[gesture_limit];const char* keys[gesture_limit];
+    unsigned used=0,groups=0;
+    for(int i=0;i<count;++i){
+        void* event=nullptr;if(!choreography_finalize_child(h,channel,0x84,i,0x3c0,event))return false;
+        if(!event||hologram_read<unsigned>(event,0)!=5)continue;
+        const unsigned type=hologram_read<unsigned>(event,0x34c);
+        if(type==2){choreography_caption_reset(event,false);continue;}
+        const auto* token=static_cast<const char*>(event)+0x350;
+        if(!std::memchr(token,0,64))return false;
+        if(!*token){
+            if(type==1)choreography_caption_reset(event,true);
+            continue;
+        }
+        const float start=hologram_read<float>(event,0x184);
+        if(std::isnan(start))return false;
+        unsigned group=0;
+        while(group<groups&&!choreography_text_equal(keys[group],token))++group;
+        if(group==groups)keys[groups++]=token;
+        entries[used++]={event,start,group,static_cast<unsigned>(i)};
+    }
+    std::sort(entries,entries+used,[](const Entry& a,const Entry& b) noexcept {
+        if(a.group!=b.group)return a.group<b.group;
+        if(a.start<b.start)return true;
+        if(b.start<a.start)return false;
+        return a.ordinal<b.ordinal;
+    });
+    for(unsigned i=0;i<used;){
+        unsigned end=i+1;while(end<used&&entries[end].group==entries[i].group)++end;
+        auto* master=entries[i].event;
+        if(end-i==1)choreography_caption_reset(master,true);
+        else{
+            // 2210acc3: preserve the master's combined flag. Each later
+            // event inherits it, while the master's end is overwritten in
+            // traversal order, NOT max(end). Slave follower count untouched.
+            hologram_write(master,0x34c,0u);hologram_write(master,0x394,0u);
+            hologram_write(master,0x398,end-i-1);
+            hologram_write(master,0x39c,hologram_read<float>(master,0x188));
+            for(unsigned j=i+1;j<end;++j){
+                auto* slave=entries[j].event;
+                hologram_write(master,0x39c,hologram_read<float>(slave,0x188));
+                hologram_write(slave,0x34c,1u);
+                hologram_write(slave,0x390,hologram_read<unsigned char>(master,0x390));
+                hologram_write(slave,0x394,0u);hologram_write(slave,0x39c,0.f);
+            }
+        }
+        i=end;
+    }
+    return true;
+}
 int __cdecl choreography_finalize_stage(void* parsed,unsigned bytes,ChoreographyTextFinalize stage,const ChoreographyFinalizeBindings* b) noexcept {
     if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_finalize_ready(b)||static_cast<unsigned>(stage)>2)return 0;
     const auto h=*b;
@@ -6155,7 +6219,7 @@ int __cdecl choreography_finalize_stage(void* parsed,unsigned bytes,Choreography
         return choreography_visit_channels(parsed,h,[&](void* channel){
             if(stage==ChoreographyTextFinalize::GestureReconcile)
                 return (h.gesture_channel?h.gesture_channel(h.context,channel)!=0:choreography_gesture_channel(channel,h))?1:-1;
-            return h.caption_channel(h.context,channel)?1:-1;
+            return (h.caption_channel?h.caption_channel(h.context,channel)!=0:choreography_caption_channel(channel,h))?1:-1;
         });
     }
     return choreography_visit_linked_events(parsed,h,[&](void* event){
