@@ -94,6 +94,14 @@ int main(int argc,char** argv){
     assert(overlaySend&&overlayRecv&&!getOverlaySend(0,sizeof(tables::OverlaySendApi))&&!getOverlayRecv(1,0));
     tables::test::check_overlay_graph(*overlaySend,*overlayRecv,*animSend,*animRecv,*flexSend,*flexRecv);
     std::puts("PASS native paired dynamic animation-layer vector graph and host capacity/length callbacks");
+    const auto getLocalSend=reinterpret_cast<tables::GetPlayerLocalSendApi>(GetProcAddress(server,tables::player_local_send_export));
+    const auto getLocalRecv=reinterpret_cast<tables::GetPlayerLocalRecvApi>(GetProcAddress(client,tables::player_local_recv_export));
+    assert(getLocalSend&&getLocalRecv&&!GetProcAddress(client,tables::player_local_send_export)&&!GetProcAddress(server,tables::player_local_recv_export));
+    const auto* localSend=getLocalSend(1,sizeof(tables::PlayerLocalSendApi));
+    const auto* localRecv=getLocalRecv(1,sizeof(tables::PlayerLocalRecvApi));
+    assert(localSend&&localRecv&&!getLocalSend(0,sizeof(tables::PlayerLocalSendApi))&&!getLocalRecv(1,0));
+    tables::test::check_player_local_graph(*localSend,*localRecv,*invSend,*invRecv);
+    std::puts("PASS native paired DT_LocalPlayerExclusive descriptors and velocity invalidation callbacks");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
