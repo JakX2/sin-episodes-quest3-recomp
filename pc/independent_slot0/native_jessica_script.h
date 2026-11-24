@@ -67,4 +67,26 @@ struct JessicaCombatApi {
 };
 using GetJessicaCombatApi=const JessicaCombatApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+
+inline constexpr char jessica_attention_export[]="SiN_GetJessicaAttentionApi";
+// Two independent original module globals, shared across ALL Jessica
+// instances. One state per server session, serialized by its owner.
+struct JessicaAttentionState {float looking=0,using_part=0;};
+struct JessicaAttentionBindings {
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    // Observe the real record's virtual +0x10 criteria producer, then
+    // response system dispatch. Return transport success, not whether
+    // a matching response played (the original ignores that result).
+    int (__cdecl *speak_criteria)(void*,void* npc,const void* record,float now,const char* concept_name) noexcept;
+};
+struct JessicaAttentionApi {
+    std::uint32_t version,size;
+    // The original wrapper reads two records and their enable bytes in
+    // sequence. Host owns both and guarantees a stable readable span.
+    int (__cdecl *observe)(HologramControl*,JessicaAttentionState*,const JessicaAttentionBindings*,const void* observation,unsigned bytes) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetJessicaAttentionApi=const JessicaAttentionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }

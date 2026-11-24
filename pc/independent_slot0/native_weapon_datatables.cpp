@@ -2831,6 +2831,39 @@ int __cdecl jessica_scene_exit(HologramControl* ctrl,const JessicaCombatBindings
     return disp_finish(ctrl,host.weapon_restore(host.context,weapon)!=0);
 }
 const JessicaCombatApi jessica_combat_api{version,sizeof(JessicaCombatApi),&jessica_take_damage,&jessica_scene_enter,&jessica_scene_exit,&health_ack};
+
+bool jessica_attention_record(void* npc,const void* observation,unsigned base,unsigned enable,float& last,
+                              bool looking,const JessicaAttentionBindings& host) noexcept {
+    const auto* record=static_cast<const unsigned char*>(observation)+base;
+    if(!hologram_read<unsigned char>(observation,enable)||
+       (!hologram_read<unsigned char>(record,0x108)&&!hologram_read<unsigned char>(record,0x260))){
+        last=0.0f;return true;
+    }
+    float now=0;
+    if(!host.clock(host.context,&now))return false;
+    const unsigned off=looking&&hologram_read<unsigned char>(record,0x2c0)?0x2e4:0x2bc;
+    // x87 retains the subtraction in an extended precision register
+    // until storing the shared float timestamp. Do not round it early.
+    const double elapsed=static_cast<double>(now)-hologram_read<float>(record,off);
+    if(looking&&elapsed<last)last=static_cast<float>(elapsed);
+    if(last!=0.0f&&!(elapsed-static_cast<double>(last)>3.0))return true;
+    last=static_cast<float>(elapsed);
+    // Original rereads current time just before the criteria producer.
+    if(!host.clock(host.context,&now))return false;
+    return host.speak_criteria(host.context,npc,record,now,looking?"TLK_PLLOOKING":"TLK_PLUSING")!=0;
+}
+int __cdecl jessica_attention(HologramControl* ctrl,JessicaAttentionState* state,const JessicaAttentionBindings* b,const void* obs,unsigned bytes) noexcept {
+    if(!health_control(ctrl,jessica_size)||!state||!hologram_writable(state,sizeof(*state))||
+       !b||!b->clock||!b->speak_criteria||!obs||bytes<0x5e9||
+       !sin_independent::vgui_layout::Readable(obs,0x5e9))return 0;
+    // The second record only accesses +0x2bc and +0x260, so its extent
+    // is covered by the wrapper's final enable byte at +0x5e8.
+    ctrl->busy=1;const auto host=*b;
+    if(!jessica_attention_record(ctrl->object,obs,0x18,0x300,state->looking,true,host))return disp_finish(ctrl,false);
+    if(!jessica_attention_record(ctrl->object,obs,0x308,0x5e8,state->using_part,false,host))return disp_finish(ctrl,false);
+    return disp_finish(ctrl,true);
+}
+const JessicaAttentionApi jessica_attention_api{version,sizeof(JessicaAttentionApi),&jessica_attention,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4546,6 +4579,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::JessicaCo
 SiN_GetJessicaCombatApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(JessicaCombatApi)?&jessica_combat_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetJessicaAttentionApi=_SiN_GetJessicaAttentionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::JessicaAttentionApi* __cdecl
+SiN_GetJessicaAttentionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(JessicaAttentionApi)?&jessica_attention_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

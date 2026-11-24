@@ -326,6 +326,12 @@ int main(int argc,char** argv){
     assert(jessicaCombat&&!getJessicaCombat(0,sizeof(tables::JessicaCombatApi))&&!getJessicaCombat(1,0));
     tables::test::check_jessica_combat(*jessicaCombat);
     std::puts("PASS native Jessica invulnerable damage copy, poison speech and scene weapon dispatch");
+    const auto getJessicaAttention=reinterpret_cast<tables::GetJessicaAttentionApi>(GetProcAddress(server,tables::jessica_attention_export));
+    assert(getJessicaAttention&&!GetProcAddress(client,tables::jessica_attention_export));
+    const auto* jessicaAttention=getJessicaAttention(1,sizeof(tables::JessicaAttentionApi));
+    assert(jessicaAttention&&!getJessicaAttention(0,sizeof(tables::JessicaAttentionApi))&&!getJessicaAttention(1,0));
+    tables::test::check_jessica_attention(*jessicaAttention);
+    std::puts("PASS native Jessica shared attention timers and response criteria");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

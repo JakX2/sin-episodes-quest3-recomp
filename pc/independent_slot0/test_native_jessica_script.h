@@ -124,4 +124,46 @@ inline void check_jessica_combat(const JessicaCombatApi& api){
     assert(api.acknowledge(&x.ctrl));
 }
 
+
+struct JessicaAttentionFixture {
+    JessicaFixture j;
+    alignas(4) unsigned char obs[0x5ec]{};
+    JessicaAttentionState state{};
+    float now=0;
+    unsigned clocks=0,look=0,use=0;
+    bool fail=false;
+    void stamp(unsigned offset,float value){std::memcpy(obs+offset,&value,4);}
+};
+inline void check_jessica_attention(const JessicaAttentionApi& api){
+    JessicaAttentionFixture f;auto& x=f.j;
+    JessicaAttentionBindings b{};
+    b.context=&f;
+    b.clock=[](void* p,float* out) noexcept -> int {
+        auto& f=*static_cast<JessicaAttentionFixture*>(p);assert(f.j.ctrl.busy);++f.clocks;*out=f.now;return 1;
+    };
+    b.speak_criteria=[](void* p,void* npc,const void* record,float now,const char* concept_name) noexcept -> int {
+        auto& f=*static_cast<JessicaAttentionFixture*>(p);assert(f.j.ctrl.busy&&npc==f.j.npc&&now==f.now);
+        if(!std::strcmp(concept_name,"TLK_PLLOOKING")){assert(record==f.obs+0x18);++f.look;}
+        else {assert(!std::strcmp(concept_name,"TLK_PLUSING")&&record==f.obs+0x308);++f.use;}
+        return !f.fail;
+    };
+    auto tick=[&](){return api.observe(&x.ctrl,&f.state,&b,f.obs,sizeof(f.obs));};
+    assert(api.observe(&x.ctrl,&f.state,&b,f.obs,0x5e8)==0);
+    assert(tick()==1&&!f.clocks&&!f.look&&!f.use);
+    f.obs[0x300]=1;f.obs[0x18+0x108]=1;f.obs[0x5e8]=1;f.obs[0x308+0x260]=1;
+    f.now=1;assert(tick()==1&&f.look==1&&f.use==1&&f.clocks==4&&f.state.looking==1&&f.state.using_part==1);
+    f.now=4;assert(tick()==1&&f.look==1&&f.use==1&&f.clocks==6); // strict >3
+    f.now=4.25f;assert(tick()==1&&f.look==2&&f.use==2&&f.state.looking==4.25f&&f.state.using_part==4.25f);
+    f.stamp(0x18+0x2bc,4);f.stamp(0x308+0x2bc,4);f.now=5;
+    assert(tick()==1&&f.state.looking==1&&f.state.using_part==4.25f&&f.look==2&&f.use==2);
+    f.obs[0x18+0x2c0]=1;f.stamp(0x18+0x2e4,0);f.now=5.5f;
+    assert(tick()==1&&f.state.looking==5.5f&&f.look==3&&f.use==2);
+    f.obs[0x300]=0;f.obs[0x5e8]=0;assert(tick()==1&&f.state.looking==0&&f.state.using_part==0);
+    f.obs[0x300]=1;f.obs[0x18+0x108]=0;f.obs[0x18+0x260]=0;
+    assert(tick()==1&&f.look==3);f.obs[0x18+0x260]=1;
+    f.now=6;f.fail=true;assert(tick()==-1&&x.ctrl.blocked&&f.state.looking==6&&f.look==4);
+    assert(tick()==0&&api.acknowledge(&x.ctrl));f.fail=false;
+    assert(tick()==1&&f.look==4); // committed timer, no automatic retry
+}
+
 }
