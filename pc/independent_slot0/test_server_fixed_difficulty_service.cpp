@@ -22,6 +22,7 @@
 #include <windows.h>
 #if defined(_MSC_VER) && defined(_M_IX86)
 #include "server_native_cvar_registration.h"
+#include "test_native_vehicle_bsp_host.h"
 #include "test_native_radio_bsp_host.h"
 #endif
 #else
@@ -2580,6 +2581,27 @@ int main(int argc,char** argv){
 )KV");
         sin_port::map_host::test::check_radio_bsp(*radioApi,radioBsp);
         std::puts("PASS loaded native radio BSP lifecycle and named input routing");
+    }
+#endif
+#if defined(_MSC_VER) && defined(_M_IX86)
+    {
+        namespace v=sin_port::native_weapon_tables;
+        auto gm=reinterpret_cast<v::GetVehicleMapApi>(GetProcAddress(lib,v::vehicle_map_export));
+        auto gl=reinterpret_cast<v::GetVehicleLifecycleApi>(GetProcAddress(lib,v::vehicle_lifecycle_export));
+        auto gr=reinterpret_cast<v::GetMusicRadioMapApi>(GetProcAddress(lib,v::music_radio_map_export));
+        auto gp=reinterpret_cast<v::GetMusicRadioApi>(GetProcAddress(lib,v::music_radio_export));
+        assert(gm&&gl&&gr&&gp);
+        const auto* m=gm(1,sizeof(v::VehicleMapApi));const auto* l=gl(1,sizeof(v::VehicleLifecycleApi));
+        const auto* r=gr(1,sizeof(v::MusicRadioMapApi));const auto* p=gp(1,sizeof(v::MusicRadioApi));
+        assert(m&&l&&r&&p);
+        const auto bsp=make_native_bsp(R"KV(
+{"classname" "worldspawn"}
+{"classname" "logic_relay" "targetname" "relay" "OnTrigger" "car,EnableUse,1,0,-1"}
+{"classname" "prop_vehicle_sin" "targetname" "car" "EnableUse" "0" "UseBox" "relay,Trigger,,0,-1" "UseBox" "relay,Trigger,,1,-1" "ViewChanged" "relay,Trigger,,0,-1"}
+{"classname" "env_radio" "targetname" "radio" "volume" "50" "ScriptFile" "fixture.txt"}
+)KV");
+        sin_port::map_host::test::check_vehicle_bsp(*m,*l,*r,*p,bsp);
+        std::puts("PASS loaded native vehicle and music radio BSP lifecycle");
     }
 #endif
     assert(FreeLibrary(lib));
