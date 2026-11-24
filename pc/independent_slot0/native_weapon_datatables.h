@@ -244,4 +244,24 @@ using PlayerLocalSendApi=GraphApi<PlayerLocalSendBindings,PlayerLocalSendView>;
 using PlayerLocalRecvApi=GraphApi<PlayerLocalRecvBindings,PlayerLocalRecvView>;
 using GetPlayerLocalSendApi=const PlayerLocalSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetPlayerLocalRecvApi=const PlayerLocalRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase701: public player and nested life-state descriptors. Existing
+// combat-character and private-player graphs are borrowed for their full
+// lifetime. The host must detach engine/derived graph references first.
+inline constexpr char base_player_send_export[]="SiN_GetBasePlayerSendGraphApi";
+inline constexpr char base_player_recv_export[]="SiN_GetBasePlayerRecvGraphApi";
+struct BasePlayerSendBindings {
+    s::SendTable* combat;
+    s::SendTable* private_player;
+    const sin_independent::EntityHandleEntry* entries;
+    std::uint32_t entry_count;
+};
+struct BasePlayerRecvBindings {RecvTable* combat;RecvTable* private_player;};
+template<class Table> struct BasePlayerView {void* handle;Table* player;Table* state;};
+using BasePlayerSendView=BasePlayerView<s::SendTable>;
+using BasePlayerRecvView=BasePlayerView<RecvTable>;
+using BasePlayerSendApi=GraphApi<BasePlayerSendBindings,BasePlayerSendView>;
+using BasePlayerRecvApi=GraphApi<BasePlayerRecvBindings,BasePlayerRecvView>;
+using GetBasePlayerSendApi=const BasePlayerSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetBasePlayerRecvApi=const BasePlayerRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
