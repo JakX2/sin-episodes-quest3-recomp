@@ -4,6 +4,7 @@
 #include "native_npc_scene_playback.h"
 #include "native_client_facial_frame.h"
 #include "native_client_phoneme_window.h"
+#include "native_client_phoneme_emphasis.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11209,6 +11210,43 @@ int __cdecl client_phoneme_sample(const ClientPhonemeInterval* rows,unsigned cou
     *window=resolved;return 1;
 }
 const ClientPhonemeWindowApi client_phoneme_window_api{version,sizeof(ClientPhonemeWindowApi),&client_phoneme_sample};
+int __cdecl client_phoneme_curve(const ClientEmphasisSample* rows,unsigned count,float time,float duration,float* out) noexcept {
+    if(!hologram_writable(out,sizeof(float))||!std::isfinite(time)||!std::isfinite(duration)||duration<0||count>65535||
+       (count&&(!rows||!sin_independent::vgui_layout::Readable(rows,count*sizeof(*rows)))))return 0;
+    for(unsigned i=0;i<count;++i)
+        if(!std::isfinite(rows[i].time)||!std::isfinite(rows[i].value)||(i&&rows[i].time<rows[i-1].time))return 0;
+    *out=client_emphasis_curve(rows,count,time,duration);return 1;
+}
+int __cdecl client_phoneme_blend(float emphasis,bool weak,bool strong,ClientPhonemeBankWeights* out) noexcept {
+    if(!std::isfinite(emphasis)||!hologram_writable(out,sizeof(*out)))return 0;
+    *out=client_emphasis_blend(emphasis,weak,strong);return 1;
+}
+int __cdecl client_phoneme_accumulate(float overlap,const ClientPhonemeBankWeights* blend,
+    const ClientPhonemeBank* banks,float* out) noexcept {
+    if(!std::isfinite(overlap)||!blend||!banks||
+       !sin_independent::vgui_layout::Readable(blend,sizeof(*blend))||
+       !sin_independent::vgui_layout::Readable(banks,3*sizeof(*banks))||
+       !hologram_writable(out,128*sizeof(float)))return 0;
+    const float factors[]={blend->weak,blend->normal,blend->strong};
+    for(unsigned i=0;i<3;++i){
+        if(!std::isfinite(factors[i])||banks[i].count>65535)return 0;
+        if(!factors[i]||!banks[i].count)continue;
+        if(!banks[i].rows||!sin_independent::vgui_layout::Readable(banks[i].rows,banks[i].count*sizeof(*banks[i].rows)))return 0;
+        for(unsigned j=0;j<banks[i].count;++j)
+            if(banks[i].rows[j].global>=128||!std::isfinite(banks[i].rows[j].weight))return 0;
+    }
+    float result[128];std::memcpy(result,out,sizeof(result));
+    for(unsigned i=0;i<3;++i){
+        if(!factors[i])continue;
+        for(unsigned j=0;j<banks[i].count;++j){
+            const auto& row=banks[i].rows[j];
+            result[row.global]=static_cast<float>(static_cast<double>(overlap)*row.weight*factors[i]+result[row.global]);
+        }
+    }
+    std::memcpy(out,result,sizeof(result));return 1;
+}
+const ClientPhonemeEmphasisApi client_phoneme_emphasis_api{version,sizeof(ClientPhonemeEmphasisApi),&client_phoneme_curve,&client_phoneme_blend,&client_phoneme_accumulate};
+
 
 
 constexpr int layer_offset=0x7a4,layer_stride=0x20;
@@ -13630,6 +13668,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientPhonemeEmphasisApi=_SiN_GetClientPhonemeEmphasisApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientPhonemeEmphasisApi* __cdecl
+SiN_GetClientPhonemeEmphasisApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientPhonemeEmphasisApi)?&client_phoneme_emphasis_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetClientPhonemeWindowApi=_SiN_GetClientPhonemeWindowApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientPhonemeWindowApi* __cdecl
