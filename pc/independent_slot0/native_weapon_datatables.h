@@ -902,4 +902,34 @@ struct DnaScannerApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetDnaScannerApi=const DnaScannerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase722: original CHealthKit, CHealthVial and CMegaHealth pickup
+// leaf methods. Base item touch eligibility and lifetime remain host work.
+inline constexpr char health_pickup_export[]="SiN_GetHealthPickupApi";
+enum class HealthPickupKind:unsigned {Kit,Vial,Mega};
+struct HealthPickupBindings {
+    void* context;
+    int (__cdecl *skill_amount)(void*,HealthPickupKind,float*) noexcept;
+    // Original player vslot108, before each changed max-health write.
+    int (__cdecl *dirty_player)(void*,void* player) noexcept;
+    // Actual original player slot57 has FLOAT amount and DWORD flags.
+    int (__cdecl *heal)(void*,void* player,float amount,unsigned flags,int* accepted) noexcept;
+    int (__cdecl *pickup_message)(void*,void* player,const char* message,const char* classname) noexcept;
+    int (__cdecl *pickup_sound)(void*,void* item,void* player,const char* sound) noexcept;
+    int (__cdecl *should_respawn)(void*,void* item,unsigned*) noexcept;
+    int (__cdecl *respawn)(void*,void* item) noexcept;
+    int (__cdecl *remove)(void*,void* item) noexcept;
+};
+struct HealthPickupApi {
+    std::uint32_t version,size;
+    // Owns original CHL2_Player max-health setter and overhealth byte.
+    int (__cdecl *set_max)(HologramControl* player,const HealthPickupBindings*,int maximum) noexcept;
+    // 1 completed (accepted indicates consumed), 0 refused preflight,
+    // -1 uncertain host failure. Player and item lifetime remain stable
+    // through all callbacks, removal must be deferred until return.
+    int (__cdecl *pickup)(HologramControl* item,HologramControl* player,
+        const HealthPickupBindings*,HealthPickupKind,unsigned* accepted) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetHealthPickupApi=const HealthPickupApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
