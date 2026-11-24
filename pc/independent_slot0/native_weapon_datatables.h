@@ -1215,4 +1215,31 @@ struct GasInputApi {
     int (__cdecl *apply)(HologramControl*,const GasInputBindings*,GasInput,const GasInputValue*) noexcept;
 };
 using GetGasInputApi=const GasInputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase733: original CHL2_Player damage interception. In-game
+// damage-info storage, never a real-world injury model.
+inline constexpr char player_damage_export[]="SiN_GetPlayerDamageApi";
+struct PlayerDamageInfo {alignas(4) unsigned char bytes[0x48];};
+struct PlayerDamageBindings {
+    void* context;
+    int (__cdecl *global_state)(void*,const char* name,int*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t handle,void** entity) noexcept;
+    // Returns raw entity field +298 through compatible typed service.
+    int (__cdecl *entity_group)(void*,void* entity,int*) noexcept;
+    int (__cdecl *notify_source)(void*,void* player,void* source) noexcept;
+    int (__cdecl *sound)(void*,void* player,const char*) noexcept;
+    // Original dynamic cast, then get packed handle; a failed cast is
+    // successful observation with matched=0. No unrelated type accepted.
+    int (__cdecl *poison_cast)(void*,void* source,unsigned* matched,std::uint32_t* handle) noexcept;
+    int (__cdecl *adjust_damage)(void*,PlayerDamageInfo*) noexcept;
+    int (__cdecl *base_damage)(void*,void* player,const PlayerDamageInfo*,int* result) noexcept;
+};
+struct PlayerDamageApi {
+    std::uint32_t version,size;
+    // Caller owns base damage services and serializes dispatch. The
+    // original accepts a 0x48-byte CTakeDamageInfo copy by reference.
+    int (__cdecl *take)(HologramControl*,const PlayerDamageBindings*,const PlayerDamageInfo*,int* result) noexcept;
+};
+using GetPlayerDamageApi=const PlayerDamageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

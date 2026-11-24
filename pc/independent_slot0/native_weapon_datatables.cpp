@@ -2643,6 +2643,69 @@ int __cdecl gas_input_apply(HologramControl* ctrl,const GasInputBindings* b,GasI
     return finish(true);
 }
 const GasInputApi gas_input_api{version,sizeof(GasInputApi),&gas_input_apply};
+
+int __cdecl player_damage_take(HologramControl* ctrl,const PlayerDamageBindings* b,const PlayerDamageInfo* info,int* result) noexcept {
+    if(!health_control(ctrl,0x14f8)||!b||!info||!result||!b->global_state||!b->clock||
+       !b->resolve||!b->entity_group||!b->notify_source||!b->sound||!b->poison_cast||
+       !b->adjust_damage||!b->base_damage||!sin_independent::vgui_layout::Readable(info,sizeof(*info)))return 0;
+    ctrl->busy=1;const auto host=*b;auto* player=ctrl->object;
+    *result=0;
+    const auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    int state=0;
+    if(!host.global_state(host.context,"gordon_invulnerable",&state))return finish(false);
+    if(state==1||hologram_read<int>(player,0x8c)!=0)return finish(true);
+    const auto flags=hologram_read<unsigned>(info,0x38);
+    const auto clock=[&](float& now){return host.clock(host.context,&now)&&std::isfinite(now);};
+    const auto resolve=[&](const PlayerDamageInfo& src,unsigned offset,void*& entity){
+        entity=nullptr;const auto handle=hologram_read<std::uint32_t>(&src,offset);
+        return handle==disp_invalid||host.resolve(host.context,handle,&entity)!=0;
+    };
+    float now=0;
+    if(flags&0x20u){
+        if(!clock(now))return finish(false);
+        if(hologram_read<float>(player,0x14b8)>now){
+            hologram_write(player,0x14b8,0.0f);return finish(true);
+        }
+    }
+    if((flags&0x10000000u)&&hologram_read<int>(player,0x298)>2){
+        void* actor=nullptr;int group=0;
+        if(!resolve(*info,0x24,actor)||!actor||!host.entity_group(host.context,actor,&group))return finish(false);
+        if(group==0)return finish(true);
+    }
+    if(hologram_read<float>(info,0x2c)>0){
+        if(!clock(now))return finish(false);
+        hologram_write(player,0x14f4,now);
+        void* source=nullptr;
+        if(!resolve(*info,0x28,source))return finish(false);
+        if(source){
+            if(!resolve(*info,0x28,source)||!host.notify_source(host.context,player,source))return finish(false);
+        }
+    }
+    if(flags&0x4000u){
+        const bool start=hologram_read<int>(player,0x9f4)==hologram_read<int>(player,0x9f8);
+        if(!host.sound(host.context,player,start?"Player.DrownStart":"Player.DrownContinue"))return finish(false);
+    }
+    if((flags&8u)&&!host.sound(host.context,player,"HL2Player.BurnPain"))return finish(false);
+    PlayerDamageInfo copy=*info;
+    if(hologram_read<unsigned>(&copy,0x38)&0x30000u){
+        void* source=nullptr;unsigned matched=0;std::uint32_t handle=disp_invalid;
+        if(!resolve(copy,0x28,source)||!host.poison_cast(host.context,source,&matched,&handle)||matched>1)return finish(false);
+        if(matched)hologram_write(player,poison_source,handle);
+        return finish(true); // even a failed cast suppresses base damage
+    }
+    void* source=nullptr;
+    if(!resolve(*info,0x28,source))return finish(false);
+    if(source!=player){
+        void* actor=nullptr;
+        if(!resolve(*info,0x24,actor))return finish(false);
+        if(actor!=player){
+            hologram_write(&copy,0x34,hologram_read<float>(&copy,0x2c));
+            if(!host.adjust_damage(host.context,&copy))return finish(false);
+        }
+    }
+    return finish(host.base_damage(host.context,player,&copy,result)!=0);
+}
+const PlayerDamageApi player_damage_api{version,sizeof(PlayerDamageApi),&player_damage_take};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4322,6 +4385,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::GasInputA
 SiN_GetGasInputApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(GasInputApi)?&gas_input_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPlayerDamageApi=_SiN_GetPlayerDamageApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerDamageApi* __cdecl
+SiN_GetPlayerDamageApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerDamageApi)?&player_damage_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
