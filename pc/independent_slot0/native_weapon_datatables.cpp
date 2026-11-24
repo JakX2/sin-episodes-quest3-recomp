@@ -2942,6 +2942,48 @@ int __cdecl jessica_interaction(HologramControl* ctrl,const JessicaInteractionBi
     return complete(value);
 }
 const JessicaInteractionApi jessica_interaction_api{version,sizeof(JessicaInteractionApi),&jessica_interaction,&health_ack};
+int __cdecl response_timing(const void* exp,unsigned bytes,ResponseTiming mode,float now,unsigned* result) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||
+       !result||!hologram_writable(result,sizeof(*result))||
+       (mode!=ResponseTiming::Normal&&mode!=ResponseTiming::Urgent))return 0;
+    // 220a3a60 / 220a3aa0. Same-frame equality alone rejects the first
+    // predicate (unordered does not). The second compare rejects unordered.
+    if(hologram_read<float>(exp,0x78)==now){*result=0;return 1;}
+    const float a=hologram_read<float>(exp,mode==ResponseTiming::Urgent?0x6c:0x68);
+    const float b=hologram_read<float>(exp,0x70);
+    *result=(a>b?a:b)<=now;
+    return 1;
+}
+int __cdecl response_has_concept(void* exp,unsigned bytes,const ResponseHistoryBindings* b,const char* name,unsigned* result) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||
+       !b||!b->lookup||!b->entry||!name||!result||!hologram_writable(result,sizeof(*result)))return 0;
+    const auto h=*b;int index=-1;
+    if(!h.lookup(h.context,exp,name,&index)||index<-1)return -1;
+    if(index==-1){*result=0;return 1;}
+    void* row=nullptr;unsigned n=0;
+    if(!h.entry(h.context,exp,index,&row,&n)||!row||n<0x1c||!sin_independent::vgui_layout::Readable(row,0x1c))return -1;
+    // 220a6ee0 compares the row+14 timestamp to -1.0f, not zero.
+    *result=hologram_read<float>(row,0x14)!=-1.0f;
+    return 1;
+}
+int __cdecl response_seed(void* exp,unsigned bytes,const ResponseHistoryBindings* b,const char* name) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||
+       !b||!b->lookup||!b->insert||!b->entry||!b->clock||!b->notify||!name)return 0;
+    const auto h=*b;int index=-1;
+    if(!h.lookup(h.context,exp,name,&index)||index<-1)return -1;
+    if(index==-1){
+        float initial=0;
+        if(!h.clock(h.context,&initial)||!h.insert(h.context,exp,name,initial,&index)||index<0)return -1;
+    }
+    void* row=nullptr;unsigned n=0;float now=0;
+    if(!h.entry(h.context,exp,index,&row,&n)||n<0x1c||!hologram_writable(row,0x1c)||!h.clock(h.context,&now))return -1;
+    hologram_write(row,0x14,now);
+    // Fixed second argument zero: leave existing response pointer at +18.
+    // Third argument one: invoke the owner notification after committing time.
+    return h.notify(h.context,exp,name)?1:-1;
+}
+const ResponsePolicyApi response_policy_api{version,sizeof(ResponsePolicyApi),&response_timing,&response_has_concept,&response_seed};
+
 
 
 constexpr unsigned count_size=0x1038;
@@ -7255,6 +7297,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::JessicaIn
 SiN_GetJessicaInteractionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(JessicaInteractionApi)?&jessica_interaction_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetResponsePolicyApi=_SiN_GetResponsePolicyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponsePolicyApi* __cdecl
+SiN_GetResponsePolicyApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponsePolicyApi)?&response_policy_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

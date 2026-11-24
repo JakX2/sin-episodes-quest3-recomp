@@ -21,9 +21,14 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     const npc::NpcSpawnApi& spawn;
     npc::NpcMapBindings b{};
     npc::JessicaInteractionBindings ib{};
+    const npc::ResponsePolicyApi& response;
+    npc::ResponseHistoryBindings history{};
+    alignas(4) unsigned char greeting_row[0x1c]{};
+    int greeting_index=-1;unsigned greeting_inserts=0,greeting_notifies=0,greeting_clocks=0;
+    float now=5;
     NpcMapResult (*interaction_thunk)(NativeNpcMapHost&,EntityRef,unsigned*)=nullptr;
     unsigned interaction_calls=0,interaction_resets=0;
-    bool interaction_used=false,interaction_greeted=false,interaction_fail=false;
+    bool interaction_used=false,interaction_fail=false;
     npc::NpcMapSession session{};
     const npc::JessicaApi& j;
     const npc::CountInterrogationApi& count;
@@ -33,7 +38,7 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     std::vector<std::string> keys;
     unsigned next=0,spawned=0,activated=0,removed=0,conditions=0,holsters=0,speeches=0,actor_observes=0,changes=0;
     bool fail_parse=false,fail_remove=false,fail_condition=false;
-    NpcBspShell(const npc::JessicaApi& a,const npc::CountInterrogationApi& c,const npc::CountSchedulerApi& s,const npc::GenericActorApi& g,const npc::NpcSpawnApi& sp):spawn(sp),j(a),count(c),sched(s),actor(g){
+    NpcBspShell(const npc::JessicaApi& a,const npc::CountInterrogationApi& c,const npc::CountSchedulerApi& s,const npc::GenericActorApi& g,const npc::NpcSpawnApi& sp,const npc::ResponsePolicyApi& rp):spawn(sp),response(rp),j(a),count(c),sched(s),actor(g){
         b.jessica.context=this;b.scheduler.context=this;b.count.context=this;b.attention.context=this;b.actor.context=this;
         b.jessica.condition=[](void* p,void* n,npc::JessicaCondition op,unsigned id,unsigned*) noexcept -> int{
             auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage&&op==npc::JessicaCondition::Set&&id==0x47);++f.conditions;return !f.fail_condition;
@@ -98,25 +103,38 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
             assert(f.interaction_thunk(*f.host,f.slots[2].ref,&result)==NpcMapResult::Rejected&&result==99);
             return 1;
         };
+        history.context=this;
+        history.lookup=[](void* p,void* e,const char* name,int* index) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(e==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO"));*index=f.greeting_index;return 1;};
+        history.insert=[](void* p,void* e,const char* name,float initial,int* index) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(e==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO")&&f.greeting_index==-1&&initial==f.now);
+            ++f.greeting_inserts;f.greeting_index=*index=7;
+            std::memcpy(f.greeting_row+0x14,&initial,4);return 1;
+        };
+        history.entry=[](void* p,void* e,int i,void** row,unsigned* bytes) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(e==f.jessica_expeditor&&i==7);*row=f.greeting_row;*bytes=sizeof(f.greeting_row);return 1;};
+        history.clock=[](void* p,float* out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);++f.greeting_clocks;*out=f.now;return 1;};
+        history.notify=[](void* p,void* e,const char* name) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(e==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO"));++f.greeting_notifies;
+            float time=0;std::memcpy(&time,f.greeting_row+0x14,4);return time==f.now;
+        };
         ib.context=this;
         ib.speech_manager=[](void*) noexcept -> int{return 1;};
         ib.resolve=[](void*,std::uint32_t h,unsigned* out) noexcept -> int{*out=h==0x123004;return 1;};
         ib.expeditor=[](void* p,void* n,void** out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage);*out=f.jessica_expeditor;return 1;};
         ib.eligible=[](void*,void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
-        ib.timing=[](void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+        ib.timing=[](void* p,void* exp,unsigned* out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);return f.response.timing(exp,sizeof(f.jessica_expeditor),npc::ResponseTiming::Urgent,f.now,out)==1;};
         ib.player=[](void* p,void** out) noexcept -> int{*out=static_cast<NpcBspShell*>(p)->player;return 1;};
         ib.within_range=[](void* p,void* n,void* pl,unsigned* out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage&&pl==f.player);*out=1;return 1;};
         ib.suppressed=[](void*,void*,int arg,unsigned* out) noexcept -> int{assert(!arg);*out=0;return 1;};
         ib.speak=[](void* p,void* n,const char* name,int arg,unsigned* out) noexcept -> int{
             auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage&&!arg);++f.interaction_calls;
             if(!std::strcmp(name,"TLK_USE"))*out=f.interaction_used;
-            else {assert(!std::strcmp(name,f.interaction_greeted?"TLK_IDLE":"TLK_HELLO"));*out=1;}
+            else {float timestamp=0;std::memcpy(&timestamp,f.greeting_row+0x14,4);assert(!std::strcmp(name,timestamp!=-1.f?"TLK_IDLE":"TLK_HELLO"));*out=1;}
             return !f.interaction_fail;
         };
-        ib.has_concept=[](void* p,void* exp,const char* name,unsigned* out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(exp==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO"));*out=f.interaction_greeted;return 1;};
+        ib.has_concept=[](void* p,void* exp,const char* name,unsigned* out) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(exp==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO"));return f.response.has_concept(exp,sizeof(f.jessica_expeditor),&f.history,name,out)==1;};
         ib.reset_manager=[](void* p,float delta,int arg) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);assert(delta==-1.f&&!arg);++f.interaction_resets;return 1;};
         js.expeditor=[](void* p,void*,void** out) noexcept -> int{*out=static_cast<NpcBspShell*>(p)->jessica_expeditor;return 1;};
-        js.seed_concept=[](void* p,void* exp,const char* name,unsigned a,unsigned b) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);return exp==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO")&&!a&&b==1;};
+        js.seed_concept=[](void* p,void* exp,const char* name,unsigned a,unsigned b) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);return exp==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO")&&!a&&b==1&&f.response.seed(exp,sizeof(f.jessica_expeditor),&f.history,name)==1;};
     }
     static unsigned ptr(void* p){return static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(p));}
     static void put(void* p,unsigned off,unsigned w){std::memcpy(static_cast<unsigned char*>(p)+off,&w,4);}
@@ -154,8 +172,8 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     }
 };
 inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,const npc::CountInterrogationApi& count,
-    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const std::vector<std::uint8_t>& bsp){
-    NpcBspShell f(j,count,sched,actor,spawn);
+    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const npc::ResponsePolicyApi& response,const std::vector<std::uint8_t>& bsp){
+    NpcBspShell f(j,count,sched,actor,spawn,response);
     NativeNpcMapHost host(f,f,api,f.session,&interaction);f.host=&host;sm::SourceMapRuntime runtime(host);
     const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
     assert(loaded.ok()&&loaded.entities_created==6&&f.spawned==6&&f.activated==6&&host.attached_count()==4);
@@ -164,13 +182,29 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     assert(f.word(J,0x1450)==0xffffffffu&&f.word(J,0x1454)==0xffffffffu&&f.word(J,0x9c)==80&&f.word(C,0x9c)==8&&f.word(C,0xc28)==3&&f.word(f.expeditor,0xc)==f.ptr(C+0xdfc)&&f.word(G,0x9c)==12&&f.word(G,0x614)==247);
     assert(f.keys.size()==8&&f.keys[0]=="targetname=relay"&&f.keys[1]=="OnTrigger=count,InterrogationStart,,0,-1"&&f.keys[2]=="OnTrigger=jessica,ThrowItemAtPlayer,weapon_magnum,0,-1"&&f.keys[3]=="targetname=jessica"&&f.keys[4]=="targetname=count"&&f.keys[5]=="targetname=actor"&&f.keys[6]=="model=fixture.mdl"&&f.keys[7]=="targetname=jc");
     assert(host.input(relay,"InterrogationStart",0,0)==NpcMapResult::Unhandled&&host.input(jc,"HolsterWeapon",5,0)==NpcMapResult::Unhandled);
+    assert(f.greeting_index==7&&f.greeting_inserts==1&&f.greeting_notifies==1&&f.greeting_clocks==2);
+    float greeting_time=0;std::memcpy(&greeting_time,f.greeting_row+0x14,4);assert(greeting_time==5);
+    // Test existing-entry seed path: no insertion and preserves response word.
+    f.put(f.greeting_row,0x18,0x11223344);
+    f.now=6;assert(response.seed(f.jessica_expeditor,sizeof(f.jessica_expeditor),&f.history,"TLK_HELLO")==1);
+    assert(f.greeting_inserts==1&&f.greeting_notifies==2&&f.greeting_clocks==3&&f.word(f.greeting_row,0x18)==0x11223344);
     unsigned interaction_result=99;
     assert(f.interaction_thunk&&host.interaction(co,&interaction_result)==NpcMapResult::Unhandled&&interaction_result==99);
     assert(host.interaction(EntityRef{je.index,je.generation+1},&interaction_result)==NpcMapResult::Rejected);
     f.put(J,0x16c,0x123004);
     assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Applied&&interaction_result==1&&f.interaction_calls==2);
-    f.interaction_greeted=true;
+    // Spawn seed selects IDLE; the original -1 sentinel selects HELLO.
+    const float unspoken=-1.f;std::memcpy(f.greeting_row+0x14,&unspoken,4);
+    std::memcpy(f.jessica_expeditor+0x78,&f.now,4);
+    assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Applied&&!interaction_result&&f.interaction_calls==2);
+    f.put(f.jessica_expeditor,0x78,0);
+    const float future=7.f;std::memcpy(f.jessica_expeditor+0x6c,&future,4);
+    assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Applied&&!interaction_result&&f.interaction_calls==2);
+    assert(response.timing(f.jessica_expeditor,sizeof(f.jessica_expeditor),npc::ResponseTiming::Normal,f.now,&interaction_result)==1&&interaction_result==1);
+    std::memcpy(f.jessica_expeditor+0x6c,&f.now,4); // equality allowed in second predicate
     assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Applied&&interaction_result==1&&f.interaction_calls==4);
+    // Zero is a valid spoken timestamp (only -1 is unspoken).
+    f.put(f.greeting_row,0x14,0);assert(response.has_concept(f.jessica_expeditor,sizeof(f.jessica_expeditor),&f.history,"TLK_HELLO",&interaction_result)==1&&interaction_result==1);
     f.interaction_used=true;
     assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Applied&&!interaction_result&&f.interaction_calls==5&&f.interaction_resets==1);
     f.interaction_fail=true;interaction_result=99;
@@ -214,7 +248,7 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     f.fail_remove=false;assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded&&!host.attached_count());
     assert(host.input(co,"InterrogationStart",0,0)==NpcMapResult::Rejected);
     interaction_result=99;assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Rejected&&interaction_result==99);
-    NpcBspShell bad(j,count,sched,actor,spawn);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
+    NpcBspShell bad(j,count,sched,actor,spawn,response);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
     sm::SourceMapRuntime rollback(bh);assert(rollback.load_bsp(bsp.data(),bsp.size()).code==sm::SourceMapLoadCode::HostKeyValueFailed&&!rollback.loaded()&&!bh.attached_count());
 }
 }

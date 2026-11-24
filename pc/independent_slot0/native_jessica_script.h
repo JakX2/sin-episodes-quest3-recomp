@@ -117,6 +117,30 @@ struct JessicaInteractionApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetJessicaInteractionApi=const JessicaInteractionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_policy_export[]="SiN_GetResponsePolicyApi";
+struct ResponseHistoryBindings {
+    void* context;
+    // Original tree lookup/insert and allocation stay with the engine.
+    // index==-1 denotes absent; transport failure is independent.
+    int (__cdecl *lookup)(void*,void* exp,const char*,int* index) noexcept;
+    int (__cdecl *insert)(void*,void* exp,const char*,float initial_time,int* index) noexcept;
+    // Return the actual 28-byte map row, not an invented dense index.
+    int (__cdecl *entry)(void*,void* exp,int index,void** row,unsigned* bytes) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *notify)(void*,void* exp,const char*) noexcept;
+};
+enum class ResponseTiming:unsigned {Normal,Urgent};
+struct ResponsePolicyApi {
+    std::uint32_t version,size;
+    // Caller holds the owning NPC's interaction/spawn lock. These leaves
+    // never acquire it; expeditor and row storage remain host-owned.
+    int (__cdecl *timing)(const void* exp,unsigned bytes,ResponseTiming,float now,unsigned*) noexcept;
+    int (__cdecl *has_concept)(void* exp,unsigned bytes,const ResponseHistoryBindings*,const char*,unsigned*) noexcept;
+    // Original seed path 220a7190(concept,0,1), including owner notification.
+    int (__cdecl *seed)(void* exp,unsigned bytes,const ResponseHistoryBindings*,const char*) noexcept;
+};
+using GetResponsePolicyApi=const ResponsePolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 }

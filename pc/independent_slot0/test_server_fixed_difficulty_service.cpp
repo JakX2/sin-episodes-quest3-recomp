@@ -2622,6 +2622,9 @@ int main(int argc,char** argv){
         const auto* a=ga(1,sizeof(n::GenericActorApi));const auto* u=gu(1,sizeof(n::UseObservationApi));
         const auto* sp=gn(1,sizeof(n::NpcSpawnApi));
         const auto* in=gi(1,sizeof(n::JessicaInteractionApi));
+        const auto gp=reinterpret_cast<n::GetResponsePolicyApi>(GetProcAddress(lib,n::response_policy_export));
+        assert(gp&&!gp(0,sizeof(n::ResponsePolicyApi))&&!gp(1,0));
+        const auto* rp=gp(1,sizeof(n::ResponsePolicyApi));assert(rp);
         assert(m&&j&&c&&s&&a&&u&&sp&&in);
         const auto bsp=make_native_bsp(R"KV(
 {"classname" "worldspawn"}
@@ -2631,7 +2634,7 @@ int main(int argc,char** argv){
 {"classname" "npc_generic_actor" "targetname" "actor" "model" "fixture.mdl" "initialhealth" "12" "bloodColor" "247"}
 {"classname" "npc_jc" "targetname" "jc"}
 )KV");
-        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,bsp);
+        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,bsp);
         std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
     }
 #endif
