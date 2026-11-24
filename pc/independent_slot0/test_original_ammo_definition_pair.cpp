@@ -647,6 +647,12 @@ int main(int argc,char** argv){
     assert(nativeGeneratedResponse&&!getNativeGeneratedResponse(0,sizeof(tables::NativeGeneratedResponseApi))&&!getNativeGeneratedResponse(1,0));
     tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,resolvedSceneActor,sceneSpeechPreparation,nativeGeneratedResponse);
     std::puts("PASS native response dispatch through generated scene, cached actor, semaphore, speech and retirement");
+    const auto getNativeGeneratedMapDialogue=reinterpret_cast<tables::GetNativeGeneratedMapDialogueApi>(GetProcAddress(server,tables::native_generated_map_dialogue_export));
+    assert(getNativeGeneratedMapDialogue&&!GetProcAddress(client,tables::native_generated_map_dialogue_export));
+    const auto* nativeGeneratedMapDialogue=getNativeGeneratedMapDialogue(1,sizeof(tables::NativeGeneratedMapDialogueApi));
+    assert(nativeGeneratedMapDialogue&&!getNativeGeneratedMapDialogue(0,sizeof(tables::NativeGeneratedMapDialogueApi))&&!getNativeGeneratedMapDialogue(1,0));
+    tables::test::check_native_generated_map_dialogue(*nativeGeneratedMapDialogue,*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*responseTimingUpdate,*responseRecord);
+    std::puts("PASS native map Count response speech lifecycle and Jessica gated/no-match observation");
 
 
 
