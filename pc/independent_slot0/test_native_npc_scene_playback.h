@@ -1336,4 +1336,61 @@ inline void check_scene_speech_policy(const SceneSpeechPolicyApi& api){
     assert(F::word(q.rows[1],0)==0xffffffffu&&F::word(q.rows[1],0x88)==0xbf000000&&F::word(q.manager,0x3b8)==F::ptr(q.rows));
 }
 
+
+struct SpeechExecutionFixture:ActorEventRecordFixture {
+    alignas(4) unsigned char scene[0x5ec]{};
+    int players[3]{};
+    void* recipients[4]{&players[0],nullptr,&players[1],&players[2]};
+    int count=4;
+    unsigned opened=0,closed=0,prepared=0,emitted=0,registered=0,preferences=0,far=0,removed=0,sent=0,fail_emit=99;
+    unsigned caption_ticks=0;
+    SceneSpeechExecutionBindings exec{};
+    static SpeechExecutionFixture& get_exec(void* p){return *static_cast<SpeechExecutionFixture*>(p);}
+    SpeechExecutionFixture(){
+        F::fl(scene,0x3dc,3);F::fl(event,0x184,2);F::fl(event,0x188,5);F::fl(event,0x39c,6);
+        std::strcpy(reinterpret_cast<char*>(event+0x84),"Primary");
+        std::strcpy(reinterpret_cast<char*>(event+0x350),"123456789"); // known CRC32 cbf43926
+        exec.context=this;exec.records=b;
+        exec.open_filter=[](void* p,void* a,float scale,void** out) noexcept -> int{
+            auto& f=get_exec(p);assert(a==f.actor&&scale==.8f);++f.opened;*out=&f.count;return 1;};
+        exec.close_filter=[](void* p,void* filter) noexcept -> int{auto& f=get_exec(p);assert(filter==&f.count);++f.closed;return 1;};
+        exec.clock=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+        exec.prepare_actor=[](void* p,void* scene,void* actor,float remaining) noexcept -> int{
+            auto& f=get_exec(p);assert(scene==f.scene&&actor==f.actor&&remaining==2);++f.prepared;return 1;};
+        exec.recipient_count=[](void* p,void* filter,int* out) noexcept -> int{auto& f=get_exec(p);assert(filter==&f.count);*out=f.count;return 1;};
+        exec.recipient=[](void* p,void* filter,unsigned i,void** out) noexcept -> int{
+            auto& f=get_exec(p);assert(filter==&f.count&&i<static_cast<unsigned>(f.count));*out=f.recipients[i];return 1;};
+        exec.language=[](void* p,void* player,unsigned* present,int* language,unsigned* forced) noexcept -> int{
+            auto& f=get_exec(p);*present=player!=&f.players[2];*language=player==&f.players[0]?1:0;*forced=0;return 1;};
+        exec.emit=[](void* p,void* actor,void* player,const char* sound,int channel,float volume,int level,float absolute) noexcept -> int{
+            auto& f=get_exec(p);assert(actor==f.actor&&channel==2&&volume==1.f&&level==80&&absolute==9);
+            assert(!std::strcmp(sound,player==&f.players[1]?"123456789":"Primary"));
+            return f.emitted++!=f.fail_emit;};
+        exec.caption_register=[](void* p,std::uint32_t crc,const char* token) noexcept -> int{
+            auto& f=get_exec(p);assert(crc==0xcbf43926u&&!std::strcmp(token,"123456789")&&f.emitted==3);++f.registered;return 1;};
+        exec.caption_preferences=[](void* p,void* filter) noexcept -> int{auto& f=get_exec(p);assert(filter==&f.count&&f.registered==1);++f.preferences;return 1;};
+        exec.caption_far=[](void* p,void* player,unsigned* out) noexcept -> int{
+            auto& f=get_exec(p);++f.far;*out=player==&f.players[1];return 1;};
+        exec.remove_recipient=[](void* p,void* filter,void* player) noexcept -> int{
+            auto& f=get_exec(p);assert(filter==&f.count&&player==&f.players[1]);++f.removed;
+            for(int i=0;i<f.count;++i)if(f.recipients[i]==player){for(int j=i+1;j<f.count;++j)f.recipients[j-1]=f.recipients[j];--f.count;return 1;}
+            return 0;};
+        exec.caption_send=[](void* p,void* filter,std::uint32_t crc,unsigned ticks,unsigned flag) noexcept -> int{
+            auto& f=get_exec(p);assert(filter==&f.count&&crc==0xcbf43926u&&flag==1);++f.sent;f.caption_ticks=ticks;return 1;};
+    }
+};
+inline void check_scene_speech_execution(const SceneSpeechExecutionApi& api){
+    using F=ScenePlaybackFixture;SpeechExecutionFixture f;
+    auto run=[&](SpeechExecutionFixture& x){return api.start(x.scene,sizeof(x.scene),x.actor,sizeof(x.actor),0x2222,x.event,sizeof(x.event),80,&x.exec);};
+    assert(run(f)==1&&f.opened==1&&f.closed==1&&f.prepared==1&&f.emitted==3&&f.begins==3&&f.grows==1);
+    assert(F::word(f.actor,0x5c4)==3&&f.registered==1&&f.preferences==1&&f.far==3&&f.removed==1&&f.sent==1&&f.caption_ticks==40);
+    SpeechExecutionFixture alternate;F::put(alternate.event,0x34c,1);
+    assert(run(alternate)==1&&alternate.emitted==2&&alternate.begins==2&&!alternate.sent&&!alternate.registered&&alternate.closed==1);
+    SpeechExecutionFixture unfiltered;unfiltered.event[0x3a2]=1;F::fl(unfiltered.event,0x39c,100);
+    assert(run(unfiltered)==1&&!unfiltered.far&&!unfiltered.removed&&unfiltered.caption_ticks==255);
+    SpeechExecutionFixture failure;failure.fail_emit=1;
+    assert(run(failure)==-1&&failure.emitted==2&&failure.begins==1&&failure.closed==1&&!failure.registered);
+    assert(api.start(f.scene,sizeof(f.scene),nullptr,0,0,nullptr,0,80,&f.exec)==1&&f.opened==1);
+}
+
 }
