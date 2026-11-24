@@ -35,6 +35,7 @@
 #include "test_native_vehicle_think.h"
 #include "test_native_vehicle_seat_events.h"
 #include "test_native_camera_link.h"
+#include "test_native_vehicle_part_events.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -539,6 +540,12 @@ int main(int argc,char** argv){
     assert(cameraLink&&!getCameraLink(0,sizeof(tables::CameraLinkApi))&&!getCameraLink(1,0));
     tables::test::check_camera_link(*cameraLink);
     std::puts("PASS native info_camera_link schema, lifetime and name resolution");
+    const auto getPartEvents=reinterpret_cast<tables::GetVehiclePartEventsApi>(GetProcAddress(server,tables::vehicle_part_events_export));
+    assert(getPartEvents&&!GetProcAddress(client,tables::vehicle_part_events_export));
+    const auto* partEvents=getPartEvents(1,sizeof(tables::VehiclePartEventsApi));
+    assert(partEvents&&!getPartEvents(0,sizeof(tables::VehiclePartEventsApi))&&!getPartEvents(1,0));
+    tables::test::check_vehicle_part_events(*partEvents);
+    std::puts("PASS native vehicle door/window completion outputs and automatic close");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
