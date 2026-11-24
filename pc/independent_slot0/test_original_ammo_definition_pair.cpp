@@ -13,6 +13,7 @@
 #include "test_native_action_monitor.h"
 #include "test_native_radio_message.h"
 #include "test_native_action_listener.h"
+#include "test_native_player_look_frame.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -373,6 +374,12 @@ int main(int argc,char** argv){
     assert(actionListener&&!getActionListener(0,sizeof(tables::ActionListenerApi))&&!getActionListener(1,0));
     tables::test::check_action_listener(*actionListener);
     std::puts("PASS native original action event registration, participant gate and look/use records");
+    const auto getPlayerLookFrame=reinterpret_cast<tables::GetPlayerLookFrameApi>(GetProcAddress(server,tables::player_look_frame_export));
+    assert(getPlayerLookFrame&&!GetProcAddress(client,tables::player_look_frame_export));
+    const auto* playerLookFrame=getPlayerLookFrame(1,sizeof(tables::PlayerLookFrameApi));
+    assert(playerLookFrame&&!getPlayerLookFrame(0,sizeof(tables::PlayerLookFrameApi))&&!getPlayerLookFrame(1,0));
+    tables::test::check_player_look_frame(*playerLookFrame,*actionMonitor,*jessicaAttention);
+    std::puts("PASS native player post-trace look frame through Jessica classification and response criteria");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
