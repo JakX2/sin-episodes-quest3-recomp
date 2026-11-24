@@ -8,6 +8,7 @@
 #include <cassert>
 #include "test_inventory_network_contract_core.h"
 #include "test_native_jessica_script.h"
+#include "test_native_count_interrogation.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -332,6 +333,12 @@ int main(int argc,char** argv){
     assert(jessicaAttention&&!getJessicaAttention(0,sizeof(tables::JessicaAttentionApi))&&!getJessicaAttention(1,0));
     tables::test::check_jessica_attention(*jessicaAttention);
     std::puts("PASS native Jessica shared attention timers and response criteria");
+    const auto getCount=reinterpret_cast<tables::GetCountInterrogationApi>(GetProcAddress(server,tables::count_export));
+    assert(getCount&&!GetProcAddress(client,tables::count_export));
+    const auto* countApi=getCount(1,sizeof(tables::CountInterrogationApi));
+    assert(countApi&&!getCount(0,sizeof(tables::CountInterrogationApi))&&!getCount(1,0));
+    tables::test::check_count(*countApi);
+    std::puts("PASS native Count interrogation inputs, response cycle and zero-damage forwarding");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
