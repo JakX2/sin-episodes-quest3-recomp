@@ -578,7 +578,7 @@ struct ExpeditorLifecycleFixture {
             assert(word(f.exp,0)==f.tables.primary&&word(f.exp,8)==f.tables.filter&&word(f.exp,0x10)==f.tables.compare&&word(f.exp,0x20)==0xffffffffu&&word(f.exp,0x28)==0xffffffffu&&!word(f.exp,0x74));
             assert(f.api.clear(&f.ctrl,&f.b)==0);put(s,0,0xabcdef);return f.fail!=1;};
         b.row=[](void* p,void* e,unsigned i,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(e==f.exp&&i<3&&f.ctrl.stage==ExpeditorStage::Destroying);f.rec(10+i);*out=f.rows[i];*n=sizeof(f.rows[i]);return f.fail!=10+i;};
-        b.destroy_response=[](void* p,std::uint32_t v) noexcept -> int{auto& f=get(p);assert(v==0x100||v==0x300);f.rec(v==0x100?20:22);return f.fail!=20;};
+        b.destroy_response=[](void* p,std::uint32_t v) noexcept -> int{auto& f=get(p);assert(v==0x100||v==0x300);const unsigned event=v==0x100?20:22;f.rec(event);return f.fail!=event;};
         b.classify=[](void* p,void* n,int a,unsigned* out) noexcept -> int{auto& f=get(p);assert(n==&f.npc&&!a);f.rec(2);*out=f.class_calls++?f.second_class:f.classification;return f.fail!=2;};
         b.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);f.rec(3);*out=h==1?&f.npc:h==2?&f.other:nullptr;return f.fail!=3;};
         b.symbol_destroy=[](void* p,void* s) noexcept -> int{auto& f=get(p);f.rec(4);assert(s==f.exp+0x34);return f.fail!=4;};

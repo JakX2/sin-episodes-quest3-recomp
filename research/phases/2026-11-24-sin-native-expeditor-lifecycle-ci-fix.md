@@ -1,0 +1,3 @@
+# Expeditor lifecycle CI fixture correction
+
+Phase783 runs 45423146798 and 45423146834 failed the partial-destruction assertion in check_expeditor_lifecycle; Phase784 inherited the same failure (45423427481). The injected destroy callback erroneously failed on BOTH response objects when fail==20, although the regression intended to fail only on response 0x100 (event20) after successfully clearing response 0x300 (event22). Fix the callback to compare the requested failure with the actual event. No production semantics or assertions weakened. Retest on current stacked head. Earlier immutable commit CI failures remain visible until superseded.
