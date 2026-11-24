@@ -1512,4 +1512,49 @@ inline void check_scene_actor_cache(const SceneActorCacheApi& api){
     assert(api.index(f.scene,sizeof(f.scene),2,&f.b,&out,&bytes)==1&&!out&&f.invalid==2);
 }
 
+
+inline void check_scene_actor_names(const SceneActorNamesApi& api){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char scene[0x5ec]{},npc[0x90]{},prop[0x90]{},player[0x90]{};
+        int clients=1;unsigned finds=0,casts=0,resolves=0,npc_lookups=0,local=0;
+        bool stale=false;
+    } f;
+    for(unsigned off=0x3b8;off<=0x3d4;off+=4)F::put(f.scene,off,0xffffffffu);
+    F::put(f.scene,0x55c,0xffffffffu);F::put(f.scene,0x554,0x1001);
+    F::put(f.scene,0x398,1);F::put(f.scene,0x39c,2);
+    SceneActorNameBindings b{};b.context=&f;
+    b.resolve=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& x=*static_cast<Fixture*>(p);++x.resolves;
+        *out=w==0x1001&&!x.stale?x.npc:w==0x2002?x.prop:nullptr;*n=*out?0x90:0;return 1;};
+    b.handle=[](void* p,void* a,std::uint32_t* w) noexcept -> int{
+        auto& x=*static_cast<Fixture*>(p);*w=a==x.npc?0x1001:0x2002;return 1;};
+    b.text=[](void*,std::uint32_t w,const char** out) noexcept -> int{*out=w==1?"npc_*":"!activator";return 1;};
+    b.max_clients=[](void* p,int* out) noexcept -> int{*out=static_cast<Fixture*>(p)->clients;return 1;};
+    b.local_player=[](void* p,void** out,unsigned* n) noexcept -> int{auto& x=*static_cast<Fixture*>(p);++x.local;*out=x.player;*n=0x90;return 1;};
+    b.find=[](void* p,const char* name,void* prev,void*,void** out,unsigned* n) noexcept -> int{
+        auto& x=*static_cast<Fixture*>(p);++x.finds;
+        *out=!std::strcmp(name,"npc_*")?(prev?x.npc:x.prop):!std::strcmp(name,"Jessica")?x.npc:nullptr;*n=*out?0x90:0;return 1;};
+    b.is_npc=[](void* p,void* a,unsigned* out) noexcept -> int{*out=a==static_cast<Fixture*>(p)->npc?1:0;return 1;};
+    b.cast_actor=[](void* p,void* a,void** out,unsigned* n) noexcept -> int{
+        auto& x=*static_cast<Fixture*>(p);++x.casts;*out=a==x.npc?x.npc:nullptr;*n=*out?0x90:0;return 1;};
+    b.npc_lookup=[](void* p,void* a,const char* name,void** out,unsigned* n) noexcept -> int{
+        auto& x=*static_cast<Fixture*>(p);assert(a==x.npc&&!std::strcmp(name,"!enemy"));++x.npc_lookups;*out=x.prop;*n=0x90;return 1;};
+    void* out=nullptr;unsigned n=0;
+    auto entity=[&](const char* name,void* context=nullptr,unsigned cast=1){return api.entity(f.scene,sizeof(f.scene),name,context,cast,&b,&out,&n);};
+    assert(entity("pLaYeR")==1&&out==f.player&&f.local==1);
+    f.clients=2;assert(entity("!PLAYER")==1&&!out&&!n&&f.local==1);
+    assert(entity("!Target1")==1&&out==f.npc&&f.finds==2&&f.casts==2&&F::word(f.scene,0x3b8)==0x1001);
+    assert(entity("!target1")==1&&out==f.npc&&f.finds==2);
+    assert(entity("!target2")==1&&out==f.npc&&F::word(f.scene,0x3bc)==0x1001&&f.finds==2);
+    assert(entity("!enemy",f.npc)==1&&out==f.prop&&f.npc_lookups==1);
+    assert(api.actor(f.scene,sizeof(f.scene),"Jessica",0,&b,&out,&n)==1&&out==f.npc&&f.finds==3);
+    F::put(f.scene,0x55c,0x1001);
+    assert(api.actor(f.scene,sizeof(f.scene),"ignored",1,&b,&out,&n)==1&&out==f.npc&&f.finds==3);
+    f.stale=true;assert(api.actor(f.scene,sizeof(f.scene),"Jessica",1,&b,&out,&n)==1&&out==f.npc&&f.finds==4);
+    F::put(f.scene,0x55c,0x2002);
+    assert(api.actor(f.scene,sizeof(f.scene),"missing",1,&b,&out,&n)==1&&!out&&!n&&f.finds==5);
+    assert(entity("!target2")==1&&!out&&F::word(f.scene,0x3bc)==0xffffffffu);
+}
+
 }

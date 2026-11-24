@@ -616,6 +616,12 @@ int main(int argc,char** argv){
     assert(sceneActorCache&&!getSceneActorCache(0,sizeof(tables::SceneActorCacheApi))&&!getSceneActorCache(1,0));
     tables::test::check_scene_actor_cache(*sceneActorCache);
     std::puts("PASS native scene actor lookup cache, stale handles and fallback");
+    const auto getSceneActorNames=reinterpret_cast<tables::GetSceneActorNamesApi>(GetProcAddress(server,tables::scene_actor_names_export));
+    assert(getSceneActorNames&&!GetProcAddress(client,tables::scene_actor_names_export));
+    const auto* sceneActorNames=getSceneActorNames(1,sizeof(tables::SceneActorNamesApi));
+    assert(sceneActorNames&&!getSceneActorNames(0,sizeof(tables::SceneActorNamesApi))&&!getSceneActorNames(1,0));
+    tables::test::check_scene_actor_names(*sceneActorNames);
+    std::puts("PASS native scene actor names, target aliases, player and instanced NPC preference");
 
 
 
