@@ -1155,7 +1155,7 @@ struct AggregateSendGraph {
     DerivedPlayerSendGraph derived;
     SendGraph weapons;
     ServerClassGraph classes;
-    bool extra_bound=false,keypad_bound=false;
+    bool extra_bound=false,keypad_bound=false,phone_bound=false;
     Table* tables[aggregate_table_count]{};
     bool build(const AggregateSendBindings& b) noexcept {
         const auto* entries=b.entity.entries;const auto count=b.entity.entry_count;
@@ -1198,7 +1198,7 @@ int __cdecl create_aggregate(const AggregateSendBindings* b,AggregateSendView* o
 int __cdecl destroy_aggregate(AggregateSendView* v) noexcept {
     if(!v||!v->handle)return 0;
     auto* g=static_cast<AggregateSendGraph*>(v->handle);
-    if(g->extra_bound||g->keypad_bound||!aggregate_matches(*g,*v))return 0;
+    if(g->extra_bound||g->keypad_bound||g->phone_bound||!aggregate_matches(*g,*v))return 0;
     // Preflight every owned object, including nested-only tables. No
     // partial teardown if an engine marker is still set anywhere.
     for(const auto* tab:g->tables)if(!tab||tab->precalc||tab->initialized||tab->written)return 0;
@@ -1526,6 +1526,133 @@ int __cdecl prop_key_ack(HologramControl* ctrl) noexcept {
     ctrl->blocked=0;return 1;
 }
 const PropKeypadServerApi prop_key_api{version,sizeof(PropKeypadServerApi),&prop_key_enable,&prop_key_set,&prop_key_event,&prop_key_ack};
+
+struct PhoneSendGraph {
+    AggregateSendGraph* base=nullptr;
+    s::SendTable table{};
+    s::SendProp prop{};
+    ServerClassRecord record{};
+    bool build(AggregateSendGraph& core,const PhoneSendBindings& ) noexcept {
+        if(!table.Construct(&prop,1,"DT_CPropPhone")||
+            !s::MakeDataTableProp(prop,"baseclass",0,&core.anim.base,&s::DirectTable))return false;
+        record.name="CPropPhone";record.table=&table;return true;
+    }
+};
+int __cdecl create_phone(const PhoneSendBindings* b,PhoneSendView* out) noexcept {
+    if(!b||!b->base||!b->base->handle||!out||out->handle||out->table||out->record)return 0;
+    auto* base=static_cast<AggregateSendGraph*>(b->base->handle);
+    if(base->phone_bound||!aggregate_matches(*base,*b->base))return 0;
+    auto* g=new(std::nothrow) PhoneSendGraph;
+    if(!g)return 0;
+    if(!g->build(*base,*b)){delete g;return 0;}
+    g->base=base;base->phone_bound=true;*out={g,&g->table,&g->record};return 1;
+}
+int __cdecl destroy_phone(PhoneSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<PhoneSendGraph*>(v->handle);
+    if(v->table!=&g->table||v->record!=&g->record||g->table.precalc||g->table.initialized||g->table.written||g->record.class_id||g->record.instance_baseline!=0xffff)return 0;
+    g->base->phone_bound=false;delete g;*v={};return 1;
+}
+const PhoneSendApi phone_api{version,sizeof(PhoneSendApi),&create_phone,&destroy_phone};
+
+constexpr std::uint32_t phone_invalid=0xffffffffu;
+constexpr unsigned phone_disabled=0x494,phone_fail=0x498,phone_matched=0x4a4,
+    phone_keypad=0x4a8,phone_panel=0x4ac,phone_book=0x4b0;
+bool phone_valid(const HologramControl* ctrl) noexcept {
+    return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=0x4b4&&hologram_writable(ctrl->object,0x4b4);
+}
+int phone_finish(HologramControl* ctrl,bool ok) noexcept {
+    ctrl->busy=0;if(!ok){ctrl->blocked=1;return -1;}return 1;
+}
+int __cdecl phone_defaults(void* phone,unsigned bytes) noexcept {
+    if(bytes<0x4b4||!hologram_writable(phone,0x4b4))return 0;
+    hologram_write(phone,phone_disabled,static_cast<unsigned char>(0));
+    for(unsigned off:{0x498u,0x49cu,0x4a0u,0x4a4u,0x4acu,0x4b0u})hologram_write(phone,off,0u);
+    hologram_write(phone,phone_keypad,phone_invalid);return 1;
+}
+bool phone_schedule(void* phone,const PhoneBindings& host) noexcept {
+    float now=0;
+    if(!host.clock(host.context,&now)||!std::isfinite(now))return false;
+    const float when=static_cast<float>(static_cast<double>(now)+0.25);
+    return std::isfinite(when)&&host.schedule(host.context,phone,when)!=0;
+}
+int __cdecl phone_enable(HologramControl* ctrl,const PhoneBindings* b,unsigned enabled) noexcept {
+    if(!phone_valid(ctrl)||!b||enabled>1||(enabled&&(!b->clock||!b->schedule)))return 0;
+    ctrl->busy=1;const auto host=*b;
+    hologram_write(ctrl->object,phone_disabled,static_cast<unsigned char>(1-enabled));
+    return phone_finish(ctrl,!enabled||phone_schedule(ctrl->object,host));
+}
+bool phone_resolve(const PhoneBindings& host,std::uint32_t handle,HologramControl*& screen) noexcept {
+    screen=nullptr;return host.resolve_screen(host.context,handle,&screen)!=0;
+}
+int __cdecl phone_think(HologramControl* ctrl,const PhoneBindings* b) noexcept {
+    if(!phone_valid(ctrl)||!b||!b->clock||!b->schedule||!b->create_screen||!b->resolve_screen||
+       !b->configure_screen||!b->remove_screen||!b->lookup||!b->sound||!b->keypad.dirty||!b->keypad.output)return 0;
+    ctrl->busy=1;const auto host=*b;auto* phone=ctrl->object;
+    auto handle=hologram_read<std::uint32_t>(phone,phone_keypad);
+    const auto* book=hologram_read<const void*>(phone,phone_book);
+    HologramControl* screen=nullptr;
+    const auto fail=[&](){return phone_finish(ctrl,false);};
+    if(hologram_read<unsigned char>(phone,phone_disabled)||!book){
+        if(handle!=phone_invalid){
+            if(!phone_resolve(host,handle,screen)||
+                !host.remove_screen(host.context,handle,screen?screen->object:nullptr))return fail();
+            hologram_write(phone,phone_keypad,phone_invalid);
+        }
+        return phone_finish(ctrl,true);
+    }
+    if(handle==phone_invalid){
+        if(!host.create_screen(host.context,phone,"prop_keypad",&handle))return fail();
+        hologram_write(phone,phone_keypad,handle);
+        if(handle==phone_invalid)return phone_finish(ctrl,true);
+        const char* panel=hologram_read<const char*>(phone,phone_panel);
+        if(!panel){
+            panel="prop_keypad";hologram_write(phone,phone_panel,panel);
+        }
+        char name[256]{};
+        if(!prop_key_read(panel,name)||!phone_resolve(host,handle,screen)||!prop_key_valid(screen)||
+           !host.configure_screen(host.context,phone,screen->object,"keypad",name,16,16))return fail();
+    }
+    // Original re-resolves the packed handle for the read and clear;
+    // host must maintain a live, stable, type-checked CPropKeypad.
+    if(!phone_resolve(host,handle,screen)||!prop_key_valid(screen))return fail();
+    auto* text=static_cast<const char*>(screen->object)+0x3c9;
+    const auto* end=static_cast<const char*>(std::memchr(text,0,32));
+    if(!end)return fail();
+    const int length=static_cast<int>(end-text);
+    if(length>=4&&length>hologram_read<int>(phone,phone_matched)){
+        unsigned found=0;const char* sound=nullptr;
+        if(!host.lookup(host.context,book,text,&found,&sound)||found>1)return fail();
+        if(!found)sound=hologram_read<const char*>(phone,phone_fail);
+        char sample[256]{};
+        if(sound&&!prop_key_read(sound,sample))return fail();
+        if(found&&sample[0]=='*'){
+            // The original preserves the input and stores the matched
+            // length before emitting the prefix sound (without '*').
+            hologram_write(phone,phone_matched,length);
+            if(!host.sound(host.context,phone,sample+1))return fail();
+        }else{
+            if((found||sound)&&!host.sound(host.context,phone,sample))return fail();
+            if(!phone_resolve(host,handle,screen)||!prop_key_valid(screen)||
+               prop_key_set(screen,&host.keypad,nullptr)!=1)return fail();
+            hologram_write(phone,phone_matched,0);
+        }
+    }
+    return phone_finish(ctrl,phone_schedule(phone,host));
+}
+int __cdecl phone_dial(HologramControl* ctrl,const PhoneBindings* b,const char* number) noexcept {
+    if(!phone_valid(ctrl)||!b||!b->resolve_screen||!b->keypad.dirty||!b->keypad.output)return 0;
+    const auto handle=hologram_read<std::uint32_t>(ctrl->object,phone_keypad);
+    if(handle==phone_invalid)return 1;
+    ctrl->busy=1;const auto host=*b;HologramControl* screen=nullptr;
+    return phone_finish(ctrl,phone_resolve(host,handle,screen)&&prop_key_valid(screen)&&
+        prop_key_set(screen,&host.keypad,number)==1);
+}
+int __cdecl phone_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x4b4||!hologram_writable(ctrl->object,0x4b4))return 0;
+    ctrl->blocked=0;return 1;
+}
+const PhoneServerApi phone_behavior{version,sizeof(PhoneServerApi),&phone_defaults,&phone_enable,&phone_think,&phone_dial,&phone_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -2198,7 +2325,7 @@ struct AggregateRecvGraph {
     DerivedPlayerRecvGraph derived;
     RecvGraph weapons;
     ClientClassGraph classes;
-    bool spawn_bound=false,extra_bound=false,keypad_bound=false;
+    bool spawn_bound=false,extra_bound=false,keypad_bound=false,phone_bound=false;
     Table* tables[aggregate_table_count]{};
     bool build(const AggregateRecvBindings& b) noexcept {
         if(!entity.build(b.entity)||!anim.build({&entity.entity})||
@@ -2241,7 +2368,7 @@ int __cdecl create_aggregate(const AggregateRecvBindings* b,AggregateRecvView* o
 int __cdecl destroy_aggregate(AggregateRecvView* v) noexcept {
     if(!v||!v->handle)return 0;
     auto* g=static_cast<AggregateRecvGraph*>(v->handle);
-    if(g->spawn_bound||g->extra_bound||g->keypad_bound||!aggregate_matches(*g,*v))return 0;
+    if(g->spawn_bound||g->extra_bound||g->keypad_bound||g->phone_bound||!aggregate_matches(*g,*v))return 0;
     // Preflight every owned object, including nested-only tables. No
     // partial teardown if an engine marker is still set anywhere.
     for(const auto* tab:g->tables)if(!tab||tab->decoder||tab->initialized||tab->in_main_list)return 0;
@@ -2883,6 +3010,34 @@ int __cdecl prop_key_tick(void* object,unsigned bytes,const PropKeypadClientBind
     return host.base_tick(host.context)?1:-1;
 }
 const PropKeypadClientApi prop_key_api{version,sizeof(PropKeypadClientApi),&prop_key_command,&prop_key_tick};
+
+struct PhoneRecvGraph {
+    AggregateRecvGraph* base=nullptr;
+    RecvTable table{};
+    RecvProp prop{};
+    ClientClassRecord record{};
+    bool build(AggregateRecvGraph& core,const PhoneRecvBindings& b) noexcept {
+        if(!b.creator)return false;
+        table={&prop,1,nullptr,"DT_CPropPhone"};nested(prop,"baseclass",&core.anim.base);record.create=b.creator;
+        record.name="CPropPhone";record.table=&table;return true;
+    }
+};
+int __cdecl create_phone(const PhoneRecvBindings* b,PhoneRecvView* out) noexcept {
+    if(!b||!b->base||!b->base->handle||!out||out->handle||out->table||out->record)return 0;
+    auto* base=static_cast<AggregateRecvGraph*>(b->base->handle);
+    if(base->phone_bound||!aggregate_matches(*base,*b->base))return 0;
+    auto* g=new(std::nothrow) PhoneRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*base,*b)){delete g;return 0;}
+    g->base=base;base->phone_bound=true;*out={g,&g->table,&g->record};return 1;
+}
+int __cdecl destroy_phone(PhoneRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<PhoneRecvGraph*>(v->handle);
+    if(v->table!=&g->table||v->record!=&g->record||g->table.decoder||g->table.initialized||g->table.in_main_list||g->record.class_id)return 0;
+    g->base->phone_bound=false;delete g;*v={};return 1;
+}
+const PhoneRecvApi phone_api{version,sizeof(PhoneRecvApi),&create_phone,&destroy_phone};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2996,6 +3151,18 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PropKeypa
 SiN_GetPropKeypadServerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PropKeypadServerApi)?&prop_key_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPropPhoneSendApi=_SiN_GetPropPhoneSendApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PhoneSendApi* __cdecl
+SiN_GetPropPhoneSendApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PhoneSendApi)?&phone_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPropPhoneServerApi=_SiN_GetPropPhoneServerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PhoneServerApi* __cdecl
+SiN_GetPropPhoneServerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PhoneServerApi)?&phone_behavior:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
@@ -3129,5 +3296,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PropKeypa
 SiN_GetPropKeypadClientApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PropKeypadClientApi)?&prop_key_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPropPhoneRecvApi=_SiN_GetPropPhoneRecvApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PhoneRecvApi* __cdecl
+SiN_GetPropPhoneRecvApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PhoneRecvApi)?&phone_api:nullptr;
 }
 #endif

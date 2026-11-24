@@ -765,4 +765,45 @@ struct PropKeypadClientApi {
 };
 using GetPropKeypadServerApi=const PropKeypadServerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetPropKeypadClientApi=const PropKeypadClientApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase718: original CPropPhone table and server polling behavior.
+// Host owns the existing BaseAnimating, screen attachment, serial-checked
+// lookup, KeyValues phonebook, sound and think scheduler services.
+inline constexpr char phone_send_export[]="SiN_GetPropPhoneSendApi";
+inline constexpr char phone_recv_export[]="SiN_GetPropPhoneRecvApi";
+inline constexpr char phone_server_export[]="SiN_GetPropPhoneServerApi";
+struct PhoneSendBindings {AggregateSendView* base;};
+struct PhoneRecvBindings {AggregateRecvView* base;CreateClientEntity creator;};
+template<class Table,class Record> struct PhoneView {void* handle;Table* table;Record* record;};
+using PhoneSendView=PhoneView<s::SendTable,ServerClassRecord>;
+using PhoneRecvView=PhoneView<RecvTable,ClientClassRecord>;
+using PhoneSendApi=GraphApi<PhoneSendBindings,PhoneSendView>;
+using PhoneRecvApi=GraphApi<PhoneRecvBindings,PhoneRecvView>;
+using GetPhoneSendApi=const PhoneSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetPhoneRecvApi=const PhoneRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct PhoneBindings {
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *schedule)(void*,void* phone,float time) noexcept;
+    // A successful callback may return the invalid handle if no screen
+    // was allocated; the original then returns without scheduling.
+    int (__cdecl *create_screen)(void*,void* phone,const char* classname,std::uint32_t*) noexcept;
+    int (__cdecl *resolve_screen)(void*,std::uint32_t,HologramControl**) noexcept;
+    // Existing host attaches keypad to the named attachment, applies
+    // panelname, size/flags and original spawn service in order.
+    int (__cdecl *configure_screen)(void*,void* phone,void* screen,const char* attachment,const char* panel,float width,float height) noexcept;
+    int (__cdecl *remove_screen)(void*,std::uint32_t,void* screen) noexcept;
+    int (__cdecl *lookup)(void*,const void* phonebook,const char* digits,unsigned* found,const char** sound) noexcept;
+    int (__cdecl *sound)(void*,void* phone,const char* name) noexcept;
+    PropKeypadServerBindings keypad;
+};
+struct PhoneServerApi {
+    std::uint32_t version,size;
+    int (__cdecl *defaults)(void* phone,unsigned bytes) noexcept;
+    int (__cdecl *enable)(HologramControl*,const PhoneBindings*,unsigned enabled) noexcept;
+    int (__cdecl *think)(HologramControl*,const PhoneBindings*) noexcept;
+    int (__cdecl *dial)(HologramControl*,const PhoneBindings*,const char* number) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetPhoneServerApi=const PhoneServerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
