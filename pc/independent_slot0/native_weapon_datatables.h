@@ -187,4 +187,34 @@ using FlexSendApi=GraphApi<FlexSendBindings,FlexSendView>;
 using FlexRecvApi=GraphApi<FlexRecvBindings,FlexRecvView>;
 using GetFlexSendApi=const FlexSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetFlexRecvApi=const FlexRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase699: native dynamic vector descriptor graph. Original 20-byte x86
+// CUtlVector header. Host owns backing allocation, element initialization,
+// and (client) interpolation unregister/re-register on logical resize.
+// Reserve must preserve count and existing elements; resize must set count.
+inline constexpr char overlay_send_export[]="SiN_GetOverlaySendGraphApi";
+inline constexpr char overlay_recv_export[]="SiN_GetOverlayRecvGraphApi";
+inline constexpr int overlay_limit=15;
+struct LayerVector {
+    unsigned char* memory=nullptr;
+    int capacity=0,grow_size=0,count=0;
+    unsigned char* elements=nullptr;
+};
+static_assert(sizeof(LayerVector)==20&&offsetof(LayerVector,count)==12&&offsetof(LayerVector,elements)==16);
+using LayerHostOp=int (__cdecl *)(void* context,void* entity,int offset,int stride,int count) noexcept;
+struct OverlaySendBindings {void* context;LayerHostOp reserve;};
+struct OverlayRecvBindings {void* context;LayerHostOp reserve,resize;};
+template<class Table> struct OverlayView {
+    void* handle;
+    Table* overlay_vars;
+    Table* vector_table;
+    Table* length_table;
+    Table* layer;
+};
+using OverlaySendView=OverlayView<s::SendTable>;
+using OverlayRecvView=OverlayView<RecvTable>;
+using OverlaySendApi=GraphApi<OverlaySendBindings,OverlaySendView>;
+using OverlayRecvApi=GraphApi<OverlayRecvBindings,OverlayRecvView>;
+using GetOverlaySendApi=const OverlaySendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetOverlayRecvApi=const OverlayRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
