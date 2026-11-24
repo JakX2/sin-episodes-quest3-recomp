@@ -579,6 +579,13 @@ int main(int argc,char** argv){
     assert(nativeGeneratedLifecycle&&!getNativeGeneratedLifecycle(0,sizeof(tables::NativeGeneratedLifecycleApi))&&!getNativeGeneratedLifecycle(1,0));
     tables::test::check_native_generated_lifecycle(*nativeGeneratedLifecycle,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
     std::puts("PASS native generated scene lifecycle with original start, association and stop");
+    const auto getSceneFinish=reinterpret_cast<tables::GetSceneFinishApi>(GetProcAddress(server,tables::scene_finish_export));
+    assert(getSceneFinish&&!GetProcAddress(client,tables::scene_finish_export));
+    const auto* sceneFinish=getSceneFinish(1,sizeof(tables::SceneFinishApi));
+    assert(sceneFinish&&!getSceneFinish(0,sizeof(tables::SceneFinishApi))&&!getSceneFinish(1,0));
+    tables::test::check_scene_finish(*sceneFinish);
+    tables::test::check_native_generated_lifecycle(*nativeGeneratedLifecycle,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,sceneFinish);
+    std::puts("PASS original native scene finish, waiting notifications, output and manager completion");
 
 
 

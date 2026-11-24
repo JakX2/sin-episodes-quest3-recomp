@@ -477,6 +477,27 @@ struct NativeGeneratedLifecycleApi {
     int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*) noexcept;
 };
 using GetNativeGeneratedLifecycleApi=const NativeGeneratedLifecycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_finish_export[]="SiN_GetSceneFinishApi";
+struct SceneFinishBindings {
+    void* context;
+    // Waiting entity handle vector at scene+534, count +540.
+    int (__cdecl *entry)(void*,void*,unsigned,std::uint32_t*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**) noexcept;
+    int (__cdecl *notify)(void*,void* waiting,void* scene) noexcept;
+    int (__cdecl *refresh)(void*,void*) noexcept;
+    int (__cdecl *output)(void*,void* output,void* activator,void* caller,float) noexcept;
+    ParsedSceneResetBindings reset;
+    SceneStopBindings stop;
+};
+struct SceneFinishApi {
+    std::uint32_t version,size;
+    // Original 221a7230, virtual +28c on both scene vtables.
+    int (__cdecl *finish)(void*,unsigned,int stop_argument,unsigned fire_output,const SceneFinishBindings*) noexcept;
+    // Existing original tick routes with native finish in place of host
+    // virtual +28c. Scripted non-NPC release remains a host service.
+    int (__cdecl *advance)(void*,unsigned,float,const SceneAdvanceBindings*,const SceneFinishBindings*,unsigned instanced) noexcept;
+};
+using GetSceneFinishApi=const SceneFinishApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
