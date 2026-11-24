@@ -701,6 +701,12 @@ int main(int argc,char** argv){
     assert(choreographyActorParser&&!getChoreographyActorParser(0,sizeof(tables::ChoreographyActorParserApi))&&!getChoreographyActorParser(1,0));
     tables::test::check_choreography_actor_parser(*choreographyActorParser);
     std::puts("PASS native VCD actor and channel parser ownership and event dispatch");
+    const auto getChoreographyEventParser=reinterpret_cast<tables::GetChoreographyEventParserApi>(GetProcAddress(server,tables::choreography_event_parser_export));
+    assert(getChoreographyEventParser&&!GetProcAddress(client,tables::choreography_event_parser_export));
+    const auto* choreographyEventParser=getChoreographyEventParser(1,sizeof(tables::ChoreographyEventParserApi));
+    assert(choreographyEventParser&&!getChoreographyEventParser(0,sizeof(tables::ChoreographyEventParserApi))&&!getChoreographyEventParser(1,0));
+    tables::test::check_choreography_event_parser(*choreographyEventParser);
+    std::puts("PASS native VCD event grammar, original fields and nested ownership");
 
 
 
