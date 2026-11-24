@@ -344,4 +344,53 @@ inline void check_scene_manager_tick(const SceneManagerTickApi& api){
     assert(api.tick(&failed.ctrl,&failed.tick)==-1&&failed.ctrl.stage==SceneManagerStage::Failed&&!failed.ctrl.ticking&&failed.calls==1);
 }
 
+
+struct SceneRegistrationFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char manager[scene_manager_bytes]{};
+    std::uint32_t handles[8]{};
+    int scenes[3]{};
+    SceneRegistrationBindings b{};
+    unsigned grows=0,resolves=0,accesses=0;
+    bool fail_grow=false,short_storage=false;
+    static SceneRegistrationFixture& get(void* p){return *static_cast<SceneRegistrationFixture*>(p);}
+    SceneRegistrationFixture(){
+        b.context=this;
+        b.packed_handle=[](void* p,void* scene,std::uint32_t* out) noexcept -> int{
+            auto& f=get(p);assert(scene==&f.scenes[0]||scene==&f.scenes[1]||scene==&f.scenes[2]);
+            *out=scene==&f.scenes[0]?1:scene==&f.scenes[1]?2:3;return 1;
+        };
+        b.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{
+            auto& f=get(p);++f.resolves;
+            *out=h==1||h==11?&f.scenes[0]:h==2?&f.scenes[1]:h==3?&f.scenes[2]:nullptr;return 1;
+        };
+        b.storage=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(h==0x1234);++f.accesses;*out=f.handles;*n=f.short_storage?1:sizeof(f.handles);return 1;
+        };
+        b.grow=[](void* p,void* m,unsigned additional) noexcept -> int{
+            auto& f=get(p);assert(m==f.manager&&additional==1);++f.grows;
+            if(f.fail_grow)return 0;
+            F::put(m,0x394,0x1234);F::put(m,0x398,8);return 1;
+        };
+    }
+};
+inline void check_scene_registration(const SceneRegistrationApi& api){
+    using F=ScenePlaybackFixture;SceneRegistrationFixture f;unsigned out=99;
+    auto add=[&](void* scene){out=99;return api.add(f.manager,sizeof(f.manager),&f.b,scene,&out);};
+    auto remove=[&](void* scene){out=99;return api.remove(f.manager,sizeof(f.manager),&f.b,scene,&out);};
+    f.fail_grow=true;assert(add(&f.scenes[0])==-1&&out==99&&!F::word(f.manager,0x3a0));f.fail_grow=false;
+    assert(add(&f.scenes[0])==1&&out&&f.grows==2&&f.handles[0]==1&&F::word(f.manager,0x3a4)==0x1234);
+    f.handles[0]=11;assert(add(&f.scenes[0])==1&&!out&&F::word(f.manager,0x3a0)==1&&f.handles[0]==11);
+    assert(add(&f.scenes[1])==1&&out&&add(&f.scenes[2])==1&&out&&F::word(f.manager,0x3a0)==3);
+    assert(remove(&f.scenes[0])==1&&out&&F::word(f.manager,0x3a0)==2&&f.handles[0]==2&&f.handles[1]==3);
+    assert(remove(&f.scenes[0])==1&&!out);
+    // Null target matches a stale handle by resolved identity, not bits.
+    f.handles[0]=99;assert(add(nullptr)==1&&!out&&F::word(f.manager,0x3a0)==2);
+    assert(remove(nullptr)==1&&out&&F::word(f.manager,0x3a0)==1&&f.handles[0]==3);
+    assert(add(nullptr)==1&&out&&f.handles[1]==0xffffffffu);
+    f.short_storage=true;assert(remove(nullptr)==-1&&out==99&&F::word(f.manager,0x3a0)==2);f.short_storage=false;
+    assert(remove(nullptr)==1&&out&&F::word(f.manager,0x3a0)==1);
+    assert(remove(&f.scenes[2])==1&&out&&!F::word(f.manager,0x3a0)&&F::word(f.manager,0x398)==8);
+}
+
 }

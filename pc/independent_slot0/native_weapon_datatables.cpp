@@ -4144,6 +4144,59 @@ int __cdecl scene_manager_destroy(SceneManagerControl* c,const SceneManagerLifec
     const bool ok=h.base_destroy(h.context,m)!=0;c->stage=ok?SceneManagerStage::Retired:SceneManagerStage::Failed;return ok?1:-1;
 }
 const SceneManagerTickApi scene_manager_tick_api{version,sizeof(SceneManagerTickApi),&scene_manager_construct,&scene_manager_spawn,&scene_manager_tick,&scene_manager_clear,&scene_manager_destroy};
+bool scene_registration_storage(void* m,const SceneRegistrationBindings& h,unsigned required,void*& storage) noexcept {
+    storage=nullptr;
+    const auto word=hologram_read<std::uint32_t>(m,0x394);
+    unsigned bytes=0;
+    return word&&h.storage(h.context,word,&storage,&bytes)&&storage&&bytes>=required*4&&
+        hologram_writable(storage,required*4);
+}
+bool scene_registration_resolve(const SceneRegistrationBindings& h,std::uint32_t word,void*& p) noexcept {
+    p=nullptr;return word==0xffffffffu||h.resolve(h.context,word,&p);
+}
+int scene_registration(void* m,unsigned bytes,const SceneRegistrationBindings* b,void* scene,unsigned* changed,bool add) noexcept {
+    if(!m||bytes<0x3a8||!hologram_writable(m,0x3a8)||!b||!b->packed_handle||!b->resolve||!b->storage||
+       (add&&!b->grow)||!changed||!hologram_writable(changed,sizeof(*changed)))return 0;
+    const auto h=*b;std::uint32_t target=0xffffffffu;
+    if(scene&&!h.packed_handle(h.context,scene,&target))return -1;
+    const int count=hologram_read<int>(m,0x3a0),capacity=hologram_read<int>(m,0x398);
+    if(count<0||capacity<count||count>0x100000||capacity>0x100000)return -1;
+    void* storage=nullptr;int found=-1;
+    if(count&&!scene_registration_storage(m,h,static_cast<unsigned>(count),storage))return -1;
+    for(int i=0;i<count;++i){
+        void* wanted=nullptr;void* candidate=nullptr;
+        // The original re-resolves target for each entry, even if stale.
+        if(!scene_registration_resolve(h,target,wanted)||
+           !scene_registration_resolve(h,hologram_read<std::uint32_t>(storage,static_cast<unsigned>(i)*4),candidate))return -1;
+        if(wanted==candidate){found=i;break;}
+    }
+    if(add){
+        if(found>=0){*changed=0;return 1;}
+        if(count==0x100000)return -1;
+        if(count==capacity){
+            if(!h.grow(h.context,m,1)||hologram_read<int>(m,0x3a0)!=count||
+               hologram_read<int>(m,0x398)<=count||hologram_read<int>(m,0x398)>0x100000)return -1;
+        }
+        if(!scene_registration_storage(m,h,static_cast<unsigned>(count+1),storage))return -1;
+        hologram_write(m,0x3a0,count+1);
+        hologram_write(m,0x3a4,hologram_read<std::uint32_t>(m,0x394));
+        hologram_write(storage,static_cast<unsigned>(count)*4,target);
+    }else{
+        if(found<0){*changed=0;return 1;}
+        auto* p=static_cast<unsigned char*>(storage)+found*4;
+        if(found<count-1)std::memmove(p,p+4,static_cast<unsigned>(count-found-1)*4);
+        hologram_write(m,0x3a0,count-1);
+    }
+    *changed=1;return 1;
+}
+int __cdecl scene_registration_add(void* m,unsigned bytes,const SceneRegistrationBindings* b,void* s,unsigned* out) noexcept {
+    return scene_registration(m,bytes,b,s,out,true);
+}
+int __cdecl scene_registration_remove(void* m,unsigned bytes,const SceneRegistrationBindings* b,void* s,unsigned* out) noexcept {
+    return scene_registration(m,bytes,b,s,out,false);
+}
+const SceneRegistrationApi scene_registration_api{version,sizeof(SceneRegistrationApi),&scene_registration_add,&scene_registration_remove};
+
 
 
 
@@ -8675,6 +8728,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetSceneRegistrationApi=_SiN_GetSceneRegistrationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneRegistrationApi* __cdecl
+SiN_GetSceneRegistrationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneRegistrationApi)?&scene_registration_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetSceneManagerTickApi=_SiN_GetSceneManagerTickApi")

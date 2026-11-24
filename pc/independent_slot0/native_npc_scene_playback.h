@@ -159,6 +159,28 @@ struct SceneManagerTickApi {
     int (__cdecl *destroy)(SceneManagerControl*,const SceneManagerLifecycleBindings*) noexcept;
 };
 using GetSceneManagerTickApi=const SceneManagerTickApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_registration_export[]="SiN_GetSceneRegistrationApi";
+struct SceneRegistrationBindings {
+    void* context;
+    int (__cdecl *packed_handle)(void*,void* scene,std::uint32_t*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**) noexcept;
+    // Host validates the allocation word and returns its live writable span.
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned* bytes) noexcept;
+    // Original vector grow (221a4f00), requested additional capacity.
+    // Host updates +394/+398; it must not mutate logical count +3a0.
+    int (__cdecl *grow)(void*,void* manager,unsigned additional) noexcept;
+};
+struct SceneRegistrationApi {
+    std::uint32_t version,size;
+    // Original register 221ab300 and remove 221a9fa0. Null scene is
+    // supported: its resolved identity is null, as in original 221a7940.
+    // Caller serializes list access; may run within a manager advance
+    // callback. Output changed is a native diagnostic, not original return.
+    int (__cdecl *add)(void*,unsigned,const SceneRegistrationBindings*,void* scene,unsigned* changed) noexcept;
+    int (__cdecl *remove)(void*,unsigned,const SceneRegistrationBindings*,void* scene,unsigned* changed) noexcept;
+};
+using GetSceneRegistrationApi=const SceneRegistrationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 
