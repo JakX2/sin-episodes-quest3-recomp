@@ -597,6 +597,29 @@ struct SceneSpeechCallbackApi {
 };
 using GetSceneSpeechCallbackApi=const SceneSpeechCallbackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Shared scripted/instanced actor cache: 221a2c20, 221aaf50, 22114060.
+inline constexpr char scene_actor_cache_export[]="SiN_GetSceneActorCacheApi";
+struct SceneActorCacheBindings {
+    void* context;
+    int (__cdecl *parsed)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *grow)(void*,void* vector,unsigned additional) noexcept;
+    // Serial-validated EHANDLE resolution; null is a stale handle.
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original virtual +338 (different for scripted and instanced scenes).
+    // Choreography actor word is from parsed+14; host extracts its name.
+    int (__cdecl *lookup)(void*,void* scene,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *handle)(void*,void*,std::uint32_t*) noexcept;
+    int (__cdecl *invalid_index)(void*,void* scene,int,unsigned) noexcept;
+};
+struct SceneActorCacheApi {
+    std::uint32_t version,size;
+    int (__cdecl *index)(void*,unsigned,int,const SceneActorCacheBindings*,void**,unsigned*) noexcept;
+    int (__cdecl *actor)(void*,unsigned,std::uint32_t,const SceneActorCacheBindings*,void**,unsigned*) noexcept;
+};
+using GetSceneActorCacheApi=const SceneActorCacheApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+
 
 
 

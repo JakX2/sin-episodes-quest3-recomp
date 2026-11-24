@@ -1471,4 +1471,45 @@ inline void check_speech_lifecycle(const SceneSpeechCallbackApi& cb,const Native
     assert(cb.invoke(f.scene+0x410,8,nullptr,0,12,0,nullptr,0,nullptr,0,nullptr,&result)==1&&result==1);
 }
 
+struct SceneActorCacheFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};
+    alignas(4) std::uint32_t slots[2]{0x1234,0x5678},actors[2]{0x100,0x200};
+    unsigned grows=0,lookups=0,resolves=0,invalid=0;bool missing=false,stale=false;
+    SceneActorCacheBindings b{};
+    static SceneActorCacheFixture& get(void* p){return *static_cast<SceneActorCacheFixture*>(p);}
+    SceneActorCacheFixture(){
+        F::put(scene,0x40c,0x987);F::put(parsed,0x14,0x456);F::put(parsed,0x20,2);
+        b.context=this;
+        b.parsed=[](void* p,std::uint32_t word,void** out,unsigned* size) noexcept ->int{
+            auto& f=get(p);assert(word==0x987);*out=f.parsed;*size=sizeof(f.parsed);return 1;};
+        b.storage=[](void* p,std::uint32_t word,void** out,unsigned* size) noexcept ->int{
+            auto& f=get(p);if(word==0x456)*out=f.actors;else if(word==0x789)*out=f.slots;else return 0;*size=8;return 1;};
+        b.grow=[](void* p,void* vector,unsigned n) noexcept ->int{
+            auto& f=get(p);assert(vector==f.scene+0x3f8&&n==2);++f.grows;F::put(vector,0,0x789);F::put(vector,4,2);return 1;};
+        b.resolve=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept ->int{
+            auto& f=get(p);++f.resolves;*out=f.stale?nullptr:word==0x1001?f.actor1:f.actor2;*bytes=*out?0x90:0;return 1;};
+        b.lookup=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* bytes) noexcept ->int{
+            auto& f=get(p);assert(scene==f.scene);++f.lookups;*out=f.missing?nullptr:word==0x100?f.actor1:f.actor2;*bytes=*out?0x90:0;return 1;};
+        b.handle=[](void* p,void* actor,std::uint32_t* word) noexcept ->int{
+            auto& f=get(p);*word=actor==f.actor1?0x1001:0x2002;return 1;};
+        b.invalid_index=[](void* p,void* scene,int,unsigned count) noexcept ->int{
+            auto& f=get(p);assert(scene==f.scene&&count==2);++f.invalid;return 1;};
+    }
+};
+inline void check_scene_actor_cache(const SceneActorCacheApi& api){
+    using F=ScenePlaybackFixture;SceneActorCacheFixture f;void* out=nullptr;unsigned bytes=0;
+    assert(api.actor(f.scene,sizeof(f.scene),0x999,&f.b,&out,&bytes)==1&&!out&&!bytes&&!f.grows);
+    assert(api.index(f.scene,sizeof(f.scene),-1,&f.b,&out,&bytes)==1&&!out&&f.invalid==1&&f.grows==1);
+    assert(f.slots[0]==0xffffffffu&&f.slots[1]==0xffffffffu&&F::word(f.scene,0x404)==2&&F::word(f.scene,0x408)==0x789);
+    assert(api.actor(f.scene,sizeof(f.scene),0x200,&f.b,&out,&bytes)==1&&out==f.actor2&&bytes==0x90&&f.slots[1]==0x2002&&f.lookups==1);
+    assert(api.index(f.scene,sizeof(f.scene),1,&f.b,&out,&bytes)==1&&out==f.actor2&&f.resolves==1&&f.lookups==1);
+    F::put(f.actor2,0x8c,1);f.missing=true;
+    assert(api.index(f.scene,sizeof(f.scene),1,&f.b,&out,&bytes)==1&&!out&&!bytes&&f.lookups==2&&f.slots[1]==0x2002);
+    F::put(f.actor2,0x8c,0);f.missing=false;f.stale=true;
+    assert(api.index(f.scene,sizeof(f.scene),1,&f.b,&out,&bytes)==1&&out==f.actor2&&f.lookups==3);
+    assert(api.index(f.scene,sizeof(f.scene),0,&f.b,&out,&bytes)==1&&out==f.actor1&&f.slots[0]==0x1001&&f.lookups==4&&f.grows==1);
+    assert(api.index(f.scene,sizeof(f.scene),2,&f.b,&out,&bytes)==1&&!out&&f.invalid==2);
+}
+
 }

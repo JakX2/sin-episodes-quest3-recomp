@@ -610,6 +610,12 @@ int main(int argc,char** argv){
     assert(sceneSpeechCallback&&!getSceneSpeechCallback(0,sizeof(tables::SceneSpeechCallbackApi))&&!getSceneSpeechCallback(1,0));
     tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle);
     std::puts("PASS native generated scene speech callback through manager, records, caption and cleanup");
+    const auto getSceneActorCache=reinterpret_cast<tables::GetSceneActorCacheApi>(GetProcAddress(server,tables::scene_actor_cache_export));
+    assert(getSceneActorCache&&!GetProcAddress(client,tables::scene_actor_cache_export));
+    const auto* sceneActorCache=getSceneActorCache(1,sizeof(tables::SceneActorCacheApi));
+    assert(sceneActorCache&&!getSceneActorCache(0,sizeof(tables::SceneActorCacheApi))&&!getSceneActorCache(1,0));
+    tables::test::check_scene_actor_cache(*sceneActorCache);
+    std::puts("PASS native scene actor lookup cache, stale handles and fallback");
 
 
 
