@@ -671,6 +671,12 @@ int main(int argc,char** argv){
     assert(choreographySymbol&&!getChoreographySymbol(0,sizeof(tables::ChoreographySymbolApi))&&!getChoreographySymbol(1,0));
     tables::test::check_choreography_symbol(*choreographySymbol);
     std::puts("PASS original choreography symbol construction and destruction");
+    const auto getOwnedChoreography=reinterpret_cast<tables::GetOwnedChoreographyApi>(GetProcAddress(server,tables::owned_choreography_export));
+    assert(getOwnedChoreography&&!GetProcAddress(client,tables::owned_choreography_export));
+    const auto* ownedChoreography=getOwnedChoreography(1,sizeof(tables::OwnedChoreographyApi));
+    assert(ownedChoreography&&!getOwnedChoreography(0,sizeof(tables::OwnedChoreographyApi))&&!getOwnedChoreography(1,0));
+    tables::test::check_owned_choreography(*ownedChoreography,*nativeSceneRetirement,*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation);
+    std::puts("PASS owned choreography symbol lifecycle and partial allocation cleanup");
 
 
 
