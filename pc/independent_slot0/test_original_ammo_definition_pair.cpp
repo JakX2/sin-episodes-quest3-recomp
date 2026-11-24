@@ -158,7 +158,12 @@ int main(int argc,char** argv){
     const auto* holoServer=getHoloServer(1,sizeof(tables::HologramServerApi));
     const auto* holoClient=getHoloClient(1,sizeof(tables::HologramClientApi));
     assert(holoServer&&holoClient&&!getHoloServer(0,sizeof(tables::HologramServerApi))&&!getHoloClient(1,0));
-    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient);
+    const auto getGruntDeath=reinterpret_cast<tables::GetGruntDeathApi>(GetProcAddress(client,tables::grunt_death_export));
+    assert(getGruntDeath&&!GetProcAddress(server,tables::grunt_death_export));
+    const auto* gruntDeath=getGruntDeath(1,sizeof(tables::GruntDeathApi));
+    assert(gruntDeath&&!getGruntDeath(0,sizeof(tables::GruntDeathApi))&&!getGruntDeath(1,0));
+    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath);
+    std::puts("PASS native paired SiN grunt death effect and original branch ordering");
     std::puts("PASS native paired SiN hologram five-state controller, sound order and client flicker");
     std::puts("PASS native paired SiN enemy and additional weapon network class extension (11)");
     std::puts("PASS native paired network aggregate (35 owned tables, 15 class records, transactional construction)");

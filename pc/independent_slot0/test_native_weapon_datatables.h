@@ -1136,9 +1136,92 @@ inline void check_hologram_behavior(const HologramServerApi& sa,const HologramCl
     assert(!ca.visibility(client,sizeof(client),0,&shared,&visible)&&visible==9);
     set(client,0xd74,19);assert(ca.visibility(client,sizeof(client),100,&shared,&visible)&&read(client,0xd74)==19);
 }
+
+struct GruntDeathFixture {
+    HologramControl* ctrl=nullptr;
+    int ragdoll=0;
+    bool no_ragdoll=false;
+    unsigned suppressed=0,events[20]{},count=0,fail=0,random_count=0;
+    float sample=0.5f;
+    GruntHeadEffect effect{};
+    GruntHeadPath path=GruntHeadPath::None;
+    bool push(unsigned e){assert(ctrl&&ctrl->busy&&count<20);events[count++]=e;return e!=fail;}
+};
+inline int __cdecl grunt_base(void* context,void* source,int arg,void** out) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);assert(source==f.ctrl->object&&arg==1);
+    *out=f.no_ragdoll?nullptr:&f.ragdoll;return f.push(1);
+}
+inline int __cdecl grunt_suppressed(void* context,unsigned* out) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);*out=f.suppressed;return f.push(2);
+}
+inline int __cdecl grunt_find(void* context,void* ragdoll,const char* name,int* group) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);assert(ragdoll==&f.ragdoll&&!std::strcmp(name,"heads"));
+    *group=4;return f.push(3);
+}
+inline int __cdecl grunt_count(void* context,void* ragdoll,int group,int* count) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);assert(ragdoll==&f.ragdoll&&group==4);
+    *count=3;return f.push(4);
+}
+inline int __cdecl grunt_set(void* context,void* ragdoll,int group,int value) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);assert(ragdoll==&f.ragdoll&&group==4&&value==2);
+    return f.push(5);
+}
+inline int __cdecl grunt_random_float(void* context,float low,float high,float* out) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);assert(low==0&&high==1);
+    *out=f.sample;return f.push(6);
+}
+inline int __cdecl grunt_random_int(void* context,int low,int high,int* out) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);assert(low==0&&high==32767&&f.random_count<3);
+    constexpr int vals[]={0,16384,32767};*out=vals[f.random_count++];return f.push(7);
+}
+inline int __cdecl grunt_orientation(void* context,void* object,float* xyz) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);assert(object==f.ctrl->object);
+    xyz[0]=5;xyz[1]=6;xyz[2]=7;return f.push(8);
+}
+inline int __cdecl grunt_position(void* context,void* object,float* xyz) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);assert(object==f.ctrl->object);
+    xyz[0]=8;xyz[1]=9;xyz[2]=10;return f.push(9);
+}
+inline int __cdecl grunt_emit(void* context,GruntHeadPath path,const GruntHeadEffect* e) noexcept {
+    auto& f=*static_cast<GruntDeathFixture*>(context);f.effect=*e;f.path=path;return f.push(10);
+}
+inline void check_grunt_death(const GruntDeathApi& api,const ExtraSendView& sv,const ExtraRecvView& rv){
+    alignas(4) unsigned char source[0xd88]{},server[0xc54]{};
+    HologramControl ctrl{source,sizeof(source)};GruntDeathFixture f{&ctrl};
+    GruntDeathBindings b{&f,&grunt_base,&grunt_suppressed,&grunt_find,&grunt_count,&grunt_set,
+        &grunt_random_float,&grunt_random_int,&grunt_orientation,&grunt_position,&grunt_emit};
+    GruntDeathResult result{};
+    const auto run=[&](){f.count=0;f.random_count=0;return api.run(&ctrl,&b,1,&result);};
+    const auto expect=[&](std::initializer_list<unsigned> events){
+        assert(f.count==events.size()&&!std::memcmp(f.events,events.begin(),events.size()*4));
+    };
+    assert(run()==1&&result.ragdoll==&f.ragdoll&&result.path==GruntHeadPath::None);expect({1});
+    // Use the actual original grunt property callbacks, not a manually
+    // assigned client flag or independently invented velocity.
+    server[0xc44]=1;const float velocity[]={1,-2,3};
+    std::memcpy(server+0xc48,velocity,12);
+    for(unsigned i=1;i<3;++i){
+        auto& s=sv.tables[ExGrunt]->props[i];auto& c=rv.tables[ExGrunt]->props[i];
+        s::DVariant v{};s.scalarProxy(&s,server,server+s.offset,&v,0,1);
+        RecvData d{&c,v,0,1};c.proxy(&d,source,source+c.offset);
+    }
+    f.no_ragdoll=true;assert(run()==1&&!result.ragdoll);expect({1});f.no_ragdoll=false;
+    f.suppressed=1;assert(run()==1&&result.path==GruntHeadPath::None);expect({1,2});
+    f.suppressed=0;
+    assert(run()==1&&result.path==GruntHeadPath::EffectRecord);expect({1,2,3,4,5,6,7,7,7,8,9,10});
+    assert(f.effect.source==source&&!std::strcmp(f.effect.model,"models/characters/mobgrunt/decaphead.mdl")&&
+        f.effect.entity_index==-1&&f.effect.lifetime==0&&f.effect.orientation[1]==6&&f.effect.position[2]==10);
+    assert(!std::memcmp(f.effect.velocity,velocity,12)&&f.effect.angles[0]==-180&&
+        f.effect.angles[1]>0&&f.effect.angles[1]<0.01f&&f.effect.angles[2]>179.99f&&f.effect.angles[2]<180.01f);
+    f.sample=0.1f;assert(run()==1&&result.path==GruntHeadPath::TimedModel);expect({1,2,3,4,5,6,7,7,7,9,10});
+    assert(f.effect.lifetime==4&&f.effect.orientation[1]==0);
+    f.fail=10;assert(run()==-1&&ctrl.blocked&&result.ragdoll==&f.ragdoll);
+    assert(run()==0&&!f.count&&api.acknowledge(&ctrl)&&!ctrl.blocked);
+    f.fail=0;assert(run()==1&&result.path==GruntHeadPath::TimedModel);
+}
 inline void check_extra_entities(const ExtraSendApi& sa,const ExtraRecvApi& ra,
         const AggregateSendApi& asa,const AggregateRecvApi& ara,AggregateSendView& sb,AggregateRecvView& rb,
-        const HologramServerApi& hsa,const HologramClientApi& hra){
+        const HologramServerApi& hsa,const HologramClientApi& hra,const GruntDeathApi& gda){
     ExtraSendBindings bs{&sb};ExtraRecvBindings br{&rb,{}};
     ExtraSendView sv{};ExtraRecvView rv{};
     assert(!ra.create(&br,&rv)&&!rv.handle);
@@ -1185,12 +1268,13 @@ inline void check_extra_entities(const ExtraSendApi& sa,const ExtraRecvApi& ra,
     assert(sv.tables[ExHologram]->props[1].bits==32&&rv.tables[ExHologram]->props[1].offset==0xd7c);
     assert(sv.tables[ExShockwave]->props[1].flags==2&&rv.tables[ExShockwave]->props[1].offset==0xd64);
     check_hologram_behavior(hsa,hra,sv,rv);
+    check_grunt_death(gda,sv,rv);
     sv.tables[ExAI]->written=true;rv.records[ExElite].class_id=7;
     assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
     sv.tables[ExAI]->written=false;rv.records[ExElite].class_id=0;
     assert(sa.destroy(&sv)&&ra.destroy(&rv)&&!sv.handle&&!rv.handle);
 }
-inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era,const HologramServerApi& hsa,const HologramClientApi& hra){
+inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era,const HologramServerApi& hsa,const HologramClientApi& hra,const GruntDeathApi& gda){
     s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
     RecvProp rp[8];RecvTable rc{rp,8,nullptr,"DT_CollisionProperty"};
     NativeOwner owner;sin_independent::EntityHandleEntry entries[64]{};
@@ -1211,7 +1295,7 @@ inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& r
     assert(!sa.create(&sbad,&sv)&&!sv.handle&&!sv.class_head&&!sv.tables[0]);
     assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
     assert(sv.class_count==15&&rv.class_count==15&&!sa.create(&sb,&sv)&&!ra.create(&rb,&rv));
-    check_extra_entities(esa,era,sa,ra,sv,rv,hsa,hra);
+    check_extra_entities(esa,era,sa,ra,sv,rv,hsa,hra,gda);
     for(unsigned i=0;i<aggregate_table_count;++i){
         assert(sv.tables[i]&&rv.tables[i]&&std::strcmp(sv.tables[i]->name,rv.tables[i]->name)==0);
         for(unsigned j=0;j<i;++j)assert(sv.tables[i]!=sv.tables[j]&&rv.tables[i]!=rv.tables[j]);
