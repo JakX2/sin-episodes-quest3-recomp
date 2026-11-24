@@ -24,6 +24,7 @@
 #include "native_vehicle_passengers.h"
 #include "native_vehicle_map.h"
 #include "native_vehicle_lifecycle.h"
+#include "native_vehicle_think.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4579,32 +4580,39 @@ bool passenger_refill_one(const VehiclePassengerBindings& h,void* combat,const c
     if(!h.ammo_max(h.context,index,&max))return false;
     return h.give_ammo(h.context,combat,max,index,0)!=0;
 }
-int __cdecl passenger_refill(HologramControl* c,const VehiclePassengerBindings* b) noexcept {
-    if(!health_control(c,vehicle_passenger_extent)||!b||!b->clock||!b->occupant||!b->combat_character||
-       !b->base_player_cast||!b->view_index||!b->ammo_index||!b->ammo_allowed||!b->ammo_count||!b->ammo_max||!b->give_ammo)return 0;
-    c->busy=1;const auto h=*b;auto* v=c->object;
-    if(!hologram_read<unsigned char>(v,0x74c))return disp_finish(c,true);
+bool passenger_refill_ready(const VehiclePassengerBindings* b) noexcept {
+    return b&&b->clock&&b->occupant&&b->combat_character&&b->base_player_cast&&b->view_index&&
+        b->ammo_index&&b->ammo_allowed&&b->ammo_count&&b->ammo_max&&b->give_ammo;
+}
+bool passenger_refill_leaf(void* v,const VehiclePassengerBindings& h) noexcept {
+    if(!hologram_read<unsigned char>(v,0x74c))return true;
     float now=0;
-    if(!h.clock(h.context,&now))return disp_finish(c,false);
-    if(!(static_cast<double>(now)-hologram_read<float>(v,0x88c)>1.))return disp_finish(c,true);
+    if(!h.clock(h.context,&now))return false;
+    if(!(static_cast<double>(now)-hologram_read<float>(v,0x88c)>1.))return true;
     hologram_write(v,0x88c,now);
     for(int seat=0;seat<3;++seat){
         void* occupant=nullptr;void* combat=nullptr;
-        if(!h.occupant(h.context,v,seat,&occupant))return disp_finish(c,false);
+        if(!h.occupant(h.context,v,seat,&occupant))return false;
         if(!occupant)continue;
-        if(!h.combat_character(h.context,occupant,&combat))return disp_finish(c,false);
+        if(!h.combat_character(h.context,occupant,&combat))return false;
         if(!combat)continue;
         unsigned player=0;
-        if(!h.base_player_cast(h.context,combat,&player))return disp_finish(c,false);
+        if(!h.base_player_cast(h.context,combat,&player))return false;
         if(player){
             int view=-1;
-            if(!h.view_index(h.context,combat,&view))return disp_finish(c,false);
+            if(!h.view_index(h.context,combat,&view))return false;
             if(view!=1&&view!=3&&view!=4)continue;
         }
         constexpr const char* names[]={"MAG","AR","BUCK","ARNADE","FLAK","GRENADE"};
-        for(const char* name:names)if(!passenger_refill_one(h,combat,name))return disp_finish(c,false);
+        for(const char* name:names)if(!passenger_refill_one(h,combat,name))return false;
     }
-    return disp_finish(c,true);
+    return true;
+}
+
+int __cdecl passenger_refill(HologramControl* c,const VehiclePassengerBindings* b) noexcept {
+    if(!health_control(c,vehicle_passenger_extent)||!passenger_refill_ready(b))return 0;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,passenger_refill_leaf(c->object,h));
 }
 const VehiclePassengersApi vehicle_passengers_api{version,sizeof(VehiclePassengersApi),&passenger_defaults,&passenger_damage_factor,&passenger_enable_ammo,&passenger_refill,&health_ack};
 
@@ -4863,6 +4871,103 @@ int __cdecl vehicle_life_activate(HologramControl* c,const VehicleLifecycleBindi
     return disp_finish(c,!hologram_read<std::uint32_t>(v,0x218)||h.activate_tail(h.context,v,0x870)!=0);
 }
 const VehicleLifecycleApi vehicle_lifecycle_api{version,sizeof(VehicleLifecycleApi),&vehicle_life_defaults,&vehicle_life_spawn,&vehicle_life_activate,&health_ack};
+
+bool camera_ready(const VehicleCameraBindings* b) noexcept {
+    return b&&b->resolve&&b->find_named&&b->is_point_camera&&b->create&&b->handle&&b->spawn&&b->remove_link&&b->diagnostic;
+}
+int __cdecl camera_link_defaults(HologramControl* c) noexcept {
+    if(!health_control(c,camera_link_bytes))return 0;
+    hologram_write(c->object,0x394,0xffffffffu);
+    hologram_write(c->object,0x398,0xffffffffu);
+    return 1;
+}
+bool camera_resolve(void* v,const VehicleCameraBindings& h,void*& link) noexcept {
+    link=nullptr;const auto word=hologram_read<std::uint32_t>(v,0x760);
+    return word==0xffffffffu||h.resolve(h.context,word,&link)!=0;
+}
+bool vehicle_camera_leaf(void* v,const VehicleCameraBindings& h) noexcept {
+    const auto name=hologram_read<std::uint32_t>(v,0x75c);
+    if(!name)return true; // original does not unlink when name is zero
+    void* link=nullptr;
+    if(!camera_resolve(v,h,link))return false;
+    if(!hologram_read<unsigned char>(v,0x758)){
+        if(!link)return true;
+        VehicleMapBindings removal{};removal.context=h.context;removal.resolve=h.resolve;removal.unlink_camera=h.remove_link;
+        return vehicle_map_unlink(v,removal);
+    }
+    if(link)return true;
+    void* camera=nullptr;
+    if(!h.find_named(h.context,name,&camera))return false;
+    unsigned matched=0;
+    if(camera&&!h.is_point_camera(h.context,camera,&matched))return false;
+    if(camera&&matched){
+        HologramControl* c=nullptr;
+        if(!h.create(h.context,"info_camera_link",&c))return false;
+        std::uint32_t link_word=0xffffffffu;
+        if(c){
+            if(!health_control(c,camera_link_bytes))return false;
+            c->busy=1;
+            std::uint32_t camera_word=0xffffffffu,vehicle_word=0xffffffffu;
+            if(!h.handle(h.context,camera,&camera_word)||camera_word==0xffffffffu||
+               !h.handle(h.context,v,&vehicle_word)||vehicle_word==0xffffffffu){
+                disp_finish(c,false);return false;
+            }
+            hologram_write(c->object,0x394,camera_word);hologram_write(c->object,0x398,vehicle_word);
+            if(!h.spawn(h.context,c->object)||!h.handle(h.context,c->object,&link_word)||link_word==0xffffffffu){
+                disp_finish(c,false);return false;
+            }
+            disp_finish(c,true);
+        }
+        hologram_write(v,0x760,link_word);
+    }
+    if(!camera_resolve(v,h,link))return false;
+    if(!link){
+        if(!h.diagnostic(h.context,hologram_read<std::uint32_t>(v,0x75c)))return false;
+        hologram_write(v,0x75c,0u);
+    }
+    return true;
+}
+int __cdecl vehicle_refresh_camera(HologramControl* c,const VehicleCameraBindings* b) noexcept {
+    if(!health_control(c,vehicle_object_bytes)||!camera_ready(b))return 0;
+    c->busy=1;const auto h=*b;return disp_finish(c,vehicle_camera_leaf(c->object,h));
+}
+bool vehicle_think_dirty(void* v,const VehicleThinkBindings& h) noexcept {
+    if(hologram_read<unsigned char>(v,0x1f0)){hologram_write(v,0x200,static_cast<unsigned char>(1));return true;}
+    const auto word=hologram_read<std::uint32_t>(v,0x16c);
+    return !word||h.dirty_edict(h.context,v,word)!=0;
+}
+int __cdecl vehicle_think(HologramControl* c,const VehicleThinkBindings* b) noexcept {
+    if(!health_control(c,vehicle_object_bytes)||!b||!passenger_refill_ready(&b->passengers)||!camera_ready(&b->camera)||
+       !b->base_think||!b->wiper_update||!b->driver_update||!b->clock||!b->dirty_edict||!b->schedule||
+       !b->startup||!b->active_predicate||!b->frame_time||!b->tail)return 0;
+    c->busy=1;const auto h=*b;auto* v=c->object;
+    if(!h.base_think(h.context,v)||!h.wiper_update(h.context,v)||!h.driver_update(h.context,v))return disp_finish(c,false);
+    float now=0;
+    if(!h.clock(h.context,&now))return disp_finish(c,false);
+    if(hologram_read<float>(v,0x30)!=now){
+        if(!vehicle_think_dirty(v,h))return disp_finish(c,false);
+        hologram_write(v,0x30,now);
+    }
+    if(!h.clock(h.context,&now)||!h.schedule(h.context,v,now,0))return disp_finish(c,false);
+    if(hologram_read<unsigned char>(v,0x2d9)!=1){
+        if(!vehicle_think_dirty(v,h))return disp_finish(c,false);
+        hologram_write(v,0x2d9,static_cast<unsigned char>(1));
+    }
+    if(!hologram_read<unsigned char>(v,0x740)){
+        hologram_write(v,0x740,static_cast<unsigned char>(1));
+        if(!h.startup(h.context,v,0)||!h.startup(h.context,v,1))return disp_finish(c,false);
+    }
+    if(!passenger_refill_leaf(v,h.passengers)||!vehicle_camera_leaf(v,h.camera))return disp_finish(c,false);
+    unsigned active=0;
+    if(!h.active_predicate(h.context,v,&active))return disp_finish(c,false);
+    if(!active)hologram_write(v,0x744,0.f);
+    else{
+        float frame=0;if(!h.frame_time(h.context,&frame))return disp_finish(c,false);
+        hologram_write(v,0x744,hologram_read<float>(v,0x744)+frame);
+    }
+    return disp_finish(c,h.tail(h.context,v)!=0);
+}
+const VehicleThinkApi vehicle_think_api{version,sizeof(VehicleThinkApi),&camera_link_defaults,&vehicle_refresh_camera,&vehicle_think,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -6895,6 +7000,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleLi
 SiN_GetVehicleLifecycleApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleLifecycleApi)?&vehicle_lifecycle_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleThinkApi=_SiN_GetVehicleThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleThinkApi* __cdecl
+SiN_GetVehicleThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleThinkApi)?&vehicle_think_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
