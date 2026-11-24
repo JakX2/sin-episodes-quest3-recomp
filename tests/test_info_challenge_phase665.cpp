@@ -47,13 +47,13 @@ struct Out final:n::IChallengeOutput{
 };
 void original_distinct_value_sources_and_routing(){
  Values values;Out output;n::InfoChallenge entity(42u,values,output);
- assert(entity.accept("GetChallengeDifference").code==n::Code::NoSnapshot);
+ assert(entity.accept_input("GetChallengeDifference").code==n::Code::NoSnapshot);
  assert(entity.capture_snapshot()==n::Code::Completed);
  assert(entity.snapshot().valid&&entity.snapshot().value==0.2f);
  assert(values.spawn_reads==1&&values.initial_reads==0);
- assert(entity.accept("GetInitialChallenge").value==17.f);
- assert(entity.accept("GetCurrentChallenge").value==40.f);
- const auto diff=entity.accept("GetChallengeDifference");
+ assert(entity.accept_input("GetInitialChallenge").value==17.f);
+ assert(entity.accept_input("GetCurrentChallenge").value==40.f);
+ const auto diff=entity.accept_input("GetChallengeDifference");
  assert(diff.code==n::Code::Completed);
  assert(diff.value==3980.f); // no invented normalization of retail values
  assert(values.current_reads==2&&values.initial_reads==1);
@@ -64,7 +64,7 @@ void original_distinct_value_sources_and_routing(){
  assert(b.name=="OnCurrentChallenge"&&b.offset==0x3acu&&b.value==40.f);
  assert(c.name=="OnChallengeDifference"&&c.offset==0x3c4u&&c.value==3980.f);
  for(const auto& e:output.events)assert(e.activator==42u&&e.caller==42u);
- assert(entity.accept("getcurrentchallenge").code==n::Code::UnsupportedInput);
+ assert(entity.accept_input("getcurrentchallenge").code==n::Code::UnsupportedInput);
  assert(entity.accept(static_cast<n::Input>(255)).code==n::Code::UnsupportedInput);
 }
 void fixed_profile_no_adaptive_drift(){
@@ -77,19 +77,19 @@ void fixed_profile_no_adaptive_drift(){
   policy.observe_performance_sample(9000.f);
   policy.observe_dynamic_trigger({i,200.f,0});
  }
- assert(entity.accept("GetInitialChallenge").value==1.f);
- assert(entity.accept("GetCurrentChallenge").value==1.f);
- assert(entity.accept("GetChallengeDifference").value==0.f);
+ assert(entity.accept_input("GetInitialChallenge").value==1.f);
+ assert(entity.accept_input("GetCurrentChallenge").value==1.f);
+ assert(entity.accept_input("GetChallengeDifference").value==0.f);
  assert(policy.set_skill(1)==f::Selection::Applied);
- assert(entity.accept("GetInitialChallenge").value==1.f);
- assert(entity.accept("GetCurrentChallenge").value==0.f);
- assert(entity.accept("GetChallengeDifference").value==-100.f);
+ assert(entity.accept_input("GetInitialChallenge").value==1.f);
+ assert(entity.accept_input("GetCurrentChallenge").value==0.f);
+ assert(entity.accept_input("GetChallengeDifference").value==-100.f);
  const auto saved=entity.snapshot();
  Out restore_output;n::InfoChallenge restored(14u,values,restore_output);
  assert(restored.restore_snapshot(saved));
- assert(restored.accept("GetChallengeDifference").value==-100.f);
+ assert(restored.accept_input("GetChallengeDifference").value==-100.f);
  assert(restored.capture_snapshot()==n::Code::Completed);
- assert(restored.accept("GetChallengeDifference").value==0.f);
+ assert(restored.accept_input("GetChallengeDifference").value==0.f);
 }
 void host_faults_and_snapshot_validation(){
  Values values;Out output;n::InfoChallenge entity(33u,values,output);
