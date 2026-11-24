@@ -3142,6 +3142,43 @@ int __cdecl response_interval_sample(const void* interval,unsigned bytes,const R
     *result=static_cast<float>(static_cast<double>(offset)+base);return 1;
 }
 const ResponseTimingUpdateApi response_timing_update_api{version,sizeof(ResponseTimingUpdateApi),&response_speaking,&response_note,&response_interval_sample};
+int __cdecl response_record(void* exp,unsigned bytes,const ResponseRecordBindings* b,const char* name,
+                            void* response,unsigned extent,unsigned notify) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!name||
+       !response||extent<0x124||!sin_independent::vgui_layout::Readable(response,0x124)||
+       !b||!b->destroy||!b->history.lookup||!b->history.insert||!b->history.entry||
+       !b->history.clock||!b->history.notify)return 0;
+    const auto host=*b;const auto h=host.history;
+    const auto ptr=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(response));
+    const auto drop=[&](){(void)host.destroy(host.context,response);return -1;};
+    int index=-1;
+    if(!h.lookup(h.context,exp,name,&index)||index<-1)return drop();
+    if(index==-1){
+        float initial=0;
+        if(!h.clock(h.context,&initial)||!h.insert(h.context,exp,name,initial,&index)||index<0)return drop();
+    }
+    void* row=nullptr;unsigned n=0;float now=0;
+    if(!h.entry(h.context,exp,index,&row,&n)||n<0x1c||!hologram_writable(row,0x1c)||!h.clock(h.context,&now))return drop();
+    const auto previous=hologram_read<std::uint32_t>(row,0x18);
+    // Original caller selects a fresh object. Refuse an aliased existing
+    // history object rather than destroying and retaining a dangling pointer.
+    if(previous==ptr)return -1;
+    hologram_write(row,0x14,now);
+    if(previous){
+        const bool ok=host.destroy(host.context,reinterpret_cast<void*>(static_cast<std::uintptr_t>(previous)))!=0;
+        if(!ok){
+            // Host transport failure has no original equivalent. Destroy
+            // consumes on invocation, so invalidate the old word and drop new.
+            hologram_write(row,0x18,0u);return drop();
+        }
+    }
+    hologram_write(row,0x18,ptr);
+    // Original tests the low byte of the notification argument.
+    if((notify&0xff)&&!h.notify(h.context,exp,name))return -1;
+    return 1;
+}
+const ResponseRecordApi response_record_api{version,sizeof(ResponseRecordApi),&response_record};
+
 
 
 
@@ -7487,6 +7524,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseT
 SiN_GetResponseTimingUpdateApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseTimingUpdateApi)?&response_timing_update_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetResponseRecordApi=_SiN_GetResponseRecordApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseRecordApi* __cdecl
+SiN_GetResponseRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseRecordApi)?&response_record_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

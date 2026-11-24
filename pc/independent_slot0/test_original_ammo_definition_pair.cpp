@@ -386,6 +386,13 @@ int main(int argc,char** argv){
     assert(responseTimingUpdate&&!getResponseTimingUpdate(0,sizeof(tables::ResponseTimingUpdateApi))&&!getResponseTimingUpdate(1,0));
     tables::test::check_response_timing_update(*responseTimingUpdate);
     std::puts("PASS native response deadlines, shared semaphores and random interval");
+    const auto getResponseRecord=reinterpret_cast<tables::GetResponseRecordApi>(GetProcAddress(server,tables::response_record_export));
+    assert(getResponseRecord&&!GetProcAddress(client,tables::response_record_export));
+    const auto* responseRecord=getResponseRecord(1,sizeof(tables::ResponseRecordApi));
+    assert(responseRecord&&!getResponseRecord(0,sizeof(tables::ResponseRecordApi))&&!getResponseRecord(1,0));
+    tables::test::check_response_record(*responseRecord);
+    std::puts("PASS native response history replacement and ownership transfer");
+
 
 
 

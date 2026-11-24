@@ -233,6 +233,23 @@ struct ResponseTimingUpdateApi {
     int (__cdecl *sample)(const void* interval,unsigned bytes,const ResponseIntervalBindings*,float*) noexcept;
 };
 using GetResponseTimingUpdateApi=const ResponseTimingUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_record_export[]="SiN_GetResponseRecordApi";
+struct ResponseRecordBindings {
+    ResponseHistoryBindings history;
+    void* context;
+    // Consumes the supplied response on invocation, including transport
+    // failure. Validate original engine ownership before releasing it.
+    int (__cdecl *destroy)(void*,void* response) noexcept;
+};
+struct ResponseRecordApi {
+    std::uint32_t version,size;
+    // Original 220a7190(name,response,notify). Valid call consumes response
+    // except an already-owned identical pointer (rejected, not freed).
+    // 0 preflight rejection retains caller ownership, -1 transport error.
+    int (__cdecl *record)(void* exp,unsigned bytes,const ResponseRecordBindings*,const char* name,void* response,unsigned extent,unsigned notify) noexcept;
+};
+using GetResponseRecordApi=const ResponseRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 
