@@ -16,6 +16,7 @@
 #include "native_server_expression.h"
 #include "native_server_facial_think.h"
 #include "native_server_event_intensity.h"
+#include "native_server_npc_random_expression.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11278,6 +11279,73 @@ int __cdecl server_expression_apply(void* actor,unsigned bytes,void* record,unsi
     return 1;
 }
 const ServerExpressionApi server_expression_api{version,sizeof(ServerExpressionApi),&server_expression_apply};
+int __cdecl server_npc_random_expression_apply(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
+    float time,float now,bool background,const ServerNpcRandomExpressionBindings* b,unsigned* accepted) noexcept {
+    if(bytes<server_npc_random_expression_extent||rb<0x40||eb<0x3c0||
+       !hologram_writable(actor,server_npc_random_expression_extent)||!hologram_writable(record,0x40)||
+       !sin_independent::vgui_layout::Readable(event,0x3c0)||!hologram_writable(accepted,4)||
+       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->load||!b->controller||
+       !b->random_float||!b->random_int||!server_flex_ranges(b->ranges,b->count)||
+       !std::isfinite(time)||!std::isfinite(now))return 0;
+    const auto h=*b;
+    *accepted=0;
+    if(hologram_read<float>(record,0x3c)<now){
+        const auto* name=static_cast<const char*>(event)+0x104;
+        if(!std::memchr(name,0,128))return 0;
+        ServerExpressionBank bank{};
+        int status=h.load(h.context,actor,name,&bank);
+        if(!status)status=h.load(h.context,actor,"random",&bank);
+        if(status==0)return 1;
+        if(status!=1)return 0;
+        vfe_detail::Reader reader{};
+        if(!server_expression_read(bank,reader)||reader.settings<=0)return 0;
+        float delay=0;
+        if(!h.random_float(h.context,.3f,.5f,&delay)||!std::isfinite(delay)||delay<.3f||delay>.5f)return 0;
+        hologram_write(record,0x3c,static_cast<float>(static_cast<double>(now)+30.0/reader.settings*delay));
+        int selected=0;
+        if(!h.random_int(h.context,0,reader.settings-1,&selected)||selected<0||selected>=reader.settings)return 0;
+        if(reader.terminal(selected)!=1)return 1;
+        const auto s=reader.setting(selected);
+        const int count=reader.word(s+8);const auto rows=s+reader.word(s+20);
+        if(count<0||count>4096||!reader.span(rows,12LL*count))return 0;
+        for(int i=0;i<count;++i){
+            const auto row=rows+i*12LL;const int key=reader.word(row);
+            if(key<0||key>=reader.keys)return 0;
+            const auto* name=reader.name(reader.word(reader.names_off+key*4LL));
+            if(!name)return 0;
+            const int local=h.controller(h.context,actor,name);
+            if(local<-1)return 0;
+            if(local<0||local>=static_cast<int>(h.count))continue;
+            float weight=0;std::memcpy(&weight,reader.v.data+row+4,4);
+            if(!std::isfinite(weight))return 0;
+            hologram_write(actor,0xefc+local*4,weight);
+        }
+    }
+    float intensity=0,fade=0;
+    if(h.intensity){
+        if(!h.intensity(h.context,event,time,&intensity))return 0;
+    }else if(!server_event_intensity(event,eb,time,h.context,h.storage,&intensity))return 0;
+    if(!std::isfinite(intensity)||!server_flex_fade(actor,bytes,record,rb,background,now,false,&fade))return 0;
+    const float weight=static_cast<float>(static_cast<double>(intensity)*fade);
+    for(unsigned i=0;i<h.count;++i){
+        float old=0;
+        if(!server_flex_weight_get(actor,bytes,h.ranges,h.count,i,&old))return 0;
+        const float target=hologram_read<float>(actor,0xefc+i*4);
+        if(!std::isfinite(old)||!std::isfinite(target))return 0;
+        float mixed=old;
+        if(old!=target){
+            const float difference=static_cast<float>(static_cast<double>(target)-old);
+            float divisor=0;
+            if(!h.random_float(h.context,2.f,4.f,&divisor)||!std::isfinite(divisor)||divisor<2||divisor>4)return 0;
+            mixed=static_cast<float>(static_cast<double>(difference)/divisor*weight+old);
+        }
+        if(mixed>1)mixed=1;if(mixed<0)mixed=0;
+        if(!server_flex_weight_set(actor,bytes,h.ranges,h.count,i,mixed,&h.dirty))return 0;
+    }
+    *accepted=1;return 1;
+}
+const ServerNpcRandomExpressionApi server_npc_random_expression_api{version,sizeof(ServerNpcRandomExpressionApi),&server_npc_random_expression_apply};
+
 int __cdecl server_facial_think(void* actor,unsigned bytes,float now,const ServerFacialThinkBindings* b) noexcept {
     if(bytes<server_flex_scene_extent||!hologram_writable(actor,server_flex_scene_extent)||!b||
        !b->storage||!std::isfinite(now))return 0;
@@ -13237,6 +13305,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFle
 SiN_GetServerFlexSplineApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFlexSplineApi)?&server_flex_spline_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcRandomExpressionApi=_SiN_GetServerNpcRandomExpressionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcRandomExpressionApi* __cdecl
+SiN_GetServerNpcRandomExpressionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcRandomExpressionApi)?&server_npc_random_expression_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerEventIntensityApi=_SiN_GetServerEventIntensityApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEventIntensityApi* __cdecl
