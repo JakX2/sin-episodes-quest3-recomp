@@ -14,6 +14,7 @@
 #include "native_server_flex_animation.h"
 #include "native_server_flex_spline.h"
 #include "native_server_expression.h"
+#include "native_server_facial_think.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11213,6 +11214,46 @@ int __cdecl server_expression_apply(void* actor,unsigned bytes,void* record,unsi
     return 1;
 }
 const ServerExpressionApi server_expression_api{version,sizeof(ServerExpressionApi),&server_expression_apply};
+int __cdecl server_facial_think(void* actor,unsigned bytes,float now,const ServerFacialThinkBindings* b) noexcept {
+    if(bytes<server_flex_scene_extent||!hologram_writable(actor,server_flex_scene_extent)||!b||
+       !b->storage||!std::isfinite(now))return 0;
+    const auto h=*b;
+    if(!server_flex_decay(actor,bytes,h.ranges,h.count,&h.dirty))return 0;
+    for(unsigned i=0;;++i){
+        const int count=hologram_read<int>(actor,0x5c4);
+        if(count<0||count>0x100000)return 0;
+        if(i>=static_cast<unsigned>(count))break;
+        const auto token=hologram_read<std::uint32_t>(actor,0x5b8);
+        void* rows=nullptr;unsigned rn=0;
+        if(!token||!h.storage(h.context,token,&rows,&rn)||rn<static_cast<unsigned>(count)*0x40||
+           !hologram_writable(rows,static_cast<unsigned>(count)*0x40))return 0;
+        auto* row=static_cast<unsigned char*>(rows)+i*0x40;
+        const auto event_word=hologram_read<std::uint32_t>(row,0),scene_word=hologram_read<std::uint32_t>(row,4);
+        void* event=nullptr;void* scene=nullptr;unsigned en=0,sn=0;
+        if(!event_word||!scene_word||!h.storage(h.context,event_word,&event,&en)||!h.storage(h.context,scene_word,&scene,&sn)||
+           en<0x3c0||sn<0x219||!sin_independent::vgui_layout::Readable(event,0x3c0)||
+           !sin_independent::vgui_layout::Readable(scene,0x219))return 0;
+        const unsigned type=hologram_read<unsigned>(event,0);
+        const float time=hologram_read<float>(scene,0x78);
+        unsigned accepted=0;
+        if(type==2&&h.base_expression){
+            if(!h.expression||!server_expression_apply(actor,bytes,row,0x40,event,en,time,h.expression))return 0;
+            accepted=1;
+        }else if(type==10&&h.base_flex){
+            if(!h.flex||!server_flex_animation_apply(actor,bytes,row,0x40,event,en,time,now,
+                hologram_read<unsigned char>(scene,0x218)!=0,h.flex))return 0;
+            accepted=1;
+        }else if(type==5&&h.base_speech)accepted=1;
+        else if(!h.other||!h.other(h.context,actor,row,scene,event,&accepted))return 0;
+        // Original retains the raw row pointer across virtual dispatch.
+        // Reject structural mutation rather than writing a stale allocation.
+        if(hologram_read<int>(actor,0x5c4)!=count||hologram_read<std::uint32_t>(actor,0x5b8)!=token)return 0;
+        if(accepted&0xff)hologram_write(row,0xc,static_cast<unsigned char>(1));
+    }
+    hologram_write(actor,0x600,static_cast<unsigned char>(0));return 1;
+}
+const ServerFacialThinkApi server_facial_think_api{version,sizeof(ServerFacialThinkApi),&server_facial_think};
+
 
 
 
@@ -13132,6 +13173,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFle
 SiN_GetServerFlexSplineApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFlexSplineApi)?&server_flex_spline_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerFacialThinkApi=_SiN_GetServerFacialThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFacialThinkApi* __cdecl
+SiN_GetServerFacialThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFacialThinkApi)?&server_facial_think_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerExpressionApi=_SiN_GetServerExpressionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerExpressionApi* __cdecl
