@@ -1705,12 +1705,12 @@ bool disp_stop(void* object,const DispenserBindings& b) noexcept {
     hologram_write(object,disp_steam,disp_invalid);
     return b.sound(b.context,object,DispenserSound::StopLoop)&&b.sound(b.context,object,DispenserSound::Stop);
 }
-int __cdecl disp_use(HologramControl* ctrl,const DispenserBindings* b,void* activator) noexcept {
-    if(!disp_valid(ctrl)||!b||!b->observe_use||!b->clock||!b->resolve||!b->sound||
-       !b->create_steam||!b->install_use_think||!b->schedule)return 0;
+bool disp_use_ready(const DispenserBindings* b) noexcept {
+    return b&&b->observe_use&&b->clock&&b->resolve&&b->sound&&b->create_steam&&b->install_use_think&&b->schedule;
+}
+int disp_use_body(HologramControl* ctrl,const DispenserBindings& host,void* activator) noexcept {
     auto* object=ctrl->object;
-    if(!hologram_read<unsigned char>(object,disp_loaded)||!activator)return 1;
-    ctrl->busy=1;const auto host=*b;
+    if(!hologram_read<unsigned char>(object,disp_loaded)||!activator)return disp_finish(ctrl,true);
     DispenserUseObservation o{};
     if(!host.observe_use(host.context,object,activator,&o)||o.is_player>1||o.within_use_predicate>1)
         return disp_finish(ctrl,false);
@@ -1724,6 +1724,10 @@ int __cdecl disp_use(HologramControl* ctrl,const DispenserBindings* b,void* acti
     if(!disp_start(object,host)||!host.install_use_think(host.context,object)||!disp_clock(host,now))
         return disp_finish(ctrl,false);
     return disp_finish(ctrl,host.schedule(host.context,object,now)!=0);
+}
+int __cdecl disp_use(HologramControl* ctrl,const DispenserBindings* b,void* activator) noexcept {
+    if(!disp_valid(ctrl)||!disp_use_ready(b))return 0;
+    ctrl->busy=1;const auto host=*b;return disp_use_body(ctrl,host,activator);
 }
 int __cdecl disp_think(HologramControl* ctrl,const DispenserBindings* b) noexcept {
     if(!disp_valid(ctrl)||!b||!b->resolve||!b->position||!b->clock||!b->heal||!b->remove||
@@ -2241,6 +2245,46 @@ int __cdecl can_ack(HologramControl* ctrl) noexcept {
 }
 const CanisterApi canister_api{version,sizeof(CanisterApi),&can_defaults,&can_describe,&can_set,&can_spawn,
     &can_idle,&can_caps,&can_use,&can_break,&can_ack};
+
+int __cdecl disp_use_variant(HologramControl* ctrl,const DispenserInputBindings* b,void* activator,unsigned type) noexcept {
+    if(!disp_valid(ctrl)||!b)return 0;
+    if(type!=0&&type!=1)return 1;
+    if(!b->use_event||(type==1&&!disp_use_ready(&b->dispenser)))return 0;
+    ctrl->busy=1;const auto host=*b;const auto& d=host.dispenser;
+    if(!host.use_event(d.context,activator,ctrl->object,type==1?2u:3u))return disp_finish(ctrl,false);
+    if(type==1)return disp_use_body(ctrl,d,activator);
+    // Original release only invalidates user. Next use think owns
+    // stopping steam, clearing time and updating the fill pose.
+    hologram_write(ctrl->object,disp_user,disp_invalid);
+    return disp_finish(ctrl,true);
+}
+int __cdecl disp_button_event(HologramControl* ctrl,const DispenserInputBindings* b,const char* name,void* event) noexcept {
+    if(!disp_valid(ctrl)||!b||!event||!b->dispenser.resolve||!b->dispenser.clock||
+       !b->dispenser.schedule||!b->screen_index||!b->event_index||!b->event_command||!b->install_eject)return 0;
+    char event_name[64]{};
+    if(!prop_key_read(name,event_name))return 0;
+    if(ascii_class_compare(event_name,"button_press"))return 1;
+    ctrl->busy=1;const auto host=*b;const auto& d=host.dispenser;
+    auto* object=ctrl->object;
+    void* screen=nullptr;
+    if(!screen_resolve(object,d,screen))return disp_finish(ctrl,false);
+    if(!screen)return disp_finish(ctrl,true);
+    // Original re-resolves screen handle before the index query.
+    if(!screen_live(object,d,screen))return disp_finish(ctrl,false);
+    int index=0,received=0;
+    if(!host.screen_index(d.context,screen,&index)||
+       !host.event_index(d.context,event,"entindex",0,&received))return disp_finish(ctrl,false);
+    if(index!=received)return disp_finish(ctrl,true);
+    const char* command=nullptr;char text[128]{};
+    if(!host.event_command(d.context,event,"command","",&command)||!prop_key_read(command,text))
+        return disp_finish(ctrl,false);
+    if(ascii_class_compare(text,"eject"))return disp_finish(ctrl,true);
+    if(!host.install_eject(d.context,object))return disp_finish(ctrl,false);
+    float now=0;
+    if(!disp_clock(d,now))return disp_finish(ctrl,false);
+    return disp_finish(ctrl,d.schedule(d.context,object,now)!=0);
+}
+const DispenserInputApi dispenser_input_api{version,sizeof(DispenserInputApi),&disp_use_variant,&disp_button_event};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3793,6 +3837,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::CanisterA
 SiN_GetAntigenCanisterApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(CanisterApi)?&canister_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetDispenserInputApi=_SiN_GetDispenserInputApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::DispenserInputApi* __cdecl
+SiN_GetDispenserInputApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(DispenserInputApi)?&dispenser_input_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

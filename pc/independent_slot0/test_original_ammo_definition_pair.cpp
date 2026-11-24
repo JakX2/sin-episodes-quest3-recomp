@@ -261,6 +261,12 @@ int main(int argc,char** argv){
     assert(canister&&!getCanister(0,sizeof(tables::CanisterApi))&&!getCanister(1,0));
     tables::test::check_canister(*canister);
     std::puts("PASS native antigen canister constructor leaves, fill pose, idle and game-specific break effects");
+    const auto getDispInput=reinterpret_cast<tables::GetDispenserInputApi>(GetProcAddress(server,tables::dispenser_input_export));
+    assert(getDispInput&&!GetProcAddress(client,tables::dispenser_input_export));
+    const auto* dispInput=getDispInput(1,sizeof(tables::DispenserInputApi));
+    assert(dispInput&&!getDispInput(0,sizeof(tables::DispenserInputApi))&&!getDispInput(1,0));
+    tables::test::check_dispenser_inputs(*dispenser,*dispInput);
+    std::puts("PASS native dispenser use press/release and deferred eject event routing");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
