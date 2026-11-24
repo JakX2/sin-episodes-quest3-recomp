@@ -3057,8 +3057,10 @@ bool response_choreography_owner(const ResponseChoreographyBindings& c,void* exp
     return c.owner(c.context,exp,&owner)&&owner&&
         static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(owner))==hologram_read<std::uint32_t>(exp,4);
 }
+int __cdecl native_generated_sound(void*,const char*,const NativeGeneratedLifecycleBindings*,float*) noexcept;
 int response_dispatch_impl(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const ResponseChoreographyBindings* c,const char* name,
-                              void* response,unsigned extent,unsigned* played,const SceneEntityLifecycleBindings* life=nullptr) noexcept {
+                              void* response,unsigned extent,unsigned* played,const SceneEntityLifecycleBindings* life=nullptr,
+                              const NativeGeneratedLifecycleBindings* generated=nullptr) noexcept {
     if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!name||!response||extent<0x124||
        !sin_independent::vgui_layout::Readable(response,0x124)||!played||!hologram_writable(played,sizeof(*played))||
        !b||!b->sample||!b->speaking||!b->force_log||!b->interrupt||
@@ -3104,7 +3106,8 @@ int response_dispatch_impl(void* exp,unsigned bytes,const ResponseDispatchBindin
                     void* npc=nullptr;const char* retained=nullptr;
                     if(!response_choreography_owner(choreography,exp,npc)||
                        !choreography.retain_sound(choreography.context,text,&retained)||!retained||
-                       (life?integrated_sound(npc,retained,&choreography.playback,&lifecycle,&duration):
+                       (generated?native_generated_sound(npc,retained,generated,&duration):
+                           life?integrated_sound(npc,retained,&choreography.playback,&lifecycle,&duration):
                            npc_scene_play_sound(npc,retained,&choreography.playback,&duration))!=1)return finish(false);
                 }else if(!h.sound(h.context,exp,text,&duration))return finish(false);
                 success=duration>0;
@@ -3230,7 +3233,8 @@ int __cdecl response_record(void* exp,unsigned bytes,const ResponseRecordBinding
     return 1;
 }
 const ResponseRecordApi response_record_api{version,sizeof(ResponseRecordApi),&response_record};
-int response_speak_impl(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const ResponseChoreographyBindings* c,const char* name,const char* mods,unsigned* played,const SceneEntityLifecycleBindings* life=nullptr) noexcept {
+int response_speak_impl(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const ResponseChoreographyBindings* c,const char* name,const char* mods,unsigned* played,const SceneEntityLifecycleBindings* life=nullptr,
+    const NativeGeneratedLifecycleBindings* generated=nullptr) noexcept {
     if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!b||!b->trace_selected||
        !name||!played||!hologram_writable(played,sizeof(*played)))return 0;
     const auto h=*b;void* response=nullptr;unsigned extent=0;
@@ -3239,7 +3243,7 @@ int response_speak_impl(void* exp,unsigned bytes,const ResponseSpeakBindings* b,
     if(!response){*played=0;return 1;}
     const auto drop=[&](){(void)h.selection.destroy(h.selection.context,response);return -1;};
     if(!h.trace_selected(h.context,exp,name))return drop();
-    const auto dispatched=response_dispatch_impl(exp,bytes,&h.dispatch,c,name,response,extent,played,life);
+    const auto dispatched=response_dispatch_impl(exp,bytes,&h.dispatch,c,name,response,extent,played,life,generated);
     // A rejected dispatch did not take ownership. Other statuses consumed it.
     return dispatched==0?drop():dispatched;
 }
@@ -3268,6 +3272,22 @@ int __cdecl integrated_response_speak(void* exp,unsigned bytes,const ResponseSpe
     return response_speak_impl(exp,bytes,b,&choreography,name,mods,played,&lifecycle);
 }
 const IntegratedResponseApi integrated_response_api{version,sizeof(IntegratedResponseApi),&integrated_response_dispatch,&integrated_response_speak};
+bool native_generated_response_ready(const NativeGeneratedResponseBindings* b) noexcept {
+    return b&&integrated_response_ready(&b->response,&b->generated.lifecycle);
+}
+int __cdecl native_generated_response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const NativeGeneratedResponseBindings* generated,
+    const char* name,void* response,unsigned extent,unsigned* played) noexcept {
+    if(!native_generated_response_ready(generated))return 0;
+    const auto h=*generated;
+    return response_dispatch_impl(exp,bytes,b,&h.response,name,response,extent,played,&h.generated.lifecycle,&h.generated);
+}
+int __cdecl native_generated_response_speak(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const NativeGeneratedResponseBindings* generated,
+    const char* name,const char* mods,unsigned* played) noexcept {
+    if(!native_generated_response_ready(generated))return 0;
+    const auto h=*generated;
+    return response_speak_impl(exp,bytes,b,&h.response,name,mods,played,&h.generated.lifecycle,&h.generated);
+}
+const NativeGeneratedResponseApi native_generated_response_api{version,sizeof(NativeGeneratedResponseApi),&native_generated_response_dispatch,&native_generated_response_speak};
 int response_repeat_row(void* exp,const ResponseRepeatBindings& b,const char* name,void*& row) noexcept {
     int index=-1;
     if(!b.lookup(b.context,exp,name,&index)||index<-1)return -1;
@@ -10237,6 +10257,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetNativeGeneratedResponseApi=_SiN_GetNativeGeneratedResponseApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeGeneratedResponseApi* __cdecl
+SiN_GetNativeGeneratedResponseApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeGeneratedResponseApi)?&native_generated_response_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechDrainApi=_SiN_GetSceneSpeechDrainApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechDrainApi* __cdecl
 SiN_GetSceneSpeechDrainApi(std::uint32_t version,std::uint32_t size) noexcept {
