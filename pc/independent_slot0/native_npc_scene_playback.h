@@ -730,6 +730,35 @@ struct NativeChoreographyClockApi {
     int (__cdecl *resume)(void*,unsigned,const NativeChoreographyClockBindings*) noexcept;
 };
 using GetNativeChoreographyClockApi=const NativeChoreographyClockApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_choreography_dispatch_export[]="SiN_GetNativeChoreographyDispatchApi";
+enum class ChoreographyDispatchTrace:unsigned {Ignored,MissingActor,Start,Stop,MissingTarget};
+// Original scene callback switch 221a2270/221a2830/221a2b60/221a2ba0.
+// Engine virtual leaves receive their exact recovered byte offset, with
+// normalized arguments. Native clock handles nested reset/simulation.
+struct NativeChoreographyDispatchBindings {
+    void* context;
+    void* scene;
+    unsigned scene_bytes;
+    const NativeChoreographyClockBindings* clock;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *actor)(void*,void*,std::uint32_t,void**,unsigned*) noexcept;
+    const ResolvedSceneActorBindings* actors; // optional native cache/name resolver
+    int (__cdecl *target)(void*,void*,const char*,void* actor,unsigned,void**) noexcept;
+    int (__cdecl *virtual_event)(void*,void* scene,unsigned virtual_offset,void* parsed,void* event,void* actor,void* target,const char* param) noexcept;
+    int (__cdecl *trace)(void*,void*,void*,float,ChoreographyDispatchTrace) noexcept;
+    int (__cdecl *output)(void*,void*,void* activator,void* caller,float) noexcept;
+    int (__cdecl *debug_text)(void*,const char*) noexcept;
+    const ActorEventRecordBindings* records;
+};
+struct NativeChoreographyDispatchApi {
+    std::uint32_t version,size;
+    int (__cdecl *invoke)(std::uint32_t,unsigned,float,void*,void*,const NativeChoreographyDispatchBindings*,unsigned*) noexcept;
+    // Compatible with NativeChoreographyClockBindings.other_event; context
+    // points to a live NativeChoreographyDispatchBindings. Type5 uses the
+    // clock's separate speech route rather than this specialized switch.
+    int (__cdecl *other_event)(void*,std::uint32_t,unsigned,float,void*,void*) noexcept;
+};
+using GetNativeChoreographyDispatchApi=const NativeChoreographyDispatchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char scene_speech_drain_export[]="SiN_GetSceneSpeechDrainApi";
 struct SceneSpeechDrainBindings {
     void* context;

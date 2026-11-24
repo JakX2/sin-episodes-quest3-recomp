@@ -592,8 +592,62 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
     std::puts("PASS parsed VCD clock -> native speech, caption and actor record lifecycle");
 }
+inline void check_native_choreography_dispatch(const NativeChoreographyDispatchApi& api){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char scene[0x5ec]{},root[0x220]{},event[0x3c0]{},actor[0x604]{};
+        int target=0;unsigned offset=0,output=0,traces=0,missing=0,debug=0,ignored=0;
+        bool found=true,target_found=true;
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+    } f;
+    F::put(f.scene,0x414,F::ptr(f.scene));F::put(f.event,0x2b4,1);
+    std::strcpy(reinterpret_cast<char*>(f.event+4),"event");std::strcpy(reinterpret_cast<char*>(f.event+0x84),"target");
+    NativeChoreographyDispatchBindings b{};b.context=&f;b.scene=f.scene;b.scene_bytes=sizeof(f.scene);
+    b.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word==1);*out=f.found?f.actor:nullptr;*bytes=f.found?sizeof(f.actor):0;return 1;
+    };
+    b.target=[](void* p,void* scene,const char* name,void* actor,unsigned flag,void** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&actor==f.actor&&!flag&&!std::strcmp(name,"target"));*out=f.target_found?&f.target:nullptr;return 1;
+    };
+    b.virtual_event=[](void* p,void* scene,unsigned offset,void* parsed,void* event,void* actor,void* target,const char*) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&parsed==f.root&&event==f.event&&actor==f.actor);
+        assert(!target||target==&f.target);f.offset=offset;return 1;
+    };
+    b.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace trace) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&event==f.event);++f.traces;
+        if(trace==ChoreographyDispatchTrace::MissingTarget||trace==ChoreographyDispatchTrace::MissingActor)++f.missing;
+        if(trace==ChoreographyDispatchTrace::Ignored)++f.ignored;
+        return 1;
+    };
+    b.output=[](void* p,void* output,void* actor,void* scene,float delay) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&actor==f.actor&&!delay);
+        f.output=static_cast<unsigned>(static_cast<unsigned char*>(output)-f.scene);return 1;
+    };
+    b.debug_text=[](void* p,const char* text) noexcept -> int{
+        assert(!std::strcmp(text,"hello"));++Fixture::self(p).debug;return 1;
+    };
+    auto call=[&](unsigned type,unsigned slot){F::put(f.event,0,type);f.offset=0;unsigned result=0;
+        assert(api.invoke(F::ptr(f.scene+0x410),slot,0.f,f.root,f.event,&b,&result)==1&&result);return f.offset;};
+    const unsigned start[]={0,0x32c,0x2cc,0x2e4,0x2ec,0,0x2dc,0x304,0x2fc,0,0x2d4,0x30c,0x328,0x310,0x330,0x320,0x318};
+    const unsigned stop[]={0,0,0x2d0,0x2e8,0x2f0,0,0x2e0,0x308,0x300,0,0x2d8,0,0,0x314,0,0x324,0x31c};
+    F::fl(f.event,0x184,2.f);F::fl(f.event,0x188,-1.f);
+    for(unsigned type=0;type<=16;++type)if(type!=5){assert(call(type,0)==start[type]);assert(call(type,4)==stop[type]);}
+    assert(F::word(f.event,0x188)==0x40400000u);
+    f.target_found=false;assert(!call(3,0)&&f.missing==1);
+    f.found=false;assert(!call(2,0)&&f.missing==2);f.found=true;
+    for(unsigned i=1;i<=8;++i){f.event[0x84]=static_cast<unsigned char>('0'+i);f.event[0x85]=0;
+        assert(!call(9,0)&&f.output==0x464+24*(i-1));}
+    f.scene[0x548]=1;f.output=0;assert(!call(9,0)&&!f.output);f.scene[0x548]=0;
+    std::strcpy(reinterpret_cast<char*>(f.event+0x84),"debugtext hello");
+    assert(!call(16,0)&&f.debug==1&&!call(16,4));
+    std::strcpy(reinterpret_cast<char*>(f.event+4),"NULL");
+    assert(!call(2,0)&&f.ignored==1&&!call(2,4));
+    F::put(f.scene,0x414,0);assert(!call(2,0)&&f.ignored==1);
+    std::puts("PASS native non-speech event dispatch table, target and trigger policy");
+}
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch){
+    check_native_choreography_dispatch(dispatch);
     // Native CUtlMemory capacities and indexed word insertion, including
     // null words, borrowed storage and failure-atomic raw allocator.
     {
