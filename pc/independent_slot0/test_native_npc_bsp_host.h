@@ -1,6 +1,7 @@
 #pragma once
 #include "server_native_npc_map_host.h"
 #include "native_use_observation.h"
+#include "native_npc_spawn.h"
 #include <cassert>
 #include <vector>
 #include <string>
@@ -15,6 +16,9 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     Slot slots[6]{};
     alignas(4) unsigned char player[0x1230]{};
     std::uint32_t behaviors[3]{};
+    alignas(4) unsigned char expeditor[0x7c]{},jessica_expeditor[0x7c]{};
+    npc::CountClassInitBindings ci{};npc::JessicaSpawnBindings js{};npc::JcProfileBindings cp{};
+    const npc::NpcSpawnApi& spawn;
     npc::NpcMapBindings b{};
     npc::NpcMapSession session{};
     const npc::JessicaApi& j;
@@ -25,7 +29,7 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     std::vector<std::string> keys;
     unsigned next=0,spawned=0,activated=0,removed=0,conditions=0,holsters=0,speeches=0,actor_observes=0,changes=0;
     bool fail_parse=false,fail_remove=false,fail_condition=false;
-    NpcBspShell(const npc::JessicaApi& a,const npc::CountInterrogationApi& c,const npc::CountSchedulerApi& s,const npc::GenericActorApi& g):j(a),count(c),sched(s),actor(g){
+    NpcBspShell(const npc::JessicaApi& a,const npc::CountInterrogationApi& c,const npc::CountSchedulerApi& s,const npc::GenericActorApi& g,const npc::NpcSpawnApi& sp):spawn(sp),j(a),count(c),sched(s),actor(g){
         b.jessica.context=this;b.scheduler.context=this;b.count.context=this;b.attention.context=this;b.actor.context=this;
         b.jessica.condition=[](void* p,void* n,npc::JessicaCondition op,unsigned id,unsigned*) noexcept -> int{
             auto& f=*static_cast<NpcBspShell*>(p);assert(n==f.slots[2].storage&&op==npc::JessicaCondition::Set&&id==0x47);++f.conditions;return !f.fail_condition;
@@ -65,6 +69,26 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
         b.actor.behavior_observe=[](void* p,std::uint32_t behavior,const void* obs) noexcept -> int{
             auto& f=*static_cast<NpcBspShell*>(p);assert(behavior==0x11111111&&obs==f.player+0xc40);++f.actor_observes;return 1;
         };
+        ci.context=this;ci.behaviors=b.scheduler;
+        ci.base_postconstruct=[](void*,void*,std::uint32_t name) noexcept -> int{return name==42;};
+        ci.base_create=[](void*,void*,unsigned* accepted) noexcept -> int{*accepted=1;return 1;};
+        ci.create_expeditor=[](void* p,void* npc,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(npc==f.slots[3].storage&&f.word(npc,0xc28)==3);*out=f.expeditor;*bytes=sizeof(f.expeditor);return 1;
+        };
+        cp.context=this;cp.health_dirty=b.actor.health_dirty;
+        cp.npc_initialize=[](void* p,void* npc) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(npc==f.slots[3].storage&&f.word(npc,0x9c)==8&&f.word(npc,0xc28)==3&&f.word(npc,0xffc)==f.ptr(f.expeditor));return 1;
+        };
+        js.context=this;
+        js.base_spawn=[](void*,void*) noexcept -> int{return 1;};
+        js.resolve_parent=[](void*,std::uint32_t,void**) noexcept -> int{return 0;};
+        js.parented_setup=[](void*,void*,unsigned,unsigned) noexcept -> int{return 0;};
+        js.restore_unparented=[](void*,void*) noexcept -> int{return 1;};
+        js.health_dirty=b.actor.health_dirty;
+        js.npc_initialize=[](void* p,void* npc) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);return npc==f.slots[2].storage&&f.word(npc,0x9c)==80;};
+        js.install_interaction=[](void*,void*,unsigned off,unsigned thunk) noexcept -> int{return off==0x80&&thunk==0x22361e40;};
+        js.expeditor=[](void* p,void*,void** out) noexcept -> int{*out=static_cast<NpcBspShell*>(p)->jessica_expeditor;return 1;};
+        js.seed_concept=[](void* p,void* exp,const char* name,unsigned a,unsigned b) noexcept -> int{auto& f=*static_cast<NpcBspShell*>(p);return exp==f.jessica_expeditor&&!std::strcmp(name,"TLK_HELLO")&&!a&&b==1;};
     }
     static unsigned ptr(void* p){return static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(p));}
     static void put(void* p,unsigned off,unsigned w){std::memcpy(static_cast<unsigned char*>(p)+off,&w,4);}
@@ -73,7 +97,11 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     bool is_live(EntityRef e)const override{return e.index>=1&&e.index<=6&&slots[e.index-1].live&&slots[e.index-1].ref==e;}
     bool create_entity(std::string_view name,EntityRef& e)override{
         if(next>=6)return false;auto& s=slots[next];e={++next,1};s.ref=e;s.live=true;
-        if(name=="npc_count")return count.initialize(&s.control)==1;
+        if(name=="npc_jessica")put(s.storage,0xf0,0xffffffffu);
+        if(name=="npc_count"){
+            unsigned accepted=0;
+            return count.initialize(&s.control)==1&&spawn.count_class_init(&s.control,&ci,42,&accepted)==1&&accepted;
+        }
         return true;
     }
     bool key_value(EntityRef e,std::string_view k,std::string_view v)override{
@@ -82,8 +110,8 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     bool dispatch_spawn(EntityRef e)override{
         auto* s=get(e);if(!s)return false;++spawned;
         // Fixture invokes known native slices at its engine boundaries.
-        if(e.index==3){assert(host->input(e,"HolsterWeapon",5,0)==NpcMapResult::Rejected);return j.spawn_state(&s->control)==1;}
-        if(e.index==4)return sched.register_interrogation(&s->control,&b.scheduler)==1;
+        if(e.index==3){assert(host->input(e,"HolsterWeapon",5,0)==NpcMapResult::Rejected);return spawn.jessica(&s->control,&js)==1;}
+        if(e.index==4)return spawn.count_profile(&s->control,&cp)==1;
         if(e.index==5)return actor.spawn_profile(&s->control,&b.actor)==1;
         return true;
     }
@@ -97,14 +125,14 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     }
 };
 inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,const npc::CountInterrogationApi& count,
-    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const std::vector<std::uint8_t>& bsp){
-    NpcBspShell f(j,count,sched,actor);
+    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const std::vector<std::uint8_t>& bsp){
+    NpcBspShell f(j,count,sched,actor,spawn);
     NativeNpcMapHost host(f,f,api,f.session);f.host=&host;sm::SourceMapRuntime runtime(host);
     const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
     assert(loaded.ok()&&loaded.entities_created==6&&f.spawned==6&&f.activated==6&&host.attached_count()==4);
     const auto relay=runtime.entities()[1],je=runtime.entities()[2],co=runtime.entities()[3],ga=runtime.entities()[4],jc=runtime.entities()[5];
     auto* J=f.slots[2].storage;auto* C=f.slots[3].storage;auto* G=f.slots[4].storage;
-    assert(f.word(J,0x1450)==0xffffffffu&&f.word(J,0x1454)==0xffffffffu&&f.word(G,0x9c)==12&&f.word(G,0x614)==247);
+    assert(f.word(J,0x1450)==0xffffffffu&&f.word(J,0x1454)==0xffffffffu&&f.word(J,0x9c)==80&&f.word(C,0x9c)==8&&f.word(C,0xc28)==3&&f.word(f.expeditor,0xc)==f.ptr(C+0xdfc)&&f.word(G,0x9c)==12&&f.word(G,0x614)==247);
     assert(f.keys.size()==8&&f.keys[0]=="targetname=relay"&&f.keys[1]=="OnTrigger=count,InterrogationStart,,0,-1"&&f.keys[2]=="OnTrigger=jessica,ThrowItemAtPlayer,weapon_magnum,0,-1"&&f.keys[3]=="targetname=jessica"&&f.keys[4]=="targetname=count"&&f.keys[5]=="targetname=actor"&&f.keys[6]=="model=fixture.mdl"&&f.keys[7]=="targetname=jc");
     assert(host.input(relay,"InterrogationStart",0,0)==NpcMapResult::Unhandled&&host.input(jc,"HolsterWeapon",5,0)==NpcMapResult::Unhandled);
     assert(host.input(je,"SetPrimaryAmmoCountToThrow",5,9)==NpcMapResult::Applied&&f.word(J,0x1450)==9);
@@ -142,7 +170,7 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     f.fail_remove=true;assert(runtime.unload().code==sm::SourceMapLoadCode::PartialUnload&&host.attached_count()==1);
     f.fail_remove=false;assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded&&!host.attached_count());
     assert(host.input(co,"InterrogationStart",0,0)==NpcMapResult::Rejected);
-    NpcBspShell bad(j,count,sched,actor);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
+    NpcBspShell bad(j,count,sched,actor,spawn);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
     sm::SourceMapRuntime rollback(bh);assert(rollback.load_bsp(bsp.data(),bsp.size()).code==sm::SourceMapLoadCode::HostKeyValueFailed&&!rollback.loaded()&&!bh.attached_count());
 }
 }

@@ -37,6 +37,7 @@
 #include "test_native_vehicle_seat_events.h"
 #include "test_native_camera_link.h"
 #include "test_native_vehicle_part_events.h"
+#include "test_native_npc_spawn.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -551,6 +552,12 @@ int main(int argc,char** argv){
     assert(partEvents&&!getPartEvents(0,sizeof(tables::VehiclePartEventsApi))&&!getPartEvents(1,0));
     tables::test::check_vehicle_part_events(*partEvents,*vehicleThink,*nested);
     std::puts("PASS native vehicle door/window completion outputs and automatic close");
+    const auto getNpcSpawn=reinterpret_cast<tables::GetNpcSpawnApi>(GetProcAddress(server,tables::npc_spawn_export));
+    assert(getNpcSpawn&&!GetProcAddress(client,tables::npc_spawn_export));
+    const auto* npcSpawn=getNpcSpawn(1,sizeof(tables::NpcSpawnApi));
+    assert(npcSpawn&&!getNpcSpawn(0,sizeof(tables::NpcSpawnApi))&&!getNpcSpawn(1,0));
+    tables::test::check_npc_spawn(*npcSpawn);
+    std::puts("PASS native Jessica spawn and Count pre-spawn class initialization");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
