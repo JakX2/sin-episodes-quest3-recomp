@@ -5,6 +5,7 @@
 #include "native_character_response.h"
 #include "native_action_monitor.h"
 #include <cstdio>
+#include <cstdlib>
 #include "native_radio_message.h"
 #include "native_action_listener.h"
 #include "native_radio_hud.h"
@@ -5235,9 +5236,9 @@ int __cdecl speech_execute(void* scene,unsigned bytes,void* actor,unsigned actor
     if(!hologram_read<unsigned char>(event,0x3a2)){
         if(!h.recipient_count(h.context,filter,&count)||count<0||count>0x100000)return close(false);
         for(int i=count-1;i>=0;--i){
-            void* player=nullptr;unsigned far=0;
+            void* player=nullptr;unsigned distant=0;
             if(!h.recipient(h.context,filter,static_cast<unsigned>(i),&player))return close(false);
-            if(player&&(!h.caption_far(h.context,player,&far)||(far&&!h.remove_recipient(h.context,filter,player))))return close(false);
+            if(player&&(!h.caption_far(h.context,player,&distant)||(distant&&!h.remove_recipient(h.context,filter,player))))return close(false);
         }
     }
     if(!h.recipient_count(h.context,filter,&count)||count<0||count>0x100000)return close(false);
@@ -5257,6 +5258,62 @@ int __cdecl speech_execute(void* scene,unsigned bytes,void* actor,unsigned actor
     return close(true);
 }
 const SceneSpeechExecutionApi scene_speech_execution_api{version,sizeof(SceneSpeechExecutionApi),&speech_execute};
+bool scene_event_ignored(const char* name) noexcept {
+    // Original 223a5574/223a8410 is case-insensitive (C-locale path).
+    constexpr char ignored[]="null";
+    for(unsigned i=0;i<4;++i){auto c=name[i];if(c>='A'&&c<='Z')c=static_cast<char>(c+32);if(c!=ignored[i])return false;}
+    return name[4]==0;
+}
+int __cdecl speech_callback_invoke(const void* callback,unsigned callback_bytes,void* scene,unsigned bytes,
+    unsigned slot,float time,void* parsed,unsigned parsed_bytes,void* event,unsigned extent,
+    const SceneSpeechCallbackBindings* b,unsigned* out) noexcept {
+    if(!callback||callback_bytes<8||!sin_independent::vgui_layout::Readable(callback,8)||!out||!hologram_writable(out,4)||
+       (slot!=0&&slot!=4&&slot!=8&&slot!=12))return 0;
+    const auto owner=hologram_read<std::uint32_t>(callback,4);
+    if(!owner){*out=1;return 1;}
+    if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||
+       owner!=scene_word(scene)||callback!=static_cast<unsigned char*>(scene)+0x410||
+       !parsed||parsed_bytes<0xa0||!sin_independent::vgui_layout::Readable(parsed,0xa0)||
+       !event||extent<0x2b8||!sin_independent::vgui_layout::Readable(event,0x2b8)||hologram_read<int>(event,0)!=5||
+       !b||!b->actor||!b->trace)return 0;
+    if(slot==8){*out=1;return 1;} // only nested type11 updates in original
+    const auto h=*b;
+    const auto* name=static_cast<const char*>(event)+4;
+    if(slot!=12){
+        if(!std::memchr(name,0,128))return 0;
+        if(scene_event_ignored(name)){
+            if(slot==0&&!h.trace(h.context,scene,event,time,SceneSpeechTrace::Ignored))return -1;
+            *out=1;return 1;
+        }
+    }
+    const auto choreo_actor=hologram_read<std::uint32_t>(event,0x2b4);
+    void* actor=nullptr;unsigned actor_bytes=0;
+    if(choreo_actor&&!h.actor(h.context,scene,choreo_actor,&actor,&actor_bytes))return -1;
+    if(slot==0&&choreo_actor&&!actor){
+        if(!h.trace(h.context,scene,event,time,SceneSpeechTrace::MissingActor))return -1;
+        *out=1;return 1;
+    }
+    if(slot==12){
+        if(choreo_actor&&!actor&&!h.trace(h.context,scene,event,time,SceneSpeechTrace::MissingActor))return -1;
+        if(!actor){*out=1;return 1;}
+        return actor_event_check_one(actor,actor_bytes,time,scene_word(parsed),event,&h.speech.records,out);
+    }
+    if(!h.trace(h.context,scene,event,time,slot==0?SceneSpeechTrace::Start:SceneSpeechTrace::Stop))return -1;
+    if(!actor){*out=1;return 1;}
+    if(slot==0){
+        const auto* level_text=static_cast<const char*>(event)+0x104;
+        if(!std::memchr(level_text,0,128))return 0;
+        // CRT atoi path: zero (including invalid or empty text) -> 80.
+        const long value=std::strtol(level_text,nullptr,10);
+        if(value<(std::numeric_limits<int>::min)()||value>(std::numeric_limits<int>::max)())return -1;
+        if(speech_execute(scene,bytes,actor,actor_bytes,scene_word(parsed),event,extent,value?static_cast<int>(value):80,&h.speech)!=1)return -1;
+    }else{
+        unsigned removed=0;
+        if(actor_event_stop_one(actor,actor_bytes,scene_word(parsed),event,hologram_read<unsigned char>(scene,0x548),&h.speech.records,&removed)!=1)return -1;
+    }
+    *out=1;return 1;
+}
+const SceneSpeechCallbackApi scene_speech_callback_api{version,sizeof(SceneSpeechCallbackApi),&speech_callback_invoke};
 int __cdecl integrated_scene(void* npc,const char* name,float delay,const NpcScenePlaybackBindings* b,const SceneEntityLifecycleBindings* life,float* out) noexcept {
     if(!life)return 0;const auto h=*life;
     return npc_scene_play(npc,name,delay,b,out,false,&h);
@@ -9850,6 +9907,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechCallbackApi=_SiN_GetSceneSpeechCallbackApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechCallbackApi* __cdecl
+SiN_GetSceneSpeechCallbackApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneSpeechCallbackApi)?&scene_speech_callback_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechExecutionApi=_SiN_GetSceneSpeechExecutionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechExecutionApi* __cdecl
 SiN_GetSceneSpeechExecutionApi(std::uint32_t version,std::uint32_t size) noexcept {
