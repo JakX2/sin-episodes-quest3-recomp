@@ -10,6 +10,7 @@
 #include "test_native_jessica_script.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
+#include "test_native_action_monitor.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -346,6 +347,12 @@ int main(int argc,char** argv){
     assert(characterResponse&&!getCharacterResponse(0,sizeof(tables::CharacterResponseApi))&&!getCharacterResponse(1,0));
     tables::test::check_character_response(*characterResponse);
     std::puts("PASS native Count response region classification, Count/JC speech semaphore and Jessica poison filter");
+    const auto getActionMonitor=reinterpret_cast<tables::GetActionMonitorApi>(GetProcAddress(server,tables::action_monitor_export));
+    assert(getActionMonitor&&!GetProcAddress(client,tables::action_monitor_export));
+    const auto* actionMonitor=getActionMonitor(1,sizeof(tables::ActionMonitorApi));
+    assert(actionMonitor&&!getActionMonitor(0,sizeof(tables::ActionMonitorApi))&&!getActionMonitor(1,0));
+    tables::test::check_action_monitor(*actionMonitor,*jessicaAttention);
+    std::puts("PASS native action monitor look duration and Jessica criteria producer/consumer");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

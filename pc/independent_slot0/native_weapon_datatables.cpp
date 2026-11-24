@@ -1,6 +1,8 @@
 #include "native_jessica_script.h"
 #include "native_count_interrogation.h"
 #include "native_character_response.h"
+#include "native_action_monitor.h"
+#include <cstdio>
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -2970,6 +2972,91 @@ int __cdecl jessica_damage_filter(HologramControl* ctrl,const JessicaFilterBindi
     return disp_finish(ctrl,host.base_filter(host.context,ctrl->object,info,result)!=0);
 }
 const CharacterResponseApi character_response_api{version,sizeof(CharacterResponseApi),&count_region,&character_semaphore,&jessica_damage_filter,&health_ack};
+
+bool action_string(const char* text,unsigned capacity) noexcept {
+    return std::memchr(text,0,capacity)!=nullptr;
+}
+bool action_snapshot(const ActionMonitorBindings& b,void* entity,ActionEntitySample& sample) noexcept {
+    if(!entity){sample={};return true;}
+    return b.sample(b.context,entity,&sample)&&action_string(sample.name,sizeof(sample.name))&&
+        action_string(sample.classname,sizeof(sample.classname));
+}
+int __cdecl action_update_look(HologramControl* ctrl,const ActionMonitorBindings* b,const ActionLookSample* input) noexcept {
+    if(!health_control(ctrl,0x5e9)||!b||!b->resolve||!b->clock||!b->packed_handle||!b->sample||
+       !input||!sin_independent::vgui_layout::Readable(input,sizeof(*input)))return 0;
+    char part[32]{};
+    if(input->part&&!prop_key_read(input->part,part))return 0;
+    ctrl->busy=1;auto* monitor=static_cast<unsigned char*>(ctrl->object);const auto host=*b;const auto q=*input;
+    auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    void* previous=nullptr;const auto previous_handle=hologram_read<std::uint32_t>(monitor,0x14);
+    if(previous_handle!=0xffffffffu&&!host.resolve(host.context,previous_handle,&previous))return finish(false);
+    auto* prior=reinterpret_cast<char*>(monitor+0x2d8);
+    if(previous!=q.target){
+        float now=0;if(!host.clock(host.context,&now))return finish(false);
+        hologram_write(monitor,0x2d4,now);
+        if(!host.clock(host.context,&now))return finish(false);
+        hologram_write(monitor,0x2fc,now);
+    }else if(std::strncmp(prior,part,32)!=0){
+        float now=0;if(!host.clock(host.context,&now))return finish(false);
+        hologram_write(monitor,0x2fc,now);
+    }
+    std::uint32_t target_handle=0xffffffffu;
+    if(q.target&&!host.packed_handle(host.context,q.target,&target_handle))return finish(false);
+    hologram_write(monitor,0x14,target_handle);
+    void* owner=nullptr;const auto owner_handle=hologram_read<std::uint32_t>(monitor,4);
+    if(owner_handle!=0xffffffffu&&!host.resolve(host.context,owner_handle,&owner))return finish(false);
+    ActionEntitySample owner_sample{},target_sample{};
+    if(!action_snapshot(host,owner,owner_sample)||!action_snapshot(host,q.target,target_sample))return finish(false);
+    hologram_write(monitor,0x2d0,1); // LOOK_STARTED
+    std::memcpy(monitor+0x20,&owner_sample,sizeof(owner_sample));
+    std::memcpy(monitor+0x178,&target_sample,sizeof(target_sample));
+    hologram_write(monitor,0x2f8,q.detail);
+    if(!q.part)*prior=0;
+    else if(std::strncmp(prior,part,32)!=0)std::memcpy(prior,part,32);
+    return finish(true);
+}
+bool action_record_valid(const void* record,unsigned bytes,unsigned minimum) noexcept {
+    return record&&bytes>=minimum&&sin_independent::vgui_layout::Readable(record,minimum);
+}
+template<class... Args> void action_append(ActionCriteria& out,const char* format,Args... args) noexcept {
+    // The original Q_snprintf uses a 512-byte destination and its own
+    // preceding contents as a format argument. Use a separate scratch
+    // for defined overlapping-buffer semantics and bounded termination.
+    char scratch[512]{};
+    std::snprintf(scratch,sizeof(scratch),format,args...);
+    std::memcpy(out.text,scratch,sizeof(scratch));
+}
+int __cdecl action_criteria(const void* record,unsigned bytes,float now,ActionCriteria* out,bool looking) noexcept {
+    if(!out||!action_record_valid(record,bytes,looking?0x2e8:0x2e0))return 0;
+    const auto* r=static_cast<const char*>(record);
+    const auto* owner=r+0x108;const auto* subject=r+0x260;
+    const auto* subject_name=r+0x160;const auto* part=r+0x2c0;
+    if(!action_string(owner,64)||!action_string(subject,64)||!action_string(subject_name,256)||!action_string(part,32))return 0;
+    out->text[0]=0;
+    if(!*owner&&!*subject)return 1;
+    const auto elapsed=static_cast<double>(now)-hologram_read<float>(record,0x2bc);
+    if(looking){
+        if(*subject_name)action_append(*out,"%s:%s,","PlayerLookingAt",subject_name);
+        action_append(*out,"%s%s:%s,",out->text,"PlayerLookingAtEnt",subject);
+        action_append(*out,"%s%s:%.2f",out->text,"PlayerLookingAtForSeconds",elapsed);
+        if(*part){
+            action_append(*out,"%s,%s:%s",out->text,"PlayerLookingAtPart",part);
+            action_append(*out,"%s,%s:%.2f",out->text,"PlayerLookingAtPartForSeconds",static_cast<double>(now)-hologram_read<float>(record,0x2e4));
+        }
+    }else{
+        static constexpr const char* actions[]={"USE_ACTION_NONE","USE_ACTION_USE","USE_ACTION_ON","USE_ACTION_OFF","USE_ACTION_LOCKED","USE_ACTION_PICKED_UP","USE_ACTION_DROPPED","USE_ACTION_TOSSED","USE_ACTION_OPENED","USE_ACTION_CLOSED","USE_ACTION_CONTINUOUS_START","USE_ACTION_CONTINUOUS_STOP","USE_ACTION_DRAGGED"};
+        const auto id=hologram_read<unsigned>(record,0x2b8);
+        if(id>=sizeof(actions)/sizeof(actions[0]))return 0;
+        if(*subject_name)action_append(*out,"%s:%s,","PlayerUsing",subject_name);
+        action_append(*out,"%s%s:%s",out->text,"PlayerUsingEnt",subject);
+        action_append(*out,"%s,%s:%s",out->text,"PlayerUsingPart",part);
+        action_append(*out,"%s,%s:%s",out->text,"PlayerUsingAction",actions[id]);
+    }
+    return 1;
+}
+int __cdecl action_look_criteria(const void* r,unsigned bytes,float now,ActionCriteria* out) noexcept {return action_criteria(r,bytes,now,out,true);}
+int __cdecl action_use_criteria(const void* r,unsigned bytes,ActionCriteria* out) noexcept {return action_criteria(r,bytes,0,out,false);}
+const ActionMonitorApi action_monitor_api{version,sizeof(ActionMonitorApi),&action_update_look,&action_look_criteria,&action_use_criteria,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4706,6 +4793,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Character
 SiN_GetCharacterResponseApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(CharacterResponseApi)?&character_response_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetActionMonitorApi=_SiN_GetActionMonitorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ActionMonitorApi* __cdecl
+SiN_GetActionMonitorApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ActionMonitorApi)?&action_monitor_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
