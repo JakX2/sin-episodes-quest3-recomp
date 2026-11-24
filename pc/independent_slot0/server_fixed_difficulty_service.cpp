@@ -187,4 +187,32 @@ extern "C" int SIN_FIXED_CALL SiN_ApplyEngineSkill(void* engine,std::uint32_t op
     }
     return op==abi::BeginFromEngine?begin(skill):select(skill);
 }
+
+// Original ServerGameDLL003 slot 1 (Phase88) queues the literal via
+// VEngineServer021 +0x90, then executes via +0x94. The preceding
+// global reset helper is NOT reconstructed here. The caller supplies
+// the correctly initialized interfaces at an explicit campaign boundary.
+#pragma comment(linker,"/EXPORT:SiN_StartConfiguredCampaign=_SiN_StartConfiguredCampaign")
+extern "C" int SIN_FIXED_CALL SiN_StartConfiguredCampaign(void* server,void* cvar) noexcept {
+    if(reading_engine_skill||campaign||!server||!cvar)return abi::ConfigRejected;
+    int skill=0;
+    {
+        EngineReadScope scope;
+        methods::CallResult refused=methods::CallResult::InvalidObject;
+        // Check all three method slots before any command-buffer effect.
+        const auto queue=methods::VerifiedMethod(server,36,refused);
+        const auto execute=methods::VerifiedMethod(server,37,refused);
+        const auto find=methods::VerifiedMethod(cvar,3,refused);
+        if(!queue||!execute||!find)return abi::ConfigRejected;
+        using Queue=void (__thiscall *)(void*,const char*);
+        using Execute=void (__thiscall *)(void*);
+        try {reinterpret_cast<Queue>(queue)(server,"exec game.cfg\n");}
+        catch(...) {return abi::ConfigQueueUncertain;}
+        try {reinterpret_cast<Execute>(execute)(server);}
+        catch(...) {return abi::ConfigExecuteUncertain;}
+        // This lookup must follow execution: game.cfg may change skill.
+        if(!read_engine_skill(cvar,skill))return abi::ConfigRanSkillUnavailable;
+    }
+    return begin(skill)?abi::ConfigStarted:abi::ConfigRanSkillUnavailable;
+}
 #endif
