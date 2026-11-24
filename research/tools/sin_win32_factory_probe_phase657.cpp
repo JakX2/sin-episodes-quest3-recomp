@@ -201,6 +201,91 @@ bool inspect_server_autogame_systems(HMODULE original_server) noexcept {
  return std::strcmp(status,"read_ok")==0;
 }
 
+// Phase664: owner-only read-only snapshot of the authentic server.dll
+// gameplay variable data image. The two retail DLL SHA256 fingerprints are
+// verified in inspect() before LoadLibraryEx, so these RVAs are only applied
+// to the matching original 2006 binary. No writes and no unknown vcall.
+struct MetricWitness {
+ const char* name;
+ std::uint32_t initial_float_word;
+};
+constexpr MetricWitness kOriginalMetrics[]={
+ {"DAMAGE_TAKEN_SCALE",0x3f89999au},
+ {"DAMAGE_DONE_SCALE",0x3f800000u},
+ {"AMMO_QUANTITY_SCALE",0x3f800000u},
+ {"NUM_FORCED_HEALTH_KITS",0x00000000u},
+ {"PERCENT_HEALTH_KITS_DROP",0x3ecccccdu},
+ {"PERCENT_NPC_2ND_FIRE",0x3e800000u},
+ {"PERCENT_NPC_MAKE_DIFFERENT",0x3e19999au},
+ {"PERCENT_NPC_CHANGE_SPAWN_NUM",0x3e19999au},
+ {"PERCENT_NPC_WEARS_HELMET",0x3eb33334u},
+ {"PERCENT_NPC_HELMET_SHOT_OFF",0x3f19999au},
+ {"PERCENT_NPC_TAKES_COVER",0x3e4ccccdu},
+ {"RANDOM_NPC_WAIT_BEFORE_SHOOT",0x00000000u},
+ {"PERCENT_NPC_ACCURATE",0x3f400000u},
+ {"PERCENT_NPC_MOBILE",0x3f000000u}
+};
+bool inspect_original_server_metric_slots(HMODULE server) noexcept {
+ constexpr std::uint32_t kCurrentRva=0x523478u;
+ constexpr std::uint32_t kPointerRva=0x45f04cu;
+ constexpr std::uint32_t kImageBytes=0x628000u;
+ constexpr std::uint32_t kConvarParentRva=0x5923a8u;
+ const auto base=reinterpret_cast<std::uintptr_t>(server);
+ const auto image_end=base+kImageBytes;
+ std::size_t names_ok=0u,initial_values=0u,read_slots=0u;
+ bool complete=true;
+ for(std::size_t i=0u;i<sizeof(kOriginalMetrics)/sizeof(kOriginalMetrics[0]);++i){
+  std::uint32_t pointer=0u,current=0u;
+  const auto& expected=kOriginalMetrics[i];
+  bool valid=read_current_process_dword(base+kPointerRva+4u*i,pointer) &&
+             read_current_process_dword(base+kCurrentRva+28u*i,current);
+  if(valid)++read_slots;
+  bool name_matches=valid &&
+       static_cast<std::uintptr_t>(pointer)>=base &&
+       static_cast<std::uintptr_t>(pointer)<image_end;
+  if(name_matches) {
+   const auto count=std::strlen(expected.name);
+   if(count+1u>image_end-static_cast<std::uintptr_t>(pointer))
+    name_matches=false;
+   for(std::size_t j=0u;name_matches&&j<=count;++j) {
+    std::uint8_t actual=0u;
+    if(!read_current_process_byte(static_cast<std::uintptr_t>(pointer)+j,actual)||
+       actual!=static_cast<std::uint8_t>(expected.name[j]))
+     name_matches=false;
+   }
+  }
+  if(name_matches)++names_ok;
+  if(valid&&current==expected.initial_float_word)++initial_values;
+  else if(!valid)complete=false;
+  if(!name_matches)complete=false;
+  std::printf("{\"module\":\"server\",\"event\":\"phase664_metric_current\","
+              "\"index\":%u,\"metric\":\"%s\",\"status\":\"%s\","
+              "\"observed_float_bits\":\"0x%08x\","
+              "\"static_initial_bits\":\"0x%08x\"}\n",
+              static_cast<unsigned int>(i),expected.name,
+              name_matches?"name_verified":"name_or_slot_mismatch",
+              static_cast<unsigned int>(current),
+              static_cast<unsigned int>(expected.initial_float_word));
+ }
+ std::uint32_t parent=0u,adaptive_value=0u;
+ const bool parent_read=read_current_process_dword(
+      base+kConvarParentRva,parent);
+ const bool value_read=parent_read&&parent!=0u &&
+      read_current_process_dword(parent+0x2cu,adaptive_value);
+ std::printf("{\"module\":\"server\",\"event\":\"phase664_metric_snapshot\","
+             "\"status\":\"%s\",\"entries_read\":%u,\"name_matches\":%u,"
+             "\"initial_current_matches\":%u,\"dd_enabled_readable\":%s,"
+             "\"dd_enabled_value\":%u,"
+             "\"engine_GameDLLInit_called\":false}\n",
+             complete?"read_ok":"incomplete",
+             static_cast<unsigned int>(read_slots),
+             static_cast<unsigned int>(names_ok),
+             static_cast<unsigned int>(initial_values),
+             value_read?"true":"false",
+             static_cast<unsigned int>(adaptive_value));
+ return complete;
+}
+
 bool inspect(const char* path,const ModuleExpected& spec) noexcept {
  // Resolve paths before LOAD_WITH_ALTERED_SEARCH_PATH.
  std::array<char,32768> absolute{};
@@ -260,6 +345,8 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
  if(std::strcmp(spec.side,"client")==0 && !inspect_client_registration_list(module))
   ok=false;
  if(std::strcmp(spec.side,"server")==0 && !inspect_server_autogame_systems(module))
+  ok=false;
+ if(std::strcmp(spec.side,"server")==0 && !inspect_original_server_metric_slots(module))
   ok=false;
  FreeLibrary(module);
  return ok;

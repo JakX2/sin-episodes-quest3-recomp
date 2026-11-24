@@ -6221,3 +6221,30 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
       ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_sin_fixed_difficulty_gate_phase663.py
       --self-test)
 endif()
+
+# Phase664: original 2006 server record->float setter, 14 name pointers and
+# PE32 relocation-aware fixed skill publication with strict host validation.
+add_library(sin_fixed_metric_bridge_phase664 STATIC
+  src/fixed_metric_bridge_phase664.cpp)
+target_include_directories(sin_fixed_metric_bridge_phase664 PUBLIC include)
+target_link_libraries(sin_fixed_metric_bridge_phase664 PUBLIC
+  sin_fixed_difficulty_phase663)
+target_compile_features(sin_fixed_metric_bridge_phase664 PUBLIC cxx_std_17)
+target_compile_options(sin_fixed_metric_bridge_phase664 PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror>)
+if(BUILD_TESTING)
+  add_executable(sin_fixed_metric_bridge_phase664_tests
+    tests/test_fixed_metric_bridge_phase664.cpp)
+  target_link_libraries(sin_fixed_metric_bridge_phase664_tests PRIVATE
+    sin_fixed_metric_bridge_phase664)
+  target_compile_options(sin_fixed_metric_bridge_phase664_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>)
+  add_test(NAME sin_fixed_metric_bridge_phase664_tests
+    COMMAND sin_fixed_metric_bridge_phase664_tests)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME sin_fixed_metric_bridge_phase664_audit_synthetic
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/research/tools/audit_original_fixed_metric_bridge_phase664.py
+        --self-test)
+  endif()
+endif()
