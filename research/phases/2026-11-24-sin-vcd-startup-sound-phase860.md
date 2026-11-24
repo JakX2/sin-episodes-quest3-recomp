@@ -1,0 +1,5 @@
+# Phase 860: startup speech-cache ordering
+
+Authenticated server.dll SHA256 568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650. 221adaa0 collects type 5 speech names with caption-master selection via 2210c880, optional gated language/local-player selector 221a3df0, and inserts start+offset keys. 221a9ba0 iterates in order and invokes 221b6180 to warm sounds. Type 11 loads/marks/links children only when no child is linked and the current root is not a subscene; recursion uses the parent event start as offset. This routine does not dispatch actor speech.
+
+Stable time-sorted private scratch entries replace the original transient RB tree for finite times, with bounded capacity 4096 and event traversal budget. Host must supply valid fresh owned subscene and cache/language services. The owned playback regression verifies the root speech is warmed and existing nested child skipped; synthetic active actor records remain injected only for retirement testing. No retail engine execution. CI pending.

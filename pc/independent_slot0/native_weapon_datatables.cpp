@@ -21,6 +21,9 @@
 #include "native_music_radio.h"
 #include "native_music_radio_map.h"
 #include <algorithm>
+#include <memory>
+#include <new>
+#include <cmath>
 #include "native_vehicle_sound.h"
 #include "native_vehicle_hint.h"
 #include "native_vehicle_views.h"
@@ -6966,6 +6969,75 @@ int __cdecl native_vcd_runtime_remove(void* scene,unsigned extent,const SceneEnt
 }
 const NativeVcdRuntimeApi native_vcd_runtime_api{version,sizeof(NativeVcdRuntimeApi),
     &native_vcd_runtime_parse,&native_vcd_runtime_load,&native_vcd_runtime_scene,&native_vcd_runtime_destroy,&native_vcd_runtime_remove};
+// 221adaa0 collects symbol/time keys; 221a9ba0 warms in-order.
+// Stable sorting preserves right-on-equal insertion order for finite times.
+struct ChoreographyStartupEntry { float time;char sound[64]; };
+struct ChoreographyStartupCollector {
+    const ChoreographyStartupSoundBindings& h;
+    void* scene;
+    ChoreographyStartupEntry* entries;
+    unsigned count=0,budget=0x100000;
+    static constexpr unsigned capacity=4096;
+    bool storage(std::uint32_t word,unsigned need,void*& ptr) noexcept {
+        unsigned extent=0;ptr=nullptr;
+        return word&&h.storage(h.context,word,&ptr,&extent)&&extent>=need&&hologram_writable(ptr,need);
+    }
+    bool collect(std::uint32_t word,float offset,unsigned depth) noexcept {
+        void* root=nullptr;
+        if(depth>1||!storage(word,0x220,root))return false;
+        for(unsigned i=0;;++i){
+            const auto n=hologram_read<int>(root,0xc);
+            if(n<0||n>0x100000)return false;
+            if(i>=static_cast<unsigned>(n))return true;
+            if(!budget--)return false;
+            void* rows=nullptr;
+            if(!storage(hologram_read<std::uint32_t>(root,0),(i+1)*4,rows))return false;
+            auto ew=hologram_read<std::uint32_t>(rows,i*4);
+            if(!ew)continue;
+            void* event=nullptr;
+            if(!storage(ew,0x3c0,event))return false;
+            const auto type=hologram_read<int>(event,0);
+            const char* param=static_cast<char*>(event)+0x84;
+            if(type==11){
+                // Startup ignores already linked children, unlike initial precache.
+                if(depth||hologram_read<unsigned char>(root,0x124)||hologram_read<std::uint32_t>(event,0x324))continue;
+                std::uint32_t childword=0;void* child=nullptr;
+                if(!h.load_subscene||!std::memchr(param,0,128)||
+                   !h.load_subscene(h.context,scene,param,&childword)||childword==word||
+                   !storage(childword,0x220,child))return false;
+                hologram_write(child,0x124,static_cast<unsigned char>(1));
+                hologram_write(event,0x324,childword);
+                if(!collect(childword,hologram_read<float>(event,0x184),depth+1))return false;
+                continue;
+            }
+            if(type!=5)continue;
+            ChoreographyStartupEntry e{};
+            const char* token=static_cast<char*>(event)+0x350;
+            const char* selected=hologram_read<int>(event,0x34c)==0&&*token?token:param;
+            if(!choreography_text_copy(e.sound,sizeof(e.sound),selected))return false;
+            unsigned include=1;
+            if(h.select_sound&&!h.select_sound(h.context,scene,event,e.sound,sizeof(e.sound),&include))return false;
+            if(!include)continue;
+            if(!std::memchr(e.sound,0,sizeof(e.sound))||count==capacity)return false;
+            e.time=hologram_read<float>(event,0x184)+offset;
+            if(!std::isfinite(e.time))return false;
+            unsigned pos=count++;
+            while(pos&&e.time<entries[pos-1].time){entries[pos]=entries[pos-1];--pos;}
+            entries[pos]=e;
+        }
+    }
+};
+int __cdecl choreography_startup_sound_warm(void* context,void* scene,std::uint32_t word) noexcept {
+    auto* b=static_cast<const ChoreographyStartupSoundBindings*>(context);
+    if(!b||!b->storage||!b->warm_sound||!word)return 0;
+    std::unique_ptr<ChoreographyStartupEntry[]> rows(new(std::nothrow) ChoreographyStartupEntry[ChoreographyStartupCollector::capacity]);
+    if(!rows)return 0;
+    ChoreographyStartupCollector c{*b,scene,rows.get()};
+    if(!c.collect(word,0.f,0))return 0;
+    for(unsigned i=0;i<c.count;++i)if(!b->warm_sound(b->context,rows[i].sound))return 0;
+    return 1;
+}
+const ChoreographyStartupSoundApi choreography_startup_sound_api{version,sizeof(ChoreographyStartupSoundApi),&choreography_startup_sound_warm};
 const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
@@ -12312,6 +12384,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Choreogra
 SiN_GetChoreographyFinalizeApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyFinalizeApi)?&choreography_finalize_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyStartupSoundApi=_SiN_GetChoreographyStartupSoundApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyStartupSoundApi* __cdecl
+SiN_GetChoreographyStartupSoundApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyStartupSoundApi)?&choreography_startup_sound_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetNativeVcdRuntimeApi=_SiN_GetNativeVcdRuntimeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeVcdRuntimeApi* __cdecl
