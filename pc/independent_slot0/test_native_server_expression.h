@@ -37,6 +37,10 @@ inline void check_server_expression(const ServerExpressionApi& api){
     f.override_present=false;record[0xc]=1;
     assert(api.apply(actor,sizeof(actor),record,sizeof(record),event,sizeof(event),1,&b));
     assert(std::fabs(value()-.6f)<.00001f&&f.maps==4);
+    // Original remap lookup falls back to controller zero for an absent name.
+    std::strcpy(reinterpret_cast<char*>(f.base+192),"unmapped");
+    assert(api.apply(actor,sizeof(actor),record,sizeof(record),event,sizeof(event),1,&b)&&std::fabs(value()-.8f)<.00001f);
+    float reset=.6f;std::memcpy(actor+0x4a8,&reset,4);f.maps=4;
     std::strcpy(reinterpret_cast<char*>(event+0x104),"missing");
     assert(api.apply(actor,sizeof(actor),record,sizeof(record),event,sizeof(event),1,&b)&&f.maps==4);
     end=-1;std::memcpy(event+0x188,&end,4);const unsigned loads=f.loads;

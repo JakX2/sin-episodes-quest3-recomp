@@ -11,7 +11,7 @@ struct ServerExpressionBindings {
     // Original 220fb9b0: load or reuse a mutable VFE cache entry.
     // 1 found, 0 absent, -1 transport failure.
     int (__cdecl *load)(void*,void*,const char*,ServerExpressionBank*) noexcept;
-    // 220fb700 per-actor controller map; -1 missing, -2 transport failure.
+    // 220fb700 per-actor controller map; -1 missing maps to zero, -2 transport failure.
     int (__cdecl *controller)(void*,void*,const char*) noexcept;
     int (__cdecl *intensity)(void*,void*,float,float*) noexcept;
     // Inclusive engine integer RNG range [0,max], only on first alias use.

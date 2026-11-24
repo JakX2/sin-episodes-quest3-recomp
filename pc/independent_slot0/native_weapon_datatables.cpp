@@ -19,6 +19,7 @@
 #include "native_server_npc_random_expression.h"
 #include "native_server_composed_facial_think.h"
 #include "native_server_facial_records.h"
+#include "native_server_vfe_remap.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11220,6 +11221,48 @@ bool server_expression_choose(const ServerExpressionBindings& h,const ServerExpr
     }
     std::memcpy(bank.data+s+16,&selected,4);return true;
 }
+int __cdecl server_flex_controller_find(const char* const* names,unsigned count,const char* query,int* out) noexcept {
+    if(count>64||!hologram_writable(out,4)||(count&&(!names||!sin_independent::vgui_layout::Readable(names,count*sizeof(*names)))))return 0;
+    char key[512]{};
+    if(!prop_key_read(query,key))return 0;
+    for(unsigned i=0;i<count;++i){
+        char candidate[512]{};
+        if(!prop_key_read(names[i],candidate))return 0;
+        if(vfe_detail::equal(candidate,key)){*out=static_cast<int>(i);return 1;}
+    }
+    *out=0;return 1;
+}
+bool server_remap_ready(ServerVfeRemapCache* cache) noexcept {
+    return hologram_writable(cache,sizeof(*cache))&&cache->capacity<=4096&&cache->count<=cache->capacity&&
+        (!cache->capacity||hologram_writable(cache->entries,cache->capacity*sizeof(*cache->entries)));
+}
+int __cdecl server_vfe_remap_lookup(ServerVfeRemapCache* cache,ServerExpressionBank bank,
+    const char* const* names,unsigned count,unsigned key,int* out) noexcept {
+    if(!server_remap_ready(cache)||!hologram_writable(out,4)||count>64)return 0;
+    // The cache is keyed by loaded VFE pointer, not path or setting name.
+    for(unsigned i=0;i<cache->count;++i){
+        const auto& entry=cache->entries[i];
+        if(entry.bank!=bank.data)continue;
+        if(entry.keys>128||key>=entry.keys||entry.local[key]<0||entry.local[key]>=64)return 0;
+        *out=entry.local[key];return 1;
+    }
+    vfe_detail::Reader reader{};
+    if(cache->count==cache->capacity||!server_expression_read(bank,reader)||
+       reader.keys<0||reader.keys>128||key>=static_cast<unsigned>(reader.keys))return 0;
+    ServerVfeRemapEntry entry{};entry.bank=bank.data;entry.keys=static_cast<unsigned>(reader.keys);
+    for(unsigned i=0;i<entry.keys;++i){
+        const auto* name=reader.name(reader.word(reader.names_off+4LL*i));
+        if(!name||!server_flex_controller_find(names,count,name,&entry.local[i]))return 0;
+    }
+    cache->entries[cache->count++]=entry;
+    *out=entry.local[key];return 1;
+}
+int __cdecl server_vfe_remap_clear(ServerVfeRemapCache* cache) noexcept {
+    if(!server_remap_ready(cache))return 0;
+    cache->count=0;return 1;
+}
+const ServerVfeRemapApi server_vfe_remap_api{version,sizeof(ServerVfeRemapApi),&server_flex_controller_find,&server_vfe_remap_lookup,&server_vfe_remap_clear};
+
 int server_expression_apply_impl(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
     float scene_time,const ServerExpressionBindings* b,const ServerNativeIntensity* native) noexcept {
     if(bytes<server_flex_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_extent)||
@@ -11275,9 +11318,10 @@ int server_expression_apply_impl(void* actor,unsigned bytes,void* record,unsigne
         if(key<0||key>=selected->keys)return 0;
         const auto* controller=selected->name(selected->word(selected->names_off+4LL*key));
         if(!controller)return 0;
-        const int local=h.controller(h.context,actor,controller);
+        int local=h.controller(h.context,actor,controller);
         if(local<-1)return 0;
-        if(local<0||local>=static_cast<int>(h.count))continue;
+        if(local==-1)local=0; // 220f5840 fallback, cached by 220fb5b0
+        if(local>=static_cast<int>(h.count))continue;
         float target=0,old=0;std::memcpy(&target,selected->v.data+row+4,4);
         if(!std::isfinite(target)||!server_flex_weight_get(actor,bytes,h.ranges,h.count,local,&old))return 0;
         // Ordinary expression is additive, NOT flex-animation lerp.
@@ -11325,9 +11369,10 @@ int server_npc_random_expression_impl(void* actor,unsigned bytes,void* record,un
             if(key<0||key>=reader.keys)return 0;
             const auto* name=reader.name(reader.word(reader.names_off+key*4LL));
             if(!name)return 0;
-            const int local=h.controller(h.context,actor,name);
+            int local=h.controller(h.context,actor,name);
             if(local<-1)return 0;
-            if(local<0||local>=static_cast<int>(h.count))continue;
+            if(local==-1)local=0;
+            if(local>=static_cast<int>(h.count))continue;
             float weight=0;std::memcpy(&weight,reader.v.data+row+4,4);
             if(!std::isfinite(weight))return 0;
             hologram_write(actor,0xefc+local*4,weight);
@@ -13419,6 +13464,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEve
 SiN_GetServerEventIntensityApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerEventIntensityApi)?&server_event_intensity_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerVfeRemapApi=_SiN_GetServerVfeRemapApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfeRemapApi* __cdecl
+SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerFacialRecordApi=_SiN_GetServerFacialRecordApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFacialRecordApi* __cdecl
