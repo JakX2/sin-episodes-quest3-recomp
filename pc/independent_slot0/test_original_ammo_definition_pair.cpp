@@ -813,7 +813,11 @@ int main(int argc,char** argv){
     assert(getLeaves&&!GetProcAddress(client,tables::native_choreography_scene_leaf_export));
     const auto* leaves=getLeaves(1,sizeof(tables::NativeChoreographySceneLeafApi));
     assert(leaves&&leaves->invoke&&!getLeaves(0,sizeof(tables::NativeChoreographySceneLeafApi))&&!getLeaves(1,0));
-    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves);
+    const auto getSection=reinterpret_cast<tables::GetNativeChoreographySectionApi>(GetProcAddress(server,tables::native_choreography_section_export));
+    assert(getSection&&!GetProcAddress(client,tables::native_choreography_section_export));
+    const auto* section=getSection(1,sizeof(tables::NativeChoreographySectionApi));
+    assert(section&&!getSection(0,sizeof(tables::NativeChoreographySectionApi))&&!getSection(1,0));
+    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section);
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }

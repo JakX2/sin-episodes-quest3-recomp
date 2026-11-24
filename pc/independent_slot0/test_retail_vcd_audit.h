@@ -695,9 +695,79 @@ inline void check_native_scene_leaves(const NativeChoreographySceneLeafApi& api)
     std::strcpy(reinterpret_cast<char*>(f.event+4),"NULL");
     assert(call(0x2dc)&&call(0x2e0)&&f.begins==4&&f.stops==4);
 }
+inline void check_native_section(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const NativeChoreographySectionApi& api){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(event section hold
+{
+ time 1 -1
+ param "noaction"
+}
+actor Jessica
+{
+ channel Motion
+ {
+  event gesture motion
+  {
+   time 0 4
+   resumecondition
+  }
+ }
+}
+)VCD";
+    struct Fixture {
+        alignas(4) unsigned char scene[0x5ec]{},actor[0x604]{},rows[0x40]{};
+        void* event=nullptr;std::uint32_t root=0;
+        unsigned checks=0,ready=0,timeouts=0,outputs=0,finishes=0;
+        float now=0,last=0;
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+    } f;
+    F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;
+    auto raw=arena.runtime();
+    assert(runtime.parse(f.scene+0x410,"section.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    void *root=nullptr,*events=nullptr,*section=nullptr;unsigned n=0,extent=0;
+    assert(arena.storage(&arena,f.root,&root,&extent)&&arena.storage(&arena,F::word(root,0),&events,&n)&&n>=8);
+    assert(arena.storage(&arena,F::word(events,0),&section,&n)&&arena.storage(&arena,F::word(events,4),&f.event,&n));
+    assert(F::word(section,0)==1&&F::word(f.event,0)==6);
+    NativeChoreographyClockBindings tick{};tick.vectors=arena.vector_bindings;tick.release_memory=&VcdAuditArena::release;
+    tick.scene=f.scene;tick.scene_bytes=sizeof(f.scene);
+    tick.other_event=[](void*,std::uint32_t,unsigned,float,void*,void*) noexcept -> int{return 1;};
+    assert(clock.reset(root,extent,1,0,0,&tick)==1&&clock.simulate(root,extent,.5f,&tick)==1&&F::word(root,0x5c)==1);
+    ActorEventRecordBindings records{};records.context=&f;
+    records.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=Fixture::self(p);if(word!=F::ptr(f.rows))return 0;*out=f.rows;*bytes=sizeof(f.rows);return 1;};
+    records.check=[](void* p,void* actor,void* row,float time,std::uint32_t root,void* event,unsigned* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&row==f.rows&&time==.5f&&root==f.root&&event==f.event);++f.checks;*out=f.ready;return 1;};
+    F::put(f.actor,0x5b8,F::ptr(f.rows));F::put(f.actor,0x5bc,1);F::put(f.actor,0x5c4,1);
+    F::put(f.rows,0,F::ptr(f.event));F::put(f.rows,4,f.root);
+    NativeChoreographyDispatchBindings dispatch{};dispatch.context=&f;dispatch.scene=f.scene;dispatch.scene_bytes=sizeof(f.scene);dispatch.records=&records;
+    dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word==F::word(f.event,0x2b4));*out=f.actor;*bytes=sizeof(f.actor);return 1;};
+    dispatch.trace=[](void*,void*,void*,float,ChoreographyDispatchTrace) noexcept -> int{return 1;};
+    NativeChoreographySectionBindings b{};b.context=&f;b.scene_bytes=sizeof(f.scene);b.clock=&tick;b.dispatch=&dispatch;
+    b.clock_now=[](void* p,float* out) noexcept -> int{*out=Fixture::self(p).now;return 1;};
+    b.last_think=[](void* p,void* scene,int i,float* out) noexcept -> int{auto& f=Fixture::self(p);assert(scene==f.scene&&!i);*out=f.last;return 1;};
+    b.timeout=[](void* p,void* scene,int mode) noexcept -> int{auto& f=Fixture::self(p);assert(scene==f.scene&&mode==1);++f.timeouts;return 1;};
+    b.output=[](void* p,void* out,void* a,void* c,float d) noexcept -> int{auto& f=Fixture::self(p);assert(out==f.scene+0x44c&&a==f.scene&&c==f.scene&&!d);++f.outputs;return 1;};
+    b.finish=[](void* p,void* scene,int completed,int argument) noexcept -> int{auto& f=Fixture::self(p);assert(scene==f.scene&&completed==1&&!argument);++f.finishes;return 1;};
+    auto* param=static_cast<char*>(section)+0x84;
+    assert(api.enter(&b,f.scene,root,section,param)&&f.scene[0x3d9]&&!f.scene[0x3e4]);
+    assert(api.tick(&b,f.scene)&&f.scene[0x3d9]&&f.checks==1);
+    f.scene[0x528]=1;assert(api.tick(&b,f.scene)&&f.checks==1);f.scene[0x528]=0;
+    f.ready=1;assert(api.tick(&b,f.scene)&&!f.scene[0x3d9]&&f.checks==2&&!F::word(root,0x5c));
+    // Rebuild tracked conditions, then expire an automate Cancel timer.
+    assert(clock.reset(root,extent,1,0,0,&tick)==1&&clock.simulate(root,extent,.5f,&tick)==1);
+    f.ready=0;std::strcpy(param,"AuToMaTe Cancel 1.5");
+    assert(api.enter(&b,f.scene,root,section,param)&&f.scene[0x3d9]&&f.scene[0x3e4]&&F::word(f.scene,0x3e8)==1);
+    f.now=1;f.last=.5f;assert(api.tick(&b,f.scene)&&f.scene[0x3d9]&&!f.timeouts&&F::word(f.scene,0x3f0)==0x3f000000);
+    f.now=2;f.last=1;assert(api.tick(&b,f.scene)&&!f.scene[0x3d8]&&!f.scene[0x3d9]&&f.timeouts==1&&f.outputs==1&&f.finishes==1);
+    assert(!F::word(f.scene,0x3e8)&&!F::word(f.scene,0x3ec)&&!F::word(f.scene,0x3f0));
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.empty());
+}
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section){
     check_native_choreography_dispatch(dispatch);check_native_scene_leaves(leaves);
+    VcdAuditArena section_arena(c,s,t,d,st,si,va);check_native_section(section_arena,runtime,clock,section);
     // Native CUtlMemory capacities and indexed word insertion, including
     // null words, borrowed storage and failure-atomic raw allocator.
     {
