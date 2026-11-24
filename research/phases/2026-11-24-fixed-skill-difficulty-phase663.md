@@ -1,5 +1,9 @@
 # Phase 663: Opt-in static skill levels replacing SiN adaptive combat tuning
 
+## Phase 677 correction
+
+The original metric named `PERCENT_NPC_ACCURATE` multiplies attack spread, rather than hit probability (original 0x222d8107). The fixed policy now uses Easy=1.0 and Hard=0.5, preserving Normal=0.75. See Phase677 for original evidence. The table and interpretation below reflect the corrected policy.
+
 ## Decision
 
 The owner wants a **Half-Life-style selectable Easy / Normal / Hard**
@@ -96,8 +100,7 @@ directions across different metrics:
   `0.5` when `t=1`. Increasing the same `t` means a lower
   NPC accuracy metric.
 
-Therefore a scalar `dd_challenge` skill slider cannot guarantee a
-consistent Easy→Hard progression. A separate static metric set per
+Phase677 confirms this metric controls spread, so these two endpoints actually agree in gameplay direction. A separate fixed profile remains useful to avoid adaptive updates and independently control the other metrics. A separate static metric set per
 difficulty is necessary, while retaining all 14 original gameplay
 metric **names and index identities**.
 
@@ -125,7 +128,7 @@ silently changing the active profile.
 | `PERCENT_NPC_HELMET_SHOT_OFF` | 0.6 | 0.6 | 0.6 |
 | `PERCENT_NPC_TAKES_COVER` | 0.2 | 0.2 | 0.2 |
 | `RANDOM_NPC_WAIT_BEFORE_SHOOT` | **+0.1** | **0** | **−0.1** |
-| `PERCENT_NPC_ACCURATE` | **0.5** | **0.75** | **1.0** |
+| `PERCENT_NPC_ACCURATE` (spread multiplier) | **1.0** | **0.75** | **0.5** |
 | `PERCENT_NPC_MOBILE` | **0.3** | **0.5** | **0.7** |
 
 All **Normal** entries preserve original `record.fields[0]`

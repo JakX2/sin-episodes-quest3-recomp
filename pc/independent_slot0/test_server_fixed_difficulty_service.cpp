@@ -541,6 +541,74 @@ static void test_combat_damage(const a::CombatDamageApi* damage,const a::Api* ap
     assert(map->end_level(epoch)&&api->end_campaign()&&g->clear());
 }
 
+
+struct NpcRandomFixture {
+    const a::Api* api;
+    const a::NpcRulesApi* rules;
+    float sample=0.f;
+    unsigned calls=0;
+    int mode=0;
+    static int SIN_FIXED_CALL draw(void* context,float lo,float hi,float* out){
+        auto& self=*static_cast<NpcRandomFixture*>(context);
+        assert(lo==0.f&&hi==1.f&&out);++self.calls;
+        assert(!self.api->set_skill(2)&&!self.api->end_campaign());
+        a::NpcDecisionOutput nested{};
+        assert(!self.rules->decide(a::NpcMobile,0.f,nullptr,nullptr,&nested));
+        if(self.mode==2)throw 42;
+        if(self.mode==1)return 0;
+        *out=self.sample;return 1;
+    }
+};
+static void test_npc_rules(const a::NpcRulesApi* npc,const a::Api* api){
+    assert(npc&&npc->version==1&&npc->size==sizeof(*npc));
+    a::NpcDecisionOutput out{123.f,456.f,7,8};
+    assert(!npc->decide(a::NpcSecondaryFire,1.f,nullptr,nullptr,&out)&&out.decision==8);
+    assert(api->begin_campaign(1));
+    NpcRandomFixture rng{api,npc};
+    assert(npc->decide(a::NpcSecondaryFire,1.f,nullptr,nullptr,&out));
+    assert(!out.drew_random&&!out.decision&&out.threshold==0.f);
+    assert(npc->decide(a::NpcSecondaryFire,1.f,&NpcRandomFixture::draw,&rng,&out)&&rng.calls==0);
+    assert(npc->decide(a::NpcMobile,0.f,nullptr,nullptr,&out)&&!out.drew_random);
+    assert(!npc->decide(a::NpcWearsHelmet,1.f,nullptr,nullptr,&out));
+    rng.sample=0.1f;
+    assert(npc->decide(a::NpcWearsHelmet,1.f,&NpcRandomFixture::draw,&rng,&out));
+    assert(out.drew_random&&out.decision==1&&out.threshold==0.1f&&rng.calls==1);
+    rng.sample=std::nextafter(0.1f,1.f);
+    assert(npc->decide(a::NpcWearsHelmet,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==0);
+    a::NpcSpread spread{};
+    assert(npc->uncached_spread(0.2f,&spread)&&spread.x==0.2f&&spread.y==spread.x&&spread.z==spread.x);
+    assert(api->set_skill(2));
+    assert(npc->uncached_spread(0.2f,&spread)&&std::fabs(spread.x-0.15f)<0.00001f);
+    assert(api->set_skill(3));
+    assert(npc->uncached_spread(0.2f,&spread)&&spread.x==0.1f&&spread.y==spread.x&&spread.z==spread.x);
+    rng.sample=0.5f;
+    assert(npc->decide(a::NpcSecondaryFire,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==1);
+    rng.sample=0.6f;
+    assert(npc->decide(a::NpcHelmetShotOff,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==1);
+    rng.sample=0.2f;
+    assert(npc->decide(a::NpcTakesCover,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==1);
+    rng.sample=0.3f;
+    assert(npc->decide(a::NpcHealthKitDrop,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==1);
+    rng.sample=0.15f;
+    assert(npc->decide(a::NpcSpawnCountDelta,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==1);
+    rng.sample=1.f;
+    const unsigned before=rng.calls;
+    assert(npc->decide(a::NpcMobile,20.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==1&&out.threshold>1.f);
+    assert(rng.calls==before+1);
+    rng.sample=0.f;
+    assert(npc->decide(a::NpcMobile,-4.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==1&&out.threshold>0.f);
+    out={123.f,456.f,7,8};
+    assert(!npc->decide(999,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==8);
+    assert(!npc->decide(a::NpcMobile,std::numeric_limits<float>::infinity(),&NpcRandomFixture::draw,&rng,&out));
+    rng.mode=1;assert(!npc->decide(a::NpcMobile,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==8);
+    rng.mode=2;assert(!npc->decide(a::NpcMobile,1.f,&NpcRandomFixture::draw,&rng,&out)&&out.decision==8);
+    rng.mode=0;rng.sample=1.01f;assert(!npc->decide(a::NpcMobile,1.f,&NpcRandomFixture::draw,&rng,&out));
+    rng.sample=std::numeric_limits<float>::quiet_NaN();
+    assert(!npc->decide(a::NpcMobile,1.f,&NpcRandomFixture::draw,&rng,&out));
+    assert(!npc->uncached_spread(-1.f,&spread)&&spread.x==0.1f);
+    assert(api->end_campaign());
+}
+
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -907,6 +975,36 @@ static void test_native_engine_event(HMODULE lib,const a::Api* api,const a::MapE
     assert(manager.event.ints[0]==12&&manager.fires==5&&manager.frees==2);
     assert(map->end_level(epoch)&&api->end_campaign());
 }
+
+struct NativeNpcRandomFixture {
+    virtual void seed(int){assert(false);}
+    virtual float random(float lo,float hi){
+        assert(lo==0.f&&hi==1.f);++calls;
+        assert(!api->set_skill(2)&&!api->end_campaign());
+        if(throws)throw 1;
+        return sample;
+    }
+    const a::Api* api=nullptr;
+    unsigned calls=0;
+    float sample=0.f;
+    bool throws=false;
+};
+static void test_native_npc_rng(HMODULE lib,const a::Api* api){
+    const auto decide=reinterpret_cast<a::DecideNpcWithEngineRandom>(GetProcAddress(lib,a::npc_engine_rng_export_name));
+    assert(decide&&api->begin_campaign(1));
+    NativeNpcRandomFixture random;random.api=api;
+    a::NpcDecisionOutput out{};
+    assert(decide(nullptr,a::NpcSecondaryFire,1.f,&out)&&!out.drew_random);
+    assert(!decide(reinterpret_cast<void*>(1),a::NpcWearsHelmet,1.f,&out));
+    random.sample=0.1f;
+    assert(decide(&random,a::NpcWearsHelmet,1.f,&out)&&out.decision==1&&random.calls==1);
+    assert(api->set_skill(3));
+    random.sample=0.5f;
+    assert(decide(&random,a::NpcSecondaryFire,1.f,&out)&&out.decision==1&&random.calls==2);
+    random.throws=true;
+    assert(!decide(&random,a::NpcSecondaryFire,1.f,&out)&&out.decision==1&&random.calls==3);
+    assert(api->end_campaign());
+}
 #endif
 int main(int argc,char** argv){
     assert(argc==2);
@@ -964,6 +1062,13 @@ int main(int argc,char** argv){
 #endif
     assert(getCombat&&!getCombat(0,sizeof(a::CombatDamageApi))&&!getCombat(1,0));
     test_combat_damage(getCombat(a::combat_version,sizeof(a::CombatDamageApi)),api,globals,map);
+#ifdef _WIN32
+    auto getNpc=reinterpret_cast<a::GetNpcRulesApi>(GetProcAddress(lib,a::npc_rules_export_name));
+#else
+    auto getNpc=reinterpret_cast<a::GetNpcRulesApi>(dlsym(lib,a::npc_rules_export_name));
+#endif
+    assert(getNpc&&!getNpc(0,sizeof(a::NpcRulesApi))&&!getNpc(1,0));
+    test_npc_rules(getNpc(a::npc_rules_version,sizeof(a::NpcRulesApi)),api);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);
@@ -1014,6 +1119,7 @@ int main(int argc,char** argv){
     assert(api->end_campaign());
 #ifdef _WIN32
 #if defined(_MSC_VER) && defined(_M_IX86)
+    test_native_npc_rng(lib,api);
     test_native_engine_event(lib,api,map,triggers);
     test_engine_skill(lib,api);
     test_configured_campaign(lib,api,globals);
