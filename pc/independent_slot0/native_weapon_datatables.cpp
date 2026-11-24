@@ -3729,12 +3729,18 @@ int __cdecl dialogue_count_speak(void* p,void* exp,const char* name,const CountC
     // no-match too, so return transport success, not the played boolean.
     return response_speak(exp,x.extent,&x.host.speak,name,reinterpret_cast<const char*>(criteria->bytes),played)==1;
 }
-int __cdecl dialogue_count(HologramControl* ctrl,const CountDialogueBindings* b,const void* obs,unsigned bytes) noexcept {
-    if(!b||!b->resolve||!b->clock||!b->expeditor||!b->criteria)return 0;
-    CountDialogueCall call{ctrl,*b};CountBindings host{};
+bool dialogue_count_ready(const CountDialogueBindings* b) noexcept {
+    return b&&b->resolve&&b->clock&&b->expeditor&&b->criteria;
+}
+CountBindings dialogue_count_bindings(CountDialogueCall& call) noexcept {
+    CountBindings host{};
     host.context=&call;host.resolve=&dialogue_count_resolve;host.clock=&dialogue_count_clock;
     host.expeditor=&dialogue_count_expeditor;host.speaking=&dialogue_count_speaking;
-    host.criteria=&dialogue_count_criteria;host.speak=&dialogue_count_speak;
+    host.criteria=&dialogue_count_criteria;host.speak=&dialogue_count_speak;return host;
+}
+int __cdecl dialogue_count(HologramControl* ctrl,const CountDialogueBindings* b,const void* obs,unsigned bytes) noexcept {
+    if(!dialogue_count_ready(b))return 0;
+    CountDialogueCall call{ctrl,*b};const auto host=dialogue_count_bindings(call);
     return count_observe(ctrl,&host,obs,bytes);
 }
 const NpcDialogueApi npc_dialogue_api{version,sizeof(NpcDialogueApi),&dialogue_jessica,&dialogue_count};
@@ -6081,6 +6087,22 @@ int __cdecl npc_map_select_count(HologramControl* c,NpcMapSession* state,const N
     return npc_map_ready(NpcMapKind::Count,c)&&state&&b?count_select(c,&state->scheduler,&b->scheduler,result):0;
 }
 const NpcMapApi npc_map_api{version,sizeof(NpcMapApi),&npc_map_schema,&npc_map_key,&npc_map_input,&npc_map_observe,&npc_map_select_count};
+int __cdecl npc_map_dialogue_observe(NpcMapKind kind,HologramControl* c,NpcMapSession* session,const NpcMapBindings* map,
+                                    const NpcMapDialogueBindings* dialogue,const void* obs,unsigned bytes) noexcept {
+    if(!npc_map_ready(kind,c)||!session||!map||!dialogue||!obs||bytes<0x5e9||
+       !sin_independent::vgui_layout::Readable(obs,0x5e9))return 0;
+    if(kind==NpcMapKind::Jessica)return dialogue_jessica(c,&session->attention,&dialogue->jessica,obs,bytes);
+    if(kind==NpcMapKind::Count){
+        if(!dialogue_count_ready(&dialogue->count))return 0;
+        CountDialogueCall call{c,dialogue->count};const auto host=dialogue_count_bindings(call);
+        // Do NOT call dialogue_count directly: active non-interrogation
+        // behaviors must still receive the original scheduler callback.
+        return count_active_observe(c,&map->scheduler,&host,obs,bytes);
+    }
+    return 0;
+}
+const NpcMapDialogueApi npc_map_dialogue_api{version,sizeof(NpcMapDialogueApi),&npc_map_dialogue_observe};
+
 
 int __cdecl jessica_full_spawn(HologramControl* c,const JessicaSpawnBindings* b) noexcept {
     if(!health_control(c,jessica_size)||!b||!b->base_spawn||!b->resolve_parent||!b->parented_setup||
@@ -8063,6 +8085,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkPropa
 SiN_GetTalkPropagationApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkPropagationApi)?&talk_propagation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetNpcMapDialogueApi=_SiN_GetNpcMapDialogueApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcMapDialogueApi* __cdecl
+SiN_GetNpcMapDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcMapDialogueApi)?&npc_map_dialogue_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetNpcDialogueApi=_SiN_GetNpcDialogueApi")

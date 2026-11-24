@@ -1,6 +1,7 @@
 #pragma once
 #include "native_jessica_script.h"
 #include "native_count_interrogation.h"
+#include "native_npc_map.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char npc_dialogue_export[]="SiN_GetNpcDialogueApi";
 struct JessicaDialogueBindings {
@@ -30,4 +31,14 @@ struct NpcDialogueApi {
     int (__cdecl *count)(HologramControl*,const CountDialogueBindings*,const void* observation,unsigned bytes) noexcept;
 };
 using GetNpcDialogueApi=const NpcDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char npc_map_dialogue_export[]="SiN_GetNpcMapDialogueApi";
+struct NpcMapDialogueBindings {JessicaDialogueBindings jessica;CountDialogueBindings count;};
+struct NpcMapDialogueApi {
+    std::uint32_t version,size;
+    // Preserves the original map-level active behavior routing for Count.
+    // GenericActor/JC continue through the existing NpcMapApi.
+    int (__cdecl *observe)(NpcMapKind,HologramControl*,NpcMapSession*,const NpcMapBindings*,const NpcMapDialogueBindings*,const void*,unsigned bytes) noexcept;
+};
+using GetNpcMapDialogueApi=const NpcMapDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
