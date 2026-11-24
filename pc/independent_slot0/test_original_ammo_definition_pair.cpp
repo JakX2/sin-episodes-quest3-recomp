@@ -33,6 +33,7 @@
 #include "test_native_vehicle_map.h"
 #include "test_native_vehicle_lifecycle.h"
 #include "test_native_vehicle_think.h"
+#include "test_native_vehicle_seat_events.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -525,6 +526,12 @@ int main(int argc,char** argv){
     assert(vehicleThink&&!getVehicleThink(0,sizeof(tables::VehicleThinkApi))&&!getVehicleThink(1,0));
     tables::test::check_vehicle_think(*vehicleThink);
     std::puts("PASS native vehicle recurring update, ammo and info_camera_link lifecycle");
+    const auto getSeatEvents=reinterpret_cast<tables::GetVehicleSeatEventsApi>(GetProcAddress(server,tables::vehicle_seat_events_export));
+    assert(getSeatEvents&&!GetProcAddress(client,tables::vehicle_seat_events_export));
+    const auto* seatEvents=getSeatEvents(1,sizeof(tables::VehicleSeatEventsApi));
+    assert(seatEvents&&!getSeatEvents(0,sizeof(tables::VehicleSeatEventsApi))&&!getSeatEvents(1,0));
+    tables::test::check_vehicle_seat_events(*seatEvents);
+    std::puts("PASS native vehicle passenger callbacks, seat doors, default views and hints");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

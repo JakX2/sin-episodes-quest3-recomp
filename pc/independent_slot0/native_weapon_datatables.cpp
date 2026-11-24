@@ -25,6 +25,7 @@
 #include "native_vehicle_map.h"
 #include "native_vehicle_lifecycle.h"
 #include "native_vehicle_think.h"
+#include "native_vehicle_seat_events.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4378,17 +4379,20 @@ int __cdecl vehicle_set_view(HologramControl* v,const VehicleViewBindings* b,voi
     if(!h.attachment(h.context,v->object,hologram_read<int>(rec,0x48),pos,&found))return view_finish(v,p,false);
     return view_finish(v,p,!found||h.set_position(h.context,p->object,pos)!=0);
 }
+bool vehicle_seat_default_leaf(void* v,void* player,const VehicleViewBindings& h,int seat) noexcept {
+    const int count=hologram_read<int>(v,0x808);
+    for(int i=0;i<count;++i){
+        const auto* rec=view_record(v,i);
+        if(!rec)return false;
+        if(hologram_read<int>(rec,0x44)==seat&&hologram_read<int>(rec,0x40)<0)
+            return view_player_set(player,h,i,rec[0x55]);
+    }
+    return true;
+}
 int __cdecl vehicle_seat_default(HologramControl* v,HologramControl* p,const VehicleViewBindings* b,int seat) noexcept {
     if(!view_ready(v,b)||p==v||!health_control(p,view_player_extent)||seat<0)return 0;
     v->busy=1;p->busy=1;const auto h=*b;
-    const int count=hologram_read<int>(v->object,0x808);
-    for(int i=0;i<count;++i){
-        const auto* rec=view_record(v->object,i);
-        if(!rec)return view_finish(v,p,false);
-        if(hologram_read<int>(rec,0x44)==seat&&hologram_read<int>(rec,0x40)<0)
-            return view_finish(v,p,view_player_set(p->object,h,i,rec[0x55]));
-    }
-    return view_finish(v,p,true);
+    return view_finish(v,p,vehicle_seat_default_leaf(v->object,p->object,h,seat));
 }
 int __cdecl vehicle_directional(HologramControl* v,HologramControl* p,const VehicleViewBindings* b,int candidate,const float pos[3]) noexcept {
     if(!view_ready(v,b)||p==v||!health_control(p,view_player_extent)||!pos||!sin_independent::vgui_layout::Readable(pos,12))return 0;
@@ -4968,6 +4972,62 @@ int __cdecl vehicle_think(HologramControl* c,const VehicleThinkBindings* b) noex
     return disp_finish(c,h.tail(h.context,v)!=0);
 }
 const VehicleThinkApi vehicle_think_api{version,sizeof(VehicleThinkApi),&camera_link_defaults,&vehicle_refresh_camera,&vehicle_think,&health_ack};
+
+bool seat_event_ready(const HologramControl* c,const VehicleSeatEventBindings* b,int seat) noexcept {
+    return health_control(c,vehicle_object_bytes)&&seat>=0&&seat<3&&b&&b->base_enter&&b->base_exit&&
+        b->participant&&b->sound&&b->refresh_environment&&b->controller_predicate&&b->controller_followup&&
+        b->dirty_edict&&b->hint.resolve&&b->hint.participant&&b->hint.send&&b->views.cast_player&&b->views.dirty_edict;
+}
+bool seat_event_doors(void* v,const VehicleSeatEventBindings& h,int seat) noexcept {
+    for(int i=0;i<hologram_read<int>(v,0x81c);++i){
+        auto* rec=vehicle_map_record(v,false,i);if(!rec)return false;
+        if(hologram_read<int>(rec,0x48)!=seat)continue;
+        if(!rec[0x44]){
+            if(!h.sound(h.context,v,"door","open",i))return false;
+            rec=vehicle_map_record(v,false,i);if(!rec)return false;
+        }
+        rec[0x44]=1;rec[0x45]=1;
+    }
+    return true;
+}
+int __cdecl seat_event_enter(HologramControl* c,const VehicleSeatEventBindings* b,int seat,void* actor) noexcept {
+    if(!actor||!seat_event_ready(c,b,seat))return 0;
+    c->busy=1;const auto h=*b;auto* v=c->object;
+    if(!h.base_enter(h.context,v,seat,actor))return disp_finish(c,false);
+    unsigned player=0;
+    if(!h.participant(h.context,actor,&player)||(player&&!seat_event_doors(v,h,seat)))return disp_finish(c,false);
+    if(!h.refresh_environment(h.context,v))return disp_finish(c,false);
+    unsigned pred=0;
+    if(!h.controller_predicate(h.context,v,&pred)||(pred&&!h.controller_followup(h.context,v)))return disp_finish(c,false);
+    if(!h.participant(h.context,actor,&player))return disp_finish(c,false);
+    if(player){
+        HologramControl* p=nullptr;
+        if(!h.views.cast_player(h.views.context,actor,&p)||!p||p==c||p->object!=actor||!health_control(p,view_player_extent))return disp_finish(c,false);
+        p->busy=1;const bool ok=vehicle_seat_default_leaf(v,p->object,h.views,seat);p->busy=0;
+        if(!ok){p->blocked=1;return disp_finish(c,false);}
+    }
+    return disp_finish(c,vehicle_hint_notify(v,c->bytes,&h.hint,seat,1)==1);
+}
+int __cdecl seat_event_exit(HologramControl* c,const VehicleSeatEventBindings* b,int seat) noexcept {
+    if(!seat_event_ready(c,b,seat))return 0;
+    c->busy=1;const auto h=*b;auto* v=c->object;
+    const auto word=hologram_read<std::uint32_t>(v,0x6a4+seat*4);
+    void* actor=nullptr;
+    if(word==0xffffffffu||!h.hint.resolve(h.hint.context,word,&actor)||!actor)return disp_finish(c,false);
+    unsigned player=0;
+    if(!h.participant(h.context,actor,&player)||(player&&!seat_event_doors(v,h,seat)))return disp_finish(c,false);
+    if(vehicle_hint_notify(v,c->bytes,&h.hint,seat,0)!=1)return disp_finish(c,false);
+    if(seat==0&&hologram_read<unsigned char>(v,0x748)){
+        if(hologram_read<unsigned char>(v,0x1f0))hologram_write(v,0x200,static_cast<unsigned char>(1));
+        else{
+            const auto edict=hologram_read<std::uint32_t>(v,0x16c);
+            if(edict&&!h.dirty_edict(h.context,v,edict))return disp_finish(c,false);
+        }
+        hologram_write(v,0x748,static_cast<unsigned char>(0));
+    }
+    return disp_finish(c,h.base_exit(h.context,v,seat)!=0);
+}
+const VehicleSeatEventsApi vehicle_seat_events_api{version,sizeof(VehicleSeatEventsApi),&seat_event_enter,&seat_event_exit,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -7007,6 +7067,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleTh
 SiN_GetVehicleThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleThinkApi)?&vehicle_think_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleSeatEventsApi=_SiN_GetVehicleSeatEventsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleSeatEventsApi* __cdecl
+SiN_GetVehicleSeatEventsApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleSeatEventsApi)?&vehicle_seat_events_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
