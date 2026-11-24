@@ -2334,10 +2334,10 @@ inline void check_health_pickups(const HealthPickupApi& api){
     HealthPickupBindings b{&f,&pickup_skill_test,&pickup_dirty_test,&pickup_heal_test,&pickup_message_test,
         &pickup_sound_test,&pickup_respawn_query,&pickup_respawn_test,&pickup_remove_test};
     const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;f.dirty_count=0;};
-    const auto max=[&](){int value=0;std::memcpy(&value,player+0x98,4);return value;};
+    const auto read_maximum=[&](){int value=0;std::memcpy(&value,player+0x98,4);return value;};
     const auto classname=[&](const char* name){std::memcpy(item+0xc,&name,4);f.expected_class=name?name:"";};
     unsigned accepted=9;const auto pickup=[&](){return api.pickup(&ic,&pc,&b,f.kind,&accepted);};
-    assert(api.set_max(&pc,&b,100)==1&&max()==100&&!player[0x12a1]);expect({2});
+    assert(api.set_max(&pc,&b,100)==1&&read_maximum()==100&&!player[0x12a1]);expect({2});
     assert(api.set_max(&pc,&b,100)==1);expect({});
     classname("item_healthkit");
     f.heal_accepted=0;assert(pickup()==1&&!accepted&&f.healed==25.5f);expect({1,3});
@@ -2345,12 +2345,12 @@ inline void check_health_pickups(const HealthPickupApi& api){
     f.kind=HealthPickupKind::Vial;f.skill=10.25f;f.respawn=1;classname("item_healthvial");
     assert(pickup()==1&&accepted&&f.healed==10.25f);expect({1,3,4,5,6,7});
     f.kind=HealthPickupKind::Mega;f.skill=125.75f;classname("item_healthmega");
-    f.heal_accepted=0;assert(pickup()==1&&!accepted&&max()==200&&player[0x12a1]&&f.healed==125);
+    f.heal_accepted=0;assert(pickup()==1&&!accepted&&read_maximum()==200&&player[0x12a1]&&f.healed==125);
     assert(f.old_max[0]==100&&f.old_max[1]==225);expect({1,2,2,3});
     f.skill=0.75f;f.heal_accepted=1;classname(nullptr);
-    assert(pickup()==1&&accepted&&max()==200&&f.healed==0);expect({1,3,4,5,6,7});
-    assert(api.set_max(&pc,&b,75)==1&&max()==75&&!player[0x12a1]);expect({2});
-    f.skill=20.9f;f.fail=5;assert(pickup()==-1&&accepted&&ic.blocked&&pc.blocked&&max()==95&&f.healed==20);
+    assert(pickup()==1&&accepted&&read_maximum()==200&&f.healed==0);expect({1,3,4,5,6,7});
+    assert(api.set_max(&pc,&b,75)==1&&read_maximum()==75&&!player[0x12a1]);expect({2});
+    f.skill=20.9f;f.fail=5;assert(pickup()==-1&&accepted&&ic.blocked&&pc.blocked&&read_maximum()==95&&f.healed==20);
     expect({1,2,3,4,5});
     assert(pickup()==0&&api.acknowledge(&ic)&&api.acknowledge(&pc));expect({});
 }
