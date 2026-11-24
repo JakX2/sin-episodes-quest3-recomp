@@ -12,6 +12,7 @@
 #include "test_retail_vcd_audit.h"
 #include "test_native_client_facial_frame.h"
 #include "test_native_client_phoneme_window.h"
+#include "test_native_client_phoneme_emphasis.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -67,6 +68,15 @@ int main(int argc,char** argv){
         assert(api&&!get(0,sizeof(ft::ClientPhonemeWindowApi))&&!get(1,0));
         ft::test::check_client_phoneme_window(*api);
         std::puts("PASS client phoneme adaptive overlap window");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetClientPhonemeEmphasisApi>(GetProcAddress(client,ft::client_phoneme_emphasis_export));
+        assert(get&&!GetProcAddress(server,ft::client_phoneme_emphasis_export));
+        const auto* api=get(1,sizeof(ft::ClientPhonemeEmphasisApi));
+        assert(api&&!get(0,sizeof(ft::ClientPhonemeEmphasisApi))&&!get(1,0));
+        ft::test::check_client_phoneme_emphasis(*api);
+        std::puts("PASS client sentence emphasis and resolved phoneme bank contributions");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));
