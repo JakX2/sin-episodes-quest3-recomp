@@ -1559,10 +1559,84 @@ inline void check_phone(const PhoneSendApi& sa,const PhoneRecvApi& ra,const Phon
     sv.table->written=true;rv.record->class_id=1;assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
     sv.table->written=false;rv.record->class_id=0;assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
+
+struct PlayerPoisonFixture {
+    void* player=nullptr;void* gas=nullptr;
+    unsigned events[40]{},count=0,fail=0,effect=0,damage_count=0;
+    bool live=true;
+    float now=10,distance=0,intensity=0;
+    bool push(unsigned n){assert(count<40);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl pp_resolve(void* ctx,std::uint32_t handle,void** gas,unsigned* bytes) noexcept {
+    auto& f=*static_cast<PlayerPoisonFixture*>(ctx);assert(handle==0x123004);*gas=f.live?f.gas:nullptr;*bytes=0x3bc;return f.push(1);
+}
+inline int __cdecl pp_position(void* ctx,void* obj,float xyz[3]) noexcept {
+    auto& f=*static_cast<PlayerPoisonFixture*>(ctx);assert(obj==f.gas||obj==f.player);
+    xyz[0]=obj==f.player?f.distance:0.0f;xyz[1]=xyz[2]=0;return f.push(obj==f.gas?2:3);
+}
+inline int __cdecl pp_clock(void* ctx,float* now) noexcept {
+    auto& f=*static_cast<PlayerPoisonFixture*>(ctx);*now=f.now;return f.push(4);
+}
+inline int __cdecl pp_damage(void* ctx,void* player,void* source,float amount,unsigned flags) noexcept {
+    auto& f=*static_cast<PlayerPoisonFixture*>(ctx);assert(player==f.player&&source==f.gas&&amount==10&&flags==0x40000);
+    ++f.damage_count;return f.push(5);
+}
+inline int __cdecl pp_effect(void* ctx,void* player,unsigned effect) noexcept {
+    auto& f=*static_cast<PlayerPoisonFixture*>(ctx);assert(player==f.player);f.effect=effect;return f.push(6);
+}
+inline int __cdecl pp_intensity(void* ctx,float timer,float* result) noexcept {
+    auto& f=*static_cast<PlayerPoisonFixture*>(ctx);*result=timer*0.5f;f.intensity=*result;return f.push(7);
+}
+inline int __cdecl pp_dirty(void* ctx,void* player,unsigned offset) noexcept {
+    auto& f=*static_cast<PlayerPoisonFixture*>(ctx);assert(player==f.player&&offset==0x137c);return f.push(8);
+}
+inline void check_player_poison(const PlayerPoisonApi& api,const AggregateSendView& sv,const AggregateRecvView& rv){
+    alignas(4) unsigned char player[0x151c]{},gas[0x3bc]{},client[0x1250]{};
+    HologramControl ctrl{player,sizeof(player)};PlayerPoisonFixture f{player,gas};
+    PoisonTiming timing{};PlayerPoisonBindings b{&f,&pp_resolve,&pp_position,&pp_clock,&pp_damage,&pp_effect,&pp_intensity,&pp_dirty};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto get=[&](unsigned off){float v=0;std::memcpy(&v,player+off,4);return v;};
+    const auto put=[&](unsigned off,float v){std::memcpy(player+off,&v,4);};
+    const auto tick=[&](){return api.tick(&ctrl,&timing,&b);};
+    const auto attach=[&](){assert(api.attach(&ctrl,0x123004));};
+    const auto transfer=[&](){
+        auto& s=sv.tables[24]->props[10];auto& c=rv.tables[24]->props[10];
+        assert(!std::strcmp(s.name,"m_poisonTimer")&&!std::strcmp(c.name,"m_poisonTimer"));
+        s::DVariant v{};s.scalarProxy(&s,player+0x137c,player+0x137c+s.offset,&v,0,1);
+        RecvData d{&c,v,0,1};c.proxy(&d,client+0x11c8,client+0x11c8+c.offset);
+        assert(!std::memcmp(player+0x13a0,client+0x11ec,4));
+    };
+    assert(api.spawn_state(&ctrl)&&get(0x14d4)==1);
+    assert(tick()==1&&get(0x13a0)==1&&timing.last==10);expect({4,8});transfer();
+    gas[0x394]=1;float radius=300;std::memcpy(gas+0x3a0,&radius,4);attach();
+    unsigned inside=9;f.distance=309;assert(api.inside(&ctrl,&b,&inside)==1&&inside==1);expect({1,1,1,2,3,1});
+    f.distance=310;assert(api.inside(&ctrl,&b,&inside)==1&&!inside);expect({1,1,1,2,3,1});
+    assert(api.inside(&ctrl,&b,&inside)==1&&!inside);expect({});attach();
+    gas[0x394]=0;assert(api.inside(&ctrl,&b,&inside)==1&&!inside);expect({1,1});gas[0x394]=1;
+    f.live=false;assert(api.inside(&ctrl,&b,&inside)==1&&!inside);expect({1});f.live=true;f.distance=0;
+    f.now=11;assert(tick()==1&&std::abs(get(0x13a0)-0.85f)<0.00001f&&f.effect==26&&get(0x14dc)==11);
+    expect({1,1,1,2,3,1,4,4,6,7,8});transfer();
+    f.now=14;assert(tick()==1&&std::abs(get(0x13a0)-0.4f)<0.00001f&&f.effect==28);
+    expect({1,1,1,2,3,1,4,6,7,8});transfer();
+    f.now=18;assert(tick()==1&&get(0x13a0)==0&&f.damage_count==1&&f.effect==29);
+    expect({1,1,1,2,3,1,4,1,5,4,6,7,8});
+    f.now=timing.next_damage;assert(tick()==1&&f.damage_count==1);expect({1,1,1,2,3,1,4,6,7});
+    f.now=19;assert(tick()==1&&f.damage_count==2);expect({1,1,1,2,3,1,4,1,5,4,6,7});
+    f.distance=400;f.now=30;assert(tick()==1&&get(0x13a0)==1&&f.effect==0&&get(0x14dc)==0&&get(0x14e0)==1);
+    expect({1,1,1,2,3,1,4,6,8});transfer();
+    f.now=20;assert(tick()==1&&timing.last==20);expect({4});
+    // Exact thresholds, same module clock and equal network state.
+    put(0x14d4,0.75f);put(0x13a0,0.75f);put(0x14dc,1);
+    assert(tick()==1&&f.effect==27);expect({4,6,7});
+    put(0x14d4,0.5f);assert(tick()==1&&f.effect==28);expect({4,6,7,8});
+    put(0x14d4,0.25f);assert(tick()==1&&f.effect==29);expect({4,6,7,8});
+    f.fail=8;put(0x14d4,0.125f);assert(tick()==-1&&ctrl.blocked&&timing.blocked);expect({4,6,7,8});
+    assert(tick()==0&&api.acknowledge(&ctrl,&timing));expect({});
+}
 inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& ra,const ExtraSendApi& esa,const ExtraRecvApi& era,const HologramServerApi& hsa,const HologramClientApi& hra,const GruntDeathApi& gda,
         const KeypadSendApi& ksa,const KeypadRecvApi& kra,const KeypadServerApi& ks,const KeypadClientApi& kc,
         const PropKeypadServerApi& pks,const PropKeypadClientApi& pkc,
-        const PhoneSendApi& phs,const PhoneRecvApi& phr,const PhoneServerApi& ph){
+        const PhoneSendApi& phs,const PhoneRecvApi& phr,const PhoneServerApi& ph,const PlayerPoisonApi& poison){
     s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
     RecvProp rp[8];RecvTable rc{rp,8,nullptr,"DT_CollisionProperty"};
     NativeOwner owner;sin_independent::EntityHandleEntry entries[64]{};
@@ -1586,6 +1660,7 @@ inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& r
     check_extra_entities(esa,era,sa,ra,sv,rv,hsa,hra,gda);
     check_keypad(ksa,kra,ks,kc,sa,ra,sv,rv,pks,pkc);
     check_phone(phs,phr,ph,sa,ra,sv,rv);
+    check_player_poison(poison,sv,rv);
     for(unsigned i=0;i<aggregate_table_count;++i){
         assert(sv.tables[i]&&rv.tables[i]&&std::strcmp(sv.tables[i]->name,rv.tables[i]->name)==0);
         for(unsigned j=0;j<i;++j)assert(sv.tables[i]!=sv.tables[j]&&rv.tables[i]!=rv.tables[j]);

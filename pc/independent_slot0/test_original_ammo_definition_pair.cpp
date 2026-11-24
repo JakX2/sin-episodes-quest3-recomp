@@ -187,7 +187,12 @@ int main(int argc,char** argv){
     const auto* phoneRecv=getPhoneRecv(1,sizeof(tables::PhoneRecvApi));
     const auto* phoneServer=getPhoneServer(1,sizeof(tables::PhoneServerApi));
     assert(phoneSend&&phoneRecv&&phoneServer&&!getPhoneSend(0,sizeof(tables::PhoneSendApi))&&!getPhoneServer(1,0));
-    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath,*keySend,*keyRecv,*keyServer,*keyClient,*propKeyServer,*propKeyClient,*phoneSend,*phoneRecv,*phoneServer);
+    const auto getPlayerPoison=reinterpret_cast<tables::GetPlayerPoisonApi>(GetProcAddress(server,tables::player_poison_export));
+    assert(getPlayerPoison&&!GetProcAddress(client,tables::player_poison_export));
+    const auto* playerPoison=getPlayerPoison(1,sizeof(tables::PlayerPoisonApi));
+    assert(playerPoison&&!getPlayerPoison(0,sizeof(tables::PlayerPoisonApi))&&!getPlayerPoison(1,0));
+    tables::test::check_aggregate(*aggregateSend,*aggregateRecv,*extraSend,*extraRecv,*holoServer,*holoClient,*gruntDeath,*keySend,*keyRecv,*keyServer,*keyClient,*propKeyServer,*propKeyClient,*phoneSend,*phoneRecv,*phoneServer,*playerPoison);
+    std::puts("PASS native SiN player poison accumulation, damage cadence, effect and paired network timer");
     std::puts("PASS native SiN prop phone poll, prefix/terminal sound, native keypad clear and lifecycle");
     std::puts("PASS native paired prop keypad event, OnInput, sound and display updates");
     std::puts("PASS native paired SiN keypad network graph and game event path");

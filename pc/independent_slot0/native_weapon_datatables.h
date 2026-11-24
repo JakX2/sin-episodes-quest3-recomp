@@ -1105,4 +1105,34 @@ struct PoisonGasApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetPoisonGasApi=const PoisonGasApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase729: original CHL2_Player poison state. One shared timing
+// object per server module, NOT per player. Host serializes calls.
+inline constexpr char player_poison_export[]="SiN_GetPlayerPoisonApi";
+struct PoisonTiming {float last=0,next_damage=0;unsigned busy=0,blocked=0;};
+struct PlayerPoisonBindings {
+    void* context;
+    // Serial/type-checked original CPoisonGas storage, or null.
+    int (__cdecl *resolve)(void*,std::uint32_t handle,void** gas,unsigned* bytes) noexcept;
+    int (__cdecl *position)(void*,void* entity,float xyz[3]) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    // Existing Source damage delivery, attacker is player, inflictor
+    // is resolved gas or null. Host owns damage-info construction.
+    int (__cdecl *damage)(void*,void* player,void* source,float amount,unsigned flags) noexcept;
+    int (__cdecl *effect)(void*,void* player,unsigned effect_id) noexcept;
+    int (__cdecl *intensity)(void*,float timer,float* result) noexcept;
+    int (__cdecl *dirty)(void*,void* player,unsigned local_offset) noexcept;
+};
+struct PlayerPoisonApi {
+    std::uint32_t version,size;
+    // Post-spawn leaves only, no shared timing reset.
+    int (__cdecl *spawn_state)(HologramControl*) noexcept;
+    // Typed damage-source attachment is supplied by the original
+    // damage dispatch adapter, not a fabricated radius query.
+    int (__cdecl *attach)(HologramControl*,std::uint32_t handle) noexcept;
+    int (__cdecl *inside)(HologramControl*,const PlayerPoisonBindings*,unsigned*) noexcept;
+    int (__cdecl *tick)(HologramControl*,PoisonTiming*,const PlayerPoisonBindings*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*,PoisonTiming*) noexcept;
+};
+using GetPlayerPoisonApi=const PlayerPoisonApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
