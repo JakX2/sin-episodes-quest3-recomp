@@ -392,6 +392,13 @@ int main(int argc,char** argv){
     assert(responseRecord&&!getResponseRecord(0,sizeof(tables::ResponseRecordApi))&&!getResponseRecord(1,0));
     tables::test::check_response_record(*responseRecord);
     std::puts("PASS native response history replacement and ownership transfer");
+    const auto getResponseSpeak=reinterpret_cast<tables::GetResponseSpeakApi>(GetProcAddress(server,tables::response_speak_export));
+    assert(getResponseSpeak&&!GetProcAddress(client,tables::response_speak_export));
+    const auto* responseSpeak=getResponseSpeak(1,sizeof(tables::ResponseSpeakApi));
+    assert(responseSpeak&&!getResponseSpeak(0,sizeof(tables::ResponseSpeakApi))&&!getResponseSpeak(1,0));
+    tables::test::check_response_speak(*responseSpeak,*responseTimingUpdate,*responseRecord);
+    std::puts("PASS native composed response selection, playback, timing and history");
+
 
 
 

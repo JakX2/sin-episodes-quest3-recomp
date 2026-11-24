@@ -3178,6 +3178,21 @@ int __cdecl response_record(void* exp,unsigned bytes,const ResponseRecordBinding
     return 1;
 }
 const ResponseRecordApi response_record_api{version,sizeof(ResponseRecordApi),&response_record};
+int __cdecl response_speak(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const char* name,const char* mods,unsigned* played) noexcept {
+    if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!b||!b->trace_selected||
+       !name||!played||!hologram_writable(played,sizeof(*played)))return 0;
+    const auto h=*b;void* response=nullptr;unsigned extent=0;
+    const auto selected=response_select(exp,bytes,&h.selection,name,mods,&response,&extent);
+    if(selected!=1)return selected;
+    if(!response){*played=0;return 1;}
+    const auto drop=[&](){(void)h.selection.destroy(h.selection.context,response);return -1;};
+    if(!h.trace_selected(h.context,exp,name))return drop();
+    const auto dispatched=response_dispatch(exp,bytes,&h.dispatch,name,response,extent,played);
+    // A rejected dispatch did not take ownership. Other statuses consumed it.
+    return dispatched==0?drop():dispatched;
+}
+const ResponseSpeakApi response_speak_api{version,sizeof(ResponseSpeakApi),&response_speak};
+
 
 
 
@@ -7531,6 +7546,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseR
 SiN_GetResponseRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseRecordApi)?&response_record_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetResponseSpeakApi=_SiN_GetResponseSpeakApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseSpeakApi* __cdecl
+SiN_GetResponseSpeakApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseSpeakApi)?&response_speak_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

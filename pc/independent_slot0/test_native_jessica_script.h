@@ -415,4 +415,94 @@ inline void check_response_record(const ResponseRecordApi& api){
     assert(api.record(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",f.first,0x123,1)==0);f.expect({});
 }
 
+
+struct ResponseSpeakFixture {
+    const ResponseTimingUpdateApi& timing;
+    const ResponseRecordApi& record_api;
+    alignas(4) unsigned char exp[0x7c]{},pool[2][0x124]{},row[0x1c]{};
+    SpeechSemaphorePair sem{};
+    ResponseSpeakBindings b{};
+    ResponseNoteBindings note{};
+    ResponseRecordBindings history{};
+    bool live[2]{},has_system=true,has_match=true,fail_trace=false,fail_sound=false,fail_notify=false;
+    int system=0,criteria=0,index=-1,allocated=-1;
+    unsigned allocations=0,destroys=0,traces=0,sounds=0,notifications=0,criteria_ends=0;
+    float now=10;
+    static std::uint32_t ptr(void* p){return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(p));}
+    float read(const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+    unsigned word(unsigned off){unsigned v=0;std::memcpy(&v,row+off,4);return v;}
+    static ResponseSpeakFixture& get(void* p,void* e){auto& f=*static_cast<ResponseSpeakFixture*>(p);assert(e==f.exp);return f;}
+    static int __cdecl destroy(void* p,void* response) noexcept {
+        auto& f=*static_cast<ResponseSpeakFixture*>(p);const auto i=response==f.pool[0]?0:1;
+        assert(response==f.pool[i]&&f.live[i]);f.live[i]=false;++f.destroys;return 1;
+    }
+    explicit ResponseSpeakFixture(const ResponseTimingUpdateApi& t,const ResponseRecordApi& r):timing(t),record_api(r){
+        b.context=this;b.selection.context=this;b.dispatch.context=this;
+        b.selection.system=[](void* p,void* e,void** out) noexcept -> int{auto& f=get(p,e);*out=f.has_system?&f.system:nullptr;return 1;};
+        b.selection.begin_criteria=[](void* p,void** out) noexcept -> int{*out=&static_cast<ResponseSpeakFixture*>(p)->criteria;return 1;};
+        b.selection.add=[](void* p,void* c,const char* k,const char* n,float w) noexcept -> int{auto& f=*static_cast<ResponseSpeakFixture*>(p);assert(c==&f.criteria&&!std::strcmp(k,"concept")&&!std::strcmp(n,"TLK_IDLE")&&w==5.f);return 1;};
+        b.selection.modifiers=[](void*,void*,const char*,float) noexcept -> int{return 1;};
+        b.selection.npc_criteria=[](void*,void*,void*) noexcept -> int{return 1;};
+        b.selection.player_criteria=[](void*,void*,int i) noexcept -> int{assert(i==1);return 1;};
+        b.selection.allocate=[](void* p,unsigned n,void** out,unsigned* extent) noexcept -> int{
+            auto& f=*static_cast<ResponseSpeakFixture*>(p);assert(n==0x124);
+            const auto i=!f.live[0]?0:!f.live[1]?1:-1;assert(i>=0);f.allocated=i;f.live[i]=true;++f.allocations;*out=f.pool[i];*extent=n;return 1;};
+        b.selection.find=[](void* p,void* s,void* c,void* response,void* e,unsigned* out) noexcept -> int{
+            auto& f=get(p,e);assert(s==&f.system&&c==&f.criteria&&response==f.pool[f.allocated]&&f.live[f.allocated]);
+            *out=f.has_match;if(!*out){f.live[f.allocated]=false;return 1;} // finder-false host ownership
+            const unsigned type=1;std::memcpy(response,&type,4);std::strcpy(static_cast<char*>(response)+4,"native_line");return 1;};
+        b.selection.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
+        b.selection.destroy=destroy;
+        b.selection.end_criteria=[](void* p,void* c) noexcept -> int{auto& f=*static_cast<ResponseSpeakFixture*>(p);assert(c==&f.criteria);++f.criteria_ends;return 1;};
+        b.trace_selected=[](void* p,void* e,const char* n) noexcept -> int{auto& f=get(p,e);assert(!std::strcmp(n,"TLK_IDLE")&&f.live[f.allocated]&&f.allocations==f.criteria_ends);++f.traces;return !f.fail_trace;};
+        b.dispatch.sample=[](void*,const void*,float*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.speaking=[](void* p,void* e,unsigned* out) noexcept -> int{auto& f=get(p,e);return f.timing.speaking(e,sizeof(f.exp),f.now,out)==1;};
+        b.dispatch.force_log=[](void*,void*,const char*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.stop_scene=[](void*,void*,int) noexcept -> int{assert(false);return 0;};
+        b.dispatch.interrupt=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.scene_blocked=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.refused_log=[](void*,void*,const char*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.sound=[](void* p,void* e,const char* text,float* out) noexcept -> int{auto& f=get(p,e);assert(!std::strcmp(text,"native_line")&&f.traces>f.sounds);++f.sounds;*out=2;return !f.fail_sound;};
+        b.dispatch.scene=[](void*,void*,const char*,float,float*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.sound_duration=[](void*,void*,const char*,float*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.emit_raw=[](void*,void*,const char*,int,int) noexcept -> int{assert(false);return 0;};
+        b.dispatch.note_duration=[](void* p,void* e,float d,float delay) noexcept -> int{auto& f=get(p,e);return f.timing.note(e,sizeof(f.exp),&f.sem,&f.note,d,delay)==1;};
+        b.dispatch.sentence=[](void*,void*,const char*,float,float,int,int,int*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.print_enabled=[](void*,unsigned*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.print=[](void*,void*,const char*) noexcept -> int{assert(false);return 0;};
+        b.dispatch.clock=[](void* p,float* out) noexcept -> int{*out=static_cast<ResponseSpeakFixture*>(p)->now;return 1;};
+        b.dispatch.debug_success=[](void* p,void* e,const char*,const char*) noexcept -> int{auto& f=get(p,e);assert(f.read(e,0x78)==f.now&&f.read(e,0x68)==f.now+2);return 1;};
+        b.dispatch.destroy=destroy;
+        b.dispatch.record=[](void* p,void* e,const char* n,void* response) noexcept -> int{auto& f=get(p,e);return f.record_api.record(e,sizeof(f.exp),&f.history,n,response,0x124,1)==1;};
+        note.context=this;note.owner_start=[](void*,void*) noexcept -> int{return 1;};
+        note.clock=b.dispatch.clock;
+        note.diagnostic=[](void* p,void* e,float total,float delay,float until) noexcept -> int{auto& f=get(p,e);assert(total==2&&!delay&&until==f.now+2);return 1;};
+        note.uses_semaphore=[](void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+        note.classify=[](void*,void*,int a,unsigned* out) noexcept -> int{assert(!a);*out=1;return 1;};
+        note.owner_handle=[](void*,void*,std::uint32_t* out) noexcept -> int{*out=0x123004;return 1;};
+        history.context=this;history.destroy=destroy;history.history.context=this;
+        history.history.lookup=[](void* p,void* e,const char* n,int* out) noexcept -> int{auto& f=get(p,e);assert(!std::strcmp(n,"TLK_IDLE"));*out=f.index;return 1;};
+        history.history.insert=[](void* p,void* e,const char*,float t,int* out) noexcept -> int{auto& f=get(p,e);assert(f.index==-1&&t==f.now);f.index=*out=7;return 1;};
+        history.history.entry=[](void* p,void* e,int i,void** out,unsigned* extent) noexcept -> int{auto& f=get(p,e);assert(i==7);*out=f.row;*extent=sizeof(f.row);return 1;};
+        history.history.clock=b.dispatch.clock;
+        history.history.notify=[](void* p,void* e,const char*) noexcept -> int{
+            auto& f=get(p,e);assert(f.read(f.row,0x14)==f.now&&f.word(0x18)==ptr(f.pool[f.allocated])&&f.live[f.allocated]);++f.notifications;return !f.fail_notify;};
+    }
+};
+inline void check_response_speak(const ResponseSpeakApi& api,const ResponseTimingUpdateApi& timing,const ResponseRecordApi& record){
+    ResponseSpeakFixture f(timing,record);unsigned played=99;
+    auto run=[&](){played=99;return api.speak(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",nullptr,&played);};
+    f.has_system=false;assert(run()==1&&!played&&!f.allocations);f.has_system=true;
+    f.has_match=false;assert(run()==1&&!played&&f.allocations==1&&!f.live[0]&&!f.traces);f.has_match=true;
+    assert(run()==1&&played&&f.live[0]&&!f.live[1]&&f.word(0x18)==f.ptr(f.pool[0])&&f.notifications==1&&f.sem.classified.release==10&&f.sem.classified.owner==0x123004);
+    f.now=13;assert(run()==1&&played&&!f.live[0]&&f.live[1]&&f.word(0x18)==f.ptr(f.pool[1])&&f.notifications==2&&f.destroys==1);
+    f.now=16;f.fail_trace=true;assert(run()==-1&&played==99&&!f.live[0]&&f.live[1]&&f.destroys==2);f.fail_trace=false;
+    f.fail_sound=true;assert(run()==-1&&played==99&&!f.live[0]&&f.live[1]&&f.destroys==3&&f.read(f.exp,0x78)==13);f.fail_sound=false;
+    const auto saved=f.b.dispatch.sound;f.b.dispatch.sound=nullptr;
+    assert(run()==-1&&played==99&&!f.live[0]&&f.live[1]&&f.destroys==4);f.b.dispatch.sound=saved;
+    f.fail_notify=true;assert(run()==-1&&played==99&&f.live[0]&&!f.live[1]&&f.destroys==5&&f.notifications==3&&f.word(0x18)==f.ptr(f.pool[0])&&f.read(f.exp,0x78)==16);
+    // Explicit fixture teardown of the remaining owned response.
+    assert(ResponseSpeakFixture::destroy(&f,f.pool[0])&&!f.live[0]&&!f.live[1]);
+}
+
 }

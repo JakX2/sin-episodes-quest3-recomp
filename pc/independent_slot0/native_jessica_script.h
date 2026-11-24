@@ -249,6 +249,23 @@ struct ResponseRecordApi {
     int (__cdecl *record)(void* exp,unsigned bytes,const ResponseRecordBindings*,const char* name,void* response,unsigned extent,unsigned notify) noexcept;
 };
 using GetResponseRecordApi=const ResponseRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_speak_export[]="SiN_GetResponseSpeakApi";
+struct ResponseSpeakBindings {
+    ResponseSelectionBindings selection;
+    ResponseDispatchBindings dispatch;
+    void* context;
+    // Original 220a7570 diagnostic gate; host decides whether to log.
+    int (__cdecl *trace_selected)(void*,void* exp,const char* concept_name) noexcept;
+};
+struct ResponseSpeakApi {
+    std::uint32_t version,size;
+    // Original selection -> optional debug trace -> dispatch wrapper.
+    // Caller owns expeditor serialization; nested callbacks may use the
+    // recovered timing/history leaves without recursively taking NPC lock.
+    int (__cdecl *speak)(void* exp,unsigned bytes,const ResponseSpeakBindings*,const char* concept_name,const char* modifiers,unsigned* played) noexcept;
+};
+using GetResponseSpeakApi=const ResponseSpeakApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 
