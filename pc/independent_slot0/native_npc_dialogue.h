@@ -2,6 +2,7 @@
 #include "native_jessica_script.h"
 #include "native_count_interrogation.h"
 #include "native_npc_map.h"
+#include "native_npc_scene_playback.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char npc_dialogue_export[]="SiN_GetNpcDialogueApi";
 struct JessicaDialogueBindings {
@@ -48,6 +49,17 @@ struct ManagedJessicaObservationApi {
     int (__cdecl *observe)(HologramControl*,JessicaAttentionState*,const JessicaDialogueBindings*,const TalkManagerRuntimeBindings*,const void*,unsigned) noexcept;
 };
 using GetManagedJessicaObservationApi=const ManagedJessicaObservationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char integrated_npc_map_dialogue_export[]="SiN_GetIntegratedNpcMapDialogueApi";
+struct IntegratedNpcMapDialogueBindings {
+    ResponseChoreographyBindings response;
+    SceneEntityLifecycleBindings lifecycle;
+};
+struct IntegratedNpcMapDialogueApi {
+    std::uint32_t version,size;
+    int (__cdecl *observe)(NpcMapKind,HologramControl*,NpcMapSession*,const NpcMapBindings*,const NpcMapDialogueBindings*,
+        const TalkManagerRuntimeBindings*,const IntegratedNpcMapDialogueBindings*,const void*,unsigned) noexcept;
+};
+using GetIntegratedNpcMapDialogueApi=const IntegratedNpcMapDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 }

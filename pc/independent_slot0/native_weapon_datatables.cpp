@@ -7090,6 +7090,21 @@ int __cdecl npc_map_dialogue_observe(NpcMapKind kind,HologramControl* c,NpcMapSe
     return 0;
 }
 const NpcMapDialogueApi npc_map_dialogue_api{version,sizeof(NpcMapDialogueApi),&npc_map_dialogue_observe};
+int __cdecl integrated_npc_map_observe(NpcMapKind kind,HologramControl* c,NpcMapSession* session,const NpcMapBindings* map,
+    const NpcMapDialogueBindings* dialogue,const TalkManagerRuntimeBindings* manager,const IntegratedNpcMapDialogueBindings* scene,
+    const void* obs,unsigned bytes) noexcept {
+    if(!npc_map_ready(kind,c)||!session||!map||!dialogue||!scene||!obs||bytes<0x5e9||
+       !sin_independent::vgui_layout::Readable(obs,0x5e9)||!integrated_response_ready(&scene->response,&scene->lifecycle))return 0;
+    const auto h=*scene;
+    if(kind==NpcMapKind::Jessica)return integrated_jessica_observe(c,&session->attention,&dialogue->jessica,manager,&h.response,&h.lifecycle,obs,bytes);
+    if(kind==NpcMapKind::Count){
+        if(!dialogue_count_ready(&dialogue->count))return 0;
+        CountDialogueCall call{c,dialogue->count,nullptr,0,&h.response,&h.lifecycle};const auto callbacks=dialogue_count_bindings(call);
+        return count_active_observe(c,&map->scheduler,&callbacks,obs,bytes);
+    }
+    return 0;
+}
+const IntegratedNpcMapDialogueApi integrated_npc_map_dialogue_api{version,sizeof(IntegratedNpcMapDialogueApi),&integrated_npc_map_observe};
 
 
 int __cdecl jessica_full_spawn(HologramControl* c,const JessicaSpawnBindings* b) noexcept {
@@ -9117,6 +9132,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetIntegratedNpcMapDialogueApi=_SiN_GetIntegratedNpcMapDialogueApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::IntegratedNpcMapDialogueApi* __cdecl
+SiN_GetIntegratedNpcMapDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(IntegratedNpcMapDialogueApi)?&integrated_npc_map_dialogue_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetIntegratedNpcDialogueApi=_SiN_GetIntegratedNpcDialogueApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::IntegratedNpcDialogueApi* __cdecl
 SiN_GetIntegratedNpcDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
