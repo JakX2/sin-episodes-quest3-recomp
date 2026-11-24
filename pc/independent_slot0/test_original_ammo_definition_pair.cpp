@@ -108,8 +108,16 @@ int main(int argc,char** argv){
     const auto* basePlayerSend=getBasePlayerSend(1,sizeof(tables::BasePlayerSendApi));
     const auto* basePlayerRecv=getBasePlayerRecv(1,sizeof(tables::BasePlayerRecvApi));
     assert(basePlayerSend&&basePlayerRecv&&!getBasePlayerSend(0,sizeof(tables::BasePlayerSendApi))&&!getBasePlayerRecv(1,0));
+    const auto getLocalDataSend=reinterpret_cast<tables::GetLocalDataSendApi>(GetProcAddress(server,tables::local_data_send_export));
+    const auto getLocalDataRecv=reinterpret_cast<tables::GetLocalDataRecvApi>(GetProcAddress(client,tables::local_data_recv_export));
+    assert(getLocalDataSend&&getLocalDataRecv&&!GetProcAddress(client,tables::local_data_send_export)&&!GetProcAddress(server,tables::local_data_recv_export));
+    const auto* dataSend=getLocalDataSend(1,sizeof(tables::LocalDataSendApi));
+    const auto* dataRecv=getLocalDataRecv(1,sizeof(tables::LocalDataRecvApi));
+    assert(dataSend&&dataRecv&&!getLocalDataSend(0,sizeof(tables::LocalDataSendApi))&&!getLocalDataRecv(1,0));
+    tables::test::check_local_data_graph(*dataSend,*dataRecv);
+    std::puts("PASS native paired DT_Local 48/49 slots, 32 byte area bits and FOV transitions");
     tables::test::check_base_player_graph(*basePlayerSend,*basePlayerRecv,*animSend,*animRecv,*overlaySend,*overlayRecv,
-        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv);
+        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv,*dataSend,*dataRecv);
     std::puts("PASS native paired BasePlayer and PlayerState graph composition");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");

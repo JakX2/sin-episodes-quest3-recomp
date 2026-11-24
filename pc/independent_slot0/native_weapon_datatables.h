@@ -264,4 +264,29 @@ using BasePlayerSendApi=GraphApi<BasePlayerSendBindings,BasePlayerSendView>;
 using BasePlayerRecvApi=GraphApi<BasePlayerRecvBindings,BasePlayerRecvView>;
 using GetBasePlayerSendApi=const BasePlayerSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetBasePlayerRecvApi=const BasePlayerRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase702: owner-local player subobject, not a full CBasePlayer.
+// FovSample supplies the original current-time word and either a
+// truncated displayed FOV (if local player available) or fallback default.
+inline constexpr char local_data_send_export[]="SiN_GetLocalDataSendGraphApi";
+inline constexpr char local_data_recv_export[]="SiN_GetLocalDataRecvGraphApi";
+struct FovSample {
+    std::uint32_t time_bits;
+    int displayed_fov;
+    int default_fov;
+    std::uint32_t has_displayed_fov;
+};
+using SampleFov=int (__cdecl *)(void* context,FovSample* out) noexcept;
+struct LocalDataSendBindings {
+    const sin_independent::EntityHandleEntry* entries;
+    std::uint32_t entry_count;
+};
+struct LocalDataRecvBindings {void* context;SampleFov sample_fov;};
+template<class Table> struct LocalDataView {void* handle;Table* table;Table* area_bits;};
+using LocalDataSendView=LocalDataView<s::SendTable>;
+using LocalDataRecvView=LocalDataView<RecvTable>;
+using LocalDataSendApi=GraphApi<LocalDataSendBindings,LocalDataSendView>;
+using LocalDataRecvApi=GraphApi<LocalDataRecvBindings,LocalDataRecvView>;
+using GetLocalDataSendApi=const LocalDataSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetLocalDataRecvApi=const LocalDataRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
