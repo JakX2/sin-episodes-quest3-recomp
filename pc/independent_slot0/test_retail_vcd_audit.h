@@ -4,6 +4,7 @@
 #include "native_server_facial_records.h"
 #include "native_server_composed_facial_think.h"
 #include "native_server_named_facial_think.h"
+#include "native_server_cached_facial_think.h"
 #include "native_weapon_datatables.h"
 #include "native_client_composed_facial.h"
 #include "native_server_flex_spline.h"
@@ -1078,6 +1079,131 @@ inline void check_parsed_facial_lifecycle(VcdAuditArena& arena,const NativeVcdRu
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
     std::puts("PASS parsed VCD facial lifecycle, native controller mapping and paired client descriptor smoothing");
+}
+inline void check_parsed_cached_expression(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
+    const NativeSceneExecutionApi& execution,const ServerFacialRecordApi& admission,const ServerCachedFacialThinkApi& think,const ServerVfeCacheApi& bank_api,const ServerVfeRemapApi& remap_api,ParsedFacialClientPair& paired){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Face
+ {
+  event expression smile
+  {
+   time 0 2
+   param phonemes_test
+   param2 smile
+  }
+ }
+}
+)VCD";
+    struct Fixture {
+        VcdAuditArena& arena;
+        alignas(4) unsigned char scene[0x5ec]{},actor[server_npc_random_expression_extent]{};
+        alignas(4) unsigned char source[256]{},copy[256]{};
+        unsigned reads{},closes{},allocs{},frees{},starts{},stops{};float now=10;
+        std::uint32_t root=0;
+        explicit Fixture(VcdAuditArena& a):arena(a){}
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+        static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept{
+            auto& a=self(p).arena;return a.storage(&a,w,out,n);
+        }
+    } f(arena);
+    F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;f.actor[0x1f0]=1;
+    auto raw=arena.runtime();
+    assert(runtime.parse(f.scene+0x410,"face.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    ServerFacialRecordBindings cfg{};cfg.base_flex=true;cfg.host.context=&f;
+    cfg.host.storage=&Fixture::storage;
+    cfg.host.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);
+    };
+    cfg.host.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+    cfg.host.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    cfg.extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;
+    };
+    cfg.now=[](void* p,float* out) noexcept -> int{*out=Fixture::self(p).now;return 1;};
+    // Expression virtual admission remains hosted, unlike flexanimation.
+    cfg.host.begin=[](void* p,void* actor,void*,std::uint32_t root,void* event,std::uint32_t,void* target,unsigned* accepted) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&root==f.root&&!target&&F::word(event,0)==2);
+        assert(!std::strcmp(static_cast<const char*>(event)+0x84,"phonemes_test"));
+        assert(!std::strcmp(static_cast<const char*>(event)+0x104,"smile"));
+        *accepted=1;return 1;
+    };
+    cfg.host.stop=[](void* p,void* actor,void* row,int arg,int zero,unsigned* accepted) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&F::word(row,4)==f.root&&!arg&&!zero);*accepted=1;return 1;
+    };
+    cfg.host.check=[](void*,void*,void*,float,std::uint32_t,void* event,unsigned* accepted) noexcept -> int{
+        assert(F::word(event,0)==2);*accepted=1;return 1;
+    };
+    ActorEventRecordBindings records{};assert(admission.adapt(&cfg,&records));
+    NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
+    b.dispatch.context=&f;b.dispatch.records=&records;
+    b.dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word);*out=f.actor;*n=sizeof(f.actor);return 1;
+    };
+    b.dispatch.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace kind) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&F::word(event,0)==2);
+        if(kind==ChoreographyDispatchTrace::Start)++f.starts;
+        else if(kind==ChoreographyDispatchTrace::Stop)++f.stops;
+        return 1;
+    };
+    b.leaves.context=&f;b.leaves.actor_extent=cfg.extent;
+    // Synthetic EFV with one setting and two additive contributions to jaw.
+    std::memcpy(f.source,"EFV",4);F::put(f.source,0x48,256);F::put(f.source,0x4c,1);F::put(f.source,0x50,108);
+    F::put(f.source,0x60,1);F::put(f.source,0x64,156);F::put(f.source,0x68,160);
+    F::put(f.source,108,64);F::put(f.source,116,2);F::put(f.source,128,24);
+    F::put(f.source,132,0);F::fl(f.source,136,.2f);F::put(f.source,144,0);F::fl(f.source,148,.2f);
+    F::put(f.source,156,192);F::put(f.source,160,0xffffffffu);
+    std::strcpy(reinterpret_cast<char*>(f.source+172),"smile");
+    std::strcpy(reinterpret_cast<char*>(f.source+192),"jaw");
+    ServerVfeCacheEntry banks[1]{};ServerVfeCache bank{banks,0,1};
+    ServerVfeRemapEntry entries[1]{};ServerVfeRemapCache remap{entries,0,1};
+    ServerVfeCacheBindings files{};files.context=&f;
+    files.read=[](void* p,const char* path,const unsigned char** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(!std::strcmp(path,"expressions/phonemes_test.vfe"));++f.reads;
+        *out=f.source;*n=sizeof(f.source);return 1;
+    };
+    files.close=[](void* p,const unsigned char* q) noexcept -> int{
+        auto& f=Fixture::self(p);assert(q==f.source);++f.closes;return 1;
+    };
+    files.allocate=[](void* p,unsigned n,void** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(n==sizeof(f.copy)&&!f.allocs);++f.allocs;*out=f.copy;return 1;
+    };
+    files.release=[](void* p,void* q) noexcept -> int{
+        auto& f=Fixture::self(p);assert(q==f.copy);++f.frees;return 1;
+    };
+    ServerFlexRange range{0,1};
+    ServerExpressionBindings expression{};expression.ranges=&range;expression.count=1;
+    const char* names[]={"JAW"};
+    ServerCachedFacialThinkBindings cached{};cached.banks=&bank;cached.files=&files;
+    cached.named.controller_names=names;cached.named.controller_count=1;cached.named.remap=&remap;
+    cached.named.composed.native_intensity=true;
+    auto& facial=cached.named.composed.base;
+    facial.context=&f;facial.ranges=&range;facial.count=1;
+    facial.storage=&Fixture::storage;facial.expression=&expression;facial.base_expression=1;
+    assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
+    auto simulate=[&](float time){
+        F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);
+    };
+    assert(simulate(.5f)==1&&f.starts==1&&F::word(f.actor,0x5c4)==1);
+    void* rows=nullptr;unsigned n=0;
+    assert(Fixture::storage(&f,F::word(f.actor,0x5b8),&rows,&n)&&n>=0x40);
+    assert(think.run(f.actor,sizeof(f.actor),10,&cached)&&static_cast<unsigned char*>(rows)[0xc]);
+    assert(bank.count==1&&remap.count==1&&entries[0].bank==banks[0].bank.data);
+    assert(f.reads==1&&f.closes==1&&f.allocs==1);
+    paired.check(f.actor,.4f,.08f,10);
+    assert(simulate(1.5f)==1&&F::word(f.actor,0x5c4)==1);
+    assert(think.run(f.actor,sizeof(f.actor),11,&cached)&&f.reads==1);
+    paired.check(f.actor,.78f,.22f,11);
+    assert(simulate(2.5f)==1&&!f.stops&&F::word(f.actor,0x5c4)==1);
+    assert(simulate(2.75f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
+    assert(think.run(f.actor,sizeof(f.actor),12,&cached)&&f.reads==1);
+    paired.check(f.actor,.741f,.3242f,12);
+    assert(remap_api.clear(&remap)&&bank_api.clear(&bank,&files)&&!bank.count&&!remap.count&&f.frees==1);
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
+    std::puts("PASS parsed VCD cached expression, paired client descriptor smoothing and cache retirement");
 }
 // Retail-inspired edge cases: strict binary32 duration trim, duplicate
 // timestamps, reverse ranges and disabled tracks with/without samples.
