@@ -16,12 +16,13 @@ public:
     virtual npc::HologramControl* control(EntityRef)=0;
     virtual const npc::NpcMapBindings* bindings(EntityRef)=0;
     virtual bool parse_key(EntityRef,unsigned type,std::string_view,std::uint32_t&)=0;
+    virtual const npc::JessicaInteractionBindings* interaction_bindings(EntityRef){return nullptr;}
 };
 class NativeNpcMapHost final:public sin_compat::map::ISourceMapEntityHost {
 public:
     explicit NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine):engine_(engine){}
-    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session):
-        engine_(engine),shells_(&shells),api_(&api),session_(&session){}
+    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr):
+        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction){}
     NativeNpcMapHost(const NativeNpcMapHost&)=delete;
     NativeNpcMapHost& operator=(const NativeNpcMapHost&)=delete;
     bool is_live(EntityRef e)const override{return engine_.is_live(e);}
@@ -78,6 +79,19 @@ public:
         auto* c=control(e,a->kind);const auto* b=shells_->bindings(e);
         return c&&b?status(api_->select_count(c,session_,b,result)):NpcMapResult::Rejected;
     }
+    // Engine-installed interaction callback must supply its generation-checked
+    // entity identity; never reinterpret a retired NPC pointer as a live shell.
+    NpcMapResult interaction(EntityRef e,unsigned* original_result){
+        if(!engine_.is_live(e))return NpcMapResult::Rejected;
+        auto* a=find(e);if(!a||a->kind!=npc::NpcMapKind::Jessica)return NpcMapResult::Unhandled;
+        if(a->stage!=Stage::Active||!original_result)return NpcMapResult::Rejected;
+        if(!interaction_)return NpcMapResult::Unhandled;
+        if(interaction_->version!=npc::version||interaction_->size!=sizeof(*interaction_)||!interaction_->invoke)return NpcMapResult::Rejected;
+        auto* c=control(e,npc::NpcMapKind::Jessica);const auto* b=shells_->interaction_bindings(e);
+        a=find(e);
+        if(!a||a->stage!=Stage::Active||!engine_.is_live(e)||!c||!b)return NpcMapResult::Rejected;
+        return status(interaction_->invoke(c,b,original_result));
+    }
     std::size_t attached_count()const noexcept{return entries_.size();}
 private:
     enum class Stage {Keys,Spawning,Spawned,Activating,Active,Failed};
@@ -124,6 +138,7 @@ private:
     }
     sin_compat::map::ISourceMapEntityHost& engine_;
     INpcMapShells* shells_=nullptr;const npc::NpcMapApi* api_=nullptr;npc::NpcMapSession* session_=nullptr;
+    const npc::JessicaInteractionApi* interaction_=nullptr;
     std::map<std::uint32_t,Entry> entries_;
 };
 }
