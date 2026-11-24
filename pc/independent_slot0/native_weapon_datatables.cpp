@@ -5586,6 +5586,62 @@ int __cdecl prepared_speech_callback(const void* cb,unsigned cb_bytes,void* scen
     const auto h=*prep;return speech_callback_invoke_impl(cb,cb_bytes,scene,bytes,slot,time,parsed,parsed_bytes,event,extent,b,names,out,&h);
 }
 const SceneSpeechPreparationApi scene_speech_preparation_api{version,sizeof(SceneSpeechPreparationApi),&scene_speech_prepare,&prepared_speech_start,&prepared_speech_callback};
+bool speech_drain_ready(const SceneSpeechDrainBindings* b,unsigned* out) noexcept {
+    return b&&b->storage&&b->resolve&&b->clock&&b->open_filter&&b->emit&&b->close_filter&&hologram_writable(out,4);
+}
+int __cdecl speech_drain(void* manager,unsigned bytes,const SceneSpeechDrainBindings* b,unsigned* out) noexcept {
+    if(bytes<0x3bc||!hologram_writable(manager,0x3bc)||!speech_drain_ready(b,out))return 0;
+    const auto h=*b;const int count=hologram_read<int>(manager,0x3b4);
+    if(count>0x100000)return -1;
+    unsigned emitted=0;
+    // The original snapshots count, reloads vector backing each iteration.
+    // Newly appended records are not visited and count is reset at the end.
+    for(int i=0;i<count;++i){
+        if(hologram_read<int>(manager,0x3b4)<count)return -1;
+        const auto word=hologram_read<std::uint32_t>(manager,0x3a8);
+        void* storage=nullptr;unsigned extent=0;
+        const auto needed=static_cast<unsigned>(i+1)*0x8c;
+        if(!word||!h.storage(h.context,word,&storage,&extent)||extent<needed||
+           !sin_independent::vgui_layout::Readable(storage,needed))return -1;
+        alignas(4) unsigned char row[0x8c];std::memcpy(row,static_cast<unsigned char*>(storage)+i*0x8c,sizeof(row));
+        const auto handle=hologram_read<std::uint32_t>(row,0);
+        if(handle==0xffffffffu)continue;
+        void* actor=nullptr;
+        if(!h.resolve(h.context,handle,&actor))return -1;
+        if(!actor)continue;
+        const auto offset=hologram_read<float>(row,0x88);
+        // x87 status mask 0x41: <=10 or unordered enters emission path.
+        if(offset>10.f)continue;
+        const auto* sound=reinterpret_cast<const char*>(row+4);
+        if(!std::memchr(sound,0,128))return -1;
+        if(!h.resolve(h.context,handle,&actor)||!actor)return -1;
+        void* filter=nullptr;
+        if(!h.open_filter(h.context,actor,.8f,&filter)||!filter)return -1;
+        const auto close=[&](bool ok){const bool closed=h.close_filter(h.context,filter)!=0;return ok&&closed;};
+        float now=0;
+        if(!h.clock(h.context,&now)||!h.resolve(h.context,handle,&actor)||!actor){(void)close(false);return -1;}
+        const float start=static_cast<float>(static_cast<double>(now)-offset);
+        if(!close(h.emit(h.context,filter,actor,sound,2,1.f,hologram_read<int>(row,0x84),start)!=0))return -1;
+        ++emitted;
+    }
+    hologram_write(manager,0x3b4,0u);*out=emitted;return 1;
+}
+int __cdecl speech_flush(SceneManagerSession* session,const SceneManagerRuntimeBindings* runtime,const SceneSpeechDrainBindings* b,unsigned* out) noexcept {
+    if(!speech_drain_ready(b,out))return 0;
+    const auto h=*b;void* manager=nullptr;unsigned n=0;
+    auto status=scene_manager_ensure(session,runtime,&manager,&n);
+    if(status!=1)return status;
+    if(!manager){*out=0;return 1;}
+    status=scene_manager_ensure(session,runtime,&manager,&n);
+    if(status!=1)return status;
+    if(!manager)return -1;
+    session->busy=1;
+    status=speech_drain(manager,n,&h,out);
+    session->busy=0;
+    if(status!=1)session->blocked=1; // do not replay partially emitted records
+    return status;
+}
+const SceneSpeechDrainApi scene_speech_drain_api{version,sizeof(SceneSpeechDrainApi),&speech_drain,&speech_flush};
 
 
 int __cdecl integrated_scene(void* npc,const char* name,float delay,const NpcScenePlaybackBindings* b,const SceneEntityLifecycleBindings* life,float* out) noexcept {
@@ -10181,6 +10237,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechDrainApi=_SiN_GetSceneSpeechDrainApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechDrainApi* __cdecl
+SiN_GetSceneSpeechDrainApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneSpeechDrainApi)?&scene_speech_drain_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechPreparationApi=_SiN_GetSceneSpeechPreparationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechPreparationApi* __cdecl
 SiN_GetSceneSpeechPreparationApi(std::uint32_t version,std::uint32_t size) noexcept {

@@ -1634,4 +1634,56 @@ inline void check_scene_speech_preparation(const SceneSpeechPreparationApi& api)
     f.fail_handle=true;f.pair.other.owner=0x1111;assert(prep(5)==-1&&f.pair.other.release==16&&f.pair.other.owner==0x1111);
 }
 
+
+struct SpeechDrainFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char manager[scene_manager_bytes]{},rows[8][0x8c]{};
+    int actor=0,filter=0;unsigned opened=0,closed=0,emissions=0,resolves=0,clocks=0,storage_calls=0,grows=0,manager_resolves=0;
+    bool fail_emit=false,append_during_emit=false;
+    SceneSpeechDrainBindings drain{};SceneSpeechQueueBindings queue{};SceneManagerSession session{};SceneManagerRuntimeBindings runtime{};
+    static SpeechDrainFixture& get(void* p){return *static_cast<SpeechDrainFixture*>(p);}
+    SpeechDrainFixture(){
+        drain.context=this;queue.context=this;runtime.context=this;
+        drain.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(word==F::ptr(f.rows));++f.storage_calls;*out=f.rows;*n=sizeof(f.rows);return 1;};
+        queue.storage=drain.storage;
+        queue.grow=[](void* p,void* v,unsigned n) noexcept -> int{auto& f=get(p);assert(v==f.manager+0x3a8&&n==1);++f.grows;F::put(v,0,F::ptr(f.rows));F::put(v,4,8);return 1;};
+        queue.handle=[](void* p,void* a,std::uint32_t* out) noexcept -> int{assert(a==&get(p).actor);*out=0x1001;return 1;};
+        drain.resolve=[](void* p,std::uint32_t w,void** out) noexcept -> int{auto& f=get(p);++f.resolves;*out=w==0x1001?&f.actor:nullptr;return 1;};
+        drain.clock=[](void* p,float* out) noexcept -> int{auto& f=get(p);++f.clocks;*out=20;return 1;};
+        drain.open_filter=[](void* p,void* a,float scale,void** out) noexcept -> int{auto& f=get(p);assert(a==&f.actor&&scale==.8f);++f.opened;*out=&f.filter;return 1;};
+        drain.close_filter=[](void* p,void* v) noexcept -> int{auto& f=get(p);assert(v==&f.filter);++f.closed;return 1;};
+        drain.emit=[](void* p,void* v,void* actor,const char* name,int channel,float volume,int level,float start) noexcept -> int{
+            auto& f=get(p);assert(v==&f.filter&&actor==&f.actor&&channel==2&&volume==1);
+            if(!std::strcmp(name,"Jessica.Line"))assert(level==80&&start==10);
+            else if(!std::strcmp(name,"Count.Line"))assert(level==72&&start==20.5f);
+            else {assert(!std::strcmp(name,"NaN.Line")&&level==75&&std::isnan(start));}
+            ++f.emissions;
+            if(f.append_during_emit){f.append_during_emit=false;F::put(f.manager,0x3b4,F::word(f.manager,0x3b4)+1);}
+            return !f.fail_emit;};
+        session.initialized=1;session.handle=0x3001;
+        runtime.resolve=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{auto& f=get(p);assert(w==0x3001);++f.manager_resolves;*out=f.manager;*bytes=sizeof(f.manager);return 1;};
+        runtime.create=[](void*,const char*,int,void**) noexcept -> int{assert(false);return 0;};
+        runtime.packed_handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+        runtime.spawn=[](void*,void*) noexcept -> int{assert(false);return 0;};
+    }
+};
+inline void check_scene_speech_drain(const SceneSpeechDrainApi& api,const SceneSpeechPolicyApi& policy){
+    using F=ScenePlaybackFixture;SpeechDrainFixture f;
+    auto queue=[&](void* a,const char* name,int level,float offset){return policy.queue(f.manager,sizeof(f.manager),a,name,level,offset,&f.queue);};
+    assert(queue(nullptr,"Invalid",80,0)==1);
+    assert(queue(&f.actor,"Stale",80,0)==1);F::put(f.rows[1],0,0x2002);
+    assert(queue(&f.actor,"Expired",80,10.01f)==1);
+    assert(queue(&f.actor,"Jessica.Line",80,10)==1);
+    assert(queue(&f.actor,"Count.Line",72,-.5f)==1);
+    assert(queue(&f.actor,"NaN.Line",75,(std::numeric_limits<float>::quiet_NaN)())==1);
+    unsigned out=99;f.append_during_emit=true;
+    assert(api.flush(&f.session,&f.runtime,&f.drain,&out)==1&&out==3&&f.emissions==3&&f.opened==3&&f.closed==3&&f.clocks==3);
+    assert(f.resolves==11&&f.manager_resolves==4&&f.grows==1&&!f.session.busy&&!f.session.blocked&&!F::word(f.manager,0x3b4));
+    assert(api.drain(f.manager,sizeof(f.manager),&f.drain,&out)==1&&!out&&f.emissions==3);
+    assert(queue(&f.actor,"Jessica.Line",80,10)==1);
+    f.fail_emit=true;out=99;
+    assert(api.flush(&f.session,&f.runtime,&f.drain,&out)==-1&&out==99&&f.session.blocked&&!f.session.busy&&F::word(f.manager,0x3b4)==1);
+    assert(f.opened==4&&f.closed==4&&api.flush(&f.session,&f.runtime,&f.drain,&out)==0);
+}
+
 }

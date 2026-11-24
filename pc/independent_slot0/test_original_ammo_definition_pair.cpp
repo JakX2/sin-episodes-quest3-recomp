@@ -635,6 +635,12 @@ int main(int argc,char** argv){
     tables::test::check_scene_speech_preparation(*sceneSpeechPreparation);
     tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,resolvedSceneActor,sceneSpeechPreparation);
     std::puts("PASS native speech preparation, shared semaphore and cached speech lifecycle");
+    const auto getSceneSpeechDrain=reinterpret_cast<tables::GetSceneSpeechDrainApi>(GetProcAddress(server,tables::scene_speech_drain_export));
+    assert(getSceneSpeechDrain&&!GetProcAddress(client,tables::scene_speech_drain_export));
+    const auto* sceneSpeechDrain=getSceneSpeechDrain(1,sizeof(tables::SceneSpeechDrainApi));
+    assert(sceneSpeechDrain&&!getSceneSpeechDrain(0,sizeof(tables::SceneSpeechDrainApi))&&!getSceneSpeechDrain(1,0));
+    tables::test::check_scene_speech_drain(*sceneSpeechDrain,*sceneSpeechPolicy);
+    std::puts("PASS native pending speech queue drain, expiry, stale handles and flush wrapper");
 
 
 
