@@ -3250,6 +3250,89 @@ int __cdecl response_semaphore_available(void* exp,unsigned bytes,void* npc,cons
     *out=owner==npc;return 1;
 }
 const ResponseRepeatApi response_repeat_api{version,sizeof(ResponseRepeatApi),&response_can_repeat,&response_last_time,&response_semaphore_available};
+bool expeditor_control(const ExpeditorControl* c,ExpeditorStage stage) noexcept {
+    return c&&c->stage==stage&&c->bytes>=0x7c&&hologram_writable(c->object,0x7c);
+}
+bool expeditor_tables(const ExpeditorTables* t) noexcept {
+    return t&&t->primary&&t->filter&&t->base&&t->compare;
+}
+int expeditor_finish(ExpeditorControl* c,bool ok,ExpeditorStage stage) noexcept {
+    c->stage=ok?stage:ExpeditorStage::Failed;return ok?1:-1;
+}
+int __cdecl expeditor_construct(ExpeditorControl* c,void* npc,const ExpeditorTables* t,const ExpeditorLifecycleBindings* b) noexcept {
+    if(!expeditor_control(c,ExpeditorStage::Fresh)||!npc||!expeditor_tables(t)||!b||!b->symbol_construct)return 0;
+    const auto tables=*t;const auto h=*b;auto* e=c->object;c->stage=ExpeditorStage::Constructing;
+    std::memset(e,0,0x7c);
+    hologram_write(e,4,static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(npc)));
+    hologram_write(e,0,tables.primary);hologram_write(e,8,tables.filter);
+    hologram_write(e,0x10,tables.compare);hologram_write(e,0x20,0xffffffffu);hologram_write(e,0x28,0xffffffffu);
+    if(!h.symbol_construct(h.context,static_cast<unsigned char*>(e)+0x34,0,0,1))return expeditor_finish(c,false,ExpeditorStage::Live);
+    hologram_write(e,0x68,0u);hologram_write(e,0x6c,0u);hologram_write(e,0x70,0u);
+    hologram_write(e,0x74,100u);
+    return expeditor_finish(c,true,ExpeditorStage::Live);
+}
+bool expeditor_clear_rows(void* e,const ExpeditorLifecycleBindings& h) noexcept {
+    const auto count=hologram_read<int>(e,0x2c);
+    // Negative or unrealistically large node extents are not valid tree state.
+    if(count<0||count>0x100000)return false;
+    std::uint32_t next=0xffffffffu;
+    for(int i=count-1;i>=0;--i){
+        void* row=nullptr;unsigned extent=0;
+        if(!h.row(h.context,e,static_cast<unsigned>(i),&row,&extent)||extent<0x1c||!hologram_writable(row,0x1c))return false;
+        const auto index=static_cast<std::uint32_t>(i);
+        if(hologram_read<std::uint32_t>(row,0)!=index){
+            const auto response=hologram_read<std::uint32_t>(row,0x18);
+            if(response){
+                const bool ok=h.destroy_response(h.context,response)!=0;
+                // Transport consumes on invocation; invalidate pointer on failure.
+                hologram_write(row,0x18,0u);if(!ok)return false;
+            }else hologram_write(row,0x18,0u);
+        }
+        hologram_write(row,4,next);hologram_write(row,0,index);next=index;
+    }
+    hologram_write(e,0x28,count?0u:0xffffffffu);
+    hologram_write(e,0x20,0xffffffffu);hologram_write(e,0x24,0u);
+    return true;
+}
+int __cdecl expeditor_clear(ExpeditorControl* c,const ExpeditorLifecycleBindings* b) noexcept {
+    if(!expeditor_control(c,ExpeditorStage::Live)||!b||!b->row||!b->destroy_response)return 0;
+    const auto h=*b;c->stage=ExpeditorStage::Destroying;
+    return expeditor_finish(c,expeditor_clear_rows(c->object,h),ExpeditorStage::Live);
+}
+int __cdecl expeditor_destroy(ExpeditorControl* c,void* npc,const ExpeditorTables* t,SpeechSemaphorePair* state,const ExpeditorLifecycleBindings* b) noexcept {
+    if(!expeditor_control(c,ExpeditorStage::Live)||!npc||!expeditor_tables(t)||!state||!hologram_writable(state,sizeof(*state))||
+       !b||!b->row||!b->destroy_response||!b->classify||!b->resolve||!b->symbol_destroy||!b->free_rows)return 0;
+    auto* e=c->object;
+    if(hologram_read<std::uint32_t>(e,4)!=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(npc)))return 0;
+    const auto tables=*t;const auto h=*b;c->stage=ExpeditorStage::Destroying;
+    const auto fail=[&](){return expeditor_finish(c,false,ExpeditorStage::Retired);};
+    hologram_write(e,0,tables.primary);hologram_write(e,8,tables.filter);
+    if(!expeditor_clear_rows(e,h))return fail();
+    unsigned classified=0;
+    if(!h.classify(h.context,npc,0,&classified))return fail();
+    const auto& checked=classified?state->classified:state->other;
+    void* owner=nullptr;
+    if(checked.owner!=0xffffffffu&&!h.resolve(h.context,checked.owner,&owner))return fail();
+    if(owner==npc){
+        // Original reclassifies, rather than retaining the first selector.
+        if(!h.classify(h.context,npc,0,&classified))return fail();
+        auto& release=classified?state->classified:state->other;
+        release.release=0;release.owner=0xffffffffu;
+    }
+    if(!h.symbol_destroy(h.context,static_cast<unsigned char*>(e)+0x34))return fail();
+    if(hologram_read<int>(e,0x1c)!=-1){
+        const auto rows=hologram_read<std::uint32_t>(e,0x14);
+        if(rows){
+            const bool ok=h.free_rows(h.context,rows)!=0;
+            hologram_write(e,0x14,0u);if(!ok)return fail();
+        }
+        hologram_write(e,0x18,0u);
+    }
+    hologram_write(e,0,tables.base);
+    return expeditor_finish(c,true,ExpeditorStage::Retired);
+}
+const ExpeditorLifecycleApi expeditor_lifecycle_api{version,sizeof(ExpeditorLifecycleApi),&expeditor_construct,&expeditor_clear,&expeditor_destroy};
+
 
 
 
@@ -7619,6 +7702,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseR
 SiN_GetResponseRepeatApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseRepeatApi)?&response_repeat_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetExpeditorLifecycleApi=_SiN_GetExpeditorLifecycleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ExpeditorLifecycleApi* __cdecl
+SiN_GetExpeditorLifecycleApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ExpeditorLifecycleApi)?&expeditor_lifecycle_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")

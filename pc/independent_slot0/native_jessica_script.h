@@ -291,6 +291,40 @@ struct ResponseRepeatApi {
     int (__cdecl *semaphore_available)(void* exp,unsigned bytes,void* npc,const SpeechSemaphorePair*,const SpeechGateBindings*,unsigned*) noexcept;
 };
 using GetResponseRepeatApi=const ResponseRepeatApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char expeditor_lifecycle_export[]="SiN_GetExpeditorLifecycleApi";
+enum class ExpeditorStage:unsigned {Fresh,Constructing,Live,Destroying,Retired,Failed};
+struct ExpeditorControl {
+    void* object;
+    unsigned bytes;
+    ExpeditorStage stage=ExpeditorStage::Fresh;
+};
+struct ExpeditorTables {
+    // Live replacement table/comparator addresses, NEVER addresses copied
+    // from the original PE. Host owns their ABI and lifetime.
+    std::uint32_t primary,filter,base,compare;
+};
+struct ExpeditorLifecycleBindings {
+    void* context;
+    int (__cdecl *symbol_construct)(void*,void* symbol,int,int,unsigned) noexcept;
+    int (__cdecl *symbol_destroy)(void*,void* symbol) noexcept;
+    // Bounded allocated row storage, including free rows.
+    int (__cdecl *row)(void*,void* exp,unsigned index,void** row,unsigned* extent) noexcept;
+    int (__cdecl *destroy_response)(void*,std::uint32_t owned_response) noexcept;
+    int (__cdecl *classify)(void*,void* npc,int,unsigned*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t handle,void** npc) noexcept;
+    int (__cdecl *free_rows)(void*,std::uint32_t allocation) noexcept;
+};
+struct ExpeditorLifecycleApi {
+    std::uint32_t version,size;
+    // Fixed zero-allocation factory path 22028cf0 -> 220a6bc0.
+    int (__cdecl *construct)(ExpeditorControl*,void* npc,const ExpeditorTables*,const ExpeditorLifecycleBindings*) noexcept;
+    // Original 220a50f0 clear, keeping backing allocation and symbols.
+    int (__cdecl *clear)(ExpeditorControl*,const ExpeditorLifecycleBindings*) noexcept;
+    // Nondeleting destructor 220a6c30; host frees expeditor itself afterward.
+    int (__cdecl *destroy)(ExpeditorControl*,void* npc,const ExpeditorTables*,SpeechSemaphorePair*,const ExpeditorLifecycleBindings*) noexcept;
+};
+using GetExpeditorLifecycleApi=const ExpeditorLifecycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 
