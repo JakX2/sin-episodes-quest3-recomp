@@ -22,6 +22,7 @@
 #include "native_vehicle_views.h"
 #include "native_vehicle_config.h"
 #include "native_vehicle_passengers.h"
+#include "native_vehicle_map.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4598,6 +4599,163 @@ int __cdecl passenger_refill(HologramControl* c,const VehiclePassengerBindings* 
     return disp_finish(c,true);
 }
 const VehiclePassengersApi vehicle_passengers_api{version,sizeof(VehiclePassengersApi),&passenger_defaults,&passenger_damage_factor,&passenger_enable_ammo,&passenger_refill,&health_ack};
+
+constexpr VehicleField vehicle_map_fields[]={
+    {"EnterVehicle",VehicleFieldKind::Input,5,0,0x2232dd00u},
+    {"ExitVehicle",VehicleFieldKind::Input,5,0,0x2232dd40u},
+    {"EnableUse",VehicleFieldKind::Input,5,0,0x2232dd90u},
+    {"SetView",VehicleFieldKind::Input,5,0,0x2232fa70u},
+    {"LockView",VehicleFieldKind::Input,5,0,0x2232ddc0u},
+    {"OpenDoor",VehicleFieldKind::Input,5,0,0x22330800u},
+    {"OpenWindow",VehicleFieldKind::Input,5,0,0x22330870u},
+    {"CloseDoor",VehicleFieldKind::Input,5,0,0x223308d0u},
+    {"CloseWindow",VehicleFieldKind::Input,5,0,0x22330940u},
+    {"OpenDoors",VehicleFieldKind::Input,0,0,0x223309a0u},
+    {"CloseDoors",VehicleFieldKind::Input,0,0,0x223309b0u},
+    {"OpenWindows",VehicleFieldKind::Input,0,0,0x223309c0u},
+    {"CloseWindows",VehicleFieldKind::Input,0,0,0x223309d0u},
+    {"HeadlightOn",VehicleFieldKind::Input,0,0,0x223309e0u},
+    {"HeadlightOff",VehicleFieldKind::Input,0,0,0x22330a20u},
+    {"WipersOn",VehicleFieldKind::Input,0,0,0x2232ddf0u},
+    {"WipersOff",VehicleFieldKind::Input,0,0,0x2232de00u},
+    {"MonitorOn",VehicleFieldKind::Input,0,0,0x22330a60u},
+    {"MonitorOff",VehicleFieldKind::Input,0,0,0x22330a90u},
+    {"SetCamera",VehicleFieldKind::Input,2,0,0x2232fb20u},
+    {"EnableHints",VehicleFieldKind::Input,5,0,0x2232de10u},
+    {"EnableAmmo",VehicleFieldKind::Input,5,0,0x2232de40u},
+    {"RadioOn",VehicleFieldKind::Input,0,0,0x2232f500u},
+    {"RadioOff",VehicleFieldKind::Input,0,0,0x2232f540u},
+    {"SetRadioStation",VehicleFieldKind::Input,5,0,0x2232f580u},
+    {"EnableUse",VehicleFieldKind::Key,6,0x74a,0},
+    {"ViewsLocked",VehicleFieldKind::Key,6,0x74b,0},
+    {"InfiniteAmmo",VehicleFieldKind::Key,6,0x74c,0},
+    {"Invunerable",VehicleFieldKind::Key,6,0x74d,0},
+    {"DriverDoorLocked",VehicleFieldKind::Key,6,0x751,0},
+    {"DamageTolerance",VehicleFieldKind::Key,1,0x754,0},
+    {"MonitorActive",VehicleFieldKind::Key,6,0x758,0},
+    {"MonitorCamera",VehicleFieldKind::Key,2,0x75c,0},
+    {"HintsEnabled",VehicleFieldKind::Key,6,0x764,0},
+    {"DoorClosed",VehicleFieldKind::Output,0xb,0x76c,0},
+    {"DoorOpen",VehicleFieldKind::Output,0xb,0x784,0},
+    {"WindowClosed",VehicleFieldKind::Output,0xb,0x79c,0},
+    {"WindowOpen",VehicleFieldKind::Output,0xb,0x7b4,0},
+    {"UseBox",VehicleFieldKind::Output,0xb,0x7cc,0},
+    {"ViewChanged",VehicleFieldKind::Output,0xb,0x7e4,0}
+};
+const VehicleMapSchema vehicle_map_schema{"prop_vehicle_sin",40,vehicle_map_fields};
+const VehicleMapSchema* __cdecl vehicle_map_get_schema() noexcept {return &vehicle_map_schema;}
+int __cdecl vehicle_map_key(HologramControl* c,const char* name,unsigned type,std::uint32_t word) noexcept {
+    if(!health_control(c,vehicle_action_extent))return 0;
+    char key[128]{};
+    if(!prop_key_read(name,key))return 0;
+    for(const auto& field:vehicle_map_fields){
+        if(field.kind!=VehicleFieldKind::Key||std::strcmp(key,field.name))continue;
+        if(type!=field.type)return 0;
+        if(type==6)hologram_write(c->object,field.offset,static_cast<unsigned char>(word!=0));
+        else hologram_write(c->object,field.offset,word);
+        return 1;
+    }
+    return 0;
+}
+unsigned char* vehicle_map_record(void* v,bool window,int index) noexcept {
+    const auto base=hologram_read<std::uint32_t>(v,window?0x824:0x810);
+    if(index<0||index>=65536||!base||base>0xffffffffu-static_cast<unsigned>(index)*76u)return nullptr;
+    auto* p=reinterpret_cast<unsigned char*>(static_cast<std::uintptr_t>(base)+static_cast<unsigned>(index)*76u);
+    return hologram_writable(p,76)?p:nullptr;
+}
+bool vehicle_map_set_part(void* v,const VehicleMapBindings& h,bool window,int index,bool open) noexcept {
+    const int count=hologram_read<int>(v,window?0x830:0x81c);
+    if(index<0||index>=count)return true;
+    auto* r=vehicle_map_record(v,window,index);if(!r)return false;
+    if((r[0x44]!=0)!=open){
+        if(!h.sound||!h.sound(h.context,v,window?"window":"door",open?"open":"close",index))return false;
+        r=vehicle_map_record(v,window,index);if(!r)return false;
+    }
+    r[0x44]=open?1:0;
+    if(!window)r[0x45]=0;
+    return true;
+}
+bool vehicle_map_bulk(void* v,const VehicleMapBindings& h,bool window,bool open) noexcept {
+    for(int i=0;i<hologram_read<int>(v,window?0x830:0x81c);++i){
+        if(i>=65536||!vehicle_map_set_part(v,h,window,i,open))return false;
+    }
+    return true;
+}
+bool vehicle_map_unlink(void* v,const VehicleMapBindings& h) noexcept {
+    auto resolve=[&](void*& camera){
+        camera=nullptr;const auto word=hologram_read<std::uint32_t>(v,0x760);
+        return word==0xffffffffu||(h.resolve&&h.resolve(h.context,word,&camera));
+    };
+    void* camera=nullptr;
+    if(!resolve(camera))return false;
+    if(!camera)return true; // original leaves stale handle unchanged
+    if(!resolve(camera)||!camera||!h.unlink_camera||!h.unlink_camera(h.context,camera))return false;
+    hologram_write(v,0x760,0xffffffffu);return true;
+}
+bool vehicle_map_headlight(void* v,const VehicleMapBindings& h,unsigned char value) noexcept {
+    if(hologram_read<unsigned char>(v,0x748)==value)return true;
+    if(hologram_read<unsigned char>(v,0x1f0))hologram_write(v,0x200,static_cast<unsigned char>(1));
+    else{
+        const auto edict=hologram_read<std::uint32_t>(v,0x16c);
+        if(edict&&(!h.dirty_edict||!h.dirty_edict(h.context,v,edict)))return false;
+    }
+    hologram_write(v,0x748,value);return true;
+}
+bool vehicle_map_radio(void* v,const VehicleMapBindings& h,MusicRadioInput op,int value) noexcept {
+    const auto handle=hologram_read<std::uint32_t>(v,0x768);
+    void* radio=nullptr;
+    if(handle==0xffffffffu||!h.resolve||!h.resolve(h.context,handle,&radio)||!radio)return false;
+    HologramControl* rc=nullptr;
+    if(!h.radio_control||!h.radio_control(h.context,radio,&rc)||!rc||rc->object!=radio)return false;
+    return music_radio_input(rc,&h.radio,op,value)==1;
+}
+int __cdecl vehicle_map_input(HologramControl* c,const VehicleMapBindings* b,const char* name,unsigned type,std::uint32_t word,void* activator) noexcept {
+    if(!health_control(c,vehicle_action_extent)||!b)return 0;
+    char key[128]{};
+    if(!prop_key_read(name,key))return 0;
+    unsigned index=25;
+    for(unsigned i=0;i<25;++i)if(!std::strcmp(vehicle_map_fields[i].name,key)){index=i;break;}
+    if(index==25)return 0;
+    int value=0;if(type==5)std::memcpy(&value,&word,4);
+    const auto h=*b;
+    // Delegate to the actual native functions before taking their locks.
+    if(index==3)return vehicle_set_view(c,&h.views,activator,type,value);
+    if(index==20)return vehicle_hint_enable(c,type,word);
+    if(index==21)return passenger_enable_ammo(c,type,word);
+    c->busy=1;auto* v=c->object;bool ok=true;
+    switch(index){
+        case 0:ok=h.enter&&h.enter(h.context,v,activator,value);break;
+        case 1:{
+            void* occupant=nullptr;
+            ok=h.occupant&&h.occupant(h.context,v,value,&occupant);
+            if(ok&&occupant)ok=h.exit&&h.exit(h.context,v,occupant,1);
+            break;
+        }
+        case 2:hologram_write(v,0x74a,static_cast<unsigned char>(value!=0));break;
+        case 4:hologram_write(v,0x74b,static_cast<unsigned char>(value!=0));break;
+        case 5:case 6:case 7:case 8:ok=vehicle_map_set_part(v,h,index==6||index==8,value,index==5||index==6);break;
+        case 9:case 10:case 11:case 12:ok=vehicle_map_bulk(v,h,index>=11,index==9||index==11);break;
+        case 13:case 14:ok=vehicle_map_headlight(v,h,static_cast<unsigned char>(index==13));break;
+        case 15:case 16:hologram_write(v,0x74e,static_cast<unsigned char>(index==15));break;
+        case 17:case 18:{
+            const bool on=index==17;
+            if((hologram_read<unsigned char>(v,0x758)!=0)==on)break;
+            ok=h.sound&&h.sound(h.context,v,"monitor",on?"open":"close",0);
+            if(ok){hologram_write(v,0x758,static_cast<unsigned char>(on));if(!on)ok=vehicle_map_unlink(v,h);}
+            break;
+        }
+        case 19:{
+            std::uint32_t camera=0;
+            ok=h.camera_value&&h.camera_value(h.context,type,word,&camera);
+            if(ok){hologram_write(v,0x75c,camera);ok=vehicle_map_unlink(v,h);}
+            break;
+        }
+        case 22:case 23:case 24:ok=vehicle_map_radio(v,h,index==22?MusicRadioInput::On:index==23?MusicRadioInput::Off:MusicRadioInput::Station,value);break;
+        default:ok=false;break;
+    }
+    return disp_finish(c,ok);
+}
+const VehicleMapApi vehicle_map_api{version,sizeof(VehicleMapApi),&vehicle_map_get_schema,&vehicle_map_key,&vehicle_map_input,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -6616,6 +6774,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehiclePa
 SiN_GetVehiclePassengersApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehiclePassengersApi)?&vehicle_passengers_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleMapApi=_SiN_GetVehicleMapApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleMapApi* __cdecl
+SiN_GetVehicleMapApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleMapApi)?&vehicle_map_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

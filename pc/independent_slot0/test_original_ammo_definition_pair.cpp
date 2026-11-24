@@ -30,6 +30,7 @@
 #include "test_native_vehicle_views.h"
 #include "test_native_vehicle_config.h"
 #include "test_native_vehicle_passengers.h"
+#include "test_native_vehicle_map.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -504,6 +505,12 @@ int main(int argc,char** argv){
     assert(vehiclePassengers&&!getVehiclePassengers(0,sizeof(tables::VehiclePassengersApi))&&!getVehiclePassengers(1,0));
     tables::test::check_vehicle_passengers(*vehiclePassengers);
     std::puts("PASS native passenger damage factors and timed ammunition refill");
+    const auto getVehicleMap=reinterpret_cast<tables::GetVehicleMapApi>(GetProcAddress(server,tables::vehicle_map_export));
+    assert(getVehicleMap&&!GetProcAddress(client,tables::vehicle_map_export));
+    const auto* vehicleMap=getVehicleMap(1,sizeof(tables::VehicleMapApi));
+    assert(vehicleMap&&!getVehicleMap(0,sizeof(tables::VehicleMapApi))&&!getVehicleMap(1,0));
+    tables::test::check_vehicle_map(*vehicleMap,*musicRadio);
+    std::puts("PASS native vehicle named map input dispatch and original key/output schema");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
