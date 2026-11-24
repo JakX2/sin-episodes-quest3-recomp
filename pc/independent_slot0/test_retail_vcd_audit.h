@@ -1,5 +1,8 @@
 #pragma once
 #include "test_native_npc_scene_playback.h"
+#include "native_server_event_intensity.h"
+#include "native_server_flex_spline.h"
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -16,9 +19,12 @@ namespace sin_port::native_weapon_tables::test {
 // No original binary or retail text is required for the synthetic CI case.
 struct VcdAuditCounts {
     unsigned actors=0,channels=0,events=0,tracks=0,samples=0,scales=0,missing=0;
+    unsigned expressions=0,flex_events=0,facial_ramps=0,intensity_evals=0,spline_evals=0;
     void add(const VcdAuditCounts& x) noexcept {
         actors+=x.actors;channels+=x.channels;events+=x.events;tracks+=x.tracks;
         samples+=x.samples;scales+=x.scales;missing+=x.missing;
+        expressions+=x.expressions;flex_events+=x.flex_events;facial_ramps+=x.facial_ramps;
+        intensity_evals+=x.intensity_evals;spline_evals+=x.spline_evals;
     }
 };
 struct VcdAuditArena {
@@ -43,6 +49,8 @@ struct VcdAuditArena {
     PortableVcdFinalizedGrammarBindings bindings{};
     ChoreographyDestructionBindings retire{};
     unsigned missing=0,unexpected=0;
+    const ServerEventIntensityApi* intensity=nullptr;
+    const ServerFlexSplineApi* spline=nullptr;
     char last_token[128]{};
     static VcdAuditArena& self(void* p) noexcept {return *static_cast<VcdAuditArena*>(p);}
     ~VcdAuditArena(){for(const auto& x:live)std::free(reinterpret_cast<void*>(static_cast<std::uintptr_t>(x.first)));}
@@ -162,6 +170,51 @@ struct VcdAuditArena {
     bool child(void* list,unsigned i,unsigned need,void*& obj) noexcept {
         unsigned n=0;return storage(this,F::word(list,i*4),&obj,&n)&&n>=need;
     }
+    static float read_float(const void* p,unsigned off) noexcept {
+        float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;
+    }
+    bool inspect_facial(void* event,VcdAuditCounts& totals) noexcept {
+        const auto type=F::word(event,0);
+        if(type!=2&&type!=10)return true;
+        if(type==2)++totals.expressions;else ++totals.flex_events;
+        if(F::word(event,0x1a8))++totals.facial_ramps;
+        if(!intensity&&!spline)return true;
+        const float start=read_float(event,0x184),end=read_float(event,0x188);
+        if(!std::isfinite(start)||!std::isfinite(end)||(end!=-1&&end<start))return false;
+        const float duration=end==-1?0.f:static_cast<float>(static_cast<double>(end)-start);
+        const float times[]={start,static_cast<float>(static_cast<double>(start)+duration*.5),end==-1?start:end};
+        if(intensity){
+            for(float time:times){
+                float value=0;
+                if(!intensity->event(event,0x3c0,time,this,&storage,&value)||!std::isfinite(value)||value<0||value>1){
+                    std::fprintf(stderr,"FACIAL intensity failed type=%u time=%g\n",type,time);return false;
+                }
+                ++totals.intensity_evals;
+            }
+        }
+        if(type!=10||end==-1||!spline)return true;
+        void* tracks=nullptr;unsigned count=0;
+        if(!rows(event,0x30c,4,tracks,count))return false;
+        for(unsigned i=0;i<count;++i){
+            void* track=nullptr;
+            if(!child(tracks,i,0x50,track))return false;
+            const auto* raw=static_cast<const unsigned char*>(track);
+            const float low=read_float(track,0xc),high=read_float(track,0x10);
+            for(unsigned bank=0;bank<(raw[9]?2u:1u);++bank){
+                void* points=nullptr;unsigned n=0;
+                if(!rows(track,0x14+bank*0x14,12,points,n))return false;
+                for(float time:{0.f,duration*.5f,duration}){
+                    float value=0;
+                    if(!spline->sample(static_cast<const ServerFlexSample*>(points),n,low,high,duration,time,bank,&value)||
+                       !std::isfinite(value)||(n&&(value<0||value>1))){
+                        std::fprintf(stderr,"FACIAL spline failed track=%u bank=%u time=%g\n",i,bank,time);return false;
+                    }
+                    ++totals.spline_evals;
+                }
+            }
+        }
+        return true;
+    }
     bool inspect(void* root,VcdAuditCounts& totals) noexcept {
         void *actors=nullptr,*channels=nullptr,*events=nullptr;
         if(!rows(root,0x14,4,actors,totals.actors)||!rows(root,0x28,4,channels,totals.channels)||
@@ -183,7 +236,7 @@ struct VcdAuditArena {
         }
         if(linked_channels!=totals.channels)return false;
         for(unsigned i=0;i<totals.events;++i){
-            void* e=nullptr;if(!child(events,i,0x3c0,e)||F::word(e,0x330)!=F::ptr(root))return false;
+            void* e=nullptr;if(!child(events,i,0x3c0,e)||F::word(e,0x330)!=F::ptr(root)||!inspect_facial(e,totals))return false;
             if(!F::word(e,0x2b8))++root_events;
             void* list=nullptr;unsigned n=0;
             if(!rows(e,0x30c,4,list,n))return false;
@@ -880,7 +933,7 @@ event section pause
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
 }
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate,const NativeSceneExecutionApi& execution){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate,const NativeSceneExecutionApi& execution,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline){
     VcdAuditArena execution_arena(c,s,t,d,st,si,va);check_composed_scene_execution(execution_arena,runtime,execution);
     check_native_movement_gate(gate);
     check_native_choreography_dispatch(dispatch);check_native_scene_leaves(leaves);
@@ -987,9 +1040,11 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     assert(a.parse(grammar,"multi.vcd",input,sizeof(input)-1,out));
     assert(out.actors==2&&out.channels==3&&out.events==5&&out.tracks==2&&out.samples==3&&out.scales==2&&!out.missing);
     VcdAuditArena integrated(c,s,t,d,st,si,va);VcdAuditCounts actual;
+    integrated.intensity=&intensity;integrated.spline=&spline;
     assert(integrated.parse_runtime(runtime,"multi.vcd",input,sizeof(input)-1,actual));
     assert(actual.actors==out.actors&&actual.channels==out.channels&&actual.events==out.events&&
         actual.tracks==out.tracks&&actual.samples==out.samples&&actual.scales==out.scales&&actual.missing==out.missing);
+    assert(actual.flex_events==1&&actual.expressions==0&&actual.intensity_evals==3&&actual.spline_evals==9);
     // Malformed text must retire partially constructed actors/children.
     auto raw=integrated.runtime();std::uint32_t rootword=99;
     const char bad[]="actor Jessica { channel Voice { event speak dialogue { time 0 1";
@@ -1027,7 +1082,7 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     std::puts("PASS owned VCD named NPC startup, nested precache, actor association and retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,
-    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime){
+    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline){
     namespace fs=std::filesystem;std::error_code ec;
     const fs::path root(directory);
     unsigned files=0,passed=0;VcdAuditCounts sum;
@@ -1045,10 +1100,13 @@ inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFi
         std::string data(static_cast<std::size_t>(bytes),'\0');stream.seekg(0);
         if(!stream.read(data.data(),static_cast<std::streamsize>(data.size())))continue;
         VcdAuditArena arena(c,s,t,d,st,si,va);VcdAuditCounts stats;
+        arena.intensity=&intensity;arena.spline=&spline;
         if(arena.parse_runtime(runtime,name.c_str(),data.data(),static_cast<unsigned>(data.size()),stats)){++passed;sum.add(stats);}
     }
     std::printf("VCD AUDIT files=%u passed=%u actors=%u channels=%u events=%u tracks=%u samples=%u scales=%u missing=%u\n",
         files,passed,sum.actors,sum.channels,sum.events,sum.tracks,sum.samples,sum.scales,sum.missing);
+    std::printf("FACIAL AUDIT expression=%u flex=%u ramps=%u intensity_evals=%u spline_evals=%u\n",
+        sum.expressions,sum.flex_events,sum.facial_ramps,sum.intensity_evals,sum.spline_evals);
     return !ec&&files>0&&passed==files;
 }
 }
