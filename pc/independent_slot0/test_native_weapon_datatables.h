@@ -2,6 +2,7 @@
 #include "native_weapon_datatables.h"
 #include <cassert>
 #include <cstring>
+#include <initializer_list>
 namespace sin_port::native_weapon_tables::test {
 struct Fixture {
     alignas(4) unsigned char bytes[0x4f4]{};
