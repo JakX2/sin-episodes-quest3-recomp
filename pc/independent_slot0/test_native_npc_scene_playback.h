@@ -2311,6 +2311,43 @@ inline void check_choreography_ramp(const ChoreographyRampApi& api){
     f.set("{ 0.1");assert(api.block(f.event,sizeof(f.event),ChoreographyRampKind::Event,&f.b)==-1&&!F::word(f.event,0x1a8));
 }
 
+inline void check_choreography_scale_tree(const ChoreographyScaleTreeApi& api,const ChoreographyScaleApi& scale){
+    using F=ScenePlaybackFixture;
+    struct Fixture {alignas(4) unsigned char parsed[0x220]{},rows[32][24]{};unsigned grows=0;} f;
+    F::put(f.parsed,0x150,0xffffffffu);F::put(f.parsed,0x158,0xffffffffu);
+    ChoreographyScaleSentinel sentinel{};
+    ChoreographyScaleTreeBindings b{};b.context=&f;b.sentinel=&sentinel;
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* extent) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);if(w!=F::ptr(f.rows))return 0;
+        *out=f.rows;*extent=sizeof(f.rows);return 1;
+    };
+    b.grow_memory=[](void* p,void* mem,unsigned n,unsigned stride) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(mem==f.parsed+0x144&&n==1&&stride==24);
+        ++f.grows;F::put(mem,0,F::ptr(f.rows));F::put(mem,4,32);return 1;
+    };
+    auto* tree=f.parsed+0x140;
+    const std::uint16_t keys[]={30,20,10,40,50,25,27,26,24,23,22,21};
+    std::uint32_t index=99;
+    for(unsigned i=0;i<sizeof(keys)/sizeof(keys[0]);++i){
+        assert(api.insert(&b,tree,keys[i],&index)&&index==i&&F::word(f.rows[i],0x14)==100);
+        assert(F::word(tree,0x14)==i+1&&F::word(tree,0x1c)==i+1&&F::word(tree,0x20)==F::ptr(f.rows));
+        if(i==2)assert(F::word(tree,0x10)==1&&F::word(f.rows[1],0)==2&&F::word(f.rows[1],4)==0);
+    }
+    assert(f.grows==1&&sentinel.flags==1&&sentinel.color==1);
+    ChoreographyScaleBindings lookup{};lookup.context=&f;lookup.sentinel=&sentinel;lookup.storage=b.storage;
+    for(unsigned i=0;i<sizeof(keys)/sizeof(keys[0]);++i){
+        assert(scale.find(f.parsed,sizeof(f.parsed),keys[i],&lookup,&index)==1&&index==i);
+        F::put(f.rows[i],0x14,200+i);
+        assert(api.insert(&b,tree,keys[i],&index)&&index==i&&F::word(f.rows[i],0x14)==200+i);
+    }
+    const unsigned old_high=F::word(tree,0x1c);
+    F::put(f.rows[old_high],0,old_high);F::put(f.rows[old_high],4,0xffffffffu);
+    F::put(tree,0x18,old_high);F::put(tree,0x1c,old_high+1);
+    assert(api.insert(&b,tree,60,&index)&&index==old_high&&F::word(tree,0x18)==0xffffffffu&&F::word(tree,0x1c)==old_high+1);
+    const auto root=F::word(tree,0x10);
+    F::put(f.rows[root],8,root);
+    assert(!api.insert(&b,tree,61,&index)&&F::word(tree,0x1c)==old_high+1);
+}
 struct PortableCurveGrammarFixture:PortableVcdGrammarFixture {
     alignas(4) unsigned char scale_rows[3][24]{},ramp_rows[2][12*8]{};
     ChoreographyScaleSentinel sentinel{};
