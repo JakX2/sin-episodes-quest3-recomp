@@ -30,7 +30,8 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     npc::JessicaInteractionBindings ib{};
     npc::NpcMapDialogueBindings dialogue{};
     npc::SceneManagerSession scene_session{};npc::IntegratedNpcMapDialogueBindings scene{};
-    bool scene_missing=false;
+    bool scene_missing=false,generated_missing=false;
+    npc::NativeGeneratedResponseBindings generated_scene{};
     npc::TalkCooldownState cooldown{};
     const npc::TalkManagerApi& manager_api;
     const npc::TalkManagerRuntimeApi& manager_runtime;
@@ -187,6 +188,7 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
         scene.response.manager=&scene_session;scene.lifecycle.manager=&scene_session;
         scene.response.owner=[](void*,void*,void**) noexcept -> int{assert(false);return 0;};
         scene.response.retain_sound=[](void*,const char*,const char**) noexcept -> int{assert(false);return 0;};
+        generated_scene.response=scene.response;generated_scene.generated.lifecycle=scene.lifecycle;
         auto& jd=dialogue.jessica;
         jd.context=this;jd.clock=manager.cooldown.clock;
         jd.criteria=[](void* p,const void* rec,float now,npc::CountCriteria* out) noexcept -> int{
@@ -337,6 +339,7 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     const npc::NpcMapDialogueBindings* dialogue_bindings(EntityRef e)override{return !dialogue_missing&&is_live(e)&&(e.index==3||e.index==4)?&dialogue:nullptr;}
     const npc::TalkManagerRuntimeBindings* manager_bindings(EntityRef e)override{return !manager_missing&&is_live(e)&&e.index==3?&manager:nullptr;}
     const npc::IntegratedNpcMapDialogueBindings* scene_bindings(EntityRef e)override{return !scene_missing&&is_live(e)&&(e.index==3||e.index==4)?&scene:nullptr;}
+    const npc::NativeGeneratedResponseBindings* generated_scene_bindings(EntityRef e)override{return !generated_missing&&is_live(e)&&(e.index==3||e.index==4)?&generated_scene:nullptr;}
     float manager_deadline(){npc::TalkCooldownState s{};assert(manager_api.read_cooldowns(&manager_session,&s)==1);return s.global[0];}
     bool parse_key(EntityRef e,unsigned type,std::string_view v,std::uint32_t& out)override{
         assert(e.index==5&&type==5);if(fail_parse)return false;
@@ -344,9 +347,9 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     }
 };
 inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,const npc::CountInterrogationApi& count,
-    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const npc::ResponsePolicyApi& response,const npc::ExpeditorLifecycleApi& lifecycle,const npc::NpcMapDialogueApi& dialogue,const npc::ManagedJessicaObservationApi& managed,const npc::TalkManagerApi& ma,const npc::TalkManagerRuntimeApi& mr,const npc::TalkCatalogApi& cat,const std::vector<std::uint8_t>& bsp,const npc::IntegratedNpcMapDialogueApi* integrated=nullptr){
+    const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,const npc::UseObservationApi& use,const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const npc::ResponsePolicyApi& response,const npc::ExpeditorLifecycleApi& lifecycle,const npc::NpcMapDialogueApi& dialogue,const npc::ManagedJessicaObservationApi& managed,const npc::TalkManagerApi& ma,const npc::TalkManagerRuntimeApi& mr,const npc::TalkCatalogApi& cat,const std::vector<std::uint8_t>& bsp,const npc::IntegratedNpcMapDialogueApi* integrated=nullptr,const npc::NativeGeneratedMapDialogueApi* generated=nullptr){
     NpcBspShell f(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);
-    NativeNpcMapHost host(f,f,api,f.session,&interaction,&dialogue,&managed,integrated);f.host=&host;sm::SourceMapRuntime runtime(host);
+    NativeNpcMapHost host(f,f,api,f.session,&interaction,&dialogue,&managed,integrated,generated);f.host=&host;sm::SourceMapRuntime runtime(host);
     const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
     assert(loaded.ok()&&loaded.entities_created==6&&f.spawned==6&&f.activated==6&&host.attached_count()==4);
     const auto relay=runtime.entities()[1],je=runtime.entities()[2],co=runtime.entities()[3],ga=runtime.entities()[4],jc=runtime.entities()[5];
@@ -413,7 +416,16 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     };
     assert(use.npc_tick(C,&n)==1&&!gate.delivered);
     monitor[0x300]=1;
-    if(integrated){
+    if(generated){
+        assert(integrated); // explicitly verify no fallback to available older path
+        f.generated_missing=true;
+        assert(host.observe(co,monitor,0x5e9)==NpcMapResult::Rejected&&!f.speeches&&!f.word(C,0x1014));
+        f.generated_missing=false;
+        npc::SceneManagerSession wrong{};f.generated_scene.generated.lifecycle.manager=&wrong;
+        assert(host.observe(co,monitor,0x5e9)==NpcMapResult::Rejected&&!f.speeches&&!f.word(C,0x1014));
+        f.generated_scene.generated.lifecycle.manager=&f.scene_session;
+        f.scene_missing=true; // native path must not require old scene bindings
+    }else if(integrated){
         f.scene_missing=true;assert(host.observe(co,monitor,0x5e9)==NpcMapResult::Rejected&&!f.speeches&&!f.word(C,0x1014));
         f.scene_missing=false;
         npc::SceneManagerSession wrong{};f.scene.lifecycle.manager=&wrong;

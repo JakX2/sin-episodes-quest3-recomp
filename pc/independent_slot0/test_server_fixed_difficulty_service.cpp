@@ -2652,6 +2652,10 @@ int main(int argc,char** argv){
         assert(gIntegratedMap&&!gIntegratedMap(0,sizeof(n::IntegratedNpcMapDialogueApi))&&!gIntegratedMap(1,0));
         const auto* integratedMap=gIntegratedMap(1,sizeof(n::IntegratedNpcMapDialogueApi));assert(integratedMap);
         sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,integratedMap);
+        const auto gGeneratedMap=reinterpret_cast<n::GetNativeGeneratedMapDialogueApi>(GetProcAddress(lib,n::native_generated_map_dialogue_export));
+        assert(gGeneratedMap&&!gGeneratedMap(0,sizeof(n::NativeGeneratedMapDialogueApi))&&!gGeneratedMap(1,0));
+        const auto* generatedMap=gGeneratedMap(1,sizeof(n::NativeGeneratedMapDialogueApi));assert(generatedMap);
+        sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,integratedMap,generatedMap);
         std::puts("PASS native integrated choreography NPC map observation routing and rejection");
         std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
     }
