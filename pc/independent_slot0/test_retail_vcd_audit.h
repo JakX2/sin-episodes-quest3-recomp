@@ -801,8 +801,87 @@ inline void check_native_movement_gate(const NativeSceneMovementGateApi& api){
     F::put(f.schedule,0xc,2);assert(api.admit(&b,f.actor,&allowed)&&!allowed&&f.suppressed==2);
     F::put(f.actor,0x798,0x1234);assert(!api.admit(&b,f.actor,&allowed));
 }
+inline void check_composed_scene_execution(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeSceneExecutionApi& api){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Motion
+ {
+  event expression smile
+  {
+   time 0 1
+   param happy
+  }
+  event firetrigger trigger
+  {
+   time 0.5 -1
+   param 2
+  }
+ }
+}
+event section pause
+{
+ time 1.5 -1
+ param noaction
+}
+)VCD";
+    struct Fixture {
+        VcdAuditArena& arena;
+        alignas(4) unsigned char scene[0x5ec]{},actor[0x604]{};
+        unsigned starts=0,stops=0,outputs=0,traces=0,pre=0;
+        std::uint32_t root=0;
+        explicit Fixture(VcdAuditArena& a):arena(a){}
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+    } f(arena);
+    F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;
+    auto raw=arena.runtime();
+    assert(runtime.parse(f.scene+0x410,"composed.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    ActorEventRecordBindings records{};records.context=&f;
+    records.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.storage(&a,w,out,n);};
+    records.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);};
+    records.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+    records.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    records.begin=[](void* p,void* actor,void*,std::uint32_t root,void* event,std::uint32_t,void* target,unsigned* accepted) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&root==f.root&&F::word(event,0)==2&&!target);++f.starts;*accepted=1;return 1;};
+    records.stop=[](void* p,void* actor,void* row,int arg,int zero,unsigned* accepted) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&F::word(row,4)==f.root&&!arg&&!zero);++f.stops;*accepted=1;return 1;};
+    NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
+    b.dispatch.context=&f;b.dispatch.records=&records;
+    b.dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word);*out=f.actor;*n=sizeof(f.actor);return 1;};
+    b.dispatch.trace=[](void* p,void* scene,void*,float,ChoreographyDispatchTrace) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene);++f.traces;return 1;};
+    b.dispatch.output=[](void* p,void* output,void* actor,void* caller,float delay) noexcept -> int{
+        auto& f=Fixture::self(p);assert(output==f.scene+0x47c&&actor==f.actor&&caller==f.scene&&!delay);++f.outputs;return 1;};
+    b.leaves.context=&f;b.leaves.actor_extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;};
+    // Distinct host contexts: arena for raw storage, fixture for engine
+    // events, and independent section context not needed on noaction.
+    b.advance.context=&f;
+    b.advance.pre_tick=[](void* p,void* scene) noexcept -> int{auto& f=Fixture::self(p);assert(scene==f.scene);++f.pre;return 1;};
+    b.advance.start=[](void*,void*) noexcept -> int{assert(false);return 0;};
+    b.advance.parsed=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.storage(&a,w,out,n);};
+    b.advance.latency=[](void*,std::uint32_t,float*) noexcept -> int{assert(false);return 0;};
+    b.advance.finish=[](void*,void*,int,int) noexcept -> int{assert(false);return 0;};
+    b.advance.release_actors=[](void*,void*,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    assert(api.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
+    F::fl(f.scene,0x3dc,.5f);
+    assert(api.simulate(f.scene,sizeof(f.scene),.5f,&b)==1&&f.starts==1&&f.outputs==1&&F::word(f.actor,0x5c4)==1);
+    F::fl(f.scene,0x3dc,1.5f);
+    assert(api.simulate(f.scene,sizeof(f.scene),1.5f,&b)==1&&f.scene[0x3d9]&&!f.stops);
+    assert(api.advance(f.scene,sizeof(f.scene),.25f,&b)==1&&f.pre==1&&!f.scene[0x3d9]&&!f.stops);
+    assert(api.advance(f.scene,sizeof(f.scene),.25f,&b)==1&&f.pre==2&&f.stops==1&&!F::word(f.actor,0x5c4));
+    assert(f.outputs==1&&F::word(f.scene,0x3dc)==0x3fe00000u);
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
+}
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate,const NativeSceneExecutionApi& execution){
+    VcdAuditArena execution_arena(c,s,t,d,st,si,va);check_composed_scene_execution(execution_arena,runtime,execution);
     check_native_movement_gate(gate);
     check_native_choreography_dispatch(dispatch);check_native_scene_leaves(leaves);
     VcdAuditArena section_arena(c,s,t,d,st,si,va);check_native_section(section_arena,runtime,clock,section);
