@@ -4,6 +4,7 @@
 // refer to caller-owned writable storage. Do not retain API pointers after
 // unloading the module. No C++ objects or allocations cross the DLL boundary.
 #include <cstdint>
+#include <cstddef>
 
 #if defined(_MSC_VER)
 #define SIN_FIXED_CALL __cdecl
@@ -175,6 +176,54 @@ enum NativeEventResult : int {
     EventCleanupUncertain=7,EventFireUncertain=8
 };
 using PublishCampaignEvent=int (SIN_FIXED_CALL *)(void*,const NativeTriggerEvent*) noexcept;
+// Recovered original CHL2_Player damage entry gate and final damage-copy
+// preparation, after the intervening original caller branches have passed.
+// These are independent port ABI records, not a claim of complete TakeDamage.
+inline constexpr char combat_export_name[]="SiN_GetCombatDamageApi";
+inline constexpr std::uint32_t combat_version=1;
+struct PlayerDamageRecord {
+    std::uint32_t vector_bits[9],inflictor_handle,attacker_handle;
+    float amount;
+    std::uint32_t opaque_30;
+    float base_damage;
+    std::uint32_t damage_type,tail[3];
+};
+static_assert(sizeof(PlayerDamageRecord)==0x48);
+static_assert(offsetof(PlayerDamageRecord,amount)==0x2c);
+static_assert(offsetof(PlayerDamageRecord,base_damage)==0x34);
+static_assert(offsetof(PlayerDamageRecord,damage_type)==0x38);
+struct PlayerDamageObservation {
+    std::uint32_t life_state,attacker_is_self,inflictor_is_self;
+};
+enum PlayerDamageCode : int {
+    PlayerDamageRejected=0,PlayerDamageReady=1,PlayerDamageInvulnerable=2,
+    PlayerDamageNotAlive=3
+};
+// Final, already-filtered common health stage, after player/NPC-specific
+// rules and armor. take_damage==1 skips the integer/fraction update.
+// Values are from the host's own live combat-character state.
+struct CommonDamageInput {
+    std::int32_t health;
+    std::uint32_t take_damage;
+    float fraction,amount;
+};
+struct CommonDamageOutput {
+    std::int32_t health,integer_damage;
+    float fraction;
+    std::uint32_t fraction_write,health_changed;
+};
+enum CommonDamageCode : int {
+    CommonDamageRejected=0,CommonDamageReduced=1,CommonDamageFractionOnly=2,
+    CommonDamageEventsOnly=3
+};
+struct CombatDamageApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *player_gate)(std::uint32_t) noexcept;
+    int (SIN_FIXED_CALL *prepare_player_copy)(const PlayerDamageRecord*,
+        const PlayerDamageObservation*,PlayerDamageRecord*) noexcept;
+    int (SIN_FIXED_CALL *common_health_stage)(const CommonDamageInput*,CommonDamageOutput*) noexcept;
+};
+using GetCombatDamageApi=const CombatDamageApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

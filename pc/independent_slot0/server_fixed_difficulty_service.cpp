@@ -228,6 +228,71 @@ int SIN_FIXED_CALL query(std::uint32_t input,float snapshot,std::uint32_t self,
     *out=sink.record;
     return 1;
 }
+
+// Original 0x2239fa00 checks the persistent global before the life state.
+// Missing names resolve to state 0. Dead state 2 is not invulnerability.
+int SIN_FIXED_CALL player_gate(std::uint32_t life_state) noexcept {
+    if(!campaign)return abi::PlayerDamageRejected;
+    const int index=global_find("gordon_invulnerable");
+    if(index>=0&&globals[static_cast<std::size_t>(index)].value==1)
+        return abi::PlayerDamageInvulnerable;
+    if(life_state!=0)return abi::PlayerDamageNotAlive;
+    return abi::PlayerDamageReady;
+}
+int SIN_FIXED_CALL prepare_player_copy(const abi::PlayerDamageRecord* input,
+        const abi::PlayerDamageObservation* observed,abi::PlayerDamageRecord* output) noexcept {
+    if(!input||!observed||!output||observed->attacker_is_self>1||observed->inflictor_is_self>1)
+        return abi::PlayerDamageRejected;
+    const int gate=player_gate(observed->life_state);
+    if(gate!=abi::PlayerDamageReady)return gate;
+    if(!std::isfinite(input->amount))return abi::PlayerDamageRejected;
+    auto copy=*input;
+    // The original tests the resolved attacker and inflictor entity
+    // pointers against self, not just raw EHANDLE values. In either self
+    // case it skips the entire original 0x221f8770 helper.
+    if(!observed->attacker_is_self&&!observed->inflictor_is_self){
+        copy.base_damage=copy.amount;
+        if(!damage_taken(copy.amount,copy.damage_type,&copy.amount))
+            return abi::PlayerDamageRejected;
+    }
+    *output=copy;
+    return abi::PlayerDamageReady;
+}
+// Original 0x222a7c51..0x222a7d13. The f32 fractional remainder is
+// added to the prior per-character carry; an x87 comparison against
+// 1.0 precedes the carry subtraction. Use double intermediates for
+// the normal finite nonnegative input domain, then f32 stores.
+int SIN_FIXED_CALL common_health_stage(const abi::CommonDamageInput* input,
+        abi::CommonDamageOutput* out) noexcept {
+    if(!input||!out)return abi::CommonDamageRejected;
+    const auto in=*input;
+    if(!std::isfinite(in.amount)||in.amount<0.f||
+       !std::isfinite(in.fraction)||in.fraction<0.f||in.fraction>1.f)
+        return abi::CommonDamageRejected;
+    abi::CommonDamageOutput result{in.health,0,in.fraction,0,0};
+    if(in.take_damage==1){*out=result;return abi::CommonDamageEventsOnly;}
+    const double amount=static_cast<double>(in.amount);
+    const float remainder=static_cast<float>(amount-std::floor(amount));
+    double whole=amount-static_cast<double>(remainder);
+    const double combined=static_cast<double>(in.fraction)+static_cast<double>(remainder);
+    double carry=combined;
+    if(combined>=1.0){whole+=1.0;carry-=1.0;}
+    if(whole<0.0||whole>static_cast<double>((std::numeric_limits<std::int32_t>::max)()))
+        return abi::CommonDamageRejected;
+    const auto reduction=static_cast<std::int32_t>(whole);
+    const auto health=static_cast<std::int64_t>(in.health)-reduction;
+    if(health<(std::numeric_limits<std::int32_t>::min)())return abi::CommonDamageRejected;
+    result.health=static_cast<std::int32_t>(health);
+    result.integer_damage=reduction;
+    result.fraction=static_cast<float>(carry);
+    result.fraction_write=1;
+    result.health_changed=reduction!=0?1u:0u;
+    *out=result;
+    return reduction?abi::CommonDamageReduced:abi::CommonDamageFractionOnly;
+}
+const abi::CombatDamageApi combat_api{abi::combat_version,sizeof(abi::CombatDamageApi),
+    &player_gate,&prepare_player_copy,&common_health_stage};
+
 static_assert(diff::original_metric_count==abi::metric_count);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Initial)==abi::Initial);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Current)==abi::Current);
@@ -240,6 +305,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 // guarantees a stable, undecorated GetProcAddress name on the real DLL.
 #if defined(_MSC_VER) && defined(_M_IX86)
 #pragma comment(linker,"/EXPORT:SiN_GetFixedDifficultyApi=_SiN_GetFixedDifficultyApi")
+#pragma comment(linker,"/EXPORT:SiN_GetCombatDamageApi=_SiN_GetCombatDamageApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -253,6 +319,11 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 extern "C" SIN_FIXED_EXPORT const abi::Api* SIN_FIXED_CALL
 SiN_GetFixedDifficultyApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::abi_version&&bytes==sizeof(abi::Api)?&api:nullptr;
+}
+
+extern "C" SIN_FIXED_EXPORT const abi::CombatDamageApi* SIN_FIXED_CALL
+SiN_GetCombatDamageApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::combat_version&&bytes==sizeof(abi::CombatDamageApi)?&combat_api:nullptr;
 }
 
 extern "C" SIN_FIXED_EXPORT const abi::GlobalStateApi* SIN_FIXED_CALL

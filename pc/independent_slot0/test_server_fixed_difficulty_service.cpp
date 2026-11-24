@@ -450,6 +450,97 @@ static void test_trigger_bsp_host(const a::MapEntityApi* m,const a::Api* api,con
     assert(m->end_level(ep2)&&api->end_campaign());
 }
 
+
+static void test_combat_damage(const a::CombatDamageApi* damage,const a::Api* api,
+        const a::GlobalStateApi* g,const a::MapEntityApi* map){
+    assert(damage&&damage->version==1&&damage->size==sizeof(*damage));
+    assert(damage->player_gate(0)==a::PlayerDamageRejected);
+    assert(api->begin_campaign(3)&&g->clear()&&g->set_updates_disabled(0));
+    assert(damage->player_gate(0)==a::PlayerDamageReady);
+    assert(damage->player_gate(0x100)==a::PlayerDamageNotAlive);
+    a::PlayerDamageRecord source{};
+    for(unsigned i=0;i<9;++i)source.vector_bits[i]=0x13579bdfu+i;
+    source.inflictor_handle=0x12345678;
+    source.attacker_handle=0x87654321;
+    source.amount=100.f;source.opaque_30=0xfedcba98;source.base_damage=-1.f;
+    source.tail[0]=0x11223344;source.tail[1]=0x55667788;source.tail[2]=0x99aabbcc;
+    a::PlayerDamageObservation observed{};
+    a::PlayerDamageRecord output{};
+    assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageReady);
+    auto expected=source;expected.amount=140.f;expected.base_damage=100.f;
+    assert(std::memcmp(&output,&expected,sizeof(output))==0&&source.amount==100.f&&source.base_damage==-1.f);
+    const std::uint32_t bypass[]={0x1,0x20,0x4000,0x20000,0x80000000,0x80024021};
+    for(auto mask:bypass){
+        source.damage_type=mask;expected=source;expected.base_damage=source.amount;
+        assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageReady);
+        assert(std::memcmp(&output,&expected,sizeof(output))==0);
+    }
+    source.damage_type=0;
+    observed.attacker_is_self=1;
+    assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageReady);
+    assert(std::memcmp(&source,&output,sizeof(source))==0);
+    observed.attacker_is_self=0;observed.inflictor_is_self=1;
+    assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageReady);
+    assert(std::memcmp(&source,&output,sizeof(source))==0);
+    observed.inflictor_is_self=0;
+    assert(api->set_skill(1));
+    assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageReady&&output.amount==75.f);
+    const auto epoch=map->begin_level("damage_test");
+    assert(epoch);
+    const a::MapEntityRef gate{epoch,1,1};
+    assert(map->create(gate,"env_global")==a::MapApplied);
+    assert(map->keyvalue(gate,"globalstate","gordon_invulnerable")==a::MapApplied);
+    assert(map->keyvalue(gate,"spawnflags","1")==a::MapApplied);
+    assert(map->spawn(gate)==a::MapApplied);
+    assert(map->input(gate,"TurnOn",nullptr,nullptr)==a::MapApplied);
+    assert(damage->player_gate(0)==a::PlayerDamageInvulnerable&&damage->player_gate(1)==a::PlayerDamageInvulnerable);
+    output=source;
+    assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageInvulnerable);
+    assert(std::memcmp(&source,&output,sizeof(source))==0);
+    assert(map->input(gate,"Remove",nullptr,nullptr)==a::MapApplied);
+    assert(damage->player_gate(0)==a::PlayerDamageReady);
+    assert(map->input(gate,"TurnOff",nullptr,nullptr)==a::MapApplied);
+    assert(damage->player_gate(0)==a::PlayerDamageReady);
+    observed.life_state=1;
+    assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageNotAlive);
+    observed.life_state=0;observed.attacker_is_self=2;
+    assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageRejected);
+    observed.attacker_is_self=0;
+    source.amount=std::numeric_limits<float>::infinity();
+    assert(damage->prepare_player_copy(&source,&observed,&output)==a::PlayerDamageRejected);
+    // Common final damage retains fractional health carry, independent
+    // of the earlier player rules (never scale this amount a second time).
+    a::CommonDamageInput in{100,2,0.f,0.25f};
+    a::CommonDamageOutput out{};
+    for(int i=1;i<=4;++i){
+        const int code=damage->common_health_stage(&in,&out);
+        assert(code==(i==4?a::CommonDamageReduced:a::CommonDamageFractionOnly));
+        assert(out.health==100-(i==4?1:0)&&out.fraction==(i==4?0.f:0.25f*i));
+        assert(out.fraction_write==1&&out.health_changed==(i==4?1u:0u));
+        in.health=out.health;in.fraction=out.fraction;
+    }
+    in={100,2,0.75f,3.5f};
+    assert(damage->common_health_stage(&in,&out)==a::CommonDamageReduced);
+    assert(out.health==96&&out.integer_damage==4&&out.fraction==0.25f);
+    in={2,2,0.5f,2.75f};
+    assert(damage->common_health_stage(&in,&out)==a::CommonDamageReduced&&out.health==-1);
+    in={100,1,0.75f,3.5f};
+    assert(damage->common_health_stage(&in,&out)==a::CommonDamageEventsOnly);
+    assert(out.health==100&&out.integer_damage==0&&out.fraction==0.75f&&!out.fraction_write&&!out.health_changed);
+    in={100,2,1.f,0.f};
+    assert(damage->common_health_stage(&in,&out)==a::CommonDamageReduced&&out.health==99&&out.fraction==0.f);
+    in={100,2,0.f,-1.f};
+    out={123,456,0.5f,7,8};
+    assert(damage->common_health_stage(&in,&out)==a::CommonDamageRejected&&out.health==123&&out.health_changed==8);
+    in={100,2,0.f,std::numeric_limits<float>::infinity()};
+    assert(damage->common_health_stage(&in,&out)==a::CommonDamageRejected);
+    in={(std::numeric_limits<std::int32_t>::min)(),2,0.f,1.f};
+    assert(damage->common_health_stage(&in,&out)==a::CommonDamageRejected);
+    in={100,2,0.f,2147483648.f};
+    assert(damage->common_health_stage(&in,&out)==a::CommonDamageRejected);
+    assert(map->end_level(epoch)&&api->end_campaign()&&g->clear());
+}
+
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -866,6 +957,13 @@ int main(int argc,char** argv){
     const auto* triggers=getTriggers(a::trigger_version,sizeof(a::CampaignTriggerApi));
     test_native_triggers(map,api,triggers);
     test_trigger_bsp_host(map,api,triggers);
+#ifdef _WIN32
+    auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
+#else
+    auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(dlsym(lib,a::combat_export_name));
+#endif
+    assert(getCombat&&!getCombat(0,sizeof(a::CombatDamageApi))&&!getCombat(1,0));
+    test_combat_damage(getCombat(a::combat_version,sizeof(a::CombatDamageApi)),api,globals,map);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);
