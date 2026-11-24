@@ -293,6 +293,61 @@ int SIN_FIXED_CALL common_health_stage(const abi::CommonDamageInput* input,
 const abi::CombatDamageApi combat_api{abi::combat_version,sizeof(abi::CombatDamageApi),
     &player_gate,&prepare_player_copy,&common_health_stage};
 
+
+struct NpcRandomScope {
+    NpcRandomScope() noexcept {reading_engine_skill=true;}
+    ~NpcRandomScope(){reading_engine_skill=false;}
+};
+int SIN_FIXED_CALL npc_decide(std::uint32_t kind,float factor,abi::NpcRandomFloat random,
+        void* context,abi::NpcDecisionOutput* out) noexcept {
+    if(reading_engine_skill||!campaign||!out)return 0;
+    const auto& m=campaign->policy.metrics();
+    float threshold=0.f;
+    switch(kind){
+    case abi::NpcSecondaryFire:threshold=m[5];break;
+    case abi::NpcWearsHelmet:threshold=m[8];break;
+    case abi::NpcHelmetShotOff:threshold=m[9];break;
+    case abi::NpcTakesCover:threshold=m[10];break;
+    case abi::NpcMobile:
+        if(!std::isfinite(factor))return 0;
+        threshold=static_cast<float>(static_cast<double>(m[13])*factor*static_cast<double>(0.2f));
+        break;
+    case abi::NpcSpawnCountDelta:threshold=m[7];break;
+    case abi::NpcHealthKitDrop:
+        // Fixed profiles keep forced health kits at zero. The original
+        // slot97's nonzero forced-counter mutation is outside this ABI.
+        if(m[3]!=0.f)return 0;
+        threshold=m[4];break;
+    default:return 0;
+    }
+    if(!std::isfinite(threshold))return 0;
+    abi::NpcDecisionOutput result{std::fabs(threshold),0.f,0,0};
+    if(threshold==0.f){*out=result;return 1;}
+    if(!random)return 0;
+    float sample=0.f;
+    {
+        NpcRandomScope scope;
+        try {if(!random(context,0.f,1.f,&sample))return 0;}
+        catch(...){return 0;}
+    }
+    if(!std::isfinite(sample)||sample<0.f||sample>1.f)return 0;
+    result.sample=sample;result.drew_random=1;
+    // Original FCOMPP compares abs(metric) to random; C0 is the
+    // failure branch. Equality succeeds, and >1 is not clamped.
+    if(sample<=result.threshold)
+        result.decision=(kind==abi::NpcSpawnCountDelta&&threshold<0.f)?-1:1;
+    *out=result;
+    return 1;
+}
+int SIN_FIXED_CALL npc_spread(float base,abi::NpcSpread* out) noexcept {
+    if(!campaign||!out||!std::isfinite(base)||base<0.f)return 0;
+    const float spread=base*campaign->policy.metric_at(12);
+    if(!std::isfinite(spread))return 0;
+    *out={spread,spread,spread};
+    return 1;
+}
+const abi::NpcRulesApi npc_api{abi::npc_rules_version,sizeof(abi::NpcRulesApi),&npc_decide,&npc_spread};
+
 static_assert(diff::original_metric_count==abi::metric_count);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Initial)==abi::Initial);
 static_assert(static_cast<std::uint32_t>(challenge::Input::Current)==abi::Current);
@@ -306,6 +361,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #if defined(_MSC_VER) && defined(_M_IX86)
 #pragma comment(linker,"/EXPORT:SiN_GetFixedDifficultyApi=_SiN_GetFixedDifficultyApi")
 #pragma comment(linker,"/EXPORT:SiN_GetCombatDamageApi=_SiN_GetCombatDamageApi")
+#pragma comment(linker,"/EXPORT:SiN_GetNpcRulesApi=_SiN_GetNpcRulesApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -319,6 +375,11 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 extern "C" SIN_FIXED_EXPORT const abi::Api* SIN_FIXED_CALL
 SiN_GetFixedDifficultyApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::abi_version&&bytes==sizeof(abi::Api)?&api:nullptr;
+}
+
+extern "C" SIN_FIXED_EXPORT const abi::NpcRulesApi* SIN_FIXED_CALL
+SiN_GetNpcRulesApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::npc_rules_version&&bytes==sizeof(abi::NpcRulesApi)?&npc_api:nullptr;
 }
 
 extern "C" SIN_FIXED_EXPORT const abi::CombatDamageApi* SIN_FIXED_CALL
@@ -719,6 +780,24 @@ struct EngineReadScope {
     ~EngineReadScope(){reading_engine_skill=false;}
 };
 }
+// Original server rule methods use VEngineRandom001 +0x4 with
+// RandomFloat(0.f,1.f). Resolve the slot only when the rule needs RNG.
+namespace {
+int SIN_FIXED_CALL read_native_npc_random(void* engine,float lo,float hi,float* out) {
+    methods::CallResult refused=methods::CallResult::InvalidObject;
+    const auto method=methods::VerifiedMethod(engine,1,refused);
+    if(!method)return 0;
+    using RandomFloat=float (__thiscall *)(void*,float,float);
+    *out=reinterpret_cast<RandomFloat>(method)(engine,lo,hi);
+    return 1;
+}
+}
+#pragma comment(linker,"/EXPORT:SiN_DecideNpcWithEngineRandom=_SiN_DecideNpcWithEngineRandom")
+extern "C" int SIN_FIXED_CALL SiN_DecideNpcWithEngineRandom(void* engine,
+    std::uint32_t kind,float factor,abi::NpcDecisionOutput* out) noexcept {
+    return npc_decide(kind,factor,&read_native_npc_random,engine,out);
+}
+
 // Phase675: original engine manager and event slots authenticated against
 // the owner engine.dll RTTI-backed CGameEventManager/CGameEvent vtables.
 // All pointers are borrowed on the game thread. No addresses from the

@@ -13,8 +13,8 @@ namespace {
 // 5 PERCENT_NPC_2ND_FIRE, 8 PERCENT_NPC_WEARS_HELMET,
 // 11 RANDOM_NPC_WAIT_BEFORE_SHOOT, 12 PERCENT_NPC_ACCURATE,
 // 13 PERCENT_NPC_MOBILE.
-// Values are drawn from the original endpoints but rearranged into logical
-// Easy/Normal/Hard, since global dd_challenge t is NOT a monotonic skill.
+// Values are drawn from the original endpoints. Phase677 authenticates
+// metric12 as an attack-spread multiplier: larger means wider spread.
 RuntimeMetrics modified_original(const Level level) noexcept {
     RuntimeMetrics m=original_initial_metric_values();
     if(level==Level::Easy) {
@@ -23,7 +23,7 @@ RuntimeMetrics modified_original(const Level level) noexcept {
         m[5]=0.f;
         m[8]=0.1f;
         m[11]=0.1f;
-        m[12]=0.5f;
+        m[12]=1.f;
         m[13]=0.3f;
     } else if(level==Level::Hard) {
         m[0]=1.4f;
@@ -31,7 +31,7 @@ RuntimeMetrics modified_original(const Level level) noexcept {
         m[5]=0.5f;
         m[8]=0.6f;
         m[11]=-0.1f;
-        m[12]=1.f;
+        m[12]=0.5f;
         m[13]=0.7f;
     }
     return m;

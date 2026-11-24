@@ -37,11 +37,11 @@ void profile_invariants(){
  assert(easy.label=="Easy"&&normal.label=="Normal"&&hard.label=="Hard");
  const auto original=original_initial_metric_values();
  assert(same(normal.metrics,original));
- // New policy: individually rearrange original endpoint values to avoid
- // the *opposite* damage and accuracy slopes of original dd_challenge.
- const std::array<float,7> em{{0.75f,0.5f,0.f,0.1f,0.1f,0.5f,0.3f}};
+ // Phase677: metric12 multiplies NPC spread, not hit probability.
+ // Larger spread on Easy and smaller spread on Hard.
+ const std::array<float,7> em{{0.75f,0.5f,0.f,0.1f,0.1f,1.f,0.3f}};
  const std::array<float,7> nm{{1.075f,0.4f,0.25f,0.35000002f,0.f,0.75f,0.5f}};
- const std::array<float,7> hm{{1.4f,0.3f,0.5f,0.6f,-0.1f,1.f,0.7f}};
+ const std::array<float,7> hm{{1.4f,0.3f,0.5f,0.6f,-0.1f,0.5f,0.7f}};
  constexpr std::array<std::size_t,7> indexes{{0u,4u,5u,8u,11u,12u,13u}};
  for(std::size_t i=0u;i<indexes.size();++i){
   assert(eq(easy.metrics[indexes[i]],em[i]));
@@ -56,12 +56,12 @@ void profile_invariants(){
   assert(normal.metrics[id]==original[id]);
   assert(hard.metrics[id]==original[id]);
  }
- // Deliberately NOT original scalar interpolation: t=0 is lighter
- // incoming damage but higher NPC accuracy. A skill slider cannot use it.
+ // Original endpoints are lighter damage and wider NPC spread at t=0.
+ // Fixed profiles remain deliberately independent of adaptive updates.
  const auto old_low=blended_metrics(0.f);
  const auto old_high=blended_metrics(1.f);
  assert(old_low[0]<old_high[0]&&old_low[12]>old_high[12]);
- assert(easy.metrics[12]<hard.metrics[12]);
+ assert(easy.metrics[12]>hard.metrics[12]);
  assert(easy.metrics[0]<hard.metrics[0]);
 }
 void stable_skill_changes_and_lookup(){

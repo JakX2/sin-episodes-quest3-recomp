@@ -224,6 +224,35 @@ struct CombatDamageApi {
     int (SIN_FIXED_CALL *common_health_stage)(const CommonDamageInput*,CommonDamageOutput*) noexcept;
 };
 using GetCombatDamageApi=const CombatDamageApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+// Original game-rule decisions driven by the selected fixed profile.
+// The random stream is borrowed per call and sampled exactly once on
+// nonzero thresholds. A zero threshold never advances the stream.
+inline constexpr char npc_rules_export_name[]="SiN_GetNpcRulesApi";
+inline constexpr char npc_engine_rng_export_name[]="SiN_DecideNpcWithEngineRandom";
+inline constexpr std::uint32_t npc_rules_version=1;
+enum NpcDecision : std::uint32_t {
+    NpcSecondaryFire=0,NpcWearsHelmet,NpcHelmetShotOff,NpcTakesCover,
+    NpcMobile,NpcSpawnCountDelta,NpcHealthKitDrop
+};
+struct NpcDecisionOutput {
+    float threshold,sample;
+    std::uint32_t drew_random;
+    std::int32_t decision; // bool 0/1 except signed spawn-count delta
+};
+struct NpcSpread {float x,y,z;};
+using NpcRandomFloat=int (SIN_FIXED_CALL *)(void*,float,float,float*);
+struct NpcRulesApi {
+    std::uint32_t version,size;
+    // factor applies only to NpcMobile; host passes the original callsite
+    // factor. Other decisions ignore factor. Failed calls leave out intact.
+    int (SIN_FIXED_CALL *decide)(std::uint32_t,float,NpcRandomFloat,void*,NpcDecisionOutput*) noexcept;
+    // Original attack-spread cache miss: scale the resolved base spread
+    // and produce the 3-component value. Do NOT rescale an existing cache hit.
+    int (SIN_FIXED_CALL *uncached_spread)(float,NpcSpread*) noexcept;
+};
+using GetNpcRulesApi=const NpcRulesApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+// Win32 only: live VEngineRandom001 pointer, original slot 1 RandomFloat.
+using DecideNpcWithEngineRandom=int (SIN_FIXED_CALL *)(void*,std::uint32_t,float,NpcDecisionOutput*) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);
