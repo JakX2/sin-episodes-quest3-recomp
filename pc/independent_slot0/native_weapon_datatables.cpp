@@ -2587,6 +2587,62 @@ int __cdecl poison_ack(HologramControl* ctrl,PoisonTiming* timing) noexcept {
     ctrl->blocked=0;if(timing)timing->blocked=0;return 1;
 }
 const PlayerPoisonApi player_poison_api{version,sizeof(PlayerPoisonApi),&poison_spawn,&poison_attach,&poison_inside,&poison_tick,&poison_ack};
+
+int __cdecl gas_input_apply(HologramControl* ctrl,const GasInputBindings* b,GasInput input,const GasInputValue* value) noexcept {
+    if(!gas_valid(ctrl)||!b||!value||static_cast<unsigned>(input)>5)return 0;
+    const auto host=*b;const auto v=*value;auto* gas=ctrl->object;
+    auto* child=hologram_read<void*>(gas,gas_child);
+    // Duration has no child dependency. SoundOn/color handlers do
+    // nothing without a visual child. Radius/rate always store their
+    // parent values first, even if no child exists.
+    const bool vector_input=input==GasInput::SetStartColor||input==GasInput::SetEndColor;
+    if(input==GasInput::SetDuration){
+        hologram_write(gas,gas_duration,v.type==1?v.scalar:0.0f);return 1;
+    }
+    if(input==GasInput::SoundOn){
+        if(child)hologram_write(gas,gas_audio,static_cast<unsigned char>(v.type==6?v.boolean_value:0));
+        return 1;
+    }
+    if(vector_input&&!child)return 1;
+    if(child&&(!host.visual_storage||!host.dirty||
+       (vector_input&&v.type!=3&&v.type!=15&&!host.fallback_vector)))return 0;
+    ctrl->busy=1;
+    const auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    if(!vector_input){
+        const float scalar=v.type==1?v.scalar:0.0f;
+        const bool radius=input==GasInput::SetRadius;
+        hologram_write(gas,radius?gas_radius:gas_rate,scalar);
+        if(!child)return finish(true);
+        unsigned bytes=0;
+        if(!host.visual_storage(host.context,child,&bytes)||bytes<0x3d0||
+           !hologram_writable(child,0x3d0))return finish(false);
+        const unsigned offset=radius?0x3ccu:0x3b0u;
+        const double next=radius?static_cast<double>(scalar)*0.75:static_cast<double>(scalar);
+        if(static_cast<double>(hologram_read<float>(child,offset))!=next){
+            if(!host.dirty(host.context,child,offset))return finish(false);
+            hologram_write(child,offset,static_cast<float>(next));
+        }
+        return finish(true);
+    }
+    unsigned bytes=0;
+    if(!host.visual_storage(host.context,child,&bytes)||bytes<0x3d0||
+       !hologram_writable(child,0x3d0))return finish(false);
+    float rgb[3]{};
+    if(v.type==3||v.type==15)std::memcpy(rgb,v.vector,12);
+    else if(!host.fallback_vector(host.context,rgb))return finish(false);
+    constexpr float scale=1.0f/255.0f;
+    for(auto& channel:rgb)channel=static_cast<float>(static_cast<double>(channel)*scale);
+    const unsigned offset=input==GasInput::SetStartColor?0x394u:0x3a0u;
+    bool changed=false;
+    for(unsigned i=0;i<3;++i)
+        changed=changed||hologram_read<float>(child,offset+i*4)!=rgb[i];
+    if(changed){
+        if(!host.dirty(host.context,child,offset))return finish(false);
+        std::memcpy(static_cast<unsigned char*>(child)+offset,rgb,12);
+    }
+    return finish(true);
+}
+const GasInputApi gas_input_api{version,sizeof(GasInputApi),&gas_input_apply};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4260,6 +4316,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerPoi
 SiN_GetPlayerPoisonApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerPoisonApi)?&player_poison_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetGasInputApi=_SiN_GetGasInputApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::GasInputApi* __cdecl
+SiN_GetGasInputApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(GasInputApi)?&gas_input_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

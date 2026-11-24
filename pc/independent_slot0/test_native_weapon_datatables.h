@@ -2481,7 +2481,7 @@ inline void check_health_pickups(const HealthPickupApi& api){
     f.heal_accepted=1;assert(pickup()==1&&accepted);expect({1,3,4,5,6,8});
     f.kind=HealthPickupKind::Vial;f.skill=10.25f;f.respawn=1;classname("item_healthvial");
     assert(pickup()==1&&accepted&&f.healed==10.25f);expect({1,3,4,5,6,7});
-    f.kind=HealthPickupKind::Mega;f.skill=125.75f;classname("item_healthmega");
+    f.kind=HealthPickupKind::Mega;f.skill=125.75f;classname("item_megahealth");
     f.heal_accepted=0;assert(pickup()==1&&!accepted&&read_maximum()==200&&player[0x12a1]&&f.healed==125);
     assert(f.old_max[0]==100&&f.old_max[1]==225);expect({1,2,2,3});
     f.skill=0.75f;f.heal_accepted=1;classname(nullptr);
@@ -2656,7 +2656,7 @@ inline void check_player_heal(const PlayerHealApi& api,const HealthPickupApi& pi
     // Integrated MegaHealth: pickup uses the native slot57 while both
     // object controls remain busy, with no host heal callback.
     HealthPickupFixture pf{&ic,&pc};pf.kind=HealthPickupKind::Mega;pf.skill=50.75f;
-    pf.expected_class="item_healthmega";const char* name=pf.expected_class;std::memcpy(item+0xc,&name,4);
+    pf.expected_class="item_megahealth";const char* name=pf.expected_class;std::memcpy(item+0xc,&name,4);
     HealthPickupBindings pb{&pf,&pickup_skill_test,&pickup_dirty_test,nullptr,&pickup_message_test,
         &pickup_sound_test,&pickup_respawn_query,&pickup_respawn_test,&pickup_remove_test};
     unsigned consumed=0;
@@ -3056,6 +3056,58 @@ inline void check_generic_screen(const ScreenCommandApi& cli,const DispenserApi&
     const std::uint32_t invalid=0xffffffffu;std::memcpy(panel+0xd8,&invalid,4);
     assert(run("eject")==-1&&pc.blocked&&!f.owned);expect({1,7},{});
     assert(cli.acknowledge(&pc));
+}
+
+struct GasInputFixture {
+    HologramControl* ctrl=nullptr;void* child=nullptr;
+    unsigned bytes=0x3d0,events[16]{},count=0,fail=0;
+    bool push(unsigned e){assert(ctrl->busy&&count<16);events[count++]=e;return fail!=e;}
+};
+inline int __cdecl gi_storage(void* ctx,void* child,unsigned* bytes) noexcept {
+    auto& f=*static_cast<GasInputFixture*>(ctx);assert(child==f.child);*bytes=f.bytes;return f.push(1);
+}
+inline int __cdecl gi_dirty(void* ctx,void* child,unsigned off) noexcept {
+    auto& f=*static_cast<GasInputFixture*>(ctx);assert(child==f.child);
+    assert(off==0x3cc||off==0x3b0||off==0x394||off==0x3a0);return f.push(off);
+}
+inline int __cdecl gi_fallback(void* ctx,float xyz[3]) noexcept {
+    auto& f=*static_cast<GasInputFixture*>(ctx);xyz[0]=xyz[1]=xyz[2]=0;return f.push(2);
+}
+inline void check_gas_inputs(const GasInputApi& api,const PoisonGasApi& gas_api){
+    alignas(4) unsigned char gas[0x3bc]{},child[0x3d0]{};
+    HologramControl ctrl{gas,sizeof(gas)};GasInputFixture f{&ctrl,child};
+    GasInputBindings b{&f,&gi_storage,&gi_dirty,&gi_fallback};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto fl=[](const unsigned char* obj,unsigned off){float value=0;std::memcpy(&value,obj+off,4);return value;};
+    const auto apply=[&](GasInput input,unsigned type,float value=0.0f){
+        GasInputValue v{};v.type=type;v.scalar=value;v.boolean_value=1;v.vector[0]=255;v.vector[1]=128;v.vector[2]=64;
+        return api.apply(&ctrl,&b,input,&v);
+    };
+    assert(gas_api.defaults(gas,sizeof(gas)));
+    assert(apply(GasInput::SetRadius,1,400)==1&&fl(gas,0x3a0)==400);expect({});
+    assert(apply(GasInput::SetDuration,1,30)==1&&fl(gas,0x3a4)==30);expect({});
+    assert(apply(GasInput::SetSpawnRate,1,48)==1&&fl(gas,0x3a8)==48);expect({});
+    assert(apply(GasInput::SoundOn,1)==1&&gas[0x3b8]==1);expect({});
+    assert(apply(GasInput::SetStartColor,3)==1);expect({});
+    void* visual=child;std::memcpy(gas+0x3b4,&visual,4);
+    assert(apply(GasInput::SetRadius,1,400)==1&&fl(child,0x3cc)==300);expect({1,0x3cc});
+    assert(apply(GasInput::SetRadius,1,400)==1);expect({1});
+    assert(apply(GasInput::SetSpawnRate,1,48)==1&&fl(child,0x3b0)==48);expect({1,0x3b0});
+    assert(apply(GasInput::SetSpawnRate,1,48)==1);expect({1});
+    assert(apply(GasInput::SetRadius,3)==1&&fl(gas,0x3a0)==0&&fl(child,0x3cc)==0);expect({1,0x3cc});
+    assert(apply(GasInput::SetDuration,6)==1&&fl(gas,0x3a4)==0);expect({});
+    assert(apply(GasInput::SoundOn,1)==1&&!gas[0x3b8]);expect({});
+    assert(apply(GasInput::SoundOn,6)==1&&gas[0x3b8]==1);expect({});
+    assert(apply(GasInput::SetStartColor,3)==1&&fl(child,0x394)==1&&
+        std::abs(fl(child,0x398)-128.0f/255)<0.000001f);expect({1,0x394});
+    assert(apply(GasInput::SetEndColor,15)==1&&fl(child,0x3a0)==1&&
+        std::abs(fl(child,0x3a8)-64.0f/255)<0.000001f);expect({1,0x3a0});
+    assert(apply(GasInput::SetStartColor,3)==1);expect({1});
+    assert(apply(GasInput::SetStartColor,6)==1&&fl(child,0x394)==0);expect({1,2,0x394});
+    f.fail=0x3cc;assert(apply(GasInput::SetRadius,1,500)==-1&&ctrl.blocked&&fl(gas,0x3a0)==500&&fl(child,0x3cc)==0);
+    expect({1,0x3cc});assert(apply(GasInput::SetRadius,1,500)==0&&gas_api.acknowledge(&ctrl));expect({});
+    f.fail=0;f.bytes=0x3bc;assert(apply(GasInput::SetSpawnRate,1,50)==-1&&ctrl.blocked&&fl(gas,0x3a8)==50&&fl(child,0x3b0)==48);expect({1});
+    assert(gas_api.acknowledge(&ctrl));
 }
 
 }

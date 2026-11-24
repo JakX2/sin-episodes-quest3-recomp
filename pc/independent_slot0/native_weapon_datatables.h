@@ -1189,4 +1189,30 @@ struct ScreenCommandApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetScreenCommandApi=const ScreenCommandApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase732: SDK-listed env_poison_gas map inputs, with original
+// variant type gates and live visual-child property updates.
+inline constexpr char gas_input_export[]="SiN_GetGasInputApi";
+enum class GasInput:unsigned {SetRadius,SetDuration,SetSpawnRate,SoundOn,SetStartColor,SetEndColor};
+struct GasInputValue {
+    unsigned type; // original variant tag 1=float, 6=bool, 3/15=vector
+    float scalar;
+    unsigned char boolean_value;
+    float vector[3];
+};
+struct GasInputBindings {
+    void* context;
+    // Validate the live, typed visual child and return its storage span.
+    int (__cdecl *visual_storage)(void*,void* child,unsigned* bytes) noexcept;
+    // Original child network dirty mechanism (deferred flag or edict).
+    // Invoked before a changed tracked field is written.
+    int (__cdecl *dirty)(void*,void* child,unsigned offset) noexcept;
+    // Original global fallback vector for a non-vector variant.
+    int (__cdecl *fallback_vector)(void*,float xyz[3]) noexcept;
+};
+struct GasInputApi {
+    std::uint32_t version,size;
+    int (__cdecl *apply)(HologramControl*,const GasInputBindings*,GasInput,const GasInputValue*) noexcept;
+};
+using GetGasInputApi=const GasInputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
