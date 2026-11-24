@@ -1,6 +1,7 @@
 // Load the actual built module. No linking against its implementation.
 #include "server_fixed_difficulty_service.h"
 #include "original_ammo_definitions.h"
+#include "test_weapon_network_contract_core.h"
 #include "server_native_map_host.h"
 #include <vector>
 #include <utility>
@@ -1401,6 +1402,49 @@ static void test_magnum_secondary(const a::MagnumSecondaryApi* secondary,const a
     assert(map->remove(gun)&&run()&&report.code==a::MagSecondaryRejected);
     assert(map->end_level(epoch)&&api->end_campaign());
 }
+namespace wn=sin_port::weapon_net;
+struct WeaponSnapshotFixture {
+    const a::MapEntityApi* map;
+    wn::Values values=wn::test::example();
+    std::vector<unsigned> reads;
+    bool fail=false;
+    static int SIN_FIXED_CALL owner(void* context,a::MapEntityRef ref,wn::OwnerObservation* out){
+        auto& f=*static_cast<WeaponSnapshotFixture*>(context);
+        assert(!f.map->remove(ref));
+        *out={f.values.words[wn::Owner],1,1,3};return 1;
+    }
+    static int SIN_FIXED_CALL read(void* context,a::MapEntityRef ref,std::uint32_t id,std::uint32_t* out){
+        auto& f=*static_cast<WeaponSnapshotFixture*>(context);
+        assert(!f.map->remove(ref)&&id<wn::Owner);
+        f.reads.push_back(id);
+        if(f.fail&&id==wn::WorldModelIndex)return 0;
+        *out=f.values.words[id];return 1;
+    }
+};
+static void test_weapon_snapshot(const a::WeaponSnapshotApi* capture,const wn::Api* contract,
+        const a::MapEntityApi* map,const a::Api* api){
+    assert(capture&&capture->version==1&&capture->size==sizeof(*capture)&&contract);
+    wn::test::check(*contract,*contract);
+    assert(api->begin_campaign(2));const auto epoch=map->begin_level("weapon_net");assert(epoch);
+    const a::MapEntityRef ref{epoch,1,1};
+    assert(map->create(ref,"weapon_assault_rifle")==a::MapApplied);
+    WeaponSnapshotFixture f{map,wn::test::example(),{},false};
+    const a::WeaponSnapshotHost host{1,sizeof(a::WeaponSnapshotHost),&WeaponSnapshotFixture::owner,&WeaponSnapshotFixture::read};
+    wn::Payload out{};
+    assert(!capture->capture(ref,3,&host,&f,&out));
+    assert(map->spawn(ref)==a::MapApplied);
+    assert(capture->capture(ref,2,&host,&f,&out)&&out.present==wn::public_mask);
+    assert((f.reads==std::vector<unsigned>{wn::ViewModelIndex,wn::WorldModelIndex,wn::State}));
+    f.reads.clear();
+    assert(capture->capture(ref,3,&host,&f,&out)&&out.present==wn::all_mask&&f.reads.size()==12);
+    wn::Values received{};assert(contract->decode(&out,1,&received)&&received.words[wn::Clip1]==45);
+    f.values.words[wn::Clip1]=44;f.reads.clear();
+    assert(capture->capture(ref,3,&host,&f,&out)&&contract->decode(&out,1,&received)&&received.words[wn::Clip1]==44);
+    const auto previous=out;f.fail=true;
+    assert(!capture->capture(ref,2,&host,&f,&out)&&std::memcmp(&out,&previous,sizeof(out))==0);
+    assert(map->remove(ref)&&!capture->capture(ref,3,&host,&f,&out));
+    assert(map->end_level(epoch)&&api->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -2274,6 +2318,15 @@ int main(int argc,char** argv){
     assert(getAmmo&&!getAmmo(0,sizeof(a::CombatAmmoApi))&&!getAmmo(1,0));
     const auto* ammo=getAmmo(a::ammo_version,sizeof(a::CombatAmmoApi));
     test_shared_ammo(ammo,map,api);
+#ifdef _WIN32
+    auto getNet=reinterpret_cast<wn::GetApi>(GetProcAddress(lib,wn::export_name));
+    auto getSnapshot=reinterpret_cast<a::GetWeaponSnapshotApi>(GetProcAddress(lib,a::weapon_snapshot_export_name));
+#else
+    auto getNet=reinterpret_cast<wn::GetApi>(dlsym(lib,wn::export_name));
+    auto getSnapshot=reinterpret_cast<a::GetWeaponSnapshotApi>(dlsym(lib,a::weapon_snapshot_export_name));
+#endif
+    assert(getNet&&getSnapshot&&!getNet(0,sizeof(wn::Api))&&!getSnapshot(1,0));
+    test_weapon_snapshot(getSnapshot(wn::version,sizeof(a::WeaponSnapshotApi)),getNet(wn::version,sizeof(wn::Api)),map,api);
     namespace defs=sin_port::original_ammo;
 #ifdef _WIN32
     auto getDefs=reinterpret_cast<defs::GetApi>(GetProcAddress(lib,defs::export_name));

@@ -4,6 +4,7 @@
 // refer to caller-owned writable storage. Do not retain API pointers after
 // unloading the module. No C++ objects or allocations cross the DLL boundary.
 #include <cstdint>
+#include "weapon_network_contract.h"
 #include <cstddef>
 
 #if defined(_MSC_VER)
@@ -740,6 +741,21 @@ struct CombatAmmoApi {
 };
 using GetCombatAmmoApi=const CombatAmmoApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(AmmoReport)==24);
+// Map-owned weapon snapshot capture. Host reads authoritative fields
+// once under the synchronous guard; private fields are NEVER requested
+// for an unrelated recipient. No raw engine object access.
+inline constexpr char weapon_snapshot_export_name[]="SiN_GetWeaponSnapshotApi";
+struct WeaponSnapshotHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *owner)(void*,MapEntityRef,sin_port::weapon_net::OwnerObservation*);
+    int (SIN_FIXED_CALL *read)(void*,MapEntityRef,std::uint32_t,std::uint32_t*);
+};
+struct WeaponSnapshotApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *capture)(MapEntityRef,std::uint32_t,const WeaponSnapshotHost*,void*,
+        sin_port::weapon_net::Payload*) noexcept;
+};
+using GetWeaponSnapshotApi=const WeaponSnapshotApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

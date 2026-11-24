@@ -581,6 +581,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetMagnumApi=_SiN_GetMagnumApi")
 #pragma comment(linker,"/EXPORT:SiN_GetMagnumSecondaryApi=_SiN_GetMagnumSecondaryApi")
 #pragma comment(linker,"/EXPORT:SiN_GetCombatAmmoApi=_SiN_GetCombatAmmoApi")
+#pragma comment(linker,"/EXPORT:SiN_GetWeaponSnapshotApi=_SiN_GetWeaponSnapshotApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -1923,9 +1924,42 @@ int SIN_FIXED_CALL magnum_secondary(abi::MapEntityRef ref,const abi::MagnumSecon
 const abi::MagnumSecondaryApi magnum_secondary_api{abi::magnum_secondary_version,
     sizeof(abi::MagnumSecondaryApi),&magnum_secondary};
 
+int SIN_FIXED_CALL weapon_snapshot_capture(abi::MapEntityRef ref,std::uint32_t viewer,
+        const abi::WeaponSnapshotHost* host,void* context,sin_port::weapon_net::Payload* out) noexcept {
+    namespace net=sin_port::weapon_net;
+    const auto* e=find_weapon(ref);
+    if(reading_engine_skill||!e||!e->spawned||e->remove_requested||!out||
+       viewer<1||viewer>256||!host||host->version!=net::version||
+       host->size!=sizeof(*host)||!host->owner||!host->read)return 0;
+    const auto cb=*host;
+    OutputScope scope;
+    net::OwnerObservation owner{};
+    net::RecipientMask recipients{};
+    net::Values values{};
+    const auto& contract=net::owned_api();
+    try {
+        if(!cb.owner(context,ref,&owner)||!contract.recipients(&owner,&recipients))return 0;
+        values.words[net::Owner]=owner.native_handle;
+        const auto slot=viewer-1;
+        const bool local=(recipients.words[slot/32]&(1u<<(slot%32)))!=0;
+        const auto mask=local?net::all_mask:net::public_mask;
+        for(unsigned i=0;i<net::Owner;++i)
+            if((mask&(1u<<i))&&!cb.read(context,ref,i,&values.words[i]))return 0;
+    }catch(...){return 0;}
+    return contract.encode(&values,&owner,viewer,out);
+}
+const abi::WeaponSnapshotApi weapon_snapshot_api{sin_port::weapon_net::version,
+    sizeof(abi::WeaponSnapshotApi),&weapon_snapshot_capture};
+
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::WeaponSnapshotApi* SIN_FIXED_CALL
+SiN_GetWeaponSnapshotApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==sin_port::weapon_net::version&&bytes==sizeof(abi::WeaponSnapshotApi)?
+        &weapon_snapshot_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::CombatAmmoApi* SIN_FIXED_CALL
 SiN_GetCombatAmmoApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::ammo_version&&bytes==sizeof(abi::CombatAmmoApi)?&ammo_api:nullptr;

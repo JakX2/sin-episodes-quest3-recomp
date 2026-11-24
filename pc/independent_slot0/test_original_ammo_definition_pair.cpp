@@ -6,6 +6,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include "test_weapon_network_contract_core.h"
 #include <cstring>
 #include <cstdio>
 namespace d=sin_port::original_ammo;
@@ -32,6 +33,14 @@ int main(int argc,char** argv){
     d::Definition unchanged{};unchanged.max_carry=123;
     assert(!c->definition(0,&unchanged)&&!s->definition(18,&unchanged)&&unchanged.max_carry==123);
     assert(!s->definition(1,nullptr)&&c->max_carry(0)==0&&s->max_carry(99)==0);
+    namespace wn=sin_port::weapon_net;
+    const auto nc=reinterpret_cast<wn::GetApi>(GetProcAddress(client,wn::export_name));
+    const auto ns=reinterpret_cast<wn::GetApi>(GetProcAddress(server,wn::export_name));
+    assert(nc&&ns);
+    const auto* clientNet=nc(wn::version,sizeof(wn::Api));const auto* serverNet=ns(wn::version,sizeof(wn::Api));
+    assert(clientNet&&serverNet);
+    wn::test::check(*serverNet,*clientNet);
+    std::puts("PASS actual client/server weapon field payload contract (13/13)");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
