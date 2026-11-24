@@ -3102,6 +3102,47 @@ int __cdecl response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBin
     *played=1;return 1;
 }
 const ResponseDispatchApi response_dispatch_api{version,sizeof(ResponseDispatchApi),&response_dispatch};
+int __cdecl response_speaking(const void* exp,unsigned bytes,float now,unsigned* result) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||
+       !result||!hologram_writable(result,sizeof(*result)))return 0;
+    *result=hologram_read<float>(exp,0x78)==now||hologram_read<float>(exp,0x68)>now;
+    return 1;
+}
+int __cdecl response_note(void* exp,unsigned bytes,SpeechSemaphorePair* state,const ResponseNoteBindings* b,float duration,float delay) noexcept {
+    if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!state||!hologram_writable(state,sizeof(*state))||
+       !b||!b->owner_start||!b->clock||!b->diagnostic||!b->uses_semaphore||!b->classify||!b->owner_handle)return 0;
+    const auto h=*b;
+    float total=static_cast<float>(static_cast<double>(duration)+delay);
+    if(!h.owner_start(h.context,exp))return -1;
+    float now=0;if(!h.clock(h.context,&now))return -1;
+    // 220a4590: <=0 replaces total with 0 for logging and uses now+3.
+    // Unordered uses normal arithmetic, preserving original NaN propagation.
+    float until=0;
+    if(total<=0){total=0;until=static_cast<float>(static_cast<double>(now)+3.0);}
+    else until=static_cast<float>(static_cast<double>(now)+total);
+    hologram_write(exp,0x68,until);
+    hologram_write(exp,0x6c,static_cast<float>(static_cast<double>(until)-delay));
+    if(!h.diagnostic(h.context,exp,total,delay,until))return -1;
+    unsigned uses=0;if(!h.uses_semaphore(h.context,exp,&uses))return -1;
+    if(!uses)return 1;
+    unsigned classified=0;if(!h.classify(h.context,exp,0,&classified)||!h.clock(h.context,&now))return -1;
+    auto& s=classified?state->classified:state->other;
+    // Store release before resolving owner, matching original mutation order.
+    s.release=static_cast<float>(static_cast<double>(now)+delay);
+    std::uint32_t owner=0xffffffffu;if(!h.owner_handle(h.context,exp,&owner))return -1;
+    s.owner=owner;return 1;
+}
+int __cdecl response_interval_sample(const void* interval,unsigned bytes,const ResponseIntervalBindings* b,float* result) noexcept {
+    if(!interval||bytes<8||!sin_independent::vgui_layout::Readable(interval,8)||
+       !b||!b->random||!result||!hologram_writable(result,sizeof(*result)))return 0;
+    const auto base=hologram_read<float>(interval,0),width=hologram_read<float>(interval,4);
+    // 22263cf0: zero or unordered width bypasses RNG.
+    if(width==0||std::isnan(width)){*result=base;return 1;}
+    float offset=0;if(!b->random(b->context,0,width,&offset))return -1;
+    *result=static_cast<float>(static_cast<double>(offset)+base);return 1;
+}
+const ResponseTimingUpdateApi response_timing_update_api{version,sizeof(ResponseTimingUpdateApi),&response_speaking,&response_note,&response_interval_sample};
+
 
 
 
@@ -7439,6 +7480,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseD
 SiN_GetResponseDispatchApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseDispatchApi)?&response_dispatch_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetResponseTimingUpdateApi=_SiN_GetResponseTimingUpdateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseTimingUpdateApi* __cdecl
+SiN_GetResponseTimingUpdateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseTimingUpdateApi)?&response_timing_update_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")
