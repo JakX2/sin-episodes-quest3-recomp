@@ -237,6 +237,12 @@ int main(int argc,char** argv){
     assert(dna&&!getDna(0,sizeof(tables::DnaScannerApi))&&!getDna(1,0));
     tables::test::check_dna_scanner(*dna);
     std::puts("PASS native SiN DNA scanner touch, scan output and shared deny cooldown");
+    const auto getPickup=reinterpret_cast<tables::GetHealthPickupApi>(GetProcAddress(server,tables::health_pickup_export));
+    assert(getPickup&&!GetProcAddress(client,tables::health_pickup_export));
+    const auto* pickup=getPickup(1,sizeof(tables::HealthPickupApi));
+    assert(pickup&&!getPickup(0,sizeof(tables::HealthPickupApi))&&!getPickup(1,0));
+    tables::test::check_health_pickups(*pickup);
+    std::puts("PASS native health kit, vial and MegaHealth pickup, original tracked max-health cap");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

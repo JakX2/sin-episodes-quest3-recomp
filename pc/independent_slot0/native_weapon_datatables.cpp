@@ -1930,6 +1930,75 @@ int __cdecl dna_ack(HologramControl* ctrl) noexcept {
 }
 const DnaScannerApi dna_api{version,sizeof(DnaScannerApi),&dna_spawn_state,&dna_capabilities,
     &dna_touch,&dna_use,&dna_ack};
+
+constexpr unsigned health_max=0x98,health_over=0x12a1;
+bool health_control(const HologramControl* ctrl,unsigned bytes) noexcept {
+    return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=bytes&&hologram_writable(ctrl->object,bytes);
+}
+bool health_set_max(void* player,const HealthPickupBindings& host,int maximum) noexcept {
+    if(hologram_read<int>(player,health_max)!=maximum){
+        if(!host.dirty_player(host.context,player))return false;
+        hologram_write(player,health_max,maximum);
+    }
+    // Preserve the original TWO writes and notifications for >200,
+    // rather than clamping before the first tracked setter.
+    if(hologram_read<int>(player,health_max)>200){
+        if(!host.dirty_player(host.context,player))return false;
+        hologram_write(player,health_max,200);
+    }
+    hologram_write(player,health_over,static_cast<unsigned char>(hologram_read<int>(player,health_max)>100));
+    return true;
+}
+int __cdecl health_set_api(HologramControl* player,const HealthPickupBindings* host,int maximum) noexcept {
+    if(!health_control(player,0x12a4)||!host||!host->dirty_player)return 0;
+    player->busy=1;
+    return disp_finish(player,health_set_max(player->object,*host,maximum));
+}
+int __cdecl health_pickup(HologramControl* item,HologramControl* player,const HealthPickupBindings* b,
+        HealthPickupKind kind,unsigned* accepted) noexcept {
+    if(!health_control(item,0x4cc)||!health_control(player,0x12a4)||item==player||item->object==player->object||
+        !b||!b->skill_amount||!b->dirty_player||!b->heal||!b->pickup_message||!b->pickup_sound||
+        !b->should_respawn||!b->respawn||!b->remove||!accepted||static_cast<unsigned>(kind)>2)return 0;
+    item->busy=player->busy=1;
+    const auto host=*b;
+    const auto finish=[&](bool ok,unsigned consumed){
+        item->busy=player->busy=0;*accepted=consumed;
+        if(!ok){item->blocked=player->blocked=1;return -1;}
+        return 1;
+    };
+    float amount=0;
+    if(!host.skill_amount(host.context,kind,&amount)||!std::isfinite(amount))return finish(false,0);
+    if(kind==HealthPickupKind::Mega){
+        // Original FISTP with truncation control, then DWORD addition.
+        const double truncated=std::trunc(static_cast<double>(amount));
+        if(truncated<(std::numeric_limits<int>::min)()||truncated>(std::numeric_limits<int>::max)())
+            return finish(false,0);
+        const auto increase=static_cast<int>(truncated);
+        const auto sum=static_cast<std::uint32_t>(hologram_read<int>(player->object,health_max))+
+            static_cast<std::uint32_t>(increase);
+        int maximum=0;std::memcpy(&maximum,&sum,4);
+        if(!health_set_max(player->object,host,maximum))return finish(false,0);
+        amount=static_cast<float>(increase);
+    }
+    int healed=0;
+    if(!host.heal(host.context,player->object,amount,0,&healed))return finish(false,0);
+    // Mega's max change is NOT rolled back if heal returns zero.
+    if(!healed)return finish(true,0);
+    const char* classname=hologram_read<const char*>(item->object,0xc);
+    char name[128]{};
+    if(classname&&!prop_key_read(classname,name))return finish(false,1);
+    if(!host.pickup_message(host.context,player->object,"ItemPickup",name))return finish(false,1);
+    const char* sound=kind==HealthPickupKind::Kit?"HealthKit.Touch":"HealthVial.Touch";
+    if(!host.pickup_sound(host.context,item->object,player->object,sound))return finish(false,1);
+    unsigned respawn=0;
+    if(!host.should_respawn(host.context,item->object,&respawn)||respawn>1)return finish(false,1);
+    return finish(respawn?host.respawn(host.context,item->object)!=0:host.remove(host.context,item->object)!=0,1);
+}
+int __cdecl health_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x4cc||!hologram_writable(ctrl->object,ctrl->bytes>=0x12a4?0x12a4:0x4cc))return 0;
+    ctrl->blocked=0;return 1;
+}
+const HealthPickupApi health_pickup_api{version,sizeof(HealthPickupApi),&health_set_api,&health_pickup,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -3458,6 +3527,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::DnaScanne
 SiN_GetDnaScannerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(DnaScannerApi)?&dna_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetHealthPickupApi=_SiN_GetHealthPickupApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::HealthPickupApi* __cdecl
+SiN_GetHealthPickupApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(HealthPickupApi)?&health_pickup_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

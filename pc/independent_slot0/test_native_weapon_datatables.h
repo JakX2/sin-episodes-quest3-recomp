@@ -2290,4 +2290,69 @@ inline void check_dna_scanner(const DnaScannerApi& api){
     f.fail=0;assert(use()==1);expect({2,3});
 }
 
+struct HealthPickupFixture {
+    HologramControl* item=nullptr;HologramControl* player=nullptr;
+    HealthPickupKind kind=HealthPickupKind::Kit;
+    unsigned events[16]{},count=0,fail=0,respawn=0;
+    int old_max[4]{},dirty_count=0,heal_accepted=1;
+    float skill=25.5f,healed=0;
+    const char* expected_class="item_healthkit";
+    bool push(unsigned e){assert(count<16&&player->busy);events[count++]=e;return fail!=e;}
+};
+inline int __cdecl pickup_skill_test(void* ctx,HealthPickupKind kind,float* amount) noexcept {
+    auto& f=*static_cast<HealthPickupFixture*>(ctx);assert(kind==f.kind&&f.item->busy);
+    *amount=f.skill;return f.push(1);
+}
+inline int __cdecl pickup_dirty_test(void* ctx,void* player) noexcept {
+    auto& f=*static_cast<HealthPickupFixture*>(ctx);assert(player==f.player->object&&f.dirty_count<4);
+    std::memcpy(&f.old_max[f.dirty_count++],static_cast<unsigned char*>(player)+0x98,4);return f.push(2);
+}
+inline int __cdecl pickup_heal_test(void* ctx,void* player,float amount,unsigned flags,int* accepted) noexcept {
+    auto& f=*static_cast<HealthPickupFixture*>(ctx);assert(player==f.player->object&&flags==0);
+    f.healed=amount;*accepted=f.heal_accepted;return f.push(3);
+}
+inline int __cdecl pickup_message_test(void* ctx,void* player,const char* message,const char* classname) noexcept {
+    auto& f=*static_cast<HealthPickupFixture*>(ctx);assert(player==f.player->object&&!std::strcmp(message,"ItemPickup")&&!std::strcmp(classname,f.expected_class));
+    return f.push(4);
+}
+inline int __cdecl pickup_sound_test(void* ctx,void* item,void* player,const char* sound) noexcept {
+    auto& f=*static_cast<HealthPickupFixture*>(ctx);assert(item==f.item->object&&player==f.player->object);
+    assert(!std::strcmp(sound,f.kind==HealthPickupKind::Kit?"HealthKit.Touch":"HealthVial.Touch"));return f.push(5);
+}
+inline int __cdecl pickup_respawn_query(void* ctx,void* item,unsigned* out) noexcept {
+    auto& f=*static_cast<HealthPickupFixture*>(ctx);assert(item==f.item->object);*out=f.respawn;return f.push(6);
+}
+inline int __cdecl pickup_respawn_test(void* ctx,void* item) noexcept {
+    auto& f=*static_cast<HealthPickupFixture*>(ctx);assert(item==f.item->object);return f.push(7);
+}
+inline int __cdecl pickup_remove_test(void* ctx,void* item) noexcept {
+    auto& f=*static_cast<HealthPickupFixture*>(ctx);assert(item==f.item->object);return f.push(8);
+}
+inline void check_health_pickups(const HealthPickupApi& api){
+    alignas(4) unsigned char item[0x4cc]{},player[0x151c]{};
+    HologramControl ic{item,sizeof(item)},pc{player,sizeof(player)};HealthPickupFixture f{&ic,&pc};
+    HealthPickupBindings b{&f,&pickup_skill_test,&pickup_dirty_test,&pickup_heal_test,&pickup_message_test,
+        &pickup_sound_test,&pickup_respawn_query,&pickup_respawn_test,&pickup_remove_test};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;f.dirty_count=0;};
+    const auto max=[&](){int value=0;std::memcpy(&value,player+0x98,4);return value;};
+    const auto classname=[&](const char* name){std::memcpy(item+0xc,&name,4);f.expected_class=name?name:"";};
+    unsigned accepted=9;const auto pickup=[&](){return api.pickup(&ic,&pc,&b,f.kind,&accepted);};
+    assert(api.set_max(&pc,&b,100)==1&&max()==100&&!player[0x12a1]);expect({2});
+    assert(api.set_max(&pc,&b,100)==1);expect({});
+    classname("item_healthkit");
+    f.heal_accepted=0;assert(pickup()==1&&!accepted&&f.healed==25.5f);expect({1,3});
+    f.heal_accepted=1;assert(pickup()==1&&accepted);expect({1,3,4,5,6,8});
+    f.kind=HealthPickupKind::Vial;f.skill=10.25f;f.respawn=1;classname("item_healthvial");
+    assert(pickup()==1&&accepted&&f.healed==10.25f);expect({1,3,4,5,6,7});
+    f.kind=HealthPickupKind::Mega;f.skill=125.75f;classname("item_healthmega");
+    f.heal_accepted=0;assert(pickup()==1&&!accepted&&max()==200&&player[0x12a1]&&f.healed==125);
+    assert(f.old_max[0]==100&&f.old_max[1]==225);expect({1,2,2,3});
+    f.skill=0.75f;f.heal_accepted=1;classname(nullptr);
+    assert(pickup()==1&&accepted&&max()==200&&f.healed==0);expect({1,3,4,5,6,7});
+    assert(api.set_max(&pc,&b,75)==1&&max()==75&&!player[0x12a1]);expect({2});
+    f.skill=20.9f;f.fail=5;assert(pickup()==-1&&accepted&&ic.blocked&&pc.blocked&&max()==95&&f.healed==20);
+    expect({1,2,3,4,5});
+    assert(pickup()==0&&api.acknowledge(&ic)&&api.acknowledge(&pc));expect({});
+}
+
 }
