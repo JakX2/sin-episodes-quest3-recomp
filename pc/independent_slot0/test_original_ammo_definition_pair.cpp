@@ -31,6 +31,7 @@
 #include "test_native_vehicle_config.h"
 #include "test_native_vehicle_passengers.h"
 #include "test_native_vehicle_map.h"
+#include "test_native_vehicle_lifecycle.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -511,6 +512,12 @@ int main(int argc,char** argv){
     assert(vehicleMap&&!getVehicleMap(0,sizeof(tables::VehicleMapApi))&&!getVehicleMap(1,0));
     tables::test::check_vehicle_map(*vehicleMap,*musicRadio);
     std::puts("PASS native vehicle named map input dispatch and original key/output schema");
+    const auto getVehicleLifecycle=reinterpret_cast<tables::GetVehicleLifecycleApi>(GetProcAddress(server,tables::vehicle_lifecycle_export));
+    assert(getVehicleLifecycle&&!GetProcAddress(client,tables::vehicle_lifecycle_export));
+    const auto* vehicleLifecycle=getVehicleLifecycle(1,sizeof(tables::VehicleLifecycleApi));
+    assert(vehicleLifecycle&&!getVehicleLifecycle(0,sizeof(tables::VehicleLifecycleApi))&&!getVehicleLifecycle(1,0));
+    tables::test::check_vehicle_lifecycle(*vehicleLifecycle,*musicRadio);
+    std::puts("PASS native vehicle spawn/activate, config load and linked radio initialization");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
