@@ -662,6 +662,30 @@ struct ResolvedSceneActorApi {
         const SceneSpeechCallbackBindings*,const ResolvedSceneActorBindings*,unsigned*) noexcept;
 };
 using GetResolvedSceneActorApi=const ResolvedSceneActorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_speech_preparation_export[]="SiN_GetSceneSpeechPreparationApi";
+struct SceneSpeechPreparationBindings {
+    void* context;
+    SpeechSemaphorePair* state; // same server-session pair as response expeditor
+    unsigned instanced;
+    int (__cdecl *cast_base_actor)(void*,void*,void**) noexcept;
+    int (__cdecl *actor_notify)(void*,void* base_actor,float remaining,float margin) noexcept;
+    int (__cdecl *is_npc)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *classify)(void*,void*,int,unsigned*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *handle)(void*,void*,std::uint32_t*) noexcept;
+};
+struct SceneSpeechPreparationApi {
+    std::uint32_t version,size;
+    // 221ac495..221ac534; 220a3d00 semaphore acquisition.
+    int (__cdecl *prepare)(void*,unsigned,void* actor,float remaining,const SceneSpeechPreparationBindings*) noexcept;
+    // Native speech path with original actor preparation, no hosted prepare_actor.
+    int (__cdecl *start)(void*,unsigned,void*,unsigned,std::uint32_t,void*,unsigned,int,
+        const SceneSpeechExecutionBindings*,const SceneSpeechPreparationBindings*) noexcept;
+    // Native type5 callback, optional original cached resolver.
+    int (__cdecl *callback)(const void*,unsigned,void*,unsigned,unsigned,float,void*,unsigned,void*,unsigned,
+        const SceneSpeechCallbackBindings*,const ResolvedSceneActorBindings*,const SceneSpeechPreparationBindings*,unsigned*) noexcept;
+};
+using GetSceneSpeechPreparationApi=const SceneSpeechPreparationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
