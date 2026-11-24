@@ -7,6 +7,7 @@
 #endif
 #include <cassert>
 #include "test_inventory_network_contract_core.h"
+#include "test_native_jessica_script.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -313,6 +314,12 @@ int main(int argc,char** argv){
     assert(poisonAnimation&&!getPoisonAnimation(0,sizeof(tables::PoisonHudAnimationApi))&&!getPoisonAnimation(1,0));
     tables::test::check_poison_animation(*poisonAnimation,*poisonHud);
     std::puts("PASS SDK poison HUD animation controller dispatch and ignored sequence-start result");
+    const auto getJessica=reinterpret_cast<tables::GetJessicaApi>(GetProcAddress(server,tables::jessica_export));
+    assert(getJessica&&!GetProcAddress(client,tables::jessica_export));
+    const auto* jessica=getJessica(1,sizeof(tables::JessicaApi));
+    assert(jessica&&!getJessica(0,sizeof(tables::JessicaApi))&&!getJessica(1,0));
+    tables::test::check_jessica(*jessica);
+    std::puts("PASS native Jessica scripted item delivery, condition routing and target holster");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

@@ -1,3 +1,4 @@
+#include "native_jessica_script.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -2706,6 +2707,87 @@ int __cdecl player_damage_take(HologramControl* ctrl,const PlayerDamageBindings*
     return finish(host.base_damage(host.context,player,&copy,result)!=0);
 }
 const PlayerDamageApi player_damage_api{version,sizeof(PlayerDamageApi),&player_damage_take};
+
+constexpr unsigned jessica_size=0x1458, jessica_condition=0x47;
+int __cdecl jessica_spawn_state(HologramControl* ctrl) noexcept {
+    if(!health_control(ctrl,jessica_size))return 0;
+    hologram_write(ctrl->object,0x1454,-1);
+    hologram_write(ctrl->object,0x1450,-1);
+    return 1;
+}
+int __cdecl jessica_input(HologramControl* ctrl,const JessicaBindings* b,JessicaInput op,const JessicaValue* v) noexcept {
+    if(!health_control(ctrl,jessica_size)||!b)return 0;
+    if(op==JessicaInput::Holster){
+        if(!b->resolve_target||!b->holster)return 0;
+        ctrl->busy=1;void* target=nullptr;
+        const auto handle=hologram_read<std::uint32_t>(ctrl->object,0x78c);
+        if(handle!=0xffffffffu&&!b->resolve_target(b->context,handle,&target))return disp_finish(ctrl,false);
+        return disp_finish(ctrl,!target||b->holster(b->context,target,0)!=0);
+    }
+    if(!v||!sin_independent::vgui_layout::Readable(v,sizeof(*v)))return 0;
+    if(op==JessicaInput::ThrowItem){
+        if(!b->condition)return 0;
+        ctrl->busy=1;
+        hologram_write(ctrl->object,0x144c,v->type==2?v->word:0u);
+        unsigned ignored=0;
+        return disp_finish(ctrl,b->condition(b->context,ctrl->object,JessicaCondition::Set,jessica_condition,&ignored)!=0);
+    }
+    if(op!=JessicaInput::PrimaryAmmo&&op!=JessicaInput::SecondaryAmmo)return 0;
+    hologram_write(ctrl->object,op==JessicaInput::PrimaryAmmo?0x1450:0x1454,v->type==5?v->word:0u);
+    return 1;
+}
+int __cdecl jessica_schedule(HologramControl* ctrl,const JessicaBindings* b,int* result) noexcept {
+    if(!health_control(ctrl,jessica_size)||!b||!b->condition||!b->base_schedule||!result)return 0;
+    ctrl->busy=1;unsigned present=0;
+    if(!b->condition(b->context,ctrl->object,JessicaCondition::Test,jessica_condition,&present))return disp_finish(ctrl,false);
+    if(present){*result=0x59;return disp_finish(ctrl,true);}
+    return disp_finish(ctrl,b->base_schedule(b->context,ctrl->object,result)!=0);
+}
+int __cdecl jessica_interrupts(HologramControl* ctrl,const JessicaBindings* b) noexcept {
+    if(!health_control(ctrl,jessica_size)||!b||!b->condition||!b->base_interrupts)return 0;
+    ctrl->busy=1;unsigned ignored=0;
+    if(!b->condition(b->context,ctrl->object,JessicaCondition::Interrupt,jessica_condition,&ignored))return disp_finish(ctrl,false);
+    return disp_finish(ctrl,b->base_interrupts(b->context,ctrl->object)!=0);
+}
+int __cdecl jessica_animation(HologramControl* ctrl,const JessicaBindings* b,const void* event,int id,int registered,JessicaEventResult* result) noexcept {
+    if(!health_control(ctrl,jessica_size)||!b||!event||!result)return 0;
+    if(id!=registered){
+        if(!b->base_event)return 0;
+        ctrl->busy=1;*result=JessicaEventResult::Forwarded;
+        return disp_finish(ctrl,b->base_event(b->context,ctrl->object,event)!=0);
+    }
+    if(!b->condition||!b->max_clients||!b->single_player||!b->attachment||!b->spawn||!b->weapon_cast||!b->post_spawn||!b->toss)return 0;
+    ctrl->busy=1;auto* npc=ctrl->object;const auto host=*b;
+    *result=JessicaEventResult::NoSpawn;
+    const auto finish=[&](bool ok){return disp_finish(ctrl,ok);};
+    unsigned ignored=0;
+    if(!host.condition(host.context,npc,JessicaCondition::Clear,jessica_condition,&ignored))return finish(false);
+    int maxclients=0;void* player=nullptr;
+    if(!host.max_clients(host.context,&maxclients))return finish(false);
+    if(maxclients<=1&&!host.single_player(host.context,&player))return finish(false);
+    JessicaAttachment attachment{};
+    if(!host.attachment(host.context,npc,"anim_attachment_RH",&attachment))return finish(false);
+    void* item=nullptr;
+    if(!host.spawn(host.context,npc,hologram_read<std::uint32_t>(npc,0x144c),&attachment,&item))return finish(false);
+    if(!item)return finish(true);
+    void* weapon=nullptr;unsigned bytes=0;
+    if(!host.weapon_cast(host.context,item,&weapon,&bytes))return finish(false);
+    if(weapon){
+        if(bytes<0x4dc||!hologram_writable(weapon,0x4dc))return finish(false);
+        for(unsigned off:{0x1450u,0x1454u}){
+            const auto count=hologram_read<int>(npc,off);
+            if(count>=0){hologram_write(weapon,off-0xf7c,count);hologram_write(npc,off,-1);}
+        }
+    }
+    if(!host.post_spawn(host.context,item))return finish(false);
+    // The original dereferences the single-player target here. Refuse
+    // the unsafe call after preserving preceding effects if it is absent.
+    if(!player)return finish(false);
+    if(!host.toss(host.context,item,player,attachment.origin,15.0f))return finish(false);
+    *result=JessicaEventResult::Thrown;
+    return finish(true);
+}
+const JessicaApi jessica_api{version,sizeof(JessicaApi),&jessica_spawn_state,&jessica_input,&jessica_schedule,&jessica_interrupts,&jessica_animation,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4407,6 +4489,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerDam
 SiN_GetPlayerDamageApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerDamageApi)?&player_damage_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetJessicaScriptApi=_SiN_GetJessicaScriptApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::JessicaApi* __cdecl
+SiN_GetJessicaScriptApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(JessicaApi)?&jessica_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
