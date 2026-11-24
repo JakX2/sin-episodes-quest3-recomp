@@ -1002,8 +1002,14 @@ int main(int argc,char** argv){
     assert(getExecution&&!GetProcAddress(client,tables::native_scene_execution_export));
     const auto* execution=getExecution(1,sizeof(tables::NativeSceneExecutionApi));
     assert(execution&&!getExecution(0,sizeof(tables::NativeSceneExecutionApi))&&!getExecution(1,0));
-    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section,*gate,*execution);
-    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime)){
+    const auto getAuditIntensity=reinterpret_cast<tables::GetServerEventIntensityApi>(GetProcAddress(server,tables::server_event_intensity_export));
+    const auto getAuditSpline=reinterpret_cast<tables::GetServerFlexSplineApi>(GetProcAddress(server,tables::server_flex_spline_export));
+    assert(getAuditIntensity&&getAuditSpline);
+    const auto* auditIntensity=getAuditIntensity(1,sizeof(tables::ServerEventIntensityApi));
+    const auto* auditSpline=getAuditSpline(1,sizeof(tables::ServerFlexSplineApi));
+    assert(auditIntensity&&auditSpline);
+    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section,*gate,*execution,*auditIntensity,*auditSpline);
+    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }
     std::puts("PASS original relative tag reconciliation and ordered channel finalization");
