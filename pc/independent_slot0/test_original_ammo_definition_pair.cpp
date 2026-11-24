@@ -23,6 +23,7 @@
 #include "test_native_server_flex_spline.h"
 #include "test_native_server_expression.h"
 #include "test_native_server_facial_think.h"
+#include "test_native_server_event_intensity.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -178,6 +179,15 @@ int main(int argc,char** argv){
         ft::test::check_server_facial_think(*api);
         ft::test::check_active_server_facial_records(*api);
         std::puts("PASS server facial think and actor event records");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetServerEventIntensityApi>(GetProcAddress(server,ft::server_event_intensity_export));
+        assert(get&&!GetProcAddress(client,ft::server_event_intensity_export));
+        const auto* api=get(1,sizeof(ft::ServerEventIntensityApi));
+        assert(api&&!get(0,sizeof(ft::ServerEventIntensityApi))&&!get(1,0));
+        ft::test::check_server_event_intensity(*api);
+        std::puts("PASS native server scene and event intensity ramps");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));
