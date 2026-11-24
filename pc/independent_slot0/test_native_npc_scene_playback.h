@@ -1040,4 +1040,53 @@ inline void check_parsed_scene_reset(const ParsedSceneResetApi& api){
     assert(api.bounds(bad.parsed,sizeof(bad.parsed),&bad.b.events,&lo,&hi)==-1&&lo==99&&hi==99);
 }
 
+
+struct SceneStartFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char scene[0x5ec]{},parsed[0x220]{},actor[0x90]{},event[0x3c0]{};
+    SceneStartBindings b{};unsigned calls[32]{},n=0;bool npc=true,speaks=false,missing=false,fail_output=false;
+    static SceneStartFixture& get(void* p){return *static_cast<SceneStartFixture*>(p);}
+    void step(unsigned v){assert(n<32);calls[n++]=v;}
+    void expect(std::initializer_list<unsigned> v){assert(n==v.size()&&!std::memcmp(calls,v.begin(),n*4));n=0;}
+    SceneStartFixture(){
+        F::put(scene,0x40c,F::ptr(parsed));F::put(scene,0x558,1);F::put(parsed,0x20,1);F::put(parsed,0xc,1);
+        F::put(event,0,5);F::fl(event,0x188,2);F::fl(parsed,0x90,.5f);event[0x328]=1;
+        b.context=this;b.reset.context=this;b.reset.events.context=this;
+        b.parsed=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(w==F::ptr(f.parsed));f.step(1);*out=f.parsed;*bytes=sizeof(f.parsed);return 1;};
+        b.actor=[](void* p,void* s,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(s==f.scene&&!i);f.step(2);*out=f.missing?nullptr:f.actor;*bytes=sizeof(f.actor);return 1;};
+        b.is_npc=[](void* p,void* a,unsigned* out) noexcept -> int{auto& f=get(p);assert(a==f.actor);f.step(3);*out=f.npc;return 1;};
+        b.speaking=[](void* p,void* a,unsigned* out) noexcept -> int{auto& f=get(p);assert(a==f.actor);f.step(4);*out=f.speaks;return 1;};
+        b.attach=[](void* p,void* a,std::uint32_t w) noexcept -> int{auto& f=get(p);assert(a==f.actor&&w==F::ptr(f.parsed)&&!f.scene[0x3d8]);f.step(5);return 1;};
+        b.reset.events.event=[](void* p,void* s,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);assert(s==f.parsed&&!i&&f.scene[0x3d8]&&!f.scene[0x3d9]);f.step(6);*out=f.event;*bytes=sizeof(f.event);return 1;};
+        b.reset.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        b.reset.grow=[](void*,void*,unsigned) noexcept -> int{assert(false);return 0;};
+        b.refresh=[](void* p,void* s) noexcept -> int{
+            auto& f=get(p);assert(s==f.scene&&f.scene[0x3d8]&&!f.scene[0x3f5]&&!f.event[0x328]&&F::word(f.parsed,0x78)==0xbf000000);f.step(7);return 1;};
+        b.stop_events=[](void* p,void* s,std::uint32_t w,int arg) noexcept -> int{auto& f=get(p);assert(s==f.scene&&w==F::ptr(f.parsed)&&!arg);f.step(8);return 1;};
+        b.output=[](void* p,void* out,void* a,void* c,float delay) noexcept -> int{
+            auto& f=get(p);assert(out==f.scene+0x41c&&a==f.scene&&c==f.scene&&!delay);f.step(9);return !f.fail_output;};
+        b.startup_events=[](void* p,void* s,std::uint32_t w) noexcept -> int{auto& f=get(p);assert(s==f.scene&&w==F::ptr(f.parsed));f.step(10);return 1;};
+    }
+};
+inline void check_scene_start(const SceneStartApi& api){
+    using F=ScenePlaybackFixture;SceneStartFixture f;SceneStartResult result=SceneStartResult::Started;
+    auto run=[&](){return api.start(f.scene,sizeof(f.scene),&f.b,&result);};
+    F::put(f.scene,0x40c,0);assert(run()==1&&result==SceneStartResult::NoAction);f.expect({});
+    F::put(f.scene,0x40c,F::ptr(f.parsed));F::put(f.actor,0x8c,1);
+    assert(run()==1&&result==SceneStartResult::ActorBlocked&&!f.scene[0x3d8]);f.expect({1,2,3,3});
+    F::put(f.actor,0x8c,0);f.speaks=true;
+    assert(run()==1&&result==SceneStartResult::Deferred&&f.scene[0x3f5]&&!f.scene[0x3d8]&&f.event[0x328]);f.expect({1,2,3,3,3,4});
+    f.speaks=false;f.scene[0x3d9]=1;F::fl(f.scene,0x3dc,7);
+    assert(run()==1&&result==SceneStartResult::Started&&f.scene[0x3d8]&&!f.scene[0x3d9]&&!F::word(f.scene,0x3dc));
+    f.expect({1,2,3,3,3,4,5,1,6,6,6,7,8,9,10});
+    assert(F::word(f.parsed,0x88)==0x40200000&&F::word(f.parsed,0x8c)==1);
+    assert(run()==1&&result==SceneStartResult::NoAction);f.expect({});
+    SceneStartFixture bad;bad.missing=true;bad.fail_output=true;result=SceneStartResult::NoAction;
+    assert(api.start(bad.scene,sizeof(bad.scene),&bad.b,&result)==-1&&result==SceneStartResult::NoAction&&bad.scene[0x3d8]);
+    bad.expect({1,2,1,6,6,6,7,8,9});
+}
+
 }
