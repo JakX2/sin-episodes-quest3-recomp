@@ -3185,4 +3185,43 @@ inline void check_player_damage(const PlayerDamageApi& api,const PlayerPoisonApi
     assert(take(0)==0&&heal.acknowledge(&ctrl));expect({});
 }
 
+struct PoisonAnimationFixture {
+    HologramControl* ctrl=nullptr;void* player=nullptr;int controller_token=0;
+    unsigned lookup=0,start=0,started=1;
+    bool missing=false,fail=false,mutate=false;
+    const char* last=nullptr;
+};
+inline int __cdecl pa_controller(void* ctx,void** out) noexcept {
+    auto& f=*static_cast<PoisonAnimationFixture*>(ctx);assert(f.ctrl->busy);
+    ++f.lookup;*out=f.missing?nullptr:&f.controller_token;return 1;
+}
+inline int __cdecl pa_start(void* ctx,void* controller,const char* event,unsigned* started) noexcept {
+    auto& f=*static_cast<PoisonAnimationFixture*>(ctx);assert(f.ctrl->busy&&controller==&f.controller_token);
+    ++f.start;f.last=event;*started=f.started;
+    if(f.mutate){const float value=0.125f;std::memcpy(static_cast<unsigned char*>(f.player)+0x11ec,&value,4);}
+    return !f.fail;
+}
+inline void check_poison_animation(const PoisonHudAnimationApi& api,const PoisonHudApi& old){
+    alignas(4) unsigned char panel[0x130]{},player[0x1250]{};
+    HologramControl ctrl{panel,sizeof(panel)};PoisonAnimationFixture f{&ctrl,player};
+    PoisonHudAnimationBindings b{&f,&pa_controller,&pa_start};
+    const auto put=[&](float value){std::memcpy(player+0x11ec,&value,4);};
+    const auto fraction=[&](){float v=0;std::memcpy(&v,panel+0x120,4);return v;};
+    const auto tick=[&](){return api.tick(&ctrl,&b,player,sizeof(player));};
+    assert(old.reset(&ctrl));put(1);
+    assert(tick()==1&&!f.lookup&&!f.start&&fraction()==0);
+    put(0.8f);f.started=0; // a missing SDK sequence is not transport failure
+    assert(tick()==1&&f.lookup==1&&f.start==1&&!std::strcmp(f.last,"PoisonTimeFadeIn")&&std::abs(fraction()-0.2f)<0.000001f&&panel[0xba]==0);
+    panel[0xba]=128;put(0.5f);assert(tick()==1&&f.lookup==1&&fraction()==0.5f);
+    panel[0xba]=255;put(1);assert(tick()==1&&f.lookup==2&&f.start==2&&!std::strcmp(f.last,"PoisonTimeFadeOut")&&fraction()==0&&panel[0xba]==255);
+    panel[0xba]=0;put(0.7f);f.started=1;f.mutate=true;
+    assert(tick()==1&&f.lookup==3&&f.start==3&&fraction()==0.875f);
+    f.mutate=false;f.missing=true;put(0.6f);
+    assert(tick()==-1&&ctrl.blocked&&f.lookup==4&&f.start==3&&fraction()==0.875f);
+    assert(tick()==0&&old.acknowledge(&ctrl));f.missing=false;f.fail=true;
+    assert(tick()==-1&&ctrl.blocked&&f.lookup==5&&f.start==4&&fraction()==0.875f);
+    assert(old.acknowledge(&ctrl));f.fail=false;
+    assert(tick()==1&&f.lookup==6&&f.start==5&&std::abs(fraction()-0.4f)<0.000001f);
+}
+
 }
