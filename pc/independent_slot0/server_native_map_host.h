@@ -40,7 +40,8 @@ public:
         if(trigger&&!trigger_ready())return false;
         if(!engine_.create_entity(classname,e))return false;
         if(!engine_.is_live(e))return false;
-        if(!trigger&&classname!="env_global"&&classname!="info_challenge")return true;
+        const bool weapon=classname=="weapon_magnum"||classname=="weapon_assault_rifle"||classname=="weapon_scattergun";
+        if(!trigger&&!weapon&&classname!="env_global"&&classname!="info_challenge")return true;
         const std::string owned(classname);
         if(native_.create(ref(e),owned.c_str())!=a::MapApplied)return false;
         try {

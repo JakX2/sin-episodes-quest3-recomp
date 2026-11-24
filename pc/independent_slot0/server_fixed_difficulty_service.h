@@ -364,6 +364,49 @@ struct NpcShotFromEngineResult {NpcAimResult aim;NpcShotReport shot;};
 using QueryNpcShotFromEngine=int (SIN_FIXED_CALL *)(void*,void*,const char*,const char*,const char*,
     const NpcAimMemory*,const NpcShotBasis*,NpcShotFromEngineResult*) noexcept;
 static_assert(sizeof(NpcShotReport)==40);
+// Native map-owned SiN weapon ADS state. Actual player, viewmodel and
+// animation/FOV effects remain engine-host responsibilities.
+inline constexpr char weapon_export_name[]="SiN_GetWeaponBehaviorApi";
+inline constexpr std::uint32_t weapon_version=1;
+enum NativeWeaponKind : std::uint32_t {WeaponMagnum=0,WeaponAssaultRifle,WeaponScattergun};
+struct NativeWeaponProfile {
+    std::uint32_t kind;
+    std::int32_t clip_size,clip2_size,default_clip,default_clip2,zoom_fov;
+};
+struct NativeWeaponState {std::uint32_t zoomed,restore_pending,needs_resync;};
+struct NativeWeaponFrame {
+    MapEntityRef owner;
+    std::uint32_t has_player,player_ready,reload_active,external_block,pressed_buttons;
+    // Original helper rechecks player eligibility. Host supplies that
+    // observation separately from the earlier frame gate.
+    std::uint32_t fov_allowed,vr_mode;
+    std::int32_t current_activity,zoom_fov;
+};
+using NativeWeaponFov=int (SIN_FIXED_CALL *)(void*,MapEntityRef,MapEntityRef,std::int32_t,float);
+using NativeWeaponActivity=int (SIN_FIXED_CALL *)(void*,MapEntityRef,std::int32_t);
+struct NativeWeaponEffects {
+    std::uint32_t version,size;
+    NativeWeaponFov fov;
+    NativeWeaponActivity activity;
+};
+enum NativeWeaponCode : std::uint32_t {WeaponRejected=0,WeaponUnchanged,WeaponEntered,WeaponExited,WeaponEffectsUncertain};
+struct NativeWeaponReport {
+    std::uint32_t code,interrupted,automatic_restore,fov_attempted,fov_delivered,activity_attempted,activity_delivered;
+    NativeWeaponState state;
+};
+struct WeaponBehaviorApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *profile)(MapEntityRef,NativeWeaponProfile*) noexcept;
+    int (SIN_FIXED_CALL *state)(MapEntityRef,NativeWeaponState*) noexcept;
+    // Caller supplies actually observed native bits after ownership change,
+    // save/load, or an uncertain callback. No foreign memory is written.
+    int (SIN_FIXED_CALL *reconcile)(MapEntityRef,std::uint32_t,std::uint32_t) noexcept;
+    int (SIN_FIXED_CALL *frame)(MapEntityRef,const NativeWeaponFrame*,const NativeWeaponEffects*,void*,NativeWeaponReport*) noexcept;
+    int (SIN_FIXED_CALL *attack_activity)(MapEntityRef,std::uint32_t,std::int32_t,std::int32_t*) noexcept;
+};
+using GetWeaponBehaviorApi=const WeaponBehaviorApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(NativeWeaponProfile)==24);
+static_assert(sizeof(NativeWeaponReport)==40);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);
