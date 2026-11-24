@@ -1728,6 +1728,53 @@ inline void check_choreography_destruction(const ChoreographyDestructionApi& api
     assert(api.event(standalone.event,sizeof(standalone.event),&standalone.b)==1&&standalone.allocs[3].freed&&standalone.allocs[1].freed&&!standalone.allocs[0].freed);
 }
 
+struct ChoreographySymbolFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char table[0x34]{},nodes[3][12]{};
+    alignas(4) std::uint32_t strings[2]{0x12345678,0};
+    ChoreographySymbolSentinel sentinel{};
+    unsigned releases=0,steps[4]{};
+    ChoreographySymbolBindings b{};
+    static ChoreographySymbolFixture& self(void* p){return *static_cast<ChoreographySymbolFixture*>(p);}
+    ChoreographySymbolFixture(){
+        std::memset(table,0xa5,sizeof(table));std::memset(nodes,0xa5,sizeof(nodes));
+        b.context=this;b.sentinel=&sentinel;
+        b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);
+            if(w==F::ptr(f.nodes)){*out=f.nodes;*n=sizeof(f.nodes);return 1;}
+            if(w==F::ptr(f.strings)){*out=f.strings;*n=sizeof(f.strings);return 1;}return 0;};
+        b.release=[](void* p,std::uint32_t w,ChoreographySymbolRelease kind) noexcept -> int{
+            auto& f=self(p);assert(f.releases<4);
+            if(kind==ChoreographySymbolRelease::String){
+                assert(f.releases<2&&w==f.strings[f.releases]&&F::word(f.table,0x10)==0xffffu);
+                f.steps[f.releases++]=1;
+            }else if(kind==ChoreographySymbolRelease::StringVector){
+                assert(w==F::ptr(f.strings)&&!F::word(f.table,0x28));f.steps[f.releases++]=2;
+            }else {assert(w==F::ptr(f.nodes)&&!F::word(f.table,0x28));f.steps[f.releases++]=3;}
+            return 1;};
+    }
+    void populate(bool external){
+        F::put(table,4,F::ptr(nodes));F::put(table,8,3);F::put(table,0xc,external?0xffffffffu:0);
+        F::put(table,0x10,0x00010001);F::put(table,0x14,0x0003ffff);F::put(table,0x18,F::ptr(nodes));
+        F::put(table,0x1c,F::ptr(strings));F::put(table,0x20,2);F::put(table,0x24,external?0xffffffffu:8);
+        F::put(table,0x28,2);F::put(table,0x2c,F::ptr(strings));
+    }
+};
+inline void check_choreography_symbol(const ChoreographySymbolApi& api){
+    using F=ScenePlaybackFixture;ChoreographySymbolFixture f;
+    assert(api.construct_empty(f.table,sizeof(f.table),0,0x1234)==1&&F::word(f.table,0)==0x1234&&F::word(f.table,0x30)==0xa5a5a5a5);
+    assert(F::word(f.table,0x10)==0xffff&&F::word(f.table,0x14)==0xffff&&F::word(f.table,0x24)==8);
+    assert(api.destroy(f.table,sizeof(f.table),&f.b)==1&&!f.releases&&!f.sentinel.flags);
+    f.populate(false);f.sentinel.flags=4;
+    assert(api.destroy(f.table,sizeof(f.table),&f.b)==1&&f.releases==4&&f.steps[0]==1&&f.steps[1]==1&&f.steps[2]==2&&f.steps[3]==3);
+    assert(f.sentinel.flags==5&&f.sentinel.words[0]==0xffff&&f.sentinel.words[1]==0xffff&&f.sentinel.words[2]==0xffff&&f.sentinel.words[3]==1);
+    assert(F::word(f.nodes[0],0)==0x00010000&&F::word(f.nodes[1],0)==0x00020001&&F::word(f.nodes[2],0)==0xffff0002&&F::word(f.nodes[1],4)==0xa5a5a5a5);
+    assert(F::word(f.table,0x14)==0x00030000&&F::word(f.table,0x18)==F::ptr(f.nodes)&&!F::word(f.table,4)&&!F::word(f.table,8)&&!F::word(f.table,0x2c));
+    ChoreographySymbolFixture external;
+    assert(api.construct_empty(external.table,sizeof(external.table),0,0x1234)==1);external.populate(true);external.sentinel.flags=1;external.sentinel.words[0]=7;
+    assert(api.destroy(external.table,sizeof(external.table),&external.b)==1&&external.releases==2&&external.sentinel.words[0]==7);
+    assert(F::word(external.table,4)==F::ptr(external.nodes)&&F::word(external.table,0x1c)==F::ptr(external.strings)&&F::word(external.table,0x2c)==F::ptr(external.strings)&&!F::word(external.table,0x28));
+}
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};

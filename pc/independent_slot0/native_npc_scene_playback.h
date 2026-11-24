@@ -750,6 +750,26 @@ struct NativeSceneRetirementApi {
     int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*,const ChoreographyDestructionBindings*) noexcept;
 };
 using GetNativeSceneRetirementApi=const NativeSceneRetirementApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_symbol_export[]="SiN_GetChoreographySymbolApi";
+// Original process-wide 2259012c..22590137 sentinel state.
+struct ChoreographySymbolSentinel {std::uint16_t words[4];std::uint32_t flags;};
+enum class ChoreographySymbolRelease:unsigned {String,StringVector,Tree};
+struct ChoreographySymbolBindings {
+    void* context;
+    ChoreographySymbolSentinel* sentinel;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original allocator receives even a null string word. Consumes on invocation.
+    int (__cdecl *release)(void*,std::uint32_t,ChoreographySymbolRelease) noexcept;
+};
+struct ChoreographySymbolApi {
+    std::uint32_t version,size;
+    // 2228f360/2228eab0 with initial allocation zero, as in parsed scene construction.
+    // Comparator is the host-compatible original case-sensitive/insensitive word.
+    int (__cdecl *construct_empty)(void*,unsigned,int grow,std::uint32_t comparator) noexcept;
+    // 2228f660/2228ec50: rebuild free list then release strings, vector and tree.
+    int (__cdecl *destroy)(void*,unsigned,const ChoreographySymbolBindings*) noexcept;
+};
+using GetChoreographySymbolApi=const ChoreographySymbolApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
