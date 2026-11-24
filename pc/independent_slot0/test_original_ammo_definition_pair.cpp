@@ -148,6 +148,12 @@ int main(int argc,char** argv){
     assert(aggregateSend&&aggregateRecv&&!getAggregateSend(0,sizeof(tables::AggregateSendApi))&&!getAggregateRecv(1,0));
     tables::test::check_aggregate(*aggregateSend,*aggregateRecv);
     std::puts("PASS native paired network aggregate (35 owned tables, 15 class records, transactional construction)");
+    const auto getCreator=reinterpret_cast<tables::GetClientCreatorApi>(GetProcAddress(client,tables::client_creator_export));
+    assert(getCreator&&!GetProcAddress(server,tables::client_creator_export));
+    const auto* creator=getCreator(1,sizeof(tables::ClientCreatorApi));
+    assert(creator&&!getCreator(0,sizeof(tables::ClientCreatorApi))&&!getCreator(1,0));
+    tables::test::check_client_creator(*creator);
+    std::puts("PASS native client entity creator boundary, five object sizes and constructor defaults");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
