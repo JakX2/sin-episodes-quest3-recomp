@@ -793,8 +793,12 @@ int main(int argc,char** argv){
     const auto* portableVcdFinalizedGrammar=getPortableVcdFinalizedGrammar(1,sizeof(tables::PortableVcdFinalizedGrammarApi));
     assert(choreographyFinalize&&portableVcdFinalizedGrammar&&!getChoreographyFinalize(0,sizeof(tables::ChoreographyFinalizeApi))&&!getPortableVcdFinalizedGrammar(1,0));
     tables::test::check_choreography_finalize(*choreographyFinalize,*portableVcdFinalizedGrammar);
-    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector)){
+    const auto getNativeVcdRuntime=reinterpret_cast<tables::GetNativeVcdRuntimeApi>(GetProcAddress(server,tables::native_vcd_runtime_export));
+    assert(getNativeVcdRuntime&&!GetProcAddress(client,tables::native_vcd_runtime_export));
+    const auto* nativeVcdRuntime=getNativeVcdRuntime(1,sizeof(tables::NativeVcdRuntimeApi));
+    assert(nativeVcdRuntime&&!getNativeVcdRuntime(0,sizeof(tables::NativeVcdRuntimeApi))&&!getNativeVcdRuntime(1,0));
+    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime);
+    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }
     std::puts("PASS original relative tag reconciliation and ordered channel finalization");

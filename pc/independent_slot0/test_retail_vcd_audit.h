@@ -200,6 +200,28 @@ struct VcdAuditArena {
         totals.scales=F::word(root,0x154);totals.missing=missing;
         return linked_events+root_events==totals.events&&totals.events==counter;
     }
+    NativeVcdRuntimeBindings runtime() noexcept {
+        NativeVcdRuntimeBindings b{};b.context=this;b.storage=&storage;b.allocate_object=&allocate;
+        b.resize_memory=&resize;b.release_object=&release;b.release_memory=&release;
+        b.number=&number;b.integer=bindings.grammar.curves.scales.integer;
+        b.unexpected=bindings.grammar.curves.grammar.events.actors.text.unexpected;b.missing_tag=bindings.finalize.missing_tag;
+        b.event_counter=&counter;b.scale_sentinel=&scale_sentinel;b.symbol_sentinel=&symbol_sentinel;
+        b.scale_comparator=0x22112550;b.symbol_comparator=0x2228e9b0;b.flex_vtable=0x22400590;b.tokenizer_word=1;b.diagnostic_word=2;
+        return b;
+    }
+    bool parse_runtime(const NativeVcdRuntimeApi& api,const char* name,const char* data,unsigned n,VcdAuditCounts& out) noexcept {
+        auto b=runtime();std::uint32_t rootword=0;
+        const int status=api.parse(nullptr,name,data,n,&b,&rootword);
+        void* root=nullptr;unsigned extent=0;
+        const bool inspected=status==1&&storage(this,rootword,&root,&extent)&&inspect(root,out);
+        const int destroyed=rootword?api.destroy(rootword,&b):0;
+        if(!inspected||destroyed!=1||!live.empty()){
+            std::fprintf(stderr,"VCD FAIL %s parse=%d inspect=%d destroy=%d live=%u unexpected=%u token=%s\n",
+                name,status,inspected?1:0,destroyed,static_cast<unsigned>(live.size()),unexpected,last_token);
+            return false;
+        }
+        return true;
+    }
     bool parse(const PortableVcdFinalizedGrammarApi& grammar,const char* name,const char* data,unsigned n,VcdAuditCounts& out) noexcept {
         void* root=nullptr;unsigned extent=0;
         if(!allocate(this,0x220,&root,&extent))return false;
@@ -216,7 +238,7 @@ struct VcdAuditArena {
     }
 };
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime){
     // Native CUtlMemory capacities and indexed word insertion, including
     // null words, borrowed storage and failure-atomic raw allocator.
     {
@@ -318,10 +340,43 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     VcdAuditArena a(c,s,t,d,st,si,va);VcdAuditCounts out;
     assert(a.parse(grammar,"multi.vcd",input,sizeof(input)-1,out));
     assert(out.actors==2&&out.channels==3&&out.events==5&&out.tracks==2&&out.samples==3&&out.scales==2&&!out.missing);
-    std::puts("PASS multi-object VCD grammar, native track lifecycle, finalization and scene retirement");
+    VcdAuditArena integrated(c,s,t,d,st,si,va);VcdAuditCounts actual;
+    assert(integrated.parse_runtime(runtime,"multi.vcd",input,sizeof(input)-1,actual));
+    assert(actual.actors==out.actors&&actual.channels==out.channels&&actual.events==out.events&&
+        actual.tracks==out.tracks&&actual.samples==out.samples&&actual.scales==out.scales&&actual.missing==out.missing);
+    // Malformed text must retire partially constructed actors/children.
+    auto raw=integrated.runtime();std::uint32_t rootword=99;
+    const char bad[]="actor Jessica { channel Voice { event speak dialogue { time 0 1";
+    assert(runtime.parse(nullptr,"bad.vcd",bad,sizeof(bad)-1,&raw,&rootword)==-1&&!rootword&&integrated.live.empty());
+    // Native cache load: independent allocator/cache contexts, unlocked
+    // before parsing, filename normalization and callback/diagnostic words.
+    struct Cache {const char* data;unsigned n;bool locked=false,unlocked=false,missing=false;} cache{input,sizeof(input)-1};
+    NamedSceneLoadBindings load{};load.context=&cache;load.cache.context=&cache;
+    load.set_extension=[](void*,char* path,const char* ext,unsigned cap) noexcept -> int{
+        const auto n=std::strlen(path),m=std::strlen(ext);if(n+m>=cap)return 0;std::memcpy(path+n,ext,m+1);return 1;
+    };
+    load.missing=[](void* p,const char*) noexcept -> int{static_cast<Cache*>(p)->missing=true;return 1;};
+    load.cache.ensure=[](void*,const char* key) noexcept -> int{return !std::strcmp(key,"scenes\\multi.vcd");};
+    load.cache.find=[](void*,const char*,std::uint32_t* out) noexcept -> int{*out=7;return 1;};
+    load.cache.lock=[](void* p,std::uint32_t i,const void** out,unsigned* n) noexcept -> int{
+        auto& c=*static_cast<Cache*>(p);if(i!=7||c.locked)return 0;c.locked=true;*out=c.data;*n=c.n;return 1;
+    };
+    load.cache.reload=[](void*,const char*,std::uint32_t,std::uint32_t*) noexcept -> int{return 0;};
+    load.cache.unlock=[](void* p,std::uint32_t i) noexcept -> int{
+        auto& c=*static_cast<Cache*>(p);if(i!=7||!c.locked)return 0;c.locked=false;c.unlocked=true;return 1;
+    };
+    VcdAuditArena loader(c,s,t,d,st,si,va);auto lb=loader.runtime();alignas(4) unsigned char scene[0x414]{};
+    assert(runtime.load(scene,sizeof(scene),"Scenes/Multi",&load,&lb,&rootword)==1&&rootword&&cache.unlocked&&!cache.locked);
+    void* root=nullptr;unsigned extent=0;VcdAuditCounts loaded;
+    assert(loader.storage(&loader,rootword,&root,&extent)&&loader.inspect(root,loaded)&&loaded.events==out.events);
+    assert(ScenePlaybackFixture::word(root,0x9c)==ScenePlaybackFixture::ptr(scene+0x410)&&ScenePlaybackFixture::word(root,0x98)==lb.diagnostic_word);
+    assert(runtime.destroy(rootword,&lb)==1&&loader.live.empty()&&!runtime.destroy(rootword,&lb));
+    cache.n=0;cache.unlocked=false;rootword=99;
+    assert(runtime.load(scene,sizeof(scene),"Scenes/Multi",&load,&lb,&rootword)==1&&!rootword&&cache.missing&&cache.unlocked&&loader.live.empty());
+    std::puts("PASS multi-object VCD grammar, native track lifecycle, finalization, owned runtime and cache load retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,
-    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va){
+    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime){
     namespace fs=std::filesystem;std::error_code ec;
     const fs::path root(directory);
     unsigned files=0,passed=0;VcdAuditCounts sum;
@@ -339,7 +394,7 @@ inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFi
         std::string data(static_cast<std::size_t>(bytes),'\0');stream.seekg(0);
         if(!stream.read(data.data(),static_cast<std::streamsize>(data.size())))continue;
         VcdAuditArena arena(c,s,t,d,st,si,va);VcdAuditCounts stats;
-        if(arena.parse(grammar,name.c_str(),data.data(),static_cast<unsigned>(data.size()),stats)){++passed;sum.add(stats);}
+        if(arena.parse_runtime(runtime,name.c_str(),data.data(),static_cast<unsigned>(data.size()),stats)){++passed;sum.add(stats);}
     }
     std::printf("VCD AUDIT files=%u passed=%u actors=%u channels=%u events=%u tracks=%u samples=%u scales=%u missing=%u\n",
         files,passed,sum.actors,sum.channels,sum.events,sum.tracks,sum.samples,sum.scales,sum.missing);

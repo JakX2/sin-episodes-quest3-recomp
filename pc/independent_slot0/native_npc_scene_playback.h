@@ -1157,6 +1157,41 @@ struct PortableVcdFinalizedGrammarApi {
     int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdFinalizedGrammarBindings*,float*) noexcept;
 };
 using GetPortableVcdFinalizedGrammarApi=const PortableVcdFinalizedGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_vcd_runtime_export[]="SiN_GetNativeVcdRuntimeApi";
+// Raw engine/allocator services only. Object and memory allocator families
+// are intentionally separate (2226e790/e800 vs 2226e390/e400/e3e0).
+// All callbacks synchronous, no references to temporary adapters retained.
+// Keep sentinels, counter, allocator and relocated words valid for scene lifetime.
+struct NativeVcdRuntimeBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *allocate_object)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *resize_memory)(void*,std::uint32_t,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *release_object)(void*,std::uint32_t) noexcept;
+    int (__cdecl *release_memory)(void*,std::uint32_t) noexcept;
+    int (__cdecl *number)(void*,const char*,float*) noexcept;
+    int (__cdecl *integer)(void*,const char*,int*) noexcept;
+    int (__cdecl *unexpected)(void*,const char*) noexcept;
+    int (__cdecl *missing_tag)(void*,void*,const char*,const char*,const char*) noexcept;
+    std::uint32_t* event_counter;
+    ChoreographyScaleSentinel* scale_sentinel;
+    ChoreographySymbolSentinel* symbol_sentinel;
+    std::uint32_t scale_comparator,symbol_comparator,flex_vtable,tokenizer_word,diagnostic_word;
+};
+struct NativeVcdRuntimeApi {
+    std::uint32_t version,size;
+    // Allocate, construct, parse/finalize; return owned root word, or zero
+    // on failure. Caller serializes operations sharing module sentinels/counter.
+    int (__cdecl *parse)(void* callback,const char* name,const char* data,unsigned bytes,const NativeVcdRuntimeBindings*,std::uint32_t*) noexcept;
+    // Only cache/context/extension/missing are consumed from load template.
+    int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const NativeVcdRuntimeBindings*,std::uint32_t*) noexcept;
+    // Native named NPC path; overrides precache.load ownership/parser only.
+    int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const NativeVcdRuntimeBindings*,float*) noexcept;
+    // Consume owned root, including nested scenes. Never retry partial failure.
+    int (__cdecl *destroy)(std::uint32_t,const NativeVcdRuntimeBindings*) noexcept;
+    int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*,const NativeVcdRuntimeBindings*) noexcept;
+};
+using GetNativeVcdRuntimeApi=const NativeVcdRuntimeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
