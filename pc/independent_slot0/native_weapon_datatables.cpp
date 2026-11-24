@@ -7812,6 +7812,103 @@ int __cdecl native_choreography_clock_resume(void* root,unsigned bytes,const Nat
 }
 const NativeChoreographyClockApi native_choreography_clock_api{version,sizeof(NativeChoreographyClockApi),
     &native_choreography_clock_reset,&native_choreography_clock_simulate,&native_choreography_clock_resume};
+// Original jump tables 221a27c8 (start types 1..16), 221a2a58
+// (stop types 2..16). Zero denotes a special or no-operation branch.
+int __cdecl native_choreography_dispatch(std::uint32_t word,unsigned slot,float time,void* parsed,void* event,
+    const NativeChoreographyDispatchBindings* b,unsigned* result) noexcept {
+    if(!b||!hologram_writable(result,4)||!b->scene||b->scene_bytes<0x549||
+       !hologram_writable(b->scene,0x549)||!hologram_writable(parsed,0x220)||
+       !hologram_writable(event,0x3c0)||(slot!=0&&slot!=4&&slot!=8&&slot!=12))return 0;
+    const auto h=*b;auto* scene=static_cast<unsigned char*>(h.scene);
+    if(word!=scene_word(scene+0x410))return 0;
+    const auto owner=hologram_read<std::uint32_t>(scene,0x414);
+    if(!owner){*result=1;return 1;}
+    if(owner!=scene_word(scene))return 0;
+    const unsigned type=hologram_read<unsigned>(event,0);
+    if(type==5)return 0; // existing native speech route has separate leaves
+    const auto complete=[&](){*result=1;return 1;};
+    const auto nested=[&](void*& child,unsigned& extent){
+        child=nullptr;extent=0;const auto w=hologram_read<std::uint32_t>(event,0x324);
+        return !w||(w!=scene_word(parsed)&&h.storage&&h.storage(h.context,w,&child,&extent)&&child&&extent>=0x220&&hologram_writable(child,0x220));
+    };
+    if(slot==8){
+        if(type!=11)return complete();
+        void* child=nullptr;unsigned extent=0,finished=0;
+        if(!nested(child,extent))return -1;
+        if(!child)return complete();
+        if(parsed_scene_finished(child,extent,&finished)!=1)return -1;
+        if(finished)return complete();
+        // 221a2b60 passes scene+3e0 directly as the simulation target.
+        return h.clock&&native_choreography_clock_simulate(child,extent,hologram_read<float>(scene,0x3e0),h.clock)==1?complete():-1;
+    }
+    if(slot==12&&type==11)return complete();
+    const auto* name=static_cast<const char*>(event)+4;
+    const auto* param=static_cast<const char*>(event)+0x84;
+    if(!h.trace||!std::memchr(name,0,128)||!std::memchr(param,0,128))return 0;
+    auto trace=[&](ChoreographyDispatchTrace kind){return h.trace(h.context,scene,event,time,kind)!=0;};
+    if(slot!=12&&scene_event_ignored(name)){
+        return slot==0&&!trace(ChoreographyDispatchTrace::Ignored)?-1:complete();
+    }
+    void* actor=nullptr;unsigned actor_bytes=0;
+    const auto choreo=hologram_read<std::uint32_t>(event,0x2b4);
+    if(choreo&&!(h.actors?resolved_scene_actor(scene,h.scene_bytes,choreo,h.actors,&actor,&actor_bytes)==1:
+        h.actor&&h.actor(h.context,scene,choreo,&actor,&actor_bytes)))return -1;
+    if(choreo&&!actor&&(slot==0||slot==12)){
+        return trace(ChoreographyDispatchTrace::MissingActor)?complete():-1;
+    }
+    if(slot==12){
+        if(!actor)return complete();
+        return h.records?actor_event_check_one(actor,actor_bytes,time,scene_word(parsed),event,h.records,result):0;
+    }
+    if(!trace(slot==0?ChoreographyDispatchTrace::Start:ChoreographyDispatchTrace::Stop))return -1;
+    if(!type||type>16)return complete();
+    const auto dispatch=[&](unsigned offset,void* target=nullptr){
+        return h.virtual_event&&h.virtual_event(h.context,scene,offset,parsed,event,actor,target,param)?complete():-1;
+    };
+    if(slot==4){
+        if(type==11){
+            void* child=nullptr;unsigned extent=0;if(!nested(child,extent))return -1;
+            return !child?complete():h.clock&&native_choreography_clock_reset(child,extent,1,0,0,h.clock)==1?complete():-1;
+        }
+        if(type==16&&!std::strncmp(param,"debugtext",9))return complete();
+        constexpr unsigned stop_slots[]={0,0,0x2d0,0x2e8,0x2f0,0x2f8,0x2e0,0x308,0x300,0,0x2d8,0,0,0x314,0,0x324,0x31c};
+        const unsigned offset=stop_slots[type];
+        return !offset||(!actor&&type!=13&&type!=15)?complete():dispatch(offset);
+    }
+    if(type==4&&hologram_read<std::uint32_t>(event,0x188)==0xbf800000u){
+        const auto start=hologram_read<float>(event,0x184);
+        const auto end=static_cast<float>(static_cast<double>(start)+1.0);
+        hologram_write(event,0x188,end<start?start:end);
+        ChoreographyFinalizeBindings storage{};storage.context=h.context;storage.storage=h.storage;
+        if(!gesture_refresh(event,storage))return -1;
+    }
+    if(type==9){
+        if(hologram_read<unsigned char>(scene,0x548))return complete();
+        const auto i=std::strtol(param,nullptr,10);
+        if(i<1||i>8)return complete();
+        return h.output&&h.output(h.context,scene+0x464+24*(i-1),actor?actor:scene,scene,0.f)?complete():-1;
+    }
+    if(type==16&&!std::strncmp(param,"debugtext",9)){
+        // Original passes param+10. Handle a bare 9-character token
+        // without reading past its terminator.
+        return h.debug_text&&h.debug_text(h.context,std::strlen(param)>9?param+10:"")?complete():-1;
+    }
+    constexpr unsigned start_slots[]={0,0x32c,0x2cc,0x2e4,0x2ec,0x2f4,0x2dc,0x304,0x2fc,0,0x2d4,0x30c,0x328,0x310,0x330,0x320,0x318};
+    const bool needs_actor=type>=2&&type<=11||type==16;
+    if(needs_actor&&!actor)return complete();
+    if(type==3||type==4||type==8){
+        void* target=nullptr;
+        if(!h.target||!h.target(h.context,scene,param,actor,0,&target))return -1;
+        if(!target)return trace(ChoreographyDispatchTrace::MissingTarget)?complete():-1;
+        return dispatch(start_slots[type],target);
+    }
+    return dispatch(start_slots[type]);
+}
+int __cdecl native_choreography_other_event(void* p,std::uint32_t word,unsigned slot,float time,void* parsed,void* event) noexcept {
+    unsigned result=0;return native_choreography_dispatch(word,slot,time,parsed,event,
+        static_cast<const NativeChoreographyDispatchBindings*>(p),&result)==1;
+}
+const NativeChoreographyDispatchApi native_choreography_dispatch_api{version,sizeof(NativeChoreographyDispatchApi),&native_choreography_dispatch,&native_choreography_other_event};
 bool speech_drain_ready(const SceneSpeechDrainBindings* b,unsigned* out) noexcept {
     return b&&b->storage&&b->resolve&&b->clock&&b->open_filter&&b->emit&&b->close_filter&&hologram_writable(out,4);
 }
@@ -12649,6 +12746,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpee
 SiN_GetSceneSpeechDrainApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneSpeechDrainApi)?&scene_speech_drain_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographyDispatchApi=_SiN_GetNativeChoreographyDispatchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeChoreographyDispatchApi* __cdecl
+SiN_GetNativeChoreographyDispatchApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyDispatchApi)?&native_choreography_dispatch_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographyClockApi=_SiN_GetNativeChoreographyClockApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeChoreographyClockApi* __cdecl

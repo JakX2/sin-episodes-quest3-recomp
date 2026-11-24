@@ -805,7 +805,11 @@ int main(int argc,char** argv){
     assert(getNativeClock&&!GetProcAddress(client,tables::native_choreography_clock_export));
     const auto* nativeClock=getNativeClock(1,sizeof(tables::NativeChoreographyClockApi));
     assert(nativeClock&&!getNativeClock(0,sizeof(tables::NativeChoreographyClockApi))&&!getNativeClock(1,0));
-    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock);
+    const auto getNativeDispatch=reinterpret_cast<tables::GetNativeChoreographyDispatchApi>(GetProcAddress(server,tables::native_choreography_dispatch_export));
+    assert(getNativeDispatch&&!GetProcAddress(client,tables::native_choreography_dispatch_export));
+    const auto* nativeDispatch=getNativeDispatch(1,sizeof(tables::NativeChoreographyDispatchApi));
+    assert(nativeDispatch&&!getNativeDispatch(0,sizeof(tables::NativeChoreographyDispatchApi))&&!getNativeDispatch(1,0));
+    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch);
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }
