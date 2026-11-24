@@ -1342,7 +1342,7 @@ struct SpeechExecutionFixture:ActorEventRecordFixture {
     int players[3]{};
     void* recipients[4]{&players[0],nullptr,&players[1],&players[2]};
     int count=4;
-    unsigned opened=0,closed=0,prepared=0,emitted=0,registered=0,preferences=0,far=0,removed=0,sent=0,fail_emit=99;
+    unsigned opened=0,closed=0,prepared=0,emitted=0,registered=0,preferences=0,distant=0,removed=0,sent=0,fail_emit=99;
     unsigned caption_ticks=0;
     SceneSpeechExecutionBindings exec{};
     static SpeechExecutionFixture& get_exec(void* p){return *static_cast<SpeechExecutionFixture*>(p);}
@@ -1370,7 +1370,7 @@ struct SpeechExecutionFixture:ActorEventRecordFixture {
             auto& f=get_exec(p);assert(crc==0xcbf43926u&&!std::strcmp(token,"123456789")&&f.emitted==3);++f.registered;return 1;};
         exec.caption_preferences=[](void* p,void* filter) noexcept -> int{auto& f=get_exec(p);assert(filter==&f.count&&f.registered==1);++f.preferences;return 1;};
         exec.caption_far=[](void* p,void* player,unsigned* out) noexcept -> int{
-            auto& f=get_exec(p);++f.far;*out=player==&f.players[1];return 1;};
+            auto& f=get_exec(p);++f.distant;*out=player==&f.players[1];return 1;};
         exec.remove_recipient=[](void* p,void* filter,void* player) noexcept -> int{
             auto& f=get_exec(p);assert(filter==&f.count&&player==&f.players[1]);++f.removed;
             for(int i=0;i<f.count;++i)if(f.recipients[i]==player){for(int j=i+1;j<f.count;++j)f.recipients[j-1]=f.recipients[j];--f.count;return 1;}
@@ -1383,11 +1383,11 @@ inline void check_scene_speech_execution(const SceneSpeechExecutionApi& api){
     using F=ScenePlaybackFixture;SpeechExecutionFixture f;
     auto run=[&](SpeechExecutionFixture& x){return api.start(x.scene,sizeof(x.scene),x.actor,sizeof(x.actor),0x2222,x.event,sizeof(x.event),80,&x.exec);};
     assert(run(f)==1&&f.opened==1&&f.closed==1&&f.prepared==1&&f.emitted==3&&f.begins==3&&f.grows==1);
-    assert(F::word(f.actor,0x5c4)==3&&f.registered==1&&f.preferences==1&&f.far==3&&f.removed==1&&f.sent==1&&f.caption_ticks==40);
+    assert(F::word(f.actor,0x5c4)==3&&f.registered==1&&f.preferences==1&&f.distant==3&&f.removed==1&&f.sent==1&&f.caption_ticks==40);
     SpeechExecutionFixture alternate;F::put(alternate.event,0x34c,1);
     assert(run(alternate)==1&&alternate.emitted==2&&alternate.begins==2&&!alternate.sent&&!alternate.registered&&alternate.closed==1);
     SpeechExecutionFixture unfiltered;unfiltered.event[0x3a2]=1;F::fl(unfiltered.event,0x39c,100);
-    assert(run(unfiltered)==1&&!unfiltered.far&&!unfiltered.removed&&unfiltered.caption_ticks==255);
+    assert(run(unfiltered)==1&&!unfiltered.distant&&!unfiltered.removed&&unfiltered.caption_ticks==255);
     SpeechExecutionFixture failure;failure.fail_emit=1;
     assert(run(failure)==-1&&failure.emitted==2&&failure.begins==1&&failure.closed==1&&!failure.registered);
     assert(api.start(f.scene,sizeof(f.scene),nullptr,0,0,nullptr,0,80,&f.exec)==1&&f.opened==1);

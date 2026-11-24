@@ -5236,9 +5236,9 @@ int __cdecl speech_execute(void* scene,unsigned bytes,void* actor,unsigned actor
     if(!hologram_read<unsigned char>(event,0x3a2)){
         if(!h.recipient_count(h.context,filter,&count)||count<0||count>0x100000)return close(false);
         for(int i=count-1;i>=0;--i){
-            void* player=nullptr;unsigned far=0;
+            void* player=nullptr;unsigned distant=0;
             if(!h.recipient(h.context,filter,static_cast<unsigned>(i),&player))return close(false);
-            if(player&&(!h.caption_far(h.context,player,&far)||(far&&!h.remove_recipient(h.context,filter,player))))return close(false);
+            if(player&&(!h.caption_far(h.context,player,&distant)||(distant&&!h.remove_recipient(h.context,filter,player))))return close(false);
         }
     }
     if(!h.recipient_count(h.context,filter,&count)||count<0||count>0x100000)return close(false);
