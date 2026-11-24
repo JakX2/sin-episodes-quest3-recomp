@@ -301,6 +301,12 @@ int main(int argc,char** argv){
     assert(gasInput&&!getGasInput(0,sizeof(tables::GasInputApi))&&!getGasInput(1,0));
     tables::test::check_gas_inputs(*gasInput,*poisonGas);
     std::puts("PASS SDK gas map inputs and original live visual child property updates");
+    const auto getPlayerDamage=reinterpret_cast<tables::GetPlayerDamageApi>(GetProcAddress(server,tables::player_damage_export));
+    assert(getPlayerDamage&&!GetProcAddress(client,tables::player_damage_export));
+    const auto* playerDamage=getPlayerDamage(1,sizeof(tables::PlayerDamageApi));
+    assert(playerDamage&&!getPlayerDamage(0,sizeof(tables::PlayerDamageApi))&&!getPlayerDamage(1,0));
+    tables::test::check_player_damage(*playerDamage,*playerPoison,*pickup);
+    std::puts("PASS native player damage dispatch, poison handle attachment and base damage forwarding");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

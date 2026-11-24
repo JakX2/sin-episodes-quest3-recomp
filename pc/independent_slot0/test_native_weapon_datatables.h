@@ -3110,4 +3110,79 @@ inline void check_gas_inputs(const GasInputApi& api,const PoisonGasApi& gas_api)
     assert(gas_api.acknowledge(&ctrl));
 }
 
+struct PlayerDamageFixture {
+    HologramControl* ctrl=nullptr;int source=0,actor=0;
+    unsigned events[32]{},count=0,fail=0,matched=1;
+    int global=0,group=0,base_calls=0;
+    float now=10,amount=0,adjusted=0;
+    std::uint32_t saved=0x123004;
+    const char* sound=nullptr;
+    bool push(unsigned n){assert(ctrl->busy&&count<32);events[count++]=n;return n!=fail;}
+};
+inline int __cdecl pd_global(void* ctx,const char* name,int* state) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);assert(!std::strcmp(name,"gordon_invulnerable"));*state=f.global;return f.push(1);
+}
+inline int __cdecl pd_clock(void* ctx,float* now) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);*now=f.now;return f.push(2);
+}
+inline int __cdecl pd_resolve(void* ctx,std::uint32_t handle,void** entity) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);
+    if(handle==0x123004){*entity=&f.source;return f.push(3);}
+    if(handle==0x123005){*entity=&f.actor;return f.push(4);}
+    assert(handle==0x123006);*entity=f.ctrl->object;return f.push(5);
+}
+inline int __cdecl pd_group(void* ctx,void* actor,int* group) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);assert(actor==&f.actor);*group=f.group;return f.push(6);
+}
+inline int __cdecl pd_notice(void* ctx,void* player,void* source) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);assert(player==f.ctrl->object&&(source==&f.source||source==player));return f.push(7);
+}
+inline int __cdecl pd_sound(void* ctx,void* player,const char* sound) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);assert(player==f.ctrl->object);f.sound=sound;return f.push(8);
+}
+inline int __cdecl pd_cast(void* ctx,void* source,unsigned* matched,std::uint32_t* handle) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);assert(source==&f.source||!source);
+    *matched=source?f.matched:0;*handle=f.saved;return f.push(9);
+}
+inline int __cdecl pd_adjust(void* ctx,PlayerDamageInfo* info) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);float amount=0,base=0;
+    std::memcpy(&amount,info->bytes+0x2c,4);std::memcpy(&base,info->bytes+0x34,4);assert(amount==base);
+    amount*=0.5f;std::memcpy(info->bytes+0x2c,&amount,4);return f.push(10);
+}
+inline int __cdecl pd_base(void* ctx,void* player,const PlayerDamageInfo* info,int* result) noexcept {
+    auto& f=*static_cast<PlayerDamageFixture*>(ctx);assert(player==f.ctrl->object);++f.base_calls;
+    std::memcpy(&f.amount,info->bytes+0x2c,4);std::memcpy(&f.adjusted,info->bytes+0x34,4);*result=17;return f.push(11);
+}
+inline void check_player_damage(const PlayerDamageApi& api,const PlayerPoisonApi& poison,const HealthPickupApi& heal){
+    alignas(4) unsigned char player[0x151c]{},gas[0x3bc]{};
+    HologramControl ctrl{player,sizeof(player)};PlayerDamageFixture f{&ctrl};
+    PlayerDamageBindings b{&f,&pd_global,&pd_clock,&pd_resolve,&pd_group,&pd_notice,&pd_sound,&pd_cast,&pd_adjust,&pd_base};
+    const auto expect=[&](std::initializer_list<unsigned> seq){assert(f.count==seq.size()&&!std::memcmp(f.events,seq.begin(),seq.size()*4));f.count=0;};
+    const auto put=[&](unsigned off,std::uint32_t v){std::memcpy(player+off,&v,4);};
+    const auto word=[&](unsigned off){std::uint32_t v=0;std::memcpy(&v,player+off,4);return v;};
+    PlayerDamageInfo info{};const auto set=[&](unsigned off,std::uint32_t v){std::memcpy(info.bytes+off,&v,4);};
+    set(0x24,0x123005);set(0x28,0x123004);set(0x2c,0x41200000u);
+    int result=99;const auto take=[&](unsigned flags){set(0x38,flags);return api.take(&ctrl,&b,&info,&result);};
+    assert(poison.spawn_state(&ctrl));f.global=1;assert(take(0x10000)==1&&!result);expect({1});f.global=0;
+    put(0x8c,1);assert(take(0x10000)==1&&!result);expect({1});put(0x8c,0);
+    put(0x14b8,0x41300000u);assert(take(0x20)==1&&!result&&!word(0x14b8));expect({1,2});
+    put(0x298,3);assert(take(0x10000000)==1&&!result);expect({1,4,6});put(0x298,0);
+    assert(take(0x10000)==1&&!result&&word(0x14d8)==f.saved&&word(0x14f4)==0x41200000u);expect({1,2,3,3,7,3,9});
+    PlayerPoisonFixture pf{player,gas};float radius=300;std::memcpy(gas+0x3a0,&radius,4);gas[0x394]=1;
+    PlayerPoisonBindings pb{&pf,&pp_resolve,&pp_position,&pp_clock,&pp_damage,&pp_effect,&pp_intensity,&pp_dirty};
+    unsigned inside=0;assert(poison.inside(&ctrl,&pb,&inside)==1&&inside&&pf.count==6);
+    f.matched=0;assert(take(0x20000)==1&&!result&&word(0x14d8)==f.saved);expect({1,2,3,3,7,3,9});
+    f.matched=1;set(0x28,0xffffffffu);assert(take(0x10000)==1&&!result);expect({1,2,9});set(0x28,0x123004);
+    assert(take(0x4008)==1&&result==17&&f.amount==5&&f.adjusted==10&&!std::strcmp(f.sound,"HL2Player.BurnPain"));
+    expect({1,2,3,3,7,8,8,3,4,10,11});
+    assert(!std::memcmp(info.bytes+0x2c,"\0\0\x20\x41",4)); // original input unchanged
+    put(0x9f4,1);assert(take(0x4000)==1&&!std::strcmp(f.sound,"Player.DrownContinue"));expect({1,2,3,3,7,8,3,4,10,11});
+    set(0x28,0x123006);assert(take(0)==1&&result==17&&f.amount==10&&f.adjusted==0);expect({1,2,5,5,7,5,11});
+    set(0x28,0x123004);set(0x24,0x123006);assert(take(0)==1&&f.amount==10);expect({1,2,3,3,7,3,5,11});
+    set(0x24,0x123005);set(0x2c,0);
+    assert(take(0)==1&&result==17&&f.amount==0);expect({1,3,4,10,11});
+    f.fail=9;assert(take(0x10000)==-1&&ctrl.blocked);expect({1,3,9});
+    assert(take(0)==0&&heal.acknowledge(&ctrl));expect({});
+}
+
 }
