@@ -30,6 +30,7 @@
 #include "native_vehicle_part_events.h"
 #include "native_vehicle_nested.h"
 #include "native_npc_map.h"
+#include "native_npc_spawn.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -2740,11 +2741,13 @@ int __cdecl player_damage_take(HologramControl* ctrl,const PlayerDamageBindings*
 const PlayerDamageApi player_damage_api{version,sizeof(PlayerDamageApi),&player_damage_take};
 
 constexpr unsigned jessica_size=0x1458, jessica_condition=0x47;
+void jessica_ammo_defaults(void* npc) noexcept {
+    hologram_write(npc,0x1454,-1);
+    hologram_write(npc,0x1450,-1);
+}
 int __cdecl jessica_spawn_state(HologramControl* ctrl) noexcept {
     if(!health_control(ctrl,jessica_size))return 0;
-    hologram_write(ctrl->object,0x1454,-1);
-    hologram_write(ctrl->object,0x1450,-1);
-    return 1;
+    jessica_ammo_defaults(ctrl->object);return 1;
 }
 int __cdecl jessica_input(HologramControl* ctrl,const JessicaBindings* b,JessicaInput op,const JessicaValue* v) noexcept {
     if(!health_control(ctrl,jessica_size)||!b)return 0;
@@ -3666,12 +3669,10 @@ int __cdecl generic_actor_semaphore(HologramControl* c,unsigned* uses) noexcept 
 }
 const GenericActorApi generic_actor_api{version,sizeof(GenericActorApi),&generic_actor_get_schema,&generic_actor_key,&generic_actor_spawn_profile,&generic_actor_damage,&generic_actor_observe,&generic_actor_semaphore,&health_ack};
 
-int __cdecl jc_profile(HologramControl* c,const JcProfileBindings* b) noexcept {
-    if(!health_control(c,jc_bytes)||!b||!b->health_dirty||!b->npc_initialize)return 0;
-    c->busy=1;const auto h=*b;auto* npc=c->object;
+bool humanoid_profile_leaf(void* npc,const JcProfileBindings& h) noexcept {
     hologram_write(npc,0x614,247);
     if(hologram_read<int>(npc,0x9c)!=8){
-        if(!h.health_dirty(h.context,npc))return disp_finish(c,false);
+        if(!h.health_dirty(h.context,npc))return false;
         hologram_write(npc,0x9c,8);
     }
     hologram_write(npc,0x618,0.5f);
@@ -3679,7 +3680,11 @@ int __cdecl jc_profile(HologramControl* c,const JcProfileBindings* b) noexcept {
     hologram_write(npc,0x8ec,hologram_read<unsigned>(npc,0x8ec)|0x801801u);
     hologram_write(npc,0x8ec,hologram_read<unsigned>(npc,0x8ec)|0x02000000u);
     hologram_write(npc,0xbb,static_cast<unsigned char>(hologram_read<unsigned char>(npc,0xbb)|0x58u));
-    return disp_finish(c,h.npc_initialize(h.context,npc)!=0);
+    return h.npc_initialize(h.context,npc)!=0;
+}
+int __cdecl jc_profile(HologramControl* c,const JcProfileBindings* b) noexcept {
+    if(!health_control(c,jc_bytes)||!b||!b->health_dirty||!b->npc_initialize)return 0;
+    c->busy=1;const auto h=*b;return disp_finish(c,humanoid_profile_leaf(c->object,h));
 }
 int __cdecl jessica_reaction_update(HologramControl* c,const JessicaReactionBindings* b) noexcept {
     if(!health_control(c,jessica_size)||!b||!b->base_update||!b->resolve||!b->restore_unparented||!b->post_restore||!b->condition||!b->speak)return 0;
@@ -3737,20 +3742,23 @@ bool count_entry(void* npc,int index,std::uint32_t& entry) noexcept {
     entry=hologram_read<std::uint32_t>(address,0);
     return entry!=0;
 }
-int __cdecl count_register_interrogation(HologramControl* c,const CountSchedulerBindings* b) noexcept {
-    if(!health_control(c,count_size)||!b||!b->append||!b->register_base)return 0;
-    auto* npc=c->object;
+bool count_register_leaf(void* npc,const CountSchedulerBindings& h) noexcept {
     const auto embedded=count_embedded(npc);
     const int before=hologram_read<int>(npc,0xc28);
-    if(before<0||before>=4096)return 0;
-    c->busy=1;const auto h=*b;
-    if(!h.append(h.context,npc,embedded))return disp_finish(c,false);
+    if(before<0||before>=4096)return false;
+    if(!h.append(h.context,npc,embedded))return false;
     std::uint32_t inserted=0;
-    if(hologram_read<int>(npc,0xc28)!=before+1||!count_entry(npc,before,inserted)||inserted!=embedded)return disp_finish(c,false);
+    if(hologram_read<int>(npc,0xc28)!=before+1||!count_entry(npc,before,inserted)||inserted!=embedded)return false;
     // Embedded behavior vslot +4 is 220cdbd0, a plain owner write.
     hologram_write(npc,0x1004,count_pointer(npc));
     hologram_write(npc,0x100c,count_pointer(static_cast<unsigned char*>(npc)+0xc14));
-    return disp_finish(c,h.register_base(h.context,npc)!=0);
+    return h.register_base(h.context,npc)!=0;
+}
+int __cdecl count_register_interrogation(HologramControl* c,const CountSchedulerBindings* b) noexcept {
+    if(!health_control(c,count_size)||!b||!b->append||!b->register_base)return 0;
+    const int count=hologram_read<int>(c->object,0xc28);
+    if(count<0||count>=4096)return 0;
+    c->busy=1;const auto h=*b;return disp_finish(c,count_register_leaf(c->object,h));
 }
 int __cdecl count_select(HologramControl* c,CountSchedulerState* state,const CountSchedulerBindings* b,int* result) noexcept {
     if(!health_control(c,count_size)||!state||!hologram_writable(state,sizeof(*state))||state->busy||
@@ -5297,6 +5305,54 @@ int __cdecl npc_map_select_count(HologramControl* c,NpcMapSession* state,const N
     return npc_map_ready(NpcMapKind::Count,c)&&state&&b?count_select(c,&state->scheduler,&b->scheduler,result):0;
 }
 const NpcMapApi npc_map_api{version,sizeof(NpcMapApi),&npc_map_schema,&npc_map_key,&npc_map_input,&npc_map_observe,&npc_map_select_count};
+
+int __cdecl jessica_full_spawn(HologramControl* c,const JessicaSpawnBindings* b) noexcept {
+    if(!health_control(c,jessica_size)||!b||!b->base_spawn||!b->resolve_parent||!b->parented_setup||
+       !b->restore_unparented||!b->health_dirty||!b->npc_initialize||!b->install_interaction||!b->expeditor||!b->seed_concept)return 0;
+    c->busy=1;const auto h=*b;auto* n=c->object;
+    if(!h.base_spawn(h.context,n))return disp_finish(c,false);
+    void* parent=nullptr;const auto word=hologram_read<std::uint32_t>(n,0xf0);
+    if(word!=0xffffffffu&&!h.resolve_parent(h.context,word,&parent))return disp_finish(c,false);
+    if(parent){
+        if(!h.parented_setup(h.context,n,0,0))return disp_finish(c,false);
+        // Original clears all capabilities before adding the two masks.
+        hologram_write(n,0x8ec,0x00801000u);
+        hologram_write(n,0x8ec,hologram_read<unsigned>(n,0x8ec)|0x02000000u);
+    }else if(!h.restore_unparented(h.context,n))return disp_finish(c,false);
+    hologram_write(n,0xbb,static_cast<unsigned char>(hologram_read<unsigned char>(n,0xbb)|0x58u));
+    if(hologram_read<int>(n,0x9c)!=80){
+        if(!h.health_dirty(h.context,n))return disp_finish(c,false);
+        hologram_write(n,0x9c,80);
+    }
+    jessica_ammo_defaults(n);
+    if(!h.npc_initialize(h.context,n)||!h.install_interaction(h.context,n,0x80,0x22361e40u))return disp_finish(c,false);
+    void* expeditor=nullptr;
+    if(!h.expeditor(h.context,n,&expeditor)||!expeditor)return disp_finish(c,false);
+    return disp_finish(c,h.seed_concept(h.context,expeditor,"TLK_HELLO",0,1)!=0);
+}
+int __cdecl count_class_init(HologramControl* c,const CountClassInitBindings* b,std::uint32_t classname,unsigned* accepted) noexcept {
+    if(!health_control(c,0x103c)||!b||!b->base_postconstruct||!b->base_create||!b->behaviors.append||!b->behaviors.register_base||!b->create_expeditor||!accepted)return 0;
+    c->busy=1;const auto h=*b;auto* n=c->object;
+    *accepted=0;
+    if(!h.base_postconstruct(h.context,n,classname))return disp_finish(c,false);
+    unsigned base_ok=0;
+    if(!h.base_create(h.context,n,&base_ok))return disp_finish(c,false);
+    if(!base_ok)return disp_finish(c,true);
+    if(!count_register_leaf(n,h.behaviors))return disp_finish(c,false);
+    void* expeditor=nullptr;unsigned bytes=0;
+    if(!h.create_expeditor(h.context,n,&expeditor,&bytes))return disp_finish(c,false);
+    if(expeditor&&(bytes<0x7c||!hologram_writable(expeditor,0x7c)))return disp_finish(c,false);
+    hologram_write(n,0xffc,count_pointer(expeditor));
+    if(!expeditor)return disp_finish(c,true);
+    hologram_write(expeditor,0xc,count_pointer(static_cast<unsigned char*>(n)+0xdfc));
+    *accepted=1;
+    return disp_finish(c,true);
+}
+int __cdecl count_spawn_profile(HologramControl* c,const JcProfileBindings* b) noexcept {
+    if(!health_control(c,0x103c)||!b||!b->health_dirty||!b->npc_initialize)return 0;
+    c->busy=1;const auto h=*b;return disp_finish(c,humanoid_profile_leaf(c->object,h));
+}
+const NpcSpawnApi npc_spawn_api{version,sizeof(NpcSpawnApi),&jessica_full_spawn,&count_class_init,&count_spawn_profile,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -7371,6 +7427,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcMapApi
 SiN_GetNpcMapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcMapApi)?&npc_map_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetNpcSpawnApi=_SiN_GetNpcSpawnApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcSpawnApi* __cdecl
+SiN_GetNpcSpawnApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcSpawnApi)?&npc_spawn_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
