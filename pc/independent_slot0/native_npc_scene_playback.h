@@ -363,6 +363,27 @@ struct ChoreographyConstructApi {
     int (__cdecl *event)(void*,unsigned,void* parsed,std::uint32_t* counter) noexcept;
 };
 using GetChoreographyConstructApi=const ChoreographyConstructApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_vector_export[]="SiN_GetChoreographyVectorApi";
+struct ChoreographyVectorBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original malloc/realloc leaves. On success return writable allocation
+    // of at least requested bytes, preserving all old bytes. old=0 means
+    // allocate. Failure retains the previous allocation and ownership.
+    int (__cdecl *resize)(void*,std::uint32_t,unsigned,void**,unsigned*) noexcept;
+};
+struct ChoreographyVectorApi {
+    std::uint32_t version,size;
+    // Context points to ChoreographyVectorBindings; boolean status.
+    int (__cdecl *grow_memory)(void*,void*,unsigned,unsigned) noexcept;
+    int (__cdecl *grow_vector)(void*,void*,unsigned,unsigned) noexcept;
+    int (__cdecl *insert_word)(void*,void*,unsigned,std::uint32_t) noexcept;
+    // ABI-compatible adapters for generated scene/parser callbacks.
+    int (__cdecl *append_parsed)(void*,void*,GeneratedSceneChild,void*) noexcept;
+    int (__cdecl *append_channel)(void*,void*,void*) noexcept;
+    int (__cdecl *append_event)(void*,void*,void*) noexcept;
+};
+using GetChoreographyVectorApi=const ChoreographyVectorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char allocated_generated_scene_export[]="SiN_GetAllocatedGeneratedSceneApi";
 struct GeneratedSceneAllocationBindings {
     void* context;

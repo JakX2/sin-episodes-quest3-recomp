@@ -671,6 +671,10 @@ int main(int argc,char** argv){
     const auto* choreographySymbol=getChoreographySymbol(1,sizeof(tables::ChoreographySymbolApi));
     assert(choreographySymbol&&!getChoreographySymbol(0,sizeof(tables::ChoreographySymbolApi))&&!getChoreographySymbol(1,0));
     tables::test::check_choreography_symbol(*choreographySymbol);
+    const auto getChoreographyVector=reinterpret_cast<tables::GetChoreographyVectorApi>(GetProcAddress(server,tables::choreography_vector_export));
+    assert(getChoreographyVector&&!GetProcAddress(client,tables::choreography_vector_export));
+    const auto* choreographyVector=getChoreographyVector(1,sizeof(tables::ChoreographyVectorApi));
+    assert(choreographyVector&&!getChoreographyVector(0,sizeof(tables::ChoreographyVectorApi))&&!getChoreographyVector(1,0));
     const auto getSymbolIntern=reinterpret_cast<tables::GetChoreographySymbolInternApi>(GetProcAddress(server,tables::choreography_symbol_intern_export));
     assert(getSymbolIntern&&!GetProcAddress(client,tables::choreography_symbol_intern_export));
     const auto* symbolIntern=getSymbolIntern(1,sizeof(tables::ChoreographySymbolInternApi));
@@ -789,8 +793,8 @@ int main(int argc,char** argv){
     const auto* portableVcdFinalizedGrammar=getPortableVcdFinalizedGrammar(1,sizeof(tables::PortableVcdFinalizedGrammarApi));
     assert(choreographyFinalize&&portableVcdFinalizedGrammar&&!getChoreographyFinalize(0,sizeof(tables::ChoreographyFinalizeApi))&&!getPortableVcdFinalizedGrammar(1,0));
     tables::test::check_choreography_finalize(*choreographyFinalize,*portableVcdFinalizedGrammar);
-    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern);
-    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern)){
+    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }
     std::puts("PASS original relative tag reconciliation and ordered channel finalization");
