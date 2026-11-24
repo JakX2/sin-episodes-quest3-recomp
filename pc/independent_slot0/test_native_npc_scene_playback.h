@@ -1972,6 +1972,60 @@ inline void check_named_scene_precache(const NamedScenePrecacheApi& api){
     absent.expect({1,2,3,12});
 }
 
+struct ChoreographyActorParserFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char parsed[0x220]{},actor[0x118]{},channels[2][0x9c]{};
+    std::uint32_t actor_word=0,channel_words[2]{},links[2]{};
+    const char* tokens[32]={"actor","Jessica","{","faceposermodel","models/jessica.mdl","active","-1","channel","Voice","{","active","0","event","}","channel","Face","{","unknown","}","}","event","fps","30",nullptr};
+    const char* current="";unsigned index=0,allocations=0,appends=0,linked=0,event_calls=0,diagnostics=0,finalizes=0;
+    bool fail_link=false;
+    ChoreographyActorParserBindings b{};
+    static ChoreographyActorParserFixture& self(void* p){return *static_cast<ChoreographyActorParserFixture*>(p);}
+    ChoreographyActorParserFixture(){
+        b.context=this;b.text.context=this;b.text.tokenizer_word=0x1234;b.allocation.context=this;
+        b.text.next=[](void* p,unsigned cross,unsigned* more) noexcept -> int{
+            auto& f=self(p);assert(f.index<32);
+            assert(cross==(f.index==1||f.index==8||f.index==15?0u:1u));
+            f.current=f.tokens[f.index++];*more=f.current!=nullptr;if(!f.current)f.current="";return 1;};
+        b.text.token=[](void* p,const char** out) noexcept -> int{*out=self(p).current;return 1;};
+        b.text.block=[](void*,void*,ChoreographyTextBlock) noexcept -> int{assert(false);return 0;};
+        b.text.unexpected=[](void* p,const char* token) noexcept -> int{
+            auto& f=self(p);assert(!std::strcmp(token,"unknown"));++f.diagnostics;return 1;};
+        b.text.finalize=[](void* p,void* parsed,ChoreographyTextFinalize stage) noexcept -> int{
+            auto& f=self(p);assert(parsed==f.parsed&&static_cast<unsigned>(stage)==f.finalizes);++f.finalizes;return 1;};
+        b.allocation.allocate=[](void* p,unsigned size,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=self(p);assert(f.allocations<3&&size==(f.allocations?0x9cu:0x118u));
+            *out=f.allocations?f.channels[f.allocations-1]:f.actor;*bytes=size;++f.allocations;std::memset(*out,0xa5,size);return 1;};
+        b.allocation.release_unpublished=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        b.allocation.append_parsed=[](void* p,void* parsed,GeneratedSceneChild kind,void* child) noexcept -> int{
+            auto& f=self(p);assert(parsed==f.parsed);
+            if(!f.appends){assert(kind==GeneratedSceneChild::Actor&&child==f.actor);f.actor_word=F::ptr(child);F::put(parsed,0x14,F::ptr(&f.actor_word));F::put(parsed,0x18,1);F::put(parsed,0x20,1);}
+            else{assert(kind==GeneratedSceneChild::Channel&&child==f.channels[f.appends-1]);f.channel_words[f.appends-1]=F::ptr(child);F::put(parsed,0x28,F::ptr(f.channel_words));F::put(parsed,0x2c,2);F::put(parsed,0x34,f.appends);}
+            ++f.appends;return 1;};
+        b.append_channel=[](void* p,void* actor,void* channel) noexcept -> int{
+            auto& f=self(p);assert(actor==f.actor&&channel==f.channels[f.linked]&&!F::word(channel,0)&&!std::strcmp(f.current,"}"));
+            if(f.fail_link)return 0;
+            f.links[f.linked++]=F::ptr(channel);F::put(actor,0x100,F::ptr(f.links));F::put(actor,0x10c,f.linked);return 1;};
+        b.event=[](void* p,void* parsed,void* actor,void* channel) noexcept -> int{
+            auto& f=self(p);assert(parsed==f.parsed&&!std::strcmp(f.current,"event"));
+            if(!f.event_calls)assert(actor==f.actor&&channel==f.channels[0]&&!F::word(channel,0)&&!f.linked);
+            else assert(!actor&&!channel&&f.linked==2);
+            ++f.event_calls;return 1;};
+    }
+};
+inline void check_choreography_actor_parser(const ChoreographyActorParserApi& api){
+    using F=ScenePlaybackFixture;ChoreographyActorParserFixture f;
+    assert(api.parse(f.parsed,0x21f,"test.vcd",&f.b)==0&&!f.allocations);
+    assert(api.parse(f.parsed,sizeof(f.parsed),"test.vcd",&f.b)==1&&f.allocations==3&&f.appends==3&&f.linked==2&&f.event_calls==2&&f.diagnostics==1&&f.finalizes==3);
+    assert(!std::strcmp(reinterpret_cast<char*>(f.actor),"Jessica")&&!std::strcmp(reinterpret_cast<char*>(f.actor+0x80),"models/jessica.mdl")&&f.actor[0x114]);
+    assert(!std::strcmp(reinterpret_cast<char*>(f.channels[0]+4),"Voice")&&!f.channels[0][0x98]&&f.channels[1][0x98]);
+    assert(F::word(f.channels[0],0)==F::ptr(f.actor)&&F::word(f.channels[1],0)==F::ptr(f.actor)&&F::word(f.actor,0x10c)==2&&F::word(f.parsed,0x128)==30);
+    ChoreographyActorParserFixture fail;fail.fail_link=true;
+    assert(api.parse(fail.parsed,sizeof(fail.parsed),"test.vcd",&fail.b)==-1&&fail.appends==2&&!fail.linked&&!fail.finalizes);
+    ChoreographyActorParserFixture eof;eof.tokens[9]=nullptr;
+    assert(api.parse(eof.parsed,sizeof(eof.parsed),"test.vcd",&eof.b)==-1&&eof.appends==2&&!eof.linked&&!eof.finalizes);
+}
+
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};
