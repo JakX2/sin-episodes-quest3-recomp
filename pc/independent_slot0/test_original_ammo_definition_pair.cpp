@@ -751,6 +751,14 @@ int main(int argc,char** argv){
     assert(choreographyRamp&&!getChoreographyRamp(0,sizeof(tables::ChoreographyRampApi))&&!getChoreographyRamp(1,0));
     tables::test::check_choreography_ramp(*choreographyRamp);
     std::puts("PASS original event and scene ramp parsing sort and trim");
+    const auto getChoreographyScale=reinterpret_cast<tables::GetChoreographyScaleApi>(GetProcAddress(server,tables::choreography_scale_export));
+    const auto getPortableVcdCurveGrammar=reinterpret_cast<tables::GetPortableVcdCurveGrammarApi>(GetProcAddress(server,tables::portable_vcd_curve_grammar_export));
+    assert(getChoreographyScale&&getPortableVcdCurveGrammar&&!GetProcAddress(client,tables::choreography_scale_export)&&!GetProcAddress(client,tables::portable_vcd_curve_grammar_export));
+    const auto* choreographyScale=getChoreographyScale(1,sizeof(tables::ChoreographyScaleApi));
+    const auto* portableVcdCurveGrammar=getPortableVcdCurveGrammar(1,sizeof(tables::PortableVcdCurveGrammarApi));
+    assert(choreographyScale&&portableVcdCurveGrammar&&!getChoreographyScale(0,sizeof(tables::ChoreographyScaleApi))&&!getPortableVcdCurveGrammar(1,0));
+    tables::test::check_portable_curve_grammar(*portableVcdCurveGrammar,*choreographyScale);
+    std::puts("PASS integrated native event/scene ramps and scale grammar");
 
 
 

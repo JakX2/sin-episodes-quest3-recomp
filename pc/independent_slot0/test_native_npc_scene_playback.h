@@ -2311,6 +2311,92 @@ inline void check_choreography_ramp(const ChoreographyRampApi& api){
     f.set("{ 0.1");assert(api.block(f.event,sizeof(f.event),ChoreographyRampKind::Event,&f.b)==-1&&!F::word(f.event,0x1a8));
 }
 
+struct PortableCurveGrammarFixture:PortableVcdGrammarFixture {
+    alignas(4) unsigned char scale_rows[3][24]{},ramp_rows[2][12*8]{};
+    ChoreographyScaleSentinel sentinel{};
+    PortableVcdCurveGrammarBindings curves{};
+    unsigned interns=0,inserts=0,ramp_grows=0;
+    static PortableCurveGrammarFixture& get_curve(void* p){return *static_cast<PortableCurveGrammarFixture*>(p);}
+    PortableCurveGrammarFixture(){
+        curves.grammar=grammar;curves.grammar.root_block=nullptr;
+        curves.grammar.event_block=[](void*,void*,ChoreographyEventBlock,sin_port::vcd::Tokenizer*) noexcept -> int{assert(false);return 0;};
+        auto& g=curves.grammar.tags;g.context=this;
+        g.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=get_curve(p);
+            for(auto& row:f.ramp_rows)if(w==F::ptr(row)){*out=row;*n=sizeof(row);return 1;}
+            if(w==F::ptr(f.words)){*out=f.words;*n=sizeof(f.words);return 1;}
+            if(w==F::ptr(f.words+2)){*out=f.words+2;*n=4;return 1;}
+            if(w==F::ptr(f.event)){*out=f.event;*n=sizeof(f.event);return 1;}
+            for(auto& row:f.tag_rows)if(w==F::ptr(row)){*out=row;*n=sizeof(row);return 1;}return 0;};
+        g.grow=[](void* p,void* v,unsigned n,unsigned stride) noexcept -> int{
+            auto& f=get_curve(p);assert(n==1);
+            if(stride==12){
+                assert(v==f.event+0x19c||v==f.parsed+0x12c);
+                F::put(v,0,F::ptr(f.ramp_rows[v==f.event+0x19c?0:1]));F::put(v,4,8);++f.ramp_grows;return 1;
+            }
+            const auto off=static_cast<unsigned>(static_cast<unsigned char*>(v)-f.event);
+            assert(off>=0x2bc&&(off-0x2bc)%0x14==0);
+            const auto k=(off-0x2bc)/0x14;assert(k<4&&stride==(k?0x8c:0x88));
+            F::put(v,0,F::ptr(f.tag_rows[k]));F::put(v,4,4);++f.tag_grows;return 1;};
+        F::put(parsed,0x150,0xffffffffu);F::put(parsed,0x158,0xffffffffu);
+        auto& s=curves.scales;s.context=this;s.sentinel=&sentinel;
+        s.integer=[](void*,const char* token,int* out) noexcept -> int{*out=std::atoi(token);return 1;};
+        s.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=get_curve(p);if(w!=F::ptr(f.scale_rows))return 0;*out=f.scale_rows;*n=sizeof(f.scale_rows);return 1;};
+        s.intern=[](void* p,void* table,const char* key,std::uint16_t* out) noexcept -> int{
+            auto& f=get_curve(p);assert(table==f.parsed+0x164);++f.interns;
+            if(!std::strcmp(key,"RampTool"))*out=20;
+            else if(!std::strcmp(key,"CChoreoView"))*out=10;
+            else if(!std::strcmp(key,"GestureTool"))*out=30;
+            else return 0;return 1;};
+        s.insert=[](void* p,void* tree,std::uint16_t symbol,std::uint32_t* out) noexcept -> int{
+            auto& f=get_curve(p);assert(tree==f.parsed+0x140&&f.inserts<3);
+            const auto index=f.inserts++;auto* row=f.scale_rows[index];
+            std::memset(row,0xff,24);std::memcpy(row+0x10,&symbol,2);F::put(row,0x14,100);
+            F::put(tree,4,F::ptr(f.scale_rows));F::put(tree,8,3);F::put(tree,0x14,f.inserts);F::put(tree,0x1c,f.inserts);
+            if(!index)F::put(tree,0x10,0);
+            else F::put(f.scale_rows[0],symbol<20?0:4,index);
+            *out=index;return 1;};
+    }
+};
+inline void check_portable_curve_grammar(const PortableVcdCurveGrammarApi& api,const ChoreographyScaleApi& scales){
+    using F=ScenePlaybackFixture;PortableCurveGrammarFixture f;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Voice
+ {
+  event speak dialogue
+  {
+   time 0 2
+   param "test.sound"
+   tags { mark 0.5 }
+   event_ramp { 1.5 0.8 0.2 0.1 2.02 1 }
+  }
+ }
+}
+scene_ramp { 1 0.2 0 0.3 2.005 0.5 }
+scalesettings
+{
+ "RampTool" "0"
+ "CChoreoView" "42"
+ "GestureTool" "372"
+ "RampTool" "80"
+ "CChoreoView" "-2"
+}
+)VCD";
+    assert(api.parse(f.parsed,sizeof(f.parsed),"test.vcd",data,sizeof(data)-1,&f.curves)==1);
+    assert(f.allocs==3&&f.events==1&&f.channels==1&&f.finalized==3&&!f.root_blocks&&!f.event_blocks&&f.ramp_grows==2&&f.tag_grows==1);
+    assert(F::word(f.event,0x1a8)==2&&F::word(f.parsed,0x138)==3);
+    assert(F::word(f.ramp_rows[0],4)==0x3e4ccccdu&&F::word(f.ramp_rows[0],16)==0x3fc00000u);
+    assert(f.inserts==3&&f.interns==8&&F::word(f.scale_rows[0],0x14)==80&&F::word(f.scale_rows[1],0x14)==100&&F::word(f.scale_rows[2],0x14)==372);
+    assert(f.sentinel.flags==1&&f.sentinel.left==0xffffffffu&&f.sentinel.color==1);
+    std::uint32_t index=99;
+    assert(scales.find(f.parsed,sizeof(f.parsed),30,&f.curves.scales,&index)==1&&index==2);
+    assert(scales.find(f.parsed,sizeof(f.parsed),15,&f.curves.scales,&index)==1&&index==0xffffffffu);
+    F::put(f.scale_rows[1],4,1); // malformed cycle
+    assert(scales.find(f.parsed,sizeof(f.parsed),15,&f.curves.scales,&index)==-1);
+}
+
 struct SceneActorCacheFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char scene[0x550]{},parsed[0xa0]{},actor1[0x90]{},actor2[0x90]{};

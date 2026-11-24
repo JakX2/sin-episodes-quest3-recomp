@@ -5757,6 +5757,66 @@ int __cdecl choreography_ramp_block(void* object,unsigned bytes,ChoreographyRamp
     return -1;
 }
 const ChoreographyRampApi choreography_ramp_api{version,sizeof(ChoreographyRampApi),&choreography_ramp_block,&choreography_ramp_append,&choreography_ramp_finish};
+bool choreography_scale_ready(const ChoreographyScaleBindings* b) noexcept {
+    return b&&b->storage&&hologram_writable(b->sentinel,sizeof(ChoreographyScaleSentinel));
+}
+bool choreography_scale_row(void* parsed,std::uint32_t index,const ChoreographyScaleBindings& h,void*& row) noexcept {
+    const int high=hologram_read<int>(parsed,0x15c),capacity=hologram_read<int>(parsed,0x148);
+    if(high<0||capacity<high||index>=static_cast<unsigned>(high)||index>=0x100000)return false;
+    const auto word=hologram_read<std::uint32_t>(parsed,0x144);
+    void* rows=nullptr;unsigned n=0;const auto need=(index+1)*24;
+    if(!word||!h.storage(h.context,word,&rows,&n)||n<need||!hologram_writable(rows,need))return false;
+    row=static_cast<unsigned char*>(rows)+index*24;return true;
+}
+int __cdecl choreography_scale_find(void* parsed,unsigned bytes,std::uint16_t symbol,const ChoreographyScaleBindings* b,std::uint32_t* out) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_scale_ready(b)||!hologram_writable(out,4))return 0;
+    const auto h=*b;auto index=hologram_read<std::uint32_t>(parsed,0x150);
+    // 22114c70 calls comparator 22112550 (unsigned 16-bit symbol order).
+    // Reproduce lazy shared sentinel on descent, not on equal/root absent.
+    for(unsigned depth=0;index!=0xffffffffu;++depth){
+        if(depth>=128)return -1;
+        void* row=nullptr;if(!choreography_scale_row(parsed,index,h,row))return -1;
+        const auto key=hologram_read<std::uint16_t>(row,0x10);
+        if(symbol==key)break;
+        if(!(h.sentinel->flags&1)){
+            h.sentinel->flags|=1;h.sentinel->left=h.sentinel->right=h.sentinel->parent=0xffffffffu;h.sentinel->color=1;
+        }
+        index=hologram_read<std::uint32_t>(row,symbol<key?0:4);
+    }
+    *out=index;return 1;
+}
+int __cdecl choreography_scale_block(void* parsed,unsigned bytes,const ChoreographyScaleBindings* b) noexcept {
+    if(bytes<0x220||!hologram_writable(parsed,0x220)||!choreography_scale_ready(b)||!b->integer||!b->intern||!b->insert||
+       !b->text.next||!b->text.token||!b->text.unexpected)return 0;
+    const auto h=*b;char token[1024]{};
+    auto next=[&](unsigned cross){return choreography_actor_next(h.text,cross,token);};
+    if(!next(1))return -1;
+    if(!choreography_text_equal(token,"{")&&!h.text.unexpected(h.text.context,token))return -1;
+    for(unsigned i=0;i<4096;++i){
+        if(!next(1)||!*token)return -1;
+        if(choreography_text_equal(token,"}"))return 1;
+        char key[256]{};
+        if(!choreography_text_copy(key,sizeof(key),token)||!next(0))return -1;
+        int value=0;if(!h.integer(h.context,token,&value))return -1;
+        if(value<=0)value=100;
+        auto* symbol_table=static_cast<unsigned char*>(parsed)+0x164;
+        std::uint16_t symbol=0xffff;
+        if(!h.intern(h.context,symbol_table,key,&symbol)||symbol==0xffff)return -1;
+        std::uint32_t index=0xffffffffu;
+        if(choreography_scale_find(parsed,bytes,symbol,&h,&index)!=1)return -1;
+        if(index==0xffffffffu){
+            // Original interns a second time on insertion path.
+            std::uint16_t repeated=0xffff;
+            if(!h.intern(h.context,symbol_table,key,&repeated)||repeated!=symbol||
+               !h.insert(h.context,static_cast<unsigned char*>(parsed)+0x140,symbol,&index))return -1;
+        }
+        void* row=nullptr;
+        if(!choreography_scale_row(parsed,index,h,row)||hologram_read<std::uint16_t>(row,0x10)!=symbol)return -1;
+        hologram_write(row,0x14,value);
+    }
+    return -1;
+}
+const ChoreographyScaleApi choreography_scale_api{version,sizeof(ChoreographyScaleApi),&choreography_scale_find,&choreography_scale_block};
 using PortableTokenizer=sin_port::vcd::Tokenizer;
 int __cdecl portable_vcd_begin(void* p,const char* data,unsigned bytes) noexcept {
     if(!hologram_writable(p,sizeof(PortableTokenizer))||!data||
@@ -5789,13 +5849,20 @@ struct PortableGrammarState {
     PortableVcdGrammarBindings source{};
     ChoreographyEventParserBindings events{};
     ChoreographyTimingTagBindings tags{};
-    explicit PortableGrammarState(const PortableVcdGrammarBindings& b) noexcept:source(b),events(b.events),tags(b.tags){
+    ChoreographyScaleBindings scales{};bool native_curves=false;
+    explicit PortableGrammarState(const PortableVcdGrammarBindings& b,const ChoreographyScaleBindings* s=nullptr) noexcept:source(b),events(b.events),tags(b.tags),scales(s?*s:ChoreographyScaleBindings{}),native_curves(s!=nullptr){
         auto& text=events.actors.text;text.context=this;events.context=this;
         text.begin=[](void* p,const char* data,unsigned n) noexcept -> int{return portable_vcd_begin(&self(p).cursor,data,n);};
         text.next=[](void* p,unsigned cross,unsigned* more) noexcept -> int{return portable_vcd_next(&self(p).cursor,cross,more);};
         text.token=[](void* p,const char** token) noexcept -> int{return portable_vcd_token(&self(p).cursor,token);};
         text.block=[](void* p,void* parsed,ChoreographyTextBlock block) noexcept -> int{
-            auto& s=self(p);return s.source.root_block(s.source.context,parsed,block,&s.cursor);};
+            auto& s=self(p);
+            if(s.native_curves){
+                if(block==ChoreographyTextBlock::SceneRamp)return choreography_ramp_block(parsed,0x220,ChoreographyRampKind::Scene,&s.tags)==1;
+                if(block==ChoreographyTextBlock::ScaleSettings)return choreography_scale_block(parsed,0x220,&s.scales)==1;
+                return 0;
+            }
+            return s.source.root_block(s.source.context,parsed,block,&s.cursor);};
         text.unexpected=[](void* p,const char* token) noexcept -> int{
             auto& s=self(p);const auto& h=s.source.events.actors.text;return h.unexpected(h.context,token);};
         text.finalize=[](void* p,void* parsed,ChoreographyTextFinalize stage) noexcept -> int{
@@ -5813,8 +5880,11 @@ struct PortableGrammarState {
             auto& s=self(p);
             if(block==ChoreographyEventBlock::Tags||block==ChoreographyEventBlock::AbsoluteTags||block==ChoreographyEventBlock::FlexTimingTags)
                 return choreography_tag_block(event,0x3c0,block,&s.tags)==1;
+            if(s.native_curves&&block==ChoreographyEventBlock::EventRamp)
+                return choreography_ramp_block(event,0x3c0,ChoreographyRampKind::Event,&s.tags)==1;
             return s.source.event_block(s.source.context,event,block,&s.cursor);};
         tags.context=this;tags.text=text;tags.number=events.number;
+        if(native_curves)scales.text=text;
         tags.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
             const auto& h=self(p).source.tags;return h.storage(h.context,word,out,bytes);};
         tags.grow=[](void* p,void* v,unsigned additional,unsigned stride) noexcept -> int{
@@ -5822,8 +5892,8 @@ struct PortableGrammarState {
     }
     static PortableGrammarState& self(void* p) noexcept{return *static_cast<PortableGrammarState*>(p);}
 };
-bool portable_grammar_ready(const PortableVcdGrammarBindings* b) noexcept {
-    if(!b||!b->root_block||!b->event_block||!choreography_tags_ready(&b->tags))return false;
+bool portable_grammar_ready(const PortableVcdGrammarBindings* b,bool native_curves=false) noexcept {
+    if(!b||(!native_curves&&!b->root_block)||!b->event_block||!choreography_tags_ready(&b->tags))return false;
     const auto& h=b->events;const auto& text=h.actors.text;
     return text.tokenizer_word&&text.unexpected&&text.finalize&&h.number&&h.end_changed&&h.append_event&&h.legacy_ramp;
 }
@@ -5844,6 +5914,26 @@ int __cdecl portable_grammar_scene(void* npc,const char* name,float delay,const 
     return native_named_playback(npc,name,delay,&h,out);
 }
 const PortableVcdGrammarApi portable_vcd_grammar_api{version,sizeof(PortableVcdGrammarApi),&portable_grammar_parse,&portable_grammar_load,&portable_grammar_scene};
+bool portable_curve_grammar_ready(const PortableVcdCurveGrammarBindings* b) noexcept {
+    return b&&portable_grammar_ready(&b->grammar,true)&&choreography_scale_ready(&b->scales)&&
+        b->scales.integer&&b->scales.intern&&b->scales.insert;
+}
+int __cdecl portable_curve_parse(void* parsed,unsigned extent,const char* name,const char* data,unsigned bytes,const PortableVcdCurveGrammarBindings* b) noexcept {
+    if(!portable_curve_grammar_ready(b))return 0;
+    PortableGrammarState s(b->grammar,&b->scales);
+    if(!choreography_event_parser_ready(&s.events)||!portable_vcd_begin(&s.cursor,data,bytes))return 0;
+    return choreography_text_parse_impl(parsed,extent,name,&s.events.actors.text,&s.events.actors,&s.events);
+}
+int __cdecl portable_curve_load(void* scene,unsigned extent,const char* name,const NamedSceneLoadBindings* load,const PortableVcdCurveGrammarBindings* b,std::uint32_t* out) noexcept {
+    if(!portable_curve_grammar_ready(b))return 0;
+    PortableGrammarState s(b->grammar,&b->scales);return choreography_event_load(scene,extent,name,load,&s.events,out);
+}
+int __cdecl portable_curve_scene(void* npc,const char* name,float delay,const NativeNamedPlaybackBindings* playback,const PortableVcdCurveGrammarBindings* b,float* out) noexcept {
+    if(!playback||!portable_curve_grammar_ready(b))return 0;
+    PortableGrammarState s(b->grammar,&b->scales);auto h=*playback;h.events=&s.events;
+    return native_named_playback(npc,name,delay,&h,out);
+}
+const PortableVcdCurveGrammarApi portable_vcd_curve_grammar_api{version,sizeof(PortableVcdCurveGrammarApi),&portable_curve_parse,&portable_curve_load,&portable_curve_scene};
 const NamedScenePrecacheApi named_scene_precache_api{version,sizeof(NamedScenePrecacheApi),&named_scene_precache_events,&named_scene_precache_spawn};
 bool scene_finish_ready(const SceneFinishBindings* b) noexcept {
     return b&&b->entry&&b->resolve&&b->notify&&b->refresh&&b->output&&b->reset.events.event&&
@@ -11185,6 +11275,18 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyScaleApi=_SiN_GetChoreographyScaleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyScaleApi* __cdecl
+SiN_GetChoreographyScaleApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyScaleApi)?&choreography_scale_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPortableVcdCurveGrammarApi=_SiN_GetPortableVcdCurveGrammarApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableVcdCurveGrammarApi* __cdecl
+SiN_GetPortableVcdCurveGrammarApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PortableVcdCurveGrammarApi)?&portable_vcd_curve_grammar_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetChoreographyRampApi=_SiN_GetChoreographyRampApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyRampApi* __cdecl
 SiN_GetChoreographyRampApi(std::uint32_t version,std::uint32_t size) noexcept {

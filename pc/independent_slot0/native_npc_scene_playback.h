@@ -985,6 +985,40 @@ struct ChoreographyRampApi {
     int (__cdecl *finish)(void*,unsigned,ChoreographyRampKind,const ChoreographyTimingTagBindings*) noexcept;
 };
 using GetChoreographyRampApi=const ChoreographyRampApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_scale_export[]="SiN_GetChoreographyScaleApi";
+// Original process-global 225558b8..225558cb sentinel, distinct from symbols.
+struct ChoreographyScaleSentinel {std::uint32_t left,right,parent,color,flags;};
+struct ChoreographyScaleBindings {
+    void* context;
+    ChoreographyTextParserBindings text;
+    ChoreographyScaleSentinel* sentinel;
+    int (__cdecl *integer)(void*,const char*,int*) noexcept; // imported Q_atoi
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original symbol intern (2228f7a0) for parsed+164.
+    int (__cdecl *intern)(void*,void*,const char*,std::uint16_t*) noexcept;
+    // Original tree insertion/rebalance for parsed+140. Return live index.
+    int (__cdecl *insert)(void*,void*,std::uint16_t,std::uint32_t*) noexcept;
+};
+struct ChoreographyScaleApi {
+    std::uint32_t version,size;
+    int (__cdecl *find)(void*,unsigned,std::uint16_t,const ChoreographyScaleBindings*,std::uint32_t*) noexcept;
+    int (__cdecl *block)(void*,unsigned,const ChoreographyScaleBindings*) noexcept;
+};
+using GetChoreographyScaleApi=const ChoreographyScaleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char portable_vcd_curve_grammar_export[]="SiN_GetPortableVcdCurveGrammarApi";
+struct PortableVcdCurveGrammarBindings {
+    PortableVcdGrammarBindings grammar;
+    ChoreographyScaleBindings scales;
+};
+struct PortableVcdCurveGrammarApi {
+    std::uint32_t version,size;
+    // Native ramps, scale block/lookup, tags and scalar grammar. Only
+    // flexanimations remains a hosted block. Root block callback unused.
+    int (__cdecl *parse)(void*,unsigned,const char*,const char*,unsigned,const PortableVcdCurveGrammarBindings*) noexcept;
+    int (__cdecl *load)(void*,unsigned,const char*,const NamedSceneLoadBindings*,const PortableVcdCurveGrammarBindings*,std::uint32_t*) noexcept;
+    int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdCurveGrammarBindings*,float*) noexcept;
+};
+using GetPortableVcdCurveGrammarApi=const PortableVcdCurveGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
