@@ -15,6 +15,7 @@
 #include "test_native_client_phoneme_emphasis.h"
 #include "test_native_client_phoneme_source.h"
 #include "test_native_client_vfe.h"
+#include "test_native_client_vfe_phoneme.h"
 #include "test_native_count_interrogation.h"
 #include "test_native_character_response.h"
 #include "test_native_action_monitor.h"
@@ -97,6 +98,15 @@ int main(int argc,char** argv){
         assert(api&&!get(0,sizeof(ft::ClientVfeApi))&&!get(1,0));
         ft::test::check_client_vfe(*api);
         std::puts("PASS client VFE setting lookup and override resolution");
+    }
+    {
+        namespace ft=sin_port::native_weapon_tables;
+        const auto get=reinterpret_cast<ft::GetClientVfePhonemeApi>(GetProcAddress(client,ft::client_vfe_phoneme_export));
+        assert(get&&!GetProcAddress(server,ft::client_vfe_phoneme_export));
+        const auto* api=get(1,sizeof(ft::ClientVfePhonemeApi));
+        assert(api&&!get(0,sizeof(ft::ClientVfePhonemeApi))&&!get(1,0));
+        ft::test::check_client_vfe_phoneme(*api);
+        std::puts("PASS client raw VFE phoneme source composition");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));
     const auto gs=reinterpret_cast<d::GetApi>(GetProcAddress(server,d::export_name));
