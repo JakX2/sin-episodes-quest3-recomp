@@ -12,6 +12,9 @@
 #include <limits>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <string>
+#include <iterator>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -1006,8 +1009,60 @@ static void test_native_npc_rng(HMODULE lib,const a::Api* api){
     assert(api->end_campaign());
 }
 #endif
+static void test_attack_spread(const a::AttackSpreadApi* rules,const a::Api* api,const char* owner_file){
+    assert(rules&&rules->version==1&&rules->size==sizeof(a::AttackSpreadApi));
+    assert(rules->clear());
+    a::AttackSpreadResult out{};
+    assert(!rules->query("test_npc","rifle","player",&out));
+    const char fixture[]=R"KV("AttackSpreadRules" {
+        "class_names" {"test_npc" "specific" "*" "default"}
+        "specific" {
+            "weapon_class_names" {"rifle" "r" "*" "w"}
+            "r" {"target_class_names" {"player" "p" "*" "other"} "p" "0.2" "other" "0.04"}
+            "w" {"target_class_names" {"*" "other"} "other" "0.3"}
+        }
+        "default" {"weapon_class_names" {"*" "w"}
+            "w" {"target_class_names" {"*" "other"} "other" "0.1"}}
+    })KV";
+    assert(rules->load_text(fixture,sizeof(fixture)-1));
+    assert(api->begin_campaign(1));
+    auto check=[&](const char* npc,const char* weapon,const char* target,float base,float factor,bool fallback){
+        assert(rules->query(npc,weapon,target,&out));
+        assert(std::fabs(out.base-base)<0.000001f&&std::fabs(out.x-base*factor)<0.000001f);
+        assert(out.x==out.y&&out.y==out.z&&out.used_fallback==static_cast<unsigned>(fallback));
+    };
+    check("TEST_NPC","RIFLE","player",0.2f,1.f,false);
+    check("test_npc","rifle","other",0.04f,1.f,false);
+    check("test_npc","pistol","player",0.3f,1.f,false);
+    check("unknown","rifle","player",0.1f,1.f,false);
+    check(nullptr,nullptr,nullptr,0.1f,1.f,false);
+    assert(api->set_skill(2));check("test_npc","rifle","player",0.2f,0.75f,false);
+    assert(api->set_skill(3));check("test_npc","rifle","player",0.2f,0.5f,false);
+    const char broken[]="AttackSpreadRules { class_names { a missing } }";
+    assert(!rules->load_text(broken,sizeof(broken)-1));
+    assert(!rules->load_text(fixture,sizeof(fixture)));
+    assert(!rules->load_text(nullptr,3));
+    check("test_npc","rifle","player",0.2f,0.5f,false);
+    assert(rules->clear());check("test_npc","rifle","player",0.13053f,0.5f,true);
+    if(owner_file){
+        std::ifstream in(owner_file,std::ios::binary);
+        assert(in);
+        std::string data(256*1024+1,'\0');
+        in.read(&data[0],static_cast<std::streamsize>(data.size()));
+        assert(!in.bad()&&in.gcount()>0&&in.gcount()<=256*1024);
+        assert(rules->load_text(data.data(),static_cast<std::uint32_t>(in.gcount())));
+        check("npc_druglab_grunt","weapon_assault_rifle","player",0.13053f,0.5f,false);
+        check("npc_druglab_grunt_assault_rifle","weapon_assault_rifle","player",0.08716f,0.5f,false);
+        check("npc_druglab_grunt_elite","weapon_assault_rifle","player",0.11320f,0.5f,false);
+        check("npc_druglab_grunt","weapon_assault_rifle","npc_jessica",0.04362f,0.5f,false);
+        check("player","weapon_magnum","npc_druglab_grunt",0.f,0.5f,false);
+        check("unknown","weapon_magnum","player",0.13053f,0.5f,true);
+        std::puts("PASS owner combat script spread lookup");
+    }
+    assert(api->end_campaign()&&rules->clear());
+}
 int main(int argc,char** argv){
-    assert(argc==2);
+    assert(argc==2||argc==3);
 #ifdef _WIN32
     auto lib=LoadLibraryA(argv[1]);
     assert(lib);
@@ -1069,6 +1124,13 @@ int main(int argc,char** argv){
 #endif
     assert(getNpc&&!getNpc(0,sizeof(a::NpcRulesApi))&&!getNpc(1,0));
     test_npc_rules(getNpc(a::npc_rules_version,sizeof(a::NpcRulesApi)),api);
+#ifdef _WIN32
+    auto getSpread=reinterpret_cast<a::GetAttackSpreadApi>(GetProcAddress(lib,a::attack_spread_export_name));
+#else
+    auto getSpread=reinterpret_cast<a::GetAttackSpreadApi>(dlsym(lib,a::attack_spread_export_name));
+#endif
+    assert(getSpread&&!getSpread(0,sizeof(a::AttackSpreadApi))&&!getSpread(1,0));
+    test_attack_spread(getSpread(a::attack_spread_version,sizeof(a::AttackSpreadApi)),api,argc==3?argv[2]:nullptr);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);
