@@ -3,6 +3,7 @@
 #include "server_native_map_host.h"
 #include <vector>
 #include <utility>
+#include <algorithm>
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -112,13 +113,14 @@ public:
     std::vector<std::string> events;
     std::vector<std::pair<std::string,std::string>> base_keys;
     std::uint32_t next=1;
-    bool fail_remove=false;
+    bool fail_remove=false,allow_triggers=false;
     bool is_live(EntityRef e) const override {
         const auto it=live.find(e.index);
         return it!=live.end()&&it->second==e;
     }
     bool create_entity(std::string_view classname,EntityRef& e) override {
-        if(classname!="worldspawn"&&classname!="env_global"&&classname!="info_challenge")return false;
+        if(classname!="worldspawn"&&classname!="env_global"&&classname!="info_challenge"&&
+           !(allow_triggers&&(classname=="trigger_dynamic_difficulty"||classname=="trigger_secret")))return false;
         e={next++,1};
         live.emplace(e.index,e);
         events.push_back("create:"+std::string(classname));
@@ -312,6 +314,137 @@ static void test_native_triggers(const a::MapEntityApi* m,const a::Api* api,cons
     assert(api->get_state(&state)&&state.trigger_count==2&&state.completed&&state.skill==3);
     assert(m->end_level(epoch)&&api->end_campaign());
     assert(!tr->touch(end,f.player,&touch,&host,&f,&report));
+}
+
+
+struct TriggerBspFixture final:sin_port::map_host::ITriggerShellState {
+    BspShellHost& shell;
+    std::uint32_t epoch;
+    const a::Api* api;
+    const a::MapEntityApi* map;
+    EntityRef player{99,3},grunt{100,4};
+    bool snapshots=true,remove_ok=false,suppress=false;
+    int bases=0,warnings=0,specials=0;
+    std::vector<int> descriptors;
+    std::vector<std::string> names;
+    std::vector<EntityRef> pending;
+    TriggerBspFixture(BspShellHost& s,std::uint32_t ep,const a::Api* a_,const a::MapEntityApi* m)
+        :shell(s),epoch(ep),api(a_),map(m){}
+    bool observe_spawn(EntityRef e,a::NativeTriggerSpawn& out) const override {
+        if(!snapshots||!shell.is_live(e))return false;
+        // Deliberately independent of the map's textual spawnflags key.
+        out={suppress?1u:0u,e.index==3?8u:0u,e.index==2?0x400u:0u};
+        return true;
+    }
+    bool observe_touch(EntityRef e,a::NativeTriggerTouch& out) const override {
+        if(!snapshots||!shell.is_live(e))return false;
+        out={4.f,5.f,6.f,e.index==2?0x800u:0u};return true;
+    }
+    static TriggerBspFixture& self(void* c){return *static_cast<TriggerBspFixture*>(c);}
+    static EntityRef entity(a::MapEntityRef e){return {e.index,e.generation};}
+    static int SIN_FIXED_CALL live(void* c,a::MapEntityRef e){
+        auto& f=self(c);const auto id=entity(e);
+        return e.epoch==f.epoch&&(f.shell.is_live(id)||id==f.player||id==f.grunt);
+    }
+    static int SIN_FIXED_CALL is_player(void* c,a::MapEntityRef e){return live(c,e)&&entity(e)==self(c).player;}
+    static int SIN_FIXED_CALL base(void* c,a::MapEntityRef e){
+        auto& f=self(c);assert(f.shell.is_live(entity(e)));++f.bases;
+        f.shell.events.push_back("trigger_base:"+std::to_string(e.index));return 1;
+    }
+    static void SIN_FIXED_CALL warn(void* c,const char* text){
+        assert(std::strcmp(text,"DD Trigger with don't destroy set\n")==0);++self(c).warnings;
+    }
+    static int SIN_FIXED_CALL owner(void*){return 99;}
+    static int SIN_FIXED_CALL special(void* c,a::MapEntityRef e){
+        assert(e.index==2);++self(c).specials;return 1;
+    }
+    static int SIN_FIXED_CALL publish(void* c,a::MapEntityRef e,const a::NativeTriggerEvent* event){
+        auto& f=self(c);assert(event&&f.shell.is_live(entity(e)));
+        f.descriptors.push_back(event->descriptor);f.names.emplace_back(event->name);
+        if(e.index==2){
+            assert(event->kind==a::TriggerDynamicEvent&&event->owner==99&&event->advisor==-1&&
+                event->decision==17&&event->value==12.5f&&event->x==4.f&&event->y==5.f&&event->z==6.f);
+        }else assert(event->kind==a::TriggerGameEvent&&event->owner==-1);
+        assert(!f.map->remove(e)&&!f.api->set_skill(1));
+        return 1;
+    }
+    static int SIN_FIXED_CALL queue(void* c,a::MapEntityRef e){
+        auto& f=self(c);assert(f.shell.is_live(entity(e)));
+        if(!f.remove_ok)return 0;
+        f.pending.push_back(entity(e));return 1;
+    }
+    a::NativeTriggerHost callbacks() const {
+        return {1,sizeof(a::NativeTriggerHost),&live,&is_player,&base,&warn,&owner,&special,&publish,&queue};
+    }
+};
+static void test_trigger_bsp_host(const a::MapEntityApi* m,const a::Api* api,const a::CampaignTriggerApi* tr){
+    assert(api->begin_campaign(3));
+    const auto epoch=m->begin_level("trigger_bsp");
+    assert(epoch);
+    BspShellHost shell;shell.allow_triggers=true;
+    TriggerBspFixture fixture(shell,epoch,api,m);
+    const auto callbacks=fixture.callbacks();
+    sin_port::map_host::NativeBehaviorHost host(shell,*m,epoch,*tr,fixture,callbacks,&fixture);
+    sm::SourceMapRuntime runtime(host);
+    const auto bsp=make_native_bsp(R"KV(
+{"classname" "worldspawn"}
+{"classname" "trigger_dynamic_difficulty" "targetname" "final_gate" "EstimatedTime" "12.5"
+ "EstimatedDifficulty" "17" "EndOfGame" "257" "spawnflags" "1"}
+{"classname" "trigger_secret" "targetname" "secret_room" "spawnflags" "0"}
+)KV");
+    const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
+    assert(loaded.ok()&&loaded.entities_created==3&&loaded.entities_spawned==3&&loaded.entities_activated==3);
+    assert(loaded.key_values_applied==7&&shell.base_keys.size()==7);
+    assert(shell.base_keys[0].first=="targetname"&&shell.base_keys[4].first=="spawnflags");
+    assert(fixture.bases==2&&fixture.warnings==1&&host.attached_count()==2&&m->count(epoch)==2);
+    assert(std::count(shell.events.begin(),shell.events.end(),"spawn:1")==1);
+    assert(std::count(shell.events.begin(),shell.events.end(),"spawn:2")==0);
+    assert(std::count(shell.events.begin(),shell.events.end(),"spawn:3")==0);
+    assert(fixture.descriptors==std::vector<int>{11}&&fixture.names[0]=="secret_room");
+    const auto dynamic=runtime.entities()[1],secret=runtime.entities()[2];
+    a::NativeTriggerReport report{};
+    fixture.snapshots=false;
+    assert(!host.touch(dynamic,fixture.player,report));
+    fixture.snapshots=true;
+    assert(host.touch(dynamic,fixture.grunt,report)&&report.code==a::TriggerNonPlayer);
+    assert(host.touch(dynamic,fixture.player,report)&&report.code==a::TriggerRemovalPending);
+    assert(report.manager_signaled&&report.event_published&&!report.removal_queued&&fixture.specials==1);
+    a::State state{};
+    assert(api->get_state(&state)&&state.trigger_count==1&&state.completed&&state.skill==3);
+    assert(!host.notify_deleted(dynamic));
+    fixture.remove_ok=true;
+    assert(host.retry_remove(dynamic,report)&&report.code==a::TriggerHandled&&report.removal_queued);
+    assert(host.touch(dynamic,fixture.player,report)&&report.code==a::TriggerAlreadyConsumed);
+    assert(host.touch(secret,fixture.player,report)&&report.code==a::TriggerHandled&&report.removal_queued);
+    assert((fixture.descriptors==std::vector<int>{11,0,12}));
+    assert(fixture.names[1]=="final_gate"&&fixture.names[2]=="secret_room");
+    assert(fixture.pending.size()==2);
+    for(auto e:fixture.pending){assert(shell.remove_entity(e));assert(host.notify_deleted(e));}
+    assert(host.notify_deleted(dynamic)&&!host.touch(dynamic,fixture.player,report));
+    assert(host.attached_count()==0&&m->count(epoch)==0);
+    assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded&&shell.live.empty());
+    assert(m->end_level(epoch)&&api->end_campaign());
+    // Absence of trigger services is not silently interpreted as a working
+    // SiN entity factory. A failed snapshot must roll back native attachment.
+    assert(api->begin_campaign(2));
+    const auto ep2=m->begin_level("trigger_bsp_failure");
+    assert(ep2);
+    BspShellHost shell2;shell2.allow_triggers=true;
+    const auto one=make_native_bsp(R"KV({"classname" "trigger_secret"})KV");
+    sin_port::map_host::NativeBehaviorHost noServices(shell2,*m,ep2);
+    sm::SourceMapRuntime rejected(noServices);
+    assert(rejected.load_bsp(one.data(),one.size()).code==sm::SourceMapLoadCode::HostCreateFailed);
+    assert(shell2.live.empty()&&m->count(ep2)==0);
+    TriggerBspFixture bad(shell2,ep2,api,m);bad.snapshots=false;
+    const auto cb2=bad.callbacks();
+    sin_port::map_host::NativeBehaviorHost badHost(shell2,*m,ep2,*tr,bad,cb2,&bad);
+    sm::SourceMapRuntime badRuntime(badHost);
+    assert(badRuntime.load_bsp(one.data(),one.size()).code==sm::SourceMapLoadCode::HostSpawnFailed);
+    assert(shell2.live.empty()&&badHost.attached_count()==0&&m->count(ep2)==0&&bad.bases==0);
+    bad.snapshots=true;bad.suppress=true;bad.remove_ok=true;
+    assert(badRuntime.load_bsp(one.data(),one.size()).code==sm::SourceMapLoadCode::HostSpawnFailed);
+    assert(shell2.live.empty()&&badHost.attached_count()==0&&m->count(ep2)==0&&bad.bases==0);
+    assert(m->end_level(ep2)&&api->end_campaign());
 }
 
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
@@ -611,7 +744,9 @@ int main(int argc,char** argv){
     auto getTriggers=reinterpret_cast<a::GetCampaignTriggerApi>(dlsym(lib,a::trigger_export_name));
 #endif
     assert(getTriggers&&!getTriggers(0,sizeof(a::CampaignTriggerApi))&&!getTriggers(1,0));
-    test_native_triggers(map,api,getTriggers(a::trigger_version,sizeof(a::CampaignTriggerApi)));
+    const auto* triggers=getTriggers(a::trigger_version,sizeof(a::CampaignTriggerApi));
+    test_native_triggers(map,api,triggers);
+    test_trigger_bsp_host(map,api,triggers);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);
