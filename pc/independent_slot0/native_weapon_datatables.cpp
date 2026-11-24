@@ -8,6 +8,14 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+template<unsigned N> bool prop_key_read(const char* source,char (&dest)[N]) noexcept {
+    if(!source)return false;
+    for(unsigned i=0;i<N;++i){
+        if(!sin_independent::vgui_layout::Readable(source+i,1))return false;
+        if(!(dest[i]=source[i]))return true;
+    }
+    return false;
+}
 bool hologram_writable(void* object,unsigned bytes) noexcept {
     if(!object||reinterpret_cast<std::uintptr_t>(object)%4||
        !sin_independent::vgui_layout::Readable(object,bytes))return false;
@@ -1453,6 +1461,71 @@ int __cdecl keypad_ack(HologramControl* ctrl) noexcept {
     ctrl->blocked=0;return 1;
 }
 const KeypadServerApi keypad_behavior{version,sizeof(KeypadServerApi),&keypad_enable,&keypad_event,&keypad_ack};
+
+bool prop_key_valid(const HologramControl* ctrl) noexcept {
+    return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=0x41c&&hologram_writable(ctrl->object,0x41c);
+}
+int prop_key_finish(HologramControl* ctrl,bool ok) noexcept {
+    ctrl->busy=0;if(!ok){ctrl->blocked=1;return -1;}return 1;
+}
+int __cdecl prop_key_enable(HologramControl* ctrl,const PropKeypadServerBindings* b,unsigned enabled) noexcept {
+    if(!prop_key_valid(ctrl)||!b||!b->dirty||enabled>1)return 0;
+    const auto value=static_cast<unsigned char>(1-enabled);
+    if(hologram_read<unsigned char>(ctrl->object,0x3c8)==value)return 1;
+    ctrl->busy=1;
+    if(!b->dirty(b->context,ctrl->object,0x3c8))return prop_key_finish(ctrl,false);
+    hologram_write(ctrl->object,0x3c8,value);return prop_key_finish(ctrl,true);
+}
+bool prop_key_output(HologramControl* ctrl,const PropKeypadServerBindings& host) noexcept {
+    auto* text=static_cast<char*>(ctrl->object)+0x3c9;
+    return host.output(host.context,ctrl->object,0x3ec,*text?text:nullptr,ctrl->object,ctrl->object,0)!=0;
+}
+int __cdecl prop_key_set(HologramControl* ctrl,const PropKeypadServerBindings* b,const char* value) noexcept {
+    if(!prop_key_valid(ctrl)||!b||!b->dirty||!b->output)return 0;
+    // Q_strncpy(...,31): at most 30 chars plus NUL.
+    char text[31]{};
+    if(value)for(unsigned i=0;i<30;++i){
+        if(!sin_independent::vgui_layout::Readable(value+i,1))return 0;
+        if(!(text[i]=value[i]))break;
+    }
+    ctrl->busy=1;const auto host=*b;
+    if(!host.dirty(host.context,ctrl->object,0x3c9))return prop_key_finish(ctrl,false);
+    std::memcpy(static_cast<char*>(ctrl->object)+0x3c9,text,std::strlen(text)+1);
+    return prop_key_finish(ctrl,prop_key_output(ctrl,host));
+}
+int __cdecl prop_key_event(HologramControl* ctrl,const PropKeypadServerBindings* b,const char* name,void* event) noexcept {
+    if(!prop_key_valid(ctrl)||!b||!event||!b->dirty||!b->entity_index||!b->event_index||
+       !b->event_command||!b->output||!b->sound||!b->base_event)return 0;
+    char event_name[64]{};
+    if(!prop_key_read(name,event_name))return 0;
+    ctrl->busy=1;const auto host=*b;
+    if(std::strcmp(event_name,"prop_keypad_input"))
+        return prop_key_finish(ctrl,host.base_event(host.context,ctrl->object,event)!=0);
+    int index=0,received=0;
+    if(!host.entity_index(host.context,ctrl->object,&index)||
+       !host.event_index(host.context,event,&received))return prop_key_finish(ctrl,false);
+    if(index!=received)return prop_key_finish(ctrl,true);
+    char command[256]{};
+    if(!host.event_command(host.context,event,command,sizeof(command))||
+       !std::memchr(command,0,sizeof(command)))return prop_key_finish(ctrl,false);
+    auto* text=static_cast<char*>(ctrl->object)+0x3c9;
+    const auto* end=static_cast<const char*>(std::memchr(text,0,32));
+    if(!end)return prop_key_finish(ctrl,false);
+    const auto length=static_cast<unsigned>(end-text);
+    // Q_strncat(...,32,1): at most one character; dirty/output/sound
+    // still execute for a full buffer or an empty command.
+    if(!host.dirty(host.context,ctrl->object,0x3c9))return prop_key_finish(ctrl,false);
+    if(length<31&&command[0]){text[length]=command[0];text[length+1]=0;}
+    if(!prop_key_output(ctrl,host))return prop_key_finish(ctrl,false);
+    char sound[266]="telephone.";
+    std::memcpy(sound+10,command,std::strlen(command)+1);
+    return prop_key_finish(ctrl,host.sound(host.context,ctrl->object,sound)!=0);
+}
+int __cdecl prop_key_ack(HologramControl* ctrl) noexcept {
+    if(!ctrl||ctrl->busy||!ctrl->blocked||ctrl->bytes<0x41c||!hologram_writable(ctrl->object,0x41c))return 0;
+    ctrl->blocked=0;return 1;
+}
+const PropKeypadServerApi prop_key_api{version,sizeof(PropKeypadServerApi),&prop_key_enable,&prop_key_set,&prop_key_event,&prop_key_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -2774,6 +2847,42 @@ int __cdecl keypad_command(void* object,unsigned bytes,const KeypadClientBinding
     return host.base_command(host.context,command)?1:-1;
 }
 const KeypadClientApi keypad_behavior{version,sizeof(KeypadClientApi),&keypad_command};
+
+int __cdecl prop_key_command(void* object,unsigned bytes,const PropKeypadClientBindings* b,const char* command) noexcept {
+    if(!b||!b->create_event||!b->entity_index||!b->set_int||!b->set_string||!b->fire_event||!b->base_command)return 0;
+    char text[256]{};
+    if(!prop_key_read(command,text))return 0;
+    const auto host=*b;
+    if(object){
+        if(bytes<0x538||!sin_independent::vgui_layout::Readable(object,0x538))return 0;
+        if(!hologram_read<unsigned char>(object,0x510)){
+            void* event=nullptr;
+            if(!host.create_event(host.context,"prop_keypad_input",1,&event))return -1;
+            if(event){
+                int index=0;
+                if(!host.entity_index(host.context,object,&index)||
+                   !host.set_int(host.context,event,"entindex",index)||
+                   !host.set_string(host.context,event,"Command",text)||
+                   !host.fire_event(host.context,event,0))return -1;
+            }
+        }
+    }
+    return host.base_command(host.context,text)?1:-1;
+}
+int __cdecl prop_key_tick(void* object,unsigned bytes,const PropKeypadClientBindings* b) noexcept {
+    if(!b||!b->display||!b->base_tick)return 0;
+    const auto host=*b;
+    if(object){
+        if(bytes<0x538||!sin_independent::vgui_layout::Readable(object,0x538))return 0;
+        if(!hologram_read<unsigned char>(object,0x510)){
+            const auto* text=static_cast<const char*>(object)+0x511;
+            if(!std::memchr(text,0,32))return 0;
+            if(!host.display(host.context,text))return -1;
+        }
+    }
+    return host.base_tick(host.context)?1:-1;
+}
+const PropKeypadClientApi prop_key_api{version,sizeof(PropKeypadClientApi),&prop_key_command,&prop_key_tick};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2881,6 +2990,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::KeypadSer
 SiN_GetKeypadServerApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(KeypadServerApi)?&keypad_behavior:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPropKeypadServerApi=_SiN_GetPropKeypadServerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PropKeypadServerApi* __cdecl
+SiN_GetPropKeypadServerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PropKeypadServerApi)?&prop_key_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
@@ -3008,5 +3123,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::KeypadCli
 SiN_GetKeypadClientApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(KeypadClientApi)?&keypad_behavior:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPropKeypadClientApi=_SiN_GetPropKeypadClientApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PropKeypadClientApi* __cdecl
+SiN_GetPropKeypadClientApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PropKeypadClientApi)?&prop_key_api:nullptr;
 }
 #endif

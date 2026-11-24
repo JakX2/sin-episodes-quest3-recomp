@@ -724,4 +724,45 @@ struct KeypadClientApi {
 };
 using GetKeypadServerApi=const KeypadServerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetKeypadClientApi=const KeypadClientApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase717: CPropKeypad event, string output and display path.
+inline constexpr char prop_keypad_server_export[]="SiN_GetPropKeypadServerApi";
+inline constexpr char prop_keypad_client_export[]="SiN_GetPropKeypadClientApi";
+struct PropKeypadServerBindings {
+    void* context;
+    int (__cdecl *dirty)(void*,void*,unsigned) noexcept;
+    int (__cdecl *entity_index)(void*,void*,int*) noexcept;
+    int (__cdecl *event_index)(void*,void*,int*) noexcept;
+    int (__cdecl *event_command)(void*,void*,char*,unsigned) noexcept;
+    int (__cdecl *output)(void*,void*,unsigned,const char*,void*,void*,float) noexcept;
+    int (__cdecl *sound)(void*,void*,const char*) noexcept;
+    int (__cdecl *base_event)(void*,void*,void*) noexcept;
+};
+struct PropKeypadServerApi {
+    std::uint32_t version,size;
+    int (__cdecl *enable)(HologramControl*,const PropKeypadServerBindings*,unsigned) noexcept;
+    // SetInput/Clear: null means empty, copy at most 30 chars.
+    int (__cdecl *set_input)(HologramControl*,const PropKeypadServerBindings*,const char*) noexcept;
+    int (__cdecl *event)(HologramControl*,const PropKeypadServerBindings*,const char*,void*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+struct PropKeypadClientBindings {
+    void* context;
+    int (__cdecl *create_event)(void*,const char*,unsigned,void**) noexcept;
+    int (__cdecl *entity_index)(void*,void*,int*) noexcept;
+    int (__cdecl *set_int)(void*,void*,const char*,int) noexcept;
+    int (__cdecl *set_string)(void*,void*,const char*,const char*) noexcept;
+    int (__cdecl *fire_event)(void*,void*,unsigned) noexcept;
+    int (__cdecl *base_command)(void*,const char*) noexcept;
+    int (__cdecl *display)(void*,const char*) noexcept;
+    int (__cdecl *base_tick)(void*) noexcept;
+};
+struct PropKeypadClientApi {
+    std::uint32_t version,size;
+    // Object is a host-resolved/type-checked CPropKeypad or null.
+    int (__cdecl *command)(void*,unsigned,const PropKeypadClientBindings*,const char*) noexcept;
+    int (__cdecl *tick)(void*,unsigned,const PropKeypadClientBindings*) noexcept;
+};
+using GetPropKeypadServerApi=const PropKeypadServerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetPropKeypadClientApi=const PropKeypadClientApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
