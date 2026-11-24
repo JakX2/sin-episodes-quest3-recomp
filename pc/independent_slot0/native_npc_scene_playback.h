@@ -708,6 +708,28 @@ struct SceneSpeechPreparationApi {
         const SceneSpeechCallbackBindings*,const ResolvedSceneActorBindings*,const SceneSpeechPreparationBindings*,unsigned*) noexcept;
 };
 using GetSceneSpeechPreparationApi=const SceneSpeechPreparationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_choreography_clock_export[]="SiN_GetNativeChoreographyClockApi";
+// Runtime clock over the original parsed PE32 graph. The graph owns vector
+// storage; reset/simulation/resume use native graph operations. Engine speech
+// effects and not-yet-recovered event-type callbacks remain explicit leaves.
+struct NativeChoreographyClockBindings {
+    ChoreographyVectorBindings vectors;
+    int (__cdecl *release_memory)(void*,std::uint32_t) noexcept;
+    void* context;
+    void* scene;
+    unsigned scene_bytes;
+    const SceneSpeechCallbackBindings* speech;
+    const ResolvedSceneActorBindings* actors; // optional native name/cache path
+    const SceneSpeechPreparationBindings* preparation; // optional native prep
+    int (__cdecl *other_event)(void*,std::uint32_t,unsigned,float,void*,void*) noexcept;
+};
+struct NativeChoreographyClockApi {
+    std::uint32_t version,size;
+    int (__cdecl *reset)(void*,unsigned,unsigned,std::uint32_t,std::uint32_t,const NativeChoreographyClockBindings*) noexcept;
+    int (__cdecl *simulate)(void*,unsigned,float,const NativeChoreographyClockBindings*) noexcept;
+    int (__cdecl *resume)(void*,unsigned,const NativeChoreographyClockBindings*) noexcept;
+};
+using GetNativeChoreographyClockApi=const NativeChoreographyClockApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char scene_speech_drain_export[]="SiN_GetSceneSpeechDrainApi";
 struct SceneSpeechDrainBindings {
     void* context;
