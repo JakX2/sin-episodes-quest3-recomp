@@ -1,5 +1,5 @@
 #pragma once
-#include "native_vehicle_seat_events.h"
+#include "native_vehicle_nested.h"
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
@@ -15,7 +15,7 @@ struct SeatEventFixture {
     void put(void* p,unsigned off,unsigned w){std::memcpy(static_cast<unsigned char*>(p)+off,&w,4);}
     unsigned word(void* p,unsigned off){unsigned w=0;std::memcpy(&w,static_cast<unsigned char*>(p)+off,4);return w;}
 };
-inline void check_vehicle_seat_events(const VehicleSeatEventsApi& api){
+inline void check_vehicle_seat_events(const VehicleSeatEventsApi& api,const VehicleMapApi& map,const VehicleNestedApi& nested){
     SeatEventFixture f;
     f.put(f.vehicle,0x810,f.ptr(f.doors));f.put(f.vehicle,0x81c,3);
     f.put(f.doors,0x48,0);f.put(f.doors+76,0x48,1);f.put(f.doors+152,0x48,0);
@@ -63,5 +63,35 @@ inline void check_vehicle_seat_events(const VehicleSeatEventsApi& api){
     assert(api.exiting(&f.v,&b,1)==1);f.expect({11,3,11,3,2});
     assert(api.exiting(&f.v,&b,1)==-1&&f.v.blocked);f.expect({});
     assert(api.acknowledge(&f.v)==1&&api.entered(&f.v,&b,-1,f.actor)==0);
+    // Real map input -> permitted synchronous passenger callbacks.
+    struct Bridge {SeatEventFixture* f;const VehicleSeatEventBindings* b;const VehicleSeatEventsApi* api;const VehicleNestedApi* nested;bool swallow_failure=false;};
+    Bridge bridge{&f,&b,&api,&nested};
+    VehicleMapBindings m{};m.context=&bridge;
+    m.enter=[](void* c,void* v,void* actor,int role) noexcept -> int{
+        auto& x=*static_cast<Bridge*>(c);assert(v==x.f->vehicle&&x.f->v.busy!=0);
+        assert(x.api->entered(&x.f->v,x.b,role,actor)==0); // standalone still rejects
+        assert(x.nested->exiting(&x.f->v,x.b,role)==0); // wrong permit cannot consume
+        const int result=x.nested->entered(&x.f->v,x.b,role,actor);
+        assert(x.f->v.busy==1); // outer lock not released
+        assert(x.nested->entered(&x.f->v,x.b,role,actor)==0); // one shot
+        return x.swallow_failure||result==1;
+    };
+    m.occupant=[](void* c,void*,int role,void** out) noexcept -> int{
+        auto& x=*static_cast<Bridge*>(c);
+        *out=role>=0&&role<3&&x.f->word(x.f->vehicle,0x6a4+role*4)==0x1001?x.f->actor:nullptr;return 1;
+    };
+    m.exit=[](void* c,void*,void* actor,unsigned arg) noexcept -> int{
+        auto& x=*static_cast<Bridge*>(c);assert(actor==x.f->actor&&arg==1);
+        const int result=x.nested->exiting(&x.f->v,x.b,1);
+        assert(x.f->v.busy==1&&x.nested->exiting(&x.f->v,x.b,1)==0);
+        return result==1;
+    };
+    assert(nested.entered(&f.v,&b,1,f.actor)==0&&nested.exiting(&f.v,&b,1)==0);
+    assert(map.input(&f.v,&m,"EnterVehicle",5,1,f.actor)==1&&!f.v.busy);f.expect({1,3,5,6,3,11,3});
+    assert(map.input(&f.v,&m,"ExitVehicle",5,1,f.actor)==1&&!f.v.busy);f.expect({11,3,11,3,2});
+    assert(map.input(&f.v,&m,"ExitVehicle",5,1,f.actor)==1);f.expect({});
+    bridge.swallow_failure=true;
+    assert(map.input(&f.v,&m,"EnterVehicle",5,99,f.actor)==-1&&f.v.blocked&&!f.v.busy);f.expect({});
+    assert(api.acknowledge(&f.v)==1);
 }
 }
