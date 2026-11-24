@@ -270,6 +270,20 @@ struct AttackSpreadApi {
 };
 using GetAttackSpreadApi=const AttackSpreadApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(AttackSpreadResult)==20);
+// Win32 x86 VFileSystem012 bridge for the single original combat script.
+// A failed attempt preserves the last successfully loaded configuration.
+// On exception during Open or Close, ownership may be uncertain; do not retry
+// automatically. No file handle or filesystem pointer is retained.
+inline constexpr char spread_filesystem_export_name[]="SiN_LoadAttackSpreadFromEngine";
+enum SpreadFileCode : std::uint32_t {
+    SpreadFileRejected=0,SpreadFileLoaded,SpreadFileMissing,SpreadFileOpenUncertain,
+    SpreadFileInvalidLength,SpreadFileReadFailed,SpreadFileCloseUncertain,SpreadFileParseFailed
+};
+struct SpreadFileReport {
+    std::uint32_t code,expected_bytes,read_bytes,close_attempted,close_returned;
+};
+using LoadAttackSpreadFromEngine=int (SIN_FIXED_CALL *)(void*,SpreadFileReport*) noexcept;
+static_assert(sizeof(SpreadFileReport)==20);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

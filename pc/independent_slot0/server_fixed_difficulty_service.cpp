@@ -812,6 +812,62 @@ struct EngineReadScope {
     ~EngineReadScope(){reading_engine_skill=false;}
 };
 }
+// Original KeyValues file reader 0x22264200 calls primary VFileSystem012
+// slots 2/7/0/3. The CSE1Rules constructor at 0x222d7e30 supplies GAME.
+// This adapter reads exactly that resource and publishes only after a
+// normal Close and successful independent parser validation.
+#pragma comment(linker,"/EXPORT:SiN_LoadAttackSpreadFromEngine=_SiN_LoadAttackSpreadFromEngine")
+extern "C" int SIN_FIXED_CALL SiN_LoadAttackSpreadFromEngine(void* fs,
+        abi::SpreadFileReport* output) noexcept {
+    if(!output)return 0;
+    abi::SpreadFileReport report{abi::SpreadFileRejected,0,0,0,0};
+    const auto finish=[&](std::uint32_t code) noexcept {
+        report.code=code;*output=report;return 1;
+    };
+    if(reading_engine_skill||!fs)return finish(abi::SpreadFileRejected);
+    methods::CallResult refused=methods::CallResult::InvalidObject;
+    const auto open=methods::VerifiedMethod(fs,2,refused);
+    const auto size=methods::VerifiedMethod(fs,7,refused);
+    const auto read=methods::VerifiedMethod(fs,0,refused);
+    const auto close=methods::VerifiedMethod(fs,3,refused);
+    if(!open||!size||!read||!close)return finish(abi::SpreadFileRejected);
+    using Open=void* (__thiscall *)(void*,const char*,const char*,const char*);
+    using Size=unsigned (__thiscall *)(void*,void*);
+    using Read=int (__thiscall *)(void*,void*,int,void*);
+    using Close=void (__thiscall *)(void*,void*);
+    EngineReadScope scope;
+    void* handle=nullptr;
+    try {handle=reinterpret_cast<Open>(open)(fs,"scripts/rules_combat.txt","rb","GAME");}
+    catch(...){return finish(abi::SpreadFileOpenUncertain);}
+    if(!handle)return finish(abi::SpreadFileMissing);
+    std::uint32_t code=abi::SpreadFileReadFailed;
+    std::string bytes;
+    try {
+        report.expected_bytes=reinterpret_cast<Size>(size)(fs,handle);
+        if(!report.expected_bytes||report.expected_bytes>sin_independent::attack_spread::max_bytes){
+            code=abi::SpreadFileInvalidLength;
+        }else{
+            bytes.resize(report.expected_bytes);
+            while(report.read_bytes<report.expected_bytes){
+                const auto remaining=report.expected_bytes-report.read_bytes;
+                const int n=reinterpret_cast<Read>(read)(fs,&bytes[report.read_bytes],
+                    static_cast<int>(remaining),handle);
+                if(n<=0||static_cast<unsigned>(n)>remaining)break;
+                report.read_bytes+=static_cast<unsigned>(n);
+            }
+            if(report.read_bytes==report.expected_bytes)code=abi::SpreadFileLoaded;
+        }
+    }catch(...){code=abi::SpreadFileReadFailed;}
+    report.close_attempted=1;
+    try {reinterpret_cast<Close>(close)(fs,handle);report.close_returned=1;}
+    catch(...){return finish(abi::SpreadFileCloseUncertain);}
+    if(code!=abi::SpreadFileLoaded)return finish(code);
+    try {
+        if(!spread_rules.load(bytes))return finish(abi::SpreadFileParseFailed);
+    }catch(...){return finish(abi::SpreadFileParseFailed);}
+    return finish(abi::SpreadFileLoaded);
+}
+
 // Original server rule methods use VEngineRandom001 +0x4 with
 // RandomFloat(0.f,1.f). Resolve the slot only when the rule needs RNG.
 namespace {
