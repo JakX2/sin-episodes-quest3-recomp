@@ -745,6 +745,12 @@ int main(int argc,char** argv){
     assert(portableVcdGrammar&&!getPortableVcdGrammar(0,sizeof(tables::PortableVcdGrammarApi))&&!getPortableVcdGrammar(1,0));
     tables::test::check_portable_vcd_grammar(*portableVcdGrammar);
     std::puts("PASS portable VCD text through native actor channel event and tag grammar");
+    const auto getChoreographyRamp=reinterpret_cast<tables::GetChoreographyRampApi>(GetProcAddress(server,tables::choreography_ramp_export));
+    assert(getChoreographyRamp&&!GetProcAddress(client,tables::choreography_ramp_export));
+    const auto* choreographyRamp=getChoreographyRamp(1,sizeof(tables::ChoreographyRampApi));
+    assert(choreographyRamp&&!getChoreographyRamp(0,sizeof(tables::ChoreographyRampApi))&&!getChoreographyRamp(1,0));
+    tables::test::check_choreography_ramp(*choreographyRamp);
+    std::puts("PASS original event and scene ramp parsing sort and trim");
 
 
 

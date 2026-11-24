@@ -973,6 +973,18 @@ struct PortableVcdGrammarApi {
     int (__cdecl *scene)(void*,const char*,float,const NativeNamedPlaybackBindings*,const PortableVcdGrammarBindings*,float*) noexcept;
 };
 using GetPortableVcdGrammarApi=const PortableVcdGrammarApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_ramp_export[]="SiN_GetChoreographyRampApi";
+enum class ChoreographyRampKind:unsigned {Event,Scene};
+struct ChoreographyRampApi {
+    std::uint32_t version,size;
+    // Original 22116710/22118470: clear count, parse samples, sort and trim.
+    // Uses the same tokenizer and 12-byte vector storage as timing tags.
+    int (__cdecl *block)(void*,unsigned,ChoreographyRampKind,const ChoreographyTimingTagBindings*) noexcept;
+    // Original 22110770: append value/time/selected byte to event or scene.
+    int (__cdecl *append)(void*,unsigned,ChoreographyRampKind,float time,float value,unsigned selected,const ChoreographyTimingTagBindings*) noexcept;
+    int (__cdecl *finish)(void*,unsigned,ChoreographyRampKind,const ChoreographyTimingTagBindings*) noexcept;
+};
+using GetChoreographyRampApi=const ChoreographyRampApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

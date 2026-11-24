@@ -5668,6 +5668,95 @@ int __cdecl choreography_tag_block(void* event,unsigned bytes,ChoreographyEventB
     return -1;
 }
 const ChoreographyTimingTagsApi choreography_timing_tags_api{version,sizeof(ChoreographyTimingTagsApi),&choreography_tag_append,&choreography_tag_block};
+bool choreography_ramp_object(void* p,unsigned bytes,ChoreographyRampKind kind) noexcept {
+    if(kind!=ChoreographyRampKind::Event&&kind!=ChoreographyRampKind::Scene)return false;
+    const unsigned need=kind==ChoreographyRampKind::Event?0x3c0:0x220;
+    return bytes>=need&&hologram_writable(p,need);
+}
+unsigned choreography_ramp_offset(ChoreographyRampKind kind) noexcept {
+    return kind==ChoreographyRampKind::Event?0x19c:0x12c;
+}
+bool choreography_ramp_storage(const ChoreographyTimingTagBindings& h,std::uint32_t word,unsigned need,void*& data) noexcept {
+    unsigned n=0;data=nullptr;
+    return word&&h.storage(h.context,word,&data,&n)&&n>=need&&hologram_writable(data,need);
+}
+int __cdecl choreography_ramp_append(void* object,unsigned bytes,ChoreographyRampKind kind,float time,float value,unsigned selected,const ChoreographyTimingTagBindings* b) noexcept {
+    if(!choreography_ramp_object(object,bytes,kind)||!choreography_tags_ready(b))return 0;
+    const auto h=*b;auto* v=static_cast<unsigned char*>(object)+choreography_ramp_offset(kind);
+    const int count=hologram_read<int>(v,0xc),capacity=hologram_read<int>(v,4);
+    if(count<0||capacity<count||count>=4096)return -1;
+    if(count==capacity&&(!h.grow(h.context,v,1,12)||hologram_read<int>(v,0xc)!=count||hologram_read<int>(v,4)<=count))return -1;
+    const auto word=hologram_read<std::uint32_t>(v,0);void* data=nullptr;
+    if(!choreography_ramp_storage(h,word,(count+1)*12,data))return -1;
+    auto* row=static_cast<unsigned char*>(data)+count*12;
+    hologram_write(row,0,value);hologram_write(row,4,time);
+    // Original copies uninitialized padding; use deterministic zero padding.
+    hologram_write(row,8,static_cast<std::uint32_t>(selected&0xff));
+    hologram_write(v,0xc,count+1);hologram_write(v,0x10,word);
+    return 1;
+}
+int __cdecl choreography_ramp_finish(void* object,unsigned bytes,ChoreographyRampKind kind,const ChoreographyTimingTagBindings* b) noexcept {
+    if(!choreography_ramp_object(object,bytes,kind)||!choreography_tags_ready(b))return 0;
+    const auto h=*b;auto* v=static_cast<unsigned char*>(object)+choreography_ramp_offset(kind);
+    int count=hologram_read<int>(v,0xc);
+    if(count<0||count>4096||hologram_read<int>(v,4)<count)return -1;
+    void* data=nullptr;
+    if(count&&!choreography_ramp_storage(h,hologram_read<std::uint32_t>(v,0),count*12,data))return -1;
+    auto* rows=static_cast<unsigned char*>(data);
+    // Original nested exchange sort, strict ordered greater; equal and NaN
+    // comparisons do not exchange. Sort before duration lookup/trim.
+    for(int i=0;i<count;++i)for(int j=i+1;j<count;++j){
+        auto* l=rows+i*12;auto* r=rows+j*12;
+        if(hologram_read<float>(l,4)>hologram_read<float>(r,4)){
+            unsigned char scratch[12];std::memcpy(scratch,l,12);std::memcpy(l,r,12);std::memcpy(r,scratch,12);
+        }
+    }
+    float duration=0;
+    if(kind==ChoreographyRampKind::Event){
+        if(hologram_read<std::uint32_t>(object,0x188)!=0xbf800000u)
+            duration=hologram_read<float>(object,0x188)-hologram_read<float>(object,0x184);
+    }else{
+        // Original 22113c10: zero-anchored max event end or start sentinel.
+        for(unsigned i=0;;++i){
+            const auto n=hologram_read<int>(object,0xc);
+            if(n<=0||i>=static_cast<unsigned>(n))break;
+            if(n>0x100000)return -1;
+            void* list=nullptr;void* event=nullptr;
+            if(!choreography_ramp_storage(h,hologram_read<std::uint32_t>(object,0),(i+1)*4,list)||
+               !choreography_ramp_storage(h,hologram_read<std::uint32_t>(list,i*4),0x18c,event))return -1;
+            const auto time=hologram_read<float>(event,hologram_read<std::uint32_t>(event,0x188)==0xbf800000u?0x184:0x188);
+            if(time>duration)duration=time;
+        }
+    }
+    // 2210ec20/221144e0: remove backwards, retaining unordered samples,
+    // and allow 0.01 seconds beyond the original single-precision duration.
+    for(int i=count-1;i>=0;--i){
+        const float time=hologram_read<float>(rows+i*12,4);
+        if(time<0||static_cast<double>(time)>static_cast<double>(duration)+0.01){
+            if(i+1<count)std::memmove(rows+i*12,rows+(i+1)*12,(count-i-1)*12);
+            hologram_write(v,0xc,--count);
+        }
+    }
+    return 1;
+}
+int __cdecl choreography_ramp_block(void* object,unsigned bytes,ChoreographyRampKind kind,const ChoreographyTimingTagBindings* b) noexcept {
+    if(!choreography_ramp_object(object,bytes,kind)||!choreography_tags_ready(b)||!b->number||
+       !b->text.next||!b->text.token||!b->text.unexpected)return 0;
+    const auto h=*b;char token[1024]{};
+    auto next=[&](unsigned cross){return choreography_actor_next(h.text,cross,token);};
+    hologram_write(object,choreography_ramp_offset(kind)+0xc,0u);
+    if(!next(1))return -1;
+    if(!choreography_text_equal(token,"{")&&!h.text.unexpected(h.text.context,token))return -1;
+    for(unsigned i=0;i<=4096;++i){
+        if(!next(1)||!*token)return -1;
+        if(choreography_text_equal(token,"}"))return choreography_ramp_finish(object,bytes,kind,&h);
+        float time=0,value=0;
+        if(!h.number(h.context,token,&time)||!next(0)||!h.number(h.context,token,&value)||
+           choreography_ramp_append(object,bytes,kind,time,value,0,&h)!=1)return -1;
+    }
+    return -1;
+}
+const ChoreographyRampApi choreography_ramp_api{version,sizeof(ChoreographyRampApi),&choreography_ramp_block,&choreography_ramp_append,&choreography_ramp_finish};
 using PortableTokenizer=sin_port::vcd::Tokenizer;
 int __cdecl portable_vcd_begin(void* p,const char* data,unsigned bytes) noexcept {
     if(!hologram_writable(p,sizeof(PortableTokenizer))||!data||
@@ -11096,6 +11185,12 @@ SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetChoreographyRampApi=_SiN_GetChoreographyRampApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ChoreographyRampApi* __cdecl
+SiN_GetChoreographyRampApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyRampApi)?&choreography_ramp_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetPortableVcdGrammarApi=_SiN_GetPortableVcdGrammarApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PortableVcdGrammarApi* __cdecl
 SiN_GetPortableVcdGrammarApi(std::uint32_t version,std::uint32_t size) noexcept {
