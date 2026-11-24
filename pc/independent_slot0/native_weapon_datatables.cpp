@@ -22,6 +22,7 @@
 #include "native_server_vfe_remap.h"
 #include "native_server_named_facial_think.h"
 #include "native_server_vfe_cache.h"
+#include "native_server_cached_facial_think.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11112,7 +11113,7 @@ int __cdecl server_event_intensity(const void* event,unsigned bytes,float time,v
 const ServerEventIntensityApi server_event_intensity_api{version,sizeof(ServerEventIntensityApi),&server_intensity_ramp,&server_event_intensity};
 
 struct ServerNativeIntensity {void* context;ServerIntensityStorage storage;};
-struct ServerNativeControllerMap {const char* const* names;unsigned count;ServerVfeRemapCache* cache;};
+struct ServerNativeControllerMap {const char* const* names;unsigned count;ServerVfeRemapCache* cache;ServerVfeCache* banks=nullptr;const ServerVfeCacheBindings* files=nullptr;};
 int __cdecl server_flex_controller_find(const char* const*,unsigned,const char*,int*) noexcept;
 int server_flex_animation_apply_impl(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
     float scene_time,float now,bool background,const ServerFlexAnimationBindings* b,const ServerNativeIntensity* native,const ServerNativeControllerMap* mapping=nullptr) noexcept {
@@ -11242,26 +11243,32 @@ bool server_remap_ready(ServerVfeRemapCache* cache) noexcept {
     return hologram_writable(cache,sizeof(*cache))&&cache->capacity<=4096&&cache->count<=cache->capacity&&
         (!cache->capacity||hologram_writable(cache->entries,cache->capacity*sizeof(*cache->entries)));
 }
-int __cdecl server_vfe_remap_lookup(ServerVfeRemapCache* cache,ServerExpressionBank bank,
-    const char* const* names,unsigned count,unsigned key,int* out) noexcept {
-    if(!server_remap_ready(cache)||!hologram_writable(out,4)||count>64)return 0;
-    // The cache is keyed by loaded VFE pointer, not path or setting name.
+ServerVfeRemapEntry* server_vfe_remap_ensure(ServerVfeRemapCache* cache,ServerExpressionBank bank,
+    const char* const* names,unsigned count,int key) noexcept {
+    if(!server_remap_ready(cache)||count>64)return nullptr;
     for(unsigned i=0;i<cache->count;++i){
-        const auto& entry=cache->entries[i];
+        auto& entry=cache->entries[i];
         if(entry.bank!=bank.data)continue;
-        if(entry.keys>128||key>=entry.keys||entry.local[key]<0||entry.local[key]>=64)return 0;
-        *out=entry.local[key];return 1;
+        if(entry.keys>128||(key>=0&&static_cast<unsigned>(key)>=entry.keys))return nullptr;
+        return &entry;
     }
     vfe_detail::Reader reader{};
     if(cache->count==cache->capacity||!server_expression_read(bank,reader)||
-       reader.keys<0||reader.keys>128||key>=static_cast<unsigned>(reader.keys))return 0;
+       reader.keys<0||reader.keys>128||(key>=0&&key>=reader.keys))return nullptr;
     ServerVfeRemapEntry entry{};entry.bank=bank.data;entry.keys=static_cast<unsigned>(reader.keys);
     for(unsigned i=0;i<entry.keys;++i){
         const auto* name=reader.name(reader.word(reader.names_off+4LL*i));
-        if(!name||!server_flex_controller_find(names,count,name,&entry.local[i]))return 0;
+        if(!name||!server_flex_controller_find(names,count,name,&entry.local[i]))return nullptr;
     }
-    cache->entries[cache->count++]=entry;
-    *out=entry.local[key];return 1;
+    cache->entries[cache->count]=entry;
+    return &cache->entries[cache->count++];
+}
+int __cdecl server_vfe_remap_lookup(ServerVfeRemapCache* cache,ServerExpressionBank bank,
+    const char* const* names,unsigned count,unsigned key,int* out) noexcept {
+    if(key>=128||!hologram_writable(out,4))return 0;
+    auto* entry=server_vfe_remap_ensure(cache,bank,names,count,static_cast<int>(key));
+    if(!entry||entry->local[key]<0||entry->local[key]>=64)return 0;
+    *out=entry->local[key];return 1;
 }
 int __cdecl server_vfe_remap_clear(ServerVfeRemapCache* cache) noexcept {
     if(!server_remap_ready(cache))return 0;
@@ -11317,19 +11324,29 @@ int __cdecl server_vfe_cache_clear(ServerVfeCache* c,const ServerVfeCacheBinding
 }
 const ServerVfeCacheApi server_vfe_cache_api{version,sizeof(ServerVfeCacheApi),&server_vfe_cache_load,&server_vfe_cache_clear};
 
+int server_facial_load(const ServerNativeControllerMap* mapping,void* context,void* actor,
+    int (__cdecl *host)(void*,void*,const char*,ServerExpressionBank*) noexcept,const char* name,ServerExpressionBank* out) noexcept {
+    if(!mapping||!mapping->banks)return host?host(context,actor,name,out):-1;
+    const int status=server_vfe_cache_load(mapping->banks,mapping->files,name,out);
+    // Original loader maps every key immediately when actor is non-null,
+    // even if expression setting lookup later returns no match.
+    if(status==1&&!server_vfe_remap_ensure(mapping->cache,*out,mapping->names,mapping->count,-1))return -1;
+    return status;
+}
+
 int server_expression_apply_impl(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,
     float scene_time,const ServerExpressionBindings* b,const ServerNativeIntensity* native,const ServerNativeControllerMap* mapping=nullptr) noexcept {
     if(bytes<server_flex_extent||rb<0x40||eb<0x3c0||!hologram_writable(actor,server_flex_extent)||
        !record||!sin_independent::vgui_layout::Readable(record,0x40)||!event||
        !sin_independent::vgui_layout::Readable(event,0x3c0)||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
-       !b->load||(!mapping&&!b->controller)||(!native&&!b->intensity)||(mapping&&mapping->count!=b->count)||!server_flex_ranges(b->ranges,b->count)||!std::isfinite(scene_time))return 0;
+       (!b->load&&(!mapping||!mapping->banks))||(!mapping&&!b->controller)||(!native&&!b->intensity)||(mapping&&mapping->count!=b->count)||!server_flex_ranges(b->ranges,b->count)||!std::isfinite(scene_time))return 0;
     if(hologram_read<float>(event,0x188)==-1)return 1;
     const auto h=*b;
     const auto* name=static_cast<const char*>(event)+0x84;
     const auto* setting=static_cast<const char*>(event)+0x104;
     if(!std::memchr(name,0,128)||!std::memchr(setting,0,128))return 0;
     ServerExpressionBank generic{};
-    const int loaded=h.load(h.context,actor,name,&generic);
+    const int loaded=server_facial_load(mapping,h.context,actor,h.load,name,&generic);
     if(loaded==0)return 1;
     if(loaded!=1)return 0;
     vfe_detail::Reader base{},over{};
@@ -11345,7 +11362,7 @@ int server_expression_apply_impl(void* actor,unsigned bytes,void* record,unsigne
         }
         if(n==383)return 0;
         path[n++]='/';std::strcpy(path+n,name);
-        const int status=h.load(h.context,actor,path,&character);
+        const int status=server_facial_load(mapping,h.context,actor,h.load,path,&character);
         if(status<0||status>1)return 0;
         if(status==1){if(!server_expression_read(character,over))return 0;have_override=true;}
     }
@@ -11397,7 +11414,7 @@ int server_npc_random_expression_impl(void* actor,unsigned bytes,void* record,un
     if(bytes<server_npc_random_expression_extent||rb<0x40||eb<0x3c0||
        !hologram_writable(actor,server_npc_random_expression_extent)||!hologram_writable(record,0x40)||
        !sin_independent::vgui_layout::Readable(event,0x3c0)||!hologram_writable(accepted,4)||
-       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->load||(!mapping&&!b->controller)||(mapping&&mapping->count!=b->count)||
+       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||(!b->load&&(!mapping||!mapping->banks))||(!mapping&&!b->controller)||(mapping&&mapping->count!=b->count)||
        !b->random_float||!b->random_int||!server_flex_ranges(b->ranges,b->count)||
        !std::isfinite(time)||!std::isfinite(now))return 0;
     const auto h=*b;
@@ -11406,8 +11423,8 @@ int server_npc_random_expression_impl(void* actor,unsigned bytes,void* record,un
         const auto* name=static_cast<const char*>(event)+0x104;
         if(!std::memchr(name,0,128))return 0;
         ServerExpressionBank bank{};
-        int status=h.load(h.context,actor,name,&bank);
-        if(!status)status=h.load(h.context,actor,"random",&bank);
+        int status=server_facial_load(mapping,h.context,actor,h.load,name,&bank);
+        if(!status)status=server_facial_load(mapping,h.context,actor,h.load,"random",&bank);
         if(status==0)return 1;
         if(status!=1)return 0;
         vfe_detail::Reader reader{};
@@ -11530,6 +11547,16 @@ int __cdecl server_named_facial_think(void* actor,unsigned bytes,float now,const
     return server_facial_think_impl(actor,bytes,now,&b->composed.base,b->composed.random_expression,b->composed.native_intensity,&mapping);
 }
 const ServerNamedFacialThinkApi server_named_facial_think_api{version,sizeof(ServerNamedFacialThinkApi),&server_named_facial_think};
+int __cdecl server_cached_facial_think(void* actor,unsigned bytes,float now,const ServerCachedFacialThinkBindings* b) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!server_vfe_cache_ready(b->banks,b->files))return 0;
+    const auto& h=b->named;
+    if(h.controller_count!=h.composed.base.count||h.controller_count>64||!server_remap_ready(h.remap)||
+       (h.controller_count&&(!h.controller_names||!sin_independent::vgui_layout::Readable(h.controller_names,h.controller_count*sizeof(*h.controller_names)))))return 0;
+    const ServerNativeControllerMap mapping{h.controller_names,h.controller_count,h.remap,b->banks,b->files};
+    return server_facial_think_impl(actor,bytes,now,&h.composed.base,h.composed.random_expression,h.composed.native_intensity,&mapping);
+}
+const ServerCachedFacialThinkApi server_cached_facial_think_api{version,sizeof(ServerCachedFacialThinkApi),&server_cached_facial_think};
+
 
 const ServerFacialRecordBindings& facial_record_config(void* p) noexcept {
     return *static_cast<const ServerFacialRecordBindings*>(p);
@@ -13539,6 +13566,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNam
 SiN_GetServerNamedFacialThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNamedFacialThinkApi)?&server_named_facial_think_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerCachedFacialThinkApi=_SiN_GetServerCachedFacialThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerCachedFacialThinkApi* __cdecl
+SiN_GetServerCachedFacialThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerCachedFacialThinkApi)?&server_cached_facial_think_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerVfeCacheApi=_SiN_GetServerVfeCacheApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfeCacheApi* __cdecl

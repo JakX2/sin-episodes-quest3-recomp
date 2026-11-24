@@ -2,6 +2,7 @@
 #include "native_server_facial_think.h"
 #include "native_server_composed_facial_think.h"
 #include "native_server_named_facial_think.h"
+#include "native_server_cached_facial_think.h"
 #include "native_server_flex_spline.h"
 #include <cassert>
 #include <cstring>
@@ -175,5 +176,66 @@ inline void check_composed_npc_random_record(const ServerComposedFacialThinkApi&
     assert(std::fabs(value-.59f)<.00001f);
     put(row,0x38,7u);row[0xc]=0;
     assert(api.run(actor,sizeof(actor),11,&b)&&!row[0xc]&&f.other==1&&f.random==1);
+}
+
+inline void check_cached_facial_think(const ServerCachedFacialThinkApi& api,const ServerVfeCacheApi& cache_api,const ServerVfeRemapApi& remap_api){
+    struct Fixture {
+        alignas(4) unsigned char row[0x40]{},scene[0x220]{},event[0x3c0]{},source[256]{},copies[2][256]{};
+        unsigned reads{},closes{},allocs{},frees{};
+    } f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    alignas(4) unsigned char actor[server_flex_scene_extent]{};
+    actor[0x1f0]=1;put(actor,0x5b8,1u);put(actor,0x5c4,1);
+    put(f.row,0,2u);put(f.row,4,3u);put(f.scene,0x78,1.5f);
+    put(f.event,0,2u);put(f.event,0x184,1.f);put(f.event,0x188,2.f);
+    std::strcpy(reinterpret_cast<char*>(f.event+0x84),"phonemes_weak");
+    std::strcpy(reinterpret_cast<char*>(f.event+0x104),"Smile");
+    std::memcpy(f.source,"EFV",4);put(f.source,0x48,256);put(f.source,0x4c,1);put(f.source,0x50,108);
+    put(f.source,0x60,1);put(f.source,0x64,156);put(f.source,0x68,160);
+    put(f.source,108,64);put(f.source,116,2);put(f.source,128,24);
+    put(f.source,132,0);put(f.source,136,.2f);put(f.source,144,0);put(f.source,148,.2f);
+    put(f.source,156,192);put(f.source,160,-1);
+    std::strcpy(reinterpret_cast<char*>(f.source+172),"w");
+    std::strcpy(reinterpret_cast<char*>(f.source+192),"jaw");
+    ServerVfeCacheEntry banks[2]{};ServerVfeCache cache{banks,0,2};
+    ServerVfeRemapEntry maps[2]{};ServerVfeRemapCache remap{maps,0,2};
+    ServerVfeCacheBindings files{};files.context=&f;
+    files.read=[](void* p,const char* path,const unsigned char** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.reads;
+        assert(!std::strcmp(path,"expressions/phonemes_weak.vfe")||
+               !std::strcmp(path,"expressions/characters/jessica/jessica/phonemes_weak.vfe"));
+        *out=f.source;*n=sizeof(f.source);return 1;
+    };
+    files.close=[](void* p,const unsigned char*) noexcept -> int{++static_cast<Fixture*>(p)->closes;return 1;};
+    files.allocate=[](void* p,unsigned n,void** out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);if(n!=256||f.allocs>=2)return 0;*out=f.copies[f.allocs++];return 1;
+    };
+    files.release=[](void* p,void*) noexcept -> int{++static_cast<Fixture*>(p)->frees;return 1;};
+    ServerFlexRange range{0,1};
+    const char* names[]={"Jaw"};
+    ServerExpressionBindings expression{};expression.ranges=&range;expression.count=1;
+    expression.character_stem="characters/jessica/jessica";
+    ServerCachedFacialThinkBindings b{};b.banks=&cache;b.files=&files;
+    b.named.controller_names=names;b.named.controller_count=1;b.named.remap=&remap;
+    b.named.composed.native_intensity=true;
+    auto& base=b.named.composed.base;base.context=&f;base.ranges=&range;base.count=1;base.base_expression=1;base.expression=&expression;
+    base.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);
+        if(token==1){*out=f.row;*n=sizeof(f.row);}
+        else if(token==2){*out=f.event;*n=sizeof(f.event);}
+        else if(token==3){*out=f.scene;*n=sizeof(f.scene);}else return 0;
+        return 1;
+    };
+    auto value=[&](){float v=0;std::memcpy(&v,actor+0x4a8,4);return v;};
+    // Retail-inspired missing generic setting: no fabricated Smile, but
+    // original loader still maps both banks before setting lookup.
+    assert(api.run(actor,sizeof(actor),10,&b)&&f.row[0xc]&&value()==0&&!actor[0x200]);
+    assert(cache.count==2&&remap.count==2&&f.reads==2&&f.closes==2&&f.allocs==2);
+    assert(maps[0].bank==banks[0].bank.data&&maps[1].bank==banks[1].bank.data);
+    assert(api.run(actor,sizeof(actor),11,&b)&&value()==0&&f.reads==2);
+    std::strcpy(reinterpret_cast<char*>(f.event+0x104),"W");
+    assert(api.run(actor,sizeof(actor),12,&b)&&std::fabs(value()-.4f)<.00001f&&actor[0x200]);
+    assert(api.run(actor,sizeof(actor),13,&b)&&std::fabs(value()-.78f)<.00001f&&f.reads==2&&remap.count==2);
+    assert(remap_api.clear(&remap)&&cache_api.clear(&cache,&files)&&!cache.count&&!remap.count&&f.frees==2);
 }
 }
