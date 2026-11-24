@@ -542,6 +542,41 @@ struct SceneSpeechPolicyApi {
     int (__cdecl *queue)(void*,unsigned,void* actor,const char*,int level,float offset,const SceneSpeechQueueBindings*) noexcept;
 };
 using GetSceneSpeechPolicyApi=const SceneSpeechPolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_speech_execution_export[]="SiN_GetSceneSpeechExecutionApi";
+struct SceneSpeechExecutionBindings {
+    void* context;
+    // Original 220f6450 recipient filter. Host owns and releases opaque filter.
+    int (__cdecl *open_filter)(void*,void* actor,float,void**) noexcept;
+    int (__cdecl *close_filter)(void*,void*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    // Original base-actor RTTI/virtual or NPC semaphore preparation, using
+    // remaining duration. Engine owns classification and virtual effects.
+    int (__cdecl *prepare_actor)(void*,void* scene,void* actor,float remaining) noexcept;
+    int (__cdecl *recipient_count)(void*,void* filter,int*) noexcept;
+    // Null recipient is an ordinary stale/missing player.
+    int (__cdecl *recipient)(void*,void* filter,unsigned index,void**) noexcept;
+    int (__cdecl *language)(void*,void* player,unsigned* present,int* english,unsigned* forced) noexcept;
+    // Original 221b7760. Host creates single-recipient engine filter.
+    int (__cdecl *emit)(void*,void* actor,void* player,const char*,int channel,float volume,int level,float absolute_start) noexcept;
+    // Original caption registry then client preference filtering 22139fa0.
+    int (__cdecl *caption_register)(void*,std::uint32_t,const char*) noexcept;
+    int (__cdecl *caption_preferences)(void*,void* filter) noexcept;
+    // Original 221a7060; host computes range from emission origins.
+    int (__cdecl *caption_far)(void*,void* player,unsigned*) noexcept;
+    int (__cdecl *remove_recipient)(void*,void* filter,void* player) noexcept;
+    // Original CloseCaption user message fields: CRC32, duration byte, 1.
+    int (__cdecl *caption_send)(void*,void* filter,std::uint32_t,unsigned duration_byte,unsigned flag) noexcept;
+    ActorEventRecordBindings records;
+    SceneManagerSession* manager;
+    SceneManagerRuntimeBindings runtime;
+    SceneSpeechQueueBindings queue;
+};
+struct SceneSpeechExecutionApi {
+    std::uint32_t version,size;
+    // Original 221ac400, engine effects hosted. Actor may be null (no-op).
+    int (__cdecl *start)(void* scene,unsigned,void* actor,unsigned,std::uint32_t parsed,void* event,unsigned,int level,const SceneSpeechExecutionBindings*) noexcept;
+};
+using GetSceneSpeechExecutionApi=const SceneSpeechExecutionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 

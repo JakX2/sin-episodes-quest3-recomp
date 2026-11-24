@@ -598,6 +598,12 @@ int main(int argc,char** argv){
     assert(sceneSpeechPolicy&&!getSceneSpeechPolicy(0,sizeof(tables::SceneSpeechPolicyApi))&&!getSceneSpeechPolicy(1,0));
     tables::test::check_scene_speech_policy(*sceneSpeechPolicy);
     std::puts("PASS original native speech language policy, caption token, timing and queue");
+    const auto getSceneSpeechExecution=reinterpret_cast<tables::GetSceneSpeechExecutionApi>(GetProcAddress(server,tables::scene_speech_execution_export));
+    assert(getSceneSpeechExecution&&!GetProcAddress(client,tables::scene_speech_execution_export));
+    const auto* sceneSpeechExecution=getSceneSpeechExecution(1,sizeof(tables::SceneSpeechExecutionApi));
+    assert(sceneSpeechExecution&&!getSceneSpeechExecution(0,sizeof(tables::SceneSpeechExecutionApi))&&!getSceneSpeechExecution(1,0));
+    tables::test::check_scene_speech_execution(*sceneSpeechExecution);
+    std::puts("PASS original native speech recipient routing, event registration and caption dispatch");
 
 
 
