@@ -1075,7 +1075,7 @@ static void test_native_combat_filesystem(HMODULE lib,const a::Api* api,const a:
 }
 class FocusEngine final:public console::EngineCvar {
 public:
-    console::Variable focus,focusAlias,cone,coneAlias,shotBias,patternFocus;
+    console::Variable focus,focusAlias,cone,coneAlias,shotBias,patternFocus,biasMin,biasMax;
     const a::Api* api=nullptr;
     const a::AttackSpreadApi* rules=nullptr;
     mutable std::vector<std::string> lookups;
@@ -1088,6 +1088,8 @@ public:
         focusAlias.parent=&focus;coneAlias.parent=&cone;
         shotBias.CreateVariable("ai_shot_bias","1.0",0,"",false,0,false,0,nullptr);
         patternFocus.CreateVariable("ai_spread_pattern_focus_time","0.8",0,"",false,0,false,0,nullptr);
+        biasMin.CreateVariable("ai_shot_bias_min","-1.0",0,"",false,0,false,0,nullptr);
+        biasMax.CreateVariable("ai_shot_bias_max","1.0",0,"",false,0,false,0,nullptr);
     }
     void __thiscall RegisterConCommandBase(console::CommandBase*) noexcept override{assert(false);}
     const char* __thiscall GetCommandLineValue(const char*) noexcept override{assert(false);return nullptr;}
@@ -1098,6 +1100,8 @@ public:
         if(std::strcmp(name,"ai_spread_cone_focus_time")==0)return missingFocus?nullptr:&focusAlias;
         if(std::strcmp(name,"ai_shot_bias")==0)return missingBias?nullptr:&shotBias;
         if(std::strcmp(name,"ai_spread_pattern_focus_time")==0)return missingPattern?nullptr:&patternFocus;
+        if(std::strcmp(name,"ai_shot_bias_min")==0)return &biasMin;
+        if(std::strcmp(name,"ai_shot_bias_max")==0)return &biasMax;
         assert(std::strcmp(name,"ai_spread_defocused_cone_multiplier")==0);
         return missingCone?nullptr:&coneAlias;
     }
@@ -1153,6 +1157,35 @@ static void test_native_aim(HMODULE lib,const a::Api* api,const a::AttackSpreadA
     assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&cvar.lookups.size()==1);
     cvar.missingBias=false;cvar.missingFocus=true;cvar.lookups.clear();
     assert(!get(&cvar,"npc_custom",nullptr,nullptr,&memory,&out)&&cvar.lookups.size()==3);
+    assert(api->end_campaign());
+}
+struct NativeShotRandom {
+    virtual void seed(int){assert(false);}
+    virtual float random(float lo,float hi){
+        assert(lo==-1.f&&hi==1.f&&index<values.size());
+        assert(!api->set_skill(1)&&!api->end_campaign());
+        return values[index++];
+    }
+    const a::Api* api=nullptr;
+    std::vector<float> values;
+    std::size_t index=0;
+};
+static void test_native_shot(HMODULE lib,const a::Api* api,const a::AttackSpreadApi* rules){
+    const auto get=reinterpret_cast<a::QueryNpcShotFromEngine>(GetProcAddress(lib,a::npc_shot_engine_export_name));
+    assert(get&&api->begin_campaign(3)&&rules->clear());
+    FocusEngine cvar;cvar.api=api;cvar.rules=rules;
+    NativeShotRandom rng;rng.api=api;rng.values={1.f,1.f,1.f,1.f,0.5f,0.5f,0.f,0.f};
+    const a::NpcShotBasis basis{{1.f,0.f,0.f},{0.f,1.f,0.f},{0.f,0.f,1.f}};
+    a::NpcAimMemory memory{{0,0.f,0.f},0.f};
+    a::NpcShotFromEngineResult out{};
+    assert(get(&cvar,&rng,"npc_custom","rifle","player",&memory,&basis,&out));
+    assert(out.shot.code==a::NpcShotAccepted&&out.shot.attempts==2&&rng.index==8);
+    assert(out.aim.bias.bias==1.f&&out.shot.effective_bias==1.f&&out.shot.flatness==0.5f);
+    assert(out.shot.direction.x==1.f&&std::fabs(out.shot.direction.y-0.0326325f)<0.000001f);
+    assert(out.shot.direction.z==0.f);
+    assert((cvar.lookups==std::vector<std::string>{"ai_shot_bias","ai_shot_bias_min","ai_shot_bias_max"}));
+    cvar.lookups.clear();cvar.biasMax.parent=&cvar.biasMin;
+    assert(get(&cvar,&rng,"npc_custom","rifle","player",&memory,&basis,&out)&&out.shot.code==a::NpcShotRejected&&rng.index==8);
     assert(api->end_campaign());
 }
 static void test_native_npc_rng(HMODULE lib,const a::Api* api){
@@ -1289,6 +1322,60 @@ static void test_npc_aim(const a::NpcAimApi* aim,const a::Api* api,const a::Atta
     assert(!query()&&out.bias.bias==0.5f);
     assert(api->end_campaign());
 }
+struct ShotSampleFixture {
+    const a::Api* api;
+    const a::NpcShotApi* shots;
+    std::vector<float> values;
+    unsigned calls=0;
+    int mode=0;
+    static int SIN_FIXED_CALL draw(void* context,float lo,float hi,float* out){
+        auto& f=*static_cast<ShotSampleFixture*>(context);
+        assert(lo==-1.f&&hi==1.f&&!f.api->set_skill(1)&&!f.api->end_campaign());
+        ++f.calls;
+        if(f.mode==1)return 0;
+        if(f.mode==2)throw 1;
+        if(f.mode==3){*out=1.f;return 1;}
+        if(f.mode==4){*out=2.f;return 1;}
+        assert(f.calls<=f.values.size());*out=f.values[f.calls-1];return 1;
+    }
+};
+static void test_npc_shot(const a::NpcShotApi* shots,const a::Api* api){
+    assert(shots&&shots->version==1&&shots->size==sizeof(*shots));
+    a::NpcShotBasis basis{{1.f,0.f,0.f},{0.f,1.f,0.f},{0.f,0.f,1.f}};
+    a::NpcAimResult aim{};aim.bias.bias=1.f;aim.spread.result={0.25f,0.5f,9.f};
+    a::NpcShotTuning tuning{-1.f,1.f};
+    a::NpcShotReport report{};
+    ShotSampleFixture f{api,shots,{1.f,1.f,1.f,1.f,0.5f,0.5f,-0.5f,-0.5f}};
+    auto sample=[&](){return shots->sample(&basis,&aim,&tuning,&ShotSampleFixture::draw,&f,&report);};
+    assert(sample()&&report.code==a::NpcShotRejected&&f.calls==0);
+    assert(api->begin_campaign(3));
+    assert(sample()&&report.code==a::NpcShotAccepted&&report.attempts==2&&report.random_calls==8);
+    assert(report.effective_bias==1.f&&report.flatness==0.5f&&report.x==0.5f&&report.y==-0.5f);
+    assert(report.direction.x==1.f&&report.direction.y==0.125f&&report.direction.z==-0.25f);
+    // Bias 0.5 maps to a flat distribution: first weighted draw is
+    // still consumed for both axes, including the zero-weight term.
+    f.calls=0;f.values={-1.f,0.25f,1.f,0.5f};aim.bias.bias=0.5f;
+    assert(sample()&&report.code==a::NpcShotAccepted&&report.random_calls==4);
+    assert(report.effective_bias==0.f&&report.flatness==0.f&&report.x==0.25f&&report.y==0.5f);
+    // Negative effective bias inverts about the signed unit endpoint.
+    f.calls=0;f.values={0.5f,0.5f,-0.5f,-0.5f};aim.bias.bias=-0.4f;
+    assert(sample()&&report.code==a::NpcShotAccepted&&report.effective_bias==-1.f);
+    assert(report.x==0.5f&&report.y==-0.5f);
+    f.calls=0;f.values={1.f,1.f,0.f,0.f};aim.bias.bias=3.f;
+    assert(sample()&&report.code==a::NpcShotAccepted&&report.x==1.f&&report.y==0.f); // inclusive circle
+    f.calls=0;f.mode=1;
+    assert(sample()&&report.code==a::NpcShotRandomRefused&&report.random_calls==1);
+    f.calls=0;f.mode=2;
+    assert(sample()&&report.code==a::NpcShotRandomRefused&&report.random_calls==1);
+    f.calls=0;f.mode=4;
+    assert(sample()&&report.code==a::NpcShotInvalidSample&&report.random_calls==1);
+    f.calls=0;f.mode=3;
+    assert(sample()&&report.code==a::NpcShotAttemptLimit&&report.attempts==a::npc_shot_attempt_limit&&
+        report.random_calls==4*a::npc_shot_attempt_limit);
+    f.calls=0;basis.forward.x=std::numeric_limits<float>::quiet_NaN();
+    assert(sample()&&report.code==a::NpcShotRejected&&!report.random_calls);
+    assert(api->end_campaign());
+}
 int main(int argc,char** argv){
     assert(argc==2||argc==3);
 #ifdef _WIN32
@@ -1374,6 +1461,13 @@ int main(int argc,char** argv){
 #endif
     assert(getAim&&!getAim(0,sizeof(a::NpcAimApi))&&!getAim(1,0));
     test_npc_aim(getAim(a::npc_aim_version,sizeof(a::NpcAimApi)),api,spread);
+#ifdef _WIN32
+    auto getShot=reinterpret_cast<a::GetNpcShotApi>(GetProcAddress(lib,a::npc_shot_export_name));
+#else
+    auto getShot=reinterpret_cast<a::GetNpcShotApi>(dlsym(lib,a::npc_shot_export_name));
+#endif
+    assert(getShot&&!getShot(0,sizeof(a::NpcShotApi))&&!getShot(1,0));
+    test_npc_shot(getShot(a::npc_shot_version,sizeof(a::NpcShotApi)),api);
     a::State s{};
     float x=123.f;
     assert(!api->get_state(&s)&&!api->get_metric(0,&x)&&x==123.f);
@@ -1427,6 +1521,7 @@ int main(int argc,char** argv){
     test_native_combat_filesystem(lib,api,getSpread(a::attack_spread_version,sizeof(a::AttackSpreadApi)));
     test_native_focus(lib,api,spread);
     test_native_aim(lib,api,spread);
+    test_native_shot(lib,api,spread);
     test_native_npc_rng(lib,api);
     test_native_engine_event(lib,api,map,triggers);
     test_engine_skill(lib,api);
