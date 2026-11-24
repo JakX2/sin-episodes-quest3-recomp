@@ -58,5 +58,26 @@ struct SceneManagerQueryApi {
     int (__cdecl *query)(void* manager,unsigned bytes,void* npc,SceneQueryKind,unsigned filter,const SceneManagerQueryBindings*,unsigned*) noexcept;
 };
 using GetSceneManagerQueryApi=const SceneManagerQueryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_manager_runtime_export[]="SiN_GetSceneManagerRuntimeApi";
+struct SceneManagerSession {
+    std::uint32_t handle=0xffffffffu;
+    unsigned initialized=0,busy=0,blocked=0;
+};
+struct SceneManagerRuntimeBindings {
+    void* context;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *create)(void*,const char*,int edict_index,void**) noexcept;
+    int (__cdecl *packed_handle)(void*,void*,std::uint32_t*) noexcept;
+    // Original manager virtual +64 (spawn).
+    int (__cdecl *spawn)(void*,void*) noexcept;
+    SceneManagerQueryBindings query;
+};
+struct SceneManagerRuntimeApi {
+    std::uint32_t version,size;
+    int (__cdecl *ensure)(SceneManagerSession*,const SceneManagerRuntimeBindings*,void**,unsigned*) noexcept;
+    int (__cdecl *query)(SceneManagerSession*,const SceneManagerRuntimeBindings*,void* npc,SceneQueryKind,unsigned filter,unsigned*) noexcept;
+};
+using GetSceneManagerRuntimeApi=const SceneManagerRuntimeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 }

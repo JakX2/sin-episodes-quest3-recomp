@@ -137,4 +137,50 @@ inline void check_scene_manager_query(const SceneManagerQueryApi& api){
     assert(api.query(f.manager,sizeof(f.manager),&f.npc,static_cast<SceneQueryKind>(3),0,&f.b,&out)==0);
 }
 
+
+struct SceneManagerRuntimeFixture {
+    SceneQueryFixture scene;
+    SceneManagerSession session{};
+    SceneManagerRuntimeBindings b{};
+    const SceneManagerRuntimeApi& api;
+    unsigned creations=0,spawns=0,resolves=0,handles=0;
+    bool absent=false,stale=false,fail_spawn=false;
+    std::uint32_t serial=0x123001;
+    static SceneManagerRuntimeFixture& get(void* p){return *static_cast<SceneManagerRuntimeFixture*>(p);}
+    explicit SceneManagerRuntimeFixture(const SceneManagerRuntimeApi& a):api(a){
+        b.context=this;b.query=scene.b;
+        b.resolve=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);++f.resolves;*out=word==f.serial&&!f.stale?f.scene.manager:nullptr;*n=sizeof(f.scene.manager);return 1;
+        };
+        b.create=[](void* p,const char* name,int index,void** out) noexcept -> int{
+            auto& f=get(p);assert(!std::strcmp(name,"scene_manager")&&index==-1&&f.session.busy);
+            ++f.creations;void* nested=&f;unsigned n=99;
+            assert(f.api.ensure(&f.session,&f.b,&nested,&n)==0&&nested==&f&&n==99);
+            *out=f.absent?nullptr:f.scene.manager;if(!f.absent)f.stale=false;return 1;
+        };
+        b.packed_handle=[](void* p,void* object,std::uint32_t* out) noexcept -> int{
+            auto& f=get(p);assert(object==f.scene.manager);++f.handles;*out=f.serial;return 1;
+        };
+        b.spawn=[](void* p,void* object) noexcept -> int{
+            auto& f=get(p);assert(object==f.scene.manager&&f.session.handle==f.serial&&f.session.busy);++f.spawns;return !f.fail_spawn;
+        };
+    }
+};
+inline void check_scene_manager_runtime(const SceneManagerRuntimeApi& api){
+    SceneManagerRuntimeFixture f(api);void* out=&f;unsigned n=99;
+    auto ensure=[&](){return api.ensure(&f.session,&f.b,&out,&n);};
+    f.session.handle=0xdead;f.absent=true;
+    assert(ensure()==1&&!out&&!n&&f.session.initialized==1&&f.session.handle==0xffffffffu&&f.creations==1&&!f.resolves);
+    f.absent=false;assert(ensure()==1&&out==f.scene.manager&&n==sizeof(f.scene.manager)&&f.creations==2&&f.spawns==1&&f.resolves==2);
+    assert(ensure()==1&&f.creations==2&&f.resolves==4);
+    unsigned result=99;
+    assert(api.query(&f.session,&f.b,&f.scene.npc,SceneQueryKind::Active,1,&result)==1&&result&&f.scene.entries==3);
+    f.stale=true;f.serial=0x124001;assert(ensure()==1&&f.creations==3&&f.spawns==2&&f.session.handle==f.serial);
+    f.stale=true;f.absent=true;result=99;
+    assert(api.query(&f.session,&f.b,&f.scene.npc,SceneQueryKind::Active,1,&result)==-1&&result==99&&!f.session.blocked&&f.session.handle==0xffffffffu);
+    SceneManagerRuntimeFixture failed(api);failed.fail_spawn=true;out=&failed;n=99;
+    assert(api.ensure(&failed.session,&failed.b,&out,&n)==-1&&out==&failed&&n==99&&failed.session.blocked&&!failed.session.busy);
+    assert(api.ensure(&failed.session,&failed.b,&out,&n)==0);
+}
+
 }
