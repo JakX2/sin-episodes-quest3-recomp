@@ -176,6 +176,7 @@ int main(int argc,char** argv){
         const auto* api=get(1,sizeof(ft::ServerFacialThinkApi));
         assert(api&&!get(0,sizeof(ft::ServerFacialThinkApi))&&!get(1,0));
         ft::test::check_server_facial_think(*api);
+        ft::test::check_active_server_facial_records(*api);
         std::puts("PASS server facial think and actor event records");
     }
     const auto gc=reinterpret_cast<d::GetApi>(GetProcAddress(client,d::export_name));

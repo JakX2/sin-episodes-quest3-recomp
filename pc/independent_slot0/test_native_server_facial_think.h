@@ -1,5 +1,6 @@
 #pragma once
 #include "native_server_facial_think.h"
+#include "native_server_flex_spline.h"
 #include <cassert>
 #include <cstring>
 #include <cmath>
@@ -51,5 +52,83 @@ inline void check_server_facial_think(const ServerFacialThinkApi& api){
     f.mutate=true;actor[0x600]=1;
     assert(!api.run(actor,sizeof(actor),13,&b)&&actor[0x600]);
     assert(api.run(actor,sizeof(actor),14,&b)&&!actor[0x600]);
+}
+
+inline void check_active_server_facial_records(const ServerFacialThinkApi& api){
+    struct Fixture {
+        alignas(4) unsigned char rows[0x80]{},scene[0x21c]{},events[2][0x3c0]{},track[0x50]{},vfe[256]{};
+        std::uint32_t tracks[1]{6};
+        char name[4]="jaw";
+        ServerFlexSample samples[1]{{.8f,.5f,0}};
+        unsigned loads{},expr_maps{},flex_maps{},intensity_calls{};
+    } f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto close=[](float a,float b){return std::fabs(a-b)<.00001f;};
+    alignas(4) unsigned char actor[server_flex_scene_extent]{};
+    actor[0x1f0]=1;actor[0x600]=1;
+    put(actor,0x4a8,.2f);put(actor,0x5b8,1u);put(actor,0x5c4,2);
+    put(f.scene,0x78,1.5f);
+    put(f.rows,0,3u);put(f.rows,4,2u);put(f.rows,0x40,4u);put(f.rows,0x44,2u);
+    put(f.rows,0x60,1.f);
+    put(f.events[0],0,2u);put(f.events[0],0x184,1.f);put(f.events[0],0x188,2.f);
+    std::strcpy(reinterpret_cast<char*>(f.events[0]+0x84),"emotion");
+    std::strcpy(reinterpret_cast<char*>(f.events[0]+0x104),"smile");
+    put(f.events[1],0,10u);put(f.events[1],0x184,1.f);put(f.events[1],0x188,2.f);
+    put(f.events[1],0x30c,5u);put(f.events[1],0x318,1);
+    put(f.track,4,7u);f.track[8]=1;put(f.track,0x10,1.f);
+    put(f.track,0x14,8u);put(f.track,0x20,1);
+    std::memcpy(f.vfe,"EFV",4);
+    put(f.vfe,0x48,256);put(f.vfe,0x4c,1);put(f.vfe,0x50,108);
+    put(f.vfe,0x60,1);put(f.vfe,0x64,156);put(f.vfe,0x68,160);
+    put(f.vfe,108,64);put(f.vfe,116,2);put(f.vfe,128,24);
+    put(f.vfe,132,0);put(f.vfe,136,.2f);put(f.vfe,144,0);put(f.vfe,148,.2f);
+    put(f.vfe,156,192);put(f.vfe,160,-1);
+    std::strcpy(reinterpret_cast<char*>(f.vfe+172),"smile");
+    std::strcpy(reinterpret_cast<char*>(f.vfe+192),"jaw");
+    ServerFlexRange range{0,1};
+    ServerFacialThinkBindings b{};b.context=&f;b.ranges=&range;b.count=1;b.base_expression=b.base_flex=1;
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);
+        switch(w){
+        case 1:*out=f.rows;*n=sizeof(f.rows);break;
+        case 2:*out=f.scene;*n=sizeof(f.scene);break;
+        case 3:case 4:*out=f.events[w-3];*n=sizeof(f.events[0]);break;
+        case 5:*out=f.tracks;*n=sizeof(f.tracks);break;
+        case 6:*out=f.track;*n=sizeof(f.track);break;
+        case 7:*out=f.name;*n=sizeof(f.name);break;
+        case 8:*out=f.samples;*n=sizeof(f.samples);break;
+        default:return 0;
+        }
+        return 1;
+    };
+    ServerExpressionBindings expression{};expression.context=&f;expression.ranges=&range;expression.count=1;
+    expression.load=[](void* p,void*,const char* name,ServerExpressionBank* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.loads;
+        if(std::strcmp(name,"emotion"))return 0;*out={f.vfe,sizeof(f.vfe)};return 1;
+    };
+    expression.controller=[](void* p,void*,const char* name) noexcept -> int{
+        ++static_cast<Fixture*>(p)->expr_maps;return std::strcmp(name,"jaw")?-1:0;
+    };
+    expression.intensity=[](void* p,void*,float time,float* out) noexcept -> int{
+        ++static_cast<Fixture*>(p)->intensity_calls;assert(time==1.5f);*out=.5f;return 1;
+    };
+    ServerFlexAnimationBindings flex{};flex.context=&f;flex.ranges=&range;flex.count=1;flex.storage=b.storage;
+    flex.controller=[](void* p,const char* name) noexcept -> int{
+        ++static_cast<Fixture*>(p)->flex_maps;return std::strcmp(name,"jaw")?-1:0;
+    };
+    flex.intensity=expression.intensity; // no sample callback: native raw spline.
+    b.expression=&expression;b.flex=&flex;
+    auto value=[&](){float v=0;std::memcpy(&v,actor+0x4a8,4);return v;};
+    // Decay .2 -> .19, expression adds .2, spline blends half way to .8.
+    assert(api.run(actor,sizeof(actor),10,&b));
+    assert(close(value(),.595f)&&f.rows[0xc]&&f.rows[0x4c]&&f.events[1][0x320]);
+    assert(f.loads==1&&f.expr_maps==2&&f.flex_maps==1&&f.intensity_calls==2&&actor[0x200]&&!actor[0x600]);
+    assert(api.run(actor,sizeof(actor),11,&b));
+    assert(close(value(),.782625f)&&f.loads==2&&f.expr_maps==4&&f.flex_maps==1&&f.intensity_calls==4);
+    // Swap vector ordering: flex first, then expression, so result differs.
+    unsigned char tmp[0x40];std::memcpy(tmp,f.rows,0x40);std::memcpy(f.rows,f.rows+0x40,0x40);
+    std::memcpy(f.rows+0x40,tmp,0x40);put(actor,0x4a8,.2f);
+    assert(api.run(actor,sizeof(actor),12,&b));
+    assert(close(value(),.695f)&&f.flex_maps==1&&f.intensity_calls==6);
 }
 }
