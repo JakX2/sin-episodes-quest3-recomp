@@ -756,6 +756,24 @@ struct WeaponSnapshotApi {
         sin_port::weapon_net::Payload*) noexcept;
 };
 using GetWeaponSnapshotApi=const WeaponSnapshotApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+// Character inventory capture. Characters are still external engine
+// shells: host resolves their live full identity and both recipients.
+inline constexpr char inventory_snapshot_export_name[]="SiN_GetInventorySnapshotApi";
+struct InventorySnapshotHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *recipients)(void*,MapEntityRef,sin_port::weapon_net::InventoryRecipients*);
+    // Read raw inventory DWORD, not GetAmmoCount's infinite sentinel.
+    int (SIN_FIXED_CALL *raw_ammo)(void*,MapEntityRef,std::uint32_t,std::uint32_t*);
+    int (SIN_FIXED_CALL *next_attack)(void*,MapEntityRef,std::uint32_t*);
+    int (SIN_FIXED_CALL *weapon)(void*,MapEntityRef,std::uint32_t,std::uint32_t*,std::uint32_t*);
+    int (SIN_FIXED_CALL *active_weapon)(void*,MapEntityRef,std::uint32_t*,std::uint32_t*);
+};
+struct InventorySnapshotApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *capture)(MapEntityRef,std::uint32_t,const InventorySnapshotHost*,void*,
+        sin_port::weapon_net::InventoryPayload*) noexcept;
+};
+using GetInventorySnapshotApi=const InventorySnapshotApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

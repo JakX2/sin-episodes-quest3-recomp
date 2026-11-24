@@ -1,7 +1,6 @@
 // Load the actual built module. No linking against its implementation.
 #include "server_fixed_difficulty_service.h"
 #include "original_ammo_definitions.h"
-#include "test_weapon_network_contract_core.h"
 #include "server_native_map_host.h"
 #include <vector>
 #include <utility>
@@ -10,6 +9,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include "test_inventory_network_contract_core.h"
 #include <cmath>
 #include <limits>
 #include <cstdio>
@@ -1445,6 +1445,68 @@ static void test_weapon_snapshot(const a::WeaponSnapshotApi* capture,const wn::A
     assert(map->remove(ref)&&!capture->capture(ref,3,&host,&f,&out));
     assert(map->end_level(epoch)&&api->end_campaign());
 }
+struct InventorySnapshotFixture {
+    AmmoFixture* ammo;
+    const a::MapEntityApi* map;
+    wn::InventoryRecipients recipients{1,2};
+    bool live=true,fail=false;
+    unsigned ammo_reads=0,weapon_reads=0,active_reads=0,timer_reads=0;
+    void check(a::MapEntityRef ref){
+        assert(ref.epoch==ammo->owner.epoch&&ref.index==ammo->owner.index&&ref.generation==ammo->owner.generation);
+        assert(!map->end_level(ref.epoch));
+    }
+    static InventorySnapshotFixture& get(void* c){return *static_cast<InventorySnapshotFixture*>(c);}
+    static int SIN_FIXED_CALL resolve(void* c,a::MapEntityRef ref,wn::InventoryRecipients* out){
+        auto& f=get(c);f.check(ref);*out=f.recipients;return f.live;
+    }
+    static int SIN_FIXED_CALL read_ammo(void* c,a::MapEntityRef ref,std::uint32_t i,std::uint32_t* out){
+        auto& f=get(c);f.check(ref);++f.ammo_reads;
+        assert(i<32);
+        *out=static_cast<std::uint32_t>(f.ammo->counts[i]);
+        return !(f.fail&&i==31);
+    }
+    static int SIN_FIXED_CALL timer(void* c,a::MapEntityRef ref,std::uint32_t* out){
+        auto& f=get(c);f.check(ref);++f.timer_reads;*out=wn::test::float_bits(12.f);return 1;
+    }
+    static int SIN_FIXED_CALL weapon(void* c,a::MapEntityRef ref,std::uint32_t i,std::uint32_t* out,std::uint32_t* live){
+        auto& f=get(c);f.check(ref);++f.weapon_reads;assert(i<48);
+        *out=i==47?0x2007u:wn::invalid_handle;*live=i==47?1u:0u;return 1;
+    }
+    static int SIN_FIXED_CALL active(void* c,a::MapEntityRef ref,std::uint32_t* out,std::uint32_t* live){
+        auto& f=get(c);f.check(ref);++f.active_reads;*out=0x2007u;*live=1;return 1;
+    }
+};
+static void test_inventory_snapshot(const a::InventorySnapshotApi* capture,const wn::InventoryApi* net,
+        const a::CombatAmmoApi* ammo,const a::MapEntityApi* map,const a::Api* api){
+    assert(capture&&capture->version==1&&capture->size==sizeof(*capture)&&net);
+    wn::test::check_inventory(*net,*net);
+    assert(api->begin_campaign(2));const auto epoch=map->begin_level("inventory");assert(epoch);
+    AmmoFixture live;live.ammo=ammo;live.map=map;live.owner={epoch,100,1};
+    live.counts[2]=7;live.maxima[2]=40;live.maxima[3]=-2;live.counts[3]=11;
+    InventorySnapshotFixture fixture{&live,map};
+    const a::InventorySnapshotHost host{1,sizeof(a::InventorySnapshotHost),&InventorySnapshotFixture::resolve,
+        &InventorySnapshotFixture::read_ammo,&InventorySnapshotFixture::timer,&InventorySnapshotFixture::weapon,
+        &InventorySnapshotFixture::active};
+    wn::InventoryPayload out{};
+    assert(capture->capture(live.owner,3,&host,&fixture,&out)&&out.present==wn::InventoryPublic);
+    assert(!fixture.ammo_reads&&!fixture.weapon_reads&&!fixture.timer_reads&&fixture.active_reads==1);
+    assert(capture->capture(live.owner,1,&host,&fixture,&out)&&out.values.ammo[2]==7&&out.values.ammo[3]==11);
+    assert(fixture.ammo_reads==32&&!fixture.weapon_reads);
+    assert(live.apply(a::AmmoRemove,2,3).code==a::AmmoChanged);
+    assert(capture->capture(live.owner,1,&host,&fixture,&out)&&out.values.ammo[2]==4&&fixture.ammo_reads==64);
+    wn::InventoryValues client{};
+    assert(net->decode(&out,wn::InventoryPublic|wn::InventoryAmmo,&client)&&client.ammo[2]==4);
+    assert(capture->capture(live.owner,2,&host,&fixture,&out)&&fixture.weapon_reads==48&&fixture.timer_reads==1);
+    assert(fixture.ammo_reads==64&&net->decode(&out,wn::InventoryPublic|wn::InventoryCombat,&client));
+    assert(client.ammo[2]==4&&client.weapons[47]==0x2007u&&client.active_weapon==0x2007u);
+    fixture.recipients={1,1};fixture.fail=true;
+    const auto prior=out;
+    assert(!capture->capture(live.owner,1,&host,&fixture,&out)&&std::memcmp(&prior,&out,sizeof(out))==0);
+    fixture.fail=false;fixture.live=false;
+    assert(!capture->capture(live.owner,1,&host,&fixture,&out));
+    fixture.live=true;
+    assert(map->end_level(epoch)&&!capture->capture(live.owner,1,&host,&fixture,&out)&&api->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -2327,6 +2389,16 @@ int main(int argc,char** argv){
 #endif
     assert(getNet&&getSnapshot&&!getNet(0,sizeof(wn::Api))&&!getSnapshot(1,0));
     test_weapon_snapshot(getSnapshot(wn::version,sizeof(a::WeaponSnapshotApi)),getNet(wn::version,sizeof(wn::Api)),map,api);
+#ifdef _WIN32
+    auto getInventory=reinterpret_cast<wn::GetInventoryApi>(GetProcAddress(lib,wn::inventory_export_name));
+    auto getInventorySnapshot=reinterpret_cast<a::GetInventorySnapshotApi>(GetProcAddress(lib,a::inventory_snapshot_export_name));
+#else
+    auto getInventory=reinterpret_cast<wn::GetInventoryApi>(dlsym(lib,wn::inventory_export_name));
+    auto getInventorySnapshot=reinterpret_cast<a::GetInventorySnapshotApi>(dlsym(lib,a::inventory_snapshot_export_name));
+#endif
+    assert(getInventory&&getInventorySnapshot&&!getInventory(0,sizeof(wn::InventoryApi))&&!getInventorySnapshot(1,0));
+    test_inventory_snapshot(getInventorySnapshot(wn::version,sizeof(a::InventorySnapshotApi)),
+        getInventory(wn::version,sizeof(wn::InventoryApi)),ammo,map,api);
     namespace defs=sin_port::original_ammo;
 #ifdef _WIN32
     auto getDefs=reinterpret_cast<defs::GetApi>(GetProcAddress(lib,defs::export_name));
