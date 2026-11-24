@@ -14,6 +14,7 @@
 #include "native_use_observation.h"
 #include "native_vehicle_use.h"
 #include "native_vehicle_actions.h"
+#include "native_music_radio.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3986,6 +3987,126 @@ int __cdecl vehicle_apply_action(HologramControl* c,const VehicleActionBindings*
     return disp_finish(c,vehicle_action_leaf(c->object,h,actor,part));
 }
 const VehicleActionsApi vehicle_actions_api{version,sizeof(VehicleActionsApi),&vehicle_apply_action,&vehicle_apply_leaf,&health_ack};
+
+bool music_radio_ready(const HologramControl* c,const MusicRadioBindings* b) noexcept {
+    return health_control(c,music_radio_bytes)&&b&&b->clock&&b->schedule&&b->resolve&&b->handle&&b->emit&&b->stop;
+}
+int __cdecl music_radio_init(HologramControl* c,std::uint32_t script) noexcept {
+    if(!health_control(c,music_radio_bytes))return 0;
+    hologram_write(c->object,0x394,0xffffffffu);
+    for(unsigned off:{0x398u,0x3a0u,0x3a4u,0x3a8u,0x3acu,0x3b0u,0x3b4u,0x3b8u})hologram_write(c->object,off,0u);
+    hologram_write(c->object,0x39c,script);return 1;
+}
+int __cdecl music_radio_ack(HologramControl* c) noexcept {
+    if(!c||c->busy||!c->blocked||c->bytes<music_radio_bytes||!hologram_writable(c->object,music_radio_bytes))return 0;
+    c->blocked=0;return 1;
+}
+// Original station vector +3a8, count +3b4, stride56; per-station
+// selected track +20, track vector +24, count +30, stride68.
+unsigned char* music_record(std::uint32_t base,int index,unsigned stride,unsigned extent) noexcept {
+    if(!base||index<0||index>65535)return nullptr;
+    const auto offset=static_cast<unsigned>(index)*stride;
+    if(base>0xffffffffu-offset)return nullptr;
+    auto* p=reinterpret_cast<unsigned char*>(static_cast<std::uintptr_t>(base)+offset);
+    return hologram_writable(p,extent)?p:nullptr;
+}
+bool music_speaker(void* radio,const MusicRadioBindings& h,void*& speaker) noexcept {
+    auto resolve=[&](){
+        speaker=nullptr;const auto word=hologram_read<std::uint32_t>(radio,0x394);
+        return word==0xffffffffu||h.resolve(h.context,word,&speaker)!=0;
+    };
+    if(!resolve())return false;
+    if(!speaker){
+        std::uint32_t word=0xffffffffu;
+        if(!h.handle(h.context,radio,&word))return false;
+        hologram_write(radio,0x394,word);
+    }
+    return resolve()&&speaker;
+}
+bool music_play(void* radio,const MusicRadioBindings& h,bool advance,bool volume_change,bool stop) noexcept {
+    const int station=hologram_read<int>(radio,0x3a4),count=hologram_read<int>(radio,0x3b4);
+    if(station<0||station>=count)return true;
+    auto* s=music_record(hologram_read<std::uint32_t>(radio,0x3a8),station,56,56);
+    if(!s)return false;
+    int track=hologram_read<int>(s,0x20),tracks=hologram_read<int>(s,0x30);
+    if(advance){
+        const auto next=static_cast<std::int64_t>(track)+1;
+        track=next>=tracks?0:next<0?tracks-1:static_cast<int>(next);
+        hologram_write(s,0x20,track);
+    }
+    if(track<0||track>=tracks)return true;
+    auto* t=music_record(hologram_read<std::uint32_t>(s,0x24),track,68,68);
+    if(!t)return false;
+    char name[64]{};
+    if(!prop_key_read(reinterpret_cast<const char*>(t+4),name))return false;
+    void* speaker=nullptr;if(!music_speaker(radio,h,speaker))return false;
+    if(stop)return h.stop(h.context,speaker,5,name)!=0;
+    const double scaled=static_cast<double>(hologram_read<float>(radio,0x398))*0.01f;
+    const float volume=scaled>1?1.f:scaled<0?0.f:static_cast<float>(scaled);
+    float duration=0;
+    if(!h.emit(h.context,radio,speaker,name,volume,5,60,volume_change?1u:0u,&duration))return false;
+    if(advance){
+        float now=0;if(!h.clock(h.context,&now))return false;
+        hologram_write(radio,0x3a0,static_cast<float>(static_cast<double>(now)+duration));
+    }
+    return true;
+}
+bool music_on(void* radio,const MusicRadioBindings& h) noexcept {
+    if(hologram_read<float>(radio,0x398)!=0.0f)return true;
+    hologram_write(radio,0x398,100.0f);
+    float now=0;if(!h.clock(h.context,&now)||!h.schedule(h.context,radio,now))return false;
+    return music_play(radio,h,true,false,false);
+}
+bool music_off(void* radio,const MusicRadioBindings& h) noexcept {
+    if(!(hologram_read<float>(radio,0x398)>0.0f))return true;
+    hologram_write(radio,0x398,0.0f);
+    return music_play(radio,h,false,false,true);
+}
+bool music_station(void* radio,const MusicRadioBindings& h,int direction,int requested) noexcept {
+    const int count=hologram_read<int>(radio,0x3b4);
+    if(count<0||count>65536)return false;
+    const int last=count-1;int station=0;
+    if(direction==0)station=requested>last?last:requested<0?0:requested;
+    else{
+        const auto next=static_cast<std::int64_t>(hologram_read<int>(radio,0x3a4))+direction;
+        station=next>last?0:next<0?last:static_cast<int>(next);
+    }
+    hologram_write(radio,0x3a4,station);return music_play(radio,h,true,false,false);
+}
+int __cdecl music_radio_input(HologramControl* c,const MusicRadioBindings* b,MusicRadioInput input,int value) noexcept {
+    if(!music_radio_ready(c,b)||static_cast<unsigned>(input)>static_cast<unsigned>(MusicRadioInput::Cycle))return 0;
+    c->busy=1;const auto h=*b;auto* radio=c->object;bool ok=false;
+    switch(input){
+        case MusicRadioInput::On:ok=music_on(radio,h);break;
+        case MusicRadioInput::Off:ok=music_off(radio,h);break;
+        case MusicRadioInput::Next:ok=music_station(radio,h,1,0);break;
+        case MusicRadioInput::Previous:ok=music_station(radio,h,-1,0);break;
+        case MusicRadioInput::Station:ok=music_station(radio,h,0,value);break;
+        case MusicRadioInput::Volume:hologram_write(radio,0x398,static_cast<float>(value));ok=music_play(radio,h,false,true,false);break;
+        case MusicRadioInput::Cycle:
+            if(hologram_read<float>(radio,0x398)>0.0f){
+                const auto last=static_cast<std::int64_t>(hologram_read<int>(radio,0x3b4))-1;
+                ok=hologram_read<int>(radio,0x3a4)<last?music_station(radio,h,1,0):music_off(radio,h);
+            }else{hologram_write(radio,0x3a4,0);ok=music_on(radio,h);}
+            break;
+    }
+    return disp_finish(c,ok);
+}
+int __cdecl music_radio_tick(HologramControl* c,const MusicRadioBindings* b) noexcept {
+    if(!music_radio_ready(c,b))return 0;
+    c->busy=1;const auto h=*b;auto* radio=c->object;
+    const int station=hologram_read<int>(radio,0x3a4);
+    float now=0;
+    if(station>=0&&station<hologram_read<int>(radio,0x3b4)){
+        if(!h.clock(h.context,&now))return disp_finish(c,false);
+        if(now>=hologram_read<float>(radio,0x3a0)&&!music_play(radio,h,true,false,false))return disp_finish(c,false);
+    }
+    if(hologram_read<float>(radio,0x398)>0.f){
+        if(!h.clock(h.context,&now)||!h.schedule(h.context,radio,now))return disp_finish(c,false);
+    }
+    return disp_finish(c,true);
+}
+const MusicRadioApi music_radio_api{version,sizeof(MusicRadioApi),&music_radio_init,&music_radio_input,&music_radio_tick,&music_radio_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -5898,6 +6019,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleAc
 SiN_GetVehicleActionsApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleActionsApi)?&vehicle_actions_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetMusicRadioApi=_SiN_GetMusicRadioApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::MusicRadioApi* __cdecl
+SiN_GetMusicRadioApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(MusicRadioApi)?&music_radio_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")

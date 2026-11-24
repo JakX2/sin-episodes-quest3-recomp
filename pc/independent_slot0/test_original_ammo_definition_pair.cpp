@@ -23,6 +23,7 @@
 #include "test_native_use_observation.h"
 #include "test_native_vehicle_use.h"
 #include "test_native_vehicle_actions.h"
+#include "test_native_music_radio.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -453,6 +454,12 @@ int main(int argc,char** argv){
     assert(vehicleActions&&!getVehicleActions(0,sizeof(tables::VehicleActionsApi))&&!getVehicleActions(1,0));
     tables::test::check_vehicle_actions(*vehicleActions,*vehicleUse);
     std::puts("PASS original SiN vehicle action jump table, output and dashboard state");
+    const auto getMusicRadio=reinterpret_cast<tables::GetMusicRadioApi>(GetProcAddress(server,tables::music_radio_export));
+    assert(getMusicRadio&&!GetProcAddress(client,tables::music_radio_export));
+    const auto* musicRadio=getMusicRadio(1,sizeof(tables::MusicRadioApi));
+    assert(musicRadio&&!getMusicRadio(0,sizeof(tables::MusicRadioApi))&&!getMusicRadio(1,0));
+    tables::test::check_music_radio(*musicRadio);
+    std::puts("PASS native env_radio station cycling, playback duration and volume controls");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
