@@ -54,7 +54,8 @@ enum EngineSkillOperation : std::uint32_t { BeginFromEngine=0, SyncFromEngine=1 
 using ApplyEngineSkill=int (SIN_FIXED_CALL *)(void*,std::uint32_t) noexcept;
 // Explicit host boundary for the recovered GameInit command-buffer tail.
 // Caller owns live VEngineServer021 and VEngineCvar002 interfaces, and
-// must have completed its own preceding startup/reset requirements.
+// must have completed preceding DLL startup requirements. The DLL-owned
+// CGlobalState is cleared before the command-buffer tail.
 // Not a replacement for original GameInit. No pointers are retained.
 inline constexpr char configured_campaign_export_name[]="SiN_StartConfiguredCampaign";
 enum ConfiguredStartResult : int {
@@ -62,6 +63,23 @@ enum ConfiguredStartResult : int {
     ConfigQueueUncertain=3, ConfigExecuteUncertain=4
 };
 using StartConfiguredCampaign=int (SIN_FIXED_CALL *)(void*,void*) noexcept;
+// Independent CGlobalState service, not original C++ layout or save format.
+// String inputs must be live NUL-terminated buffers. Read copies both
+// strings or refuses without modifying outputs. No owned memory escapes.
+inline constexpr char global_state_export_name[]="SiN_GetGlobalStateApi";
+inline constexpr std::uint32_t global_state_version=1;
+struct GlobalStateApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *count)() noexcept;
+    int (SIN_FIXED_CALL *find)(const char*) noexcept; // -1 absent
+    int (SIN_FIXED_CALL *add)(const char*,const char*,std::int32_t) noexcept;
+    int (SIN_FIXED_CALL *read)(int,char*,std::uint32_t,char*,std::uint32_t,std::int32_t*) noexcept;
+    int (SIN_FIXED_CALL *set_state)(int,std::int32_t) noexcept;
+    int (SIN_FIXED_CALL *set_level)(int,const char*) noexcept;
+    int (SIN_FIXED_CALL *set_updates_disabled)(int) noexcept;
+    int (SIN_FIXED_CALL *clear)() noexcept;
+};
+using GetGlobalStateApi=const GlobalStateApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

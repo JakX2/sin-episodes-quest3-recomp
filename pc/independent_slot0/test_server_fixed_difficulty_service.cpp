@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <cstdio>
+#include <cstring>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -17,6 +18,33 @@
 #include <dlfcn.h>
 #endif
 namespace a=sin_port::fixed_service;
+static void test_global_state(const a::GlobalStateApi* g){
+    assert(g&&g->version==1&&g->size==sizeof(*g));
+    assert(g->clear()&&g->count()==0&&g->find("door")==-1);
+    assert(g->add(nullptr,"map_a",1)==-1);
+    assert(g->add("door","map_a",1)==0);
+    assert(g->add("door","map_b",2)==0&&g->count()==1);
+    assert(g->add("Door","map_b",2)==1&&g->count()==2);
+    assert(g->find("door")==0&&g->find("Door")==1);
+    char name[32]="unchanged",level[32]="unchanged";
+    std::int32_t value=-99;
+    assert(!g->read(0,name,2,level,32,&value));
+    assert(std::strcmp(name,"unchanged")==0&&std::strcmp(level,"unchanged")==0&&value==-99);
+    assert(g->read(0,name,32,level,32,&value)&&value==1);
+    assert(std::strcmp(name,"door")==0&&std::strcmp(level,"map_a")==0);
+    assert(g->set_updates_disabled(1)&&!g->set_state(0,3));
+    assert(g->set_level(0,"map_c")&&g->read(0,name,32,level,32,&value)&&value==1);
+    assert(std::strcmp(level,"map_c")==0);
+    assert(g->set_level(0,nullptr)&&g->read(0,name,32,level,32,&value)&&!*level);
+    assert(!g->set_updates_disabled(2)&&!g->set_state(0,3));
+    assert(g->set_updates_disabled(0)&&g->set_state(0,3));
+    assert(g->read(0,name,32,level,32,&value)&&value==3);
+    assert(!g->set_state(-1,0)&&!g->set_level(2,"map"));
+    assert(g->set_updates_disabled(1)&&g->clear()&&g->count()==0);
+    assert(g->add("fresh","map_d",0)==0&&!g->set_state(0,1));
+    assert(g->set_updates_disabled(0)&&g->clear()&&g->clear());
+    assert(g->count()==0&&g->find("door")==-1);
+}
 #if defined(_MSC_VER) && defined(_M_IX86)
 namespace console=sin_independent::console_abi;
 class SkillEngine final:public console::EngineCvar {
@@ -137,6 +165,7 @@ public:
     virtual void __thiscall Queue(const char* text){
         assert(text&&std::strcmp(text,"exec game.cfg\n")==0);
         assert(stage==0&&skill->lookups==before);
+        assert(globals&&globals->count()==0&&!globals->clear());
         assert(!api->begin_campaign(1)&&!api->end_campaign());
         assert(start(this,skill)==a::ConfigRejected);
         stage=1;
@@ -149,13 +178,14 @@ public:
         skill->root.SetInt(configured);
         if(fail==2)throw 2;
     }
+    const a::GlobalStateApi* globals=nullptr;
     SkillEngine* skill=nullptr;
     const a::Api* api=nullptr;
     a::StartConfiguredCampaign start=nullptr;
     unsigned stage=0,before=0,fail=0;
     int configured=3;
 };
-static void test_configured_campaign(HMODULE lib,const a::Api* api){
+static void test_configured_campaign(HMODULE lib,const a::Api* api,const a::GlobalStateApi* globals){
     auto start=reinterpret_cast<a::StartConfiguredCampaign>(
         GetProcAddress(lib,a::configured_campaign_export_name));
     auto apply=reinterpret_cast<a::ApplyEngineSkill>(
@@ -164,19 +194,21 @@ static void test_configured_campaign(HMODULE lib,const a::Api* api){
     SkillEngine skill;
     skill.api=api;skill.apply=apply;
     ConfigEngine server;
-    server.skill=&skill;server.api=api;server.start=start;
+    server.skill=&skill;server.api=api;server.start=start;server.globals=globals;
+    assert(globals->add("old_global","old_map",1)==0);
     a::State state{};
     assert(start(nullptr,&skill)==a::ConfigRejected);
     assert(start(&server,nullptr)==a::ConfigRejected);
     assert(start(&server,reinterpret_cast<void*>(1))==a::ConfigRejected);
     assert(start(reinterpret_cast<void*>(1),&skill)==a::ConfigRejected);
-    assert(!server.stage&&!skill.lookups);
+    assert(!server.stage&&!skill.lookups&&globals->count()==1);
     assert(api->begin_campaign(1));
     assert(start(&server,&skill)==a::ConfigRejected&&!server.stage);
     assert(api->end_campaign());
+    assert(globals->count()==1);
     server.fail=1;
     assert(start(&server,&skill)==a::ConfigQueueUncertain);
-    assert(server.stage==1&&!skill.lookups&&!api->get_state(&state));
+    assert(server.stage==1&&!skill.lookups&&!api->get_state(&state)&&globals->count()==0);
     server.stage=0;server.fail=2;
     assert(start(&server,&skill)==a::ConfigExecuteUncertain);
     assert(server.stage==2&&!skill.lookups&&!api->get_state(&state));
@@ -214,6 +246,14 @@ int main(int argc,char** argv){
     auto get=reinterpret_cast<a::GetApi>(dlsym(lib,a::export_name));
 #endif
     assert(get);
+#ifdef _WIN32
+    auto getGlobals=reinterpret_cast<a::GetGlobalStateApi>(GetProcAddress(lib,a::global_state_export_name));
+#else
+    auto getGlobals=reinterpret_cast<a::GetGlobalStateApi>(dlsym(lib,a::global_state_export_name));
+#endif
+    assert(getGlobals&&!getGlobals(0,sizeof(a::GlobalStateApi))&&!getGlobals(1,0));
+    const auto* globals=getGlobals(a::global_state_version,sizeof(a::GlobalStateApi));
+    test_global_state(globals);
     assert(!get(0,sizeof(a::Api)));
     assert(!get(a::abi_version,0));
     const auto* api=get(a::abi_version,sizeof(a::Api));
@@ -269,7 +309,7 @@ int main(int argc,char** argv){
 #ifdef _WIN32
 #if defined(_MSC_VER) && defined(_M_IX86)
     test_engine_skill(lib,api);
-    test_configured_campaign(lib,api);
+    test_configured_campaign(lib,api,globals);
 #endif
     assert(FreeLibrary(lib));
 #else

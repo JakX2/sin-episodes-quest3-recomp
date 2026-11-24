@@ -3,6 +3,9 @@
 #include "sin_compat/info_challenge_phase665.hpp"
 #include <cmath>
 #include <optional>
+#include <vector>
+#include <string>
+#include <cstring>
 #if defined(_MSC_VER) && defined(_M_IX86)
 #include "client_known_gamesystem_init.h"
 #include "server_single_cvar_probe.h"
@@ -31,6 +34,79 @@ struct Campaign {
 std::optional<Campaign> campaign;
 // Refuse lifecycle/skill mutations reentered by a synchronous engine lookup.
 bool reading_engine_skill=false;
+// Original CGlobalState globalentity_t has two 16-bit symbol indices
+// and a 32-bit state. Preserve observable name/level/state semantics,
+// using native owned strings instead of original allocator/tree storage.
+struct GlobalRecord {
+    std::string name,level;
+    std::int32_t value;
+};
+std::vector<GlobalRecord> globals;
+bool global_updates_disabled=false;
+constexpr std::size_t max_global_string=4096, max_global_records=65535;
+bool bounded_string(const char* s) noexcept {
+    if(!s)return false;
+    for(std::size_t i=0;i<max_global_string;++i)if(s[i]=='\0')return true;
+    return false;
+}
+int SIN_FIXED_CALL global_count() noexcept {return static_cast<int>(globals.size());}
+int SIN_FIXED_CALL global_find(const char* name) noexcept {
+    if(!bounded_string(name))return -1;
+    for(std::size_t i=0;i<globals.size();++i)
+        if(globals[i].name==name)return static_cast<int>(i);
+    return -1;
+}
+bool valid_global_index(int index) noexcept {
+    return index>=0&&static_cast<std::size_t>(index)<globals.size();
+}
+int SIN_FIXED_CALL global_add(const char* name,const char* level,std::int32_t value) noexcept {
+    if(reading_engine_skill||!bounded_string(name)||!bounded_string(level))return -1;
+    const int prior=global_find(name);
+    if(prior>=0)return prior; // original duplicate returns prior index, unchanged
+    if(globals.size()>=max_global_records)return -1;
+    try {globals.push_back({name,level,value});}
+    catch(...) {return -1;}
+    return global_count()-1;
+}
+int SIN_FIXED_CALL global_read(int index,char* name,std::uint32_t name_bytes,
+    char* level,std::uint32_t level_bytes,std::int32_t* value) noexcept {
+    if(!valid_global_index(index)||!name||!level||!value)return 0;
+    const auto& item=globals[static_cast<std::size_t>(index)];
+    if(name_bytes<=item.name.size()||level_bytes<=item.level.size())return 0;
+    std::memcpy(name,item.name.c_str(),item.name.size()+1);
+    std::memcpy(level,item.level.c_str(),item.level.size()+1);
+    *value=item.value;
+    return 1;
+}
+int SIN_FIXED_CALL global_set_state(int index,std::int32_t value) noexcept {
+    if(reading_engine_skill||global_updates_disabled||!valid_global_index(index))return 0;
+    globals[static_cast<std::size_t>(index)].value=value;
+    return 1;
+}
+int SIN_FIXED_CALL global_set_level(int index,const char* level) noexcept {
+    if(reading_engine_skill||!valid_global_index(index)||!bounded_string(level?level:""))return 0;
+    try {globals[static_cast<std::size_t>(index)].level=level?level:"";}
+    catch(...) {return 0;}
+    return 1;
+}
+int SIN_FIXED_CALL global_disable(int disable) noexcept {
+    if(reading_engine_skill||(disable!=0&&disable!=1))return 0;
+    global_updates_disabled=disable!=0;
+    return 1;
+}
+void clear_global_storage() noexcept {
+    // Original reset does not touch the state-update disable byte.
+    // Independently owned records and strings can be released together.
+    std::vector<GlobalRecord>().swap(globals);
+}
+int SIN_FIXED_CALL global_clear() noexcept {
+    if(reading_engine_skill)return 0;
+    clear_global_storage();
+    return 1;
+}
+const abi::GlobalStateApi global_api{abi::global_state_version,sizeof(abi::GlobalStateApi),
+    &global_count,&global_find,&global_add,&global_read,&global_set_state,
+    &global_set_level,&global_disable,&global_clear};
 int SIN_FIXED_CALL begin(int skill) noexcept {
     if(reading_engine_skill || campaign || !fixed::valid_skill(skill))return 0;
     campaign.emplace(skill);
@@ -125,6 +201,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 // guarantees a stable, undecorated GetProcAddress name on the real DLL.
 #if defined(_MSC_VER) && defined(_M_IX86)
 #pragma comment(linker,"/EXPORT:SiN_GetFixedDifficultyApi=_SiN_GetFixedDifficultyApi")
+#pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #define SIN_FIXED_EXPORT
 #elif defined(_WIN32)
 #define SIN_FIXED_EXPORT __declspec(dllexport)
@@ -134,6 +211,11 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 extern "C" SIN_FIXED_EXPORT const abi::Api* SIN_FIXED_CALL
 SiN_GetFixedDifficultyApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::abi_version&&bytes==sizeof(abi::Api)?&api:nullptr;
+}
+
+extern "C" SIN_FIXED_EXPORT const abi::GlobalStateApi* SIN_FIXED_CALL
+SiN_GetGlobalStateApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::global_state_version&&bytes==sizeof(abi::GlobalStateApi)?&global_api:nullptr;
 }
 
 #if defined(_MSC_VER) && defined(_M_IX86)
@@ -190,7 +272,7 @@ extern "C" int SIN_FIXED_CALL SiN_ApplyEngineSkill(void* engine,std::uint32_t op
 
 // Original ServerGameDLL003 slot 1 (Phase88) queues the literal via
 // VEngineServer021 +0x90, then executes via +0x94. The preceding
-// global reset helper is NOT reconstructed here. The caller supplies
+// global reset now clears the independent CGlobalState owner. The caller supplies
 // the correctly initialized interfaces at an explicit campaign boundary.
 #pragma comment(linker,"/EXPORT:SiN_StartConfiguredCampaign=_SiN_StartConfiguredCampaign")
 extern "C" int SIN_FIXED_CALL SiN_StartConfiguredCampaign(void* server,void* cvar) noexcept {
@@ -204,6 +286,11 @@ extern "C" int SIN_FIXED_CALL SiN_StartConfiguredCampaign(void* server,void* cva
         const auto execute=methods::VerifiedMethod(server,37,refused);
         const auto find=methods::VerifiedMethod(cvar,3,refused);
         if(!queue||!execute||!find)return abi::ConfigRejected;
+        // Original GameInit's first operation is CGlobalState::Clear.
+        // Clear this module's owned equivalent before exec game.cfg.
+        // Refusal before preflight leaves it untouched; after this
+        // boundary external effects are not rolled back.
+        clear_global_storage();
         using Queue=void (__thiscall *)(void*,const char*);
         using Execute=void (__thiscall *)(void*);
         try {reinterpret_cast<Queue>(queue)(server,"exec game.cfg\n");}
