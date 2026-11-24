@@ -343,6 +343,25 @@ struct GeneratedSceneApi {
     int (__cdecl *generate)(void* scene,unsigned bytes,void* actor,const char* sound,const GeneratedSceneBindings*,std::uint32_t*) noexcept;
 };
 using GetGeneratedSceneApi=const GeneratedSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char choreography_construct_export[]="SiN_GetChoreographyConstructApi";
+struct ParsedConstructBindings {
+    void* context;
+    // 2228f360: construct symbol table at parsed+164.
+    int (__cdecl *symbol_construct)(void*,void*,int,int,unsigned) noexcept;
+    // Live replacement comparator 22112550 for the parsed tree.
+    std::uint32_t compare_word;
+};
+struct ChoreographyConstructApi {
+    std::uint32_t version,size;
+    // Original 221161d0/22111280, 22107360, 22109c70, 22110930/2210c600.
+    // Caller owns fresh uninitialized allocation; no blanket clearing.
+    int (__cdecl *parsed)(void*,unsigned,void* callback,const ParsedConstructBindings*) noexcept;
+    int (__cdecl *actor)(void*,unsigned) noexcept;
+    int (__cdecl *channel)(void*,unsigned) noexcept;
+    // Counter is module-wide, not per scene; caller serializes construction.
+    int (__cdecl *event)(void*,unsigned,void* parsed,std::uint32_t* counter) noexcept;
+};
+using GetChoreographyConstructApi=const ChoreographyConstructApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
