@@ -1,4 +1,6 @@
 #include "server_fixed_difficulty_service.h"
+#include "phase45_zoom_transition.hpp"
+#include "phase47_ads_activity.hpp"
 #include "server_attack_spread_rules.h"
 #include "sin_compat/fixed_difficulty_phase663.hpp"
 #include "sin_compat/info_challenge_phase665.hpp"
@@ -56,7 +58,7 @@ struct NativeEventScope {
 };
 #endif
 // Map-local behavior objects, not actual CBaseEntity allocations.
-enum class EntityKind { EnvGlobal, InfoChallenge, DynamicTrigger, SecretTrigger };
+enum class EntityKind { EnvGlobal, InfoChallenge, DynamicTrigger, SecretTrigger, Magnum, AssaultRifle, Scattergun };
 struct MapEntity {
     std::uint32_t generation=0;
     EntityKind kind=EntityKind::EnvGlobal;
@@ -65,6 +67,8 @@ struct MapEntity {
     std::uint32_t flags=0;
     std::int32_t initial_state=0;
     float snapshot=0.f;
+    sin_phase45::WeaponState weapon_zoom{};
+    bool weapon_resync=false;
 };
 struct MapLevel {
     std::uint32_t epoch=0;
@@ -559,6 +563,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetNpcAttackSpreadApi=_SiN_GetNpcAttackSpreadApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcAimApi=_SiN_GetNpcAimApi")
 #pragma comment(linker,"/EXPORT:SiN_GetNpcShotApi=_SiN_GetNpcShotApi")
+#pragma comment(linker,"/EXPORT:SiN_GetWeaponBehaviorApi=_SiN_GetWeaponBehaviorApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -655,6 +660,9 @@ MapEntity* map_find(abi::MapEntityRef ref) noexcept {
     return &it->second;
 }
 
+bool is_weapon(EntityKind kind) noexcept {
+    return kind==EntityKind::Magnum||kind==EntityKind::AssaultRifle||kind==EntityKind::Scattergun;
+}
 bool is_trigger(EntityKind kind) noexcept {
     return kind==EntityKind::DynamicTrigger||kind==EntityKind::SecretTrigger;
 }
@@ -832,6 +840,9 @@ int SIN_FIXED_CALL map_create(abi::MapEntityRef ref,const char* classname) noexc
     else if(std::strcmp(classname,"info_challenge")==0)kind=EntityKind::InfoChallenge;
     else if(std::strcmp(classname,"trigger_dynamic_difficulty")==0)kind=EntityKind::DynamicTrigger;
     else if(std::strcmp(classname,"trigger_secret")==0)kind=EntityKind::SecretTrigger;
+    else if(std::strcmp(classname,"weapon_magnum")==0)kind=EntityKind::Magnum;
+    else if(std::strcmp(classname,"weapon_assault_rifle")==0)kind=EntityKind::AssaultRifle;
+    else if(std::strcmp(classname,"weapon_scattergun")==0)kind=EntityKind::Scattergun;
     else return abi::MapUnknownClass;
     auto it=level->entities.find(ref.index);
     if(it!=level->entities.end()&&(it->second.alive||ref.generation<=it->second.generation))
@@ -893,7 +904,7 @@ int SIN_FIXED_CALL map_spawn(abi::MapEntityRef ref) noexcept {
             level->name.c_str(),entity->flags,entity->initial_state);
         if(result==abi::EnvRejected)return abi::MapRejected;
         if(result==abi::EnvRemoveSelf){entity->remove_requested=true;return abi::MapRemoveSelf;}
-    }else if(!capture(&entity->snapshot))return abi::MapRejected;
+    }else if(entity->kind==EntityKind::InfoChallenge&&!capture(&entity->snapshot))return abi::MapRejected;
     entity->spawned=true;
     return abi::MapApplied;
 }
@@ -923,7 +934,7 @@ int SIN_FIXED_CALL map_input(abi::MapEntityRef ref,const char* name,
         default:return abi::MapRejected;
         }
     }
-    if(is_trigger(entity->kind))return abi::MapUnhandledInput;
+    if(is_trigger(entity->kind)||is_weapon(entity->kind))return abi::MapUnhandledInput;
     challenge::Input input;
     if(std::strcmp(name,"GetInitialChallenge")==0)input=challenge::Input::Initial;
     else if(std::strcmp(name,"GetCurrentChallenge")==0)input=challenge::Input::Current;
@@ -947,9 +958,117 @@ int SIN_FIXED_CALL map_remove(abi::MapEntityRef ref) noexcept {
     entity->global_name.reset();
     return 1;
 }
+MapEntity* find_weapon(abi::MapEntityRef ref) noexcept {
+    auto* entity=map_find(ref);
+    return entity&&is_weapon(entity->kind)?entity:nullptr;
+}
+abi::NativeWeaponState weapon_state_value(const MapEntity& entity) noexcept {
+    return {entity.weapon_zoom.zoom_active_0x578?1u:0u,
+        entity.weapon_zoom.restore_pending_0x579?1u:0u,entity.weapon_resync?1u:0u};
+}
+int SIN_FIXED_CALL weapon_profile(abi::MapEntityRef ref,abi::NativeWeaponProfile* out) noexcept {
+    const auto* entity=find_weapon(ref);
+    if(!entity||!out)return 0;
+    // Authenticated original scripts, not guesses from generic HL2 weapons.
+    switch(entity->kind){
+    case EntityKind::Magnum:*out={abi::WeaponMagnum,20,-1,20,0,50};break;
+    case EntityKind::AssaultRifle:*out={abi::WeaponAssaultRifle,45,-1,45,0,40};break;
+    case EntityKind::Scattergun:*out={abi::WeaponScattergun,6,-1,6,0,60};break;
+    default:return 0;
+    }
+    return 1;
+}
+int SIN_FIXED_CALL weapon_state(abi::MapEntityRef ref,abi::NativeWeaponState* out) noexcept {
+    const auto* entity=find_weapon(ref);
+    if(!entity||!entity->spawned||!out)return 0;
+    *out=weapon_state_value(*entity);return 1;
+}
+int SIN_FIXED_CALL weapon_reconcile(abi::MapEntityRef ref,std::uint32_t zoom,std::uint32_t pending) noexcept {
+    auto* entity=find_weapon(ref);
+    if(reading_engine_skill||!entity||!entity->spawned||zoom>1||pending>1)return 0;
+    entity->weapon_zoom={zoom!=0,pending!=0};
+    entity->weapon_resync=false;return 1;
+}
+int SIN_FIXED_CALL weapon_frame(abi::MapEntityRef ref,const abi::NativeWeaponFrame* observed,
+        const abi::NativeWeaponEffects* effects,void* context,abi::NativeWeaponReport* out) noexcept {
+    if(!out)return 0;
+    abi::NativeWeaponReport report{};
+    auto* entity=find_weapon(ref);
+    if(entity)report.state=weapon_state_value(*entity);
+    const auto finish=[&](std::uint32_t code) noexcept {
+        report.code=code;
+        if(entity)report.state=weapon_state_value(*entity);
+        *out=report;return 1;
+    };
+    if(reading_engine_skill||!entity||!entity->spawned||entity->weapon_resync||!observed)
+        return finish(abi::WeaponRejected);
+    const auto in=*observed;
+    if(in.has_player>1||in.player_ready>1||in.reload_active>1||in.external_block>1||
+       in.fov_allowed>1||in.vr_mode>1||(in.has_player&&in.owner.epoch!=ref.epoch))
+        return finish(abi::WeaponRejected);
+    const sin_phase45::Inputs input{in.has_player!=0,in.player_ready!=0,
+        in.reload_active!=0,in.external_block!=0,in.pressed_buttons};
+    auto next=entity->weapon_zoom;
+    const auto decision=sin_phase45::step(next,input);
+    if(decision.transition==sin_phase45::Transition::None)return finish(abi::WeaponUnchanged);
+    const bool entering=decision.transition==sin_phase45::Transition::Enter;
+    const auto requests=entering?sin_phase45::enter_effects():
+        sin_phase45::exit_effects(in.current_activity==sin_phase45::kZoomInActivityArgument);
+    const bool fov=in.fov_allowed&&!in.vr_mode;
+    const bool animation=requests.activity_argument>=0;
+    if((fov||animation)&&(!effects||effects->version!=abi::weapon_version||
+       effects->size!=sizeof(*effects)||(fov&&!effects->fov)||(animation&&!effects->activity)))
+        return finish(abi::WeaponRejected);
+    if(fov&&(entering&&in.zoom_fov<=0))return finish(abi::WeaponRejected);
+    report.interrupted=decision.interrupted?1u:0u;
+    report.automatic_restore=decision.automatic_restore?1u:0u;
+    // Original FOV helper request precedes activity and final zoom byte
+    // store. A failed foreign effect cannot safely be rolled back.
+    {
+        OutputScope scope;
+        try {
+            if(fov){
+                report.fov_attempted=1;
+                if(!effects->fov(context,ref,in.owner,entering?in.zoom_fov:0,requests.fov_seconds)){
+                    entity->weapon_resync=true;return finish(abi::WeaponEffectsUncertain);
+                }
+                report.fov_delivered=1;
+            }
+            if(animation){
+                report.activity_attempted=1;
+                if(!effects->activity(context,ref,requests.activity_argument)){
+                    entity->weapon_resync=true;return finish(abi::WeaponEffectsUncertain);
+                }
+                report.activity_delivered=1;
+            }
+        }catch(...){entity->weapon_resync=true;return finish(abi::WeaponEffectsUncertain);}
+    }
+    entity->weapon_zoom=next;
+    return finish(entering?abi::WeaponEntered:abi::WeaponExited);
+}
+int SIN_FIXED_CALL weapon_attack_activity(abi::MapEntityRef ref,std::uint32_t secondary,
+        std::int32_t recoil,std::int32_t* out) noexcept {
+    const auto* entity=find_weapon(ref);
+    if(reading_engine_skill||!entity||!entity->spawned||entity->weapon_resync||secondary>1||!out)return 0;
+    using Kind=sin_re_phase47::WeaponKind;
+    const auto kind=entity->kind==EntityKind::AssaultRifle?Kind::AssaultRifle:
+        entity->kind==EntityKind::Scattergun?Kind::Scattergun:Kind::Magnum;
+    const bool zoom=entity->weapon_zoom.zoom_active_0x578;
+    *out=static_cast<std::int32_t>(secondary?sin_re_phase47::selectSecondaryActivity(zoom):
+        sin_re_phase47::selectPrimaryActivity(kind,zoom,recoil));
+    return 1;
+}
+const abi::WeaponBehaviorApi weapon_api{abi::weapon_version,sizeof(abi::WeaponBehaviorApi),
+    &weapon_profile,&weapon_state,&weapon_reconcile,&weapon_frame,&weapon_attack_activity};
+
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::WeaponBehaviorApi* SIN_FIXED_CALL
+SiN_GetWeaponBehaviorApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::weapon_version&&bytes==sizeof(abi::WeaponBehaviorApi)?&weapon_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::MapEntityApi* SIN_FIXED_CALL
 SiN_GetMapEntityApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::map_entity_version&&bytes==sizeof(abi::MapEntityApi)?&map_api:nullptr;

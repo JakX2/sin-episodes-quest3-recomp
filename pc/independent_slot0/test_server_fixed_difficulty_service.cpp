@@ -123,6 +123,7 @@ public:
     }
     bool create_entity(std::string_view classname,EntityRef& e) override {
         if(classname!="worldspawn"&&classname!="env_global"&&classname!="info_challenge"&&
+           classname!="weapon_magnum"&&classname!="weapon_assault_rifle"&&classname!="weapon_scattergun"&&
            !(allow_triggers&&(classname=="trigger_dynamic_difficulty"||classname=="trigger_secret")))return false;
         e={next++,1};
         live.emplace(e.index,e);
@@ -612,6 +613,103 @@ static void test_npc_rules(const a::NpcRulesApi* npc,const a::Api* api){
     assert(api->end_campaign());
 }
 
+struct WeaponEffectFixture {
+    const a::WeaponBehaviorApi* weapons;
+    const a::MapEntityApi* map;
+    const a::Api* api;
+    a::MapEntityRef expected,owner;
+    std::vector<int> events;
+    bool fail_activity=false,throw_fov=false;
+    static bool same(a::MapEntityRef x,a::MapEntityRef y){
+        return x.epoch==y.epoch&&x.index==y.index&&x.generation==y.generation;
+    }
+    static int SIN_FIXED_CALL fov(void* context,a::MapEntityRef ref,a::MapEntityRef owner,std::int32_t value,float duration){
+        auto& f=*static_cast<WeaponEffectFixture*>(context);
+        assert(same(ref,f.expected)&&same(owner,f.owner));
+        assert(duration==(value?0.25f:0.15f));
+        f.events.push_back(value);
+        assert(!f.weapons->reconcile(ref,0,0)&&!f.map->remove(ref)&&!f.api->set_skill(1));
+        if(f.throw_fov)throw 1;
+        return 1;
+    }
+    static int SIN_FIXED_CALL activity(void* context,a::MapEntityRef ref,std::int32_t value){
+        auto& f=*static_cast<WeaponEffectFixture*>(context);
+        assert(same(ref,f.expected));
+        f.events.push_back(value);
+        assert(!f.weapons->reconcile(ref,0,0)&&!f.map->remove(ref)&&!f.api->set_skill(1));
+        return f.fail_activity?0:1;
+    }
+};
+static void test_native_weapon_behavior(const a::WeaponBehaviorApi* weapons,const a::MapEntityApi* map,const a::Api* api){
+    assert(weapons&&weapons->version==1&&weapons->size==sizeof(*weapons)&&api->begin_campaign(2));
+    const auto epoch=map->begin_level("weapon_bsp");assert(epoch);
+    BspShellHost shell;
+    sin_port::map_host::NativeBehaviorHost host(shell,*map,epoch);
+    sm::SourceMapRuntime runtime(host);
+    const auto bsp=make_native_bsp(R"KV(
+{"classname" "worldspawn"}
+{"classname" "weapon_magnum" "targetname" "pistol"}
+{"classname" "weapon_assault_rifle" "targetname" "rifle"}
+{"classname" "weapon_scattergun" "targetname" "shotgun"}
+)KV");
+    const auto loaded=runtime.load_bsp(bsp.data(),bsp.size());
+    assert(loaded.ok()&&loaded.entities_spawned==4&&host.attached_count()==3&&map->count(epoch)==3);
+    const auto makeRef=[&](std::size_t index){const auto e=runtime.entities()[index];return a::MapEntityRef{epoch,e.index,e.generation};};
+    const auto mag=makeRef(1),rifle=makeRef(2),scatter=makeRef(3),world=makeRef(0);
+    a::NativeWeaponProfile profile{};
+    assert(!weapons->profile(world,&profile));
+    assert(weapons->profile(mag,&profile)&&profile.kind==a::WeaponMagnum&&profile.clip_size==20&&profile.zoom_fov==50);
+    assert(weapons->profile(rifle,&profile)&&profile.kind==a::WeaponAssaultRifle&&profile.clip_size==45&&profile.zoom_fov==40);
+    assert(weapons->profile(scatter,&profile)&&profile.kind==a::WeaponScattergun&&profile.clip_size==6&&profile.zoom_fov==60&&profile.clip2_size==-1);
+    a::NativeWeaponState state{};
+    assert(weapons->state(rifle,&state)&&!state.zoomed&&!state.restore_pending);
+    assert(!weapons->reconcile(rifle,2,0));
+    const a::MapEntityRef owner{epoch,100,1};
+    WeaponEffectFixture fixture{weapons,map,api,rifle,owner,{}};
+    const a::NativeWeaponEffects effects{a::weapon_version,sizeof(a::NativeWeaponEffects),
+        &WeaponEffectFixture::fov,&WeaponEffectFixture::activity};
+    a::NativeWeaponFrame frame{owner,1,1,0,0,0x80000,1,0,0x9d,40};
+    a::NativeWeaponReport report{};
+    auto step=[&](){return weapons->frame(rifle,&frame,&effects,&fixture,&report);};
+    assert(step()&&report.code==a::WeaponEntered&&report.state.zoomed);
+    assert((fixture.events==std::vector<int>{40,0xc0}));
+    int activity=0;
+    assert(weapons->attack_activity(rifle,0,4,&activity)&&activity==0xc1);
+    assert(weapons->attack_activity(rifle,1,0,&activity)&&activity==0xc2);
+    frame.pressed_buttons=0;frame.reload_active=1;frame.current_activity=0xc0;
+    assert(step()&&report.code==a::WeaponExited&&report.interrupted&&report.state.restore_pending&&!report.state.zoomed);
+    assert((fixture.events==std::vector<int>{40,0xc0,0,0x9d}));
+    assert(weapons->attack_activity(rifle,0,0,&activity)&&activity==0xa4);
+    assert(weapons->attack_activity(rifle,0,2,&activity)&&activity==0xbb);
+    assert(weapons->attack_activity(rifle,0,3,&activity)&&activity==0xbc);
+    assert(weapons->attack_activity(rifle,0,9,&activity)&&activity==0xbd);
+    assert(step()&&report.code==a::WeaponUnchanged);
+    frame.reload_active=0;frame.player_ready=0;
+    assert(step()&&report.code==a::WeaponUnchanged&&report.state.restore_pending);
+    frame.player_ready=1;
+    assert(step()&&report.code==a::WeaponEntered&&report.automatic_restore&&!report.state.restore_pending);
+    // No normal idle activity on exit from a non-idle zoom activity.
+    frame.pressed_buttons=0x80000;frame.current_activity=0xc1;
+    assert(step()&&report.code==a::WeaponExited&&report.fov_delivered&&!report.activity_attempted);
+    frame.vr_mode=1;frame.current_activity=0x9d;
+    assert(step()&&report.code==a::WeaponEntered&&!report.fov_attempted&&report.activity_delivered);
+    // Failed foreign effect leaves the behavior blocked until observed resync.
+    frame.current_activity=0xc0;fixture.fail_activity=true;
+    assert(step()&&report.code==a::WeaponEffectsUncertain&&report.state.needs_resync&&report.state.zoomed);
+    assert(step()&&report.code==a::WeaponRejected&&!weapons->attack_activity(rifle,0,0,&activity));
+    assert(weapons->reconcile(rifle,0,0));fixture.fail_activity=false;
+    frame.vr_mode=0;fixture.throw_fov=true;
+    assert(step()&&report.code==a::WeaponEffectsUncertain&&report.fov_attempted&&!report.fov_delivered&&!report.activity_attempted);
+    assert(weapons->reconcile(rifle,0,0));
+    fixture.throw_fov=false;
+    assert(weapons->state(mag,&state)&&!state.zoomed);
+    assert(weapons->attack_activity(mag,0,9,&activity)&&activity==0xa4);
+    assert(weapons->reconcile(scatter,1,0));
+    assert(weapons->attack_activity(scatter,1,0,&activity)&&activity==0xc2);
+    assert(map->input(rifle,"TurnOn",nullptr,nullptr)==a::MapUnhandledInput);
+    assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded&&host.attached_count()==0);
+    assert(!weapons->state(rifle,&state)&&map->end_level(epoch)&&api->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -1425,6 +1523,13 @@ int main(int argc,char** argv){
     const auto* triggers=getTriggers(a::trigger_version,sizeof(a::CampaignTriggerApi));
     test_native_triggers(map,api,triggers);
     test_trigger_bsp_host(map,api,triggers);
+#ifdef _WIN32
+    auto getWeapon=reinterpret_cast<a::GetWeaponBehaviorApi>(GetProcAddress(lib,a::weapon_export_name));
+#else
+    auto getWeapon=reinterpret_cast<a::GetWeaponBehaviorApi>(dlsym(lib,a::weapon_export_name));
+#endif
+    assert(getWeapon&&!getWeapon(0,sizeof(a::WeaponBehaviorApi))&&!getWeapon(1,0));
+    test_native_weapon_behavior(getWeapon(a::weapon_version,sizeof(a::WeaponBehaviorApi)),map,api);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
 #else
