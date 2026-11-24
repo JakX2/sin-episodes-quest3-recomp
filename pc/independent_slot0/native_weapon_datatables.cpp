@@ -20,6 +20,7 @@
 #include "native_vehicle_sound.h"
 #include "native_vehicle_hint.h"
 #include "native_vehicle_views.h"
+#include "native_vehicle_config.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4412,6 +4413,110 @@ int __cdecl vehicle_return_view(HologramControl* v,HologramControl* p,const Vehi
     return view_finish(v,p,view_player_set(p->object,h,index,0)&&h.output(h.context,v->object,p->object,0x7e4,index)&&h.set_position(h.context,p->object,pos));
 }
 const VehicleViewsApi vehicle_views_api{version,sizeof(VehicleViewsApi),&vehicle_set_view,&vehicle_seat_default,&vehicle_directional,&vehicle_return_view};
+
+unsigned char* config_view_record(void* v,int i) noexcept {
+    auto* r=const_cast<unsigned char*>(view_record(v,i));
+    return r&&hologram_writable(r,100)?r:nullptr;
+}
+int config_find_view(void* v,const char* name) noexcept {
+    const int count=hologram_read<int>(v,0x808);
+    if(count<0||count>65536)return -2;
+    for(int i=0;i<count;++i){
+        const auto* r=view_record(v,i);
+        if(!r||!std::memchr(r,0,64))return -2;
+        if(music_equal(reinterpret_cast<const char*>(r),name))return i;
+    }
+    return -1;
+}
+int config_root_id(const char* name) noexcept {
+    char root[64]{};
+    for(int seat=0;seat<3;++seat){
+        std::snprintf(root,sizeof(root),"passenger%d_view",seat);
+        if(music_equal(root,name))return seat;
+    }
+    return -1;
+}
+bool config_append_view(void* v,const VehicleConfigBindings& h,const char* name,int parent,int seat,unsigned char temporary,int root) noexcept {
+    const int index=hologram_read<int>(v,0x808);
+    if(index<0||index>=65536||!h.append_view(h.context,v)||hologram_read<int>(v,0x808)!=index+1)return false;
+    auto* r=config_view_record(v,index);if(!r)return false;
+    std::memset(r,0,64);
+    std::memcpy(r,name,(std::min)(std::strlen(name),static_cast<std::size_t>(63)));
+    hologram_write(r,0x40,parent);
+    hologram_write(r,0x44,seat);
+    int id=-1;
+    if(!h.attachment_id(h.context,v,name,&id))return false;
+    r=config_view_record(v,index);if(!r)return false;
+    hologram_write(r,0x48,id);
+    hologram_write(r,0x4c,root);
+    hologram_write(r,0x50,0);
+    r[0x54]=temporary;r[0x55]=0;
+    // Preserve unknown padding +56/+57, just as original does.
+    hologram_write(r,0x58,-1);hologram_write(r,0x5c,-1);
+    hologram_write(r,0x60,1.f);
+    return true;
+}
+bool config_link_block(void* v,const VehicleConfigBindings& h,const char* block,unsigned char temporary) noexcept {
+    for(unsigned i=0;i<=65536;++i){
+        VehicleConfigEntry e{};unsigned present=0;
+        if(!h.entry(h.context,block,i,&present,&e))return false;
+        if(!present)return true;
+        char key[1024]{},name[1024]{};
+        if(i==65536||!prop_key_read(e.name,key)||!prop_key_read(e.text,name))return false;
+        const int parent=config_find_view(v,key);
+        if(parent==-2)return false;
+        if(parent<0)continue;
+        const auto* r=view_record(v,parent);
+        const int seat=hologram_read<int>(r,0x44);
+        if(!config_append_view(v,h,name,parent,seat,temporary,config_root_id(name)))return false;
+    }
+    return false;
+}
+bool config_overrides(void* v,const VehicleConfigBindings& h,const char* block,unsigned offset) noexcept {
+    for(unsigned i=0;i<=65536;++i){
+        VehicleConfigEntry e{};unsigned present=0;
+        if(!h.entry(h.context,block,i,&present,&e))return false;
+        if(!present)return true;
+        char name[1024]{};
+        if(i==65536||!prop_key_read(e.name,name))return false;
+        const int index=config_find_view(v,name);
+        if(index==-2)return false;
+        if(index<0)continue;
+        auto* r=config_view_record(v,index);if(!r)return false;
+        if(offset==0x60)hologram_write(r,offset,e.real);
+        else if(offset==0x55)r[offset]=e.integer!=0;
+        else hologram_write(r,offset,e.integer);
+    }
+    return false;
+}
+int __cdecl config_views(HologramControl* c,const VehicleConfigBindings* b) noexcept {
+    if(!health_control(c,view_vehicle_extent)||!b||!b->entry||!b->append_view||!b->attachment_id)return 0;
+    c->busy=1;auto* v=c->object;const auto h=*b;
+    for(int seat=0;seat<3;++seat){
+        char name[64]{};
+        std::snprintf(name,sizeof(name),"passenger%d_view",seat);
+        if(!config_append_view(v,h,name,-1,seat,0,-1))return disp_finish(c,false);
+    }
+    return disp_finish(c,config_link_block(v,h,"view_links",0)&&config_link_block(v,h,"view_temp",1)&&
+        config_overrides(v,h,"view_damage_mod",0x60)&&config_overrides(v,h,"view_allow_weapons",0x55)&&config_overrides(v,h,"view_key",0x50));
+}
+int __cdecl config_damage(HologramControl* c,const VehicleConfigBindings* b) noexcept {
+    if(!health_control(c,0x870)||!b||!b->entry)return 0;
+    c->busy=1;const auto h=*b;unsigned seen=0;
+    for(unsigned i=0;i<=65536;++i){
+        VehicleConfigEntry e{};unsigned present=0;
+        if(!h.entry(h.context,"damage_mod",i,&present,&e))return disp_finish(c,false);
+        if(!present)return disp_finish(c,true);
+        char name[1024]{};
+        if(i==65536||!prop_key_read(e.name,name))return disp_finish(c,false);
+        constexpr const char* keys[]={"blast","crush","bullet"};
+        for(unsigned j=0;j<3;++j)if(!(seen&(1u<<j))&&music_equal(name,keys[j])){
+            hologram_write(c->object,0x864+j*4,e.real);seen|=1u<<j;
+        }
+    }
+    return disp_finish(c,false);
+}
+const VehicleConfigApi vehicle_config_api{version,sizeof(VehicleConfigApi),&config_views,&config_damage,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -6416,6 +6521,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleVi
 SiN_GetVehicleViewsApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleViewsApi)?&vehicle_views_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleConfigApi=_SiN_GetVehicleConfigApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleConfigApi* __cdecl
+SiN_GetVehicleConfigApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleConfigApi)?&vehicle_config_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
