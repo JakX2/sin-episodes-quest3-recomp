@@ -209,6 +209,28 @@ struct SceneEntityLifecycleApi {
     int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*) noexcept;
 };
 using GetSceneEntityLifecycleApi=const SceneEntityLifecycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char parsed_scene_resume_export[]="SiN_GetParsedSceneResumeApi";
+struct ParsedSceneResumeBindings {
+    void* context;
+    // Resolve a PE32 event object and validate its extent.
+    int (__cdecl *event)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Resolve raw vector words, not event objects.
+    int (__cdecl *words)(void*,std::uint32_t,const void**,unsigned*) noexcept;
+    // Temporary snapshot owned by the call, not the choreography. Host
+    // allocation must remain distinct from source vector and events.
+    int (__cdecl *allocate)(void*,unsigned bytes,void**,unsigned*) noexcept;
+    int (__cdecl *release)(void*,void*) noexcept;
+    // Original event callback interface at parsed+9c, virtual slot zero.
+    int (__cdecl *start)(void*,std::uint32_t callback,float time,void* parsed,void* event) noexcept;
+};
+struct ParsedSceneResumeApi {
+    std::uint32_t version,size;
+    // 22115aa0: restart children of pending resume event, then reset index
+    // and wait word. Failure leaves prior event mutations committed.
+    int (__cdecl *resume)(void* parsed,unsigned bytes,const ParsedSceneResumeBindings*) noexcept;
+};
+using GetParsedSceneResumeApi=const ParsedSceneResumeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

@@ -4256,6 +4256,49 @@ int __cdecl scene_entity_remove(void* scene,unsigned bytes,const SceneEntityLife
     return scene_entity_registration(scene,h,false);
 }
 const SceneEntityLifecycleApi scene_entity_lifecycle_api{version,sizeof(SceneEntityLifecycleApi),&scene_entity_activate,&scene_entity_cleanup,&scene_entity_remove};
+int __cdecl parsed_scene_resume(void* parsed,unsigned bytes,const ParsedSceneResumeBindings* b) noexcept {
+    if(!parsed||bytes<0x220||!hologram_writable(parsed,0x220)||!b||!b->event||!b->words||
+       !b->allocate||!b->release||!b->start)return 0;
+    const auto h=*b;const auto reset=[&](){hologram_write(parsed,0x21c,0xffffffffu);hologram_write(parsed,0x5c,0u);return 1;};
+    const int index=hologram_read<int>(parsed,0x21c),count=hologram_read<int>(parsed,0x70);
+    if(index<0||index>=count)return reset();
+    if(count>0x100000)return -1;
+    const void* vector=nullptr;unsigned n=0;
+    if(!h.words(h.context,hologram_read<std::uint32_t>(parsed,0x64),&vector,&n)||!vector||
+       n<static_cast<unsigned>(count)*4||!sin_independent::vgui_layout::Readable(vector,static_cast<unsigned>(count)*4))return -1;
+    void* parent=nullptr;unsigned extent=0;
+    if(!h.event(h.context,hologram_read<std::uint32_t>(vector,static_cast<unsigned>(index)*4),&parent,&extent)||
+       !parent||extent<0x3b4||!sin_independent::vgui_layout::Readable(parent,0x3b4))return -1;
+    const int children=hologram_read<int>(parent,0x3b0);
+    if(children<=0)return reset();
+    if(children>0x100000)return -1;
+    const unsigned needed=static_cast<unsigned>(children)*4;
+    const void* source=nullptr;
+    if(!h.words(h.context,hologram_read<std::uint32_t>(parent,0x3a4),&source,&n)||!source||
+       n<needed||!sin_independent::vgui_layout::Readable(source,needed))return -1;
+    void* snapshot=nullptr;unsigned size=0;
+    const auto fail=[&](){if(snapshot)(void)h.release(h.context,snapshot);return -1;};
+    if(!h.allocate(h.context,needed,&snapshot,&size)||!snapshot||size<needed||
+       !hologram_writable(snapshot,needed))return fail();
+    // Original copies the child vector before any event callback.
+    // Host must keep this temporary storage and source disjoint.
+    const auto src=reinterpret_cast<std::uintptr_t>(source),dst=reinterpret_cast<std::uintptr_t>(snapshot);
+    if(src<=dst?dst-src<needed:src-dst<needed)return fail();
+    std::memcpy(snapshot,source,needed);
+    for(int i=0;i<children;++i){
+        void* event=nullptr;
+        if(!h.event(h.context,hologram_read<std::uint32_t>(snapshot,static_cast<unsigned>(i)*4),&event,&extent)||
+           !event||extent<0x329||!hologram_writable(event,0x329))return fail();
+        const auto callback=hologram_read<std::uint32_t>(parsed,0x9c);
+        const auto time=hologram_read<float>(parsed,0x78);
+        hologram_write(event,0x328,static_cast<unsigned char>(1));
+        if(callback&&!h.start(h.context,callback,time,parsed,event))return fail();
+    }
+    if(!h.release(h.context,snapshot))return -1;
+    return reset();
+}
+const ParsedSceneResumeApi parsed_scene_resume_api{version,sizeof(ParsedSceneResumeApi),&parsed_scene_resume};
+
 
 
 
@@ -8789,6 +8832,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetParsedSceneResumeApi=_SiN_GetParsedSceneResumeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ParsedSceneResumeApi* __cdecl
+SiN_GetParsedSceneResumeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ParsedSceneResumeApi)?&parsed_scene_resume_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetSceneEntityLifecycleApi=_SiN_GetSceneEntityLifecycleApi")

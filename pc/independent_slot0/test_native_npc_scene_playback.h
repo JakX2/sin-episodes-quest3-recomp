@@ -448,4 +448,66 @@ inline void check_scene_entity_lifecycle(const SceneEntityLifecycleApi& api){
     assert(api.activate(missing.scene,sizeof(missing.scene),&missing.b)==1&&missing.creates==1&&!missing.spawns);missing.expect({4});
 }
 
+
+struct ParsedResumeFixture {
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char scene[0x410]{},parsed[0x220]{},parent[0x3b4]{},children[3][0x329]{};
+    std::uint32_t parent_words[1]{1},child_words[3]{2,3,4},snapshot[3]{};
+    ParsedSceneResumeBindings b{};SceneStateBindings state{};
+    const ParsedSceneResumeApi& api;
+    unsigned starts=0,allocations=0,releases=0,fail=0;
+    bool live=false;
+    static ParsedResumeFixture& get(void* p){return *static_cast<ParsedResumeFixture*>(p);}
+    void prepare(){
+        F::put(parsed,0x21c,0);F::put(parsed,0x5c,7);F::put(parsed,0x70,1);
+        F::put(parsed,0x64,0x1111);F::put(parsed,0x9c,0x5555);F::fl(parsed,0x78,10);
+        F::put(parent,0x3a4,0x2222);F::put(parent,0x3b0,3);child_words[0]=2;child_words[1]=3;child_words[2]=4;
+        for(auto& c:children)c[0x328]=0;
+        scene[0x3d8]=scene[0x3d9]=scene[0x3f4]=1;F::put(scene,0x40c,0x3333);starts=0;
+    }
+    explicit ParsedResumeFixture(const ParsedSceneResumeApi& a):api(a){
+        prepare();b.context=this;state.context=this;
+        b.words=[](void* p,std::uint32_t h,const void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(h==0x1111||h==0x2222);
+            *out=h==0x1111?f.parent_words:f.child_words;*n=h==0x1111?sizeof(f.parent_words):sizeof(f.child_words);return 1;
+        };
+        b.event=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);assert(h>=1&&h<=4);
+            *out=h==1?f.parent:f.children[h-2];*n=h==1?sizeof(f.parent):sizeof(f.children[0]);return 1;
+        };
+        b.allocate=[](void* p,unsigned n,void** out,unsigned* extent) noexcept -> int{
+            auto& f=get(p);assert(!f.live&&n==sizeof(f.snapshot));++f.allocations;
+            f.live=true;*out=f.snapshot;*extent=sizeof(f.snapshot);return 1;
+        };
+        b.release=[](void* p,void* s) noexcept -> int{
+            auto& f=get(p);assert(s==f.snapshot&&f.live);++f.releases;f.live=false;return 1;
+        };
+        b.start=[](void* p,std::uint32_t callback,float time,void* parsed,void* event) noexcept -> int{
+            auto& f=get(p);assert(f.live&&f.starts<3&&parsed==f.parsed&&event==f.children[f.starts]&&f.children[f.starts][0x328]);
+            assert(callback==0x5555+f.starts&&time==10+f.starts);
+            ++f.starts;
+            // Source child vector is mutated by first start. Snapshot must
+            // continue with the original order, while time/callback reload.
+            f.child_words[1]=2;F::put(f.parent,0x3b0,1);
+            F::fl(f.parsed,0x78,10.f+f.starts);F::put(f.parsed,0x9c,0x5555+f.starts);
+            return f.fail!=f.starts;
+        };
+        state.resume_parsed=[](void* p,std::uint32_t h) noexcept -> int{
+            auto& f=get(p);assert(h==0x3333&&f.scene[0x3d9]);return f.api.resume(f.parsed,sizeof(f.parsed),&f.b)==1;
+        };
+    }
+};
+inline void check_parsed_scene_resume(const ParsedSceneResumeApi& api,const SceneStateApi& state){
+    using F=ScenePlaybackFixture;ParsedResumeFixture f(api);
+    assert(state.resume(f.scene,sizeof(f.scene),&f.state)==1&&!f.scene[0x3d9]&&!f.scene[0x3f4]&&f.starts==3&&f.allocations==1&&f.releases==1&&!f.live);
+    assert(F::word(f.parsed,0x21c)==0xffffffffu&&!F::word(f.parsed,0x5c));
+    for(const auto& c:f.children)assert(c[0x328]);
+    f.prepare();F::put(f.parsed,0x9c,0);assert(api.resume(f.parsed,sizeof(f.parsed),&f.b)==1&&!f.starts&&f.allocations==2&&f.releases==2);
+    for(const auto& c:f.children)assert(c[0x328]);
+    f.prepare();F::put(f.parsed,0x21c,1);assert(api.resume(f.parsed,sizeof(f.parsed),&f.b)==1&&f.allocations==2&&F::word(f.parsed,0x21c)==0xffffffffu&&!F::word(f.parsed,0x5c));
+    f.prepare();f.fail=2;
+    assert(state.resume(f.scene,sizeof(f.scene),&f.state)==-1&&f.scene[0x3d9]&&f.scene[0x3f4]&&f.starts==2&&f.releases==3&&!f.live);
+    assert(f.children[0][0x328]&&f.children[1][0x328]&&!f.children[2][0x328]&&!F::word(f.parsed,0x21c)&&F::word(f.parsed,0x5c)==7);
+}
+
 }
