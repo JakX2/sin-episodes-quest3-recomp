@@ -14,6 +14,7 @@
 #include "test_native_radio_message.h"
 #include "test_native_action_listener.h"
 #include "test_native_player_look_frame.h"
+#include "test_native_radio_hud.h"
 #include "test_native_weapon_datatables.h"
 #include <cstring>
 #include <cstdio>
@@ -386,6 +387,14 @@ int main(int argc,char** argv){
     assert(radioPlayback&&!getRadioPlayback(0,sizeof(tables::RadioPlaybackApi))&&!getRadioPlayback(1,0));
     tables::test::check_radio_playback(*radioMessage,*radioPlayback);
     std::puts("PASS native radio playback scheduler, acknowledgement and delivery completion");
+    const auto getRadioWire=reinterpret_cast<tables::GetRadioWireApi>(GetProcAddress(server,tables::radio_wire_export));
+    const auto getRadioHud=reinterpret_cast<tables::GetRadioHudApi>(GetProcAddress(client,tables::radio_hud_export));
+    assert(getRadioWire&&getRadioHud&&!GetProcAddress(client,tables::radio_wire_export)&&!GetProcAddress(server,tables::radio_hud_export));
+    const auto* radioWire=getRadioWire(1,sizeof(tables::RadioWireApi));
+    const auto* radioHud=getRadioHud(1,sizeof(tables::RadioHudApi));
+    assert(radioWire&&radioHud&&!getRadioWire(0,sizeof(tables::RadioWireApi))&&!getRadioHud(1,0));
+    tables::test::check_radio_wire_hud(*radioWire,*radioHud);
+    std::puts("PASS paired native PoliceRadioMessage payload and CHudPoliceRadio animation/icon selection");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

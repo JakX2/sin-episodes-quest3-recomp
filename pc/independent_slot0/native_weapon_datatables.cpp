@@ -5,6 +5,7 @@
 #include <cstdio>
 #include "native_radio_message.h"
 #include "native_action_listener.h"
+#include "native_radio_hud.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -3179,7 +3180,8 @@ int __cdecl radio_sound(const RadioDispatcher* s,const RadioBindings* b,unsigned
     }
     out->present=1;return 1;
 }
-const RadioMessageApi radio_message_api{version,sizeof(RadioMessageApi),&radio_initialize,&radio_input,&radio_heard,&radio_promote,&radio_sound,&health_ack};
+int __cdecl radio_message_ack(HologramControl*) noexcept;
+const RadioMessageApi radio_message_api{version,sizeof(RadioMessageApi),&radio_initialize,&radio_input,&radio_heard,&radio_promote,&radio_sound,&radio_message_ack};
 
 int __cdecl look_trace_miss(HologramControl* ctrl) noexcept {
     if(!health_control(ctrl,0x5e9))return 0;
@@ -3451,6 +3453,24 @@ int __cdecl radio_playback_ack(RadioPlaybackControl* c) noexcept {
     c->blocked=0;return 1;
 }
 const RadioPlaybackApi radio_playback_api{version,sizeof(RadioPlaybackApi),&radio_request,&radio_player_input,&radio_playback_tick,&radio_playback_ack};
+
+int __cdecl radio_message_ack(HologramControl* c) noexcept {
+    if(!c||c->busy||!c->blocked||c->bytes<radio_size||!hologram_writable(c->object,radio_size))return 0;
+    c->blocked=0;return 1;
+}
+int __cdecl radio_wire_encode(unsigned active,int priority,const char* speaker,unsigned char* payload,unsigned capacity,unsigned* used) noexcept {
+    if(!used||!payload||capacity<5)return 0;
+    *used=0;
+    char name[2048]{};
+    if(speaker&&!prop_key_read(speaker,name))return 0;
+    const auto count=static_cast<unsigned>(std::strlen(name))+1;
+    if(capacity<4+count)return 0;
+    const auto p=static_cast<std::uint16_t>(priority);
+    payload[0]=static_cast<unsigned char>(active);payload[1]=0;
+    payload[2]=static_cast<unsigned char>(p);payload[3]=static_cast<unsigned char>(p>>8);
+    std::memcpy(payload+4,name,count);*used=4+count;return 1;
+}
+const RadioWireApi radio_wire_api{version,sizeof(RadioWireApi),&radio_wire_encode};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -4914,6 +4934,64 @@ int __cdecl phud_ack(HologramControl* ctrl) noexcept {
 }
 const PoisonHudApi poison_hud_api{version,sizeof(PoisonHudApi),&phud_reset,&phud_bind,&phud_tick,&phud_paint,&phud_ack};
 
+
+constexpr unsigned radio_hud_size=0xc0;
+bool radio_hud_valid(const HologramControl* c) noexcept {
+    return c&&!c->busy&&!c->blocked&&c->bytes>=radio_hud_size&&hologram_writable(c->object,radio_hud_size);
+}
+int __cdecl radio_hud_reset(HologramControl* c) noexcept {
+    if(!radio_hud_valid(c))return 0;
+    hologram_write(c->object,0xb6,static_cast<unsigned char>(0));
+    hologram_write(c->object,0xb8,static_cast<std::uint16_t>(0));return 1;
+}
+int __cdecl radio_hud_init(HologramControl* c) noexcept {
+    if(!radio_hud_reset(c))return 0;
+    hologram_write(c->object,0xbc,static_cast<const char*>(nullptr));return 1;
+}
+int __cdecl radio_hud_receive(HologramControl* c,const RadioHudBindings* b,const unsigned char* payload,unsigned bytes) noexcept {
+    if(!radio_hud_valid(c)||!b||!b->store_speaker||!b->panel_flag||!b->animation||!payload||bytes<5||bytes>2052||
+       !sin_independent::vgui_layout::Readable(payload,bytes))return 0;
+    const auto* name=reinterpret_cast<const char*>(payload+4);
+    if(!std::memchr(name,0,bytes-4))return 0;
+    const unsigned active=(payload[0]||payload[1])?1:0;
+    const auto priority=static_cast<std::uint16_t>(payload[2]|(static_cast<unsigned>(payload[3])<<8));
+    c->busy=1;const auto h=*b;auto* object=c->object;
+    auto finish=[&](bool ok){c->busy=0;if(!ok){c->blocked=1;return -1;}return 1;};
+    hologram_write(object,0xb6,static_cast<unsigned char>(active));
+    hologram_write(object,0xb8,priority);
+    const char* stored=nullptr;
+    if(!h.store_speaker(h.context,name,&stored)||!stored)return finish(false);
+    hologram_write(object,0xbc,stored);
+    auto* panel=static_cast<unsigned char*>(object)+0x14;
+    if(!h.panel_flag(h.context,panel,0x78,active)||!h.panel_flag(h.context,panel,0xfc,active))return finish(false);
+    const char* sequence=active?(priority?"PoliceRadioShowExtraneous":"PoliceRadioShowObjective"):"PoliceRadioHide";
+    return finish(h.animation(h.context,sequence)!=0);
+}
+int __cdecl radio_hud_icon(HologramControl* c,RadioIconRequest* out) noexcept {
+    if(!radio_hud_valid(c)||!out)return 0;
+    *out={};
+    if(!hologram_read<unsigned char>(c->object,0xb6))return 1;
+    if(!hologram_read<std::uint16_t>(c->object,0xb8))std::memcpy(out->name,"police_radio_obj",17);
+    else {
+        const auto* speaker=hologram_read<const char*>(c->object,0xbc);
+        constexpr char prefix[]="police_radio_";
+        std::memcpy(out->name,prefix,sizeof(prefix));
+        if(speaker){
+            // Original bounded concatenation into 64-byte icon key.
+            for(unsigned i=0;i<sizeof(out->name)-sizeof(prefix);++i){
+                if(!sin_independent::vgui_layout::Readable(speaker+i,1))return 0;
+                out->name[sizeof(prefix)-1+i]=speaker[i];
+                if(!speaker[i])break;
+            }
+        }
+    }
+    out->present=1;out->width=1600;out->height=1200;return 1;
+}
+int __cdecl radio_hud_ack(HologramControl* c) noexcept {
+    if(!c||c->busy||!c->blocked||c->bytes<radio_hud_size||!hologram_writable(c->object,radio_hud_size))return 0;
+    c->blocked=0;return 1;
+}
+const RadioHudApi radio_hud_api{version,sizeof(RadioHudApi),&radio_hud_init,&radio_hud_reset,&radio_hud_receive,&radio_hud_icon,&radio_hud_ack};
 bool screen_command_valid(const HologramControl* ctrl) noexcept {
     return ctrl&&!ctrl->busy&&!ctrl->blocked&&ctrl->bytes>=0xdc&&
         sin_independent::vgui_layout::Readable(ctrl->object,0xdc);
@@ -5230,6 +5308,13 @@ SiN_GetRadioPlaybackApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioPlaybackApi)?&radio_playback_api:nullptr;
 }
+
+#pragma comment(linker,"/EXPORT:SiN_GetRadioWireApi=_SiN_GetRadioWireApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioWireApi* __cdecl
+SiN_GetRadioWireApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioWireApi)?&radio_wire_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -5380,6 +5465,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScreenCom
 SiN_GetScreenCommandApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ScreenCommandApi)?&screen_command_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetRadioHudApi=_SiN_GetRadioHudApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::RadioHudApi* __cdecl
+SiN_GetRadioHudApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(RadioHudApi)?&radio_hud_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetPoisonHudAnimationApi=_SiN_GetPoisonHudAnimationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PoisonHudAnimationApi* __cdecl
