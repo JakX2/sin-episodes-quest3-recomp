@@ -2563,6 +2563,39 @@ inline void check_choreography_finalize(const ChoreographyFinalizeApi& api,const
     F::put(prior,0x184,0x7fc00000u);
     assert(api.stage(native.parsed,sizeof(native.parsed),ChoreographyTextFinalize::GestureReconcile,&native.b)==-1);
     assert(F::word(prior,0x184)==0x7fc00000u);
+    // Case-insensitive groups are per channel. Tied starts retain input
+    // order; master's last end is the last follower's end, not the maximum.
+    ChoreographyFinalizeFixture caption;
+    caption.b.caption_channel=nullptr;
+    caption.event_words[0][2]=F::ptr(caption.events[2]);
+    caption.event_words[1][0]=0;
+    for(unsigned i=0;i<4;++i){
+        auto* e=caption.events[i];
+        F::put(e,0,5);F::put(e,0x34c,i==3?2u:0u);
+        std::strcpy(reinterpret_cast<char*>(e+0x350),i==1?"CAPTION":"caption");
+        e[0x390]=i==1?1:0;F::put(e,0x394,123);F::put(e,0x398,17);F::fl(e,0x39c,99);
+    }
+    F::fl(caption.events[0],0x184,5);F::fl(caption.events[0],0x188,10);
+    F::fl(caption.events[1],0x184,1);F::fl(caption.events[1],0x188,8);
+    F::fl(caption.events[2],0x184,5);F::fl(caption.events[2],0x188,7);
+    auto capstage=[&](){return api.stage(caption.parsed,sizeof(caption.parsed),ChoreographyTextFinalize::CaptionReconcile,&caption.b);};
+    assert(capstage()==1);
+    auto* master=caption.events[1];
+    assert(F::word(master,0x34c)==0&&master[0x390]==1&&!F::word(master,0x394)&&F::word(master,0x398)==2&&F::word(master,0x39c)==0x40e00000u);
+    for(unsigned i:{0u,2u}){
+        auto* e=caption.events[i];
+        assert(F::word(e,0x34c)==1&&e[0x390]==1&&!F::word(e,0x394)&&F::word(e,0x398)==17&&!F::word(e,0x39c));
+    }
+    auto* disabled=caption.events[3];
+    assert(F::word(disabled,0x34c)==2&&!disabled[0x390]&&!F::word(disabled,0x394)&&!F::word(disabled,0x398)&&!F::word(disabled,0x39c));
+    // Empty slave becomes master and clears group fields, empty master
+    // retains its state; one nonempty token resets a singleton.
+    caption.events[0][0x350]=0;
+    caption.events[1][0x350]=0;master[0x390]=1;F::put(master,0x398,99);
+    assert(capstage()==1);
+    assert(F::word(caption.events[0],0x34c)==0&&!caption.events[0][0x390]&&!F::word(caption.events[0],0x398));
+    assert(master[0x390]==1&&F::word(master,0x398)==99);
+    assert(F::word(caption.events[2],0x34c)==0&&!caption.events[2][0x390]&&!F::word(caption.events[2],0x398));
     // Flat event vector intentionally empty, so success proves linked traversal.
     assert(!F::word(f.parsed,0xc));
     PortableFlexGrammarFixture g;PortableVcdFinalizedGrammarBindings b{};
@@ -2580,6 +2613,11 @@ inline void check_choreography_finalize(const ChoreographyFinalizeApi& api,const
         auto& f=*static_cast<PortableFlexGrammarFixture*>(p);assert(channel==f.channel&&f.finalized==1);++f.finalized;return 1;};
     const char text[]="actor Jessica { channel Voice { event speak dialogue { time 0 1\n param sound } } }";
     assert(grammar.parse(g.parsed,sizeof(g.parsed),"test.vcd",text,sizeof(text)-1,&b)==1&&g.finalized==2);
+    // Exercise the same portable grammar with both channel overrides absent.
+    PortableFlexGrammarFixture native_grammar;
+    b.grammar=native_grammar.full;b.grammar.curves.grammar.events.actors.text.finalize=nullptr;
+    b.finalize.context=&native_grammar;b.finalize.gesture_channel=nullptr;b.finalize.caption_channel=nullptr;
+    assert(grammar.parse(native_grammar.parsed,sizeof(native_grammar.parsed),"test.vcd",text,sizeof(text)-1,&b)==1&&!native_grammar.finalized);
 }
 
 struct SceneActorCacheFixture {
