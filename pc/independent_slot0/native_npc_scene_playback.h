@@ -686,6 +686,26 @@ struct SceneSpeechPreparationApi {
         const SceneSpeechCallbackBindings*,const ResolvedSceneActorBindings*,const SceneSpeechPreparationBindings*,unsigned*) noexcept;
 };
 using GetSceneSpeechPreparationApi=const SceneSpeechPreparationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_speech_drain_export[]="SiN_GetSceneSpeechDrainApi";
+struct SceneSpeechDrainBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *open_filter)(void*,void* actor,float scale,void**) noexcept;
+    // Aggregate recipient filter, unlike the ordinary per-client route.
+    int (__cdecl *emit)(void*,void* filter,void* actor,const char*,int channel,float volume,int level,float absolute_start) noexcept;
+    int (__cdecl *close_filter)(void*,void*) noexcept;
+};
+struct SceneSpeechDrainApi {
+    std::uint32_t version,size;
+    // 221aa010, consumes the original pending vector count on success.
+    // Failure can follow a partial emission; caller must not blindly retry.
+    int (__cdecl *drain)(void*,unsigned,const SceneSpeechDrainBindings*,unsigned* emitted) noexcept;
+    // 221aa970 wrapper, uses same session as scene creation/registration.
+    int (__cdecl *flush)(SceneManagerSession*,const SceneManagerRuntimeBindings*,const SceneSpeechDrainBindings*,unsigned*) noexcept;
+};
+using GetSceneSpeechDrainApi=const SceneSpeechDrainApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
