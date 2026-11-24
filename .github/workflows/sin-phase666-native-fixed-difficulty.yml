@@ -1,0 +1,46 @@
+name: SiN Phase666 loaded native difficulty service
+on:
+  push:
+    branches: [feature/sin-native-fixed-difficulty-service-phase666-chat-20261124]
+  pull_request:
+    paths:
+      - 'pc/independent_slot0/server_fixed_difficulty_service.*'
+      - 'pc/independent_slot0/test_server_fixed_difficulty_service.cpp'
+      - 'pc/independent_slot0/CMakeLists.txt'
+      - 'src/fixed_difficulty_phase663.cpp'
+      - 'include/sin_compat/*difficulty*'
+      - 'include/sin_compat/info_challenge_phase665.hpp'
+      - '.github/workflows/sin-phase666-native-fixed-difficulty.yml'
+permissions:
+  contents: read
+jobs:
+  win32:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build actual independent server.dll and loader
+        run: |
+          cmake -S pc/independent_slot0 -B build-native-fixed -G "Visual Studio 17 2022" -A Win32
+          cmake --build build-native-fixed --config Release --target sin_native_fixed_difficulty_service_test --parallel
+      - name: Run actual PE32 module service
+        run: ctest --test-dir build-native-fixed -C Release -R "^independent_native_fixed_difficulty_service$" --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sin-phase666-native-fixed-service-not-playable
+          path: |
+            build-native-fixed/bin/Release/server.dll
+            build-native-fixed/Release/sin_native_fixed_difficulty_service_test.exe
+          if-no-files-found: error
+          retention-days: 7
+  linux-sanitized:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build shared service and separate dlopen consumer under sanitizers
+        run: |
+          flags="-std=c++17 -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra -Wpedantic -Werror -Iinclude"
+          clang++ $flags -fPIC -shared pc/independent_slot0/server_fixed_difficulty_service.cpp src/fixed_difficulty_phase663.cpp -o /tmp/libsin-fixed-service.so
+          clang++ $flags pc/independent_slot0/test_server_fixed_difficulty_service.cpp -ldl -o /tmp/sin-native-service-test
+          /tmp/sin-native-service-test /tmp/libsin-fixed-service.so

@@ -965,3 +965,16 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/audit_sin_original_server_physics_bootstrap.py"
       --self-test)
 endif()
+
+# Phase666: link one genuine owned difficulty service into the shipped
+# non-forwarding diagnostic server.dll. No original PE32 address binding.
+target_sources(sin_slot0_server PRIVATE
+  server_fixed_difficulty_service.cpp
+  ../../src/fixed_difficulty_phase663.cpp)
+target_include_directories(sin_slot0_server PRIVATE ../../include)
+add_executable(sin_native_fixed_difficulty_service_test
+  test_server_fixed_difficulty_service.cpp)
+target_compile_features(sin_native_fixed_difficulty_service_test PRIVATE cxx_std_17)
+add_dependencies(sin_native_fixed_difficulty_service_test sin_slot0_server)
+add_test(NAME independent_native_fixed_difficulty_service
+  COMMAND sin_native_fixed_difficulty_service_test "$<TARGET_FILE:sin_slot0_server>")
