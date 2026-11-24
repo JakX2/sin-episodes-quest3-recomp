@@ -650,18 +650,43 @@ inline int __cdecl sample_fov(void* context,FovSample* out) noexcept {
     if(f.fail)return 0;
     *out=f.sample;return 1;
 }
+
+struct EntityNetworkFixture {
+    NetworkClock clock{1234,0.015625f};
+    unsigned effects=0,interpolation=0,transforms=0;
+    std::uint32_t observed_effects=0;
+};
+inline int __cdecl sample_clock(void* context,NetworkClock* out) noexcept {
+    *out=static_cast<EntityNetworkFixture*>(context)->clock;return 1;
+}
+inline int __cdecl sample_transform(void* context,const void* entity,int angles,std::uint32_t* out) noexcept {
+    ++static_cast<EntityNetworkFixture*>(context)->transforms;
+    std::memcpy(out,static_cast<const unsigned char*>(entity)+(angles?0x36c:0x360),12);return 1;
+}
+inline void __cdecl effects_changed(void* context,void* entity) noexcept {
+    auto& f=*static_cast<EntityNetworkFixture*>(context);++f.effects;
+    std::memcpy(&f.observed_effects,static_cast<unsigned char*>(entity)+0x78,4);
+}
+inline void __cdecl interpolation_changed(void* context,void*) noexcept {
+    ++static_cast<EntityNetworkFixture*>(context)->interpolation;
+}
 inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayerRecvApi& ra,
         const AnimSendApi& asa,const AnimRecvApi& ara,const OverlaySendApi& osa,const OverlayRecvApi& ora,
         const FlexSendApi& fsa,const FlexRecvApi& fra,const InventorySendApi& isa,const InventoryRecvApi& ira,
         const PlayerLocalSendApi& lsa,const PlayerLocalRecvApi& lra,
-        const LocalDataSendApi& dsa,const LocalDataRecvApi& dra){
-    s::SendProp seprops[24];s::SendTable se;
-    assert(se.Construct(seprops,24,"DT_BaseEntity"));
-    RecvProp ceprops[24];RecvTable ce{ceprops,24,nullptr,"DT_BaseEntity"};
+        const LocalDataSendApi& dsa,const LocalDataRecvApi& dra,
+        const BaseEntitySendApi& esa,const BaseEntityRecvApi& era){
+    s::SendProp collision_props[8];s::SendTable collision;
+    assert(collision.Construct(collision_props,8,"DT_CollisionProperty"));
+    RecvProp collision_recv_props[8];RecvTable collision_recv{collision_recv_props,8,nullptr,"DT_CollisionProperty"};
     NativeOwner ownerObj;
     sin_independent::EntityHandleEntry entries[64]{};
     entries[37].entity=reinterpret_cast<CBaseEntity*>(&ownerObj);entries[37].serial=0x12345;
-    AnimSendView av{};AnimRecvView arv{};AnimSendBindings ab{&se,entries,64};AnimRecvBindings arb{&ce};
+    EntityNetworkFixture ef;
+    BaseEntitySendBindings eb{&collision,entries,64,&ef,&sample_clock,&sample_transform};
+    BaseEntityRecvBindings erb{&collision_recv,&ef,&sample_clock,&effects_changed,&interpolation_changed};
+    BaseEntitySendView ev{};BaseEntityRecvView erv{};assert(esa.create(&eb,&ev)&&era.create(&erb,&erv));
+    AnimSendView av{};AnimRecvView arv{};AnimSendBindings ab{ev.entity,entries,64};AnimRecvBindings arb{erv.entity};
     assert(asa.create(&ab,&av)&&ara.create(&arb,&arv));
     OverlayFixture sf,cf;OverlaySendBindings ob{&sf,&reserve_layers};OverlayRecvBindings orb{&cf,&reserve_layers,&resize_layers};
     OverlaySendView ov{};OverlayRecvView orv{};assert(osa.create(&ob,&ov)&&ora.create(&orb,&orv));
@@ -722,7 +747,7 @@ inline void check_base_player_graph(const BasePlayerSendApi& sa,const BasePlayer
     pv.state->written=false;prv.player->initialized=false;
     assert(sa.destroy(&pv)&&ra.destroy(&prv)&&lsa.destroy(&lv)&&lra.destroy(&lrv)&&
         isa.destroy(&iv)&&ira.destroy(&irv)&&fsa.destroy(&fv)&&fra.destroy(&frv)&&
-        osa.destroy(&ov)&&ora.destroy(&orv)&&asa.destroy(&av)&&ara.destroy(&arv)&&dsa.destroy(&dv)&&dra.destroy(&drv));
+        osa.destroy(&ov)&&ora.destroy(&orv)&&asa.destroy(&av)&&ara.destroy(&arv)&&dsa.destroy(&dv)&&dra.destroy(&drv)&&esa.destroy(&ev)&&era.destroy(&erv));
 }
 
 inline void check_local_data_graph(const LocalDataSendApi& sa,const LocalDataRecvApi& ra){
@@ -824,6 +849,85 @@ inline void check_local_data_graph(const LocalDataSendApi& sa,const LocalDataRec
     std::memcpy(client+0x2c,&rate,4);rp[4].proxy(&d,client,nullptr);assert(read(0x2c)==rate);
     sv.area_bits->written=true;rv.table->decoder=&f;
     assert(!sa.destroy(&sv)&&!ra.destroy(&rv));sv.area_bits->written=false;rv.table->decoder=nullptr;
+    assert(sa.destroy(&sv)&&ra.destroy(&rv));
+}
+
+inline void check_entity_graph(const BaseEntitySendApi& sa,const BaseEntityRecvApi& ra){
+    s::SendProp cp[8];s::SendTable coll;assert(coll.Construct(cp,8,"DT_CollisionProperty"));
+    RecvProp crp[8];RecvTable cr{crp,8,nullptr,"DT_CollisionProperty"};
+    NativeOwner host;sin_independent::EntityHandleEntry entries[64]{};
+    entries[37].entity=reinterpret_cast<CBaseEntity*>(&host);entries[37].serial=0x12345;
+    EntityNetworkFixture f;
+    BaseEntitySendBindings sb{&coll,entries,64,&f,&sample_clock,&sample_transform};
+    BaseEntityRecvBindings rb{&cr,&f,&sample_clock,&effects_changed,&interpolation_changed};
+    BaseEntitySendView sv{};BaseEntityRecvView rv{};
+    coll.count=7;assert(!sa.create(&sb,&sv));coll.count=8;
+    assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
+    assert(sv.entity->count==24&&rv.entity->count==24&&sv.anim_time->count==1&&rv.predictable->count==2);
+    auto* s=sv.entity->props;auto* c=rv.entity->props;
+    assert(s[4].table==&coll&&c[19].table==&cr&&s[4].offset==0xfc&&c[19].offset==0x16c);
+    assert(s[0].table==sv.anim_time&&c[0].table==rv.anim_time&&s[21].table==sv.predictable&&c[21].table==rv.predictable);
+    alignas(4) unsigned char server[0x474]{},client[0x474]{};
+    s::DVariant v{};
+    const auto write=[&](unsigned char* object,int off,std::uint32_t val){std::memcpy(object+off,&val,4);};
+    const auto read=[&](unsigned char* object,int off){std::uint32_t val=0;std::memcpy(&val,object+off,4);return val;};
+    const auto scalar=[&](int si,int ci,std::uint32_t value,unsigned width=4){
+        auto& a=s[si];auto& b=c[ci];
+        assert(std::strcmp(a.name,b.name)==0);
+        std::memcpy(server+a.offset,&value,width);a.scalarProxy(&a,server,server+a.offset,&v,0,1);
+        RecvData d{&b,v,0,1};b.proxy(&d,client,client+b.offset);
+    };
+    const int map[24]={0,1,2,4,19,7,6,5,8,9,10,11,12,13,14,15,16,17,18,3,20,21,22,23};
+    for(int i:{3,5,6,7,8,9,10,11,12,13,14,15,16,20,22,23}){
+        const bool byte=i==16||i==22||i==23,handle=i>=13&&i<=15;
+        const std::uint32_t input=handle?((0x12345u<<12)|37u):byte?1u:0x3f000000u;
+        scalar(i,map[i],input,byte?1:4);
+        const std::uint32_t expected=handle?((0x345u<<12)|37u):input;
+        assert(!std::memcmp(client+c[map[i]].offset,&expected,byte?1:4));
+    }
+    assert(f.effects==1&&f.observed_effects==0x3f000000u&&f.interpolation==2);
+    scalar(7,5,0x3f000000u);scalar(22,22,1,1);
+    assert(f.effects==1&&f.interpolation==2);
+    write(server,0x204,3);write(server,0x208,2);write(client,0x148,7);
+    for(int i=17;i<=18;++i){
+        s[i].scalarProxy(&s[i],server,server,&v,0,1);
+        RecvData d{&c[i],v,0,1};c[i].proxy(&d,client,nullptr);
+        if(i==17)assert(read(client,0x144)==3&&read(client,0x148)==0);
+        else assert(read(client,0x148)==2);
+    }
+    const float origin[3]={1.25f,-2.5f,3.0f},angles[3]={90.0f,-90.0f,450.0f},wrapped[3]={90,270,90};
+    std::memcpy(server+0x360,origin,12);std::memcpy(server+0x36c,angles,12);
+    for(int i:{2,19}){
+        s[i].scalarProxy(&s[i],server,server+s[i].offset,&v,0,1);
+        auto& b=c[map[i]];RecvData d{&b,v,0,1};b.proxy(&d,client,client+b.offset);
+        assert(!std::memcmp(client+b.offset,i==2?origin:wrapped,12));
+    }
+    assert(f.transforms==2);
+    auto& at=sv.anim_time->props[0];auto& ct=rv.anim_time->props[0];
+    const auto time_case=[&](s::SendProp& a,RecvProp& b,int tick,int expected_wire,int expected_tick){
+        const float time=tick*f.clock.interval;
+        std::memcpy(server+a.offset,&time,4);a.scalarProxy(&a,server,server+a.offset,&v,0,1);
+        assert(v.words[0]==static_cast<unsigned>(expected_wire));
+        RecvData d{&b,v,0,1};b.proxy(&d,client,nullptr);
+        float got=0;std::memcpy(&got,client+b.offset,4);assert(got==expected_tick*f.clock.interval);
+    };
+    time_case(s[1],c[1],1234,34,1234);time_case(s[1],c[1],1199,0,1200);
+    time_case(at,ct,1199,255,1199);time_case(at,ct,1099,0,1200);
+    // Exact +128 relative to current tick maps to -128.
+    RecvData d{&c[1],{},0,1};d.value.words[0]=162;c[1].proxy(&d,client,nullptr);
+    float got=0;std::memcpy(&got,client+0x6c,4);assert(got==1106*f.clock.interval);
+    s::Recipients recipients{};recipients.words[0]=0x80;
+    host.animating_object=server;server[0x460]=0;
+    assert(s[0].tableProxy(&s[0],&host,server,&recipients,1)==server&&recipients.words[0]==0x80);
+    server[0x460]=1;assert(!s[0].tableProxy(&s[0],&host,server,&recipients,1));
+    write(server,0x3c,0);assert(!s[21].tableProxy(&s[21],server,server,&recipients,1)&&recipients.words[0]==0x80);
+    const std::uint32_t id=0x12340000u|(7u<<1)|1u;write(server,0x3c,id);
+    assert(s[21].tableProxy(&s[21],server,server,&recipients,1)==server&&recipients.words[0]==128);
+    auto& a=sv.predictable->props[0];auto& b=rv.predictable->props[0];
+    a.scalarProxy(&a,server,server+a.offset,&v,0,1);d={&b,v,0,1};b.proxy(&d,client,client+b.offset);
+    assert(read(client,0xa4)==id);
+    sv.predictable->precalc=&f;rv.entity->initialized=true;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));sv.predictable->precalc=nullptr;rv.entity->initialized=false;
     assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
 

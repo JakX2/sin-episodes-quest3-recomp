@@ -116,8 +116,16 @@ int main(int argc,char** argv){
     assert(dataSend&&dataRecv&&!getLocalDataSend(0,sizeof(tables::LocalDataSendApi))&&!getLocalDataRecv(1,0));
     tables::test::check_local_data_graph(*dataSend,*dataRecv);
     std::puts("PASS native paired DT_Local 48/49 slots, 32 byte area bits and FOV transitions");
+    const auto getEntitySend=reinterpret_cast<tables::GetBaseEntitySendApi>(GetProcAddress(server,tables::entity_send_export));
+    const auto getEntityRecv=reinterpret_cast<tables::GetBaseEntityRecvApi>(GetProcAddress(client,tables::entity_recv_export));
+    assert(getEntitySend&&getEntityRecv&&!GetProcAddress(client,tables::entity_send_export)&&!GetProcAddress(server,tables::entity_recv_export));
+    const auto* entitySend=getEntitySend(1,sizeof(tables::BaseEntitySendApi));
+    const auto* entityRecv=getEntityRecv(1,sizeof(tables::BaseEntityRecvApi));
+    assert(entitySend&&entityRecv&&!getEntitySend(0,sizeof(tables::BaseEntitySendApi))&&!getEntityRecv(1,0));
+    tables::test::check_entity_graph(*entitySend,*entityRecv);
+    std::puts("PASS native paired BaseEntity time, prediction and notification network graph");
     tables::test::check_base_player_graph(*basePlayerSend,*basePlayerRecv,*animSend,*animRecv,*overlaySend,*overlayRecv,
-        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv,*dataSend,*dataRecv);
+        *flexSend,*flexRecv,*invSend,*invRecv,*localSend,*localRecv,*dataSend,*dataRecv,*entitySend,*entityRecv);
     std::puts("PASS native paired BasePlayer and PlayerState graph composition");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");

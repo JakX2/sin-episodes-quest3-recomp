@@ -2,10 +2,33 @@
 #include <cstring>
 #include <new>
 #include <initializer_list>
+#include <cmath>
+#include <limits>
 #include "client_known_gamesystem_init.h"
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+template<class V> bool entity_empty(const V& v) noexcept {
+    return !v.handle&&!v.entity&&!v.anim_time&&!v.predictable;
+}
+template<class G,class V> bool entity_matches(const G& g,const V& v) noexcept {
+    return v.entity==&g.entity&&v.anim_time==&g.anim_time&&v.predictable==&g.predictable;
+}
+bool sample_network_clock(void* context,SampleClock fn,NetworkClock& clock) noexcept {
+    return fn&&fn(context,&clock)&&std::isfinite(clock.interval)&&clock.interval>0.0f;
+}
+std::int64_t network_tick_base(int tick) noexcept {
+    return (static_cast<std::int64_t>(tick)/100)*100;
+}
+#if defined(SIN_ROLE_server)
+// Original x87 conversion truncates toward zero. Match its indefinite
+// signed-DWORD result for non-finite/out-of-range inputs without UB.
+std::int32_t trunc_native_i32(double value) noexcept {
+    if(!std::isfinite(value)||value>=2147483648.0||value<=-2147483649.0)
+        return (std::numeric_limits<std::int32_t>::min)();
+    return static_cast<std::int32_t>(value);
+}
+#endif
 // Directly observed DT_Local constructor arguments. Unused range
 // fields for coordinate/no-scale encodings are normalized as elsewhere.
 enum class LocalKind {I,B,F,V,H};
@@ -832,6 +855,116 @@ int __cdecl destroy_local_data(LocalDataSendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const LocalDataSendApi local_data_api{version,sizeof(LocalDataSendApi),&create_local_data,&destroy_local_data};
+
+void __cdecl entity_time_send(const s::SendProp* p,const void* entity,const void*,s::DVariant* out,int,int){
+    if(!out)return;
+    out->words[0]=0;
+    if(!p||!p->extra||(p->offset!=0x2c&&p->offset!=0x30))return;
+    const auto& b=*static_cast<const BaseEntitySendBindings*>(p->extra);
+    NetworkClock clock{};float time=0;
+    if(!read_at(entity,static_cast<unsigned>(p->offset),time)||!sample_network_clock(b.context,b.clock,clock))return;
+    const auto ticks=trunc_native_i32(static_cast<double>(time)/clock.interval+0.5);
+    const auto base=network_tick_base(clock.tick);
+    if(ticks>=base-(p->offset==0x2c?100:0))
+        out->words[0]=static_cast<std::uint32_t>(ticks-base)&0xffu;
+}
+void __cdecl entity_transform_send(const s::SendProp* p,const void* entity,const void*,s::DVariant* out,int,int){
+    if(!out)return;
+    if(!p||!p->extra||!entity)return;
+    const auto& b=*static_cast<const BaseEntitySendBindings*>(p->extra);
+    std::uint32_t xyz[3]{};
+    const bool angles=p->offset==0x36c;
+    if(!b.transform(b.context,entity,angles?1:0,xyz))return;
+    if(angles){
+        for(auto& word:xyz){
+            float angle=0;std::memcpy(&angle,&word,4);
+            const auto units=static_cast<std::uint32_t>(trunc_native_i32(static_cast<double>(angle)*(65536.0f/360.0f)))&0xffffu;
+            const float wrapped=static_cast<float>(units)*(360.0f/65536.0f);
+            std::memcpy(&word,&wrapped,4);
+        }
+    }
+    std::memcpy(out->words,xyz,12);
+}
+void __cdecl entity_move_send(const s::SendProp* p,const void* entity,const void*,s::DVariant* out,int,int){
+    if(!p||!out)return;
+    std::uint32_t value=0;
+    const unsigned off=p->bits==4?0x204u:0x208u;
+    if(read_at(entity,off,value))out->words[0]=value;
+}
+void* __cdecl predictable_recipient(const s::SendProp*,const void* entity,const void* data,s::Recipients* mask,int){
+    if(!mask)return nullptr;
+    std::uint32_t id=0;
+    // Invalid ID: original leaves mask untouched. Returning null is
+    // the signal to omit the nested table.
+    if(!read_at(entity,0x3c,id)||!id)return nullptr;
+    for(auto& word:mask->words)word=0;
+    const unsigned index=(id>>1)&31u;
+    mask->words[index/32]=1u<<(index%32);
+    return const_cast<void*>(data);
+}
+struct BaseEntitySendGraph {
+    ResolvedContext context{};
+    BaseEntitySendBindings binding{};
+    s::SendTable entity,anim_time,predictable;
+    s::SendProp props[24],time_prop,predict_props[2];
+    bool build(const BaseEntitySendBindings& b) noexcept {
+        if(!named_table(b.collision,"DT_CollisionProperty",8)||!b.clock||!b.transform||
+            !b.entries||!b.entry_count||b.entry_count>sin_independent::kEntityHandleCapacity||
+            !mem::Readable(b.entries,sizeof(*b.entries)))return false;
+        context.entries=b.entries;context.count=b.entry_count;binding=b;
+        if(!entity.Construct(props,24,"DT_BaseEntity")||
+           !anim_time.Construct(&time_prop,1,"DT_AnimTimeMustBeFirst")||
+           !predictable.Construct(predict_props,2,"DT_PredictableId")||
+           !s::MakeDataTableProp(props[0],"AnimTimeMustBeFirst",0,&anim_time,&server_anim_proxy)||
+           !s::MakeDataTableProp(props[4],"m_Collision",0xfc,b.collision,&s::DirectTable)||
+           !s::MakeDataTableProp(props[21],"predictable_id",0,&predictable,&predictable_recipient))return false;
+        anim_int(time_prop,"m_flAnimTime",0x2c,8,0x401);
+        anim_int(props[1],"m_flSimulationTime",0x30,8,0x401);
+        for(auto* prop:{&time_prop,&props[1]}){prop->scalarProxy=&entity_time_send;prop->extra=&binding;}
+        props[2].name="m_vecOrigin";props[2].type=2;props[2].flags=0x402;props[2].offset=0x360;
+        props[2].scalarProxy=&entity_transform_send;props[2].extra=&binding;
+        anim_int(props[3],"m_nModelIndex",0x38,11,0);
+        anim_int(props[5],"m_nRenderFX",0x1c,8,1);
+        anim_int(props[6],"m_nRenderMode",0x20,8,1);
+        anim_int(props[7],"m_fEffects",0x78,8,1);
+        anim_int(props[8],"m_clrRender",0x24,32,1);
+        anim_int(props[9],"m_iTeamNum",0x22c,6,0);
+        anim_int(props[10],"m_CollisionGroup",0x214,5,1);
+        anim_float(props[11],"m_flElasticity",0x21c,0,2,0,0,0);
+        anim_float(props[12],"m_flShadowCastDistance",0x220,12,1,0,4096,4095.0f/4096);
+        const auto handle=[&](unsigned i,const char* name,int off){
+            anim_int(props[i],name,off,21,5);props[i].scalarProxy=&resolved_handle;props[i].extra=&context;
+        };
+        handle(13,"m_hOwnerEntity",0x20c);handle(14,"m_hEffectEntity",0x210);handle(15,"moveparent",0xf0);
+        anim_int(props[16],"m_iParentAttachment",0xec,6,1,true);
+        anim_int(props[17],"movetype",0,4,1);props[17].scalarProxy=&entity_move_send;
+        anim_int(props[18],"movecollide",0,3,1);props[18].scalarProxy=&entity_move_send;
+        anim_float(props[19],"m_angRotation",0x36c,13,0x400,0,360,8191.0f/360);
+        props[19].type=2;props[19].scalarProxy=&entity_transform_send;props[19].extra=&binding;
+        anim_int(props[20],"m_iTextureFrameIndex",0x2d4,8,1);
+        anim_int(predict_props[0],"m_PredictableID",0x3c,31,1);
+        anim_int(predict_props[1],"m_bIsPlayerSimulated",0x388,1,1,true);
+        anim_int(props[22],"m_bSimulatedEveryTick",0x2d8,1,1,true);
+        anim_int(props[23],"m_bAnimatedEveryTick",0x2d9,1,1,true);
+        return true;
+    }
+};
+
+int __cdecl create_entity(const BaseEntitySendBindings* b,BaseEntitySendView* out) noexcept {
+    if(!b||!out||!entity_empty(*out))return 0;
+    auto* g=new(std::nothrow) BaseEntitySendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->entity,&g->anim_time,&g->predictable};return 1;
+}
+int __cdecl destroy_entity(BaseEntitySendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<BaseEntitySendGraph*>(v->handle);
+    if(!entity_matches(*g,*v))return 0;
+    for(const auto* tab:{&g->entity,&g->anim_time,&g->predictable})if(tab->precalc||tab->initialized||tab->written)return 0;
+    delete g;*v={};return 1;
+}
+const BaseEntitySendApi entity_api{version,sizeof(BaseEntitySendApi),&create_entity,&destroy_entity};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -1318,6 +1451,107 @@ int __cdecl destroy_local_data(LocalDataRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const LocalDataRecvApi local_data_api{version,sizeof(LocalDataRecvApi),&create_local_data,&destroy_local_data};
+
+void __cdecl entity_time_recv(const RecvData* d,void* entity,void*){
+    if(!d||!d->property||!d->property->extra||!entity||d->value.words[0]>255)return;
+    const int off=d->property->offset;
+    if(off!=0x64&&off!=0x6c)return;
+    const auto& b=*static_cast<const BaseEntityRecvBindings*>(d->property->extra);
+    NetworkClock clock{};if(!sample_network_clock(b.context,b.clock,clock))return;
+    auto tick=network_tick_base(clock.tick)+d->value.words[0];
+    // Original performs the lower-bound loop, then upper-bound loop.
+    // In the exact +/-128 case the final result is tick-128.
+    const auto low=static_cast<std::int64_t>(clock.tick)-127,high=static_cast<std::int64_t>(clock.tick)+127;
+    if(tick<low)tick+=((low-tick+255)/256)*256;
+    if(tick>high)tick-=((tick-high+255)/256)*256;
+    const float time=static_cast<float>(static_cast<double>(tick)*clock.interval);
+    std::memcpy(static_cast<unsigned char*>(entity)+off,&time,4);
+}
+void __cdecl entity_effect_recv(const RecvData* d,void* entity,void*){
+    if(!d||!d->property||!d->property->extra||!entity)return;
+    auto* field=static_cast<unsigned char*>(entity)+0x78;
+    std::uint32_t old=0;std::memcpy(&old,field,4);
+    if(old==d->value.words[0])return;
+    std::memcpy(field,&d->value.words[0],4);
+    const auto& b=*static_cast<const BaseEntityRecvBindings*>(d->property->extra);
+    b.effects_changed(b.context,entity);
+}
+void __cdecl entity_move_recv(const RecvData* d,void* entity,void*){
+    if(!d||!d->property||!entity)return;
+    auto* bytes=static_cast<unsigned char*>(entity);
+    // Both descriptors carry offset zero; distinguish the two callbacks
+    // by the literal property name, not by an assumed entity offset.
+    if(!std::strcmp(d->property->name,"movetype")){
+        std::memcpy(bytes+0x144,&d->value.words[0],4);
+        const std::uint32_t zero=0;std::memcpy(bytes+0x148,&zero,4);
+    }else if(!std::strcmp(d->property->name,"movecollide")){
+        std::memcpy(bytes+0x148,&d->value.words[0],4);
+    }
+}
+void __cdecl entity_tick_recv(const RecvData* d,void* entity,void* out){
+    if(!d||!d->property||!d->property->extra||!entity||!out)return;
+    const unsigned char old=*static_cast<const unsigned char*>(out);
+    if(old==(d->value.words[0]!=0?1u:0u))return;
+    byte_recv(d,entity,out);
+    const auto& b=*static_cast<const BaseEntityRecvBindings*>(d->property->extra);
+    b.interpolation_changed(b.context,entity);
+}
+struct BaseEntityRecvGraph {
+    BaseEntityRecvBindings binding{};
+    RecvTable entity,anim_time,predictable;
+    RecvProp props[24],time_prop,predict_props[2];
+    bool build(const BaseEntityRecvBindings& b) noexcept {
+        if(!named_table(b.collision,"DT_CollisionProperty",8)||!b.clock||!b.effects_changed||!b.interpolation_changed)return false;
+        binding=b;
+        entity={props,24,nullptr,"DT_BaseEntity"};
+        anim_time={&time_prop,1,nullptr,"DT_AnimTimeMustBeFirst"};
+        predictable={predict_props,2,nullptr,"DT_PredictableId"};
+        nested(props[0],"AnimTimeMustBeFirst",&anim_time);
+        anim_recv(time_prop,"m_flAnimTime",0x64,0,&entity_time_recv);time_prop.extra=&binding;
+        anim_recv(props[1],"m_flSimulationTime",0x6c,0,&entity_time_recv);props[1].extra=&binding;
+        anim_recv(props[2],"m_vecOrigin",0x2c8,2,&vector_recv);
+        anim_recv(props[3],"m_angRotation",0x2d4,2,&vector_recv);
+        anim_recv(props[4],"m_nModelIndex",0x8c);
+        anim_recv(props[5],"m_fEffects",0x78,0,&entity_effect_recv);props[5].extra=&binding;
+        anim_recv(props[6],"m_nRenderMode",0x7c);
+        anim_recv(props[7],"m_nRenderFX",0x54);
+        anim_recv(props[8],"m_clrRender",0x5c);
+        anim_recv(props[9],"m_iTeamNum",0xa0);
+        anim_recv(props[10],"m_CollisionGroup",0x2e4);
+        anim_recv(props[11],"m_flElasticity",0x1d0,1);
+        anim_recv(props[12],"m_flShadowCastDistance",0x1d4,1);
+        anim_recv(props[13],"m_hOwnerEntity",0x464,0,&handle_recv);
+        anim_recv(props[14],"m_hEffectEntity",0x468,0,&handle_recv);
+        anim_recv(props[15],"moveparent",0x160,0,&handle_recv);
+        anim_recv(props[16],"m_iParentAttachment",0x150,0,&byte_recv);
+        anim_recv(props[17],"movetype",0,0,&entity_move_recv);
+        anim_recv(props[18],"movecollide",0,0,&entity_move_recv);
+        nested(props[19],"m_Collision",b.collision);props[19].offset=0x16c;
+        anim_recv(props[20],"m_iTextureFrameIndex",0x46c);
+        nested(props[21],"predictable_id",&predictable);
+        anim_recv(predict_props[0],"m_PredictableID",0xa4);
+        anim_recv(predict_props[1],"m_bIsPlayerSimulated",0x458,0,&byte_recv);
+        anim_recv(props[22],"m_bSimulatedEveryTick",0x470,0,&entity_tick_recv);props[22].extra=&binding;
+        anim_recv(props[23],"m_bAnimatedEveryTick",0x471,0,&entity_tick_recv);props[23].extra=&binding;
+        return true;
+    }
+};
+
+int __cdecl create_entity(const BaseEntityRecvBindings* b,BaseEntityRecvView* out) noexcept {
+    if(!b||!out||!entity_empty(*out))return 0;
+    auto* g=new(std::nothrow) BaseEntityRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->entity,&g->anim_time,&g->predictable};return 1;
+}
+int __cdecl destroy_entity(BaseEntityRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<BaseEntityRecvGraph*>(v->handle);
+    if(!entity_matches(*g,*v))return 0;
+    for(const auto* tab:{&g->entity,&g->anim_time,&g->predictable})if(tab->decoder||tab->initialized||tab->in_main_list)return 0;
+    delete g;*v={};return 1;
+}
+const BaseEntityRecvApi entity_api{version,sizeof(BaseEntityRecvApi),&create_entity,&destroy_entity};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -1378,6 +1612,12 @@ SiN_GetLocalDataSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept 
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(LocalDataSendApi)?&local_data_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetBaseEntitySendGraphApi=_SiN_GetBaseEntitySendGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::BaseEntitySendApi* __cdecl
+SiN_GetBaseEntitySendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(BaseEntitySendApi)?&entity_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -1426,5 +1666,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::LocalData
 SiN_GetLocalDataRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(LocalDataRecvApi)?&local_data_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetBaseEntityRecvGraphApi=_SiN_GetBaseEntityRecvGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::BaseEntityRecvApi* __cdecl
+SiN_GetBaseEntityRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(BaseEntityRecvApi)?&entity_api:nullptr;
 }
 #endif
