@@ -817,7 +817,11 @@ int main(int argc,char** argv){
     assert(getSection&&!GetProcAddress(client,tables::native_choreography_section_export));
     const auto* section=getSection(1,sizeof(tables::NativeChoreographySectionApi));
     assert(section&&!getSection(0,sizeof(tables::NativeChoreographySectionApi))&&!getSection(1,0));
-    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section);
+    const auto getGate=reinterpret_cast<tables::GetNativeSceneMovementGateApi>(GetProcAddress(server,tables::native_scene_movement_gate_export));
+    assert(getGate&&!GetProcAddress(client,tables::native_scene_movement_gate_export));
+    const auto* gate=getGate(1,sizeof(tables::NativeSceneMovementGateApi));
+    assert(gate&&!getGate(0,sizeof(tables::NativeSceneMovementGateApi))&&!getGate(1,0));
+    tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section,*gate);
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }

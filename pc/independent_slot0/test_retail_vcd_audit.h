@@ -764,8 +764,46 @@ actor Jessica
     assert(!F::word(f.scene,0x3e8)&&!F::word(f.scene,0x3ec)&&!F::word(f.scene,0x3f0));
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.empty());
 }
+inline void check_native_movement_gate(const NativeSceneMovementGateApi& api){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char actor[0x7a0]{},scene[0x5ec]{},space[0x18]{},range[0x14]{},schedule[0x2c]{};
+        unsigned npc=1,suppressed=0,maps=0,storage=0;
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+    } f;
+    NativeSceneMovementGateBindings b{};b.context=&f;b.scene=f.scene;
+    b.is_npc=[](void* p,void* actor,unsigned* out) noexcept -> int{auto& f=Fixture::self(p);assert(actor==f.actor);*out=f.npc;return 1;};
+    b.actor_extent=[](void* p,void* actor,unsigned* out) noexcept -> int{auto& f=Fixture::self(p);assert(actor==f.actor);*out=sizeof(f.actor);return 1;};
+    b.schedule_space=[](void* p,void* actor,void** out,unsigned* n) noexcept -> int{auto& f=Fixture::self(p);assert(actor==f.actor);++f.maps;*out=f.space;*n=sizeof(f.space);return 1;};
+    b.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);++f.storage;
+        if(word==F::ptr(f.range)){*out=f.range;*n=sizeof(f.range);return 1;}
+        if(word==F::ptr(f.schedule)){*out=f.schedule;*n=sizeof(f.schedule);return 1;}
+        return 0;};
+    b.suppressed=[](void* p,void* scene,void* actor) noexcept -> int{auto& f=Fixture::self(p);assert(scene==f.scene&&actor==f.actor);++f.suppressed;return 1;};
+    auto* first=f.space+4;
+    F::put(first,0,1000);F::put(first,4,9999);F::put(first,8,9999);F::put(first,0x10,F::ptr(f.range));
+    F::put(f.range,0,2000);F::put(f.range,4,50);F::put(f.range,8,70);
+    int id=99;assert(api.map_schedule(first,0x14,60,&b,&id)==1&&id==2010);
+    assert(api.map_schedule(first,0x14,50,&b,&id)==1&&id==2000);
+    assert(api.map_schedule(first,0x14,70,&b,&id)==1&&id==2020);
+    assert(api.map_schedule(first,0x14,71,&b,&id)==1&&id==-1);
+    assert(api.map_schedule(nullptr,0,-1,&b,&id)==1&&id==-1);
+    F::put(f.range,0x10,F::ptr(f.range));assert(api.map_schedule(first,0x14,71,&b,&id)==-1);F::put(f.range,0x10,0);
+    unsigned allowed=99;
+    assert(api.admit(&b,nullptr,&allowed)&&!allowed&&!f.suppressed);
+    f.npc=0;assert(api.admit(&b,f.actor,&allowed)&&!allowed&&!f.suppressed&&!f.maps);
+    f.npc=1;assert(api.admit(&b,f.actor,&allowed)&&!allowed&&f.suppressed==1&&!f.maps);
+    F::put(f.actor,0x798,F::ptr(f.schedule));F::put(f.actor,0x79c,2010);
+    assert(api.admit(&b,f.actor,&allowed)&&allowed&&f.maps==1&&f.suppressed==1);
+    F::put(f.actor,0x79c,2011);F::put(f.schedule,0xc,4);
+    assert(api.admit(&b,f.actor,&allowed)&&allowed&&f.maps==2);
+    F::put(f.schedule,0xc,2);assert(api.admit(&b,f.actor,&allowed)&&!allowed&&f.suppressed==2);
+    F::put(f.actor,0x798,0x1234);assert(!api.admit(&b,f.actor,&allowed));
+}
 inline void check_vcd_audit_arena(const PortableVcdFinalizedGrammarApi& grammar,const ChoreographyConstructApi& c,
-    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section){
+    const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ChoreographyStartupSoundApi& startup_sound,const NativeChoreographyClockApi& clock,const NativeChoreographyDispatchApi& dispatch,const NativeChoreographySceneLeafApi& leaves,const NativeChoreographySectionApi& section,const NativeSceneMovementGateApi& gate){
+    check_native_movement_gate(gate);
     check_native_choreography_dispatch(dispatch);check_native_scene_leaves(leaves);
     VcdAuditArena section_arena(c,s,t,d,st,si,va);check_native_section(section_arena,runtime,clock,section);
     // Native CUtlMemory capacities and indexed word insertion, including

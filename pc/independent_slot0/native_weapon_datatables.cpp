@@ -8065,7 +8065,7 @@ int __cdecl native_choreography_section_tick(void* p,void* scene) noexcept {
         const double elapsed=static_cast<double>(now)-last+hologram_read<float>(scene,0x3f0);
         hologram_write(scene,0x3f0,static_cast<float>(elapsed));
         const float timeout=hologram_read<float>(scene,0x3ec);
-        if(timeout>0&&!(elapsed>=timeout))return 1;
+        if(timeout>0&&elapsed<timeout)return 1; // unordered expires, as in x87 status-mask branch
         if(h.timeout&&!h.timeout(h.context,scene,mode))return 0;
     }
     if(mode==1){
@@ -8080,6 +8080,51 @@ int __cdecl native_choreography_section_tick(void* p,void* scene) noexcept {
 }
 const NativeChoreographySectionApi native_choreography_section_api{version,sizeof(NativeChoreographySectionApi),
     &native_choreography_section_enter,&native_choreography_section_tick,&native_choreography_section_ready};
+// Original 22073700 maps a local schedule through inclusive range chain;
+// 9999 marks an unused range, -1 is always unmapped. Arithmetic is PE32.
+int __cdecl native_scene_map_schedule(void* range,unsigned bytes,int local,const NativeSceneMovementGateBindings* b,int* out) noexcept {
+    if(!b||!hologram_writable(out,4))return 0;
+    *out=-1;if(local==-1)return 1;
+    for(unsigned depth=0;depth<4096;++depth){
+        if(bytes<0x14||!sin_independent::vgui_layout::Readable(range,0x14))return -1;
+        const int first=hologram_read<int>(range,4),last=hologram_read<int>(range,8);
+        if(first!=9999&&local>=first&&local<=last){
+            const auto mapped=hologram_read<std::uint32_t>(range,0)-static_cast<std::uint32_t>(first)+static_cast<std::uint32_t>(local);
+            std::memcpy(out,&mapped,4);return 1;
+        }
+        const auto next=hologram_read<std::uint32_t>(range,0x10);
+        if(!next)return 1;
+        if(next==scene_word(range)||!b->storage||!b->storage(b->context,next,&range,&bytes))return -1;
+    }
+    return -1;
+}
+int __cdecl native_scene_movement_admit(void* p,void* actor,unsigned* out) noexcept {
+    const auto* b=static_cast<const NativeSceneMovementGateBindings*>(p);
+    if(!b||!hologram_writable(out,4))return 0;
+    *out=0;if(!actor)return 1;
+    unsigned npc=0,bytes=0;
+    if(!b->is_npc||!b->is_npc(b->context,actor,&npc))return 0;
+    if(!(npc&0xff))return 1;
+    if(!b->actor_extent||!b->actor_extent(b->context,actor,&bytes)||bytes<0x7a0||
+       !sin_independent::vgui_layout::Readable(actor,0x7a0))return 0;
+    // 2205eec0 called with local 60, ideal/current-ID selector 1.
+    const auto schedule=hologram_read<std::uint32_t>(actor,0x798);
+    if(schedule){
+        void* space=nullptr;unsigned extent=0;int mapped=-1;
+        if(!b->schedule_space||!b->schedule_space(b->context,actor,&space,&extent)||extent<0x18||
+           !sin_independent::vgui_layout::Readable(space,0x18)||
+           native_scene_map_schedule(static_cast<unsigned char*>(space)+4,extent-4,60,b,&mapped)!=1)return 0;
+        if(mapped==hologram_read<int>(actor,0x79c)){*out=1;return 1;}
+        void* object=nullptr;
+        if(!b->storage||!b->storage(b->context,schedule,&object,&extent)||extent<0x2c||
+           !sin_independent::vgui_layout::Readable(object,0x2c))return 0;
+        // 221a7430 copies 32 bytes from schedule+0c; bit 2 in first word.
+        if(hologram_read<unsigned>(object,0xc)&4){*out=1;return 1;}
+    }
+    return !b->suppressed||b->suppressed(b->context,b->scene,actor);
+}
+const NativeSceneMovementGateApi native_scene_movement_gate_api{version,sizeof(NativeSceneMovementGateApi),
+    &native_scene_map_schedule,&native_scene_movement_admit};
 bool speech_drain_ready(const SceneSpeechDrainBindings* b,unsigned* out) noexcept {
     return b&&b->storage&&b->resolve&&b->clock&&b->open_filter&&b->emit&&b->close_filter&&hologram_writable(out,4);
 }
@@ -12922,6 +12967,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographySceneLeafApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographySceneLeafApi)?&native_choreography_scene_leaf_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNativeSceneMovementGateApi=_SiN_GetNativeSceneMovementGateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeSceneMovementGateApi* __cdecl
+SiN_GetNativeSceneMovementGateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeSceneMovementGateApi)?&native_scene_movement_gate_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetNativeChoreographySectionApi=_SiN_GetNativeChoreographySectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeChoreographySectionApi* __cdecl

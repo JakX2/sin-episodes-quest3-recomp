@@ -808,6 +808,27 @@ struct NativeChoreographySectionApi {
     int (__cdecl *ready)(void*,unsigned,const NativeChoreographySectionBindings*,unsigned*) noexcept;
 };
 using GetNativeChoreographySectionApi=const NativeChoreographySectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_scene_movement_gate_export[]="SiN_GetNativeSceneMovementGateApi";
+struct NativeSceneMovementGateBindings {
+    void* context;
+    void* scene;
+    int (__cdecl *is_npc)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *actor_extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original NPC virtual +760 returns class schedule-ID space; the
+    // first local-to-global range record is inline at result+4.
+    int (__cdecl *schedule_space)(void*,void*,void**,unsigned*) noexcept;
+    int (__cdecl *suppressed)(void*,void* scene,void* actor) noexcept;
+};
+struct NativeSceneMovementGateApi {
+    std::uint32_t version,size;
+    // Original 22073700; returns -1 for absent mapping, transport
+    // failure for malformed/unresolvable range chain.
+    int (__cdecl *map_schedule)(void*,unsigned,int,const NativeSceneMovementGateBindings*,int*) noexcept;
+    // Original 221a7430; compatible with scene-leaf admit_instanced.
+    int (__cdecl *admit)(void*,void*,unsigned*) noexcept;
+};
+using GetNativeSceneMovementGateApi=const NativeSceneMovementGateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char scene_speech_drain_export[]="SiN_GetSceneSpeechDrainApi";
 struct SceneSpeechDrainBindings {
     void* context;
