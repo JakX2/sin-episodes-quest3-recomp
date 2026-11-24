@@ -6,6 +6,7 @@
 #include "native_client_phoneme_window.h"
 #include "native_client_phoneme_emphasis.h"
 #include "native_client_phoneme_source.h"
+#include "native_client_vfe.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11293,6 +11294,16 @@ int __cdecl client_phoneme_source_apply(const void* entity,unsigned bytes,float 
     std::memcpy(out,result,sizeof(result));return 1;
 }
 const ClientPhonemeSourceApi client_phoneme_source_api{version,sizeof(ClientPhonemeSourceApi),&client_phoneme_source_apply};
+int __cdecl client_vfe_resolve(ClientVfeView generic,ClientVfeView over,int code,void* ctx,ClientVfeMap map,
+    ClientPhonemeContribution* out,unsigned capacity,unsigned* count) noexcept {
+    if(capacity>4096||!hologram_writable(count,sizeof(*count))||
+       (capacity&&!hologram_writable(out,capacity*sizeof(*out)))||
+       (generic.size&&(!generic.data||!sin_independent::vgui_layout::Readable(generic.data,generic.size)))||
+       (over.size&&(!over.data||!sin_independent::vgui_layout::Readable(over.data,over.size))))return -1;
+    return vfe_detail::resolve(generic,over,code,ctx,map,out,capacity,count);
+}
+const ClientVfeApi client_vfe_api{version,sizeof(ClientVfeApi),&client_vfe_resolve};
+
 
 
 
@@ -13716,6 +13727,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientVfeApi=_SiN_GetClientVfeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientVfeApi* __cdecl
+SiN_GetClientVfeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientVfeApi)?&client_vfe_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetClientPhonemeSourceApi=_SiN_GetClientPhonemeSourceApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientPhonemeSourceApi* __cdecl
