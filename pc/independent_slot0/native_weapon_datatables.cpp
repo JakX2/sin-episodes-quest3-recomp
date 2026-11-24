@@ -23,6 +23,7 @@
 #include "native_vehicle_config.h"
 #include "native_vehicle_passengers.h"
 #include "native_vehicle_map.h"
+#include "native_vehicle_lifecycle.h"
 #include "native_weapon_datatables.h"
 #include <cstring>
 #include <new>
@@ -4491,32 +4492,39 @@ bool config_overrides(void* v,const VehicleConfigBindings& h,const char* block,u
     }
     return false;
 }
-int __cdecl config_views(HologramControl* c,const VehicleConfigBindings* b) noexcept {
-    if(!health_control(c,view_vehicle_extent)||!b||!b->entry||!b->append_view||!b->attachment_id)return 0;
-    c->busy=1;auto* v=c->object;const auto h=*b;
+bool config_views_leaf(void* v,const VehicleConfigBindings& h) noexcept {
     for(int seat=0;seat<3;++seat){
         char name[64]{};
         std::snprintf(name,sizeof(name),"passenger%d_view",seat);
-        if(!config_append_view(v,h,name,-1,seat,0,-1))return disp_finish(c,false);
+        if(!config_append_view(v,h,name,-1,seat,0,-1))return false;
     }
-    return disp_finish(c,config_link_block(v,h,"view_links",0)&&config_link_block(v,h,"view_temp",1)&&
-        config_overrides(v,h,"view_damage_mod",0x60)&&config_overrides(v,h,"view_allow_weapons",0x55)&&config_overrides(v,h,"view_key",0x50));
+    return config_link_block(v,h,"view_links",0)&&config_link_block(v,h,"view_temp",1)&&
+        config_overrides(v,h,"view_damage_mod",0x60)&&config_overrides(v,h,"view_allow_weapons",0x55)&&config_overrides(v,h,"view_key",0x50);
+}
+bool config_damage_leaf(void* v,const VehicleConfigBindings& h) noexcept {
+    unsigned seen=0;
+    for(unsigned i=0;i<=65536;++i){
+        VehicleConfigEntry e{};unsigned present=0;
+        if(!h.entry(h.context,"damage_mod",i,&present,&e))return false;
+        if(!present)return true;
+        char name[1024]{};
+        if(i==65536||!prop_key_read(e.name,name))return false;
+        constexpr const char* keys[]={"blast","crush","bullet"};
+        for(unsigned j=0;j<3;++j)if(!(seen&(1u<<j))&&music_equal(name,keys[j])){
+            hologram_write(v,0x864+j*4,e.real);seen|=1u<<j;
+        }
+    }
+    return false;
+}
+int __cdecl config_views(HologramControl* c,const VehicleConfigBindings* b) noexcept {
+    if(!health_control(c,view_vehicle_extent)||!b||!b->entry||!b->append_view||!b->attachment_id)return 0;
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,config_views_leaf(c->object,h));
 }
 int __cdecl config_damage(HologramControl* c,const VehicleConfigBindings* b) noexcept {
     if(!health_control(c,0x870)||!b||!b->entry)return 0;
-    c->busy=1;const auto h=*b;unsigned seen=0;
-    for(unsigned i=0;i<=65536;++i){
-        VehicleConfigEntry e{};unsigned present=0;
-        if(!h.entry(h.context,"damage_mod",i,&present,&e))return disp_finish(c,false);
-        if(!present)return disp_finish(c,true);
-        char name[1024]{};
-        if(i==65536||!prop_key_read(e.name,name))return disp_finish(c,false);
-        constexpr const char* keys[]={"blast","crush","bullet"};
-        for(unsigned j=0;j<3;++j)if(!(seen&(1u<<j))&&music_equal(name,keys[j])){
-            hologram_write(c->object,0x864+j*4,e.real);seen|=1u<<j;
-        }
-    }
-    return disp_finish(c,false);
+    c->busy=1;const auto h=*b;
+    return disp_finish(c,config_damage_leaf(c->object,h));
 }
 const VehicleConfigApi vehicle_config_api{version,sizeof(VehicleConfigApi),&config_views,&config_damage,&health_ack};
 
@@ -4756,6 +4764,105 @@ int __cdecl vehicle_map_input(HologramControl* c,const VehicleMapBindings* b,con
     return disp_finish(c,ok);
 }
 const VehicleMapApi vehicle_map_api{version,sizeof(VehicleMapApi),&vehicle_map_get_schema,&vehicle_map_key,&vehicle_map_input,&health_ack};
+
+int __cdecl vehicle_life_defaults(HologramControl* c) noexcept {
+    if(!health_control(c,vehicle_object_bytes))return 0;
+    auto* v=c->object;
+    for(unsigned off:{0x734u,0x738u,0x73cu,0x744u,0x87cu,0x880u,0x88cu,0x75cu})hologram_write(v,off,0u);
+    for(unsigned off:{0x740u,0x74bu,0x749u,0x74eu,0x74fu,0x750u,0x758u,0x730u,0x731u})hologram_write(v,off,static_cast<unsigned char>(0));
+    for(unsigned off:{0x74au,0x74cu,0x74du,0x764u})hologram_write(v,off,static_cast<unsigned char>(1));
+    for(unsigned off:{0x760u,0x768u,0x884u,0x888u})hologram_write(v,off,0xffffffffu);
+    hologram_write(v,0x754,20.f);
+    for(unsigned off:{0x864u,0x868u,0x86cu})hologram_write(v,off,1.f);
+    // Original 2232de70 initializes these four scalar sets.
+    for(unsigned i=0;i<4;++i){
+        hologram_write(v,0x6e8+i,static_cast<unsigned char>(0));
+        hologram_write(v,0x6ec+i,static_cast<unsigned char>(0));
+        for(unsigned j=0;j<3;++j)hologram_write(v,0x6f0+i*12+j*4,0u);
+        hologram_write(v,0x720+i*4,0u);
+    }
+    return 1;
+}
+bool vehicle_load_sounds(void* v,const VehicleLifecycleBindings& h) noexcept {
+    for(unsigned i=0;i<=65536;++i){
+        VehicleConfigEntry e{};unsigned present=0;
+        if(!h.config.entry(h.config.context,"vehicle_sounds",i,&present,&e))return false;
+        if(!present)return true;
+        char key[64]{},sound[64]{};
+        if(i==65536||!prop_key_read(e.name,key)||!prop_key_read(e.text,sound))return false;
+        const int n=hologram_read<int>(v,0x844);
+        if(n<0||n>=65536||!h.append_sound(h.context,v)||hologram_read<int>(v,0x844)!=n+1)return false;
+        auto* record=const_cast<unsigned char*>(vehicle_sound_record(v,n));
+        if(!record||!hologram_writable(record,128))return false;
+        // Original copies only through NUL, leaving the rest untouched.
+        std::memcpy(record,key,std::strlen(key)+1);
+        std::memcpy(record+64,sound,std::strlen(sound)+1);
+        if(!h.precache(h.context,reinterpret_cast<const char*>(record+64)))return false;
+    }
+    return false;
+}
+bool vehicle_config_load(void* v,const VehicleLifecycleBindings& h,VehicleConfigKind kind) noexcept {
+    unsigned present=0;
+    if(!h.open_config(h.context,v,kind,&present))return false;
+    if(!present)return true;
+    const bool ok=kind==VehicleConfigKind::Damage?config_damage_leaf(v,h.config):
+        kind==VehicleConfigKind::Sounds?vehicle_load_sounds(v,h):config_views_leaf(v,h.config);
+    const bool closed=h.close_config(h.context,v,kind)!=0;
+    return ok&&closed;
+}
+bool vehicle_link_radio(void* v,const VehicleLifecycleBindings& h) noexcept {
+    void* radio=nullptr;
+    if(!h.find_radio(h.context,"env_radio",&radio))return false;
+    std::uint32_t word=0xffffffffu;
+    if(radio&&!h.handle(h.context,radio,&word))return false;
+    hologram_write(v,0x768,word);
+    // Retail code assumes env_radio exists; fail closed on missing or
+    // stale link instead of dereferencing null.
+    HologramControl* rc=nullptr;
+    if(word==0xffffffffu||!h.resolve_radio(h.context,word,&rc)||!rc||rc->object!=radio||
+       !health_control(rc,music_radio_bytes))return false;
+    std::uint32_t speaker=0xffffffffu;
+    if(!h.handle(h.context,v,&speaker)||speaker==0xffffffffu)return false;
+    hologram_write(rc->object,0x394,speaker);
+    // Original explicit virtual Spawn on the radio; do not silently
+    // suppress this call because it may also occur in map load order.
+    if(!h.resolve_radio(h.context,word,&rc)||!rc||rc->object!=radio||music_map_spawn(rc,&h.music)!=1)return false;
+    if(!h.resolve_radio(h.context,word,&rc)||!rc||rc->object!=radio)return false;
+    return h.parent_radio(h.context,radio,v,-1)!=0;
+}
+bool vehicle_life_ready(const HologramControl* c,const VehicleLifecycleBindings* b) noexcept {
+    return health_control(c,vehicle_object_bytes)&&b&&b->base_spawn&&b->base_activate&&b->initialize_subsystem&&
+        b->open_config&&b->close_config&&b->config.entry&&b->config.append_view&&b->config.attachment_id&&
+        b->append_sound&&b->precache&&b->find_radio&&b->handle&&b->resolve_radio&&b->parent_radio&&
+        b->initialize_components&&b->clock&&b->health_dirty&&b->spawn_tail&&b->activate_tail;
+}
+int __cdecl vehicle_life_spawn(HologramControl* c,const VehicleLifecycleBindings* b) noexcept {
+    if(!vehicle_life_ready(c,b))return 0;
+    c->busy=1;auto* v=c->object;const auto h=*b;
+    hologram_write(v,0x5dc,1);hologram_write(v,0x39c,static_cast<unsigned char>(1));
+    if(!h.base_spawn(h.context,v)||!h.initialize_subsystem(h.context,v,0x84c)||
+       !vehicle_config_load(v,h,VehicleConfigKind::Damage)||!vehicle_config_load(v,h,VehicleConfigKind::Sounds)||
+       !vehicle_link_radio(v,h)||!vehicle_config_load(v,h,VehicleConfigKind::Views)||!h.initialize_components(h.context,v))return disp_finish(c,false);
+    float now=0;if(!h.clock(h.context,&now))return disp_finish(c,false);
+    hologram_write(v,0x740,static_cast<unsigned char>(0));
+    hologram_write(v,0x73c,static_cast<float>(static_cast<double>(now)+0.1));
+    if(hologram_read<int>(v,0x9c)!=100){
+        if(!h.health_dirty(h.context,v))return disp_finish(c,false);
+        hologram_write(v,0x9c,100);
+    }
+    hologram_write(v,0x74d,static_cast<unsigned char>(1));
+    hologram_write(v,0x749,static_cast<unsigned char>(0));
+    return disp_finish(c,h.spawn_tail(h.context,v,hologram_read<unsigned short>(v,0x120)|0x11u)!=0);
+}
+int __cdecl vehicle_life_activate(HologramControl* c,const VehicleLifecycleBindings* b) noexcept {
+    if(!vehicle_life_ready(c,b))return 0;
+    c->busy=1;auto* v=c->object;const auto h=*b;
+    if(!h.base_activate(h.context,v)||!h.initialize_subsystem(h.context,v,0x84c)||
+       !vehicle_config_load(v,h,VehicleConfigKind::Views)||!vehicle_config_load(v,h,VehicleConfigKind::Damage)||
+       !h.initialize_components(h.context,v)||!vehicle_config_load(v,h,VehicleConfigKind::Sounds))return disp_finish(c,false);
+    return disp_finish(c,!hologram_read<std::uint32_t>(v,0x218)||h.activate_tail(h.context,v,0x870)!=0);
+}
+const VehicleLifecycleApi vehicle_lifecycle_api{version,sizeof(VehicleLifecycleApi),&vehicle_life_defaults,&vehicle_life_spawn,&vehicle_life_activate,&health_ack};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -6781,6 +6888,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleMa
 SiN_GetVehicleMapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleMapApi)?&vehicle_map_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetVehicleLifecycleApi=_SiN_GetVehicleLifecycleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::VehicleLifecycleApi* __cdecl
+SiN_GetVehicleLifecycleApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(VehicleLifecycleApi)?&vehicle_lifecycle_api:nullptr;
 }
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
