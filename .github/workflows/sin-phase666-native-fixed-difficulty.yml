@@ -8,6 +8,8 @@ on:
       - 'pc/independent_slot0/test_server_fixed_difficulty_service.cpp'
       - 'pc/independent_slot0/server_native_map_host.h'
       - 'pc/independent_slot0/original_ammo_definitions.*'
+      - 'pc/independent_slot0/weapon_network_contract.*'
+      - 'pc/independent_slot0/test_weapon_network_contract_core.h'
       - 'pc/independent_slot0/test_original_ammo_definition_pair.cpp'
       - 'src/source_bsp_entities.cpp'
       - 'src/source_map_runtime.cpp'
@@ -55,6 +57,6 @@ jobs:
       - name: Build shared service and separate dlopen consumer under sanitizers
         run: |
           flags="-std=c++17 -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra -Wpedantic -Werror -Iinclude -Ithird_party/research"
-          clang++ $flags -fPIC -shared pc/independent_slot0/original_ammo_definitions.cpp pc/independent_slot0/server_fixed_difficulty_service.cpp src/fixed_difficulty_phase663.cpp src/original_sin_trigger_entities.cpp src/fixed_difficulty_trigger_phase663.cpp src/original_ar_grenade_runtime.cpp src/original_ar_grenade_touch.cpp -o /tmp/libsin-fixed-service.so
+          clang++ $flags -fPIC -shared pc/independent_slot0/weapon_network_contract.cpp pc/independent_slot0/original_ammo_definitions.cpp pc/independent_slot0/server_fixed_difficulty_service.cpp src/fixed_difficulty_phase663.cpp src/original_sin_trigger_entities.cpp src/fixed_difficulty_trigger_phase663.cpp src/original_ar_grenade_runtime.cpp src/original_ar_grenade_touch.cpp -o /tmp/libsin-fixed-service.so
           clang++ $flags pc/independent_slot0/test_server_fixed_difficulty_service.cpp src/source_bsp_entities.cpp src/source_map_runtime.cpp -ldl -o /tmp/sin-native-service-test
           /tmp/sin-native-service-test /tmp/libsin-fixed-service.so
