@@ -62,11 +62,15 @@ struct Host final:b::IOriginalGameHost {
  }
  bool read_u32(std::uint32_t address,std::uint32_t& value)override {
   const auto it=words.find(address);
-  if(it==words.end())return false;value=it->second;return true;
+  if(it==words.end())return false;
+  value=it->second;
+  return true;
  }
  bool read_u8(std::uint32_t address,std::uint8_t& value)override{
   const auto it=bytes.find(address);
-  if(it==bytes.end())return false;value=it->second;return true;
+  if(it==bytes.end())return false;
+  value=it->second;
+  return true;
  }
  bool read_f32(std::uint32_t address,float& value)override{
   const auto it=words.find(address);
