@@ -3,6 +3,7 @@
 #include "native_npc_dialogue.h"
 #include "native_npc_scene_playback.h"
 #include "native_client_facial_frame.h"
+#include "native_client_phoneme_window.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11196,6 +11197,19 @@ int __cdecl client_facial_smooth(float* previous,const float* current,unsigned c
     std::memcpy(previous,result,count*sizeof(float));return 1;
 }
 const ClientFacialFrameApi client_facial_frame_api{version,sizeof(ClientFacialFrameApi),&client_facial_project,&client_facial_smooth};
+int __cdecl client_phoneme_sample(const ClientPhonemeInterval* rows,unsigned count,float time,float* window,
+    bool adaptive,void* context,ClientPhonemeEmit emit) noexcept {
+    if(!emit||!std::isfinite(time)||!hologram_writable(window,sizeof(float))||
+       !std::isfinite(*window)||!(*window>0)||count>65535||
+       (count&&(!rows||!sin_independent::vgui_layout::Readable(rows,count*sizeof(*rows)))))return 0;
+    for(unsigned i=0;i<count;++i)
+        if(!std::isfinite(rows[i].start)||!std::isfinite(rows[i].end))return 0;
+    float resolved=*window;
+    sample_client_phonemes(rows,count,time,resolved,adaptive,context,emit);
+    *window=resolved;return 1;
+}
+const ClientPhonemeWindowApi client_phoneme_window_api{version,sizeof(ClientPhonemeWindowApi),&client_phoneme_sample};
+
 
 constexpr int layer_offset=0x7a4,layer_stride=0x20;
 // Original 0x24127100 forwards length to entity-specific resize,
@@ -13616,6 +13630,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientPhonemeWindowApi=_SiN_GetClientPhonemeWindowApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientPhonemeWindowApi* __cdecl
+SiN_GetClientPhonemeWindowApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientPhonemeWindowApi)?&client_phoneme_window_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetClientFacialFrameApi=_SiN_GetClientFacialFrameApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientFacialFrameApi* __cdecl
