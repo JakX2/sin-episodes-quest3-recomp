@@ -60,4 +60,68 @@ inline void check_jessica(const JessicaApi& api){
     f.maxclients=2;assert(animate(123)==-1&&f.ctrl.blocked);f.expect({3,10,12,13,14,15});
     assert(api.acknowledge(&f.ctrl));
 }
+
+struct JessicaCombatFixture {
+    JessicaFixture j;
+    int scene=4;
+    unsigned predicate=0,query=0,resolutions=0,vanish_at=0;
+    bool fail_speak=false,mutate_invulnerable=false;
+    float observed_damage=0;
+};
+inline void check_jessica_combat(const JessicaCombatApi& api){
+    JessicaCombatFixture f;auto& x=f.j;JessicaCombatBindings b{};b.context=&f;
+    b.speak=[](void* p,void* npc,const char* name,int a,int c) noexcept -> int {
+        auto& f=*static_cast<JessicaCombatFixture*>(p);auto& x=f.j;
+        x.record(1);assert(npc==x.npc&&!std::strcmp(name,"TLK_INPOISONCLOUD")&&!a&&!c);
+        if(f.mutate_invulnerable)x.put(0xb4,0x10000);
+        return !f.fail_speak;
+    };
+    b.base_damage=[](void* p,void* npc,const PlayerDamageInfo* info,int* result) noexcept -> int {
+        auto& f=*static_cast<JessicaCombatFixture*>(p);f.j.record(2);assert(npc==f.j.npc);
+        std::memcpy(&f.observed_damage,info->bytes+0x2c,4);*result=19;return 1;
+    };
+    b.scene_predicate=[](void* p,void* scene,std::uint32_t arg,unsigned* out) noexcept -> int {
+        auto& f=*static_cast<JessicaCombatFixture*>(p);f.j.record(3);assert(scene==&f.scene&&arg==99);*out=f.predicate;return 1;
+    };
+    b.base_scene=[](void* p,void* npc,void* scene,std::uint32_t arg) noexcept -> int {
+        auto& f=*static_cast<JessicaCombatFixture*>(p);f.j.record(4);assert(npc==f.j.npc&&scene==&f.scene&&arg==99);return 1;
+    };
+    b.resolve_weapon=[](void* p,std::uint32_t handle,void** out) noexcept -> int {
+        auto& f=*static_cast<JessicaCombatFixture*>(p);f.j.record(5);assert(handle==0x123004);
+        ++f.resolutions;*out=f.resolutions==f.vanish_at?nullptr:f.j.weapon;return 1;
+    };
+    b.holster=[](void* p,void* weapon,int arg) noexcept -> int {
+        auto& f=*static_cast<JessicaCombatFixture*>(p);f.j.record(6);assert(weapon==f.j.weapon&&arg==0);return 1;
+    };
+    b.weapon_query=[](void* p,void* weapon,unsigned* out) noexcept -> int {
+        auto& f=*static_cast<JessicaCombatFixture*>(p);f.j.record(7);assert(weapon==f.j.weapon);*out=f.query;return 1;
+    };
+    b.weapon_restore=[](void* p,void* weapon) noexcept -> int {
+        auto& f=*static_cast<JessicaCombatFixture*>(p);f.j.record(8);assert(weapon==f.j.weapon);return 1;
+    };
+    PlayerDamageInfo info{};const float damage=12;std::memcpy(info.bytes+0x2c,&damage,4);
+    auto flags=[&](unsigned value){std::memcpy(info.bytes+0x38,&value,4);};
+    int result=0;auto take=[&](){return api.take_damage(&x.ctrl,&b,&info,&result);};
+    assert(take()==1&&result==19&&f.observed_damage==12);x.expect({2});
+    flags(0x20000);assert(take()==1&&f.observed_damage==12);x.expect({2});
+    flags(0x10000);assert(take()==1&&f.observed_damage==12);x.expect({1,2});
+    x.put(0xb4,0x10000);assert(take()==1&&f.observed_damage==0);x.expect({1,2});
+    flags(0);assert(take()==1&&f.observed_damage==0);x.expect({2});
+    float source=0;std::memcpy(&source,info.bytes+0x2c,4);assert(source==12);
+    x.put(0xb4,0);flags(0x10000);f.mutate_invulnerable=true;
+    assert(take()==1&&f.observed_damage==0);x.expect({1,2});f.mutate_invulnerable=false;
+    f.fail_speak=true;assert(take()==-1&&x.ctrl.blocked);x.expect({1});assert(api.acknowledge(&x.ctrl));f.fail_speak=false;
+    auto enter=[&](){return api.scene_enter(&x.ctrl,&b,&f.scene,99);};
+    x.put(0x78c,0xffffffffu);assert(enter()==1);x.expect({3,4});
+    x.put(0x78c,0x123004);assert(enter()==1);x.expect({3,5,6,4});
+    f.predicate=1;assert(enter()==1);x.expect({3,4});
+    auto exit=[&](){return api.scene_exit(&x.ctrl,&b);};
+    x.put(0x8c,1);assert(exit()==1);x.expect({});x.put(0x8c,0);
+    x.put(0x78c,0xffffffffu);assert(exit()==1);x.expect({});x.put(0x78c,0x123004);
+    f.query=1;assert(exit()==1);x.expect({5,5,7});
+    f.query=0;assert(exit()==1);x.expect({5,5,7,5,8});
+    f.vanish_at=f.resolutions+2;assert(exit()==-1&&x.ctrl.blocked);x.expect({5,5});
+    assert(api.acknowledge(&x.ctrl));
+}
+
 }

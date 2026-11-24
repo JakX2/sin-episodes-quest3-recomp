@@ -12,7 +12,7 @@ struct JessicaBindings {
     int (__cdecl *condition)(void*,void* npc,JessicaCondition,unsigned id,unsigned* present) noexcept;
     int (__cdecl *base_schedule)(void*,void* npc,int*) noexcept;
     int (__cdecl *base_interrupts)(void*,void* npc) noexcept;
-    // The original holster lookup uses npc+0x78c, not a global local-player lookup.
+    // The original holster lookup uses npc+0x78c (m_hActiveWeapon), not a global local-player lookup.
     // Resolve the packed handle with serial validation; absent => null.
     int (__cdecl *resolve_target)(void*,std::uint32_t,void**) noexcept;
     int (__cdecl *holster)(void*,void* target,int argument) noexcept;
@@ -41,4 +41,30 @@ struct JessicaApi {
     int (__cdecl *acknowledge)(HologramControl*) noexcept;
 };
 using GetJessicaApi=const JessicaApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char jessica_combat_export[]="SiN_GetJessicaCombatApi";
+struct JessicaCombatBindings {
+    void* context;
+    // TLK response-system dispatch, original two trailing arguments zero.
+    // Engine response result is ignored; return transport success only.
+    int (__cdecl *speak)(void*,void* npc,const char* concept_name,int,int) noexcept;
+    int (__cdecl *base_damage)(void*,void* npc,const PlayerDamageInfo*,int*) noexcept;
+    // Scene interface vslot5; return its observed boolean separately.
+    int (__cdecl *scene_predicate)(void*,void* scene,std::uint32_t argument,unsigned*) noexcept;
+    int (__cdecl *base_scene)(void*,void* npc,void* scene,std::uint32_t argument) noexcept;
+    int (__cdecl *resolve_weapon)(void*,std::uint32_t packed_handle,void**) noexcept;
+    int (__cdecl *holster)(void*,void* weapon,int argument) noexcept;
+    // Original weapon slots 0x354 and 0x344; names intentionally provisional.
+    int (__cdecl *weapon_query)(void*,void* weapon,unsigned*) noexcept;
+    int (__cdecl *weapon_restore)(void*,void* weapon) noexcept;
+};
+struct JessicaCombatApi {
+    std::uint32_t version,size;
+    int (__cdecl *take_damage)(HologramControl*,const JessicaCombatBindings*,const PlayerDamageInfo*,int*) noexcept;
+    int (__cdecl *scene_enter)(HologramControl*,const JessicaCombatBindings*,void*,std::uint32_t) noexcept;
+    int (__cdecl *scene_exit)(HologramControl*,const JessicaCombatBindings*) noexcept;
+    int (__cdecl *acknowledge)(HologramControl*) noexcept;
+};
+using GetJessicaCombatApi=const JessicaCombatApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
