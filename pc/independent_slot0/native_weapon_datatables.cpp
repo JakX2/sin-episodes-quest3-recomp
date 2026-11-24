@@ -4454,6 +4454,66 @@ int __cdecl parsed_scene_simulate(void* parsed,unsigned bytes,float target,const
     return 1;
 }
 const ParsedSceneSimulationApi parsed_scene_simulation_api{version,sizeof(ParsedSceneSimulationApi),&parsed_scene_simulate,&parsed_event_less};
+int __cdecl parsed_scene_finished(const void* parsed,unsigned bytes,unsigned* out) noexcept {
+    if(!parsed||bytes<0x90||!sin_independent::vgui_layout::Readable(parsed,0x90)||
+       !out||!hologram_writable(out,sizeof(*out)))return 0;
+    const float time=hologram_read<float>(parsed,0x78);
+    *out=time>hologram_read<float>(parsed,0x88)?hologram_read<unsigned>(parsed,0x8c)==0:time<hologram_read<float>(parsed,0x84);
+    return 1;
+}
+bool scene_advance_parsed(void* scene,const SceneAdvanceBindings& h,void*& p,unsigned& bytes) noexcept {
+    p=nullptr;bytes=0;const auto word=hologram_read<std::uint32_t>(scene,0x40c);
+    return word&&h.parsed(h.context,word,&p,&bytes)&&p&&bytes>=0x220&&hologram_writable(p,0x220);
+}
+int scene_advance(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings* b,bool instanced) noexcept {
+    const unsigned required=instanced?0x561:0x41c;
+    if(bytes<required||!hologram_writable(scene,required)||!b||!b->pre_tick||!b->paused_tick||
+       !b->parsed||!b->latency||!b->finish||(instanced?(!b->resolve_actor||!b->remove):(!b->start||!b->release_actors)))return 0;
+    const auto h=*b;
+    if(!h.pre_tick(h.context,scene))return -1;
+    if(!instanced&&hologram_read<unsigned char>(scene,0x3f5)&&!h.start(h.context,scene))return -1;
+    const auto retire=[&](){return h.remove(h.context,scene)?1:-1;};
+    if(!hologram_read<std::uint32_t>(scene,0x40c)||!hologram_read<unsigned char>(scene,0x3d8))
+        return instanced?retire():1;
+    if(instanced&&hologram_read<unsigned char>(scene,0x560)){
+        const auto word=hologram_read<std::uint32_t>(scene,0x55c);void* actor=nullptr;
+        if(word!=0xffffffffu&&!h.resolve_actor(h.context,word,&actor))return -1;
+        if(!actor)return retire();
+    }
+    if(hologram_read<unsigned char>(scene,0x3d9))return h.paused_tick(h.context,scene)?1:-1;
+    if(!instanced)hologram_write(scene,0x3e0,dt);
+    void* parsed=nullptr;unsigned n=0;
+    if(!scene_advance_parsed(scene,h,parsed,n))return -1;
+    float latency=.1f;const auto nested=hologram_read<std::uint32_t>(scene,0x418);
+    if(nested&&!h.latency(h.context,nested,&latency))return -1;
+    hologram_write(parsed,0x90,latency);
+    if(!scene_advance_parsed(scene,h,parsed,n)||
+       parsed_scene_simulate(parsed,n,hologram_read<float>(scene,0x3dc),&h.simulation)!=1)return -1;
+    const float increment=instanced?dt:hologram_read<float>(scene,0x3e0);
+    hologram_write(scene,0x3dc,static_cast<float>(static_cast<double>(hologram_read<float>(scene,0x3dc))+increment));
+    if(instanced||!hologram_read<unsigned char>(scene,0x3d9)){
+        unsigned finished=0;
+        if(!scene_advance_parsed(scene,h,parsed,n)||parsed_scene_finished(parsed,n,&finished)!=1)return -1;
+        if(finished){
+            if(!h.finish(h.context,scene,0,instanced?0:1))return -1;
+            if(instanced)return retire();
+            if(!h.release_actors(h.context,scene,hologram_read<std::uint32_t>(scene,0x40c)))return -1;
+        }
+    }
+    if(!instanced&&hologram_read<unsigned char>(scene,0x3d9)){
+        if(!scene_advance_parsed(scene,h,parsed,n))return -1;
+        hologram_write(scene,0x3dc,hologram_read<float>(parsed,0x78));
+    }
+    return 1;
+}
+int __cdecl scripted_scene_advance(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings* b) noexcept {
+    return scene_advance(scene,bytes,dt,b,false);
+}
+int __cdecl instanced_scene_advance(void* scene,unsigned bytes,float dt,const SceneAdvanceBindings* b) noexcept {
+    return scene_advance(scene,bytes,dt,b,true);
+}
+const SceneAdvanceApi scene_advance_api{version,sizeof(SceneAdvanceApi),&parsed_scene_finished,&scripted_scene_advance,&instanced_scene_advance};
+
 
 
 
@@ -8990,6 +9050,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCo
 SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetSceneAdvanceApi=_SiN_GetSceneAdvanceApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneAdvanceApi* __cdecl
+SiN_GetSceneAdvanceApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneAdvanceApi)?&scene_advance_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetParsedSceneSimulationApi=_SiN_GetParsedSceneSimulationApi")

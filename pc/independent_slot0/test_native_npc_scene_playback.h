@@ -597,4 +597,60 @@ inline void check_parsed_simulation(const ParsedSceneSimulationApi& api){
     assert(S::fl(failed.parsed,0x78)==2&&!failed.tracks);
 }
 
+
+struct SceneAdvanceFixture {
+    using F=ScenePlaybackFixture;using S=ParsedSimulationFixture;
+    S simulation;
+    alignas(4) unsigned char scene[0x5ec]{};
+    SceneAdvanceBindings b{};
+    int actor=0;
+    unsigned pre=0,starts=0,pauses=0,resolves=0,latencies=0,finishes=0,releases=0,removes=0;
+    bool instance=false,actor_live=true,pause_during=false;
+    static SceneAdvanceFixture& get(void* p){return *static_cast<SceneAdvanceFixture*>(p);}
+    SceneAdvanceFixture(){
+        scene[0x3d8]=1;F::put(scene,0x40c,0x1234);F::fl(scene,0x3dc,2);
+        F::fl(simulation.parsed,0x84,0);F::fl(simulation.parsed,0x88,5);
+        F::put(simulation.parsed,0xc,0);F::put(simulation.parsed,0x70,0);
+        b.context=this;b.simulation=simulation.b;
+        b.pre_tick=[](void* p,void* e) noexcept -> int{auto& f=get(p);assert(e==f.scene);++f.pre;return 1;};
+        b.start=[](void* p,void* e) noexcept -> int{auto& f=get(p);assert(e==f.scene);++f.starts;f.scene[0x3f5]=0;return 1;};
+        b.paused_tick=[](void* p,void* e) noexcept -> int{auto& f=get(p);assert(e==f.scene&&f.scene[0x3d9]);++f.pauses;return 1;};
+        b.resolve_actor=[](void* p,std::uint32_t h,void** out) noexcept -> int{auto& f=get(p);assert(h==0x1001);++f.resolves;*out=f.actor_live?&f.actor:nullptr;return 1;};
+        b.parsed=[](void* p,std::uint32_t h,void** out,unsigned* n) noexcept -> int{auto& f=get(p);assert(h==0x1234);*out=f.simulation.parsed;*n=sizeof(f.simulation.parsed);return 1;};
+        b.latency=[](void* p,std::uint32_t h,float* out) noexcept -> int{auto& f=get(p);assert(h==0x2222);++f.latencies;*out=.25f;return 1;};
+        b.finish=[](void* p,void* e,int a,int z) noexcept -> int{auto& f=get(p);assert(e==f.scene&&!a&&z==!f.instance);++f.finishes;f.scene[0x3d8]=0;return 1;};
+        b.release_actors=[](void* p,void* e,std::uint32_t h) noexcept -> int{auto& f=get(p);assert(e==f.scene&&h==0x1234&&!f.scene[0x3d8]);++f.releases;return 1;};
+        b.remove=[](void* p,void* e) noexcept -> int{auto& f=get(p);assert(e==f.scene&&f.instance);++f.removes;return 1;};
+        b.simulation.context=this;
+        b.simulation.callback=[](void* p,std::uint32_t cb,unsigned slot,float t,void* s,void* e) noexcept -> int{
+            auto& f=get(p);assert(cb==0x1234&&slot==8&&t==2&&s==f.simulation.parsed&&e==f.simulation.events[0]);
+            if(f.pause_during)f.scene[0x3d9]=1;return 1;
+        };
+    }
+};
+inline void check_scene_advance(const SceneAdvanceApi& api){
+    using F=ScenePlaybackFixture;using S=ParsedSimulationFixture;SceneAdvanceFixture f;
+    auto scripted=[&](float dt){return api.scripted(f.scene,sizeof(f.scene),dt,&f.b);};
+    f.scene[0x3f5]=1;F::put(f.scene,0x418,0x2222);
+    assert(scripted(.25f)==1&&f.pre==1&&f.starts==1&&f.latencies==1&&S::fl(f.scene,0x3dc)==2.25f&&S::fl(f.simulation.parsed,0x78)==2&&S::fl(f.simulation.parsed,0x90)==.25f);
+    f.scene[0x3d9]=1;assert(scripted(.25f)==1&&f.pauses==1&&S::fl(f.scene,0x3dc)==2.25f);
+    f.scene[0x3d9]=0;f.pause_during=true;F::put(f.simulation.parsed,0xc,1);
+    assert(scripted(.25f)==1&&f.scene[0x3d9]&&S::fl(f.scene,0x3dc)==2.25f&&S::fl(f.simulation.parsed,0x78)==2.25f);
+    f.scene[0x3d9]=0;F::put(f.simulation.parsed,0xc,0);F::fl(f.scene,0x3dc,5);
+    assert(scripted(.25f)==1&&!f.finishes&&S::fl(f.scene,0x3dc)==5.25f);
+    assert(scripted(.25f)==1&&f.finishes==1&&f.releases==1&&!f.scene[0x3d8]);
+    assert(scripted(.25f)==1&&f.finishes==1);
+    SceneAdvanceFixture inst;inst.instance=true;inst.scene[0x560]=1;F::put(inst.scene,0x55c,0x1001);
+    auto tick=[&](){return api.instanced(inst.scene,sizeof(inst.scene),.5f,&inst.b);};
+    assert(tick()==1&&inst.resolves==1&&S::fl(inst.scene,0x3dc)==2.5f&&S::fl(inst.simulation.parsed,0x90)==.1f);
+    inst.actor_live=false;assert(tick()==1&&inst.removes==1&&inst.resolves==2);
+    inst.actor_live=true;F::fl(inst.scene,0x3dc,6);
+    assert(tick()==1&&inst.finishes==1&&inst.removes==2&&!inst.releases);
+    unsigned out=99;auto* p=inst.simulation.parsed;
+    F::fl(p,0x78,6);F::put(p,0x8c,1);assert(api.finished(p,sizeof(inst.simulation.parsed),&out)==1&&!out);
+    F::put(p,0x8c,0);assert(api.finished(p,sizeof(inst.simulation.parsed),&out)==1&&out);
+    F::fl(p,0x78,-1);assert(api.finished(p,sizeof(inst.simulation.parsed),&out)==1&&out);
+    F::put(p,0x78,0x7fc00000);assert(api.finished(p,sizeof(inst.simulation.parsed),&out)==1&&!out);
+}
+
 }
