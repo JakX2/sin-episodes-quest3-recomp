@@ -10,6 +10,7 @@
 #include "native_client_vfe_phoneme.h"
 #include "native_client_flex_rule.h"
 #include "native_client_composed_facial.h"
+#include "native_server_flex_weight.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -10932,6 +10933,44 @@ int __cdecl count_spawn_profile(HologramControl* c,const JcProfileBindings* b) n
     c->busy=1;const auto h=*b;return disp_finish(c,humanoid_profile_leaf(c->object,h));
 }
 const NpcSpawnApi npc_spawn_api{version,sizeof(NpcSpawnApi),&jessica_full_spawn,&count_class_init,&count_spawn_profile,&health_ack};
+bool server_flex_ranges(const ServerFlexRange* rows,unsigned count) noexcept {
+    return count<=server_flex_weight_count&&(!count||(rows&&sin_independent::vgui_layout::Readable(rows,count*sizeof(*rows))));
+}
+int __cdecl server_flex_weight_set(void* entity,unsigned bytes,const ServerFlexRange* rows,unsigned count,
+    int index,float value,const ServerFlexWeightBindings* b) noexcept {
+    if(bytes<server_flex_extent||!hologram_writable(entity,server_flex_extent)||!server_flex_ranges(rows,count))return 0;
+    if(index<0||static_cast<unsigned>(index)>=count)return 1;
+    const auto range=rows[index];
+    if(range.minimum!=range.maximum){
+        double normalized=(static_cast<double>(value)-range.minimum)/(static_cast<double>(range.maximum)-range.minimum);
+        if(normalized>1)normalized=1;
+        else if(normalized<0)normalized=0;
+        value=static_cast<float>(normalized);
+    }
+    const unsigned offset=server_flex_weight_offset+static_cast<unsigned>(index)*4;
+    // x87 unordered comparison is treated as changed; +0 and -0 compare equal.
+    if(hologram_read<float>(entity,offset)==value)return 1;
+    if(hologram_read<unsigned char>(entity,0x1f0))
+        hologram_write(entity,0x200,static_cast<unsigned char>(1));
+    else {
+        const auto edict=hologram_read<std::uint32_t>(entity,0x16c);
+        if(edict&&(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+            !b->dirty_edict||!b->dirty_edict(b->context,entity,edict)))return 0;
+    }
+    hologram_write(entity,offset,value);return 1;
+}
+int __cdecl server_flex_weight_get(const void* entity,unsigned bytes,const ServerFlexRange* rows,unsigned count,
+    int index,float* out) noexcept {
+    if(bytes<server_flex_extent||!entity||!sin_independent::vgui_layout::Readable(entity,server_flex_extent)||
+       !server_flex_ranges(rows,count)||!hologram_writable(out,sizeof(*out)))return 0;
+    if(index<0||static_cast<unsigned>(index)>=count){*out=0;return 1;}
+    const auto range=rows[index];
+    float weight=0;std::memcpy(&weight,static_cast<const unsigned char*>(entity)+server_flex_weight_offset+index*4,4);
+    *out=range.minimum==range.maximum?weight:static_cast<float>((static_cast<double>(range.maximum)-range.minimum)*weight+range.minimum);
+    return 1;
+}
+const ServerFlexWeightApi server_flex_weight_api{version,sizeof(ServerFlexWeightApi),&server_flex_weight_set,&server_flex_weight_get};
+
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -12842,6 +12881,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimSendA
 SiN_GetAnimatingSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimSendApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerFlexWeightApi=_SiN_GetServerFlexWeightApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFlexWeightApi* __cdecl
+SiN_GetServerFlexWeightApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFlexWeightApi)?&server_flex_weight_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetFlexSendGraphApi=_SiN_GetFlexSendGraphApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::FlexSendApi* __cdecl
