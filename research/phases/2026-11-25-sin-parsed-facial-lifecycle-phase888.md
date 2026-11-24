@@ -1,3 +1,5 @@
 # Phase 888: parser-to-facial actor lifecycle regression
 
 Use a synthetic VCD with one two-second jaw flex track, native owned parsing and native scene execution clock. Phase886 adapter creates and removes real 0x40 actor event records via scene virtual +2d4/+2d8, initializes foreground fade. Phase885 actor think reads the live vector and parsed scene clock, resolves original-derived track rows, uses native spline and event intensity without hosted sampling or intensity, sets normalized network weights at .5 and 1.5 sample knots (.8/.4), then decays to .38 after removal. Actor vector remains engine-owned and is explicitly released after parsed scene retirement. Real replacement server export integration, synthetic source; no retail game boot, no packet transport or renderer. Host controller registry, allocator and clock remain explicit. CI pending.
+
+CI correction: initial Win32 regression passed both weight knots but expected stop during the step crossing end. Original-derived classifier tests the lower interval bound (previous time for forward); explicitly assert retention across 1.5->2.5 and stop on 2.5->2.75. No runtime change. Corrected CI pending.
