@@ -265,6 +265,33 @@ struct ResponseSpeakApi {
     int (__cdecl *speak)(void* exp,unsigned bytes,const ResponseSpeakBindings*,const char* concept_name,const char* modifiers,unsigned* played) noexcept;
 };
 using GetResponseSpeakApi=const ResponseSpeakApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_repeat_export[]="SiN_GetResponseRepeatApi";
+struct ResponseRepeatBindings {
+    void* context;
+    int (__cdecl *lookup)(void*,void* exp,const char*,int*) noexcept;
+    int (__cdecl *entry)(void*,void* exp,int index,void** row,unsigned* extent) noexcept;
+    // Resolve the PE32 response pointer from row+18, with ownership checks.
+    int (__cdecl *resolve)(void*,std::uint32_t,void** response,unsigned* extent) noexcept;
+    ResponseIntervalBindings interval;
+    int (__cdecl *clock)(void*,float*) noexcept;
+};
+struct SpeechGateBindings {
+    void* context;
+    int (__cdecl *uses)(void*,void* exp,unsigned*) noexcept;
+    // Real virtual classification of the NPC (argument zero).
+    int (__cdecl *classify)(void*,void* npc,int,unsigned*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    // Resolve packed EHANDLE with serial verification; stale returns null.
+    int (__cdecl *resolve)(void*,std::uint32_t,void** npc) noexcept;
+};
+struct ResponseRepeatApi {
+    std::uint32_t version,size;
+    int (__cdecl *can_repeat)(void* exp,unsigned bytes,const ResponseRepeatBindings*,const char* concept_name,unsigned*) noexcept;
+    int (__cdecl *last_time)(void* exp,unsigned bytes,const ResponseRepeatBindings*,const char* concept_name,float*) noexcept;
+    int (__cdecl *semaphore_available)(void* exp,unsigned bytes,void* npc,const SpeechSemaphorePair*,const SpeechGateBindings*,unsigned*) noexcept;
+};
+using GetResponseRepeatApi=const ResponseRepeatApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

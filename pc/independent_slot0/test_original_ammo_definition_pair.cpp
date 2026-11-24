@@ -398,6 +398,13 @@ int main(int argc,char** argv){
     assert(responseSpeak&&!getResponseSpeak(0,sizeof(tables::ResponseSpeakApi))&&!getResponseSpeak(1,0));
     tables::test::check_response_speak(*responseSpeak,*responseTimingUpdate,*responseRecord);
     std::puts("PASS native composed response selection, playback, timing and history");
+    const auto getResponseRepeat=reinterpret_cast<tables::GetResponseRepeatApi>(GetProcAddress(server,tables::response_repeat_export));
+    assert(getResponseRepeat&&!GetProcAddress(client,tables::response_repeat_export));
+    const auto* responseRepeat=getResponseRepeat(1,sizeof(tables::ResponseRepeatApi));
+    assert(responseRepeat&&!getResponseRepeat(0,sizeof(tables::ResponseRepeatApi))&&!getResponseRepeat(1,0));
+    tables::test::check_response_repeat(*responseRepeat);
+    std::puts("PASS native concept repetition and shared semaphore eligibility");
+
 
 
 

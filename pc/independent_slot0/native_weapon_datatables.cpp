@@ -3192,6 +3192,65 @@ int __cdecl response_speak(void* exp,unsigned bytes,const ResponseSpeakBindings*
     return dispatched==0?drop():dispatched;
 }
 const ResponseSpeakApi response_speak_api{version,sizeof(ResponseSpeakApi),&response_speak};
+int response_repeat_row(void* exp,const ResponseRepeatBindings& b,const char* name,void*& row) noexcept {
+    int index=-1;
+    if(!b.lookup(b.context,exp,name,&index)||index<-1)return -1;
+    if(index==-1){row=nullptr;return 1;}
+    unsigned extent=0;
+    if(!b.entry(b.context,exp,index,&row,&extent)||!row||extent<0x1c||
+       !sin_independent::vgui_layout::Readable(row,0x1c))return -1;
+    return 1;
+}
+int __cdecl response_can_repeat(void* exp,unsigned bytes,const ResponseRepeatBindings* b,const char* name,unsigned* out) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!name||!b||
+       !b->lookup||!b->entry||!b->resolve||!b->interval.random||!b->clock||
+       !out||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto h=*b;void* row=nullptr;
+    if(response_repeat_row(exp,h,name,row)!=1)return -1;
+    if(!row){*out=1;return 1;}
+    const auto address=hologram_read<std::uint32_t>(row,0x18);
+    if(!address){*out=1;return 1;}
+    void* response=nullptr;unsigned extent=0;
+    if(!h.resolve(h.context,address,&response,&extent)||!response||extent<0x124||
+       !sin_independent::vgui_layout::Readable(response,0x124))return -1;
+    const auto flags=hologram_read<unsigned char>(response,0x88);
+    if(flags&2){*out=0;return 1;}
+    float delay=0;
+    if((flags&8)&&response_interval_sample(static_cast<unsigned char*>(response)+0x98,8,&h.interval,&delay)!=1)return -1;
+    // Sample BEFORE checking the unspoken sentinel, as in 220a6d00.
+    const auto last=hologram_read<float>(row,0x14);
+    if(delay==0||last==-1.f){*out=1;return 1;}
+    float now=0;if(!h.clock(h.context,&now))return -1;
+    // x87 keeps the addition extended until the comparison.
+    *out=!(static_cast<double>(last)+static_cast<double>(delay)>static_cast<double>(now));
+    return 1;
+}
+int __cdecl response_last_time(void* exp,unsigned bytes,const ResponseRepeatBindings* b,const char* name,float* out) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!name||!b||
+       !b->lookup||!b->entry||!out||!hologram_writable(out,sizeof(*out)))return 0;
+    void* row=nullptr;const auto h=*b;
+    if(response_repeat_row(exp,h,name,row)!=1)return -1;
+    *out=row?hologram_read<float>(row,0x14):-1.f;return 1;
+}
+int __cdecl response_semaphore_available(void* exp,unsigned bytes,void* npc,const SpeechSemaphorePair* state,
+                                          const SpeechGateBindings* b,unsigned* out) noexcept {
+    if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!npc||!state||
+       !sin_independent::vgui_layout::Readable(state,sizeof(*state))||!b||!b->uses||!b->classify||!b->clock||!b->resolve||
+       !out||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto h=*b;unsigned uses=0,classified=0;
+    if(!h.uses(h.context,exp,&uses))return -1;
+    if(!uses){*out=1;return 1;}
+    if(!h.classify(h.context,npc,0,&classified))return -1;
+    const auto& sem=classified?state->classified:state->other;
+    float now=0;if(!h.clock(h.context,&now))return -1;
+    // Strictly later than release: original equality still requires ownership.
+    if(now>sem.release){*out=1;return 1;}
+    void* owner=nullptr;
+    if(sem.owner!=0xffffffffu&&!h.resolve(h.context,sem.owner,&owner))return -1;
+    *out=owner==npc;return 1;
+}
+const ResponseRepeatApi response_repeat_api{version,sizeof(ResponseRepeatApi),&response_can_repeat,&response_last_time,&response_semaphore_available};
+
 
 
 
@@ -7553,6 +7612,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseS
 SiN_GetResponseSpeakApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseSpeakApi)?&response_speak_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetResponseRepeatApi=_SiN_GetResponseRepeatApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseRepeatApi* __cdecl
+SiN_GetResponseRepeatApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseRepeatApi)?&response_repeat_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")
