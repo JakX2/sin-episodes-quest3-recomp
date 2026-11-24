@@ -76,6 +76,7 @@ struct MapEntity {
     bool scattergun_resync=false;
     sin_compat::ar_grenade::Runtime grenade{};
     bool grenade_contact=false,grenade_uncertain=false;
+    bool rifle_launch_uncertain=false;
 };
 struct MapLevel {
     std::uint32_t epoch=0;
@@ -574,6 +575,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #pragma comment(linker,"/EXPORT:SiN_GetScattergunPumpApi=_SiN_GetScattergunPumpApi")
 #pragma comment(linker,"/EXPORT:SiN_GetScattergunSecondaryApi=_SiN_GetScattergunSecondaryApi")
 #pragma comment(linker,"/EXPORT:SiN_GetARGrenadeApi=_SiN_GetARGrenadeApi")
+#pragma comment(linker,"/EXPORT:SiN_GetRifleGrenadeApi=_SiN_GetRifleGrenadeApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
 #pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #pragma comment(linker,"/EXPORT:SiN_GetMapEntityApi=_SiN_GetMapEntityApi")
@@ -1437,9 +1439,124 @@ const abi::ARGrenadeApi grenade_api{abi::grenade_version,sizeof(abi::ARGrenadeAp
     &grenade_spawn,&grenade_state,&grenade_kinematics,&grenade_observe_contact,
     &grenade_think,&grenade_touch_dispatch,&grenade_detonate};
 
+MapEntity* find_rifle(abi::MapEntityRef ref) noexcept {
+    auto* e=find_weapon(ref);
+    return e&&e->spawned&&e->kind==EntityKind::AssaultRifle?e:nullptr;
+}
+int SIN_FIXED_CALL rifle_launch_status(abi::MapEntityRef ref) noexcept {
+    const auto* e=find_rifle(ref);
+    return e?(e->rifle_launch_uncertain?1:0):-1;
+}
+bool valid_launch_ref(abi::MapEntityRef e,std::uint32_t epoch) noexcept {
+    return e.epoch==epoch&&e.index!=(std::numeric_limits<std::uint32_t>::max)()&&
+        e.generation!=(std::numeric_limits<std::uint32_t>::max)();
+}
+int SIN_FIXED_CALL rifle_launch(abi::MapEntityRef ref,const abi::RifleLaunchInput* input,
+        const abi::RifleLaunchHost* host,void* context,abi::RifleLaunchReport* out) noexcept {
+    if(!out)return 0;
+    abi::RifleLaunchReport report{};
+    auto* rifle=find_rifle(ref);
+    const auto finish=[&](std::uint32_t code) noexcept {
+        report.code=code;report.uncertain=rifle&&rifle->rifle_launch_uncertain?1u:0u;
+        *out=report;return 1;
+    };
+    if(reading_engine_skill||!rifle||rifle->weapon_resync||rifle->rifle_launch_uncertain||
+       !input||!valid_launch_ref(input->owner,ref.epoch)||input->owner.index==ref.index||
+       !host||host->version!=abi::rifle_launch_version||host->size!=sizeof(*host)||
+       !host->authorize||!host->prepare||!host->commit||!host->abort)
+        return finish(abi::RifleRejected);
+    const auto in=*input;
+    const auto cb=*host;
+    OutputScope scope;
+    const auto uncertain=[&](MapEntity* projectile=nullptr) noexcept {
+        rifle->rifle_launch_uncertain=true;
+        if(projectile){projectile->alive=true;projectile->grenade_uncertain=true;}
+        return finish(abi::RifleLaunchUncertain);
+    };
+    abi::RifleLaunchObservation auth{};
+    try {
+        if(!cb.authorize(context,ref,in.owner,&auth))return finish(abi::RifleUnauthorized);
+    }catch(...){return uncertain();}
+    if(auth.live_owner_and_weapon!=1||auth.correct_owner!=1||auth.selected>1||
+       auth.reload_active>1||auth.holstered>1||auth.grunt_authorized>1)
+        return finish(abi::RifleUnauthorized);
+    if(auth.owner_kind==abi::RifleOwnerPlayer){
+        if(!auth.selected||auth.reload_active||auth.holstered)return finish(abi::RifleUnauthorized);
+        if(auth.ammo_kind!=abi::RifleAmmoFinite)return finish(abi::RifleAmmoUnverified);
+        if(auth.ammo_remaining<1)return finish(abi::RifleNoAmmo);
+        report.multiplier=2000.f;report.planned_debit=1;
+    }else if(auth.owner_kind==abi::RifleOwnerGrunt&&auth.grunt_authorized){
+        report.multiplier=1000.f;
+    }else return finish(abi::RifleUnauthorized);
+    const abi::GrenadeSpawn spawn{in.origin,
+        {in.direction.x*report.multiplier,in.direction.y*report.multiplier,in.direction.z*report.multiplier},in.time};
+    MapEntity candidate;
+    candidate.kind=EntityKind::ARGrenade;
+    candidate.alive=false;candidate.spawned=true;
+    if(!candidate.grenade.spawn(grenade_vector(spawn.origin),grenade_vector(spawn.velocity),spawn.time))
+        return finish(abi::RifleInvalidInput);
+    // Refuse before allocating a shell if even a fresh slot is
+    // impossible. Existing retired indices remain reusable.
+    const auto limit=level->entities.size()>=max_map_entities;
+    if(limit){
+        bool retired=false;
+        for(const auto& item:level->entities)
+            if(!item.second.alive){retired=true;break;}
+        if(!retired)return finish(abi::RifleCapacityRefused);
+    }
+    try {
+        if(!cb.prepare(context,in.owner,grenade::entity_classname,grenade::original_model,
+            &spawn,&report.projectile))return finish(abi::RiflePrepareRefused);
+    }catch(...){return uncertain();}
+    report.prepared=1;
+    const auto projectile=report.projectile;
+    if(!valid_launch_ref(projectile,ref.epoch)||projectile.index==ref.index||
+       projectile.index==in.owner.index)return uncertain();
+    auto it=level->entities.find(projectile.index);
+    // Never abort a collision with a live or stale identity: the returned
+    // handle might designate a previously existing engine entity.
+    if(it!=level->entities.end()&&(it->second.alive||projectile.generation<=it->second.generation))
+        return uncertain();
+    MapEntity* staged=nullptr;
+    const auto abort=[&](std::uint32_t code) noexcept {
+        report.abort_attempted=1;
+        try {
+            if(!cb.abort(context,projectile))return uncertain(staged);
+        }catch(...){return uncertain(staged);}
+        report.aborted=1;
+        return finish(code);
+    };
+    if(it==level->entities.end()&&limit)return abort(abi::RifleCapacityRefused);
+    candidate.generation=projectile.generation;
+    try {
+        if(it==level->entities.end())
+            it=level->entities.emplace(projectile.index,std::move(candidate)).first;
+        else it->second=std::move(candidate);
+        staged=&it->second;
+    }catch(...){return abort(abi::RifleCapacityRefused);}
+    report.attached=1;
+    // The staged registry entry is not live yet, including during
+    // commit. Engine callbacks cannot discover or mutate it.
+    report.commit_attempted=1;
+    try {
+        if(!cb.commit(context,projectile,in.owner,report.planned_debit))
+            return abort(abi::RifleCommitRefused);
+    }catch(...){return uncertain(staged);}
+    report.committed=1;
+    staged->alive=true;
+    return finish(abi::RifleLaunched);
+}
+const abi::RifleGrenadeApi rifle_launch_api{abi::rifle_launch_version,sizeof(abi::RifleGrenadeApi),
+    &rifle_launch,&rifle_launch_status};
+
 const abi::MapEntityApi map_api{abi::map_entity_version,sizeof(abi::MapEntityApi),
     &map_begin,&map_end,&map_create,&map_keyvalue,&map_spawn,&map_input,&map_remove,&map_count};
 }
+extern "C" SIN_FIXED_EXPORT const abi::RifleGrenadeApi* SIN_FIXED_CALL
+SiN_GetRifleGrenadeApi(std::uint32_t version,std::uint32_t bytes) noexcept {
+    return version==abi::rifle_launch_version&&bytes==sizeof(abi::RifleGrenadeApi)?&rifle_launch_api:nullptr;
+}
+
 extern "C" SIN_FIXED_EXPORT const abi::ARGrenadeApi* SIN_FIXED_CALL
 SiN_GetARGrenadeApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::grenade_version&&bytes==sizeof(abi::ARGrenadeApi)?&grenade_api:nullptr;
