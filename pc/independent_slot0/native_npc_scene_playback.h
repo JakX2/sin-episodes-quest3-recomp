@@ -457,6 +457,26 @@ struct SceneActorEventsApi {
     int (__cdecl *stop_scene)(void*,unsigned,std::uint32_t,int,const SceneStopBindings*) noexcept;
 };
 using GetSceneActorEventsApi=const SceneActorEventsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_generated_lifecycle_export[]="SiN_GetNativeGeneratedLifecycleApi";
+struct NativeGeneratedLifecycleBindings {
+    NpcScenePlaybackBindings playback;
+    SceneEntityLifecycleBindings lifecycle;
+    GeneratedSceneBindings generation;
+    GeneratedSceneAllocationBindings allocation;
+    SceneStartBindings startup;
+    SceneStopBindings stop;
+};
+struct NativeGeneratedLifecycleApi {
+    std::uint32_t version,size;
+    // Native construction, activation, actor association, reset and start.
+    int (__cdecl *sound)(void*,const char*,const NativeGeneratedLifecycleBindings*,float*) noexcept;
+    // Retry an existing scene start, e.g. when an actor finishes speaking.
+    int (__cdecl *start)(void*,unsigned,const SceneStartBindings*,const SceneStopBindings*,SceneStartResult*) noexcept;
+    // Native recursive record stop and actor detach, then original
+    // compatible hosted parsed destruction and manager unregister.
+    int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*) noexcept;
+};
+using GetNativeGeneratedLifecycleApi=const NativeGeneratedLifecycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
