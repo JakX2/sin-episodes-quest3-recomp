@@ -435,4 +435,34 @@ using AggregateSendApi=GraphApi<AggregateSendBindings,AggregateSendView>;
 using AggregateRecvApi=GraphApi<AggregateRecvBindings,AggregateRecvView>;
 using GetAggregateSendApi=const AggregateSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetAggregateRecvApi=const AggregateRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase708: five original client entity creator wrapper behaviors.
+// Host supplies compatible native construction (including vtables and
+// nontrivial base/interpolation state) and lifetime management. No
+// original fixed addresses are used. This is not a full entity class.
+inline constexpr char client_creator_export[]="SiN_GetClientEntityCreatorApi";
+enum class CreatorCleanup : int {Raw=0,Constructed=1,InitAttempted=2};
+using AllocateEntity=void* (__cdecl *)(void* context,unsigned slot,unsigned bytes) noexcept;
+using ConstructEntity=int (__cdecl *)(void* context,unsigned slot,void* object,unsigned bytes) noexcept;
+using CleanupEntity=void (__cdecl *)(void* context,unsigned slot,void* object,unsigned bytes,CreatorCleanup stage) noexcept;
+struct ClientCreatorBindings {
+    void* context;
+    AllocateEntity allocate;
+    ConstructEntity construct;
+    CleanupEntity cleanup;
+};
+struct ClientCreatorApi {
+    std::uint32_t version,size;
+    unsigned (__cdecl *object_size)(unsigned slot) noexcept;
+    // Returns IClientNetworkable subobject (+8), host owns object.
+    // A failed construct callback must unwind partial construction
+    // before returning; cleanup(Raw) will then release allocation.
+    void* (__cdecl *create)(const ClientCreatorBindings*,unsigned slot,int index,int serial) noexcept;
+    // Leaf scalar writes only, invoked at the correct point by the
+    // host constructor. Does not install vtables or register state.
+    int (__cdecl *hl2local_defaults)(void* player,unsigned bytes) noexcept;
+    int (__cdecl *player_tail_defaults)(void* player,unsigned bytes) noexcept;
+    int (__cdecl *weapon_tail_defaults)(void* weapon,unsigned bytes) noexcept;
+};
+using GetClientCreatorApi=const ClientCreatorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

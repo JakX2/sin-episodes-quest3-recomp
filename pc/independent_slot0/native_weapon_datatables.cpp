@@ -1903,6 +1903,87 @@ int __cdecl destroy_aggregate(AggregateRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const AggregateRecvApi aggregate_api{version,sizeof(AggregateRecvApi),&create_aggregate,&destroy_aggregate};
+
+unsigned __cdecl creator_size(unsigned slot) noexcept {
+    switch(slot){
+        case ClPlayer:return 0x1250;
+        case ClHand:return 0x480;
+        case ClMagnum:case ClAssault:case ClScatter:return 0x830;
+        default:return 0;
+    }
+}
+bool creator_writable(void* object,unsigned size) noexcept {
+    if(!object||reinterpret_cast<std::uintptr_t>(object)%4||
+        !sin_independent::vgui_layout::Readable(object,size))return false;
+    MEMORY_BASIC_INFORMATION region{};
+    if(VirtualQuery(object,&region,sizeof(region))!=sizeof(region))return false;
+    const auto prot=region.Protect&0xffu;
+    return prot==PAGE_READWRITE||prot==PAGE_WRITECOPY||
+           prot==PAGE_EXECUTE_READWRITE||prot==PAGE_EXECUTE_WRITECOPY;
+}
+void creator_word(void* object,unsigned offset,std::uint32_t word) noexcept {
+    std::memcpy(static_cast<unsigned char*>(object)+offset,&word,4);
+}
+int __cdecl hl2local_defaults(void* player,unsigned bytes) noexcept {
+    if(bytes<0x1250||!creator_writable(player,0x1250))return 0;
+    auto* local=static_cast<unsigned char*>(player)+0x11c8;
+    for(unsigned off:{4u,8u,0x18u,0x1cu})creator_word(local,off,0);
+    for(unsigned off:{0xcu,0x24u,0x28u})creator_word(local,off,0x3f800000u);
+    for(unsigned off:{0x2cu,0x54u,0x58u})creator_word(local,off,0xffffffffu);
+    for(unsigned off:{0x10u,0x11u,0x20u,0x21u})local[off]=0;
+    return 1;
+}
+int __cdecl player_tail_defaults(void* player,unsigned bytes) noexcept {
+    if(bytes<0x1250||!creator_writable(player,0x1250))return 0;
+    for(unsigned off:{0x1228u,0x122cu,0x1230u,0x1234u,0x123cu,0x1240u,0x1244u,0x1248u})
+        creator_word(player,off,0);
+    return 1;
+}
+int __cdecl weapon_tail_defaults(void* weapon,unsigned bytes) noexcept {
+    if(bytes<0x830||!creator_writable(weapon,0x830))return 0;
+    auto* raw=static_cast<unsigned char*>(weapon);
+    for(unsigned off:{0x788u,0x80cu,0x7e0u,0x7e4u,0x7d8u,0x7dcu})creator_word(raw,off,0xffffffffu);
+    for(unsigned off:{0x7ecu,0x7f0u})creator_word(raw,off,0x42820000u);
+    for(unsigned off:{0x7f4u,0x7f8u})creator_word(raw,off,0x44800000u);
+    for(unsigned off:{0x78cu,0x81cu,0x7d0u,0x79cu})creator_word(raw,off,0);
+    raw[0x7fc]=0;
+    // Original helper at 0x241e6ed0 returns low AX=0xffff.
+    const std::uint16_t invalid=0xffff;
+    std::memcpy(raw+0x810,&invalid,2);
+    return 1;
+}
+void* __cdecl create_client_entity(const ClientCreatorBindings* b,unsigned slot,int index,int serial) noexcept {
+    const auto bytes=creator_size(slot);
+    if(!b||!bytes||!b->allocate||!b->construct||!b->cleanup)return nullptr;
+    // Take a copy so a host callback cannot invalidate the binding
+    // record while a create operation is in progress.
+    const auto host=*b;
+    void* object=host.allocate(host.context,slot,bytes);
+    if(!object)return nullptr;
+    if(!creator_writable(object,bytes)){
+        host.cleanup(host.context,slot,object,bytes,CreatorCleanup::Raw);return nullptr;
+    }
+    std::memset(object,0,bytes);
+    if(!host.construct(host.context,slot,object,bytes)){
+        host.cleanup(host.context,slot,object,bytes,CreatorCleanup::Raw);return nullptr;
+    }
+    auto* networkable=static_cast<unsigned char*>(object)+8;
+    namespace methods=sin_independent::known_game_system;
+    auto refused=methods::CallResult::InvalidObject;
+    void* method=methods::VerifiedMethod(object,37,refused);
+    if(!method||!methods::VerifiedMethod(networkable,0,refused)){
+        host.cleanup(host.context,slot,object,bytes,CreatorCleanup::Constructed);return nullptr;
+    }
+    using Init=bool (__thiscall *)(void*,int,int);
+    // Retail wrappers ignore AL; all five observed original methods
+    // return true. Explicitly reject a compatible host's false result.
+    if(!reinterpret_cast<Init>(method)(object,index,serial)){
+        host.cleanup(host.context,slot,object,bytes,CreatorCleanup::InitAttempted);return nullptr;
+    }
+    return networkable;
+}
+const ClientCreatorApi creator_api{version,sizeof(ClientCreatorApi),&creator_size,&create_client_entity,
+    &hl2local_defaults,&player_tail_defaults,&weapon_tail_defaults};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -2059,5 +2140,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Aggregate
 SiN_GetNetworkRecvAggregateApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AggregateRecvApi)?&aggregate_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientEntityCreatorApi=_SiN_GetClientEntityCreatorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientCreatorApi* __cdecl
+SiN_GetClientEntityCreatorApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientCreatorApi)?&creator_api:nullptr;
 }
 #endif

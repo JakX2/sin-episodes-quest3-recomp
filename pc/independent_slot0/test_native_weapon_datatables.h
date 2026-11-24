@@ -1107,4 +1107,96 @@ inline void check_aggregate(const AggregateSendApi& sa,const AggregateRecvApi& r
     assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
 
+struct CreatorFixture {
+    const ClientCreatorApi* api=nullptr;
+    alignas(4) unsigned char storage[0x1250+8]{};
+    unsigned allocs=0,constructs=0,inits=0,cleanups=0,last_slot=0,last_bytes=0;
+    int index=0,serial=0;
+    unsigned fail=0; // 1 allocation, 2 construction, 3 vtable, 4 init
+    bool active=false;
+    CreatorCleanup last_stage=CreatorCleanup::Raw;
+};
+inline bool __fastcall fixture_entity_init(void* object,void*,int index,int serial){
+    CreatorFixture* f=nullptr;
+    std::memcpy(&f,static_cast<unsigned char*>(object)+0x10,sizeof(f));
+    assert(f&&f->active);++f->inits;f->index=index;f->serial=serial;
+    std::memcpy(static_cast<unsigned char*>(object)+0x50,&index,4);
+    return f->fail!=4;
+}
+inline void __fastcall fixture_networkable_method(void*,void*){}
+inline void* fixture_primary_table[38]{};
+inline void* fixture_networkable_table[1]{};
+inline void* __cdecl creator_allocate(void* context,unsigned slot,unsigned bytes) noexcept {
+    auto& f=*static_cast<CreatorFixture*>(context);
+    assert(!f.active);++f.allocs;f.last_slot=slot;f.last_bytes=bytes;
+    if(f.fail==1)return nullptr;
+    std::memset(f.storage,0xa5,sizeof(f.storage));f.active=true;
+    return f.storage+4;
+}
+inline int __cdecl creator_construct(void* context,unsigned slot,void* object,unsigned bytes) noexcept {
+    auto& f=*static_cast<CreatorFixture*>(context);++f.constructs;
+    assert(f.active&&object==f.storage+4&&bytes==f.last_bytes&&slot==f.last_slot);
+    auto* raw=static_cast<unsigned char*>(object);
+    for(unsigned i=0;i<bytes;++i)assert(raw[i]==0);
+    if(f.fail==2)return 0;
+    fixture_primary_table[37]=reinterpret_cast<void*>(&fixture_entity_init);
+    fixture_networkable_table[0]=reinterpret_cast<void*>(&fixture_networkable_method);
+    void** primary=f.fail==3?nullptr:fixture_primary_table;
+    void** networkable=fixture_networkable_table;
+    std::memcpy(raw,&primary,sizeof(primary));std::memcpy(raw+8,&networkable,sizeof(networkable));
+    CreatorFixture* fp=&f;std::memcpy(raw+0x10,&fp,sizeof(fp));
+    if(slot==ClPlayer){
+        assert(f.api->hl2local_defaults(raw,bytes));
+        assert(f.api->player_tail_defaults(raw,bytes));
+    }else if(slot!=ClHand)assert(f.api->weapon_tail_defaults(raw,bytes));
+    return 1;
+}
+inline void __cdecl creator_cleanup(void* context,unsigned slot,void* object,unsigned bytes,CreatorCleanup stage) noexcept {
+    auto& f=*static_cast<CreatorFixture*>(context);
+    assert(f.active&&slot==f.last_slot&&bytes==f.last_bytes&&object==f.storage+4);
+    ++f.cleanups;f.last_stage=stage;f.active=false;
+    assert(f.storage[3]==0xa5&&f.storage[4+bytes]==0xa5);
+}
+inline void check_client_creator(const ClientCreatorApi& api){
+    CreatorFixture f;f.api=&api;
+    ClientCreatorBindings b{&f,&creator_allocate,&creator_construct,&creator_cleanup};
+    const unsigned slots[]={ClPlayer,ClHand,ClMagnum,ClAssault,ClScatter};
+    const unsigned sizes[]={0x1250,0x480,0x830,0x830,0x830};
+    const auto read=[&](unsigned offset){std::uint32_t v=0;std::memcpy(&v,f.storage+4+offset,4);return v;};
+    for(unsigned i=0;i<5;++i){
+        assert(api.object_size(slots[i])==sizes[i]);
+        auto* networkable=api.create(&b,slots[i],static_cast<int>(17+i),1234);
+        assert(networkable==f.storage+12&&f.active&&f.last_bytes==sizes[i]&&
+            f.index==static_cast<int>(17+i)&&f.serial==1234&&read(0x50)==17+i);
+        if(i==0){
+            assert(read(0x11c8+0xc)==0x3f800000u&&read(0x11c8+0x24)==0x3f800000u&&
+                read(0x11c8+0x28)==0x3f800000u&&read(0x11c8+0x2c)==0xffffffffu&&
+                read(0x11c8+0x54)==0xffffffffu&&read(0x123c)==0);
+        }else if(i>=2){
+            assert(read(0x788)==0xffffffffu&&read(0x7ec)==0x42820000u&&
+                read(0x7f4)==0x44800000u&&read(0x810)==0xffffu);
+        }
+        creator_cleanup(&f,slots[i],f.storage+4,sizes[i],CreatorCleanup::InitAttempted);
+    }
+    assert(f.allocs==5&&f.constructs==5&&f.inits==5&&f.cleanups==5);
+    assert(!api.object_size(ClEntity)&&!api.create(&b,ClEntity,0,0)&&f.allocs==5);
+    auto bad=b;bad.cleanup=nullptr;assert(!api.create(&bad,ClPlayer,1,2)&&f.allocs==5);
+    f.fail=1;assert(!api.create(&b,ClPlayer,1,2)&&!f.active&&f.cleanups==5);
+    f.fail=2;assert(!api.create(&b,ClPlayer,1,2)&&!f.active&&f.last_stage==CreatorCleanup::Raw);
+    f.fail=3;assert(!api.create(&b,ClPlayer,1,2)&&!f.active&&f.last_stage==CreatorCleanup::Constructed);
+    f.fail=4;assert(!api.create(&b,ClPlayer,1,2)&&!f.active&&f.last_stage==CreatorCleanup::InitAttempted);
+    assert(f.allocs==9&&f.constructs==8&&f.inits==6&&f.cleanups==8);
+    // Defaults must not clobber the vptr, active-device bits, padding,
+    // unrelated player tail fields, or the upper half of a 16-bit ID.
+    auto* raw=f.storage+4;std::memset(raw,0xa5,0x1250);
+    assert(!api.hl2local_defaults(raw,0x124f)&&!api.player_tail_defaults(raw+1,0x1250));
+    assert(read(0x11c8+0xc)==0xa5a5a5a5u);
+    assert(api.hl2local_defaults(raw,0x1250)&&api.player_tail_defaults(raw,0x1250));
+    assert(read(0x11c8)==0xa5a5a5a5u&&read(0x11c8+0x14)==0xa5a5a5a5u&&
+        read(0x1238)==0xa5a5a5a5u&&raw[0x11c8+0x12]==0xa5);
+    std::memset(raw,0xa5,0x830);
+    assert(api.weapon_tail_defaults(raw,0x830)&&read(0x810)==0xa5a5ffffu&&
+        raw[0x7fc]==0&&raw[0x7fd]==0xa5);
+}
+
 }
