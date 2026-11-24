@@ -202,6 +202,7 @@ const abi::Api api{abi::abi_version,sizeof(abi::Api),abi::metric_count,
 #if defined(_MSC_VER) && defined(_M_IX86)
 #pragma comment(linker,"/EXPORT:SiN_GetFixedDifficultyApi=_SiN_GetFixedDifficultyApi")
 #pragma comment(linker,"/EXPORT:SiN_GetGlobalStateApi=_SiN_GetGlobalStateApi")
+#pragma comment(linker,"/EXPORT:SiN_EnvGlobalDispatch=_SiN_EnvGlobalDispatch")
 #define SIN_FIXED_EXPORT
 #elif defined(_WIN32)
 #define SIN_FIXED_EXPORT __declspec(dllexport)
@@ -216,6 +217,41 @@ SiN_GetFixedDifficultyApi(std::uint32_t version,std::uint32_t bytes) noexcept {
 extern "C" SIN_FIXED_EXPORT const abi::GlobalStateApi* SIN_FIXED_CALL
 SiN_GetGlobalStateApi(std::uint32_t version,std::uint32_t bytes) noexcept {
     return version==abi::global_state_version&&bytes==sizeof(abi::GlobalStateApi)?&global_api:nullptr;
+}
+
+// Original CEnvGlobal Spawn and four input methods. The host supplies
+// resolved string_t values, not original object addresses. Null global
+// name on Spawn requests entity removal; on inputs it becomes "".
+extern "C" SIN_FIXED_EXPORT int SIN_FIXED_CALL
+SiN_EnvGlobalDispatch(std::uint32_t op,const char* name,const char* level,
+                     std::uint32_t flags,std::int32_t initial_state) noexcept {
+    if(reading_engine_skill||op>abi::EnvToggle)return abi::EnvRejected;
+    if(op==abi::EnvSpawn&&!name)return abi::EnvRemoveSelf;
+    name=name?name:"";
+    level=level?level:"";
+    if(!bounded_string(name))return abi::EnvRejected;
+    const int index=global_find(name);
+    if(op==abi::EnvSpawn) {
+        if(!(flags&1u)||index>=0)return abi::EnvUnchanged;
+        return global_add(name,level,initial_state)>=0?abi::EnvApplied:abi::EnvRejected;
+    }
+    int next=0;
+    switch(op) {
+    case abi::EnvTurnOn:next=1;break;
+    case abi::EnvTurnOff:next=0;break;
+    case abi::EnvRemove:next=2;break;
+    case abi::EnvToggle:{
+        const auto current=index>=0?globals[static_cast<std::size_t>(index)].value:0;
+        if(current!=0&&current!=1)return abi::EnvUnchanged;
+        next=current==0?1:0;
+        break;
+    }
+    default:return abi::EnvRejected;
+    }
+    // Original missing entries are added even with the update gate set.
+    if(index<0)return global_add(name,level,next)>=0?abi::EnvApplied:abi::EnvRejected;
+    if(global_updates_disabled)return abi::EnvBlocked;
+    return global_set_state(index,next)?abi::EnvApplied:abi::EnvRejected;
 }
 
 #if defined(_MSC_VER) && defined(_M_IX86)
