@@ -659,6 +659,12 @@ int main(int argc,char** argv){
     assert(choreographyDestruction&&!getChoreographyDestruction(0,sizeof(tables::ChoreographyDestructionApi))&&!getChoreographyDestruction(1,0));
     tables::test::check_choreography_destruction(*choreographyDestruction);
     std::puts("PASS original parsed and event choreography destruction, borrowed storage, nested scene and failure guards");
+    const auto getNativeSceneRetirement=reinterpret_cast<tables::GetNativeSceneRetirementApi>(GetProcAddress(server,tables::native_scene_retirement_export));
+    assert(getNativeSceneRetirement&&!GetProcAddress(client,tables::native_scene_retirement_export));
+    const auto* nativeSceneRetirement=getNativeSceneRetirement(1,sizeof(tables::NativeSceneRetirementApi));
+    assert(nativeSceneRetirement&&!getNativeSceneRetirement(0,sizeof(tables::NativeSceneRetirementApi))&&!getNativeSceneRetirement(1,0));
+    tables::test::check_native_generated_map_dialogue(*nativeGeneratedMapDialogue,*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*responseTimingUpdate,*responseRecord,nativeSceneRetirement);
+    std::puts("PASS native Jessica and Count speech through original choreography retirement");
 
 
 

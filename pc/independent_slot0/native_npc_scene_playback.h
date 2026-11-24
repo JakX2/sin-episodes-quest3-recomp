@@ -741,6 +741,15 @@ struct ChoreographyDestructionApi {
     int (__cdecl *event)(void*,unsigned,const ChoreographyDestructionBindings*) noexcept;
 };
 using GetChoreographyDestructionApi=const ChoreographyDestructionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_scene_retirement_export[]="SiN_GetNativeSceneRetirementApi";
+struct NativeSceneRetirementApi {
+    std::uint32_t version,size;
+    // Native stop/detach/destruction, without lifecycle.destroy_parsed.
+    // Caller owns the scene entity until base removal and unregister finish.
+    int (__cdecl *cleanup)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*,const ChoreographyDestructionBindings*) noexcept;
+    int (__cdecl *remove)(void*,unsigned,const SceneEntityLifecycleBindings*,const SceneStopBindings*,const ChoreographyDestructionBindings*) noexcept;
+};
+using GetNativeSceneRetirementApi=const NativeSceneRetirementApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 
 
