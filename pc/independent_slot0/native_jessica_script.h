@@ -465,6 +465,17 @@ struct TalkManagerRuntimeApi {
     int (__cdecl *group_ready)(const TalkManagerRuntimeBindings*,const void* npc,unsigned bytes,unsigned priority,unsigned*) noexcept;
 };
 using GetTalkManagerRuntimeApi=const TalkManagerRuntimeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char managed_companion_export[]="SiN_GetManagedCompanionApi";
+struct ManagedCompanionApi {
+    std::uint32_t version,size;
+    // Live singleton policy; the manager callback of the legacy companion
+    // binding is not used. Manager creation and cooldown storage are native.
+    int (__cdecl *group_gate)(void*,unsigned,const TalkManagerRuntimeBindings*,const SpeechSemaphorePair*,const CompanionTalkBindings*,unsigned priority,unsigned urgent,unsigned*) noexcept;
+    int (__cdecl *concept_gate)(void*,unsigned,const TalkManagerRuntimeBindings*,const SpeechSemaphorePair*,const CompanionTalkBindings*,const char*,unsigned urgent,unsigned*) noexcept;
+    int (__cdecl *request)(void*,unsigned,const TalkManagerRuntimeBindings*,const SpeechSemaphorePair*,const CompanionTalkBindings*,const char*,const char*,unsigned urgent,unsigned*) noexcept;
+};
+using GetManagedCompanionApi=const ManagedCompanionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 
 
 

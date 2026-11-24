@@ -440,6 +440,13 @@ int main(int argc,char** argv){
     assert(managedTalk&&!getManagedTalk(0,sizeof(tables::TalkManagerRuntimeApi))&&!getManagedTalk(1,0));
     tables::test::check_managed_talk(*managedTalk,*talkManager,*talkCatalog);
     std::puts("PASS native speech manager owner notification and live cooldown fields");
+    const auto getManagedCompanion=reinterpret_cast<tables::GetManagedCompanionApi>(GetProcAddress(server,tables::managed_companion_export));
+    assert(getManagedCompanion&&!GetProcAddress(client,tables::managed_companion_export));
+    const auto* managedCompanion=getManagedCompanion(1,sizeof(tables::ManagedCompanionApi));
+    assert(managedCompanion&&!getManagedCompanion(0,sizeof(tables::ManagedCompanionApi))&&!getManagedCompanion(1,0));
+    tables::test::check_managed_companion(*managedCompanion,*talkManager,*talkCatalog,*managedTalk,*responseTimingUpdate,*responseRecord);
+    std::puts("PASS native managed companion response feedback and live cooldown gate");
+
 
 
     const auto getNpcDialogue=reinterpret_cast<tables::GetNpcDialogueApi>(GetProcAddress(server,tables::npc_dialogue_export));

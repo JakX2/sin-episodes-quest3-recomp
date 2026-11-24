@@ -3477,7 +3477,7 @@ int __cdecl talk_reset_interaction(TalkCooldownState* state,const TalkCooldownBi
 const TalkCatalogApi talk_catalog_api{version,sizeof(TalkCatalogApi),48,&talk_at,&talk_lookup,&talk_group_ready,&talk_concept_ready,&talk_note,&talk_reset_interaction};
 bool companion_talk_preflight(void* npc,unsigned bytes,const CompanionTalkBindings* b,unsigned* out) noexcept {
     return npc&&bytes>=0x1160&&sin_independent::vgui_layout::Readable(npc,0x1160)&&b&&
-        b->manager&&b->resolve&&b->expeditor&&b->player&&b->within_range&&b->suppressed&&
+        b->resolve&&b->expeditor&&b->player&&b->within_range&&b->suppressed&&
         out&&hologram_writable(out,sizeof(*out));
 }
 bool companion_resolve(const CompanionTalkBindings& h,std::uint32_t packed,void*& p,unsigned& extent) noexcept {
@@ -3488,18 +3488,35 @@ bool companion_expeditor(const CompanionTalkBindings& h,void* npc,void*& exp,uns
     exp=nullptr;extent=0;
     return h.expeditor(h.context,npc,&exp,&extent)&&exp&&extent>=0x7c&&sin_independent::vgui_layout::Readable(exp,0x7c);
 }
-int __cdecl companion_group_gate(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+void* managed_talk_globals(const TalkManagerRuntimeBindings&) noexcept;
+struct CompanionDeadlineSource {
+    const void* legacy;
+    const TalkManagerRuntimeBindings* managed;
+};
+bool companion_deadline_source(const CompanionDeadlineSource& source,const CompanionTalkBindings& h) noexcept {
+    return source.managed||(source.legacy&&h.manager);
+}
+const void* companion_ensure(const CompanionDeadlineSource& source,const CompanionTalkBindings& h) noexcept {
+    if(source.managed)return managed_talk_globals(*source.managed);
+    return h.manager(h.context)?source.legacy:nullptr;
+}
+const TalkCooldownBindings& companion_cooldown(const CompanionDeadlineSource& source,const CompanionTalkBindings& h) noexcept {
+    return source.managed?source.managed->cooldown:h.cooldown;
+}
+int companion_group_gate_impl(void* npc,unsigned bytes,const CompanionDeadlineSource& source,const SpeechSemaphorePair* sem,
                                 const CompanionTalkBindings* b,unsigned priority,unsigned urgent,unsigned* out) noexcept {
-    if(!companion_talk_preflight(npc,bytes,b,out)||priority>2||!state||!sem||!b->cooldown.clock)return 0;
+    if(!companion_talk_preflight(npc,bytes,b,out)||priority>2||!sem||
+       !companion_deadline_source(source,*b)||!companion_cooldown(source,*b).clock)return 0;
     const auto h=*b;const bool fast=(urgent&0xff)!=0;
     const auto complete=[&](unsigned allowed){*out=allowed!=0;return 1;};
-    if(!h.manager(h.context))return -1;
+    const void* globals=companion_ensure(source,h);if(!globals)return -1;
+    const auto cooldown=companion_cooldown(source,h);
     if(hologram_read<unsigned>(npc,0x8c)||(hologram_read<unsigned char>(npc,0xb4)&2))return complete(0);
     const auto state_id=hologram_read<int>(npc,0x850);
     if(state_id==4||(hologram_read<unsigned>(npc,0xb8)&0x100000)||hologram_read<unsigned char>(npc,0x968))return complete(0);
     unsigned value=0;
     if(!fast){
-        if(talk_group_ready(npc,bytes,state,&h.cooldown,priority,&value)!=1)return -1;
+        if(talk_group_ready_impl(npc,bytes,globals,&cooldown,priority,&value)!=1)return -1;
         if(!value)return complete(0);
     }
     void* associated=nullptr;unsigned extent=0;
@@ -3520,7 +3537,7 @@ int __cdecl companion_group_gate(void* npc,unsigned bytes,const TalkCooldownStat
         if(!companion_expeditor(h,npc,exp,n)||response_semaphore_available(exp,n,npc,sem,&h.semaphore,&value)!=1)return -1;
         if(!value)return complete(0);
         if(!companion_expeditor(h,npc,exp,n))return -1;
-        float now=0;if(!h.cooldown.clock(h.cooldown.context,&now)||
+        float now=0;if(!cooldown.clock(cooldown.context,&now)||
             response_timing(exp,n,fast?ResponseTiming::Urgent:ResponseTiming::Normal,now,&value)!=1)return -1;
         if(!value)return complete(0);
         void* player=nullptr;
@@ -3530,13 +3547,14 @@ int __cdecl companion_group_gate(void* npc,unsigned bytes,const TalkCooldownStat
     if(!h.suppressed(h.context,npc,fast?0:1,&value))return -1;
     return complete(!value);
 }
-int __cdecl companion_concept_gate(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+int companion_concept_gate_impl(void* npc,unsigned bytes,const CompanionDeadlineSource& source,const SpeechSemaphorePair* sem,
                                   const CompanionTalkBindings* b,const char* name,unsigned urgent,unsigned* out) noexcept {
-    if(!companion_talk_preflight(npc,bytes,b,out)||!name)return 0;
+    if(!companion_talk_preflight(npc,bytes,b,out)||!name||!companion_deadline_source(source,*b))return 0;
     const auto h=*b;
-    if(!h.manager(h.context))return -1;
+    if(!companion_ensure(source,h))return -1;
+    const auto cooldown=companion_cooldown(source,h);
     const auto* d=talk_lookup(name);unsigned allowed=0;
-    const auto grouped=companion_group_gate(npc,bytes,state,sem,&h,d?d->priority:0,urgent,&allowed);
+    const auto grouped=companion_group_gate_impl(npc,bytes,source,sem,&h,d?d->priority:0,urgent,&allowed);
     if(grouped!=1)return grouped;
     if(!allowed){*out=0;return 1;}
     // Original resolves +115c before checking TLK_HELLO, then re-resolves
@@ -3548,7 +3566,7 @@ int __cdecl companion_concept_gate(void* npc,unsigned bytes,const TalkCooldownSt
            extent<0x3a1||!sin_independent::vgui_layout::Readable(associated,0x3a1))return -1;
         if(hologram_read<unsigned char>(associated,0x3a0)){*out=0;return 1;}
     }
-    if(talk_concept_ready(&h.cooldown,name,&allowed)!=1)return -1;
+    if(talk_concept_ready(&cooldown,name,&allowed)!=1)return -1;
     if(!allowed){*out=0;return 1;}
     void* exp=nullptr;unsigned n=0;
     if(d&&(d->flags&1)){
@@ -3559,11 +3577,11 @@ int __cdecl companion_concept_gate(void* npc,unsigned bytes,const TalkCooldownSt
     if(!companion_expeditor(h,npc,exp,n)||response_can_repeat(exp,n,&h.repeat,name,&allowed)!=1)return -1;
     *out=allowed!=0;return 1;
 }
-int __cdecl companion_request(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+int companion_request_impl(void* npc,unsigned bytes,const CompanionDeadlineSource& source,const SpeechSemaphorePair* sem,
                               const CompanionTalkBindings* b,const char* name,const char* mods,unsigned urgent,unsigned* out) noexcept {
     if(!companion_talk_preflight(npc,bytes,b,out)||!name)return 0;
     const auto h=*b;unsigned allowed=0;
-    const auto gate=companion_concept_gate(npc,bytes,state,sem,&h,name,urgent,&allowed);
+    const auto gate=companion_concept_gate_impl(npc,bytes,source,sem,&h,name,urgent,&allowed);
     if(gate!=1)return gate;
     if(!allowed){*out=0;return 1;}
     void* exp=nullptr;unsigned n=0;
@@ -3571,7 +3589,32 @@ int __cdecl companion_request(void* npc,unsigned bytes,const TalkCooldownState* 
     const auto status=response_speak(exp,n,&h.speak,name,mods,out);
     return status==0?-1:status;
 }
+int __cdecl companion_group_gate(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+                                const CompanionTalkBindings* b,unsigned priority,unsigned urgent,unsigned* out) noexcept {
+    return companion_group_gate_impl(npc,bytes,{state?state->global:nullptr,nullptr},sem,b,priority,urgent,out);
+}
+int __cdecl companion_concept_gate(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+                                  const CompanionTalkBindings* b,const char* name,unsigned urgent,unsigned* out) noexcept {
+    return companion_concept_gate_impl(npc,bytes,{state?state->global:nullptr,nullptr},sem,b,name,urgent,out);
+}
+int __cdecl companion_request(void* npc,unsigned bytes,const TalkCooldownState* state,const SpeechSemaphorePair* sem,
+                              const CompanionTalkBindings* b,const char* name,const char* mods,unsigned urgent,unsigned* out) noexcept {
+    return companion_request_impl(npc,bytes,{state?state->global:nullptr,nullptr},sem,b,name,mods,urgent,out);
+}
+int __cdecl managed_companion_group(void* npc,unsigned bytes,const TalkManagerRuntimeBindings* m,const SpeechSemaphorePair* sem,
+                                   const CompanionTalkBindings* b,unsigned priority,unsigned urgent,unsigned* out) noexcept {
+    return companion_group_gate_impl(npc,bytes,{nullptr,m},sem,b,priority,urgent,out);
+}
+int __cdecl managed_companion_concept(void* npc,unsigned bytes,const TalkManagerRuntimeBindings* m,const SpeechSemaphorePair* sem,
+                                     const CompanionTalkBindings* b,const char* name,unsigned urgent,unsigned* out) noexcept {
+    return companion_concept_gate_impl(npc,bytes,{nullptr,m},sem,b,name,urgent,out);
+}
+int __cdecl managed_companion_request(void* npc,unsigned bytes,const TalkManagerRuntimeBindings* m,const SpeechSemaphorePair* sem,
+                                     const CompanionTalkBindings* b,const char* name,const char* mods,unsigned urgent,unsigned* out) noexcept {
+    return companion_request_impl(npc,bytes,{nullptr,m},sem,b,name,mods,urgent,out);
+}
 const CompanionTalkApi companion_talk_api{version,sizeof(CompanionTalkApi),&companion_group_gate,&companion_concept_gate,&companion_request};
+const ManagedCompanionApi managed_companion_api{version,sizeof(ManagedCompanionApi),&managed_companion_group,&managed_companion_concept,&managed_companion_request};
 int __cdecl talk_propagate(void* npc,unsigned bytes,const TalkPropagationBindings* b,const char* name) noexcept {
     if(!npc||bytes<0x2c8||!sin_independent::vgui_layout::Readable(npc,0x2c8)||
        !b||!b->list||!b->count||!b->candidate||!b->refresh||!b->visible||!b->expeditor||!name)return 0;
@@ -8248,6 +8291,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkManag
 SiN_GetTalkManagerRuntimeApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkManagerRuntimeApi)?&talk_manager_runtime_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetManagedCompanionApi=_SiN_GetManagedCompanionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ManagedCompanionApi* __cdecl
+SiN_GetManagedCompanionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ManagedCompanionApi)?&managed_companion_api:nullptr;
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetCountInterrogationApi=_SiN_GetCountInterrogationApi")
