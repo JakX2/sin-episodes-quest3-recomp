@@ -31,7 +31,7 @@ inline void check(const SendApi& sa,const RecvApi& ra,const n::Api& contract,con
     SendView sv{};RecvView rv{};
     SendBindings bindings{&sb,&local,&local,&owner};
     RecvBindings rec{&rb};
-    auto bad=bindings;bad.local_active=&s::DirectTable;
+    auto bad=bindings;bad.local_active=nullptr;
     assert(!sa.create(&bad,&sv)&&!sv.handle);
     bad=bindings;bad.base_animating=nullptr;
     assert(!sa.create(&bad,&sv)&&!sv.handle);

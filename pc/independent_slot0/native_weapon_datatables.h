@@ -71,6 +71,8 @@ struct SendBindings {
     s::SendTable* base_animating;
     // Real host must implement the original eligibility and live handle
     // resolution. Never substitute an unrestricted local table proxy.
+    // The DLL can reject its own standard proxy addresses only. Foreign
+    // function-pointer identity cannot certify callback semantics.
     s::TableProxy local_weapon,local_active;
     s::VarProxy owner_handle;
 };

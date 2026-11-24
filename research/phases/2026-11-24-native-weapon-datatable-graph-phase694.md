@@ -56,3 +56,9 @@ scalar callbacks do not implement bitstream, flattened graph or
 encoder limits. No engine table registration, actual entity creation,
 BaseAnimating implementation, retail networking or startup claim.
 No proprietary bytes or assets committed.
+
+Win32 pair fixture correction: a standard inline proxy compiled into the
+loader executable is not pointer-identical to the DLL's implementation.
+The invalid-dependency test now uses a null callback. Foreign callback
+semantics remain a trusted host contract, not something proven by address
+comparison across modules.
