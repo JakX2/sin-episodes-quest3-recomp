@@ -7,6 +7,7 @@
 #include "native_client_phoneme_emphasis.h"
 #include "native_client_phoneme_source.h"
 #include "native_client_vfe.h"
+#include "native_client_vfe_phoneme.h"
 #include "choreography_indexed_rb.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
@@ -11303,6 +11304,51 @@ int __cdecl client_vfe_resolve(ClientVfeView generic,ClientVfeView over,int code
     return vfe_detail::resolve(generic,over,code,ctx,map,out,capacity,count);
 }
 const ClientVfeApi client_vfe_api{version,sizeof(ClientVfeApi),&client_vfe_resolve};
+struct ClientVfePhonemeDispatch {
+    const ClientVfePhonemeBindings* bindings;
+    ClientPhonemeContribution rows[3][128];
+};
+int __cdecl client_vfe_phoneme_sentence(void* p,std::uint32_t handle,ClientPhonemeSentence* out) noexcept {
+    const auto& b=*static_cast<ClientVfePhonemeDispatch*>(p)->bindings;
+    return b.resolve(b.context,handle,out);
+}
+int __cdecl client_vfe_phoneme_lookup(void* p,std::uint16_t code,ClientPhonemeResolvedBanks* out) noexcept {
+    auto& s=*static_cast<ClientVfePhonemeDispatch*>(p);
+    const auto& b=*s.bindings;
+    // Resolve all generic code gates first, as 240cfa60 does. A missing
+    // required normal setting suppresses the entire contribution.
+    bool found[3]{};
+    for(unsigned i=0;i<3;++i){
+        const auto v=b.banks[i].generic;
+        if(!v.data&&!v.size){if(i==1)return 0;continue;}
+        if(!v.data||!v.size||!sin_independent::vgui_layout::Readable(v.data,v.size))return -1;
+        vfe_detail::Reader reader{v};int setting=0;
+        if(!reader.init())return -1;
+        const int status=reader.by_code(code,setting);
+        if(status<0)return -1;
+        if(i==1&&!status)return 0;
+        found[i]=status==1;
+    }
+    ClientPhonemeResolvedBanks result{};
+    result.weak=found[0];result.strong=found[2];
+    for(unsigned i=0;i<3;++i){
+        if(!found[i])continue;
+        unsigned count=0;
+        const auto& bank=b.banks[i];
+        if(client_vfe_resolve(bank.generic,bank.character,code,b.context,b.map,s.rows[i],128,&count)!=1)return -1;
+        result.banks[i]={s.rows[i],count};
+    }
+    *out=result;return 1;
+}
+int __cdecl client_vfe_phoneme_apply(const void* entity,unsigned bytes,float delay,float window,bool adaptive,
+    const ClientVfePhonemeBindings* b,float* out) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->resolve||!b->map)return 0;
+    ClientVfePhonemeDispatch dispatch{};dispatch.bindings=b;
+    const ClientPhonemeSourceBindings adapted{&dispatch,&client_vfe_phoneme_sentence,&client_vfe_phoneme_lookup};
+    return client_phoneme_source_apply(entity,bytes,delay,window,adaptive,&adapted,out);
+}
+const ClientVfePhonemeApi client_vfe_phoneme_api{version,sizeof(ClientVfePhonemeApi),&client_vfe_phoneme_apply};
+
 
 
 
@@ -13727,6 +13773,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvA
 SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetClientVfePhonemeApi=_SiN_GetClientVfePhonemeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientVfePhonemeApi* __cdecl
+SiN_GetClientVfePhonemeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ClientVfePhonemeApi)?&client_vfe_phoneme_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetClientVfeApi=_SiN_GetClientVfeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientVfeApi* __cdecl
