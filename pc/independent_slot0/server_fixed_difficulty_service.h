@@ -498,6 +498,59 @@ struct ScattergunSecondaryApi {
 };
 using GetScattergunSecondaryApi=const ScattergunSecondaryApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(ScattergunFireReport)==28);
+// CGrenadeAR virtual game projectile. Host owns actual engine entity,
+// traces, AI hearing, scheduling, damage and deferred deletion.
+inline constexpr char grenade_export_name[]="SiN_GetARGrenadeApi";
+inline constexpr std::uint32_t grenade_version=1;
+struct GrenadeSpawn {NpcSpread origin,velocity;float time;};
+struct GrenadeSnapshot {
+    std::uint32_t armed,contact_flag,uncertain,removal_requested;
+    std::int32_t danger_radius;
+    float next_think,damage,blast_radius;
+    NpcSpread origin,velocity;
+};
+enum GrenadeEffectKind : std::uint32_t {
+    GrenadeSetContact=0,GrenadeClearContact,GrenadeFlightSound,GrenadeTraceEffect,
+    GrenadeShake,GrenadeRadiusDamage,GrenadeExplosionSound,GrenadeQueueRemove
+};
+struct GrenadeEffect {
+    std::uint32_t kind,type,channel,decal;
+    NpcSpread origin;
+    float damage,radius,duration,requested_amplitude,clamped_amplitude,frequency;
+};
+// GrenadeSetContact is the original setter request; GrenadeClearContact
+// is the original detonation byte clear, NOT a claim of the same setter.
+// Shake is a game effect descriptor, never a tracked-HMD pose operation.
+struct GrenadeHost {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *emit)(void*,MapEntityRef,const GrenadeEffect*);
+};
+struct GrenadeTouch {
+    std::uint32_t other_present,other_field_11c,other_flags_120,
+        virtual_fc_nonnull,virtual_fc_matches,decal;
+};
+enum GrenadeCode : std::uint32_t {
+    GrenadeRejected=0,GrenadeApplied,GrenadeNotDue,GrenadeDisarmed,GrenadeBlocked,GrenadeUncertain
+};
+struct GrenadeReport {
+    std::uint32_t code,touch_gate,effects_attempted,effects_delivered;
+    GrenadeSnapshot state;
+};
+struct ARGrenadeApi {
+    std::uint32_t version,size;
+    int (SIN_FIXED_CALL *spawn)(MapEntityRef,const GrenadeSpawn*) noexcept;
+    int (SIN_FIXED_CALL *state)(MapEntityRef,GrenadeSnapshot*) noexcept;
+    int (SIN_FIXED_CALL *kinematics)(MapEntityRef,const NpcSpread*,const NpcSpread*) noexcept;
+    // Explicit host observation of original byte +0x795. This is distinct
+    // from Runtime::armed. Never used to rearm after uncertain effects.
+    int (SIN_FIXED_CALL *observe_contact)(MapEntityRef,std::uint32_t) noexcept;
+    int (SIN_FIXED_CALL *think)(MapEntityRef,float,std::uint32_t,std::uint32_t,
+        const GrenadeHost*,void*,GrenadeReport*) noexcept;
+    int (SIN_FIXED_CALL *touch)(MapEntityRef,const GrenadeTouch*,const GrenadeHost*,void*,GrenadeReport*) noexcept;
+    int (SIN_FIXED_CALL *detonate)(MapEntityRef,std::uint32_t,const GrenadeHost*,void*,GrenadeReport*) noexcept;
+};
+using GetARGrenadeApi=const ARGrenadeApi* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
+static_assert(sizeof(GrenadeEffect)==52);
 using GetApi=const Api* (SIN_FIXED_CALL *)(std::uint32_t,std::uint32_t) noexcept;
 static_assert(sizeof(State)==24);
 static_assert(sizeof(ChallengeOutput)==16);

@@ -910,6 +910,64 @@ static void test_scattergun_secondary(const a::ScattergunSecondaryApi* fire,cons
     assert(map->remove(gun)&&run()&&out.code==a::FireRejected);
     assert(map->end_level(epoch)&&api->end_campaign());
 }
+struct GrenadeFixture {
+    const a::ARGrenadeApi* api;
+    const a::MapEntityApi* map;
+    a::MapEntityRef expected;
+    std::vector<a::GrenadeEffect> effects;
+    unsigned fail_kind=99;
+    static int SIN_FIXED_CALL emit(void* c,a::MapEntityRef ref,const a::GrenadeEffect* effect){
+        auto& f=*static_cast<GrenadeFixture*>(c);
+        assert(ref.epoch==f.expected.epoch&&ref.index==f.expected.index&&ref.generation==f.expected.generation);
+        assert(!f.map->remove(ref)&&!f.api->observe_contact(ref,1));
+        f.effects.push_back(*effect);return effect->kind!=f.fail_kind;
+    }
+};
+static void test_ar_grenade(const a::ARGrenadeApi* api,const a::MapEntityApi* map,const a::Api* campaign){
+    assert(api&&api->version==1&&api->size==sizeof(*api)&&campaign->begin_campaign(2));
+    const auto epoch=map->begin_level("grenade");assert(epoch);
+    const a::MapEntityRef g{epoch,10,1},g2{epoch,11,1};
+    assert(map->create(g,"grenade_ar")==a::MapApplied&&map->spawn(g)==a::MapRejected);
+    const a::GrenadeSpawn spawn{{1.f,2.f,3.f},{4.f,6.f,8.f},1.f};
+    auto bad=spawn;bad.time=std::numeric_limits<float>::infinity();
+    assert(!api->spawn(g,&bad)&&api->spawn(g,&spawn)&&!api->spawn(g,&spawn));
+    a::GrenadeSnapshot state{};
+    assert(api->state(g,&state)&&state.armed&&!state.contact_flag&&state.damage==100.f&&
+        state.blast_radius==250.f&&state.danger_radius==100&&state.next_think==1.1f);
+    GrenadeFixture f{api,map,g,{}};
+    const a::GrenadeHost host{1,sizeof(a::GrenadeHost),&GrenadeFixture::emit};
+    a::GrenadeReport report{};
+    assert(api->think(g,1.05f,1,1,&host,&f,&report)&&report.code==a::GrenadeNotDue&&f.effects.empty());
+    assert(api->think(g,1.1f,1,1,&host,&f,&report)&&report.code==a::GrenadeApplied&&report.state.danger_radius==115);
+    assert(f.effects.size()==1&&f.effects[0].kind==a::GrenadeFlightSound&&f.effects[0].type==8&&
+        f.effects[0].origin.x==3.f&&f.effects[0].origin.y==5.f&&f.effects[0].origin.z==7.f&&
+        f.effects[0].duration==0.2f&&f.effects[0].radius==115.f&&f.effects[0].channel==1);
+    a::NpcSpread position{10.f,20.f,30.f},velocity{1.f,2.f,3.f};
+    assert(api->kinematics(g,&position,&velocity));
+    assert(api->detonate(g,0,&host,&f,&report)&&report.code==a::GrenadeBlocked);
+    a::GrenadeTouch touch{1,1,4,1,0,1};
+    assert(api->touch(g,&touch,&host,&f,&report)&&report.code==a::GrenadeBlocked&&report.touch_gate==2);
+    touch.other_flags_120=0;touch.virtual_fc_matches=1;
+    assert(api->touch(g,&touch,&host,&f,&report)&&report.code==a::GrenadeBlocked&&report.touch_gate==3);
+    touch.virtual_fc_matches=0;f.effects.clear();
+    assert(api->touch(g,&touch,&host,&f,&report)&&report.code==a::GrenadeApplied&&report.effects_delivered==7);
+    assert(!report.state.armed&&!report.state.contact_flag&&report.state.removal_requested);
+    const std::vector<unsigned> expected={a::GrenadeSetContact,a::GrenadeClearContact,a::GrenadeTraceEffect,
+        a::GrenadeShake,a::GrenadeRadiusDamage,a::GrenadeExplosionSound,a::GrenadeQueueRemove};
+    assert(f.effects.size()==expected.size());
+    for(unsigned i=0;i<expected.size();++i)assert(f.effects[i].kind==expected[i]);
+    assert(f.effects[2].decal==1&&f.effects[3].requested_amplitude==25.f&&f.effects[3].clamped_amplitude==16.f);
+    assert(f.effects[4].damage==100.f&&f.effects[4].radius==250.f&&f.effects[4].type==0x40u&&f.effects[4].origin.x==10.f);
+    assert(f.effects[5].type==0x02000001u&&f.effects[5].radius==375.f&&f.effects[5].duration==1.f);
+    assert(api->touch(g,&touch,&host,&f,&report)&&report.code==a::GrenadeDisarmed&&f.effects.size()==7);
+    assert(map->remove(g)&&!api->state(g,&state));
+    assert(map->create(g2,"grenade_ar")==a::MapApplied&&api->spawn(g2,&spawn)&&api->observe_contact(g2,1));
+    f.expected=g2;f.effects.clear();f.fail_kind=a::GrenadeRadiusDamage;
+    assert(api->detonate(g2,2,&host,&f,&report)&&report.code==a::GrenadeUncertain&&report.state.uncertain&&!report.state.armed);
+    assert(report.effects_attempted==4&&report.effects_delivered==3&&!report.state.removal_requested);
+    assert(api->detonate(g2,2,&host,&f,&report)&&report.code==a::GrenadeRejected&&f.effects.size()==4);
+    assert(!api->observe_contact(g2,1)&&map->remove(g2)&&map->end_level(epoch)&&campaign->end_campaign());
+}
 static void test_env_global(const a::GlobalStateApi* g,a::EnvGlobalDispatch env){
     assert(env&&g->clear()&&g->set_updates_disabled(0));
     char name[64]{},level[64]{};
@@ -1746,6 +1804,13 @@ int main(int argc,char** argv){
 #endif
     assert(getFire&&!getFire(0,sizeof(a::ScattergunSecondaryApi))&&!getFire(1,0));
     test_scattergun_secondary(getFire(a::scattergun_fire_version,sizeof(a::ScattergunSecondaryApi)),pump,map,api);
+#ifdef _WIN32
+    auto getGrenade=reinterpret_cast<a::GetARGrenadeApi>(GetProcAddress(lib,a::grenade_export_name));
+#else
+    auto getGrenade=reinterpret_cast<a::GetARGrenadeApi>(dlsym(lib,a::grenade_export_name));
+#endif
+    assert(getGrenade&&!getGrenade(0,sizeof(a::ARGrenadeApi))&&!getGrenade(1,0));
+    test_ar_grenade(getGrenade(a::grenade_version,sizeof(a::ARGrenadeApi)),map,api);
 #ifdef _WIN32
     auto getCombat=reinterpret_cast<a::GetCombatDamageApi>(GetProcAddress(lib,a::combat_export_name));
 #else
