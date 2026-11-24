@@ -6,6 +6,14 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+template<class B> bool player_local_deps(const B& b,int count,int ammo_offset) noexcept {
+    return b.local&&b.local->name&&std::strcmp(b.local->name,"DT_Local")==0&&
+        b.local->count==count&&b.local->props&&b.ammo&&b.ammo->name&&
+        std::strcmp(b.ammo->name,"m_iAmmo")==0&&b.ammo->type==5&&b.ammo->offset==ammo_offset&&
+        b.ammo->table&&b.ammo->table->props&&b.ammo->table->count==32&&b.ammo->table->name&&
+        std::strcmp(b.ammo->table->name,"m_iAmmo")==0;
+}
+template<class V> bool player_local_empty(const V& v) noexcept {return !v.handle&&!v.table;}
 // Native callbacks borrow synchronous host-owned entity/vector memory.
 // Readability is a range check, not proof of live object provenance.
 bool layer_header(const void* entity,int offset,LayerVector& v) noexcept {
@@ -574,6 +582,77 @@ int __cdecl destroy_overlay(OverlaySendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const OverlaySendApi overlay_api{version,sizeof(OverlaySendApi),&create_overlay,&destroy_overlay};
+
+void* __cdecl array_noop(const s::SendProp*,const void*,const void*,s::Recipients*,int){
+    // Original 0x2225e5b0 is a bare ret; this callback is never used
+    // as a datatable proxy. Return null rather than undefined register data.
+    return nullptr;
+}
+struct PlayerLocalSendGraph {
+    ResolvedContext context{};
+    s::SendTable table;
+    s::SendProp props[27];
+    bool build(const PlayerLocalSendBindings& b) noexcept {
+        if(!player_local_deps(b,48,0x64c)||!b.ammo->arrayProp||!b.entries||!b.entry_count||
+           b.entry_count>sin_independent::kEntityHandleCapacity||!mem::Readable(b.entries,sizeof(*b.entries)))return false;
+        context.entries=b.entries;context.count=b.entry_count;
+        if(!table.Construct(props,27,"DT_LocalPlayerExclusive")||
+           !s::MakeDataTableProp(props[0],"m_Local",0x794,b.local,&s::DirectTable))return false;
+        anim_float(props[1],"m_vecViewOffset[0]",0x37c,8,0,-32,32,255.0f/64);
+        anim_float(props[2],"m_vecViewOffset[1]",0x380,8,0,-32,32,255.0f/64);
+        anim_float(props[3],"m_vecViewOffset[2]",0x384,10,0x400,0,128,1023.0f/128);
+        anim_float(props[4],"m_flFriction",0x2a8,8,8,0,4.0f-4.0f/256,64);
+        props[5]=*b.ammo;
+        anim_int(props[6],"m_fOnTarget",0x94c,2,1,true);
+        anim_int(props[7],"m_bOnUseTarget",0x94d,2,1,true);
+        anim_int(props[8],"m_nTickBase",0x1274,32,0x400);
+        anim_int(props[9],"m_nNextThinkTick",0x74,32,0);
+        const auto handle=[&](unsigned i,const char* name,int offset){
+            // Original 0x2227eb70 forwards its fourth stack arg (4)
+            // OR 1 as the flags to SendPropInt, not the fifth arg.
+            anim_int(props[i],name,offset,21,5);
+            props[i].scalarProxy=&resolved_handle;props[i].extra=&context;
+        };
+        handle(10,"m_hLastWeapon",0x1280);handle(11,"m_hGroundEntity",0x238);
+        anim_float(props[12],"m_vecVelocity[0]",0x2c8,20,0x400,-2048,2048,1048575.0f/4096);
+        anim_float(props[13],"m_vecVelocity[1]",0x2cc,20,0x400,-2048,2048,1048575.0f/4096);
+        anim_float(props[14],"m_vecVelocity[2]",0x2d0,16,0x400,-2048,2048,65535.0f/4096);
+        anim_float(props[15],"m_vecBaseVelocity",0x244,20,0,-1000,1000,1048575.0f/2000);
+        props[15].type=2;props[15].scalarProxy=&vector_send;
+        handle(16,"m_hViewModel",0xbdc);
+        // Original 0x2225ee70 creates an unlinked DPT_Array descriptor.
+        // Engine preprocessing links the immediately preceding element.
+        // Do not confuse this with numbered Array3 or pretend it is linked.
+        props[17].name="m_hViewModel";props[17].type=4;props[17].elements=2;
+        props[17].stride=4;props[17].tableProxy=&array_noop;
+        handle(18,"m_hConstraintEntity",0x12a8);
+        props[19].name="m_vecConstraintCenter";props[19].offset=0x12ac;
+        props[19].type=2;props[19].flags=4;props[19].scalarProxy=&vector_send;
+        anim_float(props[20],"m_flConstraintRadius",0x12b8,0,4,0,0,0);
+        anim_float(props[21],"m_flConstraintWidth",0x12bc,0,4,0,0,0);
+        anim_float(props[22],"m_flConstraintSpeedFactor",0x12c0,0,4,0,0,0);
+        anim_float(props[23],"m_fViewConstraint",0x12c4,0,4,0,0,0);
+        anim_float(props[24],"m_flDeathTime",0x9d8,0,4,0,0,0);
+        anim_int(props[25],"m_nWaterLevel",0x298,2,1);
+        anim_float(props[26],"m_flLaggedMovementValue",0x12c8,0,4,0,0,0);
+        return true;
+    }
+};
+
+int __cdecl create_player_local(const PlayerLocalSendBindings* b,PlayerLocalSendView* out) noexcept {
+    if(!b||!out||!player_local_empty(*out))return 0;
+    auto* g=new(std::nothrow) PlayerLocalSendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->table};return 1;
+}
+int __cdecl destroy_player_local(PlayerLocalSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<PlayerLocalSendGraph*>(v->handle);
+    if(v->table!=&g->table||g->table.precalc||g->table.initialized||g->table.written)return 0;
+    delete g;*v={};return 1;
+}
+const PlayerLocalSendApi player_local_api{version,sizeof(PlayerLocalSendApi),&create_player_local,&destroy_player_local};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -859,6 +938,77 @@ int __cdecl destroy_overlay(OverlayRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const OverlayRecvApi overlay_api{version,sizeof(OverlayRecvApi),&create_overlay,&destroy_overlay};
+
+void __cdecl velocity_recv(const RecvData* d,void* entity,void*){
+    if(!d||!d->property||!d->property->extra||!entity)return;
+    const int offset=d->property->offset;
+    if(offset!=0xec&&offset!=0xf0&&offset!=0xf4)return;
+    const auto base=reinterpret_cast<std::uintptr_t>(entity);
+    if(base>static_cast<std::uintptr_t>(-1)-0xf8u)return;
+    auto* velocity=reinterpret_cast<void*>(base+0xecu);
+    if(!sin_independent::vgui_layout::Readable(velocity,12))return;
+    // Host guarantees writable entity storage and synchronous lifetime.
+    float xyz[3]{},incoming=0;
+    std::memcpy(xyz,velocity,12);std::memcpy(&incoming,&d->value.words[0],4);
+    const unsigned index=static_cast<unsigned>((offset-0xec)/4);
+    if(xyz[index]==incoming)return; // numeric equality, including signed zero
+    std::memcpy(&xyz[index],&d->value.words[0],4);
+    const auto& b=*static_cast<const PlayerLocalRecvBindings*>(d->property->extra);
+    if(b.invalidate_velocity(b.context,entity,4))std::memcpy(velocity,xyz,12);
+}
+struct PlayerLocalRecvGraph {
+    PlayerLocalRecvBindings binding{};
+    RecvTable table;
+    RecvProp props[27];
+    bool build(const PlayerLocalRecvBindings& b) noexcept {
+        if(!player_local_deps(b,49,0xc00)||b.ammo->array_prop||!b.invalidate_velocity)return false;
+        binding=b;table={props,27,nullptr,"DT_LocalPlayerExclusive"};
+        nested(props[0],"m_Local",b.local);props[0].offset=0xd68;
+        anim_recv(props[1],"m_vecViewOffset[0]",0xe0,1);
+        anim_recv(props[2],"m_vecViewOffset[1]",0xe4,1);
+        anim_recv(props[3],"m_vecViewOffset[2]",0xe8,1);
+        anim_recv(props[4],"m_flFriction",0x1ec,1);
+        props[5]=*b.ammo;
+        anim_recv(props[6],"m_fOnTarget",0xf10,0,&byte_recv);
+        anim_recv(props[7],"m_bOnUseTarget",0xf11,0,&byte_recv);
+        anim_recv(props[8],"m_nTickBase",0x102c);
+        anim_recv(props[9],"m_nNextThinkTick",0x84);
+        anim_recv(props[10],"m_hLastWeapon",0x1040,0,&handle_recv);
+        anim_recv(props[11],"m_hGroundEntity",0x1e0,0,&handle_recv);
+        anim_recv(props[12],"m_vecVelocity[0]",0xec,1,&velocity_recv);
+        anim_recv(props[13],"m_vecVelocity[1]",0xf0,1,&velocity_recv);
+        anim_recv(props[14],"m_vecVelocity[2]",0xf4,1,&velocity_recv);
+        for(unsigned i=12;i<=14;++i)props[i].extra=&binding;
+        anim_recv(props[15],"m_vecBaseVelocity",0x124,2,&vector_recv);
+        anim_recv(props[16],"m_hViewModel[0]",0x1058,0,&handle_recv);
+        props[17].name="m_hViewModel";props[17].type=4;props[17].elements=2;props[17].stride=4;
+        anim_recv(props[18],"m_hConstraintEntity",0xf48,0,&handle_recv);
+        anim_recv(props[19],"m_vecConstraintCenter",0xf4c,2,&vector_recv);
+        anim_recv(props[20],"m_flConstraintRadius",0xf58,1);
+        anim_recv(props[21],"m_flConstraintWidth",0xf5c,1);
+        anim_recv(props[22],"m_flConstraintSpeedFactor",0xf60,1);
+        anim_recv(props[23],"m_fViewConstraint",0xf64,1);
+        anim_recv(props[24],"m_flDeathTime",0xf74,1);
+        anim_recv(props[25],"m_nWaterLevel",0x1dc);
+        anim_recv(props[26],"m_flLaggedMovementValue",0x1174,1);
+        return true;
+    }
+};
+
+int __cdecl create_player_local(const PlayerLocalRecvBindings* b,PlayerLocalRecvView* out) noexcept {
+    if(!b||!out||!player_local_empty(*out))return 0;
+    auto* g=new(std::nothrow) PlayerLocalRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->table};return 1;
+}
+int __cdecl destroy_player_local(PlayerLocalRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<PlayerLocalRecvGraph*>(v->handle);
+    if(v->table!=&g->table||g->table.decoder||g->table.initialized||g->table.in_main_list)return 0;
+    delete g;*v={};return 1;
+}
+const PlayerLocalRecvApi player_local_api{version,sizeof(PlayerLocalRecvApi),&create_player_local,&destroy_player_local};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -901,6 +1051,12 @@ SiN_GetOverlaySendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(OverlaySendApi)?&overlay_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetPlayerLocalSendGraphApi=_SiN_GetPlayerLocalSendGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerLocalSendApi* __cdecl
+SiN_GetPlayerLocalSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerLocalSendApi)?&player_local_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -931,5 +1087,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::OverlayRe
 SiN_GetOverlayRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(OverlayRecvApi)?&overlay_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPlayerLocalRecvGraphApi=_SiN_GetPlayerLocalRecvGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerLocalRecvApi* __cdecl
+SiN_GetPlayerLocalRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerLocalRecvApi)?&player_local_api:nullptr;
 }
 #endif

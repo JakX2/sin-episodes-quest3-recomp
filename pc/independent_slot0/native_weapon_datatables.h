@@ -217,4 +217,31 @@ using OverlaySendApi=GraphApi<OverlaySendBindings,OverlaySendView>;
 using OverlayRecvApi=GraphApi<OverlayRecvBindings,OverlayRecvView>;
 using GetOverlaySendApi=const OverlaySendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetOverlayRecvApi=const OverlayRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase700: DT_LocalPlayerExclusive. Borrowed DT_Local and Phase696
+// ammo descriptor must outlive this graph. Client invalidation callback
+// implements original InvalidatePhysicsRecursive(4) on the host entity;
+// it runs before writing changed local velocity. No registration here.
+inline constexpr char player_local_send_export[]="SiN_GetPlayerLocalSendGraphApi";
+inline constexpr char player_local_recv_export[]="SiN_GetPlayerLocalRecvGraphApi";
+using VelocityInvalidation=int (__cdecl *)(void* context,void* entity,int flags) noexcept;
+struct PlayerLocalSendBindings {
+    s::SendTable* local;
+    const s::SendProp* ammo;
+    const sin_independent::EntityHandleEntry* entries;
+    std::uint32_t entry_count;
+};
+struct PlayerLocalRecvBindings {
+    RecvTable* local;
+    const RecvProp* ammo;
+    void* context;
+    VelocityInvalidation invalidate_velocity;
+};
+template<class Table> struct PlayerLocalView {void* handle;Table* table;};
+using PlayerLocalSendView=PlayerLocalView<s::SendTable>;
+using PlayerLocalRecvView=PlayerLocalView<RecvTable>;
+using PlayerLocalSendApi=GraphApi<PlayerLocalSendBindings,PlayerLocalSendView>;
+using PlayerLocalRecvApi=GraphApi<PlayerLocalRecvBindings,PlayerLocalRecvView>;
+using GetPlayerLocalSendApi=const PlayerLocalSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetPlayerLocalRecvApi=const PlayerLocalRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

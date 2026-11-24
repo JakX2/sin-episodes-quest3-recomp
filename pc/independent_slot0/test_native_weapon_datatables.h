@@ -2,6 +2,7 @@
 #include "native_weapon_datatables.h"
 #include <cassert>
 #include <cstring>
+#include <initializer_list>
 namespace sin_port::native_weapon_tables::test {
 struct Fixture {
     alignas(4) unsigned char bytes[0x4f4]{};
@@ -562,6 +563,80 @@ inline void check_overlay_graph(const OverlaySendApi& sa,const OverlayRecvApi& r
     sv.layer->initialized=true;rv.length_table->decoder=&cf;
     assert(!sa.destroy(&sv)&&!ra.destroy(&rv));sv.layer->initialized=false;rv.length_table->decoder=nullptr;
     assert(sa.destroy(&sv)&&ra.destroy(&rv));
+}
+
+struct VelocityFixture {
+    unsigned calls=0;
+    bool fail=false;
+    float before[3]{};
+};
+inline int __cdecl invalidate_velocity(void* opaque,void* entity,int flags) noexcept {
+    auto& f=*static_cast<VelocityFixture*>(opaque);assert(flags==4);
+    ++f.calls;std::memcpy(f.before,static_cast<unsigned char*>(entity)+0xec,12);
+    return !f.fail;
+}
+inline void check_player_local_graph(const PlayerLocalSendApi& sa,const PlayerLocalRecvApi& ra,
+        const InventorySendApi& isa,const InventoryRecvApi& ira){
+    s::SendProp sflexp,slocalp[48];s::SendTable sflex,slocal;
+    assert(sflex.Construct(&sflexp,1,"DT_BaseFlex")&&slocal.Construct(slocalp,48,"DT_Local"));
+    RecvProp cflexp,clocalp[49];RecvTable cflex{&cflexp,1,nullptr,"DT_BaseFlex"},clocal{clocalp,49,nullptr,"DT_Local"};
+    alignas(4) unsigned char edicts[2*20]{};
+    NativeEngine engine;engine.expected=edicts+20;engine.result=1;
+    NativeOwner ownerObj;sin_independent::EntityHandleEntry entries[64]{};
+    entries[37].entity=reinterpret_cast<CBaseEntity*>(&ownerObj);entries[37].serial=0x12345;
+    InventorySendBindings ib{&sflex,&engine,entries,64,edicts,1};InventoryRecvBindings irb{&cflex};
+    InventorySendView iv{};InventoryRecvView irv{};
+    assert(isa.create(&ib,&iv)&&ira.create(&irb,&irv));
+    VelocityFixture vf;
+    PlayerLocalSendBindings sb{&slocal,iv.ammo_property,entries,64};
+    PlayerLocalRecvBindings rb{&clocal,irv.ammo_property,&vf,&invalidate_velocity};
+    PlayerLocalSendView sv{};PlayerLocalRecvView rv{};
+    auto bad=rb;bad.invalidate_velocity=nullptr;assert(!ra.create(&bad,&rv));
+    slocal.count=49;assert(!sa.create(&sb,&sv));slocal.count=48;
+    assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
+    assert(sv.table->count==27&&rv.table->count==27);
+    auto* s=sv.table->props;auto* c=rv.table->props;
+    assert(s[0].table==&slocal&&c[0].table==&clocal&&s[0].offset==0x794&&c[0].offset==0xd68);
+    assert(s[5].table==iv.ammo_table&&c[5].table==irv.ammo_table&&s[5].arrayProp==iv.ammo_property->arrayProp);
+    assert(s[17].type==4&&c[17].type==4&&s[17].elements==2&&c[17].elements==2&&
+        s[17].stride==4&&c[17].stride==4&&!s[17].arrayProp&&!c[17].array_prop);
+    assert(s[4].high==3.984375f&&s[4].multiplier==64&&s[12].bits==20&&s[14].bits==16&&s[12].flags==0x400);
+    alignas(4) unsigned char server[0x1300]{},client[0x1180]{};
+    const auto pair=[&](int i,unsigned width,std::uint32_t value){
+        auto& a=s[i];auto& b=c[i];
+        assert(i==16||std::strcmp(a.name,b.name)==0);
+        std::memcpy(server+a.offset,&value,width);
+        s::DVariant v{};a.scalarProxy(&a,server,server+a.offset,&v,0,1);
+        RecvData d{&b,v,0,1};b.proxy(&d,client,client+b.offset);
+        const std::uint32_t expect=a.bits==21?((0x345u<<12)|37u):value;
+        assert(!std::memcmp(client+b.offset,&expect,width));
+    };
+    for(int i=1;i<27;++i){
+        if(i==5||i==15||i==17||i==19)continue;
+        const bool byte=i==6||i==7;
+        const bool handle=i==10||i==11||i==16||i==18;
+        pair(i,byte?1:4,handle?((0x12345u<<12)|37u):byte?1u:0x3f000000u);
+    }
+    assert(vf.calls==3&&vf.before[0]==0.5f&&vf.before[1]==0.5f&&vf.before[2]==0);
+    pair(12,4,0x3f000000u);assert(vf.calls==3);
+    // Signed zero is numerically equal; NaN remains an update.
+    float zero=0;std::memcpy(client+0xec,&zero,4);
+    RecvData d{&c[12],{},0,1};d.value.words[0]=0x80000000u;
+    c[12].proxy(&d,client,client+0xec);assert(vf.calls==3&&!std::memcmp(client+0xec,&zero,4));
+    vf.fail=true;d.value.words[0]=0x3f800000u;
+    c[12].proxy(&d,client,client+0xec);assert(vf.calls==4&&!std::memcmp(client+0xec,&zero,4));
+    vf.fail=false;c[12].proxy(&d,client,client+0xec);assert(vf.calls==5);
+    const std::uint32_t xyz[3]={0x3f000000u,0x80000000u,0x7fc12345u};
+    for(int i:{15,19}){
+        std::memcpy(server+s[i].offset,xyz,12);s::DVariant v{};
+        s[i].scalarProxy(&s[i],server,server+s[i].offset,&v,0,1);
+        d={&c[i],v,0,1};c[i].proxy(&d,client,client+c[i].offset);
+        assert(!std::memcmp(client+c[i].offset,xyz,12));
+    }
+    sv.table->written=true;rv.table->decoder=&vf;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
+    sv.table->written=false;rv.table->decoder=nullptr;
+    assert(sa.destroy(&sv)&&ra.destroy(&rv)&&isa.destroy(&iv)&&ira.destroy(&irv));
 }
 
 }
