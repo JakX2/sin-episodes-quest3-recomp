@@ -70,6 +70,14 @@ int main(int argc,char** argv){
     assert(invSend&&invRecv);
     tables::test::check_inventory_graph(*invSend,*invRecv);
     std::puts("PASS native paired inventory Array3 graphs (80 numbered elements, BCC recipient callbacks)");
+    const auto getAnimSend=reinterpret_cast<tables::GetAnimSendApi>(GetProcAddress(server,tables::anim_send_export));
+    const auto getAnimRecv=reinterpret_cast<tables::GetAnimRecvApi>(GetProcAddress(client,tables::anim_recv_export));
+    assert(getAnimSend&&getAnimRecv&&!GetProcAddress(client,tables::anim_send_export)&&!GetProcAddress(server,tables::anim_recv_export));
+    const auto* animSend=getAnimSend(1,sizeof(tables::AnimSendApi));
+    const auto* animRecv=getAnimRecv(1,sizeof(tables::AnimRecvApi));
+    assert(animSend&&animRecv&&!getAnimSend(0,sizeof(tables::AnimSendApi))&&!getAnimRecv(1,0));
+    tables::test::check_anim_graph(*animSend,*animRecv,*sa,*ra);
+    std::puts("PASS native paired BaseAnimating and ServerAnimationData graphs (28 numbered elements)");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

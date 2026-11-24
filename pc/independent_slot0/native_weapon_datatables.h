@@ -139,4 +139,28 @@ using InventorySendApi=GraphApi<InventorySendBindings,InventorySendView>;
 using InventoryRecvApi=GraphApi<InventoryRecvBindings,InventoryRecvView>;
 using GetInventorySendApi=const InventorySendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using GetInventoryRecvApi=const InventoryRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Phase697. Borrowed BaseEntity and handle registry must outlive graph.
+// Detach dependent weapon graphs and engine references before destroying.
+inline constexpr char anim_send_export[]="SiN_GetAnimatingSendGraphApi";
+inline constexpr char anim_recv_export[]="SiN_GetAnimatingRecvGraphApi";
+struct AnimSendBindings {
+    s::SendTable* base_entity;
+    const sin_independent::EntityHandleEntry* entries;
+    std::uint32_t entry_count;
+};
+struct AnimRecvBindings {RecvTable* base_entity;};
+template<class Table> struct AnimView {
+    void* handle;
+    Table* base_animating;
+    Table* server_anim_data;
+    Table* pose;
+    Table* controllers;
+};
+using AnimSendView=AnimView<s::SendTable>;
+using AnimRecvView=AnimView<RecvTable>;
+using AnimSendApi=GraphApi<AnimSendBindings,AnimSendView>;
+using AnimRecvApi=GraphApi<AnimRecvBindings,AnimRecvView>;
+using GetAnimSendApi=const AnimSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetAnimRecvApi=const AnimRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

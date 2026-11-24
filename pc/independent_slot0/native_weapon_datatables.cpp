@@ -8,6 +8,15 @@
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+template<class T> bool anim_base_valid(const T* t) noexcept {
+    return t&&t->name&&std::strcmp(t->name,"DT_BaseEntity")==0&&t->props&&t->count==24;
+}
+template<class V> bool anim_empty(const V& v) noexcept {
+    return !v.handle&&!v.base_animating&&!v.server_anim_data&&!v.pose&&!v.controllers;
+}
+template<class G,class V> bool anim_matches(const G& g,const V& v) noexcept {
+    return v.base_animating==&g.base&&v.server_anim_data==&g.cycle&&v.pose==&g.pose&&v.controllers==&g.controllers;
+}
 constexpr unsigned ammo_elements=32,weapon_elements=48;
 void element_names(char (&names)[weapon_elements][4]) noexcept {
     for(unsigned i=0;i<weapon_elements;++i){
@@ -313,6 +322,99 @@ int __cdecl destroy_inventory(InventorySendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const InventorySendApi inventory_api{version,sizeof(InventorySendApi),&create_inventory,&destroy_inventory};
+
+// Original 0x2213eb50 uses slot49, then returned object's byte +0x460.
+void* __cdecl server_anim_proxy(const s::SendProp*,const void* structure,const void* data,s::Recipients*,int){
+    methods::CallResult refused=methods::CallResult::InvalidObject;
+    const auto method=methods::VerifiedMethod(const_cast<void*>(structure),49,refused);
+    if(!method)return nullptr;
+    using Get=void* (__thiscall *)(void*);
+    try {
+        auto* entity=reinterpret_cast<Get>(method)(const_cast<void*>(structure));
+        unsigned char client_side=0;
+        return read_at(entity,0x460,client_side)&&!client_side?const_cast<void*>(data):nullptr;
+    }catch(...){return nullptr;}
+}
+void __cdecl byte_send(const s::SendProp*,const void*,const void* data,s::DVariant* out,int,int){
+    if(data&&out)out->words[0]=*static_cast<const unsigned char*>(data);
+}
+void __cdecl vector_send(const s::SendProp*,const void*,const void* data,s::DVariant* out,int,int){
+    if(data&&out)std::memcpy(out->words,data,12);
+}
+void anim_int(s::SendProp& p,const char* name,int offset,int bits,int flags,bool byte=false) noexcept {
+    p.name=name;p.offset=offset;p.bits=bits;p.flags=flags;p.scalarProxy=byte?&byte_send:&raw_send;
+}
+void anim_float(s::SendProp& p,const char* name,int offset,int bits,int flags,float low,float high,float multiplier) noexcept {
+    p.name=name;p.type=1;p.offset=offset;p.bits=bits;p.flags=flags;
+    p.low=low;p.high=high;p.multiplier=multiplier;p.scalarProxy=&raw_send;
+}
+struct AnimSendGraph {
+    ResolvedContext context{};
+    s::SendTable base,cycle,pose,controllers;
+    s::SendProp props[18],cycle_prop,pose_props[24],controller_props[4],pose_template,controller_template;
+    char names[weapon_elements][4]{};
+    bool build(const AnimSendBindings& b) noexcept {
+        if(!anim_base_valid(b.base_entity)||!b.entries||!b.entry_count||
+           b.entry_count>sin_independent::kEntityHandleCapacity||!mem::Readable(b.entries,sizeof(*b.entries)))return false;
+        context.entries=b.entries;context.count=b.entry_count;
+        element_names(names);
+        if(!base.Construct(props,18,"DT_BaseAnimating")||
+           !cycle.Construct(&cycle_prop,1,"DT_ServerAnimationData")||
+           !pose.Construct(pose_props,24,"m_flPoseParameter")||
+           !controllers.Construct(controller_props,4,"m_flEncodedController"))return false;
+        if(!s::MakeDataTableProp(props[0],"baseclass",0,b.base_entity,&s::DirectTable)||
+           !s::MakeDataTableProp(props[7],"m_flPoseParameter",0x3f0,&pose,&s::DirectTable)||
+           !s::MakeDataTableProp(props[10],"m_flEncodedController",0x450,&controllers,&s::DirectTable)||
+           !s::MakeDataTableProp(props[17],"serveranimdata",0,&cycle,&server_anim_proxy))return false;
+        anim_int(props[1],"m_nForceBone",0x3a0,8,0);
+        props[2].name="m_vecForce";props[2].offset=0x3a4;props[2].type=2;props[2].flags=4;
+        props[2].scalarProxy=&vector_send; // NOSCALE: unused range normalized
+        anim_int(props[3],"m_nSkin",0x3b0,10,0);
+        anim_int(props[4],"m_nBody",0x3b4,32,0);
+        anim_int(props[5],"m_nHitboxSet",0x3b8,2,1);
+        anim_float(props[6],"m_flModelWidthScale",0x3bc,6,0x10,1.0f/64,1,64);
+        anim_float(pose_template,"m_flPoseParameter",0x3f0,11,0,0,1,2047);
+        props[7].arrayProp=&pose_template;
+        for(unsigned i=0;i<24;++i){
+            pose_props[i]=pose_template;pose_props[i].name=names[i];
+            pose_props[i].offset=static_cast<int>(i*4);pose_props[i].excludeOrParent=pose_template.name;
+        }
+        anim_int(props[8],"m_nSequence",0x3ec,10,1);
+        anim_float(props[9],"m_flPlaybackRate",0x3c0,8,0x10,-3.9375f,12,16);
+        anim_float(controller_template,"m_flEncodedController",0x450,11,8,0,1.0f-1.0f/2048,2048);
+        props[10].arrayProp=&controller_template;
+        for(unsigned i=0;i<4;++i){
+            controller_props[i]=controller_template;controller_props[i].name=names[i];
+            controller_props[i].offset=static_cast<int>(i*4);controller_props[i].excludeOrParent=controller_template.name;
+        }
+        anim_int(props[11],"m_bClientSideAnimation",0x460,1,1,true);
+        anim_int(props[12],"m_bClientSideFrameReset",0x461,1,1,true);
+        anim_int(props[13],"m_nNewSequenceParity",0x464,3,0x401);
+        anim_int(props[14],"m_nResetEventsParity",0x468,3,0x401);
+        anim_int(props[15],"m_nMuzzleFlashParity",0x46c,2,0x401,true);
+        anim_int(props[16],"m_hLightingOrigin",0x470,21,5);
+        props[16].scalarProxy=&resolved_handle;props[16].extra=&context;
+        anim_float(cycle_prop,"m_flCycle",0x3e8,15,8,0,1.0f-1.0f/32768,32768);
+        return true;
+    }
+};
+
+int __cdecl create_anim(const AnimSendBindings* b,AnimSendView* out) noexcept {
+    if(!b||!out||!anim_empty(*out))return 0;
+    auto* g=new(std::nothrow) AnimSendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->base,&g->cycle,&g->pose,&g->controllers};return 1;
+}
+int __cdecl destroy_anim(AnimSendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<AnimSendGraph*>(v->handle);
+    if(!anim_matches(*g,*v))return 0;
+    for(const auto* t:{&g->base,&g->cycle,&g->pose,&g->controllers})
+        if(t->precalc||t->initialized||t->written)return 0;
+    delete g;*v={};return 1;
+}
+const AnimSendApi anim_api{version,sizeof(AnimSendApi),&create_anim,&destroy_anim};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -425,6 +527,72 @@ int __cdecl destroy_inventory(InventoryRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const InventoryRecvApi inventory_api{version,sizeof(InventoryRecvApi),&create_inventory,&destroy_inventory};
+
+void __cdecl byte_recv(const RecvData* data,void*,void* out){
+    if(data&&out)*static_cast<unsigned char*>(out)=static_cast<unsigned char>(data->value.words[0]);
+}
+void __cdecl vector_recv(const RecvData* data,void*,void* out){
+    if(data&&out)std::memcpy(out,data->value.words,12);
+}
+void anim_recv(RecvProp& p,const char* name,int offset,int type=0,RecvProxy proxy=&raw_recv) noexcept {
+    p.name=name;p.offset=offset;p.type=type;p.proxy=proxy;
+}
+struct AnimRecvGraph {
+    RecvTable base,cycle,pose,controllers;
+    RecvProp props[18],cycle_prop,pose_props[24],controller_props[4];
+    char names[weapon_elements][4]{};
+    bool build(const AnimRecvBindings& b) noexcept {
+        if(!anim_base_valid(b.base_entity))return false;
+        element_names(names);
+        base={props,18,nullptr,"DT_BaseAnimating"};cycle={&cycle_prop,1,nullptr,"DT_ServerAnimationData"};
+        pose={pose_props,24,nullptr,"m_flPoseParameter"};controllers={controller_props,4,nullptr,"m_flEncodedController"};
+        nested(props[0],"baseclass",b.base_entity);
+        anim_recv(props[1],"m_nSequence",0x6e0);
+        anim_recv(props[2],"m_nForceBone",0x510);
+        anim_recv(props[3],"m_vecForce",0x504,2,&vector_recv);
+        anim_recv(props[4],"m_nSkin",0x4a0);
+        anim_recv(props[5],"m_nBody",0x4a4);
+        anim_recv(props[6],"m_nHitboxSet",0x4a8);
+        anim_recv(props[7],"m_flModelWidthScale",0x544,1);
+        nested(props[8],"m_flPoseParameter",&pose);props[8].offset=0x548;
+        anim_recv(props[9],"m_flPlaybackRate",0x4c8,1);
+        nested(props[10],"m_flEncodedController",&controllers);props[10].offset=0x66c;
+        for(unsigned i=0;i<24;++i){
+            anim_recv(pose_props[i],names[i],static_cast<int>(i*4),1);
+            pose_props[i].parent_array="m_flPoseParameter";
+        }
+        for(unsigned i=0;i<4;++i){
+            anim_recv(controller_props[i],names[i],static_cast<int>(i*4),1);
+            controller_props[i].parent_array="m_flEncodedController";
+        }
+        anim_recv(props[11],"m_bClientSideAnimation",0x6b0,0,&byte_recv);
+        anim_recv(props[12],"m_bClientSideFrameReset",0x4f4,0,&byte_recv);
+        anim_recv(props[13],"m_nNewSequenceParity",0x6b4);
+        anim_recv(props[14],"m_nResetEventsParity",0x6b8);
+        anim_recv(props[15],"m_nMuzzleFlashParity",0x784,0,&byte_recv);
+        anim_recv(props[16],"m_hLightingOrigin",0x780,0,&handle_recv);
+        nested(props[17],"serveranimdata",&cycle);
+        anim_recv(cycle_prop,"m_flCycle",0x6e4,1);
+        return true;
+    }
+};
+
+int __cdecl create_anim(const AnimRecvBindings* b,AnimRecvView* out) noexcept {
+    if(!b||!out||!anim_empty(*out))return 0;
+    auto* g=new(std::nothrow) AnimRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->base,&g->cycle,&g->pose,&g->controllers};return 1;
+}
+int __cdecl destroy_anim(AnimRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<AnimRecvGraph*>(v->handle);
+    if(!anim_matches(*g,*v))return 0;
+    for(const auto* t:{&g->base,&g->cycle,&g->pose,&g->controllers})
+        if(t->decoder||t->initialized||t->in_main_list)return 0;
+    delete g;*v={};return 1;
+}
+const AnimRecvApi anim_api{version,sizeof(AnimRecvApi),&create_anim,&destroy_anim};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -449,6 +617,12 @@ SiN_GetInventorySendGraphApi(std::uint32_t version,std::uint32_t size) noexcept 
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(InventorySendApi)?&inventory_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetAnimatingSendGraphApi=_SiN_GetAnimatingSendGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimSendApi* __cdecl
+SiN_GetAnimatingSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimSendApi)?&anim_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -461,5 +635,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Inventory
 SiN_GetInventoryRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(InventoryRecvApi)?&inventory_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetAnimatingRecvGraphApi=_SiN_GetAnimatingRecvGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::AnimRecvApi* __cdecl
+SiN_GetAnimatingRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(AnimRecvApi)?&anim_api:nullptr;
 }
 #endif

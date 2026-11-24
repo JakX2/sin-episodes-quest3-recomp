@@ -141,7 +141,7 @@ public:
     virtual void slot46(){assert(false);}
     virtual void slot47(){assert(false);}
     virtual void slot48(){assert(false);}
-    virtual void slot49(){assert(false);}
+    virtual void* animating(){return animating_object;}
     virtual void slot50(){assert(false);}
     virtual void slot51(){assert(false);}
     virtual void slot52(){assert(false);}
@@ -175,6 +175,7 @@ public:
     bool player=false;
     unsigned base_calls=0,player_calls=0,indirect_calls=0;
     void* indirect_object=nullptr;
+    void* animating_object=nullptr;
 };
 class NativeEngine {
 public:
@@ -342,6 +343,72 @@ inline void check_inventory_graph(const InventorySendApi& sa,const InventoryRecv
     assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
     sv.weapons_table->written=false;rv.ammo_table->in_main_list=false;
     assert(sa.destroy(&sv)&&ra.destroy(&rv)&&!sv.handle&&!rv.handle);
+}
+
+inline void check_anim_graph(const AnimSendApi& sa,const AnimRecvApi& ra,const SendApi& wa,const RecvApi& wr){
+    s::SendProp sp[24];s::SendTable sb;assert(sb.Construct(sp,24,"DT_BaseEntity"));
+    RecvProp rp[24];RecvTable rb{rp,24,nullptr,"DT_BaseEntity"};
+    sin_independent::EntityHandleEntry entries[64]{};
+    NativeOwner host;entries[37].entity=reinterpret_cast<CBaseEntity*>(&host);entries[37].serial=0x12345;
+    AnimSendBindings bindings{&sb,entries,64};AnimRecvBindings rec{&rb};
+    AnimSendView sv{};AnimRecvView rv{};
+    sb.count=23;assert(!sa.create(&bindings,&sv)&&!sv.handle);sb.count=24;
+    assert(sa.create(&bindings,&sv)&&ra.create(&rec,&rv));
+    assert(sv.base_animating->count==18&&rv.base_animating->count==18);
+    assert(sv.base_animating->props[0].table==&sb&&rv.base_animating->props[0].table==&rb);
+    SendView wsv{};RecvView wrv{};
+    SendBindings wb{sv.base_animating,&local,&local,&owner};RecvBindings wbr{rv.base_animating};
+    assert(wa.create(&wb,&wsv)&&wr.create(&wbr,&wrv));
+    assert(wsv.tables[BaseCombat]->props[0].table==sv.base_animating&&wrv.tables[BaseCombat]->props[0].table==rv.base_animating);
+    auto& a=*sv.base_animating;auto& b=*rv.base_animating;
+    assert(a.props[6].low==1.0f/64&&a.props[6].multiplier==64&&a.props[9].low==-3.9375f&&a.props[9].multiplier==16);
+    assert(a.props[16].flags==5&&a.props[16].bits==21);
+    alignas(4) unsigned char server[0x474]{},client[0x788]{};
+    const auto pair=[&](s::SendProp& x,RecvProp& y,unsigned width,std::uint32_t value){
+        assert(std::strcmp(x.name,y.name)==0);
+        std::memcpy(server+x.offset,&value,width);
+        std::memset(client+y.offset,0x99,width+1);
+        s::DVariant v{};x.scalarProxy(&x,server,server+x.offset,&v,0,1);
+        RecvData d{&y,v,0,1};y.proxy(&d,client,client+y.offset);
+        const std::uint32_t expected=x.bits==21?((0x345u<<12)|37u):value;
+        assert(!std::memcmp(client+y.offset,&expected,width)&&client[y.offset+width]==0x99);
+    };
+    const int indices[]={0,2,3,4,5,6,7,8,1,9,10,11,12,13,14,15,16,17};
+    for(unsigned i=1;i<17;++i){
+        if(i==2||i==7||i==10)continue;
+        const bool byte=i==11||i==12||i==15;
+        pair(a.props[i],b.props[indices[i]],byte?1:4,i==16?((0x12345u<<12)|37u):byte?1u:0x3f000000u);
+    }
+    const std::uint32_t xyz[3]={0x3f000000u,0x80000000u,0x7fc12345u};
+    std::memcpy(server+a.props[2].offset,xyz,12);
+    s::DVariant v{};a.props[2].scalarProxy(&a.props[2],server,server+a.props[2].offset,&v,0,1);
+    RecvData d{&b.props[3],v,0,1};b.props[3].proxy(&d,client,client+b.props[3].offset);
+    assert(!std::memcmp(client+b.props[3].offset,xyz,12));
+    const auto array=[&](s::SendProp& x,RecvProp& y,int count){
+        assert(x.table->count==count&&y.table->count==count&&x.arrayProp&&!y.array_prop);
+        for(int i=0;i<count;++i){
+            auto& u=x.table->props[i];auto& w=y.table->props[i];
+            assert(std::strcmp(u.name,w.name)==0&&u.offset==i*4&&w.offset==i*4);
+            assert(std::strcmp(u.excludeOrParent,x.name)==0&&std::strcmp(w.parent_array,y.name)==0);
+            const std::uint32_t value=0x3f000000u+static_cast<unsigned>(i);
+            std::memcpy(server+x.offset+u.offset,&value,4);
+            u.scalarProxy(&u,server,server+x.offset+u.offset,&v,i,1);
+            d={&w,v,i,1};w.proxy(&d,client,client+y.offset+w.offset);
+            assert(!std::memcmp(client+y.offset+w.offset,&value,4));
+        }
+    };
+    array(a.props[7],b.props[8],24);array(a.props[10],b.props[10],4);
+    pair(sv.server_anim_data->props[0],rv.server_anim_data->props[0],4,0x3f000000u);
+    auto& gate=a.props[17];s::Recipients mask{};mask.words[0]=0x42;
+    host.animating_object=server;server[0x460]=0;
+    assert(gate.tableProxy(&gate,&host,server,&mask,1)==server&&mask.words[0]==0x42);
+    server[0x460]=1;assert(!gate.tableProxy(&gate,&host,server,&mask,1)&&mask.words[0]==0x42);
+    host.animating_object=nullptr;assert(!gate.tableProxy(&gate,&host,server,&mask,1));
+    assert(wa.destroy(&wsv)&&wr.destroy(&wrv));
+    sv.pose->written=true;rv.controllers->initialized=true;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));
+    sv.pose->written=false;rv.controllers->initialized=false;
+    assert(sa.destroy(&sv)&&ra.destroy(&rv));
 }
 
 }
