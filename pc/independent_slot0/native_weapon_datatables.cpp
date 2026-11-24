@@ -2,12 +2,44 @@
 #include <cstring>
 #include <new>
 #include <initializer_list>
-#if defined(SIN_ROLE_server)
 #include "client_known_gamesystem_init.h"
-#endif
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr unsigned max_props=7;
+// Native callbacks borrow synchronous host-owned entity/vector memory.
+// Readability is a range check, not proof of live object provenance.
+bool layer_header(const void* entity,int offset,LayerVector& v) noexcept {
+    if(!entity)return false;
+    const auto base=reinterpret_cast<std::uintptr_t>(entity);
+    if(base>static_cast<std::uintptr_t>(-1)-static_cast<unsigned>(offset))return false;
+    const auto* address=reinterpret_cast<const void*>(base+static_cast<unsigned>(offset));
+    if(!sin_independent::vgui_layout::Readable(address,sizeof(v)))return false;
+    std::memcpy(&v,address,sizeof(v));
+    return v.count>=0&&v.capacity>=v.count&&(!v.capacity||v.memory);
+}
+bool layer_reserve(const void* entity,int offset,int stride,void* context,LayerHostOp reserve) noexcept {
+    LayerVector before{},after{};
+    if(!layer_header(entity,offset,before))return false;
+    // Original ensure callback initializes dormant slots even if storage
+    // already has enough capacity. It never changes logical count.
+    if(before.count<overlay_limit&&!reserve(context,const_cast<void*>(entity),offset,stride,overlay_limit))return false;
+    return layer_header(entity,offset,after)&&after.count==before.count&&after.capacity>=overlay_limit&&after.memory;
+}
+void* layer_address(const void* entity,int offset,int stride,int index) noexcept {
+    LayerVector v{};
+    if(index<0||index>=overlay_limit||!layer_header(entity,offset,v)||index>=v.capacity||!v.memory)return nullptr;
+    const auto base=reinterpret_cast<std::uintptr_t>(v.memory);
+    const auto delta=static_cast<unsigned>(index*stride);
+    if(base>static_cast<std::uintptr_t>(-1)-delta)return nullptr;
+    auto* address=reinterpret_cast<void*>(base+delta);
+    return sin_independent::vgui_layout::Readable(address,static_cast<unsigned>(stride))?address:nullptr;
+}
+template<class V> bool overlay_empty(const V& v) noexcept {
+    return !v.handle&&!v.overlay_vars&&!v.vector_table&&!v.length_table&&!v.layer;
+}
+template<class G,class V> bool overlay_matches(const G& g,const V& v) noexcept {
+    return v.overlay_vars==&g.overlay&&v.vector_table==&g.vector&&v.length_table==&g.length&&v.layer==&g.layer;
+}
 template<class B> bool flex_deps(const B& b) noexcept {
     return b.base_animating&&b.base_animating->name&&
         std::strcmp(b.base_animating->name,"DT_BaseAnimating")==0&&
@@ -477,6 +509,71 @@ int __cdecl destroy_flex(FlexSendView* v) noexcept {
     delete g;*v={};return 1;
 }
 const FlexSendApi flex_api{version,sizeof(FlexSendApi),&create_flex,&destroy_flex};
+
+constexpr int layer_offset=0x494,layer_stride=0x40;
+// Original 0x2225f2f0 reads logical count, clamps upper bound.
+void __cdecl layer_length_send(const s::SendProp*,const void* entity,const void*,s::DVariant* out,int,int){
+    if(!out)return;
+    LayerVector v{};
+    out->words[0]=layer_header(entity,layer_offset,v)?static_cast<unsigned>(v.count>overlay_limit?overlay_limit:v.count):0u;
+}
+// Original 0x2225f2d0 ensures capacity before returning pData.
+void* __cdecl layer_reserve_send(const s::SendProp* p,const void* entity,const void* data,s::Recipients*,int){
+    if(!p||!p->extra)return nullptr;
+    const auto& b=*static_cast<const OverlaySendBindings*>(p->extra);
+    return layer_reserve(entity,layer_offset,layer_stride,b.context,b.reserve)?const_cast<void*>(data):nullptr;
+}
+// Original 0x2225f370 uses stored stride field as element index.
+void* __cdecl layer_element_send(const s::SendProp* p,const void* entity,const void*,s::Recipients*,int){
+    return p?layer_address(entity,layer_offset,layer_stride,p->stride):nullptr;
+}
+struct OverlaySendGraph {
+    OverlaySendBindings binding{};
+    s::SendTable overlay,vector,length,layer;
+    s::SendProp parent,children[16],length_prop,fields[5];
+    char names[15][4]{};
+    bool build(const OverlaySendBindings& b) noexcept {
+        if(!b.reserve)return false;
+        binding=b;element_names(names);
+        if(!overlay.Construct(&parent,1,"DT_OverlayVars")||
+           !vector.Construct(children,16,"_ST_m_AnimOverlay_15")||
+           !length.Construct(&length_prop,1,"_LPT_m_AnimOverlay_15")||
+           !layer.Construct(fields,5,"DT_Animationlayer"))return false;
+        if(!s::MakeDataTableProp(parent,"m_AnimOverlay",0,&vector,&s::DirectTable)||
+           !s::MakeDataTableProp(children[0],"lengthproxy",0,&length,&layer_reserve_send))return false;
+        children[0].extra=&binding;
+        anim_int(length_prop,"lengthprop15",0,4,1);
+        length_prop.scalarProxy=&layer_length_send;length_prop.extra=&binding;
+        for(int i=0;i<overlay_limit;++i){
+            auto& p=children[i+1];
+            if(!s::MakeDataTableProp(p,names[i],0,&layer,&layer_element_send))return false;
+            p.stride=i;p.flags=0x200;p.extra=&binding;
+        }
+        anim_int(fields[0],"sequence",8,10,1);
+        anim_float(fields[1],"cycle",12,15,8,0,1.0f-1.0f/32768,32768);
+        anim_float(fields[2],"prevcycle",16,15,8,0,1.0f-1.0f/32768,32768);
+        anim_float(fields[3],"weight",24,8,0,0,1,255);
+        anim_int(fields[4],"order",52,4,1);
+        return true;
+    }
+};
+
+int __cdecl create_overlay(const OverlaySendBindings* b,OverlaySendView* out) noexcept {
+    if(!b||!out||!overlay_empty(*out))return 0;
+    auto* g=new(std::nothrow) OverlaySendGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->overlay,&g->vector,&g->length,&g->layer};return 1;
+}
+int __cdecl destroy_overlay(OverlaySendView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<OverlaySendGraph*>(v->handle);
+    if(!overlay_matches(*g,*v))return 0;
+    for(const auto* t:{&g->overlay,&g->vector,&g->length,&g->layer})
+        if(t->precalc||t->initialized||t->written)return 0;
+    delete g;*v={};return 1;
+}
+const OverlaySendApi overlay_api{version,sizeof(OverlaySendApi),&create_overlay,&destroy_overlay};
 #elif defined(SIN_ROLE_client)
 void __cdecl raw_recv(const RecvData* data,void*,void* out){
     if(data&&out)std::memcpy(out,&data->value.words[0],4);
@@ -698,6 +795,70 @@ int __cdecl destroy_flex(FlexRecvView* v) noexcept {
     delete g;*v={};return 1;
 }
 const FlexRecvApi flex_api{version,sizeof(FlexRecvApi),&create_flex,&destroy_flex};
+
+constexpr int layer_offset=0x7a4,layer_stride=0x20;
+// Original 0x24127100 forwards length to entity-specific resize,
+// including interpolation vector teardown/rebuild (0x240c3500).
+void __cdecl layer_length_recv(const RecvData* d,void* entity,void*){
+    if(!d||!d->property||!d->property->extra||d->value.words[0]>overlay_limit)return;
+    const auto& b=*static_cast<const OverlayRecvBindings*>(d->property->extra);
+    LayerVector v{};
+    if(!layer_header(entity,layer_offset,v))return;
+    if(v.count!=static_cast<int>(d->value.words[0]))
+        (void)b.resize(b.context,entity,layer_offset,layer_stride,static_cast<int>(d->value.words[0]));
+}
+void __cdecl layer_reserve_recv(const RecvProp* p,void** out,void* data,int){
+    if(!out)return;
+    *out=nullptr;
+    if(!p||!p->extra)return;
+    const auto& b=*static_cast<const OverlayRecvBindings*>(p->extra);
+    if(layer_reserve(data,layer_offset,layer_stride,b.context,b.reserve))*out=data;
+}
+void __cdecl layer_element_recv(const RecvProp* p,void** out,void* data,int){
+    if(out)*out=p?layer_address(data,layer_offset,layer_stride,p->stride):nullptr;
+}
+struct OverlayRecvGraph {
+    OverlayRecvBindings binding{};
+    RecvTable overlay,vector,length,layer;
+    RecvProp parent,children[16],length_prop,fields[5];
+    char names[15][4]{};
+    bool build(const OverlayRecvBindings& b) noexcept {
+        if(!b.reserve||!b.resize)return false;
+        binding=b;element_names(names);
+        overlay={&parent,1,nullptr,"DT_OverlayVars"};vector={children,16,nullptr,"_ST_m_AnimOverlay_15"};
+        length={&length_prop,1,nullptr,"_LPT_m_AnimOverlay_15"};layer={fields,5,nullptr,"DT_Animationlayer"};
+        nested(parent,"m_AnimOverlay",&vector);nested(children[0],"lengthproxy",&length);
+        children[0].table_proxy=&layer_reserve_recv;children[0].extra=&binding;
+        anim_recv(length_prop,"lengthprop15",0,0,&layer_length_recv);length_prop.extra=&binding;
+        for(int i=0;i<overlay_limit;++i){
+            auto& p=children[i+1];nested(p,names[i],&layer);
+            p.stride=i;p.table_proxy=&layer_element_recv;p.extra=&binding;
+        }
+        anim_recv(fields[0],"sequence",0);
+        anim_recv(fields[1],"cycle",20,1);
+        anim_recv(fields[2],"prevcycle",4,1);
+        anim_recv(fields[3],"weight",8,1);
+        anim_recv(fields[4],"order",12);
+        return true;
+    }
+};
+
+int __cdecl create_overlay(const OverlayRecvBindings* b,OverlayRecvView* out) noexcept {
+    if(!b||!out||!overlay_empty(*out))return 0;
+    auto* g=new(std::nothrow) OverlayRecvGraph;
+    if(!g)return 0;
+    if(!g->build(*b)){delete g;return 0;}
+    *out={g,&g->overlay,&g->vector,&g->length,&g->layer};return 1;
+}
+int __cdecl destroy_overlay(OverlayRecvView* v) noexcept {
+    if(!v||!v->handle)return 0;
+    auto* g=static_cast<OverlayRecvGraph*>(v->handle);
+    if(!overlay_matches(*g,*v))return 0;
+    for(const auto* t:{&g->overlay,&g->vector,&g->length,&g->layer})
+        if(t->decoder||t->initialized||t->in_main_list)return 0;
+    delete g;*v={};return 1;
+}
+const OverlayRecvApi overlay_api{version,sizeof(OverlayRecvApi),&create_overlay,&destroy_overlay};
 #else
 #error Native weapon graph requires one explicit module role
 #endif
@@ -734,6 +895,12 @@ SiN_GetFlexSendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(FlexSendApi)?&flex_api:nullptr;
 }
+#pragma comment(linker,"/EXPORT:SiN_GetOverlaySendGraphApi=_SiN_GetOverlaySendGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::OverlaySendApi* __cdecl
+SiN_GetOverlaySendGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(OverlaySendApi)?&overlay_api:nullptr;
+}
 #else
 #pragma comment(linker,"/EXPORT:SiN_GetWeaponRecvGraphApi=_SiN_GetWeaponRecvGraphApi")
 #pragma comment(linker,"/EXPORT:SiN_GetInventoryRecvGraphApi=_SiN_GetInventoryRecvGraphApi")
@@ -758,5 +925,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::FlexRecvA
 SiN_GetFlexRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(FlexRecvApi)?&flex_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetOverlayRecvGraphApi=_SiN_GetOverlayRecvGraphApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::OverlayRecvApi* __cdecl
+SiN_GetOverlayRecvGraphApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(OverlayRecvApi)?&overlay_api:nullptr;
 }
 #endif

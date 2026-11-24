@@ -469,4 +469,99 @@ inline void check_flex_graph(const FlexSendApi& sa,const FlexRecvApi& ra,const A
     assert(asa.destroy(&av)&&ara.destroy(&arv));
 }
 
+struct OverlayFixture {
+    alignas(4) unsigned char storage[15*64]{};
+    unsigned reserves=0,resizes=0;
+    bool fail=false;
+};
+inline int __cdecl reserve_layers(void* opaque,void* entity,int off,int stride,int count) noexcept {
+    auto& f=*static_cast<OverlayFixture*>(opaque);
+    ++f.reserves;if(f.fail)return 0;
+    auto* address=static_cast<unsigned char*>(entity)+off;
+    LayerVector v{};std::memcpy(&v,address,sizeof(v));
+    assert(count==15&&(stride==32||stride==64));
+    if(v.memory!=f.storage){
+        if(v.memory&&v.count)std::memcpy(f.storage,v.memory,static_cast<unsigned>(v.count*stride));
+        v.memory=f.storage;
+    }
+    v.capacity=count;v.elements=v.memory;
+    std::memset(v.memory+v.count*stride,0,static_cast<unsigned>((count-v.count)*stride));
+    std::memcpy(address,&v,sizeof(v));return 1;
+}
+inline int __cdecl resize_layers(void* opaque,void* entity,int off,int stride,int count) noexcept {
+    auto& f=*static_cast<OverlayFixture*>(opaque);
+    ++f.resizes;if(f.fail)return 0;
+    assert(off==0x7a4&&stride==32&&count>=0&&count<=15);
+    auto* address=static_cast<unsigned char*>(entity)+off;
+    LayerVector v{};std::memcpy(&v,address,sizeof(v));
+    if(v.capacity<count){if(!reserve_layers(opaque,entity,off,stride,15))return 0;std::memcpy(&v,address,sizeof(v));}
+    v.count=count;std::memcpy(address,&v,sizeof(v));return 1;
+}
+inline void check_overlay_graph(const OverlaySendApi& sa,const OverlayRecvApi& ra,
+        const AnimSendApi& asa,const AnimRecvApi& ara,const FlexSendApi& fsa,const FlexRecvApi& fra){
+    OverlayFixture sf,cf;
+    OverlaySendBindings sb{&sf,&reserve_layers};OverlayRecvBindings rb{&cf,&reserve_layers,&resize_layers};
+    OverlaySendView sv{};OverlayRecvView rv{};
+    auto bad=rb;bad.resize=nullptr;assert(!ra.create(&bad,&rv)&&!rv.handle);
+    assert(sa.create(&sb,&sv)&&ra.create(&rb,&rv));
+    assert(sv.overlay_vars->count==1&&rv.overlay_vars->count==1&&sv.vector_table->count==16&&rv.vector_table->count==16);
+    assert(sv.layer->count==5&&rv.layer->count==5);
+    assert(std::strcmp(sv.vector_table->name,"_ST_m_AnimOverlay_15")==0&&
+        std::strcmp(rv.length_table->name,"_LPT_m_AnimOverlay_15")==0);
+    assert(sv.overlay_vars->props[0].table==sv.vector_table&&rv.overlay_vars->props[0].table==rv.vector_table);
+    s::SendProp seprops[24];s::SendTable se;assert(se.Construct(seprops,24,"DT_BaseEntity"));
+    RecvProp ceprops[24];RecvTable ce{ceprops,24,nullptr,"DT_BaseEntity"};
+    sin_independent::EntityHandleEntry entries[1]{};
+    AnimSendView av{};AnimRecvView arv{};
+    AnimSendBindings ab{&se,entries,1};AnimRecvBindings arb{&ce};
+    assert(asa.create(&ab,&av)&&ara.create(&arb,&arv));
+    FlexSendView fv{};FlexRecvView frv{};
+    FlexSendBindings fb{av.base_animating,sv.overlay_vars};FlexRecvBindings frb{arv.base_animating,rv.overlay_vars};
+    assert(fsa.create(&fb,&fv)&&fra.create(&frb,&frv));
+    assert(fv.overlay->props[1].table==sv.overlay_vars&&frv.overlay->props[1].table==rv.overlay_vars);
+    alignas(4) unsigned char server[0x4a8]{},client[0x7b8]{};
+    LayerVector sh{sf.storage,15,0,3,sf.storage},ch{};
+    std::memcpy(server+0x494,&sh,sizeof(sh));std::memcpy(client+0x7a4,&ch,sizeof(ch));
+    sf.storage[8]=0x53;
+    auto& sl=sv.vector_table->props[0];auto& cl=rv.vector_table->props[0];
+    s::Recipients mask{};mask.words[0]=0x22;
+    assert(sl.tableProxy(&sl,server,server,&mask,1)==server&&sf.reserves==1&&sf.storage[8]==0x53&&mask.words[0]==0x22);
+    void* dest=nullptr;cl.table_proxy(&cl,&dest,client,1);assert(dest==client&&cf.reserves==1);
+    auto& lp=sv.length_table->props[0];auto& lr=rv.length_table->props[0];
+    s::DVariant value{};lp.scalarProxy(&lp,server,server,&value,0,1);
+    assert(value.words[0]==3);
+    RecvData d{&lr,value,0,1};lr.proxy(&d,client,client);
+    std::memcpy(&ch,client+0x7a4,sizeof(ch));assert(ch.count==3&&ch.capacity==15&&cf.resizes==1);
+    lr.proxy(&d,client,client);assert(cf.resizes==1);
+    d.value.words[0]=16;lr.proxy(&d,client,client);assert(cf.resizes==1);
+    // Every numbered child resolves its vector element by stored index,
+    // including reserved dormant slots beyond the logical count.
+    const int so[]={8,12,16,24,52},co[]={0,20,4,8,12};
+    for(int i=0;i<15;++i){
+        auto& sp=sv.vector_table->props[i+1];auto& rp=rv.vector_table->props[i+1];
+        assert(std::strcmp(sp.name,rp.name)==0&&sp.stride==i&&rp.stride==i&&sp.offset==0&&rp.offset==0&&sp.flags==0x200);
+        auto* src=static_cast<unsigned char*>(sp.tableProxy(&sp,server,server,&mask,1));
+        rp.table_proxy(&rp,&dest,client,1);
+        assert(src==sf.storage+i*64&&dest==cf.storage+i*32);
+        for(int j=0;j<5;++j){
+            auto& a=sv.layer->props[j];auto& b=rv.layer->props[j];
+            assert(a.offset==so[j]&&b.offset==co[j]&&std::strcmp(a.name,b.name)==0);
+            const std::uint32_t v=(j==0||j==4)?static_cast<unsigned>(i):0x3f000000u+static_cast<unsigned>(i);
+            std::memcpy(src+a.offset,&v,4);a.scalarProxy(&a,src,src+a.offset,&value,i,1);
+            d={&b,value,i,1};b.proxy(&d,dest,static_cast<unsigned char*>(dest)+b.offset);
+            assert(!std::memcmp(static_cast<unsigned char*>(dest)+b.offset,&v,4));
+        }
+    }
+    d={&lr,{},0,1};d.value.words[0]=1;lr.proxy(&d,client,client);
+    std::memcpy(&ch,client+0x7a4,sizeof(ch));assert(ch.count==1&&cf.resizes==2);
+    sf.fail=true;assert(!sl.tableProxy(&sl,server,server,&mask,1));
+    cf.fail=true;cl.table_proxy(&cl,&dest,client,1);assert(!dest);
+    sv.vector_table->props[15].stride=15;assert(!sv.vector_table->props[15].tableProxy(&sv.vector_table->props[15],server,server,&mask,1));
+    rv.vector_table->props[15].stride=-1;rv.vector_table->props[15].table_proxy(&rv.vector_table->props[15],&dest,client,1);assert(!dest);
+    assert(fsa.destroy(&fv)&&fra.destroy(&frv)&&asa.destroy(&av)&&ara.destroy(&arv));
+    sv.layer->initialized=true;rv.length_table->decoder=&cf;
+    assert(!sa.destroy(&sv)&&!ra.destroy(&rv));sv.layer->initialized=false;rv.length_table->decoder=nullptr;
+    assert(sa.destroy(&sv)&&ra.destroy(&rv));
+}
+
 }

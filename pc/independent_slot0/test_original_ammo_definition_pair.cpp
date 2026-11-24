@@ -86,6 +86,14 @@ int main(int argc,char** argv){
     assert(flexSend&&flexRecv&&!getFlexSend(0,sizeof(tables::FlexSendApi))&&!getFlexRecv(1,0));
     tables::test::check_flex_graph(*flexSend,*flexRecv,*animSend,*animRecv,*invSend,*invRecv);
     std::puts("PASS native paired BaseFlex and BaseAnimatingOverlay graphs (64 numbered elements)");
+    const auto getOverlaySend=reinterpret_cast<tables::GetOverlaySendApi>(GetProcAddress(server,tables::overlay_send_export));
+    const auto getOverlayRecv=reinterpret_cast<tables::GetOverlayRecvApi>(GetProcAddress(client,tables::overlay_recv_export));
+    assert(getOverlaySend&&getOverlayRecv&&!GetProcAddress(client,tables::overlay_send_export)&&!GetProcAddress(server,tables::overlay_recv_export));
+    const auto* overlaySend=getOverlaySend(1,sizeof(tables::OverlaySendApi));
+    const auto* overlayRecv=getOverlayRecv(1,sizeof(tables::OverlayRecvApi));
+    assert(overlaySend&&overlayRecv&&!getOverlaySend(0,sizeof(tables::OverlaySendApi))&&!getOverlayRecv(1,0));
+    tables::test::check_overlay_graph(*overlaySend,*overlayRecv,*animSend,*animRecv,*flexSend,*flexRecv);
+    std::puts("PASS native paired dynamic animation-layer vector graph and host capacity/length callbacks");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }
