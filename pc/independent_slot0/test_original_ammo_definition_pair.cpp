@@ -62,6 +62,14 @@ int main(int argc,char** argv){
     const auto* resolved=getResolved(1,sizeof(tables::ResolvedSendApi));assert(resolved);
     tables::test::check_resolved(*resolved);
     std::puts("PASS native resolved weapon owner/recipient callbacks and stale handle rejection");
+    const auto getInventorySend=reinterpret_cast<tables::GetInventorySendApi>(GetProcAddress(server,tables::inventory_send_export));
+    const auto getInventoryRecv=reinterpret_cast<tables::GetInventoryRecvApi>(GetProcAddress(client,tables::inventory_recv_export));
+    assert(getInventorySend&&getInventoryRecv);
+    const auto* invSend=getInventorySend(1,sizeof(tables::InventorySendApi));
+    const auto* invRecv=getInventoryRecv(1,sizeof(tables::InventoryRecvApi));
+    assert(invSend&&invRecv);
+    tables::test::check_inventory_graph(*invSend,*invRecv);
+    std::puts("PASS native paired inventory Array3 graphs (80 numbered elements, BCC recipient callbacks)");
     assert(FreeLibrary(server)&&FreeLibrary(client));
     std::puts("PASS actual native client/server ammo definition parity (17/17)");
 }

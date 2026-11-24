@@ -108,4 +108,35 @@ using GetSendApi=const SendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcep
 using GetRecvApi=const RecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using ResolvedSendApi=GraphApi<ResolvedSendBindings,SendView>;
 using GetResolvedSendApi=const ResolvedSendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Actual Array3 graphs, not DPT_Array. The ammo parent property is a
+// component for the unfinished 27-property DT_LocalPlayerExclusive.
+inline constexpr char inventory_send_export[]="SiN_GetInventorySendGraphApi";
+inline constexpr char inventory_recv_export[]="SiN_GetInventoryRecvGraphApi";
+struct InventorySendBindings {
+    s::SendTable* base_flex;
+    void* engine_server;
+    const sin_independent::EntityHandleEntry* entries;
+    std::uint32_t entry_count;
+    const void* edict_base;
+    std::uint32_t max_clients;
+};
+struct InventoryRecvBindings {RecvTable* base_flex;};
+template<class Table,class Prop> struct InventoryView {
+    void* handle;
+    Table* ammo_table;
+    Table* weapons_table;
+    Table* combat_local;
+    Table* combat_base;
+    Prop* ammo_property;
+};
+struct InventorySendView:InventoryView<s::SendTable,s::SendProp> {
+    // Original object-ID recipient proxy for the future BasePlayer
+    // localdata parent. Caller must use it only on compatible storage.
+    s::TableProxy player_local_proxy;
+};
+using InventoryRecvView=InventoryView<RecvTable,RecvProp>;
+using InventorySendApi=GraphApi<InventorySendBindings,InventorySendView>;
+using InventoryRecvApi=GraphApi<InventoryRecvBindings,InventoryRecvView>;
+using GetInventorySendApi=const InventorySendApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using GetInventoryRecvApi=const InventoryRecvApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
