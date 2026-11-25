@@ -11971,6 +11971,80 @@ int __cdecl animation_scene_frame(void* actor,unsigned bytes,void* record,unsign
     *out=1;return 1;
 }
 const ServerAnimationSceneFrameApi server_animation_scene_frame_api{version,sizeof(ServerAnimationSceneFrameApi),&animation_scene_frame};
+bool animation_priority_storage(const ServerAnimationSceneFrameBindings* b,std::uint32_t token,unsigned need,void*& data,bool write=false) noexcept {
+    unsigned n=0;data=nullptr;
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->storage&&token&&
+        b->storage(b->context,token,&data,&n)&&n>=need&&
+        (write?hologram_writable(data,need):sin_independent::vgui_layout::Readable(data,need));
+}
+int __cdecl animation_priority_channel(const void* ca,unsigned bytes,std::uint32_t channel,const ServerAnimationSceneFrameBindings* b,int* out) noexcept {
+    if(bytes<0x110||!sin_independent::vgui_layout::Readable(ca,0x110)||!hologram_writable(out,4))return 0;
+    const int count=hologram_read<int>(ca,0x10c);
+    if(count>4096)return 0;
+    *out=-1;if(count<=0)return 1;
+    void* rows=nullptr;
+    if(!animation_priority_storage(b,hologram_read<std::uint32_t>(ca,0x100),count*4,rows))return 0;
+    for(int i=0;i<count;++i)if(hologram_read<std::uint32_t>(rows,i*4)==channel){*out=i;break;}
+    return 1;
+}
+int __cdecl animation_priority_prefix(const void* actor,unsigned bytes,std::uint32_t scene,const ServerAnimationSceneFrameBindings* b,std::uint32_t* out) noexcept {
+    if(bytes<0x5fc||!sin_independent::vgui_layout::Readable(actor,0x5fc)||!hologram_writable(out,4))return 0;
+    const int count=hologram_read<int>(actor,0x5f8);
+    if(count>4096)return 0;
+    std::uint32_t sum=0;
+    if(count>0){
+        void* rows=nullptr;
+        if(!animation_priority_storage(b,hologram_read<std::uint32_t>(actor,0x5ec),count*4,rows))return 0;
+        for(int i=0;i<count;++i){
+            const auto token=hologram_read<std::uint32_t>(rows,i*4);
+            if(!token)continue;
+            if(token==scene)break;
+            void* parsed=nullptr;
+            if(!animation_priority_storage(b,token,0x38,parsed))return 0;
+            sum+=hologram_read<std::uint32_t>(parsed,0x34);
+        }
+    }
+    *out=sum;return 1;
+}
+int __cdecl animation_priority_reorder(void* actor,unsigned bytes,int layer,int priority,float now,const ServerAnimationSceneFrameBindings* b) noexcept {
+    if(bytes<0x4a4||!sin_independent::vgui_layout::Readable(actor,0x4a4)||!std::isfinite(now))return 0;
+    const int count=hologram_read<int>(actor,0x4a0);
+    if(count>4096)return 0;
+    if(layer<0||layer>=count)return 1;
+    void* data=nullptr;
+    if(!animation_priority_storage(b,hologram_read<std::uint32_t>(actor,0x494),count*0x40,data,true))return 0;
+    auto row=[&](int i){return static_cast<unsigned char*>(data)+i*0x40;};
+    auto* selected=row(layer);
+    if(!(selected[0]&1)||hologram_read<int>(selected,0x30)==priority)return 1;
+    // Restrict malformed order integers to avoid signed overflow in portable C++.
+    for(int i=0;i<count;++i)if(row(i)[0]&1){
+        const int order=hologram_read<int>(row(i),0x34);
+        if(order<0||order>0x100000)return 0;
+    }
+    const int old=hologram_read<int>(selected,0x34);
+    for(int i=0;i<count;++i)if((row(i)[0]&1)&&hologram_read<int>(row(i),0x34)>old)
+        hologram_write(row(i),0x34,hologram_read<int>(row(i),0x34)-1);
+    int insertion=0;
+    for(int i=0;i<count;++i)if(i!=layer&&(row(i)[0]&1)&&hologram_read<int>(row(i),0x30)<=priority){
+        const int next=hologram_read<int>(row(i),0x34)+1;
+        if(next>=insertion)insertion=next;
+    }
+    for(int i=0;i<count;++i)if(i!=layer&&(row(i)[0]&1)&&hologram_read<int>(row(i),0x34)>=insertion)
+        hologram_write(row(i),0x34,hologram_read<int>(row(i),0x34)+1);
+    hologram_write(selected,0x34,insertion);hologram_write(selected,0x30,priority);hologram_write(selected,0x3c,now);
+    return 1;
+}
+int __cdecl animation_priority_refresh(void* actor,unsigned bytes,const void* record,unsigned rb,float now,const ServerAnimationSceneFrameBindings* b) noexcept {
+    if(bytes<0x601||rb<0x40||!sin_independent::vgui_layout::Readable(actor,0x601)||!sin_independent::vgui_layout::Readable(record,0x40))return 0;
+    if(!hologram_read<unsigned char>(actor,0x600))return 1;
+    std::uint32_t prefix=0;
+    if(!animation_priority_prefix(actor,bytes,hologram_read<std::uint32_t>(record,4),b,&prefix))return 0;
+    const std::uint32_t bits=prefix+hologram_read<std::uint32_t>(record,0x14);
+    int priority=0;std::memcpy(&priority,&bits,4);
+    return animation_priority_reorder(actor,bytes,hologram_read<int>(record,0x10),priority,now,b);
+}
+const ServerAnimationPriorityApi server_animation_priority_api{version,sizeof(ServerAnimationPriorityApi),
+    &animation_priority_channel,&animation_priority_prefix,&animation_priority_reorder,&animation_priority_refresh};
 
 ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
     return *static_cast<ServerNpcSceneRecordBindings*>(p);
@@ -14040,6 +14114,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerAnimationPriorityApi=_SiN_GetServerAnimationPriorityApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationPriorityApi* __cdecl
+SiN_GetServerAnimationPriorityApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationPriorityApi)?&server_animation_priority_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcAnimationRecordApi=_SiN_GetServerNpcAnimationRecordApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcAnimationRecordApi* __cdecl

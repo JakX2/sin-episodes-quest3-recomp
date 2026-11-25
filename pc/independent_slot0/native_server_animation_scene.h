@@ -72,4 +72,21 @@ struct ServerNpcAnimationRecordApi {
     int (__cdecl *adapt)(const ServerNpcAnimationRecordBindings*,ActorEventRecordBindings*) noexcept;
 };
 using GetServerNpcAnimationRecordApi=const ServerNpcAnimationRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_animation_priority_export[]="SiN_GetServerAnimationPriorityApi";
+struct ServerAnimationPriorityApi {
+    std::uint32_t version,size;
+    // 22107170: channel index in choreography actor, -1 if absent.
+    int (__cdecl *channel)(const void* choreo_actor,unsigned,std::uint32_t channel,
+        const ServerAnimationSceneFrameBindings*,int*) noexcept;
+    // 220f7cc0: preceding attached scenes' +34 count, stopping at current.
+    int (__cdecl *prefix)(const void* actor,unsigned,std::uint32_t scene,
+        const ServerAnimationSceneFrameBindings*,std::uint32_t*) noexcept;
+    // 220f3a60: priority insertion into active layer order.
+    int (__cdecl *reorder)(void* actor,unsigned,int layer,int priority,float now,
+        const ServerAnimationSceneFrameBindings*) noexcept;
+    // Recompute from record+14 and scene prefix when actor+600 is enabled.
+    int (__cdecl *refresh)(void* actor,unsigned,const void* record,unsigned,float now,
+        const ServerAnimationSceneFrameBindings*) noexcept;
+};
+using GetServerAnimationPriorityApi=const ServerAnimationPriorityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
