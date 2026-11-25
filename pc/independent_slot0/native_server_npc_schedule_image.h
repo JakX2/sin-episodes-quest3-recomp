@@ -138,4 +138,14 @@ struct ServerNpcObservationCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,ServerNpcObservationCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcObservationCatalogSchedulerApi=const ServerNpcObservationCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_sound_cover_catalog_scheduler_export[]="SiN_GetServerNpcSoundCoverCatalogSchedulerApi";
+struct ServerNpcSoundCoverCatalogSchedulerResult {
+    ServerNpcObservationCatalogSchedulerResult observation;
+    ServerNpcSharedSoundCoverStats sound_cover;
+};
+struct ServerNpcSoundCoverCatalogSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,ServerNpcSoundCoverCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcSoundCoverCatalogSchedulerApi=const ServerNpcSoundCoverCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -1,0 +1,2 @@
+# Phase 1108: original sound-cover catalog integration
+Original SCHED_GRUNT_TAKE_COVER_FROM_BEST_SOUND (94 index4) uses task97 parameter0. Native shared deferred Start and recovered Run stage0/1 now integrated. Runtime class identity rebound and component precedence retained. Actual original schedule cursor fixture covers stage increment, rejected navigation goal retry, accepted goal and deadline, unchanged cursor pending engine progression. New opt-in API retains prior export layouts. Navigation effects explicit; no generic physics or rendering. CI pending.
