@@ -683,6 +683,8 @@ int main(int argc,char** argv){
     const auto* sceneMetadataIndex=getSceneMetadataIndex(1,sizeof(tables::SceneMetadataIndexApi));
     assert(sceneMetadataIndex&&!getSceneMetadataIndex(0,sizeof(tables::SceneMetadataIndexApi))&&!getSceneMetadataIndex(1,0));
     tables::test::check_scene_metadata_index(*sceneMetadataIndex);
+    tables::test::check_persistent_scene_cache_owner(*sceneMetadataIndex,*sceneResponseServices,*responseSceneFilter);
+    std::puts("PASS persistent multi-file scene cache owner, aliases, invalidation and teardown");
     std::puts("PASS native scene filename cache index construction and rollback");
     const auto getSceneMetadataGeneration=reinterpret_cast<tables::GetSceneMetadataGenerationApi>(GetProcAddress(server,tables::scene_metadata_generation_export));
     assert(getSceneMetadataGeneration&&!GetProcAddress(client,tables::scene_metadata_generation_export));
