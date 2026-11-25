@@ -302,6 +302,132 @@ struct VcdAuditArena {
         return true;
     }
 };
+// Bridge the real native VCD parser to metadata generation and original
+// cache admission. Filename index and sound emitter remain test leaves.
+struct VcdMetadataFixture {
+    using F=ScenePlaybackFixture;
+    VcdAuditArena& arena;
+    const NativeVcdRuntimeApi& runtime;
+    const SceneMetadataGenerationApi& generation;
+    const SceneResponseServicesApi& services;
+    const ResponseSceneFilterApi& filter;
+    const char* path;const char* data;unsigned length;
+    alignas(4) unsigned char metadata[0x1c]{},row[16]{},cache[0x50]{},exp[0x7c]{};
+    int npc=0;
+    std::uint32_t stamp=7;
+    unsigned loads=0,parses=0,refreshes=0,destroys=0,expected_count=0;
+    float expected_duration=0;
+    std::vector<std::uint32_t> expected_ids;
+    SceneMetadataGenerationBindings generate{};
+    SceneResponseServicesBindings service{};
+    static VcdMetadataFixture& get(void* p){return *static_cast<VcdMetadataFixture*>(p);}
+    static std::uint32_t sound_id(const char* p) noexcept{
+        // Deterministic fixture sound-emitter ID, not an original engine ID.
+        std::uint32_t id=2166136261u;while(*p){id^=static_cast<unsigned char>(*p++);id*=16777619u;}
+        return id==0xffffffffu?0xfffffffeu:id;
+    }
+    VcdMetadataFixture(VcdAuditArena& a,const NativeVcdRuntimeApi& r,const SceneMetadataGenerationApi& g,
+        const SceneResponseServicesApi& s,const ResponseSceneFilterApi& f,const char* name,const char* text,unsigned n):
+        arena(a),runtime(r),generation(g),services(s),filter(f),path(name),data(text),length(n){
+        F::put(exp,4,F::ptr(&npc));F::put(row,8,0xfffffffeu);F::put(row,0xc,1);F::put(cache,0x48,1);
+        generate.context=this;generate.events.context=this;
+        generate.load=[](void* p,const char* name,char** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);if(std::strcmp(name,f.path))return 0;
+            void* text=nullptr;unsigned extent=0;
+            if(!f.arena.allocate(&f.arena,f.length+1,&text,&extent))return 0;
+            std::memcpy(text,f.data,f.length);*out=static_cast<char*>(text);*bytes=f.length;++f.loads;return 1;};
+        generate.release_text=[](void* p,char* text) noexcept -> int{
+            auto& f=get(p);return f.arena.release(&f.arena,F::ptr(text));};
+        generate.parse=[](void* p,const char* name,const char* data,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);f.arena.counter=0;f.expected_ids.clear();f.expected_count=0;f.expected_duration=0;
+            auto b=f.arena.runtime();std::uint32_t word=0;
+            if(f.runtime.parse(nullptr,name,data,n,&b,&word)!=1||!word)return 0;
+            if(!f.arena.storage(&f.arena,word,out,bytes)){f.runtime.destroy(word,&b);return 0;}
+            ++f.parses;
+            // Independently inspect the actual graph before returning it.
+            void* rows=nullptr;unsigned count=0;
+            if(!f.arena.rows(*out,0,4,rows,count))return 0;
+            try{
+                for(unsigned i=0;i<count;++i){
+                    void* e=nullptr;if(!f.arena.child(rows,i,0x3c0,e))return 0;
+                    auto time=VcdAuditArena::read_float(e,F::word(e,0x188)==0xbf800000u?0x184:0x188);
+                    if(time>f.expected_duration)f.expected_duration=time;
+                    if(F::word(e,0)!=5||F::word(e,0x34c))continue;
+                    const auto* raw=static_cast<const char*>(e);
+                    char token[64]{};
+                    std::strncpy(token,raw[0x350]?raw+0x350:raw+0x84,sizeof(token)-1);
+                    f.expected_ids.push_back(sound_id(token));
+                }
+            }catch(...){return 0;}
+            f.expected_count=static_cast<unsigned>(f.expected_ids.size());return 1;};
+        generate.destroy_parsed=[](void* p,void* graph,unsigned) noexcept -> int{
+            auto& f=get(p);auto b=f.arena.runtime();++f.destroys;return f.runtime.destroy(F::ptr(graph),&b)==1;};
+        generate.events.event=[](void* p,void* graph,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);void* rows=nullptr;unsigned count=0;
+            if(!f.arena.rows(graph,0,4,rows,count)||i>=count||!f.arena.child(rows,i,0x3c0,*out))return 0;
+            *bytes=0x3c0;return 1;};
+        generate.sound_index=[](void*,const char* token,std::uint32_t* out) noexcept -> int{*out=sound_id(token);return 1;};
+        generate.grow=[](void* p,void* vec,unsigned additional) noexcept -> int{
+            auto& f=get(p);return f.arena.grow(&f.arena,vec,additional,4);};
+        generate.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);return f.arena.storage(&f.arena,word,out,bytes);};
+        generate.missing=[](void*,const char*) noexcept -> int{return 0;};
+        service.context=this;service.cache=cache;service.cache_bytes=sizeof(cache);
+        service.storage=[](void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);if(word!=F::ptr(&f.npc))return 0;*out=&f.npc;*bytes=sizeof(f.npc);return 1;};
+        service.model_name=[](void*,void*,const char** out) noexcept -> int{*out=nullptr;return 1;};
+        service.expand=[](void*,const char*,const char* name,char* out,unsigned n) noexcept -> int{
+            const auto len=std::strlen(name);if(len>=n)return 0;std::memcpy(out,name,len+1);return 1;};
+        service.row=[](void* p,const char* name,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);if(std::strcmp(name,f.path))return 0;*out=f.row;*bytes=sizeof(f.row);return 1;};
+        service.stamp=[](void* p,const char*,unsigned mode,std::uint32_t* out) noexcept -> int{
+            if(mode!=1)return 0;*out=get(p).stamp;return 1;};
+        service.metadata=[](void* p,std::uint32_t index,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);if(index!=1)return 0;*out=f.metadata;*bytes=sizeof(f.metadata);return 1;};
+        service.refresh=[](void* p,void* meta,const char* path) noexcept -> int{
+            auto& f=get(p);if(meta!=f.metadata)return 0;++f.refreshes;return f.generation.refresh(meta,sizeof(f.metadata),path,&f.generate)==1;};
+    }
+    bool verify() noexcept{
+        ResponseSceneFilterBindings b{};
+        if(services.adapt(&service,&b)!=1)return false;
+        unsigned allowed=99;
+        if(filter.allow(exp,sizeof(exp),&b,3,path,&allowed)!=1||allowed!=(expected_duration>0)||
+           VcdAuditArena::read_float(metadata,4)!=expected_duration||F::word(metadata,0x14)!=expected_count)return false;
+        const auto word=F::word(metadata,8);
+        if(expected_count){
+            void* rows=nullptr;unsigned bytes=0;
+            if(!arena.storage(&arena,word,&rows,&bytes)||bytes<expected_count*4||
+               std::memcmp(rows,expected_ids.data(),expected_count*4))return false;
+        }
+        return arena.live.size()==(word?1u:0u)&&loads==parses&&parses==destroys&&destroys==refreshes;
+    }
+    bool run(bool repeat_refresh=false) noexcept{
+        bool ok=verify()&&refreshes==1&&verify()&&refreshes==1;
+        if(ok&&repeat_refresh){++stamp;F::put(row,8,0xfffffffeu);ok=verify()&&refreshes==2;}
+        const auto word=F::word(metadata,8);
+        const bool released=arena.release(&arena,word)!=0;
+        return ok&&released&&arena.live.empty();
+    }
+};
+inline void check_native_vcd_metadata(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
+    const SceneMetadataGenerationApi& generation,const SceneResponseServicesApi& services,const ResponseSceneFilterApi& filter){
+    const char text[]=R"VCD(actor Jessica {
+ channel Voice {
+  event speak greeting {
+   time 0 2
+   param Jessica.Greeting
+  }
+  event speak repeat {
+   time 2 4
+   param Jessica.Greeting
+  }
+ }
+}
+)VCD";
+    VcdMetadataFixture f(arena,runtime,generation,services,filter,"scenes/fixture.vcd",text,sizeof(text)-1);
+    assert(f.run(true)&&f.expected_duration==4&&f.expected_count==2&&f.expected_ids[0]==f.expected_ids[1]);
+}
+
 // Exercise the composed runtime through the named NPC engine boundary,
 // with real parsed graphs instead of manually populated parsed objects.
 struct VcdOwnedPlaybackFixture {
@@ -3544,10 +3670,10 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     std::puts("PASS owned VCD named NPC startup, nested precache, actor association and retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,
-    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline){
+    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline,const SceneMetadataGenerationApi* generation=nullptr,const SceneResponseServicesApi* services=nullptr,const ResponseSceneFilterApi* filter=nullptr){
     namespace fs=std::filesystem;std::error_code ec;
     const fs::path root(directory);
-    unsigned files=0,passed=0;VcdAuditCounts sum;
+    unsigned files=0,passed=0,metadata_passed=0;VcdAuditCounts sum;
     fs::recursive_directory_iterator it(root,ec),end;
     if(ec){std::fprintf(stderr,"VCD audit cannot open directory: %s\n",directory);return false;}
     for(;it!=end;it.increment(ec)){
@@ -3564,11 +3690,17 @@ inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFi
         VcdAuditArena arena(c,s,t,d,st,si,va);VcdAuditCounts stats;
         arena.intensity=&intensity;arena.spline=&spline;
         if(arena.parse_runtime(runtime,name.c_str(),data.data(),static_cast<unsigned>(data.size()),stats)){++passed;sum.add(stats);}
+        if(generation&&services&&filter){
+            VcdAuditArena metadata_arena(c,s,t,d,st,si,va);
+            VcdMetadataFixture meta(metadata_arena,runtime,*generation,*services,*filter,name.c_str(),data.data(),static_cast<unsigned>(data.size()));
+            if(meta.run())++metadata_passed;else std::fprintf(stderr,"VCD METADATA FAIL %s\n",name.c_str());
+        }
     }
     std::printf("VCD AUDIT files=%u passed=%u actors=%u channels=%u events=%u tracks=%u samples=%u scales=%u missing=%u\n",
         files,passed,sum.actors,sum.channels,sum.events,sum.tracks,sum.samples,sum.scales,sum.missing);
     std::printf("FACIAL AUDIT expression=%u flex=%u ramps=%u intensity_evals=%u spline_evals=%u\n",
         sum.expressions,sum.flex_events,sum.facial_ramps,sum.intensity_evals,sum.spline_evals);
-    return !ec&&files>0&&passed==files;
+    if(generation&&services&&filter)std::printf("VCD METADATA AUDIT files=%u passed=%u\n",files,metadata_passed);
+    return !ec&&files>0&&passed==files&&(!(generation&&services&&filter)||metadata_passed==files);
 }
 }
