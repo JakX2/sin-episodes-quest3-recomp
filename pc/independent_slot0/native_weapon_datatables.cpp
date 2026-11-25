@@ -19,6 +19,7 @@
 #include "native_server_npc_random_expression.h"
 #include "native_server_composed_facial_think.h"
 #include "native_server_facial_records.h"
+#include "native_server_npc_weapon_scene.h"
 #include "native_server_vfe_remap.h"
 #include "native_server_named_facial_think.h"
 #include "native_server_vfe_cache.h"
@@ -11641,6 +11642,85 @@ int __cdecl server_retail_facial_record_adapt(const ServerFacialRecordBindings* 
 }
 const ServerFacialRecordApi server_retail_facial_record_api{version,sizeof(ServerFacialRecordApi),&server_retail_facial_record_adapt};
 
+bool npc_weapon_scene_record(const void* record,unsigned rb,const void* event,unsigned eb) noexcept {
+    return rb>=0x40&&eb>=0x18c&&sin_independent::vgui_layout::Readable(record,0x40)&&
+        sin_independent::vgui_layout::Readable(event,0x18c);
+}
+bool npc_weapon_scene_subtype(const void* record,const void* event) noexcept {
+    const auto type=hologram_read<unsigned>(event,0),subtype=hologram_read<unsigned>(record,0x38);
+    return type==16&&(subtype==2||subtype==3);
+}
+int __cdecl npc_weapon_scene_begin(void* actor,unsigned bytes,void* record,unsigned rb,const void* event,unsigned eb,
+    const ServerNpcWeaponSceneBindings* b) noexcept {
+    if(!npc_weapon_scene_record(record,rb,event,eb)||!hologram_writable(record,0x40))return -1;
+    if(hologram_read<unsigned>(event,0)!=16)return 0;
+    const auto* name=static_cast<const char*>(event)+0x84;
+    if(!std::memchr(name,0,128))return -1;
+    const bool holster=vfe_detail::equal(name,"AI_HOLSTER"),unholster=vfe_detail::equal(name,"AI_UNHOLSTER");
+    if(!holster&&!unholster)return 0;
+    if(bytes<0x790||!sin_independent::vgui_layout::Readable(actor,0x790)||!b||
+       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->gesture)return -1;
+    const auto h=*b;
+    if(holster&&!h.active)return -1;
+    if(unholster&&(!h.weapon_at||!h.select))return -1;
+    hologram_write(record,0x38,holster?2u:3u);
+    hologram_write(record,0x10,-1);
+    std::uint32_t weapon=0;int layer=-1;
+    if(holster){
+        if(!h.active(h.context,actor,&weapon))return -1;
+        if(!weapon)return 1;
+        if(!h.gesture(h.context,actor,0x45,1,&layer))return -1;
+        hologram_write(record,0x10,layer);return 1;
+    }
+    // Original 222aa500 returns 48 slots; first resolved handle wins.
+    for(unsigned i=0;i<48;++i){
+        if(!h.weapon_at(h.context,actor,i,&weapon))return -1;
+        if(!weapon)continue;
+        if(!h.gesture(h.context,actor,0x44,1,&layer))return -1;
+        hologram_write(record,0x10,layer);
+        // Original calls the slot resolver again after creating the gesture.
+        if(!h.weapon_at(h.context,actor,i,&weapon)||!h.select(h.context,actor,weapon))return -1;
+        return 1;
+    }
+    return 1;
+}
+int __cdecl npc_weapon_scene_noop(const void* record,unsigned rb,const void* event,unsigned eb,unsigned* out) noexcept {
+    if(!npc_weapon_scene_record(record,rb,event,eb)||!hologram_writable(out,4))return -1;
+    if(!npc_weapon_scene_subtype(record,event))return 0;
+    *out=1;return 1;
+}
+int __cdecl npc_weapon_scene_check(void* actor,unsigned bytes,const void* record,unsigned rb,const void* event,unsigned eb,float time,
+    const ServerNpcWeaponSceneBindings* b,unsigned* out) noexcept {
+    if(!npc_weapon_scene_record(record,rb,event,eb)||!hologram_writable(out,4))return -1;
+    if(!npc_weapon_scene_subtype(record,event))return 0;
+    const int layer=hologram_read<int>(record,0x10);
+    // 22028641 checks -1 before reading the scene time.
+    if(layer==-1){*out=1;return 1;}
+    const float end=hologram_read<float>(event,0x188);
+    const float remaining=static_cast<float>(static_cast<double>(end)-time);
+    if(!std::isfinite(remaining))return -1;
+    if(remaining<=0){*out=1;return 1;}
+    if(bytes<0x4a4||!sin_independent::vgui_layout::Readable(actor,0x4a4)||!b||
+       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->duration)return -1;
+    const auto h=*b;
+    const int count=hologram_read<int>(actor,0x4a0);int sequence=-1;float cycle=0;
+    if(count<0||count>4096)return -1;
+    if(layer>=0&&layer<count){
+        void* rows=nullptr;unsigned n=0;const auto token=hologram_read<std::uint32_t>(actor,0x494);
+        if(!h.storage||!token||!h.storage(h.context,token,&rows,&n)||n<static_cast<unsigned>(count)*0x40||
+           !sin_independent::vgui_layout::Readable(rows,static_cast<unsigned>(count)*0x40))return -1;
+        const auto* row=static_cast<const unsigned char*>(rows)+layer*0x40;
+        if(row[0]&1){sequence=hologram_read<int>(row,8);cycle=hologram_read<float>(row,0xc);}
+    }
+    double duration=0;
+    // The original duration service handles invalid sequence -1 and returns its fallback.
+    if(!h.duration(h.context,actor,sequence,&duration)||!std::isfinite(duration)||!std::isfinite(cycle))return -1;
+    *out=(1.0-static_cast<double>(cycle))*duration<=remaining?1u:0u;
+    return 1;
+}
+const ServerNpcWeaponSceneApi server_npc_weapon_scene_api{version,sizeof(ServerNpcWeaponSceneApi),&npc_weapon_scene_begin,&npc_weapon_scene_check,&npc_weapon_scene_noop};
+
+
 
 
 
@@ -13597,6 +13677,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcWeaponSceneApi=_SiN_GetServerNpcWeaponSceneApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWeaponSceneApi* __cdecl
+SiN_GetServerNpcWeaponSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcWeaponSceneApi)?&server_npc_weapon_scene_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerRetailFacialRecordApi=_SiN_GetServerRetailFacialRecordApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFacialRecordApi* __cdecl
