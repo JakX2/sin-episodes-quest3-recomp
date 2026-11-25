@@ -64,6 +64,17 @@ public:
         if(script_busy_||!entries_.empty()||script_store_.owner||script_store_.system||!shared_scene_filter_bound_)return false;
         shared_scene_filter_={};shared_scene_filter_bound_=false;return true;
     }
+    // Shared raw playback resource is independent of metadata admission.
+    // The caller owns the cache and must keep it alive until unbound.
+    bool bind_script_raw_scene_cache(const npc::NamedSceneCacheBindings& cache) noexcept{
+        if(!script_ready()||script_busy_||!entries_.empty()||script_store_.owner||script_store_.system||
+           shared_raw_cache_bound_||!cache.ensure||!cache.find||!cache.lock||!cache.reload||!cache.unlock)return false;
+        shared_raw_cache_=cache;shared_raw_cache_bound_=true;return true;
+    }
+    bool unbind_script_raw_scene_cache() noexcept{
+        if(script_busy_||!entries_.empty()||script_store_.owner||script_store_.system||!shared_raw_cache_bound_)return false;
+        shared_raw_cache_={};shared_raw_cache_bound_=false;return true;
+    }
     bool is_live(EntityRef e)const override{return engine_.is_live(e);}
     bool create_entity(std::string_view name,EntityRef& e)override{
         const char* names[]={"npc_jessica","npc_count","npc_generic_actor","npc_jc"};
@@ -134,6 +145,17 @@ public:
                     auto& local=bound.selection.finder.host.scene_filter;
                     if(local.context||local.storage||local.resolve_name||local.metadata)return NpcMapResult::Rejected;
                     local=shared_scene_filter_;
+                }
+                // The DLL consumes these tables synchronously; only the
+                // persistent engine leaves and resource owner are borrowed.
+                npc::NativeGeneratedResponseBindings generated{};
+                npc::NativeNamedPlaybackBindings named{};
+                if(shared_raw_cache_bound_){
+                    if(!bound.generated||!bound.generated->named)return NpcMapResult::Rejected;
+                    generated=*bound.generated;named=*generated.named;
+                    auto& local=named.precache.load.cache;
+                    if(local.context||local.ensure||local.find||local.lock||local.reload||local.unlock)return NpcMapResult::Rejected;
+                    local=shared_raw_cache_;generated.named=&named;bound.generated=&generated;
                 }
                 return status(script_->observe(kind,c,session_,b,d,manager,&bound,record,bytes));
             }
@@ -266,7 +288,8 @@ private:
     const npc::ScriptResponseFinderApi* script_finder_=nullptr;
     npc::ScriptResponseStore script_store_{};
     npc::ResponseSceneFilterBindings shared_scene_filter_{};
-    bool shared_scene_filter_bound_=false,script_busy_=false;
+    npc::NamedSceneCacheBindings shared_raw_cache_{};
+    bool shared_scene_filter_bound_=false,shared_raw_cache_bound_=false,script_busy_=false;
     std::map<std::uint32_t,Entry> entries_;
 };
 }
