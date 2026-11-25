@@ -1,0 +1,3 @@
+# Phase 952: no-match response ownership
+
+Original 220a39e2 branches to 220a3a47 on finder false, skipping 2205d490 plus free at 220a3a37. 2209b2c4 still invokes 2205d9d0 response assignment, which allocates a 92-byte criteria copy. Replacement deliberately destroys its owned response on every finder miss, including any copy owned by the response. Existing host destroy contract remains consuming on invocation; failed destruction still attempts end_criteria and does not publish result. Loaded regression exercises eight repeated misses, failure in destroy, normal empty response, and existing hit/chance/cleanup branches. This is intentional defensive divergence from retail allocation behavior, not a byte-equivalence claim. CI pending.
