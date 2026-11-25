@@ -60,6 +60,9 @@ int main(int argc,char** argv){
     f.seed();
     ClientOverlayHistorySelection s{};
     assert(api->select(1,1,2.75f,.25f,&f.b,&s)&&s.newer==f.nodes&&s.older==f.nodes+1&&s.earlier==f.nodes+2&&s.hermite&&close_float(s.fraction,.5f));
+    f.nodes[2].time=1.99995f;
+    assert(api->select(1,1,2.75f,.25f,&f.b,&s)&&s.earlier==f.nodes+2&&!s.hermite);
+    f.nodes[2].time=1.f;
     assert(api->select(1,0x11,2.75f,.25f,&f.b,&s)&&!s.earlier&&!s.hermite);
     assert(api->select(1,1,4.f,0.f,&f.b,&s)&&s.newer==s.older&&s.newer==f.nodes);
     assert(api->select(1,1,.5f,0.f,&f.b,&s)&&s.newer==s.older&&s.newer==f.nodes+2);

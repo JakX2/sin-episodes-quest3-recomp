@@ -38,7 +38,7 @@ int __cdecl select(std::uint32_t head,int type,float time,float delay,const Clie
                         auto* p=b->resolve(b->context,node->next);
                         if(!p||p==node||p==s.newer||!std::isfinite(p->time))return 0;
                         s.earlier=p;
-                        s.hermite=static_cast<double>(target)-p->time>0.0001f;
+                        s.hermite=static_cast<double>(node->time)-p->time>0.0001f;
                     }
                 }
             }
