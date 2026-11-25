@@ -63,6 +63,25 @@ struct ServerAnimationFrameClockApi {
     int (__cdecl *run)(void* actor,unsigned,float now,unsigned npc,const ServerAnimationFrameClockBindings*) noexcept;
 };
 using GetServerAnimationFrameClockApi=const ServerAnimationFrameClockApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_base_animation_cycle_export[]="SiN_GetServerBaseAnimationCycleApi";
+struct ServerBaseAnimationCycleBindings {
+    ChoreographyVectorBindings vectors;
+    void* context;
+    // 220eeec0, 220eede0, 220eece0: resolved sequence metadata.
+    int (__cdecl *finish_threshold)(void*,void*,int,double*) noexcept;
+    int (__cdecl *duration)(void*,void*,int,double*) noexcept;
+    int (__cdecl *movement_distance)(void*,void*,int,double*) noexcept;
+    // 2214b620 (physics dirty notification flag 8) and 220fc5a0 /
+    // 22101af0 bone-cache refresh/invalidation with current clock.
+    int (__cdecl *invalidate)(void*,void*,unsigned) noexcept;
+    int (__cdecl *cache)(void*,void*,std::uint32_t,float) noexcept;
+};
+struct ServerBaseAnimationCycleApi {
+    std::uint32_t version,size;
+    // 220f17f0. Signed delta, sticky completion byte, base movement rate.
+    int (__cdecl *step)(void* actor,unsigned bytes,float delta,float now,const ServerBaseAnimationCycleBindings*) noexcept;
+};
+using GetServerBaseAnimationCycleApi=const ServerBaseAnimationCycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_animation_scene_frame_export[]="SiN_GetServerAnimationSceneFrameApi";
 struct ServerAnimationSceneFrameBindings {
     void* context;

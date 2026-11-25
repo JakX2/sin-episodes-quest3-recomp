@@ -252,6 +252,11 @@ int main(int argc,char** argv){
         const auto* frameClock=getFrameClock(1,sizeof(ft::ServerAnimationFrameClockApi));
         assert(frameClock&&!getFrameClock(0,sizeof(ft::ServerAnimationFrameClockApi))&&!getFrameClock(1,0));
         ft::test::check_animation_frame_clock(*frameClock,*layerOwner);
+        const auto getBaseCycle=reinterpret_cast<ft::GetServerBaseAnimationCycleApi>(GetProcAddress(server,ft::server_base_animation_cycle_export));
+        assert(getBaseCycle&&!GetProcAddress(client,ft::server_base_animation_cycle_export));
+        const auto* baseCycle=getBaseCycle(1,sizeof(ft::ServerBaseAnimationCycleApi));
+        assert(baseCycle&&!getBaseCycle(0,sizeof(ft::ServerBaseAnimationCycleApi))&&!getBaseCycle(1,0));
+        ft::test::check_base_animation_cycle(*baseCycle);
         if(argc==5&&!ft::test::audit_original_animation_layers(argv[4],*layerOwner)){
             std::fprintf(stderr,"ORIGINAL ANIMATION LAYER AUDIT failed\n");return 1;
         }
