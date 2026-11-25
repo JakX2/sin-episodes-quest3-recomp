@@ -35,6 +35,7 @@ int main(int argc,char** argv){
     auto& adv=b.advance;adv.context=&f;adv.base.context=&f;adv.layers.context=&f;
     adv.layers.vectors.context=&f;
     adv.layers.vectors.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);if(w!=F::word(f.rows))return 0;*out=f.rows;*n=sizeof(f.rows);return 1;};
+    adv.layers.vectors.resize=[](void*,std::uint32_t,unsigned,void**,unsigned*) noexcept -> int{return 0;};
     adv.base.vectors=adv.layers.vectors;
     adv.base.duration=[](void*,void*,int seq,double* out) noexcept -> int{assert(seq==9);*out=2.;return 1;};
     adv.base.finish_threshold=[](void*,void*,int seq,double* out) noexcept -> int{assert(seq==9);*out=.9;return 1;};
