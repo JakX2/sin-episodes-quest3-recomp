@@ -12,10 +12,12 @@
 #include <limits>
 using namespace sin_port::native_weapon_tables;
 struct F{
-    alignas(4) unsigned char actor[0xc04]{},desc[0x48]{},schedule[0x30]{},enemy[4]{},replacement[4]{};
+    alignas(4) unsigned char actor[0xc1c]{},desc[0x48]{},schedule[0x30]{},enemy[0xc0]{},replacement[0xc0]{};
     unsigned char memory[0x40]{},nodes[48]{},record[0x38]{},fallback[0x38]{};
     sin_independent::EntityHandleEntry entries[3]{};
     unsigned clears=0,changes=0,lost=0,squad=0;int query=-1;
+    int rank[2]{0,0},disp[2]{1,1};bool valid[2]{true,true},unreachable[2]{false,false},visible[2]{true,true};float distance[2]{10,20};
+    unsigned idx(void* e){assert(e==enemy||e==replacement);return e==enemy?0u:1u;}
     template<class T>void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
     template<class T>T get(unsigned off){T v{};std::memcpy(&v,actor+off,sizeof(v));return v;}
     void condition(int id){unsigned off=0x7cc+4*(id/32);put(actor,off,get<unsigned>(off)|(1u<<(id%32)));}
@@ -121,5 +123,42 @@ int main(int argc,char** argv){
     f.nodes[1]=4;assert(!mem->lookup(f.memory,sizeof(f.memory),0x90000000u,true,&mb,&ml));f.nodes[1]=2;
     f.memory[0x10]=255;assert(mem->lookup(f.memory,sizeof(f.memory),1,true,&mb,&ml)&&!ml.record&&ml.fallback_attempted&&!ml.visited);
     f.put(f.memory,0x18,0u);assert(!mem->lookup(f.memory,sizeof(f.memory),1,true,&mb,&ml));
+    auto gb=reinterpret_cast<GetServerNpcBestEnemyApi>(GetProcAddress(s,server_npc_best_enemy_export));
+    assert(gb&&!GetProcAddress(c,server_npc_best_enemy_export)&&!gb(0,sizeof(ServerNpcBestEnemyApi))&&!gb(1,0));
+    const auto* best=gb(1,sizeof(ServerNpcBestEnemyApi));assert(best);
+    ServerNpcBestEnemyBindings bb{};bb.context=&f;bb.memory.context=&f;bb.memory.entries=f.entries;bb.memory.count=3;
+    bb.memory.storage=mb;bb.memory.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);switch(token){case 100:*out=f.nodes;*n=sizeof(f.nodes);return 1;case 101:*out=f.record;*n=sizeof(f.record);return 1;case 102:*out=f.fallback;*n=sizeof(f.fallback);return 1;case 103:*out=f.memory;*n=sizeof(f.memory);return 1;default:return 0;}
+    };
+    bb.memory.entity_key=[](void* p,void* e,std::uint32_t* key) noexcept -> int{*key=F::self(p).idx(e)+1000;return 1;};
+    bb.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xc0;return 1;};
+    bb.disposition=[](void* p,void*,void* e,int* v) noexcept -> int{auto& f=F::self(p);*v=f.disp[f.idx(e)];return 1;};
+    bb.valid=[](void* p,void*,void* e,bool* v) noexcept -> int{auto& f=F::self(p);*v=f.valid[f.idx(e)];return 1;};
+    bb.unreachable=[](void* p,void*,void* e,bool* v) noexcept -> int{auto& f=F::self(p);*v=f.unreachable[f.idx(e)];return 1;};
+    bb.priority=[](void* p,void*,void* e,int* v) noexcept -> int{auto& f=F::self(p);*v=f.rank[f.idx(e)];return 1;};
+    bb.origin=[](void* p,void* e,float* v) noexcept -> int{auto& f=F::self(p);v[0]=e==f.actor?0:f.distance[f.idx(e)];v[1]=v[2]=0;return 1;};
+    bb.sensed=[](void*,std::uint32_t,void*,bool* v) noexcept -> int{*v=false;return 1;};
+    bb.visible=[](void* p,void*,void* e,unsigned mask,bool* v) noexcept -> int{auto& f=F::self(p);assert(mask==0x4081);*v=f.visible[f.idx(e)];return 1;};
+    bb.component_best=[](void* p,std::uint32_t token,void** v) noexcept -> int{assert(token==77);*v=F::self(p).replacement;return 1;};
+    f.put(f.memory,0x18,0x22068b40u);f.memory[0x10]=0;node(0,255,1,1000,101);node(1,255,255,1001,102);
+    std::memset(f.record,0,sizeof(f.record));std::memset(f.fallback,0,sizeof(f.fallback));
+    f.put(f.record,0,0x7001u);f.put(f.fallback,0,0x8002u);f.put(f.actor,0x984,103u);f.put(f.actor,0x8c4,0.f);f.put(f.actor,0xc18,0u);
+    ServerNpcBestEnemyResult br{};auto pick=[&](){assert(best->select(f.actor,sizeof(f.actor),40,&bb,&br));};
+    pick();assert(br.enemy==f.enemy&&br.visited==2&&br.distance_squared==100&&br.visible);
+    f.rank[1]=5;pick();assert(br.enemy==f.replacement&&br.priority==5&&br.distance_squared==400&&br.replaced==2);
+    f.unreachable[1]=true;pick();assert(br.enemy==f.enemy&&br.unreachable_rejected==1);
+    f.unreachable[0]=true;f.unreachable[1]=false;f.rank[0]=9;pick();assert(br.enemy==f.replacement&&!br.unreachable);
+    f.unreachable[0]=false;f.rank[0]=f.rank[1]=0;f.visible[0]=false;pick();assert(br.enemy==f.replacement&&br.visible);
+    f.visible[0]=true;f.visible[1]=false;f.distance[1]=5;pick();assert(br.enemy==f.enemy);
+    f.visible[1]=true;pick();assert(br.enemy==f.replacement&&br.distance_squared==25);
+    f.put(f.actor,0x8c4,10.f);f.put(f.record,0x1c,9.f);f.put(f.fallback,0x1c,10.f);pick();assert(br.enemy==f.replacement&&br.old==1);
+    f.put(f.fallback,0x28,41.f);pick();assert(!br.enemy&&br.not_yet_valid==1);
+    f.put(f.fallback,0x28,40.f);f.fallback[0x35]=1;pick();assert(!br.enemy&&br.eluded==1);f.fallback[0x35]=0;
+    f.put(f.fallback,0,0x9002u);pick();assert(!br.enemy&&br.stale==1);f.put(f.fallback,0,0x8002u);
+    f.put(f.replacement,0x8c,1);pick();assert(!br.enemy&&br.dead==1);f.put(f.replacement,0x8c,0);
+    f.valid[1]=false;pick();assert(!br.enemy&&br.invalid==1);f.valid[1]=true;
+    f.disp[1]=3;pick();assert(!br.enemy&&br.disposition_rejected==1);f.disp[1]=1;
+    f.put(f.actor,0xc18,77u);pick();assert(br.component_called&&br.enemy==f.replacement&&!br.visited);f.put(f.actor,0xc18,0u);
+    f.nodes[13]=0;assert(!best->select(f.actor,sizeof(f.actor),40,&bb,&br));f.nodes[13]=255;
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

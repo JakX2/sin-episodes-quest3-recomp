@@ -92,4 +92,29 @@ struct ServerNpcEnemyMemoryQueryApi {
     int (__cdecl *aim_vector)(void*,unsigned,const ServerNpcEnemyMemoryQueryBindings*,ServerNpcEnemyMemoryLookup*,float[3]) noexcept;
 };
 using GetServerNpcEnemyMemoryQueryApi=const ServerNpcEnemyMemoryQueryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_best_enemy_export[]="SiN_GetServerNpcBestEnemyApi";
+struct ServerNpcBestEnemyBindings {
+    ServerNpcEnemyMemoryQueryBindings memory;
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *disposition)(void*,void*,void*,int*) noexcept; // +3c0
+    int (__cdecl *valid)(void*,void*,void*,bool*) noexcept; // +51c
+    int (__cdecl *unreachable)(void*,void*,void*,bool*) noexcept; // +620
+    int (__cdecl *priority)(void*,void*,void*,int*) noexcept; // +3c4
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept;
+    int (__cdecl *sensed)(void*,std::uint32_t,void*,bool*) noexcept; // 220a2410
+    int (__cdecl *visible)(void*,void*,void*,unsigned,bool*) noexcept; // +1f0
+    int (__cdecl *component_best)(void*,std::uint32_t,void**) noexcept; // +9c
+};
+struct ServerNpcBestEnemyResult {
+    void* enemy;
+    int priority,distance_squared;
+    unsigned unreachable,visible,visited,stale,dead,disposition_rejected,invalid,old,not_yet_valid,eluded,feared,unreachable_rejected,replaced,component_called;
+};
+struct ServerNpcBestEnemyApi {
+    std::uint32_t version,size;
+    // 2203d3e0 / 2216e1f0. Storage/tree must remain stable during callbacks.
+    int (__cdecl *select)(void*,unsigned,float,const ServerNpcBestEnemyBindings*,ServerNpcBestEnemyResult*) noexcept;
+};
+using GetServerNpcBestEnemyApi=const ServerNpcBestEnemyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
