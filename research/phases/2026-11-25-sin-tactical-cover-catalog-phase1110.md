@@ -1,0 +1,2 @@
+# Phase 1110: tactical-cover catalog integration
+Original SCHED_GRUNT_GRENADE_COVER1 task103 at index2 passes minimum384. Composes original tactical-cover service only on delegated Start98/101/102/103; subclass-owned Task98 still wins. Actual class identity and entity registry rebound through the scheduler. Original catalog fixture checks min384/default max768, type7 accepted goal and TaskComplete. Existing APIs unchanged; native decision path does not replace engine search or navigation. CI pending.
