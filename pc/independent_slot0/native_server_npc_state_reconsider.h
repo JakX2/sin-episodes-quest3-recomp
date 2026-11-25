@@ -381,4 +381,26 @@ struct ServerNpcGruntEnemySwitchApi {
     int (__cdecl *update)(void*,unsigned,float,const ServerNpcGruntEnemySwitchBindings*,ServerNpcGruntEnemySwitchResult*) noexcept;
 };
 using GetServerNpcGruntEnemySwitchApi=const ServerNpcGruntEnemySwitchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_speech_export[]="SiN_GetServerNpcGruntSpeechApi";
+enum ServerNpcGruntSpeechKind : unsigned {NpcGruntLost=0,NpcGruntRefind=1,NpcGruntAlert=2};
+struct ServerNpcGruntSpeechBindings {
+    ServerNpcEnemyMemoryQueryBindings memory;
+    void* context;
+    std::uint32_t original_vtable;
+    // Original 220a35c0. Return adapter success separately from signed speech result.
+    int (__cdecl *emit)(void*,void*,unsigned,const char*,int,int,int*) noexcept;
+    int (__cdecl *random)(void*,float,float,float*) noexcept;
+};
+struct ServerNpcGruntSpeechResult {
+    const char* cue;
+    unsigned suppressed,emitted,cooldown_written,enemy_live,memory_found;
+    int speech_result;
+    float last_seen,deadline;
+};
+struct ServerNpcGruntSpeechApi {
+    std::uint32_t version,size;
+    // 223588b0,22358950,22358970; emit receives actor and speech member offset cc0.
+    int (__cdecl *speak)(void*,unsigned,unsigned,float,const ServerNpcGruntSpeechBindings*,ServerNpcGruntSpeechResult*) noexcept;
+};
+using GetServerNpcGruntSpeechApi=const ServerNpcGruntSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
