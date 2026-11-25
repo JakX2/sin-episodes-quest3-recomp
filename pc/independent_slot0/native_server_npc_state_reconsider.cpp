@@ -1308,6 +1308,73 @@ int __cdecl perception_tick(void* actor,unsigned bytes,float now,const ServerNpc
     if(!grunt_enemy_switch_impl(actor,bytes,now,&b->enemy_switch,&out->enemy_switch,&visual.senses))return 0;
     out->completed=1;return 1;
 }
+int __cdecl combat_visibility_query(void* actor,unsigned bytes,void* target,unsigned mask,const ServerNpcGruntCombatVisibilityBindings* b,ServerNpcGruntCombatVisibilityResult* out) noexcept{
+    if(!out)return 0;*out={};out->blocker=0xffffffffu;
+    if(!actor||bytes<0x988||!target||!b||!relation_grunt_class(b->original_vtable)||
+       b->memory.count>sin_independent::kEntityHandleCapacity||(b->memory.count&&!b->memory.entries))return 0;
+    if(read<std::uint8_t>(actor,0xb6)&1u){
+        unsigned key=0,n=0;void* memory=nullptr;ServerNpcEnemyMemoryControlResult cr{};
+        if(!memory_key(b->memory,target,key)||!memory_storage(&b->memory.storage,read<unsigned>(actor,0x984),0x1c,memory,n)||
+           !memory_control(memory,n,key,NpcMemoryEluded,0,0,&b->memory.storage,&cr))return 0;
+        if(cr.value){out->suppressed=1;return 1;}
+    }
+    bool visible=false;void* blocker=nullptr;
+    if(!b->trace||!b->trace(b->context,actor,target,mask,&visible,&blocker))return 0;
+    out->traced=1;out->visible=visible;
+    if(!visible&&blocker){
+        if(!b->entity_handle||!b->entity_handle(b->context,blocker,&out->blocker)||
+           sin_independent::EntityHandleView(b->memory.entries,b->memory.count).Resolve(out->blocker)!=blocker)return 0;
+    }
+    return 1;
+}
+int __cdecl combat_visibility_gather(void* actor,unsigned bytes,void* target,const ServerNpcGruntCombatVisibilityBindings* b,ServerNpcGruntCombatVisibilityResult* out) noexcept{
+    if(!out)return 0;*out={};out->blocker=0xffffffffu;
+    if(!actor||bytes<0x990||!target||!b||!relation_grunt_class(b->original_vtable))return 0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto store=[&](int id,bool value){
+        ServerNpcConditionResult cr{};if(!cond->store(actor,bytes,id,NpcConditionCurrent,value,&b->conditions,&cr))return false;
+        if(value)out->sets+=cr.mapped;else out->cleared+=cr.changed;return true;
+    };
+    for(int id:{0x1b,0x1c,0xe,0xc})if(!store(id,false))return 0;
+    write(actor,0x98c,0xffffffffu);
+    ServerNpcGruntCombatVisibilityResult query{};
+    if(!combat_visibility_query(actor,bytes,target,0x4081,b,&query))return 0;
+    out->suppressed=query.suppressed;out->traced=query.traced;out->visible=query.visible;out->blocker=query.blocker;
+    out->previous_visible=(read<unsigned>(actor,0x988)&0x20000u)!=0;
+    auto emit=[&](unsigned offset,bool value,std::uint32_t handle){
+        if(!b->fire_output||!b->fire_output(b->context,actor,offset,value,handle))return false;
+        ++out->outputs;return true;
+    };
+    auto current=[&](){return static_cast<void*>(sin_independent::EntityHandleView(b->memory.entries,b->memory.count).Resolve(read<unsigned>(actor,0x8a0)));};
+    if(!out->visible){
+        write(actor,0x98c,out->blocker);
+        if(!store(0xc,true)||!store(0xa,false))return 0;
+        if(out->previous_visible){
+            void* e=current();bool special=false;
+            if(!e||!b->special_target||!b->special_target(b->context,e,&special))return 0;
+            if(special&&!emit(0xaf0,false,0xffffffffu))return 0;
+            if(!emit(0xaa8,false,0xffffffffu))return 0;
+        }
+        write(actor,0x988,read<unsigned>(actor,0x988)&~0x20000u);
+    }else{
+        if(!store(0xe,true))return 0;
+        bool yes=false;if(!b->in_view||!b->in_view(b->context,actor,target,&yes))return 0;
+        out->in_view=yes;if(!store(0xa,yes))return 0;
+        if(!out->previous_visible){
+            void* e=current();std::uint32_t handle=0xffffffffu;bool special=false;
+            if(!e||!b->entity_handle||!b->entity_handle(b->context,e,&handle)||!b->special_target||!b->special_target(b->context,e,&special))return 0;
+            if(special&&!emit(0xad8,true,handle))return 0;
+            if(!emit(0xa90,true,handle))return 0;
+        }
+        write(actor,0x988,read<unsigned>(actor,0x988)|0x20000u);
+    }
+    unsigned extent=0;if(!b->extent||!b->extent(b->context,target,&extent)||extent<0x90)return 0;
+    if(read<int>(target,0x8c)!=0){
+        out->dead=1;if(!store(0x1d,true)||!store(0xa,false)||!store(0xc,false))return 0;
+    }
+    return 1;
+}
+const ServerNpcGruntCombatVisibilityApi combat_visibility_api{1,sizeof(ServerNpcGruntCombatVisibilityApi),&combat_visibility_query,&combat_visibility_gather};
 const ServerNpcGruntPerceptionTickApi tick_api{1,sizeof(ServerNpcGruntPerceptionTickApi),&perception_tick};
 const ServerNpcGruntSoundScanApi scan_api{1,sizeof(ServerNpcGruntSoundScanApi),&grunt_sound_scan};
 const ServerNpcGruntHearingApi hearing_api{1,sizeof(ServerNpcGruntHearingApi),&grunt_hearing_mask,&grunt_hearing_filter,&grunt_hearing_gather};
@@ -1492,4 +1559,10 @@ SiN_GetServerNpcGruntPerceptionTickApi(std::uint32_t version,std::uint32_t size)
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntHearingApi* __cdecl
 SiN_GetServerNpcGruntHearingApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntHearingApi)?&hearing_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatVisibilityApi=_SiN_GetServerNpcGruntCombatVisibilityApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatVisibilityApi* __cdecl
+SiN_GetServerNpcGruntCombatVisibilityApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatVisibilityApi)?&combat_visibility_api:nullptr;
 }
