@@ -668,6 +668,12 @@ int main(int argc,char** argv){
     assert(nativeModifiers&&!getNativeModifiers(0,sizeof(tables::ResponseNativeModifierApi))&&!getNativeModifiers(1,0));
     tables::test::check_response_native_modifiers(*nativeModifiers,*responseSelect);
     std::puts("PASS native bounded response modifiers and selection integration");
+    const auto getResponseSceneFilter=reinterpret_cast<tables::GetResponseSceneFilterApi>(GetProcAddress(server,tables::response_scene_filter_export));
+    assert(getResponseSceneFilter&&!GetProcAddress(client,tables::response_scene_filter_export));
+    const auto* responseSceneFilter=getResponseSceneFilter(1,sizeof(tables::ResponseSceneFilterApi));
+    assert(responseSceneFilter&&!getResponseSceneFilter(0,sizeof(tables::ResponseSceneFilterApi))&&!getResponseSceneFilter(1,0));
+    tables::test::check_response_scene_filter(*responseSceneFilter);
+    std::puts("PASS native response scene admission filter and cached duration policy");
     std::puts("PASS native response selection criteria, chance and ownership");
     const auto getResponseDispatch=reinterpret_cast<tables::GetResponseDispatchApi>(GetProcAddress(server,tables::response_dispatch_export));
     assert(getResponseDispatch&&!GetProcAddress(client,tables::response_dispatch_export));
