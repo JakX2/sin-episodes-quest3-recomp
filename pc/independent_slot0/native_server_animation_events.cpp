@@ -51,15 +51,7 @@ bool emit_interval(void* actor,void* receiver,int layer,const ServerAnimationEve
         b.emit(b.context,receiver,layer,&event);++result.emitted;
     }
 }
-int __cdecl dispatch(void* actor,unsigned bytes,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out) noexcept {
-    if(!out)return 0;
-    *out={};out->failed_layer=-2;
-    if(!actor||bytes<0x4a8||!receiver||!b||!b->sequence||!b->cycle_rate||!b->storage||!b->emit||!std::isfinite(now)||
-       !std::isfinite(read<float>(actor,0x28))||!std::isfinite(read<float>(actor,0x2c)))return 0;
-    const int count=read<int>(actor,0x4a0),capacity=read<int>(actor,0x498);
-    if(count<0||count>4096||capacity<count)return 0;
-    void* data=nullptr;unsigned extent=0;
-    if(count&&(!b->storage(b->context,read<std::uint32_t>(actor,0x494),&data,&extent)||!data||extent<static_cast<unsigned>(count)*0x40))return 0;
+bool dispatch_base_impl(void* actor,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out) noexcept {
     // 220eefe0: base metadata uses the source actor, not the receiver.
     out->failed_layer=-1;
     const float playback=read<float>(actor,0x3c0);
@@ -78,6 +70,24 @@ int __cdecl dispatch(void* actor,unsigned bytes,void* receiver,float now,const S
             if(!emit_interval(actor,receiver,-1,s,start,end,cycle,effective,now,*b,*out))return 0;
         }
     }
+    out->failed_layer=-2;return true;
+}
+int __cdecl dispatch_base(void* actor,unsigned bytes,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out) noexcept {
+    if(!out)return 0;*out={};out->failed_layer=-2;
+    if(!actor||bytes<0x3f0||!receiver||!b||!b->sequence||!b->cycle_rate||!b->emit||!std::isfinite(now)||
+       !std::isfinite(read<float>(actor,0x28))||!std::isfinite(read<float>(actor,0x2c)))return 0;
+    return dispatch_base_impl(actor,receiver,now,b,out);
+}
+int __cdecl dispatch(void* actor,unsigned bytes,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out) noexcept {
+    if(!out)return 0;
+    *out={};out->failed_layer=-2;
+    if(!actor||bytes<0x4a8||!receiver||!b||!b->sequence||!b->cycle_rate||!b->storage||!b->emit||!std::isfinite(now)||
+       !std::isfinite(read<float>(actor,0x28))||!std::isfinite(read<float>(actor,0x2c)))return 0;
+    const int count=read<int>(actor,0x4a0),capacity=read<int>(actor,0x498);
+    if(count<0||count>4096||capacity<count)return 0;
+    void* data=nullptr;unsigned extent=0;
+    if(count&&(!b->storage(b->context,read<std::uint32_t>(actor,0x494),&data,&extent)||!data||extent<static_cast<unsigned>(count)*0x40))return 0;
+    if(!dispatch_base_impl(actor,receiver,now,b,out))return 0;
     // 220f33c0: metadata and rate use receiver, frame clock/source use actor.
     for(int i=0;i<count;++i){
         auto* row=static_cast<unsigned char*>(data)+i*0x40;
@@ -99,6 +109,7 @@ int __cdecl dispatch(void* actor,unsigned bytes,void* receiver,float now,const S
     }
     out->failed_layer=-2;return 1;
 }
+const ServerBaseAnimationEventsApi base_api{1,sizeof(ServerBaseAnimationEventsApi),&dispatch_base};
 const ServerAnimationEventsApi api{1,sizeof(ServerAnimationEventsApi),&next,&dispatch};
 }
 }
@@ -107,4 +118,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAni
 SiN_GetServerAnimationEventsApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerAnimationEventsApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerBaseAnimationEventsApi=_SiN_GetServerBaseAnimationEventsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerBaseAnimationEventsApi* __cdecl
+SiN_GetServerBaseAnimationEventsApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerBaseAnimationEventsApi)?&base_api:nullptr;
 }
