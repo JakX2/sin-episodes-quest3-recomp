@@ -142,6 +142,29 @@ struct ServerNpcSharedCueApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedCueBindings*,ServerNpcSharedCueResult*) noexcept;
 };
 using GetServerNpcSharedCueApi=const ServerNpcSharedCueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_observation_export[]="SiN_GetServerNpcSharedObservationApi";
+struct ServerNpcSharedObservationBindings {
+    void* context;
+    std::uint32_t original_vtable;
+    // Component +c0; shared component_storage resolves the same token.
+    int (__cdecl *component_gate)(void*,std::uint32_t,bool*) noexcept;
+    int (__cdecl *pvs_query)(void*,std::uint32_t,bool*) noexcept; // 222895a0
+    int (__cdecl *target)(void*,void*,void**) noexcept; // +154
+    // 2206b1a0 lookup with fallback enabled; record +1c if found.
+    int (__cdecl *memory_record)(void*,std::uint32_t,void*,bool*,float*) noexcept;
+};
+struct ServerNpcSharedObservationResult {
+    ServerNpcSharedTaskResult shared;
+    unsigned gate_component,gate_handled,flag_gate,pvs_called,pvs,target_calls,memory_called,memory_found;
+    float last_seen;
+    double elapsed;
+};
+struct ServerNpcSharedObservationApi {
+    std::uint32_t version,size;
+    // Original Run6; Start6 is the deferred shared state route.
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedObservationBindings*,ServerNpcSharedObservationResult*) noexcept;
+};
+using GetServerNpcSharedObservationApi=const ServerNpcSharedObservationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedCueStats {ServerNpcSharedCueResult last;unsigned calls,native,components;};
 struct ServerNpcSharedMovementStats {ServerNpcSharedMovementResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTargetAnimationStats {ServerNpcSharedTargetAnimationResult last;unsigned calls,native,components;};

@@ -198,7 +198,7 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr) noexcept;
+int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr) noexcept;
 bool movement_supports(int id,bool running) noexcept{
     if(running)return id==116||id==121||id==122;
     return id==43||id==44||id==89||id==90||id==116||id==121||id==122;
@@ -379,7 +379,45 @@ int shared_cue(void* a,unsigned n,const ServerNpcScheduleTask& t,float now,const
     out.visible=gate;if(gate&&!emit("GRUNT_ASSAULT"))return 0;
     return complete();
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out) noexcept{
+int observation(void* a,unsigned n,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedObservationBindings& b,ServerNpcSharedObservationResult& out) noexcept{
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));if(!life)return 0;
+    auto complete=[&](){return life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle)!=0;};
+    bool gate=false,handled=false;
+    // Original +45c = 2216e2d0 for all eight known Grunt classes.
+    if(const auto token=rd<unsigned>(a,0xc18)){
+        void* component=nullptr;unsigned size=0;
+        if(!s.component_storage||!s.component_storage(s.context,token,&component,&size)||!component||size<9||!b.component_gate)return 0;
+        const auto old=rd<std::uint8_t>(component,8);wr<std::uint8_t>(component,8,1);
+        out.gate_component=1;
+        const int ok=b.component_gate(b.context,token,&gate);
+        handled=rd<std::uint8_t>(component,8)!=0;wr(component,8,old);
+        out.gate_handled=handled;if(!ok)return 0;
+    }
+    if(!handled)gate=(rd<unsigned>(a,0xb4)&0x400u)!=0;
+    out.flag_gate=gate;if(gate)return complete();
+    if(!b.pvs_query)return 0;
+    bool yes=false;out.pvs_called=1;
+    if(!b.pvs_query(b.context,rd<unsigned>(a,0x16c),&yes))return 0;
+    out.pvs=yes;if(yes)return complete();
+    if(rd<int>(a,0x850)!=3)return 1;
+    void* target=nullptr;if(!b.target)return 0;
+    ++out.target_calls;if(!b.target(b.context,a,&target))return 0;
+    if(!target)return 1;
+    ++out.target_calls;if(!b.target(b.context,a,&target))return 0;
+    // 2206b450 returns 0 for null, or -FLT_MAX on an absent record.
+    if(target){
+        const auto token=rd<unsigned>(a,0x984);
+        if(!token||!b.memory_record)return 0;
+        bool found=false;float stamp=0;out.memory_called=1;
+        if(!b.memory_record(b.context,token,target,&found,&stamp))return 0;
+        out.memory_found=found;
+        out.last_seen=found?stamp:-std::numeric_limits<float>::max();
+        if(!std::isfinite(out.last_seen))return 0;
+    }
+    out.elapsed=static_cast<double>(now)-out.last_seen;
+    return out.elapsed>=15.0||complete();
+}
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -394,6 +432,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
+    if(running&&t->id==6&&observe&&observe_out){out->native=1;return observation(a,n,now,*b,*observe,*observe_out);}
     if(!running&&t->id==84&&cue&&cue_out){out->native=1;return shared_cue(a,n,*t,now,*b,*cue,*cue_out);}
     if(movement_supports(t->id,running)&&move&&move_out){out->native=1;return movement(a,n,*t,running,now,*b,*move,*move_out,*out);}
     if(facing_supports(t->id,running)&&facing&&facing_out){out->native=1;return t->id==60?face60(a,n,running,now,*b,*facing,*facing_out):facing_alias(a,n,*t,running,now,*b,*facing,*facing_out);}
@@ -500,6 +539,12 @@ int __cdecl execute_cue(void* a,unsigned n,const ServerNpcScheduleTask* t,float 
     if(!t||t->id!=84||!cue||!grunt_cue_class(cue->original_vtable)||n<0xfcc)return 0;
     return execute_impl(a,n,t,false,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,cue,out);
 }
+int __cdecl execute_observation(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!t||t->id!=6||!observe||!grunt_cue_class(observe->original_vtable))return 0;
+    return execute_impl(a,n,t,true,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,observe,out);
+}
+const ServerNpcSharedObservationApi observation_api{1,sizeof(ServerNpcSharedObservationApi),&execute_observation};
 const ServerNpcSharedCueApi cue_api{1,sizeof(ServerNpcSharedCueApi),&execute_cue};
 const ServerNpcDifficultyWaitApi difficulty_wait_api{1,sizeof(ServerNpcDifficultyWaitApi),&execute_difficulty_wait};
 const ServerNpcSharedMovementApi movement_api{1,sizeof(ServerNpcSharedMovementApi),&execute_movement};
@@ -617,4 +662,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedCueApi=_SiN_GetServerNpcSharedCueApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedCueApi* __cdecl SiN_GetServerNpcSharedCueApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedCueApi)?&cue_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedObservationApi=_SiN_GetServerNpcSharedObservationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedObservationApi* __cdecl SiN_GetServerNpcSharedObservationApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedObservationApi)?&observation_api:nullptr;
 }
