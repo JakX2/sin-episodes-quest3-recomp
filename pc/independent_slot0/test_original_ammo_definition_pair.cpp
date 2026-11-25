@@ -1318,7 +1318,7 @@ int main(int argc,char** argv){
         const auto* scriptMap=getScriptMap(1,sizeof(tables::ScriptNpcMapDialogueApi));
         assert(scriptMap&&!getScriptMap(0,sizeof(tables::ScriptNpcMapDialogueApi))&&!getScriptMap(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::ScriptChoreographyTestApis scriptChoreography{*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*nativeSceneRetirement};
+        tables::test::ScriptChoreographyTestApis scriptChoreography{*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*nativeSceneRetirement,*startupSound};
         const char* privateScenes=std::getenv("SIN_PRIVATE_SCENES_DIR");
         if((!privateScenes||!*privateScenes)&&argc==4)privateScenes=argv[3];
         tables::test::RetailSceneAuditApis retailSceneAudit{*nativeVcdRuntime,*sceneMetadataGeneration,*sceneResponseServices,*sceneMetadataIndex,privateScenes};

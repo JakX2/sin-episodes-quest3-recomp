@@ -546,7 +546,7 @@ struct VcdOwnedPlaybackFixture {
     unsigned warmed=0;
     NativeNamedPlaybackBindings n{};
     SceneManagerSession manager{};
-    alignas(4) unsigned char scene[0x5ec]{},npc[0x604]{};
+    alignas(4) unsigned char scene[0x5ec]{},npc[0x1458]{};
     unsigned phase=0,locks=0,unlocks=0,sounds=0,stops=0;
     unsigned locked=0,cache_index=0;
     std::uint32_t root_word=0,child_word=0;
@@ -1145,6 +1145,7 @@ struct ScriptChoreographyTestApis {
     const ResolvedSceneActorApi& resolver;
     const SceneSpeechPreparationApi& preparation;
     const NativeSceneRetirementApi& retirement;
+    const ChoreographyStartupSoundApi& startup_sound;
 };
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
@@ -2173,6 +2174,92 @@ rule named_rule
                     assert(speak(nullptr)==1&&!played&&named.spawn_calls==1&&!actor.live);
                     assert(scriptFinder->release(&speech.selection.finder.store)==1&&actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
                     speech.generated=nullptr;actor.external_npc=nullptr;actor.external_bytes=0;
+                    if(retailScenes){
+                        // Same actual directory supplies admission metadata
+                        // and owned playback bytes. Separate arenas avoid
+                        // sharing graph sentinels across live parsed objects.
+                        TemporarySceneDirectory temp;assert(temp.open());
+                        assert(temp.write("scenes/root.vcd",VcdOwnedPlaybackFixture::root_text)&&
+                               temp.write("scenes/child.vcd",VcdOwnedPlaybackFixture::child_text));
+                        const auto dir=temp.path.string();auto apis=*retailScenes;apis.directory=dir.c_str();
+                        RetailSceneAudit audit(a,apis);assert(audit.open());
+                        VcdAuditArena playback_arena(a.constructors,a.symbol_api,a.tracks,a.destruction,a.scale_tree_api,a.intern_api,a.vectors);
+                        struct DirectoryPlayback:VcdOwnedPlaybackFixture {
+                            RetailSceneDirectory& files;std::string locked_bytes;
+                            DirectoryPlayback(VcdAuditArena& a,const ChoreographyStartupSoundApi& s,RetailSceneDirectory& f):
+                                VcdOwnedPlaybackFixture(a,s),files(f){}
+                            static DirectoryPlayback& get(void* p){return static_cast<DirectoryPlayback&>(VcdOwnedPlaybackFixture::self(p));}
+                        } playback(playback_arena,ap.startup_sound,audit.files);
+                        auto& cache=playback.n.precache.load.cache;
+                        cache.lock=[](void* p,std::uint32_t idx,const void** out,unsigned* n) noexcept -> int{
+                            auto& f=DirectoryPlayback::get(p);if(f.locked||idx!=f.cache_index||idx<1||idx>2)return 0;
+                            try{
+                                bool found=false;
+                                if(!f.files.read(idx==1?"scenes/root.vcd":"scenes/child.vcd",f.locked_bytes,found)||!found)return 0;
+                                f.locked=idx;++f.locks;*out=f.locked_bytes.data();*n=static_cast<unsigned>(f.locked_bytes.size());return 1;
+                            }catch(...){return 0;}};
+                        cache.unlock=[](void* p,std::uint32_t idx) noexcept -> int{
+                            auto& f=DirectoryPlayback::get(p);if(idx!=f.locked)return 0;f.locked=0;++f.unlocks;
+                            std::fill(f.locked_bytes.begin(),f.locked_bytes.end(),'!');f.locked_bytes.clear();return 1;};
+                        playback.n.playback.resolve_name=[](void* p,void* npc,const char* text,char* out,unsigned cap) noexcept -> int{
+                            auto& f=DirectoryPlayback::get(p);
+                            if(npc!=f.npc||std::strcmp(text,"scenes/root.vcd")||cap<12)return 0;
+                            std::strcpy(out,"Scenes/Root");return 1;};
+                        F::put(playback.npc,0xc,1);F::put(playback.npc,0x98,100);F::put(playback.npc,0x9c,80);
+                        actor.external_npc=playback.npc;actor.external_bytes=sizeof(playback.npc);
+                        F::put(actor.exp,4,F::ptr(playback.npc));audit.npc=playback.npc;audit.npc_bytes=sizeof(playback.npc);
+                        sf=audit.filter;
+                        const char source[]=R"(criterion idle concept TLK_IDLE required
+criterion actor classname npc_jessica required
+response line
+{
+ sequential
+ scene scenes/root.vcd delay 0.5
+}
+rule owned_named_rule
+{
+ criteria idle actor
+ response line
+ matchonce
+}
+)";
+                        assert(scriptFinder->create("owned_named",source,sizeof(source)-1,nullptr,&speech.selection.finder.store)==1);
+                        auto raw=playback_arena.runtime();
+                        NativeGeneratedResponseBindings owned_route{};
+                        owned_route.named=&playback.n;owned_route.named_vcd=&raw;
+                        owned_route.generated.lifecycle.manager=&playback.manager;
+                        owned_route.response.context=&playback;owned_route.response.manager=&playback.manager;
+                        owned_route.response.scenes=playback.n.lifecycle.runtime;
+                        owned_route.response.owner=[](void* p,void* exp,void** out) noexcept -> int{
+                            auto& f=DirectoryPlayback::get(p);if(F::word(exp,4)!=F::ptr(f.npc))return 0;*out=f.npc;return 1;};
+                        owned_route.response.retain_sound=[](void*,const char*,const char**) noexcept -> int{assert(false);return 0;};
+                        d.note_duration=[](void* p,void* e,float duration,float delay) noexcept -> int{
+                            auto& x=Actor::get(p);assert(e==x.current_exp()&&duration==4.f&&delay==.5f);++x.notes;return 1;};
+                        speech.generated=&owned_route;played=99;
+                        const auto allocs=actor.allocs,records=actor.records,notes=actor.notes;
+                        auto invalid=raw;invalid.allocate_object=nullptr;owned_route.named_vcd=&invalid;
+                        assert(speak(nullptr)==0&&played==99&&actor.allocs==allocs&&!audit.parses&&!playback.phase);
+                        owned_route.named_vcd=&raw;owned_route.named=nullptr;
+                        assert(speak(nullptr)==0&&played==99&&actor.allocs==allocs&&!audit.parses&&!playback.phase);
+                        owned_route.named=&playback.n;
+                        assert(!playback.n.precache.load.parse&&!playback.n.events);
+                        assert(speak(nullptr)==1&&played==1&&actor.records==records+1&&actor.notes==notes+1);
+                        assert(audit.parses==1&&audit.refreshes==1&&playback.phase==7&&playback.locks==2&&playback.unlocks==2);
+                        assert(F::word(actor.response,0)==3&&!std::strcmp(reinterpret_cast<char*>(actor.response+0xa4),"owned_named_rule"));
+                        assert(scriptActor->retire(&speech.selection,actor.recorded)==1);actor.recorded=nullptr;
+                        assert(scriptFinder->release(&speech.selection.finder.store)==1);
+                        assert(audit.close()&&playback.root_word&&playback.child_word);
+                        std::memset(actor.response,0xcc,sizeof(actor.response));
+                        assert(apis.runtime.remove(playback.scene,sizeof(playback.scene),&playback.n.lifecycle,&playback.n.stop,&raw)==1&&playback.phase==8);
+                        void* obj=nullptr;unsigned bytes=0;
+                        assert(!playback_arena.storage(&playback_arena,playback.root_word,&obj,&bytes)&&
+                               !playback_arena.storage(&playback_arena,playback.child_word,&obj,&bytes));
+                        assert(playback_arena.live.size()==2&&playback_arena.release(&playback_arena,F::word(playback.npc,0x5b8))&&
+                               playback_arena.release(&playback_arena,F::word(playback.npc,0x5ec))&&playback_arena.live.empty());
+                        assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
+                        speech.generated=nullptr;actor.external_npc=nullptr;actor.external_bytes=0;
+                        std::puts("PASS script-selected directory VCD owned parse, precache, startup and independent retirement");
+                    }
                 }
             }
             // Two distinct expeditors borrow the same registry. Selection,
