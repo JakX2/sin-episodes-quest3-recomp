@@ -1910,6 +1910,71 @@ int __cdecl grunt_post_update(void* actor,unsigned bytes,float now,bool perceive
     if(!grunt_snapshot_conditions(actor,bytes,&aux,&out->snapshot))return 0;
     out->completed=1;return 1;
 }
+int __cdecl grunt_update_gate(void* actor,unsigned bytes,const ServerNpcGruntUpdateGateBindings* b,ServerNpcGruntUpdateGateResult* out) noexcept{
+    if(!out)return 0;*out={};out->speech_result=-1;
+    if(!actor||bytes<0xdb2||!b||!relation_grunt_class(b->original_vtable))return 0;
+    write<std::uint8_t>(actor,0x84d,1);
+    const int state=read<int>(actor,0x850);
+    if(state==0||state==7){out->inactive=1;return 1;}
+    void* motor=nullptr;unsigned n=0;
+    if(!memory_storage(&b->storage,read<unsigned>(actor,0x908),0x18,motor,n))return 0;
+    const float raw=read<float>(actor,0x370);out->desired_yaw=read<float>(motor,0x14);
+    const double scaled=static_cast<double>(raw)*182.04444885253906;
+    if(!std::isfinite(scaled)||!std::isfinite(out->desired_yaw)||scaled>=2147483648.||scaled< -2147483648.)return 0;
+    const unsigned quantized=static_cast<unsigned>(static_cast<int>(scaled))&65535u;
+    out->yaw=static_cast<float>(quantized)*0.0054931640625f;
+    if(out->yaw!=out->desired_yaw){
+        double d=std::fmod(static_cast<double>(out->desired_yaw)-out->yaw,360.);
+        if(out->desired_yaw>out->yaw){if(d>=180.)d-=360.;}
+        else if(d<=-180.)d+=360.;
+        out->yaw_delta=static_cast<float>(d);
+    }
+    if(std::abs(static_cast<double>(out->yaw_delta))<=.006){
+        const auto flags=read<unsigned>(actor,0x988);
+        out->yaw_flag_cleared=(flags&0x2000u)!=0;write(actor,0x988,flags&~0x2000u);
+    }
+    out->forced=read<std::uint8_t>(actor,0x84c);write<std::uint8_t>(actor,0x84c,0);out->force_cleared=1;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    ServerNpcConditionResult cr{};
+    if(read<unsigned>(actor,8)!=0x22044fa0u){
+        bool yes=false;out->pvs_checked=1;
+        if(!b->pvs_index||!b->pvs_index(b->context,read<unsigned>(actor,0x16c),&yes))return 0;
+        out->pvs=yes;
+        if(!cond->store(actor,bytes,1,NpcConditionCurrent,yes,&b->conditions,&cr))return 0;
+    }
+    if(read<unsigned>(actor,0xb4)&0x10u){out->disabled=1;return 1;}
+    if(!out->forced){
+        if(!cond->test(actor,bytes,1,NpcConditionCurrent,&b->conditions,&cr))return 0;
+        out->condition_one=cr.value;
+        if(!cr.value){
+            bool gate=false;const auto token=read<unsigned>(actor,0xc18);
+            if(token){
+                void* component=nullptr;unsigned extent=0;
+                if(!memory_storage(&b->storage,token,9,component,extent)||!b->component_gate)return 0;
+                const auto prior=read<std::uint8_t>(component,8);write<std::uint8_t>(component,8,1);out->component_called=1;
+                const int ok=b->component_gate(b->context,token,&gate);
+                out->component_handled=read<std::uint8_t>(component,8)!=0;write(component,8,prior);
+                if(!ok)return 0;
+            }
+            if(!out->component_handled)gate=(read<unsigned>(actor,0xb4)&0x400u)!=0;
+            out->gate_value=gate;
+            if(!gate&&read<int>(actor,0x850)!=3)return 1;
+        }
+    }
+    if(!b->pre_perception||!b->pre_perception(b->context,actor))return 0;
+    out->pre_called=out->perceive=1;
+    const int live_state=read<int>(actor,0x850);
+    if(live_state==1||live_state==2){
+        int roll=-1;out->idle_roll=1;
+        if(!b->random_int||!b->random_int(b->context,0,99,&roll)||roll<0||roll>99)return 0;
+        if(roll==0&&!(read<unsigned>(actor,0xb4)&2u)){
+            if(!b->idle_speech||!b->idle_speech(b->context,actor,0xcc0,"GRUNT_IDLE",0,2,&out->speech_result))return 0;
+            out->idle_emitted=1;
+        }
+    }
+    return 1;
+}
+const ServerNpcGruntUpdateGateApi update_gate_api{1,sizeof(ServerNpcGruntUpdateGateApi),&grunt_update_gate};
 const ServerNpcGruntPostUpdateApi post_update_api{1,sizeof(ServerNpcGruntPostUpdateApi),&grunt_flinch,&grunt_post_update};
 const ServerNpcGruntAuxConditionsApi aux_conditions_api{1,sizeof(ServerNpcGruntAuxConditionsApi),&grunt_target_conditions,&grunt_ammo_conditions,&grunt_snapshot_conditions};
 const ServerNpcGruntWeaponSearchApi weapon_search_api{1,sizeof(ServerNpcGruntWeaponSearchApi),&grunt_weapon_eligible,&grunt_weapon_search};
@@ -2156,4 +2221,10 @@ SiN_GetServerNpcGruntAuxConditionsApi(std::uint32_t version,std::uint32_t size) 
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPostUpdateApi* __cdecl
 SiN_GetServerNpcGruntPostUpdateApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPostUpdateApi)?&post_update_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntUpdateGateApi=_SiN_GetServerNpcGruntUpdateGateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntUpdateGateApi* __cdecl
+SiN_GetServerNpcGruntUpdateGateApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntUpdateGateApi)?&update_gate_api:nullptr;
 }
