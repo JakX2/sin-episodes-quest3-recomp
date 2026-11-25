@@ -1101,6 +1101,29 @@ int main(int argc,char** argv){
         assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&object_result.class_rejected==1&&!object_result.found);
         f.rel_special=false;f.put(f.replacement,0xb4,0x2000u);
         assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&object_result.prop_rejected==1&&!object_result.found);
+        auto native_getter=reinterpret_cast<GetServerNpcGruntGatherNativeApi>(GetProcAddress(s,server_npc_grunt_gather_native_export));
+        assert(native_getter&&!GetProcAddress(c,server_npc_grunt_gather_native_export)&&!native_getter(0,sizeof(ServerNpcGruntGatherNativeApi))&&!native_getter(1,0));
+        const auto* native_gather=native_getter(1,sizeof(ServerNpcGruntGatherNativeApi));assert(native_gather);
+        ServerNpcGruntGatherNativeBindings all_bindings{};
+        auto& base=all_bindings.gather;
+        base.base.gate.original_vtable=0x2249aaa4;base.base.perception.enemy_switch.best.memory=bb.memory;base.base.post.schedule=b.schedule;
+        base.base.post.aux.visibility=crb.visibility;base.max_clients=2;
+        base.component_update=[](void*,std::uint32_t token) noexcept -> int{return token==711;};
+        base.classname_matches=[](void*,void*,const char*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        all_bindings.object=ob;all_bindings.point.context=&f;all_bindings.point.origin=ob.origin;
+        all_bindings.point.in_view=[](void*,void*,const float*,bool* yes) noexcept -> int{*yes=true;return 1;};
+        all_bindings.point.visible=[](void*,void*,const float*,unsigned,bool* yes) noexcept -> int{*yes=true;return 1;};
+        all_bindings.point.solve=[](void*,void*,const float*,bool,float* v) noexcept -> int{v[0]=40;v[1]=v[2]=0;return 1;};
+        f.put(f.actor,0xc18,711u);f.put(f.actor,0x850,3);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x798,0u);
+        f.put(f.actor,0xcb4,0xffffffffu);f.put(f.actor,0xc80,0.f);f.actor[0xcb2]=f.actor[0xc6c]=1;
+        f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);f.put(f.replacement,0xb4,0u);
+        ServerNpcGruntGatherNativeResult native_result;
+        assert(native_gather->gather(f.actor,sizeof(f.actor),660,&all_bindings,&native_result)&&native_result.gather.completed&&native_result.gather.search_called&&native_result.object.found&&native_result.gather.object_condition&&native_result.gather.point_condition&&native_result.point.accepted);
+        assert(f.get<unsigned>(0xcb4)==0x8002u&&f.get<float>(0xc58)==40);
+        f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);
+        assert(native_gather->gather(f.actor,sizeof(f.actor),660.1f,&all_bindings,&native_result)&&!native_result.gather.search_called&&native_result.gather.object_condition&&!native_result.gather.point_condition&&native_result.point.cooldown_blocked);
+        f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0xcb4,0xffffffffu);
+        assert(native_gather->gather(f.actor,sizeof(f.actor),661,&all_bindings,&native_result)&&native_result.gather.search_no_enemy&&native_result.object.no_enemy&&!native_result.gather.point_called);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

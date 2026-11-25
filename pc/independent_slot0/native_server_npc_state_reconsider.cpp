@@ -2001,7 +2001,8 @@ int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const Se
     out->post_called=out->completed=1;return 1;
 }
 int __cdecl grunt_point_policy(void*,unsigned,const float[3],float,const ServerNpcGruntPointPolicyBindings*,ServerNpcGruntPointPolicyResult*) noexcept;
-int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out,const ServerNpcGruntPointPolicyBindings* point_bindings,ServerNpcGruntPointPolicyResult* point_result) noexcept{
+int __cdecl grunt_object_search(void*,unsigned,int,const ServerNpcGruntObjectSearchBindings*,ServerNpcGruntObjectSearchResult*) noexcept;
+int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out,const ServerNpcGruntPointPolicyBindings* point_bindings,ServerNpcGruntPointPolicyResult* point_result,const ServerNpcGruntObjectSearchBindings* object_bindings=nullptr,ServerNpcGruntObjectSearchResult* object_result=nullptr) noexcept{
     if(!out)return 0;
     out->base={};out->completed=out->base_called=out->component_called=out->hopper_exit=out->search_called=out->search_no_enemy=out->object_live=out->object_condition=out->point_called=out->point_schedule_blocked=out->point_condition=out->player_called=out->player_condition=0;
     for(float& v:out->point)v=0;
@@ -2031,7 +2032,11 @@ int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const Serv
         }
         if(read<std::uint8_t>(actor,0xcb2)&&!registry.Resolve(read<unsigned>(actor,0xcb4))){
             out->search_called=1;
-            if(!current()){write(actor,0xcb4,0xffffffffu);out->search_no_enemy=1;}
+            if(object_bindings){
+                auto ob=*object_bindings;ob.visibility.memory=mb;ob.visibility.original_vtable=b->base.gate.original_vtable;
+                if(!grunt_object_search(actor,bytes,150,&ob,object_result))return 0;
+                out->search_no_enemy=object_result->no_enemy;
+            }else if(!current()){write(actor,0xcb4,0xffffffffu);out->search_no_enemy=1;}
             else if(!b->find_object||!b->find_object(b->context,actor,150,now))return 0;
         }
     }
@@ -2216,6 +2221,12 @@ int __cdecl grunt_object_search(void* actor,unsigned bytes,int mass_limit,const 
     }
     return finish(selected);
 }
+int __cdecl grunt_gather_native(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,ServerNpcGruntGatherNativeResult* out) noexcept{
+    if(!out)return 0;out->gather={};out->point={};out->object={};out->object.selected_handle=0xffffffffu;
+    if(!b)return 0;
+    return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object);
+}
+const ServerNpcGruntGatherNativeApi gather_native_api{1,sizeof(ServerNpcGruntGatherNativeApi),&grunt_gather_native};
 const ServerNpcGruntObjectSearchApi object_search_api{1,sizeof(ServerNpcGruntObjectSearchApi),&grunt_object_search};
 const ServerNpcGruntGatherPointApi gather_point_api{1,sizeof(ServerNpcGruntGatherPointApi),&grunt_gather_point};
 const ServerNpcGruntPointPolicyApi point_policy_api{1,sizeof(ServerNpcGruntPointPolicyApi),&grunt_point_policy};
@@ -2504,4 +2515,10 @@ SiN_GetServerNpcGruntGatherPointApi(std::uint32_t version,std::uint32_t size) no
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntObjectSearchApi* __cdecl
 SiN_GetServerNpcGruntObjectSearchApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntObjectSearchApi)?&object_search_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntGatherNativeApi=_SiN_GetServerNpcGruntGatherNativeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherNativeApi* __cdecl
+SiN_GetServerNpcGruntGatherNativeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGatherNativeApi)?&gather_native_api:nullptr;
 }

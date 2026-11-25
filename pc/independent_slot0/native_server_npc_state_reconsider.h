@@ -861,4 +861,20 @@ struct ServerNpcGruntObjectSearchApi {
     int (__cdecl *search)(void*,unsigned,int,const ServerNpcGruntObjectSearchBindings*,ServerNpcGruntObjectSearchResult*) noexcept;
 };
 using GetServerNpcGruntObjectSearchApi=const ServerNpcGruntObjectSearchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_gather_native_export[]="SiN_GetServerNpcGruntGatherNativeApi";
+struct ServerNpcGruntGatherNativeBindings {
+    ServerNpcGruntGatherConditionsBindings gather;
+    ServerNpcGruntPointPolicyBindings point;
+    ServerNpcGruntObjectSearchBindings object;
+};
+struct ServerNpcGruntGatherNativeResult {
+    ServerNpcGruntGatherConditionsResult gather;
+    ServerNpcGruntPointPolicyResult point;
+    ServerNpcGruntObjectSearchResult object;
+};
+struct ServerNpcGruntGatherNativeApi {
+    std::uint32_t version,size;
+    int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,ServerNpcGruntGatherNativeResult*) noexcept;
+};
+using GetServerNpcGruntGatherNativeApi=const ServerNpcGruntGatherNativeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
