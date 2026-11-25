@@ -1185,6 +1185,10 @@ int main(int argc,char** argv){
         std::puts("PASS native concept history and managed Jessica cooldown notification");
         tables::test::VcdAuditArena nativeHistorySpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_vcd_clock_speech(nativeHistorySpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink,historyTree);
+        tables::test::TalkManagerFixture speechManager(*talkManager,*talkCatalog);
+        tables::test::VcdAuditArena managedSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_vcd_clock_speech(managedSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink,historyTree,managedHistory,&speechManager);
+        assert(talkManager->destroy(&speechManager.session,&speechManager.control,&speechManager.tables,&speechManager.b)==1);
         std::puts("PASS native response history symbol lookup, indexed tree insertion and free-slot reuse");
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));

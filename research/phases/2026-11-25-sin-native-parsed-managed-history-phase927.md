@@ -1,0 +1,3 @@
+# Phase 927: parsed Jessica speech to native ally cooldown
+
+Compose phase926 managed history into phase925 parsed Jessica dialogue. Use actual actor/expeditor pointer words required by managed_talk_notify (actor+ffc, exp+4, exp+c=actor+dfc). TLK_HELLO commit precedes propagation and global cooldown update (clock10 + sampled7 =17) before audio emission. Check manager singleton creation, 48 descriptor population, retained deadline through scene retirement and cleanup. Neighbor enumeration/propagation effect, concept-deadline tree, allocator and transport remain hosted. Synthetic parsed VCD, no retail execution claim. CI pending.
