@@ -26,6 +26,7 @@
 #include "native_server_vfe_cache.h"
 #include "native_server_cached_facial_think.h"
 #include "choreography_indexed_rb.h"
+#include "response_rule_scoring.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
 #include <cstdio>
@@ -7980,6 +7981,64 @@ int __cdecl response_criteria_destroy(void* c,unsigned bytes,const ResponseCrite
 const ResponseCriteriaTreeApi response_criteria_tree_api{version,sizeof(ResponseCriteriaTreeApi),&response_criteria_construct,
     &response_criteria_add,&response_criteria_find,&response_criteria_destroy};
 
+
+namespace rr=sin_port::response_rule;
+struct NativeRuleRankingCall {
+    void* system;void* criteria;const ResponseRuleRankingBindings& b;
+    static NativeRuleRankingCall& self(void* p) noexcept {return *static_cast<NativeRuleRankingCall*>(p);}
+    bool storage(std::uint32_t word,rr::Bytes& out) const noexcept {
+        void* p=nullptr;unsigned n=0;
+        if(!word||!b.storage(b.context,word,&p,&n)||!p||!n||
+           !sin_independent::vgui_layout::Readable(p,n))return false;
+        out={static_cast<const unsigned char*>(p),n};return true;
+    }
+    bool row(unsigned offset,unsigned stride,unsigned payload,unsigned idx,rr::Bytes& out) const noexcept {
+        const auto cap=hologram_read<int>(system,offset+4);
+        if(cap<0||idx>=static_cast<unsigned>(cap)||idx>=rr::row_limit)return false;
+        rr::Bytes raw{};const unsigned start=idx*stride+0x14;
+        if(!storage(hologram_read<std::uint32_t>(system,offset),raw)||!raw.has(start+payload))return false;
+        // Valid live rows, not a free-list self-link.
+        if(raw.get<std::uint32_t>(idx*stride)==idx)return false;
+        out={raw.p+start,payload};return true;
+    }
+};
+int __cdecl response_rule_best(void* system,unsigned bytes,void* criteria,unsigned criteria_bytes,
+    const ResponseRuleRankingBindings* b,int* scratch,unsigned capacity,int* selected) noexcept {
+    if(bytes<0xcc||!sin_independent::vgui_layout::Readable(system,0xcc)||
+       criteria_bytes<response_criteria_bytes||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+       !response_criteria_ready(&b->criteria)||!b->storage||!b->string||!b->enumeration||
+       !b->get_string||!b->get_float||!b->draw||!hologram_writable(selected,4))return 0;
+    ResponseCriteriaIndex tree{};if(!response_criteria_read(criteria,b->criteria,tree))return 0;
+    const auto count=hologram_read<int>(system,0xc8);
+    if(count<0||count>int(rr::row_limit)||capacity<unsigned(count)||
+       (count&&!hologram_writable(scratch,unsigned(count)*4)))return 0;
+    NativeRuleRankingCall call{system,criteria,*b};rr::Scoring s{};s.context=&call;
+    s.criterion=[](void* p,unsigned i,rr::Bytes* out) noexcept{return NativeRuleRankingCall::self(p).row(0x60,rr::criterion_stride,rr::criterion_bytes,i,*out);};
+    s.rule=[](void* p,unsigned i,rr::Bytes* out) noexcept{return NativeRuleRankingCall::self(p).row(0xb8,rr::rule_stride,rr::rule_bytes,i,*out);};
+    s.storage=[](void* p,std::uint32_t word,rr::Bytes* out) noexcept{return NativeRuleRankingCall::self(p).storage(word,*out);};
+    s.string=[](void* p,std::uint32_t word,const char** out) noexcept{const auto& b=NativeRuleRankingCall::self(p).b;return b.string(b.context,word,out)!=0;};
+    s.lookup=[](void* p,const char* key,const char** value,float* weight) noexcept{
+        auto& call=NativeRuleRankingCall::self(p);const auto& b=call.b;
+        int i=-1;std::uint32_t word=0;
+        if(response_criteria_find(call.criteria,response_criteria_bytes,&b.criteria,key,&i,&word)!=1)return false;
+        *value="";*weight=1.f;
+        // 2205ce00/2205ce40 check against live count, not high-water index.
+        if(i<0||unsigned(i)>=hologram_read<unsigned>(call.criteria,0x18))return true;
+        auto* child=reinterpret_cast<void*>(static_cast<std::uintptr_t>(word));
+        return word&&b.get_string(b.criteria.context,child,"value","",value)&&
+            (!*value||b.get_float(b.criteria.context,child,"weight",1.f,weight));
+    };
+    s.draw=[](void* p,int lo,int hi,int* out) noexcept{const auto& b=NativeRuleRankingCall::self(p).b;return b.draw(b.context,lo,hi,out)!=0;};
+    s.enumeration.context=&call;
+    s.enumeration.lookup=[](void* p,const char* key,float* value,bool* found) noexcept{
+        const auto& b=NativeRuleRankingCall::self(p).b;unsigned yes=0;
+        if(!b.enumeration(b.context,key,value,&yes))return false;
+        *found=yes!=0;return true;
+    };
+    int pick=-1;if(!rr::best_rule(s,unsigned(count),scratch,capacity,pick))return -1;
+    *selected=pick;return 1;
+}
+const ResponseRuleRankingApi response_rule_ranking_api{version,sizeof(ResponseRuleRankingApi),&response_rule_best};
 
 int __cdecl response_criteria_remove(void* c,unsigned bytes,const ResponseCriteriaRemovalBindings* b,const char* name) noexcept {
     ResponseCriteriaIndex t{};
@@ -16374,6 +16433,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseC
 SiN_GetResponseCriteriaRemovalApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseCriteriaRemovalApi)?&response_criteria_removal_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetResponseRuleRankingApi=_SiN_GetResponseRuleRankingApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseRuleRankingApi* __cdecl
+SiN_GetResponseRuleRankingApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseRuleRankingApi)?&response_rule_ranking_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

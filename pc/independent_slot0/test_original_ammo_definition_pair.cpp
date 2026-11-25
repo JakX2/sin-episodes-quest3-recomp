@@ -1258,8 +1258,13 @@ int main(int argc,char** argv){
         assert(getCriteriaRemoval&&!GetProcAddress(client,tables::response_criteria_removal_export));
         const auto* criteriaRemoval=getCriteriaRemoval(1,sizeof(tables::ResponseCriteriaRemovalApi));
         assert(criteriaRemoval&&!getCriteriaRemoval(0,sizeof(tables::ResponseCriteriaRemovalApi))&&!getCriteriaRemoval(1,0));
+        const auto getRuleRanking=reinterpret_cast<tables::GetResponseRuleRankingApi>(GetProcAddress(server,tables::response_rule_ranking_export));
+        assert(getRuleRanking&&!GetProcAddress(client,tables::response_rule_ranking_export));
+        const auto* ruleRanking=getRuleRanking(1,sizeof(tables::ResponseRuleRankingApi));
+        assert(ruleRanking&&!getRuleRanking(0,sizeof(tables::ResponseRuleRankingApi))&&!getRuleRanking(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval);
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking);
+        std::puts("PASS native response rule ranking with real CriteriaSet");
         std::puts("PASS native criteria row retirement and free-slot reuse");
         std::puts("PASS native base NPC ally and player criteria in response selection");
         std::puts("PASS native base entity and world response criteria");
