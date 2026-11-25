@@ -46,8 +46,8 @@ int main(int argc,char** argv){
         f.put(p,0x1f0,std::uint8_t{1});f.put(p,0x28,9.875f);f.put(p,0x2c,10.f);
         f.put(p,0x3ec,0);f.put(p,0x3e1,std::uint8_t{1});f.put(p,0x3e8,.5f);f.put(p,0x3c0,1.f);
     }
-    ServerEventDictionaryEntry ar[4]{},er[4]{};
-    ServerActivityDictionary activities{{ar,4,0,3,0},-1};ServerEventDictionary events{er,4,0,0,0};
+    ServerEventDictionaryEntry ar[16]{},er[32]{};
+    ServerActivityDictionary activities{{ar,16,0,3,0},-1};ServerEventDictionary events{er,32,0,0,0};
     ServerNpcWeaponRuntimeBindings b{};b.npc.context=&f;
     b.inherited.weapons={f.slots,3,&f,[](void* p,void* w,unsigned* out) noexcept -> int {assert(w==F::self(p).weapon);*out=WeaponActivityAssault;return 1;},nullptr};
     auto& as=b.npc.transition.assignment;as.context=&f;
@@ -106,5 +106,42 @@ int main(int argc,char** argv){
     f.trace.clear();f.put(f.actor,0x78c,0x9001u);in.now=10.25f;
     assert(api->run(f.actor,sizeof(f.actor),&in,&b,&out)&&!out.tick.weapon_posted&&!out.weapon_frames);
     assert(f.get<float>(f.weapon,0x3e8)==.0625f&&(f.trace==std::vector<int>{10,11}));
+
+    // Both source event paths now use original Grunt +2c0 rather than
+    // the test's former hosted receiver.
+    auto gg=reinterpret_cast<GetServerNpcWeaponGruntFrameApi>(GetProcAddress(server,server_npc_weapon_grunt_frame_export));
+    auto gr=reinterpret_cast<GetServerGruntRegistrationApi>(GetProcAddress(server,server_grunt_registration_export));
+    auto gd=reinterpret_cast<GetServerEventDictionaryApi>(GetProcAddress(server,server_event_dictionary_export));
+    assert(gg&&gr&&gd&&!GetProcAddress(client,server_npc_weapon_grunt_frame_export)&&!gg(0,sizeof(ServerNpcWeaponGruntFrameApi))&&!gg(1,0));
+    auto* grunt=gg(1,sizeof(ServerNpcWeaponGruntFrameApi));auto* reg=gr(1,sizeof(ServerGruntRegistrationApi));auto* dict=gd(1,sizeof(ServerEventDictionaryApi));assert(grunt&&reg&&dict);
+    assert(dict->seed(&events));
+    ServerGruntRegistration ids{};assert(reg->grunt(&activities,&events,nullptr,&ids));
+    ServerNpcWeaponGruntFrameBindings gb{};gb.runtime=b;gb.ids=&ids;gb.handler.context=&f;
+    gb.runtime.npc.frame.frame.sequence.frame.events.emit=nullptr;gb.runtime.weapon.events.emit=nullptr;
+    gb.handler.debug=[](void* p,const char* message) noexcept {assert(!std::strcmp(message,"BLOCKING!\n"));F::self(p).trace.push_back(20);};
+    gb.handler.weapon=[](void* p,void* actor,std::uint32_t handle,void** weapon) noexcept -> int {
+        auto& f=F::self(p);assert(actor==f.actor&&handle==0x7001u);*weapon=sin_independent::EntityHandleView(f.slots,3).Resolve(handle);return 1;};
+    gb.handler.weapon_event=[](void* p,void* weapon,int event,void* actor) noexcept {
+        auto& f=F::self(p);assert(actor==f.actor&&weapon==f.weapon&&event==0xc1f);f.trace.push_back(21);};
+    f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0xc38,3u);f.put(f.actor,0xc90,0.f);
+    f.ne.event=20;f.we.event=ids.events[1];f.we.type=0x401;
+    auto seed_frame=[&](){
+        f.trace.clear();
+        for(void* p:{static_cast<void*>(f.actor),static_cast<void*>(f.weapon)}){
+            f.put(p,0x28,9.875f);f.put(p,0x2c,10.f);f.put(p,0x3e8,0.f);f.put(p,0x398,0.f);f.put(p,0x3e0,std::uint8_t{0});
+        }
+        in.now=10.125f;
+    };
+    seed_frame();ServerNpcWeaponGruntFrameResult gout{};
+    assert(grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&gout.handled==2&&gout.npc_events==1&&gout.weapon_events==1&&!gout.failed_status);
+    assert(gout.last.route==GruntAnimAlt&&f.actor[0xc35]&&f.get<unsigned>(f.actor,0xc38)==2&&f.get<float>(f.actor,0xc90)==20.125f);
+    assert((f.trace==std::vector<int>{10,11,20,12,21}));
+    // Unrecovered event3 is not falsely reported as a parent success.
+    seed_frame();f.ne.event=3;
+    assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&gout.failed_status==1&&gout.failed_event==3&&gout.failed_source==f.actor&&!gout.handled&&!gout.weapon_events);
+    assert((f.trace==std::vector<int>{10,11}));
+    // Stale generation fails before advancement.
+    seed_frame();assert(dict->clear(&events));
+    assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
     FreeLibrary(server);FreeLibrary(client);std::puts("PASS native NPC request through weapon reset and active synchronized animation tick");
 }

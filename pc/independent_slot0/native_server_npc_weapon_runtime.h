@@ -26,4 +26,25 @@ struct ServerNpcWeaponRuntimeApi {
     int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcWeaponRuntimeBindings*,ServerNpcWeaponRuntimeResult*) noexcept;
 };
 using GetServerNpcWeaponRuntimeApi=const ServerNpcWeaponRuntimeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_weapon_grunt_frame_export[]="SiN_GetServerNpcWeaponGruntFrameApi";
+struct ServerNpcWeaponGruntFrameBindings {
+    ServerNpcWeaponRuntimeBindings runtime;
+    const ServerGruntRegistration* ids;
+    ServerGruntAnimationBindings handler;
+};
+struct ServerNpcWeaponGruntFrameResult {
+    ServerNpcWeaponRuntimeResult runtime;
+    ServerGruntAnimationResult last;
+    unsigned npc_events,weapon_events,handled;
+    int failed_event,failed_status;
+    void* failed_source;
+};
+struct ServerNpcWeaponGruntFrameApi {
+    std::uint32_t version,size;
+    // Same original +2c0 target on all eight Grunt/Jetpack classes.
+    // Binds both event traversal receivers to the registered native handler.
+    // Unrecovered routes fail explicitly; previous writes are not rolled back.
+    int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcWeaponGruntFrameBindings*,ServerNpcWeaponGruntFrameResult*) noexcept;
+};
+using GetServerNpcWeaponGruntFrameApi=const ServerNpcWeaponGruntFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
