@@ -1081,6 +1081,16 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena retailArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::ParsedFacialClientPair retailPair(*flexSend,*flexRecv,*animSend,*animRecv,*frame);
         tables::test::check_parsed_cached_expression(retailArena,*nativeVcdRuntime,*execution,*retail,*cached,*bank,*remap,retailPair,true);
+        const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
+        const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));
+        const auto getRecords=reinterpret_cast<tables::GetActorEventRecordApi>(GetProcAddress(server,"SiN_GetActorEventRecordApi"));
+        assert(getNpcScene&&getNpcWeapons&&getRecords&&!GetProcAddress(client,tables::server_npc_scene_records_export));
+        const auto* npcScene=getNpcScene(1,sizeof(tables::ServerNpcSceneRecordApi));
+        const auto* npcWeapons=getNpcWeapons(1,sizeof(tables::ServerNpcWeaponSceneApi));
+        const auto* actorRecords=getRecords(1,sizeof(tables::ActorEventRecordApi));
+        assert(npcScene&&npcWeapons&&actorRecords&&!getNpcScene(0,sizeof(tables::ServerNpcSceneRecordApi))&&!getNpcScene(1,0));
+        tables::test::VcdAuditArena weaponArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_parsed_npc_weapon_scene(weaponArena,*nativeVcdRuntime,*execution,*npcScene,*actorRecords,*npcWeapons,*think);
     }
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
         FreeLibrary(server);FreeLibrary(client);return 2;

@@ -5,6 +5,7 @@
 #include "native_server_composed_facial_think.h"
 #include "native_server_named_facial_think.h"
 #include "native_server_cached_facial_think.h"
+#include "native_server_npc_weapon_scene.h"
 #include "native_weapon_datatables.h"
 #include "native_client_composed_facial.h"
 #include "native_server_flex_spline.h"
@@ -1223,6 +1224,112 @@ inline void check_parsed_cached_expression(VcdAuditArena& arena,const NativeVcdR
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
     std::puts("PASS parsed VCD cached expression, paired client descriptor smoothing and cache retirement");
+}
+inline void check_parsed_npc_weapon_scene(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
+    const NativeSceneExecutionApi& execution,const ServerNpcSceneRecordApi& admission,const ActorEventRecordApi& record_api,
+    const ServerNpcWeaponSceneApi& weapons,const ServerNamedFacialThinkApi& think){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Actions
+ {
+  event generic lower
+  {
+   time 0 2
+   param AI_HOLSTER
+  }
+  event generic raise
+  {
+   time 3 5
+   param AI_UNHOLSTER
+  }
+ }
+}
+)VCD";
+    struct Fixture {
+        VcdAuditArena& arena;const ServerNpcWeaponSceneApi& weapons;
+        alignas(4) unsigned char scene[0x5ec]{},actor[server_npc_random_expression_extent]{},layers[0x40]{};
+        unsigned starts=0,stops=0,gestures=0,slots=0,selects=0,updates=0;
+        std::uint32_t root=0;
+        explicit Fixture(VcdAuditArena& a,const ServerNpcWeaponSceneApi& w):arena(a),weapons(w){}
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+        static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept{
+            auto& a=self(p).arena;return a.storage(&a,w,out,n);
+        }
+    } f(arena,weapons);
+    F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;f.actor[0x1f0]=1;
+    F::put(f.actor,0x494,F::ptr(f.layers));F::put(f.actor,0x4a0,1);
+    f.layers[0]=1;F::put(f.layers,8,7);F::fl(f.layers,0xc,.25f);
+    auto raw=arena.runtime();
+    assert(runtime.parse(f.scene+0x410,"weapon_scene.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    ServerNpcSceneRecordBindings cfg{};auto& facial=cfg.facial;
+    facial.base_flex=facial.npc_random=true;facial.host.context=&f;
+    facial.host.storage=&Fixture::storage;
+    facial.host.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);
+    };
+    facial.host.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+    facial.host.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    facial.extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;
+    };
+    facial.now=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+    auto& w=cfg.weapons;w.context=&f;
+    w.active=[](void*,void*,std::uint32_t* out) noexcept -> int{*out=11;return 1;};
+    w.weapon_at=[](void* p,void*,unsigned i,std::uint32_t* out) noexcept -> int{
+        auto& f=Fixture::self(p);++f.slots;*out=i==2?22u:0u;return 1;
+    };
+    w.gesture=[](void* p,void*,int activity,int autokill,int* layer) noexcept -> int{
+        auto& f=Fixture::self(p);assert(autokill==1&&activity==(f.gestures?0x44:0x45));++f.gestures;*layer=0;return 1;
+    };
+    w.select=[](void* p,void*,std::uint32_t weapon) noexcept -> int{
+        auto& f=Fixture::self(p);assert(weapon==22);++f.selects;return 1;
+    };
+    w.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(token==F::ptr(f.layers));*out=f.layers;*n=sizeof(f.layers);return 1;
+    };
+    w.duration=[](void*,void*,int seq,double* out) noexcept -> int{assert(seq==7);*out=2.;return 1;};
+    ActorEventRecordBindings records{};assert(admission.adapt(&cfg,&records));
+    NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
+    b.dispatch.context=&f;b.dispatch.records=&records;
+    b.dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word);*out=f.actor;*n=sizeof(f.actor);return 1;
+    };
+    b.dispatch.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace kind) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&F::word(event,0)==16);
+        if(kind==ChoreographyDispatchTrace::Start)++f.starts;
+        else if(kind==ChoreographyDispatchTrace::Stop)++f.stops;
+        return 1;
+    };
+    b.leaves.context=&f;b.leaves.actor_extent=facial.extent;
+    ServerFlexRange range{0,1};const char* names[]={"jaw"};
+    ServerVfeRemapEntry entry[1]{};ServerVfeRemapCache remap{entry,0,1};
+    ServerNamedFacialThinkBindings think_cfg{};think_cfg.controller_names=names;think_cfg.controller_count=1;think_cfg.remap=&remap;
+    auto& base=think_cfg.composed.base;base.context=&f;base.ranges=&range;base.count=1;base.storage=&Fixture::storage;
+    // Existing actor think's explicit other leaf calls the recovered no-op.
+    base.other=[](void* p,void*,void* row,void*,void* event,unsigned* accepted) noexcept -> int{
+        auto& f=Fixture::self(p);++f.updates;return f.weapons.noop(row,0x40,event,0x3c0,accepted)==1;
+    };
+    assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
+    auto simulate=[&](float time){F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);};
+    auto verify=[&](unsigned subtype,float early,float late){
+        void *rows=nullptr,*event=nullptr;unsigned n=0;
+        assert(F::word(f.actor,0x5c4)==1&&Fixture::storage(&f,F::word(f.actor,0x5b8),&rows,&n)&&n>=0x40);
+        assert(F::word(rows,0x38)==subtype&&!F::word(rows,0x10));
+        assert(Fixture::storage(&f,F::word(rows,0),&event,&n)&&n>=0x3c0);
+        unsigned accepted=0;
+        assert(record_api.check(f.actor,sizeof(f.actor),early,f.root,event,&records,&accepted)==1&&accepted==1);
+        assert(record_api.check(f.actor,sizeof(f.actor),late,f.root,event,&records,&accepted)==1&&accepted==0);
+        assert(think.run(f.actor,sizeof(f.actor),10,&think_cfg)&&static_cast<unsigned char*>(rows)[0xc]);
+    };
+    assert(simulate(.5f)==1&&f.starts==1&&f.gestures==1);verify(2,.5f,.75f);
+    assert(simulate(2.5f)==1&&simulate(2.75f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
+    assert(simulate(3.5f)==1&&f.starts==2&&f.gestures==2&&f.slots==4&&f.selects==1);verify(3,3.5f,3.75f);
+    assert(simulate(5.5f)==1&&simulate(5.75f)==1&&f.stops==2&&!F::word(f.actor,0x5c4)&&f.updates==2);
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
+    std::puts("PASS parsed generic NPC weapon scene lifecycle with native admission and completion");
 }
 // Retail-inspired edge cases: strict binary32 duration trim, duplicate
 // timestamps, reverse ranges and disabled tracks with/without samples.

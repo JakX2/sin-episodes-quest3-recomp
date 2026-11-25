@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "native_server_facial_records.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_weapon_scene_export[]="SiN_GetServerNpcWeaponSceneApi";
 struct ServerNpcWeaponSceneBindings {
@@ -22,4 +23,15 @@ struct ServerNpcWeaponSceneApi {
     int (__cdecl *noop)(const void* record,unsigned,const void* event,unsigned,unsigned*) noexcept;
 };
 using GetServerNpcWeaponSceneApi=const ServerNpcWeaponSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_scene_records_export[]="SiN_GetServerNpcSceneRecordApi";
+struct ServerNpcSceneRecordBindings {
+    ServerFacialRecordBindings facial;
+    ServerNpcWeaponSceneBindings weapons;
+};
+struct ServerNpcSceneRecordApi {
+    std::uint32_t version,size;
+    // Caller-owned NPC config; native weapon commands plus retail facial policy.
+    int (__cdecl *adapt)(const ServerNpcSceneRecordBindings*,ActorEventRecordBindings*) noexcept;
+};
+using GetServerNpcSceneRecordApi=const ServerNpcSceneRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
