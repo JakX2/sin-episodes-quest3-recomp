@@ -7921,15 +7921,8 @@ bool response_criteria_read(void* c,const ResponseCriteriaTreeBindings& b,Respon
     }
     return free_count==high-live;
 }
-int __cdecl response_criteria_add(void* p,void* c,const char* name,const char* value,float weight) noexcept {
-    const auto* b=static_cast<const ResponseCriteriaTreeBindings*>(p);
-    ResponseCriteriaIndex t{};
-    if(!response_criteria_ready(b)||!name||!value||!response_criteria_read(c,*b,t))return 0;
-    const auto root=hologram_read<std::uint32_t>(c,0);if(!root)return 0;
-    void* child=nullptr;
-    // Original 2205d910 sets value then weight on FindKey(name,true).
-    if(!b->find_child(b->context,reinterpret_cast<void*>(static_cast<std::uintptr_t>(root)),name,1,&child)||!child||
-       !b->set_string(b->context,child,"value",value)||!b->set_float(b->context,child,"weight",weight))return 0;
+int response_criteria_index_child(void* c,const ResponseCriteriaTreeBindings* b,ResponseCriteriaIndex t,const char* name,void* child) noexcept {
+    if(!name||!child)return 0;
     std::uint16_t symbol=0xffff;
     if(!choreography_symbol_intern(const_cast<ChoreographySymbolInternBindings*>(&b->symbols),
         static_cast<unsigned char*>(c)+0x28,name,&symbol)||symbol==0xffff)return 0;
@@ -7952,6 +7945,17 @@ int __cdecl response_criteria_add(void* p,void* c,const char* name,const char* v
     hologram_write(t.rows,slot*24+16,symbol);hologram_write(t.rows,slot*24+20,scene_word(child));
     hologram_write(c,0x14,t.root);hologram_write(c,0x18,live+1);hologram_write(c,0x24,hologram_read<std::uint32_t>(c,8));
     return 1;
+}
+int __cdecl response_criteria_add(void* p,void* c,const char* name,const char* value,float weight) noexcept {
+    const auto* b=static_cast<const ResponseCriteriaTreeBindings*>(p);
+    ResponseCriteriaIndex t{};
+    if(!response_criteria_ready(b)||!name||!value||!response_criteria_read(c,*b,t))return 0;
+    const auto root=hologram_read<std::uint32_t>(c,0);if(!root)return 0;
+    void* child=nullptr;
+    // Original 2205d910 sets value then weight on FindKey(name,true).
+    if(!b->find_child(b->context,reinterpret_cast<void*>(static_cast<std::uintptr_t>(root)),name,1,&child)||!child||
+       !b->set_string(b->context,child,"value",value)||!b->set_float(b->context,child,"weight",weight))return 0;
+    return response_criteria_index_child(c,b,t,name,child);
 }
 int __cdecl response_criteria_find(void* c,unsigned bytes,const ResponseCriteriaTreeBindings* b,const char* name,int* index,std::uint32_t* child) noexcept {
     ResponseCriteriaIndex t{};
@@ -7985,6 +7989,45 @@ int __cdecl response_criteria_destroy(void* c,unsigned bytes,const ResponseCrite
 const ResponseCriteriaTreeApi response_criteria_tree_api{version,sizeof(ResponseCriteriaTreeApi),&response_criteria_construct,
     &response_criteria_add,&response_criteria_find,&response_criteria_destroy};
 
+
+int __cdecl response_criteria_copy(void* dest,unsigned n,void* source,unsigned sn,const ResponseCriteriaCopyBindings* b) noexcept {
+    if(n<response_criteria_bytes||sn<response_criteria_bytes||
+       !hologram_writable(dest,response_criteria_bytes)||!sin_independent::vgui_layout::Readable(source,response_criteria_bytes)||
+       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!response_criteria_ready(&b->tree)||
+       !b->copy_root||!b->first_child||!b->next_child||!b->name)return 0;
+    const auto d=reinterpret_cast<std::uintptr_t>(dest),s=reinterpret_cast<std::uintptr_t>(source);
+    if((d>=s?d-s:s-d)<response_criteria_bytes)return 0;
+    ResponseCriteriaIndex source_tree{};
+    if(!response_criteria_read(source,b->tree,source_tree))return 0;
+    const auto old_root=hologram_read<std::uint32_t>(source,0);
+    const int status=response_criteria_construct(dest,n,&b->tree);
+    if(status!=1){
+        if(status==-1)(void)response_criteria_destroy(dest,n,&b->tree);
+        return status;
+    }
+    auto fail=[&](){(void)response_criteria_destroy(dest,n,&b->tree);return -1;};
+    const auto root=hologram_read<std::uint32_t>(dest,0);
+    if(!root)return fail();
+    if(root==old_root){ // Invalid ownership from host; do not destroy source.
+        hologram_write(dest,0,0u);return fail();
+    }
+    auto* dst_root=reinterpret_cast<void*>(static_cast<std::uintptr_t>(root));
+    if(old_root&&!b->copy_root(b->tree.context,dst_root,reinterpret_cast<void*>(static_cast<std::uintptr_t>(old_root))))return fail();
+    void* child=nullptr;
+    if(!b->first_child(b->tree.context,dst_root,&child))return fail();
+    unsigned count=0;
+    while(child){
+        if(++count>4096)return fail();
+        const char* name=nullptr;ResponseCriteriaIndex tree{};
+        if(!b->name(b->tree.context,child,&name)||!name||!response_criteria_read(dest,b->tree,tree)||
+           !response_criteria_index_child(dest,&b->tree,tree,name,child))return fail();
+        void* next=nullptr;
+        if(!b->next_child(b->tree.context,child,&next)||next==child)return fail();
+        child=next;
+    }
+    return 1;
+}
+const ResponseCriteriaCopyApi response_criteria_copy_api{version,sizeof(ResponseCriteriaCopyApi),&response_criteria_copy};
 
 namespace rr=sin_port::response_rule;
 struct NativeRuleRankingCall {
@@ -16613,6 +16656,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScriptRes
 SiN_GetScriptResponseFinderApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ScriptResponseFinderApi)?&script_response_finder_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaCopyApi=_SiN_GetResponseCriteriaCopyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaCopyApi* __cdecl
+SiN_GetResponseCriteriaCopyApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseCriteriaCopyApi)?&response_criteria_copy_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

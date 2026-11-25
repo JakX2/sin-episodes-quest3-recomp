@@ -745,7 +745,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1203,6 +1203,53 @@ rule parsed_rule
             }
         }
         assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+    }
+    if(criteriaCopy){
+        struct Roots {
+            struct Child {char name[32]{},value[64]{};float weight=0;Child* next=nullptr;};
+            struct Root {Child children[8]{};unsigned count=0;bool live=false;} root[2]{};
+            unsigned destroyed=0;bool fail_copy=false;
+            static Roots& self(void* p){return *static_cast<Roots*>(p);}
+        } roots;
+        ResponseCriteriaCopyBindings cfg{};cfg.tree=b;auto& h=cfg.tree;h.context=&roots;
+        h.create_root=[](void* p,const char* name,void** out) noexcept -> int{
+            assert(!std::strcmp(name,"CriteriaSet"));for(auto& r:Roots::self(p).root)if(!r.live){r={};r.live=true;*out=&r;return 1;}return 0;};
+        h.find_child=[](void*,void* root,const char* name,int create,void** out) noexcept -> int{
+            auto& r=*static_cast<Roots::Root*>(root);assert(r.live);
+            for(unsigned i=0;i<r.count;++i)if(!_stricmp(r.children[i].name,name)){*out=&r.children[i];return 1;}
+            if(!create){*out=nullptr;return 1;}
+            assert(r.count<8&&std::strlen(name)<32);
+            auto& row=r.children[r.count];std::strcpy(row.name,name);
+            if(r.count)r.children[r.count-1].next=&row;
+            ++r.count;*out=&row;return 1;};
+        h.set_string=[](void*,void* child,const char* field,const char* value) noexcept -> int{
+            assert(!std::strcmp(field,"value")&&std::strlen(value)<64);std::strcpy(static_cast<Roots::Child*>(child)->value,value);return 1;};
+        h.set_float=[](void*,void* child,const char* field,float w) noexcept -> int{
+            assert(!std::strcmp(field,"weight"));static_cast<Roots::Child*>(child)->weight=w;return 1;};
+        h.destroy_root=[](void* p,void* root) noexcept -> int{
+            auto& r=*static_cast<Roots::Root*>(root);assert(r.live);r.live=false;++Roots::self(p).destroyed;return 1;};
+        cfg.copy_root=[](void* p,void* dest,void* source) noexcept -> int{
+            auto& s=*static_cast<Roots::Root*>(source);auto& d=*static_cast<Roots::Root*>(dest);assert(s.live&&d.live&&&s!=&d);
+            d=s;for(unsigned i=0;i<d.count;++i)d.children[i].next=i+1<d.count?&d.children[i+1]:nullptr;
+            return !Roots::self(p).fail_copy;};
+        cfg.first_child=[](void*,void* root,void** out) noexcept -> int{auto& r=*static_cast<Roots::Root*>(root);*out=r.count?&r.children[0]:nullptr;return 1;};
+        cfg.next_child=[](void*,void* child,void** out) noexcept -> int{*out=static_cast<Roots::Child*>(child)->next;return 1;};
+        cfg.name=[](void*,void* child,const char** out) noexcept -> int{*out=static_cast<Roots::Child*>(child)->name;return 1;};
+        alignas(4) unsigned char dest[response_criteria_bytes]{};
+        assert(api.construct(c,sizeof(c),&h)==1);
+        assert(api.add(&h,c,"concept","TLK_IDLE",5)&&api.add(&h,c,"enemy","old",1)&&api.add(&h,c,"ENEMY","new",2));
+        assert(F::word(c,0x18)==3&&roots.root[0].count==2);
+        assert(criteriaCopy->copy(c,sizeof(c),c,sizeof(c),&cfg)==0);
+        roots.fail_copy=true;assert(criteriaCopy->copy(dest,sizeof(dest),c,sizeof(c),&cfg)==-1&&roots.destroyed==1&&roots.root[0].live&&!roots.root[1].live);
+        roots.fail_copy=false;assert(criteriaCopy->copy(dest,sizeof(dest),c,sizeof(c),&cfg)==1);
+        assert(F::word(dest,0x18)==2&&roots.root[1].live);
+        int idx=-1;std::uint32_t child=0;
+        assert(api.find(dest,sizeof(dest),&h,"enemy",&idx,&child)==1&&idx>=0&&child==F::ptr(&roots.root[1].children[1]));
+        assert(!std::strcmp(roots.root[1].children[1].value,"new")&&roots.root[1].children[1].weight==2);
+        assert(api.add(&h,c,"enemy","changed",9)&&!std::strcmp(roots.root[1].children[1].value,"new"));
+        assert(api.destroy(c,sizeof(c),&h)==1&&roots.root[1].live);
+        assert(api.find(dest,sizeof(dest),&h,"concept",&idx,&child)==1&&idx>=0);
+        assert(api.destroy(dest,sizeof(dest),&h)==1&&roots.destroyed==3&&a.live.empty());
     }
 }
 
