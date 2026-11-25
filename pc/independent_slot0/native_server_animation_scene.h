@@ -32,6 +32,20 @@ struct ServerAnimationLayerOwnerApi {
     int (__cdecl *blend_out)(void* actor,unsigned bytes,int layer,float duration,float delay,const ChoreographyVectorBindings*) noexcept;
 };
 using GetServerAnimationLayerOwnerApi=const ServerAnimationLayerOwnerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_animation_layer_tick_export[]="SiN_GetServerAnimationLayerTickApi";
+struct ServerAnimationLayerTickBindings {
+    ChoreographyVectorBindings vectors;
+    void* context;
+    // Original sequence cycle rate 220eee90; resolved by engine metadata.
+    int (__cdecl *cycle_rate)(void*,void* actor,int sequence,double*) noexcept;
+};
+struct ServerAnimationLayerTickApi {
+    std::uint32_t version,size;
+    // 220f44e0 row loop after base animation advancement, 220f31e0
+    // per-layer cycle/envelope. dt is original resolved frame interval.
+    int (__cdecl *run)(void* actor,unsigned bytes,float dt,float now,const ServerAnimationLayerTickBindings*) noexcept;
+};
+using GetServerAnimationLayerTickApi=const ServerAnimationLayerTickApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_animation_scene_frame_export[]="SiN_GetServerAnimationSceneFrameApi";
 struct ServerAnimationSceneFrameBindings {
     void* context;

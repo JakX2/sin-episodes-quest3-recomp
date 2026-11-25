@@ -83,6 +83,48 @@ inline void check_animation_layer_owner(const ServerAnimationLayerOwnerApi& api)
     std::puts("PASS original-derived animation layer allocation, spare row, blend and immediate retirement");
 }
 
+
+inline void check_animation_layer_tick(const ServerAnimationLayerTickApi& api,const ServerAnimationLayerOwnerApi& owner){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char actor[0x4a8]{},rows[4*0x40]{};
+        unsigned calls=0;
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+    } f;
+    F::put(f.actor,0x494,F::ptr(f.rows));F::put(f.actor,0x498,4);F::put(f.actor,0x4a0,4);F::put(f.actor,0x4a4,F::ptr(f.rows));
+    ServerAnimationLayerTickBindings b{};b.context=&f;b.vectors.context=&f;
+    b.vectors.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);if(w!=F::ptr(f.rows))return 0;*out=f.rows;*n=sizeof(f.rows);return 1;};
+    b.vectors.resize=[](void*,std::uint32_t,unsigned,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+    b.cycle_rate=[](void* p,void* actor,int seq,double* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&(seq==7||seq==9));++f.calls;*out=1.;return 1;};
+    auto row=[&](int i){return f.rows+i*0x40;};int layer=-1;
+    for(int i=0;i<4;++i)F::put(row(i),0x34,15);
+    assert(owner.allocate(f.actor,sizeof(f.actor),7,0,10,1,&b.vectors,&layer)&&layer==0);
+    assert(owner.allocate(f.actor,sizeof(f.actor),9,1,10,0,&b.vectors,&layer)&&layer==1);
+    F::put(row(1),0,3);F::fl(row(0),0xc,.875f);F::fl(row(1),0xc,.875f);
+    F::put(row(2),0,0x20);F::fl(row(3),0x18,.25f);
+    auto tick=[&](float dt,float now){return api.run(f.actor,sizeof(f.actor),dt,now,&b);};
+    assert(tick(.25f,11)&&f.calls==2);
+    assert(F::word(row(0),0xc)==0x3e000000u&&F::word(row(0),0x10)==0x3f600000u&&row(0)[4]);
+    assert(F::word(row(1),0xc)==0x3f800000u&&F::word(row(1),0)==7&&!F::word(row(1),0x18));
+    assert(!F::word(row(2),0)&&F::word(row(3),0)==0x20&&!F::word(row(3),0x18));
+    assert(tick(.25f,12)&&f.calls==3&&F::word(row(1),0)==0x20&&!F::word(row(3),0));
+    assert(tick(.25f,13)&&!F::word(row(1),0)&&f.calls==4);
+    assert(owner.blend_out(f.actor,sizeof(f.actor),0,.5f,.125f,&b.vectors));
+    assert(tick(.25f,14)&&!F::word(row(0),0x28)&&F::word(row(0),0x18)==0x3f800000u);
+    assert(tick(.25f,15)&&F::word(row(0),0x18)==0x3f000000u);
+    assert(tick(.25f,16)&&!F::word(row(0),0x18)&&F::word(row(0),0)==5);
+    assert(tick(.25f,17)&&F::word(row(0),0)==0x20);
+    assert(tick(.25f,18)&&!F::word(row(0),0));
+    assert(owner.allocate(f.actor,sizeof(f.actor),7,0,18,0,&b.vectors,&layer)&&layer==0);
+    F::fl(row(0),0x1c,.5f);F::fl(row(0),0x20,.5f);
+    assert(tick(.25f,19)&&F::word(row(0),0x18)==0x3f000000u);
+    assert(tick(.5f,20)&&F::word(row(0),0x18)==0x3f000000u);
+    assert(!tick(-1,20));
+    std::puts("PASS native layer cycle wrap, autokill, delayed decay, spare quarantine and envelope");
+}
+
 inline void check_animation_scene_frame(const ServerAnimationSceneFrameApi& api){
     struct Fixture {alignas(4) unsigned char actor[0x4a4]{},row[0x40]{},record[0x40]{},event[0x3c0]{};unsigned reads{},warps{};float fraction{},mapped=.75f;} f;
     auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
