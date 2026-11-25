@@ -1,0 +1,3 @@
+# Phase 964: loaded DLL map registry lifecycle
+
+Extend the Windows fixed-difficulty loader BSP regression to call the actual server DLL ScriptResponseFinderApi for map-owned registry construction and retirement. Synthetic include fixture always runs; optional SIN_PRIVATE_SCRIPTS_DIR environment variable points at owner-only extracted scripts directory, loads talker/response_rules.txt and its includes with bounded relative reads. Verify missing include rollback, shared store identity across Jessica/Count, release refusal while attached, full unload and reopen. Speech callback is a route probe, not actual playback or retail selection. No private assets committed. CI pending.
