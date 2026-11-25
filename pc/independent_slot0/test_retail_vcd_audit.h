@@ -742,7 +742,8 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 }
 
 
-inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api){
+inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
+    const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[8]{};
@@ -754,7 +755,7 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     b.symbol_retire.release=[](void* p,std::uint32_t w,ChoreographySymbolRelease) noexcept -> int{return VcdAuditArena::release(p,w);};
     b.compare_word=0x2205b1f0;b.symbol_compare_word=0x2228e9b0;b.context=&f;b.release_rows=&VcdAuditArena::release;
     b.create_root=[](void* p,const char* name,void** out) noexcept -> int{
-        auto& f=State::self(p);assert(!std::strcmp(name,"CriteriaSet"));++f.created;*out=&f.root;return 1;};
+        auto& f=State::self(p);assert(!std::strcmp(name,"CriteriaSet"));++f.created;f.count=0;*out=&f.root;return 1;};
     b.find_child=[](void* p,void* root,const char* name,int create,void** out) noexcept -> int{
         auto& f=State::self(p);assert(root==&f.root&&create==1);
         for(unsigned i=0;i<f.count;++i)if(!_stricmp(f.children[i].name,name)){*out=&f.children[i];return 1;}
@@ -779,6 +780,48 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     a.fail_resize=false;assert(api.add(&b,c,"extra","y",1)&&F::word(c,0xc)==8);
     assert(api.destroy(c,sizeof(c),&b)==1&&f.destroyed==1&&a.live.empty());
     assert(api.destroy(c,sizeof(c),&b)==0);
+    if(!integrated)return;
+    assert(select);
+    struct Selection {
+        State& kv;const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
+        alignas(4) unsigned char exp[0x7c]{},response[0x124]{};
+        int system=0;unsigned finds=0,allocations=0,warnings=0,destroys=0;
+        bool no_system=false;
+        static Selection& self(void* p){return *static_cast<Selection*>(p);}
+    } fsel{f,api,b};
+    ResponseCriteriaSelectionSession session{c,sizeof(c)};
+    ResponseCriteriaSelectionBindings cfg{};cfg.criteria=b;cfg.session=&session;
+    auto& h=cfg.host;h.context=&fsel;
+    h.system=[](void* p,void* exp,void** out) noexcept -> int{
+        auto& s=Selection::self(p);assert(exp==s.exp);*out=s.no_system?nullptr:&s.system;return 1;};
+    h.npc_criteria=[](void* p,void*,void* c) noexcept -> int{
+        auto& s=Selection::self(p);return s.tree.add(&s.b,c,"npc","Jessica",1);};
+    h.player_criteria=[](void* p,void* c,int i) noexcept -> int{
+        auto& s=Selection::self(p);assert(i==1);return s.tree.add(&s.b,c,"player","Blade",1);};
+    h.allocate=[](void* p,unsigned n,void** out,unsigned* extent) noexcept -> int{
+        auto& s=Selection::self(p);assert(n==0x124);++s.allocations;*out=s.response;*extent=sizeof(s.response);return 1;};
+    h.find=[](void* p,void* system,void* c,void* response,void* exp,unsigned* found) noexcept -> int{
+        auto& s=Selection::self(p);assert(system==&s.system&&response==s.response&&exp==s.exp);
+        assert(F::word(c,0x18)==6&&s.kv.count==5);
+        int idx=-1;std::uint32_t child=0;
+        assert(s.tree.find(c,response_criteria_bytes,&s.b,"part",&idx,&child)==1&&idx>=0&&child==F::ptr(&s.kv.children[1]));
+        assert(!std::strcmp(s.kv.children[1].value,"torso")&&s.kv.children[1].weight==5.f);
+        assert(!std::strcmp(s.kv.children[0].value,"TLK_IDLE")&&!std::strcmp(s.kv.children[3].value,"Jessica")&&!std::strcmp(s.kv.children[4].value,"Blade"));
+        ++s.finds;s.response[4]='x';s.response[5]=0;*found=1;return 1;};
+    h.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
+    h.destroy=[](void* p,void* response) noexcept -> int{auto& s=Selection::self(p);assert(response==s.response);++s.destroys;return 1;};
+    cfg.warning=[](void* p,const char*) noexcept -> int{++Selection::self(p).warnings;return 1;};
+    ResponseSelectionBindings adapted{};assert(integrated->adapt(&cfg,&adapted));
+    void* out=nullptr;unsigned n=0;
+    auto run=[&](const char* mods){return select->select(fsel.exp,sizeof(fsel.exp),&adapted,"TLK_IDLE",mods,&out,&n);};
+    assert(run("part:head,PART:torso,state:alert")==1&&out==fsel.response&&n==0x124);
+    assert(!session.busy&&f.created==2&&f.destroyed==2&&fsel.finds==1&&fsel.allocations==1&&a.live.empty());
+    out=&fsel;n=99;assert(run("broken")==-1&&out==&fsel&&n==99&&fsel.warnings==1);
+    assert(!session.busy&&f.created==3&&f.destroyed==3&&fsel.allocations==1&&a.live.empty());
+    fsel.no_system=true;assert(run(nullptr)==1&&!out&&!n&&f.created==3);
+    void* active=nullptr;assert(adapted.begin_criteria(adapted.context,&active)&&active==c&&session.busy);
+    void* second=nullptr;assert(!adapted.begin_criteria(adapted.context,&second)&&!second);
+    assert(adapted.end_criteria(adapted.context,active)&&!session.busy&&a.live.empty());
 }
 
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr,const ResponseHistoryTreeApi* history_tree=nullptr,

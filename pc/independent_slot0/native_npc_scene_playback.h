@@ -1104,6 +1104,24 @@ struct ResponseCriteriaTreeApi {
     int (__cdecl *destroy)(void*,unsigned,const ResponseCriteriaTreeBindings*) noexcept;
 };
 using GetResponseCriteriaTreeApi=const ResponseCriteriaTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_criteria_selection_export[]="SiN_GetResponseCriteriaSelectionApi";
+struct ResponseCriteriaSelectionSession {
+    void* object;unsigned bytes;
+    unsigned busy=0;
+};
+struct ResponseCriteriaSelectionBindings {
+    ResponseCriteriaTreeBindings criteria;
+    ResponseCriteriaSelectionSession* session;
+    ResponseSelectionBindings host; // begin/add/modifiers/end unused
+    int (__cdecl *warning)(void*,const char*) noexcept; // optional, host.context
+};
+struct ResponseCriteriaSelectionApi {
+    std::uint32_t version,size;
+    // Use caller-provided 92-byte scratch storage, mirroring retail stack
+    // criteria. Caller retains cfg/session and serializes synchronous use.
+    int (__cdecl *adapt)(const ResponseCriteriaSelectionBindings*,ResponseSelectionBindings*) noexcept;
+};
+using GetResponseCriteriaSelectionApi=const ResponseCriteriaSelectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;
