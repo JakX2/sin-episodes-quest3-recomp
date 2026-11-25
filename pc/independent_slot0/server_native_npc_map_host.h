@@ -27,10 +27,30 @@ public:
 class NativeNpcMapHost final:public sin_compat::map::ISourceMapEntityHost {
 public:
     explicit NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine):engine_(engine){}
-    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr,const npc::ManagedJessicaObservationApi* managed=nullptr,const npc::IntegratedNpcMapDialogueApi* integrated=nullptr,const npc::NativeGeneratedMapDialogueApi* generated=nullptr,const npc::ScriptNpcMapDialogueApi* script=nullptr):
-        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue),managed_(managed),integrated_(integrated),generated_(generated),script_(script){}
+    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr,const npc::ManagedJessicaObservationApi* managed=nullptr,const npc::IntegratedNpcMapDialogueApi* integrated=nullptr,const npc::NativeGeneratedMapDialogueApi* generated=nullptr,const npc::ScriptNpcMapDialogueApi* script=nullptr,const npc::ScriptResponseFinderApi* finder=nullptr):
+        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue),managed_(managed),integrated_(integrated),generated_(generated),script_(script),script_finder_(finder){}
+    // The loaded finder API must outlive this host. Explicit close after
+    // successful map unload is preferred; destructor covers abandoned startup.
+    ~NativeNpcMapHost() override{
+        if(script_store_.owner&&script_finder_&&script_finder_->release)
+            (void)script_finder_->release(&script_store_);
+    }
     NativeNpcMapHost(const NativeNpcMapHost&)=delete;
     NativeNpcMapHost& operator=(const NativeNpcMapHost&)=delete;
+    // Engine filesystem supplies the root and include bytes; the loaded
+    // DLL copies them into a registry owned by this map host.
+    // A single registry shares match-once/group cursors across NPCs.
+    int open_script_session(const char* data,unsigned bytes,const npc::ScriptResponseInclude* include=nullptr){
+        if(!script_ready()||script_busy_||!entries_.empty()||script_store_.owner||script_store_.system)return 0;
+        ScriptGuard guard(script_busy_);
+        return script_finder_->create("talker/response_rules.txt",data,bytes,include,&script_store_);
+    }
+    int close_script_session(){
+        if(!script_ready()||script_busy_||!entries_.empty()||!script_store_.owner||!script_store_.system)return 0;
+        ScriptGuard guard(script_busy_);
+        return script_finder_->release(&script_store_);
+    }
+    bool script_session_open()const noexcept{return script_store_.owner&&script_store_.system;}
     bool is_live(EntityRef e)const override{return engine_.is_live(e);}
     bool create_entity(std::string_view name,EntityRef& e)override{
         const char* names[]={"npc_jessica","npc_count","npc_generic_actor","npc_jc"};
@@ -79,6 +99,8 @@ public:
         if(!c||!b)return NpcMapResult::Rejected;
         if(script_&&(kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)){
             if(script_->version!=npc::version||script_->size!=sizeof(*script_)||!script_->observe)return NpcMapResult::Rejected;
+            if(script_finder_&&(!script_session_open()||script_busy_))return NpcMapResult::Rejected;
+            ScriptGuard guard(script_busy_);
             const auto* d=shells_->dialogue_bindings(e);
             const auto* speech=shells_->script_speech_bindings(e);
             const auto* manager=kind==npc::NpcMapKind::Jessica?shells_->manager_bindings(e):nullptr;
@@ -87,6 +109,14 @@ public:
                (managed_&&kind==npc::NpcMapKind::Jessica&&!manager))return NpcMapResult::Rejected;
             // Configured script route supersedes older synthetic finder routes.
             // No fallback on missing bindings or transport failure.
+            if(script_finder_){
+                // Shell supplies actor-specific callbacks only. No borrowed
+                // external registry may override the map-owned registry.
+                if(speech->selection.finder.store.owner||speech->selection.finder.store.system)return NpcMapResult::Rejected;
+                auto bound=*speech;
+                bound.selection.finder.store=script_store_;
+                return status(script_->observe(kind,c,session_,b,d,manager,&bound,record,bytes));
+            }
             return status(script_->observe(kind,c,session_,b,d,manager,speech,record,bytes));
         }
         if(generated_&&(kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)){
@@ -152,6 +182,16 @@ public:
     }
     std::size_t attached_count()const noexcept{return entries_.size();}
 private:
+    struct ScriptGuard {
+        bool& busy;bool previous;
+        explicit ScriptGuard(bool& b):busy(b),previous(b){busy=true;}
+        ~ScriptGuard(){busy=previous;}
+    };
+    bool script_ready()const noexcept{
+        return script_&&script_->version==npc::version&&script_->size==sizeof(*script_)&&script_->observe&&
+            script_finder_&&script_finder_->version==npc::version&&script_finder_->size==sizeof(*script_finder_)&&
+            script_finder_->create&&script_finder_->release&&script_finder_->find;
+    }
     enum class Stage {Keys,Spawning,Spawned,Activating,Active,Failed};
     struct Entry {std::uint32_t generation;npc::NpcMapKind kind;Stage stage;};
     Entry* find(EntityRef e){auto i=entries_.find(e.index);return i!=entries_.end()&&i->second.generation==e.generation?&i->second:nullptr;}
@@ -163,6 +203,7 @@ private:
         return true;
     }
     bool ready()const {
+        if(script_finder_&&(!script_ready()||!script_session_open()||script_busy_))return false;
         if(!shells_||!api_||!session_||api_->version!=npc::version||api_->size!=sizeof(*api_)||
            !api_->schema||!api_->key||!api_->input||!api_->observe||!api_->select_count)return false;
         constexpr const char* names[]={"npc_jessica","npc_count","npc_generic_actor","npc_jc"};
@@ -202,6 +243,9 @@ private:
     const npc::IntegratedNpcMapDialogueApi* integrated_=nullptr;
     const npc::NativeGeneratedMapDialogueApi* generated_=nullptr;
     const npc::ScriptNpcMapDialogueApi* script_=nullptr;
+    const npc::ScriptResponseFinderApi* script_finder_=nullptr;
+    npc::ScriptResponseStore script_store_{};
+    bool script_busy_=false;
     std::map<std::uint32_t,Entry> entries_;
 };
 }
