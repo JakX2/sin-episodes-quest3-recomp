@@ -1,5 +1,6 @@
 #pragma once
 #include "server_native_npc_map_host.h"
+#include "server_scene_cache_owner.h"
 #include "native_use_observation.h"
 #include "native_npc_spawn.h"
 #include "test_retail_dialogue_source.h"
@@ -38,6 +39,7 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     npc::ScriptActorSpeechBindings script_speech{};
     bool script_missing=false;int script_result=1;unsigned script_calls=0;
     void* observed_store_owner=nullptr;void* observed_store_system=nullptr;
+    const npc::ResponseSceneFilterApi* observed_filter_api=nullptr;
     npc::TalkCooldownState cooldown{};
     const npc::TalkManagerApi& manager_api;
     const npc::TalkManagerRuntimeApi& manager_runtime;
@@ -580,9 +582,34 @@ inline void check_loaded_script_registry_bsp(const npc::NpcMapApi& api,const npc
     const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const npc::ResponsePolicyApi& response,
     const npc::ExpeditorLifecycleApi& lifecycle,const npc::NpcMapDialogueApi& dialogue,const npc::ManagedJessicaObservationApi& managed,
     const npc::TalkManagerApi& ma,const npc::TalkManagerRuntimeApi& mr,const npc::TalkCatalogApi& cat,
-    const std::vector<std::uint8_t>& bsp,const npc::ScriptResponseFinderApi& finder,const char* private_dir=nullptr){
+    const std::vector<std::uint8_t>& bsp,const npc::ScriptResponseFinderApi& finder,
+    const npc::SceneMetadataIndexApi& scene_index,const npc::SceneResponseServicesApi& scene_services,
+    const npc::ResponseSceneFilterApi& scene_filter,const char* private_dir=nullptr){
     NpcBspShell shell(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);
-    shell.script_speech.context=&shell;
+    shell.script_speech.context=&shell;shell.observed_filter_api=&scene_filter;
+    struct CacheFixture {
+        NpcBspShell& shell;
+        unsigned stamps=0,refreshes=0,owners=0;
+        static CacheFixture& get(void* p){return *static_cast<CacheFixture*>(p);}
+    } cache{shell};
+    SceneCacheOwner::Leaves leaves{};leaves.metadata_vtable=0x12345678;auto& h=leaves.external;h.context=&cache;
+    leaves.filename=[](void*,const char* name,std::uint32_t* out) noexcept -> int{
+        if(std::strcmp(name,"scenes/fixture.vcd"))return 0;*out=1;return 1;};
+    leaves.release_vector=[](void*,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    h.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=CacheFixture::get(p);for(unsigned i:{2u,3u}){
+            auto& slot=f.shell.slots[i];if(slot.live&&word==f.shell.ptr(slot.storage)){++f.owners;*out=slot.storage;*n=sizeof(slot.storage);return 1;}
+        }return 0;};
+    h.model_name=[](void*,void*,const char** out) noexcept -> int{*out=nullptr;return 1;};
+    h.expand=[](void*,const char*,const char* name,char* out,unsigned n) noexcept -> int{
+        if(std::strlen(name)>=n)return 0;std::strcpy(out,name);return 1;};
+    h.stamp=[](void* p,const char*,unsigned mode,std::uint32_t* out) noexcept -> int{
+        if(mode!=1)return 0;++CacheFixture::get(p).stamps;*out=5;return 1;};
+    h.refresh=[](void* p,void* metadata,const char* name) noexcept -> int{
+        auto& f=CacheFixture::get(p);if(std::strcmp(name,"scenes/fixture.vcd"))return 0;
+        ++f.refreshes;float duration=3.f;std::memcpy(static_cast<unsigned char*>(metadata)+4,&duration,4);return 1;};
+    SceneCacheOwner owner(scene_index,leaves);npc::ResponseSceneFilterBindings shared{};
+    assert(owner.ready()&&scene_services.adapt(&owner.bindings(),&shared)==1);
     // Route observer intentionally does not execute speech. The registry
     // itself is constructed and destroyed by the actual loaded DLL.
     npc::ScriptNpcMapDialogueApi probe{npc::version,sizeof(npc::ScriptNpcMapDialogueApi)};
@@ -597,10 +624,13 @@ inline void check_loaded_script_registry_bsp(const npc::NpcMapApi& api,const npc
         assert(store.owner&&store.system);
         if(!f.script_calls){f.observed_store_owner=store.owner;f.observed_store_system=store.system;}
         else assert(store.owner==f.observed_store_owner&&store.system==f.observed_store_system);
+        unsigned allowed=99;auto* exp=kind==npc::NpcMapKind::Jessica?f.jessica_expeditor:f.expeditor;
+        assert(f.observed_filter_api&&f.observed_filter_api->allow(exp,sizeof(f.expeditor),&speech->selection.finder.host.scene_filter,
+            3,"scenes/fixture.vcd",&allowed)==1&&allowed==1);
         ++f.script_calls;return 1;
     };
     NativeNpcMapHost host(shell,shell,api,shell.session,&interaction,&dialogue,&managed,nullptr,nullptr,&probe,&finder);
-    shell.host=&host;
+    shell.host=&host;assert(host.bind_script_scene_filter(shared));
     const char root[]=R"(criterion idle concept TLK_IDLE required
 #include "talker/fixture.txt"
 rule idle_rule
@@ -634,7 +664,8 @@ rule idle_rule
     alignas(4) unsigned char observation[0x5ec]{};
     assert(host.observe(je,observation,sizeof(observation))==NpcMapResult::Applied);
     assert(host.observe(co,observation,sizeof(observation))==NpcMapResult::Applied&&shell.script_calls==2);
-    assert(host.close_script_session()==0&&host.script_session_open());
+    assert(cache.owners==2&&cache.refreshes==1&&cache.stamps==1&&owner.size()==1);
+    assert(host.close_script_session()==0&&host.script_session_open()&&!host.unbind_script_scene_filter());
     assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded);
     assert(host.close_script_session()==1&&!host.script_session_open());
     assert(ma.destroy(&shell.manager_session,&shell.manager_control,&shell.manager_tables,&shell.manager.manager)==1);
@@ -645,5 +676,6 @@ rule idle_rule
         *data=included;*bytes=sizeof(included)-1;return 1;
     };
     assert(host.open_script_session(root,sizeof(root)-1,&synthetic)==1&&host.close_script_session()==1);
+    assert(owner.size()==1&&host.unbind_script_scene_filter()&&owner.clear()&&!owner.size());
 }
 }

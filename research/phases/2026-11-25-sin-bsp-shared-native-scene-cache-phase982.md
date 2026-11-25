@@ -1,0 +1,3 @@
+# Phase 982: loaded BSP shared native scene cache
+
+Extend the actual loaded registry BSP lifecycle regression: bind a SceneCacheOwner through loaded SceneResponseServicesApi, invoke loaded ResponseSceneFilterApi from the probe observer using each map-spawned NPC's real expeditor storage, and verify both NPC owners resolve but only one cache index/metadata refresh occurs. Cache persists through registry close and reopen, then explicitly unbind and clear. Metadata duration, filename identity and stamp are synthetic service leaves here; native parser integration tested separately in Phase 980. No real game audio or full engine Spawn claimed. CI pending.
