@@ -1441,6 +1441,95 @@ int __cdecl combat_range_gather(void* actor,unsigned bytes,void* target,float no
     out->attack_gate=nav_mode!=1&&nav_mode!=3&&in_view&&!out->too_far;
     return 1;
 }
+int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* out) noexcept{
+    if(!out)return 0;*out={};for(auto& id:out->conditions)id=-1;out->distance=distance;
+    if(!actor||bytes<0x8f0||!target||!b||!relation_grunt_class(b->original_vtable)||!std::isfinite(distance)||distance<0||
+       b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    auto active=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(actor,0x78c)));};
+    float origin[3]{},other[3]{},forward[3]{},point[3]{};
+    auto get_origin=[&](void* e,float* v){return b->origin&&b->origin(b->context,e,v)&&finite_vec(v);};
+    if(!get_origin(actor,origin)||!get_origin(target,other)||!b->forward||!b->forward(b->context,actor,forward)||!finite_vec(forward))return 0;
+    const float x=static_cast<float>(static_cast<double>(other[0])-origin[0]),y=static_cast<float>(static_cast<double>(other[1])-origin[1]);
+    const float len=std::sqrt(static_cast<float>(static_cast<double>(x)*x+static_cast<double>(y)*y));
+    if(!std::isfinite(len))return 0;
+    // Original VectorNormalize leaf is not executed here; zero direction stays zero.
+    out->dot=len?static_cast<float>(static_cast<double>(x/len)*forward[0]+static_cast<double>(y/len)*forward[1]):0.f;
+    if(!std::isfinite(out->dot))return 0;
+    auto cleanup=[&](){ServerNpcEnemyConditionResult cr{};++out->cleanup_calls;return clear_combat_conditions(actor,bytes,&b->conditions,&cr)!=0;};
+    if(!cleanup())return 0;
+    out->capabilities=read<unsigned>(actor,0x8ec);
+    if(void* w=active()){
+        if(!b->weapon_caps||!b->weapon_caps(b->context,w,&out->weapon_capabilities))return 0;out->capabilities|=out->weapon_capabilities;
+    }
+    bool clear=false;
+    auto line=[&](){++out->line_calls;return get_origin(actor,origin)&&b->line&&b->line(b->context,actor,origin,point,&clear);};
+    if(!get_origin(actor,origin)||!b->aim_point||!b->aim_point(b->context,target,origin,point)||!finite_vec(point)||!line())return 0;
+    if(!clear){
+        if(!cleanup()||!b->eye||!b->eye(b->context,target,point)||!finite_vec(point)||!line())return 0;
+    }
+    out->line_clear=clear;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto store=[&](int id,bool value){
+        ServerNpcConditionResult cr{};if(!cond->store(actor,bytes,id,NpcConditionCurrent,value,&b->conditions,&cr))return false;
+        if(value)out->sets+=cr.mapped;else out->range_cleared+=cr.changed;return true;
+    };
+    auto set=[&](unsigned i,int id,int ready){
+        out->conditions[i]=id;
+        if(id==ready&&!clear){++out->suppressed;return true;}
+        return store(id,true);
+    };
+    auto weapon=[&](void* w,unsigned i,unsigned slot,int ready){
+        int id=0;++out->weapon_queries;
+        return b->weapon_condition&&b->weapon_condition(b->context,w,slot,out->dot,distance,&id)&&set(i,id,ready);
+    };
+    auto native=[&](unsigned i,int id,int ready){++out->native_queries;return set(i,id,ready);};
+    const unsigned caps=out->capabilities;
+    void* w=active();
+    if((caps&0x2000u)&&w){
+        if(!weapon(w,0,0x4ac,0x14))return 0;
+    }else if(caps&0x20000u){
+        const int id=distance<64?0x24:distance>784?0x25:out->dot<.5f?0x26:0x14;
+        if(!native(0,id,0x14))return 0;
+    }
+    w=active();unsigned current_caps=0;
+    if((caps&0x4000u)&&w){
+        if(!b->weapon_caps||!b->weapon_caps(b->context,w,&current_caps))return 0;
+    }
+    if((caps&0x4000u)&&w&&(current_caps&0x4000u)){
+        if(!weapon(w,1,0x4b0,0x15))return 0;
+    }else if(caps&0x40000u){if(!native(1,0,0x15))return 0;}
+    w=active();
+    if((caps&0x8000u)&&w){if(!weapon(w,2,0x4b4,-1))return 0;}
+    else if(caps&0x80000u){
+        int id=0;
+        if(distance<=64.f&&static_cast<double>(out->dot)>=.7){
+            void* current=registry.Resolve(read<unsigned>(actor,0x8a0));
+            if(!current)return 0;
+            if(!get_origin(current,other)||!get_origin(actor,origin))return 0;
+            if(std::abs(static_cast<double>(other[2])-origin[2])<=64.){
+                void* hit=nullptr;
+                if(!b->melee_trace||!b->melee_trace(b->context,actor,current,0x46004003u,&hit))return 0;
+                out->melee_traced=1;id=hit==registry.Resolve(read<unsigned>(actor,0x8a0))?0x16:0;
+            }
+        }
+        if(!native(2,id,-1))return 0;
+    }
+    w=active();
+    if((caps&0x10000u)&&w){if(!weapon(w,3,0x4b8,-1))return 0;}
+    else if(caps&0x100000u){
+        if(!native(3,distance>64?0x25:static_cast<double>(out->dot)<.7?0:0x17,-1))return 0;
+    }
+    bool attack=false;
+    for(int id:{0x15,0x14,0x17,0x16}){
+        ServerNpcConditionResult cr{};
+        if(!cond->test(actor,bytes,id,NpcConditionCurrent,&b->conditions,&cr))return 0;
+        if(cr.value){attack=true;break;}
+    }
+    if(attack)for(int id:{0x24,0x25,0x28})if(!store(id,false))return 0;
+    return 1;
+}
+const ServerNpcGruntAttackApi attack_api{1,sizeof(ServerNpcGruntAttackApi),&grunt_attack_gather};
 const ServerNpcGruntCombatRangeApi combat_range_api{1,sizeof(ServerNpcGruntCombatRangeApi),&combat_distance,&combat_range_gather};
 const ServerNpcGruntCombatVisibilityApi combat_visibility_api{1,sizeof(ServerNpcGruntCombatVisibilityApi),&combat_visibility_query,&combat_visibility_gather};
 const ServerNpcGruntPerceptionTickApi tick_api{1,sizeof(ServerNpcGruntPerceptionTickApi),&perception_tick};
@@ -1639,4 +1728,10 @@ SiN_GetServerNpcGruntCombatVisibilityApi(std::uint32_t version,std::uint32_t siz
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatRangeApi* __cdecl
 SiN_GetServerNpcGruntCombatRangeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatRangeApi)?&combat_range_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAttackConditionsApi=_SiN_GetServerNpcGruntAttackConditionsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAttackApi* __cdecl
+SiN_GetServerNpcGruntAttackConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAttackApi)?&attack_api:nullptr;
 }
