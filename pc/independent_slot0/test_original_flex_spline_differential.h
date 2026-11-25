@@ -2,6 +2,7 @@
 // Owner-only optional differential probe. Does not LoadLibrary the retail
 // module, run its initializers, resolve imports or ship any original bytes.
 #include "native_server_flex_spline.h"
+#include "native_server_animation_scene.h"
 #include "../../include/sin_compat/phase100_sha256.hpp"
 #include <windows.h>
 #include <cstdio>
@@ -45,6 +46,29 @@ public:
             std::fprintf(stderr,"ORIGINAL SPLINE: image protection failed\n");return false;
         }
         return true;
+    }
+    // Fixed authenticated leaves only. The original selector can call the
+    // engine allocator if fewer than two ordinary free rows exist. The
+    // probe below verifies this precondition before invoking it.
+    int layer_select(void* actor,int priority,float now) const noexcept{
+        alignas(4) unsigned char globals[0x30]{};std::memcpy(globals+0xc,&now,4);
+        void* old=nullptr;void* current=globals;
+        std::memcpy(&old,base_+0x572190,4);std::memcpy(base_+0x572190,&current,4);
+        using Fn=int (__thiscall *)(void*,int);
+        const int result=reinterpret_cast<Fn>(base_+0xf4e20)(actor,priority);
+        std::memcpy(base_+0x572190,&old,4);return result;
+    }
+    void layer_remove(void* actor,int layer,float now) const noexcept{
+        alignas(4) unsigned char globals[0x30]{};std::memcpy(globals+0xc,&now,4);
+        void* old=nullptr;void* current=globals;
+        std::memcpy(&old,base_+0x572190,4);std::memcpy(base_+0x572190,&current,4);
+        using Fn=void (__thiscall *)(void*,int);
+        reinterpret_cast<Fn>(base_+0xf4060)(actor,layer);
+        std::memcpy(base_+0x572190,&old,4);
+    }
+    void layer_blend(void* actor,int layer,float duration,float delay) const noexcept{
+        using Fn=void (__thiscall *)(void*,int,float,float);
+        reinterpret_cast<Fn>(base_+0xf3ff0)(actor,layer,duration,delay);
     }
     float sample(const ServerFlexSample* rows,unsigned n,float low,float high,float duration,float time,unsigned bank) const noexcept{
         alignas(4) unsigned char event[0x3c0]{},track[0x50]{};
@@ -91,4 +115,71 @@ inline bool audit_original_flex_spline(const char* filename,const ServerFlexSpli
     std::printf("ORIGINAL SPLINE AUDIT compared=%u failures=%u max_error=%.9g\n",compared,failures,max_error);
     return !failures&&compared==574;
 }
+
+inline bool audit_original_animation_layers(const char* filename,const ServerAnimationLayerOwnerApi& native){
+    OriginalFlexSplineImage original;if(!original.open(filename))return false;
+    struct Fixture{
+        alignas(4) unsigned char actor[0x4a8]{},rows[6*0x40]{};
+        unsigned char* row(int i){return rows+i*0x40;}
+        static std::uint32_t word(const void* p,unsigned off){std::uint32_t w;std::memcpy(&w,static_cast<const unsigned char*>(p)+off,4);return w;}
+        static void put(void* p,unsigned off,std::uint32_t v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,4);}
+        static void fl(void* p,unsigned off,float v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,4);}
+        void init(int variant){
+            std::memset(actor,0,sizeof(actor));std::memset(rows,0,sizeof(rows));
+            const auto address=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(rows));
+            put(actor,0x494,address);put(actor,0x498,6);put(actor,0x4a0,6);put(actor,0x4a4,address);
+            for(int i=0;i<6;++i){put(row(i),0x34,15);fl(row(i),0x14,1.f);fl(row(i),0x24,100.f);}
+            for(int i=0;i<3;++i){
+                put(row(i),0,1);put(row(i),8,7+i);put(row(i),0x30,static_cast<std::uint32_t>(i*2-2));
+                put(row(i),0x34,i);fl(row(i),0x18,.25f*(i+1));row(i)[5]=static_cast<unsigned char>(i&1);
+                put(row(i),0x38,0x12340000u+i);
+            }
+            if(variant&1)put(row(3),0,0x20);
+            if(variant&2){put(row(1),0,0);put(row(1),0x34,1);}
+        }
+        unsigned free_rows(){
+            unsigned count=0;for(int i=0;i<6;++i)if(!(word(row(i),0)&0x21))++count;return count;
+        }
+    } old,copy;
+    ChoreographyVectorBindings b{};b.context=&copy;
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* extent) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);
+        if(w!=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(f.rows)))return 0;
+        *out=f.rows;*extent=sizeof(f.rows);return 1;};
+    b.resize=[](void*,std::uint32_t,unsigned,void**,unsigned*) noexcept -> int{return 0;};
+    unsigned compared=0;
+    for(int variant=0;variant<4;++variant)for(int layer=-1;layer<=6;++layer){
+        for(float duration:{0.f,.125f,.5f,1.f,-1.f}){
+            old.init(variant);copy.init(variant);
+            original.layer_blend(old.actor,layer,duration,.25f);
+            if(!native.blend_out(copy.actor,sizeof(copy.actor),layer,duration,.25f,&b)||
+               std::memcmp(old.rows,copy.rows,sizeof(old.rows)))return false;
+            ++compared;
+        }
+        old.init(variant);copy.init(variant);
+        original.layer_remove(old.actor,layer,17.f);
+        if(!native.remove(copy.actor,sizeof(copy.actor),layer,17.f,&b)||
+           std::memcmp(old.rows,copy.rows,sizeof(old.rows)))return false;
+        ++compared;
+    }
+    for(int variant=0;variant<4;++variant)for(int priority=-3;priority<=4;++priority){
+        old.init(variant);copy.init(variant);
+        // No path may reach 220f41c0 (the original raw allocator).
+        if(old.free_rows()<2||copy.free_rows()<2)return false;
+        const int selected=original.layer_select(old.actor,priority,19.f);int actual=-1;
+        if(!native.allocate(copy.actor,sizeof(copy.actor),12,priority,19.f,0,&b,&actual)||
+           actual!=selected||selected<0||selected>=6||Fixture::word(copy.actor,0x4a0)!=6)return false;
+        for(int i=0;i<6;++i){
+            if(i==selected){
+                // Original 220f4e20 ends before 220f5120 initialization.
+                for(unsigned off:{0u,0x30u,0x34u,0x3cu})
+                    if(Fixture::word(old.row(i),off)!=Fixture::word(copy.row(i),off))return false;
+            }else if(std::memcmp(old.row(i),copy.row(i),0x40))return false;
+        }
+        ++compared;
+    }
+    std::printf("ORIGINAL ANIMATION LAYER AUDIT compared=%u failures=0\n",compared);
+    return compared==224;
+}
+
 }
