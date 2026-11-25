@@ -44,7 +44,7 @@ struct ServerNpcSharedFacingBindings {
     int (__cdecl *aim_vector)(void*,void*,float[3]) noexcept; // 22031780
     int (__cdecl *aligned)(void*,void*,const float*,bool*) noexcept; // actor +304
     int (__cdecl *vector_yaw)(void*,void*,const float*,float*) noexcept; // actor +5dc
-    int (__cdecl *desired_yaw)(void*,void*,bool,double*) noexcept; // actor +754
+    int (__cdecl *desired_yaw)(void*,void*,bool,double*) noexcept; // actor +754, mode false for task57
     int (__cdecl *begin_turn)(void*,void*) noexcept; // actor +71c
     int (__cdecl *step_turn)(void*,void*,int) noexcept; // motor +48
 };
