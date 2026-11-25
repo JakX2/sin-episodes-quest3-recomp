@@ -738,6 +738,43 @@ int __cdecl grunt_valid(void* actor,unsigned bytes,void* target,const ServerNpcG
     out->external_gate=1;
     if(!b->other_npc_gate||!b->other_npc_gate(b->context,npc,actor,&yes))return 0;out->valid=yes;return 1;
 }
+constexpr unsigned char original_disposition[15][15]={
+    {4,4,4,4,4,4,4,4,4,4,4,4,4,4,4},
+    {4,3,3,3,4,4,1,1,3,1,1,1,4,4,4},
+    {4,3,3,3,4,4,1,1,3,1,1,1,4,4,4},
+    {4,3,3,3,4,1,1,1,3,1,1,1,4,4,4},
+    {4,4,4,4,4,4,2,2,4,2,2,2,4,4,4},
+    {4,4,4,4,4,4,4,4,4,4,4,4,4,4,4},
+    {4,1,1,1,4,4,3,3,1,1,1,3,4,4,4},
+    {4,1,1,1,4,4,3,3,1,4,4,3,4,4,4},
+    {4,3,3,3,4,4,1,1,3,1,1,1,4,4,4},
+    {4,1,1,1,1,4,1,4,1,3,1,4,1,4,4},
+    {4,1,1,1,1,4,1,4,1,1,3,1,1,4,4},
+    {4,1,1,1,4,4,3,3,1,1,1,3,4,4,4},
+    {4,3,4,4,4,4,4,4,4,2,2,4,4,4,4},
+    {4,1,1,1,4,4,1,1,1,1,1,1,4,4,4},
+    {4,1,1,1,4,4,1,1,1,1,1,1,4,4,4},
+};
+int __cdecl initialize_relation_matrix(ServerNpcRelationCell* cells,unsigned count) noexcept{
+    if(!cells||count<225)return 0;
+    for(int i=0;i<15;++i)for(int j=0;j<15;++j){
+        auto& row=cells[15*i+j];
+        row.handle=0xffffffffu;row.classification=0;
+        row.disposition=original_disposition[i][j];
+        row.priority=j==1&&(i==6||i==7||i==10)?100:0;
+    }
+    return 1;
+}
+int __cdecl set_relation_matrix(ServerNpcRelationCell* cells,unsigned count,int source,int target,int disposition,int priority) noexcept{
+    if(!cells||count<225||source<0||source>=15||target<0||target>=15)return 0;
+    auto& cell=cells[15*source+target];cell.disposition=disposition;cell.priority=priority;return 1;
+}
+int __cdecl relation_matrix_row(void* context,int source,const void** row,unsigned* bytes) noexcept{
+    if(!row||!bytes)return 0;*row=nullptr;*bytes=0;
+    if(!context||source<0||source>=15)return 0;
+    *row=static_cast<ServerNpcRelationCell*>(context)+15*source;*bytes=240;return 1;
+}
+const ServerNpcRelationMatrixApi matrix_api{1,sizeof(ServerNpcRelationMatrixApi),&initialize_relation_matrix,&set_relation_matrix,&relation_matrix_row};
 const ServerNpcGruntRelationApi relation_api{1,sizeof(ServerNpcGruntRelationApi),&grunt_relation,&grunt_valid};
 const ServerNpcEnemyMemoryControlApi control_api{1,sizeof(ServerNpcEnemyMemoryControlApi),&initialize_memory_owner,&memory_control};
 const ServerNpcEnemyMemoryMutationApi mutation_api{1,sizeof(ServerNpcEnemyMemoryMutationApi),&upsert_memory,&remove_memory,&erase_memory_record};
@@ -846,4 +883,10 @@ SiN_GetServerNpcEnemyMemoryControlApi(std::uint32_t version,std::uint32_t size) 
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRelationApi* __cdecl
 SiN_GetServerNpcGruntRelationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRelationApi)?&relation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcRelationMatrixApi=_SiN_GetServerNpcRelationMatrixApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcRelationMatrixApi* __cdecl
+SiN_GetServerNpcRelationMatrixApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcRelationMatrixApi)?&matrix_api:nullptr;
 }

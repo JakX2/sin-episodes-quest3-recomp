@@ -290,4 +290,16 @@ struct ServerNpcGruntRelationApi {
     int (__cdecl *valid)(void*,unsigned,void*,const ServerNpcGruntRelationBindings*,ServerNpcGruntValidityResult*) noexcept;
 };
 using GetServerNpcGruntRelationApi=const ServerNpcGruntRelationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_relation_matrix_export[]="SiN_GetServerNpcRelationMatrixApi";
+struct ServerNpcRelationCell {std::uint32_t handle;int classification,disposition,priority;};
+static_assert(sizeof(ServerNpcRelationCell)==16);
+struct ServerNpcRelationMatrixApi {
+    std::uint32_t version,size;
+    // Original 222d3ae0 defaults. Caller owns all 225 mutable cells.
+    int (__cdecl *initialize)(ServerNpcRelationCell*,unsigned) noexcept;
+    int (__cdecl *set)(ServerNpcRelationCell*,unsigned,int,int,int,int) noexcept;
+    // Callback-compatible with relation.matrix_row; context points to 225 cells.
+    int (__cdecl *row)(void*,int,const void**,unsigned*) noexcept;
+};
+using GetServerNpcRelationMatrixApi=const ServerNpcRelationMatrixApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
