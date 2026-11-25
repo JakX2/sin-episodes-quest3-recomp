@@ -1,0 +1,2 @@
+# Phase 1112: Win32 nested aggregate initialization repair
+Phase1111 runtime workflow 45614589659 job 139206584077 reported MSVC C1054 at native_server_npc_schedule_image.cpp:196 and test_native_server_npc_schedule_image.cpp:339. Initialize the two tactical result members independently rather than value-initializing the entire deep aggregate. No public type, field layout, API version or production dispatch change. Includes phase1111 budget fixture fix; full Windows validation pending.
