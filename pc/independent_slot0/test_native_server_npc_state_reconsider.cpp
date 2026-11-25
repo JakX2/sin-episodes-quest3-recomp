@@ -22,6 +22,7 @@ struct F{
     unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned rebuild_calls=0;int rebuild_radius=100;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
     unsigned attack_weapon_caps=0,attack_line_calls=0,attack_line_mode=0;float attack_forward[3]{1,0,0};bool melee_hits=true;
     unsigned combat_nav_calls=0;bool remembered_visible=false;
+    unsigned char update_motor[0x18]{},update_component[9]{};bool update_pvs=false,update_component_handled=false,update_component_value=false;int update_roll=0;
     unsigned char combat_nav[0x3c]{},goal_path[0x6c]{};unsigned goal_retargets=0,goal_refreshes=0,goal_failures=0;bool goal_success=true;void* goal_target=nullptr;float combat_center[3]{},combat_velocity[3]{},combat_origin[3]{70,0,0};bool combat_facing=true;
     bool combat_trace=true,combat_fov=true;unsigned combat_output_count=0,combat_output_offsets[8]{};bool combat_output_value[8]{};std::uint32_t combat_output_handles[8]{};
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
@@ -914,6 +915,39 @@ int main(int argc,char** argv){
         assert(post->update(f.actor,sizeof(f.actor),622,false,&post_bindings,&post_result)&&post_result.completed&&post_result.skipped_perception&&post_result.cleared_sense_conditions>=2&&post_result.enemy_cleared&&!post_result.combat_called&&f.get<unsigned>(0x8a0)==0xffffffffu);
         f.put(f.actor,0x850,7);f.condition(1);
         assert(post->update(f.actor,sizeof(f.actor),623,false,&post_bindings,&post_result)&&post_result.completed&&post_result.skipped_state&&post_result.snapshot.snapshot&&!(f.get<unsigned>(0x80c)&2u));
+    }
+    {
+        auto get_gate=reinterpret_cast<GetServerNpcGruntUpdateGateApi>(GetProcAddress(s,server_npc_grunt_update_gate_export));
+        assert(get_gate&&!GetProcAddress(c,server_npc_grunt_update_gate_export)&&!get_gate(0,sizeof(ServerNpcGruntUpdateGateApi))&&!get_gate(1,0));
+        const auto* update_gate=get_gate(1,sizeof(ServerNpcGruntUpdateGateApi));assert(update_gate);
+        ServerNpcGruntUpdateGateBindings gate_bindings{};gate_bindings.context=&f;gate_bindings.original_vtable=0x2249aaa4;gate_bindings.conditions=eb.conditions;
+        gate_bindings.storage.context=&f;
+        gate_bindings.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& f=F::self(p);if(token==710){*out=f.update_motor;*n=sizeof(f.update_motor);return 1;}if(token==711){*out=f.update_component;*n=sizeof(f.update_component);return 1;}return 0;
+        };
+        gate_bindings.pvs_index=[](void* p,unsigned index,bool* yes) noexcept -> int{assert(index==14);*yes=F::self(p).update_pvs;return 1;};
+        gate_bindings.component_gate=[](void* p,std::uint32_t token,bool* yes) noexcept -> int{auto& f=F::self(p);assert(token==711&&f.update_component[8]==1);f.update_component[8]=f.update_component_handled;*yes=f.update_component_value;return 1;};
+        gate_bindings.pre_perception=[](void* p,void* a) noexcept -> int{return a==F::self(p).actor;};
+        gate_bindings.random_int=[](void* p,int lo,int hi,int* value) noexcept -> int{assert(lo==0&&hi==99);*value=F::self(p).update_roll;return 1;};
+        gate_bindings.idle_speech=[](void* p,void* a,unsigned member,const char* cue,int priority,int type,int* result) noexcept -> int{
+            assert(a==F::self(p).actor&&member==0xcc0&&!std::strcmp(cue,"GRUNT_IDLE")&&priority==0&&type==2);*result=3;return 1;
+        };
+        f.put(f.actor,0x850,7);f.actor[0x84c]=1;ServerNpcGruntUpdateGateResult gate_result{};
+        assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.inactive&&f.actor[0x84d]&&f.actor[0x84c]);
+        f.put(f.actor,0x850,1);f.put(f.actor,0x908,710u);f.put(f.actor,0x370,90.f);f.put(f.update_motor,0x14,90.f);
+        f.put(f.actor,0x988,0x2000u);f.put(f.actor,0xb4,0u);f.put(f.actor,8,0u);f.put(f.actor,0x16c,14u);f.put(f.actor,0xc18,0u);
+        assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.forced&&gate_result.yaw_flag_cleared&&gate_result.perceive&&gate_result.idle_emitted&&gate_result.speech_result==3&&!f.actor[0x84c]);
+        assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&!gate_result.perceive&&!gate_result.forced);
+        f.update_pvs=true;f.update_roll=1;f.put(f.update_motor,0x14,91.f);f.put(f.actor,0x988,0x2000u);
+        assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.pvs&&gate_result.perceive&&!gate_result.idle_emitted&&!gate_result.yaw_flag_cleared);
+        f.update_pvs=false;f.put(f.actor,0xc18,711u);f.update_component[8]=9;f.update_component_handled=true;f.update_component_value=true;
+        assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.component_called&&gate_result.component_handled&&gate_result.perceive&&f.update_component[8]==9);
+        f.update_component_handled=false;f.put(f.actor,0xb4,0x400u);
+        assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&!gate_result.component_handled&&gate_result.gate_value&&gate_result.perceive&&f.update_component[8]==9);
+        f.put(f.actor,0xb4,0x10u);f.actor[0x84c]=1;
+        assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.disabled&&!gate_result.perceive&&!f.actor[0x84c]);
+        f.put(f.actor,0xb4,0u);f.put(f.actor,0xc18,0u);f.put(f.actor,0x850,3);
+        assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.perceive&&!gate_result.idle_roll);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

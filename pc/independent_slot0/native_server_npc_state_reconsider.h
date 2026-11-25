@@ -736,4 +736,27 @@ struct ServerNpcGruntPostUpdateApi {
     int (__cdecl *update)(void*,unsigned,float,bool,const ServerNpcGruntPostUpdateBindings*,ServerNpcGruntPostUpdateResult*) noexcept;
 };
 using GetServerNpcGruntPostUpdateApi=const ServerNpcGruntPostUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_update_gate_export[]="SiN_GetServerNpcGruntUpdateGateApi";
+struct ServerNpcGruntUpdateGateBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    ServerNpcConditionMapBindings conditions;
+    void* context;
+    std::uint32_t original_vtable;
+    int (__cdecl *pvs_index)(void*,unsigned,bool*) noexcept; // 222895a0
+    int (__cdecl *component_gate)(void*,std::uint32_t,bool*) noexcept; // +c0, mutable handled byte+8
+    int (__cdecl *pre_perception)(void*,void*) noexcept; // 2203b8f0, separate ground/hazard policy
+    int (__cdecl *random_int)(void*,int,int,int*) noexcept;
+    int (__cdecl *idle_speech)(void*,void*,unsigned,const char*,int,int,int*) noexcept;
+};
+struct ServerNpcGruntUpdateGateResult {
+    unsigned inactive,forced,force_cleared,yaw_flag_cleared,pvs_checked,pvs,condition_one,disabled,component_called,component_handled,gate_value,perceive,pre_called,idle_roll,idle_emitted;
+    float yaw,desired_yaw,yaw_delta;
+    int speech_result;
+};
+struct ServerNpcGruntUpdateGateApi {
+    std::uint32_t version,size;
+    // 220456b0..2204579e, minus cycle-counter diagnostics.
+    int (__cdecl *prepare)(void*,unsigned,const ServerNpcGruntUpdateGateBindings*,ServerNpcGruntUpdateGateResult*) noexcept;
+};
+using GetServerNpcGruntUpdateGateApi=const ServerNpcGruntUpdateGateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
