@@ -984,9 +984,10 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     if(actorSelection){
         struct Actors {
             State& kv;const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
-            alignas(4) unsigned char exp[0x7c]{},npc[0x1160]{},player[0x980]{},target[0xc4]{},row[8]{},response[0x124]{};
+            alignas(4) unsigned char exp[0x7c]{},npc[0x1160]{},player[0x980]{},target[0xc4]{},row[8]{},response[0x124]{},enemy[0xec]{},owner[0xc4]{};
             unsigned family=1,resolves=0,finds=0,allocations=0,players=0;int system=0;
-            bool absent=false,stale=false,fail_player=false;
+            bool absent=false,stale=false,fail_player=false,hostile=false,fire=false,match=false;
+            unsigned enemy_calls=0,owner_calls=0,identities=0,retired=0,fire_checks=0;
             static Actors& self(void* p){return *static_cast<Actors*>(p);}
         } s{f,api,b};
         ActorResponseSelectionBindings cfg{};cfg.context=&s;cfg.selection.criteria=b;cfg.selection.session=&session;
@@ -1001,10 +1002,13 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
                 assert(i>=0&&word);auto* v=reinterpret_cast<State::Child*>(static_cast<std::uintptr_t>(word));
                 assert(!std::strcmp(v->value,value)&&v->weight==weight);
             };
-            const unsigned count=15+(s.family&&!s.stale?1:0)+(s.absent?0:6);
-            assert(s.kv.count==count&&F::word(c,0x18)==count+1);
+            const unsigned count=15+(s.family&&!s.stale?1:0)+(s.absent?0:6)+(s.hostile?1:0)+(s.family==2&&s.fire?1:0);
+            const unsigned replaced=s.family==2&&s.hostile&&s.match?1:0;
+            assert(s.kv.count==count+replaced&&F::word(c,0x18)==count+1);
             expect("concept","TLK_IDLE",5);expect("part","torso",5);expect("map","se1_test");expect("classname","npc_count");
-            expect("health","40");expect("activity","ACT_IDLE");expect("timesincecombat","999999.0");
+            expect("health","40");expect("activity","ACT_IDLE");expect("timesincecombat",s.hostile?"-1":"999999.0");
+            expect("enemy",s.hostile?(replaced?"func_tankmortar":"npc_grenade_frag"):nullptr);
+            expect("hurt_by_fire",s.family==2&&s.fire?"1":nullptr);
             expect("target_mood",s.family&&!s.stale?"ready":nullptr);expect("playerhealth",s.absent?nullptr:"75");
             expect("gordon_precriminal",s.absent?nullptr:"0");
             auto* raw=static_cast<unsigned char*>(r);raw[4]='x';raw[5]=0;*found=1;return 1;
@@ -1012,30 +1016,35 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         sh.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
         sh.destroy=[](void*,void*) noexcept -> int{return 1;};
         cfg.actor=[](void* p,std::uint32_t word,void** out,unsigned* n,unsigned* family) noexcept -> int{auto& s=Actors::self(p);assert(word==F::ptr(s.npc));*out=s.npc;*n=sizeof(s.npc);*family=s.family;return 1;};
-        cfg.target=[](void* p,std::uint32_t handle,void** out,unsigned* n) noexcept -> int{auto& s=Actors::self(p);assert(handle==0x5001);++s.resolves;*out=s.stale?nullptr:s.target;*n=sizeof(s.target);return 1;};
+        cfg.target=[](void* p,std::uint32_t handle,void** out,unsigned* n) noexcept -> int{auto& s=Actors::self(p);if(handle==0x6002){++s.owner_calls;*out=s.owner;*n=sizeof(s.owner);return 1;}assert(handle==0x5001);++s.resolves;*out=s.stale?nullptr:s.target;*n=sizeof(s.target);return 1;};
         cfg.player_at=[](void* p,int i,void** out,unsigned* n) noexcept -> int{auto& s=Actors::self(p);assert(i==1);++s.players;if(s.fail_player)return 0;*out=s.absent?nullptr:s.player;*n=sizeof(s.player);return 1;};
         auto& bh=cfg.base;bh.context=&s;bh.contexts.context=&s;
         bh.contexts.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{auto& s=Actors::self(p);return s.tree.add(&s.b,c,k,v,w);};
         bh.contexts.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{auto& s=Actors::self(p);assert(word==F::ptr(s.row));*out=s.row;*n=8;return 1;};
-        bh.contexts.string=[](void*,std::uint32_t w,const char** out) noexcept -> int{switch(w){case 1:*out="npc_count";break;case 2:*out="target_mood";break;case 3:*out="ready";break;default:return 0;}return 1;};
+        bh.contexts.string=[](void*,std::uint32_t w,const char** out) noexcept -> int{switch(w){case 1:*out="npc_count";break;case 2:*out="target_mood";break;case 3:*out="ready";break;case 4:case 5:*out="func_tankmortar";break;default:return 0;}return 1;};
         bh.map_name=[](void*,const char** out) noexcept -> int{*out="se1_test";return 1;};
         bh.global_count=[](void*,int* n) noexcept -> int{*n=0;return 1;};
         bh.global_row=[](void*,int,const char**,int*) noexcept -> int{assert(false);return 0;};
         bh.world=[](void*,void** out,unsigned* n) noexcept -> int{*out=nullptr;*n=0;return 1;};
         auto& nh=cfg.npc;nh.context=&s;nh.add=bh.contexts.add;
         nh.activity=[](void*,int,const char** out) noexcept -> int{*out="ACT_IDLE";return 1;};
-        nh.enemy=[](void*,void*,unsigned* present,const char** name) noexcept -> int{*present=0;*name=nullptr;return 1;};
+        nh.enemy=[](void* p,void*,unsigned* present,const char** name) noexcept -> int{auto& s=Actors::self(p);*present=s.hostile;*name=s.hostile?"npc_grenade_frag":nullptr;return 1;};
         nh.clock=[](void*,float*) noexcept -> int{assert(false);return 0;};
         nh.velocity=[](void*,void*,float* xyz) noexcept -> int{xyz[0]=xyz[1]=xyz[2]=0;return 1;};
         nh.weapon=[](void*,void*,unsigned* present,const char** name) noexcept -> int{*present=0;*name=nullptr;return 1;};
         nh.max_clients=[](void*,int* n) noexcept -> int{*n=2;return 1;};
         nh.local_player=[](void*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
         nh.refresh=[](void*,void*) noexcept -> int{assert(false);return 0;};
-        nh.condition=[](void*,void*,int,unsigned* out) noexcept -> int{*out=0;return 1;};
+        nh.condition=[](void* p,void*,int id,unsigned* out) noexcept -> int{auto& s=Actors::self(p);if(id==0x45){++s.fire_checks;*out=s.fire;}else{assert(id==0x1f);*out=0;}return 1;};
         nh.in_view=[](void*,void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
         nh.visible=[](void*,void*,void*,unsigned,unsigned*) noexcept -> int{assert(false);return 0;};
         auto& ph=cfg.player;ph.context=&s;ph.contexts=bh.contexts;ph.weapon=nh.weapon;ph.activity=nh.activity;ph.refresh_velocity=nh.refresh;
         ph.global_find=[](void*,const char*,int* out) noexcept -> int{*out=-1;return 1;};
+        auto& j=cfg.jessica;j.context=&s;
+        j.enemy_object=[](void* p,void* npc,void** out,unsigned* n) noexcept -> int{auto& s=Actors::self(p);assert(npc==s.npc);++s.enemy_calls;*out=s.hostile?s.enemy:nullptr;*n=sizeof(s.enemy);return 1;};
+        j.mortar_identity=[](void* p,std::uint32_t* m,std::uint32_t* empty) noexcept -> int{++Actors::self(p).identities;*m=4;*empty=99;return 1;};
+        j.retire_child=[](void* p,void* root,void* child) noexcept -> int{auto& f=State::self(p);assert(root==&f.root);auto* v=static_cast<State::Child*>(child);assert(!std::strcmp(v->name,"enemy"));v->name[0]=0;return 1;};
+        F::put(s.enemy,0xe8,0x6002);F::put(s.owner,0xc,4);
         F::put(s.exp,4,F::ptr(s.npc));F::put(s.npc,0xc,1);F::put(s.npc,0x9c,40);F::put(s.npc,0x98,80);
         F::put(s.npc,0x115c,0x5001);F::put(s.target,0x5c,F::ptr(s.row));F::put(s.target,0x68,1);F::put(s.row,0,2);F::put(s.row,4,3);
         F::put(s.player,0x9c,75);F::put(s.player,0x98,100);
@@ -1047,6 +1056,13 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         assert(run()==1&&s.resolves==3&&s.finds==3&&!session.busy&&a.live.empty());
         s.fail_player=true;out=&s;n=99;
         assert(run()==-1&&out==&s&&n==99&&s.allocations==3&&s.players==4&&!session.busy&&a.live.empty());
+        s.fail_player=false;s.family=2;s.hostile=true;s.match=true;s.fire=true;
+        assert(run()==1&&s.enemy_calls==2&&s.owner_calls==1&&s.identities==2&&s.fire_checks==1&&a.live.empty());
+        // Same string text, different pooled identity: no replacement.
+        s.match=false;s.fire=false;F::put(s.owner,0xc,5);
+        assert(run()==1&&s.enemy_calls==4&&s.owner_calls==2&&s.identities==3&&s.fire_checks==2&&a.live.empty());
+        s.hostile=false;s.fire=true;
+        assert(run()==1&&s.enemy_calls==5&&s.owner_calls==2&&s.identities==3&&s.fire_checks==3&&a.live.empty());
     }
     if(removal){
         ResponseCriteriaRemovalBindings r{};r.tree=b;
