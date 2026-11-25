@@ -194,4 +194,28 @@ struct ServerNpcTargetThinkApi {
     int (__cdecl *consume_body)(void*,unsigned,const ServerBodyTurnBindings*,unsigned*) noexcept;
 };
 using GetServerNpcTargetThinkApi=const ServerNpcTargetThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_move_scene_export[]="SiN_GetServerMoveSceneApi";
+struct ServerMoveSceneBindings {
+    void* context;
+    int (__cdecl *npc)(void*,void* actor,void** npc,unsigned* bytes) noexcept;
+    int (__cdecl *admit)(void*,void* actor,unsigned*) noexcept;
+    int (__cdecl *moving)(void*,void* npc,unsigned*) noexcept; // virtual +108
+    int (__cdecl *cancel_navigation)(void*,void* npc,int clear) noexcept;
+    int (__cdecl *has_goal)(void*,void* npc,unsigned*) noexcept; // 220740a0
+    int (__cdecl *travel_time)(void*,void* npc,double*) noexcept; // virtual +5d4
+    int (__cdecl *activity)(void*,const char*,int*) noexcept; // 220e6cb0
+    int (__cdecl *intern)(void*,const char*,std::uint32_t*) noexcept;
+};
+struct ServerMoveSceneApi {
+    std::uint32_t version,size;
+    // Original 220f9570: ordinary rejection returned via accepted.
+    int (__cdecl *begin)(void* actor,void* record,unsigned,const void* event,unsigned,void* target,float time,float now,
+        const ServerMoveSceneBindings*,unsigned*) noexcept;
+    int (__cdecl *check)(void* actor,const void* record,unsigned,const void* event,unsigned,float time,
+        const ServerMoveSceneBindings*,unsigned*) noexcept;
+    int (__cdecl *stop)(void* actor,const void* event,unsigned,int forced,const ServerMoveSceneBindings*,unsigned*) noexcept;
+    // Original 220f5aa0, parameter2 first token and custom sequence fallback.
+    int (__cdecl *activity)(void* npc,unsigned,const void* event,unsigned,const ServerMoveSceneBindings*,int*) noexcept;
+};
+using GetServerMoveSceneApi=const ServerMoveSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
