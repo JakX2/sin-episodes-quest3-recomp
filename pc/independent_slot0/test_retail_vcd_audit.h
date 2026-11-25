@@ -981,6 +981,138 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 }
 
 
+// Owner-only, case-insensitive scene directory snapshot. Not the
+// original engine's multi-search-path filesystem.
+struct RetailSceneDirectory {
+    std::map<std::string,std::filesystem::path> paths;
+    std::map<std::string,std::uint32_t> handles;
+    static bool normalize(const char* name,std::string& out){
+        if(!name||!*name)return false;
+        std::string key(name);
+        if(key.size()>511)return false;
+        for(char& c:key){if(c=='\\')c='/';else if(c>='A'&&c<='Z')c=static_cast<char>(c+32);}
+        if(key.compare(0,7,"scenes/")||key.size()<12||key.compare(key.size()-4,4,".vcd")||key.find(':')!=std::string::npos)return false;
+        for(std::size_t begin=0;begin<key.size();){
+            auto end=key.find('/',begin);if(end==std::string::npos)end=key.size();
+            if(end==begin||key.compare(begin,end-begin,".")==0||key.compare(begin,end-begin,"..")==0)return false;
+            begin=end+1;
+        }
+        out=std::move(key);return true;
+    }
+    bool open(const char* directory){
+        namespace fs=std::filesystem;
+        if(!directory||!*directory||!paths.empty())return false;
+        std::error_code ec;fs::path root(directory);
+        if(!fs::is_directory(root,ec)||ec)return false;
+        if(fs::is_directory(root/"scenes",ec)&&!ec)root/="scenes";
+        ec.clear();std::map<std::string,fs::path> tmp;
+        fs::recursive_directory_iterator it(root,ec),end;
+        if(ec)return false;
+        for(;it!=end;it.increment(ec)){
+            if(ec)return false;
+            auto status=it->symlink_status(ec);if(ec)return false;
+            if(!fs::is_regular_file(status))continue;
+            auto name="scenes/"+it->path().lexically_relative(root).generic_string();
+            std::string key;if(!normalize(name.c_str(),key))continue;
+            if(!tmp.emplace(key,it->path()).second)return false;
+        }
+        if(ec||tmp.empty()||tmp.size()>=65535)return false;
+        paths=std::move(tmp);return true;
+    }
+    bool handle(const char* name,std::uint32_t* out){
+        std::string key;if(!out||!normalize(name,key))return false;
+        auto it=handles.find(key);
+        if(it==handles.end()){
+            if(handles.size()>=65535)return false;
+            it=handles.emplace(key,static_cast<std::uint32_t>(handles.size()+1)).first;
+        }
+        *out=it->second;return true;
+    }
+    bool read(const char* name,std::string& data,bool& found)const{
+        std::string key;if(!normalize(name,key))return false;
+        auto it=paths.find(key);found=it!=paths.end();
+        if(!found){data.clear();return true;}
+        std::ifstream stream(it->second,std::ios::binary|std::ios::ate);auto bytes=stream.tellg();
+        if(!stream||bytes<=0||bytes>1024*1024)return false;
+        std::string tmp(static_cast<std::size_t>(bytes),'\0');stream.seekg(0);
+        if(!stream.read(tmp.data(),static_cast<std::streamsize>(tmp.size())))return false;
+        data=std::move(tmp);return true;
+    }
+};
+struct RetailSceneAuditApis {
+    const NativeVcdRuntimeApi& runtime;
+    const SceneMetadataGenerationApi& generation;
+    const SceneResponseServicesApi& services;
+    const SceneMetadataIndexApi& index;
+    const char* directory;
+};
+struct RetailSceneAudit {
+    using F=ScenePlaybackFixture;
+    using Owner=sin_port::map_host::SceneCacheOwner;
+    const RetailSceneAuditApis& apis;
+    VcdAuditArena arena;
+    RetailSceneDirectory files;
+    SceneMetadataGenerationBindings generate{};
+    unsigned reads=0,parses=0,destroys=0,misses=0,refreshes=0,stamp_reads=0;
+    void* npc=nullptr;unsigned npc_bytes=0;
+    Owner::Leaves leaves{};
+    std::unique_ptr<Owner> owner;
+    ResponseSceneFilterBindings filter{};
+    static RetailSceneAudit& get(void* p){return *static_cast<RetailSceneAudit*>(p);}
+    RetailSceneAudit(VcdAuditArena& model,const RetailSceneAuditApis& a):
+        apis(a),arena(model.constructors,model.symbol_api,model.tracks,model.destruction,model.scale_tree_api,model.intern_api,model.vectors){
+        generate.context=this;generate.events.context=this;
+        generate.load=[](void* p,const char* path,char** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);try{
+                std::string data;bool found=false;
+                if(!f.files.read(path,data,found))return 0;
+                if(!found){*out=nullptr;*n=0;return 1;}
+                void* storage=nullptr;unsigned bytes=0;
+                if(!f.arena.allocate(&f.arena,static_cast<unsigned>(data.size()+1),&storage,&bytes))return 0;
+                std::memcpy(storage,data.data(),data.size());*out=static_cast<char*>(storage);
+                *n=static_cast<unsigned>(data.size());++f.reads;return 1;
+            }catch(...){return 0;}};
+        generate.release_text=[](void* p,char* data) noexcept -> int{return VcdAuditArena::release(&get(p).arena,F::ptr(data));};
+        generate.parse=[](void* p,const char* name,const char* data,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);f.arena.counter=0;auto b=f.arena.runtime();std::uint32_t root=0;
+            if(f.apis.runtime.parse(nullptr,name,data,n,&b,&root)!=1||!root)return 0;
+            if(!VcdAuditArena::storage(&f.arena,root,out,bytes)){(void)f.apis.runtime.destroy(root,&b);return 0;}
+            ++f.parses;return 1;};
+        generate.destroy_parsed=[](void* p,void* root,unsigned) noexcept -> int{
+            auto& f=get(p);auto b=f.arena.runtime();++f.destroys;return f.apis.runtime.destroy(F::ptr(root),&b)==1;};
+        generate.events.event=[](void* p,void* graph,unsigned i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);void* rows=nullptr;unsigned count=0;
+            if(!f.arena.rows(graph,0,4,rows,count)||i>=count||!f.arena.child(rows,i,0x3c0,*out))return 0;
+            *bytes=0x3c0;return 1;};
+        generate.sound_index=[](void*,const char* token,std::uint32_t* out) noexcept -> int{*out=VcdMetadataFixture::sound_id(token);return 1;};
+        generate.grow=[](void* p,void* v,unsigned n) noexcept -> int{return VcdAuditArena::grow(&get(p).arena,v,n,4);};
+        generate.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{return VcdAuditArena::storage(&get(p).arena,w,out,n);};
+        generate.missing=[](void* p,const char*) noexcept -> int{++get(p).misses;return 1;};
+        leaves.metadata_vtable=0x12345678;leaves.external.context=this;
+        leaves.filename=[](void* p,const char* name,std::uint32_t* out) noexcept -> int{try{return get(p).files.handle(name,out);}catch(...){return 0;}};
+        leaves.release_vector=[](void* p,std::uint32_t w) noexcept -> int{return VcdAuditArena::release(&get(p).arena,w);};
+        auto& h=leaves.external;
+        h.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& f=get(p);if(!f.npc||w!=F::ptr(f.npc))return 0;*out=f.npc;*n=f.npc_bytes;return 1;};
+        h.model_name=[](void*,void*,const char** out) noexcept -> int{*out=nullptr;return 1;};
+        h.expand=[](void*,const char*,const char* name,char* out,unsigned n) noexcept -> int{
+            if(std::strchr(name,36)||std::strlen(name)>=n)return 0;std::strcpy(out,name);return 1;};
+        // Immutable audit snapshot, not an original filesystem time.
+        h.stamp=[](void* p,const char*,unsigned mode,std::uint32_t* out) noexcept -> int{if(mode!=1)return 0;++get(p).stamp_reads;*out=1;return 1;};
+        h.refresh=[](void* p,void* meta,const char* name) noexcept -> int{
+            auto& f=get(p);++f.refreshes;return f.apis.generation.refresh(meta,0x1c,name,&f.generate)==1;};
+    }
+    bool open(){
+        if(!files.open(apis.directory))return false;
+        owner=std::make_unique<Owner>(apis.index,leaves);
+        return owner->ready()&&apis.services.adapt(&owner->bindings(),&filter)==1;
+    }
+    bool close(){
+        if(!owner||!owner->clear())return false;
+        owner.reset();return arena.live.empty()&&reads==parses&&parses==destroys&&refreshes==parses+misses&&stamp_reads==refreshes;
+    }
+};
+
 struct ScriptChoreographyTestApis {
     const SceneSpeechCallbackApi& callback;
     const NativeGeneratedLifecycleApi& generated;
@@ -994,7 +1126,7 @@ struct ScriptChoreographyTestApis {
 };
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr,const char* private_scripts=nullptr,const ResponseHistoryTreeApi* historyTree=nullptr,const ExpeditorLifecycleApi* expLifecycle=nullptr,const ScriptChoreographyTestApis* choreography=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr,const char* private_scripts=nullptr,const ResponseHistoryTreeApi* historyTree=nullptr,const ExpeditorLifecycleApi* expLifecycle=nullptr,const ScriptChoreographyTestApis* choreography=nullptr,const RetailSceneAuditApis* retailScenes=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -2054,10 +2186,12 @@ rule once_rule
 }
 )";
             assert(scriptFinder->create("shared",shared,sizeof(shared)-1,nullptr,&sc.finder.store)==1);
+            RetailSceneAudit* active_scene_audit=nullptr;
             auto choose=[&](bool jessica,const char* concept,const char* mods,const char* expected_rule,unsigned kind,const char* value=nullptr){
                 actor.external_npc=jessica?second_npc:nullptr;
                 actor.external_exp=jessica?second_exp:nullptr;
                 actor.external_bytes=jessica?sizeof(second_npc):0;
+                if(active_scene_audit){active_scene_audit->npc=actor.current_npc();active_scene_audit->npc_bytes=actor.current_bytes();}
                 auto borrowed=sc;
                 void* result=nullptr;unsigned size=0;
                 assert(scriptActor->select(actor.current_exp(),sizeof(second_exp),&borrowed,concept,mods,&result,&size)==1);
@@ -2065,6 +2199,11 @@ rule once_rule
                     assert(result==actor.response&&size==sizeof(actor.response)&&actor.live&&actor.copy_live);
                     assert(F::word(result,0)==kind&&!std::strcmp(reinterpret_cast<char*>(actor.response+0xa4),expected_rule));
                     if(value)assert(!std::strcmp(reinterpret_cast<char*>(actor.response+4),value));
+                    if(active_scene_audit&&kind==3){
+                        void* metadata=nullptr;unsigned bytes=0;auto& audit=*active_scene_audit;
+                        assert(audit.filter.metadata(audit.filter.context,reinterpret_cast<char*>(actor.response+4),&metadata,&bytes)==1&&metadata&&bytes>=8);
+                        assert(VcdAuditArena::read_float(metadata,4)>0);
+                    }
                     int index=-1;std::uint32_t child=0;
                     assert(api.find(actor.copy,sizeof(actor.copy),&h,"classname",&index,&child)==1&&index>=0&&child);
                     assert(!std::strcmp(reinterpret_cast<Roots::Child*>(static_cast<std::uintptr_t>(child))->value,jessica?"npc_jessica":"npc_count"));
@@ -2108,6 +2247,11 @@ rule once_rule
                     const auto size=std::strlen(name);if(size>=n)return 0;std::memcpy(out,name,size+1);return 1;};
                 sf.metadata=[](void* p,const char*,void** out,unsigned* n) noexcept -> int{
                     auto& s=*static_cast<Scene*>(p);*out=s.metadata;*n=sizeof(s.metadata);return 1;};
+                std::unique_ptr<RetailSceneAudit> retail;
+                if(retailScenes&&retailScenes->directory&&*retailScenes->directory){
+                    retail=std::make_unique<RetailSceneAudit>(a,*retailScenes);assert(retail->open());
+                    sf=retail->filter;active_scene_audit=retail.get();
+                }
                 const char* concepts[]={"TLK_INTERROGATE_COCKY","TLK_INTERROGATE_NERVOUS","TLK_INTERROGATE_TALKING"};
                 const char* moods[]={"Cocky","Nervous","Talking"};
                 const char* parts[]={"head","chest","crotch","knee","hand"};
@@ -2127,6 +2271,13 @@ rule once_rule
                 choose(true,"TLK_PLDEAD",nullptr,"JessicaPlayerDead",1);
                 choose(true,"TLK_PLDEAD",nullptr,nullptr,0);
                 assert(scriptFinder->release(&sc.finder.store)==1);
+                if(retail){
+                    assert(retail->parses>0&&retail->owner->size()==retail->refreshes&&!retail->misses);
+                    std::printf("RETAIL DIALOGUE VCD files=%u parsed=%u refreshes=%u misses=%u\n",
+                        static_cast<unsigned>(retail->files.paths.size()),retail->parses,retail->refreshes,retail->misses);
+                    assert(retail->close());active_scene_audit=nullptr;
+                    std::puts("PASS private retail Count and Jessica scene selection through actual parsed VCD metadata");
+                }else std::puts("NOTE private scripts selected with synthetic metadata; set SIN_PRIVATE_SCENES_DIR for VCD admission");
                 std::puts("PASS private retail dialogue: 15 Count combinations, Jessica gates and owned response selection");
             }
         }
