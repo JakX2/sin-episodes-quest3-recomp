@@ -1342,6 +1342,66 @@ inline void check_actor_event_records(const ActorEventRecordApi& api){
 }
 
 
+
+inline void check_scene_metadata_generation(const SceneMetadataGenerationApi& api){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char meta[0x1c]{},parsed[0x220]{},events[6][0x3c0]{};
+        std::uint32_t ids[4]{};
+        char text[5]="test";
+        unsigned loads=0,parses=0,destroys=0,releases=0,missing_calls=0,lookups=0,grows=0;
+        bool absent=false,parse_miss=false,fail_lookup=false,fail_grow=false,live_text=false,live_graph=false;
+        static Fixture& get(void* p){return *static_cast<Fixture*>(p);}
+    } f;
+    SceneMetadataGenerationBindings b{};b.context=&f;b.events.context=&f;
+    b.load=[](void* p,const char* name,char** text,unsigned* n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(!std::strcmp(name,"scenes/test.vcd")&&!f.live_text);++f.loads;
+        *text=f.absent?nullptr:f.text;*n=f.absent?0:4;f.live_text=!!*text;return 1;};
+    b.release_text=[](void* p,char* text) noexcept -> int{
+        auto& f=Fixture::get(p);assert(text==f.text&&f.live_text&&!f.live_graph);++f.releases;f.live_text=false;return 1;};
+    b.parse=[](void* p,const char*,const char* text,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=Fixture::get(p);assert(text==f.text&&n==4&&f.live_text&&!f.live_graph);++f.parses;
+        *out=f.parse_miss?nullptr:f.parsed;*bytes=f.parse_miss?0:sizeof(f.parsed);f.live_graph=!!*out;return 1;};
+    b.destroy_parsed=[](void* p,void* parsed,unsigned n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(parsed==f.parsed&&n==sizeof(f.parsed)&&f.live_graph&&f.live_text);
+        ++f.destroys;f.live_graph=false;return 1;};
+    b.events.event=[](void* p,void* parsed,unsigned i,void** event,unsigned* bytes) noexcept -> int{
+        auto& f=Fixture::get(p);assert(parsed==f.parsed&&i<6&&f.live_graph);
+        *event=f.events[i];*bytes=sizeof(f.events[i]);return 1;};
+    b.sound_index=[](void* p,const char* text,std::uint32_t* index) noexcept -> int{
+        auto& f=Fixture::get(p);++f.lookups;
+        if(f.fail_lookup)return 0;
+        if(!std::strcmp(text,"caption"))*index=12;
+        else if(!std::strcmp(text,"primary"))*index=19;
+        else{assert(!std::strcmp(text,"missing"));*index=0xffffffffu;}
+        return 1;};
+    b.grow=[](void* p,void* vector,unsigned n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(vector==f.meta+8&&n==1);++f.grows;if(f.fail_grow)return 0;
+        F::put(vector,0,F::ptr(f.ids));F::put(vector,4,4);return 1;};
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(w==F::ptr(f.ids));*out=f.ids;*n=sizeof(f.ids);return 1;};
+    b.missing=[](void* p,const char*) noexcept -> int{++Fixture::get(p).missing_calls;return 1;};
+    F::put(f.parsed,0xc,6);
+    for(unsigned i=0;i<6;++i){F::put(f.events[i],0,5);F::fl(f.events[i],0x188,float(i+1));}
+    std::strcpy(reinterpret_cast<char*>(f.events[0]+0x84),"primary");
+    std::strcpy(reinterpret_cast<char*>(f.events[0]+0x350),"caption");
+    std::strcpy(reinterpret_cast<char*>(f.events[1]+0x84),"primary");
+    std::strcpy(reinterpret_cast<char*>(f.events[2]+0x84),"primary");
+    std::strcpy(reinterpret_cast<char*>(f.events[3]+0x84),"missing");
+    F::put(f.events[4],0x34c,1);F::put(f.events[5],0,12);
+    F::fl(f.events[5],0x188,-1);F::fl(f.events[5],0x184,7);
+    auto run=[&](){return api.refresh(f.meta,sizeof(f.meta),"scenes/test.vcd",&b);};
+    assert(api.refresh(f.meta,0x1b,"scenes/test.vcd",&b)==0&&!f.loads);
+    assert(run()==1&&F::word(f.meta,4)==0x40e00000u&&F::word(f.meta,0x14)==3);
+    assert(f.ids[0]==12&&f.ids[1]==19&&f.ids[2]==19&&f.lookups==4&&f.grows==1&&f.destroys==1&&f.releases==1);
+    f.absent=true;assert(run()==1&&!F::word(f.meta,4)&&!F::word(f.meta,0x14)&&f.missing_calls==1&&f.releases==1);
+    f.absent=false;f.parse_miss=true;assert(run()==1&&!F::word(f.meta,4)&&f.destroys==1&&f.releases==2);
+    f.parse_miss=false;f.fail_lookup=true;assert(run()==-1&&!F::word(f.meta,4)&&!F::word(f.meta,0x14)&&f.destroys==2&&f.releases==3);
+    f.fail_lookup=false;f.fail_grow=true;F::put(f.meta,0xc,0);
+    assert(run()==-1&&f.destroys==3&&f.releases==4&&!F::word(f.meta,0x14));
+    f.fail_grow=false;assert(run()==1&&F::word(f.meta,0x14)==3&&f.destroys==4&&f.releases==5&&!f.live_text&&!f.live_graph);
+}
+
 inline void check_scene_speech_policy(const SceneSpeechPolicyApi& api){
     using F=ScenePlaybackFixture;alignas(4) unsigned char event[0x3c0]{},scene[0x5ec]{};
     char text[128]{};unsigned available=99;

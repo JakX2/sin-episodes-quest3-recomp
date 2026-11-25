@@ -8,6 +8,32 @@ struct SceneDurationBindings {
     // Host resolves each event from the original parsed scene vector.
     int (__cdecl *event)(void*,void* parsed,unsigned index,void** event,unsigned* bytes) noexcept;
 };
+inline constexpr char scene_metadata_generation_export[]="SiN_GetSceneMetadataGenerationApi";
+struct SceneMetadataGenerationBindings {
+    void* context;
+    // Return an owned text buffer; null means absent. It must remain
+    // readable and NUL-terminated until release_text consumes it.
+    int (__cdecl *load)(void*,const char*,char**,unsigned*) noexcept;
+    int (__cdecl *release_text)(void*,char*) noexcept;
+    // On success returns a uniquely owned parsed graph or null on normal
+    // parse miss. On transport failure parser cleans partial objects.
+    int (__cdecl *parse)(void*,const char*,const char*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *destroy_parsed)(void*,void*,unsigned) noexcept;
+    SceneDurationBindings events;
+    int (__cdecl *sound_index)(void*,const char*,std::uint32_t*) noexcept;
+    // Original append (including repeated indices); capacity only.
+    int (__cdecl *grow)(void*,void* vector,unsigned additional) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *missing)(void*,const char*) noexcept;
+};
+struct SceneMetadataGenerationApi {
+    std::uint32_t version,size;
+    // 221ad750 / 221ad820. Metadata duration +4, sound vector +8.
+    // Return 1 on normal missing/parse miss, -1 on host failure after
+    // mutation, 0 on invalid preflight. No automatic retry on -1.
+    int (__cdecl *refresh)(void*,unsigned,const char*,const SceneMetadataGenerationBindings*) noexcept;
+};
+using GetSceneMetadataGenerationApi=const SceneMetadataGenerationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct NpcScenePlaybackBindings {
     void* context;
     // Engine creates and owns instanced_scripted_scene. Full object storage.

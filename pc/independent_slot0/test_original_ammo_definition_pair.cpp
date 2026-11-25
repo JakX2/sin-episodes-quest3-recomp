@@ -678,6 +678,12 @@ int main(int argc,char** argv){
     const auto* sceneResponseServices=getSceneResponseServices(1,sizeof(tables::SceneResponseServicesApi));
     assert(sceneResponseServices&&!getSceneResponseServices(0,sizeof(tables::SceneResponseServicesApi))&&!getSceneResponseServices(1,0));
     tables::test::check_scene_response_services(*sceneResponseServices,*responseSceneFilter);
+    const auto getSceneMetadataGeneration=reinterpret_cast<tables::GetSceneMetadataGenerationApi>(GetProcAddress(server,tables::scene_metadata_generation_export));
+    assert(getSceneMetadataGeneration&&!GetProcAddress(client,tables::scene_metadata_generation_export));
+    const auto* sceneMetadataGeneration=getSceneMetadataGeneration(1,sizeof(tables::SceneMetadataGenerationApi));
+    assert(sceneMetadataGeneration&&!getSceneMetadataGeneration(0,sizeof(tables::SceneMetadataGenerationApi))&&!getSceneMetadataGeneration(1,0));
+    tables::test::check_scene_metadata_generation(*sceneMetadataGeneration);
+    std::puts("PASS native scene metadata refresh duration, sound token collection and cleanup");
     std::puts("PASS original scene name expansion and stale metadata admission services");
     std::puts("PASS native response scene admission filter and cached duration policy");
     std::puts("PASS native response selection criteria, chance and ownership");
