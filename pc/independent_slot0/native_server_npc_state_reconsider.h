@@ -424,4 +424,25 @@ struct ServerNpcSensedEntitiesApi {
     int (__cdecl *contains)(const void*,unsigned,void*,const ServerNpcSensedEntitiesBindings*,bool*) noexcept;
 };
 using GetServerNpcSensedEntitiesApi=const ServerNpcSensedEntitiesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_visual_conditions_export[]="SiN_GetServerNpcGruntVisualConditionsApi";
+struct ServerNpcGruntVisualBindings {
+    ServerNpcSensedEntitiesBindings senses;
+    ServerNpcGruntRelationBindings relation;
+    ServerNpcGruntMemoryReportBindings report;
+    ServerNpcConditionMapBindings conditions;
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    // Called only when entity+b8 has dirty absolute-origin bit 11.
+    int (__cdecl *refresh_transform)(void*,void*) noexcept;
+};
+struct ServerNpcGruntVisualResult {
+    unsigned cleared,visited,stale,first_stale,special_mode,special_seen,current_seen,neutral,hostile,feared,friendly,unknown,report_calls,records_created,transforms;
+    unsigned condition_sets;
+};
+struct ServerNpcGruntVisualApi {
+    std::uint32_t version,size;
+    // 22358600: base 22039d30 or special Grunt mode, native memory report.
+    int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntVisualBindings*,ServerNpcGruntVisualResult*) noexcept;
+};
+using GetServerNpcGruntVisualApi=const ServerNpcGruntVisualApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
