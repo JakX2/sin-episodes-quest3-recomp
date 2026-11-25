@@ -1,5 +1,6 @@
 #pragma once
 #include "native_server_animation_events.h"
+#include "native_server_activity_dictionary.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_grunt_animation_export[]="SiN_GetServerGruntAnimationApi";
 struct ServerGruntAnimationBindings {
@@ -32,4 +33,34 @@ struct ServerGruntAnimationApi {
     int (__cdecl *handle)(void* grunt,unsigned bytes,const ServerAnimationEvent*,float now,const ServerGruntAnimationBindings*,ServerGruntAnimationResult*) noexcept;
 };
 using GetServerGruntAnimationApi=const ServerGruntAnimationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_grunt_registration_export[]="SiN_GetServerGruntRegistrationApi";
+struct ServerGruntRegistration {
+    const ServerActivityDictionary* activity_owner;
+    const ServerEventDictionary* event_owner;
+    unsigned activity_generation,event_generation;
+    int activities[6],events[2]; // native registration order
+    bool activities_ready,events_ready;
+};
+struct ServerGruntRegistrationBindings {
+    void* context;
+    // Optional host mirrors of 22022a60/22060530, after native ID assignment.
+    void (__cdecl *publish)(void*,bool event,const char* name,int id) noexcept;
+};
+struct ServerGruntActivityBindings {
+    void* context;
+    int (__cdecl *has_weapon)(void*,void* actor,const char* classname,int owner_tag,bool*) noexcept;
+    int (__cdecl *component_identity)(void*,void* actor,std::uint32_t component,bool*) noexcept;
+    int (__cdecl *component_translate)(void*,std::uint32_t component,int activity,int*) noexcept;
+    int (__cdecl *parent_translate)(void*,void* actor,int activity,int*) noexcept;
+};
+struct ServerGruntRegistrationApi {
+    std::uint32_t version,size;
+    int (__cdecl *grunt)(ServerActivityDictionary*,ServerEventDictionary*,const ServerGruntRegistrationBindings*,ServerGruntRegistration*) noexcept;
+    int (__cdecl *jetpack)(ServerEventDictionary*,const ServerGruntRegistrationBindings*,ServerGruntRegistration*) noexcept;
+    // 2235a250: native raw Grunt activity remapping, explicit external leaves.
+    int (__cdecl *translate)(void*,unsigned,int,const ServerGruntRegistration*,const ServerGruntActivityBindings*,int*) noexcept;
+    // Use registered IDs, not caller-assigned numeric altfire values.
+    int (__cdecl *handle)(void*,unsigned,const ServerAnimationEvent*,float,const ServerGruntRegistration*,const ServerGruntAnimationBindings*,ServerGruntAnimationResult*) noexcept;
+};
+using GetServerGruntRegistrationApi=const ServerGruntRegistrationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

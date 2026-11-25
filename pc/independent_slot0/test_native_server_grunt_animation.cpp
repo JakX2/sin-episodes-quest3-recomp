@@ -66,6 +66,72 @@ int main(int argc,char** argv){
     f.trace.clear();f.has_weapon=false;
     assert(run(2)==1&&(f.trace==std::vector<int>{100,3,4,5})&&f.get<int>(f.actor,0xfc8)==2);
     f.trace.clear();assert(run(1102)==-1&&f.get<unsigned>(f.actor,0xc38)==2);
+
+    auto gr=reinterpret_cast<GetServerGruntRegistrationApi>(GetProcAddress(server,server_grunt_registration_export));
+    auto ga=reinterpret_cast<GetServerActivityDictionaryApi>(GetProcAddress(server,server_activity_dictionary_export));
+    auto gd=reinterpret_cast<GetServerEventDictionaryApi>(GetProcAddress(server,server_event_dictionary_export));
+    assert(gr&&ga&&gd&&!GetProcAddress(client,server_grunt_registration_export)&&!gr(0,sizeof(ServerGruntRegistrationApi))&&!gr(1,0));
+    auto* registration=gr(1,sizeof(ServerGruntRegistrationApi));auto* activity=ga(1,sizeof(ServerActivityDictionaryApi));auto* dict=gd(1,sizeof(ServerEventDictionaryApi));assert(registration&&activity&&dict);
+    ServerEventDictionaryEntry ar[16]{},ev[32]{};
+    ServerActivityDictionary activities{{ar,16,0,4,0},-1};ServerEventDictionary events_dict{ev,32,0,7,0};
+    assert(activity->shared(&activities,"ACT_HL2MP_JUMP_SLAM",920)&&dict->seed(&events_dict));
+    int filler=-1;assert(activity->private_id(&activities,"PRIVATE_FIRST",&filler)&&filler==921);
+    assert(dict->private_id(&events_dict,"PRIVATE_EVENT_FIRST",&filler)&&filler==24);
+    ServerGruntRegistration ids{};
+    struct RegistrationTrace {std::vector<int> ids;std::vector<bool> kinds;} rt;
+    ServerGruntRegistrationBindings rb{&rt,[](void* p,bool event,const char* name,int id) noexcept {
+        auto& t=*static_cast<RegistrationTrace*>(p);assert(name&&*name);t.ids.push_back(id);t.kinds.push_back(event);
+    }};
+    assert(registration->jetpack(&events_dict,&rb,&ids)&&ids.events_ready&&!ids.activities_ready&&ids.events[0]==25&&ids.events[1]==26);
+    assert((rt.ids==std::vector<int>{25,26}));rt.ids.clear();rt.kinds.clear();
+    assert(registration->grunt(&activities,&events_dict,&rb,&ids)&&ids.activities_ready&&ids.events_ready);
+    assert((rt.ids==std::vector<int>{922,923,924,925,926,927,25,26}));
+    for(unsigned i=0;i<8;++i)assert(rt.kinds[i]==(i>=6));
+    assert(events_dict.count==27&&activities.names.count==8);
+    struct ActivityFixture {F* f;bool launcher=false,identity=false;unsigned weapon_calls=0,identity_calls=0,delegate_calls=0,parent_calls=0;} af{&f};
+    ServerGruntActivityBindings ab{&af,
+        [](void* p,void* a,const char* name,int owner,bool* found) noexcept -> int {
+            auto& x=*static_cast<ActivityFixture*>(p);assert(a==x.f->actor&&!std::strcmp(name,"weapon_grenadelauncher")&&owner==0);
+            ++x.weapon_calls;*found=x.launcher;return 1;},
+        [](void* p,void* a,std::uint32_t c,bool* equal) noexcept -> int {
+            auto& x=*static_cast<ActivityFixture*>(p);assert(a==x.f->actor&&c==0x111);++x.identity_calls;*equal=x.identity;return 1;},
+        [](void* p,std::uint32_t c,int input,int* out) noexcept -> int {
+            auto& x=*static_cast<ActivityFixture*>(p);assert(c==0x222);++x.delegate_calls;*out=input+1000;return 1;},
+        [](void* p,void* a,int input,int* out) noexcept -> int {
+            auto& x=*static_cast<ActivityFixture*>(p);assert(a==x.f->actor);++x.parent_calls;*out=input;return 1;}
+    };
+    f.put(f.actor,0xdbc,0x111u);f.put(f.actor,0xc18,0u);
+    int mapped=-1;
+    assert(registration->translate(f.actor,sizeof(f.actor),17,&ids,&ab,&mapped)&&mapped==922);
+    af.launcher=true;assert(registration->translate(f.actor,sizeof(f.actor),17,&ids,&ab,&mapped)&&mapped==923&&af.weapon_calls==2&&!af.identity_calls);
+    f.put(f.actor,0xc64,std::uint8_t{0});f.put(f.actor,0xca0,std::uint8_t{1});
+    assert(registration->translate(f.actor,sizeof(f.actor),16,&ids,&ab,&mapped)&&mapped==199);
+    assert(registration->translate(f.actor,sizeof(f.actor),66,&ids,&ab,&mapped)&&mapped==200);
+    f.put(f.actor,0xca0,std::uint8_t{0});af.identity=true;
+    assert(registration->translate(f.actor,sizeof(f.actor),6,&ids,&ab,&mapped)&&mapped==7&&f.get<std::uint8_t>(f.actor,0xc64)==1);
+    f.put(f.actor,0xc18,0x222u);
+    assert(registration->translate(f.actor,sizeof(f.actor),10,&ids,&ab,&mapped)&&mapped==1011&&af.delegate_calls==1);
+    // Studio registration resolves the actual runtime event IDs, then native iterator -> Grunt handler.
+    alignas(4) unsigned char studio[0x180]{};
+    f.put(studio,0x18,2);f.put(studio,0x1c,0x40);
+    ServerStudioEvent named[2]{{.1f,-1,0x400,"",0xc0},{.2f,-1,0x400,"",0xa0}};
+    std::memcpy(studio+0x40,named,sizeof(named));
+    std::strcpy(reinterpret_cast<char*>(studio+0x100),"COMBINE_AE_BEGIN_ALTFIRE");
+    std::strcpy(reinterpret_cast<char*>(studio+0x130),"COMBINE_AE_ALTFIRE");
+    ServerStudioEventRegistrationResult rr{};
+    assert(dict->apply(&events_dict,studio,sizeof(studio),0,&rr)&&rr.existing==2&&!rr.created);
+    std::memcpy(named,studio+0x40,sizeof(named));
+    ServerAnimationEventSequence named_seq{named,2,0,0};
+    f.has_weapon=true;f.trace.clear();f.put(f.actor,0xc90,5.f);f.put(f.actor,0xc38,3u);
+    ServerAnimationEvent delivered{};
+    assert(events->next(&named_seq,0,.5f,0,8,&delivered)==1&&delivered.event==25);
+    assert(registration->handle(f.actor,sizeof(f.actor),&delivered,8,&ids,&f.b,&f.last)==1&&f.last.route==GruntAnimBeginAlt);
+    assert(events->next(&named_seq,0,.5f,1,8,&delivered)==2&&delivered.event==26);
+    assert(registration->handle(f.actor,sizeof(f.actor),&delivered,8,&ids,&f.b,&f.last)==1&&f.last.route==GruntAnimAlt&&f.get<unsigned>(f.actor,0xc38)==2);
+    assert((f.trace==std::vector<int>{100,0xc1f}));
+    assert(dict->clear(&events_dict)&&registration->handle(f.actor,sizeof(f.actor),&delivered,8,&ids,&f.b,&f.last)==-1);
+    assert(dict->seed(&events_dict)&&registration->jetpack(&events_dict,nullptr,&ids)&&ids.events[0]==27&&ids.events[1]==28);
+    assert(activity->clear(&activities)&&!registration->translate(f.actor,sizeof(f.actor),17,&ids,&ab,&mapped));
     FreeLibrary(server);FreeLibrary(client);
     std::puts("PASS native Grunt studio event routing and server event handoff");
 }
