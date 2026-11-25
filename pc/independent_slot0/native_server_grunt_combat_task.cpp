@@ -7,6 +7,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntTaskDispatchApi* __cdecl SiN_GetServerGruntTaskDispatchApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcInheritedScheduleApi* __cdecl SiN_GetServerNpcInheritedScheduleApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWeaponScriptViewApi* __cdecl SiN_GetServerWeaponScriptViewApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTransitionApi* __cdecl SiN_GetServerNpcTransitionApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* p,unsigned off) noexcept{T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -24,6 +25,10 @@ struct Call{
     bool activity(int id,bool restart) noexcept{
         if(restart&&rd<int>(a,0x878)==id)wr(a,0x878,0);
         o.activity=o.base.activity=id;o.base.activity_requested=1;
+        if(b.grunt.transition){
+            const auto* api=SiN_GetServerNpcTransitionApi(1,sizeof(ServerNpcTransitionApi));
+            return api&&api->set_pending(a,n,id,b.grunt.transition,&o.base.transition);
+        }
         return b.activity&&b.activity(b.context,a,id,restart);
     }
     bool deadline(double value) noexcept{

@@ -1,4 +1,5 @@
 #include "native_server_npc_schedule_maintenance.h"
+#include "native_server_grunt_combat_task.h"
 #include <cmath>
 #include <cstring>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleStateApi* __cdecl
@@ -20,6 +21,7 @@ SiN_GetServerNativeActivityServicesApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEliteTaskApi* __cdecl SiN_GetServerEliteTaskApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJetpackTaskApi* __cdecl SiN_GetServerJetpackTaskApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJetpackScheduleResolutionApi* __cdecl SiN_GetServerJetpackScheduleResolutionApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntCombatTaskApi* __cdecl SiN_GetServerGruntCombatTaskApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -39,9 +41,33 @@ struct Call {
     ServerGruntSchedulerResult* grunt;
     const ServerNpcSubclassSchedulerBindings* subclass;
     ServerNpcSubclassSchedulerResult* sub;
+    const ServerGruntCombatTaskBindings* combat;
+    ServerGruntCombatSchedulerStats* combat_stats;
     bool task(const ServerNpcScheduleTask& t,bool running) noexcept {
         if(subclass&&sub){
             ++sub->task_calls;
+            if(combat&&combat_stats){
+                const auto* api=SiN_GetServerGruntCombatTaskApi(1,sizeof(ServerGruntCombatTaskApi));
+                if(!api)return false;
+                // Override-owned routes must remain ahead of inherited routes.
+                const bool override_owned=(sub->subclass==NpcSubclassElite&&
+                    ((!running&&t.id==3)||t.id==67||t.id==71))||
+                    (sub->subclass==NpcSubclassJetpack&&running&&t.id==67);
+                if(!override_owned&&api->supports(t.id,running)){
+                    ++combat_stats->calls;
+                    if(!api->execute(a,bytes,&t,running,now,combat,&combat_stats->last))return false;
+                    const auto& result=combat_stats->last.base;
+                    sub->task_failures+=result.lifecycle.failed;
+                    if(sub->subclass==NpcSubclassElite){
+                        sub->elite={};sub->elite.delegated=1;sub->elite.grunt=result;++sub->delegated;
+                    }else if(sub->subclass==NpcSubclassJetpack){
+                        sub->jetpack={};sub->jetpack.delegated=1;sub->jetpack.grunt=result;++sub->delegated;
+                    }else{
+                        sub->grunt=result;sub->delegated+=result.parent_called;
+                    }
+                    return true;
+                }
+            }
             if(sub->subclass==NpcSubclassElite){
                 const auto* api=SiN_GetServerEliteTaskApi(1,sizeof(ServerEliteTaskApi));
                 if(!api||!api->execute(a,bytes,&t,running,now,&subclass->elite,&sub->elite))return false;
@@ -108,7 +134,7 @@ struct Call {
     }
     bool inspect() noexcept {return schedule->inspect(a,bytes,&sb,&out.state)!=0;}
 };
-int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMaintenanceBindings* b,ServerNpcScheduleMaintenanceResult* out,const ServerGruntTaskBindings* tasks=nullptr,ServerGruntSchedulerResult* grunt=nullptr,const ServerNpcSubclassSchedulerBindings* subclass=nullptr,ServerNpcSubclassSchedulerResult* sub=nullptr) noexcept {
+int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMaintenanceBindings* b,ServerNpcScheduleMaintenanceResult* out,const ServerGruntTaskBindings* tasks=nullptr,ServerGruntSchedulerResult* grunt=nullptr,const ServerNpcSubclassSchedulerBindings* subclass=nullptr,ServerNpcSubclassSchedulerResult* sub=nullptr,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* combat_stats=nullptr) noexcept {
     if(!out)return 0;*out={};
     if(!actor||bytes<0xdd8||!b||!std::isfinite(now))return 0;
     const auto* sa=SiN_GetServerNpcScheduleStateApi(1,sizeof(ServerNpcScheduleStateApi));
@@ -117,7 +143,7 @@ int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMainten
     const auto* re=SiN_GetServerNpcScheduleResolutionApi(1,sizeof(ServerNpcScheduleResolutionApi));
     const auto* va=SiN_GetServerNpcScheduleValidityApi(1,sizeof(ServerNpcScheduleValidityApi));
     if(!sa||!ca||!st||!re||!va)return 0;
-    Call q{actor,bytes,now,*b,*out,sa,ca,st,re,va,b->selection.grunt.schedule,tasks,grunt,subclass,sub};
+    Call q{actor,bytes,now,*b,*out,sa,ca,st,re,va,b->selection.grunt.schedule,tasks,grunt,subclass,sub,combat,combat_stats};
     bool stop=false;
     for(unsigned iteration=0;iteration<10&&!stop;++iteration){
         ++out->iterations;
@@ -226,7 +252,7 @@ int __cdecl classify(std::uint32_t vtable,unsigned* out) noexcept {
     default:return 0;
     }
 }
-int __cdecl run_subclass(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out) noexcept {
+int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr) noexcept {
     if(!out)return 0;*out={};
     if(!a||!b||!classify(b->original_vtable,&out->subclass))return 0;
     const bool jet=out->subclass==NpcSubclassJetpack;
@@ -250,11 +276,25 @@ int __cdecl run_subclass(void* a,unsigned bytes,float now,const ServerNpcSubclas
         pending=runtime.npc.transition;pending.assignment=session.bound;
         binding.grunt.transition=&pending;binding.elite.grunt.transition=&pending;binding.jetpack.grunt.transition=&pending;
     }
-    return run_impl(a,bytes,now,&m,&out->maintenance,nullptr,nullptr,&binding,out);
+    ServerGruntCombatTaskBindings combat_bound{};
+    if(combat){
+        if(!stats)return 0;*stats={};
+        combat_bound=*combat;combat_bound.grunt=binding.grunt;
+        combat_bound.weapon.entities=reg;
+    }
+    return run_impl(a,bytes,now,&m,&out->maintenance,nullptr,nullptr,&binding,out,combat?&combat_bound:nullptr,stats);
+}
+int __cdecl run_subclass(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out) noexcept{
+    return run_subclass_impl(a,bytes,now,b,out);
 }
 const ServerNpcSubclassSchedulerApi subclass_api{1,sizeof(ServerNpcSubclassSchedulerApi),&classify,&run_subclass};
 const ServerGruntSchedulerApi grunt_api{1,sizeof(ServerGruntSchedulerApi),&run_grunt};
 const ServerNpcScheduleMaintenanceApi api{1,sizeof(ServerNpcScheduleMaintenanceApi),&run};
+}
+// Internal linkage boundary for native combat-aware catalog service.
+int run_subclass_combat_internal(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat,ServerGruntCombatSchedulerStats* stats) noexcept{
+    if(!combat||!stats)return 0;
+    return run_subclass_impl(a,bytes,now,b,out,combat,stats);
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcScheduleMaintenanceApi=_SiN_GetServerNpcScheduleMaintenanceApi")
