@@ -11488,8 +11488,10 @@ int __cdecl server_npc_random_expression_apply(void* actor,unsigned bytes,void* 
 }
 const ServerNpcRandomExpressionApi server_npc_random_expression_api{version,sizeof(ServerNpcRandomExpressionApi),&server_npc_random_expression_apply};
 
+int animation_scene_tick(void*,unsigned,void*,void*,unsigned,float,float,const ServerNpcAnimationThinkBindings*,unsigned*) noexcept;
 int server_facial_think_impl(void* actor,unsigned bytes,float now,const ServerFacialThinkBindings* b,
-    const ServerNpcRandomExpressionBindings* random,bool native_intensity,const ServerNativeControllerMap* mapping=nullptr) noexcept {
+    const ServerNpcRandomExpressionBindings* random,bool native_intensity,const ServerNativeControllerMap* mapping=nullptr,
+    const ServerNpcAnimationThinkBindings* animation=nullptr) noexcept {
     if(bytes<server_flex_scene_extent||!hologram_writable(actor,server_flex_scene_extent)||!b||
        !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!std::isfinite(now))return 0;
     const ServerNativeIntensity source{b->context,b->storage};
@@ -11513,7 +11515,11 @@ int server_facial_think_impl(void* actor,unsigned bytes,float now,const ServerFa
         const unsigned type=hologram_read<unsigned>(event,0);
         const float time=hologram_read<float>(scene,0x78);
         unsigned accepted=0;
-        if(type==2&&h.base_expression){
+        if(animation&&(type==6||type==7)){
+            if(!animation_scene_tick(actor,bytes,row,event,en,time,now,animation,&accepted))return 0;
+        }else if(animation&&type==16&&(hologram_read<unsigned>(row,0x38)==2||hologram_read<unsigned>(row,0x38)==3)){
+            accepted=1;
+        }else if(type==2&&h.base_expression){
             if(!h.expression||!server_expression_apply_impl(actor,bytes,row,0x40,event,en,time,h.expression,native,mapping))return 0;
             accepted=1;
         }else if(type==10&&h.base_flex){
@@ -12132,6 +12138,51 @@ int __cdecl animation_scene_initialize(void* actor,unsigned bytes,void* record,u
     *out=1;return 1;
 }
 const ServerAnimationSceneInitApi server_animation_scene_init_api{version,sizeof(ServerAnimationSceneInitApi),&animation_scene_initialize};
+int animation_scene_tick(void* actor,unsigned bytes,void* record,void* event,unsigned eb,float time,float now,
+    const ServerNpcAnimationThinkBindings* b,unsigned* out) noexcept {
+    const auto& h=b->animation;
+    const auto type=hologram_read<unsigned>(event,0);
+    bool first=false;
+    if(hologram_read<int>(record,0x10)==-2){
+        unsigned initialized=0;
+        if(animation_scene_initialize(actor,bytes,record,0x40,event,eb,time,now,&h,&initialized)!=1)return 0;
+        // Gesture update ignores initializer AL, sequence returns it.
+        if(type==7&&!initialized){*out=0;return 1;}
+        first=initialized!=0;
+    }
+    if(hologram_read<int>(record,0x10)<0){*out=1;return 1;}
+    ServerAnimationSceneFrameInput in{};in.scene_time=time;in.now=now;
+    in.first_sequence_frame=type==7&&first;
+    if(!server_event_intensity(event,eb,time,h.frame.context,h.frame.storage,&in.intensity))return 0;
+    unsigned suppressed=0;
+    void* npc=nullptr;
+    if(type==7){
+        unsigned condition=0;int activity=0;
+        if(!b->npc_state||!b->npc_state(b->context,actor,&npc,&condition,&activity))return 0;
+        if(!h.suppressed||!h.suppressed(h.context,actor,&suppressed))return 0;
+        if(npc&&!(condition&0xff)&&activity!=0x48&&activity!=1){
+            suppressed=1;
+            if(hologram_read<float>(record,0x20)==1.f&&b->interrupted&&!b->interrupted(b->context,actor))return 0;
+        }
+        if(!h.sequence_info||!h.sequence_info(h.context,actor,hologram_read<int>(record,0x18),&in.sequence_flags,&in.sequence_duration))return 0;
+    }else if(hologram_read<unsigned char>(record,0x1c)){
+        if(!h.suppressed||!h.suppressed(h.context,actor,&suppressed))return 0;
+    }
+    in.suppressed=(suppressed&0xff)!=0;
+    if(animation_scene_frame(actor,bytes,record,0x40,event,eb,&in,&h.frame,out)!=1)return 0;
+    if(npc&&(!b->keepalive||!b->keepalive(b->context,npc,.2f)))return 0;
+    return animation_priority_refresh(actor,bytes,record,0x40,now,&h.frame);
+}
+int __cdecl npc_animation_think(void* actor,unsigned bytes,float now,const ServerNpcAnimationThinkBindings* b) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b)))return 0;
+    const auto& h=b->facial.named;
+    if(h.controller_count!=h.composed.base.count||h.controller_count>64||!server_remap_ready(h.remap)||
+       (h.controller_count&&(!h.controller_names||!sin_independent::vgui_layout::Readable(h.controller_names,h.controller_count*sizeof(*h.controller_names)))))return 0;
+    if((b->facial.banks||b->facial.files)&&!server_vfe_cache_ready(b->facial.banks,b->facial.files))return 0;
+    const ServerNativeControllerMap mapping{h.controller_names,h.controller_count,h.remap,b->facial.banks,b->facial.files};
+    return server_facial_think_impl(actor,bytes,now,&h.composed.base,h.composed.random_expression,h.composed.native_intensity,&mapping,b);
+}
+const ServerNpcAnimationThinkApi server_npc_animation_think_api{version,sizeof(ServerNpcAnimationThinkApi),&npc_animation_think};
 
 ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
     return *static_cast<ServerNpcSceneRecordBindings*>(p);
@@ -14201,6 +14252,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcAnimationThinkApi=_SiN_GetServerNpcAnimationThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcAnimationThinkApi* __cdecl
+SiN_GetServerNpcAnimationThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcAnimationThinkApi)?&server_npc_animation_think_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationSceneInitApi=_SiN_GetServerAnimationSceneInitApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationSceneInitApi* __cdecl

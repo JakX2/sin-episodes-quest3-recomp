@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_npc_weapon_scene.h"
+#include "native_server_cached_facial_think.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_animation_scene_export[]="SiN_GetServerAnimationSceneApi";
 struct ServerAnimationSceneBindings {
@@ -109,4 +110,19 @@ struct ServerAnimationSceneInitApi {
         const ServerAnimationSceneInitBindings*,unsigned*) noexcept;
 };
 using GetServerAnimationSceneInitApi=const ServerAnimationSceneInitApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_animation_think_export[]="SiN_GetServerNpcAnimationThinkApi";
+struct ServerNpcAnimationThinkBindings {
+    ServerCachedFacialThinkBindings facial; // optional paired bank/file cache
+    ServerAnimationSceneInitBindings animation;
+    void* context;
+    // Resolve original NPC identity and condition 0x3c/1, activity +878.
+    int (__cdecl *npc_state)(void*,void* actor,void** npc,unsigned* condition,int* activity) noexcept;
+    int (__cdecl *keepalive)(void*,void* npc,float duration) noexcept;
+    int (__cdecl *interrupted)(void*,void* actor) noexcept; // optional warning
+};
+struct ServerNpcAnimationThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerNpcAnimationThinkBindings*) noexcept;
+};
+using GetServerNpcAnimationThinkApi=const ServerNpcAnimationThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
