@@ -257,6 +257,12 @@ int main(int argc,char** argv){
         const auto* priority=getPriority(1,sizeof(ft::ServerAnimationPriorityApi));
         assert(priority&&!getPriority(0,sizeof(ft::ServerAnimationPriorityApi))&&!getPriority(1,0));
         ft::test::check_animation_priority(*priority);
+        const auto getAnimationInit=reinterpret_cast<ft::GetServerAnimationSceneInitApi>(GetProcAddress(server,ft::server_animation_scene_init_export));
+        assert(getAnimationInit&&!GetProcAddress(client,ft::server_animation_scene_init_export));
+        const auto* animationInit=getAnimationInit(1,sizeof(ft::ServerAnimationSceneInitApi));
+        assert(animationInit&&!getAnimationInit(0,sizeof(ft::ServerAnimationSceneInitApi))&&!getAnimationInit(1,0));
+        ft::test::check_animation_scene_init(*animationInit);
+        std::puts("PASS native deferred gesture/sequence layer initialization");
         std::puts("PASS native choreography channel priority and active layer reorder");
         std::puts("PASS native gesture metadata lock marking and initial posture fade");
         std::puts("PASS native gesture absolute-tag warp and numeric layer integration");
