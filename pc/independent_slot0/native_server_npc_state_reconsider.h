@@ -46,4 +46,32 @@ struct ServerNpcEnemyStateApi {
     int (__cdecl *clear_combat_conditions)(void*,unsigned,const ServerNpcConditionMapBindings*,ServerNpcEnemyConditionResult*) noexcept;
 };
 using GetServerNpcEnemyStateApi=const ServerNpcEnemyStateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_enemy_memory_export[]="SiN_GetServerNpcEnemyMemoryApi";
+// Keys are original PE32 entity-address tokens, NOT serialized entity handles.
+// The caller maps original 32-bit storage tokens to bounded native objects.
+struct ServerNpcEnemyMemoryBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+};
+struct ServerNpcEnemyMemoryLookup {
+    std::uint32_t key,record;
+    unsigned index,visited,fallback_attempted,fallback_used,matched;
+};
+enum ServerNpcEnemyMemoryTimestamp : unsigned {
+    NpcMemoryStamp1c=0,NpcMemoryStamp20=1,NpcMemoryStamp24=2,NpcMemoryStamp2c=3,NpcMemoryStamp30=4
+};
+struct ServerNpcEnemyMemoryApi {
+    std::uint32_t version,size;
+    // 2206b1a0: indexed tree + default-key retry when first key absent.
+    int (__cdecl *lookup)(const void*,unsigned,std::uint32_t,bool,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryLookup*) noexcept;
+    // 2206b400/450/4a0/560/5b0. Null input gives 0; missing record gives -FLT_MAX.
+    int (__cdecl *timestamp)(const void*,unsigned,std::uint32_t,unsigned,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryLookup*,float*) noexcept;
+    // 2206b360/3b0: cache exact vector bits in owner+24 or +30; miss preserves cache.
+    int (__cdecl *position)(void*,unsigned,std::uint32_t,bool,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryLookup*,float[3]) noexcept;
+    // 2206b270 writes record+2c if found.
+    int (__cdecl *touch)(const void*,unsigned,std::uint32_t,float,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryLookup*) noexcept;
+    // 2206b4f0: null false; missing record true; otherwise stamp1c+owner1c>now.
+    int (__cdecl *recent)(const void*,unsigned,std::uint32_t,float,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryLookup*,bool*) noexcept;
+};
+using GetServerNpcEnemyMemoryApi=const ServerNpcEnemyMemoryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

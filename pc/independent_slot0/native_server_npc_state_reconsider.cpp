@@ -1,6 +1,7 @@
 #include "native_server_npc_state_reconsider.h"
 #include <cstring>
 #include <cmath>
+#include <limits>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl
 SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
@@ -124,6 +125,80 @@ int __cdecl clear_combat_conditions(void* a,unsigned bytes,const ServerNpcCondit
     }
     return 1;
 }
+bool memory_storage(const ServerNpcEnemyMemoryBindings* b,std::uint32_t token,unsigned minimum,void*& p,unsigned& extent) noexcept{
+    p=nullptr;extent=0;
+    return token&&b&&b->storage&&b->storage(b->context,token,&p,&extent)&&p&&extent>=minimum;
+}
+int __cdecl memory_lookup(const void* memory,unsigned bytes,std::uint32_t key,bool fallback,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryLookup* out) noexcept{
+    if(!out)return 0;*out={};out->index=255;out->key=key==0x394u?0:key;
+    // Constructor 2206b0b1 assigns pointer-token comparator 22068b40.
+    // Do not invoke arbitrary original function pointers or inherit global comparator state.
+    if(!memory||bytes<0x1c||!b||read<std::uint32_t>(memory,0)!=0x22068d70u||read<std::uint32_t>(memory,0x18)!=0x22068b40u)return 0;
+    const unsigned root=read<std::uint8_t>(memory,0x10);
+    const unsigned capacity=read<unsigned>(memory,8);
+    void* nodes=nullptr;unsigned extent=0;
+    if(root!=255&&(!capacity||!memory_storage(b,read<std::uint32_t>(memory,4),12,nodes,extent)))return 0;
+    auto find=[&](std::uint32_t needle){
+        bool seen[255]{};
+        unsigned i=root;
+        while(i!=255){
+            if(i>=capacity||seen[i]||extent<12*(i+1))return false;
+            seen[i]=true;++out->visited;
+            const auto* node=static_cast<const unsigned char*>(nodes)+12*i;
+            const auto candidate=read<std::uint32_t>(node,4);
+            if(needle==candidate){out->index=i;out->matched=1;out->record=read<std::uint32_t>(node,8);return true;}
+            i=read<std::uint8_t>(node,needle<candidate?0:1);
+        }
+        return true;
+    };
+    if(!find(out->key))return 0;
+    // A matching node with a null record is still a match: no second search.
+    if(!out->matched&&fallback){
+        out->fallback_attempted=1;if(!find(0))return 0;out->fallback_used=out->matched;
+    }
+    return 1;
+}
+bool memory_record(const ServerNpcEnemyMemoryBindings* b,const ServerNpcEnemyMemoryLookup& out,unsigned minimum,void*& p) noexcept{
+    unsigned extent=0;return memory_storage(b,out.record,minimum,p,extent);
+}
+int __cdecl memory_timestamp(const void* memory,unsigned bytes,std::uint32_t key,unsigned kind,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryLookup* out,float* stamp) noexcept{
+    if(!out||!stamp)return 0;*out={};out->index=255;*stamp=0;
+    constexpr unsigned offsets[]={0x1c,0x20,0x24,0x2c,0x30};
+    if(kind>=5)return 0;if(!key)return 1;
+    if(!memory_lookup(memory,bytes,key,true,b,out))return 0;
+    if(!out->record){*stamp=-std::numeric_limits<float>::max();return 1;}
+    void* record=nullptr;const unsigned offset=offsets[kind];
+    if(!memory_record(b,*out,offset+4,record))return 0;
+    *stamp=read<float>(record,offset);return 1;
+}
+int __cdecl memory_position(void* memory,unsigned bytes,std::uint32_t key,bool second,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryLookup* out,float result[3]) noexcept{
+    if(!result||!out||!memory||bytes<0x3c)return 0;
+    if(!memory_lookup(memory,bytes,key,true,b,out))return 0;
+    const unsigned cache=second?0x30:0x24,source=second?0x10:4;
+    if(out->record){
+        void* record=nullptr;if(!memory_record(b,*out,source+12,record))return 0;
+        unsigned char snapshot[12];std::memcpy(snapshot,static_cast<const unsigned char*>(record)+source,12);
+        std::memcpy(static_cast<unsigned char*>(memory)+cache,snapshot,12);
+    }
+    std::memcpy(result,static_cast<const unsigned char*>(memory)+cache,12);return 1;
+}
+int __cdecl memory_touch(const void* memory,unsigned bytes,std::uint32_t key,float now,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryLookup* out) noexcept{
+    if(!std::isfinite(now)||!memory_lookup(memory,bytes,key,true,b,out))return 0;
+    if(out->record){void* record=nullptr;if(!memory_record(b,*out,0x30,record))return 0;write(record,0x2c,now);}
+    return 1;
+}
+int __cdecl memory_recent(const void* memory,unsigned bytes,std::uint32_t key,float now,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryLookup* out,bool* recent) noexcept{
+    if(!out||!recent)return 0;*out={};out->index=255;*recent=false;
+    if(!std::isfinite(now))return 0;if(!key)return 1;
+    if(!memory_lookup(memory,bytes,key,true,b,out))return 0;
+    if(!out->record){*recent=true;return 1;}
+    if(bytes<0x20)return 0;
+    void* record=nullptr;if(!memory_record(b,*out,0x20,record))return 0;
+    const float stamp=read<float>(record,0x1c),lifetime=read<float>(memory,0x1c);
+    if(!std::isfinite(stamp)||!std::isfinite(lifetime))return 0;
+    *recent=static_cast<double>(stamp)+lifetime>now;return 1;
+}
+const ServerNpcEnemyMemoryApi memory_api{1,sizeof(ServerNpcEnemyMemoryApi),&memory_lookup,&memory_timestamp,&memory_position,&memory_touch,&memory_recent};
 const ServerNpcEnemyStateApi enemy_state_api{1,sizeof(ServerNpcEnemyStateApi),&set_enemy,&clear_combat_conditions};
 const ServerNpcStateApi api{1,sizeof(ServerNpcStateApi),&should_reconsider,&choose_ideal,&apply};
 }
@@ -139,4 +214,10 @@ SiN_GetServerNpcStateReconsiderApi(std::uint32_t version,std::uint32_t size) noe
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyStateApi* __cdecl
 SiN_GetServerNpcEnemyStateApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyStateApi)?&enemy_state_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcEnemyMemoryApi=_SiN_GetServerNpcEnemyMemoryApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryApi* __cdecl
+SiN_GetServerNpcEnemyMemoryApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryApi)?&memory_api:nullptr;
 }
