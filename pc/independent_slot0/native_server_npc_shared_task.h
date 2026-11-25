@@ -108,6 +108,14 @@ struct ServerNpcSharedMovementApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedMovementBindings*,ServerNpcSharedMovementResult*) noexcept;
 };
 using GetServerNpcSharedMovementApi=const ServerNpcSharedMovementApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_difficulty_wait_export[]="SiN_GetServerNpcDifficultyWaitApi";
+struct ServerNpcDifficultyWaitApi {
+    std::uint32_t version,size;
+    // Task138 uses the caller's current metric11 (including adaptive values).
+    // Metric is ignored on Run; fixed campaign integration is optional.
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*) noexcept;
+};
+using GetServerNpcDifficultyWaitApi=const ServerNpcDifficultyWaitApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedMovementStats {ServerNpcSharedMovementResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTargetAnimationStats {ServerNpcSharedTargetAnimationResult last;unsigned calls,native,components;};
 struct ServerNpcSharedFacingStats {ServerNpcSharedFacingResult last;unsigned calls,native,components;};
