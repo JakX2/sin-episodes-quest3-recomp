@@ -150,5 +150,31 @@ int main(int argc,char** argv){
     reset();f.yield=true;sc.scheduler.original_vtable=0x2249964c;f.put(f.tasks[0],0,160);
     assert(svc->run(f.actor,sizeof(f.actor),10,&sc,&svout)&&svout.scheduler.jet_selector.schedule==0x76&&svout.inherited_calls==1&&svout.translation.translation.output==0x76&&f.get<int>(0xfec)==2);
     assert(!svc->run(f.actor,0x1084,10,&sc,&svout));
+    {
+        auto get_gather=reinterpret_cast<GetServerNpcGatherSchedulerApi>(GetProcAddress(s,server_npc_gather_scheduler_export));
+        assert(get_gather&&!GetProcAddress(c,server_npc_gather_scheduler_export)&&!get_gather(0,sizeof(ServerNpcGatherSchedulerApi))&&!get_gather(1,0));
+        const auto* gsched=get_gather(1,sizeof(ServerNpcGatherSchedulerApi));assert(gsched);
+        ServerNpcGatherSchedulerBindings combined{};combined.scheduler=cb;combined.scheduler.original_vtable=0x2249aaa4;
+        combined.scheduler.maintenance.before_selection=nullptr;
+        combined.gather.max_clients=2;
+        combined.gather.base.gate.context=&f;
+        combined.gather.base.gate.storage.context=&f;
+        // The scheduler fixture uses a zero-initialized task array as its motor storage.
+        combined.gather.base.gate.storage.storage=[](void* p,std::uint32_t token,void** ptr,unsigned* n) noexcept -> int{
+            if(token!=55)return 0;*ptr=F::self(p).tasks;*n=sizeof(F::self(p).tasks);return 1;
+        };
+        combined.gather.base.gate.pvs_index=[](void* p,unsigned,bool* yes) noexcept -> int{F::self(p).trace.push_back(42);*yes=false;return 1;};
+        f.put(f.rows[0],0,global+1);f.put(f.tasks[0],0,158);f.put(f.tasks[0],4,0.f);
+        auto setup=[&](){reset();f.yield=true;f.put(f.actor,0x908,55u);for(unsigned i=0;i<8;++i)f.put(f.actor,0x82c+4*i,0xffffffffu);};
+        ServerNpcGatherSchedulerResult gout2;
+        setup();f.condition(7);
+        assert(gsched->run(f.actor,sizeof(f.actor),10,&combined,&gout2)&&gout2.gather_calls==1&&gout2.gather.completed&&gout2.gather.base_called&&gout2.gather.base.post.skipped_perception&&gout2.gather.base.post.cleared_sense_conditions==1&&gout2.scheduler.grunt.lifecycle.completed);
+        assert((f.trace==std::vector<int>{40,42,30,158,60,60}));
+        setup();f.actor[0x84d]=f.actor[0x84e]=1;
+        assert(gsched->run(f.actor,sizeof(f.actor),10,&combined,&gout2)&&!gout2.gather_calls&&gout2.scheduler.grunt.lifecycle.completed);
+        assert((f.trace==std::vector<int>{40,30,158,60,60}));
+        setup();f.condition(0x3f);
+        assert(gsched->run(f.actor,sizeof(f.actor),10,&combined,&gout2)&&!gout2.gather_calls);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native maintenance loop task lifecycle, failure schedule and bounded iterations");
 }
