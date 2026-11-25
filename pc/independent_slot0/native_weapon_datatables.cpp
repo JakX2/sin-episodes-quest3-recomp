@@ -13408,6 +13408,95 @@ int __cdecl animation_scene_check(const void* event,unsigned eb,unsigned* out) n
 }
 const ServerAnimationSceneApi server_animation_scene_api{version,sizeof(ServerAnimationSceneApi),&animation_scene_begin,&animation_scene_stop,&animation_scene_check};
 
+// 220f4e20 / 220f5120: first free non-reserved row, retain one spare,
+// insert by priority, initialize sequence. 220f4060 resets only the
+// original fields, preserving +5 and +38 on a recycled row.
+void animation_layer_reset(void* row,float now) noexcept {
+    for(unsigned off:{0u,8u,0xcu,0x10u,0x18u,0x28u,0x30u})hologram_write(row,off,0u);
+    hologram_write(row,4,static_cast<unsigned char>(0));
+    hologram_write(row,0x2c,0xffffffffu);hologram_write(row,0x34,15);
+    hologram_write(row,0x24,100.f);hologram_write(row,0x14,1.f);hologram_write(row,0x3c,now);
+}
+bool animation_layer_rows(void* actor,unsigned bytes,const ChoreographyVectorBindings* b,
+    int& count,int& capacity,unsigned char*& rows) noexcept {
+    if(bytes<0x4a8||!hologram_writable(actor,0x4a8)||!b||!b->storage)return false;
+    count=hologram_read<int>(actor,0x4a0);capacity=hologram_read<int>(actor,0x498);rows=nullptr;
+    if(count<0||capacity<count||capacity>4096)return false;
+    if(!capacity)return !hologram_read<std::uint32_t>(actor,0x494);
+    void* data=nullptr;unsigned extent=0;
+    if(!b->storage(b->context,hologram_read<std::uint32_t>(actor,0x494),&data,&extent)||
+       extent<static_cast<unsigned>(capacity)*0x40||!hologram_writable(data,capacity*0x40))return false;
+    rows=static_cast<unsigned char*>(data);return true;
+}
+int __cdecl animation_layer_allocate(void* actor,unsigned bytes,int seq,int priority,float now,unsigned flags,
+    const ChoreographyVectorBindings* b,int* out) noexcept {
+    int count=0,capacity=0;unsigned char* rows=nullptr;
+    if(!std::isfinite(now)||!hologram_writable(out,4)||!animation_layer_rows(actor,bytes,b,count,capacity,rows)||!b->resize)return 0;
+    int selected=-1,spares=0,insertion=0;
+    for(int i=0;i<count;++i){
+        auto* row=rows+i*0x40;const auto bits=hologram_read<unsigned>(row,0);
+        if(bits&1){
+            const int order=hologram_read<int>(row,0x34);
+            if(order<0||order>0x100000)return 0;
+            if(hologram_read<int>(row,0x30)<=priority&&order+1>insertion)insertion=order+1;
+        }else if(!(bits&0x20)){
+            if(selected<0)selected=i;else ++spares;
+        }
+    }
+    const int added=(selected<0?1:0)+(spares?0:1);
+    if(count>4096-added)return 0;
+    const int total=count+added;
+    if(total>capacity){
+        auto* vector=static_cast<unsigned char*>(actor)+0x494;
+        // Batch two append reservations; original performs sequential
+        // appends. Preserve logical order and avoid a half-published row.
+        if(!choreography_grow_vector(const_cast<ChoreographyVectorBindings*>(b),vector,total-capacity,0x40)||
+           !animation_layer_rows(actor,bytes,b,count,capacity,rows)||capacity<total)return 0;
+    }
+    if(selected<0)selected=count;
+    for(int i=count;i<total;++i){
+        auto* row=rows+i*0x40;std::memset(row,0,0x40);animation_layer_reset(row,now);
+    }
+    hologram_write(actor,0x4a0,total);hologram_write(actor,0x4a4,hologram_read<std::uint32_t>(actor,0x494));
+    // Original allocation shifts ALL rows with order >= insertion and <15,
+    // not just active rows. Inactive spare sentinel 15 never increments.
+    for(int i=0;i<total;++i){
+        auto* row=rows+i*0x40;const int order=hologram_read<int>(row,0x34);
+        if(order>=insertion&&order<15)hologram_write(row,0x34,order+1);
+    }
+    auto* row=rows+selected*0x40;
+    hologram_write(row,0,1u);hologram_write(row,0x34,insertion);hologram_write(row,0x30,priority);hologram_write(row,0x3c,now);
+    for(unsigned off:{0xcu,0x10u,0x1cu,0x20u,0x38u})hologram_write(row,off,0u);
+    hologram_write(row,0x14,1.f);hologram_write(row,0x18,1.f);hologram_write(row,0x2c,0xffffffffu);
+    hologram_write(row,8,seq);hologram_write(row,4,static_cast<unsigned char>(0));hologram_write(row,5,static_cast<unsigned char>(flags&1));
+    *out=selected;return 1;
+}
+int __cdecl animation_layer_remove(void* actor,unsigned bytes,int layer,float now,const ChoreographyVectorBindings* b) noexcept {
+    int count=0,cap=0;unsigned char* rows=nullptr;
+    if(!std::isfinite(now)||!animation_layer_rows(actor,bytes,b,count,cap,rows))return 0;
+    if(layer<0||layer>=count)return 1;
+    auto* selected=rows+layer*0x40;if(!(selected[0]&1))return 1;
+    const int order=hologram_read<int>(selected,0x34);
+    for(int i=0;i<count;++i){
+        auto* row=rows+i*0x40;const int current=hologram_read<int>(row,0x34);
+        if((row[0]&1)&&current>order)hologram_write(row,0x34,current-1);
+    }
+    animation_layer_reset(selected,now);return 1;
+}
+int __cdecl animation_layer_blend(void* actor,unsigned bytes,int layer,float duration,float delay,const ChoreographyVectorBindings* b) noexcept {
+    int count=0,cap=0;unsigned char* rows=nullptr;
+    if(!std::isfinite(duration)||!std::isfinite(delay)||!animation_layer_rows(actor,bytes,b,count,cap,rows))return 0;
+    if(layer<0||layer>=count)return 1;
+    auto* row=rows+layer*0x40;if(!(row[0]&1))return 1;
+    const float weight=hologram_read<float>(row,0x18);
+    if(!std::isfinite(weight))return 0;
+    hologram_write(row,0x24,duration>0?static_cast<float>(static_cast<double>(weight)/duration):100.f);
+    hologram_write(row,0x28,delay);hologram_write(row,0,hologram_read<unsigned>(row,0)|4u);return 1;
+}
+const ServerAnimationLayerOwnerApi server_animation_layer_owner_api{version,sizeof(ServerAnimationLayerOwnerApi),
+    &animation_layer_allocate,&animation_layer_remove,&animation_layer_blend};
+
+
 struct GestureWarpPoint {float x,y;};
 int __cdecl server_gesture_tag_warp(const void* event,unsigned bytes,float fraction,const ServerAnimationSceneFrameBindings* b,float* out) noexcept {
     if(bytes<0x308||!sin_independent::vgui_layout::Readable(event,0x308)||
@@ -16394,6 +16483,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAni
 SiN_GetServerAnimationSceneFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneFrameApi)?&server_animation_scene_frame_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerAnimationLayerOwnerApi=_SiN_GetServerAnimationLayerOwnerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationLayerOwnerApi* __cdecl
+SiN_GetServerAnimationLayerOwnerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationLayerOwnerApi)?&server_animation_layer_owner_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationSceneApi=_SiN_GetServerAnimationSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationSceneApi* __cdecl

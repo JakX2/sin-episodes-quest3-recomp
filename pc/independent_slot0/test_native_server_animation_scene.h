@@ -44,6 +44,45 @@ inline void check_animation_scene(const ServerAnimationSceneApi& api){
     put(row,0x10,-1);assert(stop(0,1)==1&&f.blended==4);
     assert(api.check(event,sizeof(event),&out)==1&&out==1);
 }
+
+inline void check_animation_layer_owner(const ServerAnimationLayerOwnerApi& api){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char actor[0x4a8]{},rows[8*0x40]{};
+        unsigned capacity=0,grows=0;bool fail=false;
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+    } f;
+    ChoreographyVectorBindings b{};b.context=&f;
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);if(w!=F::ptr(f.rows))return 0;*out=f.rows;*n=f.capacity*0x40;return 1;};
+    b.resize=[](void* p,std::uint32_t old,unsigned n,void** out,unsigned* extent) noexcept -> int{
+        auto& f=Fixture::self(p);assert(!old||old==F::ptr(f.rows));++f.grows;
+        if(f.fail||n>sizeof(f.rows))return 0;
+        f.capacity=n/0x40;*out=f.rows;*extent=n;return 1;};
+    auto row=[&](int i){return f.rows+i*0x40;};int layer=-99;
+    auto alloc=[&](int seq,int priority,float now,unsigned flags){return api.allocate(f.actor,sizeof(f.actor),seq,priority,now,flags,&b,&layer);};
+    f.fail=true;assert(!alloc(7,3,10,1)&&layer==-99&&!F::word(f.actor,0x4a0));
+    f.fail=false;assert(alloc(7,3,10,1)&&layer==0&&F::word(f.actor,0x4a0)==2);
+    assert(F::word(row(0),0)==1&&F::word(row(0),8)==7&&row(0)[5]==1&&F::word(row(0),0x34)==0&&F::word(row(0),0x18)==0x3f800000u);
+    assert(!F::word(row(1),0)&&F::word(row(1),0x34)==15);
+    assert(alloc(9,1,11,0)&&layer==1&&F::word(f.actor,0x4a0)==3);
+    assert(F::word(row(0),0x34)==1&&F::word(row(1),0x34)==0&&!row(1)[5]);
+    // Reserved inactive row is skipped. Equal priority appends after prior.
+    F::put(row(2),0,0x20);
+    assert(alloc(11,3,12,0)&&layer==3&&F::word(f.actor,0x4a0)==5);
+    assert(F::word(row(3),0x34)==2&&F::word(row(2),0)==0x20&&F::word(row(4),0x34)==15);
+    F::fl(row(0),0x18,.5f);
+    assert(api.blend_out(f.actor,sizeof(f.actor),0,.25f,.1f,&b)&&F::word(row(0),0)==5&&F::word(row(0),0x24)==0x40000000u);
+    assert(api.blend_out(f.actor,sizeof(f.actor),0,0,0,&b)&&F::word(row(0),0x24)==0x42c80000u);
+    F::put(row(0),0x38,0x12345678u);
+    assert(api.remove(f.actor,sizeof(f.actor),0,13,&b)&&!F::word(row(0),0)&&!F::word(row(0),0x18));
+    assert(row(0)[5]==1&&F::word(row(0),0x38)==0x12345678u&&F::word(row(3),0x34)==1&&F::word(row(0),0x34)==15);
+    const auto grows=f.grows;assert(alloc(13,4,14,0)&&layer==0&&f.grows==grows&&F::word(f.actor,0x4a0)==5);
+    assert(!row(0)[5]&&!F::word(row(0),0x38)&&F::word(row(0),0x34)==2);
+    assert(api.remove(f.actor,sizeof(f.actor),-1,14,&b)&&api.blend_out(f.actor,sizeof(f.actor),2,1,0,&b)&&F::word(row(2),0)==0x20);
+    std::puts("PASS original-derived animation layer allocation, spare row, blend and immediate retirement");
+}
+
 inline void check_animation_scene_frame(const ServerAnimationSceneFrameApi& api){
     struct Fixture {alignas(4) unsigned char actor[0x4a4]{},row[0x40]{},record[0x40]{},event[0x3c0]{};unsigned reads{},warps{};float fraction{},mapped=.75f;} f;
     auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
