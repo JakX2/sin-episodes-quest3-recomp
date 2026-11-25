@@ -1863,7 +1863,7 @@ int __cdecl grunt_flinch(void* actor,unsigned bytes,float now,const ServerNpcGru
     }
     return 1;
 }
-int __cdecl grunt_post_update(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out) noexcept{
+int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out,int inactive_override) noexcept{
     if(!out)return 0;
     out->search={};out->combat={};out->combat_goals[0]={};out->combat_goals[1]={};out->target={};out->ammo={};out->snapshot={};out->flinch={};out->cleared_enemy={};
     out->completed=out->skipped_state=out->skipped_perception=out->cleared_sense_conditions=out->new_enemy_condition=out->combat_called=out->enemy_cleared=0;
@@ -1876,13 +1876,14 @@ int __cdecl grunt_post_update(void* actor,unsigned bytes,float now,bool perceive
     auto store=[&](int id,bool value,ServerNpcConditionResult& cr){return cond->store(actor,bytes,id,NpcConditionCurrent,value,&b->schedule.conditions,&cr)!=0;};
     const int state=read<int>(actor,0x850);ServerNpcConditionResult cr{};
     auto aux=b->aux;aux.visibility.conditions=b->schedule.conditions;
-    if(state==0||state==7){
+    if(inactive_override<0?(state==0||state==7):inactive_override!=0){
         out->skipped_state=1;if(!store(1,false,cr))return 0;
     }else{
         if(perceived){
             auto search=b->search;search.relation.entries=mb.entries;search.relation.count=mb.count;search.relation.original_vtable=aux.visibility.original_vtable;search.schedule=b->schedule;
             if(!grunt_weapon_search(actor,bytes,now,&search,&out->search))return 0;
-            if(read<unsigned>(actor,0x798)&&(state==1||state==2)&&current()){
+            const int live_state=read<int>(actor,0x850);
+            if(read<unsigned>(actor,0x798)&&(live_state==1||live_state==2)&&current()){
                 bool declared=false;
                 if(!cond->test(actor,bytes,0x19,NpcConditionCurrent,&b->schedule.conditions,&cr))return 0;
                 if(!cr.value){
@@ -1912,6 +1913,9 @@ int __cdecl grunt_post_update(void* actor,unsigned bytes,float now,bool perceive
     }
     if(!grunt_snapshot_conditions(actor,bytes,&aux,&out->snapshot))return 0;
     out->completed=1;return 1;
+}
+int __cdecl grunt_post_update(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out) noexcept{
+    return grunt_post_update_impl(actor,bytes,now,perceived,b,out,-1);
 }
 int __cdecl grunt_update_gate(void* actor,unsigned bytes,const ServerNpcGruntUpdateGateBindings* b,ServerNpcGruntUpdateGateResult* out) noexcept{
     if(!out)return 0;*out={};out->speech_result=-1;
@@ -1977,6 +1981,26 @@ int __cdecl grunt_update_gate(void* actor,unsigned bytes,const ServerNpcGruntUpd
     }
     return 1;
 }
+int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const ServerNpcGruntConditionUpdateBindings* b,ServerNpcGruntConditionUpdateResult* out) noexcept{
+    if(!out)return 0;
+    out->gate={};out->perception={};out->post={};out->completed=out->perception_called=out->post_called=0;
+    if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->gate.original_vtable))return 0;
+    const auto vt=b->gate.original_vtable;
+    const auto& mb=b->perception.enemy_switch.best.memory;
+    if(mb.count>sin_independent::kEntityHandleCapacity||(mb.count&&!mb.entries))return 0;
+    auto gate=b->gate;gate.conditions=b->post.schedule.conditions;
+    auto perception=b->perception;perception.enemy_switch.gate.relation.original_vtable=vt;perception.enemy_switch.schedule=b->post.schedule;
+    auto post=b->post;post.aux.visibility.original_vtable=vt;post.aux.visibility.memory.entries=mb.entries;post.aux.visibility.memory.count=mb.count;
+    if(!grunt_update_gate(actor,bytes,&gate,&out->gate))return 0;
+    if(out->gate.perceive){
+        if(!perception_tick(actor,bytes,now,&perception,&out->perception))return 0;
+        out->perception_called=1;
+    }
+    // Inactive branch is selected at entry, not re-evaluated after engine callbacks.
+    if(!grunt_post_update_impl(actor,bytes,now,out->gate.perceive!=0,&post,&out->post,out->gate.inactive?1:0))return 0;
+    out->post_called=out->completed=1;return 1;
+}
+const ServerNpcGruntConditionUpdateApi condition_update_api{1,sizeof(ServerNpcGruntConditionUpdateApi),&grunt_condition_update};
 const ServerNpcGruntUpdateGateApi update_gate_api{1,sizeof(ServerNpcGruntUpdateGateApi),&grunt_update_gate};
 const ServerNpcGruntPostUpdateApi post_update_api{1,sizeof(ServerNpcGruntPostUpdateApi),&grunt_flinch,&grunt_post_update};
 const ServerNpcGruntAuxConditionsApi aux_conditions_api{1,sizeof(ServerNpcGruntAuxConditionsApi),&grunt_target_conditions,&grunt_ammo_conditions,&grunt_snapshot_conditions};
@@ -2230,4 +2254,10 @@ SiN_GetServerNpcGruntPostUpdateApi(std::uint32_t version,std::uint32_t size) noe
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntUpdateGateApi* __cdecl
 SiN_GetServerNpcGruntUpdateGateApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntUpdateGateApi)?&update_gate_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntConditionUpdateApi=_SiN_GetServerNpcGruntConditionUpdateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntConditionUpdateApi* __cdecl
+SiN_GetServerNpcGruntConditionUpdateApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntConditionUpdateApi)?&condition_update_api:nullptr;
 }

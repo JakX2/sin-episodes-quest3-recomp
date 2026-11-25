@@ -956,6 +956,33 @@ int main(int argc,char** argv){
         assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.disabled&&!gate_result.perceive&&!f.actor[0x84c]);
         f.put(f.actor,0xb4,0u);f.put(f.actor,0xc18,0u);f.put(f.actor,0x850,3);
         assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.perceive&&!gate_result.idle_roll);
+        auto get_full=reinterpret_cast<GetServerNpcGruntConditionUpdateApi>(GetProcAddress(s,server_npc_grunt_condition_update_export));
+        assert(get_full&&!GetProcAddress(c,server_npc_grunt_condition_update_export)&&!get_full(0,sizeof(ServerNpcGruntConditionUpdateApi))&&!get_full(1,0));
+        const auto* full=get_full(1,sizeof(ServerNpcGruntConditionUpdateApi));assert(full);
+        ServerNpcGruntConditionUpdateBindings full_bindings{};
+        full_bindings.gate=gate_bindings;full_bindings.perception=ptb;
+        full_bindings.post.schedule=b.schedule;full_bindings.post.combat=ccb;full_bindings.post.enemy=eb;
+        full_bindings.post.aux.visibility=crb.visibility;full_bindings.post.aux.goals=goal_bindings;
+        full_bindings.post.search.relation=rb;
+        f.put(f.actor,0x850,7);f.condition(1);
+        ServerNpcGruntConditionUpdateResult full_result;
+        assert(full->update(f.actor,sizeof(f.actor),630,&full_bindings,&full_result)&&full_result.completed&&full_result.gate.inactive&&!full_result.perception_called&&full_result.post.skipped_state&&full_result.post.snapshot.snapshot);
+        f.put(f.actor,0x850,1);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0xffffffffu);f.put(f.actor,0x798,0u);
+        f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x988,0u);f.put(f.actor,0x9a4,700.f);f.put(f.actor,0xb4,0u);f.actor[0x84c]=0;
+        f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);f.condition(7);
+        assert(full->update(f.actor,sizeof(f.actor),630,&full_bindings,&full_result)&&full_result.completed&&!full_result.perception_called&&full_result.post.skipped_perception&&full_result.post.cleared_sense_conditions==1);
+        // Exercise original end-to-end update with a real sensed and remembered candidate.
+        f.actor[0x84c]=1;f.actor[0xb6]=0;f.actor[0xdb1]=0;f.rel_special=false;
+        f.put(f.actor,0x8c4,0.f);f.put(f.actor,0x920,0);f.put(f.actor,0x644,2);
+        relation_row(0,0x7001u,0,1,5);relation_row(1,0x8002u,0,4,0);
+        assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,630,0,true,&mutation,&mut));
+        assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.replacement,new_pos,630,0,true,&mutation,&mut));
+        f.put(f.enemy,0x8c,0);f.put(f.replacement,0x8c,0);f.put(f.enemy,0x868,1);
+        f.combat_trace=f.combat_fov=true;f.combat_output_count=0;f.combat_center[0]=64;f.combat_velocity[0]=0;
+        f.put(f.combat_nav,0xc,1);f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);
+        const unsigned before_rebuild=f.rebuild_calls;
+        assert(full->update(f.actor,sizeof(f.actor),630,&full_bindings,&full_result)&&full_result.completed&&full_result.gate.forced&&full_result.perception_called&&full_result.perception.completed&&full_result.post_called&&full_result.post.combat_called&&full_result.post.snapshot.snapshot);
+        assert(full_result.perception.visual.report_calls==1&&full_result.perception.enemy_switch.assignment.new_handle==0x7001u&&f.get<unsigned>(0x8a0)==0x7001u&&f.get<float>(0x9a0)==630&&f.rebuild_calls==before_rebuild+3);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
