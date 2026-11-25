@@ -42,8 +42,8 @@ int __cdecl wait_state(const void* a,unsigned n,float now,unsigned* active,unsig
     *active=rd<unsigned>(a,0x9dc)!=0x7f7fffffu;*expired=now>=deadline;return 1;
 }
 int __cdecl supports(int id,bool running) noexcept{
-    if(running)return id==2||id==4||id==5||id==86||id==92||id==114;
-    return id==2||id==4||id==5||id==86||id==87||id==88||id==92||id==95||id==114||id==119;
+    if(running)return id==2||id==4||id==5||id==86||id==92||id==93||id==114;
+    return id==1||id==2||id==3||id==4||id==5||id==59||id==86||id==87||id==88||id==91||(id>=92&&id<=96)||id==114||id==119||id==120;
 }
 int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
@@ -74,7 +74,7 @@ int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool runni
     };
     if(running){
         if(t->id==86)return rd<int>(a,0x3ec)!=rd<int>(a,0x884)||complete();
-        if(t->id==92){
+        if(t->id==92||t->id==93){
             out->turn_called=1;if(!b->turn||!b->turn(b->context,a))return 0;
             unsigned yes=0;if(!life->animation_finished(a,n,&yes))return 0;return !yes||complete();
         }
@@ -86,7 +86,10 @@ int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool runni
         unsigned active=0,expired=0;if(!wait_state(a,n,now,&active,&expired))return 0;
         return !expired||complete();
     }
-    if(t->id==2||t->id==4||t->id==5||t->id==114){
+    if(t->id==1){wr(a,0x878,0);return complete();}
+    if(t->id==3)return complete();
+    if(t->id==91){wr(a,0x7bc,0);return complete();}
+    if(t->id==2||t->id==4||t->id==5||t->id==59||t->id==114){
         const bool random=t->id==5||t->id==114;
         if(!wait(a,n,now,random?0.f:t->parameter,random?t->parameter:0.f,b,&out->ticks))return 0;
         out->timer_written=1;return 1;
@@ -94,9 +97,10 @@ int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool runni
     int value=0;if(!integer(std::trunc(static_cast<double>(t->parameter)),value))return 0;
     switch(t->id){
     case 86:if(!value){wr(a,0x878,0);return 1;}return pending(value);
-    case 92:case 95:return pending(value);
+    case 92:case 93:case 94:case 95:case 96:return pending(value);
     case 88:wr(a,0x7bc,value);return complete();
     case 119:wr(a,0x988,rd<unsigned>(a,0x988)|static_cast<unsigned>(value));return complete();
+    case 120:wr(a,0x988,rd<unsigned>(a,0x988)&~static_cast<unsigned>(value));return complete();
     case 87:{
         if(!b->resolution)return 0;
         const auto* api=SiN_GetServerNpcScheduleResolutionApi(1,sizeof(ServerNpcScheduleResolutionApi));
