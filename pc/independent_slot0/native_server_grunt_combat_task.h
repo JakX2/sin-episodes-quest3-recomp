@@ -30,9 +30,11 @@ using GetServerGruntCombatTaskApi=const ServerGruntCombatTaskApi* (__cdecl *)(st
 struct ServerGruntCombatSchedulerStats {ServerGruntCombatTaskResult last;unsigned calls;};
 struct ServerGruntHelperTaskBindings;
 struct ServerGruntFullTaskStats;
+struct ServerNpcSharedTaskBindings;
+struct ServerNpcSharedTaskStats;
 struct ServerNpcScheduleServicesBindings;
 struct ServerNpcScheduleServicesResult;
 // Internal composition, same DLL only; no change to existing exported ABI.
-int run_subclass_combat_internal(void*,unsigned,float,const ServerNpcSubclassSchedulerBindings*,ServerNpcSubclassSchedulerResult*,const ServerGruntCombatTaskBindings*,ServerGruntCombatSchedulerStats*,const ServerGruntHelperTaskBindings* = nullptr,ServerGruntFullTaskStats* = nullptr) noexcept;
-int run_schedule_services_combat_internal(void*,unsigned,float,const ServerNpcScheduleServicesBindings*,ServerNpcScheduleServicesResult*,const ServerGruntCombatTaskBindings*,ServerGruntCombatSchedulerStats*,const ServerGruntHelperTaskBindings* = nullptr,ServerGruntFullTaskStats* = nullptr) noexcept;
+int run_subclass_combat_internal(void*,unsigned,float,const ServerNpcSubclassSchedulerBindings*,ServerNpcSubclassSchedulerResult*,const ServerGruntCombatTaskBindings*,ServerGruntCombatSchedulerStats*,const ServerGruntHelperTaskBindings* = nullptr,ServerGruntFullTaskStats* = nullptr,const ServerNpcSharedTaskBindings* = nullptr,ServerNpcSharedTaskStats* = nullptr) noexcept;
+int run_schedule_services_combat_internal(void*,unsigned,float,const ServerNpcScheduleServicesBindings*,ServerNpcScheduleServicesResult*,const ServerGruntCombatTaskBindings*,ServerGruntCombatSchedulerStats*,const ServerGruntHelperTaskBindings* = nullptr,ServerGruntFullTaskStats* = nullptr,const ServerNpcSharedTaskBindings* = nullptr,ServerNpcSharedTaskStats* = nullptr) noexcept;
 }
