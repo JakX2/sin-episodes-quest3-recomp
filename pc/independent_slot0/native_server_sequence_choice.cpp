@@ -2,14 +2,17 @@
 #include <limits>
 namespace sin_port::native_weapon_tables {
 namespace {
-int __cdecl choose(const ServerSequenceChoiceEntry* entries,unsigned count,int activity,int current,bool looping,const ServerSequenceChoiceBindings* b,int* out) noexcept {
+int __cdecl choose_lazy(const ServerLazySequenceChoiceView* view,int activity,int current,bool looping,const ServerSequenceChoiceBindings* b,int* out) noexcept {
     if(!out)return 0;
     *out=-1;
-    if(count>65536)return 0;
-    if(!entries){if(count)return 0;*out=0;return 1;}
+    if(!view){*out=0;return 1;}
+    if(view->count>65536||(view->count&&!view->entry))return 0;
+    const unsigned count=view->count;
     int total=0,selected=-1;
     for(unsigned i=0;i<count;++i){
-        const auto& e=entries[i];if(e.activity!=activity)continue;
+        ServerSequenceChoiceEntry e{};
+        if(!view->entry(view->context,i,&e))return 0;
+        if(e.activity!=activity)continue;
         // Original x86 NEG of INT_MIN overflows; reject malformed metadata.
         if(e.weight==std::numeric_limits<int>::min())return 0;
         const int weight=e.weight<0?-e.weight:e.weight;
@@ -27,6 +30,18 @@ int __cdecl choose(const ServerSequenceChoiceEntry* entries,unsigned count,int a
     }
     *out=selected;return 1;
 }
+int __cdecl choose(const ServerSequenceChoiceEntry* entries,unsigned count,int activity,int current,bool looping,const ServerSequenceChoiceBindings* b,int* out) noexcept {
+    if(!entries){
+        if(count){if(out)*out=-1;return 0;}
+        return choose_lazy(nullptr,activity,current,looping,b,out);
+    }
+    ServerLazySequenceChoiceView v{const_cast<ServerSequenceChoiceEntry*>(entries),count,
+        [](void* p,unsigned i,ServerSequenceChoiceEntry* e) noexcept -> int {
+            *e=static_cast<const ServerSequenceChoiceEntry*>(p)[i];return 1;
+        }};
+    return choose_lazy(&v,activity,current,looping,b,out);
+}
+const ServerLazySequenceChoiceApi lazy_api{1,sizeof(ServerLazySequenceChoiceApi),&choose_lazy};
 const ServerSequenceChoiceApi api{1,sizeof(ServerSequenceChoiceApi),&choose};
 }
 }
@@ -35,4 +50,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSeq
 SiN_GetServerSequenceChoiceApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerSequenceChoiceApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerLazySequenceChoiceApi=_SiN_GetServerLazySequenceChoiceApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerLazySequenceChoiceApi* __cdecl
+SiN_GetServerLazySequenceChoiceApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerLazySequenceChoiceApi)?&lazy_api:nullptr;
 }

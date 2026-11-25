@@ -29,4 +29,31 @@ struct ServerActivityMetadataApi {
     int (__cdecl *refresh)(ServerActivityDictionary*,ServerEventDictionary*,const ServerActivityMetadataView*,ServerActivityMetadataResult*) noexcept;
 };
 using GetServerActivityMetadataApi=const ServerActivityMetadataApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_activity_choice_export[]="SiN_GetServerActivityChoiceApi";
+struct ServerActivityGenerationNode {
+    std::uint32_t* word;
+    int parent; // root -1; otherwise earlier node index
+};
+struct ServerActivityCompositeView {
+    // Already resolved global sequence order, including group sequences.
+    const ServerActivityDescriptor* descriptors;
+    unsigned count;
+    const ServerActivityGenerationNode* groups;
+    unsigned group_count;
+};
+struct ServerActivityChoiceResult {
+    ServerActivityMetadataResult refresh;
+    unsigned scanned,lazy_registrations;
+    int selected,failed_index;
+};
+struct ServerActivityChoiceApi {
+    std::uint32_t version,size;
+    // Original 2211c110: signed min of root and immediate group words.
+    int (__cdecl *generation)(const ServerActivityCompositeView*,std::uint32_t*) noexcept;
+    // Original 220eb1c0/220eb2c0: refresh on mismatch, then lazy scan.
+    // Publish to every resolved descendant only after successful refresh.
+    int (__cdecl *choose)(ServerActivityDictionary*,ServerEventDictionary*,const ServerActivityCompositeView*,
+        int activity,int current,bool looping,const ServerSequenceChoiceBindings*,ServerActivityChoiceResult*) noexcept;
+};
+using GetServerActivityChoiceApi=const ServerActivityChoiceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
