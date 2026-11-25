@@ -5,6 +5,10 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAct
 SiN_GetServerActivityDictionaryApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEventDictionaryApi* __cdecl
 SiN_GetServerEventDictionaryApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWeaponEventRouteApi* __cdecl
+SiN_GetServerWeaponEventRouteApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcParentWeaponEventApi* __cdecl
+SiN_GetServerNpcParentWeaponEventApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T> T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -13,7 +17,7 @@ bool extend(void* actor,double until) noexcept {
     if(until>read<float>(actor,0xc90)){write(actor,0xc90,static_cast<float>(until));return true;}
     return false;
 }
-int __cdecl handle(void* grunt,unsigned bytes,const ServerAnimationEvent* e,float now,const ServerGruntAnimationBindings* b,ServerGruntAnimationResult* out) noexcept {
+int handle_impl(void* grunt,unsigned bytes,const ServerAnimationEvent* e,float now,const ServerGruntAnimationBindings* b,ServerGruntAnimationResult* out,const ServerNpcParentWeaponEventBindings* native=nullptr,ServerGruntNativeWeaponEventResult* nr=nullptr) noexcept {
     if(!out)return -1;
     *out={};
     if(!grunt||bytes<0xfcc||!e||!b||!std::isfinite(now))return -1;
@@ -26,9 +30,15 @@ int __cdecl handle(void* grunt,unsigned bytes,const ServerAnimationEvent* e,floa
     if(id==b->begin_altfire){out->route=GruntAnimBeginAlt;return 1;}
     if(id==b->altfire){
         out->route=GruntAnimAlt;
-        if(!b->weapon||!b->weapon_event)return -1;
         void* weapon=nullptr;
-        if(!b->weapon(b->context,grunt,read<std::uint32_t>(grunt,0x78c),&weapon)||!weapon)return -1;
+        if(native){
+            const auto& w=native->weapon.weapons;
+            if(w.count>sin_independent::kEntityHandleCapacity||(w.count&&!w.entries)||
+               !sin_independent::EntityHandleView(w.entries,w.count).Resolve(read<std::uint32_t>(grunt,0x78c)))return -1;
+        }else{
+            if(!b->weapon||!b->weapon_event||
+               !b->weapon(b->context,grunt,read<std::uint32_t>(grunt,0x78c),&weapon)||!weapon)return -1;
+        }
         const double until=static_cast<double>(now)+10.;
         if(!std::isfinite(static_cast<float>(until))||!std::isfinite(read<float>(grunt,0xc90)))return -1;
         const auto squad=read<std::uint32_t>(grunt,0x9c4);
@@ -37,7 +47,15 @@ int __cdecl handle(void* grunt,unsigned bytes,const ServerAnimationEvent* e,floa
         for(unsigned i=0;i<count;++i)if(!peers[i]||!std::isfinite(read<float>(peers[i],0xc90)))return -1;
         // 2235e90a: weapon +4c0 first, then 22358200 deadline,
         // then raw +c38 decrement. Never updates +fc8 on this branch.
-        b->weapon_event(b->context,weapon,0xc1f,grunt);
+        if(native){
+            const auto* api=SiN_GetServerWeaponEventRouteApi(1,sizeof(ServerWeaponEventRouteApi));
+            // Retail only initializes event ID and source; port initializes
+            // all other fields instead of forwarding indeterminate stack data.
+            const ServerAnimationEvent generated{0xc1f,nullptr,0,now,0,grunt};
+            if(!api||!nr)return -1;
+            nr->native_altfire=1;
+            if(!api->active(grunt,bytes,&generated,now,&native->weapon,&nr->altfire))return -1;
+        }else b->weapon_event(b->context,weapon,0xc1f,grunt);
         extend(grunt,until);
         for(unsigned i=0;i<count;++i)if(extend(peers[i],until))++out->peers_updated;
         write(grunt,0xc38,read<std::uint32_t>(grunt,0xc38)-1u);
@@ -69,10 +87,20 @@ int __cdecl handle(void* grunt,unsigned bytes,const ServerAnimationEvent* e,floa
     // Dedicated object-interaction bodies, not the shared parent route.
     case 3:case 7:case 9:out->route=GruntAnimUnrecovered;return 0;
     default:
-        out->route=GruntAnimParent;if(!b->parent)return -1;
+        out->route=GruntAnimParent;
+        if(native){
+            const auto* api=SiN_GetServerNpcParentWeaponEventApi(1,sizeof(ServerNpcParentWeaponEventApi));
+            if(!api||!nr)return -1;
+            const int status=api->handle(grunt,bytes,e,now,native,&nr->parent);
+            if(status!=0){nr->native_parent=nr->parent.recognized;return status;}
+        }
+        if(!b->parent)return -1;
         b->parent(b->context,grunt,e);return 1;
     }
     write(grunt,0xfc8,id);return 1;
+}
+int __cdecl handle(void* grunt,unsigned bytes,const ServerAnimationEvent* e,float now,const ServerGruntAnimationBindings* b,ServerGruntAnimationResult* out) noexcept {
+    return handle_impl(grunt,bytes,e,now,b,out);
 }
 constexpr const char* grunt_activities[]{
     "ACT_COMBINE_THROW_GRENADE","ACT_COMBINE_LAUNCH_GRENADE","ACT_COMBINE_BUGBAIT",
@@ -153,6 +181,13 @@ int __cdecl registered_handle(void* actor,unsigned bytes,const ServerAnimationEv
     auto bindings=*b;bindings.begin_altfire=ids->events[0];bindings.altfire=ids->events[1];
     return handle(actor,bytes,e,now,&bindings,out);
 }
+int __cdecl handle_native(void* actor,unsigned bytes,const ServerAnimationEvent* e,float now,const ServerGruntRegistration* ids,const ServerGruntAnimationBindings* b,const ServerNpcParentWeaponEventBindings* native,ServerGruntNativeWeaponEventResult* out) noexcept {
+    if(!out)return -1;*out={};
+    if(!b||!native||!event_ids_valid(ids))return -1;
+    auto binding=*b;binding.begin_altfire=ids->events[0];binding.altfire=ids->events[1];
+    return handle_impl(actor,bytes,e,now,&binding,&out->grunt,native,out);
+}
+const ServerGruntNativeWeaponEventApi native_event_api{1,sizeof(ServerGruntNativeWeaponEventApi),&handle_native};
 int __cdecl jetpack_translate(void* actor,unsigned bytes,int incoming,const ServerGruntRegistration* ids,const ServerJetpackActivityBindings* b,ServerJetpackActivityResult* out) noexcept {
     if(!out)return 0;*out={};out->activity=incoming;
     if(!actor||bytes<0x1028||!b||!b->attachment)return 0;
@@ -197,4 +232,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJet
 SiN_GetServerJetpackActivityApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerJetpackActivityApi)?&jetpack_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerGruntNativeWeaponEventApi=_SiN_GetServerGruntNativeWeaponEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntNativeWeaponEventApi* __cdecl
+SiN_GetServerGruntNativeWeaponEventApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerGruntNativeWeaponEventApi)?&native_event_api:nullptr;
 }

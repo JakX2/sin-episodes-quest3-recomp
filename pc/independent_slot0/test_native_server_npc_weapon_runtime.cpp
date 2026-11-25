@@ -12,7 +12,7 @@
 #include <initializer_list>
 using namespace sin_port::native_weapon_tables;
 struct F {
-    alignas(4) unsigned char actor[0xfcc]{},weapon[0x4c0]{},component[0x28]{},path[0x48]{};
+    alignas(4) unsigned char actor[0xfcc]{},weapon[0x598]{},component[0x28]{},path[0x48]{};
     alignas(4) unsigned char npc_desc[2][0x40]{},weapon_desc[2][0x40]{};
     ServerActivityDescriptor nr[2]{},wr[2]{};
     std::uint32_t ng=3,wg=3;
@@ -140,6 +140,42 @@ int main(int argc,char** argv){
     seed_frame();f.ne.event=3;
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&gout.failed_status==1&&gout.failed_event==3&&gout.failed_source==f.actor&&!gout.handled&&!gout.weapon_events);
     assert((f.trace==std::vector<int>{10,11}));
+
+    auto gnative=reinterpret_cast<GetServerNpcNativeWeaponEventFrameApi>(GetProcAddress(server,server_npc_native_weapon_event_frame_export));
+    assert(gnative&&!GetProcAddress(client,server_npc_native_weapon_event_frame_export)&&!gnative(0,sizeof(ServerNpcNativeWeaponEventFrameApi))&&!gnative(1,0));
+    auto* native=gnative(1,sizeof(ServerNpcNativeWeaponEventFrameApi));assert(native);
+    ServerNpcNativeWeaponEventFrameBindings nb{};nb.frame=gb;
+    nb.frame.handler.weapon=nullptr;nb.frame.handler.weapon_event=nullptr;nb.frame.handler.parent=nullptr;
+    struct Info {F* f;alignas(4) unsigned char bytes[0x164]{};} info{&f};
+    f.put(info.bytes,0x160,28);f.put(f.weapon,0x51c,std::uint16_t{5});
+    auto& eb=nb.events.weapon;eb.context=&f;eb.extent=w.extent;eb.sound.context=&f;
+    eb.sound.emit=[](void* p,void* weapon,int id,float) noexcept -> int {
+        auto& f=F::self(p);assert(weapon==f.weapon);f.trace.push_back(100+id);return 1;};
+    eb.sound.interval=[](void*,void*,double* out) noexcept -> int {*out=.0625;return 1;};
+    eb.secondary=[](void* p,void* weapon,unsigned kind) noexcept -> int {
+        auto& f=F::self(p);assert(weapon==f.weapon&&kind==WeaponActivityAssault);f.trace.push_back(21);return 1;};
+    eb.prepare=[](void* p,void*,void*,unsigned,const ServerAnimationEvent*) noexcept -> int {F::self(p).trace.push_back(1);return 1;};
+    eb.primary_effect=[](void* p,void*,void*,unsigned,const ServerAnimationEvent*) noexcept -> int {F::self(p).trace.push_back(2);return 1;};
+    eb.flash=[](void* p,void*) noexcept -> int {F::self(p).trace.push_back(3);return 1;};
+    nb.events.context=&info;
+    nb.events.script_info=[](void* p,std::uint16_t id,const void** out,unsigned* n) noexcept -> int {
+        auto& q=*static_cast<Info*>(p);assert(id==5);q.f->trace.push_back(80);*out=q.bytes;*n=sizeof(q.bytes);return 1;};
+    nb.events.clear_condition=[](void* p,void*,int cond) noexcept -> int {
+        static_cast<Info*>(p)->f->trace.push_back(200+cond);return 1;};
+    f.ne.event=3015;f.we.event=ids.events[1];f.we.type=0x401;
+    f.put(f.weapon,0x4ec,3);f.put(f.actor,0xc38,3u);
+    seed_frame();ServerNpcNativeWeaponEventFrameResult nout{};
+    assert(native->run(f.actor,sizeof(f.actor),&in,&nb,&nout)&&nout.frame.handled==2&&nout.native_parent==1&&nout.native_altfire==1);
+    assert(nout.last.altfire.secondary_called&&f.get<int>(f.weapon,0x4ec)==28&&f.get<unsigned>(f.actor,0xc38)==2);
+    assert((f.trace==std::vector<int>{10,11,109,80,203,204,205,12,21}));
+    f.ne.event=20;f.we.event=3002;f.we.type=0;
+    seed_frame();f.put(f.weapon,0x580,0.f);
+    assert(native->run(f.actor,sizeof(f.actor),&in,&nb,&nout)&&nout.native_parent==1&&nout.last.parent.weapon.primary_called&&nout.last.parent.weapon.sound.emitted==2);
+    assert(f.get<int>(f.weapon,0x4ec)==27&&(f.trace==std::vector<int>{10,11,20,12,1,102,102,2,3}));
+    f.ne.event=ids.events[1];f.ne.type=0x401;eb.secondary=nullptr;
+    seed_frame();const auto count_before=f.get<unsigned>(f.actor,0xc38);const auto deadline_before=f.get<float>(f.actor,0xc90);
+    assert(!native->run(f.actor,sizeof(f.actor),&in,&nb,&nout)&&nout.frame.failed_status==-1&&nout.native_altfire==1&&!nout.frame.weapon_events);
+    assert(f.get<unsigned>(f.actor,0xc38)==count_before&&f.get<float>(f.actor,0xc90)==deadline_before);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

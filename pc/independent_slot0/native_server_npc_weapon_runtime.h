@@ -47,4 +47,19 @@ struct ServerNpcWeaponGruntFrameApi {
     int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcWeaponGruntFrameBindings*,ServerNpcWeaponGruntFrameResult*) noexcept;
 };
 using GetServerNpcWeaponGruntFrameApi=const ServerNpcWeaponGruntFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_native_weapon_event_frame_export[]="SiN_GetServerNpcNativeWeaponEventFrameApi";
+struct ServerNpcNativeWeaponEventFrameBindings {
+    ServerNpcWeaponGruntFrameBindings frame;
+    ServerNpcParentWeaponEventBindings events;
+};
+struct ServerNpcNativeWeaponEventFrameResult {
+    ServerNpcWeaponGruntFrameResult frame;
+    ServerGruntNativeWeaponEventResult last;
+    unsigned native_altfire,native_parent;
+};
+struct ServerNpcNativeWeaponEventFrameApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcNativeWeaponEventFrameBindings*,ServerNpcNativeWeaponEventFrameResult*) noexcept;
+};
+using GetServerNpcNativeWeaponEventFrameApi=const ServerNpcNativeWeaponEventFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

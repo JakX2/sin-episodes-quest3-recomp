@@ -14,6 +14,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWea
 SiN_GetServerWeaponPostFrameApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntRegistrationApi* __cdecl
 SiN_GetServerGruntRegistrationApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntNativeWeaponEventApi* __cdecl
+SiN_GetServerGruntNativeWeaponEventApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 struct Call;
@@ -34,6 +36,8 @@ struct Call {
     const ServerNpcWeaponGruntFrameBindings* grunt;
     ServerNpcWeaponGruntFrameResult* grunt_result;
     EventRoute npc_route,weapon_route;
+    const ServerNpcParentWeaponEventBindings* native_events;
+    ServerNpcNativeWeaponEventFrameResult* native_result;
 };
 Call& self(void* p) noexcept {return *static_cast<Call*>(p);}
 bool prepare(Call& c) noexcept {
@@ -97,7 +101,16 @@ void bind_events(EventRoute& route,ServerAnimationEventBindings& target,Call& ca
         if(out.failed_status)return;
         if(route.weapon)++out.weapon_events;else ++out.npc_events;
         const auto* api=SiN_GetServerGruntRegistrationApi(1,sizeof(ServerGruntRegistrationApi));
-        const int status=receiver==c.actor&&api?api->handle(receiver,c.bytes,event,c.now,c.grunt->ids,&c.grunt->handler,&out.last):-1;
+        int status=-1;
+        if(receiver==c.actor&&c.native_events&&c.native_result){
+            const auto* native=SiN_GetServerGruntNativeWeaponEventApi(1,sizeof(ServerGruntNativeWeaponEventApi));
+            auto& result=*c.native_result;
+            if(native){
+                status=native->handle(receiver,c.bytes,event,c.now,c.grunt->ids,&c.grunt->handler,c.native_events,&result.last);
+                result.native_altfire+=result.last.native_altfire;result.native_parent+=result.last.native_parent;
+                out.last=result.last.grunt;
+            }
+        }else if(receiver==c.actor&&api)status=api->handle(receiver,c.bytes,event,c.now,c.grunt->ids,&c.grunt->handler,&out.last);
         if(status==1){++out.handled;return;}
         out.failed_status=status==0?1:-1; // 1 known unrecovered, -1 invalid/host failure
         out.failed_event=event?event->event:-1;out.failed_source=event?event->source:nullptr;
@@ -124,7 +137,7 @@ int __cdecl run(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,
     const auto* api=SiN_GetServerNpcAnimationTickApi(1,sizeof(ServerNpcAnimationTickApi));
     return api&&prepare(c)&&api->run(actor,bytes,in,&c.npc,&out->tick);
 }
-int __cdecl run_grunt(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcWeaponGruntFrameBindings* b,ServerNpcWeaponGruntFrameResult* out) noexcept {
+int run_grunt_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcWeaponGruntFrameBindings* b,ServerNpcWeaponGruntFrameResult* out,const ServerNpcParentWeaponEventBindings* native=nullptr,ServerNpcNativeWeaponEventFrameResult* result=nullptr) noexcept {
     if(!out)return 0;*out={};out->failed_event=-1;
     if(!b||!in||!std::isfinite(in->now)||!b->ids)return 0;
     const auto& t=b->runtime.npc.transition.assignment.translation;
@@ -136,12 +149,26 @@ int __cdecl run_grunt(void* actor,unsigned bytes,const ServerNpcRunAnimationInpu
        b->ids->activity_generation!=t.activities->names.generation)return 0;
     Call c{};c.host=&b->runtime;c.result=&out->runtime;c.actor=actor;c.bytes=bytes;c.now=in->now;
     c.grunt=b;c.grunt_result=out;
+    c.native_events=native;c.native_result=result;
     const auto* api=SiN_GetServerNpcAnimationTickApi(1,sizeof(ServerNpcAnimationTickApi));
     if(!api||!prepare(c))return 0;
     bind_events(c.npc_route,c.npc.frame.frame.sequence.frame.events,c,false);
     bind_events(c.weapon_route,c.weapon.events,c,true);
     return api->run(actor,bytes,in,&c.npc,&out->runtime.tick)&&!out->failed_status;
 }
+int __cdecl run_grunt(void* a,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcWeaponGruntFrameBindings* b,ServerNpcWeaponGruntFrameResult* out) noexcept {
+    return run_grunt_impl(a,bytes,in,b,out);
+}
+int __cdecl run_native(void* a,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcNativeWeaponEventFrameBindings* b,ServerNpcNativeWeaponEventFrameResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!b)return 0;
+    auto events=b->events;
+    // One serial registry, class classifier and weapon extent resolver across
+    // translation, animation advancement and event effects.
+    events.weapon.weapons=b->frame.runtime.inherited.weapons;
+    return run_grunt_impl(a,bytes,in,&b->frame,&out->frame,&events,out);
+}
+const ServerNpcNativeWeaponEventFrameApi native_frame_api{1,sizeof(ServerNpcNativeWeaponEventFrameApi),&run_native};
 const ServerNpcWeaponGruntFrameApi grunt_api{1,sizeof(ServerNpcWeaponGruntFrameApi),&run_grunt};
 const ServerNpcWeaponRuntimeApi api{1,sizeof(ServerNpcWeaponRuntimeApi),&request,&update,&run};
 }
@@ -158,4 +185,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcWeaponGruntFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcWeaponGruntFrameApi)?&grunt_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativeWeaponEventFrameApi=_SiN_GetServerNpcNativeWeaponEventFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeWeaponEventFrameApi* __cdecl
+SiN_GetServerNpcNativeWeaponEventFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerNpcNativeWeaponEventFrameApi)?&native_frame_api:nullptr;
 }
