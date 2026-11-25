@@ -160,4 +160,19 @@ struct ServerTargetSceneApi {
         const ServerTargetSceneBindings*,unsigned*) noexcept;
 };
 using GetServerTargetSceneApi=const ServerTargetSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_face_scene_export[]="SiN_GetServerFaceSceneApi";
+struct ServerFaceSceneBindings {
+    ServerTargetSceneBindings target; // target.look is NPC virtual +5ec here, not +63c
+    void* context;
+    int (__cdecl *admit)(void*,void* actor,unsigned*) noexcept;
+    int (__cdecl *suppressed)(void*,void* actor,unsigned*) noexcept;
+    int (__cdecl *target_yaw)(void*,void* actor,void* target,float*) noexcept;
+};
+struct ServerFaceSceneApi {
+    std::uint32_t version,size;
+    // CAI_BaseActor type8 update, 2202a24e; no debug drawing.
+    int (__cdecl *update)(void* actor,unsigned,void* record,unsigned,const void* event,unsigned,float time,float now,
+        const ServerFaceSceneBindings*,unsigned*) noexcept;
+};
+using GetServerFaceSceneApi=const ServerFaceSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

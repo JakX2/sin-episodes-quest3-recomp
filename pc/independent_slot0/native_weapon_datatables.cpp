@@ -12210,6 +12210,106 @@ int __cdecl target_scene_look_at(void* actor,const void* record,unsigned rb,cons
     return 1;
 }
 const ServerTargetSceneApi server_target_scene_api{version,sizeof(ServerTargetSceneApi),&target_scene_look_at};
+double face_angle_delta(float target,float source) noexcept {
+    const double raw=static_cast<double>(target)-source;
+    double d=std::fmod(raw,360.0);
+    if(raw>0){if(d>=180)d-=360;}
+    else if(d<=-180)d+=360;
+    return d;
+}
+bool face_angle_quantize(float angle,float& out) noexcept {
+    const double scaled=static_cast<double>(angle)*182.04444885253906;
+    if(!std::isfinite(scaled)||scaled<-2147483648.0||scaled>=2147483648.0)return false;
+    const auto bits=static_cast<std::uint32_t>(static_cast<int>(scaled))&0xffffu;
+    out=static_cast<float>(bits*.0054931640625);return true;
+}
+int __cdecl face_scene_update(void* actor,unsigned bytes,void* record,unsigned rb,const void* event,unsigned eb,float time,float now,
+    const ServerFaceSceneBindings* b,unsigned* out) noexcept {
+    if(rb<0x40||eb<0x3c0||!hologram_writable(record,0x40)||!sin_independent::vgui_layout::Readable(event,0x3c0)||
+       !hologram_writable(out,4))return -1;
+    if(hologram_read<unsigned>(event,0)!=8)return 0;
+    if(bytes<0xe48||!hologram_writable(actor,0xe48)||!b||
+       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!std::isfinite(time)||!std::isfinite(now))return -1;
+    const auto h=*b;
+    auto resolve=[&](void** target){
+        const auto handle=hologram_read<std::uint32_t>(record,0x24);
+        *target=nullptr;return handle==0xffffffffu||(h.target.resolve&&h.target.resolve(h.target.context,handle,target));
+    };
+    void* target=nullptr;*out=0;
+    if(!resolve(&target))return -1;
+    if(!target)return 1;
+    const bool disabled=hologram_read<unsigned char>(event,0x33c)!=0;
+    unsigned gate=0,suppressed=0;
+    if(!disabled&&(!h.admit||!h.admit(h.context,actor,&gate)))return -1;
+    const bool admitted=(gate&0xff)!=0;
+    auto yaw=[&](){return hologram_read<float>(actor,0x370);};
+    if(!std::isfinite(yaw())||!h.suppressed)return -1;
+    if(!hologram_read<unsigned char>(record,0xc)){
+        const float y=yaw();
+        hologram_write(record,0x2c,y);hologram_write(record,0x30,y);hologram_write(record,0x34,y);
+        if(!h.suppressed(h.context,actor,&suppressed))return -1;
+        hologram_write(record,0x20,(suppressed&0xff)?1.f:0.f);
+    }
+    if(!resolve(&target))return -1;
+    if(target==actor){*out=1;return 1;}
+    if(!admitted)hologram_write(record,0x2c,yaw());
+    else{
+        if(!h.suppressed(h.context,actor,&suppressed))return -1;
+        if(static_cast<unsigned char>(suppressed)!=hologram_read<unsigned char>(record,0x28))
+            hologram_write(record,0x2c,yaw());
+    }
+    if(!h.suppressed(h.context,actor,&suppressed))return -1;
+    const auto mode=static_cast<unsigned char>(suppressed);
+    hologram_write(record,0x28,mode);
+    const float start=hologram_read<float>(event,0x184),end=hologram_read<float>(event,0x188);
+    if(!std::isfinite(start)||!std::isfinite(end))return -1;
+    const double limit=static_cast<double>(end)-.1;
+    const float sample=static_cast<float>(time>limit?limit:time<start?start:time);
+    float weight=0;
+    if(!server_event_intensity(event,eb,sample,h.target.context,h.target.storage,&weight))return -1;
+    if(admitted&&mode)hologram_write(record,0x2c,yaw());
+    const float body=hologram_read<float>(record,0x34),previous=hologram_read<float>(record,0x30),current=yaw();
+    if(!std::isfinite(body)||!std::isfinite(previous)||!std::isfinite(current))return -1;
+    if(!disabled&&!mode&&admitted){
+        const float sum=hologram_read<float>(actor,0xe00),total=hologram_read<float>(actor,0xe04);
+        if(!std::isfinite(sum)||!std::isfinite(total))return -1;
+        // 220299d0 accumulates weighted body-angle delta and weight.
+        hologram_write(actor,0xe00,static_cast<float>(sum+face_angle_delta(body,current)*weight));
+        hologram_write(actor,0xe04,static_cast<float>(static_cast<double>(total)+weight));
+    }
+    const float delta=static_cast<float>(face_angle_delta(previous,current));
+    const double magnitude=std::fabs(static_cast<double>(delta)),sign=delta<0?-1.:1.;
+    const double close=magnitude>30?30:magnitude,excess=magnitude-close;
+    const float a=hologram_read<float>(actor,0xe40),z=hologram_read<float>(actor,0xe44);
+    if(!std::isfinite(a)||!std::isfinite(z))return -1;
+    hologram_write(actor,0xe40,static_cast<float>(a*(1.0-weight)+close*sign*weight));
+    hologram_write(actor,0xe44,static_cast<float>(z*(1.0-weight)+excess*sign*weight));
+    // Original resolves target a third time before position/yaw virtuals.
+    // Reject a newly stale handle defensively rather than dereferencing null.
+    if(!resolve(&target)||!target||!h.target_yaw)return -1;
+    float desired=0;
+    if(!h.target_yaw(h.context,actor,target,&desired)||!std::isfinite(desired))return -1;
+    const float base=hologram_read<float>(record,0x2c);
+    if(!std::isfinite(base))return -1;
+    const float weighted=static_cast<float>(face_angle_delta(desired,base)*weight);
+    float goal=0;
+    if(!face_angle_quantize(static_cast<float>(static_cast<double>(base)+weighted),goal))return -1;
+    hologram_write(record,0x30,goal);
+    const double abs_delta=std::fabs(static_cast<double>(weighted));
+    const float factor=admitted&&!disabled?static_cast<float>(1.0-(std::max)(2.0*(weight-.5),0.0)):1.f;
+    const float portion=static_cast<float>(abs_delta*factor);
+    const double part=portion>30?30:portion,rest=(std::max)(static_cast<double>(portion)-part,0.0);
+    hologram_write(record,0x34,static_cast<float>(base+(abs_delta-part-rest)*(weighted<0?-1.:1.)));
+    if(!disabled){
+        if(!resolve(&target)||!h.target.look||!h.target.look(h.target.context,actor,target,weight,.2f,0))return -1;
+    }
+    if(admitted){
+        const float duration=static_cast<float>((std::min)(static_cast<double>(end)-time+.2,2.0));
+        if(!npc_animation_keepalive(actor,bytes,now,duration))return -1;
+    }
+    *out=1;return 1;
+}
+const ServerFaceSceneApi server_face_scene_api{version,sizeof(ServerFaceSceneApi),&face_scene_update};
 int animation_scene_tick(void* actor,unsigned bytes,void* record,void* event,unsigned eb,float time,float now,
     const ServerNpcAnimationThinkBindings* b,unsigned* out) noexcept {
     const auto& h=b->animation;
@@ -14344,6 +14444,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerFaceSceneApi=_SiN_GetServerFaceSceneApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFaceSceneApi* __cdecl
+SiN_GetServerFaceSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFaceSceneApi)?&server_face_scene_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerTargetSceneApi=_SiN_GetServerTargetSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerTargetSceneApi* __cdecl
