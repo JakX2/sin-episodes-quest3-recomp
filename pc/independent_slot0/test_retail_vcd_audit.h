@@ -688,6 +688,59 @@ inline void check_native_talk_deadline_runtime(VcdAuditArena& a,const TalkDeadli
     assert(manager.destroy(&m.session,&m.control,&m.tables,&m.b)==1&&m.destroys==1&&a.live.empty());
 }
 
+
+inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNativePropagationApi& api,
+    const ResponseHistoryTreeApi& tree,const TalkCatalogApi& catalog){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char npc[0x1458]{},nearby[3][0x1458]{},exp[0x7c]{};
+        unsigned counts=0,candidates=0,refreshes=0,visible=0,access=0;
+        float now=10;bool hidden=false;TalkCooldownState global{};
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+    } f;
+    F::put(f.npc,0xb8,0x800);F::put(f.nearby[0],0xb8,0x800);
+    F::fl(f.nearby[0],0x2bc,999);F::fl(f.nearby[1],0x2bc,1000);F::fl(f.nearby[2],0x2bc,100);
+    F::put(f.nearby[0],0xffc,F::ptr(f.exp));F::put(f.exp,4,F::ptr(f.nearby[0]));
+    F::put(f.exp,0x20,0xffffffffu);F::put(f.exp,0x28,0xffffffffu);
+    assert(a.symbol_api.construct_empty(f.exp+0x34,0x34,0,0x2228e9b0)==1);
+    ResponseHistoryTreeBindings hb{};hb.memory=a.vector_bindings;hb.symbols=a.intern_bindings;hb.context=&f;
+    hb.clock=[](void* p,float* out) noexcept -> int{*out=Fixture::self(p).now;return 1;};
+    hb.notify=[](void*,void*,const char*) noexcept -> int{assert(false);return 0;};
+    TalkNativePropagationCooldownBindings cfg{};auto& b=cfg.propagation;
+    assert(tree.adapt(&hb,&b.history));b.context=&f;
+    b.extent=[](void* p,void* actor,unsigned* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.npc||actor==f.nearby[0]);*out=sizeof(f.npc);return 1;};
+    b.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);++f.access;if(word!=F::ptr(f.exp))return 0;*out=f.exp;*n=sizeof(f.exp);return 1;};
+    auto& e=b.enumeration;e.context=&f;
+    e.list=[](void* p,void** out) noexcept -> int{*out=p;return 1;};
+    e.count=[](void* p,int* out) noexcept -> int{++Fixture::self(p).counts;*out=5;return 1;};
+    e.candidate=[](void* p,void* token,unsigned i,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(token==p&&i<5);++f.candidates;*out=i==0?nullptr:i==1?f.npc:f.nearby[i-2];*n=sizeof(f.npc);return 1;};
+    e.refresh=[](void* p,void* actor) noexcept -> int{auto& f=Fixture::self(p);assert(actor==f.npc||actor==f.nearby[0]);++f.refreshes;F::put(actor,0xb8,0u);return 1;};
+    e.visible=[](void* p,void* source,void* actor,unsigned mask,void* blocker,unsigned* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(source==f.npc&&(actor==f.nearby[0]||actor==f.nearby[2])&&mask==0x4081&&!blocker);
+        ++f.visible;*out=actor==f.nearby[0]&&!f.hidden;return 1;};
+    cfg.host.context=&f;cfg.host.clock=hb.clock;
+    cfg.host.random=[](void*,float lo,float hi,float* out) noexcept -> int{assert(lo==5&&hi==10);*out=7;return 1;};
+    cfg.host.concept_deadline=[](void*,const char*,float**) noexcept -> int{assert(false);return 0;};
+    cfg.host.cooldown_disabled=[](void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+    TalkCooldownBindings cooldown{};assert(api.adapt(&cfg,&cooldown));
+    auto note=[&](){return catalog.note(f.npc,sizeof(f.npc),&f.global,&cooldown,"TLK_HELLO");};
+    assert(note()==1&&f.counts==6&&f.candidates==5&&f.refreshes==2&&f.visible==2&&f.access==1&&f.global.global[0]==17);
+    auto& h=b.history;int idx=-1;void* row=nullptr;unsigned n=0;
+    assert(h.lookup(h.context,f.exp,"tlk_hello",&idx)&&idx==0&&h.entry(h.context,f.exp,idx,&row,&n)&&n==28);
+    assert(VcdAuditArena::read_float(row,0x14)==10&&F::word(f.exp,0x24)==1);
+    F::put(row,0x18,123u);f.now=20;
+    assert(note()==1&&VcdAuditArena::read_float(row,0x14)==20&&F::word(row,0x18)==123&&f.access==2&&f.global.global[0]==27);
+    f.hidden=true;f.now=30;
+    assert(note()==1&&VcdAuditArena::read_float(row,0x14)==20&&f.access==2&&f.global.global[0]==37);
+    f.hidden=false;F::put(f.exp,4,0u);
+    assert(note()==-1&&f.access==3&&f.global.global[0]==37&&VcdAuditArena::read_float(row,0x14)==20);
+    F::put(row,0x18,0u);
+    assert(a.retire.symbol_destroy(&a,f.exp+0x34)&&a.release(&a,F::word(f.exp,0x14))&&a.live.empty());
+}
+
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr,const ResponseHistoryTreeApi* history_tree=nullptr,
     const ResponseHistoryManagedApi* managed_history=nullptr,TalkManagerFixture* manager=nullptr,const TalkDeadlineRuntimeApi* deadline_runtime=nullptr){
     using F=ScenePlaybackFixture;

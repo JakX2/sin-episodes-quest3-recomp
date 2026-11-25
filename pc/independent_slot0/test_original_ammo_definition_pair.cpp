@@ -1206,6 +1206,13 @@ int main(int argc,char** argv){
         tables::test::TalkManagerFixture nativeSpeechManager(*talkManager,*talkCatalog);
         tables::test::VcdAuditArena nativeDeadlineSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_vcd_clock_speech(nativeDeadlineSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink,historyTree,managedHistory,&nativeSpeechManager,deadlineRuntime);
+        const auto getNativePropagation=reinterpret_cast<tables::GetTalkNativePropagationApi>(GetProcAddress(server,tables::talk_native_propagation_export));
+        assert(getNativePropagation&&!GetProcAddress(client,tables::talk_native_propagation_export));
+        const auto* nativePropagation=getNativePropagation(1,sizeof(tables::TalkNativePropagationApi));
+        assert(nativePropagation&&!getNativePropagation(0,sizeof(tables::TalkNativePropagationApi))&&!getNativePropagation(1,0));
+        tables::test::VcdAuditArena propagationHistoryArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_native_talk_propagation_history(propagationHistoryArena,*nativePropagation,*historyTree,*talkCatalog);
+        std::puts("PASS native companion propagation to indexed receiver concept history");
         std::puts("PASS native response history symbol lookup, indexed tree insertion and free-slot reuse");
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));
