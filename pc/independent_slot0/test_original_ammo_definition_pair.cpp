@@ -1176,6 +1176,8 @@ int main(int argc,char** argv){
         assert(getHistoryPolicy);const auto* historyPolicy=getHistoryPolicy(1,sizeof(tables::ResponsePolicyApi));assert(historyPolicy);
         tables::test::VcdAuditArena historyArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_response_history_tree(historyArena,*historyTree,*historyPolicy);
+        tables::test::VcdAuditArena nativeHistorySpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_vcd_clock_speech(nativeHistorySpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink,historyTree);
         std::puts("PASS native response history symbol lookup, indexed tree insertion and free-slot reuse");
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));
