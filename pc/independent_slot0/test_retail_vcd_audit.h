@@ -745,7 +745,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1250,6 +1250,37 @@ rule parsed_rule
         assert(api.destroy(c,sizeof(c),&h)==1&&roots.root[1].live);
         assert(api.find(dest,sizeof(dest),&h,"concept",&idx,&child)==1&&idx>=0);
         assert(api.destroy(dest,sizeof(dest),&h)==1&&roots.destroyed==3&&a.live.empty());
+        if(ownedCriteria){
+            struct Pool {
+                alignas(4) unsigned char copy[response_criteria_bytes]{},response[0x124]{};
+                unsigned allocs=0,releases=0;bool live=false,short_block=false,fail_release=false;
+            } pool;
+            ResponseOwnedCriteriaBindings owned{};owned.copy=cfg;owned.context=&pool;
+            owned.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+                auto& s=*static_cast<Pool*>(p);assert(n==response_criteria_bytes&&!s.live);s.live=true;++s.allocs;
+                *out=s.copy;*bytes=s.short_block?n-1:n;return 1;};
+            owned.release=[](void* p,void* obj) noexcept -> int{
+                auto& s=*static_cast<Pool*>(p);assert(obj==s.copy&&s.live);s.live=false;++s.releases;return !s.fail_release;};
+            assert(api.construct(c,sizeof(c),&h)==1&&api.add(&h,c,"concept","TLK_IDLE",5));
+            void* copy=nullptr;
+            roots.fail_copy=true;
+            assert(!ownedCriteria->clone(&owned,c,&copy)&&!copy&&!pool.live&&pool.allocs==1&&pool.releases==1);
+            roots.fail_copy=false;pool.short_block=true;
+            assert(!ownedCriteria->clone(&owned,c,&copy)&&!copy&&!pool.live&&pool.releases==2);
+            pool.short_block=false;
+            assert(ownedCriteria->clone(&owned,c,&copy)&&copy==pool.copy&&pool.live&&F::word(copy,0x18)==1);
+            F::put(pool.response,0x84,F::ptr(copy));
+            assert(api.destroy(c,sizeof(c),&h)==1);
+            assert(api.find(copy,response_criteria_bytes,&h,"concept",&idx,&child)==1&&idx>=0&&child);
+            assert(ownedCriteria->clear(pool.response,sizeof(pool.response),&owned)==1&&!pool.live&&pool.releases==3&&!F::word(pool.response,0x84));
+            assert(ownedCriteria->clear(pool.response,sizeof(pool.response),&owned)==1&&pool.releases==3&&a.live.empty());
+            assert(api.construct(c,sizeof(c),&h)==1&&api.add(&h,c,"enemy","none",1));
+            assert(ownedCriteria->clone(&owned,c,&copy)&&pool.live);
+            F::put(pool.response,0x84,F::ptr(copy));pool.fail_release=true;
+            assert(ownedCriteria->clear(pool.response,sizeof(pool.response),&owned)==-1&&!pool.live&&!F::word(pool.response,0x84)&&pool.releases==4);
+            assert(ownedCriteria->clear(pool.response,sizeof(pool.response),&owned)==1&&pool.releases==4);
+            assert(api.destroy(c,sizeof(c),&h)==1&&a.live.empty());
+        }
     }
 }
 

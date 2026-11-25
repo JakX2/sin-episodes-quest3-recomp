@@ -1120,6 +1120,24 @@ struct ResponseCriteriaCopyApi {
     int (__cdecl *copy)(void* dest,unsigned,void* source,unsigned,const ResponseCriteriaCopyBindings*) noexcept;
 };
 using GetResponseCriteriaCopyApi=const ResponseCriteriaCopyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_owned_criteria_export[]="SiN_GetResponseOwnedCriteriaApi";
+struct ResponseOwnedCriteriaBindings {
+    ResponseCriteriaCopyBindings copy;
+    void* context;
+    // Distinct allocation owned by caller until released. If a nonnull
+    // block is published on failure it must still be releasable.
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *release)(void*,void*) noexcept;
+};
+struct ResponseOwnedCriteriaApi {
+    std::uint32_t version,size;
+    // Callback-compatible with NativeResponseFinderBindings.clone_criteria.
+    int (__cdecl *clone)(void* cfg,void* source,void** copy) noexcept;
+    // Clear response +84 and destroy/free its owned CriteriaSet once.
+    // Does not destroy the enclosing response or its other resources.
+    int (__cdecl *clear)(void*,unsigned,const ResponseOwnedCriteriaBindings*) noexcept;
+};
+using GetResponseOwnedCriteriaApi=const ResponseOwnedCriteriaApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_rule_ranking_export[]="SiN_GetResponseRuleRankingApi";
 struct ResponseRuleRankingBindings {
     ResponseCriteriaTreeBindings criteria;

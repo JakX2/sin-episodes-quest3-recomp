@@ -8030,6 +8030,44 @@ int __cdecl response_criteria_copy(void* dest,unsigned n,void* source,unsigned s
 }
 const ResponseCriteriaCopyApi response_criteria_copy_api{version,sizeof(ResponseCriteriaCopyApi),&response_criteria_copy};
 
+bool response_owned_criteria_ready(const ResponseOwnedCriteriaBindings* b) noexcept {
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->allocate&&b->release&&
+        response_criteria_ready(&b->copy.tree)&&b->copy.copy_root&&b->copy.first_child&&b->copy.next_child&&b->copy.name;
+}
+int __cdecl response_owned_criteria_clone(void* cfg,void* source,void** out) noexcept {
+    const auto* b=static_cast<const ResponseOwnedCriteriaBindings*>(cfg);
+    if(!response_owned_criteria_ready(b)||!hologram_writable(out,sizeof(*out)))return 0;
+    ResponseCriteriaIndex t{};
+    if(!response_criteria_read(source,b->copy.tree,t))return 0;
+    void* dest=nullptr;unsigned bytes=0;
+    const bool allocated=b->allocate(b->context,response_criteria_bytes,&dest,&bytes)!=0;
+    if(!dest)return 0;
+    const auto d=reinterpret_cast<std::uintptr_t>(dest),s=reinterpret_cast<std::uintptr_t>(source);
+    // A broken allocator must never release the still-owned source.
+    if((d>=s?d-s:s-d)<response_criteria_bytes)return 0;
+    if(!allocated||bytes<response_criteria_bytes||
+       response_criteria_copy(dest,bytes,source,response_criteria_bytes,&b->copy)!=1){
+        (void)b->release(b->context,dest);return 0;
+    }
+    *out=dest;return 1;
+}
+int __cdecl response_owned_criteria_clear(void* response,unsigned bytes,const ResponseOwnedCriteriaBindings* b) noexcept {
+    if(bytes<0x124||!hologram_writable(response,0x124)||!response_owned_criteria_ready(b))return 0;
+    const auto word=hologram_read<std::uint32_t>(response,0x84);
+    if(!word)return 1;
+    auto* copy=reinterpret_cast<void*>(static_cast<std::uintptr_t>(word));
+    ResponseCriteriaIndex t{};
+    if(!response_criteria_read(copy,b->copy.tree,t))return 0;
+    const auto r=reinterpret_cast<std::uintptr_t>(response),c=reinterpret_cast<std::uintptr_t>(copy);
+    if((c>=r&&c-r<0x124)||(r>c&&r-c<response_criteria_bytes))return 0;
+    hologram_write(response,0x84,0u);
+    const bool destroyed=response_criteria_destroy(copy,response_criteria_bytes,&b->copy.tree)==1;
+    const bool released=b->release(b->context,copy)!=0;
+    return destroyed&&released?1:-1;
+}
+const ResponseOwnedCriteriaApi response_owned_criteria_api{version,sizeof(ResponseOwnedCriteriaApi),
+    &response_owned_criteria_clone,&response_owned_criteria_clear};
+
 namespace rr=sin_port::response_rule;
 struct NativeRuleRankingCall {
     void* system;void* criteria;const ResponseRuleRankingBindings& b;
@@ -16663,6 +16701,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseC
 SiN_GetResponseCriteriaCopyApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseCriteriaCopyApi)?&response_criteria_copy_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetResponseOwnedCriteriaApi=_SiN_GetResponseOwnedCriteriaApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseOwnedCriteriaApi* __cdecl
+SiN_GetResponseOwnedCriteriaApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseOwnedCriteriaApi)?&response_owned_criteria_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl
