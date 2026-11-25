@@ -45,4 +45,20 @@ struct ServerGestureTagWarpApi {
     int (__cdecl *map)(const void* event,unsigned,float fraction,const ServerAnimationSceneFrameBindings*,float*) noexcept;
 };
 using GetServerGestureTagWarpApi=const ServerGestureTagWarpApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_gesture_metadata_export[]="SiN_GetServerGestureMetadataApi";
+struct ServerGestureMetadata {
+    // Sequence metadata was available, even if faceposer subsection absent.
+    unsigned available;
+    const char* type;      // null = absent
+    const char* startloop; // null = default "loop", empty = explicit empty name
+    const char* endloop;   // null = default "end"
+};
+struct ServerGestureMetadataApi {
+    std::uint32_t version,size;
+    // Metadata portion of 220f7db0 only, after successful repeat lookup.
+    // Does not allocate layers or load model/sequence metadata.
+    int (__cdecl *apply)(void* record,unsigned,void* event,unsigned,const ServerGestureMetadata*,unsigned suppressed,
+        const ServerAnimationSceneFrameBindings*) noexcept;
+};
+using GetServerGestureMetadataApi=const ServerGestureMetadataApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
