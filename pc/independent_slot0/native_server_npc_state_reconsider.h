@@ -759,4 +759,22 @@ struct ServerNpcGruntUpdateGateApi {
     int (__cdecl *prepare)(void*,unsigned,const ServerNpcGruntUpdateGateBindings*,ServerNpcGruntUpdateGateResult*) noexcept;
 };
 using GetServerNpcGruntUpdateGateApi=const ServerNpcGruntUpdateGateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_condition_update_export[]="SiN_GetServerNpcGruntConditionUpdateApi";
+struct ServerNpcGruntConditionUpdateBindings {
+    ServerNpcGruntUpdateGateBindings gate;
+    ServerNpcGruntPerceptionTickBindings perception;
+    ServerNpcGruntPostUpdateBindings post;
+};
+struct ServerNpcGruntConditionUpdateResult {
+    ServerNpcGruntUpdateGateResult gate;
+    ServerNpcGruntPerceptionTickResult perception;
+    ServerNpcGruntPostUpdateResult post;
+    unsigned completed,perception_called,post_called;
+};
+struct ServerNpcGruntConditionUpdateApi {
+    std::uint32_t version,size;
+    // 220456b0..22045924, not the outer NPC think; engine leaves remain bound.
+    int (__cdecl *update)(void*,unsigned,float,const ServerNpcGruntConditionUpdateBindings*,ServerNpcGruntConditionUpdateResult*) noexcept;
+};
+using GetServerNpcGruntConditionUpdateApi=const ServerNpcGruntConditionUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
