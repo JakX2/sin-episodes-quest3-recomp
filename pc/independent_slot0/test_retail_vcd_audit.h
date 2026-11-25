@@ -527,7 +527,7 @@ actor Jessica
 // Exercise real parser -> clock -> native speech callback -> native
 // preparation, language, caption and actor record lifecycle. Only the
 // external engine effects are synthetic, not the callback dispatch.
-inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock){
+inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -550,10 +550,10 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
         int player=0,filter=0;
         unsigned opened=0,closed=0,notified=0,emitted=0,registered=0,preferences=0,sent=0,begun=0,stopped=0,starts=0,stops=0;
         std::uint32_t root=0,actorword=0;
-        void* event=nullptr;
+        void* event=nullptr;bool retail=false;
         explicit Fixture(VcdAuditArena& a):arena(a){}
         static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
-    } f(arena);
+    } f(arena);f.retail=retail!=nullptr;
     auto raw=arena.runtime();
     F::put(f.scene,0x414,F::ptr(f.scene));F::fl(f.scene,0x564,.25f);
     assert(runtime.parse(f.scene+0x410,"speech.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
@@ -616,14 +616,24 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     rec.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
     rec.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
     rec.begin=[](void* p,void* actor,void* record,std::uint32_t root,void* event,std::uint32_t choreo,void* target,unsigned* accepted) noexcept -> int{
-        auto& f=Fixture::self(p);assert(actor==f.actor&&root==f.root&&event==f.event&&choreo==f.actorword&&!target);
+        auto& f=Fixture::self(p);assert(!f.retail&&actor==f.actor&&root==f.root&&event==f.event&&choreo==f.actorword&&!target);
         assert(F::word(record,0)==F::ptr(event)&&F::word(record,4)==root&&F::word(record,0x24)==0xffffffffu);
         ++f.begun;*accepted=1;return 1;
     };
     rec.stop=[](void* p,void* actor,void* record,int argument,int zero,unsigned* accepted) noexcept -> int{
-        auto& f=Fixture::self(p);assert(actor==f.actor&&F::word(record,0)==F::ptr(f.event)&&F::word(record,4)==f.root&&!argument&&!zero);
-        ++f.stopped;*accepted=1;return 1;
+        auto& f=Fixture::self(p);assert(actor==f.actor&&F::word(record,0)==F::ptr(f.event)&&F::word(record,4)==f.root&&!argument);
+        assert(zero==(f.retail?1:0));
+        ++f.stopped;*accepted=f.retail?0u:1u;return 1;
     };
+    ServerFacialRecordBindings cfg{};
+    if(retail){
+        cfg.host=rec;cfg.base_flex=true;
+        cfg.extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+            auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;
+        };
+        cfg.now=[](void*,float* out) noexcept -> int{*out=10.f;return 1;};
+        assert(retail->adapt(&cfg,&rec));
+    }
     SpeechSemaphorePair sem{};
     SceneSpeechPreparationBindings prep{};prep.context=&f;prep.state=&sem;prep.instanced=1;
     prep.cast_base_actor=[](void* p,void* actor,void** out) noexcept -> int{
@@ -635,22 +645,32 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     prep.is_npc=[](void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
     prep.classify=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
     prep.clock=e.clock;
-    prep.handle=rec.handle;
+    prep.handle=retail?cfg.host.handle:rec.handle;
     NativeChoreographyClockBindings tick{};tick.vectors=arena.vector_bindings;tick.release_memory=&VcdAuditArena::release;
     tick.scene=f.scene;tick.scene_bytes=sizeof(f.scene);tick.speech=&speech;tick.preparation=&prep;
     assert(clock.reset(root,extent,1,0,0,&tick)==1);
     F::fl(f.scene,0x3dc,.5f);
-    assert(clock.simulate(root,extent,.5f,&tick)==1&&f.starts==1&&f.notified==1&&f.emitted==1&&f.begun==1);
+    assert(clock.simulate(root,extent,.5f,&tick)==1&&f.starts==1&&f.notified==1&&f.emitted==1&&f.begun==(retail?0u:1u));
     assert(f.opened==1&&f.closed==1&&f.registered==1&&f.preferences==1&&f.sent==1&&F::word(f.actor,0x5c4)==1&&F::word(f.actor,0x5bc)==1);
     assert(static_cast<unsigned char*>(f.event)[0x328]);
+    if(retail){
+        void* row=nullptr;unsigned bytes=0,accepted=0;
+        assert(arena.storage(&arena,F::word(f.actor,0x5b8),&row,&bytes)&&bytes>=0x40);
+        assert(F::word(row,0)==F::ptr(f.event)&&F::word(row,4)==f.root&&F::word(row,0x24)==0xffffffffu);
+        assert(rec.check(rec.context,f.actor,row,1.f,f.root,f.event,&accepted)&&accepted==1);
+        // High byte alone does not request stop; forced stop runs effect once
+        // and returns true regardless of the host's accepted output.
+        assert(rec.stop(rec.context,f.actor,row,0,256,&accepted)&&accepted==1&&!f.stopped);
+        assert(rec.stop(rec.context,f.actor,row,0,1,&accepted)&&accepted==1&&f.stopped==1);
+    }
     F::fl(f.scene,0x3dc,2.25f);
-    assert(clock.simulate(root,extent,2.25f,&tick)==1&&f.emitted==1&&!f.stopped);
+    assert(clock.simulate(root,extent,2.25f,&tick)==1&&f.emitted==1&&f.stopped==(retail?1u:0u));
     F::fl(f.scene,0x3dc,2.5f);
     assert(clock.simulate(root,extent,2.5f,&tick)==1&&f.stopped==1&&f.stops==1&&!F::word(f.actor,0x5c4));
     assert(!static_cast<unsigned char*>(f.event)[0x328]);
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
-    std::puts("PASS parsed VCD clock -> native speech, caption and actor record lifecycle");
+    std::puts(retail?"PASS parsed speech native record admission/check/stop and forced sound effect":"PASS parsed VCD clock -> native speech, caption and actor record lifecycle");
 }
 inline void check_native_choreography_dispatch(const NativeChoreographyDispatchApi& api){
     using F=ScenePlaybackFixture;

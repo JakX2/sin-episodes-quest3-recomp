@@ -1081,6 +1081,8 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena retailArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::ParsedFacialClientPair retailPair(*flexSend,*flexRecv,*animSend,*animRecv,*frame);
         tables::test::check_parsed_cached_expression(retailArena,*nativeVcdRuntime,*execution,*retail,*cached,*bank,*remap,retailPair,true);
+        tables::test::VcdAuditArena nativeSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_vcd_clock_speech(nativeSpeechArena,*nativeVcdRuntime,*nativeClock,retail);
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));
         const auto getRecords=reinterpret_cast<tables::GetActorEventRecordApi>(GetProcAddress(server,"SiN_GetActorEventRecordApi"));

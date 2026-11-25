@@ -3,6 +3,8 @@
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_facial_records_export[]="SiN_GetServerFacialRecordApi";
 // Same config ABI, but for verified original base-flex/actor admission tables.
+// Ordinary speech start/check/stop are native; forced speech stop delegates host.stop
+// for the sound effect (its accepted value is ignored, as original AL is true).
 inline constexpr char server_retail_facial_records_export[]="SiN_GetServerRetailFacialRecordApi";
 struct ServerFacialRecordBindings {
     ActorEventRecordBindings host;
