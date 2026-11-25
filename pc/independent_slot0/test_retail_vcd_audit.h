@@ -449,9 +449,6 @@ inline void check_native_vcd_metadata(VcdAuditArena& arena,const NativeVcdRuntim
   event speak greeting {
    time 0 2
    param Jessica.Greeting
-   cctype cc_master
-   cctoken "123456789"
-   cc_noattenuate
   }
   event speak repeat {
    time 2 4
@@ -594,6 +591,9 @@ struct VcdOwnedPlaybackFixture {
   event speak greeting {
    time 0 2
    param Jessica.Greeting
+   cctype cc_master
+   cctoken "123456789"
+   cc_noattenuate
   }
   event subscene response {
    time 2 4
