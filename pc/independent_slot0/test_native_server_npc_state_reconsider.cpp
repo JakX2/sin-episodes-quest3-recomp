@@ -13,7 +13,7 @@
 using namespace sin_port::native_weapon_tables;
 struct F{
     alignas(4) unsigned char actor[0xc1c]{},desc[0x48]{},schedule[0x30]{},enemy[0xc0]{},replacement[0xc0]{};
-    unsigned char memory[0x40]{},nodes[48]{},record[0x38]{},fallback[0x38]{},unreachable_rows[60]{};
+    unsigned char memory[0x40]{},nodes[384]{},record[0x38]{},fallback[0x38]{},unreachable_rows[60]{};
     const ServerNpcUnreachableEnemyApi* unreachable_api=nullptr;ServerNpcUnreachableEnemyBindings unreachable_binding{};
     sin_independent::EntityHandleEntry entries[3]{};
     unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
@@ -240,5 +240,40 @@ int main(int argc,char** argv){
     std::memcpy(&latest,f.record+4,4);std::memcpy(&secondary,f.record+0x10,4);assert(latest==44&&secondary==55);
     f.put(f.enemy,0xbc,0u);
     f.nodes[0]=0;assert(!maint->maintain(f.memory,sizeof(f.memory),100,&maintenance,&mr)&&!mr.visited);f.nodes[0]=255;
+    auto gtree=reinterpret_cast<GetServerNpcEnemyMemoryTreeApi>(GetProcAddress(s,server_npc_enemy_memory_tree_export));
+    assert(gtree&&!GetProcAddress(c,server_npc_enemy_memory_tree_export)&&!gtree(0,sizeof(ServerNpcEnemyMemoryTreeApi))&&!gtree(1,0));
+    const auto* tree=gtree(1,sizeof(ServerNpcEnemyMemoryTreeApi));assert(tree);
+    f.memory[0x10]=f.memory[0x12]=255;f.memory[0x11]=f.memory[0x13]=0;f.put(f.memory,8,32u);
+    ServerNpcEnemyMemoryTreeResult tr{};
+    assert(tree->validate(f.memory,sizeof(f.memory),&mb,&tr)&&tr.count==0&&tr.root==255);
+    unsigned indices[32]{};
+    // Permuted keys force both rotations and recoloring, stable original node indices.
+    for(unsigned j=0;j<32;++j){
+        unsigned key=(j*13)%32+1;
+        assert(tree->insert(f.memory,sizeof(f.memory),key,1000+key,&mb,&tr)&&tr.index==j&&tr.count==j+1);
+        indices[key-1]=tr.index;
+        assert(tree->validate(f.memory,sizeof(f.memory),&mb,&tr));
+    }
+    assert(!tree->insert(f.memory,sizeof(f.memory),99,1099,&mb,&tr));
+    assert(!tree->insert(f.memory,sizeof(f.memory),1,999,&mb,&tr));
+    for(unsigned j=0;j<32;++j){
+        assert(mem->lookup(f.memory,sizeof(f.memory),j+1,false,&mb,&ml)&&ml.record==1001+j&&ml.index==indices[j]);
+    }
+    // Deletions include two-child, root and black-leaf cases; survivors retain indices.
+    bool removed[32]{};
+    for(unsigned j=0;j<32;++j){
+        const unsigned key=(j*7)%32;assert(tree->erase_index(f.memory,sizeof(f.memory),indices[key],&mb,&tr)&&tr.count==31-j&&tr.key==key+1&&tr.record==1001+key);
+        removed[key]=true;assert(tree->validate(f.memory,sizeof(f.memory),&mb,&tr));
+        for(unsigned k=0;k<32;++k){
+            assert(mem->lookup(f.memory,sizeof(f.memory),k+1,false,&mb,&ml));
+            if(removed[k])assert(!ml.matched);else assert(ml.index==indices[k]&&ml.record==1001+k);
+        }
+    }
+    const auto free_index=tr.free_head;
+    assert(tree->insert(f.memory,sizeof(f.memory),0,102,&mb,&tr)&&tr.reused&&tr.index==free_index&&tr.high_water==32);
+    assert(tree->erase_index(f.memory,sizeof(f.memory),free_index,&mb,&tr)&&tr.count==0);
+    assert(!tree->erase_index(f.memory,sizeof(f.memory),free_index,&mb,&tr));
+    f.nodes[free_index*12+1]=static_cast<unsigned char>(free_index);
+    assert(!tree->validate(f.memory,sizeof(f.memory),&mb,&tr));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
