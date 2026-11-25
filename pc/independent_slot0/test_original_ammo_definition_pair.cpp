@@ -247,6 +247,9 @@ int main(int argc,char** argv){
         const auto* layerTick=getLayerTick(1,sizeof(ft::ServerAnimationLayerTickApi));
         assert(layerTick&&!getLayerTick(0,sizeof(ft::ServerAnimationLayerTickApi))&&!getLayerTick(1,0));
         ft::test::check_animation_layer_tick(*layerTick,*layerOwner);
+        if(argc==5&&!ft::test::audit_original_animation_layers(argv[4],*layerOwner)){
+            std::fprintf(stderr,"ORIGINAL ANIMATION LAYER AUDIT failed\n");return 1;
+        }
         const auto getAnimationFrame=reinterpret_cast<ft::GetServerAnimationSceneFrameApi>(GetProcAddress(server,ft::server_animation_scene_frame_export));
         assert(getAnimationFrame&&!GetProcAddress(client,ft::server_animation_scene_frame_export));
         const auto* animationFrame=getAnimationFrame(1,sizeof(ft::ServerAnimationSceneFrameApi));
