@@ -1357,7 +1357,7 @@ inline void check_parsed_npc_weapon_scene(VcdAuditArena& arena,const NativeVcdRu
 }
 inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
     const NativeSceneExecutionApi& execution,const ServerNpcAnimationRecordApi& admission,const ActorEventRecordApi& record_api,
-    const ServerAnimationSceneFrameApi& frame,const ServerGestureMetadataApi& metadata,const ServerNpcAnimationThinkApi* think=nullptr){
+    const ServerAnimationSceneFrameApi& frame,const ServerGestureMetadataApi& metadata,const ServerNpcAnimationThinkApi* think=nullptr,const ServerNpcAnimationGateApi* gate=nullptr){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -1396,6 +1396,9 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
         unsigned starts{},stops{},lookups{},blends{},allocs{},keepalives{},warnings{};
         float last_blend{};
         unsigned condition=1;int activity=3;
+        const ServerNpcAnimationGateApi* gate=nullptr;
+        ServerNpcAnimationGateBindings gate_bindings{};
+        unsigned gate_queries=0,gate_capability=0,gate_sets=0;
         std::uint32_t root=0;
         explicit Fixture(VcdAuditArena& a):arena(a){}
         static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
@@ -1404,7 +1407,8 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
             if(w==F::ptr(f.layer)){*out=f.layer;*n=sizeof(f.layer);return 1;}
             auto& a=f.arena;return a.storage(&a,w,out,n);
         }
-    } f(arena);
+    } f(arena);f.gate=gate;
+    assert(!gate||think);
     F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;
     F::put(f.actor,0x494,F::ptr(f.layer));F::put(f.actor,0x4a0,1);f.layer[0]=1;
     auto raw=arena.runtime();
@@ -1456,7 +1460,29 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
     tb.animation.metadata=[](void*,void*,int seq,ServerGestureMetadata* out) noexcept -> int{
         assert(seq==7);out->available=1;return 1;
     };
-    tb.animation.sequence_gate=[](void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+    tb.animation.sequence_gate=[](void* p,void* actor,unsigned* out) noexcept -> int{
+        auto& f=Fixture::self(p);
+        if(f.gate)return f.gate->admit(&f.gate_bindings,actor,out);
+        *out=1;return 1;
+    };
+    if(gate){
+        f.condition=0;
+        F::put(f.actor,0x970,0xffffffffu);
+        f.gate_bindings.context=&f;
+        f.gate_bindings.npc=[](void* p,void* actor,void** npc,unsigned* n) noexcept -> int{
+            auto& f=Fixture::self(p);assert(actor==f.actor);*npc=f.actor;*n=sizeof(f.actor);return 1;
+        };
+        f.gate_bindings.condition=[](void* p,void* npc,int id,int flag,unsigned* out) noexcept -> int{
+            auto& f=Fixture::self(p);assert(npc==f.actor&&id==0x3c&&flag==1);
+            ++f.gate_queries;*out=f.condition;return 1;
+        };
+        f.gate_bindings.can_enter=[](void* p,void* npc,unsigned* out) noexcept -> int{
+            auto& f=Fixture::self(p);assert(npc==f.actor);++f.gate_capability;*out=1;return 1;
+        };
+        f.gate_bindings.set_condition=[](void* p,void* npc,int id) noexcept -> int{
+            auto& f=Fixture::self(p);assert(npc==f.actor&&id==0x3c);++f.gate_sets;f.condition=1;return 1;
+        };
+    }
     tb.animation.suppressed=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
     tb.animation.allocate_layer=[](void* p,void* actor,int seq,int priority,int* out) noexcept -> int{
         auto& f=Fixture::self(p);assert(actor==f.actor&&((seq==7&&priority==0)||(seq==9&&priority==1)));
@@ -1471,6 +1497,7 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
     tb.keepalive=[](void* p,void* npc,float duration) noexcept -> int{
         auto& f=Fixture::self(p);assert(npc==f.actor&&duration==.2f);++f.keepalives;return 1;
     };
+    if(gate)tb.keepalive=nullptr;
     tb.interrupted=[](void* p,void* actor) noexcept -> int{
         auto& f=Fixture::self(p);assert(actor==f.actor);++f.warnings;return 1;
     };
@@ -1511,20 +1538,33 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
     assert(simulate(3.5f)==1&&f.starts==2&&f.lookups==(think?3u:2u));
     assert(simulate(4.f)==1);verify(7,9,4.f);
     if(think){
-        assert(f.lookups==4&&f.allocs==2&&f.keepalives==1);
+        assert(f.lookups==4&&f.allocs==2&&f.keepalives==(gate?0u:1u));
+        if(gate){
+            assert(f.gate_queries==1&&f.gate_capability==1&&f.gate_sets==1&&f.condition==1);
+            assert(VcdAuditArena::read_float(f.actor,0x97c)==14.2f);
+        }
         assert(simulate(4.5f)==1);
         f.condition=0;
-        assert(think->run(f.actor,sizeof(f.actor),14.5f,&tb)&&f.keepalives==2&&f.warnings==1);
+        assert(think->run(f.actor,sizeof(f.actor),14.5f,&tb)&&f.keepalives==(gate?0u:2u)&&f.warnings==1);
+        if(gate)assert(VcdAuditArena::read_float(f.actor,0x97c)==14.7f);
         assert(F::word(f.layer,0xc)==0x3ec00000u);
         assert(std::fabs(VcdAuditArena::read_float(f.layer,0x18)-.896f)<.00001f);
         f.activity=0x48;
-        assert(think->run(f.actor,sizeof(f.actor),14.5f,&tb)&&f.keepalives==3&&f.warnings==1);
+        assert(think->run(f.actor,sizeof(f.actor),14.5f,&tb)&&f.keepalives==(gate?0u:3u)&&f.warnings==1);
+        if(gate){
+            assert(VcdAuditArena::read_float(f.actor,0x97c)==14.7f);
+            // A lower global timestamp cannot shorten an existing deadline.
+            assert(think->run(f.actor,sizeof(f.actor),14.f,&tb));
+            assert(VcdAuditArena::read_float(f.actor,0x97c)==14.7f&&!f.keepalives&&f.gate_sets==1);
+        }
         assert(F::word(f.layer,0x18)==0x3f800000u);
     }
     assert(simulate(5.5f)==1&&simulate(5.75f)==1&&f.stops==2&&f.blends==2&&f.last_blend==.3f&&!F::word(f.actor,0x5c4));
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
-    std::puts(think?"PASS automatic NPC animation think from parsed scene through deferred initialization and native frame":"PASS parsed gesture/sequence native actor record, tag warp, layer frame and retirement");
+    std::puts(gate?"PASS parsed NPC animation think with native admission gate and native keepalive deadline":
+        think?"PASS automatic NPC animation think from parsed scene through deferred initialization and native frame":
+        "PASS parsed gesture/sequence native actor record, tag warp, layer frame and retirement");
 }
 // Retail-inspired edge cases: strict binary32 duration trim, duplicate
 // timestamps, reverse ranges and disabled tracks with/without samples.
