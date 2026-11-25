@@ -852,5 +852,36 @@ int main(int argc,char** argv){
         f.put(f.actor,0x798,0u);f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x8ec,0u);
         assert(search->eligible(f.actor,sizeof(f.actor),602,&search_bindings,&search_result)&&search_result.capability_blocked);
     }
+    {
+        auto get_aux=reinterpret_cast<GetServerNpcGruntAuxConditionsApi>(GetProcAddress(s,server_npc_grunt_aux_conditions_export));
+        assert(get_aux&&!GetProcAddress(c,server_npc_grunt_aux_conditions_export)&&!get_aux(0,sizeof(ServerNpcGruntAuxConditionsApi))&&!get_aux(1,0));
+        const auto* aux=get_aux(1,sizeof(ServerNpcGruntAuxConditionsApi));assert(aux);
+        ServerNpcGruntAuxConditionsBindings aux_bindings{};aux_bindings.visibility=crb.visibility;aux_bindings.goals=goal_bindings;aux_bindings.context=&f;
+        aux_bindings.weapon_predicate=[](void* p,void* w,unsigned slot,bool* yes) noexcept -> int{
+            auto& f=F::self(p);assert(w==f.replacement);*yes=slot==0x43c;return slot==0x330||slot==0x334||slot==0x43c;
+        };
+        aux_bindings.as_npc=[](void*,void* e,void** npc) noexcept -> int{*npc=e;return 1;};
+        f.put(f.actor,0x8a8,0x7001u);f.put(f.goal_path,0x44,2u);f.actor[0xb6]=0;f.combat_trace=true;
+        ServerNpcGruntAuxConditionsResult aux_result{};
+        f.put(f.actor,0x7cc,0xffffffffu);
+        assert(aux->target(f.actor,sizeof(f.actor),610,&aux_bindings,&aux_result)&&aux_result.target_live&&aux_result.target_visible&&aux_result.target_condition==0xf&&aux_result.goal.skipped_type);
+        assert((f.get<unsigned>(0x7cc)&((1u<<13)|(1u<<15)))==(1u<<15));
+        f.combat_trace=false;assert(aux->target(f.actor,sizeof(f.actor),610,&aux_bindings,&aux_result)&&aux_result.target_condition==0xd);
+        assert((f.get<unsigned>(0x7cc)&((1u<<13)|(1u<<15)))==(1u<<13));
+        f.put(f.actor,0x8a8,0xffffffffu);assert(aux->target(f.actor,sizeof(f.actor),610,&aux_bindings,&aux_result)&&!aux_result.target_live);
+        f.put(f.actor,0x78c,0x8002u);f.put(f.replacement,0x4e4,0);f.put(f.actor,0x7cc,0u);
+        assert(aux->ammo(f.actor,sizeof(f.actor),&aux_bindings,&aux_result)&&aux_result.primary_empty&&aux_result.secondary_empty&&aux_result.secondary_uses_ammo);
+        assert((f.get<unsigned>(0x7cc)&0x30u)==0x30u);
+        f.put(f.replacement,0x4e4,-1);f.put(f.actor,0x7cc,0u);
+        assert(aux->ammo(f.actor,sizeof(f.actor),&aux_bindings,&aux_result)&&!aux_result.primary_checked&&aux_result.secondary_empty&&f.get<unsigned>(0x7cc)==0x20u);
+        f.put(f.actor,0x78c,0xffffffffu);assert(aux->ammo(f.actor,sizeof(f.actor),&aux_bindings,&aux_result)&&!aux_result.weapon_live&&f.get<unsigned>(0x7cc)==0x20u);
+        f.put(f.actor,0x850,4);f.put(f.actor,0x970,0x8002u);f.put(f.replacement,0x3d0,0x7001u);f.replacement[0x3cc]=1;
+        f.put(f.enemy,0x7cc,0x30000u);f.put(f.enemy,0x8c,0);f.put(f.actor,0x7cc,0xffu);f.put(f.actor,0x82c,0x0fu);
+        assert(aux->snapshot(f.actor,sizeof(f.actor),&aux_bindings,&aux_result)&&aux_result.snapshot&&aux_result.script_live&&!aux_result.script_clear);
+        assert(f.get<unsigned>(0x80c)==0xffu&&f.get<unsigned>(0x7cc)==0xfu);
+        f.put(f.enemy,0x8c,1);
+        assert(aux->snapshot(f.actor,sizeof(f.actor),&aux_bindings,&aux_result)&&aux_result.script_clear==2);
+        unsigned script_conditions=0;std::memcpy(&script_conditions,f.enemy+0x7cc,4);assert(script_conditions==0);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
