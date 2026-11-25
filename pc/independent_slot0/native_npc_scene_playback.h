@@ -910,14 +910,20 @@ struct SceneSpeechDrainApi {
 };
 using GetSceneSpeechDrainApi=const SceneSpeechDrainApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char native_generated_response_export[]="SiN_GetNativeGeneratedResponseApi";
+struct NativeNamedPlaybackBindings;
 struct NativeGeneratedResponseBindings {
     ResponseChoreographyBindings response;
     NativeGeneratedLifecycleBindings generated;
+    // Optional native named-scene path; must share the generated scene
+    // manager. Null keeps the existing named playback route. Rebuild
+    // custom API consumers against this extended binding layout.
+    const NativeNamedPlaybackBindings* named=nullptr;
 };
 struct NativeGeneratedResponseApi {
     std::uint32_t version,size;
     // Non-raw Speak uses native generated choreography and native startup.
-    // Named Scene uses existing named scene playback bindings. Interruption
+    // Named Scene uses native named playback when configured, otherwise the
+    // existing named scene playback bindings. Interruption
     // and activation must refer to the same scene-manager session.
     int (__cdecl *dispatch)(void*,unsigned,const ResponseDispatchBindings*,const NativeGeneratedResponseBindings*,const char*,void*,unsigned,unsigned*) noexcept;
     int (__cdecl *speak)(void*,unsigned,const ResponseSpeakBindings*,const NativeGeneratedResponseBindings*,const char*,const char*,unsigned*) noexcept;
