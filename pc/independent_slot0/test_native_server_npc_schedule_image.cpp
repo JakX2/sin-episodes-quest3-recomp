@@ -192,5 +192,33 @@ int main(int argc,char** argv){
     scheduler.grunt.finish_hook=[](void* p,void* a) noexcept -> int{auto& f=F::self(p);assert(a==f.actor);f.actor[0xcb1]=1;return 1;};
     install_at(85,0);
     assert(shared_api->run(f.actor,sizeof(f.actor),44,&f.image,&runtime,&full,&shared,&sh)&&!sh.shared.calls&&f.actor[0xcb1]);
+
+    auto ga=reinterpret_cast<GetServerNpcAttackCatalogSchedulerApi>(GetProcAddress(s,server_npc_attack_catalog_scheduler_export));
+    assert(ga&&!GetProcAddress(c,server_npc_attack_catalog_scheduler_export)&&!ga(0,sizeof(ServerNpcAttackCatalogSchedulerApi)));
+    const auto* attack_api=ga(1,sizeof(ServerNpcAttackCatalogSchedulerApi));assert(attack_api);
+    ServerNpcSharedAttackBindings ab{};ab.shared=shared;ab.shared.pending=[](void*,void*,int id) noexcept -> int{assert(id==17||id==66);return 1;};
+    ab.shared.turn=[](void*,void*) noexcept -> int{return 1;};
+    ab.aim_vector=[](void*,void*,float* v) noexcept -> int{v[0]=v[1]=v[2]=0;return 1;};
+    scheduler.grunt.lifecycle.random_int=[](void*,unsigned lo,unsigned hi,unsigned* out) noexcept -> int{assert(lo==2&&hi==3);*out=2;return 1;};
+    ServerNpcAttackCatalogSchedulerResult ar{};
+    install_at(97,1); // actual TASK_RANGE_ATTACK2
+    assert(attack_api->run(f.actor,sizeof(f.actor),50,&f.image,&runtime,&full,&ab,&ar)&&ar.attack.calls==2&&ar.attack.last.task==68&&!ar.attack.last.lifecycle.completed);
+    f.actor[0x3e0]=1;f.put(f.actor,0x3ec,7);f.put(f.actor,0x884,7);
+    assert(attack_api->run(f.actor,sizeof(f.actor),51,&f.image,&runtime,&full,&ab,&ar)&&ar.attack.calls==1&&ar.attack.last.lifecycle.completed);
+    install_at(84,6); // actual TASK_RELOAD
+    f.put(f.actor,0x9b0,std::uint16_t(2));f.put(f.actor,0x9b2,std::uint16_t(3));
+    f.actor[0x3e0]=1;f.put(f.actor,0x3ec,7);f.put(f.actor,0x884,7);
+    assert(attack_api->run(f.actor,sizeof(f.actor),52,&f.image,&runtime,&full,&ab,&ar)&&ar.attack.calls==2&&ar.attack.last.task==71&&ar.attack.last.lifecycle.completed&&ar.attack.last.timer_reset);
+    // Original Elite schedule: ready -> reconstructed base start -> inherited run.
+    assert(f.api->build(f.actor,NpcSubclassElite,5000,99,&b,&f.image,&result));
+    scheduler.original_vtable=0x2248df04;unsigned char chain[0x598]{};
+    slots[1].entity=reinterpret_cast<CBaseEntity*>(chain);
+    selection.state.entities.classify=[](void*,void*,unsigned* kind) noexcept -> int{*kind=WeaponActivityChaingun;return 1;};
+    scheduler.elite.reload.original.weapon.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0x598;return 1;};
+    full.injury.combat.weapon.random=[](void*,int lo,int hi,int* out) noexcept -> int{assert(lo==1&&hi==3);*out=2;return 1;};
+    install_at(118,3);f.put(chain,0x594,2);
+    f.put(f.actor,0xfdc,0x7001u);f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x6cc,0x7001u);
+    f.actor[0x3e0]=1;f.put(f.actor,0x3ec,7);f.put(f.actor,0x884,7);
+    assert(attack_api->run(f.actor,sizeof(f.actor),53,&f.image,&runtime,&full,&ab,&ar)&&ar.attack.calls==1&&ar.attack.last.task==67&&ar.attack.last.lifecycle.completed&&ar.shared.full.combat.combat.calls==2&&f.actor[0xfd9]);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original schedule descriptor materialization and real task cursor");
 }

@@ -1,6 +1,6 @@
 #include "native_server_npc_schedule_maintenance.h"
 #include "native_server_grunt_helper_task.h"
-#include "native_server_npc_shared_task.h"
+#include "native_server_npc_shared_attack.h"
 #include <cmath>
 #include <cstring>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleStateApi* __cdecl
@@ -274,7 +274,7 @@ int __cdecl classify(std::uint32_t vtable,unsigned* out) noexcept {
     default:return 0;
     }
 }
-int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr) noexcept {
+int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr) noexcept {
     if(!out)return 0;*out={};
     if(!a||!b||!classify(b->original_vtable,&out->subclass))return 0;
     const bool jet=out->subclass==NpcSubclassJetpack;
@@ -301,7 +301,7 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
     ServerNpcSharedParentSession shared_session{};
     if(shared){
         ServerGruntTaskBindings forwarded{};
-        if(!shared_stats||!bind_shared_parent_internal(a,bytes,now,&binding.grunt,&m.selection,shared,shared_stats,&shared_session,&forwarded))return 0;
+        if(!shared_stats||!bind_shared_parent_internal(a,bytes,now,&binding.grunt,&m.selection,shared,shared_stats,&shared_session,&forwarded,attack,attack_stats))return 0;
         binding.grunt=forwarded;binding.elite.grunt=forwarded;binding.jetpack.grunt=forwarded;
     }
     ServerGruntCombatTaskBindings combat_bound{};
@@ -325,9 +325,9 @@ const ServerGruntSchedulerApi grunt_api{1,sizeof(ServerGruntSchedulerApi),&run_g
 const ServerNpcScheduleMaintenanceApi api{1,sizeof(ServerNpcScheduleMaintenanceApi),&run};
 }
 // Internal linkage boundary for native combat-aware catalog service.
-int run_subclass_combat_internal(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat,ServerGruntCombatSchedulerStats* stats,const ServerGruntHelperTaskBindings* full,ServerGruntFullTaskStats* full_stats,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* shared_stats) noexcept{
+int run_subclass_combat_internal(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat,ServerGruntCombatSchedulerStats* stats,const ServerGruntHelperTaskBindings* full,ServerGruntFullTaskStats* full_stats,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* shared_stats,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats) noexcept{
     if(!combat||!stats)return 0;
-    return run_subclass_impl(a,bytes,now,b,out,combat,stats,full,full_stats,shared,shared_stats);
+    return run_subclass_impl(a,bytes,now,b,out,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats);
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcScheduleMaintenanceApi=_SiN_GetServerNpcScheduleMaintenanceApi")

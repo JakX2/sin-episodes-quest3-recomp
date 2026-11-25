@@ -27,4 +27,5 @@ struct ServerNpcSharedAttackApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedAttackBindings*,ServerNpcSharedAttackResult*) noexcept;
 };
 using GetServerNpcSharedAttackApi=const ServerNpcSharedAttackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerNpcSharedAttackStats {ServerNpcSharedAttackResult last;unsigned calls,components,special;};
 }
