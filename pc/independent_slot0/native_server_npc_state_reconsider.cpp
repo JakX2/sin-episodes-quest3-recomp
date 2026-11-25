@@ -401,6 +401,57 @@ int __cdecl memory_expiry(const void* record,unsigned bytes,bool live,bool npc,i
     const float stamp=read<float>(record,0x1c);if(!std::isfinite(stamp))return 0;
     out->expired=static_cast<double>(stamp)+lifetime<now;out->remove=out->expired;return 1;
 }
+int __cdecl maintain_memory(void* memory,unsigned bytes,float now,const ServerNpcEnemyMemoryMaintenanceBindings* b,ServerNpcEnemyMemoryMaintenanceResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!memory||bytes<0x24||!b||!std::isfinite(now)||b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    if(read<unsigned>(memory,0)!=0x22068d70u||read<unsigned>(memory,0x18)!=0x22068b40u)return 0;
+    const auto capacity=read<unsigned>(memory,8);unsigned i=read<std::uint8_t>(memory,0x10);
+    if(i==255)return 1;
+    void* nodes=nullptr;unsigned extent=0;
+    if(!capacity||!memory_storage(&b->storage,read<unsigned>(memory,4),12,nodes,extent))return 0;
+    // Preflight traversal: equivalent in-order successor sequence for stable keys/indices.
+    unsigned order[255]{},stack[255]{},depth=0,count=0;bool seen[255]{};
+    auto node=[&](unsigned index){return static_cast<unsigned char*>(nodes)+12*index;};
+    while(i!=255||depth){
+        while(i!=255){
+            if(i>=capacity||seen[i]||extent<12*(i+1)||depth>=255)return 0;
+            seen[i]=true;stack[depth++]=i;i=read<std::uint8_t>(node(i),0);
+        }
+        i=stack[--depth];order[count++]=i;i=read<std::uint8_t>(node(i),1);
+    }
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    const float recent=read<float>(memory,0x1c),lifetime=read<float>(memory,0x20);
+    if(!std::isfinite(recent)||!std::isfinite(lifetime))return 0;
+    for(unsigned k=0;k<count;++k){
+        const unsigned index=order[k];++out->visited;
+        const auto token=read<unsigned>(node(index),8);
+        void* record=nullptr;unsigned n=0;
+        if(!memory_storage(&b->storage,token,0x37,record,n))return 0;
+        void* entity=registry.Resolve(read<unsigned>(record,0));bool npc=false;int state=0;
+        if(entity&&(!b->npc_state||!b->npc_state(b->context,entity,&npc,&state)))return 0;
+        ServerNpcEnemyMemoryExpiryResult er{};
+        if(!memory_expiry(record,n,entity!=nullptr,npc,state,now,lifetime,&er))return 0;
+        if(er.remove){
+            if(!b->erase||!b->erase(b->context,memory,bytes,index,token))return 0;
+            ++out->removed;out->stale+=er.stale;out->dead+=er.dead;out->expired+=er.expired;continue;
+        }
+        entity=registry.Resolve(read<unsigned>(record,0));if(!entity)continue;
+        unsigned entity_bytes=0;
+        if(!b->extent||!b->extent(b->context,entity,&entity_bytes)||entity_bytes<0xc0)return 0;
+        const float stamp=read<float>(record,0x1c);if(!std::isfinite(stamp))return 0;
+        auto refresh=[&](unsigned off){
+            float pos[3]{};++out->origin_calls;
+            if(!b->origin||!b->origin(b->context,entity,pos)||!finite_vec(pos))return false;
+            std::memcpy(static_cast<unsigned char*>(record)+off,pos,12);return true;
+        };
+        if(static_cast<double>(stamp)+recent>=now&&!(read<unsigned>(entity,0xbc)&0x8000u)){
+            if(!refresh(4))return 0;++out->position_refreshed;
+        }
+        if(now<=stamp){if(!refresh(0x10))return 0;++out->secondary_refreshed;}
+    }
+    return 1;
+}
+const ServerNpcEnemyMemoryMaintenanceApi maintenance_api{1,sizeof(ServerNpcEnemyMemoryMaintenanceApi),&maintain_memory};
 const ServerNpcEnemyMemoryRecordApi record_api{1,sizeof(ServerNpcEnemyMemoryRecordApi),&initialize_memory_record,&update_memory_record,&memory_expiry};
 const ServerNpcBestEnemyQueryApi best_query_api{1,sizeof(ServerNpcBestEnemyQueryApi),&query_best_enemy};
 const ServerNpcUnreachableEnemyApi unreachable_api{1,sizeof(ServerNpcUnreachableEnemyApi),&unreachable_enemy};
@@ -458,4 +509,10 @@ SiN_GetServerNpcBestEnemyQueryApi(std::uint32_t version,std::uint32_t size) noex
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryRecordApi* __cdecl
 SiN_GetServerNpcEnemyMemoryRecordApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryRecordApi)?&record_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcEnemyMemoryMaintenanceApi=_SiN_GetServerNpcEnemyMemoryMaintenanceApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryMaintenanceApi* __cdecl
+SiN_GetServerNpcEnemyMemoryMaintenanceApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryMaintenanceApi)?&maintenance_api:nullptr;
 }
