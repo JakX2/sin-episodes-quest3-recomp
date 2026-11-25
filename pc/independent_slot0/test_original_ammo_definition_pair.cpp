@@ -926,6 +926,12 @@ int main(int argc,char** argv){
     const auto* actorNote=getActorNote(1,sizeof(tables::SceneSpeechActorNoteApi));
     assert(actorNote&&!getActorNote(0,sizeof(tables::SceneSpeechActorNoteApi))&&!getActorNote(1,0));
     tables::test::check_scene_speech_actor_note(*actorNote,*sceneSpeechPreparation);
+    const auto getActorSink=reinterpret_cast<tables::GetSceneSpeechActorSinkApi>(GetProcAddress(server,tables::scene_speech_actor_sink_export));
+    assert(getActorSink&&!GetProcAddress(client,tables::scene_speech_actor_sink_export));
+    const auto* actorSink=getActorSink(1,sizeof(tables::SceneSpeechActorSinkApi));
+    assert(actorSink&&!getActorSink(0,sizeof(tables::SceneSpeechActorSinkApi))&&!getActorSink(1,0));
+    tables::test::check_scene_speech_actor_sink(*actorSink,*responseTimingUpdate);
+    std::puts("PASS native character speech-start history and semaphore sink policy");
     std::puts("PASS native choreography actor speech note and shared expeditor deadline");
     tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,resolvedSceneActor,sceneSpeechPreparation);
     std::puts("PASS native speech preparation, shared semaphore and cached speech lifecycle");

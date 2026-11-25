@@ -7405,6 +7405,56 @@ int __cdecl scene_actor_note_adapt(const SceneSpeechActorNoteBindings* cfg,Scene
 }
 const SceneSpeechActorNoteApi scene_speech_actor_note_api{version,sizeof(SceneSpeechActorNoteApi),&scene_actor_note,&scene_actor_note_adapt};
 
+
+const SceneSpeechActorSinkBindings& actor_sink_cfg(void* p) noexcept {
+    return *static_cast<const SceneSpeechActorSinkBindings*>(p);
+}
+bool actor_sink_owner(const SceneSpeechActorSinkBindings& b,void* exp,void*& actor,unsigned& bytes,SceneSpeechActorKind& kind) noexcept {
+    if(!sin_independent::vgui_layout::Readable(exp,0x7c))return false;
+    const auto word=hologram_read<std::uint32_t>(exp,4);
+    if(!word||!b.storage(b.context,word,&actor,&bytes)||bytes<0x1000||
+       !sin_independent::vgui_layout::Readable(actor,0x1000)||!b.kind(b.context,actor,&kind))return false;
+    return static_cast<unsigned>(kind)<=static_cast<unsigned>(SceneSpeechActorKind::GenericActor);
+}
+int __cdecl actor_sink_adapt(const SceneSpeechActorSinkBindings* cfg,ResponseNoteBindings* out) noexcept {
+    if(!cfg||!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||!hologram_writable(out,sizeof(*out))||
+       !cfg->storage||!cfg->kind||!cfg->history.lookup||!cfg->history.insert||!cfg->history.entry||
+       !cfg->history.clock||!cfg->history.notify||!cfg->transport.clock||!cfg->transport.diagnostic||
+       !cfg->transport.classify||!cfg->transport.owner_handle)return 0;
+    *out={};out->context=const_cast<SceneSpeechActorSinkBindings*>(cfg);
+    out->owner_start=[](void* p,void* exp) noexcept -> int{
+        const auto& b=actor_sink_cfg(p);void* actor=nullptr;unsigned bytes=0;SceneSpeechActorKind kind{};
+        if(!actor_sink_owner(b,exp,actor,bytes,kind))return 0;
+        if(kind!=SceneSpeechActorKind::Jessica)return 1;
+        // 220894f0 gets the expeditor again before seeding. Use the
+        // owner's actual accessor rather than assume the triggering one.
+        void* current=nullptr;unsigned extent=0;
+        auto get=[&](){const auto word=hologram_read<std::uint32_t>(actor,0xffc);
+            return word&&b.storage(b.context,word,&current,&extent)&&current&&extent>=0x7c;};
+        unsigned has=0;
+        if(!get()||response_has_concept(current,extent,&b.history,"TLK_HELLO",&has)!=1)return 0;
+        if(has)return 1;
+        return get()&&response_seed(current,extent,&b.history,"TLK_HELLO")==1;
+    };
+    out->uses_semaphore=[](void* p,void* exp,unsigned* result) noexcept -> int{
+        if(!hologram_writable(result,4))return 0;
+        const auto& b=actor_sink_cfg(p);void* actor=nullptr;unsigned bytes=0;SceneSpeechActorKind kind{};
+        if(!actor_sink_owner(b,exp,actor,bytes,kind))return 0;
+        const bool flag=kind==SceneSpeechActorKind::JC||kind==SceneSpeechActorKind::Count||kind==SceneSpeechActorKind::NpcGenericActor;
+        *result=flag?((hologram_read<unsigned char>(actor,0xb6)&1u)?0u:1u):1u;return 1;
+    };
+    out->clock=[](void* p,float* result) noexcept -> int{
+        const auto& h=actor_sink_cfg(p).transport;return h.clock(h.context,result);};
+    out->diagnostic=[](void* p,void* exp,float total,float delay,float until) noexcept -> int{
+        const auto& h=actor_sink_cfg(p).transport;return h.diagnostic(h.context,exp,total,delay,until);};
+    out->classify=[](void* p,void* exp,int arg,unsigned* result) noexcept -> int{
+        const auto& h=actor_sink_cfg(p).transport;return h.classify(h.context,exp,arg,result);};
+    out->owner_handle=[](void* p,void* exp,std::uint32_t* result) noexcept -> int{
+        const auto& h=actor_sink_cfg(p).transport;return h.owner_handle(h.context,exp,result);};
+    return 1;
+}
+const SceneSpeechActorSinkApi scene_speech_actor_sink_api{version,sizeof(SceneSpeechActorSinkApi),&actor_sink_adapt};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -15414,6 +15464,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechActorSinkApi=_SiN_GetSceneSpeechActorSinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechActorSinkApi* __cdecl
+SiN_GetSceneSpeechActorSinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneSpeechActorSinkApi)?&scene_speech_actor_sink_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechActorNoteApi=_SiN_GetSceneSpeechActorNoteApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechActorNoteApi* __cdecl

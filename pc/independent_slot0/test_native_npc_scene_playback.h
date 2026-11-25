@@ -2906,6 +2906,53 @@ inline void check_scene_speech_actor_note(const SceneSpeechActorNoteApi& api,con
     F::put(f.actor,0xffc,0u);assert(api.notify(&b,f.actor,1,1)==-1);
 }
 
+
+inline void check_scene_speech_actor_sink(const SceneSpeechActorSinkApi& api,const ResponseTimingUpdateApi& timing){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char actor[0x1000]{},exp[0x7c]{},row[0x1c]{};
+        SceneSpeechActorKind kind=SceneSpeechActorKind::Jessica;SpeechSemaphorePair sem{};
+        bool present=false;unsigned inserts=0,notifications=0,lookups=0,handles=0;float now=10;
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+    } f;
+    F::put(f.exp,4,11u);F::put(f.actor,0xffc,22u);
+    SceneSpeechActorSinkBindings b{};b.context=&f;b.history.context=&f;b.transport.context=&f;
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);if(w==11){*out=f.actor;*n=sizeof(f.actor);return 1;}
+        if(w==22){*out=f.exp;*n=sizeof(f.exp);return 1;}return 0;};
+    b.kind=[](void* p,void* actor,SceneSpeechActorKind* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*out=f.kind;return 1;};
+    b.history.lookup=[](void* p,void* exp,const char* name,int* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(exp==f.exp&&!std::strcmp(name,"TLK_HELLO"));++f.lookups;*out=f.present?5:-1;return 1;};
+    b.history.insert=[](void* p,void*,const char* name,float initial,int* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(!f.present&&!std::strcmp(name,"TLK_HELLO")&&initial==f.now);f.present=true;++f.inserts;*out=5;return 1;};
+    b.history.entry=[](void* p,void*,int index,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(index==5&&f.present);*out=f.row;*n=sizeof(f.row);return 1;};
+    b.history.clock=[](void* p,float* out) noexcept -> int{*out=Fixture::self(p).now;return 1;};
+    b.history.notify=[](void* p,void*,const char* name) noexcept -> int{
+        auto& f=Fixture::self(p);assert(!std::strcmp(name,"TLK_HELLO")&&F::word(f.row,0x14)==F::word(&f.now,0));++f.notifications;return 1;};
+    b.transport.clock=b.history.clock;
+    b.transport.diagnostic=[](void*,void*,float,float,float) noexcept -> int{return 1;};
+    b.transport.classify=[](void*,void*,int arg,unsigned* out) noexcept -> int{assert(!arg);*out=1;return 1;};
+    b.transport.owner_handle=[](void* p,void*,std::uint32_t* out) noexcept -> int{++Fixture::self(p).handles;*out=11;return 1;};
+    ResponseNoteBindings n{};assert(api.adapt(&b,&n));
+    auto run=[&](){return timing.note(f.exp,sizeof(f.exp),&f.sem,&n,2.f,1.f);};
+    f.actor[0xb6]=1;
+    assert(run()==1&&f.inserts==1&&f.notifications==1&&f.lookups==2&&f.handles==1&&f.sem.classified.release==11);
+    f.now=20;assert(run()==1&&f.lookups==3&&f.notifications==1&&F::word(f.row,0x14)==0x41200000u);
+    F::fl(f.row,0x14,-1.f);F::put(f.row,0x18,123u);
+    assert(run()==1&&f.lookups==5&&f.inserts==1&&f.notifications==2&&F::word(f.row,0x18)==123u);
+    for(auto kind:{SceneSpeechActorKind::JC,SceneSpeechActorKind::Count,SceneSpeechActorKind::NpcGenericActor}){
+        f.kind=kind;const auto handles=f.handles;f.actor[0xb6]=1;assert(run()==1&&f.handles==handles);
+        f.actor[0xb6]=2;assert(run()==1&&f.handles==handles+1);
+    }
+    for(auto kind:{SceneSpeechActorKind::BaseActor,SceneSpeechActorKind::GenericActor}){
+        f.kind=kind;f.actor[0xb6]=1;const auto handles=f.handles;assert(run()==1&&f.handles==handles+1);
+    }
+    assert(f.lookups==5&&f.notifications==2);
+    f.kind=static_cast<SceneSpeechActorKind>(99);assert(run()==-1);
+}
+
 struct SpeechDrainFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char manager[scene_manager_bytes]{},rows[8][0x8c]{};

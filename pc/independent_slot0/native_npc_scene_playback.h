@@ -726,6 +726,25 @@ struct SceneSpeechActorNoteApi {
     int (__cdecl *adapt)(const SceneSpeechActorNoteBindings*,SceneSpeechPreparationBindings*) noexcept;
 };
 using GetSceneSpeechActorNoteApi=const SceneSpeechActorNoteApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char scene_speech_actor_sink_export[]="SiN_GetSceneSpeechActorSinkApi";
+enum class SceneSpeechActorKind:unsigned {BaseActor,Jessica,JC,Count,NpcGenericActor,GenericActor};
+struct SceneSpeechActorSinkBindings {
+    void* context;
+    // Resolve original expeditor+4 owner and identify its authenticated class.
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *kind)(void*,void* actor,SceneSpeechActorKind*) noexcept;
+    ResponseHistoryBindings history;
+    ResponseNoteBindings transport; // clock, diagnostic, classify, owner_handle only
+};
+struct SceneSpeechActorSinkApi {
+    std::uint32_t version,size;
+    // Sink +4: Jessica seeds TLK_HELLO once; other verified classes no-op.
+    // Sink +8: JC/Count/NPC generic use inverted actor+0xb6 bit0.
+    // The caller holds cfg through synchronous use of adapted callbacks.
+    int (__cdecl *adapt)(const SceneSpeechActorSinkBindings*,ResponseNoteBindings*) noexcept;
+};
+using GetSceneSpeechActorSinkApi=const SceneSpeechActorSinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char native_choreography_clock_export[]="SiN_GetNativeChoreographyClockApi";
 // Runtime clock over the original parsed PE32 graph. The graph owns vector
 // storage; reset/simulation/resume use native graph operations. Engine speech
