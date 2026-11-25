@@ -317,7 +317,7 @@ int best_enemy_impl(void* actor,unsigned bytes,float now,const ServerNpcBestEnem
         }
         bool unreachable=false;if(!unreachable_query(entity,unreachable))return 0;
         if(!out->unreachable&&unreachable){++out->unreachable_rejected;continue;}
-        int rank=0,dist=0;
+        int rank=0,dist=0;bool update_distance=true;
         if(out->unreachable&&!unreachable){
             if(!visibility(entity,yes)||!priority(entity,rank)||!distance(entity,dist))return 0;
             out->visible=yes;out->unreachable=0;
@@ -334,12 +334,15 @@ int best_enemy_impl(void* actor,unsigned bytes,float now,const ServerNpcBestEnem
                 if(!closer&&out->visible)continue;
                 if(!visibility(entity,yes))return 0;
                 if(closer?(!yes&&out->visible):!yes)continue;
-                out->visible=yes;
+                // Retail 2203d925 writes visibility to the unreachable temporary,
+                // 2203d929 writes distance to the priority temporary; both are overwritten.
+                // Keep the comparison caches at esp+11 and esp+1c unchanged.
+                update_distance=false;
                 if(!priority(entity,rank))return 0;
             }
             out->unreachable=unreachable;
         }
-        out->enemy=entity;out->priority=rank;out->distance_squared=dist;++out->replaced;
+        out->enemy=entity;out->priority=rank;if(update_distance)out->distance_squared=dist;++out->replaced;
     }
     return 1;
 }
