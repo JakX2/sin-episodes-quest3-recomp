@@ -12033,6 +12033,55 @@ int __cdecl npc_scene_record_adapt(const ServerNpcSceneRecordBindings* cfg,Actor
     return 1;
 }
 const ServerNpcSceneRecordApi server_npc_scene_record_api{version,sizeof(ServerNpcSceneRecordApi),&npc_scene_record_adapt};
+const ServerNpcAnimationRecordBindings& npc_animation_config(void* p) noexcept {
+    return *static_cast<const ServerNpcAnimationRecordBindings*>(p);
+}
+ServerNpcSceneRecordBindings* npc_animation_base(void* p) noexcept {
+    return const_cast<ServerNpcSceneRecordBindings*>(&npc_animation_config(p).npc);
+}
+int __cdecl npc_animation_record_storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept {
+    return npc_scene_record_storage(npc_animation_base(p),w,out,n);
+}
+int __cdecl npc_animation_record_grow(void* p,void* v,unsigned n) noexcept {
+    return npc_scene_record_grow(npc_animation_base(p),v,n);
+}
+int __cdecl npc_animation_record_handle(void* p,void* target,std::uint32_t* out) noexcept {
+    return npc_scene_record_handle(npc_animation_base(p),target,out);
+}
+int __cdecl npc_animation_record_diagnostic(void* p,ActorEventDiagnostic d,std::uint32_t scene) noexcept {
+    return npc_scene_record_diagnostic(npc_animation_base(p),d,scene);
+}
+int __cdecl npc_animation_record_begin(void* p,void* actor,void* record,std::uint32_t parsed,void* event,std::uint32_t ca,void* target,unsigned* out) noexcept {
+    if(!sin_independent::vgui_layout::Readable(event,4))return 0;
+    if(animation_scene_type(hologram_read<unsigned>(event,0)))
+        return animation_scene_begin(actor,record,0x40,event,0x3c0,ca,&npc_animation_config(p).animation,out)==1;
+    return npc_scene_record_begin(npc_animation_base(p),actor,record,parsed,event,ca,target,out);
+}
+int __cdecl npc_animation_record_stop(void* p,void* actor,void* record,int arg,int forced,unsigned* out) noexcept {
+    if(!sin_independent::vgui_layout::Readable(record,0x40))return 0;
+    const auto token=hologram_read<std::uint32_t>(record,0);
+    if(token){
+        void* event=nullptr;unsigned n=0;
+        if(!npc_animation_record_storage(p,token,&event,&n)||n<4||!sin_independent::vgui_layout::Readable(event,4))return 0;
+        if(animation_scene_type(hologram_read<unsigned>(event,0)))
+            return animation_scene_stop(actor,record,0x40,event,n,arg,forced,&npc_animation_config(p).animation,out)==1;
+    }
+    return npc_scene_record_stop(npc_animation_base(p),actor,record,arg,forced,out);
+}
+int __cdecl npc_animation_record_check(void* p,void* actor,void* record,float time,std::uint32_t parsed,void* event,unsigned* out) noexcept {
+    const int result=animation_scene_check(event,0x3c0,out);
+    if(result)return result==1;
+    return npc_scene_record_check(npc_animation_base(p),actor,record,time,parsed,event,out);
+}
+int __cdecl npc_animation_record_adapt(const ServerNpcAnimationRecordBindings* cfg,ActorEventRecordBindings* out) noexcept {
+    if(!cfg||!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||!hologram_writable(out,sizeof(*out)))return 0;
+    ActorEventRecordBindings validated{};
+    if(!npc_scene_record_adapt(&cfg->npc,&validated))return 0;
+    *out={const_cast<ServerNpcAnimationRecordBindings*>(cfg),&npc_animation_record_storage,&npc_animation_record_grow,
+        &npc_animation_record_handle,&npc_animation_record_diagnostic,&npc_animation_record_begin,&npc_animation_record_stop,&npc_animation_record_check};
+    return 1;
+}
+const ServerNpcAnimationRecordApi server_npc_animation_record_api{version,sizeof(ServerNpcAnimationRecordApi),&npc_animation_record_adapt};
 
 
 
@@ -13991,6 +14040,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcAnimationRecordApi=_SiN_GetServerNpcAnimationRecordApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcAnimationRecordApi* __cdecl
+SiN_GetServerNpcAnimationRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcAnimationRecordApi)?&server_npc_animation_record_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSceneRecordApi=_SiN_GetServerNpcSceneRecordApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSceneRecordApi* __cdecl
