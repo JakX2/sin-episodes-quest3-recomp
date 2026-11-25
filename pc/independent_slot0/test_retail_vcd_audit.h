@@ -2260,7 +2260,7 @@ rule once_rule
                 const auto path=temp.path.string();auto apis=*retailScenes;apis.directory=path.c_str();
                 RetailSceneAudit audit(a,apis);assert(audit.open()&&audit.files.paths.size()==2);
                 std::uint32_t alias1=0,alias2=0;
-                assert(audit.files.handle("scenes/fixture/a.vcd",&alias1)&&audit.files.handle("SCENES\\\\FIXTURE\\\\A.VCD",&alias2)&&alias1==alias2);
+                assert(audit.files.handle("scenes/fixture/a.vcd",&alias1)&&audit.files.handle(R"(SCENES\FIXTURE\A.VCD)",&alias2)&&alias1==alias2);
                 std::string bad;
                 assert(!RetailSceneDirectory::normalize("scenes/../outside.vcd",bad)&&!RetailSceneDirectory::normalize("scenes//a.vcd",bad)&&
                        !RetailSceneDirectory::normalize("C:/scenes/a.vcd",bad));
