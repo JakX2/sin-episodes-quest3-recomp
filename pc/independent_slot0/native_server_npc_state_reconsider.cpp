@@ -2000,6 +2000,74 @@ int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const Se
     if(!grunt_post_update_impl(actor,bytes,now,out->gate.perceive!=0,&post,&out->post,out->gate.inactive?1:0))return 0;
     out->post_called=out->completed=1;return 1;
 }
+int __cdecl grunt_gather_conditions(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out) noexcept{
+    if(!out)return 0;
+    out->base={};out->completed=out->base_called=out->component_called=out->hopper_exit=out->search_called=out->search_no_enemy=out->object_live=out->object_condition=out->point_called=out->point_schedule_blocked=out->point_condition=out->player_called=out->player_condition=0;
+    for(float& v:out->point)v=0;
+    if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->base.gate.original_vtable))return 0;
+    const auto& mb=b->base.perception.enemy_switch.best.memory;
+    if(mb.count>sin_independent::kEntityHandleCapacity||(mb.count&&!mb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
+    const auto& schedule=b->base.post.schedule;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto test=[&](int id,bool& yes){ServerNpcConditionResult cr{};if(!cond->test(actor,bytes,id,NpcConditionCurrent,&schedule.conditions,&cr))return false;yes=cr.value!=0;return true;};
+    auto set=[&](int id,unsigned& flag){ServerNpcConditionResult cr{};if(!cond->store(actor,bytes,id,NpcConditionCurrent,true,&schedule.conditions,&cr))return false;flag=cr.mapped;return true;};
+    auto current=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(actor,0x8a0)));};
+    const auto component=read<unsigned>(actor,0xc18);
+    if(component){
+        if(!b->component_update||!b->component_update(b->context,component))return 0;out->component_called=1;
+    }else{
+        if(!grunt_condition_update(actor,bytes,now,&b->base,&out->base))return 0;out->base_called=1;
+    }
+    if(read<int>(actor,0x850)==3){
+        void* e=current();
+        if(e){
+            unsigned n=0;const auto& vis=b->base.post.aux.visibility;
+            if(!vis.extent||!vis.extent(vis.context,e,&n)||n<0x10)return 0;
+            bool hopper=read<unsigned>(e,0xc)==0x22490cfcu;
+            if(!hopper&&(!b->classname_matches||!b->classname_matches(b->context,e,"npc_gib_hopper",&hopper)))return 0;
+            if(hopper){out->hopper_exit=out->completed=1;return 1;}
+        }
+        if(read<std::uint8_t>(actor,0xcb2)&&!registry.Resolve(read<unsigned>(actor,0xcb4))){
+            out->search_called=1;
+            if(!current()){write(actor,0xcb4,0xffffffffu);out->search_no_enemy=1;}
+            else if(!b->find_object||!b->find_object(b->context,actor,150,now))return 0;
+        }
+    }
+    out->object_live=registry.Resolve(read<unsigned>(actor,0xcb4))!=nullptr;
+    bool seen=false;
+    if(out->object_live){if(!test(0xa,seen))return 0;if(seen&&!set(0x16,out->object_condition))return 0;}
+    if(read<std::uint8_t>(actor,0xc6c)){
+        if(!test(0xa,seen))return 0;
+        if(seen){
+            void* e=current();
+            if(e){
+                int global=-1;
+                if(read<unsigned>(actor,0x798)){
+                    if(!schedule_local_id(actor,0x4d,schedule.conditions,global))return 0;
+                    out->point_schedule_blocked=global==read<int>(actor,0x79c);
+                }
+                if(!out->point_schedule_blocked){
+                    void* memory=nullptr;unsigned n=0,key=0;ServerNpcEnemyMemoryLookup lookup{};
+                    if(!memory_key(mb,e,key)||!memory_storage(&mb.storage,read<unsigned>(actor,0x984),0x3c,memory,n)||
+                       !memory_position(memory,n,key,false,&mb.storage,&lookup,out->point)||!finite_vec(out->point))return 0;
+                    bool yes=false;if(!b->point_predicate||!b->point_predicate(b->context,actor,out->point,&yes))return 0;out->point_called=1;
+                    if(yes&&!set(0x45,out->point_condition))return 0;
+                }
+            }
+        }
+    }
+    bool blocked=false;if(!test(0x46,blocked))return 0;
+    if(!blocked&&b->max_clients<=1){
+        void* player=nullptr;if(!b->local_player||!b->local_player(b->context,&player))return 0;
+        if(player){
+            bool yes=false;if(!b->player_interaction||!b->player_interaction(b->context,player,actor,&yes))return 0;out->player_called=1;
+            if(yes&&!set(0x4d,out->player_condition))return 0;
+        }
+    }
+    out->completed=1;return 1;
+}
+const ServerNpcGruntGatherConditionsApi gather_conditions_api{1,sizeof(ServerNpcGruntGatherConditionsApi),&grunt_gather_conditions};
 const ServerNpcGruntConditionUpdateApi condition_update_api{1,sizeof(ServerNpcGruntConditionUpdateApi),&grunt_condition_update};
 const ServerNpcGruntUpdateGateApi update_gate_api{1,sizeof(ServerNpcGruntUpdateGateApi),&grunt_update_gate};
 const ServerNpcGruntPostUpdateApi post_update_api{1,sizeof(ServerNpcGruntPostUpdateApi),&grunt_flinch,&grunt_post_update};
@@ -2260,4 +2328,10 @@ SiN_GetServerNpcGruntUpdateGateApi(std::uint32_t version,std::uint32_t size) noe
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntConditionUpdateApi* __cdecl
 SiN_GetServerNpcGruntConditionUpdateApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntConditionUpdateApi)?&condition_update_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntGatherConditionsApi=_SiN_GetServerNpcGruntGatherConditionsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherConditionsApi* __cdecl
+SiN_GetServerNpcGruntGatherConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGatherConditionsApi)?&gather_conditions_api:nullptr;
 }
