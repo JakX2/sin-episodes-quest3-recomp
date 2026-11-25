@@ -1357,7 +1357,7 @@ inline void check_parsed_npc_weapon_scene(VcdAuditArena& arena,const NativeVcdRu
 }
 inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
     const NativeSceneExecutionApi& execution,const ServerNpcAnimationRecordApi& admission,const ActorEventRecordApi& record_api,
-    const ServerAnimationSceneFrameApi& frame,const ServerGestureMetadataApi& metadata){
+    const ServerAnimationSceneFrameApi& frame,const ServerGestureMetadataApi& metadata,const ServerNpcAnimationThinkApi* think=nullptr){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -1393,8 +1393,9 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
     struct Fixture {
         VcdAuditArena& arena;
         alignas(4) unsigned char scene[0x5ec]{},actor[server_npc_random_expression_extent]{},layer[0x40]{};
-        unsigned starts{},stops{},lookups{},blends{};
+        unsigned starts{},stops{},lookups{},blends{},allocs{},keepalives{},warnings{};
         float last_blend{};
+        unsigned condition=1;int activity=3;
         std::uint32_t root=0;
         explicit Fixture(VcdAuditArena& a):arena(a){}
         static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
@@ -1446,6 +1447,33 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
     };
     b.leaves.context=&f;b.leaves.actor_extent=facial.extent;
     ServerAnimationSceneFrameBindings fb{};fb.context=&f;fb.storage=&Fixture::storage;
+    ServerVfeRemapCache remap{};
+    ServerNpcAnimationThinkBindings tb{};tb.context=&f;
+    tb.facial.named.remap=&remap;tb.facial.named.composed.base.context=&f;
+    tb.facial.named.composed.base.storage=&Fixture::storage;
+    tb.facial.named.composed.native_intensity=true;
+    tb.animation.admission=cfg.animation;tb.animation.frame=fb;tb.animation.context=&f;
+    tb.animation.metadata=[](void*,void*,int seq,ServerGestureMetadata* out) noexcept -> int{
+        assert(seq==7);out->available=1;return 1;
+    };
+    tb.animation.sequence_gate=[](void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+    tb.animation.suppressed=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+    tb.animation.allocate_layer=[](void* p,void* actor,int seq,int priority,int* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&((seq==7&&priority==0)||(seq==9&&priority==1)));
+        ++f.allocs;std::memset(f.layer,0,sizeof(f.layer));f.layer[0]=1;*out=0;return 1;
+    };
+    tb.animation.sequence_info=[](void*,void*,int seq,unsigned* flags,double* duration) noexcept -> int{
+        assert(seq==7||seq==9);*flags=0;*duration=4.;return 1;
+    };
+    tb.npc_state=[](void* p,void* actor,void** npc,unsigned* condition,int* activity) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*npc=actor;*condition=f.condition;*activity=f.activity;return 1;
+    };
+    tb.keepalive=[](void* p,void* npc,float duration) noexcept -> int{
+        auto& f=Fixture::self(p);assert(npc==f.actor&&duration==.2f);++f.keepalives;return 1;
+    };
+    tb.interrupted=[](void* p,void* actor) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);++f.warnings;return 1;
+    };
     assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
     auto simulate=[&](float time){F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);};
     auto verify=[&](unsigned type,unsigned sequence,float time){
@@ -1455,6 +1483,15 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
         assert(Fixture::storage(&f,F::word(row,0),&event,&n)&&n>=0x3c0&&F::word(event,0)==type);
         assert(F::word(row,8)==F::word(event,0x2b4));
         assert(record_api.check(f.actor,sizeof(f.actor),time,f.root,event,&records,&accepted)==1&&accepted);
+        if(think){
+            f.actor[0x600]=1;
+            assert(think->run(f.actor,sizeof(f.actor),10+time,&tb));
+            assert(!f.actor[0x600]&&static_cast<unsigned char*>(row)[0xc]&&F::word(row,0x10)==0);
+            assert(F::word(row,0x14)==(type==6?0u:1u)&&F::word(f.layer,0x30)==F::word(row,0x14));
+            assert(F::word(f.layer,0xc)==(type==6?0x3ea00000u:0x3e800000u));
+            assert(F::word(f.layer,0x18)==(type==6?0x3f800000u:0u));
+            return;
+        }
         // External engine layer allocation remains a fixture effect.
         F::put(row,0x10,0);
         ServerAnimationSceneFrameInput in{};in.scene_time=time;in.now=10+time;in.intensity=1;
@@ -1471,12 +1508,23 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
     assert(simulate(1.f)==1);verify(6,7,1.f);
     assert(simulate(2.5f)==1&&simulate(2.75f)==1&&f.stops==1&&f.blends==1&&f.last_blend==.1f&&!F::word(f.actor,0x5c4));
     assert(simulate(3.25f)==1&&f.starts==1&&!F::word(f.actor,0x5c4));
-    assert(simulate(3.5f)==1&&f.starts==2&&f.lookups==2);
+    assert(simulate(3.5f)==1&&f.starts==2&&f.lookups==(think?3u:2u));
     assert(simulate(4.f)==1);verify(7,9,4.f);
+    if(think){
+        assert(f.lookups==4&&f.allocs==2&&f.keepalives==1);
+        assert(simulate(4.5f)==1);
+        f.condition=0;
+        assert(think->run(f.actor,sizeof(f.actor),14.5f,&tb)&&f.keepalives==2&&f.warnings==1);
+        assert(F::word(f.layer,0xc)==0x3ec00000u);
+        assert(std::fabs(VcdAuditArena::read_float(f.layer,0x18)-.896f)<.00001f);
+        f.activity=0x48;
+        assert(think->run(f.actor,sizeof(f.actor),14.5f,&tb)&&f.keepalives==3&&f.warnings==1);
+        assert(F::word(f.layer,0x18)==0x3f800000u);
+    }
     assert(simulate(5.5f)==1&&simulate(5.75f)==1&&f.stops==2&&f.blends==2&&f.last_blend==.3f&&!F::word(f.actor,0x5c4));
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
-    std::puts("PASS parsed gesture/sequence native actor record, tag warp, layer frame and retirement");
+    std::puts(think?"PASS automatic NPC animation think from parsed scene through deferred initialization and native frame":"PASS parsed gesture/sequence native actor record, tag warp, layer frame and retirement");
 }
 // Retail-inspired edge cases: strict binary32 duration trim, duplicate
 // timestamps, reverse ranges and disabled tracks with/without samples.
