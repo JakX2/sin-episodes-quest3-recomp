@@ -26,4 +26,12 @@ struct ServerEliteTaskApi {
     int (__cdecl *spin_update)(void*,unsigned,float,const ServerEliteTaskBindings*,ServerEliteTaskResult*) noexcept;
 };
 using GetServerEliteTaskApi=const ServerEliteTaskApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerGruntCombatTaskBindings;
+struct ServerGruntCombatSchedulerStats;
+inline constexpr char server_elite_native_task_export[]="SiN_GetServerEliteNativeTaskApi";
+struct ServerEliteNativeTaskApi {
+    std::uint32_t version,size;
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerEliteTaskBindings*,const ServerGruntCombatTaskBindings*,ServerEliteTaskResult*,ServerGruntCombatSchedulerStats*) noexcept;
+};
+using GetServerEliteNativeTaskApi=const ServerEliteNativeTaskApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
