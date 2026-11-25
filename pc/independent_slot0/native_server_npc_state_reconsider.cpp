@@ -351,6 +351,57 @@ int __cdecl query_best_enemy(void* context,void* actor,std::uint32_t component,v
     if(!best_enemy(actor,q.actor_bytes,q.now,q.bindings,&q.last))return 0;
     *result=q.last.enemy;return 1;
 }
+bool finite_vec(const float* v) noexcept{return v&&std::isfinite(v[0])&&std::isfinite(v[1])&&std::isfinite(v[2]);}
+int __cdecl initialize_memory_record(void* record,unsigned bytes,std::uint32_t handle,const float initial[3],const float position[3],float now,float lifetime,float delay,bool seen,ServerNpcEnemyMemoryRecordResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!record||bytes<0x38||!finite_vec(initial)||!finite_vec(position)||!std::isfinite(now)||!std::isfinite(lifetime)||!std::isfinite(delay))return 0;
+    const float stamp=seen?now:static_cast<float>(static_cast<double>(now)-(static_cast<double>(lifetime)+.01));
+    const float eligibility=delay>0?static_cast<float>(static_cast<double>(now)+delay):0.f;
+    if(!std::isfinite(stamp)||!std::isfinite(eligibility))return 0;
+    // The original constructor writes every field except padding at +37.
+    float pos[3],fallback[3];std::memcpy(pos,position,12);std::memcpy(fallback,initial,12);
+    write(record,0,handle);std::memcpy(static_cast<unsigned char*>(record)+4,pos,12);
+    std::memcpy(static_cast<unsigned char*>(record)+0x10,fallback,12);
+    write(record,0x1c,stamp);write(record,0x20,stamp);write(record,0x24,stamp);
+    write(record,0x28,eligibility);write(record,0x2c,0.f);
+    write(record,0x30,seen?now:-std::numeric_limits<float>::max());
+    write<std::uint8_t>(record,0x34,handle==0xffffffffu);write<std::uint8_t>(record,0x35,0);write<std::uint8_t>(record,0x36,0);
+    out->initialized=out->position_written=out->changed_stamp_written=1;
+    out->seen_written=out->first_seen_written=seen;return 1;
+}
+int __cdecl update_memory_record(void* record,unsigned bytes,const float position[3],float now,bool seen,ServerNpcEnemyMemoryRecordResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!record||bytes<0x38||!finite_vec(position)||!std::isfinite(now))return 0;
+    float pos[3];std::memcpy(pos,position,12);
+    double sq[3]{};
+    for(unsigned i=0;i<3;++i){
+        const float before=read<float>(record,4+4*i);if(!std::isfinite(before))return 0;
+        const float delta=static_cast<float>(static_cast<double>(before)-pos[i]);
+        if(!std::isfinite(delta))return 0;sq[i]=static_cast<double>(delta)*delta;
+    }
+    const float stamp=seen?now:read<float>(record,0x1c);
+    const float first=read<float>(record,0x30);
+    if(!std::isfinite(stamp)||!std::isfinite(first))return 0;
+    if(seen){write(record,0x1c,now);out->seen_written=1;}
+    write<std::uint8_t>(record,0x35,0);out->eluded_cleared=1;
+    const double sum=(sq[2]+sq[1])+sq[0];out->distance_squared=sum;
+    if(sum>57600.0||(sum>2304.0&&static_cast<double>(now)-stamp>4.0)){
+        write(record,0x24,now);out->changed_stamp_written=1;
+    }
+    if(sum>144.0){std::memcpy(static_cast<unsigned char*>(record)+4,pos,12);out->position_written=1;}
+    if(seen&&first==-std::numeric_limits<float>::max()){write(record,0x30,now);out->first_seen_written=1;}
+    return 1;
+}
+int __cdecl memory_expiry(const void* record,unsigned bytes,bool live,bool npc,int state,float now,float lifetime,ServerNpcEnemyMemoryExpiryResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!record||bytes<0x37||!std::isfinite(now)||!std::isfinite(lifetime))return 0;
+    if(!live&&!read<std::uint8_t>(record,0x34)){out->stale=out->remove=1;return 1;}
+    if(live&&npc&&state==7){out->dead=out->remove=1;return 1;}
+    if(read<std::uint8_t>(record,0x36)){out->protected_record=1;return 1;}
+    const float stamp=read<float>(record,0x1c);if(!std::isfinite(stamp))return 0;
+    out->expired=static_cast<double>(stamp)+lifetime<now;out->remove=out->expired;return 1;
+}
+const ServerNpcEnemyMemoryRecordApi record_api{1,sizeof(ServerNpcEnemyMemoryRecordApi),&initialize_memory_record,&update_memory_record,&memory_expiry};
 const ServerNpcBestEnemyQueryApi best_query_api{1,sizeof(ServerNpcBestEnemyQueryApi),&query_best_enemy};
 const ServerNpcUnreachableEnemyApi unreachable_api{1,sizeof(ServerNpcUnreachableEnemyApi),&unreachable_enemy};
 const ServerNpcBestEnemyApi best_enemy_api{1,sizeof(ServerNpcBestEnemyApi),&best_enemy};
@@ -401,4 +452,10 @@ SiN_GetServerNpcUnreachableEnemyApi(std::uint32_t version,std::uint32_t size) no
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcBestEnemyQueryApi* __cdecl
 SiN_GetServerNpcBestEnemyQueryApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcBestEnemyQueryApi)?&best_query_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcEnemyMemoryRecordApi=_SiN_GetServerNpcEnemyMemoryRecordApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryRecordApi* __cdecl
+SiN_GetServerNpcEnemyMemoryRecordApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryRecordApi)?&record_api:nullptr;
 }
