@@ -1278,8 +1278,13 @@ int main(int argc,char** argv){
         assert(getOwnedCriteria&&!GetProcAddress(client,tables::response_owned_criteria_export));
         const auto* ownedCriteria=getOwnedCriteria(1,sizeof(tables::ResponseOwnedCriteriaApi));
         assert(ownedCriteria&&!getOwnedCriteria(0,sizeof(tables::ResponseOwnedCriteriaApi))&&!getOwnedCriteria(1,0));
+        const auto getScriptActor=reinterpret_cast<tables::GetScriptActorSelectionApi>(GetProcAddress(server,tables::script_actor_selection_export));
+        assert(getScriptActor&&!GetProcAddress(client,tables::script_actor_selection_export));
+        const auto* scriptActor=getScriptActor(1,sizeof(tables::ScriptActorSelectionApi));
+        assert(scriptActor&&!getScriptActor(0,sizeof(tables::ScriptActorSelectionApi))&&!getScriptActor(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria);
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria,scriptActor);
+        std::puts("PASS native script actor selection and owned response retirement");
         std::puts("PASS native allocated criteria copy and response-owned retirement");
         std::puts("PASS native response criteria copy and rebuilt child index");
         std::puts("PASS script-backed native response finder and include lifecycle");

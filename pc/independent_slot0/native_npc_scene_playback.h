@@ -1323,6 +1323,23 @@ struct ActorResponseSelectionApi {
     int (__cdecl *select)(void*,unsigned,const ActorResponseSelectionBindings*,const char*,const char*,void**,unsigned*) noexcept;
 };
 using GetActorResponseSelectionApi=const ActorResponseSelectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char script_actor_selection_export[]="SiN_GetScriptActorSelectionApi";
+struct ScriptActorSelectionBindings {
+    ActorResponseSelectionBindings actor;
+    ScriptResponseFinderBindings finder;
+    ResponseOwnedCriteriaBindings owned;
+    // actor.selection.host allocate/destroy allocate and release the outer
+    // response only; native adapter handles its owned CriteriaSet.
+    // host system/find are replaced; ranking and copy use actor's tree.
+};
+struct ScriptActorSelectionApi {
+    std::uint32_t version,size;
+    int (__cdecl *select)(void*,unsigned,const ScriptActorSelectionBindings*,const char*,const char*,void**,unsigned*) noexcept;
+    // Compatible with ResponseDispatchBindings.destroy and history retirement
+    // when context is this persistent configuration. Response must be initialized.
+    int (__cdecl *retire)(void*,void*) noexcept;
+};
+using GetScriptActorSelectionApi=const ScriptActorSelectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;
