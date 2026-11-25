@@ -1916,6 +1916,49 @@ struct NamedSceneLoadFixture {
         b.owned.symbols.release=[](void*,std::uint32_t,ChoreographySymbolRelease) noexcept -> int{assert(false);return 0;};
     }
 };
+
+inline void check_scene_raw_cache_ensure(const SceneRawCacheEnsureApi& api){
+    struct Fixture {
+        alignas(4) unsigned char row[24]{};
+        unsigned trace[16]{},used=0,fail=0,symbols=0;
+        bool present=false,live=false;
+        static Fixture& get(void* p){return *static_cast<Fixture*>(p);}
+        void add(unsigned n){assert(used<16);trace[used++]=n;}
+        void expect(std::initializer_list<unsigned> list){assert(used==list.size()&&!std::memcmp(trace,list.begin(),used*4));used=0;}
+    } f;
+    SceneRawCacheEnsureBindings h{};h.context=&f;
+    h.symbol=[](void* p,const char* key,std::uint16_t* out) noexcept -> int{
+        auto& f=Fixture::get(p);assert(!std::strcmp(key,R"(scenes\fixture.vcd)"));f.add(1);++f.symbols;*out=7;
+        return !(f.fail==1||(f.fail==6&&f.symbols%2==0));};
+    h.find=[](void* p,std::uint16_t id,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(id==7);f.add(2);*out=f.present?f.row:nullptr;*n=f.present?(f.fail==2?23u:24u):0u;return 1;};
+    h.touch=[](void* p,std::uint32_t handle) noexcept -> int{
+        auto& f=Fixture::get(p);assert(f.present&&f.live&&handle==19);f.add(3);return 1;};
+    h.prepare=[](void* p,unsigned n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(!f.live&&!f.present&&n==0x1390);f.add(4);return f.fail!=3;};
+    h.reserve=[](void* p,std::uint32_t* out) noexcept -> int{
+        auto& f=Fixture::get(p);f.add(5);*out=11;return f.fail!=4;};
+    h.create=[](void* p,std::uint32_t token,const char* key,std::uint32_t* out) noexcept -> int{
+        auto& f=Fixture::get(p);assert(token==11&&!f.live&&!std::strcmp(key,R"(scenes\fixture.vcd)"));f.add(6);
+        if(f.fail==5)return 0;f.live=true;*out=19;return 1;};
+    h.discard=[](void* p,std::uint32_t handle) noexcept -> int{
+        auto& f=Fixture::get(p);assert(f.live&&!f.present&&handle==19);f.add(8);f.live=false;return 1;};
+    h.insert=[](void* p,std::uint16_t id,std::uint32_t handle) noexcept -> int{
+        auto& f=Fixture::get(p);assert(id==7&&handle==19&&f.live&&!f.present);f.add(7);
+        if(f.fail==7)return 0;f.present=true;std::memcpy(f.row+0x14,&handle,4);return 1;};
+    auto run=[&](){f.symbols=0;return api.ensure(&h,"Scenes/Fixture.VCD");};
+    f.fail=1;assert(!run());f.expect({1});
+    f.fail=3;assert(!run());f.expect({1,2,4});
+    f.fail=4;assert(!run());f.expect({1,2,4,5});
+    f.fail=5;assert(!run()&&!f.live);f.expect({1,2,4,5,6});
+    f.fail=6;assert(!run()&&!f.live);f.expect({1,2,4,5,6,1,8});
+    f.fail=7;assert(!run()&&!f.live);f.expect({1,2,4,5,6,1,7,8});
+    f.fail=0;assert(run()&&f.live&&f.present);f.expect({1,2,4,5,6,1,7});
+    assert(run());f.expect({1,2,3});
+    f.fail=2;assert(!run());f.expect({1,2});
+    h.touch=nullptr;assert(!run()&&!f.used);
+}
+
 inline void check_named_scene_load(const NamedSceneLoadApi& api){
     using F=ScenePlaybackFixture;std::uint32_t out=99;
     auto run=[&](NamedSceneLoadFixture& f){return api.load(f.scene,sizeof(f.scene),"Scenes/Jessica.TXT",&f.b,&out);};

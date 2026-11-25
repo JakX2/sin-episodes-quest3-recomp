@@ -1028,6 +1028,12 @@ int main(int argc,char** argv){
     const auto* namedSceneLoad=getNamedSceneLoad(1,sizeof(tables::NamedSceneLoadApi));
     assert(namedSceneLoad&&!getNamedSceneLoad(0,sizeof(tables::NamedSceneLoadApi))&&!getNamedSceneLoad(1,0));
     tables::test::check_named_scene_load(*namedSceneLoad);
+    const auto getSceneRawCacheEnsure=reinterpret_cast<tables::GetSceneRawCacheEnsureApi>(GetProcAddress(server,tables::scene_raw_cache_ensure_export));
+    assert(getSceneRawCacheEnsure&&!GetProcAddress(client,tables::scene_raw_cache_ensure_export));
+    const auto* sceneRawCacheEnsure=getSceneRawCacheEnsure(1,sizeof(tables::SceneRawCacheEnsureApi));
+    assert(sceneRawCacheEnsure&&!getSceneRawCacheEnsure(0,sizeof(tables::SceneRawCacheEnsureApi))&&!getSceneRawCacheEnsure(1,0));
+    tables::test::check_scene_raw_cache_ensure(*sceneRawCacheEnsure);
+    std::puts("PASS native raw scene cache ensure, resource touch and rollback");
     std::puts("PASS original named VCD cache copy and native parsed scene allocation");
     const auto getChoreographyTextParser=reinterpret_cast<tables::GetChoreographyTextParserApi>(GetProcAddress(server,tables::choreography_text_parser_export));
     assert(getChoreographyTextParser&&!GetProcAddress(client,tables::choreography_text_parser_export));

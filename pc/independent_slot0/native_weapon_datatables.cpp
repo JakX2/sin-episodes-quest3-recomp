@@ -5631,6 +5631,32 @@ bool named_scene_copy(char* out,unsigned cap,const char* in,bool lower) noexcept
     }
     out[cap-1]=0;return true;
 }
+int __cdecl scene_raw_cache_ensure(void* p,const char* path) noexcept {
+    const auto* b=static_cast<const SceneRawCacheEnsureBindings*>(p);
+    if(!path||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->symbol||!b->find||
+       !b->touch||!b->prepare||!b->reserve||!b->create||!b->discard||!b->insert)return 0;
+    const auto h=*b;char key[256]{};
+    if(!named_scene_copy(key,sizeof(key),path,true))return 0;
+    std::uint16_t symbol=0xffff;
+    if(!h.symbol(h.context,key,&symbol)||symbol==0xffff)return 0;
+    void* row=nullptr;unsigned extent=0;
+    if(!h.find(h.context,symbol,&row,&extent))return 0;
+    // Raw cache tree nodes have a separate layout from metadata nodes.
+    // Original lookup node stride is 24 and resource handle is at +14.
+    if(row){
+        if(extent<24||!sin_independent::vgui_layout::Readable(row,24))return 0;
+        return h.touch(h.context,hologram_read<std::uint32_t>(row,0x14))!=0;
+    }
+    std::uint32_t reservation=0,resource=0;
+    if(!h.prepare(h.context,0x1390)||!h.reserve(h.context,&reservation)||
+       !h.create(h.context,reservation,key,&resource))return 0;
+    // Original repeats symbol lookup after resource creation.
+    if(!h.symbol(h.context,key,&symbol)||symbol==0xffff||!h.insert(h.context,symbol,resource)){
+        (void)h.discard(h.context,resource);return 0;
+    }
+    return 1;
+}
+const SceneRawCacheEnsureApi scene_raw_cache_ensure_api{version,sizeof(SceneRawCacheEnsureApi),&scene_raw_cache_ensure};
 bool choreography_text_ready(const ChoreographyTextParserBindings* p) noexcept {
     return p&&p->tokenizer_word&&p->next&&p->token&&p->block&&p->unexpected&&p->finalize;
 }
@@ -16894,6 +16920,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Choreogra
 SiN_GetChoreographyTextParserApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ChoreographyTextParserApi)?&choreography_text_parser_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetSceneRawCacheEnsureApi=_SiN_GetSceneRawCacheEnsureApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneRawCacheEnsureApi* __cdecl
+SiN_GetSceneRawCacheEnsureApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneRawCacheEnsureApi)?&scene_raw_cache_ensure_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetNamedSceneLoadApi=_SiN_GetNamedSceneLoadApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NamedSceneLoadApi* __cdecl
