@@ -20,6 +20,7 @@ struct F{
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
     unsigned char senses[0x60]{},sense_vectors[3][16]{},sense_handles[3][16]{};
     unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned rebuild_calls=0;int rebuild_radius=100;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
+    bool combat_trace=true,combat_fov=true;unsigned combat_output_count=0,combat_output_offsets[8]{};bool combat_output_value[8]{};std::uint32_t combat_output_handles[8]{};
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
@@ -656,5 +657,26 @@ int main(int argc,char** argv){
     f.put(f.senses,8,101.5f);f.rebuild_radius=101;
     assert(tick->tick(f.actor,sizeof(f.actor),520,&ptb,&ptr)&&ptr.completed&&ptr.rebuilt&&ptr.radius==101&&f.rebuild_calls==6);
     assert(tick->tick(f.actor,sizeof(f.actor),521,&ptb,&ptr)&&ptr.completed&&ptr.rebuilt&&f.rebuild_calls==9);
+    auto gcv=reinterpret_cast<GetServerNpcGruntCombatVisibilityApi>(GetProcAddress(s,server_npc_grunt_combat_visibility_export));
+    assert(gcv&&!GetProcAddress(c,server_npc_grunt_combat_visibility_export)&&!gcv(0,sizeof(ServerNpcGruntCombatVisibilityApi))&&!gcv(1,0));
+    const auto* cv=gcv(1,sizeof(ServerNpcGruntCombatVisibilityApi));assert(cv);
+    ServerNpcGruntCombatVisibilityBindings cvb{};cvb.context=&f;cvb.original_vtable=0x2249aaa4;cvb.memory=bb.memory;cvb.conditions=eb.conditions;cvb.extent=bb.extent;cvb.entity_handle=eb.entity_handle;cvb.special_target=rb.special_target;
+    cvb.trace=[](void* p,void* a,void* e,unsigned mask,bool* yes,void** blocker) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&e==f.enemy&&mask==0x4081);*yes=f.combat_trace;*blocker=*yes?nullptr:f.replacement;return 1;};
+    cvb.in_view=[](void* p,void*,void*,bool* yes) noexcept -> int{*yes=F::self(p).combat_fov;return 1;};
+    cvb.fire_output=[](void* p,void* a,unsigned off,bool value,std::uint32_t handle) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&f.combat_output_count<8);auto i=f.combat_output_count++;f.combat_output_offsets[i]=off;f.combat_output_value[i]=value;f.combat_output_handles[i]=handle;return 1;};
+    f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x988,0x8000u);f.put(f.actor,0x7cc,0xffffffffu);f.actor[0xb6]=0;
+    f.rel_special=true;f.combat_fov=false;
+    ServerNpcGruntCombatVisibilityResult cvr{};
+    assert(cv->gather(f.actor,sizeof(f.actor),f.enemy,&cvb,&cvr)&&cvr.visible&&!cvr.in_view&&!cvr.previous_visible&&cvr.outputs==2);
+    assert(f.combat_output_offsets[0]==0xad8&&f.combat_output_offsets[1]==0xa90&&f.combat_output_value[0]&&f.combat_output_handles[1]==0x7001u);
+    assert((f.get<unsigned>(0x7cc)&((1u<<14)|(1u<<10)|(1u<<12)|(1u<<27)|(1u<<28)))==(1u<<14)&&f.get<unsigned>(0x988)==0x28000u);
+    f.combat_fov=true;assert(cv->gather(f.actor,sizeof(f.actor),f.enemy,&cvb,&cvr)&&cvr.visible&&cvr.in_view&&cvr.previous_visible&&!cvr.outputs);
+    f.combat_trace=false;assert(cv->gather(f.actor,sizeof(f.actor),f.enemy,&cvb,&cvr)&&!cvr.visible&&cvr.previous_visible&&cvr.outputs==2&&cvr.blocker==0x8002u);
+    assert(f.combat_output_offsets[2]==0xaf0&&f.combat_output_offsets[3]==0xaa8&&!f.combat_output_value[2]&&f.get<unsigned>(0x98c)==0x8002u&&f.get<unsigned>(0x988)==0x8000u);
+    f.put(f.enemy,0x8c,1);assert(cv->gather(f.actor,sizeof(f.actor),f.enemy,&cvb,&cvr)&&cvr.dead&&!cvr.outputs);
+    assert((f.get<unsigned>(0x7cc)&((1u<<29)|(1u<<12)|(1u<<10)))==(1u<<29));f.put(f.enemy,0x8c,0);
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryMarkEluded,0,0,&mb,&ctr)&&ctr.written);
+    f.actor[0xb6]=1;f.combat_trace=true;assert(cv->query(f.actor,sizeof(f.actor),f.enemy,0x4081,&cvb,&cvr)&&cvr.suppressed&&!cvr.traced&&!cvr.visible);
+    f.actor[0xb6]=0;assert(cv->query(f.actor,sizeof(f.actor),f.enemy,0x4081,&cvb,&cvr)&&cvr.traced&&cvr.visible);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

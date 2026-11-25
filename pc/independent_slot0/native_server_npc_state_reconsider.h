@@ -514,4 +514,30 @@ struct ServerNpcGruntPerceptionTickApi {
     int (__cdecl *tick)(void*,unsigned,float,const ServerNpcGruntPerceptionTickBindings*,ServerNpcGruntPerceptionTickResult*) noexcept;
 };
 using GetServerNpcGruntPerceptionTickApi=const ServerNpcGruntPerceptionTickApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_combat_visibility_export[]="SiN_GetServerNpcGruntCombatVisibilityApi";
+struct ServerNpcGruntCombatVisibilityBindings {
+    ServerNpcEnemyMemoryQueryBindings memory;
+    ServerNpcConditionMapBindings conditions;
+    void* context;
+    std::uint32_t original_vtable;
+    int (__cdecl *trace)(void*,void*,void*,unsigned,bool*,void**) noexcept; // base 2213f7a0
+    int (__cdecl *in_view)(void*,void*,void*,bool*) noexcept; // +300; +4ec is constant true
+    int (__cdecl *special_target)(void*,void*,bool*) noexcept;
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    // Value output carries entity handle; plain output has no handle.
+    int (__cdecl *fire_output)(void*,void*,unsigned,bool,std::uint32_t) noexcept;
+};
+struct ServerNpcGruntCombatVisibilityResult {
+    unsigned suppressed,traced,visible,in_view,previous_visible,dead,cleared,sets,outputs;
+    std::uint32_t blocker;
+};
+struct ServerNpcGruntCombatVisibilityApi {
+    std::uint32_t version,size;
+    // +1f0 wrapper 22358420, then base trace unless eluded suppression.
+    int (__cdecl *query)(void*,unsigned,void*,unsigned,const ServerNpcGruntCombatVisibilityBindings*,ServerNpcGruntCombatVisibilityResult*) noexcept;
+    // 2203c600..2203ca14 prefix, terminates on dead target before range computation.
+    int (__cdecl *gather)(void*,unsigned,void*,const ServerNpcGruntCombatVisibilityBindings*,ServerNpcGruntCombatVisibilityResult*) noexcept;
+};
+using GetServerNpcGruntCombatVisibilityApi=const ServerNpcGruntCombatVisibilityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
