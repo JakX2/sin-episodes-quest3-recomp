@@ -1371,6 +1371,7 @@ rule parsed_rule
                 bool live=false,copy_live=false,short_block=false,fail_trace=false,fail_sound=false;void* recorded=nullptr;
                 const char* expected_concept="TLK_IDLE";const unsigned char* observation=nullptr;unsigned other=0,criteria_calls=0;float now=25.f;
                 void* external_npc=nullptr;void* external_exp=nullptr;unsigned external_bytes=0;
+                sin_port::map_host::ScriptResponseHistoryOwner* history_owner=nullptr;
                 void* current_npc(){return external_npc?external_npc:npc;}
                 void* current_exp(){return external_exp?external_exp:exp;}
                 unsigned current_bytes(){return external_npc?external_bytes:sizeof(npc);}
@@ -1584,6 +1585,68 @@ rule jessica_look
                         assert(scriptFinder->release(&speech.selection.finder.store)==1);
                         actor.external_npc=nullptr;actor.external_exp=nullptr;actor.external_bytes=0;
                     }
+                }
+                if(record&&historyTree&&expLifecycle){
+                    // Actual script speech dispatch -> native indexed history
+                    // -> expeditor retirement, with no synthetic record sink.
+                    actor.expected_concept="TLK_IDLE";actor.now=50;actor.fail_sound=false;actor.fail_trace=false;
+                    ExpeditorControl control{actor.exp,sizeof(actor.exp)};
+                    ExpeditorTables tables{0x11110000,0x22220000,0x33330000,0x44440000};
+                    SpeechSemaphorePair sem{};
+                    struct History {VcdAuditArena* arena;Actor* actor;unsigned notifications=0;bool fail=false;};
+                    History context{&a,&actor};
+                    ResponseHistoryTreeBindings hb{};hb.memory=a.vector_bindings;hb.symbols=a.intern_bindings;hb.context=&context;
+                    hb.clock=[](void* p,float* out) noexcept -> int{*out=static_cast<History*>(p)->actor->now;return 1;};
+                    hb.notify=[](void* p,void* exp,const char* concept) noexcept -> int{
+                        auto& h=*static_cast<History*>(p);
+                        assert(exp==h.actor->exp&&!std::strcmp(concept,"TLK_IDLE")&&h.actor->live&&h.actor->copy_live);
+                        ++h.notifications;return !h.fail;};
+                    ResponseHistoryBindings history{};assert(historyTree->adapt(&hb,&history));
+                    sin_port::map_host::ScriptResponseHistoryOwner owner(*scriptActor,*record,speech.selection,history);
+                    assert(owner.ready());actor.history_owner=&owner;
+                    ExpeditorLifecycleBindings life{};life.context=&context;
+                    life.symbol_construct=[](void* p,void* symbol,int,int,unsigned) noexcept -> int{
+                        auto& a=*static_cast<History*>(p)->arena;return a.symbol_api.construct_empty(symbol,0x34,0,0x2228e9b0)==1;};
+                    life.symbol_destroy=[](void* p,void* symbol) noexcept -> int{
+                        auto& a=*static_cast<History*>(p)->arena;return a.retire.symbol_destroy(&a,symbol);};
+                    life.row=[](void* p,void* exp,unsigned i,void** out,unsigned* n) noexcept -> int{
+                        auto& a=*static_cast<History*>(p)->arena;void* rows=nullptr;unsigned bytes=0;
+                        if(i>=F::word(exp,0x18)||!a.storage(&a,F::word(exp,0x14),&rows,&bytes)||bytes<(i+1)*28)return 0;
+                        *out=static_cast<unsigned char*>(rows)+i*28;*n=28;return 1;};
+                    life.destroy_response=[](void* p,std::uint32_t word) noexcept -> int{
+                        return static_cast<History*>(p)->actor->history_owner->retire_word(word);};
+                    life.free_rows=[](void* p,std::uint32_t word) noexcept -> int{
+                        auto& a=*static_cast<History*>(p)->arena;return a.release(&a,word);};
+                    life.classify=[](void*,void*,int,unsigned* out) noexcept -> int{*out=1;return 1;};
+                    life.resolve=[](void*,std::uint32_t,void** out) noexcept -> int{*out=nullptr;return 1;};
+                    std::memset(actor.exp,0,sizeof(actor.exp));
+                    assert(expLifecycle->construct(&control,actor.npc,&tables,&life)==1);
+                    speech.dispatch.record=[](void* p,void* exp,const char* concept,void* response) noexcept -> int{
+                        auto& actor=Actor::get(p);assert(actor.history_owner&&exp==actor.exp);
+                        return actor.history_owner->record(exp,concept,response);};
+                    speech.dispatch.clock=[](void* p,float* out) noexcept -> int{*out=Actor::get(p).now;return 1;};
+                    auto row=[&](){
+                        int index=-1;void* entry=nullptr;unsigned n=0;
+                        assert(history.lookup(history.context,actor.exp,"TLK_IDLE",&index)&&index>=0);
+                        assert(history.entry(history.context,actor.exp,index,&entry,&n)&&n==28);return entry;};
+                    for(unsigned iteration=0;iteration<2;++iteration){
+                        assert(scriptFinder->create("speech_history",source,sizeof(source)-1,nullptr,&speech.selection.finder.store)==1);
+                        played=99;context.fail=iteration==1;
+                        const auto sounds=actor.sounds;
+                        const auto status=speak("PlayerLookingAtPart:head");
+                        assert(status==(context.fail?-1:1)&&played==(context.fail?99u:1u));
+                        assert(actor.sounds==sounds+1&&actor.live&&actor.copy_live&&context.notifications==iteration+1);
+                        assert(F::word(row(),0x18)==F::ptr(actor.response)&&VcdAuditArena::read_float(row(),0x14)==actor.now);
+                        assert(VcdAuditArena::read_float(actor.exp,0x78)==actor.now);
+                        // Prove retirement is independent of the borrowed
+                        // store. Normal map shutdown still clears NPCs first.
+                        assert(scriptFinder->release(&speech.selection.finder.store)==1);
+                        assert(expLifecycle->clear(&control,&life)==1&&!actor.live&&!actor.copy_live);
+                        assert(!F::word(actor.exp,0x24)&&actor.allocs==actor.drops&&actor.copies==actor.frees);
+                        actor.now+=4;
+                    }
+                    assert(expLifecycle->destroy(&control,actor.npc,&tables,&sem,&life)==1&&a.live.empty());
+                    actor.history_owner=nullptr;
                 }
             }
             // Two distinct expeditors borrow the same registry. Selection,

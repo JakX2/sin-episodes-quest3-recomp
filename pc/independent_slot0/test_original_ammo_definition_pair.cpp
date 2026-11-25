@@ -1296,6 +1296,7 @@ int main(int argc,char** argv){
         std::puts("PASS script-backed Jessica cooldown, semaphore, selection and retirement");
         std::puts("PASS shared registry across distinct NPC expeditors and reset on reopen");
         std::puts("PASS script response-owned criteria through native history replacement and expeditor teardown");
+        std::puts("PASS script speech dispatch to persistent indexed history, including notification failure");
         std::puts("PASS native script actor speech dispatch and history ownership");
         std::puts("PASS native script actor selection and owned response retirement");
         std::puts("PASS native allocated criteria copy and response-owned retirement");
