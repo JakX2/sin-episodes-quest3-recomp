@@ -94,6 +94,13 @@ public:
     const Services& bindings()const noexcept{return bindings_;}
     std::size_t size()const noexcept{return rows_.size();}
     bool dirty()const noexcept{return cache_[0x3c]!=0;}
+    // Presence is a filename-handle lookup only. Do not allocate a
+    // metadata row or refresh it as a side effect of checking presence.
+    bool contains(const char* name,unsigned* present) noexcept{
+        if(!ready()||pending_||refreshing_||!name||!present)return false;
+        std::uint32_t key=0;if(!leaves_.filename(leaves_.external.context,name,&key))return false;
+        *present=lookup_.find(key)!=lookup_.end();return true;
+    }
     bool invalidate(const char* name) noexcept{
         if(!ready()||pending_||refreshing_||!name)return false;
         std::uint32_t key=0;if(!leaves_.filename(leaves_.external.context,name,&key))return false;
