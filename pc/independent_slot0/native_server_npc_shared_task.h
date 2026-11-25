@@ -116,6 +116,32 @@ struct ServerNpcDifficultyWaitApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*) noexcept;
 };
 using GetServerNpcDifficultyWaitApi=const ServerNpcDifficultyWaitApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_cue_export[]="SiN_GetServerNpcSharedCueApi";
+struct ServerNpcSharedCueBindings {
+    void* context;
+    std::uint32_t original_vtable;
+    int (__cdecl *random)(void*,int,int,int*) noexcept;
+    int (__cdecl *target)(void*,void*,void**) noexcept; // +154
+    int (__cdecl *as_npc)(void*,void*,void**) noexcept; // target +fc
+    int (__cdecl *squad_gate)(void*,std::uint32_t,int,bool*) noexcept; // 220a7cd0
+    int (__cdecl *center)(void*,void*,float[3]) noexcept; // +214
+    int (__cdecl *target_gate)(void*,void*,void*,bool*) noexcept; // target +300(actor)
+    int (__cdecl *visible)(void*,void*,void*,unsigned,bool*) noexcept; // +1f0(target,0x4081,null)
+    int (__cdecl *path_distance)(void*,std::uint32_t,float*) noexcept; // navigator +24 / 2209d410
+    int (__cdecl *cue)(void*,void*,const char*,int,int) noexcept; // 220a35c0 on +cc0
+};
+struct ServerNpcSharedCueResult {
+    ServerNpcSharedTaskResult shared;
+    int mode,draw;
+    unsigned gate,live,near,target_allowed,visible,emitted;
+    double distance_squared;
+    float path_distance;
+};
+struct ServerNpcSharedCueApi {
+    std::uint32_t version,size;
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedCueBindings*,ServerNpcSharedCueResult*) noexcept;
+};
+using GetServerNpcSharedCueApi=const ServerNpcSharedCueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedMovementStats {ServerNpcSharedMovementResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTargetAnimationStats {ServerNpcSharedTargetAnimationResult last;unsigned calls,native,components;};
 struct ServerNpcSharedFacingStats {ServerNpcSharedFacingResult last;unsigned calls,native,components;};

@@ -12,9 +12,10 @@
 #include <vector>
 using namespace sin_port::native_weapon_tables;
 struct F {
-    unsigned char a[0xc34]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
+    unsigned char a[0xfcc]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
     unsigned char motor[0x1c]{},target[4]{},nav[0x50]{},path[0x48]{};
     float speed[3]{};bool can_stop=false;int pose_index=3;
+    bool cue_squad=true,cue_target=true,cue_visible=true;float cue_path=240;
     bool target_present=true;float target_pos[3]{};
     bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
     float motor_yaw() const {float y=0;std::memcpy(&y,motor+0x14,4);return y;}
@@ -271,5 +272,40 @@ int main(int argc,char** argv){
     run(131,true,0,30);assert(o.parent_called&&!o.native);
     f.put(f.a,0xc18,77u);f.component_handles=true;run(6,false,0,30);assert(o.component_handled&&!o.native);
     f.component_handles=false;run(6,false,0,30);assert(o.component_called&&o.native&&!o.lifecycle.completed);
+    auto gcq=reinterpret_cast<GetServerNpcSharedCueApi>(GetProcAddress(s,server_npc_shared_cue_export));
+    assert(gcq&&!GetProcAddress(c,server_npc_shared_cue_export)&&!gcq(0,sizeof(ServerNpcSharedCueApi))&&!gcq(1,0));
+    const auto* cq=gcq(1,sizeof(ServerNpcSharedCueApi));assert(cq);
+    ServerNpcSharedCueBindings cb{};cb.context=&f;cb.original_vtable=0x2249aaa4;
+    cb.random=[](void* p,int lo,int hi,int* out) noexcept -> int{auto& f=F::self(p);assert(lo==0&&hi==5);*out=f.draw;f.trace.push_back(40);return 1;};
+    cb.target=[](void* p,void*,void** out) noexcept -> int{auto& f=F::self(p);*out=f.target_present?f.target:nullptr;f.trace.push_back(41);return 1;};
+    cb.as_npc=[](void* p,void* e,void** out) noexcept -> int{auto& f=F::self(p);assert(e==f.target);*out=e;f.trace.push_back(42);return 1;};
+    cb.squad_gate=[](void* p,std::uint32_t tok,int priority,bool* out) noexcept -> int{auto& f=F::self(p);assert(tok==77&&priority==0);*out=f.cue_squad;f.trace.push_back(43);return 1;};
+    cb.center=[](void* p,void* e,float* out) noexcept -> int{auto& f=F::self(p);f.trace.push_back(e==f.target?44:45);assert(e==f.target||e==f.a);if(e==f.target)std::memcpy(out,f.target_pos,12);else std::memset(out,0,12);return 1;};
+    cb.target_gate=[](void* p,void* e,void* actor,bool* out) noexcept -> int{auto& f=F::self(p);assert(e==f.target&&actor==f.a);*out=f.cue_target;f.trace.push_back(46);return 1;};
+    cb.visible=[](void* p,void* a,void* e,unsigned mask,bool* out) noexcept -> int{auto& f=F::self(p);assert(e==f.target&&a==f.a&&mask==0x4081);*out=f.cue_visible;f.trace.push_back(47);return 1;};
+    cb.path_distance=[](void* p,std::uint32_t tok,float* out) noexcept -> int{auto& f=F::self(p);assert(tok==100);*out=f.cue_path;f.trace.push_back(48);return 1;};
+    cb.cue=[](void* p,void* a,const char* name,int priority,int type) noexcept -> int{auto& f=F::self(p);assert(a==f.a&&priority==0&&type==2);if(!std::strcmp(name,"GRUNT_ASSAULT"))f.trace.push_back(49);else{assert(!std::strcmp(name,"GRUNT_FLANK"));f.trace.push_back(50);}return 1;};
+    f.put(f.a,0xc18,0u);f.put(f.a,0x8f8,100u);f.put(f.a,0x9c4,0u);
+    f.put(f.a,0xc04,29.f);f.put(f.a,0xc08,0);f.put(f.a,0xb4,0u);f.target_present=true;
+    f.target_pos[0]=2000;f.target_pos[1]=f.target_pos[2]=0;
+    ServerNpcSharedCueResult qr{};
+    auto cue=[&](float param){f.put(f.a,0x7a4,1);f.trace.clear();ServerNpcScheduleTask ct{84,param};assert(cq->execute(f.a,sizeof(f.a),&ct,30,&b,&cb,&qr));assert(qr.shared.lifecycle.completed||qr.shared.component_handled);};
+    f.draw=2;cue(0);assert(!qr.emitted&&f.trace==std::vector<int>{40});
+    f.draw=1;cue(.9f);assert(qr.emitted&&qr.near&&qr.distance_squared==4000000&&(f.trace==std::vector<int>{40,41,41,42,44,45,46,47,49}));
+    f.target_pos[0]=2001;cue(0);assert(!qr.near&&!qr.emitted);
+    f.target_pos[0]=100;f.cue_visible=false;cue(0);assert(qr.target_allowed&&!qr.visible&&!qr.emitted);
+    f.cue_visible=true;f.put(f.a,0xc04,30.f);cue(0);assert(!qr.gate&&!qr.emitted);
+    f.put(f.a,0xc08,-1);cue(0);assert(qr.gate&&qr.emitted);
+    f.put(f.a,0xb4,2u);f.put(f.a,0x850,1);cue(0);assert(!qr.gate);
+    f.put(f.a,0x850,3);cue(0);assert(qr.gate&&qr.emitted);
+    f.put(f.a,0x9c4,77u);f.cue_squad=false;cue(0);assert(!qr.gate&&(f.trace==std::vector<int>{40,41,41,42,43}));
+    f.cue_squad=true;cue(0);assert(qr.emitted);
+    f.cue_path=240;cue(1);assert(!qr.emitted&&f.trace==std::vector<int>{48});
+    f.cue_path=241;cue(1.9f);assert(qr.emitted&&(f.trace==std::vector<int>{48,50}));
+    cue(2);assert(!qr.emitted&&f.trace.empty());
+    f.put(f.a,0xc18,77u);f.component_handles=true;cue(1);assert(qr.shared.component_handled&&!qr.shared.native&&f.trace==std::vector<int>{2});
+    f.component_handles=false;cue(1);assert(qr.shared.native&&qr.emitted&&(f.trace==std::vector<int>{2,48,50}));
+    ServerNpcScheduleTask ct{84,1};cb.original_vtable=0;
+    assert(!cq->execute(f.a,sizeof(f.a),&ct,30,&b,&cb,&qr));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
