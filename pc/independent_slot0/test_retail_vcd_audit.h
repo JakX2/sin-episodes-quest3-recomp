@@ -1081,7 +1081,7 @@ inline void check_parsed_facial_lifecycle(VcdAuditArena& arena,const NativeVcdRu
     std::puts("PASS parsed VCD facial lifecycle, native controller mapping and paired client descriptor smoothing");
 }
 inline void check_parsed_cached_expression(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
-    const NativeSceneExecutionApi& execution,const ServerFacialRecordApi& admission,const ServerCachedFacialThinkApi& think,const ServerVfeCacheApi& bank_api,const ServerVfeRemapApi& remap_api,ParsedFacialClientPair& paired){
+    const NativeSceneExecutionApi& execution,const ServerFacialRecordApi& admission,const ServerCachedFacialThinkApi& think,const ServerVfeCacheApi& bank_api,const ServerVfeRemapApi& remap_api,ParsedFacialClientPair& paired,bool retail=false){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -1100,14 +1100,15 @@ inline void check_parsed_cached_expression(VcdAuditArena& arena,const NativeVcdR
         VcdAuditArena& arena;
         alignas(4) unsigned char scene[0x5ec]{},actor[server_npc_random_expression_extent]{};
         alignas(4) unsigned char source[256]{},copy[256]{};
-        unsigned reads{},closes{},allocs{},frees{},starts{},stops{};float now=10;
+        unsigned reads{},closes{},allocs{},frees{},starts{},stops{},rejections{};float now=10;
+        bool retail=false;
         std::uint32_t root=0;
         explicit Fixture(VcdAuditArena& a):arena(a){}
         static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
         static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept{
             auto& a=self(p).arena;return a.storage(&a,w,out,n);
         }
-    } f(arena);
+    } f(arena);f.retail=retail;
     F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;f.actor[0x1f0]=1;
     auto raw=arena.runtime();
     assert(runtime.parse(f.scene+0x410,"face.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
@@ -1118,20 +1119,22 @@ inline void check_parsed_cached_expression(VcdAuditArena& arena,const NativeVcdR
         auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);
     };
     cfg.host.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
-    cfg.host.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    cfg.host.diagnostic=[](void* p,ActorEventDiagnostic why,std::uint32_t root) noexcept -> int{
+        auto& f=Fixture::self(p);assert(f.retail&&why==ActorEventDiagnostic::StartRejected&&root==f.root);++f.rejections;return 1;
+    };
     cfg.extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
         auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;
     };
     cfg.now=[](void* p,float* out) noexcept -> int{*out=Fixture::self(p).now;return 1;};
     // Expression virtual admission remains hosted, unlike flexanimation.
     cfg.host.begin=[](void* p,void* actor,void*,std::uint32_t root,void* event,std::uint32_t,void* target,unsigned* accepted) noexcept -> int{
-        auto& f=Fixture::self(p);assert(actor==f.actor&&root==f.root&&!target&&F::word(event,0)==2);
+        auto& f=Fixture::self(p);assert(!f.retail&&actor==f.actor&&root==f.root&&!target&&F::word(event,0)==2);
         assert(!std::strcmp(static_cast<const char*>(event)+0x84,"phonemes_test"));
         assert(!std::strcmp(static_cast<const char*>(event)+0x104,"smile"));
         *accepted=1;return 1;
     };
     cfg.host.stop=[](void* p,void* actor,void* row,int arg,int zero,unsigned* accepted) noexcept -> int{
-        auto& f=Fixture::self(p);assert(actor==f.actor&&F::word(row,4)==f.root&&!arg&&!zero);*accepted=1;return 1;
+        auto& f=Fixture::self(p);assert(!f.retail&&actor==f.actor&&F::word(row,4)==f.root&&!arg&&!zero);*accepted=1;return 1;
     };
     cfg.host.check=[](void*,void*,void*,float,std::uint32_t,void* event,unsigned* accepted) noexcept -> int{
         assert(F::word(event,0)==2);*accepted=1;return 1;
@@ -1186,6 +1189,22 @@ inline void check_parsed_cached_expression(VcdAuditArena& arena,const NativeVcdR
     auto simulate=[&](float time){
         F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);
     };
+    if(retail){
+        assert(simulate(.5f)==1&&f.starts==1&&f.rejections==1&&!F::word(f.actor,0x5c4)&&!F::word(f.actor,0x5b8));
+        assert(think.run(f.actor,sizeof(f.actor),10,&cached));
+        paired.check(f.actor,0,0,10);
+        assert(simulate(1.5f)==1&&f.rejections==1&&!F::word(f.actor,0x5c4));
+        assert(think.run(f.actor,sizeof(f.actor),11,&cached));
+        paired.check(f.actor,0,0,11);
+        assert(simulate(2.5f)==1&&!f.stops);
+        assert(simulate(2.75f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
+        assert(think.run(f.actor,sizeof(f.actor),12,&cached));
+        paired.check(f.actor,0,0,12);
+        assert(!bank.count&&!remap.count&&!f.reads&&!f.allocs&&!f.closes&&!f.frees);
+        assert(runtime.destroy(f.root,&raw)==1&&arena.live.empty());
+        std::puts("PASS retail expression admission rejection preserves scene clock without facial record or VFE read");
+        return;
+    }
     assert(simulate(.5f)==1&&f.starts==1&&F::word(f.actor,0x5c4)==1);
     void* rows=nullptr;unsigned n=0;
     assert(Fixture::storage(&f,F::word(f.actor,0x5b8),&rows,&n)&&n>=0x40);

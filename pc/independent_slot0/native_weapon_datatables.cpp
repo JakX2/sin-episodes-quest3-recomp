@@ -11627,6 +11627,19 @@ int __cdecl server_facial_record_adapt(const ServerFacialRecordBindings* cfg,Act
         &facial_record_diagnostic,&facial_record_begin,&facial_record_stop,&facial_record_check};return 1;
 }
 const ServerFacialRecordApi server_facial_record_api{version,sizeof(ServerFacialRecordApi),&server_facial_record_adapt};
+int __cdecl retail_facial_record_begin(void* p,void* actor,void* record,std::uint32_t parsed,void* event,std::uint32_t ca,void* target,unsigned* out) noexcept {
+    if(!hologram_writable(record,0x40)||!sin_independent::vgui_layout::Readable(event,0x18c)||!hologram_writable(out,4))return 0;
+    // CBaseFlex 220f9640 accepts only switch types 3..10. CAI_BaseActor
+    // 2202bcc0 intercepts 8 and 16, but delegates ordinary expression (2).
+    // Successful transport with false AL is an ordinary rejected start.
+    if(hologram_read<unsigned>(event,0)==2){*out=0;return 1;}
+    return facial_record_begin(p,actor,record,parsed,event,ca,target,out);
+}
+int __cdecl server_retail_facial_record_adapt(const ServerFacialRecordBindings* cfg,ActorEventRecordBindings* out) noexcept {
+    if(!server_facial_record_adapt(cfg,out))return 0;
+    out->begin=&retail_facial_record_begin;return 1;
+}
+const ServerFacialRecordApi server_retail_facial_record_api{version,sizeof(ServerFacialRecordApi),&server_retail_facial_record_adapt};
 
 
 
@@ -13584,6 +13597,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerRetailFacialRecordApi=_SiN_GetServerRetailFacialRecordApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFacialRecordApi* __cdecl
+SiN_GetServerRetailFacialRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerFacialRecordApi)?&server_retail_facial_record_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerFacialRecordApi=_SiN_GetServerFacialRecordApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFacialRecordApi* __cdecl
