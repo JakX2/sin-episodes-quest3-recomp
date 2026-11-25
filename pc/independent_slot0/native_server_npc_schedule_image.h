@@ -97,4 +97,15 @@ struct ServerNpcFacingCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,ServerNpcFacingCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcFacingCatalogSchedulerApi=const ServerNpcFacingCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Gameplay extensions are opt-in, keep older catalog entry points intact.
+inline constexpr char server_npc_animation_catalog_scheduler_export[]="SiN_GetServerNpcAnimationCatalogSchedulerApi";
+struct ServerNpcAnimationCatalogSchedulerResult {
+    ServerNpcFacingCatalogSchedulerResult facing;
+    ServerNpcSharedTargetAnimationStats target_animation;
+};
+struct ServerNpcAnimationCatalogSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,ServerNpcAnimationCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcAnimationCatalogSchedulerApi=const ServerNpcAnimationCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
