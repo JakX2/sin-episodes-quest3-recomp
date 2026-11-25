@@ -20,4 +20,15 @@ struct ServerNpcInheritedScheduleApi {
     int (__cdecl *burst)(void*,const ServerNpcInheritedScheduleBindings*,int*) noexcept;
 };
 using GetServerNpcInheritedScheduleApi=const ServerNpcInheritedScheduleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_class_schedule_services_export[]="SiN_GetServerNpcClassScheduleServicesApi";
+struct ServerNpcClassScheduleServicesResult {
+    ServerNpcClassScheduleTranslationResult translation;
+    ServerNpcInheritedScheduleResult inherited;
+    unsigned inherited_calls,burst_calls,interval_calls;
+};
+struct ServerNpcClassScheduleServicesApi {
+    std::uint32_t version,size;
+    int (__cdecl *translate)(void*,unsigned,std::uint32_t,int,float,const ServerNpcClassScheduleTranslationBindings*,const ServerNpcInheritedScheduleBindings*,ServerNpcClassScheduleServicesResult*) noexcept;
+};
+using GetServerNpcClassScheduleServicesApi=const ServerNpcClassScheduleServicesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

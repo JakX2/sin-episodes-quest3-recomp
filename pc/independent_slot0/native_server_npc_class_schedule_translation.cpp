@@ -1,8 +1,11 @@
-#include "native_server_npc_class_schedule_translation.h"
+#include "native_server_npc_inherited_schedule.h"
+#include "native_server_weapon_script_view.h"
 #include <cmath>
 #include <cstring>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSubclassSchedulerApi* __cdecl SiN_GetServerNpcSubclassSchedulerApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcInheritedScheduleApi* __cdecl SiN_GetServerNpcInheritedScheduleApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWeaponScriptViewApi* __cdecl SiN_GetServerWeaponScriptViewApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* p,unsigned off) noexcept{T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -13,6 +16,8 @@ struct Call{
     ServerNpcClassScheduleTranslationResult& o;
     const ServerNpcConditionApi* cond;
     bool ok=true;
+    const ServerNpcInheritedScheduleBindings* inherited=nullptr;
+    ServerNpcClassScheduleServicesResult* services=nullptr;
     bool has(int id) noexcept{
         ServerNpcConditionResult r{};++o.condition_tests;
         if(!ok||!cond->test(a,n,id,NpcConditionCurrent,&b.conditions,&r)){ok=false;return false;}return r.value!=0;
@@ -23,7 +28,31 @@ struct Call{
     int random(int lo,int hi) noexcept{int v=0;++o.random_calls;if(!ok||!b.random||!b.random(b.context,lo,hi,&v)||v<lo||v>hi)ok=false;return v;}
     bool rules(int id) noexcept{bool yes=false;if(!b.rules_int||!b.rules_int(b.context,id,&yes))ok=false;return yes;}
     bool rules_f(float v) noexcept{bool yes=false;if(!b.rules_float||!b.rules_float(b.context,v,&yes))ok=false;return yes;}
-    bool parent(int id,int& out) noexcept{++o.parent_calls;return ok&&b.parent&&b.parent(b.context,a,id,&out);}
+    bool parent(int id,int& out) noexcept{
+        ++o.parent_calls;if(!ok)return false;
+        if(inherited&&services){
+            const auto* api=SiN_GetServerNpcInheritedScheduleApi(1,sizeof(ServerNpcInheritedScheduleApi));
+            ++services->inherited_calls;
+            if(!api||!api->translate(a,n,id,inherited,&services->inherited))return false;
+            out=services->inherited.output;return true;
+        }
+        return b.parent&&b.parent(b.context,a,id,&out);
+    }
+    bool burst(void* w,int& value) noexcept {
+        if(inherited&&services){
+            const auto* api=SiN_GetServerNpcInheritedScheduleApi(1,sizeof(ServerNpcInheritedScheduleApi));
+            ++services->burst_calls;return api&&api->burst(w,inherited,&value);
+        }
+        return b.burst&&b.burst(b.context,w,&value);
+    }
+    bool interval(void* w,double& value) noexcept {
+        if(inherited&&services){
+            const auto* api=SiN_GetServerWeaponScriptViewApi(1,sizeof(ServerWeaponScriptViewApi));
+            const auto& reg=inherited->entities;unsigned kind=0;++services->interval_calls;
+            return api&&reg.classify&&reg.classify(reg.context,w,&kind)&&api->interval(kind,&value);
+        }
+        return b.interval&&b.interval(b.context,w,&value);
+    }
     bool distance(void* e,bool center,double& d) noexcept{return b.distance&&b.distance(b.context,a,e,center,&d)&&std::isfinite(d);}
     bool translate(int id,int& out) noexcept{
         if(++o.steps>8||!ok)return false;
@@ -104,8 +133,8 @@ struct Call{
             wr<std::uint8_t>(a,0xca0,1);
             if(void* w=entity(0x78c)){
                 int burst=0;double interval=0;
-                if(!b.burst||!b.burst(b.context,w,&burst))return false;wr(a,0xc98,burst);
-                if(!b.interval||!b.interval(b.context,w,&interval)||!std::isfinite(interval))return false;
+                if(!this->burst(w,burst))return false;wr(a,0xc98,burst);
+                if(!this->interval(w,interval)||!std::isfinite(interval))return false;
                 const float f=static_cast<float>(interval),deadline=static_cast<float>(now+interval-.1);
                 if(!std::isfinite(f)||!std::isfinite(deadline))return false;wr(a,0xc9c,f);
                 if(rd<float>(a,0x60c)!=deadline){
@@ -122,18 +151,33 @@ struct Call{
         }
     }
 };
-int __cdecl translate(void* a,unsigned n,std::uint32_t v,int id,float now,const ServerNpcClassScheduleTranslationBindings* b,ServerNpcClassScheduleTranslationResult* out) noexcept{
+int translate_impl(void* a,unsigned n,std::uint32_t v,int id,float now,const ServerNpcClassScheduleTranslationBindings* b,ServerNpcClassScheduleTranslationResult* out,const ServerNpcInheritedScheduleBindings* inherited=nullptr,ServerNpcClassScheduleServicesResult* services=nullptr) noexcept{
     if(!out)return 0;*out={};out->input=id;out->output=-1;
     const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
     const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
     if(!a||!b||!cls||!cond||!cls->classify(v,&out->subclass)||n<(out->subclass==NpcSubclassJetpack?0x1085u:0xcacu)||!std::isfinite(now))return 0;
     if(b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
-    Call q{a,n,now,*b,*out,cond};return q.translate(id,out->output);
+    Call q{a,n,now,*b,*out,cond,true,inherited,services};return q.translate(id,out->output);
 }
+int __cdecl translate(void* a,unsigned n,std::uint32_t v,int id,float now,const ServerNpcClassScheduleTranslationBindings* b,ServerNpcClassScheduleTranslationResult* out) noexcept{
+    return translate_impl(a,n,v,id,now,b,out);
+}
+int __cdecl translate_services(void* a,unsigned n,std::uint32_t v,int id,float now,const ServerNpcClassScheduleTranslationBindings* b,const ServerNpcInheritedScheduleBindings* inherited,ServerNpcClassScheduleServicesResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!b||!inherited)return 0;
+    auto bound=*inherited;bound.entities=b->entities;
+    return translate_impl(a,n,v,id,now,b,&out->translation,&bound,out);
+}
+const ServerNpcClassScheduleServicesApi services_api{1,sizeof(ServerNpcClassScheduleServicesApi),&translate_services};
 const ServerNpcClassScheduleTranslationApi api{1,sizeof(ServerNpcClassScheduleTranslationApi),&translate};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcClassScheduleTranslationApi=_SiN_GetServerNpcClassScheduleTranslationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcClassScheduleTranslationApi* __cdecl SiN_GetServerNpcClassScheduleTranslationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcClassScheduleTranslationApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcClassScheduleServicesApi=_SiN_GetServerNpcClassScheduleServicesApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcClassScheduleServicesApi* __cdecl SiN_GetServerNpcClassScheduleServicesApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcClassScheduleServicesApi)?&services_api:nullptr;
 }
