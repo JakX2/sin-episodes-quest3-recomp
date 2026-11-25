@@ -331,5 +331,21 @@ int main(int argc,char** argv){
     f.obs_gate=false;f.put(f.a,0xb4,0x400u);f.obs_pvs=true;observe();assert(obs.gate_handled&&!obs.flag_gate&&obs.pvs&&f.component[8]==0);
     f.obs_handled=false;observe();assert(!obs.gate_handled&&obs.flag_gate&&obs.shared.lifecycle.completed&&f.component[8]==0&&(f.trace==std::vector<int>{2,51}));
     f.put(f.a,0xc18,0u);run(6,true,0,30);assert(o.parent_called&&!o.native);
+    // Original task53 stores current time without inspecting the argument.
+    f.put(f.a,0x8f0,12.f);f.put(f.a,0x9dc,77.f);run(53,false,99,31.5f);
+    assert(o.native&&o.lifecycle.completed&&f.get<float>(0x8f0)==31.5f&&f.get<float>(0x9dc)==77.f&&f.trace.empty());
+    run(53,true,0,31.5f);assert(o.parent_called&&!o.native);
+    // Original condition 0x30 is resolved through the class descriptor.
+    f.put(f.a,0x7d0,1u<<16);
+    run(123,false,0,32);assert(o.native&&!o.lifecycle.completed);
+    run(123,true,999,33);assert(o.native&&!o.lifecycle.completed);
+    f.put(f.a,0x7d0,0u);run(123,true,0,34);assert(o.lifecycle.completed);
+    run(123,false,0,35);assert(o.lifecycle.completed);
+    // Unmapped condition is false, as in original helper.
+    f.put(f.desc,0x3c,47);run(123,false,0,35);assert(o.lifecycle.completed);f.put(f.desc,0x3c,127);
+    f.put(f.a,0xc18,77u);f.component_handles=true;f.put(f.a,0x8f0,19.f);
+    run(53,false,0,36);assert(o.component_handled&&!o.native&&f.get<float>(0x8f0)==19.f);
+    run(123,true,0,36);assert(o.component_handled&&!o.native);
+    f.put(f.a,0xc18,0u);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcActivityTranslateApi* __cdecl SiN_GetServerNpcActivityTranslateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTaskLifecycleApi* __cdecl SiN_GetServerNpcTaskLifecycleApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTransitionApi* __cdecl SiN_GetServerNpcTransitionApi(std::uint32_t,std::uint32_t) noexcept;
@@ -54,8 +55,8 @@ int __cdecl supports(int id,bool running) noexcept{
         float value=0;
         return running||fixed_shoot_metric(value);
     }
-    if(running)return id==2||id==4||id==5||id==86||id==92||id==93||id==114||id==115||id==128;
-    return (id>=1&&id<=7)||id==13||id==59||id==86||id==87||id==88||id==91||(id>=92&&id<=97)||id==113||id==114||id==115||id==119||id==120||id==128||id==131;
+    if(running)return id==2||id==4||id==5||id==86||id==92||id==93||id==114||id==115||id==123||id==128;
+    return (id>=1&&id<=7)||id==13||id==53||id==59||id==86||id==87||id==88||id==91||(id>=92&&id<=97)||id==113||id==114||id==115||id==119||id==120||id==123||id==128||id==131;
 }
 bool quantize_yaw(double value,float& out) noexcept{
     int fixed=0;
@@ -460,6 +461,11 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         }
         return b->pending&&b->pending(b->context,a,id);
     };
+    if(t->id==123){
+        const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));ServerNpcConditionResult result{};
+        if(!cond||!cond->test(a,n,0x30,NpcConditionCurrent,&b->lifecycle.conditions,&result))return 0;
+        return result.value||complete();
+    }
     if(running){
         if(t->id==115)return 1;
         if(t->id==128){unsigned yes=0;if(!life->animation_finished(a,n,&yes))return 0;return !yes||complete();}
@@ -478,6 +484,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
     }
     if(t->id==1){wr(a,0x878,0);return complete();}
     if(t->id==3)return complete();
+    if(t->id==53){wr(a,0x8f0,now);return complete();}
     if(t->id==6||t->id==13||t->id==97||t->id==113||t->id==115)return 1;
     if(t->id==128)return pending(70);
     if(t->id==131){if(!wait(a,n,now,4.f,0.f,b,&out->ticks))return 0;out->timer_written=1;return 1;}

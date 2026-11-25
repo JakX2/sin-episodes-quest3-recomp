@@ -304,6 +304,9 @@ int main(int argc,char** argv){
     install_at(81,3);f.put(f.actor,0xb4,0x400u);
     assert(observation_api->run(f.actor,sizeof(f.actor),69,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&observed)&&observed.observation.calls==1&&observed.observation.last.flag_gate&&!observed.observation.last.pvs_called&&observed.observation.last.shared.lifecycle.completed);
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
+    install_at(96,4); // SCHED_GRUNT_GRENADE_COVER1: original timestamp task53
+    assert(shared_api->run(f.actor,sizeof(f.actor),69.5f,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&sh.shared.last.task==53&&sh.shared.last.lifecycle.completed);
+    float cover_stamp=0;std::memcpy(&cover_stamp,f.actor+0x8f0,4);assert(cover_stamp==69.5f);
     // Original range-attack schedule: task138 is the fourth entry (0.3 seconds).
     using DifficultyApi=sin_port::fixed_service::Api;
     using GetDifficultyApi=const DifficultyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
