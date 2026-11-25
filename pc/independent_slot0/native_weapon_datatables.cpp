@@ -27,6 +27,7 @@
 #include "native_server_cached_facial_think.h"
 #include "choreography_indexed_rb.h"
 #include "response_rule_scoring.h"
+#include "response_group_choice.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
 #include <cstdio>
@@ -8039,6 +8040,97 @@ int __cdecl response_rule_best(void* system,unsigned bytes,void* criteria,unsign
     *selected=pick;return 1;
 }
 const ResponseRuleRankingApi response_rule_ranking_api{version,sizeof(ResponseRuleRankingApi),&response_rule_best};
+
+struct NativeResponseFinderCall {
+    const NativeResponseFinderBindings& b;void* exp;
+    static NativeResponseFinderCall& self(void* p) noexcept{return *static_cast<NativeResponseFinderCall*>(p);}
+};
+int __cdecl native_response_finder(void* p,void* system,void* criteria,void* response,void* exp,unsigned* found) noexcept {
+    const auto* b=static_cast<const NativeResponseFinderBindings*>(p);
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+       !b->random_float||!b->group_by_name||!b->rule_name||!b->clone_criteria||
+       !hologram_writable(response,0x124)||!hologram_writable(found,4)||
+       !sin_independent::vgui_layout::Readable(exp,0x7c)||
+       hologram_read<std::uint32_t>(response,0x84))return 0;
+    int winner=-1;
+    if(response_rule_best(system,0xcc,criteria,response_criteria_bytes,&b->ranking,
+        b->rank_scratch,b->rank_capacity,&winner)!=1)return 0;
+    // Retail constructs a criteria copy even without a winning rule.
+    // Do not create an orphan copy on the existing finder-false branch.
+    if(winner<0){*found=0;return 1;}
+    NativeRuleRankingCall store{system,criteria,b->ranking};rr::Bytes rule{};
+    if(!store.row(0xb8,rr::rule_stride,rr::rule_bytes,unsigned(winner),rule)||
+       !hologram_writable(const_cast<unsigned char*>(rule.p),rr::rule_bytes))return 0;
+    const auto group_count=rule.get<int>(0x20);
+    if(group_count<0||group_count>int(rr::row_limit))return 0;
+    unsigned kind=0;char value[128]{},rule_text[128]{};
+    std::uint32_t params[7]{0,100,0,0,0,0,0};
+    auto copy_text=[](char (&dest)[128],const char* text){
+        if(!text)return false;
+        for(unsigned i=0;i<127;++i){
+            if(!sin_independent::vgui_layout::Readable(text+i,1))return false;
+            if(!(dest[i]=text[i]))return true;
+        }
+        dest[127]=0;return true;};
+    NativeResponseFinderCall call{*b,exp};rr::GroupChoice choice{};choice.context=&call;
+    choice.filter=[](void* p,unsigned kind,std::uint32_t word,unsigned* yes) noexcept{
+        const auto& call=NativeResponseFinderCall::self(p);const char* text=nullptr;
+        if(kind==3&&(!call.b.ranking.string(call.b.ranking.context,word,&text)||!text))return false;
+        return response_scene_filter(call.exp,0x7c,&call.b.scene_filter,kind,text,yes)==1;};
+    choice.random=[](void* p,float low,float high,float* out) noexcept{
+        const auto& b=NativeResponseFinderCall::self(p).b;return b.random_float(b.context,low,high,out)!=0;};
+    if(group_count){
+        rr::Bytes groups{};int draw=0;
+        if(!store.storage(rule.get<std::uint32_t>(0x14),groups)||!groups.has(unsigned(group_count)*4)||
+           !b->ranking.draw(b->ranking.context,0,group_count-1,&draw)||draw<0||draw>=group_count)return 0;
+        int group=groups.get<int>(unsigned(draw)*4);
+        if(group<0)return 0;
+        for(unsigned depth=0;;++depth){
+            if(depth>=64)return 0;
+            rr::Bytes g{};
+            if(!store.row(8,rr::group_stride,rr::group_bytes,unsigned(group),g))return 0;
+            auto* raw=const_cast<unsigned char*>(g.p);
+            if(!hologram_writable(raw,rr::group_bytes))return 0;
+            const int count=g.get<int>(0xc);
+            if(count<0||count>int(rr::row_limit))return 0;
+            if(!count||!raw[0x3c])break;
+            rr::Bytes rows{};
+            if(!store.storage(g.get<std::uint32_t>(0),rows)||!rows.has(unsigned(count)*rr::response_row_bytes)||
+               !hologram_writable(const_cast<unsigned char*>(rows.p),unsigned(count)*rr::response_row_bytes))return 0;
+            if(raw[0x30]&&!raw[0x3a]&&(b->reject_capacity<unsigned(count)*2||
+               !hologram_writable(b->reject_scratch,unsigned(count)*8)))return 0;
+            int selected=-1;
+            if(!rr::choose_group(raw,rr::group_bytes,const_cast<unsigned char*>(rows.p),rows.n,choice,
+                b->reject_scratch,b->reject_capacity,selected))return 0;
+            if(selected<0)break;
+            rr::Bytes entry{rows.p+unsigned(selected)*rr::response_row_bytes,rr::response_row_bytes};
+            const auto type=entry.get<unsigned>(0);const char* text=nullptr;
+            if(!b->ranking.string(b->ranking.context,entry.get<std::uint32_t>(4),&text)||!text)return 0;
+            if(type==4){
+                if(!b->group_by_name(b->context,system,text,&group)||group< -1)return 0;
+                if(group==-1)break;
+                continue;
+            }
+            kind=type;
+            if(!copy_text(value,text))return 0;
+            std::memcpy(params,g.p+0x14,sizeof(params));break;
+        }
+    }
+    const char* name=nullptr;
+    if(!b->rule_name(b->context,system,hologram_read<std::uint16_t>(rule.p-4,0),&name)||!copy_text(rule_text,name))return 0;
+    // 2209b298: match-once rule is disabled on finding the rule,
+    // even when its chosen group yields no entry.
+    if(rule.p[0x28])const_cast<unsigned char*>(rule.p)[0x29]=0;
+    void* copy=nullptr;
+    if(!b->clone_criteria(b->context,criteria,&copy)||!copy)return 0;
+    hologram_write(response,0,kind);
+    std::memcpy(static_cast<unsigned char*>(response)+4,value,sizeof(value));
+    hologram_write(response,0x84,scene_word(copy));
+    std::memcpy(static_cast<unsigned char*>(response)+0x88,params,sizeof(params));
+    std::memcpy(static_cast<unsigned char*>(response)+0xa4,rule_text,sizeof(rule_text));
+    *found=1;return 1;
+}
+const NativeResponseFinderApi native_response_finder_api{version,sizeof(NativeResponseFinderApi),&native_response_finder};
 
 int __cdecl response_criteria_remove(void* c,unsigned bytes,const ResponseCriteriaRemovalBindings* b,const char* name) noexcept {
     ResponseCriteriaIndex t{};
@@ -16439,6 +16531,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseR
 SiN_GetResponseRuleRankingApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseRuleRankingApi)?&response_rule_ranking_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNativeResponseFinderApi=_SiN_GetNativeResponseFinderApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeResponseFinderApi* __cdecl
+SiN_GetNativeResponseFinderApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeResponseFinderApi)?&native_response_finder_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

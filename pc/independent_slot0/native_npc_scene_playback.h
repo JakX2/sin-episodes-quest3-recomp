@@ -1122,6 +1122,27 @@ struct ResponseRuleRankingApi {
     int (__cdecl *best)(void* system,unsigned,void* criteria,unsigned,const ResponseRuleRankingBindings*,int* scratch,unsigned capacity,int* selected) noexcept;
 };
 using GetResponseRuleRankingApi=const ResponseRuleRankingApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char native_response_finder_export[]="SiN_GetNativeResponseFinderApi";
+struct NativeResponseFinderBindings {
+    ResponseRuleRankingBindings ranking;
+    ResponseSceneFilterBindings scene_filter;
+    void* context;
+    int* rank_scratch;unsigned rank_capacity;
+    int* reject_scratch;unsigned reject_capacity;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *group_by_name)(void*,void* system,const char*,int*) noexcept;
+    int (__cdecl *rule_name)(void*,void* system,std::uint16_t,const char**) noexcept;
+    // Successful nonnull copy transfers to the response; on failure leaves
+    // no owned allocation. Native CriteriaSet copy constructor still external.
+    int (__cdecl *clone_criteria)(void*,void*,void**) noexcept;
+};
+struct NativeResponseFinderApi {
+    std::uint32_t version,size;
+    // Callback compatible with ResponseSelectionBindings.find. Synchronous,
+    // caller-owned scratch and initialized 0x124-byte response.
+    int (__cdecl *find)(void*,void* system,void* criteria,void* response,void* exp,unsigned* found) noexcept;
+};
+using GetNativeResponseFinderApi=const NativeResponseFinderApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_criteria_removal_export[]="SiN_GetResponseCriteriaRemovalApi";
 struct ResponseCriteriaRemovalBindings {
     ResponseCriteriaTreeBindings tree;

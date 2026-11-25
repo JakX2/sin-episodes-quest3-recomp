@@ -745,7 +745,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1096,8 +1096,8 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     }
     if(ranking){
         struct Rules {
-            alignas(4) unsigned char sys[0xcc]{},criteria[3*0x14c]{},rules[4*0x40]{},ids[4][8]{};
-            int draws=0;int pick=1;
+            alignas(4) unsigned char sys[0xcc]{},criteria[3*0x14c]{},rules[4*0x40]{},ids[4][8]{},groups[2*0x58]{},entries[2][40]{},groupids[4]{},exp[0x7c]{},response[0x124]{},copy[0x5c]{},meta[8]{};
+            int draws=0,groupdraws=0,clones=0;int pick=1;
             static Rules& self(void* p){return *static_cast<Rules*>(p);}
         } r;
         ResponseRuleRankingBindings h{};h.criteria=b;h.context=&r;
@@ -1106,15 +1106,18 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
             if(word==F::ptr(r.criteria)){*out=r.criteria;*n=sizeof(r.criteria);return 1;}
             if(word==F::ptr(r.rules)){*out=r.rules;*n=sizeof(r.rules);return 1;}
             for(auto& ids:r.ids)if(word==F::ptr(ids)){*out=ids;*n=sizeof(ids);return 1;}
+            if(word==F::ptr(r.groups)){*out=r.groups;*n=sizeof(r.groups);return 1;}
+            if(word==F::ptr(r.groupids)){*out=r.groupids;*n=sizeof(r.groupids);return 1;}
+            for(auto& e:r.entries)if(word==F::ptr(e)){*out=e;*n=sizeof(e);return 1;}
             return 0;};
         h.string=[](void*,std::uint32_t word,const char** out) noexcept -> int{
-            switch(word){case 1:*out="concept";break;case 2:*out="enemy";break;case 3:*out="missing";break;default:return 0;}return 1;};
+            switch(word){case 1:*out="concept";break;case 2:*out="enemy";break;case 3:*out="missing";break;case 5:*out="nested";break;case 6:*out="scenes/test.vcd";break;case 7:*out="fallback";break;default:return 0;}return 1;};
         h.enumeration=[](void*,const char*,float* v,unsigned* found) noexcept -> int{*v=0;*found=0;return 1;};
         h.get_string=[](void*,void* child,const char* field,const char* fallback,const char** out) noexcept -> int{
             assert(!std::strcmp(field,"value")&&!*fallback);*out=static_cast<State::Child*>(child)->value;return 1;};
         h.get_float=[](void*,void* child,const char* field,float fallback,float* out) noexcept -> int{
             assert(!std::strcmp(field,"weight")&&fallback==1.f);*out=static_cast<State::Child*>(child)->weight;return 1;};
-        h.draw=[](void* p,int lo,int hi,int* out) noexcept -> int{auto& r=Rules::self(p);assert(lo==0&&hi==1);++r.draws;*out=r.pick;return 1;};
+        h.draw=[](void* p,int lo,int hi,int* out) noexcept -> int{auto& r=Rules::self(p);assert(lo==0&&(hi==0||hi==1));if(!hi){++r.groupdraws;*out=0;}else{++r.draws;*out=r.pick;}return 1;};
         F::put(r.sys,0x60,F::ptr(r.criteria));F::put(r.sys,0x64,3);
         F::put(r.sys,0xb8,F::ptr(r.rules));F::put(r.sys,0xbc,4);F::put(r.sys,0xc8,4);
         auto criterion=[&](unsigned i,unsigned key,const char* expr,float weight,bool required){
@@ -1137,6 +1140,38 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         F::put(r.sys,0xc8,0);
         assert(best()==1&&selected==-1);
         F::put(r.sys,0xc8,5);assert(best()==0);
+        if(finder){
+            F::put(r.sys,0xc8,1);
+            F::put(r.sys,8,F::ptr(r.groups));F::put(r.sys,0xc,2);
+            auto* rule0=r.rules+0x14;F::put(rule0,0x14,F::ptr(r.groupids));F::put(rule0,0x20,1);
+            F::put(r.rules,0x10,9);
+            for(unsigned i=0;i<2;++i){
+                auto* g=r.groups+i*0x58;F::put(g,0,0xffffffffu);g+=0x14;
+                F::put(g,0,F::ptr(r.entries[i]));F::put(g,0xc,i?2:1);g[0x3a]=g[0x3c]=1;F::put(g,0x18,100);
+            }
+            F::put(r.entries[0],0,4);F::put(r.entries[0],4,5);
+            F::put(r.entries[1],0,3);F::put(r.entries[1],4,6);
+            F::put(r.entries[1],20,1);F::put(r.entries[1],24,7);
+            F::fl(r.meta,4,0.f);F::put(r.exp,4,F::ptr(r.copy));
+            NativeResponseFinderBindings cfg{};cfg.ranking=h;cfg.context=&r;cfg.rank_scratch=scratch;cfg.rank_capacity=4;
+            int rejected[4]{};cfg.reject_scratch=rejected;cfg.reject_capacity=4;
+            cfg.random_float=[](void*,float,float,float*) noexcept -> int{assert(false);return 0;};
+            cfg.group_by_name=[](void*,void*,const char* name,int* out) noexcept -> int{assert(!std::strcmp(name,"nested"));*out=1;return 1;};
+            cfg.rule_name=[](void*,void*,std::uint16_t symbol,const char** out) noexcept -> int{assert(symbol==9);*out="test_rule";return 1;};
+            cfg.clone_criteria=[](void* p,void*,void** out) noexcept -> int{auto& r=Rules::self(p);++r.clones;*out=r.copy;return 1;};
+            auto& sh=cfg.scene_filter;sh.context=&r;
+            sh.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{auto& r=Rules::self(p);assert(word==F::ptr(r.copy));*out=r.copy;*n=sizeof(r.copy);return 1;};
+            sh.resolve_name=[](void*,void*,const char* name,char* out,unsigned n) noexcept -> int{assert(n==256&&!std::strcmp(name,"scenes/test.vcd"));std::strcpy(out,name);return 1;};
+            sh.metadata=[](void* p,const char*,void** out,unsigned* n) noexcept -> int{auto& r=Rules::self(p);*out=r.meta;*n=sizeof(r.meta);return 1;};
+            unsigned found=99;
+            auto find=[&](){std::memset(r.response,0,sizeof(r.response));return finder->find(&cfg,r.sys,c,r.response,r.exp,&found);};
+            assert(find()&&found==1&&F::word(r.response,0)==1&&r.clones==1&&r.groupdraws==1);
+            assert(!std::strcmp(reinterpret_cast<char*>(r.response+4),"fallback")&&!std::strcmp(reinterpret_cast<char*>(r.response+0xa4),"test_rule"));
+            assert(F::word(r.response,0x84)==F::ptr(r.copy)&&F::word(r.response,0x8c)==100);
+            F::put(r.groups+0x58+0x14,0x40,0);F::fl(r.meta,4,2.5f);rule0[0x28]=1;
+            assert(find()&&found==1&&F::word(r.response,0)==3&&r.clones==2&&!rule0[0x29]);
+            assert(find()&&found==0&&r.clones==2);
+        }
         assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
     }
 }
