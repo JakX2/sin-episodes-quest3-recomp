@@ -3,6 +3,7 @@
 #include "response_rule_scoring.h"
 #include "native_npc_dialogue.h"
 #include "test_retail_dialogue_source.h"
+#include "server_script_response_history.h"
 #include "native_server_event_intensity.h"
 #include "native_server_facial_records.h"
 #include "native_server_composed_facial_think.h"
@@ -747,7 +748,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr,const char* private_scripts=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr,const char* private_scripts=nullptr,const ResponseHistoryTreeApi* historyTree=nullptr,const ExpeditorLifecycleApi* expLifecycle=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1209,7 +1210,7 @@ rule parsed_rule
     if(criteriaCopy){
         struct Roots {
             struct Child {char name[32]{},value[64]{};float weight=0;Child* next=nullptr;};
-            struct Root {Child children[32]{};unsigned count=0;bool live=false;} root[2]{};
+            struct Root {Child children[32]{};unsigned count=0;bool live=false;} root[3]{};
             unsigned destroyed=0;bool fail_copy=false;
             static Roots& self(void* p){return *static_cast<Roots*>(p);}
         } roots;
@@ -1282,6 +1283,85 @@ rule parsed_rule
             assert(ownedCriteria->clear(pool.response,sizeof(pool.response),&owned)==-1&&!pool.live&&!F::word(pool.response,0x84)&&pool.releases==4);
             assert(ownedCriteria->clear(pool.response,sizeof(pool.response),&owned)==1&&pool.releases==4);
             assert(api.destroy(c,sizeof(c),&h)==1&&a.live.empty());
+        }
+        if(scriptActor&&ownedCriteria&&record&&historyTree&&expLifecycle){
+            // Native history tree retains one real response-owned CriteriaSet
+            // while a second response is constructed, then replaces it.
+            struct Pool {
+                alignas(4) unsigned char copies[2][response_criteria_bytes]{},responses[2][0x124]{};
+                bool copy_live[2]{},response_live[2]{};
+                unsigned allocations=0,releases=0,drops=0,notifications=0;
+                float now=10;bool fail_notify=false;
+                VcdAuditArena* arena=nullptr;
+                sin_port::map_host::ScriptResponseHistoryOwner* owner=nullptr;
+            } pool;
+            pool.arena=&a;
+            ScriptActorSelectionBindings ownership{};ownership.actor.selection.criteria=h;
+            ownership.actor.selection.host.context=&pool;
+            ownership.actor.selection.host.destroy=[](void* p,void* response) noexcept -> int{
+                auto& x=*static_cast<Pool*>(p);
+                for(unsigned i=0;i<2;++i)if(response==x.responses[i]){
+                    assert(x.response_live[i]&&!x.copy_live[i]);x.response_live[i]=false;++x.drops;return 1;}
+                return 0;};
+            ownership.owned.copy=cfg;ownership.owned.context=&pool;
+            ownership.owned.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+                auto& x=*static_cast<Pool*>(p);assert(n==response_criteria_bytes);
+                for(unsigned i=0;i<2;++i)if(!x.copy_live[i]&&!x.response_live[i]){
+                    x.copy_live[i]=true;++x.allocations;*out=x.copies[i];*bytes=n;return 1;}
+                return 0;};
+            ownership.owned.release=[](void* p,void* copy) noexcept -> int{
+                auto& x=*static_cast<Pool*>(p);
+                for(unsigned i=0;i<2;++i)if(copy==x.copies[i]){
+                    assert(x.copy_live[i]);x.copy_live[i]=false;++x.releases;return 1;}
+                return 0;};
+            ResponseHistoryTreeBindings hb{};hb.memory=a.vector_bindings;hb.symbols=a.intern_bindings;hb.context=&pool;
+            hb.clock=[](void* p,float* out) noexcept -> int{*out=static_cast<Pool*>(p)->now;return 1;};
+            hb.notify=[](void* p,void*,const char*) noexcept -> int{
+                auto& x=*static_cast<Pool*>(p);++x.notifications;return !x.fail_notify;};
+            ResponseHistoryBindings history{};assert(historyTree->adapt(&hb,&history));
+            sin_port::map_host::ScriptResponseHistoryOwner owner(*scriptActor,*record,ownership,history);
+            assert(owner.ready());pool.owner=&owner;
+            alignas(4) unsigned char exp[0x7c]{};
+            int npc=0;ExpeditorControl control{exp,sizeof(exp)};
+            ExpeditorTables tables{0x11110000,0x22220000,0x33330000,0x44440000};
+            SpeechSemaphorePair sem{};ExpeditorLifecycleBindings life{};life.context=&pool;
+            life.symbol_construct=[](void* p,void* symbol,int,int,unsigned) noexcept -> int{
+                auto& a=*static_cast<Pool*>(p)->arena;return a.symbol_api.construct_empty(symbol,0x34,0,0x2228e9b0)==1;};
+            life.symbol_destroy=[](void* p,void* symbol) noexcept -> int{
+                auto& a=*static_cast<Pool*>(p)->arena;return a.retire.symbol_destroy(&a,symbol);};
+            life.row=[](void* p,void* exp,unsigned index,void** out,unsigned* extent) noexcept -> int{
+                auto& a=*static_cast<Pool*>(p)->arena;void* rows=nullptr;unsigned bytes=0;
+                if(index>=F::word(exp,0x18)||!a.storage(&a,F::word(exp,0x14),&rows,&bytes)||bytes<(index+1)*28)return 0;
+                *out=static_cast<unsigned char*>(rows)+index*28;*extent=28;return 1;};
+            life.destroy_response=[](void* p,std::uint32_t word) noexcept -> int{return static_cast<Pool*>(p)->owner->retire_word(word);};
+            life.free_rows=[](void* p,std::uint32_t word) noexcept -> int{
+                auto& a=*static_cast<Pool*>(p)->arena;return a.release(&a,word);};
+            life.classify=[](void*,void*,int,unsigned* out) noexcept -> int{*out=1;return 1;};
+            life.resolve=[](void*,std::uint32_t,void** out) noexcept -> int{*out=nullptr;return 1;};
+            assert(expLifecycle->construct(&control,&npc,&tables,&life)==1);
+            auto make=[&](const char* value){
+                assert(api.construct(c,sizeof(c),&h)==1&&api.add(&h,c,"concept",value,5));
+                void* copy=nullptr;assert(ownedCriteria->clone(&ownership.owned,c,&copy)==1);
+                assert(api.destroy(c,sizeof(c),&h)==1);
+                const unsigned i=copy==pool.copies[0]?0:1;
+                assert(copy==pool.copies[i]&&!pool.response_live[i]);pool.response_live[i]=true;
+                std::memset(pool.responses[i],0,sizeof(pool.responses[i]));F::put(pool.responses[i],0x84,F::ptr(copy));
+                return pool.responses[i];};
+            auto row=[&](){
+                int index=-1;void* entry=nullptr;unsigned n=0;
+                assert(history.lookup(history.context,exp,"TLK_IDLE",&index)&&index>=0);
+                assert(history.entry(history.context,exp,index,&entry,&n)&&n==28);return entry;};
+            auto* first=make("TLK_IDLE");
+            assert(owner.record(exp,"TLK_IDLE",first)&&pool.notifications==1&&F::word(row(),0x18)==F::ptr(first));
+            pool.now=14;auto* second=make("TLK_IDLE");assert(second!=first&&pool.copy_live[0]&&pool.copy_live[1]);
+            assert(owner.record(exp,"TLK_IDLE",second)&&pool.notifications==2&&pool.drops==1&&pool.releases==1&&F::word(row(),0x18)==F::ptr(second));
+            pool.now=18;pool.fail_notify=true;auto* third=make("TLK_IDLE");assert(third==first);
+            assert(!owner.record(exp,"TLK_IDLE",third)&&pool.notifications==3&&pool.drops==2&&pool.releases==2&&F::word(row(),0x18)==F::ptr(third));
+            // Notification failure still transferred ownership to history.
+            assert(pool.response_live[0]&&pool.copy_live[0]&&!pool.response_live[1]&&!pool.copy_live[1]);
+            assert(expLifecycle->clear(&control,&life)==1&&pool.drops==3&&pool.releases==3&&!F::word(exp,0x24));
+            assert(expLifecycle->destroy(&control,&npc,&tables,&sem,&life)==1);
+            assert(pool.allocations==pool.releases&&pool.drops==3&&a.live.empty());
         }
         if(scriptActor&&scriptFinder){
             struct Actor {
