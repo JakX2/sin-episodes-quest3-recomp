@@ -149,4 +149,22 @@ struct ServerNpcBestEnemyQueryApi {
     int (__cdecl *select)(void*,void*,std::uint32_t,void**) noexcept;
 };
 using GetServerNpcBestEnemyQueryApi=const ServerNpcBestEnemyQueryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_enemy_memory_record_export[]="SiN_GetServerNpcEnemyMemoryRecordApi";
+struct ServerNpcEnemyMemoryRecordResult {
+    unsigned initialized,seen_written,position_written,changed_stamp_written,first_seen_written,eluded_cleared;
+    double distance_squared;
+};
+struct ServerNpcEnemyMemoryExpiryResult {
+    unsigned remove,stale,dead,protected_record,expired;
+};
+struct ServerNpcEnemyMemoryRecordApi {
+    std::uint32_t version,size;
+    // 22068c80 / new-record path of 2206bba0. Allocation and insertion external.
+    int (__cdecl *initialize)(void*,unsigned,std::uint32_t,const float[3],const float[3],float,float,float,bool,ServerNpcEnemyMemoryRecordResult*) noexcept;
+    // Existing-record path of 2206bba0; no fallback record lookup.
+    int (__cdecl *update)(void*,unsigned,const float[3],float,bool,ServerNpcEnemyMemoryRecordResult*) noexcept;
+    // 22068ce0. Caller supplies live-handle resolution and NPC state query.
+    int (__cdecl *expiry)(const void*,unsigned,bool,bool,int,float,float,ServerNpcEnemyMemoryExpiryResult*) noexcept;
+};
+using GetServerNpcEnemyMemoryRecordApi=const ServerNpcEnemyMemoryRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

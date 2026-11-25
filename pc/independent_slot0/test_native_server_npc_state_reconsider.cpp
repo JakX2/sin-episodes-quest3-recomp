@@ -190,5 +190,27 @@ int main(int argc,char** argv){
     };
     pick();assert(br.enemy==f.replacement&&!br.unreachable&&br.visited==2);
     f.put(f.actor,0x920,4);assert(!f.unreachable_api->query(f.actor,sizeof(f.actor),f.enemy,40,&ub,&ur));
+    auto grmem=reinterpret_cast<GetServerNpcEnemyMemoryRecordApi>(GetProcAddress(s,server_npc_enemy_memory_record_export));
+    assert(grmem&&!GetProcAddress(c,server_npc_enemy_memory_record_export)&&!grmem(0,sizeof(ServerNpcEnemyMemoryRecordApi))&&!grmem(1,0));
+    const auto* rec=grmem(1,sizeof(ServerNpcEnemyMemoryRecordApi));assert(rec);
+    unsigned char raw[0x38];std::memset(raw,0x5a,sizeof(raw));float initial[3]{100,200,300},position[3]{0,0,0};
+    ServerNpcEnemyMemoryRecordResult rr{};ServerNpcEnemyMemoryExpiryResult expiry{};
+    auto rf=[&](unsigned off){float v=0;std::memcpy(&v,raw+off,4);return v;};
+    assert(rec->initialize(raw,sizeof(raw),0x7001u,initial,position,20,5,2,true,&rr)&&rr.initialized&&rr.first_seen_written);
+    assert(rf(4)==0&&rf(0x10)==100&&rf(0x14)==200&&rf(0x18)==300&&rf(0x1c)==20&&rf(0x20)==20&&rf(0x24)==20&&rf(0x28)==22&&rf(0x2c)==0&&rf(0x30)==20&&raw[0x37]==0x5a);
+    position[0]=12;raw[0x35]=1;assert(rec->update(raw,sizeof(raw),position,24,false,&rr)&&!rr.position_written&&!rr.changed_stamp_written&&rr.eluded_cleared&&!raw[0x35]);
+    position[0]=48;assert(rec->update(raw,sizeof(raw),position,25,false,&rr)&&rr.position_written&&!rr.changed_stamp_written&&rf(0x24)==20);
+    position[0]=97;assert(rec->update(raw,sizeof(raw),position,25,false,&rr)&&rr.position_written&&rr.changed_stamp_written&&rf(0x24)==25);
+    position[0]=337;assert(rec->update(raw,sizeof(raw),position,26,true,&rr)&&rr.position_written&&!rr.changed_stamp_written&&rf(0x1c)==26&&rf(0x24)==25);
+    position[0]=578;assert(rec->update(raw,sizeof(raw),position,27,true,&rr)&&rr.changed_stamp_written&&rf(0x24)==27&&rf(0x30)==20);
+    assert(rec->expiry(raw,sizeof(raw),true,true,3,32,5,&expiry)&&!expiry.remove);
+    assert(rec->expiry(raw,sizeof(raw),true,true,3,32.01f,5,&expiry)&&expiry.remove&&expiry.expired);
+    raw[0x36]=1;assert(rec->expiry(raw,sizeof(raw),true,true,3,99,5,&expiry)&&expiry.protected_record&&!expiry.remove);
+    assert(rec->expiry(raw,sizeof(raw),true,true,7,27,5,&expiry)&&expiry.dead&&expiry.remove);
+    assert(rec->expiry(raw,sizeof(raw),false,false,0,27,5,&expiry)&&expiry.stale&&expiry.remove);
+    assert(rec->initialize(raw,sizeof(raw),0xffffffffu,initial,position,20,5,-1,false,&rr)&&raw[0x34]==1&&rf(0x1c)<15&&rf(0x28)==0&&rf(0x30)==-std::numeric_limits<float>::max());
+    assert(rec->expiry(raw,sizeof(raw),false,false,0,20,5,&expiry)&&expiry.expired&&!expiry.stale);
+    assert(rec->update(raw,sizeof(raw),position,21,true,&rr)&&rr.first_seen_written&&rf(0x30)==21&&rf(0x1c)==21);
+    assert(!rec->update(raw,0x37,position,22,true,&rr));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
