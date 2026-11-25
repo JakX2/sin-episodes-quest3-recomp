@@ -2659,8 +2659,17 @@ int main(int argc,char** argv){
         const auto getScriptFinder=reinterpret_cast<n::GetScriptResponseFinderApi>(GetProcAddress(lib,n::script_response_finder_export));
         assert(getScriptFinder&&!getScriptFinder(0,sizeof(n::ScriptResponseFinderApi))&&!getScriptFinder(1,0));
         const auto* scriptFinder=getScriptFinder(1,sizeof(n::ScriptResponseFinderApi));assert(scriptFinder);
+        const auto getSceneIndex=reinterpret_cast<n::GetSceneMetadataIndexApi>(GetProcAddress(lib,n::scene_metadata_index_export));
+        const auto getSceneServices=reinterpret_cast<n::GetSceneResponseServicesApi>(GetProcAddress(lib,n::scene_response_services_export));
+        const auto getSceneFilter=reinterpret_cast<n::GetResponseSceneFilterApi>(GetProcAddress(lib,n::response_scene_filter_export));
+        assert(getSceneIndex&&getSceneServices&&getSceneFilter);
+        const auto* sceneIndex=getSceneIndex(1,sizeof(n::SceneMetadataIndexApi));
+        const auto* sceneServices=getSceneServices(1,sizeof(n::SceneResponseServicesApi));
+        const auto* sceneFilter=getSceneFilter(1,sizeof(n::ResponseSceneFilterApi));
+        assert(sceneIndex&&sceneServices&&sceneFilter);
         const char* privateScripts=std::getenv("SIN_PRIVATE_SCRIPTS_DIR");
-        sin_port::map_host::test::check_loaded_script_registry_bsp(*m,*j,*c,*s,*a,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,*scriptFinder,privateScripts);
+        sin_port::map_host::test::check_loaded_script_registry_bsp(*m,*j,*c,*s,*a,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,*scriptFinder,*sceneIndex,*sceneServices,*sceneFilter,privateScripts);
+        std::puts("PASS BSP NPCs share loaded native scene metadata index and admission filter");
         std::puts(privateScripts&&*privateScripts?"PASS owner retail registry loaded by DLL and shared by BSP NPCs":"PASS loaded DLL map-owned script registry and include lifecycle");
         std::puts("PASS native integrated choreography NPC map observation routing and rejection");
         std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
