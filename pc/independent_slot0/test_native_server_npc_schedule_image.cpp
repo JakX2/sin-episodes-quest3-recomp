@@ -13,7 +13,7 @@ using namespace sin_port::native_weapon_tables;
 struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
     unsigned char motor[0x18]{};
-    bool align_on_step=false;unsigned begins=0,steps=0;
+    bool align_on_step=false;unsigned begins=0,steps=0;int last_pending=-1;
     ServerScheduleImage image{};
     const ServerNpcScheduleImageApi* api=nullptr;
     template<class T>void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
@@ -228,6 +228,25 @@ int main(int argc,char** argv){
     f.align_on_step=true;
     assert(face_api->run(f.actor,sizeof(f.actor),53,&f.image,&runtime,&full,&ab,&fb,&far)&&far.facing.calls==1&&far.facing.last.completed&&f.steps==2);
     assert(face_api->run(f.actor,sizeof(f.actor),54,&f.image,&runtime,&full,&ab,&fb,&far)&&far.facing.calls==0&&far.attack.shared.shared.last.task==2&&far.attack.shared.shared.last.timer_written==0);
+    auto ganim=reinterpret_cast<GetServerNpcAnimationCatalogSchedulerApi>(GetProcAddress(s,server_npc_animation_catalog_scheduler_export));
+    assert(ganim&&!GetProcAddress(c,server_npc_animation_catalog_scheduler_export)&&!ganim(0,sizeof(ServerNpcAnimationCatalogSchedulerApi))&&!ganim(1,0));
+    const auto* anim_api=ganim(1,sizeof(ServerNpcAnimationCatalogSchedulerApi));assert(anim_api);
+    ServerNpcSharedTargetAnimationBindings tb{};tb.context=&f;tb.motor_storage=fb.motor_storage;tb.step_turn=fb.step_turn;
+    tb.current_target=[](void* p,void*,void** out) noexcept -> int{*out=p;return 1;};
+    tb.absolute_position=[](void* p,void* target,float* v) noexcept -> int{assert(p==target);v[0]=0;v[1]=2;v[2]=0;return 1;};
+    auto old_pending=ab.shared.pending;ab.shared.context=&f;
+    ab.shared.pending=[](void* p,void*,int id) noexcept -> int{F::self(p).last_pending=id;return 1;};
+    ServerNpcAnimationCatalogSchedulerResult nar{};
+    install_at(86,2); // SCHED_GRUNT_SIGNAL_SUPPRESS: animation task95, activity54
+    f.put(f.actor,0x908,88u);f.put(f.motor,0x14,0.f);
+    assert(anim_api->run(f.actor,sizeof(f.actor),55,&f.image,&runtime,&full,&ab,&fb,&tb,&nar)&&nar.facing.attack.shared.shared.calls==1&&f.last_pending==54&&nar.target_animation.calls==1&&nar.target_animation.last.yaw==90&&!nar.target_animation.last.animation_finished);
+    f.actor[0x3e0]=1;
+    assert(anim_api->run(f.actor,sizeof(f.actor),56,&f.image,&runtime,&full,&ab,&fb,&tb,&nar)&&nar.target_animation.calls==1&&nar.target_animation.last.shared.lifecycle.completed);
+    assert(anim_api->run(f.actor,sizeof(f.actor),57,&f.image,&runtime,&full,&ab,&fb,&tb,&nar)&&!nar.target_animation.calls&&nar.facing.attack.shared.shared.last.task==2);
+    install_at(106,2); // SCHED_GRUNT_ALTFIRE: parsed private activity
+    f.put(f.actor,0x908,88u);f.actor[0x3e0]=1;
+    assert(anim_api->run(f.actor,sizeof(f.actor),58,&f.image,&runtime,&full,&ab,&fb,&tb,&nar)&&f.last_pending==ids.activities[3]&&nar.target_animation.calls==1&&nar.target_animation.last.shared.lifecycle.completed);
+    ab.shared.pending=old_pending;ab.shared.context=nullptr;
     // Original Elite schedule: ready -> reconstructed base start -> inherited run.
     assert(f.api->build(f.actor,NpcSubclassElite,5000,99,&b,&f.image,&result));
     scheduler.original_vtable=0x2248df04;unsigned char chain[0x598]{};

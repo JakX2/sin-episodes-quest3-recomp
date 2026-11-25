@@ -82,6 +82,7 @@ struct ServerNpcSharedTargetAnimationApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedTargetAnimationBindings*,ServerNpcSharedTargetAnimationResult*) noexcept;
 };
 using GetServerNpcSharedTargetAnimationApi=const ServerNpcSharedTargetAnimationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerNpcSharedTargetAnimationStats {ServerNpcSharedTargetAnimationResult last;unsigned calls,native,components;};
 struct ServerNpcSharedFacingStats {ServerNpcSharedFacingResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTaskStats {ServerNpcSharedTaskResult last;unsigned calls,native,component_handled,special,parent;};
 // Per-maintenance call only; no callback or actor memory retains the session.
@@ -96,6 +97,8 @@ struct ServerNpcSharedParentSession {
     ServerNpcSharedAttackStats* attack_stats;
     const ServerNpcSharedFacingBindings* facing;
     ServerNpcSharedFacingStats* facing_stats;
+    const ServerNpcSharedTargetAnimationBindings* target_animation;
+    ServerNpcSharedTargetAnimationStats* target_animation_stats;
 };
-int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr) noexcept;
+int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr) noexcept;
 }
