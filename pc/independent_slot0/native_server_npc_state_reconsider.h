@@ -167,4 +167,25 @@ struct ServerNpcEnemyMemoryRecordApi {
     int (__cdecl *expiry)(const void*,unsigned,bool,bool,int,float,float,ServerNpcEnemyMemoryExpiryResult*) noexcept;
 };
 using GetServerNpcEnemyMemoryRecordApi=const ServerNpcEnemyMemoryRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_enemy_memory_maintenance_export[]="SiN_GetServerNpcEnemyMemoryMaintenanceApi";
+struct ServerNpcEnemyMemoryMaintenanceBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    void* context;
+    int (__cdecl *npc_state)(void*,void*,bool*,int*) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept;
+    // Original pool free then indexed-tree unlink, preserving other live indices.
+    int (__cdecl *erase)(void*,void*,unsigned,unsigned,std::uint32_t) noexcept;
+};
+struct ServerNpcEnemyMemoryMaintenanceResult {
+    unsigned visited,removed,stale,dead,expired,position_refreshed,secondary_refreshed,origin_calls;
+};
+struct ServerNpcEnemyMemoryMaintenanceApi {
+    std::uint32_t version,size;
+    // 2206b9f0: periodic in-order sweep, successor captured before removal.
+    int (__cdecl *maintain)(void*,unsigned,float,const ServerNpcEnemyMemoryMaintenanceBindings*,ServerNpcEnemyMemoryMaintenanceResult*) noexcept;
+};
+using GetServerNpcEnemyMemoryMaintenanceApi=const ServerNpcEnemyMemoryMaintenanceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

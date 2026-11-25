@@ -16,7 +16,7 @@ struct F{
     unsigned char memory[0x40]{},nodes[48]{},record[0x38]{},fallback[0x38]{},unreachable_rows[60]{};
     const ServerNpcUnreachableEnemyApi* unreachable_api=nullptr;ServerNpcUnreachableEnemyBindings unreachable_binding{};
     sin_independent::EntityHandleEntry entries[3]{};
-    unsigned clears=0,changes=0,lost=0,squad=0;int query=-1;
+    unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
     int rank[2]{0,0},disp[2]{1,1};bool valid[2]{true,true},unreachable[2]{false,false},visible[2]{true,true};float distance[2]{10,20};
     unsigned idx(void* e){assert(e==enemy||e==replacement);return e==enemy?0u:1u;}
     template<class T>void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
@@ -212,5 +212,33 @@ int main(int argc,char** argv){
     assert(rec->expiry(raw,sizeof(raw),false,false,0,20,5,&expiry)&&expiry.expired&&!expiry.stale);
     assert(rec->update(raw,sizeof(raw),position,21,true,&rr)&&rr.first_seen_written&&rf(0x30)==21&&rf(0x1c)==21);
     assert(!rec->update(raw,0x37,position,22,true,&rr));
+    auto gmaint=reinterpret_cast<GetServerNpcEnemyMemoryMaintenanceApi>(GetProcAddress(s,server_npc_enemy_memory_maintenance_export));
+    assert(gmaint&&!GetProcAddress(c,server_npc_enemy_memory_maintenance_export)&&!gmaint(0,sizeof(ServerNpcEnemyMemoryMaintenanceApi))&&!gmaint(1,0));
+    const auto* maint=gmaint(1,sizeof(ServerNpcEnemyMemoryMaintenanceApi));assert(maint);
+    ServerNpcEnemyMemoryMaintenanceBindings maintenance{};maintenance.context=&f;maintenance.storage=bb.memory.storage;maintenance.entries=f.entries;maintenance.count=3;
+    maintenance.npc_state=[](void*,void*,bool* npc,int* state) noexcept -> int{*npc=true;*state=3;return 1;};
+    maintenance.extent=bb.extent;maintenance.origin=bb.origin;
+    maintenance.erase=[](void* p,void* memory,unsigned bytes,unsigned index,std::uint32_t token) noexcept -> int{
+        auto& f=F::self(p);assert(memory==f.memory&&bytes==sizeof(f.memory)&&index==1&&token==102);
+        f.removed_index=index;f.removed_token=token;f.nodes[1]=255;return 1;
+    };
+    f.memory[0x10]=0;node(0,255,1,1000,101);node(1,255,255,1001,102);
+    f.put(f.memory,0x1c,1.75f);f.put(f.memory,0x20,60.f);
+    f.put(f.record,0,0x7001u);f.put(f.record,0x1c,100.f);f.put(f.fallback,0,0x8002u);f.put(f.fallback,0x1c,39.f);
+    f.record[0x34]=f.record[0x36]=f.fallback[0x34]=f.fallback[0x36]=0;
+    f.distance[0]=33;f.distance[1]=44;
+    ServerNpcEnemyMemoryMaintenanceResult mr{};
+    assert(maint->maintain(f.memory,sizeof(f.memory),100,&maintenance,&mr)&&mr.visited==2&&mr.removed==1&&mr.expired==1&&mr.position_refreshed==1&&mr.secondary_refreshed==1&&mr.origin_calls==2&&f.removed_index==1);
+    float latest=0,secondary=0;std::memcpy(&latest,f.record+4,4);std::memcpy(&secondary,f.record+0x10,4);assert(latest==33&&secondary==33);
+    f.distance[0]=44;
+    assert(maint->maintain(f.memory,sizeof(f.memory),101.75f,&maintenance,&mr)&&mr.position_refreshed==1&&!mr.secondary_refreshed);
+    std::memcpy(&latest,f.record+4,4);assert(latest==44);
+    f.distance[0]=55;
+    assert(maint->maintain(f.memory,sizeof(f.memory),101.76f,&maintenance,&mr)&&!mr.origin_calls&&!mr.removed);
+    f.put(f.enemy,0xbc,0x8000u);
+    assert(maint->maintain(f.memory,sizeof(f.memory),100,&maintenance,&mr)&&!mr.position_refreshed&&mr.secondary_refreshed&&mr.origin_calls==1);
+    std::memcpy(&latest,f.record+4,4);std::memcpy(&secondary,f.record+0x10,4);assert(latest==44&&secondary==55);
+    f.put(f.enemy,0xbc,0u);
+    f.nodes[0]=0;assert(!maint->maintain(f.memory,sizeof(f.memory),100,&maintenance,&mr)&&!mr.visited);f.nodes[0]=255;
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
