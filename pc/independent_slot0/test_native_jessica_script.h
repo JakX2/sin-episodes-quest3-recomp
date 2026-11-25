@@ -268,6 +268,42 @@ inline void check_response_select(const ResponseSelectApi& api){
 }
 
 
+
+inline void check_response_native_modifiers(const ResponseNativeModifierApi& api,const ResponseSelectApi& select){
+    struct Fixture : ResponseSelectionFixture {
+        char keys[8][128]{},values[8][128]{};
+        unsigned pairs=0,warnings=0;
+        bool reject=false;
+    } f;
+    ResponseNativeModifierBindings cfg{};cfg.host=f.b;cfg.host.context=&f;cfg.host.modifiers=nullptr;
+    cfg.host.add=[](void* p,void* c,const char* key,const char* value,float weight) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(c==&f.criteria&&weight==5.f&&f.pairs<8);
+        f.record(3);std::strcpy(f.keys[f.pairs],key);std::strcpy(f.values[f.pairs++],value);return !f.reject;};
+    cfg.warning=[](void* p,const char*) noexcept -> int{++static_cast<Fixture*>(p)->warnings;return 1;};
+    auto parse=[&](const char* input){f.pairs=f.count=0;return api.parse(&cfg,&f.criteria,input,5);};
+    assert(parse("part:head, state :a:b,empty:,:value")==1&&f.pairs==4);
+    assert(!std::strcmp(f.keys[0],"part")&&!std::strcmp(f.values[0],"head"));
+    assert(!std::strcmp(f.keys[1]," state ")&&!std::strcmp(f.values[1],"a:b"));
+    assert(!std::strcmp(f.keys[2],"empty")&&!*f.values[2]&&!*f.keys[3]&&!std::strcmp(f.values[3],"value"));
+    assert(parse("x:y,broken")==1&&f.pairs==2&&f.warnings==1&&!std::strcmp(f.keys[1],"x")&&!std::strcmp(f.values[1],"y"));
+    assert(parse("no colon")==0&&!f.pairs&&f.warnings==2);
+    assert(parse("a,b:c")==1&&f.pairs==1&&!std::strcmp(f.keys[0],"a,b"));
+    char long_key[131];std::memset(long_key,'k',128);std::strcpy(long_key+128,":v");
+    assert(!parse(long_key)&&!f.pairs);
+    char bounded[300];std::memset(bounded,'z',sizeof(bounded));bounded[0]='a';bounded[1]=':';bounded[2]='b';bounded[3]=',';
+    std::memset(bounded+4,'k',123);bounded[127]=':';bounded[299]=0;
+    assert(parse(bounded)==1&&f.pairs==2&&std::strlen(f.keys[1])==123&&std::strlen(f.values[1])==126);
+    f.reject=true;assert(!parse("a:b,c:d")&&f.pairs==1);f.reject=false;
+    ResponseSelectionBindings adapted{};assert(api.adapt(&cfg,&adapted));f.chance=100;
+    void* out=nullptr;unsigned n=0;f.pairs=f.count=0;
+    assert(select.select(f.exp,sizeof(f.exp),&adapted,"TLK_IDLE","part:head,state:alert",&out,&n)==1&&out==f.response&&n==0x124);
+    assert(f.pairs==3&&!std::strcmp(f.keys[0],"concept")&&!std::strcmp(f.values[0],"TLK_IDLE")&&!std::strcmp(f.keys[2],"state"));
+    f.expect({1,2,3,3,3,5,6,7,8,11});
+    f.pairs=0;out=&f;n=99;
+    assert(select.select(f.exp,sizeof(f.exp),&adapted,"TLK_IDLE","broken",&out,&n)==-1&&out==&f&&n==99);
+    f.expect({1,2,3,11});
+}
+
 struct ResponseDispatchFixture {
     alignas(4) unsigned char exp[0x7c]{},response[0x124]{};
     ResponseDispatchBindings b{};
