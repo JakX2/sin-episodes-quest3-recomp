@@ -12138,6 +12138,52 @@ int __cdecl animation_scene_initialize(void* actor,unsigned bytes,void* record,u
     *out=1;return 1;
 }
 const ServerAnimationSceneInitApi server_animation_scene_init_api{version,sizeof(ServerAnimationSceneInitApi),&animation_scene_initialize};
+
+int __cdecl npc_animation_gate_admit(void* bindings,void* actor,unsigned* out) noexcept {
+    auto* b=static_cast<const ServerNpcAnimationGateBindings*>(bindings);
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!hologram_writable(out,4)||!b->npc)return 0;
+    const auto h=*b;void* npc=nullptr;unsigned n=0;
+    if(!h.npc(h.context,actor,&npc,&n))return 0;
+    *out=0;if(!npc)return 1;
+    if(n<0x980||!sin_independent::vgui_layout::Readable(npc,0x980)||!h.condition)return 0;
+    unsigned condition=0;
+    if(!h.condition(h.context,npc,0x3c,1,&condition))return 0;
+    if(condition&0xff){*out=1;return 1;}
+    const auto mask=hologram_read<std::uint32_t>(npc,0x798);
+    if(mask){
+        void* rows=nullptr;unsigned extent=0;
+        if(!h.storage||!h.storage(h.context,mask,&rows,&extent)||extent<0x2c||
+           !sin_independent::vgui_layout::Readable(rows,0x2c))return 0;
+        // Original copies eight dwords from object+0c to a temporary, clears
+        // bit24 of first dword only, then tests all eight in reverse order.
+        bool any=false;
+        for(int i=7;i>=0;--i){
+            auto bits=hologram_read<std::uint32_t>(rows,0xc+i*4);
+            if(!i)bits&=~0x01000000u;
+            if(bits){any=true;break;}
+        }
+        if(!any)return 1;
+    }
+    unsigned allowed=0;
+    if(!h.can_enter||!h.can_enter(h.context,npc,&allowed))return 0;
+    if(!(allowed&0xff))return 1;
+    const auto handle=hologram_read<std::uint32_t>(npc,0x970);
+    void* current=nullptr;
+    if(handle!=0xffffffffu&&(!h.resolve||!h.resolve(h.context,handle,&current)))return 0;
+    if(current&&(!h.release_current||!h.release_current(h.context,npc)))return 0;
+    if(!h.set_condition||!h.set_condition(h.context,npc,0x3c))return 0;
+    *out=1;return 1;
+}
+int __cdecl npc_animation_keepalive(void* npc,unsigned bytes,float now,float duration) noexcept {
+    if(bytes<0x980||!hologram_writable(npc,0x980)||!std::isfinite(now)||!std::isfinite(duration))return 0;
+    const float old=hologram_read<float>(npc,0x97c);
+    const double requested=static_cast<double>(now)+duration;
+    if(!std::isfinite(old)||std::fabs(requested)>(std::numeric_limits<float>::max)())return 0;
+    if(requested>old)hologram_write(npc,0x97c,static_cast<float>(requested));
+    return 1;
+}
+const ServerNpcAnimationGateApi server_npc_animation_gate_api{version,sizeof(ServerNpcAnimationGateApi),
+    &npc_animation_gate_admit,&npc_animation_keepalive};
 int animation_scene_tick(void* actor,unsigned bytes,void* record,void* event,unsigned eb,float time,float now,
     const ServerNpcAnimationThinkBindings* b,unsigned* out) noexcept {
     const auto& h=b->animation;
@@ -12170,7 +12216,7 @@ int animation_scene_tick(void* actor,unsigned bytes,void* record,void* event,uns
     }
     in.suppressed=(suppressed&0xff)!=0;
     if(animation_scene_frame(actor,bytes,record,0x40,event,eb,&in,&h.frame,out)!=1)return 0;
-    if(npc&&(!b->keepalive||!b->keepalive(b->context,npc,.2f)))return 0;
+    if(npc&&!(b->keepalive?b->keepalive(b->context,npc,.2f):npc_animation_keepalive(npc,0x980,now,.2f)))return 0;
     return animation_priority_refresh(actor,bytes,record,0x40,now,&h.frame);
 }
 int __cdecl npc_animation_think(void* actor,unsigned bytes,float now,const ServerNpcAnimationThinkBindings* b) noexcept {
@@ -14252,6 +14298,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcAnimationGateApi=_SiN_GetServerNpcAnimationGateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcAnimationGateApi* __cdecl
+SiN_GetServerNpcAnimationGateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcAnimationGateApi)?&server_npc_animation_gate_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcAnimationThinkApi=_SiN_GetServerNpcAnimationThinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcAnimationThinkApi* __cdecl
