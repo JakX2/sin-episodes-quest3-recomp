@@ -1,0 +1,3 @@
+# Phase 980: asset-independent directory-backed dialogue integration
+
+Exercise Phase 979 in standard loaded runtime CI with a temporary directory containing two synthetic but fully parsed VCD scenes, mixed-case filenames, and a sequential response group whose first VCD is absent. Validate traversal rejection and path alias identity, select A then B across distinct Count/Jessica expeditors, skip cached absence on wrap, confirm exactly three cache refreshes, two parses and one miss, clear all metadata vector storage and release registry. Temporary directory allocated exclusively and removed at scope exit. No private assets required or committed; original retail Windows audit still optional. CI pending.
