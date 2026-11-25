@@ -284,6 +284,12 @@ int main(int argc,char** argv){
         const auto* moveScene=getMoveScene(1,sizeof(ft::ServerMoveSceneApi));
         assert(moveScene&&!getMoveScene(0,sizeof(ft::ServerMoveSceneApi))&&!getMoveScene(1,0));
         ft::test::check_move_scene(*moveScene);
+        const auto getMoveFrame=reinterpret_cast<ft::GetServerMoveSceneFrameApi>(GetProcAddress(server,ft::server_move_scene_frame_export));
+        assert(getMoveFrame&&!GetProcAddress(client,ft::server_move_scene_frame_export));
+        const auto* moveFrame=getMoveFrame(1,sizeof(ft::ServerMoveSceneFrameApi));
+        assert(moveFrame&&!getMoveFrame(0,sizeof(ft::ServerMoveSceneFrameApi))&&!getMoveFrame(1,0));
+        ft::test::check_move_scene_frame(*moveFrame);
+        std::puts("PASS native scripted NPC movement frame policy");
         std::puts("PASS native choreography moveto admission, completion, retirement and activity policy");
         std::puts("PASS native NPC face-target yaw and weighted body-turn state");
         std::puts("PASS native target scene admission, retirement and look-at request policy");

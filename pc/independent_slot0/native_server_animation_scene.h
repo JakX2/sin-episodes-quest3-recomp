@@ -218,4 +218,28 @@ struct ServerMoveSceneApi {
     int (__cdecl *activity)(void* npc,unsigned,const void* event,unsigned,const ServerMoveSceneBindings*,int*) noexcept;
 };
 using GetServerMoveSceneApi=const ServerMoveSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_move_scene_frame_export[]="SiN_GetServerMoveSceneFrameApi";
+struct ServerMoveSceneFrameBindings {
+    ServerMoveSceneBindings move;
+    void* context;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**) noexcept;
+    int (__cdecl *handle)(void*,void* target,std::uint32_t*) noexcept;
+    // Current task identifier, -1 when absent (2204e5b0).
+    int (__cdecl *task)(void*,void* npc,int*) noexcept;
+    int (__cdecl *hull_width)(void*,void* npc,float*) noexcept;
+    // Target collision nearest-point relative to actor origin, horizontal components.
+    int (__cdecl *horizontal_delta)(void*,void* actor,void* target,float*,float*) noexcept;
+    // Engine navigator SetGoal with original type1/flags2; accepted is original AL.
+    int (__cdecl *submit_goal)(void*,void* npc,void* target,int activity,float half_width,unsigned*) noexcept;
+    int (__cdecl *goal_activity)(void*,void* npc,int activity) noexcept;
+    int (__cdecl *goal_tolerance)(void*,void* npc,float tolerance) noexcept;
+};
+struct ServerMoveSceneFrameApi {
+    std::uint32_t version,size;
+    // 220f9a40, with debug overlays omitted. Return 1 handled, accepted is original AL.
+    int (__cdecl *update)(void* actor,void* record,unsigned,const void* event,unsigned,float time,float now,
+        const ServerMoveSceneFrameBindings*,unsigned*) noexcept;
+};
+using GetServerMoveSceneFrameApi=const ServerMoveSceneFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

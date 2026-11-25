@@ -454,4 +454,56 @@ inline void check_move_scene(const ServerMoveSceneApi& api){
     std::uint32_t name=0;std::memcpy(&name,f.npc+0x980,4);assert(name==77);
 }
 
+inline void check_move_scene_frame(const ServerMoveSceneFrameApi& api){
+    struct Fixture {
+        alignas(4) unsigned char npc[0x984]{},event[0x3c0]{},row[0x40]{},target[4]{},actor[4]{};
+        unsigned gate=1,moving=0,accepted=1,resolves=0,queries=0,submits=0,configs=0,cancels=0;
+        int task=0x71;float width=20,x=30,y=0,tolerance=5;bool present=true,self=false,npc_present=true;
+    } f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto fl=[](const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    put(f.event,0,4u);put(f.event,0x188,4.f);put(f.event,0x340,5.f);put(f.row,0x24,42u);
+    ServerMoveSceneFrameBindings b{};b.context=b.move.context=&f;
+    b.resolve=[](void* p,std::uint32_t h,void** out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(h==42);++f.resolves;*out=!f.present?nullptr:f.self?f.actor:f.target;return 1;};
+    b.handle=[](void* p,void* target,std::uint32_t* out) noexcept -> int{
+        assert(target==static_cast<Fixture*>(p)->target);*out=42;return 1;};
+    b.move.npc=[](void* p,void* actor,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(actor==f.actor);*out=f.npc_present?f.npc:nullptr;*n=sizeof(f.npc);return 1;};
+    b.move.admit=[](void* p,void*,unsigned* out) noexcept -> int{*out=static_cast<Fixture*>(p)->gate;return 1;};
+    b.move.moving=[](void* p,void* actor,unsigned* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(actor==f.actor);++f.queries;*out=f.moving;return 1;};
+    b.move.cancel_navigation=[](void* p,void* npc,int clear) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(npc==f.npc&&clear==1);++f.cancels;return 1;};
+    b.task=[](void* p,void*,int* out) noexcept -> int{*out=static_cast<Fixture*>(p)->task;return 1;};
+    b.hull_width=[](void* p,void*,float* out) noexcept -> int{*out=static_cast<Fixture*>(p)->width;return 1;};
+    b.horizontal_delta=[](void* p,void* actor,void* target,float* x,float* y) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(actor==f.actor&&target==f.target);*x=f.x;*y=f.y;return 1;};
+    b.submit_goal=[](void* p,void* npc,void* target,int activity,float half,unsigned* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(npc==f.npc&&target==f.target&&activity==6&&half==f.width*.5f);
+        ++f.submits;*out=f.accepted;return 1;};
+    b.goal_activity=[](void* p,void*,int activity) noexcept -> int{assert(activity==6);++static_cast<Fixture*>(p)->configs;return 1;};
+    b.goal_tolerance=[](void* p,void*,float t) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(t==f.tolerance);++f.configs;return 1;};
+    unsigned out=99;auto run=[&](float time,float now,unsigned expected){
+        assert(api.update(f.actor,f.row,sizeof(f.row),f.event,sizeof(f.event),time,now,&b,&out)&&out==expected);};
+    f.present=false;run(0,10,0);f.present=true;f.npc_present=false;run(0,10,0);f.npc_present=true;
+    f.gate=0;run(0,10,0);f.gate=1;f.self=true;run(0,10,1);f.self=false;
+    assert(!f.queries&&!f.submits&&fl(f.npc,0x97c)==0);
+    f.task=0x70;run(0,10,1);assert(!f.submits&&fl(f.npc,0x97c)==12);
+    f.task=0x71;f.x=10;run(0,10,1);assert(f.row[0x29]&&!f.row[0x28]&&!f.submits);
+    std::uint32_t handle=0;std::memcpy(&handle,f.npc+0x8a8,4);assert(handle==42);
+    f.row[0x29]=0;f.x=6;f.y=8;run(0,10,1);assert(f.row[0x29]&&!f.submits);
+    f.row[0x29]=0;f.x=11;f.y=0;f.accepted=0;run(0,10,1);
+    assert(f.submits==1&&!f.configs&&!f.row[0x28]&&!f.row[0x29]);
+    f.task=0x79;f.accepted=1;run(0,10,1);assert(f.submits==2&&f.configs==2&&f.row[0x28]);
+    f.moving=1;f.x=6;run(0,10,1);assert(!f.cancels&&!f.row[0x29]);
+    f.x=5;run(0,10,1);assert(f.cancels==1&&f.row[0x29]&&f.row[0x28]);
+    f.moving=0;run(0,10,1);assert(!f.row[0x28]&&f.row[0x29]);
+    f.row[0x29]=0;f.moving=1;f.x=4;const auto queries=f.queries;run(3.5f,20,1);
+    assert(f.queries==queries+2&&f.cancels==2&&f.row[0x29]&&fl(f.npc,0x97c)==20.7f);
+    f.moving=0;f.width=0;f.tolerance=0;put(f.event,0x340,0.f);f.row[0x29]=0;f.x=.05f;
+    run(4,19,1);assert(f.row[0x29]&&f.submits==2&&fl(f.npc,0x97c)==20.7f);
+}
+
 }

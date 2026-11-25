@@ -12471,6 +12471,85 @@ int __cdecl move_scene_activity(void* npc,unsigned bytes,const void* e,unsigned 
 }
 const ServerMoveSceneApi server_move_scene_api{version,sizeof(ServerMoveSceneApi),&move_scene_begin,&move_scene_check,&move_scene_stop,&move_scene_activity};
 
+
+int __cdecl move_scene_update(void* actor,void* row,unsigned rb,const void* e,unsigned eb,float time,float now,
+    const ServerMoveSceneFrameBindings* b,unsigned* out) noexcept {
+    if(!move_scene_event(e,eb)||rb<0x40||!hologram_writable(row,0x40)||!hologram_writable(out,4)||
+       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!move_scene_ready(&b->move)||
+       !std::isfinite(time)||!std::isfinite(now))return 0;
+    const auto h=*b;const auto& m=h.move;
+    auto resolve=[&](void** p){
+        const auto token=hologram_read<std::uint32_t>(row,0x24);*p=nullptr;
+        return token==0xffffffffu||(h.resolve&&h.resolve(h.context,token,p));
+    };
+    *out=0;void* target=nullptr;
+    if(!resolve(&target))return 0;
+    if(!target)return 1;
+    void* npc=nullptr;unsigned bytes=0,gate=0,moving=0;
+    if(!m.npc(m.context,actor,&npc,&bytes))return 0;
+    if(!npc)return 1;
+    if(!m.admit||!m.admit(m.context,actor,&gate))return 0;
+    if(!(gate&0xff))return 1;
+    if(!resolve(&target))return 0;
+    if(target==actor){*out=1;return 1;}
+    if(!target)return 0; // defensively reject a handle that became stale mid-frame
+    const float tolerance=hologram_read<float>(e,0x340),end=hologram_read<float>(e,0x188);
+    if(!std::isfinite(tolerance)||!std::isfinite(end)||!m.moving)return 0;
+    auto distance=[&](float& result){
+        float x=0,y=0;void* current=nullptr;
+        if(!resolve(&current)||!current||!h.horizontal_delta||
+           !h.horizontal_delta(h.context,actor,current,&x,&y)||!std::isfinite(x)||!std::isfinite(y))return false;
+        const float squared=static_cast<float>(static_cast<double>(x)*x+static_cast<double>(y)*y);
+        result=std::sqrt(squared);return std::isfinite(result);
+    };
+    // 220f9ac3: existing route flag bypasses the first movement virtual.
+    bool active=hologram_read<unsigned char>(row,0x28)!=0;
+    if(!active){
+        if(!m.moving(m.context,actor,&moving))return 0;
+        active=(moving&0xff)!=0;
+    }
+    if(!active){
+        int task=-1;
+        if(!h.task||!h.task(h.context,npc,&task))return 0;
+        if(task==0x71||task==0x79){
+            int activity=-1;
+            if(!move_scene_activity(npc,bytes,e,eb,&m,&activity))return 0;
+            if(!resolve(&target)||!target||!h.handle||bytes<0x8ac||!hologram_writable(npc,0x8ac))return 0;
+            std::uint32_t handle=0xffffffffu;
+            if(!h.handle(h.context,target,&handle))return 0;
+            hologram_write(npc,0x8a8,handle); // 22031820
+            float width=0,d=0;
+            if(!h.hull_width||!h.hull_width(h.context,npc,&width)||!std::isfinite(width)||width<0||!distance(d))return 0;
+            const float half=static_cast<float>(width*.5);
+            const double threshold=(std::max)((std::max)(static_cast<double>(half),.1),static_cast<double>(tolerance));
+            if(d>threshold){
+                unsigned accepted=0;
+                if(!h.submit_goal||!h.submit_goal(h.context,npc,target,activity,half,&accepted))return 0;
+                if(accepted&0xff){
+                    if(!h.goal_activity||!h.goal_activity(h.context,npc,activity)||
+                       !h.goal_tolerance||!h.goal_tolerance(h.context,npc,tolerance))return 0;
+                    hologram_write(row,0x28,static_cast<unsigned char>(1));
+                }
+            }else hologram_write(row,0x29,static_cast<unsigned char>(1));
+        }
+    }else{
+        // 220f9f10 repeats actor movement query even if the first query was true.
+        if(!m.moving(m.context,actor,&moving))return 0;
+        if(moving&0xff){
+            float d=0;
+            if(!distance(d))return 0;
+            if(d<=tolerance){
+                if(!m.cancel_navigation||!m.cancel_navigation(m.context,npc,1))return 0;
+                hologram_write(row,0x29,static_cast<unsigned char>(1));
+            }
+        }else hologram_write(row,0x28,static_cast<unsigned char>(0));
+    }
+    // Ordinary no-task and failed-route outcomes still request the deadline.
+    if(!npc_animation_keepalive(npc,bytes,now,static_cast<float>((std::min)(static_cast<double>(end)-time+.2,2.0))))return 0;
+    *out=1;return 1;
+}
+const ServerMoveSceneFrameApi server_move_scene_frame_api{version,sizeof(ServerMoveSceneFrameApi),&move_scene_update};
+
 ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
     return *static_cast<ServerNpcSceneRecordBindings*>(p);
 }
@@ -14559,6 +14638,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerMoveSceneFrameApi=_SiN_GetServerMoveSceneFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerMoveSceneFrameApi* __cdecl
+SiN_GetServerMoveSceneFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerMoveSceneFrameApi)?&server_move_scene_frame_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMoveSceneApi=_SiN_GetServerMoveSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerMoveSceneApi* __cdecl
