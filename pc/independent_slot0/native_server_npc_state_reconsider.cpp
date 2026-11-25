@@ -1374,6 +1374,74 @@ int __cdecl combat_visibility_gather(void* actor,unsigned bytes,void* target,con
     }
     return 1;
 }
+int __cdecl combat_distance(void* actor,unsigned bytes,void* target,const ServerNpcGruntCombatRangeBindings* b,float* result) noexcept{
+    if(!result)return 0;*result=0;
+    if(!actor||bytes<0x11c||!target||!b||!relation_grunt_class(b->visibility.original_vtable)||!b->center)return 0;
+    unsigned n=0;if(!b->visibility.extent||!b->visibility.extent(b->visibility.context,target,&n)||n<0x11c)return 0;
+    float a[3]{},e[3]{};
+    if(!b->center(b->context,actor,a)||!b->center(b->context,target,e)||!finite_vec(a)||!finite_vec(e))return 0;
+    float d[3]{};for(unsigned i=0;i<3;++i){d[i]=static_cast<float>(static_cast<double>(e[i])-a[i]);if(!std::isfinite(d[i]))return 0;}
+    const float ah=static_cast<float>(static_cast<double>(read<float>(actor,0x118))-read<float>(actor,0x10c));
+    const float eh=static_cast<float>(static_cast<double>(read<float>(target,0x118))-read<float>(target,0x10c));
+    if(!std::isfinite(ah)||!std::isfinite(eh)||ah<0||eh<0)return 0;
+    const double half=(static_cast<double>(ah)+eh)*.5;
+    const double z=d[2]>half?d[2]-half:d[2]<-half?d[2]+half:0.;
+    const float squared=static_cast<float>(static_cast<double>(d[0])*d[0]+static_cast<double>(d[1])*d[1]+z*z);
+    if(!std::isfinite(squared))return 0;
+    *result=std::sqrt(squared);return 1;
+}
+int __cdecl combat_range_gather(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatRangeBindings* b,ServerNpcGruntCombatRangeResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xa24||!target||!b||!std::isfinite(now))return 0;
+    if(!combat_visibility_gather(actor,bytes,target,&b->visibility,&out->visibility))return 0;
+    if(out->visibility.dead){out->dead=1;return 1;}
+    if(!combat_distance(actor,bytes,target,b,&out->distance))return 0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto test=[&](int id,bool& yes){ServerNpcConditionResult cr{};if(!cond->test(actor,bytes,id,NpcConditionCurrent,&b->visibility.conditions,&cr))return false;yes=cr.value!=0;return true;};
+    auto store=[&](int id,bool yes){ServerNpcConditionResult cr{};return cond->store(actor,bytes,id,NpcConditionCurrent,yes,&b->visibility.conditions,&cr)!=0;};
+    auto report=[&](void* informer){
+        auto rb=b->report;rb.original_vtable=b->visibility.original_vtable;rb.mutation.entries=b->visibility.memory.entries;rb.mutation.count=b->visibility.memory.count;
+        if(!grunt_memory_report(actor,bytes,target,out->observation,informer,now,&rb,&out->report))return false;
+        out->reported=1;out->firsthand=informer==nullptr;return true;
+    };
+    auto origin=[&](){return b->origin&&b->origin(b->context,target,out->observation)&&finite_vec(out->observation);};
+    bool in_view=false,occluded=false;
+    if(!test(0xa,in_view))return 0;
+    if(in_view){
+        float v[3]{};if(!b->velocity||!b->velocity(b->context,target,v)||!finite_vec(v))return 0;++out->velocity_queries;
+        if(v[0]!=0||v[1]!=0||v[2]!=0){
+            float scale=0;if(!b->random||!b->random(b->context,-.05f,0.f,&scale)||!std::isfinite(scale)||scale<-.05f||scale>0.f)return 0;
+            if(!b->velocity(b->context,target,v)||!finite_vec(v)||!origin())return 0;++out->velocity_queries;
+            for(unsigned i=0;i<3;++i){
+                const float delta=static_cast<float>(static_cast<double>(v[i])*scale);
+                out->observation[i]=static_cast<float>(static_cast<double>(out->observation[i])-delta);
+            }
+            if(!finite_vec(out->observation))return 0;
+        }else if(!origin())return 0;
+        if(!report(nullptr))return 0;
+        bool faces=false;if(!b->enemy_facing_actor||!b->enemy_facing_actor(b->context,target,actor,&faces))return 0;
+        out->facing_actor=faces;
+        if(!store(0x1b,faces)||!store(0x1c,!faces))return 0;
+    }else{
+        if(!test(0xc,occluded))return 0;
+        if(!occluded&&out->distance<=256.f){if(!origin()||!report(target))return 0;}
+    }
+    out->threshold=read<float>(actor,0xa20);if(!std::isfinite(out->threshold))return 0;
+    const auto& mb=b->visibility.memory;const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
+    void* weapon=registry.Resolve(read<unsigned>(actor,0x78c));
+    if(weapon&&in_view){
+        unsigned n=0;if(!b->visibility.extent||!b->visibility.extent(b->visibility.context,weapon,&n)||n<0x504)return 0;
+        const float range=read<float>(weapon,0x500);if(!std::isfinite(range))return 0;
+        if(range>=out->threshold){out->threshold=range;out->weapon_range_used=1;}
+    }
+    out->too_far=out->distance>=out->threshold;if(!store(0x1a,out->too_far!=0))return 0;
+    void* nav=nullptr;unsigned n=0;
+    if(!memory_storage(&mb.storage,read<unsigned>(actor,0x8f8),0x10,nav,n))return 0;
+    const int nav_mode=read<int>(nav,0xc);
+    out->attack_gate=nav_mode!=1&&nav_mode!=3&&in_view&&!out->too_far;
+    return 1;
+}
+const ServerNpcGruntCombatRangeApi combat_range_api{1,sizeof(ServerNpcGruntCombatRangeApi),&combat_distance,&combat_range_gather};
 const ServerNpcGruntCombatVisibilityApi combat_visibility_api{1,sizeof(ServerNpcGruntCombatVisibilityApi),&combat_visibility_query,&combat_visibility_gather};
 const ServerNpcGruntPerceptionTickApi tick_api{1,sizeof(ServerNpcGruntPerceptionTickApi),&perception_tick};
 const ServerNpcGruntSoundScanApi scan_api{1,sizeof(ServerNpcGruntSoundScanApi),&grunt_sound_scan};
@@ -1565,4 +1633,10 @@ SiN_GetServerNpcGruntHearingApi(std::uint32_t version,std::uint32_t size) noexce
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatVisibilityApi* __cdecl
 SiN_GetServerNpcGruntCombatVisibilityApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatVisibilityApi)?&combat_visibility_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatRangeApi=_SiN_GetServerNpcGruntCombatRangeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatRangeApi* __cdecl
+SiN_GetServerNpcGruntCombatRangeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatRangeApi)?&combat_range_api:nullptr;
 }
