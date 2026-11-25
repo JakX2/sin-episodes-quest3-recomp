@@ -1319,7 +1319,10 @@ int main(int argc,char** argv){
         assert(scriptMap&&!getScriptMap(0,sizeof(tables::ScriptNpcMapDialogueApi))&&!getScriptMap(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::ScriptChoreographyTestApis scriptChoreography{*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*nativeSceneRetirement};
-        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria,scriptActor,scriptSpeech,scriptMap,responseTimingUpdate,responseRecord,std::getenv("SIN_PRIVATE_SCRIPTS_DIR"),historyTree,expeditorLifecycle,&scriptChoreography);
+        const char* privateScenes=std::getenv("SIN_PRIVATE_SCENES_DIR");
+        if((!privateScenes||!*privateScenes)&&argc==4)privateScenes=argv[3];
+        tables::test::RetailSceneAuditApis retailSceneAudit{*nativeVcdRuntime,*sceneMetadataGeneration,*sceneResponseServices,*sceneMetadataIndex,privateScenes};
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria,scriptActor,scriptSpeech,scriptMap,responseTimingUpdate,responseRecord,std::getenv("SIN_PRIVATE_SCRIPTS_DIR"),historyTree,expeditorLifecycle,&scriptChoreography,&retailSceneAudit);
         std::puts("PASS script-selected generated choreography through speech, captions and native retirement");
         std::puts("PASS script-selected native named scene cache, precache, startup and response retirement");
         std::puts("PASS script-backed Count map observation and active behavior routing");
