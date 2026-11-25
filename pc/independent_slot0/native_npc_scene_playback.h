@@ -1104,6 +1104,22 @@ struct ResponseCriteriaTreeApi {
     int (__cdecl *destroy)(void*,unsigned,const ResponseCriteriaTreeBindings*) noexcept;
 };
 using GetResponseCriteriaTreeApi=const ResponseCriteriaTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_criteria_copy_export[]="SiN_GetResponseCriteriaCopyApi";
+struct ResponseCriteriaCopyBindings {
+    ResponseCriteriaTreeBindings tree;
+    // Copy original root contents into a newly constructed destination root.
+    int (__cdecl *copy_root)(void*,void* dest,void* source) noexcept;
+    int (__cdecl *first_child)(void*,void* root,void**) noexcept;
+    int (__cdecl *next_child)(void*,void* child,void**) noexcept;
+    int (__cdecl *name)(void*,void* child,const char**) noexcept;
+};
+struct ResponseCriteriaCopyApi {
+    std::uint32_t version,size;
+    // Original 2205d720: enumerate the cloned KeyValues children, not source
+    // tree rows. Fresh distinct destination storage; failure retires partial copy.
+    int (__cdecl *copy)(void* dest,unsigned,void* source,unsigned,const ResponseCriteriaCopyBindings*) noexcept;
+};
+using GetResponseCriteriaCopyApi=const ResponseCriteriaCopyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_rule_ranking_export[]="SiN_GetResponseRuleRankingApi";
 struct ResponseRuleRankingBindings {
     ResponseCriteriaTreeBindings criteria;
