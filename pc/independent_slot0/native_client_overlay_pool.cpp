@@ -1,5 +1,6 @@
 #include "native_client_overlay_pool.h"
 #include "native_client_overlay_entity.h"
+#include "native_client_overlay_event_frame.h"
 #include "native_weapon_datatables.h"
 #include "native_client_overlay_interpolate.h"
 #include <cmath>
@@ -11,6 +12,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOve
 SiN_GetClientOverlayHistoryApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayClockedInterpolateApi* __cdecl
 SiN_GetClientOverlayClockedInterpolateApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayEventsApi* __cdecl
+SiN_GetClientOverlayEventsApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr std::uint32_t stride=sizeof(ClientOverlayHistoryNode),max_nodes=4096;
@@ -314,8 +317,8 @@ bool render_one(EntityRender& c,unsigned i,float time) noexcept {
     c.done[i]=true;++c.result->processed;c.result->writes+=wrote;c.result->raw_copies+=raw;c.result->recycled+=removed;
     return true;
 }
-int __cdecl entity_render(void* actor,unsigned bytes,float time,const ClientOverlayInterpolationClock* clock,
-    const ClientOverlayEntityBindings* b,ClientOverlayEntityResult* out) noexcept {
+int entity_interpolate(void* actor,unsigned bytes,float time,const ClientOverlayInterpolationClock* clock,
+    const ClientOverlayEntityBindings* b,ClientOverlayEntityResult* out,bool complete) noexcept {
     if(!begin(out)||!std::isfinite(time)||!clock||!std::isfinite(clock->last_network_time)||!b||!b->looping)return 0;
     EntityVectors v{};
     if(!preflight(actor,bytes,b,EntityOp::Render,v,*out))return 0;
@@ -347,9 +350,48 @@ int __cdecl entity_render(void* actor,unsigned bytes,float time,const ClientOver
     };
     if(!history->correct(actor,bytes,time,&hb,&out->repairs)||!c.ok)return 0;
     // Port-owned frame composition: evaluate each other active watcher once.
-    for(unsigned i=0;i<v.count;++i)if(!c.done[i]&&!render_one(c,i,time))return 0;
+    if(complete)for(unsigned i=0;i<v.count;++i)if(!c.done[i]&&!render_one(c,i,time))return 0;
     return 1;
 }
+int __cdecl entity_render(void* actor,unsigned bytes,float time,const ClientOverlayInterpolationClock* clock,
+    const ClientOverlayEntityBindings* b,ClientOverlayEntityResult* out) noexcept {
+    return entity_interpolate(actor,bytes,time,clock,b,out,true);
+}
+
+struct EventFrameLock {
+    const ClientOverlayEventFrameBindings* b;
+    void* model;
+    ~EventFrameLock(){b->unlock(b->context,model);}
+};
+int __cdecl event_frame(void* actor,unsigned bytes,float frame_time,float time,const ClientOverlayInterpolationClock* clock,
+    const ClientOverlayEventFrameBindings* b,ClientOverlayEventFrameResult* out) noexcept {
+    if(!out)return 0;
+    *out={};out->repair.failed_slot=out->events.failed_slot=out->events.aborted_slot=-1;
+    if(!actor||bytes<0x7cc||!std::isfinite(frame_time))return 0;
+    if(frame_time==0.f){out->skipped=EventFrameZeroTime;return 1;}
+    if(!b||!b->resolve_model||!b->lock||!b->unlock||!b->sequence_count||!b->base_events||
+       !b->entity.looping||!b->events.sequence||!b->events.emit||
+       !clock||!std::isfinite(clock->last_network_time)||!std::isfinite(time))return 0;
+    void* model=nullptr;
+    const int ready=b->resolve_model(b->context,actor,&model);
+    if(ready==0){out->skipped=EventFrameNoModel;return 1;}
+    if(ready!=1||!model)return 0;
+    // Port safety guard before invoking external engine services.
+    EntityVectors v{};
+    if(!preflight(actor,bytes,&b->entity,EntityOp::Render,v,out->repair))return 0;
+    b->lock(b->context,model);
+    EventFrameLock guard{b,model};
+    int count=0;
+    if(!b->sequence_count(b->context,model,&count)||count<0)return 0;
+    b->base_events(b->context,actor);
+    // 240c19a0 only interpolates changed sequences; do not evaluate the
+    // rest of the watchers again, as the general frame API would.
+    if(!entity_interpolate(actor,bytes,time,clock,&b->entity,&out->repair,false))return 0;
+    const auto* events=SiN_GetClientOverlayEventsApi(1,sizeof(ClientOverlayEventsApi));
+    return events&&events->dispatch(actor,bytes,frame_time,count,&b->events,&out->events);
+}
+const ClientOverlayEventFrameApi event_frame_api{1,sizeof(ClientOverlayEventFrameApi),&event_frame};
+
 const ClientOverlayEntityFrameApi entity_api{1,sizeof(ClientOverlayEntityFrameApi),&entity_capture,&entity_reset,&entity_render,&entity_restore};
 }
 
@@ -373,4 +415,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOve
 SiN_GetClientOverlayEntityFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ClientOverlayEntityFrameApi)?&entity_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetClientOverlayEventFrameApi=_SiN_GetClientOverlayEventFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayEventFrameApi* __cdecl
+SiN_GetClientOverlayEventFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ClientOverlayEventFrameApi)?&event_frame_api:nullptr;
 }
