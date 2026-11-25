@@ -11,6 +11,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGru
 SiN_GetServerGruntScheduleSelectorApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleStateApi* __cdecl
 SiN_GetServerNpcScheduleStateApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJetpackSelectorApi* __cdecl
+SiN_GetServerJetpackScheduleSelectorApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -46,7 +48,7 @@ int __cdecl find(void* a,unsigned bytes,int id,const ServerNpcScheduleResolution
     if(!out)return 0;*out={};out->requested=out->translated=out->global=out->ideal=-1;
     return a&&bytes>=0xc34&&b&&resolve(a,id,*b,*out);
 }
-int __cdecl select(void* a,unsigned bytes,float now,bool failure,const ServerNpcScheduleResolutionBindings* b,ServerNpcScheduleResolutionResult* out) noexcept {
+int select_impl(void* a,unsigned bytes,float now,bool failure,const ServerNpcScheduleResolutionBindings* b,ServerNpcScheduleResolutionResult* out,const ServerJetpackSelectorBindings* jet=nullptr,ServerJetpackSelectorResult* jr=nullptr) noexcept {
     if(!out)return 0;*out={};out->requested=out->translated=out->global=out->ideal=-1;
     if(!a||bytes<0xdd8||!b||!std::isfinite(now))return 0;
     const auto* ns=SiN_GetServerNpcScheduleNamespaceApi(1,sizeof(ServerNpcScheduleNamespaceApi));
@@ -77,8 +79,12 @@ int __cdecl select(void* a,unsigned bytes,float now,bool failure,const ServerNpc
                     if(!state->apply(a,bytes,2,now,&b->state,&out->state))return 0;current=2;
                 }
             }
-            if(b->jetpack||current==4||current==7){
+            if(current==4||current==7||(b->jetpack&&!jet)){
                 if(!b->special_select||!b->special_select(b->context,a,current,&id))return 0;
+            }else if(jet){
+                const auto* api=SiN_GetServerJetpackScheduleSelectorApi(1,sizeof(ServerJetpackSelectorApi));
+                if(!api||!jr||!api->select(a,bytes,now,jet,jr))return 0;
+                id=jr->schedule;
             }else{
                 const auto* grunt=SiN_GetServerGruntScheduleSelectorApi(1,sizeof(ServerGruntScheduleSelectorApi));
                 if(!grunt||!grunt->select(a,bytes,&b->grunt,&out->grunt))return 0;id=out->grunt.schedule;
@@ -95,6 +101,16 @@ int __cdecl select(void* a,unsigned bytes,float now,bool failure,const ServerNpc
     }
     return 1;
 }
+int __cdecl select(void* a,unsigned n,float now,bool failure,const ServerNpcScheduleResolutionBindings* b,ServerNpcScheduleResolutionResult* out) noexcept {
+    return select_impl(a,n,now,failure,b,out);
+}
+int __cdecl select_jet(void* a,unsigned n,float now,bool failure,const ServerNpcScheduleResolutionBindings* b,const ServerJetpackSelectorBindings* jet,ServerNpcScheduleResolutionResult* out,ServerJetpackSelectorResult* jr) noexcept {
+    if(!jr)return 0;*jr={};jr->schedule=-1;
+    if(!a||n<0x1028||!b||!b->jetpack||!jet)return 0;
+    auto bound=*jet;bound.grunt=b->grunt;bound.grunt.entities=b->state.entities;
+    return select_impl(a,n,now,failure,b,out,&bound,jr);
+}
+const ServerJetpackScheduleResolutionApi jet_api{1,sizeof(ServerJetpackScheduleResolutionApi),&select_jet};
 const ServerNpcScheduleResolutionApi api{1,sizeof(ServerNpcScheduleResolutionApi),&find,&select};
 }
 }
@@ -103,4 +119,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcScheduleResolutionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcScheduleResolutionApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerJetpackScheduleResolutionApi=_SiN_GetServerJetpackScheduleResolutionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJetpackScheduleResolutionApi* __cdecl
+SiN_GetServerJetpackScheduleResolutionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerJetpackScheduleResolutionApi)?&jet_api:nullptr;
 }

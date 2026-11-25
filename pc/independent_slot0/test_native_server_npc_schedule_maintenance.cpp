@@ -9,9 +9,10 @@
 #include <cstring>
 #include <cstdio>
 #include <vector>
+#include <initializer_list>
 using namespace sin_port::native_weapon_tables;
 struct F{
-    alignas(4) unsigned char actor[0xfcc]{},desc[0x48]{},rows[2][0x34]{},tasks[2][16]{};
+    alignas(4) unsigned char actor[0x1028]{},desc[0x48]{},rows[2][0x34]{},tasks[2][16]{};
     std::vector<int> trace;
     int mode=0;bool yield=false;
     unsigned budget_calls=0;
@@ -103,5 +104,25 @@ int main(int argc,char** argv){
     assert((f.trace==std::vector<int>{40,41,30,158,60,60}));
     gb.maintenance.selection.jetpack=true;f.trace.clear();
     assert(!grunt->run(f.actor,sizeof(f.actor),10,&gb,&gout)&&f.trace.empty());
+
+    auto gs=reinterpret_cast<GetServerNpcSubclassSchedulerApi>(GetProcAddress(s,server_npc_subclass_scheduler_export));
+    assert(gs&&!GetProcAddress(c,server_npc_subclass_scheduler_export)&&!gs(0,sizeof(ServerNpcSubclassSchedulerApi))&&!gs(1,0));
+    const auto* sub=gs(1,sizeof(ServerNpcSubclassSchedulerApi));assert(sub);
+    unsigned kind=99;assert(sub->classify(0x2248df04,&kind)&&kind==NpcSubclassElite);
+    for(unsigned v:{0x224954a4u,0x2249aaa4u,0x224a416cu})assert(sub->classify(v,&kind)&&kind==NpcSubclassGround);
+    for(unsigned v:{0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu})assert(sub->classify(v,&kind)&&kind==NpcSubclassJetpack);
+    assert(!sub->classify(0,&kind));
+    ServerNpcSubclassSchedulerBindings cb{};cb.maintenance=gb.maintenance;cb.grunt=gb.tasks;
+    cb.original_vtable=0x2248df04;cb.maintenance.selection.jetpack=false;
+    f.put(f.tasks[0],0,3);f.put(f.tasks[0],4,1.f);
+    reset();f.yield=true;ServerNpcSubclassSchedulerResult sout{};
+    assert(sub->run(f.actor,sizeof(f.actor),10,&cb,&sout)&&sout.subclass==NpcSubclassElite&&sout.task_calls==1&&sout.elite.lifecycle.completed&&!sout.delegated);
+    assert((f.trace==std::vector<int>{40,41,30,60,60}));
+    cb.original_vtable=0x2249964c;f.put(f.rows[0],0,global+0x76);f.put(f.tasks[0],0,160);
+    reset();f.yield=true;
+    assert(sub->run(f.actor,sizeof(f.actor),10,&cb,&sout)&&sout.subclass==NpcSubclassJetpack&&sout.jet_selector.schedule==0x76&&sout.maintenance.selection.requested==0x76&&sout.jetpack.lifecycle.completed);
+    assert(f.get<int>(0xfec)==2&&f.get<int>(0x79c)==global+0x76&&sout.task_calls==1&&!sout.delegated);
+    assert((f.trace==std::vector<int>{40,41,30,60,60}));
+    cb.original_vtable=0;f.trace.clear();assert(!sub->run(f.actor,sizeof(f.actor),10,&cb,&sout)&&f.trace.empty());
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native maintenance loop task lifecycle, failure schedule and bounded iterations");
 }
