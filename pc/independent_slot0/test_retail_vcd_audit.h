@@ -1566,6 +1566,124 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
         think?"PASS automatic NPC animation think from parsed scene through deferred initialization and native frame":
         "PASS parsed gesture/sequence native actor record, tag warp, layer frame and retirement");
 }
+inline void check_parsed_npc_target_scene(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
+    const NativeSceneExecutionApi& execution,const ServerNpcAnimationRecordApi& admission,const ServerNpcTargetThinkApi& think){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Eyes
+ {
+  event lookat eyes
+  {
+   time 0 2
+   param "!player"
+  }
+ }
+ channel Body
+ {
+  event face body
+  {
+   time 0 2
+   param "!player"
+  }
+ }
+}
+)VCD";
+    struct Fixture {
+        VcdAuditArena& arena;alignas(4) unsigned char scene[0x5ec]{},actor[0x1000]{},target[4]{};
+        unsigned starts{},stops{},handles{},targets{},looks{},faces{},gates{},motors{},conditions{},condition=1,suppressed=0;
+        float yaw=0;std::uint32_t root=0;
+        explicit Fixture(VcdAuditArena& a):arena(a){}
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+        static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept{
+            auto& a=self(p).arena;return a.storage(&a,w,out,n);
+        }
+    } f(arena);
+    F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;
+    auto raw=arena.runtime();
+    assert(runtime.parse(f.scene+0x410,"target_scene.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    ServerNpcAnimationRecordBindings cfg{};auto& facial=cfg.npc.facial;
+    facial.host.context=&f;facial.host.storage=&Fixture::storage;
+    facial.host.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);
+    };
+    facial.host.handle=[](void* p,void* target,std::uint32_t* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(target==f.target);++f.handles;*out=17;return 1;
+    };
+    facial.host.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    facial.extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;
+    };
+    facial.now=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+    ActorEventRecordBindings records{};assert(admission.adapt(&cfg,&records));
+    NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
+    b.dispatch.context=&f;b.dispatch.records=&records;
+    b.dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word);*out=f.actor;*n=sizeof(f.actor);return 1;
+    };
+    b.dispatch.target=[](void* p,void* scene,const char* name,void* actor,unsigned flag,void** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&actor==f.actor&&!flag&&!std::strcmp(name,"!player"));
+        ++f.targets;*out=f.target;return 1;
+    };
+    b.dispatch.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace kind) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&(F::word(event,0)==3||F::word(event,0)==8));
+        if(kind==ChoreographyDispatchTrace::Start)++f.starts;
+        else if(kind==ChoreographyDispatchTrace::Stop)++f.stops;
+        return 1;
+    };
+    b.leaves.context=&f;b.leaves.actor_extent=facial.extent;
+    ServerVfeRemapCache remap{};ServerNpcTargetThinkBindings tb{};
+    auto& facial_think=tb.animation.facial.named;
+    facial_think.remap=&remap;facial_think.composed.base.context=&f;facial_think.composed.base.storage=&Fixture::storage;
+    facial_think.composed.native_intensity=true;
+    tb.look.context=&f;tb.look.storage=&Fixture::storage;
+    tb.look.npc=[](void* p,void* actor,void** npc) noexcept -> int{auto& f=Fixture::self(p);assert(actor==f.actor);*npc=actor;return 1;};
+    tb.look.resolve=[](void* p,std::uint32_t token,void** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(token==17);*out=f.target;return 1;
+    };
+    tb.look.look=[](void* p,void* npc,void* target,float weight,float duration,int flags) noexcept -> int{
+        auto& f=Fixture::self(p);assert(npc==f.actor&&target==f.target&&weight==1&&duration==.2f&&!flags);++f.looks;return 1;
+    };
+    tb.face.target=tb.look;tb.face.context=&f;
+    tb.face.target.look=[](void* p,void* npc,void* target,float weight,float duration,int flags) noexcept -> int{
+        auto& f=Fixture::self(p);assert(npc==f.actor&&target==f.target&&weight==1&&duration==.2f&&!flags);++f.faces;return 1;
+    };
+    tb.face.admit=[](void* p,void*,unsigned* out) noexcept -> int{auto& f=Fixture::self(p);++f.gates;*out=1;return 1;};
+    tb.face.suppressed=[](void* p,void*,unsigned* out) noexcept -> int{*out=Fixture::self(p).suppressed;return 1;};
+    tb.face.target_yaw=[](void*,void*,void*,float* out) noexcept -> int{*out=90;return 1;};
+    assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
+    auto simulate=[&](float time){F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);};
+    assert(simulate(.5f)==1&&f.starts==2&&f.handles==3&&f.targets==2&&F::word(f.actor,0x5c4)==2);
+    assert(think.run(f.actor,sizeof(f.actor),10,&tb)&&f.looks==1&&f.faces==1&&f.gates==1);
+    void* rows=nullptr;unsigned n=0;
+    assert(Fixture::storage(&f,F::word(f.actor,0x5b8),&rows,&n)&&n>=0x80);
+    assert(static_cast<unsigned char*>(rows)[0xc]&&static_cast<unsigned char*>(rows)[0x4c]);
+    assert(simulate(1.f)==1&&think.run(f.actor,sizeof(f.actor),11,&tb)&&f.looks==2&&f.faces==2&&f.gates==2);
+    assert(VcdAuditArena::read_float(f.actor,0xe00)==90&&VcdAuditArena::read_float(f.actor,0xe04)==2);
+    assert(VcdAuditArena::read_float(f.actor,0xe40)==30&&VcdAuditArena::read_float(f.actor,0xe44)==60);
+    ServerBodyTurnBindings consume{};consume.context=&f;
+    consume.condition=[](void* p,void* actor,int id,int flag,unsigned* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&id==0x3c&&flag==1&&!F::word(actor,0xe00)&&!F::word(actor,0xe04));
+        ++f.conditions;*out=f.condition;return 1;
+    };
+    consume.suppressed=tb.face.suppressed;
+    consume.motor_yaw=[](void* p,void* actor,float yaw,float speed) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&speed==-1);++f.motors;f.yaw=yaw;return 1;
+    };
+    unsigned accepted=99;
+    auto body=[&](){return think.consume_body(f.actor,sizeof(f.actor),&consume,&accepted);};
+    assert(body()&&accepted==1&&f.motors==1&&f.yaw==45&&f.conditions==1);
+    assert(body()&&!accepted&&f.conditions==1);
+    F::fl(f.actor,0xe00,30);F::fl(f.actor,0xe04,1);f.condition=0;
+    assert(body()&&!accepted&&f.conditions==2&&f.motors==1&&!F::word(f.actor,0xe04));
+    F::fl(f.actor,0xe00,30);F::fl(f.actor,0xe04,1);f.condition=1;f.suppressed=1;
+    assert(body()&&!accepted&&f.conditions==3&&f.motors==1&&!F::word(f.actor,0xe04));
+    assert(simulate(2.5f)==1&&simulate(2.75f)==1&&f.stops==2&&!F::word(f.actor,0x5c4));
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
+    std::puts("PASS parsed lookat and face native actor think and separate weighted body-turn consumption");
+}
 // Retail-inspired edge cases: strict binary32 duration trim, duplicate
 // timestamps, reverse ranges and disabled tracks with/without samples.
 inline void check_retail_flex_edge_cases(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const ServerFlexSplineApi& spline){

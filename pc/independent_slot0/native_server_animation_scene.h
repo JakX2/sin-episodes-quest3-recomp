@@ -175,4 +175,23 @@ struct ServerFaceSceneApi {
         const ServerFaceSceneBindings*,unsigned*) noexcept;
 };
 using GetServerFaceSceneApi=const ServerFaceSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_target_think_export[]="SiN_GetServerNpcTargetThinkApi";
+struct ServerNpcTargetThinkBindings {
+    ServerNpcAnimationThinkBindings animation;
+    ServerTargetSceneBindings look;
+    ServerFaceSceneBindings face;
+};
+struct ServerBodyTurnBindings {
+    void* context;
+    int (__cdecl *condition)(void*,void* actor,int id,int flag,unsigned*) noexcept;
+    int (__cdecl *suppressed)(void*,void* actor,unsigned*) noexcept;
+    int (__cdecl *motor_yaw)(void*,void* actor,float yaw,float speed) noexcept;
+};
+struct ServerNpcTargetThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerNpcTargetThinkBindings*) noexcept;
+    // Separate original actor maintenance leaf 22029a10; not called by run.
+    int (__cdecl *consume_body)(void*,unsigned,const ServerBodyTurnBindings*,unsigned*) noexcept;
+};
+using GetServerNpcTargetThinkApi=const ServerNpcTargetThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -1172,6 +1172,12 @@ int main(int argc,char** argv){
         assert(npcAnimationGate);
         tables::test::VcdAuditArena animationGateArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_parsed_npc_animation_scene(animationGateArena,*nativeVcdRuntime,*execution,*npcAnimation,*actorRecords,*animationFrame,*gestureMetadata,npcAnimationThink,npcAnimationGate);
+        const auto getNpcTargetThink=reinterpret_cast<tables::GetServerNpcTargetThinkApi>(GetProcAddress(server,tables::server_npc_target_think_export));
+        assert(getNpcTargetThink&&!GetProcAddress(client,tables::server_npc_target_think_export));
+        const auto* npcTargetThink=getNpcTargetThink(1,sizeof(tables::ServerNpcTargetThinkApi));
+        assert(npcTargetThink&&!getNpcTargetThink(0,sizeof(tables::ServerNpcTargetThinkApi))&&!getNpcTargetThink(1,0));
+        tables::test::VcdAuditArena targetArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_parsed_npc_target_scene(targetArena,*nativeVcdRuntime,*execution,*npcAnimation,*npcTargetThink);
     }
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
         FreeLibrary(server);FreeLibrary(client);return 2;

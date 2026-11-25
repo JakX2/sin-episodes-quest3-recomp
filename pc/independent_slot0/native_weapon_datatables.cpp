@@ -11489,9 +11489,11 @@ int __cdecl server_npc_random_expression_apply(void* actor,unsigned bytes,void* 
 const ServerNpcRandomExpressionApi server_npc_random_expression_api{version,sizeof(ServerNpcRandomExpressionApi),&server_npc_random_expression_apply};
 
 int animation_scene_tick(void*,unsigned,void*,void*,unsigned,float,float,const ServerNpcAnimationThinkBindings*,unsigned*) noexcept;
+int __cdecl target_scene_look_at(void*,const void*,unsigned,const void*,unsigned,float,const ServerTargetSceneBindings*,unsigned*) noexcept;
+int __cdecl face_scene_update(void*,unsigned,void*,unsigned,const void*,unsigned,float,float,const ServerFaceSceneBindings*,unsigned*) noexcept;
 int server_facial_think_impl(void* actor,unsigned bytes,float now,const ServerFacialThinkBindings* b,
     const ServerNpcRandomExpressionBindings* random,bool native_intensity,const ServerNativeControllerMap* mapping=nullptr,
-    const ServerNpcAnimationThinkBindings* animation=nullptr) noexcept {
+    const ServerNpcAnimationThinkBindings* animation=nullptr,const ServerNpcTargetThinkBindings* targets=nullptr) noexcept {
     if(bytes<server_flex_scene_extent||!hologram_writable(actor,server_flex_scene_extent)||!b||
        !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!std::isfinite(now))return 0;
     const ServerNativeIntensity source{b->context,b->storage};
@@ -11515,7 +11517,11 @@ int server_facial_think_impl(void* actor,unsigned bytes,float now,const ServerFa
         const unsigned type=hologram_read<unsigned>(event,0);
         const float time=hologram_read<float>(scene,0x78);
         unsigned accepted=0;
-        if(animation&&(type==6||type==7)){
+        if(targets&&type==3){
+            if(target_scene_look_at(actor,row,0x40,event,en,time,&targets->look,&accepted)!=1)return 0;
+        }else if(targets&&type==8){
+            if(face_scene_update(actor,bytes,row,0x40,event,en,time,now,&targets->face,&accepted)!=1)return 0;
+        }else if(animation&&(type==6||type==7)){
             if(!animation_scene_tick(actor,bytes,row,event,en,time,now,animation,&accepted))return 0;
         }else if(animation&&type==16&&(hologram_read<unsigned>(row,0x38)==2||hologram_read<unsigned>(row,0x38)==3)){
             accepted=1;
@@ -12345,16 +12351,45 @@ int animation_scene_tick(void* actor,unsigned bytes,void* record,void* event,uns
     if(npc&&!(b->keepalive?b->keepalive(b->context,npc,.2f):npc_animation_keepalive(npc,0x980,now,.2f)))return 0;
     return animation_priority_refresh(actor,bytes,record,0x40,now,&h.frame);
 }
-int __cdecl npc_animation_think(void* actor,unsigned bytes,float now,const ServerNpcAnimationThinkBindings* b) noexcept {
+int npc_animation_think_impl(void* actor,unsigned bytes,float now,const ServerNpcAnimationThinkBindings* b,
+    const ServerNpcTargetThinkBindings* targets) noexcept {
     if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b)))return 0;
     const auto& h=b->facial.named;
     if(h.controller_count!=h.composed.base.count||h.controller_count>64||!server_remap_ready(h.remap)||
        (h.controller_count&&(!h.controller_names||!sin_independent::vgui_layout::Readable(h.controller_names,h.controller_count*sizeof(*h.controller_names)))))return 0;
     if((b->facial.banks||b->facial.files)&&!server_vfe_cache_ready(b->facial.banks,b->facial.files))return 0;
     const ServerNativeControllerMap mapping{h.controller_names,h.controller_count,h.remap,b->facial.banks,b->facial.files};
-    return server_facial_think_impl(actor,bytes,now,&h.composed.base,h.composed.random_expression,h.composed.native_intensity,&mapping,b);
+    return server_facial_think_impl(actor,bytes,now,&h.composed.base,h.composed.random_expression,h.composed.native_intensity,&mapping,b,targets);
+}
+int __cdecl npc_animation_think(void* actor,unsigned bytes,float now,const ServerNpcAnimationThinkBindings* b) noexcept {
+    return npc_animation_think_impl(actor,bytes,now,b,nullptr);
 }
 const ServerNpcAnimationThinkApi server_npc_animation_think_api{version,sizeof(ServerNpcAnimationThinkApi),&npc_animation_think};
+int __cdecl npc_target_think(void* actor,unsigned bytes,float now,const ServerNpcTargetThinkBindings* b) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b)))return 0;
+    return npc_animation_think_impl(actor,bytes,now,&b->animation,b);
+}
+int __cdecl npc_consume_body_turn(void* actor,unsigned bytes,const ServerBodyTurnBindings* b,unsigned* out) noexcept {
+    if(bytes<0xe08||!hologram_writable(actor,0xe08)||!hologram_writable(out,4))return 0;
+    *out=0;
+    const float total=hologram_read<float>(actor,0xe04);
+    if(!std::isfinite(total))return 0;
+    if(total<=0)return 1;
+    const float sum=hologram_read<float>(actor,0xe00),current=hologram_read<float>(actor,0x370);
+    if(!std::isfinite(sum)||!std::isfinite(current)||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->condition)return 0;
+    const float goal=static_cast<float>(static_cast<double>(sum)/total+current);
+    if(!std::isfinite(goal))return 0;
+    // Original clears accumulators before querying the NPC condition.
+    hologram_write(actor,0xe00,0.f);hologram_write(actor,0xe04,0.f);
+    unsigned condition=0,suppressed=0;
+    if(!b->condition(b->context,actor,0x3c,1,&condition))return 0;
+    if(!(condition&0xff))return 1;
+    if(!b->suppressed||!b->suppressed(b->context,actor,&suppressed))return 0;
+    if(suppressed&0xff)return 1;
+    if(!b->motor_yaw||!b->motor_yaw(b->context,actor,goal,-1.f))return 0;
+    *out=1;return 1;
+}
+const ServerNpcTargetThinkApi server_npc_target_think_api{version,sizeof(ServerNpcTargetThinkApi),&npc_target_think,&npc_consume_body_turn};
 
 ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
     return *static_cast<ServerNpcSceneRecordBindings*>(p);
@@ -14444,6 +14479,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcTargetThinkApi=_SiN_GetServerNpcTargetThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTargetThinkApi* __cdecl
+SiN_GetServerNpcTargetThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcTargetThinkApi)?&server_npc_target_think_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerFaceSceneApi=_SiN_GetServerFaceSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerFaceSceneApi* __cdecl
