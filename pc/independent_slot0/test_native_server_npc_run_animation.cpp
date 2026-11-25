@@ -64,6 +64,47 @@ int main(int argc,char** argv){
     f.clocks();f.trace.clear();f.choice=11;
     assert(api->run(f.actor,sizeof(f.actor),&in,&b,&out)&&out.sequence_set&&out.selected==11&&out.events.emitted==1);
     assert((f.trace==std::vector<int>{1,2,3,4,5,6,21})&&f.get<int>(f.actor,0x3ec)==11);
+
+    auto gn=reinterpret_cast<GetServerNpcNativeSequenceFrameApi>(GetProcAddress(server,server_npc_native_sequence_frame_export));
+    assert(gn&&!GetProcAddress(client,server_npc_native_sequence_frame_export)&&!gn(0,sizeof(ServerNpcNativeSequenceFrameApi))&&!gn(1,0));
+    auto* native=gn(1,sizeof(ServerNpcNativeSequenceFrameApi));assert(native);
+    struct ChoiceFixture {
+        F* f;
+        ServerSequenceChoiceEntry entries[12]{};
+    } choice{&f};
+    choice.entries[9]={5,1};choice.entries[11]={5,4};
+    ServerNpcNativeSequenceBindings nb{};
+    nb.frame=b;nb.frame.select_sequence=nullptr;nb.frame.set_sequence=nullptr;
+    nb.context=&choice;nb.choice.context=&choice;
+    nb.choices=[](void* p,void* a,const ServerSequenceChoiceEntry** e,unsigned* n) noexcept -> int {
+        auto& c=*static_cast<ChoiceFixture*>(p);assert(a==c.f->actor);c.f->trace.push_back(30);*e=c.entries;*n=12;return 1;
+    };
+    nb.choice.random=[](void* p,int lo,int hi,int seq,int* out) noexcept -> int {
+        auto& c=*static_cast<ChoiceFixture*>(p);assert(lo==0&&((seq==9&&hi==0)||(seq==11&&hi==4)));
+        c.f->trace.push_back(31);*out=0;return 1;
+    };
+    nb.reset.context=&f;
+    nb.reset.duration=[](void* p,void* a,int seq,double* out) noexcept -> int {
+        auto& f=F::self(p);assert(a==f.actor&&seq==11);f.trace.push_back(32);*out=2.;return 1;};
+    nb.reset.distance=[](void* p,void*,int seq,double* out) noexcept -> int {assert(seq==11);F::self(p).trace.push_back(33);*out=80.;return 1;};
+    nb.reset.flags=[](void* p,void*,int seq,unsigned* out) noexcept -> int{assert(seq==11);F::self(p).trace.push_back(34);*out=0;return 1;};
+    nb.reset.register_events=[](void* p,void* a,int seq) noexcept -> int {
+        auto& f=F::self(p);assert(a==f.actor&&seq==11&&f.get<float>(a,0x398)==0.f&&f.get<unsigned>(a,0x464)==0);
+        f.trace.push_back(35);return 1;};
+    f.clocks();f.trace.clear();f.put(f.actor,0x3ec,9);f.put(f.actor,0x3c0,2.f);
+    f.actor[0x3e0]=1;f.actor[0x3e1]=1;f.put(f.actor,0x464,7u);f.put(f.actor,0x468,5u);
+    ServerNpcNativeSequenceFrameResult nr{};
+    assert(native->run(f.actor,sizeof(f.actor),&in,&nb,&nr)&&nr.frame.selected==11&&nr.frame.sequence_set&&nr.reset.reset&&nr.reset.sequence_changed&&!nr.reset.cycle_changed);
+    assert((f.trace==std::vector<int>{1,2,3,4,30,31,31,32,33,34,35,21}));
+    assert(f.get<float>(f.actor,0x3e8)==.625f&&f.get<float>(f.actor,0x394)==40.f&&f.get<float>(f.actor,0x3c0)==1.f);
+    assert(f.get<unsigned>(f.actor,0x464)==0&&f.get<unsigned>(f.actor,0x468)==6&&nr.frame.events.emitted==1);
+    // Nonlooping selection uses greatest weight without RNG, and the
+    // old nonlooping flag causes native cycle zero before reset.
+    f.clocks();f.trace.clear();f.put(f.actor,0x3ec,9);f.put(f.actor,0x3c0,2.f);
+    f.actor[0x3e0]=1;f.actor[0x3e1]=0;f.put(f.actor,0x464,7u);
+    assert(native->run(f.actor,sizeof(f.actor),&in,&nb,&nr)&&nr.frame.selected==11&&nr.reset.reset&&nr.reset.cycle_changed);
+    assert((f.trace==std::vector<int>{1,2,3,4,30,32,33,34,35,21}));
+    assert(f.get<float>(f.actor,0x3e8)==0.f);
     FreeLibrary(server);FreeLibrary(client);
     std::puts("PASS native NPC RunAnimation metadata gate, advancement, idle selection and server events");
 }

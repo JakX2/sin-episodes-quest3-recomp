@@ -5,10 +5,15 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerCom
 SiN_GetServerComposedAnimationFrameApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationEventsApi* __cdecl
 SiN_GetServerAnimationEventsApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSequenceChoiceApi* __cdecl
+SiN_GetServerSequenceChoiceApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSequenceResetApi* __cdecl
+SiN_GetServerSequenceResetApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T> T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
-int __cdecl run(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcRunAnimationBindings* b,ServerNpcRunAnimationResult* out) noexcept {
+int run_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcRunAnimationBindings* b,ServerNpcRunAnimationResult* out,
+    const ServerNpcNativeSequenceBindings* native,ServerSequenceResetResult* reset_result) noexcept {
     if(!out)return 0;
     *out={};out->selected=-1;out->events.failed_layer=-2;
     if(!actor||bytes<0x8fc||!in||!b||!b->model_available||!std::isfinite(in->now)||
@@ -29,12 +34,23 @@ int __cdecl run(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,
         if(b->finished){if(!b->finished(b->context,actor,&finished))return 0;}
         else finished=read<std::uint8_t>(actor,0x3e0)&&read<int>(actor,0x3ec)==read<int>(actor,0x884);
         if(finished){
-            if(!b->select_sequence)return 0;
             out->selection_attempted=1;
             const bool looping=read<std::uint8_t>(actor,0x3e1)!=0;
-            if(!b->select_sequence(b->context,actor,read<int>(actor,0x87c),read<int>(actor,0x3ec),looping,&out->selected))return 0;
+            const int activity=read<int>(actor,0x87c),current=read<int>(actor,0x3ec);
+            if(native){
+                const auto* chooser=SiN_GetServerSequenceChoiceApi(1,sizeof(ServerSequenceChoiceApi));
+                const ServerSequenceChoiceEntry* entries=nullptr;unsigned count=0;
+                if(!chooser||!native->choices)return 0;
+                const int available=native->choices(native->context,actor,&entries,&count);
+                if(available<0||(available>0&&!entries))return 0;
+                if(!available){entries=nullptr;count=0;}
+                if(!chooser->choose(entries,count,activity,current,looping,&native->choice,&out->selected))return 0;
+            }else if(!b->select_sequence||!b->select_sequence(b->context,actor,activity,current,looping,&out->selected))return 0;
             if(out->selected!=-1){
-                if(!b->set_sequence||!b->set_sequence(b->context,actor,out->selected))return 0;
+                if(native){
+                    const auto* setter=SiN_GetServerSequenceResetApi(1,sizeof(ServerSequenceResetApi));
+                    if(!setter||!setter->set(actor,bytes,out->selected,&native->reset,reset_result))return 0;
+                }else if(!b->set_sequence||!b->set_sequence(b->context,actor,out->selected))return 0;
                 out->sequence_set=1;
             }
         }
@@ -43,6 +59,15 @@ int __cdecl run(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,
     out->events_dispatched=1;
     return 1;
 }
+int __cdecl run(void* a,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcRunAnimationBindings* b,ServerNpcRunAnimationResult* out) noexcept {
+    return run_impl(a,bytes,in,b,out,nullptr,nullptr);
+}
+int __cdecl run_native(void* a,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcNativeSequenceBindings* b,ServerNpcNativeSequenceFrameResult* out) noexcept {
+    if(!out)return 0;
+    *out={};
+    return run_impl(a,bytes,in,b?&b->frame:nullptr,&out->frame,b,&out->reset);
+}
+const ServerNpcNativeSequenceFrameApi native_api{1,sizeof(ServerNpcNativeSequenceFrameApi),&run_native};
 const ServerNpcRunAnimationApi api{1,sizeof(ServerNpcRunAnimationApi),&run};
 }
 }
@@ -51,4 +76,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcRunAnimationApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcRunAnimationApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativeSequenceFrameApi=_SiN_GetServerNpcNativeSequenceFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeSequenceFrameApi* __cdecl
+SiN_GetServerNpcNativeSequenceFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerNpcNativeSequenceFrameApi)?&native_api:nullptr;
 }
