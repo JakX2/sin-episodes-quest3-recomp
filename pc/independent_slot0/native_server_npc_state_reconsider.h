@@ -302,4 +302,15 @@ struct ServerNpcRelationMatrixApi {
     int (__cdecl *row)(void*,int,const void**,unsigned*) noexcept;
 };
 using GetServerNpcRelationMatrixApi=const ServerNpcRelationMatrixApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_best_enemy_export[]="SiN_GetServerNpcGruntBestEnemyApi";
+struct ServerNpcGruntBestEnemyResult {
+    ServerNpcBestEnemyResult selection;
+    unsigned disposition_queries,priority_queries,validity_queries,cache_queries;
+};
+struct ServerNpcGruntBestEnemyApi {
+    std::uint32_t version,size;
+    // Native relation/validity/cache replace the corresponding BestEnemy callbacks.
+    int (__cdecl *select)(void*,unsigned,float,const ServerNpcBestEnemyBindings*,const ServerNpcGruntRelationBindings*,const ServerNpcUnreachableEnemyBindings*,ServerNpcGruntBestEnemyResult*) noexcept;
+};
+using GetServerNpcGruntBestEnemyApi=const ServerNpcGruntBestEnemyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

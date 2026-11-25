@@ -407,5 +407,24 @@ int main(int argc,char** argv){
     f.put(f.actor,0xc18,0u);f.actor[0xdb1]=0;
     assert(rel->relation(f.actor,sizeof(f.actor),f.replacement,true,&rb,&relation_result)&&relation_result.source==3&&relation_result.disposition==1&&relation_result.priority==17);
     assert(matrix->initialize(cells,225)&&cells[3*15+6].priority==0);
+    auto ggruntbest=reinterpret_cast<GetServerNpcGruntBestEnemyApi>(GetProcAddress(s,server_npc_grunt_best_enemy_export));
+    assert(ggruntbest&&!GetProcAddress(c,server_npc_grunt_best_enemy_export)&&!ggruntbest(0,sizeof(ServerNpcGruntBestEnemyApi))&&!ggruntbest(1,0));
+    const auto* gruntbest=ggruntbest(1,sizeof(ServerNpcGruntBestEnemyApi));assert(gruntbest);
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,300,0,true,&mutation,&mut));
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.replacement,new_pos,300,0,true,&mutation,&mut));
+    f.put(f.actor,0x644,0);f.put(f.actor,0xc18,0u);f.put(f.actor,0x920,0);
+    f.rel_npc=true;f.put(f.enemy,0x868,1);f.put(f.replacement,0x868,1);
+    std::memcpy(f.relation_matrix,cells+3*15,240);
+    auto native_best=bb;native_best.disposition=nullptr;native_best.priority=nullptr;native_best.valid=nullptr;native_best.unreachable=nullptr;
+    ServerNpcGruntBestEnemyResult gbr{};
+    assert(gruntbest->select(f.actor,sizeof(f.actor),300,&native_best,&rb,&ub,&gbr)&&gbr.selection.enemy==f.replacement&&gbr.selection.disposition_rejected==0);
+    f.put(f.replacement,0x868,2);
+    assert(gruntbest->select(f.actor,sizeof(f.actor),300,&native_best,&rb,&ub,&gbr)&&gbr.selection.enemy==f.enemy&&gbr.selection.invalid==1);
+    f.put(f.replacement,0x868,1);f.distance[0]=10;f.distance[1]=20;
+    f.put(f.actor,0x920,1);unreachable_row(0,0x7001u,310,10);
+    assert(gruntbest->select(f.actor,sizeof(f.actor),300,&native_best,&rb,&ub,&gbr)&&gbr.selection.enemy==f.replacement&&gbr.cache_queries==2&&gbr.validity_queries==2&&gbr.disposition_queries>=4);
+    f.put(f.actor,0x920,0);f.actor[0xdb1]=1;f.rel_player=f.rel_special=false;
+    assert(gruntbest->select(f.actor,sizeof(f.actor),300,&native_best,&rb,&ub,&gbr)&&!gbr.selection.enemy&&gbr.selection.disposition_rejected==2&&!gbr.cache_queries);
+    f.actor[0xdb1]=0;
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

@@ -220,7 +220,11 @@ int __cdecl query_aim_vector(void* actor,unsigned bytes,const ServerNpcEnemyMemo
     if(!memory_key(*b,target,key)||!memory_storage(&b->storage,read<std::uint32_t>(actor,0x984),0x3c,memory,extent))return 0;
     return memory_position(memory,extent,key,false,&b->storage,out,result);
 }
-int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,ServerNpcBestEnemyResult* out) noexcept{
+int __cdecl grunt_relation(void*,unsigned,void*,bool,const ServerNpcGruntRelationBindings*,ServerNpcGruntRelationResult*) noexcept;
+int __cdecl grunt_valid(void*,unsigned,void*,const ServerNpcGruntRelationBindings*,ServerNpcGruntValidityResult*) noexcept;
+int __cdecl unreachable_enemy(void*,unsigned,void*,float,const ServerNpcUnreachableEnemyBindings*,ServerNpcUnreachableEnemyResult*) noexcept;
+bool relation_grunt_class(std::uint32_t) noexcept;
+int best_enemy_impl(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,ServerNpcBestEnemyResult* out,const ServerNpcGruntRelationBindings* rel,const ServerNpcUnreachableEnemyBindings* cache,ServerNpcGruntBestEnemyResult* stats) noexcept{
     if(!out)return 0;*out={};out->priority=-1000;out->distance_squared=0x10000000;out->unreachable=1;
     if(!actor||bytes<0xc1c||!b||!std::isfinite(now)||b->memory.count>sin_independent::kEntityHandleCapacity||(b->memory.count&&!b->memory.entries))return 0;
     const auto component=read<unsigned>(actor,0xc18);
@@ -236,7 +240,24 @@ int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestE
     unsigned stack[255]{},depth=0;bool seen[255]{};
     auto node=[&](unsigned i){return static_cast<const unsigned char*>(nodes)+12*i;};
     auto query_bool=[&](auto fn,void* entity,bool& value){return fn&&fn(b->context,actor,entity,&value);};
-    auto priority=[&](void* entity,int& value){return b->priority&&b->priority(b->context,actor,entity,&value);};
+    auto relation_value=[&](void* entity,bool disposition,int& value){
+        if(!rel){auto fn=disposition?b->disposition:b->priority;return fn&&fn(b->context,actor,entity,&value);}
+        if(disposition)++stats->disposition_queries;else ++stats->priority_queries;
+        ServerNpcGruntRelationResult rr{};
+        if(!grunt_relation(actor,bytes,entity,disposition,rel,&rr))return false;
+        value=disposition?rr.disposition:rr.priority;return true;
+    };
+    auto priority=[&](void* entity,int& value){return relation_value(entity,false,value);};
+    auto valid=[&](void* entity,bool& value){
+        if(!rel)return query_bool(b->valid,entity,value)!=0;
+        ++stats->validity_queries;ServerNpcGruntValidityResult vr{};
+        if(!grunt_valid(actor,bytes,entity,rel,&vr))return false;value=vr.valid!=0;return true;
+    };
+    auto unreachable_query=[&](void* entity,bool& value){
+        if(!cache)return query_bool(b->unreachable,entity,value)!=0;
+        ++stats->cache_queries;ServerNpcUnreachableEnemyResult ur{};
+        if(!unreachable_enemy(actor,bytes,entity,now,cache,&ur))return false;value=ur.unreachable!=0;return true;
+    };
     auto visibility=[&](void* entity,bool& value){
         if(!b->sensed||!b->sensed(b->context,read<unsigned>(actor,0x898),entity,&value))return false;
         return value||(b->visible&&b->visible(b->context,actor,entity,0x4081,&value));
@@ -266,9 +287,9 @@ int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestE
         unsigned extent=0;if(!b->extent||!b->extent(b->context,entity,&extent)||extent<0xc0)return 0;
         if(read<int>(entity,0x8c)!=0){++out->dead;continue;}
         if(read<unsigned>(entity,0xbc)&0x8000u){++out->disposition_rejected;continue;}
-        int disp=0;if(!b->disposition||!b->disposition(b->context,actor,entity,&disp))return 0;
-        if(disp!=1){if(!b->disposition(b->context,actor,entity,&disp))return 0;if(disp!=2){++out->disposition_rejected;continue;}}
-        bool yes=false;if(!query_bool(b->valid,entity,yes))return 0;if(!yes){++out->invalid;continue;}
+        int disp=0;if(!relation_value(entity,true,disp))return 0;
+        if(disp!=1){if(!relation_value(entity,true,disp))return 0;if(disp!=2){++out->disposition_rejected;continue;}}
+        bool yes=false;if(!valid(entity,yes))return 0;if(!yes){++out->invalid;continue;}
         const float cutoff=read<float>(actor,0x8c4),stamp=read<float>(record,0x1c),valid_after=read<float>(record,0x28);
         if(!std::isfinite(cutoff)||!std::isfinite(stamp)||!std::isfinite(valid_after))return 0;
         if(cutoff>0&&stamp<cutoff){++out->old;continue;}
@@ -278,13 +299,13 @@ int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestE
         if(!memory_lookup(memory,memory_bytes,key,false,&b->memory.storage,&lookup))return 0;
         if(lookup.record){void* rec=nullptr;if(!memory_record(&b->memory.storage,lookup,0x36,rec))return 0;
             if(read<std::uint8_t>(rec,0x35)){++out->eluded;continue;}}
-        if(!b->disposition(b->context,actor,entity,&disp))return 0;
+        if(!relation_value(entity,true,disp))return 0;
         if(disp==2&&!read<std::uint8_t>(record,0x36)){
             void* current=registry.Resolve(read<unsigned>(actor,0x8a0));unsigned current_key=0;float last=0;
             if(!memory_key(b->memory,current,current_key)||!memory_timestamp(memory,memory_bytes,current_key,NpcMemoryStamp20,&b->memory.storage,&lookup,&last))return 0;
             if(last==-std::numeric_limits<float>::max()){++out->feared;continue;}
         }
-        bool unreachable=false;if(!query_bool(b->unreachable,entity,unreachable))return 0;
+        bool unreachable=false;if(!unreachable_query(entity,unreachable))return 0;
         if(!out->unreachable&&unreachable){++out->unreachable_rejected;continue;}
         int rank=0,dist=0;
         if(out->unreachable&&!unreachable){
@@ -311,6 +332,16 @@ int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestE
         out->enemy=entity;out->priority=rank;out->distance_squared=dist;++out->replaced;
     }
     return 1;
+}
+int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,ServerNpcBestEnemyResult* out) noexcept{
+    return best_enemy_impl(actor,bytes,now,b,out,nullptr,nullptr,nullptr);
+}
+int __cdecl grunt_best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,const ServerNpcGruntRelationBindings* rel,const ServerNpcUnreachableEnemyBindings* cache,ServerNpcGruntBestEnemyResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!b||!rel||!cache||bytes<0xdb2||!relation_grunt_class(rel->original_vtable))return 0;
+    auto rb=*rel;auto cb=*cache;
+    rb.entries=cb.entries=b->memory.entries;rb.count=cb.count=b->memory.count;
+    return best_enemy_impl(actor,bytes,now,b,&out->selection,&rb,&cb,out);
 }
 int __cdecl unreachable_enemy(void* actor,unsigned bytes,void* target,float now,const ServerNpcUnreachableEnemyBindings* b,ServerNpcUnreachableEnemyResult* out) noexcept{
     if(!out)return 0;*out={};
@@ -775,6 +806,7 @@ int __cdecl relation_matrix_row(void* context,int source,const void** row,unsign
     *row=static_cast<ServerNpcRelationCell*>(context)+15*source;*bytes=240;return 1;
 }
 const ServerNpcRelationMatrixApi matrix_api{1,sizeof(ServerNpcRelationMatrixApi),&initialize_relation_matrix,&set_relation_matrix,&relation_matrix_row};
+const ServerNpcGruntBestEnemyApi grunt_best_api{1,sizeof(ServerNpcGruntBestEnemyApi),&grunt_best_enemy};
 const ServerNpcGruntRelationApi relation_api{1,sizeof(ServerNpcGruntRelationApi),&grunt_relation,&grunt_valid};
 const ServerNpcEnemyMemoryControlApi control_api{1,sizeof(ServerNpcEnemyMemoryControlApi),&initialize_memory_owner,&memory_control};
 const ServerNpcEnemyMemoryMutationApi mutation_api{1,sizeof(ServerNpcEnemyMemoryMutationApi),&upsert_memory,&remove_memory,&erase_memory_record};
@@ -889,4 +921,10 @@ SiN_GetServerNpcGruntRelationApi(std::uint32_t version,std::uint32_t size) noexc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcRelationMatrixApi* __cdecl
 SiN_GetServerNpcRelationMatrixApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcRelationMatrixApi)?&matrix_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBestEnemyApi=_SiN_GetServerNpcGruntBestEnemyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBestEnemyApi* __cdecl
+SiN_GetServerNpcGruntBestEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBestEnemyApi)?&grunt_best_api:nullptr;
 }
