@@ -72,6 +72,59 @@ int __cdecl apply(void* a,unsigned bytes,int desired,float now,const ServerNpcSt
     if(changed&&(!b->state_changed||!b->state_changed(b->context,a,old,desired)))return 0;
     return 1;
 }
+int __cdecl set_enemy(void* a,unsigned bytes,void* target,bool notify,float now,const ServerNpcEnemyStateBindings* b,ServerNpcEnemyStateResult* out) noexcept {
+    if(!out)return 0;*out={};out->old_handle=out->new_handle=0xffffffffu;
+    if(!a||bytes<0xc04||!b||!std::isfinite(now)||b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    auto resolve=[&](){return static_cast<void*>(registry.Resolve(read<std::uint32_t>(a,0x8a0)));};
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    ServerNpcConditionResult cr{};
+    out->old_handle=read<std::uint32_t>(a,0x8a0);
+    out->changed=resolve()!=target;
+    if(out->changed){
+        if(!b->enemy_changing||!b->enemy_changing(b->context,a))return 0;
+        out->notified=1;
+        const auto squad=read<std::uint32_t>(a,0x9c4);
+        if(squad){
+            if(!b->release_squad_slot||!b->release_squad_slot(b->context,squad,resolve(),read<int>(a,0x9cc)))return 0;
+            write(a,0x9cc,-1);out->squad_released=1;
+        }
+        write<std::uint8_t>(a,0x8b0,0);
+        if(target&&notify){
+            if(!cond->store(a,bytes,0x19,NpcConditionCurrent,true,&b->conditions,&cr))return 0;
+            out->new_condition_set=cr.mapped;
+        }
+    }
+    if(target){
+        if(!b->entity_handle||!b->entity_handle(b->context,target,&out->new_handle)||
+           registry.Resolve(out->new_handle)!=target)return 0;
+    }
+    write(a,0x8a0,out->new_handle);write(a,0x8a4,now);
+    write(a,0xbf8,-1.f);write(a,0xbfc,0u);write(a,0xc00,0u);out->reset_fields=1;
+    if(!target){
+        if(!cond->store(a,bytes,0x19,NpcConditionCurrent,false,&b->conditions,&cr))return 0;
+        out->new_condition_cleared=cr.mapped;
+    }
+    return 1;
+}
+int __cdecl clear_combat_conditions(void* a,unsigned bytes,const ServerNpcConditionMapBindings* b,ServerNpcEnemyConditionResult* out) noexcept{
+    if(!out)return 0;*out={};if(!a||bytes<0x7ec||!b)return 0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    ServerNpcConditionResult cr{};
+    if(!cond->test(a,bytes,0x15,NpcConditionCurrent,b,&cr))return 0;
+    out->prior_preserved=cr.value;
+    constexpr int ids[]={0x14,0x15,0x16,0x17,0x27,0x28,0x29,0x2a,0x2b};
+    for(int id:ids){
+        if(!cond->store(a,bytes,id,NpcConditionCurrent,false,b,&cr))return 0;
+        out->cleared+=cr.changed;
+    }
+    if(out->prior_preserved){
+        if(!cond->store(a,bytes,0x15,NpcConditionCurrent,true,b,&cr))return 0;
+        out->restored=cr.mapped;
+    }
+    return 1;
+}
+const ServerNpcEnemyStateApi enemy_state_api{1,sizeof(ServerNpcEnemyStateApi),&set_enemy,&clear_combat_conditions};
 const ServerNpcStateApi api{1,sizeof(ServerNpcStateApi),&should_reconsider,&choose_ideal,&apply};
 }
 }
@@ -80,4 +133,10 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcStateReconsiderApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcStateApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcEnemyStateApi=_SiN_GetServerNpcEnemyStateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyStateApi* __cdecl
+SiN_GetServerNpcEnemyStateApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyStateApi)?&enemy_state_api:nullptr;
 }
