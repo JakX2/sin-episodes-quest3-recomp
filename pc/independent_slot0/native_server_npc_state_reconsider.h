@@ -357,4 +357,28 @@ struct ServerNpcGruntEnemyChoiceGateApi {
     int (__cdecl *query)(void*,unsigned,float,const ServerNpcGruntEnemyChoiceGateBindings*,ServerNpcGruntEnemyChoiceGateResult*) noexcept;
 };
 using GetServerNpcGruntEnemyChoiceGateApi=const ServerNpcGruntEnemyChoiceGateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_enemy_switch_export[]="SiN_GetServerNpcGruntEnemySwitchApi";
+struct ServerNpcGruntEnemySwitchBindings {
+    ServerNpcGruntEnemyChoiceGateBindings gate;
+    ServerNpcBestEnemyBindings best;
+    ServerNpcUnreachableEnemyBindings cache;
+    ServerNpcEnemyStateBindings enemy;
+    ServerNpcScheduleBindings schedule;
+    void* context;
+    int (__cdecl *lost_cue)(void*,void*) noexcept; // +5a0, original speech cooldown
+    int (__cdecl *fire_output)(void*,void*,unsigned) noexcept; // 22156900, actor+b08/ac0
+};
+struct ServerNpcGruntEnemySwitchResult {
+    ServerNpcGruntEnemyChoiceGateResult gate;
+    ServerNpcGruntBestEnemyResult selection;
+    ServerNpcEnemyStateResult assignment;
+    unsigned had_enemy,has_enemy,forced_missing,eluded,new_allowed,lost_allowed,deferred,selected,assigned,dead_condition,lost_condition,lost_cue,extra_squad_release,outputs;
+    unsigned old_flags,new_flags;
+};
+struct ServerNpcGruntEnemySwitchApi {
+    std::uint32_t version,size;
+    // Original 2203ead0: schedule permission, choice gate, BestEnemy, setter.
+    int (__cdecl *update)(void*,unsigned,float,const ServerNpcGruntEnemySwitchBindings*,ServerNpcGruntEnemySwitchResult*) noexcept;
+};
+using GetServerNpcGruntEnemySwitchApi=const ServerNpcGruntEnemySwitchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
