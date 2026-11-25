@@ -10,7 +10,7 @@
 #include <cstdio>
 using namespace sin_port::native_weapon_tables;
 struct F{
-    unsigned char actor[0xfcc]{},desc[0x48]{};
+    unsigned char actor[0x1088]{},desc[0x48]{};
     ServerScheduleImage image{};
     const ServerNpcScheduleImageApi* api=nullptr;
     template<class T>void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
@@ -55,6 +55,41 @@ int main(int argc,char** argv){
     assert(f.api->storage(&f.image,find(118)+2,&p,&n)&&!std::strcmp(static_cast<const char*>(p),"SCHED_JETPACK_PATROL"));
     assert(!f.api->build(f.actor,NpcSubclassJetpack,3000,3001,&b,&f.image,&result)&&f.image.head==3129);
     b.damage_token=nullptr;assert(!f.api->build(f.actor,NpcSubclassGround,4000,0,&b,&f.image,&result)&&f.image.token_base==3000);
+
+    auto gc=reinterpret_cast<GetServerNpcCatalogSchedulerApi>(GetProcAddress(s,server_npc_catalog_scheduler_export));
+    assert(gc&&!GetProcAddress(c,server_npc_catalog_scheduler_export)&&!gc(0,sizeof(ServerNpcCatalogSchedulerApi))&&!gc(1,0));
+    const auto* catalog=gc(1,sizeof(ServerNpcCatalogSchedulerApi));assert(catalog);
+    ServerNpcScheduleServicesBindings runtime{};auto& scheduler=runtime.scheduler;
+    scheduler.original_vtable=0x2249964c;
+    auto& m=scheduler.maintenance;auto& selection=m.selection;selection.head=99;
+    selection.grunt.schedule=sb;
+    // Only an inherited list is external; custom tokens must use the native image.
+    selection.grunt.schedule.storage=nullptr;
+    selection.state.state_query=[](void*,void*,int,int* out) noexcept -> int{*out=-1;return 1;};
+    scheduler.grunt.registration=&ids;
+    scheduler.grunt.parent=[](void*,void* actor,const ServerNpcScheduleTask* task,bool running) noexcept -> int{
+        assert(!running&&task->id==89&&task->parameter==32.f);
+        int status=2;std::memcpy(static_cast<unsigned char*>(actor)+0x7a4,&status,4);return 1;};
+    scheduler.jetpack.inspect_clear=[](void*,void*,float seconds) noexcept -> int{assert(seconds==5.f);return 1;};
+    m.invalidated=[](void*,void*) noexcept -> int{return 1;};
+    m.before_selection=m.invalidated;m.transition=m.invalidated;
+    m.budget=[](void*,void*,bool* out) noexcept -> int{*out=true;return 1;};
+    m.validity.base_build=m.invalidated;m.validity.mobility=[](void*,float,bool* out) noexcept -> int{*out=false;return 1;};
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);
+    ServerNpcCatalogSchedulerResult run{};
+    assert(catalog->run(f.actor,sizeof(f.actor),10,&f.image,&runtime,&run));
+    assert(run.runtime.scheduler.jet_selector.schedule==118&&run.runtime.scheduler.jetpack.target_cleared&&run.runtime.scheduler.jetpack.lifecycle.completed);
+    assert(run.runtime.scheduler.maintenance.state.schedule==find(118)&&run.native_reads&&!run.inherited_reads);
+    assert(catalog->run(f.actor,sizeof(f.actor),11,&f.image,&runtime,&run)&&run.runtime.scheduler.maintenance.advanced==1&&run.runtime.scheduler.jetpack.lifecycle.completed);
+    assert(run.runtime.scheduler.maintenance.state.index==1&&run.runtime.scheduler.maintenance.state.task.id==159);
+    assert(catalog->run(f.actor,sizeof(f.actor),12,&f.image,&runtime,&run)&&run.runtime.scheduler.maintenance.advanced==1&&run.runtime.scheduler.jetpack.delegated&&run.runtime.scheduler.jetpack.grunt.parent_called);
+    assert(run.runtime.scheduler.maintenance.state.index==2&&run.runtime.scheduler.maintenance.state.status==2&&!run.runtime.scheduler.maintenance.runs);
+    // Wrong namespace and wrong class rejected before state writes.
+    f.put(f.desc,0x34,global+21);assert(!catalog->run(f.actor,sizeof(f.actor),13,&f.image,&runtime,&run)&&!run.native_reads);
+    f.put(f.desc,0x34,global+20);scheduler.original_vtable=0x2248df04;
+    assert(!catalog->run(f.actor,sizeof(f.actor),13,&f.image,&runtime,&run));
+    scheduler.original_vtable=0x2249964c;
     ++activities.names.generation;assert(!f.api->storage(&f.image,find(118),&p,&n));
+    assert(!catalog->run(f.actor,sizeof(f.actor),13,&f.image,&runtime,&run));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original schedule descriptor materialization and real task cursor");
 }

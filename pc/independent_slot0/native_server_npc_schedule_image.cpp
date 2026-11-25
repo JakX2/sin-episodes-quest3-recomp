@@ -5,6 +5,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleNamespaceApi* __cdecl SiN_GetServerNpcScheduleNamespaceApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerActivityDictionaryApi* __cdecl SiN_GetServerActivityDictionaryApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleServicesApi* __cdecl SiN_GetServerNpcScheduleServicesApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSubclassSchedulerApi* __cdecl SiN_GetServerNpcSubclassSchedulerApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 bool private_activity(const ServerGruntRegistration* r,int index,float& value) noexcept{
@@ -77,10 +79,70 @@ int __cdecl storage(const ServerScheduleImage* image,std::uint32_t token,const v
     else{*out=row.source->name;*bytes=static_cast<unsigned>(std::strlen(row.source->name)+1);}
     return 1;
 }
+struct CatalogCall {
+    const ServerScheduleImage* image;
+    const ServerNpcScheduleBindings* original;
+    ServerNpcCatalogSchedulerResult* result;
+};
+int __cdecl run_catalog(void* actor,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out) noexcept {
+    if(!out)return 0;*out={};
+    const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
+    const auto* runtime=SiN_GetServerNpcScheduleServicesApi(1,sizeof(ServerNpcScheduleServicesApi));
+    if(!actor||!image||!b||!cls||!runtime||!image->row_count||image->row_count>46||!image->token_base||
+       image->token_base>0xffffffffu-137u||image->head!=image->token_base+3u*(image->row_count-1)||
+       (image->activity_owner&&image->activity_owner->names.generation!=image->activity_generation))return 0;
+    unsigned family=0;
+    if(!cls->classify(b->scheduler.original_vtable,&family)||family!=image->family)return 0;
+    auto bound=*b;
+    auto& selection=bound.scheduler.maintenance.selection;
+    const auto& original=b->scheduler.maintenance.selection.grunt.schedule;
+    if(selection.head!=image->fallback_head)return 0;
+    const auto* reg=b->scheduler.grunt.registration;
+    if(image->activity_owner&&(!reg||!reg->activities_ready||reg->activity_owner!=image->activity_owner||
+       reg->activity_generation!=image->activity_generation))return 0;
+    // Validate namespace compatibility before publishing any actor state.
+    const auto* ns=SiN_GetServerNpcScheduleNamespaceApi(1,sizeof(ServerNpcScheduleNamespaceApi));
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    if(!ns||!cond)return 0;
+    for(unsigned i=0;i<image->row_count;++i){
+        const auto& row=image->rows[i];int global=-1;
+        if(!row.source||!ns->to_global(actor,row.source->local_schedule,&original.conditions,&global)||
+           static_cast<std::uint32_t>(global)!=row.descriptor[0])return 0;
+        std::uint32_t mask[8]{};
+        for(unsigned j=0;j<row.source->condition_count;++j){
+            ServerNpcConditionResult cr{};
+            if(!cond->map(actor,row.source->conditions[j],&original.conditions,&cr)||!cr.mapped||cr.bit<0||cr.bit>=256)return 0;
+            mask[cr.bit/32]|=1u<<(cr.bit%32);
+        }
+        if(std::memcmp(mask,row.descriptor+3,sizeof(mask)))return 0;
+    }
+    CatalogCall q{image,&original,out};
+    selection.head=image->head;
+    auto& sb=selection.grunt.schedule;sb.context=&q;
+    sb.storage=[](void* p,std::uint32_t token,const void** data,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<CatalogCall*>(p);
+        if(token>=q.image->token_base&&token-q.image->token_base<138u){
+            ++q.result->native_reads;return storage(q.image,token,data,n);
+        }
+        ++q.result->inherited_reads;
+        return q.original->storage&&q.original->storage(q.original->context,token,data,n);
+    };
+    sb.reset_movement=[](void* p,void* actor,std::uint32_t token) noexcept -> int{
+        const auto& original=*static_cast<CatalogCall*>(p)->original;
+        return original.reset_movement&&original.reset_movement(original.context,actor,token);
+    };
+    return runtime->run(actor,bytes,now,&bound,&out->runtime);
+}
+const ServerNpcCatalogSchedulerApi catalog_scheduler_api{1,sizeof(ServerNpcCatalogSchedulerApi),&run_catalog};
 const ServerNpcScheduleImageApi api{1,sizeof(ServerNpcScheduleImageApi),&build,&storage};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcScheduleImageApi=_SiN_GetServerNpcScheduleImageApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleImageApi* __cdecl SiN_GetServerNpcScheduleImageApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcScheduleImageApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcCatalogSchedulerApi=_SiN_GetServerNpcCatalogSchedulerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcCatalogSchedulerApi* __cdecl SiN_GetServerNpcCatalogSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcCatalogSchedulerApi)?&catalog_scheduler_api:nullptr;
 }
