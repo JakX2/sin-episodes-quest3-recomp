@@ -49,7 +49,14 @@ int __cdecl build(void* actor,unsigned family,std::uint32_t base,std::uint32_t f
                     if(!ns->to_global(actor,static_cast<int>(parameter),&b->namespace_map,&mapped)||mapped<npc_global_condition_base||
                        !ns->to_local(actor,mapped,&b->namespace_map,&local)||local!=static_cast<int>(parameter))return 0;
                 }else if(task.argument_kind==ScheduleArgumentDamageToken){
-                    if(!b->damage_token||!b->damage_token(b->context,"DMG_BURN",&parameter))return 0;++result->damage_tokens;
+                    // 2209f1b9 -> 223a5c8b: bare nonnumeric token takes
+                    // the CRT no-conversion path and stores positive zero.
+                    parameter=0.f;
+                    if(b->damage_token){
+                        float witness=0.f;
+                        if(!b->damage_token(b->context,"DMG_BURN",&witness)||witness!=0.f||std::signbit(witness))return 0;
+                    }
+                    ++result->damage_tokens;
                 }else if(task.argument_kind>ScheduleArgumentDamageToken)return 0;
                 if(!std::isfinite(parameter))return 0;
                 staged.tasks[staged.task_count++]={task.local_task,parameter};++result->tasks;

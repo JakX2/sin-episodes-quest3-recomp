@@ -21,8 +21,8 @@ struct ServerScheduleImageBindings {
     ServerNpcConditionMapBindings namespace_map;
     const ServerGruntRegistration* registration;
     void* context;
-    // Bare original token retained in Phase1073; caller must explicitly
-    // resolve its observed numeric-parser behavior, not infer a damage flag.
+    // Optional legacy witness callback. Retail bare DMG_BURN converts to
+    // +0.0f; if supplied, the callback must agree. Not a damage flag lookup.
     int (__cdecl *damage_token)(void*,const char*,float*) noexcept;
 };
 struct ServerScheduleImageResult {unsigned rows,tasks,interrupts,private_activities,damage_tokens;int failed_schedule,failed_task,failed_condition;};

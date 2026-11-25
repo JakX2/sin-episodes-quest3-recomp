@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstring>
 #include <cstdio>
+#include <initializer_list>
 using namespace sin_port::native_weapon_tables;
 struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
@@ -54,7 +55,19 @@ int main(int argc,char** argv){
     assert(f.api->build(f.actor,NpcSubclassJetpack,3000,99,&b,&f.image,&result)&&result.rows==44&&result.tasks==258&&result.damage_tokens==2);
     assert(f.api->storage(&f.image,find(118)+2,&p,&n)&&!std::strcmp(static_cast<const char*>(p),"SCHED_JETPACK_PATROL"));
     assert(!f.api->build(f.actor,NpcSubclassJetpack,3000,3001,&b,&f.image,&result)&&f.image.head==3129);
-    b.damage_token=nullptr;assert(!f.api->build(f.actor,NpcSubclassGround,4000,0,&b,&f.image,&result)&&f.image.token_base==3000);
+    b.damage_token=[](void*,const char*,float* out) noexcept -> int{*out=8.f;return 1;};
+    assert(!f.api->build(f.actor,NpcSubclassGround,4000,0,&b,&f.image,&result)&&f.image.token_base==3000);
+    b.damage_token=nullptr;
+    assert(f.api->build(f.actor,NpcSubclassJetpack,3000,99,&b,&f.image,&result)&&result.damage_tokens==2);
+    for(int id: {104,105}){
+        const auto token=find(id);assert(token&&f.api->storage(&f.image,token+1,&p,&n));
+        const auto* tasks=static_cast<const ServerNpcScheduleTask*>(p);
+        unsigned found=0;
+        for(unsigned j=0;j<n/sizeof(ServerNpcScheduleTask);++j)if(tasks[j].id==144){
+            std::uint32_t bits=1;std::memcpy(&bits,&tasks[j].parameter,4);assert(bits==0);++found;
+        }
+        assert(found==1);
+    }
 
     auto gc=reinterpret_cast<GetServerNpcCatalogSchedulerApi>(GetProcAddress(s,server_npc_catalog_scheduler_export));
     assert(gc&&!GetProcAddress(c,server_npc_catalog_scheduler_export)&&!gc(0,sizeof(ServerNpcCatalogSchedulerApi))&&!gc(1,0));
