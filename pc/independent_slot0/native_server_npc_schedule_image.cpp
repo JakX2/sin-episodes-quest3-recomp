@@ -91,7 +91,7 @@ struct CatalogCall {
     const ServerNpcScheduleBindings* original;
     ServerNpcCatalogSchedulerResult* result;
 };
-int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr) noexcept {
+int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr) noexcept {
     if(!out)return 0;*out={};
     const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
     const auto* runtime=SiN_GetServerNpcScheduleServicesApi(1,sizeof(ServerNpcScheduleServicesApi));
@@ -138,7 +138,7 @@ int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleIm
         const auto& original=*static_cast<CatalogCall*>(p)->original;
         return original.reset_movement&&original.reset_movement(original.context,actor,token);
     };
-    if(combat)return run_schedule_services_combat_internal(actor,bytes,now,&bound,&out->runtime,combat,stats);
+    if(combat)return run_schedule_services_combat_internal(actor,bytes,now,&bound,&out->runtime,combat,stats,full,full_stats);
     return runtime->run(actor,bytes,now,&bound,&out->runtime);
 }
 int __cdecl run_catalog(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out) noexcept{
@@ -148,6 +148,11 @@ int __cdecl run_combat(void* a,unsigned bytes,float now,const ServerScheduleImag
     if(!out)return 0;*out={};if(!combat)return 0;
     return run_catalog_impl(a,bytes,now,image,b,&out->catalog,combat,&out->combat);
 }
+int __cdecl run_full(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,ServerNpcFullCatalogSchedulerResult* out) noexcept{
+    if(!out)return 0;*out={};if(!full)return 0;
+    return run_catalog_impl(a,bytes,now,image,b,&out->combat.catalog,&full->injury.combat,&out->combat.combat,full,&out->full);
+}
+const ServerNpcFullCatalogSchedulerApi full_catalog_api{1,sizeof(ServerNpcFullCatalogSchedulerApi),&run_full};
 const ServerNpcCombatCatalogSchedulerApi combat_catalog_api{1,sizeof(ServerNpcCombatCatalogSchedulerApi),&run_combat};
 const ServerNpcCatalogSchedulerApi catalog_scheduler_api{1,sizeof(ServerNpcCatalogSchedulerApi),&run_catalog};
 const ServerNpcScheduleImageApi api{1,sizeof(ServerNpcScheduleImageApi),&build,&storage};
@@ -166,4 +171,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcCombatCatalogSchedulerApi=_SiN_GetServerNpcCombatCatalogSchedulerApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcCombatCatalogSchedulerApi* __cdecl SiN_GetServerNpcCombatCatalogSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcCombatCatalogSchedulerApi)?&combat_catalog_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcFullCatalogSchedulerApi=_SiN_GetServerNpcFullCatalogSchedulerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcFullCatalogSchedulerApi* __cdecl SiN_GetServerNpcFullCatalogSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcFullCatalogSchedulerApi)?&full_catalog_api:nullptr;
 }

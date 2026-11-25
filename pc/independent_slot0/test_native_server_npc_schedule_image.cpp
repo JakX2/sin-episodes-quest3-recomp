@@ -135,5 +135,40 @@ int main(int argc,char** argv){
     assert(combat_api->run(f.actor,sizeof(f.actor),20.5f,&f.image,&runtime,&combat,&cr)&&cr.combat.calls==1&&stamp==20);
     assert(combat_api->run(f.actor,sizeof(f.actor),21,&f.image,&runtime,&combat,&cr)&&cr.combat.last.base.lifecycle.completed&&stamp==0);
     assert(combat_api->run(f.actor,sizeof(f.actor),22,&f.image,&runtime,&combat,&cr)&&cr.combat.calls==1&&cr.combat.last.base.task==140&&cr.combat.last.base.lifecycle.completed&&cr.catalog.runtime.scheduler.maintenance.state.index==5);
+
+    auto gf=reinterpret_cast<GetServerNpcFullCatalogSchedulerApi>(GetProcAddress(s,server_npc_full_catalog_scheduler_export));
+    assert(gf&&!GetProcAddress(c,server_npc_full_catalog_scheduler_export)&&!gf(0,sizeof(ServerNpcFullCatalogSchedulerApi)));
+    const auto* full_api=gf(1,sizeof(ServerNpcFullCatalogSchedulerApi));assert(full_api);
+    auto gdsp=reinterpret_cast<GetServerGruntTaskDispatchApi>(GetProcAddress(s,server_grunt_task_dispatch_export));
+    auto gct=reinterpret_cast<GetServerGruntCombatTaskApi>(GetProcAddress(s,server_grunt_combat_task_export));
+    auto git=reinterpret_cast<GetServerGruntInjuryTaskApi>(GetProcAddress(s,server_grunt_injury_task_export));
+    auto ght=reinterpret_cast<GetServerGruntHelperTaskApi>(GetProcAddress(s,server_grunt_helper_task_export));
+    assert(gdsp&&gct&&git&&ght);
+    const auto* dsp=gdsp(1,sizeof(ServerGruntTaskDispatchApi));const auto* ct=gct(1,sizeof(ServerGruntCombatTaskApi));
+    const auto* it=git(1,sizeof(ServerGruntInjuryTaskApi));const auto* ht=ght(1,sizeof(ServerGruntHelperTaskApi));
+    unsigned coverage[2]{};
+    for(int id=0;id<200;++id)for(unsigned running=0;running<2;++running){
+        unsigned route=0;assert(dsp->route(id,running!=0,&route));
+        const unsigned extended=ct->supports(id,running!=0)+it->supports(id,running!=0)+ht->supports(id,running!=0);
+        assert(extended<=1&&(extended==0||route==GruntTaskHostedSpecial));
+        if(route!=GruntTaskParent){assert(route==GruntTaskNative||extended==1);++coverage[running];}
+    }
+    assert(coverage[0]==26&&coverage[1]==11);
+    ServerGruntHelperTaskBindings full{};full.injury.combat=combat;
+    full.injury.is_player=[](void*,void*,bool* out) noexcept -> int{*out=false;return 1;};
+    full.injury.damage=[](void*,void* a,void* attacker,float amount,int type,float lo,float hi) noexcept -> int{
+        assert(a==attacker&&amount==35.f&&type==0&&lo==-.1f&&hi==.1f);return 1;};
+    auto install_at=[&](int id,int index){
+        std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);
+        const auto token=find(id);assert(token&&state->install(f.actor,sizeof(f.actor),token,30,&sb,&sr));
+        f.put(f.actor,0x79c,global+100+id);
+        for(int i=0;i<index;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+    };
+    ServerNpcFullCatalogSchedulerResult fr{};
+    install_at(107,4); // original stunned schedule, task151
+    assert(full_api->run(f.actor,sizeof(f.actor),30,&f.image,&runtime,&full,&fr)&&fr.full.calls==1&&fr.full.helper_calls==1&&fr.full.last.injury.combat.base.task==151&&fr.full.last.injury.combat.base.lifecycle.completed);
+    install_at(104,4); // original burning stand, task144, parsed positive zero
+    f.put(f.actor,0x9c,35);f.actor[0xcb1]=1;
+    assert(full_api->run(f.actor,sizeof(f.actor),31,&f.image,&runtime,&full,&fr)&&fr.full.calls==1&&fr.full.injury_calls==1&&fr.full.last.injury.damage_called&&fr.full.last.injury.combat.base.lifecycle.completed&&!f.actor[0xcb1]);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original schedule descriptor materialization and real task cursor");
 }

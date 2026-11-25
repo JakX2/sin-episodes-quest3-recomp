@@ -36,4 +36,8 @@ struct ServerGruntHelperTaskApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerGruntHelperTaskBindings*,ServerGruntHelperTaskResult*) noexcept;
 };
 using GetServerGruntHelperTaskApi=const ServerGruntHelperTaskApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerGruntFullTaskStats {
+    ServerGruntHelperTaskResult last;
+    unsigned calls,injury_calls,helper_calls;
+};
 }
