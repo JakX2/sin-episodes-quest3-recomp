@@ -6305,3 +6305,12 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
   add_test(NAME sin_response_rule_scoring_tests COMMAND sin_response_rule_scoring_tests)
 endif()
+
+if(BUILD_TESTING)
+  add_executable(sin_response_group_choice_tests tests/test_response_group_choice.cpp)
+  target_compile_features(sin_response_group_choice_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_response_group_choice_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_response_group_choice_tests COMMAND sin_response_group_choice_tests)
+endif()
