@@ -1096,6 +1096,60 @@ int __cdecl sensed_contains(const void* senses,unsigned bytes,void* entity,const
     while(result.entity){if(result.entity==entity){*found=true;return 1;}if(!sensed_next(senses,bytes,b,&cursor,&result))return 0;}
     return 1;
 }
+int __cdecl grunt_visual_gather(void* actor,unsigned bytes,float now,const ServerNpcGruntVisualBindings* b,ServerNpcGruntVisualResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->relation.original_vtable)||
+       b->senses.count>sin_independent::kEntityHandleCapacity||(b->senses.count&&!b->senses.entries))return 0;
+    out->special_mode=read<std::uint8_t>(actor,0xdb1)!=0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto store=[&](int id,bool value){
+        ServerNpcConditionResult r{};if(!cond->store(actor,bytes,id,NpcConditionCurrent,value,&b->conditions,&r))return false;
+        if(value)out->condition_sets+=r.mapped;else out->cleared+=r.changed;return true;
+    };
+    for(int id:{7,9,10,8,32,31})if(!store(id,false))return 0;
+    void* senses=nullptr;unsigned n=0;
+    if(!memory_storage(&b->senses.storage,read<unsigned>(actor,0x898),0x60,senses,n))return 0;
+    auto relation=b->relation;relation.entries=b->senses.entries;relation.count=b->senses.count;
+    auto report=b->report;report.original_vtable=relation.original_vtable;report.mutation.entries=b->senses.entries;report.mutation.count=b->senses.count;
+    const auto registry=sin_independent::EntityHandleView(b->senses.entries,b->senses.count);
+    ServerNpcSensedCursor cursor{};ServerNpcSensedResult row{};
+    if(!sensed_first(senses,n,-1,&b->senses,&cursor,&row))return 0;
+    out->first_stale=row.first_stale;
+    while(true){
+        out->stale+=row.stale;
+        void* target=row.entity;if(!target)break;
+        ++out->visited;bool special=false;
+        if(!relation.special_target||!relation.special_target(relation.context,target,&special))return 0;
+        if(special){++out->special_seen;if(!store(31,true))return 0;}
+        ServerNpcGruntRelationResult rr{};
+        if(!grunt_relation(actor,bytes,target,true,&relation,&rr))return 0;
+        if(rr.disposition==4)++out->neutral;
+        else{
+            if(target==registry.Resolve(read<unsigned>(actor,0x8a0))){++out->current_seen;if(!store(10,true))return 0;}
+            const bool hostile=out->special_mode||rr.disposition==1;
+            const bool feared=!hostile&&rr.disposition==2;
+            if(hostile||feared){
+                if(hostile){
+                    ++out->hostile;
+                    if(!grunt_relation(actor,bytes,target,false,&relation,&rr))return 0;
+                    if(!store(rr.priority<0?9:rr.priority>10?32:7,true))return 0;
+                }else ++out->feared;
+                unsigned extent=0;if(!b->extent||!b->extent(b->context,target,&extent)||extent<0x2c8)return 0;
+                if(read<unsigned>(target,0xb8)&0x800u){
+                    if(!b->refresh_transform||!b->refresh_transform(b->context,target))return 0;++out->transforms;
+                }
+                float position[3];std::memcpy(position,static_cast<unsigned char*>(target)+0x2bc,12);
+                ServerNpcGruntMemoryReportResult mr{};
+                if(!grunt_memory_report(actor,bytes,target,position,nullptr,now,&report,&mr))return 0;
+                ++out->report_calls;out->records_created+=mr.mutation.created;
+                if(feared&&!store(8,true))return 0;
+            }else if(rr.disposition==3)++out->friendly;else ++out->unknown;
+        }
+        if(!sensed_next(senses,n,&b->senses,&cursor,&row))return 0;
+    }
+    return 1;
+}
+const ServerNpcGruntVisualApi visual_api{1,sizeof(ServerNpcGruntVisualApi),&grunt_visual_gather};
 const ServerNpcSensedEntitiesApi sensed_api{1,sizeof(ServerNpcSensedEntitiesApi),&sensed_first,&sensed_next,&sensed_contains};
 const ServerNpcGruntSpeechApi speech_api{1,sizeof(ServerNpcGruntSpeechApi),&grunt_speak};
 const ServerNpcGruntEnemySwitchApi switch_api{1,sizeof(ServerNpcGruntEnemySwitchApi),&grunt_enemy_switch};
@@ -1252,4 +1306,10 @@ SiN_GetServerNpcGruntSpeechApi(std::uint32_t version,std::uint32_t size) noexcep
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSensedEntitiesApi* __cdecl
 SiN_GetServerNpcSensedEntitiesApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSensedEntitiesApi)?&sensed_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntVisualConditionsApi=_SiN_GetServerNpcGruntVisualConditionsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntVisualApi* __cdecl
+SiN_GetServerNpcGruntVisualConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntVisualApi)?&visual_api:nullptr;
 }
