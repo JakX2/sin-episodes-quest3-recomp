@@ -2,6 +2,7 @@
 #include "server_native_npc_map_host.h"
 #include "native_use_observation.h"
 #include "native_npc_spawn.h"
+#include "test_retail_dialogue_source.h"
 #include <cassert>
 #include <vector>
 #include <string>
@@ -555,34 +556,6 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     assert(bad.symbol_constructs==bad.symbol_destroys&&bad.symbol_constructs==2&&bad.count_exp.stage==npc::ExpeditorStage::Retired&&bad.jessica_exp.stage==npc::ExpeditorStage::Retired);
 }
 
- // Owner-only filesystem source, never copied into the repository. The
- // native create API copies each returned span before the next include.
-struct RetailDialogueSource {
-    std::string directory,buffer;
-    unsigned reads=0;
-    bool read(const char* name,std::string& out){
-        if(!name||!*name)return false;
-        std::string relative(name);
-        if(relative[0]=='/'||relative.find("..")!=std::string::npos||
-           relative.find('\\')!=std::string::npos||relative.find(':')!=std::string::npos)return false;
-        std::ifstream file(directory+"/"+relative,std::ios::binary|std::ios::ate);
-        if(!file)return false;
-        const auto length=file.tellg();
-        if(length<=0||length>4*1024*1024)return false;
-        out.resize(static_cast<std::size_t>(length));
-        file.seekg(0);
-        if(!file.read(out.data(),static_cast<std::streamsize>(out.size())))return false;
-        ++reads;return true;
-    }
-    static int __cdecl include(void* p,const char* name,const char** out,unsigned* bytes) noexcept{
-        if(!p||!out||!bytes)return 0;
-        try{
-            auto& self=*static_cast<RetailDialogueSource*>(p);
-            if(!self.read(name,self.buffer))return 0;
-            *out=self.buffer.data();*bytes=static_cast<unsigned>(self.buffer.size());return 1;
-        }catch(...){return 0;}
-    }
-};
 inline void check_loaded_script_registry_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,
     const npc::CountInterrogationApi& count,const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,
     const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const npc::ResponsePolicyApi& response,
@@ -624,12 +597,12 @@ rule idle_rule
         *data=included;*bytes=sizeof(included)-1;return 1;
     };
     assert(host.open_script_session(root,sizeof(root)-1)==-1&&!host.script_session_open());
-    RetailDialogueSource retail{};
+    sin_port::test_support::RetailDialogueSource retail{};
     std::string retail_root;
     if(private_dir&&*private_dir){
         retail.directory=private_dir;
         assert(retail.read("talker/response_rules.txt",retail_root));
-        inc={&retail,&RetailDialogueSource::include};
+        inc={&retail,&sin_port::test_support::RetailDialogueSource::include};
         assert(host.open_script_session(retail_root.data(),static_cast<unsigned>(retail_root.size()),&inc)==1);
         assert(retail.reads>1);
         // The loaded registry must not retain the caller's input spans.

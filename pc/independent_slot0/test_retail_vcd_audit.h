@@ -2,6 +2,7 @@
 #include "test_native_npc_scene_playback.h"
 #include "response_rule_scoring.h"
 #include "native_npc_dialogue.h"
+#include "test_retail_dialogue_source.h"
 #include "native_server_event_intensity.h"
 #include "native_server_facial_records.h"
 #include "native_server_composed_facial_think.h"
@@ -746,7 +747,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr,const char* private_scripts=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1504,6 +1505,114 @@ rule jessica_look
                         actor.external_npc=nullptr;actor.external_exp=nullptr;actor.external_bytes=0;
                     }
                 }
+            }
+            // Two distinct expeditors borrow the same registry. Selection,
+            // CriteriaSet allocation and retirement use the loaded DLL.
+            alignas(4) unsigned char second_npc[0x1458]{},second_exp[0x7c]{};
+            F::put(second_npc,0xc,1);F::put(second_npc,0x98,100);F::put(second_npc,0x9c,80);
+            F::put(second_exp,4,F::ptr(second_npc));
+            std::memset(actor.npc,0,sizeof(actor.npc));std::memset(actor.exp,0,sizeof(actor.exp));
+            F::put(actor.npc,0xc,1);F::put(actor.npc,0x98,100);F::put(actor.npc,0x9c,50);F::put(actor.exp,4,F::ptr(actor.npc));
+            const char shared[]=R"(criterion shared concept TLK_SHARED required
+criterion once concept TLK_ONCE required
+response sequence
+{
+ sequential
+ speak first_line
+ speak second_line
+}
+response one
+{
+ sequential
+ speak once_line
+}
+rule shared_rule
+{
+ criteria shared
+ response sequence
+}
+rule once_rule
+{
+ criteria once
+ response one
+ matchonce
+}
+)";
+            assert(scriptFinder->create("shared",shared,sizeof(shared)-1,nullptr,&sc.finder.store)==1);
+            auto choose=[&](bool jessica,const char* concept,const char* mods,const char* expected_rule,unsigned kind,const char* value=nullptr){
+                actor.external_npc=jessica?second_npc:nullptr;
+                actor.external_exp=jessica?second_exp:nullptr;
+                actor.external_bytes=jessica?sizeof(second_npc):0;
+                auto borrowed=sc;
+                void* result=nullptr;unsigned size=0;
+                assert(scriptActor->select(actor.current_exp(),sizeof(second_exp),&borrowed,concept,mods,&result,&size)==1);
+                if(expected_rule){
+                    assert(result==actor.response&&size==sizeof(actor.response)&&actor.live&&actor.copy_live);
+                    assert(F::word(result,0)==kind&&!std::strcmp(reinterpret_cast<char*>(actor.response+0xa4),expected_rule));
+                    if(value)assert(!std::strcmp(reinterpret_cast<char*>(actor.response+4),value));
+                    int index=-1;std::uint32_t child=0;
+                    assert(api.find(actor.copy,sizeof(actor.copy),&h,"classname",&index,&child)==1&&index>=0&&child);
+                    assert(!std::strcmp(reinterpret_cast<Roots::Child*>(static_cast<std::uintptr_t>(child))->value,jessica?"npc_jessica":"npc_count"));
+                    assert(scriptActor->retire(&borrowed,result)==1);
+                }else assert(!result&&!size);
+                assert(!actor.live&&!actor.copy_live&&actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
+                actor.external_npc=nullptr;actor.external_exp=nullptr;actor.external_bytes=0;
+            };
+            choose(false,"TLK_SHARED",nullptr,"shared_rule",1,"first_line");
+            choose(true,"TLK_SHARED",nullptr,"shared_rule",1,"second_line");
+            choose(false,"TLK_ONCE",nullptr,"once_rule",1,"once_line");
+            choose(true,"TLK_ONCE",nullptr,nullptr,0);
+            assert(scriptFinder->release(&sc.finder.store)==1);
+            assert(scriptFinder->create("shared",shared,sizeof(shared)-1,nullptr,&sc.finder.store)==1);
+            choose(true,"TLK_SHARED",nullptr,"shared_rule",1,"first_line");
+            choose(true,"TLK_ONCE",nullptr,"once_rule",1,"once_line");
+            assert(scriptFinder->release(&sc.finder.store)==1);
+
+            if(private_scripts&&*private_scripts){
+                // Owner-side retail selection, not audio playback. Scene
+                // metadata admission and RNG are deterministic host leaves.
+                sin_port::test_support::RetailDialogueSource files{};
+                files.directory=private_scripts;std::string data;
+                assert(files.read("talker/response_rules.txt",data));
+                ScriptResponseInclude includes{&files,&sin_port::test_support::RetailDialogueSource::include};
+                assert(scriptFinder->create("talker/response_rules.txt",data.data(),static_cast<unsigned>(data.size()),&includes,&sc.finder.store)==1);
+                assert(files.reads==6);
+                int retail_ties[128]{},retail_rejects[512]{};
+                sc.finder.host.rank_scratch=retail_ties;sc.finder.host.rank_capacity=128;
+                sc.finder.host.reject_scratch=retail_rejects;sc.finder.host.reject_capacity=512;
+                sc.finder.host.ranking.draw=[](void*,int lo,int hi,int* out) noexcept -> int{assert(lo<=hi);*out=lo;return 1;};
+                sc.finder.host.random_float=[](void*,float lo,float hi,float* out) noexcept -> int{assert(lo<=hi);*out=lo;return 1;};
+                sc.actor.selection.host.draw=[](void*,int lo,int hi,int* out) noexcept -> int{assert(lo<=hi);*out=lo;return 1;};
+                struct Scene {Actor* actor;alignas(4) unsigned char metadata[8]{};};
+                Scene scene{&actor};F::fl(scene.metadata,4,2.5f);
+                auto& sf=sc.finder.host.scene_filter;sf.context=&scene;
+                sf.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+                    auto& a=*static_cast<Scene*>(p)->actor;
+                    if(word!=F::ptr(a.current_npc()))return 0;*out=a.current_npc();*n=a.current_bytes();return 1;};
+                sf.resolve_name=[](void*,void*,const char* name,char* out,unsigned n) noexcept -> int{
+                    const auto size=std::strlen(name);if(size>=n)return 0;std::memcpy(out,name,size+1);return 1;};
+                sf.metadata=[](void* p,const char*,void** out,unsigned* n) noexcept -> int{
+                    auto& s=*static_cast<Scene*>(p);*out=s.metadata;*n=sizeof(s.metadata);return 1;};
+                const char* concepts[]={"TLK_INTERROGATE_COCKY","TLK_INTERROGATE_NERVOUS","TLK_INTERROGATE_TALKING"};
+                const char* moods[]={"Cocky","Nervous","Talking"};
+                const char* parts[]={"head","chest","crotch","knee","hand"};
+                const char* names[]={"Head","Chest","Crotch","Knee","Hand"};
+                for(unsigned i=0;i<3;++i)for(unsigned k=0;k<5;++k){
+                    const std::string mods=std::string("PlayerLookingAtEnt:npc_count,PlayerLookingAtPart:")+parts[k];
+                    const std::string rule=std::string("CountPlayerInterrogate")+moods[i]+names[k];
+                    choose(false,concepts[i],mods.c_str(),rule.c_str(),3);
+                    choose(false,concepts[i],mods.c_str(),rule.c_str(),3);
+                    choose(true,concepts[i],mods.c_str(),nullptr,0);
+                }
+                choose(true,"TLK_DANGER",nullptr,"JessicaDanger",1);
+                choose(true,"TLK_SHOT",nullptr,"JessicaShot",3);
+                choose(true,"TLK_PLLOOKING","PlayerLookingAtEnt:npc_jessica,PlayerLookingAtPart:chest,PlayerLookingAtPartForSeconds:3.0",nullptr,0);
+                choose(true,"TLK_PLLOOKING","PlayerLookingAtEnt:npc_jessica,PlayerLookingAtPart:chest,PlayerLookingAtPartForSeconds:3.01","JessicaPlayerLookingAtChest",3);
+                choose(true,"TLK_PLUSING","PlayerUsingEnt:prop_vehicle_sin,PlayerUsingPart:GearShift",nullptr,0);
+                choose(true,"TLK_PLDEAD",nullptr,"JessicaPlayerDead",1);
+                choose(true,"TLK_PLDEAD",nullptr,nullptr,0);
+                assert(scriptFinder->release(&sc.finder.store)==1);
+                std::puts("PASS private retail dialogue: 15 Count combinations, Jessica gates and owned response selection");
             }
         }
     }
