@@ -1,0 +1,3 @@
+# Phase 991: shared directory-backed raw scene source
+
+Promote the existing audited RetailSceneDirectory implementation into a reusable host header without changing metadata-reader behavior. Raw scene reads support a distinct empty file and retain the original directory snapshot case/slash handling, path rejection and 1 MiB cap. Loaded raw cache owner test uses real temporary VCD files, proves cached content survives source changes until eviction, reload replaces stale handles, and verifies missing/empty/traversal handling. Snapshot is not a dynamic engine filesystem search path and assumes a trusted private asset directory. CI pending.
