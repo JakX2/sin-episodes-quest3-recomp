@@ -291,8 +291,8 @@ int main(int argc,char** argv){
     ServerNpcSharedCueResult qr{};
     auto cue=[&](float param){f.put(f.a,0x7a4,1);f.trace.clear();ServerNpcScheduleTask ct{84,param};assert(cq->execute(f.a,sizeof(f.a),&ct,30,&b,&cb,&qr));assert(qr.shared.lifecycle.completed||qr.shared.component_handled);};
     f.draw=2;cue(0);assert(!qr.emitted&&f.trace==std::vector<int>{40});
-    f.draw=1;cue(.9f);assert(qr.emitted&&qr.near&&qr.distance_squared==4000000&&(f.trace==std::vector<int>{40,41,41,42,44,45,46,47,49}));
-    f.target_pos[0]=2001;cue(0);assert(!qr.near&&!qr.emitted);
+    f.draw=1;cue(.9f);assert(qr.emitted&&qr.within_range&&qr.distance_squared==4000000&&(f.trace==std::vector<int>{40,41,41,42,44,45,46,47,49}));
+    f.target_pos[0]=2001;cue(0);assert(!qr.within_range&&!qr.emitted);
     f.target_pos[0]=100;f.cue_visible=false;cue(0);assert(qr.target_allowed&&!qr.visible&&!qr.emitted);
     f.cue_visible=true;f.put(f.a,0xc04,30.f);cue(0);assert(!qr.gate&&!qr.emitted);
     f.put(f.a,0xc08,-1);cue(0);assert(qr.gate&&qr.emitted);

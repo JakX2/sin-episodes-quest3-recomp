@@ -272,6 +272,23 @@ int main(int argc,char** argv){
     install_at(87,1);bind_nav();float stored_distance=0;
     assert(move_api->run(f.actor,sizeof(f.actor),64,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&mvr.movement.calls==1&&mvr.movement.last.shared.task==89&&mvr.movement.last.shared.lifecycle.completed);
     std::memcpy(&stored_distance,f.path+4,4);assert(stored_distance==48.f);
+    auto gcue=reinterpret_cast<GetServerNpcCueCatalogSchedulerApi>(GetProcAddress(s,server_npc_cue_catalog_scheduler_export));
+    assert(gcue&&!GetProcAddress(c,server_npc_cue_catalog_scheduler_export)&&!gcue(0,sizeof(ServerNpcCueCatalogSchedulerApi))&&!gcue(1,0));
+    const auto* cue_api=gcue(1,sizeof(ServerNpcCueCatalogSchedulerApi));assert(cue_api);
+    ServerNpcSharedCueBindings cb{};cb.context=&f; // class is rebound by scheduler
+    cb.random=[](void*,int lo,int hi,int* out) noexcept -> int{assert(lo==0&&hi==5);*out=0;return 1;};
+    cb.target=[](void* p,void*,void** out) noexcept -> int{*out=F::self(p).motor;return 1;};
+    cb.as_npc=[](void*,void* e,void** out) noexcept -> int{*out=e;return 1;};
+    cb.center=[](void*,void*,float* out) noexcept -> int{out[0]=out[1]=out[2]=0;return 1;};
+    cb.target_gate=[](void*,void*,void*,bool* out) noexcept -> int{*out=true;return 1;};
+    cb.visible=[](void*,void*,void*,unsigned mask,bool* out) noexcept -> int{assert(mask==0x4081);*out=true;return 1;};
+    cb.path_distance=[](void*,std::uint32_t token,float* out) noexcept -> int{assert(token==100);*out=241;return 1;};
+    cb.cue=[](void* p,void*,const char* name,int priority,int type) noexcept -> int{assert(priority==0&&type==2);auto& f=F::self(p);if(!std::strcmp(name,"GRUNT_ASSAULT"))f.last_pending=1000;else{assert(!std::strcmp(name,"GRUNT_FLANK"));f.last_pending=1001;}return 1;};
+    ServerNpcCueCatalogSchedulerResult crun{};
+    install_at(87,4);bind_nav(); // SCHED_GRUNT_ASSAULT original mode0
+    assert(cue_api->run(f.actor,sizeof(f.actor),65,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&crun)&&crun.cue.calls==1&&crun.cue.native==1&&crun.cue.last.shared.lifecycle.completed&&crun.cue.last.emitted&&f.last_pending==1000);
+    install_at(88,3);bind_nav(); // SCHED_GRUNT_ESTABLISH_LINE_OF_FIRE mode1
+    assert(cue_api->run(f.actor,sizeof(f.actor),66,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&crun)&&crun.cue.calls==1&&crun.cue.last.mode==1&&crun.cue.last.emitted&&f.last_pending==1001);
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     // Original range-attack schedule: task138 is the fourth entry (0.3 seconds).
     using DifficultyApi=sin_port::fixed_service::Api;

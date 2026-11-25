@@ -133,7 +133,7 @@ struct ServerNpcSharedCueBindings {
 struct ServerNpcSharedCueResult {
     ServerNpcSharedTaskResult shared;
     int mode,draw;
-    unsigned gate,live,near,target_allowed,visible,emitted;
+    unsigned gate,live,within_range,target_allowed,visible,emitted;
     double distance_squared;
     float path_distance;
 };
@@ -142,6 +142,7 @@ struct ServerNpcSharedCueApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedCueBindings*,ServerNpcSharedCueResult*) noexcept;
 };
 using GetServerNpcSharedCueApi=const ServerNpcSharedCueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerNpcSharedCueStats {ServerNpcSharedCueResult last;unsigned calls,native,components;};
 struct ServerNpcSharedMovementStats {ServerNpcSharedMovementResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTargetAnimationStats {ServerNpcSharedTargetAnimationResult last;unsigned calls,native,components;};
 struct ServerNpcSharedFacingStats {ServerNpcSharedFacingResult last;unsigned calls,native,components;};
@@ -162,6 +163,8 @@ struct ServerNpcSharedParentSession {
     ServerNpcSharedTargetAnimationStats* target_animation_stats;
     const ServerNpcSharedMovementBindings* movement;
     ServerNpcSharedMovementStats* movement_stats;
+    const ServerNpcSharedCueBindings* cue;
+    ServerNpcSharedCueStats* cue_stats;
 };
-int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementStats* = nullptr) noexcept;
+int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementStats* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueStats* = nullptr) noexcept;
 }
