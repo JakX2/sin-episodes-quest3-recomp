@@ -6,7 +6,7 @@ struct ServerWeaponEventSoundBindings {
     void* context;
     // Resolved script sound and engine emission, original 222ad8a0.
     int (__cdecl *emit)(void*,void* weapon,int sound,float time) noexcept;
-    // +4f8: required only in shared SMG/chaingun reload mode3.
+    // +4f8: burst count, NOT magazine capacity. Legacy member name retained.
     int (__cdecl *max_clip)(void*,void* weapon,int*) noexcept;
     // +3ac: assault sound interval, resolved at each emitted sound.
     int (__cdecl *interval)(void*,void* weapon,double*) noexcept;
