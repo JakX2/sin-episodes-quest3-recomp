@@ -117,4 +117,23 @@ struct ServerNpcBestEnemyApi {
     int (__cdecl *select)(void*,unsigned,float,const ServerNpcBestEnemyBindings*,ServerNpcBestEnemyResult*) noexcept;
 };
 using GetServerNpcBestEnemyApi=const ServerNpcBestEnemyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_unreachable_enemy_export[]="SiN_GetServerNpcUnreachableEnemyApi";
+struct ServerNpcUnreachableEnemyBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    void* context;
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept;
+};
+struct ServerNpcUnreachableEnemyResult {
+    unsigned unreachable,visited,stale_removed,expired_removed,moved_removed,origin_called;
+    int initial_count,final_count;
+    double distance_squared;
+};
+struct ServerNpcUnreachableEnemyApi {
+    std::uint32_t version,size;
+    // 22041c30: actor+914 points to 20-byte records, +920 is count.
+    int (__cdecl *query)(void*,unsigned,void*,float,const ServerNpcUnreachableEnemyBindings*,ServerNpcUnreachableEnemyResult*) noexcept;
+};
+using GetServerNpcUnreachableEnemyApi=const ServerNpcUnreachableEnemyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

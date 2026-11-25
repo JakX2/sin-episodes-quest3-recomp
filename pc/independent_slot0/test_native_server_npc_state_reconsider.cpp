@@ -13,7 +13,8 @@
 using namespace sin_port::native_weapon_tables;
 struct F{
     alignas(4) unsigned char actor[0xc1c]{},desc[0x48]{},schedule[0x30]{},enemy[0xc0]{},replacement[0xc0]{};
-    unsigned char memory[0x40]{},nodes[48]{},record[0x38]{},fallback[0x38]{};
+    unsigned char memory[0x40]{},nodes[48]{},record[0x38]{},fallback[0x38]{},unreachable_rows[60]{};
+    const ServerNpcUnreachableEnemyApi* unreachable_api=nullptr;ServerNpcUnreachableEnemyBindings unreachable_binding{};
     sin_independent::EntityHandleEntry entries[3]{};
     unsigned clears=0,changes=0,lost=0,squad=0;int query=-1;
     int rank[2]{0,0},disp[2]{1,1};bool valid[2]{true,true},unreachable[2]{false,false},visible[2]{true,true};float distance[2]{10,20};
@@ -160,5 +161,34 @@ int main(int argc,char** argv){
     f.disp[1]=3;pick();assert(!br.enemy&&br.disposition_rejected==1);f.disp[1]=1;
     f.put(f.actor,0xc18,77u);pick();assert(br.component_called&&br.enemy==f.replacement&&!br.visited);f.put(f.actor,0xc18,0u);
     f.nodes[13]=0;assert(!best->select(f.actor,sizeof(f.actor),40,&bb,&br));f.nodes[13]=255;
+    auto gu=reinterpret_cast<GetServerNpcUnreachableEnemyApi>(GetProcAddress(s,server_npc_unreachable_enemy_export));
+    assert(gu&&!GetProcAddress(c,server_npc_unreachable_enemy_export)&&!gu(0,sizeof(ServerNpcUnreachableEnemyApi))&&!gu(1,0));
+    f.unreachable_api=gu(1,sizeof(ServerNpcUnreachableEnemyApi));assert(f.unreachable_api);
+    auto& ub=f.unreachable_binding;ub.context=&f;ub.entries=f.entries;ub.count=3;ub.origin=bb.origin;
+    ub.storage.context=&f;ub.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);if(token!=104)return 0;*out=f.unreachable_rows;*n=sizeof(f.unreachable_rows);return 1;};
+    auto unreachable_row=[&](unsigned i,unsigned handle,float expiry,float x){
+        f.put(f.unreachable_rows+20*i,0,handle);f.put(f.unreachable_rows+20*i,4,expiry);f.put(f.unreachable_rows+20*i,8,x);
+        f.put(f.unreachable_rows+20*i,12,0.f);f.put(f.unreachable_rows+20*i,16,0.f);
+    };
+    f.put(f.actor,0x914,104u);f.put(f.actor,0x920,3);
+    f.distance[0]=120;f.distance[1]=5;
+    unreachable_row(0,0x7001u,40,0);unreachable_row(1,0x9002u,99,0);unreachable_row(2,0x8002u,0,0);
+    ServerNpcUnreachableEnemyResult ur{};
+    auto query_unreachable=[&](void* e,float now){assert(f.unreachable_api->query(f.actor,sizeof(f.actor),e,now,&ub,&ur));};
+    query_unreachable(f.enemy,40);assert(ur.unreachable&&ur.stale_removed==1&&ur.visited==3&&ur.final_count==2&&ur.distance_squared==14400);
+    unsigned moved=0;std::memcpy(&moved,f.unreachable_rows+20,4);assert(moved==0x8002u);
+    query_unreachable(f.enemy,40.01f);assert(!ur.unreachable&&ur.expired_removed==1&&!ur.origin_called&&ur.final_count==1);
+    query_unreachable(f.replacement,40);assert(ur.expired_removed==1&&ur.final_count==0);
+    f.put(f.actor,0x920,1);unreachable_row(0,0x7001u,50,0);f.distance[0]=120.01f;
+    query_unreachable(f.enemy,40);assert(!ur.unreachable&&ur.moved_removed==1&&ur.final_count==0);
+    // Actual native cache supplies the previously explicit BestEnemy predicate.
+    f.put(f.actor,0x920,1);unreachable_row(0,0x7001u,50,120);f.distance[0]=120;
+    f.put(f.actor,0x8c4,0.f);f.rank[0]=99;f.rank[1]=0;
+    bb.unreachable=[](void* p,void* actor,void* e,bool* v) noexcept -> int{
+        auto& f=F::self(p);ServerNpcUnreachableEnemyResult result{};
+        if(!f.unreachable_api->query(actor,sizeof(f.actor),e,40,&f.unreachable_binding,&result))return 0;*v=result.unreachable!=0;return 1;
+    };
+    pick();assert(br.enemy==f.replacement&&!br.unreachable&&br.visited==2);
+    f.put(f.actor,0x920,4);assert(!f.unreachable_api->query(f.actor,sizeof(f.actor),f.enemy,40,&ub,&ur));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

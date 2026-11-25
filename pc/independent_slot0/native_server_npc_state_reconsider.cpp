@@ -312,6 +312,38 @@ int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestE
     }
     return 1;
 }
+int __cdecl unreachable_enemy(void* actor,unsigned bytes,void* target,float now,const ServerNpcUnreachableEnemyBindings* b,ServerNpcUnreachableEnemyResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0x924||!target||!b||!std::isfinite(now)||b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    int count=read<int>(actor,0x920);out->initial_count=out->final_count=count;
+    if(count<0)return 0;if(!count)return 1;
+    void* records=nullptr;unsigned extent=0;
+    if(!memory_storage(&b->storage,read<unsigned>(actor,0x914),20,records,extent)||static_cast<unsigned>(count)>extent/20)return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    auto row=[&](int i){return static_cast<unsigned char*>(records)+20*static_cast<unsigned>(i);};
+    auto remove=[&](int i){
+        // Original copies all five dwords from the last active element.
+        std::memmove(row(i),row(count-1),20);--count;write(actor,0x920,count);out->final_count=count;
+    };
+    for(int i=count-1;i>=0;--i){
+        ++out->visited;auto* r=row(i);void* entity=registry.Resolve(read<unsigned>(r,0));
+        if(!entity){remove(i);++out->stale_removed;continue;}
+        if(entity!=target)continue;
+        const float expiry=read<float>(r,4);if(!std::isfinite(expiry))return 0;
+        if(now>expiry){remove(i);++out->expired_removed;return 1;}
+        float origin[3]{};if(!b->origin||!b->origin(b->context,target,origin))return 0;
+        out->origin_called=1;double sum=0;
+        for(unsigned j=0;j<3;++j){
+            const float prior=read<float>(r,8+4*j);if(!std::isfinite(prior)||!std::isfinite(origin[j]))return 0;
+            const double delta=static_cast<double>(origin[j])-prior;sum+=delta*delta;
+        }
+        out->distance_squared=sum;
+        if(sum<=14400.0){out->unreachable=1;return 1;}
+        remove(i);++out->moved_removed;return 1;
+    }
+    return 1;
+}
+const ServerNpcUnreachableEnemyApi unreachable_api{1,sizeof(ServerNpcUnreachableEnemyApi),&unreachable_enemy};
 const ServerNpcBestEnemyApi best_enemy_api{1,sizeof(ServerNpcBestEnemyApi),&best_enemy};
 const ServerNpcEnemyMemoryQueryApi query_api{1,sizeof(ServerNpcEnemyMemoryQueryApi),&query_last_seen,&query_aim_vector};
 const ServerNpcEnemyMemoryApi memory_api{1,sizeof(ServerNpcEnemyMemoryApi),&memory_lookup,&memory_timestamp,&memory_position,&memory_touch,&memory_recent};
@@ -348,4 +380,10 @@ SiN_GetServerNpcEnemyMemoryQueryApi(std::uint32_t version,std::uint32_t size) no
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcBestEnemyApi* __cdecl
 SiN_GetServerNpcBestEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcBestEnemyApi)?&best_enemy_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcUnreachableEnemyApi=_SiN_GetServerNpcUnreachableEnemyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcUnreachableEnemyApi* __cdecl
+SiN_GetServerNpcUnreachableEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcUnreachableEnemyApi)?&unreachable_api:nullptr;
 }
