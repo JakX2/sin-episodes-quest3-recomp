@@ -937,6 +937,7 @@ struct SceneSpeechDrainApi {
 using GetSceneSpeechDrainApi=const SceneSpeechDrainApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char native_generated_response_export[]="SiN_GetNativeGeneratedResponseApi";
 struct NativeNamedPlaybackBindings;
+struct NativeVcdRuntimeBindings;
 struct NativeGeneratedResponseBindings {
     ResponseChoreographyBindings response;
     NativeGeneratedLifecycleBindings generated;
@@ -944,6 +945,9 @@ struct NativeGeneratedResponseBindings {
     // manager. Null keeps the existing named playback route. Rebuild
     // custom API consumers against this extended binding layout.
     const NativeNamedPlaybackBindings* named=nullptr;
+    // Optional owned VCD parser; requires named. The host keeps allocator
+    // and sentinels alive through retirement via NativeVcdRuntimeApi.remove.
+    const NativeVcdRuntimeBindings* named_vcd=nullptr;
 };
 struct NativeGeneratedResponseApi {
     std::uint32_t version,size;

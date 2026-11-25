@@ -3260,12 +3260,14 @@ bool response_choreography_owner(const ResponseChoreographyBindings& c,void* exp
 }
 int __cdecl native_generated_sound(void*,const char*,const NativeGeneratedLifecycleBindings*,float*) noexcept;
 bool native_named_playback_ready(const NativeNamedPlaybackBindings*) noexcept;
+bool native_vcd_named_ready(const NativeNamedPlaybackBindings*,const NativeVcdRuntimeBindings*) noexcept;
+int __cdecl native_vcd_runtime_scene(void*,const char*,float,const NativeNamedPlaybackBindings*,const NativeVcdRuntimeBindings*,float*) noexcept;
 int __cdecl native_named_playback(void*,const char*,float,const NativeNamedPlaybackBindings*,float*) noexcept;
 int response_dispatch_impl(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const ResponseChoreographyBindings* c,const char* name,
                               void* response,unsigned extent,unsigned* played,const SceneEntityLifecycleBindings* life=nullptr,
                               const NativeGeneratedLifecycleBindings* generated=nullptr,
                               int (__cdecl *owned_drop)(void*,void*) noexcept=nullptr,void* drop_context=nullptr,
-                              const NativeNamedPlaybackBindings* named=nullptr) noexcept {
+                              const NativeNamedPlaybackBindings* named=nullptr,const NativeVcdRuntimeBindings* named_vcd=nullptr) noexcept {
     if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!name||!response||extent<0x124||
        !sin_independent::vgui_layout::Readable(response,0x124)||!played||!hologram_writable(played,sizeof(*played))||
        !b||!b->sample||!b->speaking||!b->force_log||!b->interrupt||
@@ -3330,7 +3332,8 @@ int response_dispatch_impl(void* exp,unsigned bytes,const ResponseDispatchBindin
             if(c){
                 void* npc=nullptr;
                 if(!response_choreography_owner(choreography,exp,npc)||
-                   (named?native_named_playback(npc,text,delay,named,&duration):
+                   (named_vcd?native_vcd_runtime_scene(npc,text,delay,named,named_vcd,&duration):
+                    named?native_named_playback(npc,text,delay,named,&duration):
                     life?integrated_scene(npc,text,delay,&choreography.playback,&lifecycle,&duration):
                     npc_scene_play_scene(npc,text,delay,&choreography.playback,&duration))!=1)return finish(false);
             }else if(!h.scene(h.context,exp,text,delay,&duration))return finish(false);
@@ -3441,7 +3444,7 @@ int __cdecl response_record(void* exp,unsigned bytes,const ResponseRecordBinding
 }
 const ResponseRecordApi response_record_api{version,sizeof(ResponseRecordApi),&response_record};
 int response_speak_impl(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const ResponseChoreographyBindings* c,const char* name,const char* mods,unsigned* played,const SceneEntityLifecycleBindings* life=nullptr,
-    const NativeGeneratedLifecycleBindings* generated=nullptr,const NativeNamedPlaybackBindings* named=nullptr) noexcept {
+    const NativeGeneratedLifecycleBindings* generated=nullptr,const NativeNamedPlaybackBindings* named=nullptr,const NativeVcdRuntimeBindings* named_vcd=nullptr) noexcept {
     if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!b||!b->trace_selected||
        !name||!played||!hologram_writable(played,sizeof(*played)))return 0;
     const auto h=*b;void* response=nullptr;unsigned extent=0;
@@ -3450,7 +3453,7 @@ int response_speak_impl(void* exp,unsigned bytes,const ResponseSpeakBindings* b,
     if(!response){*played=0;return 1;}
     const auto drop=[&](){(void)h.selection.destroy(h.selection.context,response);return -1;};
     if(!h.trace_selected(h.context,exp,name))return drop();
-    const auto dispatched=response_dispatch_impl(exp,bytes,&h.dispatch,c,name,response,extent,played,life,generated,nullptr,nullptr,named);
+    const auto dispatched=response_dispatch_impl(exp,bytes,&h.dispatch,c,name,response,extent,played,life,generated,nullptr,nullptr,named,named_vcd);
     // A rejected dispatch did not take ownership. Other statuses consumed it.
     return dispatched==0?drop():dispatched;
 }
@@ -3481,20 +3484,22 @@ int __cdecl integrated_response_speak(void* exp,unsigned bytes,const ResponseSpe
 const IntegratedResponseApi integrated_response_api{version,sizeof(IntegratedResponseApi),&integrated_response_dispatch,&integrated_response_speak};
 bool native_generated_response_ready(const NativeGeneratedResponseBindings* b) noexcept {
     return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&integrated_response_ready(&b->response,&b->generated.lifecycle)&&
+        (!b->named_vcd||b->named)&&
         (!b->named||(sin_independent::vgui_layout::Readable(b->named,sizeof(*b->named))&&
-            b->named->lifecycle.manager==b->response.manager&&native_named_playback_ready(b->named)));
+            b->named->lifecycle.manager==b->response.manager&&
+            (b->named_vcd?native_vcd_named_ready(b->named,b->named_vcd):native_named_playback_ready(b->named))));
 }
 int __cdecl native_generated_response_dispatch(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const NativeGeneratedResponseBindings* generated,
     const char* name,void* response,unsigned extent,unsigned* played) noexcept {
     if(!native_generated_response_ready(generated))return 0;
     const auto h=*generated;
-    return response_dispatch_impl(exp,bytes,b,&h.response,name,response,extent,played,&h.generated.lifecycle,&h.generated,nullptr,nullptr,h.named);
+    return response_dispatch_impl(exp,bytes,b,&h.response,name,response,extent,played,&h.generated.lifecycle,&h.generated,nullptr,nullptr,h.named,h.named_vcd);
 }
 int __cdecl native_generated_response_speak(void* exp,unsigned bytes,const ResponseSpeakBindings* b,const NativeGeneratedResponseBindings* generated,
     const char* name,const char* mods,unsigned* played) noexcept {
     if(!native_generated_response_ready(generated))return 0;
     const auto h=*generated;
-    return response_speak_impl(exp,bytes,b,&h.response,name,mods,played,&h.generated.lifecycle,&h.generated,h.named);
+    return response_speak_impl(exp,bytes,b,&h.response,name,mods,played,&h.generated.lifecycle,&h.generated,h.named,h.named_vcd);
 }
 const NativeGeneratedResponseApi native_generated_response_api{version,sizeof(NativeGeneratedResponseApi),&native_generated_response_dispatch,&native_generated_response_speak};
 int response_repeat_row(void* exp,const ResponseRepeatBindings& b,const char* name,void*& row) noexcept {
@@ -7163,8 +7168,19 @@ int __cdecl native_vcd_runtime_load(void* scene,unsigned extent,const char* name
     NativeVcdRuntimeState s(*b);NativeVcdLoadState l(s,*load);
     return portable_finalized_load(scene,extent,name,&l.load,&s.grammar,out);
 }
+bool native_vcd_named_ready(const NativeNamedPlaybackBindings* p,const NativeVcdRuntimeBindings* b) noexcept {
+    if(!p||!sin_independent::vgui_layout::Readable(p,sizeof(*p))||!b||
+       !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!native_vcd_runtime_ready(b))return false;
+    const auto& l=p->precache.load;const auto& c=l.cache;const auto& q=p->playback;
+    // Owned runtime supplies allocate/release, grammar and parser-specific
+    // words; validate only the externally consumed leaves here.
+    return l.set_extension&&l.missing&&c.ensure&&c.find&&c.lock&&c.reload&&c.unlock&&
+        p->register_with_spawn&&p->lifecycle.parsed&&p->lifecycle.base_activate&&p->lifecycle.manager&&
+        p->precache.text&&p->precache.precache_sound&&scene_start_ready(&p->startup,&p->stop)&&
+        q.create&&q.actor_handle&&q.resolve_name&&q.set_delay&&q.missing&&q.resolve_parsed&&q.duration.event;
+}
 int __cdecl native_vcd_runtime_scene(void* npc,const char* name,float delay,const NativeNamedPlaybackBindings* playback,const NativeVcdRuntimeBindings* b,float* out) noexcept {
-    if(!native_vcd_runtime_ready(b)||!playback||!playback->precache.load.set_extension||!playback->precache.load.missing)return 0;
+    if(!native_vcd_named_ready(playback,b))return 0;
     NativeVcdRuntimeState s(*b);NativeVcdLoadState l(s,playback->precache.load);
     auto h=*playback;h.precache.load=l.load;h.precache.parser=nullptr;
     return portable_finalized_scene(npc,name,delay,&h,&s.grammar,out);
@@ -8854,7 +8870,7 @@ int __cdecl script_actor_speak(void* exp,unsigned bytes,const ScriptActorSpeechB
     if(!b->trace_selected(b->context,exp,name))return drop();
     const auto* g=b->generated;
     const int dispatched=response_dispatch_impl(exp,bytes,&b->dispatch,g?&g->response:nullptr,name,response,extent,played,
-        g?&g->generated.lifecycle:nullptr,g?&g->generated:nullptr,&script_actor_retire,owner,g?g->named:nullptr);
+        g?&g->generated.lifecycle:nullptr,g?&g->generated:nullptr,&script_actor_retire,owner,g?g->named:nullptr,g?g->named_vcd:nullptr);
     return dispatched==0?drop():dispatched;
 }
 const ScriptActorSpeechApi script_actor_speech_api{version,sizeof(ScriptActorSpeechApi),&script_actor_speak};
