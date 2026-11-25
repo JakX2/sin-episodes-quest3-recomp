@@ -1,0 +1,2 @@
+# Phase 1147: repair combined combat fixture
+Phase1145 run45720931212 reports seven C2198 missing target arguments in combat->gather. Add f.enemy to all seven. Static audit also found borrowed BestEnemy extent callback always returns 0xc0; range requires target collision bounds at +118 and active weapon range at +500. Expose actual 0x86c fixture arrays via dedicated extent callback, preserving production bounds checks. No production changes. All new gather/update calls reviewed against signatures. CI pending.
