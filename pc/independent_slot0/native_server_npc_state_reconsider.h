@@ -469,4 +469,25 @@ struct ServerNpcGruntHearingApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntHearingBindings*,ServerNpcGruntHearingResult*) noexcept;
 };
 using GetServerNpcGruntHearingApi=const ServerNpcGruntHearingApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_sound_scan_export[]="SiN_GetServerNpcGruntSoundScanApi";
+struct ServerNpcGruntSoundScanBindings {
+    ServerNpcGruntHearingBindings hearing;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    void* context;
+    int (__cdecl *active_head)(void*,int*) noexcept;
+    int (__cdecl *sound_mutable)(void*,int,void**,unsigned*) noexcept;
+    int (__cdecl *eye_position)(void*,void*,float[3]) noexcept;
+};
+struct ServerNpcGruntSoundScanResult {
+    ServerNpcGruntHearingResult hearing;
+    unsigned visited,accepted,mask_rejected,self_rejected,state_rejected,disabled_rejected,range_rejected,filter_rejected,blocked,eye_calls;
+    int accepted_head;
+};
+struct ServerNpcGruntSoundScanApi {
+    std::uint32_t version,size;
+    // 220a1c50 / 220a1a80: construct accepted list, then native +4f4 gather.
+    int (__cdecl *scan)(void*,unsigned,float,const ServerNpcGruntSoundScanBindings*,ServerNpcGruntSoundScanResult*) noexcept;
+};
+using GetServerNpcGruntSoundScanApi=const ServerNpcGruntSoundScanApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

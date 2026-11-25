@@ -1222,6 +1222,50 @@ int __cdecl grunt_hearing_gather(void* actor,unsigned bytes,float now,const Serv
     }
     return 1;
 }
+int __cdecl grunt_sound_scan(void* actor,unsigned bytes,float now,const ServerNpcGruntSoundScanBindings* b,ServerNpcGruntSoundScanResult* out) noexcept{
+    if(!out)return 0;*out={};out->accepted_head=-1;
+    if(!actor||bytes<0xc1c||!b||!std::isfinite(now)||!relation_grunt_class(b->hearing.original_vtable)||
+       b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    void* senses=nullptr;unsigned n=0;
+    if(!memory_storage(&b->hearing.storage,read<unsigned>(actor,0x898),0x18,senses,n))return 0;
+    write(senses,0x14,-1);
+    if(read<std::uint8_t>(actor,0xb4)&1u)out->blocked=1;
+    else{
+        int index=-1;if(!b->active_head||!b->active_head(b->context,&index))return 0;
+        bool seen[64]{};
+        while(index!=-1){
+            if(index<0||index>=64||seen[index])return 0;seen[index]=true;
+            void* sound=nullptr;unsigned extent=0;
+            if(!b->sound_mutable||!b->sound_mutable(b->context,index,&sound,&extent)||!sound||extent<0x2c)return 0;
+            ++out->visited;const unsigned type=read<unsigned>(sound,0xc);
+            if(!(type&grunt_hearing_mask()))++out->mask_rejected;
+            else if(registry.Resolve(read<unsigned>(sound,0))==actor)++out->self_rejected;
+            else if(read<int>(actor,0x850)==4&&(type&8u))++out->state_rejected;
+            else if(read<std::uint8_t>(actor,0x968))++out->disabled_rejected;
+            else{
+                float eye[3];if(!b->eye_position||!b->eye_position(b->context,actor,eye)||!finite_vec(eye))return 0;
+                ++out->eye_calls;double distance=0;
+                for(unsigned i=0;i<3;++i){const float position=read<float>(sound,0x20+4*i);if(!std::isfinite(position))return 0;
+                    const double delta=static_cast<double>(position)-eye[i];distance+=delta*delta;}
+                const double radius=static_cast<float>(read<int>(sound,4)); // +50c hearing scale=1.0
+                if(distance>radius*radius)++out->range_rejected;
+                else{
+                    ServerNpcGruntHearingFilterResult filter{};
+                    if(!grunt_hearing_filter(actor,bytes,sound,extent,&b->hearing,&filter))return 0;
+                    if(!filter.accepted)++out->filter_rejected;
+                    else{
+                        write(sound,0x10,read<int>(senses,0x14));write(senses,0x14,index);
+                        out->accepted_head=index;++out->accepted;
+                    }
+                }
+            }
+            index=read<std::int16_t>(sound,0x18);
+        }
+    }
+    return grunt_hearing_gather(actor,bytes,now,&b->hearing,&out->hearing);
+}
+const ServerNpcGruntSoundScanApi scan_api{1,sizeof(ServerNpcGruntSoundScanApi),&grunt_sound_scan};
 const ServerNpcGruntHearingApi hearing_api{1,sizeof(ServerNpcGruntHearingApi),&grunt_hearing_mask,&grunt_hearing_filter,&grunt_hearing_gather};
 const ServerNpcGruntVisualApi visual_api{1,sizeof(ServerNpcGruntVisualApi),&grunt_visual_gather};
 const ServerNpcSensedEntitiesApi sensed_api{1,sizeof(ServerNpcSensedEntitiesApi),&sensed_first,&sensed_next,&sensed_contains};
@@ -1386,4 +1430,10 @@ SiN_GetServerNpcSensedEntitiesApi(std::uint32_t version,std::uint32_t size) noex
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntVisualApi* __cdecl
 SiN_GetServerNpcGruntVisualConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntVisualApi)?&visual_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSoundScanApi=_SiN_GetServerNpcGruntSoundScanApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSoundScanApi* __cdecl
+SiN_GetServerNpcGruntSoundScanApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSoundScanApi)?&scan_api:nullptr;
 }
