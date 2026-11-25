@@ -45,4 +45,24 @@ struct ServerWeaponEventRouteApi {
     int (__cdecl *active)(void*,unsigned,const ServerAnimationEvent*,float,const ServerWeaponEventRouteBindings*,ServerWeaponEventRouteResult*) noexcept;
 };
 using GetServerWeaponEventRouteApi=const ServerWeaponEventRouteApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_parent_weapon_event_export[]="SiN_GetServerNpcParentWeaponEventApi";
+struct ServerNpcParentWeaponEventBindings {
+    ServerWeaponEventRouteBindings weapon;
+    void* context;
+    // Resolve weapon script info by its original +51c unsigned short index.
+    int (__cdecl *script_info)(void*,std::uint16_t,const void**,unsigned*) noexcept;
+    int (__cdecl *clear_condition)(void*,void* actor,int) noexcept;
+};
+struct ServerNpcParentWeaponEventResult {
+    ServerWeaponEventRouteResult weapon;
+    unsigned recognized,live,forwarded,sounded,clip_changed,conditions_cleared;
+    int clip;
+};
+struct ServerNpcParentWeaponEventApi {
+    std::uint32_t version,size;
+    // 2204a967..2204ab60, restricted to legacy 3000..3999 range.
+    // 1 handled, 0 unrelated, -1 invalid or service failure.
+    int (__cdecl *handle)(void*,unsigned,const ServerAnimationEvent*,float,const ServerNpcParentWeaponEventBindings*,ServerNpcParentWeaponEventResult*) noexcept;
+};
+using GetServerNpcParentWeaponEventApi=const ServerNpcParentWeaponEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
