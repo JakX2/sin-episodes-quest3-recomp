@@ -6287,3 +6287,12 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
   add_test(NAME sin_choreography_indexed_rb_erase_tests COMMAND sin_choreography_indexed_rb_erase_tests)
 endif()
+
+if(BUILD_TESTING)
+  add_executable(sin_response_rule_matcher_tests tests/test_response_rule_matcher.cpp)
+  target_compile_features(sin_response_rule_matcher_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_response_rule_matcher_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_response_rule_matcher_tests COMMAND sin_response_rule_matcher_tests)
+endif()
