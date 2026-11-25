@@ -51,6 +51,19 @@ public:
         return script_finder_->release(&script_store_);
     }
     bool script_session_open()const noexcept{return script_store_.owner&&script_store_.system;}
+    // Bind a shared scene admission service before opening a registry.
+    // The callback context is borrowed (e.g. a persistent SceneCacheOwner)
+    // and must outlive the session. Do not clear/rebind its owner while
+    // NPCs or this host can use it. Cache persistence across maps is allowed.
+    bool bind_script_scene_filter(const npc::ResponseSceneFilterBindings& filter) noexcept{
+        if(!script_ready()||script_busy_||!entries_.empty()||script_store_.owner||script_store_.system||
+           shared_scene_filter_bound_||!filter.storage||!filter.resolve_name||!filter.metadata)return false;
+        shared_scene_filter_=filter;shared_scene_filter_bound_=true;return true;
+    }
+    bool unbind_script_scene_filter() noexcept{
+        if(script_busy_||!entries_.empty()||script_store_.owner||script_store_.system||!shared_scene_filter_bound_)return false;
+        shared_scene_filter_={};shared_scene_filter_bound_=false;return true;
+    }
     bool is_live(EntityRef e)const override{return engine_.is_live(e);}
     bool create_entity(std::string_view name,EntityRef& e)override{
         const char* names[]={"npc_jessica","npc_count","npc_generic_actor","npc_jc"};
@@ -115,6 +128,13 @@ public:
                 if(speech->selection.finder.store.owner||speech->selection.finder.store.system)return NpcMapResult::Rejected;
                 auto bound=*speech;
                 bound.selection.finder.store=script_store_;
+                if(shared_scene_filter_bound_){
+                    // Refuse a shell-owned competing filter, never silently
+                    // combine callback tables with different contexts.
+                    auto& local=bound.selection.finder.host.scene_filter;
+                    if(local.context||local.storage||local.resolve_name||local.metadata)return NpcMapResult::Rejected;
+                    local=shared_scene_filter_;
+                }
                 return status(script_->observe(kind,c,session_,b,d,manager,&bound,record,bytes));
             }
             return status(script_->observe(kind,c,session_,b,d,manager,speech,record,bytes));
@@ -245,7 +265,8 @@ private:
     const npc::ScriptNpcMapDialogueApi* script_=nullptr;
     const npc::ScriptResponseFinderApi* script_finder_=nullptr;
     npc::ScriptResponseStore script_store_{};
-    bool script_busy_=false;
+    npc::ResponseSceneFilterBindings shared_scene_filter_{};
+    bool shared_scene_filter_bound_=false,script_busy_=false;
     std::map<std::uint32_t,Entry> entries_;
 };
 }
