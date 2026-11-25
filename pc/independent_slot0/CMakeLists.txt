@@ -1023,3 +1023,7 @@ add_test(NAME independent_client_overlay_interpolate_native COMMAND sin_client_o
 add_executable(sin_client_overlay_pool_test test_native_client_overlay_pool.cpp)
 target_compile_features(sin_client_overlay_pool_test PRIVATE cxx_std_17)
 add_test(NAME independent_client_overlay_pool_native COMMAND sin_client_overlay_pool_test "$<TARGET_FILE:sin_slot0_client>" "$<TARGET_FILE:sin_slot0_server>")
+
+add_executable(sin_client_overlay_entity_test test_native_client_overlay_entity.cpp)
+target_compile_features(sin_client_overlay_entity_test PRIVATE cxx_std_17)
+add_test(NAME independent_client_overlay_entity_native COMMAND sin_client_overlay_entity_test "$<TARGET_FILE:sin_slot0_client>" "$<TARGET_FILE:sin_slot0_server>")
