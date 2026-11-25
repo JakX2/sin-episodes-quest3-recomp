@@ -6277,3 +6277,13 @@ if(BUILD_TESTING)
     $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
   add_test(NAME sin_vcd_tokenizer_tests COMMAND sin_vcd_tokenizer_tests)
 endif()
+
+# Phase944: shared indexed red-black deletion regression with Win32 macro guards.
+if(BUILD_TESTING)
+  add_executable(sin_choreography_indexed_rb_erase_tests tests/test_choreography_indexed_rb_erase.cpp)
+  target_compile_features(sin_choreography_indexed_rb_erase_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_choreography_indexed_rb_erase_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_choreography_indexed_rb_erase_tests COMMAND sin_choreography_indexed_rb_erase_tests)
+endif()
