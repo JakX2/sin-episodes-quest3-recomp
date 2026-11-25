@@ -744,10 +744,10 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
-        struct Child{char name[32]{},value[64]{};float weight=0;} children[16]{};
+        struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
         int root=0;unsigned count=0,created=0,destroyed=0;
         static State& self(void* p){return *static_cast<State*>(p);}
     } f;
@@ -760,7 +760,7 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     b.find_child=[](void* p,void* root,const char* name,int create,void** out) noexcept -> int{
         auto& f=State::self(p);assert(root==&f.root&&create==1);
         for(unsigned i=0;i<f.count;++i)if(!_stricmp(f.children[i].name,name)){*out=&f.children[i];return 1;}
-        assert(f.count<16&&std::strlen(name)<32);auto& c=f.children[f.count++];std::strcpy(c.name,name);*out=&c;return 1;};
+        assert(f.count<48&&std::strlen(name)<32);auto& c=f.children[f.count++];std::strcpy(c.name,name);*out=&c;return 1;};
     b.set_string=[](void*,void* child,const char* field,const char* value) noexcept -> int{
         assert(!std::strcmp(field,"value")&&std::strlen(value)<64);std::strcpy(static_cast<State::Child*>(child)->value,value);return 1;};
     b.set_float=[](void*,void* child,const char* field,float value) noexcept -> int{
@@ -979,6 +979,73 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         assert(api.construct(c,sizeof(c),&b)==1&&baseCriteria->append(s.entity,sizeof(s.entity),c,&h)==1&&f.count==7);
         expect("name","");expect("healthfrac","0.000");expect("mission_started","1");
         assert(s.globals==1&&api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+    }
+    if(actorSelection){
+        struct Actors {
+            State& kv;const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
+            alignas(4) unsigned char exp[0x7c]{},npc[0x1160]{},player[0x980]{},target[0xc4]{},row[8]{},response[0x124]{};
+            unsigned family=1,resolves=0,finds=0,allocations=0,players=0;int system=0;
+            bool absent=false,stale=false,fail_player=false;
+            static Actors& self(void* p){return *static_cast<Actors*>(p);}
+        } s{f,api,b};
+        ActorResponseSelectionBindings cfg{};cfg.context=&s;cfg.selection.criteria=b;cfg.selection.session=&session;
+        auto& sh=cfg.selection.host;sh.context=&s;
+        sh.system=[](void* p,void*,void** out) noexcept -> int{*out=&Actors::self(p).system;return 1;};
+        sh.allocate=[](void* p,unsigned n,void** out,unsigned* extent) noexcept -> int{auto& s=Actors::self(p);assert(n==0x124);++s.allocations;*out=s.response;*extent=sizeof(s.response);return 1;};
+        sh.find=[](void* p,void*,void* c,void* r,void*,unsigned* found) noexcept -> int{
+            auto& s=Actors::self(p);++s.finds;
+            auto expect=[&](const char* key,const char* value,float weight=1.f){
+                int i=-1;std::uint32_t word=0;assert(s.tree.find(c,response_criteria_bytes,&s.b,key,&i,&word)==1);
+                if(!value){assert(i==-1&&!word);return;}
+                assert(i>=0&&word);auto* v=reinterpret_cast<State::Child*>(static_cast<std::uintptr_t>(word));
+                assert(!std::strcmp(v->value,value)&&v->weight==weight);
+            };
+            const unsigned count=15+(s.family&&!s.stale?1:0)+(s.absent?0:6);
+            assert(s.kv.count==count&&F::word(c,0x18)==count+1);
+            expect("concept","TLK_IDLE",5);expect("part","torso",5);expect("map","se1_test");expect("classname","npc_count");
+            expect("health","40");expect("activity","ACT_IDLE");expect("timesincecombat","999999.0");
+            expect("target_mood",s.family&&!s.stale?"ready":nullptr);expect("playerhealth",s.absent?nullptr:"75");
+            expect("gordon_precriminal",s.absent?nullptr:"0");
+            auto* raw=static_cast<unsigned char*>(r);raw[4]='x';raw[5]=0;*found=1;return 1;
+        };
+        sh.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
+        sh.destroy=[](void*,void*) noexcept -> int{return 1;};
+        cfg.actor=[](void* p,std::uint32_t word,void** out,unsigned* n,unsigned* family) noexcept -> int{auto& s=Actors::self(p);assert(word==F::ptr(s.npc));*out=s.npc;*n=sizeof(s.npc);*family=s.family;return 1;};
+        cfg.target=[](void* p,std::uint32_t handle,void** out,unsigned* n) noexcept -> int{auto& s=Actors::self(p);assert(handle==0x5001);++s.resolves;*out=s.stale?nullptr:s.target;*n=sizeof(s.target);return 1;};
+        cfg.player_at=[](void* p,int i,void** out,unsigned* n) noexcept -> int{auto& s=Actors::self(p);assert(i==1);++s.players;if(s.fail_player)return 0;*out=s.absent?nullptr:s.player;*n=sizeof(s.player);return 1;};
+        auto& bh=cfg.base;bh.context=&s;bh.contexts.context=&s;
+        bh.contexts.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{auto& s=Actors::self(p);return s.tree.add(&s.b,c,k,v,w);};
+        bh.contexts.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{auto& s=Actors::self(p);assert(word==F::ptr(s.row));*out=s.row;*n=8;return 1;};
+        bh.contexts.string=[](void*,std::uint32_t w,const char** out) noexcept -> int{switch(w){case 1:*out="npc_count";break;case 2:*out="target_mood";break;case 3:*out="ready";break;default:return 0;}return 1;};
+        bh.map_name=[](void*,const char** out) noexcept -> int{*out="se1_test";return 1;};
+        bh.global_count=[](void*,int* n) noexcept -> int{*n=0;return 1;};
+        bh.global_row=[](void*,int,const char**,int*) noexcept -> int{assert(false);return 0;};
+        bh.world=[](void*,void** out,unsigned* n) noexcept -> int{*out=nullptr;*n=0;return 1;};
+        auto& nh=cfg.npc;nh.context=&s;nh.add=bh.contexts.add;
+        nh.activity=[](void*,int,const char** out) noexcept -> int{*out="ACT_IDLE";return 1;};
+        nh.enemy=[](void*,void*,unsigned* present,const char** name) noexcept -> int{*present=0;*name=nullptr;return 1;};
+        nh.clock=[](void*,float*) noexcept -> int{assert(false);return 0;};
+        nh.velocity=[](void*,void*,float* xyz) noexcept -> int{xyz[0]=xyz[1]=xyz[2]=0;return 1;};
+        nh.weapon=[](void*,void*,unsigned* present,const char** name) noexcept -> int{*present=0;*name=nullptr;return 1;};
+        nh.max_clients=[](void*,int* n) noexcept -> int{*n=2;return 1;};
+        nh.local_player=[](void*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        nh.refresh=[](void*,void*) noexcept -> int{assert(false);return 0;};
+        nh.condition=[](void*,void*,int,unsigned* out) noexcept -> int{*out=0;return 1;};
+        nh.in_view=[](void*,void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+        nh.visible=[](void*,void*,void*,unsigned,unsigned*) noexcept -> int{assert(false);return 0;};
+        auto& ph=cfg.player;ph.context=&s;ph.contexts=bh.contexts;ph.weapon=nh.weapon;ph.activity=nh.activity;ph.refresh_velocity=nh.refresh;
+        ph.global_find=[](void*,const char*,int* out) noexcept -> int{*out=-1;return 1;};
+        F::put(s.exp,4,F::ptr(s.npc));F::put(s.npc,0xc,1);F::put(s.npc,0x9c,40);F::put(s.npc,0x98,80);
+        F::put(s.npc,0x115c,0x5001);F::put(s.target,0x5c,F::ptr(s.row));F::put(s.target,0x68,1);F::put(s.row,0,2);F::put(s.row,4,3);
+        F::put(s.player,0x9c,75);F::put(s.player,0x98,100);
+        auto run=[&](){return actorSelection->select(s.exp,sizeof(s.exp),&cfg,"TLK_IDLE","part:head,PART:torso",&out,&n);};
+        assert(run()==1&&out==s.response&&n==0x124&&s.resolves==2&&s.finds==1&&!session.busy&&a.live.empty());
+        s.stale=true;s.absent=true;
+        assert(run()==1&&s.resolves==3&&s.finds==2&&!session.busy&&a.live.empty());
+        s.family=0;
+        assert(run()==1&&s.resolves==3&&s.finds==3&&!session.busy&&a.live.empty());
+        s.fail_player=true;out=&s;n=99;
+        assert(run()==-1&&out==&s&&n==99&&s.allocations==3&&s.players==4&&!session.busy&&a.live.empty());
     }
 }
 

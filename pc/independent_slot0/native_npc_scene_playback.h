@@ -1184,6 +1184,27 @@ struct ResponseCriteriaSelectionApi {
     int (__cdecl *adapt)(const ResponseCriteriaSelectionBindings*,ResponseSelectionBindings*) noexcept;
 };
 using GetResponseCriteriaSelectionApi=const ResponseCriteriaSelectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char actor_response_selection_export[]="SiN_GetActorResponseSelectionApi";
+struct ActorResponseSelectionBindings {
+    ResponseCriteriaSelectionBindings selection; // host NPC/player callbacks unused
+    BaseResponseCriteriaBindings base;
+    NpcResponseCriteriaBindings npc;
+    PlayerResponseCriteriaBindings player;
+    void* context;
+    // Select known vtable family: 0 generic (22089850), 1 ally (2208b090).
+    // Jessica/citizen override is not yet supported.
+    int (__cdecl *actor)(void*,std::uint32_t word,void**,unsigned*,unsigned* family) noexcept;
+    // Serial-checked entity handle resolver. Null is a valid stale handle.
+    int (__cdecl *target)(void*,std::uint32_t handle,void**,unsigned*) noexcept;
+    int (__cdecl *player_at)(void*,int index,void**,unsigned*) noexcept;
+};
+struct ActorResponseSelectionApi {
+    std::uint32_t version,size;
+    // Native selection including base, NPC, ally target and optional player.
+    // Caller binds criteria add leaves to the same native tree.
+    int (__cdecl *select)(void*,unsigned,const ActorResponseSelectionBindings*,const char*,const char*,void**,unsigned*) noexcept;
+};
+using GetActorResponseSelectionApi=const ActorResponseSelectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;
