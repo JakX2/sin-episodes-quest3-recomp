@@ -170,5 +170,27 @@ int main(int argc,char** argv){
     install_at(104,4); // original burning stand, task144, parsed positive zero
     f.put(f.actor,0x9c,35);f.actor[0xcb1]=1;
     assert(full_api->run(f.actor,sizeof(f.actor),31,&f.image,&runtime,&full,&fr)&&fr.full.calls==1&&fr.full.injury_calls==1&&fr.full.last.injury.damage_called&&fr.full.last.injury.combat.base.lifecycle.completed&&!f.actor[0xcb1]);
+
+    auto gshared=reinterpret_cast<GetServerNpcSharedCatalogSchedulerApi>(GetProcAddress(s,server_npc_shared_catalog_scheduler_export));
+    assert(gshared&&!GetProcAddress(c,server_npc_shared_catalog_scheduler_export)&&!gshared(0,sizeof(ServerNpcSharedCatalogSchedulerApi)));
+    const auto* shared_api=gshared(1,sizeof(ServerNpcSharedCatalogSchedulerApi));assert(shared_api);
+    ServerNpcSharedTaskBindings shared{};
+    scheduler.grunt.parent=nullptr;
+    ServerNpcSharedCatalogSchedulerResult sh{};
+    install_at(82,2); // original victory dance: TASK_WAIT 1.5
+    assert(shared_api->run(f.actor,sizeof(f.actor),40,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==2&&sh.shared.native==2&&!sh.shared.last.lifecycle.completed);
+    float deadline=0;std::memcpy(&deadline,f.actor+0x9dc,4);assert(deadline==41.5f);
+    assert(shared_api->run(f.actor,sizeof(f.actor),41,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&!sh.shared.last.lifecycle.completed);
+    assert(shared_api->run(f.actor,sizeof(f.actor),41.5f,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&sh.shared.last.lifecycle.completed);
+    install_at(84,4); // original hide-and-reload: TASK_REMEMBER INCOVER
+    assert(shared_api->run(f.actor,sizeof(f.actor),42,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&sh.shared.last.task==119&&sh.shared.last.lifecycle.completed);
+    unsigned flags=0;std::memcpy(&flags,f.actor+0x988,4);assert(flags&2u);
+    install_at(93,7); // original cover schedule: TASK_SET_SCHEDULE wait-in-cover
+    assert(shared_api->run(f.actor,sizeof(f.actor),43,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&sh.shared.last.schedule_set&&sh.shared.last.lifecycle.completed);
+    assert(sh.shared.last.schedule.schedule==find(90)&&sh.shared.last.resolution.requested==90);
+    scheduler.grunt.context=&f;
+    scheduler.grunt.finish_hook=[](void* p,void* a) noexcept -> int{auto& f=F::self(p);assert(a==f.actor);f.actor[0xcb1]=1;return 1;};
+    install_at(85,0);
+    assert(shared_api->run(f.actor,sizeof(f.actor),44,&f.image,&runtime,&full,&shared,&sh)&&!sh.shared.calls&&f.actor[0xcb1]);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original schedule descriptor materialization and real task cursor");
 }

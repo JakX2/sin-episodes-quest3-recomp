@@ -111,6 +111,54 @@ int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool runni
     return 0;
 }
 const ServerNpcSharedTaskApi api{1,sizeof(ServerNpcSharedTaskApi),&wait,&cancel_wait,&wait_state,&supports,&execute};
+ }
+int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const ServerGruntTaskBindings* original,const ServerNpcScheduleResolutionBindings* resolution,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* stats,ServerNpcSharedParentSession* session,ServerGruntTaskBindings* bound) noexcept{
+    if(!actor||!original||!resolution||!shared||!stats||!session||!bound)return 0;
+    *stats={};*session={actor,bytes,now,*original,*shared,stats};*bound=*original;
+    session->shared.lifecycle=original->lifecycle;
+    session->shared.transition=original->transition;
+    session->shared.resolution=resolution;
+    bound->context=session;
+    bound->parent=[](void* p,void* a,const ServerNpcScheduleTask* t,bool running) noexcept -> int{
+        auto& q=*static_cast<ServerNpcSharedParentSession*>(p);
+        if(a!=q.actor||!t)return 0;
+        auto& st=*q.stats;++st.calls;
+        const int ok=api.execute(a,q.bytes,t,running,q.now,&q.shared,&st.last);
+        st.native+=st.last.native;st.component_handled+=st.last.component_handled;
+        st.special+=st.last.special_called;st.parent+=st.last.parent_called;
+        return ok;
+    };
+    bound->special=original->special?+[](void* p,void* a,const ServerNpcScheduleTask* t,bool running) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.special(o.context,a,t,running);
+    }:nullptr;
+    bound->storage=original->storage?+[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.storage(o.context,token,out,n);
+    }:nullptr;
+    bound->peers=original->peers?+[](void* p,std::uint32_t token,const ServerGruntTaskPeer** out,unsigned* n) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.peers(o.context,token,out,n);
+    }:nullptr;
+    bound->cue=original->cue?+[](void* p,void* a,unsigned slot,int x,int y) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.cue(o.context,a,slot,x,y);
+    }:nullptr;
+    bound->set_enemy=original->set_enemy?+[](void* p,void* a,void* e,bool flag) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.set_enemy(o.context,a,e,flag);
+    }:nullptr;
+    bound->finish_hook=original->finish_hook?+[](void* p,void* a) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.finish_hook(o.context,a);
+    }:nullptr;
+    bound->turn_update=original->turn_update?+[](void* p,void* a) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.turn_update(o.context,a);
+    }:nullptr;
+    bound->combat_target=original->combat_target?+[](void* p,void* e,void** out) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.combat_target(o.context,e,out);
+    }:nullptr;
+    bound->target_gate=original->target_gate?+[](void* p,void* e,void* a,bool* out) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.target_gate(o.context,e,a,out);
+    }:nullptr;
+    bound->path_refresh=original->path_refresh?+[](void* p,void* a,void* e) noexcept -> int{
+        const auto& o=static_cast<ServerNpcSharedParentSession*>(p)->original;return o.path_refresh(o.context,a,e);
+    }:nullptr;
+    return 1;
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedTaskApi=_SiN_GetServerNpcSharedTaskApi")

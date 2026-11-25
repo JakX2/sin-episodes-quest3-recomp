@@ -36,4 +36,13 @@ struct ServerNpcSharedTaskApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*) noexcept;
 };
 using GetServerNpcSharedTaskApi=const ServerNpcSharedTaskApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerNpcSharedTaskStats {ServerNpcSharedTaskResult last;unsigned calls,native,component_handled,special,parent;};
+// Per-maintenance call only; no callback or actor memory retains the session.
+struct ServerNpcSharedParentSession {
+    void* actor;unsigned bytes;float now;
+    ServerGruntTaskBindings original;
+    ServerNpcSharedTaskBindings shared;
+    ServerNpcSharedTaskStats* stats;
+};
+int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*) noexcept;
 }

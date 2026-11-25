@@ -2,6 +2,7 @@
 #include "native_server_npc_schedule_catalog.h"
 #include "native_server_npc_schedule_services.h"
 #include "native_server_grunt_helper_task.h"
+#include "native_server_npc_shared_task.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_schedule_image_export[]="SiN_GetServerNpcScheduleImageApi";
 struct ServerScheduleImageRow {
@@ -66,4 +67,14 @@ struct ServerNpcFullCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,ServerNpcFullCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcFullCatalogSchedulerApi=const ServerNpcFullCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_catalog_scheduler_export[]="SiN_GetServerNpcSharedCatalogSchedulerApi";
+struct ServerNpcSharedCatalogSchedulerResult {
+    ServerNpcFullCatalogSchedulerResult full;
+    ServerNpcSharedTaskStats shared;
+};
+struct ServerNpcSharedCatalogSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcSharedCatalogSchedulerApi=const ServerNpcSharedCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
