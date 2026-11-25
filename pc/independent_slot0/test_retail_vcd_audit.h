@@ -6,6 +6,7 @@
 #include "server_script_response_history.h"
 #include "server_scene_cache_owner.h"
 #include "server_scene_directory_source.h"
+#include "server_raw_scene_cache_owner.h"
 #include "native_server_event_intensity.h"
 #include "native_server_facial_records.h"
 #include "native_server_composed_facial_think.h"
@@ -1042,6 +1043,7 @@ struct RetailSceneAuditApis {
     const SceneResponseServicesApi& services;
     const SceneMetadataIndexApi& index;
     const char* directory;
+    const SceneRawCacheEnsureApi& raw_cache;
 };
 struct RetailSceneAudit {
     using F=ScenePlaybackFixture;
@@ -2160,22 +2162,29 @@ rule named_rule
                         RetailSceneAudit audit(a,apis);assert(audit.open());
                         VcdAuditArena playback_arena(a.constructors,a.symbol_api,a.tracks,a.destruction,a.scale_tree_api,a.intern_api,a.vectors);
                         struct DirectoryPlayback:VcdOwnedPlaybackFixture {
-                            RetailSceneDirectory& files;std::string locked_bytes;
-                            DirectoryPlayback(VcdAuditArena& a,const ChoreographyStartupSoundApi& s,RetailSceneDirectory& f):
-                                VcdOwnedPlaybackFixture(a,s),files(f){}
+                            sin_port::map_host::RawSceneCacheOwner raw_cache;
+                            DirectoryPlayback(VcdAuditArena& a,const ChoreographyStartupSoundApi& s,RetailSceneDirectory& f,const SceneRawCacheEnsureApi& api):
+                                VcdOwnedPlaybackFixture(a,s),raw_cache(api,{&f,&RetailSceneDirectory::read_raw}){}
                             static DirectoryPlayback& get(void* p){return static_cast<DirectoryPlayback&>(VcdOwnedPlaybackFixture::self(p));}
-                        } playback(playback_arena,ap.startup_sound,audit.files);
+                        } playback(playback_arena,ap.startup_sound,audit.files,apis.raw_cache);
                         auto& cache=playback.n.precache.load.cache;
+                        cache.ensure=[](void* p,const char* path) noexcept -> int{
+                            auto& f=DirectoryPlayback::get(p);const auto& b=f.raw_cache.bindings();
+                            return !f.locked&&b.ensure(b.context,path);};
+                        cache.find=[](void* p,const char* path,std::uint32_t* out) noexcept -> int{
+                            auto& f=DirectoryPlayback::get(p);const auto& b=f.raw_cache.bindings();
+                            return b.find(b.context,path,out);};
                         cache.lock=[](void* p,std::uint32_t idx,const void** out,unsigned* n) noexcept -> int{
-                            auto& f=DirectoryPlayback::get(p);if(f.locked||idx!=f.cache_index||idx<1||idx>2)return 0;
-                            try{
-                                bool found=false;
-                                if(!f.files.read(idx==1?"scenes/root.vcd":"scenes/child.vcd",f.locked_bytes,found)||!found)return 0;
-                                f.locked=idx;++f.locks;*out=f.locked_bytes.data();*n=static_cast<unsigned>(f.locked_bytes.size());return 1;
-                            }catch(...){return 0;}};
+                            auto& f=DirectoryPlayback::get(p);const auto& b=f.raw_cache.bindings();
+                            if(f.locked||!b.lock(b.context,idx,out,n))return 0;
+                            if(*out){f.locked=idx;++f.locks;}return 1;};
+                        cache.reload=[](void* p,const char* path,std::uint32_t idx,std::uint32_t* out) noexcept -> int{
+                            auto& f=DirectoryPlayback::get(p);const auto& b=f.raw_cache.bindings();
+                            return b.reload(b.context,path,idx,out);};
                         cache.unlock=[](void* p,std::uint32_t idx) noexcept -> int{
-                            auto& f=DirectoryPlayback::get(p);if(idx!=f.locked)return 0;f.locked=0;++f.unlocks;
-                            std::fill(f.locked_bytes.begin(),f.locked_bytes.end(),'!');f.locked_bytes.clear();return 1;};
+                            auto& f=DirectoryPlayback::get(p);const auto& b=f.raw_cache.bindings();
+                            if(idx!=f.locked||!b.unlock(b.context,idx))return 0;
+                            f.locked=0;++f.unlocks;return 1;};
                         playback.n.playback.resolve_name=[](void* p,void* npc,const char* text,char* out,unsigned cap) noexcept -> int{
                             auto& f=DirectoryPlayback::get(p);
                             if(npc!=f.npc||std::strcmp(text,"scenes/root.vcd")||cap<12)return 0;
@@ -2223,6 +2232,8 @@ rule owned_named_rule
                         assert(F::word(actor.response,0)==3&&!std::strcmp(reinterpret_cast<char*>(actor.response+0xa4),"owned_named_rule"));
                         assert(scriptActor->retire(&speech.selection,actor.recorded)==1);actor.recorded=nullptr;
                         assert(scriptFinder->release(&speech.selection.finder.store)==1);
+                        assert(playback.raw_cache.size()==2&&playback.raw_cache.resident_bytes()==sizeof(VcdOwnedPlaybackFixture::root_text)+sizeof(VcdOwnedPlaybackFixture::child_text)-2);
+                        assert(playback.raw_cache.clear()&&!playback.raw_cache.resident_bytes());
                         assert(audit.close()&&playback.root_word&&playback.child_word);
                         std::memset(actor.response,0xcc,sizeof(actor.response));
                         assert(apis.runtime.remove(playback.scene,sizeof(playback.scene),&playback.n.lifecycle,&playback.n.stop,&raw)==1&&playback.phase==8);
@@ -2233,7 +2244,7 @@ rule owned_named_rule
                                playback_arena.release(&playback_arena,F::word(playback.npc,0x5ec))&&playback_arena.live.empty());
                         assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
                         speech.generated=nullptr;actor.external_npc=nullptr;actor.external_bytes=0;
-                        std::puts("PASS script-selected directory VCD owned parse, precache, startup and independent retirement");
+                        std::puts("PASS script-selected directory VCD persistent raw cache, owned parse, precache, startup and independent retirement");
                     }
                 }
             }

@@ -1,0 +1,3 @@
+# Phase 992: persistent raw cache in script-selected named scene regression
+
+Replace the fixture's hardcoded raw path IDs and per-lock disk reads with the loaded native ensure export backed by the shared directory source and persistent resource owner. Keep lock/unlock counters solely as observers around the owner. Script admission, VCD root/child parsing, precaching, NPC scene startup and response retirement now run with two real cached files. Explicitly clear the raw cache before retiring the live parsed graphs, in addition to releasing metadata and registry ownership. This is a composed loaded-DLL regression, not a retail engine resource-manager ABI implementation; timed named-scene event emission is still separate. CI pending.

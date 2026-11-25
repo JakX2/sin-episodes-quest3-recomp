@@ -1333,7 +1333,7 @@ int main(int argc,char** argv){
         tables::test::ScriptChoreographyTestApis scriptChoreography{*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*nativeSceneRetirement,*startupSound};
         const char* privateScenes=std::getenv("SIN_PRIVATE_SCENES_DIR");
         if((!privateScenes||!*privateScenes)&&argc==4)privateScenes=argv[3];
-        tables::test::RetailSceneAuditApis retailSceneAudit{*nativeVcdRuntime,*sceneMetadataGeneration,*sceneResponseServices,*sceneMetadataIndex,privateScenes};
+        tables::test::RetailSceneAuditApis retailSceneAudit{*nativeVcdRuntime,*sceneMetadataGeneration,*sceneResponseServices,*sceneMetadataIndex,privateScenes,*sceneRawCacheEnsure};
         tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria,scriptActor,scriptSpeech,scriptMap,responseTimingUpdate,responseRecord,std::getenv("SIN_PRIVATE_SCRIPTS_DIR"),historyTree,expeditorLifecycle,&scriptChoreography,&retailSceneAudit);
         std::puts("PASS script-selected generated choreography through speech, captions and native retirement");
         std::puts("PASS script-selected native named scene cache, precache, startup and response retirement");
