@@ -9,7 +9,7 @@
 #include <cstring>
 #include <cstdio>
 using namespace sin_port::native_weapon_tables;
-static bool near(float a,float b){return std::fabs(a-b)<.00001f;}
+static bool close_float(float a,float b){return std::fabs(a-b)<.00001f;}
 struct F {
     alignas(4) unsigned char actor[0x808]{},watcher[0x44]{};
     ClientOverlaySample row{};
@@ -36,17 +36,17 @@ int main(int argc,char** argv){
     f.seed();
     ClientOverlayHistorySelection s{f.n+2,f.n+1,f.n,.5f,0};
     ClientOverlaySample o{};
-    assert(f.api->evaluate(&s,false,&o)&&near(o.cycle,.5f)&&near(o.weight,.5f));
+    assert(f.api->evaluate(&s,false,&o)&&close_float(o.cycle,.5f)&&close_float(o.weight,.5f));
     assert(o.sequence==7&&o.order==3&&o.previous_cycle==.25f&&!o.unknown10&&o.unknown18==0xdead&&o.unknown1c==0xbeef);
     s.hermite=1;
-    assert(f.api->evaluate(&s,false,&o)&&near(o.cycle,.46875f)&&near(o.weight,.5f));
+    assert(f.api->evaluate(&s,false,&o)&&close_float(o.cycle,.46875f)&&close_float(o.weight,.5f));
     f.n[2].time=.5f;
-    assert(f.api->evaluate(&s,false,&o)&&near(o.cycle,.45833333f));
+    assert(f.api->evaluate(&s,false,&o)&&close_float(o.cycle,.45833333f));
     f.seed();f.n[0].sample.cycle=.125f;f.n[1].sample.cycle=.875f;f.n[2].sample.cycle=.75f;
-    assert(f.api->evaluate(&s,true,&o)&&near(o.cycle,.984375f));
-    s.hermite=0;assert(f.api->evaluate(&s,true,&o)&&near(o.cycle,0.f));
+    assert(f.api->evaluate(&s,true,&o)&&close_float(o.cycle,.984375f));
+    s.hermite=0;assert(f.api->evaluate(&s,true,&o)&&close_float(o.cycle,0.f));
     f.seed();f.n[2].sample.cycle=.25f;s.hermite=1;
-    assert(f.api->evaluate(&s,true,&o)&&near(o.cycle,.4375f)); // exact .5 threshold
+    assert(f.api->evaluate(&s,true,&o)&&close_float(o.cycle,.4375f)); // exact .5 threshold
     f.n[0].sample={1024,-3.f,9.f,77,0x123,4.f,0x456,0x789};s.newer=s.older=f.n;s.hermite=0;
     assert(f.api->evaluate(&s,false,&o)&&o.sequence==1000&&o.previous_cycle==-2.f&&o.cycle==2.f&&o.weight==5.f&&o.order==77&&o.unknown10==0x123);
     f.seed();f.b.history.context=&f;
@@ -54,15 +54,15 @@ int main(int argc,char** argv){
         auto& f=F::self(p);return word>=1&&word<=3?f.n+word-1:nullptr;};
     f.b.history.looping=[](void* p,void* a,int seq) noexcept -> bool{assert(a==F::self(p).actor&&seq==7);return false;};
     f.b.prune=[](void* p,void* watcher,float cutoff) noexcept {
-        auto& f=F::self(p);assert(watcher==f.watcher&&near(cutoff,2.45f)&&f.row.sequence==7);++f.prunes;};
+        auto& f=F::self(p);assert(watcher==f.watcher&&close_float(cutoff,2.45f)&&f.row.sequence==7);++f.prunes;};
     f.put(f.watcher,4,static_cast<void*>(&f.row));f.put(f.watcher,0x2c,1);f.put(f.watcher,0x30,std::uint32_t{1});
     f.put(f.watcher,0x38,1);f.put(f.watcher,0x3c,.25f);
     int wrote=-1;
-    assert(f.api->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),2.75f,&f.b,&wrote)&&wrote==1&&f.prunes==1&&near(f.row.cycle,.46875f));
+    assert(f.api->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),2.75f,&f.b,&wrote)&&wrote==1&&f.prunes==1&&close_float(f.row.cycle,.46875f));
     f.put(f.watcher,0x2c,0x11);
-    assert(f.api->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),2.75f,&f.b,&wrote)&&wrote==1&&f.prunes==2&&near(f.row.cycle,.5f));
+    assert(f.api->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),2.75f,&f.b,&wrote)&&wrote==1&&f.prunes==2&&close_float(f.row.cycle,.5f));
     f.put(f.watcher,0x30,std::uint32_t{0});
-    assert(f.api->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),2.75f,&f.b,&wrote)&&!wrote&&f.prunes==2&&near(f.row.cycle,.5f));
+    assert(f.api->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),2.75f,&f.b,&wrote)&&!wrote&&f.prunes==2&&close_float(f.row.cycle,.5f));
     f.put(f.watcher,0x30,std::uint32_t{99});
     assert(!f.api->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),2.75f,&f.b,&wrote)&&!wrote&&f.prunes==2);
     f.seed();f.n[1].sample.sequence=4;f.n[2].sample.sequence=4;
@@ -73,11 +73,11 @@ int main(int argc,char** argv){
     f.b.history.interpolate=[](void* p,void* watcher,float time) noexcept {
         auto& f=F::self(p);int wrote=0;
         assert(f.api->apply(watcher,0x44,&f.row,sizeof(f.row),time,&f.b,&wrote)&&wrote==1);
-        assert(near(f.get<float>(f.actor,0x7cc),9.f));++f.repairs;
+        assert(close_float(f.get<float>(f.actor,0x7cc),9.f));++f.repairs;
     };
     unsigned changed=0;
     assert(history->correct(f.actor,sizeof(f.actor),2.75f,&f.b.history,&changed)&&changed==1&&f.repairs==1&&f.prunes==3);
-    assert(f.n[1].sample.sequence==7&&f.n[2].sample.sequence==7&&near(f.row.cycle,.5f)&&near(f.row.weight,.75f)&&near(f.get<float>(f.actor,0x7cc),.24f));
+    assert(f.n[1].sample.sequence==7&&f.n[2].sample.sequence==7&&close_float(f.row.cycle,.5f)&&close_float(f.row.weight,.75f)&&close_float(f.get<float>(f.actor,0x7cc),.24f));
     FreeLibrary(server);FreeLibrary(client);
     std::puts("PASS native client overlay linear/Hermite interpolation, clamp and linked history repair");
 }
