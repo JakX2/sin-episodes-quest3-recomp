@@ -19,7 +19,7 @@ struct F{
     bool allocated[2]{};unsigned releases=0;
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
     unsigned char senses[0x60]{},sense_vectors[3][16]{},sense_handles[3][16]{};
-    unsigned char heard[8][0x14]{};unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
+    unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
@@ -608,5 +608,34 @@ int main(int argc,char** argv){
     f.hearing_outputs=0;f.put(f.senses,0x14,0);f.put(f.heard[0],0xc,1u);f.put(f.heard[0],0x10,1);
     assert(hearing->gather(f.actor,sizeof(f.actor),501,&hb,&hr)&&hr.visited==1&&hr.outputs==1);
     f.put(f.senses,0x14,1);f.put(f.heard[1],0x10,1);assert(!hearing->gather(f.actor,sizeof(f.actor),501,&hb,&hr));
+    auto gscan=reinterpret_cast<GetServerNpcGruntSoundScanApi>(GetProcAddress(s,server_npc_grunt_sound_scan_export));
+    assert(gscan&&!GetProcAddress(c,server_npc_grunt_sound_scan_export)&&!gscan(0,sizeof(ServerNpcGruntSoundScanApi))&&!gscan(1,0));
+    const auto* scan=gscan(1,sizeof(ServerNpcGruntSoundScanApi));assert(scan);
+    ServerNpcGruntSoundScanBindings sb{};sb.hearing=hb;sb.entries=f.entries;sb.count=4;sb.context=&f;
+    sb.active_head=[](void* p,int* head) noexcept -> int{*head=F::self(p).active_sound_head;return 1;};
+    sb.sound_mutable=[](void* p,int index,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);if(index<0||index>=8)return 0;*out=f.heard[index];*n=sizeof(f.heard[index]);return 1;};
+    sb.eye_position=[](void*,void*,float* pos) noexcept -> int{pos[0]=pos[1]=pos[2]=0;return 1;};
+    auto sound_row=[&](int i,unsigned type,unsigned owner,float x,int radius,int next){
+        std::memset(f.heard[i],0,sizeof(f.heard[i]));f.put(f.heard[i],0,owner);f.put(f.heard[i],4,radius);
+        f.put(f.heard[i],0xc,type);f.put(f.heard[i],0x18,static_cast<std::int16_t>(next));f.put(f.heard[i],0x20,x);
+    };
+    sound_row(1,1,0x7001u,100,100,2);sound_row(2,8,0x8002u,20,100,3);
+    sound_row(3,2,0x9003u,0,100,4);sound_row(4,4,0xffffffffu,101,100,5);
+    sound_row(5,0x200,0xffffffffu,0,100,6);sound_row(6,0x4000004,0xffffffffu,0,100,7);
+    sound_row(7,0x400,0xffffffffu,0,100,-1);
+    f.put(f.actor,0x850,3);f.put(f.actor,0xb4,0u);f.actor[0x968]=0;f.hearing_outputs=0;
+    ServerNpcGruntSoundScanResult ssr{};
+    assert(scan->scan(f.actor,sizeof(f.actor),510,&sb,&ssr)&&ssr.visited==7&&ssr.accepted==3&&ssr.accepted_head==7&&ssr.self_rejected==1&&ssr.mask_rejected==1&&ssr.range_rejected==1&&ssr.filter_rejected==1);
+    int link=0;std::memcpy(&link,f.heard[7]+0x10,4);assert(link==2);std::memcpy(&link,f.heard[2]+0x10,4);assert(link==1);std::memcpy(&link,f.heard[1]+0x10,4);assert(link==-1);
+    assert(ssr.hearing.visited==3&&ssr.hearing.special_suppressed);
+    f.hearing_outputs=0;f.put(f.actor,0x850,4);
+    assert(scan->scan(f.actor,sizeof(f.actor),511,&sb,&ssr)&&ssr.state_rejected==1&&ssr.accepted==2&&!ssr.hearing.special_suppressed);
+    f.hearing_outputs=0;f.actor[0x968]=1;
+    assert(scan->scan(f.actor,sizeof(f.actor),512,&sb,&ssr)&&!ssr.accepted&&ssr.disabled_rejected==4&&!ssr.hearing.visited);
+    f.actor[0x968]=0;f.put(f.actor,0xb4,1u);
+    assert(scan->scan(f.actor,sizeof(f.actor),513,&sb,&ssr)&&ssr.blocked&&!ssr.visited&&!ssr.hearing.visited);
+    f.put(f.actor,0xb4,0u);f.put(f.heard[7],0x18,std::int16_t(1));
+    assert(!scan->scan(f.actor,sizeof(f.actor),514,&sb,&ssr));
+    f.put(f.heard[7],0x18,std::int16_t(-1));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
