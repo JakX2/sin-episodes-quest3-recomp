@@ -451,6 +451,146 @@ int __cdecl maintain_memory(void* memory,unsigned bytes,float now,const ServerNp
     }
     return 1;
 }
+// Indexed red/black representation at 22069fa0/220695b0 and 2206ab90/2206a000.
+// Mutate a local copy; publish only after checking every tree/free-list invariant.
+struct MemoryTree {
+    static constexpr unsigned nil=255;
+    unsigned char data[255*12]{};
+    unsigned capacity=0,root=nil,count=0,free_head=nil,high=0,rotations=0;
+    unsigned char* backing=nullptr;
+    unsigned char* memory=nullptr;
+    unsigned char* node(unsigned i){return data+12*i;}
+    unsigned edge(unsigned i,unsigned d){return i==nil?nil:node(i)[d];}
+    unsigned parent(unsigned i){return edge(i,2);}
+    unsigned color(unsigned i){return i==nil?1:node(i)[3];}
+    void edge_set(unsigned i,unsigned d,unsigned j){if(i!=nil)node(i)[d]=static_cast<unsigned char>(j);}
+    void paint(unsigned i,unsigned v){edge_set(i,3,v);}
+    std::uint32_t key(unsigned i){return read<unsigned>(node(i),4);}
+    unsigned record(unsigned i){return read<unsigned>(node(i),8);}
+    bool open(void* m,unsigned bytes,const ServerNpcEnemyMemoryBindings* b){
+        if(!m||bytes<0x1c||!b||read<unsigned>(m,0)!=0x22068d70u||read<unsigned>(m,0x18)!=0x22068b40u)return false;
+        memory=static_cast<unsigned char*>(m);capacity=read<unsigned>(m,8);
+        root=memory[0x10];count=memory[0x11];free_head=memory[0x12];high=memory[0x13];
+        if(high>capacity||count>high)return false;
+        unsigned extent=0;void* p=nullptr;
+        if(capacity){
+            if(!memory_storage(b,read<unsigned>(m,4),12,p,extent))return false;
+            if(high>extent/12)return false;
+            capacity=capacity>255?255:capacity;if(capacity>extent/12)capacity=extent/12;
+            backing=static_cast<unsigned char*>(p);std::memcpy(data,backing,12*capacity);
+        }
+        return true;
+    }
+    int walk(unsigned i,unsigned p,std::uint64_t lo,std::uint64_t hi,bool* used,unsigned& active){
+        if(i==nil)return 1;
+        if(i>=high||used[i]||parent(i)!=p||color(i)>1)return -1;
+        const std::uint64_t k=static_cast<std::uint64_t>(key(i))+1;
+        if(k<=lo||k>=hi)return -1;
+        used[i]=true;++active;
+        const auto l=edge(i,0),r=edge(i,1);
+        if((l!=nil&&l>=high)||(r!=nil&&r>=high))return -1;
+        if(!color(i)&&(!color(l)||!color(r)))return -1;
+        int a=walk(l,i,lo,k,used,active),b=walk(r,i,k,hi,used,active);
+        return a<0||a!=b?-1:a+static_cast<int>(color(i));
+    }
+    bool check(unsigned& height){
+        if(root!=nil&&(root>=high||color(root)!=1))return false;
+        bool used[255]{};unsigned active=0,freed=0;
+        int h=walk(root,nil,0,0x100000001ull,used,active);
+        if(h<0||active!=count)return false;
+        for(unsigned i=free_head;i!=nil;i=edge(i,1)){
+            if(i>=high||used[i]||edge(i,0)!=i)return false;
+            used[i]=true;++freed;
+        }
+        if(active+freed!=high)return false;height=static_cast<unsigned>(h);return true;
+    }
+    void replace_child(unsigned p,unsigned old,unsigned v){
+        if(p==nil)root=v;else edge_set(p,edge(p,0)==old?0:1,v);
+        edge_set(v,2,p);
+    }
+    void rotate(unsigned x,unsigned direction){
+        const unsigned y=edge(x,1-direction),p=parent(x),inner=edge(y,direction);
+        edge_set(x,1-direction,inner);edge_set(inner,2,x);
+        replace_child(p,x,y);edge_set(y,direction,x);edge_set(x,2,y);++rotations;
+    }
+    unsigned find(std::uint32_t k){
+        unsigned i=root;while(i!=nil&&key(i)!=k)i=edge(i,k<key(i)?0:1);return i;
+    }
+    bool insert(std::uint32_t k,std::uint32_t token,ServerNpcEnemyMemoryTreeResult& out){
+        if(find(k)!=nil||!token||count==255)return false;
+        unsigned z=free_head;
+        if(z!=nil){free_head=edge(z,1);out.reused=1;}
+        else{if(high>=capacity||high==255)return false;z=high++;}
+        unsigned p=nil,i=root;while(i!=nil){p=i;i=edge(i,k<key(i)?0:1);}
+        node(z)[0]=node(z)[1]=255;node(z)[2]=static_cast<unsigned char>(p);node(z)[3]=0;
+        write(node(z),4,k);write(node(z),8,token);
+        if(p==nil)root=z;else edge_set(p,k<key(p)?0:1,z);
+        ++count;out.index=z;out.key=k;out.record=token;
+        while(z!=root&&!color(parent(z))){
+            p=parent(z);unsigned g=parent(p),d=edge(g,0)==p?0:1,u=edge(g,1-d);
+            if(!color(u)){paint(p,1);paint(u,1);paint(g,0);z=g;}
+            else{
+                if(z==edge(p,1-d)){z=p;rotate(z,d);p=parent(z);g=parent(p);}
+                paint(p,1);paint(g,0);rotate(g,1-d);
+            }
+        }
+        paint(root,1);return true;
+    }
+    bool erase(unsigned z,ServerNpcEnemyMemoryTreeResult& out){
+        if(z>=high||edge(z,0)==z||find(key(z))!=z)return false;
+        out.index=z;out.key=key(z);out.record=record(z);
+        unsigned y=z,old_color=color(y),x=nil,p=nil;
+        if(edge(z,0)==nil){x=edge(z,1);p=parent(z);replace_child(p,z,x);}
+        else if(edge(z,1)==nil){x=edge(z,0);p=parent(z);replace_child(p,z,x);}
+        else{
+            y=edge(z,1);while(edge(y,0)!=nil)y=edge(y,0);
+            old_color=color(y);x=edge(y,1);
+            if(parent(y)==z){p=y;edge_set(x,2,y);}
+            else{
+                p=parent(y);replace_child(p,y,x);
+                edge_set(y,1,edge(z,1));edge_set(edge(y,1),2,y);
+            }
+            replace_child(parent(z),z,y);edge_set(y,0,edge(z,0));edge_set(edge(y,0),2,y);paint(y,color(z));
+        }
+        // Nil has no mutable global parent: carry the parent explicitly.
+        if(old_color==1){
+            while(x!=root&&color(x)==1){
+                if(p==nil)return false;
+                unsigned d=edge(p,0)==x?0:1,w=edge(p,1-d);
+                if(!color(w)){paint(w,1);paint(p,0);rotate(p,d);w=edge(p,1-d);}
+                if(color(edge(w,0))&&color(edge(w,1))){
+                    paint(w,0);x=p;p=parent(x);
+                }else{
+                    if(color(edge(w,1-d))){paint(edge(w,d),1);paint(w,0);rotate(w,1-d);w=edge(p,1-d);}
+                    paint(w,color(p));paint(p,1);paint(edge(w,1-d),1);rotate(p,d);x=root;p=nil;
+                }
+            }
+            paint(x,1);
+        }
+        edge_set(z,0,z);edge_set(z,1,free_head);free_head=z;--count;return true;
+    }
+    void result(ServerNpcEnemyMemoryTreeResult& out,unsigned height){
+        out.root=root;out.count=count;out.free_head=free_head;out.high_water=high;out.black_height=height;out.rotations=rotations;
+    }
+    void publish(){
+        if(high)std::memcpy(backing,data,high*12);
+        memory[0x10]=static_cast<unsigned char>(root);memory[0x11]=static_cast<unsigned char>(count);
+        memory[0x12]=static_cast<unsigned char>(free_head);memory[0x13]=static_cast<unsigned char>(high);
+        write(memory,0x14,read<unsigned>(memory,4));
+    }
+};
+int tree_operation(void* memory,unsigned bytes,unsigned operation,unsigned value,unsigned record,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryTreeResult* out) noexcept{
+    if(!out)return 0;*out={};out->index=255;MemoryTree tree;unsigned height=0;
+    if(!tree.open(memory,bytes,b)||!tree.check(height))return 0;
+    if(!operation){tree.result(*out,height);return 1;}
+    if(operation==1?!tree.insert(value,record,*out):!tree.erase(value,*out))return 0;
+    if(!tree.check(height))return 0;
+    tree.publish();tree.result(*out,height);out->changed=1;return 1;
+}
+int __cdecl tree_validate(void* m,unsigned n,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryTreeResult* out) noexcept{return tree_operation(m,n,0,0,0,b,out);}
+int __cdecl tree_insert(void* m,unsigned n,std::uint32_t k,std::uint32_t record,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryTreeResult* out) noexcept{return tree_operation(m,n,1,k,record,b,out);}
+int __cdecl tree_erase(void* m,unsigned n,unsigned index,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryTreeResult* out) noexcept{return tree_operation(m,n,2,index,0,b,out);}
+const ServerNpcEnemyMemoryTreeApi tree_api{1,sizeof(ServerNpcEnemyMemoryTreeApi),&tree_validate,&tree_insert,&tree_erase};
 const ServerNpcEnemyMemoryMaintenanceApi maintenance_api{1,sizeof(ServerNpcEnemyMemoryMaintenanceApi),&maintain_memory};
 const ServerNpcEnemyMemoryRecordApi record_api{1,sizeof(ServerNpcEnemyMemoryRecordApi),&initialize_memory_record,&update_memory_record,&memory_expiry};
 const ServerNpcBestEnemyQueryApi best_query_api{1,sizeof(ServerNpcBestEnemyQueryApi),&query_best_enemy};
@@ -515,4 +655,10 @@ SiN_GetServerNpcEnemyMemoryRecordApi(std::uint32_t version,std::uint32_t size) n
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryMaintenanceApi* __cdecl
 SiN_GetServerNpcEnemyMemoryMaintenanceApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryMaintenanceApi)?&maintenance_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcEnemyMemoryTreeApi=_SiN_GetServerNpcEnemyMemoryTreeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryTreeApi* __cdecl
+SiN_GetServerNpcEnemyMemoryTreeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryTreeApi)?&tree_api:nullptr;
 }

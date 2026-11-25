@@ -188,4 +188,18 @@ struct ServerNpcEnemyMemoryMaintenanceApi {
     int (__cdecl *maintain)(void*,unsigned,float,const ServerNpcEnemyMemoryMaintenanceBindings*,ServerNpcEnemyMemoryMaintenanceResult*) noexcept;
 };
 using GetServerNpcEnemyMemoryMaintenanceApi=const ServerNpcEnemyMemoryMaintenanceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_enemy_memory_tree_export[]="SiN_GetServerNpcEnemyMemoryTreeApi";
+struct ServerNpcEnemyMemoryTreeResult {
+    unsigned index,root,count,free_head,high_water,black_height,rotations,reused,changed;
+    std::uint32_t key,record;
+};
+struct ServerNpcEnemyMemoryTreeApi {
+    std::uint32_t version,size;
+    // Validate unique-key bounded tree and free-list. No allocator ownership.
+    int (__cdecl *validate)(void*,unsigned,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryTreeResult*) noexcept;
+    // Preallocated storage only; caller owns record token allocation/free.
+    int (__cdecl *insert)(void*,unsigned,std::uint32_t,std::uint32_t,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryTreeResult*) noexcept;
+    int (__cdecl *erase_index)(void*,unsigned,unsigned,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryTreeResult*) noexcept;
+};
+using GetServerNpcEnemyMemoryTreeApi=const ServerNpcEnemyMemoryTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
