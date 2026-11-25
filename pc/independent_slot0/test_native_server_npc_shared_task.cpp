@@ -1,4 +1,5 @@
 #include "native_server_npc_shared_task.h"
+#include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -228,5 +229,31 @@ int main(int argc,char** argv){
     f.put(f.a,0x8f8,99u);ServerNpcScheduleTask bad_move{116,0};
     assert(!mv->execute(f.a,sizeof(f.a),&bad_move,false,12,&b,&mb,&mr));
     run(116,false,0,12);assert(o.parent_called&&!o.native);
+    auto gdw=reinterpret_cast<GetServerNpcDifficultyWaitApi>(GetProcAddress(s,server_npc_difficulty_wait_export));
+    using DifficultyApi=sin_port::fixed_service::Api;
+    using GetDifficultyApi=const DifficultyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+    auto gdiff=reinterpret_cast<GetDifficultyApi>(GetProcAddress(s,sin_port::fixed_service::export_name));
+    assert(gdw&&gdiff&&!GetProcAddress(c,server_npc_difficulty_wait_export)&&!gdw(0,sizeof(ServerNpcDifficultyWaitApi))&&!gdw(1,0));
+    const auto* dw=gdw(1,sizeof(ServerNpcDifficultyWaitApi));const auto* diff=gdiff(1,sizeof(DifficultyApi));assert(dw&&diff);
+    f.put(f.a,0xc18,0u);
+    assert(!api->supports(138,false)&&api->supports(138,true));
+    run(138,false,.3f,20);assert(o.parent_called&&!o.native&&f.trace==std::vector<int>{4});
+    b.random=[](void* p,int lo,int hi,int* out) noexcept -> int{auto& f=F::self(p);assert(lo==1&&hi>=lo);f.trace.push_back(hi);*out=hi;return 1;};
+    ServerNpcScheduleTask dt{138,.3f};
+    f.trace.clear();assert(dw->execute(f.a,sizeof(f.a),&dt,false,20,.1f,&b,&o)&&o.native&&o.timer_written&&o.ticks==4&&f.get<float>(0x9dc)==20.4f&&f.trace==std::vector<int>{4});
+    f.trace.clear();assert(dw->execute(f.a,sizeof(f.a),&dt,false,20,-.1f,&b,&o)&&o.ticks==3&&f.get<float>(0x9dc)==20.3f&&f.trace==std::vector<int>{3});
+    // Use the stored deadline as the witness: f32 addition may round upward at .3-.1.
+    const float until=f.get<float>(0x9dc);
+    f.put(f.a,0x7a4,1);assert(dw->execute(f.a,sizeof(f.a),&dt,true,until-.01f,0,&b,&o)&&!o.lifecycle.completed);
+    assert(dw->execute(f.a,sizeof(f.a),&dt,true,until,0,&b,&o)&&o.lifecycle.completed);
+    dt.parameter=.1f;f.trace.clear();assert(dw->execute(f.a,sizeof(f.a),&dt,false,20,-.1f,&b,&o)&&o.ticks==0&&f.trace.empty()&&f.get<float>(0x9dc)==20.f);
+    assert(diff->begin_campaign(1)&&api->supports(138,false));
+    for(int skill=1;skill<=3;++skill){
+        assert(diff->set_skill(skill));float metric=0;assert(diff->get_metric(11,&metric));
+        dt.parameter=.3f;f.trace.clear();assert(dw->execute(f.a,sizeof(f.a),&dt,false,21,metric,&b,&o));const int expected=o.ticks;const float deadline=f.get<float>(0x9dc);
+        run(138,false,.3f,21);assert(o.native&&o.timer_written&&o.ticks==expected&&f.get<float>(0x9dc)==deadline);
+    }
+    assert(diff->end_campaign()&&!api->supports(138,false));
+    run(138,false,.3f,22);assert(o.parent_called&&!o.native);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
