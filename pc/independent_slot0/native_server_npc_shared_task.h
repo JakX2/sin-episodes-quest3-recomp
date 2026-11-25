@@ -224,6 +224,26 @@ struct ServerNpcSharedTacticalCoverApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedTacticalCoverBindings*,ServerNpcSharedTacticalCoverResult*) noexcept;
 };
 using GetServerNpcSharedTacticalCoverApi=const ServerNpcSharedTacticalCoverApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_enemy_refresh_export[]="SiN_GetServerNpcSharedEnemyRefreshApi";
+struct ServerNpcSharedEnemyRefreshBindings {
+    void* context;
+    std::uint32_t original_vtable;
+    ServerNpcEnemyStateBindings enemy;
+    int (__cdecl *memory_record)(void*,std::uint32_t,void*,bool*,float*) noexcept;
+    // +518 routes to component +9c or original candidate scorer 2203d3e0.
+    int (__cdecl *select_enemy)(void*,void*,std::uint32_t,void**) noexcept;
+};
+struct ServerNpcSharedEnemyRefreshResult {
+    ServerNpcSharedTaskResult shared;
+    ServerNpcEnemyStateResult enemy;
+    unsigned current_live,memory_found,selected,replaced,cleared,extra_notification,state_changed;
+    float last_seen;
+};
+struct ServerNpcSharedEnemyRefreshApi {
+    std::uint32_t version,size;
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedEnemyRefreshBindings*,ServerNpcSharedEnemyRefreshResult*) noexcept;
+};
+using GetServerNpcSharedEnemyRefreshApi=const ServerNpcSharedEnemyRefreshApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedTacticalCoverStats {ServerNpcSharedTacticalCoverResult last;unsigned calls,native,components;};
 struct ServerNpcSharedSoundCoverStats {ServerNpcSharedSoundCoverResult last;unsigned calls,native,components;};
 struct ServerNpcSharedObservationStats {ServerNpcSharedObservationResult last;unsigned calls,native,components;};

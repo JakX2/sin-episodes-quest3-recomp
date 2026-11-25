@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyStateApi* __cdecl SiN_GetServerNpcEnemyStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcActivityTranslateApi* __cdecl SiN_GetServerNpcActivityTranslateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTaskLifecycleApi* __cdecl SiN_GetServerNpcTaskLifecycleApi(std::uint32_t,std::uint32_t) noexcept;
@@ -199,7 +200,7 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverResult* = nullptr) noexcept;
+int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverResult* = nullptr,const ServerNpcSharedEnemyRefreshBindings* = nullptr,ServerNpcSharedEnemyRefreshResult* = nullptr) noexcept;
 bool movement_supports(int id,bool running) noexcept{
     if(running)return id==116||id==121||id==122;
     return id==43||id==44||id==89||id==90||id==116||id==121||id==122;
@@ -536,7 +537,39 @@ int tactical_cover(void* a,unsigned n,const ServerNpcScheduleTask& t,float now,c
     }
     return life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcSharedTacticalCoverResult* tactical_out) noexcept{
+int enemy_refresh135(void* a,unsigned n,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedEnemyRefreshBindings& b,ServerNpcSharedEnemyRefreshResult& out) noexcept{
+    if(b.enemy.count>sin_independent::kEntityHandleCapacity||(b.enemy.count&&!b.enemy.entries))return 0;
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));if(!life)return 0;
+    auto complete=[&](){return life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle)!=0;};
+    const auto registry=sin_independent::EntityHandleView(b.enemy.entries,b.enemy.count);
+    wr(a,0x8c4,now);
+    void* current=registry.Resolve(rd<unsigned>(a,0x8a0));out.current_live=current!=nullptr;
+    if(!current)return complete();
+    const auto memory=rd<unsigned>(a,0x984);bool found=false;float stamp=0;
+    if(!memory||!b.memory_record||!b.memory_record(b.context,memory,current,&found,&stamp))return 0;
+    out.memory_found=found;out.last_seen=found?stamp:-std::numeric_limits<float>::max();
+    if(!std::isfinite(out.last_seen))return 0;
+    // Original FCOMP tests C0/C2 parity: ordered strictly less skips selection.
+    if(out.last_seen<rd<float>(a,0x8c4))return complete();
+    void* candidate=nullptr;
+    if(!b.select_enemy||!b.select_enemy(b.context,a,rd<unsigned>(a,0xc18),&candidate))return 0;
+    out.selected=1;
+    const auto* api=SiN_GetServerNpcEnemyStateApi(1,sizeof(ServerNpcEnemyStateApi));if(!api)return 0;
+    auto eb=b.enemy;eb.conditions=s.lifecycle.conditions;
+    if(!api->set(a,n,candidate,true,now,&eb,&out.enemy))return 0;
+    if(candidate){
+        out.replaced=out.enemy.changed;
+        const int old=rd<int>(a,0x850);
+        if(old!=3){wr(a,0x854,now);out.state_changed=1;}
+        wr(a,0x850,3);wr(a,0x858,3); // +4d0 is a ret8 no-op on all 8 verified vtables.
+    }else{
+        out.cleared=1;
+        if(!eb.enemy_changing||!eb.enemy_changing(eb.context,a))return 0;
+        out.extra_notification=1;
+    }
+    return complete();
+}
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcSharedTacticalCoverResult* tactical_out,const ServerNpcSharedEnemyRefreshBindings* refresh,ServerNpcSharedEnemyRefreshResult* refresh_out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -551,6 +584,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
+    if(!running&&t->id==135&&refresh&&refresh_out){out->native=1;return enemy_refresh135(a,n,now,*b,*refresh,*refresh_out);}
     if(!running&&tactical_cover_supports(t->id)&&tactical&&tactical_out){out->native=1;return tactical_cover(a,n,*t,now,*b,*tactical,*tactical_out);}
     if(running&&t->id==97&&sound_cover&&sound_cover_out){out->native=1;return sound_cover97(a,n,*t,now,*b,*sound_cover,*sound_cover_out);}
     if(running&&t->id==6&&observe&&observe_out){out->native=1;return observation(a,n,now,*b,*observe,*observe_out);}
@@ -681,6 +715,12 @@ int __cdecl execute_tactical_cover(void* a,unsigned n,const ServerNpcScheduleTas
     if(!t||!tactical_cover_supports(t->id)||!tactical||!grunt_cue_class(tactical->original_vtable))return 0;
     return execute_impl(a,n,t,false,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,tactical,out);
 }
+int __cdecl execute_enemy_refresh(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedEnemyRefreshBindings* refresh,ServerNpcSharedEnemyRefreshResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!t||t->id!=135||!refresh||!grunt_cue_class(refresh->original_vtable))return 0;
+    return execute_impl(a,n,t,false,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,refresh,out);
+}
+const ServerNpcSharedEnemyRefreshApi enemy_refresh_api{1,sizeof(ServerNpcSharedEnemyRefreshApi),&execute_enemy_refresh};
 const ServerNpcSharedTacticalCoverApi tactical_cover_api{1,sizeof(ServerNpcSharedTacticalCoverApi),&execute_tactical_cover};
 const ServerNpcSharedSoundCoverApi sound_cover_api{1,sizeof(ServerNpcSharedSoundCoverApi),&execute_sound_cover};
 const ServerNpcSharedObservationApi observation_api{1,sizeof(ServerNpcSharedObservationApi),&execute_observation};
@@ -832,4 +872,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedTacticalCoverApi=_SiN_GetServerNpcSharedTacticalCoverApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedTacticalCoverApi* __cdecl SiN_GetServerNpcSharedTacticalCoverApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedTacticalCoverApi)?&tactical_cover_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedEnemyRefreshApi=_SiN_GetServerNpcSharedEnemyRefreshApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedEnemyRefreshApi* __cdecl SiN_GetServerNpcSharedEnemyRefreshApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedEnemyRefreshApi)?&enemy_refresh_api:nullptr;
 }
