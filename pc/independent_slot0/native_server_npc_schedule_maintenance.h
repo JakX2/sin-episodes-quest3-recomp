@@ -5,6 +5,7 @@
 #include "native_server_grunt_task_dispatch.h"
 #include "native_server_elite_task.h"
 #include "native_server_jetpack_task.h"
+#include "native_server_npc_state_reconsider.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_schedule_maintenance_export[]="SiN_GetServerNpcScheduleMaintenanceApi";
 struct ServerNpcScheduleMaintenanceBindings {
@@ -82,4 +83,22 @@ struct ServerNpcSubclassSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerNpcSubclassSchedulerBindings*,ServerNpcSubclassSchedulerResult*) noexcept;
 };
 using GetServerNpcSubclassSchedulerApi=const ServerNpcSubclassSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_gather_scheduler_export[]="SiN_GetServerNpcGatherSchedulerApi";
+struct ServerNpcGatherSchedulerBindings {
+    ServerNpcSubclassSchedulerBindings scheduler;
+    ServerNpcGruntGatherConditionsBindings gather;
+    ServerNpcGruntPointPolicyBindings point;
+};
+struct ServerNpcGatherSchedulerResult {
+    ServerNpcSubclassSchedulerResult scheduler;
+    ServerNpcGruntGatherConditionsResult gather;
+    ServerNpcGruntPointPolicyResult point;
+    unsigned gather_calls;
+};
+struct ServerNpcGatherSchedulerApi {
+    std::uint32_t version,size;
+    // Original 22053254 +420 call site; no unconditional outer-think call.
+    int (__cdecl *run)(void*,unsigned,float,const ServerNpcGatherSchedulerBindings*,ServerNpcGatherSchedulerResult*) noexcept;
+};
+using GetServerNpcGatherSchedulerApi=const ServerNpcGatherSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
