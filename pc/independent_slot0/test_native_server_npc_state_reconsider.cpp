@@ -808,5 +808,20 @@ int main(int argc,char** argv){
     assert(goal->update(f.actor,sizeof(f.actor),1,571,&gb,&gr)&&gr.refreshed&&!gr.deadline_written&&f.goal_refreshes==2);
     f.put(f.actor,0x8a8,0xffffffffu);f.put(f.goal_path,0x10,0xffffffffu);
     assert(goal->update(f.actor,sizeof(f.actor),1,571,&gb,&gr)&&gr.refreshed&&!gr.threshold_called&&f.goal_refreshes==3);
+    auto gcgoal=reinterpret_cast<GetServerNpcGruntCombatGoalApi>(GetProcAddress(s,server_npc_grunt_combat_goal_export));
+    assert(gcgoal&&!GetProcAddress(c,server_npc_grunt_combat_goal_export)&&!gcgoal(0,sizeof(ServerNpcGruntCombatGoalApi))&&!gcgoal(1,0));
+    const auto* cgoal=gcgoal(1,sizeof(ServerNpcGruntCombatGoalApi));assert(cgoal);
+    ccb.navigation_update=nullptr;ccb.range.visibility.memory.storage=gb.memory.storage;
+    f.combat_trace=f.combat_fov=true;f.combat_center[0]=64;f.combat_velocity[0]=0;
+    f.put(f.actor,0x988,0x28000u);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x78c,0xffffffffu);
+    f.put(f.actor,0x8ec,0x20000u);f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);f.put(f.actor,0x920,0);
+    f.put(f.goal_path,0x44,2u);f.put(f.goal_path,0x10,0x8002u);global_deadline=0;
+    ServerNpcGruntGoalRefreshResult goals[2]{};
+    assert(cgoal->gather(f.actor,sizeof(f.actor),f.enemy,580,&ccb,&gb,&ccr,goals)&&ccr.completed&&ccr.attack_called&&ccr.nav_calls==2&&goals[0].retargeted&&goals[1].skipped_type&&f.goal_target==f.enemy);
+    f.put(f.goal_path,0x10,0x7001u);f.put(f.goal_path,0x34,400.f);
+    assert(cgoal->gather(f.actor,sizeof(f.actor),f.enemy,581,&ccb,&gb,&ccr,goals)&&ccr.completed&&goals[0].refreshed&&goals[0].deadline_written&&goals[1].skipped_type);
+    f.put(f.enemy,0x8c,1);
+    assert(cgoal->gather(f.actor,sizeof(f.actor),f.enemy,582,&ccb,&gb,&ccr,goals)&&ccr.range.dead&&!ccr.nav_calls&&!goals[0].refreshed&&!goals[1].skipped_type);
+    f.put(f.enemy,0x8c,0);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
