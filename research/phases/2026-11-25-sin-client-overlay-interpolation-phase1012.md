@@ -1,0 +1,9 @@
+# Phase 1012: native client overlay numerical interpolation
+
+Original client PE32 SHA-256 6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d. Disassembly:
+
+* 240c29b0 -> 240c29d0 selects history through 240c0eb0. In the extrapolation-disabled path, equal endpoints copy the sample then sanitize; different endpoints use 240c2ba0 (linear) or 240c2e60 (three-sample Hermite).
+* 240c2df0 / 240c3030: sequence, previous cycle, order and +18/+1c words are from newer sample, +10 becomes zero; weight stays linear even in Hermite; cycle alone uses loop-aware linear or cubic interpolation. 240c30c0 Hermite tangents are older-earlier and newer-older, not averaged. 240c3130 normalizes the earlier interval when spacing differs by >0.0001, prior gap >0.0001, via nonlooping linear sample evaluation.
+* 2408c440 loop Hermite uses strict >0.5 comparison (linear helper uses >=0.5), adjusts earlier/middle, then middle/newer, stores float before truncation-wrap. 240c2d40 clamps sequence [-1,1000], previous/current cycle [-2,2], weight [-5,5], no order clamp.
+* 240c29d0 passes time-delay-0.05f to 240c3230 pruning after writing the sample. Node-pool reclamation remains hosted; extrapolation global conditions and x87 bitwise parity not reconstructed. Native API explicitly supports one sample per overlay watcher (watcher+38 == 1), validated bound row pointer and extent, no extrapolation. No rendering claim.
+* Loaded Windows regression validates numerical branch differences, uneven history, strict tie, clamps, missing/invalid history and live row write; Phase1011 repair invokes actual native Phase1012 interpolation and pruning callback. CI pending. Inherited Phase1010 Release test now keeps assert-driven graph creation enabled (be0f2bf), after original CI reported 148/149 tests and one segfault.
