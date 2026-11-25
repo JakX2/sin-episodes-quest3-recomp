@@ -1008,6 +1008,46 @@ int __cdecl grunt_enemy_switch(void* actor,unsigned bytes,float now,const Server
     }
     out->new_flags=read<unsigned>(actor,0x988);return 1;
 }
+int __cdecl grunt_speak(void* actor,unsigned bytes,unsigned kind,float now,const ServerNpcGruntSpeechBindings* b,ServerNpcGruntSpeechResult* out) noexcept{
+    if(!out)return 0;*out={};out->speech_result=-1;
+    if(!actor||bytes<0xcc4||!b||!relation_grunt_class(b->original_vtable)||kind>NpcGruntAlert||!std::isfinite(now))return 0;
+    int priority=2;
+    if(kind==NpcGruntLost){
+        out->deadline=read<float>(actor,0xc88);
+        if(!std::isfinite(out->deadline))return 0;
+        if(now<out->deadline){out->suppressed=1;return 1;}
+        if(b->memory.count>sin_independent::kEntityHandleCapacity||(b->memory.count&&!b->memory.entries))return 0;
+        void* target=sin_independent::EntityHandleView(b->memory.entries,b->memory.count).Resolve(read<unsigned>(actor,0x8a0));
+        out->enemy_live=target!=nullptr;out->cue="GRUNT_LOST_LONG";priority=0;
+        if(target){
+            bool found=false;
+            auto memory=b->memory;
+            if(!query_last_seen(&memory,read<unsigned>(actor,0x984),target,&found,&out->last_seen)||!std::isfinite(out->last_seen))return 0;
+            out->memory_found=found;
+            if(static_cast<double>(now)-out->last_seen<=10.)out->cue="GRUNT_LOST_SHORT";
+        }
+    }else if(kind==NpcGruntRefind)out->cue="GRUNT_REFIND_ENEMY";
+    else{
+        out->deadline=read<float>(actor,0xc7c);
+        if(!std::isfinite(out->deadline))return 0;
+        if(now<=out->deadline){out->suppressed=1;return 1;}
+        out->cue="GRUNT_GO_ALERT";
+    }
+    if(!b->emit||!b->emit(b->context,actor,0xcc0,out->cue,priority,2,&out->speech_result))return 0;
+    out->emitted=1;
+    if(kind==NpcGruntLost&&out->speech_result>=0){
+        float delay=0;if(!b->random||!b->random(b->context,5.f,15.f,&delay)||!std::isfinite(delay)||delay<5.f||delay>15.f)return 0;
+        out->deadline=static_cast<float>(static_cast<double>(now)+delay);
+        if(!std::isfinite(out->deadline))return 0;
+        write(actor,0xc88,out->deadline);out->cooldown_written=1;
+    }else if(kind==NpcGruntAlert){
+        out->deadline=static_cast<float>(static_cast<double>(now)+10.);
+        if(!std::isfinite(out->deadline))return 0;
+        write(actor,0xc7c,out->deadline);out->cooldown_written=1;
+    }
+    return 1;
+}
+const ServerNpcGruntSpeechApi speech_api{1,sizeof(ServerNpcGruntSpeechApi),&grunt_speak};
 const ServerNpcGruntEnemySwitchApi switch_api{1,sizeof(ServerNpcGruntEnemySwitchApi),&grunt_enemy_switch};
 const ServerNpcGruntEnemyChoiceGateApi choice_gate_api{1,sizeof(ServerNpcGruntEnemyChoiceGateApi),&grunt_enemy_choice_gate};
 const ServerNpcGruntMemoryReportApi grunt_memory_report_api{1,sizeof(ServerNpcGruntMemoryReportApi),&grunt_memory_report};
@@ -1150,4 +1190,10 @@ SiN_GetServerNpcGruntEnemyChoiceGateApi(std::uint32_t version,std::uint32_t size
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEnemySwitchApi* __cdecl
 SiN_GetServerNpcGruntEnemySwitchApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEnemySwitchApi)?&switch_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSpeechApi=_SiN_GetServerNpcGruntSpeechApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpeechApi* __cdecl
+SiN_GetServerNpcGruntSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSpeechApi)?&speech_api:nullptr;
 }

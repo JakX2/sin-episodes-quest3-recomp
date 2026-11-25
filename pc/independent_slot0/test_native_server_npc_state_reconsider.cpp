@@ -18,6 +18,7 @@ struct F{
     const ServerNpcEnemyMemoryMutationApi* mutation_api=nullptr;ServerNpcEnemyMemoryMutationBindings mutation{};
     bool allocated[2]{};unsigned releases=0;
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
+    int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
     unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
@@ -502,5 +503,28 @@ int main(int argc,char** argv){
     f.put(f.actor,0x8a0,0x9002u);f.put(f.schedule,0xc,0u);
     assert(switcher->update(f.actor,sizeof(f.actor),423,&swb,&switch_result)&&switch_result.forced_missing&&switch_result.assigned&&!switch_result.has_enemy&&switch_result.lost_condition&&switch_result.lost_cue&&switch_result.outputs==2&&switch_result.new_flags==0);
     assert(f.lost_cues==1&&f.outputs==2&&f.output_offsets[0]==0xb08&&f.output_offsets[1]==0xac0&&(f.get<unsigned>(0x7cc)&(1u<<11))&&!(f.get<unsigned>(0x7cc)&(1u<<25)));
+    auto gspeech=reinterpret_cast<GetServerNpcGruntSpeechApi>(GetProcAddress(s,server_npc_grunt_speech_export));
+    assert(gspeech&&!GetProcAddress(c,server_npc_grunt_speech_export)&&!gspeech(0,sizeof(ServerNpcGruntSpeechApi))&&!gspeech(1,0));
+    const auto* speech=gspeech(1,sizeof(ServerNpcGruntSpeechApi));assert(speech);
+    ServerNpcGruntSpeechBindings spb{};spb.context=&f;spb.original_vtable=0x2249aaa4;spb.memory=bb.memory;
+    spb.emit=[](void* p,void* a,unsigned member,const char* cue,int priority,int type,int* code) noexcept -> int{
+        auto& f=F::self(p);assert(a==f.actor&&member==0xcc0&&type==2&&priority==(!std::strncmp(cue,"GRUNT_LOST_",11)?0:2));
+        f.speech_name=cue;++f.speech_calls;*code=f.speech_code;return 1;
+    };
+    spb.random=[](void* p,float lo,float hi,float* value) noexcept -> int{auto& f=F::self(p);assert(lo==5&&hi==15);++f.random_calls;*value=7;return 1;};
+    f.put(f.actor,0xc88,432.f);f.put(f.actor,0xc7c,432.f);f.put(f.actor,0x8a0,0x7001u);
+    ServerNpcGruntSpeechResult sr{};
+    assert(speech->speak(f.actor,sizeof(f.actor),NpcGruntLost,431,&spb,&sr)&&sr.suppressed&&!f.speech_calls);
+    f.speech_code=-1;
+    assert(speech->speak(f.actor,sizeof(f.actor),NpcGruntLost,432,&spb,&sr)&&sr.emitted&&sr.enemy_live&&sr.memory_found&&sr.last_seen==422&&!std::strcmp(sr.cue,"GRUNT_LOST_SHORT")&&!sr.cooldown_written&&!f.random_calls);
+    f.speech_code=0;
+    assert(speech->speak(f.actor,sizeof(f.actor),NpcGruntLost,432.01f,&spb,&sr)&&!std::strcmp(sr.cue,"GRUNT_LOST_LONG")&&sr.cooldown_written&&f.random_calls==1&&f.get<float>(0xc88)==439.01f);
+    f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0xc88,0.f);
+    assert(speech->speak(f.actor,sizeof(f.actor),NpcGruntLost,433,&spb,&sr)&&!sr.enemy_live&&!std::strcmp(sr.cue,"GRUNT_LOST_LONG"));
+    assert(speech->speak(f.actor,sizeof(f.actor),NpcGruntRefind,433,&spb,&sr)&&sr.emitted&&!sr.cooldown_written&&!std::strcmp(sr.cue,"GRUNT_REFIND_ENEMY"));
+    assert(speech->speak(f.actor,sizeof(f.actor),NpcGruntAlert,432,&spb,&sr)&&sr.suppressed);
+    f.speech_code=-1;
+    assert(speech->speak(f.actor,sizeof(f.actor),NpcGruntAlert,433,&spb,&sr)&&sr.emitted&&sr.cooldown_written&&sr.deadline==443&&f.get<float>(0xc7c)==443&&!std::strcmp(sr.cue,"GRUNT_GO_ALERT"));
+    assert(!speech->speak(f.actor,0xcc3,NpcGruntLost,444,&spb,&sr));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
