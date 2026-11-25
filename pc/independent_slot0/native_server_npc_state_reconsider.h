@@ -445,4 +445,28 @@ struct ServerNpcGruntVisualApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntVisualBindings*,ServerNpcGruntVisualResult*) noexcept;
 };
 using GetServerNpcGruntVisualApi=const ServerNpcGruntVisualApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_hearing_export[]="SiN_GetServerNpcGruntHearingApi";
+struct ServerNpcGruntHearingBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    ServerNpcScheduleBindings schedule;
+    void* context;
+    std::uint32_t original_vtable;
+    int (__cdecl *sound)(void*,int,const void**,unsigned*) noexcept; // 221b7c50
+    int (__cdecl *fire_output)(void*,void*,unsigned) noexcept;
+    int (__cdecl *sound_visible)(void*,void*,const void*,unsigned,bool*) noexcept;
+    int (__cdecl *component_ignored)(void*,std::uint32_t,const void*,bool*) noexcept;
+};
+struct ServerNpcGruntHearingResult {
+    unsigned visited,cleared,sets,unknown,ignored,danger_suppressed,special_suppressed,outputs;
+};
+struct ServerNpcGruntHearingFilterResult {unsigned accepted,visible_called,component_called,forced;};
+struct ServerNpcGruntHearingApi {
+    std::uint32_t version,size;
+    // 223587d0 and 223587e0 / 2202f810.
+    unsigned (__cdecl *mask)() noexcept;
+    int (__cdecl *filter)(void*,unsigned,const void*,unsigned,const ServerNpcGruntHearingBindings*,ServerNpcGruntHearingFilterResult*) noexcept;
+    // 22358e60 -> 22039fa0: accepted sound list to conditions and outputs.
+    int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntHearingBindings*,ServerNpcGruntHearingResult*) noexcept;
+};
+using GetServerNpcGruntHearingApi=const ServerNpcGruntHearingApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
