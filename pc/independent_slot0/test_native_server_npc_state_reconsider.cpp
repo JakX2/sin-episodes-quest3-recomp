@@ -386,5 +386,26 @@ int main(int argc,char** argv){
     assert(rel->valid(f.actor,sizeof(f.actor),f.enemy,&rb,&validity)&&validity.valid&&validity.native_npc_gate);
     f.put(f.enemy,0x868,2);assert(rel->valid(f.actor,sizeof(f.actor),f.enemy,&rb,&validity)&&!validity.valid);
     f.put(f.actor,0xc18,77u);assert(rel->valid(f.actor,sizeof(f.actor),f.enemy,&rb,&validity)&&validity.component_called&&!validity.valid);
+    auto gmatrix=reinterpret_cast<GetServerNpcRelationMatrixApi>(GetProcAddress(s,server_npc_relation_matrix_export));
+    assert(gmatrix&&!GetProcAddress(c,server_npc_relation_matrix_export)&&!gmatrix(0,sizeof(ServerNpcRelationMatrixApi))&&!gmatrix(1,0));
+    const auto* matrix=gmatrix(1,sizeof(ServerNpcRelationMatrixApi));assert(matrix);
+    ServerNpcRelationCell cells[225]{};
+    assert(!matrix->initialize(cells,224)&&matrix->initialize(cells,225));
+    unsigned priorities=0;int totals[5]{};
+    for(int i=0;i<15;++i){
+        const void* row=nullptr;unsigned bytes=0;
+        assert(matrix->row(cells,i,&row,&bytes)&&row==cells+15*i&&bytes==240);
+        for(int j=0;j<15;++j){const auto& cell=cells[15*i+j];
+            assert(cell.handle==0xffffffffu&&cell.classification==0&&cell.disposition>=1&&cell.disposition<=4);
+            assert(cell.priority==(j==1&&(i==6||i==7||i==10)?100:0));priorities+=cell.priority!=0;++totals[cell.disposition];
+        }
+    }
+    assert(priorities==3&&cells[3*15+5].disposition==1&&cells[4*15+6].disposition==2&&cells[1*15+1].disposition==3&&cells[0].disposition==4);
+    assert(!matrix->set(cells,225,15,0,1,99)&&!matrix->set(cells,224,0,0,1,99));
+    assert(matrix->set(cells,225,3,6,1,17)&&cells[3*15+6].disposition==1&&cells[3*15+6].priority==17);
+    std::memcpy(f.relation_matrix,cells+3*15,240);
+    f.put(f.actor,0xc18,0u);f.actor[0xdb1]=0;
+    assert(rel->relation(f.actor,sizeof(f.actor),f.replacement,true,&rb,&relation_result)&&relation_result.source==3&&relation_result.disposition==1&&relation_result.priority==17);
+    assert(matrix->initialize(cells,225)&&cells[3*15+6].priority==0);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
