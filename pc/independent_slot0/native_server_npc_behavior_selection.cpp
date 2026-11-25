@@ -41,9 +41,9 @@ int __cdecl select(void* actor,unsigned bytes,const ServerNpcBehaviorBindings* b
     if(prior&&(!b->leave||!b->reset||!b->leave(b->context,prior)||!b->reset(b->context,actor)))return 0;
     return b->changed&&b->changed(b->context,actor,prior,out->selected);
 }
-bool schedule_global(void* a,int input,const ServerNpcConditionMapBindings& b,int& global) noexcept {
+bool schedule_map(void* a,int input,const ServerNpcConditionMapBindings& b,int& global,bool reverse=false) noexcept {
     global=input;
-    if(input>=npc_global_condition_base)return true;
+    if(reverse?input<npc_global_condition_base:input>=npc_global_condition_base)return true;
     const void* desc=nullptr;unsigned n=0;
     if(!b.descriptor||!b.descriptor(b.context,a,&desc,&n)||!desc||n<0x18)return false;
     global=-1;if(input==-1)return true;
@@ -51,8 +51,9 @@ bool schedule_global(void* a,int input,const ServerNpcConditionMapBindings& b,in
     std::uint32_t seen[256]{};
     for(unsigned i=0;i<256;++i){
         const int first=read<int>(row,4),last=read<int>(row,8);
-        if(first!=9999&&input>=first&&input<=last){
-            const auto v=static_cast<std::int64_t>(read<int>(row,0))-first+input;
+        const int start=read<int>(row,0),end=read<int>(row,12);
+        if(first!=9999&&(reverse?(input>=start&&input<=end):(input>=first&&input<=last))){
+            const auto v=reverse?static_cast<std::int64_t>(first)-start+input:static_cast<std::int64_t>(start)-first+input;
             if(v<std::numeric_limits<int>::min()||v>std::numeric_limits<int>::max())return false;
             global=static_cast<int>(v);return true;
         }
@@ -69,12 +70,19 @@ int __cdecl schedule_is(void* actor,unsigned bytes,int id,bool ideal,const Serve
     if(!actor||bytes<0x7a0||!b)return 0;
     const auto token=read<std::uint32_t>(actor,0x798);
     if(!token){*out=id==0||id==npc_global_condition_base;return 1;}
-    int global=-1;if(!schedule_global(actor,id,b->conditions,global))return 0;
+    int global=-1;if(!schedule_map(actor,id,b->conditions,global))return 0;
     if(ideal){*out=read<int>(actor,0x79c)==global;return 1;}
     const void* s=nullptr;unsigned n=0;
     if(!b->storage||!b->storage(b->context,token,&s,&n)||!s||n<4)return 0;
     *out=read<int>(s,0)==global;return 1;
 }
+int __cdecl to_global(void* a,int id,const ServerNpcConditionMapBindings* b,int* out) noexcept {
+    return a&&b&&out&&schedule_map(a,id,*b,*out);
+}
+int __cdecl to_local(void* a,int id,const ServerNpcConditionMapBindings* b,int* out) noexcept {
+    return a&&b&&out&&schedule_map(a,id,*b,*out,true);
+}
+const ServerNpcScheduleNamespaceApi namespace_api{1,sizeof(ServerNpcScheduleNamespaceApi),&to_global,&to_local};
 const ServerNpcBehaviorSelectionApi api{1,sizeof(ServerNpcBehaviorSelectionApi),&select,&schedule_is};
 }
 }
@@ -83,4 +91,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcBehaviorSelectionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcBehaviorSelectionApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcScheduleNamespaceApi=_SiN_GetServerNpcScheduleNamespaceApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleNamespaceApi* __cdecl
+SiN_GetServerNpcScheduleNamespaceApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerNpcScheduleNamespaceApi)?&namespace_api:nullptr;
 }
