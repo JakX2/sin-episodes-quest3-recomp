@@ -1039,5 +1039,31 @@ int main(int argc,char** argv){
         point[0]=500;f.put(f.actor,0x9c4,105u);f.put(f.squad_data,8,0x9002u);f.put(f.squad_data,12,0x8002u);f.put(f.squad_data,0x48,2);f.distance[1]=250;
         assert(policy->query(f.actor,sizeof(f.actor),point,644,&point_bindings,&point_result)&&point_result.squad_blocked&&point_result.squad_stale==1&&point_result.squad_visited==2&&point_result.notified&&!point_result.solve_called&&point_result.deadline==645);
     }
+    {
+        auto getter=reinterpret_cast<GetServerNpcGruntGatherPointApi>(GetProcAddress(s,server_npc_grunt_gather_point_export));
+        assert(getter&&!GetProcAddress(c,server_npc_grunt_gather_point_export)&&!getter(0,sizeof(ServerNpcGruntGatherPointApi))&&!getter(1,0));
+        const auto* integrated=getter(1,sizeof(ServerNpcGruntGatherPointApi));assert(integrated);
+        ServerNpcGruntGatherConditionsBindings gb2{};gb2.base.gate.original_vtable=0x2249aaa4;gb2.base.perception.enemy_switch.best.memory=bb.memory;gb2.base.post.schedule=b.schedule;
+        gb2.base.post.aux.visibility=crb.visibility;gb2.context=&f;gb2.max_clients=2;
+        gb2.component_update=[](void*,std::uint32_t token) noexcept -> int{return token==711;};
+        gb2.classname_matches=[](void*,void*,const char*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        ServerNpcGruntPointPolicyBindings pb{};pb.context=&f;
+        pb.origin=[](void* p,void* actor,float* v) noexcept -> int{assert(actor==F::self(p).actor);v[0]=v[1]=v[2]=0;return 1;};
+        pb.in_view=[](void*,void*,const float*,bool* yes) noexcept -> int{*yes=true;return 1;};
+        pb.visible=[](void*,void*,const float*,unsigned,bool* yes) noexcept -> int{*yes=true;return 1;};
+        pb.solve=[](void*,void*,const float* point,bool direct,float* v) noexcept -> int{assert(point[0]==500&&direct);v[0]=30;v[1]=v[2]=0;return 1;};
+        f.put(f.actor,0xc18,711u);f.put(f.actor,0x850,3);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x798,0u);
+        f.put(f.actor,0x9c4,0u);f.actor[0xcb2]=0;f.actor[0xc6c]=1;f.put(f.actor,0xcb4,0xffffffffu);f.put(f.actor,0xc80,650.f);
+        f.put(f.actor,0xc38,1);f.put(f.actor,0x394,1.f);f.put(f.enemy,0xc,0u);
+        f.put(current_record,4,500.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
+        f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);
+        ServerNpcGruntGatherConditionsResult gather_point_result;
+        ServerNpcGruntPointPolicyResult point_policy_result{};
+        assert(integrated->gather(f.actor,sizeof(f.actor),650,&gb2,&pb,&gather_point_result,&point_policy_result)&&gather_point_result.completed&&gather_point_result.point_called&&gather_point_result.point_condition&&point_policy_result.accepted&&point_policy_result.direct&&f.get<float>(0xc58)==30);
+        f.put(f.actor,0x7d4,0u);
+        assert(integrated->gather(f.actor,sizeof(f.actor),650.1f,&gb2,&pb,&gather_point_result,&point_policy_result)&&gather_point_result.point_called&&!gather_point_result.point_condition&&point_policy_result.cooldown_blocked&&!(f.get<unsigned>(0x7d4)&(1u<<5)));
+        f.put(f.actor,0x798,1u);f.put(f.actor,0x79c,npc_global_condition_base+0x4d);
+        assert(integrated->gather(f.actor,sizeof(f.actor),651,&gb2,&pb,&gather_point_result,&point_policy_result)&&gather_point_result.point_schedule_blocked&&!gather_point_result.point_called&&!point_policy_result.solve_called);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

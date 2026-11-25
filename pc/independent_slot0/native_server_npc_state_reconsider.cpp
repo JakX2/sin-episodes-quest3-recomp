@@ -2000,7 +2000,8 @@ int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const Se
     if(!grunt_post_update_impl(actor,bytes,now,out->gate.perceive!=0,&post,&out->post,out->gate.inactive?1:0))return 0;
     out->post_called=out->completed=1;return 1;
 }
-int __cdecl grunt_gather_conditions(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out) noexcept{
+int __cdecl grunt_point_policy(void*,unsigned,const float[3],float,const ServerNpcGruntPointPolicyBindings*,ServerNpcGruntPointPolicyResult*) noexcept;
+int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out,const ServerNpcGruntPointPolicyBindings* point_bindings,ServerNpcGruntPointPolicyResult* point_result) noexcept{
     if(!out)return 0;
     out->base={};out->completed=out->base_called=out->component_called=out->hopper_exit=out->search_called=out->search_no_enemy=out->object_live=out->object_condition=out->point_called=out->point_schedule_blocked=out->point_condition=out->player_called=out->player_condition=0;
     for(float& v:out->point)v=0;
@@ -2051,7 +2052,13 @@ int __cdecl grunt_gather_conditions(void* actor,unsigned bytes,float now,const S
                     void* memory=nullptr;unsigned n=0,key=0;ServerNpcEnemyMemoryLookup lookup{};
                     if(!memory_key(mb,e,key)||!memory_storage(&mb.storage,read<unsigned>(actor,0x984),0x3c,memory,n)||
                        !memory_position(memory,n,key,false,&mb.storage,&lookup,out->point)||!finite_vec(out->point))return 0;
-                    bool yes=false;if(!b->point_predicate||!b->point_predicate(b->context,actor,out->point,&yes))return 0;out->point_called=1;
+                    bool yes=false;
+                    if(point_bindings){
+                        auto pb=*point_bindings;pb.entries=mb.entries;pb.count=mb.count;pb.original_vtable=b->base.gate.original_vtable;
+                        if(!grunt_point_policy(actor,bytes,out->point,now,&pb,point_result))return 0;
+                        yes=point_result->accepted!=0;
+                    }else if(!b->point_predicate||!b->point_predicate(b->context,actor,out->point,&yes))return 0;
+                    out->point_called=1;
                     if(yes&&!set(0x45,out->point_condition))return 0;
                 }
             }
@@ -2117,6 +2124,14 @@ int __cdecl grunt_point_policy(void* actor,unsigned bytes,const float point[3],f
     if(out->accepted)std::memcpy(static_cast<unsigned char*>(actor)+0xc58,out->solution,12);
     return deadline();
 }
+int __cdecl grunt_gather_conditions(void* a,unsigned n,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out) noexcept{
+    return grunt_gather_conditions_impl(a,n,now,b,out,nullptr,nullptr);
+}
+int __cdecl grunt_gather_point(void* a,unsigned n,float now,const ServerNpcGruntGatherConditionsBindings* b,const ServerNpcGruntPointPolicyBindings* pb,ServerNpcGruntGatherConditionsResult* out,ServerNpcGruntPointPolicyResult* pr) noexcept{
+    if(!pb||!pr)return 0;*pr={};
+    return grunt_gather_conditions_impl(a,n,now,b,out,pb,pr);
+}
+const ServerNpcGruntGatherPointApi gather_point_api{1,sizeof(ServerNpcGruntGatherPointApi),&grunt_gather_point};
 const ServerNpcGruntPointPolicyApi point_policy_api{1,sizeof(ServerNpcGruntPointPolicyApi),&grunt_point_policy};
 const ServerNpcGruntGatherConditionsApi gather_conditions_api{1,sizeof(ServerNpcGruntGatherConditionsApi),&grunt_gather_conditions};
 const ServerNpcGruntConditionUpdateApi condition_update_api{1,sizeof(ServerNpcGruntConditionUpdateApi),&grunt_condition_update};
@@ -2391,4 +2406,10 @@ SiN_GetServerNpcGruntGatherConditionsApi(std::uint32_t version,std::uint32_t siz
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPointPolicyApi* __cdecl
 SiN_GetServerNpcGruntPointPolicyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPointPolicyApi)?&point_policy_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntGatherPointApi=_SiN_GetServerNpcGruntGatherPointApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherPointApi* __cdecl
+SiN_GetServerNpcGruntGatherPointApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGatherPointApi)?&gather_point_api:nullptr;
 }
