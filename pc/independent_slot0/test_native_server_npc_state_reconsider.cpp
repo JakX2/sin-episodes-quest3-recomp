@@ -21,7 +21,8 @@ struct F{
     unsigned char senses[0x60]{},sense_vectors[3][16]{},sense_handles[3][16]{};
     unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned rebuild_calls=0;int rebuild_radius=100;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
     unsigned attack_weapon_caps=0,attack_line_calls=0,attack_line_mode=0;float attack_forward[3]{1,0,0};bool melee_hits=true;
-    unsigned char combat_nav[0x10]{};float combat_center[3]{},combat_velocity[3]{},combat_origin[3]{70,0,0};bool combat_facing=true;
+    unsigned combat_nav_calls=0;bool remembered_visible=false;
+    unsigned char combat_nav[0x3c]{};float combat_center[3]{},combat_velocity[3]{},combat_origin[3]{70,0,0};bool combat_facing=true;
     bool combat_trace=true,combat_fov=true;unsigned combat_output_count=0,combat_output_offsets[8]{};bool combat_output_value[8]{};std::uint32_t combat_output_handles[8]{};
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
@@ -745,5 +746,34 @@ int main(int argc,char** argv){
     f.combat_center[2]=0;f.melee_hits=false;assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,64,&ab,&ar)&&ar.conditions[2]==0&&ar.melee_traced);
     f.put(f.actor,0x78c,0x8002u);f.put(f.actor,0x8ec,0x2000u);f.attack_weapon_caps=0x1c000u;
     assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,100,&ab,&ar)&&ar.capabilities==0x1e000u&&ar.weapon_queries==4&&!ar.native_queries&&ar.conditions[0]==0x14&&ar.conditions[1]==0x15&&ar.conditions[2]==0x16&&ar.conditions[3]==0x17);
+    auto gcombat=reinterpret_cast<GetServerNpcGruntCombatConditionsApi>(GetProcAddress(s,server_npc_grunt_combat_conditions_export));
+    assert(gcombat&&!GetProcAddress(c,server_npc_grunt_combat_conditions_export)&&!gcombat(0,sizeof(ServerNpcGruntCombatConditionsApi))&&!gcombat(1,0));
+    const auto* combat=gcombat(1,sizeof(ServerNpcGruntCombatConditionsApi));assert(combat);
+    ServerNpcGruntCombatConditionsBindings ccb;ccb.range=crb;ccb.attack=ab;ccb.cache=ub;ccb.context=&f;
+    ccb.range.origin=[](void* p,void* e,float* v) noexcept -> int{auto& f=F::self(p);if(e==f.actor)v[0]=v[1]=v[2]=0;else {assert(e==f.enemy);std::memcpy(v,f.combat_origin,12);}return 1;};
+    ccb.navigation_update=[](void* p,void* a,unsigned phase,float) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&phase==f.combat_nav_calls%2);++f.combat_nav_calls;return 1;};
+    ccb.point_visible=[](void* p,void* a,const float*,unsigned mask,bool* yes) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&mask==0x4081);*yes=f.remembered_visible;return 1;};
+    f.combat_output_count=0;f.combat_trace=f.combat_fov=true;f.combat_center[0]=64;f.combat_center[2]=0;f.combat_origin[0]=47;
+    f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x8ec,0x20000u);f.put(f.actor,0x920,0);f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);
+    f.put(f.actor,0x988,0x8000u);f.put(f.actor,0x8a0,0x7001u);
+    ServerNpcGruntCombatConditionsResult ccr;
+    assert(combat->gather(f.actor,sizeof(f.actor),540,&ccb,&ccr)&&ccr.completed&&ccr.attack_called&&ccr.attack.conditions[0]==0x14&&ccr.nav_calls==2&&!ccr.old_sight);
+    // Original update thresholds permit remembered location to lag a small report.
+    assert(mem->lookup(f.memory,sizeof(f.memory),1000,false,&mb,&ml)&&ml.record);
+    void* current_record=nullptr;unsigned current_record_bytes=0;assert(mb.storage(mb.context,ml.record,&current_record,&current_record_bytes)&&current_record_bytes>=0x38);
+    f.put(current_record,4,47.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
+    f.combat_trace=false;f.combat_center[0]=300;
+    assert(combat->gather(f.actor,sizeof(f.actor),548,&ccb,&ccr)&&ccr.completed&&!ccr.old_sight&&ccr.cleanup_called&&!ccr.attack_called);
+    assert(combat->gather(f.actor,sizeof(f.actor),548.01f,&ccb,&ccr)&&ccr.old_sight&&ccr.close_mark&&ccr.horizontal_distance==47&&!ccr.point_queries);
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryEluded,0,0,&mb,&ctr)&&ctr.value==1);
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,550,0,true,&mutation,&mut));
+    f.put(current_record,4,48.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
+    assert(combat->gather(f.actor,sizeof(f.actor),559,&ccb,&ccr)&&ccr.old_sight&&ccr.horizontal_distance==48&&!ccr.close_mark&&!ccr.point_queries);
+    f.put(f.actor,0x920,1);unreachable_row(0,0x7001u,600,f.distance[0]);f.put(f.actor,0x7cc,0u);
+    assert(combat->gather(f.actor,sizeof(f.actor),559,&ccb,&ccr)&&ccr.unreachable_set&&ccr.point_queries==1&&ccr.point_mark);
+    f.combat_nav[0x3a]=1;f.put(f.actor,0x7cc,0u);
+    assert(combat->gather(f.actor,sizeof(f.actor),559,&ccb,&ccr)&&!ccr.unreachable_set&&!ccr.point_queries);
+    f.put(f.enemy,0x8c,1);const unsigned before_nav=f.combat_nav_calls;
+    assert(combat->gather(f.actor,sizeof(f.actor),560,&ccb,&ccr)&&ccr.completed&&ccr.range.dead&&!ccr.nav_calls&&f.combat_nav_calls==before_nav);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

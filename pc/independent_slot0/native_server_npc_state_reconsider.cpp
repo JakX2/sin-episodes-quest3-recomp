@@ -1529,6 +1529,79 @@ int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float di
     if(attack)for(int id:{0x24,0x25,0x28})if(!store(id,false))return 0;
     return 1;
 }
+int __cdecl grunt_combat_conditions(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out) noexcept{
+    if(!out)return 0;
+    out->range={};out->attack={};out->cache={};
+    out->completed=out->attack_called=out->cleanup_called=out->nav_calls=out->unreachable_set=out->old_sight=out->close_mark=out->point_mark=out->point_queries=0;
+    out->last_seen=out->horizontal_distance=0;for(float& v:out->remembered)v=0;
+    if(!actor||bytes<0xa24||!target||!b||!std::isfinite(now))return 0;
+    if(!combat_range_gather(actor,bytes,target,now,&b->range,&out->range))return 0;
+    if(out->range.dead){out->completed=1;return 1;}
+    const auto& vb=b->range.visibility;
+    const auto& mb=vb.memory;
+    const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
+    auto current=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(actor,0x8a0)));};
+    if(out->range.attack_gate){
+        auto ab=b->attack;ab.entries=mb.entries;ab.count=mb.count;ab.conditions=vb.conditions;ab.original_vtable=vb.original_vtable;
+        void* e=current();if(!e||!grunt_attack_gather(actor,bytes,e,out->range.distance,&ab,&out->attack))return 0;
+        out->attack_called=1;
+    }else{
+        ServerNpcEnemyConditionResult cr{};if(!clear_combat_conditions(actor,bytes,&vb.conditions,&cr))return 0;
+        out->cleanup_called=1;
+    }
+    for(unsigned phase=0;phase<2;++phase){
+        if(!b->navigation_update||!b->navigation_update(b->context,actor,phase,now))return 0;++out->nav_calls;
+    }
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto test=[&](int id,bool& yes){ServerNpcConditionResult cr{};if(!cond->test(actor,bytes,id,NpcConditionCurrent,&vb.conditions,&cr))return false;yes=cr.value!=0;return true;};
+    void* nav=nullptr;unsigned n=0;
+    if(!memory_storage(&mb.storage,read<unsigned>(actor,0x8f8),0x3b,nav,n))return 0;
+    if(!read<std::uint8_t>(nav,0x3a)){
+        auto cb=b->cache;cb.entries=mb.entries;cb.count=mb.count;
+        void* e=current();if(!e||!unreachable_enemy(actor,bytes,e,now,&cb,&out->cache))return 0;
+        if(out->cache.unreachable){
+            ServerNpcConditionResult cr{};if(!cond->store(actor,bytes,0x1e,NpcConditionCurrent,true,&vb.conditions,&cr))return 0;
+            out->unreachable_set=cr.mapped;
+        }
+    }
+    void* memory=nullptr;
+    if(!memory_storage(&mb.storage,read<unsigned>(actor,0x984),0x40,memory,n))return 0;
+    unsigned key=0;void* e=current();if(!memory_key(mb,e,key))return 0;
+    ServerNpcEnemyMemoryLookup lookup{};
+    if(e){if(!memory_timestamp(memory,n,key,NpcMemoryStamp1c,&mb.storage,&lookup,&out->last_seen))return 0;}
+    else out->last_seen=0; // original 2206b450 null input returns zero
+    if(!std::isfinite(out->last_seen))return 0;
+    if(static_cast<double>(now)-out->last_seen<=8.){out->completed=1;return 1;}
+    out->old_sight=1;
+    if(!memory_position(memory,n,key,false,&mb.storage,&lookup,out->remembered)||!finite_vec(out->remembered))return 0;
+    float origin[3]{};
+    if(!b->range.origin||!b->range.origin(b->range.context,actor,origin)||!finite_vec(origin))return 0;
+    float dx=static_cast<float>(static_cast<double>(out->remembered[0])-origin[0]),dy=static_cast<float>(static_cast<double>(out->remembered[1])-origin[1]);
+    const float sq=static_cast<float>(static_cast<double>(dx)*dx+static_cast<double>(dy)*dy);
+    if(!std::isfinite(sq))return 0;out->horizontal_distance=std::sqrt(sq);
+    auto mark=[&](unsigned& wrote){
+        unsigned current_key=0;if(!memory_key(mb,current(),current_key))return false;
+        ServerNpcEnemyMemoryControlResult cr{};
+        if(!memory_control(memory,n,current_key,NpcMemoryMarkEluded,0,0,&mb.storage,&cr))return false;
+        wrote=cr.written;return true;
+    };
+    bool seen=false;
+    if(out->horizontal_distance<48.f){
+        if(!test(0xa,seen))return 0;
+        if(!seen&&!mark(out->close_mark))return 0;
+    }
+    if(!test(0xa,seen))return 0;
+    if(!seen){
+        bool unreachable=false;if(!test(0x1e,unreachable))return 0;
+        if(unreachable){
+            bool visible=false;++out->point_queries;
+            if(!b->point_visible||!b->point_visible(b->context,actor,out->remembered,0x4081,&visible))return 0;
+            if(!visible&&!mark(out->point_mark))return 0;
+        }
+    }
+    out->completed=1;return 1;
+}
+const ServerNpcGruntCombatConditionsApi combat_conditions_api{1,sizeof(ServerNpcGruntCombatConditionsApi),&grunt_combat_conditions};
 const ServerNpcGruntAttackApi attack_api{1,sizeof(ServerNpcGruntAttackApi),&grunt_attack_gather};
 const ServerNpcGruntCombatRangeApi combat_range_api{1,sizeof(ServerNpcGruntCombatRangeApi),&combat_distance,&combat_range_gather};
 const ServerNpcGruntCombatVisibilityApi combat_visibility_api{1,sizeof(ServerNpcGruntCombatVisibilityApi),&combat_visibility_query,&combat_visibility_gather};
@@ -1734,4 +1807,10 @@ SiN_GetServerNpcGruntCombatRangeApi(std::uint32_t version,std::uint32_t size) no
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAttackApi* __cdecl
 SiN_GetServerNpcGruntAttackConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAttackApi)?&attack_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatConditionsApi=_SiN_GetServerNpcGruntCombatConditionsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatConditionsApi* __cdecl
+SiN_GetServerNpcGruntCombatConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatConditionsApi)?&combat_conditions_api:nullptr;
 }

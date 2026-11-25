@@ -593,4 +593,28 @@ struct ServerNpcGruntAttackApi {
     int (__cdecl *gather)(void*,unsigned,void*,float,const ServerNpcGruntAttackBindings*,ServerNpcGruntAttackResult*) noexcept;
 };
 using GetServerNpcGruntAttackApi=const ServerNpcGruntAttackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_combat_conditions_export[]="SiN_GetServerNpcGruntCombatConditionsApi";
+struct ServerNpcGruntCombatConditionsBindings {
+    ServerNpcGruntCombatRangeBindings range;
+    ServerNpcGruntAttackBindings attack;
+    ServerNpcUnreachableEnemyBindings cache;
+    void* context;
+    // 22035280 / 220353f0: navigation refresh policies not reconstructed here.
+    int (__cdecl *navigation_update)(void*,void*,unsigned,float) noexcept;
+    // +1ec visibility of remembered position; actual engine trace is explicit.
+    int (__cdecl *point_visible)(void*,void*,const float[3],unsigned,bool*) noexcept;
+};
+struct ServerNpcGruntCombatConditionsResult {
+    ServerNpcGruntCombatRangeResult range;
+    ServerNpcGruntAttackResult attack;
+    ServerNpcUnreachableEnemyResult cache;
+    unsigned completed,attack_called,cleanup_called,nav_calls,unreachable_set,old_sight,close_mark,point_mark,point_queries;
+    float last_seen,horizontal_distance,remembered[3];
+};
+struct ServerNpcGruntCombatConditionsApi {
+    std::uint32_t version,size;
+    // 2203c600..2203cea7; navigation/trace/weapon leaves explicitly bound.
+    int (__cdecl *gather)(void*,unsigned,void*,float,const ServerNpcGruntCombatConditionsBindings*,ServerNpcGruntCombatConditionsResult*) noexcept;
+};
+using GetServerNpcGruntCombatConditionsApi=const ServerNpcGruntCombatConditionsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
