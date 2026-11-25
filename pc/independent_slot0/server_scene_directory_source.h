@@ -66,6 +66,16 @@ private:
         std::string key;if(!normalize(name,key))return false;
         auto it=paths.find(key);found=it!=paths.end();
         if(!found){data.clear();return true;}
+        // Raw playback may reload a formerly indexed file after eviction.
+        // A vanished file is a normal miss; permission and I/O errors are
+        // not. Do not change the metadata reader's existing semantics.
+        if(empty_ok){
+            std::error_code ec;auto status=std::filesystem::symlink_status(it->second,ec);
+            if(ec==std::errc::no_such_file_or_directory||(!ec&&status.type()==std::filesystem::file_type::not_found)){
+                found=false;data.clear();return true;
+            }
+            if(ec||!std::filesystem::is_regular_file(status))return false;
+        }
         std::ifstream stream(it->second,std::ios::binary|std::ios::ate);auto bytes=stream.tellg();
         if(!stream||bytes<0||(!empty_ok&&bytes==0)||bytes>1024*1024)return false;
         std::string tmp(static_cast<std::size_t>(bytes),'\0');stream.seekg(0);

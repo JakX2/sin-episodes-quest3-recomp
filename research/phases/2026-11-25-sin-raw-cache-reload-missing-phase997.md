@@ -1,0 +1,3 @@
+# Phase 997: normal missing-file recovery during raw cache reload
+
+The named load routine explicitly treats a successful reload with handle ffffffff as ordinary scene absence. The host raw owner previously returned failure when the source disappeared after eviction. On a successful read reporting absence, retire the old evicted handle and row and return the sentinel; transport failure still preserves the old handle and caller output. Raw directory reads recognize vanished indexed files separately from permission and I/O failures; the metadata reader is unchanged. Test synthetic disappearance and actual file deletion/recreation in the loaded DLL cache suite. Directory index remains a snapshot and only previously indexed names can reappear without reopening. CI pending.
