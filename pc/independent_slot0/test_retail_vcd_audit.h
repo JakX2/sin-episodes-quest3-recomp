@@ -745,7 +745,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1285,7 +1285,8 @@ rule parsed_rule
             struct Actor {
                 alignas(4) unsigned char npc[0x1160]{},exp[0x7c]{},response[0x124]{},copy[0x5c]{};
                 const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
-                unsigned allocs=0,drops=0,copies=0,frees=0;bool live=false,copy_live=false,short_block=false;
+                unsigned allocs=0,drops=0,copies=0,frees=0,traces=0,sounds=0,notes=0,records=0;
+                bool live=false,copy_live=false,short_block=false,fail_trace=false,fail_sound=false;void* recorded=nullptr;
                 static Actor& get(void* p){return *static_cast<Actor*>(p);}
             } actor{{},{},{},{},api,h};
             const char source[]=R"(criterion idle concept TLK_IDLE required
@@ -1361,6 +1362,50 @@ rule count_head
             assert(scriptActor->retire(&sc,selected)==1&&!actor.live&&!actor.copy_live&&actor.frees==1&&actor.drops==3&&a.live.empty());
             assert(select("PlayerLookingAtPart:head")==1&&!selected&&!actor.live&&actor.drops==4&&actor.copies==1&&a.live.empty());
             assert(scriptFinder->release(&sc.finder.store)==1);
+            if(scriptSpeech){
+                ScriptActorSpeechBindings speech{};speech.selection=sc;speech.context=&actor;
+                assert(scriptFinder->create("fixture",source,sizeof(source)-1,nullptr,&speech.selection.finder.store)==1);
+                speech.trace_selected=[](void* p,void* e,const char* concept) noexcept -> int{
+                    auto& s=Actor::get(p);assert(e==s.exp&&s.live&&s.copy_live&&!std::strcmp(concept,"TLK_IDLE"));++s.traces;return !s.fail_trace;};
+                auto& d=speech.dispatch;d.context=&actor;
+                d.sample=[](void*,const void*,float*) noexcept -> int{assert(false);return 0;};
+                d.speaking=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
+                d.force_log=[](void*,void*,const char*) noexcept -> int{assert(false);return 0;};
+                d.stop_scene=[](void*,void*,int) noexcept -> int{assert(false);return 0;};
+                d.interrupt=[](void*,void*) noexcept -> int{assert(false);return 0;};
+                d.scene_blocked=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
+                d.refused_log=d.force_log;
+                d.sound=[](void* p,void* e,const char* value,float* duration) noexcept -> int{
+                    auto& s=Actor::get(p);assert(e==s.exp&&s.live&&s.copy_live&&!std::strcmp(value,"count_line"));++s.sounds;*duration=2.5f;return !s.fail_sound;};
+                d.scene=[](void*,void*,const char*,float,float*) noexcept -> int{assert(false);return 0;};
+                d.sound_duration=d.sound;
+                d.emit_raw=[](void*,void*,const char*,int,int) noexcept -> int{assert(false);return 0;};
+                d.note_duration=[](void* p,void* e,float duration,float delay) noexcept -> int{
+                    auto& s=Actor::get(p);assert(e==s.exp&&duration==2.5f&&delay==0);++s.notes;return 1;};
+                d.sentence=[](void*,void*,const char*,float,float,int,int,int*) noexcept -> int{assert(false);return 0;};
+                d.print_enabled=[](void*,unsigned*) noexcept -> int{assert(false);return 0;};
+                d.print=d.force_log;
+                d.clock=[](void*,float* out) noexcept -> int{*out=17.f;return 1;};
+                d.debug_success=[](void*,void*,const char*,const char*) noexcept -> int{return 1;};
+                d.record=[](void* p,void* e,const char*,void* response) noexcept -> int{
+                    auto& s=Actor::get(p);assert(e==s.exp&&response==s.response&&s.copy_live&&s.live&&!s.recorded);
+                    ++s.records;s.recorded=response;return 1;};
+                unsigned played=99;
+                auto speak=[&](const char* mods){return scriptSpeech->speak(actor.exp,sizeof(actor.exp),&speech,"TLK_IDLE",mods,&played);};
+                auto reload=[&](){assert(scriptFinder->release(&speech.selection.finder.store)==1);
+                    assert(scriptFinder->create("fixture",source,sizeof(source)-1,nullptr,&speech.selection.finder.store)==1);};
+                assert(speak("PlayerLookingAtPart:hand")==1&&!played&&!actor.live&&!actor.copy_live&&!actor.traces);
+                assert(speak("PlayerLookingAtPart:head")==1&&played==1&&actor.records==1&&actor.notes==1&&actor.sounds==1&&actor.recorded==actor.response);
+                assert(F::word(actor.exp,0x78)==0x41880000u&&actor.copy_live&&actor.live);
+                assert(scriptActor->retire(&speech.selection,actor.recorded)==1&&!actor.live&&!actor.copy_live);actor.recorded=nullptr;
+                assert(speak("PlayerLookingAtPart:head")==1&&!played&&actor.sounds==1&&actor.traces==1);
+                reload();actor.fail_trace=true;played=99;
+                assert(speak("PlayerLookingAtPart:head")==-1&&played==99&&!actor.live&&!actor.copy_live&&actor.sounds==1);
+                reload();actor.fail_trace=false;actor.fail_sound=true;
+                assert(speak("PlayerLookingAtPart:head")==-1&&played==99&&!actor.live&&!actor.copy_live&&actor.sounds==2&&actor.records==1);
+                assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
+                assert(scriptFinder->release(&speech.selection.finder.store)==1);
+            }
         }
     }
 }

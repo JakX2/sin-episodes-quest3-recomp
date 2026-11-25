@@ -1340,6 +1340,24 @@ struct ScriptActorSelectionApi {
     int (__cdecl *retire)(void*,void*) noexcept;
 };
 using GetScriptActorSelectionApi=const ScriptActorSelectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char script_actor_speech_export[]="SiN_GetScriptActorSpeechApi";
+struct ScriptActorSpeechBindings {
+    ScriptActorSelectionBindings selection;
+    ResponseDispatchBindings dispatch; // destroy replaced by owned retirement
+    void* context;
+    int (__cdecl *trace_selected)(void*,void*,const char*) noexcept;
+    // Optional existing generated choreography binding. Null uses NPC
+    // sound/scene leaves in dispatch. Record owns successful responses.
+    const NativeGeneratedResponseBindings* generated=nullptr;
+};
+struct ScriptActorSpeechApi {
+    std::uint32_t version,size;
+    // Script selection -> trace -> existing dispatch -> history ownership.
+    // Persistent bindings must outlive any recorded response. Record/history
+    // retirement must use ScriptActorSelectionApi.retire.
+    int (__cdecl *speak)(void*,unsigned,const ScriptActorSpeechBindings*,const char*,const char*,unsigned*) noexcept;
+};
+using GetScriptActorSpeechApi=const ScriptActorSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;

@@ -3172,13 +3172,14 @@ bool response_choreography_owner(const ResponseChoreographyBindings& c,void* exp
 int __cdecl native_generated_sound(void*,const char*,const NativeGeneratedLifecycleBindings*,float*) noexcept;
 int response_dispatch_impl(void* exp,unsigned bytes,const ResponseDispatchBindings* b,const ResponseChoreographyBindings* c,const char* name,
                               void* response,unsigned extent,unsigned* played,const SceneEntityLifecycleBindings* life=nullptr,
-                              const NativeGeneratedLifecycleBindings* generated=nullptr) noexcept {
+                              const NativeGeneratedLifecycleBindings* generated=nullptr,
+                              int (__cdecl *owned_drop)(void*,void*) noexcept=nullptr,void* drop_context=nullptr) noexcept {
     if(!exp||bytes<0x7c||!hologram_writable(exp,0x7c)||!name||!response||extent<0x124||
        !sin_independent::vgui_layout::Readable(response,0x124)||!played||!hologram_writable(played,sizeof(*played))||
        !b||!b->sample||!b->speaking||!b->force_log||!b->interrupt||
        (c?!response_choreography_ready(c):(!b->stop_scene||!b->scene_blocked||!b->sound||!b->scene))||
        !b->refused_log||!b->sound_duration||!b->emit_raw||!b->note_duration||
-       !b->sentence||!b->print_enabled||!b->print||!b->clock||!b->debug_success||!b->destroy||!b->record)return 0;
+       !b->sentence||!b->print_enabled||!b->print||!b->clock||!b->debug_success||(!owned_drop&&!b->destroy)||!b->record)return 0;
     const auto h=*b;const auto* text=static_cast<const char*>(response)+4;
     const auto choreography=c?*c:ResponseChoreographyBindings{};
     const auto lifecycle=life?*life:SceneEntityLifecycleBindings{};
@@ -3189,7 +3190,8 @@ int response_dispatch_impl(void* exp,unsigned bytes,const ResponseDispatchBindin
     };
     // Original inline char buffer ends at +84. Reject a malformed host
     // response without forwarding an unterminated string.
-    const auto finish=[&](bool ok){if(!h.destroy(h.context,response)||!ok)return -1;*played=0;return 1;};
+    const auto finish=[&](bool ok){const int dropped=owned_drop?owned_drop(drop_context,response):h.destroy(h.context,response);
+        if(!dropped||!ok)return -1;*played=0;return 1;};
     if(!std::memchr(text,0,0x80))return finish(false);
     float delay=0;
     if((hologram_read<unsigned char>(response,0x88)&1)&&
@@ -8680,6 +8682,26 @@ int __cdecl script_actor_select(void* exp,unsigned bytes,const ScriptActorSelect
 }
 const ScriptActorSelectionApi script_actor_selection_api{version,sizeof(ScriptActorSelectionApi),
     &script_actor_select,&script_actor_retire};
+
+int __cdecl script_actor_speak(void* exp,unsigned bytes,const ScriptActorSpeechBindings* b,
+    const char* name,const char* mods,unsigned* played) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->trace_selected||!name||
+       bytes<0x7c||!hologram_writable(exp,0x7c)||!hologram_writable(played,4))return 0;
+    if(b->generated&&(!sin_independent::vgui_layout::Readable(b->generated,sizeof(*b->generated))||
+       !native_generated_response_ready(b->generated)))return 0;
+    void* response=nullptr;unsigned extent=0;
+    const int selected=script_actor_select(exp,bytes,&b->selection,name,mods,&response,&extent);
+    if(selected!=1)return selected;
+    if(!response){*played=0;return 1;}
+    auto* owner=const_cast<ScriptActorSelectionBindings*>(&b->selection);
+    const auto drop=[&](){(void)script_actor_retire(owner,response);return -1;};
+    if(!b->trace_selected(b->context,exp,name))return drop();
+    const auto* g=b->generated;
+    const int dispatched=response_dispatch_impl(exp,bytes,&b->dispatch,g?&g->response:nullptr,name,response,extent,played,
+        g?&g->generated.lifecycle:nullptr,g?&g->generated:nullptr,&script_actor_retire,owner);
+    return dispatched==0?drop():dispatched;
+}
+const ScriptActorSpeechApi script_actor_speech_api{version,sizeof(ScriptActorSpeechApi),&script_actor_speak};
 
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
@@ -16768,6 +16790,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScriptAct
 SiN_GetScriptActorSelectionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ScriptActorSelectionApi)?&script_actor_selection_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetScriptActorSpeechApi=_SiN_GetScriptActorSpeechApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScriptActorSpeechApi* __cdecl
+SiN_GetScriptActorSpeechApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ScriptActorSpeechApi)?&script_actor_speech_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl
