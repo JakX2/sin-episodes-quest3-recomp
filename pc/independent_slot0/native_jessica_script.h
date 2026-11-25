@@ -187,6 +187,23 @@ struct ResponseNativeModifierApi {
 using GetResponseNativeModifierApi=const ResponseNativeModifierApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_dispatch_export[]="SiN_GetResponseDispatchApi";
 enum class ResponseKind:unsigned {None,Speak,Sentence,Scene,Response,Print};
+inline constexpr char response_scene_filter_export[]="SiN_GetResponseSceneFilterApi";
+struct ResponseSceneFilterBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original 221b52f0 bounded actor scene-name resolution, engine-owned.
+    int (__cdecl *resolve_name)(void*,void* npc,const char*,char*,unsigned) noexcept;
+    // Original 221ad350 cached metadata lookup. Null is ordinary absence.
+    int (__cdecl *metadata)(void*,const char*,void**,unsigned*) noexcept;
+};
+struct ResponseSceneFilterApi {
+    std::uint32_t version,size;
+    // Original expeditor secondary virtual 220a3ae0, called by response finder.
+    // Kind 3 requires resolved cached metadata duration >0; other kinds pass.
+    // 1 completed, 0 invalid arguments, -1 failed engine service.
+    int (__cdecl *allow)(void* exp,unsigned bytes,const ResponseSceneFilterBindings*,unsigned kind,const char*,unsigned*) noexcept;
+};
+using GetResponseSceneFilterApi=const ResponseSceneFilterApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ResponseDispatchBindings {
     void* context;
     int (__cdecl *sample)(void*,const void* interval,float*) noexcept;

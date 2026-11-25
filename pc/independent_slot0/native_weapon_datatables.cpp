@@ -3077,6 +3077,31 @@ int __cdecl response_native_modifier_adapt(const ResponseNativeModifierBindings*
 }
 const ResponseNativeModifierApi response_native_modifier_api{version,sizeof(ResponseNativeModifierApi),&response_parse_modifiers,&response_native_modifier_adapt};
 
+
+int __cdecl response_scene_filter(void* exp,unsigned bytes,const ResponseSceneFilterBindings* b,unsigned kind,
+                                   const char* name,unsigned* allowed) noexcept {
+    if(bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!hologram_writable(allowed,4))return 0;
+    // 220a3ae0 only examines the scene kind. No name or engine access
+    // is required for the original unconditional pass branch.
+    if(kind!=3){*allowed=1;return 1;}
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!b->resolve_name||!b->metadata||!name)return 0;
+    const auto h=*b;const auto owner=hologram_read<std::uint32_t>(exp,4);
+    void* npc=nullptr;unsigned extent=0;
+    if(!owner||!h.storage(h.context,owner,&npc,&extent)||!npc||!extent||
+       !sin_independent::vgui_layout::Readable(npc,extent))return -1;
+    char resolved[256]{};
+    if(!h.resolve_name(h.context,npc,name,resolved,sizeof(resolved))||
+       !std::memchr(resolved,0,sizeof(resolved)))return -1;
+    void* row=nullptr;unsigned row_bytes=0;
+    if(!h.metadata(h.context,resolved,&row,&row_bytes))return -1;
+    if(!row){*allowed=0;return 1;}
+    if(row_bytes<8||!sin_independent::vgui_layout::Readable(row,8))return -1;
+    // 221ad8b0 returns metadata+4, or +0.0 if absent. x87 unordered
+    // compares fail the original test ah,41 just like zero/negative.
+    *allowed=hologram_read<float>(row,4)>0.f;return 1;
+}
+const ResponseSceneFilterApi response_scene_filter_api{version,sizeof(ResponseSceneFilterApi),&response_scene_filter};
+
 int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBindings* b,const char* name,const char* mods,void** result,unsigned* extent) noexcept {
     if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!name||
        !result||!extent||!hologram_writable(result,sizeof(*result))||!hologram_writable(extent,sizeof(*extent))||
@@ -15714,6 +15739,12 @@ SiN_GetResponsePolicyApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponsePolicyApi)?&response_policy_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetResponseSceneFilterApi=_SiN_GetResponseSceneFilterApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseSceneFilterApi* __cdecl
+SiN_GetResponseSceneFilterApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseSceneFilterApi)?&response_scene_filter_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetResponseNativeModifiersApi=_SiN_GetResponseNativeModifiersApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseNativeModifierApi* __cdecl
 SiN_GetResponseNativeModifiersApi(std::uint32_t version,std::uint32_t size) noexcept {

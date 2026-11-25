@@ -304,6 +304,42 @@ inline void check_response_native_modifiers(const ResponseNativeModifierApi& api
     f.expect({1,2,3,11});
 }
 
+
+inline void check_response_scene_filter(const ResponseSceneFilterApi& api){
+    struct State {
+        alignas(4) unsigned char exp[0x7c]{},row[8]{};
+        int npc=0;unsigned storage=0,resolved=0,lookup=0,fail=0;
+        bool missing=false,unterminated=false;
+        static State& self(void* p){return *static_cast<State*>(p);}
+        void duration(float n){std::memcpy(row+4,&n,4);}
+    } f;
+    const std::uint32_t owner=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&f.npc));
+    std::memcpy(f.exp+4,&owner,4);
+    ResponseSceneFilterBindings b{};b.context=&f;
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=State::self(p);assert(w==static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&f.npc)));
+        ++f.storage;*out=&f.npc;*bytes=sizeof(f.npc);return f.fail!=1;};
+    b.resolve_name=[](void* p,void* npc,const char* name,char* dest,unsigned n) noexcept -> int{
+        auto& f=State::self(p);assert(npc==&f.npc&&n==256&&!std::strcmp(name,"scenes/$gender/greeting.vcd"));
+        ++f.resolved;if(f.unterminated)std::memset(dest,'x',n);else std::strcpy(dest,"scenes/female/greeting.vcd");return f.fail!=2;};
+    b.metadata=[](void* p,const char* path,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=State::self(p);assert(!std::strcmp(path,"scenes/female/greeting.vcd"));++f.lookup;
+        *out=f.missing?nullptr:f.row;*bytes=f.fail==4?4:sizeof(f.row);return f.fail!=3;};
+    unsigned allowed=99;
+    for(unsigned kind:{0u,1u,2u,4u,5u,255u}){
+        assert(api.allow(f.exp,sizeof(f.exp),nullptr,kind,nullptr,&allowed)==1&&allowed==1);
+    }
+    assert(!f.storage&&!f.resolved&&!f.lookup);
+    auto run=[&](){allowed=99;return api.allow(f.exp,sizeof(f.exp),&b,3,"scenes/$gender/greeting.vcd",&allowed);};
+    f.duration(2.5f);assert(run()==1&&allowed==1&&f.storage==1&&f.resolved==1&&f.lookup==1);
+    f.duration(0);assert(run()==1&&!allowed);f.duration(-1);assert(run()==1&&!allowed);
+    const std::uint32_t nan=0x7fc00000u;std::memcpy(f.row+4,&nan,4);
+    assert(run()==1&&!allowed);
+    f.duration(2);f.missing=true;assert(run()==1&&!allowed);f.missing=false;
+    for(unsigned fail=1;fail<=4;++fail){f.fail=fail;assert(run()==-1&&allowed==99);}
+    f.fail=0;f.unterminated=true;const auto before=f.lookup;assert(run()==-1&&allowed==99&&f.lookup==before);
+}
+
 struct ResponseDispatchFixture {
     alignas(4) unsigned char exp[0x7c]{},response[0x124]{};
     ResponseDispatchBindings b{};
