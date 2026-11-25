@@ -17,8 +17,9 @@ struct F{
     const ServerNpcUnreachableEnemyApi* unreachable_api=nullptr;ServerNpcUnreachableEnemyBindings unreachable_binding{};
     const ServerNpcEnemyMemoryMutationApi* mutation_api=nullptr;ServerNpcEnemyMemoryMutationBindings mutation{};
     bool allocated[2]{};unsigned releases=0;
-    unsigned char relation_rows[48]{},relation_matrix[240]{};bool rel_player=false,rel_special=false,rel_npc=false;
-    sin_independent::EntityHandleEntry entries[3]{};
+    unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
+    unsigned report_cues=0,report_forwarded=0;
+    sin_independent::EntityHandleEntry entries[4]{};
     unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
     int rank[2]{0,0},disp[2]{1,1};bool valid[2]{true,true},unreachable[2]{false,false},visible[2]{true,true};float distance[2]{10,20};
     unsigned idx(void* e){assert(e==enemy||e==replacement);return e==enemy?0u:1u;}
@@ -426,5 +427,30 @@ int main(int argc,char** argv){
     f.put(f.actor,0x920,0);f.actor[0xdb1]=1;f.rel_player=f.rel_special=false;
     assert(gruntbest->select(f.actor,sizeof(f.actor),300,&native_best,&rb,&ub,&gbr)&&!gbr.selection.enemy&&gbr.selection.disposition_rejected==2&&!gbr.cache_queries);
     f.actor[0xdb1]=0;
+    auto greport=reinterpret_cast<GetServerNpcGruntMemoryReportApi>(GetProcAddress(s,server_npc_grunt_memory_report_export));
+    assert(greport&&!GetProcAddress(c,server_npc_grunt_memory_report_export)&&!greport(0,sizeof(ServerNpcGruntMemoryReportApi))&&!greport(1,0));
+    const auto* report=greport(1,sizeof(ServerNpcGruntMemoryReportApi));assert(report);
+    assert(f.mutation_api->remove(f.memory,sizeof(f.memory),1000,&mutation,&mut)&&mut.removed);
+    assert(f.mutation_api->remove(f.memory,sizeof(f.memory),1001,&mutation,&mut)&&mut.removed);
+    ServerNpcGruntMemoryReportBindings report_binding{};report_binding.mutation=mutation;report_binding.context=&f;report_binding.original_vtable=0x2249aaa4;
+    report_binding.idle_delay=.5f;report_binding.alert_delay=.2f;
+    f.entries[3].serial=9;f.entries[3].entity=reinterpret_cast<CBaseEntity*>(f.actor);report_binding.mutation.count=4;
+    report_binding.mutation.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);switch(token){case 100:*out=f.nodes;*n=sizeof(f.nodes);return 1;case 101:*out=f.record;*n=sizeof(f.record);return 1;case 102:*out=f.fallback;*n=sizeof(f.fallback);return 1;case 103:*out=f.memory;*n=sizeof(f.memory);return 1;case 105:*out=f.squad_data;*n=sizeof(f.squad_data);return 1;default:return 0;}
+    };
+    report_binding.cue=[](void* p,void* a,const char* name,int priority,int type) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&!std::strcmp(name,"GRUNT_REFIND_ENEMY")&&priority==2&&type==2);++f.report_cues;return 1;};
+    report_binding.forward=[](void* p,void* member,void* target,const float* pos,void* source) noexcept -> int{auto& f=F::self(p);assert(member==f.replacement&&target==f.enemy&&source==f.actor&&pos[0]==30);++f.report_forwarded;return 1;};
+    f.put(f.actor,0x9c4,105u);f.put(f.squad_data,8,0x9003u);f.put(f.squad_data,12,0x8002u);f.put(f.squad_data,0x48,2);
+    f.put(f.actor,0x850,1);f.put(f.actor,0x984,103u);f.put(f.actor,0x85c,9u);f.put(f.actor,0x864,10u);
+    ServerNpcGruntMemoryReportResult report_result{};
+    assert(report->report(f.actor,sizeof(f.actor),f.enemy,new_pos,nullptr,400,&report_binding,&report_result)&&report_result.firsthand&&report_result.retail_return&&report_result.delay==.5f&&report_result.forwarded==1&&!report_result.idle_reset);
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryMarkEluded,0,0,&mb,&ctr));
+    f.put(f.actor,0x850,3);
+    assert(report->report(f.actor,sizeof(f.actor),f.enemy,new_pos,f.actor,401,&report_binding,&report_result)&&report_result.mutation.updated&&!report_result.retail_return&&report_result.refind_cue&&report_result.delay==.2f&&report_result.forwarded==1&&f.report_cues==1&&f.report_forwarded==2);
+    f.put(f.actor,0x850,1);
+    assert(report->report(f.actor,sizeof(f.actor),f.replacement,new_pos,f.enemy,402,&report_binding,&report_result)&&!report_result.firsthand&&report_result.retail_return&&report_result.idle_reset&&!report_result.forwarded&&report_result.delay==0&&f.get<unsigned>(0x864)==0&&f.get<unsigned>(0x85c)==0);
+    assert(mem->timestamp(f.memory,sizeof(f.memory),1001,NpcMemoryStamp1c,&mb,&ml,&stamp)&&stamp<402);
+    f.actor[0xb6]=1;assert(report->report(f.actor,sizeof(f.actor),f.enemy,new_pos,nullptr,403,&report_binding,&report_result)&&report_result.blocked&&!report_result.retail_return);f.actor[0xb6]=0;
+    f.put(f.actor,0x984,0u);assert(report->report(f.actor,sizeof(f.actor),f.enemy,new_pos,nullptr,403,&report_binding,&report_result)&&report_result.no_memory&&report_result.retail_return);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

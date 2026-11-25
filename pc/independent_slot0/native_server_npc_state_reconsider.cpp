@@ -806,6 +806,51 @@ int __cdecl relation_matrix_row(void* context,int source,const void** row,unsign
     *row=static_cast<ServerNpcRelationCell*>(context)+15*source;*bytes=240;return 1;
 }
 const ServerNpcRelationMatrixApi matrix_api{1,sizeof(ServerNpcRelationMatrixApi),&initialize_relation_matrix,&set_relation_matrix,&relation_matrix_row};
+int __cdecl grunt_memory_report(void* actor,unsigned bytes,void* target,const float position[3],void* informer,float now,const ServerNpcGruntMemoryReportBindings* b,ServerNpcGruntMemoryReportResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0x9c8||!b||!relation_grunt_class(b->original_vtable))return 0;
+    if(read<std::uint8_t>(actor,0xb6)&1){out->blocked=1;return 1;}
+    const bool firsthand=!informer||informer==actor;out->firsthand=firsthand;
+    const auto token=read<unsigned>(actor,0x984);
+    if(!token){out->no_memory=out->retail_return=1;return 1;}
+    if(!finite_vec(position)||!std::isfinite(now))return 0;
+    auto& mb=b->mutation;void* memory=nullptr;unsigned extent=0;
+    if(!memory_storage(&mb.storage,token,0x40,memory,extent))return 0;
+    unsigned key=0;if(target&&(!mb.entity_key||!mb.entity_key(mb.context,target,&key)||!key||key==0x394u))return 0;
+    ServerNpcEnemyMemoryControlResult cr{};
+    if(!memory_control(memory,extent,key,NpcMemoryEluded,0,0,&mb.storage,&cr))return 0;
+    if(cr.value){
+        if(!b->cue||!b->cue(b->context,actor,"GRUNT_REFIND_ENEMY",2,2))return 0;
+        out->refind_cue=1;
+    }
+    const int state=read<int>(actor,0x850);
+    if(firsthand)out->delay=state==2||state==3?b->alert_delay:b->idle_delay;
+    if(!std::isfinite(out->delay))return 0;
+    if(!upsert_memory(memory,extent,target,position,now,out->delay,firsthand,&mb,&out->mutation))return 0;
+    out->retail_return=out->mutation.created;
+    if(!firsthand){
+        if(target&&out->retail_return&&read<int>(actor,0x850)==1){
+            write(actor,0x864,0u);write(actor,0x85c,0u);out->idle_reset=1;
+        }
+        return 1;
+    }
+    const auto squad=read<unsigned>(actor,0x9c4);
+    if(!target||!squad)return 1;
+    void* squad_bytes=nullptr;unsigned n=0;
+    if(!memory_storage(&mb.storage,squad,0x4c,squad_bytes,n)||mb.count>sin_independent::kEntityHandleCapacity||(mb.count&&!mb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
+    // 220a9680 forwards every firsthand report, even an existing record update.
+    for(int i=0;i<read<int>(squad_bytes,0x48);++i){
+        if(i>=16)return 0;
+        ++out->squad_members;void* member=registry.Resolve(read<unsigned>(squad_bytes,8+4*i));
+        if(member==actor)continue;
+        // Retail dereferences an invalid member; bounded adapter rejects it.
+        if(!member||!b->forward||!b->forward(b->context,member,target,position,actor))return 0;
+        ++out->forwarded;
+    }
+    return 1;
+}
+const ServerNpcGruntMemoryReportApi grunt_memory_report_api{1,sizeof(ServerNpcGruntMemoryReportApi),&grunt_memory_report};
 const ServerNpcGruntBestEnemyApi grunt_best_api{1,sizeof(ServerNpcGruntBestEnemyApi),&grunt_best_enemy};
 const ServerNpcGruntRelationApi relation_api{1,sizeof(ServerNpcGruntRelationApi),&grunt_relation,&grunt_valid};
 const ServerNpcEnemyMemoryControlApi control_api{1,sizeof(ServerNpcEnemyMemoryControlApi),&initialize_memory_owner,&memory_control};
@@ -927,4 +972,10 @@ SiN_GetServerNpcRelationMatrixApi(std::uint32_t version,std::uint32_t size) noex
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBestEnemyApi* __cdecl
 SiN_GetServerNpcGruntBestEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBestEnemyApi)?&grunt_best_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntMemoryReportApi=_SiN_GetServerNpcGruntMemoryReportApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntMemoryReportApi* __cdecl
+SiN_GetServerNpcGruntMemoryReportApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntMemoryReportApi)?&grunt_memory_report_api:nullptr;
 }

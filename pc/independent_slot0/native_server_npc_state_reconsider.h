@@ -313,4 +313,25 @@ struct ServerNpcGruntBestEnemyApi {
     int (__cdecl *select)(void*,unsigned,float,const ServerNpcBestEnemyBindings*,const ServerNpcGruntRelationBindings*,const ServerNpcUnreachableEnemyBindings*,ServerNpcGruntBestEnemyResult*) noexcept;
 };
 using GetServerNpcGruntBestEnemyApi=const ServerNpcGruntBestEnemyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_memory_report_export[]="SiN_GetServerNpcGruntMemoryReportApi";
+struct ServerNpcGruntMemoryReportBindings {
+    ServerNpcEnemyMemoryMutationBindings mutation;
+    void* context;
+    std::uint32_t original_vtable;
+    float idle_delay,alert_delay;
+    int (__cdecl *cue)(void*,void*,const char*,int,int) noexcept;
+    // Original squad member +678; receives reporting actor as informer.
+    int (__cdecl *forward)(void*,void*,void*,const float[3],void*) noexcept;
+};
+struct ServerNpcGruntMemoryReportResult {
+    ServerNpcEnemyMemoryMutationResult mutation;
+    unsigned retail_return,blocked,no_memory,firsthand,refind_cue,idle_reset,squad_members,forwarded;
+    float delay;
+};
+struct ServerNpcGruntMemoryReportApi {
+    std::uint32_t version,size;
+    // Original Grunt +678 22358590 -> 22030520; retail return means new record.
+    int (__cdecl *report)(void*,unsigned,void*,const float[3],void*,float,const ServerNpcGruntMemoryReportBindings*,ServerNpcGruntMemoryReportResult*) noexcept;
+};
+using GetServerNpcGruntMemoryReportApi=const ServerNpcGruntMemoryReportApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
