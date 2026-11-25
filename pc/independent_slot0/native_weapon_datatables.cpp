@@ -13496,6 +13496,73 @@ int __cdecl animation_layer_blend(void* actor,unsigned bytes,int layer,float dur
 const ServerAnimationLayerOwnerApi server_animation_layer_owner_api{version,sizeof(ServerAnimationLayerOwnerApi),
     &animation_layer_allocate,&animation_layer_remove,&animation_layer_blend};
 
+float animation_layer_clamp(float value) noexcept {
+    return value<0?0.f:value>1?1.f:value;
+}
+// 220f31e0: previous cycle snapshot, cycle integration, loop wrapping,
+// sticky finished byte and optional smoothstep weight envelope.
+bool animation_layer_cycle(void* actor,void* row,float dt,const ServerAnimationLayerTickBindings& h) noexcept {
+    const int sequence=hologram_read<int>(row,8);double rate=0;
+    if(!h.cycle_rate(h.context,actor,sequence,&rate)||!std::isfinite(rate))return false;
+    const float previous=hologram_read<float>(row,0xc),play=hologram_read<float>(row,0x14);
+    const float in=hologram_read<float>(row,0x1c),out=hologram_read<float>(row,0x20);
+    if(!std::isfinite(previous)||!std::isfinite(play)||!std::isfinite(in)||!std::isfinite(out))return false;
+    float cycle=static_cast<float>(static_cast<double>(previous)+rate*play*dt);
+    if(!std::isfinite(cycle))return false;
+    const bool looping=hologram_read<unsigned char>(row,5)!=0;
+    if(cycle<0||cycle>=1){
+        if(cycle>=1)hologram_write(row,4,static_cast<unsigned char>(1));
+        if(looping){
+            if(cycle<-2147483648.0||cycle>=2147483648.0)return false;
+            cycle=static_cast<float>(static_cast<double>(cycle)-static_cast<int>(cycle));
+        }else cycle=cycle<0?0.f:1.f;
+    }
+    hologram_write(row,0x10,previous);hologram_write(row,0xc,cycle);
+    if(in!=0||out!=0){
+        float weight=1;
+        if(in!=0&&cycle<in)weight=cycle/in;
+        if(out!=0&&cycle>1.0-static_cast<double>(out))weight=static_cast<float>((1.0-cycle)/out);
+        const double w=weight;weight=static_cast<float>(3*w*w-2*w*w*w);
+        hologram_write(row,0x18,sequence?weight:0.f);
+    }
+    return 1;
+}
+int __cdecl animation_layer_tick(void* actor,unsigned bytes,float dt,float now,const ServerAnimationLayerTickBindings* b) noexcept {
+    int count=0,cap=0;unsigned char* rows=nullptr;
+    if(!b||!b->cycle_rate||!std::isfinite(dt)||dt<0||!std::isfinite(now)||
+       !animation_layer_rows(actor,bytes,&b->vectors,count,cap,rows))return 0;
+    const auto h=*b;
+    for(int i=0;i<count;++i){
+        auto* row=rows+i*0x40;const auto bits=hologram_read<unsigned>(row,0);
+        if(bits&1){
+            if(bits&4){
+                const float delay=hologram_read<float>(row,0x28),weight=hologram_read<float>(row,0x18),
+                    decay=hologram_read<float>(row,0x24);
+                if(!std::isfinite(delay)||!std::isfinite(weight)||!std::isfinite(decay))return 0;
+                if(delay>0){
+                    hologram_write(row,0x28,animation_layer_clamp(static_cast<float>(static_cast<double>(delay)-dt)));
+                }else if(weight==0){
+                    if(!animation_layer_remove(actor,bytes,i,now,&h.vectors))return 0;
+                    hologram_write(row,0,hologram_read<unsigned>(row,0)|0x20u);continue;
+                }else{
+                    hologram_write(row,0x18,animation_layer_clamp(static_cast<float>(static_cast<double>(weight)-static_cast<double>(dt)*decay)));
+                }
+            }
+            if(!animation_layer_cycle(actor,row,dt,h))return 0;
+            if(hologram_read<unsigned char>(row,4)&&(hologram_read<unsigned>(row,0)&2)){
+                hologram_write(row,0x18,0.f);hologram_write(row,0,hologram_read<unsigned>(row,0)|4u);
+            }
+        }else if(bits&0x20){
+            hologram_write(row,0,bits&~0x20u);
+        }else if(hologram_read<float>(row,0x18)>0){
+            animation_layer_reset(row,now);hologram_write(row,0,0x20u);
+        }
+    }
+    return 1;
+}
+const ServerAnimationLayerTickApi server_animation_layer_tick_api{version,sizeof(ServerAnimationLayerTickApi),&animation_layer_tick};
+
+
 
 struct GestureWarpPoint {float x,y;};
 int __cdecl server_gesture_tag_warp(const void* event,unsigned bytes,float fraction,const ServerAnimationSceneFrameBindings* b,float* out) noexcept {
@@ -16483,6 +16550,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAni
 SiN_GetServerAnimationSceneFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneFrameApi)?&server_animation_scene_frame_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerAnimationLayerTickApi=_SiN_GetServerAnimationLayerTickApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationLayerTickApi* __cdecl
+SiN_GetServerAnimationLayerTickApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationLayerTickApi)?&server_animation_layer_tick_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationLayerOwnerApi=_SiN_GetServerAnimationLayerOwnerApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationLayerOwnerApi* __cdecl
