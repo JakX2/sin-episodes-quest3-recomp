@@ -1487,3 +1487,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcGruntPerceptionTickApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPerceptionTickApi)?&tick_api:nullptr;
 }
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntHearingApi=_SiN_GetServerNpcGruntHearingApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntHearingApi* __cdecl
+SiN_GetServerNpcGruntHearingApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntHearingApi)?&hearing_api:nullptr;
+}

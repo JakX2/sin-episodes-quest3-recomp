@@ -1,0 +1,2 @@
+# Phase 1139: repair omitted hearing service export
+Windows jobs 139569894355,139570298658,139570772438 reached ctest (199/200 passed), then failed the loaded hearing service ABI assertion. Source inspection confirms the Phase1136 hearing_api constant exists but its public C export was omitted. Add exact x86 undecorated export alias and version/size getter, matching adjacent services. No behavioral changes; downstream hearing/scan/perception assertions were not reached in failed runs. Full stacked CI required.
