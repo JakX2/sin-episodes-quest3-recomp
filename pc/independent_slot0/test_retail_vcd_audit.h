@@ -1039,6 +1039,28 @@ struct RetailSceneDirectory {
         data=std::move(tmp);return true;
     }
 };
+// Create only a directory owned by this test, never delete a preexisting
+// directory. Separate CTest processes can safely race for unused slots.
+struct TemporarySceneDirectory {
+    std::filesystem::path path;
+    ~TemporarySceneDirectory(){if(!path.empty()){std::error_code ec;std::filesystem::remove_all(path,ec);}}
+    bool open(){
+        namespace fs=std::filesystem;std::error_code ec;auto root=fs::temp_directory_path(ec);if(ec)return false;
+        for(unsigned i=0;i<256;++i){
+            auto candidate=root/("sin-native-vcd-audit-"+std::to_string(i));
+            ec.clear();if(fs::create_directory(candidate,ec)){path=std::move(candidate);return true;}
+            if(ec&&ec!=std::errc::file_exists)return false;
+        }
+        return false;
+    }
+    bool write(const char* name,const char* text){
+        if(path.empty())return false;
+        auto file=path/name;std::error_code ec;std::filesystem::create_directories(file.parent_path(),ec);
+        if(ec)return false;
+        std::ofstream output(file,std::ios::binary|std::ios::trunc);if(!output)return false;
+        output.write(text,static_cast<std::streamsize>(std::strlen(text)));output.close();return !!output;
+    }
+};
 struct RetailSceneAuditApis {
     const NativeVcdRuntimeApi& runtime;
     const SceneMetadataGenerationApi& generation;
@@ -2222,6 +2244,53 @@ rule once_rule
             choose(true,"TLK_ONCE",nullptr,"once_rule",1,"once_line");
             assert(scriptFinder->release(&sc.finder.store)==1);
 
+            if(retailScenes){
+                TemporarySceneDirectory temp;assert(temp.open());
+                const char first[]=R"VCD(event speak first {
+ time 0 2
+ param Fixture.First
+}
+)VCD";
+                const char second[]=R"VCD(event speak second {
+ time 0 4
+ param Fixture.Second
+}
+)VCD";
+                assert(temp.write("scenes/Fixture/A.VCD",first)&&temp.write("scenes/Fixture/b.vcd",second));
+                const auto path=temp.path.string();auto apis=*retailScenes;apis.directory=path.c_str();
+                RetailSceneAudit audit(a,apis);assert(audit.open()&&audit.files.paths.size()==2);
+                std::uint32_t alias1=0,alias2=0;
+                assert(audit.files.handle("scenes/fixture/a.vcd",&alias1)&&audit.files.handle("SCENES\\\\FIXTURE\\\\A.VCD",&alias2)&&alias1==alias2);
+                std::string bad;
+                assert(!RetailSceneDirectory::normalize("scenes/../outside.vcd",bad)&&!RetailSceneDirectory::normalize("scenes//a.vcd",bad)&&
+                       !RetailSceneDirectory::normalize("C:/scenes/a.vcd",bad));
+                const char script[]=R"(criterion idle concept TLK_FIXTURE required
+response lines
+{
+ sequential
+ scene scenes/fixture/missing.vcd
+ scene scenes/fixture/a.vcd
+ scene scenes/fixture/b.vcd
+}
+rule fixture_rule
+{
+ criteria idle
+ response lines
+}
+)";
+                auto original_filter=sc.finder.host.scene_filter;
+                sc.finder.host.scene_filter=audit.filter;active_scene_audit=&audit;
+                assert(scriptFinder->create("fixture",script,sizeof(script)-1,nullptr,&sc.finder.store)==1);
+                choose(false,"TLK_FIXTURE",nullptr,"fixture_rule",3,"scenes/fixture/a.vcd");
+                choose(true,"TLK_FIXTURE",nullptr,"fixture_rule",3,"scenes/fixture/b.vcd");
+                assert(audit.parses==2&&audit.misses==1&&audit.refreshes==3&&audit.owner->size()==3);
+                choose(false,"TLK_FIXTURE",nullptr,"fixture_rule",3,"scenes/fixture/a.vcd");
+                assert(audit.parses==2&&audit.misses==1&&audit.refreshes==3);
+                assert(scriptFinder->release(&sc.finder.store)==1);
+                active_scene_audit=nullptr;sc.finder.host.scene_filter=original_filter;
+                assert(audit.close());
+                std::puts("PASS directory-backed script scene filtering, missing VCD fallback, aliases and shared cache");
+            }
             if(private_scripts&&*private_scripts){
                 // Owner-side retail selection, not audio playback. Scene
                 // metadata admission and RNG are deterministic host leaves.
