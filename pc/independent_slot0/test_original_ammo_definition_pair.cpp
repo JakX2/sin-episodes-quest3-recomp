@@ -1219,6 +1219,13 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena propagationHistoryArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_talk_propagation_history(propagationHistoryArena,*nativePropagation,*historyTree,*talkCatalog);
         std::puts("PASS native companion propagation to indexed receiver concept history");
+        const auto getCriteriaTree=reinterpret_cast<tables::GetResponseCriteriaTreeApi>(GetProcAddress(server,tables::response_criteria_tree_export));
+        assert(getCriteriaTree&&!GetProcAddress(client,tables::response_criteria_tree_export));
+        const auto* criteriaTree=getCriteriaTree(1,sizeof(tables::ResponseCriteriaTreeApi));
+        assert(criteriaTree&&!getCriteriaTree(0,sizeof(tables::ResponseCriteriaTreeApi))&&!getCriteriaTree(1,0));
+        tables::test::VcdAuditArena criteriaTreeArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_native_response_criteria(criteriaTreeArena,*criteriaTree);
+        std::puts("PASS native 92-byte response criteria and 24-byte indexed tree");
         tables::test::TalkManagerFixture neighborSpeechManager(*talkManager,*talkCatalog);
         tables::test::VcdAuditArena neighborSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_vcd_clock_speech(neighborSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink,historyTree,managedHistory,&neighborSpeechManager,deadlineRuntime,nativePropagation);
