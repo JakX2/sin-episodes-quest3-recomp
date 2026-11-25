@@ -3157,6 +3157,42 @@ int __cdecl scene_response_adapt(const SceneResponseServicesBindings* b,Response
 }
 const SceneResponseServicesApi scene_response_services_api{version,sizeof(SceneResponseServicesApi),&scene_response_resolve_name,&scene_response_metadata,&scene_response_adapt};
 
+int __cdecl scene_metadata_index_ensure(void* p,const char* path,void** out,unsigned* extent) noexcept {
+    const auto* b=static_cast<const SceneMetadataIndexBindings*>(p);
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->metadata_vtable||!b->filename||
+       !b->find||!b->row||!b->allocate||!b->release||!b->append||!b->undo_append||!b->insert||
+       !path||!hologram_writable(out,sizeof(*out))||!hologram_writable(extent,sizeof(*extent)))return 0;
+    const auto h=*b;std::uint32_t filename=0;std::uint16_t index=0xffff;
+    if(!h.filename(h.context,path,&filename)||!h.find(h.context,filename,&index))return 0;
+    if(index==0xffff){
+        void* metadata=nullptr;unsigned bytes=0;
+        if(!h.allocate(h.context,0x1c,&metadata,&bytes))return 0;
+        if(bytes<0x1c||!hologram_writable(metadata,0x1c)){
+            if(metadata)(void)h.release(h.context,metadata);return 0;
+        }
+        // 221acfd0 initializes vtable and six DWORDs; the engine
+        // owns metadata after vector append and successful tree insert.
+        std::memset(metadata,0,0x1c);hologram_write(metadata,0,h.metadata_vtable);
+        std::uint32_t slot=0xffffffffu;
+        if(!h.append(h.context,metadata,&slot)){
+            (void)h.release(h.context,metadata);return 0;
+        }
+        alignas(4) std::uint32_t payload[4]{filename,0,0xfffffffeu,slot};
+        if(slot==0xffffffffu||!h.insert(h.context,payload,sizeof(payload),&index)){
+            if(h.undo_append(h.context,slot,metadata))(void)h.release(h.context,metadata);
+            return 0;
+        }
+        // Do not retry or free an already published row on host failure.
+        if(index==0xffff)return 0;
+    }
+    void* row=nullptr;unsigned n=0;
+    if(!h.row(h.context,index,&row,&n)||n<16||!hologram_writable(row,16)||
+       hologram_read<std::uint32_t>(row,0)!=filename)return 0;
+    *out=row;*extent=n;return 1;
+}
+const SceneMetadataIndexApi scene_metadata_index_api{version,sizeof(SceneMetadataIndexApi),&scene_metadata_index_ensure};
+
+
 
 int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBindings* b,const char* name,const char* mods,void** result,unsigned* extent) noexcept {
     if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!name||
@@ -16559,6 +16595,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseS
 SiN_GetResponseSceneFilterApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseSceneFilterApi)?&response_scene_filter_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetSceneMetadataIndexApi=_SiN_GetSceneMetadataIndexApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneMetadataIndexApi* __cdecl
+SiN_GetSceneMetadataIndexApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneMetadataIndexApi)?&scene_metadata_index_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetSceneResponseServicesApi=_SiN_GetSceneResponseServicesApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneResponseServicesApi* __cdecl
