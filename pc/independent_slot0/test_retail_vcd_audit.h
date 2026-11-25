@@ -3641,7 +3641,8 @@ inline void check_parsed_npc_weapon_scene(VcdAuditArena& arena,const NativeVcdRu
 }
 inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
     const NativeSceneExecutionApi& execution,const ServerNpcAnimationRecordApi& admission,const ActorEventRecordApi& record_api,
-    const ServerAnimationSceneFrameApi& frame,const ServerGestureMetadataApi& metadata,const ServerNpcAnimationThinkApi* think=nullptr,const ServerNpcAnimationGateApi* gate=nullptr){
+    const ServerAnimationSceneFrameApi& frame,const ServerGestureMetadataApi& metadata,const ServerNpcAnimationThinkApi* think=nullptr,const ServerNpcAnimationGateApi* gate=nullptr,
+    const ServerAnimationLayerOwnerApi* owner=nullptr,const ServerAnimationLayerTickApi* tick=nullptr){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -3678,7 +3679,14 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
         VcdAuditArena& arena;
         alignas(4) unsigned char scene[0x5ec]{},actor[server_npc_random_expression_extent]{},layer[0x40]{};
         unsigned starts{},stops{},lookups{},blends{},allocs{},keepalives{},warnings{};
-        float last_blend{};
+        float last_blend{},now=10.f;
+        const ServerAnimationLayerOwnerApi* owner=nullptr;int active_layer=0;
+        unsigned char* current_row(){
+            if(!owner)return layer;
+            void* data=nullptr;unsigned n=0;
+            assert(active_layer>=0&&arena.storage(&arena,F::word(actor,0x494),&data,&n)&&n>=static_cast<unsigned>(active_layer+1)*0x40);
+            return static_cast<unsigned char*>(data)+active_layer*0x40;
+        }
         unsigned condition=1;int activity=3;
         const ServerNpcAnimationGateApi* gate=nullptr;
         ServerNpcAnimationGateBindings gate_bindings{};
@@ -3691,10 +3699,10 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
             if(w==F::ptr(f.layer)){*out=f.layer;*n=sizeof(f.layer);return 1;}
             auto& a=f.arena;return a.storage(&a,w,out,n);
         }
-    } f(arena);f.gate=gate;
-    assert(!gate||think);
+    } f(arena);f.gate=gate;f.owner=owner;
+    assert((!gate||think)&&((owner==nullptr)==(tick==nullptr))&&(!owner||think));
     F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;
-    F::put(f.actor,0x494,F::ptr(f.layer));F::put(f.actor,0x4a0,1);f.layer[0]=1;
+    if(!owner){F::put(f.actor,0x494,F::ptr(f.layer));F::put(f.actor,0x4a0,1);f.layer[0]=1;}
     auto raw=arena.runtime();
     assert(runtime.parse(f.scene+0x410,"animation_scene.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
     F::put(f.scene,0x40c,f.root);
@@ -3719,7 +3727,8 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
         ++f.lookups;return 1;
     };
     cfg.animation.blend_out=[](void* p,void* actor,int layer,float duration,float delay) noexcept -> int{
-        auto& f=Fixture::self(p);assert(actor==f.actor&&layer==0&&delay==0);++f.blends;f.last_blend=duration;return 1;
+        auto& f=Fixture::self(p);assert(actor==f.actor&&layer==f.active_layer&&delay==0);++f.blends;f.last_blend=duration;
+        return f.owner?f.owner->blend_out(actor,sizeof(f.actor),layer,duration,delay,&f.arena.vector_bindings):1;
     };
     ActorEventRecordBindings records{};assert(admission.adapt(&cfg,&records));
     NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
@@ -3770,7 +3779,12 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
     tb.animation.suppressed=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
     tb.animation.allocate_layer=[](void* p,void* actor,int seq,int priority,int* out) noexcept -> int{
         auto& f=Fixture::self(p);assert(actor==f.actor&&((seq==7&&priority==0)||(seq==9&&priority==1)));
-        ++f.allocs;std::memset(f.layer,0,sizeof(f.layer));f.layer[0]=1;*out=0;return 1;
+        ++f.allocs;
+        if(f.owner){
+            if(!f.owner->allocate(actor,sizeof(f.actor),seq,priority,f.now,0,&f.arena.vector_bindings,out))return 0;
+            f.active_layer=*out;return 1;
+        }
+        std::memset(f.layer,0,sizeof(f.layer));f.layer[0]=1;*out=0;return 1;
     };
     tb.animation.sequence_info=[](void*,void*,int seq,unsigned* flags,double* duration) noexcept -> int{
         assert(seq==7||seq==9);*flags=0;*duration=4.;return 1;
@@ -3785,8 +3799,20 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
     tb.interrupted=[](void* p,void* actor) noexcept -> int{
         auto& f=Fixture::self(p);assert(actor==f.actor);++f.warnings;return 1;
     };
+    ServerAnimationLayerTickBindings layer_tick{};layer_tick.vectors=arena.vector_bindings;layer_tick.context=&f;
+    layer_tick.cycle_rate=[](void* p,void* actor,int sequence,double* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&(sequence==7||sequence==9));*out=.25;return 1;};
+    auto retire_layer=[&](float dt){
+        if(!tick)return;
+        assert(F::word(f.current_row(),0)&4);
+        assert(tick->run(f.actor,sizeof(f.actor),dt,f.now,&layer_tick)&&!F::word(f.current_row(),0x18));
+        assert((F::word(f.current_row(),0)&5)==5);
+        assert(tick->run(f.actor,sizeof(f.actor),0,f.now,&layer_tick)&&F::word(f.current_row(),0)==0x20);
+        assert(tick->run(f.actor,sizeof(f.actor),0,f.now,&layer_tick)&&!F::word(f.current_row(),0));
+        assert(F::word(f.actor,0x4a0)==2);
+    };
     assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
-    auto simulate=[&](float time){F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);};
+    auto simulate=[&](float time){f.now=10+time;F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);};
     auto verify=[&](unsigned type,unsigned sequence,float time){
         void *row=nullptr,*event=nullptr;unsigned n=0,accepted=0;
         assert(F::word(f.actor,0x5c4)==1&&Fixture::storage(&f,F::word(f.actor,0x5b8),&row,&n)&&n>=0x40);
@@ -3797,10 +3823,11 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
         if(think){
             f.actor[0x600]=1;
             assert(think->run(f.actor,sizeof(f.actor),10+time,&tb));
-            assert(!f.actor[0x600]&&static_cast<unsigned char*>(row)[0xc]&&F::word(row,0x10)==0);
-            assert(F::word(row,0x14)==(type==6?0u:1u)&&F::word(f.layer,0x30)==F::word(row,0x14));
-            assert(F::word(f.layer,0xc)==(type==6?0x3ea00000u:0x3e800000u));
-            assert(F::word(f.layer,0x18)==(type==6?0x3f800000u:0u));
+            assert(!f.actor[0x600]&&static_cast<unsigned char*>(row)[0xc]&&F::word(row,0x10)==static_cast<unsigned>(f.active_layer));
+            if(owner)assert(f.active_layer==0&&F::word(f.actor,0x4a0)==2&&F::word(f.current_row(),8)==sequence);
+            assert(F::word(row,0x14)==(type==6?0u:1u)&&F::word(f.current_row(),0x30)==F::word(row,0x14));
+            assert(F::word(f.current_row(),0xc)==(type==6?0x3ea00000u:0x3e800000u));
+            assert(F::word(f.current_row(),0x18)==(type==6?0x3f800000u:0u));
             return;
         }
         // External engine layer allocation remains a fixture effect.
@@ -3812,12 +3839,13 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
             assert(metadata.apply(row,0x40,event,n,&md,0,&fb));
         }else{F::fl(row,0x20,1.f);in.sequence_duration=4.;in.first_sequence_frame=true;}
         assert(frame.update(f.actor,sizeof(f.actor),row,0x40,event,n,&in,&fb,&accepted)==1&&accepted);
-        assert(F::word(f.layer,0xc)==(type==6?0x3ea00000u:0x3e800000u));
-        assert(F::word(f.layer,0x18)==(type==6?0x3f800000u:0u));
+        assert(F::word(f.current_row(),0xc)==(type==6?0x3ea00000u:0x3e800000u));
+        assert(F::word(f.current_row(),0x18)==(type==6?0x3f800000u:0u));
     };
     assert(simulate(.5f)==1&&f.starts==1&&f.lookups==1);
     assert(simulate(1.f)==1);verify(6,7,1.f);
     assert(simulate(2.5f)==1&&simulate(2.75f)==1&&f.stops==1&&f.blends==1&&f.last_blend==.1f&&!F::word(f.actor,0x5c4));
+    retire_layer(.125f);
     assert(simulate(3.25f)==1&&f.starts==1&&!F::word(f.actor,0x5c4));
     assert(simulate(3.5f)==1&&f.starts==2&&f.lookups==(think?3u:2u));
     assert(simulate(4.f)==1);verify(7,9,4.f);
@@ -3831,8 +3859,8 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
         f.condition=0;
         assert(think->run(f.actor,sizeof(f.actor),14.5f,&tb)&&f.keepalives==(gate?0u:2u)&&f.warnings==1);
         if(gate)assert(VcdAuditArena::read_float(f.actor,0x97c)==14.7f);
-        assert(F::word(f.layer,0xc)==0x3ec00000u);
-        assert(std::fabs(VcdAuditArena::read_float(f.layer,0x18)-.896f)<.00001f);
+        assert(F::word(f.current_row(),0xc)==0x3ec00000u);
+        assert(std::fabs(VcdAuditArena::read_float(f.current_row(),0x18)-.896f)<.00001f);
         f.activity=0x48;
         assert(think->run(f.actor,sizeof(f.actor),14.5f,&tb)&&f.keepalives==(gate?0u:3u)&&f.warnings==1);
         if(gate){
@@ -3841,12 +3869,15 @@ inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVc
             assert(think->run(f.actor,sizeof(f.actor),14.f,&tb));
             assert(VcdAuditArena::read_float(f.actor,0x97c)==14.7f&&!f.keepalives&&f.gate_sets==1);
         }
-        assert(F::word(f.layer,0x18)==0x3f800000u);
+        assert(F::word(f.current_row(),0x18)==0x3f800000u);
     }
     assert(simulate(5.5f)==1&&simulate(5.75f)==1&&f.stops==2&&f.blends==2&&f.last_blend==.3f&&!F::word(f.actor,0x5c4));
-    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    retire_layer(.5f);
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==(owner?2u:1u));
+    if(owner)assert(arena.release(&arena,F::word(f.actor,0x494)));
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
-    std::puts(gate?"PASS parsed NPC animation think with native admission gate and native keepalive deadline":
+    std::puts(owner?"PASS parsed gesture/sequence native dynamic layer ownership, fade tick, reuse and graph retirement":
+        gate?"PASS parsed NPC animation think with native admission gate and native keepalive deadline":
         think?"PASS automatic NPC animation think from parsed scene through deferred initialization and native frame":
         "PASS parsed gesture/sequence native actor record, tag warp, layer frame and retirement");
 }
