@@ -46,6 +46,20 @@ struct ServerNpcEnemyStateApi {
     int (__cdecl *clear_combat_conditions)(void*,unsigned,const ServerNpcConditionMapBindings*,ServerNpcEnemyConditionResult*) noexcept;
 };
 using GetServerNpcEnemyStateApi=const ServerNpcEnemyStateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_enemy_notify_export[]="SiN_GetServerNpcEnemyNotifyApi";
+struct ServerNpcEnemyNotifyContext {
+    std::uint32_t original_vtable;
+    unsigned actor_bytes;
+    ServerNpcConditionMapBindings conditions;
+    unsigned calls;
+    ServerNpcEnemyConditionResult last;
+};
+struct ServerNpcEnemyNotifyApi {
+    std::uint32_t version,size;
+    // Original Grunt +6e0 = 22358ea0. Callback compatible with enemy_changing.
+    int (__cdecl *notify)(void*,void*) noexcept;
+};
+using GetServerNpcEnemyNotifyApi=const ServerNpcEnemyNotifyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_npc_enemy_memory_export[]="SiN_GetServerNpcEnemyMemoryApi";
 // Keys are original PE32 entity-address tokens, NOT serialized entity handles.
 // The caller maps original 32-bit storage tokens to bounded native objects.

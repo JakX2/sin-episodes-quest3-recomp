@@ -309,5 +309,15 @@ int main(int argc,char** argv){
     assert(maint->maintain(f.memory,sizeof(f.memory),162,&maintenance,&mr)&&mr.visited==2&&mr.removed==2&&mr.expired==2&&f.releases==3);
     assert(tree->validate(f.memory,sizeof(f.memory),&mutation.storage,&tr)&&tr.count==0&&tr.high_water==2);
     assert(mem->lookup(f.memory,sizeof(f.memory),1000,true,&mutation.storage,&ml)&&!ml.matched);
+    auto gn=reinterpret_cast<GetServerNpcEnemyNotifyApi>(GetProcAddress(s,server_npc_enemy_notify_export));
+    assert(gn&&!GetProcAddress(c,server_npc_enemy_notify_export)&&!gn(0,sizeof(ServerNpcEnemyNotifyApi))&&!gn(1,0));
+    const auto* notify=gn(1,sizeof(ServerNpcEnemyNotifyApi));assert(notify);
+    ServerNpcEnemyNotifyContext nc{};nc.actor_bytes=sizeof(f.actor);nc.conditions=eb.conditions;
+    for(unsigned vt:{0x2248df04u,0x224954a4u,0x2249aaa4u,0x224a416cu,0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+        nc.original_vtable=vt;f.condition(0x14);f.condition(0x15);
+        assert(notify->notify(&nc,f.actor)&&nc.last.prior_preserved&&nc.last.restored);
+        assert((f.get<unsigned>(0x7cc)&0x00300000u)==(1u<<21));
+    }
+    nc.original_vtable=0;assert(!notify->notify(&nc,f.actor)&&nc.calls==8);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
