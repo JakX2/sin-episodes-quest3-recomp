@@ -198,7 +198,7 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr) noexcept;
+int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr) noexcept;
 bool movement_supports(int id,bool running) noexcept{
     if(running)return id==116||id==121||id==122;
     return id==43||id==44||id==89||id==90||id==116||id==121||id==122;
@@ -333,7 +333,53 @@ int movement(void* a,unsigned n,const ServerNpcScheduleTask& t,bool running,floa
     if(out.navigator_mode==3)return 1;
     return idle()&&complete();
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric) noexcept{
+bool grunt_cue_class(std::uint32_t v) noexcept{
+    switch(v){case 0x2248df04:case 0x224954a4:case 0x2249aaa4:case 0x224a416c:
+    case 0x2248c514:case 0x2248e83c:case 0x2249964c:case 0x224a4a4c:return true;default:return false;}
+}
+int shared_cue(void* a,unsigned n,const ServerNpcScheduleTask& t,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedCueBindings& b,ServerNpcSharedCueResult& out) noexcept{
+    if(n<0xfcc||!grunt_cue_class(b.original_vtable)||!integer(std::trunc(static_cast<double>(t.parameter)),out.mode))return 0;
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));if(!life)return 0;
+    auto complete=[&](){return life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle)!=0;};
+    auto emit=[&](const char* name){if(!b.cue||!b.cue(b.context,a,name,0,2))return false;out.emitted=1;return true;};
+    if(out.mode==1){
+        const auto nav=rd<unsigned>(a,0x8f8);
+        if(!nav||!b.path_distance||!b.path_distance(b.context,nav,&out.path_distance)||!std::isfinite(out.path_distance))return 0;
+        if(out.path_distance>240.f&&!emit("GRUNT_FLANK"))return 0;
+        return complete();
+    }
+    if(out.mode!=0)return complete();
+    if(!b.random||!b.random(b.context,0,5,&out.draw)||out.draw<0||out.draw>5)return 0;
+    if(out.draw>1)return complete();
+    void* target=nullptr;
+    if(!b.target||!b.target(b.context,a,&target))return 0;
+    if(!target)return complete();
+    // 22031a80 re-queries +154 before target +fc.
+    if(!b.target(b.context,a,&target)||!target||!b.as_npc)return 0;
+    void* npc=nullptr;if(!b.as_npc(b.context,target,&npc))return 0;
+    if(!npc)return complete();out.live=1;
+    bool gate=false;
+    const auto squad=rd<unsigned>(a,0x9c4);
+    if(squad){if(!b.squad_gate||!b.squad_gate(b.context,squad,0,&gate))return 0;}
+    else{
+        const float until=rd<float>(a,0xc04);if(!std::isfinite(until))return 0;
+        gate=now>until||0>rd<int>(a,0xc08);
+    }
+    if(gate&&(rd<unsigned>(a,0xb4)&2u)&&rd<int>(a,0x850)!=3)gate=false;
+    out.gate=gate;if(!gate)return complete();
+    float p[3]{},q[3]{};
+    if(!b.center||!b.center(b.context,npc,p)||!b.center(b.context,a,q))return 0;
+    double d[3]{};for(unsigned i=0;i<3;++i){if(!std::isfinite(p[i])||!std::isfinite(q[i]))return 0;d[i]=static_cast<double>(q[i])-p[i];}
+    out.distance_squared=d[2]*d[2]+d[1]*d[1]+d[0]*d[0];
+    out.near=out.distance_squared<=4000000.0;
+    if(!out.near)return complete();
+    if(!b.target_gate||!b.target_gate(b.context,npc,a,&gate))return 0;
+    out.target_allowed=gate;if(!gate)return complete();
+    if(!b.visible||!b.visible(b.context,a,npc,0x4081,&gate))return 0;
+    out.visible=gate;if(gate&&!emit("GRUNT_ASSAULT"))return 0;
+    return complete();
+}
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -348,6 +394,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
+    if(!running&&t->id==84&&cue&&cue_out){out->native=1;return shared_cue(a,n,*t,now,*b,*cue,*cue_out);}
     if(movement_supports(t->id,running)&&move&&move_out){out->native=1;return movement(a,n,*t,running,now,*b,*move,*move_out,*out);}
     if(facing_supports(t->id,running)&&facing&&facing_out){out->native=1;return t->id==60?face60(a,n,running,now,*b,*facing,*facing_out):facing_alias(a,n,*t,running,now,*b,*facing,*facing_out);}
     if(running&&t->id>=94&&t->id<=96&&target&&target_out){out->native=1;return target_animation(a,n,t->id,now,*b,*target,*target_out);}
@@ -448,6 +495,12 @@ int __cdecl execute_difficulty_wait(void* a,unsigned n,const ServerNpcScheduleTa
     if(!t||t->id!=138)return 0;
     return execute_impl(a,n,t,running,now,b,out,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&metric);
 }
+int __cdecl execute_cue(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!t||t->id!=84||!cue||!grunt_cue_class(cue->original_vtable)||n<0xfcc)return 0;
+    return execute_impl(a,n,t,false,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,cue,out);
+}
+const ServerNpcSharedCueApi cue_api{1,sizeof(ServerNpcSharedCueApi),&execute_cue};
 const ServerNpcDifficultyWaitApi difficulty_wait_api{1,sizeof(ServerNpcDifficultyWaitApi),&execute_difficulty_wait};
 const ServerNpcSharedMovementApi movement_api{1,sizeof(ServerNpcSharedMovementApi),&execute_movement};
 const ServerNpcSharedTargetAnimationApi target_animation_api{1,sizeof(ServerNpcSharedTargetAnimationApi),&execute_target_animation};
@@ -554,4 +607,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcDifficultyWaitApi=_SiN_GetServerNpcDifficultyWaitApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcDifficultyWaitApi* __cdecl SiN_GetServerNpcDifficultyWaitApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcDifficultyWaitApi)?&difficulty_wait_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedCueApi=_SiN_GetServerNpcSharedCueApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedCueApi* __cdecl SiN_GetServerNpcSharedCueApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedCueApi)?&cue_api:nullptr;
 }
