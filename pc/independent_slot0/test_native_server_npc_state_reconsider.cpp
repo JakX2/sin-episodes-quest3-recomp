@@ -823,5 +823,34 @@ int main(int argc,char** argv){
     f.put(f.enemy,0x8c,1);
     assert(cgoal->gather(f.actor,sizeof(f.actor),f.enemy,582,&ccb,&goal_bindings,&ccr,goals)&&ccr.range.dead&&!ccr.nav_calls&&!goals[0].refreshed&&!goals[1].skipped_type);
     f.put(f.enemy,0x8c,0);
+    {
+        auto get_search=reinterpret_cast<GetServerNpcGruntWeaponSearchApi>(GetProcAddress(s,server_npc_grunt_weapon_search_export));
+        assert(get_search&&!GetProcAddress(c,server_npc_grunt_weapon_search_export)&&!get_search(0,sizeof(ServerNpcGruntWeaponSearchApi))&&!get_search(1,0));
+        const auto* search=get_search(1,sizeof(ServerNpcGruntWeaponSearchApi));assert(search);
+        ServerNpcGruntWeaponSearchBindings search_bindings{};search_bindings.relation=rb;search_bindings.schedule=b.schedule;search_bindings.context=&f;search_bindings.storage=goal_bindings.memory.storage;
+        search_bindings.local_player=[](void* p,void** out) noexcept -> int{*out=F::self(p).enemy;return 1;};
+        search_bindings.weapon_caps=ab.weapon_caps;
+        search_bindings.find_weapon=[](void* p,void* a,const float* size,void** out) noexcept -> int{
+            auto& f=F::self(p);assert(a==f.actor&&size[0]==540&&size[1]==540&&size[2]==100);*out=f.replacement;return 1;
+        };
+        f.put(f.actor,0x9a4,600.f);f.put(f.actor,0x8ec,0x200000u);f.put(f.actor,0x78c,0xffffffffu);
+        f.put(f.actor,0x798,0u);f.put(f.actor,0x9c4,0u);f.actor[0x968]=0;
+        ServerNpcGruntWeaponSearchResult search_result{};
+        assert(search->search(f.actor,sizeof(f.actor),599,&search_bindings,&search_result)&&search_result.cooldown_blocked);
+        assert(search->search(f.actor,sizeof(f.actor),600,&search_bindings,&search_result)&&search_result.eligible&&search_result.found&&search_result.condition_set&&search_result.deadline==602);
+        assert(f.get<unsigned>(0x7d0)&(1u<<12));
+        f.put(f.actor,0x78c,0x8002u);f.put(f.actor,0x850,3);
+        assert(search->eligible(f.actor,sizeof(f.actor),602,&search_bindings,&search_result)&&search_result.combat_blocked);
+        f.put(f.actor,0x850,1);
+        assert(search->eligible(f.actor,sizeof(f.actor),602,&search_bindings,&search_result)&&search_result.armed_blocked);
+        search_bindings.max_clients=1;f.put(f.actor,0x644,2);relation_row(0,0x7001u,0,3,0);f.actor[0xdb1]=0;
+        assert(search->eligible(f.actor,sizeof(f.actor),602,&search_bindings,&search_result)&&search_result.eligible&&search_result.friendly);
+        f.actor[0x968]=1;
+        assert(search->eligible(f.actor,sizeof(f.actor),602,&search_bindings,&search_result)&&search_result.disabled);
+        f.actor[0x968]=0;f.put(f.actor,0x798,1u);f.put(f.desc,4,npc_global_condition_base);f.put(f.desc,8,0);f.put(f.desc,12,127);f.put(f.actor,0x79c,npc_global_condition_base+0x3d);
+        assert(search->eligible(f.actor,sizeof(f.actor),602,&search_bindings,&search_result)&&search_result.schedule_blocked);
+        f.put(f.actor,0x798,0u);f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x8ec,0u);
+        assert(search->eligible(f.actor,sizeof(f.actor),602,&search_bindings,&search_result)&&search_result.capability_blocked);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

@@ -1679,6 +1679,80 @@ int __cdecl grunt_goal_refresh(void* actor,unsigned bytes,unsigned phase,float n
     if(out->deviation>(phase?exact:out->threshold))return refresh();
     return 1;
 }
+bool schedule_local_id(void* actor,int local,const ServerNpcConditionMapBindings& b,int& global) noexcept{
+    global=-1;const void* desc=nullptr;unsigned bytes=0;
+    if(!b.descriptor||!b.descriptor(b.context,actor,&desc,&bytes)||!desc||bytes<0x18)return false;
+    const void* row=static_cast<const unsigned char*>(desc)+4;unsigned seen[256]{},count=0;
+    while(row){
+        const int first=read<int>(row,4),last=read<int>(row,8);
+        if(first!=9999&&local>=first&&local<=last){
+            const auto value=static_cast<std::int64_t>(read<int>(row,0))-first+local;
+            if(value<std::numeric_limits<int>::min()||value>std::numeric_limits<int>::max())return false;
+            global=static_cast<int>(value);return true;
+        }
+        const auto next=read<unsigned>(row,0x10);if(!next)return true;
+        if(count>=256)return false;for(unsigned i=0;i<count;++i)if(seen[i]==next)return false;seen[count++]=next;
+        if(!b.storage||!b.storage(b.context,next,&row,&bytes)||!row||bytes<0x14)return false;
+    }
+    return true;
+}
+int __cdecl grunt_weapon_eligible(void* actor,unsigned bytes,float now,const ServerNpcGruntWeaponSearchBindings* b,ServerNpcGruntWeaponSearchResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->relation.original_vtable)||
+       b->relation.count>sin_independent::kEntityHandleCapacity||(b->relation.count&&!b->relation.entries))return 0;
+    out->deadline=read<float>(actor,0x9a4);if(!std::isfinite(out->deadline))return 0;
+    if(out->deadline>now){out->cooldown_blocked=1;return 1;}
+    const auto registry=sin_independent::EntityHandleView(b->relation.entries,b->relation.count);
+    auto active=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(actor,0x78c)));};
+    unsigned caps=read<unsigned>(actor,0x8ec);
+    if(void* w=active()){unsigned wc=0;if(!b->weapon_caps||!b->weapon_caps(b->context,w,&wc))return 0;caps|=wc;}
+    if(!(caps&0x200000u)){out->capability_blocked=1;return 1;}
+    if(active()&&read<int>(actor,0x850)==3){out->combat_blocked=1;return 1;}
+    if(read<unsigned>(actor,0x798)){
+        int global=-1;if(!schedule_local_id(actor,0x3d,b->schedule.conditions,global))return 0;
+        if(global==read<int>(actor,0x79c)){out->schedule_blocked=1;return 1;}
+    }
+    if(b->max_clients==1){
+        void* player=nullptr;out->player_checked=1;
+        if(!b->local_player||!b->local_player(b->context,&player))return 0;
+        if(!player)out->friendly=1;
+        else {ServerNpcGruntRelationResult rr{};if(!grunt_relation(actor,bytes,player,true,&b->relation,&rr))return 0;out->friendly=rr.disposition==3;}
+    }
+    if(!out->friendly&&active()){out->armed_blocked=1;return 1;}
+    if(read<std::uint8_t>(actor,0x968)){out->disabled=1;return 1;}
+    out->eligible=1;return 1;
+}
+int __cdecl grunt_weapon_search(void* actor,unsigned bytes,float now,const ServerNpcGruntWeaponSearchBindings* b,ServerNpcGruntWeaponSearchResult* out) noexcept{
+    if(!grunt_weapon_eligible(actor,bytes,now,b,out))return 0;
+    if(!out->eligible)return 1;
+    const auto registry=sin_independent::EntityHandleView(b->relation.entries,b->relation.count);
+    float delay=2.f;
+    if(!registry.Resolve(read<unsigned>(actor,0x78c))){
+        const auto squad=read<unsigned>(actor,0x9c4);
+        if(squad){
+            void* data=nullptr;unsigned n=0;
+            if(!memory_storage(&b->storage,squad,8,data,n))return 0;
+            auto name=read<unsigned>(data,4);
+            if(name){void* str=nullptr;if(!memory_storage(&b->storage,name,1,str,n))return 0;if(!read<std::uint8_t>(str,0))name=0;}
+            if(name==b->special_squad_name){
+                bool yes=false;if(!b->squad_predicate||!b->squad_predicate(b->context,actor,&yes))return 0;
+                if(!yes)delay=1.f;
+            }
+        }
+    }
+    out->deadline=static_cast<float>(static_cast<double>(now)+delay);if(!std::isfinite(out->deadline))return 0;
+    write(actor,0x9a4,out->deadline);
+    out->half_extents[0]=out->half_extents[1]=540.f;out->half_extents[2]=100.f;
+    out->search_called=1;if(!b->find_weapon||!b->find_weapon(b->context,actor,out->half_extents,&out->weapon))return 0;
+    out->found=out->weapon!=nullptr;
+    if(out->found){
+        const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));ServerNpcConditionResult cr{};
+        if(!cond||!cond->store(actor,bytes,0x2c,NpcConditionCurrent,true,&b->schedule.conditions,&cr))return 0;
+        out->condition_set=cr.mapped;
+    }
+    return 1;
+}
+const ServerNpcGruntWeaponSearchApi weapon_search_api{1,sizeof(ServerNpcGruntWeaponSearchApi),&grunt_weapon_eligible,&grunt_weapon_search};
 const ServerNpcGruntGoalRefreshApi goal_refresh_api{1,sizeof(ServerNpcGruntGoalRefreshApi),&grunt_goal_refresh};
 const ServerNpcGruntCombatConditionsApi combat_conditions_api{1,sizeof(ServerNpcGruntCombatConditionsApi),&grunt_combat_conditions};
 const ServerNpcGruntAttackApi attack_api{1,sizeof(ServerNpcGruntAttackApi),&grunt_attack_gather};
@@ -1904,4 +1978,10 @@ SiN_GetServerNpcGruntGoalRefreshApi(std::uint32_t version,std::uint32_t size) no
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatGoalApi* __cdecl
 SiN_GetServerNpcGruntCombatGoalApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatGoalApi)?&combat_goal_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntWeaponSearchApi=_SiN_GetServerNpcGruntWeaponSearchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntWeaponSearchApi* __cdecl
+SiN_GetServerNpcGruntWeaponSearchApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntWeaponSearchApi)?&weapon_search_api:nullptr;
 }
