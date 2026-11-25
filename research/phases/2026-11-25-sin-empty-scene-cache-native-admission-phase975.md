@@ -1,0 +1,3 @@
+# Phase 975: empty scene cache integration
+
+The native VCD metadata regression and owner directory audit now begin with an empty cache instead of a manually seeded index row. Native index ensure allocates the 28-byte metadata object using the tracked arena, appends it, and inserts a row; native refresh parses and retires VCD graph, populates duration and sound IDs; repeated and stale-stamp requests reuse the same index/metadata. Require exactly one allocation/insertion, correct event-derived metadata, retirement of all temporary objects, then release metadata vector and object at fixture shutdown. Single-file synthetic index/tree and sound IDs remain host fixtures; this is not the live original cache singleton or production multi-file filesystem. CI pending.

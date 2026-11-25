@@ -311,8 +311,13 @@ struct VcdMetadataFixture {
     const SceneMetadataGenerationApi& generation;
     const SceneResponseServicesApi& services;
     const ResponseSceneFilterApi& filter;
+    const SceneMetadataIndexApi& index_api;
     const char* path;const char* data;unsigned length;
-    alignas(4) unsigned char metadata[0x1c]{},row[16]{},cache[0x50]{},exp[0x7c]{};
+    alignas(4) unsigned char row[16]{},cache[0x50]{},exp[0x7c]{};
+    void* metadata=nullptr;
+    bool appended=false,published=false;
+    unsigned index_allocations=0,index_insertions=0;
+    SceneMetadataIndexBindings index{};
     int npc=0;
     std::uint32_t stamp=7;
     unsigned loads=0,parses=0,refreshes=0,destroys=0,expected_count=0;
@@ -327,9 +332,31 @@ struct VcdMetadataFixture {
         return id==0xffffffffu?0xfffffffeu:id;
     }
     VcdMetadataFixture(VcdAuditArena& a,const NativeVcdRuntimeApi& r,const SceneMetadataGenerationApi& g,
-        const SceneResponseServicesApi& s,const ResponseSceneFilterApi& f,const char* name,const char* text,unsigned n):
-        arena(a),runtime(r),generation(g),services(s),filter(f),path(name),data(text),length(n){
-        F::put(exp,4,F::ptr(&npc));F::put(row,8,0xfffffffeu);F::put(row,0xc,1);F::put(cache,0x48,1);
+        const SceneResponseServicesApi& s,const ResponseSceneFilterApi& f,const SceneMetadataIndexApi& i,const char* name,const char* text,unsigned n):
+        arena(a),runtime(r),generation(g),services(s),filter(f),index_api(i),path(name),data(text),length(n){
+        F::put(exp,4,F::ptr(&npc));F::put(cache,0x48,1);
+        index.context=this;index.metadata_vtable=0x12345678;
+        index.filename=[](void* p,const char* name,std::uint32_t* out) noexcept -> int{
+            auto& f=get(p);if(std::strcmp(name,f.path))return 0;*out=0x555;return 1;};
+        index.find=[](void* p,std::uint32_t handle,std::uint16_t* out) noexcept -> int{
+            auto& f=get(p);if(handle!=0x555)return 0;*out=f.published?7:0xffff;return 1;};
+        index.row=[](void* p,std::uint16_t i,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);if(i!=7||!f.published)return 0;*out=f.row;*bytes=sizeof(f.row);return 1;};
+        index.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+            auto& f=get(p);if(n!=0x1c||f.metadata||!f.arena.allocate(&f.arena,n,out,bytes))return 0;
+            f.metadata=*out;++f.index_allocations;return 1;};
+        index.release=[](void* p,void* metadata) noexcept -> int{
+            auto& f=get(p);if(metadata!=f.metadata||f.appended||f.published)return 0;
+            f.metadata=nullptr;return f.arena.release(&f.arena,F::ptr(metadata));};
+        index.append=[](void* p,void* metadata,std::uint32_t* out) noexcept -> int{
+            auto& f=get(p);if(metadata!=f.metadata||f.appended||F::word(metadata,0)!=0x12345678)return 0;
+            f.appended=true;*out=1;return 1;};
+        index.undo_append=[](void* p,std::uint32_t slot,void* metadata) noexcept -> int{
+            auto& f=get(p);if(slot!=1||metadata!=f.metadata||!f.appended||f.published)return 0;
+            f.appended=false;return 1;};
+        index.insert=[](void* p,const void* payload,unsigned n,std::uint16_t* out) noexcept -> int{
+            auto& f=get(p);if(!f.appended||f.published||n!=16)return 0;
+            std::memcpy(f.row,payload,n);f.published=true;++f.index_insertions;*out=7;return 1;};
         generate.context=this;generate.events.context=this;
         generate.load=[](void* p,const char* name,char** out,unsigned* bytes) noexcept -> int{
             auto& f=get(p);if(std::strcmp(name,f.path))return 0;
@@ -379,13 +406,13 @@ struct VcdMetadataFixture {
         service.expand=[](void*,const char*,const char* name,char* out,unsigned n) noexcept -> int{
             const auto len=std::strlen(name);if(len>=n)return 0;std::memcpy(out,name,len+1);return 1;};
         service.row=[](void* p,const char* name,void** out,unsigned* bytes) noexcept -> int{
-            auto& f=get(p);if(std::strcmp(name,f.path))return 0;*out=f.row;*bytes=sizeof(f.row);return 1;};
+            auto& f=get(p);return f.index_api.ensure(&f.index,name,out,bytes);};
         service.stamp=[](void* p,const char*,unsigned mode,std::uint32_t* out) noexcept -> int{
             if(mode!=1)return 0;*out=get(p).stamp;return 1;};
         service.metadata=[](void* p,std::uint32_t index,void** out,unsigned* bytes) noexcept -> int{
-            auto& f=get(p);if(index!=1)return 0;*out=f.metadata;*bytes=sizeof(f.metadata);return 1;};
+            auto& f=get(p);if(index!=1||!f.appended||!f.metadata)return 0;*out=f.metadata;*bytes=0x1c;return 1;};
         service.refresh=[](void* p,void* meta,const char* path) noexcept -> int{
-            auto& f=get(p);if(meta!=f.metadata)return 0;++f.refreshes;return f.generation.refresh(meta,sizeof(f.metadata),path,&f.generate)==1;};
+            auto& f=get(p);if(meta!=f.metadata)return 0;++f.refreshes;return f.generation.refresh(meta,0x1c,path,&f.generate)==1;};
     }
     bool verify() noexcept{
         ResponseSceneFilterBindings b{};
@@ -399,18 +426,21 @@ struct VcdMetadataFixture {
             if(!arena.storage(&arena,word,&rows,&bytes)||bytes<expected_count*4||
                std::memcmp(rows,expected_ids.data(),expected_count*4))return false;
         }
-        return arena.live.size()==(word?1u:0u)&&loads==parses&&parses==destroys&&destroys==refreshes;
+        return arena.live.size()==(word?2u:1u)&&loads==parses&&parses==destroys&&destroys==refreshes&&
+            index_allocations==1&&index_insertions==1&&published&&appended;
     }
     bool run(bool repeat_refresh=false) noexcept{
         bool ok=verify()&&refreshes==1&&verify()&&refreshes==1;
         if(ok&&repeat_refresh){++stamp;F::put(row,8,0xfffffffeu);ok=verify()&&refreshes==2;}
-        const auto word=F::word(metadata,8);
+        const auto word=metadata?F::word(metadata,8):0u;
         const bool released=arena.release(&arena,word)!=0;
-        return ok&&released&&arena.live.empty();
+        const bool released_metadata=arena.release(&arena,F::ptr(metadata))!=0;
+        metadata=nullptr;appended=published=false;
+        return ok&&released&&released_metadata&&arena.live.empty();
     }
 };
 inline void check_native_vcd_metadata(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
-    const SceneMetadataGenerationApi& generation,const SceneResponseServicesApi& services,const ResponseSceneFilterApi& filter){
+    const SceneMetadataGenerationApi& generation,const SceneResponseServicesApi& services,const ResponseSceneFilterApi& filter,const SceneMetadataIndexApi& index){
     const char text[]=R"VCD(actor Jessica {
  channel Voice {
   event speak greeting {
@@ -424,7 +454,7 @@ inline void check_native_vcd_metadata(VcdAuditArena& arena,const NativeVcdRuntim
  }
 }
 )VCD";
-    VcdMetadataFixture f(arena,runtime,generation,services,filter,"scenes/fixture.vcd",text,sizeof(text)-1);
+    VcdMetadataFixture f(arena,runtime,generation,services,filter,index,"scenes/fixture.vcd",text,sizeof(text)-1);
     assert(f.run(true)&&f.expected_duration==4&&f.expected_count==2&&f.expected_ids[0]==f.expected_ids[1]);
 }
 
@@ -3670,7 +3700,7 @@ scalesettings { RampTool 80 GestureTool 70 RampTool 60 }
     std::puts("PASS owned VCD named NPC startup, nested precache, actor association and retirement");
 }
 inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFinalizedGrammarApi& grammar,
-    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline,const SceneMetadataGenerationApi* generation=nullptr,const SceneResponseServicesApi* services=nullptr,const ResponseSceneFilterApi* filter=nullptr){
+    const ChoreographyConstructApi& c,const ChoreographySymbolApi& s,const ChoreographyFlexOwnershipApi& t,const ChoreographyDestructionApi& d,const ChoreographyScaleTreeApi& st,const ChoreographySymbolInternApi& si,const ChoreographyVectorApi& va,const NativeVcdRuntimeApi& runtime,const ServerEventIntensityApi& intensity,const ServerFlexSplineApi& spline,const SceneMetadataGenerationApi* generation=nullptr,const SceneResponseServicesApi* services=nullptr,const ResponseSceneFilterApi* filter=nullptr,const SceneMetadataIndexApi* index=nullptr){
     namespace fs=std::filesystem;std::error_code ec;
     const fs::path root(directory);
     unsigned files=0,passed=0,metadata_passed=0;VcdAuditCounts sum;
@@ -3690,9 +3720,9 @@ inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFi
         VcdAuditArena arena(c,s,t,d,st,si,va);VcdAuditCounts stats;
         arena.intensity=&intensity;arena.spline=&spline;
         if(arena.parse_runtime(runtime,name.c_str(),data.data(),static_cast<unsigned>(data.size()),stats)){++passed;sum.add(stats);}
-        if(generation&&services&&filter){
+        if(generation&&services&&filter&&index){
             VcdAuditArena metadata_arena(c,s,t,d,st,si,va);
-            VcdMetadataFixture meta(metadata_arena,runtime,*generation,*services,*filter,name.c_str(),data.data(),static_cast<unsigned>(data.size()));
+            VcdMetadataFixture meta(metadata_arena,runtime,*generation,*services,*filter,*index,name.c_str(),data.data(),static_cast<unsigned>(data.size()));
             if(meta.run())++metadata_passed;else std::fprintf(stderr,"VCD METADATA FAIL %s\n",name.c_str());
         }
     }
@@ -3700,7 +3730,7 @@ inline bool audit_retail_vcd_directory(const char* directory,const PortableVcdFi
         files,passed,sum.actors,sum.channels,sum.events,sum.tracks,sum.samples,sum.scales,sum.missing);
     std::printf("FACIAL AUDIT expression=%u flex=%u ramps=%u intensity_evals=%u spline_evals=%u\n",
         sum.expressions,sum.flex_events,sum.facial_ramps,sum.intensity_evals,sum.spline_evals);
-    if(generation&&services&&filter)std::printf("VCD METADATA AUDIT files=%u passed=%u\n",files,metadata_passed);
-    return !ec&&files>0&&passed==files&&(!(generation&&services&&filter)||metadata_passed==files);
+    if(generation&&services&&filter&&index)std::printf("VCD METADATA AUDIT files=%u passed=%u\n",files,metadata_passed);
+    return !ec&&files>0&&passed==files&&(!(generation&&services&&filter&&index)||metadata_passed==files);
 }
 }
