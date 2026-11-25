@@ -221,13 +221,13 @@ int main(int argc,char** argv){
     fb.desired_yaw=[](void*,void*,bool flag,double* out) noexcept -> int{assert(flag);*out=90;return 1;};
     fb.begin_turn=[](void* p,void*) noexcept -> int{++F::self(p).begins;return 1;};
     fb.step_turn=[](void* p,void* motor,int mode) noexcept -> int{auto& f=F::self(p);assert(motor==f.motor&&mode==-1);++f.steps;if(f.align_on_step)f.put(f.actor,0x370,90.f);return 1;};
-    ServerNpcFacingCatalogSchedulerResult far{};
+    ServerNpcFacingCatalogSchedulerResult facing_run{};
     install_at(83,2); // SCHED_GRUNT_COMBAT_FACE: TASK_FACE_ENEMY
     f.put(f.actor,0x908,88u);f.put(f.motor,0x14,0.f);
-    assert(face_api->run(f.actor,sizeof(f.actor),52,&f.image,&runtime,&full,&ab,&fb,&far)&&far.facing.calls==2&&far.facing.native==2&&!far.facing.last.completed&&f.begins==1&&f.steps==1);
+    assert(face_api->run(f.actor,sizeof(f.actor),52,&f.image,&runtime,&full,&ab,&fb,&facing_run)&&facing_run.facing.calls==2&&facing_run.facing.native==2&&!facing_run.facing.last.completed&&f.begins==1&&f.steps==1);
     f.align_on_step=true;
-    assert(face_api->run(f.actor,sizeof(f.actor),53,&f.image,&runtime,&full,&ab,&fb,&far)&&far.facing.calls==1&&far.facing.last.completed&&f.steps==2);
-    assert(face_api->run(f.actor,sizeof(f.actor),54,&f.image,&runtime,&full,&ab,&fb,&far)&&far.facing.calls==0&&far.attack.shared.shared.last.task==2&&far.attack.shared.shared.last.timer_written==0);
+    assert(face_api->run(f.actor,sizeof(f.actor),53,&f.image,&runtime,&full,&ab,&fb,&facing_run)&&facing_run.facing.calls==1&&facing_run.facing.last.completed&&f.steps==2);
+    assert(face_api->run(f.actor,sizeof(f.actor),54,&f.image,&runtime,&full,&ab,&fb,&facing_run)&&facing_run.facing.calls==0&&facing_run.attack.shared.shared.last.task==2&&facing_run.attack.shared.shared.last.timer_written==0);
     auto ganim=reinterpret_cast<GetServerNpcAnimationCatalogSchedulerApi>(GetProcAddress(s,server_npc_animation_catalog_scheduler_export));
     assert(ganim&&!GetProcAddress(c,server_npc_animation_catalog_scheduler_export)&&!ganim(0,sizeof(ServerNpcAnimationCatalogSchedulerApi))&&!ganim(1,0));
     const auto* anim_api=ganim(1,sizeof(ServerNpcAnimationCatalogSchedulerApi));assert(anim_api);
@@ -256,7 +256,7 @@ int main(int argc,char** argv){
     full.injury.combat.weapon.random=[](void*,int lo,int hi,int* out) noexcept -> int{assert(lo==1&&hi==3);*out=2;return 1;};
     install_at(118,1); // Elite schedule's inherited face task; no double component pass.
     f.put(f.actor,0x908,88u);f.put(f.motor,0x14,0.f);
-    assert(face_api->run(f.actor,sizeof(f.actor),55,&f.image,&runtime,&full,&ab,&fb,&far)&&far.facing.calls==2&&far.facing.last.completed);
+    assert(face_api->run(f.actor,sizeof(f.actor),55,&f.image,&runtime,&full,&ab,&fb,&facing_run)&&facing_run.facing.calls==2&&facing_run.facing.last.completed);
     install_at(118,3);f.put(chain,0x594,2);
     f.put(f.actor,0xfdc,0x7001u);f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x6cc,0x7001u);
     f.actor[0x3e0]=1;f.put(f.actor,0x3ec,7);f.put(f.actor,0x884,7);

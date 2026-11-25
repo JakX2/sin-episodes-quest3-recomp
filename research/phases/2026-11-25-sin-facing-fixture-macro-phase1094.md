@@ -1,0 +1,2 @@
+# Phase 1094: Win32 facing integration fixture compile repair
+Phase1091 independent PE32 workflow 45605365914, job139174735700, MSVC C2059 at test_native_server_npc_schedule_image.cpp lines227/229/230/240. Fixture used local identifier `far`, a legacy Windows header macro. Rename to `facing_run` throughout the latest stacked fixture; no runtime behavior change and no global macro workaround. Earlier Phase1090 standalone facing passed all four workflows. Phase1091 runtime and dependent Phase1092/1093 fixtures require fresh validation; latest stack CI pending.
