@@ -1118,6 +1118,16 @@ int main(int argc,char** argv){
         assert(npcScene&&npcWeapons&&actorRecords&&!getNpcScene(0,sizeof(tables::ServerNpcSceneRecordApi))&&!getNpcScene(1,0));
         tables::test::VcdAuditArena weaponArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_parsed_npc_weapon_scene(weaponArena,*nativeVcdRuntime,*execution,*npcScene,*actorRecords,*npcWeapons,*think);
+        const auto getNpcAnimation=reinterpret_cast<tables::GetServerNpcAnimationRecordApi>(GetProcAddress(server,tables::server_npc_animation_record_export));
+        const auto getAnimationFrame=reinterpret_cast<tables::GetServerAnimationSceneFrameApi>(GetProcAddress(server,tables::server_animation_scene_frame_export));
+        const auto getGestureMetadata=reinterpret_cast<tables::GetServerGestureMetadataApi>(GetProcAddress(server,tables::server_gesture_metadata_export));
+        assert(getNpcAnimation&&getAnimationFrame&&getGestureMetadata&&!GetProcAddress(client,tables::server_npc_animation_record_export));
+        const auto* npcAnimation=getNpcAnimation(1,sizeof(tables::ServerNpcAnimationRecordApi));
+        const auto* animationFrame=getAnimationFrame(1,sizeof(tables::ServerAnimationSceneFrameApi));
+        const auto* gestureMetadata=getGestureMetadata(1,sizeof(tables::ServerGestureMetadataApi));
+        assert(npcAnimation&&animationFrame&&gestureMetadata&&!getNpcAnimation(0,sizeof(tables::ServerNpcAnimationRecordApi))&&!getNpcAnimation(1,0));
+        tables::test::VcdAuditArena animationArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_parsed_npc_animation_scene(animationArena,*nativeVcdRuntime,*execution,*npcAnimation,*actorRecords,*animationFrame,*gestureMetadata);
     }
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
         FreeLibrary(server);FreeLibrary(client);return 2;

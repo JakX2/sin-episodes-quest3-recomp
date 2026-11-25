@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "native_server_npc_weapon_scene.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_animation_scene_export[]="SiN_GetServerAnimationSceneApi";
 struct ServerAnimationSceneBindings {
@@ -61,4 +62,14 @@ struct ServerGestureMetadataApi {
         const ServerAnimationSceneFrameBindings*) noexcept;
 };
 using GetServerGestureMetadataApi=const ServerGestureMetadataApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_animation_record_export[]="SiN_GetServerNpcAnimationRecordApi";
+struct ServerNpcAnimationRecordBindings {
+    ServerNpcSceneRecordBindings npc;
+    ServerAnimationSceneBindings animation;
+};
+struct ServerNpcAnimationRecordApi {
+    std::uint32_t version,size;
+    int (__cdecl *adapt)(const ServerNpcAnimationRecordBindings*,ActorEventRecordBindings*) noexcept;
+};
+using GetServerNpcAnimationRecordApi=const ServerNpcAnimationRecordApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

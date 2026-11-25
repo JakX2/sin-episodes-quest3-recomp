@@ -6,6 +6,7 @@
 #include "native_server_named_facial_think.h"
 #include "native_server_cached_facial_think.h"
 #include "native_server_npc_weapon_scene.h"
+#include "native_server_animation_scene.h"
 #include "native_weapon_datatables.h"
 #include "native_client_composed_facial.h"
 #include "native_server_flex_spline.h"
@@ -1353,6 +1354,129 @@ inline void check_parsed_npc_weapon_scene(VcdAuditArena& arena,const NativeVcdRu
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
     std::puts("PASS parsed generic NPC weapon scene lifecycle with native admission and completion");
+}
+inline void check_parsed_npc_animation_scene(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
+    const NativeSceneExecutionApi& execution,const ServerNpcAnimationRecordApi& admission,const ActorEventRecordApi& record_api,
+    const ServerAnimationSceneFrameApi& frame,const ServerGestureMetadataApi& metadata){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Gestures
+ {
+  event gesture wave
+  {
+   time 0 2
+   param gesture_anim
+   absolutetags playback_time
+   {
+    "loop" 0.25
+    "end" 0.75
+   }
+   absolutetags shifted_time
+   {
+    "loop" 0.125
+    "end" 0.5
+   }
+   sequenceduration 2
+  }
+ }
+ channel Body
+ {
+  event sequence stand
+  {
+   time 3 5
+   param sequence_anim
+  }
+ }
+}
+)VCD";
+    struct Fixture {
+        VcdAuditArena& arena;
+        alignas(4) unsigned char scene[0x5ec]{},actor[server_npc_random_expression_extent]{},layer[0x40]{};
+        unsigned starts{},stops{},lookups{},blends{};
+        float last_blend{};
+        std::uint32_t root=0;
+        explicit Fixture(VcdAuditArena& a):arena(a){}
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+        static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept{
+            auto& f=self(p);
+            if(w==F::ptr(f.layer)){*out=f.layer;*n=sizeof(f.layer);return 1;}
+            auto& a=f.arena;return a.storage(&a,w,out,n);
+        }
+    } f(arena);
+    F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;
+    F::put(f.actor,0x494,F::ptr(f.layer));F::put(f.actor,0x4a0,1);f.layer[0]=1;
+    auto raw=arena.runtime();
+    assert(runtime.parse(f.scene+0x410,"animation_scene.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    ServerNpcAnimationRecordBindings cfg{};auto& facial=cfg.npc.facial;
+    facial.base_flex=facial.npc_random=true;facial.host.context=&f;
+    facial.host.storage=&Fixture::storage;
+    facial.host.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);
+    };
+    facial.host.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+    facial.host.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    facial.extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;
+    };
+    facial.now=[](void*,float* out) noexcept -> int{*out=10.f;return 1;};
+    cfg.animation.context=&f;
+    cfg.animation.lookup=[](void* p,void* actor,const char* name,int* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);
+        if(!std::strcmp(name,"gesture_anim"))*out=7;
+        else if(!std::strcmp(name,"sequence_anim"))*out=9;
+        else {assert(false);return 0;}
+        ++f.lookups;return 1;
+    };
+    cfg.animation.blend_out=[](void* p,void* actor,int layer,float duration,float delay) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&layer==0&&delay==0);++f.blends;f.last_blend=duration;return 1;
+    };
+    ActorEventRecordBindings records{};assert(admission.adapt(&cfg,&records));
+    NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
+    b.dispatch.context=&f;b.dispatch.records=&records;
+    b.dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word);*out=f.actor;*n=sizeof(f.actor);return 1;
+    };
+    b.dispatch.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace kind) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&(F::word(event,0)==6||F::word(event,0)==7));
+        if(kind==ChoreographyDispatchTrace::Start)++f.starts;
+        else if(kind==ChoreographyDispatchTrace::Stop)++f.stops;
+        return 1;
+    };
+    b.leaves.context=&f;b.leaves.actor_extent=facial.extent;
+    ServerAnimationSceneFrameBindings fb{};fb.context=&f;fb.storage=&Fixture::storage;
+    assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
+    auto simulate=[&](float time){F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);};
+    auto verify=[&](unsigned type,unsigned sequence,float time){
+        void *row=nullptr,*event=nullptr;unsigned n=0,accepted=0;
+        assert(F::word(f.actor,0x5c4)==1&&Fixture::storage(&f,F::word(f.actor,0x5b8),&row,&n)&&n>=0x40);
+        assert(F::word(row,0x18)==sequence&&F::word(row,0x10)==0xfffffffeu);
+        assert(Fixture::storage(&f,F::word(row,0),&event,&n)&&n>=0x3c0&&F::word(event,0)==type);
+        assert(F::word(row,8)==F::word(event,0x2b4));
+        assert(record_api.check(f.actor,sizeof(f.actor),time,f.root,event,&records,&accepted)==1&&accepted);
+        // External engine layer allocation remains a fixture effect.
+        F::put(row,0x10,0);
+        ServerAnimationSceneFrameInput in{};in.scene_time=time;in.now=10+time;in.intensity=1;
+        if(type==6){
+            assert(F::word(event,0x2f0)==2&&F::word(event,0x304)==2);
+            ServerGestureMetadata md{};md.available=1;
+            assert(metadata.apply(row,0x40,event,n,&md,0,&fb));
+        }else{F::fl(row,0x20,1.f);in.sequence_duration=4.;in.first_sequence_frame=true;}
+        assert(frame.update(f.actor,sizeof(f.actor),row,0x40,event,n,&in,&fb,&accepted)==1&&accepted);
+        assert(F::word(f.layer,0xc)==(type==6?0x3ea00000u:0x3e800000u));
+        assert(F::word(f.layer,0x18)==(type==6?0x3f800000u:0u));
+    };
+    assert(simulate(.5f)==1&&f.starts==1&&f.lookups==1);
+    assert(simulate(1.f)==1);verify(6,7,1.f);
+    assert(simulate(2.5f)==1&&simulate(2.75f)==1&&f.stops==1&&f.blends==1&&f.last_blend==.1f&&!F::word(f.actor,0x5c4));
+    assert(simulate(3.25f)==1&&f.starts==1&&!F::word(f.actor,0x5c4));
+    assert(simulate(3.5f)==1&&f.starts==2&&f.lookups==2);
+    assert(simulate(4.f)==1);verify(7,9,4.f);
+    assert(simulate(5.5f)==1&&simulate(5.75f)==1&&f.stops==2&&f.blends==2&&f.last_blend==.3f&&!F::word(f.actor,0x5c4));
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
+    std::puts("PASS parsed gesture/sequence native actor record, tag warp, layer frame and retirement");
 }
 // Retail-inspired edge cases: strict binary32 duration trim, duplicate
 // timestamps, reverse ranges and disabled tracks with/without samples.
