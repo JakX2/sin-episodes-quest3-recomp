@@ -22,12 +22,13 @@ public:
     virtual const npc::TalkManagerRuntimeBindings* manager_bindings(EntityRef){return nullptr;}
     virtual const npc::IntegratedNpcMapDialogueBindings* scene_bindings(EntityRef){return nullptr;}
     virtual const npc::NativeGeneratedResponseBindings* generated_scene_bindings(EntityRef){return nullptr;}
+    virtual const npc::ScriptActorSpeechBindings* script_speech_bindings(EntityRef){return nullptr;}
 };
 class NativeNpcMapHost final:public sin_compat::map::ISourceMapEntityHost {
 public:
     explicit NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine):engine_(engine){}
-    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr,const npc::ManagedJessicaObservationApi* managed=nullptr,const npc::IntegratedNpcMapDialogueApi* integrated=nullptr,const npc::NativeGeneratedMapDialogueApi* generated=nullptr):
-        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue),managed_(managed),integrated_(integrated),generated_(generated){}
+    NativeNpcMapHost(sin_compat::map::ISourceMapEntityHost& engine,INpcMapShells& shells,const npc::NpcMapApi& api,npc::NpcMapSession& session,const npc::JessicaInteractionApi* interaction=nullptr,const npc::NpcMapDialogueApi* dialogue=nullptr,const npc::ManagedJessicaObservationApi* managed=nullptr,const npc::IntegratedNpcMapDialogueApi* integrated=nullptr,const npc::NativeGeneratedMapDialogueApi* generated=nullptr,const npc::ScriptNpcMapDialogueApi* script=nullptr):
+        engine_(engine),shells_(&shells),api_(&api),session_(&session),interaction_(interaction),dialogue_(dialogue),managed_(managed),integrated_(integrated),generated_(generated),script_(script){}
     NativeNpcMapHost(const NativeNpcMapHost&)=delete;
     NativeNpcMapHost& operator=(const NativeNpcMapHost&)=delete;
     bool is_live(EntityRef e)const override{return engine_.is_live(e);}
@@ -76,6 +77,18 @@ public:
         if(a->stage!=Stage::Active)return NpcMapResult::Rejected;
         const auto kind=a->kind;auto* c=control(e,kind);const auto* b=shells_->bindings(e);
         if(!c||!b)return NpcMapResult::Rejected;
+        if(script_&&(kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)){
+            if(script_->version!=npc::version||script_->size!=sizeof(*script_)||!script_->observe)return NpcMapResult::Rejected;
+            const auto* d=shells_->dialogue_bindings(e);
+            const auto* speech=shells_->script_speech_bindings(e);
+            const auto* manager=kind==npc::NpcMapKind::Jessica?shells_->manager_bindings(e):nullptr;
+            a=find(e);
+            if(!d||!speech||!a||a->kind!=kind||a->stage!=Stage::Active||!engine_.is_live(e)||
+               (managed_&&kind==npc::NpcMapKind::Jessica&&!manager))return NpcMapResult::Rejected;
+            // Configured script route supersedes older synthetic finder routes.
+            // No fallback on missing bindings or transport failure.
+            return status(script_->observe(kind,c,session_,b,d,manager,speech,record,bytes));
+        }
         if(generated_&&(kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)){
             if(generated_->version!=npc::version||generated_->size!=sizeof(*generated_)||!generated_->observe)return NpcMapResult::Rejected;
             const auto* d=shells_->dialogue_bindings(e);
@@ -188,6 +201,7 @@ private:
     const npc::ManagedJessicaObservationApi* managed_=nullptr;
     const npc::IntegratedNpcMapDialogueApi* integrated_=nullptr;
     const npc::NativeGeneratedMapDialogueApi* generated_=nullptr;
+    const npc::ScriptNpcMapDialogueApi* script_=nullptr;
     std::map<std::uint32_t,Entry> entries_;
 };
 }

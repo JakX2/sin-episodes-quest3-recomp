@@ -1,0 +1,3 @@
+# Phase 961: map host script route
+
+Add opt-in ScriptNpcMapDialogueApi and per-entity script speech bindings to NativeNpcMapHost. Script route precedes older generated/integrated/legacy routes and fails closed on missing per-entity config, missing required managed cooldown, invalid API or stale entity. Existing constructor calls and default shell implementations remain source-compatible. BSP fixture route-only callback verifies Count/Jessica binding identity, missing bindings, stale generation, ABI guard, failure without fallback and unload. Actual script-map execution tested separately in Phase960; real engine shell must still provide script store, native callbacks and lifetime management. CI pending.
