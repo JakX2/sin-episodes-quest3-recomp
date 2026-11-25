@@ -9,11 +9,14 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSeq
 SiN_GetServerSequenceChoiceApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSequenceResetApi* __cdecl
 SiN_GetServerSequenceResetApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSequenceDictionaryApi* __cdecl
+SiN_GetServerSequenceDictionaryApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T> T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
 int run_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcRunAnimationBindings* b,ServerNpcRunAnimationResult* out,
-    const ServerNpcNativeSequenceBindings* native,ServerSequenceResetResult* reset_result) noexcept {
+    const ServerNpcNativeSequenceBindings* native,ServerSequenceResetResult* reset_result,
+    const ServerSequenceDictionaryBindings* dictionary=nullptr,ServerSequenceDictionaryResult* dictionary_result=nullptr) noexcept {
     if(!out)return 0;
     *out={};out->selected=-1;out->events.failed_layer=-2;
     if(!actor||bytes<0x8fc||!in||!b||!b->model_available||!std::isfinite(in->now)||
@@ -47,7 +50,10 @@ int run_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,con
                 if(!chooser->choose(entries,count,activity,current,looping,&native->choice,&out->selected))return 0;
             }else if(!b->select_sequence||!b->select_sequence(b->context,actor,activity,current,looping,&out->selected))return 0;
             if(out->selected!=-1){
-                if(native){
+                if(native&&dictionary){
+                    const auto* setter=SiN_GetServerSequenceDictionaryApi(1,sizeof(ServerSequenceDictionaryApi));
+                    if(!setter||!setter->set(actor,bytes,out->selected,&native->reset,dictionary,dictionary_result))return 0;
+                }else if(native){
                     const auto* setter=SiN_GetServerSequenceResetApi(1,sizeof(ServerSequenceResetApi));
                     if(!setter||!setter->set(actor,bytes,out->selected,&native->reset,reset_result))return 0;
                 }else if(!b->set_sequence||!b->set_sequence(b->context,actor,out->selected))return 0;
@@ -67,6 +73,12 @@ int __cdecl run_native(void* a,unsigned bytes,const ServerNpcRunAnimationInput* 
     *out={};
     return run_impl(a,bytes,in,b?&b->frame:nullptr,&out->frame,b,&out->reset);
 }
+int __cdecl run_dictionary(void* a,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcDictionaryFrameBindings* b,ServerNpcDictionaryFrameResult* out) noexcept {
+    if(!out)return 0;*out={};out->sequence.registration.failed_index=-1;
+    return run_impl(a,bytes,in,b?&b->sequence.frame:nullptr,&out->frame,b?&b->sequence:nullptr,
+        &out->sequence.reset,b?&b->dictionary:nullptr,&out->sequence);
+}
+const ServerNpcDictionaryFrameApi dictionary_api{1,sizeof(ServerNpcDictionaryFrameApi),&run_dictionary};
 const ServerNpcNativeSequenceFrameApi native_api{1,sizeof(ServerNpcNativeSequenceFrameApi),&run_native};
 const ServerNpcRunAnimationApi api{1,sizeof(ServerNpcRunAnimationApi),&run};
 }
@@ -83,4 +95,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcNativeSequenceFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcNativeSequenceFrameApi)?&native_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcDictionaryFrameApi=_SiN_GetServerNpcDictionaryFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcDictionaryFrameApi* __cdecl
+SiN_GetServerNpcDictionaryFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerNpcDictionaryFrameApi)?&dictionary_api:nullptr;
 }

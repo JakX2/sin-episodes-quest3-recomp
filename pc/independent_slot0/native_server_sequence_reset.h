@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "native_server_event_dictionary.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_sequence_reset_export[]="SiN_GetServerSequenceResetApi";
 struct ServerSequenceResetBindings {
@@ -22,4 +23,22 @@ struct ServerSequenceResetApi {
     int (__cdecl *set)(void*,unsigned,int,const ServerSequenceResetBindings*,ServerSequenceResetResult*) noexcept;
 };
 using GetServerSequenceResetApi=const ServerSequenceResetApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerSequenceDictionaryBindings {
+    void* context;
+    ServerEventDictionary* dictionary;
+    // 1 resolved writable descriptor, 0 absent/nonstudio, negative failure.
+    int (__cdecl *descriptor)(void*,void* actor,int sequence,void**,unsigned*,unsigned*) noexcept;
+};
+struct ServerSequenceDictionaryResult {
+    ServerSequenceResetResult reset;
+    ServerStudioEventRegistrationResult registration;
+    unsigned descriptor_available;
+};
+inline constexpr char server_sequence_dictionary_export[]="SiN_GetServerSequenceDictionaryApi";
+struct ServerSequenceDictionaryApi {
+    std::uint32_t version,size;
+    int (__cdecl *reset)(void*,unsigned,const ServerSequenceResetBindings*,const ServerSequenceDictionaryBindings*,ServerSequenceDictionaryResult*) noexcept;
+    int (__cdecl *set)(void*,unsigned,int,const ServerSequenceResetBindings*,const ServerSequenceDictionaryBindings*,ServerSequenceDictionaryResult*) noexcept;
+};
+using GetServerSequenceDictionaryApi=const ServerSequenceDictionaryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -2,6 +2,8 @@
 #include <cmath>
 #include <cstring>
 #include <initializer_list>
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEventDictionaryApi* __cdecl
+SiN_GetServerEventDictionaryApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T> T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -19,10 +21,11 @@ template<class T> bool assign(void* a,unsigned off,T value,const ServerSequenceR
     if(!dirty(a,b))return false;
     write(a,off,value);return true;
 }
-bool valid(void* a,unsigned bytes,const ServerSequenceResetBindings* b) noexcept {
-    return a&&bytes>=0x46c&&b&&b->duration&&b->distance&&b->flags&&b->register_events;
+bool valid(void* a,unsigned bytes,const ServerSequenceResetBindings* b,bool native=false) noexcept {
+    return a&&bytes>=0x46c&&b&&b->duration&&b->distance&&b->flags&&(native||b->register_events);
 }
-bool reset_impl(void* a,const ServerSequenceResetBindings& b,ServerSequenceResetResult& out) noexcept {
+bool reset_impl(void* a,const ServerSequenceResetBindings& b,ServerSequenceResetResult& out,
+    const ServerSequenceDictionaryBindings* dict=nullptr,ServerSequenceDictionaryResult* result=nullptr) noexcept {
     // 220f1a60: normalize sentinel, derive speed and looping, then reset
     // playback/completion/baseline and both three-bit parity fields.
     if(read<int>(a,0x3ec)==-1&&!assign(a,0x3ec,0,b))return false;
@@ -42,15 +45,25 @@ bool reset_impl(void* a,const ServerSequenceResetBindings& b,ServerSequenceReset
     for(unsigned off:{0x464u,0x468u})
         if(!assign(a,off,(read<std::uint32_t>(a,off)+1u)&7u,b))return false;
     out.reset=1;
-    return b.register_events(b.context,a,seq)!=0;
+    if(!dict)return b.register_events(b.context,a,seq)!=0;
+    if(!dict->descriptor||!dict->dictionary||!result)return false;
+    void* storage=nullptr;unsigned extent=0,offset=0;
+    const int available=dict->descriptor(dict->context,a,seq,&storage,&extent,&offset);
+    if(available==0)return true;
+    if(available!=1||!storage)return false;
+    result->descriptor_available=1;
+    const auto* api=SiN_GetServerEventDictionaryApi(1,sizeof(ServerEventDictionaryApi));
+    return api&&api->apply(dict->dictionary,storage,extent,offset,&result->registration);
+
 }
 int __cdecl reset(void* a,unsigned bytes,const ServerSequenceResetBindings* b,ServerSequenceResetResult* out) noexcept {
     if(!out)return 0;*out={};
     return valid(a,bytes,b)&&reset_impl(a,*b,*out);
 }
-int __cdecl set(void* a,unsigned bytes,int sequence,const ServerSequenceResetBindings* b,ServerSequenceResetResult* out) noexcept {
+int set_impl(void* a,unsigned bytes,int sequence,const ServerSequenceResetBindings* b,ServerSequenceResetResult* out,
+    const ServerSequenceDictionaryBindings* dict,ServerSequenceDictionaryResult* result) noexcept {
     if(!out)return 0;*out={};
-    if(!valid(a,bytes,b))return 0;
+    if(!valid(a,bytes,b,dict!=nullptr))return 0;
     const int old=read<int>(a,0x3ec);
     const bool old_loop=read<std::uint8_t>(a,0x3e1)!=0;
     if(b->debug_enabled&&(read<std::uint8_t>(a,0xa9)&0x10)){
@@ -66,8 +79,20 @@ int __cdecl set(void* a,unsigned bytes,int sequence,const ServerSequenceResetBin
     if(old!=sequence){
         if(!assign(a,0x3ec,sequence,*b))return 0;out->sequence_changed=1;
     }
-    return (old==sequence&&old_loop)||reset_impl(a,*b,*out);
+    return (old==sequence&&old_loop)||reset_impl(a,*b,*out,dict,result);
 }
+int __cdecl set(void* a,unsigned bytes,int sequence,const ServerSequenceResetBindings* b,ServerSequenceResetResult* out) noexcept {
+    return set_impl(a,bytes,sequence,b,out,nullptr,nullptr);
+}
+int __cdecl dictionary_reset(void* a,unsigned bytes,const ServerSequenceResetBindings* b,const ServerSequenceDictionaryBindings* d,ServerSequenceDictionaryResult* out) noexcept {
+    if(!out)return 0;*out={};out->registration.failed_index=-1;
+    return d&&valid(a,bytes,b,true)&&reset_impl(a,*b,out->reset,d,out);
+}
+int __cdecl dictionary_set(void* a,unsigned bytes,int seq,const ServerSequenceResetBindings* b,const ServerSequenceDictionaryBindings* d,ServerSequenceDictionaryResult* out) noexcept {
+    if(!out)return 0;*out={};out->registration.failed_index=-1;
+    return d&&set_impl(a,bytes,seq,b,&out->reset,d,out);
+}
+const ServerSequenceDictionaryApi dict_api{1,sizeof(ServerSequenceDictionaryApi),&dictionary_reset,&dictionary_set};
 const ServerSequenceResetApi api{1,sizeof(ServerSequenceResetApi),&reset,&set};
 }
 }
@@ -76,4 +101,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSeq
 SiN_GetServerSequenceResetApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerSequenceResetApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerSequenceDictionaryApi=_SiN_GetServerSequenceDictionaryApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSequenceDictionaryApi* __cdecl
+SiN_GetServerSequenceDictionaryApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerSequenceDictionaryApi)?&dict_api:nullptr;
 }
