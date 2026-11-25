@@ -1164,6 +1164,11 @@ int main(int argc,char** argv){
     const auto* think=getThink(1,sizeof(tables::ServerNamedFacialThinkApi));
     assert(admission&&think);
     {
+        tables::test::VcdAuditArena metadataArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_native_vcd_metadata(metadataArena,*nativeVcdRuntime,*sceneMetadataGeneration,*sceneResponseServices,*responseSceneFilter);
+        std::puts("PASS native VCD parser through generated metadata, cache refresh and response admission");
+    }
+    {
     tables::test::ParsedFacialClientPair paired(*flexSend,*flexRecv,*animSend,*animRecv,*frame);
     tables::test::check_vcd_audit_arena(*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*startupSound,*nativeClock,*nativeDispatch,*leaves,*section,*gate,*execution,*auditIntensity,*auditSpline,*admission,*think,paired);
     }
@@ -1376,7 +1381,7 @@ int main(int argc,char** argv){
         tables::test::check_parsed_npc_movement_scene(moveArena,*nativeVcdRuntime,*execution,*movement,*section);
 
     }
-    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
+    if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline,sceneMetadataGeneration,sceneResponseServices,responseSceneFilter)){
         FreeLibrary(server);FreeLibrary(client);return 2;
     }
     std::puts("PASS original relative tag reconciliation and ordered channel finalization");
