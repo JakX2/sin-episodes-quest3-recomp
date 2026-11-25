@@ -1213,6 +1213,9 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena propagationHistoryArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_talk_propagation_history(propagationHistoryArena,*nativePropagation,*historyTree,*talkCatalog);
         std::puts("PASS native companion propagation to indexed receiver concept history");
+        tables::test::TalkManagerFixture neighborSpeechManager(*talkManager,*talkCatalog);
+        tables::test::VcdAuditArena neighborSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_vcd_clock_speech(neighborSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink,historyTree,managedHistory,&neighborSpeechManager,deadlineRuntime,nativePropagation);
         std::puts("PASS native response history symbol lookup, indexed tree insertion and free-slot reuse");
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));
