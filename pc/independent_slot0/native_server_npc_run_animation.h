@@ -3,6 +3,7 @@
 #include "native_server_animation_events.h"
 #include "native_server_sequence_reset.h"
 #include "native_server_sequence_choice.h"
+#include "native_server_activity_metadata.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_run_animation_export[]="SiN_GetServerNpcRunAnimationApi";
 struct ServerNpcRunAnimationBindings {
@@ -66,4 +67,24 @@ struct ServerNpcDictionaryFrameApi {
     int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcDictionaryFrameBindings*,ServerNpcDictionaryFrameResult*) noexcept;
 };
 using GetServerNpcDictionaryFrameApi=const ServerNpcDictionaryFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_activity_frame_export[]="SiN_GetServerNpcActivityFrameApi";
+struct ServerNpcActivityFrameBindings {
+    ServerNpcDictionaryFrameBindings frame;
+    ServerActivityDictionary* activities;
+    void* context;
+    // Resolve the current actor's global descriptor order and group words.
+    // 1 available, 0 null metadata, negative failure. View must stay stable
+    // through selection; the reset descriptor is resolved separately.
+    int (__cdecl *metadata)(void*,void* actor,const ServerActivityCompositeView**) noexcept;
+};
+struct ServerNpcActivityFrameResult {
+    ServerNpcDictionaryFrameResult frame;
+    ServerActivityChoiceResult choice;
+};
+struct ServerNpcActivityFrameApi {
+    std::uint32_t version,size;
+    // No legacy choices/select_sequence/set_sequence/register_events.
+    int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcActivityFrameBindings*,ServerNpcActivityFrameResult*) noexcept;
+};
+using GetServerNpcActivityFrameApi=const ServerNpcActivityFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -151,6 +151,64 @@ int main(int argc,char** argv){
     ServerSequenceDictionaryResult sr{};
     assert(setter->reset(f.actor,sizeof(f.actor),&db.sequence.reset,&db.dictionary,&sr)&&sr.reset.reset&&!sr.descriptor_available&&registry.count==25);
     assert((f.trace==std::vector<int>{32,33,34,36}));
+
+    // Native sequence selection now consumes unresolved activity names.
+    auto gaf=reinterpret_cast<GetServerNpcActivityFrameApi>(GetProcAddress(server,server_npc_activity_frame_export));
+    auto gad=reinterpret_cast<GetServerActivityDictionaryApi>(GetProcAddress(server,server_activity_dictionary_export));
+    assert(gaf&&gad&&!GetProcAddress(client,server_npc_activity_frame_export)&&!gaf(0,sizeof(ServerNpcActivityFrameApi))&&!gaf(1,0));
+    auto* activity_frame=gaf(1,sizeof(ServerNpcActivityFrameApi));auto* activity_dict=gad(1,sizeof(ServerActivityDictionaryApi));assert(activity_frame&&activity_dict);
+    ServerEventDictionaryEntry activity_rows[8]{};
+    ServerActivityDictionary activities{{activity_rows,8,0,3,0},-1};
+    assert(activity_dict->shared(&activities,"ACT_TEST_IDLE",5));
+    struct MetadataFixture {
+        F* f;
+        alignas(4) unsigned char storage[11][0x80]{};
+        ServerActivityDescriptor desc[12]{};
+        std::uint32_t generations[2]{3,3};
+        ServerActivityGenerationNode groups[2]{{generations,-1},{generations+1,0}};
+        ServerActivityCompositeView view{desc,12,groups,2};
+    } meta{&f};
+    for(unsigned i=0;i<11;++i){
+        meta.desc[i]={meta.storage[i],sizeof(meta.storage[i]),0};
+        f.put(meta.storage[i],8,0x40);
+        f.put(meta.storage[i],0x10,-1);
+    }
+    std::strcpy(reinterpret_cast<char*>(meta.storage[9]+0x40),"ACT_TEST_IDLE");
+    f.put(meta.storage[9],0x14,-1);
+    meta.desc[11]={f.studio,sizeof(f.studio),0};
+    f.put(f.studio,8,0x150);f.put(f.studio,0x10,-1);f.put(f.studio,0x14,4);
+    std::strcpy(reinterpret_cast<char*>(f.studio+0x150),"ACT_TEST_IDLE");
+    f.studio[0xd]=0;
+    ServerNpcActivityFrameBindings ab{};ab.frame=db;ab.frame.sequence.choices=nullptr;
+    ab.activities=&activities;ab.context=&meta;
+    ab.metadata=[](void* p,void* a,const ServerActivityCompositeView** v) noexcept -> int {
+        auto& m=*static_cast<MetadataFixture*>(p);assert(a==m.f->actor);m.f->trace.push_back(37);*v=&m.view;return 1;
+    };
+    ab.frame.sequence.frame.events.sequence=[](void* p,void* a,int seq,ServerAnimationEventSequence* out) noexcept -> int {
+        auto& f=F::self(p);assert(a==f.actor);
+        if(seq==11){std::memcpy(f.registered,f.studio+0x40,sizeof(f.registered));*out={f.registered,2,0,0};}
+        else{assert(seq==7||seq==9);*out={seq==9?f.base:f.overlay,1,1,0};}return 1;
+    };
+    ab.frame.sequence.frame.events.emit=[](void* p,void* a,int layer,const ServerAnimationEvent* e) noexcept {
+        auto& f=F::self(p);assert(a==f.actor&&e->source==a&&((layer==-1&&(e->event==20||e->event==24))||(layer==0&&e->event==21)));
+        f.trace.push_back(e->event);
+    };
+    f.descriptor_available=true;
+    f.clocks();f.trace.clear();f.put(f.actor,0x3ec,9);f.put(f.actor,0x3c0,2.f);
+    f.actor[0x3e0]=1;f.actor[0x3e1]=1;f.put(f.actor,0x464,7u);
+    ServerNpcActivityFrameResult ar{};
+    assert(activity_frame->run(f.actor,sizeof(f.actor),&in,&ab,&ar)&&ar.frame.frame.selected==9&&ar.frame.frame.sequence_set&&!ar.frame.sequence.reset.reset);
+    assert(ar.choice.scanned==10&&ar.choice.lazy_registrations==10&&!ar.choice.refresh.refreshed&&f.studio[0xd]==0);
+    assert((f.trace==std::vector<int>{1,2,3,4,37,20,21}));
+    // Force stale group: full registration must precede weighted selection,
+    // then the native setter and event iteration use the same registry.
+    meta.generations[1]=2;f.put(meta.storage[9],0x14,1);
+    f.clocks();f.trace.clear();f.put(f.actor,0x3ec,9);f.put(f.actor,0x3c0,2.f);
+    f.actor[0x3e0]=1;f.actor[0x3e1]=1;f.put(f.actor,0x464,7u);
+    assert(activity_frame->run(f.actor,sizeof(f.actor),&in,&ab,&ar)&&ar.frame.frame.selected==11&&ar.frame.sequence.reset.reset);
+    assert(ar.choice.refresh.refreshed&&ar.choice.refresh.visited==12&&ar.choice.refresh.events_existing==2&&ar.choice.scanned==12&&!ar.choice.lazy_registrations);
+    assert(meta.generations[0]==3&&meta.generations[1]==3&&f.get<int>(f.studio,0x10)==5&&ar.frame.frame.events.emitted==2);
+    assert((f.trace==std::vector<int>{1,2,3,4,37,31,31,32,33,34,36,24,21}));
     FreeLibrary(server);FreeLibrary(client);
     std::puts("PASS native NPC RunAnimation metadata gate, advancement, idle selection and server events");
 }
