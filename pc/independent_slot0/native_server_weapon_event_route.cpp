@@ -146,6 +146,43 @@ int __cdecl active(void* a,unsigned bytes,const ServerAnimationEvent* e,float no
        !b->extent||!b->extent(b->context,w,&extent))return 0;
     return handle(w,extent,kind,a,e,now,b,out);
 }
+int __cdecl parent_weapon(void* a,unsigned bytes,const ServerAnimationEvent* e,float now,const ServerNpcParentWeaponEventBindings* b,ServerNpcParentWeaponEventResult* out) noexcept {
+    if(!out)return -1;*out={};out->clip=-1;
+    if(!a||bytes<0x790||!e||!b||!std::isfinite(now)||!registry_ok(b->weapon.weapons))return -1;
+    const int id=e->event;
+    if(id<3000||id>3999)return 0;
+    out->recognized=1;
+    const auto& wbind=b->weapon;
+    void* w=resolve(wbind,read<std::uint32_t>(a,0x78c));
+    // Original 222a5720 and special reload routes are no-op for absent weapon.
+    if(!w)return 1;
+    out->live=1;
+    unsigned kind=0,extent=0;
+    if(!wbind.weapons.classify||!wbind.weapons.classify(wbind.weapons.context,w,&kind)||kind>WeaponActivitySmg||
+       !wbind.extent||!wbind.extent(wbind.context,w,&extent)||extent<0x4f0)return -1;
+    if(id!=3015&&id!=3017&&id!=3018){
+        out->forwarded=1;return handle(w,extent,kind,a,e,now,&wbind,&out->weapon)?1:-1;
+    }
+    if(id!=3018){
+        if(!sound(w,extent,kind,9,wbind,out->weapon))return -1;
+        out->sounded=out->weapon.sound.emitted;
+    }
+    if(id==3017)return 1;
+    // 222abf50 gets +160 from script info resolved by +51c.
+    if(extent<0x51e||!b->script_info||!b->clear_condition)return -1;
+    const void* info=nullptr;unsigned size=0;
+    if(!b->script_info(b->context,read<std::uint16_t>(w,0x51c),&info,&size)||!info||size<0x164)return -1;
+    out->clip=read<int>(info,0x160);
+    if(read<int>(w,0x4ec)!=out->clip){
+        if(!dirty(w,wbind))return -1;write(w,0x4ec,out->clip);out->clip_changed=1;
+    }
+    for(int cond=3;cond<=5;++cond){
+        if(!b->clear_condition(b->context,a,cond))return -1;
+        ++out->conditions_cleared;
+    }
+    return 1;
+}
+const ServerNpcParentWeaponEventApi parent_api{1,sizeof(ServerNpcParentWeaponEventApi),&parent_weapon};
 const ServerWeaponEventRouteApi api{1,sizeof(ServerWeaponEventRouteApi),&handle,&active};
 }
 }
@@ -154,4 +191,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWea
 SiN_GetServerWeaponEventRouteApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerWeaponEventRouteApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcParentWeaponEventApi=_SiN_GetServerNpcParentWeaponEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcParentWeaponEventApi* __cdecl
+SiN_GetServerNpcParentWeaponEventApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerNpcParentWeaponEventApi)?&parent_api:nullptr;
 }

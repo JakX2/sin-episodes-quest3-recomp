@@ -75,5 +75,30 @@ int main(int argc,char** argv){
     assert((f.trace==std::vector<int>{40,41,3013,5,90,90,90,40,6}));
     assert(run(WeaponActivityGrenade,3005)&&out.grenade_consumed&&!out.deadlines_written);
     f.put(f.actor,0x78c,0x8001u);assert(!run(WeaponActivityAssault,3103)&&f.trace.empty());
+
+    auto gp=reinterpret_cast<GetServerNpcParentWeaponEventApi>(GetProcAddress(server,server_npc_parent_weapon_event_export));
+    assert(gp&&!GetProcAddress(client,server_npc_parent_weapon_event_export)&&!gp(0,sizeof(ServerNpcParentWeaponEventApi))&&!gp(1,0));
+    const auto* parent=gp(1,sizeof(ServerNpcParentWeaponEventApi));assert(parent);
+    struct P {F* f;alignas(4) unsigned char info[0x164]{};} p{&f};
+    f.put(p.info,0x160,28);f.put(f.weapon,0x51c,std::uint16_t{5});
+    ServerNpcParentWeaponEventBindings pb{b,&p,
+        [](void* p,std::uint16_t id,const void** out,unsigned* n) noexcept -> int {
+            auto& q=*static_cast<P*>(p);assert(id==5);q.f->trace.push_back(80);*out=q.info;*n=sizeof(q.info);return 1;},
+        [](void* p,void* a,int cond) noexcept -> int {
+            auto& q=*static_cast<P*>(p);assert(a==q.f->actor);q.f->trace.push_back(200+cond);return 1;}
+    };
+    f.put(f.actor,0x78c,0x7001u);f.kind=WeaponActivityAssault;
+    ServerNpcParentWeaponEventResult pr{};
+    auto run_parent=[&](int id){f.trace.clear();event.event=id;return parent->handle(f.actor,sizeof(f.actor),&event,10,&pb,&pr);};
+    assert(run_parent(20)==0&&!pr.recognized&&f.trace.empty());
+    assert(run_parent(3103)==1&&pr.forwarded&&pr.weapon.secondary_called&&(f.trace==std::vector<int>{4}));
+    f.put(f.weapon,0x4ec,3);
+    assert(run_parent(3015)==1&&pr.sounded&&pr.clip_changed&&pr.conditions_cleared==3&&pr.clip==28);
+    assert((f.trace==std::vector<int>{109,80,90,203,204,205}));
+    assert(run_parent(3017)==1&&pr.sounded&&!pr.clip_changed&&!pr.conditions_cleared&&(f.trace==std::vector<int>{109}));
+    assert(run_parent(3018)==1&&!pr.sounded&&!pr.clip_changed&&pr.conditions_cleared==3&&(f.trace==std::vector<int>{80,203,204,205}));
+    f.put(f.actor,0x78c,0x8001u);
+    assert(run_parent(3015)==1&&pr.recognized&&!pr.live&&f.trace.empty());
+    assert(run_parent(3002)==1&&pr.recognized&&!pr.live&&f.trace.empty());
     FreeLibrary(server);FreeLibrary(client);std::puts("PASS original eight weapon event routes and native state writes");
 }
