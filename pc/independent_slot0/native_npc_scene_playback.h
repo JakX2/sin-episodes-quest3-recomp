@@ -708,6 +708,24 @@ struct SceneSpeechPreparationApi {
         const SceneSpeechCallbackBindings*,const ResolvedSceneActorBindings*,const SceneSpeechPreparationBindings*,unsigned*) noexcept;
 };
 using GetSceneSpeechPreparationApi=const SceneSpeechPreparationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char scene_speech_actor_note_export[]="SiN_GetSceneSpeechActorNoteApi";
+struct SceneSpeechActorNoteBindings {
+    SceneSpeechPreparationBindings preparation; // same state shared with native response note
+    void* context;
+    int (__cdecl *extent)(void*,void* base_actor,unsigned*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t word,void**,unsigned*) noexcept;
+    ResponseNoteBindings note;
+};
+struct SceneSpeechActorNoteApi {
+    std::uint32_t version,size;
+    // 2216e430 -> 22028d30 -> 220a4590. Requires original base actor layout.
+    int (__cdecl *notify)(const SceneSpeechActorNoteBindings*,void* actor,float remaining,float margin) noexcept;
+    // Adapt to existing choreography preparation ABI without changing its size.
+    // Keep cfg alive for the entire synchronous use of returned callbacks.
+    int (__cdecl *adapt)(const SceneSpeechActorNoteBindings*,SceneSpeechPreparationBindings*) noexcept;
+};
+using GetSceneSpeechActorNoteApi=const SceneSpeechActorNoteApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char native_choreography_clock_export[]="SiN_GetNativeChoreographyClockApi";
 // Runtime clock over the original parsed PE32 graph. The graph owns vector
 // storage; reset/simulation/resume use native graph operations. Engine speech

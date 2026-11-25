@@ -7360,6 +7360,51 @@ int __cdecl scene_speech_prepare(void* scene,unsigned bytes,void* actor,float re
     std::uint32_t owner=0xffffffffu;if(!h.handle(h.context,actor,&owner))return -1;
     sem.owner=owner;return 1;
 }
+
+int __cdecl scene_actor_note(const SceneSpeechActorNoteBindings* b,void* actor,float remaining,float margin) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->extent||!b->storage)return 0;
+    unsigned bytes=0;
+    if(!actor||!b->extent(b->context,actor,&bytes)||bytes<0x1000||
+       !sin_independent::vgui_layout::Readable(actor,0x1000))return 0;
+    // CAI_BaseActor +5bc is 22028d30; Jessica's thunk also reaches it.
+    const auto word=hologram_read<std::uint32_t>(actor,0xffc);
+    void* exp=nullptr;unsigned n=0;
+    if(!word||!b->storage(b->context,word,&exp,&n))return -1;
+    return response_note(exp,n,b->preparation.state,&b->note,remaining,margin);
+}
+const SceneSpeechActorNoteBindings& scene_actor_note_cfg(void* p) noexcept {
+    return *static_cast<const SceneSpeechActorNoteBindings*>(p);
+}
+int __cdecl scene_actor_note_adapt(const SceneSpeechActorNoteBindings* cfg,SceneSpeechPreparationBindings* out) noexcept {
+    if(!cfg||!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||!hologram_writable(out,sizeof(*out))||
+       !cfg->extent||!cfg->storage||cfg->preparation.instanced>1||!cfg->preparation.state||
+       !cfg->preparation.cast_base_actor||!cfg->preparation.is_npc||!cfg->preparation.classify||
+       !cfg->preparation.clock||!cfg->preparation.handle)return 0;
+    const auto& n=cfg->note;
+    if(!n.owner_start||!n.clock||!n.diagnostic||!n.uses_semaphore||!n.classify||!n.owner_handle)return 0;
+    *out=cfg->preparation;out->context=const_cast<SceneSpeechActorNoteBindings*>(cfg);
+    out->cast_base_actor=[](void* p,void* actor,void** result) noexcept -> int{
+        const auto& h=scene_actor_note_cfg(p).preparation;return h.cast_base_actor(h.context,actor,result);
+    };
+    out->actor_notify=[](void* p,void* actor,float remaining,float margin) noexcept -> int{
+        return scene_actor_note(&scene_actor_note_cfg(p),actor,remaining,margin)==1;
+    };
+    out->is_npc=[](void* p,void* actor,unsigned* result) noexcept -> int{
+        const auto& h=scene_actor_note_cfg(p).preparation;return h.is_npc(h.context,actor,result);
+    };
+    out->classify=[](void* p,void* actor,int arg,unsigned* result) noexcept -> int{
+        const auto& h=scene_actor_note_cfg(p).preparation;return h.classify(h.context,actor,arg,result);
+    };
+    out->clock=[](void* p,float* result) noexcept -> int{
+        const auto& h=scene_actor_note_cfg(p).preparation;return h.clock(h.context,result);
+    };
+    out->handle=[](void* p,void* actor,std::uint32_t* result) noexcept -> int{
+        const auto& h=scene_actor_note_cfg(p).preparation;return h.handle(h.context,actor,result);
+    };
+    return 1;
+}
+const SceneSpeechActorNoteApi scene_speech_actor_note_api{version,sizeof(SceneSpeechActorNoteApi),&scene_actor_note,&scene_actor_note_adapt};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -15369,6 +15414,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechActorNoteApi=_SiN_GetSceneSpeechActorNoteApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechActorNoteApi* __cdecl
+SiN_GetSceneSpeechActorNoteApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneSpeechActorNoteApi)?&scene_speech_actor_note_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechPreparationApi=_SiN_GetSceneSpeechPreparationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechPreparationApi* __cdecl

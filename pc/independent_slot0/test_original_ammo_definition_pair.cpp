@@ -921,6 +921,12 @@ int main(int argc,char** argv){
     const auto* sceneSpeechPreparation=getSceneSpeechPreparation(1,sizeof(tables::SceneSpeechPreparationApi));
     assert(sceneSpeechPreparation&&!getSceneSpeechPreparation(0,sizeof(tables::SceneSpeechPreparationApi))&&!getSceneSpeechPreparation(1,0));
     tables::test::check_scene_speech_preparation(*sceneSpeechPreparation);
+    const auto getActorNote=reinterpret_cast<tables::GetSceneSpeechActorNoteApi>(GetProcAddress(server,tables::scene_speech_actor_note_export));
+    assert(getActorNote&&!GetProcAddress(client,tables::scene_speech_actor_note_export));
+    const auto* actorNote=getActorNote(1,sizeof(tables::SceneSpeechActorNoteApi));
+    assert(actorNote&&!getActorNote(0,sizeof(tables::SceneSpeechActorNoteApi))&&!getActorNote(1,0));
+    tables::test::check_scene_speech_actor_note(*actorNote,*sceneSpeechPreparation);
+    std::puts("PASS native choreography actor speech note and shared expeditor deadline");
     tables::test::check_speech_lifecycle(*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,resolvedSceneActor,sceneSpeechPreparation);
     std::puts("PASS native speech preparation, shared semaphore and cached speech lifecycle");
     const auto getSceneSpeechDrain=reinterpret_cast<tables::GetSceneSpeechDrainApi>(GetProcAddress(server,tables::scene_speech_drain_export));

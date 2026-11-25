@@ -2863,6 +2863,49 @@ inline void check_scene_speech_preparation(const SceneSpeechPreparationApi& api)
 }
 
 
+
+inline void check_scene_speech_actor_note(const SceneSpeechActorNoteApi& api,const SceneSpeechPreparationApi& prep){
+    using F=ScenePlaybackFixture;
+    struct Fixture {
+        alignas(4) unsigned char actor[0x1000]{},exp[0x7c]{},scene[0x5ec]{};
+        SpeechSemaphorePair pair{};
+        unsigned starts=0,clocks=0,logs=0,uses=1,classified=1,casts=0,fallback=0,handles=0;
+        float now=10,total=0,delay=0,until=0;bool cast=true,fail_handle=false;
+    } f;
+    F::put(f.actor,0xffc,77u);F::fl(f.scene,0x564,.25f);
+    SceneSpeechActorNoteBindings b{};b.context=&f;b.preparation.context=&f;b.preparation.state=&f.pair;b.note.context=&f;
+    b.extent=[](void* p,void* a,unsigned* n) noexcept -> int{auto& f=*static_cast<Fixture*>(p);assert(a==f.actor);*n=sizeof(f.actor);return 1;};
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(w==77);*out=f.exp;*n=sizeof(f.exp);return 1;};
+    b.preparation.cast_base_actor=[](void* p,void* a,void** out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(a==f.actor);++f.casts;*out=f.cast?a:nullptr;return 1;};
+    b.preparation.is_npc=[](void* p,void*,unsigned* out) noexcept -> int{++static_cast<Fixture*>(p)->fallback;*out=1;return 1;};
+    b.preparation.classify=[](void* p,void*,int arg,unsigned* out) noexcept -> int{assert(!arg);*out=static_cast<Fixture*>(p)->classified;return 1;};
+    b.preparation.clock=[](void* p,float* out) noexcept -> int{*out=static_cast<Fixture*>(p)->now;return 1;};
+    b.preparation.handle=[](void* p,void*,std::uint32_t* out) noexcept -> int{*out=0x1001;return !static_cast<Fixture*>(p)->fail_handle;};
+    b.note.owner_start=[](void* p,void* exp) noexcept -> int{auto& f=*static_cast<Fixture*>(p);assert(exp==f.exp);++f.starts;return 1;};
+    b.note.clock=[](void* p,float* out) noexcept -> int{auto& f=*static_cast<Fixture*>(p);++f.clocks;*out=f.now;return 1;};
+    b.note.diagnostic=[](void* p,void* exp,float total,float delay,float until) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(exp==f.exp&&F::word(exp,0x68)==F::word(&until,0));
+        ++f.logs;f.total=total;f.delay=delay;f.until=until;return 1;};
+    b.note.uses_semaphore=[](void* p,void*,unsigned* out) noexcept -> int{*out=static_cast<Fixture*>(p)->uses;return 1;};
+    b.note.classify=[](void* p,void*,int arg,unsigned* out) noexcept -> int{assert(!arg);*out=static_cast<Fixture*>(p)->classified;return 1;};
+    b.note.owner_handle=[](void* p,void*,std::uint32_t* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.handles;*out=0x1001;return !f.fail_handle;};
+    SceneSpeechPreparationBindings adapted{};assert(api.adapt(&b,&adapted)&&adapted.state==&f.pair);
+    auto run=[&](float duration){return prep.prepare(f.scene,sizeof(f.scene),f.actor,duration,&adapted);};
+    assert(run(2)==1&&f.casts==1&&f.starts==1&&f.logs==1&&f.clocks==2&&!f.fallback);
+    assert(f.total==3&&f.delay==1&&f.until==13&&F::word(f.exp,0x6c)==0x41400000u);
+    assert(f.pair.classified.release==11&&f.pair.classified.owner==0x1001);
+    b.preparation.instanced=1;assert(api.adapt(&b,&adapted));
+    f.classified=0;assert(run(2)==1&&f.until==12.25f&&f.delay==.25f&&f.pair.other.release==10.25f);
+    f.uses=0;assert(run(-1)==1&&f.total==0&&f.until==13&&F::word(f.exp,0x6c)==0x414c0000u&&f.handles==2);
+    f.cast=false;assert(run(2)==1&&f.fallback==2&&f.starts==3&&f.pair.other.release==12.25f);
+    f.cast=true;f.uses=1;f.fail_handle=true;f.now=20;f.pair.other.owner=0x55;
+    assert(run(2)==-1&&f.pair.other.release==20.25f&&f.pair.other.owner==0x55);
+    F::put(f.actor,0xffc,0u);assert(api.notify(&b,f.actor,1,1)==-1);
+}
+
 struct SpeechDrainFixture {
     using F=ScenePlaybackFixture;
     alignas(4) unsigned char manager[scene_manager_bytes]{},rows[8][0x8c]{};
