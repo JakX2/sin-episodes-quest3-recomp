@@ -74,4 +74,22 @@ struct ServerNpcEnemyMemoryApi {
     int (__cdecl *recent)(const void*,unsigned,std::uint32_t,float,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryLookup*,bool*) noexcept;
 };
 using GetServerNpcEnemyMemoryApi=const ServerNpcEnemyMemoryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_enemy_memory_query_export[]="SiN_GetServerNpcEnemyMemoryQueryApi";
+struct ServerNpcEnemyMemoryQueryBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    void* context;
+    // Translate live native object pointer to the PE32 address token used by the tree.
+    int (__cdecl *entity_key)(void*,void*,std::uint32_t*) noexcept;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+};
+struct ServerNpcEnemyMemoryQueryApi {
+    std::uint32_t version,size;
+    // Callback-compatible with observation and enemy-refresh memory_record.
+    // Context is a pointer to ServerNpcEnemyMemoryQueryBindings.
+    int (__cdecl *last_seen)(void*,std::uint32_t,void*,bool*,float*) noexcept;
+    // 22031780: resolve +8a0 then query +984 position cache.
+    int (__cdecl *aim_vector)(void*,unsigned,const ServerNpcEnemyMemoryQueryBindings*,ServerNpcEnemyMemoryLookup*,float[3]) noexcept;
+};
+using GetServerNpcEnemyMemoryQueryApi=const ServerNpcEnemyMemoryQueryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
