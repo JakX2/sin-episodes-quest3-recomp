@@ -651,6 +651,38 @@ int __cdecl erase_memory_record(void* context,void* memory,unsigned bytes,unsign
     ServerNpcEnemyMemoryTreeResult result{};unsigned released=0;
     return remove_memory_index(memory,bytes,index,token,*static_cast<const ServerNpcEnemyMemoryMutationBindings*>(context),result,released);
 }
+int __cdecl initialize_memory_owner(void* memory,unsigned bytes,std::uint32_t token,unsigned capacity,const float initial[3],const ServerNpcEnemyMemoryBindings* b) noexcept{
+    if(!memory||bytes<0x40||!finite_vec(initial)||capacity>255||((token==0)!=(capacity==0)))return 0;
+    if(capacity){void* nodes=nullptr;unsigned extent=0;if(!memory_storage(b,token,12*capacity,nodes,extent))return 0;}
+    // Caller must supply fresh/unowned storage; this is not a destructor or reset of a live tree.
+    float vector[3];std::memcpy(vector,initial,12);
+    write(memory,0,0x22068d70u);write(memory,4,token);write(memory,8,capacity);write(memory,0xc,0u);
+    write<std::uint8_t>(memory,0x10,255);write<std::uint8_t>(memory,0x11,0);
+    write<std::uint8_t>(memory,0x12,255);write<std::uint8_t>(memory,0x13,0);
+    write(memory,0x14,token);write(memory,0x18,0x22068b40u);
+    write(memory,0x1c,1.75f);write(memory,0x20,60.f);
+    std::memcpy(static_cast<unsigned char*>(memory)+0x24,vector,12);
+    std::memcpy(static_cast<unsigned char*>(memory)+0x30,vector,12);
+    write(memory,0x3c,0u);return 1;
+}
+int __cdecl memory_control(void* memory,unsigned bytes,std::uint32_t key,unsigned operation,float time,std::uint8_t flag,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryControlResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(operation>NpcMemorySetProtected||(operation==NpcMemorySetEligibility&&!std::isfinite(time)))return 0;
+    if(!memory_lookup(memory,bytes,key,false,b,&out->lookup))return 0;
+    if(!out->lookup.record)return 1;
+    if(operation==NpcMemoryExists){out->value=1;return 1;}
+    void* record=nullptr;
+    if(!memory_record(b,out->lookup,0x37,record))return 0;
+    switch(operation){
+        case NpcMemoryEluded:out->value=read<std::uint8_t>(record,0x35);break;
+        case NpcMemoryMarkEluded:write<std::uint8_t>(record,0x35,1);out->written=1;break;
+        case NpcMemorySetEligibility:write(record,0x28,time);out->written=1;break;
+        case NpcMemorySetProtected:write(record,0x36,flag);out->written=1;break;
+        default:return 0;
+    }
+    return 1;
+}
+const ServerNpcEnemyMemoryControlApi control_api{1,sizeof(ServerNpcEnemyMemoryControlApi),&initialize_memory_owner,&memory_control};
 const ServerNpcEnemyMemoryMutationApi mutation_api{1,sizeof(ServerNpcEnemyMemoryMutationApi),&upsert_memory,&remove_memory,&erase_memory_record};
 const ServerNpcEnemyMemoryTreeApi tree_api{1,sizeof(ServerNpcEnemyMemoryTreeApi),&tree_validate,&tree_insert,&tree_erase};
 const ServerNpcEnemyMemoryMaintenanceApi maintenance_api{1,sizeof(ServerNpcEnemyMemoryMaintenanceApi),&maintain_memory};
@@ -745,4 +777,10 @@ SiN_GetServerNpcEnemyMemoryMutationApi(std::uint32_t version,std::uint32_t size)
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyNotifyApi* __cdecl
 SiN_GetServerNpcEnemyNotifyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyNotifyApi)?&notify_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcEnemyMemoryControlApi=_SiN_GetServerNpcEnemyMemoryControlApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryControlApi* __cdecl
+SiN_GetServerNpcEnemyMemoryControlApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryControlApi)?&control_api:nullptr;
 }

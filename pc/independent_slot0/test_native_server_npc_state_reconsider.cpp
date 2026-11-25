@@ -319,5 +319,37 @@ int main(int argc,char** argv){
         assert((f.get<unsigned>(0x7cc)&0x00300000u)==(1u<<21));
     }
     nc.original_vtable=0;assert(!notify->notify(&nc,f.actor)&&nc.calls==8);
+    auto gcontrol=reinterpret_cast<GetServerNpcEnemyMemoryControlApi>(GetProcAddress(s,server_npc_enemy_memory_control_export));
+    assert(gcontrol&&!GetProcAddress(c,server_npc_enemy_memory_control_export)&&!gcontrol(0,sizeof(ServerNpcEnemyMemoryControlApi))&&!gcontrol(1,0));
+    const auto* control=gcontrol(1,sizeof(ServerNpcEnemyMemoryControlApi));assert(control);
+    std::memset(f.memory,0x5a,sizeof(f.memory));float owner_vector[3]{-1,-2,-3};
+    assert(control->initialize(f.memory,sizeof(f.memory),0,0,owner_vector,&mb));
+    assert(tree->validate(f.memory,sizeof(f.memory),&mb,&tr)&&tr.count==0&&tr.high_water==0&&tr.root==255);
+    assert(mem->position(f.memory,sizeof(f.memory),123,false,&mb,&ml,v)&&v[0]==-1&&v[2]==-3);
+    assert(!control->initialize(f.memory,sizeof(f.memory),100,33,owner_vector,&mb));
+    assert(control->initialize(f.memory,sizeof(f.memory),100,32,owner_vector,&mb));
+    float recent_default=0,lifetime_default=0;std::memcpy(&recent_default,f.memory+0x1c,4);std::memcpy(&lifetime_default,f.memory+0x20,4);
+    assert(recent_default==1.75f&&lifetime_default==60.f&&tree->validate(f.memory,sizeof(f.memory),&mb,&tr));
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),nullptr,new_pos,200,0,true,&mutation,&mut)&&mut.created);
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,200,0,true,&mutation,&mut)&&mut.created);
+    ServerNpcEnemyMemoryControlResult ctr{};
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryExists,0,0,&mb,&ctr)&&ctr.value);
+    assert(control->control(f.memory,sizeof(f.memory),2000,NpcMemoryExists,0,0,&mb,&ctr)&&!ctr.value&&!ctr.lookup.fallback_attempted);
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryMarkEluded,0,0,&mb,&ctr)&&ctr.written);
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryEluded,0,0,&mb,&ctr)&&ctr.value==1);
+    assert(control->control(f.memory,sizeof(f.memory),0x394u,NpcMemoryEluded,0,0,&mb,&ctr)&&ctr.value==0);
+    assert(control->control(f.memory,sizeof(f.memory),2000,NpcMemorySetProtected,0,1,&mb,&ctr)&&!ctr.written);
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemorySetProtected,0,1,&mb,&ctr)&&ctr.written);
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemorySetEligibility,205,0,&mb,&ctr)&&ctr.written);
+    f.put(f.actor,0x984,103u);f.put(f.actor,0xc18,0u);f.put(f.actor,0x8c4,0.f);f.put(f.actor,0x920,0);
+    assert(best->select(f.actor,sizeof(f.actor),204,&bb,&br)&&!br.enemy&&br.not_yet_valid==1);
+    assert(best->select(f.actor,sizeof(f.actor),205,&bb,&br)&&!br.enemy&&br.eluded==1);
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,205,0,true,&mutation,&mut)&&mut.updated&&mut.record.eluded_cleared);
+    assert(best->select(f.actor,sizeof(f.actor),205,&bb,&br)&&br.enemy==f.enemy);
+    assert(maint->maintain(f.memory,sizeof(f.memory),266,&maintenance,&mr)&&mr.removed==1&&mr.expired==1);
+    assert(tree->validate(f.memory,sizeof(f.memory),&mb,&tr)&&tr.count==1);
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemorySetProtected,0,0,&mb,&ctr)&&ctr.written);
+    assert(maint->maintain(f.memory,sizeof(f.memory),266,&maintenance,&mr)&&mr.removed==1&&mr.expired==1);
+    assert(tree->validate(f.memory,sizeof(f.memory),&mb,&tr)&&tr.count==0);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
