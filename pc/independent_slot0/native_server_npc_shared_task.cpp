@@ -97,7 +97,42 @@ int face60(void* a,unsigned n,bool running,float now,const ServerNpcSharedTaskBi
     if(!yaw_error(rd<float>(a,0x370),rd<float>(motor,0x14),&out.current_quantized,&out.error))return 0;
     return std::fabs(out.error)>.006||complete();
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingResult* facing_out=nullptr) noexcept{
+int target_animation(void* a,unsigned n,int task,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedTargetAnimationBindings& b,ServerNpcSharedTargetAnimationResult& out) noexcept{
+    void* target=nullptr;
+    if(task==96){
+        if(b.count>sin_independent::kEntityHandleCapacity||(b.count&&!b.entries))return 0;
+        out.target_handle=rd<unsigned>(a,0x8a8);
+        target=sin_independent::EntityHandleView(b.entries,b.count).Resolve(out.target_handle);
+    }else if(!b.current_target||!b.current_target(b.context,a,&target))return 0;
+    out.target_live=target!=nullptr;
+    if(target){
+        const auto token=rd<unsigned>(a,0x908);
+        void* motor=nullptr;unsigned size=0;
+        if(!token||!b.motor_storage||!b.absolute_position||!b.step_turn||
+           !b.motor_storage(b.context,token,&motor,&size)||!motor||size<0x18)return 0;
+        float pos[3]{};
+        if(!b.absolute_position(b.context,target,pos))return 0;
+        for(unsigned i=0;i<3;++i){
+            const float origin=rd<float>(a,0x360+4*i);
+            if(!std::isfinite(pos[i])||!std::isfinite(origin))return 0;
+            out.direction[i]=static_cast<float>(static_cast<double>(pos[i])-origin);
+            if(!std::isfinite(out.direction[i]))return 0;
+        }
+        const double x=out.direction[0],y=out.direction[1];
+        // 2228b220: zero XY returns zero; FPATAN * exact float32 degrees/radian.
+        double yaw=(x==0.0&&y==0.0)?0.0:std::atan2(y,x)*57.295780181884765625;
+        if(yaw<0.0)yaw+=360.0;
+        out.yaw=static_cast<float>(yaw);
+        // 2206bff0 with -2.0 sentinel writes +14 only, then +48(-1).
+        wr(motor,0x14,out.yaw);out.motor_written=1;
+        if(!b.step_turn(b.context,motor,-1))return 0;
+        out.stepped=1;
+    }
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+    if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
+    return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
+}
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingResult* facing_out=nullptr,const ServerNpcSharedTargetAnimationBindings* target=nullptr,ServerNpcSharedTargetAnimationResult* target_out=nullptr) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -113,6 +148,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
     if(t->id==60&&facing&&facing_out){out->native=1;return face60(a,n,running,now,*b,*facing,*facing_out);}
+    if(running&&t->id>=94&&t->id<=96&&target&&target_out){out->native=1;return target_animation(a,n,t->id,now,*b,*target,*target_out);}
     if(!supports(t->id,running)){out->parent_called=1;return b->parent&&b->parent(b->context,a,t,running);}
     out->native=1;
     const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));if(!life)return 0;
@@ -178,6 +214,12 @@ int __cdecl execute_facing(void* a,unsigned n,const ServerNpcScheduleTask* t,boo
     if(!t||t->id!=60||!f)return 0;
     return execute_impl(a,n,t,running,now,b,&out->shared,f,out);
 }
+int __cdecl execute_target_animation(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!t||t->id<94||t->id>96||!target)return 0;
+    return execute_impl(a,n,t,true,now,b,&out->shared,nullptr,nullptr,target,out);
+}
+const ServerNpcSharedTargetAnimationApi target_animation_api{1,sizeof(ServerNpcSharedTargetAnimationApi),&execute_target_animation};
 const ServerNpcSharedFacingApi facing_api{1,sizeof(ServerNpcSharedFacingApi),&yaw_error,&execute_facing};
 const ServerNpcSharedTaskApi api{1,sizeof(ServerNpcSharedTaskApi),&wait,&cancel_wait,&wait_state,&supports,&execute};
  }
@@ -255,4 +297,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedFacingApi=_SiN_GetServerNpcSharedFacingApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedFacingApi* __cdecl SiN_GetServerNpcSharedFacingApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedFacingApi)?&facing_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedTargetAnimationApi=_SiN_GetServerNpcSharedTargetAnimationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedTargetAnimationApi* __cdecl SiN_GetServerNpcSharedTargetAnimationApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedTargetAnimationApi)?&target_animation_api:nullptr;
 }

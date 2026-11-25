@@ -12,7 +12,8 @@
 using namespace sin_port::native_weapon_tables;
 struct F {
     unsigned char a[0xc34]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
-    unsigned char motor[0x18]{};
+    unsigned char motor[0x1c]{},target[4]{};
+    bool target_present=true;float target_pos[3]{};
     bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
     float motor_yaw() const {float y=0;std::memcpy(&y,motor+0x14,4);return y;}
     template<class T>void put(void* p,unsigned o,T v){std::memcpy(static_cast<unsigned char*>(p)+o,&v,sizeof(v));}
@@ -122,5 +123,30 @@ int main(int argc,char** argv){
     f.put(f.a,0xc18,0u);f.put(f.a,0x908,0u);
     assert(!face->execute(f.a,sizeof(f.a),&ft,true,12,&b,&fb,&fr));
     run(60,false,0,12);assert(o.parent_called&&!o.native);
+    auto gt=reinterpret_cast<GetServerNpcSharedTargetAnimationApi>(GetProcAddress(s,server_npc_shared_target_animation_export));
+    assert(gt&&!GetProcAddress(c,server_npc_shared_target_animation_export)&&!gt(0,sizeof(ServerNpcSharedTargetAnimationApi))&&!gt(1,0));
+    const auto* target_api=gt(1,sizeof(ServerNpcSharedTargetAnimationApi));assert(target_api);
+    sin_independent::EntityHandleEntry slots[2]{};slots[1].serial=7;slots[1].entity=reinterpret_cast<CBaseEntity*>(f.target);
+    ServerNpcSharedTargetAnimationBindings tb{};tb.context=&f;tb.entries=slots;tb.count=2;tb.motor_storage=fb.motor_storage;tb.step_turn=fb.step_turn;
+    tb.current_target=[](void* p,void*,void** out) noexcept -> int{auto& f=F::self(p);f.trace.push_back(20);*out=f.target_present?f.target:nullptr;return 1;};
+    tb.absolute_position=[](void* p,void* target,float* out) noexcept -> int{auto& f=F::self(p);assert(target==f.target);f.trace.push_back(21);std::memcpy(out,f.target_pos,12);return 1;};
+    f.put(f.a,0x908,88u);f.put(f.a,0x8a8,0x7001u);f.put(f.a,0x360,1.f);f.put(f.a,0x364,2.f);f.put(f.a,0x368,3.f);
+    f.put(f.motor,0x18,123.f);f.target_pos[0]=1;f.target_pos[1]=-5;f.target_pos[2]=30;f.a[0x3e0]=0;
+    ServerNpcSharedTargetAnimationResult tr{};
+    auto anim=[&](int id){f.put(f.a,0x7a4,1);f.trace.clear();ServerNpcScheduleTask at{id,0};assert(target_api->execute(f.a,sizeof(f.a),&at,12,&b,&tb,&tr));};
+    anim(94);assert(tr.shared.native&&tr.target_live&&tr.motor_written&&tr.stepped&&!tr.animation_finished&&tr.direction[0]==0&&tr.direction[1]==-7&&tr.direction[2]==27&&tr.yaw==270&&f.motor_yaw()==270&&(f.trace==std::vector<int>{20,21,15}));
+    f.a[0x3e0]=1;f.target_pos[0]=2;f.target_pos[1]=2;anim(95);
+    assert(tr.animation_finished&&tr.shared.lifecycle.completed&&tr.yaw==0&&(f.trace==std::vector<int>{20,21,15}));
+    float unchanged=0;std::memcpy(&unchanged,f.motor+0x18,4);assert(unchanged==123.f);
+    f.target_pos[0]=1;f.target_pos[1]=3;anim(96);assert(tr.target_handle==0x7001u&&tr.yaw==90&&tr.shared.lifecycle.completed&&(f.trace==std::vector<int>{21,15}));
+    f.put(f.a,0x8a8,0x8001u);anim(96);assert(!tr.target_live&&!tr.motor_written&&!tr.stepped&&tr.shared.lifecycle.completed&&f.trace.empty());
+    f.target_present=false;anim(95);assert(!tr.target_live&&tr.shared.lifecycle.completed&&f.trace==std::vector<int>{20});
+    f.a[0x3e0]=0;anim(95);assert(!tr.shared.lifecycle.completed);
+    f.target_present=true;f.put(f.a,0xc18,77u);f.component_handles=true;anim(95);
+    assert(tr.shared.component_handled&&!tr.shared.native&&f.trace==std::vector<int>{2});
+    f.component_handles=false;anim(95);assert(tr.shared.component_called&&tr.shared.native&&(f.trace==std::vector<int>{2,20,21,15}));
+    f.put(f.a,0xc18,0u);f.put(f.a,0x908,99u);ServerNpcScheduleTask bad{95,0};
+    assert(!target_api->execute(f.a,sizeof(f.a),&bad,12,&b,&tb,&tr));
+    run(95,true,0,12);assert(o.parent_called&&!o.native);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
