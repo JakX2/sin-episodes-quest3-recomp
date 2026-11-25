@@ -1104,6 +1104,20 @@ struct ResponseCriteriaTreeApi {
     int (__cdecl *destroy)(void*,unsigned,const ResponseCriteriaTreeBindings*) noexcept;
 };
 using GetResponseCriteriaTreeApi=const ResponseCriteriaTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_criteria_removal_export[]="SiN_GetResponseCriteriaRemovalApi";
+struct ResponseCriteriaRemovalBindings {
+    ResponseCriteriaTreeBindings tree;
+    // Safe ownership boundary: detach child from root, then destroy exactly
+    // that child. Failure must leave root ownership valid.
+    int (__cdecl *retire_child)(void*,void* root,void* child) noexcept; // tree.context
+};
+struct ResponseCriteriaRemovalApi {
+    std::uint32_t version,size;
+    // 2205d990/2205d6b0: missing key succeeds, unique row unlinked;
+    // reject shared child aliases before mutation to avoid dangling records.
+    int (__cdecl *remove)(void*,unsigned,const ResponseCriteriaRemovalBindings*,const char*) noexcept;
+};
+using GetResponseCriteriaRemovalApi=const ResponseCriteriaRemovalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char npc_response_criteria_export[]="SiN_GetNpcResponseCriteriaApi";
 struct NpcResponseCriteriaBindings {
     void* context;
