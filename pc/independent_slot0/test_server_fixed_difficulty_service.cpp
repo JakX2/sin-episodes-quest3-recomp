@@ -2662,13 +2662,16 @@ int main(int argc,char** argv){
         const auto getSceneIndex=reinterpret_cast<n::GetSceneMetadataIndexApi>(GetProcAddress(lib,n::scene_metadata_index_export));
         const auto getSceneServices=reinterpret_cast<n::GetSceneResponseServicesApi>(GetProcAddress(lib,n::scene_response_services_export));
         const auto getSceneFilter=reinterpret_cast<n::GetResponseSceneFilterApi>(GetProcAddress(lib,n::response_scene_filter_export));
-        assert(getSceneIndex&&getSceneServices&&getSceneFilter);
+        const auto getRawEnsure=reinterpret_cast<n::GetSceneRawCacheEnsureApi>(GetProcAddress(lib,n::scene_raw_cache_ensure_export));
+        assert(getSceneIndex&&getSceneServices&&getSceneFilter&&getRawEnsure);
+        const auto* rawEnsure=getRawEnsure(1,sizeof(n::SceneRawCacheEnsureApi));
+        assert(rawEnsure&&!getRawEnsure(0,sizeof(n::SceneRawCacheEnsureApi))&&!getRawEnsure(1,0));
         const auto* sceneIndex=getSceneIndex(1,sizeof(n::SceneMetadataIndexApi));
         const auto* sceneServices=getSceneServices(1,sizeof(n::SceneResponseServicesApi));
         const auto* sceneFilter=getSceneFilter(1,sizeof(n::ResponseSceneFilterApi));
         assert(sceneIndex&&sceneServices&&sceneFilter);
         const char* privateScripts=std::getenv("SIN_PRIVATE_SCRIPTS_DIR");
-        sin_port::map_host::test::check_loaded_script_registry_bsp(*m,*j,*c,*s,*a,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,*scriptFinder,*sceneIndex,*sceneServices,*sceneFilter,privateScripts);
+        sin_port::map_host::test::check_loaded_script_registry_bsp(*m,*j,*c,*s,*a,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,*scriptFinder,*sceneIndex,*sceneServices,*sceneFilter,*rawEnsure,privateScripts);
         std::puts("PASS BSP NPCs share loaded native scene metadata index and admission filter");
         std::puts(privateScripts&&*privateScripts?"PASS owner retail registry loaded by DLL and shared by BSP NPCs":"PASS loaded DLL map-owned script registry and include lifecycle");
         std::puts("PASS native integrated choreography NPC map observation routing and rejection");

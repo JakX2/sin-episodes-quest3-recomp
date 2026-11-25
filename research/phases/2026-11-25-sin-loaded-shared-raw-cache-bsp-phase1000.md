@@ -1,0 +1,3 @@
+# Phase 1000: loaded raw scene owner through BSP NPC map routes
+
+Extend the real loaded DLL registry/BSP host regression to share both persistent scene metadata and RawSceneCacheOwner. Jessica and Count each pass through the map host's synchronous generated/named table adapter and use native raw cache ensure plus host lock/unlock against the same canonical VCD. Verify exactly one source read, stable resident resource across registry close/reopen, no mutation of the shell table, and explicit unbind before clear. Raw text is synthetic; the map observer checks the cache seam rather than executing audio or reconstructing engine factory shells. Load the raw ensure API from the same server module and validate version/size rejection. CI pending.
