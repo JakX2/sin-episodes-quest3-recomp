@@ -54,8 +54,8 @@ int __cdecl supports(int id,bool running) noexcept{
         float value=0;
         return running||fixed_shoot_metric(value);
     }
-    if(running)return id==2||id==4||id==5||id==86||id==92||id==93||id==114;
-    return id==1||id==2||id==3||id==4||id==5||id==59||id==86||id==87||id==88||id==91||(id>=92&&id<=96)||id==114||id==119||id==120;
+    if(running)return id==2||id==4||id==5||id==86||id==92||id==93||id==114||id==115||id==128;
+    return (id>=1&&id<=7)||id==13||id==59||id==86||id==87||id==88||id==91||(id>=92&&id<=97)||id==113||id==114||id==115||id==119||id==120||id==128||id==131;
 }
 bool quantize_yaw(double value,float& out) noexcept{
     int fixed=0;
@@ -375,6 +375,8 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         return b->pending&&b->pending(b->context,a,id);
     };
     if(running){
+        if(t->id==115)return 1;
+        if(t->id==128){unsigned yes=0;if(!life->animation_finished(a,n,&yes))return 0;return !yes||complete();}
         if(t->id==86)return rd<int>(a,0x3ec)!=rd<int>(a,0x884)||complete();
         if(t->id==92||t->id==93){
             out->turn_called=1;if(!b->turn||!b->turn(b->context,a))return 0;
@@ -390,6 +392,9 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
     }
     if(t->id==1){wr(a,0x878,0);return complete();}
     if(t->id==3)return complete();
+    if(t->id==6||t->id==13||t->id==97||t->id==113||t->id==115)return 1;
+    if(t->id==128)return pending(70);
+    if(t->id==131){if(!wait(a,n,now,4.f,0.f,b,&out->ticks))return 0;out->timer_written=1;return 1;}
     if(t->id==91){wr(a,0x7bc,0);return complete();}
     if(t->id==2||t->id==4||t->id==5||t->id==59||t->id==114){
         const bool random=t->id==5||t->id==114;
@@ -398,6 +403,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
     }
     int value=0;if(!integer(std::trunc(static_cast<double>(t->parameter)),value))return 0;
     switch(t->id){
+    case 7:if(rd<int>(a,0x858)!=value)wr(a,0x858,value);return complete();
     case 86:if(!value){wr(a,0x878,0);return 1;}return pending(value);
     case 92:case 93:case 94:case 95:case 96:return pending(value);
     case 88:wr(a,0x7bc,value);return complete();

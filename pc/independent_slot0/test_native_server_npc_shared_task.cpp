@@ -255,5 +255,21 @@ int main(int argc,char** argv){
     }
     assert(diff->end_campaign()&&!api->supports(138,false));
     run(138,false,.3f,22);assert(o.parent_called&&!o.native);
+    // No-op start entries deliberately do NOT complete the task.
+    for(int id:{6,13,97,113,115}){
+        f.put(f.a,0x9dc,81.f);run(id,false,123,30);
+        assert(o.native&&!o.lifecycle.completed&&f.get<int>(0x7a4)==1&&f.get<float>(0x9dc)==81.f&&f.trace.empty());
+    }
+    run(115,true,123,30);assert(o.native&&!o.lifecycle.completed&&f.trace.empty());
+    run(7,false,3.9f,30);assert(o.native&&o.lifecycle.completed&&f.get<int>(0x858)==3);
+    run(7,false,3,30);assert(o.lifecycle.completed&&f.get<int>(0x858)==3);
+    run(7,false,-2.9f,30);assert(o.lifecycle.completed&&f.get<int>(0x858)==-2);
+    run(128,false,999,30);assert(o.native&&o.activity==70&&!o.lifecycle.completed&&f.trace==std::vector<int>{70});
+    f.a[0x3e0]=0;run(128,true,0,30);assert(!o.lifecycle.completed&&f.trace.empty());
+    f.a[0x3e0]=1;run(128,true,0,30);assert(o.lifecycle.completed&&f.trace.empty());
+    run(131,false,123,30);assert(o.native&&o.ticks==40&&o.timer_written&&f.get<float>(0x9dc)==34.f&&!o.lifecycle.completed);
+    run(131,true,0,30);assert(o.parent_called&&!o.native);
+    f.put(f.a,0xc18,77u);f.component_handles=true;run(6,false,0,30);assert(o.component_handled&&!o.native);
+    f.component_handles=false;run(6,false,0,30);assert(o.component_called&&o.native&&!o.lifecycle.completed);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
