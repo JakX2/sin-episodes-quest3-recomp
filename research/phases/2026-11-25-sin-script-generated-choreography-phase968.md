@@ -1,0 +1,3 @@
+# Phase 968: script-selected generated choreography
+
+Loaded regression connects native script actor selection and speech dispatch to the previously reconstructed generated choreography path. Uses Jessica-sized actor storage and native scene allocation/startup, actor resolver, speech preparation, simulation, caption dispatch and nine-step native scene retirement. Reject mismatched manager before allocation, verify unmatched criteria do not create scenes, then verify successful selection bypasses legacy audio callbacks. Release response/criteria and registry before tick to verify scene-owned sound storage. Host audio, allocator and time leaves remain synthetic; this is generated speech, not named retail VCD playback. CI pending.

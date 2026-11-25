@@ -1291,7 +1291,9 @@ int main(int argc,char** argv){
         const auto* scriptMap=getScriptMap(1,sizeof(tables::ScriptNpcMapDialogueApi));
         assert(scriptMap&&!getScriptMap(0,sizeof(tables::ScriptNpcMapDialogueApi))&&!getScriptMap(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria,scriptActor,scriptSpeech,scriptMap,responseTimingUpdate,responseRecord,std::getenv("SIN_PRIVATE_SCRIPTS_DIR"),historyTree,expeditorLifecycle);
+        tables::test::ScriptChoreographyTestApis scriptChoreography{*sceneSpeechCallback,*nativeGeneratedLifecycle,*sceneFinish,*sceneManagerTick,*sceneAdvance,*sceneEntityLifecycle,*resolvedSceneActor,*sceneSpeechPreparation,*nativeSceneRetirement};
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria,scriptActor,scriptSpeech,scriptMap,responseTimingUpdate,responseRecord,std::getenv("SIN_PRIVATE_SCRIPTS_DIR"),historyTree,expeditorLifecycle,&scriptChoreography);
+        std::puts("PASS script-selected generated choreography through speech, captions and native retirement");
         std::puts("PASS script-backed Count map observation and active behavior routing");
         std::puts("PASS script-backed Jessica cooldown, semaphore, selection and retirement");
         std::puts("PASS shared registry across distinct NPC expeditors and reset on reopen");
