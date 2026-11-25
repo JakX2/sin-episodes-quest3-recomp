@@ -343,6 +343,15 @@ int __cdecl unreachable_enemy(void* actor,unsigned bytes,void* target,float now,
     }
     return 1;
 }
+int __cdecl query_best_enemy(void* context,void* actor,std::uint32_t component,void** result) noexcept{
+    if(!result)return 0;*result=nullptr;
+    if(!context)return 0;
+    auto& q=*static_cast<ServerNpcBestEnemyQueryContext*>(context);q.last={};
+    if(!actor||q.actor_bytes<0xc1c||component!=read<unsigned>(actor,0xc18))return 0;
+    if(!best_enemy(actor,q.actor_bytes,q.now,q.bindings,&q.last))return 0;
+    *result=q.last.enemy;return 1;
+}
+const ServerNpcBestEnemyQueryApi best_query_api{1,sizeof(ServerNpcBestEnemyQueryApi),&query_best_enemy};
 const ServerNpcUnreachableEnemyApi unreachable_api{1,sizeof(ServerNpcUnreachableEnemyApi),&unreachable_enemy};
 const ServerNpcBestEnemyApi best_enemy_api{1,sizeof(ServerNpcBestEnemyApi),&best_enemy};
 const ServerNpcEnemyMemoryQueryApi query_api{1,sizeof(ServerNpcEnemyMemoryQueryApi),&query_last_seen,&query_aim_vector};
@@ -386,4 +395,10 @@ SiN_GetServerNpcBestEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcUnreachableEnemyApi* __cdecl
 SiN_GetServerNpcUnreachableEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcUnreachableEnemyApi)?&unreachable_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcBestEnemyQueryApi=_SiN_GetServerNpcBestEnemyQueryApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcBestEnemyQueryApi* __cdecl
+SiN_GetServerNpcBestEnemyQueryApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcBestEnemyQueryApi)?&best_query_api:nullptr;
 }

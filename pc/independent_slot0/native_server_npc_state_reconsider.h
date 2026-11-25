@@ -136,4 +136,17 @@ struct ServerNpcUnreachableEnemyApi {
     int (__cdecl *query)(void*,unsigned,void*,float,const ServerNpcUnreachableEnemyBindings*,ServerNpcUnreachableEnemyResult*) noexcept;
 };
 using GetServerNpcUnreachableEnemyApi=const ServerNpcUnreachableEnemyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_best_enemy_query_export[]="SiN_GetServerNpcBestEnemyQueryApi";
+struct ServerNpcBestEnemyQueryContext {
+    const ServerNpcBestEnemyBindings* bindings;
+    unsigned actor_bytes;
+    float now;
+    ServerNpcBestEnemyResult last;
+};
+struct ServerNpcBestEnemyQueryApi {
+    std::uint32_t version,size;
+    // Callback-compatible with Task135 select_enemy; context is per invocation.
+    int (__cdecl *select)(void*,void*,std::uint32_t,void**) noexcept;
+};
+using GetServerNpcBestEnemyQueryApi=const ServerNpcBestEnemyQueryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
