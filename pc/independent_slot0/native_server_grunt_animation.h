@@ -1,6 +1,7 @@
 #pragma once
 #include "native_server_animation_events.h"
 #include "native_server_activity_dictionary.h"
+#include "native_server_weapon_event_route.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_grunt_animation_export[]="SiN_GetServerGruntAnimationApi";
 struct ServerGruntAnimationBindings {
@@ -83,4 +84,18 @@ struct ServerJetpackActivityApi {
     int (__cdecl *translate)(void*,unsigned,int,const ServerGruntRegistration*,const ServerJetpackActivityBindings*,ServerJetpackActivityResult*) noexcept;
 };
 using GetServerJetpackActivityApi=const ServerJetpackActivityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_grunt_native_weapon_event_export[]="SiN_GetServerGruntNativeWeaponEventApi";
+struct ServerGruntNativeWeaponEventResult {
+    ServerGruntAnimationResult grunt;
+    ServerWeaponEventRouteResult altfire;
+    ServerNpcParentWeaponEventResult parent;
+    unsigned native_altfire,native_parent;
+};
+struct ServerGruntNativeWeaponEventApi {
+    std::uint32_t version,size;
+    // Retains original Grunt dispatch precedence; altfire and legacy parent
+    // weapon routes use checked native services, no void weapon-event shim.
+    int (__cdecl *handle)(void*,unsigned,const ServerAnimationEvent*,float,const ServerGruntRegistration*,const ServerGruntAnimationBindings*,const ServerNpcParentWeaponEventBindings*,ServerGruntNativeWeaponEventResult*) noexcept;
+};
+using GetServerGruntNativeWeaponEventApi=const ServerGruntNativeWeaponEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
