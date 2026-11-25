@@ -65,6 +65,21 @@ int main(int argc,char** argv){
     run(92,false,45,11);assert(o.activity==45);run(92,true,0,11);assert(!o.lifecycle.completed&&f.trace==std::vector<int>{7});
     f.a[0x3e0]=1;run(92,true,0,11);assert(o.lifecycle.completed);
     run(95,false,54,11);assert(o.activity==54);
+    // Retail immediate state handlers do not read the task parameter.
+    f.put(f.a,0x878,45);f.put(f.a,0x7bc,49);f.put(f.a,0x988,0xf3u);
+    run(1,false,123,11);assert(o.native&&o.lifecycle.completed&&!f.get<int>(0x878)&&f.get<int>(0x7bc)==49);
+    run(3,false,2,11);assert(o.native&&o.lifecycle.completed&&f.get<int>(0x7bc)==49);
+    run(91,false,999,11);assert(o.native&&o.lifecycle.completed&&!f.get<int>(0x7bc));
+    run(120,false,3.9f,11);assert(o.native&&o.lifecycle.completed&&f.get<unsigned>(0x988)==0xf0u);
+    run(120,false,0,11);assert(f.get<unsigned>(0x988)==0xf0u);
+    run(120,false,-1,11);assert(!f.get<unsigned>(0x988));
+    run(59,false,.13f,11);assert(o.native&&o.timer_written&&o.ticks==2&&f.get<float>(0x9dc)==11.2f);
+    run(59,true,0,11);assert(o.parent_called&&!o.native&&f.trace==std::vector<int>{4});
+    for(int id=93;id<=96;++id){run(id,false,54.9f,11);assert(o.native&&o.activity==54&&f.trace==std::vector<int>{54});}
+    f.a[0x3e0]=0;run(93,true,0,11);assert(o.native&&o.turn_called&&!o.lifecycle.completed&&f.trace==std::vector<int>{7});
+    f.a[0x3e0]=1;run(93,true,0,11);assert(o.lifecycle.completed&&f.trace==std::vector<int>{7});
+    for(int id=94;id<=96;++id){run(id,true,0,11);assert(o.parent_called&&!o.native&&f.trace==std::vector<int>{4});}
+    assert(api->supports(3,false)&&!api->supports(3,true)&&api->supports(93,true));
     ServerNpcScheduleTask small{88,50};assert(api->execute(f.a,0xc1c,&small,false,11,&b,&o)&&o.lifecycle.completed);
     ServerNpcScheduleTask replace{87,25};assert(!api->execute(f.a,0xc1c,&replace,false,11,&b,&o)&&!o.schedule_set);
     run(87,false,25,11);assert(o.schedule_set&&f.get<int>(0x79c)==global+125&&f.get<unsigned>(0x798)==1&&o.lifecycle.completed);
