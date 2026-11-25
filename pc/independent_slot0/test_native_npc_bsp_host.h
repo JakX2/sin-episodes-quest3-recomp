@@ -1,6 +1,7 @@
 #pragma once
 #include "server_native_npc_map_host.h"
 #include "server_scene_cache_owner.h"
+#include "server_raw_scene_cache_owner.h"
 #include "native_use_observation.h"
 #include "native_npc_spawn.h"
 #include "test_retail_dialogue_source.h"
@@ -613,12 +614,12 @@ inline void check_loaded_script_registry_bsp(const npc::NpcMapApi& api,const npc
     const npc::TalkManagerApi& ma,const npc::TalkManagerRuntimeApi& mr,const npc::TalkCatalogApi& cat,
     const std::vector<std::uint8_t>& bsp,const npc::ScriptResponseFinderApi& finder,
     const npc::SceneMetadataIndexApi& scene_index,const npc::SceneResponseServicesApi& scene_services,
-    const npc::ResponseSceneFilterApi& scene_filter,const char* private_dir=nullptr){
+    const npc::ResponseSceneFilterApi& scene_filter,const npc::SceneRawCacheEnsureApi& raw_ensure,const char* private_dir=nullptr){
     NpcBspShell shell(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);
     shell.script_speech.context=&shell;shell.observed_filter_api=&scene_filter;
     struct CacheFixture {
         NpcBspShell& shell;
-        unsigned stamps=0,refreshes=0,owners=0;
+        unsigned stamps=0,refreshes=0,owners=0,raw_reads=0;
         static CacheFixture& get(void* p){return *static_cast<CacheFixture*>(p);}
     } cache{shell};
     SceneCacheOwner::Leaves leaves{};leaves.metadata_vtable=0x12345678;auto& h=leaves.external;h.context=&cache;
@@ -639,6 +640,14 @@ inline void check_loaded_script_registry_bsp(const npc::NpcMapApi& api,const npc
         ++f.refreshes;float duration=3.f;std::memcpy(static_cast<unsigned char*>(metadata)+4,&duration,4);return 1;};
     SceneCacheOwner owner(scene_index,leaves);npc::ResponseSceneFilterBindings shared{};
     assert(owner.ready()&&scene_services.adapt(&owner.bindings(),&shared)==1);
+    RawSceneCacheOwner raw_owner(raw_ensure,{&cache,[](void* p,const char* path,std::string& data,bool& found) noexcept -> int{
+        auto& f=CacheFixture::get(p);++f.raw_reads;
+        found=!std::strcmp(path,"scenes\\fixture.vcd");
+        try{data=found?"event speak fixture { time 0 3 param fixture_line }":"";return 1;}
+        catch(...){return 0;}
+    }});
+    npc::NativeNamedPlaybackBindings named{};npc::NativeVcdRuntimeBindings raw{};
+    shell.generated_scene.named=&named;shell.generated_scene.named_vcd=&raw;shell.script_speech.generated=&shell.generated_scene;
     // Route observer intentionally does not execute speech. The registry
     // itself is constructed and destroyed by the actual loaded DLL.
     npc::ScriptNpcMapDialogueApi probe{npc::version,sizeof(npc::ScriptNpcMapDialogueApi)};
@@ -656,10 +665,17 @@ inline void check_loaded_script_registry_bsp(const npc::NpcMapApi& api,const npc
         unsigned allowed=99;auto* exp=kind==npc::NpcMapKind::Jessica?f.jessica_expeditor:f.expeditor;
         assert(f.observed_filter_api&&f.observed_filter_api->allow(exp,sizeof(f.expeditor),&speech->selection.finder.host.scene_filter,
             3,"scenes/fixture.vcd",&allowed)==1&&allowed==1);
+        assert(speech->generated&&speech->generated->named&&speech->generated->named_vcd==f.generated_scene.named_vcd);
+        const auto& cache=speech->generated->named->precache.load.cache;
+        const void* bytes=nullptr;unsigned n=0;std::uint32_t handle=0;
+        assert(cache.ensure(cache.context,"Scenes/Fixture.vcd")&&cache.find(cache.context,"scenes/fixture.vcd",&handle)&&handle!=0xffffffffu);
+        assert(cache.lock(cache.context,handle,&bytes,&n)&&bytes&&n==sizeof("event speak fixture { time 0 3 param fixture_line }")-1&&
+               !std::memcmp(bytes,"event speak fixture { time 0 3 param fixture_line }",n)&&cache.unlock(cache.context,handle));
+        assert(!f.generated_scene.named->precache.load.cache.ensure);
         ++f.script_calls;return 1;
     };
     NativeNpcMapHost host(shell,shell,api,shell.session,&interaction,&dialogue,&managed,nullptr,nullptr,&probe,&finder);
-    shell.host=&host;assert(host.bind_script_scene_filter(shared));
+    shell.host=&host;assert(host.bind_script_scene_filter(shared)&&host.bind_script_raw_scene_cache(raw_owner.bindings()));
     const char root[]=R"(criterion idle concept TLK_IDLE required
 #include "talker/fixture.txt"
 rule idle_rule
@@ -694,7 +710,8 @@ rule idle_rule
     assert(host.observe(je,observation,sizeof(observation))==NpcMapResult::Applied);
     assert(host.observe(co,observation,sizeof(observation))==NpcMapResult::Applied&&shell.script_calls==2);
     assert(cache.owners==2&&cache.refreshes==1&&cache.stamps==1&&owner.size()==1);
-    assert(host.close_script_session()==0&&host.script_session_open()&&!host.unbind_script_scene_filter());
+    assert(cache.raw_reads==1&&raw_owner.size()==1&&raw_owner.resident_bytes()>0);
+    assert(host.close_script_session()==0&&host.script_session_open()&&!host.unbind_script_scene_filter()&&!host.unbind_script_raw_scene_cache());
     assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded);
     assert(host.close_script_session()==1&&!host.script_session_open());
     assert(ma.destroy(&shell.manager_session,&shell.manager_control,&shell.manager_tables,&shell.manager.manager)==1);
@@ -706,5 +723,7 @@ rule idle_rule
     };
     assert(host.open_script_session(root,sizeof(root)-1,&synthetic)==1&&host.close_script_session()==1);
     assert(owner.size()==1&&host.unbind_script_scene_filter()&&owner.clear()&&!owner.size());
+    assert(cache.raw_reads==1&&raw_owner.size()==1&&host.unbind_script_raw_scene_cache()&&raw_owner.clear()&&!raw_owner.size());
+    std::puts("PASS loaded shared metadata and raw VCD resource owners across BSP NPC routes");
 }
 }
