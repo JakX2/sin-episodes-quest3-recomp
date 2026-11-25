@@ -2,6 +2,7 @@
 #include "native_server_npc_schedule_resolution.h"
 #include "native_server_npc_schedule_validity.h"
 #include "native_server_npc_weapon_runtime.h"
+#include "native_server_grunt_task_dispatch.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_schedule_maintenance_export[]="SiN_GetServerNpcScheduleMaintenanceApi";
 struct ServerNpcScheduleMaintenanceBindings {
@@ -38,4 +39,20 @@ struct ServerNpcScheduleMaintenanceApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerNpcScheduleMaintenanceBindings*,ServerNpcScheduleMaintenanceResult*) noexcept;
 };
 using GetServerNpcScheduleMaintenanceApi=const ServerNpcScheduleMaintenanceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_grunt_scheduler_export[]="SiN_GetServerGruntSchedulerApi";
+struct ServerGruntSchedulerBindings {
+    ServerNpcScheduleMaintenanceBindings maintenance;
+    ServerGruntTaskBindings tasks;
+};
+struct ServerGruntSchedulerResult {
+    ServerNpcScheduleMaintenanceResult maintenance;
+    ServerGruntTaskResult last;
+    unsigned native_tasks,parent_tasks,special_tasks,task_failures;
+};
+struct ServerGruntSchedulerApi {
+    std::uint32_t version,size;
+    // Base ground Grunt only; custom subclass overrides remain explicit.
+    int (__cdecl *run)(void*,unsigned,float,const ServerGruntSchedulerBindings*,ServerGruntSchedulerResult*) noexcept;
+};
+using GetServerGruntSchedulerApi=const ServerGruntSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
