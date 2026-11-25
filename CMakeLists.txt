@@ -6333,6 +6333,15 @@ if(BUILD_TESTING)
   add_test(NAME sin_response_script_registry_tests COMMAND sin_response_script_registry_tests)
 endif()
 
+if(BUILD_TESTING)
+  add_executable(sin_scene_cache_codec_tests tests/test_scene_cache_codec.cpp)
+  target_compile_features(sin_scene_cache_codec_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_scene_cache_codec_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  add_test(NAME sin_scene_cache_codec_tests COMMAND sin_scene_cache_codec_tests)
+endif()
+
 # Optional owner-only retail corpus regression. No proprietary scripts in Git.
 set(SIN_PRIVATE_SCRIPTS_DIR "" CACHE PATH "Owner-provided SiN scripts directory")
 if(BUILD_TESTING)
