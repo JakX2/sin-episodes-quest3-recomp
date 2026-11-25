@@ -1,6 +1,7 @@
 #pragma once
 #include "native_jessica_script.h"
 #include "native_npc_dialogue.h"
+#include "server_scene_cache_owner.h"
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
@@ -312,6 +313,52 @@ inline void check_response_native_modifiers(const ResponseNativeModifierApi& api
 
 
 
+
+
+inline void check_persistent_scene_cache_owner(const SceneMetadataIndexApi& index,const SceneResponseServicesApi& services,const ResponseSceneFilterApi& filter){
+    using Owner=sin_port::map_host::SceneCacheOwner;
+    struct Fixture {
+        int npc=0;std::uint32_t stamps[2]{5,7};
+        unsigned queries[2]{},refreshes[2]{},releases=0;
+        bool fail_release=false;
+        static Fixture& get(void* p){return *static_cast<Fixture*>(p);}
+        static unsigned id(const char* n){return !std::strcmp(n,"a.vcd")||!std::strcmp(n,"A.VCD")?0u:!std::strcmp(n,"b.vcd")?1u:2u;}
+        static std::uint32_t word(const void* p,unsigned o){std::uint32_t w;std::memcpy(&w,static_cast<const unsigned char*>(p)+o,4);return w;}
+        static void put(void* p,unsigned o,std::uint32_t w){std::memcpy(static_cast<unsigned char*>(p)+o,&w,4);}
+    } f;
+    Owner::Leaves leaves{};leaves.metadata_vtable=0x12345678;auto& b=leaves.external;b.context=&f;
+    leaves.filename=[](void*,const char* path,std::uint32_t* out) noexcept -> int{const auto i=Fixture::id(path);if(i>1)return 0;*out=100+i;return 1;};
+    leaves.release_vector=[](void* p,std::uint32_t word) noexcept -> int{
+        auto& f=Fixture::get(p);assert(word==1000||word==1001);if(f.fail_release)return 0;++f.releases;return 1;};
+    b.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(word==static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&f.npc)));*out=&f.npc;*n=sizeof(f.npc);return 1;};
+    b.model_name=[](void*,void*,const char** out) noexcept -> int{*out=nullptr;return 1;};
+    b.expand=[](void*,const char*,const char* name,char* out,unsigned n) noexcept -> int{
+        if(std::strlen(name)>=n)return 0;std::strcpy(out,name);return 1;};
+    b.stamp=[](void* p,const char* path,unsigned mode,std::uint32_t* out) noexcept -> int{
+        auto& f=Fixture::get(p);const auto i=Fixture::id(path);assert(i<2&&mode==1);++f.queries[i];*out=f.stamps[i];return 1;};
+    b.refresh=[](void* p,void* metadata,const char* path) noexcept -> int{
+        auto& f=Fixture::get(p);const auto i=Fixture::id(path);assert(i<2&&Fixture::word(metadata,0)==0x12345678);++f.refreshes[i];
+        const float duration=i?0.f:float(f.stamps[0]);std::memcpy(static_cast<unsigned char*>(metadata)+4,&duration,4);
+        Fixture::put(metadata,8,1000+i);return 1;};
+    Owner owner(index,leaves);assert(owner.ready()&&!owner.size()&&!owner.dirty());
+    ResponseSceneFilterBindings filter_bindings{};assert(services.adapt(&owner.bindings(),&filter_bindings)==1);
+    alignas(4) unsigned char exp[0x7c]{};
+    Fixture::put(exp,4,static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&f.npc)));
+    unsigned allowed=99;
+    auto run=[&](const char* name){return filter.allow(exp,sizeof(exp),&filter_bindings,3,name,&allowed);};
+    assert(run("a.vcd")==1&&allowed&&owner.size()==1&&owner.dirty());
+    void* first=nullptr;unsigned bytes=0;assert(services.metadata(const_cast<SceneResponseServicesBindings*>(&owner.bindings()),"a.vcd",&first,&bytes)==1&&first&&bytes==0x1c);
+    assert(run("b.vcd")==1&&!allowed&&owner.size()==2&&f.refreshes[0]==1&&f.refreshes[1]==1);
+    void* again=nullptr;assert(services.metadata(const_cast<SceneResponseServicesBindings*>(&owner.bindings()),"A.VCD",&again,&bytes)==1&&again==first);
+    assert(f.queries[0]==1&&f.queries[1]==1&&f.refreshes[0]==1&&f.refreshes[1]==1);
+    f.stamps[0]=9;assert(owner.invalidate("A.VCD")&&run("a.vcd")==1&&allowed&&f.refreshes[0]==2&&f.refreshes[1]==1);
+    assert(run("b.vcd")==1&&!allowed&&f.queries[1]==1&&!owner.invalidate("absent.vcd"));
+    f.fail_release=true;assert(!owner.clear()&&!owner.ready()&&run("a.vcd")==-1);
+    f.fail_release=false;assert(owner.clear()&&owner.ready()&&!owner.size()&&!owner.dirty()&&f.releases==2);
+    assert(run("b.vcd")==1&&!allowed&&owner.size()==1&&f.refreshes[1]==2);
+    assert(owner.clear()&&f.releases==3&&owner.clear());
+}
 
 inline void check_scene_metadata_index(const SceneMetadataIndexApi& api){
     struct Fixture {
