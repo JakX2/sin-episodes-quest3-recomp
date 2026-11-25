@@ -741,6 +741,46 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
     assert(a.retire.symbol_destroy(&a,f.exp+0x34)&&a.release(&a,F::word(f.exp,0x14))&&a.live.empty());
 }
 
+
+inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api){
+    using F=ScenePlaybackFixture;
+    struct State {
+        struct Child{char name[32]{},value[64]{};float weight=0;} children[8]{};
+        int root=0;unsigned count=0,created=0,destroyed=0;
+        static State& self(void* p){return *static_cast<State*>(p);}
+    } f;
+    ResponseCriteriaTreeBindings b{};b.memory=a.vector_bindings;b.symbols=a.intern_bindings;
+    b.symbol_retire.context=&a;b.symbol_retire.sentinel=&a.symbol_sentinel;b.symbol_retire.storage=&VcdAuditArena::storage;
+    b.symbol_retire.release=[](void* p,std::uint32_t w,ChoreographySymbolRelease) noexcept -> int{return VcdAuditArena::release(p,w);};
+    b.compare_word=0x2205b1f0;b.symbol_compare_word=0x2228e9b0;b.context=&f;b.release_rows=&VcdAuditArena::release;
+    b.create_root=[](void* p,const char* name,void** out) noexcept -> int{
+        auto& f=State::self(p);assert(!std::strcmp(name,"CriteriaSet"));++f.created;*out=&f.root;return 1;};
+    b.find_child=[](void* p,void* root,const char* name,int create,void** out) noexcept -> int{
+        auto& f=State::self(p);assert(root==&f.root&&create==1);
+        for(unsigned i=0;i<f.count;++i)if(!_stricmp(f.children[i].name,name)){*out=&f.children[i];return 1;}
+        assert(f.count<8&&std::strlen(name)<32);auto& c=f.children[f.count++];std::strcpy(c.name,name);*out=&c;return 1;};
+    b.set_string=[](void*,void* child,const char* field,const char* value) noexcept -> int{
+        assert(!std::strcmp(field,"value")&&std::strlen(value)<64);std::strcpy(static_cast<State::Child*>(child)->value,value);return 1;};
+    b.set_float=[](void*,void* child,const char* field,float value) noexcept -> int{
+        assert(!std::strcmp(field,"weight"));static_cast<State::Child*>(child)->weight=value;return 1;};
+    b.destroy_root=[](void* p,void* root) noexcept -> int{auto& f=State::self(p);assert(root==&f.root);++f.destroyed;return 1;};
+    alignas(4) unsigned char c[response_criteria_bytes]{};
+    assert(api.construct(c,sizeof(c),&b)==1&&f.created==1&&F::word(c,0x14)==0xffffffffu&&F::word(c,0x1c)==0xffffffffu);
+    assert(api.add(&b,c,"concept","TLK_IDLE",5)&&api.add(&b,c,"part","head",5)&&api.add(&b,c,"PART","torso",2));
+    assert(F::word(c,0x18)==3&&F::word(c,0x20)==3&&F::word(c,0xc)==4&&f.count==2);
+    int index=-1;std::uint32_t child=0;
+    assert(api.find(c,sizeof(c),&b,"part",&index,&child)==1&&index>=0&&child==F::ptr(&f.children[1]));
+    assert(!std::strcmp(f.children[1].value,"torso")&&f.children[1].weight==2);
+    void* rows=nullptr;unsigned extent=0;assert(a.storage(&a,F::word(c,8),&rows,&extent)&&extent>=72);
+    assert(F::word(rows,24+20)==child&&F::word(rows,48+20)==child);
+    assert(api.find(c,sizeof(c),&b,"missing",&index,&child)==1&&index==-1&&!child);
+    assert(api.add(&b,c,"state","alert",3)&&F::word(c,0x18)==4);
+    a.fail_resize=true;assert(!api.add(&b,c,"extra","x",1)&&F::word(c,0x18)==4);
+    a.fail_resize=false;assert(api.add(&b,c,"extra","y",1)&&F::word(c,0xc)==8);
+    assert(api.destroy(c,sizeof(c),&b)==1&&f.destroyed==1&&a.live.empty());
+    assert(api.destroy(c,sizeof(c),&b)==0);
+}
+
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr,const ResponseHistoryTreeApi* history_tree=nullptr,
     const ResponseHistoryManagedApi* managed_history=nullptr,TalkManagerFixture* manager=nullptr,const TalkDeadlineRuntimeApi* deadline_runtime=nullptr,const TalkNativePropagationApi* native_propagation=nullptr){
     using F=ScenePlaybackFixture;

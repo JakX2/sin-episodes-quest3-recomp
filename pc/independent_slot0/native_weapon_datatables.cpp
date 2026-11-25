@@ -7850,6 +7850,111 @@ int __cdecl native_propagation_adapt(const TalkNativePropagationCooldownBindings
 }
 const TalkNativePropagationApi talk_native_propagation_api{version,sizeof(TalkNativePropagationApi),&native_talk_propagation,&native_propagation_adapt};
 
+
+using ResponseCriteriaIndex=sin_port::choreography_index::Tree<std::uint32_t,24>;
+bool response_criteria_ready(const ResponseCriteriaTreeBindings* b) noexcept {
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->compare_word&&b->symbol_compare_word&&
+       b->memory.storage&&b->memory.resize&&b->symbols.insensitive&&b->symbols.sentinel&&
+       b->symbols.storage&&b->symbols.grow_memory&&b->symbols.allocate&&b->symbols.release_unpublished&&
+       b->symbol_retire.sentinel&&b->symbol_retire.storage&&b->symbol_retire.release&&
+       b->create_root&&b->find_child&&b->set_string&&b->set_float&&b->destroy_root&&b->release_rows;
+}
+int __cdecl response_criteria_construct(void* c,unsigned bytes,const ResponseCriteriaTreeBindings* b) noexcept {
+    if(bytes<response_criteria_bytes||!hologram_writable(c,response_criteria_bytes)||!response_criteria_ready(b))return 0;
+    // 2205d1e0: tree at +4, symbol object at +28, KeyValues root at +0.
+    hologram_write(c,0,0u);hologram_write(c,4,b->compare_word);
+    for(unsigned off:{8u,0xcu,0x10u,0x18u,0x20u,0x24u})hologram_write(c,off,0u);
+    hologram_write(c,0x14,0xffffffffu);hologram_write(c,0x1c,0xffffffffu);
+    if(choreography_symbol_construct_empty(static_cast<unsigned char*>(c)+0x28,0x34,0,b->symbol_compare_word)!=1)return -1;
+    void* root=nullptr;
+    if(!b->create_root(b->context,"CriteriaSet",&root)||!root)return -1;
+    hologram_write(c,0,scene_word(root));return 1;
+}
+bool response_criteria_read(void* c,const ResponseCriteriaTreeBindings& b,ResponseCriteriaIndex& t) noexcept {
+    if(!hologram_writable(c,response_criteria_bytes)||hologram_read<std::uint32_t>(c,4)!=b.compare_word)return false;
+    const auto high=hologram_read<unsigned>(c,0x20),cap=hologram_read<unsigned>(c,0xc),live=hologram_read<unsigned>(c,0x18);
+    if(high>cap||cap>4096||live>high)return false;
+    void* rows=nullptr;unsigned n=0;const auto word=hologram_read<std::uint32_t>(c,8);
+    if(cap&&(!word||!b.memory.storage(b.memory.context,word,&rows,&n)||n<cap*24||!hologram_writable(rows,cap*24)))return false;
+    t={static_cast<unsigned char*>(rows),high,hologram_read<std::uint32_t>(c,0x14)};
+    unsigned occupied=0;
+    for(unsigned i=0;i<high;++i)if(t.get(i,0)!=i){
+        if(!hologram_read<std::uint32_t>(t.rows,i*24+20))return false;
+        ++occupied;
+    }
+    if(occupied!=live)return false;
+    auto key=[&](unsigned i){return hologram_read<std::uint16_t>(t.rows,i*24+16);};
+    if(!t.valid(live,[&](unsigned i,unsigned j){return key(i)<=key(j);}))return false;
+    unsigned free_count=0;
+    for(auto f=hologram_read<std::uint32_t>(c,0x1c);f!=ResponseCriteriaIndex::nil;f=t.get(f,1)){
+        if(!t.index(f)||t.get(f,0)!=f||++free_count>high-live)return false;
+    }
+    return free_count==high-live;
+}
+int __cdecl response_criteria_add(void* p,void* c,const char* name,const char* value,float weight) noexcept {
+    const auto* b=static_cast<const ResponseCriteriaTreeBindings*>(p);
+    ResponseCriteriaIndex t{};
+    if(!response_criteria_ready(b)||!name||!value||!response_criteria_read(c,*b,t))return 0;
+    const auto root=hologram_read<std::uint32_t>(c,0);if(!root)return 0;
+    void* child=nullptr;
+    // Original 2205d910 sets value then weight on FindKey(name,true).
+    if(!b->find_child(b->context,reinterpret_cast<void*>(static_cast<std::uintptr_t>(root)),name,1,&child)||!child||
+       !b->set_string(b->context,child,"value",value)||!b->set_float(b->context,child,"weight",weight))return 0;
+    std::uint16_t symbol=0xffff;
+    if(!choreography_symbol_intern(const_cast<ChoreographySymbolInternBindings*>(&b->symbols),
+        static_cast<unsigned char*>(c)+0x28,name,&symbol)||symbol==0xffff)return 0;
+    auto parent=ResponseCriteriaIndex::nil;unsigned side=0;
+    for(auto i=t.root;i!=ResponseCriteriaIndex::nil;i=t.get(i,side)){
+        parent=i;side=symbol<hologram_read<std::uint16_t>(t.rows,i*24+16)?0u:1u;
+    }
+    auto slot=hologram_read<std::uint32_t>(c,0x1c);const unsigned high=t.count,live=hologram_read<unsigned>(c,0x18);
+    if(slot==ResponseCriteriaIndex::nil){
+        if(high>=4096)return 0;
+        if(high==hologram_read<unsigned>(c,0xc)&&
+           !choreography_grow_memory(const_cast<ChoreographyVectorBindings*>(&b->memory),static_cast<unsigned char*>(c)+8,1,24))return 0;
+        void* rows=nullptr;unsigned n=0;
+        if(!b->memory.storage(b->memory.context,hologram_read<std::uint32_t>(c,8),&rows,&n)||
+           n<(high+1)*24||!hologram_writable(rows,(high+1)*24))return 0;
+        t.rows=static_cast<unsigned char*>(rows);t.count=high+1;slot=high;
+        hologram_write(c,0x20,high+1);
+    }else hologram_write(c,0x1c,t.get(slot,1));
+    t.link(slot,parent,side);
+    hologram_write(t.rows,slot*24+16,symbol);hologram_write(t.rows,slot*24+20,scene_word(child));
+    hologram_write(c,0x14,t.root);hologram_write(c,0x18,live+1);hologram_write(c,0x24,hologram_read<std::uint32_t>(c,8));
+    return 1;
+}
+int __cdecl response_criteria_find(void* c,unsigned bytes,const ResponseCriteriaTreeBindings* b,const char* name,int* index,std::uint32_t* child) noexcept {
+    ResponseCriteriaIndex t{};
+    if(bytes<response_criteria_bytes||!response_criteria_ready(b)||!name||!hologram_writable(index,4)||
+       !hologram_writable(child,4)||!response_criteria_read(c,*b,t))return 0;
+    std::uint16_t symbol=0xffff;
+    if(!choreography_symbol_intern(const_cast<ChoreographySymbolInternBindings*>(&b->symbols),
+        static_cast<unsigned char*>(c)+0x28,name,&symbol)||symbol==0xffff)return -1;
+    unsigned side=0;
+    for(auto i=t.root;i!=ResponseCriteriaIndex::nil;i=t.get(i,side)){
+        const auto key=hologram_read<std::uint16_t>(t.rows,i*24+16);
+        if(key==symbol){*index=static_cast<int>(i);*child=hologram_read<std::uint32_t>(t.rows,i*24+20);return 1;}
+        side=symbol<key?0u:1u;
+    }
+    *index=-1;*child=0;return 1;
+}
+int __cdecl response_criteria_destroy(void* c,unsigned bytes,const ResponseCriteriaTreeBindings* b) noexcept {
+    if(bytes<response_criteria_bytes||!hologram_writable(c,response_criteria_bytes)||!response_criteria_ready(b)||
+       hologram_read<std::uint32_t>(c,4)!=b->compare_word)return 0;
+    const auto root=hologram_read<std::uint32_t>(c,0);bool ok=true;
+    if(root){ok=b->destroy_root(b->context,reinterpret_cast<void*>(static_cast<std::uintptr_t>(root)))!=0;hologram_write(c,0,0u);}
+    if(choreography_symbol_destroy(static_cast<unsigned char*>(c)+0x28,0x34,&b->symbol_retire)!=1)ok=false;
+    if(hologram_read<int>(c,0x10)!=-1){
+        const auto rows=hologram_read<std::uint32_t>(c,8);
+        if(rows&&!b->release_rows(b->memory.context,rows))ok=false;
+        hologram_write(c,8,0u);hologram_write(c,0xc,0u);
+    }
+    // Retire constructor identity, preventing a repeated destruction.
+    hologram_write(c,4,0u);return ok?1:-1;
+}
+const ResponseCriteriaTreeApi response_criteria_tree_api{version,sizeof(ResponseCriteriaTreeApi),&response_criteria_construct,
+    &response_criteria_add,&response_criteria_find,&response_criteria_destroy};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -15865,6 +15970,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaTreeApi=_SiN_GetResponseCriteriaTreeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaTreeApi* __cdecl
+SiN_GetResponseCriteriaTreeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseCriteriaTreeApi)?&response_criteria_tree_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetTalkNativePropagationApi=_SiN_GetTalkNativePropagationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkNativePropagationApi* __cdecl

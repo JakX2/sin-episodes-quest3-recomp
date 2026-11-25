@@ -1076,6 +1076,34 @@ struct TalkNativePropagationApi {
     int (__cdecl *adapt)(const TalkNativePropagationCooldownBindings*,TalkCooldownBindings*) noexcept;
 };
 using GetTalkNativePropagationApi=const TalkNativePropagationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_criteria_tree_export[]="SiN_GetResponseCriteriaTreeApi";
+inline constexpr unsigned response_criteria_bytes=0x5c;
+struct ResponseCriteriaTreeBindings {
+    ChoreographyVectorBindings memory;
+    ChoreographySymbolInternBindings symbols;
+    ChoreographySymbolBindings symbol_retire;
+    std::uint32_t compare_word,symbol_compare_word; // live replacement comparator words
+    void* context;
+    // Original KeyValues root and child services. Children are owned by root.
+    int (__cdecl *create_root)(void*,const char*,void**) noexcept;
+    int (__cdecl *find_child)(void*,void* root,const char*,int create,void**) noexcept;
+    int (__cdecl *set_string)(void*,void* child,const char*,const char*) noexcept;
+    int (__cdecl *set_float)(void*,void* child,const char*,float) noexcept;
+    int (__cdecl *destroy_root)(void*,void*) noexcept;
+    int (__cdecl *release_rows)(void*,std::uint32_t) noexcept; // memory.context
+};
+struct ResponseCriteriaTreeApi {
+    std::uint32_t version,size;
+    // Fresh caller-owned 92-byte object. 1 completed, 0 rejected, -1 failure.
+    int (__cdecl *construct)(void*,unsigned,const ResponseCriteriaTreeBindings*) noexcept;
+    // Callback-compatible with ResponseSelectionBindings.add; cfg is context.
+    int (__cdecl *add)(void*,void*,const char*,const char*,float) noexcept;
+    // Original symbol lookup interns even on miss. Index -1 / child null absent.
+    int (__cdecl *find)(void*,unsigned,const ResponseCriteriaTreeBindings*,const char*,int*,std::uint32_t*) noexcept;
+    // Nondeleting original destructor, including partially constructed state.
+    int (__cdecl *destroy)(void*,unsigned,const ResponseCriteriaTreeBindings*) noexcept;
+};
+using GetResponseCriteriaTreeApi=const ResponseCriteriaTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;
