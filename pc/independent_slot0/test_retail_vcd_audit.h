@@ -607,9 +607,13 @@ struct VcdOwnedPlaybackFixture {
 }
 scalesettings { RampTool 75 }
 )VCD";
-    inline static constexpr char child_text[]=R"VCD(event speak reply {
- time 0 1
- param Jessica.Reply
+    inline static constexpr char child_text[]=R"VCD(actor Jessica {
+ channel Voice {
+  event speak reply {
+   time 0 1
+   param Jessica.Reply
+  }
+ }
 }
 )VCD";
     static VcdOwnedPlaybackFixture& self(void* p) noexcept {return *static_cast<VcdOwnedPlaybackFixture*>(p);}
@@ -805,11 +809,21 @@ scalesettings { RampTool 75 }
     void timed_speech(const NativeSceneExecutionApi& execution,const NativeVcdRuntimeApi& runtime,const NativeVcdRuntimeBindings& raw){
         assert(timed&&phase==7&&!F::word(npc,0x5c4)&&F::word(scene,0x414)==F::ptr(scene));
         assert(manager_api&&manager_creates==1&&F::word(manager_memory,0x3a0)==1);
+        // The retail +33c resolver compares actor-object identity in the root only.
+        void *root=nullptr,*child=nullptr,*greeting=nullptr,*reply=nullptr;unsigned extent=0;
+        assert(resolve(this,root_word,&root,&extent)&&resolve(this,child_word,&child,&extent));
+        assert(event(this,root,0,&greeting,&extent)&&event(this,child,0,&reply,&extent));
+        const auto root_actor=F::word(greeting,0x2b4),child_actor=F::word(reply,0x2b4);
+        assert(root_actor&&child_actor&&root_actor!=child_actor&&F::word(child,0x20)==1);
+        void *parent_name=nullptr,*child_name=nullptr,*actor_result=nullptr;
+        assert(resolve(this,root_actor,&parent_name,&extent)&&resolve(this,child_actor,&child_name,&extent));
+        assert(!std::strcmp(static_cast<const char*>(parent_name),static_cast<const char*>(child_name)));
+        assert(resolver&&resolver->actor(scene,sizeof(scene),child_actor,&resolved,&actor_result,&extent)==1&&!actor_result&&!extent);
         struct Effects {
             VcdOwnedPlaybackFixture& f;int player=0,filter=0;
             const NativeSceneExecutionApi* execution=nullptr;const NativeSceneExecutionBindings* bindings=nullptr;
             const NativeVcdRuntimeApi* runtime=nullptr;const NativeVcdRuntimeBindings* raw=nullptr;
-            unsigned advances=0,finishes=0,removals=0;bool remove_pending=false;
+            unsigned advances=0,finishes=0,removals=0,child_missing=0;bool remove_pending=false;
             unsigned starts=0,stops=0,prepared=0,emitted=0,opened=0,closed=0,registered=0,preferences=0,sent=0,begun=0,ended=0;
             static Effects& get(void* p){return *static_cast<Effects*>(p);}
         } effects{*this};
@@ -820,8 +834,12 @@ scalesettings { RampTool 75 }
             *out=f.npc;*n=sizeof(f.npc);return 1;};
         speech.trace=[](void* p,void* scene,void* event,float,SceneSpeechTrace trace) noexcept -> int{
             auto& x=Effects::get(p);assert(scene==x.f.scene&&F::word(event,0)==5);
-            // Child fixture is a global speech event (no actor); its trace is not a recipient emission.
-            if(std::strcmp(static_cast<const char*>(event)+0x84,"Jessica.Greeting"))return 1;
+            // Original +33c looks in scene+40c, not the child's own actor list.
+            if(!std::strcmp(static_cast<const char*>(event)+0x84,"Jessica.Reply")){
+                assert(trace==SceneSpeechTrace::MissingActor&&F::word(event,0x2b4)&&!F::word(x.f.scene,0x3e0));
+                ++x.child_missing;return 1;
+            }
+            assert(!std::strcmp(static_cast<const char*>(event)+0x84,"Jessica.Greeting"));
             if(trace==SceneSpeechTrace::Start)++x.starts;
             else if(trace==SceneSpeechTrace::Stop)++x.stops;
             else assert(false);return 1;};
@@ -916,7 +934,15 @@ scalesettings { RampTool 75 }
         tick.shift=[](void*,void*,unsigned,unsigned) noexcept -> int{assert(false);return 0;};
         assert(manager_api->tick(&control,&tick)==1&&effects.starts==1&&effects.emitted==1&&effects.begun==1&&F::word(npc,0x5c4)==1);
         assert(effects.prepared==1&&effects.opened==1&&effects.closed==1&&effects.registered==1&&effects.preferences==1&&effects.sent==1);
-        for(unsigned i=1;i<64&&phase==7;++i){now=10.f+i*.1f;assert(manager_api->tick(&control,&tick)==1);}
+        bool observed_child=false;
+        for(unsigned i=1;i<64&&phase==7;++i){
+            now=10.f+i*.1f;assert(manager_api->tick(&control,&tick)==1);
+            if(phase==7){
+                assert(!F::word(scene,0x3e0)); // instanced advance leaves it unchanged
+                if(effects.child_missing){observed_child=true;assert(!F::word(child,0x78));}
+            }
+        }
+        assert(observed_child&&effects.child_missing==1);
         assert(phase==8&&effects.emitted==1&&effects.ended==1&&effects.stops==1&&!F::word(npc,0x5c4));
         assert(effects.finishes==1&&effects.removals==1&&!F::word(manager_memory,0x3a0)&&!F::word(scene,0x40c));
         const auto advances=effects.advances;assert(advances>20&&advances<64);
