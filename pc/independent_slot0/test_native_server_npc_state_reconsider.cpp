@@ -22,7 +22,7 @@ struct F{
     unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned rebuild_calls=0;int rebuild_radius=100;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
     unsigned attack_weapon_caps=0,attack_line_calls=0,attack_line_mode=0;float attack_forward[3]{1,0,0};bool melee_hits=true;
     unsigned combat_nav_calls=0;bool remembered_visible=false;
-    unsigned char combat_nav[0x3c]{};float combat_center[3]{},combat_velocity[3]{},combat_origin[3]{70,0,0};bool combat_facing=true;
+    unsigned char combat_nav[0x3c]{},goal_path[0x6c]{};unsigned goal_retargets=0,goal_refreshes=0,goal_failures=0;bool goal_success=true;void* goal_target=nullptr;float combat_center[3]{},combat_velocity[3]{},combat_origin[3]{70,0,0};bool combat_facing=true;
     bool combat_trace=true,combat_fov=true;unsigned combat_output_count=0,combat_output_offsets[8]{};bool combat_output_value[8]{};std::uint32_t combat_output_handles[8]{};
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
@@ -775,5 +775,36 @@ int main(int argc,char** argv){
     assert(combat->gather(f.actor,sizeof(f.actor),559,&ccb,&ccr)&&!ccr.unreachable_set&&!ccr.point_queries);
     f.put(f.enemy,0x8c,1);const unsigned before_nav=f.combat_nav_calls;
     assert(combat->gather(f.actor,sizeof(f.actor),560,&ccb,&ccr)&&ccr.completed&&ccr.range.dead&&!ccr.nav_calls&&f.combat_nav_calls==before_nav);
+    auto ggoal=reinterpret_cast<GetServerNpcGruntGoalRefreshApi>(GetProcAddress(s,server_npc_grunt_goal_refresh_export));
+    assert(ggoal&&!GetProcAddress(c,server_npc_grunt_goal_refresh_export)&&!ggoal(0,sizeof(ServerNpcGruntGoalRefreshApi))&&!ggoal(1,0));
+    const auto* goal=ggoal(1,sizeof(ServerNpcGruntGoalRefreshApi));assert(goal);
+    ServerNpcGruntGoalRefreshBindings gb{};gb.memory=crb.visibility.memory;gb.context=&f;gb.original_vtable=0x2249aaa4;
+    float global_deadline=-1;gb.global_deadline=&global_deadline;gb.origin=ccb.range.origin;gb.velocity=crb.velocity;gb.special=rb.special_target;
+    gb.memory.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);switch(token){case 100:*out=f.nodes;*n=sizeof(f.nodes);return 1;case 101:*out=f.record;*n=sizeof(f.record);return 1;case 102:*out=f.fallback;*n=sizeof(f.fallback);return 1;case 103:*out=f.memory;*n=sizeof(f.memory);return 1;case 700:*out=f.combat_nav;*n=sizeof(f.combat_nav);return 1;case 701:*out=f.goal_path;*n=sizeof(f.goal_path);return 1;default:return 0;}
+    };
+    gb.retarget=[](void* p,std::uint32_t token,void* e) noexcept -> int{auto& f=F::self(p);assert(token==700);++f.goal_retargets;f.goal_target=e;return 1;};
+    gb.refresh=[](void* p,std::uint32_t token,bool* yes) noexcept -> int{auto& f=F::self(p);assert(token==700);++f.goal_refreshes;*yes=f.goal_success;return 1;};
+    gb.failure=[](void* p,void* a,int id) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&id==11);++f.goal_failures;return 1;};
+    f.put(f.enemy,0x8c,0);f.put(f.actor,0x8c8,0.f);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x8a8,0x7001u);
+    f.put(f.combat_nav,0xc,1);f.put(f.combat_nav,0x24,701u);
+    f.put(f.goal_path,0x44,2u);f.put(f.goal_path,0x10,0x8002u);
+    ServerNpcGruntGoalRefreshResult gr{};
+    assert(goal->update(f.actor,sizeof(f.actor),0,570,&gb,&gr)&&gr.skipped_mode);
+    f.put(f.combat_nav,0xc,0);global_deadline=571;
+    assert(goal->update(f.actor,sizeof(f.actor),0,570,&gb,&gr)&&gr.skipped_timer);
+    assert(goal->update(f.actor,sizeof(f.actor),0,571,&gb,&gr)&&gr.retargeted&&f.goal_target==f.enemy);
+    f.put(f.goal_path,0x10,0x7001u);f.put(current_record,4,100.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
+    f.rel_special=true;f.combat_velocity[0]=100;f.put(f.goal_path,0x68,0.f);f.put(f.goal_path,0x34,220.f);
+    assert(goal->update(f.actor,sizeof(f.actor),0,571,&gb,&gr)&&gr.threshold==120&&gr.deviation==120&&!gr.refreshed);
+    f.put(f.goal_path,0x34,221.f);f.goal_success=false;
+    assert(goal->update(f.actor,sizeof(f.actor),0,571,&gb,&gr)&&gr.refreshed&&gr.failed&&gr.deadline_written&&f.goal_failures==1);
+    assert(goal->update(f.actor,sizeof(f.actor),0,571,&gb,&gr)&&gr.skipped_timer);
+    f.put(f.goal_path,0x44,1u);f.put(f.goal_path,0x48,0u);
+    assert(goal->update(f.actor,sizeof(f.actor),1,571,&gb,&gr)&&!gr.threshold_called&&!gr.refreshed);
+    f.put(f.goal_path,0x48,2u);f.combat_origin[0]=100;f.goal_success=true;
+    assert(goal->update(f.actor,sizeof(f.actor),1,571,&gb,&gr)&&gr.refreshed&&!gr.deadline_written&&f.goal_refreshes==2);
+    f.put(f.actor,0x8a8,0xffffffffu);f.put(f.goal_path,0x10,0xffffffffu);
+    assert(goal->update(f.actor,sizeof(f.actor),1,571,&gb,&gr)&&gr.refreshed&&!gr.threshold_called&&f.goal_refreshes==3);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

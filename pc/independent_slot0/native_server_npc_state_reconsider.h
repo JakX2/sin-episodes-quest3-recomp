@@ -617,4 +617,29 @@ struct ServerNpcGruntCombatConditionsApi {
     int (__cdecl *gather)(void*,unsigned,void*,float,const ServerNpcGruntCombatConditionsBindings*,ServerNpcGruntCombatConditionsResult*) noexcept;
 };
 using GetServerNpcGruntCombatConditionsApi=const ServerNpcGruntCombatConditionsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_goal_refresh_export[]="SiN_GetServerNpcGruntGoalRefreshApi";
+struct ServerNpcGruntGoalRefreshBindings {
+    ServerNpcEnemyMemoryQueryBindings memory;
+    void* context;
+    std::uint32_t original_vtable;
+    // Shared retail deadline 224dbe0c, one instance per simulation.
+    float* global_deadline;
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept;
+    int (__cdecl *velocity)(void*,void*,float[3]) noexcept;
+    int (__cdecl *eye)(void*,void*,float[3]) noexcept;
+    int (__cdecl *special)(void*,void*,bool*) noexcept;
+    int (__cdecl *retarget)(void*,std::uint32_t,void*) noexcept; // nav +18
+    int (__cdecl *refresh)(void*,std::uint32_t,bool*) noexcept; // 2207a5c0(0,0)
+    int (__cdecl *failure)(void*,void*,int) noexcept; // +47c
+};
+struct ServerNpcGruntGoalRefreshResult {
+    unsigned skipped_mode,skipped_timer,skipped_type,retargeted,threshold_called,refreshed,failed,deadline_written,goal_type,goal_flags;
+    float goal_delta[3],point[3],threshold,deviation;
+};
+struct ServerNpcGruntGoalRefreshApi {
+    std::uint32_t version,size;
+    // phase 0=22035280 enemy; phase 1=220353f0 target.
+    int (__cdecl *update)(void*,unsigned,unsigned,float,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntGoalRefreshResult*) noexcept;
+};
+using GetServerNpcGruntGoalRefreshApi=const ServerNpcGruntGoalRefreshApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

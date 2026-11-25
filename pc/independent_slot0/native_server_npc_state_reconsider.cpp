@@ -1601,6 +1601,72 @@ int __cdecl grunt_combat_conditions(void* actor,unsigned bytes,void* target,floa
     }
     out->completed=1;return 1;
 }
+bool goal_vector_distance(const float* a,const float* b,float& distance) noexcept{
+    if(!finite_vec(a)||!finite_vec(b))return false;
+    double squared=0;for(unsigned i=0;i<3;++i){const float d=static_cast<float>(static_cast<double>(a[i])-b[i]);squared+=static_cast<double>(d)*d;}
+    const float sq=static_cast<float>(squared);if(!std::isfinite(sq))return false;distance=std::sqrt(sq);return true;
+}
+int __cdecl grunt_goal_refresh(void* actor,unsigned bytes,unsigned phase,float now,const ServerNpcGruntGoalRefreshBindings* b,ServerNpcGruntGoalRefreshResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0x988||phase>1||!b||!std::isfinite(now)||!relation_grunt_class(b->original_vtable)||
+       b->memory.count>sin_independent::kEntityHandleCapacity||(b->memory.count&&!b->memory.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->memory.entries,b->memory.count);
+    const auto nav_token=read<unsigned>(actor,0x8f8);void* nav=nullptr;unsigned n=0;
+    if(!memory_storage(&b->memory.storage,nav_token,0x28,nav,n))return 0;
+    const int mode=read<int>(nav,0xc);
+    if(mode==1||mode==3){out->skipped_mode=1;return 1;}
+    if(!phase){
+        const float local=read<float>(actor,0x8c8);
+        if(!b->global_deadline||!std::isfinite(*b->global_deadline)||!std::isfinite(local))return 0;
+        if(static_cast<double>(now)-*b->global_deadline<=-.001||static_cast<double>(now)-local<=-.001){out->skipped_timer=1;return 1;}
+    }
+    void* path=nullptr;if(!memory_storage(&b->memory.storage,read<unsigned>(nav,0x24),0x6c,path,n))return 0;
+    out->goal_type=read<unsigned>(path,0x44);out->goal_flags=read<unsigned>(path,0x48);
+    if(out->goal_type!=(phase?1u:2u)){out->skipped_type=1;return 1;}
+    void* target=registry.Resolve(read<unsigned>(actor,phase?0x8a8:0x8a0));
+    void* goal=registry.Resolve(read<unsigned>(path,0x10));
+    if(target!=goal){
+        if(!b->retarget||!b->retarget(b->context,nav_token,target))return 0;out->retargeted=1;return 1;
+    }
+    if(phase&&!(out->goal_flags&2u))return 1;
+    auto refresh=[&](){
+        bool success=false;
+        if(!phase){
+            const float deadline=static_cast<float>(static_cast<double>(now)+.1f);
+            if(!std::isfinite(deadline))return false;*b->global_deadline=deadline;out->deadline_written=1;
+        }
+        if(!b->refresh||!b->refresh(b->context,nav_token,&success))return false;
+        out->refreshed=1;if(!success){if(!b->failure||!b->failure(b->context,actor,11))return false;out->failed=1;}return true;
+    };
+    if(!target)return phase?refresh():0;
+    if(!phase){
+        void* memory=nullptr;unsigned extent=0,key=0;ServerNpcEnemyMemoryLookup lookup{};
+        if(!memory_key(b->memory,target,key)||!memory_storage(&b->memory.storage,read<unsigned>(actor,0x984),0x3c,memory,extent)||
+           !memory_position(memory,extent,key,false,&b->memory.storage,&lookup,out->point))return 0;
+        if(mode==2){
+            float origin[3],eye[3];
+            if(!b->origin||!b->eye||!b->origin(b->context,target,origin)||!b->eye(b->context,target,eye)||!finite_vec(origin)||!finite_vec(eye))return 0;
+            for(unsigned i=0;i<3;++i)out->point[i]=static_cast<float>(static_cast<double>(out->point[i])+static_cast<float>(static_cast<double>(eye[i])-origin[i]));
+        }
+    }else if(!b->origin||!b->origin(b->context,target,out->point))return 0;
+    for(unsigned i=0;i<3;++i)out->goal_delta[i]=static_cast<float>(static_cast<double>(read<float>(path,0x34+4*i))-read<float>(path,0x14+4*i));
+    float actor_origin[3],velocity[3],distance=0,speed=0;const float zero[3]{};
+    if(!b->origin||!b->velocity||!b->origin(b->context,actor,actor_origin)||!b->velocity(b->context,actor,velocity)||
+       !goal_vector_distance(actor_origin,out->point,distance)||!goal_vector_distance(velocity,zero,speed)||
+       !goal_vector_distance(out->goal_delta,out->point,out->deviation))return 0;
+    const float tolerance=read<float>(path,0x68);if(!std::isfinite(tolerance))return 0;
+    const float remaining=static_cast<float>(static_cast<double>(distance)-tolerance);
+    double threshold=speed>0?static_cast<double>(remaining)/speed*120.:120.;
+    if(threshold>120.)threshold=120.;else if(threshold<0.)threshold=0.;
+    // Original stores clamp result to float before multiplying non-special target by 1.2.
+    bool special=false;if(!b->special||!b->special(b->context,target,&special))return 0;
+    const double exact=static_cast<double>(static_cast<float>(threshold))*(special?1.:1.2);
+    out->threshold=static_cast<float>(exact);out->threshold_called=1;
+    // Enemy path stores threshold in f32, target compares extended result.
+    if(out->deviation>(phase?exact:out->threshold))return refresh();
+    return 1;
+}
+const ServerNpcGruntGoalRefreshApi goal_refresh_api{1,sizeof(ServerNpcGruntGoalRefreshApi),&grunt_goal_refresh};
 const ServerNpcGruntCombatConditionsApi combat_conditions_api{1,sizeof(ServerNpcGruntCombatConditionsApi),&grunt_combat_conditions};
 const ServerNpcGruntAttackApi attack_api{1,sizeof(ServerNpcGruntAttackApi),&grunt_attack_gather};
 const ServerNpcGruntCombatRangeApi combat_range_api{1,sizeof(ServerNpcGruntCombatRangeApi),&combat_distance,&combat_range_gather};
@@ -1813,4 +1879,10 @@ SiN_GetServerNpcGruntAttackConditionsApi(std::uint32_t version,std::uint32_t siz
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatConditionsApi* __cdecl
 SiN_GetServerNpcGruntCombatConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatConditionsApi)?&combat_conditions_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntGoalRefreshApi=_SiN_GetServerNpcGruntGoalRefreshApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGoalRefreshApi* __cdecl
+SiN_GetServerNpcGruntGoalRefreshApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGoalRefreshApi)?&goal_refresh_api:nullptr;
 }
