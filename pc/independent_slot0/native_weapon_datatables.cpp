@@ -8045,6 +8045,73 @@ int __cdecl npc_response_criteria(void* npc,unsigned bytes,void* c,const NpcResp
 }
 const NpcResponseCriteriaApi npc_response_criteria_api{version,sizeof(NpcResponseCriteriaApi),&npc_response_criteria};
 
+bool entity_response_context_ready(const EntityResponseContextBindings* b) noexcept {
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->add&&b->storage&&b->string;
+}
+int __cdecl entity_response_contexts(void* entity,unsigned bytes,void* c,const char* prefix,
+    const EntityResponseContextBindings* b) noexcept {
+    if(bytes<0x6c||!sin_independent::vgui_layout::Readable(entity,0x6c)||!c||
+       !prefix||!entity_response_context_ready(b))return 0;
+    const int count=hologram_read<int>(entity,0x68);
+    if(count>4096)return 0;
+    // 22143cf0 snapshots context count but checks the live size on each row.
+    const auto h=*b;
+    auto append=[](char (&dest)[128],unsigned& pos,const char* src){
+        if(!src)return false;
+        for(;pos<127;++pos,++src){
+            if(!sin_independent::vgui_layout::Readable(src,1))return false;
+            if(!(dest[pos]=*src))return true;
+        }
+        dest[pos]=0;return true;};
+    for(int i=0;i<count;++i){
+        const char* key="",*value="";
+        const int live=hologram_read<int>(entity,0x68);
+        if(i<live){
+            void* rows=nullptr;unsigned extent=0;
+            const auto word=hologram_read<std::uint32_t>(entity,0x5c);
+            if(!word||!h.storage(h.context,word,&rows,&extent)||extent<(unsigned(i)+1)*8||
+               !sin_independent::vgui_layout::Readable(rows,(unsigned(i)+1)*8))return -1;
+            const auto k=hologram_read<std::uint32_t>(rows,unsigned(i)*8);
+            const auto v=hologram_read<std::uint32_t>(rows,unsigned(i)*8+4);
+            if(k&&!h.string(h.context,k,&key))return -1;
+            if(v&&!h.string(h.context,v,&value))return -1;
+        }
+        char full[128]{};unsigned pos=0;
+        if(!append(full,pos,prefix)||!append(full,pos,key?key:"")||
+           !h.add(h.context,c,full,value?value:"",1.f))return -1;
+    }
+    return 1;
+}
+int __cdecl player_response_criteria(void* player,unsigned bytes,void* c,unsigned derived,
+    const PlayerResponseCriteriaBindings* b) noexcept {
+    if(bytes<0x980||!sin_independent::vgui_layout::Readable(player,0x980)||!c||derived>1||
+       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!entity_response_context_ready(&b->contexts)||
+       !b->weapon||!b->activity||!b->refresh_velocity||(derived&&!b->global_find))return 0;
+    const auto h=*b;
+    auto add=[&](const char* key,const char* value){return h.contexts.add(h.contexts.context,c,key,value,1.f)!=0;};
+    char buf[384]{};
+    const int health=hologram_read<int>(player,0x9c),maximum=hologram_read<int>(player,0x98);
+    std::snprintf(buf,sizeof(buf),"%i",health);
+    if(!add("playerhealth",buf))return -1;
+    std::snprintf(buf,sizeof(buf),"%.3f",maximum>0?double(health)/maximum:0.0);
+    if(!add("playerhealthfrac",buf))return -1;
+    unsigned present=0;const char* name=nullptr;
+    if(!h.weapon(h.context,player,&present,&name)||!add("playerweapon",present?(name?name:""):"none"))return -1;
+    name=nullptr;
+    if(!h.activity(h.context,hologram_read<int>(player,0x97c),&name)||!name||!add("playeractivity",name))return -1;
+    if((hologram_read<unsigned>(player,0xb8)&0x1000)&&!h.refresh_velocity(h.context,player))return -1;
+    const float x=hologram_read<float>(player,0x250),y=hologram_read<float>(player,0x254),z=hologram_read<float>(player,0x258);
+    std::snprintf(buf,sizeof(buf),"%.3f",double(std::sqrt(static_cast<float>(double(x)*x+double(y)*y+double(z)*z))));
+    if(!add("playerspeed",buf)||entity_response_contexts(player,bytes,c,"player",&h.contexts)!=1)return -1;
+    if(derived){
+        int index=0;
+        if(!h.global_find(h.context,"gordon_precriminal",&index)||(index==-1&&!add("gordon_precriminal","0")))return -1;
+    }
+    return 1;
+}
+const PlayerResponseCriteriaApi player_response_criteria_api{version,sizeof(PlayerResponseCriteriaApi),
+    &entity_response_contexts,&player_response_criteria};
+
 const ResponseCriteriaSelectionBindings& response_criteria_selection_cfg(void* p) noexcept {
     return *static_cast<const ResponseCriteriaSelectionBindings*>(p);
 }
@@ -16130,6 +16197,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcRespon
 SiN_GetNpcResponseCriteriaApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcResponseCriteriaApi)?&npc_response_criteria_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetPlayerResponseCriteriaApi=_SiN_GetPlayerResponseCriteriaApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerResponseCriteriaApi* __cdecl
+SiN_GetPlayerResponseCriteriaApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerResponseCriteriaApi)?&player_response_criteria_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

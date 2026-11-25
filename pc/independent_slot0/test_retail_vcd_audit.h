@@ -744,7 +744,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[16]{};
@@ -905,6 +905,46 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         expect("timesincecombat","2.500000");expect("seenbyplayer","0");
         assert(npc.clocks==1&&npc.views==2&&npc.traces==1);
         assert(npcCriteria->append(npc.actor,0x9a3,c,&h)==0);
+        assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+    }
+    if(playerCriteria){
+        struct Player {
+            const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
+            alignas(4) unsigned char actor[0x980]{},rows[16]{};
+            unsigned refreshes=0,globals=0;int global_index=-1;
+            static Player& self(void* p){return *static_cast<Player*>(p);}
+        } player{api,b};
+        PlayerResponseCriteriaBindings h{};h.context=&player;h.contexts.context=&player;
+        h.contexts.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{auto& s=Player::self(p);return s.tree.add(&s.b,c,k,v,w);};
+        h.contexts.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{auto& s=Player::self(p);assert(w==F::ptr(s.rows));*out=s.rows;*n=sizeof(s.rows);return 1;};
+        h.contexts.string=[](void*,std::uint32_t w,const char** out) noexcept -> int{
+            if(w==1)*out="injured";else if(w==2)*out="yes";else if(w==3)*out="mood";else return 0;return 1;};
+        h.weapon=[](void*,void*,unsigned* present,const char** name) noexcept -> int{*present=1;*name="weapon_magnum";return 1;};
+        h.activity=[](void*,int id,const char** out) noexcept -> int{assert(id==77);*out="ACT_RUN";return 1;};
+        h.refresh_velocity=[](void* p,void* actor) noexcept -> int{auto& s=Player::self(p);assert(actor==s.actor);++s.refreshes;F::put(actor,0xb8,0u);F::fl(actor,0x250,3);F::fl(actor,0x254,4);return 1;};
+        h.global_find=[](void* p,const char* key,int* out) noexcept -> int{auto& s=Player::self(p);assert(!std::strcmp(key,"gordon_precriminal"));++s.globals;*out=s.global_index;return 1;};
+        F::put(player.actor,0x98,100u);F::put(player.actor,0x9c,25u);F::put(player.actor,0x97c,77u);F::put(player.actor,0xb8,0x1000u);
+        F::put(player.actor,0x5c,F::ptr(player.rows));F::put(player.actor,0x68,2u);
+        F::put(player.rows,0,1u);F::put(player.rows,4,2u);F::put(player.rows,8,3u);
+        auto expect=[&](const char* key,const char* value){
+            int idx=-1;std::uint32_t word=0;assert(api.find(c,sizeof(c),&b,key,&idx,&word)==1&&idx>=0&&word);
+            auto* child=reinterpret_cast<State::Child*>(static_cast<std::uintptr_t>(word));
+            assert(!std::strcmp(child->value,value)&&child->weight==1.f);};
+        assert(api.construct(c,sizeof(c),&b)==1);
+        assert(playerCriteria->append(player.actor,sizeof(player.actor),c,1,&h)==1&&f.count==8);
+        expect("playerhealth","25");expect("playerhealthfrac","0.250");expect("playerweapon","weapon_magnum");
+        expect("playeractivity","ACT_RUN");expect("playerspeed","5.000");expect("playerinjured","yes");expect("playermood","");
+        expect("gordon_precriminal","0");assert(player.refreshes==1&&player.globals==1);
+        assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+        F::put(player.actor,0x98,0u);player.global_index=4;
+        assert(api.construct(c,sizeof(c),&b)==1);
+        assert(playerCriteria->append(player.actor,sizeof(player.actor),c,1,&h)==1&&f.count==7);
+        expect("playerhealthfrac","0.000");assert(player.refreshes==1&&player.globals==2);
+        assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+        assert(api.construct(c,sizeof(c),&b)==1);
+        assert(playerCriteria->contexts(player.actor,sizeof(player.actor),c,"",&h.contexts)==1&&f.count==2);
+        expect("injured","yes");expect("mood","");
+        assert(playerCriteria->append(player.actor,0x97f,c,0,&h)==0);
         assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
     }
 }
