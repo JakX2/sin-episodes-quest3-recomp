@@ -983,6 +983,31 @@ int main(int argc,char** argv){
         const unsigned before_rebuild=f.rebuild_calls;
         assert(full->update(f.actor,sizeof(f.actor),630,&full_bindings,&full_result)&&full_result.completed&&full_result.gate.forced&&full_result.perception_called&&full_result.perception.completed&&full_result.post_called&&full_result.post.combat_called&&full_result.post.snapshot.snapshot);
         assert(full_result.perception.visual.report_calls==1&&full_result.perception.enemy_switch.assignment.new_handle==0x7001u&&f.get<unsigned>(0x8a0)==0x7001u&&f.get<float>(0x9a0)==630&&f.rebuild_calls==before_rebuild+3);
+        auto get_gather=reinterpret_cast<GetServerNpcGruntGatherConditionsApi>(GetProcAddress(s,server_npc_grunt_gather_conditions_export));
+        assert(get_gather&&!GetProcAddress(c,server_npc_grunt_gather_conditions_export)&&!get_gather(0,sizeof(ServerNpcGruntGatherConditionsApi))&&!get_gather(1,0));
+        const auto* gather=get_gather(1,sizeof(ServerNpcGruntGatherConditionsApi));assert(gather);
+        ServerNpcGruntGatherConditionsBindings gather_bindings{};gather_bindings.base=full_bindings;gather_bindings.context=&f;gather_bindings.max_clients=2;
+        gather_bindings.component_update=[](void*,std::uint32_t token) noexcept -> int{return token==711;};
+        gather_bindings.classname_matches=[](void*,void*,const char* name,bool* yes) noexcept -> int{assert(!std::strcmp(name,"npc_gib_hopper"));*yes=false;return 1;};
+        gather_bindings.find_object=[](void* p,void* actor,unsigned radius,float now) noexcept -> int{auto& f=F::self(p);assert(actor==f.actor&&radius==150&&now==631);f.put(actor,0xcb4,0x8002u);return 1;};
+        gather_bindings.point_predicate=[](void* p,void* actor,const float* point,bool* yes) noexcept -> int{assert(actor==F::self(p).actor&&point[0]==123);*yes=true;return 1;};
+        gather_bindings.local_player=[](void* p,void** player) noexcept -> int{*player=F::self(p).replacement;return 1;};
+        gather_bindings.player_interaction=[](void* p,void* player,void* actor,bool* yes) noexcept -> int{auto& f=F::self(p);assert(player==f.replacement&&actor==f.actor);*yes=true;return 1;};
+        f.put(f.actor,0x850,3);f.put(f.actor,0xc18,711u);f.actor[0xcb2]=1;f.actor[0xc6c]=1;f.put(f.actor,0xcb4,0xffffffffu);
+        f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);
+        f.put(f.enemy,0xc,0x22490cfcu);
+        ServerNpcGruntGatherConditionsResult gather_result;
+        assert(gather->gather(f.actor,sizeof(f.actor),631,&gather_bindings,&gather_result)&&gather_result.completed&&gather_result.component_called&&gather_result.hopper_exit&&!gather_result.search_called);
+        f.put(f.enemy,0xc,0u);f.put(current_record,4,123.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
+        f.put(f.actor,0x798,0u);gather_bindings.max_clients=1;
+        assert(gather->gather(f.actor,sizeof(f.actor),631,&gather_bindings,&gather_result)&&gather_result.completed&&gather_result.search_called&&gather_result.object_live&&gather_result.object_condition&&gather_result.point_called&&gather_result.point_condition&&gather_result.player_called&&gather_result.player_condition);
+        assert(f.get<unsigned>(0x7cc)&(1u<<22));assert((f.get<unsigned>(0x7d4)&((1u<<5)|(1u<<13)))==((1u<<5)|(1u<<13)));
+        f.put(f.actor,0x798,1u);f.put(f.actor,0x79c,npc_global_condition_base+0x4d);f.condition(0x46);
+        assert(gather->gather(f.actor,sizeof(f.actor),632,&gather_bindings,&gather_result)&&gather_result.point_schedule_blocked&&!gather_result.point_called&&!gather_result.player_called&&!gather_result.search_called);
+        f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0xcb4,0x9002u);
+        assert(gather->gather(f.actor,sizeof(f.actor),632,&gather_bindings,&gather_result)&&gather_result.search_called&&gather_result.search_no_enemy&&!gather_result.object_live&&f.get<unsigned>(0xcb4)==0xffffffffu);
+        f.put(f.actor,0xc18,0u);f.put(f.actor,0x850,7);f.actor[0xc6c]=0;gather_bindings.max_clients=2;
+        assert(gather->gather(f.actor,sizeof(f.actor),632,&gather_bindings,&gather_result)&&gather_result.base_called&&gather_result.base.completed&&gather_result.base.gate.inactive);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

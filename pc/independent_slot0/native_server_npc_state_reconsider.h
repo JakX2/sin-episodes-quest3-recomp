@@ -777,4 +777,28 @@ struct ServerNpcGruntConditionUpdateApi {
     int (__cdecl *update)(void*,unsigned,float,const ServerNpcGruntConditionUpdateBindings*,ServerNpcGruntConditionUpdateResult*) noexcept;
 };
 using GetServerNpcGruntConditionUpdateApi=const ServerNpcGruntConditionUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_gather_conditions_export[]="SiN_GetServerNpcGruntGatherConditionsApi";
+struct ServerNpcGruntGatherConditionsBindings {
+    ServerNpcGruntConditionUpdateBindings base;
+    void* context;
+    int max_clients;
+    int (__cdecl *component_update)(void*,std::uint32_t) noexcept; // component +24
+    int (__cdecl *classname_matches)(void*,void*,const char*,bool*) noexcept;
+    // 2235b790 search leaf, owns original actor+cb4 mutation.
+    int (__cdecl *find_object)(void*,void*,unsigned,float) noexcept;
+    int (__cdecl *point_predicate)(void*,void*,const float[3],bool*) noexcept; // +788=2235b050
+    int (__cdecl *local_player)(void*,void**) noexcept;
+    int (__cdecl *player_interaction)(void*,void*,void*,bool*) noexcept; // player +494
+};
+struct ServerNpcGruntGatherConditionsResult {
+    ServerNpcGruntConditionUpdateResult base;
+    unsigned completed,base_called,component_called,hopper_exit,search_called,search_no_enemy,object_live,object_condition,point_called,point_schedule_blocked,point_condition,player_called,player_condition;
+    float point[3];
+};
+struct ServerNpcGruntGatherConditionsApi {
+    std::uint32_t version,size;
+    // All eight Grunt-family original +420=2235dba0.
+    int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherConditionsBindings*,ServerNpcGruntGatherConditionsResult*) noexcept;
+};
+using GetServerNpcGruntGatherConditionsApi=const ServerNpcGruntGatherConditionsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
