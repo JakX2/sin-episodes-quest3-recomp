@@ -1151,6 +1151,21 @@ struct PlayerResponseCriteriaApi {
     int (__cdecl *append)(void*,unsigned,void*,unsigned derived,const PlayerResponseCriteriaBindings*) noexcept;
 };
 using GetPlayerResponseCriteriaApi=const PlayerResponseCriteriaApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char base_response_criteria_export[]="SiN_GetBaseResponseCriteriaApi";
+struct BaseResponseCriteriaBindings {
+    EntityResponseContextBindings contexts;
+    void* context;
+    int (__cdecl *map_name)(void*,const char**) noexcept;
+    int (__cdecl *global_count)(void*,int*) noexcept;
+    int (__cdecl *global_row)(void*,int,const char**,int*) noexcept;
+    // Engine world edict lookup and dynamic cast; null is valid.
+    int (__cdecl *world)(void*,void**,unsigned*) noexcept;
+};
+struct BaseResponseCriteriaApi {
+    std::uint32_t version,size;
+    int (__cdecl *append)(void*,unsigned,void*,const BaseResponseCriteriaBindings*) noexcept;
+};
+using GetBaseResponseCriteriaApi=const BaseResponseCriteriaApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_criteria_selection_export[]="SiN_GetResponseCriteriaSelectionApi";
 struct ResponseCriteriaSelectionSession {
     void* object;unsigned bytes;

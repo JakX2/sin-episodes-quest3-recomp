@@ -8112,6 +8112,42 @@ int __cdecl player_response_criteria(void* player,unsigned bytes,void* c,unsigne
 const PlayerResponseCriteriaApi player_response_criteria_api{version,sizeof(PlayerResponseCriteriaApi),
     &entity_response_contexts,&player_response_criteria};
 
+// CBaseEntity::ModifyOrAppendCriteria, 22145b50 (220ebcb0 thunk).
+int __cdecl base_response_criteria(void* entity,unsigned bytes,void* c,const BaseResponseCriteriaBindings* b) noexcept {
+    if(bytes<0xc4||!sin_independent::vgui_layout::Readable(entity,0xc4)||!c||
+       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!entity_response_context_ready(&b->contexts)||
+       !b->map_name||!b->global_count||!b->global_row||!b->world)return 0;
+    const auto h=*b;const auto& kv=h.contexts;
+    auto add=[&](const char* k,const char* v){return kv.add(kv.context,c,k,v?v:"",1.f)!=0;};
+    const char* map=nullptr;
+    if(!h.map_name(h.context,&map)||!add("map",map))return -1;
+    for(unsigned off:{0xcu,0xc0u}){
+        const auto word=hologram_read<std::uint32_t>(entity,off);const char* s=nullptr;
+        if(word&&!kv.string(kv.context,word,&s))return -1;
+        if(!add(off==0xc?"classname":"name",s))return -1;
+    }
+    char buf[64]{};
+    const int health=hologram_read<int>(entity,0x9c),maximum=hologram_read<int>(entity,0x98);
+    std::snprintf(buf,sizeof(buf),"%i",health);
+    if(!add("health",buf))return -1;
+    std::snprintf(buf,sizeof(buf),"%.3f",maximum>0?double(health)/maximum:0.0);
+    if(!add("healthfrac",buf))return -1;
+    int count=0;
+    if(!h.global_count(h.context,&count)||count>4096)return -1;
+    for(int i=0;i<count;++i){
+        if(i>=4096)return -1;
+        int value=0;const char* key=nullptr;
+        if(!h.global_row(h.context,i,&key,&value)||!key)return -1;
+        std::snprintf(buf,sizeof(buf),"%i",value);
+        if(!add(key,buf)||!h.global_count(h.context,&count)||count>4096)return -1;
+    }
+    if(entity_response_contexts(entity,bytes,c,"",&kv)!=1)return -1;
+    void* world=nullptr;unsigned extent=0;
+    if(!h.world(h.context,&world,&extent))return -1;
+    return !world||entity_response_contexts(world,extent,c,"world",&kv)==1?1:-1;
+}
+const BaseResponseCriteriaApi base_response_criteria_api{version,sizeof(BaseResponseCriteriaApi),&base_response_criteria};
+
 const ResponseCriteriaSelectionBindings& response_criteria_selection_cfg(void* p) noexcept {
     return *static_cast<const ResponseCriteriaSelectionBindings*>(p);
 }
@@ -16203,6 +16239,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::PlayerRes
 SiN_GetPlayerResponseCriteriaApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(PlayerResponseCriteriaApi)?&player_response_criteria_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetBaseResponseCriteriaApi=_SiN_GetBaseResponseCriteriaApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::BaseResponseCriteriaApi* __cdecl
+SiN_GetBaseResponseCriteriaApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(BaseResponseCriteriaApi)?&base_response_criteria_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

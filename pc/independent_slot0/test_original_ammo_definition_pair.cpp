@@ -1246,8 +1246,13 @@ int main(int argc,char** argv){
         assert(getPlayerCriteria&&!GetProcAddress(client,tables::player_response_criteria_export));
         const auto* playerCriteria=getPlayerCriteria(1,sizeof(tables::PlayerResponseCriteriaApi));
         assert(playerCriteria&&!getPlayerCriteria(0,sizeof(tables::PlayerResponseCriteriaApi))&&!getPlayerCriteria(1,0));
+        const auto getBaseCriteria=reinterpret_cast<tables::GetBaseResponseCriteriaApi>(GetProcAddress(server,tables::base_response_criteria_export));
+        assert(getBaseCriteria&&!GetProcAddress(client,tables::base_response_criteria_export));
+        const auto* baseCriteria=getBaseCriteria(1,sizeof(tables::BaseResponseCriteriaApi));
+        assert(baseCriteria&&!getBaseCriteria(0,sizeof(tables::BaseResponseCriteriaApi))&&!getBaseCriteria(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria);
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria);
+        std::puts("PASS native base entity and world response criteria");
         std::puts("PASS native Blade player response criteria and entity context traversal");
         std::puts("PASS native shared NPC response criteria and player visibility policy");
         std::puts("PASS native criteria and scene filter at response finder boundary");
