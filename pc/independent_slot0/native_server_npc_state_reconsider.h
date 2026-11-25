@@ -695,4 +695,45 @@ struct ServerNpcGruntAuxConditionsApi {
     int (__cdecl *snapshot)(void*,unsigned,const ServerNpcGruntAuxConditionsBindings*,ServerNpcGruntAuxConditionsResult*) noexcept;
 };
 using GetServerNpcGruntAuxConditionsApi=const ServerNpcGruntAuxConditionsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_post_update_export[]="SiN_GetServerNpcGruntPostUpdateApi";
+struct ServerNpcGruntFlinchBindings {
+    ServerNpcScheduleBindings schedule;
+    void* context;
+    int (__cdecl *select_activity)(void*,void*,bool,int,int*) noexcept;
+    int (__cdecl *can_animate)(void*,void*,bool*) noexcept;
+    int (__cdecl *activity_exists)(void*,void*,int,bool*) noexcept;
+    int (__cdecl *play_activity)(void*,void*,int,int,int) noexcept;
+    int (__cdecl *random)(void*,float,float,float*) noexcept;
+};
+struct ServerNpcGruntFlinchResult {
+    unsigned heavy,light,interrupted,called,played,heavy_cleared,timer_started,timer_cleared;
+    int activity;
+    float deadline;
+};
+struct ServerNpcGruntPostUpdateBindings {
+    ServerNpcGruntWeaponSearchBindings search;
+    ServerNpcGruntCombatConditionsBindings combat;
+    ServerNpcGruntAuxConditionsBindings aux;
+    ServerNpcEnemyStateBindings enemy;
+    ServerNpcGruntFlinchBindings flinch;
+    ServerNpcScheduleBindings schedule;
+};
+struct ServerNpcGruntPostUpdateResult {
+    ServerNpcGruntWeaponSearchResult search;
+    ServerNpcGruntCombatConditionsResult combat;
+    ServerNpcGruntGoalRefreshResult combat_goals[2];
+    ServerNpcGruntAuxConditionsResult target,ammo,snapshot;
+    ServerNpcGruntFlinchResult flinch;
+    ServerNpcEnemyStateResult cleared_enemy;
+    unsigned completed,skipped_state,skipped_perception,cleared_sense_conditions,new_enemy_condition,combat_called,enemy_cleared;
+};
+struct ServerNpcGruntPostUpdateApi {
+    std::uint32_t version,size;
+    // 2203bc60 and 2204e5e0: damage condition / flinch timer policy.
+    int (__cdecl *flinch)(void*,unsigned,float,const ServerNpcGruntFlinchBindings*,ServerNpcGruntFlinchResult*) noexcept;
+    // 220457c1..22045924, including 22045835 skipped-perception and 220458dc state0/7 branches.
+    // Perception branch decision is supplied explicitly by caller, not recomputed here.
+    int (__cdecl *update)(void*,unsigned,float,bool,const ServerNpcGruntPostUpdateBindings*,ServerNpcGruntPostUpdateResult*) noexcept;
+};
+using GetServerNpcGruntPostUpdateApi=const ServerNpcGruntPostUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

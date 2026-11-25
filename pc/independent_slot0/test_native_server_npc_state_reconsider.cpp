@@ -883,5 +883,37 @@ int main(int argc,char** argv){
         assert(aux->snapshot(f.actor,sizeof(f.actor),&aux_bindings,&aux_result)&&aux_result.script_clear==2);
         unsigned script_conditions=0;std::memcpy(&script_conditions,f.enemy+0x7cc,4);assert(script_conditions==0);
     }
+    {
+        auto get_post=reinterpret_cast<GetServerNpcGruntPostUpdateApi>(GetProcAddress(s,server_npc_grunt_post_update_export));
+        assert(get_post&&!GetProcAddress(c,server_npc_grunt_post_update_export)&&!get_post(0,sizeof(ServerNpcGruntPostUpdateApi))&&!get_post(1,0));
+        const auto* post=get_post(1,sizeof(ServerNpcGruntPostUpdateApi));assert(post);
+        ServerNpcGruntPostUpdateBindings post_bindings{};post_bindings.schedule=b.schedule;post_bindings.combat=ccb;post_bindings.enemy=eb;
+        post_bindings.aux.visibility=crb.visibility;post_bindings.aux.goals=goal_bindings;
+        post_bindings.search.relation=rb;post_bindings.search.schedule=b.schedule;post_bindings.search.context=&f;
+        post_bindings.flinch.schedule=b.schedule;post_bindings.flinch.context=&f;
+        post_bindings.flinch.select_activity=[](void*,void*,bool heavy,int one,int* activity) noexcept -> int{assert(one==1);*activity=heavy?43:42;return 1;};
+        post_bindings.flinch.can_animate=[](void*,void*,bool* yes) noexcept -> int{*yes=true;return 1;};
+        post_bindings.flinch.activity_exists=[](void*,void*,int activity,bool* yes) noexcept -> int{*yes=activity==42||activity==43;return 1;};
+        post_bindings.flinch.play_activity=[](void*,void*,int activity,int a,int b) noexcept -> int{return (activity==42||activity==43)&&a==1&&b==1;};
+        post_bindings.flinch.random=[](void*,float lo,float hi,float* delay) noexcept -> int{assert(lo==.5f&&hi==1.f);*delay=.75f;return 1;};
+        f.put(f.actor,0x798,1u);f.put(f.schedule,0xc,1u<<17);f.put(f.actor,0x7cc,1u<<17);f.put(f.actor,0x988,0u);
+        ServerNpcGruntFlinchResult flinch_result{};
+        assert(post->flinch(f.actor,sizeof(f.actor),620,&post_bindings.flinch,&flinch_result)&&flinch_result.heavy&&flinch_result.interrupted&&!flinch_result.called);
+        f.put(f.schedule,0xc,0u);
+        assert(post->flinch(f.actor,sizeof(f.actor),620,&post_bindings.flinch,&flinch_result)&&flinch_result.played&&flinch_result.timer_started&&flinch_result.deadline==620.75f);
+        assert(post->flinch(f.actor,sizeof(f.actor),620.75f,&post_bindings.flinch,&flinch_result)&&flinch_result.heavy_cleared&&!flinch_result.timer_cleared);
+        assert(post->flinch(f.actor,sizeof(f.actor),620.76f,&post_bindings.flinch,&flinch_result)&&flinch_result.timer_cleared);
+        f.put(f.actor,0x850,1);f.put(f.actor,0x970,0xffffffffu);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x8a8,0x7001u);
+        f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x8ec,0u);f.put(f.actor,0xb4,0u);f.put(f.actor,0x9a4,700.f);f.put(f.enemy,0x8c,0);
+        f.put(f.combat_nav,0xc,1);f.put(f.actor,0x988,0x28000u);f.combat_trace=f.combat_fov=true;f.combat_output_count=0;
+        f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);f.put(f.schedule,0xc,1u<<25);
+        for(unsigned i=0;i<8;++i)f.put(f.actor,0x82c+4*i,0xffffffffu);
+        ServerNpcGruntPostUpdateResult post_result;
+        assert(post->update(f.actor,sizeof(f.actor),621,true,&post_bindings,&post_result)&&post_result.completed&&post_result.search.cooldown_blocked&&post_result.new_enemy_condition&&post_result.combat_called&&post_result.target.target_visible&&post_result.snapshot.snapshot&&f.get<float>(0x9a0)==621);
+        f.put(f.actor,0xb4,0x10u);f.condition(7);f.condition(48);
+        assert(post->update(f.actor,sizeof(f.actor),622,false,&post_bindings,&post_result)&&post_result.completed&&post_result.skipped_perception&&post_result.cleared_sense_conditions>=2&&post_result.enemy_cleared&&!post_result.combat_called&&f.get<unsigned>(0x8a0)==0xffffffffu);
+        f.put(f.actor,0x850,7);f.condition(1);
+        assert(post->update(f.actor,sizeof(f.actor),623,false,&post_bindings,&post_result)&&post_result.completed&&post_result.skipped_state&&post_result.snapshot.snapshot&&!(f.get<unsigned>(0x80c)&2u));
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
