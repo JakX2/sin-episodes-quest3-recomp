@@ -257,6 +257,17 @@ int main(int argc,char** argv){
         const auto* baseCycle=getBaseCycle(1,sizeof(ft::ServerBaseAnimationCycleApi));
         assert(baseCycle&&!getBaseCycle(0,sizeof(ft::ServerBaseAnimationCycleApi))&&!getBaseCycle(1,0));
         ft::test::check_base_animation_cycle(*baseCycle);
+        const auto getLayerReserve=reinterpret_cast<ft::GetServerAnimationLayerReserveApi>(GetProcAddress(server,ft::server_animation_layer_reserve_export));
+        assert(getLayerReserve&&!GetProcAddress(client,ft::server_animation_layer_reserve_export));
+        const auto* layerReserve=getLayerReserve(1,sizeof(ft::ServerAnimationLayerReserveApi));
+        assert(layerReserve&&!getLayerReserve(0,sizeof(ft::ServerAnimationLayerReserveApi))&&!getLayerReserve(1,0));
+        const auto getLayerSend=reinterpret_cast<ft::GetOverlaySendApi>(GetProcAddress(server,ft::overlay_send_export));
+        const auto getLayerRecv=reinterpret_cast<ft::GetOverlayRecvApi>(GetProcAddress(client,ft::overlay_recv_export));
+        assert(getLayerSend&&getLayerRecv);
+        const auto* layerSend=getLayerSend(1,sizeof(ft::OverlaySendApi));
+        const auto* layerRecv=getLayerRecv(1,sizeof(ft::OverlayRecvApi));
+        assert(layerSend&&layerRecv);
+        ft::test::check_native_layer_network(*layerReserve,*layerOwner,*layerTick,*layerSend,*layerRecv);
         if(argc==5&&!ft::test::audit_original_animation_layers(argv[4],*layerOwner)){
             std::fprintf(stderr,"ORIGINAL ANIMATION LAYER AUDIT failed\n");return 1;
         }

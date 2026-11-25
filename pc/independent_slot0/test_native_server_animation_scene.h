@@ -1,5 +1,6 @@
 #pragma once
 #include "native_server_animation_scene.h"
+#include "native_weapon_datatables.h"
 #include <cassert>
 #include <cstring>
 #include <cmath>
@@ -203,6 +204,86 @@ inline void check_base_animation_cycle(const ServerBaseAnimationCycleApi& api){
     f.duration=0;assert(step(.5f)&&!F::word(f.actor,0x394)&&f.distances==7&&f.caches==8&&f.invalidations==8);
     assert(f.actor[0x3e0]); // completion is sticky
     std::puts("PASS original base cycle completion, signed loop wrap, dirty notification and movement rate");
+}
+
+
+inline void check_native_layer_network(const ServerAnimationLayerReserveApi& reserve,const ServerAnimationLayerOwnerApi& owner,
+    const ServerAnimationLayerTickApi& tick,const OverlaySendApi& send,const OverlayRecvApi& recv){
+    using F=ScenePlaybackFixture;
+    struct Fixture{
+        alignas(4) unsigned char server[0x4a8]{},client[0x7b8]{},rows[15*0x40]{},received[15*0x20]{};
+        ChoreographyVectorBindings vectors{};
+        const ServerAnimationLayerReserveApi& reserve;int capacity=0;
+        unsigned grows=0,sends=0,client_reserves=0,client_resizes=0;
+        float now=5;bool fail=false;
+        explicit Fixture(const ServerAnimationLayerReserveApi& r):reserve(r){}
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+    } f(reserve);
+    f.vectors.context=&f;
+    f.vectors.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);if(w!=F::ptr(f.rows))return 0;*out=f.rows;*n=f.capacity*0x40;return 1;};
+    f.vectors.resize=[](void* p,std::uint32_t old,unsigned n,void** out,unsigned* extent) noexcept -> int{
+        auto& f=Fixture::self(p);assert(!old||old==F::ptr(f.rows));++f.grows;
+        if(f.fail||n>sizeof(f.rows))return 0;
+        f.capacity=n/0x40;*out=f.rows;*extent=n;return 1;};
+    OverlaySendBindings sb{&f,[](void* p,void* actor,int off,int stride,int target) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.server&&off==0x494&&stride==0x40&&target==15);
+        ++f.sends;return f.reserve.reserve(actor,sizeof(f.server),target,f.now,&f.vectors);
+    }};
+    OverlayRecvBindings rb{&f,[](void* p,void* actor,int off,int stride,int target) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.client&&off==0x7a4&&stride==0x20&&target==15);++f.client_reserves;
+        LayerVector v{};std::memcpy(&v,f.client+off,sizeof(v));
+        v.memory=v.elements=f.received;v.capacity=15;std::memcpy(f.client+off,&v,sizeof(v));return 1;
+    },[](void* p,void* actor,int off,int stride,int count) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.client&&off==0x7a4&&stride==0x20&&count<=15);++f.client_resizes;
+        LayerVector v{};std::memcpy(&v,f.client+off,sizeof(v));assert(v.capacity>=count);
+        v.count=count;std::memcpy(f.client+off,&v,sizeof(v));return 1;
+    }};
+    OverlaySendView sv{};OverlayRecvView rv{};assert(send.create(&sb,&sv)&&recv.create(&rb,&rv));
+    int layer=-1;
+    assert(owner.allocate(f.server,sizeof(f.server),7,2,f.now,1,&f.vectors,&layer)&&layer==0);
+    assert(F::word(f.server,0x4a0)==2&&f.capacity==2);
+    F::fl(f.rows,0xc,.25f);F::fl(f.rows,0x10,.125f);F::fl(f.rows,0x18,.75f);
+    F::put(f.rows+0x80,0x38,0x12345678u);
+    auto& sp=sv.vector_table->props[0];auto& rp=rv.vector_table->props[0];
+    s::Recipients mask{};mask.words[0]=0x22;
+    f.fail=true;assert(!sp.tableProxy(&sp,f.server,f.server,&mask,1)&&f.capacity==2&&F::word(f.server,0x4a0)==2);
+    f.fail=false;
+    auto transfer=[&](){
+        assert(sp.tableProxy(&sp,f.server,f.server,&mask,1)==f.server&&mask.words[0]==0x22);
+        assert(F::word(f.server,0x4a0)==2&&f.capacity==15&&F::word(f.server,0x4a4)==F::ptr(f.rows));
+        void* dest=nullptr;rp.table_proxy(&rp,&dest,f.client,1);assert(dest==f.client);
+        auto& lp=sv.length_table->props[0];auto& lr=rv.length_table->props[0];
+        s::DVariant value{};lp.scalarProxy(&lp,f.server,f.server,&value,0,1);assert(value.words[0]==2);
+        RecvData d{&lr,value,0,1};lr.proxy(&d,f.client,f.client);
+        for(int i=0;i<15;++i){
+            auto& x=sv.vector_table->props[i+1];auto& y=rv.vector_table->props[i+1];
+            auto* src=static_cast<unsigned char*>(x.tableProxy(&x,f.server,f.server,&mask,1));
+            y.table_proxy(&y,&dest,f.client,1);assert(src==f.rows+i*0x40&&dest==f.received+i*0x20);
+            for(int j=0;j<5;++j){
+                auto& a=sv.layer->props[j];auto& b=rv.layer->props[j];
+                a.scalarProxy(&a,src,src+a.offset,&value,i,1);d={&b,value,i,1};
+                b.proxy(&d,dest,static_cast<unsigned char*>(dest)+b.offset);
+                assert(F::word(src,a.offset)==F::word(dest,b.offset));
+            }
+        }
+    };
+    transfer();const unsigned grows=f.grows;
+    assert(F::word(f.received,0)==7&&F::word(f.received,20)==0x3e800000u&&F::word(f.received,8)==0x3f400000u);
+    assert(F::word(f.received+0x40,12)==15&&F::word(f.rows+0x80,0x38)==0x12345678u);
+    F::put(f.rows+0x80,0,1);F::fl(f.rows+0x80,0x18,1);
+    transfer();assert(f.grows==grows&&!F::word(f.rows+0x80,0)&&!F::word(f.rows+0x80,0x18));
+    assert(f.client_resizes==1&&f.client_reserves==2);
+    ServerAnimationLayerTickBindings tb{};tb.vectors=f.vectors;tb.context=&f;
+    tb.cycle_rate=[](void*,void*,int seq,double* out) noexcept -> int{assert(seq==7);*out=1.;return 1;};
+    assert(owner.blend_out(f.server,sizeof(f.server),0,.25f,0,&f.vectors));
+    assert(tick.run(f.server,sizeof(f.server),.125f,6,&tb));f.now=6;transfer();
+    assert(F::word(f.received,20)==0x3ec00000u&&F::word(f.received,4)==0x3e800000u&&F::word(f.received,8)==0x3ec00000u);
+    assert(tick.run(f.server,sizeof(f.server),.125f,6,&tb)&&tick.run(f.server,sizeof(f.server),0,6,&tb));
+    transfer();assert(!F::word(f.received,0)&&!F::word(f.received,8)&&F::word(f.received,12)==15);
+    assert(f.client_resizes==1&&f.grows==grows);
+    assert(send.destroy(&sv)&&recv.destroy(&rv));
+    std::puts("PASS native server animation layer lifecycle through actual paired overlay send/receive proxies");
 }
 
 inline void check_animation_scene_frame(const ServerAnimationSceneFrameApi& api){
