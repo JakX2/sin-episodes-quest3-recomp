@@ -743,7 +743,8 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
-    const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr){
+    const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
+    const ResponseSceneFilterApi* filter=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[8]{};
@@ -785,10 +786,25 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     struct Selection {
         State& kv;const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
         alignas(4) unsigned char exp[0x7c]{},response[0x124]{};
-        int system=0;unsigned finds=0,allocations=0,warnings=0,destroys=0;
+        int system=0,npc=0;unsigned finds=0,allocations=0,warnings=0,destroys=0,scene_lookups=0;
+        const ResponseSceneFilterApi* filter=nullptr;ResponseSceneFilterBindings filter_bindings{};
+        alignas(4) unsigned char metadata[8]{};bool missing=false;
         bool no_system=false;
         static Selection& self(void* p){return *static_cast<Selection*>(p);}
-    } fsel{f,api,b};
+    } fsel{f,api,b};fsel.filter=filter;
+    F::put(fsel.exp,4,F::ptr(&fsel.npc));
+    if(filter){
+        auto& fb=fsel.filter_bindings;fb.context=&fsel;
+        fb.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+            auto& s=Selection::self(p);assert(word==F::ptr(&s.npc));*out=&s.npc;*n=sizeof(s.npc);return 1;};
+        fb.resolve_name=[](void* p,void* npc,const char* name,char* dest,unsigned n) noexcept -> int{
+            auto& s=Selection::self(p);assert(npc==&s.npc&&n==256&&!std::strcmp(name,"scenes/test.vcd"));
+            std::strcpy(dest,"scenes/resolved.vcd");return 1;};
+        fb.metadata=[](void* p,const char* name,void** out,unsigned* n) noexcept -> int{
+            auto& s=Selection::self(p);assert(!std::strcmp(name,"scenes/resolved.vcd"));++s.scene_lookups;
+            *out=s.missing?nullptr:s.metadata;*n=sizeof(s.metadata);return 1;};
+        F::fl(fsel.metadata,4,2.5f);
+    }
     ResponseCriteriaSelectionSession session{c,sizeof(c)};
     ResponseCriteriaSelectionBindings cfg{};cfg.criteria=b;cfg.session=&session;
     auto& h=cfg.host;h.context=&fsel;
@@ -807,7 +823,20 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         assert(s.tree.find(c,response_criteria_bytes,&s.b,"part",&idx,&child)==1&&idx>=0&&child==F::ptr(&s.kv.children[1]));
         assert(!std::strcmp(s.kv.children[1].value,"torso")&&s.kv.children[1].weight==5.f);
         assert(!std::strcmp(s.kv.children[0].value,"TLK_IDLE")&&!std::strcmp(s.kv.children[3].value,"Jessica")&&!std::strcmp(s.kv.children[4].value,"Blade"));
-        ++s.finds;s.response[4]='x';s.response[5]=0;*found=1;return 1;};
+        ++s.finds;
+        if(s.filter){
+            // Exercise the original filter at the finder boundary, before
+            // publishing a selected response. Candidate ranking remains a
+            // synthetic fixture, not an implementation of the rule engine.
+            unsigned allowed=99;
+            if(s.filter->allow(exp,sizeof(s.exp),&s.filter_bindings,3,"scenes/test.vcd",&allowed)!=1)return 0;
+            if(allowed){F::put(response,0,3u);std::strcpy(reinterpret_cast<char*>(s.response+4),"scenes/test.vcd");}
+            else{
+                assert(s.filter->allow(exp,sizeof(s.exp),nullptr,1,nullptr,&allowed)==1&&allowed);
+                F::put(response,0,1u);std::strcpy(reinterpret_cast<char*>(s.response+4),"fallback");
+            }
+        }else{s.response[4]='x';s.response[5]=0;}
+        *found=1;return 1;};
     h.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
     h.destroy=[](void* p,void* response) noexcept -> int{auto& s=Selection::self(p);assert(response==s.response);++s.destroys;return 1;};
     cfg.warning=[](void* p,const char*) noexcept -> int{++Selection::self(p).warnings;return 1;};
@@ -822,6 +851,14 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     void* active=nullptr;assert(adapted.begin_criteria(adapted.context,&active)&&active==c&&session.busy);
     void* second=nullptr;assert(!adapted.begin_criteria(adapted.context,&second)&&!second);
     assert(adapted.end_criteria(adapted.context,active)&&!session.busy&&a.live.empty());
+    if(filter){
+        assert(F::word(fsel.response,0)==3&&fsel.scene_lookups==1&&!std::strcmp(reinterpret_cast<char*>(fsel.response+4),"scenes/test.vcd"));
+        fsel.no_system=false;F::fl(fsel.metadata,4,0);
+        assert(run("part:head,PART:torso,state:alert")==1&&out==fsel.response&&F::word(fsel.response,0)==1);
+        assert(!std::strcmp(reinterpret_cast<char*>(fsel.response+4),"fallback")&&fsel.scene_lookups==2&&a.live.empty());
+        fsel.missing=true;F::fl(fsel.metadata,4,2.5f);
+        assert(run("part:head,PART:torso,state:alert")==1&&F::word(fsel.response,0)==1&&fsel.scene_lookups==3&&a.live.empty());
+    }
 }
 
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr,const ResponseHistoryTreeApi* history_tree=nullptr,

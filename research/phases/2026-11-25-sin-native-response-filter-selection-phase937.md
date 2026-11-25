@@ -1,0 +1,3 @@
+# Phase 937: native criteria and response scene filter composition
+
+Phase936 original expeditor filter is exercised at the phase935 response selection finder boundary using actual 92-byte native criteria set, bounded modifier parser, 24-byte tree, duplicate modifier child and NPC/player criteria. Finder fixture proposes scene candidate; positive cached duration permits it, zero and absent metadata reject it, then non-scene candidate passes unconditionally. Response ownership and cleanup unchanged. This is a synthetic finder boundary test, NOT original rule ranking, production filter vtable installation or retail campaign execution. CI pending.

@@ -1238,6 +1238,9 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena criteriaSelectionArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_response_criteria(criteriaSelectionArena,*criteriaTree,criteriaSelection,responseSelect);
         std::puts("PASS native criteria set and modifiers through actual response selection");
+        tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter);
+        std::puts("PASS native criteria and scene filter at response finder boundary");
         std::puts("PASS native 92-byte response criteria and 24-byte indexed tree");
         tables::test::TalkManagerFixture neighborSpeechManager(*talkManager,*talkCatalog);
         tables::test::VcdAuditArena neighborSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
