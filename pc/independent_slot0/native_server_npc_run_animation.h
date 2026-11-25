@@ -1,6 +1,8 @@
 #pragma once
 #include "native_server_animation_scene.h"
 #include "native_server_animation_events.h"
+#include "native_server_sequence_reset.h"
+#include "native_server_sequence_choice.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_run_animation_export[]="SiN_GetServerNpcRunAnimationApi";
 struct ServerNpcRunAnimationBindings {
@@ -30,4 +32,24 @@ struct ServerNpcRunAnimationApi {
     int (__cdecl *run)(void* actor,unsigned bytes,const ServerNpcRunAnimationInput*,const ServerNpcRunAnimationBindings*,ServerNpcRunAnimationResult*) noexcept;
 };
 using GetServerNpcRunAnimationApi=const ServerNpcRunAnimationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_native_sequence_frame_export[]="SiN_GetServerNpcNativeSequenceFrameApi";
+struct ServerNpcNativeSequenceBindings {
+    ServerNpcRunAnimationBindings frame;
+    void* context;
+    // 1 resolved (stable borrowed entries), 0 null studio metadata,
+    // negative failure. Activity registration must already be complete.
+    int (__cdecl *choices)(void*,void* actor,const ServerSequenceChoiceEntry**,unsigned*) noexcept;
+    ServerSequenceChoiceBindings choice;
+    ServerSequenceResetBindings reset;
+};
+struct ServerNpcNativeSequenceFrameResult {
+    ServerNpcRunAnimationResult frame;
+    ServerSequenceResetResult reset;
+};
+struct ServerNpcNativeSequenceFrameApi {
+    std::uint32_t version,size;
+    // Does not use frame.select_sequence or frame.set_sequence.
+    int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcNativeSequenceBindings*,ServerNpcNativeSequenceFrameResult*) noexcept;
+};
+using GetServerNpcNativeSequenceFrameApi=const ServerNpcNativeSequenceFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
