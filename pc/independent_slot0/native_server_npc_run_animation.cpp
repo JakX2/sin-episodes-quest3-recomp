@@ -11,12 +11,15 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSeq
 SiN_GetServerSequenceResetApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerSequenceDictionaryApi* __cdecl
 SiN_GetServerSequenceDictionaryApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerActivityChoiceApi* __cdecl
+SiN_GetServerActivityChoiceApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T> T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
 int run_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcRunAnimationBindings* b,ServerNpcRunAnimationResult* out,
     const ServerNpcNativeSequenceBindings* native,ServerSequenceResetResult* reset_result,
-    const ServerSequenceDictionaryBindings* dictionary=nullptr,ServerSequenceDictionaryResult* dictionary_result=nullptr) noexcept {
+    const ServerSequenceDictionaryBindings* dictionary=nullptr,ServerSequenceDictionaryResult* dictionary_result=nullptr,
+    const ServerNpcActivityFrameBindings* activity_frame=nullptr,ServerActivityChoiceResult* activity_result=nullptr) noexcept {
     if(!out)return 0;
     *out={};out->selected=-1;out->events.failed_layer=-2;
     if(!actor||bytes<0x8fc||!in||!b||!b->model_available||!std::isfinite(in->now)||
@@ -40,7 +43,16 @@ int run_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,con
             out->selection_attempted=1;
             const bool looping=read<std::uint8_t>(actor,0x3e1)!=0;
             const int activity=read<int>(actor,0x87c),current=read<int>(actor,0x3ec);
-            if(native){
+            if(activity_frame){
+                const auto* chooser=SiN_GetServerActivityChoiceApi(1,sizeof(ServerActivityChoiceApi));
+                const ServerActivityCompositeView* view=nullptr;
+                if(!chooser||!native||!dictionary||!activity_frame->activities||!dictionary->dictionary||!activity_frame->metadata||!activity_result)return 0;
+                const int available=activity_frame->metadata(activity_frame->context,actor,&view);
+                if(available<0||(available>0&&!view))return 0;
+                if(!available)view=nullptr;
+                if(!chooser->choose(activity_frame->activities,dictionary->dictionary,view,activity,current,looping,&native->choice,activity_result))return 0;
+                out->selected=activity_result->selected;
+            }else if(native){
                 const auto* chooser=SiN_GetServerSequenceChoiceApi(1,sizeof(ServerSequenceChoiceApi));
                 const ServerSequenceChoiceEntry* entries=nullptr;unsigned count=0;
                 if(!chooser||!native->choices)return 0;
@@ -78,6 +90,14 @@ int __cdecl run_dictionary(void* a,unsigned bytes,const ServerNpcRunAnimationInp
     return run_impl(a,bytes,in,b?&b->sequence.frame:nullptr,&out->frame,b?&b->sequence:nullptr,
         &out->sequence.reset,b?&b->dictionary:nullptr,&out->sequence);
 }
+int __cdecl run_activity(void* a,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcActivityFrameBindings* b,ServerNpcActivityFrameResult* out) noexcept {
+    if(!out)return 0;*out={};
+    out->frame.sequence.registration.failed_index=-1;
+    out->choice.selected=out->choice.failed_index=out->choice.refresh.failed_index=-1;
+    return run_impl(a,bytes,in,b?&b->frame.sequence.frame:nullptr,&out->frame.frame,b?&b->frame.sequence:nullptr,
+        &out->frame.sequence.reset,b?&b->frame.dictionary:nullptr,&out->frame.sequence,b,&out->choice);
+}
+const ServerNpcActivityFrameApi activity_api{1,sizeof(ServerNpcActivityFrameApi),&run_activity};
 const ServerNpcDictionaryFrameApi dictionary_api{1,sizeof(ServerNpcDictionaryFrameApi),&run_dictionary};
 const ServerNpcNativeSequenceFrameApi native_api{1,sizeof(ServerNpcNativeSequenceFrameApi),&run_native};
 const ServerNpcRunAnimationApi api{1,sizeof(ServerNpcRunAnimationApi),&run};
@@ -102,4 +122,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcDictionaryFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcDictionaryFrameApi)?&dictionary_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcActivityFrameApi=_SiN_GetServerNpcActivityFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcActivityFrameApi* __cdecl
+SiN_GetServerNpcActivityFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerNpcActivityFrameApi)?&activity_api:nullptr;
 }
