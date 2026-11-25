@@ -1176,6 +1176,13 @@ int main(int argc,char** argv){
         assert(getHistoryPolicy);const auto* historyPolicy=getHistoryPolicy(1,sizeof(tables::ResponsePolicyApi));assert(historyPolicy);
         tables::test::VcdAuditArena historyArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_response_history_tree(historyArena,*historyTree,*historyPolicy);
+        const auto getManagedHistory=reinterpret_cast<tables::GetResponseHistoryManagedApi>(GetProcAddress(server,tables::response_history_managed_export));
+        assert(getManagedHistory&&!GetProcAddress(client,tables::response_history_managed_export));
+        const auto* managedHistory=getManagedHistory(1,sizeof(tables::ResponseHistoryManagedApi));
+        assert(managedHistory&&!getManagedHistory(0,sizeof(tables::ResponseHistoryManagedApi))&&!getManagedHistory(1,0));
+        tables::test::VcdAuditArena managedHistoryArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_managed_response_history(managedHistoryArena,*managedHistory,*historyPolicy,*talkManager,*talkCatalog);
+        std::puts("PASS native concept history and managed Jessica cooldown notification");
         tables::test::VcdAuditArena nativeHistorySpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_vcd_clock_speech(nativeHistorySpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink,historyTree);
         std::puts("PASS native response history symbol lookup, indexed tree insertion and free-slot reuse");

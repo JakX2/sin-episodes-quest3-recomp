@@ -567,6 +567,51 @@ inline void check_native_response_history_tree(VcdAuditArena& a,const ResponseHi
     assert(a.retire.symbol_destroy(&a,exp+0x34)&&a.release(&a,retained)&&a.live.empty());
 }
 
+
+inline void check_managed_response_history(VcdAuditArena& a,const ResponseHistoryManagedApi& api,
+    const ResponsePolicyApi& policy,const TalkManagerApi& manager,const TalkCatalogApi& catalog){
+    using F=ScenePlaybackFixture;
+    ManagedTalkFixture f(manager,catalog);auto& p=f.policy;auto& m=f.manager;
+    F::put(f.exp,0x20,0xffffffffu);F::put(f.exp,0x28,0xffffffffu);
+    assert(a.symbol_api.construct_empty(f.exp+0x34,0x34,0,0x2228e9b0)==1);
+    struct Context {
+        ManagedTalkFixture& f;
+        SceneSpeechActorKind kind=SceneSpeechActorKind::Jessica;
+        unsigned clocks=0;
+    } context{f};
+    ResponseHistoryManagedBindings b{};
+    b.tree.memory=a.vector_bindings;b.tree.symbols=a.intern_bindings;b.tree.context=&context;
+    b.tree.clock=[](void* p,float* out) noexcept -> int{
+        auto& c=*static_cast<Context*>(p);++c.clocks;*out=c.f.policy.now;return 1;};
+    b.manager=f.b;b.context=&context;
+    b.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=static_cast<Context*>(p)->f;
+        if(word!=F::ptr(f.policy.npc))return 0;
+        *out=f.policy.npc;*n=sizeof(f.policy.npc);return 1;};
+    b.kind=[](void* p,void* actor,SceneSpeechActorKind* kind) noexcept -> int{
+        auto& c=*static_cast<Context*>(p);assert(actor==c.f.policy.npc);*kind=c.kind;return 1;};
+    ResponseHistoryBindings h{};assert(api.adapt(&b,&h));
+    p.lo=5;p.hi=10;p.draw=7;
+    assert(policy.seed(f.exp,sizeof(f.exp),&h,"TLK_HELLO")==1);
+    assert(context.clocks==2&&m.creations==1&&m.inserts==48&&VcdAuditArena::read_float(m.object,0x394)==17.f);
+    p.expect({4,5,2,1});
+    unsigned has=0;assert(policy.has_concept(f.exp,sizeof(f.exp),&h,"tlk_hello",&has)==1&&has);
+    int idx=-1;void* row=nullptr;unsigned n=0;
+    assert(h.lookup(h.context,f.exp,"TLK_HELLO",&idx)&&idx==0&&h.entry(h.context,f.exp,idx,&row,&n)&&n==28);
+    assert(VcdAuditArena::read_float(row,0x14)==10.f&&!F::word(row,0x18));
+    // Non-Jessica sink does not touch manager or propagate, but native
+    // concept history is still committed by the caller.
+    context.kind=SceneSpeechActorKind::JC;p.now=20;
+    assert(policy.seed(f.exp,sizeof(f.exp),&h,"TLK_HELLO")==1&&context.clocks==3);
+    assert(VcdAuditArena::read_float(row,0x14)==20.f&&VcdAuditArena::read_float(m.object,0x394)==17.f&&!p.count);
+    context.kind=SceneSpeechActorKind::Jessica;p.now=25;p.fail=4;
+    assert(policy.seed(f.exp,sizeof(f.exp),&h,"TLK_HELLO")==-1);
+    assert(VcdAuditArena::read_float(row,0x14)==25.f&&VcdAuditArena::read_float(m.object,0x394)==17.f);
+    p.expect({4});p.fail=0;
+    assert(manager.destroy(&m.session,&m.control,&m.tables,&m.b)==1);
+    assert(a.retire.symbol_destroy(&a,f.exp+0x34)&&a.release(&a,F::word(f.exp,0x14))&&a.live.empty());
+}
+
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr,const ResponseHistoryTreeApi* history_tree=nullptr){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
