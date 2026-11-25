@@ -199,7 +199,7 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr) noexcept;
+int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr) noexcept;
 bool movement_supports(int id,bool running) noexcept{
     if(running)return id==116||id==121||id==122;
     return id==43||id==44||id==89||id==90||id==116||id==121||id==122;
@@ -418,7 +418,63 @@ int observation(void* a,unsigned n,float now,const ServerNpcSharedTaskBindings& 
     out.elapsed=static_cast<double>(now)-out.last_seen;
     return out.elapsed>=15.0||complete();
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out) noexcept{
+int sound_cover97(void* a,unsigned n,const ServerNpcScheduleTask& task,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedSoundCoverBindings& b,ServerNpcSharedSoundCoverResult& out) noexcept{
+    out.stage=rd<int>(a,0x7b4);
+    if(out.stage!=0&&out.stage!=1)return 1;
+    const auto nav=rd<unsigned>(a,0x8f8);
+    auto best_sound=[&](const void*& sound,unsigned& size){
+        sound=nullptr;size=0;++out.sound_queries;
+        return b.best_sound&&b.best_sound(b.context,a,0xfff1f,&sound,&size)&&(!sound||size>=0x2c);
+    };
+    if(out.stage==0){
+        const void* sound=nullptr;unsigned size=0;
+        if(!best_sound(sound,size))return 0;
+        bool found=false;
+        if(sound){
+            float position[3]{};std::memcpy(position,static_cast<unsigned char*>(a)+0xa0c,12);
+            if(!b.cover_position||!b.cover_position(b.context,a,sound,position,&found))return 0;
+            if(found){for(float v:position)if(!std::isfinite(v))return 0;}
+            std::memcpy(static_cast<unsigned char*>(a)+0xa0c,position,12);
+        }
+        out.position_found=found;
+        if(!found){
+            const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+            out.shared.failed_code=8;return life&&life->fail(a,n,now,8,&s.lifecycle,&out.shared.lifecycle);
+        }
+        if(!nav||!b.prepare_navigation||!b.prepare_navigation(b.context,nav))return 0;
+        out.prepared=1;
+        // 22034b50: clear old cached sound and notify only if active, then re-query.
+        const auto cache_token=rd<unsigned>(a,0x89c);void* cache=nullptr;unsigned extent=0;
+        if(!cache_token||!b.storage||!b.storage(b.context,cache_token,&cache,&extent)||!cache||extent<0x2c)return 0;
+        if(rd<unsigned>(cache,0xc)){
+            wr(cache,0xc,0u);out.cache_cleared=1;
+            if(!b.sound_cleared||!b.sound_cleared(b.context,a))return 0;
+        }
+        if(!best_sound(sound,size))return 0;
+        if(sound){
+            unsigned char snapshot[0x2c]{};std::memcpy(snapshot,sound,sizeof(snapshot));
+            // Retail 2202f950 copies fields, leaving padding byte +1b untouched.
+            std::memcpy(cache,snapshot,0x1b);
+            std::memcpy(static_cast<unsigned char*>(cache)+0x1c,snapshot+0x1c,0x10);
+            out.cache_copied=1;
+        }
+        wr(a,0x7b4,1);out.advanced=1;return 1;
+    }
+    if(!nav||!b.goal_context||!b.submit_goal)return 0;
+    auto& goal=out.goal;goal.type=4;std::memcpy(goal.position,static_cast<unsigned char*>(a)+0xa0c,12);
+    for(float v:goal.position)if(!std::isfinite(v))return 0;
+    goal.target=goal.aux1=goal.aux2=-1;goal.activity=10;goal.tolerance=-2.f;goal.range=-1.f;
+    if(!b.goal_context(b.context,&goal.context_token))return 0;
+    const void* sound=nullptr;unsigned size=0;if(!best_sound(sound,size))return 0;
+    if(sound)goal.range=static_cast<float>(static_cast<double>(rd<int>(sound,4))*.5);
+    bool accepted=false;out.submitted=1;
+    if(!b.submit_goal(b.context,nav,&goal,&accepted))return 0;
+    out.accepted=accepted;if(!accepted)return 1;
+    const float deadline=static_cast<float>(static_cast<double>(now)+task.parameter);
+    if(!std::isfinite(deadline))return 0;
+    wr(a,0x8f0,deadline);out.deadline_written=1;return 1;
+}
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -433,6 +489,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
+    if(running&&t->id==97&&sound_cover&&sound_cover_out){out->native=1;return sound_cover97(a,n,*t,now,*b,*sound_cover,*sound_cover_out);}
     if(running&&t->id==6&&observe&&observe_out){out->native=1;return observation(a,n,now,*b,*observe,*observe_out);}
     if(!running&&t->id==84&&cue&&cue_out){out->native=1;return shared_cue(a,n,*t,now,*b,*cue,*cue_out);}
     if(movement_supports(t->id,running)&&move&&move_out){out->native=1;return movement(a,n,*t,running,now,*b,*move,*move_out,*out);}
@@ -551,6 +608,12 @@ int __cdecl execute_observation(void* a,unsigned n,const ServerNpcScheduleTask* 
     if(!t||t->id!=6||!observe||!grunt_cue_class(observe->original_vtable))return 0;
     return execute_impl(a,n,t,true,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,observe,out);
 }
+int __cdecl execute_sound_cover(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedSoundCoverBindings* sound,ServerNpcSharedSoundCoverResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!t||t->id!=97||!sound||!grunt_cue_class(sound->original_vtable))return 0;
+    return execute_impl(a,n,t,true,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,sound,out);
+}
+const ServerNpcSharedSoundCoverApi sound_cover_api{1,sizeof(ServerNpcSharedSoundCoverApi),&execute_sound_cover};
 const ServerNpcSharedObservationApi observation_api{1,sizeof(ServerNpcSharedObservationApi),&execute_observation};
 const ServerNpcSharedCueApi cue_api{1,sizeof(ServerNpcSharedCueApi),&execute_cue};
 const ServerNpcDifficultyWaitApi difficulty_wait_api{1,sizeof(ServerNpcDifficultyWaitApi),&execute_difficulty_wait};
@@ -679,4 +742,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedObservationApi=_SiN_GetServerNpcSharedObservationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedObservationApi* __cdecl SiN_GetServerNpcSharedObservationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedObservationApi)?&observation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedSoundCoverApi=_SiN_GetServerNpcSharedSoundCoverApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedSoundCoverApi* __cdecl SiN_GetServerNpcSharedSoundCoverApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedSoundCoverApi)?&sound_cover_api:nullptr;
 }

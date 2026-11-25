@@ -165,6 +165,36 @@ struct ServerNpcSharedObservationApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedObservationBindings*,ServerNpcSharedObservationResult*) noexcept;
 };
 using GetServerNpcSharedObservationApi=const ServerNpcSharedObservationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_sound_cover_export[]="SiN_GetServerNpcSharedSoundCoverApi";
+// Original navigator goal constructor 2204c660, fixed PE32 data layout.
+struct ServerNpcSoundCoverGoal {
+    int type;float position[3];int target,activity,aux1,aux2;
+    float tolerance,range;unsigned flags,context_token;
+};
+static_assert(sizeof(ServerNpcSoundCoverGoal)==0x30);
+struct ServerNpcSharedSoundCoverBindings {
+    void* context;
+    std::uint32_t original_vtable;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *best_sound)(void*,void*,unsigned,const void**,unsigned*) noexcept; // +504
+    int (__cdecl *cover_position)(void*,void*,const void*,float[3],bool*) noexcept; // +698
+    int (__cdecl *prepare_navigation)(void*,std::uint32_t) noexcept; // 22074440
+    int (__cdecl *sound_cleared)(void*,void*) noexcept; // +4f4
+    int (__cdecl *goal_context)(void*,std::uint32_t*) noexcept; // original process-wide 224de6f8
+    int (__cdecl *submit_goal)(void*,std::uint32_t,const ServerNpcSoundCoverGoal*,bool*) noexcept; // nav +14, false argument
+};
+struct ServerNpcSharedSoundCoverResult {
+    ServerNpcSharedTaskResult shared;
+    int stage;
+    unsigned sound_queries,position_found,prepared,cache_cleared,cache_copied,advanced,submitted,accepted,deadline_written;
+    ServerNpcSoundCoverGoal goal;
+};
+struct ServerNpcSharedSoundCoverApi {
+    std::uint32_t version,size;
+    // Original Run97. Start97 is the existing shared deferred route.
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedSoundCoverBindings*,ServerNpcSharedSoundCoverResult*) noexcept;
+};
+using GetServerNpcSharedSoundCoverApi=const ServerNpcSharedSoundCoverApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedObservationStats {ServerNpcSharedObservationResult last;unsigned calls,native,components;};
 struct ServerNpcSharedCueStats {ServerNpcSharedCueResult last;unsigned calls,native,components;};
 struct ServerNpcSharedMovementStats {ServerNpcSharedMovementResult last;unsigned calls,native,components;};
