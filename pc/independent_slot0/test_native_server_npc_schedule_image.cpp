@@ -12,7 +12,7 @@
 using namespace sin_port::native_weapon_tables;
 struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
-    unsigned char motor[0x18]{},nav[0x28]{},path[0x48]{};
+    unsigned char motor[0x18]{},nav[0x50]{},path[0x48]{};
     unsigned clear_paths=0,stop_paths=0,move_updates=0;
     bool align_on_step=false;unsigned begins=0,steps=0;int last_pending=-1;
     ServerScheduleImage image{};
@@ -267,6 +267,10 @@ int main(int argc,char** argv){
     f.put(f.path,0x44,0u);
     assert(move_api->run(f.actor,sizeof(f.actor),62,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&mvr.movement.calls==1&&f.stop_paths==1&&mvr.movement.last.shared.lifecycle.completed);
     assert(move_api->run(f.actor,sizeof(f.actor),63,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&!mvr.movement.calls&&mvr.animation.facing.attack.shared.shared.last.task==119&&mvr.animation.facing.attack.shared.shared.last.lifecycle.completed);
+    // Original movement-configuration task89, no animation callback.
+    install_at(87,1);bind_nav();float stored_distance=0;
+    assert(move_api->run(f.actor,sizeof(f.actor),64,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&mvr.movement.calls==1&&mvr.movement.last.shared.task==89&&mvr.movement.last.shared.lifecycle.completed);
+    std::memcpy(&stored_distance,f.path+4,4);assert(stored_distance==48.f);
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     // Original Elite schedule: ready -> reconstructed base start -> inherited run.
     assert(f.api->build(f.actor,NpcSubclassElite,5000,99,&b,&f.image,&result));

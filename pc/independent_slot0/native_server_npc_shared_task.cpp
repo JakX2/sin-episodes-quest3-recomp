@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcActivityTranslateApi* __cdecl SiN_GetServerNpcActivityTranslateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTaskLifecycleApi* __cdecl SiN_GetServerNpcTaskLifecycleApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTransitionApi* __cdecl SiN_GetServerNpcTransitionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleResolutionApi* __cdecl SiN_GetServerNpcScheduleResolutionApi(std::uint32_t,std::uint32_t) noexcept;
@@ -133,6 +134,10 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
 int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr) noexcept;
+bool movement_supports(int id,bool running) noexcept{
+    if(running)return id==116||id==121||id==122;
+    return id==43||id==44||id==89||id==90||id==116||id==121||id==122;
+}
 int movement(void* a,unsigned n,const ServerNpcScheduleTask& t,bool running,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedMovementBindings& b,ServerNpcSharedMovementResult& out,ServerNpcSharedTaskResult& result) noexcept{
     if(!std::isfinite(t.parameter))return 0;
     const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
@@ -160,7 +165,48 @@ int movement(void* a,unsigned n,const ServerNpcScheduleTask& t,bool running,floa
         return pending(id>0?id:1);
     };
     auto update=[&](){++out.move_calls;return b.movement_update&&b.movement_update(b.context,a);};
-    if(t.id==121){
+    if(!running&&(t.id==89||t.id==90)){
+        int value=0;if(!integer(std::trunc(static_cast<double>(t.parameter)),value))return 0;
+        void* nav=nullptr;void* p=nullptr;
+        if(t.id==89){
+            if(!path(nav,p))return 0;
+            wr(p,4,static_cast<float>(value));
+        }else{
+            if(!storage(rd<unsigned>(a,0x8f8),0x50,nav))return 0;
+            wr(nav,0x4c,static_cast<float>(value));
+        }
+        return complete();
+    }
+    if(!running&&(t.id==43||t.id==44)){
+        if(!s.transition)return 0;
+        const auto* api=SiN_GetServerNpcActivityTranslateApi(1,sizeof(ServerNpcActivityTranslateApi));
+        if(!api)return 0;
+        auto translated=[&](int id,int& selected){
+            ServerNpcActivityTranslateResult tr{};
+            if(!api->translate(a,n,id,&s.transition->assignment.translation,&tr))return false;
+            selected=tr.activity;return true;
+        };
+        int selected=-1,activity=0;
+        if(t.id==43){
+            if(!translated(10,selected))return 0;
+            activity=selected!=-1?10:6;
+        }else{
+            const int mode=rd<int>(a,0x204);
+            if(mode==4||mode==5){if(!translated(25,selected))return 0;if(selected!=-1)activity=25;}
+            if(!activity){if(!translated(6,selected))return 0;activity=selected!=-1?6:10;}
+        }
+        void* nav=nullptr;void* p=nullptr;if(!path(nav,p))return 0;
+        wr(p,8,activity);result.activity=activity;
+        wr(a,0x988,rd<unsigned>(a,0x988)&~2u);
+        return complete();
+    }
+    if(!running&&t.id==122){
+        void* nav=nullptr;void* p=nullptr;if(!path(nav,p))return 0;
+        if(!rd<unsigned>(p,0))return complete();
+        unsigned finished=0;if(!life->animation_finished(a,n,&finished))return 0;
+        return finished?complete():update();
+    }
+    if(t.id==121||t.id==122){
         // Timeout is a strict > test; parameter zero bypasses elapsed-time query.
         if(running&&t.parameter!=0.f){
             const float started=rd<float>(a,0x7ac);
@@ -237,7 +283,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
-    if((t->id==116||t->id==121)&&move&&move_out){out->native=1;return movement(a,n,*t,running,now,*b,*move,*move_out,*out);}
+    if(movement_supports(t->id,running)&&move&&move_out){out->native=1;return movement(a,n,*t,running,now,*b,*move,*move_out,*out);}
     if(t->id==60&&facing&&facing_out){out->native=1;return face60(a,n,running,now,*b,*facing,*facing_out);}
     if(running&&t->id>=94&&t->id<=96&&target&&target_out){out->native=1;return target_animation(a,n,t->id,now,*b,*target,*target_out);}
     if(!supports(t->id,running)){out->parent_called=1;return b->parent&&b->parent(b->context,a,t,running);}
@@ -312,7 +358,7 @@ int __cdecl execute_target_animation(void* a,unsigned n,const ServerNpcScheduleT
 }
 int __cdecl execute_movement(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* s,const ServerNpcSharedMovementBindings* b,ServerNpcSharedMovementResult* out) noexcept{
     if(!out)return 0;*out={};out->idle_activity=-1;
-    if(!t||(t->id!=116&&t->id!=121)||!b)return 0;
+    if(!t||!movement_supports(t->id,running)||!b)return 0;
     return execute_impl(a,n,t,running,now,s,&out->shared,nullptr,nullptr,nullptr,nullptr,b,out);
 }
 const ServerNpcSharedMovementApi movement_api{1,sizeof(ServerNpcSharedMovementApi),&execute_movement};
@@ -332,7 +378,7 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
     bound->parent=[](void* p,void* a,const ServerNpcScheduleTask* t,bool running) noexcept -> int{
         auto& q=*static_cast<ServerNpcSharedParentSession*>(p);
         if(a!=q.actor||!t)return 0;
-        if(q.movement&&(t->id==116||t->id==121)){
+        if(q.movement&&movement_supports(t->id,running)&&((t->id!=43&&t->id!=44)||q.shared.transition)){
             auto& st=*q.movement_stats;++st.calls;
             const int ok=movement_api.execute(a,q.bytes,t,running,q.now,&q.shared,q.movement,&st.last);
             st.native+=st.last.shared.native;st.components+=st.last.shared.component_handled;return ok;
