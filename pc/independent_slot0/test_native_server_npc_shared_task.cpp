@@ -13,7 +13,7 @@
 using namespace sin_port::native_weapon_tables;
 struct F {
     unsigned char a[0xfcc]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
-    unsigned char motor[0x1c]{},target[4]{},nav[0x50]{},path[0x60]{},hint[0x3d8]{};
+    unsigned char motor[0x1c]{},target[0xc0]{},nav[0x50]{},path[0x60]{},hint[0x3d8]{};
     float speed[3]{};bool can_stop=false;int pose_index=3;
     unsigned char sound[0x2c]{},sound_cache[0x2c]{};
     bool sound_live=true,cover_found=true,goal_accept=false,assign_hint=false;
@@ -24,6 +24,8 @@ struct F {
     void* selected_enemy=nullptr;
     unsigned char memory[0x40]{},memory_nodes[24]{},memory_record[0x38]{},memory_default[0x38]{};
     const ServerNpcEnemyMemoryQueryApi* memory_api=nullptr;
+    const ServerNpcBestEnemyQueryApi* best_query_api=nullptr;
+    ServerNpcBestEnemyQueryContext best_context{};
     ServerNpcEnemyMemoryQueryBindings memory_query{};
     bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
     float motor_yaw() const {float y=0;std::memcpy(&y,motor+0x14,4);return y;}
@@ -463,5 +465,35 @@ int main(int argc,char** argv){
     f.put(f.a,0x8a0,0x9001u);
     assert(f.memory_api->aim_vector(f.a,sizeof(f.a),&mq,&lookup,aim)&&lookup.record==202&&aim[0]==1);
     assert(!f.memory_api->aim_vector(f.a,0x987,&mq,&lookup,aim));
+    // Compose Task135 with native BestEnemy selection instead of scripted candidate.
+    auto gbq=reinterpret_cast<GetServerNpcBestEnemyQueryApi>(GetProcAddress(s,server_npc_best_enemy_query_export));
+    assert(gbq&&!GetProcAddress(c,server_npc_best_enemy_query_export)&&!gbq(0,sizeof(ServerNpcBestEnemyQueryApi))&&!gbq(1,0));
+    f.best_query_api=gbq(1,sizeof(ServerNpcBestEnemyQueryApi));assert(f.best_query_api);
+    mq.entity_key=[](void* p,void* e,std::uint32_t* out) noexcept -> int{
+        auto& f=F::self(p);if(e==f.target)*out=0x12345678u;else if(e==f.hint)*out=0x12345677u;else return 0;return 1;
+    };
+    ServerNpcBestEnemyBindings best_binding{};best_binding.context=&f;best_binding.memory=mq;
+    best_binding.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& f=F::self(p);if(e==f.target)*n=sizeof(f.target);else if(e==f.hint)*n=sizeof(f.hint);else return 0;return 1;};
+    best_binding.disposition=[](void*,void*,void*,int* out) noexcept -> int{*out=1;return 1;};
+    best_binding.valid=[](void*,void*,void*,bool* out) noexcept -> int{*out=true;return 1;};
+    best_binding.unreachable=[](void*,void*,void*,bool* out) noexcept -> int{*out=false;return 1;};
+    best_binding.priority=[](void* p,void*,void* e,int* out) noexcept -> int{*out=e==F::self(p).hint?2:1;return 1;};
+    best_binding.origin=[](void* p,void* e,float* out) noexcept -> int{auto& f=F::self(p);out[0]=e==f.a?0.f:e==f.hint?20.f:10.f;out[1]=out[2]=0;return 1;};
+    best_binding.sensed=[](void*,std::uint32_t,void*,bool* out) noexcept -> int{*out=true;return 1;};
+    best_binding.component_best=[](void* p,std::uint32_t token,void** out) noexcept -> int{assert(token==77);*out=F::self(p).hint;return 1;};
+    f.best_context.bindings=&best_binding;f.best_context.actor_bytes=sizeof(f.a);f.best_context.now=60;
+    f.put(f.memory_nodes,16,0x12345677u);f.put(f.memory_record,0,0x7001u);f.put(f.memory_default,0,0x8002u);
+    f.put(f.memory_record,0x1c,60.f);f.put(f.memory_default,0x1c,60.f);
+    erb.select_enemy=[](void* p,void* actor,std::uint32_t token,void** out) noexcept -> int{
+        auto& f=F::self(p);return f.best_query_api->select(&f.best_context,actor,token,out);
+    };
+    f.put(f.a,0x8a0,0x7001u);refresh();assert(refresh_result.replaced&&refresh_result.enemy.new_handle==0x8002u&&f.best_context.last.visited==2&&f.best_context.last.priority==2);
+    f.put(f.a,0x8a0,0x7001u);f.memory_default[0x35]=1;refresh();
+    assert(!refresh_result.replaced&&refresh_result.enemy.new_handle==0x7001u&&f.best_context.last.eluded==1);
+    f.memory_record[0x35]=1;refresh();
+    assert(refresh_result.cleared&&f.best_context.last.eluded==2&&f.best_context.last.enemy==nullptr);
+    f.memory_record[0x35]=0;f.put(f.a,0x8a0,0x7001u);f.put(f.a,0xc18,77u);
+    refresh();assert(refresh_result.replaced&&f.best_context.last.component_called&&f.best_context.last.visited==0);
+    void* selected=nullptr;assert(!f.best_query_api->select(&f.best_context,f.a,0,&selected)&&!selected);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
