@@ -1,6 +1,7 @@
 #pragma once
 #include "native_server_grunt_schedule_selector.h"
 #include "native_server_npc_state_reconsider.h"
+#include "native_server_jetpack_schedule_selector.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_schedule_resolution_export[]="SiN_GetServerNpcScheduleResolutionApi";
 struct ServerNpcScheduleResolutionBindings {
@@ -28,4 +29,10 @@ struct ServerNpcScheduleResolutionApi {
     int (__cdecl *select)(void*,unsigned,float,bool,const ServerNpcScheduleResolutionBindings*,ServerNpcScheduleResolutionResult*) noexcept;
 };
 using GetServerNpcScheduleResolutionApi=const ServerNpcScheduleResolutionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_jetpack_schedule_resolution_export[]="SiN_GetServerJetpackScheduleResolutionApi";
+struct ServerJetpackScheduleResolutionApi {
+    std::uint32_t version,size;
+    int (__cdecl *select)(void*,unsigned,float,bool,const ServerNpcScheduleResolutionBindings*,const ServerJetpackSelectorBindings*,ServerNpcScheduleResolutionResult*,ServerJetpackSelectorResult*) noexcept;
+};
+using GetServerJetpackScheduleResolutionApi=const ServerJetpackScheduleResolutionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

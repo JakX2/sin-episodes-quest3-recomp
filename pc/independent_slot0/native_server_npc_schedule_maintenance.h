@@ -3,6 +3,8 @@
 #include "native_server_npc_schedule_validity.h"
 #include "native_server_npc_weapon_runtime.h"
 #include "native_server_grunt_task_dispatch.h"
+#include "native_server_elite_task.h"
+#include "native_server_jetpack_task.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_schedule_maintenance_export[]="SiN_GetServerNpcScheduleMaintenanceApi";
 struct ServerNpcScheduleMaintenanceBindings {
@@ -55,4 +57,29 @@ struct ServerGruntSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerGruntSchedulerBindings*,ServerGruntSchedulerResult*) noexcept;
 };
 using GetServerGruntSchedulerApi=const ServerGruntSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_subclass_scheduler_export[]="SiN_GetServerNpcSubclassSchedulerApi";
+enum ServerNpcSubclass : unsigned {NpcSubclassGround,NpcSubclassElite,NpcSubclassJetpack};
+struct ServerNpcSubclassSchedulerBindings {
+    ServerNpcScheduleMaintenanceBindings maintenance;
+    ServerGruntTaskBindings grunt;
+    ServerEliteTaskBindings elite;
+    ServerJetpackTaskBindings jetpack;
+    ServerJetpackSelectorBindings jet_selector;
+    // Explicit original primary table identity, not a process pointer.
+    std::uint32_t original_vtable;
+};
+struct ServerNpcSubclassSchedulerResult {
+    ServerNpcScheduleMaintenanceResult maintenance;
+    ServerGruntTaskResult grunt;
+    ServerEliteTaskResult elite;
+    ServerJetpackTaskResult jetpack;
+    ServerJetpackSelectorResult jet_selector;
+    unsigned subclass,task_calls,delegated,task_failures;
+};
+struct ServerNpcSubclassSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *classify)(std::uint32_t,unsigned*) noexcept;
+    int (__cdecl *run)(void*,unsigned,float,const ServerNpcSubclassSchedulerBindings*,ServerNpcSubclassSchedulerResult*) noexcept;
+};
+using GetServerNpcSubclassSchedulerApi=const ServerNpcSubclassSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
