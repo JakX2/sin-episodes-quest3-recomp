@@ -7981,6 +7981,35 @@ const ResponseCriteriaTreeApi response_criteria_tree_api{version,sizeof(Response
     &response_criteria_add,&response_criteria_find,&response_criteria_destroy};
 
 
+int __cdecl response_criteria_remove(void* c,unsigned bytes,const ResponseCriteriaRemovalBindings* b,const char* name) noexcept {
+    ResponseCriteriaIndex t{};
+    if(bytes<response_criteria_bytes||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+       !response_criteria_ready(&b->tree)||!b->retire_child||!name||!response_criteria_read(c,b->tree,t))return 0;
+    const auto& h=b->tree;const auto rootword=hologram_read<std::uint32_t>(c,0);
+    if(!rootword)return 0;
+    auto* root=reinterpret_cast<void*>(static_cast<std::uintptr_t>(rootword));
+    void* child=nullptr;
+    if(!h.find_child(h.context,root,name,0,&child))return -1;
+    if(!child)return 1;
+    int idx=-1;std::uint32_t word=0;
+    if(response_criteria_find(c,bytes,&h,name,&idx,&word)!=1)return -1;
+    unsigned aliases=0;
+    for(unsigned i=0;i<t.count;++i)
+        if(t.get(i,0)!=i&&hologram_read<std::uint32_t>(t.rows,i*24+20)==scene_word(child))++aliases;
+    // Retail deletes a child after removing at most one row. Reject duplicate
+    // aliases and mismatched name/row identity rather than leave stale pointers.
+    if((idx<0&&aliases)||(idx>=0&&(aliases!=1||word!=scene_word(child))))return 0;
+    if(idx>=0){
+        const auto z=static_cast<unsigned>(idx);
+        t.erase(z);
+        t.set(z,0,z);t.set(z,1,hologram_read<std::uint32_t>(c,0x1c));
+        hologram_write(c,0x14,t.root);hologram_write(c,0x1c,z);
+        hologram_write(c,0x18,hologram_read<unsigned>(c,0x18)-1);
+    }
+    return b->retire_child(h.context,root,child)?1:-1;
+}
+const ResponseCriteriaRemovalApi response_criteria_removal_api{version,sizeof(ResponseCriteriaRemovalApi),&response_criteria_remove};
+
 // 220a3eb0: shared expresser NPC criteria. Engine queries are explicit;
  // names are consumed synchronously by the native CriteriaSet insertion.
 int __cdecl npc_response_criteria(void* npc,unsigned bytes,void* c,const NpcResponseCriteriaBindings* b) noexcept {
@@ -16297,6 +16326,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ActorResp
 SiN_GetActorResponseSelectionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ActorResponseSelectionApi)?&actor_response_selection_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaRemovalApi=_SiN_GetResponseCriteriaRemovalApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaRemovalApi* __cdecl
+SiN_GetResponseCriteriaRemovalApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseCriteriaRemovalApi)?&response_criteria_removal_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

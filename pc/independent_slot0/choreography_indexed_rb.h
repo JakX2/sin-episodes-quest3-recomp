@@ -50,6 +50,45 @@ template<class I,unsigned Stride> struct Tree {
         else set(p,get(p,0)==x?0:1,y);
         set(y,side,x);set(x,2,y);
     }
+    void transplant(I u,I v) noexcept {
+        const I p=get(u,2);
+        if(p==nil)root=v;else set(p,get(p,0)==u?0:1,v);
+        if(v!=nil)set(v,2,p);
+    }
+    // Unlink an occupied index from a validated tree. Move the successor
+    // node, not its payload; caller separately publishes the freed slot.
+    void erase(I z) noexcept {
+        I y=z,x=nil,parent=nil;I old=color(y);
+        if(get(z,0)==nil){x=get(z,1);parent=get(z,2);transplant(z,x);}
+        else if(get(z,1)==nil){x=get(z,0);parent=get(z,2);transplant(z,x);}
+        else{
+            y=get(z,1);while(get(y,0)!=nil)y=get(y,0);
+            old=color(y);x=get(y,1);
+            if(get(y,2)==z)parent=y;
+            else{parent=get(y,2);transplant(y,x);set(y,1,get(z,1));set(get(y,1),2,y);}
+            transplant(z,y);set(y,0,get(z,0));set(get(y,0),2,y);set(y,3,color(z));
+        }
+        if(old==1){
+            while(x!=root&&color(x)==1){
+                const unsigned side=get(parent,0)==x?0:1;
+                I w=get(parent,1-side);
+                if(color(w)==0){set(w,3,1);set(parent,3,0);rotate(parent,side);w=get(parent,1-side);}
+                if(w==nil){x=parent;parent=get(x,2);continue;}
+                if(color(get(w,0))==1&&color(get(w,1))==1){
+                    set(w,3,0);x=parent;parent=get(x,2);
+                }else{
+                    if(color(get(w,1-side))==1){
+                        const I near=get(w,side);if(near!=nil)set(near,3,1);
+                        set(w,3,0);rotate(w,1-side);w=get(parent,1-side);
+                    }
+                    set(w,3,color(parent));set(parent,3,1);
+                    const I far=get(w,1-side);if(far!=nil)set(far,3,1);
+                    rotate(parent,side);x=root;parent=nil;
+                }
+            }
+            if(x!=nil)set(x,3,1);
+        }
+    }
     // Call only after validation and slot reservation. Link is the
     // original insertion before 22115310 / the 16-bit counterpart.
     void link(I z,I parent,unsigned side) noexcept {

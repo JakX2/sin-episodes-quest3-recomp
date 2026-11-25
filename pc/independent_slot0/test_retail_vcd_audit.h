@@ -744,7 +744,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -758,8 +758,9 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     b.create_root=[](void* p,const char* name,void** out) noexcept -> int{
         auto& f=State::self(p);assert(!std::strcmp(name,"CriteriaSet"));++f.created;f.count=0;*out=&f.root;return 1;};
     b.find_child=[](void* p,void* root,const char* name,int create,void** out) noexcept -> int{
-        auto& f=State::self(p);assert(root==&f.root&&create==1);
-        for(unsigned i=0;i<f.count;++i)if(!_stricmp(f.children[i].name,name)){*out=&f.children[i];return 1;}
+        auto& f=State::self(p);assert(root==&f.root&&(create==0||create==1));
+        for(unsigned i=0;i<f.count;++i)if(f.children[i].name[0]&&!_stricmp(f.children[i].name,name)){*out=&f.children[i];return 1;}
+        if(!create){*out=nullptr;return 1;}
         assert(f.count<48&&std::strlen(name)<32);auto& c=f.children[f.count++];std::strcpy(c.name,name);*out=&c;return 1;};
     b.set_string=[](void*,void* child,const char* field,const char* value) noexcept -> int{
         assert(!std::strcmp(field,"value")&&std::strlen(value)<64);std::strcpy(static_cast<State::Child*>(child)->value,value);return 1;};
@@ -1046,6 +1047,35 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         assert(run()==1&&s.resolves==3&&s.finds==3&&!session.busy&&a.live.empty());
         s.fail_player=true;out=&s;n=99;
         assert(run()==-1&&out==&s&&n==99&&s.allocations==3&&s.players==4&&!session.busy&&a.live.empty());
+    }
+    if(removal){
+        ResponseCriteriaRemovalBindings r{};r.tree=b;
+        r.retire_child=[](void* p,void* root,void* child) noexcept -> int{
+            auto& s=State::self(p);assert(root==&s.root&&child);auto* row=static_cast<State::Child*>(child);
+            assert(row->name[0]);row->name[0]=0;return 1;};
+        assert(api.construct(c,sizeof(c),&b)==1);
+        const char* keys[]={"enemy","alpha","beta","gamma","delta","epsilon","zeta"};
+        for(const auto* key:keys)assert(api.add(&b,c,key,"value",1));
+        assert(api.add(&b,c,"ENEMY","new",1));
+        assert(removal->remove(c,sizeof(c),&r,"enemy")==0&&F::word(c,0x18)==8);
+        assert(removal->remove(c,sizeof(c),&r,"missing")==1&&F::word(c,0x18)==8);
+        int idx=-1;std::uint32_t child=0;
+        assert(api.find(c,sizeof(c),&b,"gamma",&idx,&child)==1&&idx>=0);
+        const auto high=F::word(c,0x20);
+        assert(removal->remove(c,sizeof(c),&r,"gamma")==1&&F::word(c,0x18)==7&&F::word(c,0x1c)==static_cast<unsigned>(idx));
+        assert(api.find(c,sizeof(c),&b,"gamma",&idx,&child)==1&&idx==-1&&!child);
+        assert(api.add(&b,c,"reused","new",1)&&F::word(c,0x20)==high&&F::word(c,0x18)==8);
+        for(const auto* key:{"alpha","beta","delta","epsilon","zeta","reused"}){
+            assert(removal->remove(c,sizeof(c),&r,key)==1);
+            assert(api.find(c,sizeof(c),&b,key,&idx,&child)==1&&idx==-1&&!child);
+        }
+        assert(F::word(c,0x18)==2&&api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+        assert(api.construct(c,sizeof(c),&b)==1&&api.add(&b,c,"enemy","old",1));
+        assert(removal->remove(c,sizeof(c),&r,"enemy")==1&&F::word(c,0x14)==0xffffffffu&&F::word(c,0x18)==0);
+        assert(api.add(&b,c,"enemy","replacement",1)&&F::word(c,0x20)==1);
+        assert(api.find(c,sizeof(c),&b,"enemy",&idx,&child)==1&&idx==0);
+        assert(!std::strcmp(reinterpret_cast<State::Child*>(static_cast<std::uintptr_t>(child))->value,"replacement"));
+        assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
     }
 }
 
