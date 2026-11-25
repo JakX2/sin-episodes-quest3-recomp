@@ -449,6 +449,9 @@ inline void check_native_vcd_metadata(VcdAuditArena& arena,const NativeVcdRuntim
   event speak greeting {
    time 0 2
    param Jessica.Greeting
+   cctype cc_master
+   cctoken "123456789"
+   cc_noattenuate
   }
   event speak repeat {
    time 2 4
@@ -581,6 +584,7 @@ struct VcdOwnedPlaybackFixture {
     SceneManagerSession manager{};
     alignas(4) unsigned char scene[0x5ec]{},npc[0x1458]{};
     unsigned phase=0,locks=0,unlocks=0,sounds=0,stops=0;
+    bool timed=false;
     unsigned locked=0,cache_index=0;
     std::uint32_t root_word=0,child_word=0;
     inline static constexpr char root_text[]=R"VCD(actor Jessica {
@@ -654,7 +658,7 @@ scalesettings { RampTool 75 }
         auto& q=n.playback;q.context=this;
         q.create=[](void* p,const char* cls,void** out,unsigned* extent) noexcept -> int{
             auto& f=self(p);assert(!f.phase&&!std::strcmp(cls,"instanced_scripted_scene"));
-            f.scene[0x5e8]=1;*out=f.scene;*extent=sizeof(f.scene);return 1;
+            f.scene[0x5e8]=1;if(f.timed)F::put(f.scene,0x414,F::ptr(f.scene));*out=f.scene;*extent=sizeof(f.scene);return 1;
         };
         q.resolve_name=[](void* p,void* npc,const char* name,char* out,unsigned cap) noexcept -> int{
             auto& f=self(p);assert(npc==f.npc&&!std::strcmp(name,"Jessica")&&cap>=12);
@@ -685,7 +689,7 @@ scalesettings { RampTool 75 }
         };
         life.base_remove=[](void* p,void* scene) noexcept -> int{
             auto& f=self(p);assert(scene==f.scene&&f.phase==7&&!F::word(scene,0x40c));
-            assert(!F::word(f.npc,0x5f8)&&!F::word(f.npc,0x5c4)&&f.stops==2);
+            assert(!F::word(f.npc,0x5f8)&&!F::word(f.npc,0x5c4)&&f.stops==(f.timed?0u:2u));
             f.phase=8;return 1;
         };
         life.runtime.context=this;
@@ -720,6 +724,7 @@ scalesettings { RampTool 75 }
                 auto& f=self(p);assert(f.phase==6&&!std::strcmp(sound,"Jessica.Greeting"));++f.warmed;return 1;
             };
             assert(f.startup_sound.warm(&sounds,scene,root)==1&&f.warmed==1);
+            if(f.timed){f.phase=7;return 1;}
             // Synthetic injection solely to test retirement, not real startup dispatch.
             void* rows=nullptr;unsigned extent=0;
             if(!f.arena.allocate(&f.arena,0x80,&rows,&extent))return 0;
@@ -730,6 +735,81 @@ scalesettings { RampTool 75 }
         };
         start.reset.context=this;start.reset.events=q.duration;start.reset.storage=&resolve;start.reset.grow=&grow;
     }
+
+    // Run the already loaded graph, rather than manufacturing actor rows.
+    void timed_speech(const NativeSceneExecutionApi& execution){
+        assert(timed&&phase==7&&!F::word(npc,0x5c4)&&F::word(scene,0x414)==F::ptr(scene));
+        struct Effects {
+            VcdOwnedPlaybackFixture& f;int player=0,filter=0;
+            unsigned starts=0,stops=0,prepared=0,emitted=0,opened=0,closed=0,registered=0,preferences=0,sent=0,begun=0,ended=0;
+            static Effects& get(void* p){return *static_cast<Effects*>(p);}
+        } effects{*this};
+        SceneSpeechCallbackBindings speech{};speech.context=&effects;
+        speech.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+            auto& f=Effects::get(p).f;void* obj=nullptr;unsigned bytes=0;
+            assert(scene==f.scene&&word&&resolve(&f,word,&obj,&bytes)&&bytes>=0x9c);
+            *out=f.npc;*n=sizeof(f.npc);return 1;};
+        speech.trace=[](void* p,void* scene,void* event,float,SceneSpeechTrace trace) noexcept -> int{
+            auto& x=Effects::get(p);assert(scene==x.f.scene&&F::word(event,0)==5);
+            if(trace==SceneSpeechTrace::Start)++x.starts;
+            else if(trace==SceneSpeechTrace::Stop)++x.stops;
+            else assert(false);return 1;};
+        auto& e=speech.speech;e.context=&effects;
+        e.open_filter=[](void* p,void* npc,float scale,void** out) noexcept -> int{
+            auto& x=Effects::get(p);assert(npc==x.f.npc&&scale==.8f);++x.opened;*out=&x.filter;return 1;};
+        e.close_filter=[](void* p,void* filter) noexcept -> int{
+            auto& x=Effects::get(p);assert(filter==&x.filter);++x.closed;return 1;};
+        e.clock=[](void*,float* out) noexcept -> int{*out=10.f;return 1;};
+        e.recipient_count=[](void* p,void* filter,int* out) noexcept -> int{
+            assert(filter==&Effects::get(p).filter);*out=1;return 1;};
+        e.recipient=[](void* p,void* filter,unsigned i,void** out) noexcept -> int{
+            auto& x=Effects::get(p);assert(filter==&x.filter&&!i);*out=&x.player;return 1;};
+        e.language=[](void* p,void* player,unsigned* present,int* english,unsigned* force) noexcept -> int{
+            assert(player==&Effects::get(p).player);*present=1;*english=1;*force=0;return 1;};
+        e.emit=[](void* p,void* npc,void* player,const char* name,int channel,float volume,int level,float start) noexcept -> int{
+            auto& x=Effects::get(p);assert(npc==x.f.npc&&player==&x.player&&channel==2&&volume==1.f&&level==80&&start==9.5f);
+            assert(!std::strcmp(name,"Jessica.Greeting")&&x.prepared==1);++x.emitted;return 1;};
+        e.caption_register=[](void* p,std::uint32_t crc,const char* token) noexcept -> int{
+            auto& x=Effects::get(p);assert(crc==0xcbf43926u&&!std::strcmp(token,"123456789")&&x.emitted==1);++x.registered;return 1;};
+        e.caption_preferences=[](void* p,void* filter) noexcept -> int{
+            auto& x=Effects::get(p);assert(filter==&x.filter);++x.preferences;return 1;};
+        e.caption_far=[](void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+        e.remove_recipient=[](void*,void*,void*) noexcept -> int{assert(false);return 0;};
+        e.caption_send=[](void* p,void* filter,std::uint32_t crc,unsigned duration,unsigned flag) noexcept -> int{
+            auto& x=Effects::get(p);assert(filter==&x.filter&&crc==0xcbf43926u&&duration==20&&flag==1);++x.sent;return 1;};
+        auto& rec=e.records;rec.context=&effects;
+        rec.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{return resolve(&Effects::get(p).f,w,out,n);};
+        rec.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+            auto& a=Effects::get(p).f.arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);};
+        rec.handle=[](void*,void*,std::uint32_t*) noexcept -> int{assert(false);return 0;};
+        rec.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+        rec.begin=[](void* p,void* npc,void* row,std::uint32_t root,void* event,std::uint32_t choreo,void* target,unsigned* accepted) noexcept -> int{
+            auto& x=Effects::get(p);assert(npc==x.f.npc&&root==x.f.root_word&&F::word(event,0)==5&&choreo&&!target);
+            assert(F::word(row,0)==F::ptr(event)&&F::word(row,4)==root);++x.begun;*accepted=1;return 1;};
+        rec.stop=[](void* p,void* npc,void* row,int arg,int zero,unsigned* accepted) noexcept -> int{
+            auto& x=Effects::get(p);assert(npc==x.f.npc&&F::word(row,4)==x.f.root_word&&!arg&&!zero);
+            ++x.ended;*accepted=1;return 1;};
+        rec.check=[](void*,void*,void*,float,std::uint32_t,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
+        SpeechSemaphorePair sem{};SceneSpeechPreparationBindings prep{};prep.context=&effects;prep.state=&sem;prep.instanced=1;
+        prep.cast_base_actor=[](void* p,void* npc,void** out) noexcept -> int{assert(npc==Effects::get(p).f.npc);*out=npc;return 1;};
+        prep.actor_notify=[](void* p,void* npc,float remaining,float) noexcept -> int{
+            auto& x=Effects::get(p);assert(npc==x.f.npc&&remaining==1.5f);++x.prepared;return 1;};
+        prep.is_npc=[](void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+        prep.classify=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
+        prep.clock=e.clock;prep.handle=rec.handle;
+        NativeSceneExecutionBindings b{};b.instanced=1;b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
+        b.clock.speech=&speech;b.clock.preparation=&prep;
+        b.dispatch.context=&effects;b.dispatch.actor=speech.actor;b.dispatch.records=&rec;
+        b.dispatch.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace) noexcept -> int{
+            assert(scene==Effects::get(p).f.scene&&F::word(event,0)==11);return 1;};
+        assert(execution.reset(scene,sizeof(scene),1,0,0,&b)==1);
+        auto simulate=[&](float time){F::fl(scene,0x3dc,time);return execution.simulate(scene,sizeof(scene),time,&b);};
+        assert(simulate(.5f)==1&&effects.starts==1&&effects.emitted==1&&effects.begun==1&&F::word(npc,0x5c4)==1);
+        assert(effects.prepared==1&&effects.opened==1&&effects.closed==1&&effects.registered==1&&effects.preferences==1&&effects.sent==1);
+        assert(simulate(2.25f)==1&&effects.emitted==1&&!effects.ended);
+        assert(simulate(2.5f)==1&&effects.ended==1&&effects.stops==1&&!F::word(npc,0x5c4));
+    }
+
     void run(const NativeVcdRuntimeApi& api){
         auto raw=arena.runtime();float duration=-1;
         assert(api.scene(npc,"Jessica",.5f,&n,&raw,&duration)==1&&duration==4.f&&phase==7);
@@ -1123,6 +1203,7 @@ struct ScriptChoreographyTestApis {
     const SceneSpeechPreparationApi& preparation;
     const NativeSceneRetirementApi& retirement;
     const ChoreographyStartupSoundApi& startup_sound;
+    const NativeSceneExecutionApi& execution;
 };
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
@@ -2167,6 +2248,7 @@ rule named_rule
                                 VcdOwnedPlaybackFixture(a,s),raw_cache(api,{&f,&RetailSceneDirectory::read_raw}){}
                             static DirectoryPlayback& get(void* p){return static_cast<DirectoryPlayback&>(VcdOwnedPlaybackFixture::self(p));}
                         } playback(playback_arena,ap.startup_sound,audit.files,apis.raw_cache);
+                        playback.timed=true;
                         auto& cache=playback.n.precache.load.cache;
                         cache.ensure=[](void* p,const char* path) noexcept -> int{
                             auto& f=DirectoryPlayback::get(p);const auto& b=f.raw_cache.bindings();
@@ -2236,6 +2318,7 @@ rule owned_named_rule
                         assert(playback.raw_cache.clear()&&!playback.raw_cache.resident_bytes());
                         assert(audit.close()&&playback.root_word&&playback.child_word);
                         std::memset(actor.response,0xcc,sizeof(actor.response));
+                        playback.timed_speech(ap.execution);
                         assert(apis.runtime.remove(playback.scene,sizeof(playback.scene),&playback.n.lifecycle,&playback.n.stop,&raw)==1&&playback.phase==8);
                         void* obj=nullptr;unsigned bytes=0;
                         assert(!playback_arena.storage(&playback_arena,playback.root_word,&obj,&bytes)&&
@@ -2244,7 +2327,7 @@ rule owned_named_rule
                                playback_arena.release(&playback_arena,F::word(playback.npc,0x5ec))&&playback_arena.live.empty());
                         assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
                         speech.generated=nullptr;actor.external_npc=nullptr;actor.external_bytes=0;
-                        std::puts("PASS script-selected directory VCD persistent raw cache, owned parse, precache, startup and independent retirement");
+                        std::puts("PASS script-selected directory VCD persistent raw cache, native timed speech and caption, independent retirement");
                     }
                 }
             }
