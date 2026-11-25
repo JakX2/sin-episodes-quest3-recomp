@@ -673,4 +673,26 @@ struct ServerNpcGruntWeaponSearchApi {
     int (__cdecl *search)(void*,unsigned,float,const ServerNpcGruntWeaponSearchBindings*,ServerNpcGruntWeaponSearchResult*) noexcept;
 };
 using GetServerNpcGruntWeaponSearchApi=const ServerNpcGruntWeaponSearchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_aux_conditions_export[]="SiN_GetServerNpcGruntAuxConditionsApi";
+struct ServerNpcGruntAuxConditionsBindings {
+    ServerNpcGruntCombatVisibilityBindings visibility;
+    ServerNpcGruntGoalRefreshBindings goals;
+    void* context;
+    int (__cdecl *weapon_predicate)(void*,void*,unsigned,bool*) noexcept; // weapon +330/334/43c
+    int (__cdecl *as_npc)(void*,void*,void**) noexcept; // 22139f60
+};
+struct ServerNpcGruntAuxConditionsResult {
+    unsigned target_live,target_visible,target_condition,target_refresh,weapon_live,primary_checked,secondary_checked,secondary_uses_ammo,primary_empty,secondary_empty,snapshot,script_live,script_clear;
+    ServerNpcGruntGoalRefreshResult goal;
+};
+struct ServerNpcGruntAuxConditionsApi {
+    std::uint32_t version,size;
+    // 2203ceb0: visible/occluded target condition, then native target goal update.
+    int (__cdecl *target)(void*,unsigned,float,const ServerNpcGruntAuxConditionsBindings*,ServerNpcGruntAuxConditionsResult*) noexcept;
+    // 2202d560: set ammo conditions; does not clear existing conditions.
+    int (__cdecl *ammo)(void*,unsigned,const ServerNpcGruntAuxConditionsBindings*,ServerNpcGruntAuxConditionsResult*) noexcept;
+    // 2203b110 and 221aecf0: snapshot/mask, scripted actor condition cleanup.
+    int (__cdecl *snapshot)(void*,unsigned,const ServerNpcGruntAuxConditionsBindings*,ServerNpcGruntAuxConditionsResult*) noexcept;
+};
+using GetServerNpcGruntAuxConditionsApi=const ServerNpcGruntAuxConditionsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

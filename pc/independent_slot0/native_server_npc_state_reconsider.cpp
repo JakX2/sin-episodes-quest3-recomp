@@ -1308,7 +1308,7 @@ int __cdecl perception_tick(void* actor,unsigned bytes,float now,const ServerNpc
     if(!grunt_enemy_switch_impl(actor,bytes,now,&b->enemy_switch,&out->enemy_switch,&visual.senses))return 0;
     out->completed=1;return 1;
 }
-int __cdecl combat_visibility_query(void* actor,unsigned bytes,void* target,unsigned mask,const ServerNpcGruntCombatVisibilityBindings* b,ServerNpcGruntCombatVisibilityResult* out) noexcept{
+int combat_visibility_query_impl(void* actor,unsigned bytes,void* target,unsigned mask,const ServerNpcGruntCombatVisibilityBindings* b,ServerNpcGruntCombatVisibilityResult* out,bool want_blocker) noexcept{
     if(!out)return 0;*out={};out->blocker=0xffffffffu;
     if(!actor||bytes<0x988||!target||!b||!relation_grunt_class(b->original_vtable)||
        b->memory.count>sin_independent::kEntityHandleCapacity||(b->memory.count&&!b->memory.entries))return 0;
@@ -1321,11 +1321,14 @@ int __cdecl combat_visibility_query(void* actor,unsigned bytes,void* target,unsi
     bool visible=false;void* blocker=nullptr;
     if(!b->trace||!b->trace(b->context,actor,target,mask,&visible,&blocker))return 0;
     out->traced=1;out->visible=visible;
-    if(!visible&&blocker){
+    if(want_blocker&&!visible&&blocker){
         if(!b->entity_handle||!b->entity_handle(b->context,blocker,&out->blocker)||
            sin_independent::EntityHandleView(b->memory.entries,b->memory.count).Resolve(out->blocker)!=blocker)return 0;
     }
     return 1;
+}
+int __cdecl combat_visibility_query(void* actor,unsigned bytes,void* target,unsigned mask,const ServerNpcGruntCombatVisibilityBindings* b,ServerNpcGruntCombatVisibilityResult* out) noexcept{
+    return combat_visibility_query_impl(actor,bytes,target,mask,b,out,true);
 }
 int __cdecl combat_visibility_gather(void* actor,unsigned bytes,void* target,const ServerNpcGruntCombatVisibilityBindings* b,ServerNpcGruntCombatVisibilityResult* out) noexcept{
     if(!out)return 0;*out={};out->blocker=0xffffffffu;
@@ -1752,6 +1755,65 @@ int __cdecl grunt_weapon_search(void* actor,unsigned bytes,float now,const Serve
     }
     return 1;
 }
+bool aux_valid(void* actor,unsigned bytes,const ServerNpcGruntAuxConditionsBindings* b) noexcept{
+    return actor&&bytes>=0xdb2&&b&&relation_grunt_class(b->visibility.original_vtable)&&
+        b->visibility.memory.count<=sin_independent::kEntityHandleCapacity&&(!b->visibility.memory.count||b->visibility.memory.entries);
+}
+int __cdecl grunt_target_conditions(void* actor,unsigned bytes,float now,const ServerNpcGruntAuxConditionsBindings* b,ServerNpcGruntAuxConditionsResult* out) noexcept{
+    if(!out)return 0;*out={};if(!aux_valid(actor,bytes,b)||!std::isfinite(now))return 0;
+    const auto& mb=b->visibility.memory;
+    void* target=sin_independent::EntityHandleView(mb.entries,mb.count).Resolve(read<unsigned>(actor,0x8a8));
+    if(!target)return 1;out->target_live=1;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));ServerNpcConditionResult cr{};
+    if(!cond||!cond->store(actor,bytes,0xf,NpcConditionCurrent,false,&b->visibility.conditions,&cr)||
+       !cond->store(actor,bytes,0xd,NpcConditionCurrent,false,&b->visibility.conditions,&cr))return 0;
+    ServerNpcGruntCombatVisibilityResult vr{};
+    if(!combat_visibility_query_impl(actor,bytes,target,0x4081,&b->visibility,&vr,false))return 0;
+    out->target_visible=vr.visible;const int id=vr.visible?0xf:0xd;
+    if(!cond->store(actor,bytes,id,NpcConditionCurrent,true,&b->visibility.conditions,&cr))return 0;
+    out->target_condition=cr.mapped?static_cast<unsigned>(id):0;
+    auto gb=b->goals;gb.original_vtable=b->visibility.original_vtable;gb.memory.entries=mb.entries;gb.memory.count=mb.count;
+    if(!grunt_goal_refresh(actor,bytes,1,now,&gb,&out->goal))return 0;out->target_refresh=1;return 1;
+}
+int __cdecl grunt_ammo_conditions(void* actor,unsigned bytes,const ServerNpcGruntAuxConditionsBindings* b,ServerNpcGruntAuxConditionsResult* out) noexcept{
+    if(!out)return 0;*out={};if(!aux_valid(actor,bytes,b))return 0;
+    const auto& mb=b->visibility.memory;const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
+    auto active=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(actor,0x78c)));};
+    void* w=active();if(!w)return 1;out->weapon_live=1;
+    unsigned n=0;if(!b->visibility.extent||!b->visibility.extent(b->visibility.context,w,&n)||n<0x4e8)return 0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));ServerNpcConditionResult cr{};
+    auto set=[&](int id,unsigned& flag){if(!cond||!cond->store(actor,bytes,id,NpcConditionCurrent,true,&b->visibility.conditions,&cr))return false;flag=cr.mapped;return true;};
+    auto query=[&](unsigned slot,bool& yes){void* p=active();return p&&b->weapon_predicate&&b->weapon_predicate(b->context,p,slot,&yes);};
+    bool yes=false;
+    if(read<int>(w,0x4e4)>=0){
+        out->primary_checked=1;if(!query(0x330,yes))return 0;
+        if(!yes&&!set(4,out->primary_empty))return 0;
+    }
+    out->secondary_checked=1;if(!query(0x334,yes))return 0;
+    if(!yes){if(!query(0x43c,yes))return 0;out->secondary_uses_ammo=yes;if(yes&&!set(5,out->secondary_empty))return 0;}
+    return 1;
+}
+int __cdecl grunt_snapshot_conditions(void* actor,unsigned bytes,const ServerNpcGruntAuxConditionsBindings* b,ServerNpcGruntAuxConditionsResult* out) noexcept{
+    if(!out)return 0;*out={};if(!aux_valid(actor,bytes,b))return 0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    if(!cond||!cond->snapshot_mask(actor,bytes))return 0;out->snapshot=1;
+    if(read<int>(actor,0x850)!=4)return 1;
+    const auto& mb=b->visibility.memory;const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
+    void* script=registry.Resolve(read<unsigned>(actor,0x970));if(!script)return 1;out->script_live=1;
+    unsigned n=0;if(!b->visibility.extent||!b->visibility.extent(b->visibility.context,script,&n)||n<0x3d4)return 0;
+    void* e=registry.Resolve(read<unsigned>(script,0x3d0));if(!e)return 1;
+    if(read<std::uint8_t>(script,0x3cc)){
+        if(!b->visibility.extent(b->visibility.context,e,&n)||n<0x90)return 0;
+        if(!read<int>(e,0x8c))return 1;
+    }
+    void* npc=nullptr;if(!b->as_npc||!b->as_npc(b->context,e,&npc))return 0;
+    if(!npc)return 1;
+    if(!b->visibility.extent(b->visibility.context,npc,&n)||n<0x7ec)return 0;
+    ServerNpcConditionResult cr{};
+    for(int id:{0x10,0x11}){if(!cond->store(npc,n,id,NpcConditionCurrent,false,&b->visibility.conditions,&cr))return 0;out->script_clear+=cr.changed;}
+    return 1;
+}
+const ServerNpcGruntAuxConditionsApi aux_conditions_api{1,sizeof(ServerNpcGruntAuxConditionsApi),&grunt_target_conditions,&grunt_ammo_conditions,&grunt_snapshot_conditions};
 const ServerNpcGruntWeaponSearchApi weapon_search_api{1,sizeof(ServerNpcGruntWeaponSearchApi),&grunt_weapon_eligible,&grunt_weapon_search};
 const ServerNpcGruntGoalRefreshApi goal_refresh_api{1,sizeof(ServerNpcGruntGoalRefreshApi),&grunt_goal_refresh};
 const ServerNpcGruntCombatConditionsApi combat_conditions_api{1,sizeof(ServerNpcGruntCombatConditionsApi),&grunt_combat_conditions};
@@ -1984,4 +2046,10 @@ SiN_GetServerNpcGruntCombatGoalApi(std::uint32_t version,std::uint32_t size) noe
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntWeaponSearchApi* __cdecl
 SiN_GetServerNpcGruntWeaponSearchApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntWeaponSearchApi)?&weapon_search_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAuxConditionsApi=_SiN_GetServerNpcGruntAuxConditionsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAuxConditionsApi* __cdecl
+SiN_GetServerNpcGruntAuxConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAuxConditionsApi)?&aux_conditions_api:nullptr;
 }
