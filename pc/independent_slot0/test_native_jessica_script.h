@@ -312,6 +312,52 @@ inline void check_response_native_modifiers(const ResponseNativeModifierApi& api
 
 
 
+
+inline void check_scene_metadata_index(const SceneMetadataIndexApi& api){
+    struct Fixture {
+        alignas(4) unsigned char row[16]{},meta[0x1c]{};
+        unsigned allocations=0,releases=0,appends=0,undos=0,inserts=0,fail=0;
+        bool allocated=false,appended=false,published=false;
+        static Fixture& get(void* p){return *static_cast<Fixture*>(p);}
+        static unsigned word(const void* p,unsigned offset){unsigned w;std::memcpy(&w,static_cast<const unsigned char*>(p)+offset,4);return w;}
+    } f;
+    SceneMetadataIndexBindings b{};b.context=&f;b.metadata_vtable=0x12345678;
+    b.filename=[](void*,const char* name,std::uint32_t* out) noexcept -> int{
+        assert(!std::strcmp(name,"scenes/test.vcd"));*out=0x321;return 1;};
+    b.find=[](void* p,std::uint32_t handle,std::uint16_t* out) noexcept -> int{
+        auto& f=Fixture::get(p);assert(handle==0x321);*out=f.published?7:0xffff;return f.fail!=1;};
+    b.row=[](void* p,std::uint16_t index,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(index==7&&f.published&&f.appended);*out=f.row;*n=sizeof(f.row);return 1;};
+    b.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+        auto& f=Fixture::get(p);assert(n==sizeof(f.meta)&&!f.allocated&&!f.appended);
+        std::memset(f.meta,0xa5,sizeof(f.meta));f.allocated=true;++f.allocations;*out=f.meta;*bytes=f.fail==2?n-1:n;return 1;};
+    b.release=[](void* p,void* meta) noexcept -> int{
+        auto& f=Fixture::get(p);assert(meta==f.meta&&f.allocated&&!f.appended&&!f.published);
+        f.allocated=false;++f.releases;return 1;};
+    b.append=[](void* p,void* meta,std::uint32_t* out) noexcept -> int{
+        auto& f=Fixture::get(p);assert(meta==f.meta&&f.allocated&&!f.appended);
+        assert(Fixture::word(meta,0)==0x12345678);
+        for(unsigned i=4;i<0x1c;i+=4)assert(!Fixture::word(meta,i));
+        ++f.appends;if(f.fail==3)return 0;f.appended=true;*out=4;return 1;};
+    b.undo_append=[](void* p,std::uint32_t slot,void* meta) noexcept -> int{
+        auto& f=Fixture::get(p);assert(slot==4&&meta==f.meta&&f.appended&&!f.published);
+        ++f.undos;f.appended=false;return 1;};
+    b.insert=[](void* p,const void* row,unsigned n,std::uint16_t* index) noexcept -> int{
+        auto& f=Fixture::get(p);assert(n==16&&f.appended&&!f.published);
+        assert(Fixture::word(row,0)==0x321&&!Fixture::word(row,4)&&Fixture::word(row,8)==0xfffffffeu&&Fixture::word(row,12)==4);
+        ++f.inserts;if(f.fail==4)return 0;std::memcpy(f.row,row,n);f.published=true;*index=7;return 1;};
+    void* row=&f;unsigned bytes=99;
+    auto run=[&](){return api.ensure(&b,"scenes/test.vcd",&row,&bytes);};
+    for(unsigned fail=1;fail<=4;++fail){
+        f.fail=fail;assert(!run()&&row==&f&&bytes==99&&!f.allocated&&!f.appended&&!f.published);
+    }
+    assert(f.allocations==3&&f.releases==3&&f.appends==2&&f.undos==1&&f.inserts==1);
+    f.fail=0;assert(run()==1&&row==f.row&&bytes==16&&f.allocated&&f.appended&&f.published);
+    assert(run()==1&&row==f.row&&f.allocations==4&&f.appends==3&&f.inserts==2);
+    // Teardown of cache-owned metadata is host responsibility, not ensure.
+    assert(f.releases==3&&f.undos==1);
+}
+
 inline void check_scene_response_services(const SceneResponseServicesApi& api,const ResponseSceneFilterApi& filter){
     struct Fixture {
         alignas(4) unsigned char exp[0x7c]{},cache[0x50]{},row[16]{},data[8]{};

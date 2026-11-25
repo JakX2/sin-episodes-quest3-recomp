@@ -237,6 +237,32 @@ struct SceneResponseServicesApi {
     int (__cdecl *adapt)(const SceneResponseServicesBindings*,ResponseSceneFilterBindings*) noexcept;
 };
 using GetSceneResponseServicesApi=const SceneResponseServicesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_metadata_index_export[]="SiN_GetSceneMetadataIndexApi";
+struct SceneMetadataIndexBindings {
+    void* context;
+    std::uint32_t metadata_vtable;
+    // Original filesystem +d4 returns the filename handle used as tree key.
+    int (__cdecl *filename)(void*,const char*,std::uint32_t*) noexcept;
+    // Return 0xffff for normal miss.
+    int (__cdecl *find)(void*,std::uint32_t,std::uint16_t*) noexcept;
+    int (__cdecl *row)(void*,std::uint16_t,void**,unsigned*) noexcept;
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *release)(void*,void*) noexcept;
+    // Append metadata pointer to the cache vector; failure is unpublished.
+    int (__cdecl *append)(void*,void*,std::uint32_t*) noexcept;
+    // Undo only the last unpublished append, without freeing metadata.
+    int (__cdecl *undo_append)(void*,std::uint32_t,void*) noexcept;
+    // Insert complete 16-byte payload atomically. Failure must not publish
+    // a row. On success cache owns the metadata and tree row.
+    int (__cdecl *insert)(void*,const void*,unsigned,std::uint16_t*) noexcept;
+};
+struct SceneMetadataIndexApi {
+    std::uint32_t version,size;
+    // Compatible with SceneResponseServicesBindings.row when context is
+    // persistent SceneMetadataIndexBindings; caller serializes all access.
+    int (__cdecl *ensure)(void*,const char*,void**,unsigned*) noexcept;
+};
+using GetSceneMetadataIndexApi=const SceneMetadataIndexApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ResponseDispatchBindings {
     void* context;
     int (__cdecl *sample)(void*,const void* interval,float*) noexcept;
