@@ -255,8 +255,11 @@ inline void check_response_select(const ResponseSelectApi& api){
     ResponseSelectionFixture f;void* out=&f;unsigned n=99;
     auto run=[&](const char* mods=nullptr){out=&f;n=99;return api.select(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",mods,&out,&n);};
     f.no_system=true;assert(run()==1&&!out&&!n);f.expect({1});f.no_system=false;
-    f.no_match=true;assert(run()==1&&!out&&!n&&!f.destroys);f.expect({1,2,3,5,6,7,8,11});f.no_match=false;
-    f.empty=true;assert(run()==1&&!out&&!n&&f.destroys==1);f.expect({1,2,3,5,6,7,8,10,11});f.empty=false;
+    f.no_match=true;
+    for(unsigned i=0;i<8;++i){assert(run()==1&&!out&&!n&&f.destroys==i+1);f.expect({1,2,3,5,6,7,8,10,11});}
+    f.fail=10;assert(run()==-1&&out==&f&&n==99&&f.destroys==9);f.expect({1,2,3,5,6,7,8,10,11});
+    f.fail=0;f.no_match=false;
+    f.empty=true;assert(run()==1&&!out&&!n&&f.destroys==10);f.expect({1,2,3,5,6,7,8,10,11});f.empty=false;
     assert(run("fixture:yes")==1&&!out&&!n);f.expect({1,2,3,4,5,6,7,8,9,10,11});
     f.draw=51;assert(run()==1&&out==f.response&&n==0x124);f.expect({1,2,3,5,6,7,8,9,11});
     f.mutate=true;assert(run()==1&&!out);f.expect({1,2,3,5,6,7,8,9,10,11});f.mutate=false;

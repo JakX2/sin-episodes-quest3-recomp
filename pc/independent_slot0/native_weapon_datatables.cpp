@@ -3140,7 +3140,9 @@ int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBind
     hologram_write(response,0xa4,static_cast<unsigned char>(0));
     unsigned found=0;
     if(!h.find(h.context,system,criteria,response,exp,&found))return finish(false,false,true);
-    if(!found)return finish(true,false,false); // original finder-false branch
+    // Retail 220a39e2 skips response destruction on finder false. This
+    // replacement owns the allocation until successful handoff, including misses.
+    if(!found)return finish(true,false,true);
     if(!hologram_read<unsigned char>(response,4))return finish(true,false,true);
     if(response_chance(response)<100){
         int draw=0;
