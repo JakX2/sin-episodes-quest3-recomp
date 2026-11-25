@@ -1,4 +1,5 @@
 #include "native_server_elite_task.h"
+#include "native_server_grunt_combat_task.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -54,5 +55,27 @@ int main(int argc,char** argv){
     run(3,false,10,1.9f);assert(out.cue_called&&out.idle_called&&f.get<float>(f.actor,0x9dc)==12.f&&(f.trace==std::vector<int>{90,91}));
     run(3,false,13,1.f);assert(out.lifecycle.completed&&!out.cue_called);
     run(3,false,14,2.f);assert(!out.lifecycle.completed&&!out.cue_called);
+
+    auto gn=reinterpret_cast<GetServerEliteNativeTaskApi>(GetProcAddress(s,server_elite_native_task_export));
+    assert(gn&&!GetProcAddress(c,server_elite_native_task_export)&&!gn(0,sizeof(ServerEliteNativeTaskApi))&&!gn(1,0));
+    const auto* native=gn(1,sizeof(ServerEliteNativeTaskApi));assert(native);
+    ServerGruntCombatTaskBindings combat{};combat.context=&f;combat.weapon.context=&f;
+    combat.weapon.random=[](void* p,int lo,int hi,int* out) noexcept -> int{assert(lo==1&&hi==3);F::self(p).trace.push_back(100);*out=2;return 1;};
+    combat.activity=[](void* p,void* a,int id,bool restart) noexcept -> int{
+        auto& f=F::self(p);assert(a==f.actor&&id==16&&restart&&f.actor[0xfd9]);f.trace.push_back(101);return 1;};
+    b.grunt.special=nullptr;
+    b.grunt.parent=[](void* p,void*,const ServerNpcScheduleTask* t,bool running) noexcept -> int{
+        assert(t->id==67&&running);F::self(p).trace.push_back(102);return 1;};
+    f.put(f.actor,0x6cc,0x7001u);
+    f.put(f.weapon,0x594,2);f.put(f.actor,0x7a4,1);f.trace.clear();
+    ServerNpcScheduleTask fire{67,0};ServerGruntCombatSchedulerStats stats{};
+    assert(native->execute(f.actor,sizeof(f.actor),&fire,false,20,&b,&combat,&out,&stats));
+    assert(out.spin_ready&&out.delegated&&f.actor[0xfd9]&&stats.calls==1&&stats.last.burst==2&&f.get<int>(f.actor,0xc98)==2&&(f.trace==std::vector<int>{100,101}));
+    f.trace.clear();
+    assert(native->execute(f.actor,sizeof(f.actor),&fire,true,20,&b,&combat,&out,&stats)&&stats.calls==2&&out.grunt.parent_called&&f.trace==std::vector<int>{102});
+    f.put(f.weapon,0x594,1);f.actor[0xfd9]=0;f.trace.clear();
+    assert(native->execute(f.actor,sizeof(f.actor),&fire,false,21,&b,&combat,&out,&stats)&&!out.delegated&&stats.calls==2&&f.trace.empty());
+    f.put(f.weapon,0x594,2);
+    assert(native->execute(f.actor,sizeof(f.actor),&fire,true,22,&b,&combat,&out,&stats)&&out.lifecycle.completed&&!out.delegated&&stats.calls==2);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original Elite task and Chaingun state transitions");
 }

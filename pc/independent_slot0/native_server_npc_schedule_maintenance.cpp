@@ -24,6 +24,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJet
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntCombatTaskApi* __cdecl SiN_GetServerGruntCombatTaskApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntHelperTaskApi* __cdecl SiN_GetServerGruntHelperTaskApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntInjuryTaskApi* __cdecl SiN_GetServerGruntInjuryTaskApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEliteNativeTaskApi* __cdecl SiN_GetServerEliteNativeTaskApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -87,7 +88,10 @@ struct Call {
             }
             if(sub->subclass==NpcSubclassElite){
                 const auto* api=SiN_GetServerEliteTaskApi(1,sizeof(ServerEliteTaskApi));
-                if(!api||!api->execute(a,bytes,&t,running,now,&subclass->elite,&sub->elite))return false;
+                if(combat&&combat_stats){
+                    const auto* native=SiN_GetServerEliteNativeTaskApi(1,sizeof(ServerEliteNativeTaskApi));
+                    if(!native||!native->execute(a,bytes,&t,running,now,&subclass->elite,combat,&sub->elite,combat_stats))return false;
+                }else if(!api||!api->execute(a,bytes,&t,running,now,&subclass->elite,&sub->elite))return false;
                 sub->delegated+=sub->elite.delegated;
                 sub->task_failures+=sub->elite.delegated?sub->elite.grunt.lifecycle.failed:sub->elite.lifecycle.failed;
             }else if(sub->subclass==NpcSubclassJetpack){
