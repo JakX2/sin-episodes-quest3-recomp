@@ -1747,8 +1747,7 @@ criterion actor classname npc_jessica required
 response line
 {
  sequential
- delay 0.5
- scene Jessica
+ scene Jessica delay 0.5
 }
 rule named_rule
 {
