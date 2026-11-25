@@ -13,6 +13,9 @@ using namespace sin_port::native_weapon_tables;
 struct F {
     alignas(4) unsigned char actor[0xe0c]{},rows[0x80]{};
     ServerStudioEvent base[1]{{.55f,20,0,"base",0}},overlay[1]{{.1f,21,0,"overlay",0}};
+    alignas(4) unsigned char studio[0x180]{};
+    ServerStudioEvent registered[2]{};
+    bool descriptor_available=true;
     std::vector<int> trace;
     bool available=true;int choice=-1;
     template<class T> void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
@@ -105,6 +108,49 @@ int main(int argc,char** argv){
     assert(native->run(f.actor,sizeof(f.actor),&in,&nb,&nr)&&nr.frame.selected==11&&nr.reset.reset&&nr.reset.cycle_changed);
     assert((f.trace==std::vector<int>{1,2,3,4,30,32,33,34,35,21}));
     assert(f.get<float>(f.actor,0x3e8)==0.f);
+
+    // No host selection, setter or event-registration implementation.
+    auto gd=reinterpret_cast<GetServerEventDictionaryApi>(GetProcAddress(server,server_event_dictionary_export));
+    auto gf=reinterpret_cast<GetServerNpcDictionaryFrameApi>(GetProcAddress(server,server_npc_dictionary_frame_export));
+    auto gs=reinterpret_cast<GetServerSequenceDictionaryApi>(GetProcAddress(server,server_sequence_dictionary_export));
+    assert(gd&&gf&&gs&&!GetProcAddress(client,server_npc_dictionary_frame_export)&&!GetProcAddress(client,server_sequence_dictionary_export));
+    auto* dict=gd(1,sizeof(ServerEventDictionaryApi));auto* frame=gf(1,sizeof(ServerNpcDictionaryFrameApi));auto* setter=gs(1,sizeof(ServerSequenceDictionaryApi));
+    assert(dict&&frame&&setter&&!gf(0,sizeof(ServerNpcDictionaryFrameApi))&&!gs(1,0));
+    ServerEventDictionaryEntry dict_rows[32]{};ServerEventDictionary registry{dict_rows,32,0,0,0};
+    assert(dict->seed(&registry));
+    f.put(f.studio,0x18,2);f.put(f.studio,0x1c,0x40);
+    ServerStudioEvent named[2]{{.25f,-1,0x400,"",0xc0},{.375f,-1,0x400,"",0x90}};
+    std::memcpy(f.studio+0x40,named,sizeof(named));std::strcpy(reinterpret_cast<char*>(f.studio+0x100),"AE_CL_PLAYSOUND");
+    std::strcpy(reinterpret_cast<char*>(f.studio+0x120),"COMBINE_AE_ALTFIRE");
+    ServerNpcDictionaryFrameBindings db{};db.sequence=nb;db.sequence.reset.register_events=nullptr;
+    db.dictionary.context=&f;db.dictionary.dictionary=&registry;
+    db.dictionary.descriptor=[](void* p,void* a,int seq,void** storage,unsigned* bytes,unsigned* offset) noexcept -> int {
+        auto& f=F::self(p);assert(a==f.actor&&seq==11&&f.get<float>(a,0x398)==0.f&&f.get<unsigned>(a,0x464)==0);
+        f.trace.push_back(36);if(!f.descriptor_available)return 0;
+        *storage=f.studio;*bytes=sizeof(f.studio);*offset=0;return 1;
+    };
+    db.sequence.frame.events.sequence=[](void* p,void* a,int seq,ServerAnimationEventSequence* out) noexcept -> int {
+        auto& f=F::self(p);assert(a==f.actor);
+        if(seq==11){std::memcpy(f.registered,f.studio+0x40,sizeof(f.registered));*out={f.registered,2,0,0};}
+        else{assert(seq==7);*out={f.overlay,1,1,0};}
+        return 1;
+    };
+    db.sequence.frame.events.emit=[](void* p,void* a,int layer,const ServerAnimationEvent* e) noexcept {
+        auto& f=F::self(p);assert(a==f.actor&&e->source==a&&((layer==-1&&e->event==24)||(layer==0&&e->event==21)));
+        f.trace.push_back(e->event);
+    };
+    f.clocks();f.trace.clear();f.put(f.actor,0x3ec,9);f.put(f.actor,0x3c0,2.f);
+    f.actor[0x3e0]=1;f.actor[0x3e1]=1;f.put(f.actor,0x464,7u);
+    ServerNpcDictionaryFrameResult dr{};
+    assert(frame->run(f.actor,sizeof(f.actor),&in,&db,&dr)&&dr.frame.selected==11&&dr.sequence.reset.reset&&dr.sequence.descriptor_available&&dr.sequence.registration.created==1&&dr.sequence.registration.existing==1&&dr.frame.events.emitted==2);
+    assert((f.trace==std::vector<int>{1,2,3,4,30,31,31,32,33,34,36,24,21}));
+    int assigned=-1;assert(dict->lookup(&registry,"COMBINE_AE_ALTFIRE",&assigned)&&assigned==24);
+    assert(f.registered[0].type==0x410&&f.registered[1].event==assigned);
+    // Original reset tail early returns when studio metadata unavailable.
+    f.descriptor_available=false;f.trace.clear();f.put(f.actor,0x464,7u);
+    ServerSequenceDictionaryResult sr{};
+    assert(setter->reset(f.actor,sizeof(f.actor),&db.sequence.reset,&db.dictionary,&sr)&&sr.reset.reset&&!sr.descriptor_available&&registry.count==25);
+    assert((f.trace==std::vector<int>{32,33,34,36}));
     FreeLibrary(server);FreeLibrary(client);
     std::puts("PASS native NPC RunAnimation metadata gate, advancement, idle selection and server events");
 }

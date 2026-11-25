@@ -52,4 +52,18 @@ struct ServerNpcNativeSequenceFrameApi {
     int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcNativeSequenceBindings*,ServerNpcNativeSequenceFrameResult*) noexcept;
 };
 using GetServerNpcNativeSequenceFrameApi=const ServerNpcNativeSequenceFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_dictionary_frame_export[]="SiN_GetServerNpcDictionaryFrameApi";
+struct ServerNpcDictionaryFrameBindings {
+    ServerNpcNativeSequenceBindings sequence;
+    ServerSequenceDictionaryBindings dictionary;
+};
+struct ServerNpcDictionaryFrameResult {
+    ServerNpcRunAnimationResult frame;
+    ServerSequenceDictionaryResult sequence;
+};
+struct ServerNpcDictionaryFrameApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcDictionaryFrameBindings*,ServerNpcDictionaryFrameResult*) noexcept;
+};
+using GetServerNpcDictionaryFrameApi=const ServerNpcDictionaryFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
