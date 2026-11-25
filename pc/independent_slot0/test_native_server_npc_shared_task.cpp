@@ -422,19 +422,19 @@ int main(int argc,char** argv){
     erb.memory_record=[](void* p,std::uint32_t tok,void* e,bool* found,float* stamp) noexcept -> int{auto& f=F::self(p);assert(tok==100&&e==f.target);f.trace.push_back(82);*found=f.obs_found;*stamp=f.obs_seen;return 1;};
     erb.select_enemy=[](void* p,void*,std::uint32_t comp,void** out) noexcept -> int{auto& f=F::self(p);assert(comp==f.get<unsigned>(0xc18));f.trace.push_back(83);*out=f.selected_enemy;return 1;};
     f.put(f.a,0xc18,0u);f.put(f.a,0x9c4,0u);f.put(f.a,0x984,100u);f.put(f.a,0x7cc,0u);f.put(f.a,0x7d0,0u);
-    ServerNpcSharedEnemyRefreshResult err{};ServerNpcScheduleTask et{135,999};
-    auto refresh=[&](){f.put(f.a,0x7a4,1);f.trace.clear();assert(refresh_api->execute(f.a,sizeof(f.a),&et,60,&b,&erb,&err));};
-    f.put(f.a,0x8a0,0x9001u);refresh();assert(err.shared.native&&err.shared.lifecycle.completed&&!err.current_live&&f.get<float>(0x8c4)==60&&f.trace.empty());
-    f.put(f.a,0x8a0,0x7001u);f.obs_found=false;refresh();assert(err.current_live&&!err.memory_found&&!err.selected&&f.trace==std::vector<int>{82});
-    f.obs_found=true;f.obs_seen=59.99f;refresh();assert(!err.selected&&err.shared.lifecycle.completed);
+    ServerNpcSharedEnemyRefreshResult refresh_result{};ServerNpcScheduleTask et{135,999};
+    auto refresh=[&](){f.put(f.a,0x7a4,1);f.trace.clear();assert(refresh_api->execute(f.a,sizeof(f.a),&et,60,&b,&erb,&refresh_result));};
+    f.put(f.a,0x8a0,0x9001u);refresh();assert(refresh_result.shared.native&&refresh_result.shared.lifecycle.completed&&!refresh_result.current_live&&f.get<float>(0x8c4)==60&&f.trace.empty());
+    f.put(f.a,0x8a0,0x7001u);f.obs_found=false;refresh();assert(refresh_result.current_live&&!refresh_result.memory_found&&!refresh_result.selected&&f.trace==std::vector<int>{82});
+    f.obs_found=true;f.obs_seen=59.99f;refresh();assert(!refresh_result.selected&&refresh_result.shared.lifecycle.completed);
     f.obs_seen=60;f.selected_enemy=f.hint;f.put(f.a,0x850,2);refresh();
-    assert(err.selected&&err.replaced&&err.state_changed&&err.enemy.new_handle==0x8002u&&f.get<int>(0x850)==3&&f.get<int>(0x858)==3&&f.get<float>(0x854)==60&&(f.trace==std::vector<int>{82,83,80,81}));
+    assert(refresh_result.selected&&refresh_result.replaced&&refresh_result.state_changed&&refresh_result.enemy.new_handle==0x8002u&&f.get<int>(0x850)==3&&f.get<int>(0x858)==3&&f.get<float>(0x854)==60&&(f.trace==std::vector<int>{82,83,80,81}));
     f.put(f.a,0x8a0,0x7001u);f.obs_seen=61;f.selected_enemy=f.target;f.put(f.a,0x854,44.f);refresh();
-    assert(err.selected&&!err.replaced&&!err.state_changed&&f.get<float>(0x854)==44.f&&(f.trace==std::vector<int>{82,83,81}));
-    f.selected_enemy=nullptr;refresh();assert(err.cleared&&err.extra_notification&&err.enemy.new_condition_cleared&&f.get<unsigned>(0x8a0)==0xffffffffu&&(f.trace==std::vector<int>{82,83,80,80}));
+    assert(refresh_result.selected&&!refresh_result.replaced&&!refresh_result.state_changed&&f.get<float>(0x854)==44.f&&(f.trace==std::vector<int>{82,83,81}));
+    f.selected_enemy=nullptr;refresh();assert(refresh_result.cleared&&refresh_result.extra_notification&&refresh_result.enemy.new_condition_cleared&&f.get<unsigned>(0x8a0)==0xffffffffu&&(f.trace==std::vector<int>{82,83,80,80}));
     f.put(f.a,0x8a0,0x7001u);f.put(f.a,0xc18,77u);f.component_handles=true;f.put(f.a,0x8c4,1.f);refresh();
-    assert(err.shared.component_handled&&!err.shared.native&&f.get<float>(0x8c4)==1.f&&f.trace==std::vector<int>{2});
-    f.component_handles=false;refresh();assert(err.shared.component_called&&err.extra_notification&&(f.trace==std::vector<int>{2,82,83,80,80}));
+    assert(refresh_result.shared.component_handled&&!refresh_result.shared.native&&f.get<float>(0x8c4)==1.f&&f.trace==std::vector<int>{2});
+    f.component_handles=false;refresh();assert(refresh_result.shared.component_called&&refresh_result.extra_notification&&(f.trace==std::vector<int>{2,82,83,80,80}));
     // Compose the actual memory tree and enemy-refresh DLL APIs, not a synthetic timestamp.
     auto gquery=reinterpret_cast<GetServerNpcEnemyMemoryQueryApi>(GetProcAddress(s,server_npc_enemy_memory_query_export));
     assert(gquery&&!GetProcAddress(c,server_npc_enemy_memory_query_export)&&!gquery(0,sizeof(ServerNpcEnemyMemoryQueryApi))&&!gquery(1,0));
@@ -451,12 +451,12 @@ int main(int argc,char** argv){
     f.put(f.memory_default,0x1c,60.f);f.put(f.memory_default,4,1.f);
     erb.memory_record=[](void* p,std::uint32_t tok,void* e,bool* found,float* stamp) noexcept -> int{auto& f=F::self(p);f.trace.push_back(84);return f.memory_api->last_seen(&f.memory_query,tok,e,found,stamp);};
     f.put(f.a,0xc18,0u);f.put(f.a,0x8a0,0x7001u);f.selected_enemy=f.hint;
-    refresh();assert(err.memory_found&&err.last_seen==59&&!err.selected&&f.trace==std::vector<int>{84});
-    f.put(f.memory_record,0x1c,60.f);refresh();assert(err.memory_found&&err.replaced&&err.enemy.new_handle==0x8002u&&(f.trace==std::vector<int>{84,83,80,81}));
+    refresh();assert(refresh_result.memory_found&&refresh_result.last_seen==59&&!refresh_result.selected&&f.trace==std::vector<int>{84});
+    f.put(f.memory_record,0x1c,60.f);refresh();assert(refresh_result.memory_found&&refresh_result.replaced&&refresh_result.enemy.new_handle==0x8002u&&(f.trace==std::vector<int>{84,83,80,81}));
     f.put(f.a,0x8a0,0x7001u);f.put(f.memory_nodes,4,0x12345679u); // miss original key, hit fallback
-    refresh();assert(err.memory_found&&err.last_seen==60&&err.replaced);
+    refresh();assert(refresh_result.memory_found&&refresh_result.last_seen==60&&refresh_result.replaced);
     f.put(f.a,0x8a0,0x7001u);f.put(f.memory_nodes,4,0x12345678u);f.put(f.memory_nodes,8,0u);
-    refresh();assert(!err.memory_found&&!err.selected&&f.trace==std::vector<int>{84});
+    refresh();assert(!refresh_result.memory_found&&!refresh_result.selected&&f.trace==std::vector<int>{84});
     f.put(f.memory_nodes,8,201u);
     ServerNpcEnemyMemoryLookup lookup{};float aim[3]{};
     assert(f.memory_api->aim_vector(f.a,sizeof(f.a),&mq,&lookup,aim)&&lookup.record==201&&aim[0]==11&&aim[1]==22&&aim[2]==33);
