@@ -1,0 +1,2 @@
+# Phase 1096: native movement decision catalog integration
+Compose Phase1095 Task116/121 Start/Run through the existing shared parent bridge after subclass decisions. All earlier ABI exports remain intact; new opt-in catalog API adds bounded navigator and path storage and explicit navigation effect leaves. Regression runs actual ground SCHED_GRUNT_COMBAT_FACE index0 stop then index1 activity, and SCHED_GRUNT_HIDE_AND_RELOAD index3 movement wait, inactive completion, next remember task119. No generic physics, models, rendering or navigation implementation. CI pending.

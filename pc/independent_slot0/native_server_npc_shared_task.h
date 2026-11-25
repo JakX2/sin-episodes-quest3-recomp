@@ -107,6 +107,7 @@ struct ServerNpcSharedMovementApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedMovementBindings*,ServerNpcSharedMovementResult*) noexcept;
 };
 using GetServerNpcSharedMovementApi=const ServerNpcSharedMovementApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerNpcSharedMovementStats {ServerNpcSharedMovementResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTargetAnimationStats {ServerNpcSharedTargetAnimationResult last;unsigned calls,native,components;};
 struct ServerNpcSharedFacingStats {ServerNpcSharedFacingResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTaskStats {ServerNpcSharedTaskResult last;unsigned calls,native,component_handled,special,parent;};
@@ -124,6 +125,8 @@ struct ServerNpcSharedParentSession {
     ServerNpcSharedFacingStats* facing_stats;
     const ServerNpcSharedTargetAnimationBindings* target_animation;
     ServerNpcSharedTargetAnimationStats* target_animation_stats;
+    const ServerNpcSharedMovementBindings* movement;
+    ServerNpcSharedMovementStats* movement_stats;
 };
-int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr) noexcept;
+int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementStats* = nullptr) noexcept;
 }
