@@ -1,0 +1,3 @@
+# Phase 923: parsed Jessica native speech history integration
+
+Extend phase921 parsed dialogue regression through phase922 character speech sink. Native VCD clock -> actor note -> actual owner-kind policy -> TLK_HELLO lookup/insert/timestamp/notify -> native expeditor deadlines -> shared semaphore -> audio/caption -> native record retirement. The fixture asserts the concept timestamp and speaking deadlines before emission, supplies no hosted owner_start/uses_semaphore behavior. Previous fixtures remain. Synthetic history rows and original engine effects/RTTI/storage supplied by host; no retail execution claim. CI pending.

@@ -528,7 +528,7 @@ actor Jessica
 // Exercise real parser -> clock -> native speech callback -> native
 // preparation, language, caption and actor record lifecycle. Only the
 // external engine effects are synthetic, not the callback dispatch.
-inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr){
+inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -547,14 +547,14 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
 )VCD";
     struct Fixture {
         VcdAuditArena& arena;
-        alignas(4) unsigned char scene[0x5ec]{},actor[0x1000]{},exp[0x7c]{};
+        alignas(4) unsigned char scene[0x5ec]{},actor[0x1000]{},exp[0x7c]{},hello[0x1c]{};
         int player=0,filter=0;
         unsigned opened=0,closed=0,notified=0,emitted=0,registered=0,preferences=0,sent=0,begun=0,stopped=0,starts=0,stops=0;
         std::uint32_t root=0,actorword=0;
-        void* event=nullptr;bool retail=false,native_note=false;
+        void* event=nullptr;bool retail=false,native_note=false,native_sink=false,hello_present=false;
         explicit Fixture(VcdAuditArena& a):arena(a){}
         static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
-    } f(arena);f.retail=retail!=nullptr;f.native_note=actor_note!=nullptr;
+    } f(arena);f.retail=retail!=nullptr;f.native_note=actor_note!=nullptr;f.native_sink=actor_sink!=nullptr;
     auto raw=arena.runtime();
     F::put(f.scene,0x414,F::ptr(f.scene));F::fl(f.scene,0x564,.25f);
     assert(runtime.parse(f.scene+0x410,"speech.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
@@ -595,6 +595,7 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     e.emit=[](void* p,void* actor,void* player,const char* name,int channel,float volume,int level,float start) noexcept -> int{
         auto& f=Fixture::self(p);assert(actor==f.actor&&player==&f.player&&channel==2&&volume==1.f&&level==80&&start==9.5f);
         assert(!std::strcmp(name,"Jessica.Line"));if(f.native_note)assert(f.notified==1&&VcdAuditArena::read_float(f.exp,0x68)==11.75f&&VcdAuditArena::read_float(f.exp,0x6c)==11.5f);
+        if(f.native_sink)assert(f.hello_present&&VcdAuditArena::read_float(f.hello,0x14)==10.f);
         ++f.emitted;return 1;
     };
     e.caption_register=[](void* p,std::uint32_t crc,const char* token) noexcept -> int{
@@ -648,7 +649,7 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     prep.classify=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
     prep.clock=e.clock;
     prep.handle=retail?cfg.host.handle:rec.handle;
-    SceneSpeechActorNoteBindings note{};SceneSpeechPreparationBindings native_prep{};
+    SceneSpeechActorNoteBindings note{};SceneSpeechPreparationBindings native_prep{};SceneSpeechActorSinkBindings sink{};
     if(actor_note){
         F::put(f.actor,0xffc,77u);
         note.preparation=prep;note.preparation.actor_notify=nullptr;note.context=&f;
@@ -665,6 +666,29 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
         note.note.uses_semaphore=[](void*,void*,unsigned* out) noexcept -> int{*out=1;return 1;};
         note.note.classify=[](void*,void*,int arg,unsigned* out) noexcept -> int{assert(!arg);*out=1;return 1;};
         note.note.owner_handle=[](void*,void*,std::uint32_t* out) noexcept -> int{*out=0x1001;return 1;};
+        if(actor_sink){
+            F::put(f.exp,4,88u);sink.context=&f;sink.history.context=&f;
+            sink.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+                auto& f=Fixture::self(p);
+                if(word==77){*out=f.exp;*n=sizeof(f.exp);return 1;}
+                if(word==88){*out=f.actor;*n=sizeof(f.actor);return 1;}
+                return 0;};
+            sink.kind=[](void* p,void* actor,SceneSpeechActorKind* out) noexcept -> int{
+                assert(actor==Fixture::self(p).actor);*out=SceneSpeechActorKind::Jessica;return 1;};
+            sink.history.lookup=[](void* p,void* exp,const char* name,int* out) noexcept -> int{
+                auto& f=Fixture::self(p);assert(exp==f.exp&&!std::strcmp(name,"TLK_HELLO"));*out=f.hello_present?3:-1;return 1;};
+            sink.history.insert=[](void* p,void* exp,const char* name,float now,int* out) noexcept -> int{
+                auto& f=Fixture::self(p);assert(exp==f.exp&&!f.hello_present&&!std::strcmp(name,"TLK_HELLO")&&now==10.f);
+                f.hello_present=true;*out=3;return 1;};
+            sink.history.entry=[](void* p,void* exp,int idx,void** out,unsigned* n) noexcept -> int{
+                auto& f=Fixture::self(p);assert(exp==f.exp&&idx==3&&f.hello_present);*out=f.hello;*n=sizeof(f.hello);return 1;};
+            sink.history.clock=e.clock;
+            sink.history.notify=[](void* p,void* exp,const char* name) noexcept -> int{
+                auto& f=Fixture::self(p);assert(exp==f.exp&&!std::strcmp(name,"TLK_HELLO")&&!f.emitted&&VcdAuditArena::read_float(f.hello,0x14)==10.f);
+                ++f.notified;return 1;};
+            sink.transport=note.note;sink.transport.owner_start=nullptr;sink.transport.uses_semaphore=nullptr;
+            assert(actor_sink->adapt(&sink,&note.note));
+        }
         assert(actor_note->adapt(&note,&native_prep));
     }
     NativeChoreographyClockBindings tick{};tick.vectors=arena.vector_bindings;tick.release_memory=&VcdAuditArena::release;
@@ -692,7 +716,7 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     assert(!static_cast<unsigned char*>(f.event)[0x328]);
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
-    std::puts(actor_note?"PASS parsed speech native actor expeditor note, shared semaphore, caption and record lifecycle":retail?"PASS parsed speech native record admission/check/stop and forced sound effect":"PASS parsed VCD clock -> native speech, caption and actor record lifecycle");
+    std::puts(actor_sink?"PASS parsed Jessica native speech history seed, expeditor timing, semaphore, captions and record retirement":actor_note?"PASS parsed speech native actor expeditor note, shared semaphore, caption and record lifecycle":retail?"PASS parsed speech native record admission/check/stop and forced sound effect":"PASS parsed VCD clock -> native speech, caption and actor record lifecycle");
 }
 inline void check_native_choreography_dispatch(const NativeChoreographyDispatchApi& api){
     using F=ScenePlaybackFixture;
