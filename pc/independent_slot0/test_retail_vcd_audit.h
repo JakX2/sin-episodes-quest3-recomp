@@ -612,6 +612,50 @@ inline void check_managed_response_history(VcdAuditArena& a,const ResponseHistor
     assert(a.retire.symbol_destroy(&a,f.exp+0x34)&&a.release(&a,F::word(f.exp,0x14))&&a.live.empty());
 }
 
+
+inline void check_native_talk_deadline_tree(VcdAuditArena& a,const TalkDeadlineTreeApi& tree,
+    const TalkManagerApi& manager,const TalkCatalogApi& catalog){
+    using F=ScenePlaybackFixture;
+    struct Context {
+        VcdAuditArena& a;const TalkDeadlineTreeApi& tree;const TalkCatalogApi& catalog;
+        TalkDeadlineTreeBindings cfg{};unsigned visits=0;
+    } c{a,tree,catalog};
+    TalkManagerFixture m(manager,catalog);
+    c.cfg.memory=a.vector_bindings;c.cfg.session=&m.session;c.cfg.context=&c;
+    c.cfg.intern=[](void* p,const char* key,const char** out) noexcept -> int{
+        auto& c=*static_cast<Context*>(p);const auto* d=c.catalog.lookup(key);
+        if(!d)return 0;*out=d->name;return 1;};
+    // Manager construction and lifecycle remain the original native API.
+    assert(manager.construct(&m.session,&m.control,&m.tables,&m.b)==1);
+    TalkManagerBindings b{};b.context=&c;
+    b.insert_deadline=[](void* p,void* object,const char* name,float initial) noexcept -> int{
+        auto& c=*static_cast<Context*>(p);assert(initial==-1&&c.visits<48&&!std::strcmp(name,c.catalog.at(c.visits)->name));
+        ++c.visits;return c.tree.insert(&c.cfg,object,name,initial);};
+    assert(manager.populate(&m.session,&m.control,&b)==1&&c.visits==48);
+    assert(F::word(m.object,0x3a8)==48&&m.object[0x3b1]==48&&m.object[0x3b3]==48);
+    assert(m.object[0x3b2]==0xff&&F::word(m.object,0x3b4)==F::word(m.object,0x3a4));
+    auto find=[&](const char* key){float* result=nullptr;assert(tree.deadline(&c.cfg,key,&result));return result;};
+    for(unsigned i=0;i<48;++i){auto* v=find(catalog.at(i)->name);assert(v&&*v==-1);}
+    assert(!find("missing")&&!find(nullptr)&&!find(""));
+    float* hello=find("TLK_HELLO");assert(hello==find("tlk_hello"));*hello=17.f;
+    assert(*find("TLK_IDLE")==-1.f&&*find("tlk_hello")==17.f);
+    void* rows=nullptr;unsigned bytes=0;assert(a.storage(&a,F::word(m.object,0x3a4),&rows,&bytes)&&bytes>=48*12);
+    unsigned duplicates=0;
+    for(unsigned i=0;i<48;++i){
+        const auto* key=reinterpret_cast<const char*>(static_cast<std::uintptr_t>(F::word(rows,i*12+4)));
+        if(!std::strcmp(key,"TLK_ENEMY_DEAD"))++duplicates;
+    }
+    assert(duplicates==2);
+    // Failed resize at 48 leaves all existing deadlines and counts unchanged.
+    a.fail_resize=true;assert(!tree.insert(&c.cfg,m.object+0x3a0,"TLK_HELLO",-1));
+    assert(m.object[0x3b1]==48&&m.object[0x3b3]==48&&find("TLK_HELLO")==hello&&*hello==17);
+    a.fail_resize=false;
+    b.free_tree=[](void* p,std::uint32_t word) noexcept -> int{return static_cast<Context*>(p)->a.release(&static_cast<Context*>(p)->a,word);};
+    b.base_destroy=[](void*,void*) noexcept -> int{return 1;};
+    assert(manager.destroy(&m.session,&m.control,&m.tables,&b)==1&&a.live.empty());
+    float* invalid=nullptr;assert(!tree.deadline(&c.cfg,"TLK_HELLO",&invalid));
+}
+
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr,const ResponseHistoryTreeApi* history_tree=nullptr,
     const ResponseHistoryManagedApi* managed_history=nullptr,TalkManagerFixture* manager=nullptr){
     using F=ScenePlaybackFixture;
