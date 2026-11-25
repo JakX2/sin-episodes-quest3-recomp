@@ -61,6 +61,27 @@ struct ServerNpcSharedFacingApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedFacingBindings*,ServerNpcSharedFacingResult*) noexcept;
 };
 using GetServerNpcSharedFacingApi=const ServerNpcSharedFacingApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_target_animation_export[]="SiN_GetServerNpcSharedTargetAnimationApi";
+struct ServerNpcSharedTargetAnimationBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    int (__cdecl *current_target)(void*,void*,void**) noexcept; // +154; null is valid
+    int (__cdecl *absolute_position)(void*,void*,float[3]) noexcept; // 220092d0 incl. dirty transform
+    int (__cdecl *motor_storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *step_turn)(void*,void*,int) noexcept; // +48(-1)
+};
+struct ServerNpcSharedTargetAnimationResult {
+    ServerNpcSharedTaskResult shared;
+    unsigned target_live,target_handle,motor_written,stepped,animation_finished;
+    float direction[3],yaw;
+};
+struct ServerNpcSharedTargetAnimationApi {
+    std::uint32_t version,size;
+    // Run94/95/96 (22053937), Start remains in the shared v1 API.
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedTargetAnimationBindings*,ServerNpcSharedTargetAnimationResult*) noexcept;
+};
+using GetServerNpcSharedTargetAnimationApi=const ServerNpcSharedTargetAnimationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedFacingStats {ServerNpcSharedFacingResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTaskStats {ServerNpcSharedTaskResult last;unsigned calls,native,component_handled,special,parent;};
 // Per-maintenance call only; no callback or actor memory retains the session.
