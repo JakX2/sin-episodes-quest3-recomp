@@ -13,6 +13,10 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWeaponRuntimeApi* __cdecl
 SiN_GetServerNpcWeaponRuntimeApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntTaskDispatchApi* __cdecl
+SiN_GetServerGruntTaskDispatchApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNativeActivityServicesApi* __cdecl
+SiN_GetServerNativeActivityServicesApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -28,6 +32,24 @@ struct Call {
     const ServerNpcScheduleResolutionApi* resolution;
     const ServerNpcScheduleValidityApi* validity;
     const ServerNpcScheduleBindings& sb;
+    const ServerGruntTaskBindings* tasks;
+    ServerGruntSchedulerResult* grunt;
+    bool task(const ServerNpcScheduleTask& t,bool running) noexcept {
+        if(tasks){
+            const auto* api=SiN_GetServerGruntTaskDispatchApi(1,sizeof(ServerGruntTaskDispatchApi));
+            if(!api||!grunt||!api->execute(a,bytes,&t,running,now,tasks,&grunt->last))return false;
+            switch(grunt->last.route){
+            case GruntTaskNative:++grunt->native_tasks;break;
+            case GruntTaskParent:++grunt->parent_tasks;break;
+            case GruntTaskHostedSpecial:++grunt->special_tasks;break;
+            default:return false;
+            }
+            grunt->task_failures+=grunt->last.lifecycle.failed;
+            return true;
+        }
+        auto cb=running?b.run_task:b.start_task;
+        return cb&&cb(b.context,a,&t);
+    }
     bool test(int id,bool& value) noexcept {
         ServerNpcConditionResult cr{};if(!cond->test(a,bytes,id,NpcConditionCurrent,&sb.conditions,&cr))return false;
         value=cr.value!=0;return true;
@@ -58,7 +80,7 @@ struct Call {
     }
     bool inspect() noexcept {return schedule->inspect(a,bytes,&sb,&out.state)!=0;}
 };
-int __cdecl run(void* actor,unsigned bytes,float now,const ServerNpcScheduleMaintenanceBindings* b,ServerNpcScheduleMaintenanceResult* out) noexcept {
+int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMaintenanceBindings* b,ServerNpcScheduleMaintenanceResult* out,const ServerGruntTaskBindings* tasks=nullptr,ServerGruntSchedulerResult* grunt=nullptr) noexcept {
     if(!out)return 0;*out={};
     if(!actor||bytes<0xdd8||!b||!std::isfinite(now))return 0;
     const auto* sa=SiN_GetServerNpcScheduleStateApi(1,sizeof(ServerNpcScheduleStateApi));
@@ -67,7 +89,7 @@ int __cdecl run(void* actor,unsigned bytes,float now,const ServerNpcScheduleMain
     const auto* re=SiN_GetServerNpcScheduleResolutionApi(1,sizeof(ServerNpcScheduleResolutionApi));
     const auto* va=SiN_GetServerNpcScheduleValidityApi(1,sizeof(ServerNpcScheduleValidityApi));
     if(!sa||!ca||!st||!re||!va)return 0;
-    Call q{actor,bytes,now,*b,*out,sa,ca,st,re,va,b->selection.grunt.schedule};
+    Call q{actor,bytes,now,*b,*out,sa,ca,st,re,va,b->selection.grunt.schedule,tasks,grunt};
     bool stop=false;
     for(unsigned iteration=0;iteration<10&&!stop;++iteration){
         ++out->iterations;
@@ -100,11 +122,11 @@ int __cdecl run(void* actor,unsigned bytes,float now,const ServerNpcScheduleMain
             out->missing_schedule=1;return q.transition(true);
         }
         if(out->state.status==0){
-            if(!out->state.has_task||!b->start_task)return 0;
+            if(!out->state.has_task)return 0;
             // All eight verified +430 targets are the same no-op.
             const auto task=out->state.task;
             write(actor,0x7a4,1);write(actor,0x7b0,0);write(actor,0x7ac,now);
-            ++out->started;if(!b->start_task(b->context,actor,&task))return 0;
+            ++out->started;if(!q.task(task,false))return 0;
             if(runnable(actor)){
                 bool failed=false;if(!q.test(0x21,failed))return 0;
                 if(!failed&&(!b->after_start||!b->after_start(b->context,actor)))return 0;
@@ -118,10 +140,10 @@ int __cdecl run(void* actor,unsigned bytes,float now,const ServerNpcScheduleMain
         }
         bool failed=false;if(!q.test(0x21,failed))return 0;
         if(!runnable(actor)||failed){stop=true;continue;}
-        if(!q.inspect()||!out->state.has_task||!b->run_task)return 0;
+        if(!q.inspect()||!out->state.has_task)return 0;
         const auto task=out->state.task;
         for(unsigned inner=0;inner<8;++inner){
-            ++out->runs;if(!b->run_task(b->context,actor,&task))return 0;
+            ++out->runs;if(!q.task(task,true))return 0;
             if(!read<unsigned>(actor,0x7b4)||read<int>(actor,0x7a4)==4)break;
             if(!q.test(0x21,failed))return 0;if(failed)break;
             if(b->check_inner_budget){
@@ -142,6 +164,32 @@ int __cdecl run(void* actor,unsigned bytes,float now,const ServerNpcScheduleMain
     if(!stop&&out->iterations==10)out->iteration_limit=1;
     return q.transition()&&q.inspect();
 }
+int __cdecl run(void* a,unsigned bytes,float now,const ServerNpcScheduleMaintenanceBindings* b,ServerNpcScheduleMaintenanceResult* out) noexcept {
+    return run_impl(a,bytes,now,b,out);
+}
+int __cdecl run_grunt(void* a,unsigned bytes,float now,const ServerGruntSchedulerBindings* b,ServerGruntSchedulerResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!a||bytes<0xfcc||!b||b->maintenance.selection.jetpack||b->maintenance.validity.jetpack)return 0;
+    auto tasks=b->tasks;
+    const auto& m=b->maintenance;
+    // Use the same mapped current conditions and entity table as selection.
+    tasks.lifecycle.conditions=m.selection.grunt.schedule.conditions;
+    tasks.entities=m.selection.state.entities;
+    ServerNativeActivitySession session{};
+    ServerNpcTransitionBindings pending{};
+    if(m.animation){
+        const auto* services=SiN_GetServerNativeActivityServicesApi(1,sizeof(ServerNativeActivityServicesApi));
+        const auto& runtime=*m.animation;
+        const auto& assignment=runtime.npc.transition.assignment;
+        if(assignment.translation.actor_class!=NpcActivityGrunt||
+           runtime.inherited.weapons.entries!=tasks.entities.entries||runtime.inherited.weapons.count!=tasks.entities.count||
+           !services||!services->prepare(a,bytes,&assignment,&runtime.inherited,&session))return 0;
+        pending=runtime.npc.transition;pending.assignment=session.bound;
+        tasks.transition=&pending;
+    }
+    return run_impl(a,bytes,now,&m,&out->maintenance,&tasks,out);
+}
+const ServerGruntSchedulerApi grunt_api{1,sizeof(ServerGruntSchedulerApi),&run_grunt};
 const ServerNpcScheduleMaintenanceApi api{1,sizeof(ServerNpcScheduleMaintenanceApi),&run};
 }
 }
@@ -150,4 +198,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcScheduleMaintenanceApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcScheduleMaintenanceApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerGruntSchedulerApi=_SiN_GetServerGruntSchedulerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntSchedulerApi* __cdecl
+SiN_GetServerGruntSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerGruntSchedulerApi)?&grunt_api:nullptr;
 }

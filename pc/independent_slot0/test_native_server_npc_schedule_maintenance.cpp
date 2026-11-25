@@ -11,7 +11,7 @@
 #include <vector>
 using namespace sin_port::native_weapon_tables;
 struct F{
-    alignas(4) unsigned char actor[0xdd8]{},desc[0x48]{},rows[2][0x34]{},tasks[2][16]{};
+    alignas(4) unsigned char actor[0xfcc]{},desc[0x48]{},rows[2][0x34]{},tasks[2][16]{};
     std::vector<int> trace;
     int mode=0;bool yield=false;
     unsigned budget_calls=0;
@@ -78,5 +78,30 @@ int main(int argc,char** argv){
     assert(api->run(f.actor,sizeof(f.actor),10,&b,&out)&&out.failed_selected==1&&out.state.schedule==2&&f.get<int>(0x79c)==global+2&&out.runs==1);
     reset();b.selection.head=0;
     assert(api->run(f.actor,sizeof(f.actor),10,&b,&out)&&out.missing_schedule&&out.selected==2&&!out.transitions&&f.trace.back()==61);
+
+    auto gg=reinterpret_cast<GetServerGruntSchedulerApi>(GetProcAddress(s,server_grunt_scheduler_export));
+    assert(gg&&!GetProcAddress(c,server_grunt_scheduler_export)&&!gg(0,sizeof(ServerGruntSchedulerApi))&&!gg(1,0));
+    const auto* grunt=gg(1,sizeof(ServerGruntSchedulerApi));assert(grunt);
+    ServerGruntSchedulerBindings gb{};gb.maintenance=b;gb.maintenance.selection.head=1;
+    gb.maintenance.start_task=nullptr;gb.maintenance.run_task=nullptr;
+    gb.tasks.context=&f;
+    gb.tasks.special=[](void* p,void*,const ServerNpcScheduleTask* task,bool running) noexcept -> int {
+        auto& f=F::self(p);assert(task->id==149&&!running&&f.get<float>(0x9f0)==.75f);f.trace.push_back(149);return 1;};
+    gb.tasks.finish_hook=[](void* p,void*) noexcept -> int{F::self(p).trace.push_back(158);return 1;};
+    gb.maintenance.selection.fail_select=[](void*,void*,int sched,int task,int failure,int* out) noexcept -> int{
+        assert(sched==1&&task==149&&failure==6);*out=2;return 1;};
+    f.put(f.tasks[0],0,147);f.put(f.tasks[0],8,149);f.put(f.tasks[1],0,158);
+    reset();f.actor[0xca0]=1;
+    ServerGruntSchedulerResult gout{};
+    assert(grunt->run(f.actor,sizeof(f.actor),10,&gb,&gout));
+    assert(gout.maintenance.started==2&&gout.maintenance.advanced==1&&gout.maintenance.runs==2&&gout.native_tasks==3&&gout.special_tasks==1&&gout.task_failures==1);
+    assert(!f.actor[0xca0]&&f.get<int>(0x7b0)==6&&(f.get<unsigned>(0x7d0)&2u)&&gout.last.lifecycle.failed);
+    assert((f.trace==std::vector<int>{40,41,30,50,60,149,50,60,60}));
+    f.trace.clear();f.yield=true;
+    assert(grunt->run(f.actor,sizeof(f.actor),10,&gb,&gout)&&gout.maintenance.failed_selected==1&&gout.maintenance.state.schedule==2&&gout.native_tasks==1&&gout.last.lifecycle.completed&&gout.maintenance.budget_yield);
+    assert(f.get<int>(0x7b0)==0&&!(f.get<unsigned>(0x7d0)&2u)&&f.get<int>(0x7a4)==4);
+    assert((f.trace==std::vector<int>{40,41,30,158,60,60}));
+    gb.maintenance.selection.jetpack=true;f.trace.clear();
+    assert(!grunt->run(f.actor,sizeof(f.actor),10,&gb,&gout)&&f.trace.empty());
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native maintenance loop task lifecycle, failure schedule and bounded iterations");
 }
