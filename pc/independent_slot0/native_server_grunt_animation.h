@@ -2,6 +2,7 @@
 #include "native_server_animation_events.h"
 #include "native_server_activity_dictionary.h"
 #include "native_server_weapon_event_route.h"
+#include "native_server_npc_reload_services.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_grunt_animation_export[]="SiN_GetServerGruntAnimationApi";
 struct ServerGruntAnimationBindings {
@@ -98,4 +99,15 @@ struct ServerGruntNativeWeaponEventApi {
     int (__cdecl *handle)(void*,unsigned,const ServerAnimationEvent*,float,const ServerGruntRegistration*,const ServerGruntAnimationBindings*,const ServerNpcParentWeaponEventBindings*,ServerGruntNativeWeaponEventResult*) noexcept;
 };
 using GetServerGruntNativeWeaponEventApi=const ServerGruntNativeWeaponEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_grunt_script_weapon_event_export[]="SiN_GetServerGruntScriptWeaponEventApi";
+struct ServerGruntScriptWeaponEventResult {
+    ServerGruntNativeWeaponEventResult event;
+    ServerNpcReloadResult reload;
+    unsigned fixed_reset;
+};
+struct ServerGruntScriptWeaponEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *handle)(void*,unsigned,const ServerAnimationEvent*,float,const ServerGruntRegistration*,const ServerGruntAnimationBindings*,ServerNpcReloadSession*,ServerGruntScriptWeaponEventResult*) noexcept;
+};
+using GetServerGruntScriptWeaponEventApi=const ServerGruntScriptWeaponEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
