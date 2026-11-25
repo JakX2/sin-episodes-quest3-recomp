@@ -28,6 +28,7 @@
 #include "choreography_indexed_rb.h"
 #include "response_rule_scoring.h"
 #include "response_group_choice.h"
+#include "response_script_registry.h"
 #include "native_character_response.h"
 #include "native_action_monitor.h"
 #include <cstdio>
@@ -8133,6 +8134,73 @@ int __cdecl native_response_finder(void* p,void* system,void* criteria,void* res
     *found=1;return 1;
 }
 const NativeResponseFinderApi native_response_finder_api{version,sizeof(NativeResponseFinderApi),&native_response_finder};
+
+namespace rs=sin_port::response_script;
+int __cdecl script_response_create(const char* name,const char* data,unsigned n,const ScriptResponseInclude* include,ScriptResponseStore* out) noexcept {
+    if(!name||!data||!n||n>4*1024*1024||!sin_independent::vgui_layout::Readable(data,n)||
+       !hologram_writable(out,sizeof(*out))||out->owner||out->system||
+       (include&&(!sin_independent::vgui_layout::Readable(include,sizeof(*include))||!include->load)))return 0;
+    char path[128]{};
+    if(!prop_key_read(name,path))return 0;
+    try{
+        rs::Parser parser{};
+        parser.context=const_cast<ScriptResponseInclude*>(include);
+        if(include)parser.include=[](void* p,const std::string& name,std::string& result){
+            const auto& h=*static_cast<const ScriptResponseInclude*>(p);
+            const char* data=nullptr;unsigned n=0;
+            if(!h.load(h.context,name.c_str(),&data,&n)||!data||n>4*1024*1024||
+               (n&&!sin_independent::vgui_layout::Readable(data,n)))return false;
+            result.assign(data,n);return true;
+        };
+        if(!parser.parse(path,std::string_view(data,n)))return -1;
+        auto registry=std::make_unique<rs::Registry>();
+        if(!registry->build(parser.db))return -1;
+        out->system=registry->system.data();out->owner=registry.release();return 1;
+    }catch(...){return -1;}
+}
+int __cdecl script_response_release(ScriptResponseStore* out) noexcept {
+    if(!hologram_writable(out,sizeof(*out))||!out->owner||!out->system||
+       !sin_independent::vgui_layout::Readable(out->owner,sizeof(rs::Registry)))return 0;
+    auto* r=static_cast<rs::Registry*>(out->owner);
+    if(out->system!=r->system.data())return 0;
+    *out={};delete r;return 1;
+}
+struct ScriptResponseCall {
+    rs::Registry& registry;const NativeResponseFinderBindings& host;
+    static ScriptResponseCall& self(void* p) noexcept{return *static_cast<ScriptResponseCall*>(p);}
+};
+int __cdecl script_response_find(void* p,void* system,void* criteria,void* response,void* exp,unsigned* found) noexcept {
+    const auto* b=static_cast<const ScriptResponseFinderBindings*>(p);
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->store.owner||
+       system!=b->store.system||!sin_independent::vgui_layout::Readable(b->store.owner,sizeof(rs::Registry))||
+       !b->host.ranking.draw||!b->host.random_float||!b->host.clone_criteria)return 0;
+    auto& r=*static_cast<rs::Registry*>(b->store.owner);
+    if(system!=r.system.data())return 0;
+    ScriptResponseCall call{r,b->host};auto h=b->host;h.context=&call;h.ranking.context=&call;
+    h.ranking.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        rr::Bytes data{};if(!ScriptResponseCall::self(p).registry.storage(word,data))return 0;
+        *out=const_cast<unsigned char*>(data.p);*n=data.n;return 1;};
+    h.ranking.string=[](void* p,std::uint32_t word,const char** out) noexcept -> int{
+        return ScriptResponseCall::self(p).registry.string(word,*out);};
+    h.ranking.enumeration=[](void* p,const char* key,float* v,unsigned* found) noexcept -> int{
+        bool yes=false;if(!rs::Registry::enum_lookup(&ScriptResponseCall::self(p).registry,key,v,&yes))return 0;
+        *found=yes;return 1;};
+    h.ranking.draw=[](void* p,int lo,int hi,int* out) noexcept -> int{
+        const auto& h=ScriptResponseCall::self(p).host.ranking;return h.draw(h.context,lo,hi,out);};
+    h.random_float=[](void* p,float lo,float hi,float* out) noexcept -> int{
+        const auto& h=ScriptResponseCall::self(p).host;return h.random_float(h.context,lo,hi,out);};
+    h.group_by_name=[](void* p,void*,const char* name,int* out) noexcept -> int{
+        const auto& names=ScriptResponseCall::self(p).registry.group_names;
+        *out=-1;for(unsigned i=0;i<names.size();++i)if(rr::ascii_equal(names[i].c_str(),name)){*out=static_cast<int>(i);break;}return 1;};
+    h.rule_name=[](void* p,void*,std::uint16_t symbol,const char** out) noexcept -> int{
+        const auto& names=ScriptResponseCall::self(p).registry.rule_names;
+        if(symbol>=names.size())return 0;*out=names[symbol].c_str();return 1;};
+    h.clone_criteria=[](void* p,void* criteria,void** out) noexcept -> int{
+        const auto& h=ScriptResponseCall::self(p).host;return h.clone_criteria(h.context,criteria,out);};
+    return native_response_finder(&h,system,criteria,response,exp,found);
+}
+const ScriptResponseFinderApi script_response_finder_api{version,sizeof(ScriptResponseFinderApi),
+    &script_response_create,&script_response_release,&script_response_find};
 
 int __cdecl response_criteria_remove(void* c,unsigned bytes,const ResponseCriteriaRemovalBindings* b,const char* name) noexcept {
     ResponseCriteriaIndex t{};
@@ -16539,6 +16607,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeRes
 SiN_GetNativeResponseFinderApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeResponseFinderApi)?&native_response_finder_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetScriptResponseFinderApi=_SiN_GetScriptResponseFinderApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScriptResponseFinderApi* __cdecl
+SiN_GetScriptResponseFinderApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ScriptResponseFinderApi)?&script_response_finder_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

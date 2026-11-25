@@ -745,7 +745,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1171,6 +1171,36 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
             F::put(r.groups+0x58+0x14,0x40,0);F::fl(r.meta,4,2.5f);rule0[0x28]=1;
             assert(find()&&found==1&&F::word(r.response,0)==3&&r.clones==2&&!rule0[0x29]);
             assert(find()&&found==0&&r.clones==2);
+            if(scriptFinder){
+                const char source[]=R"(criterion idle concept TLK_IDLE required
+#include "talker/fixture.txt"
+rule parsed_rule
+{
+ criteria idle
+ response parsed_group
+ matchonce
+}
+)";
+                ScriptResponseInclude include{};
+                include.load=[](void*,const char* name,const char** data,unsigned* n) noexcept -> int{
+                    if(std::strcmp(name,"talker/fixture.txt"))return 0;
+                    static const char script[]="response parsed_group\n{\n sequential\n scene \"scenes/test.vcd\"\n speak fallback\n}\n";
+                    *data=script;*n=sizeof(script)-1;return 1;};
+                ScriptResponseFinderBindings parsed{};parsed.host=cfg;
+                assert(scriptFinder->create("talker/root.txt",source,sizeof(source)-1,nullptr,&parsed.store)==-1&&!parsed.store.owner);
+                assert(scriptFinder->create("talker/root.txt",source,sizeof(source)-1,&include,&parsed.store)==1&&parsed.store.owner&&parsed.store.system);
+                assert(scriptFinder->create("talker/root.txt",source,sizeof(source)-1,&include,&parsed.store)==0);
+                parsed.host.ranking.storage=nullptr;parsed.host.ranking.string=nullptr;
+                parsed.host.ranking.enumeration=nullptr;parsed.host.rule_name=nullptr;parsed.host.group_by_name=nullptr;
+                F::fl(r.meta,4,0);
+                std::memset(r.response,0,sizeof(r.response));
+                assert(scriptFinder->find(&parsed,parsed.store.system,c,r.response,r.exp,&found)&&found==1&&F::word(r.response,0)==1);
+                assert(!std::strcmp(reinterpret_cast<char*>(r.response+4),"fallback")&&!std::strcmp(reinterpret_cast<char*>(r.response+0xa4),"parsed_rule"));
+                std::memset(r.response,0,sizeof(r.response));
+                assert(scriptFinder->find(&parsed,parsed.store.system,c,r.response,r.exp,&found)&&found==0);
+                assert(scriptFinder->release(&parsed.store)==1&&!parsed.store.owner&&!parsed.store.system);
+                assert(scriptFinder->release(&parsed.store)==0);
+            }
         }
         assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
     }
