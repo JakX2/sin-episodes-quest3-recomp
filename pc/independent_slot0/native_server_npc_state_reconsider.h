@@ -403,4 +403,25 @@ struct ServerNpcGruntSpeechApi {
     int (__cdecl *speak)(void*,unsigned,unsigned,float,const ServerNpcGruntSpeechBindings*,ServerNpcGruntSpeechResult*) noexcept;
 };
 using GetServerNpcGruntSpeechApi=const ServerNpcGruntSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_sensed_entities_export[]="SiN_GetServerNpcSensedEntitiesApi";
+struct ServerNpcSensedEntitiesBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+};
+struct ServerNpcSensedCursor {std::uint32_t packed;};
+struct ServerNpcSensedResult {
+    void* entity;
+    unsigned visited,stale,category,index,first_stale;
+};
+struct ServerNpcSensedEntitiesApi {
+    std::uint32_t version,size;
+    // 220a1f70: -1 spans all three categories; first stale entry terminates.
+    int (__cdecl *first)(const void*,unsigned,int,const ServerNpcSensedEntitiesBindings*,ServerNpcSensedCursor*,ServerNpcSensedResult*) noexcept;
+    // 220a1ff0: skip stale subsequent handles.
+    int (__cdecl *next)(const void*,unsigned,const ServerNpcSensedEntitiesBindings*,ServerNpcSensedCursor*,ServerNpcSensedResult*) noexcept;
+    // 220a2410: exact entity membership using first/next.
+    int (__cdecl *contains)(const void*,unsigned,void*,const ServerNpcSensedEntitiesBindings*,bool*) noexcept;
+};
+using GetServerNpcSensedEntitiesApi=const ServerNpcSensedEntitiesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
