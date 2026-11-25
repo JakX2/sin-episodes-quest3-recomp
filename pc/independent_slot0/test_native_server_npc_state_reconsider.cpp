@@ -1009,5 +1009,35 @@ int main(int argc,char** argv){
         f.put(f.actor,0xc18,0u);f.put(f.actor,0x850,7);f.actor[0xc6c]=0;gather_bindings.max_clients=2;
         assert(gather->gather(f.actor,sizeof(f.actor),632,&gather_bindings,&gather_result)&&gather_result.base_called&&gather_result.base.completed&&gather_result.base.gate.inactive);
     }
+    {
+        auto get_point=reinterpret_cast<GetServerNpcGruntPointPolicyApi>(GetProcAddress(s,server_npc_grunt_point_policy_export));
+        assert(get_point&&!GetProcAddress(c,server_npc_grunt_point_policy_export)&&!get_point(0,sizeof(ServerNpcGruntPointPolicyApi))&&!get_point(1,0));
+        const auto* policy=get_point(1,sizeof(ServerNpcGruntPointPolicyApi));assert(policy);
+        ServerNpcGruntPointPolicyBindings point_bindings{};point_bindings.context=&f;point_bindings.original_vtable=0x2249aaa4;point_bindings.entries=f.entries;point_bindings.count=3;point_bindings.storage=report_binding.mutation.storage;
+        point_bindings.origin=[](void* p,void* e,float* v) noexcept -> int{auto& f=F::self(p);v[0]=e==f.actor?0.f:f.distance[f.idx(e)];v[1]=v[2]=0;return 1;};
+        point_bindings.notify_squad=[](void*,const float* p,unsigned type,int radius,float duration) noexcept -> int{return p[0]==500&&type==0x801000u&&radius==250&&duration==.1f;};
+        point_bindings.in_view=[](void* p,void*,const float*,bool* yes) noexcept -> int{*yes=F::self(p).combat_fov;return 1;};
+        point_bindings.visible=[](void* p,void*,const float*,unsigned mask,bool* yes) noexcept -> int{assert(mask==0x4081);*yes=F::self(p).combat_trace;return 1;};
+        point_bindings.headroom=[](void* p,void*,bool* yes) noexcept -> int{*yes=F::self(p).remembered_visible;return 1;};
+        point_bindings.solve=[](void* p,void*,const float*,bool direct,float* v) noexcept -> int{auto& f=F::self(p);v[0]=f.melee_hits?(direct?10.f:20.f):0.f;v[1]=v[2]=0;return 1;};
+        float point[3]{127,0,0};ServerNpcGruntPointPolicyResult point_result{};
+        f.put(f.actor,0xc38,0);f.put(f.actor,0xc80,640.f);f.actor[0xc6c]=1;
+        assert(policy->query(f.actor,sizeof(f.actor),point,639,&point_bindings,&point_result)&&point_result.no_inventory);
+        f.put(f.actor,0xc38,1);
+        assert(policy->query(f.actor,sizeof(f.actor),point,639,&point_bindings,&point_result)&&point_result.cooldown_blocked);
+        assert(policy->query(f.actor,sizeof(f.actor),point,640,&point_bindings,&point_result)&&point_result.range_blocked&&point_result.deadline==640.25f);
+        point[0]=128;f.put(f.actor,0x394,0.f);
+        assert(policy->query(f.actor,sizeof(f.actor),point,641,&point_bindings,&point_result)&&point_result.scalar_blocked&&!point_result.deadline_written);
+        f.put(f.actor,0x394,1.f);f.put(f.actor,0x9c4,0u);f.combat_fov=f.combat_trace=true;f.melee_hits=true;
+        assert(policy->query(f.actor,sizeof(f.actor),point,641,&point_bindings,&point_result)&&point_result.accepted&&point_result.direct&&point_result.solution[0]==10&&f.get<float>(0xc58)==10);
+        point[0]=1024;f.combat_fov=false;f.remembered_visible=false;
+        assert(policy->query(f.actor,sizeof(f.actor),point,642,&point_bindings,&point_result)&&point_result.headroom_called&&!point_result.headroom_clear&&!point_result.solve_called&&!point_result.deadline_written);
+        f.remembered_visible=true;
+        assert(policy->query(f.actor,sizeof(f.actor),point,642,&point_bindings,&point_result)&&point_result.accepted&&!point_result.direct&&point_result.solution[0]==20&&f.get<float>(0xc58)==20);
+        f.melee_hits=false;f.actor[0xc6c]=0;
+        assert(policy->query(f.actor,sizeof(f.actor),point,643,&point_bindings,&point_result)&&!point_result.accepted&&point_result.solve_called&&point_result.deadline==644&&f.get<float>(0xc58)==20);
+        point[0]=500;f.put(f.actor,0x9c4,105u);f.put(f.squad_data,8,0x9002u);f.put(f.squad_data,12,0x8002u);f.put(f.squad_data,0x48,2);f.distance[1]=250;
+        assert(policy->query(f.actor,sizeof(f.actor),point,644,&point_bindings,&point_result)&&point_result.squad_blocked&&point_result.squad_stale==1&&point_result.squad_visited==2&&point_result.notified&&!point_result.solve_called&&point_result.deadline==645);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

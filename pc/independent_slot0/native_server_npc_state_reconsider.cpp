@@ -2067,6 +2067,57 @@ int __cdecl grunt_gather_conditions(void* actor,unsigned bytes,float now,const S
     }
     out->completed=1;return 1;
 }
+int __cdecl grunt_point_policy(void* actor,unsigned bytes,const float point[3],float now,const ServerNpcGruntPointPolicyBindings* b,ServerNpcGruntPointPolicyResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xdb2||!b||!finite_vec(point)||!std::isfinite(now)||!relation_grunt_class(b->original_vtable)||
+       b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries)||!finite_vec(b->invalid_solution))return 0;
+    if(read<int>(actor,0xc38)<1){out->no_inventory=1;return 1;}
+    out->deadline=read<float>(actor,0xc80);if(!std::isfinite(out->deadline))return 0;
+    if(now<out->deadline){out->cooldown_blocked=1;return 1;}
+    auto deadline=[&](){
+        out->deadline=static_cast<float>(static_cast<double>(now)+(read<std::uint8_t>(actor,0xc6c)?.25:1.));
+        if(!std::isfinite(out->deadline))return false;write(actor,0xc80,out->deadline);out->deadline_written=1;return true;
+    };
+    float origin[3]{};
+    if(!b->origin||!b->origin(b->context,actor,origin)||!goal_vector_distance(origin,point,out->distance))return 0;
+    if(out->distance<128.f||out->distance>1024.f){out->range_blocked=1;return deadline();}
+    const float scalar=read<float>(actor,0x394);if(!std::isfinite(scalar))return 0;
+    if(scalar==0){out->scalar_blocked=1;return 1;}
+    const auto squad=read<unsigned>(actor,0x9c4);
+    if(squad){
+        void* data=nullptr;unsigned n=0;
+        if(!memory_storage(&b->storage,squad,0x4c,data,n))return 0;
+        const int count=read<int>(data,0x48);if(count<0||count>16)return 0;
+        const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+        for(int i=0;i<count;++i){
+            ++out->squad_visited;void* e=registry.Resolve(read<unsigned>(data,8+4*i));
+            if(!e){++out->squad_stale;continue;}
+            float p[3]{};if(!b->origin(b->context,e,p)||!finite_vec(p))return 0;
+            // Original squad query uses horizontal distance, including the caller if present.
+            const float dx=static_cast<float>(static_cast<double>(point[0])-p[0]),dy=static_cast<float>(static_cast<double>(point[1])-p[1]);
+            const float sq=static_cast<float>(static_cast<double>(dx)*dx+static_cast<double>(dy)*dy);
+            if(!std::isfinite(sq))return 0;
+            if(std::sqrt(sq)<=250.f){
+                out->squad_blocked=1;if(!deadline())return 0;
+                if(!b->notify_squad||!b->notify_squad(b->context,point,0x801000u,250,.1f))return 0;out->notified=1;return 1;
+            }
+        }
+    }
+    bool yes=false;
+    if(!b->in_view||!b->in_view(b->context,actor,point,&yes))return 0;out->in_view=yes;
+    if(yes){if(!b->visible||!b->visible(b->context,actor,point,0x4081,&yes))return 0;out->visible=yes;}
+    out->direct=out->in_view&&out->visible;
+    if(!out->direct){
+        out->headroom_called=1;if(!b->headroom||!b->headroom(b->context,actor,&yes))return 0;out->headroom_clear=yes;
+        if(!yes)return 1;
+    }
+    out->solve_called=1;
+    if(!b->solve||!b->solve(b->context,actor,point,out->direct!=0,out->solution)||!finite_vec(out->solution))return 0;
+    out->accepted=out->solution[0]!=b->invalid_solution[0]||out->solution[1]!=b->invalid_solution[1]||out->solution[2]!=b->invalid_solution[2];
+    if(out->accepted)std::memcpy(static_cast<unsigned char*>(actor)+0xc58,out->solution,12);
+    return deadline();
+}
+const ServerNpcGruntPointPolicyApi point_policy_api{1,sizeof(ServerNpcGruntPointPolicyApi),&grunt_point_policy};
 const ServerNpcGruntGatherConditionsApi gather_conditions_api{1,sizeof(ServerNpcGruntGatherConditionsApi),&grunt_gather_conditions};
 const ServerNpcGruntConditionUpdateApi condition_update_api{1,sizeof(ServerNpcGruntConditionUpdateApi),&grunt_condition_update};
 const ServerNpcGruntUpdateGateApi update_gate_api{1,sizeof(ServerNpcGruntUpdateGateApi),&grunt_update_gate};
@@ -2334,4 +2385,10 @@ SiN_GetServerNpcGruntConditionUpdateApi(std::uint32_t version,std::uint32_t size
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherConditionsApi* __cdecl
 SiN_GetServerNpcGruntGatherConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGatherConditionsApi)?&gather_conditions_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPointPolicyApi=_SiN_GetServerNpcGruntPointPolicyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPointPolicyApi* __cdecl
+SiN_GetServerNpcGruntPointPolicyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPointPolicyApi)?&point_policy_api:nullptr;
 }
