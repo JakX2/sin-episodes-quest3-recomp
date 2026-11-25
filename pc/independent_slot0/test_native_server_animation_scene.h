@@ -2,6 +2,7 @@
 #include "native_server_animation_scene.h"
 #include <cassert>
 #include <cstring>
+#include <cmath>
 namespace sin_port::native_weapon_tables::test {
 inline void check_animation_scene(const ServerAnimationSceneApi& api){
     struct Fixture {
@@ -43,4 +44,38 @@ inline void check_animation_scene(const ServerAnimationSceneApi& api){
     put(row,0x10,-1);assert(stop(0,1)==1&&f.blended==4);
     assert(api.check(event,sizeof(event),&out)==1&&out==1);
 }
+inline void check_animation_scene_frame(const ServerAnimationSceneFrameApi& api){
+    struct Fixture {alignas(4) unsigned char actor[0x4a4]{},row[0x40]{},record[0x40]{},event[0x3c0]{};unsigned reads{},warps{};float fraction{},mapped=.75f;} f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto get=[](void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+off,4);return v;};
+    auto near=[](float a,float b){return std::fabs(a-b)<.00001f;};
+    put(f.actor,0x494,1u);put(f.actor,0x4a0,1);f.row[0]=1;
+    put(f.record,0x10,0);put(f.record,0x20,1.f);put(f.event,0,6u);
+    put(f.event,0x184,1.f);put(f.event,0x188,3.f);
+    ServerAnimationSceneFrameBindings b{};b.context=&f;
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(w==1);++f.reads;*out=f.row;*n=sizeof(f.row);return 1;
+    };
+    b.gesture_cycle=[](void* p,const void* e,float fraction,float* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(e==f.event);++f.warps;f.fraction=fraction;*out=f.mapped;return 1;
+    };
+    ServerAnimationSceneFrameInput in{};in.scene_time=2;in.now=10;in.intensity=.5f;in.suppressed=true;
+    unsigned out=99;
+    auto run=[&](){return api.update(f.actor,sizeof(f.actor),f.record,sizeof(f.record),f.event,sizeof(f.event),&in,&b,&out);};
+    assert(run()==1&&out==1&&f.warps==1&&f.fraction==.5f&&get(f.record,0x20)==1&&get(f.row,0xc)==.75f&&get(f.row,0x18)==.5f&&get(f.row,0x3c)==10);
+    f.record[0x1c]=1;in.now=11;f.mapped=1.25f;
+    assert(run()==1&&near(get(f.record,0x20),.8f)&&near(get(f.row,0x18),.448f)&&get(f.row,0xc)==1&&get(f.row,0x3c)==11);
+    f.row[5]=1;in.suppressed=false;in.now=12;
+    assert(run()==1&&get(f.record,0x20)==1&&get(f.row,0xc)==1.25f&&get(f.row,0x18)==.5f);
+    put(f.event,0,7u);put(f.record,0x20,0.f);in.first_sequence_frame=true;in.sequence_duration=4.;in.now=13;
+    assert(run()==1&&near(get(f.record,0x20),.2f)&&get(f.row,0x18)==0&&get(f.row,0xc)==.25f&&get(f.row,0x3c)==13);
+    in.first_sequence_frame=false;in.sequence_flags=1;in.now=14;
+    assert(run()==1&&near(get(f.record,0x20),.4f)&&near(get(f.row,0x18),.176f)&&get(f.row,0xc)==.25f);
+    f.row[0]=0;in.now=15;
+    assert(run()==1&&near(get(f.record,0x20),.6f)&&get(f.row,0x3c)==14);
+    put(f.record,0x10,-1);const unsigned reads=f.reads;assert(run()==1&&f.reads==reads);
+    put(f.record,0x10,-2);assert(run()==-1&&f.reads==reads);
+    put(f.event,0,10u);assert(run()==0);
+}
+
 }

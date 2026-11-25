@@ -17,4 +17,25 @@ struct ServerAnimationSceneApi {
     int (__cdecl *check)(const void* event,unsigned,unsigned*) noexcept;
 };
 using GetServerAnimationSceneApi=const ServerAnimationSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_animation_scene_frame_export[]="SiN_GetServerAnimationSceneFrameApi";
+struct ServerAnimationSceneFrameBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // Original 2210e450 timing tag warp; input is event-relative fraction.
+    int (__cdecl *gesture_cycle)(void*,const void* event,float,float*) noexcept;
+};
+struct ServerAnimationSceneFrameInput {
+    float scene_time,now,intensity;
+    bool suppressed,first_sequence_frame;
+    unsigned sequence_flags;
+    double sequence_duration;
+};
+struct ServerAnimationSceneFrameApi {
+    std::uint32_t version,size;
+    // Post-initialization numeric stage only. Suppression and event intensity
+    // are already resolved. No priority, NPC keepalive or layer allocation.
+    int (__cdecl *update)(void* actor,unsigned,void* record,unsigned,const void* event,unsigned,
+        const ServerAnimationSceneFrameInput*,const ServerAnimationSceneFrameBindings*,unsigned*) noexcept;
+};
+using GetServerAnimationSceneFrameApi=const ServerAnimationSceneFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
