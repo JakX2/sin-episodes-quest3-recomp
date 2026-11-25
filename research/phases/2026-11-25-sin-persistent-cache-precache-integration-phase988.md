@@ -1,0 +1,3 @@
+# Phase 988: persistent metadata owner and cached sound precache integration
+
+Expose nonmutating cache-presence lookup using existing filename handle identity. Connect loaded SceneCachedPrecacheApi to the parsed two-scene metadata persistence regression. Cold precache creates actual native metadata, preserves duplicate sound order, warns only for out-of-phase absent filename, and reuses existing metadata for response admission. After binary save/clear/import, warm precache re-resolves sound IDs without reparsing or late warnings. Raw-cache and sound-emitter endpoints remain explicit fixture leaves; no game audio or private assets committed. CI pending.

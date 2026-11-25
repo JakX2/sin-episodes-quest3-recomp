@@ -461,7 +461,7 @@ inline void check_native_vcd_metadata(VcdAuditArena& arena,const NativeVcdRuntim
 
 
 inline void check_scene_cache_roundtrip(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
-    const SceneMetadataGenerationApi& generation,const SceneResponseServicesApi& services,const ResponseSceneFilterApi& filter,const SceneMetadataIndexApi& index){
+    const SceneMetadataGenerationApi& generation,const SceneResponseServicesApi& services,const ResponseSceneFilterApi& filter,const SceneMetadataIndexApi& index,const SceneCachedPrecacheApi& precache){
     using F=ScenePlaybackFixture;
     using Owner=sin_port::map_host::SceneCacheOwner;
     namespace codec=sin_port::scene_cache;
@@ -517,6 +517,34 @@ event speak repeat {
     Owner owner(index,leaves);ResponseSceneFilterBindings admit{};assert(services.adapt(&owner.bindings(),&admit)==1);
     alignas(4) unsigned char exp[0x7c]{};F::put(exp,4,F::ptr(&context.npc));
     auto allow=[&](const char* path){unsigned result=0;return filter.allow(exp,sizeof(exp),&admit,3,path,&result)==1&&result==1;};
+    struct Precache {
+        Owner& owner;const Owner::CodecLeaves& io;
+        unsigned phases=0,warnings=0,raw=0,used=0;
+        bool in_phase=false;
+        unsigned trace[12]{};
+        static Precache& get(void* p){return *static_cast<Precache*>(p);}
+    } pc{owner,io};
+    SceneCachedPrecacheBindings warm{};warm.context=&pc;warm.metadata=&owner.bindings();
+    warm.contains=[](void* p,const char* path,unsigned* out) noexcept -> int{return Precache::get(p).owner.contains(path,out);};
+    warm.precache_phase=[](void* p,unsigned* out) noexcept -> int{
+        auto& c=Precache::get(p);++c.phases;*out=c.in_phase;return 1;};
+    warm.late_warning=[](void* p,const char*) noexcept -> int{++Precache::get(p).warnings;return 1;};
+    warm.ensure_raw=[](void* p,const char*) noexcept -> int{++Precache::get(p).raw;return 1;};
+    warm.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& c=Precache::get(p);return c.io.storage(c.io.context,w,out,n);};
+    warm.sound_name=[](void* p,std::uint32_t id,const char** out) noexcept -> int{
+        auto& c=Precache::get(p);return c.io.sound_name(c.io.context,id,out);};
+    warm.precache_sound=[](void* p,const char* name) noexcept -> int{
+        auto& c=Precache::get(p);if(c.used>=12)return 0;
+        if(!std::strcmp(name,"Fixture.First"))c.trace[c.used++]=1;
+        else if(!std::strcmp(name,"Fixture.Second"))c.trace[c.used++]=2;
+        else return 0;return 1;};
+    unsigned present=99;
+    assert(owner.contains(first.path,&present)&&!present&&!owner.size()&&!owner.dirty());
+    assert(precache.precache(first.path,&warm)==1&&pc.phases==1&&pc.warnings==1&&pc.raw==1&&pc.used==2);
+    assert(pc.trace[0]==1&&pc.trace[1]==1&&owner.contains(first.path,&present)&&present);
+    pc.in_phase=true;
+    assert(precache.precache(second.path,&warm)==1&&pc.phases==2&&pc.warnings==1&&pc.raw==2&&pc.used==3&&pc.trace[2]==2);
     assert(allow(first.path)&&allow(second.path)&&owner.size()==2&&owner.dirty()&&arena.live.size()==2);
     assert(context.refreshes[0]==1&&context.refreshes[1]==1&&first.expected_duration==4&&second.expected_duration==1);
     codec::Repository image;assert(owner.snapshot(0x1234,io,image)&&image.records.size()==2);
@@ -530,6 +558,9 @@ event speak repeat {
     assert(!owner.import_repository(loaded,io));
     assert(allow(first.path)&&allow(second.path)&&context.refreshes[0]==1&&context.refreshes[1]==1);
     assert(context.stamp_reads[0]==2&&context.stamp_reads[1]==2);
+    assert(precache.precache(first.path,&warm)==1&&precache.precache(second.path,&warm)==1);
+    assert(pc.phases==2&&pc.warnings==1&&pc.raw==4&&pc.used==6&&pc.trace[3]==1&&pc.trace[4]==1&&pc.trace[5]==2);
+    assert(context.refreshes[0]==1&&context.refreshes[1]==1);
     codec::Repository saved;std::vector<unsigned char> after;
     assert(owner.snapshot(0x1234,io,saved)&&codec::encode(saved,after)==codec::Result::Ok&&after==bytes);
     ++second.stamp;assert(owner.invalidate(second.path)&&allow(second.path)&&context.refreshes[1]==2&&context.refreshes[0]==1);
