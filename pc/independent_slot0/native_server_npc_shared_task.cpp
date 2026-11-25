@@ -549,8 +549,9 @@ int enemy_refresh135(void* a,unsigned n,float now,const ServerNpcSharedTaskBindi
     if(!memory||!b.memory_record||!b.memory_record(b.context,memory,current,&found,&stamp))return 0;
     out.memory_found=found;out.last_seen=found?stamp:-std::numeric_limits<float>::max();
     if(!std::isfinite(out.last_seen))return 0;
-    // Original FCOMP tests C0/C2 parity: ordered strictly less skips selection.
-    if(out.last_seen<rd<float>(a,0x8c4))return complete();
+    // 22052c65 TEST AH,05; JP complete. C0=1 alone is odd parity: strictly less selects.
+    // Equal/greater yield zero (even parity), so retain. Missing sentinel also selects.
+    if(!(out.last_seen<rd<float>(a,0x8c4)))return complete();
     void* candidate=nullptr;
     if(!b.select_enemy||!b.select_enemy(b.context,a,rd<unsigned>(a,0xc18),&candidate))return 0;
     out.selected=1;
