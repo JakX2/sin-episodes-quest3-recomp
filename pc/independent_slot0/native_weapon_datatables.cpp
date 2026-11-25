@@ -8206,6 +8206,52 @@ int __cdecl response_criteria_selection_adapt(const ResponseCriteriaSelectionBin
 }
 const ResponseCriteriaSelectionApi response_criteria_selection_api{version,sizeof(ResponseCriteriaSelectionApi),&response_criteria_selection_adapt};
 
+struct ActorResponseSelectionCall {
+    const ActorResponseSelectionBindings& cfg;
+    static ActorResponseSelectionCall& get(void* p) noexcept {return *static_cast<ActorResponseSelectionCall*>(p);}
+};
+int __cdecl actor_response_select(void* exp,unsigned bytes,const ActorResponseSelectionBindings* b,
+    const char* name,const char* mods,void** result,unsigned* extent) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->actor||!b->target||!b->player_at)return 0;
+    const auto& outer=b->selection.host;
+    if(!outer.system||!outer.allocate||!outer.find||!outer.draw||!outer.destroy)return 0;
+    ActorResponseSelectionCall call{*b};
+    auto cfg=b->selection;auto& h=cfg.host;h.context=&call;
+    h.system=[](void* p,void* e,void** s) noexcept -> int{const auto& h=ActorResponseSelectionCall::get(p).cfg.selection.host;return h.system(h.context,e,s);};
+    h.allocate=[](void* p,unsigned n,void** r,unsigned* extent) noexcept -> int{const auto& h=ActorResponseSelectionCall::get(p).cfg.selection.host;return h.allocate(h.context,n,r,extent);};
+    h.find=[](void* p,void* s,void* c,void* r,void* e,unsigned* found) noexcept -> int{const auto& h=ActorResponseSelectionCall::get(p).cfg.selection.host;return h.find(h.context,s,c,r,e,found);};
+    h.draw=[](void* p,int lo,int hi,int* out) noexcept -> int{const auto& h=ActorResponseSelectionCall::get(p).cfg.selection.host;return h.draw(h.context,lo,hi,out);};
+    h.destroy=[](void* p,void* r) noexcept -> int{const auto& h=ActorResponseSelectionCall::get(p).cfg.selection.host;return h.destroy(h.context,r);};
+    cfg.warning=[](void* p,const char* text) noexcept -> int{const auto& cfg=ActorResponseSelectionCall::get(p).cfg.selection;return !cfg.warning||cfg.warning(cfg.host.context,text);};
+    h.npc_criteria=[](void* p,void* e,void* c) noexcept -> int{
+        const auto& b=ActorResponseSelectionCall::get(p).cfg;
+        const auto word=hologram_read<std::uint32_t>(e,4);
+        void* npc=nullptr;unsigned n=0,family=0;
+        if(!word||!b.actor(b.context,word,&npc,&n,&family)||scene_word(npc)!=word||family>1||
+           n<(family?0x1160u:0x9a4u)||!sin_independent::vgui_layout::Readable(npc,family?0x1160:0x9a4))return 0;
+        if(base_response_criteria(npc,n,c,&b.base)!=1||npc_response_criteria(npc,n,c,&b.npc)!=1)return 0;
+        if(!family)return 1;
+        // 2208b090: first live handle check, then second resolution before contexts.
+        auto handle=hologram_read<std::uint32_t>(npc,0x115c);void* target=nullptr;unsigned extent=0;
+        if(handle==0xffffffffu)return 1;
+        if(!b.target(b.context,handle,&target,&extent))return 0;
+        if(!target)return 1;
+        handle=hologram_read<std::uint32_t>(npc,0x115c);
+        if(handle==0xffffffffu||!b.target(b.context,handle,&target,&extent)||!target)return 0;
+        return entity_response_contexts(target,extent,c,"",&b.base.contexts)==1;
+    };
+    h.player_criteria=[](void* p,void* c,int index) noexcept -> int{
+        const auto& b=ActorResponseSelectionCall::get(p).cfg;
+        void* player=nullptr;unsigned extent=0;
+        if(!b.player_at(b.context,index,&player,&extent))return 0;
+        return !player||player_response_criteria(player,extent,c,1,&b.player)==1;
+    };
+    ResponseSelectionBindings adapted{};
+    if(!response_criteria_selection_adapt(&cfg,&adapted))return 0;
+    return response_select(exp,bytes,&adapted,name,mods,result,extent);
+}
+const ActorResponseSelectionApi actor_response_selection_api{version,sizeof(ActorResponseSelectionApi),&actor_response_select};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -16245,6 +16291,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::BaseRespo
 SiN_GetBaseResponseCriteriaApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(BaseResponseCriteriaApi)?&base_response_criteria_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetActorResponseSelectionApi=_SiN_GetActorResponseSelectionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ActorResponseSelectionApi* __cdecl
+SiN_GetActorResponseSelectionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ActorResponseSelectionApi)?&actor_response_selection_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl
