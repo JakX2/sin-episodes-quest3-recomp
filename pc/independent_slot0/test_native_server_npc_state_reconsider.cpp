@@ -20,6 +20,7 @@ struct F{
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
     unsigned char senses[0x60]{},sense_vectors[3][16]{},sense_handles[3][16]{};
     unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned rebuild_calls=0;int rebuild_radius=100;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
+    unsigned char combat_nav[0x10]{};float combat_center[3]{},combat_velocity[3]{},combat_origin[3]{70,0,0};bool combat_facing=true;
     bool combat_trace=true,combat_fov=true;unsigned combat_output_count=0,combat_output_offsets[8]{};bool combat_output_value[8]{};std::uint32_t combat_output_handles[8]{};
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
@@ -678,5 +679,42 @@ int main(int argc,char** argv){
     assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryMarkEluded,0,0,&mb,&ctr)&&ctr.written);
     f.actor[0xb6]=1;f.combat_trace=true;assert(cv->query(f.actor,sizeof(f.actor),f.enemy,0x4081,&cvb,&cvr)&&cvr.suppressed&&!cvr.traced&&!cvr.visible);
     f.actor[0xb6]=0;assert(cv->query(f.actor,sizeof(f.actor),f.enemy,0x4081,&cvb,&cvr)&&cvr.traced&&cvr.visible);
+    auto gcrange=reinterpret_cast<GetServerNpcGruntCombatRangeApi>(GetProcAddress(s,server_npc_grunt_combat_range_export));
+    assert(gcrange&&!GetProcAddress(c,server_npc_grunt_combat_range_export)&&!gcrange(0,sizeof(ServerNpcGruntCombatRangeApi))&&!gcrange(1,0));
+    const auto* crange=gcrange(1,sizeof(ServerNpcGruntCombatRangeApi));assert(crange);
+    ServerNpcGruntCombatRangeBindings crb{};crb.context=&f;crb.visibility=cvb;crb.report=report_binding;
+    crb.visibility.memory.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);switch(token){case 100:*out=f.nodes;*n=sizeof(f.nodes);return 1;case 101:*out=f.record;*n=sizeof(f.record);return 1;case 102:*out=f.fallback;*n=sizeof(f.fallback);return 1;case 103:*out=f.memory;*n=sizeof(f.memory);return 1;case 700:*out=f.combat_nav;*n=sizeof(f.combat_nav);return 1;default:return 0;}
+    };
+    crb.center=[](void* p,void* e,float* v) noexcept -> int{auto& f=F::self(p);if(e==f.actor)v[0]=v[1]=v[2]=0;else {assert(e==f.enemy);std::memcpy(v,f.combat_center,12);}return 1;};
+    crb.origin=[](void* p,void*,float* v) noexcept -> int{std::memcpy(v,F::self(p).combat_origin,12);return 1;};
+    crb.velocity=[](void* p,void*,float* v) noexcept -> int{std::memcpy(v,F::self(p).combat_velocity,12);return 1;};
+    crb.random=[](void*,float lo,float hi,float* v) noexcept -> int{assert(lo==-.05f&&hi==0.f);*v=-.05f;return 1;};
+    crb.enemy_facing_actor=[](void* p,void* e,void* a,bool* yes) noexcept -> int{auto& f=F::self(p);assert(e==f.enemy&&a==f.actor);*yes=f.combat_facing;return 1;};
+    f.put(f.actor,0x10c,0.f);f.put(f.actor,0x118,60.f);f.put(f.enemy,0x10c,0.f);f.put(f.enemy,0x118,40.f);
+    f.combat_center[0]=30;f.combat_center[1]=40;f.combat_center[2]=50;
+    float combat_distance_value=0;assert(crange->distance(f.actor,sizeof(f.actor),f.enemy,&crb,&combat_distance_value)&&combat_distance_value==50);
+    f.combat_center[2]=170;assert(crange->distance(f.actor,sizeof(f.actor),f.enemy,&crb,&combat_distance_value)&&combat_distance_value==130);
+    f.combat_center[2]=-170;assert(crange->distance(f.actor,sizeof(f.actor),f.enemy,&crb,&combat_distance_value)&&combat_distance_value==130);
+    f.combat_center[0]=100;f.combat_center[1]=f.combat_center[2]=0;
+    f.put(f.actor,0x988,0x28000u);f.put(f.actor,0x8f8,700u);f.put(f.actor,0x78c,0x8002u);
+    f.put(f.actor,0xa20,100.f);f.put(f.replacement,0x500,150.f);f.combat_velocity[0]=100;
+    f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);f.combat_trace=f.combat_fov=true;
+    ServerNpcGruntCombatRangeResult crr{};
+    assert(crange->gather(f.actor,sizeof(f.actor),530,&crb,&crr)&&crr.distance==100&&crr.threshold==150&&crr.weapon_range_used&&crr.attack_gate&&crr.firsthand&&crr.velocity_queries==2&&crr.observation[0]==75&&crr.facing_actor);
+    assert((f.get<unsigned>(0x7cc)&((1u<<27)|(1u<<28)|(1u<<26)))==(1u<<27));
+    f.put(f.replacement,0x500,80.f);f.combat_facing=false;f.combat_velocity[0]=0;
+    assert(crange->gather(f.actor,sizeof(f.actor),531,&crb,&crr)&&crr.threshold==100&&crr.too_far&&!crr.attack_gate&&!crr.weapon_range_used&&crr.velocity_queries==1);
+    assert((f.get<unsigned>(0x7cc)&((1u<<27)|(1u<<28)|(1u<<26)))==((1u<<28)|(1u<<26)));
+    f.combat_center[0]=50;f.put(f.combat_nav,0xc,1);
+    assert(crange->gather(f.actor,sizeof(f.actor),532,&crb,&crr)&&!crr.too_far&&!crr.attack_gate);
+    f.put(f.combat_nav,0xc,0);f.combat_fov=false;f.combat_center[0]=256;
+    assert(crange->gather(f.actor,sizeof(f.actor),533,&crb,&crr)&&crr.reported&&!crr.firsthand&&!crr.velocity_queries&&!crr.weapon_range_used);
+    f.combat_center[0]=256.01f;
+    assert(crange->gather(f.actor,sizeof(f.actor),534,&crb,&crr)&&!crr.reported);
+    f.combat_trace=false;f.combat_center[0]=1;
+    assert(crange->gather(f.actor,sizeof(f.actor),535,&crb,&crr)&&!crr.reported);
+    f.put(f.enemy,0x8c,1);assert(crange->gather(f.actor,sizeof(f.actor),536,&crb,&crr)&&crr.dead&&!crr.reported&&!crr.attack_gate);
+    f.put(f.enemy,0x8c,0);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

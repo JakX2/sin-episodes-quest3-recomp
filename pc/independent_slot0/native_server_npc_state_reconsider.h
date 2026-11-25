@@ -540,4 +540,29 @@ struct ServerNpcGruntCombatVisibilityApi {
     int (__cdecl *gather)(void*,unsigned,void*,const ServerNpcGruntCombatVisibilityBindings*,ServerNpcGruntCombatVisibilityResult*) noexcept;
 };
 using GetServerNpcGruntCombatVisibilityApi=const ServerNpcGruntCombatVisibilityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_combat_range_export[]="SiN_GetServerNpcGruntCombatRangeApi";
+struct ServerNpcGruntCombatRangeBindings {
+    ServerNpcGruntCombatVisibilityBindings visibility;
+    ServerNpcGruntMemoryReportBindings report;
+    void* context;
+    int (__cdecl *center)(void*,void*,float[3]) noexcept; // +214
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept; // 220092d0
+    int (__cdecl *velocity)(void*,void*,float[3]) noexcept; // +1e4
+    int (__cdecl *random)(void*,float,float,float*) noexcept;
+    int (__cdecl *enemy_facing_actor)(void*,void*,void*,bool*) noexcept; // target+fc then +300
+};
+struct ServerNpcGruntCombatRangeResult {
+    ServerNpcGruntCombatVisibilityResult visibility;
+    ServerNpcGruntMemoryReportResult report;
+    unsigned dead,reported,firsthand,velocity_queries,facing_actor,weapon_range_used,too_far,attack_gate;
+    float distance,threshold,observation[3];
+};
+struct ServerNpcGruntCombatRangeApi {
+    std::uint32_t version,size;
+    // 22035140: center distance with vertical overlap correction.
+    int (__cdecl *distance)(void*,unsigned,void*,const ServerNpcGruntCombatRangeBindings*,float*) noexcept;
+    // 2203c600..2203cc92, then 2203c590 attack gate only. Later attack/path work separate.
+    int (__cdecl *gather)(void*,unsigned,void*,float,const ServerNpcGruntCombatRangeBindings*,ServerNpcGruntCombatRangeResult*) noexcept;
+};
+using GetServerNpcGruntCombatRangeApi=const ServerNpcGruntCombatRangeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
