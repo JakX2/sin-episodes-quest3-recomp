@@ -165,6 +165,46 @@ inline void check_animation_frame_clock(const ServerAnimationFrameClockApi& api,
     std::puts("PASS NPC overlay frame clock, pre-base interval, duplicate timestamps and dirty state");
 }
 
+
+inline void check_base_animation_cycle(const ServerBaseAnimationCycleApi& api){
+    using F=ScenePlaybackFixture;
+    struct Fixture{
+        alignas(4) unsigned char actor[0x47c]{};std::uint32_t dirty=0;
+        unsigned thresholds=0,durations=0,distances=0,invalidations=0,caches=0;
+        double threshold=.75,duration=2,distance=120;float now=10;
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+    } f;
+    ServerBaseAnimationCycleBindings b{};b.context=&f;b.vectors.context=&f;
+    b.vectors.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);if(word!=F::ptr(&f.dirty))return 0;*out=&f.dirty;*n=4;return 1;};
+    b.finish_threshold=[](void* p,void* a,int seq,double* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(a==f.actor&&seq==9);++f.thresholds;*out=f.threshold;return 1;};
+    b.duration=[](void* p,void* a,int seq,double* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(a==f.actor&&seq==9);++f.durations;*out=f.duration;return 1;};
+    b.movement_distance=[](void* p,void*,int seq,double* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(seq==9);++f.distances;*out=f.distance;return 1;};
+    b.invalidate=[](void* p,void* a,unsigned bits) noexcept -> int{
+        auto& f=Fixture::self(p);assert(a==f.actor&&bits==8);++f.invalidations;return 1;};
+    b.cache=[](void* p,void* a,std::uint32_t handle,float now) noexcept -> int{
+        auto& f=Fixture::self(p);assert(a==f.actor&&handle==37&&now==f.now&&f.invalidations==f.caches+1);++f.caches;return 1;};
+    F::put(f.actor,0x3ec,9);F::put(f.actor,0x478,37);F::fl(f.actor,0x3e8,.5f);
+    f.actor[0x1f0]=1;
+    auto step=[&](float delta){return api.step(f.actor,sizeof(f.actor),delta,f.now,&b);};
+    assert(step(.25f)&&f.thresholds==1&&!f.actor[0x3e0]&&f.actor[0x200]);
+    assert(F::word(f.actor,0x3e8)==0x3f400000u&&F::word(f.actor,0x394)==0x42700000u);
+    f.actor[0x200]=0;assert(step(0)&&!f.actor[0x200]&&f.thresholds==2);
+    assert(step(.125f)&&f.actor[0x3e0]&&f.thresholds==3);
+    assert(step(.25f)&&f.thresholds==3&&std::fabs(VcdAuditArena::read_float(f.actor,0x3e8)-.999f)<.000001f);
+    f.actor[0x3e0]=0;f.actor[0x1f0]=0;F::put(f.actor,0x16c,F::ptr(&f.dirty));
+    assert(step(-2)&&!F::word(f.actor,0x3e8)&&f.actor[0x3e0]&&f.dirty==1);
+    f.actor[0x3e1]=1;F::fl(f.actor,0x3e8,.875f);f.actor[0x3e0]=0;
+    assert(step(.25f)&&F::word(f.actor,0x3e8)==0x3e000000u&&f.actor[0x3e0]);
+    assert(step(-.5f)&&F::word(f.actor,0x3e8)==0xbec00000u); // signed truncation, not floor
+    f.duration=0;assert(step(.5f)&&!F::word(f.actor,0x394)&&f.distances==7&&f.caches==8&&f.invalidations==8);
+    assert(f.actor[0x3e0]); // completion is sticky
+    std::puts("PASS original base cycle completion, signed loop wrap, dirty notification and movement rate");
+}
+
 inline void check_animation_scene_frame(const ServerAnimationSceneFrameApi& api){
     struct Fixture {alignas(4) unsigned char actor[0x4a4]{},row[0x40]{},record[0x40]{},event[0x3c0]{};unsigned reads{},warps{};float fraction{},mapped=.75f;} f;
     auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};

@@ -13611,6 +13611,49 @@ int __cdecl animation_frame_run(void* actor,unsigned bytes,float now,unsigned np
 const ServerAnimationFrameClockApi server_animation_frame_clock_api{version,sizeof(ServerAnimationFrameClockApi),
     &animation_frame_interval,&animation_frame_base,&animation_frame_run};
 
+// Original 220f17f0. Sequence metadata and engine invalidation are kept
+// outside the raw PE32 object; no inferred model layout.
+int __cdecl base_animation_cycle_step(void* actor,unsigned bytes,float delta,float now,const ServerBaseAnimationCycleBindings* b) noexcept {
+    if(bytes<0x47c||!hologram_writable(actor,0x47c)||!b||!b->finish_threshold||!b->duration||
+       !b->movement_distance||!b->invalidate||!b->cache||!std::isfinite(delta)||!std::isfinite(now))return 0;
+    const auto h=*b;
+    const float previous=hologram_read<float>(actor,0x3e8);
+    const int sequence=hologram_read<int>(actor,0x3ec);
+    if(!std::isfinite(previous))return 0;
+    float cycle=static_cast<float>(static_cast<double>(previous)+delta);
+    if(!std::isfinite(cycle))return 0;
+    bool finished=false;
+    if(cycle<0||cycle>=1){
+        if(hologram_read<unsigned char>(actor,0x3e1)){
+            if(cycle<-2147483648.0||cycle>=2147483648.0)return 0;
+            cycle=static_cast<float>(static_cast<double>(cycle)-static_cast<int>(cycle));
+        }else cycle=cycle<0?0.f:.999f;
+        finished=true;
+    }else{
+        double threshold=0;
+        if(!h.finish_threshold(h.context,actor,sequence,&threshold)||!std::isfinite(threshold))return 0;
+        finished=cycle>threshold;
+    }
+    if(finished)hologram_write(actor,0x3e0,static_cast<unsigned char>(1));
+    if(cycle!=previous){
+        if(!animation_frame_mark(actor,h.vectors))return 0;
+        hologram_write(actor,0x3e8,cycle);
+    }
+    double duration=0,distance=0;
+    if(!h.duration(h.context,actor,sequence,&duration)||!std::isfinite(duration))return 0;
+    // Original stores duration as float before dividing the distance.
+    const float span=static_cast<float>(duration);
+    if(!std::isfinite(span))return 0;
+    if(span>0&&(!h.movement_distance(h.context,actor,sequence,&distance)||!std::isfinite(distance)))return 0;
+    const float speed=span>0?static_cast<float>(distance/span):0.f;
+    if(!std::isfinite(speed))return 0;
+    hologram_write(actor,0x394,speed);
+    if(!h.invalidate(h.context,actor,8))return 0;
+    return h.cache(h.context,actor,hologram_read<std::uint32_t>(actor,0x478),now);
+}
+const ServerBaseAnimationCycleApi server_base_animation_cycle_api{version,sizeof(ServerBaseAnimationCycleApi),&base_animation_cycle_step};
+
+
 
 
 
@@ -16600,6 +16643,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAni
 SiN_GetServerAnimationSceneFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneFrameApi)?&server_animation_scene_frame_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerBaseAnimationCycleApi=_SiN_GetServerBaseAnimationCycleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerBaseAnimationCycleApi* __cdecl
+SiN_GetServerBaseAnimationCycleApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerBaseAnimationCycleApi)?&server_base_animation_cycle_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationFrameClockApi=_SiN_GetServerAnimationFrameClockApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationFrameClockApi* __cdecl
