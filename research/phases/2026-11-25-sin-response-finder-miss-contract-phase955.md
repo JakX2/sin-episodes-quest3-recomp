@@ -1,0 +1,3 @@
+# Phase 955: explicit miss ownership and legacy compatibility
+
+Phase952 unconditionally destroyed misses, violating the previously documented host-consumed miss contract. CI 45545722614 and 45545968399 failed in test_native_npc_bsp_host.h:174 and test_native_jessica_script.h:518; Phase952–954 each failed two runtime workflows. Restore legacy success 1/found=0 semantics and introduce response_find_retained_miss=2 for new native/script finders that leave the allocation with selection. Existing adapters forward the integer return unchanged. No ABI layout change; existing legacy hosts remain unchanged. Tests explicitly distinguish both contracts, retain repeated-miss and destruction-failure coverage, assert native and script finder status. CI pending.

@@ -3140,10 +3140,11 @@ int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBind
     for(unsigned off=0x90;off<=0xa0;off+=4)hologram_write(response,off,0u);
     hologram_write(response,0xa4,static_cast<unsigned char>(0));
     unsigned found=0;
-    if(!h.find(h.context,system,criteria,response,exp,&found))return finish(false,false,true);
-    // Retail 220a39e2 skips response destruction on finder false. This
-    // replacement owns the allocation until successful handoff, including misses.
-    if(!found)return finish(true,false,true);
+    const int find_status=h.find(h.context,system,criteria,response,exp,&found);
+    if(!find_status)return finish(false,false,true);
+    // Keep the original documented legacy finder ownership contract.
+    // New native finders explicitly return a retained miss instead.
+    if(!found)return finish(true,false,find_status==response_find_retained_miss);
     if(!hologram_read<unsigned char>(response,4))return finish(true,false,true);
     if(response_chance(response)<100){
         int draw=0;
@@ -8103,7 +8104,7 @@ int __cdecl native_response_finder(void* p,void* system,void* criteria,void* res
         b->rank_scratch,b->rank_capacity,&winner)!=1)return 0;
     // Retail constructs a criteria copy even without a winning rule.
     // Do not create an orphan copy on the existing finder-false branch.
-    if(winner<0){*found=0;return 1;}
+    if(winner<0){*found=0;return response_find_retained_miss;}
     NativeRuleRankingCall store{system,criteria,b->ranking};rr::Bytes rule{};
     if(!store.row(0xb8,rr::rule_stride,rr::rule_bytes,unsigned(winner),rule)||
        !hologram_writable(const_cast<unsigned char*>(rule.p),rr::rule_bytes))return 0;

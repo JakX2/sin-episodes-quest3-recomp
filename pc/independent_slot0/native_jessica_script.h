@@ -144,6 +144,9 @@ using GetResponsePolicyApi=const ResponsePolicyApi* (__cdecl *)(std::uint32_t,st
 // Original 220a38d0, response selection before playback. Caller serializes
 // the expeditor. Criteria and response allocator/virtual methods are hosted.
 inline constexpr char response_select_export[]="SiN_GetResponseSelectApi";
+// Successful find return codes: legacy miss consumed by finder (1),
+// explicit miss with allocation retained by selection (2).
+inline constexpr int response_find_retained_miss=2;
 struct ResponseSelectionBindings {
     void* context;
     int (__cdecl *system)(void*,void* exp,void** system) noexcept;
@@ -155,8 +158,10 @@ struct ResponseSelectionBindings {
     int (__cdecl *npc_criteria)(void*,void* exp,void* criteria) noexcept;
     int (__cdecl *player_criteria)(void*,void* criteria,int player_index) noexcept;
     int (__cdecl *allocate)(void*,unsigned bytes,void** response,unsigned* extent) noexcept;
-    // On transport success with found==0, original finder branch does not
-    // destroy response. Host must account for that allocation at its boundary.
+    // A legacy successful miss (return 1, found==0) transfers disposal to
+    // the finder, preserving the published host contract. A finder returning
+    // response_find_retained_miss with found==0 leaves disposal to selection.
+    // Transport failure leaves the allocation with selection.
     int (__cdecl *find)(void*,void* system,void* criteria,void* response,void* exp,unsigned* found) noexcept;
     int (__cdecl *draw)(void*,int low,int high,int*) noexcept;
     int (__cdecl *destroy)(void*,void* response) noexcept;

@@ -1170,7 +1170,7 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
             assert(F::word(r.response,0x84)==F::ptr(r.copy)&&F::word(r.response,0x8c)==100);
             F::put(r.groups+0x58+0x14,0x40,0);F::fl(r.meta,4,2.5f);rule0[0x28]=1;
             assert(find()&&found==1&&F::word(r.response,0)==3&&r.clones==2&&!rule0[0x29]);
-            assert(find()&&found==0&&r.clones==2);
+            assert(find()==response_find_retained_miss&&found==0&&r.clones==2);
             if(scriptFinder){
                 const char source[]=R"(criterion idle concept TLK_IDLE required
 #include "talker/fixture.txt"
@@ -1197,7 +1197,7 @@ rule parsed_rule
                 assert(scriptFinder->find(&parsed,parsed.store.system,c,r.response,r.exp,&found)&&found==1&&F::word(r.response,0)==1);
                 assert(!std::strcmp(reinterpret_cast<char*>(r.response+4),"fallback")&&!std::strcmp(reinterpret_cast<char*>(r.response+0xa4),"parsed_rule"));
                 std::memset(r.response,0,sizeof(r.response));
-                assert(scriptFinder->find(&parsed,parsed.store.system,c,r.response,r.exp,&found)&&found==0);
+                assert(scriptFinder->find(&parsed,parsed.store.system,c,r.response,r.exp,&found)==response_find_retained_miss&&found==0);
                 assert(scriptFinder->release(&parsed.store)==1&&!parsed.store.owner&&!parsed.store.system);
                 assert(scriptFinder->release(&parsed.store)==0);
             }

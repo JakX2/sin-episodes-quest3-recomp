@@ -226,7 +226,7 @@ struct ResponseSelectionFixture {
     alignas(4) unsigned char exp[0x7c]{},response[0x124]{};
     int system=0,criteria=0,draw=50,chance=50;
     unsigned events[32]{},count=0,fail=0,destroys=0,ends=0;
-    bool no_system=false,no_match=false,empty=false,flag=true,mutate=false;
+    bool no_system=false,no_match=false,retained_miss=true,empty=false,flag=true,mutate=false;
     ResponseSelectionBindings b{};
     void record(unsigned n){assert(count<32);events[count++]=n;}
     void expect(std::initializer_list<unsigned> list){assert(count==list.size()&&!std::memcmp(events,list.begin(),count*4));count=0;}
@@ -244,7 +244,8 @@ struct ResponseSelectionFixture {
         b.find=[](void* p,void* s,void* c,void* r,void* e,unsigned* out) noexcept -> int{
             auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(8);assert(s==&f.system&&c==&f.criteria&&r==f.response&&e==f.exp);
             assert(!f.word(0)&&!f.response[4]&&!f.word(0x88)&&f.word(0x8c)==100&&!f.word(0x98)&&!f.response[0xa4]&&f.response[0xa5]==0xa5);
-            f.response[4]=f.empty?0:'x';f.response[5]=0;f.put(0x88,f.flag?4:0);f.put(0x8c,f.chance);*out=!f.no_match;return f.fail!=8;
+            f.response[4]=f.empty?0:'x';f.response[5]=0;f.put(0x88,f.flag?4:0);f.put(0x8c,f.chance);*out=!f.no_match;if(f.fail==8)return 0;
+            return f.no_match&&f.retained_miss?response_find_retained_miss:1;
         };
         b.draw=[](void* p,int l,int h,int* out) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(9);assert(l==1&&h==100);*out=f.draw;if(f.mutate)f.put(0x8c,f.draw);return f.fail!=9;};
         b.destroy=[](void* p,void* r) noexcept -> int{auto& f=*static_cast<ResponseSelectionFixture*>(p);f.record(10);assert(r==f.response);++f.destroys;return f.fail!=10;};
@@ -255,7 +256,9 @@ inline void check_response_select(const ResponseSelectApi& api){
     ResponseSelectionFixture f;void* out=&f;unsigned n=99;
     auto run=[&](const char* mods=nullptr){out=&f;n=99;return api.select(f.exp,sizeof(f.exp),&f.b,"TLK_IDLE",mods,&out,&n);};
     f.no_system=true;assert(run()==1&&!out&&!n);f.expect({1});f.no_system=false;
-    f.no_match=true;
+    f.no_match=true;f.retained_miss=false;
+    assert(run()==1&&!out&&!n&&!f.destroys);f.expect({1,2,3,5,6,7,8,11});
+    f.retained_miss=true;
     for(unsigned i=0;i<8;++i){assert(run()==1&&!out&&!n&&f.destroys==i+1);f.expect({1,2,3,5,6,7,8,10,11});}
     f.fail=10;assert(run()==-1&&out==&f&&n==99&&f.destroys==9);f.expect({1,2,3,5,6,7,8,10,11});
     f.fail=0;f.no_match=false;
