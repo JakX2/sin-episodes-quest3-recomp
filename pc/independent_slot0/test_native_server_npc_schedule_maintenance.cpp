@@ -1,4 +1,4 @@
-#include "native_server_npc_schedule_maintenance.h"
+#include "native_server_npc_schedule_services.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -12,7 +12,7 @@
 #include <initializer_list>
 using namespace sin_port::native_weapon_tables;
 struct F{
-    alignas(4) unsigned char actor[0x1028]{},desc[0x48]{},rows[2][0x34]{},tasks[2][16]{};
+    alignas(4) unsigned char actor[0x1088]{},desc[0x48]{},rows[2][0x34]{},tasks[2][16]{};
     std::vector<int> trace;
     int mode=0;bool yield=false;
     unsigned budget_calls=0;
@@ -124,5 +124,31 @@ int main(int argc,char** argv){
     assert(f.get<int>(0xfec)==2&&f.get<int>(0x79c)==global+0x76&&sout.task_calls==1&&!sout.delegated);
     assert((f.trace==std::vector<int>{40,41,30,60,60}));
     cb.original_vtable=0;f.trace.clear();assert(!sub->run(f.actor,sizeof(f.actor),10,&cb,&sout)&&f.trace.empty());
+
+    auto gsvc=reinterpret_cast<GetServerNpcScheduleServicesApi>(GetProcAddress(s,server_npc_schedule_services_export));
+    assert(gsvc&&!GetProcAddress(c,server_npc_schedule_services_export)&&!gsvc(0,sizeof(ServerNpcScheduleServicesApi))&&!gsvc(1,0));
+    const auto* svc=gsvc(1,sizeof(ServerNpcScheduleServicesApi));assert(svc);
+    ServerNpcScheduleServicesBindings sc{};sc.scheduler=cb;sc.scheduler.original_vtable=0x2249aaa4;
+    sc.scheduler.maintenance.selection.translate=nullptr;sc.scheduler.maintenance.selection.special_select=nullptr;
+    alignas(4) unsigned char controller[0x3b0]{};
+    sin_independent::EntityHandleEntry slots[2]{};slots[1].serial=7;slots[1].entity=reinterpret_cast<CBaseEntity*>(controller);
+    sc.scheduler.maintenance.selection.state.entities={slots,2,nullptr,nullptr,nullptr};
+    sc.inherited.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0x3b0;return 1;};
+    f.put(controller,0x3ac,2);f.put(f.rows[0],0,global+0x38);f.put(f.tasks[0],0,158);
+    reset();f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.put(f.actor,0x970,0x7001u);f.yield=true;
+    ServerNpcScheduleServicesResult svout{};
+    assert(svc->run(f.actor,sizeof(f.actor),10,&sc,&svout)&&svout.special_selections==1&&svout.translations==1&&svout.inherited_calls==1);
+    assert(svout.special.controller_live&&svout.special.schedule==0x36&&svout.translation.inherited.phase==2&&svout.translation.translation.output==0x38);
+    assert(svout.scheduler.maintenance.selection.requested==0x36&&svout.scheduler.maintenance.selection.translated==0x38&&svout.scheduler.maintenance.state.schedule==1&&f.get<int>(0x79c)==global+0x36);
+    assert(svout.scheduler.grunt.lifecycle.completed&&(f.trace==std::vector<int>{40,41,30,158,60,60}));
+    // Native Elite direct remap, no inherited parent call.
+    reset();f.yield=true;sc.scheduler.original_vtable=0x2248df04;
+    sc.scheduler.maintenance.selection.grunt.parent=[](void*,void*,int* out) noexcept -> int{*out=0x19;return 1;};
+    f.put(f.rows[0],0,global+0x76);f.put(f.tasks[0],0,3);f.put(f.tasks[0],4,1.f);
+    assert(svc->run(f.actor,sizeof(f.actor),10,&sc,&svout)&&svout.translations==1&&!svout.special_selections&&!svout.inherited_calls&&svout.translation.translation.output==0x76&&svout.scheduler.elite.lifecycle.completed);
+    // Full Jetpack selector and translator: ordinary patrol76 unchanged.
+    reset();f.yield=true;sc.scheduler.original_vtable=0x2249964c;f.put(f.tasks[0],0,160);
+    assert(svc->run(f.actor,sizeof(f.actor),10,&sc,&svout)&&svout.scheduler.jet_selector.schedule==0x76&&svout.inherited_calls==1&&svout.translation.translation.output==0x76&&f.get<int>(0xfec)==2);
+    assert(!svc->run(f.actor,0x1084,10,&sc,&svout));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native maintenance loop task lifecycle, failure schedule and bounded iterations");
 }
