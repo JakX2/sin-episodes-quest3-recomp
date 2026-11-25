@@ -38,4 +38,11 @@ struct ServerAnimationEventsApi {
     int (__cdecl *dispatch)(void* actor,unsigned bytes,void* receiver,float now,const ServerAnimationEventBindings*,ServerAnimationEventResult*) noexcept;
 };
 using GetServerAnimationEventsApi=const ServerAnimationEventsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_base_animation_events_export[]="SiN_GetServerBaseAnimationEventsApi";
+struct ServerBaseAnimationEventsApi {
+    std::uint32_t version,size;
+    // 220eefe0, base only. Does not read +494 or other overlay fields.
+    int (__cdecl *dispatch)(void*,unsigned,void*,float,const ServerAnimationEventBindings*,ServerAnimationEventResult*) noexcept;
+};
+using GetServerBaseAnimationEventsApi=const ServerBaseAnimationEventsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
