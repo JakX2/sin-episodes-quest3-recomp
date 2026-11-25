@@ -746,9 +746,20 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 }
 
 
+struct ScriptChoreographyTestApis {
+    const SceneSpeechCallbackApi& callback;
+    const NativeGeneratedLifecycleApi& generated;
+    const SceneFinishApi& finish;
+    const SceneManagerTickApi& manager;
+    const SceneAdvanceApi& advance;
+    const SceneEntityLifecycleApi& entity;
+    const ResolvedSceneActorApi& resolver;
+    const SceneSpeechPreparationApi& preparation;
+    const NativeSceneRetirementApi& retirement;
+};
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr,const char* private_scripts=nullptr,const ResponseHistoryTreeApi* historyTree=nullptr,const ExpeditorLifecycleApi* expLifecycle=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr,const char* private_scripts=nullptr,const ResponseHistoryTreeApi* historyTree=nullptr,const ExpeditorLifecycleApi* expLifecycle=nullptr,const ScriptChoreographyTestApis* choreography=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1647,6 +1658,66 @@ rule jessica_look
                     }
                     assert(expLifecycle->destroy(&control,actor.npc,&tables,&sem,&life)==1&&a.live.empty());
                     actor.history_owner=nullptr;
+                }
+                if(choreography){
+                    const auto& ap=*choreography;
+                    SpeechLifecycleFixture f(ap.callback,ap.generated,ap.finish,ap.manager,ap.advance,ap.entity);
+                    f.bind_resolver(ap.resolver);f.bind_preparation(ap.preparation);f.bind_retirement(ap.retirement);
+                    actor.external_npc=f.npc_memory;actor.external_bytes=sizeof(f.npc_memory);
+                    F::put(f.npc_memory,0xc,1);F::put(f.npc_memory,0x98,100);F::put(f.npc_memory,0x9c,80);
+                    std::memset(actor.exp,0,sizeof(actor.exp));F::put(actor.exp,4,F::ptr(f.npc_memory));
+                    actor.expected_concept="TLK_IDLE";actor.now=10;
+                    const char script[]=R"(criterion idle concept TLK_IDLE required
+criterion actor classname npc_jessica required
+criterion head PlayerLookingAtPart head required
+response line
+{
+ sequential
+ speak jessica_line
+}
+rule jessica_generated
+{
+ criteria idle actor head
+ response line
+ matchonce
+}
+)";
+                    assert(scriptFinder->create("generated",script,sizeof(script)-1,nullptr,&speech.selection.finder.store)==1);
+                    NativeGeneratedResponseBindings route{};route.generated=f.full;
+                    route.response.context=static_cast<IntegratedSceneFixture*>(&f);
+                    route.response.manager=&f.session;route.response.scenes=f.life.runtime;
+                    route.response.owner=[](void* p,void* exp,void** out) noexcept -> int{
+                        auto& x=SpeechLifecycleFixture::self(p);assert(F::word(exp,4)==F::ptr(x.npc_memory));*out=x.npc_memory;return 1;};
+                    route.response.retain_sound=[](void* p,const char* text,const char** out) noexcept -> int{
+                        auto& x=SpeechLifecycleFixture::self(p);assert(!std::strcmp(text,"jessica_line"));std::strcpy(x.sound,text);*out=x.sound;return 1;};
+                    // The native generated path must not use the legacy audio
+                    // or legacy playback table, even though those leaves exist.
+                    speech.generated=&route;d.sound=nullptr;d.scene=nullptr;d.stop_scene=nullptr;d.scene_blocked=nullptr;
+                    d.note_duration=[](void* p,void* e,float duration,float delay) noexcept -> int{
+                        auto& x=Actor::get(p);assert(e==x.current_exp()&&duration==.1f&&delay==0);++x.notes;return 1;};
+                    d.record=[](void* p,void* e,const char* concept,void* response) noexcept -> int{
+                        auto& x=Actor::get(p);assert(e==x.current_exp()&&!std::strcmp(concept,"TLK_IDLE")&&response==x.response&&x.live&&x.copy_live&&!x.recorded);
+                        ++x.records;x.recorded=response;return 1;};
+                    const auto before=actor.allocs,sounds=actor.sounds,notes=actor.notes,records=actor.records;
+                    SceneManagerSession wrong_session{};auto wrong=route;wrong.generated.lifecycle.manager=&wrong_session;
+                    speech.generated=&wrong;played=99;
+                    assert(speak("PlayerLookingAtPart:head")==0&&played==99&&actor.allocs==before&&!f.creates);
+                    speech.generated=&route;
+                    assert(speak("PlayerLookingAtPart:hand")==1&&!played&&!f.creates&&!actor.live);
+                    assert(speak("PlayerLookingAtPart:head")==1&&played==1&&actor.sounds==sounds&&actor.notes==notes+1&&actor.records==records+1);
+                    assert(actor.recorded==actor.response&&f.creates==1&&f.allocations==4&&f.outputs==1&&f.scene_live);
+                    assert(!std::strcmp(reinterpret_cast<char*>(actor.response+0xa4),"jessica_generated"));
+                    assert(F::word(f.scene,0x54c)==F::ptr(f.sound)&&F::word(f.manager,0x3a0)==1);
+                    assert(scriptActor->retire(&speech.selection,actor.recorded)==1);actor.recorded=nullptr;
+                    std::memset(actor.response,0xcc,sizeof(actor.response)); // scene owns its sound name
+                    assert(scriptFinder->release(&speech.selection.finder.store)==1&&!std::strcmp(f.sound,"jessica_line"));
+                    std::strcpy(reinterpret_cast<char*>(f.event+0x104),"72");
+                    for(unsigned i=0;i<4;++i)assert(ap.manager.tick(&f.control,&f.manager_tick)==1);
+                    assert(f.emitted==1&&f.captions==1&&f.ended==1&&f.finished==1&&f.destroyed==1&&f.destruction_steps==9);
+                    assert(!f.scene_live&&!f.parsed_live&&!F::word(f.npc_memory,0x5f8)&&!F::word(f.manager,0x3a0));
+                    assert(ap.manager.destroy(&f.control,&f.manager_life)==1);
+                    assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
+                    speech.generated=nullptr;actor.external_npc=nullptr;actor.external_bytes=0;
                 }
             }
             // Two distinct expeditors borrow the same registry. Selection,
