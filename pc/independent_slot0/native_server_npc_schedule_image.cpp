@@ -91,7 +91,7 @@ struct CatalogCall {
     const ServerNpcScheduleBindings* original;
     ServerNpcCatalogSchedulerResult* result;
 };
-int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr,const ServerNpcSharedTargetAnimationBindings* target_animation=nullptr,ServerNpcSharedTargetAnimationStats* target_animation_stats=nullptr,const ServerNpcSharedMovementBindings* movement=nullptr,ServerNpcSharedMovementStats* movement_stats=nullptr,const ServerNpcSharedCueBindings* cue=nullptr,ServerNpcSharedCueStats* cue_stats=nullptr,const ServerNpcSharedObservationBindings* observe=nullptr,ServerNpcSharedObservationStats* observe_stats=nullptr,const ServerNpcSharedSoundCoverBindings* sound_cover=nullptr,ServerNpcSharedSoundCoverStats* sound_cover_stats=nullptr) noexcept {
+int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr,const ServerNpcSharedTargetAnimationBindings* target_animation=nullptr,ServerNpcSharedTargetAnimationStats* target_animation_stats=nullptr,const ServerNpcSharedMovementBindings* movement=nullptr,ServerNpcSharedMovementStats* movement_stats=nullptr,const ServerNpcSharedCueBindings* cue=nullptr,ServerNpcSharedCueStats* cue_stats=nullptr,const ServerNpcSharedObservationBindings* observe=nullptr,ServerNpcSharedObservationStats* observe_stats=nullptr,const ServerNpcSharedSoundCoverBindings* sound_cover=nullptr,ServerNpcSharedSoundCoverStats* sound_cover_stats=nullptr,const ServerNpcSharedTacticalCoverBindings* tactical=nullptr,ServerNpcSharedTacticalCoverStats* tactical_stats=nullptr) noexcept {
     if(!out)return 0;*out={};
     const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
     const auto* runtime=SiN_GetServerNpcScheduleServicesApi(1,sizeof(ServerNpcScheduleServicesApi));
@@ -138,7 +138,7 @@ int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleIm
         const auto& original=*static_cast<CatalogCall*>(p)->original;
         return original.reset_movement&&original.reset_movement(original.context,actor,token);
     };
-    if(combat)return run_schedule_services_combat_internal(actor,bytes,now,&bound,&out->runtime,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats,sound_cover,sound_cover_stats);
+    if(combat)return run_schedule_services_combat_internal(actor,bytes,now,&bound,&out->runtime,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats,sound_cover,sound_cover_stats,tactical,tactical_stats);
     return runtime->run(actor,bytes,now,&bound,&out->runtime);
 }
 int __cdecl run_catalog(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out) noexcept{
@@ -192,6 +192,12 @@ int __cdecl run_sound_cover(void* a,unsigned bytes,float now,const ServerSchedul
     auto& o=out->observation;
     return run_catalog_impl(a,bytes,now,image,b,&sh.full.combat.catalog,&full->injury.combat,&sh.full.combat.combat,full,&sh.full.full,&attack->shared,&sh.shared,attack,&o.cue.movement.animation.facing.attack.attack,facing,&o.cue.movement.animation.facing.facing,target,&o.cue.movement.animation.target_animation,movement,&o.cue.movement.movement,cue,&o.cue.cue,observe,&o.observation,sound_cover,&out->sound_cover);
 }
+int __cdecl run_tactical_cover(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcTacticalCoverCatalogSchedulerResult* out) noexcept{
+    if(!out)return 0;*out={};if(!full||!attack||!facing||!target||!movement||!cue||!observe||!sound_cover||!tactical)return 0;
+    auto& o=out->sound_cover.observation;auto& sh=o.cue.movement.animation.facing.attack.shared;
+    return run_catalog_impl(a,bytes,now,image,b,&sh.full.combat.catalog,&full->injury.combat,&sh.full.combat.combat,full,&sh.full.full,&attack->shared,&sh.shared,attack,&o.cue.movement.animation.facing.attack.attack,facing,&o.cue.movement.animation.facing.facing,target,&o.cue.movement.animation.target_animation,movement,&o.cue.movement.movement,cue,&o.cue.cue,observe,&o.observation,sound_cover,&out->sound_cover.sound_cover,tactical,&out->tactical);
+}
+const ServerNpcTacticalCoverCatalogSchedulerApi tactical_cover_catalog_api{1,sizeof(ServerNpcTacticalCoverCatalogSchedulerApi),&run_tactical_cover};
 const ServerNpcSoundCoverCatalogSchedulerApi sound_cover_catalog_api{1,sizeof(ServerNpcSoundCoverCatalogSchedulerApi),&run_sound_cover};
 const ServerNpcObservationCatalogSchedulerApi observation_catalog_api{1,sizeof(ServerNpcObservationCatalogSchedulerApi),&run_observation};
 const ServerNpcCueCatalogSchedulerApi cue_catalog_api{1,sizeof(ServerNpcCueCatalogSchedulerApi),&run_cue};
@@ -264,4 +270,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSoundCoverCatalogSchedulerApi=_SiN_GetServerNpcSoundCoverCatalogSchedulerApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSoundCoverCatalogSchedulerApi* __cdecl SiN_GetServerNpcSoundCoverCatalogSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSoundCoverCatalogSchedulerApi)?&sound_cover_catalog_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcTacticalCoverCatalogSchedulerApi=_SiN_GetServerNpcTacticalCoverCatalogSchedulerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTacticalCoverCatalogSchedulerApi* __cdecl SiN_GetServerNpcTacticalCoverCatalogSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcTacticalCoverCatalogSchedulerApi)?&tactical_cover_catalog_api:nullptr;
 }

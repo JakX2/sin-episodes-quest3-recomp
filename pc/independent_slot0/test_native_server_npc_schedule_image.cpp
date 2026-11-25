@@ -324,6 +324,21 @@ int main(int argc,char** argv){
     assert(cover_api->run(f.actor,sizeof(f.actor),69.3f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&cover_run)&&cover_run.sound_cover.calls==1&&cover_run.sound_cover.last.accepted&&cover_run.sound_cover.last.deadline_written);
     float sound_deadline=0;std::memcpy(&sound_deadline,f.actor+0x8f0,4);assert(sound_deadline==69.3f);
     assert(cover_run.observation.cue.movement.animation.facing.attack.shared.full.combat.catalog.runtime.scheduler.maintenance.state.index==4);
+    auto gtactical=reinterpret_cast<GetServerNpcTacticalCoverCatalogSchedulerApi>(GetProcAddress(s,server_npc_tactical_cover_catalog_scheduler_export));
+    assert(gtactical&&!GetProcAddress(c,server_npc_tactical_cover_catalog_scheduler_export)&&!gtactical(0,sizeof(ServerNpcTacticalCoverCatalogSchedulerApi))&&!gtactical(1,0));
+    const auto* tactical_api=gtactical(1,sizeof(ServerNpcTacticalCoverCatalogSchedulerApi));assert(tactical_api);
+    ServerNpcSharedTacticalCoverBindings tcb{};tcb.context=&f;
+    tcb.default_range=[](void*,void*,float* out) noexcept -> int{*out=768;return 1;};
+    tcb.absolute_origin=[](void* p,void* e,float* out) noexcept -> int{assert(e==F::self(p).actor);out[0]=1;out[1]=2;out[2]=3;return 1;};
+    tcb.viewpoint=[](void*,void*,float* out) noexcept -> int{out[0]=4;out[1]=5;out[2]=6;return 1;};
+    tcb.search=[](void*,std::uint32_t token,const float* origin,const float* eye,float minimum,float maximum,float* pos,bool* found) noexcept -> int{assert(token==444&&origin[0]==1&&eye[2]==6&&minimum==384&&maximum==768);pos[0]=10;pos[1]=20;pos[2]=30;*found=true;return 1;};
+    tcb.goal_context=scb.goal_context;
+    tcb.submit_goal=[](void*,std::uint32_t nav,const ServerNpcSoundCoverGoal* goal,bool* accepted) noexcept -> int{assert(nav==100&&goal->type==7&&goal->position[2]==30&&goal->range==-1&&goal->activity==10);*accepted=true;return 1;};
+    ServerNpcTacticalCoverCatalogSchedulerResult tactical_run{};
+    install_at(96,2);bind_nav(); // SCHED_GRUNT_GRENADE_COVER1 Task103(384)
+    f.put(f.actor,0x9d8,444u);
+    assert(tactical_api->run(f.actor,sizeof(f.actor),69.4f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&tactical_run)&&tactical_run.tactical.calls==1&&tactical_run.tactical.last.shared.lifecycle.completed&&tactical_run.tactical.last.minimum==384&&tactical_run.tactical.last.maximum==768&&tactical_run.tactical.last.accepted);
+    assert(tactical_run.sound_cover.observation.cue.movement.animation.facing.attack.shared.full.combat.catalog.runtime.scheduler.maintenance.state.index==2);
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     install_at(96,4); // SCHED_GRUNT_GRENADE_COVER1: original timestamp task53
     assert(shared_api->run(f.actor,sizeof(f.actor),69.5f,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&sh.shared.last.task==53&&sh.shared.last.lifecycle.completed);
