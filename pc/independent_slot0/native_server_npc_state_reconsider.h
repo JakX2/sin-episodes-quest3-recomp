@@ -649,4 +649,28 @@ struct ServerNpcGruntCombatGoalApi {
     int (__cdecl *gather)(void*,unsigned,void*,float,const ServerNpcGruntCombatConditionsBindings*,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntCombatConditionsResult*,ServerNpcGruntGoalRefreshResult[2]) noexcept;
 };
 using GetServerNpcGruntCombatGoalApi=const ServerNpcGruntCombatGoalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_weapon_search_export[]="SiN_GetServerNpcGruntWeaponSearchApi";
+struct ServerNpcGruntWeaponSearchBindings {
+    ServerNpcGruntRelationBindings relation;
+    ServerNpcScheduleBindings schedule;
+    ServerNpcEnemyMemoryBindings storage;
+    void* context;
+    int max_clients;
+    std::uint32_t special_squad_name; // original interned string token 22546d58
+    int (__cdecl *local_player)(void*,void**) noexcept;
+    int (__cdecl *weapon_caps)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *squad_predicate)(void*,void*,bool*) noexcept; // 220a85d0
+    int (__cdecl *find_weapon)(void*,void*,const float[3],void**) noexcept; // 222a5a90
+};
+struct ServerNpcGruntWeaponSearchResult {
+    unsigned eligible,cooldown_blocked,capability_blocked,combat_blocked,schedule_blocked,player_checked,friendly,armed_blocked,disabled,search_called,found,condition_set;
+    float deadline,half_extents[3];
+    void* weapon;
+};
+struct ServerNpcGruntWeaponSearchApi {
+    std::uint32_t version,size;
+    int (__cdecl *eligible)(void*,unsigned,float,const ServerNpcGruntWeaponSearchBindings*,ServerNpcGruntWeaponSearchResult*) noexcept;
+    int (__cdecl *search)(void*,unsigned,float,const ServerNpcGruntWeaponSearchBindings*,ServerNpcGruntWeaponSearchResult*) noexcept;
+};
+using GetServerNpcGruntWeaponSearchApi=const ServerNpcGruntWeaponSearchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
