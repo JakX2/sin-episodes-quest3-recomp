@@ -405,6 +405,51 @@ inline void check_scene_metadata_index(const SceneMetadataIndexApi& api){
     assert(f.releases==3&&f.undos==1);
 }
 
+
+inline void check_scene_cached_precache(const SceneCachedPrecacheApi& api){
+    struct Fixture{
+        alignas(4) unsigned char cache[0x50]{},row[16]{},meta[0x1c]{};
+        std::uint32_t ids[3]{7,9,7},moved[3]{7,9,7};
+        unsigned trace[32]{},used=0;bool present=false,phase=false,fail=false,relocate=false;
+        static Fixture& get(void* p){return *static_cast<Fixture*>(p);}
+        void add(unsigned n){assert(used<32);trace[used++]=n;}
+        void expect(std::initializer_list<unsigned> list){assert(used==list.size()&&!std::memcmp(trace,list.begin(),used*4));used=0;}
+        static void put(void* p,unsigned offset,std::uint32_t x){std::memcpy(static_cast<unsigned char*>(p)+offset,&x,4);}
+    } f;
+    Fixture::put(f.row,4,3);Fixture::put(f.row,8,0xfffffffeu);Fixture::put(f.row,12,1);Fixture::put(f.cache,0x48,1);
+    Fixture::put(f.meta,8,100);Fixture::put(f.meta,0xc,3);Fixture::put(f.meta,0x14,3);
+    SceneResponseServicesBindings b{};b.context=&f;b.cache=f.cache;b.cache_bytes=sizeof(f.cache);
+    b.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+    b.model_name=[](void*,void*,const char**) noexcept -> int{assert(false);return 0;};
+    b.expand=[](void*,const char*,const char*,char*,unsigned) noexcept -> int{assert(false);return 0;};
+    b.row=[](void* p,const char* path,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(!std::strcmp(path,"fixture.vcd"));f.add(4);*out=f.row;*n=16;return 1;};
+    b.stamp=[](void* p,const char*,unsigned mode,std::uint32_t* out) noexcept -> int{
+        assert(mode==1);Fixture::get(p).add(5);*out=4;return 1;};
+    b.metadata=[](void* p,std::uint32_t i,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(i==1);f.add(6);*out=f.meta;*n=sizeof(f.meta);return 1;};
+    b.refresh=[](void* p,void*,const char*) noexcept -> int{Fixture::get(p).add(7);return 1;};
+    SceneCachedPrecacheBindings h{};h.context=&f;h.metadata=&b;
+    h.contains=[](void* p,const char*,unsigned* out) noexcept -> int{auto& f=Fixture::get(p);f.add(1);*out=f.present;return 1;};
+    h.precache_phase=[](void* p,unsigned* out) noexcept -> int{auto& f=Fixture::get(p);f.add(2);*out=f.phase;return 1;};
+    h.late_warning=[](void* p,const char*) noexcept -> int{Fixture::get(p).add(3);return 1;};
+    h.ensure_raw=[](void* p,const char*) noexcept -> int{auto& f=Fixture::get(p);f.add(8);return !f.fail;};
+    h.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::get(p);assert(w==100||w==101);f.add(w==100?10:11);*out=w==100?f.ids:f.moved;*n=12;return 1;};
+    h.sound_name=[](void* p,std::uint32_t id,const char** out) noexcept -> int{
+        auto& f=Fixture::get(p);assert(id==7||id==9);f.add(id==7?20:21);*out=id==7?"one":"two";return 1;};
+    h.precache_sound=[](void* p,const char* name) noexcept -> int{
+        auto& f=Fixture::get(p);f.add(!std::strcmp(name,"one")?30:31);
+        if(f.relocate){Fixture::put(f.meta,8,101);f.relocate=false;}return 1;};
+    auto run=[&](){return api.precache("fixture.vcd",&h);};
+    f.relocate=true;assert(run()==1);f.expect({1,2,3,4,5,6,7,8,10,20,30,11,21,31,11,20,30});
+    f.present=true;assert(run()==1);f.expect({1,4,6,8,11,20,30,11,21,31,11,20,30});
+    f.present=false;f.phase=true;Fixture::put(f.meta,0x14,0);assert(run()==1);f.expect({1,2,4,6,8});
+    f.fail=true;assert(run()==-1);f.expect({1,2,4,6,8});
+    f.fail=false;Fixture::put(f.meta,0x14,4);assert(run()==-1);f.expect({1,2,4,6,8});
+    h.sound_name=nullptr;assert(run()==0&&!f.used);
+}
+
 inline void check_scene_response_services(const SceneResponseServicesApi& api,const ResponseSceneFilterApi& filter){
     struct Fixture {
         alignas(4) unsigned char exp[0x7c]{},cache[0x50]{},row[16]{},data[8]{};

@@ -3157,6 +3157,39 @@ int __cdecl scene_response_adapt(const SceneResponseServicesBindings* b,Response
 }
 const SceneResponseServicesApi scene_response_services_api{version,sizeof(SceneResponseServicesApi),&scene_response_resolve_name,&scene_response_metadata,&scene_response_adapt};
 
+int __cdecl scene_cached_precache(const char* path,const SceneCachedPrecacheBindings* b) noexcept {
+    if(!path||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+       !scene_response_services_ready(b->metadata)||!b->contains||!b->precache_phase||!b->late_warning||
+       !b->ensure_raw||!b->storage||!b->sound_name||!b->precache_sound)return 0;
+    const auto h=*b;unsigned present=0,phase=0;
+    if(!h.contains(h.context,path,&present))return -1;
+    if(!present){
+        if(!h.precache_phase(h.context,&phase))return -1;
+        if(!phase&&!h.late_warning(h.context,path))return -1;
+    }
+    void* meta=nullptr;unsigned extent=0;
+    if(!scene_response_metadata(const_cast<SceneResponseServicesBindings*>(h.metadata),path,&meta,&extent)||
+       !h.ensure_raw(h.context,path))return -1;
+    // Original assumes metadata is non-null; reject a broken host instead.
+    if(!meta||extent<0x1c||!sin_independent::vgui_layout::Readable(meta,0x1c))return -1;
+    const auto count=hologram_read<int>(meta,0x14);
+    if(count<=0)return count==0?1:-1;
+    if(count>0x100000||hologram_read<int>(meta,0xc)<count)return -1;
+    for(int i=0;i<count;++i){
+        // Original snapshots count, reloads vector base on every iteration.
+        const auto word=hologram_read<std::uint32_t>(meta,8);
+        void* rows=nullptr;unsigned bytes=0;const auto need=(static_cast<unsigned>(i)+1)*4;
+        if(!word||!h.storage(h.context,word,&rows,&bytes)||bytes<need||
+           !sin_independent::vgui_layout::Readable(rows,need))return -1;
+        const auto id=hologram_read<std::uint32_t>(rows,static_cast<unsigned>(i)*4);
+        const char* name=nullptr;
+        if(!h.sound_name(h.context,id,&name)||!name||!h.precache_sound(h.context,name))return -1;
+    }
+    return 1;
+}
+const SceneCachedPrecacheApi scene_cached_precache_api{version,sizeof(SceneCachedPrecacheApi),&scene_cached_precache};
+
+
 int __cdecl scene_metadata_index_ensure(void* p,const char* path,void** out,unsigned* extent) noexcept {
     const auto* b=static_cast<const SceneMetadataIndexBindings*>(p);
     if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->metadata_vtable||!b->filename||
@@ -16617,6 +16650,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneMeta
 SiN_GetSceneMetadataIndexApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneMetadataIndexApi)?&scene_metadata_index_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetSceneCachedPrecacheApi=_SiN_GetSceneCachedPrecacheApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneCachedPrecacheApi* __cdecl
+SiN_GetSceneCachedPrecacheApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneCachedPrecacheApi)?&scene_cached_precache_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetSceneResponseServicesApi=_SiN_GetSceneResponseServicesApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneResponseServicesApi* __cdecl
