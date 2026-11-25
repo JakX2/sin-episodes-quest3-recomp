@@ -274,6 +274,12 @@ int main(int argc,char** argv){
         const auto* targetAdmission=getTargetAdmission(1,sizeof(ft::ServerNpcAnimationRecordApi));
         assert(targetScene&&targetAdmission&&!getTargetScene(0,sizeof(ft::ServerTargetSceneApi))&&!getTargetScene(1,0));
         ft::test::check_target_scene(*targetScene,*targetAdmission);
+        const auto getFaceScene=reinterpret_cast<ft::GetServerFaceSceneApi>(GetProcAddress(server,ft::server_face_scene_export));
+        assert(getFaceScene&&!GetProcAddress(client,ft::server_face_scene_export));
+        const auto* faceScene=getFaceScene(1,sizeof(ft::ServerFaceSceneApi));
+        assert(faceScene&&!getFaceScene(0,sizeof(ft::ServerFaceSceneApi))&&!getFaceScene(1,0));
+        ft::test::check_face_scene(*faceScene);
+        std::puts("PASS native NPC face-target yaw and weighted body-turn state");
         std::puts("PASS native target scene admission, retirement and look-at request policy");
         std::puts("PASS native NPC animation admission gate and monotonic keepalive deadline");
         std::puts("PASS native deferred gesture/sequence layer initialization");

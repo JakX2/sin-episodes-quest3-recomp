@@ -354,4 +354,59 @@ inline void check_target_scene(const ServerTargetSceneApi& api,const ServerNpcAn
     assert(records.stop(records.context,f.actor,f.record,1,1,&out)&&out==1);
 }
 
+inline void check_face_scene(const ServerFaceSceneApi& api){
+    struct Fixture {alignas(4) unsigned char actor[0xe48]{},event[0x3c0]{},record[0x40]{},sample[12]{};
+        unsigned resolves{},gates{},suppressions{},yaws{},looks{},gate=1,suppressed=0;
+        float desired=10,weight=0;bool stale=false,self=false;} f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto fl=[](const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    auto eq=[](float a,float b){return std::fabs(a-b)<.0001f;};
+    put(f.event,0,8u);put(f.event,0x184,0.f);put(f.event,0x188,3.f);put(f.record,0x24,17u);
+    put(f.actor,0x370,350.f);
+    ServerFaceSceneBindings b{};b.context=&f;b.target.context=&f;
+    b.target.resolve=[](void* p,std::uint32_t handle,void** out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(handle==17);++f.resolves;
+        *out=f.stale?nullptr:f.self?f.actor:f.event;return 1;
+    };
+    b.target.storage=[](void* p,std::uint32_t handle,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);if(handle!=1)return 0;*out=f.sample;*n=sizeof(f.sample);return 1;
+    };
+    b.target.look=[](void* p,void* npc,void* target,float weight,float duration,int flags) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(npc==f.actor&&target==f.event&&duration==.2f&&!flags);
+        ++f.looks;f.weight=weight;return 1;
+    };
+    b.admit=[](void* p,void*,unsigned* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.gates;*out=f.gate;return 1;
+    };
+    b.suppressed=[](void* p,void*,unsigned* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.suppressions;*out=f.suppressed;return 1;
+    };
+    b.target_yaw=[](void* p,void* actor,void* target,float* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(actor==f.actor&&target==f.event);++f.yaws;*out=f.desired;return 1;
+    };
+    unsigned out=99;
+    auto run=[&](float time,float now){return api.update(f.actor,sizeof(f.actor),f.record,sizeof(f.record),f.event,sizeof(f.event),time,now,&b,&out);};
+    f.stale=true;assert(run(1,10)==1&&!out&&!f.gates&&!f.looks);
+    f.stale=false;f.self=true;assert(run(1,10)==1&&out==1&&f.gates==1&&!f.yaws&&!f.looks&&fl(f.record,0x30)==350);
+    f.self=false;assert(run(1,10)==1&&out==1&&f.gates==2&&f.looks==1&&f.weight==1);
+    assert(eq(fl(f.record,0x30),9.99755859375f)&&fl(f.record,0x34)==370&&fl(f.actor,0xe04)==1&&fl(f.actor,0x97c)==12);
+    f.record[0xc]=1;assert(run(1.5f,11)==1&&out==1&&eq(fl(f.actor,0xe40),19.99755859375f));
+    assert(fl(f.actor,0xe00)==20&&fl(f.actor,0xe04)==2&&fl(f.actor,0xe44)==0&&fl(f.actor,0x97c)==12.7f);
+    // Fresh partial-weight turn. At t=1 the ramp has a .75 sample.
+    std::memset(f.record,0,sizeof(f.record));std::memset(f.actor,0,sizeof(f.actor));
+    put(f.record,0x24,17u);put(f.event,0x19c,1u);put(f.event,0x1a8,1);
+    put(f.sample,0,.75f);put(f.sample,4,1.f);f.desired=100;
+    assert(run(1,20)==1&&out==1&&eq(f.weight,.75f)&&eq(fl(f.record,0x34),37.5f));
+    assert(eq(fl(f.record,0x30),74.9981689453125f));
+    f.record[0xc]=1;assert(run(1,20)==1&&out==1);
+    assert(eq(fl(f.actor,0xe40),22.5f)&&eq(fl(f.actor,0xe44),33.7486267f));
+    assert(eq(fl(f.actor,0xe00),28.125f)&&eq(fl(f.actor,0xe04),1.5f));
+    f.event[0x33c]=1;const unsigned gates=f.gates,looks=f.looks;
+    assert(run(1,21)==1&&out==1&&f.gates==gates&&f.looks==looks&&fl(f.record,0x34)==0);
+    assert(fl(f.actor,0x97c)==22.f);
+    // Disabled target-facing flag bypasses admission, eye request and keepalive.
+    f.event[0x33c]=0;f.gate=0;
+    assert(run(1,23)==1&&out==1&&fl(f.record,0x34)==0&&fl(f.actor,0x97c)==22.f);
+}
+
 }
