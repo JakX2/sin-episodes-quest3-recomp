@@ -1,6 +1,7 @@
 #pragma once
 #include "test_native_npc_scene_playback.h"
 #include "response_rule_scoring.h"
+#include "native_npc_dialogue.h"
 #include "native_server_event_intensity.h"
 #include "native_server_facial_records.h"
 #include "native_server_composed_facial_think.h"
@@ -745,7 +746,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1287,6 +1288,7 @@ rule parsed_rule
                 const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
                 unsigned allocs=0,drops=0,copies=0,frees=0,traces=0,sounds=0,notes=0,records=0;
                 bool live=false,copy_live=false,short_block=false,fail_trace=false,fail_sound=false;void* recorded=nullptr;
+                const char* expected_concept="TLK_IDLE";const unsigned char* observation=nullptr;unsigned other=0,criteria_calls=0;float now=25.f;
                 static Actor& get(void* p){return *static_cast<Actor*>(p);}
             } actor{{},{},{},{},api,h};
             const char source[]=R"(criterion idle concept TLK_IDLE required
@@ -1366,7 +1368,7 @@ rule count_head
                 ScriptActorSpeechBindings speech{};speech.selection=sc;speech.context=&actor;
                 assert(scriptFinder->create("fixture",source,sizeof(source)-1,nullptr,&speech.selection.finder.store)==1);
                 speech.trace_selected=[](void* p,void* e,const char* concept) noexcept -> int{
-                    auto& s=Actor::get(p);assert(e==s.exp&&s.live&&s.copy_live&&!std::strcmp(concept,"TLK_IDLE"));++s.traces;return !s.fail_trace;};
+                    auto& s=Actor::get(p);assert(e==s.exp&&s.live&&s.copy_live&&!std::strcmp(concept,s.expected_concept));++s.traces;return !s.fail_trace;};
                 auto& d=speech.dispatch;d.context=&actor;
                 d.sample=[](void*,const void*,float*) noexcept -> int{assert(false);return 0;};
                 d.speaking=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
@@ -1405,6 +1407,49 @@ rule count_head
                 assert(speak("PlayerLookingAtPart:head")==-1&&played==99&&!actor.live&&!actor.copy_live&&actor.sounds==2&&actor.records==1);
                 assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
                 assert(scriptFinder->release(&speech.selection.finder.store)==1);
+                if(scriptMap){
+                    const char interrogation[]=R"(criterion cocky concept TLK_INTERROGATE_COCKY required
+criterion head PlayerLookingAtPart head required
+response speech speak count_line
+rule count_cocky
+{
+ criteria cocky head
+ response speech
+}
+)";
+                    assert(scriptFinder->create("count",interrogation,sizeof(interrogation)-1,nullptr,&speech.selection.finder.store)==1);
+                    // The weighted single-entry group calls RNG once.
+                    speech.selection.finder.host.random_float=[](void*,float lo,float hi,float* v) noexcept -> int{assert(lo==0&&hi==1);*v=0;return 1;};
+                    actor.fail_sound=false;actor.expected_concept="TLK_INTERROGATE_COCKY";
+                    alignas(4) unsigned char observation[0x5ec]{};actor.observation=observation;
+                    HologramControl control{actor.npc,sizeof(actor.npc)};NpcMapSession mapSession{};
+                    NpcMapBindings map{};NpcMapDialogueBindings dialogue{};
+                    map.scheduler.context=&actor;
+                    map.scheduler.observe_other=[](void* p,std::uint32_t active,const void* o,unsigned n) noexcept -> int{
+                        auto& s=Actor::get(p);assert(active==0x12345678&&o==s.observation&&n>=0x5e9);++s.other;return 1;};
+                    auto& cb=dialogue.count;cb.context=&actor;
+                    cb.resolve=[](void* p,std::uint32_t handle,void** out) noexcept -> int{auto& s=Actor::get(p);assert(handle==0x1004);*out=s.npc;return 1;};
+                    cb.clock=[](void* p,float* out) noexcept -> int{*out=Actor::get(p).now;return 1;};
+                    cb.expeditor=[](void* p,void* npc,void** out,unsigned* n) noexcept -> int{auto& s=Actor::get(p);assert(npc==s.npc);*out=s.exp;*n=sizeof(s.exp);return 1;};
+                    cb.criteria=[](void* p,const void* rec,float now,CountCriteria* out) noexcept -> int{
+                        auto& s=Actor::get(p);assert(rec==s.observation+0x18&&now==s.now);++s.criteria_calls;
+                        std::snprintf(reinterpret_cast<char*>(out->bytes),sizeof(out->bytes),"PlayerLookingAtPart:%s",reinterpret_cast<const char*>(s.observation+0x2d8));return 1;};
+                    F::put(observation,0x14,0x1004);std::strcpy(reinterpret_cast<char*>(observation+0x2d8),"head");
+                    auto observe=[&](){return scriptMap->observe(NpcMapKind::Count,&control,&mapSession,&map,&dialogue,nullptr,&speech,observation,sizeof(observation));};
+                    assert(observe()==1&&!actor.criteria_calls);
+                    F::put(actor.npc,0xc18,0x12345678);assert(observe()==1&&actor.other==1&&!actor.criteria_calls);
+                    F::put(actor.npc,0xc18,F::ptr(actor.npc+0x1000));
+                    const auto sounds=actor.sounds;
+                    assert(observe()==1&&F::word(actor.npc,0x1014)==1&&actor.sounds==sounds+1&&actor.records==2&&actor.recorded==actor.response&&!control.busy);
+                    assert(scriptActor->retire(&speech.selection,actor.recorded)==1);actor.recorded=nullptr;
+                    assert(observe()==1&&actor.criteria_calls==1&&F::word(actor.npc,0x1014)==1);
+                    std::strcpy(reinterpret_cast<char*>(observation+0x2d8),"hand");actor.now=28;
+                    assert(observe()==1&&F::word(actor.npc,0x1014)==2&&actor.criteria_calls==2&&!actor.live);
+                    std::strcpy(reinterpret_cast<char*>(observation+0x2d8),"chest");actor.now=31;
+                    assert(observe()==1&&!F::word(actor.npc,0x1014)&&!actor.npc[0x1018]&&actor.criteria_calls==3&&!actor.live);
+                    assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
+                    assert(scriptFinder->release(&speech.selection.finder.store)==1);
+                }
             }
         }
     }

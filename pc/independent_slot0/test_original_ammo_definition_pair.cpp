@@ -1286,8 +1286,13 @@ int main(int argc,char** argv){
         assert(getScriptSpeech&&!GetProcAddress(client,tables::script_actor_speech_export));
         const auto* scriptSpeech=getScriptSpeech(1,sizeof(tables::ScriptActorSpeechApi));
         assert(scriptSpeech&&!getScriptSpeech(0,sizeof(tables::ScriptActorSpeechApi))&&!getScriptSpeech(1,0));
+        const auto getScriptMap=reinterpret_cast<tables::GetScriptNpcMapDialogueApi>(GetProcAddress(server,tables::script_npc_map_dialogue_export));
+        assert(getScriptMap&&!GetProcAddress(client,tables::script_npc_map_dialogue_export));
+        const auto* scriptMap=getScriptMap(1,sizeof(tables::ScriptNpcMapDialogueApi));
+        assert(scriptMap&&!getScriptMap(0,sizeof(tables::ScriptNpcMapDialogueApi))&&!getScriptMap(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria,scriptActor,scriptSpeech);
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder,criteriaCopy,ownedCriteria,scriptActor,scriptSpeech,scriptMap);
+        std::puts("PASS script-backed Count map observation and active behavior routing");
         std::puts("PASS native script actor speech dispatch and history ownership");
         std::puts("PASS native script actor selection and owned response retirement");
         std::puts("PASS native allocated criteria copy and response-owned retirement");

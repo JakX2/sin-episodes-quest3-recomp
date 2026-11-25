@@ -1,0 +1,3 @@
+# Phase 960: script-backed map observation
+
+Route original Count observation 22394440 and Jessica attention 22362154/22362236 through script actor speech. Preserve Count active behavior selection, duplicate part suppression, phase advancement on no match, and Jessica's companion semaphore/cooldown/repeat gates via existing internal request path. Existing APIs unchanged. Loaded synthetic fixture exercises Count active/no-active/other behavior, scripted cocky response callback, retained response retirement, same-region suppression, nervous/talking misses and phase wrap. Jessica script route implemented but not separately tested in new fixture; existing legacy gates unchanged. Scene/audio and observation criteria production remain host services. CI pending.

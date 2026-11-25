@@ -3780,10 +3780,11 @@ int companion_concept_gate_impl(void* npc,unsigned bytes,const CompanionDeadline
     if(!companion_expeditor(h,npc,exp,n)||response_can_repeat(exp,n,&h.repeat,name,&allowed)!=1)return -1;
     *out=allowed!=0;return 1;
 }
+int __cdecl script_actor_speak(void*,unsigned,const ScriptActorSpeechBindings*,const char*,const char*,unsigned*) noexcept;
 int companion_request_impl(void* npc,unsigned bytes,const CompanionDeadlineSource& source,const SpeechSemaphorePair* sem,
                               const CompanionTalkBindings* b,const char* name,const char* mods,unsigned urgent,unsigned* out,
                               const ResponseChoreographyBindings* choreography=nullptr,const SceneEntityLifecycleBindings* lifecycle=nullptr,
-                              const NativeGeneratedResponseBindings* generated=nullptr) noexcept {
+                              const NativeGeneratedResponseBindings* generated=nullptr,const ScriptActorSpeechBindings* script=nullptr) noexcept {
     if(!companion_talk_preflight(npc,bytes,b,out)||!name)return 0;
     const auto h=*b;unsigned allowed=0;
     const auto gate=companion_concept_gate_impl(npc,bytes,source,sem,&h,name,urgent,&allowed);
@@ -3791,8 +3792,8 @@ int companion_request_impl(void* npc,unsigned bytes,const CompanionDeadlineSourc
     if(!allowed){*out=0;return 1;}
     void* exp=nullptr;unsigned n=0;
     if(!companion_expeditor(h,npc,exp,n))return -1;
-    if((choreography||generated)&&hologram_read<std::uint32_t>(exp,4)!=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(npc)))return -1;
-    const auto status=generated?native_generated_response_speak(exp,n,&h.speak,generated,name,mods,out):
+    if((choreography||generated||script)&&hologram_read<std::uint32_t>(exp,4)!=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(npc)))return -1;
+    const auto status=script?script_actor_speak(exp,n,script,name,mods,out):generated?native_generated_response_speak(exp,n,&h.speak,generated,name,mods,out):
         choreography?integrated_response_speak(exp,n,&h.speak,choreography,lifecycle,name,mods,out):
         response_speak(exp,n,&h.speak,name,mods,out);
     return status==0?-1:status;
@@ -9740,6 +9741,7 @@ struct JessicaDialogueCall {
     const ResponseChoreographyBindings* choreography=nullptr;
     const SceneEntityLifecycleBindings* lifecycle=nullptr;
     const NativeGeneratedResponseBindings* generated=nullptr;
+    const ScriptActorSpeechBindings* script=nullptr;
 };
 int __cdecl dialogue_jessica_clock(void* p,float* out) noexcept {
     auto& x=*static_cast<JessicaDialogueCall*>(p);return x.host.clock(x.host.context,out);
@@ -9753,9 +9755,9 @@ int __cdecl dialogue_jessica_criteria(void* p,void* npc,const void* record,float
     // 22362154 / 22362236 -> 2208f500(name,modifier,0).
     // Original ignores whether it spoke; only transport failure is fatal.
     const auto* mods=reinterpret_cast<const char*>(criteria.bytes);
-    if(x.choreography||x.generated){
+    if(x.choreography||x.generated||x.script){
         const CompanionDeadlineSource source{x.manager?nullptr:h.cooldown->global,x.manager};
-        return companion_request_impl(npc,x.ctrl->bytes,source,h.semaphore,&h.talk,name,mods,0,&played,x.choreography,x.lifecycle,x.generated)==1;
+        return companion_request_impl(npc,x.ctrl->bytes,source,h.semaphore,&h.talk,name,mods,0,&played,x.choreography,x.lifecycle,x.generated,x.script)==1;
     }
     return (x.manager?managed_companion_request(npc,x.ctrl->bytes,x.manager,h.semaphore,&h.talk,name,mods,0,&played):
         companion_request(npc,x.ctrl->bytes,h.cooldown,h.semaphore,&h.talk,name,mods,0,&played))==1;
@@ -9781,6 +9783,7 @@ struct CountDialogueCall {
     const ResponseChoreographyBindings* choreography=nullptr;
     const SceneEntityLifecycleBindings* lifecycle=nullptr;
     const NativeGeneratedResponseBindings* generated=nullptr;
+    const ScriptActorSpeechBindings* script=nullptr;
 };
 int __cdecl dialogue_count_resolve(void* p,std::uint32_t handle,void** out) noexcept {
     auto& x=*static_cast<CountDialogueCall*>(p);return x.host.resolve(x.host.context,handle,out);
@@ -9808,9 +9811,9 @@ int __cdecl dialogue_count_speak(void* p,void* exp,const char* name,const CountC
     // 22394440 bypasses the companion gate. Its phase advances on normal
     // no-match too, so return transport success, not the played boolean.
     const auto* mods=reinterpret_cast<const char*>(criteria->bytes);
-    if(x.choreography||x.generated){
+    if(x.choreography||x.generated||x.script){
         if(hologram_read<std::uint32_t>(exp,4)!=static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(x.ctrl->object)))return 0;
-        return (x.generated?native_generated_response_speak(exp,x.extent,&x.host.speak,x.generated,name,mods,played):
+        return (x.script?script_actor_speak(exp,x.extent,x.script,name,mods,played):x.generated?native_generated_response_speak(exp,x.extent,&x.host.speak,x.generated,name,mods,played):
             integrated_response_speak(exp,x.extent,&x.host.speak,x.choreography,x.lifecycle,name,mods,played))==1;
     }
     return response_speak(exp,x.extent,&x.host.speak,name,mods,played)==1;
@@ -12242,6 +12245,29 @@ int __cdecl native_generated_map_observe(NpcMapKind kind,HologramControl* c,NpcM
 }
 const NativeGeneratedMapDialogueApi native_generated_map_dialogue_api{version,sizeof(NativeGeneratedMapDialogueApi),&native_generated_map_observe};
 
+
+int __cdecl script_npc_map_observe(NpcMapKind kind,HologramControl* c,NpcMapSession* session,const NpcMapBindings* map,
+    const NpcMapDialogueBindings* dialogue,const TalkManagerRuntimeBindings* manager,const ScriptActorSpeechBindings* script,
+    const void* obs,unsigned bytes) noexcept {
+    if(!npc_map_ready(kind,c)||!session||!map||!dialogue||!script||
+       !sin_independent::vgui_layout::Readable(script,sizeof(*script))||!obs||bytes<0x5e9||
+       !sin_independent::vgui_layout::Readable(obs,0x5e9))return 0;
+    if(kind==NpcMapKind::Jessica){
+        const auto& b=dialogue->jessica;
+        if(!b.clock||!b.criteria||!b.semaphore||(!manager&&!b.cooldown))return 0;
+        JessicaDialogueCall call{c,b,manager,nullptr,nullptr,nullptr,script};
+        const JessicaAttentionBindings host{&call,&dialogue_jessica_clock,&dialogue_jessica_criteria};
+        return jessica_attention(c,&session->attention,&host,obs,bytes);
+    }
+    if(kind==NpcMapKind::Count){
+        if(!dialogue_count_ready(&dialogue->count))return 0;
+        CountDialogueCall call{c,dialogue->count,nullptr,0,nullptr,nullptr,nullptr,script};
+        const auto callbacks=dialogue_count_bindings(call);
+        return count_active_observe(c,&map->scheduler,&callbacks,obs,bytes);
+    }
+    return 0;
+}
+const ScriptNpcMapDialogueApi script_npc_map_dialogue_api{version,sizeof(ScriptNpcMapDialogueApi),&script_npc_map_observe};
 
 int __cdecl jessica_full_spawn(HologramControl* c,const JessicaSpawnBindings* b) noexcept {
     if(!health_control(c,jessica_size)||!b||!b->base_spawn||!b->resolve_parent||!b->parented_setup||
@@ -16952,6 +16978,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::Generated
 SiN_GetGeneratedSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(GeneratedSceneApi)?&generated_scene_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetScriptNpcMapDialogueApi=_SiN_GetScriptNpcMapDialogueApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScriptNpcMapDialogueApi* __cdecl
+SiN_GetScriptNpcMapDialogueApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ScriptNpcMapDialogueApi)?&script_npc_map_dialogue_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetNativeGeneratedMapDialogueApi=_SiN_GetNativeGeneratedMapDialogueApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeGeneratedMapDialogueApi* __cdecl

@@ -60,6 +60,15 @@ struct IntegratedNpcMapDialogueApi {
         const TalkManagerRuntimeBindings*,const IntegratedNpcMapDialogueBindings*,const void*,unsigned) noexcept;
 };
 using GetIntegratedNpcMapDialogueApi=const IntegratedNpcMapDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char script_npc_map_dialogue_export[]="SiN_GetScriptNpcMapDialogueApi";
+struct ScriptNpcMapDialogueApi {
+    std::uint32_t version,size;
+    // Jessica keeps companion gates; Count keeps scheduler and direct
+    // interrogation phase advancement even on a normal no-match.
+    int (__cdecl *observe)(NpcMapKind,HologramControl*,NpcMapSession*,const NpcMapBindings*,const NpcMapDialogueBindings*,
+        const TalkManagerRuntimeBindings*,const ScriptActorSpeechBindings*,const void*,unsigned) noexcept;
+};
+using GetScriptNpcMapDialogueApi=const ScriptNpcMapDialogueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char native_generated_map_dialogue_export[]="SiN_GetNativeGeneratedMapDialogueApi";
 struct NativeGeneratedMapDialogueApi {
     std::uint32_t version,size;
