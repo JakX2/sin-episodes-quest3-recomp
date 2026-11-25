@@ -1196,6 +1196,13 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena deadlineArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_talk_deadline_tree(deadlineArena,*talkDeadlineTree,*talkManager,*talkCatalog);
         std::puts("PASS native ally speech manager 48-row deadline tree, duplicate keys and case-insensitive lookup");
+        const auto getDeadlineRuntime=reinterpret_cast<tables::GetTalkDeadlineRuntimeApi>(GetProcAddress(server,tables::talk_deadline_runtime_export));
+        assert(getDeadlineRuntime&&!GetProcAddress(client,tables::talk_deadline_runtime_export));
+        const auto* deadlineRuntime=getDeadlineRuntime(1,sizeof(tables::TalkDeadlineRuntimeApi));
+        assert(deadlineRuntime&&!getDeadlineRuntime(0,sizeof(tables::TalkDeadlineRuntimeApi))&&!getDeadlineRuntime(1,0));
+        tables::test::VcdAuditArena deadlineRuntimeArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_native_talk_deadline_runtime(deadlineRuntimeArena,*deadlineRuntime,*managedTalk,*talkManager,*talkCatalog);
+        std::puts("PASS native ally deadline population, managed notification and live concept readiness");
         std::puts("PASS native response history symbol lookup, indexed tree insertion and free-slot reuse");
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));

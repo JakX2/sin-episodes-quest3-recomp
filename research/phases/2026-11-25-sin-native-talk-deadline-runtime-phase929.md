@@ -1,0 +1,3 @@
+# Phase 929: native deadline manager integration
+
+Compose phase928 original deadline tree into phase790 manager lifecycle and phase791 managed cooldown runtime. Versioned adapter replaces insert_deadline, concept_deadline and tree free while forwarding actual engine factory/registration and clock/random/propagation effects. Host registration must invoke adapted populate. Tests lazily create/populate 48 actual rows, update global greeting cooldown, TLK_PLPUSH per-concept deadline and TLK_DANGER separate priority2 deadline; use native concept readiness before/equal expiry, no hosted deadline pointer, and release manager allocation. No retail execution claim. CI pending.
