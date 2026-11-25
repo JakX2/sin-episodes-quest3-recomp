@@ -11792,6 +11792,69 @@ int __cdecl animation_scene_check(const void* event,unsigned eb,unsigned* out) n
     *out=1;return 1;
 }
 const ServerAnimationSceneApi server_animation_scene_api{version,sizeof(ServerAnimationSceneApi),&animation_scene_begin,&animation_scene_stop,&animation_scene_check};
+
+struct GestureWarpPoint {float x,y;};
+int __cdecl server_gesture_tag_warp(const void* event,unsigned bytes,float fraction,const ServerAnimationSceneFrameBindings* b,float* out) noexcept {
+    if(bytes<0x308||!sin_independent::vgui_layout::Readable(event,0x308)||
+       !hologram_writable(out,4)||!std::isfinite(fraction))return 0;
+    const int count=hologram_read<int>(event,0x2f0);
+    if(hologram_read<unsigned>(event,0)!=6||count!=hologram_read<int>(event,0x304)||count<=0){
+        *out=fraction;return 1;
+    }
+    if(fraction<=0){*out=0;return 1;}
+    if(count>4096||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage)return 0;
+    const auto h=*b;void* rows[2]{};unsigned n=0;
+    for(unsigned bank=0;bank<2;++bank){
+        const auto token=hologram_read<std::uint32_t>(event,0x2e4+bank*0x14);
+        if(!token||!h.storage(h.context,token,&rows[bank],&n)||n<static_cast<unsigned>(count)*0x8c||
+           !sin_independent::vgui_layout::Readable(rows[bank],static_cast<unsigned>(count)*0x8c))return 0;
+    }
+    auto tag=[&](unsigned bank,int i){return static_cast<const unsigned char*>(rows[bank])+i*0x8c;};
+    auto point=[&](int i)->GestureWarpPoint{
+        if(i<0)return {0,0};
+        if(i>=count)return {1,1};
+        return {hologram_read<float>(tag(0,i),0x80),hologram_read<float>(tag(1,i),0x80)};
+    };
+    auto locked=[&](int i){return i>=0&&i<count&&(tag(0,i)[0x84]&2);};
+    float previous=0;
+    for(int i=0;i<count;++i){
+        const auto p=point(i);
+        if(!std::isfinite(p.x)||!std::isfinite(p.y)||p.x<previous||p.x>1)return 0;
+        previous=p.x;
+    }
+    if(fraction>1){*out=1;return 1;}
+    int i=-1;
+    for(;i<count;++i)if(fraction>=point(i).x&&fraction<=point(i+1).x)break;
+    if(i>=count)return 0;
+    const auto p1=point(i),p2=point(i+1);
+    const double span=static_cast<double>(p2.x)-p1.x;
+    if(locked(i)&&locked(i+1)){
+        // Both real endpoints locked: original skips spline and directly
+        // interpolates the matching destination fractions by index.
+        if(span<=0)return 0;
+        const double u=(static_cast<double>(fraction)-p1.x)/span;
+        *out=static_cast<float>((1-u)*p1.y+u*p2.y);return 1;
+    }
+    auto p0=point(i-1),p3=point(i+2);
+    if(locked(i))p0={static_cast<float>(2.0*p1.x-p2.x),static_cast<float>(2.0*p1.y-p2.y)};
+    if(locked(i+1))p3={static_cast<float>(2.0*p2.x-p1.x),static_cast<float>(2.0*p2.y-p1.y)};
+    // 2226b720 rescales adjacent tangents to current interval width.
+    const float width=static_cast<float>(span);
+    if(width!=0){
+        if(p0.x!=p1.x)p0.y=static_cast<float>(p1.y+(static_cast<double>(p0.y)-p1.y)*width/(static_cast<double>(p1.x)-p0.x));
+        if(p3.x!=p2.x)p3.y=static_cast<float>(p2.y+(static_cast<double>(p3.y)-p2.y)*width/(static_cast<double>(p3.x)-p2.x));
+    }
+    double u=width>0?(static_cast<double>(fraction)-p1.x)/width:0;
+    u=static_cast<float>(u<0?0:u>1?1:u);
+    const double u2=u*u,u3=u2*u;
+    // 2226b210 uniform Catmull-Rom after tangent normalization. Keep
+    // destination overshoot; the original layer setter clamps separately.
+    *out=static_cast<float>(.5*((2*p1.y)+(-p0.y+p2.y)*u+
+        (2.0*p0.y-5.0*p1.y+4.0*p2.y-p3.y)*u2+
+        (-p0.y+3.0*p1.y-3.0*p2.y+p3.y)*u3));
+    return std::isfinite(*out)?1:0;
+}
+const ServerGestureTagWarpApi server_gesture_tag_warp_api{version,sizeof(ServerGestureTagWarpApi),&server_gesture_tag_warp};
 int animation_scene_layer(void* actor,unsigned bytes,int layer,const ServerAnimationSceneFrameBindings& h,void*& row) noexcept {
     row=nullptr;
     if(bytes<0x4a4||!sin_independent::vgui_layout::Readable(actor,0x4a4))return 0;
@@ -11844,9 +11907,11 @@ int __cdecl animation_scene_frame(void* actor,unsigned bytes,void* record,unsign
     if(type==6){
         const float end=hologram_read<float>(event,0x188);
         const float duration=static_cast<float>(static_cast<double>(end)-start);
-        if(end==-1.f||!std::isfinite(duration)||duration<=0||!h.gesture_cycle)return -1;
+        if(end==-1.f||!std::isfinite(duration)||duration<=0)return -1;
         const float fraction=static_cast<float>(elapsed/duration);
-        if(!std::isfinite(fraction)||!h.gesture_cycle(h.context,event,fraction,&cycle)||!std::isfinite(cycle))return -1;
+        if(!std::isfinite(fraction)||
+           !(h.gesture_cycle?h.gesture_cycle(h.context,event,fraction,&cycle):server_gesture_tag_warp(event,eb,fraction,&h,&cycle))||
+           !std::isfinite(cycle))return -1;
         // Original gesture cycle setter precedes the weight setter.
         animation_scene_cycle(row,cycle,in.now);
     }else if(!(in.sequence_flags&1)){
@@ -13895,6 +13960,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcSceneRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcSceneRecordApi)?&server_npc_scene_record_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerGestureTagWarpApi=_SiN_GetServerGestureTagWarpApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGestureTagWarpApi* __cdecl
+SiN_GetServerGestureTagWarpApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerGestureTagWarpApi)?&server_gesture_tag_warp_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationSceneFrameApi=_SiN_GetServerAnimationSceneFrameApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationSceneFrameApi* __cdecl

@@ -21,7 +21,7 @@ inline constexpr char server_animation_scene_frame_export[]="SiN_GetServerAnimat
 struct ServerAnimationSceneFrameBindings {
     void* context;
     int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
-    // Original 2210e450 timing tag warp; input is event-relative fraction.
+    // Optional override for 2210e450. Null selects the native absolute-tag warp.
     int (__cdecl *gesture_cycle)(void*,const void* event,float,float*) noexcept;
 };
 struct ServerAnimationSceneFrameInput {
@@ -38,4 +38,11 @@ struct ServerAnimationSceneFrameApi {
         const ServerAnimationSceneFrameInput*,const ServerAnimationSceneFrameBindings*,unsigned*) noexcept;
 };
 using GetServerAnimationSceneFrameApi=const ServerAnimationSceneFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_gesture_tag_warp_export[]="SiN_GetServerGestureTagWarpApi";
+struct ServerGestureTagWarpApi {
+    std::uint32_t version,size;
+    // Original 2210e450, bank0->bank1, valid finite sorted source tags.
+    int (__cdecl *map)(const void* event,unsigned,float fraction,const ServerAnimationSceneFrameBindings*,float*) noexcept;
+};
+using GetServerGestureTagWarpApi=const ServerGestureTagWarpApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
