@@ -1718,6 +1718,73 @@ rule jessica_generated
                     assert(ap.manager.destroy(&f.control,&f.manager_life)==1);
                     assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
                     speech.generated=nullptr;actor.external_npc=nullptr;actor.external_bytes=0;
+
+                    // A script Scene must use native cache/load/precache and
+                    // startup, not the legacy NpcScenePlayback table.
+                    struct NamedActor:NativeNamedPlaybackFixture {
+                        alignas(4) unsigned char memory[0x1458]{},metadata[8]{};
+                        static NamedActor& get(void* p){return static_cast<NamedActor&>(NativeNamedPlaybackFixture::self(p));}
+                    } named;
+                    F::put(named.memory,0xc,1);F::put(named.memory,0x98,100);F::put(named.memory,0x9c,80);
+                    F::fl(named.metadata,4,.25f);
+                    actor.external_npc=named.memory;actor.external_bytes=sizeof(named.memory);
+                    F::put(actor.exp,4,F::ptr(named.memory));
+                    named.n.playback.resolve_name=[](void* p,void* npc,const char* text,char* out,unsigned n) noexcept -> int{
+                        auto& f=NamedActor::get(p);assert(npc==f.memory&&!std::strcmp(text,"Jessica")&&n==128);
+                        std::strcpy(out,"Scenes/Jessica.TXT");return 1;};
+                    named.n.playback.actor_handle=[](void* p,void* npc,std::uint32_t* out) noexcept -> int{
+                        assert(npc==NamedActor::get(p).memory);*out=0x321;return 1;};
+                    auto& sf=speech.selection.finder.host.scene_filter;sf.context=&named;
+                    sf.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+                        auto& f=NamedActor::get(p);assert(word==F::ptr(f.memory));*out=f.memory;*n=sizeof(f.memory);return 1;};
+                    sf.resolve_name=[](void* p,void* npc,const char* text,char* out,unsigned n) noexcept -> int{
+                        auto& f=NamedActor::get(p);assert(npc==f.memory&&!std::strcmp(text,"Jessica")&&n==256);
+                        std::strcpy(out,"Scenes/Jessica.TXT");return 1;};
+                    sf.metadata=[](void* p,const char* name,void** out,unsigned* n) noexcept -> int{
+                        auto& f=NamedActor::get(p);assert(!std::strcmp(name,"Scenes/Jessica.TXT"));*out=f.metadata;*n=sizeof(f.metadata);return 1;};
+                    const char named_script[]=R"(criterion idle concept TLK_IDLE required
+criterion actor classname npc_jessica required
+response line
+{
+ sequential
+ delay 0.5
+ scene Jessica
+}
+rule named_rule
+{
+ criteria idle actor
+ response line
+ matchonce
+}
+)";
+                    assert(scriptFinder->create("named",named_script,sizeof(named_script)-1,nullptr,&speech.selection.finder.store)==1);
+                    NativeGeneratedResponseBindings named_route{};
+                    named_route.named=&named.n;
+                    named_route.generated.lifecycle.manager=&named.session;
+                    auto& r=named_route.response;r.context=&named;r.manager=&named.session;r.scenes=named.n.lifecycle.runtime;
+                    r.owner=[](void* p,void* exp,void** out) noexcept -> int{
+                        auto& f=NamedActor::get(p);assert(F::word(exp,4)==F::ptr(f.memory));*out=f.memory;return 1;};
+                    r.retain_sound=[](void*,const char*,const char**) noexcept -> int{assert(false);return 0;};
+                    speech.generated=&named_route;
+                    d.sample=[](void*,const void* interval,float* out) noexcept -> int{
+                        assert(F::word(interval,0)==0x3f000000u&&!F::word(interval,4));*out=.5f;return 1;};
+                    d.note_duration=[](void* p,void* e,float duration,float delay) noexcept -> int{
+                        auto& x=Actor::get(p);assert(e==x.current_exp()&&duration==.25f&&delay==.5f);++x.notes;return 1;};
+                    auto bad_named=named.n;bad_named.lifecycle.manager=&wrong_session;
+                    named_route.named=&bad_named;played=99;
+                    const auto named_allocs=actor.allocs,named_records=actor.records,named_notes=actor.notes;
+                    assert(speak(nullptr)==0&&played==99&&actor.allocs==named_allocs&&!named.phase);
+                    bad_named=named.n;bad_named.register_with_spawn=nullptr;
+                    assert(speak(nullptr)==0&&played==99&&actor.allocs==named_allocs&&!named.phase);
+                    named_route.named=&named.n;
+                    assert(speak(nullptr)==1&&played==1&&actor.records==named_records+1&&actor.notes==named_notes+1);
+                    assert(F::word(actor.response,0)==3&&!std::strcmp(reinterpret_cast<char*>(actor.response+0xa4),"named_rule"));
+                    assert(named.phase==7&&named.spawn_calls==1&&named.activations==1&&named.sound_count==2);
+                    named.expect({1,2,3,4,6,7,8,9,10});
+                    assert(scriptActor->retire(&speech.selection,actor.recorded)==1);actor.recorded=nullptr;
+                    assert(speak(nullptr)==1&&!played&&named.spawn_calls==1&&!actor.live);
+                    assert(scriptFinder->release(&speech.selection.finder.store)==1&&actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
+                    speech.generated=nullptr;actor.external_npc=nullptr;actor.external_bytes=0;
                 }
             }
             // Two distinct expeditors borrow the same registry. Selection,
