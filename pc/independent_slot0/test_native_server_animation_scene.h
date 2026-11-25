@@ -120,4 +120,43 @@ inline void check_gesture_tag_warp(const ServerGestureTagWarpApi& api,const Serv
     assert(api.map(f.event,sizeof(f.event),.5f,&b,&value)==0);
 }
 
+inline void check_gesture_metadata(const ServerGestureMetadataApi& api,const ServerGestureTagWarpApi& warp){
+    struct Fixture{alignas(4) unsigned char event[0x3c0]{},record[0x40]{},tags[2][0x230]{};unsigned reads{};} f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto get=[](const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    put(f.event,0,6u);put(f.event,0x2e4,1u);put(f.event,0x2f8,2u);put(f.event,0x2f0,4);put(f.event,0x304,4);
+    for(unsigned bank=0;bank<2;++bank){
+        const char* names[]={"LoOp","loop","END","tail"};
+        const float fractions[2][4]={{.25f,.375f,.75f,.875f},{.125f,.25f,.5f,.75f}};
+        for(unsigned i=0;i<4;++i){
+            auto* tag=f.tags[bank]+i*0x8c;
+            std::strcpy(reinterpret_cast<char*>(tag),names[i]);
+            put(tag,0x80,fractions[bank][i]);tag[0x84]=0x84;
+        }
+    }
+    ServerAnimationSceneFrameBindings b{};b.context=&f;
+    b.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.reads;
+        if(token<1||token>2)return 0;
+        *out=f.tags[token-1];*n=sizeof(f.tags[0]);return 1;
+    };
+    ServerGestureMetadata md{};md.type="posture";
+    auto apply=[&](unsigned suppress){return api.apply(f.record,sizeof(f.record),f.event,sizeof(f.event),&md,suppress,&b);};
+    auto flag=[&](unsigned bank,unsigned i){return f.tags[bank][i*0x8c+0x84];};
+    assert(apply(1)&&!f.reads&&!f.record[0x1c]&&get(f.record,0x20)==1);
+    md.available=1;md.type="PoStUrE";assert(apply(1)&&f.reads==2&&f.record[0x1c]==1&&get(f.record,0x20)==0);
+    for(unsigned bank=0;bank<2;++bank)assert(flag(bank,0)==0x86&&flag(bank,1)==0x84&&flag(bank,2)==0x86&&flag(bank,3)==0x84);
+    assert(apply(256)&&get(f.record,0x20)==1);
+    md.type="gesture";md.startloop="tail";md.endloop="not_found";
+    assert(apply(1)&&!f.record[0x1c]&&get(f.record,0x20)==1);
+    for(unsigned bank=0;bank<2;++bank)assert(flag(bank,0)==0x86&&flag(bank,2)==0x86&&flag(bank,3)==0x86);
+    // Missing second bank fails before modifying first bank.
+    f.tags[0][0x84]=0x84;put(f.event,0x2f8,0u);md.startloop=nullptr;
+    assert(!apply(0)&&flag(0,0)==0x84);
+    put(f.event,0x2f8,2u);md.endloop=nullptr;assert(apply(0));
+    float mapped=0;
+    // Adjacent locked tags END and tail: linear midpoint.
+    assert(warp.map(f.event,sizeof(f.event),.8125f,&b,&mapped)&&mapped==.625f);
+}
+
 }

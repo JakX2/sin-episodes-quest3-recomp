@@ -11855,6 +11855,43 @@ int __cdecl server_gesture_tag_warp(const void* event,unsigned bytes,float fract
     return std::isfinite(*out)?1:0;
 }
 const ServerGestureTagWarpApi server_gesture_tag_warp_api{version,sizeof(ServerGestureTagWarpApi),&server_gesture_tag_warp};
+int __cdecl server_gesture_metadata_apply(void* record,unsigned rb,void* event,unsigned eb,const ServerGestureMetadata* metadata,
+    unsigned suppressed,const ServerAnimationSceneFrameBindings* b) noexcept {
+    if(rb<0x40||eb<0x308||!hologram_writable(record,0x40)||!hologram_writable(event,0x308)||
+       hologram_read<unsigned>(event,0)!=6||!metadata||!sin_independent::vgui_layout::Readable(metadata,sizeof(*metadata)))return 0;
+    const auto md=*metadata;
+    const bool posture=md.available&&md.type&&vfe_detail::equal(md.type,"posture");
+    if(md.available){
+        const char* names[]={md.startloop?md.startloop:"loop",md.endloop?md.endloop:"end"};
+        void* data[2]{};int counts[2]{};
+        // Resolve/validate both banks before mutating either.
+        for(unsigned bank=0;bank<2;++bank){
+            counts[bank]=hologram_read<int>(event,0x2f0+bank*0x14);
+            if(counts[bank]<0||counts[bank]>4096)return 0;
+            if(!counts[bank])continue;
+            if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage)return 0;
+            const auto token=hologram_read<std::uint32_t>(event,0x2e4+bank*0x14);
+            unsigned n=0;const unsigned need=static_cast<unsigned>(counts[bank])*0x8c;
+            if(!token||!b->storage(b->context,token,&data[bank],&n)||n<need||!hologram_writable(data[bank],need))return 0;
+            for(int i=0;i<counts[bank];++i)
+                if(!std::memchr(static_cast<unsigned char*>(data[bank])+i*0x8c,0,128))return 0;
+        }
+        // 220f7f76..7fdf: startloop bank1 then bank0, endloop same order.
+        // Lookup 2210e190 is case-insensitive and returns first match.
+        for(const auto* name:names)for(int bank=1;bank>=0;--bank){
+            for(int i=0;i<counts[bank];++i){
+                auto* tag=static_cast<unsigned char*>(data[bank])+i*0x8c;
+                if(vfe_detail::equal(reinterpret_cast<const char*>(tag),name)){
+                    tag[0x84]|=2;break;
+                }
+            }
+        }
+    }
+    hologram_write(record,0x1c,static_cast<unsigned char>(posture));
+    hologram_write(record,0x20,posture&&(suppressed&0xff)?0.f:1.f);
+    return 1;
+}
+const ServerGestureMetadataApi server_gesture_metadata_api{version,sizeof(ServerGestureMetadataApi),&server_gesture_metadata_apply};
 int animation_scene_layer(void* actor,unsigned bytes,int layer,const ServerAnimationSceneFrameBindings& h,void*& row) noexcept {
     row=nullptr;
     if(bytes<0x4a4||!sin_independent::vgui_layout::Readable(actor,0x4a4))return 0;
@@ -13960,6 +13997,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcSceneRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcSceneRecordApi)?&server_npc_scene_record_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerGestureMetadataApi=_SiN_GetServerGestureMetadataApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGestureMetadataApi* __cdecl
+SiN_GetServerGestureMetadataApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerGestureMetadataApi)?&server_gesture_metadata_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerGestureTagWarpApi=_SiN_GetServerGestureTagWarpApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGestureTagWarpApi* __cdecl

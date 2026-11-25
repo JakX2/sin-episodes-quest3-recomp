@@ -247,6 +247,12 @@ int main(int argc,char** argv){
         const auto* tagWarp=getTagWarp(1,sizeof(ft::ServerGestureTagWarpApi));
         assert(tagWarp&&!getTagWarp(0,sizeof(ft::ServerGestureTagWarpApi))&&!getTagWarp(1,0));
         ft::test::check_gesture_tag_warp(*tagWarp,*animationFrame);
+        const auto getGestureMetadata=reinterpret_cast<ft::GetServerGestureMetadataApi>(GetProcAddress(server,ft::server_gesture_metadata_export));
+        assert(getGestureMetadata&&!GetProcAddress(client,ft::server_gesture_metadata_export));
+        const auto* gestureMetadata=getGestureMetadata(1,sizeof(ft::ServerGestureMetadataApi));
+        assert(gestureMetadata&&!getGestureMetadata(0,sizeof(ft::ServerGestureMetadataApi))&&!getGestureMetadata(1,0));
+        ft::test::check_gesture_metadata(*gestureMetadata,*tagWarp);
+        std::puts("PASS native gesture metadata lock marking and initial posture fade");
         std::puts("PASS native gesture absolute-tag warp and numeric layer integration");
         std::puts("PASS native gesture and sequence post-init numerical layer frame");
         std::puts("PASS native gesture and sequence admission and layer retirement policy");
