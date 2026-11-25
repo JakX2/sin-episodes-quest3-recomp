@@ -1,5 +1,6 @@
 #pragma once
 #include "native_jessica_script.h"
+#include "scene_cache_codec.h"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -26,7 +27,14 @@ public:
         std::uint32_t metadata_vtable=0;
         unsigned stamp_mode=1;
     };
-    SceneCacheOwner(const cache_npc::SceneMetadataIndexApi& api,const Leaves& leaves) noexcept:
+    struct CodecLeaves {
+        void* context=nullptr;
+        int (__cdecl *sound_index)(void*,const char*,std::uint32_t*) noexcept=nullptr;
+        int (__cdecl *sound_name)(void*,std::uint32_t,const char**) noexcept=nullptr;
+        int (__cdecl *grow)(void*,void* vector,unsigned count) noexcept=nullptr;
+        int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept=nullptr;
+    };
+    SceneCacheOwner(const cache_npc::SceneMetadataIndexApi& api,const Leaves& leaves):
         api_(api),leaves_(leaves){
         put(cache_.data(),0x48,leaves.stamp_mode);
         auto& i=index_;i.context=this;i.metadata_vtable=leaves.metadata_vtable;
@@ -91,6 +99,69 @@ public:
         std::uint32_t key=0;if(!leaves_.filename(leaves_.external.context,name,&key))return false;
         const auto it=lookup_.find(key);if(it==lookup_.end())return false;
         put(rows_[it->second].bytes.data(),8,0xfffffffeu);return true;
+    }
+    // Import only into an empty owner, before NPCs borrow metadata.
+    // Unknown sound names are skipped like original 221ab0a0. The first
+    // subsequent admission resolves current stamps against imported stamps.
+    // On failure clear the partial cache; failed cleanup freezes access.
+    bool import_repository(const scene_cache::Repository& in,const CodecLeaves& codec) noexcept{
+        if(!ready()||pending_||refreshing_||!rows_.empty()||!metadata_.empty()||
+           !codec.sound_index||!codec.grow||!codec.storage||in.records.size()>scene_cache::max_records)return false;
+        const auto fail=[&](){(void)clear();return false;};
+        try{
+            for(const auto& item:in.records){
+                if(!scene_cache::detail::valid_name(item.path)||item.sounds.size()>65535)return fail();
+                std::vector<std::uint32_t> ids;ids.reserve(item.sounds.size());
+                for(const auto& name:item.sounds){
+                    std::uint32_t id=0xffffffffu;
+                    if(!scene_cache::detail::valid_name(name)||!codec.sound_index(codec.context,name.c_str(),&id))return fail();
+                    if(id!=0xffffffffu)ids.push_back(id);
+                }
+                void* row=nullptr;unsigned n=0;const auto count=rows_.size();
+                if(!ensure(item.path.c_str(),&row,&n)||n!=16||rows_.size()!=count+1)return fail(); // duplicate filename handle
+                const auto slot=word(row,12);
+                if(slot>=metadata_.size()||!metadata_[slot])return fail();
+                auto* meta=metadata_[slot].get();put(meta,4,item.duration_bits);
+                if(!ids.empty()){
+                    if(!codec.grow(codec.context,meta+8,static_cast<unsigned>(ids.size()))||
+                       word(meta,0x14)||word(meta,0xc)<ids.size())return fail();
+                    const auto w=word(meta,8);void* dest=nullptr;unsigned extent=0;
+                    if(!w||!codec.storage(codec.context,w,&dest,&extent)||!dest||extent<ids.size()*4)return fail();
+                    std::memcpy(dest,ids.data(),ids.size()*4);put(meta,0x14,static_cast<std::uint32_t>(ids.size()));put(meta,0x18,w);
+                }
+                put(row,4,item.saved_stamp);put(row,8,0xfffffffeu);
+            }
+            return true;
+        }catch(...){return fail();}
+    }
+    // Snapshot names instead of runtime indices; caller encodes/writes
+    // atomically. Preserve existing output on failure.
+    bool snapshot(std::uint32_t checksum,const CodecLeaves& codec,scene_cache::Repository& out) const noexcept{
+        if(!ready()||pending_||refreshing_||!codec.sound_name||!codec.storage)return false;
+        try{
+            scene_cache::Repository tmp;tmp.checksum=checksum;tmp.records.reserve(rows_.size());
+            for(const auto& row:rows_){
+                const auto slot=word(row.bytes.data(),12);
+                if(slot>=metadata_.size()||!metadata_[slot])return false;
+                const auto* meta=metadata_[slot].get();scene_cache::Record item;
+                item.path=row.path;item.saved_stamp=word(row.bytes.data(),4);item.duration_bits=word(meta,4);
+                const auto count=word(meta,0x14),capacity=word(meta,0xc);
+                if(count>65535||count>capacity)return false;
+                if(count){
+                    void* data=nullptr;unsigned extent=0;
+                    if(!codec.storage(codec.context,word(meta,8),&data,&extent)||!data||extent<count*4)return false;
+                    item.sounds.reserve(count);
+                    for(unsigned i=0;i<count;++i){
+                        const char* name=nullptr;
+                        if(!codec.sound_name(codec.context,word(data,i*4),&name)||!name)return false;
+                        std::string copied(name);if(!scene_cache::detail::valid_name(copied))return false;
+                        item.sounds.push_back(std::move(copied));
+                    }
+                }
+                tmp.records.push_back(std::move(item));
+            }
+            out=std::move(tmp);return true;
+        }catch(...){return false;}
     }
     // Borrowed row/metadata pointers become invalid on successful clear.
     // A failed vector release freezes all access; caller must retry clear

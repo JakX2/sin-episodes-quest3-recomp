@@ -4,6 +4,7 @@
 #include "native_npc_dialogue.h"
 #include "test_retail_dialogue_source.h"
 #include "server_script_response_history.h"
+#include "server_scene_cache_owner.h"
 #include "native_server_event_intensity.h"
 #include "native_server_facial_records.h"
 #include "native_server_composed_facial_think.h"
@@ -456,6 +457,84 @@ inline void check_native_vcd_metadata(VcdAuditArena& arena,const NativeVcdRuntim
 )VCD";
     VcdMetadataFixture f(arena,runtime,generation,services,filter,index,"scenes/fixture.vcd",text,sizeof(text)-1);
     assert(f.run(true)&&f.expected_duration==4&&f.expected_count==2&&f.expected_ids[0]==f.expected_ids[1]);
+}
+
+
+inline void check_scene_cache_roundtrip(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
+    const SceneMetadataGenerationApi& generation,const SceneResponseServicesApi& services,const ResponseSceneFilterApi& filter,const SceneMetadataIndexApi& index){
+    using F=ScenePlaybackFixture;
+    using Owner=sin_port::map_host::SceneCacheOwner;
+    namespace codec=sin_port::scene_cache;
+    const char a_text[]=R"VCD(event speak first {
+ time 0 2
+ param Fixture.First
+}
+event speak repeat {
+ time 2 4
+ param Fixture.First
+}
+)VCD";
+    const char b_text[]=R"VCD(event speak second {
+ time 0 1
+ param Fixture.Second
+}
+)VCD";
+    VcdMetadataFixture first(arena,runtime,generation,services,filter,index,"scenes/a.vcd",a_text,sizeof(a_text)-1);
+    VcdMetadataFixture second(arena,runtime,generation,services,filter,index,"scenes/b.vcd",b_text,sizeof(b_text)-1);
+    struct Context {
+        VcdAuditArena* arena;
+        VcdMetadataFixture* files[2];
+        unsigned stamp_reads[2]{},refreshes[2]{};
+        int npc=0;
+        static Context& get(void* p){return *static_cast<Context*>(p);}
+        int id(const char* name)const{return !std::strcmp(name,files[0]->path)?0:!std::strcmp(name,files[1]->path)?1:-1;}
+    } context{&arena,{&first,&second}};
+    Owner::Leaves leaves{};leaves.metadata_vtable=0x12345678;auto& h=leaves.external;h.context=&context;
+    leaves.filename=[](void* p,const char* path,std::uint32_t* id) noexcept -> int{
+        const auto i=Context::get(p).id(path);if(i<0)return 0;*id=static_cast<std::uint32_t>(i+10);return 1;};
+    leaves.release_vector=[](void* p,std::uint32_t w) noexcept -> int{
+        auto& c=Context::get(p);return c.arena->release(c.arena,w);};
+    h.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& c=Context::get(p);if(w!=F::ptr(&c.npc))return 0;*out=&c.npc;*n=sizeof(c.npc);return 1;};
+    h.model_name=[](void*,void*,const char** out) noexcept -> int{*out=nullptr;return 1;};
+    h.expand=[](void*,const char*,const char* name,char* out,unsigned n) noexcept -> int{
+        if(std::strlen(name)>=n)return 0;std::strcpy(out,name);return 1;};
+    h.stamp=[](void* p,const char* path,unsigned mode,std::uint32_t* out) noexcept -> int{
+        auto& c=Context::get(p);const int i=c.id(path);if(i<0||mode!=1)return 0;
+        ++c.stamp_reads[i];*out=c.files[i]->stamp;return 1;};
+    h.refresh=[](void* p,void* meta,const char* path) noexcept -> int{
+        auto& c=Context::get(p);const int i=c.id(path);if(i<0)return 0;auto& f=*c.files[i];++c.refreshes[i];
+        return f.generation.refresh(meta,0x1c,path,&f.generate)==1;};
+    Owner::CodecLeaves io{};io.context=&arena;
+    io.sound_index=[](void*,const char* name,std::uint32_t* out) noexcept -> int{
+        *out=!std::strcmp(name,"Fixture.First")||!std::strcmp(name,"Fixture.Second")?VcdMetadataFixture::sound_id(name):0xffffffffu;return 1;};
+    io.sound_name=[](void*,std::uint32_t id,const char** out) noexcept -> int{
+        if(id==VcdMetadataFixture::sound_id("Fixture.First"))*out="Fixture.First";
+        else if(id==VcdMetadataFixture::sound_id("Fixture.Second"))*out="Fixture.Second";
+        else return 0;return 1;};
+    io.grow=[](void* p,void* v,unsigned n) noexcept -> int{return VcdAuditArena::grow(p,v,n,4);};
+    io.storage=&VcdAuditArena::storage;
+    Owner owner(index,leaves);ResponseSceneFilterBindings admit{};assert(services.adapt(&owner.bindings(),&admit)==1);
+    alignas(4) unsigned char exp[0x7c]{};F::put(exp,4,F::ptr(&context.npc));
+    auto allow=[&](const char* path){unsigned result=0;return filter.allow(exp,sizeof(exp),&admit,3,path,&result)==1&&result==1;};
+    assert(allow(first.path)&&allow(second.path)&&owner.size()==2&&owner.dirty()&&arena.live.size()==2);
+    assert(context.refreshes[0]==1&&context.refreshes[1]==1&&first.expected_duration==4&&second.expected_duration==1);
+    codec::Repository image;assert(owner.snapshot(0x1234,io,image)&&image.records.size()==2);
+    assert(image.records[0].duration()==4&&image.records[1].duration()==1&&image.records[0].sounds.size()==2&&image.records[1].sounds.size()==1);
+    assert(image.records[0].sounds[0]=="Fixture.First"&&image.records[0].sounds[1]=="Fixture.First");
+    std::vector<unsigned char> bytes;assert(codec::encode(image,bytes)==codec::Result::Ok);
+    assert(owner.clear()&&arena.live.empty()&&!owner.size()&&!owner.dirty());
+    codec::Repository loaded;assert(codec::decode(bytes.data(),bytes.size(),0x1234,loaded)==codec::Result::Ok);
+    loaded.records[0].sounds.push_back("unknown.sound");
+    assert(owner.import_repository(loaded,io)&&owner.size()==2&&!owner.dirty()&&arena.live.size()==2);
+    assert(!owner.import_repository(loaded,io));
+    assert(allow(first.path)&&allow(second.path)&&context.refreshes[0]==1&&context.refreshes[1]==1);
+    assert(context.stamp_reads[0]==2&&context.stamp_reads[1]==2);
+    codec::Repository saved;std::vector<unsigned char> after;
+    assert(owner.snapshot(0x1234,io,saved)&&codec::encode(saved,after)==codec::Result::Ok&&after==bytes);
+    ++second.stamp;assert(owner.invalidate(second.path)&&allow(second.path)&&context.refreshes[1]==2&&context.refreshes[0]==1);
+    assert(allow(first.path)&&owner.dirty()&&owner.clear()&&arena.live.empty());
+    loaded.records.push_back(loaded.records[0]);assert(!owner.import_repository(loaded,io)&&owner.ready()&&!owner.size()&&arena.live.empty());
 }
 
 // Exercise the composed runtime through the named NPC engine boundary,
