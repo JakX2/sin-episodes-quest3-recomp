@@ -1,0 +1,3 @@
+# Phase 951: parsed response declarations to original-layout records
+
+Create owned PE32-layout arrays from Phase950 parsed declarations using Phase946/948 audited offsets and resolver-backed 32-bit handles. Preserve group mutable state, inline criteria, compiled matchers, rule references, rule names and enum values. No raw pointers, retail tree metadata or CResponseSystem vtable claimed. Build transaction publishes only on success. Reject unresolved soundlevel conversion (none in audited corpus). Synthetic CTest uses parsed script rather than manual rows, calls original scoring/group algorithms and tests rule disable, scene selection and failed rebuild. Native finder binding and owner-only real corpus execution remain pending. No original assets committed.
