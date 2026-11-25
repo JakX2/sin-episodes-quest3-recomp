@@ -2,6 +2,7 @@
 #include <cstring>
 #include <cmath>
 #include <limits>
+#include <initializer_list>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl
 SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
@@ -850,6 +851,80 @@ int __cdecl grunt_memory_report(void* actor,unsigned bytes,void* target,const fl
     }
     return 1;
 }
+int __cdecl grunt_enemy_choice_gate(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemyChoiceGateBindings* b,ServerNpcGruntEnemyChoiceGateResult* out) noexcept{
+    if(!out)return 0;*out={};out->condition=-1;
+    if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->relation.original_vtable)||
+       b->memory.count>sin_independent::kEntityHandleCapacity||(b->memory.count&&!b->memory.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->memory.entries,b->memory.count);
+    void* target=registry.Resolve(read<unsigned>(actor,0x8a0));void* memory=nullptr;unsigned n=0;
+    if(!memory_storage(&b->memory.storage,read<unsigned>(actor,0x984),0x40,memory,n))return 0;
+    out->counter=read<unsigned>(memory,0x3c);
+    auto choose=[&](unsigned reason){out->choose=1;out->reason=reason;return 1;};
+    auto sync=[&](){write(actor,0x8c0,out->counter);out->counter_written=1;};
+    if(!target){sync();return choose(NpcChoiceNoEnemy);}
+    // Retail changed-counter branch returns immediately without synchronizing.
+    if(read<unsigned>(actor,0x8c0)!=out->counter)return choose(NpcChoiceMemoryChanged);
+    sync();
+    unsigned key=0;if(!memory_key(b->memory,target,key))return 0;
+    ServerNpcEnemyMemoryControlResult cr{};
+    if(!memory_control(memory,n,key,NpcMemoryEluded,0,0,&b->memory.storage,&cr))return 0;
+    if(cr.value)return choose(NpcChoiceEluded);
+    auto relation=b->relation;relation.entries=b->memory.entries;relation.count=b->memory.count;
+    ServerNpcGruntRelationResult rr{};
+    if(!grunt_relation(actor,bytes,target,true,&relation,&rr))return 0;
+    if(rr.disposition!=1){
+        if(!grunt_relation(actor,bytes,target,true,&relation,&rr))return 0;
+        if(rr.disposition!=2)return choose(NpcChoiceDisposition);
+    }
+    ServerNpcGruntValidityResult vr{};
+    if(!grunt_valid(actor,bytes,target,&relation,&vr))return 0;
+    if(!vr.valid)return choose(NpcChoiceInvalid);
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto test=[&](int id,unsigned& value){
+        ServerNpcConditionResult r{};++out->condition_tests;
+        if(!cond->test(actor,bytes,id,NpcConditionCurrent,&b->conditions,&r))return false;
+        value=r.value;return true;
+    };
+    for(int id:{7,9,0x20,8}){
+        unsigned yes=0;if(!test(id,yes))return 0;
+        if(yes){out->condition=id;return choose(NpcChoiceCondition);}
+    }
+    unsigned extent=0;if(!b->extent||!b->extent(b->context,target,&extent)||extent<0x90)return 0;
+    if(read<int>(target,0x8c)!=0){
+        if(read<std::uint8_t>(actor,0x8b0)){
+            const float deadline=read<float>(actor,0x8ac);if(!std::isfinite(deadline))return 0;
+            if(static_cast<double>(now)-deadline>-.001)return choose(NpcChoiceDeathTimer);
+        }else{
+            float delay=read<float>(actor,0x8b4),maximum=read<float>(actor,0x8b8);
+            if(!std::isfinite(delay)||!std::isfinite(maximum))return 0;
+            if(maximum!=0.f&&(!b->random||!b->random(b->context,delay,maximum,&delay)))return 0;
+            const float deadline=static_cast<float>(static_cast<double>(now)+delay);
+            if(!std::isfinite(deadline))return 0;
+            write(actor,0x8ac,deadline);write<std::uint8_t>(actor,0x8b0,1);out->death_timer_started=1;
+        }
+    }
+    ServerNpcEnemyMemoryLookup lookup{};
+    if(!memory_lookup(memory,n,key,false,&b->memory.storage,&lookup))return 0;
+    void* record=nullptr;if(lookup.record&&!memory_record(&b->memory.storage,lookup,0x34,record))return 0;
+    const float periodic=read<float>(actor,0x8bc);if(!std::isfinite(periodic))return 0;
+    if(static_cast<double>(now)-periodic>-.001){
+        const float deadline=static_cast<float>(static_cast<double>(now)+1.5);
+        if(!std::isfinite(deadline))return 0;
+        write(actor,0x8bc,deadline);out->periodic_timer_written=1;
+        unsigned yes=0;if(!test(0x21,yes))return 0;
+        if(yes){out->condition=0x21;return choose(NpcChoicePeriodicCondition);}
+        if(!record){sync();return choose(NpcChoiceMissingRecord);}
+        const float first=read<float>(record,0x30),last=read<float>(record,0x1c);
+        if(!std::isfinite(first)||!std::isfinite(last))return 0;
+        if(first==-std::numeric_limits<float>::max())return choose(NpcChoiceNeverSeen);
+        if(static_cast<double>(now)-last>10.)return choose(NpcChoiceOldSight);
+    }
+    if(!record){sync();return choose(NpcChoiceMissingRecord);}
+    const float eligibility=read<float>(record,0x28);if(!std::isfinite(eligibility))return 0;
+    if(eligibility>=now){sync();return choose(NpcChoiceEligibility);}
+    return 1;
+}
+const ServerNpcGruntEnemyChoiceGateApi choice_gate_api{1,sizeof(ServerNpcGruntEnemyChoiceGateApi),&grunt_enemy_choice_gate};
 const ServerNpcGruntMemoryReportApi grunt_memory_report_api{1,sizeof(ServerNpcGruntMemoryReportApi),&grunt_memory_report};
 const ServerNpcGruntBestEnemyApi grunt_best_api{1,sizeof(ServerNpcGruntBestEnemyApi),&grunt_best_enemy};
 const ServerNpcGruntRelationApi relation_api{1,sizeof(ServerNpcGruntRelationApi),&grunt_relation,&grunt_valid};
@@ -978,4 +1053,10 @@ SiN_GetServerNpcGruntBestEnemyApi(std::uint32_t version,std::uint32_t size) noex
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntMemoryReportApi* __cdecl
 SiN_GetServerNpcGruntMemoryReportApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntMemoryReportApi)?&grunt_memory_report_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEnemyChoiceGateApi=_SiN_GetServerNpcGruntEnemyChoiceGateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEnemyChoiceGateApi* __cdecl
+SiN_GetServerNpcGruntEnemyChoiceGateApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEnemyChoiceGateApi)?&choice_gate_api:nullptr;
 }

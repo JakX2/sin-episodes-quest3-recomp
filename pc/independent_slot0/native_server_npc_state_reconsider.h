@@ -334,4 +334,27 @@ struct ServerNpcGruntMemoryReportApi {
     int (__cdecl *report)(void*,unsigned,void*,const float[3],void*,float,const ServerNpcGruntMemoryReportBindings*,ServerNpcGruntMemoryReportResult*) noexcept;
 };
 using GetServerNpcGruntMemoryReportApi=const ServerNpcGruntMemoryReportApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_enemy_choice_gate_export[]="SiN_GetServerNpcGruntEnemyChoiceGateApi";
+enum ServerNpcEnemyChoiceReason : unsigned {
+    NpcChoiceRetain=0,NpcChoiceNoEnemy,NpcChoiceMemoryChanged,NpcChoiceEluded,NpcChoiceDisposition,NpcChoiceInvalid,NpcChoiceCondition,NpcChoiceDeathTimer,NpcChoicePeriodicCondition,NpcChoiceNeverSeen,NpcChoiceOldSight,NpcChoiceMissingRecord,NpcChoiceEligibility
+};
+struct ServerNpcGruntEnemyChoiceGateBindings {
+    ServerNpcGruntRelationBindings relation;
+    ServerNpcEnemyMemoryQueryBindings memory;
+    ServerNpcConditionMapBindings conditions;
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *random)(void*,float,float,float*) noexcept;
+};
+struct ServerNpcGruntEnemyChoiceGateResult {
+    unsigned choose,reason,condition_tests,counter_written,death_timer_started,periodic_timer_written;
+    int condition;
+    std::uint32_t counter;
+};
+struct ServerNpcGruntEnemyChoiceGateApi {
+    std::uint32_t version,size;
+    // Original +524=2203e870 on all eight Grunt-family classes.
+    int (__cdecl *query)(void*,unsigned,float,const ServerNpcGruntEnemyChoiceGateBindings*,ServerNpcGruntEnemyChoiceGateResult*) noexcept;
+};
+using GetServerNpcGruntEnemyChoiceGateApi=const ServerNpcGruntEnemyChoiceGateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
