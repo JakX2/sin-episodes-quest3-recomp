@@ -130,6 +130,56 @@ int __cdecl apply(void* watcher,unsigned bytes,void* row,unsigned row_bytes,floa
     };
     return interpolate->apply(watcher,bytes,row,row_bytes,time,&b,wrote)&&c.ok;
 }
+
+// Original 240c2230: unlike interpolation prune, retain first three
+// entries irrespective of timestamps and recycle any later <= cutoff.
+int __cdecl trim(void* watcher,unsigned bytes,ClientOverlayPool* p,const ClientOverlayPoolStorage* s,float cutoff,unsigned* removed) noexcept {
+    if(!removed)return 0;
+    *removed=0;
+    if(!std::isfinite(cutoff)||!valid(watcher,bytes,p,s))return 0;
+    unsigned index=0;
+    for(auto w=p->head;w;){
+        auto* n=node(*s,w);const auto next=n->next;
+        if(index>=3&&n->time<=cutoff){unlink_recycle(*p,*s,w);++*removed;}
+        ++index;w=next;
+    }
+    return 1;
+}
+bool bound_row(void* watcher,unsigned bytes,const void* row,unsigned row_bytes) noexcept {
+    return watcher&&bytes>=0x44&&row&&row_bytes>=sizeof(ClientOverlaySample)&&
+        read<const void*>(watcher,4)==row&&read<int>(watcher,0x38)==1;
+}
+// Original 240c21c0/240c21e0. Caller provides the observed original
+// current and network clocks; the sample timestamp is independent.
+int __cdecl capture(void* watcher,unsigned bytes,const void* row,unsigned row_bytes,float sample_time,float current_time,float network_time,ClientOverlayPool* p,const ClientOverlayPoolStorage* s,unsigned* removed) noexcept {
+    if(!removed)return 0;
+    *removed=0;
+    if(!bound_row(watcher,bytes,row,row_bytes)||!std::isfinite(sample_time)||
+       !std::isfinite(current_time)||!std::isfinite(network_time))return 0;
+    const float delay=read<float>(watcher,0x3c);
+    const float cutoff=static_cast<float>(static_cast<double>(current_time)-delay-2.);
+    const auto sample=read<ClientOverlaySample>(row,0);
+    if(!std::isfinite(delay)||!std::isfinite(cutoff)||!record(watcher,bytes,p,s,sample_time,&sample,true))return 0;
+    write(watcher,8,sample);write(watcher,0x28,network_time);
+    return trim(watcher,bytes,p,s,cutoff,removed);
+}
+// Original 240c1250: clear, three ordinary records at the same current
+// clock, copy networked layer to snapshot. Preserve the network time.
+int __cdecl reset(void* watcher,unsigned bytes,const void* row,unsigned row_bytes,float current_time,ClientOverlayPool* p,const ClientOverlayPoolStorage* s) noexcept {
+    if(!bound_row(watcher,bytes,row,row_bytes)||!std::isfinite(current_time)||!valid(watcher,bytes,p,s)||s->capacity<3)return 0;
+    const auto sample=read<ClientOverlaySample>(row,0);
+    if(!finite(sample))return 0;
+    unsigned removed=0;
+    if(!clear(watcher,bytes,p,s,&removed))return 0;
+    for(int i=0;i<3;++i)if(!record(watcher,bytes,p,s,current_time,&sample,false))return 0;
+    write(watcher,8,sample);return 1;
+}
+// Original 240c11d0: restore all 32 bytes, not just interpolated fields.
+int __cdecl restore(void* watcher,unsigned bytes,void* row,unsigned row_bytes) noexcept {
+    if(!bound_row(watcher,bytes,row,row_bytes))return 0;
+    const auto snapshot=read<ClientOverlaySample>(watcher,8);write(row,0,snapshot);return 1;
+}
+const ClientOverlayCaptureApi capture_api{1,sizeof(ClientOverlayCaptureApi),&trim,&capture,&reset,&restore};
 const ClientOverlayPoolApi api{1,sizeof(ClientOverlayPoolApi),&initialize,&record,&prune,&clear,&apply};
 }
 }
@@ -138,4 +188,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOve
 SiN_GetClientOverlayPoolApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ClientOverlayPoolApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetClientOverlayCaptureApi=_SiN_GetClientOverlayCaptureApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayCaptureApi* __cdecl
+SiN_GetClientOverlayCaptureApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ClientOverlayCaptureApi)?&capture_api:nullptr;
 }

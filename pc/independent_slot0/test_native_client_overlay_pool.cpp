@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 using namespace sin_port::native_weapon_tables;
 static bool close_float(float a,float b){return std::fabs(a-b)<.00001f;}
 struct Fixture {
@@ -72,6 +73,39 @@ int main(int argc,char** argv){
     free.previous=oldprev;
     assert(f.api->clear(f.watcher,sizeof(f.watcher),&f.p,&f.s,&removed)&&removed==6);
     assert(!f.api->prune(f.watcher,0,&f.p,&f.s,9,&removed));
+
+    // Native virtual capture/reset/restore numerical path.
+    auto cg=reinterpret_cast<GetClientOverlayCaptureApi>(GetProcAddress(client,client_overlay_capture_export));
+    assert(cg&&!GetProcAddress(server,client_overlay_capture_export)&&!cg(0,sizeof(ClientOverlayCaptureApi))&&!cg(1,0));
+    auto* capture=cg(1,sizeof(ClientOverlayCaptureApi));assert(capture);
+    for(int i=1;i<=7;++i)f.record(static_cast<float>(i));
+    f.row={17,.1f,.6f,3,0xab,.2f,0x1234,0x5678};
+    const auto captured=f.row;
+    assert(capture->capture(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),8,8.25f,9.5f,&f.p,&f.s,&removed)&&removed==5);
+    const float latest[]={8,7,6};f.order(latest,3);
+    float network=0;std::memcpy(&network,f.watcher+0x28,4);
+    assert(network==9.5f&&!std::memcmp(f.watcher+8,&captured,sizeof(captured)));
+    // Interpolation overwrites the row but not the captured network sample.
+    f.put(0x2c,0x11);
+    assert(f.api->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),7.75f,&f.p,&f.s,&wrote,&removed)&&wrote==1);
+    assert(std::memcmp(&f.row,&captured,sizeof(captured))!=0);
+    assert(capture->restore(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row))&&!std::memcmp(&f.row,&captured,sizeof(captured)));
+    const auto saved_pool=f.p;
+    assert(!capture->capture(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),9,std::numeric_limits<float>::infinity(),10,&f.p,&f.s,&removed)&&!removed&&!std::memcmp(&saved_pool,&f.p,sizeof(saved_pool)));
+    // Reset preserves +28, rebuilds exactly three duplicate records.
+    assert(capture->reset(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),12,&f.p,&f.s));
+    const float reset_times[]={12,12,12};f.order(reset_times,3);
+    for(auto w=f.p.head;w;w=f.node(w).next)assert(!std::memcmp(&f.node(w).sample,&captured,sizeof(captured)));
+    std::memcpy(&network,f.watcher+0x28,4);assert(network==9.5f);
+    assert(capture->trim(f.watcher,sizeof(f.watcher),&f.p,&f.s,99,&removed)&&!removed);
+    // Timestamp equality is included in recording trim, not interpolation prune.
+    assert(f.api->clear(f.watcher,sizeof(f.watcher),&f.p,&f.s,&removed)&&removed==3);
+    for(int i=1;i<=6;++i)f.record(static_cast<float>(i));
+    assert(capture->trim(f.watcher,sizeof(f.watcher),&f.p,&f.s,3,&removed)&&removed==3);
+    const float trim_times[]={6,5,4};f.order(trim_times,3);
+    ClientOverlaySample unrelated{};
+    assert(!capture->restore(f.watcher,sizeof(f.watcher),&unrelated,sizeof(unrelated)));
+    assert(f.api->clear(f.watcher,sizeof(f.watcher),&f.p,&f.s,&removed)&&removed==3);
     FreeLibrary(server);FreeLibrary(client);
     std::puts("PASS native bounded overlay history recording, recycled node pool, retention and interpolation");
 }

@@ -24,4 +24,15 @@ struct ClientOverlayPoolApi {
     int (__cdecl *apply)(void* watcher,unsigned bytes,void* row,unsigned row_bytes,float time,ClientOverlayPool*,const ClientOverlayPoolStorage*,int* wrote,unsigned* removed) noexcept;
 };
 using GetClientOverlayPoolApi=const ClientOverlayPoolApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Original capture/reset/restore orchestration for a single overlay watcher.
+// Kept as a separate export so the Phase1014 pool API ABI remains unchanged.
+inline constexpr char client_overlay_capture_export[]="SiN_GetClientOverlayCaptureApi";
+struct ClientOverlayCaptureApi {
+    std::uint32_t version,size;
+    int (__cdecl *trim)(void* watcher,unsigned bytes,ClientOverlayPool*,const ClientOverlayPoolStorage*,float cutoff,unsigned* removed) noexcept;
+    int (__cdecl *capture)(void* watcher,unsigned bytes,const void* row,unsigned row_bytes,float sample_time,float current_time,float network_time,ClientOverlayPool*,const ClientOverlayPoolStorage*,unsigned* removed) noexcept;
+    int (__cdecl *reset)(void* watcher,unsigned bytes,const void* row,unsigned row_bytes,float current_time,ClientOverlayPool*,const ClientOverlayPoolStorage*) noexcept;
+    int (__cdecl *restore)(void* watcher,unsigned bytes,void* row,unsigned row_bytes) noexcept;
+};
+using GetClientOverlayCaptureApi=const ClientOverlayCaptureApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
