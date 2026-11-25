@@ -11633,12 +11633,40 @@ int __cdecl retail_facial_record_begin(void* p,void* actor,void* record,std::uin
     // CBaseFlex 220f9640 accepts only switch types 3..10. CAI_BaseActor
     // 2202bcc0 intercepts 8 and 16, but delegates ordinary expression (2).
     // Successful transport with false AL is an ordinary rejected start.
-    if(hologram_read<unsigned>(event,0)==2){*out=0;return 1;}
+    const auto type=hologram_read<unsigned>(event,0);
+    if(type==2){*out=0;return 1;}
+    // 220f970c[type5-3] -> 220f96fd, unconditional true, no fade.
+    if(type==5){*out=1;return 1;}
     return facial_record_begin(p,actor,record,parsed,event,ca,target,out);
+}
+int __cdecl retail_facial_record_stop(void* p,void* actor,void* record,int arg,int zero,unsigned* out) noexcept {
+    const auto& cfg=facial_record_config(p);const auto& h=cfg.host;
+    if(!sin_independent::vgui_layout::Readable(record,0x40)||!hologram_writable(out,4))return 0;
+    const auto token=hologram_read<std::uint32_t>(record,0);
+    if(token){
+        void* event=nullptr;unsigned n=0;
+        if(!h.storage(h.context,token,&event,&n)||n<4||!sin_independent::vgui_layout::Readable(event,4))return 0;
+        if(hologram_read<unsigned>(event,0)==5){
+            // 220f597c only calls 221b6a80 when low byte of third arg is nonzero.
+            // The sound effect remains hosted; original AL is always true.
+            if(zero&0xff){
+                unsigned ignored=0;
+                if(!h.stop||!h.stop(h.context,actor,record,arg,zero,&ignored))return 0;
+            }
+            *out=1;return 1;
+        }
+    }
+    return facial_record_stop(p,actor,record,arg,zero,out);
+}
+int __cdecl retail_facial_record_check(void* p,void* actor,void* record,float time,std::uint32_t parsed,void* event,unsigned* out) noexcept {
+    if(!sin_independent::vgui_layout::Readable(record,0x40)||!sin_independent::vgui_layout::Readable(event,4)||!hologram_writable(out,4))return 0;
+    // 220f59f0 only special-cases type4; NPC check intercepts type16.
+    if(hologram_read<unsigned>(event,0)==5){*out=1;return 1;}
+    return facial_record_check(p,actor,record,time,parsed,event,out);
 }
 int __cdecl server_retail_facial_record_adapt(const ServerFacialRecordBindings* cfg,ActorEventRecordBindings* out) noexcept {
     if(!server_facial_record_adapt(cfg,out))return 0;
-    out->begin=&retail_facial_record_begin;return 1;
+    out->begin=&retail_facial_record_begin;out->stop=&retail_facial_record_stop;out->check=&retail_facial_record_check;return 1;
 }
 const ServerFacialRecordApi server_retail_facial_record_api{version,sizeof(ServerFacialRecordApi),&server_retail_facial_record_adapt};
 
@@ -11759,7 +11787,7 @@ int __cdecl npc_scene_record_stop(void* p,void* actor,void* record,int arg,int z
         const int result=npc_weapon_scene_noop(record,0x40,event,n,out);
         if(result)return result==1;
     }
-    return facial_record_stop(&cfg.facial,actor,record,arg,zero,out);
+    return retail_facial_record_stop(&cfg.facial,actor,record,arg,zero,out);
 }
 int __cdecl npc_scene_record_check(void* p,void* actor,void* record,float time,std::uint32_t parsed,void* event,unsigned* out) noexcept {
     auto& cfg=npc_scene_record_config(p);
@@ -11769,7 +11797,7 @@ int __cdecl npc_scene_record_check(void* p,void* actor,void* record,float time,s
         return cfg.facial.extent(cfg.facial.host.context,actor,&extent)&&
             npc_weapon_scene_check(actor,extent,record,0x40,event,0x3c0,time,&cfg.weapons,out)==1;
     }
-    return facial_record_check(&cfg.facial,actor,record,time,parsed,event,out);
+    return retail_facial_record_check(&cfg.facial,actor,record,time,parsed,event,out);
 }
 int __cdecl npc_scene_record_adapt(const ServerNpcSceneRecordBindings* cfg,ActorEventRecordBindings* out) noexcept {
     if(!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||!hologram_writable(out,sizeof(*out)))return 0;
