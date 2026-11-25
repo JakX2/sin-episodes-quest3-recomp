@@ -286,6 +286,55 @@ inline void check_native_layer_network(const ServerAnimationLayerReserveApi& res
     std::puts("PASS native server animation layer lifecycle through actual paired overlay send/receive proxies");
 }
 
+
+inline void check_composed_animation_frame(const ServerComposedAnimationFrameApi& api,const ServerAnimationLayerOwnerApi& owner){
+    using F=ScenePlaybackFixture;
+    struct Fixture{
+        alignas(4) unsigned char actor[0xe0c]{},rows[0x80]{};
+        unsigned durations=0,thresholds=0,invalidations=0,caches=0,rates=0,transitions=0;
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+    } f;
+    ServerComposedAnimationFrameBindings b{};b.context=&f;b.base.context=&f;b.layers.context=&f;b.layers.vectors.context=&f;
+    b.layers.vectors.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);if(w!=F::ptr(f.rows))return 0;*out=f.rows;*n=sizeof(f.rows);return 1;};
+    b.layers.vectors.resize=[](void*,std::uint32_t,unsigned,void**,unsigned*) noexcept -> int{return 0;};
+    b.base.vectors=b.layers.vectors;
+    b.base.duration=[](void* p,void*,int seq,double* out) noexcept -> int{
+        assert(seq==9);++Fixture::self(p).durations;*out=2.;return 1;};
+    b.base.finish_threshold=[](void* p,void*,int seq,double* out) noexcept -> int{
+        assert(seq==9);++Fixture::self(p).thresholds;*out=.9;return 1;};
+    b.base.movement_distance=[](void*,void*,int seq,double* out) noexcept -> int{assert(seq==9);*out=120.;return 1;};
+    b.base.invalidate=[](void* p,void* actor,unsigned flags) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&flags==8);++f.invalidations;return 1;};
+    b.base.cache=[](void* p,void*,std::uint32_t handle,float) noexcept -> int{
+        auto& f=Fixture::self(p);assert(handle==0&&f.invalidations==f.caches+1);++f.caches;return 1;};
+    b.layers.cycle_rate=[](void* p,void* actor,int seq,double* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&seq==7&&f.caches==f.invalidations&&f.caches);
+        ++f.rates;*out=1.;return 1;};
+    F::put(f.actor,0x494,F::ptr(f.rows));F::put(f.actor,0x498,2);F::put(f.actor,0x4a0,2);F::put(f.actor,0x4a4,F::ptr(f.rows));
+    F::put(f.rows,0x34,15);F::put(f.rows+0x40,0x34,15);int layer=-1;
+    assert(owner.allocate(f.actor,sizeof(f.actor),7,0,10,1,&b.layers.vectors,&layer)&&layer==0);
+    F::fl(f.actor,0x28,9.875f);F::fl(f.actor,0x2c,10);F::fl(f.actor,0x3c0,2);
+    F::put(f.actor,0x3ec,9);F::fl(f.actor,0x3e8,.5f);f.actor[0x1f0]=1;
+    F::put(f.actor,0xe08,7);F::put(f.actor,0x390,8);
+    auto frame=[&](float now){return api.run(f.actor,sizeof(f.actor),now,1,&b);};
+    assert(!frame(10.125f)&&F::word(f.actor,0xe08)==7&&!f.durations&&!f.rates);
+    b.width_transition=[](void* p,void* actor) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&!(F::word(actor,0xe08)&3));++f.transitions;
+        F::put(actor,0x390,F::word(actor,0x390)&~8u);return 1;};
+    assert(frame(10.125f)&&f.transitions==1&&f.durations==2&&f.thresholds==1&&f.caches==1&&f.rates==1);
+    assert(F::word(f.actor,0x3e8)==0x3f200000u&&F::word(f.actor,0x394)==0x42700000u&&F::word(f.rows,0xc)==0x3e000000u);
+    assert(f.actor[0x200]&&F::word(f.actor,0xe08)==4);
+    b.width_transition=nullptr;
+    assert(frame(10.125f)&&f.durations==2&&f.caches==1&&f.rates==2&&F::word(f.rows,0xc)==0x3e800000u);
+    assert(owner.blend_out(f.actor,sizeof(f.actor),0,.125f,0,&b.layers.vectors));
+    assert(frame(10.25f)&&f.caches==2&&f.rates==3&&!F::word(f.rows,0x18));
+    assert(frame(10.375f)&&f.caches==3&&f.rates==3&&F::word(f.rows,0)==0x20);
+    assert(frame(10.5f)&&f.caches==4&&f.rates==3&&!F::word(f.rows,0));
+    assert(f.actor[0x3e0]&&std::fabs(VcdAuditArena::read_float(f.actor,0x3e8)-.999f)<.000001f);
+    std::puts("PASS composed NPC base sequence and overlay advancement with native fade retirement");
+}
+
 inline void check_animation_scene_frame(const ServerAnimationSceneFrameApi& api){
     struct Fixture {alignas(4) unsigned char actor[0x4a4]{},row[0x40]{},record[0x40]{},event[0x3c0]{};unsigned reads{},warps{};float fraction{},mapped=.75f;} f;
     auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};

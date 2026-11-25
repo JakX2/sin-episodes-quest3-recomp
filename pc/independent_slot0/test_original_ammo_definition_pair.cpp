@@ -257,6 +257,11 @@ int main(int argc,char** argv){
         const auto* baseCycle=getBaseCycle(1,sizeof(ft::ServerBaseAnimationCycleApi));
         assert(baseCycle&&!getBaseCycle(0,sizeof(ft::ServerBaseAnimationCycleApi))&&!getBaseCycle(1,0));
         ft::test::check_base_animation_cycle(*baseCycle);
+        const auto getComposedFrame=reinterpret_cast<ft::GetServerComposedAnimationFrameApi>(GetProcAddress(server,ft::server_composed_animation_frame_export));
+        assert(getComposedFrame&&!GetProcAddress(client,ft::server_composed_animation_frame_export));
+        const auto* composedFrame=getComposedFrame(1,sizeof(ft::ServerComposedAnimationFrameApi));
+        assert(composedFrame&&!getComposedFrame(0,sizeof(ft::ServerComposedAnimationFrameApi))&&!getComposedFrame(1,0));
+        ft::test::check_composed_animation_frame(*composedFrame,*layerOwner);
         const auto getLayerReserve=reinterpret_cast<ft::GetServerAnimationLayerReserveApi>(GetProcAddress(server,ft::server_animation_layer_reserve_export));
         assert(getLayerReserve&&!GetProcAddress(client,ft::server_animation_layer_reserve_export));
         const auto* layerReserve=getLayerReserve(1,sizeof(ft::ServerAnimationLayerReserveApi));
