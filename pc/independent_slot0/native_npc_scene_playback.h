@@ -1409,6 +1409,30 @@ struct OwnedChoreographyApi {
 };
 using GetOwnedChoreographyApi=const OwnedChoreographyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char named_scene_load_export[]="SiN_GetNamedSceneLoadApi";
+inline constexpr char scene_raw_cache_ensure_export[]="SiN_GetSceneRawCacheEnsureApi";
+struct SceneRawCacheEnsureBindings {
+    void* context;
+    // Original raw filename symbol table, normalized key; ffff is invalid.
+    int (__cdecl *symbol)(void*,const char*,std::uint16_t*) noexcept;
+    // Lookup only. A normal miss returns null and zero extent.
+    int (__cdecl *find)(void*,std::uint16_t,void**,unsigned*) noexcept;
+    int (__cdecl *touch)(void*,std::uint32_t) noexcept;
+    // Original resource manager call 222725d0 receives 0x1390.
+    int (__cdecl *prepare)(void*,unsigned) noexcept;
+    int (__cdecl *reserve)(void*,std::uint32_t*) noexcept;
+    // Load the original two-word raw payload and publish to manager.
+    int (__cdecl *create)(void*,std::uint32_t,const char*,std::uint32_t*) noexcept;
+    // Roll back an unpublished resource on failed tree insertion. Host owns
+    // partial create failure and must not leave an inaccessible resource.
+    int (__cdecl *discard)(void*,std::uint32_t) noexcept;
+    int (__cdecl *insert)(void*,std::uint16_t,std::uint32_t) noexcept;
+};
+struct SceneRawCacheEnsureApi {
+    std::uint32_t version,size;
+    // 221ad090. Callback-compatible with NamedSceneCacheBindings.ensure.
+    int (__cdecl *ensure)(void*,const char*) noexcept;
+};
+using GetSceneRawCacheEnsureApi=const SceneRawCacheEnsureApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct NamedSceneCacheBindings {
     void* context;
     // Original 221ad090 prefetch, then symbol/tree lookup. FFFFFFFF is absent.
