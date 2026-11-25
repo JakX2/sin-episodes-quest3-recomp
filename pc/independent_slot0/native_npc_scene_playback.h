@@ -1004,6 +1004,22 @@ struct ResponseHistoryTreeApi {
     int (__cdecl *adapt)(const ResponseHistoryTreeBindings*,ResponseHistoryBindings*) noexcept;
 };
 using GetResponseHistoryTreeApi=const ResponseHistoryTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_history_managed_export[]="SiN_GetResponseHistoryManagedApi";
+struct ResponseHistoryManagedBindings {
+    ResponseHistoryTreeBindings tree; // notify unused
+    TalkManagerRuntimeBindings manager;
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *kind)(void*,void* actor,SceneSpeechActorKind*) noexcept;
+};
+struct ResponseHistoryManagedApi {
+    std::uint32_t version,size;
+    // Native indexed history plus original sink+0 notification:
+    // Jessica routes to the ally speech manager, other verified classes no-op.
+    // Keep bindings and manager session alive, serialize owner and manager.
+    int (__cdecl *adapt)(const ResponseHistoryManagedBindings*,ResponseHistoryBindings*) noexcept;
+};
+using GetResponseHistoryManagedApi=const ResponseHistoryManagedApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;

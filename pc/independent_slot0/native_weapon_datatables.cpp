@@ -7536,11 +7536,14 @@ int __cdecl response_tree_entry(void* p,void* exp,int index,void** out,unsigned*
        t.get(static_cast<unsigned>(index),0)==static_cast<unsigned>(index))return 0;
     *out=t.rows+static_cast<unsigned>(index)*28;*bytes=28;return 1;
 }
+bool response_tree_bindings_ready(const ResponseHistoryTreeBindings* b) noexcept {
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&
+       b->memory.storage&&b->memory.resize&&b->symbols.insensitive&&b->symbols.storage&&
+       b->symbols.grow_memory&&b->symbols.allocate&&b->symbols.release_unpublished&&
+       b->symbols.sentinel&&b->clock;
+}
 int __cdecl response_tree_adapt(const ResponseHistoryTreeBindings* b,ResponseHistoryBindings* out) noexcept {
-    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!hologram_writable(out,sizeof(*out))||
-       !b->memory.storage||!b->memory.resize||!b->symbols.insensitive||!b->symbols.storage||
-       !b->symbols.grow_memory||!b->symbols.allocate||!b->symbols.release_unpublished||
-       !b->symbols.sentinel||!b->clock||!b->notify)return 0;
+    if(!response_tree_bindings_ready(b)||!hologram_writable(out,sizeof(*out))||!b->notify)return 0;
     *out={};out->context=const_cast<ResponseHistoryTreeBindings*>(b);
     out->lookup=&response_tree_lookup;out->insert=&response_tree_insert;out->entry=&response_tree_entry;
     out->clock=[](void* p,float* result) noexcept -> int{
@@ -7550,6 +7553,48 @@ int __cdecl response_tree_adapt(const ResponseHistoryTreeBindings* b,ResponseHis
     return 1;
 }
 const ResponseHistoryTreeApi response_history_tree_api{version,sizeof(ResponseHistoryTreeApi),&response_tree_adapt};
+
+
+const ResponseHistoryManagedBindings& managed_history_cfg(void* p) noexcept {
+    return *static_cast<const ResponseHistoryManagedBindings*>(p);
+}
+void* managed_history_tree(void* p) noexcept {
+    return const_cast<ResponseHistoryTreeBindings*>(&managed_history_cfg(p).tree);
+}
+int __cdecl managed_history_notify(void* p,void* exp,const char* name) noexcept {
+    if(!name||!sin_independent::vgui_layout::Readable(exp,0x7c))return 0;
+    const auto& cfg=managed_history_cfg(p);
+    const auto owner=hologram_read<std::uint32_t>(exp,4);
+    void* actor=nullptr;unsigned extent=0;SceneSpeechActorKind kind{};
+    if(!owner||!cfg.storage(cfg.context,owner,&actor,&extent)||extent<0x1000||
+       !sin_independent::vgui_layout::Readable(actor,0x1000)||
+       !cfg.kind(cfg.context,actor,&kind)||
+       static_cast<unsigned>(kind)>static_cast<unsigned>(SceneSpeechActorKind::GenericActor))return 0;
+    // The authenticated sink +0 for Jessica is 2208f540. The five
+    // other verified classes use 2216dd80 (ret 4).
+    if(kind!=SceneSpeechActorKind::Jessica)return 1;
+    return managed_talk_notify(&cfg.manager,actor,extent,exp,0x7c,name)==1;
+}
+int __cdecl response_history_managed_adapt(const ResponseHistoryManagedBindings* b,ResponseHistoryBindings* out) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+       !hologram_writable(out,sizeof(*out))||!response_tree_bindings_ready(&b->tree)||
+       !b->storage||!b->kind||!b->manager.session||!b->manager.manager.create||
+       !b->manager.manager.register_created||!b->manager.cooldown.clock||
+       !b->manager.cooldown.random||!b->manager.cooldown.concept_deadline||
+       !b->manager.cooldown.propagate||!b->manager.cooldown.cooldown_disabled)return 0;
+    *out={};out->context=const_cast<ResponseHistoryManagedBindings*>(b);
+    out->lookup=[](void* p,void* exp,const char* name,int* idx) noexcept -> int{
+        return response_tree_lookup(managed_history_tree(p),exp,name,idx);};
+    out->insert=[](void* p,void* exp,const char* name,float time,int* idx) noexcept -> int{
+        return response_tree_insert(managed_history_tree(p),exp,name,time,idx);};
+    out->entry=[](void* p,void* exp,int idx,void** row,unsigned* bytes) noexcept -> int{
+        return response_tree_entry(managed_history_tree(p),exp,idx,row,bytes);};
+    out->clock=[](void* p,float* now) noexcept -> int{
+        const auto& tree=managed_history_cfg(p).tree;return tree.clock(tree.context,now);};
+    out->notify=&managed_history_notify;
+    return 1;
+}
+const ResponseHistoryManagedApi response_history_managed_api{version,sizeof(ResponseHistoryManagedApi),&response_history_managed_adapt};
 
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
@@ -15560,6 +15605,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetResponseHistoryManagedApi=_SiN_GetResponseHistoryManagedApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseHistoryManagedApi* __cdecl
+SiN_GetResponseHistoryManagedApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseHistoryManagedApi)?&response_history_managed_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseHistoryTreeApi=_SiN_GetResponseHistoryTreeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseHistoryTreeApi* __cdecl
