@@ -7694,6 +7694,47 @@ int __cdecl talk_deadline_find(void* p,const char* name,float** out) noexcept {
 }
 const TalkDeadlineTreeApi talk_deadline_tree_api{version,sizeof(TalkDeadlineTreeApi),&talk_deadline_insert,&talk_deadline_find};
 
+
+const TalkDeadlineRuntimeBindings& talk_deadline_runtime_cfg(void* p) noexcept {
+    return *static_cast<const TalkDeadlineRuntimeBindings*>(p);
+}
+int __cdecl talk_deadline_runtime_adapt(const TalkDeadlineRuntimeBindings* cfg,TalkManagerRuntimeBindings* out) noexcept {
+    if(!cfg||!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||
+       !hologram_writable(out,sizeof(*out))||!cfg->tree.session||cfg->tree.session!=cfg->host.session||
+       !cfg->tree.memory.storage||!cfg->tree.memory.resize||!cfg->tree.intern||!cfg->release)return 0;
+    const auto& m=cfg->host.manager;const auto& c=cfg->host.cooldown;
+    if(!m.base_construct||!m.create||!m.register_created||!m.base_destroy||
+       !c.clock||!c.random||!c.propagate||!c.cooldown_disabled)return 0;
+    *out=cfg->host;auto* p=const_cast<TalkDeadlineRuntimeBindings*>(cfg);
+    out->manager.context=p;out->cooldown.context=p;
+    out->manager.base_construct=[](void* p,void* manager,int arg) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p).host.manager;return h.base_construct(h.context,manager,arg);};
+    out->manager.create=[](void* p,TalkManagerSession* session,const char* name,int index) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p).host.manager;return h.create(h.context,session,name,index);};
+    out->manager.register_created=[](void* p,void* manager) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p).host.manager;return h.register_created(h.context,manager);};
+    out->manager.insert_deadline=[](void* p,void* tree,const char* name,float initial) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p);
+        return talk_deadline_insert(const_cast<TalkDeadlineTreeBindings*>(&h.tree),tree,name,initial);};
+    out->manager.free_tree=[](void* p,std::uint32_t word) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p);return h.release(h.tree.memory.context,word);};
+    out->manager.base_destroy=[](void* p,void* manager) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p).host.manager;return h.base_destroy(h.context,manager);};
+    out->cooldown.clock=[](void* p,float* now) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p).host.cooldown;return h.clock(h.context,now);};
+    out->cooldown.random=[](void* p,float low,float high,float* value) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p).host.cooldown;return h.random(h.context,low,high,value);};
+    out->cooldown.concept_deadline=[](void* p,const char* name,float** value) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p);
+        return talk_deadline_find(const_cast<TalkDeadlineTreeBindings*>(&h.tree),name,value);};
+    out->cooldown.propagate=[](void* p,void* npc,const char* name) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p).host.cooldown;return h.propagate(h.context,npc,name);};
+    out->cooldown.cooldown_disabled=[](void* p,unsigned* value) noexcept -> int{
+        const auto& h=talk_deadline_runtime_cfg(p).host.cooldown;return h.cooldown_disabled(h.context,value);};
+    return 1;
+}
+const TalkDeadlineRuntimeApi talk_deadline_runtime_api{version,sizeof(TalkDeadlineRuntimeApi),&talk_deadline_runtime_adapt};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -15703,6 +15744,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetTalkDeadlineRuntimeApi=_SiN_GetTalkDeadlineRuntimeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkDeadlineRuntimeApi* __cdecl
+SiN_GetTalkDeadlineRuntimeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkDeadlineRuntimeApi)?&talk_deadline_runtime_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetTalkDeadlineTreeApi=_SiN_GetTalkDeadlineTreeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkDeadlineTreeApi* __cdecl

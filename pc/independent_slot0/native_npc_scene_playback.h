@@ -1039,6 +1039,21 @@ struct TalkDeadlineTreeApi {
     int (__cdecl *deadline)(void*,const char*,float**) noexcept;
 };
 using GetTalkDeadlineTreeApi=const TalkDeadlineTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char talk_deadline_runtime_export[]="SiN_GetTalkDeadlineRuntimeApi";
+struct TalkDeadlineRuntimeBindings {
+    TalkDeadlineTreeBindings tree;
+    TalkManagerRuntimeBindings host; // insert_deadline, free_tree, concept_deadline unused
+    int (__cdecl *release)(void*,std::uint32_t) noexcept; // tree.memory.context
+};
+struct TalkDeadlineRuntimeApi {
+    std::uint32_t version,size;
+    // Preserve both native manager lifecycle and native per-concept deadlines.
+    // The host factory/register callbacks must use the returned manager
+    // bindings for construct/populate, not the pre-adaptation bindings.
+    // Caller retains cfg and serializes the session.
+    int (__cdecl *adapt)(const TalkDeadlineRuntimeBindings*,TalkManagerRuntimeBindings*) noexcept;
+};
+using GetTalkDeadlineRuntimeApi=const TalkDeadlineRuntimeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;

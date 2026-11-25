@@ -656,6 +656,38 @@ inline void check_native_talk_deadline_tree(VcdAuditArena& a,const TalkDeadlineT
     float* invalid=nullptr;assert(!tree.deadline(&c.cfg,"TLK_HELLO",&invalid));
 }
 
+
+inline void check_native_talk_deadline_runtime(VcdAuditArena& a,const TalkDeadlineRuntimeApi& api,
+    const TalkManagerRuntimeApi& runtime,const TalkManagerApi& manager,const TalkCatalogApi& catalog){
+    using F=ScenePlaybackFixture;
+    ManagedTalkFixture f(manager,catalog);auto& p=f.policy;auto& m=f.manager;
+    TalkDeadlineRuntimeBindings cfg{};cfg.tree.memory=a.vector_bindings;cfg.tree.session=&m.session;
+    cfg.tree.context=const_cast<TalkCatalogApi*>(&catalog);
+    cfg.tree.intern=[](void* p,const char* name,const char** out) noexcept -> int{
+        const auto* d=static_cast<const TalkCatalogApi*>(p)->lookup(name);if(!d)return 0;*out=d->name;return 1;};
+    cfg.release=&VcdAuditArena::release;cfg.host=f.b;
+    cfg.host.manager.insert_deadline=nullptr;cfg.host.manager.free_tree=nullptr;
+    cfg.host.cooldown.concept_deadline=nullptr;
+    TalkManagerRuntimeBindings adapted{};assert(api.adapt(&cfg,&adapted));
+    // Factory and registration callback refer to the adapted bindings.
+    m.b=adapted.manager;f.b=adapted;
+    auto notify=[&](){return runtime.notify(&f.b,p.npc,sizeof(p.npc),f.exp,sizeof(f.exp),p.concept_name);};
+    p.lo=5;p.hi=10;p.draw=7;
+    assert(notify()==1&&m.creations==1&&!m.inserts&&m.object[0x3b1]==48);
+    p.expect({4,5,2,1});
+    assert(VcdAuditArena::read_float(m.object,0x394)==17.f);
+    p.concept_name="TLK_PLPUSH";p.lo=p.hi=p.draw=15;
+    assert(notify()==1&&m.creations==1&&p.deadline==0);p.expect({5,2,1});
+    float* deadline=nullptr;assert(f.b.cooldown.concept_deadline(f.b.cooldown.context,"tlk_plpush",&deadline)&&deadline&&*deadline==25);
+    unsigned ready=99;assert(catalog.concept_ready(&f.b.cooldown,"TLK_PLPUSH",&ready)==1&&!ready);p.expect({1});
+    p.now=25;assert(catalog.concept_ready(&f.b.cooldown,"TLK_PLPUSH",&ready)==1&&ready);p.expect({1});
+    assert(catalog.concept_ready(&f.b.cooldown,"missing",&ready)==1&&ready&&!p.count);
+    p.concept_name="TLK_DANGER";p.lo=p.hi=p.draw=5;
+    assert(notify()==1);p.expect({5,2,1});
+    float* danger=nullptr;assert(f.b.cooldown.concept_deadline(f.b.cooldown.context,"TLK_DANGER",&danger)&&danger&&danger!=deadline&&*danger==30&&*deadline==25);
+    assert(manager.destroy(&m.session,&m.control,&m.tables,&m.b)==1&&m.destroys==1&&a.live.empty());
+}
+
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr,const ResponseHistoryTreeApi* history_tree=nullptr,
     const ResponseHistoryManagedApi* managed_history=nullptr,TalkManagerFixture* manager=nullptr){
     using F=ScenePlaybackFixture;
