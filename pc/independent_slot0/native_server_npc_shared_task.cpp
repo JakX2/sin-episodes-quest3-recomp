@@ -132,7 +132,97 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingResult* facing_out=nullptr,const ServerNpcSharedTargetAnimationBindings* target=nullptr,ServerNpcSharedTargetAnimationResult* target_out=nullptr) noexcept{
+int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr) noexcept;
+int movement(void* a,unsigned n,const ServerNpcScheduleTask& t,bool running,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedMovementBindings& b,ServerNpcSharedMovementResult& out,ServerNpcSharedTaskResult& result) noexcept{
+    if(!std::isfinite(t.parameter))return 0;
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+    if(!life)return 0;
+    auto complete=[&](){return life->complete(a,n,now,false,&s.lifecycle,&result.lifecycle)!=0;};
+    auto pending=[&](int id){
+        result.activity=id;out.idle_activity=id;
+        if(s.transition){
+            const auto* api=SiN_GetServerNpcTransitionApi(1,sizeof(ServerNpcTransitionApi));
+            return api&&api->set_pending(a,n,id,s.transition,&result.transition);
+        }
+        return s.pending&&s.pending(s.context,a,id);
+    };
+    auto storage=[&](unsigned token,unsigned minimum,void*& ptr){
+        unsigned size=0;ptr=nullptr;return token&&b.storage&&b.storage(b.context,token,&ptr,&size)&&ptr&&size>=minimum;
+    };
+    auto navigator=[&](void*& nav){return storage(rd<unsigned>(a,0x8f8),0x28,nav);};
+    auto path=[&](void*& nav,void*& p){return navigator(nav)&&storage(rd<unsigned>(nav,0x24),0x48,p);};
+    auto clear=[&](){void* nav=nullptr;if(!navigator(nav)||!b.clear_path)return false;++out.clear_calls;return b.clear_path(b.context,nav)!=0;};
+    auto stop=[&](bool finished){void* nav=nullptr;if(!navigator(nav)||!b.stop_path)return false;++out.stop_calls;return b.stop_path(b.context,nav,finished)!=0;};
+    auto idle=[&](){
+        void* nav=nullptr;void* p=nullptr;
+        if(!path(nav,p))return false;
+        const int id=rd<unsigned>(p,0)?rd<int>(p,0x24):1;
+        return pending(id>0?id:1);
+    };
+    auto update=[&](){++out.move_calls;return b.movement_update&&b.movement_update(b.context,a);};
+    if(t.id==121){
+        // Timeout is a strict > test; parameter zero bypasses elapsed-time query.
+        if(running&&t.parameter!=0.f){
+            const float started=rd<float>(a,0x7ac);
+            if(!std::isfinite(started))return 0;
+            if(static_cast<double>(now)-started>t.parameter){out.timed_out=1;return complete()&&stop(true);}
+        }
+        void* nav=nullptr;void* p=nullptr;if(!path(nav,p))return 0;
+        if(!rd<unsigned>(p,0x44))return complete()&&(running?stop(true):clear());
+        return rd<unsigned>(p,0)?update():idle();
+    }
+    if(!running){
+        void* nav=nullptr;void* p=nullptr;if(!path(nav,p))return 0;
+        out.navigator_mode=rd<int>(nav,0xc);
+        if((rd<unsigned>(p,0x44)&&rd<unsigned>(p,0))||out.navigator_mode==1){
+            if(t.parameter==1.f){if(!stop(false))return 0;}else if(!clear())return 0;
+            int pose=-1;
+            if(!b.pose_lookup||!b.pose_lookup(b.context,a,"move_yaw",&pose))return 0;
+            if(pose>=0){++out.pose_calls;if(!b.pose_set||!b.pose_set(b.context,a,"move_yaw",0.f))return 0;}
+            return 1;
+        }
+        if(t.parameter==1.f){
+            bool yes=false;++out.try_calls;
+            if(!b.try_stopping_path||!b.try_stopping_path(b.context,nav,&yes))return 0;
+            if(yes)return 1;
+        }
+        return clear()&&idle()&&complete();
+    }
+    if(t.parameter==1.f){
+        ServerNpcScheduleTask nested{121,0.f};ServerNpcSharedMovementResult nr{};++out.nested_calls;
+        const int ok=execute_impl(a,n,&nested,true,now,&s,&nr.shared,nullptr,nullptr,nullptr,nullptr,&b,&nr);
+        out.nested=nr.shared;out.stop_calls+=nr.stop_calls;out.move_calls+=nr.move_calls;
+        return ok;
+    }
+    void* nav=nullptr;if(!navigator(nav))return 0;
+    out.navigator_mode=rd<int>(nav,0xc);
+    if(out.navigator_mode==1){
+        if(rd<unsigned char>(a,0xbc)&1u)out.landed=1;
+        else{
+            float v[3]{};
+            if(!b.velocity||!b.velocity(b.context,a,v))return 0;
+            double squared=0;
+            for(float x:v){if(!std::isfinite(x))return 0;squared+=static_cast<double>(x)*x;}
+            const float rounded=static_cast<float>(squared);
+            if(!std::isfinite(rounded))return 0;
+            out.speed=std::sqrt(static_cast<double>(rounded));
+            if(out.speed>.01)return 1;
+            out.stuck=1;
+        }
+        // 22032220 -> 22074110 is a plain navigator mode write.
+        wr(nav,0xc,0);out.mode_cleared=1;
+        if(out.stuck){
+            result.failed_code=26;
+            if(!b.task_fail||!b.task_fail(b.context,a,26))return 0;
+        }
+    }
+    // The original re-reads navigator mode after the virtual failure call.
+    if(!navigator(nav))return 0;
+    out.navigator_mode=rd<int>(nav,0xc);
+    if(out.navigator_mode==3)return 1;
+    return idle()&&complete();
+}
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -147,6 +237,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
+    if((t->id==116||t->id==121)&&move&&move_out){out->native=1;return movement(a,n,*t,running,now,*b,*move,*move_out,*out);}
     if(t->id==60&&facing&&facing_out){out->native=1;return face60(a,n,running,now,*b,*facing,*facing_out);}
     if(running&&t->id>=94&&t->id<=96&&target&&target_out){out->native=1;return target_animation(a,n,t->id,now,*b,*target,*target_out);}
     if(!supports(t->id,running)){out->parent_called=1;return b->parent&&b->parent(b->context,a,t,running);}
@@ -219,6 +310,12 @@ int __cdecl execute_target_animation(void* a,unsigned n,const ServerNpcScheduleT
     if(!t||t->id<94||t->id>96||!target)return 0;
     return execute_impl(a,n,t,true,now,b,&out->shared,nullptr,nullptr,target,out);
 }
+int __cdecl execute_movement(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* s,const ServerNpcSharedMovementBindings* b,ServerNpcSharedMovementResult* out) noexcept{
+    if(!out)return 0;*out={};out->idle_activity=-1;
+    if(!t||(t->id!=116&&t->id!=121)||!b)return 0;
+    return execute_impl(a,n,t,running,now,s,&out->shared,nullptr,nullptr,nullptr,nullptr,b,out);
+}
+const ServerNpcSharedMovementApi movement_api{1,sizeof(ServerNpcSharedMovementApi),&execute_movement};
 const ServerNpcSharedTargetAnimationApi target_animation_api{1,sizeof(ServerNpcSharedTargetAnimationApi),&execute_target_animation};
 const ServerNpcSharedFacingApi facing_api{1,sizeof(ServerNpcSharedFacingApi),&yaw_error,&execute_facing};
 const ServerNpcSharedTaskApi api{1,sizeof(ServerNpcSharedTaskApi),&wait,&cancel_wait,&wait_state,&supports,&execute};
@@ -308,4 +405,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedTargetAnimationApi=_SiN_GetServerNpcSharedTargetAnimationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedTargetAnimationApi* __cdecl SiN_GetServerNpcSharedTargetAnimationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedTargetAnimationApi)?&target_animation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedMovementApi=_SiN_GetServerNpcSharedMovementApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedMovementApi* __cdecl SiN_GetServerNpcSharedMovementApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedMovementApi)?&movement_api:nullptr;
 }
