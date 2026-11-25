@@ -3105,6 +3105,59 @@ int __cdecl response_scene_filter(void* exp,unsigned bytes,const ResponseSceneFi
 }
 const ResponseSceneFilterApi response_scene_filter_api{version,sizeof(ResponseSceneFilterApi),&response_scene_filter};
 
+bool scene_response_services_ready(const SceneResponseServicesBindings* b) noexcept {
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->cache_bytes>=0x4e&&hologram_writable(b->cache,0x4e)&&
+        b->storage&&b->model_name&&b->expand&&b->row&&b->stamp&&b->metadata&&b->refresh;
+}
+int __cdecl scene_response_resolve_name(void* p,void* npc,const char* name,char* out,unsigned capacity) noexcept {
+    const auto* b=static_cast<const SceneResponseServicesBindings*>(p);
+    if(!scene_response_services_ready(b)||!npc||!name||!capacity||capacity>256||!hologram_writable(out,capacity))return 0;
+    const char* model=nullptr;
+    if(!b->model_name(b->context,npc,&model))return 0;
+    char expanded[256]{};
+    if(!b->expand(b->context,model?model:"",name,expanded,capacity)||!std::memchr(expanded,0,capacity))return 0;
+    std::memcpy(out,expanded,capacity);return 1;
+}
+int __cdecl scene_response_metadata(void* p,const char* path,void** out,unsigned* extent) noexcept {
+    const auto* b=static_cast<const SceneResponseServicesBindings*>(p);
+    if(!scene_response_services_ready(b)||!path||!hologram_writable(out,sizeof(*out))||!hologram_writable(extent,sizeof(*extent)))return 0;
+    void* row=nullptr;unsigned n=0;
+    if(!b->row(b->context,path,&row,&n)||n<16||!hologram_writable(row,16))return 0;
+    const auto previous=hologram_read<std::uint32_t>(row,4);
+    auto current=hologram_read<std::uint32_t>(row,8);
+    if(current==0xfffffffeu){
+        // 221ad350: cache+4c freezes filesystem queries, substituting
+        // the saved stamp. Otherwise select the original two FS slots.
+        current=previous;
+        if(!hologram_read<unsigned char>(b->cache,0x4c)&&
+           !b->stamp(b->context,path,hologram_read<std::uint32_t>(b->cache,0x48)==1,&current))return 0;
+        hologram_write(row,8,current);
+    }
+    void* metadata=nullptr;unsigned bytes=0;
+    if(!b->metadata(b->context,hologram_read<std::uint32_t>(row,0xc),&metadata,&bytes)||
+       (metadata&&(bytes<8||!sin_independent::vgui_layout::Readable(metadata,8))))return 0;
+    if(previous!=current){
+        if(!hologram_read<unsigned char>(b->cache,0x4d)){
+            if(!metadata)return 0; // malformed host state, original would dereference
+            hologram_write(b->cache,0x3c,static_cast<unsigned char>(1));
+            if(!b->refresh(b->context,metadata,path))return 0;
+        }
+        // The original reloads the current stamp after the refresh callback.
+        hologram_write(row,4,hologram_read<std::uint32_t>(row,8));
+    }
+    *out=metadata;*extent=metadata?bytes:0;return 1;
+}
+int __cdecl scene_response_storage(void* p,std::uint32_t word,void** out,unsigned* bytes) noexcept {
+    const auto* b=static_cast<const SceneResponseServicesBindings*>(p);
+    return scene_response_services_ready(b)&&b->storage(b->context,word,out,bytes);
+}
+int __cdecl scene_response_adapt(const SceneResponseServicesBindings* b,ResponseSceneFilterBindings* out) noexcept {
+    if(!scene_response_services_ready(b)||!hologram_writable(out,sizeof(*out)))return 0;
+    *out={const_cast<SceneResponseServicesBindings*>(b),&scene_response_storage,&scene_response_resolve_name,&scene_response_metadata};return 1;
+}
+const SceneResponseServicesApi scene_response_services_api{version,sizeof(SceneResponseServicesApi),&scene_response_resolve_name,&scene_response_metadata,&scene_response_adapt};
+
+
 int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBindings* b,const char* name,const char* mods,void** result,unsigned* extent) noexcept {
     if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!name||
        !result||!extent||!hologram_writable(result,sizeof(*result))||!hologram_writable(extent,sizeof(*extent))||
@@ -16445,6 +16498,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseS
 SiN_GetResponseSceneFilterApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseSceneFilterApi)?&response_scene_filter_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetSceneResponseServicesApi=_SiN_GetSceneResponseServicesApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneResponseServicesApi* __cdecl
+SiN_GetSceneResponseServicesApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneResponseServicesApi)?&scene_response_services_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseNativeModifiersApi=_SiN_GetResponseNativeModifiersApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseNativeModifierApi* __cdecl
