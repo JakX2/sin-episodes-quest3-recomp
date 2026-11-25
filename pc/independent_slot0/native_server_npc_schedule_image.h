@@ -1,5 +1,6 @@
 #pragma once
 #include "native_server_npc_schedule_catalog.h"
+#include "native_server_npc_schedule_services.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_schedule_image_export[]="SiN_GetServerNpcScheduleImageApi";
 struct ServerScheduleImageRow {
@@ -32,4 +33,16 @@ struct ServerNpcScheduleImageApi {
     int (__cdecl *storage)(const ServerScheduleImage*,std::uint32_t,const void**,unsigned*) noexcept;
 };
 using GetServerNpcScheduleImageApi=const ServerNpcScheduleImageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_catalog_scheduler_export[]="SiN_GetServerNpcCatalogSchedulerApi";
+struct ServerNpcCatalogSchedulerResult {
+    ServerNpcScheduleServicesResult runtime;
+    unsigned native_reads,inherited_reads;
+};
+struct ServerNpcCatalogSchedulerApi {
+    std::uint32_t version,size;
+    // Image must remain stable while any actor retains its descriptor tokens.
+    // Build with the same class namespace and registered activities as runtime.
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,ServerNpcCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcCatalogSchedulerApi=const ServerNpcCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
