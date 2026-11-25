@@ -1047,6 +1047,56 @@ int __cdecl grunt_speak(void* actor,unsigned bytes,unsigned kind,float now,const
     }
     return 1;
 }
+bool sensed_vector(const void* senses,unsigned category,const ServerNpcSensedEntitiesBindings& b,void*& handles,unsigned& count) noexcept{
+    void* vec=nullptr;unsigned n=0;handles=nullptr;count=0;
+    if(!memory_storage(&b.storage,read<unsigned>(senses,0x54+4*category),0x10,vec,n))return false;
+    const int length=read<int>(vec,0xc);if(length<0||length>32767)return false;
+    count=static_cast<unsigned>(length);
+    return !count||memory_storage(&b.storage,read<unsigned>(vec,0),4*count,handles,n);
+}
+bool sensed_input(const void* senses,unsigned bytes,const ServerNpcSensedEntitiesBindings* b) noexcept{
+    return senses&&bytes>=0x60&&b&&b->count<=sin_independent::kEntityHandleCapacity&&(!b->count||b->entries);
+}
+int __cdecl sensed_first(const void* senses,unsigned bytes,int category,const ServerNpcSensedEntitiesBindings* b,ServerNpcSensedCursor* cursor,ServerNpcSensedResult* out) noexcept{
+    if(!cursor||!out)return 0;*out={};cursor->packed=0xffffffffu;
+    if(!sensed_input(senses,bytes,b)||category< -1||category>2)return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    for(unsigned k=category<0?0:static_cast<unsigned>(category);k<3;++k){
+        void* handles=nullptr;unsigned count=0;if(!sensed_vector(senses,k,*b,handles,count))return 0;
+        if(!count)continue;
+        // First intentionally scans later buckets even for a requested category.
+        cursor->packed=(static_cast<unsigned>(category)&255u)<<24|1u<<8|k;
+        out->category=k;out->index=0;out->visited=1;out->entity=registry.Resolve(read<unsigned>(handles,0));
+        if(!out->entity)out->stale=out->first_stale=1;
+        return 1;
+    }
+    return 1;
+}
+int __cdecl sensed_next(const void* senses,unsigned bytes,const ServerNpcSensedEntitiesBindings* b,ServerNpcSensedCursor* cursor,ServerNpcSensedResult* out) noexcept{
+    if(!cursor||!out)return 0;*out={};
+    if(!sensed_input(senses,bytes,b))return 0;
+    if(cursor->packed==0xffffffffu)return 1;
+    const unsigned category=cursor->packed&255u,mode=cursor->packed>>24,index=(cursor->packed>>8)&65535u;
+    if(category>=3||(mode!=255&&mode>2)||index>32767)return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    for(unsigned k=category;k<3;++k){
+        void* handles=nullptr;unsigned count=0;if(!sensed_vector(senses,k,*b,handles,count))return 0;
+        for(unsigned i=k==category?index:0;i<count;++i){
+            ++out->visited;void* entity=registry.Resolve(read<unsigned>(handles,4*i));
+            if(!entity){++out->stale;continue;}
+            cursor->packed=mode<<24|(i+1)<<8|k;out->category=k;out->index=i;out->entity=entity;return 1;
+        }
+        if(mode!=255)break;
+    }
+    cursor->packed=0xffffffffu;return 1;
+}
+int __cdecl sensed_contains(const void* senses,unsigned bytes,void* entity,const ServerNpcSensedEntitiesBindings* b,bool* found) noexcept{
+    if(!found)return 0;*found=false;ServerNpcSensedCursor cursor{};ServerNpcSensedResult result{};
+    if(!sensed_first(senses,bytes,-1,b,&cursor,&result))return 0;
+    while(result.entity){if(result.entity==entity){*found=true;return 1;}if(!sensed_next(senses,bytes,b,&cursor,&result))return 0;}
+    return 1;
+}
+const ServerNpcSensedEntitiesApi sensed_api{1,sizeof(ServerNpcSensedEntitiesApi),&sensed_first,&sensed_next,&sensed_contains};
 const ServerNpcGruntSpeechApi speech_api{1,sizeof(ServerNpcGruntSpeechApi),&grunt_speak};
 const ServerNpcGruntEnemySwitchApi switch_api{1,sizeof(ServerNpcGruntEnemySwitchApi),&grunt_enemy_switch};
 const ServerNpcGruntEnemyChoiceGateApi choice_gate_api{1,sizeof(ServerNpcGruntEnemyChoiceGateApi),&grunt_enemy_choice_gate};
@@ -1196,4 +1246,10 @@ SiN_GetServerNpcGruntEnemySwitchApi(std::uint32_t version,std::uint32_t size) no
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpeechApi* __cdecl
 SiN_GetServerNpcGruntSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSpeechApi)?&speech_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSensedEntitiesApi=_SiN_GetServerNpcSensedEntitiesApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSensedEntitiesApi* __cdecl
+SiN_GetServerNpcSensedEntitiesApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSensedEntitiesApi)?&sensed_api:nullptr;
 }

@@ -18,6 +18,7 @@ struct F{
     const ServerNpcEnemyMemoryMutationApi* mutation_api=nullptr;ServerNpcEnemyMemoryMutationBindings mutation{};
     bool allocated[2]{};unsigned releases=0;
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
+    unsigned char senses[0x60]{},sense_vectors[3][16]{},sense_handles[3][16]{};
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
@@ -526,5 +527,32 @@ int main(int argc,char** argv){
     f.speech_code=-1;
     assert(speech->speak(f.actor,sizeof(f.actor),NpcGruntAlert,433,&spb,&sr)&&sr.emitted&&sr.cooldown_written&&sr.deadline==443&&f.get<float>(0xc7c)==443&&!std::strcmp(sr.cue,"GRUNT_GO_ALERT"));
     assert(!speech->speak(f.actor,0xcc3,NpcGruntLost,444,&spb,&sr));
+    auto gsense=reinterpret_cast<GetServerNpcSensedEntitiesApi>(GetProcAddress(s,server_npc_sensed_entities_export));
+    assert(gsense&&!GetProcAddress(c,server_npc_sensed_entities_export)&&!gsense(0,sizeof(ServerNpcSensedEntitiesApi))&&!gsense(1,0));
+    const auto* sensed=gsense(1,sizeof(ServerNpcSensedEntitiesApi));assert(sensed);
+    ServerNpcSensedEntitiesBindings seb{};seb.entries=f.entries;seb.count=4;seb.storage.context=&f;
+    seb.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);if(token>=600&&token<603){*out=f.sense_vectors[token-600];*n=16;return 1;}
+        if(token>=610&&token<613){*out=f.sense_handles[token-610];*n=16;return 1;}if(token==620){*out=f.senses;*n=sizeof(f.senses);return 1;}return 0;
+    };
+    for(unsigned i=0;i<3;++i){f.put(f.senses,0x54+4*i,600+i);f.put(f.sense_vectors[i],0,610+i);}
+    f.put(f.sense_vectors[1],0xc,3);f.put(f.sense_vectors[2],0xc,1);
+    f.put(f.sense_handles[1],0,0x7001u);f.put(f.sense_handles[1],4,0x9002u);f.put(f.sense_handles[1],8,0x8002u);f.put(f.sense_handles[2],0,0x9003u);
+    ServerNpcSensedCursor sc{};ServerNpcSensedResult sensed_result{};bool found=false;
+    assert(sensed->first(f.senses,sizeof(f.senses),-1,&seb,&sc,&sensed_result)&&sensed_result.entity==f.enemy&&sc.packed==0xff000101u);
+    assert(sensed->next(f.senses,sizeof(f.senses),&seb,&sc,&sensed_result)&&sensed_result.entity==f.replacement&&sensed_result.stale==1&&sensed_result.index==2);
+    assert(sensed->next(f.senses,sizeof(f.senses),&seb,&sc,&sensed_result)&&sensed_result.entity==f.actor&&sensed_result.category==2);
+    assert(sensed->next(f.senses,sizeof(f.senses),&seb,&sc,&sensed_result)&&!sensed_result.entity&&sc.packed==0xffffffffu);
+    assert(sensed->contains(f.senses,sizeof(f.senses),f.replacement,&seb,&found)&&found);
+    assert(sensed->first(f.senses,sizeof(f.senses),0,&seb,&sc,&sensed_result)&&sensed_result.category==1);
+    assert(sensed->next(f.senses,sizeof(f.senses),&seb,&sc,&sensed_result)&&sensed_result.entity==f.replacement);
+    assert(sensed->next(f.senses,sizeof(f.senses),&seb,&sc,&sensed_result)&&!sensed_result.entity);
+    f.put(f.sense_handles[1],0,0x9001u);
+    assert(sensed->first(f.senses,sizeof(f.senses),-1,&seb,&sc,&sensed_result)&&!sensed_result.entity&&sensed_result.first_stale);
+    assert(sensed->contains(f.senses,sizeof(f.senses),f.replacement,&seb,&found)&&!found);
+    assert(sensed->next(f.senses,sizeof(f.senses),&seb,&sc,&sensed_result)&&sensed_result.entity==f.replacement);
+    f.put(f.sense_handles[1],0,0x7001u);
+    f.put(f.sense_vectors[1],0xc,5);assert(!sensed->first(f.senses,sizeof(f.senses),-1,&seb,&sc,&sensed_result));
+    f.put(f.sense_vectors[1],0xc,3);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
