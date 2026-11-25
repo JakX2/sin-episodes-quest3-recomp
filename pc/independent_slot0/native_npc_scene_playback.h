@@ -1128,6 +1128,29 @@ struct NpcResponseCriteriaApi {
     int (__cdecl *append)(void* npc,unsigned bytes,void* criteria,const NpcResponseCriteriaBindings*) noexcept;
 };
 using GetNpcResponseCriteriaApi=const NpcResponseCriteriaApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char player_response_criteria_export[]="SiN_GetPlayerResponseCriteriaApi";
+struct EntityResponseContextBindings {
+    void* context;
+    int (__cdecl *add)(void*,void*,const char*,const char*,float) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *string)(void*,std::uint32_t,const char**) noexcept;
+};
+struct PlayerResponseCriteriaBindings {
+    EntityResponseContextBindings contexts;
+    void* context;
+    int (__cdecl *weapon)(void*,void*,unsigned*,const char**) noexcept;
+    int (__cdecl *activity)(void*,int,const char**) noexcept;
+    int (__cdecl *refresh_velocity)(void*,void*) noexcept;
+    int (__cdecl *global_find)(void*,const char*,int*) noexcept;
+};
+struct PlayerResponseCriteriaApi {
+    std::uint32_t version,size;
+    // 22143cf0, shared CBaseEntity response context rows and literal prefix.
+    int (__cdecl *contexts)(void*,unsigned,void*,const char*,const EntityResponseContextBindings*) noexcept;
+    // 2224a1c0; with derived=1 also 2239db70's global-state criterion.
+    int (__cdecl *append)(void*,unsigned,void*,unsigned derived,const PlayerResponseCriteriaBindings*) noexcept;
+};
+using GetPlayerResponseCriteriaApi=const PlayerResponseCriteriaApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_criteria_selection_export[]="SiN_GetResponseCriteriaSelectionApi";
 struct ResponseCriteriaSelectionSession {
     void* object;unsigned bytes;
