@@ -1,4 +1,5 @@
 #include "native_client_overlay_history.h"
+#include "client_overlay_cycle_math.h"
 #include "native_weapon_datatables.h"
 #include <cmath>
 #include <cstring>
@@ -54,15 +55,9 @@ int __cdecl select(std::uint32_t head,int type,float time,float delay,const Clie
 }
 // Original 2408afb0: at exactly half a cycle take the wrap branch too.
 int __cdecl loop_lerp(float f,float from,float to,float* out) noexcept {
-    if(!out||!std::isfinite(f)||!std::isfinite(from)||!std::isfinite(to))return 0;
-    double a=from,b=to;
-    if(std::fabs(b-a)>=.5){if(a<b)a+=1.;else b+=1.;}
-    const double v=a*(1.-f)+b*f;
-    if(!std::isfinite(v)||v<-2147483648.||v>=2147483648.)return 0;
-    double wrapped=v-std::trunc(v);
-    if(wrapped<0.)wrapped+=1.;
-    *out=static_cast<float>(wrapped);return 1;
+    return out&&overlay_cycle_math::linear(f,from,to,*out);
 }
+
 bool sample_ok(const ClientOverlayHistoryNode* p) noexcept {
     return !p||(std::isfinite(p->sample.previous_cycle)&&std::isfinite(p->sample.cycle)&&std::isfinite(p->sample.weight));
 }

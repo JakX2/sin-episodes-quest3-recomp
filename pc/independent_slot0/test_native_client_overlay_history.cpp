@@ -28,7 +28,7 @@ struct F {
         put(watchers,0x34,std::uint32_t{0xabcdef00});put(actor,0x7cc,9.f);
     }
 };
-static bool near(float a,float b){return std::fabs(a-b)<.00001f;}
+static bool close_float(float a,float b){return std::fabs(a-b)<.00001f;}
 int main(int argc,char** argv){
     assert(argc==3);
     auto client=LoadLibraryA(argv[1]),server=LoadLibraryA(argv[2]);assert(client&&server);
@@ -55,11 +55,11 @@ int main(int argc,char** argv){
     f.b.looping=[](void* p,void* a,int sequence) noexcept -> bool{
         auto& f=F::self(p);assert(a==f.actor&&sequence==7);++f.loops;return f.looping;};
     f.b.interpolate=[](void* p,void* w,float time) noexcept {
-        auto& f=F::self(p);assert(w==f.watchers&&near(time,2.75f)&&f.nodes[1].sample.sequence==7&&near(f.get<float>(f.actor,0x7cc),9.f));
+        auto& f=F::self(p);assert(w==f.watchers&&close_float(time,2.75f)&&f.nodes[1].sample.sequence==7&&close_float(f.get<float>(f.actor,0x7cc),9.f));
         assert(f.get<std::uint8_t>(f.watchers,0x34)==f.looping);++f.calls;};
     f.seed();
     ClientOverlayHistorySelection s{};
-    assert(api->select(1,1,2.75f,.25f,&f.b,&s)&&s.newer==f.nodes&&s.older==f.nodes+1&&s.earlier==f.nodes+2&&s.hermite&&near(s.fraction,.5f));
+    assert(api->select(1,1,2.75f,.25f,&f.b,&s)&&s.newer==f.nodes&&s.older==f.nodes+1&&s.earlier==f.nodes+2&&s.hermite&&close_float(s.fraction,.5f));
     assert(api->select(1,0x11,2.75f,.25f,&f.b,&s)&&!s.earlier&&!s.hermite);
     assert(api->select(1,1,4.f,0.f,&f.b,&s)&&s.newer==s.older&&s.newer==f.nodes);
     assert(api->select(1,1,.5f,0.f,&f.b,&s)&&s.newer==s.older&&s.newer==f.nodes+2);
@@ -69,18 +69,18 @@ int main(int argc,char** argv){
     assert(api->select(1,1,2.000025f,0.f,&f.b,&s)&&s.newer==s.older&&s.newer==f.nodes);
     f.seed();
     float cycle=-1;
-    assert(api->loop_lerp(.5f,.75f,.25f,&cycle)&&near(cycle,0.f));
-    assert(api->loop_lerp(-1.f,.875f,.125f,&cycle)&&near(cycle,.625f));
-    assert(api->loop_lerp(-1.f,.125f,.375f,&cycle)&&near(cycle,.875f));
+    assert(api->loop_lerp(.5f,.75f,.25f,&cycle)&&close_float(cycle,0.f));
+    assert(api->loop_lerp(-1.f,.875f,.125f,&cycle)&&close_float(cycle,.625f));
+    assert(api->loop_lerp(-1.f,.125f,.375f,&cycle)&&close_float(cycle,.875f));
     unsigned changed=99;
     assert(api->correct(f.actor,sizeof(f.actor),2.75f,&f.b,&changed)&&changed==1&&f.loops==2&&f.calls==1);
-    assert(f.nodes[1].sample.sequence==7&&near(f.nodes[1].sample.cycle,.25f)&&near(f.nodes[1].sample.weight,.75f));
-    assert(f.nodes[2].sample.sequence==7&&near(f.nodes[2].sample.cycle,0.f)&&near(f.nodes[2].sample.weight,.75f));
-    assert(f.nodes[1].sample.order==1&&near(f.nodes[1].sample.previous_cycle,.11f)&&f.nodes[1].sample.unknown10==0x11&&f.nodes[2].sample.unknown1c==0x66);
-    assert(near(f.get<float>(f.actor,0x7cc),.24f)&&f.get<std::uint32_t>(f.watchers,0x34)==0xabcdef00);
+    assert(f.nodes[1].sample.sequence==7&&close_float(f.nodes[1].sample.cycle,.25f)&&close_float(f.nodes[1].sample.weight,.75f));
+    assert(f.nodes[2].sample.sequence==7&&close_float(f.nodes[2].sample.cycle,0.f)&&close_float(f.nodes[2].sample.weight,.75f));
+    assert(f.nodes[1].sample.order==1&&close_float(f.nodes[1].sample.previous_cycle,.11f)&&f.nodes[1].sample.unknown10==0x11&&f.nodes[2].sample.unknown1c==0x66);
+    assert(close_float(f.get<float>(f.actor,0x7cc),.24f)&&f.get<std::uint32_t>(f.watchers,0x34)==0xabcdef00);
     assert(api->correct(f.actor,sizeof(f.actor),2.75f,&f.b,&changed)&&!changed&&f.calls==1);
     f.seed(.875f,.125f);f.looping=true;
-    assert(api->correct(f.actor,sizeof(f.actor),2.75f,&f.b,&changed)&&changed==1&&near(f.nodes[2].sample.cycle,.625f)&&f.get<std::uint32_t>(f.watchers,0x34)==0xabcdef01);
+    assert(api->correct(f.actor,sizeof(f.actor),2.75f,&f.b,&changed)&&changed==1&&close_float(f.nodes[2].sample.cycle,.625f)&&f.get<std::uint32_t>(f.watchers,0x34)==0xabcdef01);
     f.seed();f.put(f.watchers,0x2c,0x11);
     assert(api->correct(f.actor,sizeof(f.actor),2.75f,&f.b,&changed)&&changed==1&&f.loops==1&&f.nodes[2].sample.sequence==4);
     f.seed();f.nodes[1].next=999;

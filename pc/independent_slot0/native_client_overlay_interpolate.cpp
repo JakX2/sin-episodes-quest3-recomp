@@ -1,4 +1,5 @@
 #include "native_client_overlay_interpolate.h"
+#include "client_overlay_cycle_math.h"
 #include <cmath>
 #include <cstring>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayHistoryApi* __cdecl
@@ -26,33 +27,6 @@ ClientOverlaySample mixed(const ClientOverlaySample& a,const ClientOverlaySample
     out.cycle=mix(a.cycle,b.cycle,t);out.weight=mix(a.weight,b.weight,t);
     return out;
 }
-bool wrap(double v,float& out) noexcept {
-    if(!std::isfinite(v)||v<-2147483648.||v>=2147483648.)return false;
-    v-=std::trunc(v);if(v<0.)v+=1.;
-    out=static_cast<float>(v);return true;
-}
-bool linear_cycle(float a,float b,float t,float& out) noexcept {
-    double x=a,y=b;
-    if(std::fabs(x-y)>=.5){if(x<y)x+=1.;else y+=1.;}
-    return wrap(x*(1.-t)+y*t,out);
-}
-// 240c30c0 / 2408c440: one-sided tangents, not Catmull-Rom.
-double hermite(double a,double b,double c,double t) noexcept {
-    const double t2=t*t,t3=t2*t;
-    return (2*t3-3*t2+1)*b+(3*t2-2*t3)*c+(t3-2*t2+t)*(b-a)+(t3-t2)*(c-b);
-}
-bool hermite_cycle(float earlier,float older,float newer,float t,bool looping,float& out) noexcept {
-    double a=earlier,b=older,c=newer;
-    if(looping){
-        // Unlike 2408afb0, this helper tests strictly greater than .5.
-        // Original second comparison uses the already adjusted middle.
-        if(std::fabs(a-b)>.5){if(a<b)a=static_cast<float>(a+1.);else b+=1.;}
-        if(std::fabs(c-b)>.5){if(b<c)b+=1.;else c=static_cast<float>(c+1.);}
-        // Original stores Hermite result to float before integer truncation.
-        return wrap(static_cast<float>(hermite(a,b,c,t)),out);
-    }
-    out=static_cast<float>(hermite(a,b,c,t));return std::isfinite(out);
-}
 int __cdecl evaluate(const ClientOverlayHistorySelection* s,bool looping,ClientOverlaySample* dst) noexcept {
     if(!s||!dst||!s->older||!s->newer||!std::isfinite(s->fraction)||s->fraction<0.f||s->fraction>2.f||
        !finite(s->older->sample)||!finite(s->newer->sample))return 0;
@@ -73,8 +47,8 @@ int __cdecl evaluate(const ClientOverlayHistorySelection* s,bool looping,ClientO
             if(!std::isfinite(old_gap)||!std::isfinite(gap))return 0;
             if(std::fabs(static_cast<double>(gap)-old_gap)>0.0001f&&old_gap>0.0001f)
                 p=mixed(p,a,static_cast<float>(1.-static_cast<double>(gap)/old_gap));
-            if(!finite(p)||!hermite_cycle(p.cycle,a.cycle,b.cycle,s->fraction,looping,out.cycle))return 0;
-        }else if(looping&&!linear_cycle(a.cycle,b.cycle,s->fraction,out.cycle))return 0;
+            if(!finite(p)||!overlay_cycle_math::cubic(s->fraction,p.cycle,a.cycle,b.cycle,looping,out.cycle))return 0;
+        }else if(looping&&!overlay_cycle_math::linear(s->fraction,a.cycle,b.cycle,out.cycle))return 0;
     }
     if(!finite(out))return 0;
     sanitize(out);*dst=out;return 1;
