@@ -997,3 +997,10 @@ add_dependencies(sin_native_ammo_definition_pair_test sin_slot0_client sin_slot0
 add_dependencies(sin_native_fixed_difficulty_service_test sin_native_ammo_definition_pair_test)
 add_test(NAME independent_native_ammo_definition_pair
   COMMAND sin_native_ammo_definition_pair_test "$<TARGET_FILE:sin_slot0_client>" "$<TARGET_FILE:sin_slot0_server>")
+
+# Phase990: persistent raw scene owner drives actual loaded native ensure.
+add_executable(sin_raw_scene_cache_owner_test test_server_raw_scene_cache_owner.cpp)
+target_compile_features(sin_raw_scene_cache_owner_test PRIVATE cxx_std_17)
+add_dependencies(sin_raw_scene_cache_owner_test sin_slot0_server)
+add_test(NAME independent_native_raw_scene_cache_owner
+ COMMAND sin_raw_scene_cache_owner_test "$<TARGET_FILE:sin_slot0_server>")
