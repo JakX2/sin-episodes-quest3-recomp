@@ -1,10 +1,16 @@
 #include "native_client_overlay_pool.h"
+#include "native_client_overlay_entity.h"
+#include "native_weapon_datatables.h"
 #include "native_client_overlay_interpolate.h"
 #include <cmath>
 #include <cstring>
 #include <limits>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayInterpolateApi* __cdecl
 SiN_GetClientOverlayInterpolateApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayHistoryApi* __cdecl
+SiN_GetClientOverlayHistoryApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayClockedInterpolateApi* __cdecl
+SiN_GetClientOverlayClockedInterpolateApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 constexpr std::uint32_t stride=sizeof(ClientOverlayHistoryNode),max_nodes=4096;
@@ -182,6 +188,171 @@ int __cdecl restore(void* watcher,unsigned bytes,void* row,unsigned row_bytes) n
 const ClientOverlayCaptureApi capture_api{1,sizeof(ClientOverlayCaptureApi),&trim,&capture,&reset,&restore};
 const ClientOverlayPoolApi api{1,sizeof(ClientOverlayPoolApi),&initialize,&record,&prune,&clear,&apply};
 }
+
+namespace {
+struct EntityVectors {
+    unsigned char* layers;
+    unsigned char* watchers;
+    unsigned count;
+};
+bool range_overlaps(std::uint64_t a,std::uint64_t an,std::uint64_t b,std::uint64_t bn) noexcept {
+    return a<b+bn&&b<a+an;
+}
+bool ptr_overlap(const void* a,unsigned an,const void* b,unsigned bn) noexcept {
+    return range_overlaps(reinterpret_cast<std::uintptr_t>(a),an,reinterpret_cast<std::uintptr_t>(b),bn);
+}
+enum class EntityOp {Capture,Reset,Render,Restore};
+// Validate all active chains, bindings and exclusive storage before any
+// mutation. In particular, do not allow two pools to resolve the same word.
+bool preflight(void* actor,unsigned bytes,const ClientOverlayEntityBindings* b,EntityOp op,
+    EntityVectors& v,ClientOverlayEntityResult& result) noexcept {
+    if(!actor||bytes<0x7cc||!b||b->count>overlay_limit||(!b->slots&&b->count))return false;
+    const auto layers=read<LayerVector>(actor,0x7a4),watchers=read<LayerVector>(actor,0x7b8);
+    if(layers.count<0||layers.count!=watchers.count||static_cast<unsigned>(layers.count)!=b->count||
+       layers.capacity<layers.count||watchers.capacity<watchers.count||
+       (b->count&&(!layers.memory||!watchers.memory))||
+       bytes<0x7cc+b->count*4)return false;
+    v={layers.memory,watchers.memory,b->count};
+    if(!v.count)return true;
+    if(ptr_overlap(v.layers,v.count*0x20,v.watchers,v.count*0x44)||
+       ptr_overlap(actor,bytes,v.layers,v.count*0x20)||ptr_overlap(actor,bytes,v.watchers,v.count*0x44))return false;
+    for(unsigned i=0;i<v.count;++i){
+        result.failed_slot=static_cast<int>(i);
+        const auto& s=b->slots[i];auto* w=v.watchers+i*0x44;auto* row=v.layers+i*0x20;
+        if(!bound_row(w,0x44,row,0x20)||!valid(w,0x44,s.pool,&s.storage)||
+           !std::isfinite(read<float>(w,0x3c)))return false;
+        const unsigned extent=s.storage.capacity*stride;
+        if(ptr_overlap(s.storage.nodes,extent,s.pool,sizeof(*s.pool))||
+           ptr_overlap(actor,bytes,s.storage.nodes,extent)||ptr_overlap(actor,bytes,s.pool,sizeof(*s.pool))||
+           ptr_overlap(v.layers,v.count*0x20,s.storage.nodes,extent)||ptr_overlap(v.layers,v.count*0x20,s.pool,sizeof(*s.pool))||
+           ptr_overlap(v.watchers,v.count*0x44,s.storage.nodes,extent)||ptr_overlap(v.watchers,v.count*0x44,s.pool,sizeof(*s.pool)))return false;
+        for(unsigned j=0;j<i;++j){
+            const auto& t=b->slots[j];const unsigned other=t.storage.capacity*stride;
+            if(range_overlaps(s.storage.first_word,extent,t.storage.first_word,other)||
+               ptr_overlap(s.storage.nodes,extent,t.storage.nodes,other)||
+               ptr_overlap(s.pool,sizeof(*s.pool),t.pool,sizeof(*t.pool))||
+               ptr_overlap(s.pool,sizeof(*s.pool),t.storage.nodes,other)||
+               ptr_overlap(s.storage.nodes,extent,t.pool,sizeof(*t.pool)))return false;
+        }
+        if(op==EntityOp::Capture&&(!s.pool->free_head||!finite(read<ClientOverlaySample>(row,0))))return false;
+        if(op==EntityOp::Reset&&(s.storage.capacity<3||!finite(read<ClientOverlaySample>(row,0))))return false;
+        if(op==EntityOp::Render){
+            for(auto word=s.pool->head;word;){
+                auto* n=node(s.storage,word);if(!finite(n->sample))return false;word=n->next;
+            }
+        }
+    }
+    result.failed_slot=-1;return true;
+}
+bool begin(ClientOverlayEntityResult* out) noexcept {
+    if(!out)return false;
+    *out={};out->failed_slot=-1;return true;
+}
+int __cdecl entity_capture(void* actor,unsigned bytes,float sample_time,float current_time,float network_time,
+    const ClientOverlayEntityBindings* b,ClientOverlayEntityResult* out) noexcept {
+    if(!begin(out)||!std::isfinite(sample_time)||!std::isfinite(current_time)||!std::isfinite(network_time))return 0;
+    EntityVectors v{};
+    if(!preflight(actor,bytes,b,EntityOp::Capture,v,*out))return 0;
+    for(unsigned i=0;i<v.count;++i){
+        if(!std::isfinite(static_cast<float>(static_cast<double>(current_time)-read<float>(v.watchers+i*0x44,0x3c)-2.))){
+            out->failed_slot=static_cast<int>(i);return 0;
+        }
+    }
+    for(unsigned i=0;i<v.count;++i){
+        const auto& s=b->slots[i];unsigned removed=0;
+        if(!capture(v.watchers+i*0x44,0x44,v.layers+i*0x20,0x20,sample_time,current_time,network_time,s.pool,&s.storage,&removed)){
+            out->failed_slot=static_cast<int>(i);return 0;
+        }
+        ++out->processed;out->recycled+=removed;
+    }
+    return 1;
+}
+int __cdecl entity_reset(void* actor,unsigned bytes,float time,const ClientOverlayEntityBindings* b,ClientOverlayEntityResult* out) noexcept {
+    if(!begin(out)||!std::isfinite(time))return 0;
+    EntityVectors v{};
+    if(!preflight(actor,bytes,b,EntityOp::Reset,v,*out))return 0;
+    for(unsigned i=0;i<v.count;++i){
+        const auto& s=b->slots[i];const unsigned old=s.pool->count;
+        if(!reset(v.watchers+i*0x44,0x44,v.layers+i*0x20,0x20,time,s.pool,&s.storage)){out->failed_slot=static_cast<int>(i);return 0;}
+        ++out->processed;out->recycled+=old;
+    }
+    return 1;
+}
+int __cdecl entity_restore(void* actor,unsigned bytes,const ClientOverlayEntityBindings* b,ClientOverlayEntityResult* out) noexcept {
+    if(!begin(out))return 0;
+    EntityVectors v{};
+    if(!preflight(actor,bytes,b,EntityOp::Restore,v,*out))return 0;
+    for(unsigned i=0;i<v.count;++i){
+        if(!restore(v.watchers+i*0x44,0x44,v.layers+i*0x20,0x20)){out->failed_slot=static_cast<int>(i);return 0;}
+        ++out->processed;++out->writes;
+    }
+    return 1;
+}
+struct EntityRender {
+    EntityVectors v;
+    const ClientOverlayEntityBindings* b;
+    const ClientOverlayInterpolationClock* clock;
+    const ClientOverlayClockedInterpolateApi* clocked;
+    ClientOverlayEntityResult* result;
+    bool done[overlay_limit]{};
+    bool ok=true;
+};
+bool render_one(EntityRender& c,unsigned i,float time) noexcept {
+    const auto& s=c.b->slots[i];
+    unsigned removed=0;int wrote=0,raw=0;
+    ApplyContext local{s.pool,&s.storage,&removed,true};
+    ClientOverlayInterpolateBindings bindings{};bindings.history.context=&local;
+    bindings.history.resolve=[](void* p,std::uint32_t w) noexcept -> ClientOverlayHistoryNode* {
+        return node(*static_cast<ApplyContext*>(p)->storage,w);
+    };
+    bindings.prune=[](void* p,void* w,float cutoff) noexcept {
+        auto& c=*static_cast<ApplyContext*>(p);c.ok=prune(w,0x44,c.pool,c.storage,cutoff,c.removed)!=0;
+    };
+    if(!c.clocked->apply(c.v.watchers+i*0x44,0x44,c.v.layers+i*0x20,0x20,time,c.clock,&bindings,&wrote,&raw)||!local.ok){
+        c.ok=false;c.result->failed_slot=static_cast<int>(i);return false;
+    }
+    c.done[i]=true;++c.result->processed;c.result->writes+=wrote;c.result->raw_copies+=raw;c.result->recycled+=removed;
+    return true;
+}
+int __cdecl entity_render(void* actor,unsigned bytes,float time,const ClientOverlayInterpolationClock* clock,
+    const ClientOverlayEntityBindings* b,ClientOverlayEntityResult* out) noexcept {
+    if(!begin(out)||!std::isfinite(time)||!clock||!std::isfinite(clock->last_network_time)||!b||!b->looping)return 0;
+    EntityVectors v{};
+    if(!preflight(actor,bytes,b,EntityOp::Render,v,*out))return 0;
+    for(unsigned i=0;i<v.count;++i){
+        const auto delay=read<float>(v.watchers+i*0x44,0x3c);
+        if(!std::isfinite(static_cast<float>(static_cast<double>(time)-delay-0.05f))){out->failed_slot=static_cast<int>(i);return 0;}
+    }
+    const auto* history=SiN_GetClientOverlayHistoryApi(1,sizeof(ClientOverlayHistoryApi));
+    const auto* clocked=SiN_GetClientOverlayClockedInterpolateApi(1,sizeof(ClientOverlayClockedInterpolateApi));
+    if(!history||!clocked)return 0;
+    EntityRender c{v,b,clock,clocked,out};
+    ClientOverlayHistoryBindings hb{};hb.context=&c;
+    hb.resolve=[](void* p,std::uint32_t w) noexcept -> ClientOverlayHistoryNode* {
+        auto& c=*static_cast<EntityRender*>(p);
+        for(unsigned i=0;i<c.v.count;++i)if(auto* n=node(c.b->slots[i].storage,w))return n;
+        return nullptr;
+    };
+    hb.looping=[](void* p,void* a,int seq) noexcept -> bool {
+        auto& c=*static_cast<EntityRender*>(p);return c.b->looping(c.b->context,a,seq);
+    };
+    // Original 240c19a0 calls the changed watcher's interpolation virtual
+    // immediately, then updates the event baseline. Preserve that boundary.
+    hb.interpolate=[](void* p,void* w,float t) noexcept {
+        auto& c=*static_cast<EntityRender*>(p);
+        if(!c.ok)return;
+        const auto i=static_cast<unsigned>((static_cast<unsigned char*>(w)-c.v.watchers)/0x44);
+        if(i>=c.v.count){c.ok=false;return;}
+        render_one(c,i,t);
+    };
+    if(!history->correct(actor,bytes,time,&hb,&out->repairs)||!c.ok)return 0;
+    // Port-owned frame composition: evaluate each other active watcher once.
+    for(unsigned i=0;i<v.count;++i)if(!c.done[i]&&!render_one(c,i,time))return 0;
+    return 1;
+}
+const ClientOverlayEntityFrameApi entity_api{1,sizeof(ClientOverlayEntityFrameApi),&entity_capture,&entity_reset,&entity_render,&entity_restore};
+}
+
 }
 #pragma comment(linker,"/EXPORT:SiN_GetClientOverlayPoolApi=_SiN_GetClientOverlayPoolApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayPoolApi* __cdecl
@@ -195,4 +366,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOve
 SiN_GetClientOverlayCaptureApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ClientOverlayCaptureApi)?&capture_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetClientOverlayEntityFrameApi=_SiN_GetClientOverlayEntityFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayEntityFrameApi* __cdecl
+SiN_GetClientOverlayEntityFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ClientOverlayEntityFrameApi)?&entity_api:nullptr;
 }
