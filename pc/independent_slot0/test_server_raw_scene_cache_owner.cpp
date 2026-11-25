@@ -47,6 +47,13 @@ static void directory_test(const SceneRawCacheEnsureApi& api){
     CHECK(b.ensure(p,"scenes/root.vcd")&&b.lock(p,id,&data,&n)&&n==10&&b.unlock(p,id));
     CHECK(owner.evict("scenes/root.vcd")&&b.reload(p,"scenes/root.vcd",id,&new_id));
     CHECK(new_id!=id&&b.lock(p,new_id,&data,&n)&&n==7&&!std::memcmp(data,"changed",7)&&b.unlock(p,new_id));
+    CHECK(fs::remove(temp.path/"scenes"/"Root.VCD"));
+    CHECK(owner.evict("scenes/root.vcd"));
+    CHECK(b.reload(p,"scenes/root.vcd",new_id,&id)&&id==0xffffffffu);
+    CHECK(!b.lock(p,new_id,&data,&n)&&!owner.size()&&!owner.resident_bytes());
+    write("Root.VCD","returned");
+    CHECK(b.ensure(p,"scenes/root.vcd")&&b.find(p,"scenes/root.vcd",&id)&&id!=new_id&&id!=0xffffffffu);
+    CHECK(b.lock(p,id,&data,&n)&&n==8&&!std::memcmp(data,"returned",8)&&b.unlock(p,id));
     CHECK(b.ensure(p,"scenes/empty.vcd")&&b.find(p,"scenes/empty.vcd",&id)&&id!=0xffffffffu);
     CHECK(b.lock(p,id,&data,&n)&&data&&!n&&b.unlock(p,id));
     CHECK(b.ensure(p,"scenes/missing.vcd")&&b.find(p,"scenes/missing.vcd",&id)&&id==0xffffffffu);
@@ -74,6 +81,10 @@ int main(int argc,char** argv){
         source.fail=false;
         CHECK(b.reload(p,"scenes/root.vcd",id,&other)&&other!=id&&owner.resident_bytes()==10);
         CHECK(!b.lock(p,id,&bytes,&n)&&b.lock(p,other,&bytes,&n)&&n==10&&b.unlock(p,other));
+        CHECK(owner.evict("scenes/root.vcd"));source.missing=true;id=99;
+        CHECK(b.reload(p,"scenes/root.vcd",other,&id)&&id==0xffffffffu);
+        CHECK(!b.lock(p,other,&bytes,&n)&&!owner.size()&&!owner.resident_bytes());
+        CHECK(b.find(p,"scenes/root.vcd",&id)&&id==0xffffffffu);
         CHECK(owner.clear()&&!owner.size()&&!owner.resident_bytes());
         source.missing=true;CHECK(b.ensure(p,"scenes/root.vcd")&&!owner.size());
         CHECK(b.find(p,"scenes/root.vcd",&id)&&id==0xffffffffu);

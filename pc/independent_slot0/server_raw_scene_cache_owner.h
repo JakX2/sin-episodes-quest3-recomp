@@ -128,7 +128,7 @@ private:
         if(busy_||!normalize(path,key)||api_.version!=raw_npc::version||
            api_.size!=sizeof(api_)||!api_.ensure||!reader_.read)return 0;
         Busy busy(busy_);
-        if(!api_.ensure(&ensure_,key))return 0;
+        if(api_.ensure(&ensure_,key)!=1)return 0;
         auto* r=row(key);if(!r)return 0;
         const auto id=handle(*r);auto it=resources_.find(id);
         if(it==resources_.end())return 0;
@@ -145,7 +145,14 @@ private:
         auto it=resources_.find(old);
         if(it==resources_.end()||it->second.resident||it->second.locked||next_==absent)return 0;
         Busy busy(busy_);Resource data;
-        if(!read(key,data)||!data.found)return 0;
+        if(!read(key,data))return 0;
+        // A normal source miss is not a transport failure. The named loader
+        // treats the absent sentinel as an ordinary missing scene. Retire
+        // the old evicted handle, allowing a subsequent ensure to retry.
+        if(!data.found){
+            if(!discard(old))return 0;
+            rows_.erase(symbols_.find(key)->second);*out=absent;return 1;
+        }
         const auto id=next_++;
         if(!publish(id,std::move(data)))return 0;
         std::memcpy(r->data()+0x14,&id,4);(void)discard(old);*out=id;return 1;
