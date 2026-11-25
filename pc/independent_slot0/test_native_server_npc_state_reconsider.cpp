@@ -685,6 +685,8 @@ int main(int argc,char** argv){
     assert(gcrange&&!GetProcAddress(c,server_npc_grunt_combat_range_export)&&!gcrange(0,sizeof(ServerNpcGruntCombatRangeApi))&&!gcrange(1,0));
     const auto* crange=gcrange(1,sizeof(ServerNpcGruntCombatRangeApi));assert(crange);
     ServerNpcGruntCombatRangeBindings crb{};crb.context=&f;crb.visibility=cvb;crb.report=report_binding;
+    // The legacy BestEnemy extent leaf only exposes 0xc0; combat needs the actual fixture extents.
+    crb.visibility.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& f=F::self(p);if(e==f.enemy)*n=sizeof(f.enemy);else if(e==f.replacement)*n=sizeof(f.replacement);else return 0;return 1;};
     crb.visibility.memory.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
         auto& f=F::self(p);switch(token){case 100:*out=f.nodes;*n=sizeof(f.nodes);return 1;case 101:*out=f.record;*n=sizeof(f.record);return 1;case 102:*out=f.fallback;*n=sizeof(f.fallback);return 1;case 103:*out=f.memory;*n=sizeof(f.memory);return 1;case 700:*out=f.combat_nav;*n=sizeof(f.combat_nav);return 1;default:return 0;}
     };
@@ -757,24 +759,24 @@ int main(int argc,char** argv){
     f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x8ec,0x20000u);f.put(f.actor,0x920,0);f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);
     f.put(f.actor,0x988,0x8000u);f.put(f.actor,0x8a0,0x7001u);
     ServerNpcGruntCombatConditionsResult ccr;
-    assert(combat->gather(f.actor,sizeof(f.actor),540,&ccb,&ccr)&&ccr.completed&&ccr.attack_called&&ccr.attack.conditions[0]==0x14&&ccr.nav_calls==2&&!ccr.old_sight);
+    assert(combat->gather(f.actor,sizeof(f.actor),f.enemy,540,&ccb,&ccr)&&ccr.completed&&ccr.attack_called&&ccr.attack.conditions[0]==0x14&&ccr.nav_calls==2&&!ccr.old_sight);
     // Original update thresholds permit remembered location to lag a small report.
     assert(mem->lookup(f.memory,sizeof(f.memory),1000,false,&mb,&ml)&&ml.record);
     void* current_record=nullptr;unsigned current_record_bytes=0;assert(mb.storage(mb.context,ml.record,&current_record,&current_record_bytes)&&current_record_bytes>=0x38);
     f.put(current_record,4,47.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
     f.combat_trace=false;f.combat_center[0]=300;
-    assert(combat->gather(f.actor,sizeof(f.actor),548,&ccb,&ccr)&&ccr.completed&&!ccr.old_sight&&ccr.cleanup_called&&!ccr.attack_called);
-    assert(combat->gather(f.actor,sizeof(f.actor),548.01f,&ccb,&ccr)&&ccr.old_sight&&ccr.close_mark&&ccr.horizontal_distance==47&&!ccr.point_queries);
+    assert(combat->gather(f.actor,sizeof(f.actor),f.enemy,548,&ccb,&ccr)&&ccr.completed&&!ccr.old_sight&&ccr.cleanup_called&&!ccr.attack_called);
+    assert(combat->gather(f.actor,sizeof(f.actor),f.enemy,548.01f,&ccb,&ccr)&&ccr.old_sight&&ccr.close_mark&&ccr.horizontal_distance==47&&!ccr.point_queries);
     assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryEluded,0,0,&mb,&ctr)&&ctr.value==1);
     assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,550,0,true,&mutation,&mut));
     f.put(current_record,4,48.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
-    assert(combat->gather(f.actor,sizeof(f.actor),559,&ccb,&ccr)&&ccr.old_sight&&ccr.horizontal_distance==48&&!ccr.close_mark&&!ccr.point_queries);
+    assert(combat->gather(f.actor,sizeof(f.actor),f.enemy,559,&ccb,&ccr)&&ccr.old_sight&&ccr.horizontal_distance==48&&!ccr.close_mark&&!ccr.point_queries);
     f.put(f.actor,0x920,1);unreachable_row(0,0x7001u,600,f.distance[0]);f.put(f.actor,0x7cc,0u);
-    assert(combat->gather(f.actor,sizeof(f.actor),559,&ccb,&ccr)&&ccr.unreachable_set&&ccr.point_queries==1&&ccr.point_mark);
+    assert(combat->gather(f.actor,sizeof(f.actor),f.enemy,559,&ccb,&ccr)&&ccr.unreachable_set&&ccr.point_queries==1&&ccr.point_mark);
     f.combat_nav[0x3a]=1;f.put(f.actor,0x7cc,0u);
-    assert(combat->gather(f.actor,sizeof(f.actor),559,&ccb,&ccr)&&!ccr.unreachable_set&&!ccr.point_queries);
+    assert(combat->gather(f.actor,sizeof(f.actor),f.enemy,559,&ccb,&ccr)&&!ccr.unreachable_set&&!ccr.point_queries);
     f.put(f.enemy,0x8c,1);const unsigned before_nav=f.combat_nav_calls;
-    assert(combat->gather(f.actor,sizeof(f.actor),560,&ccb,&ccr)&&ccr.completed&&ccr.range.dead&&!ccr.nav_calls&&f.combat_nav_calls==before_nav);
+    assert(combat->gather(f.actor,sizeof(f.actor),f.enemy,560,&ccb,&ccr)&&ccr.completed&&ccr.range.dead&&!ccr.nav_calls&&f.combat_nav_calls==before_nav);
     auto ggoal=reinterpret_cast<GetServerNpcGruntGoalRefreshApi>(GetProcAddress(s,server_npc_grunt_goal_refresh_export));
     assert(ggoal&&!GetProcAddress(c,server_npc_grunt_goal_refresh_export)&&!ggoal(0,sizeof(ServerNpcGruntGoalRefreshApi))&&!ggoal(1,0));
     const auto* goal=ggoal(1,sizeof(ServerNpcGruntGoalRefreshApi));assert(goal);
