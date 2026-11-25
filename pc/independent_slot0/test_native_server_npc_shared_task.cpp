@@ -21,6 +21,7 @@ struct F {
     bool cue_squad=true,cue_target=true,cue_visible=true;float cue_path=240;
     bool obs_pvs=false,obs_found=true,obs_handled=false,obs_gate=false;float obs_seen=0;
     bool target_present=true;float target_pos[3]{};
+    void* selected_enemy=nullptr;
     bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
     float motor_yaw() const {float y=0;std::memcpy(&y,motor+0x14,4);return y;}
     template<class T>void put(void* p,unsigned o,T v){std::memcpy(static_cast<unsigned char*>(p)+o,&v,sizeof(v));}
@@ -408,5 +409,28 @@ int main(int argc,char** argv){
     f.cover_found=false;choose_cover(103,384);assert(tcr.shared.lifecycle.failed&&tcr.shared.failed_code==8&&!tcr.submitted);
     f.cover_found=true;f.goal_accept=false;choose_cover(103,384);assert(tcr.shared.lifecycle.failed&&tcr.submitted&&!tcr.accepted);
     f.put(f.a,0x7d0,0u);f.put(f.a,0xc18,77u);f.component_handles=true;choose_cover(103,384);assert(tcr.shared.component_handled&&!tcr.shared.native&&f.trace==std::vector<int>{2});
+    auto ger=reinterpret_cast<GetServerNpcSharedEnemyRefreshApi>(GetProcAddress(s,server_npc_shared_enemy_refresh_export));
+    assert(ger&&!GetProcAddress(c,server_npc_shared_enemy_refresh_export)&&!ger(0,sizeof(ServerNpcSharedEnemyRefreshApi))&&!ger(1,0));
+    const auto* refresh_api=ger(1,sizeof(ServerNpcSharedEnemyRefreshApi));assert(refresh_api);
+    ServerNpcSharedEnemyRefreshBindings erb{};erb.context=&f;erb.original_vtable=0x2249aaa4;
+    erb.enemy.context=&f;erb.enemy.entries=tactical_slots;erb.enemy.count=4;
+    erb.enemy.enemy_changing=[](void* p,void*) noexcept -> int{F::self(p).trace.push_back(80);return 1;};
+    erb.enemy.entity_handle=[](void* p,void* e,std::uint32_t* out) noexcept -> int{auto& f=F::self(p);if(e==f.target)*out=0x7001u;else if(e==f.hint)*out=0x8002u;else return 0;f.trace.push_back(81);return 1;};
+    erb.memory_record=[](void* p,std::uint32_t tok,void* e,bool* found,float* stamp) noexcept -> int{auto& f=F::self(p);assert(tok==100&&e==f.target);f.trace.push_back(82);*found=f.obs_found;*stamp=f.obs_seen;return 1;};
+    erb.select_enemy=[](void* p,void*,std::uint32_t comp,void** out) noexcept -> int{auto& f=F::self(p);assert(comp==f.get<unsigned>(0xc18));f.trace.push_back(83);*out=f.selected_enemy;return 1;};
+    f.put(f.a,0xc18,0u);f.put(f.a,0x9c4,0u);f.put(f.a,0x984,100u);f.put(f.a,0x7cc,0u);f.put(f.a,0x7d0,0u);
+    ServerNpcSharedEnemyRefreshResult err{};ServerNpcScheduleTask et{135,999};
+    auto refresh=[&](){f.put(f.a,0x7a4,1);f.trace.clear();assert(refresh_api->execute(f.a,sizeof(f.a),&et,60,&b,&erb,&err));};
+    f.put(f.a,0x8a0,0x9001u);refresh();assert(err.shared.native&&err.shared.lifecycle.completed&&!err.current_live&&f.get<float>(0x8c4)==60&&f.trace.empty());
+    f.put(f.a,0x8a0,0x7001u);f.obs_found=false;refresh();assert(err.current_live&&!err.memory_found&&!err.selected&&f.trace==std::vector<int>{82});
+    f.obs_found=true;f.obs_seen=59.99f;refresh();assert(!err.selected&&err.shared.lifecycle.completed);
+    f.obs_seen=60;f.selected_enemy=f.hint;f.put(f.a,0x850,2);refresh();
+    assert(err.selected&&err.replaced&&err.state_changed&&err.enemy.new_handle==0x8002u&&f.get<int>(0x850)==3&&f.get<int>(0x858)==3&&f.get<float>(0x854)==60&&(f.trace==std::vector<int>{82,83,80,81}));
+    f.put(f.a,0x8a0,0x7001u);f.obs_seen=61;f.selected_enemy=f.target;f.put(f.a,0x854,44.f);refresh();
+    assert(err.selected&&!err.replaced&&!err.state_changed&&f.get<float>(0x854)==44.f&&(f.trace==std::vector<int>{82,83,81}));
+    f.selected_enemy=nullptr;refresh();assert(err.cleared&&err.extra_notification&&err.enemy.new_condition_cleared&&f.get<unsigned>(0x8a0)==0xffffffffu&&(f.trace==std::vector<int>{82,83,80,80}));
+    f.put(f.a,0x8a0,0x7001u);f.put(f.a,0xc18,77u);f.component_handles=true;f.put(f.a,0x8c4,1.f);refresh();
+    assert(err.shared.component_handled&&!err.shared.native&&f.get<float>(0x8c4)==1.f&&f.trace==std::vector<int>{2});
+    f.component_handles=false;refresh();assert(err.shared.component_called&&err.extra_notification&&(f.trace==std::vector<int>{2,82,83,80,80}));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
