@@ -16,6 +16,10 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGru
 SiN_GetServerGruntRegistrationApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntNativeWeaponEventApi* __cdecl
 SiN_GetServerGruntNativeWeaponEventApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcReloadServicesApi* __cdecl
+SiN_GetServerNpcReloadServicesApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntScriptWeaponEventApi* __cdecl
+SiN_GetServerGruntScriptWeaponEventApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 struct Call;
@@ -38,6 +42,8 @@ struct Call {
     EventRoute npc_route,weapon_route;
     const ServerNpcParentWeaponEventBindings* native_events;
     ServerNpcNativeWeaponEventFrameResult* native_result;
+    ServerNpcReloadSession* reload;
+    ServerNpcScriptWeaponEventFrameResult* script_result;
 };
 Call& self(void* p) noexcept {return *static_cast<Call*>(p);}
 bool prepare(Call& c) noexcept {
@@ -102,7 +108,18 @@ void bind_events(EventRoute& route,ServerAnimationEventBindings& target,Call& ca
         if(route.weapon)++out.weapon_events;else ++out.npc_events;
         const auto* api=SiN_GetServerGruntRegistrationApi(1,sizeof(ServerGruntRegistrationApi));
         int status=-1;
-        if(receiver==c.actor&&c.native_events&&c.native_result){
+        if(receiver==c.actor&&c.reload&&c.script_result&&c.native_result){
+            const auto* script=SiN_GetServerGruntScriptWeaponEventApi(1,sizeof(ServerGruntScriptWeaponEventApi));
+            auto& result=*c.script_result;
+            if(script){
+                status=script->handle(receiver,c.bytes,event,c.now,c.grunt->ids,&c.grunt->handler,c.reload,&result.last);
+                result.fixed_resets+=result.last.fixed_reset;
+                c.native_result->last=result.last.event;
+                c.native_result->native_altfire+=result.last.event.native_altfire;
+                c.native_result->native_parent+=result.last.event.native_parent;
+                out.last=result.last.event.grunt;
+            }
+        }else if(receiver==c.actor&&c.native_events&&c.native_result){
             const auto* native=SiN_GetServerGruntNativeWeaponEventApi(1,sizeof(ServerGruntNativeWeaponEventApi));
             auto& result=*c.native_result;
             if(native){
@@ -137,7 +154,7 @@ int __cdecl run(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,
     const auto* api=SiN_GetServerNpcAnimationTickApi(1,sizeof(ServerNpcAnimationTickApi));
     return api&&prepare(c)&&api->run(actor,bytes,in,&c.npc,&out->tick);
 }
-int run_grunt_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcWeaponGruntFrameBindings* b,ServerNpcWeaponGruntFrameResult* out,const ServerNpcParentWeaponEventBindings* native=nullptr,ServerNpcNativeWeaponEventFrameResult* result=nullptr) noexcept {
+int run_grunt_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcWeaponGruntFrameBindings* b,ServerNpcWeaponGruntFrameResult* out,const ServerNpcParentWeaponEventBindings* native=nullptr,ServerNpcNativeWeaponEventFrameResult* result=nullptr,ServerNpcReloadSession* reload=nullptr,ServerNpcScriptWeaponEventFrameResult* script_result=nullptr) noexcept {
     if(!out)return 0;*out={};out->failed_event=-1;
     if(!b||!in||!std::isfinite(in->now)||!b->ids)return 0;
     const auto& t=b->runtime.npc.transition.assignment.translation;
@@ -149,7 +166,7 @@ int run_grunt_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* 
        b->ids->activity_generation!=t.activities->names.generation)return 0;
     Call c{};c.host=&b->runtime;c.result=&out->runtime;c.actor=actor;c.bytes=bytes;c.now=in->now;
     c.grunt=b;c.grunt_result=out;
-    c.native_events=native;c.native_result=result;
+    c.native_events=native;c.native_result=result;c.reload=reload;c.script_result=script_result;
     const auto* api=SiN_GetServerNpcAnimationTickApi(1,sizeof(ServerNpcAnimationTickApi));
     if(!api||!prepare(c))return 0;
     bind_events(c.npc_route,c.npc.frame.frame.sequence.frame.events,c,false);
@@ -168,6 +185,20 @@ int __cdecl run_native(void* a,unsigned bytes,const ServerNpcRunAnimationInput* 
     events.weapon.weapons=b->frame.runtime.inherited.weapons;
     return run_grunt_impl(a,bytes,in,&b->frame,&out->frame,&events,out);
 }
+int __cdecl run_script(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcScriptWeaponEventFrameBindings* b,ServerNpcScriptWeaponEventFrameResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!b||!in)return 0;
+    const auto* api=SiN_GetServerNpcReloadServicesApi(1,sizeof(ServerNpcReloadServicesApi));
+    ServerNpcReloadServicesBindings bindings{b->frame.events,b->scripts,b->conditions};
+    bindings.original.weapon.weapons=b->frame.frame.runtime.inherited.weapons;
+    ServerNpcReloadSession reload{};
+    if(!api||!api->prepare(actor,bytes,&bindings,&reload))return 0;
+    const int status=run_grunt_impl(actor,bytes,in,&b->frame.frame,&out->frame.frame,&reload.bound,&out->frame,&reload,out);
+    out->script_lookups=reload.script_lookups;out->condition_calls=reload.condition_calls;
+    out->sound_intervals=reload.sound_intervals;out->burst_queries=reload.burst_queries;
+    return status;
+}
+const ServerNpcScriptWeaponEventFrameApi script_frame_api{1,sizeof(ServerNpcScriptWeaponEventFrameApi),&run_script};
 const ServerNpcNativeWeaponEventFrameApi native_frame_api{1,sizeof(ServerNpcNativeWeaponEventFrameApi),&run_native};
 const ServerNpcWeaponGruntFrameApi grunt_api{1,sizeof(ServerNpcWeaponGruntFrameApi),&run_grunt};
 const ServerNpcWeaponRuntimeApi api{1,sizeof(ServerNpcWeaponRuntimeApi),&request,&update,&run};
@@ -192,4 +223,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcNativeWeaponEventFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcNativeWeaponEventFrameApi)?&native_frame_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcScriptWeaponEventFrameApi=_SiN_GetServerNpcScriptWeaponEventFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScriptWeaponEventFrameApi* __cdecl
+SiN_GetServerNpcScriptWeaponEventFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerNpcScriptWeaponEventFrameApi)?&script_frame_api:nullptr;
 }

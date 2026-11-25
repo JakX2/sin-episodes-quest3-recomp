@@ -176,6 +176,38 @@ int main(int argc,char** argv){
     seed_frame();const auto count_before=f.get<unsigned>(f.actor,0xc38);const auto deadline_before=f.get<float>(f.actor,0xc90);
     assert(!native->run(f.actor,sizeof(f.actor),&in,&nb,&nout)&&nout.frame.failed_status==-1&&nout.native_altfire==1&&!nout.frame.weapon_events);
     assert(f.get<unsigned>(f.actor,0xc38)==count_before&&f.get<float>(f.actor,0xc90)==deadline_before);
+
+    auto gscript=reinterpret_cast<GetServerNpcScriptWeaponEventFrameApi>(GetProcAddress(server,server_npc_script_weapon_event_frame_export));
+    assert(gscript&&!GetProcAddress(client,server_npc_script_weapon_event_frame_export)&&!gscript(0,sizeof(ServerNpcScriptWeaponEventFrameApi))&&!gscript(1,0));
+    auto* script=gscript(1,sizeof(ServerNpcScriptWeaponEventFrameApi));assert(script);
+    struct ScriptFixture {
+        F* f;
+        alignas(4) unsigned char rows[16]{},record[0x168]{},descriptor[0x48]{};
+    } sf{&f};
+    f.put(sf.rows,12,0x1234u);f.put(sf.record,0x160,32);f.put(sf.record,0x164,7);
+    f.put(sf.descriptor,0x34,npc_global_condition_base+50);f.put(sf.descriptor,0x38,3);f.put(sf.descriptor,0x3c,5);
+    ServerNpcScriptWeaponEventFrameBindings sb{};sb.frame=nb;
+    sb.frame.events.script_info=nullptr;sb.frame.events.clear_condition=nullptr;
+    sb.frame.events.weapon.sound.interval=nullptr;sb.frame.events.weapon.sound.max_clip=nullptr;
+    sb.scripts={sf.rows,sizeof(sf.rows),1,sf.record,sizeof(sf.record),&sf,
+        [](void* p,std::uint32_t token,const void** data,unsigned* n) noexcept -> int {
+            auto& s=*static_cast<ScriptFixture*>(p);assert(token==0x1234u);s.f->trace.push_back(80);*data=s.record;*n=sizeof(s.record);return 1;}};
+    sb.conditions.context=&sf;sb.conditions.descriptor=[](void* p,void* actor,const void** data,unsigned* n) noexcept -> int {
+        auto& s=*static_cast<ScriptFixture*>(p);assert(actor==s.f->actor);s.f->trace.push_back(70);*data=s.descriptor;*n=sizeof(s.descriptor);return 1;};
+    f.ne.event=2;f.ne.type=0;f.we.event=3002;f.we.type=0;
+    f.put(f.weapon,0x51c,std::uint16_t{0});f.put(f.weapon,0x4ec,0);f.put(f.weapon,0x4f0,-1);
+    f.put(f.actor,0x7d0,0xffffffffu);f.put(f.actor,0xfc8,-1);f.put(f.weapon,0x580,0.f);
+    seed_frame();ServerNpcScriptWeaponEventFrameResult sout{};
+    assert(script->run(f.actor,sizeof(f.actor),&in,&sb,&sout)&&sout.frame.frame.handled==2&&sout.fixed_resets==1&&sout.frame.native_parent==1);
+    assert(sout.script_lookups==2&&sout.condition_calls==3&&sout.sound_intervals==2&&f.get<int>(f.actor,0xfc8)==2);
+    assert(f.get<int>(f.weapon,0x4ec)==31&&f.get<int>(f.weapon,0x4f0)==7&&f.get<unsigned>(f.actor,0x7d0)==(0xffffffffu&~(7u<<18)));
+    assert((f.trace==std::vector<int>{10,11,109,80,80,70,70,70,12,1,102,102,2,3}));
+    // Event2 clears conditions and publishes marker even with stale weapon.
+    f.put(f.actor,0x78c,0x9001u);f.put(f.actor,0x7d0,0xffffffffu);f.put(f.actor,0xfc8,-1);
+    seed_frame();assert(script->run(f.actor,sizeof(f.actor),&in,&sb,&sout)&&sout.fixed_resets==1&&sout.frame.frame.handled==1&&!sout.last.reload.live&&!sout.script_lookups);
+    assert(f.get<int>(f.actor,0xfc8)==2&&f.get<unsigned>(f.actor,0x7d0)==(0xffffffffu&~(7u<<18)));
+    assert((f.trace==std::vector<int>{10,11,70,70,70}));
+    f.put(f.actor,0x78c,0x7001u);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
