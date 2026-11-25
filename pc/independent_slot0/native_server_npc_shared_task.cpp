@@ -46,13 +46,17 @@ int __cdecl supports(int id,bool running) noexcept{
     if(running)return id==2||id==4||id==5||id==86||id==92||id==93||id==114;
     return id==1||id==2||id==3||id==4||id==5||id==59||id==86||id==87||id==88||id==91||(id>=92&&id<=96)||id==114||id==119||id==120;
 }
+bool quantize_yaw(double value,float& out) noexcept{
+    int fixed=0;
+    if(!integer(std::trunc(value*182.0444488525390625),fixed))return false;
+    out=static_cast<float>(static_cast<unsigned>(fixed)&0xffffu)*.0054931640625f;
+    return true;
+}
 int __cdecl yaw_error(float actual,float desired,float* quantized,double* error) noexcept{
     if(!quantized||!error)return 0;*quantized=0;*error=0;
     if(!std::isfinite(actual)||!std::isfinite(desired))return 0;
-    int fixed=0;
     // Original x87 FMUL with the exact float32 constants, FISTP toward zero.
-    if(!integer(std::trunc(static_cast<double>(actual)*182.0444488525390625),fixed))return 0;
-    *quantized=static_cast<float>(static_cast<unsigned>(fixed)&0xffffu)*.0054931640625f;
+    if(!quantize_yaw(actual,*quantized))return 0;
     const double delta=static_cast<double>(desired)-*quantized;
     double wrapped=std::fmod(delta,360.0);
     if(delta>0){if(wrapped>=180.0)wrapped-=360.0;}
@@ -97,6 +101,56 @@ int face60(void* a,unsigned n,bool running,float now,const ServerNpcSharedTaskBi
     // The motor callback may update the actor's current yaw and motor target.
     if(!yaw_error(rd<float>(a,0x370),rd<float>(motor,0x14),&out.current_quantized,&out.error))return 0;
     return std::fabs(out.error)>.006||complete();
+}
+bool facing_supports(int id,bool running) noexcept{
+    if(id==60)return true;
+    if(running)return id==56||id==57||id==58||id==61||id==63||id==64||id==65||id==112||id==117||id==118;
+    return id==56||id==57||id==64||id==65||id==66||id==117||id==118;
+}
+int facing_alias(void* a,unsigned n,const ServerNpcScheduleTask& t,bool running,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedFacingBindings& f,ServerNpcSharedFacingResult& out) noexcept{
+    auto complete=[&](){
+        const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+        if(!life||!life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle))return 0;
+        out.completed=out.shared.lifecycle.completed;return 1;
+    };
+    auto begin=[&](){if(!f.begin_turn||!f.begin_turn(f.context,a))return 0;out.begun=1;return 1;};
+    auto resolve=[&](void*& motor){
+        const auto token=rd<unsigned>(a,0x908);unsigned size=0;
+        motor=nullptr;
+        return token&&f.motor_storage&&f.motor_storage(f.context,token,&motor,&size)&&motor&&size>=0x18;
+    };
+    if(!running&&t.id==56)return begin(); // entry aliases the last half of Start57.
+    void* motor=nullptr;if(!resolve(motor))return 0;
+    if(running){
+        if(!f.step_turn||!f.step_turn(f.context,motor,-1))return 0;
+        out.stepped=1;
+        if(!resolve(motor)||!yaw_error(rd<float>(a,0x370),rd<float>(motor,0x14),&out.current_quantized,&out.error))return 0;
+        return std::fabs(out.error)>.006||complete();
+    }
+    float target=0;
+    if(t.id==66){
+        if(!quantize_yaw(rd<float>(a,0x370),target))return 0;
+        wr(motor,0x14,target);out.yaw_written=1;return complete();
+    }
+    if(t.id==117||t.id==118){
+        float current=0;
+        if(!quantize_yaw(rd<float>(a,0x370),current)||!std::isfinite(t.parameter))return 0;
+        const double offset=t.id==117?static_cast<double>(t.parameter):-static_cast<double>(t.parameter);
+        if(!quantize_yaw(static_cast<double>(current)+offset,target))return 0;
+    }else{
+        if(t.id==64||t.id==65){
+            const unsigned off=t.id==64?0x9f4:0xa00;
+            float vector[3]{rd<float>(a,off),rd<float>(a,off+4),rd<float>(a,off+8)};
+            if(!std::isfinite(vector[0])||!std::isfinite(vector[1])||!std::isfinite(vector[2])||
+               !f.vector_yaw||!f.vector_yaw(f.context,a,vector,&target)||!std::isfinite(target))return 0;
+            wr(motor,0x14,target);out.vector_written=1;
+            if(!resolve(motor))return 0;
+        }
+        double desired=0;
+        if(!f.desired_yaw||!f.desired_yaw(f.context,a,t.id!=57,&desired)||!std::isfinite(desired))return 0;
+        target=static_cast<float>(desired);if(!std::isfinite(target))return 0;
+    }
+    wr(motor,0x14,target);out.yaw_written=1;return begin();
 }
 int target_animation(void* a,unsigned n,int task,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedTargetAnimationBindings& b,ServerNpcSharedTargetAnimationResult& out) noexcept{
     void* target=nullptr;
@@ -284,7 +338,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
     if(movement_supports(t->id,running)&&move&&move_out){out->native=1;return movement(a,n,*t,running,now,*b,*move,*move_out,*out);}
-    if(t->id==60&&facing&&facing_out){out->native=1;return face60(a,n,running,now,*b,*facing,*facing_out);}
+    if(facing_supports(t->id,running)&&facing&&facing_out){out->native=1;return t->id==60?face60(a,n,running,now,*b,*facing,*facing_out):facing_alias(a,n,*t,running,now,*b,*facing,*facing_out);}
     if(running&&t->id>=94&&t->id<=96&&target&&target_out){out->native=1;return target_animation(a,n,t->id,now,*b,*target,*target_out);}
     if(!supports(t->id,running)){out->parent_called=1;return b->parent&&b->parent(b->context,a,t,running);}
     out->native=1;
@@ -348,7 +402,7 @@ int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool runni
 }
 int __cdecl execute_facing(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedFacingBindings* f,ServerNpcSharedFacingResult* out) noexcept{
     if(!out)return 0;*out={};
-    if(!t||t->id!=60||!f)return 0;
+    if(!t||!facing_supports(t->id,running)||!f)return 0;
     return execute_impl(a,n,t,running,now,b,&out->shared,f,out);
 }
 int __cdecl execute_target_animation(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* out) noexcept{
@@ -389,7 +443,7 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
             const int ok=target_animation_api.execute(a,q.bytes,t,q.now,&q.shared,&binding,&st.last);
             st.native+=st.last.shared.native;st.components+=st.last.shared.component_handled;return ok;
         }
-        if(q.facing&&t->id==60){
+        if(q.facing&&facing_supports(t->id,running)){
             auto& st=*q.facing_stats;++st.calls;
             const int ok=facing_api.execute(a,q.bytes,t,running,q.now,&q.shared,q.facing,&st.last);
             st.native+=st.last.shared.native;st.components+=st.last.shared.component_handled;return ok;

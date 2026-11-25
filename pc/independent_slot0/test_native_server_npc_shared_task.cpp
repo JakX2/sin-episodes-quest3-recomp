@@ -124,6 +124,25 @@ int main(int argc,char** argv){
     f.put(f.a,0xc18,0u);f.put(f.a,0x908,0u);
     assert(!face->execute(f.a,sizeof(f.a),&ft,true,12,&b,&fb,&fr));
     run(60,false,0,12);assert(o.parent_called&&!o.native);
+    f.put(f.a,0x908,88u);f.put(f.a,0x370,90.f);f.put(f.motor,0x14,0.f);
+    f.aimed=true;f.desired=180;
+    fb.desired_yaw=[](void* p,void*,bool mode,double* out) noexcept -> int{auto& f=F::self(p);f.trace.push_back(mode?13:16);*out=f.desired;return 1;};
+    ft={56,0};facing(false);assert(fr.begun&&!fr.yaw_written&&f.motor_yaw()==0&&f.trace==std::vector<int>{14});
+    ft={57,0};facing(false);assert(fr.begun&&fr.yaw_written&&f.motor_yaw()==180&&(f.trace==std::vector<int>{16,14}));
+    f.put(f.a,0x9f4,1.f);f.put(f.a,0xa00,2.f);
+    fb.vector_yaw=[](void* p,void*,const float* v,float* out) noexcept -> int{assert(v[0]==1.f||v[0]==2.f);F::self(p).trace.push_back(12);*out=30;return 1;};
+    for(int id: {64,65}){ft={id,0};facing(false);assert(fr.begun&&fr.vector_written&&fr.yaw_written&&f.motor_yaw()==180&&(f.trace==std::vector<int>{12,13,14}));}
+    ft={66,0};facing(false);assert(fr.completed&&fr.yaw_written&&!fr.begun&&f.motor_yaw()==90&&f.trace.empty());
+    ft={117,45};facing(false);assert(fr.begun&&f.motor_yaw()==135);
+    ft={118,45};facing(false);assert(fr.begun&&f.motor_yaw()==45);
+    f.put(f.a,0x370,270.f);ft={117,90};facing(false);assert(f.motor_yaw()==0);
+    for(int id: {56,57,58,61,63,64,65,112,117,118}){
+        ft={id,0};f.put(f.a,0x370,0.f);f.put(f.motor,0x14,90.f);f.step_align=false;
+        facing(true);assert(fr.stepped&&!fr.completed&&f.trace==std::vector<int>{15});
+        f.step_align=true;facing(true);assert(fr.stepped&&fr.completed&&fr.error==0&&f.trace==std::vector<int>{15});
+    }
+    f.step_align=false;ft={58,0};assert(!face->execute(f.a,sizeof(f.a),&ft,false,12,&b,&fb,&fr));
+    ft={66,0};assert(!face->execute(f.a,sizeof(f.a),&ft,true,12,&b,&fb,&fr));
     auto gt=reinterpret_cast<GetServerNpcSharedTargetAnimationApi>(GetProcAddress(s,server_npc_shared_target_animation_export));
     assert(gt&&!GetProcAddress(c,server_npc_shared_target_animation_export)&&!gt(0,sizeof(ServerNpcSharedTargetAnimationApi))&&!gt(1,0));
     const auto* target_api=gt(1,sizeof(ServerNpcSharedTargetAnimationApi));assert(target_api);
