@@ -4689,7 +4689,7 @@ bool choreography_vector_ready(const ChoreographyVectorBindings* h) noexcept {
 int __cdecl choreography_grow_memory(void* p,void* mem,unsigned extra,unsigned stride) noexcept {
     const auto* b=static_cast<const ChoreographyVectorBindings*>(p);
     if(!choreography_vector_ready(b)||!hologram_writable(mem,12)||!extra||
-       (stride!=4&&stride!=12&&stride!=24&&stride!=0x40&&stride!=0x88&&stride!=0x8c))return 0;
+       (stride!=4&&stride!=12&&stride!=24&&stride!=28&&stride!=0x40&&stride!=0x88&&stride!=0x8c))return 0;
     const auto h=*b;
     const unsigned cap=hologram_read<unsigned>(mem,4);
     const auto old=hologram_read<std::uint32_t>(mem,0);
@@ -7454,6 +7454,102 @@ int __cdecl actor_sink_adapt(const SceneSpeechActorSinkBindings* cfg,ResponseNot
     return 1;
 }
 const SceneSpeechActorSinkApi scene_speech_actor_sink_api{version,sizeof(SceneSpeechActorSinkApi),&actor_sink_adapt};
+
+
+using ResponseHistoryIndex=sin_port::choreography_index::Tree<std::uint32_t,28>;
+const ResponseHistoryTreeBindings& response_tree_cfg(void* p) noexcept {
+    return *static_cast<const ResponseHistoryTreeBindings*>(p);
+}
+bool response_tree_read(void* exp,const ResponseHistoryTreeBindings& b,ResponseHistoryIndex& tree) noexcept {
+    if(!hologram_writable(exp,0x7c))return false;
+    const unsigned high=hologram_read<unsigned>(exp,0x2c),cap=hologram_read<unsigned>(exp,0x18),live=hologram_read<unsigned>(exp,0x24);
+    if(high>cap||cap>4096||live>high)return false;
+    void* rows=nullptr;unsigned extent=0;
+    const auto word=hologram_read<std::uint32_t>(exp,0x14);
+    if(cap&&(!word||!b.memory.storage(b.memory.context,word,&rows,&extent)||
+       extent<cap*28||!hologram_writable(rows,cap*28)))return false;
+    tree={static_cast<unsigned char*>(rows),high,hologram_read<std::uint32_t>(exp,0x20)};
+    unsigned occupied=0;
+    for(unsigned i=0;i<high;++i)if(tree.get(i,0)!=i)++occupied;
+    if(occupied!=live)return false;
+    auto key=[&](unsigned i){return hologram_read<std::uint16_t>(tree.rows,i*28+16);};
+    if(!tree.valid(live,[&](unsigned i,unsigned j){return key(i)<key(j);}))return false;
+    unsigned free_count=0;
+    for(auto f=hologram_read<std::uint32_t>(exp,0x28);f!=ResponseHistoryIndex::nil;f=tree.get(f,1)){
+        if(!tree.index(f)||tree.get(f,0)!=f||++free_count>high-live)return false;
+    }
+    return free_count==high-live;
+}
+bool response_tree_symbol(void* exp,const ResponseHistoryTreeBindings& b,const char* name,std::uint16_t& symbol) noexcept {
+    return name&&choreography_symbol_intern(const_cast<ChoreographySymbolInternBindings*>(&b.symbols),
+            static_cast<unsigned char*>(exp)+0x34,name,&symbol)&&symbol!=0xffff;
+}
+std::uint32_t response_tree_search(const ResponseHistoryIndex& t,std::uint16_t key,std::uint32_t& parent,unsigned& side) noexcept {
+    parent=ResponseHistoryIndex::nil;side=0;
+    for(auto i=t.root;i!=ResponseHistoryIndex::nil;i=t.get(i,side)){
+        const auto k=hologram_read<std::uint16_t>(t.rows,i*28+16);
+        if(k==key)return i;
+        parent=i;side=key<k?0u:1u;
+    }
+    return ResponseHistoryIndex::nil;
+}
+int __cdecl response_tree_lookup(void* p,void* exp,const char* name,int* out) noexcept {
+    if(!hologram_writable(out,4))return 0;
+    const auto& b=response_tree_cfg(p);ResponseHistoryIndex t{};std::uint16_t symbol=0xffff;
+    if(!response_tree_read(exp,b,t)||!response_tree_symbol(exp,b,name,symbol))return 0;
+    std::uint32_t parent=0;unsigned side=0;
+    const auto i=response_tree_search(t,symbol,parent,side);
+    *out=i==ResponseHistoryIndex::nil?-1:static_cast<int>(i);return 1;
+}
+int __cdecl response_tree_insert(void* p,void* exp,const char* name,float initial,int* out) noexcept {
+    if(!hologram_writable(out,4))return 0;
+    const auto& b=response_tree_cfg(p);ResponseHistoryIndex t{};std::uint16_t symbol=0xffff;
+    if(!response_tree_read(exp,b,t)||!response_tree_symbol(exp,b,name,symbol))return 0;
+    std::uint32_t parent=0;unsigned side=0;
+    if(response_tree_search(t,symbol,parent,side)!=ResponseHistoryIndex::nil)return 0;
+    const unsigned high=t.count,live=hologram_read<unsigned>(exp,0x24);
+    auto slot=hologram_read<std::uint32_t>(exp,0x28);
+    if(slot==ResponseHistoryIndex::nil){
+        if(high>=4096)return 0;
+        if(high==hologram_read<unsigned>(exp,0x18)&&
+           !choreography_grow_memory(const_cast<ChoreographyVectorBindings*>(&b.memory),
+               static_cast<unsigned char*>(exp)+0x14,1,28))return 0;
+        void* rows=nullptr;unsigned extent=0;
+        const auto word=hologram_read<std::uint32_t>(exp,0x14);
+        if(!word||!b.memory.storage(b.memory.context,word,&rows,&extent)||
+           extent<(high+1)*28||!hologram_writable(rows,(high+1)*28))return 0;
+        t.rows=static_cast<unsigned char*>(rows);t.count=high+1;slot=high;
+        hologram_write(exp,0x2c,high+1);
+    }else hologram_write(exp,0x28,t.get(slot,1));
+    t.link(slot,parent,side);
+    hologram_write(t.rows,slot*28+16,symbol);
+    hologram_write(t.rows,slot*28+20,initial);
+    hologram_write(t.rows,slot*28+24,0u);
+    hologram_write(exp,0x20,t.root);hologram_write(exp,0x24,live+1);
+    hologram_write(exp,0x30,hologram_read<std::uint32_t>(exp,0x14));
+    *out=static_cast<int>(slot);return 1;
+}
+int __cdecl response_tree_entry(void* p,void* exp,int index,void** out,unsigned* bytes) noexcept {
+    if(!hologram_writable(out,sizeof(*out))||!hologram_writable(bytes,4)||index<0)return 0;
+    const auto& b=response_tree_cfg(p);ResponseHistoryIndex t{};
+    if(!response_tree_read(exp,b,t)||!t.index(static_cast<unsigned>(index))||
+       t.get(static_cast<unsigned>(index),0)==static_cast<unsigned>(index))return 0;
+    *out=t.rows+static_cast<unsigned>(index)*28;*bytes=28;return 1;
+}
+int __cdecl response_tree_adapt(const ResponseHistoryTreeBindings* b,ResponseHistoryBindings* out) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!hologram_writable(out,sizeof(*out))||
+       !b->memory.storage||!b->memory.resize||!b->symbols.insensitive||!b->symbols.storage||
+       !b->symbols.grow_memory||!b->symbols.allocate||!b->symbols.release_unpublished||
+       !b->symbols.sentinel||!b->clock||!b->notify)return 0;
+    *out={};out->context=const_cast<ResponseHistoryTreeBindings*>(b);
+    out->lookup=&response_tree_lookup;out->insert=&response_tree_insert;out->entry=&response_tree_entry;
+    out->clock=[](void* p,float* result) noexcept -> int{
+        const auto& h=response_tree_cfg(p);return h.clock(h.context,result);};
+    out->notify=[](void* p,void* exp,const char* name) noexcept -> int{
+        const auto& h=response_tree_cfg(p);return h.notify(h.context,exp,name);};
+    return 1;
+}
+const ResponseHistoryTreeApi response_history_tree_api{version,sizeof(ResponseHistoryTreeApi),&response_tree_adapt};
 
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
@@ -15464,6 +15560,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetResponseHistoryTreeApi=_SiN_GetResponseHistoryTreeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseHistoryTreeApi* __cdecl
+SiN_GetResponseHistoryTreeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseHistoryTreeApi)?&response_history_tree_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetSceneSpeechActorSinkApi=_SiN_GetSceneSpeechActorSinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneSpeechActorSinkApi* __cdecl

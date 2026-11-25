@@ -1168,6 +1168,15 @@ int main(int argc,char** argv){
         tables::test::check_vcd_clock_speech(actorSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote);
         tables::test::VcdAuditArena jessicaSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_vcd_clock_speech(jessicaSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink);
+        const auto getHistoryTree=reinterpret_cast<tables::GetResponseHistoryTreeApi>(GetProcAddress(server,tables::response_history_tree_export));
+        assert(getHistoryTree&&!GetProcAddress(client,tables::response_history_tree_export));
+        const auto* historyTree=getHistoryTree(1,sizeof(tables::ResponseHistoryTreeApi));
+        assert(historyTree&&!getHistoryTree(0,sizeof(tables::ResponseHistoryTreeApi))&&!getHistoryTree(1,0));
+        const auto getHistoryPolicy=reinterpret_cast<tables::GetResponsePolicyApi>(GetProcAddress(server,tables::response_policy_export));
+        assert(getHistoryPolicy);const auto* historyPolicy=getHistoryPolicy(1,sizeof(tables::ResponsePolicyApi));assert(historyPolicy);
+        tables::test::VcdAuditArena historyArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_native_response_history_tree(historyArena,*historyTree,*historyPolicy);
+        std::puts("PASS native response history symbol lookup, indexed tree insertion and free-slot reuse");
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));
         const auto getRecords=reinterpret_cast<tables::GetActorEventRecordApi>(GetProcAddress(server,"SiN_GetActorEventRecordApi"));

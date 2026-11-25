@@ -745,6 +745,20 @@ struct SceneSpeechActorSinkApi {
     int (__cdecl *adapt)(const SceneSpeechActorSinkBindings*,ResponseNoteBindings*) noexcept;
 };
 using GetSceneSpeechActorSinkApi=const SceneSpeechActorSinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_history_tree_export[]="SiN_GetResponseHistoryTreeApi";
+struct ResponseHistoryTreeBindings {
+    ChoreographyVectorBindings memory;
+    ChoreographySymbolInternBindings symbols;
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *notify)(void*,void* exp,const char*) noexcept;
+};
+struct ResponseHistoryTreeApi {
+    std::uint32_t version,size;
+    // Original concept lookup interns even on miss. Keep cfg alive and serialize access.
+    int (__cdecl *adapt)(const ResponseHistoryTreeBindings*,ResponseHistoryBindings*) noexcept;
+};
+using GetResponseHistoryTreeApi=const ResponseHistoryTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char native_choreography_clock_export[]="SiN_GetNativeChoreographyClockApi";
 // Runtime clock over the original parsed PE32 graph. The graph owns vector
 // storage; reset/simulation/resume use native graph operations. Engine speech

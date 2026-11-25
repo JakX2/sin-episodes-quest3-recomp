@@ -528,6 +528,45 @@ actor Jessica
 // Exercise real parser -> clock -> native speech callback -> native
 // preparation, language, caption and actor record lifecycle. Only the
 // external engine effects are synthetic, not the callback dispatch.
+
+inline void check_native_response_history_tree(VcdAuditArena& a,const ResponseHistoryTreeApi& api,
+    const ResponsePolicyApi& policy){
+    using F=ScenePlaybackFixture;
+    alignas(4) unsigned char exp[0x7c]{};
+    F::put(exp,0x20,0xffffffffu);F::put(exp,0x28,0xffffffffu);
+    assert(a.symbol_api.construct_empty(exp+0x34,0x34,0,0x2228e9b0)==1);
+    struct State{float now=10;unsigned notifications=0;} state;
+    ResponseHistoryTreeBindings b{};b.memory=a.vector_bindings;b.symbols=a.intern_bindings;b.context=&state;
+    b.clock=[](void* p,float* out) noexcept -> int{*out=static_cast<State*>(p)->now;return 1;};
+    b.notify=[](void* p,void*,const char*) noexcept -> int{++static_cast<State*>(p)->notifications;return 1;};
+    ResponseHistoryBindings h{};assert(api.adapt(&b,&h));
+    auto lookup=[&](const char* name){int i=-2;assert(h.lookup(h.context,exp,name,&i));return i;};
+    auto seed=[&](const char* name){assert(policy.seed(exp,sizeof(exp),&h,name)==1);};
+    auto entry=[&](int i){void* row=nullptr;unsigned n=0;assert(h.entry(h.context,exp,i,&row,&n)&&n==28);return row;};
+    unsigned has=99;assert(policy.has_concept(exp,sizeof(exp),&h,"TLK_HELLO",&has)==1&&!has);
+    assert(!F::word(exp,0x24)&&((F::word(exp+0x34,0x10)&0xffffu)==0));
+    assert(lookup("tlk_hello")==-1);
+    assert(lookup("Zed")==-1&&lookup("Alpha")==-1&&lookup("Mid")==-1);
+    seed("Alpha");seed("TLK_HELLO");seed("Zed");seed("Mid");
+    assert(F::word(exp,0x24)==4&&F::word(exp,0x2c)==4&&F::word(exp,0x18)==4&&state.notifications==4);
+    assert(lookup("alpha")==0&&lookup("tlk_hello")==1&&lookup("ZED")==2&&lookup("Mid")==3);
+    auto* hello=entry(1);assert(VcdAuditArena::read_float(hello,0x14)==10);
+    F::put(hello,0x18,123u);state.now=20;seed("tlk_HELLO");
+    assert(F::word(entry(1),0x18)==123&&VcdAuditArena::read_float(entry(1),0x14)==20&&F::word(exp,0x24)==4);
+    int i=-2;assert(!h.insert(h.context,exp,"TLK_HELLO",30,&i)&&F::word(exp,0x24)==4);
+    assert(lookup("Fifth")==-1);a.fail_resize=true;
+    const auto root=F::word(exp,0x20),backing=F::word(exp,0x14);
+    assert(!h.insert(h.context,exp,"Fifth",30,&i)&&F::word(exp,0x20)==root&&F::word(exp,0x14)==backing&&F::word(exp,0x24)==4);
+    a.fail_resize=false;seed("Fifth");assert(F::word(exp,0x18)==8&&lookup("Fifth")==4);
+    void* rows=nullptr;unsigned bytes=0;assert(a.storage(&a,F::word(exp,0x14),&rows,&bytes));
+    for(unsigned j=0;j<5;++j){auto* row=static_cast<unsigned char*>(rows)+j*28;F::put(row,0,j);F::put(row,4,j==4?0xffffffffu:j+1);F::put(row,24,0u);}
+    F::put(exp,0x20,0xffffffffu);F::put(exp,0x24,0u);F::put(exp,0x28,0u);
+    const auto retained=F::word(exp,0x14);
+    seed("Mid");assert(lookup("Mid")==0&&F::word(exp,0x28)==1&&F::word(exp,0x2c)==5&&F::word(exp,0x14)==retained);
+    void* invalid=nullptr;unsigned n=0;assert(!h.entry(h.context,exp,1,&invalid,&n));
+    assert(a.retire.symbol_destroy(&a,exp+0x34)&&a.release(&a,retained)&&a.live.empty());
+}
+
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
