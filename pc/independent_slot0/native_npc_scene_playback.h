@@ -1143,6 +1143,30 @@ struct NativeResponseFinderApi {
     int (__cdecl *find)(void*,void* system,void* criteria,void* response,void* exp,unsigned* found) noexcept;
 };
 using GetNativeResponseFinderApi=const NativeResponseFinderApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char script_response_finder_export[]="SiN_GetScriptResponseFinderApi";
+struct ScriptResponseStore {
+    void* owner=nullptr;
+    void* system=nullptr;
+};
+struct ScriptResponseInclude {
+    void* context;
+    // Returned bytes remain readable until next include or create returns.
+    int (__cdecl *load)(void*,const char* name,const char**,unsigned*) noexcept;
+};
+struct ScriptResponseFinderBindings {
+    ScriptResponseStore store;
+    NativeResponseFinderBindings host; // registry lookup callbacks replaced
+};
+struct ScriptResponseFinderApi {
+    std::uint32_t version,size;
+    // Empty caller-owned handle required. All data copied; release once.
+    int (__cdecl *create)(const char* name,const char* data,unsigned,const ScriptResponseInclude*,ScriptResponseStore*) noexcept;
+    int (__cdecl *release)(ScriptResponseStore*) noexcept;
+    // Callback compatible with native selection. Caller serializes use and
+    // keeps store alive; system must be store.system.
+    int (__cdecl *find)(void*,void*,void*,void*,void*,unsigned*) noexcept;
+};
+using GetScriptResponseFinderApi=const ScriptResponseFinderApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_criteria_removal_export[]="SiN_GetResponseCriteriaRemovalApi";
 struct ResponseCriteriaRemovalBindings {
     ResponseCriteriaTreeBindings tree;

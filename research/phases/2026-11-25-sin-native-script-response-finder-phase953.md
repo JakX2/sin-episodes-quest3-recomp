@@ -1,0 +1,3 @@
+# Phase 953: script-backed native response finder
+
+Server-only version/size checked API creates owned Phase951 registry from Phase950 parser, explicit include callback, catches allocation failure, releases handle. Resolver bridges original-layout records to Phase949 finder; caller retains scratch, RNG, KeyValues access, scene lookup and criteria clone leaves. Loaded regression parses root and included group directly, rejects missing include, admits non-scene fallback after rejected scene, publishes rule name, disables matchonce, releases registry. All handles caller-owned, serialized; not genuine engine CResponseSystem or live map startup. Real retail corpus not run through loaded DLL yet; CI pending.

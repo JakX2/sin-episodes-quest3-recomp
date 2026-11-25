@@ -1266,8 +1266,13 @@ int main(int argc,char** argv){
         assert(getNativeFinder&&!GetProcAddress(client,tables::native_response_finder_export));
         const auto* nativeFinder=getNativeFinder(1,sizeof(tables::NativeResponseFinderApi));
         assert(nativeFinder&&!getNativeFinder(0,sizeof(tables::NativeResponseFinderApi))&&!getNativeFinder(1,0));
+        const auto getScriptFinder=reinterpret_cast<tables::GetScriptResponseFinderApi>(GetProcAddress(server,tables::script_response_finder_export));
+        assert(getScriptFinder&&!GetProcAddress(client,tables::script_response_finder_export));
+        const auto* scriptFinder=getScriptFinder(1,sizeof(tables::ScriptResponseFinderApi));
+        assert(scriptFinder&&!getScriptFinder(0,sizeof(tables::ScriptResponseFinderApi))&&!getScriptFinder(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder);
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria,playerCriteria,baseCriteria,actorSelection,criteriaRemoval,ruleRanking,nativeFinder,scriptFinder);
+        std::puts("PASS script-backed native response finder and include lifecycle");
         std::puts("PASS native response finder nested group and scene filter");
         std::puts("PASS native response rule ranking with real CriteriaSet");
         std::puts("PASS native criteria row retirement and free-slot reuse");
