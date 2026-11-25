@@ -1175,6 +1175,8 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena metadataArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_vcd_metadata(metadataArena,*nativeVcdRuntime,*sceneMetadataGeneration,*sceneResponseServices,*responseSceneFilter,*sceneMetadataIndex);
         std::puts("PASS native VCD parser through generated metadata, cache refresh and response admission");
+        tables::test::check_scene_cache_roundtrip(metadataArena,*nativeVcdRuntime,*sceneMetadataGeneration,*sceneResponseServices,*responseSceneFilter,*sceneMetadataIndex);
+        std::puts("PASS persistent multi-file native VCD metadata cache binary roundtrip");
     }
     {
     tables::test::ParsedFacialClientPair paired(*flexSend,*flexRecv,*animSend,*animRecv,*frame);
