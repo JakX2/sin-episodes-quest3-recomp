@@ -12,7 +12,9 @@
 using namespace sin_port::native_weapon_tables;
 struct F {
     unsigned char a[0xc34]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
-    bool component_handles=false,aimed=false;int draw=2;std::vector<int> trace;
+    unsigned char motor[0x18]{};
+    bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
+    float motor_yaw() const {float y=0;std::memcpy(&y,motor+0x14,4);return y;}
     template<class T>void put(void* p,unsigned o,T v){std::memcpy(static_cast<unsigned char*>(p)+o,&v,sizeof(v));}
     template<class T>T get(unsigned o){T v{};std::memcpy(&v,a+o,sizeof(v));return v;}
     static F& self(void* p){return *static_cast<F*>(p);}
@@ -87,5 +89,38 @@ int main(int argc,char** argv){
     f.component_handles=false;run(88,false,12,11);assert(o.component_called&&!o.component_handled&&o.native&&f.get<int>(0x7bc)==12);
     run(67,true,0,11);assert(o.special_called&&!o.component_called&&f.trace==std::vector<int>{3});
     run(116,false,0,11);assert(o.parent_called&&(f.trace==std::vector<int>{2,4}));
+    auto gf=reinterpret_cast<GetServerNpcSharedFacingApi>(GetProcAddress(s,server_npc_shared_facing_export));
+    assert(gf&&!GetProcAddress(c,server_npc_shared_facing_export)&&!gf(0,sizeof(ServerNpcSharedFacingApi))&&!gf(1,0));
+    const auto* face=gf(1,sizeof(ServerNpcSharedFacingApi));assert(face);
+    float q=0;double err=0;
+    assert(face->yaw_error(0,180,&q,&err)&&q==0&&err==-180);
+    assert(face->yaw_error(180,0,&q,&err)&&q==180&&err==180);
+    assert(face->yaw_error(-90,270,&q,&err)&&q==270&&err==0);
+    assert(face->yaw_error(0,.0059f,&q,&err)&&err<.006);
+    ServerNpcSharedFacingBindings fb{};fb.context=&f;
+    fb.motor_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{if(token!=88)return 0;auto& f=F::self(p);*out=f.motor;*n=sizeof(f.motor);return 1;};
+    fb.aim_vector=[](void* p,void*,float* v) noexcept -> int{F::self(p).trace.push_back(10);v[0]=1;v[1]=2;v[2]=3;return 1;};
+    fb.aligned=[](void* p,void*,const float* v,bool* out) noexcept -> int{auto& f=F::self(p);assert(v[0]==1&&v[2]==3);f.trace.push_back(11);*out=f.aimed;return 1;};
+    fb.vector_yaw=[](void* p,void*,const float*,float* out) noexcept -> int{F::self(p).trace.push_back(12);*out=30;return 1;};
+    fb.desired_yaw=[](void* p,void*,bool mode,double* out) noexcept -> int{auto& f=F::self(p);assert(mode);if(!f.aimed)assert(f.motor_yaw()==30);f.trace.push_back(13);*out=f.desired;return 1;};
+    fb.begin_turn=[](void* p,void*) noexcept -> int{F::self(p).trace.push_back(14);return 1;};
+    fb.step_turn=[](void* p,void* motor,int mode) noexcept -> int{auto& f=F::self(p);assert(motor==f.motor&&mode==-1);f.trace.push_back(15);if(f.step_align)f.put(f.a,0x370,f.motor_yaw());return 1;};
+    f.put(f.a,0x908,88u);f.put(f.a,0xc18,0u);f.put(f.a,0x370,0.f);
+    ServerNpcSharedFacingResult fr{};ServerNpcScheduleTask ft{60,0};
+    auto facing=[&](bool running){f.put(f.a,0x7a4,1);f.trace.clear();assert(face->execute(f.a,sizeof(f.a),&ft,running,12,&b,&fb,&fr));};
+    f.aimed=false;f.desired=45;facing(false);
+    assert(fr.shared.native&&fr.vector_written&&fr.yaw_written&&fr.begun&&!fr.completed&&f.motor_yaw()==45&&(f.trace==std::vector<int>{10,11,12,13,14}));
+    f.aimed=true;f.desired=45.5;facing(false);
+    assert(fr.completed&&!fr.yaw_written&&!fr.begun&&f.motor_yaw()==45&&(f.trace==std::vector<int>{10,11,13}));
+    f.desired=46;facing(false);assert(fr.yaw_written&&fr.begun&&!fr.completed&&f.motor_yaw()==46);
+    f.desired=47;facing(true);assert(!fr.yaw_written&&fr.stepped&&!fr.completed&&f.motor_yaw()==46);
+    f.desired=90;f.step_align=true;facing(true);assert(fr.yaw_written&&fr.stepped&&fr.completed&&fr.error==0&&f.motor_yaw()==90);
+    f.step_align=false;f.put(f.a,0x370,0.f);f.put(f.motor,0x14,.0059f);f.desired=.0059;facing(true);assert(fr.completed);
+    f.put(f.motor,0x14,.0061f);f.desired=.0061;facing(true);assert(!fr.completed);
+    f.put(f.a,0xc18,77u);f.component_handles=true;facing(false);assert(fr.shared.component_handled&&!fr.shared.native&&f.trace==std::vector<int>{2});
+    f.component_handles=false;facing(false);assert(fr.shared.component_called&&fr.shared.native&&fr.completed&&(f.trace==std::vector<int>{2,10,11,13}));
+    f.put(f.a,0xc18,0u);f.put(f.a,0x908,0u);
+    assert(!face->execute(f.a,sizeof(f.a),&ft,true,12,&b,&fb,&fr));
+    run(60,false,0,12);assert(o.parent_called&&!o.native);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
