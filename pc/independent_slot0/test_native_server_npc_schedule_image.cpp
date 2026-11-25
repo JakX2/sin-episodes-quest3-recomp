@@ -15,6 +15,7 @@ struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
     unsigned char motor[0x18]{},nav[0x50]{},path[0x48]{};
     unsigned clear_paths=0,stop_paths=0,move_updates=0;
+    bool observation_pvs=false;
     bool align_on_step=false;unsigned begins=0,steps=0;int last_pending=-1;
     ServerScheduleImage image{};
     const ServerNpcScheduleImageApi* api=nullptr;
@@ -289,6 +290,19 @@ int main(int argc,char** argv){
     assert(cue_api->run(f.actor,sizeof(f.actor),65,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&crun)&&crun.cue.calls==1&&crun.cue.native==1&&crun.cue.last.shared.lifecycle.completed&&crun.cue.last.emitted&&f.last_pending==1000);
     install_at(88,3);bind_nav(); // SCHED_GRUNT_ESTABLISH_LINE_OF_FIRE mode1
     assert(cue_api->run(f.actor,sizeof(f.actor),66,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&crun)&&crun.cue.calls==1&&crun.cue.last.mode==1&&crun.cue.last.emitted&&f.last_pending==1001);
+    auto gobservation=reinterpret_cast<GetServerNpcObservationCatalogSchedulerApi>(GetProcAddress(s,server_npc_observation_catalog_scheduler_export));
+    assert(gobservation&&!GetProcAddress(c,server_npc_observation_catalog_scheduler_export)&&!gobservation(0,sizeof(ServerNpcObservationCatalogSchedulerApi))&&!gobservation(1,0));
+    const auto* observation_api=gobservation(1,sizeof(ServerNpcObservationCatalogSchedulerApi));assert(observation_api);
+    ServerNpcSharedObservationBindings ob{};ob.context=&f; // actual class rebound by scheduler
+    ob.pvs_query=[](void* p,std::uint32_t token,bool* out) noexcept -> int{assert(token==99);*out=F::self(p).observation_pvs;return 1;};
+    ServerNpcObservationCatalogSchedulerResult observed{};
+    install_at(81,3); // final task of original SCHED_GRUNT_COMBAT_FAIL
+    f.put(f.actor,0x16c,99u);f.observation_pvs=false;
+    assert(observation_api->run(f.actor,sizeof(f.actor),67,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&observed)&&observed.cue.movement.animation.facing.attack.shared.shared.calls==1&&observed.cue.movement.animation.facing.attack.shared.shared.last.task==6&&observed.observation.calls==1&&!observed.observation.last.shared.lifecycle.completed);
+    f.observation_pvs=true;
+    assert(observation_api->run(f.actor,sizeof(f.actor),68,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&observed)&&observed.observation.calls==1&&observed.observation.last.pvs&&observed.observation.last.shared.lifecycle.completed);
+    install_at(81,3);f.put(f.actor,0xb4,0x400u);
+    assert(observation_api->run(f.actor,sizeof(f.actor),69,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&observed)&&observed.observation.calls==1&&observed.observation.last.flag_gate&&!observed.observation.last.pvs_called&&observed.observation.last.shared.lifecycle.completed);
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     // Original range-attack schedule: task138 is the fourth entry (0.3 seconds).
     using DifficultyApi=sin_port::fixed_service::Api;
