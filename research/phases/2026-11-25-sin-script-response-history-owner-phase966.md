@@ -1,0 +1,3 @@
+# Phase 966: persistent script response history ownership
+
+Add host-side ScriptResponseHistoryOwner using loaded ResponseRecordApi and ScriptActorSelectionApi.retire. Copies only stable allocator/criteria retirement bindings, not transient map registry references; retains ownership on notification-failure status per native record contract, exposes lifecycle destroy_response adapter. Loaded regression uses native indexed history, actual owned criteria copies, two simultaneous responses, replacement, notification failure and expeditor clear/destruction. Allocator/KeyValues services remain synthetic, host must validate ownership provenance and keep contexts alive. CI pending.
