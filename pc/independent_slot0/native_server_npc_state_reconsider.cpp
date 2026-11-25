@@ -660,6 +660,16 @@ const ServerNpcUnreachableEnemyApi unreachable_api{1,sizeof(ServerNpcUnreachable
 const ServerNpcBestEnemyApi best_enemy_api{1,sizeof(ServerNpcBestEnemyApi),&best_enemy};
 const ServerNpcEnemyMemoryQueryApi query_api{1,sizeof(ServerNpcEnemyMemoryQueryApi),&query_last_seen,&query_aim_vector};
 const ServerNpcEnemyMemoryApi memory_api{1,sizeof(ServerNpcEnemyMemoryApi),&memory_lookup,&memory_timestamp,&memory_position,&memory_touch,&memory_recent};
+int __cdecl notify_enemy_change(void* context,void* actor) noexcept{
+    if(!context)return 0;auto& b=*static_cast<ServerNpcEnemyNotifyContext*>(context);
+    switch(b.original_vtable){
+        case 0x2248df04:case 0x224954a4:case 0x2249aaa4:case 0x224a416c:
+        case 0x2248c514:case 0x2248e83c:case 0x2249964c:case 0x224a4a4c:break;
+        default:return 0;
+    }
+    ++b.calls;return clear_combat_conditions(actor,b.actor_bytes,&b.conditions,&b.last);
+}
+const ServerNpcEnemyNotifyApi notify_api{1,sizeof(ServerNpcEnemyNotifyApi),&notify_enemy_change};
 const ServerNpcEnemyStateApi enemy_state_api{1,sizeof(ServerNpcEnemyStateApi),&set_enemy,&clear_combat_conditions};
 const ServerNpcStateApi api{1,sizeof(ServerNpcStateApi),&should_reconsider,&choose_ideal,&apply};
 }
@@ -729,4 +739,10 @@ SiN_GetServerNpcEnemyMemoryTreeApi(std::uint32_t version,std::uint32_t size) noe
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryMutationApi* __cdecl
 SiN_GetServerNpcEnemyMemoryMutationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryMutationApi)?&mutation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcEnemyNotifyApi=_SiN_GetServerNpcEnemyNotifyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyNotifyApi* __cdecl
+SiN_GetServerNpcEnemyNotifyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyNotifyApi)?&notify_api:nullptr;
 }

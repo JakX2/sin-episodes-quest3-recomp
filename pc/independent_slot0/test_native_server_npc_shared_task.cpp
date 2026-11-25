@@ -24,6 +24,7 @@ struct F {
     void* selected_enemy=nullptr;
     unsigned char memory[0x40]{},memory_nodes[24]{},memory_record[0x38]{},memory_default[0x38]{};
     const ServerNpcEnemyMemoryQueryApi* memory_api=nullptr;
+    const ServerNpcEnemyNotifyApi* notify_api=nullptr;ServerNpcEnemyNotifyContext notify_context{};
     const ServerNpcBestEnemyQueryApi* best_query_api=nullptr;
     ServerNpcBestEnemyQueryContext best_context{};
     ServerNpcEnemyMemoryQueryBindings memory_query{};
@@ -495,5 +496,19 @@ int main(int argc,char** argv){
     f.memory_record[0x35]=0;f.put(f.a,0x8a0,0x7001u);f.put(f.a,0xc18,77u);
     refresh();assert(refresh_result.replaced&&f.best_context.last.component_called&&f.best_context.last.visited==0);
     void* selected=nullptr;assert(!f.best_query_api->select(&f.best_context,f.a,0,&selected)&&!selected);
+    auto gnotify=reinterpret_cast<GetServerNpcEnemyNotifyApi>(GetProcAddress(s,server_npc_enemy_notify_export));
+    assert(gnotify&&!GetProcAddress(c,server_npc_enemy_notify_export)&&!gnotify(0,sizeof(ServerNpcEnemyNotifyApi))&&!gnotify(1,0));
+    f.notify_api=gnotify(1,sizeof(ServerNpcEnemyNotifyApi));assert(f.notify_api);
+    f.notify_context.original_vtable=erb.original_vtable;f.notify_context.actor_bytes=sizeof(f.a);f.notify_context.conditions=b.lifecycle.conditions;
+    erb.enemy.enemy_changing=[](void* p,void* a) noexcept -> int{
+        auto& f=F::self(p);return f.notify_api->notify(&f.notify_context,a);
+    };
+    f.put(f.a,0xc18,0u);f.put(f.a,0x8a0,0x7001u);
+    f.memory_default[0x35]=0;f.memory_record[0x35]=0;
+    f.put(f.a,0x7cc,(1u<<20)|(1u<<21)|(1u<<22));f.put(f.a,0x7d0,0xf80u);
+    refresh();assert(refresh_result.replaced&&f.notify_context.calls==1&&f.notify_context.last.prior_preserved&&f.notify_context.last.restored);
+    assert((f.get<unsigned>(0x7cc)&0x00700000u)==(1u<<21)&&(f.get<unsigned>(0x7cc)&(1u<<25))&&!(f.get<unsigned>(0x7d0)&0xf80u));
+    f.put(f.a,0x8a0,0x7001u);f.memory_default[0x35]=f.memory_record[0x35]=1;
+    refresh();assert(refresh_result.cleared&&refresh_result.extra_notification&&f.notify_context.calls==3&&!(f.get<unsigned>(0x7cc)&(1u<<25))&&(f.get<unsigned>(0x7cc)&(1u<<21)));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
