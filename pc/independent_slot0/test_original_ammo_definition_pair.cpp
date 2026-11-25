@@ -1166,6 +1166,8 @@ int main(int argc,char** argv){
         tables::test::check_vcd_clock_speech(nativeSpeechArena,*nativeVcdRuntime,*nativeClock,retail);
         tables::test::VcdAuditArena actorSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_vcd_clock_speech(actorSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote);
+        tables::test::VcdAuditArena jessicaSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_vcd_clock_speech(jessicaSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink);
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));
         const auto getRecords=reinterpret_cast<tables::GetActorEventRecordApi>(GetProcAddress(server,"SiN_GetActorEventRecordApi"));
