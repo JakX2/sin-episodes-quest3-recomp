@@ -8626,6 +8626,61 @@ int __cdecl actor_response_select(void* exp,unsigned bytes,const ActorResponseSe
 }
 const ActorResponseSelectionApi actor_response_selection_api{version,sizeof(ActorResponseSelectionApi),&actor_response_select};
 
+struct ScriptActorSelectionCall {
+    const ScriptActorSelectionBindings& source;
+    ScriptResponseFinderBindings finder;
+    ResponseOwnedCriteriaBindings owned;
+    void* initialized=nullptr;
+    static ScriptActorSelectionCall& get(void* p) noexcept {return *static_cast<ScriptActorSelectionCall*>(p);}
+};
+int __cdecl script_actor_retire(void* p,void* response) noexcept {
+    const auto* b=static_cast<const ScriptActorSelectionBindings*>(p);
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+       !b->actor.selection.host.destroy||!hologram_writable(response,0x124))return 0;
+    auto owned=b->owned;owned.copy.tree=b->actor.selection.criteria;
+    const int clear=response_owned_criteria_clear(response,0x124,&owned);
+    // Invalid copy remains attached; do not release its enclosing object.
+    if(!clear)return 0;
+    const auto& h=b->actor.selection.host;
+    const int released=h.destroy(h.context,response);
+    return clear==1&&released?1:0;
+}
+int __cdecl script_actor_select(void* exp,unsigned bytes,const ScriptActorSelectionBindings* b,
+    const char* name,const char* mods,void** out,unsigned* extent) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||
+       !b->finder.store.owner||!b->finder.store.system||
+       !b->actor.selection.host.allocate||!b->actor.selection.host.destroy||
+       !b->actor.selection.host.draw||!b->finder.host.random_float)return 0;
+    ScriptActorSelectionCall call{*b,b->finder,b->owned};
+    call.owned.copy.tree=b->actor.selection.criteria;
+    if(!response_owned_criteria_ready(&call.owned))return 0;
+    auto& finder=call.finder.host;finder.ranking.criteria=b->actor.selection.criteria;
+    finder.context=&call;
+    finder.random_float=[](void* p,float lo,float hi,float* result) noexcept -> int{
+        const auto& h=ScriptActorSelectionCall::get(p).source.finder.host;return h.random_float(h.context,lo,hi,result);};
+    finder.clone_criteria=[](void* p,void* source,void** result) noexcept -> int{
+        return response_owned_criteria_clone(&ScriptActorSelectionCall::get(p).owned,source,result);};
+    auto actor=b->actor;auto& h=actor.selection.host;h.context=&call;
+    h.system=[](void* p,void*,void** out) noexcept -> int{*out=ScriptActorSelectionCall::get(p).finder.store.system;return 1;};
+    h.allocate=[](void* p,unsigned n,void** out,unsigned* extent) noexcept -> int{
+        auto& call=ScriptActorSelectionCall::get(p);const auto& h=call.source.actor.selection.host;
+        call.initialized=nullptr;return h.allocate(h.context,n,out,extent);};
+    h.find=[](void* p,void* system,void* criteria,void* response,void* exp,unsigned* found) noexcept -> int{
+        auto& call=ScriptActorSelectionCall::get(p);call.initialized=response;
+        return script_response_find(&call.finder,system,criteria,response,exp,found);};
+    h.draw=[](void* p,int lo,int hi,int* out) noexcept -> int{
+        const auto& h=ScriptActorSelectionCall::get(p).source.actor.selection.host;return h.draw(h.context,lo,hi,out);};
+    h.destroy=[](void* p,void* response) noexcept -> int{
+        auto& call=ScriptActorSelectionCall::get(p);const auto& h=call.source.actor.selection.host;
+        if(call.initialized==response){call.initialized=nullptr;return script_actor_retire(const_cast<ScriptActorSelectionBindings*>(&call.source),response);}
+        return h.destroy(h.context,response);};
+    actor.selection.warning=[](void* p,const char* text) noexcept -> int{
+        const auto& h=ScriptActorSelectionCall::get(p).source.actor.selection;return !h.warning||h.warning(h.host.context,text);};
+    return actor_response_select(exp,bytes,&actor,name,mods,out,extent);
+}
+const ScriptActorSelectionApi script_actor_selection_api{version,sizeof(ScriptActorSelectionApi),
+    &script_actor_select,&script_actor_retire};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -16707,6 +16762,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseO
 SiN_GetResponseOwnedCriteriaApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseOwnedCriteriaApi)?&response_owned_criteria_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetScriptActorSelectionApi=_SiN_GetScriptActorSelectionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ScriptActorSelectionApi* __cdecl
+SiN_GetScriptActorSelectionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ScriptActorSelectionApi)?&script_actor_selection_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

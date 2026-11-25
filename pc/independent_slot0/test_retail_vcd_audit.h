@@ -745,7 +745,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1207,7 +1207,7 @@ rule parsed_rule
     if(criteriaCopy){
         struct Roots {
             struct Child {char name[32]{},value[64]{};float weight=0;Child* next=nullptr;};
-            struct Root {Child children[8]{};unsigned count=0;bool live=false;} root[2]{};
+            struct Root {Child children[32]{};unsigned count=0;bool live=false;} root[2]{};
             unsigned destroyed=0;bool fail_copy=false;
             static Roots& self(void* p){return *static_cast<Roots*>(p);}
         } roots;
@@ -1218,7 +1218,7 @@ rule parsed_rule
             auto& r=*static_cast<Roots::Root*>(root);assert(r.live);
             for(unsigned i=0;i<r.count;++i)if(!_stricmp(r.children[i].name,name)){*out=&r.children[i];return 1;}
             if(!create){*out=nullptr;return 1;}
-            assert(r.count<8&&std::strlen(name)<32);
+            assert(r.count<32&&std::strlen(name)<32);
             auto& row=r.children[r.count];std::strcpy(row.name,name);
             if(r.count)r.children[r.count-1].next=&row;
             ++r.count;*out=&row;return 1;};
@@ -1280,6 +1280,87 @@ rule parsed_rule
             assert(ownedCriteria->clear(pool.response,sizeof(pool.response),&owned)==-1&&!pool.live&&!F::word(pool.response,0x84)&&pool.releases==4);
             assert(ownedCriteria->clear(pool.response,sizeof(pool.response),&owned)==1&&pool.releases==4);
             assert(api.destroy(c,sizeof(c),&h)==1&&a.live.empty());
+        }
+        if(scriptActor&&scriptFinder){
+            struct Actor {
+                alignas(4) unsigned char npc[0x1160]{},exp[0x7c]{},response[0x124]{},copy[0x5c]{};
+                const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
+                unsigned allocs=0,drops=0,copies=0,frees=0;bool live=false,copy_live=false,short_block=false;
+                static Actor& get(void* p){return *static_cast<Actor*>(p);}
+            } actor{{},{},{},{},api,h};
+            const char source[]=R"(criterion idle concept TLK_IDLE required
+criterion count classname npc_count required
+criterion head PlayerLookingAtPart head required
+response lines
+{
+ sequential
+ speak count_line
+}
+rule count_head
+{
+ criteria idle count head
+ response lines
+ matchonce
+}
+)";
+            ScriptActorSelectionBindings sc{};sc.actor.context=&actor;
+            assert(scriptFinder->create("fixture",source,sizeof(source)-1,nullptr,&sc.finder.store)==1);
+            sc.actor.selection.criteria=h;sc.actor.selection.session=&session;
+            auto& sh=sc.actor.selection.host;sh.context=&actor;
+            sh.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{
+                auto& s=Actor::get(p);assert(!s.live&&n==0x124);s.live=true;++s.allocs;
+                std::memset(s.response,0xa5,sizeof(s.response));*out=s.response;*bytes=s.short_block?n-1:n;return 1;};
+            sh.destroy=[](void* p,void* obj) noexcept -> int{
+                auto& s=Actor::get(p);assert(s.live&&obj==s.response);s.live=false;++s.drops;return 1;};
+            sh.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
+            sc.actor.actor=[](void* p,std::uint32_t w,void** out,unsigned* n,unsigned* family) noexcept -> int{
+                auto& s=Actor::get(p);assert(w==F::ptr(s.npc));*out=s.npc;*n=sizeof(s.npc);*family=0;return 1;};
+            sc.actor.target=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+            sc.actor.player_at=[](void*,int i,void** out,unsigned* n) noexcept -> int{assert(i==1);*out=nullptr;*n=0;return 1;};
+            auto& bh=sc.actor.base;bh.context=&actor;bh.contexts.context=&actor;
+            bh.contexts.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{auto& s=Actor::get(p);return s.tree.add(&s.b,c,k,v,w);};
+            bh.contexts.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+            bh.contexts.string=[](void*,std::uint32_t w,const char** out) noexcept -> int{if(w!=1)return 0;*out="npc_count";return 1;};
+            bh.map_name=[](void*,const char** out) noexcept -> int{*out="se1_test";return 1;};
+            bh.global_count=[](void*,int* n) noexcept -> int{*n=0;return 1;};
+            bh.global_row=[](void*,int,const char**,int*) noexcept -> int{assert(false);return 0;};
+            bh.world=[](void*,void** out,unsigned* n) noexcept -> int{*out=nullptr;*n=0;return 1;};
+            auto& nh=sc.actor.npc;nh.context=&actor;nh.add=bh.contexts.add;
+            nh.activity=[](void*,int,const char** out) noexcept -> int{*out="ACT_IDLE";return 1;};
+            nh.enemy=[](void*,void*,unsigned* present,const char** name) noexcept -> int{*present=0;*name=nullptr;return 1;};
+            nh.clock=[](void*,float*) noexcept -> int{assert(false);return 0;};
+            nh.velocity=[](void*,void*,float* xyz) noexcept -> int{xyz[0]=xyz[1]=xyz[2]=0;return 1;};
+            nh.weapon=[](void*,void*,unsigned* present,const char** name) noexcept -> int{*present=0;*name=nullptr;return 1;};
+            nh.max_clients=[](void*,int* n) noexcept -> int{*n=2;return 1;};
+            nh.local_player=[](void*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+            nh.refresh=[](void*,void*) noexcept -> int{assert(false);return 0;};
+            nh.condition=[](void*,void*,int id,unsigned* out) noexcept -> int{assert(id==0x1f);*out=0;return 1;};
+            nh.in_view=[](void*,void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+            nh.visible=[](void*,void*,void*,unsigned,unsigned*) noexcept -> int{assert(false);return 0;};
+            auto& rank=sc.finder.host.ranking;
+            rank.get_string=[](void*,void* child,const char* key,const char*,const char** out) noexcept -> int{assert(!std::strcmp(key,"value"));*out=static_cast<Roots::Child*>(child)->value;return 1;};
+            rank.get_float=[](void*,void* child,const char* key,float,float* out) noexcept -> int{assert(!std::strcmp(key,"weight"));*out=static_cast<Roots::Child*>(child)->weight;return 1;};
+            rank.draw=[](void*,int lo,int hi,int* out) noexcept -> int{assert(lo==0&&hi==0);*out=0;return 1;};
+            sc.finder.host.random_float=[](void*,float,float,float*) noexcept -> int{assert(false);return 0;};
+            int ties[4]{},rejected[4]{};sc.finder.host.rank_scratch=ties;sc.finder.host.rank_capacity=4;
+            sc.finder.host.reject_scratch=rejected;sc.finder.host.reject_capacity=4;
+            sc.owned.copy=cfg;sc.owned.context=&actor;
+            sc.owned.allocate=[](void* p,unsigned n,void** out,unsigned* bytes) noexcept -> int{auto& s=Actor::get(p);assert(!s.copy_live&&n==0x5c);s.copy_live=true;++s.copies;*out=s.copy;*bytes=n;return 1;};
+            sc.owned.release=[](void* p,void* obj) noexcept -> int{auto& s=Actor::get(p);assert(s.copy_live&&obj==s.copy);s.copy_live=false;++s.frees;return 1;};
+            F::put(actor.exp,4,F::ptr(actor.npc));F::put(actor.npc,0xc,1);F::put(actor.npc,0x98,100);F::put(actor.npc,0x9c,50);
+            void* selected=nullptr;unsigned bytes=0;
+            auto select=[&](const char* mods){return scriptActor->select(actor.exp,sizeof(actor.exp),&sc,"TLK_IDLE",mods,&selected,&bytes);};
+            actor.short_block=true;assert(select("PlayerLookingAtPart:head")==-1&&!actor.live&&!actor.copy_live&&actor.drops==1&&a.live.empty());
+            actor.short_block=false;
+            assert(select("PlayerLookingAtPart:hand")==1&&!selected&&!bytes&&!actor.live&&actor.drops==2&&a.live.empty());
+            assert(select("PlayerLookingAtPart:head")==1&&selected==actor.response&&bytes==0x124&&actor.live&&actor.copy_live);
+            assert(!std::strcmp(reinterpret_cast<char*>(actor.response+4),"count_line")&&F::word(actor.response,0x84)==F::ptr(actor.copy));
+            int idx=-1;std::uint32_t child=0;
+            assert(api.find(actor.copy,sizeof(actor.copy),&h,"classname",&idx,&child)==1&&idx>=0&&child);
+            assert(!std::strcmp(reinterpret_cast<Roots::Child*>(static_cast<std::uintptr_t>(child))->value,"npc_count"));
+            assert(scriptActor->retire(&sc,selected)==1&&!actor.live&&!actor.copy_live&&actor.frees==1&&actor.drops==3&&a.live.empty());
+            assert(select("PlayerLookingAtPart:head")==1&&!selected&&!actor.live&&actor.drops==4&&actor.copies==1&&a.live.empty());
+            assert(scriptFinder->release(&sc.finder.store)==1);
         }
     }
 }
