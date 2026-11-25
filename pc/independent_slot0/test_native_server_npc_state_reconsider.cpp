@@ -19,6 +19,7 @@ struct F{
     bool allocated[2]{};unsigned releases=0;
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
     unsigned char senses[0x60]{},sense_vectors[3][16]{},sense_handles[3][16]{};
+    unsigned char heard[8][0x14]{};unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
@@ -579,5 +580,33 @@ int main(int argc,char** argv){
     assert(visual->gather(f.actor,sizeof(f.actor),453,&vb,&vr)&&vr.friendly==1&&vr.neutral==1&&vr.current_seen==1&&!vr.report_calls);
     f.put(f.sense_handles[1],0,0x9001u);
     assert(visual->gather(f.actor,sizeof(f.actor),454,&vb,&vr)&&vr.first_stale&&!vr.visited&&!vr.report_calls&&!(f.get<unsigned>(0x7cc)&(1u<<10)));
+    auto ghearing=reinterpret_cast<GetServerNpcGruntHearingApi>(GetProcAddress(s,server_npc_grunt_hearing_export));
+    assert(ghearing&&!GetProcAddress(c,server_npc_grunt_hearing_export)&&!ghearing(0,sizeof(ServerNpcGruntHearingApi))&&!ghearing(1,0));
+    const auto* hearing=ghearing(1,sizeof(ServerNpcGruntHearingApi));assert(hearing&&hearing->mask()==0x141f);
+    ServerNpcGruntHearingBindings hb{};hb.storage=seb.storage;hb.schedule=b.schedule;hb.context=&f;hb.original_vtable=0x2249aaa4;
+    hb.sound=[](void* p,int index,const void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);if(index<0||index>=8)return 0;*out=f.heard[index];*n=sizeof(f.heard[index]);return 1;};
+    hb.fire_output=[](void* p,void* a,unsigned off) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&f.hearing_outputs<3);f.hearing_offsets[f.hearing_outputs++]=off;return 1;};
+    hb.sound_visible=[](void* p,void*,const void*,unsigned mask,bool* yes) noexcept -> int{assert(mask==0x4081);*yes=F::self(p).sound_visible;return 1;};
+    hb.component_ignored=[](void* p,std::uint32_t token,const void*,bool* yes) noexcept -> int{assert(token==77);*yes=F::self(p).component_ignored;return 1;};
+    ServerNpcGruntHearingFilterResult hf{};
+    f.put(f.heard[0],0xc,0x4800000u);assert(hearing->filter(f.actor,sizeof(f.actor),f.heard[0],sizeof(f.heard[0]),&hb,&hf)&&hf.accepted&&hf.forced);
+    f.put(f.heard[0],0xc,0x4000000u);assert(hearing->filter(f.actor,sizeof(f.actor),f.heard[0],sizeof(f.heard[0]),&hb,&hf)&&!hf.accepted&&hf.forced);
+    f.put(f.heard[0],0xc,4u);f.put(f.actor,0x850,1);f.put(f.actor,0xc18,77u);f.sound_visible=false;
+    assert(hearing->filter(f.actor,sizeof(f.actor),f.heard[0],sizeof(f.heard[0]),&hb,&hf)&&!hf.accepted&&hf.visible_called&&!hf.component_called);
+    f.sound_visible=true;f.component_ignored=true;
+    assert(hearing->filter(f.actor,sizeof(f.actor),f.heard[0],sizeof(f.heard[0]),&hb,&hf)&&!hf.accepted&&hf.component_called);
+    f.put(f.actor,0xc18,0u);assert(hearing->filter(f.actor,sizeof(f.actor),f.heard[0],sizeof(f.heard[0]),&hb,&hf)&&hf.accepted);
+    f.put(f.senses,0x14,1);const unsigned heard_types[]={8,0x400,2,4,0x800,0x80000};
+    for(int i=1;i<=6;++i){f.put(f.heard[i],0xc,heard_types[i-1]);f.put(f.heard[i],0x10,i==6?-1:i+1);}
+    f.put(f.actor,0xc0c,500.f);f.put(f.actor,0x798,1u);f.put(f.schedule,0x10,1u<<16);
+    f.put(f.actor,0x7d0,0u);ServerNpcGruntHearingResult hr{};
+    assert(hearing->gather(f.actor,sizeof(f.actor),500,&hb,&hr)&&hr.visited==6&&hr.danger_suppressed==1&&hr.unknown==1&&hr.ignored==1&&!hr.special_suppressed&&hr.outputs==2);
+    assert(f.hearing_offsets[0]==0xb20&&f.hearing_offsets[1]==0xb38&&(f.get<unsigned>(0x7d0)&(1u<<25))&&(f.get<unsigned>(0x7d0)&(1u<<23)));
+    f.hearing_outputs=0;
+    assert(hearing->gather(f.actor,sizeof(f.actor),500.01f,&hb,&hr)&&hr.special_suppressed&&hr.outputs==3&&f.hearing_offsets[2]==0xb50);
+    assert((f.get<unsigned>(0x7d0)&(1u<<16))&&!(f.get<unsigned>(0x7d0)&((1u<<23)|(1u<<25))));
+    f.hearing_outputs=0;f.put(f.senses,0x14,0);f.put(f.heard[0],0xc,1u);f.put(f.heard[0],0x10,1);
+    assert(hearing->gather(f.actor,sizeof(f.actor),501,&hb,&hr)&&hr.visited==1&&hr.outputs==1);
+    f.put(f.senses,0x14,1);f.put(f.heard[1],0x10,1);assert(!hearing->gather(f.actor,sizeof(f.actor),501,&hb,&hr));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

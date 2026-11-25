@@ -1149,6 +1149,80 @@ int __cdecl grunt_visual_gather(void* actor,unsigned bytes,float now,const Serve
     }
     return 1;
 }
+unsigned __cdecl grunt_hearing_mask() noexcept{return 0x141fu;}
+int __cdecl grunt_hearing_filter(void* actor,unsigned bytes,const void* sound,unsigned n,const ServerNpcGruntHearingBindings* b,ServerNpcGruntHearingFilterResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xc1c||!sound||n<0x10||!b||!relation_grunt_class(b->original_vtable))return 0;
+    const unsigned type=read<unsigned>(sound,0xc);
+    if(type&0x800000u){out->accepted=out->forced=1;return 1;}
+    if(type&0x4000000u){out->forced=1;return 1;}
+    bool yes=false;
+    if((type&4u)&&read<int>(actor,0x850)==1){
+        out->visible_called=1;if(!b->sound_visible||!b->sound_visible(b->context,actor,sound,0x4081,&yes))return 0;
+        if(!yes)return 1;
+    }
+    const auto component=read<unsigned>(actor,0xc18);
+    if(component){out->component_called=1;if(!b->component_ignored||!b->component_ignored(b->context,component,sound,&yes))return 0;out->accepted=!yes;}
+    else out->accepted=1;
+    return 1;
+}
+int __cdecl grunt_hearing_gather(void* actor,unsigned bytes,float now,const ServerNpcGruntHearingBindings* b,ServerNpcGruntHearingResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xc10||!b||!relation_grunt_class(b->original_vtable)||!std::isfinite(now))return 0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto store=[&](int id,bool value){
+        ServerNpcConditionResult cr{};if(!cond->store(actor,bytes,id,NpcConditionCurrent,value,&b->schedule.conditions,&cr))return false;
+        if(value)out->sets+=cr.mapped;else out->cleared+=cr.changed;return true;
+    };
+    auto test=[&](int id,bool& yes){ServerNpcConditionResult cr{};if(!cond->test(actor,bytes,id,NpcConditionCurrent,&b->schedule.conditions,&cr))return false;yes=cr.value!=0;return true;};
+    for(int id:{48,51,52,53,49,50,55,54,56,57,35})if(!store(id,false))return 0;
+    void* senses=nullptr;unsigned extent=0;
+    if(!memory_storage(&b->storage,read<unsigned>(actor,0x898),0x18,senses,extent))return 0;
+    int index=read<int>(senses,0x14);bool seen[64]{};
+    while(index!=-1){
+        if(index<0||index>=64||seen[index])return 0;seen[index]=true;
+        const void* sound=nullptr;unsigned n=0;
+        if(!b->sound||!b->sound(b->context,index,&sound,&n)||!sound||n<0x14)return 0;
+        ++out->visited;const unsigned type=read<unsigned>(sound,0xc)&0xfffffu;
+        int id=-1;
+        switch(type){
+            case 1:id=51;break;case 2:id=52;break;case 4:id=53;break;
+            case 8:{const float deadline=read<float>(actor,0xc0c);if(!std::isfinite(deadline))return 0;
+                if(now>deadline)id=48;else ++out->danger_suppressed;break;}
+            case 16:id=54;break;case 0x100:id=49;break;case 0x200:id=50;break;
+            case 0x400:id=55;break;case 0x800:++out->ignored;break;case 0x1000:id=56;break;case 0x2000:id=53;break;
+            default:id=35;++out->unknown;break;
+        }
+        if(id>=0&&!store(id,true))return 0;
+        if(index==0)break; // next helper treats zero cursor as terminal
+        index=read<int>(sound,0x10);
+    }
+    bool danger=false;if(!test(48,danger))return 0;
+    if(!danger&&!store(57,true))return 0;
+    auto output=[&](int id,unsigned offset){
+        bool yes=false;if(!test(id,yes))return false;
+        if(yes){if(!b->fire_output||!b->fire_output(b->context,actor,offset))return false;++out->outputs;}return true;
+    };
+    if(!output(52,0xb20)||!output(53,0xb38))return 0;
+    bool sound51=false,sound54=false;if(!test(51,sound51))return 0;
+    if(!sound51&&!test(54,sound54))return 0;
+    if(sound51||sound54||danger){
+        if(!b->fire_output||!b->fire_output(b->context,actor,0xb50))return 0;++out->outputs;
+    }
+    if(!test(48,danger))return 0;
+    bool special=false;if(danger&&!test(55,special))return 0;
+    if(danger&&special&&read<unsigned>(actor,0x798)){
+        ServerNpcConditionResult mapped{};
+        if(!cond->map(actor,48,&b->schedule.conditions,&mapped))return 0;
+        if(mapped.mapped){
+            const void* sched=nullptr;unsigned n=0;const unsigned off=0xc+4*(static_cast<unsigned>(mapped.bit)/32);
+            if(!b->schedule.storage||!b->schedule.storage(b->schedule.context,read<unsigned>(actor,0x798),&sched,&n)||!sched||n<off+4)return 0;
+            if(read<unsigned>(sched,off)&(1u<<(mapped.bit%32))){if(!store(55,false))return 0;out->special_suppressed=1;}
+        }
+    }
+    return 1;
+}
+const ServerNpcGruntHearingApi hearing_api{1,sizeof(ServerNpcGruntHearingApi),&grunt_hearing_mask,&grunt_hearing_filter,&grunt_hearing_gather};
 const ServerNpcGruntVisualApi visual_api{1,sizeof(ServerNpcGruntVisualApi),&grunt_visual_gather};
 const ServerNpcSensedEntitiesApi sensed_api{1,sizeof(ServerNpcSensedEntitiesApi),&sensed_first,&sensed_next,&sensed_contains};
 const ServerNpcGruntSpeechApi speech_api{1,sizeof(ServerNpcGruntSpeechApi),&grunt_speak};
