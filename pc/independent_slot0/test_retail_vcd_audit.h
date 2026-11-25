@@ -585,6 +585,8 @@ struct VcdOwnedPlaybackFixture {
     alignas(4) unsigned char scene[0x5ec]{},npc[0x1458]{};
     unsigned phase=0,locks=0,unlocks=0,sounds=0,stops=0;
     bool timed=false;
+    const ResolvedSceneActorApi* resolver=nullptr;ResolvedSceneActorBindings resolved{};
+    unsigned cache_hits=0,name_reads=0,name_resolves=0;
     unsigned locked=0,cache_index=0;
     std::uint32_t root_word=0,child_word=0;
     inline static constexpr char root_text[]=R"VCD(actor Jessica {
@@ -736,6 +738,34 @@ scalesettings { RampTool 75 }
         start.reset.context=this;start.reset.events=q.duration;start.reset.storage=&resolve;start.reset.grow=&grow;
     }
 
+
+    void bind_native_actor(const ResolvedSceneActorApi& api){
+        resolver=&api;auto& c=resolved.cache;auto& h=resolved.names;
+        resolved.context=this;resolved.instanced=1;c.context=this;h.context=this;
+        c.parsed=&resolve;c.storage=&resolve;c.grow=&grow;
+        c.resolve=[](void* p,std::uint32_t handle,void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);assert(handle==0x321);++f.cache_hits;*out=f.npc;*n=sizeof(f.npc);return 1;};
+        c.handle=n.playback.actor_handle;
+        c.invalid_index=[](void*,void*,int,unsigned) noexcept -> int{assert(false);return 0;};
+        resolved.choreo_object=[](void* p,std::uint32_t word,const void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);void* obj=nullptr;
+            if(!resolve(p,word,&obj,n)||*n<0x118)return 0;
+            assert(!std::strcmp(static_cast<const char*>(obj),"Jessica"));++f.name_reads;*out=obj;return 1;};
+        h.resolve=[](void* p,std::uint32_t handle,void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);assert(handle==0x321);++f.name_resolves;*out=f.npc;*n=sizeof(f.npc);return 1;};
+        h.handle=c.handle;h.is_npc=n.startup.is_npc;
+        h.text=[](void*,std::uint32_t,const char**) noexcept -> int{assert(false);return 0;};
+        h.max_clients=[](void*,int*) noexcept -> int{assert(false);return 0;};
+        h.local_player=[](void*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        h.find=[](void*,const char*,void*,void*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        h.cast_actor=[](void*,void*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        h.npc_lookup=[](void*,void*,const char*,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        n.startup.actor=[](void* p,void* scene,unsigned i,void** out,unsigned* n) noexcept -> int{
+            auto& f=self(p);assert(scene==f.scene);
+            return f.resolver->index(scene,sizeof(f.scene),static_cast<int>(i),&f.resolved,out,n)==1;};
+        n.stop.actor=n.startup.actor;
+    }
+
     // Run the already loaded graph, rather than manufacturing actor rows.
     void timed_speech(const NativeSceneExecutionApi& execution){
         assert(timed&&phase==7&&!F::word(npc,0x5c4)&&F::word(scene,0x414)==F::ptr(scene));
@@ -800,6 +830,7 @@ scalesettings { RampTool 75 }
         NativeSceneExecutionBindings b{};b.instanced=1;b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
         b.clock.speech=&speech;b.clock.preparation=&prep;
         b.dispatch.context=&effects;b.dispatch.actor=speech.actor;b.dispatch.records=&rec;
+        if(resolver){speech.actor=nullptr;b.dispatch.actor=nullptr;b.clock.actors=&resolved;b.dispatch.actors=&resolved;}
         b.dispatch.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace) noexcept -> int{
             assert(scene==Effects::get(p).f.scene&&F::word(event,0)==11);return 1;};
         assert(execution.reset(scene,sizeof(scene),1,0,0,&b)==1);
@@ -2248,7 +2279,7 @@ rule named_rule
                                 VcdOwnedPlaybackFixture(a,s),raw_cache(api,{&f,&RetailSceneDirectory::read_raw}){}
                             static DirectoryPlayback& get(void* p){return static_cast<DirectoryPlayback&>(VcdOwnedPlaybackFixture::self(p));}
                         } playback(playback_arena,ap.startup_sound,audit.files,apis.raw_cache);
-                        playback.timed=true;
+                        playback.timed=true;playback.bind_native_actor(ap.resolver);
                         auto& cache=playback.n.precache.load.cache;
                         cache.ensure=[](void* p,const char* path) noexcept -> int{
                             auto& f=DirectoryPlayback::get(p);const auto& b=f.raw_cache.bindings();
@@ -2319,10 +2350,15 @@ rule owned_named_rule
                         assert(audit.close()&&playback.root_word&&playback.child_word);
                         std::memset(actor.response,0xcc,sizeof(actor.response));
                         playback.timed_speech(ap.execution);
+                        assert(playback.name_reads==1&&playback.name_resolves==2&&playback.cache_hits>=3&&F::word(playback.scene,0x404)==1);
+                        void* cached=nullptr;unsigned cache_extent=0;
+                        assert(playback_arena.storage(&playback_arena,F::word(playback.scene,0x3f8),&cached,&cache_extent)&&cache_extent>=4&&F::word(cached,0)==0x321);
                         assert(apis.runtime.remove(playback.scene,sizeof(playback.scene),&playback.n.lifecycle,&playback.n.stop,&raw)==1&&playback.phase==8);
                         void* obj=nullptr;unsigned bytes=0;
                         assert(!playback_arena.storage(&playback_arena,playback.root_word,&obj,&bytes)&&
                                !playback_arena.storage(&playback_arena,playback.child_word,&obj,&bytes));
+                        // Scene object vector is owned by the engine base destructor, not the parsed graph.
+                        assert(playback_arena.release(&playback_arena,F::word(playback.scene,0x3f8)));
                         assert(playback_arena.live.size()==2&&playback_arena.release(&playback_arena,F::word(playback.npc,0x5b8))&&
                                playback_arena.release(&playback_arena,F::word(playback.npc,0x5ec))&&playback_arena.live.empty());
                         assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
