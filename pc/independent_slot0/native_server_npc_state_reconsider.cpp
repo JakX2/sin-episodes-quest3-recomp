@@ -682,6 +682,63 @@ int __cdecl memory_control(void* memory,unsigned bytes,std::uint32_t key,unsigne
     }
     return 1;
 }
+bool relation_grunt_class(std::uint32_t v) noexcept{
+    switch(v){case 0x2248df04:case 0x224954a4:case 0x2249aaa4:case 0x224a416c:
+    case 0x2248c514:case 0x2248e83c:case 0x2249964c:case 0x224a4a4c:return true;default:return false;}
+}
+int __cdecl grunt_relation(void* actor,unsigned bytes,void* target,bool disposition,const ServerNpcGruntRelationBindings* b,ServerNpcGruntRelationResult* out) noexcept{
+    if(!out)return 0;*out={};out->index=0xffffffffu;out->actor_class=out->target_class=-1;out->disposition=4;
+    if(!actor||bytes<0xdb2||!b||!relation_grunt_class(b->original_vtable)||b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    if(!target)return !disposition||!read<std::uint8_t>(actor,0xdb1);
+    int count=read<int>(actor,0x644);
+    void* rows=nullptr;unsigned extent=0;
+    if(count>0&&(!memory_storage(&b->storage,read<unsigned>(actor,0x638),16,rows,extent)||static_cast<unsigned>(count)>extent/16))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    auto row=[&](unsigned i){return static_cast<const unsigned char*>(rows)+16*i;};
+    const void* selected=nullptr;
+    for(int i=0;i<count;++i){++out->visited;if(registry.Resolve(read<unsigned>(row(i),0))==target){selected=row(i);out->source=1;out->index=i;break;}}
+    auto classify=[&](void* e,int& k){++out->class_queries;return b->classify&&b->classify(b->context,e,&k);};
+    if(!selected){
+        if(!classify(target,out->target_class))return 0;
+        if(out->target_class){
+            for(int i=0;i<count;++i){
+                if(!classify(target,out->target_class))return 0;
+                if(out->target_class==read<int>(row(i),4)){selected=row(i);out->source=2;out->index=i;break;}
+            }
+        }
+        if(!selected){
+            if(!classify(actor,out->actor_class)||!classify(target,out->target_class))return 0;
+            if(out->actor_class<0||out->actor_class>=15||out->target_class<0||out->target_class>=15)return 0;
+            unsigned n=0;const void* matrix=nullptr;
+            if(!b->matrix_row||!b->matrix_row(b->context,out->actor_class,&matrix,&n)||!matrix||n<15*16)return 0;
+            selected=static_cast<const unsigned char*>(matrix)+16*out->target_class;out->source=3;out->index=out->target_class;
+        }
+    }
+    out->disposition=read<int>(selected,8);out->priority=read<int>(selected,12);
+    if(disposition&&read<std::uint8_t>(actor,0xdb1)){
+        bool yes=false;out->overridden=out->player_called=1;
+        if(!b->is_player||!b->is_player(b->context,target,&yes))return 0;
+        if(!yes){out->special_called=1;if(!b->special_target||!b->special_target(b->context,target,&yes))return 0;}
+        out->disposition=yes?1:4;
+    }
+    return 1;
+}
+int __cdecl grunt_valid(void* actor,unsigned bytes,void* target,const ServerNpcGruntRelationBindings* b,ServerNpcGruntValidityResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xc1c||!b||!relation_grunt_class(b->original_vtable))return 0;
+    bool yes=false;const auto component=read<unsigned>(actor,0xc18);
+    if(component){out->component_called=1;if(!b->component_valid||!b->component_valid(b->context,component,target,&yes))return 0;out->valid=yes;return 1;}
+    void* npc=nullptr;if(!b->as_npc||!b->as_npc(b->context,target,&npc))return 0;
+    if(!npc){out->valid=1;return 1;}
+    out->npc_found=1;unsigned n=0;std::uint32_t vt=0;
+    if(!b->npc_identity||!b->npc_identity(b->context,npc,&vt,&n))return 0;
+    if(relation_grunt_class(vt)){
+        if(n<0x86c)return 0;out->native_npc_gate=1;out->valid=read<int>(npc,0x868)<=1;return 1;
+    }
+    out->external_gate=1;
+    if(!b->other_npc_gate||!b->other_npc_gate(b->context,npc,actor,&yes))return 0;out->valid=yes;return 1;
+}
+const ServerNpcGruntRelationApi relation_api{1,sizeof(ServerNpcGruntRelationApi),&grunt_relation,&grunt_valid};
 const ServerNpcEnemyMemoryControlApi control_api{1,sizeof(ServerNpcEnemyMemoryControlApi),&initialize_memory_owner,&memory_control};
 const ServerNpcEnemyMemoryMutationApi mutation_api{1,sizeof(ServerNpcEnemyMemoryMutationApi),&upsert_memory,&remove_memory,&erase_memory_record};
 const ServerNpcEnemyMemoryTreeApi tree_api{1,sizeof(ServerNpcEnemyMemoryTreeApi),&tree_validate,&tree_insert,&tree_erase};
@@ -783,4 +840,10 @@ SiN_GetServerNpcEnemyNotifyApi(std::uint32_t version,std::uint32_t size) noexcep
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryControlApi* __cdecl
 SiN_GetServerNpcEnemyMemoryControlApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryControlApi)?&control_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRelationApi=_SiN_GetServerNpcGruntRelationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRelationApi* __cdecl
+SiN_GetServerNpcGruntRelationApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRelationApi)?&relation_api:nullptr;
 }

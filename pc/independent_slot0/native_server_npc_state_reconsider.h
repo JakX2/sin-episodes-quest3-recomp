@@ -261,4 +261,33 @@ struct ServerNpcEnemyMemoryControlApi {
     int (__cdecl *control)(void*,unsigned,std::uint32_t,unsigned,float,std::uint8_t,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryControlResult*) noexcept;
 };
 using GetServerNpcEnemyMemoryControlApi=const ServerNpcEnemyMemoryControlApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_relation_export[]="SiN_GetServerNpcGruntRelationApi";
+struct ServerNpcGruntRelationBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    void* context;
+    std::uint32_t original_vtable;
+    int (__cdecl *classify)(void*,void*,int*) noexcept; // +d0
+    int (__cdecl *matrix_row)(void*,int,const void**,unsigned*) noexcept; // original 15 rows of 16-byte records
+    int (__cdecl *is_player)(void*,void*,bool*) noexcept; // +f4
+    int (__cdecl *special_target)(void*,void*,bool*) noexcept; // +120
+    int (__cdecl *as_npc)(void*,void*,void**) noexcept; // 22139f60
+    int (__cdecl *npc_identity)(void*,void*,std::uint32_t*,unsigned*) noexcept;
+    int (__cdecl *other_npc_gate)(void*,void*,void*,bool*) noexcept; // unverified +520
+    int (__cdecl *component_valid)(void*,std::uint32_t,void*,bool*) noexcept; // +98
+};
+struct ServerNpcGruntRelationResult {
+    int disposition,priority,actor_class,target_class;
+    unsigned source,index,visited,class_queries,overridden,player_called,special_called;
+};
+struct ServerNpcGruntValidityResult {unsigned valid,component_called,npc_found,native_npc_gate,external_gate;};
+struct ServerNpcGruntRelationApi {
+    std::uint32_t version,size;
+    // 222a7e20, 223585b0, 222a7f70. Source: 0 null, 1 entity, 2 class, 3 matrix.
+    int (__cdecl *relation)(void*,unsigned,void*,bool,const ServerNpcGruntRelationBindings*,ServerNpcGruntRelationResult*) noexcept;
+    // 2216e1d0 / 22030de0 / known Grunt +520=22030e10.
+    int (__cdecl *valid)(void*,unsigned,void*,const ServerNpcGruntRelationBindings*,ServerNpcGruntValidityResult*) noexcept;
+};
+using GetServerNpcGruntRelationApi=const ServerNpcGruntRelationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
