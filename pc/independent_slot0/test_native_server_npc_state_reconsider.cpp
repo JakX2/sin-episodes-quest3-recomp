@@ -15,6 +15,8 @@ struct F{
     alignas(4) unsigned char actor[0xc1c]{},desc[0x48]{},schedule[0x30]{},enemy[0xc0]{},replacement[0xc0]{};
     unsigned char memory[0x40]{},nodes[384]{},record[0x38]{},fallback[0x38]{},unreachable_rows[60]{};
     const ServerNpcUnreachableEnemyApi* unreachable_api=nullptr;ServerNpcUnreachableEnemyBindings unreachable_binding{};
+    const ServerNpcEnemyMemoryMutationApi* mutation_api=nullptr;ServerNpcEnemyMemoryMutationBindings mutation{};
+    bool allocated[2]{};unsigned releases=0;
     sin_independent::EntityHandleEntry entries[3]{};
     unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
     int rank[2]{0,0},disp[2]{1,1};bool valid[2]{true,true},unreachable[2]{false,false},visible[2]{true,true};float distance[2]{10,20};
@@ -275,5 +277,37 @@ int main(int argc,char** argv){
     assert(!tree->erase_index(f.memory,sizeof(f.memory),free_index,&mb,&tr));
     f.nodes[free_index*12+1]=static_cast<unsigned char>(free_index);
     assert(!tree->validate(f.memory,sizeof(f.memory),&mb,&tr));
+    auto gmut=reinterpret_cast<GetServerNpcEnemyMemoryMutationApi>(GetProcAddress(s,server_npc_enemy_memory_mutation_export));
+    assert(gmut&&!GetProcAddress(c,server_npc_enemy_memory_mutation_export)&&!gmut(0,sizeof(ServerNpcEnemyMemoryMutationApi))&&!gmut(1,0));
+    f.mutation_api=gmut(1,sizeof(ServerNpcEnemyMemoryMutationApi));assert(f.mutation_api);
+    auto& mutation=f.mutation;mutation.context=&f;mutation.entries=f.entries;mutation.count=3;mutation.storage=bb.memory.storage;
+    mutation.entity_key=bb.memory.entity_key;mutation.entity_handle=eb.entity_handle;
+    mutation.constructor_vector[0]=100;mutation.constructor_vector[1]=200;mutation.constructor_vector[2]=300;
+    mutation.allocate=[](void* p,unsigned size,std::uint32_t* token,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);assert(size==0x38);
+        for(unsigned i=0;i<2;++i)if(!f.allocated[i]){f.allocated[i]=true;*token=101+i;*out=i?f.fallback:f.record;*n=0x38;return 1;}return 0;
+    };
+    mutation.release=[](void* p,std::uint32_t token) noexcept -> int{
+        auto& f=F::self(p);assert(token>=101&&token<=102&&f.allocated[token-101]);f.allocated[token-101]=false;++f.releases;return 1;
+    };
+    f.memory[0x10]=f.memory[0x12]=255;f.memory[0x11]=f.memory[0x13]=0;f.put(f.memory,0x3c,0u);
+    f.put(f.memory,0x1c,1.75f);f.put(f.memory,0x20,60.f);
+    ServerNpcEnemyMemoryMutationResult mut{};float new_pos[3]{10,20,30};
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,100,0,true,&mutation,&mut)&&mut.created&&mut.allocated&&mut.creation_counter==1&&mut.token==101);
+    new_pos[0]=30;assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,101,0,true,&mutation,&mut)&&mut.updated&&!mut.allocated&&mut.creation_counter==1&&mut.record.position_written);
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.replacement,new_pos,101,2,false,&mutation,&mut)&&mut.created&&mut.creation_counter==2&&mut.token==102);
+    assert(!f.mutation_api->upsert(f.memory,sizeof(f.memory),nullptr,new_pos,101,0,true,&mutation,&mut));
+    assert(tree->validate(f.memory,sizeof(f.memory),&mutation.storage,&tr)&&tr.count==2);
+    assert(f.mutation_api->remove(f.memory,sizeof(f.memory),1001,&mutation,&mut)&&mut.removed&&mut.released&&mut.creation_counter==2&&f.releases==1);
+    assert(f.mutation_api->remove(f.memory,sizeof(f.memory),1001,&mutation,&mut)&&!mut.removed&&f.releases==1);
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),nullptr,new_pos,101,0,true,&mutation,&mut)&&mut.created&&mut.tree.reused&&mut.creation_counter==3&&mut.key==0);
+    assert(f.mutation_api->remove(f.memory,sizeof(f.memory),0x394u,&mutation,&mut)&&!mut.removed);
+    // Sweep both expired records through the native tree/pool adapter, not a stub unlink.
+    maintenance.erase=[](void* p,void* memory,unsigned size,unsigned index,std::uint32_t token) noexcept -> int{
+        auto& f=F::self(p);return f.mutation_api->erase_record(&f.mutation,memory,size,index,token);
+    };
+    assert(maint->maintain(f.memory,sizeof(f.memory),162,&maintenance,&mr)&&mr.visited==2&&mr.removed==2&&mr.expired==2&&f.releases==3);
+    assert(tree->validate(f.memory,sizeof(f.memory),&mutation.storage,&tr)&&tr.count==0&&tr.high_water==2);
+    assert(mem->lookup(f.memory,sizeof(f.memory),1000,true,&mutation.storage,&ml)&&!ml.matched);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

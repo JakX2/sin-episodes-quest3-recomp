@@ -202,4 +202,33 @@ struct ServerNpcEnemyMemoryTreeApi {
     int (__cdecl *erase_index)(void*,unsigned,unsigned,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryTreeResult*) noexcept;
 };
 using GetServerNpcEnemyMemoryTreeApi=const ServerNpcEnemyMemoryTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_enemy_memory_mutation_export[]="SiN_GetServerNpcEnemyMemoryMutationApi";
+struct ServerNpcEnemyMemoryMutationBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    void* context;
+    // Explicit pool ownership; allocate returns nonzero token and bounded record.
+    int (__cdecl *allocate)(void*,unsigned,std::uint32_t*,void**,unsigned*) noexcept;
+    int (__cdecl *release)(void*,std::uint32_t) noexcept;
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept;
+    int (__cdecl *entity_key)(void*,void*,std::uint32_t*) noexcept;
+    float constructor_vector[3];
+};
+struct ServerNpcEnemyMemoryMutationResult {
+    ServerNpcEnemyMemoryTreeResult tree;
+    ServerNpcEnemyMemoryRecordResult record;
+    unsigned created,updated,removed,allocated,released;
+    std::uint32_t key,token,creation_counter;
+};
+struct ServerNpcEnemyMemoryMutationApi {
+    std::uint32_t version,size;
+    // 2206bba0: exact-key update or allocation/insert. No fallback on update.
+    int (__cdecl *upsert)(void*,unsigned,void*,const float[3],float,float,bool,const ServerNpcEnemyMemoryMutationBindings*,ServerNpcEnemyMemoryMutationResult*) noexcept;
+    // 2206bdd0: remove exact key (including key0); pool release then unlink.
+    int (__cdecl *remove)(void*,unsigned,std::uint32_t,const ServerNpcEnemyMemoryMutationBindings*,ServerNpcEnemyMemoryMutationResult*) noexcept;
+    // Callback-compatible with periodic maintenance; context is MutationBindings.
+    int (__cdecl *erase_record)(void*,void*,unsigned,unsigned,std::uint32_t) noexcept;
+};
+using GetServerNpcEnemyMemoryMutationApi=const ServerNpcEnemyMemoryMutationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
