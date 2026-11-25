@@ -1,6 +1,9 @@
 #include "native_client_overlay_watchers.h"
 #include "native_weapon_datatables.h"
 #include <windows.h>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cstring>
 #include <cstdio>
