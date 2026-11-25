@@ -220,6 +220,99 @@ int __cdecl query_aim_vector(void* actor,unsigned bytes,const ServerNpcEnemyMemo
     if(!memory_key(*b,target,key)||!memory_storage(&b->storage,read<std::uint32_t>(actor,0x984),0x3c,memory,extent))return 0;
     return memory_position(memory,extent,key,false,&b->storage,out,result);
 }
+int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,ServerNpcBestEnemyResult* out) noexcept{
+    if(!out)return 0;*out={};out->priority=-1000;out->distance_squared=0x10000000;out->unreachable=1;
+    if(!actor||bytes<0xc1c||!b||!std::isfinite(now)||b->memory.count>sin_independent::kEntityHandleCapacity||(b->memory.count&&!b->memory.entries))return 0;
+    const auto component=read<unsigned>(actor,0xc18);
+    if(component){out->component_called=1;return b->component_best&&b->component_best(b->context,component,&out->enemy);}
+    const auto registry=sin_independent::EntityHandleView(b->memory.entries,b->memory.count);
+    void* memory=nullptr;unsigned memory_bytes=0;
+    if(!memory_storage(&b->memory.storage,read<unsigned>(actor,0x984),0x1c,memory,memory_bytes)||
+       read<unsigned>(memory,0)!=0x22068d70u||read<unsigned>(memory,0x18)!=0x22068b40u)return 0;
+    const auto capacity=read<unsigned>(memory,8);unsigned index=read<std::uint8_t>(memory,0x10);
+    if(index==255)return 1;
+    void* nodes=nullptr;unsigned node_bytes=0;
+    if(!capacity||!memory_storage(&b->memory.storage,read<unsigned>(memory,4),12,nodes,node_bytes))return 0;
+    unsigned stack[255]{},depth=0;bool seen[255]{};
+    auto node=[&](unsigned i){return static_cast<const unsigned char*>(nodes)+12*i;};
+    auto query_bool=[&](auto fn,void* entity,bool& value){return fn&&fn(b->context,actor,entity,&value);};
+    auto priority=[&](void* entity,int& value){return b->priority&&b->priority(b->context,actor,entity,&value);};
+    auto visibility=[&](void* entity,bool& value){
+        if(!b->sensed||!b->sensed(b->context,read<unsigned>(actor,0x898),entity,&value))return false;
+        return value||(b->visible&&b->visible(b->context,actor,entity,0x4081,&value));
+    };
+    auto distance=[&](void* entity,int& value){
+        float p[3]{},q[3]{};
+        if(!b->origin||!b->origin(b->context,actor,p)||!b->origin(b->context,entity,q))return false;
+        double sum=0;for(unsigned k=0;k<3;++k){
+            if(!std::isfinite(p[k])||!std::isfinite(q[k]))return false;
+            const float d=static_cast<float>(static_cast<double>(q[k])-p[k]);
+            if(!std::isfinite(d))return false;sum+=static_cast<double>(d)*d;
+        }
+        // x87 FISTP with truncate control; out-of-range integer indefinite.
+        value=sum>=2147483648.0?std::numeric_limits<int>::min():static_cast<int>(sum);return true;
+    };
+    while(index!=255||depth){
+        while(index!=255){
+            if(index>=capacity||seen[index]||node_bytes<12*(index+1)||depth>=255)return 0;
+            seen[index]=true;stack[depth++]=index;index=read<std::uint8_t>(node(index),0);
+        }
+        const auto i=stack[--depth];const auto* nd=node(i);index=read<std::uint8_t>(nd,1);
+        ++out->visited;
+        void* record=nullptr;unsigned record_bytes=0;
+        if(!memory_storage(&b->memory.storage,read<unsigned>(nd,8),0x37,record,record_bytes))return 0;
+        void* entity=registry.Resolve(read<unsigned>(record,0));
+        if(!entity){++out->stale;continue;}
+        unsigned extent=0;if(!b->extent||!b->extent(b->context,entity,&extent)||extent<0xc0)return 0;
+        if(read<int>(entity,0x8c)!=0){++out->dead;continue;}
+        if(read<unsigned>(entity,0xbc)&0x8000u){++out->disposition_rejected;continue;}
+        int disp=0;if(!b->disposition||!b->disposition(b->context,actor,entity,&disp))return 0;
+        if(disp!=1){if(!b->disposition(b->context,actor,entity,&disp))return 0;if(disp!=2){++out->disposition_rejected;continue;}}
+        bool yes=false;if(!query_bool(b->valid,entity,yes))return 0;if(!yes){++out->invalid;continue;}
+        const float cutoff=read<float>(actor,0x8c4),stamp=read<float>(record,0x1c),valid_after=read<float>(record,0x28);
+        if(!std::isfinite(cutoff)||!std::isfinite(stamp)||!std::isfinite(valid_after))return 0;
+        if(cutoff>0&&stamp<cutoff){++out->old;continue;}
+        if(valid_after>now){++out->not_yet_valid;continue;}
+        unsigned key=0;if(!memory_key(b->memory,entity,key))return 0;
+        ServerNpcEnemyMemoryLookup lookup{};
+        if(!memory_lookup(memory,memory_bytes,key,false,&b->memory.storage,&lookup))return 0;
+        if(lookup.record){void* rec=nullptr;if(!memory_record(&b->memory.storage,lookup,0x36,rec))return 0;
+            if(read<std::uint8_t>(rec,0x35)){++out->eluded;continue;}}
+        if(!b->disposition(b->context,actor,entity,&disp))return 0;
+        if(disp==2&&!read<std::uint8_t>(record,0x36)){
+            void* current=registry.Resolve(read<unsigned>(actor,0x8a0));unsigned current_key=0;float last=0;
+            if(!memory_key(b->memory,current,current_key)||!memory_timestamp(memory,memory_bytes,current_key,NpcMemoryStamp20,&b->memory.storage,&lookup,&last))return 0;
+            if(last==-std::numeric_limits<float>::max()){++out->feared;continue;}
+        }
+        bool unreachable=false;if(!query_bool(b->unreachable,entity,unreachable))return 0;
+        if(!out->unreachable&&unreachable){++out->unreachable_rejected;continue;}
+        int rank=0,dist=0;
+        if(out->unreachable&&!unreachable){
+            if(!visibility(entity,yes)||!priority(entity,rank)||!distance(entity,dist))return 0;
+            out->visible=yes;out->unreachable=0;
+        }else{
+            if(!priority(entity,rank))return 0;
+            if(rank>out->priority){
+                // Retail priority upgrade retains the previous visibility cache.
+                if(!priority(entity,rank)||!distance(entity,dist))return 0;
+            }else{
+                if(!priority(entity,rank))return 0;
+                if(rank!=out->priority)continue;
+                if(!distance(entity,dist))return 0;
+                const bool closer=dist<out->distance_squared;
+                if(!closer&&out->visible)continue;
+                if(!visibility(entity,yes))return 0;
+                if(closer?(!yes&&out->visible):!yes)continue;
+                out->visible=yes;
+                if(!priority(entity,rank))return 0;
+            }
+            out->unreachable=unreachable;
+        }
+        out->enemy=entity;out->priority=rank;out->distance_squared=dist;++out->replaced;
+    }
+    return 1;
+}
+const ServerNpcBestEnemyApi best_enemy_api{1,sizeof(ServerNpcBestEnemyApi),&best_enemy};
 const ServerNpcEnemyMemoryQueryApi query_api{1,sizeof(ServerNpcEnemyMemoryQueryApi),&query_last_seen,&query_aim_vector};
 const ServerNpcEnemyMemoryApi memory_api{1,sizeof(ServerNpcEnemyMemoryApi),&memory_lookup,&memory_timestamp,&memory_position,&memory_touch,&memory_recent};
 const ServerNpcEnemyStateApi enemy_state_api{1,sizeof(ServerNpcEnemyStateApi),&set_enemy,&clear_combat_conditions};
@@ -249,4 +342,10 @@ SiN_GetServerNpcEnemyMemoryApi(std::uint32_t version,std::uint32_t size) noexcep
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryQueryApi* __cdecl
 SiN_GetServerNpcEnemyMemoryQueryApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryQueryApi)?&query_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcBestEnemyApi=_SiN_GetServerNpcBestEnemyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcBestEnemyApi* __cdecl
+SiN_GetServerNpcBestEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcBestEnemyApi)?&best_enemy_api:nullptr;
 }
