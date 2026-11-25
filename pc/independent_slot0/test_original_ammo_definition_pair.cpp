@@ -1402,6 +1402,14 @@ int main(int argc,char** argv){
         assert(npcAnimationGate);
         tables::test::VcdAuditArena animationGateArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_parsed_npc_animation_scene(animationGateArena,*nativeVcdRuntime,*execution,*npcAnimation,*actorRecords,*animationFrame,*gestureMetadata,npcAnimationThink,npcAnimationGate);
+        const auto getNativeLayerOwner=reinterpret_cast<tables::GetServerAnimationLayerOwnerApi>(GetProcAddress(server,tables::server_animation_layer_owner_export));
+        const auto getNativeLayerTick=reinterpret_cast<tables::GetServerAnimationLayerTickApi>(GetProcAddress(server,tables::server_animation_layer_tick_export));
+        assert(getNativeLayerOwner&&getNativeLayerTick);
+        const auto* nativeLayerOwner=getNativeLayerOwner(1,sizeof(tables::ServerAnimationLayerOwnerApi));
+        const auto* nativeLayerTick=getNativeLayerTick(1,sizeof(tables::ServerAnimationLayerTickApi));
+        assert(nativeLayerOwner&&nativeLayerTick);
+        tables::test::VcdAuditArena nativeLayerArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_parsed_npc_animation_scene(nativeLayerArena,*nativeVcdRuntime,*execution,*npcAnimation,*actorRecords,*animationFrame,*gestureMetadata,npcAnimationThink,npcAnimationGate,nativeLayerOwner,nativeLayerTick);
         const auto getNpcTargetThink=reinterpret_cast<tables::GetServerNpcTargetThinkApi>(GetProcAddress(server,tables::server_npc_target_think_export));
         assert(getNpcTargetThink&&!GetProcAddress(client,tables::server_npc_target_think_export));
         const auto* npcTargetThink=getNpcTargetThink(1,sizeof(tables::ServerNpcTargetThinkApi));
