@@ -1,6 +1,7 @@
 #pragma once
 #include "native_server_npc_schedule_catalog.h"
 #include "native_server_npc_schedule_services.h"
+#include "native_server_grunt_combat_task.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_schedule_image_export[]="SiN_GetServerNpcScheduleImageApi";
 struct ServerScheduleImageRow {
@@ -45,4 +46,14 @@ struct ServerNpcCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,ServerNpcCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcCatalogSchedulerApi=const ServerNpcCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_combat_catalog_scheduler_export[]="SiN_GetServerNpcCombatCatalogSchedulerApi";
+struct ServerNpcCombatCatalogSchedulerResult {
+    ServerNpcCatalogSchedulerResult catalog;
+    ServerGruntCombatSchedulerStats combat;
+};
+struct ServerNpcCombatCatalogSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntCombatTaskBindings*,ServerNpcCombatCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcCombatCatalogSchedulerApi=const ServerNpcCombatCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

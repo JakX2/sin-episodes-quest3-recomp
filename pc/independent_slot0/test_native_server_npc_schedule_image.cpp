@@ -91,5 +91,36 @@ int main(int argc,char** argv){
     scheduler.original_vtable=0x2249964c;
     ++activities.names.generation;assert(!f.api->storage(&f.image,find(118),&p,&n));
     assert(!catalog->run(f.actor,sizeof(f.actor),13,&f.image,&runtime,&run));
+
+    // Restore generation only in this synthetic fixture; build a fresh ground image.
+    --activities.names.generation;
+    b.damage_token=[](void*,const char*,float* out) noexcept -> int{*out=0;return 1;};
+    assert(f.api->build(f.actor,NpcSubclassGround,4000,99,&b,&f.image,&result));
+    auto gcombat=reinterpret_cast<GetServerNpcCombatCatalogSchedulerApi>(GetProcAddress(s,server_npc_combat_catalog_scheduler_export));
+    assert(gcombat&&!GetProcAddress(c,server_npc_combat_catalog_scheduler_export)&&!gcombat(0,sizeof(ServerNpcCombatCatalogSchedulerApi)));
+    const auto* combat_api=gcombat(1,sizeof(ServerNpcCombatCatalogSchedulerApi));assert(combat_api);
+    scheduler.original_vtable=0x2249aaa4;
+    unsigned char weapon[4]{};
+    sin_independent::EntityHandleEntry slots[2]{};slots[1].serial=7;slots[1].entity=reinterpret_cast<CBaseEntity*>(weapon);
+    selection.state.entities={slots,2,nullptr,[](void*,void*,unsigned* kind) noexcept -> int{*kind=WeaponActivitySmg;return 1;},nullptr};
+    scheduler.grunt.special=nullptr;
+    m.after_start=m.invalidated;m.after_run=m.invalidated;
+    m.motion_gate=[](void*,void*,bool* out) noexcept -> int{*out=false;return 1;};
+    ServerGruntCombatTaskBindings combat{};float stamp=0;combat.shared_smg_stamp=&stamp;
+    combat.weapon.random=[](void*,int lo,int hi,int* out) noexcept -> int{assert(lo==4&&hi==7);*out=4;return 1;};
+    combat.activity=[](void*,void*,int id,bool restart) noexcept -> int{assert(id==16&&restart);return 1;};
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);
+    f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x6cc,0x7001u);
+    f.actor[0x3e0]=1;f.put(f.actor,0x3ec,7);f.put(f.actor,0x884,7);
+    const auto attack=find(91);assert(attack);
+    assert(state->install(f.actor,sizeof(f.actor),attack,20,&sb,&sr));
+    f.put(f.actor,0x79c,global+191);
+    for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+    assert(state->inspect(f.actor,sizeof(f.actor),&sb,&sr)&&sr.task.id==67);
+    ServerNpcCombatCatalogSchedulerResult cr{};
+    assert(combat_api->run(f.actor,sizeof(f.actor),20,&f.image,&runtime,&combat,&cr)&&cr.combat.calls==2&&stamp==20&&cr.catalog.runtime.scheduler.maintenance.state.index==4);
+    assert(combat_api->run(f.actor,sizeof(f.actor),20.5f,&f.image,&runtime,&combat,&cr)&&cr.combat.calls==1&&stamp==20);
+    assert(combat_api->run(f.actor,sizeof(f.actor),21,&f.image,&runtime,&combat,&cr)&&cr.combat.last.base.lifecycle.completed&&stamp==0);
+    assert(combat_api->run(f.actor,sizeof(f.actor),22,&f.image,&runtime,&combat,&cr)&&cr.combat.calls==1&&cr.combat.last.base.task==140&&cr.combat.last.base.lifecycle.completed&&cr.catalog.runtime.scheduler.maintenance.state.index==5);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original schedule descriptor materialization and real task cursor");
 }
