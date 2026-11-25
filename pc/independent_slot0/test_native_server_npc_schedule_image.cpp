@@ -1,4 +1,5 @@
 #include "native_server_npc_schedule_image.h"
+#include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -272,6 +273,24 @@ int main(int argc,char** argv){
     assert(move_api->run(f.actor,sizeof(f.actor),64,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&mvr.movement.calls==1&&mvr.movement.last.shared.task==89&&mvr.movement.last.shared.lifecycle.completed);
     std::memcpy(&stored_distance,f.path+4,4);assert(stored_distance==48.f);
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
+    // Original range-attack schedule: task138 is the fourth entry (0.3 seconds).
+    using DifficultyApi=sin_port::fixed_service::Api;
+    using GetDifficultyApi=const DifficultyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+    auto gdiff=reinterpret_cast<GetDifficultyApi>(GetProcAddress(s,sin_port::fixed_service::export_name));
+    assert(gdiff);const auto* diff=gdiff(1,sizeof(DifficultyApi));assert(diff&&diff->begin_campaign(1));
+    shared.random=[](void*,int lo,int hi,int* out) noexcept -> int{assert(lo==1&&hi>=lo);*out=hi;return 1;};
+    float easy_deadline=0;
+    install_at(91,3);
+    assert(shared_api->run(f.actor,sizeof(f.actor),70,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==2&&sh.shared.native==2&&sh.shared.last.task==138&&!sh.shared.last.lifecycle.completed);
+    std::memcpy(&easy_deadline,f.actor+0x9dc,4);assert(easy_deadline>70);
+    assert(shared_api->run(f.actor,sizeof(f.actor),easy_deadline-.01f,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&!sh.shared.last.lifecycle.completed);
+    assert(shared_api->run(f.actor,sizeof(f.actor),easy_deadline,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&sh.shared.last.lifecycle.completed);
+    assert(diff->set_skill(3));
+    install_at(91,3);
+    assert(shared_api->run(f.actor,sizeof(f.actor),70,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==2&&sh.shared.native==2&&!sh.shared.last.lifecycle.completed);
+    float hard_deadline=0;std::memcpy(&hard_deadline,f.actor+0x9dc,4);assert(hard_deadline>70&&hard_deadline<easy_deadline);
+    assert(shared_api->run(f.actor,sizeof(f.actor),hard_deadline,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.last.lifecycle.completed);
+    assert(diff->end_campaign());shared.random=nullptr;
     // Original Elite schedule: ready -> reconstructed base start -> inherited run.
     assert(f.api->build(f.actor,NpcSubclassElite,5000,99,&b,&f.image,&result));
     scheduler.original_vtable=0x2248df04;unsigned char chain[0x598]{};
