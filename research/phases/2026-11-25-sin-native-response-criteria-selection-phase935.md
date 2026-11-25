@@ -1,0 +1,3 @@
+# Phase 935: native response criteria selection integration
+
+Compose original phase933 SplitContext and phase934 CriteriaSet lifecycle into phase777 native response selection. Caller supplies 92-byte scratch storage equivalent to retail stack CriteriaSet, guarded against reentry. Native begin/add/modifiers/end replace all four hosted policies, preserve actual finder, NPC/player criteria, RNG and response allocation. Test native 6 rows/5 KeyValues children (duplicate PART), concept/NPC/player criteria, response handoff, malformed first cleanup, null system bypass and scratch reentry rejection. KeyValues, rule-system virtual and engine actor/player criteria remain explicit. Synthetic loaded regression; CI pending.

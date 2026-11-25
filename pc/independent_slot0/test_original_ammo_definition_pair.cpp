@@ -1225,6 +1225,13 @@ int main(int argc,char** argv){
         assert(criteriaTree&&!getCriteriaTree(0,sizeof(tables::ResponseCriteriaTreeApi))&&!getCriteriaTree(1,0));
         tables::test::VcdAuditArena criteriaTreeArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_response_criteria(criteriaTreeArena,*criteriaTree);
+        const auto getCriteriaSelection=reinterpret_cast<tables::GetResponseCriteriaSelectionApi>(GetProcAddress(server,tables::response_criteria_selection_export));
+        assert(getCriteriaSelection&&!GetProcAddress(client,tables::response_criteria_selection_export));
+        const auto* criteriaSelection=getCriteriaSelection(1,sizeof(tables::ResponseCriteriaSelectionApi));
+        assert(criteriaSelection&&!getCriteriaSelection(0,sizeof(tables::ResponseCriteriaSelectionApi))&&!getCriteriaSelection(1,0));
+        tables::test::VcdAuditArena criteriaSelectionArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_native_response_criteria(criteriaSelectionArena,*criteriaTree,criteriaSelection,responseSelect);
+        std::puts("PASS native criteria set and modifiers through actual response selection");
         std::puts("PASS native 92-byte response criteria and 24-byte indexed tree");
         tables::test::TalkManagerFixture neighborSpeechManager(*talkManager,*talkCatalog);
         tables::test::VcdAuditArena neighborSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);

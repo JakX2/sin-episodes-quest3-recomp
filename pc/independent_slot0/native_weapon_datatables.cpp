@@ -7955,6 +7955,65 @@ int __cdecl response_criteria_destroy(void* c,unsigned bytes,const ResponseCrite
 const ResponseCriteriaTreeApi response_criteria_tree_api{version,sizeof(ResponseCriteriaTreeApi),&response_criteria_construct,
     &response_criteria_add,&response_criteria_find,&response_criteria_destroy};
 
+
+const ResponseCriteriaSelectionBindings& response_criteria_selection_cfg(void* p) noexcept {
+    return *static_cast<const ResponseCriteriaSelectionBindings*>(p);
+}
+bool response_criteria_selection_session(const ResponseCriteriaSelectionBindings& b) noexcept {
+    return hologram_writable(b.session,sizeof(*b.session))&&b.session->bytes>=response_criteria_bytes&&
+        hologram_writable(b.session->object,response_criteria_bytes);
+}
+int __cdecl response_criteria_selection_adapt(const ResponseCriteriaSelectionBindings* b,ResponseSelectionBindings* out) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!hologram_writable(out,sizeof(*out))||
+       !response_criteria_ready(&b->criteria)||!response_criteria_selection_session(*b))return 0;
+    const auto& h=b->host;
+    if(!h.system||!h.npc_criteria||!h.player_criteria||!h.allocate||!h.find||!h.draw||!h.destroy)return 0;
+    *out=h;out->context=const_cast<ResponseCriteriaSelectionBindings*>(b);
+    out->system=[](void* p,void* exp,void** system) noexcept -> int{
+        const auto& h=response_criteria_selection_cfg(p).host;return h.system(h.context,exp,system);};
+    out->begin_criteria=[](void* p,void** c) noexcept -> int{
+        const auto& b=response_criteria_selection_cfg(p);
+        if(!hologram_writable(c,sizeof(*c))||!response_criteria_selection_session(b)||b.session->busy)return 0;
+        auto& s=*b.session;s.busy=1;
+        const int status=response_criteria_construct(s.object,s.bytes,&b.criteria);
+        if(status!=1){
+            if(status==-1)(void)response_criteria_destroy(s.object,s.bytes,&b.criteria);
+            s.busy=0;return 0;
+        }
+        *c=s.object;return 1;};
+    out->add=[](void* p,void* c,const char* key,const char* value,float w) noexcept -> int{
+        const auto& b=response_criteria_selection_cfg(p);
+        return response_criteria_selection_session(b)&&b.session->busy&&c==b.session->object&&
+            response_criteria_add(const_cast<ResponseCriteriaTreeBindings*>(&b.criteria),c,key,value,w);};
+    out->modifiers=[](void* p,void* c,const char* mods,float w) noexcept -> int{
+        const auto& b=response_criteria_selection_cfg(p);
+        if(!response_criteria_selection_session(b)||!b.session->busy||c!=b.session->object)return 0;
+        ResponseNativeModifierBindings parse{};parse.host.context=p;
+        parse.host.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{
+            return response_criteria_add(const_cast<ResponseCriteriaTreeBindings*>(&response_criteria_selection_cfg(p).criteria),c,k,v,w);};
+        parse.warning=[](void* p,const char* remaining) noexcept -> int{
+            const auto& b=response_criteria_selection_cfg(p);return !b.warning||b.warning(b.host.context,remaining);};
+        return response_parse_modifiers(&parse,c,mods,w);};
+    out->npc_criteria=[](void* p,void* exp,void* c) noexcept -> int{
+        const auto& h=response_criteria_selection_cfg(p).host;return h.npc_criteria(h.context,exp,c);};
+    out->player_criteria=[](void* p,void* c,int i) noexcept -> int{
+        const auto& h=response_criteria_selection_cfg(p).host;return h.player_criteria(h.context,c,i);};
+    out->allocate=[](void* p,unsigned n,void** response,unsigned* extent) noexcept -> int{
+        const auto& h=response_criteria_selection_cfg(p).host;return h.allocate(h.context,n,response,extent);};
+    out->find=[](void* p,void* system,void* c,void* response,void* exp,unsigned* found) noexcept -> int{
+        const auto& h=response_criteria_selection_cfg(p).host;return h.find(h.context,system,c,response,exp,found);};
+    out->draw=[](void* p,int lo,int hi,int* result) noexcept -> int{
+        const auto& h=response_criteria_selection_cfg(p).host;return h.draw(h.context,lo,hi,result);};
+    out->destroy=[](void* p,void* response) noexcept -> int{
+        const auto& h=response_criteria_selection_cfg(p).host;return h.destroy(h.context,response);};
+    out->end_criteria=[](void* p,void* c) noexcept -> int{
+        const auto& b=response_criteria_selection_cfg(p);
+        if(!response_criteria_selection_session(b)||!b.session->busy||c!=b.session->object)return 0;
+        auto& s=*b.session;const int status=response_criteria_destroy(c,s.bytes,&b.criteria);s.busy=0;return status==1;};
+    return 1;
+}
+const ResponseCriteriaSelectionApi response_criteria_selection_api{version,sizeof(ResponseCriteriaSelectionApi),&response_criteria_selection_adapt};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -15970,6 +16029,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl
+SiN_GetResponseCriteriaSelectionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseCriteriaSelectionApi)?&response_criteria_selection_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaTreeApi=_SiN_GetResponseCriteriaTreeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaTreeApi* __cdecl
