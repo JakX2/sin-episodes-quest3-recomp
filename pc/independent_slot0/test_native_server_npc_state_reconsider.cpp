@@ -12,11 +12,12 @@
 #include <limits>
 using namespace sin_port::native_weapon_tables;
 struct F{
-    alignas(4) unsigned char actor[0xc1c]{},desc[0x48]{},schedule[0x30]{},enemy[0xc0]{},replacement[0xc0]{};
+    alignas(4) unsigned char actor[0xdb2]{},desc[0x48]{},schedule[0x30]{},enemy[0x86c]{},replacement[0x86c]{};
     unsigned char memory[0x40]{},nodes[384]{},record[0x38]{},fallback[0x38]{},unreachable_rows[60]{};
     const ServerNpcUnreachableEnemyApi* unreachable_api=nullptr;ServerNpcUnreachableEnemyBindings unreachable_binding{};
     const ServerNpcEnemyMemoryMutationApi* mutation_api=nullptr;ServerNpcEnemyMemoryMutationBindings mutation{};
     bool allocated[2]{};unsigned releases=0;
+    unsigned char relation_rows[48]{},relation_matrix[240]{};bool rel_player=false,rel_special=false,rel_npc=false;
     sin_independent::EntityHandleEntry entries[3]{};
     unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
     int rank[2]{0,0},disp[2]{1,1};bool valid[2]{true,true},unreachable[2]{false,false},visible[2]{true,true};float distance[2]{10,20};
@@ -351,5 +352,39 @@ int main(int argc,char** argv){
     assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemorySetProtected,0,0,&mb,&ctr)&&ctr.written);
     assert(maint->maintain(f.memory,sizeof(f.memory),266,&maintenance,&mr)&&mr.removed==1&&mr.expired==1);
     assert(tree->validate(f.memory,sizeof(f.memory),&mb,&tr)&&tr.count==0);
+    auto grel=reinterpret_cast<GetServerNpcGruntRelationApi>(GetProcAddress(s,server_npc_grunt_relation_export));
+    assert(grel&&!GetProcAddress(c,server_npc_grunt_relation_export)&&!grel(0,sizeof(ServerNpcGruntRelationApi))&&!grel(1,0));
+    const auto* rel=grel(1,sizeof(ServerNpcGruntRelationApi));assert(rel);
+    ServerNpcGruntRelationBindings rb{};rb.context=&f;rb.entries=f.entries;rb.count=3;rb.original_vtable=0x2249aaa4;
+    rb.storage.context=&f;rb.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{if(token!=500)return 0;auto& f=F::self(p);*out=f.relation_rows;*n=sizeof(f.relation_rows);return 1;};
+    rb.classify=[](void* p,void* e,int* out) noexcept -> int{auto& f=F::self(p);*out=e==f.actor?3:e==f.enemy?5:6;return 1;};
+    rb.matrix_row=[](void* p,int cls,const void** out,unsigned* n) noexcept -> int{assert(cls==3);auto& f=F::self(p);*out=f.relation_matrix;*n=sizeof(f.relation_matrix);return 1;};
+    rb.is_player=[](void* p,void*,bool* out) noexcept -> int{*out=F::self(p).rel_player;return 1;};
+    rb.special_target=[](void* p,void*,bool* out) noexcept -> int{*out=F::self(p).rel_special;return 1;};
+    rb.as_npc=[](void* p,void* e,void** out) noexcept -> int{*out=F::self(p).rel_npc?e:nullptr;return 1;};
+    rb.npc_identity=[](void*,void*,std::uint32_t* vt,unsigned* n) noexcept -> int{*vt=0x2249aaa4;*n=0x86c;return 1;};
+    rb.component_valid=[](void*,std::uint32_t token,void*,bool* out) noexcept -> int{assert(token==77);*out=false;return 1;};
+    f.put(f.actor,0x638,500u);f.put(f.actor,0x644,3);
+    auto relation_row=[&](unsigned i,unsigned handle,int cls,int disp,int rank){
+        auto* r=f.relation_rows+16*i;f.put(r,0,handle);f.put(r,4,cls);f.put(r,8,disp);f.put(r,12,rank);
+    };
+    relation_row(0,0xffffffffu,5,2,7);relation_row(1,0x9002u,0,4,0);relation_row(2,0x7001u,0,1,11);
+    f.put(f.relation_matrix,16*6+8,2);f.put(f.relation_matrix,16*6+12,9);
+    ServerNpcGruntRelationResult relation_result{};ServerNpcGruntValidityResult validity{};
+    assert(rel->relation(f.actor,sizeof(f.actor),f.enemy,true,&rb,&relation_result)&&relation_result.source==1&&relation_result.index==2&&relation_result.disposition==1&&relation_result.priority==11&&!relation_result.class_queries);
+    f.put(f.relation_rows+32,0,0xffffffffu);
+    assert(rel->relation(f.actor,sizeof(f.actor),f.enemy,true,&rb,&relation_result)&&relation_result.source==2&&relation_result.index==0&&relation_result.disposition==2&&relation_result.priority==7&&relation_result.class_queries==2);
+    assert(rel->relation(f.actor,sizeof(f.actor),f.replacement,true,&rb,&relation_result)&&relation_result.source==3&&relation_result.index==6&&relation_result.disposition==2&&relation_result.priority==9);
+    f.actor[0xdb1]=1;
+    assert(rel->relation(f.actor,sizeof(f.actor),f.replacement,true,&rb,&relation_result)&&relation_result.overridden&&relation_result.disposition==4&&relation_result.special_called);
+    f.rel_special=true;assert(rel->relation(f.actor,sizeof(f.actor),f.replacement,true,&rb,&relation_result)&&relation_result.disposition==1);
+    f.rel_player=true;assert(rel->relation(f.actor,sizeof(f.actor),f.replacement,true,&rb,&relation_result)&&relation_result.disposition==1&&!relation_result.special_called);
+    assert(rel->relation(f.actor,sizeof(f.actor),f.replacement,false,&rb,&relation_result)&&!relation_result.overridden&&relation_result.priority==9);
+    f.actor[0xdb1]=0;assert(rel->relation(f.actor,sizeof(f.actor),nullptr,true,&rb,&relation_result)&&relation_result.disposition==4);
+    assert(rel->valid(f.actor,sizeof(f.actor),f.enemy,&rb,&validity)&&validity.valid&&!validity.npc_found);
+    f.rel_npc=true;f.put(f.enemy,0x868,1);
+    assert(rel->valid(f.actor,sizeof(f.actor),f.enemy,&rb,&validity)&&validity.valid&&validity.native_npc_gate);
+    f.put(f.enemy,0x868,2);assert(rel->valid(f.actor,sizeof(f.actor),f.enemy,&rb,&validity)&&!validity.valid);
+    f.put(f.actor,0xc18,77u);assert(rel->valid(f.actor,sizeof(f.actor),f.enemy,&rb,&validity)&&validity.component_called&&!validity.valid);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
