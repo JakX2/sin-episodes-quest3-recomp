@@ -1199,14 +1199,21 @@ struct ResponseCriteriaSelectionApi {
 };
 using GetResponseCriteriaSelectionApi=const ResponseCriteriaSelectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char actor_response_selection_export[]="SiN_GetActorResponseSelectionApi";
+struct JessicaResponseCriteriaBindings {
+    void* context;
+    int (__cdecl *enemy_object)(void*,void* npc,void**,unsigned*) noexcept;
+    // Pooled func_tankmortar word and shared nonzero empty-string word.
+    int (__cdecl *mortar_identity)(void*,std::uint32_t* mortar,std::uint32_t* empty) noexcept;
+    int (__cdecl *retire_child)(void*,void* root,void* child) noexcept; // selection.criteria.context
+};
 struct ActorResponseSelectionBindings {
     ResponseCriteriaSelectionBindings selection; // host NPC/player callbacks unused
     BaseResponseCriteriaBindings base;
     NpcResponseCriteriaBindings npc;
     PlayerResponseCriteriaBindings player;
+    JessicaResponseCriteriaBindings jessica;
     void* context;
-    // Select known vtable family: 0 generic (22089850), 1 ally (2208b090).
-    // Jessica/citizen override is not yet supported.
+    // Vtable family: 0 generic (22089850), 1 ally (2208b090), 2 Jessica/citizen (2236db40).
     int (__cdecl *actor)(void*,std::uint32_t word,void**,unsigned*,unsigned* family) noexcept;
     // Serial-checked entity handle resolver. Null is a valid stale handle.
     int (__cdecl *target)(void*,std::uint32_t handle,void**,unsigned*) noexcept;

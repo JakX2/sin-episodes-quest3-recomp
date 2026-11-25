@@ -8235,6 +8235,45 @@ int __cdecl response_criteria_selection_adapt(const ResponseCriteriaSelectionBin
 }
 const ResponseCriteriaSelectionApi response_criteria_selection_api{version,sizeof(ResponseCriteriaSelectionApi),&response_criteria_selection_adapt};
 
+// 2236c060: enemy is attributed to a mortar iff its live owner has the
+// identical pooled classname word (not merely an equal string).
+int jessica_mortar_owner(void* enemy,unsigned n,const ActorResponseSelectionBindings& b,unsigned& match) noexcept {
+    match=0;
+    if(!enemy)return 1;
+    if(n<0xec||!sin_independent::vgui_layout::Readable(enemy,0xec))return 0;
+    const auto handle=hologram_read<std::uint32_t>(enemy,0xe8);
+    if(handle==0xffffffffu)return 1;
+    void* owner=nullptr;unsigned extent=0;
+    if(!b.target(b.context,handle,&owner,&extent))return 0;
+    if(!owner)return 1;
+    if(extent<0x10||!sin_independent::vgui_layout::Readable(owner,0x10))return 0;
+    std::uint32_t mortar=0,empty=0;
+    if(!b.jessica.mortar_identity(b.jessica.context,&mortar,&empty)||!empty)return 0;
+    const auto owner_word=hologram_read<std::uint32_t>(owner,0xc);
+    match=(owner_word?owner_word:empty)==(mortar?mortar:empty);
+    return 1;
+}
+int jessica_response_criteria(void* npc,void* c,const ActorResponseSelectionBindings& b) noexcept {
+    const auto& j=b.jessica;
+    if(!j.enemy_object||!j.mortar_identity||!j.retire_child)return 0;
+    void* enemy=nullptr;unsigned n=0,match=0;
+    if(!j.enemy_object(j.context,npc,&enemy,&n))return 0;
+    if(enemy){
+        if(!j.enemy_object(j.context,npc,&enemy,&n)||!jessica_mortar_owner(enemy,n,b,match))return 0;
+        if(match){
+            ResponseCriteriaRemovalBindings remove{b.selection.criteria,j.retire_child};
+            if(response_criteria_remove(c,response_criteria_bytes,&remove,"enemy")!=1)return 0;
+            std::uint32_t mortar=0,empty=0;
+            if(!j.mortar_identity(j.context,&mortar,&empty)||!empty)return 0;
+            const char* text="";
+            if(mortar&&(!b.base.contexts.string(b.base.contexts.context,mortar,&text)||!text))return 0;
+            if(!b.npc.add(b.npc.context,c,"enemy",text,1.f))return 0;
+        }
+    }
+    unsigned fire=0;
+    if(!b.npc.condition(b.npc.context,npc,0x45,&fire))return 0;
+    return !fire||b.npc.add(b.npc.context,c,"hurt_by_fire","1",1.f);
+}
 struct ActorResponseSelectionCall {
     const ActorResponseSelectionBindings& cfg;
     static ActorResponseSelectionCall& get(void* p) noexcept {return *static_cast<ActorResponseSelectionCall*>(p);}
@@ -8256,18 +8295,21 @@ int __cdecl actor_response_select(void* exp,unsigned bytes,const ActorResponseSe
         const auto& b=ActorResponseSelectionCall::get(p).cfg;
         const auto word=hologram_read<std::uint32_t>(e,4);
         void* npc=nullptr;unsigned n=0,family=0;
-        if(!word||!b.actor(b.context,word,&npc,&n,&family)||scene_word(npc)!=word||family>1||
+        if(!word||!b.actor(b.context,word,&npc,&n,&family)||scene_word(npc)!=word||family>2||
            n<(family?0x1160u:0x9a4u)||!sin_independent::vgui_layout::Readable(npc,family?0x1160:0x9a4))return 0;
         if(base_response_criteria(npc,n,c,&b.base)!=1||npc_response_criteria(npc,n,c,&b.npc)!=1)return 0;
         if(!family)return 1;
         // 2208b090: first live handle check, then second resolution before contexts.
         auto handle=hologram_read<std::uint32_t>(npc,0x115c);void* target=nullptr;unsigned extent=0;
-        if(handle==0xffffffffu)return 1;
-        if(!b.target(b.context,handle,&target,&extent))return 0;
-        if(!target)return 1;
-        handle=hologram_read<std::uint32_t>(npc,0x115c);
-        if(handle==0xffffffffu||!b.target(b.context,handle,&target,&extent)||!target)return 0;
-        return entity_response_contexts(target,extent,c,"",&b.base.contexts)==1;
+        if(handle!=0xffffffffu){
+            if(!b.target(b.context,handle,&target,&extent))return 0;
+            if(target){
+                handle=hologram_read<std::uint32_t>(npc,0x115c);
+                if(handle==0xffffffffu||!b.target(b.context,handle,&target,&extent)||!target||
+                   entity_response_contexts(target,extent,c,"",&b.base.contexts)!=1)return 0;
+            }
+        }
+        return family!=2||jessica_response_criteria(npc,c,b);
     };
     h.player_criteria=[](void* p,void* c,int index) noexcept -> int{
         const auto& b=ActorResponseSelectionCall::get(p).cfg;
