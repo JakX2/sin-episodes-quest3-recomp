@@ -1104,6 +1104,24 @@ struct ResponseCriteriaTreeApi {
     int (__cdecl *destroy)(void*,unsigned,const ResponseCriteriaTreeBindings*) noexcept;
 };
 using GetResponseCriteriaTreeApi=const ResponseCriteriaTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_rule_ranking_export[]="SiN_GetResponseRuleRankingApi";
+struct ResponseRuleRankingBindings {
+    ResponseCriteriaTreeBindings criteria;
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *string)(void*,std::uint32_t,const char**) noexcept;
+    int (__cdecl *enumeration)(void*,const char*,float*,unsigned* found) noexcept;
+    int (__cdecl *get_string)(void*,void* child,const char* field,const char* fallback,const char**) noexcept;
+    int (__cdecl *get_float)(void*,void* child,const char* field,float fallback,float*) noexcept;
+    int (__cdecl *draw)(void*,int,int,int*) noexcept;
+};
+struct ResponseRuleRankingApi {
+    std::uint32_t version,size;
+    // 22099ae0 over original CResponseSystem records, using native
+    // CriteriaSet lookup; scratch holds at least rule count int indices.
+    int (__cdecl *best)(void* system,unsigned,void* criteria,unsigned,const ResponseRuleRankingBindings*,int* scratch,unsigned capacity,int* selected) noexcept;
+};
+using GetResponseRuleRankingApi=const ResponseRuleRankingApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_criteria_removal_export[]="SiN_GetResponseCriteriaRemovalApi";
 struct ResponseCriteriaRemovalBindings {
     ResponseCriteriaTreeBindings tree;

@@ -1,5 +1,6 @@
 #pragma once
 #include "test_native_npc_scene_playback.h"
+#include "response_rule_scoring.h"
 #include "native_server_event_intensity.h"
 #include "native_server_facial_records.h"
 #include "native_server_composed_facial_think.h"
@@ -744,7 +745,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1091,6 +1092,51 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         assert(api.add(&b,c,"enemy","replacement",1)&&F::word(c,0x20)==1);
         assert(api.find(c,sizeof(c),&b,"enemy",&idx,&child)==1&&idx==0);
         assert(!std::strcmp(reinterpret_cast<State::Child*>(static_cast<std::uintptr_t>(child))->value,"replacement"));
+        assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+    }
+    if(ranking){
+        struct Rules {
+            alignas(4) unsigned char sys[0xcc]{},criteria[3*0x14c]{},rules[4*0x40]{},ids[4][8]{};
+            int draws=0;int pick=1;
+            static Rules& self(void* p){return *static_cast<Rules*>(p);}
+        } r;
+        ResponseRuleRankingBindings h{};h.criteria=b;h.context=&r;
+        h.storage=[](void* p,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+            auto& r=Rules::self(p);
+            if(word==F::ptr(r.criteria)){*out=r.criteria;*n=sizeof(r.criteria);return 1;}
+            if(word==F::ptr(r.rules)){*out=r.rules;*n=sizeof(r.rules);return 1;}
+            for(auto& ids:r.ids)if(word==F::ptr(ids)){*out=ids;*n=sizeof(ids);return 1;}
+            return 0;};
+        h.string=[](void*,std::uint32_t word,const char** out) noexcept -> int{
+            switch(word){case 1:*out="concept";break;case 2:*out="enemy";break;case 3:*out="missing";break;default:return 0;}return 1;};
+        h.enumeration=[](void*,const char*,float* v,unsigned* found) noexcept -> int{*v=0;*found=0;return 1;};
+        h.get_string=[](void*,void* child,const char* field,const char* fallback,const char** out) noexcept -> int{
+            assert(!std::strcmp(field,"value")&&!*fallback);*out=static_cast<State::Child*>(child)->value;return 1;};
+        h.get_float=[](void*,void* child,const char* field,float fallback,float* out) noexcept -> int{
+            assert(!std::strcmp(field,"weight")&&fallback==1.f);*out=static_cast<State::Child*>(child)->weight;return 1;};
+        h.draw=[](void* p,int lo,int hi,int* out) noexcept -> int{auto& r=Rules::self(p);assert(lo==0&&hi==1);++r.draws;*out=r.pick;return 1;};
+        F::put(r.sys,0x60,F::ptr(r.criteria));F::put(r.sys,0x64,3);
+        F::put(r.sys,0xb8,F::ptr(r.rules));F::put(r.sys,0xbc,4);F::put(r.sys,0xc8,4);
+        auto criterion=[&](unsigned i,unsigned key,const char* expr,float weight,bool required){
+            auto* row=r.criteria+i*0x14c;F::put(row,0,0xffffffffu);row+=0x14;
+            F::put(row,0,key);F::fl(row,8,weight);row[0xc]=required;
+            assert(sin_port::response_rule::compile(expr,{},row+0x10,sin_port::response_rule::matcher_bytes));};
+        criterion(0,1,"TLK_IDLE",2,true);criterion(1,2,"npc_sintekgrunt",1,true);criterion(2,3,"!absent",1,false);
+        auto rule=[&](unsigned i,unsigned first,unsigned second,unsigned count){
+            auto* row=r.rules+i*0x40;F::put(row,0,0xffffffffu);row+=0x14;
+            F::put(r.ids[i],0,first);F::put(r.ids[i],4,second);
+            F::put(row,0,F::ptr(r.ids[i]));F::put(row,0xc,count);row[0x29]=1;};
+        rule(0,0,1,2);rule(1,0,0,1);rule(2,0,0,1);rule(3,2,0,1);
+        assert(api.construct(c,sizeof(c),&b)==1&&api.add(&b,c,"concept","TLK_IDLE",5)&&api.add(&b,c,"enemy","none",1));
+        int scratch[4]{},selected=99;
+        auto best=[&](){return ranking->best(r.sys,sizeof(r.sys),c,sizeof(c),&h,scratch,4,&selected);};
+        assert(best()==1&&selected==2&&r.draws==1);
+        r.pick=0;assert(best()==1&&selected==1&&r.draws==2);
+        assert(api.add(&b,c,"enemy","npc_sintekgrunt",1));
+        assert(best()==1&&selected==0&&r.draws==2);
+        F::put(r.sys,0xc8,0);
+        assert(best()==1&&selected==-1);
+        F::put(r.sys,0xc8,5);assert(best()==0);
         assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
     }
 }
