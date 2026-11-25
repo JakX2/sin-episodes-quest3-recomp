@@ -78,11 +78,11 @@ template<class I,unsigned Stride> struct Tree {
                     set(w,3,0);x=parent;parent=get(x,2);
                 }else{
                     if(color(get(w,1-side))==1){
-                        const I near=get(w,side);if(near!=nil)set(near,3,1);
+                        const I near_child=get(w,side);if(near_child!=nil)set(near_child,3,1);
                         set(w,3,0);rotate(w,1-side);w=get(parent,1-side);
                     }
                     set(w,3,color(parent));set(parent,3,1);
-                    const I far=get(w,1-side);if(far!=nil)set(far,3,1);
+                    const I far_child=get(w,1-side);if(far_child!=nil)set(far_child,3,1);
                     rotate(parent,side);x=root;parent=nil;
                 }
             }
