@@ -36,6 +36,31 @@ struct ServerNpcSharedTaskApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*) noexcept;
 };
 using GetServerNpcSharedTaskApi=const ServerNpcSharedTaskApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Facing service extends the shared dispatcher without altering the v1 ABI.
+inline constexpr char server_npc_shared_facing_export[]="SiN_GetServerNpcSharedFacingApi";
+struct ServerNpcSharedFacingBindings {
+    void* context;
+    int (__cdecl *motor_storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *aim_vector)(void*,void*,float[3]) noexcept; // 22031780
+    int (__cdecl *aligned)(void*,void*,const float*,bool*) noexcept; // actor +304
+    int (__cdecl *vector_yaw)(void*,void*,const float*,float*) noexcept; // actor +5dc
+    int (__cdecl *desired_yaw)(void*,void*,bool,double*) noexcept; // actor +754
+    int (__cdecl *begin_turn)(void*,void*) noexcept; // actor +71c
+    int (__cdecl *step_turn)(void*,void*,int) noexcept; // motor +48
+};
+struct ServerNpcSharedFacingResult {
+    ServerNpcSharedTaskResult shared;
+    unsigned queried,vector_written,yaw_written,begun,stepped,completed;
+    float current_quantized;
+    double error;
+};
+struct ServerNpcSharedFacingApi {
+    std::uint32_t version,size;
+    // 2206d1b0 / 2226c630. Signed error is desired minus quantized actual yaw.
+    int (__cdecl *yaw_error)(float actual,float desired,float*,double*) noexcept;
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedFacingBindings*,ServerNpcSharedFacingResult*) noexcept;
+};
+using GetServerNpcSharedFacingApi=const ServerNpcSharedFacingApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedTaskStats {ServerNpcSharedTaskResult last;unsigned calls,native,component_handled,special,parent;};
 // Per-maintenance call only; no callback or actor memory retains the session.
 struct ServerNpcSharedAttackBindings;

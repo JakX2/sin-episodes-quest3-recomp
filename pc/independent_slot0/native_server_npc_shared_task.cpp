@@ -45,7 +45,59 @@ int __cdecl supports(int id,bool running) noexcept{
     if(running)return id==2||id==4||id==5||id==86||id==92||id==93||id==114;
     return id==1||id==2||id==3||id==4||id==5||id==59||id==86||id==87||id==88||id==91||(id>=92&&id<=96)||id==114||id==119||id==120;
 }
-int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out) noexcept{
+int __cdecl yaw_error(float actual,float desired,float* quantized,double* error) noexcept{
+    if(!quantized||!error)return 0;*quantized=0;*error=0;
+    if(!std::isfinite(actual)||!std::isfinite(desired))return 0;
+    int fixed=0;
+    // Original x87 FMUL with the exact float32 constants, FISTP toward zero.
+    if(!integer(std::trunc(static_cast<double>(actual)*182.0444488525390625),fixed))return 0;
+    *quantized=static_cast<float>(static_cast<unsigned>(fixed)&0xffffu)*.0054931640625f;
+    const double delta=static_cast<double>(desired)-*quantized;
+    double wrapped=std::fmod(delta,360.0);
+    if(delta>0){if(wrapped>=180.0)wrapped-=360.0;}
+    else if(wrapped<=-180.0)wrapped+=360.0;
+    *error=wrapped;return 1;
+}
+int face60(void* a,unsigned n,bool running,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedFacingBindings& f,ServerNpcSharedFacingResult& out) noexcept{
+    const auto motor_token=rd<std::uint32_t>(a,0x908);
+    if(!motor_token||!f.motor_storage||!f.aim_vector||!f.aligned||!f.desired_yaw)return 0;
+    void* motor=nullptr;unsigned size=0;
+    if(!f.motor_storage(f.context,motor_token,&motor,&size)||!motor||size<0x18)return 0;
+    float v[3]{};bool aligned=false;
+    if(!f.aim_vector(f.context,a,v)||!std::isfinite(v[0])||!std::isfinite(v[1])||!std::isfinite(v[2])||
+       !f.aligned(f.context,a,v,&aligned))return 0;
+    out.queried=1;
+    if(!aligned){
+        float v_yaw=0;
+        if(!f.vector_yaw||!f.vector_yaw(f.context,a,v,&v_yaw)||!std::isfinite(v_yaw))return 0;
+        wr(motor,0x14,v_yaw);out.vector_written=1;
+    }
+    double target=0;
+    if(!f.desired_yaw(f.context,a,true,&target)||!std::isfinite(target))return 0;
+    const float stored=static_cast<float>(target);
+    if(!std::isfinite(stored))return 0;
+    const double difference=std::fabs(target-rd<float>(motor,0x14));
+    if(aligned&&!std::isfinite(difference))return 0;
+    auto complete=[&](){
+        const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+        if(!life||!life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle))return 0;
+        out.completed=out.shared.lifecycle.completed;return 1;
+    };
+    if(!running&&aligned&&difference<1.0)return complete();
+    if(!aligned||(!running&&difference>=1.0)||(running&&difference>1.0)){
+        wr(motor,0x14,stored);out.yaw_written=1;
+    }
+    if(!running){
+        if(!f.begin_turn||!f.begin_turn(f.context,a))return 0;
+        out.begun=1;return 1;
+    }
+    if(!f.step_turn||!f.step_turn(f.context,motor,-1))return 0;
+    out.stepped=1;
+    // The motor callback may update the actor's current yaw and motor target.
+    if(!yaw_error(rd<float>(a,0x370),rd<float>(motor,0x14),&out.current_quantized,&out.error))return 0;
+    return std::fabs(out.error)>.006||complete();
+}
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingResult* facing_out=nullptr) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -60,6 +112,7 @@ int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool runni
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
+    if(t->id==60&&facing&&facing_out){out->native=1;return face60(a,n,running,now,*b,*facing,*facing_out);}
     if(!supports(t->id,running)){out->parent_called=1;return b->parent&&b->parent(b->context,a,t,running);}
     out->native=1;
     const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));if(!life)return 0;
@@ -117,6 +170,15 @@ int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool runni
     }
     return 0;
 }
+int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out) noexcept{
+    return execute_impl(a,n,t,running,now,b,out);
+}
+int __cdecl execute_facing(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedFacingBindings* f,ServerNpcSharedFacingResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!t||t->id!=60||!f)return 0;
+    return execute_impl(a,n,t,running,now,b,&out->shared,f,out);
+}
+const ServerNpcSharedFacingApi facing_api{1,sizeof(ServerNpcSharedFacingApi),&yaw_error,&execute_facing};
 const ServerNpcSharedTaskApi api{1,sizeof(ServerNpcSharedTaskApi),&wait,&cancel_wait,&wait_state,&supports,&execute};
  }
 int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const ServerGruntTaskBindings* original,const ServerNpcScheduleResolutionBindings* resolution,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* stats,ServerNpcSharedParentSession* session,ServerGruntTaskBindings* bound,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats) noexcept{
@@ -182,4 +244,9 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedTaskApi=_SiN_GetServerNpcSharedTaskApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedTaskApi* __cdecl SiN_GetServerNpcSharedTaskApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedTaskApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedFacingApi=_SiN_GetServerNpcSharedFacingApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedFacingApi* __cdecl SiN_GetServerNpcSharedFacingApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedFacingApi)?&facing_api:nullptr;
 }
