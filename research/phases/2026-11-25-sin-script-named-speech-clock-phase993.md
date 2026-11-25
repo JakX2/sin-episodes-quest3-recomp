@@ -1,0 +1,3 @@
+# Phase 993: script-selected named VCD clock and speech
+
+The existing directory-backed script test now sets the engine-owned scene callback owner word in its construction leaf and skips synthetic actor-record insertion. After response history, registry, metadata and raw cache retirement, use the loaded NativeSceneExecutionApi on the actual root graph. Verify first speech onset, original remaining/start time, native actor preparation, recipient emission, CRC caption fields, record insertion and clock stop before removal. Nested graph remains precached and owned; this phase does not establish nested speech timing, real audio or manager-driven completion. Existing standalone fixture keeps its earlier synthetic stop-record case. CI pending.
