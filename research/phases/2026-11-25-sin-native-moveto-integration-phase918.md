@@ -1,0 +1,3 @@
+# Phase 918: native scripted movement lifecycle integration
+
+Compose phase916 admission/check/stop (220f9570, 220f59f0, 220f5930) and phase917 update (220f9a40) into opt-in actor record and think adapters. Parsed root+78 provides scene time; global time from existing facial record clock. Existing target/animation/facial APIs retain behavior and ABI. Synthetic parsed VCD moveto with Walk and distance tolerance5 tests start, route creation, completion with/without active goal, arrival cancellation, deadline, and retirement. Engine services still supplied by host; debug overlays, pathfinding and physics not implemented. No full retail scene execution claim. CI pending.
