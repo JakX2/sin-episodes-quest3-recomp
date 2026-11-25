@@ -501,6 +501,50 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
         assert(rt.unload().code==sm::SourceMapLoadCode::Unloaded&&!rh.attached_count());
         assert(rh.observe(cref,observation,sizeof(observation))==NpcMapResult::Rejected&&r.script_calls==3);
         assert(ma.destroy(&r.manager_session,&r.manager_control,&r.manager_tables,&r.manager.manager)==1);
+        // Session lifetime/route fixture: a fake finder isolates map-host
+        // ownership, while the loaded finder itself has separate tests.
+        static unsigned token=0,registry=0,creates=0,releases=0;
+        creates=releases=0;
+        npc::ScriptResponseFinderApi finder{npc::version,sizeof(npc::ScriptResponseFinderApi)};
+        finder.create=[](const char* name,const char* data,unsigned bytes,const npc::ScriptResponseInclude*,npc::ScriptResponseStore* out) noexcept -> int{
+            assert(!std::strcmp(name,"talker/response_rules.txt")&&!out->owner&&!out->system);
+            ++creates;if(!data||bytes!=4)return -1;
+            *out={&token,&registry};return 1;};
+        finder.release=[](npc::ScriptResponseStore* out) noexcept -> int{
+            assert(out->owner==&token&&out->system==&registry);++releases;*out={};return 1;};
+        finder.find=[](void*,void*,void*,void*,void*,unsigned*) noexcept -> int{assert(false);return 0;};
+        NpcBspShell sr(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);
+        sr.script_speech.context=&sr;
+        script.observe=[](npc::NpcMapKind kind,npc::HologramControl*,npc::NpcMapSession* session,const npc::NpcMapBindings*,
+            const npc::NpcMapDialogueBindings*,const npc::TalkManagerRuntimeBindings*,const npc::ScriptActorSpeechBindings* speech,
+            const void* record,unsigned bytes) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(speech->context);
+            assert((kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)&&session==&f.session&&record&&bytes>=0x5e9);
+            assert(speech!=&f.script_speech&&speech->selection.finder.store.owner==&token&&speech->selection.finder.store.system==&registry);
+            assert(f.host->close_script_session()==0);
+            ++f.script_calls;return 1;};
+        NativeNpcMapHost sh(sr,sr,api,sr.session,&interaction,&dialogue,&managed,integrated,generated,&script,&finder);
+        sr.host=&sh;sm::SourceMapRuntime st(sh);
+        EntityRef uncreated{};
+        assert(!sh.create_entity("npc_count",uncreated)&&!sh.script_session_open()&&!creates);
+        assert(sh.open_script_session("bad",3)==-1&&!sh.script_session_open()&&creates==1);
+        assert(sh.open_script_session("data",4)==1&&sh.script_session_open()&&creates==2);
+        assert(sh.open_script_session("data",4)==0&&creates==2);
+        assert(st.load_bsp(bsp.data(),bsp.size()).ok());
+        const auto sj=st.entities()[2],sc=st.entities()[3];
+        assert(sh.close_script_session()==0&&!releases);
+        sr.script_speech.selection.finder.store={&registry,&token};
+        assert(sh.observe(sc,observation,sizeof(observation))==NpcMapResult::Rejected&&!sr.script_calls);
+        sr.script_speech.selection.finder.store={};
+        assert(sh.observe(sc,observation,sizeof(observation))==NpcMapResult::Applied&&sr.script_calls==1);
+        assert(sh.observe(sj,observation,sizeof(observation))==NpcMapResult::Applied&&sr.script_calls==2);
+        assert(!sr.script_speech.selection.finder.store.owner);
+        sr.fail_remove=true;assert(st.unload().code==sm::SourceMapLoadCode::PartialUnload&&sh.close_script_session()==0&&!releases);
+        sr.fail_remove=false;assert(st.unload().code==sm::SourceMapLoadCode::Unloaded);
+        assert(sh.close_script_session()==1&&!sh.script_session_open()&&releases==1);
+        assert(sh.close_script_session()==0&&releases==1);
+        assert(sh.open_script_session("data",4)==1&&creates==3&&sh.close_script_session()==1&&releases==2);
+        assert(ma.destroy(&sr.manager_session,&sr.manager_control,&sr.manager_tables,&sr.manager.manager)==1);
     }
     NpcBspShell bad(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
     sm::SourceMapRuntime rollback(bh);assert(rollback.load_bsp(bsp.data(),bsp.size()).code==sm::SourceMapLoadCode::HostKeyValueFailed&&!rollback.loaded()&&!bh.attached_count());
