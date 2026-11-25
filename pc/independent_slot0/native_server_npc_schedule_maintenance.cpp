@@ -274,7 +274,7 @@ int __cdecl classify(std::uint32_t vtable,unsigned* out) noexcept {
     default:return 0;
     }
 }
-int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr,const ServerNpcSharedTargetAnimationBindings* target_animation=nullptr,ServerNpcSharedTargetAnimationStats* target_animation_stats=nullptr,const ServerNpcSharedMovementBindings* movement=nullptr,ServerNpcSharedMovementStats* movement_stats=nullptr,const ServerNpcSharedCueBindings* cue=nullptr,ServerNpcSharedCueStats* cue_stats=nullptr,const ServerNpcSharedObservationBindings* observe=nullptr,ServerNpcSharedObservationStats* observe_stats=nullptr) noexcept {
+int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr,const ServerNpcSharedTargetAnimationBindings* target_animation=nullptr,ServerNpcSharedTargetAnimationStats* target_animation_stats=nullptr,const ServerNpcSharedMovementBindings* movement=nullptr,ServerNpcSharedMovementStats* movement_stats=nullptr,const ServerNpcSharedCueBindings* cue=nullptr,ServerNpcSharedCueStats* cue_stats=nullptr,const ServerNpcSharedObservationBindings* observe=nullptr,ServerNpcSharedObservationStats* observe_stats=nullptr,const ServerNpcSharedSoundCoverBindings* sound_cover=nullptr,ServerNpcSharedSoundCoverStats* sound_cover_stats=nullptr) noexcept {
     if(!out)return 0;*out={};
     if(!a||!b||!classify(b->original_vtable,&out->subclass))return 0;
     const bool jet=out->subclass==NpcSubclassJetpack;
@@ -302,10 +302,12 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
     if(cue){cue_bound=*cue;cue_bound.original_vtable=b->original_vtable;cue=&cue_bound;}
     ServerNpcSharedObservationBindings observation_bound{};
     if(observe){observation_bound=*observe;observation_bound.original_vtable=b->original_vtable;observe=&observation_bound;}
+    ServerNpcSharedSoundCoverBindings sound_cover_bound{};
+    if(sound_cover){sound_cover_bound=*sound_cover;sound_cover_bound.original_vtable=b->original_vtable;sound_cover=&sound_cover_bound;}
     ServerNpcSharedParentSession shared_session{};
     if(shared){
         ServerGruntTaskBindings forwarded{};
-        if(!shared_stats||!bind_shared_parent_internal(a,bytes,now,&binding.grunt,&m.selection,shared,shared_stats,&shared_session,&forwarded,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats))return 0;
+        if(!shared_stats||!bind_shared_parent_internal(a,bytes,now,&binding.grunt,&m.selection,shared,shared_stats,&shared_session,&forwarded,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats,sound_cover,sound_cover_stats))return 0;
         binding.grunt=forwarded;binding.elite.grunt=forwarded;binding.jetpack.grunt=forwarded;
     }
     ServerGruntCombatTaskBindings combat_bound{};
@@ -329,9 +331,9 @@ const ServerGruntSchedulerApi grunt_api{1,sizeof(ServerGruntSchedulerApi),&run_g
 const ServerNpcScheduleMaintenanceApi api{1,sizeof(ServerNpcScheduleMaintenanceApi),&run};
 }
 // Internal linkage boundary for native combat-aware catalog service.
-int run_subclass_combat_internal(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat,ServerGruntCombatSchedulerStats* stats,const ServerGruntHelperTaskBindings* full,ServerGruntFullTaskStats* full_stats,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* shared_stats,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingStats* facing_stats,const ServerNpcSharedTargetAnimationBindings* target_animation,ServerNpcSharedTargetAnimationStats* target_animation_stats,const ServerNpcSharedMovementBindings* movement,ServerNpcSharedMovementStats* movement_stats,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueStats* cue_stats,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationStats* observe_stats) noexcept{
+int run_subclass_combat_internal(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat,ServerGruntCombatSchedulerStats* stats,const ServerGruntHelperTaskBindings* full,ServerGruntFullTaskStats* full_stats,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* shared_stats,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingStats* facing_stats,const ServerNpcSharedTargetAnimationBindings* target_animation,ServerNpcSharedTargetAnimationStats* target_animation_stats,const ServerNpcSharedMovementBindings* movement,ServerNpcSharedMovementStats* movement_stats,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueStats* cue_stats,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationStats* observe_stats,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverStats* sound_cover_stats) noexcept{
     if(!combat||!stats)return 0;
-    return run_subclass_impl(a,bytes,now,b,out,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats);
+    return run_subclass_impl(a,bytes,now,b,out,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats,sound_cover,sound_cover_stats);
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcScheduleMaintenanceApi=_SiN_GetServerNpcScheduleMaintenanceApi")

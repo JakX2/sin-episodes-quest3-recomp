@@ -15,6 +15,8 @@ struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
     unsigned char motor[0x18]{},nav[0x50]{},path[0x48]{};
     unsigned clear_paths=0,stop_paths=0,move_updates=0;
+    unsigned char sound_record[0x2c]{},sound_cache[0x2c]{};
+    bool sound_goal_accept=false;
     bool observation_pvs=false;
     bool align_on_step=false;unsigned begins=0,steps=0;int last_pending=-1;
     ServerScheduleImage image{};
@@ -303,6 +305,25 @@ int main(int argc,char** argv){
     assert(observation_api->run(f.actor,sizeof(f.actor),68,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&observed)&&observed.observation.calls==1&&observed.observation.last.pvs&&observed.observation.last.shared.lifecycle.completed);
     install_at(81,3);f.put(f.actor,0xb4,0x400u);
     assert(observation_api->run(f.actor,sizeof(f.actor),69,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&observed)&&observed.observation.calls==1&&observed.observation.last.flag_gate&&!observed.observation.last.pvs_called&&observed.observation.last.shared.lifecycle.completed);
+    auto gcover=reinterpret_cast<GetServerNpcSoundCoverCatalogSchedulerApi>(GetProcAddress(s,server_npc_sound_cover_catalog_scheduler_export));
+    assert(gcover&&!GetProcAddress(c,server_npc_sound_cover_catalog_scheduler_export)&&!gcover(0,sizeof(ServerNpcSoundCoverCatalogSchedulerApi))&&!gcover(1,0));
+    const auto* cover_api=gcover(1,sizeof(ServerNpcSoundCoverCatalogSchedulerApi));assert(cover_api);
+    ServerNpcSharedSoundCoverBindings scb{};scb.context=&f;
+    scb.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{if(token!=222)return 0;auto& f=F::self(p);*out=f.sound_cache;*n=sizeof(f.sound_cache);return 1;};
+    scb.best_sound=[](void* p,void*,unsigned mask,const void** out,unsigned* n) noexcept -> int{assert(mask==0xfff1f);auto& f=F::self(p);*out=f.sound_record;*n=sizeof(f.sound_record);return 1;};
+    scb.cover_position=[](void*,void*,const void*,float* pos,bool* out) noexcept -> int{pos[0]=10;pos[1]=20;pos[2]=30;*out=true;return 1;};
+    scb.prepare_navigation=[](void*,std::uint32_t nav) noexcept -> int{assert(nav==100);return 1;};
+    scb.goal_context=[](void*,std::uint32_t* out) noexcept -> int{*out=333;return 1;};
+    scb.submit_goal=[](void* p,std::uint32_t nav,const ServerNpcSoundCoverGoal* goal,bool* accepted) noexcept -> int{auto& f=F::self(p);assert(nav==100&&goal->type==4&&goal->position[2]==30&&goal->range==100.f&&goal->activity==10&&goal->context_token==333);*accepted=f.sound_goal_accept;return 1;};
+    ServerNpcSoundCoverCatalogSchedulerResult cover_run{};
+    install_at(94,4);bind_nav(); // actual TASK_FIND_COVER_FROM_BEST_SOUND
+    f.put(f.actor,0x89c,222u);f.put(f.sound_record,4,200);f.put(f.sound_record,0xc,2u);
+    assert(cover_api->run(f.actor,sizeof(f.actor),69.1f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&cover_run)&&cover_run.observation.cue.movement.animation.facing.attack.shared.shared.calls==1&&cover_run.sound_cover.calls==1&&cover_run.sound_cover.last.advanced&&cover_run.sound_cover.last.cache_copied);
+    assert(cover_api->run(f.actor,sizeof(f.actor),69.2f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&cover_run)&&cover_run.sound_cover.calls==1&&cover_run.sound_cover.last.submitted&&!cover_run.sound_cover.last.accepted);
+    f.sound_goal_accept=true;
+    assert(cover_api->run(f.actor,sizeof(f.actor),69.3f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&cover_run)&&cover_run.sound_cover.calls==1&&cover_run.sound_cover.last.accepted&&cover_run.sound_cover.last.deadline_written);
+    float sound_deadline=0;std::memcpy(&sound_deadline,f.actor+0x8f0,4);assert(sound_deadline==69.3f);
+    assert(cover_run.observation.cue.movement.animation.facing.attack.shared.full.combat.catalog.runtime.scheduler.maintenance.state.index==4);
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     install_at(96,4); // SCHED_GRUNT_GRENADE_COVER1: original timestamp task53
     assert(shared_api->run(f.actor,sizeof(f.actor),69.5f,&f.image,&runtime,&full,&shared,&sh)&&sh.shared.calls==1&&sh.shared.last.task==53&&sh.shared.last.lifecycle.completed);
