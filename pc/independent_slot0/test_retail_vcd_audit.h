@@ -1345,6 +1345,9 @@ inline void check_parsed_npc_weapon_scene(VcdAuditArena& arena,const NativeVcdRu
     };
     assert(simulate(.5f)==1&&f.starts==1&&f.gestures==1);verify(2,.5f,.75f);
     assert(simulate(2.5f)==1&&simulate(2.75f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
+    // Duration-bearing events are classified against the previous time, not
+    // the new target. Crossing start first leaves the event inactive.
+    assert(simulate(3.25f)==1&&f.starts==1&&f.gestures==1&&!f.slots&&!f.selects&&!F::word(f.actor,0x5c4));
     assert(simulate(3.5f)==1&&f.starts==2&&f.gestures==2&&f.slots==4&&f.selects==1);verify(3,3.5f,3.75f);
     assert(simulate(5.5f)==1&&simulate(5.75f)==1&&f.stops==2&&!F::word(f.actor,0x5c4)&&f.updates==2);
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);

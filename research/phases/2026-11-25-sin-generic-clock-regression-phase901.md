@@ -1,0 +1,3 @@
+# Phase 901: correct generic event clock boundary regression
+
+Phase899 and Phase900 Windows loaded regressions fail at the second generic event assertion (test147; exit 0xc0000409), not compilation. Existing parsed_event_classify uses the previous/lower bound for duration-bearing events: at 2.75 -> 3.5 the second event [3,5] is not inside, and it starts on the following tick. Correct the fixture by stepping 2.75 -> 3.25 (explicitly assert no admission, inventory scan or record), then 3.25 -> 3.5 (assert admission and all original existing expectations). Preserve production classifier and completion tests. Phase898 five workflows passed; phase900 speech fixture appears before failing weapon fixture but complete loaded run remains unverified until retest. CI pending.
