@@ -245,4 +245,20 @@ struct ServerNpcEnemyMemoryMutationApi {
     int (__cdecl *erase_record)(void*,void*,unsigned,unsigned,std::uint32_t) noexcept;
 };
 using GetServerNpcEnemyMemoryMutationApi=const ServerNpcEnemyMemoryMutationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_enemy_memory_control_export[]="SiN_GetServerNpcEnemyMemoryControlApi";
+enum ServerNpcEnemyMemoryControl : unsigned {
+    NpcMemoryExists=0,NpcMemoryEluded=1,NpcMemoryMarkEluded=2,NpcMemorySetEligibility=3,NpcMemorySetProtected=4
+};
+struct ServerNpcEnemyMemoryControlResult {
+    ServerNpcEnemyMemoryLookup lookup;
+    unsigned value,written;
+};
+struct ServerNpcEnemyMemoryControlApi {
+    std::uint32_t version,size;
+    // 2206b040: empty memory owner; optional adapter preallocation uses caller-owned storage.
+    int (__cdecl *initialize)(void*,unsigned,std::uint32_t,unsigned,const float[3],const ServerNpcEnemyMemoryBindings*) noexcept;
+    // Exact lookup only: 2206b290/300/600/660/6c0.
+    int (__cdecl *control)(void*,unsigned,std::uint32_t,unsigned,float,std::uint8_t,const ServerNpcEnemyMemoryBindings*,ServerNpcEnemyMemoryControlResult*) noexcept;
+};
+using GetServerNpcEnemyMemoryControlApi=const ServerNpcEnemyMemoryControlApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
