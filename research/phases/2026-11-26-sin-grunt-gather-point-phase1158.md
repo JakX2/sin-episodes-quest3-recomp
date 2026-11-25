@@ -1,0 +1,2 @@
+# Phase 1158: integrate remembered-point eligibility into Grunt GatherConditions
+Reuse verified Phase1157 policy at original +788 call site inside Phase1156 wrapper, share the original class and live registry. Separate opt-in API preserves all earlier interfaces. Loaded fixture disables old point predicate and tests acceptance, cooldown and schedule exclusion. Actual engine solution and scene leaves remain external. CI pending.

@@ -826,4 +826,11 @@ struct ServerNpcGruntPointPolicyApi {
     int (__cdecl *query)(void*,unsigned,const float[3],float,const ServerNpcGruntPointPolicyBindings*,ServerNpcGruntPointPolicyResult*) noexcept;
 };
 using GetServerNpcGruntPointPolicyApi=const ServerNpcGruntPointPolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_gather_point_export[]="SiN_GetServerNpcGruntGatherPointApi";
+struct ServerNpcGruntGatherPointApi {
+    std::uint32_t version,size;
+    // Original +420 wrapper with native +788 policy, retaining separate scene leaves.
+    int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherConditionsBindings*,const ServerNpcGruntPointPolicyBindings*,ServerNpcGruntGatherConditionsResult*,ServerNpcGruntPointPolicyResult*) noexcept;
+};
+using GetServerNpcGruntGatherPointApi=const ServerNpcGruntGatherPointApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
