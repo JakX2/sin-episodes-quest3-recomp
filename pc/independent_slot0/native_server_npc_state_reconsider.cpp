@@ -230,7 +230,8 @@ int __cdecl grunt_relation(void*,unsigned,void*,bool,const ServerNpcGruntRelatio
 int __cdecl grunt_valid(void*,unsigned,void*,const ServerNpcGruntRelationBindings*,ServerNpcGruntValidityResult*) noexcept;
 int __cdecl unreachable_enemy(void*,unsigned,void*,float,const ServerNpcUnreachableEnemyBindings*,ServerNpcUnreachableEnemyResult*) noexcept;
 bool relation_grunt_class(std::uint32_t) noexcept;
-int best_enemy_impl(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,ServerNpcBestEnemyResult* out,const ServerNpcGruntRelationBindings* rel,const ServerNpcUnreachableEnemyBindings* cache,ServerNpcGruntBestEnemyResult* stats) noexcept{
+int __cdecl sensed_contains(const void*,unsigned,void*,const ServerNpcSensedEntitiesBindings*,bool*) noexcept;
+int best_enemy_impl(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,ServerNpcBestEnemyResult* out,const ServerNpcGruntRelationBindings* rel,const ServerNpcUnreachableEnemyBindings* cache,ServerNpcGruntBestEnemyResult* stats,const ServerNpcSensedEntitiesBindings* senses=nullptr) noexcept{
     if(!out)return 0;*out={};out->priority=-1000;out->distance_squared=0x10000000;out->unreachable=1;
     if(!actor||bytes<0xc1c||!b||!std::isfinite(now)||b->memory.count>sin_independent::kEntityHandleCapacity||(b->memory.count&&!b->memory.entries))return 0;
     const auto component=read<unsigned>(actor,0xc18);
@@ -265,7 +266,10 @@ int best_enemy_impl(void* actor,unsigned bytes,float now,const ServerNpcBestEnem
         if(!unreachable_enemy(actor,bytes,entity,now,cache,&ur))return false;value=ur.unreachable!=0;return true;
     };
     auto visibility=[&](void* entity,bool& value){
-        if(!b->sensed||!b->sensed(b->context,read<unsigned>(actor,0x898),entity,&value))return false;
+        if(senses){
+            void* owner=nullptr;unsigned n=0;
+            if(!memory_storage(&senses->storage,read<unsigned>(actor,0x898),0x60,owner,n)||!sensed_contains(owner,n,entity,senses,&value))return false;
+        }else if(!b->sensed||!b->sensed(b->context,read<unsigned>(actor,0x898),entity,&value))return false;
         return value||(b->visible&&b->visible(b->context,actor,entity,0x4081,&value));
     };
     auto distance=[&](void* entity,int& value){
@@ -342,12 +346,15 @@ int best_enemy_impl(void* actor,unsigned bytes,float now,const ServerNpcBestEnem
 int __cdecl best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,ServerNpcBestEnemyResult* out) noexcept{
     return best_enemy_impl(actor,bytes,now,b,out,nullptr,nullptr,nullptr);
 }
-int __cdecl grunt_best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,const ServerNpcGruntRelationBindings* rel,const ServerNpcUnreachableEnemyBindings* cache,ServerNpcGruntBestEnemyResult* out) noexcept{
+int grunt_best_enemy_impl(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,const ServerNpcGruntRelationBindings* rel,const ServerNpcUnreachableEnemyBindings* cache,ServerNpcGruntBestEnemyResult* out,const ServerNpcSensedEntitiesBindings* senses) noexcept{
     if(!out)return 0;*out={};
     if(!b||!rel||!cache||bytes<0xdb2||!relation_grunt_class(rel->original_vtable))return 0;
     auto rb=*rel;auto cb=*cache;
     rb.entries=cb.entries=b->memory.entries;rb.count=cb.count=b->memory.count;
-    return best_enemy_impl(actor,bytes,now,b,&out->selection,&rb,&cb,out);
+    return best_enemy_impl(actor,bytes,now,b,&out->selection,&rb,&cb,out,senses);
+}
+int __cdecl grunt_best_enemy(void* actor,unsigned bytes,float now,const ServerNpcBestEnemyBindings* b,const ServerNpcGruntRelationBindings* rel,const ServerNpcUnreachableEnemyBindings* cache,ServerNpcGruntBestEnemyResult* out) noexcept{
+    return grunt_best_enemy_impl(actor,bytes,now,b,rel,cache,out,nullptr);
 }
 int __cdecl unreachable_enemy(void* actor,unsigned bytes,void* target,float now,const ServerNpcUnreachableEnemyBindings* b,ServerNpcUnreachableEnemyResult* out) noexcept{
     if(!out)return 0;*out={};
@@ -929,7 +936,7 @@ int __cdecl grunt_enemy_choice_gate(void* actor,unsigned bytes,float now,const S
     if(eligibility>=now){sync();return choose(NpcChoiceEligibility);}
     return 1;
 }
-int __cdecl grunt_enemy_switch(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemySwitchBindings* b,ServerNpcGruntEnemySwitchResult* out) noexcept{
+int grunt_enemy_switch_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemySwitchBindings* b,ServerNpcGruntEnemySwitchResult* out,const ServerNpcSensedEntitiesBindings* senses) noexcept{
     if(!out)return 0;*out={};
     if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->gate.relation.original_vtable)||
        b->best.memory.count>sin_independent::kEntityHandleCapacity||(b->best.memory.count&&!b->best.memory.entries))return 0;
@@ -974,7 +981,7 @@ int __cdecl grunt_enemy_switch(void* actor,unsigned bytes,float now,const Server
     write<std::uint8_t>(actor,0x84e,0);
     if(!grunt_enemy_choice_gate(actor,bytes,now,&gate,&out->gate))return 0;
     if(out->gate.choose){
-        if(!grunt_best_enemy(actor,bytes,now,&b->best,&gate.relation,&b->cache,&out->selection))return 0;
+        if(!grunt_best_enemy_impl(actor,bytes,now,&b->best,&gate.relation,&b->cache,&out->selection,senses))return 0;
         out->selected=1;candidate=out->selection.selection.enemy;
     }
     if(candidate==current&&!out->forced_missing)return 1;
@@ -1007,6 +1014,9 @@ int __cdecl grunt_enemy_switch(void* actor,unsigned bytes,float now,const Server
         write(actor,0x988,read<unsigned>(actor,0x988)|(special?0x10000u:0x8000u));
     }
     out->new_flags=read<unsigned>(actor,0x988);return 1;
+}
+int __cdecl grunt_enemy_switch(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemySwitchBindings* b,ServerNpcGruntEnemySwitchResult* out) noexcept{
+    return grunt_enemy_switch_impl(actor,bytes,now,b,out,nullptr);
 }
 int __cdecl grunt_speak(void* actor,unsigned bytes,unsigned kind,float now,const ServerNpcGruntSpeechBindings* b,ServerNpcGruntSpeechResult* out) noexcept{
     if(!out)return 0;*out={};out->speech_result=-1;
@@ -1265,6 +1275,40 @@ int __cdecl grunt_sound_scan(void* actor,unsigned bytes,float now,const ServerNp
     }
     return grunt_hearing_gather(actor,bytes,now,&b->hearing,&out->hearing);
 }
+int __cdecl perception_tick(void* actor,unsigned bytes,float now,const ServerNpcGruntPerceptionTickBindings* b,ServerNpcGruntPerceptionTickResult* out) noexcept{
+    if(!out)return 0;
+    // Avoid deep nested aggregate initialization on MSVC x86.
+    out->visual={};out->sound={};out->maintenance={};out->enemy_switch={};
+    out->rebuilt=out->categories=out->completed=0;out->radius=0;
+    if(!actor||bytes<0xdb2||!b||!std::isfinite(now))return 0;
+    const auto& best=b->enemy_switch.best;
+    const auto vt=b->enemy_switch.gate.relation.original_vtable;
+    if(!relation_grunt_class(vt)||best.memory.count>sin_independent::kEntityHandleCapacity||(best.memory.count&&!best.memory.entries))return 0;
+    auto visual=b->visual;visual.relation.original_vtable=vt;
+    visual.senses.entries=best.memory.entries;visual.senses.count=best.memory.count;
+    visual.conditions=b->enemy_switch.schedule.conditions;
+    void* senses=nullptr;unsigned extent=0;
+    if(!memory_storage(&visual.senses.storage,read<unsigned>(actor,0x898),0x60,senses,extent))return 0;
+    const float raw=read<float>(senses,8),previous=read<float>(senses,0xc),time=read<float>(senses,0x10);
+    if(!std::isfinite(raw)||!std::isfinite(previous)||!std::isfinite(time)||raw>=2147483648.0||raw< -2147483648.0)return 0;
+    out->radius=static_cast<int>(raw);
+    if(time!=now||previous!=static_cast<float>(out->radius)){
+        if(!b->rebuild_category)return 0;
+        for(unsigned i=0;i<3;++i){if(!b->rebuild_category(b->context,senses,i,out->radius))return 0;++out->categories;}
+        write(senses,0xc,static_cast<float>(out->radius));write(senses,0x10,now);out->rebuilt=1;
+    }
+    // Original 220a31a0 calls +4f0 even on cache hit.
+    if(!grunt_visual_gather(actor,bytes,now,&visual,&out->visual))return 0;
+    auto sound=b->sound;sound.entries=best.memory.entries;sound.count=best.memory.count;
+    sound.hearing.storage=visual.senses.storage;sound.hearing.original_vtable=vt;sound.hearing.schedule=b->enemy_switch.schedule;
+    if(!grunt_sound_scan(actor,bytes,now,&sound,&out->sound))return 0;
+    auto maintenance=b->maintenance;maintenance.entries=best.memory.entries;maintenance.count=best.memory.count;
+    void* memory=nullptr;unsigned n=0;
+    if(!memory_storage(&maintenance.storage,read<unsigned>(actor,0x984),0x40,memory,n)||!maintain_memory(memory,n,now,&maintenance,&out->maintenance))return 0;
+    if(!grunt_enemy_switch_impl(actor,bytes,now,&b->enemy_switch,&out->enemy_switch,&visual.senses))return 0;
+    out->completed=1;return 1;
+}
+const ServerNpcGruntPerceptionTickApi tick_api{1,sizeof(ServerNpcGruntPerceptionTickApi),&perception_tick};
 const ServerNpcGruntSoundScanApi scan_api{1,sizeof(ServerNpcGruntSoundScanApi),&grunt_sound_scan};
 const ServerNpcGruntHearingApi hearing_api{1,sizeof(ServerNpcGruntHearingApi),&grunt_hearing_mask,&grunt_hearing_filter,&grunt_hearing_gather};
 const ServerNpcGruntVisualApi visual_api{1,sizeof(ServerNpcGruntVisualApi),&grunt_visual_gather};
@@ -1436,4 +1480,10 @@ SiN_GetServerNpcGruntVisualConditionsApi(std::uint32_t version,std::uint32_t siz
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSoundScanApi* __cdecl
 SiN_GetServerNpcGruntSoundScanApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSoundScanApi)?&scan_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPerceptionTickApi=_SiN_GetServerNpcGruntPerceptionTickApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionTickApi* __cdecl
+SiN_GetServerNpcGruntPerceptionTickApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPerceptionTickApi)?&tick_api:nullptr;
 }

@@ -490,4 +490,28 @@ struct ServerNpcGruntSoundScanApi {
     int (__cdecl *scan)(void*,unsigned,float,const ServerNpcGruntSoundScanBindings*,ServerNpcGruntSoundScanResult*) noexcept;
 };
 using GetServerNpcGruntSoundScanApi=const ServerNpcGruntSoundScanApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_perception_tick_export[]="SiN_GetServerNpcGruntPerceptionTickApi";
+struct ServerNpcGruntPerceptionTickBindings {
+    ServerNpcGruntVisualBindings visual;
+    ServerNpcGruntSoundScanBindings sound;
+    ServerNpcEnemyMemoryMaintenanceBindings maintenance;
+    ServerNpcGruntEnemySwitchBindings enemy_switch;
+    void* context;
+    // 220a2a40,220a2c00,220a2f80: engine scene candidate generation.
+    int (__cdecl *rebuild_category)(void*,void*,unsigned,int) noexcept;
+};
+struct ServerNpcGruntPerceptionTickResult {
+    ServerNpcGruntVisualResult visual;
+    ServerNpcGruntSoundScanResult sound;
+    ServerNpcEnemyMemoryMaintenanceResult maintenance;
+    ServerNpcGruntEnemySwitchResult enemy_switch;
+    unsigned rebuilt,categories,completed;
+    int radius;
+};
+struct ServerNpcGruntPerceptionTickApi {
+    std::uint32_t version,size;
+    // Actual ordered slice 2204579e..220457c1; not the outer NPC think routine.
+    int (__cdecl *tick)(void*,unsigned,float,const ServerNpcGruntPerceptionTickBindings*,ServerNpcGruntPerceptionTickResult*) noexcept;
+};
+using GetServerNpcGruntPerceptionTickApi=const ServerNpcGruntPerceptionTickApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

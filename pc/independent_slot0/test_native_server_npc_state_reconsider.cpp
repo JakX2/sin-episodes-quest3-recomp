@@ -19,7 +19,7 @@ struct F{
     bool allocated[2]{};unsigned releases=0;
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
     unsigned char senses[0x60]{},sense_vectors[3][16]{},sense_handles[3][16]{};
-    unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
+    unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned rebuild_calls=0;int rebuild_radius=100;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
@@ -637,5 +637,24 @@ int main(int argc,char** argv){
     f.put(f.actor,0xb4,0u);f.put(f.heard[7],0x18,std::int16_t(1));
     assert(!scan->scan(f.actor,sizeof(f.actor),514,&sb,&ssr));
     f.put(f.heard[7],0x18,std::int16_t(-1));
+    auto gtick=reinterpret_cast<GetServerNpcGruntPerceptionTickApi>(GetProcAddress(s,server_npc_grunt_perception_tick_export));
+    assert(gtick&&!GetProcAddress(c,server_npc_grunt_perception_tick_export)&&!gtick(0,sizeof(ServerNpcGruntPerceptionTickApi))&&!gtick(1,0));
+    const auto* tick=gtick(1,sizeof(ServerNpcGruntPerceptionTickApi));assert(tick);
+    ServerNpcGruntPerceptionTickBindings ptb;ptb.visual=vb;ptb.sound=sb;ptb.maintenance=maintenance;ptb.enemy_switch=swb;ptb.context=&f;
+    ptb.enemy_switch.best.sensed=nullptr;ptb.enemy_switch.best.visible=nullptr; // actual sensed vectors drive visibility
+    ptb.rebuild_category=[](void* p,void* senses,unsigned category,int radius) noexcept -> int{
+        auto& f=F::self(p);assert(senses==f.senses&&category==f.rebuild_calls%3&&radius==f.rebuild_radius);++f.rebuild_calls;return 1;
+    };
+    f.put(f.sense_handles[1],0,0x7001u);f.put(f.sense_vectors[2],0xc,0);f.put(f.senses,8,100.75f);
+    relation_row(0,0x7001u,0,1,1);relation_row(1,0x8002u,0,1,5);
+    f.actor[0xdb1]=0;f.rel_special=false;f.put(f.actor,0x850,3);f.put(f.actor,0x798,0u);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x988,0u);
+    f.active_sound_head=-1;f.hearing_outputs=0;f.put(f.actor,0x920,0);f.put(f.actor,0xc18,0u);
+    ServerNpcGruntPerceptionTickResult ptr;
+    assert(tick->tick(f.actor,sizeof(f.actor),520,&ptb,&ptr)&&ptr.completed&&ptr.rebuilt&&ptr.categories==3&&ptr.radius==100&&ptr.visual.report_calls==2&&ptr.maintenance.visited==2&&!ptr.maintenance.removed&&ptr.enemy_switch.assigned&&ptr.enemy_switch.assignment.new_handle==0x8002u&&f.rebuild_calls==3);
+    assert(ptr.enemy_switch.selection.selection.visible&&f.get<unsigned>(0x8a0)==0x8002u);
+    assert(tick->tick(f.actor,sizeof(f.actor),520,&ptb,&ptr)&&ptr.completed&&!ptr.rebuilt&&!ptr.categories&&ptr.visual.report_calls==2&&f.rebuild_calls==3);
+    f.put(f.senses,8,101.5f);f.rebuild_radius=101;
+    assert(tick->tick(f.actor,sizeof(f.actor),520,&ptb,&ptr)&&ptr.completed&&ptr.rebuilt&&ptr.radius==101&&f.rebuild_calls==6);
+    assert(tick->tick(f.actor,sizeof(f.actor),521,&ptb,&ptr)&&ptr.completed&&ptr.rebuilt&&f.rebuild_calls==9);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
