@@ -57,5 +57,31 @@ int main(int argc,char** argv){
     assert(!api->refresh(&a,&e,&v,&result)&&result.failed_index==1&&generation==0&&result.visited==1);
     f.put(1,0x1c,0x40);
     assert(api->refresh(&a,&e,&v,&result)&&generation==5);
+
+    auto gc=reinterpret_cast<GetServerActivityChoiceApi>(GetProcAddress(server,server_activity_choice_export));
+    assert(gc&&!GetProcAddress(client,server_activity_choice_export)&&!gc(0,sizeof(ServerActivityChoiceApi))&&!gc(1,0));
+    auto* choice=gc(1,sizeof(ServerActivityChoiceApi));assert(choice);
+    // Read immediate children only; recursively publish on refresh.
+    std::uint32_t words[]{5,5,0,5};
+    ServerActivityGenerationNode groups[]{{words,-1},{words+1,0},{words+2,1},{words+3,0}};
+    ServerActivityCompositeView composite{f.views,2,groups,4};
+    std::uint32_t observed=0;assert(choice->generation(&composite,&observed)&&observed==5);
+    ServerActivityChoiceResult cr{};
+    f.seed(0,"ACT_JETPACK_IDLE","AE_CL_PLAYSOUND",-1,-2);
+    f.seed(1,"CUSTOM_ACTIVITY","CUSTOM_EVENT",-1,9);
+    // Negative current sequence returns before lazy registration of later rows.
+    assert(choice->choose(&a,&e,&composite,208,0,true,nullptr,&cr)&&cr.selected==0&&cr.scanned==1&&cr.lazy_registrations==1&&!cr.refresh.refreshed);
+    assert(f.get<unsigned char>(0,0xd)==0x10&&f.get<unsigned char>(1,0xd)==0&&words[2]==0);
+    assert(choice->choose(&a,&e,&composite,210,-1,false,nullptr,&cr)&&cr.selected==1&&cr.scanned==2&&cr.lazy_registrations==1);
+    // A stale immediate child forces complete registration before early exit.
+    words[3]=4;
+    assert(choice->choose(&a,&e,&composite,208,0,true,nullptr,&cr)&&cr.selected==0&&cr.refresh.refreshed&&cr.refresh.visited==2&&cr.scanned==1&&!cr.lazy_registrations);
+    for(auto w:words)assert(w==5);
+    assert(f.get<unsigned char>(1,0xd)==0x30);
+    words[1]=0xffffffffu;assert(choice->generation(&composite,&observed)&&observed==0xffffffffu);
+    f.put(1,0x1c,0x7fffffffu);
+    assert(!choice->choose(&a,&e,&composite,208,0,true,nullptr,&cr)&&cr.failed_index==1&&words[1]==0xffffffffu);
+    groups[2].parent=2;assert(!choice->generation(&composite,&observed));groups[2].parent=1;
+    assert(choice->choose(&a,&e,nullptr,208,0,true,nullptr,&cr)&&cr.selected==0&&!cr.scanned);
     FreeLibrary(server);FreeLibrary(client);std::puts("PASS native activity generation refresh, lazy registration and event dictionary composition");
 }

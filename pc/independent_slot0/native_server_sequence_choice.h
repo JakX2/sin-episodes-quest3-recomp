@@ -19,4 +19,15 @@ struct ServerSequenceChoiceApi {
     int (__cdecl *choose)(const ServerSequenceChoiceEntry*,unsigned count,int activity,int current,bool looping,const ServerSequenceChoiceBindings*,int*) noexcept;
 };
 using GetServerSequenceChoiceApi=const ServerSequenceChoiceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_lazy_sequence_choice_export[]="SiN_GetServerLazySequenceChoiceApi";
+struct ServerLazySequenceChoiceView {
+    void* context;
+    unsigned count;
+    int (__cdecl *entry)(void*,unsigned,ServerSequenceChoiceEntry*) noexcept;
+};
+struct ServerLazySequenceChoiceApi {
+    std::uint32_t version,size;
+    int (__cdecl *choose)(const ServerLazySequenceChoiceView*,int activity,int current,bool looping,const ServerSequenceChoiceBindings*,int*) noexcept;
+};
+using GetServerLazySequenceChoiceApi=const ServerLazySequenceChoiceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
