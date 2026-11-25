@@ -1,4 +1,5 @@
 #include "native_client_overlay_entity.h"
+#include "native_client_overlay_event_frame.h"
 #include "native_weapon_datatables.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -10,6 +11,7 @@
 #include <cstring>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 using namespace sin_port::native_weapon_tables;
 static bool close_float(float a,float b){return std::fabs(a-b)<.00001f;}
 struct Fixture {
@@ -65,6 +67,67 @@ int main(int argc,char** argv){
     auto saved=f.slots[1];f.slots[1]=f.slots[0];f.put(f.watcher(1),0x30,f.pool[0].head);
     assert(!api->render(f.actor,sizeof(f.actor),4,&clock,&f.b,&out)&&out.failed_slot==1&&!out.processed);
     f.slots[1]=saved;f.put(f.watcher(1),0x30,head);
+
+    // Retail event wrapper invokes only the repaired watcher, after base
+    // events and under the model lock, then dispatches both layer rows.
+    auto eg=reinterpret_cast<GetClientOverlayEventFrameApi>(GetProcAddress(client,client_overlay_event_frame_export));
+    assert(eg&&!GetProcAddress(server,client_overlay_event_frame_export)&&!eg(0,sizeof(ClientOverlayEventFrameApi))&&!eg(1,0));
+    const auto* frame=eg(1,sizeof(ClientOverlayEventFrameApi));assert(frame);
+    f.sample(1);assert(api->reset(f.actor,sizeof(f.actor),1,&f.b,&out));
+    f.sample(2);assert(api->capture(f.actor,sizeof(f.actor),2,2,2,&f.b,&out));
+    f.sample(3);assert(api->capture(f.actor,sizeof(f.actor),3,3,3,&f.b,&out));
+    std::memcpy(snapshots,f.rows,sizeof(snapshots));
+    f.rows[1].cycle=.4f; // already interpolated by the engine's general frame
+    f.put(f.actor,0x7cc,9.f);f.put(f.actor,0x7d0,.1f);
+    struct EventFixture {
+        Fixture* f;
+        bool available=true,count_ok=true,locked=false;
+        unsigned before_queries=0;
+        std::vector<int> trace;
+        ClientOverlayEvent records[3]{{.25f,5000,0,"quarter",0},{.5f,5001,0,"half",0},{.75f,5002,0,"three quarters",0}};
+    } ev{&f};
+    ClientOverlayEventFrameBindings eb{};
+    eb.context=&ev;eb.entity=f.b;
+    eb.resolve_model=[](void* p,void* actor,void** model) noexcept -> int {
+        auto& e=*static_cast<EventFixture*>(p);assert(actor==e.f->actor&&!e.locked);e.trace.push_back(1);
+        *model=e.available?&e:nullptr;return e.available?1:0;
+    };
+    eb.lock=[](void* p,void* model) noexcept {auto& e=*static_cast<EventFixture*>(p);assert(model==&e&&!e.locked);e.locked=true;e.trace.push_back(2);};
+    eb.unlock=[](void* p,void* model) noexcept {auto& e=*static_cast<EventFixture*>(p);assert(model==&e&&e.locked);e.locked=false;e.trace.push_back(6);};
+    eb.sequence_count=[](void* p,void* model,int* count) noexcept -> int {
+        auto& e=*static_cast<EventFixture*>(p);assert(model==&e&&e.locked);e.trace.push_back(3);*count=10;return e.count_ok;
+    };
+    eb.base_events=[](void* p,void* actor) noexcept {
+        auto& e=*static_cast<EventFixture*>(p);assert(actor==e.f->actor&&e.locked);
+        e.trace.push_back(4);e.before_queries=e.f->queries;
+    };
+    eb.events.context=&ev;
+    eb.events.sequence=[](void* p,void* actor,int seq,ClientOverlayEventView* view) noexcept -> int {
+        auto& e=*static_cast<EventFixture*>(p);assert(e.locked&&actor==e.f->actor&&(seq==7||seq==9));
+        e.trace.push_back(10+seq);*view={e.records,3};return 1;
+    };
+    eb.events.emit=[](void* p,void* actor,unsigned layer,const ClientOverlayEvent* event) noexcept {
+        auto& e=*static_cast<EventFixture*>(p);assert(e.locked&&actor==e.f->actor);e.trace.push_back(static_cast<int>(layer)*10000+event->event);
+    };
+    ClientOverlayEventFrameResult er{};
+    assert(frame->run(f.actor,sizeof(f.actor),0,2.75f,&clock,&eb,&er)&&er.skipped==EventFrameZeroTime&&ev.trace.empty());
+    ev.available=false;
+    assert(frame->run(f.actor,sizeof(f.actor),.016f,2.75f,&clock,&eb,&er)&&er.skipped==EventFrameNoModel&&(ev.trace==std::vector<int>{1}));
+    ev.trace.clear();ev.available=true;ev.count_ok=false;
+    assert(!frame->run(f.actor,sizeof(f.actor),.016f,2.75f,&clock,&eb,&er)&&!ev.locked&&(ev.trace==std::vector<int>{1,2,3,6}));
+    ev.trace.clear();ev.count_ok=true;
+    assert(frame->run(f.actor,sizeof(f.actor),.016f,2.75f,&clock,&eb,&er)&&er.skipped==EventFrameRan);
+    assert(er.repair.repairs==1&&er.repair.processed==1&&er.repair.writes==1&&f.queries==ev.before_queries+2);
+    assert(er.events.visited==2&&er.events.emitted==3&&!ev.locked);
+    assert((ev.trace==std::vector<int>{1,2,3,4,17,5000,5001,19,15000,6}));
+    assert(close_float(f.rows[0].cycle,.5f)&&close_float(f.rows[1].cycle,.4f));
+    assert(close_float(f.get<float>(f.actor,0x7cc),.5f)&&close_float(f.get<float>(f.actor,0x7d0),.4f));
+    // Small backwards cycle abort must still release the lock, and the
+    // unchanged second layer must not be reinterpolated or dispatched.
+    ev.trace.clear();f.rows[0].cycle=.25f;
+    assert(frame->run(f.actor,sizeof(f.actor),.016f,2.75f,&clock,&eb,&er)&&er.repair.repairs==0&&er.repair.processed==0&&er.events.aborted_slot==0&&!ev.locked);
+    assert((ev.trace==std::vector<int>{1,2,3,4,17,6}));
+    assert(api->restore(f.actor,sizeof(f.actor),&f.b,&out)&&!std::memcmp(snapshots,f.rows,sizeof(snapshots)));
     assert(api->reset(f.actor,sizeof(f.actor),5,&f.b,&out)&&out.processed==2&&f.pool[0].count==3&&f.pool[1].count==3);
     unsigned removed=0;
     for(unsigned i=0;i<2;++i)assert(pool->clear(f.watcher(i),0x44,&f.pool[i],&f.slots[i].storage,&removed)&&removed==3);
