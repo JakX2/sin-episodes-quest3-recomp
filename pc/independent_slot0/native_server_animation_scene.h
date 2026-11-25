@@ -46,6 +46,23 @@ struct ServerAnimationLayerTickApi {
     int (__cdecl *run)(void* actor,unsigned bytes,float dt,float now,const ServerAnimationLayerTickBindings*) noexcept;
 };
 using GetServerAnimationLayerTickApi=const ServerAnimationLayerTickApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_animation_frame_clock_export[]="SiN_GetServerAnimationFrameClockApi";
+struct ServerAnimationFrameClockBindings {
+    ServerAnimationLayerTickBindings layers;
+    void* context;
+    // 220f2160 playback-rate transition and 220f17f0 base-cycle step.
+    int (__cdecl *transition)(void*,void* actor) noexcept;
+    int (__cdecl *duration)(void*,void* actor,int sequence,double*) noexcept;
+    int (__cdecl *step)(void*,void* actor,float cycle_delta) noexcept;
+};
+struct ServerAnimationFrameClockApi {
+    std::uint32_t version,size;
+    int (__cdecl *interval)(const void* actor,unsigned,float now,float*) noexcept;
+    int (__cdecl *base)(void* actor,unsigned,float now,const ServerAnimationFrameClockBindings*) noexcept;
+    // NPC wrapper 22028280 clears +e08 bits 0/1 before overlay advancement.
+    int (__cdecl *run)(void* actor,unsigned,float now,unsigned npc,const ServerAnimationFrameClockBindings*) noexcept;
+};
+using GetServerAnimationFrameClockApi=const ServerAnimationFrameClockApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_animation_scene_frame_export[]="SiN_GetServerAnimationSceneFrameApi";
 struct ServerAnimationSceneFrameBindings {
     void* context;

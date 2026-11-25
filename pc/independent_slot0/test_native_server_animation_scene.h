@@ -125,6 +125,46 @@ inline void check_animation_layer_tick(const ServerAnimationLayerTickApi& api,co
     std::puts("PASS native layer cycle wrap, autokill, delayed decay, spare quarantine and envelope");
 }
 
+
+inline void check_animation_frame_clock(const ServerAnimationFrameClockApi& api,const ServerAnimationLayerOwnerApi& owner){
+    using F=ScenePlaybackFixture;
+    struct Fixture{
+        alignas(4) unsigned char actor[0xe0c]{},rows[0x80]{};std::uint32_t dirty=0;
+        unsigned transitions=0,steps=0,rates=0;float delta=0;double duration=2;
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+    } f;
+    ServerAnimationFrameClockBindings b{};b.context=&f;b.layers.context=&f;b.layers.vectors.context=&f;
+    b.layers.vectors.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);if(w==F::ptr(f.rows)){*out=f.rows;*n=sizeof(f.rows);return 1;}
+        if(w==F::ptr(&f.dirty)){*out=&f.dirty;*n=4;return 1;}return 0;};
+    b.layers.vectors.resize=[](void*,std::uint32_t,unsigned,void**,unsigned*) noexcept -> int{return 0;};
+    b.layers.cycle_rate=[](void* p,void*,int seq,double* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(seq==7);++f.rates;*out=1;return 1;};
+    b.transition=[](void* p,void* actor) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&!(F::word(actor,0xe08)&3));++f.transitions;return 1;};
+    b.duration=[](void* p,void*,int seq,double* out) noexcept -> int{assert(seq==9);*out=Fixture::self(p).duration;return 1;};
+    b.step=[](void* p,void*,float delta) noexcept -> int{auto& f=Fixture::self(p);++f.steps;f.delta=delta;return 1;};
+    F::put(f.actor,0x494,F::ptr(f.rows));F::put(f.actor,0x498,2);F::put(f.actor,0x4a0,2);F::put(f.actor,0x4a4,F::ptr(f.rows));
+    F::put(f.rows,0x34,15);F::put(f.rows+0x40,0x34,15);
+    int layer=-1;assert(owner.allocate(f.actor,sizeof(f.actor),7,0,2,1,&b.layers.vectors,&layer)&&layer==0);
+    F::fl(f.actor,0x28,1.875f);F::fl(f.actor,0x2c,2.f);F::fl(f.actor,0x3c0,2.f);F::put(f.actor,0x3ec,9);
+    float dt=-1;assert(api.interval(f.actor,sizeof(f.actor),2,&dt)&&dt==.125f);
+    assert(api.interval(f.actor,sizeof(f.actor),1,&dt)&&dt==.125f);
+    assert(api.interval(f.actor,sizeof(f.actor),3,&dt)&&dt==.2f);
+    F::put(f.actor,0xe08,0xf);f.actor[0x1f0]=1;
+    assert(api.run(f.actor,sizeof(f.actor),2.125f,1,&b)&&f.transitions==1&&f.steps==1&&f.rates==1&&f.delta==.125f);
+    assert(F::word(f.actor,0xe08)==0xc&&f.actor[0x200]&&F::word(f.actor,0x2c)==0x40080000u);
+    assert(F::word(f.rows,0xc)==0x3e000000u);
+    // Repeated timestamp uses stored previous interval for overlays only.
+    assert(api.run(f.actor,sizeof(f.actor),2.125f,1,&b)&&f.transitions==2&&f.steps==1&&f.rates==2);
+    assert(F::word(f.rows,0xc)==0x3e800000u);
+    f.actor[0x1f0]=0;f.actor[0x200]=0;F::put(f.actor,0x16c,F::ptr(&f.dirty));f.duration=0;
+    assert(api.run(f.actor,sizeof(f.actor),3,1,&b)&&f.steps==2&&f.delta==4.f&&f.dirty==1&&!f.actor[0x200]);
+    assert(std::fabs(VcdAuditArena::read_float(f.rows,0xc)-.45f)<.00001f);
+    F::fl(f.actor,0x28,4);assert(api.interval(f.actor,sizeof(f.actor),2,&dt)&&dt==0);
+    std::puts("PASS NPC overlay frame clock, pre-base interval, duplicate timestamps and dirty state");
+}
+
 inline void check_animation_scene_frame(const ServerAnimationSceneFrameApi& api){
     struct Fixture {alignas(4) unsigned char actor[0x4a4]{},row[0x40]{},record[0x40]{},event[0x3c0]{};unsigned reads{},warps{};float fraction{},mapped=.75f;} f;
     auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};

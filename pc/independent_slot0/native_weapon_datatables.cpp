@@ -13562,6 +13562,56 @@ int __cdecl animation_layer_tick(void* actor,unsigned bytes,float dt,float now,c
 }
 const ServerAnimationLayerTickApi server_animation_layer_tick_api{version,sizeof(ServerAnimationLayerTickApi),&animation_layer_tick};
 
+int __cdecl animation_frame_interval(const void* actor,unsigned bytes,float now,float* out) noexcept {
+    if(bytes<0x30||!sin_independent::vgui_layout::Readable(actor,0x30)||!hologram_writable(out,4)||!std::isfinite(now))return 0;
+    const float last=hologram_read<float>(actor,0x2c),prev=hologram_read<float>(actor,0x28);
+    if(!std::isfinite(last)||!std::isfinite(prev))return 0;
+    const double delta=last<now?static_cast<double>(now)-last:static_cast<double>(last)-prev;
+    *out=static_cast<float>(delta<0?0:delta>.2f?.2f:delta);return 1;
+}
+bool animation_frame_mark(void* actor,const ChoreographyVectorBindings& vectors) noexcept {
+    if(hologram_read<unsigned char>(actor,0x1f0)){
+        hologram_write(actor,0x200,static_cast<unsigned char>(1));return true;
+    }
+    const auto word=hologram_read<std::uint32_t>(actor,0x16c);
+    if(!word)return true;
+    void* data=nullptr;unsigned extent=0;
+    if(!vectors.storage||!vectors.storage(vectors.context,word,&data,&extent)||extent<4||!hologram_writable(data,4))return false;
+    hologram_write(data,0,hologram_read<unsigned>(data,0)|1u);return true;
+}
+int __cdecl animation_frame_base(void* actor,unsigned bytes,float now,const ServerAnimationFrameClockBindings* b) noexcept {
+    if(bytes<0x3f0||!hologram_writable(actor,0x3f0)||!b||!b->transition||!b->duration||!b->step||!std::isfinite(now))return 0;
+    const auto h=*b;if(!h.transition(h.context,actor))return 0;
+    const float last=hologram_read<float>(actor,0x2c),prev=hologram_read<float>(actor,0x28);
+    if(!std::isfinite(last)||!std::isfinite(prev))return 0;
+    if(prev==0)hologram_write(actor,0x28,last);
+    const double elapsed=static_cast<double>(now)-last;
+    const float dt=static_cast<float>(elapsed<0?0:elapsed>.2f?.2f:elapsed);
+    if(dt<=.001)return 1;
+    hologram_write(actor,0x28,last);
+    if(last!=now){
+        if(!animation_frame_mark(actor,h.layers.vectors))return 0;
+        hologram_write(actor,0x2c,now);
+    }
+    const float playback=hologram_read<float>(actor,0x3c0);double duration=0;
+    if(!std::isfinite(playback)||!h.duration(h.context,actor,hologram_read<int>(actor,0x3ec),&duration)||!std::isfinite(duration))return 0;
+    const float delta=static_cast<float>((duration>0?1.0/duration:10.0)*playback*dt);
+    return std::isfinite(delta)&&h.step(h.context,actor,delta);
+}
+int __cdecl animation_frame_run(void* actor,unsigned bytes,float now,unsigned npc,const ServerAnimationFrameClockBindings* b) noexcept {
+    if(!b||!b->layers.cycle_rate||!b->transition||!b->duration||!b->step)return 0;
+    if(npc){
+        if(bytes<0xe0c||!hologram_writable(actor,0xe0c))return 0;
+        hologram_write(actor,0xe08,hologram_read<unsigned>(actor,0xe08)&~3u);
+    }
+    float dt=0;
+    if(!animation_frame_interval(actor,bytes,now,&dt)||!animation_frame_base(actor,bytes,now,b))return 0;
+    return animation_layer_tick(actor,bytes,dt,now,&b->layers);
+}
+const ServerAnimationFrameClockApi server_animation_frame_clock_api{version,sizeof(ServerAnimationFrameClockApi),
+    &animation_frame_interval,&animation_frame_base,&animation_frame_run};
+
+
 
 
 struct GestureWarpPoint {float x,y;};
@@ -16550,6 +16600,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAni
 SiN_GetServerAnimationSceneFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneFrameApi)?&server_animation_scene_frame_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerAnimationFrameClockApi=_SiN_GetServerAnimationFrameClockApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationFrameClockApi* __cdecl
+SiN_GetServerAnimationFrameClockApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationFrameClockApi)?&server_animation_frame_clock_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationLayerTickApi=_SiN_GetServerAnimationLayerTickApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationLayerTickApi* __cdecl
