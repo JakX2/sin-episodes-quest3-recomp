@@ -17,4 +17,17 @@ struct ClientOverlayInterpolateApi {
     int (__cdecl *apply)(void* watcher,unsigned bytes,void* row,unsigned row_bytes,float time,const ClientOverlayInterpolateBindings*,int* wrote) noexcept;
 };
 using GetClientOverlayInterpolateApi=const ClientOverlayInterpolateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char client_overlay_clocked_interpolate_export[]="SiN_GetClientOverlayClockedInterpolateApi";
+struct ClientOverlayInterpolationClock {
+    bool allow_extrapolation;
+    float last_network_time; // original 24369390
+};
+struct ClientOverlayClockedInterpolateApi {
+    std::uint32_t version,size;
+    // 240c29d0: equal-endpoint extrapolation gate. For overlay payloads
+    // 240c2b10 copies the selected sample without the ordinary clamps.
+    int (__cdecl *apply)(void* watcher,unsigned bytes,void* row,unsigned row_bytes,float time,
+        const ClientOverlayInterpolationClock*,const ClientOverlayInterpolateBindings*,int* wrote,int* raw_copy) noexcept;
+};
+using GetClientOverlayClockedInterpolateApi=const ClientOverlayClockedInterpolateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
