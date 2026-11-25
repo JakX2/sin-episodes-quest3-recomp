@@ -20,6 +20,7 @@
 #include "native_server_composed_facial_think.h"
 #include "native_server_facial_records.h"
 #include "native_server_npc_weapon_scene.h"
+#include "native_server_animation_scene.h"
 #include "native_server_vfe_remap.h"
 #include "native_server_named_facial_think.h"
 #include "native_server_vfe_cache.h"
@@ -11747,6 +11748,51 @@ int __cdecl npc_weapon_scene_check(void* actor,unsigned bytes,const void* record
     return 1;
 }
 const ServerNpcWeaponSceneApi server_npc_weapon_scene_api{version,sizeof(ServerNpcWeaponSceneApi),&npc_weapon_scene_begin,&npc_weapon_scene_check,&npc_weapon_scene_noop};
+
+bool animation_scene_type(unsigned type) noexcept {return type==6||type==7;}
+int __cdecl animation_scene_begin(void* actor,void* record,unsigned rb,const void* event,unsigned eb,std::uint32_t ca,
+    const ServerAnimationSceneBindings* b,unsigned* out) noexcept {
+    if(!npc_weapon_scene_record(record,rb,event,eb)||!hologram_writable(record,0x40)||!hologram_writable(out,4))return -1;
+    const auto type=hologram_read<unsigned>(event,0);
+    if(!animation_scene_type(type))return 0;
+    if(!actor||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->lookup)return -1;
+    const auto* name=static_cast<const char*>(event)+0x84;
+    if(!std::memchr(name,0,128))return -1;
+    int sequence=-1;
+    if(!b->lookup(b->context,actor,name,&sequence))return -1;
+    hologram_write(record,0x18,sequence);
+    if(sequence<0){
+        if(!b->missing||!b->missing(b->context,actor,ca,type,name))return -1;
+        *out=0;return 1;
+    }
+    hologram_write(record,8,ca);
+    hologram_write(record,0x10,-2);
+    *out=1;return 1;
+}
+int __cdecl animation_scene_stop(void* actor,const void* record,unsigned rb,const void* event,unsigned eb,int immediate,int forced,
+    const ServerAnimationSceneBindings* b,unsigned* out) noexcept {
+    if(!npc_weapon_scene_record(record,rb,event,eb)||!hologram_writable(out,4))return -1;
+    const auto type=hologram_read<unsigned>(event,0);
+    if(!animation_scene_type(type))return 0;
+    const int layer=hologram_read<int>(record,0x10);
+    if(layer>=0){
+        if(!actor||!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b)))return -1;
+        if(immediate&0xff){
+            if(!b->remove||!b->remove(b->context,actor,layer))return -1;
+        }else{
+            const float duration=type==6?((forced&0xff)?.5f:.1f):.3f;
+            if(!b->blend_out||!b->blend_out(b->context,actor,layer,duration,0.f))return -1;
+        }
+    }
+    *out=1;return 1;
+}
+int __cdecl animation_scene_check(const void* event,unsigned eb,unsigned* out) noexcept {
+    if(eb<4||!sin_independent::vgui_layout::Readable(event,4)||!hologram_writable(out,4))return -1;
+    if(!animation_scene_type(hologram_read<unsigned>(event,0)))return 0;
+    *out=1;return 1;
+}
+const ServerAnimationSceneApi server_animation_scene_api{version,sizeof(ServerAnimationSceneApi),&animation_scene_begin,&animation_scene_stop,&animation_scene_check};
+
 ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
     return *static_cast<ServerNpcSceneRecordBindings*>(p);
 }
@@ -13772,6 +13818,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcSceneRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcSceneRecordApi)?&server_npc_scene_record_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerAnimationSceneApi=_SiN_GetServerAnimationSceneApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationSceneApi* __cdecl
+SiN_GetServerAnimationSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneApi)?&server_animation_scene_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcWeaponSceneApi=_SiN_GetServerNpcWeaponSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWeaponSceneApi* __cdecl

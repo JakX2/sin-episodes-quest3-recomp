@@ -28,6 +28,7 @@
 #include "test_native_server_npc_random_expression.h"
 #include "test_native_server_facial_records.h"
 #include "test_native_server_npc_weapon_scene.h"
+#include "test_native_server_animation_scene.h"
 #include "test_native_server_vfe_remap.h"
 #include "test_native_server_vfe_cache.h"
 #include "test_native_count_interrogation.h"
@@ -231,6 +232,12 @@ int main(int argc,char** argv){
         const auto* weaponScene=getWeaponScene(1,sizeof(ft::ServerNpcWeaponSceneApi));
         assert(weaponScene&&!getWeaponScene(0,sizeof(ft::ServerNpcWeaponSceneApi))&&!getWeaponScene(1,0));
         ft::test::check_npc_weapon_scene(*weaponScene);
+        const auto getAnimationScene=reinterpret_cast<ft::GetServerAnimationSceneApi>(GetProcAddress(server,ft::server_animation_scene_export));
+        assert(getAnimationScene&&!GetProcAddress(client,ft::server_animation_scene_export));
+        const auto* animationScene=getAnimationScene(1,sizeof(ft::ServerAnimationSceneApi));
+        assert(animationScene&&!getAnimationScene(0,sizeof(ft::ServerAnimationSceneApi))&&!getAnimationScene(1,0));
+        ft::test::check_animation_scene(*animationScene);
+        std::puts("PASS native gesture and sequence admission and layer retirement policy");
         std::puts("PASS native NPC holster/unholster scene command admission and layer completion");
         std::puts("PASS native facial event record admission and lifecycle");
     }
