@@ -78,6 +78,32 @@ int main(int argc,char** argv){
     unsigned changed=0;
     assert(history->correct(f.actor,sizeof(f.actor),2.75f,&f.b.history,&changed)&&changed==1&&f.repairs==1&&f.prunes==3);
     assert(f.n[1].sample.sequence==7&&f.n[2].sample.sequence==7&&close_float(f.row.cycle,.5f)&&close_float(f.row.weight,.75f)&&close_float(f.get<float>(f.actor,0x7cc),.24f));
+
+    auto clock_get=reinterpret_cast<GetClientOverlayClockedInterpolateApi>(GetProcAddress(client,client_overlay_clocked_interpolate_export));
+    assert(clock_get&&!GetProcAddress(server,client_overlay_clocked_interpolate_export)&&!clock_get(0,sizeof(ClientOverlayClockedInterpolateApi))&&!clock_get(1,0));
+    const auto* clocked=clock_get(1,sizeof(ClientOverlayClockedInterpolateApi));assert(clocked);
+    f.seed();f.n[0].sample={1024,-3.f,9.f,77,0x123,4.f,0x456,0x789};
+    f.put(f.watcher,0x28,10.f);f.put(f.watcher,0x30,std::uint32_t{1});f.put(f.watcher,0x3c,.25f);
+    f.b.prune=[](void* p,void* watcher,float cutoff) noexcept {
+        auto& f=F::self(p);assert(watcher==f.watcher&&std::isfinite(cutoff));++f.prunes;};
+    ClientOverlayInterpolationClock clock{true,10.f};
+    int raw=-1;
+    auto run=[&](float t,int expect_raw){
+        assert(clocked->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),t,&clock,&f.b,&wrote,&raw)&&wrote==1&&raw==expect_raw);
+        if(expect_raw)assert(!std::memcmp(&f.row,&f.n[0].sample,sizeof(f.row)));
+    };
+    run(4.f,1); // equal endpoints, valid older link, equal network time
+    clock.last_network_time=9.f;run(4.f,1);
+    clock.last_network_time=10.01f;run(4.f,0);
+    assert(f.row.sequence==1000&&f.row.cycle==2.f&&f.row.weight==5.f);
+    clock.last_network_time=10.f;clock.allow_extrapolation=false;run(4.f,0);
+    clock.allow_extrapolation=true;f.put(f.watcher,0x3c,.000001f);run(4.f,0);
+    f.put(f.watcher,0x3c,.25f);f.n[1].time=0.f;run(4.f,0);
+    f.n[1].time=2.f;f.n[1].previous=f.n[1].next=2;run(4.f,0);
+    f.n[1].previous=1;f.n[1].next=3;f.n[0].next=0;run(4.f,0);
+    f.n[0].next=2;run(2.75f,0); // different endpoints always interpolate
+    f.n[0].next=999;
+    assert(!clocked->apply(f.watcher,sizeof(f.watcher),&f.row,sizeof(f.row),4.f,&clock,&f.b,&wrote,&raw)&&!wrote&&!raw);
     FreeLibrary(server);FreeLibrary(client);
     std::puts("PASS native client overlay linear/Hermite interpolation, clamp and linked history repair");
 }

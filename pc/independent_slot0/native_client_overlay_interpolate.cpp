@@ -55,9 +55,11 @@ int __cdecl evaluate(const ClientOverlayHistorySelection* s,bool looping,ClientO
 }
 // Extrapolation-disabled single overlay watcher path. History ownership
 // remains in the host; no implicit allocation or destructive traversal.
-int __cdecl apply(void* watcher,unsigned bytes,void* row,unsigned row_bytes,float time,const ClientOverlayInterpolateBindings* b,int* wrote) noexcept {
-    if(!wrote)return 0;
-    *wrote=0;
+int __cdecl apply_clocked(void* watcher,unsigned bytes,void* row,unsigned row_bytes,float time,
+    const ClientOverlayInterpolationClock* clock,const ClientOverlayInterpolateBindings* b,int* wrote,int* raw_copy) noexcept {
+    if(!wrote||!raw_copy)return 0;
+    *wrote=0;*raw_copy=0;
+    if(!clock||!std::isfinite(clock->last_network_time))return 0;
     if(!watcher||bytes<0x44||!row||row_bytes<sizeof(ClientOverlaySample)||!std::isfinite(time)||
        !b||!b->history.resolve||!b->prune||read<void*>(watcher,4)!=row||read<int>(watcher,0x38)!=1)return 0;
     const float delay=read<float>(watcher,0x3c);
@@ -68,11 +70,32 @@ int __cdecl apply(void* watcher,unsigned bytes,void* row,unsigned row_bytes,floa
     if(!history||!history->select(read<std::uint32_t>(watcher,0x30),read<int>(watcher,0x2c),time,delay,&b->history,&s))return 0;
     if(!s.newer||!s.older)return 1;
     ClientOverlaySample out{};
-    if(!evaluate(&s,read<std::uint8_t>(watcher,0x34)!=0,&out))return 0;
-    std::memcpy(row,&out,sizeof(out));*wrote=1;
+    bool use_raw=false;
+    // 240c2a56..240c2ac5. This specific overlay specialization does not
+    // project velocity: both paths of 240c2b10 copy the newer payload.
+    const float network_snapshot=read<float>(watcher,0x28);
+    if(clock->allow_extrapolation&&s.older==s.newer&&s.newer->next&&
+       delay>0.000001f&&std::isfinite(network_snapshot)&&clock->last_network_time<=network_snapshot){
+        const auto word=s.newer->next;
+        auto* prior=b->history.resolve(b->history.context,word);
+        if(!prior||!std::isfinite(prior->time))return 0;
+        const bool linked=prior->previous!=word||prior->next!=word;
+        use_raw=linked&&prior!=s.newer&&prior->time!=0.f;
+    }
+    if(use_raw){
+        if(!finite(s.newer->sample))return 0;
+        out=s.newer->sample;
+    }else if(!evaluate(&s,read<std::uint8_t>(watcher,0x34)!=0,&out))return 0;
+    std::memcpy(row,&out,sizeof(out));*wrote=1;*raw_copy=use_raw?1:0;
     b->prune(b->history.context,watcher,cutoff);
     return 1;
 }
+int __cdecl apply(void* watcher,unsigned bytes,void* row,unsigned row_bytes,float time,const ClientOverlayInterpolateBindings* b,int* wrote) noexcept {
+    const ClientOverlayInterpolationClock clock{false,0.f};
+    int raw=0;
+    return apply_clocked(watcher,bytes,row,row_bytes,time,&clock,b,wrote,&raw);
+}
+const ClientOverlayClockedInterpolateApi clocked_api{1,sizeof(ClientOverlayClockedInterpolateApi),&apply_clocked};
 const ClientOverlayInterpolateApi api{1,sizeof(ClientOverlayInterpolateApi),&evaluate,&apply};
 }
 }
@@ -81,4 +104,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOve
 SiN_GetClientOverlayInterpolateApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ClientOverlayInterpolateApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetClientOverlayClockedInterpolateApi=_SiN_GetClientOverlayClockedInterpolateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ClientOverlayClockedInterpolateApi* __cdecl
+SiN_GetClientOverlayClockedInterpolateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ClientOverlayClockedInterpolateApi)?&clocked_api:nullptr;
 }
