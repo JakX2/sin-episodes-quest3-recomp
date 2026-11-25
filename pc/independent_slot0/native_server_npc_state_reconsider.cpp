@@ -2131,6 +2131,92 @@ int __cdecl grunt_gather_point(void* a,unsigned n,float now,const ServerNpcGrunt
     if(!pb||!pr)return 0;*pr={};
     return grunt_gather_conditions_impl(a,n,now,b,out,pb,pr);
 }
+bool normalized_object_direction(const float* from,const float* to,float* direction,float& length) noexcept{
+    if(!goal_vector_distance(from,to,length))return false;
+    for(unsigned i=0;i<3;++i){
+        const float d=static_cast<float>(static_cast<double>(to[i])-from[i]);direction[i]=length?d/length:0.f;
+    }
+    direction[2]=0;return finite_vec(direction);
+}
+int __cdecl grunt_object_search(void* actor,unsigned bytes,int mass_limit,const ServerNpcGruntObjectSearchBindings* b,ServerNpcGruntObjectSearchResult* out) noexcept{
+    if(!out)return 0;*out={};out->selected_handle=0xffffffffu;
+    if(!actor||bytes<0xdb2||!b||!relation_grunt_class(b->visibility.original_vtable))return 0;
+    const auto& mb=b->visibility.memory;
+    if(mb.count>sin_independent::kEntityHandleCapacity||(mb.count&&!mb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
+    auto current=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(actor,0x8a0)));};
+    auto finish=[&](unsigned handle){
+        write(actor,0xcb4,handle);out->selected_handle=handle;out->found=registry.Resolve(handle)!=nullptr;out->completed=1;return 1;
+    };
+    if(!current()){out->no_enemy=1;return finish(0xffffffffu);}
+    auto position=[&](auto fn,void* e,float* p){return e&&fn&&fn(b->context,e,p)&&finite_vec(p);};
+    float origin[3],enemy_origin[3],direction[3];
+    if(!position(b->origin,actor,origin)||!position(b->origin,current(),enemy_origin)||!normalized_object_direction(origin,enemy_origin,direction,out->enemy_distance))return 0;
+    if(out->enemy_distance>500.f){out->enemy_range_blocked=out->completed=1;out->selected_handle=read<unsigned>(actor,0xcb4);return 1;}
+    out->search_radius=out->enemy_distance<60.f?out->enemy_distance:60.f;
+    for(unsigned i=0;i<3;++i){
+        const float extent=i==2?60.f:out->search_radius;
+        out->mins[i]=static_cast<float>(static_cast<double>(origin[i])-extent);out->maxs[i]=static_cast<float>(static_cast<double>(origin[i])+extent);
+    }
+    if(!finite_vec(out->mins)||!finite_vec(out->maxs))return 0;
+    const std::uint32_t* handles=nullptr;unsigned count=0;
+    if(!b->enumerate||!b->enumerate(b->context,out->mins,out->maxs,&handles,&count)||count>sin_independent::kEntityHandleCapacity||(count&&!handles))return 0;
+    unsigned accepted[100]{};
+    for(unsigned i=0;i<count;++i){
+        ++out->enumerated;void* e=registry.Resolve(handles[i]);
+        if(!e){++out->stale;continue;}
+        bool exists=false,movable=false,enabled=false;float mass=0;
+        if(!b->object_properties||!b->object_properties(b->context,e,&exists,&mass,&movable,&enabled)||!std::isfinite(mass))return 0;
+        if(!exists||static_cast<double>(mass)>mass_limit||!movable||!enabled){++out->property_rejected;continue;}
+        if(out->qualified==100)break;accepted[out->qualified++]=handles[i];
+    }
+    if(!b->actor_reference_height||!b->actor_reference_height(b->context,actor,&out->reference_height)||!std::isfinite(out->reference_height))return 0;
+    out->best_distance=out->search_radius;unsigned selected=0xffffffffu;
+    for(unsigned i=0;i<out->qualified;++i){
+        ++out->visited;void* e=registry.Resolve(accepted[i]);if(!e){++out->stale;continue;}
+        float p[3],d[3],len=0;
+        if(!position(b->center,e,p)||!position(b->origin,actor,origin))return 0;
+        const double manhattan=std::abs(static_cast<double>(origin[0])-p[0])+std::abs(static_cast<double>(origin[1])-p[1]);
+        if(manhattan>=out->best_distance){++out->distance_rejected;continue;}
+        const float distance=static_cast<float>(manhattan);
+        if(!position(b->center,e,p)||!normalized_object_direction(origin,p,d,len))return 0;
+        const double dot=static_cast<double>(d[0])*direction[0]+static_cast<double>(d[1])*direction[1];
+        if(dot<.8){++out->direction_rejected;continue;}
+        if(!position(b->origin,current(),enemy_origin))return 0;
+        const double enemy_manhattan=std::abs(static_cast<double>(p[0])-enemy_origin[0])+std::abs(static_cast<double>(p[1])-enemy_origin[1]);
+        if(enemy_manhattan<=distance){++out->enemy_distance_rejected;continue;}
+        unsigned n=0;const auto& vis=b->visibility;
+        if(!vis.extent||!vis.extent(vis.context,e,&n)||n<0x12c)return 0;
+        const float offset=read<float>(e,0x128);float eye[3];
+        if(!std::isfinite(offset)||!position(b->eye,actor,eye))return 0;
+        if(static_cast<double>(p[2])+offset<out->reference_height||p[2]>eye[2]){++out->height_rejected;continue;}
+        bool has_model=false;float top=0;
+        if(!b->world_model_top||!b->world_model_top(b->context,e,&has_model,&top)||!std::isfinite(top))return 0;
+        if(!has_model||top<out->reference_height){++out->model_rejected;continue;}
+        ServerNpcGruntCombatVisibilityResult vr{};
+        if(!combat_visibility_query_impl(actor,bytes,e,0x4081,&vis,&vr,false))return 0;
+        if(!vr.visible){++out->visibility_rejected;continue;}
+        bool rejected=false;
+        if(!b->attached_object||!b->attached_object(b->context,e,&rejected))return 0;
+        if(rejected){++out->attachment_rejected;continue;}
+        float target[3];bool yes=false;
+        if(!position(b->center,current(),target)||!b->point_test||!b->point_test(b->context,e,target,0x200400bu,&yes))return 0;
+        if(!yes){++out->point_rejected;continue;}
+        for(const char* pattern:{"weapon_*","item_ammo*","item_health*"}){
+            if(!b->classname_matches||!b->classname_matches(b->context,e,pattern,&yes))return 0;
+            if(yes){rejected=true;break;}
+        }
+        if(rejected){++out->class_rejected;continue;}
+        void* prop=nullptr;if(!b->as_physics_prop||!b->as_physics_prop(b->context,e,&prop))return 0;
+        if(prop){
+            if(!vis.extent(vis.context,prop,&n)||n<0xb8)return 0;
+            if(read<unsigned>(prop,0xb4)&0x2000u){++out->prop_rejected;continue;}
+        }
+        selected=accepted[i];out->best_distance=distance;++out->replaced;
+    }
+    return finish(selected);
+}
+const ServerNpcGruntObjectSearchApi object_search_api{1,sizeof(ServerNpcGruntObjectSearchApi),&grunt_object_search};
 const ServerNpcGruntGatherPointApi gather_point_api{1,sizeof(ServerNpcGruntGatherPointApi),&grunt_gather_point};
 const ServerNpcGruntPointPolicyApi point_policy_api{1,sizeof(ServerNpcGruntPointPolicyApi),&grunt_point_policy};
 const ServerNpcGruntGatherConditionsApi gather_conditions_api{1,sizeof(ServerNpcGruntGatherConditionsApi),&grunt_gather_conditions};
@@ -2412,4 +2498,10 @@ SiN_GetServerNpcGruntPointPolicyApi(std::uint32_t version,std::uint32_t size) no
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherPointApi* __cdecl
 SiN_GetServerNpcGruntGatherPointApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGatherPointApi)?&gather_point_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntObjectSearchApi=_SiN_GetServerNpcGruntObjectSearchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntObjectSearchApi* __cdecl
+SiN_GetServerNpcGruntObjectSearchApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntObjectSearchApi)?&object_search_api:nullptr;
 }

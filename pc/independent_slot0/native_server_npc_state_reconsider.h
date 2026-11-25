@@ -833,4 +833,32 @@ struct ServerNpcGruntGatherPointApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherConditionsBindings*,const ServerNpcGruntPointPolicyBindings*,ServerNpcGruntGatherConditionsResult*,ServerNpcGruntPointPolicyResult*) noexcept;
 };
 using GetServerNpcGruntGatherPointApi=const ServerNpcGruntGatherPointApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_object_search_export[]="SiN_GetServerNpcGruntObjectSearchApi";
+struct ServerNpcGruntObjectSearchBindings {
+    ServerNpcGruntCombatVisibilityBindings visibility;
+    void* context;
+    // Scene enumeration in original order; list remains caller-owned during search.
+    int (__cdecl *enumerate)(void*,const float[3],const float[3],const std::uint32_t**,unsigned*) noexcept;
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept;
+    int (__cdecl *center)(void*,void*,float[3]) noexcept;
+    int (__cdecl *eye)(void*,void*,float[3]) noexcept;
+    int (__cdecl *actor_reference_height)(void*,void*,float*) noexcept; // 22200350 (.5,.5,.25)
+    int (__cdecl *object_properties)(void*,void*,bool*,float*,bool*,bool*) noexcept; // +218, +38,+10,+dc
+    int (__cdecl *world_model_top)(void*,void*,bool*,float*) noexcept;
+    int (__cdecl *attached_object)(void*,void*,bool*) noexcept; // +c4 then +2a4
+    int (__cdecl *point_test)(void*,void*,const float[3],unsigned,bool*) noexcept; // +48
+    int (__cdecl *classname_matches)(void*,void*,const char*,bool*) noexcept;
+    int (__cdecl *as_physics_prop)(void*,void*,void**) noexcept;
+};
+struct ServerNpcGruntObjectSearchResult {
+    unsigned completed,no_enemy,enemy_range_blocked,enumerated,stale,property_rejected,qualified,visited,distance_rejected,direction_rejected,enemy_distance_rejected,height_rejected,model_rejected,visibility_rejected,attachment_rejected,point_rejected,class_rejected,prop_rejected,replaced,found;
+    float enemy_distance,search_radius,reference_height,best_distance,mins[3],maxs[3];
+    std::uint32_t selected_handle;
+};
+struct ServerNpcGruntObjectSearchApi {
+    std::uint32_t version,size;
+    // Original 2235b790 and enumeration filter 22358d60.
+    int (__cdecl *search)(void*,unsigned,int,const ServerNpcGruntObjectSearchBindings*,ServerNpcGruntObjectSearchResult*) noexcept;
+};
+using GetServerNpcGruntObjectSearchApi=const ServerNpcGruntObjectSearchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

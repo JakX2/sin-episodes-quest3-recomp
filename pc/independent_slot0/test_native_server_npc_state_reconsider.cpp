@@ -1065,5 +1065,42 @@ int main(int argc,char** argv){
         f.put(f.actor,0x798,1u);f.put(f.actor,0x79c,npc_global_condition_base+0x4d);
         assert(integrated->gather(f.actor,sizeof(f.actor),651,&gb2,&pb,&gather_point_result,&point_policy_result)&&gather_point_result.point_schedule_blocked&&!gather_point_result.point_called&&!point_policy_result.solve_called);
     }
+    {
+        auto getter=reinterpret_cast<GetServerNpcGruntObjectSearchApi>(GetProcAddress(s,server_npc_grunt_object_search_export));
+        assert(getter&&!GetProcAddress(c,server_npc_grunt_object_search_export)&&!getter(0,sizeof(ServerNpcGruntObjectSearchApi))&&!getter(1,0));
+        const auto* objects=getter(1,sizeof(ServerNpcGruntObjectSearchApi));assert(objects);
+        ServerNpcGruntObjectSearchBindings ob{};ob.context=&f;ob.visibility=crb.visibility;
+        ob.visibility.trace=[](void*,void*,void*,unsigned mask,bool* yes,void** blocker) noexcept -> int{assert(mask==0x4081);*yes=true;*blocker=nullptr;return 1;};
+        ob.enumerate=[](void*,const float* lo,const float* hi,const std::uint32_t** list,unsigned* count) noexcept -> int{
+            static const std::uint32_t handles[]={0x9002u,0x7001u,0x8002u};assert(lo[0]==-60&&hi[0]==60&&lo[2]==-60&&hi[2]==60);*list=handles;*count=3;return 1;
+        };
+        ob.origin=[](void* p,void* e,float* pos) noexcept -> int{auto& f=F::self(p);pos[0]=e==f.actor?0:f.distance[f.idx(e)];pos[1]=pos[2]=0;return 1;};
+        ob.center=ob.origin;
+        ob.eye=[](void*,void*,float* pos) noexcept -> int{pos[0]=pos[1]=0;pos[2]=64;return 1;};
+        ob.actor_reference_height=[](void*,void*,float* height) noexcept -> int{*height=16;return 1;};
+        ob.object_properties=[](void* p,void* e,bool* exists,float* mass,bool* movable,bool* enabled) noexcept -> int{
+            auto& f=F::self(p);*exists=e==f.replacement;*mass=f.combat_velocity[0];*movable=*enabled=true;return 1;
+        };
+        ob.world_model_top=[](void*,void*,bool* model,float* top) noexcept -> int{*model=true;*top=20;return 1;};
+        ob.attached_object=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        ob.point_test=[](void*,void*,const float*,unsigned mask,bool* yes) noexcept -> int{assert(mask==0x200400b);*yes=true;return 1;};
+        ob.classname_matches=[](void* p,void*,const char* name,bool* yes) noexcept -> int{*yes=F::self(p).rel_special&&!std::strcmp(name,"item_health*");return 1;};
+        ob.as_physics_prop=[](void*,void* e,void** out) noexcept -> int{*out=e;return 1;};
+        f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0xcb4,0x8002u);
+        ServerNpcGruntObjectSearchResult object_result{};
+        assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&object_result.no_enemy&&f.get<unsigned>(0xcb4)==0xffffffffu);
+        f.put(f.actor,0x8a0,0x7001u);f.distance[0]=501;f.put(f.actor,0xcb4,0x8002u);
+        assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&object_result.enemy_range_blocked&&f.get<unsigned>(0xcb4)==0x8002u);
+        f.distance[0]=100;f.distance[1]=30;f.put(f.replacement,0x128,20.f);f.put(f.replacement,0xb4,0u);f.actor[0xb6]=0;f.rel_special=false;f.combat_velocity[0]=150;
+        assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&object_result.completed&&object_result.stale==1&&object_result.property_rejected==1&&object_result.qualified==1&&object_result.found&&object_result.best_distance==30&&f.get<unsigned>(0xcb4)==0x8002u);
+        f.combat_velocity[0]=151;
+        assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&!object_result.found&&object_result.property_rejected==2);
+        f.combat_velocity[0]=150;f.distance[1]=60;
+        assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&object_result.distance_rejected==1&&!object_result.found);
+        f.distance[1]=30;f.rel_special=true;
+        assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&object_result.class_rejected==1&&!object_result.found);
+        f.rel_special=false;f.put(f.replacement,0xb4,0x2000u);
+        assert(objects->search(f.actor,sizeof(f.actor),150,&ob,&object_result)&&object_result.prop_rejected==1&&!object_result.found);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
