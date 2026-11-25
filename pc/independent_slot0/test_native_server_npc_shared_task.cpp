@@ -12,7 +12,8 @@
 using namespace sin_port::native_weapon_tables;
 struct F {
     unsigned char a[0xc34]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
-    unsigned char motor[0x1c]{},target[4]{};
+    unsigned char motor[0x1c]{},target[4]{},nav[0x28]{},path[0x48]{};
+    float speed[3]{};bool can_stop=false;int pose_index=3;
     bool target_present=true;float target_pos[3]{};
     bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
     float motor_yaw() const {float y=0;std::memcpy(&y,motor+0x14,4);return y;}
@@ -148,5 +149,45 @@ int main(int argc,char** argv){
     f.put(f.a,0xc18,0u);f.put(f.a,0x908,99u);ServerNpcScheduleTask bad{95,0};
     assert(!target_api->execute(f.a,sizeof(f.a),&bad,12,&b,&tb,&tr));
     run(95,true,0,12);assert(o.parent_called&&!o.native);
+    auto gm=reinterpret_cast<GetServerNpcSharedMovementApi>(GetProcAddress(s,server_npc_shared_movement_export));
+    assert(gm&&!GetProcAddress(c,server_npc_shared_movement_export)&&!gm(0,sizeof(ServerNpcSharedMovementApi))&&!gm(1,0));
+    const auto* mv=gm(1,sizeof(ServerNpcSharedMovementApi));assert(mv);
+    ServerNpcSharedMovementBindings mb{};mb.context=&f;
+    mb.storage=[](void* p,std::uint32_t tok,void** ptr,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);if(tok==100){*ptr=f.nav;*n=sizeof(f.nav);return 1;}if(tok==101){*ptr=f.path;*n=sizeof(f.path);return 1;}return 0;};
+    mb.clear_path=[](void* p,void* nav) noexcept -> int{auto& f=F::self(p);assert(nav==f.nav);f.trace.push_back(30);f.put(f.path,0,0u);f.put(f.path,0x44,0u);return 1;};
+    mb.stop_path=[](void* p,void* nav,bool finished) noexcept -> int{auto& f=F::self(p);assert(nav==f.nav);f.trace.push_back(finished?32:31);return 1;};
+    mb.try_stopping_path=[](void* p,void* nav,bool* yes) noexcept -> int{auto& f=F::self(p);assert(nav==f.nav);f.trace.push_back(33);*yes=f.can_stop;return 1;};
+    mb.pose_lookup=[](void* p,void*,const char* name,int* id) noexcept -> int{auto& f=F::self(p);assert(!std::strcmp(name,"move_yaw"));f.trace.push_back(34);*id=f.pose_index;return 1;};
+    mb.pose_set=[](void* p,void*,const char* name,float value) noexcept -> int{assert(!std::strcmp(name,"move_yaw")&&value==0.f);F::self(p).trace.push_back(35);return 1;};
+    mb.velocity=[](void* p,void*,float* out) noexcept -> int{auto& f=F::self(p);f.trace.push_back(36);std::memcpy(out,f.speed,12);return 1;};
+    mb.movement_update=[](void* p,void*) noexcept -> int{F::self(p).trace.push_back(37);return 1;};
+    mb.task_fail=[](void* p,void*,int id) noexcept -> int{assert(id==26);F::self(p).trace.push_back(38);return 1;};
+    f.put(f.a,0x8f8,100u);f.put(f.nav,0x24,101u);f.put(f.path,0,1u);f.put(f.path,0x44,2u);f.put(f.path,0x24,45);
+    ServerNpcSharedMovementResult mr{};
+    auto moving=[&](int id,bool running,float param,float now=12.f){f.put(f.a,0x7a4,1);f.trace.clear();ServerNpcScheduleTask mt{id,param};assert(mv->execute(f.a,sizeof(f.a),&mt,running,now,&b,&mb,&mr));};
+    moving(116,false,1);assert(mr.stop_calls==1&&mr.pose_calls==1&&!mr.shared.lifecycle.completed&&(f.trace==std::vector<int>{31,34,35}));
+    moving(116,false,0);assert(mr.clear_calls==1&&!mr.shared.lifecycle.completed&&(f.trace==std::vector<int>{30,34,35}));
+    moving(116,false,0);assert(mr.shared.lifecycle.completed&&mr.idle_activity==1&&(f.trace==std::vector<int>{30,1}));
+    f.can_stop=true;moving(116,false,1);assert(mr.try_calls==1&&!mr.shared.lifecycle.completed&&f.trace==std::vector<int>{33});
+    f.can_stop=false;moving(116,false,1);assert(mr.try_calls&&mr.shared.lifecycle.completed&&(f.trace==std::vector<int>{33,30,1}));
+    f.put(f.nav,0xc,1);f.a[0xbc]=0;f.speed[0]=.02f;moving(116,true,0);assert(!mr.mode_cleared&&!mr.shared.lifecycle.completed&&f.trace==std::vector<int>{36});
+    f.a[0xbc]=1;moving(116,true,0);assert(mr.landed&&mr.mode_cleared&&mr.shared.lifecycle.completed&&f.trace==std::vector<int>{1});
+    f.put(f.nav,0xc,1);f.a[0xbc]=0;f.speed[0]=0;moving(116,true,0);assert(mr.stuck&&mr.mode_cleared&&mr.shared.failed_code==26&&(f.trace==std::vector<int>{36,38,1}));
+    f.put(f.nav,0xc,3);moving(116,true,0);assert(!mr.shared.lifecycle.completed&&f.trace.empty());
+    f.put(f.nav,0xc,0);f.put(f.path,0,1u);f.put(f.path,0x44,2u);f.put(f.path,0x24,45);
+    moving(121,false,0);assert(mr.move_calls==1&&f.trace==std::vector<int>{37});
+    f.put(f.path,0,0u);moving(121,false,0);assert(mr.idle_activity==1&&!mr.shared.lifecycle.completed&&f.trace==std::vector<int>{1});
+    f.put(f.path,0,1u);f.put(f.a,0x7ac,10.f);
+    moving(121,true,2,12);assert(!mr.timed_out&&mr.move_calls==1);
+    moving(121,true,2,12.25f);assert(mr.timed_out&&mr.shared.lifecycle.completed&&mr.stop_calls==1&&f.trace==std::vector<int>{32});
+    f.put(f.path,0x44,0u);moving(121,true,0);assert(mr.shared.lifecycle.completed&&mr.stop_calls==1);
+    moving(116,true,1);assert(mr.nested_calls==1&&mr.nested.lifecycle.completed&&mr.stop_calls==1&&f.trace==std::vector<int>{32});
+    moving(121,false,0);assert(mr.shared.lifecycle.completed&&mr.clear_calls==1&&f.trace==std::vector<int>{30});
+    f.put(f.a,0xc18,77u);f.component_handles=true;moving(116,false,0);assert(mr.shared.component_handled&&!mr.shared.native&&f.trace==std::vector<int>{2});
+    f.component_handles=false;moving(116,true,1);assert(mr.shared.component_called&&mr.nested.component_called&&(f.trace==std::vector<int>{2,2,32}));
+    f.put(f.a,0xc18,0u);f.put(f.a,0x8f8,99u);ServerNpcScheduleTask bad_move{116,0};
+    assert(!mv->execute(f.a,sizeof(f.a),&bad_move,false,12,&b,&mb,&mr));
+    run(116,false,0,12);assert(o.parent_called&&!o.native);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }

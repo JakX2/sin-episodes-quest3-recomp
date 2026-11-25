@@ -82,6 +82,31 @@ struct ServerNpcSharedTargetAnimationApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedTargetAnimationBindings*,ServerNpcSharedTargetAnimationResult*) noexcept;
 };
 using GetServerNpcSharedTargetAnimationApi=const ServerNpcSharedTargetAnimationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_movement_export[]="SiN_GetServerNpcSharedMovementApi";
+struct ServerNpcSharedMovementBindings {
+    void* context;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *clear_path)(void*,void* navigator) noexcept; // 22077e60
+    int (__cdecl *stop_path)(void*,void* navigator,bool finished) noexcept; // 22079250
+    int (__cdecl *try_stopping_path)(void*,void* navigator,bool*) noexcept; // 220754e0
+    int (__cdecl *pose_lookup)(void*,void*,const char*,int*) noexcept; // 220ecf20
+    int (__cdecl *pose_set)(void*,void*,const char*,float) noexcept; // 220f0b40
+    int (__cdecl *velocity)(void*,void*,float[3]) noexcept; // +1e4
+    int (__cdecl *movement_update)(void*,void*) noexcept; // +60c
+    int (__cdecl *task_fail)(void*,void*,int) noexcept; // +47c
+};
+struct ServerNpcSharedMovementResult {
+    ServerNpcSharedTaskResult shared,nested;
+    unsigned nested_calls,clear_calls,stop_calls,try_calls,pose_calls,move_calls,mode_cleared,landed,stuck,timed_out;
+    int navigator_mode,idle_activity;
+    double speed;
+};
+struct ServerNpcSharedMovementApi {
+    std::uint32_t version,size;
+    // Original Start/Run116 and Start/Run121; engine effects remain bound.
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedMovementBindings*,ServerNpcSharedMovementResult*) noexcept;
+};
+using GetServerNpcSharedMovementApi=const ServerNpcSharedMovementApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedTargetAnimationStats {ServerNpcSharedTargetAnimationResult last;unsigned calls,native,components;};
 struct ServerNpcSharedFacingStats {ServerNpcSharedFacingResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTaskStats {ServerNpcSharedTaskResult last;unsigned calls,native,component_handled,special,parent;};
