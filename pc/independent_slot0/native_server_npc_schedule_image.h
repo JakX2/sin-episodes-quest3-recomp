@@ -87,4 +87,14 @@ struct ServerNpcAttackCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,ServerNpcAttackCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcAttackCatalogSchedulerApi=const ServerNpcAttackCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_facing_catalog_scheduler_export[]="SiN_GetServerNpcFacingCatalogSchedulerApi";
+struct ServerNpcFacingCatalogSchedulerResult {
+    ServerNpcAttackCatalogSchedulerResult attack;
+    ServerNpcSharedFacingStats facing;
+};
+struct ServerNpcFacingCatalogSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,ServerNpcFacingCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcFacingCatalogSchedulerApi=const ServerNpcFacingCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

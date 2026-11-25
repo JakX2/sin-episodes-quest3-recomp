@@ -61,6 +61,7 @@ struct ServerNpcSharedFacingApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedFacingBindings*,ServerNpcSharedFacingResult*) noexcept;
 };
 using GetServerNpcSharedFacingApi=const ServerNpcSharedFacingApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerNpcSharedFacingStats {ServerNpcSharedFacingResult last;unsigned calls,native,components;};
 struct ServerNpcSharedTaskStats {ServerNpcSharedTaskResult last;unsigned calls,native,component_handled,special,parent;};
 // Per-maintenance call only; no callback or actor memory retains the session.
 struct ServerNpcSharedAttackBindings;
@@ -72,6 +73,8 @@ struct ServerNpcSharedParentSession {
     ServerNpcSharedTaskStats* stats;
     const ServerNpcSharedAttackBindings* attack;
     ServerNpcSharedAttackStats* attack_stats;
+    const ServerNpcSharedFacingBindings* facing;
+    ServerNpcSharedFacingStats* facing_stats;
 };
-int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr) noexcept;
+int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr) noexcept;
 }

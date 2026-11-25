@@ -15,7 +15,7 @@ struct Call{
     ServerNpcInheritedScheduleBindings inherited;
     ServerNpcSpecialScheduleBindings special;
 };
-int run_impl(void* a,unsigned bytes,float now,const ServerNpcScheduleServicesBindings* b,ServerNpcScheduleServicesResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr) noexcept{
+int run_impl(void* a,unsigned bytes,float now,const ServerNpcScheduleServicesBindings* b,ServerNpcScheduleServicesResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr) noexcept{
     if(!out)return 0;*out={};
     if(!a||!b||!std::isfinite(now))return 0;
     const auto* api=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
@@ -57,7 +57,7 @@ int run_impl(void* a,unsigned bytes,float now,const ServerNpcScheduleServicesBin
         const auto& s=static_cast<Call*>(p)->source.scheduler.maintenance.selection;
         return s.deactivate&&s.deactivate(s.context,actor,component);
     };
-    if(combat)return run_subclass_combat_internal(a,bytes,now,&bound,&out->scheduler,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats);
+    if(combat)return run_subclass_combat_internal(a,bytes,now,&bound,&out->scheduler,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats,facing,facing_stats);
     return api->run(a,bytes,now,&bound,&out->scheduler);
 }
 int __cdecl run(void* a,unsigned bytes,float now,const ServerNpcScheduleServicesBindings* b,ServerNpcScheduleServicesResult* out) noexcept{
@@ -65,8 +65,8 @@ int __cdecl run(void* a,unsigned bytes,float now,const ServerNpcScheduleServices
 }
 const ServerNpcScheduleServicesApi api{1,sizeof(ServerNpcScheduleServicesApi),&run};
  }
-int run_schedule_services_combat_internal(void* a,unsigned bytes,float now,const ServerNpcScheduleServicesBindings* b,ServerNpcScheduleServicesResult* out,const ServerGruntCombatTaskBindings* combat,ServerGruntCombatSchedulerStats* stats,const ServerGruntHelperTaskBindings* full,ServerGruntFullTaskStats* full_stats,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* shared_stats,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats) noexcept{
-    if(!combat||!stats)return 0;return run_impl(a,bytes,now,b,out,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats);
+int run_schedule_services_combat_internal(void* a,unsigned bytes,float now,const ServerNpcScheduleServicesBindings* b,ServerNpcScheduleServicesResult* out,const ServerGruntCombatTaskBindings* combat,ServerGruntCombatSchedulerStats* stats,const ServerGruntHelperTaskBindings* full,ServerGruntFullTaskStats* full_stats,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* shared_stats,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingStats* facing_stats) noexcept{
+    if(!combat||!stats)return 0;return run_impl(a,bytes,now,b,out,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats,facing,facing_stats);
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcScheduleServicesApi=_SiN_GetServerNpcScheduleServicesApi")
