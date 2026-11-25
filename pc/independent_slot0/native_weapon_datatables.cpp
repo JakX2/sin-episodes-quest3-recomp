@@ -7735,6 +7735,67 @@ int __cdecl talk_deadline_runtime_adapt(const TalkDeadlineRuntimeBindings* cfg,T
 }
 const TalkDeadlineRuntimeApi talk_deadline_runtime_api{version,sizeof(TalkDeadlineRuntimeApi),&talk_deadline_runtime_adapt};
 
+
+bool native_propagation_ready(const TalkNativePropagationBindings* b) noexcept {
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->extent&&b->storage&&
+       b->enumeration.list&&b->enumeration.count&&b->enumeration.candidate&&
+       b->enumeration.refresh&&b->enumeration.visible&&b->history.lookup&&b->history.insert&&
+       b->history.entry&&b->history.clock;
+}
+const TalkNativePropagationBindings& native_propagation_cfg(void* p) noexcept {
+    return *static_cast<const TalkNativePropagationBindings*>(p);
+}
+int __cdecl native_talk_propagation(void* p,void* npc,const char* name) noexcept {
+    const auto* b=static_cast<const TalkNativePropagationBindings*>(p);
+    if(!native_propagation_ready(b)||!npc||!name)return 0;
+    unsigned extent=0;
+    if(!b->extent(b->context,npc,&extent)||extent<0x1000)return 0;
+    TalkPropagationBindings h{};h.context=p;
+    h.list=[](void* p,void** token) noexcept -> int{
+        const auto& e=native_propagation_cfg(p).enumeration;return e.list(e.context,token);};
+    h.count=[](void* p,int* count) noexcept -> int{
+        const auto& e=native_propagation_cfg(p).enumeration;return e.count(e.context,count);};
+    h.candidate=[](void* p,void* token,unsigned i,void** npc,unsigned* n) noexcept -> int{
+        const auto& e=native_propagation_cfg(p).enumeration;return e.candidate(e.context,token,i,npc,n);};
+    h.refresh=[](void* p,void* npc) noexcept -> int{
+        const auto& e=native_propagation_cfg(p).enumeration;return e.refresh(e.context,npc);};
+    h.visible=[](void* p,void* source,void* target,unsigned mask,void* blocker,unsigned* result) noexcept -> int{
+        const auto& e=native_propagation_cfg(p).enumeration;return e.visible(e.context,source,target,mask,blocker,result);};
+    h.expeditor=[](void* p,void* actor,void** exp,unsigned* bytes,const ResponseHistoryBindings** history) noexcept -> int{
+        const auto& b=native_propagation_cfg(p);unsigned extent=0;
+        if(!b.extent(b.context,actor,&extent)||extent<0x1000||
+           !sin_independent::vgui_layout::Readable(actor,0x1000))return 0;
+        // 2208f164 -> virtual +5bc -> 22028d30: original actor+ffc.
+        const auto word=hologram_read<std::uint32_t>(actor,0xffc);
+        if(!word||!b.storage(b.context,word,exp,bytes)||*bytes<0x7c||
+           !sin_independent::vgui_layout::Readable(*exp,0x7c)||
+           hologram_read<std::uint32_t>(*exp,4)!=scene_word(actor))return 0;
+        *history=&b.history;return 1;
+    };
+    return talk_propagate(npc,extent,&h,name)==1;
+}
+const TalkNativePropagationCooldownBindings& native_propagation_cooldown(void* p) noexcept {
+    return *static_cast<const TalkNativePropagationCooldownBindings*>(p);
+}
+int __cdecl native_propagation_adapt(const TalkNativePropagationCooldownBindings* cfg,TalkCooldownBindings* out) noexcept {
+    if(!cfg||!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||!hologram_writable(out,sizeof(*out))||
+       !native_propagation_ready(&cfg->propagation)||!cfg->host.clock||!cfg->host.random||
+       !cfg->host.concept_deadline||!cfg->host.cooldown_disabled)return 0;
+    *out=cfg->host;out->context=const_cast<TalkNativePropagationCooldownBindings*>(cfg);
+    out->clock=[](void* p,float* now) noexcept -> int{
+        const auto& h=native_propagation_cooldown(p).host;return h.clock(h.context,now);};
+    out->random=[](void* p,float low,float high,float* value) noexcept -> int{
+        const auto& h=native_propagation_cooldown(p).host;return h.random(h.context,low,high,value);};
+    out->concept_deadline=[](void* p,const char* name,float** value) noexcept -> int{
+        const auto& h=native_propagation_cooldown(p).host;return h.concept_deadline(h.context,name,value);};
+    out->cooldown_disabled=[](void* p,unsigned* value) noexcept -> int{
+        const auto& h=native_propagation_cooldown(p).host;return h.cooldown_disabled(h.context,value);};
+    out->propagate=[](void* p,void* npc,const char* name) noexcept -> int{
+        return native_talk_propagation(const_cast<TalkNativePropagationBindings*>(&native_propagation_cooldown(p).propagation),npc,name);};
+    return 1;
+}
+const TalkNativePropagationApi talk_native_propagation_api{version,sizeof(TalkNativePropagationApi),&native_talk_propagation,&native_propagation_adapt};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -15744,6 +15805,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetTalkNativePropagationApi=_SiN_GetTalkNativePropagationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkNativePropagationApi* __cdecl
+SiN_GetTalkNativePropagationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkNativePropagationApi)?&talk_native_propagation_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetTalkDeadlineRuntimeApi=_SiN_GetTalkDeadlineRuntimeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkDeadlineRuntimeApi* __cdecl

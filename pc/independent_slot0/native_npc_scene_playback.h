@@ -1054,6 +1054,28 @@ struct TalkDeadlineRuntimeApi {
     int (__cdecl *adapt)(const TalkDeadlineRuntimeBindings*,TalkManagerRuntimeBindings*) noexcept;
 };
 using GetTalkDeadlineRuntimeApi=const TalkDeadlineRuntimeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char talk_native_propagation_export[]="SiN_GetTalkNativePropagationApi";
+struct TalkNativePropagationBindings {
+    TalkPropagationBindings enumeration; // expeditor unused
+    ResponseHistoryBindings history; // shared native tree; notify unused by silent seed
+    void* context;
+    int (__cdecl *extent)(void*,void* npc,unsigned*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+};
+struct TalkNativePropagationCooldownBindings {
+    TalkNativePropagationBindings propagation;
+    TalkCooldownBindings host; // propagate unused
+};
+struct TalkNativePropagationApi {
+    std::uint32_t version,size;
+    // Callback-compatible with TalkCooldownBindings.propagate.
+    // Native receiver expeditor lookup and silent history update;
+    // enumeration, cached position refresh and visibility remain engine leaves.
+    int (__cdecl *propagate)(void*,void* npc,const char*) noexcept;
+    // Forward the remaining cooldown leaves using their original context.
+    int (__cdecl *adapt)(const TalkNativePropagationCooldownBindings*,TalkCooldownBindings*) noexcept;
+};
+using GetTalkNativePropagationApi=const TalkNativePropagationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;
