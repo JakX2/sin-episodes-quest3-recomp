@@ -170,6 +170,21 @@ struct ResponseSelectApi {
     int (__cdecl *select)(void* exp,unsigned bytes,const ResponseSelectionBindings*,const char* name,const char* modifiers,void** response,unsigned* extent) noexcept;
 };
 using GetResponseSelectApi=const ResponseSelectApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char response_native_modifiers_export[]="SiN_GetResponseNativeModifiersApi";
+struct ResponseNativeModifierBindings {
+    ResponseSelectionBindings host; // modifiers unused
+    // Optional original SplitContext warning for a missing colon.
+    int (__cdecl *warning)(void*,const char* remaining) noexcept;
+};
+struct ResponseNativeModifierApi {
+    std::uint32_t version,size;
+    // Native bounded context parser 2205b110 / 220a3944.
+    // Output pairs are synchronous, strings valid during add only.
+    int (__cdecl *parse)(const ResponseNativeModifierBindings*,void* criteria,const char*,float) noexcept;
+    // Caller retains cfg through synchronous response selection/speak.
+    int (__cdecl *adapt)(const ResponseNativeModifierBindings*,ResponseSelectionBindings*) noexcept;
+};
+using GetResponseNativeModifierApi=const ResponseNativeModifierApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_dispatch_export[]="SiN_GetResponseDispatchApi";
 enum class ResponseKind:unsigned {None,Speak,Sentence,Scene,Response,Print};
 struct ResponseDispatchBindings {

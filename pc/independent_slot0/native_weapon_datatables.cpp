@@ -3023,6 +3023,60 @@ const ResponsePolicyApi response_policy_api{version,sizeof(ResponsePolicyApi),&r
 int response_chance(const void* response) noexcept {
     return (hologram_read<unsigned char>(response,0x88)&4)?hologram_read<int>(response,0x8c):100;
 }
+
+int __cdecl response_parse_modifiers(const ResponseNativeModifierBindings* b,void* criteria,const char* input,float weight) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->host.add||!criteria||!input)return 0;
+    char source[255]{},key[128]{},value[128]{};
+    // Q_strncpy(dst,src,255) truncates at 254 plus NUL.
+    for(unsigned i=0;i<254;++i){
+        if(!sin_independent::vgui_layout::Readable(input+i,1))return 0;
+        if(!(source[i]=input[i]))break;
+    }
+    const auto h=*b;const char* cursor=source;bool previous=false;
+    do {
+        const auto* colon=std::strchr(cursor,':');
+        if(!colon){
+            if(h.warning&&!h.warning(h.host.context,cursor))return 0;
+            // The caller unconditionally adds the old output buffers. On
+            // first-pair failure those were uninitialized in retail.
+            return previous&&h.host.add(h.host.context,criteria,key,value,weight);
+        }
+        const auto* comma=std::strchr(colon+1,',');
+        const auto* end=comma?comma:colon+1+std::strlen(colon+1);
+        const auto k=static_cast<unsigned>(colon-cursor),v=static_cast<unsigned>(end-colon-1);
+        // Retail writes outside its 128-byte buffers for oversized fields.
+        if(k>127||v>127)return 0;
+        std::memcpy(key,cursor,k);key[k]=0;
+        std::memcpy(value,colon+1,v);value[v]=0;previous=true;
+        if(!h.host.add(h.host.context,criteria,key,value,weight))return 0;
+        cursor=comma?comma+1:nullptr;
+    }while(cursor);
+    return 1;
+}
+const ResponseNativeModifierBindings& native_modifier_cfg(void* p) noexcept {
+    return *static_cast<const ResponseNativeModifierBindings*>(p);
+}
+int __cdecl response_native_modifier_adapt(const ResponseNativeModifierBindings* b,ResponseSelectionBindings* out) noexcept {
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!hologram_writable(out,sizeof(*out)))return 0;
+    const auto& h=b->host;
+    if(!h.system||!h.begin_criteria||!h.add||!h.npc_criteria||!h.player_criteria||
+       !h.allocate||!h.find||!h.draw||!h.destroy||!h.end_criteria)return 0;
+    *out=h;out->context=const_cast<ResponseNativeModifierBindings*>(b);
+    out->system=[](void* p,void* exp,void** system) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.system(h.context,exp,system);};
+    out->begin_criteria=[](void* p,void** criteria) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.begin_criteria(h.context,criteria);};
+    out->add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.add(h.context,c,k,v,w);};
+    out->modifiers=[](void* p,void* c,const char* input,float w) noexcept -> int{return response_parse_modifiers(&native_modifier_cfg(p),c,input,w);};
+    out->npc_criteria=[](void* p,void* exp,void* c) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.npc_criteria(h.context,exp,c);};
+    out->player_criteria=[](void* p,void* c,int i) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.player_criteria(h.context,c,i);};
+    out->allocate=[](void* p,unsigned n,void** response,unsigned* extent) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.allocate(h.context,n,response,extent);};
+    out->find=[](void* p,void* system,void* c,void* response,void* exp,unsigned* found) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.find(h.context,system,c,response,exp,found);};
+    out->draw=[](void* p,int lo,int hi,int* result) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.draw(h.context,lo,hi,result);};
+    out->destroy=[](void* p,void* response) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.destroy(h.context,response);};
+    out->end_criteria=[](void* p,void* c) noexcept -> int{const auto& h=native_modifier_cfg(p).host;return h.end_criteria(h.context,c);};
+    return 1;
+}
+const ResponseNativeModifierApi response_native_modifier_api{version,sizeof(ResponseNativeModifierApi),&response_parse_modifiers,&response_native_modifier_adapt};
+
 int __cdecl response_select(void* exp,unsigned bytes,const ResponseSelectionBindings* b,const char* name,const char* mods,void** result,unsigned* extent) noexcept {
     if(!exp||bytes<0x7c||!sin_independent::vgui_layout::Readable(exp,0x7c)||!name||
        !result||!extent||!hologram_writable(result,sizeof(*result))||!hologram_writable(extent,sizeof(*extent))||
@@ -15496,6 +15550,12 @@ SiN_GetResponsePolicyApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponsePolicyApi)?&response_policy_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetResponseNativeModifiersApi=_SiN_GetResponseNativeModifiersApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseNativeModifierApi* __cdecl
+SiN_GetResponseNativeModifiersApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponseNativeModifierApi)?&response_native_modifier_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetResponseSelectApi=_SiN_GetResponseSelectApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseSelectApi* __cdecl
 SiN_GetResponseSelectApi(std::uint32_t version,std::uint32_t size) noexcept {

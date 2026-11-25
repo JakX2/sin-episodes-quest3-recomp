@@ -662,6 +662,12 @@ int main(int argc,char** argv){
     const auto* responseSelect=getResponseSelect(1,sizeof(tables::ResponseSelectApi));
     assert(responseSelect&&!getResponseSelect(0,sizeof(tables::ResponseSelectApi))&&!getResponseSelect(1,0));
     tables::test::check_response_select(*responseSelect);
+    const auto getNativeModifiers=reinterpret_cast<tables::GetResponseNativeModifierApi>(GetProcAddress(server,tables::response_native_modifiers_export));
+    assert(getNativeModifiers&&!GetProcAddress(client,tables::response_native_modifiers_export));
+    const auto* nativeModifiers=getNativeModifiers(1,sizeof(tables::ResponseNativeModifierApi));
+    assert(nativeModifiers&&!getNativeModifiers(0,sizeof(tables::ResponseNativeModifierApi))&&!getNativeModifiers(1,0));
+    tables::test::check_response_native_modifiers(*nativeModifiers,*responseSelect);
+    std::puts("PASS native bounded response modifiers and selection integration");
     std::puts("PASS native response selection criteria, chance and ownership");
     const auto getResponseDispatch=reinterpret_cast<tables::GetResponseDispatchApi>(GetProcAddress(server,tables::response_dispatch_export));
     assert(getResponseDispatch&&!GetProcAddress(client,tables::response_dispatch_export));
