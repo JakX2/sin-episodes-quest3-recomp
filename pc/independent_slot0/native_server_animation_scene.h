@@ -50,7 +50,7 @@ inline constexpr char server_animation_frame_clock_export[]="SiN_GetServerAnimat
 struct ServerAnimationFrameClockBindings {
     ServerAnimationLayerTickBindings layers;
     void* context;
-    // 220f2160 playback-rate transition and 220f17f0 base-cycle step.
+    // 220f2160 m_flModelWidthScale transition and 220f17f0 base-cycle step.
     int (__cdecl *transition)(void*,void* actor) noexcept;
     int (__cdecl *duration)(void*,void* actor,int sequence,double*) noexcept;
     int (__cdecl *step)(void*,void* actor,float cycle_delta) noexcept;
@@ -82,6 +82,15 @@ struct ServerBaseAnimationCycleApi {
     int (__cdecl *step)(void* actor,unsigned bytes,float delta,float now,const ServerBaseAnimationCycleBindings*) noexcept;
 };
 using GetServerBaseAnimationCycleApi=const ServerBaseAnimationCycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_animation_layer_reserve_export[]="SiN_GetServerAnimationLayerReserveApi";
+struct ServerAnimationLayerReserveApi {
+    std::uint32_t version,size;
+    // 220f4180/220f3960/220f2f40. Ensure exact requested minimum
+    // capacity and reset dormant rows [logical count, target), without
+    // changing logical count or clearing unrelated original fields.
+    int (__cdecl *reserve)(void* actor,unsigned bytes,int target,float now,const ChoreographyVectorBindings*) noexcept;
+};
+using GetServerAnimationLayerReserveApi=const ServerAnimationLayerReserveApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_animation_scene_frame_export[]="SiN_GetServerAnimationSceneFrameApi";
 struct ServerAnimationSceneFrameBindings {
     void* context;

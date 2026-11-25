@@ -13653,6 +13653,27 @@ int __cdecl base_animation_cycle_step(void* actor,unsigned bytes,float delta,flo
 }
 const ServerBaseAnimationCycleApi server_base_animation_cycle_api{version,sizeof(ServerBaseAnimationCycleApi),&base_animation_cycle_step};
 
+int __cdecl animation_layer_reserve(void* actor,unsigned bytes,int target,float now,const ChoreographyVectorBindings* b) noexcept {
+    int count=0,cap=0;unsigned char* rows=nullptr;
+    if(target<0||target>4096||!std::isfinite(now)||!animation_layer_rows(actor,bytes,b,count,cap,rows))return 0;
+    if(count>=target)return 1;
+    if(cap<target){
+        if(hologram_read<int>(actor,0x49c)==-1||!b->resize)return 0; // external storage cannot grow
+        void* data=nullptr;unsigned extent=0;
+        if(!b->resize(b->context,hologram_read<std::uint32_t>(actor,0x494),static_cast<unsigned>(target)*0x40,&data,&extent))return 0;
+        // Successful resize consumes old allocation; publish the new
+        // pointer before checking the host's returned extent.
+        const auto word=scene_word(data);
+        hologram_write(actor,0x494,word);hologram_write(actor,0x498,target);hologram_write(actor,0x4a4,word);
+        if(extent<static_cast<unsigned>(target)*0x40||!hologram_writable(data,target*0x40))return 0;
+        rows=static_cast<unsigned char*>(data);
+    }else hologram_write(actor,0x4a4,hologram_read<std::uint32_t>(actor,0x494));
+    for(int i=count;i<target;++i)animation_layer_reset(rows+i*0x40,now);
+    return 1;
+}
+const ServerAnimationLayerReserveApi server_animation_layer_reserve_api{version,sizeof(ServerAnimationLayerReserveApi),&animation_layer_reserve};
+
+
 
 
 
@@ -16643,6 +16664,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAni
 SiN_GetServerAnimationSceneFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneFrameApi)?&server_animation_scene_frame_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerAnimationLayerReserveApi=_SiN_GetServerAnimationLayerReserveApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationLayerReserveApi* __cdecl
+SiN_GetServerAnimationLayerReserveApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationLayerReserveApi)?&server_animation_layer_reserve_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerBaseAnimationCycleApi=_SiN_GetServerBaseAnimationCycleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerBaseAnimationCycleApi* __cdecl
