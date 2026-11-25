@@ -746,7 +746,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr,const ActorResponseSelectionApi* actorSelection=nullptr,const ResponseCriteriaRemovalApi* removal=nullptr,const ResponseRuleRankingApi* ranking=nullptr,const NativeResponseFinderApi* finder=nullptr,const ScriptResponseFinderApi* scriptFinder=nullptr,const ResponseCriteriaCopyApi* criteriaCopy=nullptr,const ResponseOwnedCriteriaApi* ownedCriteria=nullptr,const ScriptActorSelectionApi* scriptActor=nullptr,const ScriptActorSpeechApi* scriptSpeech=nullptr,const ScriptNpcMapDialogueApi* scriptMap=nullptr,const ResponseTimingUpdateApi* timing=nullptr,const ResponseRecordApi* record=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[48]{};
@@ -1289,6 +1289,10 @@ rule parsed_rule
                 unsigned allocs=0,drops=0,copies=0,frees=0,traces=0,sounds=0,notes=0,records=0;
                 bool live=false,copy_live=false,short_block=false,fail_trace=false,fail_sound=false;void* recorded=nullptr;
                 const char* expected_concept="TLK_IDLE";const unsigned char* observation=nullptr;unsigned other=0,criteria_calls=0;float now=25.f;
+                void* external_npc=nullptr;void* external_exp=nullptr;unsigned external_bytes=0;
+                void* current_npc(){return external_npc?external_npc:npc;}
+                void* current_exp(){return external_exp?external_exp:exp;}
+                unsigned current_bytes(){return external_npc?external_bytes:sizeof(npc);}
                 static Actor& get(void* p){return *static_cast<Actor*>(p);}
             } actor{{},{},{},{},api,h};
             const char source[]=R"(criterion idle concept TLK_IDLE required
@@ -1317,13 +1321,13 @@ rule count_head
                 auto& s=Actor::get(p);assert(s.live&&obj==s.response);s.live=false;++s.drops;return 1;};
             sh.draw=[](void*,int,int,int*) noexcept -> int{assert(false);return 0;};
             sc.actor.actor=[](void* p,std::uint32_t w,void** out,unsigned* n,unsigned* family) noexcept -> int{
-                auto& s=Actor::get(p);assert(w==F::ptr(s.npc));*out=s.npc;*n=sizeof(s.npc);*family=0;return 1;};
+                auto& s=Actor::get(p);assert(w==F::ptr(s.current_npc()));*out=s.current_npc();*n=s.current_bytes();*family=0;return 1;};
             sc.actor.target=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
             sc.actor.player_at=[](void*,int i,void** out,unsigned* n) noexcept -> int{assert(i==1);*out=nullptr;*n=0;return 1;};
             auto& bh=sc.actor.base;bh.context=&actor;bh.contexts.context=&actor;
             bh.contexts.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{auto& s=Actor::get(p);return s.tree.add(&s.b,c,k,v,w);};
             bh.contexts.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
-            bh.contexts.string=[](void*,std::uint32_t w,const char** out) noexcept -> int{if(w!=1)return 0;*out="npc_count";return 1;};
+            bh.contexts.string=[](void* p,std::uint32_t w,const char** out) noexcept -> int{if(w!=1)return 0;*out=Actor::get(p).external_npc?"npc_jessica":"npc_count";return 1;};
             bh.map_name=[](void*,const char** out) noexcept -> int{*out="se1_test";return 1;};
             bh.global_count=[](void*,int* n) noexcept -> int{*n=0;return 1;};
             bh.global_row=[](void*,int,const char**,int*) noexcept -> int{assert(false);return 0;};
@@ -1368,7 +1372,7 @@ rule count_head
                 ScriptActorSpeechBindings speech{};speech.selection=sc;speech.context=&actor;
                 assert(scriptFinder->create("fixture",source,sizeof(source)-1,nullptr,&speech.selection.finder.store)==1);
                 speech.trace_selected=[](void* p,void* e,const char* concept) noexcept -> int{
-                    auto& s=Actor::get(p);assert(e==s.exp&&s.live&&s.copy_live&&!std::strcmp(concept,s.expected_concept));++s.traces;return !s.fail_trace;};
+                    auto& s=Actor::get(p);assert(e==s.current_exp()&&s.live&&s.copy_live&&!std::strcmp(concept,s.expected_concept));++s.traces;return !s.fail_trace;};
                 auto& d=speech.dispatch;d.context=&actor;
                 d.sample=[](void*,const void*,float*) noexcept -> int{assert(false);return 0;};
                 d.speaking=[](void*,void*,unsigned* out) noexcept -> int{*out=0;return 1;};
@@ -1378,19 +1382,19 @@ rule count_head
                 d.scene_blocked=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
                 d.refused_log=d.force_log;
                 d.sound=[](void* p,void* e,const char* value,float* duration) noexcept -> int{
-                    auto& s=Actor::get(p);assert(e==s.exp&&s.live&&s.copy_live&&!std::strcmp(value,"count_line"));++s.sounds;*duration=2.5f;return !s.fail_sound;};
+                    auto& s=Actor::get(p);assert(e==s.current_exp()&&s.live&&s.copy_live&&!std::strcmp(value,s.external_npc?"jessica_line":"count_line"));++s.sounds;*duration=2.5f;return !s.fail_sound;};
                 d.scene=[](void*,void*,const char*,float,float*) noexcept -> int{assert(false);return 0;};
                 d.sound_duration=d.sound;
                 d.emit_raw=[](void*,void*,const char*,int,int) noexcept -> int{assert(false);return 0;};
                 d.note_duration=[](void* p,void* e,float duration,float delay) noexcept -> int{
-                    auto& s=Actor::get(p);assert(e==s.exp&&duration==2.5f&&delay==0);++s.notes;return 1;};
+                    auto& s=Actor::get(p);assert(e==s.current_exp()&&duration==2.5f&&delay==0);++s.notes;return 1;};
                 d.sentence=[](void*,void*,const char*,float,float,int,int,int*) noexcept -> int{assert(false);return 0;};
                 d.print_enabled=[](void*,unsigned*) noexcept -> int{assert(false);return 0;};
                 d.print=d.force_log;
                 d.clock=[](void*,float* out) noexcept -> int{*out=17.f;return 1;};
                 d.debug_success=[](void*,void*,const char*,const char*) noexcept -> int{return 1;};
                 d.record=[](void* p,void* e,const char*,void* response) noexcept -> int{
-                    auto& s=Actor::get(p);assert(e==s.exp&&response==s.response&&s.copy_live&&s.live&&!s.recorded);
+                    auto& s=Actor::get(p);assert(e==s.current_exp()&&response==s.response&&s.copy_live&&s.live&&!s.recorded);
                     ++s.records;s.recorded=response;return 1;};
                 unsigned played=99;
                 auto speak=[&](const char* mods){return scriptSpeech->speak(actor.exp,sizeof(actor.exp),&speech,"TLK_IDLE",mods,&played);};
@@ -1449,6 +1453,56 @@ rule count_cocky
                     assert(observe()==1&&!F::word(actor.npc,0x1014)&&!actor.npc[0x1018]&&actor.criteria_calls==3&&!actor.live);
                     assert(actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
                     assert(scriptFinder->release(&speech.selection.finder.store)==1);
+                    if(timing&&record){
+                        // Real loaded script selection/dispatch, sharing the same
+                        // Jessica expeditor with the previously verified companion gates.
+                        CompanionTalkFixture j(*timing,*record);
+                        HologramControl jc{j.npc,sizeof(j.npc)};
+                        actor.external_npc=j.npc;actor.external_bytes=sizeof(j.npc);
+                        actor.external_exp=j.pipeline.exp;
+                        F::put(j.npc,0xc,1);F::put(j.npc,0x98,100);F::put(j.npc,0x9c,80);
+                        F::put(j.pipeline.exp,4,F::ptr(j.npc));
+                        actor.expected_concept="TLK_PLLOOKING";
+                        const char looking[]=R"(criterion look concept TLK_PLLOOKING required
+criterion jessica classname npc_jessica required
+criterion head PlayerLookingAtPart head required
+response speech speak jessica_line
+rule jessica_look
+{
+ criteria look jessica head
+ response speech
+ matchonce
+}
+)";
+                        assert(scriptFinder->create("jessica",looking,sizeof(looking)-1,nullptr,&speech.selection.finder.store)==1);
+                        alignas(4) unsigned char obs[0x5ec]{};
+                        obs[0x300]=1;obs[0x18+0x108]=1;
+                        struct Look {CompanionTalkFixture* fixture;HologramControl* ctrl;const unsigned char* obs;unsigned calls=0;bool match=true;};
+                        Look context{&j,&jc,obs};
+                        NpcMapSession js{};NpcMapDialogueBindings jd{};
+                        auto& jb=jd.jessica;
+                        jb.context=&context;jb.talk=j.b;jb.cooldown=&j.state;jb.semaphore=&j.pipeline.sem;
+                        jb.clock=[](void* p,float* out) noexcept -> int{*out=static_cast<Look*>(p)->fixture->pipeline.now;return 1;};
+                        jb.criteria=[](void* p,const void* rec,float now,CountCriteria* out) noexcept -> int{
+                            auto& x=*static_cast<Look*>(p);assert(x.ctrl->busy&&rec==x.obs+0x18&&now==x.fixture->pipeline.now);
+                            ++x.calls;std::strcpy(reinterpret_cast<char*>(out->bytes),x.match?"PlayerLookingAtPart:head":"PlayerLookingAtPart:hand");return 1;};
+                        auto look=[&](){return scriptMap->observe(NpcMapKind::Jessica,&jc,&js,&map,&jd,nullptr,&speech,obs,sizeof(obs));};
+                        const auto allocs=actor.allocs,sounds=actor.sounds,records=actor.records;
+                        j.state.global[0]=20;
+                        assert(look()==1&&js.attention.looking==10&&context.calls==1&&actor.allocs==allocs);
+                        j.pipeline.now=14;j.state.global[0]=0;j.pipeline.sem.classified={30,0x2002};
+                        assert(look()==1&&js.attention.looking==14&&context.calls==2&&actor.allocs==allocs);
+                        j.pipeline.now=18;j.pipeline.sem.classified={0,0xffffffffu};context.match=false;
+                        assert(look()==1&&js.attention.looking==18&&context.calls==3&&actor.allocs==allocs+1&&!actor.live&&actor.sounds==sounds);
+                        j.pipeline.now=22;context.match=true;
+                        assert(look()==1&&js.attention.looking==22&&context.calls==4&&actor.allocs==allocs+2&&actor.records==records+1&&actor.sounds==sounds+1&&actor.recorded==actor.response&&!jc.busy&&!jc.blocked);
+                        assert(scriptActor->retire(&speech.selection,actor.recorded)==1);actor.recorded=nullptr;
+                        j.pipeline.now=26;
+                        assert(look()==1&&js.attention.looking==26&&context.calls==5&&actor.allocs==allocs+3&&actor.sounds==sounds+1&&!actor.live);
+                        assert(!j.pipeline.allocations&&actor.allocs==actor.drops&&actor.copies==actor.frees&&a.live.empty());
+                        assert(scriptFinder->release(&speech.selection.finder.store)==1);
+                        actor.external_npc=nullptr;actor.external_exp=nullptr;actor.external_bytes=0;
+                    }
                 }
             }
         }
