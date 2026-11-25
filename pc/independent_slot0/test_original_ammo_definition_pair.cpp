@@ -673,6 +673,12 @@ int main(int argc,char** argv){
     const auto* responseSceneFilter=getResponseSceneFilter(1,sizeof(tables::ResponseSceneFilterApi));
     assert(responseSceneFilter&&!getResponseSceneFilter(0,sizeof(tables::ResponseSceneFilterApi))&&!getResponseSceneFilter(1,0));
     tables::test::check_response_scene_filter(*responseSceneFilter);
+    const auto getSceneResponseServices=reinterpret_cast<tables::GetSceneResponseServicesApi>(GetProcAddress(server,tables::scene_response_services_export));
+    assert(getSceneResponseServices&&!GetProcAddress(client,tables::scene_response_services_export));
+    const auto* sceneResponseServices=getSceneResponseServices(1,sizeof(tables::SceneResponseServicesApi));
+    assert(sceneResponseServices&&!getSceneResponseServices(0,sizeof(tables::SceneResponseServicesApi))&&!getSceneResponseServices(1,0));
+    tables::test::check_scene_response_services(*sceneResponseServices,*responseSceneFilter);
+    std::puts("PASS original scene name expansion and stale metadata admission services");
     std::puts("PASS native response scene admission filter and cached duration policy");
     std::puts("PASS native response selection criteria, chance and ownership");
     const auto getResponseDispatch=reinterpret_cast<tables::GetResponseDispatchApi>(GetProcAddress(server,tables::response_dispatch_export));

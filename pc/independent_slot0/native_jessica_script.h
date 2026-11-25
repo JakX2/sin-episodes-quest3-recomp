@@ -209,6 +209,34 @@ struct ResponseSceneFilterApi {
     int (__cdecl *allow)(void* exp,unsigned bytes,const ResponseSceneFilterBindings*,unsigned kind,const char*,unsigned*) noexcept;
 };
 using GetResponseSceneFilterApi=const ResponseSceneFilterApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_response_services_export[]="SiN_GetSceneResponseServicesApi";
+// Caller owns the original cache object's storage and serializes access.
+// Row resolves the 16-byte payload at node+8 (original node stride 24).
+// The engine retains filename-index insertion and metadata allocation.
+struct SceneResponseServicesBindings {
+    void* context;
+    void* cache;
+    unsigned cache_bytes;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *model_name)(void*,void* npc,const char**) noexcept;
+    // Engine sound-emitter gender expansion (original vslot +0x80).
+    int (__cdecl *expand)(void*,const char* model,const char* name,char*,unsigned) noexcept;
+    int (__cdecl *row)(void*,const char* path,void**,unsigned*) noexcept;
+    // mode==1 selects filesystem slot +0x18; mode==0 selects +0x34.
+    int (__cdecl *stamp)(void*,const char* path,unsigned mode,std::uint32_t*) noexcept;
+    int (__cdecl *metadata)(void*,std::uint32_t index,void**,unsigned*) noexcept;
+    // Original metadata virtual +8. Refresh may mutate current stamp.
+    int (__cdecl *refresh)(void*,void* metadata,const char* path) noexcept;
+};
+struct SceneResponseServicesApi {
+    std::uint32_t version,size;
+    // Callback-compatible leaves, context is persistent bindings.
+    int (__cdecl *resolve_name)(void*,void*,const char*,char*,unsigned) noexcept;
+    int (__cdecl *metadata)(void*,const char*,void**,unsigned*) noexcept;
+    // Compose both with the existing response admission filter.
+    int (__cdecl *adapt)(const SceneResponseServicesBindings*,ResponseSceneFilterBindings*) noexcept;
+};
+using GetSceneResponseServicesApi=const SceneResponseServicesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ResponseDispatchBindings {
     void* context;
     int (__cdecl *sample)(void*,const void* interval,float*) noexcept;

@@ -311,6 +311,66 @@ inline void check_response_native_modifiers(const ResponseNativeModifierApi& api
 }
 
 
+
+inline void check_scene_response_services(const SceneResponseServicesApi& api,const ResponseSceneFilterApi& filter){
+    struct Fixture {
+        alignas(4) unsigned char exp[0x7c]{},cache[0x50]{},row[16]{},data[8]{};
+        int npc=0;unsigned queries=0,refreshes=0,models=0,expands=0,mode=99,fail=0;
+        std::uint32_t disk=20;
+        bool no_model=false,missing=false,change_during_refresh=false;
+        static Fixture& self(void* p){return *static_cast<Fixture*>(p);}
+        static void put(void* p,unsigned offset,std::uint32_t value){std::memcpy(static_cast<unsigned char*>(p)+offset,&value,4);}
+        static std::uint32_t word(const void* p,unsigned offset){std::uint32_t v;std::memcpy(&v,static_cast<const unsigned char*>(p)+offset,4);return v;}
+        void duration(float v){std::memcpy(data+4,&v,4);}
+    } f;
+    Fixture::put(f.exp,4,static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&f.npc)));
+    Fixture::put(f.row,4,10);Fixture::put(f.row,8,0xfffffffeu);Fixture::put(f.row,0xc,3);
+    Fixture::put(f.cache,0x48,1);
+    SceneResponseServicesBindings b{};b.context=&f;b.cache=f.cache;b.cache_bytes=sizeof(f.cache);
+    b.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(w==Fixture::word(f.exp,4));*out=&f.npc;*n=sizeof(f.npc);return 1;};
+    b.model_name=[](void* p,void* npc,const char** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(npc==&f.npc);++f.models;*out=f.no_model?nullptr:"models/fixture.mdl";return f.fail!=1;};
+    b.expand=[](void* p,const char* model,const char* name,char* out,unsigned n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(!std::strcmp(model,f.no_model?"":"models/fixture.mdl"));
+        assert(!std::strcmp(name,"scenes/npc/$gender01/hi01.vcd")&&(n==128||n==256));++f.expands;
+        std::strcpy(out,"scenes/npc/female01/hi01.vcd");return f.fail!=2;};
+    b.row=[](void* p,const char* path,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(!std::strcmp(path,"scenes/npc/female01/hi01.vcd"));*out=f.row;*n=sizeof(f.row);return 1;};
+    b.stamp=[](void* p,const char*,unsigned mode,std::uint32_t* stamp) noexcept -> int{
+        auto& f=Fixture::self(p);++f.queries;f.mode=mode;*stamp=f.disk;return f.fail!=3;};
+    b.metadata=[](void* p,std::uint32_t i,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(i==3);*out=f.missing?nullptr:f.data;*n=sizeof(f.data);return 1;};
+    b.refresh=[](void* p,void* data,const char*) noexcept -> int{
+        auto& f=Fixture::self(p);assert(data==f.data&&f.cache[0x3c]);++f.refreshes;
+        if(f.fail==4)return 0;
+        f.duration(2.5f);if(f.change_during_refresh)Fixture::put(f.row,8,77);return 1;};
+    ResponseSceneFilterBindings adapted{};assert(api.adapt(&b,&adapted)==1);
+    unsigned allowed=99;
+    auto run=[&](){allowed=99;return filter.allow(f.exp,sizeof(f.exp),&adapted,3,"scenes/npc/$gender01/hi01.vcd",&allowed);};
+    assert(run()==1&&allowed==1&&f.queries==1&&f.mode==1&&f.refreshes==1&&f.cache[0x3c]);
+    assert(Fixture::word(f.row,4)==20&&Fixture::word(f.row,8)==20);
+    assert(run()==1&&allowed==1&&f.queries==1&&f.refreshes==1);
+    // Freeze: sentinel is replaced with saved stamp without a filesystem call.
+    f.cache[0x4c]=1;Fixture::put(f.row,8,0xfffffffeu);f.disk=30;
+    assert(run()==1&&allowed==1&&f.queries==1&&Fixture::word(f.row,8)==20);
+    // Suppress refresh: stamp still commits, dirty byte remains unchanged.
+    f.cache[0x4c]=0;f.cache[0x4d]=1;f.cache[0x3c]=0;Fixture::put(f.cache,0x48,2);
+    Fixture::put(f.row,8,0xfffffffeu);f.duration(0);
+    assert(run()==1&&!allowed&&f.queries==2&&f.mode==0&&f.refreshes==1&&!f.cache[0x3c]&&Fixture::word(f.row,4)==30);
+    f.cache[0x4d]=0;f.change_during_refresh=true;f.disk=40;Fixture::put(f.row,8,0xfffffffeu);
+    assert(run()==1&&allowed&&f.refreshes==2&&Fixture::word(f.row,4)==77);
+    f.no_model=true;char path[128]{};
+    assert(api.resolve_name(&b,&f.npc,"scenes/npc/$gender01/hi01.vcd",path,sizeof(path))==1&&!std::strcmp(path,"scenes/npc/female01/hi01.vcd"));
+    f.missing=true;assert(run()==1&&!allowed);f.missing=false;
+    f.fail=3;Fixture::put(f.row,8,0xfffffffeu);
+    assert(run()==-1&&allowed==99&&Fixture::word(f.row,8)==0xfffffffeu);
+    f.fail=4;f.disk=90;f.cache[0x3c]=0;
+    assert(run()==-1&&allowed==99&&f.cache[0x3c]&&Fixture::word(f.row,4)==77&&Fixture::word(f.row,8)==90);
+    f.fail=0;f.change_during_refresh=false;assert(run()==1&&allowed&&Fixture::word(f.row,4)==90);
+    auto short_b=b;short_b.cache_bytes=0x4d;assert(!api.adapt(&short_b,&adapted));
+}
+
 inline void check_response_scene_filter(const ResponseSceneFilterApi& api){
     struct State {
         alignas(4) unsigned char exp[0x7c]{},row[8]{};
