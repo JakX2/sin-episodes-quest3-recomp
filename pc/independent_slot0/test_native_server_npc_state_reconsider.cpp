@@ -18,7 +18,7 @@ struct F{
     const ServerNpcEnemyMemoryMutationApi* mutation_api=nullptr;ServerNpcEnemyMemoryMutationBindings mutation{};
     bool allocated[2]{};unsigned releases=0;
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
-    unsigned report_cues=0,report_forwarded=0;
+    unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
     unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
     int rank[2]{0,0},disp[2]{1,1};bool valid[2]{true,true},unreachable[2]{false,false},visible[2]{true,true};float distance[2]{10,20};
@@ -480,5 +480,27 @@ int main(int argc,char** argv){
     f.put(f.actor,0x8bc,500.f);assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemorySetEligibility,420,0,&mb,&ctr));
     choose(420,NpcChoiceEligibility);choose(420.01f,NpcChoiceRetain);
     assert(f.mutation_api->remove(f.memory,sizeof(f.memory),1000,&mutation,&mut)&&mut.removed);choose(421,NpcChoiceMissingRecord);
+    auto gswitch=reinterpret_cast<GetServerNpcGruntEnemySwitchApi>(GetProcAddress(s,server_npc_grunt_enemy_switch_export));
+    assert(gswitch&&!GetProcAddress(c,server_npc_grunt_enemy_switch_export)&&!gswitch(0,sizeof(ServerNpcGruntEnemySwitchApi))&&!gswitch(1,0));
+    const auto* switcher=gswitch(1,sizeof(ServerNpcGruntEnemySwitchApi));assert(switcher);
+    assert(f.mutation_api->upsert(f.memory,sizeof(f.memory),f.enemy,new_pos,422,0,true,&mutation,&mut));
+    ServerNpcGruntEnemySwitchBindings swb{};swb.gate=choice_binding;swb.best=native_best;swb.cache=ub;swb.enemy=eb;swb.schedule=b.schedule;swb.context=&f;
+    swb.enemy.enemy_changing=nullptr; // internal native notification replaces callback
+    swb.lost_cue=[](void* p,void* a) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&f.get<unsigned>(0x8a0)==0xffffffffu);++f.lost_cues;return 1;};
+    swb.fire_output=[](void* p,void* a,unsigned offset) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&f.outputs<2);f.output_offsets[f.outputs++]=offset;return 1;};
+    f.put(f.actor,0x798,1u);f.put(f.actor,0x7a0,0);f.put(f.schedule,8,1);f.put(f.schedule,0xc,0u);
+    f.put(f.actor,0x7ec,0u);f.put(f.actor,0x7f0,0u);f.put(f.actor,0x988,0x28000u);f.put(f.actor,0x9c4,0u);
+    f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x8c0,0xffffffffu);
+    f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);f.distance[0]=20;f.distance[1]=5;f.rel_special=true;
+    ServerNpcGruntEnemySwitchResult switch_result;
+    assert(switcher->update(f.actor,sizeof(f.actor),422,&swb,&switch_result)&&switch_result.deferred&&switch_result.has_enemy&&!switch_result.selected&&f.actor[0x84e]);
+    f.put(f.schedule,0xc,1u<<25);f.condition(0x14);f.condition(0x15);
+    assert(switcher->update(f.actor,sizeof(f.actor),422,&swb,&switch_result)&&!switch_result.deferred&&switch_result.selected&&switch_result.assigned&&switch_result.assignment.new_handle==0x8002u&&switch_result.new_flags==0x10000u&&!f.actor[0x84e]);
+    assert((f.get<unsigned>(0x7cc)&0x00300000u)==(1u<<21)&&(f.get<unsigned>(0x7cc)&(1u<<25)));
+    assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryMarkEluded,0,0,&mb,&ctr));
+    assert(control->control(f.memory,sizeof(f.memory),1001,NpcMemoryMarkEluded,0,0,&mb,&ctr));
+    f.put(f.actor,0x8a0,0x9002u);f.put(f.schedule,0xc,0u);
+    assert(switcher->update(f.actor,sizeof(f.actor),423,&swb,&switch_result)&&switch_result.forced_missing&&switch_result.assigned&&!switch_result.has_enemy&&switch_result.lost_condition&&switch_result.lost_cue&&switch_result.outputs==2&&switch_result.new_flags==0);
+    assert(f.lost_cues==1&&f.outputs==2&&f.output_offsets[0]==0xb08&&f.output_offsets[1]==0xac0&&(f.get<unsigned>(0x7cc)&(1u<<11))&&!(f.get<unsigned>(0x7cc)&(1u<<25)));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

@@ -74,7 +74,8 @@ int __cdecl apply(void* a,unsigned bytes,int desired,float now,const ServerNpcSt
     if(changed&&(!b->state_changed||!b->state_changed(b->context,a,old,desired)))return 0;
     return 1;
 }
-int __cdecl set_enemy(void* a,unsigned bytes,void* target,bool notify,float now,const ServerNpcEnemyStateBindings* b,ServerNpcEnemyStateResult* out) noexcept {
+int __cdecl clear_combat_conditions(void*,unsigned,const ServerNpcConditionMapBindings*,ServerNpcEnemyConditionResult*) noexcept;
+int set_enemy_impl(void* a,unsigned bytes,void* target,bool notify,float now,const ServerNpcEnemyStateBindings* b,ServerNpcEnemyStateResult* out,bool native_notify) noexcept {
     if(!out)return 0;*out={};out->old_handle=out->new_handle=0xffffffffu;
     if(!a||bytes<0xc04||!b||!std::isfinite(now)||b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
     const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
@@ -84,7 +85,8 @@ int __cdecl set_enemy(void* a,unsigned bytes,void* target,bool notify,float now,
     out->old_handle=read<std::uint32_t>(a,0x8a0);
     out->changed=resolve()!=target;
     if(out->changed){
-        if(!b->enemy_changing||!b->enemy_changing(b->context,a))return 0;
+        if(native_notify){ServerNpcEnemyConditionResult result{};if(!clear_combat_conditions(a,bytes,&b->conditions,&result))return 0;}
+        else if(!b->enemy_changing||!b->enemy_changing(b->context,a))return 0;
         out->notified=1;
         const auto squad=read<std::uint32_t>(a,0x9c4);
         if(squad){
@@ -108,6 +110,9 @@ int __cdecl set_enemy(void* a,unsigned bytes,void* target,bool notify,float now,
         out->new_condition_cleared=cr.mapped;
     }
     return 1;
+}
+int __cdecl set_enemy(void* a,unsigned bytes,void* target,bool notify,float now,const ServerNpcEnemyStateBindings* b,ServerNpcEnemyStateResult* out) noexcept{
+    return set_enemy_impl(a,bytes,target,notify,now,b,out,false);
 }
 int __cdecl clear_combat_conditions(void* a,unsigned bytes,const ServerNpcConditionMapBindings* b,ServerNpcEnemyConditionResult* out) noexcept{
     if(!out)return 0;*out={};if(!a||bytes<0x7ec||!b)return 0;
@@ -924,6 +929,86 @@ int __cdecl grunt_enemy_choice_gate(void* actor,unsigned bytes,float now,const S
     if(eligibility>=now){sync();return choose(NpcChoiceEligibility);}
     return 1;
 }
+int __cdecl grunt_enemy_switch(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemySwitchBindings* b,ServerNpcGruntEnemySwitchResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->gate.relation.original_vtable)||
+       b->best.memory.count>sin_independent::kEntityHandleCapacity||(b->best.memory.count&&!b->best.memory.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->best.memory.entries,b->best.memory.count);
+    void* current=registry.Resolve(read<unsigned>(actor,0x8a0));void* candidate=current;
+    out->had_enemy=out->has_enemy=current!=nullptr;out->old_flags=out->new_flags=read<unsigned>(actor,0x988);
+    const bool had_flags=(out->old_flags&0x18000u)!=0,special_flag=(out->old_flags&0x10000u)!=0;
+    out->forced_missing=had_flags&&!current;
+    auto gate=b->gate;gate.memory=b->best.memory;gate.conditions=b->schedule.conditions;
+    if(out->forced_missing)out->eluded=1;
+    else if(current){
+        unsigned key=0,n=0;void* memory=nullptr;ServerNpcEnemyMemoryControlResult cr{};
+        if(!memory_key(gate.memory,current,key)||!memory_storage(&gate.memory.storage,read<unsigned>(actor,0x984),0x40,memory,n)||
+           !memory_control(memory,n,key,NpcMemoryEluded,0,0,&gate.memory.storage,&cr))return 0;
+        out->eluded=cr.value!=0;
+    }
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto test_interrupt=[&](int id,unsigned& value){
+        ServerNpcConditionResult r{};if(!cond->test(actor,bytes,id,NpcConditionInterrupt,&b->schedule.conditions,&r))return false;
+        value=r.value;return true;
+    };
+    auto set_condition=[&](int id,unsigned& value){
+        ServerNpcConditionResult r{};if(!cond->store(actor,bytes,id,NpcConditionCurrent,true,&b->schedule.conditions,&r))return false;
+        value=r.mapped;return true;
+    };
+    const unsigned schedule=read<unsigned>(actor,0x798);
+    if(!schedule)out->new_allowed=out->lost_allowed=1;
+    else{
+        const void* row=nullptr;unsigned n=0;
+        if(!b->schedule.storage||!b->schedule.storage(b->schedule.context,schedule,&row,&n)||!row||n<0x10)return 0;
+        if(read<int>(actor,0x7a0)==read<int>(row,8))out->new_allowed=out->lost_allowed=1;
+        else{
+            const auto mask=read<unsigned>(row,0xc);
+            out->new_allowed=(mask>>25)&1u;out->lost_allowed=(mask>>11)&1u;
+            if(!out->new_allowed&&!test_interrupt(0x19,out->new_allowed))return 0;
+            if(!out->lost_allowed&&!test_interrupt(0xb,out->lost_allowed))return 0;
+        }
+    }
+    if(!out->forced_missing&&!out->new_allowed&&!(out->lost_allowed&&out->eluded)){
+        write<std::uint8_t>(actor,0x84e,1);out->deferred=1;return 1;
+    }
+    write<std::uint8_t>(actor,0x84e,0);
+    if(!grunt_enemy_choice_gate(actor,bytes,now,&gate,&out->gate))return 0;
+    if(out->gate.choose){
+        if(!grunt_best_enemy(actor,bytes,now,&b->best,&gate.relation,&b->cache,&out->selection))return 0;
+        out->selected=1;candidate=out->selection.selection.enemy;
+    }
+    if(candidate==current&&!out->forced_missing)return 1;
+    write(actor,0x988,read<unsigned>(actor,0x988)&~0x18000u);
+    if(current){
+        unsigned n=0;if(!gate.extent||!gate.extent(gate.context,current,&n)||n<0x90)return 0;
+        if(read<int>(current,0x8c)!=0&&!set_condition(0x1d,out->dead_condition))return 0;
+    }
+    auto enemy=b->enemy;enemy.entries=b->best.memory.entries;enemy.count=b->best.memory.count;enemy.conditions=b->schedule.conditions;
+    if(!set_enemy_impl(actor,bytes,candidate,true,now,&enemy,&out->assignment,true))return 0;
+    out->assigned=1;out->has_enemy=candidate!=nullptr;
+    if(had_flags){
+        const unsigned squad=read<unsigned>(actor,0x9c4);
+        if(squad){
+            if(!enemy.release_squad_slot||!enemy.release_squad_slot(enemy.context,squad,registry.Resolve(read<unsigned>(actor,0x8a0)),read<int>(actor,0x9cc)))return 0;
+            write(actor,0x9cc,-1);out->extra_squad_release=1;
+        }
+        write(actor,0x988,read<unsigned>(actor,0x988)&~0x20000u);
+    }
+    if(!candidate){
+        if(out->eluded){
+            if(!set_condition(0xb,out->lost_condition)||!b->lost_cue||!b->lost_cue(b->context,actor))return 0;
+            out->lost_cue=1;
+        }
+        if(special_flag){if(!b->fire_output||!b->fire_output(b->context,actor,0xb08))return 0;++out->outputs;}
+        if(!b->fire_output||!b->fire_output(b->context,actor,0xac0))return 0;++out->outputs;
+    }else{
+        bool special=false;
+        if(!gate.relation.special_target||!gate.relation.special_target(gate.relation.context,candidate,&special))return 0;
+        write(actor,0x988,read<unsigned>(actor,0x988)|(special?0x10000u:0x8000u));
+    }
+    out->new_flags=read<unsigned>(actor,0x988);return 1;
+}
+const ServerNpcGruntEnemySwitchApi switch_api{1,sizeof(ServerNpcGruntEnemySwitchApi),&grunt_enemy_switch};
 const ServerNpcGruntEnemyChoiceGateApi choice_gate_api{1,sizeof(ServerNpcGruntEnemyChoiceGateApi),&grunt_enemy_choice_gate};
 const ServerNpcGruntMemoryReportApi grunt_memory_report_api{1,sizeof(ServerNpcGruntMemoryReportApi),&grunt_memory_report};
 const ServerNpcGruntBestEnemyApi grunt_best_api{1,sizeof(ServerNpcGruntBestEnemyApi),&grunt_best_enemy};
@@ -1059,4 +1144,10 @@ SiN_GetServerNpcGruntMemoryReportApi(std::uint32_t version,std::uint32_t size) n
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEnemyChoiceGateApi* __cdecl
 SiN_GetServerNpcGruntEnemyChoiceGateApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEnemyChoiceGateApi)?&choice_gate_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEnemySwitchApi=_SiN_GetServerNpcGruntEnemySwitchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEnemySwitchApi* __cdecl
+SiN_GetServerNpcGruntEnemySwitchApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEnemySwitchApi)?&switch_api:nullptr;
 }
