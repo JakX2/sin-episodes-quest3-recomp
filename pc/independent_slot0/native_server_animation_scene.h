@@ -117,7 +117,7 @@ struct ServerNpcAnimationThinkBindings {
     void* context;
     // Resolve original NPC identity and condition 0x3c/1, activity +878.
     int (__cdecl *npc_state)(void*,void* actor,void** npc,unsigned* condition,int* activity) noexcept;
-    int (__cdecl *keepalive)(void*,void* npc,float duration) noexcept;
+    int (__cdecl *keepalive)(void*,void* npc,float duration) noexcept; // optional override; null writes native deadline
     int (__cdecl *interrupted)(void*,void* actor) noexcept; // optional warning
 };
 struct ServerNpcAnimationThinkApi {
@@ -125,4 +125,23 @@ struct ServerNpcAnimationThinkApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerNpcAnimationThinkBindings*) noexcept;
 };
 using GetServerNpcAnimationThinkApi=const ServerNpcAnimationThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_animation_gate_export[]="SiN_GetServerNpcAnimationGateApi";
+struct ServerNpcAnimationGateBindings {
+    void* context;
+    int (__cdecl *npc)(void*,void* actor,void** npc,unsigned* extent) noexcept;
+    int (__cdecl *condition)(void*,void* npc,int condition,int flag,unsigned*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *can_enter)(void*,void* npc,unsigned*) noexcept; // virtual +450
+    int (__cdecl *resolve)(void*,std::uint32_t handle,void**) noexcept;
+    int (__cdecl *release_current)(void*,void* npc) noexcept; // 2203f2b0
+    int (__cdecl *set_condition)(void*,void* npc,int condition) noexcept; // 2204fe40, return ignored
+};
+struct ServerNpcAnimationGateApi {
+    std::uint32_t version,size;
+    // Compatible with ServerAnimationSceneInitBindings.sequence_gate.
+    int (__cdecl *admit)(void* bindings,void* actor,unsigned*) noexcept;
+    // Original 22027e40, monotonic deadline at NPC+97c.
+    int (__cdecl *keepalive)(void* npc,unsigned,float now,float duration) noexcept;
+};
+using GetServerNpcAnimationGateApi=const ServerNpcAnimationGateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

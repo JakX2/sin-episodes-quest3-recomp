@@ -262,6 +262,12 @@ int main(int argc,char** argv){
         const auto* animationInit=getAnimationInit(1,sizeof(ft::ServerAnimationSceneInitApi));
         assert(animationInit&&!getAnimationInit(0,sizeof(ft::ServerAnimationSceneInitApi))&&!getAnimationInit(1,0));
         ft::test::check_animation_scene_init(*animationInit);
+        const auto getAnimationGate=reinterpret_cast<ft::GetServerNpcAnimationGateApi>(GetProcAddress(server,ft::server_npc_animation_gate_export));
+        assert(getAnimationGate&&!GetProcAddress(client,ft::server_npc_animation_gate_export));
+        const auto* animationGate=getAnimationGate(1,sizeof(ft::ServerNpcAnimationGateApi));
+        assert(animationGate&&!getAnimationGate(0,sizeof(ft::ServerNpcAnimationGateApi))&&!getAnimationGate(1,0));
+        ft::test::check_npc_animation_gate(*animationGate);
+        std::puts("PASS native NPC animation admission gate and monotonic keepalive deadline");
         std::puts("PASS native deferred gesture/sequence layer initialization");
         std::puts("PASS native choreography channel priority and active layer reorder");
         std::puts("PASS native gesture metadata lock marking and initial posture fade");

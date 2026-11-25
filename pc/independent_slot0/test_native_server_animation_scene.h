@@ -257,4 +257,47 @@ inline void check_animation_scene_init(const ServerAnimationSceneInitApi& api){
     assert(init(2)==1&&accepted&&get(f.record,0x10)==-1);
 }
 
+inline void check_npc_animation_gate(const ServerNpcAnimationGateApi& api){
+    struct Fixture {alignas(4) unsigned char npc[0x980]{},mask[0x2c]{};
+        unsigned condition=0,allow=1,conditions=0,reads=0,enters=0,resolves=0,releases=0,sets=0;
+        bool present=true,resolved=true;} f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto fl=[](const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    put(f.npc,0x970,0xffffffffu);
+    ServerNpcAnimationGateBindings b{};b.context=&f;
+    b.npc=[](void* p,void*,void** npc,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);*npc=f.present?f.npc:nullptr;*n=sizeof(f.npc);return 1;
+    };
+    b.condition=[](void* p,void*,int condition,int flag,unsigned* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(condition==0x3c&&flag==1);++f.conditions;*out=f.condition;return 1;
+    };
+    b.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(token==1);++f.reads;*out=f.mask;*n=sizeof(f.mask);return 1;
+    };
+    b.can_enter=[](void* p,void*,unsigned* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.enters;*out=f.allow;return 1;
+    };
+    b.resolve=[](void* p,std::uint32_t token,void** out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(token==8);++f.resolves;*out=f.resolved?f.npc:nullptr;return 1;
+    };
+    b.release_current=[](void* p,void*) noexcept -> int{++static_cast<Fixture*>(p)->releases;return 1;};
+    b.set_condition=[](void* p,void*,int condition) noexcept -> int{
+        assert(condition==0x3c);++static_cast<Fixture*>(p)->sets;return 1;
+    };
+    unsigned out=99;auto admit=[&](){return api.admit(&b,f.npc,&out);};
+    f.present=false;assert(admit()&&!out&&!f.conditions);
+    f.present=true;f.condition=1;assert(admit()&&out==1&&f.conditions==1&&!f.enters&&!f.sets);
+    f.condition=0;put(f.npc,0x798,1u);put(f.mask,0xc,0x01000000u);
+    assert(admit()&&!out&&f.reads==1&&!f.enters);
+    put(f.mask,0x28,1u);f.allow=0;assert(admit()&&!out&&f.enters==1&&!f.sets);
+    f.allow=1;assert(admit()&&out==1&&f.enters==2&&f.sets==1&&!f.resolves);
+    put(f.npc,0x970,8u);assert(admit()&&out==1&&f.resolves==1&&f.releases==1&&f.sets==2);
+    f.resolved=false;assert(admit()&&out==1&&f.resolves==2&&f.releases==1&&f.sets==3);
+    put(f.npc,0x798,0u);assert(admit()&&out==1&&f.sets==4&&f.reads==5);
+    put(f.npc,0x97c,10.f);assert(api.keepalive(f.npc,sizeof(f.npc),9,.2f)&&fl(f.npc,0x97c)==10.f);
+    assert(api.keepalive(f.npc,sizeof(f.npc),10,.2f)&&fl(f.npc,0x97c)==10.2f);
+    assert(api.keepalive(f.npc,sizeof(f.npc),10.1f,.2f)&&fl(f.npc,0x97c)==10.3f);
+    assert(!api.keepalive(f.npc,0x97c,20,.2f)&&fl(f.npc,0x97c)==10.3f);
+}
+
 }
