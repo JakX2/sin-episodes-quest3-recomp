@@ -1,0 +1,71 @@
+#include "native_server_grunt_animation.h"
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+#include <cassert>
+#include <cstring>
+#include <vector>
+#include <cstdio>
+using namespace sin_port::native_weapon_tables;
+struct F {
+    alignas(4) unsigned char actor[0xfcc]{},peer[0xc94]{},weapon[0x500]{};
+    void* peers[2]{actor,peer};
+    std::vector<int> trace;
+    bool has_weapon=true;
+    const ServerGruntAnimationApi* api{};
+    ServerGruntAnimationBindings b{};
+    ServerGruntAnimationResult last{};
+    unsigned delivered=0;
+    template<class T> void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
+    template<class T> T get(void* p,unsigned off){T v{};std::memcpy(&v,static_cast<unsigned char*>(p)+off,sizeof(v));return v;}
+    static F& self(void* p){return *static_cast<F*>(p);}
+};
+int main(int argc,char** argv){
+    assert(argc==3);auto client=LoadLibraryA(argv[1]),server=LoadLibraryA(argv[2]);assert(client&&server);
+    auto g=reinterpret_cast<GetServerGruntAnimationApi>(GetProcAddress(server,server_grunt_animation_export));
+    auto ge=reinterpret_cast<GetServerAnimationEventsApi>(GetProcAddress(server,server_animation_events_export));
+    assert(g&&ge&&!GetProcAddress(client,server_grunt_animation_export)&&!g(0,sizeof(ServerGruntAnimationApi))&&!g(1,0));
+    F f;f.api=g(1,sizeof(ServerGruntAnimationApi));auto* events=ge(1,sizeof(ServerAnimationEventsApi));assert(f.api&&events);
+    f.b.context=&f;f.b.begin_altfire=1101;f.b.altfire=1102;
+    f.b.debug=[](void* p,const char* s) noexcept {assert(!std::strcmp(s,"BLOCKING!\n"));F::self(p).trace.push_back(14);};
+    f.b.weapon=[](void* p,void* a,std::uint32_t handle,void** w) noexcept -> int {auto& f=F::self(p);assert(a==f.actor&&handle==0x1234);f.trace.push_back(100);*w=f.has_weapon?f.weapon:nullptr;return 1;};
+    f.b.weapon_mode=[](void* p,void* w,int a,int b) noexcept {auto& f=F::self(p);assert(w==f.weapon&&a==9&&b==0);f.trace.push_back(101);};
+    f.b.weapon_value=[](void* p,void* w,unsigned s) noexcept -> int {auto& f=F::self(p);assert(w==f.weapon&&(s==0x404||s==0x408));f.trace.push_back(s);return s==0x404?12:34;};
+    f.b.weapon_store=[](void* p,void* w,unsigned off,int v) noexcept {auto& f=F::self(p);assert(w==f.weapon);f.put(w,off,v);f.trace.push_back(off);};
+    f.b.clear_condition=[](void* p,void* a,int c) noexcept {auto& f=F::self(p);assert(a==f.actor);f.trace.push_back(c);};
+    f.b.weapon_event=[](void* p,void* w,int ev,void* a) noexcept {auto& f=F::self(p);assert(w==f.weapon&&a==f.actor&&ev==0xc1f&&f.get<float>(a,0xc90)==5.f);f.trace.push_back(ev);};
+    f.b.peers=[](void* p,void* a,std::uint32_t squad,void*** peers,unsigned* count) noexcept -> int {auto& f=F::self(p);assert(a==f.actor&&squad==0x8888);*peers=f.peers;*count=2;return 1;};
+    f.b.activity=[](void* p,void* a) noexcept -> int {auto& f=F::self(p);assert(a==f.actor);f.trace.push_back(200);return 44;};
+    f.b.activity_request=[](void* p,void* a,int act,int x,int y) noexcept {auto& f=F::self(p);assert(a==f.actor&&act==44&&x==0&&y==2);f.trace.push_back(201);};
+    f.b.parent=[](void* p,void* a,const ServerAnimationEvent* e) noexcept {auto& f=F::self(p);assert(a==f.actor);f.trace.push_back(e->event+10000);};
+    f.put(f.actor,0x78c,0x1234u);f.put(f.actor,0x9c4,0x8888u);f.put(f.actor,0xc90,5.f);f.put(f.peer,0xc90,20.f);f.put(f.actor,0xc38,3u);f.put(f.actor,0xfc8,99);
+    // Real reconstructed base animation iterator feeds the Grunt handler.
+    ServerStudioEvent records[4]{{.1f,0x14,0,"",0},{.2f,2,0,"",0},{.3f,1102,0x400,"",0},{.4f,8,0,"",0}};
+    ServerAnimationEventSequence seq{records,4,0,0};
+    struct C {F* f;ServerAnimationEventSequence* seq;} c{&f,&seq};
+    ServerAnimationEventBindings sb{&c,
+        [](void* p,void* a,int id,ServerAnimationEventSequence* out) noexcept -> int {auto& c=*static_cast<C*>(p);assert(a==c.f->actor&&id==7);*out=*c.seq;return 1;},
+        [](void*,void*,int,double* r) noexcept -> int {*r=1.;return 1;},
+        [](void*,std::uint32_t,void**,unsigned*) noexcept -> int {return 0;},
+        [](void* p,void* a,int layer,const ServerAnimationEvent* e) noexcept {auto& f=*static_cast<C*>(p)->f;assert(layer==-1&&a==f.actor&&e->source==f.actor);assert(f.api->handle(a,sizeof(f.actor),e,8,&f.b,&f.last)==1);++f.delivered;}
+    };
+    f.put(f.actor,0x3c0,1.f);f.put(f.actor,0x3ec,7);f.put(f.actor,0x3e8,.5f);
+    ServerAnimationEventResult er{};
+    assert(events->dispatch(f.actor,sizeof(f.actor),f.actor,8,&sb,&er)&&er.emitted==4&&f.delivered==4);
+    assert((f.trace==std::vector<int>{14,100,101,0x404,0x4ec,0x408,0x4f0,3,4,5,100,0xc1f}));
+    assert(f.get<std::uint8_t>(f.actor,0xc35)==1&&f.get<int>(f.actor,0xfc8)==8&&f.get<unsigned>(f.actor,0xc38)==2);
+    assert(f.get<float>(f.actor,0xc90)==18.f&&f.get<float>(f.peer,0xc90)==20.f&&f.get<int>(f.weapon,0x4ec)==12&&f.get<int>(f.weapon,0x4f0)==34);
+    auto run=[&](int id){ServerAnimationEvent e{id,"",0,8,0,f.actor};return f.api->handle(f.actor,sizeof(f.actor),&e,8,&f.b,&f.last);};
+    f.trace.clear();assert(run(1101)==1&&f.last.route==GruntAnimBeginAlt&&f.trace.empty()&&f.get<int>(f.actor,0xfc8)==8);
+    assert(run(3)==0&&f.last.route==GruntAnimUnrecovered&&f.trace.empty()&&f.get<int>(f.actor,0xfc8)==8);
+    assert(run(10)==1&&f.last.route==GruntAnimActivity&&(f.trace==std::vector<int>{200,201})&&f.get<int>(f.actor,0xfc8)==10);
+    f.trace.clear();assert(run(5)==1&&f.last.route==GruntAnimParent&&(f.trace==std::vector<int>{10005})&&f.get<int>(f.actor,0xfc8)==10);
+    f.trace.clear();f.has_weapon=false;
+    assert(run(2)==1&&(f.trace==std::vector<int>{100,3,4,5})&&f.get<int>(f.actor,0xfc8)==2);
+    f.trace.clear();assert(run(1102)==-1&&f.get<unsigned>(f.actor,0xc38)==2);
+    FreeLibrary(server);FreeLibrary(client);
+    std::puts("PASS native Grunt studio event routing and server event handoff");
+}
