@@ -1,0 +1,3 @@
+# Phase 986: directory-backed script-selected owned VCD playback
+
+Use actual loaded script actor speech, persistent directory metadata admission and owned NativeVcdRuntime parsing on the same two synthetic VCD files. Verify invalid runtime and missing named binding rejected before selection, no legacy parser callback, positive duration 4 and delay .5, nested scene precache and startup, cache buffer unlock poisoning, response/registry/cache retirement before owned graph removal, nested graph destruction and actor vector release. Host startup observer still injects synthetic stop records as in existing owned playback fixture; audio emission and timed event execution are not claimed here. Separate graph arenas and explicit allocator lifetime. CI pending.
