@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "native_server_npc_weapon_scene.h"
 #include "native_server_cached_facial_think.h"
+#include "native_npc_scene_playback.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_animation_scene_export[]="SiN_GetServerAnimationSceneApi";
 struct ServerAnimationSceneBindings {
@@ -19,6 +20,18 @@ struct ServerAnimationSceneApi {
     int (__cdecl *check)(const void* event,unsigned,unsigned*) noexcept;
 };
 using GetServerAnimationSceneApi=const ServerAnimationSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_animation_layer_owner_export[]="SiN_GetServerAnimationLayerOwnerApi";
+struct ServerAnimationLayerOwnerApi {
+    std::uint32_t version,size;
+    // Original 220f4e20 / 220f5120. Host supplies resolved sequence flags,
+    // current global time and raw PE32 vector allocation/storage only.
+    int (__cdecl *allocate)(void* actor,unsigned bytes,int sequence,int priority,float now,unsigned sequence_flags,
+        const ChoreographyVectorBindings*,int* layer) noexcept;
+    // Original 220f4060 and 220f3ff0; negative/inactive index is a no-op.
+    int (__cdecl *remove)(void* actor,unsigned bytes,int layer,float now,const ChoreographyVectorBindings*) noexcept;
+    int (__cdecl *blend_out)(void* actor,unsigned bytes,int layer,float duration,float delay,const ChoreographyVectorBindings*) noexcept;
+};
+using GetServerAnimationLayerOwnerApi=const ServerAnimationLayerOwnerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_animation_scene_frame_export[]="SiN_GetServerAnimationSceneFrameApi";
 struct ServerAnimationSceneFrameBindings {
     void* context;

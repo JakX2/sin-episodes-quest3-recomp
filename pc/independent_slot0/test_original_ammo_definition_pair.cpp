@@ -237,6 +237,11 @@ int main(int argc,char** argv){
         const auto* animationScene=getAnimationScene(1,sizeof(ft::ServerAnimationSceneApi));
         assert(animationScene&&!getAnimationScene(0,sizeof(ft::ServerAnimationSceneApi))&&!getAnimationScene(1,0));
         ft::test::check_animation_scene(*animationScene);
+        const auto getLayerOwner=reinterpret_cast<ft::GetServerAnimationLayerOwnerApi>(GetProcAddress(server,ft::server_animation_layer_owner_export));
+        assert(getLayerOwner&&!GetProcAddress(client,ft::server_animation_layer_owner_export));
+        const auto* layerOwner=getLayerOwner(1,sizeof(ft::ServerAnimationLayerOwnerApi));
+        assert(layerOwner&&!getLayerOwner(0,sizeof(ft::ServerAnimationLayerOwnerApi))&&!getLayerOwner(1,0));
+        ft::test::check_animation_layer_owner(*layerOwner);
         const auto getAnimationFrame=reinterpret_cast<ft::GetServerAnimationSceneFrameApi>(GetProcAddress(server,ft::server_animation_scene_frame_export));
         assert(getAnimationFrame&&!GetProcAddress(client,ft::server_animation_scene_frame_export));
         const auto* animationFrame=getAnimationFrame(1,sizeof(ft::ServerAnimationSceneFrameApi));
