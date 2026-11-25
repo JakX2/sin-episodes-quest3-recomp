@@ -300,4 +300,58 @@ inline void check_npc_animation_gate(const ServerNpcAnimationGateApi& api){
     assert(!api.keepalive(f.npc,0x97c,20,.2f)&&fl(f.npc,0x97c)==10.3f);
 }
 
+inline void check_target_scene(const ServerTargetSceneApi& api,const ServerNpcAnimationRecordApi& admission){
+    struct Fixture {alignas(4) unsigned char actor[0x980]{},event[0x3c0]{},record[0x40]{};
+        unsigned npc_calls{},resolves{},looks{},handles{};bool npc_present=true,live=true,second_stale=false;
+        float weight{},duration{};void* last=nullptr;} f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto word=[](const void* p,unsigned off){std::uint32_t v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    put(f.event,0,3u);put(f.event,0x184,0.f);put(f.event,0x188,2.f);
+    put(f.record,0x24,0xffffffffu);
+    ServerTargetSceneBindings b{};b.context=&f;
+    b.npc=[](void* p,void* actor,void** out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(actor==f.actor);++f.npc_calls;*out=f.npc_present?f.actor:nullptr;return 1;
+    };
+    b.resolve=[](void* p,std::uint32_t handle,void** out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(handle==17);++f.resolves;
+        *out=f.live&&!(f.second_stale&&f.resolves%2==0)?f.event:nullptr;return 1;
+    };
+    b.look=[](void* p,void* npc,void* target,float weight,float duration,int flags) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(npc==f.actor&&!flags);
+        ++f.looks;f.last=target;f.weight=weight;f.duration=duration;return 1;
+    };
+    unsigned out=99;
+    auto run=[&](){return api.look_at(f.actor,f.record,sizeof(f.record),f.event,sizeof(f.event),1,&b,&out);};
+    f.npc_present=false;assert(run()==1&&out==1&&!f.resolves&&!f.looks);
+    f.npc_present=true;assert(run()==1&&out==1&&!f.resolves&&!f.looks);
+    put(f.record,0x24,17u);f.live=false;assert(run()==1&&out==1&&f.resolves==1&&!f.looks);
+    f.live=true;f.resolves=0;assert(run()==1&&out==1&&f.resolves==2&&f.looks==1&&f.last==f.event&&f.weight==1&&f.duration==.2f);
+    f.second_stale=true;assert(run()==1&&out==1&&f.resolves==4&&f.looks==2&&!f.last);
+    // Real composed record adapter, invoked through its synchronous virtuals.
+    ServerNpcAnimationRecordBindings cfg{};auto& host=cfg.npc.facial.host;host.context=&f;
+    host.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);if(token!=1)return 0;*out=f.event;*n=sizeof(f.event);return 1;
+    };
+    host.grow=[](void*,void*,unsigned) noexcept -> int{return 0;};
+    host.handle=[](void* p,void* target,std::uint32_t* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(target==f.event);++f.handles;*out=17;return 1;
+    };
+    host.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{return 0;};
+    cfg.npc.facial.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0x980;return 1;};
+    cfg.npc.facial.now=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+    ActorEventRecordBindings records{};assert(admission.adapt(&cfg,&records));
+    put(f.record,0,1u);
+    auto begin=[&](void* target){return records.begin(records.context,f.actor,f.record,2,f.event,3,target,&out);};
+    assert(begin(nullptr)&&out==1&&word(f.record,0x24)==0xffffffffu&&!f.handles);
+    assert(begin(f.event)&&out==1&&word(f.record,0x24)==17&&f.handles==1);
+    assert(records.check(records.context,f.actor,f.record,1,2,f.event,&out)&&out==1);
+    assert(records.stop(records.context,f.actor,f.record,1,1,&out)&&out==1);
+    put(f.event,0,8u);f.record[0x28]=99;
+    assert(run()==0);
+    assert(begin(nullptr)&&out==0&&f.record[0x28]==99);
+    assert(begin(f.event)&&out==1&&!f.record[0x28]&&f.handles==1);
+    assert(records.check(records.context,f.actor,f.record,1,2,f.event,&out)&&out==1);
+    assert(records.stop(records.context,f.actor,f.record,1,1,&out)&&out==1);
+}
+
 }

@@ -267,6 +267,14 @@ int main(int argc,char** argv){
         const auto* animationGate=getAnimationGate(1,sizeof(ft::ServerNpcAnimationGateApi));
         assert(animationGate&&!getAnimationGate(0,sizeof(ft::ServerNpcAnimationGateApi))&&!getAnimationGate(1,0));
         ft::test::check_npc_animation_gate(*animationGate);
+        const auto getTargetScene=reinterpret_cast<ft::GetServerTargetSceneApi>(GetProcAddress(server,ft::server_target_scene_export));
+        const auto getTargetAdmission=reinterpret_cast<ft::GetServerNpcAnimationRecordApi>(GetProcAddress(server,ft::server_npc_animation_record_export));
+        assert(getTargetScene&&getTargetAdmission&&!GetProcAddress(client,ft::server_target_scene_export));
+        const auto* targetScene=getTargetScene(1,sizeof(ft::ServerTargetSceneApi));
+        const auto* targetAdmission=getTargetAdmission(1,sizeof(ft::ServerNpcAnimationRecordApi));
+        assert(targetScene&&targetAdmission&&!getTargetScene(0,sizeof(ft::ServerTargetSceneApi))&&!getTargetScene(1,0));
+        ft::test::check_target_scene(*targetScene,*targetAdmission);
+        std::puts("PASS native target scene admission, retirement and look-at request policy");
         std::puts("PASS native NPC animation admission gate and monotonic keepalive deadline");
         std::puts("PASS native deferred gesture/sequence layer initialization");
         std::puts("PASS native choreography channel priority and active layer reorder");

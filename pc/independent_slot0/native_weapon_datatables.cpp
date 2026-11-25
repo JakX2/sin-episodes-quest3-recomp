@@ -12184,6 +12184,32 @@ int __cdecl npc_animation_keepalive(void* npc,unsigned bytes,float now,float dur
 }
 const ServerNpcAnimationGateApi server_npc_animation_gate_api{version,sizeof(ServerNpcAnimationGateApi),
     &npc_animation_gate_admit,&npc_animation_keepalive};
+int __cdecl target_scene_look_at(void* actor,const void* record,unsigned rb,const void* event,unsigned eb,float time,
+    const ServerTargetSceneBindings* b,unsigned* out) noexcept {
+    if(rb<0x40||eb<0x3c0||!sin_independent::vgui_layout::Readable(record,0x40)||
+       !sin_independent::vgui_layout::Readable(event,0x3c0)||!hologram_writable(out,4))return -1;
+    if(hologram_read<unsigned>(event,0)!=3)return 0;
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->npc)return -1;
+    const auto h=*b;void* npc=nullptr;
+    if(!h.npc(h.context,actor,&npc))return -1;
+    *out=1;
+    if(!npc)return 1;
+    auto resolve=[&](void** target){
+        const auto handle=hologram_read<std::uint32_t>(record,0x24);
+        *target=nullptr;
+        return handle==0xffffffffu||(h.resolve&&h.resolve(h.context,handle,target));
+    };
+    void* target=nullptr;
+    if(!resolve(&target))return -1;
+    if(!target)return 1;
+    float weight=0;
+    if(!server_event_intensity(event,eb,time,h.context,h.storage,&weight))return -1;
+    // The retail function resolves the handle again after intensity.
+    // It calls the virtual even if the second lookup returns null.
+    if(!resolve(&target)||!h.look||!h.look(h.context,npc,target,weight,.2f,0))return -1;
+    return 1;
+}
+const ServerTargetSceneApi server_target_scene_api{version,sizeof(ServerTargetSceneApi),&target_scene_look_at};
 int animation_scene_tick(void* actor,unsigned bytes,void* record,void* event,unsigned eb,float time,float now,
     const ServerNpcAnimationThinkBindings* b,unsigned* out) noexcept {
     const auto& h=b->animation;
@@ -12311,7 +12337,22 @@ int __cdecl npc_animation_record_diagnostic(void* p,ActorEventDiagnostic d,std::
 }
 int __cdecl npc_animation_record_begin(void* p,void* actor,void* record,std::uint32_t parsed,void* event,std::uint32_t ca,void* target,unsigned* out) noexcept {
     if(!sin_independent::vgui_layout::Readable(event,4))return 0;
-    if(animation_scene_type(hologram_read<unsigned>(event,0)))
+    const auto type=hologram_read<unsigned>(event,0);
+    if(type==3||type==8){
+        if(!hologram_writable(record,0x40)||!hologram_writable(out,4))return 0;
+        if(type==3){
+            // Base begin 220f96db calls handle assignment a second time.
+            std::uint32_t handle=0xffffffffu;
+            if(target&&!npc_animation_record_handle(p,target,&handle))return 0;
+            hologram_write(record,0x24,handle);*out=1;
+        }else{
+            // Base begin 220f96a4 rejects null target, otherwise clears +28.
+            *out=target?1u:0u;
+            if(target)hologram_write(record,0x28,static_cast<unsigned char>(0));
+        }
+        return 1;
+    }
+    if(animation_scene_type(type))
         return animation_scene_begin(actor,record,0x40,event,0x3c0,ca,&npc_animation_config(p).animation,out)==1;
     return npc_scene_record_begin(npc_animation_base(p),actor,record,parsed,event,ca,target,out);
 }
@@ -12321,12 +12362,17 @@ int __cdecl npc_animation_record_stop(void* p,void* actor,void* record,int arg,i
     if(token){
         void* event=nullptr;unsigned n=0;
         if(!npc_animation_record_storage(p,token,&event,&n)||n<4||!sin_independent::vgui_layout::Readable(event,4))return 0;
-        if(animation_scene_type(hologram_read<unsigned>(event,0)))
+        const auto type=hologram_read<unsigned>(event,0);
+        if(type==3||type==8){if(!hologram_writable(out,4))return 0;*out=1;return 1;}
+        if(animation_scene_type(type))
             return animation_scene_stop(actor,record,0x40,event,n,arg,forced,&npc_animation_config(p).animation,out)==1;
     }
     return npc_scene_record_stop(npc_animation_base(p),actor,record,arg,forced,out);
 }
 int __cdecl npc_animation_record_check(void* p,void* actor,void* record,float time,std::uint32_t parsed,void* event,unsigned* out) noexcept {
+    if(!sin_independent::vgui_layout::Readable(event,4)||!hologram_writable(out,4))return 0;
+    const auto type=hologram_read<unsigned>(event,0);
+    if(type==3||type==8){*out=1;return 1;}
     const int result=animation_scene_check(event,0x3c0,out);
     if(result)return result==1;
     return npc_scene_record_check(npc_animation_base(p),actor,record,time,parsed,event,out);
@@ -14298,6 +14344,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerTargetSceneApi=_SiN_GetServerTargetSceneApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerTargetSceneApi* __cdecl
+SiN_GetServerTargetSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerTargetSceneApi)?&server_target_scene_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcAnimationGateApi=_SiN_GetServerNpcAnimationGateApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcAnimationGateApi* __cdecl

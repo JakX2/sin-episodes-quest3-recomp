@@ -144,4 +144,20 @@ struct ServerNpcAnimationGateApi {
     int (__cdecl *keepalive)(void* npc,unsigned,float now,float duration) noexcept;
 };
 using GetServerNpcAnimationGateApi=const ServerNpcAnimationGateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_target_scene_export[]="SiN_GetServerTargetSceneApi";
+struct ServerTargetSceneBindings {
+    void* context;
+    int (__cdecl *npc)(void*,void* actor,void** npc) noexcept;
+    int (__cdecl *resolve)(void*,std::uint32_t handle,void**) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *look)(void*,void* npc,void* target,float weight,float duration,int flags) noexcept;
+};
+struct ServerTargetSceneApi {
+    std::uint32_t version,size;
+    // Type3 update 220f7020; missing NPC/target is accepted, not a host error.
+    // Debug drawing after the look request is intentionally excluded.
+    int (__cdecl *look_at)(void* actor,const void* record,unsigned,const void* event,unsigned,float,
+        const ServerTargetSceneBindings*,unsigned*) noexcept;
+};
+using GetServerTargetSceneApi=const ServerTargetSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
