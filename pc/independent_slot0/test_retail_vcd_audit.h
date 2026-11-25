@@ -1686,7 +1686,7 @@ inline void check_parsed_npc_target_scene(VcdAuditArena& arena,const NativeVcdRu
 }
 
 inline void check_parsed_npc_movement_scene(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
-    const NativeSceneExecutionApi& execution,const ServerNpcMovementSceneApi& api){
+    const NativeSceneExecutionApi& execution,const ServerNpcMovementSceneApi& api,const NativeChoreographySectionApi& section){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -1697,6 +1697,7 @@ inline void check_parsed_npc_movement_scene(VcdAuditArena& arena,const NativeVcd
    time 0 4
    param "marker"
    param2 "Walk"
+   resumecondition
    distancetotarget 5
   }
  }
@@ -1705,7 +1706,7 @@ inline void check_parsed_npc_movement_scene(VcdAuditArena& arena,const NativeVcd
     struct Fixture {
         VcdAuditArena& arena;alignas(4) unsigned char scene[0x5ec]{},actor[0x1000]{},target[4]{};
         unsigned starts{},stops{},handles{},targets{},gates{},submits{},configs{},cancels{},moving{},goal{};
-        float distance=30;std::uint32_t root=0;
+        float distance=30;double travel=1;std::uint32_t root=0;
         explicit Fixture(VcdAuditArena& a):arena(a){}
         static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
         static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept{
@@ -1734,7 +1735,7 @@ inline void check_parsed_npc_movement_scene(VcdAuditArena& arena,const NativeVcd
     m.cancel_navigation=[](void* p,void*,int clear) noexcept -> int{
         auto& f=Fixture::self(p);assert(clear==1);++f.cancels;f.moving=f.goal=0;return 1;};
     m.has_goal=[](void* p,void*,unsigned* out) noexcept -> int{*out=Fixture::self(p).goal;return 1;};
-    m.travel_time=[](void*,void*,double* out) noexcept -> int{*out=1;return 1;};
+    m.travel_time=[](void* p,void*,double* out) noexcept -> int{*out=Fixture::self(p).travel;return 1;};
     ActorEventRecordBindings records{};assert(api.adapt(&cfg,&records));
     NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
     b.dispatch.context=&f;b.dispatch.records=&records;
@@ -1770,13 +1771,30 @@ inline void check_parsed_npc_movement_scene(VcdAuditArena& arena,const NativeVcd
     assert(Fixture::storage(&f,F::word(f.actor,0x5b8),&rows,&n)&&n>=0x40);
     auto* row=static_cast<unsigned char*>(rows);
     void* event=nullptr;assert(Fixture::storage(&f,F::word(row,0),&event,&n)&&n>=0x3c0);
+    void* root=nullptr;unsigned extent=0;
+    assert(arena.storage(&arena,f.root,&root,&extent)&&extent>=0x220&&F::word(root,0x5c)==1);
+    // Exercise original callback slot 12 through section readiness, not a hosted ready flag.
+    NativeChoreographyClockBindings tick=b.clock;tick.scene=f.scene;tick.scene_bytes=sizeof(f.scene);
+    tick.other_event=[](void*,std::uint32_t,unsigned,float,void*,void*) noexcept -> int{return 1;};
+    NativeChoreographyDispatchBindings dispatch=b.dispatch;
+    dispatch.scene=f.scene;dispatch.scene_bytes=sizeof(f.scene);dispatch.clock=&tick;dispatch.storage=&Fixture::storage;
+    NativeChoreographySectionBindings sb{};sb.context=&f;sb.scene_bytes=sizeof(f.scene);sb.clock=&tick;sb.dispatch=&dispatch;
+    unsigned ready=99;auto section_ready=[&](unsigned expected){
+        assert(section.ready(root,extent,&sb,&ready)==1&&ready==expected);
+    };
+    section_ready(0);
     unsigned accepted=99;assert(records.check(records.context,f.actor,row,.5f,f.root,event,&accepted)&&!accepted);
     assert(api.run(f.actor,sizeof(f.actor),10,&tb)&&f.submits==1&&f.configs==2&&row[0xc]&&row[0x28]&&!row[0x29]);
     assert(F::word(f.actor,0x8a8)==17&&VcdAuditArena::read_float(f.actor,0x97c)==12);
     assert(records.check(records.context,f.actor,row,2.f,f.root,event,&accepted)&&accepted);
+    f.travel=5;section_ready(0);
+    f.travel=3.5;section_ready(1); // estimate equals remaining scene duration
+    f.travel=0;section_ready(0);
+    f.travel=1;section_ready(1);
     f.distance=5;
     assert(api.run(f.actor,sizeof(f.actor),11,&tb)&&f.cancels==1&&row[0x29]&&VcdAuditArena::read_float(f.actor,0x97c)==13);
     assert(records.check(records.context,f.actor,row,3.f,f.root,event,&accepted)&&accepted);
+    section_ready(1); // navigator no longer has a goal; completed record is sufficient
     assert(simulate(4.5f)==1&&simulate(4.75f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());

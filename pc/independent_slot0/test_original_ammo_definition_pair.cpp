@@ -1195,7 +1195,7 @@ int main(int argc,char** argv){
         const auto* movement=getMovement(1,sizeof(tables::ServerNpcMovementSceneApi));
         assert(movement&&!getMovement(0,sizeof(tables::ServerNpcMovementSceneApi))&&!getMovement(1,0));
         tables::test::VcdAuditArena moveArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::check_parsed_npc_movement_scene(moveArena,*nativeVcdRuntime,*execution,*movement);
+        tables::test::check_parsed_npc_movement_scene(moveArena,*nativeVcdRuntime,*execution,*movement,*section);
 
     }
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){

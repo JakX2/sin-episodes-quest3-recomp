@@ -1,0 +1,3 @@
+# Phase 919: native scripted movement resume conditions
+
+Owner scenes.zip: 261 VCD files; 31 moveto declarations, 8 with resumecondition. Examples include warehouse office, intro checkpoint sequences and U4 lab Roddick office. Extend phase918 fixture with parsed resumecondition and exercise original-derived section readiness slot12 -> actor record lookup -> native moveto check. Missing goal uses record+29; positive travel estimate at or below remaining event time is ready even before arrival. Zero or excessive estimate blocks readiness. Arrival enables ready with no goal. Synthetic fixture, not retail campaign execution; CI pending. No production API or physics changes.
