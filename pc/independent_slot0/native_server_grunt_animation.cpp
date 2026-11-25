@@ -153,6 +153,27 @@ int __cdecl registered_handle(void* actor,unsigned bytes,const ServerAnimationEv
     auto bindings=*b;bindings.begin_altfire=ids->events[0];bindings.altfire=ids->events[1];
     return handle(actor,bytes,e,now,&bindings,out);
 }
+int __cdecl jetpack_translate(void* actor,unsigned bytes,int incoming,const ServerGruntRegistration* ids,const ServerJetpackActivityBindings* b,ServerJetpackActivityResult* out) noexcept {
+    if(!out)return 0;*out={};out->activity=incoming;
+    if(!actor||bytes<0x1028||!b||!b->attachment)return 0;
+    const auto handle=read<std::uint32_t>(actor,0x1024);
+    void* entity=nullptr;unsigned extent=0;
+    if(handle==0xffffffffu||!b->attachment(b->context,handle,&entity,&extent)||!entity||extent<0xc24)return 0;
+    const double x=read<float>(entity,0xc18),y=read<float>(entity,0xc1c),z=read<float>(entity,0xc20);
+    if(!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(z))return 0;
+    // Original 22364755 FSTP f32, 222680e0 FSQRT,
+    // 22364768 FSTP f32. Do not compare an unrounded double magnitude.
+    const float squared=static_cast<float>(x*x+y*y+z*z);
+    if(!std::isfinite(squared))return 0;
+    out->magnitude=static_cast<float>(std::sqrt(static_cast<double>(squared)));
+    if(incoming==1||incoming==7||incoming==16){
+        out->activity=out->magnitude>50.f?213:208;return 1;
+    }
+    if(incoming==66){out->activity=218;return 1;}
+    out->delegated=1;
+    return translate(actor,bytes,incoming,ids,&b->grunt,&out->activity);
+}
+const ServerJetpackActivityApi jetpack_api{1,sizeof(ServerJetpackActivityApi),&jetpack_translate};
 const ServerGruntRegistrationApi registration_api{1,sizeof(ServerGruntRegistrationApi),&register_grunt,&register_jetpack,&translate,&registered_handle};
 const ServerGruntAnimationApi api{1,sizeof(ServerGruntAnimationApi),&handle};
 }
@@ -169,4 +190,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGru
 SiN_GetServerGruntRegistrationApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerGruntRegistrationApi)?&registration_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerJetpackActivityApi=_SiN_GetServerJetpackActivityApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJetpackActivityApi* __cdecl
+SiN_GetServerJetpackActivityApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerJetpackActivityApi)?&jetpack_api:nullptr;
 }
