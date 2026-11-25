@@ -22,4 +22,11 @@ struct ServerNpcBehaviorSelectionApi {
     int (__cdecl *schedule_is)(void*,unsigned,int,bool,const ServerNpcScheduleBindings*,unsigned*) noexcept;
 };
 using GetServerNpcBehaviorSelectionApi=const ServerNpcBehaviorSelectionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_schedule_namespace_export[]="SiN_GetServerNpcScheduleNamespaceApi";
+struct ServerNpcScheduleNamespaceApi {
+    std::uint32_t version,size;
+    int (__cdecl *to_global)(void*,int,const ServerNpcConditionMapBindings*,int*) noexcept;
+    int (__cdecl *to_local)(void*,int,const ServerNpcConditionMapBindings*,int*) noexcept;
+};
+using GetServerNpcScheduleNamespaceApi=const ServerNpcScheduleNamespaceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
