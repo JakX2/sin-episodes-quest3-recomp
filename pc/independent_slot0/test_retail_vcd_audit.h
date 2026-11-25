@@ -689,7 +689,7 @@ inline void check_native_talk_deadline_runtime(VcdAuditArena& a,const TalkDeadli
 }
 
 inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const NativeChoreographyClockApi& clock,const ServerFacialRecordApi* retail=nullptr,const SceneSpeechActorNoteApi* actor_note=nullptr,const SceneSpeechActorSinkApi* actor_sink=nullptr,const ResponseHistoryTreeApi* history_tree=nullptr,
-    const ResponseHistoryManagedApi* managed_history=nullptr,TalkManagerFixture* manager=nullptr){
+    const ResponseHistoryManagedApi* managed_history=nullptr,TalkManagerFixture* manager=nullptr,const TalkDeadlineRuntimeApi* deadline_runtime=nullptr){
     using F=ScenePlaybackFixture;
     const char data[]=R"VCD(actor Jessica
 {
@@ -709,14 +709,15 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     struct Fixture {
         VcdAuditArena& arena;
         alignas(4) unsigned char scene[0x5ec]{},actor[0x1458]{},exp[0x7c]{},hello[0x1c]{};
-        TalkManagerFixture* manager=nullptr;
+        TalkManagerFixture* manager=nullptr;bool native_deadlines=false;float now=10.f;
         int player=0,filter=0;
         unsigned opened=0,closed=0,notified=0,emitted=0,registered=0,preferences=0,sent=0,begun=0,stopped=0,starts=0,stops=0;
         std::uint32_t root=0,actorword=0;
         void* event=nullptr;bool retail=false,native_note=false,native_sink=false,native_tree=false,hello_present=false;
         explicit Fixture(VcdAuditArena& a):arena(a){}
         static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
-    } f(arena);f.retail=retail!=nullptr;f.native_note=actor_note!=nullptr;f.native_sink=actor_sink!=nullptr;f.native_tree=history_tree!=nullptr;f.manager=manager;
+    } f(arena);f.retail=retail!=nullptr;f.native_note=actor_note!=nullptr;f.native_sink=actor_sink!=nullptr;f.native_tree=history_tree!=nullptr;f.manager=manager;f.native_deadlines=deadline_runtime!=nullptr;
+    assert(!deadline_runtime||managed_history);
     assert(!managed_history||(history_tree&&actor_sink&&actor_note&&manager));
     auto raw=arena.runtime();
     F::put(f.scene,0x414,F::ptr(f.scene));F::fl(f.scene,0x564,.25f);
@@ -745,7 +746,7 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     e.close_filter=[](void* p,void* filter) noexcept -> int{
         auto& f=Fixture::self(p);assert(filter==&f.filter);++f.closed;return 1;
     };
-    e.clock=[](void*,float* out) noexcept -> int{*out=10.f;return 1;};
+    e.clock=[](void* p,float* out) noexcept -> int{*out=Fixture::self(p).now;return 1;};
     e.recipient_count=[](void* p,void* filter,int* out) noexcept -> int{
         assert(filter==&Fixture::self(p).filter);*out=1;return 1;
     };
@@ -763,7 +764,8 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
             assert(F::word(f.exp,0x24)==1&&f.arena.storage(&f.arena,F::word(f.exp,0x14),&row,&bytes)&&bytes>=28);
             assert(VcdAuditArena::read_float(row,0x14)==10.f&&F::word(row,0x18)==0);
         }else if(f.native_sink)assert(f.hello_present&&VcdAuditArena::read_float(f.hello,0x14)==10.f);
-        if(f.manager)assert(f.manager->creations==1&&VcdAuditArena::read_float(f.manager->object,0x394)==17.f);
+        if(f.manager){assert(f.manager->creations==1&&VcdAuditArena::read_float(f.manager->object,0x394)==17.f);
+            if(f.native_deadlines)assert(f.manager->object[0x3b1]==48&&f.manager->inserts==0);}
         ++f.emitted;return 1;
     };
     e.caption_register=[](void* p,std::uint32_t crc,const char* token) noexcept -> int{
@@ -817,7 +819,7 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     prep.classify=[](void*,void*,int,unsigned*) noexcept -> int{assert(false);return 0;};
     prep.clock=e.clock;
     prep.handle=retail?cfg.host.handle:rec.handle;
-    SceneSpeechActorNoteBindings note{};SceneSpeechPreparationBindings native_prep{};SceneSpeechActorSinkBindings sink{};ResponseHistoryTreeBindings history{};ResponseHistoryManagedBindings managed{};
+    SceneSpeechActorNoteBindings note{};SceneSpeechPreparationBindings native_prep{};SceneSpeechActorSinkBindings sink{};ResponseHistoryTreeBindings history{};ResponseHistoryManagedBindings managed{};TalkDeadlineRuntimeBindings deadlines{};
     if(actor_note){
         F::put(f.actor,0xffc,managed_history?F::ptr(f.exp):77u);
         note.preparation=prep;note.preparation.actor_notify=nullptr;note.context=&f;
@@ -872,7 +874,8 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
                     managed.manager.session=&manager->session;managed.manager.manager=manager->b;
                     auto& cooldown=managed.manager.cooldown;cooldown.context=&f;cooldown.clock=e.clock;
                     cooldown.random=[](void*,float lo,float hi,float* out) noexcept -> int{
-                        assert(lo==5&&hi==10);*out=7;return 1;};
+                        if(lo==5&&hi==10){*out=7;return 1;}
+                        assert(lo==15&&hi==15);*out=15;return 1;};
                     cooldown.concept_deadline=[](void*,const char*,float**) noexcept -> int{assert(false);return 0;};
                     cooldown.cooldown_disabled=[](void*,unsigned* out) noexcept -> int{*out=0;return 1;};
                     cooldown.propagate=[](void* p,void* actor,const char* name) noexcept -> int{
@@ -880,6 +883,17 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
                         void* row=nullptr;unsigned bytes=0;
                         assert(f.arena.storage(&f.arena,F::word(f.exp,0x14),&row,&bytes)&&bytes>=28);
                         assert(VcdAuditArena::read_float(row,0x14)==10.f);++f.notified;return 1;};
+                    if(deadline_runtime){
+                        deadlines.tree.memory=arena.vector_bindings;deadlines.tree.session=&manager->session;
+                        deadlines.tree.context=const_cast<TalkCatalogApi*>(&manager->catalog);
+                        deadlines.tree.intern=[](void* p,const char* key,const char** out) noexcept -> int{
+                            const auto* d=static_cast<const TalkCatalogApi*>(p)->lookup(key);if(!d)return 0;*out=d->name;return 1;};
+                        deadlines.release=&VcdAuditArena::release;deadlines.host=managed.manager;
+                        deadlines.host.manager.insert_deadline=nullptr;deadlines.host.manager.free_tree=nullptr;
+                        deadlines.host.cooldown.concept_deadline=nullptr;
+                        assert(deadline_runtime->adapt(&deadlines,&managed.manager));
+                        manager->b=managed.manager.manager;
+                    }
                     assert(managed_history->adapt(&managed,&sink.history));
                 }else assert(history_tree->adapt(&history,&sink.history));
             }
@@ -911,7 +925,20 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     F::fl(f.scene,0x3dc,2.5f);
     assert(clock.simulate(root,extent,2.5f,&tick)==1&&f.stopped==1&&f.stops==1&&!F::word(f.actor,0x5c4));
     assert(!static_cast<unsigned char*>(f.event)[0x328]);
-    if(manager)assert(manager->creations==1&&manager->inserts==48&&VcdAuditArena::read_float(manager->object,0x394)==17.f);
+    if(manager)assert(manager->creations==1&&manager->inserts==(deadline_runtime?0u:48u)&&VcdAuditArena::read_float(manager->object,0x394)==17.f);
+    if(deadline_runtime){
+        // After the scene, a second concept shares the very same live manager.
+        assert(manager->object[0x3b1]==48);
+        assert(sink.history.notify(sink.history.context,f.exp,"TLK_PLPUSH"));
+        float* push=nullptr;
+        auto& cooldown=managed.manager.cooldown;
+        assert(cooldown.concept_deadline(cooldown.context,"tlk_plpush",&push)&&push&&*push==25.f);
+        unsigned ready=99;
+        assert(manager->catalog.concept_ready(&cooldown,"TLK_PLPUSH",&ready)==1&&!ready);
+        f.now=25;
+        assert(manager->catalog.concept_ready(&cooldown,"TLK_PLPUSH",&ready)==1&&ready);
+        assert(manager->api.destroy(&manager->session,&manager->control,&manager->tables,&manager->b)==1);
+    }
     if(history_tree){
         int index=-1;
         assert(sink.history.lookup(sink.history.context,f.exp,"tlk_hello",&index)&&index==0);
@@ -922,7 +949,7 @@ inline void check_vcd_clock_speech(VcdAuditArena& arena,const NativeVcdRuntimeAp
     }
     assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
-    std::puts(managed_history?"PASS parsed Jessica speech drives native history and shared ally cooldown":history_tree?"PASS parsed Jessica speech with native indexed concept history and pooled symbols":actor_sink?"PASS parsed Jessica native speech history seed, expeditor timing, semaphore, captions and record retirement":actor_note?"PASS parsed speech native actor expeditor note, shared semaphore, caption and record lifecycle":retail?"PASS parsed speech native record admission/check/stop and forced sound effect":"PASS parsed VCD clock -> native speech, caption and actor record lifecycle");
+    std::puts(deadline_runtime?"PASS parsed Jessica speech and subsequent concept share native 48-row deadline manager":managed_history?"PASS parsed Jessica speech drives native history and shared ally cooldown":history_tree?"PASS parsed Jessica speech with native indexed concept history and pooled symbols":actor_sink?"PASS parsed Jessica native speech history seed, expeditor timing, semaphore, captions and record retirement":actor_note?"PASS parsed speech native actor expeditor note, shared semaphore, caption and record lifecycle":retail?"PASS parsed speech native record admission/check/stop and forced sound effect":"PASS parsed VCD clock -> native speech, caption and actor record lifecycle");
 }
 inline void check_native_choreography_dispatch(const NativeChoreographyDispatchApi& api){
     using F=ScenePlaybackFixture;
