@@ -7596,6 +7596,104 @@ int __cdecl response_history_managed_adapt(const ResponseHistoryManagedBindings*
 }
 const ResponseHistoryManagedApi response_history_managed_api{version,sizeof(ResponseHistoryManagedApi),&response_history_managed_adapt};
 
+
+using TalkDeadlineIndex=sin_port::choreography_index::Tree<std::uint8_t,12>;
+bool talk_deadline_text(std::uint32_t word,char (&out)[128]) noexcept {
+    if(!word){out[0]=0;return true;}
+    return prop_key_read(reinterpret_cast<const char*>(static_cast<std::uintptr_t>(word)),out);
+}
+int talk_deadline_compare(const char* a,const char* b) noexcept {
+    for(;;++a,++b){
+        const auto x=talk_fold(static_cast<unsigned char>(*a)),y=talk_fold(static_cast<unsigned char>(*b));
+        if(x!=y)return x<y?-1:1;
+        if(!x)return 0;
+    }
+}
+bool talk_deadline_read(void* object,const TalkDeadlineTreeBindings& b,TalkDeadlineIndex& t) noexcept {
+    if(!hologram_writable(object,0x1c)||!b.memory.storage)return false;
+    const unsigned high=hologram_read<std::uint8_t>(object,0x13),live=hologram_read<std::uint8_t>(object,0x11),
+        cap=hologram_read<unsigned>(object,8);
+    // Original sign-extends indices; do not permit signed-byte overflow.
+    if(high>127||high>cap||cap>255||live>high)return false;
+    void* rows=nullptr;unsigned n=0;const auto word=hologram_read<std::uint32_t>(object,4);
+    if(cap&&(!word||!b.memory.storage(b.memory.context,word,&rows,&n)||n<cap*12||!hologram_writable(rows,cap*12)))return false;
+    t={static_cast<unsigned char*>(rows),high,hologram_read<std::uint8_t>(object,0x10)};
+    unsigned occupied=0;
+    char keys[127][128]{};
+    for(unsigned i=0;i<high;++i){
+        if(t.get(static_cast<std::uint8_t>(i),0)==i)continue;
+        if(!talk_deadline_text(hologram_read<std::uint32_t>(rows,i*12+4),keys[i]))return false;
+        ++occupied;
+    }
+    if(occupied!=live)return false;
+    // Rotations can place equal keys on either side; validate nondecreasing order.
+    if(!t.valid(live,[&](std::uint8_t i,std::uint8_t j){return talk_deadline_compare(keys[i],keys[j])<=0;}))return false;
+    unsigned free_count=0;
+    for(auto f=hologram_read<std::uint8_t>(object,0x12);f!=TalkDeadlineIndex::nil;f=t.get(f,1)){
+        if(!t.index(f)||t.get(f,0)!=f||++free_count>high-live)return false;
+    }
+    return free_count==high-live;
+}
+int __cdecl talk_deadline_insert(void* p,void* object,const char* name,float initial) noexcept {
+    const auto* b=static_cast<const TalkDeadlineTreeBindings*>(p);
+    if(!b||!b->intern||!b->memory.resize||!name)return 0;
+    TalkDeadlineIndex t{};char key[128]{};
+    if(!prop_key_read(name,key)||!talk_deadline_read(object,*b,t))return 0;
+    const char* pooled=nullptr;
+    if(!b->intern(b->context,name,&pooled))return 0;
+    char canonical[128]{};
+    if(!talk_deadline_text(scene_word(pooled),canonical)||talk_deadline_compare(key,canonical)!=0)return 0;
+    auto parent=TalkDeadlineIndex::nil;unsigned side=0;
+    for(auto i=t.root;i!=TalkDeadlineIndex::nil;i=t.get(i,side)){
+        char existing[128]{};
+        if(!talk_deadline_text(hologram_read<std::uint32_t>(t.rows,i*12+4),existing))return 0;
+        parent=i;side=talk_deadline_compare(key,existing)<0?0u:1u; // equal goes right
+    }
+    const unsigned high=t.count;const auto live=hologram_read<std::uint8_t>(object,0x11);
+    auto slot=hologram_read<std::uint8_t>(object,0x12);
+    if(slot==TalkDeadlineIndex::nil){
+        if(high>=127)return 0;
+        const auto cap=hologram_read<unsigned>(object,8);
+        if(high==cap){
+            const int step=hologram_read<int>(object,0xc);
+            const unsigned next=cap?(step>0?cap+static_cast<unsigned>(step):cap*2):3u;
+            if(step<0||next<=cap||next>255)return 0;
+            void* rows=nullptr;unsigned n=0;
+            if(!b->memory.resize(b->memory.context,hologram_read<std::uint32_t>(object,4),next*12,&rows,&n))return 0;
+            hologram_write(object,4,scene_word(rows));hologram_write(object,8,next);
+            if(n<next*12||!hologram_writable(rows,next*12))return 0;
+            t.rows=static_cast<unsigned char*>(rows);
+        }
+        slot=static_cast<std::uint8_t>(high);t.count=high+1;
+        hologram_write(object,0x13,static_cast<std::uint8_t>(high+1));
+    }else hologram_write(object,0x12,t.get(slot,1));
+    t.link(slot,parent,side);
+    hologram_write(t.rows,slot*12+4,scene_word(pooled));
+    hologram_write(t.rows,slot*12+8,initial);
+    hologram_write(object,0x10,t.root);hologram_write(object,0x11,static_cast<std::uint8_t>(live+1));
+    hologram_write(object,0x14,hologram_read<std::uint32_t>(object,4));
+    return 1;
+}
+int __cdecl talk_deadline_find(void* p,const char* name,float** out) noexcept {
+    const auto* b=static_cast<const TalkDeadlineTreeBindings*>(p);
+    if(!b||!b->session||!sin_independent::vgui_layout::Readable(b->session,sizeof(*b->session))||
+       b->session->blocked||!talk_manager_control(b->session->instance,TalkManagerStage::Live)||
+       !hologram_writable(out,sizeof(*out)))return 0;
+    auto* object=static_cast<unsigned char*>(b->session->instance->object)+0x3a0;
+    TalkDeadlineIndex t{};char key[128]{};
+    if((name&&!prop_key_read(name,key))||!talk_deadline_read(object,*b,t))return 0;
+    unsigned side=0;
+    for(auto i=t.root;i!=TalkDeadlineIndex::nil;i=t.get(i,side)){
+        char existing[128]{};
+        if(!talk_deadline_text(hologram_read<std::uint32_t>(t.rows,i*12+4),existing))return 0;
+        const int c=talk_deadline_compare(key,existing);
+        if(!c){*out=reinterpret_cast<float*>(t.rows+i*12+8);return 1;}
+        side=c<0?0u:1u;
+    }
+    *out=nullptr;return 1;
+}
+const TalkDeadlineTreeApi talk_deadline_tree_api{version,sizeof(TalkDeadlineTreeApi),&talk_deadline_insert,&talk_deadline_find};
+
 int speech_execute_impl(void* scene,unsigned bytes,void* actor,unsigned actor_bytes,std::uint32_t parsed,void* event,unsigned extent,int level,
     const SceneSpeechExecutionBindings* b,const SceneSpeechPreparationBindings* preparation) noexcept {
     if(!scene||bytes<0x549||!sin_independent::vgui_layout::Readable(scene,0x549)||!b)return 0;
@@ -15605,6 +15703,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetTalkDeadlineTreeApi=_SiN_GetTalkDeadlineTreeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::TalkDeadlineTreeApi* __cdecl
+SiN_GetTalkDeadlineTreeApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(TalkDeadlineTreeApi)?&talk_deadline_tree_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseHistoryManagedApi=_SiN_GetResponseHistoryManagedApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseHistoryManagedApi* __cdecl

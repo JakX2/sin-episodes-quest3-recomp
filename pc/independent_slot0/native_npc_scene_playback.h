@@ -1020,6 +1020,25 @@ struct ResponseHistoryManagedApi {
     int (__cdecl *adapt)(const ResponseHistoryManagedBindings*,ResponseHistoryBindings*) noexcept;
 };
 using GetResponseHistoryManagedApi=const ResponseHistoryManagedApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char talk_deadline_tree_export[]="SiN_GetTalkDeadlineTreeApi";
+struct TalkDeadlineTreeBindings {
+    ChoreographyVectorBindings memory;
+    TalkManagerSession* session;
+    void* context;
+    // Original 221f3de0 global pooled string service. Return a stable PE32
+    // C string (null for empty); lifetime covers the manager's entire tree.
+    int (__cdecl *intern)(void*,const char*,const char**) noexcept;
+};
+struct TalkDeadlineTreeApi {
+    std::uint32_t version,size;
+    // Callback-compatible with TalkManagerBindings.insert_deadline.
+    // Original population inserts even duplicate keys (all 48 visits).
+    int (__cdecl *insert)(void*,void* tree,const char*,float) noexcept;
+    // Callback-compatible with TalkCooldownBindings.concept_deadline.
+    // Context points at a live TalkDeadlineTreeBindings, caller serializes.
+    int (__cdecl *deadline)(void*,const char*,float**) noexcept;
+};
+using GetTalkDeadlineTreeApi=const TalkDeadlineTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char owned_choreography_export[]="SiN_GetOwnedChoreographyApi";
 struct OwnedChoreographyBindings {
     ChoreographyDestructionBindings destruction;
