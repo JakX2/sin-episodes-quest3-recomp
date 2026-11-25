@@ -1,0 +1,2 @@
+# Phase 1145: repair combat-range fixture argument omissions
+Phase1142 Windows MSVC C2198 errors on seven crange->gather calls. Public signature includes actor, bytes, target, time, bindings, result; fixture omitted target between bytes and time. Supply f.enemy on all seven calls, preserving asserted policy and production ABI. Later combat tail already supplies target. Full stacked Windows regressions pending.
