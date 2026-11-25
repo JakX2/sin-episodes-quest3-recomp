@@ -237,6 +237,12 @@ int main(int argc,char** argv){
         const auto* animationScene=getAnimationScene(1,sizeof(ft::ServerAnimationSceneApi));
         assert(animationScene&&!getAnimationScene(0,sizeof(ft::ServerAnimationSceneApi))&&!getAnimationScene(1,0));
         ft::test::check_animation_scene(*animationScene);
+        const auto getAnimationFrame=reinterpret_cast<ft::GetServerAnimationSceneFrameApi>(GetProcAddress(server,ft::server_animation_scene_frame_export));
+        assert(getAnimationFrame&&!GetProcAddress(client,ft::server_animation_scene_frame_export));
+        const auto* animationFrame=getAnimationFrame(1,sizeof(ft::ServerAnimationSceneFrameApi));
+        assert(animationFrame&&!getAnimationFrame(0,sizeof(ft::ServerAnimationSceneFrameApi))&&!getAnimationFrame(1,0));
+        ft::test::check_animation_scene_frame(*animationFrame);
+        std::puts("PASS native gesture and sequence post-init numerical layer frame");
         std::puts("PASS native gesture and sequence admission and layer retirement policy");
         std::puts("PASS native NPC holster/unholster scene command admission and layer completion");
         std::puts("PASS native facial event record admission and lifecycle");

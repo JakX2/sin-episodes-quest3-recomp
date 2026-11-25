@@ -11792,6 +11792,83 @@ int __cdecl animation_scene_check(const void* event,unsigned eb,unsigned* out) n
     *out=1;return 1;
 }
 const ServerAnimationSceneApi server_animation_scene_api{version,sizeof(ServerAnimationSceneApi),&animation_scene_begin,&animation_scene_stop,&animation_scene_check};
+int animation_scene_layer(void* actor,unsigned bytes,int layer,const ServerAnimationSceneFrameBindings& h,void*& row) noexcept {
+    row=nullptr;
+    if(bytes<0x4a4||!sin_independent::vgui_layout::Readable(actor,0x4a4))return 0;
+    const int count=hologram_read<int>(actor,0x4a0);
+    if(count<0||count>4096)return 0;
+    if(layer<0||layer>=count)return 1;
+    const auto token=hologram_read<std::uint32_t>(actor,0x494);
+    void* rows=nullptr;unsigned n=0;
+    if(!h.storage||!token||!h.storage(h.context,token,&rows,&n)||n<static_cast<unsigned>(count)*0x40||
+       !hologram_writable(rows,static_cast<unsigned>(count)*0x40))return 0;
+    auto* selected=static_cast<unsigned char*>(rows)+layer*0x40;
+    if(selected[0]&1)row=selected;
+    return 1;
+}
+float animation_scene_unit(double v) noexcept {
+    return static_cast<float>(v<0?0:v>1?1:v);
+}
+void animation_scene_cycle(void* row,float cycle,float now) noexcept {
+    if(!row)return;
+    // 220f3c00: looping byte +5 bypasses clamping.
+    if(!hologram_read<unsigned char>(row,5))cycle=animation_scene_unit(cycle);
+    hologram_write(row,0xc,cycle);hologram_write(row,0x3c,now);
+}
+void animation_scene_weight(void* row,float weight,float now) noexcept {
+    if(!row)return;
+    hologram_write(row,0x18,animation_scene_unit(weight));hologram_write(row,0x3c,now);
+}
+int __cdecl animation_scene_frame(void* actor,unsigned bytes,void* record,unsigned rb,const void* event,unsigned eb,
+    const ServerAnimationSceneFrameInput* input,const ServerAnimationSceneFrameBindings* b,unsigned* out) noexcept {
+    if(!npc_weapon_scene_record(record,rb,event,eb)||!hologram_writable(record,0x40)||!hologram_writable(out,4))return -1;
+    const auto type=hologram_read<unsigned>(event,0);
+    if(!animation_scene_type(type))return 0;
+    const int layer=hologram_read<int>(record,0x10);
+    // Deferred initialization must run before this API. Other negative
+    // layer results are accepted no-ops in the original post-init branches.
+    if(layer==-2)return -1;
+    if(layer<0){*out=1;return 1;}
+    if(!input||!b||!sin_independent::vgui_layout::Readable(input,sizeof(*input))||
+       !sin_independent::vgui_layout::Readable(b,sizeof(*b)))return -1;
+    const auto in=*input;const auto h=*b;
+    if(!std::isfinite(in.scene_time)||!std::isfinite(in.now)||!std::isfinite(in.intensity))return -1;
+    void* row=nullptr;
+    if(!animation_scene_layer(actor,bytes,layer,h,row))return -1;
+    const float start=hologram_read<float>(event,0x184);
+    if(!std::isfinite(start))return -1;
+    const double elapsed=static_cast<double>(in.scene_time)-start;
+    float fade=hologram_read<float>(record,0x20);
+    if(!std::isfinite(fade))return -1;
+    float cycle=0;
+    if(type==6){
+        const float end=hologram_read<float>(event,0x188);
+        const float duration=static_cast<float>(static_cast<double>(end)-start);
+        if(end==-1.f||!std::isfinite(duration)||duration<=0||!h.gesture_cycle)return -1;
+        const float fraction=static_cast<float>(elapsed/duration);
+        if(!std::isfinite(fraction)||!h.gesture_cycle(h.context,event,fraction,&cycle)||!std::isfinite(cycle))return -1;
+        // Original gesture cycle setter precedes the weight setter.
+        animation_scene_cycle(row,cycle,in.now);
+    }else if(!(in.sequence_flags&1)){
+        const float elapsed32=static_cast<float>(elapsed);
+        if(!std::isfinite(in.sequence_duration)||in.sequence_duration<=0||!std::isfinite(elapsed32))return -1;
+        cycle=animation_scene_unit(static_cast<double>(elapsed32)/in.sequence_duration);
+    }
+    // Gesture only suppresses when metadata set record+1c; sequence always
+    // updates suppression fade. Original uses binary64 0.2, then stores f32.
+    if(type==7||hologram_read<unsigned char>(record,0x1c)){
+        const double delta=static_cast<double>(fade)+(in.suppressed?-.2:.2);
+        fade=static_cast<float>(in.suppressed?(delta>0?delta:0):(delta<1?delta:1));
+        hologram_write(record,0x20,fade);
+    }
+    const double f=fade;
+    const float intensity=type==7&&in.first_sequence_frame?0.f:in.intensity;
+    const float weight=static_cast<float>((3*f*f-2*f*f*f)*intensity);
+    animation_scene_weight(row,weight,in.now);
+    if(type==7&&!(in.sequence_flags&1))animation_scene_cycle(row,cycle,in.now);
+    *out=1;return 1;
+}
+const ServerAnimationSceneFrameApi server_animation_scene_frame_api{version,sizeof(ServerAnimationSceneFrameApi),&animation_scene_frame};
 
 ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
     return *static_cast<ServerNpcSceneRecordBindings*>(p);
@@ -13818,6 +13895,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcSceneRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcSceneRecordApi)?&server_npc_scene_record_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerAnimationSceneFrameApi=_SiN_GetServerAnimationSceneFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationSceneFrameApi* __cdecl
+SiN_GetServerAnimationSceneFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneFrameApi)?&server_animation_scene_frame_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationSceneApi=_SiN_GetServerAnimationSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationSceneApi* __cdecl
