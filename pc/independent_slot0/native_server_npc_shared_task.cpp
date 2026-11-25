@@ -47,6 +47,8 @@ int __cdecl supports(int id,bool running) noexcept{
 int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
+    // The existing class schedule resolver has a larger actor extent.
+    if(!running&&t->id==87&&n<0xc34)return 0;
     out->task=t->id;
     // 2202d930 / 2202daf0 route task67 directly to +780 / +784.
     if(t->id==67){out->special_called=1;return b->special67&&b->special67(b->context,a,t,running);}

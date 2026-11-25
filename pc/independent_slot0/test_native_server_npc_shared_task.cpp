@@ -11,7 +11,7 @@
 #include <vector>
 using namespace sin_port::native_weapon_tables;
 struct F {
-    unsigned char a[0xc1c]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
+    unsigned char a[0xc34]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
     bool component_handles=false,aimed=false;int draw=2;std::vector<int> trace;
     template<class T>void put(void* p,unsigned o,T v){std::memcpy(static_cast<unsigned char*>(p)+o,&v,sizeof(v));}
     template<class T>T get(unsigned o){T v{};std::memcpy(&v,a+o,sizeof(v));return v;}
@@ -50,7 +50,10 @@ int main(int argc,char** argv){
     assert(api->wait(f.a,sizeof(f.a),10,0,.3f,&b,&tick)&&tick==2);
     ServerNpcSharedTaskResult o{};
     auto run=[&](int id,bool running,float parameter,float now){
-        f.put(f.a,0x7a4,1);f.trace.clear();ServerNpcScheduleTask task{id,parameter};assert(api->execute(f.a,sizeof(f.a),&task,running,now,&b,&o));};
+        f.put(f.a,0x7a4,1);f.trace.clear();ServerNpcScheduleTask task{id,parameter};
+        const int ok=api->execute(f.a,sizeof(f.a),&task,running,now,&b,&o);
+        if(!ok)std::fprintf(stderr,"Shared task %d (%s) failed at %.3f\n",id,running?"run":"start",now);
+        assert(ok);};
     run(2,false,.13f,10);assert(o.native&&o.timer_written&&o.ticks==2);run(2,true,0,10.19f);assert(!o.lifecycle.completed);run(2,true,0,10.2f);assert(o.lifecycle.completed);
     run(5,false,.3f,10);assert(o.ticks==2&&f.trace==std::vector<int>{1});run(5,true,0,10.2f);assert(o.lifecycle.completed&&(f.trace==std::vector<int>{5,6}));
     f.aimed=true;run(4,true,0,11);assert(o.lifecycle.completed&&f.trace==std::vector<int>{5});
@@ -62,6 +65,8 @@ int main(int argc,char** argv){
     run(92,false,45,11);assert(o.activity==45);run(92,true,0,11);assert(!o.lifecycle.completed&&f.trace==std::vector<int>{7});
     f.a[0x3e0]=1;run(92,true,0,11);assert(o.lifecycle.completed);
     run(95,false,54,11);assert(o.activity==54);
+    ServerNpcScheduleTask small{88,50};assert(api->execute(f.a,0xc1c,&small,false,11,&b,&o)&&o.lifecycle.completed);
+    ServerNpcScheduleTask replace{87,25};assert(!api->execute(f.a,0xc1c,&replace,false,11,&b,&o)&&!o.schedule_set);
     run(87,false,25,11);assert(o.schedule_set&&f.get<int>(0x79c)==global+125&&f.get<unsigned>(0x798)==1&&o.lifecycle.completed);
     f.put(f.a,0xc18,77u);f.component_handles=true;run(88,false,12,11);assert(o.component_handled&&!o.native&&f.trace==std::vector<int>{2});
     f.component_handles=false;run(88,false,12,11);assert(o.component_called&&!o.component_handled&&o.native&&f.get<int>(0x7bc)==12);
