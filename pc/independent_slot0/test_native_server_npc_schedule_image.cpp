@@ -316,6 +316,7 @@ int main(int argc,char** argv){
     scb.goal_context=[](void*,std::uint32_t* out) noexcept -> int{*out=333;return 1;};
     scb.submit_goal=[](void* p,std::uint32_t nav,const ServerNpcSoundCoverGoal* goal,bool* accepted) noexcept -> int{auto& f=F::self(p);assert(nav==100&&goal->type==4&&goal->position[2]==30&&goal->range==100.f&&goal->activity==10&&goal->context_token==333);*accepted=f.sound_goal_accept;return 1;};
     ServerNpcSoundCoverCatalogSchedulerResult cover_run{};
+    const bool previous_inner_budget=m.check_inner_budget;m.check_inner_budget=true;
     install_at(94,4);bind_nav(); // actual TASK_FIND_COVER_FROM_BEST_SOUND
     f.put(f.actor,0x89c,222u);f.put(f.sound_record,4,200);f.put(f.sound_record,0xc,2u);
     assert(cover_api->run(f.actor,sizeof(f.actor),69.1f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&cover_run)&&cover_run.observation.cue.movement.animation.facing.attack.shared.shared.calls==1&&cover_run.sound_cover.calls==1&&cover_run.sound_cover.last.advanced&&cover_run.sound_cover.last.cache_copied);
@@ -324,6 +325,7 @@ int main(int argc,char** argv){
     assert(cover_api->run(f.actor,sizeof(f.actor),69.3f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&cover_run)&&cover_run.sound_cover.calls==1&&cover_run.sound_cover.last.accepted&&cover_run.sound_cover.last.deadline_written);
     float sound_deadline=0;std::memcpy(&sound_deadline,f.actor+0x8f0,4);assert(sound_deadline==69.3f);
     assert(cover_run.observation.cue.movement.animation.facing.attack.shared.full.combat.catalog.runtime.scheduler.maintenance.state.index==4);
+    m.check_inner_budget=previous_inner_budget;
     auto gtactical=reinterpret_cast<GetServerNpcTacticalCoverCatalogSchedulerApi>(GetProcAddress(s,server_npc_tactical_cover_catalog_scheduler_export));
     assert(gtactical&&!GetProcAddress(c,server_npc_tactical_cover_catalog_scheduler_export)&&!gtactical(0,sizeof(ServerNpcTacticalCoverCatalogSchedulerApi))&&!gtactical(1,0));
     const auto* tactical_api=gtactical(1,sizeof(ServerNpcTacticalCoverCatalogSchedulerApi));assert(tactical_api);
