@@ -78,4 +78,46 @@ inline void check_animation_scene_frame(const ServerAnimationSceneFrameApi& api)
     put(f.event,0,10u);assert(run()==0);
 }
 
+inline void check_gesture_tag_warp(const ServerGestureTagWarpApi& api,const ServerAnimationSceneFrameApi& frame){
+    struct Fixture {
+        alignas(4) unsigned char event[0x3c0]{},tags[2][0x118]{},actor[0x4a4]{},record[0x40]{},layer[0x40]{};
+        unsigned reads{};
+    } f;
+    auto put=[](void* p,unsigned off,auto value){std::memcpy(static_cast<unsigned char*>(p)+off,&value,sizeof(value));};
+    auto get=[](const void* p,unsigned off){float value=0;std::memcpy(&value,static_cast<const unsigned char*>(p)+off,4);return value;};
+    auto eq=[](float a,float b){return std::fabs(a-b)<.00001f;};
+    ServerAnimationSceneFrameBindings b{};b.context=&f;
+    b.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.reads;
+        if(token==3){*out=f.layer;*n=sizeof(f.layer);return 1;}
+        if(token<1||token>2)return 0;
+        *out=f.tags[token-1];*n=sizeof(f.tags[0]);return 1;
+    };
+    float value=99;
+    auto map=[&](float x,float expected){assert(api.map(f.event,sizeof(f.event),x,&b,&value)==1&&eq(value,expected));};
+    put(f.event,0,7u);map(-.25f,-.25f);assert(!f.reads);
+    put(f.event,0,6u);map(1.25f,1.25f);
+    put(f.event,0x2f0,2);map(.5f,.5f);assert(!f.reads);
+    put(f.event,0x304,2);put(f.event,0x2e4,1u);put(f.event,0x2f8,2u);
+    put(f.tags[0],0x80,.25f);put(f.tags[0],0x10c,.75f);
+    put(f.tags[1],0x80,.125f);put(f.tags[1],0x10c,.5f);
+    map(-.2f,0);map(0,0);assert(!f.reads);
+    map(.25f,.125f);map(.75f,.5f);map(1,1);map(1.2f,1);
+    // Normalized endpoints: p0.y=-.125, p3.y=1.5. At u=.5,
+    // uniform spline gives 0.265625, rather than linear .3125.
+    map(.5f,0.265625f);
+    f.tags[0][0x84]=2;map(.5f,0.2734375f);
+    f.tags[0][0x110]=2;map(.5f,.3125f);
+    // Actual layer frame with no host warp, same two tag banks.
+    put(f.event,0x184,1.f);put(f.event,0x188,3.f);
+    put(f.actor,0x494,3u);put(f.actor,0x4a0,1);f.layer[0]=1;
+    put(f.record,0x10,0);put(f.record,0x20,1.f);
+    ServerAnimationSceneFrameInput in{};in.scene_time=2;in.now=10;in.intensity=1;
+    unsigned accepted=0;
+    assert(frame.update(f.actor,sizeof(f.actor),f.record,sizeof(f.record),f.event,sizeof(f.event),&in,&b,&accepted)==1&&accepted==1);
+    assert(eq(get(f.layer,0xc),.3125f)&&get(f.layer,0x18)==1&&get(f.layer,0x3c)==10);
+    put(f.tags[0],0x10c,.1f);
+    assert(api.map(f.event,sizeof(f.event),.5f,&b,&value)==0);
+}
+
 }

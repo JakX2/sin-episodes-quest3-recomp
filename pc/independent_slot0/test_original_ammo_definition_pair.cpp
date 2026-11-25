@@ -242,6 +242,12 @@ int main(int argc,char** argv){
         const auto* animationFrame=getAnimationFrame(1,sizeof(ft::ServerAnimationSceneFrameApi));
         assert(animationFrame&&!getAnimationFrame(0,sizeof(ft::ServerAnimationSceneFrameApi))&&!getAnimationFrame(1,0));
         ft::test::check_animation_scene_frame(*animationFrame);
+        const auto getTagWarp=reinterpret_cast<ft::GetServerGestureTagWarpApi>(GetProcAddress(server,ft::server_gesture_tag_warp_export));
+        assert(getTagWarp&&!GetProcAddress(client,ft::server_gesture_tag_warp_export));
+        const auto* tagWarp=getTagWarp(1,sizeof(ft::ServerGestureTagWarpApi));
+        assert(tagWarp&&!getTagWarp(0,sizeof(ft::ServerGestureTagWarpApi))&&!getTagWarp(1,0));
+        ft::test::check_gesture_tag_warp(*tagWarp,*animationFrame);
+        std::puts("PASS native gesture absolute-tag warp and numeric layer integration");
         std::puts("PASS native gesture and sequence post-init numerical layer frame");
         std::puts("PASS native gesture and sequence admission and layer retirement policy");
         std::puts("PASS native NPC holster/unholster scene command admission and layer completion");
