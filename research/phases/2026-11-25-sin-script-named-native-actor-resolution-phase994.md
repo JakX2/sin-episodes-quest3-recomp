@@ -1,0 +1,3 @@
+# Phase 994: native actor resolution on script-selected named VCDs
+
+Use loaded ResolvedSceneActorApi for startup/retirement index lookup and for native clock speech and non-speech dispatch. Parsed Jessica actor name is recovered from the real choreography object, the original instanced actor handle 0x321 resolves through a host entity leaf, and the reconstructed scene actor-cache vector is populated and reused. Verify one name read, the original two handle resolutions on miss, subsequent cache hits and independent cleanup of the engine-owned vector. No claim of real engine entity list integration or nested child actor resolution; current root actor cache matches parent choreography actor words only. CI pending.
