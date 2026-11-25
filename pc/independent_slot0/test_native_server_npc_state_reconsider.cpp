@@ -13,7 +13,7 @@
 using namespace sin_port::native_weapon_tables;
 struct F{
     alignas(4) unsigned char actor[0xdb2]{},desc[0x48]{},schedule[0x30]{},enemy[0x86c]{},replacement[0x86c]{};
-    unsigned char memory[0x40]{},nodes[384]{},record[0x38]{},fallback[0x38]{},unreachable_rows[60]{};
+    unsigned char memory[0x40]{},nodes[384]{},record[0x38]{},fallback[0x38]{},unreachable_rows[60]{},third[0xc0]{},third_record[0x38]{};
     const ServerNpcUnreachableEnemyApi* unreachable_api=nullptr;ServerNpcUnreachableEnemyBindings unreachable_binding{};
     const ServerNpcEnemyMemoryMutationApi* mutation_api=nullptr;ServerNpcEnemyMemoryMutationBindings mutation{};
     bool allocated[2]{};unsigned releases=0;
@@ -29,8 +29,8 @@ struct F{
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
     unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
-    int rank[2]{0,0},disp[2]{1,1};bool valid[2]{true,true},unreachable[2]{false,false},visible[2]{true,true};float distance[2]{10,20};
-    unsigned idx(void* e){assert(e==enemy||e==replacement);return e==enemy?0u:1u;}
+    int rank[3]{0,0,0},disp[3]{1,1,1};bool valid[3]{true,true,true},unreachable[3]{false,false,false},visible[3]{true,true,true};float distance[3]{10,20,8};
+    unsigned idx(void* e){assert(e==enemy||e==replacement||e==third);return e==enemy?0u:e==replacement?1u:2u;}
     template<class T>void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
     template<class T>T get(unsigned off){T v{};std::memcpy(&v,actor+off,sizeof(v));return v;}
     void condition(int id){unsigned off=0x7cc+4*(id/32);put(actor,off,get<unsigned>(off)|(1u<<(id%32)));}
@@ -141,7 +141,7 @@ int main(int argc,char** argv){
     const auto* best=gb(1,sizeof(ServerNpcBestEnemyApi));assert(best);
     ServerNpcBestEnemyBindings bb{};bb.context=&f;bb.memory.context=&f;bb.memory.entries=f.entries;bb.memory.count=3;
     bb.memory.storage=mb;bb.memory.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
-        auto& f=F::self(p);switch(token){case 100:*out=f.nodes;*n=sizeof(f.nodes);return 1;case 101:*out=f.record;*n=sizeof(f.record);return 1;case 102:*out=f.fallback;*n=sizeof(f.fallback);return 1;case 103:*out=f.memory;*n=sizeof(f.memory);return 1;default:return 0;}
+        auto& f=F::self(p);switch(token){case 100:*out=f.nodes;*n=sizeof(f.nodes);return 1;case 101:*out=f.record;*n=sizeof(f.record);return 1;case 102:*out=f.fallback;*n=sizeof(f.fallback);return 1;case 103:*out=f.memory;*n=sizeof(f.memory);return 1;case 104:*out=f.third_record;*n=sizeof(f.third_record);return 1;default:return 0;}
     };
     bb.memory.entity_key=[](void* p,void* e,std::uint32_t* key) noexcept -> int{*key=F::self(p).idx(e)+1000;return 1;};
     bb.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xc0;return 1;};
@@ -161,9 +161,17 @@ int main(int argc,char** argv){
     f.rank[1]=5;pick();assert(br.enemy==f.replacement&&br.priority==5&&br.distance_squared==400&&br.replaced==2);
     f.unreachable[1]=true;pick();assert(br.enemy==f.enemy&&br.unreachable_rejected==1);
     f.unreachable[0]=true;f.unreachable[1]=false;f.rank[0]=9;pick();assert(br.enemy==f.replacement&&!br.unreachable);
-    f.unreachable[0]=false;f.rank[0]=f.rank[1]=0;f.visible[0]=false;pick();assert(br.enemy==f.replacement&&br.visible);
+    f.unreachable[0]=false;f.rank[0]=f.rank[1]=0;f.visible[0]=false;pick();assert(br.enemy==f.replacement&&!br.visible&&br.distance_squared==100);
     f.visible[0]=true;f.visible[1]=false;f.distance[1]=5;pick();assert(br.enemy==f.enemy);
-    f.visible[1]=true;pick();assert(br.enemy==f.replacement&&br.distance_squared==25);
+    f.visible[1]=true;pick();assert(br.enemy==f.replacement&&br.distance_squared==100);
+    // Third candidate exposes the stale distance cache, not just result telemetry.
+    f.entries[3].serial=9;f.entries[3].entity=reinterpret_cast<CBaseEntity*>(f.third);bb.memory.count=4;
+    f.put(f.third_record,0,0x9003u);node(1,255,2,1001,102);node(2,255,255,1002,104);
+    pick();assert(br.enemy==f.third&&br.distance_squared==100&&br.visible&&br.replaced==3);
+    // A farther visible second candidate does not refresh visibility either.
+    f.visible[0]=false;f.visible[2]=false;f.distance[1]=20;f.distance[2]=5;
+    pick();assert(br.enemy==f.third&&!br.visible&&br.distance_squared==100&&br.replaced==3);
+    f.visible[0]=f.visible[2]=true;f.distance[1]=5;bb.memory.count=3;f.entries[3]={};node(1,255,255,1001,102);
     f.put(f.actor,0x8c4,10.f);f.put(f.record,0x1c,9.f);f.put(f.fallback,0x1c,10.f);pick();assert(br.enemy==f.replacement&&br.old==1);
     f.put(f.fallback,0x28,41.f);pick();assert(!br.enemy&&br.not_yet_valid==1);
     f.put(f.fallback,0x28,40.f);f.fallback[0x35]=1;pick();assert(!br.enemy&&br.eluded==1);f.fallback[0x35]=0;
