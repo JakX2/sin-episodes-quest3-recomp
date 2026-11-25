@@ -1,0 +1,3 @@
+# Phase 940: base entity response criteria
+
+Retail SHA256 568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650. 220ebcb0 tail jumps 22145b50. Append map (globalvars+2c), classname (+c), name (+c0), health (+9c), healthfrac (max +98 positive else zero, %.3f), global name/state pairs 221f40e0/221f46e0/221f4690 with live count re-read, actor contexts via 22143cf0 empty prefix, world contexts via prefix literal world after edict lookup and RTTI cast. All weight 1. Map/global/world and string pointer transport explicit. Safety cap 4096 on global rows, no exact unusual CRT formatting claim. Loaded native tree fixture checks normal and shrinking global list, missing world/name, zero max health. CI pending. No engine rendering/physics changes.

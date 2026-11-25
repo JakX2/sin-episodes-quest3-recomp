@@ -744,7 +744,7 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr,const PlayerResponseCriteriaApi* playerCriteria=nullptr,const BaseResponseCriteriaApi* baseCriteria=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
         struct Child{char name[32]{},value[64]{};float weight=0;} children[16]{};
@@ -946,6 +946,39 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         expect("injured","yes");expect("mood","");
         assert(playerCriteria->append(player.actor,0x97f,c,0,&h)==0);
         assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+    }
+    if(baseCriteria){
+        struct Base {
+            const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
+            alignas(4) unsigned char entity[0xc4]{},world[0xc4]{},rows[8]{},worldrows[8]{};
+            unsigned counts=0,globals=0;bool no_world=false,shrink=false;
+            static Base& self(void* p){return *static_cast<Base*>(p);}
+        } s{api,b};
+        BaseResponseCriteriaBindings h{};h.context=&s;h.contexts.context=&s;
+        h.contexts.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{auto& s=Base::self(p);return s.tree.add(&s.b,c,k,v,w);};
+        h.contexts.storage=[](void* p,std::uint32_t w,void** out,unsigned* n) noexcept -> int{
+            auto& s=Base::self(p);assert(w==F::ptr(s.rows)||w==F::ptr(s.worldrows));*out=w==F::ptr(s.rows)?s.rows:s.worldrows;*n=8;return 1;};
+        h.contexts.string=[](void*,std::uint32_t w,const char** out) noexcept -> int{
+            switch(w){case 1:*out="npc_jessica";break;case 2:*out="jessica";break;case 3:*out="mood";break;case 4:*out="alert";break;case 5:*out="chapter";break;case 6:*out="three";break;default:return 0;}return 1;};
+        h.map_name=[](void*,const char** out) noexcept -> int{*out="se1_test";return 1;};
+        h.global_count=[](void* p,int* out) noexcept -> int{auto& s=Base::self(p);++s.counts;*out=s.shrink&&s.globals?0:2;return 1;};
+        h.global_row=[](void* p,int i,const char** name,int* state) noexcept -> int{auto& s=Base::self(p);assert(i==0||i==1);++s.globals;*name=i?"gate_open":"mission_started";*state=i?2:1;return 1;};
+        h.world=[](void* p,void** out,unsigned* n) noexcept -> int{auto& s=Base::self(p);*out=s.no_world?nullptr:s.world;*n=sizeof(s.world);return 1;};
+        F::put(s.entity,0xc,1);F::put(s.entity,0xc0,2);F::put(s.entity,0x98,80);F::put(s.entity,0x9c,20);
+        F::put(s.entity,0x5c,F::ptr(s.rows));F::put(s.entity,0x68,1);F::put(s.rows,0,3);F::put(s.rows,4,4);
+        F::put(s.world,0x5c,F::ptr(s.worldrows));F::put(s.world,0x68,1);F::put(s.worldrows,0,5);F::put(s.worldrows,4,6);
+        auto expect=[&](const char* key,const char* value){
+            int idx=-1;std::uint32_t word=0;assert(api.find(c,sizeof(c),&b,key,&idx,&word)==1&&idx>=0&&word);
+            auto* child=reinterpret_cast<State::Child*>(static_cast<std::uintptr_t>(word));
+            assert(!std::strcmp(child->value,value)&&child->weight==1.f);};
+        assert(api.construct(c,sizeof(c),&b)==1&&baseCriteria->append(s.entity,sizeof(s.entity),c,&h)==1&&f.count==9);
+        expect("map","se1_test");expect("classname","npc_jessica");expect("name","jessica");expect("health","20");expect("healthfrac","0.250");
+        expect("mission_started","1");expect("gate_open","2");expect("mood","alert");expect("worldchapter","three");
+        assert(s.counts==3&&s.globals==2&&api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+        s.globals=0;s.shrink=true;s.no_world=true;F::put(s.entity,0x98,0);F::put(s.entity,0xc0,0);
+        assert(api.construct(c,sizeof(c),&b)==1&&baseCriteria->append(s.entity,sizeof(s.entity),c,&h)==1&&f.count==7);
+        expect("name","");expect("healthfrac","0.000");expect("mission_started","1");
+        assert(s.globals==1&&api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
     }
 }
 
