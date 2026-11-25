@@ -128,4 +128,14 @@ struct ServerNpcCueCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,ServerNpcCueCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcCueCatalogSchedulerApi=const ServerNpcCueCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_observation_catalog_scheduler_export[]="SiN_GetServerNpcObservationCatalogSchedulerApi";
+struct ServerNpcObservationCatalogSchedulerResult {
+    ServerNpcCueCatalogSchedulerResult cue;
+    ServerNpcSharedObservationStats observation;
+};
+struct ServerNpcObservationCatalogSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,ServerNpcObservationCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcObservationCatalogSchedulerApi=const ServerNpcObservationCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
