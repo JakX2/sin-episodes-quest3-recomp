@@ -1067,6 +1067,13 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena arena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::ParsedFacialClientPair paired(*flexSend,*flexRecv,*animSend,*animRecv,*frame);
         tables::test::check_parsed_cached_expression(arena,*nativeVcdRuntime,*execution,*admission,*cached,*bank,*remap,paired);
+        const auto getRetail=reinterpret_cast<tables::GetServerFacialRecordApi>(GetProcAddress(server,tables::server_retail_facial_records_export));
+        assert(getRetail&&!GetProcAddress(client,tables::server_retail_facial_records_export));
+        const auto* retail=getRetail(1,sizeof(tables::ServerFacialRecordApi));
+        assert(retail&&!getRetail(0,sizeof(tables::ServerFacialRecordApi))&&!getRetail(1,0));
+        tables::test::VcdAuditArena retailArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::ParsedFacialClientPair retailPair(*flexSend,*flexRecv,*animSend,*animRecv,*frame);
+        tables::test::check_parsed_cached_expression(retailArena,*nativeVcdRuntime,*execution,*retail,*cached,*bank,*remap,retailPair,true);
     }
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
         FreeLibrary(server);FreeLibrary(client);return 2;
