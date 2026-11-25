@@ -11719,6 +11719,67 @@ int __cdecl npc_weapon_scene_check(void* actor,unsigned bytes,const void* record
     return 1;
 }
 const ServerNpcWeaponSceneApi server_npc_weapon_scene_api{version,sizeof(ServerNpcWeaponSceneApi),&npc_weapon_scene_begin,&npc_weapon_scene_check,&npc_weapon_scene_noop};
+ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
+    return *static_cast<ServerNpcSceneRecordBindings*>(p);
+}
+int __cdecl npc_scene_record_storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept {
+    return facial_record_storage(&npc_scene_record_config(p).facial,w,out,n);
+}
+int __cdecl npc_scene_record_grow(void* p,void* v,unsigned n) noexcept {
+    return facial_record_grow(&npc_scene_record_config(p).facial,v,n);
+}
+int __cdecl npc_scene_record_handle(void* p,void* target,std::uint32_t* out) noexcept {
+    return facial_record_handle(&npc_scene_record_config(p).facial,target,out);
+}
+int __cdecl npc_scene_record_diagnostic(void* p,ActorEventDiagnostic d,std::uint32_t scene) noexcept {
+    return facial_record_diagnostic(&npc_scene_record_config(p).facial,d,scene);
+}
+int __cdecl npc_scene_record_begin(void* p,void* actor,void* record,std::uint32_t parsed,void* event,std::uint32_t ca,void* target,unsigned* out) noexcept {
+    auto& cfg=npc_scene_record_config(p);
+    if(!hologram_writable(record,0x40)||!sin_independent::vgui_layout::Readable(event,0x18c)||!hologram_writable(out,4))return 0;
+    if(hologram_read<unsigned>(event,0)==16){
+        const auto* name=static_cast<const char*>(event)+0x84;
+        if(!std::memchr(name,0,128))return 0;
+        if(vfe_detail::equal(name,"AI_HOLSTER")||vfe_detail::equal(name,"AI_UNHOLSTER")){
+            unsigned extent=0;
+            if(!cfg.facial.extent(cfg.facial.host.context,actor,&extent)||
+               npc_weapon_scene_begin(actor,extent,record,0x40,event,0x3c0,&cfg.weapons)!=1)return 0;
+            *out=1;return 1;
+        }
+    }
+    return retail_facial_record_begin(&cfg.facial,actor,record,parsed,event,ca,target,out);
+}
+int __cdecl npc_scene_record_stop(void* p,void* actor,void* record,int arg,int zero,unsigned* out) noexcept {
+    auto& cfg=npc_scene_record_config(p);
+    if(!sin_independent::vgui_layout::Readable(record,0x40)||!hologram_writable(out,4))return 0;
+    const auto subtype=hologram_read<unsigned>(record,0x38),token=hologram_read<std::uint32_t>(record,0);
+    if(token&&(subtype==2||subtype==3)){
+        void* event=nullptr;unsigned n=0;
+        if(!npc_scene_record_storage(p,token,&event,&n))return 0;
+        const int result=npc_weapon_scene_noop(record,0x40,event,n,out);
+        if(result)return result==1;
+    }
+    return facial_record_stop(&cfg.facial,actor,record,arg,zero,out);
+}
+int __cdecl npc_scene_record_check(void* p,void* actor,void* record,float time,std::uint32_t parsed,void* event,unsigned* out) noexcept {
+    auto& cfg=npc_scene_record_config(p);
+    if(!npc_weapon_scene_record(record,0x40,event,0x3c0)||!hologram_writable(out,4))return 0;
+    if(npc_weapon_scene_subtype(record,event)){
+        unsigned extent=0;
+        return cfg.facial.extent(cfg.facial.host.context,actor,&extent)&&
+            npc_weapon_scene_check(actor,extent,record,0x40,event,0x3c0,time,&cfg.weapons,out)==1;
+    }
+    return facial_record_check(&cfg.facial,actor,record,time,parsed,event,out);
+}
+int __cdecl npc_scene_record_adapt(const ServerNpcSceneRecordBindings* cfg,ActorEventRecordBindings* out) noexcept {
+    if(!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||!hologram_writable(out,sizeof(*out)))return 0;
+    ActorEventRecordBindings validated{};
+    if(!server_retail_facial_record_adapt(&cfg->facial,&validated))return 0;
+    *out={const_cast<ServerNpcSceneRecordBindings*>(cfg),&npc_scene_record_storage,&npc_scene_record_grow,&npc_scene_record_handle,
+        &npc_scene_record_diagnostic,&npc_scene_record_begin,&npc_scene_record_stop,&npc_scene_record_check};
+    return 1;
+}
+const ServerNpcSceneRecordApi server_npc_scene_record_api{version,sizeof(ServerNpcSceneRecordApi),&npc_scene_record_adapt};
 
 
 
@@ -13677,6 +13738,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSceneRecordApi=_SiN_GetServerNpcSceneRecordApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSceneRecordApi* __cdecl
+SiN_GetServerNpcSceneRecordApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcSceneRecordApi)?&server_npc_scene_record_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcWeaponSceneApi=_SiN_GetServerNpcWeaponSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWeaponSceneApi* __cdecl
