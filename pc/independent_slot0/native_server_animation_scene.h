@@ -82,6 +82,22 @@ struct ServerBaseAnimationCycleApi {
     int (__cdecl *step)(void* actor,unsigned bytes,float delta,float now,const ServerBaseAnimationCycleBindings*) noexcept;
 };
 using GetServerBaseAnimationCycleApi=const ServerBaseAnimationCycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_composed_animation_frame_export[]="SiN_GetServerComposedAnimationFrameApi";
+struct ServerComposedAnimationFrameBindings {
+    ServerAnimationLayerTickBindings layers;
+    ServerBaseAnimationCycleBindings base;
+    void* context;
+    // Optional only when no model-width transition is present; the native
+    // frame clock invokes the host before changing either timestamp.
+    int (__cdecl *width_transition)(void*,void* actor) noexcept;
+};
+struct ServerComposedAnimationFrameApi {
+    std::uint32_t version,size;
+    // 22028280 / 220f44e0 / 220f2780 / 220f17f0. No synthetic base
+    // step callback; resolve only metadata, dirty/cache and width leaves.
+    int (__cdecl *run)(void* actor,unsigned bytes,float now,unsigned npc,const ServerComposedAnimationFrameBindings*) noexcept;
+};
+using GetServerComposedAnimationFrameApi=const ServerComposedAnimationFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_animation_layer_reserve_export[]="SiN_GetServerAnimationLayerReserveApi";
 struct ServerAnimationLayerReserveApi {
     std::uint32_t version,size;

@@ -13653,6 +13653,30 @@ int __cdecl base_animation_cycle_step(void* actor,unsigned bytes,float delta,flo
 }
 const ServerBaseAnimationCycleApi server_base_animation_cycle_api{version,sizeof(ServerBaseAnimationCycleApi),&base_animation_cycle_step};
 
+int __cdecl composed_animation_frame(void* actor,unsigned bytes,float now,unsigned npc,const ServerComposedAnimationFrameBindings* b) noexcept {
+    if(bytes<0x4a8||!hologram_writable(actor,0x4a8)||!b||!b->base.finish_threshold||!b->base.duration||
+       !b->base.movement_distance||!b->base.invalidate||!b->base.cache||!b->layers.cycle_rate)return 0;
+    if(!b->width_transition&&(hologram_read<unsigned>(actor,0x390)&8))return 0;
+    struct Call {
+        ServerComposedAnimationFrameBindings host;unsigned extent;float now;
+        static Call& self(void* p) noexcept{return *static_cast<Call*>(p);}
+    } call{*b,bytes,now};
+    ServerAnimationFrameClockBindings clock{};clock.layers=call.host.layers;clock.context=&call;
+    clock.transition=[](void* p,void* a) noexcept -> int{
+        const auto& h=Call::self(p).host;
+        return h.width_transition?h.width_transition(h.context,a):1;
+    };
+    clock.duration=[](void* p,void* a,int sequence,double* out) noexcept -> int{
+        const auto& h=Call::self(p).host.base;return h.duration(h.context,a,sequence,out);
+    };
+    clock.step=[](void* p,void* a,float delta) noexcept -> int{
+        auto& f=Call::self(p);return base_animation_cycle_step(a,f.extent,delta,f.now,&f.host.base);
+    };
+    return animation_frame_run(actor,bytes,now,npc,&clock);
+}
+const ServerComposedAnimationFrameApi server_composed_animation_frame_api{version,sizeof(ServerComposedAnimationFrameApi),&composed_animation_frame};
+
+
 int __cdecl animation_layer_reserve(void* actor,unsigned bytes,int target,float now,const ChoreographyVectorBindings* b) noexcept {
     int count=0,cap=0;unsigned char* rows=nullptr;
     if(target<0||target>4096||!std::isfinite(now)||!animation_layer_rows(actor,bytes,b,count,cap,rows))return 0;
@@ -16664,6 +16688,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAni
 SiN_GetServerAnimationSceneFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneFrameApi)?&server_animation_scene_frame_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerComposedAnimationFrameApi=_SiN_GetServerComposedAnimationFrameApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerComposedAnimationFrameApi* __cdecl
+SiN_GetServerComposedAnimationFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerComposedAnimationFrameApi)?&server_composed_animation_frame_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationLayerReserveApi=_SiN_GetServerAnimationLayerReserveApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationLayerReserveApi* __cdecl
