@@ -320,11 +320,11 @@ const ServerNpcSharedTargetAnimationApi target_animation_api{1,sizeof(ServerNpcS
 const ServerNpcSharedFacingApi facing_api{1,sizeof(ServerNpcSharedFacingApi),&yaw_error,&execute_facing};
 const ServerNpcSharedTaskApi api{1,sizeof(ServerNpcSharedTaskApi),&wait,&cancel_wait,&wait_state,&supports,&execute};
  }
-int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const ServerGruntTaskBindings* original,const ServerNpcScheduleResolutionBindings* resolution,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* stats,ServerNpcSharedParentSession* session,ServerGruntTaskBindings* bound,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingStats* facing_stats,const ServerNpcSharedTargetAnimationBindings* target_animation,ServerNpcSharedTargetAnimationStats* target_animation_stats) noexcept{
+int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const ServerGruntTaskBindings* original,const ServerNpcScheduleResolutionBindings* resolution,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* stats,ServerNpcSharedParentSession* session,ServerGruntTaskBindings* bound,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingStats* facing_stats,const ServerNpcSharedTargetAnimationBindings* target_animation,ServerNpcSharedTargetAnimationStats* target_animation_stats,const ServerNpcSharedMovementBindings* movement,ServerNpcSharedMovementStats* movement_stats) noexcept{
     if(!actor||!original||!resolution||!shared||!stats||!session||!bound)return 0;
-    if((attack&&!attack_stats)||(facing&&!facing_stats)||(target_animation&&!target_animation_stats))return 0;
-    *stats={};if(attack_stats)*attack_stats={};if(facing_stats)*facing_stats={};if(target_animation_stats)*target_animation_stats={};
-    *session={actor,bytes,now,*original,*shared,stats,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats};*bound=*original;
+    if((attack&&!attack_stats)||(facing&&!facing_stats)||(target_animation&&!target_animation_stats)||(movement&&!movement_stats))return 0;
+    *stats={};if(attack_stats)*attack_stats={};if(facing_stats)*facing_stats={};if(target_animation_stats)*target_animation_stats={};if(movement_stats)*movement_stats={};
+    *session={actor,bytes,now,*original,*shared,stats,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats};*bound=*original;
     session->shared.lifecycle=original->lifecycle;
     session->shared.transition=original->transition;
     session->shared.resolution=resolution;
@@ -332,6 +332,11 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
     bound->parent=[](void* p,void* a,const ServerNpcScheduleTask* t,bool running) noexcept -> int{
         auto& q=*static_cast<ServerNpcSharedParentSession*>(p);
         if(a!=q.actor||!t)return 0;
+        if(q.movement&&(t->id==116||t->id==121)){
+            auto& st=*q.movement_stats;++st.calls;
+            const int ok=movement_api.execute(a,q.bytes,t,running,q.now,&q.shared,q.movement,&st.last);
+            st.native+=st.last.shared.native;st.components+=st.last.shared.component_handled;return ok;
+        }
         if(q.target_animation&&running&&t->id>=94&&t->id<=96){
             auto binding=*q.target_animation;binding.entries=q.original.entities.entries;binding.count=q.original.entities.count;
             auto& st=*q.target_animation_stats;++st.calls;

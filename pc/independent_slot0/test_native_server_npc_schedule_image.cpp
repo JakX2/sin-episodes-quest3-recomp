@@ -12,7 +12,8 @@
 using namespace sin_port::native_weapon_tables;
 struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
-    unsigned char motor[0x18]{};
+    unsigned char motor[0x18]{},nav[0x28]{},path[0x48]{};
+    unsigned clear_paths=0,stop_paths=0,move_updates=0;
     bool align_on_step=false;unsigned begins=0,steps=0;int last_pending=-1;
     ServerScheduleImage image{};
     const ServerNpcScheduleImageApi* api=nullptr;
@@ -246,6 +247,26 @@ int main(int argc,char** argv){
     install_at(106,2); // SCHED_GRUNT_ALTFIRE: parsed private activity
     f.put(f.actor,0x908,88u);f.actor[0x3e0]=1;
     assert(anim_api->run(f.actor,sizeof(f.actor),58,&f.image,&runtime,&full,&ab,&fb,&tb,&nar)&&f.last_pending==ids.activities[3]&&nar.target_animation.calls==1&&nar.target_animation.last.shared.lifecycle.completed);
+    auto gmove=reinterpret_cast<GetServerNpcMovementCatalogSchedulerApi>(GetProcAddress(s,server_npc_movement_catalog_scheduler_export));
+    assert(gmove&&!GetProcAddress(c,server_npc_movement_catalog_scheduler_export)&&!gmove(0,sizeof(ServerNpcMovementCatalogSchedulerApi))&&!gmove(1,0));
+    const auto* move_api=gmove(1,sizeof(ServerNpcMovementCatalogSchedulerApi));assert(move_api);
+    ServerNpcSharedMovementBindings mb{};mb.context=&f;
+    mb.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);if(token==100){*out=f.nav;*n=sizeof(f.nav);return 1;}if(token==101){*out=f.path;*n=sizeof(f.path);return 1;}return 0;};
+    mb.clear_path=[](void* p,void* nav) noexcept -> int{auto& f=F::self(p);assert(nav==f.nav);++f.clear_paths;f.put(f.path,0,0u);f.put(f.path,0x44,0u);return 1;};
+    mb.stop_path=[](void* p,void* nav,bool finished) noexcept -> int{auto& f=F::self(p);assert(nav==f.nav&&finished);++f.stop_paths;return 1;};
+    mb.pose_lookup=[](void*,void*,const char* name,int* out) noexcept -> int{assert(!std::strcmp(name,"move_yaw"));*out=-1;return 1;};
+    mb.movement_update=[](void* p,void*) noexcept -> int{++F::self(p).move_updates;return 1;};
+    auto bind_nav=[&](){f.put(f.actor,0x8f8,100u);f.put(f.nav,0x24,101u);f.put(f.nav,0xc,0);f.put(f.path,0,0u);f.put(f.path,0x44,0u);};
+    ServerNpcMovementCatalogSchedulerResult mvr{};
+    install_at(83,0);bind_nav(); // SCHED_GRUNT_COMBAT_FACE starts TASK_STOP_MOVING
+    assert(move_api->run(f.actor,sizeof(f.actor),59,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&mvr.movement.calls==1&&mvr.movement.last.shared.lifecycle.completed&&f.clear_paths==1&&f.last_pending==1);
+    assert(move_api->run(f.actor,sizeof(f.actor),60,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&!mvr.movement.calls&&mvr.animation.facing.attack.shared.shared.last.task==86);
+    install_at(84,3);bind_nav(); // SCHED_GRUNT_HIDE_AND_RELOAD: TASK_WAIT_FOR_MOVEMENT
+    f.put(f.path,0,1u);f.put(f.path,0x44,2u);
+    assert(move_api->run(f.actor,sizeof(f.actor),61,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&mvr.movement.calls==2&&f.move_updates==2&&!mvr.movement.last.shared.lifecycle.completed);
+    f.put(f.path,0x44,0u);
+    assert(move_api->run(f.actor,sizeof(f.actor),62,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&mvr.movement.calls==1&&f.stop_paths==1&&mvr.movement.last.shared.lifecycle.completed);
+    assert(move_api->run(f.actor,sizeof(f.actor),63,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&mvr)&&!mvr.movement.calls&&mvr.animation.facing.attack.shared.shared.last.task==119&&mvr.animation.facing.attack.shared.shared.last.lifecycle.completed);
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     // Original Elite schedule: ready -> reconstructed base start -> inherited run.
     assert(f.api->build(f.actor,NpcSubclassElite,5000,99,&b,&f.image,&result));

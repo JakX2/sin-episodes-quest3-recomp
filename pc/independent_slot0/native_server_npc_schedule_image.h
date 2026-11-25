@@ -108,4 +108,14 @@ struct ServerNpcAnimationCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,ServerNpcAnimationCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcAnimationCatalogSchedulerApi=const ServerNpcAnimationCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_movement_catalog_scheduler_export[]="SiN_GetServerNpcMovementCatalogSchedulerApi";
+struct ServerNpcMovementCatalogSchedulerResult {
+    ServerNpcAnimationCatalogSchedulerResult animation;
+    ServerNpcSharedMovementStats movement;
+};
+struct ServerNpcMovementCatalogSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,ServerNpcMovementCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcMovementCatalogSchedulerApi=const ServerNpcMovementCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
