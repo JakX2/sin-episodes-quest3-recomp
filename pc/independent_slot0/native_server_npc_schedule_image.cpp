@@ -193,7 +193,10 @@ int __cdecl run_sound_cover(void* a,unsigned bytes,float now,const ServerSchedul
     return run_catalog_impl(a,bytes,now,image,b,&sh.full.combat.catalog,&full->injury.combat,&sh.full.combat.combat,full,&sh.full.full,&attack->shared,&sh.shared,attack,&o.cue.movement.animation.facing.attack.attack,facing,&o.cue.movement.animation.facing.facing,target,&o.cue.movement.animation.target_animation,movement,&o.cue.movement.movement,cue,&o.cue.cue,observe,&o.observation,sound_cover,&out->sound_cover);
 }
 int __cdecl run_tactical_cover(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcTacticalCoverCatalogSchedulerResult* out) noexcept{
-    if(!out)return 0;*out={};if(!full||!attack||!facing||!target||!movement||!cue||!observe||!sound_cover||!tactical)return 0;
+    if(!out)return 0;
+    // MSVC x86 C1054: initialize the existing ABI members independently.
+    out->sound_cover={};out->tactical={};
+    if(!full||!attack||!facing||!target||!movement||!cue||!observe||!sound_cover||!tactical)return 0;
     auto& o=out->sound_cover.observation;auto& sh=o.cue.movement.animation.facing.attack.shared;
     return run_catalog_impl(a,bytes,now,image,b,&sh.full.combat.catalog,&full->injury.combat,&sh.full.combat.combat,full,&sh.full.full,&attack->shared,&sh.shared,attack,&o.cue.movement.animation.facing.attack.attack,facing,&o.cue.movement.animation.facing.facing,target,&o.cue.movement.animation.target_animation,movement,&o.cue.movement.movement,cue,&o.cue.cue,observe,&o.observation,sound_cover,&out->sound_cover.sound_cover,tactical,&out->tactical);
 }

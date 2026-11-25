@@ -336,7 +336,8 @@ int main(int argc,char** argv){
     tcb.search=[](void*,std::uint32_t token,const float* origin,const float* eye,float minimum,float maximum,float* pos,bool* found) noexcept -> int{assert(token==444&&origin[0]==1&&eye[2]==6&&minimum==384&&maximum==768);pos[0]=10;pos[1]=20;pos[2]=30;*found=true;return 1;};
     tcb.goal_context=scb.goal_context;
     tcb.submit_goal=[](void*,std::uint32_t nav,const ServerNpcSoundCoverGoal* goal,bool* accepted) noexcept -> int{assert(nav==100&&goal->type==7&&goal->position[2]==30&&goal->range==-1&&goal->activity==10);*accepted=true;return 1;};
-    ServerNpcTacticalCoverCatalogSchedulerResult tactical_run{};
+    ServerNpcTacticalCoverCatalogSchedulerResult tactical_run;
+    tactical_run.sound_cover={};tactical_run.tactical={};
     install_at(96,2);bind_nav(); // SCHED_GRUNT_GRENADE_COVER1 Task103(384)
     f.put(f.actor,0x9d8,444u);
     assert(tactical_api->run(f.actor,sizeof(f.actor),69.4f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&tactical_run)&&tactical_run.tactical.calls==1&&tactical_run.tactical.last.shared.lifecycle.completed&&tactical_run.tactical.last.minimum==384&&tactical_run.tactical.last.maximum==768&&tactical_run.tactical.last.accepted);
