@@ -1,4 +1,5 @@
 #include "native_server_activity_assignment.h"
+#include "native_server_native_activity_services.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -69,5 +70,44 @@ int main(int argc,char** argv){
     ServerNpcActivityAssignmentInput direct{6,-1,6,6};
     assert(api->assign(f.actor,sizeof(f.actor),&direct,&b,&out)&&out.assigned&&!out.weapon_notified&&f.get<int>(0x3ec)==0);
     assert((f.trace==std::vector<int>{10,20,30,40,50,60}));
+
+    auto gn=reinterpret_cast<GetServerNativeActivityServicesApi>(GetProcAddress(server,server_native_activity_services_export));
+    assert(gn&&!GetProcAddress(client,server_native_activity_services_export)&&!gn(0,sizeof(ServerNativeActivityServicesApi))&&!gn(1,0));
+    auto* services=gn(1,sizeof(ServerNativeActivityServicesApi));assert(services);
+    struct NativeFixture {
+        F* f;
+        alignas(4) unsigned char target[0x3a6]{},weapon[4]{};
+        unsigned traces=0;
+    } nf{&f};
+    std::vector<sin_independent::EntityHandleEntry> slots(0x235);
+    slots[1].serial=1;slots[1].entity=reinterpret_cast<CBaseEntity*>(nf.target);
+    slots[0x234].serial=1;slots[0x234].entity=reinterpret_cast<CBaseEntity*>(nf.weapon);
+    ServerInheritedActivityBindings inherited{};inherited.context=&nf;
+    inherited.weapons={slots.data(),static_cast<unsigned>(slots.size()),&nf,
+        [](void* p,void* w,unsigned* out) noexcept -> int {auto& n=*static_cast<NativeFixture*>(p);assert(w==n.weapon);*out=WeaponActivityAssault;return 1;},nullptr};
+    inherited.target_extent=[](void* p,void* t,unsigned* out) noexcept -> int {
+        auto& n=*static_cast<NativeFixture*>(p);assert(t==n.target);*out=sizeof(n.target);return 1;};
+    inherited.reload_context=[](void*,void*) noexcept -> int{return 1;};
+    inherited.reload_trace=[](void* p,void* a,void* t,int act,float* out) noexcept -> int {
+        auto& n=*static_cast<NativeFixture*>(p);assert(a==n.f->actor&&t==n.target&&act==67);++n.traces;*out=.5f;return 1;};
+    // No old weapon, inherited NPC or combined capability implementation.
+    b.translation.weapon=nullptr;b.translation.grunt.parent_translate=nullptr;b.capabilities=nullptr;
+    ServerNativeActivitySession ns{};
+    assert(services->prepare(f.actor,sizeof(f.actor),&b,&inherited,&ns));
+    f.put(f.actor,0x78c,0x1234u);f.put(f.actor,0xa18,0x1001u);f.put(f.actor,0x8ec,0x08000000u);
+    f.put(nf.target,0x3a4,std::int16_t{100});
+    f.actor[0xca0]=0;f.actor[0xc64]=1;
+    f.seed(0,67);f.seed(1,399);f.seed(2,99);
+    f.trace.clear();
+    assert(api->request(f.actor,sizeof(f.actor),66,&ns.bound,&out)&&out.assigned&&out.selected.activity==399&&out.selected.sequence==1);
+    assert(f.get<int>(0x878)==66&&f.get<int>(0x88c)==398&&f.get<int>(0x87c)==399&&f.get<float>(0x384)==40.f);
+    assert(nf.traces==1&&ns.weapon_calls>=5&&ns.parent_calls>=3&&ns.capability_calls==1);
+    // Stale active weapon serial must clear required without any classification,
+    // while the same parent activity path still resolves the live target.
+    f.put(f.actor,0x78c,0x2234u);f.put(f.actor,0x878,1);
+    f.seed(0,67);f.seed(1,399);f.seed(2,99);
+    ns.bound.weapon_notify=[](void*,void*,std::uint32_t,int,float) noexcept -> int{return 1;};
+    assert(api->request(f.actor,sizeof(f.actor),66,&ns.bound,&out)&&out.assigned&&out.selected.activity==67&&out.selected.sequence==0);
+    assert(f.get<int>(0x88c)==66&&nf.traces==2);
     FreeLibrary(server);FreeLibrary(client);std::puts("PASS native NPC activity assignment and Grunt request gates");
 }
