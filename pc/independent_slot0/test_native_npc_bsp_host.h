@@ -32,6 +32,8 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     npc::SceneManagerSession scene_session{};npc::IntegratedNpcMapDialogueBindings scene{};
     bool scene_missing=false,generated_missing=false;
     npc::NativeGeneratedResponseBindings generated_scene{};
+    npc::ScriptActorSpeechBindings script_speech{};
+    bool script_missing=false;int script_result=1;unsigned script_calls=0;
     npc::TalkCooldownState cooldown{};
     const npc::TalkManagerApi& manager_api;
     const npc::TalkManagerRuntimeApi& manager_runtime;
@@ -340,6 +342,7 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     const npc::TalkManagerRuntimeBindings* manager_bindings(EntityRef e)override{return !manager_missing&&is_live(e)&&e.index==3?&manager:nullptr;}
     const npc::IntegratedNpcMapDialogueBindings* scene_bindings(EntityRef e)override{return !scene_missing&&is_live(e)&&(e.index==3||e.index==4)?&scene:nullptr;}
     const npc::NativeGeneratedResponseBindings* generated_scene_bindings(EntityRef e)override{return !generated_missing&&is_live(e)&&(e.index==3||e.index==4)?&generated_scene:nullptr;}
+    const npc::ScriptActorSpeechBindings* script_speech_bindings(EntityRef e)override{return !script_missing&&is_live(e)&&(e.index==3||e.index==4)?&script_speech:nullptr;}
     float manager_deadline(){npc::TalkCooldownState s{};assert(manager_api.read_cooldowns(&manager_session,&s)==1);return s.global[0];}
     bool parse_key(EntityRef e,unsigned type,std::string_view v,std::uint32_t& out)override{
         assert(e.index==5&&type==5);if(fail_parse)return false;
@@ -462,6 +465,43 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     interaction_result=99;assert(f.interaction_thunk(host,je,&interaction_result)==NpcMapResult::Rejected&&interaction_result==99);
     // Manager lifetime belongs to the engine session, not an arbitrary NPC.
     assert(ma.destroy(&f.manager_session,&f.manager_control,&f.manager_tables,&f.manager.manager)==1&&f.manager_destroys==1);
+    if(generated){
+        // Route-only test: the loaded script-map algorithm itself is
+        // exercised separately by check_native_response_criteria.
+        NpcBspShell r(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);
+        r.script_speech.context=&r;
+        npc::ScriptNpcMapDialogueApi script{npc::version,sizeof(npc::ScriptNpcMapDialogueApi)};
+        script.observe=[](npc::NpcMapKind kind,npc::HologramControl* c,npc::NpcMapSession* session,const npc::NpcMapBindings* b,
+            const npc::NpcMapDialogueBindings* d,const npc::TalkManagerRuntimeBindings* manager,const npc::ScriptActorSpeechBindings* speech,
+            const void* record,unsigned bytes) noexcept -> int {
+            auto& r=*static_cast<NpcBspShell*>(speech->context);
+            assert(session==&r.session&&b==&r.b&&d==&r.dialogue&&speech==&r.script_speech&&record&&bytes>=0x5e9);
+            if(kind==npc::NpcMapKind::Jessica)assert(c==&r.slots[2].control&&manager==&r.manager);
+            else assert(kind==npc::NpcMapKind::Count&&c==&r.slots[3].control&&!manager);
+            ++r.script_calls;return r.script_result;
+        };
+        NativeNpcMapHost rh(r,r,api,r.session,&interaction,&dialogue,&managed,integrated,generated,&script);
+        r.host=&rh;sm::SourceMapRuntime rt(rh);assert(rt.load_bsp(bsp.data(),bsp.size()).ok());
+        const auto jref=rt.entities()[2],cref=rt.entities()[3];
+        alignas(4) unsigned char observation[0x5ec]{};
+        r.script_missing=true;
+        assert(rh.observe(cref,observation,sizeof(observation))==NpcMapResult::Rejected&&!r.script_calls);
+        r.script_missing=false;r.manager_missing=true;
+        assert(rh.observe(jref,observation,sizeof(observation))==NpcMapResult::Rejected&&!r.script_calls);
+        r.manager_missing=false;r.dialogue_missing=true;
+        assert(rh.observe(cref,observation,sizeof(observation))==NpcMapResult::Rejected&&!r.script_calls);
+        r.dialogue_missing=false;r.generated_missing=true;r.scene_missing=true;
+        assert(rh.observe(EntityRef{cref.index,cref.generation+1},observation,sizeof(observation))==NpcMapResult::Rejected&&!r.script_calls);
+        script.size=0;assert(rh.observe(cref,observation,sizeof(observation))==NpcMapResult::Rejected&&!r.script_calls);
+        script.size=sizeof(script);
+        assert(rh.observe(cref,observation,sizeof(observation))==NpcMapResult::Applied&&r.script_calls==1);
+        assert(rh.observe(jref,observation,sizeof(observation))==NpcMapResult::Applied&&r.script_calls==2);
+        r.script_result=-1;
+        assert(rh.observe(jref,observation,sizeof(observation))==NpcMapResult::Failed&&r.script_calls==3&&!r.speeches);
+        assert(rt.unload().code==sm::SourceMapLoadCode::Unloaded&&!rh.attached_count());
+        assert(rh.observe(cref,observation,sizeof(observation))==NpcMapResult::Rejected&&r.script_calls==3);
+        assert(ma.destroy(&r.manager_session,&r.manager_control,&r.manager_tables,&r.manager.manager)==1);
+    }
     NpcBspShell bad(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
     sm::SourceMapRuntime rollback(bh);assert(rollback.load_bsp(bsp.data(),bsp.size()).code==sm::SourceMapLoadCode::HostKeyValueFailed&&!rollback.loaded()&&!bh.attached_count());
     assert(!bad.manager_session.instance&&!bad.manager_creates);
