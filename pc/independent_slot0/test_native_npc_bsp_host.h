@@ -525,14 +525,28 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
             auto& f=*static_cast<NpcBspShell*>(speech->context);
             assert((kind==npc::NpcMapKind::Jessica||kind==npc::NpcMapKind::Count)&&session==&f.session&&record&&bytes>=0x5e9);
             assert(speech!=&f.script_speech&&speech->selection.finder.store.owner==&token&&speech->selection.finder.store.system==&registry);
-            assert(f.host->close_script_session()==0);
+            assert(f.host->close_script_session()==0&&!f.host->unbind_script_scene_filter());
+            const auto& filter=speech->selection.finder.host.scene_filter;
+            assert(filter.context==&f&&filter.storage&&filter.resolve_name&&filter.metadata);
+            void* row=nullptr;unsigned n=0;
+            assert(filter.metadata(filter.context,"fixture.vcd",&row,&n)==1&&row==&f.script_result&&n==sizeof(f.script_result));
+            assert(!f.script_speech.selection.finder.host.scene_filter.metadata);
             ++f.script_calls;return 1;};
         NativeNpcMapHost sh(sr,sr,api,sr.session,&interaction,&dialogue,&managed,integrated,generated,&script,&finder);
         sr.host=&sh;sm::SourceMapRuntime st(sh);
+        npc::ResponseSceneFilterBindings shared{};shared.context=&sr;
+        assert(!sh.bind_script_scene_filter(shared));
+        shared.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{assert(false);return 0;};
+        shared.resolve_name=[](void*,void*,const char*,char*,unsigned) noexcept -> int{assert(false);return 0;};
+        shared.metadata=[](void* p,const char* name,void** out,unsigned* n) noexcept -> int{
+            auto& f=*static_cast<NpcBspShell*>(p);assert(!std::strcmp(name,"fixture.vcd"));
+            *out=&f.script_result;*n=sizeof(f.script_result);return 1;};
+        assert(sh.bind_script_scene_filter(shared)&&!sh.bind_script_scene_filter(shared));
         EntityRef uncreated{};
         assert(!sh.create_entity("npc_count",uncreated)&&!sh.script_session_open()&&!creates);
         assert(sh.open_script_session("bad",3)==-1&&!sh.script_session_open()&&creates==1);
         assert(sh.open_script_session("data",4)==1&&sh.script_session_open()&&creates==2);
+        assert(!sh.unbind_script_scene_filter()&&!sh.bind_script_scene_filter(shared));
         assert(sh.open_script_session("data",4)==0&&creates==2);
         assert(st.load_bsp(bsp.data(),bsp.size()).ok());
         const auto sj=st.entities()[2],sc=st.entities()[3];
@@ -540,6 +554,9 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
         sr.script_speech.selection.finder.store={&registry,&token};
         assert(sh.observe(sc,observation,sizeof(observation))==NpcMapResult::Rejected&&!sr.script_calls);
         sr.script_speech.selection.finder.store={};
+        sr.script_speech.selection.finder.host.scene_filter=shared;
+        assert(sh.observe(sc,observation,sizeof(observation))==NpcMapResult::Rejected&&!sr.script_calls);
+        sr.script_speech.selection.finder.host.scene_filter={};
         assert(sh.observe(sc,observation,sizeof(observation))==NpcMapResult::Applied&&sr.script_calls==1);
         assert(sh.observe(sj,observation,sizeof(observation))==NpcMapResult::Applied&&sr.script_calls==2);
         assert(!sr.script_speech.selection.finder.store.owner);
@@ -548,6 +565,8 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
         assert(sh.close_script_session()==1&&!sh.script_session_open()&&releases==1);
         assert(sh.close_script_session()==0&&releases==1);
         assert(sh.open_script_session("data",4)==1&&creates==3&&sh.close_script_session()==1&&releases==2);
+        assert(sh.unbind_script_scene_filter()&&!sh.unbind_script_scene_filter());
+        assert(sh.bind_script_scene_filter(shared)&&sh.unbind_script_scene_filter());
         assert(ma.destroy(&sr.manager_session,&sr.manager_control,&sr.manager_tables,&sr.manager.manager)==1);
     }
     NpcBspShell bad(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);bad.fail_parse=true;NativeNpcMapHost bh(bad,bad,api,bad.session);bad.host=&bh;
