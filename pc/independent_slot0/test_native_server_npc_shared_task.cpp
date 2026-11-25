@@ -22,6 +22,9 @@ struct F {
     bool obs_pvs=false,obs_found=true,obs_handled=false,obs_gate=false;float obs_seen=0;
     bool target_present=true;float target_pos[3]{};
     void* selected_enemy=nullptr;
+    unsigned char memory[0x40]{},memory_nodes[24]{},memory_record[0x38]{},memory_default[0x38]{};
+    const ServerNpcEnemyMemoryQueryApi* memory_api=nullptr;
+    ServerNpcEnemyMemoryQueryBindings memory_query{};
     bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
     float motor_yaw() const {float y=0;std::memcpy(&y,motor+0x14,4);return y;}
     template<class T>void put(void* p,unsigned o,T v){std::memcpy(static_cast<unsigned char*>(p)+o,&v,sizeof(v));}
@@ -432,5 +435,33 @@ int main(int argc,char** argv){
     f.put(f.a,0x8a0,0x7001u);f.put(f.a,0xc18,77u);f.component_handles=true;f.put(f.a,0x8c4,1.f);refresh();
     assert(err.shared.component_handled&&!err.shared.native&&f.get<float>(0x8c4)==1.f&&f.trace==std::vector<int>{2});
     f.component_handles=false;refresh();assert(err.shared.component_called&&err.extra_notification&&(f.trace==std::vector<int>{2,82,83,80,80}));
+    // Compose the actual memory tree and enemy-refresh DLL APIs, not a synthetic timestamp.
+    auto gquery=reinterpret_cast<GetServerNpcEnemyMemoryQueryApi>(GetProcAddress(s,server_npc_enemy_memory_query_export));
+    assert(gquery&&!GetProcAddress(c,server_npc_enemy_memory_query_export)&&!gquery(0,sizeof(ServerNpcEnemyMemoryQueryApi))&&!gquery(1,0));
+    f.memory_api=gquery(1,sizeof(ServerNpcEnemyMemoryQueryApi));assert(f.memory_api);
+    auto& mq=f.memory_query;mq.context=&f;mq.storage.context=&f;mq.entries=tactical_slots;mq.count=4;
+    mq.entity_key=[](void* p,void* e,std::uint32_t* out) noexcept -> int{auto& f=F::self(p);if(e!=f.target)return 0;*out=0x12345678u;return 1;};
+    mq.storage.storage=[](void* p,std::uint32_t tok,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);switch(tok){case 100:*out=f.memory;*n=sizeof(f.memory);return 1;case 200:*out=f.memory_nodes;*n=sizeof(f.memory_nodes);return 1;case 201:*out=f.memory_record;*n=sizeof(f.memory_record);return 1;case 202:*out=f.memory_default;*n=sizeof(f.memory_default);return 1;default:return 0;}
+    };
+    f.put(f.memory,0,0x22068d70u);f.put(f.memory,4,200u);f.put(f.memory,8,2u);f.put(f.memory,0x18,0x22068b40u);
+    f.memory_nodes[0]=1;f.memory_nodes[1]=255;f.put(f.memory_nodes,4,0x12345678u);f.put(f.memory_nodes,8,201u);
+    f.memory_nodes[12]=f.memory_nodes[13]=255;f.put(f.memory_nodes,16,0u);f.put(f.memory_nodes,20,202u);
+    f.put(f.memory_record,0x1c,59.f);f.put(f.memory_record,4,11.f);f.put(f.memory_record,8,22.f);f.put(f.memory_record,12,33.f);
+    f.put(f.memory_default,0x1c,60.f);f.put(f.memory_default,4,1.f);
+    erb.memory_record=[](void* p,std::uint32_t tok,void* e,bool* found,float* stamp) noexcept -> int{auto& f=F::self(p);f.trace.push_back(84);return f.memory_api->last_seen(&f.memory_query,tok,e,found,stamp);};
+    f.put(f.a,0xc18,0u);f.put(f.a,0x8a0,0x7001u);f.selected_enemy=f.hint;
+    refresh();assert(err.memory_found&&err.last_seen==59&&!err.selected&&f.trace==std::vector<int>{84});
+    f.put(f.memory_record,0x1c,60.f);refresh();assert(err.memory_found&&err.replaced&&err.enemy.new_handle==0x8002u&&(f.trace==std::vector<int>{84,83,80,81}));
+    f.put(f.a,0x8a0,0x7001u);f.put(f.memory_nodes,4,0x12345679u); // miss original key, hit fallback
+    refresh();assert(err.memory_found&&err.last_seen==60&&err.replaced);
+    f.put(f.a,0x8a0,0x7001u);f.put(f.memory_nodes,4,0x12345678u);f.put(f.memory_nodes,8,0u);
+    refresh();assert(!err.memory_found&&!err.selected&&f.trace==std::vector<int>{84});
+    f.put(f.memory_nodes,8,201u);
+    ServerNpcEnemyMemoryLookup lookup{};float aim[3]{};
+    assert(f.memory_api->aim_vector(f.a,sizeof(f.a),&mq,&lookup,aim)&&lookup.record==201&&aim[0]==11&&aim[1]==22&&aim[2]==33);
+    f.put(f.a,0x8a0,0x9001u);
+    assert(f.memory_api->aim_vector(f.a,sizeof(f.a),&mq,&lookup,aim)&&lookup.record==202&&aim[0]==1);
+    assert(!f.memory_api->aim_vector(f.a,0x987,&mq,&lookup,aim));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
