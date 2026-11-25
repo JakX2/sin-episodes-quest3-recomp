@@ -12390,6 +12390,86 @@ int __cdecl npc_consume_body_turn(void* actor,unsigned bytes,const ServerBodyTur
     *out=1;return 1;
 }
 const ServerNpcTargetThinkApi server_npc_target_think_api{version,sizeof(ServerNpcTargetThinkApi),&npc_target_think,&npc_consume_body_turn};
+bool move_scene_event(const void* e,unsigned eb) noexcept {
+    return eb>=0x3c0&&sin_independent::vgui_layout::Readable(e,0x3c0)&&hologram_read<unsigned>(e,0)==4;
+}
+bool move_scene_ready(const ServerMoveSceneBindings* b) noexcept {
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->npc;
+}
+int __cdecl move_scene_begin(void* actor,void* row,unsigned rb,const void* e,unsigned eb,void* target,float time,float now,
+    const ServerMoveSceneBindings* b,unsigned* out) noexcept {
+    if(!move_scene_event(e,eb)||rb<0x40||!hologram_writable(row,0x40)||!hologram_writable(out,4))return 0;
+    *out=0;if(!target)return 1;
+    if(!move_scene_ready(b)||!std::isfinite(time)||!std::isfinite(now))return 0;
+    const auto h=*b;
+    hologram_write(row,0x28,static_cast<unsigned char>(0));hologram_write(row,0x29,static_cast<unsigned char>(0));
+    void* npc=nullptr;unsigned n=0;
+    if(!h.npc(h.context,actor,&npc,&n))return 0;
+    if(!npc)return 1;
+    unsigned gate=0,moving=0;
+    if(!h.admit||!h.admit(h.context,actor,&gate))return 0;
+    if(gate&0xff){
+        const float end=hologram_read<float>(e,0x188);
+        if(!std::isfinite(end)||!npc_animation_keepalive(npc,n,now,static_cast<float>((std::min)(static_cast<double>(end)-time+.2,2.0))))return 0;
+    }
+    if(!h.moving||!h.moving(h.context,npc,&moving))return 0;
+    if((moving&0xff)&&(!h.cancel_navigation||!h.cancel_navigation(h.context,npc,1)))return 0;
+    *out=1;return 1;
+}
+int __cdecl move_scene_check(void* actor,const void* row,unsigned rb,const void* e,unsigned eb,float time,
+    const ServerMoveSceneBindings* b,unsigned* out) noexcept {
+    if(!move_scene_event(e,eb)||rb<0x40||!sin_independent::vgui_layout::Readable(row,0x40)||!hologram_writable(out,4)||
+       !move_scene_ready(b)||!std::isfinite(time))return 0;
+    const auto h=*b;void* npc=nullptr;unsigned n=0;
+    if(!h.npc(h.context,actor,&npc,&n))return 0;
+    *out=1;if(!npc)return 1;
+    unsigned goal=0;
+    if(!h.has_goal||!h.has_goal(h.context,npc,&goal))return 0;
+    if(!(goal&0xff)){*out=hologram_read<unsigned char>(row,0x29)!=0;return 1;}
+    const float end=hologram_read<float>(e,0x188);
+    const double remaining=static_cast<double>(end)-time;
+    if(!std::isfinite(remaining))return 0;
+    *out=0;if(remaining<0)return 1;
+    double travel=0;
+    if(!h.travel_time||!h.travel_time(h.context,npc,&travel)||!std::isfinite(travel))return 0;
+    *out=travel>0&&travel<=static_cast<float>(remaining);return 1;
+}
+int __cdecl move_scene_stop(void* actor,const void* e,unsigned eb,int forced,const ServerMoveSceneBindings* b,unsigned* out) noexcept {
+    if(!move_scene_event(e,eb)||!hologram_writable(out,4)||!move_scene_ready(b))return 0;
+    const auto h=*b;void* npc=nullptr;unsigned n=0;
+    if(!h.npc(h.context,actor,&npc,&n))return 0;
+    *out=1;if(!npc)return 1;
+    unsigned moving=0;
+    if(!h.moving||!h.moving(h.context,npc,&moving))return 0;
+    if(!(moving&0xff))return 1;
+    const float tolerance=hologram_read<float>(e,0x340);
+    if((forced&0xff)||tolerance>0)
+        return h.cancel_navigation&&h.cancel_navigation(h.context,npc,1);
+    return 1;
+}
+int __cdecl move_scene_activity(void* npc,unsigned bytes,const void* e,unsigned eb,const ServerMoveSceneBindings* b,int* out) noexcept {
+    if(!move_scene_event(e,eb)||!hologram_writable(out,4))return 0;
+    const auto* param=static_cast<const char*>(e)+0x104;
+    if(!std::memchr(param,0,128))return 0;
+    if(!*param){*out=6;return 1;}
+    char token[128]{};const auto* end=std::strchr(param,' ');
+    const size_t count=end?static_cast<size_t>(end-param):std::strlen(param);
+    std::memcpy(token,param,count);
+    if(!std::strcmp(token,"Walk")){*out=6;return 1;}
+    if(!std::strcmp(token,"Run")){*out=10;return 1;}
+    if(!std::strcmp(token,"CrouchWalk")){*out=8;return 1;}
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->activity)return 0;
+    int activity=-1;
+    if(!b->activity(b->context,token,&activity))return 0;
+    if(activity==-1){
+        if(bytes<0x984||!hologram_writable(npc,0x984)||!b->intern)return 0;
+        std::uint32_t name=0;
+        if(!b->intern(b->context,token,&name))return 0;
+        hologram_write(npc,0x980,name);activity=15;
+    }
+    *out=activity;return 1;
+}
+const ServerMoveSceneApi server_move_scene_api{version,sizeof(ServerMoveSceneApi),&move_scene_begin,&move_scene_check,&move_scene_stop,&move_scene_activity};
 
 ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
     return *static_cast<ServerNpcSceneRecordBindings*>(p);
@@ -14479,6 +14559,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerMoveSceneApi=_SiN_GetServerMoveSceneApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerMoveSceneApi* __cdecl
+SiN_GetServerMoveSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerMoveSceneApi)?&server_move_scene_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcTargetThinkApi=_SiN_GetServerNpcTargetThinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcTargetThinkApi* __cdecl

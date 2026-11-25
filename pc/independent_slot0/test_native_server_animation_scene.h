@@ -409,4 +409,49 @@ inline void check_face_scene(const ServerFaceSceneApi& api){
     assert(run(1,23)==1&&out==1&&fl(f.record,0x34)==0&&fl(f.actor,0x97c)==22.f);
 }
 
+inline void check_move_scene(const ServerMoveSceneApi& api){
+    struct Fixture {alignas(4) unsigned char npc[0x984]{},event[0x3c0]{},row[0x40]{};
+        bool present=true;unsigned gate=1,moving=1,goal=0,gates=0,cancels=0,estimates=0,lookups=0,interns=0;
+        double travel=1.;int activity=-1;char token[128]{};} f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto fl=[](const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    put(f.event,0,4u);put(f.event,0x188,4.f);
+    ServerMoveSceneBindings b{};b.context=&f;
+    b.npc=[](void* p,void*,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);*out=f.present?f.npc:nullptr;*n=sizeof(f.npc);return 1;
+    };
+    b.admit=[](void* p,void*,unsigned* out) noexcept -> int{auto& f=*static_cast<Fixture*>(p);++f.gates;*out=f.gate;return 1;};
+    b.moving=[](void* p,void*,unsigned* out) noexcept -> int{*out=static_cast<Fixture*>(p)->moving;return 1;};
+    b.cancel_navigation=[](void* p,void*,int clear) noexcept -> int{assert(clear==1);++static_cast<Fixture*>(p)->cancels;return 1;};
+    b.has_goal=[](void* p,void*,unsigned* out) noexcept -> int{*out=static_cast<Fixture*>(p)->goal;return 1;};
+    b.travel_time=[](void* p,void*,double* out) noexcept -> int{auto& f=*static_cast<Fixture*>(p);++f.estimates;*out=f.travel;return 1;};
+    b.activity=[](void* p,const char* name,int* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.lookups;std::strcpy(f.token,name);*out=f.activity;return 1;
+    };
+    b.intern=[](void* p,const char* name,std::uint32_t* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(!std::strcmp(f.token,name));++f.interns;*out=77;return 1;
+    };
+    unsigned out=99;auto begin=[&](void* target,float time){return api.begin(f.npc,f.row,sizeof(f.row),f.event,sizeof(f.event),target,time,10,&b,&out);};
+    f.row[0x28]=f.row[0x29]=1;assert(begin(nullptr,0)&&!out&&f.row[0x28]&&f.row[0x29]);
+    f.present=false;assert(begin(f.event,0)&&!out&&!f.row[0x28]&&!f.row[0x29]&&!f.gates);
+    f.present=true;f.gate=0;assert(begin(f.event,0)&&out==1&&f.gates==1&&f.cancels==1&&fl(f.npc,0x97c)==0);
+    f.gate=1;assert(begin(f.event,0)&&out==1&&f.gates==2&&f.cancels==2&&fl(f.npc,0x97c)==12);
+    f.moving=0;assert(begin(f.event,3)&&out==1&&f.cancels==2&&fl(f.npc,0x97c)==12);
+    auto check=[&](float time,unsigned expected){assert(api.check(f.npc,f.row,sizeof(f.row),f.event,sizeof(f.event),time,&b,&out)&&out==expected);};
+    check(0,0);f.row[0x29]=1;check(0,1);assert(!f.estimates);
+    f.goal=1;check(3,1);check(3.1f,0);check(4.1f,0);assert(f.estimates==2);
+    f.travel=0;check(2,0);f.travel=.5;check(2,1);
+    auto stop=[&](int force){assert(api.stop(f.npc,f.event,sizeof(f.event),force,&b,&out)&&out==1);};
+    stop(1);assert(f.cancels==2);f.moving=1;stop(0);stop(256);assert(f.cancels==2);
+    stop(1);put(f.event,0x340,10.f);stop(0);assert(f.cancels==4);
+    int activity=99;auto select=[&](const char* s,int expected){
+        std::strcpy(reinterpret_cast<char*>(f.event+0x104),s);
+        assert(api.activity(f.npc,sizeof(f.npc),f.event,sizeof(f.event),&b,&activity)&&activity==expected);
+    };
+    select("",6);select("Walk",6);select("Run fast",10);select("CrouchWalk",8);assert(!f.lookups&&!f.interns);
+    f.activity=32;select("walk",32);assert(f.lookups==1&&!f.interns&&!std::strcmp(f.token,"walk"));
+    f.activity=-1;select("custom extra",15);assert(f.lookups==2&&f.interns==1&&!std::strcmp(f.token,"custom"));
+    std::uint32_t name=0;std::memcpy(&name,f.npc+0x980,4);assert(name==77);
+}
+
 }
