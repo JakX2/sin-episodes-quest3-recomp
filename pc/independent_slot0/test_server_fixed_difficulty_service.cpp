@@ -2656,6 +2656,12 @@ int main(int argc,char** argv){
         assert(gGeneratedMap&&!gGeneratedMap(0,sizeof(n::NativeGeneratedMapDialogueApi))&&!gGeneratedMap(1,0));
         const auto* generatedMap=gGeneratedMap(1,sizeof(n::NativeGeneratedMapDialogueApi));assert(generatedMap);
         sin_port::map_host::test::check_npc_bsp(*m,*j,*c,*s,*a,*u,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,integratedMap,generatedMap);
+        const auto getScriptFinder=reinterpret_cast<n::GetScriptResponseFinderApi>(GetProcAddress(lib,n::script_response_finder_export));
+        assert(getScriptFinder&&!getScriptFinder(0,sizeof(n::ScriptResponseFinderApi))&&!getScriptFinder(1,0));
+        const auto* scriptFinder=getScriptFinder(1,sizeof(n::ScriptResponseFinderApi));assert(scriptFinder);
+        const char* privateScripts=std::getenv("SIN_PRIVATE_SCRIPTS_DIR");
+        sin_port::map_host::test::check_loaded_script_registry_bsp(*m,*j,*c,*s,*a,*sp,*in,*rp,*lc,*nd,*mo,*ma,*mr,*cat,bsp,*scriptFinder,privateScripts);
+        std::puts(privateScripts&&*privateScripts?"PASS owner retail registry loaded by DLL and shared by BSP NPCs":"PASS loaded DLL map-owned script registry and include lifecycle");
         std::puts("PASS native integrated choreography NPC map observation routing and rejection");
         std::puts("PASS loaded native NPC BSP keys, named inputs, scheduler and observation routing");
     }

@@ -5,6 +5,8 @@
 #include <cassert>
 #include <vector>
 #include <string>
+#include <fstream>
+#include <cstdlib>
 namespace sin_port::map_host::test {
 namespace sm=sin_compat::map;
 struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
@@ -34,6 +36,7 @@ struct NpcBspShell final:sm::ISourceMapEntityHost,INpcMapShells {
     npc::NativeGeneratedResponseBindings generated_scene{};
     npc::ScriptActorSpeechBindings script_speech{};
     bool script_missing=false;int script_result=1;unsigned script_calls=0;
+    void* observed_store_owner=nullptr;void* observed_store_system=nullptr;
     npc::TalkCooldownState cooldown{};
     const npc::TalkManagerApi& manager_api;
     const npc::TalkManagerRuntimeApi& manager_runtime;
@@ -550,5 +553,105 @@ inline void check_npc_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,con
     sm::SourceMapRuntime rollback(bh);assert(rollback.load_bsp(bsp.data(),bsp.size()).code==sm::SourceMapLoadCode::HostKeyValueFailed&&!rollback.loaded()&&!bh.attached_count());
     assert(!bad.manager_session.instance&&!bad.manager_creates);
     assert(bad.symbol_constructs==bad.symbol_destroys&&bad.symbol_constructs==2&&bad.count_exp.stage==npc::ExpeditorStage::Retired&&bad.jessica_exp.stage==npc::ExpeditorStage::Retired);
+}
+
+ // Owner-only filesystem source, never copied into the repository. The
+ // native create API copies each returned span before the next include.
+struct RetailDialogueSource {
+    std::string directory,buffer;
+    unsigned reads=0;
+    bool read(const char* name,std::string& out){
+        if(!name||!*name)return false;
+        std::string relative(name);
+        if(relative[0]=='/'||relative.find("..")!=std::string::npos||
+           relative.find('\\')!=std::string::npos||relative.find(':')!=std::string::npos)return false;
+        std::ifstream file(directory+"/"+relative,std::ios::binary|std::ios::ate);
+        if(!file)return false;
+        const auto length=file.tellg();
+        if(length<=0||length>4*1024*1024)return false;
+        out.resize(static_cast<std::size_t>(length));
+        file.seekg(0);
+        if(!file.read(out.data(),static_cast<std::streamsize>(out.size())))return false;
+        ++reads;return true;
+    }
+    static int __cdecl include(void* p,const char* name,const char** out,unsigned* bytes) noexcept{
+        if(!p||!out||!bytes)return 0;
+        try{
+            auto& self=*static_cast<RetailDialogueSource*>(p);
+            if(!self.read(name,self.buffer))return 0;
+            *out=self.buffer.data();*bytes=static_cast<unsigned>(self.buffer.size());return 1;
+        }catch(...){return 0;}
+    }
+};
+inline void check_loaded_script_registry_bsp(const npc::NpcMapApi& api,const npc::JessicaApi& j,
+    const npc::CountInterrogationApi& count,const npc::CountSchedulerApi& sched,const npc::GenericActorApi& actor,
+    const npc::NpcSpawnApi& spawn,const npc::JessicaInteractionApi& interaction,const npc::ResponsePolicyApi& response,
+    const npc::ExpeditorLifecycleApi& lifecycle,const npc::NpcMapDialogueApi& dialogue,const npc::ManagedJessicaObservationApi& managed,
+    const npc::TalkManagerApi& ma,const npc::TalkManagerRuntimeApi& mr,const npc::TalkCatalogApi& cat,
+    const std::vector<std::uint8_t>& bsp,const npc::ScriptResponseFinderApi& finder,const char* private_dir=nullptr){
+    NpcBspShell shell(j,count,sched,actor,spawn,response,lifecycle,ma,mr,cat);
+    shell.script_speech.context=&shell;
+    // Route observer intentionally does not execute speech. The registry
+    // itself is constructed and destroyed by the actual loaded DLL.
+    npc::ScriptNpcMapDialogueApi probe{npc::version,sizeof(npc::ScriptNpcMapDialogueApi)};
+    probe.observe=[](npc::NpcMapKind kind,npc::HologramControl* c,npc::NpcMapSession* session,const npc::NpcMapBindings* b,
+        const npc::NpcMapDialogueBindings* d,const npc::TalkManagerRuntimeBindings* m,const npc::ScriptActorSpeechBindings* speech,
+        const void*,unsigned) noexcept -> int{
+        auto& f=*static_cast<NpcBspShell*>(speech->context);
+        assert(session==&f.session&&b==&f.b&&d==&f.dialogue&&speech!=&f.script_speech);
+        if(kind==npc::NpcMapKind::Jessica)assert(c==&f.slots[2].control&&m==&f.manager);
+        else assert(kind==npc::NpcMapKind::Count&&c==&f.slots[3].control&&!m);
+        const auto& store=speech->selection.finder.store;
+        assert(store.owner&&store.system);
+        if(!f.script_calls){f.observed_store_owner=store.owner;f.observed_store_system=store.system;}
+        else assert(store.owner==f.observed_store_owner&&store.system==f.observed_store_system);
+        ++f.script_calls;return 1;
+    };
+    NativeNpcMapHost host(shell,shell,api,shell.session,&interaction,&dialogue,&managed,nullptr,nullptr,&probe,&finder);
+    shell.host=&host;
+    const char root[]=R"(criterion idle concept TLK_IDLE required
+#include "talker/fixture.txt"
+rule idle_rule
+{
+ criteria idle
+ response lines
+}
+)";
+    npc::ScriptResponseInclude inc{};
+    inc.load=[](void*,const char* name,const char** data,unsigned* bytes) noexcept -> int{
+        if(std::strcmp(name,"talker/fixture.txt"))return 0;
+        static const char included[]="response lines speak fixture_line\n";
+        *data=included;*bytes=sizeof(included)-1;return 1;
+    };
+    assert(host.open_script_session(root,sizeof(root)-1)==-1&&!host.script_session_open());
+    RetailDialogueSource retail{};
+    std::string retail_root;
+    if(private_dir&&*private_dir){
+        retail.directory=private_dir;
+        assert(retail.read("talker/response_rules.txt",retail_root));
+        inc={&retail,&RetailDialogueSource::include};
+        assert(host.open_script_session(retail_root.data(),static_cast<unsigned>(retail_root.size()),&inc)==1);
+        assert(retail.reads>1);
+        // The loaded registry must not retain the caller's input spans.
+        retail_root.clear();retail.buffer.clear();
+    }else assert(host.open_script_session(root,sizeof(root)-1,&inc)==1);
+    assert(host.script_session_open());
+    sm::SourceMapRuntime runtime(host);
+    assert(runtime.load_bsp(bsp.data(),bsp.size()).ok());
+    const auto je=runtime.entities()[2],co=runtime.entities()[3];
+    alignas(4) unsigned char observation[0x5ec]{};
+    assert(host.observe(je,observation,sizeof(observation))==NpcMapResult::Applied);
+    assert(host.observe(co,observation,sizeof(observation))==NpcMapResult::Applied&&shell.script_calls==2);
+    assert(host.close_script_session()==0&&host.script_session_open());
+    assert(runtime.unload().code==sm::SourceMapLoadCode::Unloaded);
+    assert(host.close_script_session()==1&&!host.script_session_open());
+    assert(ma.destroy(&shell.manager_session,&shell.manager_control,&shell.manager_tables,&shell.manager.manager)==1);
+    // Reopen independently after complete teardown (no stale store survives).
+    npc::ScriptResponseInclude synthetic{};
+    synthetic.load=[](void*,const char*,const char** data,unsigned* bytes) noexcept -> int{
+        static const char included[]="response lines speak fixture_line\n";
+        *data=included;*bytes=sizeof(included)-1;return 1;
+    };
+    assert(host.open_script_session(root,sizeof(root)-1,&synthetic)==1&&host.close_script_session()==1);
 }
 }
