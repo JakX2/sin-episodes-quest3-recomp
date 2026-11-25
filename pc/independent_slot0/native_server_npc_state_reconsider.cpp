@@ -590,6 +590,68 @@ int tree_operation(void* memory,unsigned bytes,unsigned operation,unsigned value
 int __cdecl tree_validate(void* m,unsigned n,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryTreeResult* out) noexcept{return tree_operation(m,n,0,0,0,b,out);}
 int __cdecl tree_insert(void* m,unsigned n,std::uint32_t k,std::uint32_t record,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryTreeResult* out) noexcept{return tree_operation(m,n,1,k,record,b,out);}
 int __cdecl tree_erase(void* m,unsigned n,unsigned index,const ServerNpcEnemyMemoryBindings* b,ServerNpcEnemyMemoryTreeResult* out) noexcept{return tree_operation(m,n,2,index,0,b,out);}
+int __cdecl upsert_memory(void* memory,unsigned bytes,void* entity,const float position[3],float now,float delay,bool seen,const ServerNpcEnemyMemoryMutationBindings* b,ServerNpcEnemyMemoryMutationResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!memory||bytes<0x40||!b||!finite_vec(position)||!std::isfinite(now)||!std::isfinite(delay)||
+       b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    if(entity&&(!b->entity_key||!b->entity_key(b->context,entity,&out->key)||!out->key||out->key==0x394u))return 0;
+    ServerNpcEnemyMemoryLookup lookup{};
+    if(!memory_lookup(memory,bytes,out->key,false,&b->storage,&lookup))return 0;
+    out->token=lookup.record;out->creation_counter=read<unsigned>(memory,0x3c);
+    if(lookup.record){
+        void* record=nullptr;unsigned extent=0;
+        if(!memory_storage(&b->storage,lookup.record,0x38,record,extent))return 0;
+        if(!update_memory_record(record,extent,position,now,seen,&out->record))return 0;
+        out->updated=1;return 1;
+    }
+    // A matching null node is corrupt in the unique-key portable representation.
+    // Reject before allocation rather than creating the retail duplicate-key case.
+    if(lookup.matched||!b->allocate||!b->release||!finite_vec(b->constructor_vector))return 0;
+    MemoryTree tree;unsigned height=0;
+    if(!tree.open(memory,bytes,&b->storage)||!tree.check(height)||tree.count==255||
+       (tree.free_head==MemoryTree::nil&&tree.high>=tree.capacity))return 0;
+    std::uint32_t handle=0xffffffffu;
+    if(entity&&(!b->entity_handle||!b->entity_handle(b->context,entity,&handle)||registry.Resolve(handle)!=entity))return 0;
+    const float recent=read<float>(memory,0x1c);if(!std::isfinite(recent))return 0;
+    void* record=nullptr;unsigned extent=0;std::uint32_t token=0;
+    if(!b->allocate(b->context,0x38,&token,&record,&extent))return 0;
+    out->allocated=1;out->token=token;
+    auto rollback=[&](){if(token&&b->release(b->context,token))out->released=1;return 0;};
+    if(!token||!record||extent<0x38)return rollback();
+    // Storage resolver must agree with allocator, so lookup cannot reach a foreign buffer.
+    void* verified=nullptr;unsigned verified_extent=0;
+    if(!memory_storage(&b->storage,token,0x38,verified,verified_extent)||verified!=record)return rollback();
+    if(!initialize_memory_record(record,extent,handle,b->constructor_vector,position,now,recent,delay,seen,&out->record))return rollback();
+    if(!tree_insert(memory,bytes,out->key,token,&b->storage,&out->tree))return rollback();
+    out->creation_counter+=1u;write(memory,0x3c,out->creation_counter);out->created=1;return 1;
+}
+bool remove_memory_index(void* memory,unsigned bytes,unsigned index,std::uint32_t token,const ServerNpcEnemyMemoryMutationBindings& b,ServerNpcEnemyMemoryTreeResult& result,unsigned& released) noexcept{
+    MemoryTree tree;unsigned height=0;
+    if(!tree.open(memory,bytes,&b.storage)||!tree.check(height)||index>=tree.high||tree.edge(index,0)==index||
+       tree.record(index)!=token||!token||!b.release)return false;
+    result={};if(!tree.erase(index,result)||!tree.check(height))return false;
+    // Precompute verified unlink, then perform retail pool release followed by publish.
+    if(!b.release(b.context,token))return false;released=1;
+    tree.publish();tree.result(result,height);result.changed=1;return true;
+}
+int __cdecl remove_memory(void* memory,unsigned bytes,std::uint32_t key,const ServerNpcEnemyMemoryMutationBindings* b,ServerNpcEnemyMemoryMutationResult* out) noexcept{
+    if(!out)return 0;*out={};out->key=key;
+    if(!memory||bytes<0x40||!b)return 0;
+    out->creation_counter=read<unsigned>(memory,0x3c);
+    // 2206bdd0 uses raw key, unlike lookup's 0x394 normalization.
+    MemoryTree tree;unsigned height=0;if(!tree.open(memory,bytes,&b->storage)||!tree.check(height))return 0;
+    unsigned index=tree.find(key);if(index==MemoryTree::nil)return 1;
+    out->token=tree.record(index);
+    if(!remove_memory_index(memory,bytes,index,out->token,*b,out->tree,out->released))return 0;
+    out->removed=1;return 1;
+}
+int __cdecl erase_memory_record(void* context,void* memory,unsigned bytes,unsigned index,std::uint32_t token) noexcept{
+    if(!context)return 0;
+    ServerNpcEnemyMemoryTreeResult result{};unsigned released=0;
+    return remove_memory_index(memory,bytes,index,token,*static_cast<const ServerNpcEnemyMemoryMutationBindings*>(context),result,released);
+}
+const ServerNpcEnemyMemoryMutationApi mutation_api{1,sizeof(ServerNpcEnemyMemoryMutationApi),&upsert_memory,&remove_memory,&erase_memory_record};
 const ServerNpcEnemyMemoryTreeApi tree_api{1,sizeof(ServerNpcEnemyMemoryTreeApi),&tree_validate,&tree_insert,&tree_erase};
 const ServerNpcEnemyMemoryMaintenanceApi maintenance_api{1,sizeof(ServerNpcEnemyMemoryMaintenanceApi),&maintain_memory};
 const ServerNpcEnemyMemoryRecordApi record_api{1,sizeof(ServerNpcEnemyMemoryRecordApi),&initialize_memory_record,&update_memory_record,&memory_expiry};
@@ -661,4 +723,10 @@ SiN_GetServerNpcEnemyMemoryMaintenanceApi(std::uint32_t version,std::uint32_t si
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryTreeApi* __cdecl
 SiN_GetServerNpcEnemyMemoryTreeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryTreeApi)?&tree_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcEnemyMemoryMutationApi=_SiN_GetServerNpcEnemyMemoryMutationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryMutationApi* __cdecl
+SiN_GetServerNpcEnemyMemoryMutationApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcEnemyMemoryMutationApi)?&mutation_api:nullptr;
 }
