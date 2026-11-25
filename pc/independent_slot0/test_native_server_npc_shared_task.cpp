@@ -16,6 +16,7 @@ struct F {
     unsigned char motor[0x1c]{},target[4]{},nav[0x50]{},path[0x48]{};
     float speed[3]{};bool can_stop=false;int pose_index=3;
     bool cue_squad=true,cue_target=true,cue_visible=true;float cue_path=240;
+    bool obs_pvs=false,obs_found=true,obs_handled=false,obs_gate=false;float obs_seen=0;
     bool target_present=true;float target_pos[3]{};
     bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
     float motor_yaw() const {float y=0;std::memcpy(&y,motor+0x14,4);return y;}
@@ -307,5 +308,28 @@ int main(int argc,char** argv){
     f.component_handles=false;cue(1);assert(qr.shared.native&&qr.emitted&&(f.trace==std::vector<int>{2,48,50}));
     ServerNpcScheduleTask ct{84,1};cb.original_vtable=0;
     assert(!cq->execute(f.a,sizeof(f.a),&ct,30,&b,&cb,&qr));
+    auto gob=reinterpret_cast<GetServerNpcSharedObservationApi>(GetProcAddress(s,server_npc_shared_observation_export));
+    assert(gob&&!GetProcAddress(c,server_npc_shared_observation_export)&&!gob(0,sizeof(ServerNpcSharedObservationApi))&&!gob(1,0));
+    const auto* ob=gob(1,sizeof(ServerNpcSharedObservationApi));assert(ob);
+    ServerNpcSharedObservationBindings obb{};obb.context=&f;obb.original_vtable=0x2249aaa4;
+    obb.component_gate=[](void* p,std::uint32_t token,bool* out) noexcept -> int{auto& f=F::self(p);assert(token==77&&f.component[8]==1);f.component[8]=f.obs_handled;*out=f.obs_gate;f.trace.push_back(51);return 1;};
+    obb.pvs_query=[](void* p,std::uint32_t token,bool* out) noexcept -> int{auto& f=F::self(p);assert(token==99);*out=f.obs_pvs;f.trace.push_back(52);return 1;};
+    obb.target=cb.target;
+    obb.memory_record=[](void* p,std::uint32_t token,void* target,bool* found,float* stamp) noexcept -> int{auto& f=F::self(p);assert(token==100&&target==f.target);*found=f.obs_found;*stamp=f.obs_seen;f.trace.push_back(53);return 1;};
+    f.put(f.a,0xc18,0u);f.put(f.a,0x16c,99u);f.put(f.a,0x984,100u);f.put(f.a,0x850,3);f.put(f.a,0xb4,0x400u);
+    ServerNpcSharedObservationResult obs{};ServerNpcScheduleTask ot{6,0};
+    auto observe=[&](){f.put(f.a,0x7a4,1);f.trace.clear();assert(ob->execute(f.a,sizeof(f.a),&ot,30,&b,&obb,&obs));};
+    observe();assert(obs.flag_gate&&obs.shared.lifecycle.completed&&f.trace.empty());
+    f.put(f.a,0xb4,0u);f.obs_pvs=true;observe();assert(obs.pvs&&obs.shared.lifecycle.completed&&f.trace==std::vector<int>{52});
+    f.obs_pvs=false;f.put(f.a,0x850,1);observe();assert(!obs.shared.lifecycle.completed&&!obs.target_calls&&f.trace==std::vector<int>{52});
+    f.put(f.a,0x850,3);f.target_present=false;observe();assert(!obs.shared.lifecycle.completed&&obs.target_calls==1&&(f.trace==std::vector<int>{52,41}));
+    f.target_present=true;f.obs_seen=15;observe();assert(obs.elapsed==15&&!obs.shared.lifecycle.completed&&(f.trace==std::vector<int>{52,41,41,53}));
+    f.obs_seen=15.01f;observe();assert(obs.elapsed<15&&obs.shared.lifecycle.completed&&obs.memory_found);
+    f.obs_found=false;observe();assert(!obs.memory_found&&!obs.shared.lifecycle.completed&&obs.elapsed>15);
+    f.put(f.a,0xc18,77u);f.component_handles=true;observe();assert(obs.shared.component_handled&&!obs.gate_component&&f.trace==std::vector<int>{2});
+    f.component_handles=false;f.obs_handled=true;f.obs_gate=true;observe();assert(obs.gate_component&&obs.gate_handled&&obs.shared.lifecycle.completed&&f.component[8]==0&&(f.trace==std::vector<int>{2,51}));
+    f.obs_gate=false;f.put(f.a,0xb4,0x400u);f.obs_pvs=true;observe();assert(obs.gate_handled&&!obs.flag_gate&&obs.pvs&&f.component[8]==0);
+    f.obs_handled=false;observe();assert(!obs.gate_handled&&obs.flag_gate&&obs.shared.lifecycle.completed&&f.component[8]==0&&(f.trace==std::vector<int>{2,51}));
+    f.put(f.a,0xc18,0u);run(6,true,0,30);assert(o.parent_called&&!o.native);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
 }
