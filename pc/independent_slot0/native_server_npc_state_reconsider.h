@@ -801,4 +801,29 @@ struct ServerNpcGruntGatherConditionsApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherConditionsBindings*,ServerNpcGruntGatherConditionsResult*) noexcept;
 };
 using GetServerNpcGruntGatherConditionsApi=const ServerNpcGruntGatherConditionsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_point_policy_export[]="SiN_GetServerNpcGruntPointPolicyApi";
+struct ServerNpcGruntPointPolicyBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    void* context;
+    std::uint32_t original_vtable;
+    float invalid_solution[3]; // original global vector 225885b8
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept;
+    int (__cdecl *notify_squad)(void*,const float[3],unsigned,int,float) noexcept;
+    int (__cdecl *in_view)(void*,void*,const float[3],bool*) noexcept;
+    int (__cdecl *visible)(void*,void*,const float[3],unsigned,bool*) noexcept;
+    int (__cdecl *headroom)(void*,void*,bool*) noexcept;
+    // Original engine solution leaves 220b3660 / 220b3050, no geometry implementation.
+    int (__cdecl *solve)(void*,void*,const float[3],bool,float[3]) noexcept;
+};
+struct ServerNpcGruntPointPolicyResult {
+    unsigned accepted,no_inventory,cooldown_blocked,range_blocked,scalar_blocked,squad_visited,squad_stale,squad_blocked,notified,in_view,visible,headroom_called,headroom_clear,solve_called,direct,deadline_written;
+    float distance,deadline,solution[3];
+};
+struct ServerNpcGruntPointPolicyApi {
+    std::uint32_t version,size;
+    int (__cdecl *query)(void*,unsigned,const float[3],float,const ServerNpcGruntPointPolicyBindings*,ServerNpcGruntPointPolicyResult*) noexcept;
+};
+using GetServerNpcGruntPointPolicyApi=const ServerNpcGruntPointPolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
