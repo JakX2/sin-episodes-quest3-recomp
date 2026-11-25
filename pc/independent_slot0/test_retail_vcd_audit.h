@@ -744,10 +744,10 @@ inline void check_native_talk_propagation_history(VcdAuditArena& a,const TalkNat
 
 inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriteriaTreeApi& api,
     const ResponseCriteriaSelectionApi* integrated=nullptr,const ResponseSelectApi* select=nullptr,
-    const ResponseSceneFilterApi* filter=nullptr){
+    const ResponseSceneFilterApi* filter=nullptr,const NpcResponseCriteriaApi* npcCriteria=nullptr){
     using F=ScenePlaybackFixture;
     struct State {
-        struct Child{char name[32]{},value[64]{};float weight=0;} children[8]{};
+        struct Child{char name[32]{},value[64]{};float weight=0;} children[16]{};
         int root=0;unsigned count=0,created=0,destroyed=0;
         static State& self(void* p){return *static_cast<State*>(p);}
     } f;
@@ -760,7 +760,7 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
     b.find_child=[](void* p,void* root,const char* name,int create,void** out) noexcept -> int{
         auto& f=State::self(p);assert(root==&f.root&&create==1);
         for(unsigned i=0;i<f.count;++i)if(!_stricmp(f.children[i].name,name)){*out=&f.children[i];return 1;}
-        assert(f.count<8&&std::strlen(name)<32);auto& c=f.children[f.count++];std::strcpy(c.name,name);*out=&c;return 1;};
+        assert(f.count<16&&std::strlen(name)<32);auto& c=f.children[f.count++];std::strcpy(c.name,name);*out=&c;return 1;};
     b.set_string=[](void*,void* child,const char* field,const char* value) noexcept -> int{
         assert(!std::strcmp(field,"value")&&std::strlen(value)<64);std::strcpy(static_cast<State::Child*>(child)->value,value);return 1;};
     b.set_float=[](void*,void* child,const char* field,float value) noexcept -> int{
@@ -858,6 +858,54 @@ inline void check_native_response_criteria(VcdAuditArena& a,const ResponseCriter
         assert(!std::strcmp(reinterpret_cast<char*>(fsel.response+4),"fallback")&&fsel.scene_lookups==2&&a.live.empty());
         fsel.missing=true;F::fl(fsel.metadata,4,2.5f);
         assert(run("part:head,PART:torso,state:alert")==1&&F::word(fsel.response,0)==1&&fsel.scene_lookups==3&&a.live.empty());
+    }
+    if(npcCriteria){
+        struct Npc {
+            const ResponseCriteriaTreeApi& tree;ResponseCriteriaTreeBindings& b;
+            alignas(4) unsigned char actor[0x9a4]{},player[0x2c8]{};
+            unsigned enemies=0,refreshes=0,local=0,views=0,traces=0,clocks=0;
+            bool hostile=true,multi=false,view=true;
+            static Npc& self(void* p){return *static_cast<Npc*>(p);}
+        } npc{api,b};
+        NpcResponseCriteriaBindings h{};h.context=&npc;
+        h.add=[](void* p,void* c,const char* k,const char* v,float w) noexcept -> int{auto& n=Npc::self(p);return n.tree.add(&n.b,c,k,v,w);};
+        h.activity=[](void*,int id,const char** out) noexcept -> int{assert(id==42);*out="ACT_IDLE";return 1;};
+        h.enemy=[](void* p,void* actor,unsigned* present,const char** name) noexcept -> int{auto& n=Npc::self(p);assert(actor==n.actor);++n.enemies;*present=n.hostile;*name="npc_sintekgrunt";return 1;};
+        h.clock=[](void* p,float* out) noexcept -> int{++Npc::self(p).clocks;*out=12.5f;return 1;};
+        h.velocity=[](void*,void*,float* xyz) noexcept -> int{xyz[0]=3;xyz[1]=4;xyz[2]=0;return 1;};
+        h.weapon=[](void*,void*,unsigned* present,const char** name) noexcept -> int{*present=0;*name=nullptr;return 1;};
+        h.max_clients=[](void* p,int* out) noexcept -> int{*out=Npc::self(p).multi?2:1;return 1;};
+        h.local_player=[](void* p,void** out,unsigned* n) noexcept -> int{auto& s=Npc::self(p);++s.local;*out=s.player;*n=sizeof(s.player);return 1;};
+        h.refresh=[](void* p,void* ent) noexcept -> int{auto& s=Npc::self(p);++s.refreshes;assert(ent==s.actor||ent==s.player);F::put(ent,0xb8,0u);if(ent==s.player){F::fl(ent,0x2bc,6);F::fl(ent,0x2c0,8);}return 1;};
+        h.condition=[](void*,void*,int id,unsigned* out) noexcept -> int{assert(id==0x1f);*out=1;return 1;};
+        h.in_view=[](void* p,void* player,void* actor,unsigned* out) noexcept -> int{auto& s=Npc::self(p);assert(player==s.player&&actor==s.actor);++s.views;*out=s.view;return 1;};
+        h.visible=[](void* p,void*,void*,unsigned mask,unsigned* out) noexcept -> int{assert(mask==0x4081);++Npc::self(p).traces;*out=1;return 1;};
+        F::put(npc.actor,0x878,42u);F::put(npc.actor,0x850,3u);
+        F::put(npc.actor,0xb8,0x800u);F::put(npc.player,0xb8,0x800u);
+        auto expect=[&](const char* key,const char* value){
+            int idx=-1;std::uint32_t word=0;assert(api.find(c,sizeof(c),&b,key,&idx,&word)==1&&idx>=0&&word);
+            auto* child=reinterpret_cast<State::Child*>(static_cast<std::uintptr_t>(word));
+            assert(!std::strcmp(child->value,value)&&child->weight==1.f);};
+        assert(api.construct(c,sizeof(c),&b)==1);
+        assert(npcCriteria->append(npc.actor,sizeof(npc.actor),c,&h)==1&&f.count==9);
+        expect("activity","ACT_IDLE");expect("npcstate","[NPCState::Combat]");expect("enemy","npc_sintekgrunt");
+        expect("timesincecombat","-1");expect("speed","5.000");expect("weapon","none");
+        expect("distancetoplayer","10.000000");expect("seeplayer","1");expect("seenbyplayer","1");
+        assert(npc.enemies==2&&npc.refreshes==2&&npc.local==1&&npc.views==1&&npc.traces==1&&!npc.clocks);
+        assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+        npc.hostile=false;npc.multi=true;F::put(npc.actor,0x850,7u);
+        assert(api.construct(c,sizeof(c),&b)==1);
+        assert(npcCriteria->append(npc.actor,sizeof(npc.actor),c,&h)==1&&f.count==7);
+        expect("timesincecombat","999999.0");expect("distancetoplayer","16384");expect("seenbyplayer","0");
+        assert(npc.enemies==3&&npc.local==1&&npc.views==1&&npc.traces==1&&!npc.clocks);
+        assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
+        npc.multi=false;npc.view=false;F::fl(npc.actor,0x9a0,10.f);
+        assert(api.construct(c,sizeof(c),&b)==1);
+        assert(npcCriteria->append(npc.actor,sizeof(npc.actor),c,&h)==1);
+        expect("timesincecombat","2.500000");expect("seenbyplayer","0");
+        assert(npc.clocks==1&&npc.views==2&&npc.traces==1);
+        assert(npcCriteria->append(npc.actor,0x9a3,c,&h)==0);
+        assert(api.destroy(c,sizeof(c),&b)==1&&a.live.empty());
     }
 }
 

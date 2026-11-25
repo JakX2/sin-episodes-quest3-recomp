@@ -1238,8 +1238,13 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena criteriaSelectionArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_response_criteria(criteriaSelectionArena,*criteriaTree,criteriaSelection,responseSelect);
         std::puts("PASS native criteria set and modifiers through actual response selection");
+        const auto getNpcCriteria=reinterpret_cast<tables::GetNpcResponseCriteriaApi>(GetProcAddress(server,tables::npc_response_criteria_export));
+        assert(getNpcCriteria&&!GetProcAddress(client,tables::npc_response_criteria_export));
+        const auto* npcCriteria=getNpcCriteria(1,sizeof(tables::NpcResponseCriteriaApi));
+        assert(npcCriteria&&!getNpcCriteria(0,sizeof(tables::NpcResponseCriteriaApi))&&!getNpcCriteria(1,0));
         tables::test::VcdAuditArena filteredCriteriaArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
-        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter);
+        tables::test::check_native_response_criteria(filteredCriteriaArena,*criteriaTree,criteriaSelection,responseSelect,responseSceneFilter,npcCriteria);
+        std::puts("PASS native shared NPC response criteria and player visibility policy");
         std::puts("PASS native criteria and scene filter at response finder boundary");
         std::puts("PASS native 92-byte response criteria and 24-byte indexed tree");
         tables::test::TalkManagerFixture neighborSpeechManager(*talkManager,*talkCatalog);

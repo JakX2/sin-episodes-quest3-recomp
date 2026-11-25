@@ -7981,6 +7981,70 @@ const ResponseCriteriaTreeApi response_criteria_tree_api{version,sizeof(Response
     &response_criteria_add,&response_criteria_find,&response_criteria_destroy};
 
 
+// 220a3eb0: shared expresser NPC criteria. Engine queries are explicit;
+ // names are consumed synchronously by the native CriteriaSet insertion.
+int __cdecl npc_response_criteria(void* npc,unsigned bytes,void* c,const NpcResponseCriteriaBindings* b) noexcept {
+    if(bytes<0x9a4||!sin_independent::vgui_layout::Readable(npc,0x9a4)||!c||
+       !b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->add||!b->activity||
+       !b->enemy||!b->clock||!b->velocity||!b->weapon||!b->max_clients||!b->local_player||
+       !b->refresh||!b->condition||!b->in_view||!b->visible)return 0;
+    const auto h=*b;
+    auto add=[&](const char* key,const char* value){return h.add(h.context,c,key,value,1.f)!=0;};
+    char buf[384]{};
+    auto number=[&](const char* key,const char* format,double value){
+        const int n=std::snprintf(buf,sizeof(buf),format,value);
+        return n>=0&&static_cast<unsigned>(n)<sizeof(buf)&&add(key,buf);};
+    auto length=[](float x,float y,float z){
+        // Retail narrows the squared sum to float before the sqrt call.
+        return std::sqrt(static_cast<float>(double(x)*x+double(y)*y+double(z)*z));};
+    const char* name=nullptr;
+    if(!h.activity(h.context,hologram_read<int>(npc,0x878),&name))return -1;
+    if(name&&!add("activity",name))return -1;
+    static constexpr const char* states[]={"None","Idle","Alert","Combat","Scripted","PlayDead","Dead"};
+    const auto state=hologram_read<unsigned>(npc,0x850);
+    if(state<7){
+        std::snprintf(buf,sizeof(buf),"[NPCState::%s]",states[state]);
+        if(!add("npcstate",buf))return -1;
+    }
+    unsigned present=0;
+    if(!h.enemy(h.context,npc,&present,&name))return -1;
+    if(present){
+        name=nullptr;
+        if(!h.enemy(h.context,npc,&present,&name)||!present||
+           !add("enemy",name?name:"")||!add("timesincecombat","-1"))return -1;
+    }else{
+        const float last=hologram_read<float>(npc,0x9a0);
+        if(last==0.f){if(!add("timesincecombat","999999.0"))return -1;}
+        else{float now=0;if(!h.clock(h.context,&now)||!number("timesincecombat","%f",double(now)-last))return -1;}
+    }
+    float vel[3]{};
+    if(!h.velocity(h.context,npc,vel)||!number("speed","%.3f",length(vel[0],vel[1],vel[2])))return -1;
+    name=nullptr;present=0;
+    if(!h.weapon(h.context,npc,&present,&name)||!add("weapon",present?(name?name:""):"none"))return -1;
+    int clients=0;void* player=nullptr;unsigned extent=0;
+    if(!h.max_clients(h.context,&clients))return -1;
+    if(clients<=1&&!h.local_player(h.context,&player,&extent))return -1;
+    if(!player){if(!add("distancetoplayer","16384"))return -1;}
+    else{
+        if(extent<0x2c8||!sin_independent::vgui_layout::Readable(player,0x2c8))return -1;
+        if((hologram_read<unsigned>(npc,0xb8)&0x800)&&!h.refresh(h.context,npc))return -1;
+        if((hologram_read<unsigned>(player,0xb8)&0x800)&&!h.refresh(h.context,player))return -1;
+        const float x=hologram_read<float>(player,0x2bc)-hologram_read<float>(npc,0x2bc);
+        const float y=hologram_read<float>(player,0x2c0)-hologram_read<float>(npc,0x2c0);
+        const float z=hologram_read<float>(player,0x2c4)-hologram_read<float>(npc,0x2c4);
+        if(!number("distancetoplayer","%f",length(x,y,z)))return -1;
+    }
+    unsigned see=0;
+    if(!h.condition(h.context,npc,0x1f,&see)||!add("seeplayer",see?"1":"0"))return -1;
+    see=0;
+    if(player){
+        if(!h.in_view(h.context,player,npc,&see))return -1;
+        if(see&&!h.visible(h.context,player,npc,0x4081,&see))return -1;
+    }
+    return add("seenbyplayer",see?"1":"0")?1:-1;
+}
+const NpcResponseCriteriaApi npc_response_criteria_api{version,sizeof(NpcResponseCriteriaApi),&npc_response_criteria};
+
 const ResponseCriteriaSelectionBindings& response_criteria_selection_cfg(void* p) noexcept {
     return *static_cast<const ResponseCriteriaSelectionBindings*>(p);
 }
@@ -16060,6 +16124,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NativeCho
 SiN_GetNativeChoreographyClockApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(NativeChoreographyClockApi)?&native_choreography_clock_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetNpcResponseCriteriaApi=_SiN_GetNpcResponseCriteriaApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::NpcResponseCriteriaApi* __cdecl
+SiN_GetNpcResponseCriteriaApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(NpcResponseCriteriaApi)?&npc_response_criteria_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetResponseCriteriaSelectionApi=_SiN_GetResponseCriteriaSelectionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseCriteriaSelectionApi* __cdecl

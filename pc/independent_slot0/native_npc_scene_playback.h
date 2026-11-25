@@ -1104,6 +1104,30 @@ struct ResponseCriteriaTreeApi {
     int (__cdecl *destroy)(void*,unsigned,const ResponseCriteriaTreeBindings*) noexcept;
 };
 using GetResponseCriteriaTreeApi=const ResponseCriteriaTreeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char npc_response_criteria_export[]="SiN_GetNpcResponseCriteriaApi";
+struct NpcResponseCriteriaBindings {
+    void* context;
+    int (__cdecl *add)(void*,void* criteria,const char*,const char*,float) noexcept;
+    int (__cdecl *activity)(void*,int,const char**) noexcept;
+    // Original enemy virtual +154: repeated for nonnull enemy; name may be null.
+    int (__cdecl *enemy)(void*,void* npc,unsigned* present,const char** name) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *velocity)(void*,void* npc,float xyz[3]) noexcept;
+    int (__cdecl *weapon)(void*,void* npc,unsigned* present,const char** name) noexcept;
+    int (__cdecl *max_clients)(void*,int*) noexcept;
+    int (__cdecl *local_player)(void*,void**,unsigned*) noexcept;
+    int (__cdecl *refresh)(void*,void*) noexcept;
+    int (__cdecl *condition)(void*,void*,int,unsigned*) noexcept;
+    int (__cdecl *in_view)(void*,void* player,void* npc,unsigned*) noexcept;
+    int (__cdecl *visible)(void*,void* player,void* npc,unsigned mask,unsigned*) noexcept;
+};
+struct NpcResponseCriteriaApi {
+    std::uint32_t version,size;
+    // Shared 220a3eb0 policy only; base and derived ModifyOrAppendCriteria
+    // wrappers remain separate. 1 success, 0 invalid, -1 transport failure.
+    int (__cdecl *append)(void* npc,unsigned bytes,void* criteria,const NpcResponseCriteriaBindings*) noexcept;
+};
+using GetNpcResponseCriteriaApi=const NpcResponseCriteriaApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char response_criteria_selection_export[]="SiN_GetResponseCriteriaSelectionApi";
 struct ResponseCriteriaSelectionSession {
     void* object;unsigned bytes;
