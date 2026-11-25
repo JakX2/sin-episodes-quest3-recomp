@@ -237,6 +237,26 @@ struct SceneResponseServicesApi {
     int (__cdecl *adapt)(const SceneResponseServicesBindings*,ResponseSceneFilterBindings*) noexcept;
 };
 using GetSceneResponseServicesApi=const SceneResponseServicesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char scene_cached_precache_export[]="SiN_GetSceneCachedPrecacheApi";
+struct SceneCachedPrecacheBindings {
+    void* context;
+    const SceneResponseServicesBindings* metadata;
+    // Nonmutating metadata filename-tree lookup, 221aa240.
+    int (__cdecl *contains)(void*,const char*,unsigned*) noexcept;
+    int (__cdecl *precache_phase)(void*,unsigned*) noexcept;
+    int (__cdecl *late_warning)(void*,const char*) noexcept;
+    int (__cdecl *ensure_raw)(void*,const char*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *sound_name)(void*,std::uint32_t,const char**) noexcept;
+    int (__cdecl *precache_sound)(void*,const char*) noexcept;
+};
+struct SceneCachedPrecacheApi {
+    std::uint32_t version,size;
+    // Original 221ad8d0. Return 0 on invalid preflight, -1 on
+    // host failure after work begins, 1 on success.
+    int (__cdecl *precache)(const char*,const SceneCachedPrecacheBindings*) noexcept;
+};
+using GetSceneCachedPrecacheApi=const SceneCachedPrecacheApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char scene_metadata_index_export[]="SiN_GetSceneMetadataIndexApi";
 struct SceneMetadataIndexBindings {
     void* context;

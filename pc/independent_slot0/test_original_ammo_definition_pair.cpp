@@ -678,6 +678,12 @@ int main(int argc,char** argv){
     const auto* sceneResponseServices=getSceneResponseServices(1,sizeof(tables::SceneResponseServicesApi));
     assert(sceneResponseServices&&!getSceneResponseServices(0,sizeof(tables::SceneResponseServicesApi))&&!getSceneResponseServices(1,0));
     tables::test::check_scene_response_services(*sceneResponseServices,*responseSceneFilter);
+    const auto getSceneCachedPrecache=reinterpret_cast<tables::GetSceneCachedPrecacheApi>(GetProcAddress(server,tables::scene_cached_precache_export));
+    assert(getSceneCachedPrecache&&!GetProcAddress(client,tables::scene_cached_precache_export));
+    const auto* sceneCachedPrecache=getSceneCachedPrecache(1,sizeof(tables::SceneCachedPrecacheApi));
+    assert(sceneCachedPrecache&&!getSceneCachedPrecache(0,sizeof(tables::SceneCachedPrecacheApi))&&!getSceneCachedPrecache(1,0));
+    tables::test::check_scene_cached_precache(*sceneCachedPrecache);
+    std::puts("PASS native cached scene sound precache order, late warning and vector relocation");
     const auto getSceneMetadataIndex=reinterpret_cast<tables::GetSceneMetadataIndexApi>(GetProcAddress(server,tables::scene_metadata_index_export));
     assert(getSceneMetadataIndex&&!GetProcAddress(client,tables::scene_metadata_index_export));
     const auto* sceneMetadataIndex=getSceneMetadataIndex(1,sizeof(tables::SceneMetadataIndexApi));
