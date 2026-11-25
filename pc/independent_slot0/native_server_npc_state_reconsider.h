@@ -642,4 +642,11 @@ struct ServerNpcGruntGoalRefreshApi {
     int (__cdecl *update)(void*,unsigned,unsigned,float,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntGoalRefreshResult*) noexcept;
 };
 using GetServerNpcGruntGoalRefreshApi=const ServerNpcGruntGoalRefreshApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_combat_goal_export[]="SiN_GetServerNpcGruntCombatGoalApi";
+struct ServerNpcGruntCombatGoalApi {
+    std::uint32_t version,size;
+    // Same original combat sequence with native enemy/target goal policies in place of navigation_update.
+    int (__cdecl *gather)(void*,unsigned,void*,float,const ServerNpcGruntCombatConditionsBindings*,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntCombatConditionsResult*,ServerNpcGruntGoalRefreshResult[2]) noexcept;
+};
+using GetServerNpcGruntCombatGoalApi=const ServerNpcGruntCombatGoalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

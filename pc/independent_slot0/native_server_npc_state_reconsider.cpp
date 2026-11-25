@@ -1529,7 +1529,8 @@ int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float di
     if(attack)for(int id:{0x24,0x25,0x28})if(!store(id,false))return 0;
     return 1;
 }
-int __cdecl grunt_combat_conditions(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out) noexcept{
+int __cdecl grunt_goal_refresh(void*,unsigned,unsigned,float,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntGoalRefreshResult*) noexcept;
+int combat_conditions_impl(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out,const ServerNpcGruntGoalRefreshBindings* goals,ServerNpcGruntGoalRefreshResult* goal_results) noexcept{
     if(!out)return 0;
     out->range={};out->attack={};out->cache={};
     out->completed=out->attack_called=out->cleanup_called=out->nav_calls=out->unreachable_set=out->old_sight=out->close_mark=out->point_mark=out->point_queries=0;
@@ -1550,7 +1551,11 @@ int __cdecl grunt_combat_conditions(void* actor,unsigned bytes,void* target,floa
         out->cleanup_called=1;
     }
     for(unsigned phase=0;phase<2;++phase){
-        if(!b->navigation_update||!b->navigation_update(b->context,actor,phase,now))return 0;++out->nav_calls;
+        if(goals){
+            auto gb=*goals;gb.memory.entries=mb.entries;gb.memory.count=mb.count;gb.original_vtable=vb.original_vtable;
+            if(!grunt_goal_refresh(actor,bytes,phase,now,&gb,&goal_results[phase]))return 0;
+        }else if(!b->navigation_update||!b->navigation_update(b->context,actor,phase,now))return 0;
+        ++out->nav_calls;
     }
     const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
     auto test=[&](int id,bool& yes){ServerNpcConditionResult cr{};if(!cond->test(actor,bytes,id,NpcConditionCurrent,&vb.conditions,&cr))return false;yes=cr.value!=0;return true;};
@@ -1601,6 +1606,14 @@ int __cdecl grunt_combat_conditions(void* actor,unsigned bytes,void* target,floa
     }
     out->completed=1;return 1;
 }
+int __cdecl grunt_combat_conditions(void* a,unsigned n,void* e,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out) noexcept{
+    return combat_conditions_impl(a,n,e,now,b,out,nullptr,nullptr);
+}
+int __cdecl grunt_combat_goal(void* a,unsigned n,void* e,float now,const ServerNpcGruntCombatConditionsBindings* b,const ServerNpcGruntGoalRefreshBindings* goals,ServerNpcGruntCombatConditionsResult* out,ServerNpcGruntGoalRefreshResult* results) noexcept{
+    if(!goals||!results)return 0;results[0]={};results[1]={};
+    return combat_conditions_impl(a,n,e,now,b,out,goals,results);
+}
+const ServerNpcGruntCombatGoalApi combat_goal_api{1,sizeof(ServerNpcGruntCombatGoalApi),&grunt_combat_goal};
 bool goal_vector_distance(const float* a,const float* b,float& distance) noexcept{
     if(!finite_vec(a)||!finite_vec(b))return false;
     double squared=0;for(unsigned i=0;i<3;++i){const float d=static_cast<float>(static_cast<double>(a[i])-b[i]);squared+=static_cast<double>(d)*d;}
@@ -1885,4 +1898,10 @@ SiN_GetServerNpcGruntCombatConditionsApi(std::uint32_t version,std::uint32_t siz
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGoalRefreshApi* __cdecl
 SiN_GetServerNpcGruntGoalRefreshApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGoalRefreshApi)?&goal_refresh_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatGoalApi=_SiN_GetServerNpcGruntCombatGoalApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatGoalApi* __cdecl
+SiN_GetServerNpcGruntCombatGoalApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatGoalApi)?&combat_goal_api:nullptr;
 }
