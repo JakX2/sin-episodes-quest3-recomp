@@ -12045,6 +12045,93 @@ int __cdecl animation_priority_refresh(void* actor,unsigned bytes,const void* re
 }
 const ServerAnimationPriorityApi server_animation_priority_api{version,sizeof(ServerAnimationPriorityApi),
     &animation_priority_channel,&animation_priority_prefix,&animation_priority_reorder,&animation_priority_refresh};
+int __cdecl animation_scene_initialize(void* actor,unsigned bytes,void* record,unsigned rb,void* event,unsigned eb,float time,float now,
+    const ServerAnimationSceneInitBindings* b,unsigned* out) noexcept {
+    if(!npc_weapon_scene_record(record,rb,event,eb)||eb<0x3c0||!hologram_writable(record,0x40)||
+       !hologram_writable(out,4)||!std::isfinite(time)||!std::isfinite(now))return -1;
+    const unsigned type=hologram_read<unsigned>(event,0);
+    if(!animation_scene_type(type)||hologram_read<int>(record,0x10)!=-2)return 0;
+    if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->admission.lookup||!b->allocate_layer||
+       !b->sequence_info||!b->suppressed)return -1;
+    const auto h=*b;
+    const char* name=static_cast<const char*>(event)+0x84;
+    if(!std::memchr(name,0,128))return -1;
+    const auto ca=hologram_read<std::uint32_t>(record,8);
+    int seq=-1;
+    if(!h.admission.lookup(h.admission.context,actor,name,&seq))return -1;
+    hologram_write(record,0x18,seq);hologram_write(record,0x10,-1);
+    if(seq<0){
+        if(!h.admission.missing||!h.admission.missing(h.admission.context,actor,ca,type,name))return -1;
+        *out=0;return 1;
+    }
+    unsigned suppressed=0;
+    if(type==6){
+        ServerGestureMetadata md{};
+        if(!h.metadata||!h.metadata(h.context,actor,seq,&md))return -1;
+        // Only posture gestures query actor suppression.
+        if(md.available&&md.type&&vfe_detail::equal(md.type,"posture")&&!h.suppressed(h.context,actor,&suppressed))return -1;
+        if(!server_gesture_metadata_apply(record,rb,event,eb,&md,suppressed,&h.frame))return -1;
+    }else{
+        unsigned gate=0;
+        if(!h.sequence_gate||!h.sequence_gate(h.context,actor,&gate))return -1;
+        if(!(gate&0xff)){*out=0;return 1;}
+    }
+    void* choreo=nullptr;
+    if(!animation_priority_storage(&h.frame,ca,0x110,choreo))return -1;
+    int channel=0;std::uint32_t prefix=0;
+    if(!animation_priority_channel(choreo,0x110,hologram_read<std::uint32_t>(event,0x2b8),&h.frame,&channel)||
+       !animation_priority_prefix(actor,bytes,hologram_read<std::uint32_t>(record,4),&h.frame,&prefix))return -1;
+    hologram_write(record,0x14,channel);
+    const std::uint32_t priority_bits=prefix+static_cast<std::uint32_t>(channel);
+    int priority=0;std::memcpy(&priority,&priority_bits,4);
+    int layer=-1;
+    if(!h.allocate_layer(h.context,actor,seq,priority,&layer))return -1;
+    hologram_write(record,0x10,layer);
+    void* row=nullptr;
+    if(!animation_scene_layer(actor,bytes,layer,h.frame,row))return -1;
+    if(row){
+        hologram_write(row,0,hologram_read<std::uint32_t>(row,0)|8u);
+        animation_scene_weight(row,0,now);
+    }
+    unsigned flags=0;double duration=0;
+    if(!h.sequence_info(h.context,actor,seq,&flags,&duration))return -1;
+    const float start=hologram_read<float>(event,0x184);
+    if(!std::isfinite(start))return -1;
+    if(type==6){
+        // 220f82ca forces non-looping, 220f3c90 sets current, previous,
+        // and last-event cycle; 220f3db0 freezes rate at zero.
+        const float end=hologram_read<float>(event,0x188);
+        const float span=static_cast<float>(static_cast<double>(end)-start);
+        float cycle=0;
+        if(end==-1.f||!std::isfinite(span)||span<=0)return -1;
+        const float fraction=static_cast<float>((static_cast<double>(time)-start)/span);
+        if(!(h.frame.gesture_cycle?h.frame.gesture_cycle(h.frame.context,event,fraction,&cycle):
+             server_gesture_tag_warp(event,eb,fraction,&h.frame,&cycle))||!std::isfinite(cycle))return -1;
+        if(row){
+            hologram_write(row,5,static_cast<unsigned char>(0));
+            animation_scene_cycle(row,cycle,now);
+            hologram_write(row,0x10,0.f);hologram_write(row,0x38,0.f);hologram_write(row,0x14,0.f);
+        }
+    }else{
+        if(flags&1){if(row)hologram_write(row,0x14,1.f);}
+        else{
+            const float elapsed=static_cast<float>(static_cast<double>(time)-start);
+            if(!std::isfinite(duration)||duration<=0)return -1;
+            const double raw=static_cast<double>(elapsed)/duration;
+            if(!std::isfinite(raw)||raw<-2147483648.0||raw>=2147483648.0)return -1;
+            const float cycle=static_cast<float>(raw-static_cast<int>(raw));
+            if(row){
+                animation_scene_cycle(row,cycle,now);
+                const float prev=hologram_read<unsigned char>(row,5)?cycle:animation_scene_unit(cycle);
+                hologram_write(row,0x10,prev);hologram_write(row,0x38,prev);hologram_write(row,0x14,0.f);
+            }
+        }
+        if(!h.suppressed(h.context,actor,&suppressed))return -1;
+        hologram_write(record,0x20,(suppressed&0xff)?0.f:1.f);
+    }
+    *out=1;return 1;
+}
+const ServerAnimationSceneInitApi server_animation_scene_init_api{version,sizeof(ServerAnimationSceneInitApi),&animation_scene_initialize};
 
 ServerNpcSceneRecordBindings& npc_scene_record_config(void* p) noexcept {
     return *static_cast<ServerNpcSceneRecordBindings*>(p);
@@ -14114,6 +14201,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerAnimationSceneInitApi=_SiN_GetServerAnimationSceneInitApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationSceneInitApi* __cdecl
+SiN_GetServerAnimationSceneInitApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerAnimationSceneInitApi)?&server_animation_scene_init_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerAnimationPriorityApi=_SiN_GetServerAnimationPriorityApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAnimationPriorityApi* __cdecl

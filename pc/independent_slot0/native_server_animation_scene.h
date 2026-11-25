@@ -89,4 +89,24 @@ struct ServerAnimationPriorityApi {
         const ServerAnimationSceneFrameBindings*) noexcept;
 };
 using GetServerAnimationPriorityApi=const ServerAnimationPriorityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_animation_scene_init_export[]="SiN_GetServerAnimationSceneInitApi";
+struct ServerAnimationSceneInitBindings {
+    ServerAnimationSceneBindings admission;
+    ServerAnimationSceneFrameBindings frame;
+    void* context;
+    int (__cdecl *metadata)(void*,void*,int sequence,ServerGestureMetadata*) noexcept;
+    int (__cdecl *sequence_gate)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *suppressed)(void*,void*,unsigned*) noexcept;
+    // Engine allocation/initialization of active row, 220f5120.
+    int (__cdecl *allocate_layer)(void*,void*,int sequence,int priority,int*) noexcept;
+    int (__cdecl *sequence_info)(void*,void*,int sequence,unsigned* flags,double* duration) noexcept;
+};
+struct ServerAnimationSceneInitApi {
+    std::uint32_t version,size;
+    // 1 handled (accepted original initializer AL), 0 unrelated, -1 failure.
+    // Only consumes deferred layer sentinel -2. No post-init frame or keepalive.
+    int (__cdecl *initialize)(void* actor,unsigned,void* record,unsigned,void* event,unsigned,float scene_time,float now,
+        const ServerAnimationSceneInitBindings*,unsigned*) noexcept;
+};
+using GetServerAnimationSceneInitApi=const ServerAnimationSceneInitApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

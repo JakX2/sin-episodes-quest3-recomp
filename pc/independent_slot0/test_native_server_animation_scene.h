@@ -197,4 +197,64 @@ inline void check_animation_priority(const ServerAnimationPriorityApi& api){
     assert(api.refresh(f.actor,sizeof(f.actor),f.record,sizeof(f.record),14,&b)&&get(f.layers[1],0x30)==9&&order(1)==2&&order(2)==0&&order(0)==1);
 }
 
+inline void check_animation_scene_init(const ServerAnimationSceneInitApi& api){
+    struct Fixture {alignas(4) unsigned char actor[0x604]{},ca[0x110]{},record[0x40]{},layer[0x40]{},event[0x3c0]{},prior[0x38]{};
+        std::uint32_t channels[2]{7,8},scenes[2]{4,5};
+        int sequence=3,allocated=0;unsigned flags=0,gate=1,suppressed=0,lookups=0,misses=0,allocs=0,gates=0,metadata=0,suppressions=0;} f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto get=[](const void* p,unsigned off){int v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    auto fl=[](const void* p,unsigned off){float v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    put(f.actor,0x494,1u);put(f.actor,0x4a0,1);put(f.actor,0x5ec,2u);put(f.actor,0x5f8,2);
+    put(f.ca,0x100,3u);put(f.ca,0x10c,2);put(f.prior,0x34,6u);
+    put(f.event,0,6u);put(f.event,0x184,1.f);put(f.event,0x188,3.f);put(f.event,0x2b8,8u);
+    std::strcpy(reinterpret_cast<char*>(f.event+0x84),"anim");
+    put(f.record,4,5u);put(f.record,8,6u);put(f.record,0x10,-2);
+    ServerAnimationSceneInitBindings b{};b.context=&f;b.frame.context=&f;b.admission.context=&f;
+    b.frame.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);
+        if(token==1){*out=f.layer;*n=sizeof(f.layer);}
+        else if(token==2){*out=f.scenes;*n=sizeof(f.scenes);}
+        else if(token==3){*out=f.channels;*n=sizeof(f.channels);}
+        else if(token==4){*out=f.prior;*n=sizeof(f.prior);}
+        else if(token==6){*out=f.ca;*n=sizeof(f.ca);}
+        else return 0;return 1;
+    };
+    b.admission.lookup=[](void* p,void*,const char* name,int* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(!std::strcmp(name,"anim"));++f.lookups;*out=f.sequence;return 1;
+    };
+    b.admission.missing=[](void* p,void*,std::uint32_t ca,unsigned,const char*) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(ca==6);++f.misses;return 1;
+    };
+    b.metadata=[](void* p,void*,int seq,ServerGestureMetadata* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(seq==f.sequence);++f.metadata;out->available=1;out->type="posture";return 1;
+    };
+    b.sequence_gate=[](void* p,void*,unsigned* out) noexcept -> int{auto& f=*static_cast<Fixture*>(p);++f.gates;*out=f.gate;return 1;};
+    b.suppressed=[](void* p,void*,unsigned* out) noexcept -> int{auto& f=*static_cast<Fixture*>(p);++f.suppressions;*out=f.suppressed;return 1;};
+    b.allocate_layer=[](void* p,void*,int seq,int priority,int* out) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(seq==f.sequence&&priority==7);++f.allocs;*out=f.allocated;
+        if(f.allocated>=0){std::memset(f.layer,0,sizeof(f.layer));f.layer[0]=1;f.layer[5]=static_cast<unsigned char>(f.flags&1);}
+        return 1;
+    };
+    b.sequence_info=[](void* p,void*,int seq,unsigned* flags,double* duration) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);assert(seq==f.sequence);*flags=f.flags;*duration=2.;return 1;
+    };
+    unsigned accepted=99;
+    auto init=[&](float time){return api.initialize(f.actor,sizeof(f.actor),f.record,sizeof(f.record),f.event,sizeof(f.event),time,10,&b,&accepted);};
+    f.sequence=-1;assert(init(2)==1&&!accepted&&get(f.record,0x10)==-1&&get(f.record,0x18)==-1&&f.misses==1&&!f.allocs);
+    assert(init(2)==0&&f.lookups==1);
+    put(f.record,0x10,-2);f.sequence=7;f.suppressed=1;f.flags=1;
+    assert(init(2)==1&&accepted&&get(f.record,0x18)==7&&get(f.record,0x14)==1&&get(f.record,0x10)==0);
+    assert(f.metadata==1&&f.suppressions==1&&f.record[0x1c]==1&&fl(f.record,0x20)==0);
+    assert(f.layer[0]==9&&!f.layer[5]&&fl(f.layer,0xc)==.5f&&fl(f.layer,0x10)==0&&fl(f.layer,0x38)==0&&fl(f.layer,0x14)==0&&fl(f.layer,0x18)==0);
+    put(f.event,0,7u);put(f.record,0x10,-2);f.gate=0;
+    assert(init(2)==1&&!accepted&&get(f.record,0x10)==-1&&f.gates==1&&f.allocs==1);
+    put(f.record,0x10,-2);f.gate=1;f.suppressed=0;f.flags=0;
+    assert(init(3.5f)==1&&accepted&&f.allocs==2&&fl(f.record,0x20)==1);
+    assert(fl(f.layer,0xc)==.25f&&fl(f.layer,0x10)==.25f&&fl(f.layer,0x38)==.25f&&fl(f.layer,0x14)==0);
+    put(f.record,0x10,-2);f.flags=1;
+    assert(init(2)==1&&accepted&&f.layer[5]==1&&fl(f.layer,0x14)==1);
+    put(f.record,0x10,-2);f.allocated=-1;
+    assert(init(2)==1&&accepted&&get(f.record,0x10)==-1);
+}
+
 }
