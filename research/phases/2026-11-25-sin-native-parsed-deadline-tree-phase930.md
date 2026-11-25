@@ -1,0 +1,3 @@
+# Phase 930: parsed Jessica speech and actual ally deadline tree
+
+Compose phase929 adapter with phase927 parsed speech, phase926 history and phase924 pooled history. During first dialogue, lazy manager constructs all 48 native deadline rows with no hosted insertion policy; shared global greeting deadline is 17 before emission. Following retirement, invoke original owner notification for TLK_PLPUSH against the same manager, verify native row deadline 25 and concept readiness before/equal expiry. Manager destroy releases tree before arena cleanup. Synthetic VCD and external pooled text, actor identity, allocation and audio/neighbor effects; no retail campaign claim. CI pending.

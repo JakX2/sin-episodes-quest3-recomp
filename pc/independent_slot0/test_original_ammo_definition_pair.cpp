@@ -1203,6 +1203,9 @@ int main(int argc,char** argv){
         tables::test::VcdAuditArena deadlineRuntimeArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_native_talk_deadline_runtime(deadlineRuntimeArena,*deadlineRuntime,*managedTalk,*talkManager,*talkCatalog);
         std::puts("PASS native ally deadline population, managed notification and live concept readiness");
+        tables::test::TalkManagerFixture nativeSpeechManager(*talkManager,*talkCatalog);
+        tables::test::VcdAuditArena nativeDeadlineSpeechArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_vcd_clock_speech(nativeDeadlineSpeechArena,*nativeVcdRuntime,*nativeClock,retail,actorNote,actorSink,historyTree,managedHistory,&nativeSpeechManager,deadlineRuntime);
         std::puts("PASS native response history symbol lookup, indexed tree insertion and free-slot reuse");
         const auto getNpcScene=reinterpret_cast<tables::GetServerNpcSceneRecordApi>(GetProcAddress(server,tables::server_npc_scene_records_export));
         const auto getNpcWeapons=reinterpret_cast<tables::GetServerNpcWeaponSceneApi>(GetProcAddress(server,tables::server_npc_weapon_scene_export));
