@@ -7428,6 +7428,61 @@ int __cdecl speech_token(const void* event,unsigned bytes,char* dest,unsigned ca
     if(!speech_text_valid(event,bytes)||!speech_output_ready(dest,capacity,available))return 0;
     const auto* token=speech_caption_token(event);speech_copy(dest,capacity,token?token:"");*available=token!=nullptr;return 1;
 }
+bool scene_metadata_generation_ready(const SceneMetadataGenerationBindings* b) noexcept {
+    return b&&sin_independent::vgui_layout::Readable(b,sizeof(*b))&&b->load&&b->release_text&&b->parse&&
+        b->destroy_parsed&&b->events.event&&b->sound_index&&b->grow&&b->storage&&b->missing;
+}
+int __cdecl scene_metadata_generate(void* metadata,unsigned bytes,const char* path,const SceneMetadataGenerationBindings* b) noexcept {
+    if(bytes<0x1c||!hologram_writable(metadata,0x1c)||!path||!scene_metadata_generation_ready(b))return 0;
+    const auto h=*b;auto* vector=static_cast<unsigned char*>(metadata)+8;
+    hologram_write(metadata,4,0.f);hologram_write(vector,0xc,0u);
+    char* text=nullptr;unsigned n=0;
+    if(!h.load(h.context,path,&text,&n))return -1;
+    if(!text)return h.missing(h.context,path)?1:-1;
+    void* parsed=nullptr;unsigned extent=0;
+    const auto finish=[&](bool ok){
+        const bool graph_ok=!parsed||h.destroy_parsed(h.context,parsed,extent)!=0;
+        const bool text_ok=h.release_text(h.context,text)!=0;
+        return ok&&graph_ok&&text_ok?1:-1;
+    };
+    if(n>0x1000000||!sin_independent::vgui_layout::Readable(text,n+1)||text[n])return finish(false);
+    if(!h.parse(h.context,path,text,n,&parsed,&extent))return finish(false);
+    if(!parsed)return finish(true);
+    if(extent<0x10||!sin_independent::vgui_layout::Readable(parsed,0x10))return finish(false);
+    // Original snapshots count for token collection, then duration uses
+    // the existing native duration helper's live-count traversal.
+    const int count=hologram_read<int>(parsed,0xc);
+    if(count<0||count>0x100000)return finish(false);
+    for(int i=0;i<count;++i){
+        void* event=nullptr;unsigned event_bytes=0;
+        if(!h.events.event(h.events.context,parsed,static_cast<unsigned>(i),&event,&event_bytes))return finish(false);
+        if(!event)continue;
+        if(event_bytes<4||!sin_independent::vgui_layout::Readable(event,4))return finish(false);
+        if(hologram_read<unsigned>(event,0)!=5)continue;
+        if(event_bytes<0x394||!sin_independent::vgui_layout::Readable(event,0x394))return finish(false);
+        if(hologram_read<unsigned>(event,0x34c)!=0)continue;
+        char token[64]{};unsigned available=0;
+        if(speech_token(event,event_bytes,token,sizeof(token),&available)!=1)return finish(false);
+        if(!available)continue;
+        std::uint32_t index=0xffffffffu;
+        if(!h.sound_index(h.context,token,&index))return finish(false);
+        if(index==0xffffffffu)continue;
+        const int used=hologram_read<int>(vector,0xc),capacity=hologram_read<int>(vector,4);
+        if(used<0||capacity<0||used>capacity||used>=0x100000)return finish(false);
+        if(used==capacity&&(!h.grow(h.context,vector,1)||hologram_read<int>(vector,0xc)!=used||
+           hologram_read<int>(vector,4)<=used))return finish(false);
+        const auto word=hologram_read<std::uint32_t>(vector,0);void* rows=nullptr;unsigned size=0;
+        if(!word||!h.storage(h.context,word,&rows,&size)||size<(static_cast<unsigned>(used)+1)*4||
+           !hologram_writable(rows,(static_cast<unsigned>(used)+1)*4))return finish(false);
+        hologram_write(rows,static_cast<unsigned>(used)*4,index);
+        hologram_write(vector,0xc,used+1);hologram_write(vector,0x10,word);
+    }
+    float duration=0;
+    if(npc_scene_duration(parsed,extent,&h.events,&duration)!=1)return finish(false);
+    hologram_write(metadata,4,duration);return finish(true);
+}
+const SceneMetadataGenerationApi scene_metadata_generation_api{version,sizeof(SceneMetadataGenerationApi),&scene_metadata_generate};
+
 int __cdecl speech_sound(const void* event,unsigned bytes,unsigned has_language,int language,unsigned force,char* dest,unsigned capacity,unsigned* available) noexcept {
     if(!speech_text_valid(event,bytes)||!speech_output_ready(dest,capacity,available))return 0;
     const int mode=hologram_read<int>(event,0x34c);
@@ -16493,6 +16548,12 @@ SiN_GetResponsePolicyApi(std::uint32_t version,std::uint32_t size) noexcept {
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ResponsePolicyApi)?&response_policy_api:nullptr;
 }
 
+#pragma comment(linker,"/EXPORT:SiN_GetSceneMetadataGenerationApi=_SiN_GetSceneMetadataGenerationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::SceneMetadataGenerationApi* __cdecl
+SiN_GetSceneMetadataGenerationApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(SceneMetadataGenerationApi)?&scene_metadata_generation_api:nullptr;
+}
 #pragma comment(linker,"/EXPORT:SiN_GetResponseSceneFilterApi=_SiN_GetResponseSceneFilterApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ResponseSceneFilterApi* __cdecl
 SiN_GetResponseSceneFilterApi(std::uint32_t version,std::uint32_t size) noexcept {
