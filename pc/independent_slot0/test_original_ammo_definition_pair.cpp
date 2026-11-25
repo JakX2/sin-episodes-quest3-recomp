@@ -1190,6 +1190,13 @@ int main(int argc,char** argv){
         assert(npcTargetThink&&!getNpcTargetThink(0,sizeof(tables::ServerNpcTargetThinkApi))&&!getNpcTargetThink(1,0));
         tables::test::VcdAuditArena targetArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
         tables::test::check_parsed_npc_target_scene(targetArena,*nativeVcdRuntime,*execution,*npcAnimation,*npcTargetThink);
+        const auto getMovement=reinterpret_cast<tables::GetServerNpcMovementSceneApi>(GetProcAddress(server,tables::server_npc_movement_scene_export));
+        assert(getMovement&&!GetProcAddress(client,tables::server_npc_movement_scene_export));
+        const auto* movement=getMovement(1,sizeof(tables::ServerNpcMovementSceneApi));
+        assert(movement&&!getMovement(0,sizeof(tables::ServerNpcMovementSceneApi))&&!getMovement(1,0));
+        tables::test::VcdAuditArena moveArena(*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector);
+        tables::test::check_parsed_npc_movement_scene(moveArena,*nativeVcdRuntime,*execution,*movement);
+
     }
     if(argc==4&&!tables::test::audit_retail_vcd_directory(argv[3],*portableVcdFinalizedGrammar,*choreographyConstruct,*choreographySymbol,*flexOwnership,*choreographyDestruction,*scaleTree,*symbolIntern,*choreographyVector,*nativeVcdRuntime,*auditIntensity,*auditSpline)){
         FreeLibrary(server);FreeLibrary(client);return 2;

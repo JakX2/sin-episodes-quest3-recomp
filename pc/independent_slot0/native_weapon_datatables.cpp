@@ -11491,9 +11491,11 @@ const ServerNpcRandomExpressionApi server_npc_random_expression_api{version,size
 int animation_scene_tick(void*,unsigned,void*,void*,unsigned,float,float,const ServerNpcAnimationThinkBindings*,unsigned*) noexcept;
 int __cdecl target_scene_look_at(void*,const void*,unsigned,const void*,unsigned,float,const ServerTargetSceneBindings*,unsigned*) noexcept;
 int __cdecl face_scene_update(void*,unsigned,void*,unsigned,const void*,unsigned,float,float,const ServerFaceSceneBindings*,unsigned*) noexcept;
+int __cdecl move_scene_update(void*,void*,unsigned,const void*,unsigned,float,float,const ServerMoveSceneFrameBindings*,unsigned*) noexcept;
 int server_facial_think_impl(void* actor,unsigned bytes,float now,const ServerFacialThinkBindings* b,
     const ServerNpcRandomExpressionBindings* random,bool native_intensity,const ServerNativeControllerMap* mapping=nullptr,
-    const ServerNpcAnimationThinkBindings* animation=nullptr,const ServerNpcTargetThinkBindings* targets=nullptr) noexcept {
+    const ServerNpcAnimationThinkBindings* animation=nullptr,const ServerNpcTargetThinkBindings* targets=nullptr,
+    const ServerMoveSceneFrameBindings* movement=nullptr) noexcept {
     if(bytes<server_flex_scene_extent||!hologram_writable(actor,server_flex_scene_extent)||!b||
        !sin_independent::vgui_layout::Readable(b,sizeof(*b))||!b->storage||!std::isfinite(now))return 0;
     const ServerNativeIntensity source{b->context,b->storage};
@@ -11519,6 +11521,8 @@ int server_facial_think_impl(void* actor,unsigned bytes,float now,const ServerFa
         unsigned accepted=0;
         if(targets&&type==3){
             if(target_scene_look_at(actor,row,0x40,event,en,time,&targets->look,&accepted)!=1)return 0;
+        }else if(movement&&type==4){
+            if(!move_scene_update(actor,row,0x40,event,en,time,now,movement,&accepted))return 0;
         }else if(targets&&type==8){
             if(face_scene_update(actor,bytes,row,0x40,event,en,time,now,&targets->face,&accepted)!=1)return 0;
         }else if(animation&&(type==6||type==7)){
@@ -12352,14 +12356,14 @@ int animation_scene_tick(void* actor,unsigned bytes,void* record,void* event,uns
     return animation_priority_refresh(actor,bytes,record,0x40,now,&h.frame);
 }
 int npc_animation_think_impl(void* actor,unsigned bytes,float now,const ServerNpcAnimationThinkBindings* b,
-    const ServerNpcTargetThinkBindings* targets) noexcept {
+    const ServerNpcTargetThinkBindings* targets,const ServerMoveSceneFrameBindings* movement=nullptr) noexcept {
     if(!b||!sin_independent::vgui_layout::Readable(b,sizeof(*b)))return 0;
     const auto& h=b->facial.named;
     if(h.controller_count!=h.composed.base.count||h.controller_count>64||!server_remap_ready(h.remap)||
        (h.controller_count&&(!h.controller_names||!sin_independent::vgui_layout::Readable(h.controller_names,h.controller_count*sizeof(*h.controller_names)))))return 0;
     if((b->facial.banks||b->facial.files)&&!server_vfe_cache_ready(b->facial.banks,b->facial.files))return 0;
     const ServerNativeControllerMap mapping{h.controller_names,h.controller_count,h.remap,b->facial.banks,b->facial.files};
-    return server_facial_think_impl(actor,bytes,now,&h.composed.base,h.composed.random_expression,h.composed.native_intensity,&mapping,b,targets);
+    return server_facial_think_impl(actor,bytes,now,&h.composed.base,h.composed.random_expression,h.composed.native_intensity,&mapping,b,targets,movement);
 }
 int __cdecl npc_animation_think(void* actor,unsigned bytes,float now,const ServerNpcAnimationThinkBindings* b) noexcept {
     return npc_animation_think_impl(actor,bytes,now,b,nullptr);
@@ -12680,6 +12684,69 @@ int __cdecl npc_animation_record_adapt(const ServerNpcAnimationRecordBindings* c
     return 1;
 }
 const ServerNpcAnimationRecordApi server_npc_animation_record_api{version,sizeof(ServerNpcAnimationRecordApi),&npc_animation_record_adapt};
+
+const ServerNpcMovementRecordBindings& npc_movement_config(void* p) noexcept {
+    return *static_cast<const ServerNpcMovementRecordBindings*>(p);
+}
+void* npc_movement_base(void* p) noexcept {
+    return const_cast<ServerNpcAnimationRecordBindings*>(&npc_movement_config(p).animation);
+}
+int __cdecl npc_movement_record_storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept {
+    return npc_animation_record_storage(npc_movement_base(p),w,out,n);
+}
+int __cdecl npc_movement_record_grow(void* p,void* v,unsigned n) noexcept {
+    return npc_animation_record_grow(npc_movement_base(p),v,n);
+}
+int __cdecl npc_movement_record_handle(void* p,void* target,std::uint32_t* out) noexcept {
+    return npc_animation_record_handle(npc_movement_base(p),target,out);
+}
+int __cdecl npc_movement_record_diagnostic(void* p,ActorEventDiagnostic d,std::uint32_t scene) noexcept {
+    return npc_animation_record_diagnostic(npc_movement_base(p),d,scene);
+}
+int __cdecl npc_movement_record_begin(void* p,void* actor,void* record,std::uint32_t parsed,void* event,std::uint32_t ca,void* target,unsigned* out) noexcept {
+    if(!sin_independent::vgui_layout::Readable(event,4))return 0;
+    if(hologram_read<unsigned>(event,0)!=4)
+        return npc_animation_record_begin(npc_movement_base(p),actor,record,parsed,event,ca,target,out);
+    const auto& cfg=npc_movement_config(p);
+    void* scene=nullptr;unsigned n=0;float now=0;
+    if(!npc_movement_record_storage(p,parsed,&scene,&n)||n<0x7c||
+       !sin_independent::vgui_layout::Readable(scene,0x7c))return 0;
+    const auto& f=cfg.animation.npc.facial;
+    if(!f.now||!f.now(f.host.context,&now))return 0;
+    return move_scene_begin(actor,record,0x40,event,0x3c0,target,hologram_read<float>(scene,0x78),now,&cfg.move,out);
+}
+int __cdecl npc_movement_record_stop(void* p,void* actor,void* record,int arg,int forced,unsigned* out) noexcept {
+    if(!sin_independent::vgui_layout::Readable(record,0x40))return 0;
+    const auto token=hologram_read<std::uint32_t>(record,0);
+    if(token){
+        void* event=nullptr;unsigned n=0;
+        if(!npc_movement_record_storage(p,token,&event,&n)||n<4||!sin_independent::vgui_layout::Readable(event,4))return 0;
+        if(hologram_read<unsigned>(event,0)==4)
+            return move_scene_stop(actor,event,n,forced,&npc_movement_config(p).move,out);
+    }
+    return npc_animation_record_stop(npc_movement_base(p),actor,record,arg,forced,out);
+}
+int __cdecl npc_movement_record_check(void* p,void* actor,void* record,float time,std::uint32_t parsed,void* event,unsigned* out) noexcept {
+    if(!sin_independent::vgui_layout::Readable(event,4))return 0;
+    if(hologram_read<unsigned>(event,0)==4)
+        return move_scene_check(actor,record,0x40,event,0x3c0,time,&npc_movement_config(p).move,out);
+    return npc_animation_record_check(npc_movement_base(p),actor,record,time,parsed,event,out);
+}
+int __cdecl npc_movement_record_adapt(const ServerNpcMovementRecordBindings* cfg,ActorEventRecordBindings* out) noexcept {
+    if(!cfg||!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg))||!hologram_writable(out,sizeof(*out))||
+       !move_scene_ready(&cfg->move))return 0;
+    ActorEventRecordBindings validated{};
+    if(!npc_animation_record_adapt(&cfg->animation,&validated))return 0;
+    *out={const_cast<ServerNpcMovementRecordBindings*>(cfg),&npc_movement_record_storage,&npc_movement_record_grow,
+        &npc_movement_record_handle,&npc_movement_record_diagnostic,&npc_movement_record_begin,&npc_movement_record_stop,&npc_movement_record_check};
+    return 1;
+}
+int __cdecl npc_movement_think(void* actor,unsigned bytes,float now,const ServerNpcMovementThinkBindings* cfg) noexcept {
+    if(!cfg||!sin_independent::vgui_layout::Readable(cfg,sizeof(*cfg)))return 0;
+    return npc_animation_think_impl(actor,bytes,now,&cfg->target.animation,&cfg->target,&cfg->move);
+}
+const ServerNpcMovementSceneApi server_npc_movement_scene_api{version,sizeof(ServerNpcMovementSceneApi),&npc_movement_record_adapt,&npc_movement_think};
+
 
 
 
@@ -14638,6 +14705,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerVfe
 SiN_GetServerVfeRemapApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerVfeRemapApi)?&server_vfe_remap_api:nullptr;
+}
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcMovementSceneApi=_SiN_GetServerNpcMovementSceneApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcMovementSceneApi* __cdecl
+SiN_GetServerNpcMovementSceneApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==sin_port::native_weapon_tables::version&&size==sizeof(ServerNpcMovementSceneApi)?&server_npc_movement_scene_api:nullptr;
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMoveSceneFrameApi=_SiN_GetServerMoveSceneFrameApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerMoveSceneFrameApi* __cdecl

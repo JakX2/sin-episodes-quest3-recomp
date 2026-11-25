@@ -242,4 +242,20 @@ struct ServerMoveSceneFrameApi {
         const ServerMoveSceneFrameBindings*,unsigned*) noexcept;
 };
 using GetServerMoveSceneFrameApi=const ServerMoveSceneFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_movement_scene_export[]="SiN_GetServerNpcMovementSceneApi";
+struct ServerNpcMovementRecordBindings {
+    ServerNpcAnimationRecordBindings animation;
+    ServerMoveSceneBindings move;
+};
+struct ServerNpcMovementThinkBindings {
+    ServerNpcTargetThinkBindings target;
+    ServerMoveSceneFrameBindings move;
+};
+struct ServerNpcMovementSceneApi {
+    std::uint32_t version,size;
+    int (__cdecl *adapt)(const ServerNpcMovementRecordBindings*,ActorEventRecordBindings*) noexcept;
+    int (__cdecl *run)(void*,unsigned,float,const ServerNpcMovementThinkBindings*) noexcept;
+};
+using GetServerNpcMovementSceneApi=const ServerNpcMovementSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -1684,6 +1684,105 @@ inline void check_parsed_npc_target_scene(VcdAuditArena& arena,const NativeVcdRu
     assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
     std::puts("PASS parsed lookat and face native actor think and separate weighted body-turn consumption");
 }
+
+inline void check_parsed_npc_movement_scene(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,
+    const NativeSceneExecutionApi& execution,const ServerNpcMovementSceneApi& api){
+    using F=ScenePlaybackFixture;
+    const char data[]=R"VCD(actor Jessica
+{
+ channel Body
+ {
+  event moveto move
+  {
+   time 0 4
+   param "marker"
+   param2 "Walk"
+   distancetotarget 5
+  }
+ }
+}
+)VCD";
+    struct Fixture {
+        VcdAuditArena& arena;alignas(4) unsigned char scene[0x5ec]{},actor[0x1000]{},target[4]{};
+        unsigned starts{},stops{},handles{},targets{},gates{},submits{},configs{},cancels{},moving{},goal{};
+        float distance=30;std::uint32_t root=0;
+        explicit Fixture(VcdAuditArena& a):arena(a){}
+        static Fixture& self(void* p) noexcept{return *static_cast<Fixture*>(p);}
+        static int __cdecl storage(void* p,std::uint32_t w,void** out,unsigned* n) noexcept{
+            auto& a=self(p).arena;return a.storage(&a,w,out,n);
+        }
+    } f(arena);
+    F::put(f.scene,0x414,F::ptr(f.scene));f.scene[0x3d8]=1;
+    auto raw=arena.runtime();
+    assert(runtime.parse(f.scene+0x410,"move_scene.vcd",data,sizeof(data)-1,&raw,&f.root)==1&&f.root);
+    F::put(f.scene,0x40c,f.root);
+    ServerNpcMovementRecordBindings cfg{};auto& facial=cfg.animation.npc.facial;
+    facial.host.context=&f;facial.host.storage=&Fixture::storage;
+    facial.host.grow=[](void* p,void* v,unsigned extra) noexcept -> int{
+        auto& a=Fixture::self(p).arena;return a.vectors.grow_vector(&a.vector_bindings,v,extra,0x40);};
+    facial.host.handle=[](void* p,void* target,std::uint32_t* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(target==f.target);++f.handles;*out=17;return 1;};
+    facial.host.diagnostic=[](void*,ActorEventDiagnostic,std::uint32_t) noexcept -> int{assert(false);return 0;};
+    facial.extent=[](void* p,void* actor,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*n=sizeof(f.actor);return 1;};
+    facial.now=[](void*,float* out) noexcept -> int{*out=10;return 1;};
+    auto& m=cfg.move;m.context=&f;
+    m.npc=[](void* p,void* actor,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor);*out=f.actor;*n=sizeof(f.actor);return 1;};
+    m.admit=[](void* p,void*,unsigned* out) noexcept -> int{++Fixture::self(p).gates;*out=1;return 1;};
+    m.moving=[](void* p,void*,unsigned* out) noexcept -> int{*out=Fixture::self(p).moving;return 1;};
+    m.cancel_navigation=[](void* p,void*,int clear) noexcept -> int{
+        auto& f=Fixture::self(p);assert(clear==1);++f.cancels;f.moving=f.goal=0;return 1;};
+    m.has_goal=[](void* p,void*,unsigned* out) noexcept -> int{*out=Fixture::self(p).goal;return 1;};
+    m.travel_time=[](void*,void*,double* out) noexcept -> int{*out=1;return 1;};
+    ActorEventRecordBindings records{};assert(api.adapt(&cfg,&records));
+    NativeSceneExecutionBindings b{};b.clock.vectors=arena.vector_bindings;b.clock.release_memory=&VcdAuditArena::release;
+    b.dispatch.context=&f;b.dispatch.records=&records;
+    b.dispatch.actor=[](void* p,void* scene,std::uint32_t word,void** out,unsigned* n) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&word);*out=f.actor;*n=sizeof(f.actor);return 1;};
+    b.dispatch.target=[](void* p,void* scene,const char* name,void* actor,unsigned flag,void** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&actor==f.actor&&!flag&&!std::strcmp(name,"marker"));
+        ++f.targets;*out=f.target;return 1;};
+    b.dispatch.trace=[](void* p,void* scene,void* event,float,ChoreographyDispatchTrace kind) noexcept -> int{
+        auto& f=Fixture::self(p);assert(scene==f.scene&&F::word(event,0)==4);
+        if(kind==ChoreographyDispatchTrace::Start)++f.starts;
+        else if(kind==ChoreographyDispatchTrace::Stop)++f.stops;return 1;};
+    b.leaves.context=&f;b.leaves.actor_extent=facial.extent;
+    ServerVfeRemapCache remap{};ServerNpcMovementThinkBindings tb{};
+    auto& ft=tb.target.animation.facial.named;ft.remap=&remap;
+    ft.composed.base.context=&f;ft.composed.base.storage=&Fixture::storage;ft.composed.native_intensity=true;
+    auto& move=tb.move;move.move=m;move.context=&f;move.handle=facial.host.handle;
+    move.resolve=[](void* p,std::uint32_t token,void** out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(token==17);*out=f.target;return 1;};
+    move.task=[](void*,void*,int* out) noexcept -> int{*out=0x71;return 1;};
+    move.hull_width=[](void*,void*,float* out) noexcept -> int{*out=20;return 1;};
+    move.horizontal_delta=[](void* p,void* actor,void* target,float* x,float* y) noexcept -> int{
+        auto& f=Fixture::self(p);assert(actor==f.actor&&target==f.target);*x=f.distance;*y=0;return 1;};
+    move.submit_goal=[](void* p,void* npc,void* target,int activity,float half,unsigned* out) noexcept -> int{
+        auto& f=Fixture::self(p);assert(npc==f.actor&&target==f.target&&activity==6&&half==10);
+        ++f.submits;f.goal=f.moving=1;*out=1;return 1;};
+    move.goal_activity=[](void* p,void*,int activity) noexcept -> int{assert(activity==6);++Fixture::self(p).configs;return 1;};
+    move.goal_tolerance=[](void* p,void*,float tolerance) noexcept -> int{assert(tolerance==5);++Fixture::self(p).configs;return 1;};
+    assert(execution.reset(f.scene,sizeof(f.scene),1,0,0,&b)==1);
+    auto simulate=[&](float time){F::fl(f.scene,0x3dc,time);return execution.simulate(f.scene,sizeof(f.scene),time,&b);};
+    assert(simulate(.5f)==1&&f.starts==1&&f.targets==1&&f.handles==1&&F::word(f.actor,0x5c4)==1&&f.gates==1);
+    void* rows=nullptr;unsigned n=0;
+    assert(Fixture::storage(&f,F::word(f.actor,0x5b8),&rows,&n)&&n>=0x40);
+    auto* row=static_cast<unsigned char*>(rows);
+    void* event=nullptr;assert(Fixture::storage(&f,F::word(row,0),&event,&n)&&n>=0x3c0);
+    unsigned accepted=99;assert(records.check(records.context,f.actor,row,.5f,f.root,event,&accepted)&&!accepted);
+    assert(api.run(f.actor,sizeof(f.actor),10,&tb)&&f.submits==1&&f.configs==2&&row[0xc]&&row[0x28]&&!row[0x29]);
+    assert(F::word(f.actor,0x8a8)==17&&VcdAuditArena::read_float(f.actor,0x97c)==12);
+    assert(records.check(records.context,f.actor,row,2.f,f.root,event,&accepted)&&accepted);
+    f.distance=5;
+    assert(api.run(f.actor,sizeof(f.actor),11,&tb)&&f.cancels==1&&row[0x29]&&VcdAuditArena::read_float(f.actor,0x97c)==13);
+    assert(records.check(records.context,f.actor,row,3.f,f.root,event,&accepted)&&accepted);
+    assert(simulate(4.5f)==1&&simulate(4.75f)==1&&f.stops==1&&!F::word(f.actor,0x5c4));
+    assert(runtime.destroy(f.root,&raw)==1&&arena.live.size()==1);
+    assert(arena.release(&arena,F::word(f.actor,0x5b8))&&arena.live.empty());
+    std::puts("PASS parsed movement event native record admission, think, completion and retirement");
+}
+
 // Retail-inspired edge cases: strict binary32 duration trim, duplicate
 // timestamps, reverse ranges and disabled tracks with/without samples.
 inline void check_retail_flex_edge_cases(VcdAuditArena& arena,const NativeVcdRuntimeApi& runtime,const ServerFlexSplineApi& spline){
