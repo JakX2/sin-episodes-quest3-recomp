@@ -103,7 +103,8 @@ struct ServerNpcSharedMovementResult {
 };
 struct ServerNpcSharedMovementApi {
     std::uint32_t version,size;
-    // Original Start/Run116 and Start/Run121; engine effects remain bound.
+    // Original Start43/44/89/90/116/121/122 and Run116/121/122; engine effects remain bound.
+    // Start43/44 require transition->assignment.translation (original 22049870).
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedMovementBindings*,ServerNpcSharedMovementResult*) noexcept;
 };
 using GetServerNpcSharedMovementApi=const ServerNpcSharedMovementApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;

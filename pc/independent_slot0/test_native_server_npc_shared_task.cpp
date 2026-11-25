@@ -12,7 +12,7 @@
 using namespace sin_port::native_weapon_tables;
 struct F {
     unsigned char a[0xc34]{},desc[0x48]{},component[9]{},row[52]{},task[8]{};
-    unsigned char motor[0x1c]{},target[4]{},nav[0x28]{},path[0x48]{};
+    unsigned char motor[0x1c]{},target[4]{},nav[0x50]{},path[0x48]{};
     float speed[3]{};bool can_stop=false;int pose_index=3;
     bool target_present=true;float target_pos[3]{};
     bool component_handles=false,aimed=false,step_align=false;int draw=2;double desired=0;std::vector<int> trace;
@@ -186,7 +186,27 @@ int main(int argc,char** argv){
     moving(121,false,0);assert(mr.shared.lifecycle.completed&&mr.clear_calls==1&&f.trace==std::vector<int>{30});
     f.put(f.a,0xc18,77u);f.component_handles=true;moving(116,false,0);assert(mr.shared.component_handled&&!mr.shared.native&&f.trace==std::vector<int>{2});
     f.component_handles=false;moving(116,true,1);assert(mr.shared.component_called&&mr.nested.component_called&&(f.trace==std::vector<int>{2,2,32}));
-    f.put(f.a,0xc18,0u);f.put(f.a,0x8f8,99u);ServerNpcScheduleTask bad_move{116,0};
+    f.put(f.a,0xc18,0u);
+    moving(89,false,48.75f);float raw=0;std::memcpy(&raw,f.path+4,4);assert(raw==48.f&&mr.shared.lifecycle.completed);
+    moving(90,false,-5.75f);std::memcpy(&raw,f.nav+0x4c,4);assert(raw==-5.f&&mr.shared.lifecycle.completed);
+    f.put(f.path,0,0u);moving(122,false,0);assert(mr.shared.lifecycle.completed&&!mr.clear_calls);
+    f.put(f.path,0,1u);f.put(f.path,0x44,2u);f.a[0x3e0]=0;
+    moving(122,false,0);assert(mr.move_calls==1&&!mr.shared.lifecycle.completed);
+    f.a[0x3e0]=1;f.put(f.a,0x3ec,7);f.put(f.a,0x884,7);
+    moving(122,false,0);assert(mr.shared.lifecycle.completed&&!mr.move_calls);
+    f.put(f.path,0x44,0u);moving(122,true,0);assert(mr.shared.lifecycle.completed&&mr.stop_calls==1);
+    ServerNpcTransitionBindings mt{};ServerActivityDictionary dict{};ServerEventDictionary events{};
+    auto& at=mt.assignment.translation;at.actor_class=NpcActivityHosted;at.activities=&dict;at.events=&events;
+    at.weapon=[](void*,void*,int id,bool* req,int* out) noexcept -> int{*req=false;*out=id;return 1;};
+    at.other=[](void*,void*,int id,int* out) noexcept -> int{*out=id;return 1;};
+    at.metadata=[](void*,void*,const ServerActivityCompositeView** out) noexcept -> int{*out=nullptr;return 0;};
+    b.transition=&mt;
+    f.put(f.a,0x988,0x13u);moving(43,false,0);unsigned chosen=0;std::memcpy(&chosen,f.path+8,4);
+    assert(chosen==10&&mr.shared.activity==10&&f.get<unsigned>(0x988)==0x11u&&mr.shared.lifecycle.completed);
+    f.put(f.a,0x204,0);moving(44,false,0);std::memcpy(&chosen,f.path+8,4);assert(chosen==6&&mr.shared.lifecycle.completed);
+    for(int mode: {4,5}){f.put(f.a,0x204,mode);moving(44,false,0);std::memcpy(&chosen,f.path+8,4);assert(chosen==25&&mr.shared.lifecycle.completed);}
+    b.transition=nullptr;ServerNpcScheduleTask no_translation{43,0};assert(!mv->execute(f.a,sizeof(f.a),&no_translation,false,12,&b,&mb,&mr));
+    f.put(f.a,0x8f8,99u);ServerNpcScheduleTask bad_move{116,0};
     assert(!mv->execute(f.a,sizeof(f.a),&bad_move,false,12,&b,&mb,&mr));
     run(116,false,0,12);assert(o.parent_called&&!o.native);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original shared task timer, schedule and component routes");
