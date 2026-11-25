@@ -1813,6 +1813,104 @@ int __cdecl grunt_snapshot_conditions(void* actor,unsigned bytes,const ServerNpc
     for(int id:{0x10,0x11}){if(!cond->store(npc,n,id,NpcConditionCurrent,false,&b->visibility.conditions,&cr))return 0;out->script_clear+=cr.changed;}
     return 1;
 }
+bool raw_schedule_bit(void* actor,unsigned bit,const ServerNpcScheduleBindings& b,bool& yes) noexcept{
+    yes=false;const auto token=read<unsigned>(actor,0x798);if(!token)return true;
+    const void* s=nullptr;unsigned n=0;const unsigned off=0xc+4*(bit/32);
+    if(bit>=256||!b.storage||!b.storage(b.context,token,&s,&n)||!s||n<off+4)return false;
+    yes=(read<unsigned>(s,off)&(1u<<(bit%32)))!=0;return true;
+}
+int __cdecl grunt_flinch(void* actor,unsigned bytes,float now,const ServerNpcGruntFlinchBindings* b,ServerNpcGruntFlinchResult* out) noexcept{
+    if(!out)return 0;*out={};out->activity=-1;
+    if(!actor||bytes<0x9e4||!b||!std::isfinite(now))return 0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    ServerNpcConditionResult heavy{},light{},cr{};
+    if(!cond->test(actor,bytes,0x11,NpcConditionCurrent,&b->schedule.conditions,&heavy))return 0;
+    out->heavy=heavy.value;bool play=false,clear_heavy=false;
+    if(out->heavy){
+        if(read<unsigned>(actor,0x988)&0x40u){play=true;clear_heavy=true;}
+        else{
+            bool declared=false;
+            if(!heavy.mapped||!raw_schedule_bit(actor,static_cast<unsigned>(heavy.bit),b->schedule,declared))return 0;
+            out->interrupted=declared;play=!declared;
+        }
+    }else{
+        if(!cond->test(actor,bytes,0x10,NpcConditionCurrent,&b->schedule.conditions,&light))return 0;
+        out->light=light.value;play=out->light!=0;
+    }
+    if(play){
+        out->called=1;
+        bool can=false,exists=false;
+        if(!b->select_activity||!b->select_activity(b->context,actor,out->heavy!=0,1,&out->activity)||
+           !b->can_animate||!b->can_animate(b->context,actor,&can))return 0;
+        if(can){
+            if(!b->activity_exists||!b->activity_exists(b->context,actor,out->activity,&exists))return 0;
+            if(exists){if(!b->play_activity||!b->play_activity(b->context,actor,out->activity,1,1))return 0;out->played=1;}
+        }
+        if(!(read<unsigned>(actor,0x988)&0x40u)){
+            float delay=0;write(actor,0x988,read<unsigned>(actor,0x988)|0x40u);
+            if(!b->random||!b->random(b->context,.5f,1.f,&delay)||!std::isfinite(delay)||delay<.5f||delay>1.f)return 0;
+            out->deadline=static_cast<float>(static_cast<double>(now)+delay);if(!std::isfinite(out->deadline))return 0;
+            write(actor,0x9e0,out->deadline);out->timer_started=1;
+        }
+        if(clear_heavy){if(!cond->store(actor,bytes,0x11,NpcConditionCurrent,false,&b->schedule.conditions,&cr))return 0;out->heavy_cleared=cr.changed;}
+    }
+    if(read<unsigned>(actor,0x988)&0x40u){
+        out->deadline=read<float>(actor,0x9e0);if(!std::isfinite(out->deadline))return 0;
+        if(now>out->deadline){write(actor,0x988,read<unsigned>(actor,0x988)&~0x40u);out->timer_cleared=1;}
+    }
+    return 1;
+}
+int __cdecl grunt_post_update(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out) noexcept{
+    if(!out)return 0;
+    out->search={};out->combat={};out->combat_goals[0]={};out->combat_goals[1]={};out->target={};out->ammo={};out->snapshot={};out->flinch={};out->cleared_enemy={};
+    out->completed=out->skipped_state=out->skipped_perception=out->cleared_sense_conditions=out->new_enemy_condition=out->combat_called=out->enemy_cleared=0;
+    if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->aux.visibility.original_vtable))return 0;
+    const auto& mb=b->aux.visibility.memory;
+    if(mb.count>sin_independent::kEntityHandleCapacity||(mb.count&&!mb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
+    auto current=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(actor,0x8a0)));};
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto store=[&](int id,bool value,ServerNpcConditionResult& cr){return cond->store(actor,bytes,id,NpcConditionCurrent,value,&b->schedule.conditions,&cr)!=0;};
+    const int state=read<int>(actor,0x850);ServerNpcConditionResult cr{};
+    auto aux=b->aux;aux.visibility.conditions=b->schedule.conditions;
+    if(state==0||state==7){
+        out->skipped_state=1;if(!store(1,false,cr))return 0;
+    }else{
+        if(perceived){
+            auto search=b->search;search.relation.entries=mb.entries;search.relation.count=mb.count;search.relation.original_vtable=aux.visibility.original_vtable;search.schedule=b->schedule;
+            if(!grunt_weapon_search(actor,bytes,now,&search,&out->search))return 0;
+            if(read<unsigned>(actor,0x798)&&(state==1||state==2)&&current()){
+                bool declared=false;
+                if(!cond->test(actor,bytes,0x19,NpcConditionCurrent,&b->schedule.conditions,&cr))return 0;
+                if(!cr.value){
+                    if(!raw_schedule_bit(actor,0x19,b->schedule,declared))return 0;
+                    if(declared){if(!store(0x19,true,cr))return 0;out->new_enemy_condition=cr.mapped;}
+                }
+            }
+        }else{
+            out->skipped_perception=1;
+            for(int id:{7,9,10,8,32,31,48,51,52,53,49,50,55,56,35}){
+                if(!store(id,false,cr))return 0;out->cleared_sense_conditions+=cr.changed;
+            }
+        }
+        if(void* e=current()){
+            if(!(read<unsigned>(actor,0xb4)&0x10u)){
+                auto combat=b->combat;combat.range.visibility.memory=mb;combat.range.visibility.conditions=b->schedule.conditions;combat.range.visibility.original_vtable=aux.visibility.original_vtable;
+                if(!grunt_combat_goal(actor,bytes,e,now,&combat,&aux.goals,&out->combat,out->combat_goals))return 0;
+                write(actor,0x9a0,now);out->combat_called=1;
+            }else{
+                auto eb=b->enemy;eb.entries=mb.entries;eb.count=mb.count;eb.conditions=b->schedule.conditions;
+                if(!set_enemy_impl(actor,bytes,nullptr,true,now,&eb,&out->cleared_enemy,true))return 0;out->enemy_cleared=1;
+            }
+        }
+        if(!grunt_target_conditions(actor,bytes,now,&aux,&out->target)||!grunt_ammo_conditions(actor,bytes,&aux,&out->ammo))return 0;
+        auto flinch=b->flinch;flinch.schedule=b->schedule;
+        if(!grunt_flinch(actor,bytes,now,&flinch,&out->flinch))return 0;
+    }
+    if(!grunt_snapshot_conditions(actor,bytes,&aux,&out->snapshot))return 0;
+    out->completed=1;return 1;
+}
+const ServerNpcGruntPostUpdateApi post_update_api{1,sizeof(ServerNpcGruntPostUpdateApi),&grunt_flinch,&grunt_post_update};
 const ServerNpcGruntAuxConditionsApi aux_conditions_api{1,sizeof(ServerNpcGruntAuxConditionsApi),&grunt_target_conditions,&grunt_ammo_conditions,&grunt_snapshot_conditions};
 const ServerNpcGruntWeaponSearchApi weapon_search_api{1,sizeof(ServerNpcGruntWeaponSearchApi),&grunt_weapon_eligible,&grunt_weapon_search};
 const ServerNpcGruntGoalRefreshApi goal_refresh_api{1,sizeof(ServerNpcGruntGoalRefreshApi),&grunt_goal_refresh};
@@ -2052,4 +2150,10 @@ SiN_GetServerNpcGruntWeaponSearchApi(std::uint32_t version,std::uint32_t size) n
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAuxConditionsApi* __cdecl
 SiN_GetServerNpcGruntAuxConditionsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAuxConditionsApi)?&aux_conditions_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPostUpdateApi=_SiN_GetServerNpcGruntPostUpdateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPostUpdateApi* __cdecl
+SiN_GetServerNpcGruntPostUpdateApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPostUpdateApi)?&post_update_api:nullptr;
 }
