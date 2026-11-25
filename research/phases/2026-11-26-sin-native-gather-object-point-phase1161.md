@@ -1,0 +1,2 @@
+# Phase 1161: compose Grunt object and remembered-point policies
+Native 2235b790 object selection and 2235b050 point policy now execute directly at their authenticated 2235dba0 wrapper sites. Keep all earlier API versions and callback routes. Registry, memory identity and vtable shared; scene, object/point queries and component behavior remain external. Loaded fixture removes both old coarse callbacks, exercises both native policies, existing object skip and cooldown, missing enemy. CI pending.
