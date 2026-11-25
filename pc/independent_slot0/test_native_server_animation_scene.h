@@ -159,4 +159,42 @@ inline void check_gesture_metadata(const ServerGestureMetadataApi& api,const Ser
     assert(warp.map(f.event,sizeof(f.event),.8125f,&b,&mapped)&&mapped==.625f);
 }
 
+inline void check_animation_priority(const ServerAnimationPriorityApi& api){
+    struct Fixture {alignas(4) unsigned char actor[0x604]{},ca[0x110]{},record[0x40]{},layers[4][0x40]{},scenes[3][0x38]{};
+        std::uint32_t attached[4]{1,0,2,3},channels[3]{11,22,33};unsigned reads{};} f;
+    auto put=[](void* p,unsigned off,auto v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));};
+    auto get=[](const void* p,unsigned off){int v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+    ServerAnimationSceneFrameBindings b{};b.context=&f;
+    b.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=*static_cast<Fixture*>(p);++f.reads;
+        if(token>=1&&token<=3){*out=f.scenes[token-1];*n=sizeof(f.scenes[0]);return 1;}
+        if(token==4){*out=f.attached;*n=sizeof(f.attached);return 1;}
+        if(token==5){*out=f.channels;*n=sizeof(f.channels);return 1;}
+        if(token==6){*out=f.layers;*n=sizeof(f.layers);return 1;}
+        return 0;
+    };
+    put(f.actor,0x5ec,4u);put(f.actor,0x5f8,4);put(f.ca,0x100,5u);put(f.ca,0x10c,3);
+    put(f.scenes[0],0x34,3u);put(f.scenes[1],0x34,5u);put(f.scenes[2],0x34,7u);
+    int idx=99;std::uint32_t prefix=99;
+    assert(api.channel(f.ca,sizeof(f.ca),22,&b,&idx)&&idx==1);
+    assert(api.channel(f.ca,sizeof(f.ca),99,&b,&idx)&&idx==-1);
+    assert(api.prefix(f.actor,sizeof(f.actor),1,&b,&prefix)&&prefix==0);
+    assert(api.prefix(f.actor,sizeof(f.actor),2,&b,&prefix)&&prefix==3);
+    assert(api.prefix(f.actor,sizeof(f.actor),3,&b,&prefix)&&prefix==8);
+    assert(api.prefix(f.actor,sizeof(f.actor),99,&b,&prefix)&&prefix==15);
+    put(f.actor,0x494,6u);put(f.actor,0x4a0,4);
+    for(int i=0;i<3;++i){f.layers[i][0]=1;put(f.layers[i],0x30,2+i*2);put(f.layers[i],0x34,i);}
+    put(f.layers[3],0x34,9);
+    auto order=[&](int i){return get(f.layers[i],0x34);};
+    assert(api.reorder(f.actor,sizeof(f.actor),0,5,10,&b)&&order(0)==1&&order(1)==0&&order(2)==2&&order(3)==9);
+    assert(get(f.layers[0],0x30)==5&&get(f.layers[0],0x3c)==0x41200000);
+    assert(api.reorder(f.actor,sizeof(f.actor),0,5,11,&b)&&get(f.layers[0],0x3c)==0x41200000);
+    assert(api.reorder(f.actor,sizeof(f.actor),2,4,12,&b)&&order(1)==0&&order(2)==1&&order(0)==2);
+    assert(api.reorder(f.actor,sizeof(f.actor),3,1,13,&b)&&order(3)==9);
+    put(f.record,4,3u);put(f.record,0x10,1);put(f.record,0x14,1);
+    const unsigned reads=f.reads;assert(api.refresh(f.actor,sizeof(f.actor),f.record,sizeof(f.record),14,&b)&&reads==f.reads);
+    f.actor[0x600]=1;
+    assert(api.refresh(f.actor,sizeof(f.actor),f.record,sizeof(f.record),14,&b)&&get(f.layers[1],0x30)==9&&order(1)==2&&order(2)==0&&order(0)==1);
+}
+
 }
