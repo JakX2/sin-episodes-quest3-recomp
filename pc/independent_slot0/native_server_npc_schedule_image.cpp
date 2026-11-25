@@ -91,7 +91,7 @@ struct CatalogCall {
     const ServerNpcScheduleBindings* original;
     ServerNpcCatalogSchedulerResult* result;
 };
-int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr) noexcept {
+int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr) noexcept {
     if(!out)return 0;*out={};
     const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
     const auto* runtime=SiN_GetServerNpcScheduleServicesApi(1,sizeof(ServerNpcScheduleServicesApi));
@@ -138,7 +138,7 @@ int run_catalog_impl(void* actor,unsigned bytes,float now,const ServerScheduleIm
         const auto& original=*static_cast<CatalogCall*>(p)->original;
         return original.reset_movement&&original.reset_movement(original.context,actor,token);
     };
-    if(combat)return run_schedule_services_combat_internal(actor,bytes,now,&bound,&out->runtime,combat,stats,full,full_stats,shared,shared_stats);
+    if(combat)return run_schedule_services_combat_internal(actor,bytes,now,&bound,&out->runtime,combat,stats,full,full_stats,shared,shared_stats,attack,attack_stats);
     return runtime->run(actor,bytes,now,&bound,&out->runtime);
 }
 int __cdecl run_catalog(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,ServerNpcCatalogSchedulerResult* out) noexcept{
@@ -156,6 +156,12 @@ int __cdecl run_shared(void* a,unsigned bytes,float now,const ServerScheduleImag
     if(!out)return 0;*out={};if(!full||!shared)return 0;
     return run_catalog_impl(a,bytes,now,image,b,&out->full.combat.catalog,&full->injury.combat,&out->full.combat.combat,full,&out->full.full,shared,&out->shared);
 }
+int __cdecl run_attack(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,ServerNpcAttackCatalogSchedulerResult* out) noexcept{
+    if(!out)return 0;*out={};if(!full||!attack)return 0;
+    auto& sh=out->shared;
+    return run_catalog_impl(a,bytes,now,image,b,&sh.full.combat.catalog,&full->injury.combat,&sh.full.combat.combat,full,&sh.full.full,&attack->shared,&sh.shared,attack,&out->attack);
+}
+const ServerNpcAttackCatalogSchedulerApi attack_catalog_api{1,sizeof(ServerNpcAttackCatalogSchedulerApi),&run_attack};
 const ServerNpcSharedCatalogSchedulerApi shared_catalog_api{1,sizeof(ServerNpcSharedCatalogSchedulerApi),&run_shared};
 const ServerNpcFullCatalogSchedulerApi full_catalog_api{1,sizeof(ServerNpcFullCatalogSchedulerApi),&run_full};
 const ServerNpcCombatCatalogSchedulerApi combat_catalog_api{1,sizeof(ServerNpcCombatCatalogSchedulerApi),&run_combat};
@@ -186,4 +192,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedCatalogSchedulerApi=_SiN_GetServerNpcSharedCatalogSchedulerApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedCatalogSchedulerApi* __cdecl SiN_GetServerNpcSharedCatalogSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedCatalogSchedulerApi)?&shared_catalog_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcAttackCatalogSchedulerApi=_SiN_GetServerNpcAttackCatalogSchedulerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcAttackCatalogSchedulerApi* __cdecl SiN_GetServerNpcAttackCatalogSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcAttackCatalogSchedulerApi)?&attack_catalog_api:nullptr;
 }

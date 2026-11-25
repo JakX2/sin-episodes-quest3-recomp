@@ -1,4 +1,4 @@
-#include "native_server_npc_shared_task.h"
+#include "native_server_npc_shared_attack.h"
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -7,6 +7,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleResolutionApi* __cdecl SiN_GetServerNpcScheduleResolutionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleNamespaceApi* __cdecl SiN_GetServerNpcScheduleNamespaceApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleStateApi* __cdecl SiN_GetServerNpcScheduleStateApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedAttackApi* __cdecl SiN_GetServerNpcSharedAttackApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* p,unsigned off) noexcept{T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -114,9 +115,10 @@ int __cdecl execute(void* a,unsigned n,const ServerNpcScheduleTask* t,bool runni
 }
 const ServerNpcSharedTaskApi api{1,sizeof(ServerNpcSharedTaskApi),&wait,&cancel_wait,&wait_state,&supports,&execute};
  }
-int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const ServerGruntTaskBindings* original,const ServerNpcScheduleResolutionBindings* resolution,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* stats,ServerNpcSharedParentSession* session,ServerGruntTaskBindings* bound) noexcept{
+int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const ServerGruntTaskBindings* original,const ServerNpcScheduleResolutionBindings* resolution,const ServerNpcSharedTaskBindings* shared,ServerNpcSharedTaskStats* stats,ServerNpcSharedParentSession* session,ServerGruntTaskBindings* bound,const ServerNpcSharedAttackBindings* attack,ServerNpcSharedAttackStats* attack_stats) noexcept{
     if(!actor||!original||!resolution||!shared||!stats||!session||!bound)return 0;
-    *stats={};*session={actor,bytes,now,*original,*shared,stats};*bound=*original;
+    if(attack&&!attack_stats)return 0;
+    *stats={};if(attack_stats)*attack_stats={};*session={actor,bytes,now,*original,*shared,stats,attack,attack_stats};*bound=*original;
     session->shared.lifecycle=original->lifecycle;
     session->shared.transition=original->transition;
     session->shared.resolution=resolution;
@@ -124,6 +126,16 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
     bound->parent=[](void* p,void* a,const ServerNpcScheduleTask* t,bool running) noexcept -> int{
         auto& q=*static_cast<ServerNpcSharedParentSession*>(p);
         if(a!=q.actor||!t)return 0;
+        if(q.attack){
+            const auto* native=SiN_GetServerNpcSharedAttackApi(1,sizeof(ServerNpcSharedAttackApi));
+            if(!native)return 0;
+            if(native->supports(t->id)){
+                auto bound=*q.attack;bound.shared=q.shared;bound.weapons=q.original.entities;
+                auto& st=*q.attack_stats;++st.calls;
+                const int ok=native->execute(a,q.bytes,t,running,q.now,&bound,&st.last);
+                st.components+=st.last.component_handled;st.special+=st.last.special;return ok;
+            }
+        }
         auto& st=*q.stats;++st.calls;
         const int ok=api.execute(a,q.bytes,t,running,q.now,&q.shared,&st.last);
         st.native+=st.last.native;st.component_handled+=st.last.component_handled;
