@@ -565,4 +565,32 @@ struct ServerNpcGruntCombatRangeApi {
     int (__cdecl *gather)(void*,unsigned,void*,float,const ServerNpcGruntCombatRangeBindings*,ServerNpcGruntCombatRangeResult*) noexcept;
 };
 using GetServerNpcGruntCombatRangeApi=const ServerNpcGruntCombatRangeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_attack_conditions_export[]="SiN_GetServerNpcGruntAttackConditionsApi";
+struct ServerNpcGruntAttackBindings {
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    ServerNpcConditionMapBindings conditions;
+    void* context;
+    std::uint32_t original_vtable;
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept;
+    int (__cdecl *forward)(void*,void*,float[3]) noexcept;
+    int (__cdecl *aim_point)(void*,void*,const float[3],float[3]) noexcept;
+    int (__cdecl *eye)(void*,void*,float[3]) noexcept;
+    int (__cdecl *line)(void*,void*,const float[3],const float[3],bool*) noexcept; // +6e8, set conditions
+    int (__cdecl *weapon_caps)(void*,void*,unsigned*) noexcept; // weapon +4a0
+    int (__cdecl *weapon_condition)(void*,void*,unsigned,float,float,int*) noexcept; // +4ac/b0/b4/b8
+    // Original +6c8 trace from centers, mask46004003; hit entity returned.
+    int (__cdecl *melee_trace)(void*,void*,void*,unsigned,void**) noexcept;
+};
+struct ServerNpcGruntAttackResult {
+    float dot,distance;
+    unsigned capabilities,weapon_capabilities,weapon_queries,native_queries,line_calls,line_clear,cleanup_calls,sets,suppressed,range_cleared,melee_traced;
+    int conditions[4];
+};
+struct ServerNpcGruntAttackApi {
+    std::uint32_t version,size;
+    // 2203b440: caller already passed 2203c590 attack gate.
+    int (__cdecl *gather)(void*,unsigned,void*,float,const ServerNpcGruntAttackBindings*,ServerNpcGruntAttackResult*) noexcept;
+};
+using GetServerNpcGruntAttackApi=const ServerNpcGruntAttackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -20,6 +20,7 @@ struct F{
     unsigned char relation_rows[48]{},relation_matrix[240]{},squad_data[0x4c]{};bool rel_player=false,rel_special=false,rel_npc=false;
     unsigned char senses[0x60]{},sense_vectors[3][16]{},sense_handles[3][16]{};
     unsigned char heard[8][0x30]{};int active_sound_head=1;unsigned rebuild_calls=0;int rebuild_radius=100;unsigned hearing_outputs=0,hearing_offsets[3]{};bool sound_visible=true,component_ignored=false;
+    unsigned attack_weapon_caps=0,attack_line_calls=0,attack_line_mode=0;float attack_forward[3]{1,0,0};bool melee_hits=true;
     unsigned char combat_nav[0x10]{};float combat_center[3]{},combat_velocity[3]{},combat_origin[3]{70,0,0};bool combat_facing=true;
     bool combat_trace=true,combat_fov=true;unsigned combat_output_count=0,combat_output_offsets[8]{};bool combat_output_value[8]{};std::uint32_t combat_output_handles[8]{};
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
@@ -716,5 +717,33 @@ int main(int argc,char** argv){
     assert(crange->gather(f.actor,sizeof(f.actor),535,&crb,&crr)&&!crr.reported);
     f.put(f.enemy,0x8c,1);assert(crange->gather(f.actor,sizeof(f.actor),536,&crb,&crr)&&crr.dead&&!crr.reported&&!crr.attack_gate);
     f.put(f.enemy,0x8c,0);
+    auto gattack=reinterpret_cast<GetServerNpcGruntAttackApi>(GetProcAddress(s,server_npc_grunt_attack_conditions_export));
+    assert(gattack&&!GetProcAddress(c,server_npc_grunt_attack_conditions_export)&&!gattack(0,sizeof(ServerNpcGruntAttackApi))&&!gattack(1,0));
+    const auto* attack=gattack(1,sizeof(ServerNpcGruntAttackApi));assert(attack);
+    ServerNpcGruntAttackBindings ab{};ab.context=&f;ab.original_vtable=0x2249aaa4;ab.entries=f.entries;ab.count=3;ab.conditions=eb.conditions;
+    ab.origin=crb.center;
+    ab.forward=[](void* p,void*,float* v) noexcept -> int{std::memcpy(v,F::self(p).attack_forward,12);return 1;};
+    ab.aim_point=[](void*,void*,const float*,float* v) noexcept -> int{v[0]=10;v[1]=v[2]=0;return 1;};
+    ab.eye=[](void*,void*,float* v) noexcept -> int{v[0]=20;v[1]=v[2]=0;return 1;};
+    ab.line=[](void* p,void*,const float*,const float* target,bool* clear) noexcept -> int{auto& f=F::self(p);++f.attack_line_calls;*clear=f.attack_line_mode==0||(f.attack_line_mode==1&&target[0]==20);return 1;};
+    ab.weapon_caps=[](void* p,void* w,unsigned* caps) noexcept -> int{auto& f=F::self(p);assert(w==f.replacement);*caps=f.attack_weapon_caps;return 1;};
+    ab.weapon_condition=[](void* p,void* w,unsigned slot,float dot,float dist,int* id) noexcept -> int{
+        auto& f=F::self(p);assert(w==f.replacement&&dot==1&&dist==100);switch(slot){case 0x4ac:*id=0x14;break;case 0x4b0:*id=0x15;break;case 0x4b4:*id=0x16;break;case 0x4b8:*id=0x17;break;default:return 0;}return 1;
+    };
+    ab.melee_trace=[](void* p,void* a,void* e,unsigned mask,void** hit) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&e==f.enemy&&mask==0x46004003u);*hit=f.melee_hits?e:nullptr;return 1;};
+    f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x8ec,0x20000u);
+    f.combat_center[0]=50;f.combat_center[1]=f.combat_center[2]=0;f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);
+    ServerNpcGruntAttackResult ar{};
+    assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,63,&ab,&ar)&&ar.conditions[0]==0x24&&ar.dot==1&&ar.native_queries==1);
+    assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,64,&ab,&ar)&&ar.conditions[0]==0x14&&ar.line_clear&&ar.range_cleared==1);
+    f.attack_line_mode=2;assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,100,&ab,&ar)&&ar.suppressed==1&&ar.line_calls==2&&ar.cleanup_calls==2&&!(f.get<unsigned>(0x7cc)&(1u<<20)));
+    f.attack_line_mode=1;assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,784,&ab,&ar)&&ar.conditions[0]==0x14&&ar.line_clear&&ar.line_calls==2);
+    f.attack_line_mode=0;assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,785,&ab,&ar)&&ar.conditions[0]==0x25);
+    f.put(f.actor,0x8ec,0x180000u);f.combat_center[2]=64;
+    assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,64,&ab,&ar)&&ar.conditions[2]==0x16&&ar.conditions[3]==0x17&&ar.melee_traced);
+    f.combat_center[2]=65;assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,64,&ab,&ar)&&ar.conditions[2]==0&&!ar.melee_traced);
+    f.combat_center[2]=0;f.melee_hits=false;assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,64,&ab,&ar)&&ar.conditions[2]==0&&ar.melee_traced);
+    f.put(f.actor,0x78c,0x8002u);f.put(f.actor,0x8ec,0x2000u);f.attack_weapon_caps=0x1c000u;
+    assert(attack->gather(f.actor,sizeof(f.actor),f.enemy,100,&ab,&ar)&&ar.capabilities==0x1e000u&&ar.weapon_queries==4&&!ar.native_queries&&ar.conditions[0]==0x14&&ar.conditions[1]==0x15&&ar.conditions[2]==0x16&&ar.conditions[3]==0x17);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
