@@ -58,5 +58,36 @@ int main(int argc,char** argv){
     f.actor[0x9ac]=0;run(67,false,25);assert(o.activity==72);
     f.put(f.actor,0x9ae,std::uint16_t(1));f.actor[0x1f0]=1;run(67,false,30);
     assert(o.timer_advanced&&o.timer_reset&&o.parameters_refreshed&&o.deadline_changed&&f.actor[0x200]&&f.get<float>(0x60c)==31.f&&o.activity==16&&(f.trace==std::vector<int>{100,101,107,16}));
+
+    auto gp=reinterpret_cast<GetServerNpcAttackParameterApi>(GetProcAddress(s,server_npc_attack_parameter_export));
+    assert(gp&&!GetProcAddress(c,server_npc_attack_parameter_export)&&!gp(0,sizeof(ServerNpcAttackParameterApi))&&!gp(1,0));
+    const auto* params=gp(1,sizeof(ServerNpcAttackParameterApi));assert(params);
+    unsigned char weapon[4]{};
+    sin_independent::EntityHandleEntry slots[2]{};slots[1].serial=7;slots[1].entity=reinterpret_cast<CBaseEntity*>(weapon);
+    unsigned kind=0;
+    b.weapons={slots,2,&kind,[](void* p,void*,unsigned* out) noexcept -> int{*out=*static_cast<unsigned*>(p);return 1;},nullptr};
+    f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0xc18,0u);
+    const int lows[]{2,1,1,1,1,1,1,4},highs[]{5,3,1,1,1,1,3,7};
+    const float delays[]{.075f,.075f,0.f,.4f,.6f,.4f,.7f,.1f};
+    ServerNpcAttackParameterResult pr{};
+    f.put(f.actor,0x9ae,std::uint16_t(55));f.put(f.actor,0x9a8,99.f);
+    for(kind=WeaponActivityAssault;kind<=WeaponActivitySmg;++kind){
+        assert(params->refresh(f.actor,sizeof(f.actor),&b.weapons,nullptr,nullptr,&pr));
+        const unsigned i=kind-1;
+        assert(pr.weapon_class==kind&&pr.lower==static_cast<unsigned>(lows[i])&&pr.upper==static_cast<unsigned>(highs[i])&&pr.short_delay==delays[i]);
+        assert(f.get<std::uint16_t>(0x9b0)==lows[i]&&f.get<std::uint16_t>(0x9b2)==highs[i]&&f.get<float>(0x9bc)==delays[i]&&f.get<float>(0x9c0)==delays[i]);
+        assert(f.get<float>(0x9b4)==.3f&&f.get<float>(0x9b8)==.6f&&f.get<std::uint16_t>(0x9ae)==55&&f.get<float>(0x9a8)==99.f);
+    }
+    kind=WeaponActivityAssault;f.put(f.actor,0xc18,77u);
+    assert(!params->refresh(f.actor,sizeof(f.actor),&b.weapons,nullptr,nullptr,&pr)&&f.get<float>(0x9bc)==.1f);
+    assert(params->refresh(f.actor,sizeof(f.actor),&b.weapons,&f,[](void* p,std::uint32_t token) noexcept -> int{auto& f=F::self(p);assert(token==77&&f.get<float>(0x9bc)==.075f&&f.get<std::uint16_t>(0x9b0)==2);return 1;},&pr)&&pr.component_notified);
+    f.put(f.actor,0xc18,0u);f.put(f.actor,0x78c,0x8001u);
+    assert(!params->refresh(f.actor,sizeof(f.actor),&b.weapons,nullptr,nullptr,&pr));
+    f.put(f.actor,0x78c,0x7001u);
+    // Force a new long-delay cycle with the legacy full refresh disabled.
+    b.refresh_parameters=nullptr;f.put(f.actor,0x9ae,std::uint16_t(1));f.put(f.actor,0x9a8,40.f);f.actor[0x9ac]=0;
+    f.put(f.actor,0x9b0,std::uint16_t(2));f.put(f.actor,0x9b2,std::uint16_t(4));f.put(f.actor,0x9b4,1.f);f.put(f.actor,0x9b8,2.f);
+    run(67,false,40);
+    assert(o.special&&o.timer_reset&&o.parameters_refreshed&&o.activity==16&&f.get<float>(0x9a8)==41.f&&f.get<float>(0x60c)==41.f&&f.get<float>(0x9bc)==.075f&&f.get<float>(0x9b4)==.3f);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native shared attack animation and capability timer routes");
 }
