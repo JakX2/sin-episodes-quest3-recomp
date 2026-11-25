@@ -195,6 +195,35 @@ struct ServerNpcSharedSoundCoverApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedSoundCoverBindings*,ServerNpcSharedSoundCoverResult*) noexcept;
 };
 using GetServerNpcSharedSoundCoverApi=const ServerNpcSharedSoundCoverApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_tactical_cover_export[]="SiN_GetServerNpcSharedTacticalCoverApi";
+struct ServerNpcSharedTacticalCoverBindings {
+    void* context;
+    std::uint32_t original_vtable;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *default_range)(void*,void*,float*) noexcept; // +6b4
+    int (__cdecl *absolute_origin)(void*,void*,float[3]) noexcept; // dirty transform / +2bc
+    int (__cdecl *viewpoint)(void*,void*,float[3]) noexcept; // +1c4
+    int (__cdecl *search)(void*,std::uint32_t,const float*,const float*,float,float,float[3],bool*) noexcept; // 220acb10
+    int (__cdecl *special_cover)(void*,void*,void*,float[3],bool*) noexcept; // +69c
+    int (__cdecl *goal_context)(void*,std::uint32_t*) noexcept;
+    int (__cdecl *submit_goal)(void*,std::uint32_t,const ServerNpcSoundCoverGoal*,bool*) noexcept;
+    int (__cdecl *hint_activity)(void*,void*,void*,int*) noexcept; // +714
+    int (__cdecl *hint_direction)(void*,void*,float[3]) noexcept; // 22065050 then normalize
+};
+struct ServerNpcSharedTacticalCoverResult {
+    ServerNpcSharedTaskResult shared;
+    unsigned search_called,special_called,hint_released,hint_cleared,hint_applied,position_found,submitted,accepted,deadline_written;
+    float minimum,maximum;
+    ServerNpcSoundCoverGoal goal;
+};
+struct ServerNpcSharedTacticalCoverApi {
+    std::uint32_t version,size;
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedTacticalCoverBindings*,ServerNpcSharedTacticalCoverResult*) noexcept;
+};
+using GetServerNpcSharedTacticalCoverApi=const ServerNpcSharedTacticalCoverApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct ServerNpcSharedSoundCoverStats {ServerNpcSharedSoundCoverResult last;unsigned calls,native,components;};
 struct ServerNpcSharedObservationStats {ServerNpcSharedObservationResult last;unsigned calls,native,components;};
 struct ServerNpcSharedCueStats {ServerNpcSharedCueResult last;unsigned calls,native,components;};

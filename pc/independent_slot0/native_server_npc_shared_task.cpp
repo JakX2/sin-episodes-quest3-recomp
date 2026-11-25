@@ -199,7 +199,7 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr) noexcept;
+int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverResult* = nullptr) noexcept;
 bool movement_supports(int id,bool running) noexcept{
     if(running)return id==116||id==121||id==122;
     return id==43||id==44||id==89||id==90||id==116||id==121||id==122;
@@ -474,7 +474,69 @@ int sound_cover97(void* a,unsigned n,const ServerNpcScheduleTask& task,float now
     if(!std::isfinite(deadline))return 0;
     wr(a,0x8f0,deadline);out.deadline_written=1;return 1;
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out) noexcept{
+bool tactical_cover_supports(int id) noexcept{return id==98||id==101||id==102||id==103;}
+int tactical_cover(void* a,unsigned n,const ServerNpcScheduleTask& t,float now,const ServerNpcSharedTaskBindings& s,const ServerNpcSharedTacticalCoverBindings& b,ServerNpcSharedTacticalCoverResult& out) noexcept{
+    if(b.count>sin_independent::kEntityHandleCapacity||(b.count&&!b.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b.entries,b.count);
+    auto resolve=[&](unsigned off){return static_cast<void*>(registry.Resolve(rd<unsigned>(a,off)));};
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));if(!life)return 0;
+    auto fail=[&](){out.shared.failed_code=8;return life->fail(a,n,now,8,&s.lifecycle,&out.shared.lifecycle);};
+    auto extent=[&](void* p,unsigned minimum){unsigned size=0;return p&&b.extent&&b.extent(b.context,p,&size)&&size>=minimum;};
+    auto storage=[&](unsigned token,unsigned minimum,void*& p){unsigned size=0;p=nullptr;return token&&b.storage&&b.storage(b.context,token,&p,&size)&&p&&size>=minimum;};
+    void* target=resolve(0x8a0);if(!target)target=a;
+    // 2204f5d0(0): release owned hint, clear the actor's handle only when live.
+    if(void* hint=resolve(0xa18)){
+        if(!extent(hint,0x3d8))return 0;
+        if(registry.Resolve(rd<unsigned>(hint,0x3d0))==a){
+            wr(hint,0x3d0,0xffffffffu);wr(hint,0x3d4,now);out.hint_released=1;
+        }
+        wr(a,0xa18,0xffffffffu);out.hint_cleared=1;
+    }
+    out.minimum=t.id==103?t.parameter:0.f;
+    out.maximum=t.id==102?t.parameter:std::numeric_limits<float>::max();
+    bool found=false;float position[3]{std::numeric_limits<float>::max(),std::numeric_limits<float>::max(),std::numeric_limits<float>::max()};
+    if(t.id==98){
+        out.special_called=1;
+        if(!b.special_cover||!b.special_cover(b.context,a,target,position,&found))return 0;
+    }else{
+        if(out.maximum==std::numeric_limits<float>::max()){
+            if(!b.default_range||!b.default_range(b.context,a,&out.maximum))return 0;
+        }
+        if(!std::isfinite(out.minimum)||!std::isfinite(out.maximum)||!b.absolute_origin||!b.viewpoint||!b.search)return 0;
+        float origin[3]{},eye[3]{};
+        // Original ensures dirty absolute transform before the viewpoint query.
+        // The search sees the post-viewpoint origin cache.
+        if(!b.absolute_origin(b.context,target,origin)||!b.viewpoint(b.context,target,eye))return 0;
+        for(unsigned i=0;i<3;++i)if(!std::isfinite(origin[i])||!std::isfinite(eye[i]))return 0;
+        const auto tactical_token=rd<unsigned>(a,0x9d8);if(!tactical_token)return 0;
+        out.search_called=1;
+        if(!b.search(b.context,tactical_token,origin,eye,out.minimum,out.maximum,position,&found))return 0;
+    }
+    out.position_found=found;if(!found)return fail();
+    for(float v:position)if(!std::isfinite(v))return 0;
+    const auto nav=rd<unsigned>(a,0x8f8);if(!nav||!b.goal_context||!b.submit_goal)return 0;
+    auto& g=out.goal;g.type=7;std::memcpy(g.position,position,12);g.target=g.aux1=g.aux2=-1;g.activity=10;g.tolerance=-2.f;g.range=-1.f;
+    if(!b.goal_context(b.context,&g.context_token))return 0;
+    bool accepted=false;out.submitted=1;
+    if(!b.submit_goal(b.context,nav,&g,&accepted))return 0;
+    out.accepted=accepted;if(!accepted)return fail();
+    // A new live hint selected by the cover service applies activity and direction.
+    if(void* hint=resolve(0xa18)){
+        void* navigator=nullptr;void* path=nullptr;int activity=0;float direction[3]{};
+        if(!storage(nav,0x28,navigator)||!storage(rd<unsigned>(navigator,0x24),0x60,path)||
+           !b.hint_activity||!b.hint_activity(b.context,a,hint,&activity))return 0;
+        wr(path,0x24,activity);wr(path,0x28,0xffffffffu);
+        if(!b.hint_direction||!b.hint_direction(b.context,hint,direction))return 0;
+        for(float v:direction)if(!std::isfinite(v))return 0;
+        wr(path,0x5c,0xffffffffu);std::memcpy(static_cast<unsigned char*>(path)+0x50,direction,12);out.hint_applied=1;
+    }
+    if(t.id==98){
+        const float stamp=static_cast<float>(static_cast<double>(now)+t.parameter);if(!std::isfinite(stamp))return 0;
+        wr(a,0x8f0,stamp);out.deadline_written=1;
+    }
+    return life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
+}
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcSharedTacticalCoverResult* tactical_out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -489,6 +551,7 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
     }
+    if(!running&&tactical_cover_supports(t->id)&&tactical&&tactical_out){out->native=1;return tactical_cover(a,n,*t,now,*b,*tactical,*tactical_out);}
     if(running&&t->id==97&&sound_cover&&sound_cover_out){out->native=1;return sound_cover97(a,n,*t,now,*b,*sound_cover,*sound_cover_out);}
     if(running&&t->id==6&&observe&&observe_out){out->native=1;return observation(a,n,now,*b,*observe,*observe_out);}
     if(!running&&t->id==84&&cue&&cue_out){out->native=1;return shared_cue(a,n,*t,now,*b,*cue,*cue_out);}
@@ -613,6 +676,12 @@ int __cdecl execute_sound_cover(void* a,unsigned n,const ServerNpcScheduleTask* 
     if(!t||t->id!=97||!sound||!grunt_cue_class(sound->original_vtable))return 0;
     return execute_impl(a,n,t,true,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,sound,out);
 }
+int __cdecl execute_tactical_cover(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcSharedTacticalCoverResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!t||!tactical_cover_supports(t->id)||!tactical||!grunt_cue_class(tactical->original_vtable))return 0;
+    return execute_impl(a,n,t,false,now,b,&out->shared,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,tactical,out);
+}
+const ServerNpcSharedTacticalCoverApi tactical_cover_api{1,sizeof(ServerNpcSharedTacticalCoverApi),&execute_tactical_cover};
 const ServerNpcSharedSoundCoverApi sound_cover_api{1,sizeof(ServerNpcSharedSoundCoverApi),&execute_sound_cover};
 const ServerNpcSharedObservationApi observation_api{1,sizeof(ServerNpcSharedObservationApi),&execute_observation};
 const ServerNpcSharedCueApi cue_api{1,sizeof(ServerNpcSharedCueApi),&execute_cue};
@@ -752,4 +821,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedSoundCoverApi=_SiN_GetServerNpcSharedSoundCoverApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedSoundCoverApi* __cdecl SiN_GetServerNpcSharedSoundCoverApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedSoundCoverApi)?&sound_cover_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedTacticalCoverApi=_SiN_GetServerNpcSharedTacticalCoverApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedTacticalCoverApi* __cdecl SiN_GetServerNpcSharedTacticalCoverApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedTacticalCoverApi)?&tactical_cover_api:nullptr;
 }
