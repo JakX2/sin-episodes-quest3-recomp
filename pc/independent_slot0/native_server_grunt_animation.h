@@ -63,4 +63,24 @@ struct ServerGruntRegistrationApi {
     int (__cdecl *handle)(void*,unsigned,const ServerAnimationEvent*,float,const ServerGruntRegistration*,const ServerGruntAnimationBindings*,ServerGruntAnimationResult*) noexcept;
 };
 using GetServerGruntRegistrationApi=const ServerGruntRegistrationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_jetpack_activity_export[]="SiN_GetServerJetpackActivityApi";
+struct ServerJetpackActivityBindings {
+    ServerGruntActivityBindings grunt;
+    void* context;
+    // Resolve original +1024 serial handle. Return stable readable
+    // entity bytes, or fail if absent/stale. No physical simulation.
+    int (__cdecl *attachment)(void*,std::uint32_t,void**,unsigned*) noexcept;
+};
+struct ServerJetpackActivityResult {
+    int activity;
+    float magnitude;
+    unsigned delegated;
+};
+struct ServerJetpackActivityApi {
+    std::uint32_t version,size;
+    // 22364700: read attachment before any branch; rounded magnitude
+    // selects 208/213, reload is 218, otherwise native Grunt translation.
+    int (__cdecl *translate)(void*,unsigned,int,const ServerGruntRegistration*,const ServerJetpackActivityBindings*,ServerJetpackActivityResult*) noexcept;
+};
+using GetServerJetpackActivityApi=const ServerJetpackActivityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

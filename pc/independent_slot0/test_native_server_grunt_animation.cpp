@@ -9,6 +9,7 @@
 #include <cstring>
 #include <vector>
 #include <cstdio>
+#include <limits>
 using namespace sin_port::native_weapon_tables;
 struct F {
     alignas(4) unsigned char actor[0xfcc]{},peer[0xc94]{},weapon[0x500]{};
@@ -132,6 +133,43 @@ int main(int argc,char** argv){
     assert(dict->clear(&events_dict)&&registration->handle(f.actor,sizeof(f.actor),&delivered,8,&ids,&f.b,&f.last)==-1);
     assert(dict->seed(&events_dict)&&registration->jetpack(&events_dict,nullptr,&ids)&&ids.events[0]==27&&ids.events[1]==28);
     assert(activity->clear(&activities)&&!registration->translate(f.actor,sizeof(f.actor),17,&ids,&ab,&mapped));
+
+    auto gj=reinterpret_cast<GetServerJetpackActivityApi>(GetProcAddress(server,server_jetpack_activity_export));
+    assert(gj&&!GetProcAddress(client,server_jetpack_activity_export)&&!gj(0,sizeof(ServerJetpackActivityApi))&&!gj(1,0));
+    auto* jet=gj(1,sizeof(ServerJetpackActivityApi));assert(jet);
+    struct J {
+        alignas(4) unsigned char actor[0x1028]{},attachment[0xc24]{};
+        unsigned resolutions=0,delegations=0;
+        bool live=true;
+    } jf;
+    ServerJetpackActivityBindings jb{};
+    jb.context=&jf;jb.grunt.context=&jf;
+    jb.attachment=[](void* p,std::uint32_t h,void** e,unsigned* extent) noexcept -> int {
+        auto& j=*static_cast<J*>(p);assert(h==0x1234);++j.resolutions;
+        if(!j.live)return 0;*e=j.attachment;*extent=sizeof(j.attachment);return 1;
+    };
+    jb.grunt.component_identity=[](void* p,void* a,std::uint32_t c,bool* identity) noexcept -> int {
+        auto& j=*static_cast<J*>(p);assert(a==j.actor&&c==0x111);*identity=false;return 1;
+    };
+    jb.grunt.parent_translate=[](void* p,void* a,int i,int* out) noexcept -> int {
+        auto& j=*static_cast<J*>(p);assert(a==j.actor);++j.delegations;*out=i;return 1;
+    };
+    f.put(jf.actor,0x1024,0x1234u);f.put(jf.actor,0xdbc,0x111u);
+    auto vector=[&](float x,float y,float z){f.put(jf.attachment,0xc18,x);f.put(jf.attachment,0xc1c,y);f.put(jf.attachment,0xc20,z);};
+    ServerJetpackActivityResult jr{};
+    auto jet_run=[&](int incoming){return jet->translate(jf.actor,sizeof(jf.actor),incoming,nullptr,&jb,&jr);};
+    vector(30,40,0);
+    for(int incoming:{1,7,16})assert(jet_run(incoming)&&jr.activity==208&&jr.magnitude==50.f&&!jr.delegated);
+    vector(50,.001f,0);assert(jet_run(1)&&jr.activity==208&&jr.magnitude==50.f);
+    vector(50,.02f,0);assert(jet_run(1)&&jr.activity==213&&jr.magnitude>50.f);
+    vector(0,0,51);assert(jet_run(16)&&jr.activity==213);
+    assert(jet_run(66)&&jr.activity==218&&!jr.delegated);
+    assert(jet_run(6)&&jr.activity==6&&jr.delegated&&jf.delegations==1&&f.get<std::uint8_t>(jf.actor,0xc64)==1);
+    assert(jf.resolutions==8);
+    jf.live=false;assert(!jet_run(66)&&!jr.delegated&&jf.resolutions==9);
+    jf.live=true;f.put(jf.actor,0x1024,0xffffffffu);assert(!jet_run(6)&&jf.resolutions==9);
+    f.put(jf.actor,0x1024,0x1234u);vector(std::numeric_limits<float>::quiet_NaN(),0,0);
+    assert(!jet_run(66)&&jf.resolutions==10&&!jr.delegated);
     FreeLibrary(server);FreeLibrary(client);
     std::puts("PASS native Grunt studio event routing and server event handoff");
 }
