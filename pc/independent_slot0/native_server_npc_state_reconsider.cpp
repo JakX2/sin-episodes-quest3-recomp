@@ -6436,7 +6436,117 @@ bool schedule_request_condition(void* a,unsigned n,int id,const ServerNpcGruntSc
     yes=o.condition.value!=0;return true;
 }
 
-int __cdecl grunt_selector_tail(void* a,unsigned n,float now,const ServerNpcGruntSelectorTailBindings* b,ServerNpcGruntSelectorTailResult* o) noexcept{
+
+int __cdecl grunt_combat_select(void* a,unsigned n,float now,const ServerNpcGruntCombatSelectorBindings* b,ServerNpcGruntCombatSelectorResult* o) noexcept{
+    if(!o)return 0;*o={};o->roll=o->special_schedule=o->condition.global=o->condition.bit=o->slot.index=o->slot.selected=-1;
+    if(!a||n<0xde8||!b||!b->tail||!b->tail->request||!b->tail->request->acquisition||!std::isfinite(now))return 0;
+    const auto& ac=*b->tail->request->acquisition;
+    if(!ac.arbitration||!ac.arbitration->activation||!ac.arbitration->activation->schedule)return 0;
+    const auto& activation=*ac.arbitration->activation;const auto& ab=activation.schedule->admission;
+    if(!relation_grunt_class(ab.actor_vtable)||ab.count>sin_independent::kEntityHandleCapacity||(ab.count&&!ab.entries))return 0;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](int id){o->schedule=id;o->completed=1;return 1;};
+    auto cond=[&](int id,bool& yes){++o->condition_tests;if(!api->test(a,n,id,NpcConditionCurrent,&ac.schedule.conditions,&o->condition))return false;yes=o->condition.value!=0;return true;};
+    auto target=[&](){++o->target_queries;return assault_owner_target(a,registry);};
+    auto span=[&](void* e,unsigned min){unsigned extent=0;++o->extent_calls;return e&&b->extent&&b->extent(b->context,e,&extent)&&extent>=min;};
+    auto slot=[&](int first,int last,bool& yes){
+        ++o->slot_calls;
+        if(!read<unsigned>(a,0x9c4)){yes=true;o->slot_allowed=1;return true;}
+        if(!activation.slots)return false;auto slots=*activation.slots;slots.entries=ab.entries;slots.count=ab.count;
+        if(!slots_reserve(a,n,first,last,now,&slots,&o->slot))return false;
+        yes=o->slot.allowed!=0;o->slot_allowed=yes;return true;
+    };
+    auto policy=[&](bool& yes){++o->target_policy_called;return b->target_policy&&b->target_policy(b->context,a,&yes);};
+    auto position=[&](void* e,bool center,float* v){++o->position_calls;return e&&b->position&&b->position(b->context,e,center,v);};
+    auto distance=[&](void* e,bool center,double& d){
+        float left[3]{},right[3]{};
+        // +214 route gets owner then enemy; origin route gets enemy then owner.
+        if(center){if(!position(a,true,left)||!position(e,true,right))return false;}
+        else if(!position(e,false,right)||!position(a,false,left))return false;
+        const double x=static_cast<double>(right[0])-left[0],y=static_cast<double>(right[1])-left[1],z=static_cast<double>(right[2])-left[2];
+        d=center?z*z+y*y+x*x:z*z+x*x+y*y;return true;
+    };
+    const auto vt=ab.actor_vtable;
+    o->jet=vt==0x2248c514||vt==0x2248e83c||vt==0x2249964c||vt==0x224a4a4c;
+    bool yes=false;
+    if(o->jet&&(read<std::uint8_t>(a,0xbf)&8))return done(0);
+    if(!cond(29,yes))return 0;if(yes)return done(0);
+    if(!o->jet){
+        if(!cond(25,yes))return 0;
+        if(yes){
+            void* enemy=target();const auto group=read<unsigned>(a,0x9c4);
+            if(group&&enemy){
+                ++o->leader_checks;if(!b->leader_match||!b->leader_match(b->context,group,a,&yes))return 0;
+                bool contact=yes;
+                auto leader=[&](void*& e){++o->leader_queries;return b->leader&&b->leader(b->context,read<unsigned>(a,0x9c4),&e);};
+                if(!contact){
+                    void* e=nullptr;if(!leader(e))return 0;
+                    if(e){
+                        if(!leader(e)||!e)return 0;void* other=nullptr;++o->leader_target_queries;
+                        if(!b->leader_target||!b->leader_target(b->context,e,&other))return 0;
+                        contact=other!=enemy;
+                    }
+                }
+                if(contact){
+                    if(!b->contact_cue||!b->contact_cue(b->context,a,enemy))return 0;o->contact_called=1;
+                    if(!cond(20,yes))return 0;
+                    if(yes){if(!slot(0,2,yes))return 0;if(yes)return done(80);}
+                    return done(87);
+                }
+                void* e=nullptr;if(!leader(e))return 0;
+                if(e){
+                    ++o->speech_checks;if(!b->speech_allowed||!b->speech_allowed(b->context,a,1,&yes))return 0;
+                    if(yes){if(!b->speech_mark||!b->speech_mark(b->context,a,1,0.f))return 0;o->speech_marked=1;}
+                }
+                if(!cond(10,yes))return 0;
+                if(yes){if(!policy(yes))return 0;if(yes){if(!slot(12,12,yes))return 0;if(yes)return done(42);}}
+                return done(25);
+            }
+        }
+    }
+    if(!cond(4,yes))return 0;if(!yes&&!cond(3,yes))return 0;
+    if(yes){if(!cond(22,yes))return 0;if(!yes)return done(o->jet?49:48);}
+    if(!cond(16,yes))return 0;
+    if(yes){
+        if(!b->random_int||!b->random_int(b->context,0,99,&o->roll))return 0;o->random_called=1;
+        return done(o->roll<=90&&target()?25:13);
+    }
+    if(!b->special_combat||!b->special_combat(b->context,a,o->jet!=0,&o->special_schedule))return 0;o->special_called=1;
+    if(o->special_schedule)return done(o->special_schedule);
+    if(o->jet)return done(119);
+    if(!cond(12,yes))return 0;
+    if(yes){
+        write<std::uint8_t>(a,0xc64,1);write<std::uint8_t>(a,0xc66,0);o->flags_written=1;
+        if(target()){
+            void* e=target();if(!span(e,0xbe))return 0;
+            if(!(read<std::uint8_t>(e,0xbd)&0x80)){if(!slot(10,11,yes))return 0;if(yes)return done(88);}
+        }
+        void* e=target();if(!distance(e,true,o->distance_squared))return 0;o->distance_checked=1;
+        // FCOMP TEST AH,41h: strictly ordered greater selects 88; equality/unordered selects 45.
+        return done(o->distance_squared>9000000.0?88:45);
+    }
+    if(!cond(10,yes))return 0;if(!yes)return done(0);
+    if(!cond(20,yes))return 0;if(yes)return done(0);
+    if(!cond(37,yes))return 0;
+    if(yes){
+        if(!cond(30,yes))return 0;
+        if(yes){
+            void* weapon=registry.Resolve(read<unsigned>(a,0x78c));if(!span(weapon,0x504))return 0;
+            void* e=target();if(!distance(e,false,o->distance_squared))return 0;o->distance_checked=1;
+            // 220adad0 rounds squared length to float before sqrt import.
+            const float length=std::sqrt(static_cast<float>(o->distance_squared));
+            o->range_before=read<float>(weapon,0x500);o->range_after=static_cast<float>(static_cast<double>(o->range_before)+2.0*length);
+            write(weapon,0x500,o->range_after);o->range_adjusted=1;
+        }
+    }
+    if(!cond(37,yes))return 0;
+    if(yes){if(!slot(0,2,yes))return 0;if(yes)return done(89);}
+    if(!b->final_cue||!b->final_cue(b->context,a))return 0;o->final_called=1;return done(87);
+}
+struct CombatSelectorRoute {const ServerNpcGruntCombatSelectorBindings* bindings;ServerNpcGruntCombatSelectorResult* result;};
+
+int grunt_selector_tail_impl(void* a,unsigned n,float now,const ServerNpcGruntSelectorTailBindings* b,ServerNpcGruntSelectorTailResult* o,const CombatSelectorRoute* combat=nullptr) noexcept{
     if(!o)return 0;*o={};o->slot.index=o->slot.selected=o->condition.global=o->condition.bit=-1;
     if(!a||n<0xde8||!std::isfinite(now)||!b||!b->request||!b->request->acquisition||
         !b->request->acquisition->arbitration||!b->request->acquisition->arbitration->activation||
@@ -6484,7 +6594,10 @@ int __cdecl grunt_selector_tail(void* a,unsigned n,float now,const ServerNpcGrun
                 }
             }
         }
-        int id=0;if(!b->combat_schedule||!b->combat_schedule(b->context,a,&id))return 0;o->combat_called=1;return done(id);
+        int id=0;
+        if(combat){if(!grunt_combat_select(a,n,now,combat->bindings,combat->result))return 0;id=combat->result->schedule;}
+        else if(!b->combat_schedule||!b->combat_schedule(b->context,a,&id))return 0;
+        o->combat_called=1;return done(id);
     }
     if(state!=1&&state!=2)return done(0);
     if(state==1&&read<std::uint8_t>(a,0xc65))return done(100);
@@ -6507,7 +6620,10 @@ int __cdecl grunt_selector_tail(void* a,unsigned n,float now,const ServerNpcGrun
     return done(0);
 }
 
-bool schedule_request_highlevel(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings& b,ServerNpcGruntScheduleRequestResult& o,const ServerNpcGruntSelectorTailBindings* tail=nullptr,ServerNpcGruntSelectorTailResult* tail_out=nullptr) noexcept{
+int __cdecl grunt_selector_tail(void* a,unsigned n,float now,const ServerNpcGruntSelectorTailBindings* b,ServerNpcGruntSelectorTailResult* o) noexcept{
+    return grunt_selector_tail_impl(a,n,now,b,o);
+}
+bool schedule_request_highlevel(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings& b,ServerNpcGruntScheduleRequestResult& o,const ServerNpcGruntSelectorTailBindings* tail=nullptr,ServerNpcGruntSelectorTailResult* tail_out=nullptr,const CombatSelectorRoute* combat=nullptr) noexcept{
     if(n<0xde8)return false;
     const auto& arb=*b.acquisition->arbitration;
     const auto vt=arb.activation->schedule->admission.actor_vtable;
@@ -6560,11 +6676,11 @@ bool schedule_request_highlevel(void* a,unsigned n,float now,const ServerNpcGrun
     if(!cond(74,yes))return false;if(yes||read<unsigned>(a,0xca4))return selected(108);
     int id=0;
     if(tail){
-        if(!grunt_selector_tail(a,n,now,tail,tail_out))return false;id=tail_out->schedule;
+        if(!grunt_selector_tail_impl(a,n,now,tail,tail_out,combat))return false;id=tail_out->schedule;
     }else if(!b.normal_tail||!b.normal_tail(b.context,a,&id))return false;
     o.tail_called=1;return id?selected(id):dispatch();
 }
-int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntSelectorTailBindings* tail=nullptr,ServerNpcGruntSelectorTailResult* tail_out=nullptr) noexcept{
+int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntSelectorTailBindings* tail=nullptr,ServerNpcGruntSelectorTailResult* tail_out=nullptr,const CombatSelectorRoute* combat=nullptr) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
     bool yes=false;if(!schedule_request_condition(a,n,63,*b,*o,yes))return 0;
@@ -6583,7 +6699,7 @@ int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGru
             if(!ac.arbitration->shared_select||!ac.arbitration->shared_select(ac.arbitration->context,a,&o->requested))return 0;
             o->shared_selected=1;
         }else{
-            if(!schedule_request_highlevel(a,n,now,*b,*o,tail,tail_out))return 0;o->highlevel_selected=1;
+            if(!schedule_request_highlevel(a,n,now,*b,*o,tail,tail_out,combat))return 0;o->highlevel_selected=1;
         }
         o->owner_global=o->requested;
         if(o->requested<npc_global_condition_base&&o->requested!=-1&&!schedule_local_id(a,o->requested,ac.owner_schedules,o->owner_global))return 0;
@@ -6600,6 +6716,12 @@ int __cdecl grunt_selector_choose(void* a,unsigned n,float now,const ServerNpcGr
     return schedule_request_choose_impl(a,n,now,b->request,o,b,tail);
 }
 const ServerNpcGruntSelectorTailApi grunt_selector_tail_api{1,sizeof(ServerNpcGruntSelectorTailApi),&grunt_selector_tail,&grunt_selector_choose};
+int __cdecl grunt_combat_choose(void* a,unsigned n,float now,const ServerNpcGruntCombatSelectorBindings* b,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat) noexcept{
+    if(!tail||!combat)return 0;*tail={};*combat={};if(!b||!b->tail)return 0;
+    const CombatSelectorRoute route{b,combat};
+    return schedule_request_choose_impl(a,n,now,b->tail->request,o,b->tail,tail,&route);
+}
+const ServerNpcGruntCombatSelectorApi grunt_combat_selector_api{1,sizeof(ServerNpcGruntCombatSelectorApi),&grunt_combat_select,&grunt_combat_choose};
 int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
@@ -8585,4 +8707,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSelectorTailApi=_SiN_GetServerNpcGruntSelectorTailApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSelectorTailApi* __cdecl SiN_GetServerNpcGruntSelectorTailApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSelectorTailApi)?&grunt_selector_tail_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatSelectorApi=_SiN_GetServerNpcGruntCombatSelectorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatSelectorApi* __cdecl SiN_GetServerNpcGruntCombatSelectorApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatSelectorApi)?&grunt_combat_selector_api:nullptr;
 }

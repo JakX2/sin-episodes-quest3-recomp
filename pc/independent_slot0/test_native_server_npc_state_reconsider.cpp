@@ -4454,5 +4454,78 @@ int main(int argc,char** argv){
 
 
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntCombatSelectorApi>(GetProcAddress(s,server_npc_grunt_combat_selector_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_combat_selector_export)&&!g(0,sizeof(ServerNpcGruntCombatSelectorApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntCombatSelectorApi));assert(api);
+        struct CombatFixture{
+            alignas(4) unsigned char a[0x1085]{},enemy[0x208]{},weapon[0x504]{},desc[0x48]{},record[0x34]{},group[0x78]{},row[8]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            bool leader_match=false,leader_present=false,leader_same=true,allow_speech=true,policy=true;
+            int roll=90,special=0;float position[3]{3,4,0};unsigned marks=0,contacts=0,finals=0;
+            static CombatFixture& self(void* p){return *static_cast<CombatFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.enemy);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.weapon);
+        ServerNpcGruntAssaultScheduleBindings sb{};auto& ab=sb.admission;
+        ab.actor_vtable=0x2249aaa4;ab.actor_token=0x10000;ab.entries=q.entries;ab.count=3;
+        ServerNpcGruntSquadSlotsBindings slots{};slots.storage.context=&q;
+        slots.storage.storage=[](void* x,std::uint32_t token,void** v,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);if(token==91){*v=q.group;*n=sizeof(q.group);return 1;}if(token==200){*v=q.row;*n=sizeof(q.row);return 1;}return 0;};
+        ServerNpcGruntAssaultActivationBindings act{};act.schedule=&sb;act.slots=&slots;
+        ServerNpcGruntAssaultArbitrationBindings arb{};arb.activation=&act;
+        arb.shared_translate=[](void*,void*,int id,int* out) noexcept -> int{*out=id;return 1;};
+        ServerNpcGruntScheduleAcquireBindings ac{};ac.arbitration=&arb;ac.registry_head=10;ac.schedule.context=&q;
+        ac.owner_schedules.context=&q;ac.owner_schedules.descriptor=[](void* x,void*,const void** d,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);*d=q.desc;*n=sizeof(q.desc);return 1;};
+        ac.schedule.conditions=ac.owner_schedules;
+        ac.schedule.storage=[](void* x,std::uint32_t tok,const void** p,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);assert(tok==10);*p=q.record;*n=sizeof(q.record);return 1;};
+        ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
+        f.put(q.desc,4,1000000000);f.put(q.desc,8,0);f.put(q.desc,12,200);f.put(q.desc,16,1000000200);
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.record,0,1000000048);
+        ServerNpcGruntScheduleRequestBindings rb{};rb.acquisition=&ac;
+        ServerNpcGruntSelectorTailBindings tb{};tb.request=&rb;
+        ServerNpcGruntCombatSelectorBindings b{};b.tail=&tb;b.context=&q;
+        b.leader_match=[](void* x,std::uint32_t g,void* a,bool* yes) noexcept -> int{auto& q=CombatFixture::self(x);assert(g==91&&a==q.a);*yes=q.leader_match;return 1;};
+        b.leader=[](void* x,std::uint32_t g,void** e) noexcept -> int{auto& q=CombatFixture::self(x);assert(g==91);*e=q.leader_present?q.a:nullptr;return 1;};
+        b.leader_target=[](void* x,void*,void** e) noexcept -> int{auto& q=CombatFixture::self(x);*e=q.leader_same?q.enemy:nullptr;return 1;};
+        b.speech_allowed=[](void* x,void*,int id,bool* yes) noexcept -> int{assert(id==1);*yes=CombatFixture::self(x).allow_speech;return 1;};
+        b.speech_mark=[](void* x,void*,int id,float t) noexcept -> int{assert(id==1&&t==0);++CombatFixture::self(x).marks;return 1;};
+        b.target_policy=[](void* x,void*,bool* yes) noexcept -> int{*yes=CombatFixture::self(x).policy;return 1;};
+        b.contact_cue=[](void* x,void*,void* e) noexcept -> int{auto& q=CombatFixture::self(x);assert(e==q.enemy);++q.contacts;return 1;};
+        b.final_cue=[](void* x,void*) noexcept -> int{++CombatFixture::self(x).finals;return 1;};
+        b.random_int=[](void* x,int lo,int hi,int* v) noexcept -> int{assert(lo==0&&hi==99);*v=CombatFixture::self(x).roll;return 1;};
+        b.special_combat=[](void* x,void*,bool,int* v) noexcept -> int{*v=CombatFixture::self(x).special;return 1;};
+        b.extent=[](void* x,void* e,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);if(e==q.enemy){*n=sizeof(q.enemy);return 1;}if(e==q.weapon){*n=sizeof(q.weapon);return 1;}return 0;};
+        b.position=[](void* x,void* e,bool,float* v) noexcept -> int{auto& q=CombatFixture::self(x);if(e==q.a){v[0]=v[1]=v[2]=0;return 1;}assert(e==q.enemy);std::memcpy(v,q.position,12);return 1;};
+        f.put(q.a,0x8a0,0x1001u);f.put(q.a,0x78c,0x2002u);f.put(q.a,0x9cc,-1);
+        f.put(q.group,0x5c,200u);f.put(q.group,0x60,200u);f.put(q.group,0x64,1);f.put(q.group,0x6c,1);f.put(q.group,0x74,100.f);
+        f.put(q.row,0,0x1001u);f.put(q.row,4,0u);
+        ServerNpcGruntCombatSelectorResult o{};
+        auto run=[&](int id){assert(api->select(q.a,sizeof(q.a),10,&b,&o)&&o.completed&&o.schedule==id);};
+        auto bits=[&](unsigned a,unsigned b=0){f.put(q.a,0x7cc,a);f.put(q.a,0x7d0,b);};
+        bits(1u<<29);run(0);assert(o.condition_tests==1&&!o.special_called);
+        bits(1u<<4);run(48);assert(!o.special_called);
+        bits((1u<<3)|(1u<<22));run(0);assert(o.special_called);
+        bits(1u<<16);run(25);assert(o.random_called&&o.roll==90);q.roll=91;run(13);assert(!o.target_queries);
+        q.roll=90;f.put(q.a,0x8a0,0x9001u);run(13);f.put(q.a,0x8a0,0x1001u);
+        bits(0);q.special=112;run(112);q.special=0;run(0);
+        bits(1u<<12);run(88);assert(o.flags_written&&o.slot_calls==1&&q.a[0xc64]&&!q.a[0xc66]);
+        q.enemy[0xbd]=0x80;q.position[0]=3000;q.position[1]=0;run(45);assert(o.distance_squared==9000000.0);
+        q.position[0]=3001;run(88);q.position[0]=std::numeric_limits<float>::quiet_NaN();run(45);
+        q.position[0]=3;q.position[1]=4;q.enemy[0xbd]=0;
+        bits((1u<<10)|(1u<<30),1u<<5);f.put(q.weapon,0x500,20.f);run(89);assert(o.range_adjusted&&o.range_before==20&&o.range_after==30);
+        bits(1u<<10);run(87);assert(o.final_called&&q.finals==1);
+        f.put(q.a,0x9c4,91u);bits((1u<<25)|(1u<<10));q.leader_present=true;run(42);
+        assert(o.leader_queries==3&&o.speech_marked&&q.marks==1&&o.slot_allowed&&CombatFixture::rd(q.row,4)==(1u<<12));
+        q.leader_same=false;bits((1u<<25)|(1u<<20));run(80);assert(o.contact_called&&q.contacts==1&&o.slot_allowed&&CombatFixture::rd(q.row,4)==1u);
+        q.leader_match=true;bits(1u<<25);run(87);assert(o.contact_called&&!o.final_called&&!o.leader_queries);
+        f.put(q.a,0x9c4,0u);ab.actor_vtable=0x2248c514;bits(0);q.a[0xbf]=8;run(0);assert(!o.condition_tests);
+        q.a[0xbf]=0;bits(1u<<4);run(49);bits(0);run(119);q.special=123;run(123);q.special=0;
+        ab.actor_vtable=0x2249aaa4;f.put(q.a,0x850,3);q.a[0xca0]=1;bits(1u<<4);
+        static ServerNpcGruntScheduleRequestResult request_out;ServerNpcGruntSelectorTailResult tail_out{};
+        assert(api->choose(q.a,sizeof(q.a),10,&b,&request_out,&tail_out,&o)&&o.completed&&o.schedule==48&&tail_out.combat_called&&request_out.requested==48&&request_out.acquisition.schedule_token==10);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
