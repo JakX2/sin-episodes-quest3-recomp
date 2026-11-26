@@ -478,10 +478,12 @@ int __cdecl search_class(void*,unsigned,const ServerEntitySearchBindings*,Server
 int __cdecl accept_input(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*) noexcept;
 int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings* b,ServerEntityEventServiceResult* o) noexcept {
     if(!o)return 0;*o={};
-    if(!sentinel||n<0x38||!root||!std::isfinite(now)||!b||(single_step&&!steps))return 0;
+    if(!sentinel||n<0x38||!root||!b||(!b->live_now&&!std::isfinite(now))||((single_step||b->live_single_step)&&!steps))return 0;
     if(b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
     const sin_independent::EntityHandleView registry(b->entities.entries,b->entities.count);
-    if(single_step&&*steps<=0){o->step_stopped=o->completed=1;return 1;}
+    auto stepping=[&](){++o->step_reads;return b->live_single_step?*b->live_single_step!=0:single_step;};
+    auto clock=[&](){++o->clock_reads;return b->live_now?*b->live_now:now;};
+    if(stepping()&&*steps<=0){o->step_stopped=o->completed=1;return 1;}
     if(b->native_input&&!b->native_search)return 0;
     ServerEntitySearchBindings native_search{};
     if(b->native_search){native_search=*b->native_search;native_search.entities=b->entities;}
@@ -505,7 +507,7 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
             if(!native_search.extent||!native_search.extent(native_search.context,entity,&bytes)||bytes<4)return false;
             const unsigned vt=rd<unsigned>(entity,0);
             if(input_datamap(vt)){
-                auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=now;
+                auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=clock();if(!std::isfinite(bound.now))return false;
                 ServerEntityAcceptInputResult result{};
                 if(!accept_input(entity,bytes,vt,input,activator,caller,variant,0x14,id,&bound,&result)||!result.completed)return false;
                 // Retail ignores the virtual AcceptInput return. A rejected
@@ -525,7 +527,8 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
         if(!token){o->completed=1;return 1;}
         void* row=nullptr;if(!row_for(token,&row)||rd<unsigned>(row,0x34)!=root)return 0;
         const float at=rd<float>(row,0);if(!std::isfinite(at))return 0;
-        if(at>now){o->future_stopped=o->completed=1;return 1;}
+        const float current=clock();if(!std::isfinite(current))return 0;
+        if(at>current){o->future_stopped=o->completed=1;return 1;}
         if(!b->lock||!b->lock(b->context,true))return 0;++o->locks;
         auto dispatch=[&](){
             const auto target=rd<unsigned>(row,4);
@@ -568,10 +571,19 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
             if(!b->release(b->context,token,row))return false;++o->removed;return true;
         };
         const bool success=dispatch();
-        if(success){++o->events;if(single_step&&*steps>0)--*steps;}
+        bool stop=false;
+        if(success){
+            ++o->events;
+            // 2215599f reloads live mode after releasing the node. The
+            // budget decision precedes engine unlock, not another read after it.
+            if(stepping()){
+                if(*steps>0){--*steps;++o->steps_consumed;}
+                stop=*steps<=0;
+            }
+        }
         const bool unlocked=b->lock(b->context,false)!=0;
         if(!success||!unlocked)return 0;
-        if(single_step&&*steps<=0){o->step_stopped=o->completed=1;return 1;}
+        if(stop){o->step_stopped=o->completed=1;return 1;}
     }
     if(!rd<unsigned>(sentinel,0x30)){o->completed=1;return 1;}
     return 0;
