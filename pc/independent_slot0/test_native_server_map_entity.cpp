@@ -263,11 +263,11 @@ int main(int argc,char** argv){
         auto& f=*static_cast<ConnectedOutput*>(p);assert(row==f.actions->rows[4]&&token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(row)));
         ++f.actions->released;std::memset(row,0xcc,0x1c);return 1;
     };
-    nw::ServerEntityVoidOutputResult fr{};
+    nw::ServerEntityVoidOutputResult connected_fire_result{};
     put(outparsed.storage[0],0xa8,0);
     auto* outfield=outparsed.storage[0]+0x4b8;
     const unsigned finite_id=word(pool.rows[4],0x14),unlimited_id=word(pool.rows[5],0x14);
-    assert(fire_api->fire(outfield,0x18,co.actor,co.actor,0x6a0,.25f,&fire_bind,&fr)&&fr.queued==2&&fr.parameter_overrides==1&&fr.removed==1);
+    assert(fire_api->fire(outfield,0x18,co.actor,co.actor,0x6a0,.25f,&fire_bind,&connected_fire_result)&&connected_fire_result.queued==2&&connected_fire_result.parameter_overrides==1&&connected_fire_result.removed==1);
     assert(pool.released==2&&word(outfield,0x14)==ptrword(pool.rows[5])&&!word(pool.rows[5],0x18)&&word(pool.rows[5],0x10)==0xffffffffu);
     // Unlimited row is visited first, but finite parameter row has an earlier deadline.
     assert(co.alloc==2&&word(co.root,0x30)==2&&word(co.rows[1],0x30)==1&&word(co.rows[0],0x34)==2);
@@ -292,7 +292,7 @@ int main(int argc,char** argv){
     assert(service_at(10.5f)&&es.events==1&&es.future_stopped&&co.ids[0]==finite_id&&co.inputs[0]==202&&co.params[0]==204&&co.types[0]==2);
     assert(service_at(12.25f)&&es.events==1&&co.ids[1]==unlimited_id&&co.inputs[1]==203&&!co.params[1]&&!co.types[1]&&!word(co.root,0x30));
     co.now=20.f;
-    assert(fire_api->fire(outfield,0x18,co.actor,co.actor,0x6a0,.25f,&fire_bind,&fr)&&fr.queued==1&&!fr.removed);
+    assert(fire_api->fire(outfield,0x18,co.actor,co.actor,0x6a0,.25f,&fire_bind,&connected_fire_result)&&connected_fire_result.queued==1&&!connected_fire_result.removed);
     assert(service_at(22.25f)&&es.events==1&&co.ids[2]==unlimited_id&&co.delivered==3&&co.released==3&&!co.locked&&!word(co.root,0x30));
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
