@@ -1939,5 +1939,51 @@ int main(int argc,char** argv){
         v[4]=6;assert(mi("InputValue",19)&&result.rejected&&f.alloc==2&&!word(actor,0x3d0));
         put(f.rows[0],0x18,2);assert(!mi("CompareValues")&&!result.completed);
     }
+    {
+        FactoryDictionary dict{};
+        assert(api->register_factories(&dict)&&api->register_multicompare(&dict)&&api->register_autosave(&dict)&&api->register_navigation(&dict)&&api->register_menu(&dict)&&api->register_counter(&dict)&&api->register_compare(&dict)&&api->register_case(&dict)&&api->register_branch(&dict)&&api->register_auto(&dict)&&api->register_timer(&dict)&&api->register_relay(&dict)&&dict.count==23);
+        assert(!api->register_multicompare(&dict));
+        const auto* spec=api->find_factory(&dict,"LOGIC_MULTICOMPARE");
+        assert(spec&&spec->family==Family::LogicMultiCompare&&spec->original_object==0x224fb600&&spec->original_vtable==0x2241f584&&spec->extent==multicompare_extent);
+        struct MultiOwner {alignas(4) unsigned char storage[multicompare_extent]{},rows[5][0x1c]{};unsigned alloc=0,base=0,init=0,cleared=0,accepted=0,released=0,base_dead=0,freed=0;unsigned order[5]{};const sin_port::native_map::Api* api=nullptr;LogicDestroyBindings teardown{};LogicDestroyResult destroyed{};} f;
+        f.api=api;
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<MultiOwner*>(p);assert(n==multicompare_extent);++f.alloc;*a=f.storage;*bytes=n;return 1;};
+        owner.base_construct=[](void* p,void* a,int arg) noexcept ->int{auto& f=*static_cast<MultiOwner*>(p);assert(a==f.storage&&arg==1);++f.base;return 1;};
+        owner.initialize=[](void* p,void* a,const char* cls) noexcept ->int{auto& f=*static_cast<MultiOwner*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"logic_multicompare"));++f.init;return 1;};
+        owner.release_networkable=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<MultiOwner*>(p);assert(a==f.storage+0x160);return f.api->destroy_logic(f.storage,sizeof(f.storage),1,&f.teardown,&f.destroyed);};
+        FactoryBindings factories{};factories.dictionary=&dict;factories.logic_multicompare=&owner;
+        auto keys=kb;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=multicompare_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{if(std::strcmp(text,"logic_multicompare"))return 0;*token=201;return 1;};
+        Bindings parse{};parse.context=&f;parse.native_factory=&factories;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<MultiOwner*>(p)->cleared;return 1;};
+        parse.accept_entity=[](void* p,void* a,const char*,unsigned,const EntitySlice*) noexcept ->int{auto& f=*static_cast<MultiOwner*>(p);assert(a==f.storage);++f.accepted;return 1;};
+        const char map[]="{ classname logic_multicompare IntegerValue 7 ShouldComparetoValue 1 }";
+        Result parsed{};
+        assert(api->parse(map,sizeof(map),&parse,&parsed)&&parsed.native_creates==1&&parsed.last_factory.networkable==f.storage+0x160);
+        assert(f.alloc==1&&f.base==1&&f.init==1&&f.cleared==1&&f.accepted==1&&word(f.storage,0)==multicompare_vtable&&word(f.storage,0x3c4)==7&&word(f.storage,0x3c8)==1&&!word(f.storage,0x3cc)&&!word(f.storage,0x3d0));
+        for(unsigned off=0x394;off<=0x3ac;off+=0x18)assert(!word(f.storage,off)&&word(f.storage,off+0xc)==0xffffffffu&&!word(f.storage,off+0x10)&&!word(f.storage,off+0x14));
+        // Original pool destruction: successors of comparison head,
+        // comparison head, OnNotEqual list, OnEqual list, base, free.
+        put(f.storage,0x3cc,3);put(f.rows[2],0x18,2);put(f.rows[1],0x18,1);
+        put(f.storage,0x3c0,4);put(f.storage,0x3a8,5);
+        auto& d=f.teardown;d.context=&f;
+        d.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& f=*static_cast<MultiOwner*>(p);if(!token||token>5)return 0;*row=f.rows[token-1];*bytes=0x1c;return 1;};
+        d.release_action=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& f=*static_cast<MultiOwner*>(p);assert(token&&token<=5&&row==f.rows[token-1]&&f.released<5);
+            unsigned next=0;std::memcpy(&next,f.rows[2]+0x18,4);
+            if(token==2)assert(next==1);if(token==1||token==3)assert(!next);
+            f.order[f.released++]=token;return 1;
+        };
+        d.base_destroy=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<MultiOwner*>(p);assert(a==f.storage&&f.released==5);++f.base_dead;return 1;};
+        d.free_actor=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<MultiOwner*>(p);assert(a==f.storage&&f.base_dead==1);++f.freed;return 1;};
+        // Cross-list alias must refuse before ANY pool release.
+        put(f.storage,0x3a8,2);
+        assert(!api->destroy_multicompare(f.storage,sizeof(f.storage),f.storage+0x160,&owner)&&!f.released&&!f.destroyed.validated);
+        put(f.storage,0x3a8,5);
+        assert(api->destroy_multicompare(f.storage,sizeof(f.storage),f.storage+0x160,&owner)&&f.destroyed.completed&&f.destroyed.comparisons==3&&f.destroyed.comparisons_released==3&&f.destroyed.outputs==2&&f.destroyed.released==2&&f.freed==1);
+        const unsigned expected[]{2,1,3,4,5};assert(!std::memcmp(f.order,expected,sizeof(expected)));
+        assert(word(f.storage,0x3cc)==3&&word(f.storage,0x3c0)==4&&word(f.storage,0x3a8)==5);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }

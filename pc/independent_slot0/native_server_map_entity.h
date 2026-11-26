@@ -9,9 +9,9 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
-struct FactoryDictionary {const FactorySpec* slots[22]{};unsigned count=0;bool registered=false;};
+struct FactoryDictionary {const FactorySpec* slots[23]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
     void* context;
     // Fresh allocation must supply zeroed derived extension, as expected
@@ -38,6 +38,7 @@ struct FactoryBindings {
     const RelayFactoryBindings* logic_menu;
     const RelayFactoryBindings* logic_navigation;
     const RelayFactoryBindings* logic_autosave;
+    const RelayFactoryBindings* logic_multicompare;
 };
 struct FactoryResult {
     const FactorySpec* spec;
@@ -193,7 +194,7 @@ struct LogicDestroyBindings {
     int (__cdecl *unregister_menu)(void*,void*) noexcept;
 };
 struct LogicDestroyResult {
-    unsigned completed,outputs,actions,validated,released,base_called,freed,unregistered;
+    unsigned completed,outputs,actions,validated,released,base_called,freed,unregistered,comparisons,comparisons_released;
 };
 struct CounterBindings {
     void* context;
@@ -421,6 +422,8 @@ struct Api {
     int (__cdecl *autosave_input)(void*,unsigned,const char*,const AutosaveBindings*,AutosaveResult*) noexcept;
     int (__cdecl *autosave_kill)(void*,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const AutosaveBindings*,AutosaveResult*) noexcept;
     int (__cdecl *multicompare_input)(void*,unsigned,const char*,void*,const void*,unsigned,unsigned,const MultiCompareBindings*,MultiCompareResult*) noexcept;
+    int (__cdecl *register_multicompare)(FactoryDictionary*) noexcept;
+    int (__cdecl *destroy_multicompare)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
