@@ -436,6 +436,29 @@ struct RelayResult {
     float maximum_delay,refire_delay;
     unsigned native_refire,native_cancel,cancel_visited,cancel_removed,protected_match;
 };
+// Independent owner storage for the original CUtlVector of networkable
+// pointers (2255a8b8, count 2255a8c4). No retail allocator is assumed.
+struct DeferredRemovalQueue {
+    void** slots;
+    unsigned capacity,count,reserved;
+    bool cleanup_active,handle_access_disabled,chained_update;
+};
+struct DeferredRemovalBindings {
+    void* context;
+    DeferredRemovalQueue* queue;
+    // Authenticated primary +17c virtual, including the navigation override.
+    int (__cdecl *update)(void*,void*,unsigned) noexcept;
+    // Optional original pre-cleanup manager and profiling scope.
+    int (__cdecl *pre_cleanup)(void*) noexcept;
+    int (__cdecl *scope)(void*,bool) noexcept;
+    // Networkable +18: owner releases the object and invalidates its registry.
+    // False means this networkable is still live and may be retried.
+    int (__cdecl *release)(void*,void*) noexcept;
+};
+struct DeferredRemovalResult {
+    unsigned completed,already_marked,marked,updated,name_cleared,invalid_handle,queued,
+        entered,pre_called,released,closed,remaining,discarded;
+};
 struct Api {
     std::uint32_t version,size;
     int (__cdecl *token)(const char*,unsigned,unsigned,Token*) noexcept;
@@ -504,6 +527,9 @@ struct Api {
     int (__cdecl *register_colorblend)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_colorblend)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
     int (__cdecl *logic_kill)(void*,unsigned,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const EntityKillBindings*,EntityKillResult*) noexcept;
+    int (__cdecl *defer_logic_remove)(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
+    int (__cdecl *cleanup_deferred)(const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
+    int (__cdecl *discard_deferred)(DeferredRemovalQueue*,DeferredRemovalResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

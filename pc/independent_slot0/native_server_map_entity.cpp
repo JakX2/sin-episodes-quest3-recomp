@@ -2026,6 +2026,76 @@ int __cdecl logic_kill(void* a,unsigned n,unsigned vt,const sin_independent::Ent
     if(!extent)return 0;
     return base_entity_kill(a,n,extent,vt,entries,count,b,o);
 }
+bool deferred_valid(const DeferredRemovalQueue* q) noexcept {
+    return q&&q->capacity<=sin_independent::kEntityHandleCapacity&&q->count<=q->capacity&&
+        q->reserved<=q->capacity-q->count&&(!q->capacity||q->slots);
+}
+// 22286bf0 -> 22286b90 -> 221636d0. The embedded networkable's
+// authenticated flags and base-entity getters use its +8 backpointer.
+int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings* b,DeferredRemovalResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a){o->completed=1;return 1;}
+    if(n<4)return 0;
+    const auto vt=entity_vtable(a),extent=logic_kill_extent(vt);
+    if(!extent||n<extent||read_field<unsigned>(a,0x160)!=0x22454f00u||
+       read_field<unsigned>(a,0x168)!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(a)))return 0;
+    const auto flags=read_field<unsigned>(a,0xb8);
+    if(flags&1u){o->already_marked=o->completed=1;return 1;}
+    if(!b||!deferred_valid(b->queue)||!b->update)return 0;
+    auto& q=*b->queue;
+    // Independent capacity reservation: a reentrant update can append
+    // other entities without consuming this request's slot. The original
+    // CUtlVector grows dynamically; bounded storage refuses before mark.
+    if(q.count+q.reserved==q.capacity)return 0;
+    ++q.reserved;
+    write_field(a,0xb8,flags|1u);o->marked=1;q.chained_update=false;
+    const bool updated=b->update(b->context,a,vt==navigation_vtable?0x22177f50u:0x221446f0u)!=0;
+    --q.reserved;
+    if(!updated)return 0; // original virtual is void; do not roll back side effects
+    o->updated=1;write_field(a,0xc0,0u);o->name_cleared=1;
+    // 221636d0 checks the CURRENT handle against -1, not serial lookup.
+    if(read_field<unsigned>(a,0x378)==0xffffffffu){o->invalid_handle=o->completed=1;return 1;}
+    if(!deferred_valid(&q)||q.count+q.reserved>=q.capacity)return 0;
+    q.slots[q.count++]=static_cast<unsigned char*>(a)+0x160;
+    o->queued=o->completed=1;o->remaining=q.count;return 1;
+}
+// 22162aa0: pre-cleanup before handle guard, forward traversal of the
+// LIVE vector count. Release can append new rows during the same pass.
+int __cdecl cleanup_deferred(const DeferredRemovalBindings* b,DeferredRemovalResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!b||!deferred_valid(b->queue)||!b->release)return 0;
+    auto& q=*b->queue;
+    if(q.cleanup_active||q.reserved||q.handle_access_disabled)return 0;
+    if(b->scope&&!b->scope(b->context,true))return 0;
+    o->entered=1;q.cleanup_active=true;
+    bool ok=true;
+    if(b->pre_cleanup){ok=b->pre_cleanup(b->context)!=0;o->pre_called=1;}
+    unsigned cursor=0;
+    if(ok){
+        q.handle_access_disabled=true;
+        while(cursor<q.count){
+            if(!deferred_valid(&q)||!q.slots[cursor]||!b->release(b->context,q.slots[cursor])){ok=false;break;}
+            ++cursor;++o->released; // never touch a released object again
+        }
+        q.handle_access_disabled=false;
+    }
+    // Normal retail completion only sets count=0. On an independent
+    // owner failure retain the unconsumed suffix, not freed pointers.
+    if(cursor<=q.count&&deferred_valid(&q)){
+        if(cursor&&cursor<q.count)std::memmove(q.slots,q.slots+cursor,(q.count-cursor)*sizeof(void*));
+        q.count-=cursor;
+    }else ok=false;
+    q.cleanup_active=false;o->remaining=q.count;
+    const bool closed=!b->scope||b->scope(b->context,false)!=0;o->closed=closed;
+    o->completed=ok&&closed;return int(o->completed);
+}
+// 22162b30 drops the logical vector size and returns the old count.
+// This is NOT a destructor, and the storage itself remains owner-owned.
+int __cdecl discard_deferred(DeferredRemovalQueue* q,DeferredRemovalResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!deferred_valid(q)||q->cleanup_active||q->reserved||q->handle_access_disabled)return 0;
+    o->discarded=q->count;q->count=0;o->completed=1;return 1;
+}
 // Original variant_t::Convert(5), 22155e60. FIELD_INTEGER,
  // FLOAT (x87 truncating conversion), STRING (atoi); other types reject.
 bool multi_integer(unsigned (&value)[5],const MultiCompareBindings& b,bool& accepted) noexcept {
@@ -2187,7 +2257,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
