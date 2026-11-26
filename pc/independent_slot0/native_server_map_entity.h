@@ -107,6 +107,19 @@ struct AutoResult {
     int global_state,load_type;
     float next_think;
 };
+inline constexpr unsigned timer_vtable=0x22420e14,timer_extent=0x3f4;
+struct TimerBindings {
+    void* context;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const float* now;
+    int (__cdecl *random)(void*,float,float,float*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+    void* schedule_context;
+};
+struct TimerResult {
+    unsigned completed,handled,suppressed,scheduled,randomized,fired,queued,output_offset,clamped,changed;
+    float interval,next_think;
+};
 struct AutoPrimaryBindings {
     const AutoBindings* behavior;
     const native_weapon_tables::ServerNpcOuterCadenceBindings* cadence;
@@ -228,6 +241,8 @@ struct Api {
     int (__cdecl *destroy_auto)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
     int (__cdecl *auto_primary_activate)(void*,unsigned,float,const AutoPrimaryBindings*,AutoPrimaryResult*) noexcept;
     int (__cdecl *auto_primary_run)(void*,unsigned,int,float,const AutoPrimaryBindings*,AutoPrimaryResult*) noexcept;
+    int (__cdecl *timer_spawn)(void*,unsigned,const TimerBindings*,TimerResult*) noexcept;
+    int (__cdecl *timer_input)(void*,unsigned,const char*,unsigned,float,const TimerBindings*,TimerResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
