@@ -429,8 +429,10 @@ int main(int argc,char** argv){
     relay_keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=relay_extent;return 1;};
     Bindings relay_parse{};relay_parse.context=&rff;relay_parse.native_factory=&factories;relay_parse.native_keys=&relay_keys;
     relay_parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<RelayFactoryFixture*>(p)->cleared;return 1;};
-    relay_parse.accept_entity=[](void* p,void* a,const char* cls,unsigned,const EntitySlice*) noexcept ->int{
-        auto& f=*static_cast<RelayFactoryFixture*>(p);assert(a==f.storage&&!std::strcmp(cls,"logic_relay"));++f.accepted;return 1;
+    relay_parse.accept_entity=[](void* p,void* a,const char* text,unsigned bytes,const EntitySlice* slice) noexcept ->int{
+        auto& f=*static_cast<RelayFactoryFixture*>(p);assert(a==f.storage&&text&&slice&&slice->begin<slice->end&&slice->end<=bytes);
+        constexpr char prefix[]="{ classname logic_relay";
+        assert(slice->end-slice->begin>=sizeof(prefix)-1&&!std::memcmp(text+slice->begin,prefix,sizeof(prefix)-1));++f.accepted;return 1;
     };
     const char relay_map_text[]="{ classname logic_relay StartDisabled 1 targetname station OnTrigger \"relay,Trigger,,2,-1\" }";
     assert(api->parse(relay_map_text,sizeof(relay_map_text),&relay_parse,&r)&&r.native_creates==1&&r.created==1&&r.last_factory.networkable==rff.storage+0x160);
