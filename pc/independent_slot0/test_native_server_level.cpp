@@ -96,5 +96,37 @@ int main(int argc,char** argv){
     assert(level(&actual.state,&a,&b,&o)&&o.completed&&o.chapter_result.matched&&o.chapter_result.match_index==3&&actual.seq=="[PENTMD]");
     actual.seq.clear();assert(activate(&actual.state,nullptr,64,1,&b,&o)&&o.completed&&actual.seq=="w(A)(Y)ZEHVG");
     assert(!activate(&actual.state,nullptr,64,1,&b,&o));
+    // Real direct-target queue records from the LevelInit restore branch.
+    // Reuse the native service; never broadcast Save/Kill to matching names.
+    using namespace sin_port::native_weapon_tables;
+    struct QueueFixture {
+        alignas(4) unsigned char root[0x38]{},rows[2][0x38]{};
+        unsigned alloc=0,delivered=0,released=0,locks=0;void* target=nullptr;
+    } qf;
+    Fixture queued;queued.load=true;qf.target=queued.actor;
+    put(queued.actor,0x378,0x2000u);
+    sin_independent::EntityHandleEntry entries[1]{};entries[0].serial=2;entries[0].entity=reinterpret_cast<CBaseEntity*>(queued.actor);
+    ServerEntityNamedEventQueueBindings qb{};qb.context=&qf;
+    qb.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<QueueFixture*>(p);assert(q.alloc<2);*token=11+q.alloc;*row=q.rows[q.alloc++];*bytes=0x38;return 1;};
+    qb.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<QueueFixture*>(p);assert(token==11||token==12);*row=q.rows[token-11];*bytes=0x38;return 1;};
+    qb.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{assert(token==31||token==32);*yes=true;return 1;};
+    float now=10.f;DirectQueue dq{qf.root,sizeof(qf.root),10,&now,entries,1,&qb,[](void*,const char* n,unsigned* token) noexcept ->int{*token=!std::strcmp(n,"Save")?31:32;return 1;},nullptr};
+    b=queued.bind();b.queue_direct=nullptr;b.native_queue=&dq;a={queued.map,"entities","SE1_intro03","landmark",true,false};
+    assert(level(&queued.state,&a,&b,&o)&&o.completed&&o.queued==2&&o.save_event.inserted&&o.kill_event.inserted&&o.save_event.fire_time==11.f&&o.kill_event.fire_time==11.1f&&qf.alloc==2);
+    auto word=[](const void* row,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(row)+off,4);return v;};
+    assert(word(qf.root,0x30)==11&&word(qf.rows[0],4)==0&&word(qf.rows[0],0x18)==0x2000&&word(qf.rows[0],8)==31&&word(qf.rows[0],0x30)==12&&word(qf.rows[1],0x34)==11);
+    auto service_get=reinterpret_cast<GetServerEntityEventServiceApi>(GetProcAddress(server,server_entity_event_service_export));assert(service_get);
+    auto* service=service_get(1,sizeof(ServerEntityEventServiceApi));assert(service);
+    ServerEntityEventServiceBindings sb{};sb.context=&qf;sb.entities.entries=entries;sb.entities.count=1;sb.resolve=qb.resolve;
+    sb.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<QueueFixture*>(p);if(enter)++q.locks;else --q.locks;return 1;};
+    sb.accept=[](void* p,void* target,unsigned input,void* activator,void* caller,const void* variant,unsigned id) noexcept ->int{
+        auto& q=*static_cast<QueueFixture*>(p);assert(q.locks==1&&target==q.target&&input==31+q.delivered&&!activator&&!caller&&!id);
+        unsigned type=1;std::memcpy(&type,static_cast<const unsigned char*>(variant)+0x10,4);assert(!type);++q.delivered;return 1;
+    };
+    sb.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<QueueFixture*>(p);assert(token==11+q.released&&row==q.rows[q.released]);++q.released;return 1;};
+    ServerEntityEventServiceResult sr{};int steps=0;
+    assert(service->service(qf.root,sizeof(qf.root),10,10.99f,false,&steps,&sb,&sr)&&sr.future_stopped&&!qf.delivered);
+    assert(service->service(qf.root,sizeof(qf.root),10,11.f,false,&steps,&sb,&sr)&&sr.direct==1&&qf.delivered==1&&qf.released==1&&sr.future_stopped&&!qf.locks);
+    assert(service->service(qf.root,sizeof(qf.root),10,11.1f,false,&steps,&sb,&sr)&&sr.completed&&sr.direct==1&&qf.delivered==2&&qf.released==2&&!word(qf.root,0x30)&&!qf.locks);
     FreeLibrary(server);FreeLibrary(client);
 }

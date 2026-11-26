@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_level {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -59,6 +60,22 @@ int __cdecl unlock_chapter(const char* map,const ChapterBindings* b,ChapterResul
     if(less){if(!b->set||!b->set(b->context,o->chapter))return 0;o->changed=1;}
     return done();
 }
+bool queue_autosave(const Bindings& b,Result& o,void* target,const char* input,float delay,native_weapon_tables::ServerEntityNamedEventQueueResult& result) noexcept {
+    if(b.queue_direct){if(!b.queue_direct(b.context,target,input,delay,nullptr,nullptr,0))return false;}
+    else{
+        const auto* q=b.native_queue;
+        if(!q||!q->now||!q->queue||!q->intern||!b.extent||q->entry_count>sin_independent::kEntityHandleCapacity||(!q->entries&&q->entry_count))return false;
+        unsigned n=0;if(!b.extent(b.context,target,&n)||n<0x37c)return false;
+        const unsigned handle=read<unsigned>(target,0x378);
+        if(sin_independent::EntityHandleView(q->entries,q->entry_count).Resolve(handle)!=target)return false;
+        unsigned token=0;if(!q->intern(q->context,input,&token)||!token)return false;
+        unsigned variant[5]{0,0,0,0xffffffffu,0};
+        using namespace native_weapon_tables;
+        const auto* api=SiN_GetServerEntityNamedEventQueueApi(1,sizeof(ServerEntityNamedEventQueueApi));
+        if(!api||!api->enqueue_direct(q->sentinel,q->bytes,q->token,*q->now,handle,token,0xffffffffu,0xffffffffu,variant,sizeof(variant),delay,0,q->queue,&result))return false;
+    }
+    ++o.queued;return true;
+}
 int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) noexcept {
     if(!o)return 0;*o={};
     if(!ready(s,b,o)||!a||!a->map||s->level_ready||!b->scope)return 0;
@@ -90,8 +107,7 @@ int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) 
                 void* target=nullptr;if(!b->find_autosave||!b->find_autosave(b->context,&target))return finish(false);
                 if(target){
                     o->autosave_found=1;
-                    if(!b->queue_direct||!b->queue_direct(b->context,target,"Save",1.f,nullptr,nullptr,0))return finish(false);++o->queued;
-                    if(!b->queue_direct(b->context,target,"Kill",1.1f,nullptr,nullptr,0))return finish(false);++o->queued;
+                    if(!queue_autosave(*b,*o,target,"Save",1.f,o->save_event)||!queue_autosave(*b,*o,target,"Kill",1.1f,o->kill_event))return finish(false);
                 }
             }
         }

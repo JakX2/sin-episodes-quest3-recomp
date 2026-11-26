@@ -339,6 +339,7 @@ struct ServerEntityNamedEventQueueResult {
 struct ServerEntityNamedEventQueueApi {
     std::uint32_t version,size;
     int (__cdecl *enqueue)(void* sentinel,unsigned sentinel_bytes,std::uint32_t sentinel_token,float now,std::uint32_t activator,std::uint32_t caller,const ServerEntityVoidOutputAction*,const ServerEntityNamedEventQueueBindings*,ServerEntityNamedEventQueueResult*) noexcept;
+    int (__cdecl *enqueue_direct)(void*,unsigned,std::uint32_t,float,std::uint32_t,std::uint32_t,std::uint32_t,std::uint32_t,const void*,unsigned,float,std::uint32_t,const ServerEntityNamedEventQueueBindings*,ServerEntityNamedEventQueueResult*) noexcept;
 };
 using GetServerEntityNamedEventQueueApi=const ServerEntityNamedEventQueueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
