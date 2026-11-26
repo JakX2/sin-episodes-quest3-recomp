@@ -2931,5 +2931,60 @@ int main(int argc,char** argv){
         assert(api->run(q.a,sizeof(q.a),17,&b,&o)&&o.jet&&!o.jet_direct&&o.native_result==901);
         f.put(q.a,0x1024,0x9001u);assert(!api->run(q.a,sizeof(q.a),17,&b,&o));
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntRagdollRouteApi>(GetProcAddress(s,server_npc_grunt_ragdoll_route_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_ragdoll_route_export)&&!g(0,sizeof(ServerNpcGruntRagdollRouteApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntRagdollRouteApi));assert(api);
+        struct RagdollFixture{
+            alignas(4) unsigned char a[0x1088]{},damage[0x48]{},rag[4]{},attachment[4]{},aux1[4]{},aux2[4]{};
+            sin_independent::EntityHandleEntry entries[5]{};
+            float force[3]{1,2,3};int sample=30;unsigned sequence=0;bool base_result=false;
+            static RagdollFixture& self(void* p){return *static_cast<RagdollFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.rag);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.attachment);
+        q.entries[3].serial=3;q.entries[3].entity=reinterpret_cast<CBaseEntity*>(q.aux1);
+        q.entries[4].serial=4;q.entries[4].entity=reinterpret_cast<CBaseEntity*>(q.aux2);
+        ServerNpcGruntRagdollRouteBindings b{};b.context=&q;b.entities.entries=q.entries;b.entities.count=5;
+        b.base=[](void* p,void* a,const void* d,const float* force,bool* v) noexcept -> int{auto& q=RagdollFixture::self(p);assert(a==q.a&&d==q.damage&&force==q.force);*v=q.base_result;return 1;};
+        b.ground_setup=[](void* p,void* a,const void* d) noexcept -> int{auto& q=RagdollFixture::self(p);assert(a==q.a&&d==q.damage);q.sequence=1;return 1;};
+        b.jet_setup=[](void* p,void* a,const void* d,std::uint32_t* h) noexcept -> int{auto& q=RagdollFixture::self(p);assert(a==q.a&&d==q.damage);*h=0x1001u;q.sequence=1;return 1;};
+        b.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{auto& q=RagdollFixture::self(p);assert(lo==0&&hi==100&&q.sequence==1);*v=q.sample;q.sequence=2;return 1;};
+        b.sentence=[](void* p,void* a) noexcept -> int{auto& q=RagdollFixture::self(p);assert(a==q.a&&q.sequence==2);q.sequence=3;return 1;};
+        b.ignite=[](void* p,void* rag,float t,int flag,void* attacker,void* inflictor,float extra,int last) noexcept -> int{auto& q=RagdollFixture::self(p);assert(rag==q.rag&&t==3&&flag==0&&!attacker&&!inflictor&&extra==25&&last==1&&(q.sequence==2||q.sequence==3));q.sequence=4;return 1;};
+        b.attach=[](void* p,void* rag,void* attachment) noexcept -> int{auto& q=RagdollFixture::self(p);assert(rag==q.rag&&attachment==q.attachment&&(q.sequence==2||q.sequence==4));q.sequence=5;return 1;};
+        b.reparent=[](void* p,void* target,void* attachment) noexcept -> int{auto& q=RagdollFixture::self(p);assert(attachment==q.attachment&&((q.sequence==5&&target==q.aux1)||(q.sequence==6&&target==q.aux2)));++q.sequence;return 1;};
+        b.finish=[](void* p,void* a) noexcept -> int{auto& q=RagdollFixture::self(p);assert(a==q.a&&q.sequence>=1);q.sequence=8;return 1;};
+        f.put(q.damage,0x28,0x1001u);f.put(q.a,0x1028,0xffffffffu);
+        ServerNpcGruntRagdollRouteResult o{};
+        auto run=[&](){q.sequence=0;return api->run(q.a,sizeof(q.a),q.damage,sizeof(q.damage),q.force,&b,&o);};
+        for(unsigned vt:{0x2248df04u,0x224954a4u,0x2249aaa4u,0x224a416cu}){
+            b.entities.speech.original_vtable=vt;q.a[0xb6]=0;q.base_result=false;
+            assert(run()&&o.base_called&&!o.native_result&&!o.jet);
+            q.base_result=true;assert(run()&&o.base_called&&o.native_result);
+            q.a[0xb6]=4;assert(run()&&o.ground_special&&o.finished&&o.native_result&&q.sequence==8);
+        }
+        q.a[0xb6]=0;
+        for(unsigned vt:{0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+            b.entities.speech.original_vtable=vt;
+            for(unsigned mode:{0u,1u,2u,3u,4u,5u,6u,0xffffffffu}){
+                f.put(q.a,0x1004,mode);
+                assert(run()&&o.jet&&o.source_valid&&o.jet_special==(mode==0||mode==1||mode==4));
+                assert(o.jet_special?(o.finished&&o.handle_written&&o.random_called&&!o.ignite_called):(o.base_called&&!o.setup_called));
+            }
+        }
+        f.put(q.a,0x1004,4u);q.sample=29;assert(run()&&o.sentence_called&&o.ignite_called);
+        q.a[0xc44]=1;assert(run()&&!o.sentence_called&&o.ignite_called);
+        f.put(q.a,0x1028,0x2002u);f.put(q.a,0xfe4,0x3003u);f.put(q.a,0xfe8,0x9004u);
+        assert(run()&&o.attachment_called&&!o.aux_reparented);
+        f.put(q.a,0xfe8,0x4004u);assert(run()&&o.attachment_called&&o.aux_reparented==2&&q.sequence==8);
+        f.put(q.a,0x1028,0x9002u);assert(run()&&!o.attachment_called&&!o.aux_reparented);
+        f.put(q.damage,0x28,0x9001u);assert(run()&&!o.source_valid&&o.base_called&&!o.random_called);
+        q.a[0xb6]=4;assert(run()&&!o.source_valid&&o.ground_special&&!o.jet_special);
+        f.put(q.damage,0x28,0x1001u);q.sample=101;assert(!run()&&!o.completed&&o.handle_written&&!o.finished);
+        assert(!api->run(q.a,0x1000,q.damage,sizeof(q.damage),q.force,&b,&o));
+        b.entities.speech.original_vtable=0;assert(!run());
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
