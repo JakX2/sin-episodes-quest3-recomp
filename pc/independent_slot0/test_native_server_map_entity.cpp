@@ -578,5 +578,48 @@ int main(int argc,char** argv){
     PipelineResult pr{};
     assert(api->parse_all(outer_map,sizeof(outer_map),true,&pipe,&pr)&&pr.completed&&pr.parse.created==7&&pr.worlds==1&&pr.nodes==1&&pr.lights==1&&pr.template_entities==1&&pr.point_templates==1&&pr.template_members==1&&pr.captured==1&&pr.ordinary==2&&pr.spawn.spawned==1&&pr.spawn.activated==1&&pr.removed==2&&pr.cleanups==2&&pr.scopes==pr.closes);
     assert(word(pf.actors[0],0x14)==0&&pf.order=="0N2TPdC5QReCF6G");
+    // Original CLogicTimer field types, fixed/random scheduling, alternating
+    // output ordering and input reschedule semantics.
+    alignas(4) unsigned char timer[timer_extent]{};
+    put(timer,0,timer_vtable);
+    ActionPool timer_pool{};OutputActionBindings tpo=output;tpo.context=&timer_pool;tpo.next_id=&timer_pool.id;
+    auto tk=kb;tk.native_output=&tpo;
+    tk.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=timer_extent;return 1;};
+    assert(api->key_value(timer,"StartDisabled","-2",&tk,&kr)&&kr.field_type==5&&word(timer,0x3dc)==0xfffffffeu);
+    assert(api->key_value(timer,"UseRandomTime","3",&tk,&kr)&&word(timer,0x3e8)==3);
+    assert(api->key_value(timer,"LowerRandomBound","4",&tk,&kr)&&word(timer,0x3ec)==0x40800000);
+    assert(api->key_value(timer,"UpperRandomBound","2",&tk,&kr)&&word(timer,0x3f0)==0x40000000);
+    assert(api->key_value(timer,"RefireTime","0",&tk,&kr)&&!word(timer,0x3e0));
+    constexpr const char* timer_names[]{"OnTimer","OnTimerHigh","OnTimerLow"};
+    for(unsigned i=0;i<3;++i)assert(api->key_value(timer,timer_names[i],"relay,Trigger,,0,-1",&tk,&kr)&&kr.offset==0x394+i*0x18);
+    struct TimerFixture {void* actor;ActionPool* pool;float now=10.f,next=0;unsigned schedules=0,randoms=0;std::string order;} tf{timer,&timer_pool};
+    nw::ServerEntityVoidOutputBindings to{};to.context=&tf;
+    to.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<TimerFixture*>(p);for(unsigned i=0;i<3;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+    };
+    to.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* act) noexcept ->int{
+        auto& f=*static_cast<TimerFixture*>(p);assert(a==f.actor&&c==f.actor&&act->action_id>=41&&act->action_id<=43);f.order+=char('0'+act->action_id-41);return 1;
+    };
+    TimerBindings tb{};tb.context=&tf;tb.output=&to;tb.now=&tf.now;
+    tb.random=[](void* p,float lower,float upper,float* value) noexcept ->int{auto& f=*static_cast<TimerFixture*>(p);assert(lower==4.f&&upper==2.f);++f.randoms;*value=1.5f;return 1;};
+    tb.schedule=[](void* p,void* a,float time) noexcept ->int{auto& f=*static_cast<TimerFixture*>(p);assert(a==f.actor);f.next=time;++f.schedules;return 1;};
+    TimerResult tr{};
+    auto ti=[&](const char* name,unsigned type=0,float value=0.f){return api->timer_input(timer,sizeof(timer),name,type,value,&tb,&tr);};
+    assert(api->timer_spawn(timer,sizeof(timer),&tb,&tr)&&tr.scheduled&&tf.next==-1.f&&!tf.randoms&&word(timer,0x3dc)==1);
+    assert(ti("FireTimer")&&tr.suppressed&&!tr.fired);
+    assert(ti("Enable")&&tr.randomized&&tf.next==11.5f&&tf.randoms==1&&!word(timer,0x3dc));
+    assert(ti("FireTimer")&&tr.fired&&tr.output_offset==0x394&&tf.order=="0"&&tf.randoms==2);
+    put(timer,0xb4,1);assert(ti("FireTimer")&&tr.output_offset==0x3c4&&timer[0x3e4]==1&&tf.order=="02");
+    assert(ti("FireTimer")&&tr.output_offset==0x3ac&&!timer[0x3e4]&&tf.order=="021");
+    assert(ti("Toggle")&&tf.next==-1.f&&word(timer,0x3dc)==1);
+    put(timer,0x3e8,0);assert(ti("RefireTime",1,2.f)&&tr.changed&&tr.suppressed&&!tr.scheduled&&word(timer,0x3e0)==0x40000000);
+    assert(ti("Toggle")&&tf.next==12.f);
+    const auto schedules=tf.schedules;
+    assert(ti("RefireTime",1,2.f)&&!tr.changed&&!tr.scheduled&&tf.schedules==schedules);
+    assert(ti("RefireTime",1,-1.f)&&tr.clamped&&tr.changed&&tf.next==static_cast<float>(10.0+double(.01f)));
+    assert(ti("RefireTime",5,100.f)&&tr.clamped&&!tr.changed);
+    assert(ti("Disable")&&tf.next==-1.f);put(timer,0x3dc,0);put(timer,0x3e0,0);
+    assert(api->timer_spawn(timer,sizeof(timer),&tb,&tr)&&tr.clamped&&tr.scheduled&&tf.next==static_cast<float>(10.0+double(.01f)));
+    assert(ti("Unknown")&&!tr.handled);
     FreeLibrary(server);FreeLibrary(client);
 }

@@ -211,7 +211,7 @@ int __cdecl destroy_auto(void* actor,unsigned bytes,void* networkable,const Rela
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -292,9 +292,14 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"OnViolenceHigh",0x3c4,11},{"OnNewGame",0x3dc,11},{"OnLoadGame",0x3f4,11},
         {"OnMapTransition",0x40c,11},{"OnBackgroundMap",0x424,11}
     };
+    constexpr Spec timer_keys[]{
+        {"StartDisabled",0x3dc,5},{"RefireTime",0x3e0,1},{"UseRandomTime",0x3e8,5},
+        {"LowerRandomBound",0x3ec,1},{"UpperRandomBound",0x3f0,1},
+        {"OnTimer",0x394,11},{"OnTimerHigh",0x3ac,11},{"OnTimerLow",0x3c4,11}
+    };
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);
     if(!spec){match(common);if(spec)o->base_field=1;}
     if(!spec)return foreign(name);
     o->offset=spec->offset;o->field_type=spec->type;
@@ -844,7 +849,72 @@ int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activa
     else if(!b->refire||!b->refire(b->context,actor,o->refire_delay))return 0;
     o->refire=1;return done();
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run};
+// Original 22178a40: disabled gate, optional random draw, current clock
+// plus stored interval. Random bounds are passed through in original order.
+bool timer_valid(void* a,unsigned n,const TimerBindings* b,TimerResult* o) noexcept {
+    if(!o)return false;*o={};
+    return a&&n>=timer_extent&&entity_vtable(a)==timer_vtable&&b;
+}
+bool timer_schedule(void* a,float time,const TimerBindings& b,TimerResult& o) noexcept {
+    if(!std::isfinite(time)||!b.schedule||!b.schedule(b.schedule_context?b.schedule_context:b.context,a,time))return false;
+    o.next_think=time;o.scheduled=1;return true;
+}
+bool timer_reschedule(void* a,const TimerBindings& b,TimerResult& o) noexcept {
+    if(read_field<int>(a,0x3dc)){o.suppressed=1;return true;}
+    if(read_field<int>(a,0x3e8)){
+        float value=0;
+        if(!b.random||!b.random(b.context,read_field<float>(a,0x3ec),read_field<float>(a,0x3f0),&value)||!std::isfinite(value))return false;
+        write_field(a,0x3e0,value);o.randomized=1;
+    }
+    o.interval=read_field<float>(a,0x3e0);
+    return b.now&&timer_schedule(a,static_cast<float>(double(*b.now)+o.interval),b,o);
+}
+bool timer_enable(void* a,const TimerBindings& b,TimerResult& o) noexcept {
+    write_field(a,0x3dc,0);return timer_reschedule(a,b,o);
+}
+bool timer_disable(void* a,const TimerBindings& b,TimerResult& o) noexcept {
+    write_field(a,0x3dc,1);return timer_schedule(a,-1.f,b,o);
+}
+int __cdecl timer_spawn(void* a,unsigned n,const TimerBindings* b,TimerResult* o) noexcept {
+    if(!timer_valid(a,n,b,o))return 0;
+    const bool random=read_field<int>(a,0x3e8)!=0;
+    // 22179300 clamps fixed intervals (including unordered values).
+    if(!random&&!(read_field<float>(a,0x3e0)>=.01f)){
+        write_field(a,0x3e0,.01f);o->clamped=1;
+    }
+    const bool enabled=!read_field<int>(a,0x3dc)&&(random||read_field<float>(a,0x3e0)>0.f);
+    if(!(enabled?timer_enable(a,*b,*o):timer_disable(a,*b,*o)))return 0;
+    o->handled=o->completed=1;return 1;
+}
+bool timer_fire(void* a,unsigned n,const TimerBindings& b,TimerResult& o) noexcept {
+    if(read_field<int>(a,0x3dc)){o.suppressed=1;return true;}
+    const bool oscillate=(read_field<unsigned>(a,0xb4)&1u)!=0;
+    const unsigned off=oscillate?(read_field<unsigned char>(a,0x3e4)?0x3ac:0x3c4):0x394;
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));ServerEntityVoidOutputResult r{};
+    if(!fire||!b.output||!fire->fire(static_cast<unsigned char*>(a)+off,0x18,a,a,n,0.f,b.output,&r))return false;
+    o.output_offset=off;o.fired=1;o.queued=r.queued;
+    if(oscillate)write_field(a,0x3e4,static_cast<unsigned char>(!read_field<unsigned char>(a,0x3e4)));
+    return timer_reschedule(a,b,o);
+}
+int __cdecl timer_input(void* a,unsigned n,const char* name,unsigned type,float value,const TimerBindings* b,TimerResult* o) noexcept {
+    if(!timer_valid(a,n,b,o)||!name)return 0;
+    bool ok=true;o->handled=1;
+    if(equal_class(name,"Enable"))ok=timer_enable(a,*b,*o);
+    else if(equal_class(name,"Disable"))ok=timer_disable(a,*b,*o);
+    else if(equal_class(name,"Toggle"))ok=read_field<int>(a,0x3dc)?timer_enable(a,*b,*o):timer_disable(a,*b,*o);
+    else if(equal_class(name,"FireTimer"))ok=timer_fire(a,n,*b,*o);
+    else if(equal_class(name,"RefireTime")){
+        // 221793e0 accepts FLOAT >=0.01; everything else becomes 0.01.
+        const float candidate=type==1&&value>=.01f?value:.01f;
+        o->clamped=type!=1||!(value>=.01f);
+        if(candidate!=read_field<float>(a,0x3e0)){
+            write_field(a,0x3e0,candidate);o->changed=1;ok=timer_reschedule(a,*b,*o);
+        }
+    }else o->handled=0;
+    o->completed=ok;return int(ok);
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
