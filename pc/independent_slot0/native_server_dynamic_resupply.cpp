@@ -953,12 +953,85 @@ int __cdecl antigen_insert(void* a,unsigned n,void* other,unsigned other_bytes,c
     if(!antigen_output(a,n,0x4b8,container,*b,*o))return 0;
     return done();
 }
+bool canister_ready(void* c,unsigned n,const CanisterBindings* b) noexcept {
+    return c&&n>=antigen_canister_extent&&field<unsigned>(c,0)==antigen_canister_vtable&&b;
+}
+int __cdecl canister_construct(void* c,unsigned n,const CanisterBindings* b,CanisterResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!c||n<antigen_canister_extent||!b||!b->base_construct||!b->base_construct(b->context,c))return 0;
+    // 222ffb80 base leaves and 222fffc0 derived constructor.
+    set_field(c,0,antigen_canister_vtable);set_field(c,0x494,0x2246f01cu);set_field(c,0x498,0x2246eff4u);
+    set_field(c,0x628,100.f);set_field(c,0x62c,9u);set_field(c,0x630,0x2246a8f4u);
+    set_field(c,0x634,0.f);set_field(c,0x638,1.f);
+    for(unsigned off=0x63c;off<=0x64c;off+=4)set_field(c,off,0u);
+    for(unsigned off=0x668;off<=0x678;off+=0x10)set_field(c,off,0xffffffffu);
+    set_field(c,0x66c,0u);set_field(c,0x67c,0u);set_field(c,0x69c,0xffffffffu);
+    o->amount=100.f;o->constructed=o->completed=1;return 1;
+}
+bool canister_pose(void* c,const CanisterBindings& b,CanisterResult& o) noexcept {
+    o.amount=field<float>(c,0x628);o.fraction=float(double(o.amount)*double(.01f));
+    if(!b.pose||!b.pose(b.context,c,"percentFull",o.fraction))return false;
+    o.pose_called=1;return true;
+}
+int __cdecl canister_set_amount(void* c,unsigned n,float amount,const CanisterBindings* b,CanisterResult* o) noexcept {
+    if(!o)return 0;*o={};if(!canister_ready(c,n,b)||!std::isfinite(amount))return 0;
+    set_field(c,0x628,amount);o->amount_written=1;
+    if(!canister_pose(c,*b,*o))return 0;o->completed=1;return 1;
+}
+bool canister_schedule(void* c,const CanisterBindings& b,CanisterResult& o,double offset,double tail=0.) noexcept {
+    float now=0;if(!b.clock||!b.clock(b.context,&now)||!std::isfinite(now))return false;o.clock_read=1;
+    o.next_time=float((offset+double(now))+tail);
+    if(!std::isfinite(o.next_time)||!b.schedule||!b.schedule(b.context,c,o.next_time))return false;o.scheduled=1;return true;
+}
+int __cdecl canister_spawn(void* c,unsigned n,const CanisterBindings* b,CanisterResult* o) noexcept {
+    if(!o)return 0;*o={};if(!canister_ready(c,n,b))return 0;
+    if(!b->spawn_setup||!b->spawn_setup(b->context,c))return 0;o->base_spawn=1;
+    if(!canister_pose(c,*b,*o))return 0;
+    set_field(c,8,antigen_canister_idle);o->think_installed=1;
+    if(!canister_schedule(c,*b,*o,.25))return 0;o->completed=1;return 1;
+}
+int __cdecl canister_idle(void* c,unsigned n,const CanisterBindings* b,CanisterResult* o) noexcept {
+    if(!o)return 0;*o={};if(!canister_ready(c,n,b))return 0;
+    if(!b->advance||!b->advance(b->context,c))return 0;o->advanced=1;
+    if(!b->random_float||!b->random_float(b->context,.5f,1.5f,&o->random)||!std::isfinite(o->random))return 0;o->random_called=1;
+    if(!canister_schedule(c,*b,*o,double(o->random),1.))return 0;o->completed=1;return 1;
+}
+int __cdecl antigen_factory_create(const char* name,const AntigenFactoryBindings* b,AntigenFactoryResult* o) noexcept {
+    if(!o)return 0;*o={};o->type=3;
+    if(!name||!b||!b->allocate||!b->initialize)return 0;
+    for(unsigned i=0;i<3;++i)if(class_equal(name,antigen_factories[i].classname)){o->type=i;break;}
+    if(o->type>=3||(o->type==0?!b->dispenser:!b->canister))return 0;
+    const auto extent=antigen_factories[o->type].extent;
+    o->allocation_called=1;
+    if(!b->allocate(b->context,extent,&o->actor,&o->bytes)||!o->actor)return 0;
+    o->allocated=1;if(o->bytes<extent)return 0;
+    if(o->type==0){if(!antigen_construct(o->actor,o->bytes,b->dispenser,&o->dispenser))return 0;}
+    else if(!canister_construct(o->actor,o->bytes,b->canister,&o->canister))return 0;
+    o->constructed=1;
+    if(!b->initialize(b->context,o->actor,name))return 0;
+    o->initialized=1;o->networkable=static_cast<unsigned char*>(o->actor)+0x160;o->completed=1;return 1;
+}
+int __cdecl antigen_factory_destroy(void* a,unsigned n,void* networkable,const AntigenFactoryBindings* b,AntigenFactoryResult* o) noexcept {
+    if(!o)return 0;*o={};o->type=3;
+    if(!networkable){o->completed=1;return 1;}
+    if(!a||n<4||networkable!=static_cast<unsigned char*>(a)+0x160||!b||!b->release_networkable)return 0;
+    const auto vt=field<unsigned>(a,0);
+    if(vt==antigen_vtable&&n>=antigen_extent)o->type=0;
+    else if(vt==antigen_canister_vtable&&n>=antigen_canister_extent)o->type=1; // aliases share one type
+    else return 0;
+    o->actor=a;o->bytes=n;
+    if(!b->release_networkable(b->context,networkable))return 0;o->released=o->completed=1;return 1;
+}
 int __cdecl antigen_eject(void* a,unsigned n,const AntigenExchangeBindings* b,AntigenExchangeResult* o) noexcept {
     if(!o)return 0;*o={};if(!b||!antigen_ready(a,n,&b->control))return 0;
     auto done=[&](){o->completed=1;return 1;};
     if(!field<unsigned char>(a,0x498))return done();
     unsigned extent=0;
-    if(!b->create||!b->create(b->context,"prop_antigen_explosive_barrel",-1,&o->container,&extent))return 0;
+    if(b->create){if(!b->create(b->context,"prop_antigen_explosive_barrel",-1,&o->container,&extent))return 0;}
+    else{
+        if(!antigen_factory_create("prop_antigen_explosive_barrel",b->native_factory,&o->factory)){o->container=o->factory.actor;return 0;}
+        o->container=o->factory.actor;extent=o->factory.bytes;
+    }
     if(!o->container||extent<0x6a0||field<unsigned>(o->container,0)!=antigen_canister_vtable)return 0;
     void* c=o->container;o->created=1;
     auto refresh=[&](void* entity){
@@ -970,11 +1043,21 @@ int __cdecl antigen_eject(void* a,unsigned n,const AntigenExchangeBindings* b,An
     if(!refresh(a))return 0;copy_vec(a,0x2bc,pos);
     if(!b->position||!b->position(b->context,c,pos)||!refresh(a))return 0;
     copy_vec(a,0x354,angles);
-    if(!b->orientation||!b->orientation(b->context,c,angles)||!b->spawn||!b->spawn(b->context,c))return 0;o->spawned=1;
+    if(!b->orientation||!b->orientation(b->context,c,angles))return 0;
+    if(b->spawn){if(!b->spawn(b->context,c))return 0;}
+    else if(!canister_spawn(c,extent,b->native_canister,&o->canister_spawn))return 0;
+    o->spawned=1;
     o->amount=float(double(field<float>(a,0x49c))*100.*double(.01f));if(!std::isfinite(o->amount))return 0;
-    set_field(c,0x628,o->amount);o->transferred=1;
-    o->container_fraction=float(double(o->amount)*double(.01f));
-    if(!b->container_pose||!b->container_pose(b->context,c,"percentFull",o->container_fraction))return 0;o->container_pose=1;
+    if(b->container_pose){
+        set_field(c,0x628,o->amount);o->transferred=1;
+        o->container_fraction=float(double(o->amount)*double(.01f));
+        if(!b->container_pose(b->context,c,"percentFull",o->container_fraction))return 0;
+    }else{
+        const bool ok=canister_set_amount(c,extent,o->amount,b->native_canister,&o->canister_amount)!=0;
+        o->transferred=o->canister_amount.amount_written;o->container_fraction=o->canister_amount.fraction;
+        if(!ok)return 0;
+    }
+    o->container_pose=1;
     void* local=nullptr;
     if(!b->local_player||!b->local_player(b->context,&local)||!local||!refresh(c))return 0;
     copy_vec(c,0x2bc,pos);
@@ -1061,7 +1144,7 @@ int __cdecl antigen_button_event(void* a,unsigned n,const char* name,int index,c
        !b->control.schedule(b->control.schedule_context?b->control.schedule_context:b->control.context,a,o->control.next_time))return 0;
     o->control.scheduled=1;return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event};
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
