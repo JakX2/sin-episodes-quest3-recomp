@@ -4876,8 +4876,13 @@ int main(int argc,char** argv){
         f.put(sf.nodes,4,0u);assert(spread->spread(q.a,sizeof(q.a),q.weapon,q.enemy,10,&sbind,&spread_result)&&!spread_result.record_found&&!spread_result.lookup.fallback_attempted);
         // +6e8 uses null key and table index from the f32 magic-number rounding.
         unsigned key_calls=sf.key_calls;
-        sf.table[21]=.875f;sf.base[0]=.25f;sbind.multiplier=2.f;
-        assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.scaled&&spread_result.vector[0]==.5f&&spread_result.angle_index==21&&spread_result.table_called&&spread_result.threshold==.875f&&sf.key_calls==key_calls);
+        // Original 0x223d9750 is 0x4b400040: the low byte starts at 64.
+        sf.table[85]=.875f;sf.base[0]=.25f;sbind.multiplier=2.f;
+        assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.scaled&&spread_result.vector[0]==.5f&&spread_result.angle_index==85&&spread_result.table_called&&spread_result.threshold==.875f&&sf.key_calls==key_calls);
+        // Independent original table indices with no adaptive scaling.
+        sbind.multiplier=1.f;sf.table[74]=.625f;sf.table[128]=.25f;
+        assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&!spread_result.scaled&&spread_result.angle_index==74&&spread_result.threshold==.625f);
+        sf.base[0]=1.f;assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.angle_index==128&&spread_result.threshold==.25f);
         sf.base[0]=.13053f;sbind.multiplier=1.f;
         assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.clamped&&spread_result.threshold==.99145f&&!spread_result.table_called);
         assert(spread->threshold(q.a,sizeof(q.a),nullptr,10,nullptr,&spread_result)&&spread_result.no_weapon&&spread_result.threshold==.92f&&!spread_result.base_called);
