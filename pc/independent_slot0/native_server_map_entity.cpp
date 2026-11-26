@@ -143,6 +143,41 @@ bool known_map_vtable(unsigned vt) noexcept {
     if(vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
+// Original 22154830: five comma-delimited fields, no escaping or trim.
+// Original 22285ea0 returns the character after a separator, otherwise
+// the terminating NUL; empty input writes an empty token.
+bool output_field(const char*& p,char (&field)[256]) noexcept {
+    unsigned n=0;
+    while(*p&&*p!=','){
+        if(n==255)return false;
+        field[n++]=*p++;
+    }
+    field[n]=0;if(*p==',')++p;return true;
+}
+bool attach_output(void* output,const char* value,const KeyBindings* keys) noexcept {
+    const auto* b=keys->native_output;
+    if(!b||!b->next_id||!b->allocate||!b->release||!keys->intern)return false;
+    char fields[5][256]{};
+    for(auto& field:fields)if(!output_field(value,field))return false;
+    const float delay=fields[3][0]?static_cast<float>(std::strtod(fields[3],nullptr)):0.0f;
+    errno=0;const long long count=fields[4][0]?std::strtoll(fields[4],nullptr,10):-1;
+    if(errno==ERANGE||count<INT_MIN||count>INT_MAX)return false;
+    void* row=nullptr;if(!b->allocate(b->context,0x1c,&row)||!row)return false;
+    const auto addr=reinterpret_cast<std::uintptr_t>(row);
+    if(addr>UINT32_MAX||(addr&3u)){b->release(b->context,row);return false;}
+    unsigned head=0;std::memcpy(&head,static_cast<unsigned char*>(output)+0x14,4);
+    if(head==static_cast<unsigned>(addr)){b->release(b->context,row);return false;}
+    const unsigned id=++*b->next_id;
+    unsigned target=0,input=0,parameter=0;
+    const bool ok=(!fields[0][0]||keys->intern(keys->context,fields[0],&target))&&
+        keys->intern(keys->context,fields[1][0]?fields[1]:"Use",&input)&&
+        (!fields[2][0]||keys->intern(keys->context,fields[2],&parameter));
+    if(!ok){b->release(b->context,row);return false;}
+    write_field(row,0,target);write_field(row,4,input);write_field(row,8,parameter);
+    write_field(row,0xc,delay);write_field(row,0x10,static_cast<int>(count?count:-1));
+    write_field(row,0x14,id);write_field(row,0x18,head);
+    write_field(output,0x14,static_cast<unsigned>(addr));return true;
+}
 int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBindings* b,KeyResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!actor||!key||!value||!b||!b->extent)return 0;
@@ -199,7 +234,9 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         if(errno==ERANGE||scalar<INT_MIN||scalar>INT_MAX)return 0;
         write_field(actor,o->offset,static_cast<int>(scalar));o->scalar=1;
     }else{
-        if(!b->output||!b->output(b->context,actor,static_cast<unsigned char*>(actor)+o->offset,value))return 0;
+        auto* output=static_cast<unsigned char*>(actor)+o->offset;
+        if(b->native_output){if(bytes-o->offset<0x18||!attach_output(output,value,b))return 0;}
+        else if(!b->output||!b->output(b->context,actor,output,value))return 0;
         o->output=1;
     }
     o->handled=1;return done();
