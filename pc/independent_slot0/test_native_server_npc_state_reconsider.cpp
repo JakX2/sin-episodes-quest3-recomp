@@ -2598,5 +2598,46 @@ int main(int argc,char** argv){
         f.put(q.actor,0x8c,0);f.put(q.actor,0x9c,0);f.put(q.actor,0x218,88u);f.put(q.damage,0x38,0x400000u);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),13,&b,&o)&&o.route==NpcDamageAlive&&o.alive.alive.chain.detail.damage.rejected_flags&&!o.native_result&&o.object_called&&o.death_called&&o.post_death_noop&&q.deaths==1);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcJetpackDeathModeApi>(GetProcAddress(s,server_npc_jetpack_death_mode_export));
+        assert(g&&!GetProcAddress(c,server_npc_jetpack_death_mode_export)&&!g(0,sizeof(ServerNpcJetpackDeathModeApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcJetpackDeathModeApi));assert(api);
+        struct JetModeFixture {
+            alignas(4) unsigned char actor[0x1088]{},damage[0x48]{};
+            int sample=0,replace=-1;bool effect=false,force=false;
+            unsigned calls=0,effects=0,tails=0;
+            static JetModeFixture& self(void* p){return *static_cast<JetModeFixture*>(p);}
+        } q;
+        ServerNpcJetpackDeathModeBindings b{};b.original_vtable=0x2248c514;b.context=&q;
+        b.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{auto& q=JetModeFixture::self(p);assert(lo==0&&hi==100);++q.calls;*v=q.sample;return 1;};
+        b.effect_rule=[](void* p,void* a,bool* v) noexcept -> int{auto& q=JetModeFixture::self(p);assert(a==q.actor);*v=q.effect;return 1;};
+        b.effect=[](void* p,void* a) noexcept -> int{auto& q=JetModeFixture::self(p);assert(a==q.actor);++q.effects;if(q.replace>=0)std::memcpy(q.actor+0x1004,&q.replace,4);return 1;};
+        b.force_mode3=[](void* p,bool* v) noexcept -> int{*v=JetModeFixture::self(p).force;return 1;};
+        b.tail=[](void* p,void* a,void* d,unsigned mode,std::uint32_t target) noexcept -> int{auto& q=JetModeFixture::self(p);assert(a==q.actor&&d!=q.damage&&mode==1&&target==0x22366826);++q.tails;return 1;};
+        for(unsigned i=0;i<sizeof(q.damage);++i)q.damage[i]=static_cast<unsigned char>(i);
+        ServerNpcJetpackDeathModeResult o{};
+        for(int i=0;i<=100;++i){
+            q.sample=i;int mode=i<27?1:i<54?4:i<81?0:3;
+            assert(api->select(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.completed&&o.copied&&o.random_called&&o.final_mode==mode&&o.initial_mode==mode&&o.tail_required&&!std::memcmp(q.actor+0x102c,q.damage,sizeof(q.damage)));
+        }
+        q.actor[0xbf]=8;
+        assert(api->select(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.on_fire&&!o.random_called&&o.final_mode==5&&o.branch==0x223668ec&&q.calls==101);
+        q.effect=true;q.replace=2;
+        assert(api->select(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.effect_called&&o.final_mode==2&&!o.tail_required&&o.branch==0x223669fb);
+        q.force=true;
+        assert(api->select(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.forced&&o.final_mode==3&&o.tail_required);
+        assert(!api->select(q.actor,0x1073,q.damage,sizeof(q.damage),&b,&o));
+        q.effect=q.force=false;q.actor[0xbf]=0;q.sample=0;
+        std::memset(q.damage,0,sizeof(q.damage));f.put(q.damage,0x38,0x400000u);f.put(q.damage,0x28,0xffffffffu);
+        f.put(q.actor,0x94,2);f.put(q.actor,0x8c,0);f.put(q.actor,0x9c,0);f.put(q.actor,0xe8,0xffffffffu);
+        static ServerNpcJetpackDeathDispatchBindings cb;cb.jet=b;
+        auto& reaction=cb.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction;
+        reaction.sentence.speech.original_vtable=0x2248c514;
+        cb.life.combat.alive.chain.detail.damage.cast_grunt=[](void*,void*,void** out,unsigned* n) noexcept -> int{*out=nullptr;*n=0;return 1;};
+        float shared[3]{};cb.life.combat.alive.life.shared_direction=shared;
+        static ServerNpcJetpackDeathDispatchResult cr;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&cb,&cr)&&cr.life.completed&&cr.life.death_called&&cr.jet.completed&&cr.jet.final_mode==1&&cr.jet.tail_called&&q.tails==1&&!std::memcmp(q.actor+0x102c,q.damage,sizeof(q.damage)));
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

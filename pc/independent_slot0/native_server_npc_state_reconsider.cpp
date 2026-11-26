@@ -4326,7 +4326,38 @@ int __cdecl grunt_ignition_alive(void* a,unsigned n,void* damage,unsigned dn,flo
     return grunt_alive_damage_chain_impl(a,n,damage,dn,now,&b->alive,&out->alive,&route);
 }
 const ServerNpcGruntIgnitionApi ignition_api{1,sizeof(ServerNpcGruntIgnitionApi),&grunt_ignition,&grunt_ignition_alive};
-int __cdecl grunt_life_dispatch(void* a,unsigned n,const void* damage,unsigned dn,float now,const ServerNpcGruntLifeDispatchBindings* b,ServerNpcGruntLifeDispatchResult* out) noexcept{
+
+bool jetpack_death_class(std::uint32_t vt) noexcept{
+    return vt==0x2248c514||vt==0x2248e83c||vt==0x2249964c||vt==0x224a4a4c;
+}
+int __cdecl jetpack_death_mode(void* a,unsigned n,void* damage,unsigned dn,const ServerNpcJetpackDeathModeBindings* b,ServerNpcJetpackDeathModeResult* out) noexcept{
+    if(!out)return 0;*out={};out->sample=out->initial_mode=out->final_mode=-1;
+    if(!a||n<0x1074||!damage||dn<0x48||!b||!jetpack_death_class(b->original_vtable))return 0;
+    std::memmove(static_cast<unsigned char*>(a)+0x102c,damage,0x48);out->copied=1;
+    out->on_fire=(read<std::uint8_t>(a,0xbf)&8u)!=0;
+    if(out->on_fire)out->initial_mode=5;
+    else{
+        if(!b->random_int||!b->random_int(b->context,0,100,&out->sample)||out->sample<0||out->sample>100)return 0;
+        out->random_called=1;
+        out->initial_mode=out->sample<27?1:out->sample<54?4:out->sample<81?0:3;
+    }
+    write(a,0x1004,out->initial_mode);
+    bool yes=false;if(!b->effect_rule||!b->effect_rule(b->context,a,&yes))return 0;
+    out->effect_checked=1;
+    if(yes){if(!b->effect||!b->effect(b->context,a))return 0;out->effect_called=1;}
+    if(!b->force_mode3||!b->force_mode3(b->context,&yes))return 0;
+    out->force_checked=1;
+    if(yes){write(a,0x1004,3);out->forced=1;}
+    out->final_mode=read<int>(a,0x1004);
+    constexpr std::uint32_t branches[]{0x22366826,0x22366826,0x223669fb,0x223668ec,0x2236681f,0x223668ec};
+    if(out->final_mode>=0&&out->final_mode<6)out->branch=branches[out->final_mode];
+    else out->branch=0x223669fb;
+    out->tail_required=out->branch!=0x223669fb;
+    out->completed=1;return 1;
+}
+struct JetpackDeathRoute {const ServerNpcJetpackDeathModeBindings* bindings;ServerNpcJetpackDeathModeResult* result;};
+
+int grunt_life_dispatch_impl(void* a,unsigned n,const void* damage,unsigned dn,float now,const ServerNpcGruntLifeDispatchBindings* b,ServerNpcGruntLifeDispatchResult* out,const JetpackDeathRoute* jet) noexcept{
     if(!out)return 0;
     out->alive.alive.chain.detail.damage.completed=0;out->alive.alive.life={};out->alive.ignition={};out->other={};
     out->scaled_amount=0;out->scale=1;out->initial_state=-1;out->native_result=0;
@@ -4368,7 +4399,14 @@ int __cdecl grunt_life_dispatch(void* a,unsigned n,const void* damage,unsigned d
                 if(!b->object_death||!b->object_death(b->context,token,0))return 0;
                 out->object_called=1;
             }
-            if(!b->death||!b->death(b->context,a,copy,sb.speech.original_vtable))return 0;
+            if(jet&&jetpack_death_class(sb.speech.original_vtable)){
+                auto bound=*jet->bindings;bound.original_vtable=sb.speech.original_vtable;
+                if(!jetpack_death_mode(a,n,copy,sizeof(copy),&bound,jet->result))return 0;
+                if(jet->result->tail_required){
+                    if(!bound.tail||!bound.tail(bound.context,a,copy,static_cast<unsigned>(jet->result->final_mode),jet->result->branch))return 0;
+                    jet->result->tail_called=1;
+                }
+            }else if(!b->death||!b->death(b->context,a,copy,sb.speech.original_vtable))return 0;
             out->death_called=1;
             // All eight +398=22044730 false, +3a8=222a4490 ret.
             out->post_death_noop=1;
@@ -4382,7 +4420,18 @@ int __cdecl grunt_life_dispatch(void* a,unsigned n,const void* damage,unsigned d
     }
     return done();
 }
+int __cdecl grunt_life_dispatch(void* a,unsigned n,const void* damage,unsigned dn,float now,const ServerNpcGruntLifeDispatchBindings* b,ServerNpcGruntLifeDispatchResult* out) noexcept{
+    return grunt_life_dispatch_impl(a,n,damage,dn,now,b,out,nullptr);
+}
 const ServerNpcGruntLifeDispatchApi life_dispatch_api{1,sizeof(ServerNpcGruntLifeDispatchApi),&grunt_life_dispatch};
+int __cdecl jetpack_death_dispatch(void* a,unsigned n,const void* damage,unsigned dn,float now,const ServerNpcJetpackDeathDispatchBindings* b,ServerNpcJetpackDeathDispatchResult* out) noexcept{
+    if(!out)return 0;out->jet={};out->jet.sample=out->jet.initial_mode=out->jet.final_mode=-1;
+    if(!b)return 0;
+    const JetpackDeathRoute route{&b->jet,&out->jet};
+    return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->life,&out->life,&route);
+}
+const ServerNpcJetpackDeathModeApi jetpack_death_mode_api{1,sizeof(ServerNpcJetpackDeathModeApi),&jetpack_death_mode,&jetpack_death_dispatch};
+
 
 
 
@@ -4950,4 +4999,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntLifeDispatchApi=_SiN_GetServerNpcGruntLifeDispatchApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLifeDispatchApi* __cdecl SiN_GetServerNpcGruntLifeDispatchApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntLifeDispatchApi)?&life_dispatch_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcJetpackDeathModeApi=_SiN_GetServerNpcJetpackDeathModeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathModeApi* __cdecl SiN_GetServerNpcJetpackDeathModeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcJetpackDeathModeApi)?&jetpack_death_mode_api:nullptr;
 }
