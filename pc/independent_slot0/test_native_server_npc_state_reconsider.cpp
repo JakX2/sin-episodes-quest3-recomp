@@ -1739,5 +1739,46 @@ int main(int argc,char** argv){
             actor[0xc44]=0;assert(api->death(actor,sizeof(actor),21,&b,&rr)&&rr.completed&&rr.request.group_called);--q.calls;
         }
     }
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntEventSpeechApi>(GetProcAddress(s,server_npc_grunt_event_speech_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_event_speech_export)&&!g(0,sizeof(ServerNpcGruntEventSpeechApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntEventSpeechApi));assert(api);
+        struct EventFixture{
+            unsigned char actor[0xdb2]{},other[0xdb2]{},group[0x58]{};
+            sin_independent::EntityHandleEntry slots[3]{};
+            int roll=1;float metric=240,range=2000;bool accept=true,visible=true;unsigned calls=0;
+            const char* expected=nullptr;
+            static EventFixture& self(void* p){return *static_cast<EventFixture*>(p);}
+        } q;
+        q.slots[1].serial=1;q.slots[1].entity=reinterpret_cast<CBaseEntity*>(q.actor);q.slots[2].serial=2;q.slots[2].entity=reinterpret_cast<CBaseEntity*>(q.other);
+        f.put(q.actor,0x204,1);f.put(q.other,0x204,1);f.put(q.actor,0x9c4,91u);f.put(q.actor,0x8a0,0x2002u);f.put(q.actor,0x8f8,77u);
+        f.put(q.group,8,0x1001u);f.put(q.group,12,0x2002u);f.put(q.group,0x48,2);
+        ServerNpcGruntEventSpeechBindings b{};b.context=&q;auto& sb=b.speech.sentence;auto& rb=b.speech.request;sb.entries=q.slots;sb.count=3;
+        sb.speech.original_vtable=0x2249aaa4;sb.speech.context=&q;sb.speech.volume=1;sb.speech.level=75;
+        sb.speech.squad_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{assert(token==91);*out=EventFixture::self(p).group;*n=0x58;return 1;};
+        sb.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xdb2;return 1;};
+        sb.entity_rejected=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        sb.speech.random_float=[](void*,float lo,float hi,float* out) noexcept -> int{assert(lo==1.5f&&hi==2);*out=1.5f;return 1;};
+        rb.context=&q;rb.manager_ready=true;
+        rb.group_index=[](void* p,const char* cue,int* out) noexcept -> int{auto& q=EventFixture::self(p);assert(q.expected&&!std::strcmp(cue,q.expected));++q.calls;*out=-1;return 1;};
+        b.random_int=[](void* p,int lo,int hi,int* out) noexcept -> int{assert(lo==0&&hi==5);*out=EventFixture::self(p).roll;return 1;};
+        b.enemy_target=[](void* p,void* enemy,void** out) noexcept -> int{auto& q=EventFixture::self(p);assert(enemy==q.other);*out=q.other;return 1;};
+        b.position=[](void* p,void* a,float* pos) noexcept -> int{auto& q=EventFixture::self(p);assert(a==q.actor||a==q.other);pos[0]=a==q.actor?0:q.range;pos[1]=pos[2]=0;return 1;};
+        b.target_accept=[](void* p,void* target,void* actor,bool* yes) noexcept -> int{auto& q=EventFixture::self(p);assert(target==q.other&&actor==q.actor);*yes=q.accept;return 1;};
+        b.visible=[](void* p,void* actor,void* target,unsigned mask,unsigned zero,bool* yes) noexcept -> int{auto& q=EventFixture::self(p);assert(actor==q.actor&&target==q.other&&mask==0x4081&&!zero);*yes=q.visible;return 1;};
+        b.flank_metric=[](void* p,std::uint32_t token,float* out) noexcept -> int{assert(token==77);*out=EventFixture::self(p).metric;return 1;};
+        ServerNpcGruntEventSpeechResult er{};
+        assert(api->event(q.actor,sizeof(q.actor),2,10,&b,&er)&&er.ignored);
+        q.roll=2;assert(api->event(q.actor,sizeof(q.actor),0,10,&b,&er)&&er.roll_blocked);
+        q.roll=1;f.put(q.group,0x50,10.f);assert(api->event(q.actor,sizeof(q.actor),0,10,&b,&er)&&er.admission_blocked);
+        q.range=2001;assert(api->event(q.actor,sizeof(q.actor),0,11,&b,&er)&&er.distance_blocked);
+        q.range=2000;q.accept=false;assert(api->event(q.actor,sizeof(q.actor),0,11,&b,&er)&&er.target_blocked);
+        q.accept=true;q.visible=false;assert(api->event(q.actor,sizeof(q.actor),0,11,&b,&er)&&er.visibility_blocked);
+        q.visible=true;q.expected="GRUNT_ASSAULT";
+        assert(api->event(q.actor,sizeof(q.actor),0,11,&b,&er)&&er.completed&&er.distance_squared==4000000.0&&er.request.group_called&&er.sentence.cooldown.squad_written&&q.calls==1);
+        assert(api->event(q.actor,sizeof(q.actor),1,15,&b,&er)&&er.metric_blocked&&!er.request.group_called);
+        q.metric=241;q.expected="GRUNT_FLANK";
+        assert(api->event(q.actor,sizeof(q.actor),1,15,&b,&er)&&er.completed&&er.request.group_called&&er.sentence.cooldown.squad_written&&q.calls==2);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

@@ -3220,6 +3220,41 @@ int __cdecl grunt_death_speech(void* a,unsigned n,float now,const ServerNpcGrunt
     if(!sentence_dispatch_request(a,n,now,out->cue,-1,0,&b->sentence,&b->request,&out->sentence,&out->request))return 0;
     return done();
 }
+int __cdecl grunt_event_speech(void* a,unsigned n,unsigned event,float now,const ServerNpcGruntEventSpeechBindings* b,ServerNpcGruntEventSpeechResult* out) noexcept{
+    if(!out)return 0;*out={};out->roll=-1;out->sentence.request_result=-1;out->request.group_id=out->request.pick_result=out->request.sentence_id=out->request.request_result=-1;
+    if(!a||n<0xdb2||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->speech.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(event==0){
+        if(!b->random_int||!b->random_int(b->context,0,5,&out->roll)||out->roll<0||out->roll>5)return 0;
+        if(out->roll>1){out->roll_blocked=1;return done();}
+        void* enemy=sin_independent::EntityHandleView(sb.entries,sb.count).Resolve(read<unsigned>(a,0x8a0));
+        void* target=nullptr;
+        if(enemy&&(!b->enemy_target||!b->enemy_target(b->context,enemy,&target)))return 0;
+        if(!target){out->target_missing=1;return done();}
+        if(!speech_admission(a,now,0,sb.speech,out->admission))return 0;
+        if(out->admission.priority_blocked||out->admission.state_blocked){out->admission_blocked=1;return done();}
+        float p[3]{},q[3]{};
+        if(!b->position||!b->position(b->context,target,p)||!b->position(b->context,a,q)||!finite_vec(p)||!finite_vec(q))return 0;
+        for(unsigned i=0;i<3;++i){const double d=static_cast<double>(q[i])-p[i];out->distance_squared+=d*d;}
+        if(out->distance_squared>4000000.0){out->distance_blocked=1;return done();}
+        bool yes=false;
+        if(!b->target_accept||!b->target_accept(b->context,target,a,&yes))return 0;
+        if(!yes){out->target_blocked=1;return done();}
+        if(!b->visible||!b->visible(b->context,a,target,0x4081,0,&yes))return 0;
+        if(!yes){out->visibility_blocked=1;return done();}
+        out->cue="GRUNT_ASSAULT";
+    }else if(event==1){
+        const auto token=read<unsigned>(a,0x8f8);
+        if(!token||!b->flank_metric||!b->flank_metric(b->context,token,&out->metric)||!std::isfinite(out->metric))return 0;
+        if(out->metric<=240.f){out->metric_blocked=1;return done();}
+        out->cue="GRUNT_FLANK";
+    }else{out->ignored=1;return done();}
+    if(!sentence_dispatch_request(a,n,now,out->cue,0,2,&sb,&b->speech.request,&out->sentence,&out->request))return 0;
+    return done();
+}
+const ServerNpcGruntEventSpeechApi event_speech_api{1,sizeof(ServerNpcGruntEventSpeechApi),&grunt_event_speech};
 const ServerNpcGruntReactionSpeechApi reaction_speech_api{1,sizeof(ServerNpcGruntReactionSpeechApi),&grunt_pain_speech,&grunt_death_speech};
 const ServerNpcGruntRemovalApi removal_api{1,sizeof(ServerNpcGruntRemovalApi),&grunt_removal};
 const ServerNpcGruntNativeStateApi native_state_api{1,sizeof(ServerNpcGruntNativeStateApi),&native_state_choose,&native_state_apply};
@@ -3670,4 +3705,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntReactionSpeechApi=_SiN_GetServerNpcGruntReactionSpeechApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntReactionSpeechApi* __cdecl SiN_GetServerNpcGruntReactionSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntReactionSpeechApi)?&reaction_speech_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEventSpeechApi=_SiN_GetServerNpcGruntEventSpeechApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEventSpeechApi* __cdecl SiN_GetServerNpcGruntEventSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEventSpeechApi)?&event_speech_api:nullptr;
 }
