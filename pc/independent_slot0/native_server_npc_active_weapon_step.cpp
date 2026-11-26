@@ -802,6 +802,39 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
         const float duration=requested>0.f?requested:10.f;
         wr<float>(a,0xc0c,static_cast<float>(double(b.now)+duration));return 1;
     }
+    case 0x22032120u:{ // SetVoiceGroup -> shared +5b0, 220448a0
+        if(n<0x8ec)return 0;
+        const unsigned type=rd<unsigned>(d.variant,0x10);
+        if(type!=0u&&type!=2u)return -1; // formatted non-string variants still hosted
+        unsigned token=type==2u?rd<unsigned>(d.variant,0):0u;
+        if(token){
+            const char* text=nullptr;if(!input_text(b,token,&text))return 0;
+            if(!*text)token=0;
+        }
+        wr<unsigned>(a,0x8e8,token);return 1;
+    }
+    case 0x22363580u: // DisableRelativePathnode does not validate path
+        if(input_datamap(vt)!=0x22535b28u)return 0;
+        return byte(0x1084,0);
+    case 0x22363b80u:case 0x22363be0u:case 0x22363c40u:{
+        if(input_datamap(vt)!=0x22535b28u||n<0xff8)return 0;
+        if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
+        const auto registry=sin_independent::EntityHandleView(b.entities.entries,b.entities.count);
+        if(!registry.Resolve(rd<unsigned>(a,0xff4))){
+            ++o.path_missing;
+            const unsigned warning=handler==0x22363b80u?0x224982e8u:handler==0x22363be0u?0x22498324u:0x22498358u;
+            return !b.path_warning||b.path_warning(b.context,a,warning);
+        }
+        if(handler==0x22363c40u)return byte(0x1095,0);
+        // The original sets +1084, and conditionally +1085 if +b4 bit22.
+        // EnableForcePath also writes +1095; validate extent before mutation.
+        const bool pending=(rd<unsigned>(a,0xb4)&0x400000u)!=0;
+        if(n<=0x1084||(pending&&n<=0x1085)||(handler==0x22363be0u&&n<=0x1095))return 0;
+        wr<std::uint8_t>(a,0x1084,1);
+        if(pending)wr<std::uint8_t>(a,0x1085,1);
+        if(handler==0x22363be0u)wr<std::uint8_t>(a,0x1095,1);
+        return 1;
+    }
     default:return -1;
     }
 }

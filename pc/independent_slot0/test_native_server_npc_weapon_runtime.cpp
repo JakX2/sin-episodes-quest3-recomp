@@ -1201,6 +1201,61 @@ int main(int argc,char** argv){
     assert(!run_leaf(0x22485b74u,0,0,ground_vt,0xc65u)&&!catalog_o.completed);
     // Still-unrecovered concrete inputs never report a fake success.
     assert(!run_leaf(0x223db434u,5u,100u)&&catalog_o.matched&&!catalog_o.completed&&!catalog_o.native_handler);
+    // Voice group setter preserves token identity and canonicalizes null or
+    // empty strings, including the original void-to-string exception.
+    leaves.string_text=[](void*,unsigned token,const char** value,unsigned* n) noexcept -> int{
+        if(token==600u){*value="voice_group_alpha";*n=18;return 1;}
+        if(token==601u){*value="";*n=1;return 1;}
+        return 0;
+    };
+    assert(run_leaf(0x223db2b8u,2u,600u)&&catalog_o.native_handler&&f.get<unsigned>(f.actor,0x8e8)==600u);
+    assert(run_leaf(0x223db2b8u,2u,601u)&&catalog_o.native_handler&&!f.get<unsigned>(f.actor,0x8e8));
+    f.put(f.actor,0x8e8,600u);
+    assert(run_leaf(0x223db2b8u)&&catalog_o.native_handler&&!f.get<unsigned>(f.actor,0x8e8));
+    f.put(f.actor,0x8e8,600u);
+    assert(run_leaf(0x223db2b8u,2u,0u)&&catalog_o.native_handler&&!f.get<unsigned>(f.actor,0x8e8));
+    assert(!run_leaf(0x223db2b8u,2u,602u)&&!catalog_o.completed);
+    // The complete Jetpack path flag extent reaches +1095, beyond the older
+    // wake fixture. Use dedicated storage and a live generation registry.
+    alignas(4) unsigned char path_actor[0x1098]{},path_entity[8]{};
+    sin_independent::EntityHandleEntry path_slots[2]{};
+    path_slots[1].serial=7;path_slots[1].entity=reinterpret_cast<CBaseEntity*>(path_entity);
+    struct PathInputFixture {void* actor;unsigned calls{},last{};} path_f{path_actor};
+    auto path_b=leaves;path_b.context=&path_f;
+    path_b.entities.entries=path_slots;path_b.entities.count=2;
+    path_b.path_warning=[](void* p,void* actor,unsigned warning) noexcept -> int{
+        auto& q=*static_cast<PathInputFixture*>(p);assert(actor==q.actor);++q.calls;q.last=warning;return 1;
+    };
+    path_actor[0x1f0]=1;
+    std::memset(inp.variant,0,sizeof(inp.variant));
+    auto path_input=[&](unsigned name,unsigned bytes=0){
+        return accept->run(path_actor,bytes?bytes:sizeof(path_actor),vt,name,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&path_b,&catalog_o);
+    };
+    const unsigned path_inputs[]{0x22498914u,0x2249886cu,0x22498840u};
+    const unsigned path_warnings[]{0x224982e8u,0x22498324u,0x22498358u};
+    for(unsigned handle:{0xffffffffu,0x9001u,0x7000u}){
+        f.put(path_actor,0xff4,handle);
+        for(unsigned i=0;i<3;++i){
+            path_actor[0x1084]=2;path_actor[0x1085]=3;path_actor[0x1095]=4;path_actor[0x200]=0;
+            assert(path_input(path_inputs[i])&&catalog_o.native_handler&&catalog_o.path_missing==1&&path_f.last==path_warnings[i]);
+            assert(path_actor[0x1084]==2&&path_actor[0x1085]==3&&path_actor[0x1095]==4&&path_actor[0x200]);
+        }
+        assert(path_input(0x224988dcu)&&catalog_o.native_handler&&!catalog_o.path_missing&&!path_actor[0x1084]&&path_actor[0x1085]==3&&path_actor[0x1095]==4);
+    }
+    assert(path_f.calls==9);
+    f.put(path_actor,0xff4,0x7001u);
+    for(unsigned flags:{0u,0x400000u}){
+        f.put(path_actor,0xb4,flags);
+        path_actor[0x1084]=0;path_actor[0x1085]=9;path_actor[0x1095]=5;
+        assert(path_input(0x22498914u)&&catalog_o.native_handler&&!catalog_o.path_missing&&path_actor[0x1084]==1&&path_actor[0x1085]==(flags?1:9)&&path_actor[0x1095]==5);
+        assert(path_input(0x224988dcu)&&!path_actor[0x1084]&&path_actor[0x1095]==5);
+        path_actor[0x1085]=9;
+        assert(path_input(0x2249886cu)&&path_actor[0x1084]==1&&path_actor[0x1085]==(flags?1:9)&&path_actor[0x1095]==1);
+        assert(path_input(0x22498840u)&&path_actor[0x1084]==1&&!path_actor[0x1095]);
+    }
+    path_actor[0x1084]=0;path_actor[0x1085]=9;
+    assert(!path_input(0x2249886cu,0x1088u)&&!catalog_o.completed&&!path_actor[0x1084]&&path_actor[0x1085]==9);
+    assert(path_f.calls==9);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
