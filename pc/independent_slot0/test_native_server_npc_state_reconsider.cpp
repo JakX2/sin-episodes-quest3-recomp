@@ -2568,7 +2568,7 @@ int main(int argc,char** argv){
             alignas(4) unsigned char actor[0xdb2]{},owner[4]{},damage[0x48]{};
             sin_independent::EntityHandleEntry entries[2]{};
             float scale=0,direction[3]{};
-            bool owner=true;unsigned types=0,scales=0,effects=0,objects=0,deaths=0;
+            bool owner_matches=true;unsigned types=0,scales=0,effects=0,objects=0,deaths=0;
             static DispatchFixture& self(void* p){return *static_cast<DispatchFixture*>(p);}
             static unsigned rd(const void* p,unsigned o){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+o,4);return v;}
         } q;
@@ -2578,7 +2578,7 @@ int main(int argc,char** argv){
         reaction.sentence.entries=q.entries;reaction.sentence.count=2;reaction.sentence.speech.original_vtable=0x2249aaa4;
         b.combat.alive.life.shared_direction=q.direction;
         b.combat.alive.chain.detail.damage.cast_grunt=[](void*,void*,void** out,unsigned* n) noexcept -> int{*out=nullptr;*n=0;return 1;};
-        b.owner_type=[](void* p,void* e,bool* v) noexcept -> int{auto& q=DispatchFixture::self(p);assert(e==q.owner);++q.types;*v=q.owner;return 1;};
+        b.owner_type=[](void* p,void* e,bool* v) noexcept -> int{auto& q=DispatchFixture::self(p);assert(e==q.owner);++q.types;*v=q.owner_matches;return 1;};
         b.owner_scale=[](void* p,void* owner,void* a,void* d,float* v) noexcept -> int{
             auto& q=DispatchFixture::self(p);assert(owner==q.owner&&a==q.actor&&d!=q.damage&&DispatchFixture::rd(d,0x2c)==0x41200000u);++q.scales;*v=q.scale;return 1;};
         b.pre_effect=[](void* p,void* a,const float* v) noexcept -> int{auto& q=DispatchFixture::self(p);assert(a==q.actor&&v[0]==1);++q.effects;return 1;};
