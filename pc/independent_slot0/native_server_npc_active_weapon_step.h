@@ -208,6 +208,36 @@ struct ServerResupplyPrimaryThinkApi {
 };
 using GetServerResupplyPrimaryThinkApi=const ServerResupplyPrimaryThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Same original unnamed primary context; no PE address is executed.
+inline constexpr char server_antigen_primary_think_export[]="SiN_GetServerAntigenPrimaryThinkApi";
+struct ServerAntigenPrimaryThinkBindings {
+    ServerNpcOuterCadenceBindings cadence;
+    ServerWeaponActivityBindings entities;
+    const native_resupply::AntigenInteractionBindings* interaction;
+    const native_resupply::AntigenExchangeBindings* exchange;
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *record)(void*,void*,int,float,int) noexcept;
+    int (__cdecl *scope)(void*,void*,bool) noexcept;
+};
+struct ServerAntigenPrimaryThinkResult {
+    ServerNpcOuterCadenceResult clear,reschedule;
+    native_resupply::AntigenInteractionResult interaction;
+    native_resupply::AntigenResult healing;
+    native_resupply::AntigenExchangeResult exchange;
+    int due_tick,last_tick,native_result;
+    float recorded_time,last_time;
+    unsigned token,completed,no_think,not_due,recorded,entered,closed,invoked,rescheduled,null_token;
+};
+struct ServerAntigenPrimaryThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *spawn)(void*,unsigned,unsigned,float,const ServerAntigenPrimaryThinkBindings*,ServerAntigenPrimaryThinkResult*) noexcept;
+    int (__cdecl *use)(void*,unsigned,unsigned,float,void*,unsigned,int,const ServerAntigenPrimaryThinkBindings*,ServerAntigenPrimaryThinkResult*) noexcept;
+    int (__cdecl *button)(void*,unsigned,unsigned,float,const char*,int,const char*,const ServerAntigenPrimaryThinkBindings*,ServerAntigenPrimaryThinkResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,unsigned,int,float,const ServerAntigenPrimaryThinkBindings*,ServerAntigenPrimaryThinkResult*) noexcept;
+};
+using GetServerAntigenPrimaryThinkApi=const ServerAntigenPrimaryThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_outer_update_export[]="SiN_GetServerNpcOuterUpdateApi";
 struct ServerNpcOuterUpdateBindings {
     const ServerNpcActivePostAnimationBindings* post;

@@ -966,5 +966,57 @@ int main(int argc,char** argv){
     assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.stopped&&agr.steam_removed);
     EvalFixture::f(af.actor,0x49c,-10.f);
     assert(api->antigen_spawn(af.actor,sizeof(af.actor),&antigen_interaction,&ir)&&ir.completed&&!ir.control.loaded&&ir.control.remaining==0.f&&inf.group==0);
+    // Native frame schedule from use and screen event to healing/ejection.
+    struct AntigenFrameFixture {
+        AntigenFixture* a;
+        alignas(4) unsigned char screen[0x170]{};
+        unsigned records=0,enters=0,leaves=0,flags=0;
+        bool unknown=false;
+    } aff{&af};
+    const auto get_antigen_frame=reinterpret_cast<GetServerAntigenPrimaryThinkApi>(GetProcAddress(s,server_antigen_primary_think_export));
+    assert(get_antigen_frame&&!GetProcAddress(c,server_antigen_primary_think_export));
+    const auto* antigen_frame=get_antigen_frame(1,sizeof(ServerAntigenPrimaryThinkApi));assert(antigen_frame);
+    sin_independent::EntityHandleEntry af_entries[4]{ae[0],ae[1],{},{}};
+    af_entries[2].serial=12;af_entries[2].entity=reinterpret_cast<CBaseEntity*>(aff.screen);
+    af_entries[3].serial=13;af_entries[3].entity=reinterpret_cast<CBaseEntity*>(af.actor);
+    auto frame_interaction=antigen_interaction;
+    frame_interaction.control.extent=[](void* p,void* e,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<AntigenFixture*>(p);*bytes=e==q.player?0x12a4:0x170;return 1;
+    };
+    frame_interaction.screen_index=[](void*,unsigned token,int* i) noexcept ->int{assert(token==0x9182);*i=123;return 1;};
+    frame_interaction.control.schedule=nullptr;
+    ServerAntigenPrimaryThinkBindings afb{};afb.context=&aff;afb.entities.entries=af_entries;afb.entities.count=4;
+    afb.interaction=&frame_interaction;afb.exchange=&xb;afb.cadence.context=&aff;
+    afb.cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AntigenFrameFixture*>(p);assert(a==q.a->actor);++q.flags;return 1;};
+    afb.clock=[](void* p,float* v) noexcept ->int{*v=static_cast<AntigenFrameFixture*>(p)->a->now;return 1;};
+    afb.record=[](void* p,void* a,int,float,int due) noexcept ->int{auto& q=*static_cast<AntigenFrameFixture*>(p);assert(a==q.a->actor&&EvalFixture::rd(a,0x74)==unsigned(due));++q.records;return 1;};
+    afb.scope=[](void* p,void* a,bool enter) noexcept ->int{auto& q=*static_cast<AntigenFrameFixture*>(p);assert(a==q.a->actor);
+        if(enter){++q.enters;assert(EvalFixture::rd(a,0x74)==0xffffffffu);if(q.unknown)EvalFixture::u(a,8,0xdeadcafe);}
+        else ++q.leaves;return 1;
+    };
+    assert(api->antigen_construct(af.actor,sizeof(af.actor),&ab,&agr));
+    EvalFixture::u(af.actor,0x74,0xffffffffu);EvalFixture::u(af.actor,0xb8,0x400000u);
+    EvalFixture::u(af.actor,0x4b4,0xc002);EvalFixture::u(aff.screen,0x16c,0x9182);
+    EvalFixture::u(hf2.player,0x9c,40);af.now=30.f;
+    ServerAntigenPrimaryThinkResult afr{};
+    assert(antigen_frame->spawn(af.actor,sizeof(af.actor),0xd003,.125f,&afb,&afr)&&afr.completed&&afr.rescheduled&&afr.reschedule.tick==241&&afr.interaction.listener);
+    assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,240,.125f,&afb,&afr)&&afr.not_due);
+    af.now=30.125f;
+    assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,241,.125f,&afb,&afr)&&afr.completed&&afr.invoked&&afr.token==antigen_animation_token&&afr.interaction.screen_reused&&afr.reschedule.tick==242&&afr.last_tick==241);
+    assert(antigen_frame->use(af.actor,sizeof(af.actor),0xd003,.125f,hf2.player,sizeof(hf2.player),1,&afb,&afr)&&afr.interaction.control.started&&afr.reschedule.tick==241);
+    af.now=30.25f;
+    assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,242,.125f,&afb,&afr)&&afr.completed&&afr.token==antigen_think_token&&!afr.healing.healed&&afr.reschedule.tick==243);
+    af.now=30.375f;
+    assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,243,.125f,&afb,&afr)&&afr.healing.healed&&afr.healing.health.after==41&&afr.reschedule.tick==244);
+    assert(antigen_frame->use(af.actor,sizeof(af.actor),0xd003,.125f,hf2.player,sizeof(hf2.player),0,&afb,&afr)&&afr.interaction.user_invalidated&&!afr.rescheduled);
+    af.now=30.5f;
+    assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,244,.125f,&afb,&afr)&&afr.healing.stopped&&afr.healing.steam_removed&&!afr.rescheduled&&afr.closed);
+    assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,245,.125f,&afb,&afr)&&afr.no_think);
+    assert(antigen_frame->button(af.actor,sizeof(af.actor),0xd003,.125f,"button_press",122,"eject",&afb,&afr)&&afr.interaction.button_checked&&!afr.interaction.button_matched&&!afr.rescheduled);
+    assert(antigen_frame->button(af.actor,sizeof(af.actor),0xd003,.125f,"button_press",123,"Eject",&afb,&afr)&&!afr.interaction.button_matched);
+    assert(antigen_frame->button(af.actor,sizeof(af.actor),0xd003,.125f,"button_press",123,"eject",&afb,&afr)&&afr.interaction.eject_installed&&afr.reschedule.tick==244);
+    assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,244,.125f,&afb,&afr)&&afr.completed&&afr.token==antigen_eject_token&&afr.exchange.created&&afr.exchange.think_cleared&&!afr.rescheduled&&afr.closed);
+    assert(!antigen_frame->run(af.actor,sizeof(af.actor),0xe003,244,.125f,&afb,&afr));
+    assert(aff.records==5&&aff.enters==5&&aff.leaves==5);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }

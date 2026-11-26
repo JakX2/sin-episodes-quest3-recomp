@@ -348,6 +348,7 @@ struct AntigenBindings {
     int (__cdecl *pose)(void*,void*,const char*,float) noexcept;
     int (__cdecl *advance)(void*,void*) noexcept;
     const PlayerHealthBindings* health;
+    void* schedule_context;
 };
 struct AntigenResult {
     unsigned constructed,loaded,player_checked,spatial_checked,empty,started,steam_created,
@@ -398,11 +399,13 @@ struct AntigenInteractionBindings {
     int (__cdecl *button_listener)(void*,void*,const char*) noexcept;
     int (__cdecl *create_screen)(void*,void*,unsigned*) noexcept;
     int (__cdecl *configure_screen)(void*,void*,void*) noexcept;
+    int (__cdecl *screen_index)(void*,unsigned,int*) noexcept; // engine +48, edict token
 };
 struct AntigenInteractionResult {
     unsigned event_called,press,release,user_invalidated,setup,bodygroup,touch_installed,
         animation_installed,listener,screen_created,screen_configured,screen_reused,completed;
-    int event_descriptor;
+    int event_descriptor,screen_index;
+    unsigned button_checked,button_matched,eject_installed;
     AntigenResult control;
 };
 struct Api {
@@ -451,6 +454,7 @@ struct Api {
     int (__cdecl *antigen_use_event)(void*,unsigned,void*,unsigned,int,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
     int (__cdecl *antigen_spawn)(void*,unsigned,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
     int (__cdecl *antigen_animation_think)(void*,unsigned,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
+    int (__cdecl *antigen_button_event)(void*,unsigned,const char*,int,const char*,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
