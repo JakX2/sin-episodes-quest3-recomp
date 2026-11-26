@@ -1043,18 +1043,18 @@ int main(int argc,char** argv){
         assert(policy->query(f.actor,sizeof(f.actor),point,639,&point_bindings,&point_result)&&point_result.no_inventory);
         f.put(f.actor,0xc38,1);
         assert(policy->query(f.actor,sizeof(f.actor),point,639,&point_bindings,&point_result)&&point_result.cooldown_blocked);
-        assert(policy->query(f.actor,sizeof(f.actor),point,640,&point_bindings,&point_result)&&point_result.range_blocked&&point_result.deadline==640.25f);
-        point[0]=128;f.put(f.actor,0x394,0.f);
+        assert(policy->query(f.actor,sizeof(f.actor),point,640,&point_bindings,&point_result)&&point_result.range_blocked&&point_result.distance==0&&point_result.deadline==640.25f);
+        point[1]=128;f.put(f.actor,0x394,0.f);
         assert(policy->query(f.actor,sizeof(f.actor),point,641,&point_bindings,&point_result)&&point_result.scalar_blocked&&!point_result.deadline_written);
         f.put(f.actor,0x394,1.f);f.put(f.actor,0x9c4,0u);f.combat_fov=f.combat_trace=true;f.melee_hits=true;
         assert(policy->query(f.actor,sizeof(f.actor),point,641,&point_bindings,&point_result)&&point_result.accepted&&point_result.direct&&point_result.solution[0]==10&&f.get<float>(0xc58)==10);
-        point[0]=1024;f.combat_fov=false;f.remembered_visible=false;
+        point[1]=1024;f.combat_fov=false;f.remembered_visible=false;
         assert(policy->query(f.actor,sizeof(f.actor),point,642,&point_bindings,&point_result)&&point_result.headroom_called&&!point_result.headroom_clear&&!point_result.solve_called&&!point_result.deadline_written);
         f.remembered_visible=true;
         assert(policy->query(f.actor,sizeof(f.actor),point,642,&point_bindings,&point_result)&&point_result.accepted&&!point_result.direct&&point_result.solution[0]==20&&f.get<float>(0xc58)==20);
         f.melee_hits=false;f.actor[0xc6c]=0;
         assert(policy->query(f.actor,sizeof(f.actor),point,643,&point_bindings,&point_result)&&!point_result.accepted&&point_result.solve_called&&point_result.deadline==644&&f.get<float>(0xc58)==20);
-        point[0]=500;f.put(f.actor,0x9c4,105u);f.put(f.squad_data,8,0x9002u);f.put(f.squad_data,12,0x8002u);f.put(f.squad_data,0x48,2);f.distance[1]=250;
+        point[0]=500;point[1]=128;f.put(f.actor,0x9c4,105u);f.put(f.squad_data,8,0x9002u);f.put(f.squad_data,12,0x8002u);f.put(f.squad_data,0x48,2);f.distance[1]=500;
         assert(policy->query(f.actor,sizeof(f.actor),point,644,&point_bindings,&point_result)&&point_result.squad_blocked&&point_result.squad_stale==1&&point_result.squad_visited==2&&point_result.notified&&!point_result.solve_called&&point_result.deadline==645);
     }
     {
@@ -1073,7 +1073,7 @@ int main(int argc,char** argv){
         f.put(f.actor,0xc18,711u);f.put(f.actor,0x850,3);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x798,0u);
         f.put(f.actor,0x9c4,0u);f.actor[0xcb2]=0;f.actor[0xc6c]=1;f.put(f.actor,0xcb4,0xffffffffu);f.put(f.actor,0xc80,650.f);
         f.put(f.actor,0xc38,1);f.put(f.actor,0x394,1.f);f.put(f.enemy,0xc,0u);
-        f.put(current_record,4,500.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
+        f.put(current_record,4,500.f);f.put(current_record,8,128.f);f.put(current_record,12,0.f);
         f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);
         ServerNpcGruntGatherConditionsResult gather_point_result;
         ServerNpcGruntPointPolicyResult point_policy_result{};
@@ -1135,6 +1135,7 @@ int main(int argc,char** argv){
         f.put(f.actor,0xc18,711u);f.put(f.actor,0x850,3);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x798,0u);
         f.put(f.actor,0xcb4,0xffffffffu);f.put(f.actor,0xc80,0.f);f.actor[0xcb2]=f.actor[0xc6c]=1;
         f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);f.put(f.replacement,0xb4,0u);
+        f.put(current_record,8,128.f);
         ServerNpcGruntGatherNativeResult native_result;
         assert(native_gather->gather(f.actor,sizeof(f.actor),660,&all_bindings,&native_result)&&native_result.gather.completed&&native_result.gather.search_called&&native_result.object.found&&native_result.gather.object_condition&&native_result.gather.point_condition&&native_result.point.accepted);
         assert(f.get<unsigned>(0xcb4)==0x8002u&&f.get<float>(0xc58)==40);
@@ -4692,6 +4693,52 @@ int main(int argc,char** argv){
         u.fail=true;assert(!cache_run(30)&&!ar.completed&&CombatFixture::rd(q.a,0x920)==2);u.fail=false;
         assert(cache_run(30)&&u.grows==3&&u.handles==2&&CombatFixture::rd(q.a,0x918)==4&&CombatFixture::rd(q.a,0x920)==3&&CombatFixture::rd(q.a,0x914)==400);
         assert(CombatFixture::rd(u.rows,40)==0x1001u&&rf(u.rows,44)==33);
+        auto pg=reinterpret_cast<GetServerNpcGruntSchedulePolicyApi>(GetProcAddress(s,server_npc_grunt_schedule_policy_export));
+        assert(pg&&!GetProcAddress(c,server_npc_grunt_schedule_policy_export)&&!pg(0,sizeof(ServerNpcGruntSchedulePolicyApi))&&!pg(1,0));
+        const auto* policy=pg(1,sizeof(ServerNpcGruntSchedulePolicyApi));assert(policy);
+        struct PolicyFixture {alignas(4) unsigned char memory[0x40]{};int roll=0,lo=0,hi=0;unsigned rolls=0,probs=0,gates=0,model_calls=0,params=0;bool chance=false,gate=false,model=false;} p;
+        ServerNpcGruntSchedulePolicyServices ps{};ps.memory=&svc;ps.context=&p;
+        ps.random_int=[](void* x,int lo,int hi,int* v) noexcept -> int{auto& p=*static_cast<PolicyFixture*>(x);++p.rolls;p.lo=lo;p.hi=hi;*v=p.roll;return 1;};
+        ps.group_gate=[](void* x,int id,bool* v) noexcept -> int{auto& p=*static_cast<PolicyFixture*>(x);assert(id==3);++p.gates;*v=p.gate;return 1;};
+        ps.probability=[](void* x,float probability,bool* v) noexcept -> int{auto& p=*static_cast<PolicyFixture*>(x);assert(probability==20);++p.probs;*v=p.chance;return 1;};
+        ps.activity_model=[](void* x,void*,bool* v) noexcept -> int{auto& p=*static_cast<PolicyFixture*>(x);++p.model_calls;*v=p.model;return 1;};
+        ps.activity_parameters=[](void* x,void*,int activity,int* seq,int* tr,int* other) noexcept -> int{auto& p=*static_cast<PolicyFixture*>(x);assert(activity==196);++p.params;*seq=11;*tr=12;*other=13;return 1;};
+        auto policy_run=[&](int id,int expected,float now=40.f){
+            f.put(q.record,0,1000000000+expected);
+            assert(policy->acquire(q.a,sizeof(q.a),id,now,&ac,&ps,&ar,&translation)&&ar.completed&&ar.translated_native&&ar.translated==expected&&ar.schedule_token==10);
+        };
+        f.put(q.a,0x9c4,0u);bits(1u<<21);p.roll=0;policy_run(25,93);assert(p.lo==0&&p.hi==1);
+        p.roll=1;policy_run(25,96);bits(0);policy_run(25,93);
+        // Group gate precedes condition and slot; accepted reservation invokes actual sentence mode.
+        f.put(q.a,0x9c4,91u);p.gate=false;policy_run(25,93);p.gate=true;policy_run(25,93);
+        bits(1u<<21);f.put(q.a,0x9cc,-1);f.put(q.row,4,1u<<12);policy_run(25,93);
+        f.put(q.row,4,0u);f.put(q.group,0x48,0);f.put(q.group,0x74,100.f);
+        ServerNpcGruntSentenceBindings sentence{};sentence.speech.context=&q;
+        sentence.speech.squad_storage=[](void* x,std::uint32_t token,void** v,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);assert(token==91);*v=q.group;*n=sizeof(q.group);return 1;};
+        ps.sentence=&sentence;policy_run(25,97);assert(CombatFixture::rd(q.row,4)==(1u<<12));
+        // No target bypasses the grenade policy; probability result is original 49/84.
+        f.put(q.a,0x9c4,0u);f.put(q.a,0x8a0,0x9001u);p.chance=false;policy_run(48,49);p.chance=true;policy_run(48,84);
+        // A real enemy-memory cache, then native point policy, and the 19/20 random boundary.
+        f.put(q.a,0x8a0,0x1001u);f.put(q.a,0x984,500u);f.put(p.memory,0,0x22068d70u);f.put(p.memory,0x18,0x22068b40u);p.memory[0x10]=255;
+        f.put(p.memory,0x24,400.f);f.put(p.memory,0x28,128.f);
+        ServerNpcEnemyMemoryQueryBindings memory{};memory.storage.context=&p;
+        memory.storage.storage=[](void* x,std::uint32_t token,void** v,unsigned* n) noexcept -> int{auto& p=*static_cast<PolicyFixture*>(x);if(token!=500)return 0;*v=p.memory;*n=sizeof(p.memory);return 1;};
+        memory.entity_key=[](void*,void*,std::uint32_t* v) noexcept -> int{*v=123;return 1;};ps.enemy_memory=&memory;
+        ServerNpcGruntPointPolicyBindings grenade{};grenade.origin=[](void*,void*,float* v) noexcept -> int{v[0]=v[1]=v[2]=0;return 1;};
+        grenade.in_view=[](void*,void*,const float*,bool* v) noexcept -> int{*v=true;return 1;};
+        grenade.visible=[](void*,void*,const float*,unsigned,bool* v) noexcept -> int{*v=true;return 1;};
+        grenade.solve=[](void*,void*,const float* point,bool direct,float* v) noexcept -> int{assert(point[0]==400&&point[1]==128&&direct);v[0]=1;v[1]=2;v[2]=3;return 1;};ps.grenade=&grenade;
+        f.put(q.a,0x798,0u);f.put(q.a,0xc38,1);f.put(q.a,0xc80,0.f);f.put(q.a,0x394,1.f);p.roll=19;
+        policy_run(48,99);assert(p.lo==0&&p.hi==100&&rf(q.a,0xc58)==1);
+        p.roll=20;p.chance=false;policy_run(48,49,42.f);
+        f.put(q.a,0x798,1u);f.put(q.a,0x79c,1000000077);unsigned old_rolls=p.rolls;policy_run(48,49,44.f);assert(p.rolls==old_rolls);
+        f.put(q.a,0x798,0u);ab.actor_vtable=0x2248c514;policy_run(48,49);ab.actor_vtable=0x2249aaa4;
+        // 107 uses verified assault-rifle bounds, exact float interval and dirty notification.
+        f.put(q.a,0x78c,0x2002u);f.put(q.weapon,0,0x224776acu);p.roll=5;p.model=true;q.a[0x1f0]=1;q.a[0x200]=0;
+        f.put(q.a,0x878,196);f.put(q.a,0x60c,0.f);
+        policy_run(107,107,50.f);assert(q.a[0xca0]&&p.lo==2&&p.hi==5&&CombatFixture::rd(q.a,0xc98)==5&&rf(q.a,0xc9c)==.075f&&rf(q.a,0x60c)==static_cast<float>(50.0+static_cast<double>(.075f)-.1)&&q.a[0x200]==1);
+        assert(CombatFixture::rd(q.a,0x878)==0&&CombatFixture::rd(q.a,0x880)==196&&CombatFixture::rd(q.a,0x884)==11&&rf(q.a,0x99c)==50&&p.params==1);
+        f.put(q.a,0x78c,0x9002u);p.model=false;old_rolls=p.rolls;policy_run(107,107,51.f);assert(p.rolls==old_rolls&&rf(q.a,0x99c)==51);
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
         f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
 
