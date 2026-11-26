@@ -287,6 +287,32 @@ struct ServerEntityAcceptInputApi {
 };
 using GetServerEntityAcceptInputApi=const ServerEntityAcceptInputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Original 221619e0/22161100 active registry searches and 22161900
+// contextual names. The independently owned registry supplies its live head.
+inline constexpr char server_entity_search_export[]="SiN_GetServerEntitySearchApi";
+struct ServerEntitySearchBindings {
+    void* context;
+    ServerWeaponActivityBindings entities;
+    const sin_independent::EntityHandleEntry* head;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *string_text)(void*,std::uint32_t,const char**,unsigned*) noexcept;
+    int (__cdecl *foreign_handle)(void*,void*,std::uint32_t*) noexcept;
+    int (__cdecl *player_one)(void*,void**) noexcept;
+    int (__cdecl *pvs_player)(void*,std::uint32_t,void**) noexcept;
+    int (__cdecl *picker)(void*,void* player,void**) noexcept;
+    int (__cdecl *invalid_name)(void*,std::uint32_t) noexcept;
+};
+struct ServerEntitySearchResult {
+    void* entity;
+    unsigned completed,visited,empty_slots,contextual,matched;
+};
+struct ServerEntitySearchApi {
+    std::uint32_t version,size;
+    int (__cdecl *named)(void* previous,std::uint32_t name,void* activator,void* caller,const ServerEntitySearchBindings*,ServerEntitySearchResult*) noexcept;
+    int (__cdecl *classname)(void* previous,std::uint32_t name,const ServerEntitySearchBindings*,ServerEntitySearchResult*) noexcept;
+};
+using GetServerEntitySearchApi=const ServerEntitySearchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_wake_transition_export[]="SiN_GetServerNpcWakeTransitionApi";
 struct ServerNpcWakeTransitionBindings {
     const ServerNpcActivePostAnimationBindings* storage;
