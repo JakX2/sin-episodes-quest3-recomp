@@ -1594,5 +1594,51 @@ int main(int argc,char** argv){
         f.put(q.actors[0],0x9c4,0u);
         assert(api->reserve(q.actors[0],sizeof(q.actors[0]),12,12,41,&sb,&sr)&&sr.allowed&&sr.ungrouped&&!sr.accesses);
     }
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntSquadEnemyApi>(GetProcAddress(s,server_npc_grunt_squad_enemy_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_squad_enemy_export)&&!g(0,sizeof(ServerNpcGruntSquadEnemyApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntSquadEnemyApi));assert(api);
+        struct BroadcastFixture {
+            alignas(4) unsigned char actor[3][0xdb2]{},targets[2][0x20]{},group[0x78]{},bitmap[8]{},memory[0x40]{},node[12]{},record[0x38]{};
+            sin_independent::EntityHandleEntry entries[6]{};
+            ServerNpcConditionMapBindings conditions;
+            ServerNpcEnemyMemoryBindings storage;
+            static BroadcastFixture& self(void* p){return *static_cast<BroadcastFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        q.conditions=eb.conditions;
+        for(unsigned i=0;i<3;++i){
+            q.entries[i+1].serial=i+1;q.entries[i+1].entity=reinterpret_cast<CBaseEntity*>(q.actor[i]);
+            f.put(q.actor[i],0x9c4,91u);f.put(q.actor[i],0x9cc,-1);f.put(q.actor[i],0x8a0,0xffffffffu);f.put(q.group,8+4*i,(i+1)*0x1001u);
+        }
+        for(unsigned i=0;i<2;++i){q.entries[i+4].serial=i+4;q.entries[i+4].entity=reinterpret_cast<CBaseEntity*>(q.targets[i]);}
+        f.put(q.actor[1],0x8a0,0x4004u);f.put(q.actor[1],0x984,103u);f.put(q.actor[1],0x9cc,7);
+        f.put(q.actor[2],0x8a0,0x5005u);
+        f.put(q.group,20,0x9002u);f.put(q.group,0x48,4);f.put(q.group,0x5c,100u);f.put(q.group,0x60,100u);f.put(q.group,0x64,1);f.put(q.group,0x6c,1);f.put(q.group,0x70,100u);f.put(q.group,0x74,130.f);
+        f.put(q.bitmap,0,0x4004u);f.put(q.bitmap,4,1u<<7);
+        f.put(q.memory,0,0x22068d70u);f.put(q.memory,4,104u);f.put(q.memory,8,1u);f.put(q.memory,0x18,0x22068b40u);
+        q.memory[0x10]=0;q.memory[0x11]=1;q.memory[0x12]=255;q.memory[0x13]=1;
+        q.node[0]=q.node[1]=q.node[2]=255;q.node[3]=1;f.put(q.node,4,1000u);f.put(q.node,8,105u);
+        f.put(q.record,0,0x4004u);f.put(q.record,0x1c,97.f);
+        q.storage.context=&q;q.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& q=BroadcastFixture::self(p);switch(token){case 91:*out=q.group;*n=0x78;return 1;case 100:*out=q.bitmap;*n=8;return 1;case 103:*out=q.memory;*n=0x40;return 1;case 104:*out=q.node;*n=12;return 1;case 105:*out=q.record;*n=0x38;return 1;default:return 0;}
+        };
+        ServerNpcGruntSquadEnemyBindings bb{};bb.context=&q;bb.slots.storage=q.storage;bb.slots.entries=q.entries;bb.slots.count=6;
+        bb.member=[](void* p,void* a,std::uint32_t* vt,unsigned* n,ServerNpcEnemyStateBindings* eb,ServerNpcEnemyMemoryQueryBindings* mb) noexcept -> int{
+            auto& q=BroadcastFixture::self(p);assert(a==q.actor[0]||a==q.actor[1]||a==q.actor[2]);*vt=a==q.actor[1]?0x2248df04:0x2249aaa4;*n=0xdb2;
+            eb->context=p;eb->conditions=q.conditions;
+            eb->entity_handle=[](void* p,void* e,std::uint32_t* out) noexcept -> int{assert(e==BroadcastFixture::self(p).targets[1]);*out=0x5005u;return 1;};
+            mb->storage=q.storage;mb->context=p;
+            mb->entity_key=[](void* p,void* e,std::uint32_t* out) noexcept -> int{assert(e==BroadcastFixture::self(p).targets[0]);*out=1000;return 1;};
+            return 1;
+        };
+        ServerNpcGruntSquadEnemyResult br{};
+        assert(api->broadcast(91,nullptr,100,&bb,&br)&&br.null_target&&!br.visited);
+        assert(api->broadcast(91,q.targets[1],100,&bb,&br)&&br.completed&&br.visited==4&&br.stale==1&&br.unassigned==1&&br.assigned==1&&br.recent==1&&br.same==1&&br.last_seen==97&&BroadcastFixture::rd(q.actor[0],0x8a0)==0x5005u&&BroadcastFixture::rd(q.actor[1],0x8a0)==0x4004u);
+        f.put(q.actor[1],0x7cc,1u<<10);
+        assert(api->broadcast(91,q.targets[1],101,&bb,&br)&&br.condition_blocked==1&&!br.assigned&&br.same==2);
+        f.put(q.actor[1],0x7cc,0u);
+        assert(api->broadcast(91,q.targets[1],101,&bb,&br)&&br.assigned==1&&br.same==2&&br.last_slots.release_calls==1&&br.last_slots.last_release.old_cleared&&BroadcastFixture::rd(q.bitmap,4)==0&&BroadcastFixture::rd(q.actor[1],0x8a0)==0x5005u&&BroadcastFixture::rd(q.actor[1],0x9cc)==0xffffffffu);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

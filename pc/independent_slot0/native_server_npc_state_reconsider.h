@@ -1186,4 +1186,26 @@ struct ServerNpcGruntSquadReportApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntSquadReportBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntSquadReportResult*) noexcept;
 };
 using GetServerNpcGruntSquadReportApi=const ServerNpcGruntSquadReportApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_enemy_export[]="SiN_GetServerNpcGruntSquadEnemyApi";
+struct ServerNpcGruntSquadEnemyBindings {
+    ServerNpcGruntSquadSlotsBindings slots;
+    void* context;
+    // Per-member class, extent, condition namespace, and memory/pointer key service.
+    int (__cdecl *member)(void*,void*,std::uint32_t*,unsigned*,ServerNpcEnemyStateBindings*,ServerNpcEnemyMemoryQueryBindings*) noexcept;
+    // Full foreign member path: original virtuals +154/+150/+670/+6e0 not established.
+    int (__cdecl *other_member)(void*,void*,void*,float) noexcept;
+};
+struct ServerNpcGruntSquadEnemyResult {
+    ServerNpcEnemyStateResult last_assignment;
+    ServerNpcGruntPerceptionSlotsResult last_slots;
+    ServerNpcEnemyMemoryLookup last_lookup;
+    unsigned completed,null_target,visited,stale,native_members,external_members,same,condition_blocked,recent,unassigned,assigned;
+    float last_seen;
+};
+struct ServerNpcGruntSquadEnemyApi {
+    std::uint32_t version,size;
+    // 220a9520: broadcast target to members with no enemy or old unseen enemy.
+    int (__cdecl *broadcast)(std::uint32_t,void*,float,const ServerNpcGruntSquadEnemyBindings*,ServerNpcGruntSquadEnemyResult*) noexcept;
+};
+using GetServerNpcGruntSquadEnemyApi=const ServerNpcGruntSquadEnemyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
