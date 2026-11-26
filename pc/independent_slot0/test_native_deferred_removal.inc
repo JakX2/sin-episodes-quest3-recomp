@@ -5,10 +5,10 @@
             void* slots[4]{};
             DeferredRemovalQueue queue{slots,4};
             DeferredRemovalBindings bindings{};
-            const Api* api;
+            const sin_port::native_map::Api* api;
             std::string order;
             unsigned released=0;bool append=false,refuse=false;
-            Removal(const Api* a):api(a){}
+            Removal(const sin_port::native_map::Api* a):api(a){}
             unsigned index(void* a) noexcept{for(unsigned i=0;i<4;++i)if(a==storage[i])return i;assert(false);return 4;}
         } f(api);
         for(unsigned i=0;i<4;++i){
