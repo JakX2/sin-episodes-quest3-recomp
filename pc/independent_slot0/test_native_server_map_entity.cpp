@@ -2207,5 +2207,65 @@ int main(int argc,char** argv){
         assert(!api->remap_input(actor,remap_extent-1,"InValue",timer,1,1.f,&behavior,&result));
         assert(!api->remap_spawn(timer,timer_extent,&result));
     }
+    {
+        FactoryDictionary dict{};
+        assert(api->register_factories(&dict)&&api->register_multicompare(&dict)&&api->register_autosave(&dict)&&api->register_navigation(&dict)&&api->register_menu(&dict)&&api->register_counter(&dict)&&api->register_compare(&dict)&&api->register_case(&dict)&&api->register_branch(&dict)&&api->register_auto(&dict)&&api->register_timer(&dict)&&api->register_relay(&dict)&&api->register_remap(&dict)&&dict.count==24);
+        assert(!api->register_remap(&dict));
+        const auto* spec=api->find_factory(&dict,"MATH_REMAP");
+        assert(spec&&spec->family==Family::MathRemap&&spec->original_object==0x224fb60c&&spec->original_vtable==0x2241f5a8&&spec->extent==remap_extent);
+        struct RemapOwner {alignas(4) unsigned char storage[remap_extent]{};ActionPool* pool=nullptr;const sin_port::native_map::Api* api=nullptr;LogicDestroyBindings teardown{};LogicDestroyResult destroyed{};unsigned alloc=0,base=0,init=0,cleared=0,begin=0,end=0,base_dead=0,freed=0;} f;
+        f.api=api;
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<RemapOwner*>(p);assert(n==remap_extent);++f.alloc;*a=f.storage;*bytes=n;return 1;};
+        owner.base_construct=[](void* p,void* a,int arg) noexcept ->int{
+            auto& f=*static_cast<RemapOwner*>(p);assert(a==f.storage&&arg==1);++f.base;
+            unsigned marker=0x11223344u;std::memcpy(f.storage+0x3a8,&marker,4);return 1;
+        };
+        owner.initialize=[](void* p,void* a,const char* cls) noexcept ->int{
+            auto& f=*static_cast<RemapOwner*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"math_remap"));++f.init;return 1;
+        };
+        owner.release_networkable=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<RemapOwner*>(p);assert(a==f.storage+0x160);return f.api->destroy_logic(f.storage,sizeof(f.storage),1,&f.teardown,&f.destroyed);};
+        FactoryBindings factories{};factories.dictionary=&dict;FactoryResult result{};
+        assert(!api->create_factory("math_remap",&factories,&result)&&result.matched&&!result.actor);
+        factories.math_remap=&owner;
+        ActionPool pool{};f.pool=&pool;OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=remap_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            const char* values[]{"math_remap","relay","Trigger"};
+            for(unsigned i=0;i<3;++i)if(!std::strcmp(text,values[i])){*token=201+i;return 1;}return 0;
+        };
+        Bindings parse{};parse.context=&f;parse.native_factory=&factories;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<RemapOwner*>(p)->cleared;return 1;};
+        SpawnBindings spawn{};spawn.context=&f;spawn.native_math_remap=true;
+        spawn.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=remap_extent;return 1;};
+        spawn.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="math_remap";return 1;};
+        spawn.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        spawn.debug_enabled=[](void*,bool* enabled) noexcept ->int{*enabled=false;return 1;};
+        spawn.native_spawn_begin=[](void* p,void* a,bool* proceed) noexcept ->int{auto& f=*static_cast<RemapOwner*>(p);assert(a==f.storage);++f.begin;*proceed=true;return 1;};
+        spawn.native_spawn_end=[](void* p,void* a,int* code) noexcept ->int{auto& f=*static_cast<RemapOwner*>(p);assert(a==f.storage);++f.end;*code=0;return 1;};
+        PipelineBindings pipe{};pipe.context=&f;pipe.parse=&parse;pipe.spawn=&spawn;
+        pipe.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        pipe.classify=[](void*,void*,Category* cat) noexcept ->int{*cat=Category::Ordinary;return 1;};
+        const char map[]="{ classname math_remap in1 7 in2 7 out1 12 out2 2 OutValue \"relay,Trigger,,0,-1\" }";
+        PipelineResult parsed{};
+        assert(api->parse_all(map,sizeof(map),false,&pipe,&parsed)&&parsed.parse.native_creates==1&&parsed.spawn.native_spawns==1&&parsed.spawn.spawned==1);
+        assert(f.alloc==1&&f.base==1&&f.init==1&&f.cleared==1&&f.begin==1&&f.end==1&&word(f.storage,0)==remap_vtable);
+        assert(!word(f.storage,0x394)&&word(f.storage,0x398)==0x3f800000u&&word(f.storage,0x39c)==0x41400000u&&word(f.storage,0x3a0)==0x40000000u);
+        assert(!word(f.storage,0x3a4)&&word(f.storage,0x3a8)==0x11223344u&&word(f.storage,0x3b0)==0xffffffffu&&!word(f.storage,0x3b4)&&word(f.storage,0x3b8)==ptrword(pool.rows[0]));
+        auto& d=f.teardown;d.context=&f;
+        d.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<RemapOwner*>(p);if(token!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[0])))return 0;*row=f.pool->rows[0];*bytes=0x1c;return 1;
+        };
+        d.release_action=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& f=*static_cast<RemapOwner*>(p);assert(row==f.pool->rows[0]&&token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(row))&&!f.base_dead);++f.pool->released;return 1;
+        };
+        d.base_destroy=[](void* p,void* actor) noexcept ->int{auto& f=*static_cast<RemapOwner*>(p);assert(actor==f.storage&&f.pool->released==1);++f.base_dead;return 1;};
+        d.free_actor=[](void* p,void* actor) noexcept ->int{auto& f=*static_cast<RemapOwner*>(p);assert(actor==f.storage&&f.base_dead==1);++f.freed;return 1;};
+        assert(api->destroy_remap(nullptr,0,nullptr,nullptr)&&!api->destroy_remap(f.storage,remap_extent,f.storage+0x164,&owner)&&!pool.released);
+        put(pool.rows[0],0x18,ptrword(pool.rows[0]));
+        assert(!api->destroy_remap(f.storage,remap_extent,f.storage+0x160,&owner)&&!pool.released&&!f.base_dead);
+        put(pool.rows[0],0x18,0);
+        assert(api->destroy_remap(f.storage,remap_extent,f.storage+0x160,&owner)&&f.destroyed.completed&&f.destroyed.outputs==1&&f.destroyed.released==1&&f.freed==1);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }

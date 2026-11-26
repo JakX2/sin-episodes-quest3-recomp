@@ -9,9 +9,9 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare,MathRemap};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
-struct FactoryDictionary {const FactorySpec* slots[23]{};unsigned count=0;bool registered=false;};
+struct FactoryDictionary {const FactorySpec* slots[24]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
     void* context;
     // Fresh allocation must supply zeroed derived extension, as expected
@@ -39,6 +39,7 @@ struct FactoryBindings {
     const RelayFactoryBindings* logic_navigation;
     const RelayFactoryBindings* logic_autosave;
     const RelayFactoryBindings* logic_multicompare;
+    const RelayFactoryBindings* math_remap;
 };
 struct FactoryResult {
     const FactorySpec* spec;
@@ -330,6 +331,7 @@ struct SpawnBindings {
     bool native_math_counter;
     const MenuBindings* logic_menu;
     const NavigationBindings* logic_navigation;
+    bool native_math_remap;
 };
 struct SpawnResult {
     unsigned completed,ranked,parent_reads,parents,debugged,spawned,failed,pruned,cleanups,activated,
@@ -451,6 +453,8 @@ struct Api {
     int (__cdecl *multicompare_kill)(void*,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const EntityKillBindings*,EntityKillResult*) noexcept;
     int (__cdecl *remap_spawn)(void*,unsigned,RemapResult*) noexcept;
     int (__cdecl *remap_input)(void*,unsigned,const char*,void*,unsigned,float,const RemapBindings*,RemapResult*) noexcept;
+    int (__cdecl *register_remap)(FactoryDictionary*) noexcept;
+    int (__cdecl *destroy_remap)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
