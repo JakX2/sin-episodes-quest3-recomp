@@ -1441,7 +1441,12 @@
         ScriptedSequenceFinishBindings b{&animation,&possession,&f};
         b.cleanup_script_state=[](void* p,void* a) noexcept ->int{
             auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc);f.calls+='C';
-            put(f.seq,0x3d0,0xffffffffu);put(a,0x970,0xffffffffu);put(a,0x90c,0xffffffffu);put(a,0x8a8,0xffffffffu);return 1;
+            const unsigned invalid=0xffffffffu;
+            std::memcpy(f.seq+0x3d0,&invalid,4);
+            auto* npc=static_cast<unsigned char*>(a);
+            const unsigned offsets[]{0x970u,0x90cu,0x8a8u};
+            for(unsigned offset:offsets)std::memcpy(npc+offset,&invalid,4);
+            return 1;
         };
         b.current_schedule=[](void* p,void* a,bool* present,int* type) noexcept ->int{
             auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc);f.calls+='S';*present=f.has_schedule;*type=f.schedule;return 1;
