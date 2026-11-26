@@ -37,7 +37,7 @@ int __cdecl initialize(Registry* r,const RegistryBindings* b,RegistryResult* o) 
 int __cdecl post_connect(State* s,const Bindings* b,Result* o) noexcept {
     if(!o)return 0;*o={};
     if(!s||!b||s->attempted||s->busy||s->registry.initialized||!b->event_manager||
-        !b->console||!b->get_system||!b->register_external||!b->registry.init||
+        !b->cvar_interface||!b->console||!b->get_system||!b->register_external||!b->registry.init||
         !b->scene_repository||!b->model_sounds_repository||!b->allocate_manager||
         !b->construct_manager||!b->engine_complete)return 0;
     s->busy=s->attempted=true;
@@ -47,7 +47,7 @@ int __cdecl post_connect(State* s,const Bindings* b,Result* o) noexcept {
     o->post_connect=1;o->stage=Stage::InitialEvents;
     if(!s->post.LoadInitialEvents(b->event_manager,o->initial_events))return finish(false);
     o->stage=Stage::Console;
-    if(!b->console(b->context,&s->developer,&s->cheats))return finish(false);o->console_called=1;
+    if(!b->console(b->context,b->cvar_interface,&s->developer,&s->cheats))return finish(false);o->console_called=1;
     o->stage=Stage::Cheats;if(!s->cheats)return finish(false);
     o->stage=Stage::ExternalService;
     for(const auto& spec:external_services){

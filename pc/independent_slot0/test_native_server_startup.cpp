@@ -26,8 +26,8 @@ struct Fixture {
     const Api* api;
     Pending a{&objects[5],nullptr},b{&objects[11],nullptr},late{&objects[12],nullptr};
     Bindings bindings() {
-        Bindings v{};v.context=this;v.globals=&objects[13];v.engine=v.physics=v.filesystem=&factory;v.event_manager=&events;
-        v.console=[](void* p,void** d,void** c) noexcept ->int{auto& f=*static_cast<Fixture*>(p);assert(f.events.calls==1);*d=&f.objects[0];*c=f.cheats?&f.objects[1]:nullptr;return 1;};
+        Bindings v{};v.context=this;v.globals=&objects[13];v.engine=v.physics=v.filesystem=&factory;v.event_manager=&events;v.cvar_interface=&objects[2];
+        v.console=[](void* p,void* cv,void** d,void** c) noexcept ->int{auto& f=*static_cast<Fixture*>(p);assert(cv==&f.objects[2]&&f.events.calls==1);*d=&f.objects[0];*c=f.cheats?&f.objects[1]:nullptr;return 1;};
         v.get_system=[](void* p,const SystemSpec* spec,void** o) noexcept ->int{auto& f=*static_cast<Fixture*>(p);const auto i=f.getters++;assert(i<11);const auto& expected=i<5?external_services[i]:explicit_systems[i-5];assert(spec->getter==expected.getter&&spec->identity==expected.identity);*o=&f.objects[i];return 1;};
         v.register_external=[](void* p,void* object) noexcept ->int{auto& f=*static_cast<Fixture*>(p);assert(object==&f.objects[f.external]&&f.external<5);++f.external;return 1;};
         v.registry.context=this;
@@ -44,6 +44,33 @@ struct Fixture {
     }
     explicit Fixture(const Api* a):api(a){assert(api->register_auto(&state.registry,&b));assert(api->register_auto(&state.registry,&this->a));}
 };
+static constexpr const char* names[]{
+    "VEngineServer021","VoiceServer001","VEngineCvar002","VEngineServerStringTable001","StaticPropMgrServer002",
+    "VEngineRandom001","IEngineSoundServer003","SpatialPartition001","VModelInfoServer001","EngineTraceServer003",
+    "VFileSystem012","GAMEEVENTSMANAGER002","VEngineCache001","VSoundEmitter001","ServerUploadGameStats001","ISERVERPLUGINHELPERS001",
+    "VDebugOverlay003"
+};
+static Fixture* active=nullptr;
+static unsigned queries=0,sound_calls=0,miss=99;
+static bool sound_ok=true;
+static void* __cdecl engine_factory(const char*,int*);
+struct Sound {
+    virtual bool connect(sin_independent::StartupFactory factory) noexcept {
+        assert(factory==&engine_factory&&queries==16);++sound_calls;return sound_ok;
+    }
+} sound;
+static void* __cdecl engine_factory(const char* name,int* status){
+    assert(active&&!status&&queries<17&&queries!=10&&!std::strcmp(name,names[queries]));
+    const unsigned i=queries++;if(i==miss||i==16)return nullptr;
+    if(i==2)return &active->objects[2];
+    if(i==11)return &active->events;
+    if(i==13)return &sound;
+    return &active->objects[0];
+}
+static void* __cdecl filesystem_factory(const char* name,int* status){
+    assert(active&&!status&&queries==10&&!std::strcmp(name,names[10]));
+    return queries++==miss?nullptr:&active->objects[0];
+}
 int main(int argc,char** argv){
     assert(argc==3);auto client=LoadLibraryA(argv[1]),server=LoadLibraryA(argv[2]);assert(client&&server);
     auto get=reinterpret_cast<GetApi>(GetProcAddress(server,export_name));assert(get&&!GetProcAddress(client,export_name)&&!get(0,sizeof(Api)));
@@ -60,5 +87,30 @@ int main(int argc,char** argv){
     assert(!api->post_connect(&scene.state,&b,&o)&&o.stage==Stage::SceneRepository&&!scene.model);
     Fixture nullmgr(api);nullmgr.null_manager=true;b=nullmgr.bindings();
     assert(api->post_connect(&nullmgr.state,&b,&o)&&o.completed&&!o.manager_allocated&&!nullmgr.state.manager&&o.engine_completed);
+    const auto invoke=reinterpret_cast<InvokeBoundary>(GetProcAddress(server,boundary_export));
+    assert(invoke&&!GetProcAddress(client,boundary_export));
+    BoundaryResult bo{};
+    Fixture live(api);active=&live;b=live.bindings();
+    b.engine=&engine_factory;b.filesystem=&filesystem_factory;b.event_manager=nullptr;b.cvar_interface=nullptr;
+    queries=sound_calls=0;miss=99;sound_ok=true;
+    assert(invoke(&live.state,&b,&bo)&&bo.entered&&bo.acquired==16&&bo.sound_connected&&bo.original_return&&bo.tail.completed&&queries==17&&sound_calls==1&&live.tail==1);
+    assert(!invoke(&live.state,&b,&bo)&&queries==17);
+    Fixture missing(api);active=&missing;b=missing.bindings();b.engine=&engine_factory;b.filesystem=&filesystem_factory;
+    queries=sound_calls=0;miss=10;
+    assert(!invoke(&missing.state,&b,&bo)&&bo.entered&&!bo.acquired&&!sound_calls&&queries==11&&!missing.state.attempted);
+    Fixture reject(api);active=&reject;b=reject.bindings();b.engine=&engine_factory;b.filesystem=&filesystem_factory;
+    queries=sound_calls=0;miss=99;sound_ok=false;
+    assert(!invoke(&reject.state,&b,&bo)&&bo.entered&&bo.acquired==16&&!bo.sound_connected&&sound_calls==1&&!reject.state.attempted);
+    Fixture badcheats(api);badcheats.cheats=false;active=&badcheats;b=badcheats.bindings();b.engine=&engine_factory;b.filesystem=&filesystem_factory;
+    queries=sound_calls=0;sound_ok=true;
+    assert(!invoke(&badcheats.state,&b,&bo)&&bo.sound_connected&&bo.tail.stage==Stage::Cheats&&!bo.original_return&&queries==16&&badcheats.state.attempted);
+    // Unbound retail-facing slot still refuses after sixteen factories.
+    Fixture unbound(api);active=&unbound;queries=sound_calls=0;
+    using Create=void* (__cdecl *)(const char*,int*);
+    auto create=reinterpret_cast<Create>(GetProcAddress(server,"CreateInterface"));
+    assert(create);void* object=create("ServerGameDLL003",nullptr);assert(object);
+    auto** vt=*reinterpret_cast<void***>(object);
+    using Init=bool (__thiscall *)(void*,sin_independent::StartupFactory,sin_independent::StartupFactory,sin_independent::StartupFactory,void*);
+    assert(!reinterpret_cast<Init>(vt[0])(object,&engine_factory,&factory,&filesystem_factory,&unbound.objects[13])&&queries==16&&!sound_calls&&!unbound.state.attempted);
     FreeLibrary(server);FreeLibrary(client);
 }

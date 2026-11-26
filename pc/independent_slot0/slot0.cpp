@@ -49,6 +49,8 @@
 #include "server_batch_cvar_probe.h"
 #if defined(SIN_NATIVE_GAME_FRAME)
 #include "native_server_game_frame.h"
+#include "native_server_startup.h"
+extern "C" const sin_port::native_server_startup::Api* __cdecl SiN_GetServerStartupApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_game_frame::Api* __cdecl SiN_GetServerGameFrameApi(std::uint32_t,std::uint32_t) noexcept;
 #endif
 #include <new>
@@ -1204,6 +1206,12 @@ struct FrameInvocation {
     int success=0;
 };
 static thread_local FrameInvocation* g_frame_invocation=nullptr;
+struct StartupInvocation {
+    sin_port::native_server_startup::State* state;
+    const sin_port::native_server_startup::Bindings* bindings;
+    sin_port::native_server_startup::BoundaryResult* result;
+};
+static thread_local StartupInvocation* g_startup_invocation=nullptr;
 #endif
 class Boundary final {
 public:
@@ -1211,6 +1219,13 @@ public:
         Factory engineFactory, Factory physicsFactory,
         Factory fileSystemFactory, CGlobalVars* globals) noexcept {
         diagnostic("init-entered", nullptr);
+#if defined(SIN_NATIVE_GAME_FRAME)
+        auto* invocation=g_startup_invocation;
+        if(invocation){
+            if(invocation->result->entered)return false;
+            invocation->result->entered=1;
+        }
+#endif
         if (!engineFactory || !physicsFactory || !fileSystemFactory || !globals) {
             diagnostic("invalid-init-arguments", nullptr);
             return false;
@@ -1240,6 +1255,21 @@ public:
             !require(engineFactory, kThirteenthEngineVersion, &sound) ||
             !require(engineFactory, kFourteenthEngineVersion) ||
             !require(engineFactory, kFifteenthEngineVersion)) return false;
+#if defined(SIN_NATIVE_GAME_FRAME)
+        if(invocation){
+            auto& out=*invocation->result;out.acquired=16;
+            if(sin_independent::TryConnectSoundEmitter(sound,engineFactory)!=sin_independent::SoundConnectResult::Connected)return false;
+            out.sound_connected=1;
+            const auto* api=SiN_GetServerStartupApi(1,sizeof(sin_port::native_server_startup::Api));
+            if(!api)return false;
+            auto bound=*invocation->bindings;
+            // Trust the actual acquired interface pointers, not the
+            // optional copies in the owner's binding.
+            bound.globals=globals;bound.engine=engineFactory;bound.physics=physicsFactory;
+            bound.filesystem=fileSystemFactory;bound.event_manager=events;bound.cvar_interface=cvar;
+            return api->post_connect(invocation->state,&bound,&out.tail)!=0;
+        }
+#endif
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
         if (!connectSound(sound,engineFactory)) return false;
 #else
@@ -1416,9 +1446,19 @@ Boundary instance;
 } // namespace
 
 #if defined(SIN_ROLE_server) && defined(SIN_NATIVE_GAME_FRAME)
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerDllInitBoundary=_SiN_InvokeServerDllInitBoundary")
+extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerDllInitBoundary(sin_port::native_server_startup::State* state,const sin_port::native_server_startup::Bindings* bindings,sin_port::native_server_startup::BoundaryResult* out) noexcept {
+    if(!out||g_startup_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!bindings||state->attempted||state->busy)return 0;
+    StartupInvocation invocation{state,bindings,out};g_startup_invocation=&invocation;
+    using Slot=bool (__thiscall *)(void*,Factory,Factory,Factory,CGlobalVars*) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    out->original_return=reinterpret_cast<Slot>(table[0])(&instance,bindings->engine,bindings->physics,bindings->filesystem,static_cast<CGlobalVars*>(bindings->globals));
+    g_startup_invocation=nullptr;return out->entered&&out->original_return;
+}
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameBoundary=_SiN_InvokeServerGameFrameBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(bool simulating,const sin_port::native_game_frame::State* state,const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result) noexcept {
-    if(!result||g_frame_invocation)return 0;*result={};
+    if(!result||g_frame_invocation||g_startup_invocation)return 0;*result={};
     if(!state||!bindings)return 0;
     FrameInvocation invocation{state,bindings,result};
     g_frame_invocation=&invocation;
