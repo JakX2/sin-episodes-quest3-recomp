@@ -581,10 +581,10 @@ bool search_handle(void* entity,const ServerEntitySearchBindings& b,unsigned& ha
     }
     return b.foreign_handle&&b.foreign_handle(b.context,entity,&handle)!=0;
 }
-int search_entities(void* previous,unsigned token,void* activator,void* caller,bool classname,const ServerEntitySearchBindings* b,ServerEntitySearchResult* o) noexcept {
+int search_entities(void* previous,unsigned token,void* activator,void* caller,bool classname,const ServerEntitySearchBindings* b,ServerEntitySearchResult* o,const char* supplied_pattern=nullptr) noexcept {
     if(!o)return 0;*o={};
     if(!b||b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
-    const char* pattern=nullptr;if(!input_text(*b,token,&pattern))return 0;
+    const char* pattern=supplied_pattern;if(!pattern&&!input_text(*b,token,&pattern))return 0;
     auto done=[&](){o->matched=o->entity!=nullptr;o->completed=1;return 1;};
     if(!classname){
         if(!*pattern)return done();
@@ -627,7 +627,7 @@ int search_entities(void* previous,unsigned token,void* activator,void* caller,b
         unsigned bytes=0;if(!b->extent||!b->extent(b->context,entity,&bytes)||bytes<(classname?0x10u:0xc4u))return 0;
         const unsigned own=rd<unsigned>(entity,classname?0xcu:0xc0u);
         if(classname||own){
-            if(own==token){o->entity=entity;return done();}
+            if(!supplied_pattern&&own==token){o->entity=entity;return done();}
             const char* text=nullptr;if(!input_text(*b,own,&text))return 0;
             if(search_pattern(text,pattern)){o->entity=entity;return done();}
         }
@@ -892,6 +892,84 @@ int native_rappel_input(void* a,unsigned n,bool begin,const ServerEntityAcceptIn
     std::memcpy(component+0x18,static_cast<unsigned char*>(a)+0x2bc,12);++o.rappel_snapshot;
     return 1;
 }
+// Original 22030a00: space-only tokenization, triples of target,
+// disposition, priority. Missing priority is INT_MIN, not zero for updates.
+int native_relationship(void* a,unsigned n,const ServerEntityInputData& d,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    if(!b.relationship||!b.search)return -1;
+    if(n<0x64c||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
+    const auto& services=*b.relationship;
+    const unsigned type=rd<unsigned>(d.variant,0x10);
+    if(type!=0&&type!=2)return -1;
+    const char* text=nullptr;if(!input_text(b,type==2?rd<unsigned>(d.variant,0):0u,&text))return 0;
+    char buffer[1000]{};
+    const auto len=std::strlen(text);std::memcpy(buffer,text,len<999?len:999);
+    char* cursor=buffer;
+    auto next=[&]()->char*{
+        while(*cursor==' ')++cursor;
+        if(!*cursor)return nullptr;
+        char* start=cursor;while(*cursor&&*cursor!=' ')++cursor;
+        if(*cursor)*cursor++=0;return start;
+    };
+    auto warn=[&](unsigned token,const char* detail){
+        ++o.relationship_warnings;return !services.warning||services.warning(services.context,a,token,detail);
+    };
+    auto search=*b.search;search.entities=b.entities;
+    const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+    auto edit=[&](void* entity,unsigned cls,unsigned disposition,unsigned priority){
+        const int count=rd<int>(a,0x644);int capacity=rd<int>(a,0x63c);
+        if(count<0||capacity<count||capacity>4096)return false;
+        void* rows=nullptr;
+        if(count&&!resolve(*b.storage,rd<unsigned>(a,0x638),16u*static_cast<unsigned>(count),&rows))return false;
+        for(int i=count-1;i>=0;--i){
+            auto* row=static_cast<unsigned char*>(rows)+16*i;
+            if(entity?registry.Resolve(rd<unsigned>(row,0))==entity:rd<unsigned>(row,4)==cls){
+                wr<unsigned>(row,8,disposition);
+                if(priority!=0x80000000u)wr<unsigned>(row,12,priority);
+                ++o.relationship_updated;return true;
+            }
+        }
+        unsigned handle=0xffffffffu;if(entity&&!search_handle(entity,search,handle))return false;
+        if(count==capacity){
+            if(!services.grow||!services.grow(services.context,a,static_cast<unsigned>(count+1)))return false;
+            capacity=rd<int>(a,0x63c);
+            if(capacity<=count||capacity>4096||rd<int>(a,0x644)!=count)return false;
+        }
+        const unsigned token=rd<unsigned>(a,0x638);
+        if(!resolve(*b.storage,token,16u*static_cast<unsigned>(count+1),&rows))return false;
+        auto* row=static_cast<unsigned char*>(rows)+16*count;
+        wr<unsigned>(row,0,handle);wr<unsigned>(row,4,entity?0u:cls);
+        wr<unsigned>(row,8,disposition);wr<unsigned>(row,12,priority==0x80000000u?0u:priority);
+        wr<int>(a,0x644,count+1);wr<unsigned>(a,0x648,token);
+        ++o.relationship_added;return true;
+    };
+    for(char* target=next();target;target=next()){
+        const char* disposition=next();if(!disposition)return warn(0x223d98a8u,text);
+        unsigned kind=0;
+        if(search_equal(disposition,"D_HT"))kind=1;
+        else if(search_equal(disposition,"D_FR"))kind=2;
+        else if(search_equal(disposition,"D_LI"))kind=3;
+        else if(search_equal(disposition,"D_NU"))kind=4;
+        else return warn(0x223d98d0u,disposition);
+        const char* p=next();const unsigned priority=p?input_decimal(p):0x80000000u;
+        ++o.relationship_specs;
+        void* previous=nullptr;bool found=false;
+        for(unsigned i=0;;++i){
+            ServerEntitySearchResult result{};
+            if(!search_entities(previous,0,nullptr,nullptr,false,&search,&result,target))return 0;
+            if(!result.entity)break;
+            if(i==4096||result.entity==previous||!edit(result.entity,0,kind,priority))return 0;
+            ++o.relationship_entities;found=true;previous=result.entity;
+        }
+        if(found)continue;
+        unsigned cls=1;bool known=search_equal(target,"player")||search_equal(target,"!player");
+        if(!known){
+            if(!services.classify||!services.classify(services.context,target,&cls,&known))return 0;
+        }
+        if(known){if(!edit(nullptr,cls,kind,priority))return 0;++o.relationship_classes;}
+        else if(!warn(0x223d9910u,target))return 0;
+    }
+    return 1;
+}
 // Original concrete handlers, independent from the descriptor projection.
 // Return -1 for a handler not implemented here, 0 for malformed storage,
 // and 1 for a successfully executed native leaf.
@@ -911,6 +989,7 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
         return 1;
     };
     switch(handler){
+    case 0x22031f90u:return native_relationship(a,n,d,b,o);
     case 0x22037a30u:{ // SetHealth: heal through 222a57a0/22140be0,
         // or lower by constructing damage info via 221f89c0/221f8550.
         if(n<0x37c)return 0;
