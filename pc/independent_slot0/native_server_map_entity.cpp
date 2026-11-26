@@ -101,25 +101,28 @@ constexpr FactorySpec native_specs[]{
 };
 constexpr FactorySpec relay_spec{"logic_relay",Family::Relay,0x224fda88,0x224228bc,relay_extent};
 constexpr FactorySpec auto_spec{"logic_auto",Family::LogicAuto,0x224fb288,0x2241efcc,auto_extent};
+constexpr FactorySpec timer_spec{"logic_timer",Family::LogicTimer,0x224fb604,0x2241f590,timer_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||d->count<12||d->count>14)return false;
+    if(!d||!d->registered||d->count<12||d->count>15)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    bool relay=false,logic_auto=false;
-    for(unsigned i=12;i<14;++i){
+    bool relay=false,logic_auto=false,logic_timer=false;
+    for(unsigned i=12;i<15;++i){
         if(i>=d->count){if(d->slots[i])return false;continue;}
         if(d->slots[i]==&relay_spec&&!relay)relay=true;
         else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
+        else if(d->slots[i]==&timer_spec&&!logic_timer)logic_timer=true;
         else return false;
     }
     return true;
 }
 int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
-    if(!valid_dictionary(d)||d->count==14)return 0;
+    if(!valid_dictionary(d)||d->count==15)return 0;
     for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
     d->slots[d->count++]=spec;return 1;
 }
 int __cdecl register_relay(FactoryDictionary* d) noexcept {return register_optional(d,&relay_spec);}
 int __cdecl register_auto(FactoryDictionary* d) noexcept {return register_optional(d,&auto_spec);}
+int __cdecl register_timer(FactoryDictionary* d) noexcept {return register_optional(d,&timer_spec);}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -157,6 +160,26 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         const unsigned zero=0,invalid=0xffffffffu,vt=relay_vtable;
         std::memcpy(a,&vt,4);std::memcpy(a+0x394,&zero,4);
         std::memcpy(a+0x3a0,&invalid,4);std::memcpy(a+0x3a4,&zero,4);
+        if(!r->initialize(r->context,a,name))return 0;
+        o->networkable=a+0x160;o->completed=1;return 1;
+    }
+    if(o->spec->family==Family::LogicTimer){
+        const auto* r=b->logic_timer;
+        if(!r||!r->allocate||!r->base_construct||!r->initialize||
+           !r->allocate(r->context,timer_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<timer_extent)return 0;
+        auto* a=static_cast<unsigned char*>(o->actor);
+        // Original 2217d330 writes three output triplets after base(1).
+        if(!r->base_construct(r->context,a,1))return 0;
+        for(unsigned off=0x394;off<=0x3c4;off+=0x18){
+            unsigned head=0;std::memcpy(&head,a+off+0x14,4);if(head)return 0;
+        }
+        // Fresh owner storage must not retain prior timer state.
+        for(unsigned off=0x3dc;off<timer_extent;++off)if(a[off])return 0;
+        const unsigned zero=0,invalid=0xffffffffu,vt=timer_vtable;
+        std::memcpy(a,&vt,4);
+        for(unsigned off=0x394;off<=0x3c4;off+=0x18){
+            std::memcpy(a+off,&zero,4);std::memcpy(a+off+0xc,&invalid,4);std::memcpy(a+off+0x10,&zero,4);
+        }
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
     }
@@ -207,6 +230,12 @@ int __cdecl destroy_relay(void* actor,unsigned bytes,void* networkable,const Rel
 int __cdecl destroy_auto(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
     if(!networkable)return 1;
     if(!actor||bytes<auto_extent||entity_vtable(actor)!=auto_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
+    return b->release_networkable(b->context,networkable);
+}
+int __cdecl destroy_timer(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!actor||bytes<timer_extent||entity_vtable(actor)!=timer_vtable||
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
@@ -400,8 +429,10 @@ bool find_parent(const SpawnBindings& b,SpawnResult& o,void* a,void** parent) no
     if(!name)return true;
     ++o.parent_reads;return b.find_parent&&b.find_parent(b.context,name,parent);
 }
+int __cdecl timer_spawn(void*,unsigned,const TimerBindings*,TimerResult*) noexcept;
 bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) noexcept {
     const auto vt=read_field<unsigned>(a,0);
+    if(vt==timer_vtable&&b.logic_timer){native=true;TimerResult r{};return timer_spawn(a,n,b.logic_timer,&r)!=0;}
     native=(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
     if(!native)return b.virtual_spawn&&b.virtual_spawn(b.context,a);
     const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return false;
@@ -469,15 +500,18 @@ bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexce
     }
     unsigned n=0;if(!extent_ok(b,a,4,n))return false;
     const auto vt=read_field<unsigned>(a,0);
-    const bool native=(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
+    const bool native=(vt==timer_vtable&&b.logic_timer)||(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
     if(!native)return b.spawn&&b.spawn(b.context,a,&code);
     if(!b.native_spawn_begin||!b.native_spawn_end)return false;
     bool proceed=false;if(!b.native_spawn_begin(b.context,a,&proceed))return false;
     if(proceed){
-        const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return false;
-        if(vt==resupply_vtable){LifecycleResult r{};if(!api->spawn(a,n,b.resupply,&r))return false;}
-        else if(vt==antigen_vtable){AntigenInteractionResult r{};if(!api->antigen_spawn(a,n,b.dispenser,&r))return false;}
-        else {CanisterResult r{};if(!api->canister_spawn(a,n,b.canister,&r))return false;}
+        if(vt==timer_vtable){TimerResult r{};if(!timer_spawn(a,n,b.logic_timer,&r))return false;}
+        else {
+            const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return false;
+            if(vt==resupply_vtable){LifecycleResult r{};if(!api->spawn(a,n,b.resupply,&r))return false;}
+            else if(vt==antigen_vtable){AntigenInteractionResult r{};if(!api->antigen_spawn(a,n,b.dispenser,&r))return false;}
+            else {CanisterResult r{};if(!api->canister_spawn(a,n,b.canister,&r))return false;}
+        }
         ++o.native_spawns;
     }
     return b.native_spawn_end(b.context,a,&code);
@@ -914,7 +948,7 @@ int __cdecl timer_input(void* a,unsigned n,const char* name,unsigned type,float 
     }else o->handled=0;
     o->completed=ok;return int(ok);
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
