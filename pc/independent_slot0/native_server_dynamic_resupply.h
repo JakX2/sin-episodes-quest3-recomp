@@ -384,6 +384,27 @@ struct AntigenExchangeResult {
     float amount,reject_time,container_fraction;
     AntigenResult control;
 };
+inline constexpr unsigned antigen_animation_token=0x222f6aa0u,antigen_eject_token=0x222f7330u;
+struct AntigenInteractionBindings {
+    AntigenBindings control;
+    void* context;
+    // Original 222b61d0 "use" event, subobject zero. Optional event
+    // absence is success; false indicates a failed host operation.
+    int (__cdecl *use_event)(void*,int,void*,void*,int) noexcept;
+    // Generic precache, model/solid and animation initialization remain
+    // the existing engine's responsibility. No model loading here.
+    int (__cdecl *spawn_setup)(void*,void*) noexcept;
+    int (__cdecl *bodygroup)(void*,void*,int,int) noexcept;
+    int (__cdecl *button_listener)(void*,void*,const char*) noexcept;
+    int (__cdecl *create_screen)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *configure_screen)(void*,void*,void*) noexcept;
+};
+struct AntigenInteractionResult {
+    unsigned event_called,press,release,user_invalidated,setup,bodygroup,touch_installed,
+        animation_installed,listener,screen_created,screen_configured,screen_reused,completed;
+    int event_descriptor;
+    AntigenResult control;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -427,6 +448,9 @@ struct Api {
     int (__cdecl *antigen_think)(void*,unsigned,const AntigenBindings*,AntigenResult*) noexcept;
     int (__cdecl *antigen_insert)(void*,unsigned,void*,unsigned,const AntigenExchangeBindings*,AntigenExchangeResult*) noexcept;
     int (__cdecl *antigen_eject)(void*,unsigned,const AntigenExchangeBindings*,AntigenExchangeResult*) noexcept;
+    int (__cdecl *antigen_use_event)(void*,unsigned,void*,unsigned,int,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
+    int (__cdecl *antigen_spawn)(void*,unsigned,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
+    int (__cdecl *antigen_animation_think)(void*,unsigned,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
