@@ -407,9 +407,10 @@ int wake_policy_impl(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNp
 }
 // Original 22156900 passes a void variant into 22156680. Do not
 // synthesize a target entity or invoke its input synchronously.
-int __cdecl fire_void_output(void* output,unsigned n,void* activator,void* caller,unsigned caller_bytes,float extra,const ServerEntityVoidOutputBindings* b,ServerEntityVoidOutputResult* o) noexcept {
+int fire_output_impl(void* output,unsigned n,void* activator,void* caller,unsigned caller_bytes,float extra,const void* variant,const ServerEntityVoidOutputBindings* b,ServerEntityVoidOutputResult* o) noexcept {
     if(!o)return 0;*o={};
-    if(!output||n<0x18||!b||(caller&&caller_bytes<0xa9)||!std::isfinite(extra))return 0;
+    if(!output||n<0x18||!b||(caller&&caller_bytes<0xa9)||!std::isfinite(extra)||(variant&&!b->enqueue_variant))return 0;
+    unsigned payload[5]{};if(variant)std::memcpy(payload,variant,sizeof(payload));
     void* previous=output;unsigned link_off=0x14;
     unsigned token=rd<unsigned>(output,link_off),seen[256]{};
     while(token){
@@ -422,10 +423,13 @@ int __cdecl fire_void_output(void* output,unsigned n,void* activator,void* calle
         action.target=rd<unsigned>(row,0);action.input=rd<unsigned>(row,4);action.parameter=rd<unsigned>(row,8);
         action.action_id=rd<unsigned>(row,0x14);
         const float delay=rd<float>(row,0xc);
-        action.variant_type=action.parameter?2u:0u;
+        action.variant_type=action.parameter?2u:variant?payload[4]:0u;
         // Parameter override branch uses only the action delay.
         action.delay=action.parameter?delay:static_cast<float>(double(delay)+extra);
-        if(!std::isfinite(action.delay)||!b->enqueue||!b->enqueue(b->context,activator,caller,&action))return 0;
+        if(!std::isfinite(action.delay))return 0;
+        if(variant&&!action.parameter){
+            if(!b->enqueue_variant(b->context,activator,caller,&action,payload,sizeof(payload)))return 0;
+        }else if(!b->enqueue||!b->enqueue(b->context,activator,caller,&action))return 0;
         ++o->queued;if(action.parameter)++o->parameter_overrides;
         if(caller&&(rd<std::uint8_t>(caller,0xa8)&0x10u)){
             if(!b->debug_action||!b->debug_action(b->context,caller,&action))return 0;++o->debugged;
@@ -442,7 +446,15 @@ int __cdecl fire_void_output(void* output,unsigned n,void* activator,void* calle
     }
     o->completed=1;return 1;
 }
-const ServerEntityVoidOutputApi void_output_api{1,sizeof(ServerEntityVoidOutputApi),&fire_void_output};
+int __cdecl fire_void_output(void* output,unsigned n,void* activator,void* caller,unsigned caller_bytes,float extra,const ServerEntityVoidOutputBindings* b,ServerEntityVoidOutputResult* o) noexcept {
+    return fire_output_impl(output,n,activator,caller,caller_bytes,extra,nullptr,b,o);
+}
+int __cdecl fire_stored_output(void* output,unsigned n,void* activator,void* caller,unsigned caller_bytes,float extra,const void* variant,unsigned vn,const ServerEntityVoidOutputBindings* b,ServerEntityVoidOutputResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!variant||vn<0x14)return 0;
+    return fire_output_impl(output,n,activator,caller,caller_bytes,extra,variant,b,o);
+}
+const ServerEntityVoidOutputApi void_output_api{1,sizeof(ServerEntityVoidOutputApi),&fire_void_output,&fire_stored_output};
 // Named event queue records from 22155300, stable sorted link insertion from
 // 22154600. The independent allocator supplies a unique zero-free token.
 int enqueue_event(void* sentinel,unsigned n,std::uint32_t root,float now,std::uint32_t activator,std::uint32_t caller,const ServerEntityVoidOutputAction* action,unsigned direct,const void* variant,const ServerEntityNamedEventQueueBindings* b,ServerEntityNamedEventQueueResult* o) noexcept {
@@ -499,7 +511,12 @@ int __cdecl enqueue_direct_event(void* sentinel,unsigned n,std::uint32_t root,fl
     // words. The handle can become stale before the event is delivered.
     return enqueue_event(sentinel,n,root,now,activator,caller,&action,target,variant,b,o);
 }
-const ServerEntityNamedEventQueueApi named_event_queue_api{1,sizeof(ServerEntityNamedEventQueueApi),&enqueue_named_event,&enqueue_direct_event};
+int __cdecl enqueue_named_variant(void* sentinel,unsigned n,std::uint32_t root,float now,std::uint32_t activator,std::uint32_t caller,const ServerEntityVoidOutputAction* action,const void* variant,unsigned vn,const ServerEntityNamedEventQueueBindings* b,ServerEntityNamedEventQueueResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!action||action->parameter||!variant||vn<0x14||rd<unsigned>(variant,0x10)!=action->variant_type)return 0;
+    return enqueue_event(sentinel,n,root,now,activator,caller,action,0xffffffffu,variant,b,o);
+}
+const ServerEntityNamedEventQueueApi named_event_queue_api{1,sizeof(ServerEntityNamedEventQueueApi),&enqueue_named_event,&enqueue_direct_event,&enqueue_named_variant};
 // 22155530: service each due node under an engine lock, dispatch all name
 // matches, then a live direct target, else class fallback if none matched.
 // Re-read links after dispatch: AcceptInput can insert another earlier event.

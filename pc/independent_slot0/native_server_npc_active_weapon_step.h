@@ -314,6 +314,7 @@ struct ServerEntityVoidOutputBindings {
     int (__cdecl *enqueue)(void*,void* activator,void* caller,const ServerEntityVoidOutputAction*) noexcept;
     int (__cdecl *release)(void*,std::uint32_t,void*) noexcept;
     int (__cdecl *debug_action)(void*,void* caller,const ServerEntityVoidOutputAction*) noexcept;
+    int (__cdecl *enqueue_variant)(void*,void*,void*,const ServerEntityVoidOutputAction*,const void*,unsigned) noexcept;
 };
 struct ServerEntityVoidOutputResult {
     unsigned completed,visited,queued,parameter_overrides,countdowns,removed,debugged;
@@ -321,6 +322,7 @@ struct ServerEntityVoidOutputResult {
 struct ServerEntityVoidOutputApi {
     std::uint32_t version,size;
     int (__cdecl *fire)(void* output,unsigned output_bytes,void* activator,void* caller,unsigned caller_bytes,float extra_delay,const ServerEntityVoidOutputBindings*,ServerEntityVoidOutputResult*) noexcept;
+    int (__cdecl *fire_variant)(void*,unsigned,void*,void*,unsigned,float,const void*,unsigned,const ServerEntityVoidOutputBindings*,ServerEntityVoidOutputResult*) noexcept;
 };
 using GetServerEntityVoidOutputApi=const ServerEntityVoidOutputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
@@ -341,6 +343,7 @@ struct ServerEntityNamedEventQueueApi {
     std::uint32_t version,size;
     int (__cdecl *enqueue)(void* sentinel,unsigned sentinel_bytes,std::uint32_t sentinel_token,float now,std::uint32_t activator,std::uint32_t caller,const ServerEntityVoidOutputAction*,const ServerEntityNamedEventQueueBindings*,ServerEntityNamedEventQueueResult*) noexcept;
     int (__cdecl *enqueue_direct)(void*,unsigned,std::uint32_t,float,std::uint32_t,std::uint32_t,std::uint32_t,std::uint32_t,const void*,unsigned,float,std::uint32_t,const ServerEntityNamedEventQueueBindings*,ServerEntityNamedEventQueueResult*) noexcept;
+    int (__cdecl *enqueue_variant)(void*,unsigned,std::uint32_t,float,std::uint32_t,std::uint32_t,const ServerEntityVoidOutputAction*,const void*,unsigned,const ServerEntityNamedEventQueueBindings*,ServerEntityNamedEventQueueResult*) noexcept;
 };
 using GetServerEntityNamedEventQueueApi=const ServerEntityNamedEventQueueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 

@@ -1153,11 +1153,14 @@ int __cdecl case_input(void* a,unsigned n,const char* name,void* activator,const
         int draw=-1;if(!b->random_int||!b->random_int(b->context,0,int(o->eligible)-1,&draw)||draw<0||unsigned(draw)>=o->eligible)return 0;
         o->randomized=1;o->selected=eligible[draw]+1;off=0x3d4+eligible[draw]*0x18;
     }else{o->handled=0;o->completed=1;return 1;}
-    // Existing void output route has canonical unused variant words.
-    // OnDefault's stored unused words above retain original state.
     const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
     ServerEntityVoidOutputResult r{};
-    if(!fire||!b->output||!fire->fire(static_cast<unsigned char*>(a)+off,0x18,activator,a,n,0.f,b->output,&r))return 0;
+    if(!fire||!b->output)return 0;
+    auto* out=static_cast<unsigned char*>(a)+off;
+    // Original OnDefault passes its stored by-value variant to 22156680.
+    if(o->defaulted&&b->output->enqueue_variant){
+        if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b->output,&r))return 0;
+    }else if(!fire->fire(out,0x18,activator,a,n,0.f,b->output,&r))return 0;
     o->fired=1;o->queued=r.queued;o->completed=1;return 1;
 }
 const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case};
