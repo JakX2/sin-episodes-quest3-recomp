@@ -2497,5 +2497,41 @@ int main(int argc,char** argv){
         f.put(q.damage,0x24,0x9001u);f.put(q.damage,0x38,1u);f.put(q.damage,0x2c,20.f);f.put(q.actor,0x9c,-500);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageDead,&b,&o)&&o.health_after==-502&&!o.removed&&!o.direction_written&&!o.inflictor_valid&&q.removed==2);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntIgnitionApi>(GetProcAddress(s,server_npc_grunt_ignition_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_ignition_export)&&!g(0,sizeof(ServerNpcGruntIgnitionApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntIgnitionApi));assert(api);
+        struct FireFixture{
+            alignas(4) unsigned char actor[0xdb2]{},attacker[4]{},inflictor[4]{},flame[4]{};
+            char name[2]={'x',0};bool create=true,player=true;unsigned step=0,outputs=0,events=0;
+            static FireFixture& self(void* p){return *static_cast<FireFixture*>(p);}
+            static unsigned rd(void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+off,4);return v;}
+        } q;
+        ServerNpcGruntIgnitionBindings b{};b.original_vtable=0x2249aaa4;b.context=&q;b.name_storage.context=&q;
+        b.attacker_handle=[](void* p,void* a,std::uint32_t* v) noexcept -> int{assert(a==FireFixture::self(p).attacker);*v=0x1001;return 1;};
+        b.inflictor_name=[](void* p,void* a,std::uint32_t* v) noexcept -> int{assert(a==FireFixture::self(p).inflictor);*v=77;return 1;};
+        b.name_storage.storage=[](void* p,std::uint32_t token,void** v,unsigned* n) noexcept -> int{assert(token==77);*v=FireFixture::self(p).name;*n=2;return 1;};
+        b.create_flame=[](void* p,void* a,void* attacker,void* inflictor,void** v) noexcept -> int{
+            auto& q=FireFixture::self(p);assert(a==q.actor&&attacker==q.attacker&&inflictor==q.inflictor&&q.step==0&&FireFixture::rd(a,0xc3c)==0x1001&&FireFixture::rd(a,0xc40)==(q.name[0]?77u:0u));++q.step;*v=q.create?q.flame:nullptr;return 1;};
+        b.lifetime=[](void* p,void* flame,float time) noexcept -> int{auto& q=FireFixture::self(p);assert(flame==q.flame&&time==12&&q.step==1);++q.step;return 1;};
+        b.attach=[](void* p,void* a,void* flame) noexcept -> int{auto& q=FireFixture::self(p);assert(a==q.actor&&flame==q.flame&&q.step==2&&(FireFixture::rd(a,0xbc)&0x8000000));++q.step;return 1;};
+        b.is_player=[](void* p,void* a,bool* v) noexcept -> int{auto& q=FireFixture::self(p);assert(a==q.attacker&&q.step==(q.create?3u:1u));++q.step;*v=q.player;return 1;};
+        b.event=[](void* p,int id,void* e,void* a) noexcept -> int{auto& q=FireFixture::self(p);assert(id==9&&e==q.attacker&&a==q.actor);++q.events;return 1;};
+        b.output=[](void* p,void* a,unsigned offset) noexcept -> int{auto& q=FireFixture::self(p);assert(a==q.actor&&offset==0x47c);++q.outputs;return 1;};
+        ServerNpcGruntIgnitionResult o{};
+        b.original_vtable=0x2248c514;
+        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&o.completed&&o.class_blocked&&!o.attribution_written&&!q.step);
+        b.original_vtable=0x2249aaa4;q.actor[0xbf]=8;
+        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&o.flag_blocked&&o.attribution_written&&!q.step&&!q.outputs);
+        q.actor[0xbf]=0;
+        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&o.completed&&o.created&&o.flag_written&&o.attached&&o.event_called&&o.output_called&&q.events==1&&q.outputs==1);
+        q.step=0;
+        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&o.created&&!o.flag_written&&o.output_called&&q.outputs==2);
+        q.step=0;q.create=false;q.player=false;q.name[0]=0;f.put(q.actor,0xbc,0u);
+        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&!o.created&&!o.flag_written&&!o.inflictor_name&&!o.event_called&&o.output_called&&q.events==2&&q.outputs==3);
+        q.actor[0xbf]=8;
+        assert(api->react(q.actor,sizeof(q.actor),nullptr,nullptr,&b,&o)&&o.flag_blocked&&o.attacker_handle==0xffffffffu&&!o.inflictor_name);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

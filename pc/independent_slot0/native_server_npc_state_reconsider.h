@@ -1805,4 +1805,38 @@ struct ServerNpcGruntAliveDamageApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntAliveDamageBindings*,ServerNpcGruntAliveDamageResult*) noexcept;
 };
 using GetServerNpcGruntAliveDamageApi=const ServerNpcGruntAliveDamageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_ignition_export[]="SiN_GetServerNpcGruntIgnitionApi";
+struct ServerNpcGruntIgnitionBindings {
+    std::uint32_t original_vtable;
+    void* context;
+    ServerNpcEnemyMemoryBindings name_storage;
+    int (__cdecl *attacker_handle)(void*,void*,std::uint32_t*) noexcept; // attacker +8
+    int (__cdecl *inflictor_name)(void*,void*,std::uint32_t*) noexcept; // inflictor +c
+    int (__cdecl *create_flame)(void*,void*,void*,void*,void**) noexcept; // 221605e0, fixed bool 1
+    int (__cdecl *lifetime)(void*,void*,float) noexcept; // 22160060
+    int (__cdecl *attach)(void*,void*,void*) noexcept; // 2214d960
+    int (__cdecl *is_player)(void*,void*,bool*) noexcept; // attacker +120
+    int (__cdecl *event)(void*,int,void*,void*) noexcept;
+    int (__cdecl *output)(void*,void*,unsigned) noexcept;
+};
+struct ServerNpcGruntIgnitionResult {
+    std::uint32_t attacker_handle,inflictor_name,flags_before,flags_after;
+    unsigned completed,class_blocked,flag_blocked,attribution_written,created,lifetime_called,flag_written,attached,player_checked,event_called,output_called;
+};
+struct ServerNpcGruntIgnitionAliveBindings {
+    ServerNpcGruntAliveDamageBindings alive;
+    ServerNpcGruntIgnitionBindings ignition;
+};
+struct ServerNpcGruntIgnitionAliveResult {
+    ServerNpcGruntAliveDamageResult alive;
+    ServerNpcGruntIgnitionResult ignition;
+};
+struct ServerNpcGruntIgnitionApi {
+    std::uint32_t version,size;
+    // Fixed argument form of +2d4 used by 222a7b20, not arbitrary ignite inputs.
+    int (__cdecl *react)(void*,unsigned,void*,void*,const ServerNpcGruntIgnitionBindings*,ServerNpcGruntIgnitionResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntIgnitionAliveBindings*,ServerNpcGruntIgnitionAliveResult*) noexcept;
+};
+using GetServerNpcGruntIgnitionApi=const ServerNpcGruntIgnitionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

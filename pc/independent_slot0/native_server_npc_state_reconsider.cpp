@@ -3279,10 +3279,13 @@ const ServerNpcGruntReactionSpeechApi reaction_speech_api{1,sizeof(ServerNpcGrun
 
 
 int __cdecl grunt_state_signal(void*,unsigned,int,const ServerNpcGruntStateSignalBindings*,ServerNpcGruntStateSignalResult*) noexcept;
+struct IgnitionRoute {const ServerNpcGruntIgnitionBindings* bindings;ServerNpcGruntIgnitionResult* result;};
+int grunt_life_damage_impl(void*,unsigned,void*,unsigned,unsigned,const ServerNpcGruntLifeDamageBindings*,ServerNpcGruntLifeDamageResult*,const IgnitionRoute*) noexcept;
 int __cdecl grunt_life_damage(void*,unsigned,void*,unsigned,unsigned,const ServerNpcGruntLifeDamageBindings*,ServerNpcGruntLifeDamageResult*) noexcept;
 struct LifeDamageRoute {
     const ServerNpcGruntLifeDamageBindings* bindings;
     ServerNpcGruntLifeDamageResult* result;
+    const IgnitionRoute* ignition=nullptr;
 };
 struct StateSignalRoute {
     const ServerNpcGruntStateSignalBindings* bindings;
@@ -3305,7 +3308,7 @@ int grunt_damage_pain_prefix_impl(void* a,unsigned n,void* damage,unsigned dn,fl
     if(route&&route->life){
         auto bound=*route->life->bindings;
         bound.entries=sb.entries;bound.count=sb.count;bound.original_vtable=sb.speech.original_vtable;
-        if(!grunt_life_damage(a,n,damage,dn,NpcDamageAlive,&bound,route->life->result))return 0;
+        if(!grunt_life_damage_impl(a,n,damage,dn,NpcDamageAlive,&bound,route->life->result,route->life->ignition))return 0;
         out->base_result=route->life->result->native_result;
     }else if(!b->base_damage(b->context,a,damage,&out->base_result))return 0;
     out->base_called=1;
@@ -4172,7 +4175,49 @@ int __cdecl grunt_damage_native_chain(void* a,unsigned n,void* damage,unsigned d
     return grunt_damage_override_impl(a,n,damage,dn,now,&b->detail.damage,&out->detail.damage,&detail);
 }
 const ServerNpcGruntDamageNativeChainApi damage_native_chain_api{1,sizeof(ServerNpcGruntDamageNativeChainApi),&grunt_damage_native_tail,&grunt_damage_native_chain};
-int __cdecl grunt_life_damage(void* a,unsigned n,void* damage,unsigned dn,unsigned route,const ServerNpcGruntLifeDamageBindings* b,ServerNpcGruntLifeDamageResult* out) noexcept{
+
+int __cdecl grunt_ignition(void* a,unsigned n,void* attacker,void* inflictor,const ServerNpcGruntIgnitionBindings* b,ServerNpcGruntIgnitionResult* out) noexcept{
+    if(!out)return 0;*out={};out->attacker_handle=0xffffffffu;
+    if(!a||n<0xc44||!b||!relation_grunt_class(b->original_vtable))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    // The specific +2d4 variant checks the sixth argument (zero in 222a7b20).
+    if(b->original_vtable==0x2248c514){out->class_blocked=1;return done();}
+    if(attacker&&(!b->attacker_handle||!b->attacker_handle(b->context,attacker,&out->attacker_handle)))return 0;
+    write(a,0xc3c,out->attacker_handle);
+    if(inflictor){
+        if(!b->inflictor_name||!b->inflictor_name(b->context,inflictor,&out->inflictor_name))return 0;
+        if(out->inflictor_name){
+            void* name=nullptr;unsigned extent=0;
+            if(!memory_storage(&b->name_storage,out->inflictor_name,1,name,extent))return 0;
+            if(!read<std::uint8_t>(name,0))out->inflictor_name=0;
+        }
+    }
+    write(a,0xc40,out->inflictor_name);out->attribution_written=1;
+    if(read<std::uint8_t>(a,0xbf)&8u){out->flag_blocked=1;return done();}
+    // +f4 and +530 both return true for all eight supported original tables.
+    void* flame=nullptr;
+    if(!b->create_flame||!b->create_flame(b->context,a,attacker,inflictor,&flame))return 0;
+    if(flame){
+        out->created=1;
+        if(!b->lifetime||!b->lifetime(b->context,flame,12.f))return 0;
+        out->lifetime_called=1;
+        out->flags_before=read<unsigned>(a,0xbc);out->flags_after=out->flags_before|0x8000000u;
+        // +268 ret for all eight; 221639f0 tracks bit16 only, unchanged here.
+        if(out->flags_before!=out->flags_after){write(a,0xbc,out->flags_after);out->flag_written=1;}
+        if(!b->attach||!b->attach(b->context,a,flame))return 0;
+        out->attached=1;
+    }
+    if(attacker){
+        bool player=false;if(!b->is_player||!b->is_player(b->context,attacker,&player))return 0;
+        out->player_checked=1;
+        if(player){if(!b->event||!b->event(b->context,9,attacker,a))return 0;out->event_called=1;}
+    }
+    // The original sends output even if flame creation returned null.
+    if(!b->output||!b->output(b->context,a,0x47c))return 0;
+    out->output_called=1;return done();
+}
+
+int grunt_life_damage_impl(void* a,unsigned n,void* damage,unsigned dn,unsigned route,const ServerNpcGruntLifeDamageBindings* b,ServerNpcGruntLifeDamageResult* out,const IgnitionRoute* ignition) noexcept{
     if(!out)return 0;*out={};
     if(!a||n<0x638||!damage||dn<0x3c||!b||route>NpcDamageDead||!relation_grunt_class(b->original_vtable)||
        b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
@@ -4234,7 +4279,11 @@ int __cdecl grunt_life_damage(void* a,unsigned n,void* damage,unsigned dn,unsign
             const float amount=read<float>(damage,0x2c);if(!std::isfinite(amount))return 0;
             // 2248c514 +2d4=22353da0 rejects the zero final argument.
             if(amount>12.f&&b->original_vtable!=0x2248c514){
-                if(!b->reaction||!b->reaction(b->context,a,registry.Resolve(read<unsigned>(damage,0x28)),registry.Resolve(read<unsigned>(damage,0x24))))return 0;
+                void* attacker=registry.Resolve(read<unsigned>(damage,0x28));void* inflictor=registry.Resolve(read<unsigned>(damage,0x24));
+                if(ignition){
+                    auto bound=*ignition->bindings;bound.original_vtable=b->original_vtable;
+                    if(!grunt_ignition(a,n,attacker,inflictor,&bound,ignition->result))return 0;
+                }else if(!b->reaction||!b->reaction(b->context,a,attacker,inflictor))return 0;
                 out->reaction_called=1;
             }
         }
@@ -4249,21 +4298,35 @@ int __cdecl grunt_life_damage(void* a,unsigned n,void* damage,unsigned dn,unsign
     }
     return finish(1);
 }
+int __cdecl grunt_life_damage(void* a,unsigned n,void* damage,unsigned dn,unsigned route,const ServerNpcGruntLifeDamageBindings* b,ServerNpcGruntLifeDamageResult* out) noexcept{
+    return grunt_life_damage_impl(a,n,damage,dn,route,b,out,nullptr);
+}
 const ServerNpcGruntLifeDamageApi life_damage_api{1,sizeof(ServerNpcGruntLifeDamageApi),&grunt_life_damage};
-int __cdecl grunt_alive_damage_chain(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntAliveDamageBindings* b,ServerNpcGruntAliveDamageResult* out) noexcept{
+int grunt_alive_damage_chain_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntAliveDamageBindings* b,ServerNpcGruntAliveDamageResult* out,const IgnitionRoute* ignition) noexcept{
     if(!out)return 0;
     out->life={};
     auto& c=out->chain;
     c.detail.impact={};c.detail.right={};c.detail.left={};
     c.notify={};c.report={};reset_squad_report(c.squad);c.report_called=0;
     if(!b||!b->life.shared_direction)return 0;
-    const LifeDamageRoute life{&b->life,&out->life};
+    const LifeDamageRoute life{&b->life,&out->life,ignition};
     const DamageReportRoute report{&b->chain.report,&b->chain.squad,&c.report,&c.squad,&c.report_called};
     const DamageNotifyRoute notify{&b->chain.notify,&c.notify,&report,&life};
     const DamageDetailRoute detail{&b->chain.detail,&c.detail,&notify};
     return grunt_damage_override_impl(a,n,damage,dn,now,&b->chain.detail.damage,&c.detail.damage,&detail);
 }
+int __cdecl grunt_alive_damage_chain(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntAliveDamageBindings* b,ServerNpcGruntAliveDamageResult* out) noexcept{
+    return grunt_alive_damage_chain_impl(a,n,damage,dn,now,b,out,nullptr);
+}
 const ServerNpcGruntAliveDamageApi alive_damage_api{1,sizeof(ServerNpcGruntAliveDamageApi),&grunt_alive_damage_chain};
+int __cdecl grunt_ignition_alive(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntIgnitionAliveBindings* b,ServerNpcGruntIgnitionAliveResult* out) noexcept{
+    if(!out)return 0;out->ignition={};out->ignition.attacker_handle=0xffffffffu;
+    if(!b)return 0;
+    const IgnitionRoute route{&b->ignition,&out->ignition};
+    return grunt_alive_damage_chain_impl(a,n,damage,dn,now,&b->alive,&out->alive,&route);
+}
+const ServerNpcGruntIgnitionApi ignition_api{1,sizeof(ServerNpcGruntIgnitionApi),&grunt_ignition,&grunt_ignition_alive};
+
 
 
 
@@ -4819,4 +4882,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAliveDamageApi=_SiN_GetServerNpcGruntAliveDamageApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAliveDamageApi* __cdecl SiN_GetServerNpcGruntAliveDamageApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAliveDamageApi)?&alive_damage_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntIgnitionApi=_SiN_GetServerNpcGruntIgnitionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntIgnitionApi* __cdecl SiN_GetServerNpcGruntIgnitionApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntIgnitionApi)?&ignition_api:nullptr;
 }
