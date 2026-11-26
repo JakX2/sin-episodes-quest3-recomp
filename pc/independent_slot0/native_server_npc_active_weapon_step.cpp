@@ -399,6 +399,28 @@ bool wake_refresh_entity(void* a,const ServerNpcWakeTransitionBindings& b) noexc
     else value=(prior&~0x18u)|0x20u;
     wr<unsigned>(word,0,value);return true;
 }
+// Original filtered 220a9300/220a93c0 for authenticated Grunt rows.
+// Embedded collision component 22446954 +2c -> 221ffc00 (read +20),
+// and each of the eight primary Grunt +694 targets -> 22044680 (false).
+bool wake_squad_next(std::uint32_t token,int& cursor,void** member,const ServerNpcWakeTransitionBindings& b) noexcept {
+    *member=nullptr;
+    if(!b.storage||cursor< -1||cursor>=16||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
+    void* group=nullptr;if(!resolve(*b.storage,token,0x4c,&group))return false;
+    const int count=rd<int>(group,0x48);if(count<0||count>16)return false;
+    const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+    for(++cursor;cursor<count;++cursor){
+        void* e=registry.Resolve(rd<unsigned>(group,8+4*cursor));if(!e)continue;
+        unsigned bytes=0;if(!b.extent||!b.extent(b.context,e,&bytes)||bytes<0x208)return false;
+        if(!rd<unsigned>(e,0x204)){
+            if(rd<unsigned>(e,0xfc)!=0x22446954u)return false;
+            if(!rd<unsigned>(e,0x11c))continue;
+        }
+        if(!outer_class(rd<unsigned>(e,0),bytes))return false; // foreign rejection virtual not recovered here
+        *member=registry.Resolve(rd<unsigned>(group,8+4*cursor));
+        return true;
+    }
+    return true;
+}
 bool wake_member(void* e,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept {
     unsigned n=0;
     if(!e||!b.extent||!b.extent(b.context,e,&n)||n<4)return false;
@@ -446,7 +468,8 @@ bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const 
     int cursor=-1;
     for(unsigned i=0;i<17;++i){
         void* member=nullptr;const int prior=cursor;
-        if(!b.squad_next||!b.squad_next(b.context,rd<unsigned>(a,0x9c4),&cursor,&member))return false;
+        const auto token=rd<unsigned>(a,0x9c4);
+        if(b.squad_next? !b.squad_next(b.context,token,&cursor,&member): !wake_squad_next(token,cursor,&member,b))return false;
         if(!member)return true;
         if(i==16||cursor<=prior||cursor<0||cursor>=16)return false;
         ++o.squad_visited;
