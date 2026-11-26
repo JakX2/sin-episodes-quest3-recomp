@@ -149,5 +149,36 @@ int main(int argc,char** argv){
     ds.resupply=&dlife;ds.virtual_spawn=nullptr;
     assert(api->dispatch_spawn(df.actor,&ds,&dr)&&dr.native_spawn&&df.precache==7&&dr.notified==2&&df.enters==df.closes);
     assert(globals->clear());
+    // Native KeyValue mutates actual authenticated map entity storage.
+    struct KeyFixture {unsigned interns=0,outputs=0,foreign=0,warnings=0;void* output=nullptr;std::string value,key;} kf;
+    KeyBindings kb{};kb.context=&kf;
+    kb.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=0x6a0;return 1;};
+    kb.intern=[](void* p,const char* value,unsigned* token) noexcept ->int{auto& f=*static_cast<KeyFixture*>(p);f.value=value;*token=++f.interns+100;return 1;};
+    kb.output=[](void* p,void*,void* output,const char* value) noexcept ->int{auto& f=*static_cast<KeyFixture*>(p);f.output=output;f.value=value;++f.outputs;return 1;};
+    kb.foreign=[](void* p,void*,const char* key,const char* value,bool* handled) noexcept ->int{auto& f=*static_cast<KeyFixture*>(p);f.key=key;f.value=value;++f.foreign;*handled=false;return 1;};
+    kb.resupply_bounds_warning=[](void* p,void*) noexcept ->int{++static_cast<KeyFixture*>(p)->warnings;return 1;};
+    KeyResult kr{};
+    auto* disp=nf.storage[9];auto* barrel=nf.storage[10];auto* supply=nf.storage[0];
+    assert(api->key_value(disp,"aNtIgEn#2","42.5xyz",&kb,&kr)&&kr.handled&&kr.offset==0x49c&&kr.field_type==1&&word(disp,0x49c)==0x422a0000);
+    assert(api->key_value(barrel,"Percent","-4",&kb,&kr)&&kr.handled&&word(barrel,0x628)==0xc0800000);
+    assert(api->key_value(barrel,"ContainerFlags","  +9tail",&kb,&kr)&&kr.handled&&word(barrel,0x62c)==9);
+    assert(api->key_value(barrel,"ContainerFlags","2147483648",&kb,&kr)==0&&word(barrel,0x62c)==9);
+    assert(api->key_value(disp,"OnCanisterInserted#1","relay,Trigger,,0,-1",&kb,&kr)&&kr.output&&kf.output==disp+0x4b8);
+    assert(api->key_value(disp,"OnCanisterEjected","relay,Trigger,,1,1",&kb,&kr)&&kr.output&&kf.output==disp+0x4d0);
+    assert(api->key_value(barrel,"OnExplode","relay,Trigger,,0,1",&kb,&kr)&&kr.output&&kf.output==barrel+0x66c);
+    assert(api->key_value(supply,"globalname","campaign_supply",&kb,&kr)&&kr.interned&&word(supply,0x10)==101);
+    assert(api->key_value(supply,"parentname","crate",&kb,&kr)&&kr.interned&&word(supply,0x14)==102);
+    assert(api->key_value(supply,"targetname","supply_1",&kb,&kr)&&kr.interned&&word(supply,0xc0)==103);
+    assert(api->key_value(supply,"spawnflags","3",&kb,&kr)&&kr.scalar&&word(supply,0xb4)==3);
+    assert(api->key_value(supply,"m_flDesiredHealth","0.1",&kb,&kr)&&!kr.handled&&kr.foreign&&word(supply,0x394)==0x3f800000);
+    assert(api->key_value(supply,"mins","0 0 0",&kb,&kr)&&kr.ignored_bounds&&kf.warnings==1);
+    assert(api->key_value(supply,"mins#1","0 0 0",&kb,&kr)&&kr.foreign&&kf.key=="mins"&&kf.warnings==1);
+    // Real parser can now use native keys rather than the test key sink.
+    NativeFixture parsed{};resupply.context=&parsed;pickups.context=&parsed;antigen.context=&parsed;factories.context=&parsed;factories.pickup=&pickups;
+    nb.context=&parsed;nb.key_value=nullptr;nb.native_keys=&kb;
+    const char gameplay[]="{ classname item_antigen_dispenser Antigen 33 targetname station OnCanisterInserted \"relay,Trigger,,0,-1\" } { classname prop_antigen_canister Percent 77 ContainerFlags 9 } { classname item_dynamic_resupply spawnflags 3 globalname persistent }";
+    assert(api->parse(gameplay,sizeof(gameplay),&nb,&r)&&r.completed&&r.native_creates==3&&parsed.alloc==3&&parsed.accept==3);
+    assert(word(parsed.storage[0],0x49c)==0x42040000&&word(parsed.storage[1],0x628)==0x429a0000&&word(parsed.storage[1],0x62c)==9&&word(parsed.storage[2],0xb4)==3&&word(parsed.storage[2],0x10)!=0);
+    assert(kf.output==parsed.storage[0]+0x4b8);
     FreeLibrary(server);FreeLibrary(client);
 }

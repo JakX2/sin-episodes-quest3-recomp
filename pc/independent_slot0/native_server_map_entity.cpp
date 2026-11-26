@@ -3,6 +3,8 @@
 extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
 #include <cstdlib>
+#include <cerrno>
+#include <climits>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_map {
 namespace {
@@ -135,9 +137,76 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
     }
     o->completed=ok;return int(ok);
 }
+template<class T>void write_field(void* a,unsigned off,T v) noexcept {std::memcpy(static_cast<unsigned char*>(a)+off,&v,sizeof(v));}
+unsigned entity_vtable(void* a) noexcept {unsigned vt=0;std::memcpy(&vt,a,4);return vt;}
+bool known_map_vtable(unsigned vt) noexcept {
+    if(vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
+}
+int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBindings* b,KeyResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!actor||!key||!value||!b||!b->extent)return 0;
+    unsigned bytes=0;if(!b->extent(b->context,actor,&bytes)||bytes<4)return 0;
+    const unsigned vt=entity_vtable(actor);o->known_class=known_map_vtable(vt);
+    auto done=[&](){o->completed=1;return 1;};
+    auto foreign=[&](const char* name){
+        bool handled=false;
+        if(!b->foreign||!b->foreign(b->context,actor,name,value,&handled))return 0;
+        o->foreign=1;o->handled=handled;return done();
+    };
+    if(!o->known_class)return foreign(key);
+    // Dynamic resupply override checks bounds BEFORE the base # suffix
+    // normalization. Both exact keys are accepted and ignored.
+    if(vt==resupply_vtable&&(equal_class(key,"mins")||equal_class(key,"maxs"))){
+        if(!b->resupply_bounds_warning||!b->resupply_bounds_warning(b->context,actor))return 0;
+        o->ignored_bounds=o->handled=1;return done();
+    }
+    char name[token_capacity]{};
+    unsigned length=0;while(key[length]&&key[length]!='#'){
+        if(length==sizeof(name)-1)return 0;name[length]=key[length];++length;
+    }
+    struct Spec {const char* key;unsigned offset,type;};
+    // Original CBaseEntity KeyValue special targetname leaf and common
+    // scalar/string datamap entries. Other base fields retain owner dispatch.
+    constexpr Spec common[]{
+        {"classname",0xc,2},{"globalname",0x10,2},{"parentname",0x14,2},{"targetname",0xc0,2},
+        {"speed",0x18,1},{"spawnflags",0xb4,5}
+    };
+    constexpr Spec dispenser[]{
+        {"Antigen",0x49c,1},{"OnCanisterInserted",0x4b8,11},{"OnCanisterEjected",0x4d0,11}
+    };
+    constexpr Spec canister[]{
+        {"Percent",0x628,1},{"ContainerFlags",0x62c,5},{"OnExplode",0x66c,11}
+    };
+    const Spec* spec=nullptr;
+    auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);
+    if(!spec){match(common);if(spec)o->base_field=1;}
+    if(!spec)return foreign(name);
+    o->offset=spec->offset;o->field_type=spec->type;
+    if(bytes<o->offset+4)return 0;
+    if(spec->type==2){
+        unsigned token=0;if(!b->intern||!b->intern(b->context,value,&token))return 0;
+        write_field(actor,o->offset,token);o->interned=1;
+    }else if(spec->type==1){
+        // Original atof -> float, accepts numeric prefix and empty->0.
+        const float scalar=static_cast<float>(std::strtod(value,nullptr));
+        write_field(actor,o->offset,scalar);o->scalar=1;
+    }else if(spec->type==5){
+        // MSVCRT atoi overflow is not a portable C++ contract. Bound the
+        // conversion rather than relying on host undefined behavior.
+        errno=0;const long long scalar=std::strtoll(value,nullptr,10);
+        if(errno==ERANGE||scalar<INT_MIN||scalar>INT_MAX)return 0;
+        write_field(actor,o->offset,static_cast<int>(scalar));o->scalar=1;
+    }else{
+        if(!b->output||!b->output(b->context,actor,static_cast<unsigned char*>(actor)+o->offset,value))return 0;
+        o->output=1;
+    }
+    o->handled=1;return done();
+}
 int __cdecl parse(const char* s,unsigned n,const Bindings* b,Result* o) noexcept {
     if(!o)return 0;*o={};
-    if(!s||!b||(!b->create&&!b->native_factory)||!b->key_value||!b->accept_entity)return 0;
+    if(!s||!b||(!b->create&&!b->native_factory)||(!b->key_value&&!b->native_keys)||!b->accept_entity)return 0;
     unsigned cursor=0;
     for(;;){
         Token top{};if(!token(s,n,cursor,&top))return 0;
@@ -171,7 +240,11 @@ int __cdecl parse(const char* s,unsigned n,const Bindings* b,Result* o) noexcept
             Pair pair{};bool end=false;
             if(!next_pair(s,e.end,p,pair,end))return 0;if(end)break;
             ++o->pairs;
-            if(actor&&!b->key_value(b->context,actor,pair.key,pair.value))return 0;
+            if(actor){
+                if(b->key_value){if(!b->key_value(b->context,actor,pair.key,pair.value))return 0;}
+                else {KeyResult key{};if(!key_value(actor,pair.key,pair.value,b->native_keys,&key))return 0;}
+                // Original base map parser ignores the bool KeyValue return.
+            }
         }
         if(actor&&!b->accept_entity(b->context,actor,s,n,&e))return 0;
         cursor=e.end;
@@ -360,7 +433,7 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

@@ -24,6 +24,19 @@ struct FactoryResult {
     void* actor;void* networkable;unsigned bytes,matched,completed;
 };
 struct Result {unsigned completed,entities,pairs,filtered,created,missing_factory,missing_classname,clears;unsigned offset,native_creates,foreign_creates;FactoryResult last_factory;};
+struct KeyBindings {
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *intern)(void*,const char*,unsigned*) noexcept;
+    // Datamap FIELD_CUSTOM output parser; receives actual output address.
+    int (__cdecl *output)(void*,void*,void*,const char*) noexcept;
+    int (__cdecl *foreign)(void*,void*,const char*,const char*,bool*) noexcept;
+    int (__cdecl *resupply_bounds_warning)(void*,void*) noexcept;
+};
+struct KeyResult {
+    unsigned completed,handled,known_class,base_field,scalar,interned,output,foreign,ignored_bounds;
+    unsigned offset,field_type;
+};
 struct Bindings {
     void* context;
     int (__cdecl *should_create)(void*,const char*,bool*) noexcept; // optional map filter
@@ -33,6 +46,7 @@ struct Bindings {
     int (__cdecl *missing)(void*,const char*) noexcept;
     int (__cdecl *accept_entity)(void*,void*,const char*,unsigned,const EntitySlice*) noexcept;
     const FactoryBindings* native_factory;
+    const KeyBindings* native_keys;
 };
 struct SpawnRow {void* actor;int depth;int priority;};
 struct DispatchBindings {
@@ -92,6 +106,7 @@ struct Api {
     int (__cdecl *create_factory)(const char*,const FactoryBindings*,FactoryResult*) noexcept;
     int (__cdecl *spawn_ordinary)(SpawnRow*,unsigned,bool,const SpawnBindings*,SpawnResult*) noexcept;
     int (__cdecl *dispatch_spawn)(void*,const SpawnBindings*,DispatchResult*) noexcept;
+    int (__cdecl *key_value)(void*,const char*,const char*,const KeyBindings*,KeyResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
