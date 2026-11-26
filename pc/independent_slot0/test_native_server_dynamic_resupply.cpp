@@ -1130,5 +1130,39 @@ int main(int argc,char** argv){
     EvalFixture::u(cbf.screen,0x50,123);
     assert(client_button->command(cbf.panel,sizeof(cbf.panel),"eject",&cbb,&cbr)&&cbr.completed&&cbr.fired&&cbr.index_native&&cbr.index==123&&cbf.server_result.interaction.eject_installed&&cbf.server_result.reschedule.tick==480);
     assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,480,.125f,&afb,&afr)&&afr.completed&&afr.exchange.factory.initialized&&afr.exchange.canister_amount.amount_written&&afr.exchange.amount==42.f&&afr.exchange.think_cleared);
+    // Damage the actual canister created by the client-driven ejection.
+    struct DamageFixture {
+        ExchangeFixture* ex;void* player;
+        unsigned effects=0,events=0,clouds=0,fragments=0,removes=0,schedules=0,stops=0;
+        alignas(4) unsigned char damage[0x48]{};
+    } adf{&ex,hf2.player};
+    AntigenDamageBindings adb{};adb.context=&adf;adb.entries=af_entries;adb.entry_count=4;
+    adb.damage_effect=[](void* p,void* a,const void* d) noexcept ->int{auto& q=*static_cast<DamageFixture*>(p);assert(a==q.ex->canister&&d==q.damage);++q.effects;return 1;};
+    adb.handle=[](void* p,void* a,unsigned* h) noexcept ->int{assert(a==static_cast<DamageFixture*>(p)->player);*h=0xa000;return 1;};
+    adb.break_event=[](void* p,int descriptor,void* attacker,void* a) noexcept ->int{auto& q=*static_cast<DamageFixture*>(p);assert(descriptor==10&&attacker==q.player&&a==q.ex->canister);++q.events;return 1;};
+    adb.cloud=[](void* p,void* a,const float* pos,int type,float amount,float radius,float x,float y) noexcept ->int{auto& q=*static_cast<DamageFixture*>(p);assert(a==q.ex->canister&&type==1&&std::abs(amount-4.2f)<.00001f&&radius==150&&x==-1&&y==-1&&pos[0]==0);++q.clouds;return 1;};
+    adb.schedule=[](void* p,void* a,float time) noexcept ->int{auto& q=*static_cast<DamageFixture*>(p);assert(a==q.ex->canister&&time==-1&&!EvalFixture::rd(a,8));++q.schedules;return 1;};
+    adb.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<DamageFixture*>(p);assert(a==q.ex->canister||a==q.ex->a->steam);++q.removes;return 1;};
+    adb.fragment=[](void* p,void* a,const char* name,int count,float x,float y,float z) noexcept ->int{
+        auto& q=*static_cast<DamageFixture*>(p);constexpr const char* models[]{"models/items/antigen/antigen_break01.mdl","models/items/antigen/antigen_break02.mdl","models/items/antigen/antigen_break03.mdl","models/items/antigen/antigen_break04.mdl"};
+        assert(a==q.ex->canister&&q.removes&&q.fragments<4&&!std::strcmp(name,models[q.fragments])&&count==1&&x==200&&y==-200&&z==25);++q.fragments;return 1;
+    };
+    adb.stop_sound=[](void* p,unsigned token) noexcept ->int{assert(token==99);++static_cast<DamageFixture*>(p)->stops;return 1;};
+    AntigenDamageResult adr{};
+    EvalFixture::u(adf.damage,0x28,0xa000);EvalFixture::u(adf.damage,0x38,0x100);
+    assert(api->antigen_canister_damage(ex.canister,sizeof(ex.canister),adf.damage,sizeof(adf.damage),&adb,&adr)&&adr.completed&&adr.native_result==1&&!adr.damage_admitted);
+    assert(EvalFixture::rd(ex.canister,0x638)==1u);
+    EvalFixture::u(adf.damage,0x38,2);
+    assert(api->antigen_canister_damage(ex.canister,sizeof(ex.canister),adf.damage,sizeof(adf.damage),&adb,&adr)&&adr.completed&&adr.damage_admitted&&adr.damage_effect&&adr.attacker_handle==0xa000&&adr.broken&&adr.break_event&&adr.output_called&&adr.clouds==1&&adr.removed&&adr.fragments==4);
+    assert(adf.effects==1&&adf.events==1&&adf.clouds==1&&adf.fragments==4&&adf.removes==1&&adf.schedules==1&&EvalFixture::rd(ex.canister,0x62c)==8);
+    // Explicit leak termination on restored/non-default flag state:
+    // count is signed integer, stale steam handles remain unchanged.
+    EvalFixture::u(ex.canister,0x62c,0x10b);EvalFixture::u(ex.canister,0x638,1);EvalFixture::u(ex.canister,0x640,99);EvalFixture::u(ex.canister,0x668,0xb001);
+    EvalFixture::f(ex.canister,0x63c,10);EvalFixture::f(ex.canister,0x628,42);
+    assert(api->antigen_canister_stop_leak(ex.canister,sizeof(ex.canister),&adb,&adr)&&adr.completed&&adr.leak_stopped&&adr.steam_removed&&adr.sound_stopped&&adr.leak_decremented&&adr.leak_count==0&&adr.depleted);
+    assert(EvalFixture::rd(ex.canister,0x62c)==9&&EvalFixture::rd(ex.canister,0x628)==0&&EvalFixture::rd(ex.canister,0x668)==0xffffffffu);
+    EvalFixture::u(ex.canister,0x62c,0x109);EvalFixture::u(ex.canister,0x638,2);EvalFixture::u(ex.canister,0x668,0xdead0001);
+    assert(api->antigen_canister_stop_leak(ex.canister,sizeof(ex.canister),&adb,&adr)&&adr.completed&&adr.leak_count==1&&!adr.steam_removed&&!adr.depleted&&EvalFixture::rd(ex.canister,0x668)==0xdead0001u);
+    assert(api->antigen_canister_stop_leak(ex.canister,sizeof(ex.canister),&adb,&adr)&&adr.completed&&!adr.leak_stopped);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }

@@ -962,7 +962,7 @@ int __cdecl canister_construct(void* c,unsigned n,const CanisterBindings* b,Cani
     // 222ffb80 base leaves and 222fffc0 derived constructor.
     set_field(c,0,antigen_canister_vtable);set_field(c,0x494,0x2246f01cu);set_field(c,0x498,0x2246eff4u);
     set_field(c,0x628,100.f);set_field(c,0x62c,9u);set_field(c,0x630,0x2246a8f4u);
-    set_field(c,0x634,0.f);set_field(c,0x638,1.f);
+    set_field(c,0x634,0.f);set_field(c,0x638,1);
     for(unsigned off=0x63c;off<=0x64c;off+=4)set_field(c,off,0u);
     for(unsigned off=0x668;off<=0x678;off+=0x10)set_field(c,off,0xffffffffu);
     set_field(c,0x66c,0u);set_field(c,0x67c,0u);set_field(c,0x69c,0xffffffffu);
@@ -1144,7 +1144,115 @@ int __cdecl antigen_button_event(void* a,unsigned n,const char* name,int index,c
        !b->control.schedule(b->control.schedule_context?b->control.schedule_context:b->control.context,a,o->control.next_time))return 0;
     o->control.scheduled=1;return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy};
+bool antigen_damage_ready(void* c,unsigned n,const AntigenDamageBindings* b) noexcept {
+    return c&&n>=antigen_canister_extent&&field<unsigned>(c,0)==antigen_canister_vtable&&b&&
+        b->entry_count<=sin_independent::kEntityHandleCapacity&&(!b->entry_count||b->entries);
+}
+bool antigen_break_impl(void* c,unsigned n,const AntigenDamageBindings& b,AntigenDamageResult& o) noexcept;
+bool antigen_leak_stop(void* c,unsigned n,const AntigenDamageBindings& b,AntigenDamageResult& o) noexcept {
+    const unsigned flags=field<unsigned>(c,0x62c);
+    if(!(flags&0x100u))return true;
+    set_field(c,0x62c,flags&~0x102u);o.leak_stopped=1;
+    if(const unsigned sound=field<unsigned>(c,0x640)){
+        if(!b.stop_sound||!b.stop_sound(b.context,sound))return false;o.sound_stopped=1;
+    }
+    const sin_independent::EntityHandleView registry(b.entries,b.entry_count);
+    if(void* steam=registry.Resolve(field<unsigned>(c,0x668))){
+        if(!b.remove||!b.remove(b.context,steam))return false;
+        set_field(c,0x668,0xffffffffu);o.steam_removed=1;
+    }
+    o.leak_count=signed_word(unsigned(field<int>(c,0x638))-1u);
+    set_field(c,0x638,o.leak_count);o.leak_decremented=1;
+    if(o.leak_count<=0){set_field(c,0x63c,0.f);set_field(c,0x628,0.f);o.depleted=1;}
+    if(field<unsigned>(c,0x62c)&0x20u)return antigen_break_impl(c,n,b,o);
+    return true;
+}
+bool antigen_break_impl(void* c,unsigned n,const AntigenDamageBindings& b,AntigenDamageResult& o) noexcept {
+    const sin_independent::EntityHandleView registry(b.entries,b.entry_count);
+    auto attacker=[&](){return registry.Resolve(field<unsigned>(c,0x69c));};
+    auto origin=[&](float* pos){
+        if(field<unsigned>(c,0xb8)&0x800u){
+            if(!b.refresh_origin||!b.refresh_origin(b.context,c))return false;
+            ++o.origin_refreshes;
+        }
+        copy_vec(c,0x2bc,pos);return true;
+    };
+    if(!b.break_event||!b.break_event(b.context,10,attacker(),c))return false;o.break_event=1;
+    set_field(c,0x62c,field<unsigned>(c,0x62c)&~0x23u);
+    if(!antigen_leak_stop(c,n,b,o))return false;
+    if(!(field<unsigned>(c,0x62c)&8u)){
+        if(!b.other_break_effect||!b.other_break_effect(b.context,c,attacker(),0))return false;++o.other_effects;
+    }
+    if(const unsigned sound=field<unsigned>(c,0x644)){
+        if(!b.sound||!b.sound(b.context,c,sound))return false;o.break_sound=1;
+    }
+    using namespace native_weapon_tables;
+    const auto* output=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    ServerEntityVoidOutputBindings empty{};ServerEntityVoidOutputResult result{};
+    if(!output||!output->fire(static_cast<unsigned char*>(c)+0x66c,n-0x66c,c,c,n,0.f,b.output?b.output:&empty,&result))return false;
+    o.output_called=1;o.output_actions=result.queued;
+    auto cloud=[&](int type,float amount){
+        float pos[3];if(!origin(pos)||!b.cloud||!b.cloud(b.context,c,pos,type,amount,150.f,-1.f,-1.f))return false;
+        ++o.clouds;return true;
+    };
+    if((field<unsigned>(c,0x62c)&4u)&&!cloud(0,10.f))return false;
+    if((field<unsigned>(c,0x62c)&8u)&&field<float>(c,0x628)>0.f){
+        o.cloud_amount=float(double(field<float>(c,0x628))*double(.1f));
+        if(!cloud(1,o.cloud_amount))return false;
+    }
+    if(field<unsigned>(c,0x62c)&0x80u){
+        if(!b.other_break_effect||!b.other_break_effect(b.context,c,attacker(),0x80))return false;++o.other_effects;
+    }
+    set_field(c,8,0u);o.think_cleared=1;
+    if(!b.schedule||!b.schedule(b.context,c,-1.f))return false;o.tick_cleared=1;
+    if(!b.remove||!b.remove(b.context,c))return false;o.removed=1;
+    // CAntigenCanister::Break continues after deferred base removal.
+    static constexpr const char* models[]{
+        "models/items/antigen/antigen_break01.mdl","models/items/antigen/antigen_break02.mdl",
+        "models/items/antigen/antigen_break03.mdl","models/items/antigen/antigen_break04.mdl"};
+    for(const char* model:models){
+        if(!b.fragment||!b.fragment(b.context,c,model,1,200.f,-200.f,25.f))return false;++o.fragments;
+    }
+    o.broken=1;return true;
+}
+int __cdecl antigen_canister_break(void* c,unsigned n,const AntigenDamageBindings* b,AntigenDamageResult* o) noexcept {
+    if(!o)return 0;*o={};if(!antigen_damage_ready(c,n,b)||!antigen_break_impl(c,n,*b,*o))return 0;
+    o->completed=1;return 1;
+}
+int __cdecl antigen_canister_stop_leak(void* c,unsigned n,const AntigenDamageBindings* b,AntigenDamageResult* o) noexcept {
+    if(!o)return 0;*o={};if(!antigen_damage_ready(c,n,b)||!antigen_leak_stop(c,n,*b,*o))return 0;
+    o->completed=1;return 1;
+}
+int __cdecl antigen_canister_damage(void* c,unsigned n,const void* info,unsigned info_bytes,const AntigenDamageBindings* b,AntigenDamageResult* o) noexcept {
+    if(!o)return 0;*o={};if(!antigen_damage_ready(c,n,b)||!info||info_bytes<0x3c)return 0;
+    auto done=[&](){o->native_result=o->completed=1;return 1;};
+    if(!(field<unsigned char>(info,0x38)&0xc6u))return done();
+    o->damage_admitted=1;
+    if(!(field<unsigned>(c,0xb8)&0x80000000u)){
+        if(!b->damage_effect||!b->damage_effect(b->context,c,info))return 0;o->damage_effect=1;
+    }
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    o->attacker_handle=0xffffffffu;
+    if(void* attacker=registry.Resolve(field<unsigned>(info,0x28))){
+        o->attacker_resolved=1;
+        if(!b->handle||!b->handle(b->context,attacker,&o->attacker_handle))return 0;
+    }
+    set_field(c,0x69c,o->attacker_handle);
+    const unsigned flags=field<unsigned>(c,0x62c);
+    if(flags&1u){if(!antigen_break_impl(c,n,*b,*o))return 0;return done();}
+    if(!(flags&0x100u)){
+        // This is not the default antigen path; shared pressure-container startup.
+        if(!b->start_leak||!b->start_leak(b->context,c))return 0;o->leak_started=1;
+        return done();
+    }
+    if(flags&2u){
+        float now=0;if(!b->clock||!b->clock(b->context,&now)||!std::isfinite(now))return 0;
+        const double elapsed=double(now)-double(field<float>(c,0x64c));o->elapsed=float(elapsed);
+        if(elapsed>.25&&!antigen_break_impl(c,n,*b,*o))return 0;
+    }
+    return done();
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

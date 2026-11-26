@@ -448,6 +448,36 @@ struct AntigenInteractionResult {
     unsigned button_checked,button_matched,eject_installed;
     AntigenResult control;
 };
+// CPropContainer damage/termination, specialized to CAntigenCanister.
+// The engine owns physical impulses, cloud/fragment creation and deferred deletion.
+struct AntigenDamageBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned entry_count;
+    int (__cdecl *damage_effect)(void*,void*,const void*) noexcept;
+    int (__cdecl *handle)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *start_leak)(void*,void*) noexcept;
+    int (__cdecl *stop_sound)(void*,unsigned) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+    int (__cdecl *break_event)(void*,int,void*,void*) noexcept;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *sound)(void*,void*,unsigned) noexcept;
+    int (__cdecl *cloud)(void*,void*,const float*,int,float,float,float,float) noexcept;
+    // Foreign flag branches (non-antigen explosion and ignition) remain hosted.
+    int (__cdecl *other_break_effect)(void*,void*,void*,unsigned) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+    int (__cdecl *fragment)(void*,void*,const char*,int,float,float,float) noexcept;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+};
+struct AntigenDamageResult {
+    unsigned completed,damage_admitted,damage_effect,attacker_resolved,attacker_handle,leak_started,
+        leak_stopped,sound_stopped,steam_removed,leak_decremented,depleted,broken,break_event,
+        output_called,output_actions,origin_refreshes,clouds,other_effects,break_sound,
+        think_cleared,tick_cleared,removed,fragments;
+    int native_result,leak_count;
+    float elapsed,cloud_amount;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -501,6 +531,9 @@ struct Api {
     int (__cdecl *canister_idle)(void*,unsigned,const CanisterBindings*,CanisterResult*) noexcept;
     int (__cdecl *antigen_factory_create)(const char*,const AntigenFactoryBindings*,AntigenFactoryResult*) noexcept;
     int (__cdecl *antigen_factory_destroy)(void*,unsigned,void*,const AntigenFactoryBindings*,AntigenFactoryResult*) noexcept;
+    int (__cdecl *antigen_canister_damage)(void*,unsigned,const void*,unsigned,const AntigenDamageBindings*,AntigenDamageResult*) noexcept;
+    int (__cdecl *antigen_canister_break)(void*,unsigned,const AntigenDamageBindings*,AntigenDamageResult*) noexcept;
+    int (__cdecl *antigen_canister_stop_leak)(void*,unsigned,const AntigenDamageBindings*,AntigenDamageResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
