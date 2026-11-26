@@ -1885,9 +1885,9 @@ int main(int argc,char** argv){
         assert(g&&!GetProcAddress(c,server_npc_grunt_death_prefix_export)&&!g(0,sizeof(ServerNpcGruntDeathPrefixApi))&&!g(1,0));
         const auto* api=g(1,sizeof(ServerNpcGruntDeathPrefixApi));assert(api);
         struct DeathFixture{
-            alignas(4) unsigned char actor[0x1088]{},other[0x20]{},damage[0x48]{},desc[0x18]{};
+            alignas(4) unsigned char actor[0x1088]{},other[0x20]{},damage[0x48]{},desc[0x48]{};
             sin_independent::EntityHandleEntry entries[3]{};
-            unsigned step=0;bool subclass=false;
+            unsigned step=0;bool subclass=false;int activity=-1;
             static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
             static DeathFixture& self(void* p){return *static_cast<DeathFixture*>(p);}
         } q;
@@ -1920,6 +1920,32 @@ int main(int argc,char** argv){
             assert(api->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),20,&b,&o)&&o.completed&&o.signal_called&&o.prepared&&o.life_changed&&o.removed&&o.removal.removal.event&&o.speech_called&&o.speech.request.group_called&&o.tail_required&&o.subclass_called==q.subclass&&q.step==(q.subclass?7u:6u));
             if(vt!=0x2249aaa4&&vt!=0x2248df04)assert(o.jet_cleared&&o.jet_token==77&&!DeathFixture::rd(q.actor,0x1008));
         }
+        auto gd=reinterpret_cast<GetServerNpcGruntDeathEventApi>(GetProcAddress(s,server_npc_grunt_death_event_export));
+        assert(gd&&!GetProcAddress(c,server_npc_grunt_death_event_export)&&!gd(0,sizeof(ServerNpcGruntDeathEventApi))&&!gd(1,0));
+        const auto* death=gd(1,sizeof(ServerNpcGruntDeathEventApi));assert(death);
+        ServerNpcGruntDeathEventBindings db{};db.prefix=b;db.prefix.removal.removal.leave.sentence.speech.original_vtable=0x2249aaa4;db.context=&q;
+        db.base_death=[](void* p,void* a,void* d) noexcept -> int{
+            auto& q=DeathFixture::self(p);assert(a==q.actor&&d==q.damage&&q.step==6&&!DeathFixture::rd(a,0x7c));++q.step;return 1;};
+        db.activity_lookup=[](void* p,void* a,int id,int* value) noexcept -> int{
+            auto& q=DeathFixture::self(p);assert(a==q.actor&&q.step==7&&id==0x18&&DeathFixture::rd(a,0x858)==7&&(DeathFixture::rd(a,0x7cc)&(1u<<16)));*value=q.activity;++q.step;return 1;};
+        db.final_remove=[](void* p,void* a) noexcept -> int{auto& q=DeathFixture::self(p);assert(a==q.actor&&q.step==8);++q.step;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        static ServerNpcGruntDeathEventResult dr;
+        auto reset_death=[&](){
+            std::memset(q.actor,0,sizeof(q.actor));q.step=0;q.subclass=false;
+            q.actor[0xcb1]=1;f.put(q.actor,0xccc,17);f.put(q.actor,0x7c,99u);
+            q.actor[0xbd]=0x20;f.put(q.actor,0x850,3);f.put(q.actor,0x858,3);f.put(q.actor,0x854,10.f);
+            q.damage[0x3a]=0x80;
+        };
+        reset_death();q.activity=-1;
+        assert(death->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),21,&db,&dr)&&dr.completed&&!dr.prefix.tail_required&&dr.field_cleared&&dr.base_called&&dr.condition.mapped&&dr.ideal_written&&dr.activity_called&&!dr.state_written&&dr.remove_called&&q.step==9&&DeathFixture::rd(q.actor,0x850)==3);
+        reset_death();q.activity=-1;f.put(q.actor,0x1c,0x17);f.put(q.actor,0xb8,0x100000u);
+        assert(death->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),22,&db,&dr)&&dr.completed&&dr.state_written&&dr.time_written&&dr.previous_state==3&&!dr.remove_called&&q.step==8&&DeathFixture::rd(q.actor,0x850)==7);
+        reset_death();q.activity=42;f.put(q.actor,0x850,7);q.damage[0x3a]=0;
+        assert(death->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),23,&db,&dr)&&dr.completed&&dr.state_written&&!dr.time_written&&dr.previous_state==7&&!dr.remove_called&&q.step==8);
+        reset_death();q.activity=42;f.put(q.actor,0xbc,0x20002000u);q.damage[0x3a]=0;
+        assert(death->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),24,&db,&dr)&&dr.completed&&dr.activity_called&&!dr.state_written&&!dr.remove_called&&q.step==8);
+
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
