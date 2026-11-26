@@ -6,6 +6,7 @@ extern "C" __declspec(dllexport) const sin_port::native_resupply::Api* __cdecl S
 #include <cstring>
 #include <limits>
 #include <initializer_list>
+#include <charconv>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWeaponActivityApi* __cdecl SiN_GetServerWeaponActivityApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSubclassSchedulerApi* __cdecl SiN_GetServerNpcSubclassSchedulerApi(std::uint32_t,std::uint32_t) noexcept;
@@ -760,6 +761,53 @@ unsigned input_decimal(const char* p) noexcept {
     while(*p>='0'&&*p<='9'){v=v*10u+static_cast<unsigned>(*p-'0');++p;}
     return negative?0u-v:v;
 }
+// 22155fad -> 223a5c8b -> 223b02f6. The original C-locale
+// grammar is decimal prefix, including D/d exponent, not modern
+// hex-float / NaN / Inf syntax. input_text bounds its NUL to 4096 bytes.
+// Normalize only the accepted prefix; host from_chars rounds to double
+// without depending on locale, then store the original float payload.
+// Rare extreme decimal rounding differences from the old CRT remain.
+bool input_decimal_float(const char* p,float& value) noexcept {
+    while(*p==' '||(*p>='\t'&&*p<='\r'))++p;
+    const bool neg=*p=='-';if(neg||*p=='+')++p;
+    char decimal[4097]{};unsigned used=0,digits=0,before=0,first_nonzero=4096;
+    if(neg)decimal[used++]='-';
+    auto digit=[](char ch){return ch>='0'&&ch<='9';};
+    auto append_digit=[&](){
+        if(*p!='0'&&first_nonzero==4096)first_nonzero=digits;
+        decimal[used++]=*p++;++digits;
+    };
+    while(digit(*p))append_digit();
+    before=digits;
+    if(*p=='.'){
+        decimal[used++]=*p++;
+        while(digit(*p))append_digit();
+    }
+    if(!digits){value=0.f;return true;}
+    int exponent=0;
+    if(*p=='e'||*p=='E'||*p=='d'||*p=='D'){
+        const char* e=p+1;const bool minus=*e=='-';
+        if(minus||*e=='+')++e;
+        if(digit(*e)){
+            decimal[used++]='e';if(minus)decimal[used++]='-';
+            while(digit(*e)){
+                if(exponent<10000){exponent=exponent*10+(*e-'0');if(exponent>10000)exponent=10000;}
+                decimal[used++]=*e++;
+            }
+            if(minus)exponent=-exponent;
+        }
+    }
+    if(first_nonzero==4096){value=neg?-0.f:0.f;return true;}
+    double converted=0;
+    const auto parsed=std::from_chars(decimal,decimal+used,converted,std::chars_format::general);
+    if(parsed.ec==std::errc::result_out_of_range){
+        const int magnitude=static_cast<int>(before)-static_cast<int>(first_nonzero)-1+exponent;
+        value=std::copysign(magnitude>=0?std::numeric_limits<float>::infinity():0.f,neg?-1.f:1.f);
+        return true;
+    }
+    if(parsed.ec!=std::errc{}||parsed.ptr!=decimal+used)return false;
+    value=static_cast<float>(converted);return true;
+}
 // Pure conversion leaves of 22155e60. Return false only for missing host
 // services, distinguish a rejected conversion from a malformed binding.
 bool input_convert(void* v,unsigned wanted,const ServerEntityAcceptInputBindings& b,bool& ok) noexcept {
@@ -775,6 +823,11 @@ bool input_convert(void* v,unsigned wanted,const ServerEntityAcceptInputBindings
     }
     if(type==1u&&wanted==6u){wr<std::uint8_t>(v,0,rd<float>(v,0)!=0.f);wr<unsigned>(v,0x10,6u);return true;}
     // Void -> string is accepted by AcceptInput itself without conversion.
+    if(type==2u&&wanted==1u&&!b.convert&&(b.string_text||!rd<unsigned>(v,0))){
+        const char* text=nullptr;float value=0;
+        if(!input_text(b,rd<unsigned>(v,0),&text)||!input_decimal_float(text,value))return false;
+        wr<float>(v,0,value);wr<unsigned>(v,0,1u);return true;
+    }
     if(type==2u&&(wanted==5u||wanted==6u)&&b.string_text&&!b.convert){
         const char* text=nullptr;if(!input_text(b,rd<unsigned>(v,0),&text))return false;
         const unsigned value=input_decimal(text);
