@@ -159,7 +159,7 @@ int main(int argc,char** argv){
     // GameFrame event queue -> relay AcceptInput -> downstream and refire.
     struct CampaignFixture {
         alignas(4) unsigned char automatic[nm::auto_extent]{},relay[nm::relay_extent]{},target[4]{};
-        alignas(4) unsigned char actions[2][0x1c]{},root[0x38]{},events[4][0x38]{};
+        alignas(4) unsigned char actions[2][0x1c]{},root[0x38]{},events[8][0x38]{};
         Fixture* frame=nullptr;
         const ServerEntityNamedEventQueueApi* api=nullptr;
         ServerEntityNamedEventQueueBindings queue{};
@@ -197,7 +197,7 @@ int main(int argc,char** argv){
         auto& q=*static_cast<CampaignFixture*>(p);if(!token||token>q.event_alloc)return 0;*row=q.events[token-1];*bytes=0x38;return 1;
     };
     camp.queue.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{
-        auto& q=*static_cast<CampaignFixture*>(p);if(q.event_alloc==4)return 0;*row=q.events[q.event_alloc++];*token=q.event_alloc;*bytes=0x38;return 1;
+        auto& q=*static_cast<CampaignFixture*>(p);if(q.event_alloc==8)return 0;*row=q.events[q.event_alloc++];*token=q.event_alloc;*bytes=0x38;return 1;
     };
     camp.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=201&&token<=205;return 1;};
     ServerEntityVoidOutputBindings fire{};fire.context=&camp;
@@ -264,5 +264,74 @@ int main(int argc,char** argv){
     assert(boundary(true,&state,&b,&out)&&out.logic_auto.no_think&&out.events.events==1&&out.events.foreign_inputs==1&&out.events.future_stopped&&camp.delivered==1&&camp.relay[0x3ad]);
     f.g.tick=85;f.g.curtime=10.625f;
     assert(boundary(true,&state,&b,&out)&&out.events.events==1&&out.events.native_inputs==1&&out.events.direct==1&&!camp.relay[0x3ad]&&!word(camp.root,0x30)&&camp.event_releases==3&&camp.records==1&&camp.notifications==2&&!camp.locked);
+    // Native recurring timer through actual GameFrame and its own queue.
+    // Reuse campaign pool with no surviving actions/events.
+    std::memset(camp.automatic,0,sizeof(camp.automatic));
+    std::memset(camp.actions,0,sizeof(camp.actions));std::memset(camp.events,0,sizeof(camp.events));
+    camp.allocated=camp.action_id=camp.action_releases=camp.event_alloc=camp.event_releases=camp.delivered=0;
+    camp.notifications=camp.records=0;
+    put(camp.automatic,0,nm::timer_vtable);put(camp.automatic,0x378,0x3000u);
+    put(camp.automatic,0x74,-1);put(camp.automatic,0xb8,0x400000u);
+    put(camp.automatic,0x3e0,0x3e800000u); // .25 seconds
+    assert(map->key_value(camp.automatic,"OnTimer","final,Use,,0,-1",&keys,&kr)&&kr.output);
+    camp.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{
+        *yes=(token>=201&&token<=205)||token==0x22420090||token==0x223edce8||token==0x223edd00;return 1;
+    };
+    fire.enqueue=[](void* p,void* a,void* c,const ServerEntityVoidOutputAction* action) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);assert(a==q.automatic&&c==q.automatic&&q.frame->depth==1&&!q.locked);
+        ServerEntityNamedEventQueueResult out{};
+        return q.api->enqueue(q.root,sizeof(q.root),99,q.frame->g.curtime,0x3000u,0x3000u,action,&q.queue,&out);
+    };
+    nm::TimerBindings timer_behavior{};timer_behavior.context=&camp;timer_behavior.output=&fire;
+    timer_behavior.now=&f.g.curtime;timer_behavior.cadence=&cc;timer_behavior.entries=ce;timer_behavior.entry_count=2;
+    timer_behavior.tick_interval=&f.g.interval;
+    nm::TimerPrimaryBindings timer_primary{};timer_primary.behavior=&timer_behavior;timer_primary.context=&camp;
+    timer_primary.record=[](void* p,void* a,int tick,float time,int due) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);assert(a==q.automatic&&tick==due&&time==q.frame->g.curtime);++q.records;return 1;
+    };
+    timer_primary.scope=[](void*,void*,bool) noexcept ->int{return 1;};
+    input.relay=nullptr;input.timer=&timer_behavior;
+    input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+        *text=token==0x22420090?"RefireTime":token==0x223edd00?"Enable":token==0x223edce8?"Disable":nullptr;
+        if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);*bytes=a==q.automatic?nm::timer_extent:a==q.target?4u:0u;return *bytes!=0;
+    };
+    events.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** target) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);assert(q.locked&&name==203&&a==q.automatic&&c==q.automatic);*target=prev?nullptr:q.target;return 1;
+    };
+    events.accept=[](void* p,void* target,unsigned input,void* a,void* c,const void* variant,unsigned id) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);unsigned type=99,wanted=0;std::memcpy(&type,static_cast<const unsigned char*>(variant)+0x10,4);std::memcpy(&wanted,q.actions[0]+0x14,4);
+        assert(q.locked&&target==q.target&&input==204&&a==q.automatic&&c==q.automatic&&!type&&id==wanted);++q.delivered;return 1;
+    };
+    b.logic_auto=nullptr;b.logic_timer=&timer_primary;f.slots[0]=camp.automatic;
+    f.g.curtime=20.f;f.g.tick=160;
+    nm::TimerResult timer_spawn_result{};
+    assert(map->timer_spawn(camp.automatic,sizeof(camp.automatic),&timer_behavior,&timer_spawn_result)&&word(camp.automatic,0x74)==162);
+    // Deliberately stale owner interval; both frame actor and event paths
+    // must override it with the authoritative .125-second live interval.
+    const float stale_interval=.25f;timer_behavior.tick_interval=&stale_interval;
+    auto enqueue_timer=[&](unsigned input_token,unsigned type,unsigned value,float delay){
+        unsigned variant[5]{value,0,0,0xffffffffu,type};ServerEntityNamedEventQueueResult out{};
+        return camp.api->enqueue_direct(camp.root,sizeof(camp.root),99,f.g.curtime,0x3000u,input_token,0x3000u,0x3000u,variant,sizeof(variant),delay,0,&camp.queue,&out);
+    };
+    assert(enqueue_timer(0x22420090,1,0x3f000000u,.125f)); // RefireTime .5
+    assert(boundary(true,&state,&b,&out)&&out.logic_timer.not_due&&out.events.future_stopped);
+    f.g.curtime=20.125f;f.g.tick=161;
+    assert(boundary(true,&state,&b,&out)&&out.logic_timer.not_due&&out.events.native_inputs==1&&word(camp.automatic,0x74)==165);
+    f.g.curtime=20.25f;f.g.tick=162;
+    assert(boundary(true,&state,&b,&out)&&out.logic_timer.not_due&&!camp.delivered);
+    f.g.curtime=20.625f;f.g.tick=165;
+    assert(boundary(true,&state,&b,&out)&&out.native_timer==1&&out.logic_timer.invoked&&out.logic_timer.next_tick==169&&out.events.foreign_inputs==1&&camp.delivered==1);
+    assert(enqueue_timer(0x223edce8,0,0,.125f));
+    f.g.curtime=20.75f;f.g.tick=166;
+    assert(boundary(true,&state,&b,&out)&&out.logic_timer.not_due&&out.events.native_inputs==1&&word(camp.automatic,0x74)==0xffffffffu);
+    f.g.curtime=21.125f;f.g.tick=169;
+    assert(boundary(true,&state,&b,&out)&&out.logic_timer.no_think&&camp.delivered==1);
+    assert(enqueue_timer(0x223edd00,0,0,0));
+    assert(boundary(true,&state,&b,&out)&&out.logic_timer.no_think&&out.events.native_inputs==1&&word(camp.automatic,0x74)==173);
+    f.g.curtime=21.625f;f.g.tick=173;
+    assert(boundary(true,&state,&b,&out)&&out.logic_timer.invoked&&out.logic_timer.next_tick==177&&out.events.foreign_inputs==1&&camp.delivered==2&&camp.records==2&&camp.event_alloc==5&&camp.event_releases==5&&!word(camp.root,0x30));
     FreeLibrary(server);FreeLibrary(client);
 }

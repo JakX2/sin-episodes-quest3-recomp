@@ -61,6 +61,7 @@ struct Bindings {
     // separate from profiler scopes and must be paired even on failure.
     int (__cdecl *edict_scope)(void*,bool) noexcept;
     const native_map::AutoPrimaryBindings* logic_auto;
+    const native_map::TimerPrimaryBindings* logic_timer;
 };
 struct Result {
     unsigned completed,transition,skip_consumed,double_step,profile_written,cleanup_calls,
@@ -75,6 +76,8 @@ struct Result {
     ServerEntityEventServiceResult events;
     unsigned native_auto;
     native_map::AutoPrimaryResult logic_auto;
+    unsigned native_timer;
+    native_map::TimerPrimaryResult logic_timer;
 };
 struct Api {
     std::uint32_t version,size;
