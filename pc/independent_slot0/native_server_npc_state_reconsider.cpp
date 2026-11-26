@@ -3389,6 +3389,79 @@ bool death_dirty(void* a,const ServerNpcEnemyMemoryBindings& storage,unsigned& l
     }
     return true;
 }
+
+int __cdecl grunt_state_signal(void* a,unsigned n,int value,const ServerNpcGruntStateSignalBindings* b,ServerNpcGruntStateSignalResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0xdb2||!b)return 0;
+    const auto& sb=b->members;const auto vt=sb.speech.original_vtable;
+    if(!relation_grunt_class(vt)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const bool jet=vt==0x2248c514||vt==0x2248e83c||vt==0x2249964c||vt==0x224a4a4c;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    if(jet&&read<unsigned>(a,0x868)){
+        if(n<0x1028||!b->jet_prepare||!b->jet_prepare(b->context,a))return 0;
+        out->jet_prepared=1;
+        out->jet_handle=read<unsigned>(a,0x1024);
+        void* linked=registry.Resolve(out->jet_handle);
+        if(!linked||!b->member_signal||!b->member_signal(b->context,linked,1))return 0;
+        out->jet_linked=1;
+        const auto object=read<unsigned>(a,0x218);
+        if(!object||!b->jet_object||!b->jet_object(b->context,object))return 0;
+        out->jet_object_called=1;
+    }
+    // Jet override tail calls the base, which re-reads the state.
+    if(!read<unsigned>(a,0x868)){out->completed=1;return 1;}
+    write(a,0x868,0u);out->state_cleared=1;
+    const auto flags=read<unsigned>(a,0x78);
+    if(flags&0x20){
+        if(!death_dirty(a,b->dirty_storage,out->local_dirty,out->external_dirty))return 0;
+        write(a,0x78,flags&~0x20u);out->flag_cleared=1;
+    }
+    if(!b->refresh||!b->refresh(b->context,a))return 0;
+    out->refreshed=1;
+    if(static_cast<std::uint8_t>(value)){
+        if(!b->output||!b->output(b->context,a,0xbc8))return 0;
+        out->output_called=1;
+    }
+    if(!read<std::uint8_t>(a,0x870)||!read<unsigned>(a,0x9c4)){out->completed=1;return 1;}
+    // First/next original iterators 220a9300/220a93c0 use the same filtered group order.
+    // Re-fetch the group for each next call, but not within a single iterator scan.
+    int i=0;
+    for(;;){
+        void* group=nullptr;
+        const auto token=read<unsigned>(a,0x9c4);
+        if(!token||!speech_squad(sb.speech,token,group))return 0;
+        void* member=nullptr;
+        for(;;++i){
+            const int count=read<int>(group,0x48);
+            if(count<0||count>16)return 0;
+            if(i>=count)break;
+            ++out->scans;
+            void* e=registry.Resolve(read<unsigned>(group,8+4*i));
+            bool yes=false;if(!sentence_eligible(e,sb,yes))return 0;
+            if(yes){
+                ++out->eligible;
+                // Both original iterator methods resolve the current row again after eligibility.
+                member=registry.Resolve(read<unsigned>(group,8+4*i));
+                break;
+            }
+        }
+        if(!member)break;
+        unsigned extent=0;
+        if(!sb.extent||!sb.extent(sb.speech.context,member,&extent)||extent<0x871)return 0;
+        if(read<int>(member,0x8c)!=0)++out->dead;
+        else if(member==a)++out->self;
+        else{
+            write<std::uint8_t>(member,0x870,0);
+            if(!b->member_signal||!b->member_signal(b->context,member,1))return 0;
+            ++out->propagated;
+        }
+        ++i;
+        if(i>16)return 0;
+    }
+    out->completed=1;return 1;
+}
+const ServerNpcGruntStateSignalApi state_signal_api{1,sizeof(ServerNpcGruntStateSignalApi),&grunt_state_signal};
+
 int __cdecl grunt_death_prepare(void* a,unsigned n,void* damage,unsigned dn,const ServerNpcGruntDeathPrepareBindings* b,ServerNpcGruntDeathPrepareResult* out) noexcept{
     if(!out)return 0;*out={};out->selection=out->activity=-1;
     if(!a||n<0x898||!damage||dn<0x3c||!b||!b->model_available)return 0;
@@ -4008,4 +4081,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDeathPreparedEventApi=_SiN_GetServerNpcGruntDeathPreparedEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDeathPreparedEventApi* __cdecl SiN_GetServerNpcGruntDeathPreparedEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDeathPreparedEventApi)?&death_prepared_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntStateSignalApi=_SiN_GetServerNpcGruntStateSignalApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntStateSignalApi* __cdecl SiN_GetServerNpcGruntStateSignalApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntStateSignalApi)?&state_signal_api:nullptr;
 }

@@ -2038,5 +2038,52 @@ int main(int argc,char** argv){
         static ServerNpcGruntDeathPreparedEventResult dr;
         assert(api->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),30,&db,&dr)&&dr.event.completed&&dr.prepare.completed&&dr.prepare.external_dirty==2&&dr.life_external_dirty==1&&q.dirty==0x21&&dr.event.prefix.life_changed);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntStateSignalApi>(GetProcAddress(s,server_npc_grunt_state_signal_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_state_signal_export)&&!g(0,sizeof(ServerNpcGruntStateSignalApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntStateSignalApi));assert(api);
+        struct SignalFixture {
+            alignas(4) unsigned char actor[0x1088]{},live[0xdb2]{},dead[0xdb2]{},group[0x58]{},next[0x58]{};
+            sin_independent::EntityHandleEntry entries[4]{};
+            unsigned refresh=0,output=0,linked=0,object=0,prep=0,member=0,dirty=0x20;bool jet=false;
+            static SignalFixture& self(void* p){return *static_cast<SignalFixture*>(p);}
+            static unsigned rd(void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+off,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.actor);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.live);
+        q.entries[3].serial=3;q.entries[3].entity=reinterpret_cast<CBaseEntity*>(q.dead);
+        ServerNpcGruntStateSignalBindings b{};b.context=&q;b.members.entries=q.entries;b.members.count=4;b.members.speech.context=&q;
+        b.members.speech.original_vtable=0x2249aaa4;
+        b.members.speech.squad_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& q=SignalFixture::self(p);assert(token==91||token==92);*out=token==91?q.group:q.next;*n=0x58;return 1;};
+        b.members.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xdb2;return 1;};
+        b.members.entity_rejected=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        b.members.component_eligible=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        b.dirty_storage.context=&q;
+        b.dirty_storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{assert(token==77);*out=&SignalFixture::self(p).dirty;*n=4;return 1;};
+        b.refresh=[](void* p,void* a) noexcept -> int{auto& q=SignalFixture::self(p);assert(a==q.actor&&!SignalFixture::rd(a,0x868)&&!(SignalFixture::rd(a,0x78)&0x20));if(q.jet)assert(q.prep==1&&q.linked==1&&q.object==1);++q.refresh;return 1;};
+        b.output=[](void* p,void* a,unsigned off) noexcept -> int{auto& q=SignalFixture::self(p);assert(a==q.actor&&off==0xbc8&&q.refresh);++q.output;return 1;};
+        b.member_signal=[](void* p,void* e,int v) noexcept -> int{
+            auto& q=SignalFixture::self(p);assert(e==q.live&&v==1);
+            if(q.jet){assert(q.prep==1&&!q.object);++q.linked;}
+            else{assert(!q.live[0x870]&&q.output);++q.member;const unsigned next=92;std::memcpy(q.actor+0x9c4,&next,4);}
+            return 1;
+        };
+        b.jet_prepare=[](void* p,void* a) noexcept -> int{auto& q=SignalFixture::self(p);assert(a==q.actor);++q.prep;const unsigned h=0x2002;std::memcpy(q.actor+0x1024,&h,4);return 1;};
+        b.jet_object=[](void* p,std::uint32_t token) noexcept -> int{auto& q=SignalFixture::self(p);assert(token==55&&q.linked==1);++q.object;return 1;};
+        ServerNpcGruntStateSignalResult o{};
+        assert(api->run(q.actor,sizeof(q.actor),1,&b,&o)&&o.completed&&!o.state_cleared&&!q.refresh);
+        f.put(q.actor,0x868,1u);f.put(q.actor,0x78,0x60u);f.put(q.actor,0x16c,77u);
+        assert(api->run(q.actor,sizeof(q.actor),0,&b,&o)&&o.completed&&o.state_cleared&&o.flag_cleared&&o.external_dirty==1&&q.dirty==0x21&&q.refresh==1&&!q.output);
+        f.put(q.actor,0x868,2u);f.put(q.actor,0x78,0x20u);q.actor[0x1f0]=1;q.actor[0x870]=q.live[0x870]=1;
+        f.put(q.actor,0x9c4,91u);f.put(q.actor,0x204,1);f.put(q.live,0x204,1);f.put(q.dead,0x204,1);f.put(q.dead,0x8c,1);
+        f.put(q.group,0x48,4);f.put(q.group,8,0x1001u);f.put(q.group,12,0x9002u);f.put(q.group,16,0x2002u);f.put(q.group,20,0x2002u);
+        f.put(q.next,0x48,4);f.put(q.next,20,0x3003u);
+        assert(api->run(q.actor,sizeof(q.actor),1,&b,&o)&&o.completed&&o.local_dirty==1&&q.actor[0x200]&&o.output_called&&o.self==1&&o.scans==4&&o.dead==1&&o.propagated==1&&q.member==1&&q.output==1&&SignalFixture::rd(q.actor,0x9c4)==92);
+        q.jet=true;q.actor[0x870]=0;f.put(q.actor,0x868,1u);f.put(q.actor,0x218,55u);
+        b.members.speech.original_vtable=0x2248c514;
+        assert(api->run(q.actor,sizeof(q.actor),0,&b,&o)&&o.completed&&o.jet_prepared&&o.jet_linked&&o.jet_object_called&&o.jet_handle==0x2002&&o.state_cleared&&!o.output_called&&q.refresh==3);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
