@@ -948,3 +948,51 @@
         f.seq[0x3d9]=0;
         assert(control(f.seq,sizeof(f.seq),I::CancelSequence,&b,&o)&&o.think_cleared&&o.cancelled&&f.cancels==1&&!word(f.seq,8)&&word(f.seq,0x74)==82);
     }
+
+    // Actual 221ae8f0 branches: first ownership, all six modes, invalid
+    // mode, successor replacement and full serial handles.
+    {
+        struct PossessFixture {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x974]{},old[scripted_sequence_extent]{},next[scripted_sequence_extent]{};
+            sin_independent::EntityHandleEntry entries[4]{};
+            float now=23.5f;unsigned flag_calls=0,prep=0,reset=0,angles=0,replaced=0;
+        } f;
+        const auto possess=reinterpret_cast<PossessScriptedSequence>(GetProcAddress(server,scripted_sequence_possession_export));
+        const auto callback=reinterpret_cast<PossessScriptedSequenceCallback>(GetProcAddress(server,scripted_sequence_possession_callback_export));
+        assert(possess&&callback&&!GetProcAddress(client,scripted_sequence_possession_export));
+        void* actors[]{f.seq,f.npc,f.old,f.next};
+        for(unsigned i=0;i<4;++i){f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;put(actors[i],0x378,((3+i)<<12)|i);}
+        for(void* a:{static_cast<void*>(f.seq),static_cast<void*>(f.old),static_cast<void*>(f.next)})put(a,0,scripted_sequence_vtable);
+        put(f.npc,0,0x224954a4u);put(f.seq,0x3d0,0x4001u);put(f.seq,0x78,2u);
+        ScriptedSequencePossessionBindings b{};b.context=&f;b.entries=f.entries;b.entry_count=4;b.now=&f.now;
+        b.extent=[](void* p,void* a,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<PossessFixture*>(p);*n=a==f.npc?sizeof(f.npc):a==f.seq||a==f.old||a==f.next?sizeof(f.seq):0;return *n!=0;
+        };
+        b.add_flags=[](void* p,void* npc,unsigned flags) noexcept ->int{
+            auto& f=*static_cast<PossessFixture*>(p);assert(npc==f.npc);unsigned old=0;std::memcpy(&old,f.npc+0x78,4);put(f.npc,0x78,old|flags);++f.flag_calls;put(f.npc,0xbc,0xabcdu);return 1;
+        };
+        b.move4_prepare=[](void* p,void* npc,const void* pos,unsigned yaw) noexcept ->int{
+            auto& f=*static_cast<PossessFixture*>(p);assert(npc==f.npc&&pos==f.seq+0x360&&yaw==0x42b40000u);++f.prep;return 1;
+        };
+        b.move4_reset=[](void* p,void* npc) noexcept ->int{auto& f=*static_cast<PossessFixture*>(p);assert(npc==f.npc&&f.prep);++f.reset;return 1;};
+        b.move4_angles=[](void* p,void* npc,const float* xyz) noexcept ->int{auto& f=*static_cast<PossessFixture*>(p);assert(npc==f.npc&&f.reset&&xyz[0]==1.f&&xyz[1]==90.f&&xyz[2]==3.f);++f.angles;return 1;};
+        b.replaced=[](void* p,void* seq,void* displaced) noexcept ->int{auto& f=*static_cast<PossessFixture*>(p);assert(seq==f.seq&&displaced==f.next);++f.replaced;return 1;};
+        ScriptedSequencePossessionResult o{};
+        for(unsigned mode=0;mode<=6;++mode){
+            put(f.npc,0x970,0xffffffffu);put(f.npc,0x78,1u);put(f.npc,0x96c,9u);put(f.npc,0x858,2u);
+            put(f.npc,0x864,5u);put(f.npc,0x85c,6u);put(f.seq,0x3d4,0x6003u);put(f.seq,0x3ac,mode);
+            put(f.npc,0x36c,1.f);put(f.npc,0x370,2.f);put(f.npc,0x374,3.f);put(f.seq,0x370,90.f);
+            assert(possess(f.seq,sizeof(f.seq),&b,&o)&&o.claimed&&!o.queued&&o.flags_calls==(mode==4?2u:1u)&&o.group_updates==1);
+            assert(word(f.npc,0x970)==0x3000&&word(f.npc,0x90c)==0x3000&&word(f.npc,0x8a8)==0x3000&&!word(f.npc,0x864)&&!word(f.npc,0x85c));
+            assert(word(f.seq,0x3c4)==1&&word(f.seq,0x3c8)==0xabcd&&word(f.seq,0x3d4)==0xffffffffu&&word(f.npc,0x858)==4);
+            assert(o.state==(mode==6?9:mode>=1&&mode<=3?int(mode+3):1)&&word(f.seq,0x3b8)==1&&word(f.seq,0x3bc)==0x41bc0000u);
+        }
+        assert(f.prep==1&&f.reset==1&&f.angles==1&&f.flag_calls==8);
+        put(f.npc,0x970,0x5002u);put(f.old,0x3d4,0x6003u);put(f.next,0x3d0,0x4001u);
+        assert(possess(f.seq,sizeof(f.seq),&b,&o)&&o.queued&&o.displaced&&!o.claimed&&f.replaced==1&&word(f.old,0x3d4)==0x3000&&word(f.next,0x3d0)==0xffffffffu);
+        put(f.old,0x3d4,0x5002u);put(f.old,0x3d0,0x4001u);
+        b.replaced=[](void*,void*,void*) noexcept ->int{return 1;};
+        assert(possess(f.seq,sizeof(f.seq),&b,&o)&&o.queued&&!o.displaced&&word(f.old,0x3d0)==0x4001);
+        put(f.seq,0x3d0,0x9001u);
+        assert(callback(&b,f.seq)&&possess(f.seq,sizeof(f.seq),&b,&o)&&o.missing&&!o.claimed&&!o.queued);
+    }

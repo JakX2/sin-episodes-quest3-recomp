@@ -524,6 +524,30 @@ struct ScriptedSequenceControlResult {
 };
 inline constexpr char scripted_sequence_control_export[]="SiN_ControlScriptedSequence";
 using ControlScriptedSequence=int (__cdecl *)(void*,unsigned,ScriptedSequenceInput,const ScriptedSequenceControlBindings*,ScriptedSequenceControlResult*) noexcept;
+struct ScriptedSequencePossessionBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    const float* now;
+    const native_weapon_tables::ServerEntitySearchBindings* search;
+    // 2214c840 retains its generic engine flag side effects.
+    int (__cdecl *add_flags)(void*,void*,unsigned) noexcept;
+    // Move mode 4: original +188, navigator yaw, 22139a70 and 22143bb0
+    // are engine/AI owner operations, not synthetic physics.
+    int (__cdecl *move4_prepare)(void*,void*,const void*,unsigned) noexcept;
+    int (__cdecl *move4_reset)(void*,void*) noexcept;
+    int (__cdecl *move4_angles)(void*,void*,const float*) noexcept;
+    int (__cdecl *replaced)(void*,void*,void*) noexcept;
+};
+struct ScriptedSequencePossessionResult {
+    unsigned completed,missing,non_npc,queued,displaced,claimed,move_mode,flags_calls,group_matches,group_updates;
+    unsigned npc_handle,script_handle;
+    int state;
+};
+inline constexpr char scripted_sequence_possession_export[]="SiN_PossessScriptedSequence";
+inline constexpr char scripted_sequence_possession_callback_export[]="SiN_PossessScriptedSequenceCallback";
+using PossessScriptedSequence=int (__cdecl *)(void*,unsigned,const ScriptedSequencePossessionBindings*,ScriptedSequencePossessionResult*) noexcept;
+using PossessScriptedSequenceCallback=int (__cdecl *)(void*,void*) noexcept;
 struct ScriptedSequenceEventBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     const RelayQueueBindings* native_queue;

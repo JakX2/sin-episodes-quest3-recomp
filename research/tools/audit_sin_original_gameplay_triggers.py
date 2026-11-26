@@ -78,6 +78,9 @@ ORIGINAL_METHODS={
   "sequence_npc_true":(0x22044210,3,"e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619"),
   "sequence_permission":(0x2203e690,167,"ac5cee4d2cc4274f7097e65b2f64b4df306264b8f55a206f9aa0fe9493740571"),
   "sequence_default_tick":(0x2214d7b0,179,"a197b8c975179097a8db85aef03d98e0c062077a83b2c326365b0eb3ad756cb9"),
+  "sequence_possession":(0x221ae8f0,690,"7959f531e918810258c5d3316ed6a9071f5676e1800c0df9f7a5703cd4bafd63"),
+  "sequence_sync":(0x221ae370,184,"6cf634e537015ea7087725034d5845ca14c7c9beea81e1b3c6f83f6949fb53d1"),
+  "sequence_npc_goal_handle":(0x22031820,42,"66e7b24fd6194ebbf77c3f86c89fd3afaaa4b9c1b45063f6d04929f56083f5fb"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
@@ -299,6 +302,7 @@ FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x
 SEQUENCE_WORDS={
     0x223bd498:0x2242ee1c,0x223bd49d:0x22505008,0x22505008:0x2242ee70,0x2242ee70:0x221b0190,
     0x2242f668:0x224c1b4c,0x224c1b4c:0,0x224c1b50:0,0x224c1b58:0x22505014,
+    **{0x221aeba4+4*i:target for i,target in enumerate((0x221aeb7e,0x221aeaef,0x221aeafa,0x221aeb06,0x221aeb12,0x221aeb7e))},
     0x2242f66c+8:0x22001b00,0x2242f66c+0x34:0x221ade90,0x2242f66c+0x90:0x22141400,0x2242f66c+0xc0:0x22001740,
     **{vt+off:target for vt in (0x2248df04,0x224954a4,0x2249aaa4,0x224a416c,0x2248c514,0x2248e83c,0x2249964c,0x224a4a4c)
         for off,target in ((0xf4,0x22044210),(0x574,0x2203e690))},
