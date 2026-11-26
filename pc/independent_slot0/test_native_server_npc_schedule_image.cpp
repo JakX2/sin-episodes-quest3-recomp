@@ -356,6 +356,16 @@ int main(int argc,char** argv){
     unsigned component_calls=0;gb.gather.context=&component_calls;
     gb.gather.component_update=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);++*static_cast<unsigned*>(p);return 0;};
     assert(!gather_api->run(f.actor,sizeof(f.actor),69.42f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&gb,&gather_run)&&gather_run.gather_calls==1&&component_calls==1&&!gather_run.gather.gather.completed);
+    // Complete native gathering, then deliberately fail ideal-state query.
+    // This verifies the gather occurs before state reconsideration, without
+    // requiring unrelated engine selection services in this fixture.
+    gb.gather.max_clients=2;gb.gather.component_update=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);++*static_cast<unsigned*>(p);return 1;};
+    auto old_query=selection.state.state_query;
+    selection.state.state_query=[](void*,void* actor,int current,int*) noexcept -> int{assert(current==1);static_cast<unsigned char*>(actor)[0x100]=1;return 0;};
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0xc18,711u);
+    f.put(f.actor,0xcb4,0xffffffffu);
+    assert(!gather_api->run(f.actor,sizeof(f.actor),69.43f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&gb,&gather_run)&&gather_run.gather_calls==1&&component_calls==2&&gather_run.gather.gather.completed&&gather_run.gather.gather.component_called&&f.actor[0x100]==1);
+    selection.state.state_query=old_query;
     m.before_selection=old_before;
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     install_at(96,4); // SCHED_GRUNT_GRENADE_COVER1: original timestamp task53
