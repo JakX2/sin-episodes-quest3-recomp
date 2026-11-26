@@ -1,0 +1,3 @@
+# Phase 1534: scripted sequence delayed event delivery
+
+Extend original-shaped 22155530 queue service with separate opt-in scripted sequence route; same event lock, release, single-step and direct/named cursor semantics, no old ABI changes. Can also receive filter route simultaneously. Scoped copies bind sequence control, possession and cancellation to authoritative queue registry, native search and live clock; original owner context stays unchanged. Regression uses loaded replacement DLL direct MoveToPosition then CancelSequence, named BeginSequence, checks time ordering, single-step and clock/registry rebinding even with intentionally empty caller values. No hosted AcceptInput or named search. Existing scheduler still owns actual think invocation. CI pending.
