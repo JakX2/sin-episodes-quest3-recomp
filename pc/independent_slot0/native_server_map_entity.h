@@ -111,6 +111,19 @@ struct AutoResult {
 };
 inline constexpr unsigned timer_vtable=0x22420e14,timer_extent=0x3f4;
 inline constexpr unsigned branch_vtable=0x22422294,branch_extent=0x3c8;
+inline constexpr unsigned case_vtable=0x22421d74,case_extent=0x56c;
+struct CaseBindings {
+    void* context;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    int (__cdecl *resolve_text)(void*,unsigned,const char**,unsigned*) noexcept;
+    // Original variant String() formatter for float/vector/color/entity.
+    int (__cdecl *format_variant)(void*,const void*,unsigned,char*,unsigned) noexcept;
+    int (__cdecl *random_int)(void*,int,int,int*) noexcept;
+    int (__cdecl *empty_warning)(void*,void*) noexcept;
+};
+struct CaseResult {
+    unsigned completed,handled,matched,selected,defaulted,eligible,visited,randomized,warned,fired,queued;
+};
 struct BranchBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
 };
@@ -275,6 +288,7 @@ struct Api {
     int (__cdecl *branch_input)(void*,unsigned,const char*,void*,unsigned,unsigned char,const BranchBindings*,BranchResult*) noexcept;
     int (__cdecl *register_branch)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_branch)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *case_input)(void*,unsigned,const char*,void*,const void*,unsigned,const CaseBindings*,CaseResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
