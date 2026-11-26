@@ -1,5 +1,6 @@
 #include "native_server_map_entity.h"
 #include <cstring>
+#include <cstdlib>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_map {
 namespace {
@@ -174,7 +175,124 @@ int __cdecl parse(const char* s,unsigned n,const Bindings* b,Result* o) noexcept
         cursor=e.end;
     }
 }
-const Api api{1,sizeof(Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory};
+template<class T>T read_field(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
+int priority(const char* name) noexcept {
+    struct Entry {const char* name;int value;};
+    constexpr Entry entries[]{
+        {"func_wall",10},{"scripted_sequence",9},{"phys_hinge",8},{"phys_ballsocket",8},
+        {"phys_slideconstraint",8},{"phys_constraint",8},{"phys_pulleyconstraint",8},
+        {"phys_lengthconstraint",8},{"phys_ragdollconstraint",8},{"info_mass_center",8},{"prop_physics",7}
+    };
+    for(const auto& e:entries)if(equal_class(name,e.name))return e.value;return -1;
+}
+int __cdecl compare_rows(const void* a,const void* b) noexcept {
+    const auto& x=*static_cast<const SpawnRow*>(a);const auto& y=*static_cast<const SpawnRow*>(b);
+    if(x.depth!=y.depth)return x.depth<y.depth?-1:1;
+    return x.priority==y.priority?0:x.priority>y.priority?-1:1;
+}
+bool extent_ok(const SpawnBindings& b,void* a,unsigned minimum,unsigned& n) noexcept {
+    return a&&b.extent&&b.extent(b.context,a,&n)&&n>=minimum;
+}
+bool find_parent(const SpawnBindings& b,SpawnResult& o,void* a,void** parent) noexcept {
+    *parent=nullptr;unsigned n=0;if(!extent_ok(b,a,0xbcu,n))return false;
+    const unsigned name=read_field<unsigned>(a,0x14);
+    if(!name)return true;
+    ++o.parent_reads;return b.find_parent&&b.find_parent(b.context,name,parent);
+}
+bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexcept {
+    unsigned n=0;if(!extent_ok(b,a,4,n))return false;
+    const auto vt=read_field<unsigned>(a,0);
+    const bool native=(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
+    if(!native)return b.spawn&&b.spawn(b.context,a,&code);
+    if(!b.native_spawn_begin||!b.native_spawn_end)return false;
+    bool proceed=false;if(!b.native_spawn_begin(b.context,a,&proceed))return false;
+    if(proceed){
+        const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return false;
+        if(vt==resupply_vtable){LifecycleResult r{};if(!api->spawn(a,n,b.resupply,&r))return false;}
+        else if(vt==antigen_vtable){AntigenInteractionResult r{};if(!api->antigen_spawn(a,n,b.dispenser,&r))return false;}
+        else {CanisterResult r{};if(!api->canister_spawn(a,n,b.canister,&r))return false;}
+        ++o.native_spawns;
+    }
+    return b.native_spawn_end(b.context,a,&code);
+}
+int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const SpawnBindings* b,SpawnResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!b||count>4096||(count&&!rows)||!b->extent||!b->classname||!b->scope||!b->debug_enabled)return 0;
+    for(unsigned i=0;i<count;++i){
+        auto& row=rows[i];row.depth=1;row.priority=-1;
+        if(row.actor){
+            unsigned n=0;if(!extent_ok(*b,row.actor,0xbc,n))return 0;
+            const char* cls=nullptr;if(!b->classname(b->context,row.actor,&cls))return 0;
+            row.priority=priority(cls);
+            if(!(read_field<unsigned>(row.actor,0xb8)&2u)){
+                void* seen[4096]{};unsigned used=0;void* cur=row.actor;
+                for(;;){
+                    void* parent=nullptr;if(!find_parent(*b,*o,cur,&parent))return 0;
+                    if(!parent)break;
+                    if(parent==row.actor||used==4096)return 0;
+                    for(unsigned j=0;j<used;++j)if(seen[j]==parent)return 0;
+                    seen[used++]=parent;cur=parent;++row.depth;
+                }
+            }
+        }
+        ++o->ranked;
+    }
+    if(count)std::qsort(rows,count,sizeof(SpawnRow),&compare_rows);
+    bool debug=false;if(!b->debug_enabled(b->context,&debug))return 0;
+    if(debug)for(unsigned i=0;i<count;++i)if(rows[i].actor){
+        if(!b->debug_actor||!b->debug_actor(b->context,rows[i].actor))return 0;++o->debugged;
+    }
+    // Reverse-order hierarchy pass; only attach to edict-backed parent.
+    for(unsigned i=count;i>0;){
+        void* a=rows[--i].actor;if(!a)continue;void* parent=nullptr;
+        if(!find_parent(*b,*o,a,&parent))return 0;
+        if(parent){unsigned n=0;if(!extent_ok(*b,parent,0x170,n))return 0;
+            if(read_field<unsigned>(parent,0x16c)){
+                if(!b->set_parent||!b->set_parent(b->context,a,parent,-1))return 0;++o->parents;
+            }
+        }
+    }
+    auto scope=[&](const char* name,bool enter){
+        if(!b->scope(b->context,name,enter))return false;
+        if(enter)++o->scopes;else ++o->closes;return true;
+    };
+    for(unsigned i=0;i<count;++i){
+        constexpr char name[]="MapEntity_ParseAllEntities_Spawn";
+        if(!scope(name,true))return 0;
+        bool ok=true;
+        if(rows[i].actor){
+            int result=0;ok=spawn_actor(*b,*o,rows[i].actor,result);
+            if(ok&&result<0){
+                ++o->failed;
+                // Original dispatch marks dependent actors for deletion.
+                // Inspect later rows before the deferred deletion pass.
+                for(unsigned j=i+1;j<count&&ok;++j)if(rows[j].actor){
+                    unsigned n=0;if(!extent_ok(*b,rows[j].actor,0xbc,n)){ok=false;break;}
+                    if(read_field<unsigned>(rows[j].actor,0xb8)&1u){rows[j].actor=nullptr;++o->pruned;}
+                }
+                if(ok){ok=b->cleanup&&b->cleanup(b->context);if(ok){++o->cleanups;rows[i].actor=nullptr;}}
+            }else if(ok)++o->spawned;
+        }
+        const bool closed=scope(name,false);if(!ok||!closed)return 0;
+    }
+    if(activate){
+        constexpr char name[]="MapEntity_ParseAllEntities_Activate";
+        if(!scope(name,true))return 0;bool ok=true;
+        for(unsigned i=0;i<count&&ok;++i)if(void* a=rows[i].actor){
+            if(!b->engine_scope||!b->engine_scope(b->context,true)){ok=false;break;}++o->engine_scopes;
+            unsigned n=0;ok=extent_ok(*b,a,4,n);
+            if(ok&&read_field<unsigned>(a,0)==resupply_vtable&&b->resupply){
+                const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));LifecycleResult r{};
+                ok=api&&api->activate(a,n,b->resupply,&r);if(ok)++o->native_activations;
+            }else if(ok)ok=b->activate&&b->activate(b->context,a);
+            const bool closed=b->engine_scope(b->context,false)!=0;if(closed)++o->engine_closes;
+            ok=ok&&closed;if(ok)++o->activated;
+        }
+        const bool closed=scope(name,false);if(!ok||!closed)return 0;
+    }
+    o->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

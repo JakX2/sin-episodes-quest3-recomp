@@ -72,5 +72,36 @@ int main(int argc,char** argv){
     assert(word(nf.storage[7],0)==nr::vial_vtable&&word(nf.storage[8],0)==nr::megahealth_vtable&&word(nf.storage[9],0)==nr::antigen_vtable&&word(nf.storage[10],0)==nr::antigen_canister_vtable&&word(nf.storage[11],0)==nr::antigen_canister_vtable);
     factories.pickup=nullptr;FactoryResult fr{};
     assert(!api->create_factory("item_megahealth",&factories,&fr)&&fr.matched&&!fr.completed&&nf.foreign==1);
+    // Parent-depth order, descending class priority, reverse links,
+    // removal of marked later rows before deferred cleanup.
+    struct SpawnFixture {
+        alignas(4) unsigned char actors[5][0x170]{};
+        const char* classes[5]{"logic_relay","func_wall","scripted_sequence","logic_timer","prop_physics"};
+        std::string order;unsigned cleanup=0;
+        unsigned index(void* a)const noexcept {for(unsigned i=0;i<5;++i)if(a==actors[i])return i;assert(false);return 99;}
+    } sf;
+    auto put=[](void* a,unsigned off,unsigned v){std::memcpy(static_cast<unsigned char*>(a)+off,&v,4);};
+    put(sf.actors[0],0x14,11);put(sf.actors[3],0x14,12);put(sf.actors[1],0x16c,1);put(sf.actors[0],0x16c,1);
+    SpawnRow rows[]{{sf.actors[3],0,0},{sf.actors[2],0,0},{sf.actors[0],0,0},{sf.actors[4],0,0},{sf.actors[1],0,0}};
+    SpawnBindings sp{};sp.context=&sf;
+    sp.extent=[](void*,void*,unsigned* n) noexcept ->int{*n=0x170;return 1;};
+    sp.classname=[](void* p,void* a,const char** n) noexcept ->int{auto& f=*static_cast<SpawnFixture*>(p);*n=f.classes[f.index(a)];return 1;};
+    sp.find_parent=[](void* p,unsigned name,void** a) noexcept ->int{auto& f=*static_cast<SpawnFixture*>(p);assert(name==11||name==12);*a=f.actors[name==11?1:0];return 1;};
+    sp.set_parent=[](void* p,void* a,void* parent,int index) noexcept ->int{auto& f=*static_cast<SpawnFixture*>(p);assert(index==-1);const auto i=f.index(a);assert((i==3&&parent==f.actors[0])||(i==0&&parent==f.actors[1]));f.order+=char('a'+i);return 1;};
+    sp.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    sp.engine_scope=[](void*,bool) noexcept ->int{return 1;};
+    sp.debug_enabled=[](void*,bool* yes) noexcept ->int{*yes=false;return 1;};
+    sp.spawn=[](void* p,void* a,int* code) noexcept ->int{
+        auto& f=*static_cast<SpawnFixture*>(p);const auto i=f.index(a);f.order+=char('0'+i);*code=0;
+        if(i==0){*code=-1;unsigned flags=1;std::memcpy(f.actors[3]+0xb8,&flags,4);}return 1;
+    };
+    sp.cleanup=[](void* p) noexcept ->int{auto& f=*static_cast<SpawnFixture*>(p);++f.cleanup;f.order+='C';return 1;};
+    sp.activate=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<SpawnFixture*>(p);f.order+=char('A'+f.index(a));return 1;};
+    SpawnResult so{};
+    assert(api->spawn_ordinary(rows,5,true,&sp,&so)&&so.completed&&so.ranked==5&&so.parents==2&&so.spawned==3&&so.failed==1&&so.pruned==1&&so.cleanups==1&&so.activated==3&&so.scopes==so.closes&&so.engine_scopes==3&&so.engine_closes==3);
+    assert(sf.order=="da1240CBCE"&&sf.cleanup==1);
+    // Cyclic parent dependency is refused before spawning.
+    put(sf.actors[1],0x14,12);SpawnRow cyclic[]{ {sf.actors[0],0,0} };
+    assert(!api->spawn_ordinary(cyclic,1,false,&sp,&so)&&!so.spawned);
     FreeLibrary(server);FreeLibrary(client);
 }
