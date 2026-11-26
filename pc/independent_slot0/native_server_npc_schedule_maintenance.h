@@ -172,5 +172,7 @@ struct ServerNpcNativeGatherRoute {
     const ServerNpcGruntScheduleConeServices* request_cone=nullptr;
     const ServerNpcGruntCombatLineBindings* combat_line=nullptr;
     ServerNpcGruntNativeLineAttackResult* combat_line_result=nullptr;
+    const ServerNpcWeaponPolicyBindings* weapon_policy=nullptr;
+    ServerNpcWeaponPolicyResult* weapon_policy_result=nullptr;
 };
 }

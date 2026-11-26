@@ -1,4 +1,5 @@
 #include "native_server_npc_schedule_image.h"
+#include "native_server_weapon_script_view.h"
 #include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -545,6 +546,12 @@ int main(int argc,char** argv){
     ServerNpcGruntCombatLineBindings think_line{};think_line.admission=&req_schedule.admission;think_line.line=&req_line;think_line.cone=&req_cone;
     ServerNpcNativeCombatLineThinkBindings combat_bind{};combat_bind.think=taskbind;combat_bind.selector=&req_selector;combat_bind.cone=&req_cone;combat_bind.combat_line=&think_line;
     ServerNpcGruntNativeLineAttackResult outer_line{},inner_line{};
+    const auto weapon_think_getter=reinterpret_cast<GetServerNpcNativeWeaponPolicyThinkApi>(GetProcAddress(s,server_npc_native_weapon_policy_think_export));
+    assert(weapon_think_getter&&!GetProcAddress(c,server_npc_native_weapon_policy_think_export)&&!weapon_think_getter(0,sizeof(ServerNpcNativeWeaponPolicyThinkApi))&&!weapon_think_getter(1,0));
+    const auto* weapon_think=weapon_think_getter(1,sizeof(ServerNpcNativeWeaponPolicyThinkApi));assert(weapon_think);
+    ServerWeaponScriptView weapon_scripts{};ServerNpcWeaponAmmoBindings weapon_ammo{};weapon_ammo.scripts=&weapon_scripts;
+    ServerNpcWeaponMeleeBindings weapon_melee{};ServerNpcWeaponPolicyBindings weapon_policy{&weapon_ammo,&weapon_melee};
+    ServerNpcWeaponPolicyResult outer_weapon{},inner_weapon{};
     install_at(88,3);bind_nav();f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);component_calls=0;
     assert(request_think->run(f.actor,sizeof(f.actor),69.495f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
     assert(!req_run.requests.requests&&req_run.think.think.think.squad.cycle.preschedule.think.completed&&req_run.think.speech_tasks.calls==1&&component_calls==1);
@@ -553,7 +560,7 @@ int main(int argc,char** argv){
     auto old_trans=selection.translate;auto old_fail=selection.fail_select;auto old_special=selection.special_select;
     selection.translate=nullptr;selection.fail_select=nullptr;selection.special_select=nullptr;
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
-    assert(combat_think->run(f.actor,sizeof(f.actor),69.496f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&combat_bind,&req_run,&outer_line,&inner_line)&&!outer_line.attack.line_calls&&!inner_line.attack.line_calls);
+    assert(weapon_think->run(f.actor,sizeof(f.actor),69.496f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&combat_bind,&req_run,&outer_line,&inner_line,&weapon_policy,&outer_weapon,&inner_weapon)&&!outer_line.attack.line_calls&&!inner_line.attack.line_calls&&!outer_weapon.primary.completed&&!inner_weapon.primary.completed);
     assert(req_run.requests.requests==1&&!req_run.requests.failure_requests&&req_run.requests.request.requested==26&&req_run.requests.request.acquisition.translated==94&&req_run.requests.request.acquisition.schedule_token==find(94));
     assert(req_run.requests.scheduler.maintenance.state.schedule==find(94)&&req_run.requests.scheduler.maintenance.started==1&&req_run.think.think.think.squad.cycle.preschedule.think.completed);
     int fail_id=0;std::memcpy(&fail_id,f.actor+0x7bc,4);assert(fail_id==95);
@@ -736,11 +743,14 @@ int main(int argc,char** argv){
     const auto jet_combat_getter=reinterpret_cast<GetServerNpcNativeJetCombatLineThinkApi>(GetProcAddress(s,server_npc_native_jet_combat_line_think_export));
     assert(jet_combat_getter&&!GetProcAddress(c,server_npc_native_jet_combat_line_think_export)&&!jet_combat_getter(0,sizeof(ServerNpcNativeJetCombatLineThinkApi))&&!jet_combat_getter(1,0));
     const auto* jet_combat_think=jet_combat_getter(1,sizeof(ServerNpcNativeJetCombatLineThinkApi));assert(jet_combat_think);
+    const auto jet_weapon_getter=reinterpret_cast<GetServerNpcNativeJetWeaponPolicyThinkApi>(GetProcAddress(s,server_npc_native_jet_weapon_policy_think_export));
+    assert(jet_weapon_getter&&!GetProcAddress(c,server_npc_native_jet_weapon_policy_think_export)&&!jet_weapon_getter(0,sizeof(ServerNpcNativeJetWeaponPolicyThinkApi))&&!jet_weapon_getter(1,0));
+    const auto* jet_weapon_think=jet_weapon_getter(1,sizeof(ServerNpcNativeJetWeaponPolicyThinkApi));assert(jet_weapon_think);
     ServerNpcNativeJetCombatLineThinkBindings jet_combat_bind{};jet_combat_bind.think=jet_bind.think;jet_combat_bind.selector=&jet_request;jet_combat_bind.cone=&req_cone;jet_combat_bind.combat_line=&think_line;
     req_arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=41;return 1;};
     selection.translate=nullptr;selection.fail_select=nullptr;selection.special_select=nullptr;
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);f.put(f.actor,0x218,321u);ready=true;
-    assert(jet_combat_think->run(f.actor,sizeof(f.actor),83,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_combat_bind,&jet_run,&outer_line,&inner_line)&&!outer_line.attack.line_calls&&!inner_line.attack.line_calls);
+    assert(jet_weapon_think->run(f.actor,sizeof(f.actor),83,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_combat_bind,&jet_run,&outer_line,&inner_line,&weapon_policy,&outer_weapon,&inner_weapon)&&!outer_line.attack.line_calls&&!inner_line.attack.line_calls&&!outer_weapon.primary.completed&&!inner_weapon.primary.completed);
     const auto& jet_cycle=jet_run.think.think.think.squad.cycle.preschedule;
     assert(jet_cycle.jet_queried&&jet_cycle.jet_called&&jet_cycle.think.completed);
     assert(jet_run.requests.base.requests==1&&jet_run.requests.base.request.requested==41&&jet_run.requests.base.request.acquisition.translated==122&&jet_run.requests.base.scheduler.maintenance.state.schedule==find(122));

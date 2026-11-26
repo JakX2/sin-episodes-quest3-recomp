@@ -339,6 +339,13 @@ struct ServerNpcNativeCombatLineThinkApi {
 };
 using GetServerNpcNativeCombatLineThinkApi=const ServerNpcNativeCombatLineThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char server_npc_native_weapon_policy_think_export[]="SiN_GetServerNpcNativeWeaponPolicyThinkApi";
+struct ServerNpcNativeWeaponPolicyThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativeCombatLineThinkBindings*,ServerNpcNativeRequestThinkResult*,ServerNpcGruntNativeLineAttackResult*,ServerNpcGruntNativeLineAttackResult*,const ServerNpcWeaponPolicyBindings*,ServerNpcWeaponPolicyResult*,ServerNpcWeaponPolicyResult*) noexcept;
+};
+using GetServerNpcNativeWeaponPolicyThinkApi=const ServerNpcNativeWeaponPolicyThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_native_jet_request_think_export[]="SiN_GetServerNpcNativeJetRequestThinkApi";
 struct ServerNpcNativeJetRequestThinkBindings {
     ServerNpcNativeSquadTaskThinkBindings think;
@@ -379,4 +386,11 @@ struct ServerNpcNativeJetCombatLineThinkApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativeJetCombatLineThinkBindings*,ServerNpcNativeJetRequestThinkResult*,ServerNpcGruntNativeLineAttackResult*,ServerNpcGruntNativeLineAttackResult*) noexcept;
 };
 using GetServerNpcNativeJetCombatLineThinkApi=const ServerNpcNativeJetCombatLineThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_native_jet_weapon_policy_think_export[]="SiN_GetServerNpcNativeJetWeaponPolicyThinkApi";
+struct ServerNpcNativeJetWeaponPolicyThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativeJetCombatLineThinkBindings*,ServerNpcNativeJetRequestThinkResult*,ServerNpcGruntNativeLineAttackResult*,ServerNpcGruntNativeLineAttackResult*,const ServerNpcWeaponPolicyBindings*,ServerNpcWeaponPolicyResult*,ServerNpcWeaponPolicyResult*) noexcept;
+};
+using GetServerNpcNativeJetWeaponPolicyThinkApi=const ServerNpcNativeJetWeaponPolicyThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
