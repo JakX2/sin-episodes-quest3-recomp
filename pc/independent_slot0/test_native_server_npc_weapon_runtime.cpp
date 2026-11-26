@@ -1913,6 +1913,63 @@ int main(int argc,char** argv){
     assert(!catalog_o.squad_leave.last.survivor.sentence.mode_allowed&&catalog_o.squad_leave.last.survivor.final_mark.owner_written&&catalog_o.squad_leave.last.survivor.final_mark.squad_written);
     assert(f.get<float>(wt.member,0xc04)==81.75f&&f.get<float>(sq.groups[0],0x50)==81.75f);
     f.put(f.actor,0x378,saved_handle);
+    // Scripted health lowering through the real life-dispatch entry.
+    // Type zero is not a damaging corpse/dying event; the dispatcher
+    // legitimately returns without changing health in those states.
+    struct SelfDamageFixture {
+        F* f;void* parent;
+        alignas(4) unsigned char rows[3*12]{},mods[3][12]{};
+        bool admitted=true;unsigned admissions{},queued{};
+    } hd{&f,wt.member};
+    ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
+    hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        if(token==0xb100u){*out=q.rows;*bytes=sizeof(q.rows);return 1;}
+        if(token>=0xb200u&&token<0xb203u){*out=q.mods[token-0xb200u];*bytes=sizeof(q.mods[0]);return 1;}
+        return 0;
+    };
+    static ServerNpcGruntLifeDispatchBindings hd_life{};
+    static ServerNpcGruntLifeDispatchResult hd_life_result{};
+    auto& hd_identity=hd_life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
+    assert(!hd_identity.entries&&!hd_identity.speech.original_vtable); // authoritative input binding
+    ServerNpcInputHealthDispatchBindings hd_services{};hd_services.context=&hd;
+    hd_services.life=&hd_life;hd_services.life_result=&hd_life_result;
+    hd_services.parent_admit=[](void* p,void* parent,const void* info,bool* accepted) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(parent==q.parent);
+        auto* d=const_cast<void*>(info);assert(q.f->get<float>(d,0x2c)==20.f&&q.f->get<unsigned>(d,0x38)==0);
+        *accepted=q.admitted;++q.admissions;return 1;
+    };
+    hd_services.enqueue=[](void* p,void* actor,const void* info,unsigned bytes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(actor==q.f->actor&&bytes==0x48);
+        auto* d=const_cast<void*>(info);assert(q.f->get<float>(d,0x2c)==20.f&&q.f->get<float>(d,0x30)==20.f);
+        ++q.queued;return 1;
+    };
+    auto hd_b=leaves;hd_b.storage=&hd_storage;hd_b.native_health=&hd_services;hd_b.entities=scripted.input.entities;hd_b.now=90.f;
+    for(unsigned i=0;i<3;++i){
+        f.put(hd.rows,12*i,0xb200u+i);f.put(hd.rows,12*i+8,i==2?0xffffffffu:i+1);
+        f.put(hd.mods[i],0,i==0?2.f:i==1?.5f:3.f);hd.mods[i][8]=i==1;
+    }
+    f.put(f.actor,0x378,0x8002u);f.put(wt.member,0x378,0x7001u);
+    f.put(f.actor,0xc4,0xb100u);f.put(f.actor,0xd0,0u);f.put(f.actor,0xa4,0x7001u);f.put(f.actor,0xe8,0xffffffffu);
+    f.put(f.actor,0x98,100);f.put(f.actor,0x9c,100);f.put(f.actor,0x8c,1);f.put(f.actor,0x94,2);
+    f.put(f.actor,0x16c,0u);f.actor[0x1f0]=1;f.actor[0xa28]=0;
+    auto hd_run=[&](){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,80);f.put(inp.variant,0x10,5u);
+        return accept->run(f.actor,sizeof(f.actor),ground_vt,0x223db434u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&hd_b,&catalog_o);
+    };
+    hd.admitted=false;
+    assert(hd_run()&&catalog_o.health_admission_blocked&&f.actor[0xa28]&&!catalog_o.health_life_called&&!catalog_o.health_multiplier_rows);
+    hd.admitted=true;hd_services.defer_damage=true;
+    assert(hd_run()&&catalog_o.health_deferred&&hd.queued==1&&!catalog_o.health_life_called&&!catalog_o.health_multiplier_rows);
+    hd_services.defer_damage=false;
+    assert(hd_run()&&catalog_o.health_life_called&&catalog_o.health_multiplier_rows==6&&catalog_o.health_outgoing_scale==6.f&&catalog_o.health_incoming_scale==.5f&&catalog_o.health_scaled_amount==60.f);
+    assert(hd_life_result.completed&&hd_life_result.route==NpcDamageDying&&hd_life_result.scaled_amount==60.f&&hd_life_result.native_result==1&&f.get<int>(f.actor,0x9c)==100);
+    f.put(f.actor,0x94,0);f.put(f.actor,0xa4,0xffffffffu);f.put(f.actor,0xd0,0xffffffffu);
+    assert(hd_run()&&catalog_o.health_life_called&&!catalog_o.health_multiplier_rows&&catalog_o.health_scaled_amount==20.f&&hd_life_result.mode_blocked);
+    f.put(f.actor,0xd0,0u);f.put(hd.rows,32,0u);
+    assert(!hd_run()&&!catalog_o.completed&&!catalog_o.health_life_called);
+    assert(hd.admissions==3&&hd.queued==1);
+    f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xd0,0xffffffffu);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
