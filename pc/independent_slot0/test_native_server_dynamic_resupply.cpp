@@ -466,11 +466,11 @@ int main(int argc,char** argv){
     struct ResupplyCvars final:sin_independent::console_abi::EngineCvar {
         using Variable=sin_independent::console_abi::Variable;
         using CommandBase=sin_independent::console_abi::CommandBase;
-        mutable Variable roots[4],aliases[4];
+        mutable Variable roots[5],aliases[5];
         mutable unsigned lookups[16]{},calls=0,modifier_reads=0;
         bool missing=false,change_each=false,wrong_root=false;
         ResupplyCvars(){
-            for(unsigned i=0;i<4;++i){
+            for(unsigned i=0;i<5;++i){
                 roots[i].CreateVariable(convars[i].name,convars[i].initial,int(convars[i].flags),"",false,0,false,0,nullptr);
                 aliases[i].CreateVariable(convars[i].name,"0",int(convars[i].flags),"",false,0,false,0,nullptr);
                 aliases[i].parent=&roots[i];
@@ -480,8 +480,8 @@ int main(int argc,char** argv){
         const char* __thiscall GetCommandLineValue(const char*) noexcept override{assert(false);return nullptr;}
         Variable* __thiscall FindMutableVar(const char*) noexcept override{assert(false);return nullptr;}
         const Variable* __thiscall FindConstVar(const char* name) const noexcept override{
-            unsigned i=0;while(i<4&&std::strcmp(name,convars[i].name))++i;
-            assert(i<4&&calls<16);lookups[calls++]=i;
+            unsigned i=0;while(i<5&&std::strcmp(name,convars[i].name))++i;
+            assert(i<5&&calls<16);lookups[calls++]=i;
             if(missing&&i==0)return nullptr;
             if(wrong_root&&i==1)return &aliases[0];
             if(change_each&&i==0)roots[0].SetFloat(.125f*float(++modifier_reads));
@@ -1214,5 +1214,39 @@ int main(int argc,char** argv){
     adf.fragments=0;adb.cloud=nullptr;adb.native_gas=&agb;agf.now=80.f;
     assert(api->antigen_canister_break(ex.canister,sizeof(ex.canister),&adb,&adr)&&adr.completed&&adr.broken&&adr.gas.completed&&adr.gas.started&&std::abs(adr.gas.remaining-4.2f)<.00001f&&adr.gas.radius==150&&adr.gas.rate==5);
     assert(api->antigen_gas_stop(agf.gas,sizeof(agf.gas),&agb,&agras)&&agras.completed&&agras.particle_removed&&agras.next_time==-1);
+    // MegaHealth uses a separate cvar and max-health setter before the
+    // normal native healing path; failed heal does not roll back max.
+    struct MegaFixture {
+        alignas(4) unsigned char item[0x4cc]{};
+        void* player;
+        unsigned allocs=0,constructs=0,initializes=0,messages=0,sounds=0,respawns=0,removes=0,releases=0;
+    } mgf{};mgf.player=hf2.player;
+    VialPickupBindings mgb{};mgb.context=&mgf;mgb.engine_cvar=&cv;mgb.native_heal=&ph;mgb.native_singleplayer_rules=true;
+    mgb.base_construct=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<MegaFixture*>(p);assert(a==q.item);++q.constructs;return 1;};
+    mgb.item_pickup=[](void* p,void* a,unsigned token) noexcept ->int{auto& q=*static_cast<MegaFixture*>(p);assert(a==q.player&&token==0);++q.messages;return 1;};
+    mgb.sound=[](void* p,void* a,unsigned,const char* name) noexcept ->int{auto& q=*static_cast<MegaFixture*>(p);assert(a==q.player&&!std::strcmp(name,"HealthVial.Touch"));++q.sounds;return 1;};
+    mgb.respawn=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<MegaFixture*>(p);assert(a==q.item);++q.respawns;return 1;};
+    mgb.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<MegaFixture*>(p);assert(a==q.item);++q.removes;return 1;};
+    PickupFactoryBindings mgfactory{};mgfactory.context=&mgf;mgfactory.mega=&mgb;
+    mgfactory.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{auto& q=*static_cast<MegaFixture*>(p);assert(n==sizeof(q.item));++q.allocs;std::memset(q.item,0,n);*a=q.item;*bytes=n;return 1;};
+    mgfactory.initialize=[](void* p,void* a,const char* name) noexcept ->int{auto& q=*static_cast<MegaFixture*>(p);assert(a==q.item&&!std::strcmp(name,"item_megahealth"));++q.initializes;return 1;};
+    mgfactory.release_networkable=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<MegaFixture*>(p);assert(a==q.item+0x160);++q.releases;return 1;};
+    assert(api->pickup_factory_create(megahealth_classname,&mgfactory,&pfr)&&pfr.completed&&pfr.type==count+1&&pfr.mega.constructed&&pfr.networkable==mgf.item+0x160);
+    assert(EvalFixture::rd(mgf.item,0)==megahealth_vtable&&EvalFixture::rd(mgf.item,0x494)==megahealth_secondary);
+    EvalFixture::u(hf2.player,0x98,100);EvalFixture::u(hf2.player,0x9c,100);EvalFixture::u(hf2.player,0x94,2);EvalFixture::u(hf2.player,0x12a1,0);
+    cv.calls=0;cv.roots[4].SetFloat(100.f);
+    ItemTouchBindings mgt{};mgt.context=&mgf;mgt.mega=&mgb;mgt.native_singleplayer_rules=true;mgt.remove=mgb.remove;
+    EvalFixture::u(mgf.item,0x7c,item_touch_token);
+    assert(api->item_touch(mgf.item,sizeof(mgf.item),hf2.player,sizeof(hf2.player),&mgt,&tr)&&tr.completed&&tr.accepted&&tr.mega.mega_max_set&&tr.mega.mega_units==100&&tr.mega.mega_max_before==100&&tr.mega.mega_max_after==200&&tr.mega.native_heal.after==200&&tr.mega.native_heal.overheal_flag_cleared&&tr.removed);
+    assert(cv.calls==1&&cv.lookups[0]==4&&mgf.messages==1&&mgf.sounds==1&&mgf.respawns==1&&mgf.removes==1);
+    // A later ordinary heal resets max to100 but does not clamp existing HP.
+    assert(api->player_take_health(hf2.player,10,0,&ph,&phr)&&phr.completed&&phr.maximum_reset&&!phr.accepted&&phr.after==200&&phr.maximum_after==100);
+    EvalFixture::u(hf2.player,0x98,100);EvalFixture::u(hf2.player,0x9c,90);EvalFixture::u(hf2.player,0x94,1);
+    cv.calls=0;cv.roots[4].SetFloat(20.75f);
+    VialPickupResult mhr{};
+    assert(api->mega_touch(mgf.item,sizeof(mgf.item),hf2.player,&mgb,&mhr)&&mhr.completed&&mhr.mega_units==20&&mhr.mega_max_after==120&&!mhr.accepted&&!mhr.message&&EvalFixture::rd(hf2.player,0x98)==120);
+    EvalFixture::u(hf2.player,0x94,2);cv.calls=0;cv.roots[4].SetFloat(250.f);
+    assert(api->mega_touch(mgf.item,sizeof(mgf.item),hf2.player,&mgb,&mhr)&&mhr.completed&&mhr.mega_max_before==120&&mhr.mega_max_after==200&&mhr.native_heal.raw_health==340&&mhr.native_heal.after==200);
+    assert(api->pickup_factory_destroy(mgf.item,sizeof(mgf.item),mgf.item+0x160,&mgfactory,&pfr)&&pfr.released&&pfr.type==count+1&&mgf.releases==1);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
