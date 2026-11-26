@@ -3718,7 +3718,8 @@ int main(int argc,char** argv){
         } q;
         q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
         q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.secondary);
-        ServerNpcGruntAssaultEventBindings b{};b.context=&q;
+        // Static zero-initialization avoids MSVC C1054 on deeply nested aggregate braces.
+        static ServerNpcGruntAssaultEventBindings b;b.context=&q;
         auto& search=b.events;search.context=&q;auto& busy=search.events.events;busy.context=&q;
         auto& tank=busy.events.events.events;tank.context=&q;auto& rb=tank.events.events;rb.context=&q;
         auto& re=rb.events;auto& event=re.events;event.context=&q;
@@ -3743,7 +3744,8 @@ int main(int argc,char** argv){
         f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
         f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10db8u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
         f.put(q.a,0x908,77u);f.put(q.a,0xdb8+0x14,0x9001u);f.put(q.a,0xdb8+0x18,0x9002u);
-        ServerNpcGruntAssaultEventResult o{};
+        // Static zero-initialization avoids MSVC C1054 on deeply nested aggregate braces.
+        static ServerNpcGruntAssaultEventResult o;
         auto run=[&](int id){q.goals=0;f.put(q.raw,0,id);f.put(q.raw,4,2.f);return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
         assert(run(100002)&&o.request_value==0x223f3c08&&!o.linked_valid);
         assert(run(100001)&&o.request_value==0x223f3bf8);
@@ -3785,7 +3787,8 @@ int main(int argc,char** argv){
         q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
         q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.secondary);
         q.entries[3].serial=3;q.entries[3].entity=reinterpret_cast<CBaseEntity*>(q.a);
-        ServerNpcGruntAssaultNodeBindings b{};b.context=&q;auto& ab=b.events;ab.context=&q;
+        // Static zero-initialization avoids MSVC C1054 on deeply nested aggregate braces.
+        static ServerNpcGruntAssaultNodeBindings b;b.context=&q;auto& ab=b.events;ab.context=&q;
         auto& busy=ab.events.events.events;auto& tank=busy.events.events.events;auto& rb=tank.events.events;
         auto& gate=rb.events.events.gate;gate.actor_token=0x10000;auto& sb=gate.speech.speech.sentence;
         sb.entries=q.entries;sb.count=4;sb.speech.original_vtable=0x2249aaa4;
@@ -3801,7 +3804,8 @@ int main(int argc,char** argv){
         f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10db8u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
         f.put(q.a,0xdb8+0x18,0x2002u);f.put(q.raw,0,100008);
         f.put(q.primary,0x398,77u);q.primary[0xb4]=1;
-        ServerNpcGruntAssaultNodeResult o{};
+        // Static zero-initialization avoids MSVC C1054 on deeply nested aggregate braces.
+        static ServerNpcGruntAssaultNodeResult o;
         auto run=[&](){f.put(q.a,0xdb8+0x14,0x1001u);f.put(q.a,0xdb8+0x1c,3);q.a[0xdb8+0x25]=1;return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
         assert(run()&&o.entered&&o.completed&&o.next_valid&&o.handle_written&&o.flag_cleared&&o.next_handle==0x2002u&&o.events.reset_called);
         q.next=0x9002u;assert(run()&&o.find_called&&!o.next_valid&&o.warning_called&&o.mode_cleared&&o.class_called&&o.end_called&&q.ends==1);
