@@ -1401,3 +1401,67 @@
         put(f.seq,0x39c,0u);
         assert(done(f.seq,sizeof(f.seq),f.npc,&b,&o)&&o.finish_called&&o.output_called&&f.order=="AWAWAAOFOAOFO"&&f.assignments==5&&f.finishes==2&&f.outputs==4);
     }
+
+
+    // Original terminal finish: schedule removal before cleanup, preserve
+    // repeatable actors, and transfer a live NPC after the schedule reset.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct FinishFixture {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x974]{},next[scripted_sequence_extent]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float now=10.f,interval=.1f;
+            unsigned notices=0;bool has_schedule=true,motion=true;int schedule=0x6c;
+            std::string calls;
+        } f;
+        const auto finish=reinterpret_cast<FinishScriptedSequence>(GetProcAddress(server,scripted_sequence_finish_export));
+        assert(finish&&!GetProcAddress(client,scripted_sequence_finish_export));
+        void* actors[]{f.seq,f.npc,f.next};
+        for(unsigned i=0;i<3;++i){f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;put(actors[i],0x378,((3+i)<<12)|i);}
+        put(f.seq,0,scripted_sequence_vtable);put(f.next,0,scripted_sequence_vtable);put(f.npc,0,0x224954a4u);
+        put(f.seq,0x3d0,0x4001u);put(f.seq,0x3d4,0x5002u);put(f.next,0x3d4,0xffffffffu);
+        put(f.npc,0x970,0x3000u);put(f.npc,0x858,4);put(f.npc,0x3ec,9);
+        put(f.seq,0xb8,0x400000u);put(f.seq,0x74,-1);f.seq[0x3d8]=1;
+        auto extent=[](void* p,void* a,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);*n=a==f.npc?sizeof(f.npc):a==f.seq||a==f.next?sizeof(f.seq):0;return *n!=0;
+        };
+        nw::ServerNpcOuterCadenceBindings cadence{};cadence.context=&f;
+        cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(a==f.seq&&f.calls.empty());++f.notices;f.calls+='T';return 1;
+        };
+        ScriptedSequenceControlBindings control{};control.context=&f;control.extent=extent;
+        control.entries=f.entries;control.entry_count=3;control.now=&f.now;control.interval=&f.interval;control.cadence=&cadence;
+        ScriptedSequenceAnimationBindings animation{};animation.control=&control;
+        ScriptedSequencePossessionBindings possession{};possession.context=&f;possession.entries=f.entries;possession.entry_count=3;
+        possession.extent=extent;possession.now=&f.now;
+        possession.add_flags=[](void* p,void* a,unsigned) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc);f.calls+='P';return 1;
+        };
+        ScriptedSequenceFinishBindings b{&animation,&possession,&f};
+        b.cleanup_script_state=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc);f.calls+='C';
+            put(f.seq,0x3d0,0xffffffffu);put(a,0x970,0xffffffffu);put(a,0x90c,0xffffffffu);put(a,0x8a8,0xffffffffu);return 1;
+        };
+        b.current_schedule=[](void* p,void* a,bool* present,int* type) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc);f.calls+='S';*present=f.has_schedule;*type=f.schedule;return 1;
+        };
+        b.sequence_has_motion=[](void* p,void* a,int seq,bool* value) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc&&seq==9);f.calls+='M';*value=f.motion;return 1;
+        };
+        b.add_flags=[](void* p,void* a,unsigned flags) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc&&flags==0x400u);f.calls+='F';return 1;
+        };
+        b.clear_schedule=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc);f.calls+='X';return 1;
+        };
+        ScriptedSequenceFinishResult out{};
+        assert(finish(f.seq,sizeof(f.seq),f.npc,&b,&out)&&out.completed&&out.removal_scheduled&&out.due_tick==101&&out.cleanup_called&&out.ideal_changed&&out.schedule_reads==2&&out.motion_checked&&out.flags_added&&out.transferred&&f.calls=="TCSSMFXP");
+        assert(word(f.seq,8)==0x221c0d40u&&word(f.seq,0x74)==101&&!f.seq[0x3d8]&&f.seq[0x3d9]&&word(f.next,0x3d0)==0x4001u&&word(f.npc,0x970)==0x5002u);
+        // Repeatable script self-successor, schedule 0x6c but saved flag
+        // suppresses motion probe. No new removal scheduling.
+        f.calls.clear();put(f.seq,0xb4,4u);put(f.seq,0x3d4,0x3000u);put(f.seq,0x3c8,0x400u);put(f.npc,0x858,7);
+        assert(finish(f.seq,sizeof(f.seq),f.npc,&b,&out)&&!out.removal_scheduled&&!out.ideal_changed&&!out.motion_checked&&out.transferred&&f.calls=="CSSXP"&&word(f.npc,0x970)==0x3000u);
+        // Stale successor, no schedule: no transfer or motion probe.
+        f.calls.clear();f.has_schedule=false;put(f.seq,0x3d4,0x6002u);
+        assert(finish(f.seq,sizeof(f.seq),f.npc,&b,&out)&&out.schedule_reads==1&&!out.successor_found&&!out.transferred&&f.calls=="CSX");
+    }

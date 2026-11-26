@@ -3702,6 +3702,89 @@ int run_sequence_animation(void* a,unsigned n,void* npc,unsigned token,bool comp
     const bool ok=done?animation_done(a,n,npc,bytes,*b,*o):animation_start(a,n,npc,bytes,token,complete_empty,*b,*o);
     o->completed=ok;return int(ok);
 }
+// 221afa70 terminal completion, with 221af490 schedule reset
+// reconstructed below. Successor resolution is intentionally AFTER the
+// owner cleanup and schedule calls, which can mutate live handles.
+bool sequence_finish_impl(void* a,unsigned n,void* npc,unsigned bytes,
+    const ScriptedSequenceFinishBindings& b,ScriptedSequenceFinishResult& o) noexcept {
+    const auto& animation=*b.animation;const auto& c=*animation.control;
+    if(c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return false;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    const unsigned post=read_field<unsigned>(a,0x39c);
+    if(post&&(read_field<unsigned>(a,0xb4)&0x100u)&&!registry.Resolve(read_field<unsigned>(a,0x3d4))){
+        if(read_field<unsigned char>(npc,0xa9)&0x10u){
+            void* current=registry.Resolve(read_field<unsigned>(npc,0x970));
+            unsigned size=0,vt=0;
+            if(!current||!c.extent(c.context,current,&size)||size<scripted_sequence_extent||
+               !SinReadCampaignTouchMarkerInternal(current,&vt)||vt!=scripted_sequence_vtable||
+               !SinCampaignStorageReadableInternal(current,scripted_sequence_extent)||!b.post_idle_debug)return false;
+            const unsigned token=read_field<unsigned>(current,0x39c);
+            if(!b.post_idle_debug(b.context,npc,token?token:0x223d47a8u))return false;
+            o.debugged=1;
+        }
+        write_field(npc,0x96c,2u);
+        if(!animation_start(a,n,npc,bytes,read_field<unsigned>(a,0x39c),false,animation,o.animation))return false;
+        o.animation.completed=o.looped=1;return true;
+    }
+    if(!b.cleanup_script_state||!b.current_schedule||!b.clear_schedule)return false;
+    if(!(read_field<unsigned>(a,0xb4)&4u)){
+        if(!c.now||!c.interval||!c.cadence||!std::isfinite(*c.now)||!std::isfinite(*c.interval)||*c.interval<=0)return false;
+        using namespace sin_port::native_weapon_tables;
+        const auto* api=SiN_GetServerNpcOuterCadenceApi(1,sizeof(ServerNpcOuterCadenceApi));
+        if(!api)return false;
+        write_field(a,8,0x221c0d40u); // unnamed default context 2214d6f0
+        o.removal_time=static_cast<float>(double(*c.now)+double(0.1f));
+        ServerNpcOuterCadenceResult cadence{};
+        if(!api->set_default(a,n,o.removal_time,*c.interval,scripted_sequence_vtable,c.cadence,&cadence))return false;
+        o.removal_scheduled=1;o.due_tick=cadence.tick;
+        write_field(a,0x3d8,static_cast<unsigned char>(0));write_field(a,0x3d9,static_cast<unsigned char>(1));
+    }
+    if(!b.cleanup_script_state(b.context,npc))return false;o.cleanup_called=1;
+    // 221af490: preserve ideal state 7 or 1. Read the schedule twice
+    // on the present branch, exactly as the original does.
+    const unsigned flags=read_field<unsigned>(a,0x3c8);
+    const int ideal=read_field<int>(npc,0x858);
+    if(ideal!=7&&ideal!=1){write_field(npc,0x858,1);o.ideal_changed=1;}
+    bool present=false;int type=0;
+    if(!b.current_schedule(b.context,npc,&present,&type))return false;++o.schedule_reads;
+    if(present){
+        if(!b.current_schedule(b.context,npc,&present,&type)||!present)return false;++o.schedule_reads;
+        if(type==0x6c&&!(flags&0x400u)){
+            bool motion=false;
+            if(!b.sequence_has_motion||!b.sequence_has_motion(b.context,npc,read_field<int>(npc,0x3ec),&motion))return false;
+            o.motion_checked=1;
+            if(motion){
+                if(!b.add_flags||!b.add_flags(b.context,npc,0x400u))return false;o.flags_added=1;
+            }
+        }
+    }
+    if(!b.clear_schedule(b.context,npc))return false;o.schedule_cleared=1;
+    o.successor_handle=read_field<unsigned>(a,0x3d4);
+    void* next=registry.Resolve(o.successor_handle);
+    if(!next)return true;
+    o.successor_found=1;
+    if(next==a&&!(read_field<unsigned>(a,0xb4)&4u)){o.self_skipped=1;return true;}
+    unsigned extent=0,vt=0,handle=0;
+    if(!b.possession||b.possession->entries!=c.entries||b.possession->entry_count!=c.entry_count||
+       !c.extent(c.context,next,&extent)||extent<scripted_sequence_extent||
+       !SinReadCampaignTouchMarkerInternal(next,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(next,scripted_sequence_extent)||
+       !SinReadCampaignHandleInternal(npc,bytes,&handle)||registry.Resolve(handle)!=npc)return false;
+    // Original cleanup clears current script before this transfer.
+    // Refuse an incomplete owner cleanup instead of silently requeueing.
+    if(registry.Resolve(read_field<unsigned>(npc,0x970)))return false;
+    write_field(next,0x3d0,handle);
+    if(!scripted_sequence_possession(next,extent,b.possession,&o.possession)||!o.possession.claimed)return false;
+    o.transferred=1;return true;
+}
+int sequence_finish(void* a,unsigned n,void* npc,const ScriptedSequenceFinishBindings* b,ScriptedSequenceFinishResult* o) noexcept {
+    if(!o)return 0;*o={};o->due_tick=-1;o->successor_handle=0xffffffffu;o->animation.sequence=o->animation.activity=-1;
+    unsigned bytes=0;
+    if(!b||!animation_valid(a,n,npc,b->animation,bytes))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    o->completed=sequence_finish_impl(a,n,npc,bytes,*b,*o);return o->completed;
+}
 // 2216b300 InputTestActivator: predicate (including inherited negation),
 // exactly one output, original activator and self caller, zero extra delay.
 int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
@@ -4169,4 +4252,10 @@ extern "C" int __cdecl SiN_StartScriptedSequenceAnimation(void* a,unsigned n,voi
 extern "C" int __cdecl SiN_CompleteScriptedSequencePlay(void* a,unsigned n,void* npc,
     const sin_port::native_map::ScriptedSequenceAnimationBindings* b,sin_port::native_map::ScriptedSequenceAnimationResult* o) noexcept {
     return sin_port::native_map::run_sequence_animation(a,n,npc,0,false,true,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_FinishScriptedSequence=_SiN_FinishScriptedSequence")
+extern "C" int __cdecl SiN_FinishScriptedSequence(void* a,unsigned n,void* npc,
+    const sin_port::native_map::ScriptedSequenceFinishBindings* b,sin_port::native_map::ScriptedSequenceFinishResult* o) noexcept {
+    return sin_port::native_map::sequence_finish(a,n,npc,b,o);
 }

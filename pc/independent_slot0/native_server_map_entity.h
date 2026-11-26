@@ -666,6 +666,29 @@ inline constexpr char scripted_sequence_start_export[]="SiN_StartScriptedSequenc
 inline constexpr char scripted_sequence_play_done_export[]="SiN_CompleteScriptedSequencePlay";
 using StartScriptedSequenceAnimation=int (__cdecl *)(void*,unsigned,void*,unsigned,bool,const ScriptedSequenceAnimationBindings*,ScriptedSequenceAnimationResult*) noexcept;
 using CompleteScriptedSequencePlay=int (__cdecl *)(void*,unsigned,void*,const ScriptedSequenceAnimationBindings*,ScriptedSequenceAnimationResult*) noexcept;
+// Optional native terminal completion route; existing animation ABI stays
+// unchanged. NPC cleanup 22048fe0 still belongs to the owner, including
+// collision/root-motion side effects, not synthesized by this wrapper.
+struct ScriptedSequenceFinishBindings {
+    const ScriptedSequenceAnimationBindings* animation;
+    const ScriptedSequencePossessionBindings* possession;
+    void* context;
+    int (__cdecl *cleanup_script_state)(void*,void*) noexcept;
+    int (__cdecl *current_schedule)(void*,void*,bool*,int*) noexcept;
+    int (__cdecl *sequence_has_motion)(void*,void*,int,bool*) noexcept;
+    int (__cdecl *add_flags)(void*,void*,unsigned) noexcept;
+    int (__cdecl *clear_schedule)(void*,void*) noexcept;
+    int (__cdecl *post_idle_debug)(void*,void*,unsigned) noexcept;
+};
+struct ScriptedSequenceFinishResult {
+    unsigned completed,looped,debugged,removal_scheduled,cleanup_called,ideal_changed,schedule_reads,motion_checked,flags_added,schedule_cleared;
+    unsigned successor_found,self_skipped,transferred,successor_handle;
+    int due_tick;float removal_time;
+    ScriptedSequenceAnimationResult animation;
+    ScriptedSequencePossessionResult possession;
+};
+inline constexpr char scripted_sequence_finish_export[]="SiN_FinishScriptedSequence";
+using FinishScriptedSequence=int (__cdecl *)(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,ScriptedSequenceFinishResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
