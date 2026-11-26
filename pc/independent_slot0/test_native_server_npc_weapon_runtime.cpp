@@ -1622,6 +1622,75 @@ int main(int argc,char** argv){
     assert(forget_tree->validate(forget_f.memory,sizeof(forget_f.memory),&forget_services.memory.storage,&forget_result)&&forget_result.count==0);
     assert(forget_input(500u)&&catalog_o.forget_found&&!catalog_o.forget_removed&&!catalog_o.forget_cleared&&forget_f.released==2);
     f.put(f.actor,0x378,saved_handle);
+    // Original Assault behavior: native named search, rally priority and
+    // squared distance tie-break, reservation, linked assault point and reset.
+    struct AssaultFixture {
+        F* f;
+        alignas(4) unsigned char points[5][0x3c0]{};
+        unsigned warnings{},last_warning{},casts{},detaches{};
+    } assault_f{&f};
+    sin_independent::EntityHandleEntry assault_slots[6]{};
+    for(unsigned i=0;i<5;++i){
+        assault_slots[i].serial=1;assault_slots[i].entity=reinterpret_cast<CBaseEntity*>(assault_f.points[i]);
+        assault_slots[i].next=&assault_slots[i+1];
+        f.put(assault_f.points[i],0x378,0x1000u+i);
+        f.put(assault_f.points[i],0xc0,i<4?901u:902u);
+        f.put(assault_f.points[i],0x3bc,0xffffffffu);
+        f.put(assault_f.points[i],0x394,902u);
+    }
+    assault_slots[5].serial=2;assault_slots[5].entity=reinterpret_cast<CBaseEntity*>(f.actor);
+    f.put(f.actor,0x378,0x2005u);f.put(f.actor,0xc0,0u);
+    f.put(f.actor,0xdb8,0x223f5544u);f.put(f.actor,0xdbc,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.actor)));
+    f.put(f.actor,0x2bc,0.f);f.put(f.actor,0x2c0,0.f);f.put(f.actor,0x2c4,0.f);f.put(f.actor,0xb8,0u);
+    // First reserved candidate is ignored. Priority 5 beats priority 1;
+    // closest among equal priority wins. Exact distance ties retain first.
+    f.put(assault_f.points[0],0x3bc,0x2005u);f.put(assault_f.points[0],0x3a0,99);
+    f.put(assault_f.points[1],0x3a0,1);f.put(assault_f.points[1],0x2bc,1.f);
+    f.put(assault_f.points[2],0x3a0,5);f.put(assault_f.points[2],0x2bc,10.f);
+    f.put(assault_f.points[3],0x3a0,5);f.put(assault_f.points[3],0x2bc,4.f);
+    ServerEntitySearchBindings assault_search{};assault_search.context=&assault_f;assault_search.head=assault_slots;
+    assault_search.extent=[](void* p,void* e,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);
+        if(e==q.f->actor){*bytes=sizeof(q.f->actor);return 1;}
+        for(auto& row:q.points)if(e==row){*bytes=sizeof(row);return 1;}
+        return 0;
+    };
+    assault_search.foreign_handle=[](void* p,void* e,unsigned* handle) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);*handle=q.f->get<unsigned>(e,0x378);return 1;
+    };
+    assault_search.string_text=[](void*,unsigned token,const char** text,unsigned* n) noexcept -> int{
+        switch(token){case 901u:*text="Rally";break;case 902u:*text="AssaultPoint";break;case 903u:*text="rALLY";break;case 904u:*text="Missing";break;default:return 0;}
+        *n=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    ServerNpcInputAssaultBindings assault_services{};assault_services.context=&assault_f;
+    assault_services.point_type=[](void* p,void* e,bool rally,bool* yes) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);++q.casts;*yes=false;
+        for(unsigned i=0;i<5;++i)if(e==q.points[i])*yes=rally?i<4:i==4;return 1;
+    };
+    assault_services.detach=[](void* p,void* e) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);++q.detaches;q.f->put(e,0xb8,0u);return 1;
+    };
+    assault_services.warning=[](void* p,void* e,unsigned token) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);assert(e==q.f->actor);++q.warnings;q.last_warning=token;return 1;
+    };
+    auto assault_b=leaves;assault_b.context=&assault_f;assault_b.assault=&assault_services;
+    assault_b.search=&assault_search;assault_b.entities.entries=assault_slots;assault_b.entities.count=6;
+    auto assault_input=[&](unsigned name){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,name);f.put(inp.variant,0x10,2u);
+        return accept->run(f.actor,sizeof(f.actor),ground_vt,0x223f5624u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&assault_b,&catalog_o);
+    };
+    f.put(f.actor,0x798,123u);f.put(f.actor,0x82c,0u);f.actor[0xddc]=1;f.actor[0xdde]=1;
+    assert(assault_input(903u)&&catalog_o.native_handler&&catalog_o.assault_candidates==4&&catalog_o.assault_reserved&&catalog_o.assault_selected&&catalog_o.assault_linked&&catalog_o.assault_reset);
+    assert(f.get<unsigned>(assault_f.points[3],0x3bc)==0x2005u&&f.get<unsigned>(f.actor,0xdd0)==0x1003u&&f.get<unsigned>(f.actor,0xdcc)==0x1004u&&f.get<unsigned>(f.actor,0xdd4)==3);
+    assert(!f.get<unsigned>(f.actor,0x798)&&f.get<unsigned>(f.actor,0x82c)==0xffffffffu&&!f.actor[0xddc]&&!f.actor[0xdde]);
+    f.put(assault_f.points[2],0x394,904u);
+    assert(assault_input(901u)&&catalog_o.assault_selected&&catalog_o.assault_missing&&!catalog_o.assault_linked&&catalog_o.assault_reset&&assault_f.last_warning==0x223f3bc0u);
+    assert(f.get<unsigned>(f.actor,0xdd0)==0x1002u&&!f.get<unsigned>(f.actor,0xdd4)&&f.get<unsigned>(f.actor,0xdcc)==0xffffffffu);
+    assert(assault_input(901u)&&catalog_o.assault_selected&&catalog_o.assault_linked&&f.get<unsigned>(f.actor,0xdd0)==0x1001u);
+    f.put(f.actor,0x798,321u);
+    assert(assault_input(901u)&&catalog_o.assault_missing&&!catalog_o.assault_selected&&!catalog_o.assault_reset&&assault_f.last_warning==0x223f3cd0u);
+    assert(f.get<unsigned>(f.actor,0x798)==321u);
+    f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
