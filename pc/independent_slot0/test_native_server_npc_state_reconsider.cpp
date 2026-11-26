@@ -4340,5 +4340,59 @@ int main(int argc,char** argv){
         f.put(q.a,0xc28,1);f.put(q.list,0,0x10db9u);assert(!arb->arbitrate(q.a,sizeof(q.a),10,&bb,&z)&&!z.completed);
 
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntScheduleAcquireApi>(GetProcAddress(s,server_npc_grunt_schedule_acquire_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_schedule_acquire_export)&&!g(0,sizeof(ServerNpcGruntScheduleAcquireApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntScheduleAcquireApi));assert(api);
+        struct AcquireFixture {
+            alignas(4) unsigned char a[0x1085]{},owner[0x48]{},behavior[0x18]{},records[3][0x34]{};
+            unsigned warnings=0,last_format=0,special=0,resets=0;int last_id=-1;
+            static AcquireFixture& self(void* p){return *static_cast<AcquireFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        ServerNpcGruntAssaultScheduleBindings sb{};auto& ab=sb.admission;
+        ab.actor_vtable=0x2249aaa4;ab.actor_token=0x10000;
+        ServerNpcGruntAssaultActivationBindings act{};act.schedule=&sb;
+        ServerNpcGruntAssaultPolicyBindings policy{};policy.admission=ab;policy.behavior_schedules.context=&q;
+        policy.behavior_schedules.descriptor=[](void* x,void* p,const void** d,unsigned* n) noexcept -> int{auto& q=AcquireFixture::self(x);assert(p==q.a+0xdb8);*d=q.behavior;*n=sizeof(q.behavior);return 1;};
+        policy.parent_translate=[](void*,void*,int id,int* v) noexcept -> int{*v=id;return 1;};
+        ServerNpcGruntAssaultArbitrationBindings arb{};arb.activation=&act;arb.policy=&policy;
+        arb.shared_translate=[](void*,void*,int id,int* v) noexcept -> int{*v=id;return 1;};
+        ServerNpcGruntScheduleAcquireBindings b{};b.arbitration=&arb;b.registry_head=10;b.context=&q;b.schedule.context=&q;
+        b.owner_schedules.context=&q;b.owner_schedules.descriptor=[](void* x,void* a,const void** d,unsigned* n) noexcept -> int{auto& q=AcquireFixture::self(x);assert(a==q.a);*d=q.owner;*n=sizeof(q.owner);return 1;};
+        b.schedule.conditions=b.owner_schedules;
+        b.schedule.storage=[](void* x,std::uint32_t token,const void** v,unsigned* n) noexcept -> int{auto& q=AcquireFixture::self(x);if(token<10||token>12)return 0;*v=q.records[token-10];*n=0x34;return 1;};
+        b.schedule.reset_movement=[](void* x,void* a,std::uint32_t) noexcept -> int{auto& q=AcquireFixture::self(x);assert(a==q.a);++q.resets;return 1;};
+        b.warning=[](void* x,void*,std::uint32_t fmt,int id,std::uint32_t) noexcept -> int{auto& q=AcquireFixture::self(x);++q.warnings;q.last_format=fmt;q.last_id=id;return 1;};
+        b.special_translate=[](void* x,void*,int id,float,int* v) noexcept -> int{auto& q=AcquireFixture::self(x);++q.special;*v=id;return 1;};
+        f.put(q.owner,4,1000000000);f.put(q.owner,8,0);f.put(q.owner,12,200);f.put(q.owner,16,1000000200);
+        f.put(q.owner,0x34,1000000000);f.put(q.owner,0x38,0);f.put(q.owner,0x3c,200);
+        f.put(q.behavior,4,1000000300);f.put(q.behavior,8,100000);f.put(q.behavior,12,100009);f.put(q.behavior,16,1000000309);
+        f.put(q.records[0],0,1000000303);f.put(q.records[0],0x30,11u);
+        f.put(q.records[1],0,1000000016);f.put(q.records[1],0x30,12u);
+        f.put(q.records[2],0,1000000001);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);f.put(q.a,0xc18,0x10db8u);
+        ServerNpcGruntScheduleAcquireResult o{};static ServerNpcGruntAssaultArbitrationResult route;ServerNpcScheduleStateResult state{};
+        auto get=[&](int id){return api->get(q.a,sizeof(q.a),id,10,&b,&o);};
+        auto acquire=[&](int id){return api->acquire(q.a,sizeof(q.a),id,10,&b,&o,&route);};
+        assert(get(100003)&&o.schedule_token==10&&o.behavior_lookup==1&&!o.owner_lookup&&o.records==1);
+        assert(get(16)&&o.schedule_token==11&&o.unmapped==1&&o.owner_lookup==1&&o.lookup_calls==1);
+        assert(get(1000000303)&&o.schedule_token==10&&!o.owner_lookup);
+        assert(acquire(16)&&o.translated==100003&&o.schedule_token==10&&route.native_translate);
+        f.put(q.a,0x7cc,3u);assert(api->install(q.a,sizeof(q.a),16,10,&b,&o,&route,&state)&&o.installed&&o.owner_global_written&&o.owner_global==1000000016&&state.schedule==10&&state.global==1000000303&&q.resets==1);
+        assert(AcquireFixture::rd(q.a,0x798)==10&&AcquireFixture::rd(q.a,0x79c)==1000000016&&AcquireFixture::rd(q.a,0x7cc)==2u);
+        f.put(q.a,0xc18,0u);assert(acquire(17)&&o.fallback&&o.schedule_token==12&&q.last_format==0x223e6670u&&q.last_id==17);
+        assert(acquire(25)&&o.translated_special&&q.special==1);
+        b.registry_head=0;assert(api->install(q.a,sizeof(q.a),16,10,&b,&o,&route,&state)&&o.completed&&!o.installed&&!o.owner_global_written&&o.fallback);
+        b.registry_head=10;f.put(q.records[2],0x30,10u);assert(!get(17)&&!o.completed);f.put(q.records[2],0x30,0u);
+        f.put(q.owner,4,-1);f.put(q.records[2],0,1);assert(get(16)&&o.descriptor_unregistered&&o.schedule_token==12);
+        f.put(q.owner,4,1000000000);f.put(q.records[2],0,1000000001);
+        ab.actor_vtable=0x2248df04;assert(acquire(25)&&o.translated==118&&o.translated_native);assert(acquire(39)&&o.translated==119);
+        assert(acquire(99)&&o.translated==49);assert(acquire(77)&&o.translated==77);
+        ab.actor_vtable=0x2248c514;q.a[0x1084]=1;assert(acquire(23)&&o.translated==118);
+        assert(acquire(41)&&o.translated==122);assert(acquire(88)&&o.translated==2);assert(acquire(112)&&o.translated==123);
+        assert(!api->acquire(q.a,0x1084,23,10,&b,&o,&route));
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

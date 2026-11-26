@@ -5,6 +5,8 @@
 #include <initializer_list>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl
 SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleStateApi* __cdecl
+SiN_GetServerNpcScheduleStateApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -6310,6 +6312,110 @@ int __cdecl assault_owner_translate(void* a,unsigned n,int incoming,float now,co
 }
 const ServerNpcGruntAssaultArbitrationApi assault_arbitration_api{1,sizeof(ServerNpcGruntAssaultArbitrationApi),&assault_arbitrate,&assault_owner_select,&assault_owner_translate};
 
+bool schedule_acquire_init(void* a,unsigned n,float now,const ServerNpcGruntScheduleAcquireBindings* b,ServerNpcGruntScheduleAcquireResult* o) noexcept{
+    if(!o)return false;*o={};o->requested=o->translated=o->lookup_id=o->owner_global=-1;
+    if(!a||n<0xc31||!b||!b->arbitration||!b->arbitration->activation||!b->arbitration->activation->schedule||!std::isfinite(now))return false;
+    const auto& ab=b->arbitration->activation->schedule->admission;
+    return relation_grunt_class(ab.actor_vtable)&&ab.count<=sin_independent::kEntityHandleCapacity&&(!ab.count||ab.entries);
+}
+bool schedule_diagnostic(void* a,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,std::uint32_t format,int id,std::uint32_t component=0) noexcept{
+    ++o.warning_calls;return !b.warning||b.warning(b.context,a,format,id,component);
+}
+bool schedule_registry_find(void* a,int id,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o) noexcept{
+    ++o.lookup_calls;o.lookup_id=id;o.schedule_token=0;
+    std::uint32_t seen[4096];unsigned count=0;
+    for(auto token=b.registry_head;token;){
+        if(count>=4096)return false;
+        for(unsigned i=0;i<count;++i)if(seen[i]==token)return false;
+        seen[count++]=token;
+        const void* data=nullptr;unsigned size=0;
+        if(!b.schedule.storage||!b.schedule.storage(b.schedule.context,token,&data,&size)||!data||size<0x34)return false;
+        ++o.records;if(read<int>(data,0)==id){o.schedule_token=token;return true;}
+        token=read<unsigned>(data,0x30);
+    }
+    ++o.missing;return schedule_diagnostic(a,b,o,0x223ecedcu,id);
+}
+bool schedule_descriptor_lookup(void* a,void* subject,int id,bool behavior,std::uint32_t component,const ServerNpcConditionMapBindings& map,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o) noexcept{
+    const void* desc=nullptr;unsigned size=0;
+    if(!map.descriptor||!map.descriptor(map.context,subject,&desc,&size)||!desc||size<8)return false;
+    int global=id;
+    if(read<int>(desc,4)==-1){
+        ++o.descriptor_unregistered;
+        if(!schedule_diagnostic(a,b,o,0x223e66a4u,id,component))return false;
+        global=1;
+    }else if(id<npc_global_condition_base||id==-1){
+        // Retail invokes the descriptor virtual a second time on this route.
+        if(!schedule_local_id(subject,id,map,global))return false;
+        if(global==-1){++o.unmapped;if(behavior){o.schedule_token=0;return true;}}
+    }
+    return schedule_registry_find(a,global,b,o);
+}
+bool schedule_get_impl(void* a,unsigned n,int id,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o) noexcept{
+    const auto& ab=b.arbitration->activation->schedule->admission;
+    o.schedule_token=0;o.active_token=read<unsigned>(a,0xc18);o.behavior_vtable=0;
+    if(o.active_token){
+        EmbeddedBehaviorIdentity identity{};
+        if(!embedded_behavior_identity(a,n,ab.actor_vtable,ab.actor_token,o.active_token,false,identity)||!b.arbitration->policy)return false;
+        o.behavior_vtable=identity.behavior_vtable;++o.behavior_lookup;
+        if(!schedule_descriptor_lookup(a,static_cast<unsigned char*>(a)+identity.embedded_offset,id,true,o.active_token,b.arbitration->policy->behavior_schedules,b,o))return false;
+        if(o.schedule_token)return true;
+    }
+    ++o.owner_lookup;
+    return schedule_descriptor_lookup(a,a,id,false,0,b.owner_schedules,b,o);
+}
+bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route) noexcept{
+    const auto vt=b.arbitration->activation->schedule->admission.actor_vtable;
+    auto native=[&](int v){o.translated=v;o.translated_native=1;return true;};
+    // 22354d60: Elite's entire +43c is a callback-free ID table.
+    if(vt==0x2248df04){
+        switch(id){case 25:case 41:case 98:return native(118);case 39:return native(119);case 48:case 84:case 99:return native(49);default:return native(id);}
+    }
+    if(vt==0x2248c514||vt==0x2248e83c||vt==0x2249964c||vt==0x224a4a4c){
+        if(n<0x1085)return false;
+        if(read<std::uint8_t>(a,0x1084)&&id==23)return native(118);
+        switch(id){case 11:case 41:return native(122);case 33:case 88:return native(2);case 37:case 112:return native(123);case 48:return native(49);}
+    }
+    // 2235d5b0: only these jump table arms differ from the ordinary wrapper.
+    switch(id){
+    case 18:case 25:case 26:case 33:case 36:case 41:case 42:case 48:case 79:case 80:case 87:case 98:case 100:case 107:
+        if(!b.special_translate||!b.special_translate(b.context,a,id,now,&o.translated))return false;
+        o.translated_special=1;return true;
+    }
+    if(!assault_owner_translate(a,n,id,now,b.arbitration,&route))return false;
+    return native(route.schedule);
+}
+bool schedule_acquire_impl(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route) noexcept{
+    o.requested=id;
+    if(!schedule_translate_grunt(a,n,id,now,b,o,route)||!schedule_get_impl(a,n,o.translated,b,o))return false;
+    if(!o.schedule_token){
+        o.fallback=1;
+        if(!schedule_diagnostic(a,b,o,0x223e6670u,o.translated)||!schedule_get_impl(a,n,1,b,o))return false;
+    }
+    return true;
+}
+int __cdecl schedule_acquire_get(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings* b,ServerNpcGruntScheduleAcquireResult* o) noexcept{
+    if(!schedule_acquire_init(a,n,now,b,o))return 0;o->requested=id;
+    if(!schedule_get_impl(a,n,id,*b,*o))return 0;o->completed=1;return 1;
+}
+int __cdecl schedule_acquire(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings* b,ServerNpcGruntScheduleAcquireResult* o,ServerNpcGruntAssaultArbitrationResult* route) noexcept{
+    if(!route)return 0;*route={};
+    if(!schedule_acquire_init(a,n,now,b,o)||!schedule_acquire_impl(a,n,id,now,*b,*o,*route))return 0;
+    o->completed=1;return 1;
+}
+int __cdecl schedule_acquire_install(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings* b,ServerNpcGruntScheduleAcquireResult* o,ServerNpcGruntAssaultArbitrationResult* route,ServerNpcScheduleStateResult* state) noexcept{
+    if(!state||!route)return 0;*state={};*route={};
+    if(!schedule_acquire_init(a,n,now,b,o)||!schedule_acquire_impl(a,n,id,now,*b,*o,*route))return 0;
+    if(!o->schedule_token){o->completed=1;return 1;} // original returns false; report no install separately
+    o->owner_global=id;
+    if(id<npc_global_condition_base&&id!=-1&&!schedule_local_id(a,id,b->owner_schedules,o->owner_global))return 0;
+    write(a,0x79c,o->owner_global);o->owner_global_written=1;
+    const auto* api=SiN_GetServerNpcScheduleStateApi(1,sizeof(ServerNpcScheduleStateApi));
+    if(!api||!api->install(a,n,o->schedule_token,now,&b->schedule,state))return 0;
+    o->installed=o->completed=1;return 1;
+}
+const ServerNpcGruntScheduleAcquireApi schedule_acquire_api{1,sizeof(ServerNpcGruntScheduleAcquireApi),&schedule_acquire_get,&schedule_acquire,&schedule_acquire_install};
+
+
 
 
 
@@ -8223,4 +8329,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultArbitrationApi=_SiN_GetServerNpcGruntAssaultArbitrationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultArbitrationApi* __cdecl SiN_GetServerNpcGruntAssaultArbitrationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultArbitrationApi)?&assault_arbitration_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntScheduleAcquireApi=_SiN_GetServerNpcGruntScheduleAcquireApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleAcquireApi* __cdecl SiN_GetServerNpcGruntScheduleAcquireApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntScheduleAcquireApi)?&schedule_acquire_api:nullptr;
 }
