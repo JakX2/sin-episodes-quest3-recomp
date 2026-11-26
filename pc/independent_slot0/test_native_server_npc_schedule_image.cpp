@@ -816,7 +816,7 @@ int main(int argc,char** argv){
         struct FrameMeta {
             EquippedThinkFixture* q;
             ServerStudioEvent reload{.04f,2,0,"reload",0},shot{.04f,3002,0,"fire",0};
-            bool reloading=false;
+            bool reloading=false,suppress=false;
         } meta{&equipped};
         ServerNpcScriptWeaponEventFrameBindings frame{};
         frame.frame.events=event_bind.original;
@@ -845,7 +845,7 @@ int main(int argc,char** argv){
         nf.events.sequence=[](void* p,void* a,int,ServerAnimationEventSequence* seq) noexcept -> int{
             auto& q=*static_cast<FrameMeta*>(p);
             const bool npc=a==q.q->f->actor;assert(npc||a==q.q->weapon);
-            if(npc==q.reloading)*seq={npc?&q.reload:&q.shot,1,1,0};
+            if(!q.suppress&&npc==q.reloading)*seq={npc?&q.reload:&q.shot,1,1,0};
             else *seq={nullptr,0,1,0};
             return 1;
         };
@@ -968,6 +968,59 @@ int main(int argc,char** argv){
         int reload_fail=-1;std::memcpy(&reload_fail,f.actor+0x7bc,4);assert(reload_fail==49);
         // New descriptor's real first task installs the ordinary reload
         // fallback. No manual installation of schedule84 or forced selector.
+        // The other original probability branch must install the inherited
+        // ordinary reload descriptor rather than a synthetic fallback token.
+        const auto original_image=f.image;
+        assert(reload_image->build(f.actor,NpcSubclassGround,original_image.token_base,original_image.fallback_head,&b,&f.image,&result));
+        const auto ordinary=find(49),extended_attack=find(91);assert(ordinary&&extended_attack);
+        reload_policy.probability=[](void* p,float chance,bool* out) noexcept -> int{
+            assert(chance==20.f);++*static_cast<unsigned*>(p);*out=false;return 1;
+        };
+        gather.classname_matches=[](void*,void*,const char* name,bool* yes) noexcept -> int{
+            assert(!std::strcmp(name,"npc_gib_hopper"));*yes=false;return 1;
+        };
+        auto reload_move=mb;reload_move.context=&equipped;reload_move.storage=storage;
+        reload_move.clear_path=[](void* p,void* nav) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(nav==q.nav);q.f->put(q.path,0,0u);q.f->put(q.path,0x44,0u);return 1;
+        };
+        step_bind.movement=&reload_move;
+        prepare_engaged(0,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+        f.put(f.actor,0x9b0,std::uint16_t{2});f.put(f.actor,0x9b2,std::uint16_t{3});
+        assert(state->install(f.actor,sizeof(f.actor),extended_attack,76.25f,&sb,&sr));
+        f.put(f.actor,0x79c,global+191);
+        for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+        stamp=0;equipped.shots=equipped.sounds=equipped.prepares=equipped.flashes=0;
+        meta.reloading=true;meta.suppress=true;
+        f.put(f.actor,0x864,76.25f);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1525);
+        auto update_reload=[&](float now,int activity,bool finished){
+            seed_anim(now);f.put(f.actor,0x878,activity);f.put(f.actor,0x880,activity);f.actor[0x3e0]=finished;
+            const ServerNpcRunAnimationInput input{now,false,false};
+            const int ok=outer_api->ground(f.actor,sizeof(f.actor),&input,.05f,&step_bind,&outer_bind,&step_result,&tail_result,&outer_result);
+            const auto& mt=step_result.think.requests.scheduler.maintenance;
+            if(!ok)std::fprintf(stderr,"reload phase now=%f admitted=%u think=%u complete=%u selected=%d schedule=%u task=%d status=%d anim=%u event=%d tail=%u\n",now,outer_result.admission.admitted,step_result.think_called,step_result.think_completed,step_result.think.requests.request.acquisition.translated,mt.state.schedule,mt.state.task.id,mt.state.status,step_result.animation_called,step_result.animation.frame.frame.failed_event,tail_result.completed);
+            assert(ok&&outer_result.completed&&outer_result.think_called&&step_result.think_completed&&tail_result.completed);
+        };
+        update_reload(76.25f,16,false);
+        const auto& maintenance=step_result.think.requests.scheduler.maintenance;
+        assert(step_result.think.requests.request.requested==48&&step_result.think.requests.request.acquisition.translated==49&&reload_rolls==2);
+        assert(maintenance.state.schedule==ordinary&&maintenance.state.task.id==116&&maintenance.state.status==4&&!step_result.animation.frame.frame.handled);
+        assert(f.last_pending==1);
+        // The ordinary reload task starts activity66. The synthetic studio
+        // descriptor delivers the original event2, not a direct clip write.
+        meta.suppress=false;
+        const float reload_now=outer_result.finish.deadline;
+        update_reload(reload_now,66,false);
+        assert(maintenance.state.schedule==ordinary&&maintenance.state.task.id==71&&maintenance.state.status!=4&&f.last_pending==66);
+        assert(step_result.animation.fixed_resets==1&&step_result.animation.frame.frame.npc_events==1&&!step_result.animation.frame.frame.weapon_events);
+        int reloaded_clip=-1;std::memcpy(&reloaded_clip,equipped.weapon+0x4ec,4);assert(reloaded_clip==8&&equipped.sounds==1&&!equipped.shots);
+        assert(conditions->test(f.actor,sizeof(f.actor),4,NpcConditionCurrent,&sb.conditions,&condition)&&!condition.value);
+        // A later due update observes restored ammo and completes task71
+        // when the synthetic animation reports its terminal sequence flag.
+        meta.suppress=true;
+        update_reload(outer_result.finish.deadline,66,true);
+        assert(step_result.outer_weapon.primary.available&&step_result.outer_weapon.primary.clip==8&&maintenance.state.schedule==ordinary&&maintenance.state.task.id==71&&maintenance.state.status==4);
+        assert(equipped.sounds==1&&!equipped.shots);
+        f.image=original_image;step_bind.movement=&mb;
         selection.state.state_changed=prior_changed;
         ids=prior_ids;
         stamp=prior_stamp;
