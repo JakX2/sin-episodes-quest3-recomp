@@ -8571,6 +8571,99 @@ bool elite_local_player(const ServerNpcEliteLocalPlayerBindings& b,void*& player
     if(!b.base_entity||!b.base_entity(b.context,unknown,&player))return false;
     o.player_unknown_called=1;return true;
 }
+// Compare the integer ratio with a binary32 value or its exact midpoint
+// without losing the distinction between an x87 quotient and its stored
+// float. The positive significand is at most 25 bits; products fit u64.
+int elite_ratio_compare(int numerator,int denominator,double bound) noexcept{
+    if(!denominator){
+        if(!numerator)return 2; // unordered
+        const double value=numerator<0?-std::numeric_limits<double>::infinity():std::numeric_limits<double>::infinity();
+        return value<bound?-1:value>bound?1:0;
+    }
+    if(std::isnan(bound))return 2;
+    if(std::isinf(bound))return bound>0?-1:1;
+    const std::int64_t sn=denominator<0?-std::int64_t(numerator):std::int64_t(numerator);
+    const std::uint64_t d=denominator<0?-std::int64_t(denominator):std::int64_t(denominator);
+    if(!sn||!bound)return sn<bound?-1:sn>bound?1:0;
+    if((sn<0)!=(bound<0))return sn<0?-1:1;
+    const std::uint64_t n=sn<0?-sn:sn;
+    int exponent=0;const double fraction=std::frexp(std::fabs(bound),&exponent);
+    const std::uint64_t significand=static_cast<std::uint64_t>(std::ldexp(fraction,25));
+    const int shift=exponent-25;std::uint64_t left=n,right=d*significand;
+    int cmp=0;
+    if(shift>=0){
+        if(shift>=64||right>(std::numeric_limits<std::uint64_t>::max()>>shift))cmp=-1;
+        else {right<<=shift;cmp=left<right?-1:left>right?1:0;}
+    }else{
+        const int k=-shift;
+        if(k>=64||left>(std::numeric_limits<std::uint64_t>::max()>>k))cmp=1;
+        else {left<<=k;cmp=left<right?-1:left>right?1:0;}
+    }
+    return sn<0?-cmp:cmp;
+}
+float elite_ratio_store(int numerator,int denominator) noexcept{
+    if(!denominator)return numerator?std::copysign(std::numeric_limits<float>::infinity(),float(numerator)):std::numeric_limits<float>::quiet_NaN();
+    float f=static_cast<float>(double(numerator)/double(denominator));
+    const int side=elite_ratio_compare(numerator,denominator,double(f));
+    if(side){
+        const float neighbor=std::nextafter(f,side<0?-std::numeric_limits<float>::infinity():std::numeric_limits<float>::infinity());
+        const double midpoint=(double(f)+double(neighbor))*.5;
+        const int direction=elite_ratio_compare(numerator,denominator,midpoint);
+        if(direction==side)f=neighbor;
+    }
+    return f;
+}
+bool elite_ammo_reward(void* player,const ServerNpcEliteAmmoRewardBindings& b,void*& target,ServerNpcGruntEliteDeathResult& o) noexcept{
+    target=nullptr;o.reward_minimum=std::numeric_limits<float>::max();o.reward_ammo_index=-1;
+    unsigned extent=0;
+    if(!b.extent||!b.extent(b.context,player,&extent)||extent<0x78cu||
+       (read<unsigned>(player,0)!=0x2245222cu&&read<unsigned>(player,0)!=0x224aec3cu)||
+       b.count>sin_independent::kEntityHandleCapacity||(b.count&&!b.entries)||!b.scripts||!b.ammo_index||!b.max_carry||!b.create)return false;
+    const auto registry=sin_independent::EntityHandleView(b.entries,b.count);
+    const auto* api=SiN_GetServerWeaponScriptViewApi(1,sizeof(ServerWeaponScriptViewApi));if(!api)return false;
+    constexpr const char* names[]{"MAG","AR","BUCK","ARNADE","FLAK","DUAG"};
+    constexpr const char* classes[]{"item_ammo_magnum","item_ammo_ar","item_ammo_buckshot","item_ammo_ar_grenade","item_ammo_flak","item_ammo_duag"};
+    auto equal=[](const char* a,const char* c){
+        auto lower=[](unsigned char x){return x>='A'&&x<='Z'?x+32:x;};
+        while(*a&&lower(*a)==lower(*c)){++a;++c;}return lower(*a)==lower(*c);
+    };
+    o.reward_native=1;
+    for(unsigned i=0;i<48;++i){
+        ++o.reward_slots;void* weapon=registry.Resolve(read<unsigned>(player,0x6cc+4*i));if(!weapon)continue;
+        ++o.reward_weapons;
+        unsigned wn=0;ServerWeaponScriptRecord rec{};
+        if(!b.extent(b.context,weapon,&wn)||!api->weapon(b.scripts,weapon,wn,&rec))return false;
+        // Primary rejection skips the entire weapon, including secondary.
+        for(unsigned off:{0x17cu,0x19cu}){
+            if(rec.bytes<off+32)return false;
+            const char* name=static_cast<const char*>(rec.data)+off;
+            if(!std::memchr(name,0,32))return false;
+            if(!*name)break;
+            unsigned k=0;while(k<6&&!equal(name,names[k]))++k;if(k==6)break;
+            int index=-1,maximum=0,reserve=0;
+            if(!b.ammo_index(b.context,name,&index)||!b.max_carry(b.context,index,&maximum))return false;
+            if(index!=-1){
+                int live_maximum=0;if(!b.max_carry(b.context,index,&live_maximum))return false;
+                if(live_maximum==-2)reserve=999;
+                else{
+                    if(index<0||index>=32)return false;
+                    reserve=read<int>(player,0x64c+4*unsigned(index));
+                }
+            }
+            if(elite_ratio_compare(reserve,maximum,o.reward_minimum)==-1){
+                o.reward_minimum=elite_ratio_store(reserve,maximum);
+                o.reward_classname=classes[k];o.reward_ammo_index=index;
+            }
+            if(elite_ratio_compare(reserve,maximum,o.reward_minimum)==0)++o.reward_equal_minimum;
+            ++o.reward_candidates;
+        }
+    }
+    // This counter is equality with the *running*, rounded minimum, not
+    // the number of full ammo types. Preserve the retail oddity.
+    if(o.reward_candidates==o.reward_equal_minimum||o.reward_minimum==1.f||!o.reward_classname)return true;
+    if(!b.create(b.context,o.reward_classname,-1,&target))return false;
+    o.reward_factory=1;return true;
+}
 int elite_post_impl(void* a,unsigned n,const ServerNpcGruntEliteDeathBindings& b,ServerNpcGruntEliteDeathResult& out) noexcept{
     if(!a||n<0xfe0||!b.rule)return 0;
     bool yes=false;if(!b.rule(b.context,&yes))return 0;
@@ -8580,7 +8673,9 @@ int elite_post_impl(void* a,unsigned n,const ServerNpcGruntEliteDeathBindings& b
     if(b.native_player){if(!elite_local_player(*b.native_player,player,out))return 0;}
     else if(!b.player||!b.player(b.context,&player))return 0;
     if(!player)return 1;out.player_found=1;
-    void* target=nullptr;if(!b.entity||!b.entity(b.context,player,&target))return 0;
+    void* target=nullptr;
+    if(b.native_reward){if(!elite_ammo_reward(player,*b.native_reward,target,out))return 0;}
+    else if(!b.entity||!b.entity(b.context,player,&target))return 0;
     if(!target)return 1;out.entity_found=1;
     if(read<unsigned>(a,0xb8)&0x800u){
         if(!b.refresh_origin||!b.refresh_origin(b.context,a))return 0;
@@ -8685,7 +8780,13 @@ int elite_death(void* a,unsigned n,void* damage,unsigned dn,float now,const Serv
         ok=grunt_ground_death(a,n,ground.handle,damage,dn,now,&bound,ground.result);
         out.base_called=ok;if(ok)*ground.called=1;
     }
-    if(ok)ok=elite_post_impl(a,n,b,out)!=0;
+    if(ok){
+        auto post=b;
+        if(b.native_reward){
+            auto reward=*b.native_reward;reward.entries=sb.entries;reward.count=sb.count;
+            post.native_reward=&reward;ok=elite_post_impl(a,n,post,out)!=0;
+        }else ok=elite_post_impl(a,n,post,out)!=0;
+    }
     const bool ended=b.effect_end&&b.effect_end(b.context,a);out.effect_closed=ended;
     if(!ok||!ended)return 0;out.completed=1;return 1;
 }

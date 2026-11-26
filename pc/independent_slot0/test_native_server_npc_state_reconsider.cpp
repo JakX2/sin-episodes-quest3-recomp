@@ -3039,7 +3039,10 @@ int main(int argc,char** argv){
         auto g=reinterpret_cast<GetServerNpcGruntEliteLifeApi>(GetProcAddress(s,server_npc_grunt_elite_life_export));assert(g);
         const auto* api=g(1,sizeof(ServerNpcGruntEliteLifeApi));assert(api);
         struct ElitePostFixture{
-            alignas(4) unsigned char a[0xfe0]{},player[4]{},target[4]{};
+            alignas(4) unsigned char a[0xfe0]{},player[0x78c]{},target[4]{},weapons[2][0x51e]{},script_rows[32]{},script_records[2][0x1bc]{};
+            sin_independent::EntityHandleEntry reward_entries[2]{};
+            int max_ammo[2]{12,30};unsigned factories{},max_reads{},index_reads{};
+            const char* expected_pickup=nullptr;
             bool rule=true,player_ok=true,entity_ok=true;unsigned step=0,rng=0,velocity_rng=0;
             bool bad_velocity=false;
             alignas(4) unsigned char edict[0x10]{};
@@ -3115,6 +3118,64 @@ int main(int argc,char** argv){
         assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_unknown_called&&o.player_found&&!o.entity_found&&q.unknown_calls==2&&!q.step);
         q.entity_ok=true;
         assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.player_unknown_called&&o.player_found&&o.entity_found&&o.velocity_native&&o.finished&&q.unknown_calls==3&&q.step==6);
+        // Original player reward selector: sparse handles, case-insensitive
+        // mapped script names, x87 running-minimum equality and one factory.
+        ServerWeaponScriptView scripts{};scripts.rows=q.script_rows;scripts.bytes=sizeof(q.script_rows);scripts.count=2;
+        scripts.context=&q;scripts.storage=[](void* p,unsigned token,const void** data,unsigned* bytes) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);assert(token==1||token==2);*data=q.script_records[token-1];*bytes=sizeof(q.script_records[0]);return 1;
+        };
+        for(unsigned i=0;i<2;++i){
+            q.reward_entries[i].serial=7;q.reward_entries[i].entity=reinterpret_cast<CBaseEntity*>(q.weapons[i]);
+            f.put(q.weapons[i],0x51c,static_cast<std::uint16_t>(i));f.put(q.script_rows,i*16+12,i+1);
+        }
+        f.put(q.player,0,0x224aec3cu);for(unsigned i=0;i<48;++i)f.put(q.player,0x6cc+4*i,0xffffffffu);
+        ServerNpcEliteAmmoRewardBindings reward{};reward.context=&q;reward.entries=q.reward_entries;reward.count=2;reward.scripts=&scripts;
+        reward.extent=[](void* p,void* entity,unsigned* bytes) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);
+            if(entity==q.player)*bytes=sizeof(q.player);else if(entity==q.weapons[0]||entity==q.weapons[1])*bytes=sizeof(q.weapons[0]);else return 0;return 1;
+        };
+        reward.ammo_index=[](void* p,const char* name,int* id) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);++q.index_reads;
+            if(!std::strcmp(name,"mag"))*id=1;else if(!std::strcmp(name,"AR"))*id=2;else return 0;return 1;
+        };
+        reward.max_carry=[](void* p,int id,int* max) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);assert(id==1||id==2);++q.max_reads;*max=q.max_ammo[id-1];return 1;
+        };
+        reward.create=[](void* p,const char* name,int edict,void** entity) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);assert(q.expected_pickup&&!std::strcmp(name,q.expected_pickup)&&edict==-1&&!q.step);
+            ++q.factories;*entity=q.entity_ok?q.target:nullptr;return 1;
+        };
+        b.native_reward=&reward;b.entity=nullptr;
+        auto reset_reward=[&](){q.step=q.rng=q.velocity_rng=q.factories=q.max_reads=q.index_reads=0;q.expected_pickup=nullptr;q.entity_ok=true;};
+        reset_reward();
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_native&&o.reward_slots==48&&!o.reward_weapons&&!o.reward_factory&&!q.step);
+        f.put(q.player,0x6cc,0x7000u);f.put(q.player,0x6d0,0x8001u); // stale second slot
+        std::memcpy(q.script_records[0]+0x17c,"mag",4);
+        std::memcpy(q.script_records[0]+0x19c,"AR",3);
+        f.put(q.player,0x650,6);f.put(q.player,0x654,15);
+        reset_reward();
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_weapons==1&&o.reward_candidates==2&&o.reward_equal_minimum==2&&o.reward_minimum==.5f&&!o.reward_factory&&q.max_reads==4&&!q.step);
+        // First 1/3 is strictly below its rounded-up binary32 minimum.
+        // Equal count remains zero, so the original does create a reward.
+        f.put(q.player,0x650,4);f.put(q.player,0x654,30);
+        reset_reward();q.expected_pickup="item_ammo_magnum";
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_candidates==2&&!o.reward_equal_minimum&&o.reward_ammo_index==1&&o.reward_minimum==1.f/3.f&&o.reward_factory&&q.factories==1&&o.finished&&q.step==6);
+        reset_reward();q.expected_pickup="item_ammo_magnum";q.entity_ok=false;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_factory&&!o.entity_found&&!o.positioned&&!q.step);
+        // Full primary + overfull secondary: minimum exactly 1 suppresses.
+        f.put(q.player,0x650,12);f.put(q.player,0x654,60);
+        reset_reward();
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_minimum==1.f&&o.reward_equal_minimum==1&&!o.reward_factory);
+        // Unrecognized primary blocks secondary; stale handles never read.
+        std::memcpy(q.script_records[0]+0x17c,"OTHER",6);
+        reset_reward();assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_weapons==1&&!o.reward_candidates&&!q.index_reads);
+        // Second real slot with a recognized primary and empty secondary.
+        f.put(q.player,0x6d0,0x7001u);std::memcpy(q.script_records[1]+0x17c,"AR",3);f.put(q.player,0x654,10);
+        reset_reward();q.expected_pickup="item_ammo_ar";
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_weapons==2&&o.reward_candidates==1&&!o.reward_equal_minimum&&o.reward_factory&&o.finished&&q.step==6);
+        // Bad player vtable is rejected before inventory and factory access.
+        f.put(q.player,0,0xdeadbeefu);reset_reward();assert(!api->post(q.a,sizeof(q.a),&b,&o)&&!o.reward_native&&!q.factories);
+
     }
 
     {
