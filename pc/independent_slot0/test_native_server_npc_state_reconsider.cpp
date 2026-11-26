@@ -4462,7 +4462,8 @@ int main(int argc,char** argv){
         struct CombatFixture{
             alignas(4) unsigned char a[0x1085]{},enemy[0x208]{},weapon[0x504]{},desc[0x48]{},record[0x34]{},group[0x78]{},row[8]{};
             sin_independent::EntityHandleEntry entries[3]{};
-            bool leader_match=false,leader_present=false,leader_same=true,allow_speech=true,policy=true;
+            bool leader_match=false,leader_present=false,leader_same=true,allow_speech=true,policy=true,visible=true,global=false,blocked=true;
+            unsigned updates=0;float invalid[3]{};
             int roll=90,special=0;float position[3]{3,4,0};unsigned marks=0,contacts=0,finals=0;
             static CombatFixture& self(void* p){return *static_cast<CombatFixture*>(p);}
             static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
@@ -4526,6 +4527,40 @@ int main(int argc,char** argv){
         ab.actor_vtable=0x2249aaa4;f.put(q.a,0x850,3);q.a[0xca0]=1;bits(1u<<4);
         static ServerNpcGruntScheduleRequestResult request_out;ServerNpcGruntSelectorTailResult tail_out{};
         assert(api->choose(q.a,sizeof(q.a),10,&b,&request_out,&tail_out,&o)&&o.completed&&o.schedule==48&&tail_out.combat_called&&request_out.requested==48&&request_out.acquisition.schedule_token==10);
+
+        auto jg=reinterpret_cast<GetServerNpcGruntJetSelectorApi>(GetProcAddress(s,server_npc_grunt_jet_selector_export));
+        assert(jg&&!GetProcAddress(c,server_npc_grunt_jet_selector_export)&&!jg(0,sizeof(ServerNpcGruntJetSelectorApi))&&!jg(1,0));
+        const auto* jet=jg(1,sizeof(ServerNpcGruntJetSelectorApi));assert(jet);
+        ServerNpcGruntJetSelectorBindings jb{};jb.combat=&b;jb.context=&q;jb.invalid_point=q.invalid;
+        jb.class_matches=[](void*,std::uint32_t,std::uint32_t,bool* yes) noexcept -> int{*yes=false;return 1;};
+        jb.enemy_visible=[](void* x,void*,void*,bool* yes) noexcept -> int{*yes=CombatFixture::self(x).visible;return 1;};
+        jb.enemy_update=[](void* x,void*,void* e) noexcept -> int{auto& q=CombatFixture::self(x);assert(e==q.enemy);++q.updates;return 1;};
+        jb.global_present=[](void* x,bool* yes) noexcept -> int{*yes=CombatFixture::self(x).global;return 1;};
+        jb.navigation_blocked=[](void* x,void*,bool* yes) noexcept -> int{*yes=CombatFixture::self(x).blocked;return 1;};
+        ab.actor_vtable=0x2248c514;bits(0);f.put(q.a,0x8a0,0x1001u);
+        ServerNpcGruntJetSelectorResult jt{},js{};
+        auto special=[&](int id){assert(jet->special(q.a,sizeof(q.a),10,&jb,&js)&&js.completed&&js.schedule==id);};
+        auto jet_tail=[&](int id){assert(jet->tail(q.a,sizeof(q.a),10,&jb,&jt,&o,&js)&&jt.completed&&jt.schedule==id);};
+        f.put(q.a,0xfe0,4.f);special(0);assert(js.radius_rejected&&js.distance_squared==25);
+        f.put(q.a,0xfe0,5.f);special(41);assert(js.radius_checked&&js.condition_set&&(CombatFixture::rd(q.a,0x7cc)&(1u<<20)));
+        bits(1u<<22);special(41);assert(!js.condition_set);
+        bits(1u<<12);f.put(q.a,0x98c,0x1001u);f.put(q.enemy,0x9c,1);special(123);assert(js.obstacle_valid);
+        f.put(q.enemy,0x9c,0);f.put(q.enemy,0xc,0x223f01f8u);special(123);assert(js.obstacle_class_matched&&js.class_checks==3);
+        f.put(q.enemy,0xc,0u);special(0);assert(js.class_checks==4);
+        f.put(q.a,0x98c,0x9001u);special(0);assert(!js.obstacle_valid);
+        bits(1u<<11);jet_tail(118);assert(jt.enemy_update_called&&!jt.combat_called);
+        bits(0);f.put(q.a,0x7d4,1u<<15);jet_tail(119);f.put(q.a,0x7d4,0u);
+        f.put(q.a,0x60c,11.f);jet_tail(41);f.put(q.a,0x60c,10.f);
+        bits(1u<<22);jet_tail(41);bits(0);jet_tail(41);assert(jt.combat_called&&js.completed&&o.special_schedule==41);
+        f.put(q.a,0x8a0,0x9001u);f.put(q.a,0x8a8,0x1001u);f.put(q.a,0x7d4,1u<<15);jet_tail(120);assert(jt.auxiliary_valid);
+        f.put(q.a,0x7d4,0u);q.global=true;jet_tail(41);q.global=false;jet_tail(118);
+        f.put(q.a,0x8a8,0xffffffffu);f.put(q.a,0x100c,std::numeric_limits<float>::quiet_NaN());jet_tail(118);assert(jt.auxiliary_valid);
+        f.put(q.a,0x100c,0.f);f.put(q.a,0x850,2);bits(1u<<16);jet_tail(28);assert(jt.navigation_called);
+        q.blocked=false;bits(0,1u<<19);jet_tail(10);bits(0);jet_tail(118);
+        f.put(q.a,0x850,3);f.put(q.a,0x8a0,0x1001u);bits(1u<<11);f.put(q.record,0,1000000118);
+        rb.jet_tail=nullptr;b.special_combat=nullptr;
+        assert(jet->choose(q.a,sizeof(q.a),10,&jb,&request_out,&tail_out,&o,&jt,&js)&&jt.completed&&request_out.requested==118&&request_out.acquisition.schedule_token==10);
+
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
