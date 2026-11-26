@@ -688,7 +688,7 @@ int main(int argc,char** argv){
     unsigned tv[5]{};
     auto timer_ai=[&](unsigned token,unsigned type,unsigned value){
         tv[0]=value;tv[4]=type;timer[0x1f0]=1;timer[0x200]=0;
-        return timer_accept->accept(timer,sizeof(timer),timer_vtable,token,nullptr,nullptr,tv,sizeof(tv),0,&tai,&tair);
+        return timer_accept->run(timer,sizeof(timer),timer_vtable,token,nullptr,nullptr,tv,sizeof(tv),0,&tai,&tair);
     };
     const auto before_inputs=tf.schedules;
     assert(timer_ai(0x22420030,2,302)&&tair.accepted&&tair.converted&&tair.written==4&&tair.row==8&&word(timer,0x3e8)==0xfffffffdu&&timer[0x200]&&tf.schedules==before_inputs);
