@@ -794,8 +794,90 @@ int __cdecl remap_spawn(void*,unsigned,RemapResult*) noexcept;
 int __cdecl colorblend_spawn(void*,unsigned,ColorBlendResult*) noexcept;
 int __cdecl menu_listen(void*,unsigned,bool,const MenuBindings*,MenuResult*) noexcept;
 int __cdecl navigation_activate(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
+bool campaign_valid(void* a,unsigned n,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
+    if(!o)return false;*o={};
+    if(!a||n<4||!b)return false;
+    const auto vt=entity_vtable(a);o->dynamic=vt==dynamic_trigger_vtable;
+    return o->dynamic?n>=dynamic_trigger_extent:vt==secret_trigger_vtable&&n>=secret_trigger_extent;
+}
+bool campaign_name(void* a,const CampaignTriggerBindings& b,const char*& name) noexcept {
+    auto resolve=[&](unsigned token){
+        name="";if(!token)return true;
+        unsigned bytes=0;
+        return b.string_text&&b.string_text(b.context,token,&name,&bytes)&&name&&bytes&&std::memchr(name,0,bytes<4096?bytes:4096);
+    };
+    if(!resolve(read_field<unsigned>(a,0xc0)))return false;
+    return *name||resolve(read_field<unsigned>(a,0xc));
+}
+// 222b63b0 / 222b64d0. Owner event operations are explicit; original
+// CreateEvent null skips every setter and still permits removal.
+bool campaign_event(void* a,const char* name,int descriptor,float value,int decision,const CampaignTriggerBindings& b,CampaignTriggerResult& o) noexcept {
+    if(!b.create_event)return false;
+    void* event=nullptr;o.event_attempted=1;o.descriptor=descriptor;
+    if(!b.create_event(b.context,o.dynamic?"dynamic_difficulty":"game",false,&event))return false;
+    if(!event){o.event_unavailable=1;return true;}
+    if(!b.set_int||!b.set_string||!b.fire_event)return false;
+    int owner=-1;
+    if(o.dynamic&&(!b.owner_word||!b.owner_word(b.context,&owner)))return false;
+    if(!b.set_int(b.context,event,"descriptor",descriptor)||
+       !b.set_int(b.context,event,"owner",owner)||
+       !b.set_int(b.context,event,"subject",-1)||
+       !b.set_string(b.context,event,"name",name))return false;
+    if(o.dynamic){
+        if(!b.set_float||!b.set_int(b.context,event,"decision",decision)||
+           !b.set_float(b.context,event,"value",value)||
+           !b.set_float(b.context,event,"x",read_field<float>(a,0x2bc))||
+           !b.set_float(b.context,event,"y",read_field<float>(a,0x2c0))||
+           !b.set_float(b.context,event,"z",read_field<float>(a,0x2c4)))return false;
+    }
+    if(!b.fire_event(b.context,event,false))return false;
+    o.event_fired=1;return true;
+}
+bool campaign_remove(void* a,const CampaignTriggerBindings& b,CampaignTriggerResult& o) noexcept {
+    if(!b.remove||!b.remove(b.context,a))return false;
+    o.removed=1;return true;
+}
+int __cdecl campaign_trigger_spawn(void* a,unsigned n,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
+    if(!campaign_valid(a,n,b,o)||!b->spawn_gate)return 0;
+    bool suppress=false;if(!b->spawn_gate(b->context,&suppress))return 0;
+    if(suppress){o->spawn_suppressed=1;if(!campaign_remove(a,*b,*o))return 0;}
+    else{
+        const char* name=nullptr;
+        // Secret Spawn captures the resolved pointer BEFORE base Spawn.
+        if(!o->dynamic&&!campaign_name(a,*b,name))return 0;
+        if(!b->base_spawn||!b->base_spawn(b->context,a))return 0;o->base_spawned=1;
+        if(o->dynamic){
+            if(read_field<unsigned>(a,0xb4)&0x400u){
+                if(!b->warning||!b->warning(b->context,"DD Trigger with don't destroy set\n"))return 0;
+                o->warned=1;
+            }
+        }else if(read_field<unsigned char>(a,0x120)&8u){
+            if(!campaign_event(a,name,11,0,0,*b,*o))return 0;
+        }
+    }
+    o->completed=1;return 1;
+}
+int __cdecl campaign_trigger_touch(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
+    if(!campaign_valid(a,n,b,o)||!other||!b->is_player)return 0;
+    bool player=false;if(!b->is_player(b->context,other,&player))return 0;
+    if(!player){o->nonplayer=o->completed=1;return 1;}
+    const char* name=nullptr;if(!campaign_name(a,*b,name))return 0;
+    float value=0;int decision=0;
+    if(o->dynamic){
+        if(read_field<unsigned>(a,0xb8)&0x800u){if(!b->special||!b->special(b->context,a))return 0;o->special_called=1;}
+        value=read_field<float>(a,0x470);decision=read_field<int>(a,0x474);
+    }
+    if(!campaign_event(a,name,o->dynamic?0:12,value,decision,*b,*o))return 0;
+    // EndOfGame is read after the event helper, and only its LOW BYTE.
+    if(o->dynamic&&read_field<unsigned char>(a,0x478)){
+        if(!b->end_game||!b->end_game(b->context))return 0;o->manager_signaled=1;
+    }
+    if(!campaign_remove(a,*b,*o))return 0;
+    o->completed=1;return 1;
+}
 bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) noexcept {
     const auto vt=read_field<unsigned>(a,0);
+    if((vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)&&b.campaign_triggers){native=true;CampaignTriggerResult r{};return campaign_trigger_spawn(a,n,b.campaign_triggers,&r)!=0;}
     if(vt==timer_vtable&&b.logic_timer){native=true;TimerResult r{};return timer_spawn(a,n,b.logic_timer,&r)!=0;}
     if(vt==counter_vtable&&b.native_math_counter){native=true;CounterResult r{};return counter_spawn(a,n,&r)!=0;}
     if(vt==remap_vtable&&b.native_math_remap){native=true;RemapResult r{};return remap_spawn(a,n,&r)!=0;}
@@ -868,12 +950,13 @@ bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexce
     }
     unsigned n=0;if(!extent_ok(b,a,4,n))return false;
     const auto vt=read_field<unsigned>(a,0);
-    const bool native=(vt==colorblend_vtable&&b.native_math_colorblend)||(vt==remap_vtable&&b.native_math_remap)||(vt==menu_vtable&&b.logic_menu)||(vt==counter_vtable&&b.native_math_counter)||(vt==timer_vtable&&b.logic_timer)||(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
+    const bool native=((vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)&&b.campaign_triggers)||(vt==colorblend_vtable&&b.native_math_colorblend)||(vt==remap_vtable&&b.native_math_remap)||(vt==menu_vtable&&b.logic_menu)||(vt==counter_vtable&&b.native_math_counter)||(vt==timer_vtable&&b.logic_timer)||(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
     if(!native)return b.spawn&&b.spawn(b.context,a,&code);
     if(!b.native_spawn_begin||!b.native_spawn_end)return false;
     bool proceed=false;if(!b.native_spawn_begin(b.context,a,&proceed))return false;
     if(proceed){
-        if(vt==menu_vtable){MenuResult r{};if(!menu_listen(a,n,false,b.logic_menu,&r))return false;}
+        if(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable){CampaignTriggerResult r{};if(!campaign_trigger_spawn(a,n,b.campaign_triggers,&r))return false;}
+        else if(vt==menu_vtable){MenuResult r{};if(!menu_listen(a,n,false,b.logic_menu,&r))return false;}
         else if(vt==counter_vtable){CounterResult r{};if(!counter_spawn(a,n,&r))return false;}
         else if(vt==remap_vtable){RemapResult r{};if(!remap_spawn(a,n,&r))return false;}
         else if(vt==colorblend_vtable){ColorBlendResult r{};if(!colorblend_spawn(a,n,&r))return false;}
@@ -2542,7 +2625,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting,&register_campaign_triggers,&destroy_campaign_trigger};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting,&register_campaign_triggers,&destroy_campaign_trigger,&campaign_trigger_spawn,&campaign_trigger_touch};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
