@@ -641,6 +641,7 @@ int main(int argc,char** argv){
         unsigned queue_allocated{};
         ServerEntityNamedEventQueueBindings queue_bindings{};
         ServerEntityNamedEventQueueResult queue_result{};
+        bool service_locked{},nested{};
     } outf{&f,void_output};
     outf.bindings.context=&outf;
     outf.bindings.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
@@ -772,6 +773,71 @@ int main(int argc,char** argv){
     }
     assert((outf.order==std::vector<unsigned>{201,203})&&f.get<unsigned>(f.actor,0xbdc)==2);
     assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&connected,&wto)&&!wto.outputs&&outf.queue_allocated==4);
+    // Service the actual four wake records, including a nested output that
+    // inserts an earlier deadline while the current node is being delivered.
+    auto get_service=reinterpret_cast<GetServerEntityEventServiceApi>(GetProcAddress(server,server_entity_event_service_export));
+    assert(get_service&&!GetProcAddress(client,server_entity_event_service_export)&&!get_service(0,sizeof(ServerEntityEventServiceApi))&&!get_service(1,0));
+    const auto* service=get_service(1,sizeof(ServerEntityEventServiceApi));assert(service);
+    for(unsigned i=0;i<4;++i){
+        f.put(outf.queue_rows[i],0xc,0x8002u);f.put(outf.queue_rows[i],0x10,0x8002u);
+    }
+    f.put(outf.queue_rows[0],0x18,0x7001u); // named and direct
+    f.put(outf.queue_rows[1],0x18,0x7001u); // direct only
+    f.put(outf.queue_rows[2],0x18,0x6001u); // stale direct: class fallback
+    f.put(outf.queue_rows[2],0x10,0x6001u); // stale caller -> null
+    ServerEntityEventServiceBindings service_bind{};service_bind.context=&outf;
+    service_bind.entities.entries=f.slots;service_bind.entities.count=3;
+    service_bind.resolve=outf.queue_bindings.resolve;
+    service_bind.lock=[](void* p,bool enter) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(q.service_locked!=enter);q.service_locked=enter;
+        q.order.push_back(enter?900u:901u);return 1;
+    };
+    service_bind.find_named=[](void* p,void* prev,unsigned name,void* activator,void* caller,void** entity) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(q.service_locked&&activator==q.f->actor);
+        assert(caller==(name==502u?nullptr:q.f->actor));*entity=nullptr;
+        if(name==500u)*entity=!prev?q.f->actor:prev==q.f->actor?q.f->weapon:nullptr;
+        if(name==504u&&!prev)*entity=q.f->actor;
+        return 1;
+    };
+    service_bind.find_class=[](void* p,void* prev,unsigned name,void** entity) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(q.service_locked&&(name==502u||name==503u));
+        *entity=name==502u&&!prev?q.f->weapon:nullptr;return 1;
+    };
+    service_bind.accept=[](void* p,void* target,unsigned input,void* activator,void* caller,const void* variant,unsigned id) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(q.service_locked&&activator==q.f->actor&&caller==(id==12u?nullptr:q.f->actor)&&input==590u+id);
+        unsigned parameter=0,type=0;std::memcpy(&parameter,variant,4);std::memcpy(&type,static_cast<const unsigned char*>(variant)+0x10,4);
+        assert(parameter==(id==11u?777u:0u)&&type==(id==11u?2u:0u));
+        assert(target==q.f->actor||target==q.f->weapon);
+        q.order.push_back(1000u+id*10u+(target==q.f->weapon?1u:0u));
+        if(id==10u&&!q.nested){
+            q.nested=true;const ServerEntityVoidOutputAction action{504u,604u,0u,0u,14u,0.f};
+            assert(q.queue_api->enqueue(q.queue_root,sizeof(q.queue_root),99u,20.f,0x8002u,0x8002u,&action,&q.queue_bindings,&q.queue_result));
+        }
+        return 1;
+    };
+    service_bind.release=[](void* p,unsigned token,void* row) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(q.service_locked&&token&&token<=q.queue_allocated&&row==q.queue_rows[token-1]);
+        q.order.push_back(2000u+token);std::memset(row,0xcc,0x38);return 1;
+    };
+    service_bind.missing=[](void* p,unsigned target,unsigned input,void* caller) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(q.service_locked&&target==503u&&input==603u&&caller==q.f->actor);q.order.push_back(999u);return 1;
+    };
+    ServerEntityEventServiceResult sr{};int steps=0;outf.order.clear();
+    auto run_service=[&](float now,bool step){
+        return service->service(outf.queue_root,sizeof(outf.queue_root),root_token,now,step,&steps,&service_bind,&sr);
+    };
+    assert(run_service(30.f,true)&&sr.completed&&sr.step_stopped&&!sr.events&&outf.order.empty());
+    assert(run_service(20.f,false)&&sr.completed&&sr.future_stopped&&!sr.events&&outf.order.empty());
+    steps=1;assert(run_service(20.25f,true)&&sr.completed&&sr.step_stopped&&steps==0&&sr.events==1&&sr.named==2&&sr.direct==1&&sr.deliveries==3&&sr.removed==1);
+    assert((outf.order==std::vector<unsigned>{900,1100,1101,1101,2001,901}));
+    check_queue({5,2,3,4});assert(!outf.service_locked);
+    outf.order.clear();assert(run_service(20.5f,false)&&sr.completed&&sr.future_stopped&&sr.events==2&&sr.named==1&&sr.direct==1&&sr.deliveries==2);
+    assert((outf.order==std::vector<unsigned>{900,1140,2005,901,900,1111,2002,901}));check_queue({3,4});
+    outf.order.clear();assert(run_service(20.75f,false)&&sr.completed&&sr.future_stopped&&sr.events==1&&sr.classname==1&&sr.deliveries==1);
+    assert((outf.order==std::vector<unsigned>{900,1121,2003,901}));check_queue({4});
+    outf.order.clear();assert(run_service(21.f,false)&&sr.completed&&sr.events==1&&sr.missing==1&&!sr.deliveries&&sr.removed==1);
+    assert((outf.order==std::vector<unsigned>{900,999,2004,901}));check_queue({});
+    assert(!outf.service_locked);
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
