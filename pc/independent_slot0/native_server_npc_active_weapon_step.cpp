@@ -530,9 +530,15 @@ int __cdecl search_class(void*,unsigned,const ServerEntitySearchBindings*,Server
 int __cdecl accept_input(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*) noexcept;
 int accept_input_impl(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*,
     const native_map::CampaignFilterInputBindings*,native_map::CampaignFilterInputResult*) noexcept;
+int accept_input_core(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*,
+    const native_map::CampaignFilterInputBindings*,native_map::CampaignFilterInputResult*,
+    const native_map::ScriptedSequenceNativeControlBindings*,native_map::ScriptedSequenceControlResult*) noexcept;
 int service_events_impl(void* sentinel,unsigned n,std::uint32_t root,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings* b,ServerEntityEventServiceResult* o,
-    const native_map::CampaignFilterInputBindings* filters=nullptr,CampaignFilterServiceSummary* summary=nullptr) noexcept {
-    if(summary)*summary={};
+    const native_map::CampaignFilterInputBindings* filters=nullptr,CampaignFilterServiceSummary* summary=nullptr,
+    const native_map::ScriptedSequenceNativeControlBindings* sequence=nullptr,ScriptedSequenceServiceSummary* seq_summary=nullptr) noexcept {
+    if(summary)*summary={};if(seq_summary)*seq_summary={};
+    if(sequence&&(!seq_summary||!b||!b->native_input||!b->native_search||!sequence->control||
+        !sequence->possession||!sequence->cancel||!sequence->control->interval||!sequence->control->cadence))return 0;
     if(filters&&(!summary||!b||!b->native_input||!b->native_search||!filters->predicate||!filters->native_queue||
         filters->native_queue->root!=sentinel||filters->native_queue->root_token!=root))return 0;
     if(!o)return 0;*o={};
@@ -567,7 +573,8 @@ int service_events_impl(void* sentinel,unsigned n,std::uint32_t root,float now,b
             const unsigned vt=rd<unsigned>(entity,0);
             const int shared_kill=logic_kill_requested(vt,input,*b->native_input);
             if(shared_kill<0)return false;
-            if(shared_kill||input_datamap(vt)||(filters&&native_map::campaign_filter_class(vt))||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)||
+            if(shared_kill||input_datamap(vt)||(filters&&native_map::campaign_filter_class(vt))||
+               (sequence&&vt==native_map::scripted_sequence_vtable)||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)||
                (vt==sin_port::native_map::relay_vtable&&b->native_input->relay)||
                (vt==sin_port::native_map::timer_vtable&&b->native_input->timer)||
                (vt==sin_port::native_map::branch_vtable&&b->native_input->branch)||
@@ -700,7 +707,20 @@ int service_events_impl(void* sentinel,unsigned n,std::uint32_t root,float now,b
                     bound.timer=&timer;
                 }
                 ServerEntityAcceptInputResult result{};
-                if(filters&&native_map::campaign_filter_class(vt)){
+                if(sequence&&vt==native_map::scripted_sequence_vtable){
+                    // The dispatch owns the live registry/clock. Rebind the
+                    // complete control graph synchronously, not the owner context.
+                    auto c=*sequence->control;c.entries=b->entities.entries;c.entry_count=b->entities.count;
+                    c.now=b->live_now?b->live_now:&bound.now;
+                    auto p=*sequence->possession;p.entries=c.entries;p.entry_count=c.entry_count;p.now=c.now;p.search=&native_search;
+                    auto cancel=*sequence->cancel;cancel.control=&c;cancel.search=&native_search;
+                    native_map::ScriptedSequenceNativeControlBindings route{&c,&p,&cancel};
+                    native_map::ScriptedSequenceControlResult sr{};++seq_summary->attempted;
+                    const bool ok=accept_input_core(entity,bytes,vt,input,activator,caller,variant,0x14,id,&bound,&result,nullptr,nullptr,&route,&sr)!=0;
+                    seq_summary->completed+=sr.completed;seq_summary->possessed+=sr.possessed;
+                    seq_summary->scheduled+=sr.tick_scheduled;seq_summary->cancelled+=sr.cancelled;seq_summary->suppressed+=sr.suppressed;
+                    if(!ok||!result.completed)return false;
+                }else if(filters&&native_map::campaign_filter_class(vt)){
                     auto pred=*filters->predicate;pred.entries=b->entities.entries;pred.entry_count=b->entities.count;
                     auto queue=*filters->native_queue;queue.root_bytes=n;queue.entries=b->entities.entries;queue.entry_count=b->entities.count;
                     queue.now=b->live_now?b->live_now:&bound.now;queue.protected_node=&dispatch_token;
@@ -3101,4 +3121,13 @@ extern "C" int __cdecl SiN_AcceptScriptedSequenceInput(void* actor,unsigned byte
     const sin_port::native_map::ScriptedSequenceNativeControlBindings* sequence,sin_port::native_map::ScriptedSequenceControlResult* result) noexcept {
     if(o)*o={};if(result)*result={};
     return sequence&&result&&sin_port::native_weapon_tables::accept_input_core(actor,bytes,vt,input,activator,caller,variant,variant_bytes,id,b,o,nullptr,nullptr,sequence,result);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_ServiceScriptedSequenceEvents=_SiN_ServiceScriptedSequenceEvents")
+extern "C" int __cdecl SiN_ServiceScriptedSequenceEvents(void* root,unsigned bytes,unsigned token,float now,bool stepping,int* steps,
+    const sin_port::native_weapon_tables::ServerEntityEventServiceBindings* b,sin_port::native_weapon_tables::ServerEntityEventServiceResult* o,
+    const sin_port::native_map::ScriptedSequenceNativeControlBindings* sequence,sin_port::native_weapon_tables::ScriptedSequenceServiceSummary* seq_summary,
+    const sin_port::native_map::CampaignFilterInputBindings* filters,sin_port::native_weapon_tables::CampaignFilterServiceSummary* filter_summary) noexcept {
+    if(o)*o={};if(seq_summary)*seq_summary={};if(filter_summary)*filter_summary={};
+    return sequence&&seq_summary&&sin_port::native_weapon_tables::service_events_impl(root,bytes,token,now,stepping,steps,b,o,filters,filter_summary,sequence,seq_summary);
 }

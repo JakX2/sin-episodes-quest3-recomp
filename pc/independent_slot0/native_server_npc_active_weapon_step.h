@@ -386,6 +386,12 @@ inline constexpr char service_campaign_filters_export[]="SiN_ServiceCampaignFilt
 using ServiceCampaignFilterEvents=int (__cdecl *)(void*,unsigned,unsigned,float,bool,int*,const ServerEntityEventServiceBindings*,ServerEntityEventServiceResult*,
     const native_map::CampaignFilterInputBindings*,CampaignFilterServiceSummary*) noexcept;
 
+struct ScriptedSequenceServiceSummary {unsigned attempted,completed,possessed,scheduled,cancelled,suppressed;};
+inline constexpr char service_scripted_sequences_export[]="SiN_ServiceScriptedSequenceEvents";
+using ServiceScriptedSequenceEvents=int (__cdecl *)(void*,unsigned,unsigned,float,bool,int*,const ServerEntityEventServiceBindings*,ServerEntityEventServiceResult*,
+    const native_map::ScriptedSequenceNativeControlBindings*,ScriptedSequenceServiceSummary*,
+    const native_map::CampaignFilterInputBindings*,CampaignFilterServiceSummary*) noexcept;
+
 // Original CBaseEntity::AcceptInput 22141400. Datamap records and name
 // tokens are original PE32-shaped storage, supplied by the independent owner.
 inline constexpr char server_entity_accept_input_export[]="SiN_GetServerEntityAcceptInputApi";

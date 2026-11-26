@@ -1134,4 +1134,51 @@
         assert(send(72)&&ar.native_handler&&ar.handler==0x221b0500u&&sr.think_installed&&sr.tick_scheduled&&!f.seq[0x3c0]);
         f.seq[0x3d9]=1;
         assert(send(73)&&ar.accepted&&sr.suppressed&&!sr.cancelled);
+        // Same native input graph through original-shaped delayed queue.
+        // Deliberately clear owner registry/clock: service must rebind.
+        struct SequenceQueue {
+            alignas(4) unsigned char root[0x38]{},rows[4][0x38]{};
+            unsigned allocated=0,released=0;bool locked=false;
+        } q;
+        auto get_queue=reinterpret_cast<nw::GetServerEntityNamedEventQueueApi>(GetProcAddress(server,nw::server_entity_named_event_queue_export));
+        const auto service=reinterpret_cast<nw::ServiceScriptedSequenceEvents>(GetProcAddress(server,nw::service_scripted_sequences_export));
+        assert(get_queue&&service&&!GetProcAddress(client,nw::service_scripted_sequences_export));
+        const auto* queue=get_queue(1,sizeof(nw::ServerEntityNamedEventQueueApi));assert(queue);
+        nw::ServerEntityNamedEventQueueBindings qb{};qb.context=&q;
+        qb.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{
+            auto& q=*static_cast<SequenceQueue*>(p);if(q.allocated==4)return 0;*row=q.rows[q.allocated++];*token=q.allocated;*bytes=0x38;return 1;
+        };
+        qb.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& q=*static_cast<SequenceQueue*>(p);if(!token||token>q.allocated)return 0;*row=q.rows[token-1];*bytes=0x38;return 1;
+        };
+        qb.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=71&&token<=74;return 1;};
+        auto native_search=search;native_search.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==21?"target":token==74?"seq":token==22?"npc_sintek_grunt":token==0x2242ee1c?"scripted_sequence":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nw::ServerEntityEventServiceBindings eb{};eb.context=&q;eb.entities=input.entities;eb.resolve=qb.resolve;eb.native_input=&input;eb.native_search=&native_search;
+        eb.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<SequenceQueue*>(p);assert(q.locked!=enter);q.locked=enter;return 1;};
+        eb.release=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& q=*static_cast<SequenceQueue*>(p);assert(q.locked&&token&&token<=q.allocated&&row==q.rows[token-1]);++q.released;return 1;
+        };
+        f.seq[0x3d9]=0;put(f.seq,0xc0,74u);put(f.seq,0x3d0,0x4001u);put(f.npc,0x970,0xffffffffu);put(f.npc,0x96c,0u);
+        auto stale_c=c;stale_c.entries=nullptr;stale_c.entry_count=0;stale_c.now=nullptr;
+        auto stale_pos=pos;stale_pos.entries=nullptr;stale_pos.entry_count=0;stale_pos.now=nullptr;
+        auto stale_cb=cb;stale_cb.control=&stale_c;
+        ScriptedSequenceNativeControlBindings stale{&stale_c,&stale_pos,&stale_cb};
+        nw::ServerEntityNamedEventQueueResult qr{};
+        unsigned empty[5]{0,0,0,0xffffffffu,0};
+        assert(queue->enqueue_direct(q.root,sizeof(q.root),99,20.f,0x3000u,71,0x4001u,0x5002u,empty,sizeof(empty),.125f,99,&qb,&qr));
+        assert(queue->enqueue_direct(q.root,sizeof(q.root),99,20.f,0x3000u,73,0x4001u,0x5002u,empty,sizeof(empty),.25f,99,&qb,&qr));
+        nw::ServerEntityVoidOutputAction begin{74,72,0,0,99,.25f};
+        assert(queue->enqueue(q.root,sizeof(q.root),99,20.f,0x4001u,0x5002u,&begin,&qb,&qr));
+        float live=20.f;eb.live_now=&live;int steps=0;std::uint8_t single=0;eb.live_single_step=&single;
+        nw::ServerEntityEventServiceResult er{};nw::ScriptedSequenceServiceSummary sum{};
+        auto tick=[&](){return service(q.root,sizeof(q.root),99,-99.f,false,&steps,&eb,&er,&stale,&sum,nullptr,nullptr);};
+        assert(tick()&&er.future_stopped&&!sum.attempted&&!q.released);
+        live=20.125f;assert(tick()&&er.direct==1&&sum.possessed==1&&f.seq[0x3c0]&&q.released==1);
+        live=20.25f;single=1;steps=1;
+        assert(tick()&&er.step_stopped&&sum.cancelled==1&&word(f.seq,0x3d0)==0xffffffffu&&q.released==2);
+        single=0;
+        assert(tick()&&er.native_named_searches==2&&er.named==1&&sum.scheduled==1&&!f.seq[0x3c0]&&word(f.seq,0x74)==162&&q.released==3&&!q.locked&&!word(q.root,0x30));
     }
