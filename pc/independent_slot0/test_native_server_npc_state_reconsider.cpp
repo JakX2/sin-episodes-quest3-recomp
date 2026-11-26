@@ -2237,6 +2237,8 @@ int main(int argc,char** argv){
         auto& reaction=b.base.chain.prefix.damage.reaction;reaction.sentence.entries=q.entries;reaction.sentence.count=2;
         reaction.sentence.speech.original_vtable=0x2249aaa4;reaction.sentence.speech.volume=1;reaction.sentence.speech.level=75;
         reaction.request.context=&q;reaction.request.manager_ready=true;
+        reaction.sentence.speech.context=&q;
+        reaction.sentence.speech.random_float=[](void*,float lo,float hi,float* out) noexcept -> int{assert(lo==1.5f&&hi==2.f);*out=1.5f;return 1;};
         reaction.request.group_index=[](void* p,const char* cue,int* out) noexcept -> int{
             auto& q=OverrideFixture::self(p);assert(q.cue&&!std::strcmp(cue,q.cue));++q.speech;*out=-1;return 1;};
         b.base.chain.outputs.conditions.context=&q;
@@ -2259,8 +2261,8 @@ int main(int argc,char** argv){
         f.put(q.damage,0x28,0x1001u);f.put(q.damage,0xc,1.f);f.put(q.actor,0xccc,17);
         static ServerNpcGruntDamageOverrideResult o;
         q.other[0xdb1]=1;q.cue="GRUNT_BERSERK_SQUADMATE";f.put(q.damage,0x38,0x400000u);
-        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.completed&&o.berserk_called&&o.rejected_flags&&!o.base_called&&q.speech==1);
-        q.other[0xdb1]=0;q.cue="GRUNT_COUGH";f.put(q.damage,0x38,0x10000u);f.put(q.actor,0xc94,10.f);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.completed&&o.berserk_called&&o.rejected_flags&&!o.base_called&&q.speech==1&&o.berserk.cooldown.owner_written&&o.berserk.cooldown.owner_deadline==13.5f);
+        f.put(q.actor,0xc04,0.f);q.other[0xdb1]=0;q.cue="GRUNT_COUGH";f.put(q.damage,0x38,0x10000u);f.put(q.actor,0xc94,10.f);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.cough_blocked&&!o.cough_called);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&b,&o)&&o.cough_called&&!o.base_called&&q.speech==2);
         f.put(q.damage,0x38,0x80u);f.put(q.damage,0x44,1);f.put(q.damage,0x2c,12.f);
@@ -2268,7 +2270,7 @@ int main(int argc,char** argv){
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),12,&b,&o)&&o.impact_called&&o.bit11.mapped&&o.knee_added&&o.knee_total==12&&!o.knee_reset&&o.component_called&&o.native_result==7&&q.hits==2);
         f.put(q.damage,0x2c,1.f);f.put(q.damage,0x44,0);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),13,&b,&o)&&o.knee_total==13&&o.random_called&&!o.knee_called&&o.knee_reset&&q.hits==4);
-        f.put(q.damage,0x2c,13.f);q.sample=0.51f;q.cue="GRUNT_KNEE";
+        f.put(q.actor,0xc04,0.f);f.put(q.damage,0x2c,13.f);q.sample=0.51f;q.cue="GRUNT_KNEE";
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),14,&b,&o)&&o.knee_called&&o.bit47.mapped&&o.knee_reset&&q.speech==3);
         reaction.sentence.speech.original_vtable=0x2248df04;
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),15,&b,&o)&&o.knee_reset&&!o.random_called&&!o.knee_called);
@@ -2337,6 +2339,8 @@ int main(int argc,char** argv){
         ServerNpcGruntImpactBindings ib{};ib.context=&q;
         ib.reaction.sentence.speech.original_vtable=0x2249aaa4;ib.reaction.sentence.entries=q.entries;ib.reaction.sentence.count=2;
         ib.reaction.sentence.speech.volume=1;ib.reaction.sentence.speech.level=75;ib.reaction.request.context=&q;ib.reaction.request.manager_ready=true;
+        ib.reaction.sentence.speech.context=&q;
+        ib.reaction.sentence.speech.random_float=[](void*,float lo,float hi,float* out) noexcept -> int{assert(lo==1.5f&&hi==2.f);*out=1.5f;return 1;};
         ib.reaction.request.group_index=[](void* p,const char* cue,int* out) noexcept -> int{auto& q=DetailFixture::self(p);assert(!std::strcmp(cue,"GRUNT_HEAD"));++q.speech;*out=-1;return 1;};
         ib.rule=[](void* p,bool* yes) noexcept -> int{*yes=DetailFixture::self(p).allow;return 1;};
         ib.detach=[](void* p,void* a) noexcept -> int{auto& q=DetailFixture::self(p);assert(a==q.actor);++q.detached;q.actor[0xc74]=0;return 1;};
@@ -2345,18 +2349,18 @@ int main(int argc,char** argv){
         ib.event=[](void* p,int id,void* e,void* a) noexcept -> int{auto& q=DetailFixture::self(p);assert(e==q.other&&a==q.actor&&(id==7||id==8));q.event=id;return 1;};
         f.put(q.damage,0x28,0x1001u);f.put(q.actor,0xccc,17);f.put(q.actor,0x9c,50);q.actor[0xc74]=1;
         ServerNpcGruntImpactResult ir{};
-        assert(api->impact(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&ib,&ir)&&ir.head_present&&!ir.detached&&ir.speech_called&&ir.deadline==11&&q.speech==1);
-        f.put(q.damage,0x38,0x80u);
+        assert(api->impact(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&ib,&ir)&&ir.head_present&&!ir.detached&&ir.speech_called&&ir.deadline==11&&q.speech==1&&ir.speech.cooldown.owner_written&&ir.speech.cooldown.owner_deadline==13.5f);
+        f.put(q.actor,0xc04,0.f);f.put(q.damage,0x38,0x80u);
         assert(api->impact(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),12,&ib,&ir)&&ir.detached&&ir.event_id==7&&ir.speech_called&&q.detached==1);
-        f.put(q.damage,0x38,0u);f.put(q.damage,0x2c,100.f);
+        f.put(q.actor,0xc04,0.f);f.put(q.damage,0x38,0u);f.put(q.damage,0x2c,100.f);
         assert(api->impact(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),14,&ib,&ir)&&ir.random_called&&ir.threshold==0.5f&&!ir.lethal_called&&ir.speech_called);
         q.sample=0.49f;assert(api->impact(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),16,&ib,&ir)&&ir.lethal_called&&ir.event_id==8&&!ir.speech_called&&q.lethal==1);
-        f.put(q.actor,0x9c,100);assert(api->impact(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),18,&ib,&ir)&&!ir.lethal_called&&ir.speech_called);
+        f.put(q.actor,0xc04,0.f);f.put(q.actor,0x9c,100);assert(api->impact(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),18,&ib,&ir)&&!ir.lethal_called&&ir.speech_called);
         static ServerNpcGruntDamageDetailBindings cb;cb.bone=bb;cb.impact=ib;
         cb.damage.context=&q;cb.damage.base.chain.prefix.damage.reaction=ib.reaction;
         cb.damage.cast_grunt=[](void*,void*,void** out,unsigned* n) noexcept -> int{*out=nullptr;*n=0;return 1;};
         cb.damage.component_damage=[](void* p,std::uint32_t token,void*,int* result) noexcept -> int{assert(token==77);++DetailFixture::self(p).components;*result=9;return 1;};
-        f.put(q.actor,0xc18,77u);q.actor[0xc74]=1;f.put(q.damage,0x44,1);f.put(q.damage,0x2c,4.f);
+        f.put(q.actor,0xc04,0.f);f.put(q.actor,0xc18,77u);q.actor[0xc74]=1;f.put(q.damage,0x44,1);f.put(q.damage,0x2c,4.f);
         f.put(q.damage,0xc,1.f);f.put(q.damage,0x10,2.f);f.put(q.damage,0x14,3.f);
         static ServerNpcGruntDamageDetailResult cr;
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),20,&cb,&cr)&&cr.damage.completed&&cr.impact.speech_called&&cr.right.hit&&!cr.left.completed&&cr.damage.knee_added&&cr.damage.knee_total==4&&cr.damage.component_called&&cr.damage.native_result==9&&q.components==1);
