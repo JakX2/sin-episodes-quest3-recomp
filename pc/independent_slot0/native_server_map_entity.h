@@ -689,6 +689,14 @@ struct ScriptedSequenceFinishResult {
 };
 inline constexpr char scripted_sequence_finish_export[]="SiN_FinishScriptedSequence";
 using FinishScriptedSequence=int (__cdecl *)(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,ScriptedSequenceFinishResult*) noexcept;
+// Native completion versions use the terminal sidecar rather than the
+// legacy whole-finish callback. Both result structs remain separately sized.
+inline constexpr char scripted_sequence_start_native_export[]="SiN_StartScriptedSequenceAnimationNative";
+inline constexpr char scripted_sequence_play_done_native_export[]="SiN_CompleteScriptedSequencePlayNative";
+using StartScriptedSequenceAnimationNative=int (__cdecl *)(void*,unsigned,void*,unsigned,bool,const ScriptedSequenceFinishBindings*,
+    ScriptedSequenceAnimationResult*,ScriptedSequenceFinishResult*) noexcept;
+using CompleteScriptedSequencePlayNative=int (__cdecl *)(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,
+    ScriptedSequenceAnimationResult*,ScriptedSequenceFinishResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
