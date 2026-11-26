@@ -3049,6 +3049,126 @@ bool scripted_npc_marker(unsigned vt) noexcept {
     default:return false;
     }
 }
+// Shared 2203e690, mode differs for named and classname acquisition.
+bool sequence_permission(void* target,void* a,int mode,const ScriptedSequenceControlBindings& b,
+                         int& permission,bool& linked_blocked) noexcept {
+    permission=0;linked_blocked=false;
+    const sin_independent::EntityHandleView registry(b.entries,b.entry_count);
+    int value=1;
+    if(void* current=registry.Resolve(read_field<unsigned>(target,0x970))){
+        unsigned n=0,vt=0;
+        if(!b.extent||!b.extent(b.context,current,&n)||n<scripted_sequence_extent||
+           !SinCampaignStorageReadableInternal(current,scripted_sequence_extent)||
+           !SinReadCampaignTouchMarkerInternal(current,&vt)||vt!=scripted_sequence_vtable)return false;
+        if(void* next=registry.Resolve(read_field<unsigned>(current,0x3d4))){
+            if(!b.extent(b.context,next,&n)||n<0xb8||!SinCampaignStorageReadableInternal(next,0xb8))return false;
+            const unsigned reason=read_field<unsigned>(current,0x3a4)?1u:(read_field<unsigned>(next,0xb4)&0x200u)?2u:0u;
+            if(reason){
+                if(!b.linked_warning||!b.linked_warning(b.context,next,reason))return false;
+                linked_blocked=true;return true;
+            }
+        }
+        value=2;
+    }
+    const int activity=read_field<int>(target,0x850);
+    const bool force=(read_field<unsigned char>(a,0xb4)&0x40)!=0;
+    if(read_field<int>(target,0x8c)==0&&(force||activity==0||activity==1||read_field<int>(target,0x858)==1||(activity==2&&mode>=1)))permission=value;
+    return true;
+}
+// 221ae040 search and 221ae250 handle commit. Radius search iterates
+// original list order, not nearest-distance order. Position refresh is
+// the pre-existing engine boundary, not a new physics implementation.
+int scripted_sequence_acquire(void* a,unsigned n,const ScriptedSequenceAcquireBindings* b,ScriptedSequenceAcquireResult* o) noexcept {
+    if(!o)return 0;*o={};o->handle=0xffffffffu;
+    unsigned vt=0;
+    if(!b||!b->control||!b->search||n<scripted_sequence_extent||
+       !SinReadCampaignTouchMarkerInternal(a,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(a,scripted_sequence_extent))return 0;
+    const auto& c=*b->control;
+    if(!c.extent||c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerEntitySearchApi(1,sizeof(ServerEntitySearchApi));
+    if(!api)return 0;
+    auto search=*b->search;search.entities.entries=c.entries;search.entities.count=c.entry_count;
+    auto readable=[&](void* p,unsigned need,unsigned& bytes){return p&&c.extent(c.context,p,&bytes)&&bytes>=need&&SinCampaignStorageReadableInternal(p,need);};
+    auto refresh=[&](void* p){
+        if(!(read_field<unsigned>(p,0xb8)&0x800u))return true;
+        ++o->refreshes;return b->refresh_origin&&b->refresh_origin(b->context,p)!=0;
+    };
+    auto find=[&](bool named,void* previous,void*& actor){
+        actor=nullptr;
+        if(!refresh(a))return false;
+        const unsigned name=read_field<unsigned>(a,0x3a8);
+        const float radius=read_field<float>(a,0x3b0),r2=static_cast<float>(double(radius)*radius);
+        if(!std::isfinite(r2))return false;
+        if(!name)return true;
+        for(unsigned i=0;i<4096;++i){
+            ServerEntitySearchResult found{};++o->searches;
+            const int ok=named?api->named(previous,name,nullptr,nullptr,&search,&found):api->classname(previous,name,&search,&found);
+            if(!ok)return false;
+            if(!found.entity)return true;
+            if(found.entity==previous)return false;previous=found.entity;
+            if(r2==0.f){actor=previous;return true;}
+            unsigned bytes=0;
+            if(!readable(previous,0x2c8,bytes))return false;
+            if(read_field<unsigned>(previous,0x16c)){
+                if(!refresh(previous))return false;
+                float d[3]{};
+                for(unsigned j=0;j<3;++j)d[j]=static_cast<float>(double(read_field<float>(previous,0x2bc+4*j))-read_field<float>(a,0x2bc+4*j));
+                const double sq=double(d[2])*d[2]+double(d[1])*d[1]+double(d[0])*d[0];
+                if(sq<double(r2)){actor=previous;return true;}
+            }
+            ++o->radius_skips;
+        }
+        return false;
+    };
+    void* candidate=nullptr;void* fallback=nullptr;
+    auto* cached=registry.Resolve(read_field<unsigned>(a,0x3dc));
+    bool named=true;
+    if(!find(true,cached,candidate))return 0;
+    if(!candidate){named=false;if(!find(false,registry.Resolve(read_field<unsigned>(a,0x3dc)),candidate))return 0;}
+    o->named_path=named;o->class_path=!named;
+    for(unsigned i=0;candidate;++i){
+        if(i==4096)return 0;++o->candidates;
+        unsigned bytes=0,marker=0;
+        if(!readable(candidate,4,bytes)||!SinReadCampaignTouchMarkerInternal(candidate,&marker))return 0;
+        const bool known=scripted_npc_marker(marker);bool npc=known;
+        if(!known&&campaign_player_marker(marker)==PlayerPredicate::Unknown&&!campaign_filter_class(marker)&&marker!=scripted_sequence_vtable){
+            if(!c.foreign_is_npc||!c.foreign_is_npc(c.context,candidate,&npc))return 0;
+        }
+        if(!npc)++o->non_npcs;
+        else{
+            if(!readable(candidate,0x974,bytes))return 0;
+            int permission=0;bool blocked=false;
+            const bool force=(read_field<unsigned char>(a,0xb4)&0x40)!=0;
+            if(known){
+                if(!sequence_permission(candidate,a,named?1:0,c,permission,blocked))return 0;
+            }else if(!c.foreign_permission||!c.foreign_permission(c.context,candidate,force,named?1:0,&permission))return 0;
+            if(permission==1){o->preferred=1;fallback=candidate;break;}
+            if(permission==2){++o->fallback_candidates;fallback=candidate;}
+            else{
+                ++o->denied;
+                if(!(read_field<unsigned>(a,0xb4)&0x800u)&&(!b->denied_warning||!b->denied_warning(b->context,read_field<unsigned>(a,0x3a8))))return 0;
+            }
+        }
+        if(!find(named,candidate,candidate))return 0;
+    }
+    unsigned handle=0xffffffffu;
+    if(fallback){
+        unsigned bytes=0,marker=0;
+        if(!readable(fallback,4,bytes)||!SinReadCampaignTouchMarkerInternal(fallback,&marker))return 0;
+        if(scripted_npc_marker(marker)){
+            if(!SinReadCampaignHandleInternal(fallback,bytes,&handle))return 0;
+        }else if(!search.foreign_handle||!search.foreign_handle(search.context,fallback,&handle))return 0;
+        if(registry.Resolve(handle)!=fallback)return 0;
+        o->found=1;o->actor=fallback;
+    }
+    if(read_field<unsigned>(a,0xb4)&0x400u){write_field(a,0x3dc,handle);o->cached=1;}
+    write_field(a,0x3d0,handle);o->handle=handle;o->completed=1;return 1;
+}
 // 221ae370: named scripts count matching sequence entities on self;
 // unnamed scripts write count=1 and stamp curtime immediately.
 bool sequence_sync(void* a,const ScriptedSequencePossessionBindings& b,ScriptedSequencePossessionResult& o) noexcept {
@@ -3198,25 +3318,9 @@ int scripted_sequence_control(void* a,unsigned n,ScriptedSequenceInput input,
         if(state!=0&&state!=2){o->state_blocked=1;return done();}
         const bool force=(read_field<unsigned char>(a,0xb4)&0x40)!=0;
         if(known){
-            // 2203e690: a live current sequence changes permission 1
-            // to 2 only if its next-script policy allows interruption.
-            int permission=1;
-            if(void* current=registry.Resolve(read_field<unsigned>(target,0x970))){
-                unsigned ext=0,vt=0;
-                if(!readable(current,scripted_sequence_extent,ext)||!SinReadCampaignTouchMarkerInternal(current,&vt)||vt!=scripted_sequence_vtable)return 0;
-                if(void* next=registry.Resolve(read_field<unsigned>(current,0x3d4))){
-                    unsigned ne=0;if(!readable(next,0xb8,ne))return 0;
-                    const unsigned reason=read_field<unsigned>(current,0x3a4)?1u:(read_field<unsigned>(next,0xb4)&0x200u)?2u:0u;
-                    if(reason){
-                        if(!b->linked_warning||!b->linked_warning(b->context,next,reason))return 0;
-                        o->linked_blocked=o->permission_blocked=1;return done();
-                    }
-                }
-                permission=2;
-            }
-            const int activity=read_field<int>(target,0x850);
-            if(read_field<int>(target,0x8c)!=0||(!force&&activity!=0&&activity!=1&&activity!=2&&read_field<int>(target,0x858)!=1))permission=0;
-            o->permission=permission;
+            bool blocked=false;
+            if(!sequence_permission(target,a,1,*b,o->permission,blocked))return 0;
+            if(blocked){o->linked_blocked=o->permission_blocked=1;return done();}
         }else if(!b->foreign_permission||!b->foreign_permission(b->context,target,force,1,&o->permission))return 0;
         if(!o->permission){o->permission_blocked=1;return done();}
         if(!b->possess||!b->possess(b->context,a))return 0;o->possessed=1;
@@ -3647,4 +3751,10 @@ extern "C" int __cdecl SiN_PossessScriptedSequenceCallback(void* context,void* a
     const auto* b=static_cast<const sin_port::native_map::ScriptedSequencePossessionBindings*>(context);
     unsigned bytes=0;sin_port::native_map::ScriptedSequencePossessionResult o{};
     return b&&b->extent&&b->extent(b->context,actor,&bytes)&&sin_port::native_map::scripted_sequence_possession(actor,bytes,b,&o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_AcquireScriptedSequenceNpc=_SiN_AcquireScriptedSequenceNpc")
+extern "C" int __cdecl SiN_AcquireScriptedSequenceNpc(void* actor,unsigned bytes,const sin_port::native_map::ScriptedSequenceAcquireBindings* b,
+    sin_port::native_map::ScriptedSequenceAcquireResult* o) noexcept {
+    return sin_port::native_map::scripted_sequence_acquire(actor,bytes,b,o);
 }

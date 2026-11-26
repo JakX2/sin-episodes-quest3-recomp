@@ -548,6 +548,20 @@ inline constexpr char scripted_sequence_possession_export[]="SiN_PossessScripted
 inline constexpr char scripted_sequence_possession_callback_export[]="SiN_PossessScriptedSequenceCallback";
 using PossessScriptedSequence=int (__cdecl *)(void*,unsigned,const ScriptedSequencePossessionBindings*,ScriptedSequencePossessionResult*) noexcept;
 using PossessScriptedSequenceCallback=int (__cdecl *)(void*,void*) noexcept;
+struct ScriptedSequenceAcquireBindings {
+    const ScriptedSequenceControlBindings* control;
+    const native_weapon_tables::ServerEntitySearchBindings* search;
+    void* context;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept; // original 2213fa60
+    int (__cdecl *denied_warning)(void*,unsigned) noexcept;
+};
+struct ScriptedSequenceAcquireResult {
+    unsigned completed,searches,candidates,named_path,class_path,refreshes,radius_skips,non_npcs,denied,
+        fallback_candidates,preferred,found,cached,handle;
+    void* actor;
+};
+inline constexpr char scripted_sequence_acquire_export[]="SiN_AcquireScriptedSequenceNpc";
+using AcquireScriptedSequenceNpc=int (__cdecl *)(void*,unsigned,const ScriptedSequenceAcquireBindings*,ScriptedSequenceAcquireResult*) noexcept;
 struct ScriptedSequenceEventBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     const RelayQueueBindings* native_queue;
