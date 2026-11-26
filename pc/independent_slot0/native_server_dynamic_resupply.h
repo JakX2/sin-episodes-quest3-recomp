@@ -357,6 +357,33 @@ struct AntigenResult {
     double distance_squared;
     PlayerHealthResult health;
 };
+inline constexpr unsigned antigen_canister_vtable=0x2246f094u;
+struct AntigenExchangeBindings {
+    AntigenBindings control;
+    void* context;
+    // General CPropContainer RTTI cast for classes other than the verified
+    // CAntigenCanister identity. No assumption that all containers are antigen.
+    int (__cdecl *container_cast)(void*,void*,void**,unsigned*) noexcept;
+    int (__cdecl *bodygroup)(void*,void*,int,int) noexcept;
+    int (__cdecl *local_player)(void*,void**) noexcept;
+    int (__cdecl *insert_notice)(void*,void*,void*) noexcept;
+    int (__cdecl *eject_notice)(void*,void*,void*,const float*) noexcept;
+    int (__cdecl *create)(void*,const char*,int,void**,unsigned*) noexcept;
+    int (__cdecl *position)(void*,void*,const float*) noexcept;
+    int (__cdecl *orientation)(void*,void*,const float*) noexcept;
+    int (__cdecl *spawn)(void*,void*) noexcept;
+    int (__cdecl *container_pose)(void*,void*,const char*,float) noexcept;
+    int (__cdecl *entity_message)(void*,void*,int) noexcept;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+};
+struct AntigenExchangeResult {
+    void* container;
+    unsigned cast_native,cast_called,eligible,rejected,transferred,created,spawned,
+        bodygroup,container_pose,notice,removed,message,sound,think_cleared,
+        output_called,output_actions,completed;
+    float amount,reject_time,container_fraction;
+    AntigenResult control;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -398,6 +425,8 @@ struct Api {
     int (__cdecl *antigen_construct)(void*,unsigned,const AntigenBindings*,AntigenResult*) noexcept;
     int (__cdecl *antigen_use)(void*,unsigned,void*,unsigned,const AntigenBindings*,AntigenResult*) noexcept;
     int (__cdecl *antigen_think)(void*,unsigned,const AntigenBindings*,AntigenResult*) noexcept;
+    int (__cdecl *antigen_insert)(void*,unsigned,void*,unsigned,const AntigenExchangeBindings*,AntigenExchangeResult*) noexcept;
+    int (__cdecl *antigen_eject)(void*,unsigned,const AntigenExchangeBindings*,AntigenExchangeResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

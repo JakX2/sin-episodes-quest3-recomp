@@ -814,7 +814,7 @@ bool antigen_pose(void* a,const AntigenBindings& b,AntigenResult& o) noexcept {
     if(!b.pose||!b.pose(b.context,a,"percentFull",o.pose))return false;o.pose_called=1;
     if(!b.advance||!b.advance(b.context,a))return false;o.advanced=1;return true;
 }
-bool antigen_stop(void* a,const AntigenBindings& b,AntigenResult& o) noexcept {
+bool antigen_stop_steam(void* a,const AntigenBindings& b,AntigenResult& o) noexcept {
     const sin_independent::EntityHandleView registry(b.entries,b.entry_count);
     if(void* steam=registry.Resolve(field<unsigned>(a,0x4b0))){
         if(!b.remove||!b.remove(b.context,steam))return false;o.steam_removed=1;
@@ -822,6 +822,10 @@ bool antigen_stop(void* a,const AntigenBindings& b,AntigenResult& o) noexcept {
         if(!b.sound||!b.sound(b.context,a,"dispenser.use_loop",false))return false;o.loop_stopped=1;
         if(!b.sound(b.context,a,"dispenser.stop",true))return false;o.stop_sound=1;
     }
+    return true;
+}
+bool antigen_stop(void* a,const AntigenBindings& b,AntigenResult& o) noexcept {
+    if(!antigen_stop_steam(a,b,o))return false;
     set_field(a,0x4a0,0.f);set_field(a,0x4ac,0xffffffffu);o.stopped=1;
     // Original stop path does not clear the primary think identity.
     return antigen_pose(a,b,o);
@@ -908,7 +912,87 @@ int __cdecl antigen_think(void* a,unsigned n,const AntigenBindings* b,AntigenRes
     if(!b->schedule||!b->schedule(b->context,a,o->next_time))return 0;o->scheduled=1;
     if(!antigen_pose(a,*b,*o))return 0;o->completed=1;return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think};
+bool antigen_output(void* actor,unsigned bytes,unsigned offset,void* container,const AntigenExchangeBindings& b,AntigenExchangeResult& o) noexcept {
+    using namespace native_weapon_tables;
+    const auto* api=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    ServerEntityVoidOutputBindings empty{};ServerEntityVoidOutputResult result{};
+    if(!api||!api->fire(static_cast<unsigned char*>(actor)+offset,bytes-offset,container,actor,bytes,0.f,b.output?b.output:&empty,&result))return false;
+    o.output_called=1;o.output_actions=result.queued;return true;
+}
+int __cdecl antigen_insert(void* a,unsigned n,void* other,unsigned other_bytes,const AntigenExchangeBindings* b,AntigenExchangeResult* o) noexcept {
+    if(!o)return 0;*o={};if(!b||!antigen_ready(a,n,&b->control))return 0;
+    auto done=[&](){o->completed=1;return 1;};
+    if(!other)return done();
+    unsigned extent=other_bytes;
+    if(other_bytes>=0x6a0&&field<unsigned>(other,0)==antigen_canister_vtable){o->container=other;o->cast_native=1;}
+    else{
+        if(!b->container_cast||!b->container_cast(b->context,other,&o->container,&extent))return 0;
+        o->cast_called=1;
+    }
+    if(!o->container)return done();
+    if(extent<0x630)return 0;
+    void* container=o->container;
+    if(!(field<unsigned char>(container,0x62c)&8u)||field<unsigned char>(a,0x498))return done();
+    o->eligible=1;
+    float now=0;if(!antigen_clock(b->control,o->control,now))return 0;
+    const float rejected=field<float>(a,0x4a8);
+    if(!std::isfinite(rejected))return 0;
+    if(double(rejected)+.5>=double(now)){
+        set_field(a,0x4a8,now);o->reject_time=now;o->rejected=1;return done();
+    }
+    o->amount=float(double(field<float>(container,0x628))*100.*double(.01f));
+    if(!std::isfinite(o->amount))return 0;
+    set_field(a,0x49c,o->amount);o->transferred=1;
+    if(!b->bodygroup||!b->bodygroup(b->context,a,1,1))return 0;o->bodygroup=1;
+    if(!antigen_pose(a,b->control,o->control))return 0;
+    set_field(a,0x498,static_cast<unsigned char>(1));
+    void* local=nullptr;
+    if(!b->local_player||!b->local_player(b->context,&local)||!local||!b->insert_notice||!b->insert_notice(b->context,local,container))return 0;o->notice=1;
+    if(!b->control.remove||!b->control.remove(b->control.context,container))return 0;o->removed=1;
+    if(!b->control.sound||!b->control.sound(b->control.context,a,"dispenser.load",true))return 0;o->sound=1;
+    if(!antigen_output(a,n,0x4b8,container,*b,*o))return 0;
+    return done();
+}
+int __cdecl antigen_eject(void* a,unsigned n,const AntigenExchangeBindings* b,AntigenExchangeResult* o) noexcept {
+    if(!o)return 0;*o={};if(!b||!antigen_ready(a,n,&b->control))return 0;
+    auto done=[&](){o->completed=1;return 1;};
+    if(!field<unsigned char>(a,0x498))return done();
+    unsigned extent=0;
+    if(!b->create||!b->create(b->context,"prop_antigen_explosive_barrel",-1,&o->container,&extent))return 0;
+    if(!o->container||extent<0x6a0||field<unsigned>(o->container,0)!=antigen_canister_vtable)return 0;
+    void* c=o->container;o->created=1;
+    auto refresh=[&](void* entity){
+        if(!(field<unsigned>(entity,0xb8)&0x800u))return true;
+        if(!b->control.refresh_origin||!b->control.refresh_origin(b->control.context,entity))return false;
+        ++o->control.origin_refreshes;return true;
+    };
+    float pos[3],angles[3];
+    if(!refresh(a))return 0;copy_vec(a,0x2bc,pos);
+    if(!b->position||!b->position(b->context,c,pos)||!refresh(a))return 0;
+    copy_vec(a,0x354,angles);
+    if(!b->orientation||!b->orientation(b->context,c,angles)||!b->spawn||!b->spawn(b->context,c))return 0;o->spawned=1;
+    o->amount=float(double(field<float>(a,0x49c))*100.*double(.01f));if(!std::isfinite(o->amount))return 0;
+    set_field(c,0x628,o->amount);o->transferred=1;
+    o->container_fraction=float(double(o->amount)*double(.01f));
+    if(!b->container_pose||!b->container_pose(b->context,c,"percentFull",o->container_fraction))return 0;o->container_pose=1;
+    void* local=nullptr;
+    if(!b->local_player||!b->local_player(b->context,&local)||!local||!refresh(c))return 0;
+    copy_vec(c,0x2bc,pos);
+    if(!b->eject_notice||!b->eject_notice(b->context,local,c,pos))return 0;o->notice=1;
+    float now=0;if(!antigen_clock(b->control,o->control,now))return 0;
+    set_field(a,0x4a0,now);set_field(a,0x498,static_cast<unsigned char>(0));set_field(a,0x49c,0.f);
+    // Eject only calls 222f6eb0, not the full healing-think stop tail.
+    // User and fractional accumulator deliberately survive ejection.
+    if(!antigen_stop_steam(a,b->control,o->control))return 0;
+    if(!b->entity_message||!b->entity_message(b->context,a,1))return 0;o->message=1;
+    if(!b->bodygroup||!b->bodygroup(b->context,a,1,0))return 0;o->bodygroup=1;
+    if(!b->control.sound||!b->control.sound(b->control.context,a,"dispenser.eject",true))return 0;o->sound=1;
+    set_field(a,8,0u);o->think_cleared=1;
+    if(!antigen_output(a,n,0x4d0,c,*b,*o))return 0;
+    if(!antigen_clock(b->control,o->control,o->reject_time))return 0;set_field(a,0x4a8,o->reject_time);
+    return done();
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

@@ -891,5 +891,48 @@ int main(int argc,char** argv){
     // Invalid serial stops without accessing stale user/steam objects.
     EvalFixture::u(af.actor,0x4ac,0xc000);EvalFixture::u(af.actor,0x4b0,0xc001);
     assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.stopped&&!agr.steam_removed&&!agr.loop_stopped&&EvalFixture::rd(af.actor,0x4b0)==0xc001);
+    // Eject a live canister, retain user/dose, then reject rolling touch
+    // and reinsert through the authentic CPropContainer flag/amount fields.
+    struct ExchangeFixture {
+        AntigenFixture* a;
+        alignas(4) unsigned char canister[0x6a0]{};
+        unsigned creates=0,spawns=0,groups=0,inserted=0,ejected=0,removed=0,messages=0,sounds=0;
+        int last_group=-1;float fraction=0;
+    } ex{&af};
+    AntigenExchangeBindings xb{};xb.control=ab;xb.context=&ex;
+    xb.control.context=&ex;
+    xb.control.clock=[](void* p,float* v) noexcept ->int{*v=static_cast<ExchangeFixture*>(p)->a->now;return 1;};
+    xb.control.sound=[](void* p,void* a,const char* name,bool play) noexcept ->int{
+        auto& q=*static_cast<ExchangeFixture*>(p);assert(a==q.a->actor);
+        assert((play&&(!std::strcmp(name,"dispenser.load")||!std::strcmp(name,"dispenser.eject")||!std::strcmp(name,"dispenser.stop")))||(!play&&!std::strcmp(name,"dispenser.use_loop")));++q.sounds;return 1;
+    };
+    xb.control.remove=[](void* p,void* c) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(c==q.canister||c==q.a->steam);++q.removed;return 1;};
+    xb.control.pose=[](void* p,void* a,const char* n,float v) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(a==q.a->actor&&!std::strcmp(n,"percentFull"));q.a->pose=v;return 1;};
+    xb.control.advance=[](void*,void*) noexcept ->int{return 1;};
+    xb.create=[](void* p,const char* n,int i,void** c,unsigned* bytes) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(!std::strcmp(n,"prop_antigen_explosive_barrel")&&i==-1);++q.creates;*c=q.canister;*bytes=sizeof(q.canister);EvalFixture::u(*c,0,antigen_canister_vtable);EvalFixture::u(*c,0x62c,9);return 1;};
+    xb.position=[](void* p,void* c,const float* v) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(c==q.canister);for(unsigned i=0;i<3;++i)EvalFixture::f(c,0x2bc+4*i,v[i]);return 1;};
+    xb.orientation=[](void*,void*,const float*) noexcept ->int{return 1;};
+    xb.spawn=[](void* p,void* c) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(c==q.canister);++q.spawns;return 1;};
+    xb.container_pose=[](void* p,void* c,const char* n,float v) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(c==q.canister&&!std::strcmp(n,"percentFull"));q.fraction=v;return 1;};
+    xb.local_player=[](void* p,void** pl) noexcept ->int{*pl=static_cast<ExchangeFixture*>(p)->a->player;return 1;};
+    xb.eject_notice=[](void* p,void* pl,void* c,const float* pos) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(pl==q.a->player&&c==q.canister&&pos[0]==0);++q.ejected;return 1;};
+    xb.insert_notice=[](void* p,void* pl,void* c) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(pl==q.a->player&&c==q.canister);++q.inserted;return 1;};
+    xb.bodygroup=[](void* p,void* a,int i,int v) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(a==q.a->actor&&i==1);++q.groups;q.last_group=v;return 1;};
+    xb.entity_message=[](void* p,void* a,int v) noexcept ->int{auto& q=*static_cast<ExchangeFixture*>(p);assert(a==q.a->actor&&v==1);++q.messages;return 1;};
+    assert(api->antigen_construct(af.actor,sizeof(af.actor),&ab,&agr));
+    EvalFixture::f(af.actor,0x49c,55.f);EvalFixture::f(af.actor,0x4a4,.4f);
+    EvalFixture::u(af.actor,0x4ac,0xa000);EvalFixture::u(af.actor,0x4b0,0xb001);EvalFixture::u(af.actor,8,antigen_think_token);
+    af.now=10.f;AntigenExchangeResult xr{};
+    assert(api->antigen_eject(af.actor,sizeof(af.actor),&xb,&xr)&&xr.completed&&xr.created&&xr.spawned&&xr.transferred&&xr.amount==55.f&&xr.control.steam_removed&&xr.message&&xr.think_cleared&&xr.output_called&&xr.reject_time==10.f);
+    assert(ex.creates==1&&ex.ejected==1&&ex.removed==1&&ex.last_group==0&&std::abs(ex.fraction-.55f)<.00001f);
+    assert(EvalFixture::rd(af.actor,0x4ac)==0xa000&&EvalFixture::rd(af.actor,0x4a4)==0x3ecccccdu&&EvalFixture::rd(af.actor,0x4a0)==0x41200000u);
+    assert(api->antigen_eject(af.actor,sizeof(af.actor),&xb,&xr)&&xr.completed&&!xr.created);
+    af.now=10.5f;
+    assert(api->antigen_insert(af.actor,sizeof(af.actor),ex.canister,sizeof(ex.canister),&xb,&xr)&&xr.completed&&xr.cast_native&&xr.rejected&&xr.reject_time==10.5f);
+    af.now=11.f;
+    assert(api->antigen_insert(af.actor,sizeof(af.actor),ex.canister,sizeof(ex.canister),&xb,&xr)&&xr.rejected&&xr.reject_time==11.f);
+    af.now=11.625f;
+    assert(api->antigen_insert(af.actor,sizeof(af.actor),ex.canister,sizeof(ex.canister),&xb,&xr)&&xr.completed&&xr.transferred&&xr.amount==55.f&&xr.output_called&&xr.removed&&ex.inserted==1&&ex.last_group==1&&std::abs(af.pose-.55f)<.00001f);
+    assert(api->antigen_insert(af.actor,sizeof(af.actor),ex.canister,sizeof(ex.canister),&xb,&xr)&&xr.completed&&!xr.eligible);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
