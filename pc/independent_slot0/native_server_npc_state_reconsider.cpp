@@ -6363,7 +6363,47 @@ bool schedule_get_impl(void* a,unsigned n,int id,const ServerNpcGruntScheduleAcq
     ++o.owner_lookup;
     return schedule_descriptor_lookup(a,a,id,false,0,b.owner_schedules,b,o);
 }
-bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route) noexcept{
+// 22045cd0: refresh or append an unreachable-enemy record. Allocation is an explicit
+// host service, not an invented PE32 heap. Existing rows are searched backwards.
+bool schedule_mark_unreachable(void* a,void* target,float now,const ServerNpcGruntAssaultAdmissionBindings& ab,const ServerNpcGruntScheduleServices& svc) noexcept{
+    if(!target)return false;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    if(assault_owner_target(a,registry)==target)write(a,0x8c0,0xffffffffu);
+    int count=read<int>(a,0x920),capacity=read<int>(a,0x918);
+    auto base=read<unsigned>(a,0x914);
+    if(count<0||capacity<0||count>capacity||capacity>4096)return false;
+    void* storage=nullptr;unsigned bytes=0;
+    if(capacity&&(!base||!memory_storage(&svc.storage,base,20u*capacity,storage,bytes)))return false;
+    auto row=[&](int i){return static_cast<unsigned char*>(storage)+20*i;};
+    int index=count-1;
+    for(;index>=0;--index)if(registry.Resolve(read<unsigned>(row(index),0))==target)break;
+    if(index<0){
+        if(count==capacity){
+            const int growth=read<int>(a,0x91c);
+            if(growth<0||!svc.resize_unreachable)return false;
+            const int next=capacity?(growth?capacity+static_cast<long long>(growth):capacity*2):2;
+            if(next<=capacity||next>4096)return false;
+            std::uint32_t new_base=0;void* new_storage=nullptr;unsigned extent=0;
+            if(!svc.resize_unreachable(svc.context,base,static_cast<unsigned>(next),&new_base,&new_storage,&extent)||
+               !new_base||!new_storage||extent<20u*next)return false;
+            void* checked=nullptr;
+            if(!memory_storage(&svc.storage,new_base,20u*next,checked,extent)||checked!=new_storage)return false;
+            base=new_base;storage=new_storage;capacity=next;write(a,0x914,base);write(a,0x918,capacity);
+        }
+        index=count;write(a,0x920,count+1);write(a,0x924,base);write(row(index),0,0xffffffffu);
+        std::uint32_t handle=0xffffffffu;
+        if(!svc.entity_handle||!svc.entity_handle(svc.context,target,&handle)||registry.Resolve(handle)!=target)return false;
+        write(row(index),0,handle);
+    }
+    write(row(index),4,static_cast<float>(static_cast<double>(now)+3.0));
+    unsigned extent=0;if(!ab.extent||!ab.extent(ab.context,target,&extent)||extent<0x2c8)return false;
+    float p[3];
+    if(read<unsigned>(target,0xb8)&0x800u){
+        if(!svc.origin||!svc.origin(svc.context,target,p))return false;
+    }else for(unsigned i=0;i<3;++i)p[i]=read<float>(target,0x2bc+4*i);
+    std::memcpy(row(index)+8,p,12);return true;
+}
+bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route,const ServerNpcGruntScheduleServices* svc=nullptr) noexcept{
     const auto vt=b.arbitration->activation->schedule->admission.actor_vtable;
     auto native=[&](int v){o.translated=v;o.translated_native=1;return true;};
     // 22354d60: Elite's entire +43c is a callback-free ID table.
@@ -6444,7 +6484,7 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         bool yes=false;
         if(!condition(4,yes))return false;
         if(!yes&&!condition(3,yes))return false;
-        if(yes)return schedule_translate_grunt(a,n,48,now,b,o,route);
+        if(yes)return schedule_translate_grunt(a,n,48,now,b,o,route,svc);
         if(!policy_rejected())return false;
         if(read<std::uint8_t>(a,0xc66)){
             if(!condition(17,yes))return false;
@@ -6493,17 +6533,17 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
                 unsigned caps=read<unsigned>(e,0x8ec);
                 void* w=registry.Resolve(read<unsigned>(e,0x78c));
                 if(w){unsigned wc=0;if(!weapon_caps(w,wc))return false;caps|=wc;}
-                if(!(caps&0x2000))return schedule_translate_grunt(a,n,33,now,b,o,route);
+                if(!(caps&0x2000))return schedule_translate_grunt(a,n,33,now,b,o,route,svc);
             }
         }
-        if(read<unsigned>(a,0x9d0))return schedule_translate_grunt(a,n,33,now,b,o,route);
+        if(read<unsigned>(a,0x9d0))return schedule_translate_grunt(a,n,33,now,b,o,route,svc);
         return native(87);
     }
     case 36:{
         bool yes=false;if(!condition(10,yes))return false;
-        if(yes)return schedule_translate_grunt(a,n,25,now,b,o,route);
-        if(target())return false; // 22045cd0 enemy-list mutation remains unresolved.
-        return schedule_translate_grunt(a,n,100,now,b,o,route);
+        if(yes)return schedule_translate_grunt(a,n,25,now,b,o,route,svc);
+        if(void* e=target())if(!svc||!schedule_mark_unreachable(a,e,now,ab,*svc))return false;
+        return schedule_translate_grunt(a,n,100,now,b,o,route,svc);
     }
     case 98:{
         bool yes=false;if(!condition(20,yes))return false;
@@ -6517,16 +6557,16 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
                 if(!slots_reserve(a,n,0,2,now,&slots,&result))return false;
                 yes=result.allowed!=0;
             }
-            if(yes)return schedule_translate_grunt(a,n,41,now,b,o,route);
+            if(yes)return schedule_translate_grunt(a,n,41,now,b,o,route,svc);
         }
-        return schedule_translate_grunt(a,n,79,now,b,o,route);
+        return schedule_translate_grunt(a,n,79,now,b,o,route,svc);
     }
     default:return false;
     }
 }
-bool schedule_acquire_impl(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route) noexcept{
+bool schedule_acquire_impl(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route,const ServerNpcGruntScheduleServices* svc=nullptr) noexcept{
     o.requested=id;
-    if(!schedule_translate_grunt(a,n,id,now,b,o,route)||!schedule_get_impl(a,n,o.translated,b,o))return false;
+    if(!schedule_translate_grunt(a,n,id,now,b,o,route,svc)||!schedule_get_impl(a,n,o.translated,b,o))return false;
     if(!o.schedule_token){
         o.fallback=1;
         if(!schedule_diagnostic(a,b,o,0x223e6670u,o.translated)||!schedule_get_impl(a,n,1,b,o))return false;
@@ -7045,7 +7085,7 @@ bool schedule_request_highlevel(void* a,unsigned n,float now,const ServerNpcGrun
     }else if(!b.normal_tail||!b.normal_tail(b.context,a,&id))return false;
     o.tail_called=1;return id?selected(id):dispatch();
 }
-int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntSelectorTailBindings* tail=nullptr,ServerNpcGruntSelectorTailResult* tail_out=nullptr,const CombatSelectorRoute* combat=nullptr) noexcept{
+int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntSelectorTailBindings* tail=nullptr,ServerNpcGruntSelectorTailResult* tail_out=nullptr,const CombatSelectorRoute* combat=nullptr,const ServerNpcGruntScheduleServices* svc=nullptr) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
     bool yes=false;if(!schedule_request_condition(a,n,63,*b,*o,yes))return 0;
@@ -7070,7 +7110,7 @@ int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGru
         if(o->requested<npc_global_condition_base&&o->requested!=-1&&!schedule_local_id(a,o->requested,ac.owner_schedules,o->owner_global))return 0;
         write(a,0x79c,o->owner_global);o->owner_global_written=1;
     }
-    if(!schedule_acquire_impl(a,n,o->requested,now,ac,o->acquisition,o->translation))return 0;o->acquisition.completed=1;
+    if(!schedule_acquire_impl(a,n,o->requested,now,ac,o->acquisition,o->translation,svc))return 0;o->acquisition.completed=1;
     return schedule_request_finish(a,n,now,*b,*o)?1:0;
 }
 int __cdecl schedule_request_choose(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
@@ -7101,6 +7141,24 @@ int __cdecl grunt_special_choose(void* a,unsigned n,float now,const ServerNpcGru
     return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route);
 }
 const ServerNpcGruntSpecialCombatApi grunt_special_combat_api{1,sizeof(ServerNpcGruntSpecialCombatApi),&grunt_special_combat,&grunt_special_choose};
+int __cdecl schedule_services_acquire(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings* b,const ServerNpcGruntScheduleServices* svc,ServerNpcGruntScheduleAcquireResult* o,ServerNpcGruntAssaultArbitrationResult* route) noexcept{
+    if(!route)return 0;*route={};
+    if(!schedule_acquire_init(a,n,now,b,o)||!schedule_acquire_impl(a,n,id,now,*b,*o,*route,svc))return 0;
+    o->completed=1;return 1;
+}
+int __cdecl schedule_services_normal(void* a,unsigned n,float now,const ServerNpcGruntSpecialCombatBindings* b,const ServerNpcGruntScheduleServices* svc,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntSpecialCombatResult* special) noexcept{
+    if(!tail||!combat||!special)return 0;*tail={};*combat={};*special={};
+    if(!b||!b->combat||!b->combat->tail)return 0;
+    const SpecialCombatRoute sp{b,special};const CombatSelectorRoute route{b->combat,combat,nullptr,&sp};
+    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route,svc);
+}
+int __cdecl schedule_services_jet(void* a,unsigned n,float now,const ServerNpcGruntJetSelectorBindings* b,const ServerNpcGruntScheduleServices* svc,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntJetSelectorResult* jt,ServerNpcGruntJetSelectorResult* js) noexcept{
+    if(!tail||!combat||!jt||!js)return 0;*tail={};*combat={};*jt={};*js={};
+    if(!b||!b->combat||!b->combat->tail)return 0;
+    const JetSelectorRoute jet{b,jt,js};const CombatSelectorRoute route{b->combat,combat,&jet};
+    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route,svc);
+}
+const ServerNpcGruntScheduleServicesApi schedule_services_api{1,sizeof(ServerNpcGruntScheduleServicesApi),&schedule_services_acquire,&schedule_services_normal,&schedule_services_jet};
 int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
@@ -9101,4 +9159,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSpecialCombatApi=_SiN_GetServerNpcGruntSpecialCombatApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpecialCombatApi* __cdecl SiN_GetServerNpcGruntSpecialCombatApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSpecialCombatApi)?&grunt_special_combat_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntScheduleServicesApi=_SiN_GetServerNpcGruntScheduleServicesApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleServicesApi* __cdecl SiN_GetServerNpcGruntScheduleServicesApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntScheduleServicesApi)?&schedule_services_api:nullptr;
 }

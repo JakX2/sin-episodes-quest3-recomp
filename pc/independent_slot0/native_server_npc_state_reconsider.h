@@ -3051,4 +3051,22 @@ struct ServerNpcGruntSpecialCombatApi {
     int (__cdecl *choose)(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*) noexcept;
 };
 using GetServerNpcGruntSpecialCombatApi=const ServerNpcGruntSpecialCombatApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Extended translation services; existing exported binding sizes are unchanged.
+inline constexpr char server_npc_grunt_schedule_services_export[]="SiN_GetServerNpcGruntScheduleServicesApi";
+struct ServerNpcGruntScheduleServices {
+    ServerNpcEnemyMemoryBindings storage; // writable PE32 records and dirty flags
+    void* context;
+    // 22038f70: grow a 20-byte record vector, preserving all existing bytes.
+    int (__cdecl *resize_unreachable)(void*,std::uint32_t,unsigned,std::uint32_t*,void**,unsigned*) noexcept;
+    int (__cdecl *origin)(void*,void*,float*) noexcept; // refresh dirty absolute origin
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept; // original target +8
+};
+struct ServerNpcGruntScheduleServicesApi {
+    std::uint32_t version,size;
+    int (__cdecl *acquire)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,const ServerNpcGruntScheduleServices*,ServerNpcGruntScheduleAcquireResult*,ServerNpcGruntAssaultArbitrationResult*) noexcept;
+    int (__cdecl *choose_normal)(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*) noexcept;
+    int (__cdecl *choose_jet)(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept;
+};
+using GetServerNpcGruntScheduleServicesApi=const ServerNpcGruntScheduleServicesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
