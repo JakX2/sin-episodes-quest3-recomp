@@ -52,6 +52,8 @@ ORIGINAL_METHODS={
   "void_output_fire":(0x22156900,84,"9831538fbf90681abd884187a73a262d05aa6031d2b58a5156dd3b8c717c0e26"),
   "inherited_end_touch":(0x221D3590,302,"a406f6f83bbde10c9ca03f6b28cdb3da0ab376c2b866e890bc90057cdc56c4cb"),
   "trigger_handle_identity_find":(0x220A21F0,131,"b29f95c429940c6193361871918e463b8a258ea174cfabd6971f38141bed9050"),
+  "trigger_activate":(0x221CE3E0,98,"3e336eef7e02b9aa9feff8001b45dd597314be5699fdaf257edf5a0d72a64a39"),
+  "multi_filter_activate":(0x2216B3E0,78,"8275ee5da2a598acc65fa3d2452d1fffcfe80d5bc2e3351cb1ecbbcb6f75a6c8"),
   "trigger_filter":(0x221CE520,314,"460637a5e0d1149d281a94ed22991457e36daa803120f5bab56c0ec39eabda85"),
   "trigger_classname_compare":(0x221387F0,130,"5993dfdb12306b0c2d95ae3e02a79a50cec0bca37e65f2c5457cd090ffc86aa7"),
   "trigger_npc_query":(0x22139F60,19,"d5ea9253030765bcd70227e7860e4620758e52644047e564b5756b5d78eaef44"),
@@ -227,14 +229,15 @@ def verify_trigger_control(read_u32,read_text):
 
 def verify_contact_slots(read_u32):
     for table,touch in ((0x2243B96C,0x221CCB70),(0x2243BC0C,0x221CCC10)):
-        if (read_u32(table+0x160),read_u32(table+0x164),read_u32(table+0x168),read_u32(table+0x298))!=(0x221D0DF0,touch,0x221D3590,0x221CE520):
+        if (read_u32(table+0x88),read_u32(table+0x160),read_u32(table+0x164),read_u32(table+0x168),read_u32(table+0x298))!=(0x221CE3E0,0x221D0DF0,touch,0x221D3590,0x221CE520):
             raise EvidenceRefused("campaign contact dispatch slot changed")
-    return 8
+    return 10
 
 def verify_custom_filter_slots(read_u32,read_text):
     for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
         if (read_u32(table-4),read_u32(col),read_u32(col+4),read_u32(col+12),
-            read_u32(table+0x28c))!=(col,0,0,typedesc,target):
+            read_u32(table+0x28c),read_u32(table+8),read_u32(table+0x88))!=(
+                col,0,0,typedesc,target,0x22001b00,0x2216b3e0 if table==0x22414c3c else 0x22146bd0):
             raise EvidenceRefused("custom filter RTTI or predicate slot changed "+name)
         if not read_text(typedesc+8,name):
             raise EvidenceRefused("custom filter RTTI name changed "+name)
@@ -435,7 +438,8 @@ def self_test()->None:
                    0x2243BC0C+0x160:0x221D0DF0,0x2243BC0C+0x164:0x221CCC10}
     contact_words.update({0x2243B96C+0x298:0x221CE520,0x2243BC0C+0x298:0x221CE520})
     contact_words.update({0x2243B96C+0x168:0x221D3590,0x2243BC0C+0x168:0x221D3590})
-    assert verify_contact_slots(contact_words.get)==8
+    contact_words.update({0x2243B96C+0x88:0x221CE3E0,0x2243BC0C+0x88:0x221CE3E0})
+    assert verify_contact_slots(contact_words.get)==10
     for key in contact_words:
         bad=dict(contact_words);bad[key]^=1
         try:verify_contact_slots(bad.get)
@@ -444,7 +448,8 @@ def self_test()->None:
     filter_words={}
     filter_text={0x223d994c:"!player"}
     for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
-        filter_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x28c:target})
+        filter_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x28c:target,
+                             table+8:0x22001b00,table+0x88:0x2216b3e0 if table==0x22414c3c else 0x22146bd0})
         filter_text[typedesc+8]=name
     assert verify_custom_filter_slots(filter_words.get,lambda va,s:filter_text.get(va)==s)==4
     for key in filter_words:
