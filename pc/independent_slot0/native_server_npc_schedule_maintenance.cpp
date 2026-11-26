@@ -32,6 +32,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSlotsApi* __cdecl SiN_GetServerNpcGruntPerceptionSlotsApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeSlotResolutionApi* __cdecl SiN_GetServerNpcNativeSlotResolutionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadReportApi* __cdecl SiN_GetServerNpcGruntSquadReportApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntNativeStateApi* __cdecl SiN_GetServerNpcGruntNativeStateApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 struct GatherRoute {
@@ -152,6 +153,28 @@ struct Call {
         if(stop)out.budget_yield=1;
         return true;
     }
+    bool choose_state() noexcept{
+        if(native_gather&&native_gather->native_state){
+            if(!subclass||!native_gather->choose_result||!native_gather->choose_calls)return false;
+            const auto* api=SiN_GetServerNpcGruntNativeStateApi(1,sizeof(ServerNpcGruntNativeStateApi));
+            auto bound=*native_gather->native_state;bound.original_vtable=subclass->original_vtable;
+            ++*native_gather->choose_calls;
+            const int ok=api&&api->choose(a,bytes,now,&b.selection.state,&bound,native_gather->choose_result);
+            out.ideal=native_gather->choose_result->state;return ok!=0;
+        }
+        return state->choose_ideal(a,bytes,&b.selection.state,&out.ideal)!=0;
+    }
+    bool apply_state(int desired) noexcept{
+        if(native_gather&&native_gather->native_state){
+            if(!subclass||!native_gather->apply_result||!native_gather->apply_calls)return false;
+            const auto* api=SiN_GetServerNpcGruntNativeStateApi(1,sizeof(ServerNpcGruntNativeStateApi));
+            auto bound=*native_gather->native_state;bound.original_vtable=subclass->original_vtable;
+            ++*native_gather->apply_calls;
+            const int ok=api&&api->apply(a,bytes,desired,now,&b.selection.state,&bound,native_gather->apply_result);
+            out.applied=native_gather->apply_result->state;return ok!=0;
+        }
+        return state->apply(a,bytes,desired,now,&b.selection.state,&out.applied)!=0;
+    }
     bool pick(bool failed) noexcept {
         if(subclass&&sub&&sub->subclass==NpcSubclassJetpack){
             const auto* api=SiN_GetServerJetpackScheduleResolutionApi(1,sizeof(ServerJetpackScheduleResolutionApi));
@@ -221,14 +244,14 @@ int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMainten
             }
             if(!st->should_reconsider(actor,bytes,&b->selection.state,&out->ideal))return 0;
             if(out->ideal.reconsider){
-                if(!st->choose_ideal(actor,bytes,&b->selection.state,&out->ideal))return 0;
+                if(!q.choose_state())return 0;
                 write(actor,0x858,out->ideal.ideal);
             }
             bool failed=false;if(!q.test(0x21,failed))return 0;
             if(failed&&read<int>(actor,0x850)==read<int>(actor,0x858)){
                 if(!q.pick(true))return 0;
             }else{
-                if(!st->apply(actor,bytes,read<int>(actor,0x858),now,&b->selection.state,&out->applied)||!q.pick(false))return 0;
+                if(!q.apply_state(read<int>(actor,0x858))||!q.pick(false))return 0;
             }
         }
         if(!read<std::uint32_t>(actor,0x798)&&!q.pick(false))return 0;

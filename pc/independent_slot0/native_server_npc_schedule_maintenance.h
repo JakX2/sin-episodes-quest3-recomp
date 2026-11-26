@@ -114,5 +114,10 @@ struct ServerNpcNativeGatherRoute {
     unsigned* slot_selections=nullptr;
     const ServerNpcGruntSquadReportBindings* reports=nullptr;
     ServerNpcGruntSquadReportResult* report_result=nullptr;
+    const ServerNpcGruntNativeStateBindings* native_state=nullptr;
+    ServerNpcGruntNativeStateResult* choose_result=nullptr;
+    ServerNpcGruntNativeStateResult* apply_result=nullptr;
+    unsigned* choose_calls=nullptr;
+    unsigned* apply_calls=nullptr;
 };
 }

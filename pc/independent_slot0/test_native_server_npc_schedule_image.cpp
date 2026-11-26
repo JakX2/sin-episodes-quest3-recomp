@@ -470,6 +470,38 @@ int main(int argc,char** argv){
     install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
     f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,69.491f);f.put(f.actor,0xcd4,2);
     assert(srthink->run(f.actor,sizeof(f.actor),69.491f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&srbind,&srrun)&&srrun.squad.cycle.preschedule.think.completed&&srrun.squad.cycle.speech.delivered&&!srrun.outer_reports.forwarded&&!srrun.squad.selections&&component_calls==1&&f.think_component_tasks==6);
+    auto gsst=reinterpret_cast<GetServerNpcNativeSquadStateThinkApi>(GetProcAddress(s,server_npc_native_squad_state_think_export));
+    assert(gsst&&!GetProcAddress(c,server_npc_native_squad_state_think_export)&&!gsst(0,sizeof(ServerNpcNativeSquadStateThinkApi))&&!gsst(1,0));
+    const auto* sst=gsst(1,sizeof(ServerNpcNativeSquadStateThinkApi));assert(sst);
+    ServerNpcNativeSquadStateThinkBindings ssbind{};ssbind.think=srbind;
+    ServerNpcNativeSquadStateThinkResult ssrun;
+    install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
+    f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,69.492f);f.put(f.actor,0xcd4,2);
+    assert(sst->run(f.actor,sizeof(f.actor),69.492f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&ssbind,&ssrun)&&ssrun.think.squad.cycle.preschedule.think.completed&&ssrun.think.squad.cycle.speech.delivered&&!ssrun.choose_calls&&!ssrun.apply_calls&&f.think_component_tasks==7);
+    // Force invalidation with component-owned gather, real ideal-state broadcast,
+    // and a deliberately failed state query after the native broadcast.
+    unsigned char squad_data[0x78]{},member[0xdd8]{};
+    sin_independent::EntityHandleEntry reg[3]{};reg[1]=slots[1];reg[2].serial=8;reg[2].entity=reinterpret_cast<CBaseEntity*>(member);
+    const auto old_entities=selection.state.entities;selection.state.entities.entries=reg;selection.state.entities.count=3;
+    f.put(squad_data,8,0x8002u);f.put(squad_data,0x48,1);
+    f.put(member,0x8a0,0xffffffffu);f.put(member,0x9cc,-1);
+    struct StateFixture{F* f;unsigned char* squad;unsigned char* member;void* target;ServerNpcConditionMapBindings conditions;};
+    StateFixture sf{&f,squad_data,member,weapon,sb.conditions};
+    ssbind.think.reports.perception.slots.storage.context=&sf;
+    ssbind.think.reports.perception.slots.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& q=*static_cast<StateFixture*>(p);if(token!=91)return 0;*out=q.squad;*n=0x78;return 1;};
+    ssbind.state.squad.context=&sf;
+    ssbind.state.squad.member=[](void* p,void* a,std::uint32_t* vt,unsigned* n,ServerNpcEnemyStateBindings* e,ServerNpcEnemyMemoryQueryBindings*) noexcept -> int{
+        auto& q=*static_cast<StateFixture*>(p);assert(a==q.member);*vt=0x2249aaa4;*n=0xdd8;e->context=p;e->conditions=q.conditions;
+        e->entity_handle=[](void* p,void* target,std::uint32_t* out) noexcept -> int{assert(target==static_cast<StateFixture*>(p)->target);*out=0x7001u;return 1;};return 1;
+    };
+    auto state_query=selection.state.state_query;
+    selection.state.state_query=[](void*,void*,int current,int*) noexcept -> int{assert(current==1);return 0;};
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);f.put(f.actor,0x9c4,91u);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x9cc,-1);
+    f.put(f.actor,0x7d0,1u<<13); // condition 0x19 maps to bit 45 (global+20).
+    component_calls=0;
+    assert(!sst->run(f.actor,sizeof(f.actor),69.493f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&ssbind,&ssrun)&&ssrun.choose_calls==1&&ssrun.choose.broadcast_calls==1&&ssrun.choose.broadcast.assigned==1&&!ssrun.apply_calls&&component_calls==2);
+    unsigned assigned=0;std::memcpy(&assigned,member+0x8a0,4);assert(assigned==0x7001u);
+    selection.state.state_query=state_query;selection.state.entities=old_entities;
     tcb.submit_goal=cover_submit;
     ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;
     m.before_selection=old_before;
