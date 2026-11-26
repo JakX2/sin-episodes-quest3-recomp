@@ -413,6 +413,10 @@ using ServerNpcHealthOutputQueueBindings=ServerEntityNativeOutputQueueBindings;
 struct ServerNpcInputJetThinkScheduleBindings {
     const ServerNpcOuterCadenceBindings* cadence;
     float interval;
+    // Optional original Jetpack +3ac gameplay route. Engine owns actual
+    // ragdoll creation and physical operations, not handle orchestration.
+    const ServerNpcGruntRagdollRouteBindings* ragdoll;
+    ServerNpcGruntRagdollRouteResult* ragdoll_result;
 };
 struct ServerNpcInputHealthDispatchBindings {
     void* context;
@@ -480,7 +484,7 @@ struct ServerEntityAcceptInputResult {
     unsigned health_outputs,health_output_actions,health_output_removed,health_output_enqueued;
     unsigned health_ground_route,health_ground_death;
     unsigned health_elite_route,health_jet_route,health_subclass_death;
-    unsigned health_jet_think_installed,health_jet_think_scheduled;
+    unsigned health_jet_think_installed,health_jet_think_scheduled,health_jet_ragdoll_native;
     ServerNpcOuterCadenceResult health_jet_cadence;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};

@@ -18,6 +18,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGroundLifeApi* __cdecl SiN_GetServerNpcGruntGroundLifeApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEliteLifeApi* __cdecl SiN_GetServerNpcGruntEliteLifeApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathThinkApi* __cdecl SiN_GetServerNpcJetpackDeathThinkApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRagdollRouteApi* __cdecl SiN_GetServerNpcGruntRagdollRouteApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -1474,6 +1475,8 @@ struct JetInitialThinkRoute {
     ServerNpcOuterCadenceBindings cadence;
     ServerEntityAcceptInputResult* out;
     void* actor;unsigned extent,vt;float interval;
+    const ServerNpcInputJetThinkScheduleBindings* initial;
+    const ServerWeaponActivityBindings* entities;
 };
 void bind_jet_initial_think(ServerNpcJetpackDeathBranchBindings& bound,JetInitialThinkRoute& route) noexcept {
     bound.context=&route;
@@ -1492,7 +1495,20 @@ void bind_jet_initial_think(ServerNpcJetpackDeathBranchBindings& bound,JetInitia
         const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.ignite&&s.ignite(s.context,a,time,flags,x,y,radius,last);
     };
     bound.ragdoll=[](void* p,void* a,void* damage,const float* force) noexcept -> int{
-        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.ragdoll&&s.ragdoll(s.context,a,damage,force);
+        auto& q=*static_cast<JetInitialThinkRoute*>(p);
+        if(a!=q.actor)return 0;
+        if(q.initial->ragdoll){
+            auto native=*q.initial->ragdoll;
+            native.entities.entries=q.entities->entries;native.entities.count=q.entities->count;
+            native.entities.speech.original_vtable=q.vt;
+            const auto* api=SiN_GetServerNpcGruntRagdollRouteApi(1,sizeof(ServerNpcGruntRagdollRouteApi));
+            if(!api||!api->run(a,q.extent,damage,0x48,force,&native,q.initial->ragdoll_result))return 0;
+            ++q.out->health_jet_ragdoll_native;
+            // 223668ac ignores AL; a completed native false return also
+            // proceeds to stamp and initial scheduling.
+            return 1;
+        }
+        const auto& s=*q.source;return s.ragdoll&&s.ragdoll(s.context,a,damage,force);
     };
     bound.time=[](void* p,float* time) noexcept -> int{
         const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.time&&s.time(s.context,time);
@@ -1546,7 +1562,8 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
     // Reject undersized subclass storage before mutating the damage record.
     if((elite&&n<0xfe0u)||(jet&&n<0x1074u))return false;
     const auto* initial=jet?dispatch.jet_think:nullptr;
-    if(initial&&(!initial->cadence||!std::isfinite(initial->interval)||initial->interval<=0||rd<unsigned>(a,0)!=vt))return false;
+    if(initial&&(!initial->cadence||!std::isfinite(initial->interval)||initial->interval<=0||rd<unsigned>(a,0)!=vt||
+        (initial->ragdoll&&!initial->ragdoll_result)))return false;
     if(!self_damage_scale(a,*b.storage,false,o.health_outgoing_scale,o.health_multiplier_rows))return false;
     wr<float>(info,0x2c,static_cast<float>(double(rd<float>(info,0x2c))*o.health_outgoing_scale));
     if(!self_damage_scale(a,*b.storage,true,o.health_incoming_scale,o.health_multiplier_rows))return false;
@@ -1607,6 +1624,7 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
             think.source=&dispatch.subclass_death->combat.branch;
             think.cadence=*initial->cadence;think.cadence.storage=b.storage;
             think.out=&o;think.actor=a;think.extent=n;think.vt=vt;think.interval=initial->interval;
+            think.initial=initial;think.entities=&b.entities;
             bind_jet_initial_think(bound.combat.branch,think);
         }
         const auto* api=SiN_GetServerNpcGruntEliteLifeApi(1,sizeof(ServerNpcGruntEliteLifeApi));
