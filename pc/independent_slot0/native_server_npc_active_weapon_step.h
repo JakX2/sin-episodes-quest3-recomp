@@ -381,6 +381,10 @@ struct ServerEntityEventServiceApi {
     int (__cdecl *service)(void* sentinel,unsigned sentinel_bytes,std::uint32_t sentinel_token,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings*,ServerEntityEventServiceResult*) noexcept;
 };
 using GetServerEntityEventServiceApi=const ServerEntityEventServiceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct CampaignFilterServiceSummary {unsigned attempted,completed,passed,failed,queued;};
+inline constexpr char service_campaign_filters_export[]="SiN_ServiceCampaignFilterEvents";
+using ServiceCampaignFilterEvents=int (__cdecl *)(void*,unsigned,unsigned,float,bool,int*,const ServerEntityEventServiceBindings*,ServerEntityEventServiceResult*,
+    const native_map::CampaignFilterInputBindings*,CampaignFilterServiceSummary*) noexcept;
 
 // Original CBaseEntity::AcceptInput 22141400. Datamap records and name
 // tokens are original PE32-shaped storage, supplied by the independent owner.

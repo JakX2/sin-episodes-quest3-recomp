@@ -692,3 +692,73 @@
             else assert(!leaf(f.actor,extent,nullptr,&b,&r)&&f.calls==2);
         }
     }
+
+// Native queue -> TestActivator -> nested native output -> relay.
+// No hosted enqueue, target search or input dispatch.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct FilterQueueFixture {
+            alignas(4) unsigned char filter[0x3cc]{},player[0x37c]{},relay[relay_extent]{};
+            unsigned outputs[2][7]{};
+            alignas(4) unsigned char root[0x38]{},rows[4][0x38]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float now=20.f;unsigned allocated=0,released=0;bool locked=false;
+        } f;
+        const auto service=reinterpret_cast<nw::ServiceCampaignFilterEvents>(GetProcAddress(server,nw::service_campaign_filters_export));
+        const auto queue_get=reinterpret_cast<nw::GetServerEntityNamedEventQueueApi>(GetProcAddress(server,nw::server_entity_named_event_queue_export));
+        assert(service&&queue_get&&!GetProcAddress(client,nw::service_campaign_filters_export));
+        const auto* qa=queue_get(1,sizeof(nw::ServerEntityNamedEventQueueApi));assert(qa);
+        nw::ServerEntityNamedEventQueueBindings queue{};queue.context=&f;
+        queue.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FilterQueueFixture*>(p);if(!token||token>f.allocated)return 0;*row=f.rows[token-1];*bytes=0x38;return 1;
+        };
+        queue.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FilterQueueFixture*>(p);if(f.allocated==4)return 0;*row=f.rows[f.allocated++];*token=f.allocated;*bytes=0x38;return 1;
+        };
+        queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=201&&token<=206;return 1;};
+        nw::ServerEntityVoidOutputBindings ob{};ob.context=&f;
+        ob.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FilterQueueFixture*>(p);if(token<11||token>12)return 0;*row=f.outputs[token-11];*bytes=0x1c;return 1;
+        };
+        RelayQueueBindings route{};route.context=&f;route.root=f.root;route.root_bytes=sizeof(f.root);route.root_token=99;route.queue=&queue;
+        route.handle=[](void* p,void* actor,unsigned* handle) noexcept ->int{
+            auto& f=*static_cast<FilterQueueFixture*>(p);if(actor==f.filter)*handle=0x3000;else if(actor==f.player)*handle=0x5001;else if(actor==f.relay)*handle=0x7002;else return 0;return 1;
+        };
+        void* actors[]{f.filter,f.player,f.relay};const unsigned serials[]{3,5,7};
+        for(unsigned i=0;i<3;++i){
+            f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=serials[i];
+            put(actors[i],0x378,(serials[i]<<12)|i);
+            if(i)f.entries[i].previous=&f.entries[i-1];if(i<2)f.entries[i].next=&f.entries[i+1];
+        }
+        put(f.filter,0,name_filter_vtable);put(f.filter,0xc0,201);put(f.filter,0x3c8,206);
+        put(f.filter,0x3ac,11);put(f.filter,0x3c4,12);
+        put(f.player,0,0x224aec3cu);put(f.player,0xc0,206);
+        put(f.relay,0,relay_vtable);put(f.relay,0xc0,203);f.relay[0x3ac]=1;
+        for(unsigned i=0;i<2;++i){f.outputs[i][0]=203;f.outputs[i][1]=204+i;f.outputs[i][4]=0xffffffffu;f.outputs[i][5]=80+i;}
+        auto extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FilterQueueFixture*>(p);*bytes=actor==f.filter?sizeof(f.filter):actor==f.player?sizeof(f.player):actor==f.relay?sizeof(f.relay):0;return *bytes!=0;
+        };
+        auto text=[](void*,unsigned token,const char** value,unsigned* bytes) noexcept ->int{
+            constexpr const char* names[]{"gate_filter","TestActivator","relay","Enable","Disable","hero"};
+            if(token<201||token>206)return 0;*value=names[token-201];*bytes=static_cast<unsigned>(std::strlen(*value)+1);return 1;
+        };
+        CampaignCustomFilterBindings pred{};pred.context=&f;pred.extent=extent;pred.string_text=text;
+        CampaignFilterInputBindings filters{&pred,&ob,&route};
+        nw::ServerEntitySearchBindings search{};search.context=&f;search.head=f.entries;search.extent=extent;search.string_text=text;
+        nw::ServerNpcActivePostAnimationBindings storage{};RelayBindings rb{};
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&storage;input.relay=&rb;input.string_text=text;
+        nw::ServerEntityEventServiceBindings sb{};sb.context=&f;sb.entities.entries=f.entries;sb.entities.count=3;sb.resolve=queue.resolve;
+        sb.native_search=&search;sb.native_input=&input;sb.live_now=&f.now;
+        sb.lock=[](void* p,bool enter) noexcept ->int{auto& f=*static_cast<FilterQueueFixture*>(p);assert(f.locked!=enter);f.locked=enter;return 1;};
+        sb.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& f=*static_cast<FilterQueueFixture*>(p);assert(f.locked&&row==f.rows[token-1]);++f.released;return 1;};
+        nw::ServerEntityVoidOutputAction action{201,202,0,0,99,0.f};
+        nw::ServerEntityNamedEventQueueResult qr{};nw::ServerEntityEventServiceResult sr{};nw::CampaignFilterServiceSummary summary{};
+        int steps=1;
+        auto enqueue=[&](){return qa->enqueue(f.root,sizeof(f.root),99,f.now,0x5001,0x5001,&action,&queue,&qr);};
+        auto tick=[&](bool step){return service(f.root,sizeof(f.root),99,f.now,step,&steps,&sb,&sr,&filters,&summary);};
+        assert(enqueue()&&tick(true)&&sr.events==1&&sr.native_inputs==1&&sr.step_stopped&&summary.passed==1&&summary.queued==1&&f.allocated==2&&f.released==1);
+        assert(word(f.rows[1],0xc)==0x5001&&word(f.rows[1],0x10)==0x3000&&word(f.rows[1],8)==204&&f.relay[0x3ac]);
+        assert(tick(false)&&sr.events==1&&sr.native_inputs==1&&!f.relay[0x3ac]&&f.released==2);
+        f.filter[0x394]=1;
+        assert(enqueue()&&tick(false)&&sr.events==2&&sr.native_inputs==2&&!sr.foreign_inputs&&summary.failed==1&&summary.queued==1&&f.relay[0x3ac]&&f.released==4&&!word(f.root,0x30));
+    }
