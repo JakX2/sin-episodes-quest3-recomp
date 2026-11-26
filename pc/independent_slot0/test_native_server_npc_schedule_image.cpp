@@ -15,6 +15,7 @@ struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
     unsigned char motor[0x18]{},nav[0x50]{},path[0x48]{};
     unsigned clear_paths=0,stop_paths=0,move_updates=0;
+    unsigned char think_component[9]{};unsigned think_component_tasks=0;
     unsigned char sound_record[0x2c]{},sound_cache[0x2c]{};
     bool sound_goal_accept=false;
     bool observation_pvs=false;
@@ -370,6 +371,14 @@ int main(int argc,char** argv){
     auto gthink=reinterpret_cast<GetServerNpcThinkCatalogApi>(GetProcAddress(s,server_npc_think_catalog_export));
     assert(gthink&&!GetProcAddress(c,server_npc_think_catalog_export)&&!gthink(0,sizeof(ServerNpcThinkCatalogApi))&&!gthink(1,0));
     const auto* think_api=gthink(1,sizeof(ServerNpcThinkCatalogApi));assert(think_api);
+    // A live +c18 component receives task dispatch before inherited native work.
+    ab.shared.component_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);assert(token==711);*out=f.think_component;*n=sizeof(f.think_component);return 1;
+    };
+    ab.shared.component_task=[](void* p,std::uint32_t token,const ServerNpcScheduleTask* task,bool running) noexcept -> int{
+        auto& f=F::self(p);assert(token==711&&task->id==103&&!running&&f.think_component[8]==1);
+        ++f.think_component_tasks;f.think_component[8]=0;return 1;
+    };
     ServerNpcThinkCatalogBindings think{};think.gather=gb;think.context=&f;
     think.preschedule=[](void* p,void* a,std::uint32_t cls,float) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&cls==0x2249aaa4&&f.actor[0x84d]==1&&!f.actor[0x84e]);f.actor[0x101]=1;return 1;};
     auto old_submit=tcb.submit_goal;tcb.submit_goal=[](void* p,std::uint32_t nav,const ServerNpcSoundCoverGoal*,bool* accepted) noexcept -> int{
@@ -392,6 +401,7 @@ int main(int argc,char** argv){
     assert(think_run.scheduler.scheduler.tactical.last.accepted);
     assert(component_calls==1);
     assert(think_run.conditions_cleared==4);
+    assert(f.think_component_tasks==1&&think_run.scheduler.scheduler.tactical.last.shared.component_called&&!think_run.scheduler.scheduler.tactical.last.shared.component_handled);
     tcb.submit_goal=old_submit;
     // Invalidated schedule can invoke +420 again because +84e remains false.
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0xc18,711u);component_calls=0;
@@ -408,6 +418,8 @@ int main(int argc,char** argv){
     ServerNpcNativePrescheduleThinkResult ntr;
     install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
     assert(npt->run(f.actor,sizeof(f.actor),69.46f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.think.completed&&ntr.preschedule.completed&&ntr.preschedule.component_called&&ntr.preschedule.speech_called&&f.actor[0x102]&&component_calls==1&&ntr.think.scheduler.scheduler.tactical.last.accepted&&!ntr.elite_called&&!ntr.jet_called);
+    assert(f.think_component_tasks==2);
+    ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;
     m.before_selection=old_before;
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     install_at(96,4); // SCHED_GRUNT_GRENADE_COVER1: original timestamp task53
