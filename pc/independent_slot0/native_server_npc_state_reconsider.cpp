@@ -3892,7 +3892,64 @@ int __cdecl grunt_damage_notified_event(void* a,unsigned n,void* damage,unsigned
 }
 const ServerNpcGruntDamageNotificationApi damage_notification_api{1,sizeof(ServerNpcGruntDamageNotificationApi),&grunt_damage_receive,&grunt_damage_notify,&grunt_damage_notified_event};
 
-int __cdecl grunt_damage_override(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings* b,ServerNpcGruntDamageOverrideResult* out) noexcept{
+
+int __cdecl grunt_bone_hit(void* a,const char* name,const float* pos,float range,const ServerNpcGruntBoneHitBindings* b,ServerNpcGruntBoneHitResult* out) noexcept{
+    if(!out)return 0;*out={};out->index=-1;
+    if(!a||!name||!pos||!std::isfinite(range)||!b||!b->index)return 0;
+    if(!b->index(b->context,a,name,&out->index))return 0;
+    if(out->index==-1){out->completed=1;return 1;}
+    if(out->index<0||!b->matrix)return 0;
+    float matrix[12]{};
+    if(!b->matrix(b->context,a,out->index,matrix))return 0;
+    out->found=1;double d[3];
+    for(unsigned i=0;i<3;++i){
+        out->origin[i]=matrix[4*i+3];d[i]=static_cast<double>(pos[i])-out->origin[i];
+        if(!std::isfinite(d[i]))return 0;
+    }
+    out->squared=static_cast<float>(d[2]*d[2]+d[0]*d[0]+d[1]*d[1]);
+    if(!std::isfinite(out->squared))return 0;
+    out->distance=std::sqrt(static_cast<double>(out->squared));
+    out->hit=out->distance<range;out->completed=1;return 1;
+}
+int __cdecl grunt_impact(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntImpactBindings* b,ServerNpcGruntImpactResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0xdb2||!damage||dn<0x3c||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->reaction.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    auto emit=[&](int id){
+        const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+        if(!b->event||!b->event(b->context,id,registry.Resolve(read<unsigned>(damage,0x28)),a))return false;
+        out->event_id=static_cast<unsigned>(id);return true;
+    };
+    out->head_present=read<std::uint8_t>(a,0xc74)!=0;
+    if(out->head_present){
+        bool allowed=false;if(!b->rule||!b->rule(b->context,&allowed))return 0;
+        out->rule_called=1;
+        if(allowed||(read<unsigned>(damage,0x38)&0x80u)){
+            if(!b->detach||!b->detach(b->context,a))return 0;
+            out->detached=1;if(!emit(7))return 0;
+        }
+    }else{
+        const float amount=read<float>(damage,0x2c);if(!std::isfinite(amount))return 0;
+        out->threshold=static_cast<float>(static_cast<double>(amount)*static_cast<double>(0.005f));
+        if(!std::isfinite(out->threshold)||!b->random_float||!b->random_float(b->context,0.f,1.f,&out->sample)||
+           !std::isfinite(out->sample)||out->sample<0.f||out->sample>1.f)return 0;
+        out->random_called=1;
+        const float live=read<float>(damage,0x2c);if(!std::isfinite(live))return 0;
+        if(out->sample<out->threshold&&static_cast<double>(read<int>(a,0x9c))<live){
+            if(!b->lethal||!b->lethal(b->context,a,damage))return 0;
+            out->lethal_called=1;if(!emit(8))return 0;
+            out->completed=1;return 1;
+        }
+    }
+    out->deadline=static_cast<float>(static_cast<double>(now)+1.0);if(!std::isfinite(out->deadline))return 0;
+    write(a,0xc78,out->deadline);
+    if(!sentence_dispatch_request(a,n,now,"GRUNT_HEAD",2,0,&sb,&b->reaction.request,&out->speech,&out->request))return 0;
+    out->speech_called=1;out->completed=1;return 1;
+}
+struct DamageDetailRoute {const ServerNpcGruntDamageDetailBindings* bindings;ServerNpcGruntDamageDetailResult* result;};
+
+int grunt_damage_override_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings* b,ServerNpcGruntDamageOverrideResult* out,const DamageDetailRoute* route) noexcept{
     if(!out)return 0;
     // Large composed result: avoid deep aggregate initialization on MSVC x86.
     out->base.completed=0;out->base.native_result=0;
@@ -3920,7 +3977,10 @@ int __cdecl grunt_damage_override(void* a,unsigned n,void* damage,unsigned dn,fl
     auto flags=read<unsigned>(damage,0x38);
     if((flags&0x400000u)&&!(flags&2u)){out->rejected_flags=1;return done();}
     if(read<int>(damage,0x44)==1){
-        if(!b->impact||!b->impact(b->context,a,damage))return 0;
+        if(route){
+            auto bound=route->bindings->impact;bound.reaction=reaction;
+            if(!grunt_impact(a,n,damage,dn,now,&bound,&route->result->impact))return 0;
+        }else if(!b->impact||!b->impact(b->context,a,damage))return 0;
         out->impact_called=1;
     }
     flags=read<unsigned>(damage,0x38);
@@ -3949,12 +4009,20 @@ int __cdecl grunt_damage_override(void* a,unsigned n,void* damage,unsigned dn,fl
     }else{
         float pos[3];for(unsigned i=0;i<3;++i){pos[i]=read<float>(damage,0xc+4*i);if(!std::isfinite(pos[i]))return 0;}
         bool hit=false;
-        if(!b->bone_hit||!b->bone_hit(b->context,a,"ValveBiped.Bip01_R_Calf",pos,10.f,&hit))return 0;
+        if(route){
+            auto& br=route->result->right;
+            if(!grunt_bone_hit(a,"ValveBiped.Bip01_R_Calf",pos,10.f,&route->bindings->bone,&br))return 0;
+            hit=br.hit!=0;
+        }else if(!b->bone_hit||!b->bone_hit(b->context,a,"ValveBiped.Bip01_R_Calf",pos,10.f,&hit))return 0;
         ++out->knee_checked;
         if(!hit){
             // Original reloads damage position for the second call.
             for(unsigned i=0;i<3;++i){pos[i]=read<float>(damage,0xc+4*i);if(!std::isfinite(pos[i]))return 0;}
-            if(!b->bone_hit(b->context,a,"ValveBiped.Bip01_L_Calf",pos,10.f,&hit))return 0;
+            if(route){
+            auto& br=route->result->left;
+            if(!grunt_bone_hit(a,"ValveBiped.Bip01_L_Calf",pos,10.f,&route->bindings->bone,&br))return 0;
+            hit=br.hit!=0;
+        }else if(!b->bone_hit(b->context,a,"ValveBiped.Bip01_L_Calf",pos,10.f,&hit))return 0;
             ++out->knee_checked;
         }
         out->knee_total=read<float>(a,0xcac);if(!std::isfinite(out->knee_total))return 0;
@@ -3988,7 +4056,18 @@ int __cdecl grunt_damage_override(void* a,unsigned n,void* damage,unsigned dn,fl
     if(!grunt_damage_event(a,n,forwarded,0x48,now,&b->base,&out->base))return 0;
     out->native_result=out->base.native_result;out->base_called=1;return done();
 }
+int __cdecl grunt_damage_override(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings* b,ServerNpcGruntDamageOverrideResult* out) noexcept{
+    return grunt_damage_override_impl(a,n,damage,dn,now,b,out,nullptr);
+}
 const ServerNpcGruntDamageOverrideApi damage_override_api{1,sizeof(ServerNpcGruntDamageOverrideApi),&grunt_damage_override};
+int __cdecl grunt_damage_detail(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageDetailBindings* b,ServerNpcGruntDamageDetailResult* out) noexcept{
+    if(!out)return 0;out->impact={};out->right={};out->left={};
+    if(!b)return 0;
+    const DamageDetailRoute route{b,out};
+    return grunt_damage_override_impl(a,n,damage,dn,now,&b->damage,&out->damage,&route);
+}
+const ServerNpcGruntDamageDetailApi damage_detail_api{1,sizeof(ServerNpcGruntDamageDetailApi),&grunt_bone_hit,&grunt_impact,&grunt_damage_detail};
+
 
 
 
@@ -4515,4 +4594,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageNotificationApi=_SiN_GetServerNpcGruntDamageNotificationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageNotificationApi* __cdecl SiN_GetServerNpcGruntDamageNotificationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageNotificationApi)?&damage_notification_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageDetailApi=_SiN_GetServerNpcGruntDamageDetailApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageDetailApi* __cdecl SiN_GetServerNpcGruntDamageDetailApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageDetailApi)?&damage_detail_api:nullptr;
 }
