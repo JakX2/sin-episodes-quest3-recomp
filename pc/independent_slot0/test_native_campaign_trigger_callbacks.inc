@@ -253,7 +253,10 @@
             unsigned count=0;std::memcpy(&count,f.actor+0x468,4);
             if(a->target==201){
                 assert(count==f.expected_count);f.order+='E';
-                if(f.insert_stale){f.vector[count]=0xffffffffu;put(f.actor,0x468,count+1);f.insert_stale=false;}
+                if(f.insert_stale){
+                    f.vector[count]=0xffffffffu;const unsigned next=count+1;
+                    std::memcpy(f.actor+0x468,&next,4);f.insert_stale=false;
+                }
                 return !f.fail;
             }
             assert(a->target==202&&count==0);f.order+='A';return 1;
