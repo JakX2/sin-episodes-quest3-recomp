@@ -2441,4 +2441,45 @@ struct ServerNpcGruntStandoffEventApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntStandoffEventBindings*,ServerNpcGruntStandoffEventResult*) noexcept;
 };
 using GetServerNpcGruntStandoffEventApi=const ServerNpcGruntStandoffEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_actbusy_event_export[]="SiN_GetServerNpcGruntActBusyEventApi";
+struct ServerNpcGruntActBusyEventBindings {
+    ServerNpcGruntStandoffEventBindings events;
+    void* context;
+    const void* rows; unsigned row_count; // live 2259dd40, 40 bytes per row
+    int debug_mode;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *origin)(void*,void*,float*) noexcept;
+    int (__cdecl *facing_error)(void*,void*,double*) noexcept; // 2206d1b0
+    int (__cdecl *flags_changed)(void*,void*,unsigned,unsigned) noexcept; // 221639f0
+    int (__cdecl *flags_prepare)(void*,void*) noexcept; // +268
+    int (__cdecl *prepare)(void*,void*,int) noexcept; // 22221890
+    int (__cdecl *begin)(void*,void*,int,int,bool*) noexcept; // 2238ea60
+    int (__cdecl *claim)(void*,void*,void*) noexcept; // 22065740
+    int (__cdecl *notify)(void*,void*,void*,unsigned) noexcept; // linked +2ac/+2b0
+    int (__cdecl *sequence)(void*,void*,std::uint32_t) noexcept; // 22043770
+    int (__cdecl *duration)(void*,void*,float,bool) noexcept; // 220325c0
+    int (__cdecl *restore_pose)(void*,void*,void*) noexcept; // 220ee200 + 22285aa0 / 22035ac0
+    int (__cdecl *finish_pose)(void*,void*) noexcept; // 22035de0(true)
+    int (__cdecl *release)(void*,void*,void*) noexcept; // 2238ddc0
+    int (__cdecl *orientation)(void*,void*,float*) noexcept; // 2202f0b0
+    int (__cdecl *set_transform)(void*,void*,const float*,const float*) noexcept; // +188
+    int (__cdecl *memory_remove)(void*,std::uint32_t,int) noexcept; // 22073e00
+    int (__cdecl *memory_add)(void*,std::uint32_t,int,std::uint32_t) noexcept; // 22073ed0 / 220ecb90 + 22073f90
+    int (__cdecl *owner_event)(void*,void*,int,float) noexcept; // 220cda50 -> +444, marker restored natively
+    int (__cdecl *debug_line)(void*,void*,void*) noexcept; // 2225c210
+};
+struct ServerNpcGruntActBusyEventResult {
+    ServerNpcGruntStandoffEventResult events;
+    ServerNpcConditionResult condition;
+    std::uint32_t link_handle,sequence_token,request_value,memory_token;
+    double distance,facing;
+    float deadline,duration;
+    int activity,memory_id;
+    unsigned entered,completed,link_valid,admitted,lookups,flags_called,flags_changed,prepare_called,aligned,request_called,begin_called,claim_called,notify_called,row_valid,sequence_called,activity_called,duration_called,restore_called,finish_called,release_called,transform_called,navigation_written,reset_called,synthetic_called,memory_called,condition_checked,debug_called;
+};
+struct ServerNpcGruntActBusyEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntActBusyEventBindings*,ServerNpcGruntActBusyEventResult*) noexcept;
+};
+using GetServerNpcGruntActBusyEventApi=const ServerNpcGruntActBusyEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

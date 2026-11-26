@@ -4452,7 +4452,169 @@ int standoff_event_route(void* a,unsigned n,void* p,unsigned extent,const void* 
     if(!schedule||!rappel_schedule_reset(a,n,now,*schedule))return 0;
     o.reset_called=1;return done();
 }
-struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;const TakecoverEventRoute* cover=nullptr;const StandoffEventRoute* standoff=nullptr;};
+
+struct ActBusyEventRoute {const ServerNpcGruntActBusyEventBindings* bindings;ServerNpcGruntActBusyEventResult* result;};
+int actbusy_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const ActBusyEventRoute& route,const RappelScheduleRoute* schedule) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;
+    const auto& cover=b.events.events;const auto& tank=cover.events;const auto& rb=tank.events.events;
+    const auto& re=rb.events;const auto& event=re.events;const auto& sb=event.gate.speech.speech.sentence;
+    if(n<0xc1c||extent<0x3c||id<100000||id>100005)return 0;
+    o.entered=1;o.activity=o.memory_id=-1;o.link_handle=0xffffffffu;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto done=[&](){o.completed=1;return 1;};
+    auto link=[&](){++o.lookups;o.link_handle=read<unsigned>(a,0xa18);return static_cast<void*>(registry.Resolve(o.link_handle));};
+    auto admitted=[&](bool& yes){
+        yes=false;void* target=link();o.link_valid=target!=nullptr;if(!target)return true;
+        target=link();unsigned bytes=0;if(!target||!b.extent||!b.extent(b.context,target,&bytes)||bytes<0x3b4)return false;
+        yes=read<unsigned>(target,0x3b0)==0;o.admitted=yes;return true;
+    };
+    auto request=[&](std::uint32_t value){o.request_value=value;if(!tank.request||!tank.request(tank.context,a,value))return false;o.request_called=1;return true;};
+    auto reset=[&](){if(!schedule||!rappel_schedule_reset(a,n,now,*schedule))return false;o.reset_called=1;return true;};
+    auto flags=[&](bool set){
+        const unsigned old=read<unsigned>(a,0xbc),value=set?old|0x400u:old&~0x400u;
+        if(old!=value){
+            if(!b.flags_prepare||!b.flags_prepare(b.context,a))return false;
+            write(a,0xbc,value);o.flags_changed=1;
+        }
+        if(!b.flags_changed||!b.flags_changed(b.context,a,old,read<unsigned>(a,0xbc)))return false;
+        ++o.flags_called;return true;
+    };
+    auto row=[&](const void*& out){
+        const int index=read<int>(p,0x34);out=nullptr;
+        if(index<0||static_cast<unsigned>(index)>=b.row_count||!b.rows||b.row_count>0xffffffffu/40u)return false;
+        out=static_cast<const unsigned char*>(b.rows)+40u*static_cast<unsigned>(index);o.row_valid=1;return true;
+    };
+    auto activity=[&](int id){
+        o.activity=id;if(!event.clear_activity||!event.clear_activity(event.context,a,id))return false;o.activity_called=1;return true;
+    };
+    auto play=[&](unsigned index,bool& yes){
+        const void* data=nullptr;if(!row(data))return false;
+        const auto sequence=read<unsigned>(data,0x10+index*4);
+        yes=false;
+        if(sequence){
+            o.sequence_token=sequence;if(!b.sequence||!b.sequence(b.context,a,sequence))return false;
+            o.sequence_called=1;yes=true;return activity(154);
+        }
+        const int act=read<int>(data,4+index*4);
+        if(act==-1)return true;
+        yes=true;return activity(act);
+    };
+    auto synthetic=[&](int id){
+        if(!b.owner_event)return false;
+        const auto old=read<std::uint8_t>(p,8);
+        const bool ok=b.owner_event(b.context,a,id,0.f)!=0;
+        write(p,8,old);o.synthetic_called=1;return ok;
+    };
+    auto notify=[&](unsigned slot){
+        if(registry.Resolve(read<unsigned>(p,0x38))){
+            void* target=registry.Resolve(read<unsigned>(p,0x38));if(!target||!b.notify||!b.notify(b.context,target,a,slot))return false;
+            ++o.notify_called;
+        }
+        return true;
+    };
+    auto aligned=[&](bool& yes){
+        yes=false;float pos[3]{};
+        if(read<unsigned>(a,0xb8)&0x800u){if(!re.refresh_origin||!re.refresh_origin(re.context,a))return false;}
+        float own[3]{};for(unsigned i=0;i<3;++i)own[i]=read<float>(a,0x2bc+4*i);
+        void* target=link();if(!target||!b.origin||!b.origin(b.context,target,pos)||!finite_vec(own)||!finite_vec(pos))return false;
+        for(unsigned i=0;i<3;++i)o.distance+=std::fabs(static_cast<double>(pos[i])-own[i]);
+        // 220e2fc0 is Manhattan distance. FCOMP/TEST AH,41h admits <=16 or unordered, then facing helper.
+        // JE is the failure path for ordered greater; nonfinite geometry is refused above.
+        if(o.distance>16.0)return true;
+        if(!b.facing_error||!b.facing_error(b.context,a,&o.facing)||!std::isfinite(o.facing))return false;
+        yes=std::fabs(o.facing)<=0.006;o.aligned=yes;return true;
+    };
+    if(id==100000||id==100001){
+        if(!flags(true)||!b.prepare||!b.prepare(b.context,a,0))return 0;o.prepare_called=1;
+        if(id==100001)write<std::uint8_t>(p,0x21,0);
+        bool yes=false;if(!admitted(yes))return 0;
+        if(!yes)return request(4)?done():0;
+        if(id==100001||read<std::uint8_t>(p,0x21)){
+            if(!aligned(yes))return 0;
+            if(!yes){
+                if(id==100001)write<std::uint8_t>(p,0x20,0);
+                if(!request(0x224aa044u))return 0;
+                if(id==100000){o.deadline=now;write(p,0x28,now);}
+                return done();
+            }
+        }
+        if(id==100001){if(!play(1,yes))return 0;return (yes||reset())?done():0;}
+        const bool already=read<std::uint8_t>(p,0x20)!=0;
+        write<std::uint8_t>(p,0x21,0);
+        if(!already){
+            write<std::uint8_t>(p,0x20,1);
+            bool started=false;if(!b.begin||!b.begin(b.context,p,read<int>(p,0x34),2,&started))return 0;
+            o.begin_called=1;write<std::uint8_t>(p,0x22,started?1:0);
+            void* target=link();if(!target||!b.claim||!b.claim(b.context,target,a))return 0;
+            o.claim_called=1;if(!notify(0x2ac))return 0;
+            const void* data=nullptr;if(!row(data))return 0;
+            float lo=read<float>(data,0x1c),hi=read<float>(data,0x20);
+            const float custom=read<float>(p,0x1c);
+            if(read<std::uint8_t>(p,0x11)&&custom!=-1.f){
+                hi=custom;if(hi!=0.f&&hi<lo)lo=hi;
+            }
+            if(!std::isfinite(lo)||!std::isfinite(hi))return 0;
+            if(hi!=0.f&&!read<std::uint8_t>(p,0x30)){
+                double value=0;if(!rb.random_float||!rb.random_float(rb.context,lo,hi,&value)||!std::isfinite(value))return 0;
+                o.duration=static_cast<float>(value);o.deadline=static_cast<float>(value+now);
+            }else{o.duration=99999.f;o.deadline=0.f;}
+            write(p,0x28,o.deadline);
+            if(!b.duration||!b.duration(b.context,a,o.duration,false))return 0;o.duration_called=1;
+        }
+        if(!play(0,yes))return 0;
+        write<std::uint8_t>(p,0x11,0);write<std::uint8_t>(p,0x18,0);write(p,0x14,0xffffffffu);
+        if(read<std::uint8_t>(p,0x1b)){
+            // Pose query/transform and engine update are one explicit subroute.
+            void* target=link();if(!target||!b.restore_pose||!b.restore_pose(b.context,a,target))return 0;o.restore_called=1;
+        }
+        return done();
+    }
+    if(id==100002){
+        if(read<std::uint8_t>(p,0x1b)){
+            if(!b.finish_pose||!b.finish_pose(b.context,a))return 0;o.finish_called=1;
+        }
+        if(!notify(0x2b0))return 0;
+        bool yes=false;if(!play(2,yes))return 0;if(yes)return done();
+        write<std::uint8_t>(p,0x22,0);
+        if(!flags(false)||!b.release||!b.release(b.context,a,p))return 0;o.release_called=1;
+        return reset()?done():0;
+    }
+    if(id==100003){
+        bool yes=false;if(!admitted(yes))return 0;if(!yes)return request(4)?done():0;
+        float pos[3]{},rot[3]{};void* target=link();
+        if(!target||!b.origin||!b.origin(b.context,target,pos)||!finite_vec(pos))return 0;
+        target=link();if(!target||!b.orientation||!b.orientation(b.context,target,rot)||!finite_vec(rot))return 0;
+        if(!b.set_transform||!b.set_transform(b.context,a,pos,rot))return 0;o.transform_called=1;
+        void* nav=nullptr;unsigned bytes=0;
+        if(!memory_storage(&re.navigation,read<unsigned>(a,0x908),0x18,nav,bytes))return 0;
+        write(nav,0x14,rot[1]);o.navigation_written=1;return reset()?done():0;
+    }
+    if(id==100004){
+        const int token=read<int>(p,0x14);
+        if(token==-1||token==0)return synthetic(44)?done():0;
+        o.memory_token=read<unsigned>(a,0x8f8);o.memory_id=token;
+        if(!b.memory_remove||!b.memory_remove(b.context,o.memory_token,token))return 0;o.memory_called=1;
+        write(a,0x988,read<unsigned>(a,0x988)&~2u);return reset()?done():0;
+    }
+    if(!synthetic(27))return 0;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    if(!api||!api->test(a,n,0x21,NpcConditionCurrent,&rb.conditions,&o.condition))return 0;o.condition_checked=1;
+    if(o.condition.value){
+        if(b.debug_mode==1){
+            if(link()){void* target=link();if(!target||!b.debug_line||!b.debug_line(b.context,a,target))return 0;o.debug_called=1;}
+        }
+        return done();
+    }
+    const void* data=nullptr;if(!row(data))return 0;
+    const bool second=read<unsigned>(data,0x14)!=0||read<int>(data,8)!=-1;
+    o.sequence_token=read<unsigned>(data,second?0x14:0x10);
+    o.memory_id=read<int>(data,second?8:4);
+    if(!o.sequence_token&&o.memory_id==-1)return done();
+    o.memory_token=read<unsigned>(a,0x8f8);
+    if(!b.memory_add||!b.memory_add(b.context,o.memory_token,o.memory_id,o.sequence_token))return 0;
+    o.memory_called=1;return done();
+}
+struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;const TakecoverEventRoute* cover=nullptr;const StandoffEventRoute* standoff=nullptr;const ActBusyEventRoute* busy=nullptr;};
 int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const RappelEventRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;
     o.entered=1;auto done=[&](){o.completed=1;return 1;};
@@ -4573,7 +4735,8 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
         const bool native_tank=rappel&&rappel->tank&&entry&&identity.behavior_vtable==0x224abec4;
         const bool native_cover=rappel&&rappel->cover&&entry&&identity.behavior_vtable==0x224ae624;
         const bool native_standoff=rappel&&rappel->standoff&&entry&&identity.behavior_vtable==0x22495344;
-        if(entry&&!no_op&&!native_rappel&&!native_tank&&!native_cover&&!native_standoff&&!b->special)return 0;
+        const bool native_busy=rappel&&rappel->busy&&entry&&identity.behavior_vtable==0x224ab494;
+        if(entry&&!no_op&&!native_rappel&&!native_tank&&!native_cover&&!native_standoff&&!native_busy&&!b->special)return 0;
         write<std::uint8_t>(p,8,1);out->marker_set=1;
         if(native_rappel){
             if(!rappel_event_route(a,n,p,extent,id,now,*rappel))return 0;
@@ -4583,6 +4746,8 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
             if(!takecover_event_route(a,n,p,extent,id,now,*rappel->cover,rappel->schedule))return 0;
         }else if(native_standoff){
             if(!standoff_event_route(a,n,p,extent,ev,now,*rappel->standoff,rappel->schedule))return 0;
+        }else if(native_busy){
+            if(!actbusy_event_route(a,n,p,extent,id,now,*rappel->busy,rappel->schedule))return 0;
         }else if(entry&&!no_op){
             out->special_called=1;if(!b->special(b->context,a,p,extent,entry,ev,en))return 0;
         }
@@ -4800,6 +4965,24 @@ int __cdecl grunt_standoff_event(void* a,unsigned n,const void* ev,unsigned en,f
     return grunt_event43_impl(a,n,ev,en,now,&sched.events.events,&e.events.events,&rappel,&timer);
 }
 const ServerNpcGruntStandoffEventApi standoff_event_api{1,sizeof(ServerNpcGruntStandoffEventApi),&grunt_standoff_event};
+int __cdecl grunt_actbusy_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntActBusyEventBindings* b,ServerNpcGruntActBusyEventResult* out) noexcept{
+    if(!out)return 0;*out={};out->activity=out->memory_id=-1;out->condition.global=out->condition.bit=-1;
+    auto& stand=out->events;stand.random=-1;
+    auto& cover_out=stand.events;auto& tank_out=cover_out.events;tank_out.handle=0xffffffffu;tank_out.random=-1;
+    auto& timer_out=tank_out.events;auto& e=timer_out.events;e.events.rope_handle=0xffffffffu;
+    e.condition.global=e.condition.bit=e.slot.index=e.slot.selected=-1;
+    if(!b)return 0;
+    const auto& st=b->events;const auto& cb=st.events;const auto& tb=cb.events;const auto& timer_bind=tb.events;const auto& sched=timer_bind.events;
+    const RappelScheduleRoute schedule{&sched,&e};
+    const TankEventRoute tank{&tb,&tank_out};
+    const TakecoverEventRoute cover{&cb,&cover_out};
+    const StandoffEventRoute standoff{&st,&stand};
+    const ActBusyEventRoute busy{b,out};
+    const RappelEventRoute rappel{&sched.events,&e.events,&schedule,&tank,&cover,&standoff,&busy};
+    const EventTimerRoute timer{&timer_bind,&timer_out};
+    return grunt_event43_impl(a,n,ev,en,now,&sched.events.events,&e.events.events,&rappel,&timer);
+}
+const ServerNpcGruntActBusyEventApi actbusy_event_api{1,sizeof(ServerNpcGruntActBusyEventApi),&grunt_actbusy_event};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6636,4 +6819,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntStandoffEventApi=_SiN_GetServerNpcGruntStandoffEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntStandoffEventApi* __cdecl SiN_GetServerNpcGruntStandoffEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntStandoffEventApi)?&standoff_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntActBusyEventApi=_SiN_GetServerNpcGruntActBusyEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntActBusyEventApi* __cdecl SiN_GetServerNpcGruntActBusyEventApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntActBusyEventApi)?&actbusy_event_api:nullptr;
 }

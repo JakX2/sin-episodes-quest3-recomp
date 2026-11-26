@@ -3525,5 +3525,63 @@ int main(int argc,char** argv){
         f.put(q.a,0xde8+0x34,3.f);assert(run()&&o.cached_anchor&&!o.anchor_fallback&&o.arc_calls==1);
         q.a[0xde8+0x60]=1;assert(run()&&!o.entered&&q.shared==1);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntActBusyEventApi>(GetProcAddress(s,server_npc_grunt_actbusy_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_actbusy_event_export)&&!g(0,sizeof(ServerNpcGruntActBusyEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntActBusyEventApi));assert(api);
+        struct BusyFixture{
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},target[0x3b4]{},rows[40]{},desc[0x48]{},nav[0x18]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            float point[3]{16,0,0};double facing=.006;unsigned requests=0,flags=0,prepare=0,synthetic=0,removed=0,added=0,activities=0;
+            static BusyFixture& self(void* p){return *static_cast<BusyFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.target);
+        ServerNpcGruntActBusyEventBindings b{};b.context=&q;b.rows=q.rows;b.row_count=1;
+        auto& tank=b.events.events.events; tank.context=&q;auto& rb=tank.events.events;rb.context=&q;
+        auto& gate=rb.events.events.gate;gate.actor_token=0x10000u;auto& sb=gate.speech.speech.sentence;sb.entries=q.entries;sb.count=2;sb.speech.original_vtable=0x2249aaa4;
+        rb.conditions.context=&q;rb.conditions.descriptor=[](void* p,void*,const void** v,unsigned* n) noexcept -> int{auto& q=BusyFixture::self(p);*v=q.desc;*n=sizeof(q.desc);return 1;};
+        rb.events.navigation.context=&q;rb.events.navigation.storage=[](void* p,std::uint32_t token,void** v,unsigned* n) noexcept -> int{auto& q=BusyFixture::self(p);assert(token==77);*v=q.nav;*n=sizeof(q.nav);return 1;};
+        rb.random_float=[](void*,float lo,float hi,double* v) noexcept -> int{assert(lo==2&&hi==4);*v=3;return 1;};
+        rb.events.events.clear_activity=[](void* p,void* a,int act) noexcept -> int{auto& q=BusyFixture::self(p);assert(a==q.a&&(act==5||act==154));++q.activities;return 1;};
+        rb.events.events.context=&q;
+        tank.request=[](void* p,void* a,std::uint32_t v) noexcept -> int{auto& q=BusyFixture::self(p);assert(a==q.a&&(v==4||v==0x224aa044u));++q.requests;return 1;};
+        b.flags_prepare=[](void* p,void* a) noexcept -> int{assert(a==BusyFixture::self(p).a);return 1;};
+        b.flags_changed=[](void* p,void* a,unsigned,unsigned) noexcept -> int{auto& q=BusyFixture::self(p);assert(a==q.a);++q.flags;return 1;};
+        b.prepare=[](void* p,void* a,int v) noexcept -> int{auto& q=BusyFixture::self(p);assert(a==q.a&&!v);++q.prepare;return 1;};
+        b.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& q=BusyFixture::self(p);assert(e==q.target);*n=sizeof(q.target);return 1;};
+        b.origin=[](void* p,void* e,float* v) noexcept -> int{auto& q=BusyFixture::self(p);assert(e==q.target);std::memcpy(v,q.point,12);return 1;};
+        b.facing_error=[](void* p,void* a,double* v) noexcept -> int{auto& q=BusyFixture::self(p);assert(a==q.a);*v=q.facing;return 1;};
+        b.sequence=[](void*,void*,std::uint32_t token) noexcept -> int{assert(token==99);return 1;};
+        b.begin=[](void* p,void* v,int index,int mode,bool* yes) noexcept -> int{auto& q=BusyFixture::self(p);assert(v==q.a+0xf88&&index==0&&mode==2);*yes=true;return 1;};
+        b.claim=[](void* p,void* e,void* a) noexcept -> int{auto& q=BusyFixture::self(p);assert(e==q.target&&a==q.a);return 1;};
+        b.duration=[](void*,void*,float duration,bool flag) noexcept -> int{assert(duration==3&&!flag);return 1;};
+        b.release=[](void* p,void* a,void* v) noexcept -> int{auto& q=BusyFixture::self(p);assert(a==q.a&&v==q.a+0xf88);return 1;};
+        b.orientation=[](void*,void*,float* v) noexcept -> int{v[0]=0;v[1]=90;v[2]=0;return 1;};
+        b.set_transform=[](void*,void*,const float*,const float* v) noexcept -> int{assert(v[1]==90);return 1;};
+        b.memory_remove=[](void* p,std::uint32_t token,int id) noexcept -> int{auto& q=BusyFixture::self(p);assert(token==88&&id==7);++q.removed;return 1;};
+        b.memory_add=[](void* p,std::uint32_t token,int id,std::uint32_t seq) noexcept -> int{auto& q=BusyFixture::self(p);assert(token==88&&id==5&&seq==99);++q.added;return 1;};
+        b.owner_event=[](void* p,void* a,int id,float v) noexcept -> int{auto& q=BusyFixture::self(p);assert(a==q.a&&(id==27||id==44)&&v==0);q.a[0xf90]=0;++q.synthetic;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10f88u);f.put(q.a,0xf88,0x224ab494u);f.put(q.a,0xf8c,0x10000u);f.put(q.a,0xf94,0x10c14u);
+        f.put(q.a,0x908,77u);f.put(q.a,0x8f8,88u);
+        f.put(q.a,0xa18,0x9001u);f.put(q.a,0xfc0,0xffffffffu);
+        f.put(q.rows,4,-1);f.put(q.rows,8,5);f.put(q.rows,12,-1);f.put(q.rows,0x1c,2.f);f.put(q.rows,0x20,4.f);
+        ServerNpcGruntActBusyEventResult o{};
+        auto run=[&](int id){f.put(q.raw,0,id);return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        assert(run(100001)&&!o.link_valid&&o.request_value==4&&o.flags_changed&&o.prepare_called);
+        f.put(q.a,0xa18,0x1001u);f.put(q.target,0x3b0,1u);assert(run(100003)&&o.link_valid&&!o.admitted&&o.request_value==4);
+        f.put(q.target,0x3b0,0u);q.point[1]=.01f;
+        assert(run(100001)&&o.admitted&&!o.aligned&&o.request_value==0x224aa044u);
+        q.point[1]=0;assert(run(100001)&&o.aligned&&o.activity==5&&!o.reset_called);
+        f.put(q.rows,0x14,99u);assert(run(100001)&&o.sequence_called&&o.activity==154);
+        assert(run(100000)&&o.begin_called&&o.claim_called&&o.duration_called&&o.deadline==13&&q.a[0xfa8]);
+        assert(run(100002)&&o.release_called&&o.reset_called&&o.flags_changed&&!q.a[0xfaa]);
+        assert(run(100003)&&o.transform_called&&o.navigation_written&&o.reset_called);
+        f.put(q.a,0xf9c,7);f.put(q.a,0x988,3u);assert(run(100004)&&o.memory_called&&o.reset_called&&q.removed==1);
+        f.put(q.a,0xf9c,-1);assert(run(100004)&&o.synthetic_called&&q.a[0xf90]&&q.synthetic==1);
+        assert(run(100005)&&o.synthetic_called&&o.condition_checked&&o.memory_called&&q.added==1&&q.a[0xf90]);
+        f.put(q.a,0x7d0,2u);assert(run(100005)&&o.condition.value&&!o.memory_called&&q.added==1);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
