@@ -1087,6 +1087,28 @@ int main(int argc,char** argv){
     script_slots[1].next=&script_slots[2];assert(!named(nullptr,506u)&&!search_result.completed&&search_result.visited==3);script_slots[1].next=nullptr;
     f.put(wt.member,0x378,0x9001u);assert(!named(wt.member,505u)&&!search_result.completed);f.put(wt.member,0x378,0x7001u);
     f.put(f.actor,0x16c,0u);f.put(wt.member,0x16c,0u);f.put(f.actor,0x378,saved_handle);
+    // Entity-valued input variants now use the native active-list search.
+    // The input registry is authoritative, even if the supplied search
+    // binding has no registry of its own.
+    auto search_for_variant=search_bind;search_for_variant.entities={};
+    inp.bindings.entities=scripted.input.entities;inp.bindings.search=&search_for_variant;
+    f.put(f.actor,0x378,0x8002u);f.put(wt.member,0x378,0x7001u);
+    assert(run_input(604u,2u,500u)&&inp.result.accepted&&inp.result.converted&&inp.result.actual_type==13&&f.get<unsigned>(f.actor,0x1024)==0x7001u);
+    assert(run_input(604u,2u,502u)&&inp.result.accepted&&f.get<unsigned>(f.actor,0x1024)==0x7001u);
+    for(unsigned token:{0u,506u,507u,508u}){
+        assert(run_input(604u,2u,token)&&inp.result.accepted&&inp.result.actual_type==13&&f.get<unsigned>(f.actor,0x1024)==0xffffffffu);
+    }
+    // The original conversion passes null context but !player can still
+    // resolve through the first-client engine service.
+    assert(run_input(604u,2u,509u)&&inp.result.accepted&&f.get<unsigned>(f.actor,0x1024)==0x7001u);
+    assert(run_input(603u,13u,0u)&&inp.result.accepted&&inp.result.converted&&inp.last_type==2&&inp.last_value==500u);
+    f.put(wt.member,0xc0,0u);
+    assert(run_input(603u,13u,123u)&&inp.result.accepted&&inp.last_type==2&&!inp.last_value);
+    f.put(wt.member,0xc0,500u);
+    script_slots[1].serial=9;
+    assert(run_input(603u,13u,123u)&&inp.result.accepted&&inp.result.converted&&inp.result.actual_type==13&&inp.last_type==13&&inp.last_value==123u);
+    script_slots[1].serial=7;
+    f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
