@@ -282,6 +282,13 @@ struct ServerNpcInputJetBindings {
     int (__cdecl *remove_thrust)(void*,void*) noexcept;
     int (__cdecl *prepare_thrust)(void*,void*) noexcept;
 };
+// Original embedded rappel behavior 223f956c, class namespace 2254c648.
+// BeginRappel's transform detachment remains an explicit engine operation.
+struct ServerNpcInputRappelBindings {
+    const ServerNpcConditionMapBindings* actor_conditions;
+    void* context;
+    int (__cdecl *detach)(void*,void*) noexcept;
+};
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
     void* context;
@@ -310,9 +317,10 @@ struct ServerEntityAcceptInputBindings {
     int (__cdecl *path_warning)(void*,void*,std::uint32_t) noexcept;
     const ServerNpcInputSquadBindings* squad;
     const ServerNpcInputJetBindings* jet;
+    const ServerNpcInputRappelBindings* rappel;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed,rappel_mapped,rappel_condition,rappel_detached,rappel_snapshot;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {

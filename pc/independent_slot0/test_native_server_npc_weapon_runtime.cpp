@@ -1410,6 +1410,62 @@ int main(int argc,char** argv){
     assert(jet_input(0x224988b8u)&&catalog_o.thrust_reused);
     assert(!jet_input(0x22498894u)&&!catalog_o.completed&&f.get<unsigned>(path_actor,0xfe4)==0x8002u);
     f.put(f.actor,0x378,saved_handle);
+    // Actual embedded rappel behavior registration and two private IDs.
+    struct RappelInputFixture {
+        F* f;
+        alignas(4) unsigned char behavior[0x48]{},range[0x14]{},owner[0x48]{};
+        unsigned detaches{};
+    } rappel_f{&f};
+    ServerNpcActivePostAnimationBindings rappel_storage{};rappel_storage.context=&rappel_f;
+    rappel_storage.resolve=[](void* p,unsigned token,void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<RappelInputFixture*>(p);
+        if(token==0x2254c648u){*data=q.behavior;*bytes=sizeof(q.behavior);return 1;}
+        if(token==0x9876u){*data=q.range;*bytes=sizeof(q.range);return 1;}
+        return 0;
+    };
+    ServerNpcConditionMapBindings rappel_owner_map{};rappel_owner_map.context=&rappel_f;
+    rappel_owner_map.descriptor=[](void* p,void* actor,const void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<RappelInputFixture*>(p);assert(actor==q.f->actor);
+        *data=q.owner;*bytes=sizeof(q.owner);return 1;
+    };
+    ServerNpcInputRappelBindings rappel_services{};rappel_services.context=&rappel_f;rappel_services.actor_conditions=&rappel_owner_map;
+    rappel_services.detach=[](void* p,void* actor) noexcept -> int{
+        auto& q=*static_cast<RappelInputFixture*>(p);assert(actor==q.f->actor);
+        assert(q.f->get<unsigned>(actor,0x7e4)&0x100u);
+        assert(q.f->get<float>(actor,0xd14)==-1.f); // snapshot follows detach
+        q.f->put(actor,0xb8,0u);q.f->put(actor,0x2bc,42.f);++q.detaches;return 1;
+    };
+    auto rappel_b=leaves;rappel_b.rappel=&rappel_services;rappel_b.storage=&rappel_storage;
+    f.put(rappel_f.behavior,0x34,npc_global_condition_base+200);
+    f.put(rappel_f.behavior,0x38,100000);f.put(rappel_f.behavior,0x3c,100000);
+    f.put(rappel_f.behavior,0x44,0x9876u);
+    f.put(rappel_f.range,0,npc_global_condition_base+201);f.put(rappel_f.range,4,100001);f.put(rappel_f.range,8,100001);
+    f.put(f.actor,0xcfc,0x223f956cu);f.put(f.actor,0xd00,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.actor)));
+    f.put(f.actor,0x7e4,0u);f.put(f.actor,0x2bc,1.f);f.put(f.actor,0x2c0,2.f);f.put(f.actor,0x2c4,3.f);
+    f.put(f.actor,0xd14,-1.f);f.put(f.actor,0xd18,-1.f);f.put(f.actor,0xd1c,-1.f);
+    f.put(f.actor,0xb8,0x800u);f.actor[0x1f0]=1;f.actor[0x200]=0;
+    std::memset(inp.variant,0,sizeof(inp.variant));
+    auto rappel_input=[&](unsigned name,unsigned cls=0,unsigned bytes=0){
+        return accept->run(f.actor,bytes?bytes:sizeof(f.actor),cls?cls:ground_vt,name,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&rappel_b,&catalog_o);
+    };
+    assert(rappel_input(0x223db414u)&&catalog_o.native_handler&&catalog_o.rappel_mapped&&catalog_o.rappel_condition&&catalog_o.rappel_detached&&catalog_o.rappel_snapshot&&rappel_f.detaches==1);
+    assert(f.get<unsigned>(f.actor,0x7e4)==0x100u&&f.get<float>(f.actor,0xd14)==42.f&&f.get<float>(f.actor,0xd18)==2.f&&f.get<float>(f.actor,0xd1c)==3.f&&f.actor[0x200]);
+    f.put(f.actor,0x2bc,99.f);f.put(f.actor,0xb8,0x800u);
+    assert(rappel_input(0x223db3f4u,0x2248df04u)&&catalog_o.native_handler&&catalog_o.rappel_condition&&!catalog_o.rappel_detached&&!catalog_o.rappel_snapshot);
+    assert(f.get<unsigned>(f.actor,0x7e4)==0x300u&&f.get<float>(f.actor,0xd14)==42.f&&f.get<unsigned>(f.actor,0xb8)==0x800u&&rappel_f.detaches==1);
+    f.put(f.actor,0xb8,0u);
+    assert(rappel_input(0x223db414u,vt)&&catalog_o.rappel_snapshot&&!catalog_o.rappel_detached&&f.get<float>(f.actor,0xd14)==99.f);
+    // Unmapped private ID is an original successful no-op for the bank,
+    // not a reason to skip the BeginRappel position snapshot.
+    f.put(rappel_f.behavior,0x38,9999);f.put(rappel_f.behavior,0x44,0u);
+    f.put(f.actor,0x7e4,0u);f.put(f.actor,0x2bc,7.f);
+    assert(rappel_input(0x223db414u)&&catalog_o.native_handler&&!catalog_o.rappel_mapped&&!catalog_o.rappel_condition&&catalog_o.rappel_snapshot&&f.get<float>(f.actor,0xd14)==7.f&&!f.get<unsigned>(f.actor,0x7e4));
+    f.put(f.actor,0xcfc,0u);
+    assert(!rappel_input(0x223db414u)&&!catalog_o.completed);f.put(f.actor,0xcfc,0x223f956cu);
+    f.put(f.actor,0xd00,0u);
+    assert(!rappel_input(0x223db414u)&&!catalog_o.completed);
+    f.put(f.actor,0xd00,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.actor)));
+    assert(!rappel_input(0x223db414u,ground_vt,0xd1fu)&&!catalog_o.completed);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
