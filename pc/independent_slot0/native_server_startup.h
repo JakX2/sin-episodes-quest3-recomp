@@ -3,6 +3,7 @@
 #include <cstdint>
 namespace sin_port::native_server_startup {
 inline constexpr char export_name[]="SiN_GetServerStartupApi";
+inline constexpr char boundary_export[]="SiN_InvokeServerDllInitBoundary";
 struct SystemSpec {unsigned getter,identity;};
 // Original DLLInit service getters, order matters. Identities are
 // original static addresses for auditing, not executable pointers.
@@ -51,9 +52,10 @@ struct Bindings {
     void* globals;
     sin_independent::StartupFactory engine,physics,filesystem;
     void* event_manager;
+    void* cvar_interface;
     // Existing native console registration owner (221e6450 + 2225bc00).
     // Returns developer and local-list sv_cheats, not FindVar substitute.
-    int (__cdecl *console)(void*,void**,void**) noexcept;
+    int (__cdecl *console)(void*,void*,void**,void**) noexcept;
     int (__cdecl *get_system)(void*,const SystemSpec*,void**) noexcept;
     int (__cdecl *register_external)(void*,void*) noexcept;
     RegistryBindings registry;
@@ -79,4 +81,6 @@ struct Api {
     int (__cdecl *post_connect)(State*,const Bindings*,Result*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct BoundaryResult {unsigned entered,acquired,sound_connected,original_return;Result tail;};
+using InvokeBoundary=int (__cdecl *)(State*,const Bindings*,BoundaryResult*) noexcept;
 }
