@@ -2036,6 +2036,24 @@ struct ServerNpcJetpackDeathThinkApi {
 using GetServerNpcJetpackDeathThinkApi=const ServerNpcJetpackDeathThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
 inline constexpr char server_npc_grunt_elite_life_export[]="SiN_GetServerNpcGruntEliteLifeApi";
+// Original Elite 22354fde..22355268. Native sequence/arguments only;
+// the engine supplies effects, RNG and the trace query.
+struct ServerNpcGruntEliteEffectTrace {
+    float start[3],end[3],fraction;
+};
+struct ServerNpcGruntEliteEffectBindings {
+    void* context;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *burst)(void*,const float*,const float*,void*,void*,int,int,unsigned,float) noexcept;
+    int (__cdecl *light)(void*,const float*,int,int,int,int,float,float,float) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *upward)(void*,const float*,const float*,int,int,int) noexcept; // 221234d0
+    int (__cdecl *downward)(void*,const float*,const float*,int,int) noexcept; // 2228c810
+    int (__cdecl *trace)(void*,void*,const float*,const float*,unsigned,int,ServerNpcGruntEliteEffectTrace*) noexcept;
+    int (__cdecl *debug_enabled)(void*,bool*) noexcept;
+    int (__cdecl *debug_trace)(void*,const float*,const float*,int,int,int,int,float) noexcept;
+    int (__cdecl *impact)(void*,const ServerNpcGruntEliteEffectTrace*,int) noexcept; // 2228bee0
+};
 struct ServerNpcGruntEliteDeathBindings {
     void* context;
     int (__cdecl *effect_begin)(void*,void*) noexcept;
@@ -2051,11 +2069,14 @@ struct ServerNpcGruntEliteDeathBindings {
     int (__cdecl *velocity)(void*,void*,float,float,float*) noexcept; // original 2202e350, separate RNG
     int (__cdecl *set_velocity)(void*,void*,const float*) noexcept;
     int (__cdecl *finish)(void*,void*) noexcept; // relocated entity +64
+    const ServerNpcGruntEliteEffectBindings* native_effects;
 };
 struct ServerNpcGruntEliteDeathResult {
     float origin[3],angles[3],velocity[3];
     int prior_grenades;
     unsigned completed,grenades_cleared,effect_opened,effects_called,base_called,rule_checked,rule_allowed,player_found,entity_found,refreshed,positioned,random_calls,oriented,velocity_generated,velocity_set,finished,effect_closed;
+    float effect_origin[3],effect_upper[3],effect_angles[3];
+    unsigned native_effects_completed,effect_refreshes,effect_burst,effect_light,effect_randoms,effect_upward,effect_downward,effect_traces,effect_debug,effect_impacts,effect_iterations;
 };
 struct ServerNpcGruntEliteLifeBindings {
     ServerNpcJetpackDeathBranchesBindings combat;
