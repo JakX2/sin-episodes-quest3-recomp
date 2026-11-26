@@ -729,7 +729,7 @@ int main(int argc,char** argv){
         unsigned prev=root_token,next=f.get<unsigned>(outf.queue_root,0x30);
         for(unsigned token:expected){
             assert(next==token&&token&&token<=outf.queue_allocated);
-            const auto* row=outf.queue_rows[token-1];assert(f.get<unsigned>(row,0x34)==prev);
+            auto* row=outf.queue_rows[token-1];assert(f.get<unsigned>(row,0x34)==prev);
             prev=token;next=f.get<unsigned>(row,0x30);
         }
         assert(!next);
