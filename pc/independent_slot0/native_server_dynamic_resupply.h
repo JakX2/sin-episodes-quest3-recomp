@@ -5,14 +5,16 @@ namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings
 namespace sin_port::native_resupply {
 inline constexpr char export_name[]="SiN_GetServerDynamicResupplyApi";
 inline constexpr unsigned count=6;
-enum class Convar : unsigned { Modifier, HealthKit, Debug, HealthVial, MegaHealth };
+enum class Convar : unsigned { Modifier, HealthKit, Debug, HealthVial, MegaHealth, OldRadiusDamage, RobustExplosions };
 struct ConvarSpec {const char* name;const char* initial;unsigned flags;unsigned original_object;};
 inline constexpr ConvarSpec convars[]{
     {"sk_dynamic_resupply_modifier","1.0",0,0x22596510u},
     {"sk_healthkit","25",0x4000u,0x225965e0u},
     {"g_debug_dynamicresupplies","0",0,0x22596558u},
     {"sk_healthvial","10",0x4000u,0x22596628u},
-    {"sk_healthmega","100",0,0x225966b8u}
+    {"sk_healthmega","100",0,0x225966b8u},
+    {"old_radiusdamage","0.0",0x2000u,0x225729f8u},
+    {"sv_robust_explosions","1",0x2000u,0x22593f20u}
 };
 struct AmmoType {const char* classname;const char* name;int units;float full_weight;};
 inline constexpr AmmoType ammo_types[count]{
@@ -377,6 +379,7 @@ struct CanisterBindings {
     int (__cdecl *random_float)(void*,float,float,float*) noexcept;
     int (__cdecl *clock)(void*,float*) noexcept;
     int (__cdecl *schedule)(void*,void*,float) noexcept;
+    void* schedule_context;
 };
 struct CanisterResult {
     unsigned constructed,base_spawn,amount_written,pose_called,think_installed,advanced,random_called,clock_read,scheduled,completed;
@@ -491,6 +494,9 @@ struct AntigenRadiusBindings {
     int (__cdecl *take_damage)(void*,void*,const void*) noexcept;
     int (__cdecl *after_effect)(void*,void*,const void*,const float*,const AntigenRadiusTrace*,const float*) noexcept;
     const PlayerHealthBindings* native_player_health;
+    void* engine_cvar;
+    bool native_singleplayer_corner;
+    int (__cdecl *npc_capabilities)(void*,void*,bool*,unsigned*) noexcept;
 };
 struct AntigenPlayerAdmissionResult {
     unsigned completed,authenticated,base_player,dead,heal_called,damage_rejected;
@@ -502,7 +508,7 @@ struct AntigenRadiusResult {
         mass_reads,amount_rejected,force_calls,trace_attacks,direct_attacks,after_effects;
     bool wet;
     float source[3],last_amount,last_block,half_radius_squared;
-    unsigned native_admissions,native_heals,native_rejected;
+    unsigned native_admissions,native_heals,native_rejected,strict_cvar_reads,robust_cvar_reads,native_corner_checks;
     AntigenPlayerAdmissionResult player;
 };
 struct AntigenGasBindings {
@@ -525,6 +531,7 @@ struct AntigenGasBindings {
     int (__cdecl *radius_effect)(void*,void*,const float*,float,float,unsigned) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
     const AntigenRadiusBindings* native_radius;
+    void* schedule_context;
 };
 struct AntigenGasResult {
     void* actor;

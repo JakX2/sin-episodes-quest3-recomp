@@ -1018,7 +1018,7 @@ int __cdecl canister_set_amount(void* c,unsigned n,float amount,const CanisterBi
 bool canister_schedule(void* c,const CanisterBindings& b,CanisterResult& o,double offset,double tail=0.) noexcept {
     float now=0;if(!b.clock||!b.clock(b.context,&now)||!std::isfinite(now))return false;o.clock_read=1;
     o.next_time=float((offset+double(now))+tail);
-    if(!std::isfinite(o.next_time)||!b.schedule||!b.schedule(b.context,c,o.next_time))return false;o.scheduled=1;return true;
+    if(!std::isfinite(o.next_time)||!b.schedule||!b.schedule(b.schedule_context?b.schedule_context:b.context,c,o.next_time))return false;o.scheduled=1;return true;
 }
 int __cdecl canister_spawn(void* c,unsigned n,const CanisterBindings* b,CanisterResult* o) noexcept {
     if(!o)return 0;*o={};if(!canister_ready(c,n,b))return 0;
@@ -1189,7 +1189,7 @@ bool gas_clock(const AntigenGasBindings& b,AntigenGasResult& o,float& now) noexc
     ++o.clock_reads;return true;
 }
 bool gas_schedule(void* a,const AntigenGasBindings& b,AntigenGasResult& o,float time) noexcept {
-    if(!b.schedule||!b.schedule(b.context,a,time))return false;
+    if(!b.schedule||!b.schedule(b.schedule_context?b.schedule_context:b.context,a,time))return false;
     o.next_time=time;++o.schedules;return true;
 }
 bool gas_random_schedule(void* a,const AntigenGasBindings& b,AntigenGasResult& o) noexcept {
@@ -1312,7 +1312,12 @@ int __cdecl antigen_radius(void* gas,unsigned bytes,const float* pos,float amoun
         if(!b->body_target||!b->body_target(b->context,target,o->source,body))return 0;++o->body_targets;
         for(float v:body)if(!std::isfinite(v))return 0;
         AntigenRadiusTrace tr{};if(!trace(o->source,body,0x46004003u,target,tr))return 0;
-        bool strict=false;if(!b->strict_trace||!b->strict_trace(b->context,&strict))return 0;
+        bool strict=false;
+        if(b->strict_trace){if(!b->strict_trace(b->context,&strict))return 0;}
+        else{
+            int value=0;if(!SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::OldRadiusDamage,&value))return 0;
+            strict=value!=0;++o->strict_cvar_reads;
+        }
         float block=0.f;
         if(tr.fraction!=1.f){
             if(strict){if(tr.hit!=target){++o->strict_rejected;continue;}}
@@ -1324,7 +1329,21 @@ int __cdecl antigen_radius(void* gas,unsigned bytes,const float* pos,float amoun
                     if(field<int>(tr.hit,0x204)==7){if(!b->door_class||!b->door_class(b->context,tr.hit,&corner))return 0;}
                 }
                 if(corner){
-                    bool allowed=false;if(!b->allow_corner||!b->allow_corner(b->context,target,&allowed))return 0;
+                    bool allowed=false;
+                    if(b->allow_corner){if(!b->allow_corner(b->context,target,&allowed))return 0;}
+                    else if(b->native_singleplayer_corner){
+                        int robust=0;
+                        if(!SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::RobustExplosions,&robust))return 0;
+                        ++o->robust_cvar_reads;++o->native_corner_checks;
+                        if(robust){
+                            const auto vt=field<unsigned>(target,0);
+                            if(vt!=0x2245222cu&&vt!=0x224aec3cu&&vt!=antigen_gas_vtable&&vt!=antigen_canister_vtable&&vt!=antigen_vtable){
+                                bool npc=false;unsigned caps=0;
+                                if(!b->npc_capabilities||!b->npc_capabilities(b->context,target,&npc,&caps))return 0;
+                                allowed=npc&&!(caps&0x80000000u);
+                            }
+                        }
+                    }else return 0;
                     const double x=double(body[0])-o->source[0],y=double(body[1])-o->source[1],z=double(body[2])-o->source[2];
                     if(!allowed||(z*z+y*y)+x*x>o->half_radius_squared){++o->corner_rejected;continue;}
                     if(!b->corner_trace||!b->corner_trace(b->context,gas,target,o->source,body,&tr)||!std::isfinite(tr.fraction))return 0;

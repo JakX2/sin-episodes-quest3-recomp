@@ -2171,7 +2171,7 @@ extern "C" int __cdecl SiN_ReadResupplyEngineConvar(void* cvar,sin_port::native_
     const auto index=static_cast<unsigned>(id);
     if(!out||index>=sizeof(convars)/sizeof(convars[0])||reading_engine_skill)return 0;
     EngineReadScope scope;
-    if(id==Convar::Debug){
+    if(id==Convar::Debug||id==Convar::OldRadiusDamage||id==Convar::RobustExplosions){
         int value=0;if(!read_engine_cvar(cvar,convars[index].name,int_offset,value))return 0;
         std::memcpy(out,&value,sizeof(value));return 1;
     }

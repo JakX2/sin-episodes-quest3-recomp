@@ -1589,6 +1589,29 @@ bool antigen_primary_start(void* a,unsigned n,unsigned handle,float interval,con
         std::isfinite(interval)&&interval>0&&b->entities.count<=sin_independent::kEntityHandleCapacity&&
         (!b->entities.count||b->entities.entries)&&sin_independent::EntityHandleView(b->entities.entries,b->entities.count).Resolve(handle)==a;
 }
+unsigned antigen_primary_kind(void* a,unsigned n) noexcept {
+    if(!a||n<4)return 0;
+    using namespace native_resupply;
+    const auto vt=rd<unsigned>(a,0);
+    if(vt==antigen_vtable&&n>=antigen_extent)return 1;
+    if(vt==antigen_gas_vtable&&n>=antigen_gas_extent&&rd<int>(a,0x398)==1)return 2;
+    if(vt==antigen_canister_vtable&&n>=antigen_canister_extent)return 3;
+    return 0;
+}
+bool antigen_aux_start(void* a,unsigned n,unsigned handle,float interval,const ServerAntigenPrimaryThinkBindings* b,ServerAntigenPrimaryThinkResult* o) noexcept {
+    if(!o)return false;*o={};o->due_tick=o->last_tick=-1;
+    return antigen_primary_kind(a,n)&&b&&std::isfinite(interval)&&interval>0&&
+        b->entities.count<=sin_independent::kEntityHandleCapacity&&(!b->entities.count||b->entities.entries)&&
+        sin_independent::EntityHandleView(b->entities.entries,b->entities.count).Resolve(handle)==a;
+}
+int __cdecl antigen_primary_schedule_aux(void* a,unsigned n,unsigned handle,float interval,float time,const ServerAntigenPrimaryThinkBindings* b,ServerAntigenPrimaryThinkResult* o) noexcept {
+    if(!antigen_aux_start(a,n,handle,interval,b,o))return 0;
+    using namespace native_resupply;
+    const auto kind=antigen_primary_kind(a,n),token=rd<unsigned>(a,8);
+    if(kind==1||(kind==2&&token!=antigen_gas_think_token&&token!=0)||(kind==3&&token!=antigen_canister_idle&&token!=0))return 0;
+    AntigenPrimaryRoute q{*b,*o,a,interval};
+    if(!antigen_primary_schedule(&q,a,time))return 0;o->completed=o->native_result=1;return 1;
+}
 void bind_antigen_control(native_resupply::AntigenBindings& c,AntigenPrimaryRoute& q) noexcept {
     c.entries=q.b.entities.entries;c.entry_count=q.b.entities.count;
     c.schedule=&antigen_primary_schedule;c.schedule_context=&q;
@@ -1615,13 +1638,14 @@ int __cdecl antigen_primary_button(void* a,unsigned n,unsigned handle,float inte
     o->completed=o->native_result=1;return 1;
 }
 int __cdecl antigen_primary_run(void* a,unsigned n,unsigned handle,int tick,float interval,const ServerAntigenPrimaryThinkBindings* b,ServerAntigenPrimaryThinkResult* o) noexcept {
-    if(!antigen_primary_start(a,n,handle,interval,b,o))return 0;
+    if(!antigen_aux_start(a,n,handle,interval,b,o))return 0;
+    const unsigned kind=antigen_primary_kind(a,n);
     auto idle=[&](){o->native_result=o->completed=1;return 1;};
     if(rd<unsigned>(a,0xb8)&0x400000u){o->no_think=1;return idle();}
     o->due_tick=rd<int>(a,0x74);
     if(o->due_tick<=0||o->due_tick>tick){o->not_due=1;return idle();}
     using namespace native_resupply;
-    auto supported=[](unsigned v){return !v||v==antigen_animation_token||v==antigen_think_token||v==antigen_eject_token;};
+    auto supported=[&](unsigned v){return !v||(kind==1&&(v==antigen_animation_token||v==antigen_think_token||v==antigen_eject_token))||(kind==2&&v==antigen_gas_think_token)||(kind==3&&v==antigen_canister_idle);};
     if(!supported(rd<unsigned>(a,8))||!b->clock||!b->record||!b->scope)return 0;
     float now=0;if(!b->clock(b->context,&now)||!std::isfinite(now))return 0;
     const double scheduled=double(o->due_tick)*double(interval);
@@ -1637,7 +1661,18 @@ int __cdecl antigen_primary_run(void* a,unsigned n,unsigned handle,int tick,floa
         const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(Api));
         AntigenPrimaryRoute q{*b,*o,a,interval};
         if(!api)ok=false;
-        else if(o->token==antigen_eject_token){
+        else if(kind==2){
+            if(!b->gas)ok=false;
+            else{
+                auto bound=*b->gas;bound.schedule=&antigen_primary_schedule;bound.schedule_context=&q;
+                AntigenRadiusBindings radius{};
+                if(bound.native_radius){radius=*bound.native_radius;radius.entries=b->entities.entries;radius.entry_count=b->entities.count;bound.native_radius=&radius;}
+                o->invoked=1;ok=api->antigen_gas_think(a,n,&bound,&o->gas)!=0;
+            }
+        }else if(kind==3){
+            if(!b->canister)ok=false;
+            else{auto bound=*b->canister;bound.schedule=&antigen_primary_schedule;bound.schedule_context=&q;o->invoked=1;ok=api->canister_idle(a,n,&bound,&o->canister)!=0;}
+        }else if(o->token==antigen_eject_token){
             if(!b->exchange)ok=false;
             else{auto bound=*b->exchange;bind_antigen_control(bound.control,q);o->invoked=1;ok=api->antigen_eject(a,n,&bound,&o->exchange)!=0;}
         }else if(!b->interaction)ok=false;
@@ -1653,7 +1688,7 @@ int __cdecl antigen_primary_run(void* a,unsigned n,unsigned handle,int tick,floa
     wr<int>(a,0x34,o->last_tick);
     o->native_result=(rd<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
 }
-const ServerAntigenPrimaryThinkApi antigen_primary_api{1,sizeof(ServerAntigenPrimaryThinkApi),&antigen_primary_spawn,&antigen_primary_use,&antigen_primary_button,&antigen_primary_run};
+const ServerAntigenPrimaryThinkApi antigen_primary_api{1,sizeof(ServerAntigenPrimaryThinkApi),&antigen_primary_spawn,&antigen_primary_use,&antigen_primary_button,&antigen_primary_run,&antigen_primary_schedule_aux};
 struct JetInitialThinkRoute {
     const ServerNpcJetpackDeathBranchBindings* source;
     const ServerNpcJetpackDeathModeBindings* mode_source;

@@ -466,11 +466,11 @@ int main(int argc,char** argv){
     struct ResupplyCvars final:sin_independent::console_abi::EngineCvar {
         using Variable=sin_independent::console_abi::Variable;
         using CommandBase=sin_independent::console_abi::CommandBase;
-        mutable Variable roots[5],aliases[5];
+        mutable Variable roots[7],aliases[7];
         mutable unsigned lookups[16]{},calls=0,modifier_reads=0;
         bool missing=false,change_each=false,wrong_root=false;
         ResupplyCvars(){
-            for(unsigned i=0;i<5;++i){
+            for(unsigned i=0;i<7;++i){
                 roots[i].CreateVariable(convars[i].name,convars[i].initial,int(convars[i].flags),"",false,0,false,0,nullptr);
                 aliases[i].CreateVariable(convars[i].name,"0",int(convars[i].flags),"",false,0,false,0,nullptr);
                 aliases[i].parent=&roots[i];
@@ -480,8 +480,8 @@ int main(int argc,char** argv){
         const char* __thiscall GetCommandLineValue(const char*) noexcept override{assert(false);return nullptr;}
         Variable* __thiscall FindMutableVar(const char*) noexcept override{assert(false);return nullptr;}
         const Variable* __thiscall FindConstVar(const char* name) const noexcept override{
-            unsigned i=0;while(i<5&&std::strcmp(name,convars[i].name))++i;
-            assert(i<5&&calls<16);lookups[calls++]=i;
+            unsigned i=0;while(i<7&&std::strcmp(name,convars[i].name))++i;
+            assert(i<7&&calls<16);lookups[calls++]=i;
             if(missing&&i==0)return nullptr;
             if(wrong_root&&i==1)return &aliases[0];
             if(change_each&&i==0)roots[0].SetFloat(.125f*float(++modifier_reads));
@@ -1348,5 +1348,52 @@ int main(int argc,char** argv){
     assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&agras.radius_result.native_heals==1&&agras.radius_result.player.healing.after==52&&agras.amount==2.5f);
     agf.now=101.125f;
     assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&agras.radius_result.native_heals==1&&agras.radius_result.player.healing.after==54&&agras.expired&&agras.removed);
+    // Live strict trace and robust corner cvars; rules +b4 does not
+    // admit player corner retries even when robust explosions is enabled.
+    arb.strict_trace=nullptr;arb.allow_corner=nullptr;arb.engine_cvar=&cv;arb.native_singleplayer_corner=true;
+    cv.calls=0;cv.roots[5].SetFloat(1.f);cv.roots[6].SetFloat(1.f);arf.mode=3;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5,150,&arb,&arr)&&arr.strict_cvar_reads==1&&arr.strict_rejected==1&&!arr.native_heals&&cv.calls==1&&cv.lookups[0]==5);
+    cv.calls=0;cv.roots[5].SetFloat(0.f);
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5,150,&arb,&arr)&&arr.strict_cvar_reads==1&&arr.robust_cvar_reads==1&&arr.native_corner_checks==1&&arr.corner_rejected==1&&!arr.corner_calls&&cv.calls==2&&cv.lookups[1]==6);
+    // The same unnamed-context scheduler now owns gas and canister due
+    // ticks; no per-think hosted schedule callback is required.
+    struct AuxFrameFixture {
+        GasFixture* gas;ExchangeFixture* exchange;
+        unsigned flags=0,records=0,enters=0,leaves=0;
+    } auxf{&agf,&ex};
+    sin_independent::EntityHandleEntry aux_entries[3]{radius_entries[0],radius_entries[1],{}};
+    aux_entries[2].serial=16;aux_entries[2].entity=reinterpret_cast<CBaseEntity*>(ex.canister);
+    ServerAntigenPrimaryThinkBindings auxb{};auxb.context=&auxf;auxb.entities.entries=aux_entries;auxb.entities.count=3;auxb.cadence.context=&auxf;
+    auxb.cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AuxFrameFixture*>(p);assert(a==q.gas->gas||a==q.exchange->canister);++q.flags;return 1;};
+    auxb.clock=[](void* p,float* time) noexcept ->int{*time=static_cast<AuxFrameFixture*>(p)->gas->now;return 1;};
+    auxb.record=[](void* p,void* a,int,float,int due) noexcept ->int{auto& q=*static_cast<AuxFrameFixture*>(p);assert((a==q.gas->gas||a==q.exchange->canister)&&EvalFixture::rd(a,0x74)==unsigned(due));++q.records;return 1;};
+    auxb.scope=[](void* p,void* a,bool enter) noexcept ->int{auto& q=*static_cast<AuxFrameFixture*>(p);assert(a==q.gas->gas||a==q.exchange->canister);
+        if(enter){assert(EvalFixture::rd(a,0x74)==0xffffffffu);++q.enters;}else ++q.leaves;return 1;};
+    auto aux_gas=native_gas;aux_gas.schedule=nullptr;aux_gas.native_radius=&arb;
+    auto aux_canister=canister_bind;aux_canister.schedule=nullptr;
+    auxb.gas=&aux_gas;auxb.canister=&aux_canister;
+    EvalFixture::u(hf2.player,0x9c,60);arf.mode=0;cv.calls=0;agf.now=110.f;
+    assert(api->antigen_gas_create(gas_origin,1,150,-1,-1,&native_gas,&agras));
+    EvalFixture::u(agf.gas,0x378,0xf000);EvalFixture::u(agf.gas,0x74,0xffffffffu);EvalFixture::u(agf.gas,0xb8,0x400000u);
+    assert(antigen_frame->schedule_aux(agf.gas,sizeof(agf.gas),0xf000,.125f,agras.next_time,&auxb,&afr)&&afr.completed&&afr.reschedule.tick==881);
+    assert(antigen_frame->run(agf.gas,sizeof(agf.gas),0xf000,880,.125f,&auxb,&afr)&&afr.not_due);
+    agf.now=110.125f;
+    assert(antigen_frame->run(agf.gas,sizeof(agf.gas),0xf000,881,.125f,&auxb,&afr)&&afr.completed&&afr.token==antigen_gas_think_token&&!afr.gas.radius_called&&afr.reschedule.tick==883);
+    agf.now=110.375f;
+    assert(antigen_frame->run(agf.gas,sizeof(agf.gas),0xf000,883,.125f,&auxb,&afr)&&!afr.gas.radius_called&&afr.reschedule.tick==885);
+    agf.now=110.625f;
+    assert(antigen_frame->run(agf.gas,sizeof(agf.gas),0xf000,885,.125f,&auxb,&afr)&&afr.gas.radius_result.native_heals==1&&afr.gas.radius_result.player.healing.after==62&&afr.reschedule.tick==887);
+    agf.now=111.125f;
+    assert(antigen_frame->run(agf.gas,sizeof(agf.gas),0xf000,889,.125f,&auxb,&afr)&&afr.gas.expired&&afr.gas.removed&&afr.gas.radius_result.player.healing.after==64&&!afr.rescheduled&&afr.last_tick==889);
+    assert(antigen_frame->run(agf.gas,sizeof(agf.gas),0xf000,890,.125f,&auxb,&afr)&&afr.no_think);
+    assert(!antigen_frame->run(agf.gas,sizeof(agf.gas),0xe000,890,.125f,&auxb,&afr));
+    assert(api->antigen_factory_create("prop_antigen_canister",&antigen_factory,&afres));
+    EvalFixture::u(ex.canister,0x378,0x10002);EvalFixture::u(ex.canister,0xb8,0x400000u);EvalFixture::u(ex.canister,0x74,0xffffffffu);
+    af.now=agf.now=112.f;
+    assert(api->canister_spawn(ex.canister,sizeof(ex.canister),&canister_bind,&canres));
+    assert(antigen_frame->schedule_aux(ex.canister,sizeof(ex.canister),0x10002,.125f,canres.next_time,&auxb,&afr)&&afr.reschedule.tick==898);
+    af.now=agf.now=112.25f;
+    assert(antigen_frame->run(ex.canister,sizeof(ex.canister),0x10002,898,.125f,&auxb,&afr)&&afr.completed&&afr.token==antigen_canister_idle&&afr.canister.advanced&&afr.reschedule.tick==912&&afr.last_tick==898);
+    assert(auxf.records==5&&auxf.enters==5&&auxf.leaves==5);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
