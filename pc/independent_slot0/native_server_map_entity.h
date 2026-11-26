@@ -117,6 +117,18 @@ inline constexpr unsigned branch_vtable=0x22422294,branch_extent=0x3c8;
 inline constexpr unsigned case_vtable=0x22421d74,case_extent=0x56c;
 inline constexpr unsigned compare_vtable=0x22422004,compare_extent=0x3fc;
 inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
+// Derived scalar-deleting destructor boundary, distinct from the
+// factory's owner networkable-release boundary.
+struct LogicDestroyBindings {
+    void* context;
+    int (__cdecl *resolve)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *release_action)(void*,unsigned,void*) noexcept;
+    int (__cdecl *base_destroy)(void*,void*) noexcept;
+    int (__cdecl *free_actor)(void*,void*) noexcept;
+};
+struct LogicDestroyResult {
+    unsigned completed,outputs,actions,validated,released,base_called,freed;
+};
 struct CounterBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -323,6 +335,7 @@ struct Api {
     int (__cdecl *counter_input)(void*,unsigned,const char*,void*,unsigned,float,const CounterBindings*,CounterResult*) noexcept;
     int (__cdecl *register_counter)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_counter)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *destroy_logic)(void*,unsigned,unsigned,const LogicDestroyBindings*,LogicDestroyResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
