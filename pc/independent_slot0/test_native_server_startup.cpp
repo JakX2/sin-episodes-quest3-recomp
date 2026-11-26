@@ -392,9 +392,17 @@ int main(int argc,char** argv){
     put(0x464,0);so.alias=true;
     assert(!start_output(m.actor,sizeof(m.actor),m.player,sizeof(m.player),&st,&sr)&&sr.grew&&!sr.appended&&so.grows==1&&!so.calls);
     so.alias=false;cb.start_touch=nullptr;
-    assert(contact_output(&session,m.actor,sizeof(m.actor),m.player,sizeof(m.player),ContactKind::Starting,&cb,&contact_result,&st,&sr)&&
+    const auto filtered_contact=reinterpret_cast<nl::DispatchFilteredCampaignContact>(GetProcAddress(server,nl::filtered_campaign_contact_export));
+    assert(filtered_contact&&!GetProcAddress(client,nl::filtered_campaign_contact_export));
+    auto native_start=st;native_start.filter=nullptr;
+    nm::CampaignFilterBindings filter{};nm::CampaignFilterResult fr{};
+    put(0xb4,64);put(0x410,0xffffffffu);
+    const auto previous_filters=so.filters;
+    assert(filtered_contact(&session,m.actor,sizeof(m.actor),m.player,sizeof(m.player),ContactKind::Starting,&cb,&contact_result,&native_start,&sr,&filter,&fr)&&
+        fr.accepted&&fr.eligibility==64&&fr.player&&so.filters==previous_filters&&
         sr.appended&&sr.output_fired&&sr.queued==1&&sr.count==1&&so.calls==1&&contact_result.start_called&&contact_result.touch_called&&
         contact_result.publication==fs::EventFired&&contact_result.trigger.removed&&m.removed==1&&started.events.fires==3&&!started.events.frees);
+    put(0xb4,0);
     // Direct leaf preserves duplicate append and refuses external growth.
     assert(start_output(m.actor,sizeof(m.actor),m.player,sizeof(m.player),&st,&sr)&&sr.count==2&&so.calls==2&&so.vector[0]==so.vector[1]);
     put(0x464,0xffffffffu);

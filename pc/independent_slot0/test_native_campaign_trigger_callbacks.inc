@@ -352,3 +352,87 @@
         CampaignStartTouchBindings st{};CampaignStartTouchResult sr{};
         assert(start(f.trigger,sizeof(f.trigger),f.other,sizeof(f.other),&st,&sr,&b,&r)&&sr.completed&&sr.filter_called&&!sr.accepted&&!sr.appended);
     }
+
+// Actual native campaign Start/EndTouch -> named queue -> native lookup
+// -> actual logic_relay inputs. No hosted enqueue, target search or input.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct QueueFixture {
+            alignas(4) unsigned char trigger[dynamic_trigger_extent]{},player[0x37c]{},relay[relay_extent]{};
+            unsigned contacts[2]{},actions[3][7]{};
+            alignas(4) unsigned char root[0x38]{},rows[4][0x38]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float now=10.f;unsigned allocated=0,released=0;bool locked=false;
+        } f;
+        auto start=reinterpret_cast<FilteredStartCampaignOutput>(GetProcAddress(server,filtered_start_touch_export));
+        auto end=reinterpret_cast<EndCampaignTriggerOutput>(GetProcAddress(server,end_touch_output_export));
+        auto get_service=reinterpret_cast<nw::GetServerEntityEventServiceApi>(GetProcAddress(server,nw::server_entity_event_service_export));
+        assert(start&&end&&get_service);const auto* service=get_service(1,sizeof(nw::ServerEntityEventServiceApi));assert(service);
+        nw::ServerEntityNamedEventQueueBindings queue{};queue.context=&f;
+        queue.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<QueueFixture*>(p);if(!token||token>f.allocated)return 0;*row=f.rows[token-1];*bytes=0x38;return 1;
+        };
+        queue.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<QueueFixture*>(p);if(f.allocated==4)return 0;*row=f.rows[f.allocated++];*token=f.allocated;*bytes=0x38;return 1;
+        };
+        queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=201&&token<=204;return 1;};
+        nw::ServerEntityVoidOutputBindings ob{};ob.context=&f;
+        ob.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<QueueFixture*>(p);if(token<11||token>13)return 0;*row=f.actions[token-11];*bytes=0x1c;return 1;
+        };
+        ob.release=[](void*,unsigned,void*) noexcept ->int{assert(false);return 0;};
+        RelayQueueBindings route{};route.context=&f;route.root=f.root;route.root_bytes=sizeof(f.root);route.root_token=99;
+        route.queue=&queue;route.entries=f.entries;route.entry_count=3;route.now=&f.now;
+        route.handle=[](void* p,void* actor,unsigned* handle) noexcept ->int{
+            auto& f=*static_cast<QueueFixture*>(p);if(actor==f.trigger)*handle=0x3000;else if(actor==f.player)*handle=0x5001;else if(actor==f.relay)*handle=0x7002;else return 0;return 1;
+        };
+        auto resolve_vector=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<QueueFixture*>(p);if(token!=8)return 0;*row=f.contacts;*bytes=sizeof(f.contacts);return 1;
+        };
+        CampaignStartTouchBindings st{};st.context=&f;st.resolve_vector=resolve_vector;st.output=&ob;st.native_queue=&route;
+        CampaignEndTouchBindings et{};et.context=&f;et.resolve_vector=resolve_vector;et.entries=f.entries;et.entry_count=3;et.output=&ob;et.native_queue=&route;
+        CampaignFilterBindings fb{};fb.entries=f.entries;fb.entry_count=3;
+        f.entries[0].entity=reinterpret_cast<CBaseEntity*>(f.trigger);f.entries[0].serial=3;f.entries[0].next=&f.entries[1];
+        f.entries[1].entity=reinterpret_cast<CBaseEntity*>(f.player);f.entries[1].serial=5;f.entries[1].previous=&f.entries[0];f.entries[1].next=&f.entries[2];
+        f.entries[2].entity=reinterpret_cast<CBaseEntity*>(f.relay);f.entries[2].serial=7;f.entries[2].previous=&f.entries[1];
+        put(f.trigger,0,dynamic_trigger_vtable);put(f.trigger,0x378,0x3000);put(f.trigger,0xb4,64);put(f.trigger,0x410,0xffffffffu);
+        put(f.trigger,0x45c,8);put(f.trigger,0x460,2);put(f.trigger,0x46c,8);
+        put(f.player,0,0x224aec3cu);put(f.player,0x378,0x5001);
+        put(f.relay,0,relay_vtable);put(f.relay,0x378,0x7002);put(f.relay,0xc0,201);f.relay[0x3ac]=1;
+        const unsigned output_heads[]{0x428,0x440,0x458};
+        const float delays[]{.25f,.5f,1.f};
+        for(unsigned i=0;i<3;++i){
+            put(f.trigger,output_heads[i],11+i);
+            f.actions[i][0]=201;f.actions[i][1]=202+i;std::memcpy(&f.actions[i][3],&delays[i],4);
+            f.actions[i][4]=0xffffffffu;f.actions[i][5]=80+i;
+        }
+        nw::ServerEntitySearchBindings search{};search.context=&f;search.head=f.entries;
+        search.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<QueueFixture*>(p);*bytes=actor==f.trigger?sizeof(f.trigger):actor==f.player?sizeof(f.player):actor==f.relay?sizeof(f.relay):0;return *bytes!=0;
+        };
+        auto text=[](void*,unsigned token,const char** value,unsigned* bytes) noexcept ->int{
+            constexpr const char* names[]{"station_relay","Enable","Disable","Toggle"};
+            if(token<201||token>204)return 0;*value=names[token-201];*bytes=static_cast<unsigned>(std::strlen(*value)+1);return 1;
+        };
+        search.string_text=text;
+        nw::ServerNpcActivePostAnimationBindings storage{};
+        RelayBindings relay{};nw::ServerEntityAcceptInputBindings input{};input.storage=&storage;input.relay=&relay;input.string_text=text;
+        nw::ServerEntityEventServiceBindings sb{};sb.context=&f;sb.entities.entries=f.entries;sb.entities.count=3;sb.resolve=queue.resolve;
+        sb.native_search=&search;sb.native_input=&input;sb.live_now=&f.now;
+        sb.lock=[](void* p,bool enter) noexcept ->int{auto& f=*static_cast<QueueFixture*>(p);assert(f.locked!=enter);f.locked=enter;return 1;};
+        sb.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& f=*static_cast<QueueFixture*>(p);assert(f.locked&&token&&token<=f.allocated&&row==f.rows[token-1]);++f.released;return 1;};
+        CampaignStartTouchResult sr{};CampaignFilterResult fr{};CampaignEndTouchResult er{};
+        assert(start(f.trigger,sizeof(f.trigger),f.player,sizeof(f.player),&st,&sr,&fb,&fr)&&fr.accepted&&sr.native_queued==1&&sr.count==1);
+        assert(end(f.trigger,sizeof(f.trigger),f.player,sizeof(f.player),&et,&er)&&er.end_output&&er.all_output&&er.native_queued==2&&!er.count);
+        assert(f.allocated==3&&word(f.root,0x30)==1&&word(f.rows[0],0x30)==2&&word(f.rows[1],0x30)==3);
+        for(unsigned i=0;i<3;++i){
+            assert(word(f.rows[i],4)==201&&word(f.rows[i],8)==202+i&&word(f.rows[i],0xc)==0x5001&&word(f.rows[i],0x10)==0x3000);
+            float deadline=0;std::memcpy(&deadline,f.rows[i],4);assert(deadline==10.f+delays[i]);
+        }
+        nw::ServerEntityEventServiceResult result{};int steps=0;
+        auto tick=[&](float now){f.now=now;return service->service(f.root,sizeof(f.root),99,now,false,&steps,&sb,&result);};
+        assert(tick(10.f)&&result.future_stopped&&!result.events&&f.relay[0x3ac]);
+        assert(tick(10.25f)&&result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&result.native_named_searches==2&&!f.relay[0x3ac]&&f.released==1);
+        assert(tick(10.5f)&&result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&f.relay[0x3ac]&&f.released==2);
+        assert(tick(11.f)&&result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&!f.relay[0x3ac]&&f.released==3&&!word(f.root,0x30)&&!f.locked);
+    }

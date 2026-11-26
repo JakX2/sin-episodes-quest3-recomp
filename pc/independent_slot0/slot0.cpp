@@ -58,6 +58,8 @@ int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
 bool __cdecl SinReadCampaignContactFieldsInternal(const void*,unsigned,unsigned*,unsigned char*) noexcept;
 extern "C" int __cdecl SiN_StartCampaignTriggerOutput(void*,unsigned,void*,unsigned,const sin_port::native_map::CampaignStartTouchBindings*,
     sin_port::native_map::CampaignStartTouchResult*) noexcept;
+extern "C" int __cdecl SiN_StartCampaignTriggerOutputWithFilter(void*,unsigned,void*,unsigned,const sin_port::native_map::CampaignStartTouchBindings*,
+    sin_port::native_map::CampaignStartTouchResult*,const sin_port::native_map::CampaignFilterBindings*,sin_port::native_map::CampaignFilterResult*) noexcept;
 int __cdecl SinServerActivateWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::Bindings*,
     sin_port::native_level::Result*,void*) noexcept;
 int __cdecl SinTouchCampaignTriggerFromStartupInternal(void*,unsigned,void*,const sin_port::native_map::CampaignTriggerBindings*,
@@ -1624,8 +1626,11 @@ static int dispatchCampaignContactImpl(
     const sin_port::native_server_startup::EngineEventSession* session,void* actor,unsigned bytes,void* other,unsigned other_bytes,
     sin_port::native_level::CampaignContactKind kind,const sin_port::native_level::CampaignContactBindings* b,
     sin_port::native_level::CampaignContactResult* o,const sin_port::native_map::CampaignStartTouchBindings* native_start,
-    sin_port::native_map::CampaignStartTouchResult* start_result) noexcept {
+    sin_port::native_map::CampaignStartTouchResult* start_result,
+    const sin_port::native_map::CampaignFilterBindings* native_filter=nullptr,
+    sin_port::native_map::CampaignFilterResult* filter_result=nullptr) noexcept {
     if(start_result)*start_result={};
+    if(filter_result)*filter_result={};
     using namespace sin_port::native_level;
     namespace nm=sin_port::native_map;
     if(!o)return 0;*o={};o->publication=nm::engine_event_not_attempted;
@@ -1648,7 +1653,9 @@ static int dispatchCampaignContactImpl(
         if(native_start){
             if(!start_result)return 0;
             o->start_called=1;
-            if(!SiN_StartCampaignTriggerOutput(actor,bytes,other,other_bytes,native_start,start_result))return 0;
+            if(native_filter){
+                if(!filter_result||!SiN_StartCampaignTriggerOutputWithFilter(actor,bytes,other,other_bytes,native_start,start_result,native_filter,filter_result))return 0;
+            }else if(!SiN_StartCampaignTriggerOutput(actor,bytes,other,other_bytes,native_start,start_result))return 0;
         }else{
             if(!b->start_touch)return 0;
             o->start_called=1;
@@ -1678,6 +1685,16 @@ extern "C" int __cdecl SiN_DispatchStartedCampaignContactWithOutput(
     sin_port::native_map::CampaignStartTouchResult* start_result) noexcept {
     if(!native_start||!start_result){if(o)*o={};return 0;}
     return dispatchCampaignContactImpl(session,actor,bytes,other,other_bytes,kind,b,o,native_start,start_result);
+}
+#pragma comment(linker,"/EXPORT:SiN_DispatchStartedCampaignContactWithFilter=_SiN_DispatchStartedCampaignContactWithFilter")
+extern "C" int __cdecl SiN_DispatchStartedCampaignContactWithFilter(
+    const sin_port::native_server_startup::EngineEventSession* session,void* actor,unsigned bytes,void* other,unsigned other_bytes,
+    sin_port::native_level::CampaignContactKind kind,const sin_port::native_level::CampaignContactBindings* b,
+    sin_port::native_level::CampaignContactResult* o,const sin_port::native_map::CampaignStartTouchBindings* native_start,
+    sin_port::native_map::CampaignStartTouchResult* start_result,const sin_port::native_map::CampaignFilterBindings* filter,
+    sin_port::native_map::CampaignFilterResult* fr) noexcept {
+    if(!native_start||!start_result||!filter||!fr){if(o)*o={};return 0;}
+    return dispatchCampaignContactImpl(session,actor,bytes,other,other_bytes,kind,b,o,native_start,start_result,filter,fr);
 }
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameBoundary=_SiN_InvokeServerGameFrameBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(bool simulating,const sin_port::native_game_frame::State* state,const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result) noexcept {

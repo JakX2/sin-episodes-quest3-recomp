@@ -136,4 +136,9 @@ inline constexpr char campaign_contact_output_export[]="SiN_DispatchStartedCampa
 using DispatchCampaignContactWithOutput=int (__cdecl *)(const native_server_startup::EngineEventSession*,
     void*,unsigned,void*,unsigned,CampaignContactKind,const CampaignContactBindings*,CampaignContactResult*,
     const native_map::CampaignStartTouchBindings*,native_map::CampaignStartTouchResult*) noexcept;
+inline constexpr char filtered_campaign_contact_export[]="SiN_DispatchStartedCampaignContactWithFilter";
+using DispatchFilteredCampaignContact=int (__cdecl *)(const native_server_startup::EngineEventSession*,
+    void*,unsigned,void*,unsigned,CampaignContactKind,const CampaignContactBindings*,CampaignContactResult*,
+    const native_map::CampaignStartTouchBindings*,native_map::CampaignStartTouchResult*,
+    const native_map::CampaignFilterBindings*,native_map::CampaignFilterResult*) noexcept;
 }
