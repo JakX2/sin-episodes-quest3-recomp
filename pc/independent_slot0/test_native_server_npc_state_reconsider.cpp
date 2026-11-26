@@ -1512,5 +1512,52 @@ int main(int argc,char** argv){
         assert(destroy->destroy(&head,12,&db,&dr)&&dr.completed&&dr.unlinked&&!head&&q.released==4);
         assert(destroy->destroy(&head,0,&db,&dr)&&dr.completed&&!dr.group_released);
     }
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntSquadSlotsApi>(GetProcAddress(s,server_npc_grunt_squad_slots_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_squad_slots_export)&&!g(0,sizeof(ServerNpcGruntSquadSlotsApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntSquadSlotsApi));assert(api);
+        struct SlotFixture {
+            alignas(4) unsigned char actors[2][0xdb2]{},enemies[2][0x20]{},group[0x78]{},rows[64]{};
+            sin_independent::EntityHandleEntry slots[5]{};
+            unsigned capacity=0;
+            static SlotFixture& self(void* p){return *static_cast<SlotFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        for(unsigned i=0;i<2;++i){
+            q.slots[i+1].serial=i+1;q.slots[i+1].entity=reinterpret_cast<CBaseEntity*>(q.actors[i]);
+            q.slots[i+3].serial=i+3;q.slots[i+3].entity=reinterpret_cast<CBaseEntity*>(q.enemies[i]);
+            f.put(q.actors[i],0x9c4,91u);f.put(q.actors[i],0x9cc,-1);f.put(q.actors[i],0x8a0,0x3003u);
+            f.put(q.group,8+4*i,(i+1)*0x1001u);
+        }
+        f.put(q.group,0x48,2);
+        ServerNpcGruntSquadSlotsBindings sb{};sb.context=sb.storage.context=&q;sb.entries=q.slots;sb.count=5;
+        sb.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& q=SlotFixture::self(p);if(token==91){*out=q.group;*n=sizeof(q.group);return 1;}if(token==200&&q.capacity){*out=q.rows;*n=q.capacity*8;return 1;}return 0;
+        };
+        sb.resize=[](void* p,std::uint32_t old,unsigned cap,std::uint32_t* token,void** out,unsigned* n) noexcept -> int{
+            auto& q=SlotFixture::self(p);assert((!old&&cap==4)||(old==200&&cap==8));q.capacity=cap;*token=200;*out=q.rows;*n=cap*8;return 1;
+        };
+        sb.member_class=[](void* p,void* a,std::uint32_t* vt,unsigned* n) noexcept -> int{auto& q=SlotFixture::self(p);assert(a==q.actors[0]||a==q.actors[1]);*vt=0x2249aaa4;*n=0xdb2;return 1;};
+        sb.entity_handle=[](void* p,void* e,std::uint32_t* out) noexcept -> int{auto& q=SlotFixture::self(p);if(e==q.enemies[0]){*out=0x3003u;return 1;}if(e==q.enemies[1]){*out=(q.slots[4].serial<<12)|4;return 1;}return 0;};
+        ServerNpcGruntSquadSlotsResult sr{};
+        assert(api->reserve(q.actors[0],sizeof(q.actors[0]),12,12,10,&sb,&sr)&&sr.allowed&&sr.new_set&&sr.appended==1&&sr.grown==1&&sr.refreshed==1&&sr.deadline==40&&sr.accesses==2&&sr.bitmap==(1u<<12));
+        assert(api->reserve(q.actors[0],sizeof(q.actors[0]),12,12,10,&sb,&sr)&&sr.allowed&&sr.retained&&!sr.accesses);
+        assert(api->reserve(q.actors[1],sizeof(q.actors[1]),12,12,10,&sb,&sr)&&!sr.allowed&&sr.accesses==1);
+        assert(api->reserve(q.actors[1],sizeof(q.actors[1]),12,14,10,&sb,&sr)&&sr.allowed&&sr.selected==13&&sr.bitmap==((1u<<12)|(1u<<13)));
+        assert(api->occupied(91,q.enemies[0],12,13,10,&sb,&sr)&&sr.allowed&&sr.accesses==2);
+        assert(api->reserve(q.actors[0],sizeof(q.actors[0]),14,14,10,&sb,&sr)&&sr.allowed&&sr.old_cleared&&!sr.old_unmarked&&sr.accesses==4&&sr.bitmap==((1u<<13)|(1u<<14)));
+        assert(api->release(91,q.enemies[0],13,10,&sb,&sr)&&sr.old_cleared&&!sr.old_unmarked&&sr.bitmap==(1u<<14)&&SlotFixture::rd(q.actors[1],0x9cc)==13);
+        assert(api->release(91,q.enemies[0],13,10,&sb,&sr)&&sr.old_unmarked);
+        assert(api->release(0,nullptr,-1,10,&sb,&sr)&&!sr.accesses);
+        assert(api->bit(91,q.enemies[1],31,NpcSquadBitSet,11,&sb,&sr)&&sr.appended&&sr.bitmap==0x80000000u);
+        assert(api->get(91,nullptr,11,&sb,&sr)&&sr.appended&&sr.index==2);
+        q.slots[4].serial=5;
+        assert(api->get(91,nullptr,40,&sb,&sr)&&sr.cached&&!sr.refreshed&&sr.index==2);
+        assert(api->get(91,q.enemies[0],40.25f,&sb,&sr)&&sr.refreshed==1&&sr.refresh_members==2&&sr.pruned==2&&sr.index==0&&sr.bitmap==(1u<<14)&&sr.deadline==70.25f&&SlotFixture::rd(q.group,0x6c)==1);
+        assert(api->get(91,q.enemies[1],40.25f,&sb,&sr)&&sr.appended&&sr.index==1&&!sr.bitmap&&SlotFixture::rd(q.rows,8)==0x5004u);
+        assert(!api->bit(91,q.enemies[0],32,NpcSquadBitSet,40.25f,&sb,&sr));
+        f.put(q.actors[0],0x9c4,0u);
+        assert(api->reserve(q.actors[0],sizeof(q.actors[0]),12,12,41,&sb,&sr)&&sr.allowed&&sr.ungrouped&&!sr.accesses);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
