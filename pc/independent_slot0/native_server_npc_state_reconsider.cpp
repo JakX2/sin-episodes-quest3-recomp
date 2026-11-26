@@ -4326,6 +4326,64 @@ int __cdecl grunt_ignition_alive(void* a,unsigned n,void* damage,unsigned dn,flo
     return grunt_alive_damage_chain_impl(a,n,damage,dn,now,&b->alive,&out->alive,&route);
 }
 const ServerNpcGruntIgnitionApi ignition_api{1,sizeof(ServerNpcGruntIgnitionApi),&grunt_ignition,&grunt_ignition_alive};
+int __cdecl grunt_life_dispatch(void* a,unsigned n,const void* damage,unsigned dn,float now,const ServerNpcGruntLifeDispatchBindings* b,ServerNpcGruntLifeDispatchResult* out) noexcept{
+    if(!out)return 0;
+    out->alive.alive.chain.detail.damage.completed=0;out->alive.alive.life={};out->alive.ignition={};out->other={};
+    out->scaled_amount=0;out->scale=1;out->initial_state=-1;out->native_result=0;
+    out->completed=out->route=out->mode_blocked=out->owner_checked=out->owner_scaled=out->scale_blocked=out->effect_called=out->object_called=out->death_called=out->post_death_noop=0;
+    if(!a||n<0xdb2||!damage||dn<0x48||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    alignas(4) unsigned char copy[0x48];std::memcpy(copy,damage,sizeof(copy));
+    out->scaled_amount=read<float>(copy,0x2c);
+    if(!read<int>(a,0x94)){out->mode_blocked=1;return done();}
+    if(!std::isfinite(out->scaled_amount))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    if(void* owner=registry.Resolve(read<unsigned>(a,0xe8))){
+        bool yes=false;if(!b->owner_type||!b->owner_type(b->context,owner,&yes))return 0;
+        out->owner_checked=1;
+        if(yes){
+            if(!b->owner_scale||!b->owner_scale(b->context,owner,a,copy,&out->scale)||!std::isfinite(out->scale))return 0;
+            out->owner_scaled=1;
+            out->scaled_amount=static_cast<float>(static_cast<double>(read<float>(copy,0x2c))*out->scale);
+            if(!std::isfinite(out->scaled_amount))return 0;
+            write(copy,0x2c,out->scaled_amount);
+            if(out->scaled_amount<=0){out->scale_blocked=1;return done();}
+        }
+    }
+    if(read<std::uint8_t>(copy,0x39)&1u){
+        float pos[3];for(unsigned i=0;i<3;++i)pos[i]=read<float>(copy,0xc+4*i);
+        if(!finite_vec(pos)||!b->pre_effect||!b->pre_effect(b->context,a,pos))return 0;
+        out->effect_called=1;
+    }
+    out->initial_state=read<int>(a,0x8c);
+    if(out->initial_state==0){
+        out->route=NpcDamageAlive;
+        if(!grunt_ignition_alive(a,n,copy,sizeof(copy),now,&b->combat,&out->alive))return 0;
+        out->native_result=out->alive.alive.chain.detail.damage.native_result;
+        // Retail tests live health even when the alive handler returned zero.
+        if(read<int>(a,0x9c)<=0){
+            if(const auto token=read<unsigned>(a,0x218)){
+                if(!b->object_death||!b->object_death(b->context,token,0))return 0;
+                out->object_called=1;
+            }
+            if(!b->death||!b->death(b->context,a,copy,sb.speech.original_vtable))return 0;
+            out->death_called=1;
+            // All eight +398=22044730 false, +3a8=222a4490 ret.
+            out->post_death_noop=1;
+        }
+    }else{
+        out->route=out->initial_state==1?NpcDamageDying:NpcDamageDead;
+        auto life=b->combat.alive.life;life.entries=sb.entries;life.count=sb.count;life.original_vtable=sb.speech.original_vtable;
+        if(!grunt_life_damage(a,n,copy,sizeof(copy),out->route,&life,&out->other))return 0;
+        out->native_result=out->other.native_result;
+        // Dead branch's +398 is false, so +3a4 is unreachable for these classes.
+    }
+    return done();
+}
+const ServerNpcGruntLifeDispatchApi life_dispatch_api{1,sizeof(ServerNpcGruntLifeDispatchApi),&grunt_life_dispatch};
+
 
 
 
@@ -4887,4 +4945,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntIgnitionApi=_SiN_GetServerNpcGruntIgnitionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntIgnitionApi* __cdecl SiN_GetServerNpcGruntIgnitionApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntIgnitionApi)?&ignition_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntLifeDispatchApi=_SiN_GetServerNpcGruntLifeDispatchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLifeDispatchApi* __cdecl SiN_GetServerNpcGruntLifeDispatchApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntLifeDispatchApi)?&life_dispatch_api:nullptr;
 }

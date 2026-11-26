@@ -1839,4 +1839,27 @@ struct ServerNpcGruntIgnitionApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntIgnitionAliveBindings*,ServerNpcGruntIgnitionAliveResult*) noexcept;
 };
 using GetServerNpcGruntIgnitionApi=const ServerNpcGruntIgnitionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_life_dispatch_export[]="SiN_GetServerNpcGruntLifeDispatchApi";
+struct ServerNpcGruntLifeDispatchBindings {
+    ServerNpcGruntIgnitionAliveBindings combat;
+    void* context;
+    int (__cdecl *owner_type)(void*,void*,bool*) noexcept; // 2213dff0 RTTI on resolved +e8
+    int (__cdecl *owner_scale)(void*,void*,void*,void*,float*) noexcept; // owner +130, +c, +60c/+24
+    int (__cdecl *pre_effect)(void*,void*,const float*) noexcept; // original bit8 effect block
+    int (__cdecl *object_death)(void*,std::uint32_t,int) noexcept; // +218 object's +5c(0)
+    int (__cdecl *death)(void*,void*,void*,std::uint32_t) noexcept; // class-specific +e8
+};
+struct ServerNpcGruntLifeDispatchResult {
+    ServerNpcGruntIgnitionAliveResult alive;
+    ServerNpcGruntLifeDamageResult other;
+    float scaled_amount,scale;
+    int initial_state,native_result;
+    unsigned completed,route,mode_blocked,owner_checked,owner_scaled,scale_blocked,effect_called,object_called,death_called,post_death_noop;
+};
+struct ServerNpcGruntLifeDispatchApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntLifeDispatchBindings*,ServerNpcGruntLifeDispatchResult*) noexcept;
+};
+using GetServerNpcGruntLifeDispatchApi=const ServerNpcGruntLifeDispatchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -2559,5 +2559,44 @@ int main(int argc,char** argv){
         q.actor[0xbf]=8;
         assert(api->react(q.actor,sizeof(q.actor),nullptr,nullptr,&b,&o)&&o.flag_blocked&&o.attacker_handle==0xffffffffu&&!o.inflictor_name);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntLifeDispatchApi>(GetProcAddress(s,server_npc_grunt_life_dispatch_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_life_dispatch_export)&&!g(0,sizeof(ServerNpcGruntLifeDispatchApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntLifeDispatchApi));assert(api);
+        struct DispatchFixture {
+            alignas(4) unsigned char actor[0xdb2]{},owner[4]{},damage[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            float scale=0,direction[3]{};
+            bool owner=true;unsigned types=0,scales=0,effects=0,objects=0,deaths=0;
+            static DispatchFixture& self(void* p){return *static_cast<DispatchFixture*>(p);}
+            static unsigned rd(const void* p,unsigned o){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+o,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.owner);
+        static ServerNpcGruntLifeDispatchBindings b;b.context=&q;
+        auto& reaction=b.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction;
+        reaction.sentence.entries=q.entries;reaction.sentence.count=2;reaction.sentence.speech.original_vtable=0x2249aaa4;
+        b.combat.alive.life.shared_direction=q.direction;
+        b.combat.alive.chain.detail.damage.cast_grunt=[](void*,void*,void** out,unsigned* n) noexcept -> int{*out=nullptr;*n=0;return 1;};
+        b.owner_type=[](void* p,void* e,bool* v) noexcept -> int{auto& q=DispatchFixture::self(p);assert(e==q.owner);++q.types;*v=q.owner;return 1;};
+        b.owner_scale=[](void* p,void* owner,void* a,void* d,float* v) noexcept -> int{
+            auto& q=DispatchFixture::self(p);assert(owner==q.owner&&a==q.actor&&d!=q.damage&&DispatchFixture::rd(d,0x2c)==0x41200000u);++q.scales;*v=q.scale;return 1;};
+        b.pre_effect=[](void* p,void* a,const float* v) noexcept -> int{auto& q=DispatchFixture::self(p);assert(a==q.actor&&v[0]==1);++q.effects;return 1;};
+        b.object_death=[](void* p,std::uint32_t token,int arg) noexcept -> int{assert(token==88&&!arg);++DispatchFixture::self(p).objects;return 1;};
+        b.death=[](void* p,void* a,void* d,std::uint32_t vt) noexcept -> int{
+            auto& q=DispatchFixture::self(p);assert(a==q.actor&&d!=q.damage&&vt==0x2249aaa4&&q.objects==1&&DispatchFixture::rd(d,0x2c)==0x41200000u);++q.deaths;return 1;};
+        f.put(q.actor,0xe8,0x1001u);f.put(q.actor,0x9c,100);f.put(q.damage,0x2c,10.f);f.put(q.damage,0xc,1.f);
+        f.put(q.damage,0x24,0xffffffffu);f.put(q.damage,0x28,0xffffffffu);
+        static ServerNpcGruntLifeDispatchResult o;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.completed&&o.mode_blocked&&!q.types);
+        f.put(q.actor,0x94,2);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.owner_checked&&o.owner_scaled&&o.scale_blocked&&!o.effect_called&&q.scales==1);
+        q.scale=0.5f;f.put(q.actor,0x8c,1);f.put(q.damage,0x38,0x02000100u);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&b,&o)&&o.route==NpcDamageDying&&o.scaled_amount==5&&o.other.health_after==95&&o.effect_called&&q.effects==1&&DispatchFixture::rd(q.damage,0x2c)==0x41200000u);
+        f.put(q.actor,0xe8,0x9001u);f.put(q.actor,0x8c,2);f.put(q.damage,0x38,1u);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),12,&b,&o)&&o.route==NpcDamageDead&&!o.owner_checked&&o.other.health_after==94&&!o.death_called);
+        f.put(q.actor,0x8c,0);f.put(q.actor,0x9c,0);f.put(q.actor,0x218,88u);f.put(q.damage,0x38,0x400000u);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),13,&b,&o)&&o.route==NpcDamageAlive&&o.alive.alive.chain.detail.damage.rejected_flags&&!o.native_result&&o.object_called&&o.death_called&&o.post_death_noop&&q.deaths==1);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
