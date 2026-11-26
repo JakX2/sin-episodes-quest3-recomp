@@ -302,7 +302,7 @@ int main(int argc,char** argv){
     assert(api->key_value(relay,"StartDisabled","0",&kb,&kr)&&!relay[0x3ac]&&relay[0x3ad]);
     assert(api->key_value(relay,"OnTrigger","relay,Trigger,,10,1",&kb,&kr));
     assert(api->key_value(relay,"OnTrigger#2","relay,Trigger,,2,-1",&kb,&kr));
-    struct RelayFixture {ActionPool* pool;void* actor;void* activator;unsigned queued=0,released=0,removed=0,canceled=0,refires=0;float delay=0;} rf{&pool,relay,co.actor};
+    struct RelayFixture {ActionPool* pool;void* actor;void* activator;unsigned queued=0,released=0,removed=0,canceled=0,refires=0;float delay=0;ConnectedOutput* connected=nullptr;} rf{&pool,relay,co.actor};
     nw::ServerEntityVoidOutputBindings ro{};ro.context=&rf;
     ro.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
         auto& f=*static_cast<RelayFixture*>(p);
@@ -357,6 +357,42 @@ int main(int argc,char** argv){
     protected_node=0;
     assert(input("CancelPending")&&rr.native_cancel&&rr.cancel_visited==4&&rr.cancel_removed==2&&!relay[0x3ad]&&co.released==2);
     assert(word(co.root,0x30)==2&&word(co.rows[1],0x30)==3&&word(co.rows[2],0x34)==2&&!word(co.rows[2],0x30)&&rf.canceled==1);
+    // Real event-service AcceptInput walks CLogicRelay's authenticated
+    // datamap and executes the recovered input leaf, not a relay callback.
+    std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.delivered=0;co.now=40.f;
+    co.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=201&&token<=206;return 1;};
+    rf.connected=&co;
+    ro.enqueue=[](void* p,void* a,void* caller,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+        auto& f=*static_cast<RelayFixture*>(p);assert(a==f.activator&&caller==f.actor);
+        auto& q=*f.connected;nw::ServerEntityNamedEventQueueResult out{};
+        return q.api->enqueue(q.root,sizeof(q.root),99,q.now,0x7001,0x3000,action,&q.queue,&out);
+    };
+    nw::ServerNpcActivePostAnimationBindings relay_storage{};
+    nw::ServerEntityAcceptInputBindings ai{};ai.storage=&relay_storage;ai.relay=&rb;
+    ai.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+        *text=token==202?"Trigger":token==205?"EnableRefire":nullptr;if(!*text)return 0;
+        *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    nw::ServerEntitySearchBindings relay_search{};relay_search.context=&co;
+    relay_search.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{auto& f=*static_cast<ConnectedOutput*>(p);*bytes=actor==f.actor?relay_extent:actor==f.target?4u:0u;return *bytes!=0;};
+    auto relay_service=sb;relay_service.entities.entries=relay_entries;relay_service.entities.count=2;relay_service.native_search=&relay_search;relay_service.native_input=&ai;relay_service.live_now=&co.now;
+    relay_service.find_named=[](void* p,void* prev,unsigned name,void*,void*,void** target) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);assert(f.locked&&(name==201||name==206));
+        *target=prev?nullptr:(name==206?f.actor:f.target);return 1;
+    };
+    relay_service.accept=[](void* p,void* target,unsigned input,void* activator,void* caller,const void* variant,unsigned) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);assert(f.locked&&target==f.target&&input==202&&caller==f.actor&&activator&&*static_cast<const unsigned char*>(variant)==0);
+        ++f.delivered;return 1;
+    };
+    // String parameter to void input is converted by existing AcceptInput.
+    const nw::ServerEntityVoidOutputAction relay_trigger{206,202,204,2,987,0.f};
+    assert(queue_api->enqueue(co.root,sizeof(co.root),99,co.now,0x7001,0x7001,&relay_trigger,&co.queue,&cancel_qr));
+    relay[0x1f0]=1;relay[0x200]=0;
+    auto run_relay_service=[&](float now){co.now=now;return service_api->service(co.root,sizeof(co.root),99,now,false,&budget,&relay_service,&es);};
+    assert(run_relay_service(40.f)&&es.events==1&&es.native_inputs==1&&es.future_stopped&&relay[0x3ad]&&relay[0x200]&&co.alloc==3&&co.delivered==0);
+    assert(word(co.root,0x30)==2&&word(co.rows[1],0x30)==3&&word(co.rows[2],0x18)==0x3000);
+    assert(run_relay_service(42.f)&&es.events==1&&es.foreign_inputs==1&&es.future_stopped&&co.delivered==1&&relay[0x3ad]);
+    assert(run_relay_service(42.01f)&&es.events==1&&es.native_inputs==1&&es.direct==1&&!relay[0x3ad]&&!word(co.root,0x30)&&co.released==3);
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
     struct PipelineFixture {
