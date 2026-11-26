@@ -126,6 +126,61 @@ int __cdecl jet_post(void* a,unsigned n,const ServerNpcRunAnimationInput* in,flo
     if(!p||!std::isfinite(interval)||interval<=0||!run_jet(a,n,in,b,step))return 0;
     return post(a,n,in->now,interval,b->base.schedule,p,out);
 }
+bool outer_class(std::uint32_t vt,unsigned n) noexcept {
+    const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
+    unsigned family=0;return cls&&cls->classify(vt,&family)&&n>=(family==NpcSubclassJetpack?0x1085u:family==NpcSubclassElite?0xfe0u:0xfd8u);
+}
+int __cdecl outer_admit(void* a,unsigned n,float now,std::uint32_t vt,const ServerNpcOuterAdmissionBindings* b,ServerNpcOuterAdmissionResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!a||!b||!b->storage||!outer_class(vt,n)||!std::isfinite(now))return 0;
+    // 22040ce0: normal AI enabled; optional single-step gate.
+    auto playback=[&](float value){
+        if(rd<float>(a,0x3c0)!=value){if(!dirty(a,*b->storage))return false;wr<float>(a,0x3c0,value);out->playback_changed=1;}
+        return true;
+    };
+    if(!(b->global_flags&1u)&&b->enabled){
+        if(!(b->global_flags&2u)){out->admitted=out->completed=1;return 1;}
+        out->step_checked=1;
+        if(rd<int>(a,0xbf4)<b->step_threshold){
+            if(!playback(1.f))return 0;out->admitted=out->completed=1;return 1;
+        }
+        void* nav=nullptr;
+        if(!resolve(*b->storage,rd<std::uint32_t>(a,0x8f8),0x28,&nav))return 0;
+        if(const auto token=rd<std::uint32_t>(nav,0x24)){
+            void* path=nullptr;if(!resolve(*b->storage,token,4,&path))return 0;
+            out->path_active=rd<std::uint32_t>(path,0)!=0;
+        }
+        if(!out->path_active&&!playback(0.f))return 0;
+        out->completed=1;return 1;
+    }
+    // Disabled branch: shared diagnostic throttle, then +4dc(1).
+    if(!b->warning_deadline||!std::isfinite(*b->warning_deadline))return 0;
+    if(now>=*b->warning_deadline){
+        const float deadline=static_cast<float>(double(now)+5.);
+        if(!std::isfinite(deadline)||!b->warning)return 0;
+        *b->warning_deadline=deadline;out->warning_called=1;
+        if(!b->warning(b->context,a))return 0;
+    }
+    out->pause_called=1;
+    if(!b->pause_activity||!b->pause_activity(b->context,a,1))return 0;
+    wr<int>(a,0xfc8,-1);out->marker_reset=out->completed=1;return 1;
+}
+int __cdecl outer_script(void* a,unsigned n,float now,std::uint32_t vt,const ServerNpcOuterAdmissionBindings* b,ServerNpcOuterScriptGateResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!a||!b||!b->storage||!outer_class(vt,n)||!std::isfinite(now))return 0;
+    bool value=false;
+    if(const auto token=rd<std::uint32_t>(a,0xc18)){
+        out->component_called=1;if(!b->component_gate||!b->component_gate(b->context,token,&value))return 0;
+    }else value=rd<int>(a,0x850)==4||rd<std::uint8_t>(a,0x968)||rd<float>(a,0x97c)>now||(rd<unsigned>(a,0xb4)&0x1000u);
+    if(!value&&rd<std::uint8_t>(a,0xc10)==1){
+        bool hit=false;out->probe_called=1;
+        if(!b->movement_probe||!b->movement_probe(b->context,a,5,&hit))return 0;value=!hit;
+    }
+    out->value=value;
+    if(rd<std::uint8_t>(a,0xc10)!=value){if(!dirty(a,*b->storage))return 0;wr<std::uint8_t>(a,0xc10,value);out->changed=1;}
+    out->completed=1;return 1;
+}
+const ServerNpcOuterAdmissionApi admission_api{1,sizeof(ServerNpcOuterAdmissionApi),&outer_admit,&outer_script};
 const ServerNpcActivePostAnimationApi post_api{1,sizeof(ServerNpcActivePostAnimationApi),&post,&ground_post,&jet_post};
 const ServerNpcActiveWeaponStepApi api{1,sizeof(ServerNpcActiveWeaponStepApi),&run};
 const ServerNpcActiveJetWeaponStepApi jet_api{1,sizeof(ServerNpcActiveJetWeaponStepApi),&run_jet};
@@ -144,4 +199,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcActivePostAnimationApi=_SiN_GetServerNpcActivePostAnimationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcActivePostAnimationApi* __cdecl SiN_GetServerNpcActivePostAnimationApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcActivePostAnimationApi)?&post_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterAdmissionApi=_SiN_GetServerNpcOuterAdmissionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcOuterAdmissionApi* __cdecl SiN_GetServerNpcOuterAdmissionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcOuterAdmissionApi)?&admission_api:nullptr;
 }

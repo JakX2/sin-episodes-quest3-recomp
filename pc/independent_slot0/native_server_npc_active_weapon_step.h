@@ -81,4 +81,30 @@ struct ServerNpcActivePostAnimationApi {
 };
 using GetServerNpcActivePostAnimationApi=const ServerNpcActivePostAnimationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char server_npc_outer_admission_export[]="SiN_GetServerNpcOuterAdmissionApi";
+struct ServerNpcOuterAdmissionBindings {
+    const ServerNpcActivePostAnimationBindings* storage;
+    void* context;
+    unsigned global_flags; // 22546d5c, bits 0 and 1
+    bool enabled; // 2254911c
+    int step_threshold; // 224dbd98
+    float* warning_deadline; // 22546d48, shared across actors
+    int (__cdecl *warning)(void*,void*) noexcept; // 222858a0, diagnostic only
+    int (__cdecl *pause_activity)(void*,void*,int) noexcept; // 22049b50(1)
+    int (__cdecl *component_gate)(void*,std::uint32_t,bool*) noexcept; // +b8
+    int (__cdecl *movement_probe)(void*,void*,int,bool*) noexcept; // +48(5,0)
+};
+struct ServerNpcOuterAdmissionResult {
+    unsigned admitted,step_checked,path_active,playback_changed,warning_called,pause_called,marker_reset,completed;
+};
+struct ServerNpcOuterScriptGateResult {
+    unsigned component_called,probe_called,value,changed,completed;
+};
+struct ServerNpcOuterAdmissionApi {
+    std::uint32_t version,size;
+    int (__cdecl *admit)(void*,unsigned,float,std::uint32_t,const ServerNpcOuterAdmissionBindings*,ServerNpcOuterAdmissionResult*) noexcept;
+    int (__cdecl *script_gate)(void*,unsigned,float,std::uint32_t,const ServerNpcOuterAdmissionBindings*,ServerNpcOuterScriptGateResult*) noexcept;
+};
+using GetServerNpcOuterAdmissionApi=const ServerNpcOuterAdmissionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
