@@ -3378,5 +3378,51 @@ int main(int argc,char** argv){
         f.put(q.a,0x9a8,1.f);q.a[0x9ac]=0;f.put(q.a,0x9ae,static_cast<std::uint16_t>(0));q.interval=1;
         assert(run()&&o.count_after==65535&&o.clamped&&o.deadline==10.f&&!o.rearmed&&!o.weapon_queries);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntTankEventApi>(GetProcAddress(s,server_npc_grunt_tank_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_tank_event_export)&&!g(0,sizeof(ServerNpcGruntTankEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntTankEventApi));assert(api);
+        struct TankEventFixture {
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},tank[0x4cc]{},descriptor[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            unsigned step=0;bool goal=false;float error[3]{16,16,48};int roll=0;
+            static TankEventFixture& self(void* p){return *static_cast<TankEventFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.tank);
+        ServerNpcGruntTankEventBindings b{};b.context=&q;auto& rb=b.events.events;rb.context=&q;
+        auto& gate=rb.events.events.gate;gate.actor_token=0x10000;gate.speech.speech.sentence.entries=q.entries;gate.speech.speech.sentence.count=2;gate.speech.speech.sentence.speech.original_vtable=0x2249aaa4;
+        rb.conditions.context=&q;rb.conditions.descriptor=[](void* p,void*,const void** d,unsigned* n) noexcept -> int{auto& q=TankEventFixture::self(p);*d=q.descriptor;*n=sizeof(q.descriptor);return 1;};
+        rb.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{auto& q=TankEventFixture::self(p);assert(lo==0&&hi==3);*v=q.roll;return 1;};
+        rb.random_float=[](void*,float lo,float hi,double* v) noexcept -> int{assert(lo==0&&hi==20);*v=10;return 1;};
+        b.request=[](void* p,void* a,std::uint32_t v) noexcept -> int{auto& q=TankEventFixture::self(p);assert(a==q.a&&(v==1||v==0x223f7868||v==0x224ab994));++q.step;return 1;};
+        b.goal=[](void* p,void* a,void* t,bool* yes) noexcept -> int{auto& q=TankEventFixture::self(p);assert(a==q.a&&t==q.tank);*yes=q.goal;++q.step;return 1;};
+        b.route_target=[](void* p,void* a,void* t) noexcept -> int{auto& q=TankEventFixture::self(p);assert(a==q.a&&t==q.tank&&q.step==1);++q.step;return 1;};
+        b.position_error=[](void* p,void* a,void* t,float* v) noexcept -> int{auto& q=TankEventFixture::self(p);assert(a==q.a&&t==q.tank);std::memcpy(v,q.error,12);++q.step;return 1;};
+        b.navigation=[](void* p,void* a,void* t) noexcept -> int{auto& q=TankEventFixture::self(p);assert(a==q.a&&t==q.tank);++q.step;return 1;};
+        b.arrival=[](void* p,void* a) noexcept -> int{auto& q=TankEventFixture::self(p);assert(a==q.a&&q.step==2);++q.step;return 1;};
+        b.reject_position=[](void* p,void* t) noexcept -> int{auto& q=TankEventFixture::self(p);assert(t==q.tank&&q.step==2);++q.step;return 1;};
+        b.extent=[](void* p,void* t,unsigned* n) noexcept -> int{auto& q=TankEventFixture::self(p);assert(t==q.tank);*n=sizeof(q.tank);return 1;};
+        b.sweep_point=[](void* p,void* a,float angle,float* v) noexcept -> int{auto& q=TankEventFixture::self(p);assert(a==q.a&&q.step==1&&angle>79&&angle<101);v[0]=angle;v[1]=2;v[2]=3;++q.step;return 1;};
+        b.aim=[](void* p,void* a,const float* v,float x,float y,float z) noexcept -> int{auto& q=TankEventFixture::self(p);assert(a==q.a&&q.step==2&&v[1]==2&&x==1&&y==2&&z==.2f);++q.step;return 1;};
+        f.put(q.descriptor,0x34,1000000000);f.put(q.descriptor,0x38,0);f.put(q.descriptor,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10cd8u);f.put(q.a,0xcd8,0x224abec4u);f.put(q.a,0xcdc,0x10000u);f.put(q.a,0xce4,0x10c14u);
+        f.put(q.a,0xcec,0x9001u);
+        ServerNpcGruntTankEventResult o{};
+        auto run=[&](int id){q.step=0;f.put(q.raw,0,id);return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        for(int id=100000;id<=100005;++id)assert(run(id)&&o.entered&&o.completed&&!o.valid&&o.requested&&o.request_value==1&&q.step==1);
+        f.put(q.a,0xcec,0x1001u);
+        assert(run(100000)&&o.valid&&o.goal_called&&!o.goal_success&&o.request_value==0x223f7868&&o.deadline==20&&q.step==2);
+        q.goal=true;assert(run(100000)&&o.goal_success&&o.route_called&&o.reset_called&&q.step==2);
+        assert(run(100001)&&o.aligned&&o.navigation_called&&o.arrival_called&&q.step==3);
+        q.error[2]=48.01f;assert(run(100001)&&!o.aligned&&o.rejected&&o.request_value==0x224ab994&&q.step==3);
+        assert(run(100002)&&o.deadline==15&&o.deadline_written&&q.step==0);
+        f.put(q.tank,0x428,90.f);f.put(q.tank,0x430,20.f);
+        assert(run(100003)&&o.angle>99&&o.angle<=100&&o.tank_written&&q.step==3);
+        assert(run(100004)&&o.angle>79&&o.angle<=80&&o.tank_written&&q.step==3);
+        assert(run(100005)&&o.valid&&!o.requested&&q.step==0);
+        assert(run(100006)&&o.random_called&&o.ignored_signal&&o.reset_called);
+        q.roll=3;assert(run(100006)&&o.random==3&&!o.ignored_signal&&o.reset_called);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
