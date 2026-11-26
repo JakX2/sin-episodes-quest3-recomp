@@ -55,6 +55,9 @@ struct Bindings {
     const ServerResupplyPrimaryThinkBindings* resupply;
     const ServerAntigenPrimaryThinkBindings* antigen;
     const EventQueue* queue;
+    // Opt-in edict-backed stationary branch. Engine +14/+18 scope is
+    // separate from profiler scopes and must be paired even on failure.
+    int (__cdecl *edict_scope)(void*,bool) noexcept;
 };
 struct Result {
     unsigned completed,transition,skip_consumed,double_step,profile_written,cleanup_calls,
@@ -62,6 +65,7 @@ struct Result {
         edict_calls,foreign_thinks,native_resupply,native_antigen,post_systems,event_called,
         native_events,post_cleanup,rules_called,trace_report,tail,scopes_entered,scopes_closed,
         iteration_entered,iteration_closed,curtime_restored,frametime_restored;
+    unsigned stationary_calls,stationary_deduplicated,edict_scopes_entered,edict_scopes_closed,named_context_fallbacks;
     float original_frametime,simulation_frametime,actor_curtime;
     ServerResupplyPrimaryThinkResult resupply;
     ServerAntigenPrimaryThinkResult antigen;
