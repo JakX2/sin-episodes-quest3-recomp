@@ -3933,5 +3933,57 @@ int main(int argc,char** argv){
         f.put(q.secondary,0x3bc,0x9001u);assert(api->deactivate(q.a,sizeof(q.a),&b,&o)&&o.reservation_released);
         f.put(p,0x18,0x9002u);assert(api->deactivate(q.a,sizeof(q.a),&b,&o)&&!o.reservation_checked);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntAssaultPolicyApi>(GetProcAddress(s,server_npc_grunt_assault_policy_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_assault_policy_export)&&!g(0,sizeof(ServerNpcGruntAssaultPolicyApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntAssaultPolicyApi));assert(api);
+        struct PolicyFixture {
+            alignas(4) unsigned char a[0xde8]{},primary[0x3ba]{},desc[0x48]{},behavior[0x18]{},group[0x78]{},rows[8]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            unsigned parents=0,targets=0,descriptors=0,owner_maps=0;
+            static PolicyFixture& self(void* p){return *static_cast<PolicyFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
+        ServerNpcGruntAssaultPolicyBindings b{};auto& ab=b.admission;
+        ab.entries=q.entries;ab.count=2;ab.actor_vtable=0x2249aaa4;ab.actor_token=0x10000;ab.context=&q;b.context=&q;
+        ab.conditions.context=&q;ab.conditions.descriptor=[](void* p,void*,const void** d,unsigned* n) noexcept -> int{auto& q=PolicyFixture::self(p);++q.descriptors;*d=q.desc;*n=sizeof(q.desc);return 1;};
+        ab.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& q=PolicyFixture::self(p);assert(e==q.primary);*n=sizeof(q.primary);return 1;};
+        b.behavior_schedules.context=&q;b.behavior_schedules.descriptor=[](void* p,void* e,const void** d,unsigned* n) noexcept -> int{auto& q=PolicyFixture::self(p);assert(e==q.a+0xdb8);*d=q.behavior;*n=sizeof(q.behavior);return 1;};
+        b.owner_schedules.context=&q;b.owner_schedules.descriptor=[](void* p,void* e,const void** d,unsigned* n) noexcept -> int{auto& q=PolicyFixture::self(p);assert(e==q.a);++q.owner_maps;*d=q.desc;*n=sizeof(q.desc);return 1;};
+        b.parent_translate=[](void* p,void* a,int incoming,int* v) noexcept -> int{auto& q=PolicyFixture::self(p);assert(a==q.a);++q.parents;*v=incoming+200;return 1;};
+        b.owner_target=[](void* p,void* a,void** v) noexcept -> int{auto& q=PolicyFixture::self(p);assert(a==q.a);++q.targets;*v=q.primary;return 1;};
+        b.slots.storage.context=&q;b.slots.storage.storage=[](void* p,std::uint32_t tok,void** v,unsigned* n) noexcept -> int{auto& q=PolicyFixture::self(p);if(tok==91){*v=q.group;*n=sizeof(q.group);return 1;}if(tok==200){*v=q.rows;*n=sizeof(q.rows);return 1;}return 0;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.desc,4,1000000900);f.put(q.desc,8,100);f.put(q.desc,12,120);
+        f.put(q.behavior,4,1000000300);f.put(q.behavior,8,100000);f.put(q.behavior,12,100004);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
+        auto* p=q.a+0xdb8;f.put(p,0x14,0x1001u);
+        ServerNpcGruntAssaultPolicyResult o{};
+        auto translate=[&](int id,int result){assert(api->translate(q.a,sizeof(q.a),id,10,&b,&o)&&o.completed&&o.schedule==result);};
+        translate(16,100003);translate(32,100003);p[0x25]=1;translate(16,100006);translate(32,100006);p[0x25]=0;
+        translate(41,241);assert(o.parent_called&&!o.timer_active);
+        q.a[0x9ac]=1;f.put(q.a,0x9a8,10.f);translate(41,241);
+        f.put(q.a,0x9a8,11.f);f.put(q.a,0x9cc,2);translate(41,11);assert(o.slot_checked&&!o.slot_released&&!o.target_called);
+        f.put(q.a,0x9cc,1);translate(41,11);assert(!o.slot_released&&PolicyFixture::rd(q.a,0x9cc)==1);
+        f.put(q.a,0x9c4,91u);f.put(q.group,0x5c,200u);f.put(q.group,0x60,200u);f.put(q.group,0x64,1);f.put(q.group,0x6c,1);f.put(q.group,0x74,99.f);
+        f.put(q.rows,0,0x1001u);f.put(q.rows,4,3u);translate(41,11);assert(o.slot_released&&o.target_called&&o.slot.old_cleared&&PolicyFixture::rd(q.a,0x9cc)==0xffffffffu&&PolicyFixture::rd(q.rows,4)==1);
+        f.put(q.a,0x9cc,0);f.put(q.a,0x9a8,std::numeric_limits<float>::quiet_NaN());translate(41,11);assert(o.slot_released&&PolicyFixture::rd(q.rows,4)==0&&q.targets==2);
+        unsigned before=q.descriptors;f.put(q.a,0x7cc,8u);translate(100004,49);assert(o.condition_tests==2&&q.descriptors==before+2);
+        f.put(q.a,0x7cc,16u);translate(100004,49);f.put(q.a,0x7cc,0u);translate(100004,100204);translate(77,277);
+        auto interrupts=[&](){assert(api->interrupts(q.a,sizeof(q.a),&b,&o)&&o.completed);};
+        f.put(p,0x14,0x9001u);interrupts();assert(!o.primary_valid&&!o.schedule_checks);
+        f.put(p,0x14,0x1001u);interrupts();assert(o.primary_valid&&!o.node_flag&&!o.schedule_checks);
+        q.primary[0x3b9]=1;interrupts();assert(o.schedule_checks==3&&!o.interrupt_stores);
+        f.put(q.a,0x798,123u);f.put(q.a,0x79c,1000000303);f.put(q.a,0x7ec,1u);f.put(q.a,0x7cc,0x80u);
+        interrupts();assert(o.matched_schedule==100003&&o.schedule_checks==1&&o.interrupt_stores==2);
+        assert(PolicyFixture::rd(q.a,0x7ec)==(1u|(1u<<25)|(1u<<10))&&PolicyFixture::rd(q.a,0x7cc)==0x80u);
+        f.put(q.a,0x79c,1000000300);interrupts();assert(o.matched_schedule==100000&&o.schedule_checks==2);
+        f.put(q.a,0x79c,1000000304);interrupts();assert(o.matched_schedule==100004&&o.schedule_checks==3);
+        f.put(q.a,0x79c,1000000301);interrupts();assert(o.matched_schedule==-1&&o.schedule_checks==3&&!o.interrupt_stores);
+        f.put(q.behavior,4,100);f.put(q.a,0x79c,1000000903);interrupts();assert(o.matched_schedule==100003&&o.owner_maps==1&&q.owner_maps==1);
+        f.put(q.a,0x798,0u);f.put(q.behavior,4,0);interrupts();assert(o.matched_schedule==100000&&o.schedule_checks==2&&!o.owner_maps);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

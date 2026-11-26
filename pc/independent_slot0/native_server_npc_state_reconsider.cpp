@@ -5022,6 +5022,82 @@ int __cdecl assault_select_schedule(void* a,unsigned n,const ServerNpcGruntAssau
 }
 const ServerNpcGruntAssaultScheduleApi assault_schedule_api{1,sizeof(ServerNpcGruntAssaultScheduleApi),&assault_deactivate,&assault_select_schedule};
 
+
+bool assault_policy_init(void* a,unsigned n,const ServerNpcGruntAssaultPolicyBindings* b,ServerNpcGruntAssaultPolicyResult* o,void*& p) noexcept{
+    if(!o)return false;*o={};o->incoming=o->schedule=o->local_schedule=o->global_schedule=o->matched_schedule=o->slot_before=-1;
+    o->slot.index=o->slot.selected=o->condition.global=o->condition.bit=-1;
+    return b&&assault_admission_init(a,n,&b->admission,&o->admission,p);
+}
+int __cdecl assault_translate_schedule(void* a,unsigned n,int incoming,float now,const ServerNpcGruntAssaultPolicyBindings* b,ServerNpcGruntAssaultPolicyResult* o) noexcept{
+    void* p=nullptr;if(!assault_policy_init(a,n,b,o,p)||!std::isfinite(now))return 0;
+    o->incoming=incoming;const auto& ab=b->admission;
+    auto done=[&](int schedule){o->schedule=schedule;o->completed=1;return 1;};
+    if(incoming==16||incoming==32)return done(read<std::uint8_t>(p,0x25)?100006:100003);
+    if(incoming==41){
+        o->timer_active=read<std::uint8_t>(a,0x9ac)!=0&&!(read<float>(a,0x9a8)<=now);
+        if(o->timer_active){
+            const int slot=o->slot_before=read<int>(a,0x9cc);o->slot_checked=1;
+            if(slot>=0&&slot<=1){
+                if(const auto group=read<unsigned>(a,0x9c4)){
+                    void* target=nullptr;
+                    if(!b->owner_target||!b->owner_target(b->context,a,&target))return 0;o->target_called=1;
+                    auto slots=b->slots;slots.entries=ab.entries;slots.count=ab.count;
+                    if(!slots_release(group,target,slot,now,&slots,&o->slot))return 0;
+                    write(a,0x9cc,-1);o->slot_released=1;
+                }
+            }
+            return done(11);
+        }
+    }
+    if(incoming==100004){
+        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
+        // Original evaluates both condition queries, even when the first is set.
+        if(!api->test(a,n,3,NpcConditionCurrent,&ab.conditions,&o->condition))return 0;
+        ++o->condition_tests;const bool first=o->condition.value!=0;
+        if(!api->test(a,n,4,NpcConditionCurrent,&ab.conditions,&o->condition))return 0;
+        ++o->condition_tests;if(first||o->condition.value)return done(49);
+    }
+    int result=-1;if(!b->parent_translate||!b->parent_translate(b->context,a,incoming,&result))return 0;
+    o->parent_called=1;return done(result);
+}
+int __cdecl assault_build_interrupts(void* a,unsigned n,const ServerNpcGruntAssaultPolicyBindings* b,ServerNpcGruntAssaultPolicyResult* o) noexcept{
+    void* p=nullptr;if(!assault_policy_init(a,n,b,o,p))return 0;
+    auto done=[&](){o->completed=1;return 1;};
+    const auto& ab=b->admission;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    o->primary_checked=1;void* q=registry.Resolve(read<unsigned>(p,0x14));
+    o->primary_valid=q!=nullptr;if(!q)return done();
+    q=registry.Resolve(read<unsigned>(p,0x14));unsigned extent=0;
+    if(!q||!ab.extent||!ab.extent(ab.context,q,&extent)||extent<0x3ba)return 0;
+    o->node_flag=read<std::uint8_t>(q,0x3b9)!=0;if(!o->node_flag)return done();
+    for(const int local:{100003,100000,100004}){
+        o->local_schedule=local;++o->schedule_checks;
+        int global=-1;
+        if(!schedule_local_id(p,local,b->behavior_schedules,global))return 0;
+        bool match=false;
+        // Original 2205eec0: absent schedule accepts only zero/default ID.
+        if(!read<unsigned>(a,0x798))match=global==0||global==npc_global_condition_base;
+        else{
+            if(global<npc_global_condition_base){
+                int mapped=-1;if(!schedule_local_id(a,global,b->owner_schedules,mapped))return 0;
+                global=mapped;++o->owner_maps;
+            }
+            match=global==read<int>(a,0x79c);
+        }
+        o->global_schedule=global;
+        if(!match)continue;
+        o->matched_schedule=local;
+        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
+        for(const int condition:{25,10}){
+            if(!api->store(a,n,condition,NpcConditionInterrupt,true,&ab.conditions,&o->condition))return 0;
+            ++o->interrupt_stores;
+        }
+        return done();
+    }
+    return done();
+}
+const ServerNpcGruntAssaultPolicyApi assault_policy_api{1,sizeof(ServerNpcGruntAssaultPolicyApi),&assault_translate_schedule,&assault_build_interrupts};
+
 struct AssaultNodeRoute {const ServerNpcGruntAssaultNodeBindings* bindings;ServerNpcGruntAssaultNodeResult* result;};
 int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const AssaultNodeRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& ab=b.events;
@@ -7489,4 +7565,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultScheduleApi=_SiN_GetServerNpcGruntAssaultScheduleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultScheduleApi* __cdecl SiN_GetServerNpcGruntAssaultScheduleApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultScheduleApi)?&assault_schedule_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultPolicyApi=_SiN_GetServerNpcGruntAssaultPolicyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultPolicyApi* __cdecl SiN_GetServerNpcGruntAssaultPolicyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultPolicyApi)?&assault_policy_api:nullptr;
 }
