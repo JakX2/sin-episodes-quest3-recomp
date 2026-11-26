@@ -2601,7 +2601,7 @@ struct ServerNpcGruntAssaultAdmissionBindings {
     ServerNpcConditionMapBindings conditions;
     void* context;
     int (__cdecl *owner_ready)(void*,void*,bool*) noexcept; // actor +450
-    int (__cdecl *owner_target)(void*,void*,bool*) noexcept; // actor +154, pointer nonzero
+    int (__cdecl *owner_target)(void*,void*,bool*) noexcept; // optional compatibility override for native +154
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
 };
 struct ServerNpcGruntAssaultAdmissionResult {
@@ -2652,7 +2652,7 @@ struct ServerNpcGruntAssaultPolicyBindings {
     ServerNpcGruntSquadSlotsBindings slots;
     void* context;
     int (__cdecl *parent_translate)(void*,void*,int,int*) noexcept; // parent +8
-    int (__cdecl *owner_target)(void*,void*,void**) noexcept; // +154, actual target
+    int (__cdecl *owner_target)(void*,void*,void**) noexcept; // optional override for native +154 target
 };
 struct ServerNpcGruntAssaultPolicyResult {
     ServerNpcGruntAssaultAdmissionResult admission;
@@ -2702,7 +2702,7 @@ struct ServerNpcGruntAssaultTaskBindings {
     void* context;
     int (__cdecl *navigation_set)(void*,void*,std::uint32_t,int) noexcept; // nav +48
     int (__cdecl *facing_error)(void*,void*,std::uint32_t,double*) noexcept; // 2206d1b0
-    int (__cdecl *owner_target)(void*,void*,bool*) noexcept; // +154, presence
+    int (__cdecl *owner_target)(void*,void*,bool*) noexcept; // optional override for native +154 presence
     int (__cdecl *debug_draw)(void*,void*,int) noexcept; // engine debug line + box for selected schedule
     bool debug_enabled;
 };
@@ -2749,4 +2749,25 @@ struct ServerNpcGruntAssaultRallyApi {
     int (__cdecl *named)(void*,unsigned,std::uint32_t,int,const ServerNpcGruntAssaultRallyBindings*,ServerNpcGruntAssaultRallyResult*) noexcept; // 220cfc00
 };
 using GetServerNpcGruntAssaultRallyApi=const ServerNpcGruntAssaultRallyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_point_export[]="SiN_GetServerNpcGruntAssaultPointApi";
+struct ServerNpcGruntAssaultPointBindings {
+    ServerNpcGruntAssaultAdmissionBindings admission;
+    void* context;
+    int (__cdecl *origin)(void*,void*,float*) noexcept;
+    // Original parent +1c; preserve the two additional raw PE32 arguments.
+    int (__cdecl *parent)(void*,void*,const float*,std::uint32_t,std::uint32_t,bool*) noexcept;
+};
+struct ServerNpcGruntAssaultPointResult {
+    ServerNpcGruntAssaultAdmissionResult admission;
+    std::uint32_t handle;
+    unsigned completed,selected_offset,link_valid,origin_called,range_rejected,parent_called,accepted;
+    double distance_squared;
+};
+struct ServerNpcGruntAssaultPointApi {
+    std::uint32_t version,size;
+    int (__cdecl *query)(void*,unsigned,const float*,std::uint32_t,std::uint32_t,const ServerNpcGruntAssaultPointBindings*,ServerNpcGruntAssaultPointResult*) noexcept; // 220ce7a0
+    int (__cdecl *private_id)(int) noexcept; // 220ce130
+};
+using GetServerNpcGruntAssaultPointApi=const ServerNpcGruntAssaultPointApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
