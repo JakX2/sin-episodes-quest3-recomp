@@ -314,6 +314,25 @@ struct ServerNpcInputAssaultBindings {
     int (__cdecl *detach)(void*,void*) noexcept;
     int (__cdecl *warning)(void*,void*,unsigned) noexcept;
 };
+// 220422d0 gameplay lifecycle only. Collision and fragment presentation
+// are explicitly engine-owned, not reconstructed by this interface.
+struct ServerNpcBreakEffectRequest {
+    std::uint32_t model,physics,collision_group,skin;
+    float origin[3],angles[3],velocity[3],angular_velocity[3],scale;
+    void* actor;
+    int limit;
+    bool ignore_limit;
+};
+struct ServerNpcInputBreakBindings {
+    void* context;
+    int (__cdecl *non_solid)(void*,void*,unsigned) noexcept;
+    int (__cdecl *refresh_transform)(void*,void*,unsigned) noexcept;
+    int (__cdecl *physics_snapshot)(void*,std::uint32_t,float*,float*,float*,float*) noexcept;
+    int (__cdecl *effect)(void*,const ServerNpcBreakEffectRequest*) noexcept;
+    // Original removal is deferred; actor must remain valid until
+    // AcceptInput finishes its final dirty mark.
+    int (__cdecl *defer_remove)(void*,void*) noexcept;
+};
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
     void* context;
@@ -349,9 +368,10 @@ struct ServerEntityAcceptInputBindings {
     const ServerNpcInputRelationshipBindings* relationship;
     const ServerNpcInputForgetBindings* forget;
     const ServerNpcInputAssaultBindings* assault;
+    const ServerNpcInputBreakBindings* break_input;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed,rappel_mapped,rappel_condition,rappel_detached,rappel_snapshot,health_healed,health_damage,health_blocked,relationship_specs,relationship_entities,relationship_classes,relationship_updated,relationship_added,relationship_warnings,forget_found,forget_cleared,forget_removed,forget_warning,assault_candidates,assault_reserved,assault_selected,assault_linked,assault_reset,assault_missing;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed,rappel_mapped,rappel_condition,rappel_detached,rappel_snapshot,health_healed,health_damage,health_blocked,relationship_specs,relationship_entities,relationship_classes,relationship_updated,relationship_added,relationship_warnings,forget_found,forget_cleared,forget_removed,forget_warning,assault_candidates,assault_reserved,assault_selected,assault_linked,assault_reset,assault_missing,break_damage_disabled,break_non_solid,break_physics_snapshot,break_effect,break_removed;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
